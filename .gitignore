@@ -108,9 +108,14 @@ coverage
 
 # IDE files
 .idea/
+.vscode/
+.kiro/
 *.swp
 *.swo
 *~
+
+# Sample files
+,sample/
 
 # OS generated files
 .DS_Store

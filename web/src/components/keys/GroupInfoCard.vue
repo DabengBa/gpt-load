@@ -79,7 +79,6 @@ const proxyKeysDisplay = computed(() => {
 const hasAdvancedConfig = computed(() => {
   return (
     (props.group?.config && Object.keys(props.group.config).length > 0) ||
-    props.group?.param_overrides ||
     (props.group?.header_rules && props.group.header_rules.length > 0)
   );
 });
@@ -749,15 +748,6 @@ function resetPage() {
                   >
                     <pre class="config-json">{{
                       JSON.stringify(group?.model_redirect_rules || {}, null, 2)
-                    }}</pre>
-                  </n-form-item>
-                  <n-form-item
-                    v-if="group?.param_overrides"
-                    :label="`${t('keys.paramOverrides')}：`"
-                    :span="2"
-                  >
-                    <pre class="config-json">{{
-                      JSON.stringify(group?.param_overrides || "", null, 2)
                     }}</pre>
                   </n-form-item>
                 </n-form>

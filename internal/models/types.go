@@ -7,6 +7,14 @@ import (
 	"gorm.io/datatypes"
 )
 
+// API Format constants for Group.APIFormat field
+const (
+	APIFormatOpenAIChat     = "openai_chat"
+	APIFormatOpenAIResponse = "openai_response"
+	APIFormatAnthropic      = "anthropic"
+	APIFormatGemini         = "gemini"
+)
+
 // Key状态
 const (
 	KeyStatusActive  = "active"
@@ -90,9 +98,9 @@ type Group struct {
 	Upstreams            datatypes.JSON       `gorm:"type:json;not null" json:"upstreams"`
 	ValidationEndpoint   string               `gorm:"type:varchar(255)" json:"validation_endpoint"`
 	ChannelType          string               `gorm:"type:varchar(50);not null" json:"channel_type"`
+	APIFormat            string               `gorm:"type:varchar(50);column:api_format" json:"api_format"` // API format: openai_chat, openai_response, anthropic, gemini
 	Sort                 int                  `gorm:"default:0" json:"sort"`
 	TestModel            string               `gorm:"type:varchar(255);not null" json:"test_model"`
-	ParamOverrides       datatypes.JSONMap    `gorm:"type:json" json:"param_overrides"`
 	Config               datatypes.JSONMap    `gorm:"type:json" json:"config"`
 	HeaderRules          datatypes.JSON       `gorm:"type:json" json:"header_rules"`
 	ModelRedirectRules   datatypes.JSONMap    `gorm:"type:json" json:"model_redirect_rules"`
@@ -107,6 +115,26 @@ type Group struct {
 	ProxyKeysMap      map[string]struct{} `gorm:"-" json:"-"`
 	HeaderRuleList    []HeaderRule        `gorm:"-" json:"-"`
 	ModelRedirectMap  map[string]string   `gorm:"-" json:"-"`
+}
+
+// GetAPIFormat returns the API format for the group.
+// If APIFormat is explicitly set, it returns that value.
+// Otherwise, it infers the format from ChannelType for backward compatibility.
+func (g *Group) GetAPIFormat() string {
+	if g.APIFormat != "" {
+		return g.APIFormat
+	}
+	// Infer from ChannelType for backward compatibility
+	switch g.ChannelType {
+	case "openai":
+		return APIFormatOpenAIChat
+	case "anthropic":
+		return APIFormatAnthropic
+	case "gemini":
+		return APIFormatGemini
+	default:
+		return APIFormatOpenAIChat
+	}
 }
 
 // APIKey 对应 api_keys 表

@@ -4,7 +4,14 @@
   "version": "0.1.0",
   "description": "GPT Load Balancer Frontend - A modern Vue 3 frontend for GPT load balancing service",
   "type": "module",
-  "keywords": ["vue3", "typescript", "vite", "naive-ui", "gpt-load", "frontend"],
+  "keywords": [
+    "vue3",
+    "typescript",
+    "vite",
+    "naive-ui",
+    "gpt-load",
+    "frontend"
+  ],
   "author": "tbphp",
   "license": "MIT",
   "repository": {
@@ -32,11 +39,11 @@
   },
   "dependencies": {
     "@vicons/ionicons5": "^0.13.0",
-    "@vueuse/core": "^13.6.0",
+    "@vueuse/core": "^14.1.0",
     "axios": "^1.9.0",
     "naive-ui": "^2.41.0",
     "vue": "^3.5.13",
-    "vue-i18n": "^9.14.5",
+    "vue-i18n": "^11.2.7",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {

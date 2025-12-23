@@ -204,7 +204,7 @@ func RateLimiter(config types.PerformanceConfig) gin.HandlerFunc {
 			defer func() { <-semaphore }()
 			c.Next()
 		default:
-			response.Error(c, app_errors.NewAPIError(app_errors.ErrInternalServer, "Too many concurrent requests"))
+			response.Error(c, app_errors.ErrTooManyRequests)
 			c.Abort()
 		}
 	}

@@ -289,7 +289,6 @@ export default {
     noDescription: "No description",
     customHeaders: "Custom Headers",
     emptyValue: "(empty)",
-    paramOverrides: "Parameter Overrides",
     enterModelName: "Enter model name",
     enterUpstreamUrl: "Enter upstream URL",
     enterValidationPath: "Enter validation endpoint path",
@@ -353,8 +352,6 @@ export default {
     removeToggleTooltip:
       "Enable remove switch to delete this header, disable to add or override this header",
     addHeader: "Add Header",
-    paramOverridesTooltip:
-      "Define the API request parameters to be overridden using JSON format. These parameters will be merged with the original parameters when sending the request.",
     modelRedirectPolicy: "Unconfigured Model Policy",
     modelRedirectPolicyTooltip:
       "Choose how to handle requests for models not configured in redirect rules",

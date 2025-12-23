@@ -41,6 +41,7 @@ func EmbedFolder(fsEmbed embed.FS, targetPath string) static.ServeFileSystem {
 func NewRouter(
 	serverHandler *handler.Server,
 	proxyServer *proxy.ProxyServer,
+	transformerProxy *proxy.TransformerProxy,
 	configManager types.ConfigManager,
 	groupManager *services.GroupManager,
 	buildFS embed.FS,
@@ -67,6 +68,7 @@ func NewRouter(
 	registerSystemRoutes(router, serverHandler)
 	registerAPIRoutes(router, serverHandler, configManager)
 	registerProxyRoutes(router, proxyServer, groupManager, serverHandler)
+	registerTransformerProxyRoutes(router, transformerProxy, groupManager, serverHandler)
 	registerFrontendRoutes(router, buildFS, indexPage)
 
 	return router
@@ -182,6 +184,30 @@ func registerProxyRoutes(
 	proxyGroup.Use(middleware.ProxyAuth(groupManager))
 
 	proxyGroup.Any("/*path", proxyServer.HandleProxy)
+}
+
+// registerTransformerProxyRoutes 注册转换代理路由
+// 支持 /v1/chat/completions 和 /v1/messages 路径
+// 这些路由使用 TransformerProxy 进行多格式 API 转换
+func registerTransformerProxyRoutes(
+	router *gin.Engine,
+	transformerProxy *proxy.TransformerProxy,
+	groupManager *services.GroupManager,
+	serverHandler *handler.Server,
+) {
+	// OpenAI Chat Completions 格式路由
+	// 路径: /:group_name/v1/chat/completions
+	chatGroup := router.Group("/:group_name/v1/chat/completions")
+	chatGroup.Use(middleware.ProxyRouteDispatcher(serverHandler))
+	chatGroup.Use(middleware.ProxyAuth(groupManager))
+	chatGroup.POST("", transformerProxy.HandleProxyWithTransform)
+
+	// Anthropic Messages 格式路由
+	// 路径: /:group_name/v1/messages
+	messagesGroup := router.Group("/:group_name/v1/messages")
+	messagesGroup.Use(middleware.ProxyRouteDispatcher(serverHandler))
+	messagesGroup.Use(middleware.ProxyAuth(groupManager))
+	messagesGroup.POST("", transformerProxy.HandleProxyWithTransform)
 }
 
 // registerFrontendRoutes 注册前端路由

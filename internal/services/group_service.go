@@ -93,7 +93,6 @@ type GroupCreateParams struct {
 	Sort                int
 	TestModel           string
 	ValidationEndpoint  string
-	ParamOverrides      map[string]any
 	ModelRedirectRules  map[string]string
 	ModelRedirectStrict bool
 	Config              map[string]any
@@ -115,7 +114,6 @@ type GroupUpdateParams struct {
 	TestModel           string
 	HasTestModel        bool
 	ValidationEndpoint  *string
-	ParamOverrides      map[string]any
 	ModelRedirectRules  map[string]string
 	ModelRedirectStrict *bool
 	Config              map[string]any
@@ -234,7 +232,6 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		Sort:                params.Sort,
 		TestModel:           testModel,
 		ValidationEndpoint:  validationEndpoint,
-		ParamOverrides:      params.ParamOverrides,
 		ModelRedirectRules:  convertToJSONMap(params.ModelRedirectRules),
 		ModelRedirectStrict: params.ModelRedirectStrict,
 		Config:              cleanedConfig,
@@ -357,10 +354,6 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_empty", nil)
 		}
 		group.TestModel = cleanedTestModel
-	}
-
-	if params.ParamOverrides != nil {
-		group.ParamOverrides = params.ParamOverrides
 	}
 
 	// Validate model redirect rules for aggregate groups

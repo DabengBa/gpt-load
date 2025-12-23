@@ -3,32 +3,12 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	app_errors "gpt-load/internal/errors"
-	"gpt-load/internal/models"
 	"io"
 	"net/http"
 
 	"github.com/sirupsen/logrus"
 )
-
-func (ps *ProxyServer) applyParamOverrides(bodyBytes []byte, group *models.Group) ([]byte, error) {
-	if len(group.ParamOverrides) == 0 || len(bodyBytes) == 0 {
-		return bodyBytes, nil
-	}
-
-	var requestData map[string]any
-	if err := json.Unmarshal(bodyBytes, &requestData); err != nil {
-		logrus.Warnf("failed to unmarshal request body for param override, passing through: %v", err)
-		return bodyBytes, nil
-	}
-
-	for key, value := range group.ParamOverrides {
-		requestData[key] = value
-	}
-
-	return json.Marshal(requestData)
-}
 
 // logUpstreamError provides a centralized way to log errors from upstream interactions.
 func logUpstreamError(context string, err error) {

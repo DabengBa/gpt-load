@@ -107,6 +107,9 @@ func BuildContainer() (*dig.Container, error) {
 	if err := container.Provide(proxy.NewProxyServer); err != nil {
 		return nil, err
 	}
+	if err := container.Provide(proxy.NewTransformerProxy); err != nil {
+		return nil, err
+	}
 	if err := container.Provide(router.NewRouter); err != nil {
 		return nil, err
 	}

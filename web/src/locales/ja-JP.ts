@@ -288,7 +288,6 @@ export default {
     noDescription: "説明なし",
     customHeaders: "カスタムヘッダー",
     emptyValue: "(空)",
-    paramOverrides: "パラメーターオーバーライド",
     enterModelName: "モデル名を入力してください",
     enterUpstreamUrl: "アップストリームURLを入力してください",
     enterValidationPath: "検証エンドポイントパスを入力してください",
@@ -352,8 +351,6 @@ export default {
     removeToggleTooltip:
       "削除スイッチを有効にするとこのヘッダーを削除、無効にするとこのヘッダーを追加または上書き",
     addHeader: "ヘッダー追加",
-    paramOverridesTooltip:
-      "JSON形式を使用して、上書きするAPIリクエストパラメータを定義します。これらのパラメータは、リクエスト送信時に元のパラメータにマージされます。",
     modelRedirectPolicy: "未設定モデルポリシー",
     modelRedirectPolicyTooltip:
       "リダイレクトルールで設定されていないモデルのリクエストをどう処理するか選択",

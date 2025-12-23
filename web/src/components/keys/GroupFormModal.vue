@@ -71,7 +71,6 @@ interface GroupFormData {
   sort: number;
   test_model: string;
   validation_endpoint: string;
-  param_overrides: string;
   model_redirect_rules: string;
   model_redirect_strict: boolean;
   config: Record<string, number | string | boolean>;
@@ -96,7 +95,6 @@ const formData = reactive<GroupFormData>({
   sort: 1,
   test_model: "",
   validation_endpoint: "",
-  param_overrides: "",
   model_redirect_rules: "",
   model_redirect_strict: false,
   config: {},
@@ -291,7 +289,6 @@ function resetForm() {
     sort: 1,
     test_model: isCreateMode ? testModelPlaceholder.value : "",
     validation_endpoint: "",
-    param_overrides: "",
     model_redirect_rules: "",
     model_redirect_strict: false,
     config: {},
@@ -333,7 +330,6 @@ function loadGroupData() {
     sort: props.group.sort || 1,
     test_model: props.group.test_model || "",
     validation_endpoint: props.group.validation_endpoint || "",
-    param_overrides: JSON.stringify(props.group.param_overrides || {}, null, 2),
     model_redirect_rules: JSON.stringify(props.group.model_redirect_rules || {}, null, 2),
     model_redirect_strict: props.group.model_redirect_strict || false,
     config: {},
@@ -463,17 +459,6 @@ async function handleSubmit() {
 
     loading.value = true;
 
-    // 验证 JSON 格式
-    let paramOverrides = {};
-    if (formData.param_overrides) {
-      try {
-        paramOverrides = JSON.parse(formData.param_overrides);
-      } catch {
-        message.error(t("keys.invalidJsonFormat"));
-        return;
-      }
-    }
-
     // 验证模型重定向规则 JSON 格式
     let modelRedirectRules = {};
     if (formData.model_redirect_rules) {
@@ -521,7 +506,6 @@ async function handleSubmit() {
       sort: formData.sort,
       test_model: formData.test_model,
       validation_endpoint: formData.validation_endpoint,
-      param_overrides: paramOverrides,
       model_redirect_rules: modelRedirectRules,
       model_redirect_strict: formData.model_redirect_strict,
       config,
@@ -1134,28 +1118,6 @@ async function handleSubmit() {
                       {{ t("keys.modelRedirectRulesDescription") }}
                     </div>
                   </template>
-                </n-form-item>
-              </div>
-
-              <div class="config-section">
-                <n-form-item path="param_overrides">
-                  <template #label>
-                    <div class="form-label-with-tooltip">
-                      {{ t("keys.paramOverrides") }}
-                      <n-tooltip trigger="hover" placement="top">
-                        <template #trigger>
-                          <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
-                        </template>
-                        {{ t("keys.paramOverridesTooltip") }}
-                      </n-tooltip>
-                    </div>
-                  </template>
-                  <n-input
-                    v-model:value="formData.param_overrides"
-                    type="textarea"
-                    placeholder='{"temperature": 0.7}'
-                    :rows="4"
-                  />
                 </n-form-item>
               </div>
             </n-collapse-item>

@@ -284,7 +284,6 @@ export default {
     noDescription: "暂无描述",
     customHeaders: "自定义请求头",
     emptyValue: "(空值)",
-    paramOverrides: "参数覆盖",
     enterModelName: "请输入模型名称",
     enterUpstreamUrl: "请输入上游地址",
     enterValidationPath: "请输入验证端点路径",
@@ -340,8 +339,6 @@ export default {
     willRemoveFromRequest: "将从请求中移除",
     removeToggleTooltip: "开启移除开关将删除此请求头，关闭则添加或覆盖此请求头",
     addHeader: "添加请求头",
-    paramOverridesTooltip:
-      "使用JSON格式定义要覆盖的API请求参数。这些参数会在发送请求时合并到原始参数中",
     modelRedirectPolicy: "未配置模型策略",
     modelRedirectPolicyTooltip: "选择如何处理未在重定向规则中配置的模型请求",
     modelRedirectStrictMode: "严格模式：拒绝未配置的模型请求（返回404）",

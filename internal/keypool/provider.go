@@ -22,16 +22,41 @@ type KeyProvider struct {
 	store           store.Store
 	settingsManager *config.SystemSettingsManager
 	encryptionSvc   encryption.Service
+	workerPool      *WorkerPool
 }
 
 // NewProvider 创建一个新的 KeyProvider 实例。
 func NewProvider(db *gorm.DB, store store.Store, settingsManager *config.SystemSettingsManager, encryptionSvc encryption.Service) *KeyProvider {
-	return &KeyProvider{
+	provider := &KeyProvider{
 		db:              db,
 		store:           store,
 		settingsManager: settingsManager,
 		encryptionSvc:   encryptionSvc,
 	}
+
+	// Initialize worker pool with default config
+	config := DefaultWorkerPoolConfig()
+	processor := NewKeyProviderProcessor(provider)
+	logger := logrus.NewEntry(logrus.StandardLogger())
+	provider.workerPool = NewWorkerPool(config, processor, logger)
+	provider.workerPool.Start()
+
+	return provider
+}
+
+// Stop gracefully shuts down the KeyProvider and its worker pool.
+func (p *KeyProvider) Stop() {
+	if p.workerPool != nil {
+		p.workerPool.Stop()
+	}
+}
+
+// GetWorkerPoolMetrics returns the current metrics from the worker pool.
+func (p *KeyProvider) GetWorkerPoolMetrics() WorkerPoolMetrics {
+	if p.workerPool != nil {
+		return p.workerPool.GetMetrics()
+	}
+	return WorkerPoolMetrics{}
 }
 
 // SelectKey 为指定的分组原子性地选择并轮换一个可用的 APIKey。
@@ -87,29 +112,30 @@ func (p *KeyProvider) SelectKey(groupID uint) (*models.APIKey, error) {
 	return apiKey, nil
 }
 
-// UpdateStatus 异步地提交一个 Key 状态更新任务。
+// UpdateStatus 异步地提交一个 Key 状态更新任务到 Worker Pool。
+// Status updates are guaranteed to be processed - if the queue is full,
+// the task will be processed synchronously.
 func (p *KeyProvider) UpdateStatus(apiKey *models.APIKey, group *models.Group, isSuccess bool, errorMessage string) {
-	go func() {
-		keyHashKey := fmt.Sprintf("key:%d", apiKey.ID)
-		activeKeysListKey := fmt.Sprintf("group:%d:active_keys", group.ID)
+	// Skip uncounted errors
+	if !isSuccess && app_errors.IsUnCounted(errorMessage) {
+		logrus.WithFields(logrus.Fields{
+			"keyID": apiKey.ID,
+			"error": errorMessage,
+		}).Debug("Uncounted error, skipping failure handling")
+		return
+	}
 
-		if isSuccess {
-			if err := p.handleSuccess(apiKey.ID, keyHashKey, activeKeysListKey); err != nil {
-				logrus.WithFields(logrus.Fields{"keyID": apiKey.ID, "error": err}).Error("Failed to handle key success")
-			}
-		} else {
-			if app_errors.IsUnCounted(errorMessage) {
-				logrus.WithFields(logrus.Fields{
-					"keyID": apiKey.ID,
-					"error": errorMessage,
-				}).Debug("Uncounted error, skipping failure handling")
-			} else {
-				if err := p.handleFailure(apiKey, group, keyHashKey, activeKeysListKey); err != nil {
-					logrus.WithFields(logrus.Fields{"keyID": apiKey.ID, "error": err}).Error("Failed to handle key failure")
-				}
-			}
-		}
-	}()
+	task := &StatusUpdateTask{
+		KeyID:           apiKey.ID,
+		GroupID:         group.ID,
+		IsSuccess:       isSuccess,
+		ErrorMessage:    errorMessage,
+		Timestamp:       time.Now(),
+		BlacklistThresh: group.EffectiveConfig.BlacklistThreshold,
+	}
+
+	// Submit always succeeds now - if queue is full, task is processed synchronously
+	p.workerPool.Submit(task)
 }
 
 // executeTransactionWithRetry wraps a database transaction with a retry mechanism.
