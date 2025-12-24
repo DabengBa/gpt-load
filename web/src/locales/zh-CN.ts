@@ -291,6 +291,10 @@ export default {
     groupNamePattern: "只能包含小写字母、数字、中划线或下划线，长度1-100位",
     selectChannelType: "请选择渠道类型",
     enterTestModel: "请输入测试模型",
+    supportedModels: "支持的模型",
+    supportedModelsTooltip:
+      "列出该分组支持的模型名称（例如：gpt-4, gemini-*）。聚合分组在接收请求时会根据此列表选择合适的子分组。留空则表示支持所有模型。",
+    supportedModelsPlaceholder: "输入支持的模型名称，多个用逗号分隔",
     atLeastOneUpstream: "至少需要一个上游地址",
     invalidJsonFormat: "参数覆盖必须是有效的 JSON 格式",
     groupNameTooltip:

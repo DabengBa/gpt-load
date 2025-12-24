@@ -68,14 +68,45 @@ func (ps *ProxyServer) HandleProxy(c *gin.Context) {
 		return
 	}
 
+	// Intercept model list request for aggregate groups
+	if shouldInterceptModelList(c.Request.URL.Path, c.Request.Method) {
+		if originalGroup.GroupType == "aggregate" {
+			ps.handleAggregateModelList(c, originalGroup)
+			if c.Writer.Written() {
+				return
+			}
+			// If not written, it means no models found in config, continue to proxy one sub-group
+		}
+	}
+
+	// Read body early to extract model if needed
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		logrus.Errorf("Failed to read request body: %v", err)
+		response.Error(c, app_errors.NewAPIError(app_errors.ErrBadRequest, "Failed to read request body"))
+		return
+	}
+	// Restore body for later use
+	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Extract model for sub-group selection
+	modelName := ""
+	if originalGroup.GroupType == "aggregate" {
+		// We use the original group's channel handler to extract model, assuming client respects the interface
+		if handler, err := ps.channelFactory.GetChannel(originalGroup); err == nil {
+			modelName = handler.ExtractModel(c, bodyBytes)
+		}
+	}
+
 	// Select sub-group if this is an aggregate group
-	subGroupName, err := ps.subGroupManager.SelectSubGroup(originalGroup)
+	subGroupName, err := ps.subGroupManager.SelectSubGroup(originalGroup, modelName)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"aggregate_group": originalGroup.Name,
+			"model":           modelName,
 			"error":           err,
 		}).Error("Failed to select sub-group from aggregate")
-		response.Error(c, app_errors.NewAPIError(app_errors.ErrNoKeysAvailable, "No available sub-groups"))
+		response.Error(c, app_errors.NewAPIError(app_errors.ErrNoKeysAvailable, "No available sub-groups for the requested model"))
 		return
 	}
 
@@ -93,14 +124,6 @@ func (ps *ProxyServer) HandleProxy(c *gin.Context) {
 		response.Error(c, app_errors.NewAPIError(app_errors.ErrInternalServer, fmt.Sprintf("Failed to get channel for group '%s': %v", groupName, err)))
 		return
 	}
-
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		logrus.Errorf("Failed to read request body: %v", err)
-		response.Error(c, app_errors.NewAPIError(app_errors.ErrBadRequest, "Failed to read request body"))
-		return
-	}
-	c.Request.Body.Close()
 
 	isStream := channelHandler.IsStreamRequest(c, bodyBytes)
 

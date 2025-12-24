@@ -158,6 +158,15 @@ function handleGroupCreated(group: Group) {
                   <n-tag size="tiny" :type="getChannelTagType(group.channel_type)">
                     {{ group.channel_type }}
                   </n-tag>
+                  <n-tag
+                    v-if="group.supported_models && group.supported_models.length > 0"
+                    size="tiny"
+                    type="info"
+                    round
+                    :bordered="false"
+                  >
+                    {{ group.supported_models.length }} {{ t("common.all") === "全部" ? "模型" : "Models" }}
+                  </n-tag>
                   <n-tag v-if="group.group_type === 'aggregate'" size="tiny" type="warning" round>
                     {{ t("keys.aggregateGroup") }}
                   </n-tag>

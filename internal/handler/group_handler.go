@@ -59,6 +59,7 @@ type GroupCreateRequest struct {
 	Config              map[string]any      `json:"config"`
 	HeaderRules         []models.HeaderRule `json:"header_rules"`
 	ProxyKeys           string              `json:"proxy_keys"`
+	SupportedModels     []string            `json:"supported_models"`
 }
 
 // CreateGroup handles the creation of a new group.
@@ -84,6 +85,7 @@ func (s *Server) CreateGroup(c *gin.Context) {
 		Config:              req.Config,
 		HeaderRules:         req.HeaderRules,
 		ProxyKeys:           req.ProxyKeys,
+		SupportedModels:     req.SupportedModels,
 	}
 
 	group, err := s.GroupService.CreateGroup(c.Request.Context(), params)
@@ -126,6 +128,7 @@ type GroupUpdateRequest struct {
 	Config              map[string]any      `json:"config"`
 	HeaderRules         []models.HeaderRule `json:"header_rules"`
 	ProxyKeys           *string             `json:"proxy_keys,omitempty"`
+	SupportedModels     []string            `json:"supported_models"`
 }
 
 // UpdateGroup handles updating an existing group.
@@ -171,6 +174,11 @@ func (s *Server) UpdateGroup(c *gin.Context) {
 		params.HeaderRules = &rules
 	}
 
+	if req.SupportedModels != nil {
+		supportedModels := req.SupportedModels
+		params.SupportedModels = &supportedModels
+	}
+
 	group, err := s.GroupService.UpdateGroup(c.Request.Context(), uint(id), params)
 	if s.handleGroupError(c, err) {
 		return
@@ -197,6 +205,7 @@ type GroupResponse struct {
 	Config              datatypes.JSONMap   `json:"config"`
 	HeaderRules         []models.HeaderRule `json:"header_rules"`
 	ProxyKeys           string              `json:"proxy_keys"`
+	SupportedModels     []string            `json:"supported_models"`
 	LastValidatedAt     *time.Time          `json:"last_validated_at"`
 	CreatedAt           time.Time           `json:"created_at"`
 	UpdatedAt           time.Time           `json:"updated_at"`
@@ -223,6 +232,14 @@ func (s *Server) newGroupResponse(group *models.Group) *GroupResponse {
 		}
 	}
 
+	var supportedModels []string
+	if len(group.SupportedModels) > 0 {
+		if err := json.Unmarshal(group.SupportedModels, &supportedModels); err != nil {
+			logrus.WithError(err).Error("Failed to unmarshal supported models")
+			supportedModels = make([]string, 0)
+		}
+	}
+
 	return &GroupResponse{
 		ID:                  group.ID,
 		Name:                group.Name,
@@ -240,6 +257,7 @@ func (s *Server) newGroupResponse(group *models.Group) *GroupResponse {
 		Config:              group.Config,
 		HeaderRules:         headerRules,
 		ProxyKeys:           group.ProxyKeys,
+		SupportedModels:     supportedModels,
 		LastValidatedAt:     group.LastValidatedAt,
 		CreatedAt:           group.CreatedAt,
 		UpdatedAt:           group.UpdatedAt,

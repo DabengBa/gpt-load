@@ -296,6 +296,10 @@ export default {
     groupNamePattern: "Only lowercase letters, numbers, hyphens or underscores, 1-100 characters",
     selectChannelType: "Please select channel type",
     enterTestModel: "Please enter test model",
+    supportedModels: "Supported Models",
+    supportedModelsTooltip:
+      "List the model names supported by this group (e.g., gpt-4, gemini-*). Aggregate groups will select appropriate sub-groups based on this list when receiving requests. Leave empty to support all models.",
+    supportedModelsPlaceholder: "Enter supported model names, separated by commas",
     atLeastOneUpstream: "At least one upstream address is required",
     invalidJsonFormat: "Parameter override must be valid JSON format",
     groupNameTooltip:

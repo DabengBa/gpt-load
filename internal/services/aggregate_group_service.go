@@ -38,7 +38,8 @@ func NewAggregateGroupService(db *gorm.DB, groupManager *GroupManager) *Aggregat
 	}
 }
 
-// ValidateSubGroups validates sub-groups with an optional existing validation endpoint for consistency check.
+// ValidateSubGroups validates sub-groups for an aggregate group.
+// With multi-format transformer support, sub-groups can have different channel types.
 func (s *AggregateGroupService) ValidateSubGroups(ctx context.Context, channelType string, inputs []SubGroupInput, existingEndpoint string) (*AggregateValidationResult, error) {
 	if len(inputs) == 0 {
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_groups_required", nil)
@@ -68,27 +69,13 @@ func (s *AggregateGroupService) ValidateSubGroups(ctx context.Context, channelTy
 	}
 
 	subGroupMap := make(map[uint]models.Group, len(subGroupModels))
-	var validationEndpoint string
-
-	// If there's an existing endpoint, use it as the expected endpoint
-	if existingEndpoint != "" {
-		validationEndpoint = existingEndpoint
-	}
 
 	for _, sg := range subGroupModels {
 		if sg.GroupType == "aggregate" {
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_group_cannot_be_aggregate", nil)
 		}
-		if sg.ChannelType != channelType {
-			return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_group_channel_mismatch", nil)
-		}
-
-		// If no existing endpoint, use the first sub-group's effective endpoint
-		if validationEndpoint == "" {
-			validationEndpoint = utils.GetValidationEndpoint(&sg)
-		} else if validationEndpoint != utils.GetValidationEndpoint(&sg) {
-			return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_group_validation_endpoint_mismatch", nil)
-		}
+		// Note: With multi-format transformer, we no longer require same channel_type
+		// The transformer will handle format conversion automatically
 		subGroupMap[sg.ID] = sg
 	}
 
@@ -104,7 +91,7 @@ func (s *AggregateGroupService) ValidateSubGroups(ctx context.Context, channelTy
 	}
 
 	return &AggregateValidationResult{
-		ValidationEndpoint: validationEndpoint,
+		ValidationEndpoint: "", // No longer used for aggregate groups with mixed channel types
 		SubGroups:          resultSubGroups,
 	}, nil
 }

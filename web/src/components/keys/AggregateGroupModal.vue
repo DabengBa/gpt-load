@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { keysApi } from "@/api/keys";
 import ProxyKeysInput from "@/components/common/ProxyKeysInput.vue";
-import { type ChannelType, type Group } from "@/types/models";
+import { type Group } from "@/types/models";
 import { Close } from "@vicons/ionicons5";
 import {
   NButton,
@@ -12,7 +12,6 @@ import {
   NInput,
   NInputNumber,
   NModal,
-  NSelect,
   useMessage,
   type FormRules,
 } from "naive-ui";
@@ -40,19 +39,11 @@ const message = useMessage();
 const loading = ref(false);
 const formRef = ref();
 
-// 渠道类型选项
-const channelTypeOptions = [
-  { label: "OpenAI", value: "openai" as ChannelType },
-  { label: "Gemini", value: "gemini" as ChannelType },
-  { label: "Anthropic", value: "anthropic" as ChannelType },
-];
-
-// 默认表单数据
+// 默认表单数据 - 聚合分组不需要 channel_type
 const defaultFormData = {
   name: "",
   display_name: "",
   description: "",
-  channel_type: "openai" as ChannelType,
   sort: 1,
   proxy_keys: "",
 };
@@ -72,13 +63,6 @@ const rules: FormRules = {
       pattern: /^[a-z0-9_-]{1,100}$/,
       message: t("keys.groupNamePattern"),
       trigger: ["blur", "input"],
-    },
-  ],
-  channel_type: [
-    {
-      required: true,
-      message: t("keys.selectChannelType"),
-      trigger: ["blur", "change"],
     },
   ],
 };
@@ -113,7 +97,6 @@ function loadGroupData() {
     name: props.group.name || "",
     display_name: props.group.display_name || "",
     description: props.group.description || "",
-    channel_type: props.group.channel_type || "openai",
     sort: props.group.sort || 1,
     proxy_keys: props.group.proxy_keys || "",
   });
@@ -135,12 +118,11 @@ async function handleSubmit() {
 
     loading.value = true;
 
-    // 构建提交数据
+    // 构建提交数据 - 聚合分组不需要 channel_type
     const submitData = {
       name: formData.name,
       display_name: formData.display_name,
       description: formData.description,
-      channel_type: formData.channel_type,
       sort: formData.sort,
       proxy_keys: formData.proxy_keys,
       group_type: "aggregate" as const,
@@ -209,15 +191,6 @@ async function handleSubmit() {
               v-model:value="formData.display_name"
               :placeholder="t('keys.displayNamePlaceholder')"
               clearable
-            />
-          </n-form-item>
-
-          <n-form-item :label="t('keys.channelType')" path="channel_type">
-            <n-select
-              v-model:value="formData.channel_type"
-              :options="channelTypeOptions"
-              :placeholder="t('keys.selectChannelType')"
-              :disabled="!!props.group"
             />
           </n-form-item>
 

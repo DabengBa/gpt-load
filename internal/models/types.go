@@ -1,7 +1,9 @@
 package models
 
 import (
+	"encoding/json"
 	"gpt-load/internal/types"
+	"strings"
 	"time"
 
 	"gorm.io/datatypes"
@@ -65,7 +67,8 @@ type GroupSubGroup struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 
 	// Lightweight association - only store necessary info for performance
-	SubGroupName string `gorm:"-" json:"sub_group_name,omitempty"`
+	SubGroupName    string   `gorm:"-" json:"sub_group_name,omitempty"`
+	SupportedModels []string `gorm:"-" json:"-"`
 }
 
 // SubGroupInfo 用于API响应的子分组信息
@@ -105,6 +108,7 @@ type Group struct {
 	HeaderRules          datatypes.JSON       `gorm:"type:json" json:"header_rules"`
 	ModelRedirectRules   datatypes.JSONMap    `gorm:"type:json" json:"model_redirect_rules"`
 	ModelRedirectStrict  bool                 `gorm:"default:false" json:"model_redirect_strict"`
+	SupportedModels      datatypes.JSON       `gorm:"type:json" json:"supported_models"`
 	APIKeys              []APIKey             `gorm:"foreignKey:GroupID" json:"api_keys"`
 	SubGroups            []GroupSubGroup      `gorm:"-" json:"sub_groups,omitempty"`
 	LastValidatedAt      *time.Time           `json:"last_validated_at"`
@@ -135,6 +139,51 @@ func (g *Group) GetAPIFormat() string {
 	default:
 		return APIFormatOpenAIChat
 	}
+}
+
+// SupportsModel checks if the group supports the given model.
+// If SupportedModels is empty, it returns true (all models supported).
+// Otherwise, it checks if the model is in the list.
+func (g *Group) SupportsModel(modelName string) bool {
+	// If modelName is empty, we cannot filter, so we assume supported.
+	if modelName == "" {
+		return true
+	}
+
+	if len(g.SupportedModels) == 0 {
+		return true
+	}
+
+	// Check if it's "null" or "[]" string
+	strVal := string(g.SupportedModels)
+	if strVal == "null" || strVal == "[]" {
+		return true
+	}
+
+	var models []string
+	if err := json.Unmarshal(g.SupportedModels, &models); err != nil {
+		// If parsing fails, default to true (safe fallback)
+		return true
+	}
+
+	if len(models) == 0 {
+		return true
+	}
+
+	for _, m := range models {
+		if m == modelName {
+			return true
+		}
+		// Simple wildcard support: "gpt-*" matches "gpt-4"
+		if strings.HasSuffix(m, "*") {
+			prefix := strings.TrimSuffix(m, "*")
+			if strings.HasPrefix(modelName, prefix) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // APIKey 对应 api_keys 表

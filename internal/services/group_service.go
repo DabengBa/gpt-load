@@ -99,6 +99,7 @@ type GroupCreateParams struct {
 	HeaderRules         []models.HeaderRule
 	ProxyKeys           string
 	SubGroups           []SubGroupInput
+	SupportedModels     []string
 }
 
 // GroupUpdateParams captures updatable fields for a group.
@@ -120,6 +121,7 @@ type GroupUpdateParams struct {
 	HeaderRules         *[]models.HeaderRule
 	ProxyKeys           *string
 	SubGroups           *[]SubGroupInput
+	SupportedModels     *[]string
 }
 
 // KeyStats captures aggregated API key statistics for a group.
@@ -159,12 +161,6 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_group_name", nil)
 	}
 
-	channelType := strings.TrimSpace(params.ChannelType)
-	if !s.isValidChannelType(channelType) {
-		supported := strings.Join(s.channelRegistry, ", ")
-		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_channel_type", map[string]any{"types": supported})
-	}
-
 	groupType := strings.TrimSpace(params.GroupType)
 	if groupType == "" {
 		groupType = "standard"
@@ -176,13 +172,25 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 	var cleanedUpstreams datatypes.JSON
 	var testModel string
 	var validationEndpoint string
+	var channelType string
 
 	switch groupType {
 	case "aggregate":
+		// Aggregate groups don't need channel_type validation - they can contain mixed channel types
+		channelType = strings.TrimSpace(params.ChannelType)
+		if channelType == "" {
+			channelType = "openai" // Default for aggregate groups (not used for routing)
+		}
 		validationEndpoint = ""
 		cleanedUpstreams = datatypes.JSON("[]")
 		testModel = "-"
 	case "standard":
+		channelType = strings.TrimSpace(params.ChannelType)
+		if !s.isValidChannelType(channelType) {
+			supported := strings.Join(s.channelRegistry, ", ")
+			return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_channel_type", map[string]any{"types": supported})
+		}
+
 		testModel = strings.TrimSpace(params.TestModel)
 		if testModel == "" {
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_required", nil)
@@ -222,6 +230,11 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_model_redirect", map[string]any{"error": err.Error()})
 	}
 
+	supportedModelsJSON, err := normalizeSupportedModels(params.SupportedModels)
+	if err != nil {
+		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_supported_models", map[string]any{"error": err.Error()})
+	}
+
 	group := models.Group{
 		Name:                name,
 		DisplayName:         strings.TrimSpace(params.DisplayName),
@@ -237,6 +250,7 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		Config:              cleanedConfig,
 		HeaderRules:         headerRulesJSON,
 		ProxyKeys:           strings.TrimSpace(params.ProxyKeys),
+		SupportedModels:     supportedModelsJSON,
 	}
 
 	tx := s.db.WithContext(ctx).Begin()
@@ -307,33 +321,8 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		group.Upstreams = cleanedUpstreams
 	}
 
-	// Check if this group is used as a sub-group in aggregate groups before allowing critical changes
-	if group.GroupType != "aggregate" && (params.ChannelType != nil || params.ValidationEndpoint != nil) {
-		count, err := s.aggregateGroupService.CountAggregateGroupsUsingSubGroup(ctx, group.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		if count > 0 {
-			// Check if ChannelType is being changed
-			if params.ChannelType != nil {
-				cleanedChannelType := strings.TrimSpace(*params.ChannelType)
-				if group.ChannelType != cleanedChannelType {
-					return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_group_referenced_cannot_modify",
-						map[string]any{"count": count})
-				}
-			}
-
-			// Check if ValidationEndpoint is being changed
-			if params.ValidationEndpoint != nil {
-				cleanedValidationEndpoint := strings.TrimSpace(*params.ValidationEndpoint)
-				if group.ValidationEndpoint != cleanedValidationEndpoint {
-					return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_group_referenced_cannot_modify",
-						map[string]any{"count": count})
-				}
-			}
-		}
-	}
+	// Note: With multi-format transformer support, we no longer restrict channel_type changes
+	// for groups used as sub-groups. The transformer handles format conversion automatically.
 
 	if params.ChannelType != nil && group.GroupType != "aggregate" {
 		cleanedChannelType := strings.TrimSpace(*params.ChannelType)
@@ -402,6 +391,14 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 			headerRulesJSON = datatypes.JSON("[]")
 		}
 		group.HeaderRules = headerRulesJSON
+	}
+
+	if params.SupportedModels != nil {
+		supportedModelsJSON, err := normalizeSupportedModels(*params.SupportedModels)
+		if err != nil {
+			return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_supported_models", map[string]any{"error": err.Error()})
+		}
+		group.SupportedModels = supportedModelsJSON
 	}
 
 	if err := tx.Save(&group).Error; err != nil {
@@ -997,4 +994,36 @@ func validateModelRedirectRules(rules map[string]string) error {
 	}
 
 	return nil
+}
+
+// normalizeSupportedModels deduplicates and serializes supported models list.
+func normalizeSupportedModels(models []string) (datatypes.JSON, error) {
+	if len(models) == 0 {
+		return nil, nil // Store as NULL or "null" in DB
+	}
+
+	uniqueModels := make([]string, 0, len(models))
+	seen := make(map[string]bool)
+
+	for _, m := range models {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		uniqueModels = append(uniqueModels, m)
+	}
+
+	if len(uniqueModels) == 0 {
+		return nil, nil
+	}
+
+	bytes, err := json.Marshal(uniqueModels)
+	if err != nil {
+		return nil, err
+	}
+	return datatypes.JSON(bytes), nil
 }

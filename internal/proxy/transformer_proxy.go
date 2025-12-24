@@ -77,32 +77,6 @@ func (tp *TransformerProxy) HandleProxyWithTransform(c *gin.Context) {
 		return
 	}
 
-	// Select sub-group if this is an aggregate group
-	subGroupName, err := tp.subGroupManager.SelectSubGroup(originalGroup)
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"aggregate_group": originalGroup.Name,
-			"error":           err,
-		}).Error("Failed to select sub-group from aggregate")
-		response.Error(c, app_errors.NewAPIError(app_errors.ErrNoKeysAvailable, "No available sub-groups"))
-		return
-	}
-
-	group := originalGroup
-	if subGroupName != "" {
-		group, err = tp.groupManager.GetGroupByName(subGroupName)
-		if err != nil {
-			response.Error(c, app_errors.ParseDBError(err))
-			return
-		}
-	}
-
-	channelHandler, err := tp.channelFactory.GetChannel(group)
-	if err != nil {
-		response.Error(c, app_errors.NewAPIError(app_errors.ErrInternalServer, fmt.Sprintf("Failed to get channel for group '%s': %v", groupName, err)))
-		return
-	}
-
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logrus.Errorf("Failed to read request body: %v", err)
@@ -130,6 +104,33 @@ func (tp *TransformerProxy) HandleProxyWithTransform(c *gin.Context) {
 	if err != nil {
 		logrus.Errorf("Failed to transform request: %v", err)
 		response.Error(c, app_errors.NewAPIError(app_errors.ErrBadRequest, fmt.Sprintf("Failed to parse request: %v", err)))
+		return
+	}
+
+	// Select sub-group if this is an aggregate group
+	subGroupName, err := tp.subGroupManager.SelectSubGroup(originalGroup, internalReq.Model)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"aggregate_group": originalGroup.Name,
+			"model":           internalReq.Model,
+			"error":           err,
+		}).Error("Failed to select sub-group from aggregate")
+		response.Error(c, app_errors.NewAPIError(app_errors.ErrNoKeysAvailable, "No available sub-groups for the requested model"))
+		return
+	}
+
+	group := originalGroup
+	if subGroupName != "" {
+		group, err = tp.groupManager.GetGroupByName(subGroupName)
+		if err != nil {
+			response.Error(c, app_errors.ParseDBError(err))
+			return
+		}
+	}
+
+	channelHandler, err := tp.channelFactory.GetChannel(group)
+	if err != nil {
+		response.Error(c, app_errors.NewAPIError(app_errors.ErrInternalServer, fmt.Sprintf("Failed to get channel for group '%s': %v", groupName, err)))
 		return
 	}
 

@@ -112,6 +112,10 @@ func (gm *GroupManager) Initialize() error {
 						g.SubGroups[i] = sg
 						if subGroup, exists := groupByID[sg.SubGroupID]; exists {
 							g.SubGroups[i].SubGroupName = subGroup.Name
+							if len(subGroup.SupportedModels) > 0 {
+								// Ignore error, if it fails it will be nil/empty which assumes all supported
+								_ = json.Unmarshal(subGroup.SupportedModels, &g.SubGroups[i].SupportedModels)
+							}
 						}
 					}
 				}

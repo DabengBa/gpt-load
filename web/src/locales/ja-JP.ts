@@ -295,6 +295,10 @@ export default {
     groupNamePattern: "小文字、数字、ハイフン、アンダースコアのみ、1-100文字",
     selectChannelType: "チャンネルタイプを選択してください",
     enterTestModel: "テストモデルを入力してください",
+    supportedModels: "サポートされるモデル",
+    supportedModelsTooltip:
+      "このグループがサポートするモデル名のリスト（例：gpt-4, gemini-*）。集約グループはリクエスト受信時にこのリストに基づいて適切なサブグループを選択します。空の場合はすべてのモデルをサポートします。",
+    supportedModelsPlaceholder: "サポートされるモデル名を入力、カンマで区切る",
     atLeastOneUpstream: "少なくとも1つのアップストリームアドレスが必要です",
     invalidJsonFormat: "パラメーターオーバーライドは有効なJSON形式である必要があります",
     groupNameTooltip:

@@ -258,6 +258,34 @@ function formatNumber(num: number): string {
               </div>
             </div>
 
+            <!-- 支持的模型 -->
+            <div
+              class="models-row"
+              v-if="subGroup.group.supported_models && subGroup.group.supported_models.length > 0"
+            >
+              <div class="models-tags-compact">
+                <n-tag
+                  v-for="model in subGroup.group.supported_models.slice(0, 5)"
+                  :key="model"
+                  size="tiny"
+                  round
+                  :bordered="false"
+                  class="compact-model-tag"
+                >
+                  {{ model }}
+                </n-tag>
+                <n-tag
+                  v-if="subGroup.group.supported_models.length > 5"
+                  size="tiny"
+                  round
+                  :bordered="false"
+                  class="more-models-tag"
+                >
+                  +{{ subGroup.group.supported_models.length - 5 }}
+                </n-tag>
+              </div>
+            </div>
+
             <!-- 密钥统计 -->
             <div class="key-stats-row">
               <div class="stats-left">
@@ -303,6 +331,25 @@ function formatNumber(num: number): string {
                       <div class="info-row">
                         <span class="info-label">{{ t("keys.testModel") }}:</span>
                         <span class="info-value">{{ subGroup.group.test_model || "-" }}</span>
+                      </div>
+                      <div
+                        class="info-row"
+                        v-if="
+                          subGroup.group.supported_models && subGroup.group.supported_models.length > 0
+                        "
+                      >
+                        <span class="info-label">{{ t("keys.supportedModels") }}:</span>
+                        <div class="info-value models-tags-tooltip">
+                          <n-tag
+                            v-for="model in subGroup.group.supported_models"
+                            :key="model"
+                            size="tiny"
+                            round
+                            class="model-tag"
+                          >
+                            {{ model }}
+                          </n-tag>
+                        </div>
                       </div>
                       <div class="info-row" v-if="subGroup.group.channel_type !== 'gemini'">
                         <span class="info-label">{{ t("keys.testPath") }}:</span>
@@ -711,6 +758,54 @@ function formatNumber(num: number): string {
   font-size: 14px;
   min-width: 40px;
   text-align: right;
+}
+
+/* Models display styles */
+.models-row {
+  margin: 4px 0 8px 0;
+}
+
+.models-tags-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.compact-model-tag {
+  font-family: monospace;
+  font-size: 10px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.more-models-tag {
+  font-size: 10px;
+  background-color: var(--bg-tertiary);
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+.models-tags-tooltip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.models-tags-tooltip::-webkit-scrollbar {
+  width: 4px;
+}
+
+.models-tags-tooltip::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+}
+
+.model-tag {
+  font-family: monospace;
 }
 
 /* Key stats row styles */

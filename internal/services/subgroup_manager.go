@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gpt-load/internal/models"
 	"gpt-load/internal/store"
+	"strings"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -18,10 +19,11 @@ type SubGroupManager struct {
 
 // subGroupItem represents a sub-group with its weight and current weight for round-robin
 type subGroupItem struct {
-	name          string
-	subGroupID    uint
-	weight        int
-	currentWeight int
+	name            string
+	subGroupID      uint
+	weight          int
+	currentWeight   int
+	supportedModels []string
 }
 
 // NewSubGroupManager creates a new sub-group manager service
@@ -33,7 +35,7 @@ func NewSubGroupManager(store store.Store) *SubGroupManager {
 }
 
 // SelectSubGroup selects an appropriate sub-group for the given aggregate group
-func (m *SubGroupManager) SelectSubGroup(group *models.Group) (string, error) {
+func (m *SubGroupManager) SelectSubGroup(group *models.Group, modelName string) (string, error) {
 	if group.GroupType != "aggregate" {
 		return "", nil
 	}
@@ -43,14 +45,15 @@ func (m *SubGroupManager) SelectSubGroup(group *models.Group) (string, error) {
 		return "", fmt.Errorf("no valid sub-groups available for aggregate group '%s'", group.Name)
 	}
 
-	selectedName := selector.selectNext()
+	selectedName := selector.selectNext(modelName)
 	if selectedName == "" {
-		return "", fmt.Errorf("no sub-groups with active keys for aggregate group '%s'", group.Name)
+		return "", fmt.Errorf("no suitable sub-groups found for aggregate group '%s' (model: %s)", group.Name, modelName)
 	}
 
 	logrus.WithFields(logrus.Fields{
 		"aggregate_group": group.Name,
 		"selected_group":  selectedName,
+		"model":           modelName,
 	}).Debug("Selected sub-group from aggregate")
 
 	return selectedName, nil
@@ -113,10 +116,11 @@ func (m *SubGroupManager) createSelector(group *models.Group) *selector {
 	var items []subGroupItem
 	for _, sg := range group.SubGroups {
 		items = append(items, subGroupItem{
-			name:          sg.SubGroupName,
-			subGroupID:    sg.SubGroupID,
-			weight:        sg.Weight,
-			currentWeight: 0,
+			name:            sg.SubGroupName,
+			subGroupID:      sg.SubGroupID,
+			weight:          sg.Weight,
+			currentWeight:   0,
+			supportedModels: sg.SupportedModels,
 		})
 	}
 
@@ -142,7 +146,7 @@ type selector struct {
 }
 
 // selectNext uses weighted round-robin algorithm to select a sub-group with active keys
-func (s *selector) selectNext() string {
+func (s *selector) selectNext(modelName string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -150,60 +154,69 @@ func (s *selector) selectNext() string {
 		return ""
 	}
 
-	if len(s.subGroups) == 1 {
-		if s.hasActiveKeys(s.subGroups[0].subGroupID) {
-			return s.subGroups[0].name
+	// Filter candidates by model support first
+	candidatesIndices := make([]int, 0, len(s.subGroups))
+	for i := range s.subGroups {
+		if s.supportsModel(&s.subGroups[i], modelName) {
+			candidatesIndices = append(candidatesIndices, i)
 		}
+	}
+
+	if len(candidatesIndices) == 0 {
 		logrus.WithFields(logrus.Fields{
-			"group_id":   s.subGroups[0].subGroupID,
-			"group_name": s.subGroups[0].name,
-		}).Debug("Single sub-group has no active keys")
+			"aggregate_group": s.groupName,
+			"model":           modelName,
+		}).Warn("No sub-groups support the requested model")
+		return ""
+	}
+
+	if len(candidatesIndices) == 1 {
+		idx := candidatesIndices[0]
+		if s.hasActiveKeys(s.subGroups[idx].subGroupID) {
+			return s.subGroups[idx].name
+		}
 		return ""
 	}
 
 	attempted := make(map[uint]bool)
-	for len(attempted) < len(s.subGroups) {
-		item := s.selectByWeight()
+	// Only try candidates that support the model
+	for len(attempted) < len(candidatesIndices) {
+		// Use weighted selection only among filtered candidates
+		// Note: The original selectByWeight implementation iterates ALL subGroups.
+		// To correctly implement weighted selection on a SUBSET, we should probably rewrite selectByWeight
+		// or just accept that we pick the "best" from the global list and verify if it's in our candidates.
+		// However, doing that might skew weights if the "best" is constantly rejected because of model mismatch.
+		// A better approach for subset weighted selection:
+		// Calculate total weight of candidates, then pick.
+		// But s.subGroups stores currentWeight state. Modifying that based on subset is tricky.
+		// Simplified approach: Just loop through candidates using their current weights and pick the best one.
+
+		item := s.selectByWeightFromSubset(candidatesIndices)
 		if item == nil {
 			break
 		}
 
 		if attempted[item.subGroupID] {
+			// Should not happen with new logic, but safety first
 			continue
 		}
 		attempted[item.subGroupID] = true
 
 		if s.hasActiveKeys(item.subGroupID) {
-			logrus.WithFields(logrus.Fields{
-				"aggregate_group": s.groupName,
-				"selected_group":  item.name,
-				"attempts":        len(attempted),
-			}).Debug("Selected sub-group with active keys")
 			return item.name
 		}
-
-		logrus.WithFields(logrus.Fields{
-			"group_id":   item.subGroupID,
-			"group_name": item.name,
-			"attempts":   len(attempted),
-		}).Debug("Sub-group has no active keys, trying next")
 	}
-
-	logrus.WithFields(logrus.Fields{
-		"aggregate_group":  s.groupName,
-		"total_sub_groups": len(s.subGroups),
-	}).Warn("No sub-groups with active keys available")
 
 	return ""
 }
 
-// selectByWeight implements smooth weighted round-robin algorithm
-func (s *selector) selectByWeight() *subGroupItem {
+// selectByWeightFromSubset selects best item from specific indices
+func (s *selector) selectByWeightFromSubset(indices []int) *subGroupItem {
 	totalWeight := 0
 	var best *subGroupItem
 
-	for i := range s.subGroups {
-		item := &s.subGroups[i]
+	for _, idx := range indices {
+		item := &s.subGroups[idx]
 		totalWeight += item.weight
 		item.currentWeight += item.weight
 
@@ -213,11 +226,44 @@ func (s *selector) selectByWeight() *subGroupItem {
 	}
 
 	if best == nil {
-		return &s.subGroups[0]
+		return nil
 	}
 
 	best.currentWeight -= totalWeight
 	return best
+}
+
+// selectByWeight implements smooth weighted round-robin algorithm
+func (s *selector) selectByWeight() *subGroupItem {
+	// Keep for backward compatibility or full list selection
+	indices := make([]int, len(s.subGroups))
+	for i := range s.subGroups {
+		indices[i] = i
+	}
+	return s.selectByWeightFromSubset(indices)
+}
+
+// supportsModel checks if subGroupItem supports the model
+func (s *selector) supportsModel(item *subGroupItem, modelName string) bool {
+	if modelName == "" {
+		return true
+	}
+	if len(item.supportedModels) == 0 {
+		return true
+	}
+
+	for _, m := range item.supportedModels {
+		if m == modelName {
+			return true
+		}
+		if strings.HasSuffix(m, "*") {
+			prefix := strings.TrimSuffix(m, "*")
+			if strings.HasPrefix(modelName, prefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // hasActiveKeys checks if a sub-group has available API keys

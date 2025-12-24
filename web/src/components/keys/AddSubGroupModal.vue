@@ -52,7 +52,7 @@ const formData = reactive<{
 
 // 计算可用的分组选项（排除已添加的）
 const getAvailableOptions = computed(() => {
-  if (!props.aggregateGroup?.channel_type) {
+  if (!props.aggregateGroup) {
     return [];
   }
 
@@ -63,11 +63,6 @@ const getAvailableOptions = computed(() => {
     .filter(group => {
       // 必须是标准分组
       if (group.group_type === "aggregate") {
-        return false;
-      }
-
-      // 必须是相同的渠道类型
-      if (group.channel_type !== props.aggregateGroup?.channel_type) {
         return false;
       }
 
@@ -84,7 +79,7 @@ const getAvailableOptions = computed(() => {
       return true;
     })
     .map(group => ({
-      label: getGroupDisplayName(group),
+      label: `${getGroupDisplayName(group)} (${group.channel_type})`,
       value: group?.id,
     }));
 });
@@ -240,9 +235,6 @@ const canAddMore = computed(() => {
         <div class="form-section">
           <h4 class="section-title">
             {{ t("keys.selectSubGroups") }}
-            <span class="section-subtitle">
-              ({{ t("keys.channelType") }}: {{ aggregateGroup?.channel_type?.toUpperCase() }})
-            </span>
           </h4>
 
           <div class="sub-groups-list">

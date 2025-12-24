@@ -77,6 +77,7 @@ interface GroupFormData {
   configItems: ConfigItem[];
   header_rules: HeaderRuleItem[];
   proxy_keys: string;
+  supported_models: string;
   group_type?: string;
 }
 
@@ -101,6 +102,7 @@ const formData = reactive<GroupFormData>({
   configItems: [] as ConfigItem[],
   header_rules: [] as HeaderRuleItem[],
   proxy_keys: "",
+  supported_models: "",
   group_type: "standard",
 });
 
@@ -155,43 +157,51 @@ const validationEndpointPlaceholder = computed(() => {
   }
 });
 
-// 表单验证规则
-const rules: FormRules = {
-  name: [
-    {
-      required: true,
-      message: t("keys.enterGroupName"),
-      trigger: ["blur", "input"],
-    },
-    {
-      pattern: /^[a-z0-9_-]{1,100}$/,
-      message: t("keys.groupNamePattern"),
-      trigger: ["blur", "input"],
-    },
-  ],
-  channel_type: [
-    {
-      required: true,
-      message: t("keys.selectChannelType"),
-      trigger: ["blur", "change"],
-    },
-  ],
-  test_model: [
-    {
-      required: true,
-      message: t("keys.enterTestModel"),
-      trigger: ["blur", "input"],
-    },
-  ],
-  upstreams: [
-    {
-      type: "array",
-      min: 1,
-      message: t("keys.atLeastOneUpstream"),
-      trigger: ["blur", "change"],
-    },
-  ],
-};
+// 表单验证规则 - 动态根据 group_type 调整
+const rules = computed<FormRules>(() => {
+  const baseRules: FormRules = {
+    name: [
+      {
+        required: true,
+        message: t("keys.enterGroupName"),
+        trigger: ["blur", "input"],
+      },
+      {
+        pattern: /^[a-z0-9_-]{1,100}$/,
+        message: t("keys.groupNamePattern"),
+        trigger: ["blur", "input"],
+      },
+    ],
+  };
+
+  // 只有标准分组需要验证这些字段
+  if (formData.group_type !== "aggregate") {
+    baseRules.channel_type = [
+      {
+        required: true,
+        message: t("keys.selectChannelType"),
+        trigger: ["blur", "change"],
+      },
+    ];
+    baseRules.test_model = [
+      {
+        required: true,
+        message: t("keys.enterTestModel"),
+        trigger: ["blur", "input"],
+      },
+    ];
+    baseRules.upstreams = [
+      {
+        type: "array",
+        min: 1,
+        message: t("keys.atLeastOneUpstream"),
+        trigger: ["blur", "change"],
+      },
+    ];
+  }
+
+  return baseRules;
+});
 
 // 监听弹窗显示状态
 watch(
@@ -295,6 +305,7 @@ function resetForm() {
     configItems: [],
     header_rules: [],
     proxy_keys: "",
+    supported_models: "",
     group_type: "standard",
   });
 
@@ -340,6 +351,7 @@ function loadGroupData() {
       action: (rule.action as "set" | "remove") || "set",
     })),
     proxy_keys: props.group.proxy_keys || "",
+    supported_models: (props.group.supported_models || []).join(", "),
     group_type: props.group.group_type || "standard",
   });
 }
@@ -517,6 +529,12 @@ async function handleSubmit() {
           action: rule.action,
         })),
       proxy_keys: formData.proxy_keys,
+      supported_models: formData.supported_models
+        ? formData.supported_models
+            .split(",")
+            .map(m => m.trim())
+            .filter(m => m !== "")
+        : [],
     };
 
     let res: Group;
@@ -605,7 +623,7 @@ async function handleSubmit() {
           </div>
 
           <!-- Channel type and sort order on the same row -->
-          <div class="form-row">
+          <div class="form-row" v-if="formData.group_type !== 'aggregate'">
             <n-form-item :label="t('keys.channelType')" path="channel_type" class="form-item-half">
               <template #label>
                 <div class="form-label-with-tooltip">
@@ -646,8 +664,32 @@ async function handleSubmit() {
             </n-form-item>
           </div>
 
-          <!-- Test model and test path on the same row -->
-          <div class="form-row">
+          <!-- Sort order only for aggregate groups -->
+          <div class="form-row" v-if="formData.group_type === 'aggregate'">
+            <n-form-item :label="t('keys.sortOrder')" path="sort" class="form-item-half">
+              <template #label>
+                <div class="form-label-with-tooltip">
+                  {{ t("keys.sortOrder") }}
+                  <n-tooltip trigger="hover" placement="top">
+                    <template #trigger>
+                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    </template>
+                    {{ t("keys.sortOrderTooltip") }}
+                  </n-tooltip>
+                </div>
+              </template>
+              <n-input-number
+                v-model:value="formData.sort"
+                :min="0"
+                :placeholder="t('keys.sortValue')"
+                style="width: 100%"
+              />
+            </n-form-item>
+            <div class="form-item-half" />
+          </div>
+
+          <!-- Test model and test path on the same row (only for standard groups) -->
+          <div class="form-row" v-if="formData.group_type !== 'aggregate'">
             <n-form-item :label="t('keys.testModel')" path="test_model" class="form-item-half">
               <template #label>
                 <div class="form-label-with-tooltip">
@@ -724,6 +766,29 @@ async function handleSubmit() {
             />
           </n-form-item>
 
+          <!-- Supported models (only for standard groups) -->
+          <n-form-item
+            v-if="formData.group_type !== 'aggregate'"
+            :label="t('keys.supportedModels')"
+            path="supported_models"
+          >
+            <template #label>
+              <div class="form-label-with-tooltip">
+                {{ t("keys.supportedModels") }}
+                <n-tooltip trigger="hover" placement="top">
+                  <template #trigger>
+                    <n-icon :component="HelpCircleOutline" class="help-icon" />
+                  </template>
+                  {{ t("keys.supportedModelsTooltip") }}
+                </n-tooltip>
+              </div>
+            </template>
+            <n-input
+              v-model:value="formData.supported_models"
+              :placeholder="t('keys.supportedModelsPlaceholder')"
+            />
+          </n-form-item>
+
           <!-- Description takes full row -->
           <n-form-item :label="t('common.description')" path="description">
             <template #label>
@@ -748,8 +813,12 @@ async function handleSubmit() {
           </n-form-item>
         </div>
 
-        <!-- Upstream addresses -->
-        <div class="form-section" style="margin-top: 10px">
+        <!-- Upstream addresses (only for standard groups) -->
+        <div
+          class="form-section"
+          style="margin-top: 10px"
+          v-if="formData.group_type !== 'aggregate'"
+        >
           <h4 class="section-title">{{ t("keys.upstreamAddresses") }}</h4>
           <n-form-item
             v-for="(upstream, index) in formData.upstreams"

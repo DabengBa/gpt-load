@@ -66,6 +66,20 @@ const configOptions = ref<GroupConfigOption[]>([]);
 const showProxyKeys = ref(false);
 const parentAggregateGroups = ref<ParentAggregateGroup[]>([]);
 
+const displaySupportedModels = computed(() => {
+  if (isAggregateGroup.value) {
+    // Collect from all sub-groups
+    const modelsSet = new Set<string>();
+    props.subGroups?.forEach(sg => {
+      if (sg.group.supported_models && sg.group.supported_models.length > 0) {
+        sg.group.supported_models.forEach(m => modelsSet.add(m));
+      }
+    });
+    return Array.from(modelsSet).sort();
+  }
+  return props.group?.supported_models || [];
+});
+
 const proxyKeysDisplay = computed(() => {
   if (!props.group?.proxy_keys) {
     return "-";
@@ -549,7 +563,8 @@ function resetPage() {
                         {{ group?.display_name }}
                       </n-form-item>
                     </n-grid-item>
-                    <n-grid-item>
+                    <!-- 标准分组才显示渠道类型 -->
+                    <n-grid-item v-if="!isAggregateGroup">
                       <n-form-item :label="`${t('keys.channelType')}：`">
                         {{ group?.channel_type }}
                       </n-form-item>
@@ -568,6 +583,23 @@ function resetPage() {
                     <n-grid-item v-if="!isAggregateGroup && group?.channel_type !== 'gemini'">
                       <n-form-item :label="`${t('keys.testPath')}：`">
                         {{ group?.validation_endpoint }}
+                      </n-form-item>
+                    </n-grid-item>
+                    <n-grid-item :span="2">
+                      <n-form-item :label="`${t('keys.supportedModels')}：`">
+                        <div v-if="displaySupportedModels.length > 0" class="models-tags">
+                          <n-tag
+                            v-for="model in displaySupportedModels"
+                            :key="model"
+                            size="small"
+                            :type="isAggregateGroup ? 'info' : 'default'"
+                            round
+                            class="model-tag"
+                          >
+                            {{ model }}
+                          </n-tag>
+                        </div>
+                        <span v-else class="text-tertiary">{{ t("common.all") }}</span>
                       </n-form-item>
                     </n-grid-item>
                     <n-grid-item :span="2">
@@ -955,6 +987,33 @@ function resetPage() {
 
 .key-actions {
   flex-shrink: 0;
+}
+
+.models-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.models-tags::-webkit-scrollbar {
+  width: 4px;
+}
+
+.models-tags::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.models-tags::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-bg);
+  border-radius: 2px;
+}
+
+.model-tag {
+  font-family: monospace;
 }
 
 /* 配置项tooltip样式 */

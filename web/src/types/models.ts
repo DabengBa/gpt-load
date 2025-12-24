@@ -79,6 +79,7 @@ export interface Group {
   model_redirect_strict: boolean;
   header_rules?: HeaderRule[];
   proxy_keys: string;
+  supported_models?: string[];
   group_type?: GroupType;
   sub_groups?: SubGroupInfo[]; // 子分组列表（仅聚合分组）
   sub_group_ids?: number[]; // 子分组ID列表
