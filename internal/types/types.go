@@ -25,6 +25,11 @@ type SystemSettings struct {
 	RequestLogWriteIntervalMinutes int    `json:"request_log_write_interval_minutes" default:"1" name:"config.log_write_interval" category:"config.category.basic" desc:"config.log_write_interval_desc" validate:"required,min=0"`
 	EnableRequestBodyLogging       bool   `json:"enable_request_body_logging" default:"false" name:"config.enable_request_body_logging" category:"config.category.basic" desc:"config.enable_request_body_logging_desc"`
 
+	// 安全相关
+	AllowQueryKeyAuth               bool   `json:"allow_query_key_auth" default:"false" name:"config.allow_query_key_auth" category:"config.category.security" desc:"config.allow_query_key_auth_desc"`
+	ContentSecurityPolicy           string `json:"content_security_policy" default:"" name:"config.content_security_policy" category:"config.category.security" desc:"config.content_security_policy_desc"`
+	ContentSecurityPolicyReportOnly bool   `json:"content_security_policy_report_only" default:"true" name:"config.content_security_policy_report_only" category:"config.category.security" desc:"config.content_security_policy_report_only_desc"`
+
 	// 请求设置
 	RequestTimeout        int    `json:"request_timeout" default:"600" name:"config.request_timeout" category:"config.category.request" desc:"config.request_timeout_desc" validate:"required,min=1"`
 	ConnectTimeout        int    `json:"connect_timeout" default:"15" name:"config.connect_timeout" category:"config.category.request" desc:"config.connect_timeout_desc" validate:"required,min=1"`

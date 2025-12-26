@@ -133,6 +133,12 @@ var MessagesZhCN = map[string]string{
 	"config.log_write_interval_desc":          "请求日志从缓存写入数据库的周期（分钟），0为实时写入数据。",
 	"config.enable_request_body_logging":      "启用日志详情",
 	"config.enable_request_body_logging_desc": "是否在请求日志中记录完整的请求体内容。启用此功能会增加内存以及存储空间的占用。",
+	"config.allow_query_key_auth":             "允许使用URL参数鉴权",
+	"config.allow_query_key_auth_desc":        "是否允许通过URL查询参数 key 进行鉴权。强烈不建议开启（可能泄漏到日志、浏览器历史、Referer 等）。",
+	"config.content_security_policy":          "内容安全策略（CSP）",
+	"config.content_security_policy_desc":     "可选的 Content-Security-Policy 配置值，用于管理UI/API响应。留空则不启用。",
+	"config.content_security_policy_report_only":      "CSP仅报告模式",
+	"config.content_security_policy_report_only_desc": "开启后将设置 Content-Security-Policy-Report-Only（仅上报不强制执行）。",
 
 	// Request settings related
 	"config.request_timeout":              "请求超时（秒）",
@@ -166,6 +172,7 @@ var MessagesZhCN = map[string]string{
 	"config.category.basic":   "基础参数",
 	"config.category.request": "请求设置",
 	"config.category.key":     "密钥配置",
+	"config.category.security": "安全",
 
 	// Internal error messages (for fmt.Errorf usage)
 	"error.upstreams_required":       "upstreams字段是必需的",

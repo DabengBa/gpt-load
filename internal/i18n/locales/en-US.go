@@ -133,6 +133,12 @@ var MessagesEnUS = map[string]string{
 	"config.log_write_interval_desc":          "Interval (in minutes) for writing request logs from cache to database, 0 for real-time writes.",
 	"config.enable_request_body_logging":      "Enable Request Body Logging",
 	"config.enable_request_body_logging_desc": "Whether to log complete request body content. Enabling this will increase memory and storage usage.",
+	"config.allow_query_key_auth":             "Allow Query Key Authentication",
+	"config.allow_query_key_auth_desc":        "Whether to accept authentication via URL query parameter 'key'. Strongly discouraged due to leakage risks (logs, browser history, Referer).",
+	"config.content_security_policy":          "Content Security Policy",
+	"config.content_security_policy_desc":     "Optional Content-Security-Policy value for the admin UI and API responses. Leave empty to disable.",
+	"config.content_security_policy_report_only":      "CSP Report-Only Mode",
+	"config.content_security_policy_report_only_desc": "If enabled, sets Content-Security-Policy-Report-Only instead of enforcing CSP.",
 
 	// Request settings related
 	"config.request_timeout":              "Request Timeout (seconds)",

@@ -133,6 +133,12 @@ var MessagesJaJP = map[string]string{
 	"config.log_write_interval_desc":          "リクエストログをキャッシュからデータベースに書き込む間隔（分）、0でリアルタイム書き込み。",
 	"config.enable_request_body_logging":      "リクエストボディログを有効化",
 	"config.enable_request_body_logging_desc": "完全なリクエストボディの内容をログに記録するかどうか。有効にするとメモリとストレージの使用量が増加します。",
+	"config.allow_query_key_auth":             "URLパラメータでの認証を許可",
+	"config.allow_query_key_auth_desc":        "URLのクエリパラメータ key による認証を許可するかどうか。ログ/ブラウザ履歴/Referer などに漏洩する可能性があるため非推奨です。",
+	"config.content_security_policy":          "コンテンツセキュリティポリシー（CSP）",
+	"config.content_security_policy_desc":     "管理UI/APIレスポンスに設定する Content-Security-Policy 値（任意）。空の場合は無効。",
+	"config.content_security_policy_report_only":      "CSP レポートのみモード",
+	"config.content_security_policy_report_only_desc": "有効にすると Content-Security-Policy-Report-Only を設定し、強制はしません。",
 
 	// Request settings related
 	"config.request_timeout":              "リクエストタイムアウト（秒）",
@@ -166,6 +172,7 @@ var MessagesJaJP = map[string]string{
 	"config.category.basic":   "基本設定",
 	"config.category.request": "リクエスト設定",
 	"config.category.key":     "キー設定",
+	"config.category.security": "セキュリティ",
 
 	// Internal error messages (for fmt.Errorf usage)
 	"error.upstreams_required":       "upstreamsフィールドは必須です",

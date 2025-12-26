@@ -25,6 +25,10 @@ type GroupManager struct {
 	subGroupManager *SubGroupManager
 }
 
+func (gm *GroupManager) SettingsManager() *config.SystemSettingsManager {
+	return gm.settingsManager
+}
+
 // NewGroupManager creates a new, uninitialized GroupManager.
 func NewGroupManager(
 	db *gorm.DB,

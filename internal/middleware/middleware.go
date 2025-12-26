@@ -4,6 +4,7 @@ package middleware
 import (
 	"crypto/subtle"
 	"fmt"
+	"gpt-load/internal/config"
 	"strings"
 	"time"
 
@@ -116,7 +117,7 @@ func CORS(config types.CORSConfig) gin.HandlerFunc {
 }
 
 // Auth creates an authentication middleware
-func Auth(authConfig types.AuthConfig) gin.HandlerFunc {
+func Auth(authConfig types.AuthConfig, settingsManager *config.SystemSettingsManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
@@ -125,7 +126,7 @@ func Auth(authConfig types.AuthConfig) gin.HandlerFunc {
 			return
 		}
 
-		key := extractAuthKey(c)
+		key := extractAuthKey(c, settingsManager.GetSettings().AllowQueryKeyAuth)
 
 		isValid := key != "" && subtle.ConstantTimeCompare([]byte(key), []byte(authConfig.Key)) == 1
 
@@ -143,7 +144,7 @@ func Auth(authConfig types.AuthConfig) gin.HandlerFunc {
 func ProxyAuth(gm *services.GroupManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check key
-		key := extractAuthKey(c)
+		key := extractAuthKey(c, gm.SettingsManager().GetSettings().AllowQueryKeyAuth)
 		if key == "" {
 			response.Error(c, app_errors.ErrUnauthorized)
 			c.Abort()
@@ -193,9 +194,9 @@ func Recovery() gin.HandlerFunc {
 	})
 }
 
-// RateLimiter creates a simple rate limiting middleware
-func RateLimiter(config types.PerformanceConfig) gin.HandlerFunc {
-	// Simple semaphore-based rate limiting
+// ConcurrencyLimiter creates a simple concurrency limiting middleware (not QPS based).
+func ConcurrencyLimiter(config types.PerformanceConfig) gin.HandlerFunc {
+	// Simple semaphore-based concurrency limiting
 	semaphore := make(chan struct{}, config.MaxConcurrentRequests)
 
 	return func(c *gin.Context) {
@@ -208,6 +209,11 @@ func RateLimiter(config types.PerformanceConfig) gin.HandlerFunc {
 			c.Abort()
 		}
 	}
+}
+
+// RateLimiter is kept for backward compatibility; it is actually a concurrency limiter.
+func RateLimiter(config types.PerformanceConfig) gin.HandlerFunc {
+	return ConcurrencyLimiter(config)
 }
 
 // ErrorHandler creates an error handling middleware
@@ -244,13 +250,15 @@ func isMonitoringEndpoint(path string) bool {
 }
 
 // extractAuthKey extracts a auth key.
-func extractAuthKey(c *gin.Context) string {
+func extractAuthKey(c *gin.Context, allowQueryKey bool) string {
 	// Query key
-	if key := c.Query("key"); key != "" {
-		query := c.Request.URL.Query()
-		query.Del("key")
-		c.Request.URL.RawQuery = query.Encode()
-		return key
+	if allowQueryKey {
+		if key := c.Query("key"); key != "" {
+			query := c.Request.URL.Query()
+			query.Del("key")
+			c.Request.URL.RawQuery = query.Encode()
+			return key
+		}
 	}
 
 	// Bearer token
@@ -316,12 +324,22 @@ func isStaticResource(path string) bool {
 }
 
 // SecurityHeaders creates a middleware to add security-related headers
-func SecurityHeaders() gin.HandlerFunc {
+func SecurityHeaders(settingsManager *config.SystemSettingsManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
 		c.Header("X-Frame-Options", "SAMEORIGIN")
+
+		settings := settingsManager.GetSettings()
+		if strings.TrimSpace(settings.ContentSecurityPolicy) != "" {
+			headerName := "Content-Security-Policy"
+			if settings.ContentSecurityPolicyReportOnly {
+				headerName = "Content-Security-Policy-Report-Only"
+			}
+			c.Header(headerName, settings.ContentSecurityPolicy)
+		}
+
 		c.Next()
 	}
 }

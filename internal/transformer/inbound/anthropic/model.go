@@ -296,7 +296,7 @@ type StreamEvent struct {
 	Delta *ContentBlockDelta `json:"delta,omitempty"`
 
 	// For message_delta
-	MessageDelta *MessageDelta `json:"delta,omitempty"`
+	MessageDelta *MessageDelta `json:"message_delta,omitempty"`
 	Usage        *Usage        `json:"usage,omitempty"`
 
 	// For error
