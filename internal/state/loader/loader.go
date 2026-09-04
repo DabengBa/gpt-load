@@ -76,9 +76,14 @@ type compileRows struct {
 	costLimitRules []models.AccessKeyCostLimitRule
 }
 
+// modelDTO decodes a persisted group model route entry. Weight and Priority
+// are optional: nil keeps the design defaults (weight 1, priority 1), which
+// keeps pre-route-entry rows backward compatible (design I2).
 type modelDTO struct {
-	ID    string `json:"id"`
-	Alias string `json:"alias"`
+	ID       string `json:"id"`
+	Alias    string `json:"alias"`
+	Weight   *int   `json:"weight"`
+	Priority *int   `json:"priority"`
 }
 
 type filterDTO struct {
@@ -628,7 +633,10 @@ func mapSystemAndGroups(
 
 		runtimeModels := make([]state.ModelConfig, 0, len(storedModels))
 		for _, model := range storedModels {
-			runtimeModels = append(runtimeModels, state.ModelConfig{ID: model.ID, Alias: model.Alias})
+			runtimeModels = append(runtimeModels, state.ModelConfig{
+				ID: model.ID, Alias: model.Alias,
+				Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+			})
 		}
 		group := state.GroupConfig{
 			ID:              row.ID,

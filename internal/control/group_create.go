@@ -213,6 +213,11 @@ func (s *Service) normalizeGroupCreate(
 	for _, model := range groupModels {
 		runtimeModels = append(runtimeModels, state.ModelConfig{ID: model.ID, Alias: model.Alias})
 	}
+	if err := state.ValidateModelRouteEntries(
+		fmt.Sprintf("new group (channel %s)", request.ChannelID), runtimeModels,
+	); err != nil {
+		return normalizedGroupCreate{}, app_errors.ErrValidation
+	}
 	systemSettings, globalProxy, err := stateloader.LoadSystemSettingsAndProxy(ctx, s.db, s.encryption)
 	if parentErr := ctx.Err(); parentErr != nil {
 		return normalizedGroupCreate{}, parentErr

@@ -9,6 +9,7 @@ import (
 
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
+	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 )
 
@@ -21,6 +22,8 @@ type GroupModelResponse struct {
 	Alias         string        `json:"alias"`
 	AliasEnabled  bool          `json:"alias_enabled"`
 	ClientModel   string        `json:"client_model"`
+	Weight        *int          `json:"weight"`
+	Priority      *int          `json:"priority"`
 	PricingStatus PricingStatus `json:"pricing_status"`
 }
 
@@ -39,6 +42,24 @@ type ModelNameConflictData struct {
 	Conflicts []ModelNameConflict `json:"conflicts"`
 }
 
+// groupModelEntry decodes a persisted group model entry. It extends the
+// legacy {id, alias} rows with the optional route-entry weight/priority
+// fields (design §3) and, unlike GroupModel, tolerates unknown storage keys
+// so older readers never fail on rows written with new fields.
+type groupModelEntry struct {
+	ID       string `json:"id"`
+	Alias    string `json:"alias"`
+	Weight   *int   `json:"weight"`
+	Priority *int   `json:"priority"`
+}
+
+func (model groupModelEntry) toModelConfig() state.ModelConfig {
+	return state.ModelConfig{
+		ID: model.ID, Alias: model.Alias,
+		Weight: cloneInt(model.Weight), Priority: cloneInt(model.Priority),
+	}
+}
+
 func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModelsResponse, error) {
 	if groupID == 0 {
 		return GroupModelsResponse{}, app_errors.ErrBadRequest
@@ -51,7 +72,7 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 	if err != nil {
 		return GroupModelsResponse{}, err
 	}
-	groupModels := make([]GroupModel, 0)
+	groupModels := make([]groupModelEntry, 0)
 	if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
 		return GroupModelsResponse{}, fmt.Errorf("decode group %d models: %w", group.ID, err)
 	}
@@ -65,7 +86,7 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 
 func mapGroupModelsResponse(
 	channelID string,
-	groupModels []GroupModel,
+	groupModels []groupModelEntry,
 	rows modelPriceRows,
 ) (GroupModelsResponse, error) {
 	result := GroupModelsResponse{Items: make([]GroupModelResponse, 0, len(groupModels))}
@@ -75,6 +96,8 @@ func mapGroupModelsResponse(
 			Alias:         model.Alias,
 			AliasEnabled:  model.Alias != "",
 			ClientModel:   model.ID,
+			Weight:        cloneInt(model.Weight),
+			Priority:      cloneInt(model.Priority),
 			PricingStatus: PricingStatusPending,
 		}
 		if item.AliasEnabled {
@@ -119,7 +142,7 @@ func (s *Service) UpdateGroupModels(
 		if err := validateGroupRowCandidate(ctx, tx, group, s.channelRegistry); err != nil {
 			return fmt.Errorf("validate existing group %d: %w", groupID, app_errors.ErrInternalServer)
 		}
-		var previous []GroupModel
+		var previous []groupModelEntry
 		if err := decodeGroupDiscoveryJSON(group.Models, &previous); err != nil {
 			return fmt.Errorf("decode group %d models: %w", groupID, app_errors.ErrInternalServer)
 		}
@@ -153,7 +176,7 @@ func (s *Service) UpdateGroupModels(
 	return result, nil
 }
 
-func sameGroupModelIDs(left, right []GroupModel) bool {
+func sameGroupModelIDs(left []groupModelEntry, right []GroupModel) bool {
 	if len(left) != len(right) {
 		return false
 	}

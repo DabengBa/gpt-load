@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -30,7 +31,7 @@ func normalizeValidationModel(raw string) (string, error) {
 }
 
 func mapGroupRowToState(group models.Group) (state.GroupConfig, error) {
-	var storedModels []GroupModel
+	var storedModels []groupModelEntry
 	if err := decodeGroupDiscoveryJSON(group.Models, &storedModels); err != nil {
 		return state.GroupConfig{}, err
 	}
@@ -42,7 +43,7 @@ func mapGroupRowToState(group models.Group) (state.GroupConfig, error) {
 	}
 	runtimeModels := make([]state.ModelConfig, 0, len(storedModels))
 	for _, model := range storedModels {
-		runtimeModels = append(runtimeModels, state.ModelConfig{ID: model.ID, Alias: model.Alias})
+		runtimeModels = append(runtimeModels, model.toModelConfig())
 	}
 	validationModel := ""
 	if group.ValidationModel != nil {
@@ -70,6 +71,11 @@ func validateGroupRowCandidate(
 ) error {
 	candidate, err := mapGroupRowToState(group)
 	if err != nil {
+		return err
+	}
+	// 路由条目校验先于编译执行，错误信息带分组与模型定位。
+	subject := fmt.Sprintf("group %d (%s)", group.ID, group.Name)
+	if err := state.ValidateModelRouteEntries(subject, candidate.Models); err != nil {
 		return err
 	}
 	systemSettings, err := stateloader.LoadSystemSettings(ctx, tx)

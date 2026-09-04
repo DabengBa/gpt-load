@@ -56,16 +56,14 @@ type CredentialConfig struct {
 	Fingerprint        string
 }
 
+// ModelConfig is one group model route entry. Weight and Priority are
+// optional: nil keeps the design defaults (weight 1, priority 1); weight 0
+// retains the entry but excludes it from traffic splitting.
 type ModelConfig struct {
-	ID    string
-	Alias string
-}
-
-func externalModelName(model ModelConfig) string {
-	if alias := strings.TrimSpace(model.Alias); alias != "" {
-		return alias
-	}
-	return strings.TrimSpace(model.ID)
+	ID       string
+	Alias    string
+	Weight   *int
+	Priority *int
 }
 
 type AccessKeyConfig struct {
@@ -220,7 +218,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			ID:                 group.ID,
 			Name:               group.Name,
 			ValidationModel:    strings.TrimSpace(group.ValidationModel),
-			Models:             append([]ModelConfig(nil), group.Models...),
+			Models:             cloneModelConfigs(group.Models),
 			Timeouts:           resolved.Timeouts,
 			HeaderRules:        resolved.HeaderRules,
 			InjectUsageOptions: resolved.InjectUsageOptions,
@@ -351,7 +349,8 @@ func appendExecutionTargets(
 					if !supported {
 						return fmt.Errorf("compile group %d channel has no route mode for %q/%q model %q", group.ID, clientProtocol, operation, model.ID)
 					}
-					appendExecutionTarget(index, clientProtocol, operation, externalModelName(model), RouteTarget{
+					external := ExternalModelName(model.ID, model.Alias)
+					appendExecutionTarget(index, clientProtocol, operation, external, RouteTarget{
 						GroupID: group.ID, UpstreamModelID: strings.TrimSpace(model.ID),
 						Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
 					})
@@ -381,6 +380,20 @@ func appendExecutionTarget(
 		index[clientProtocol][operation][externalModel],
 		target,
 	)
+}
+
+func cloneModelConfigs(models []ModelConfig) []ModelConfig {
+	if models == nil {
+		return nil
+	}
+	cloned := make([]ModelConfig, len(models))
+	for index, model := range models {
+		cloned[index] = ModelConfig{
+			ID: model.ID, Alias: model.Alias,
+			Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+		}
+	}
+	return cloned
 }
 
 func cloneResolvedTarget(target channel.ResolvedTarget) channel.ResolvedTarget {
@@ -441,7 +454,7 @@ func validateCompileInput(input CompileInput) error {
 			if strings.TrimSpace(model.ID) == "" {
 				return fmt.Errorf("group %d model id is required", group.ID)
 			}
-			external := externalModelName(model)
+			external := ExternalModelName(model.ID, model.Alias)
 			if _, duplicate := seenModels[external]; duplicate {
 				return fmt.Errorf("group %d has duplicate external model %q", group.ID, external)
 			}
