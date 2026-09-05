@@ -294,9 +294,29 @@ func TestCompileRejectsInvalidCoreConfiguration(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "duplicate external model",
-			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a"}, {ID: "b", Alias: "a"}}, Enabled: true}}},
-			wantErr: "duplicate external model",
+			name:    "duplicate route entry",
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a"}, {ID: "a", Alias: "a"}}, Enabled: true}}},
+			wantErr: "duplicate route entry",
+		},
+		{
+			name:    "zero external model weight sum",
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Weight: intPointer(0)}}, Enabled: true}}},
+			wantErr: "entry weights must sum to a positive value",
+		},
+		{
+			name:    "negative entry weight",
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Weight: intPointer(-1)}}, Enabled: true}}},
+			wantErr: "weight must be between 0 and",
+		},
+		{
+			name:    "non positive entry priority",
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Priority: intPointer(0)}}, Enabled: true}}},
+			wantErr: "priority must be at least 1",
+		},
+		{
+			name:    "blank model id",
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "  "}}, Enabled: true}}},
+			wantErr: "model id is required",
 		},
 		{
 			name: "duplicate group id",
@@ -370,3 +390,181 @@ func TestCompileRejectsInvalidCoreConfiguration(t *testing.T) {
 }
 
 func int64Pointer(value int64) *int64 { return &value }
+
+// TestCompileEmitsOneRouteTargetPerModelEntry covers design §1.2 group one:
+// three entries share external model "A" with per-entry weights and a
+// fallback priority, plus a plain single-entry model. Every entry compiles
+// into its own RouteTarget under the shared external name.
+func TestCompileEmitsOneRouteTargetPerModelEntry(t *testing.T) {
+	t.Parallel()
+
+	weightA, weightB, weightC, fallback := 30, 50, 20, 2
+	snapshot, err := Compile(CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []GroupConfig{{
+			ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Enabled: true,
+			Models: []ModelConfig{
+				{ID: "upstream-a", Alias: "A", Weight: &weightA},
+				{ID: "upstream-b", Alias: "A", Weight: &weightB},
+				{ID: "upstream-c", Alias: "A", Weight: &weightC, Priority: &fallback},
+				{ID: "gpt-4o-mini"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	index := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]
+	shared := index["A"]
+	if len(shared) != 3 {
+		t.Fatalf("external model A targets = %#v", shared)
+	}
+	want := []RouteTarget{
+		{GroupID: 1, UpstreamModelID: "upstream-a", Mode: channel.RouteNative, EntryWeight: 30, Priority: 1},
+		{GroupID: 1, UpstreamModelID: "upstream-b", Mode: channel.RouteNative, EntryWeight: 50, Priority: 1},
+		{GroupID: 1, UpstreamModelID: "upstream-c", Mode: channel.RouteNative, EntryWeight: 20, Priority: 2},
+	}
+	for i, target := range want {
+		if shared[i].GroupID != target.GroupID || shared[i].UpstreamModelID != target.UpstreamModelID ||
+			shared[i].EntryWeight != target.EntryWeight || shared[i].Priority != target.Priority {
+			t.Fatalf("external model A targets[%d] = %#v, want %#v", i, shared[i], target)
+		}
+	}
+	plain := index["gpt-4o-mini"]
+	if len(plain) != 1 || plain[0].UpstreamModelID != "gpt-4o-mini" ||
+		plain[0].EntryWeight != 1 || plain[0].Priority != 1 {
+		t.Fatalf("single entry targets = %#v, want one default target", plain)
+	}
+
+	catalog := snapshot.ExecutionRouteCatalog[protocol.OpenAICompletions][execution.OperationChatCompletion]["A"]
+	if len(catalog) != 3 || catalog[0].EntryWeight != 30 || catalog[2].Priority != 2 {
+		t.Fatalf("route catalog targets = %#v", catalog)
+	}
+}
+
+// TestCompileNormalizesUnsetEntryFields verifies legacy-shaped entries (no
+// weight/priority) compile to the design defaults and that an explicit zero
+// weight keeps the target indexed while marking it excluded from splitting.
+func TestCompileNormalizesUnsetEntryFields(t *testing.T) {
+	t.Parallel()
+
+	zero := 0
+	snapshot, err := Compile(CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []GroupConfig{{
+			ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Enabled: true,
+			Models: []ModelConfig{
+				{ID: "legacy"},
+				{ID: "paused", Alias: "public"},
+				{ID: "active", Alias: "public", Weight: &zero},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	index := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]
+	if got := index["legacy"]; len(got) != 1 || got[0].EntryWeight != 1 || got[0].Priority != 1 {
+		t.Fatalf("legacy entry targets = %#v, want normalized defaults", got)
+	}
+	public := index["public"]
+	if len(public) != 2 || public[0].UpstreamModelID != "active" || public[1].UpstreamModelID != "paused" {
+		t.Fatalf("public targets = %#v, want upstream-sorted entries", public)
+	}
+	if public[0].EntryWeight != 0 || public[0].Priority != 1 {
+		t.Fatalf("zero weight target = %#v, want EntryWeight 0 with Priority 1", public[0])
+	}
+	if public[1].EntryWeight != 1 || public[1].Priority != 1 {
+		t.Fatalf("default weight target = %#v, want EntryWeight 1 with Priority 1", public[1])
+	}
+}
+
+// TestCompileKeepsNoModelRouteKeyResourcesUnchanged locks the resource
+// operation paths (Responses retrieve/delete/passthrough) so entry-level
+// compilation leaves them untouched.
+func TestCompileKeepsNoModelRouteKeyResourcesUnchanged(t *testing.T) {
+	t.Parallel()
+
+	snapshot, err := Compile(CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []GroupConfig{{
+			ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Enabled: true,
+			Models: []ModelConfig{{ID: "upstream-a", Alias: "A"}, {ID: "upstream-b", Alias: "A"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	for _, operation := range []execution.Operation{
+		execution.OperationResponsesRetrieve,
+		execution.OperationResponsesDelete,
+		execution.OperationResponsesCancel,
+		execution.OperationResponsesInputItems,
+		execution.OperationResponsesPassthrough,
+	} {
+		targets := snapshot.ExecutionCandidates[protocol.OpenAIResponses][operation][NoModelRouteKey]
+		if len(targets) != 1 {
+			t.Fatalf("operation %q NoModelRouteKey targets = %#v, want one", operation, targets)
+		}
+		target := targets[0]
+		if target.GroupID != 1 || target.UpstreamModelID != "" || target.EntryWeight != 1 || target.Priority != 1 {
+			t.Fatalf("operation %q resource target = %#v", operation, target)
+		}
+	}
+}
+
+// TestCompileKeepsSingleEntryRoutingUnchanged is the C3 regression: a group
+// with one entry per model (1:1 alias or none) compiles to exactly the
+// pre-upgrade index shape with default entry weight and priority.
+func TestCompileKeepsSingleEntryRoutingUnchanged(t *testing.T) {
+	t.Parallel()
+
+	legacy, err := Compile(CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []GroupConfig{
+			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []ModelConfig{{ID: "provider-a", Alias: "public"}}, Enabled: true},
+			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAICompatible,
+				Params: json.RawMessage(`{"base_url":"https://proxy.example/v1"}`),
+				Models: []ModelConfig{{ID: "public"}}, Enabled: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	upgraded, err := Compile(CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []GroupConfig{
+			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []ModelConfig{{ID: "provider-a", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}}, Enabled: true},
+			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAICompatible,
+				Params: json.RawMessage(`{"base_url":"https://proxy.example/v1"}`),
+				Models: []ModelConfig{{ID: "public", Weight: intPointer(1), Priority: intPointer(1)}}, Enabled: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	legacyIndex := legacy.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]
+	upgradedIndex := upgraded.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]
+	if !reflect.DeepEqual(stripResolvedTargets(legacyIndex["public"]), stripResolvedTargets(upgradedIndex["public"])) {
+		t.Fatalf("single entry index changed with explicit defaults: legacy = %#v, upgraded = %#v",
+			legacyIndex["public"], upgradedIndex["public"])
+	}
+	if len(legacyIndex["public"]) != 2 || legacyIndex["public"][0].GroupID != 1 || legacyIndex["public"][1].GroupID != 2 {
+		t.Fatalf("single entry index = %#v", legacyIndex["public"])
+	}
+}
+
+func stripResolvedTargets(targets []RouteTarget) []RouteTarget {
+	stripped := make([]RouteTarget, len(targets))
+	for i, target := range targets {
+		target.ResolvedTarget = channel.ResolvedTarget{}
+		stripped[i] = target
+	}
+	return stripped
+}

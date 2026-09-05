@@ -97,6 +97,8 @@ type RouteTarget struct {
 	UpstreamModelID string
 	Mode            channel.RouteMode
 	ResolvedTarget  channel.ResolvedTarget
+	EntryWeight     int // 条目权重,nil 归一为 1;0 保留条目但不参与分流
+	Priority        int // 条目优先级,nil 归一为 1
 }
 
 // NoModelRouteKey identifies operations whose upstream resource ID, rather
@@ -330,10 +332,12 @@ func appendExecutionTargets(
 				execution.OperationResponsesInputItems:
 				appendExecutionTarget(index, clientProtocol, operation, NoModelRouteKey, RouteTarget{
 					GroupID: group.ID, Mode: mode, ResolvedTarget: cloneResolvedTarget(target),
+					EntryWeight: 1, Priority: 1,
 				})
 			case execution.OperationResponsesPassthrough:
 				appendExecutionTarget(index, clientProtocol, operation, NoModelRouteKey, RouteTarget{
 					GroupID: group.ID, Mode: mode, ResolvedTarget: cloneResolvedTarget(target),
+					EntryWeight: 1, Priority: 1,
 				})
 				fallthrough
 			case execution.OperationChatCompletion,
@@ -344,6 +348,8 @@ func appendExecutionTargets(
 				execution.OperationImagesGenerate,
 				execution.OperationImagesEdit,
 				execution.OperationEmbeddingsCreate:
+				// 每个模型条目产生一个 target:同一分组同一对外名可以产生多个
+				// target(多映射,V1 只约束 (对外名, 上游模型) 组合唯一)。
 				for _, model := range group.Models {
 					modelMode, supported := target.ModeForModel(clientProtocol, operation, model.ID)
 					if !supported {
@@ -353,6 +359,8 @@ func appendExecutionTargets(
 					appendExecutionTarget(index, clientProtocol, operation, external, RouteTarget{
 						GroupID: group.ID, UpstreamModelID: strings.TrimSpace(model.ID),
 						Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
+						EntryWeight: normalizeRouteEntryValue(model.Weight),
+						Priority:    normalizeRouteEntryValue(model.Priority),
 					})
 				}
 			default:
@@ -382,6 +390,17 @@ func appendExecutionTarget(
 	)
 }
 
+// normalizeRouteEntryValue dereferences an optional route entry field, falling
+// back to the design default of 1 (weight and priority, design §3). An
+// explicit 0 weight survives normalization: the target stays indexed but is
+// excluded from traffic splitting by the scheduler (design §4).
+func normalizeRouteEntryValue(value *int) int {
+	if value == nil {
+		return 1
+	}
+	return *value
+}
+
 func cloneModelConfigs(models []ModelConfig) []ModelConfig {
 	if models == nil {
 		return nil
@@ -405,10 +424,11 @@ func sortExecutionRouteIndex(index ExecutionCandidateIndex) {
 	for _, byOperation := range index {
 		for _, byModel := range byOperation {
 			for model := range byModel {
-				sort.Slice(byModel[model], func(i, j int) bool {
+				// 稳定排序:同键 target 保持编译期条目顺序,保证快照可复现。
+				sort.SliceStable(byModel[model], func(i, j int) bool {
 					left, right := byModel[model][i], byModel[model][j]
-					if left.Mode != right.Mode {
-						return left.Mode == channel.RouteNative
+					if left.Priority != right.Priority {
+						return left.Priority < right.Priority
 					}
 					if left.GroupID != right.GroupID {
 						return left.GroupID < right.GroupID
@@ -449,16 +469,10 @@ func validateCompileInput(input CompileInput) error {
 		if err := validateManualWeight(fmt.Sprintf("group %d", group.ID), group.WeightManual); err != nil {
 			return err
 		}
-		seenModels := make(map[string]struct{}, len(group.Models))
-		for _, model := range group.Models {
-			if strings.TrimSpace(model.ID) == "" {
-				return fmt.Errorf("group %d model id is required", group.ID)
-			}
-			external := ExternalModelName(model.ID, model.Alias)
-			if _, duplicate := seenModels[external]; duplicate {
-				return fmt.Errorf("group %d has duplicate external model %q", group.ID, external)
-			}
-			seenModels[external] = struct{}{}
+		// 路由条目规则 V1–V4(设计 §3)在编译期作为最终防线再次执行;
+		// 违规拒绝发布,错误信息携带分组与模型名。
+		if err := ValidateModelRouteEntries(fmt.Sprintf("group %d", group.ID), group.Models); err != nil {
+			return err
 		}
 	}
 
