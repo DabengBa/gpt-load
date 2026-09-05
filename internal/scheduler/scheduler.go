@@ -84,6 +84,7 @@ type Iterator struct {
 	tried                 map[candidateKey]struct{}
 	skippedGroups         map[uint]struct{}
 	staticReason          ReasonCode
+	runtimeReason         ReasonCode
 	now                   func() time.Time
 }
 
@@ -217,7 +218,10 @@ func (iterator *Iterator) StaticReason() ReasonCode {
 	if iterator == nil {
 		return ""
 	}
-	return iterator.staticReason
+	if iterator.staticReason != "" {
+		return iterator.staticReason
+	}
+	return iterator.runtimeReason
 }
 
 func cloneAllowedCredentialIDs(query Query) map[uint]struct{} {
@@ -275,6 +279,23 @@ func (iterator *Iterator) weightedTierPool(
 	weighted := make([]weightedCandidate, 0, len(targets))
 	for _, target := range targets {
 		for _, credential := range credentialsByGroup[target.target.GroupID] {
+			if runtime, ok := iterator.credentials.(state.EntryRuntimeSource); ok {
+				entryState, _ := runtime.EntryRuntime(
+					state.RouteEntryKey{GroupID: target.target.GroupID, UpstreamModelID: target.target.UpstreamModelID},
+					now,
+				)
+
+				if entryState.RuntimeState(now) != state.EntryRuntimeAvailable {
+					if iterator.runtimeReason == "" {
+						if entryState.Blacklisted {
+							iterator.runtimeReason = ReasonEntryBlacklisted
+						} else {
+							iterator.runtimeReason = ReasonEntryCooldown
+						}
+					}
+					continue
+				}
+			}
 			if iterator.allowedCredentialIDs != nil {
 				if _, allowed := iterator.allowedCredentialIDs[credential.ID]; !allowed {
 					continue

@@ -38,6 +38,9 @@ const (
 	ReasonCredentialWeightZero      ReasonCode = "credential_weight_zero"
 	ReasonCredentialNotAllowed      ReasonCode = "credential_not_allowed"
 	ReasonNoAvailableCredential     ReasonCode = "no_available_credential"
+	ReasonEntryBlacklisted          ReasonCode = "entry_blacklisted"
+	ReasonEntryCooldown             ReasonCode = "entry_cooldown"
+	ReasonTierDemoted               ReasonCode = "tier_demoted"
 )
 
 type Inspection struct {
@@ -58,6 +61,9 @@ type GroupInspection struct {
 	RouteRequirementSatisfied bool
 	UpstreamModelID           *string
 	WeightManual              *int
+	EntryWeight               int
+	Priority                  int
+	EntryCooldownUntil        time.Time
 	Included                  bool
 	Routable                  bool
 	Reason                    ReasonCode
@@ -338,9 +344,23 @@ func inspectCredential(
 	return result
 }
 
+// Inspect preserves the existing credential-only inspection contract.
 func Inspect(
 	snapshot *state.ConfigSnapshot,
 	credentials []CredentialRuntimeView,
+	query Query,
+	now time.Time,
+) (Inspection, error) {
+	return InspectWithEntryRuntime(snapshot, credentials, nil, query, now)
+}
+
+// InspectWithEntryRuntime inspects route targets together with optional
+// in-memory route-entry health. Entry state is keyed by group and upstream
+// model, never by credential, so one model failure cannot hide sibling entries.
+func InspectWithEntryRuntime(
+	snapshot *state.ConfigSnapshot,
+	credentials []CredentialRuntimeView,
+	entryRuntime []state.EntryRuntimeView,
 	query Query,
 	now time.Time,
 ) (Inspection, error) {
@@ -360,6 +380,13 @@ func Inspect(
 		return result, nil
 	}
 
+	entryRuntimeByKey := make(map[state.RouteEntryKey]state.EntryRuntimeView, len(entryRuntime))
+	for _, entry := range entryRuntime {
+		if entry.Key.GroupID == 0 || entry.Key.UpstreamModelID == "" {
+			continue
+		}
+		entryRuntimeByKey[entry.Key] = entry
+	}
 	credentialsByGroup := make(map[uint][]CredentialRuntimeView)
 	for _, credential := range credentials {
 		if _, exists := snapshot.GroupCatalog[credential.GroupID]; !exists {
@@ -389,15 +416,27 @@ func Inspect(
 		return Inspection{}, err
 	}
 	for _, decision := range decisions {
+		entryKey := state.RouteEntryKey{
+			GroupID:         decision.target.GroupID,
+			UpstreamModelID: decision.target.UpstreamModelID,
+		}
+		entryState, entryHasRuntime := entryRuntimeByKey[entryKey]
 		groupResult := GroupInspection{
-			GroupID: decision.group.ID, GroupName: decision.group.Name,
+			GroupID:                   decision.group.ID,
+			GroupName:                 decision.group.Name,
 			ChannelID:                 decision.target.ResolvedTarget.ChannelID,
 			RouteMode:                 decision.target.Mode,
 			RouteRequirementSatisfied: decision.requirementOK,
 			UpstreamModelID:           optionalModel(decision.target.UpstreamModelID),
 			WeightManual:              cloneWeight(decision.group.WeightManual),
-			Included:                  decision.included, Reason: decision.reason,
-			Credentials: []CredentialInspection{},
+			EntryWeight:               decision.target.EntryWeight,
+			Priority:                  decision.target.Priority,
+			Included:                  decision.included,
+			Reason:                    decision.reason,
+			Credentials:               []CredentialInspection{},
+		}
+		if entryHasRuntime && !entryState.CooldownUntil.IsZero() {
+			groupResult.EntryCooldownUntil = entryState.CooldownUntil
 		}
 		if !decision.included {
 			result.Groups = append(result.Groups, groupResult)
@@ -406,6 +445,8 @@ func Inspect(
 		groupCredentials := credentialsByGroup[decision.group.ID]
 		groupWeightZero := decision.group.WeightManual != nil &&
 			*decision.group.WeightManual == 0
+		entryUnavailable := entryHasRuntime &&
+			entryState.RuntimeState(now) != state.EntryRuntimeAvailable
 		for _, credential := range groupCredentials {
 			credentialResult := inspectCredential(
 				decision.group,
@@ -416,19 +457,23 @@ func Inspect(
 			)
 			groupResult.Credentials = append(groupResult.Credentials, credentialResult)
 		}
-		for _, credential := range groupResult.Credentials {
-			if credential.Available && credential.EffectiveWeight > 0 {
-				groupResult.Routable = true
-				break
+		if !entryUnavailable {
+			for _, credential := range groupResult.Credentials {
+				if credential.Available && credential.EffectiveWeight > 0 {
+					groupResult.Routable = true
+					break
+				}
 			}
 		}
 		switch {
 		case groupWeightZero:
 			groupResult.Reason = ReasonGroupWeightZero
 		case decision.target.EntryWeight <= 0:
-			// 设计 §6.3:条目权重为 0 保留展示但不参与分流(条目熔断等运行态
-			// 原因码由后续步骤接入)。
 			groupResult.Reason = ReasonEntryWeightZero
+		case entryUnavailable && entryState.Blacklisted:
+			groupResult.Reason = ReasonEntryBlacklisted
+		case entryUnavailable:
+			groupResult.Reason = ReasonEntryCooldown
 		case len(groupCredentials) == 0:
 			groupResult.Reason = ReasonNoCredentials
 		case !groupResult.Routable:
@@ -439,6 +484,25 @@ func Inspect(
 		}
 		result.Groups = append(result.Groups, groupResult)
 	}
+
+	minimumRoutableTier := 0
+	for _, group := range result.Groups {
+		if !group.Routable || group.Priority <= 0 {
+			continue
+		}
+		if minimumRoutableTier == 0 || group.Priority < minimumRoutableTier {
+			minimumRoutableTier = group.Priority
+		}
+	}
+	if minimumRoutableTier > 0 {
+		for index := range result.Groups {
+			group := &result.Groups[index]
+			if group.Routable && group.Priority > minimumRoutableTier && group.Reason == "" {
+				group.Reason = ReasonTierDemoted
+			}
+		}
+	}
+
 	if result.Routable {
 		return result, nil
 	}
