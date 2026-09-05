@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"gorm.io/gorm"
 
 	"gpt-load/internal/channel"
 	app_errors "gpt-load/internal/platform/errors"
+	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 )
 
@@ -117,13 +117,18 @@ func mapGroupOptions(rows []groupOptionRow, registries ...*channel.Registry) ([]
 			Params:         append(json.RawMessage(nil), params...), Enabled: row.Enabled,
 			Models: make([]string, 0, len(models)),
 		}
+		seen := make(map[string]struct{}, len(models))
 		for _, model := range models {
-			alias := strings.TrimSpace(model.Alias)
-			if alias != "" {
-				option.Models = append(option.Models, alias)
+			name := state.ExternalModelName(model.ID, model.Alias)
+			if name == "" {
 				continue
 			}
-			option.Models = append(option.Models, strings.TrimSpace(model.ID))
+			if _, exists := seen[name]; exists {
+				// 同一对外名的多条目只在分组选项中出现一次（设计 §8.3）。
+				continue
+			}
+			seen[name] = struct{}{}
+			option.Models = append(option.Models, name)
 		}
 		options = append(options, option)
 	}

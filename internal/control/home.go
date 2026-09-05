@@ -3,7 +3,6 @@ package control
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -281,10 +280,7 @@ func countHomeModels(snapshot *state.ConfigSnapshot) int64 {
 	names := make(map[string]struct{})
 	for _, group := range snapshot.Groups {
 		for _, model := range group.Models {
-			name := strings.TrimSpace(model.Alias)
-			if name == "" {
-				name = strings.TrimSpace(model.ID)
-			}
+			name := state.ExternalModelName(model.ID, model.Alias)
 			if name != "" {
 				names[name] = struct{}{}
 			}
@@ -317,7 +313,7 @@ func accessibleHomeGroups(
 		if len(accessKey.Filters.Models) > 0 {
 			modelAllowed := false
 			for _, model := range group.Models {
-				if _, allowed := accessKey.Filters.Models[homeExternalModelName(model)]; allowed {
+				if _, allowed := accessKey.Filters.Models[state.ExternalModelName(model.ID, model.Alias)]; allowed {
 					modelAllowed = true
 					break
 				}
@@ -343,7 +339,7 @@ func countScopedHomeModels(
 			continue
 		}
 		for _, model := range group.Models {
-			name := homeExternalModelName(model)
+			name := state.ExternalModelName(model.ID, model.Alias)
 			if name == "" {
 				continue
 			}
@@ -356,13 +352,6 @@ func countScopedHomeModels(
 		}
 	}
 	return int64(len(names))
-}
-
-func homeExternalModelName(model state.ModelConfig) string {
-	if alias := strings.TrimSpace(model.Alias); alias != "" {
-		return alias
-	}
-	return strings.TrimSpace(model.ID)
 }
 
 func countHomeCredentials(

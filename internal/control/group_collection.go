@@ -429,7 +429,9 @@ func equalGroupCollectionWeight(left, right *int) bool {
 }
 
 func validateGroupCollectionModels(values []GroupModel) error {
-	seen := make(map[string]struct{}, len(values))
+	// 同一对外名的多条目是合法路由映射（设计 §3）；仅重复同一
+	// (对外名, 上游模型) 对属于坏数据。
+	seen := make(map[[2]string]struct{}, len(values))
 	for _, value := range values {
 		id := strings.TrimSpace(value.ID)
 		if id == "" {
@@ -439,10 +441,11 @@ func validateGroupCollectionModels(values []GroupModel) error {
 		if external == "" {
 			external = id
 		}
-		if _, duplicate := seen[external]; duplicate {
-			return fmt.Errorf("duplicate external model %q", external)
+		pair := [2]string{external, id}
+		if _, duplicate := seen[pair]; duplicate {
+			return fmt.Errorf("duplicate route entry for external model %q and upstream model %q", external, id)
 		}
-		seen[external] = struct{}{}
+		seen[pair] = struct{}{}
 	}
 	return nil
 }
