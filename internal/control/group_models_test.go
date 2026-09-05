@@ -103,19 +103,22 @@ func TestNormalizeGroupModelsAppliesAliasSwitchAndReportsStableConflicts(t *test
 		wantError     error
 	}{
 		{
-			name: "disabled alias uses upstream ID and conflicts with enabled alias",
+			// 同一对外名映射到不同上游模型是合法的多条目路由（设计 §3）。
+			name: "multi-mapping under one external name no longer conflicts",
 			values: []GroupModel{
 				{ID: "a", Alias: ""},
 				{ID: "b", Alias: "a", AliasEnabled: true},
 			},
-			wantConflicts: []ModelNameConflict{{ClientModel: "a", Indexes: []int{0, 1}}},
-			wantError:     app_errors.ErrModelNameConflict,
+			want: []GroupModel{
+				{ID: "a", Alias: ""},
+				{ID: "b", Alias: "a"},
+			},
 		},
 		{
-			name: "enabled aliases conflict",
+			name: "duplicate upstream pair under one external name conflicts",
 			values: []GroupModel{
 				{ID: "a", Alias: "x", AliasEnabled: true},
-				{ID: "b", Alias: "x", AliasEnabled: true},
+				{ID: "a", Alias: "x", AliasEnabled: true},
 			},
 			wantConflicts: []ModelNameConflict{{ClientModel: "x", Indexes: []int{0, 1}}},
 			wantError:     app_errors.ErrModelNameConflict,
@@ -132,13 +135,16 @@ func TestNormalizeGroupModelsAppliesAliasSwitchAndReportsStableConflicts(t *test
 			},
 		},
 		{
-			name: "trimmed IDs and aliases conflict",
+			// 旧 1:1 冲突在新语义下是合法多条目：不同上游共用对外名。
+			name: "trimmed aliases multi-mapping does not conflict",
 			values: []GroupModel{
 				{ID: " a ", Alias: ""},
 				{ID: "b", Alias: " a ", AliasEnabled: true},
 			},
-			wantConflicts: []ModelNameConflict{{ClientModel: "a", Indexes: []int{0, 1}}},
-			wantError:     app_errors.ErrModelNameConflict,
+			want: []GroupModel{
+				{ID: "a", Alias: ""},
+				{ID: "b", Alias: "a"},
+			},
 		},
 		{
 			name:      "enabled alias cannot be blank after trimming",
@@ -149,9 +155,9 @@ func TestNormalizeGroupModelsAppliesAliasSwitchAndReportsStableConflicts(t *test
 			name: "multiple conflicts use first occurrence order",
 			values: []GroupModel{
 				{ID: "a"},
-				{ID: "b", Alias: "a", AliasEnabled: true},
+				{ID: "a", Alias: "a", AliasEnabled: true},
 				{ID: "c"},
-				{ID: "d", Alias: "c", AliasEnabled: true},
+				{ID: "c", Alias: "c", AliasEnabled: true},
 			},
 			wantConflicts: []ModelNameConflict{
 				{ClientModel: "a", Indexes: []int{0, 1}},
@@ -189,11 +195,27 @@ func TestNormalizeGroupModelsAppliesAliasSwitchAndReportsStableConflicts(t *test
 	}
 }
 
-func TestNormalizeGroupModelsRejectsDuplicateExternalNames(t *testing.T) {
+func TestNormalizeGroupModelsAllowsMultiMappingAndRejectsDuplicatePairs(t *testing.T) {
 	t.Parallel()
+	// 同一对外名映射到不同上游模型是合法的多条目路由（设计 §3）。
+	got, err := normalizeGroupModels([]GroupModel{
+		{ID: "provider-a", Alias: "public", AliasEnabled: true},
+		{ID: "provider-b", Alias: "public", AliasEnabled: true},
+		{ID: "public"},
+	})
+	if err != nil {
+		t.Fatalf("normalizeGroupModels() error = %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("normalizeGroupModels() = %#v, want 3 entries", got)
+	}
+	// 同一对外名下重复同一上游模型才冲突。
 	for _, values := range [][]GroupModel{
-		{{ID: "provider-a", Alias: "public", AliasEnabled: true}, {ID: "provider-b", Alias: "public", AliasEnabled: true}},
-		{{ID: "public"}, {ID: "provider-b", Alias: "public", AliasEnabled: true}},
+		{
+			{ID: "provider-a", Alias: "public", AliasEnabled: true},
+			{ID: "provider-a", Alias: "public", AliasEnabled: true},
+		},
+		{{ID: "public"}, {ID: "public"}},
 	} {
 		var apiErr *app_errors.APIError
 		if _, err := normalizeGroupModels(values); !errors.As(err, &apiErr) ||
@@ -466,7 +488,7 @@ func TestUpdateGroupModelsFailuresDoNotPublish(t *testing.T) {
 				Set: true,
 				Values: []GroupModel{
 					{ID: "provider-a", Alias: "public", AliasEnabled: true},
-					{ID: "provider-b", Alias: "public", AliasEnabled: true},
+					{ID: "provider-a", Alias: "public", AliasEnabled: true},
 				},
 			},
 		})

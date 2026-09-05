@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -25,6 +26,8 @@ type GroupModel struct {
 	ID           string `json:"id"`
 	Alias        string `json:"alias"`
 	AliasEnabled bool   `json:"-"`
+	Weight       *int   `json:"weight,omitempty"`
+	Priority     *int   `json:"priority,omitempty"`
 }
 
 func (model *GroupModel) UnmarshalJSON(data []byte) error {
@@ -32,6 +35,8 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 		ID           string `json:"id"`
 		Alias        string `json:"alias"`
 		AliasEnabled bool   `json:"alias_enabled"`
+		Weight       *int   `json:"weight"`
+		Priority     *int   `json:"priority"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -48,6 +53,8 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	model.ID = wire.ID
 	model.Alias = wire.Alias
 	model.AliasEnabled = wire.AliasEnabled
+	model.Weight = cloneInt(wire.Weight)
+	model.Priority = cloneInt(wire.Priority)
 	return nil
 }
 
@@ -76,6 +83,8 @@ type groupModelRequestWire struct {
 	ID           string `json:"id"`
 	Alias        string `json:"alias"`
 	AliasEnabled *bool  `json:"alias_enabled"`
+	Weight       *int   `json:"weight"`
+	Priority     *int   `json:"priority"`
 }
 
 type optionalField[T any] struct {
@@ -149,6 +158,8 @@ func (value *optionalGroupModels) UnmarshalJSON(data []byte) error {
 			ID:           wire.ID,
 			Alias:        wire.Alias,
 			AliasEnabled: *wire.AliasEnabled,
+			Weight:       cloneInt(wire.Weight),
+			Priority:     cloneInt(wire.Priority),
 		})
 	}
 
@@ -189,11 +200,15 @@ func normalizeUpstreamBaseURL(raw string) (normalized, hostname string, err erro
 
 func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 	result := make([]GroupModel, 0, len(values))
-	indexesByClientModel := make(map[string][]int, len(values))
+	// 同一对外名下的多条目是合法的路由映射（设计 §3）；仅当同一对外名重复
+	// 同一上游模型时才构成冲突。
+	indexesByClientModel := make(map[string]map[string][]int, len(values))
 	clientModelOrder := make([]string, 0, len(values))
 	for index, value := range values {
 		normalized := GroupModel{
-			ID: strings.TrimSpace(value.ID),
+			ID:       strings.TrimSpace(value.ID),
+			Weight:   cloneInt(value.Weight),
+			Priority: cloneInt(value.Priority),
 		}
 		if normalized.ID == "" {
 			return nil, app_errors.ErrValidation
@@ -212,19 +227,29 @@ func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 		}
 		if _, exists := indexesByClientModel[clientModel]; !exists {
 			clientModelOrder = append(clientModelOrder, clientModel)
+			indexesByClientModel[clientModel] = make(map[string][]int)
 		}
-		indexesByClientModel[clientModel] = append(indexesByClientModel[clientModel], index)
+		indexesByClientModel[clientModel][normalized.ID] = append(
+			indexesByClientModel[clientModel][normalized.ID], index)
 		result = append(result, normalized)
 	}
 	conflicts := make([]ModelNameConflict, 0)
 	for _, clientModel := range clientModelOrder {
-		indexes := indexesByClientModel[clientModel]
-		if len(indexes) < 2 {
+		ids := indexesByClientModel[clientModel]
+		conflictIndexes := make([]int, 0, 2)
+		for _, id := range sortedModelEntryIDs(ids) {
+			if len(ids[id]) < 2 {
+				continue
+			}
+			conflictIndexes = append(conflictIndexes, ids[id]...)
+		}
+		sort.Ints(conflictIndexes)
+		if len(conflictIndexes) < 2 {
 			continue
 		}
 		conflicts = append(conflicts, ModelNameConflict{
 			ClientModel: clientModel,
-			Indexes:     append([]int(nil), indexes...),
+			Indexes:     conflictIndexes,
 		})
 	}
 	if len(conflicts) > 0 {
@@ -234,6 +259,15 @@ func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 		)
 	}
 	return result, nil
+}
+
+func sortedModelEntryIDs(indexes map[string][]int) []string {
+	ids := make([]string, 0, len(indexes))
+	for id := range indexes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func normalizeGroupName(value *string) (*string, error) {

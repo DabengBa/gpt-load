@@ -67,7 +67,12 @@ type GroupInspection struct {
 	Included                  bool
 	Routable                  bool
 	Reason                    ReasonCode
-	Credentials               []CredentialInspection
+	// EffectiveShare is the entry's expected traffic share inside the P1 tier
+	// (priority 1) under the current snapshot, access key and availability
+	// constraints. Fallback tiers (priority ≥ 2) stay out of the P1
+	// normalization and always carry share 0.
+	EffectiveShare float64
+	Credentials    []CredentialInspection
 }
 
 type CredentialInspection struct {
@@ -502,6 +507,7 @@ func InspectWithEntryRuntime(
 			}
 		}
 	}
+	applyEffectiveShares(result.Groups)
 
 	if result.Routable {
 		return result, nil
@@ -512,4 +518,38 @@ func InspectWithEntryRuntime(
 		result.Reason = ReasonNoAvailableCredential
 	}
 	return result, nil
+}
+
+// applyEffectiveShares normalizes combined weights inside the P1 tier. Rows in
+// fallback tiers or rows that are not currently routable contribute nothing and
+// receive share 0, mirroring the scheduler's tier-first selection.
+func applyEffectiveShares(groups []GroupInspection) {
+	var p1Total int64
+	for i := range groups {
+		group := &groups[i]
+		if group.Priority != 1 || !group.Routable {
+			continue
+		}
+		for _, credential := range group.Credentials {
+			if credential.Available {
+				p1Total += credential.EffectiveWeight
+			}
+		}
+	}
+	if p1Total <= 0 {
+		return
+	}
+	for i := range groups {
+		group := &groups[i]
+		if group.Priority != 1 || !group.Routable {
+			continue
+		}
+		var mass int64
+		for _, credential := range group.Credentials {
+			if credential.Available {
+				mass += credential.EffectiveWeight
+			}
+		}
+		group.EffectiveShare = float64(mass) / float64(p1Total)
+	}
 }

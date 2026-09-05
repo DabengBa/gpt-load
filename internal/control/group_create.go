@@ -211,7 +211,11 @@ func (s *Service) normalizeGroupCreate(
 
 	runtimeModels := make([]state.ModelConfig, 0, len(groupModels))
 	for _, model := range groupModels {
-		runtimeModels = append(runtimeModels, state.ModelConfig{ID: model.ID, Alias: model.Alias})
+		runtimeModels = append(runtimeModels, state.ModelConfig{
+			ID: model.ID, Alias: model.Alias,
+			Weight:   cloneInt(model.Weight),
+			Priority: cloneInt(model.Priority),
+		})
 	}
 	if err := state.ValidateModelRouteEntries(
 		fmt.Sprintf("new group (channel %s)", request.ChannelID), runtimeModels,

@@ -1500,7 +1500,7 @@ func TestGroupModelsHTTPReturnsStructuredConflictWithoutMutation(t *testing.T) {
 		"test-auth-key",
 		"en-US",
 		strconv.FormatUint(uint64(groupID), 10),
-		`{"models":[{"id":"a","alias":"discarded","alias_enabled":false},{"id":"b","alias":"a","alias_enabled":true}]}`,
+		`{"models":[{"id":"a","alias":"discarded","alias_enabled":false},{"id":"a","alias":"a","alias_enabled":true}]}`,
 	)
 	var envelope struct {
 		Code string                `json:"code"`
