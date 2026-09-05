@@ -30,6 +30,7 @@ const (
 	ReasonNoAvailableGroup          ReasonCode = "no_available_group"
 	ReasonNoCredentials             ReasonCode = "no_credentials"
 	ReasonGroupWeightZero           ReasonCode = "group_weight_zero"
+	ReasonEntryWeightZero           ReasonCode = "entry_weight_zero"
 	ReasonCredentialDisabled        ReasonCode = "credential_disabled"
 	ReasonCredentialAuthUnavailable ReasonCode = "credential_auth_unavailable"
 	ReasonCredentialBlacklisted     ReasonCode = "credential_blacklisted"
@@ -83,6 +84,13 @@ type targetDecision struct {
 	responsesStoreDowngraded bool
 	included                 bool
 	reason                   ReasonCode
+}
+
+// targetEntryKey de-duplicates route targets of one group and upstream model
+// when multi-mapping groups contribute several entries (design §5.1).
+type targetEntryKey struct {
+	groupID         uint
+	upstreamModelID string
 }
 
 func cloneWeight(weight *int) *int {
@@ -139,13 +147,17 @@ func evaluateTargets(
 	}
 
 	decisions := make([]targetDecision, 0, len(routes))
-	seenGroups := make(map[uint]struct{}, len(routes))
+	// 设计 §5.1:同一分组的同一对外名可产生多个条目 target(多映射),
+	// 去重键扩展为 (GroupID, UpstreamModelID);资源类 target 的上游模型为空串,
+	// 每分组仍恰保留一个。
+	seenEntries := make(map[targetEntryKey]struct{}, len(routes))
 	included := 0
 	for _, route := range routes {
-		if _, duplicate := seenGroups[route.GroupID]; duplicate {
+		entryKey := targetEntryKey{groupID: route.GroupID, upstreamModelID: route.UpstreamModelID}
+		if _, duplicate := seenEntries[entryKey]; duplicate {
 			continue
 		}
-		seenGroups[route.GroupID] = struct{}{}
+		seenEntries[entryKey] = struct{}{}
 		group, exists := snapshot.GroupCatalog[route.GroupID]
 		if !exists {
 			return nil, "", fmt.Errorf(
@@ -241,7 +253,18 @@ func normalizedAutoWeight(weight int) int {
 	return weight
 }
 
-func effectiveWeight(groupManual, credentialManual *int, credentialAuto int) int64 {
+// combinedWeight is the single source of scheduling share for a
+// (group, entry, credential) triple: 组权重 × 条目权重 × 密钥权重
+// (design §5.1). Any factor ≤ 0 yields 0 so the triple never joins a
+// weighted pool; callers must treat 0 as excluded. Unset group and
+// credential weights fall back to the state defaults, and the entry weight
+// arrives already normalized by snapshot compilation.
+func combinedWeight(
+	groupManual *int,
+	entryWeight int,
+	credentialManual *int,
+	credentialAuto int,
+) int64 {
 	groupWeight := state.DefaultWeight
 	if groupManual != nil {
 		groupWeight = *groupManual
@@ -250,14 +273,22 @@ func effectiveWeight(groupManual, credentialManual *int, credentialAuto int) int
 	if credentialManual != nil {
 		credentialWeight = *credentialManual
 	}
-	if groupWeight <= 0 || credentialWeight <= 0 {
+	if groupWeight <= 0 || entryWeight <= 0 || credentialWeight <= 0 {
 		return 0
 	}
-	return int64(groupWeight) * int64(credentialWeight)
+	return int64(groupWeight) * int64(entryWeight) * int64(credentialWeight)
+}
+
+// effectiveWeight preserves the pre-route-entry helper contract for existing
+// scheduler tests and compatibility callers. Route-entry scheduling uses
+// combinedWeight directly with the entry factor supplied by the snapshot.
+func effectiveWeight(groupManual, credentialManual *int, credentialAuto int) int64 {
+	return combinedWeight(groupManual, 1, credentialManual, credentialAuto)
 }
 
 func inspectCredential(
 	group state.GroupCatalogView,
+	entryWeight int,
 	credential CredentialRuntimeView,
 	allowedCredentialIDs map[uint]struct{},
 	now time.Time,
@@ -297,8 +328,9 @@ func inspectCredential(
 		result.CooldownUntil = credential.CooldownUntil
 	default:
 		result.Available = true
-		result.EffectiveWeight = effectiveWeight(
+		result.EffectiveWeight = combinedWeight(
 			group.WeightManual,
+			entryWeight,
 			credential.WeightManual,
 			credential.WeightAuto,
 		)
@@ -377,6 +409,7 @@ func Inspect(
 		for _, credential := range groupCredentials {
 			credentialResult := inspectCredential(
 				decision.group,
+				decision.target.EntryWeight,
 				credential,
 				normalized.allowedCredentialIDs,
 				now,
@@ -392,6 +425,10 @@ func Inspect(
 		switch {
 		case groupWeightZero:
 			groupResult.Reason = ReasonGroupWeightZero
+		case decision.target.EntryWeight <= 0:
+			// 设计 §6.3:条目权重为 0 保留展示但不参与分流(条目熔断等运行态
+			// 原因码由后续步骤接入)。
+			groupResult.Reason = ReasonEntryWeightZero
 		case len(groupCredentials) == 0:
 			groupResult.Reason = ReasonNoCredentials
 		case !groupResult.Routable:
