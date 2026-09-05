@@ -68,6 +68,10 @@ const knownReasons = new Set<RouteInspectReasonCode>([
   'credential_weight_zero',
   'credential_not_allowed',
   'no_available_credential',
+  'entry_blacklisted',
+  'entry_cooldown',
+  'entry_weight_zero',
+  'tier_demoted',
 ])
 const client = useApiClient()
 const route = useRoute()
@@ -208,9 +212,6 @@ const activeTierGroups = computed(() =>
 )
 const availableCredentialCount = computed(() =>
   activeTierGroups.value.reduce((total, group) => total + groupAvailableCredentialCount(group), 0),
-)
-const totalEffectiveWeight = computed(() =>
-  activeTierGroups.value.reduce((total, group) => total + groupEffectiveWeight(group), 0),
 )
 
 function readProtocol(raw: unknown): AccessProtocol | '' {
@@ -482,15 +483,13 @@ function groupEffectiveWeight(group: RouteInspectGroupDto): number {
 }
 
 function groupShare(group: RouteInspectGroupDto): number {
-  if (group.route_mode !== activeRouteMode.value) return 0
-  const total = totalEffectiveWeight.value
-  if (total <= 0) return 0
-  return Math.round((groupEffectiveWeight(group) / total) * 1_000) / 10
+  // 占比一律以后端归一化结果为准(设计 §8.2);0 是有效值,不做前端回退。
+  return Math.round(group.effective_share * 1_000) / 10
 }
 
 function groupShareLabel(group: RouteInspectGroupDto): string {
   if (group.route_mode !== activeRouteMode.value) return t('monitor.inspector.groups.standbyShare')
-  return formatPercent(groupEffectiveWeight(group), totalEffectiveWeight.value, locale.value)
+  return formatPercent(group.effective_share, 1, locale.value)
 }
 
 function candidateCredentialSummary(group: RouteInspectGroupDto): string {
@@ -781,6 +780,19 @@ onBeforeUnmount(() => {
                     {{ routePriorityLabel(group) }}
                   </StatusBadge>
                   <small>{{ groupStatusLabel(group) }}</small>
+                  <small>
+                    <code>P{{ group.priority }}</code>
+                    <span v-if="group.fallback">{{
+                      t('monitor.inspector.groups.fallbackTier')
+                    }}</span>
+                  </small>
+                  <small v-if="group.entry_cooldown_until_ms !== null">
+                    {{ t('monitor.inspector.groups.entryCooldown') }}
+                    <AppDateTime
+                      :instant="group.entry_cooldown_until_ms"
+                      :locale="locale"
+                    />
+                  </small>
                 </div>
                 <div class="route-candidate__measure" role="cell">
                   <span class="route-cell-label">{{
@@ -796,8 +808,11 @@ onBeforeUnmount(() => {
                   <span class="route-cell-label">{{
                     t('monitor.inspector.groups.columns.weight')
                   }}</span>
-                  <strong>{{ formattedInteger(groupEffectiveWeight(group)) }}</strong>
-                  <small>{{ t('monitor.inspector.groups.currentTotal') }}</small>
+                  <strong>{{ formattedInteger(group.entry_weight) }}</strong>
+                  <small>
+                    {{ formattedInteger(groupEffectiveWeight(group)) }}
+                    {{ t('monitor.inspector.groups.currentTotal') }}
+                  </small>
                 </div>
                 <div class="route-candidate__share" role="cell">
                   <span class="route-cell-label">{{

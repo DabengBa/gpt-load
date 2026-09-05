@@ -498,7 +498,11 @@ function connectionTypeBadgeClass(type: ConnectionType): string {
 
               <div class="ledger-record-list__cell model-count" role="cell">
                 <span class="mobile-label">{{ t('groups.collection.columns.models') }}</span>
-                <strong>{{ n(group.model_count) }}</strong>
+                <strong>
+                  {{ n(group.client_model_count) }}
+                  <span class="model-count__divider">/</span>
+                  {{ n(group.model_count) }}
+                </strong>
               </div>
 
               <div class="ledger-record-list__cell credential-health" role="cell">
@@ -681,6 +685,11 @@ function connectionTypeBadgeClass(type: ConnectionType): string {
   font-size: 16px;
   font-weight: 600;
   line-height: 1.25;
+}
+
+.model-count__divider {
+  color: var(--color-text-faint);
+  font-weight: 400;
 }
 
 .credential-health {

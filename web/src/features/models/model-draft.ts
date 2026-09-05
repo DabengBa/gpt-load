@@ -39,6 +39,13 @@ export interface ModelAliasEditorLabels {
   empty: string
   noMatches: string
   nameConflict: (name: string) => string
+  weight: string
+  priority: string
+  priorityFallback: string
+  weightDisabled: string
+  invalidWeight: string
+  invalidPriority: string
+  zeroShare: string
 }
 
 export interface ModelDiscoveryDrawerLabels {
@@ -124,7 +131,13 @@ export function normalizeModel(model: GroupModelUpdateDto): GroupModelUpdateDto 
   const id = model.id.trim()
   if (!id) return undefined
   const alias = model.alias_enabled ? model.alias.trim() : ''
-  return { id, alias, alias_enabled: model.alias_enabled }
+  return {
+    id,
+    alias,
+    alias_enabled: model.alias_enabled,
+    weight: model.weight ?? null,
+    priority: model.priority ?? null,
+  }
 }
 
 export function clientModel(model: GroupModelUpdateDto): string {
@@ -136,15 +149,19 @@ export function clientModel(model: GroupModelUpdateDto): string {
 export function findModelNameConflicts(
   models: readonly GroupModelUpdateDto[],
 ): ModelNameConflict[] {
-  const byClientModel = new Map<string, number[]>()
+  // 同一对外名可映射多个上游模型（设计 §3）；仅当同一 (对外名, 上游模型) 重复时冲突。
+  const byPair = new Map<string, number[]>()
+  const names = new Map<string, string>()
   for (const [index, model] of models.entries()) {
     const name = clientModel(model)
     if (!name) continue
-    byClientModel.set(name, [...(byClientModel.get(name) ?? []), index])
+    const pair = `${name}\u0000${model.id.trim()}`
+    byPair.set(pair, [...(byPair.get(pair) ?? []), index])
+    names.set(pair, name)
   }
-  return [...byClientModel.entries()]
+  return [...byPair.entries()]
     .filter(([, indexes]) => indexes.length > 1)
-    .map(([client_model, indexes]) => ({ client_model, indexes }))
+    .map(([pair, indexes]) => ({ client_model: names.get(pair) ?? '', indexes }))
 }
 
 export function indexesWithConflicts(conflicts: readonly ModelNameConflict[]): Set<number> {
@@ -161,6 +178,65 @@ export function indexesWithEmptyIDs(models: readonly GroupModelUpdateDto[]): Set
   return new Set(models.flatMap((model, index) => (!model.id.trim() ? [index] : [])))
 }
 
+/** 条目权重上限与后端 state.MaxWeight 对齐。 */
+export const MODEL_ROUTE_MAX_WEIGHT = 100
+
+function isInvalidRouteCount(value: number | null | undefined, minimum: number): boolean {
+  return value !== null && value !== undefined && (!Number.isSafeInteger(value) || value < minimum)
+}
+
+export function indexesWithInvalidWeights(models: readonly GroupModelUpdateDto[]): Set<number> {
+  return new Set(
+    models.flatMap((model, index) =>
+      isInvalidRouteCount(model.weight, 0) || (model.weight ?? 0) > MODEL_ROUTE_MAX_WEIGHT
+        ? [index]
+        : [],
+    ),
+  )
+}
+
+export function indexesWithInvalidPriorities(models: readonly GroupModelUpdateDto[]): Set<number> {
+  return new Set(
+    models.flatMap((model, index) => (isInvalidRouteCount(model.priority, 1) ? [index] : [])),
+  )
+}
+
+export function effectiveEntryWeight(model: GroupModelUpdateDto): number {
+  return model.weight ?? 1
+}
+
+/**
+ * 每个条目在其对外名分组内的占比（null 权重按 1 参与，设计 §3）。
+ * 权重合计为 0 的分组内所有条目占比均为 0。
+ */
+export function routeEntryShares(models: readonly GroupModelUpdateDto[]): number[] {
+  const totals = new Map<string, number>()
+  for (const model of models) {
+    const name = clientModel(model)
+    if (!name) continue
+    totals.set(name, (totals.get(name) ?? 0) + effectiveEntryWeight(model))
+  }
+  return models.map((model) => {
+    const name = clientModel(model)
+    const total = name ? (totals.get(name) ?? 0) : 0
+    return total > 0 ? effectiveEntryWeight(model) / total : 0
+  })
+}
+
+/** 同一对外名下条目权重合计为 0（该对外模型完全不可分流，设计 §3 V2）。 */
+export function indexesWithZeroShare(models: readonly GroupModelUpdateDto[]): Set<number> {
+  const totals = new Map<string, number>()
+  for (const model of models) {
+    const name = clientModel(model)
+    if (!name) continue
+    totals.set(name, (totals.get(name) ?? 0) + effectiveEntryWeight(model))
+  }
+  const zeroModels = new Set([...totals.entries()].filter(([, total]) => total === 0).map(([name]) => name))
+  return new Set(
+    models.flatMap((model, index) => (zeroModels.has(clientModel(model)) ? [index] : [])),
+  )
+}
+
 export function modelDraftValidity(
   models: readonly GroupModelUpdateDto[],
   conflicts: readonly ModelNameConflict[] = findModelNameConflicts(models),
@@ -168,16 +244,32 @@ export function modelDraftValidity(
   conflictIndexes: Set<number>
   emptyIDIndexes: Set<number>
   emptyAliasIndexes: Set<number>
+  invalidWeightIndexes: Set<number>
+  invalidPriorityIndexes: Set<number>
+  zeroShareIndexes: Set<number>
   invalidIndexes: Set<number>
 } {
   const conflictIndexes = indexesWithConflicts(conflicts)
   const emptyIDIndexes = indexesWithEmptyIDs(models)
   const emptyAliasIndexes = indexesWithEmptyAliases(models)
+  const invalidWeightIndexes = indexesWithInvalidWeights(models)
+  const invalidPriorityIndexes = indexesWithInvalidPriorities(models)
+  const zeroShareIndexes = indexesWithZeroShare(models)
   return {
     conflictIndexes,
     emptyIDIndexes,
     emptyAliasIndexes,
-    invalidIndexes: new Set([...conflictIndexes, ...emptyIDIndexes, ...emptyAliasIndexes]),
+    invalidWeightIndexes,
+    invalidPriorityIndexes,
+    zeroShareIndexes,
+    invalidIndexes: new Set([
+      ...conflictIndexes,
+      ...emptyIDIndexes,
+      ...emptyAliasIndexes,
+      ...invalidWeightIndexes,
+      ...invalidPriorityIndexes,
+      ...zeroShareIndexes,
+    ]),
   }
 }
 

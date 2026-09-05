@@ -33,6 +33,9 @@ import ModelAliasEditor from '@/features/models/ModelAliasEditor.vue'
 import ModelDiscoveryDrawer from '@/features/models/ModelDiscoveryDrawer.vue'
 import {
   appendSelectedCandidates,
+  indexesWithInvalidPriorities,
+  indexesWithInvalidWeights,
+  indexesWithZeroShare,
   mergeCandidateMetadata,
   readModelNameConflicts,
   type ModelAliasEditorLabels,
@@ -118,12 +121,18 @@ const emptyAliasIndexes = computed(
 const emptyIDIndexes = computed(
   () => new Set(draft.value.flatMap((item, index) => (!item.id.trim() ? [index] : []))),
 )
+const invalidWeightIndexes = computed(() => indexesWithInvalidWeights(draft.value))
+const invalidPriorityIndexes = computed(() => indexesWithInvalidPriorities(draft.value))
+const zeroShareIndexes = computed(() => indexesWithZeroShare(draft.value))
 const invalidRowCount = computed(
   () =>
     new Set([
       ...conflicts.value.flatMap((item) => item.indexes),
       ...emptyAliasIndexes.value,
       ...emptyIDIndexes.value,
+      ...invalidWeightIndexes.value,
+      ...invalidPriorityIndexes.value,
+      ...zeroShareIndexes.value,
     ]).size,
 )
 const validationSummary = computed(() =>
@@ -131,6 +140,9 @@ const validationSummary = computed(() =>
     conflicts.value.length ? t('group.modelEditor.conflictSummary') : '',
     emptyIDIndexes.value.size ? t('group.modelEditor.manualIdRequired') : '',
     emptyAliasIndexes.value.size ? t('group.modelEditor.emptyAliasSummary') : '',
+    zeroShareIndexes.value.size ? t('group.modelEditor.zeroShareSummary') : '',
+    invalidWeightIndexes.value.size ? t('group.modelEditor.invalidWeight') : '',
+    invalidPriorityIndexes.value.size ? t('group.modelEditor.invalidPriority') : '',
   ]
     .filter(Boolean)
     .join(' · '),
@@ -149,7 +161,10 @@ const canSave = computed(
     pending.value === null &&
     conflicts.value.length === 0 &&
     emptyIDIndexes.value.size === 0 &&
-    emptyAliasIndexes.value.size === 0,
+    emptyAliasIndexes.value.size === 0 &&
+    invalidWeightIndexes.value.size === 0 &&
+    invalidPriorityIndexes.value.size === 0 &&
+    zeroShareIndexes.value.size === 0,
 )
 const pendingPricingCount = computed(
   () => draft.value.filter((item) => item.pricing_status === 'pending').length,
@@ -195,6 +210,13 @@ const aliasEditorLabels = computed<ModelAliasEditorLabels>(() => ({
   empty: t('group.modelEditor.empty'),
   noMatches: t('group.modelEditor.noMatches'),
   nameConflict: (name) => t('group.modelEditor.nameConflict', { name }),
+  weight: t('group.modelEditor.weight'),
+  priority: t('group.modelEditor.priority'),
+  priorityFallback: t('group.modelEditor.priorityFallback'),
+  weightDisabled: t('group.modelEditor.weightDisabled'),
+  invalidWeight: t('group.modelEditor.invalidWeight'),
+  invalidPriority: t('group.modelEditor.invalidPriority'),
+  zeroShare: t('group.modelEditor.zeroShareSummary'),
 }))
 const discoveryDrawerLabels = computed<ModelDiscoveryDrawerLabels>(() => ({
   title: t('group.modelEditor.drawer.title'),
@@ -334,6 +356,8 @@ function createManualRow(): ModelDraftItem {
     sources: [],
     alias: '',
     alias_enabled: false,
+    weight: null,
+    priority: null,
     pricing_status: 'pending',
     editable_id: true,
     key: nextKey++,
@@ -388,6 +412,8 @@ function confirmCandidates(selectedCandidates: ModelCandidate[]): void {
     sources: [...candidate.sources],
     alias: '',
     alias_enabled: false,
+    weight: null,
+    priority: null,
     pricing_status: candidate.pricing_status,
     key: nextKey++,
   }))

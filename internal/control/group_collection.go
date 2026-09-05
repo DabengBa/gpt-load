@@ -47,6 +47,7 @@ type GroupCollectionItem struct {
 	Params           json.RawMessage                 `json:"params"`
 	Status           GroupCollectionStatus           `json:"status"`
 	ModelCount       int64                           `json:"model_count"`
+	ClientModelCount int64                           `json:"client_model_count"`
 	CredentialCounts GroupCollectionCredentialCounts `json:"credential_counts"`
 }
 
@@ -351,12 +352,25 @@ func mapGroupCollectionRecords(
 		}
 
 		catalog := snapshot.GroupCatalog[group.ID]
+		// 设计 §8.5:分组列表同时给出对外模型数与路由条目数;同一对外名映射到
+		// 多个上游模型时两者不同。
+		clientModels := make(map[string]struct{}, len(groupModels))
+		for _, model := range groupModels {
+			name := model.ID
+			if model.Alias != "" {
+				name = model.Alias
+			}
+			clientModels[name] = struct{}{}
+		}
 		record := groupCollectionRecord{
 			GroupCollectionItem: GroupCollectionItem{
-				ID: group.ID, Name: group.Name, ChannelID: channelID,
-				ConnectionType: normalizeGroupConnectionType(group.ConnectionType),
-				Params:         append(json.RawMessage(nil), params...),
-				ModelCount:     int64(len(groupModels)),
+				ID:               group.ID,
+				Name:             group.Name,
+				ChannelID:        channelID,
+				ConnectionType:   normalizeGroupConnectionType(group.ConnectionType),
+				Params:           append(json.RawMessage(nil), params...),
+				ModelCount:       int64(len(groupModels)),
+				ClientModelCount: int64(len(clientModels)),
 			},
 			CreatedAtMS: group.CreatedAtMS,
 		}

@@ -9,6 +9,7 @@ import {
   projectBoolean,
   projectEpochMilliseconds,
   projectEnum,
+  projectFiniteNumber,
   projectNullableEpochMilliseconds,
   projectRecord,
   projectSafeInteger,
@@ -36,6 +37,10 @@ export type RouteInspectReasonCode =
   | 'credential_weight_zero'
   | 'credential_not_allowed'
   | 'no_available_credential'
+  | 'entry_blacklisted'
+  | 'entry_cooldown'
+  | 'entry_weight_zero'
+  | 'tier_demoted'
 
 export interface RouteInspectRequest {
   protocol: AccessProtocol
@@ -78,6 +83,11 @@ export interface RouteInspectGroupDto {
   route_requirement_satisfied: boolean
   upstream_model: string | null
   weight_manual: number | null
+  entry_weight: number
+  priority: number
+  fallback: boolean
+  effective_share: number
+  entry_cooldown_until_ms: number | null
   included: boolean
   routable: boolean
   reason_code: RouteInspectReasonCode | null
@@ -140,6 +150,10 @@ const reasonCodes = [
   'credential_weight_zero',
   'credential_not_allowed',
   'no_available_credential',
+  'entry_blacklisted',
+  'entry_cooldown',
+  'entry_weight_zero',
+  'tier_demoted',
 ] as const
 
 function invalidResponse(): never {
@@ -196,6 +210,11 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     'route_requirement_satisfied',
     'upstream_model',
     'weight_manual',
+    'entry_weight',
+    'priority',
+    'fallback',
+    'effective_share',
+    'entry_cooldown_until_ms',
     'included',
     'routable',
     'reason_code',
@@ -209,6 +228,11 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     route_requirement_satisfied: projectBoolean(record.route_requirement_satisfied),
     upstream_model: projectNullableNonBlankString(record.upstream_model),
     weight_manual: projectNullableWeight(record.weight_manual),
+    entry_weight: projectSafeInteger(record.entry_weight, { minimum: 0 }),
+    priority: projectSafeInteger(record.priority, { minimum: 1 }),
+    fallback: projectBoolean(record.fallback),
+    effective_share: projectFiniteNumber(record.effective_share, { minimum: 0, maximum: 1 }),
+    entry_cooldown_until_ms: projectNullableEpochMilliseconds(record.entry_cooldown_until_ms),
     included: projectBoolean(record.included),
     routable: projectBoolean(record.routable),
     reason_code: projectReason(record.reason_code),

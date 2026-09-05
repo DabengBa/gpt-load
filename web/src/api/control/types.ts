@@ -58,6 +58,7 @@ export interface GroupCollectionItemDto {
   params: ChannelParamsDto
   status: GroupCollectionStatus
   model_count: number
+  client_model_count: number
   credential_counts: CredentialCounts
 }
 
@@ -132,6 +133,8 @@ export interface GroupModelItemDto {
   alias: string
   alias_enabled: boolean
   client_model: string
+  weight: number | null
+  priority: number | null
   pricing_status: ModelPricingStatus
 }
 
