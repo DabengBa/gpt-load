@@ -387,6 +387,64 @@ func TestUsageCaptureStreamEventDoesNotCloneBody(t *testing.T) {
 	}
 }
 
+func TestExecutionForwarderClassifiesFailureScopeFromMinimalProviderEvidence(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		code       string
+		wantHint   execution.FailureHint
+		wantScope  execution.ErrorScope
+	}{
+		{
+			name:       "credential unauthorized",
+			statusCode: http.StatusUnauthorized,
+			wantHint:   execution.FailureHintInvalidCredential,
+			wantScope:  execution.ErrorScopeCredential,
+		},
+		{
+			name:       "bare not found stays unscoped",
+			statusCode: http.StatusNotFound,
+		},
+		{
+			name:       "model not found marker",
+			statusCode: http.StatusNotFound,
+			code:       "model_not_found",
+			wantHint:   execution.FailureHintModelUnavailable,
+			wantScope:  execution.ErrorScopeModel,
+		},
+		{
+			name:       "generic forbidden",
+			statusCode: http.StatusForbidden,
+			code:       "permission_denied",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			executor := fakeExecutionExecutor{unary: func(context.Context, execution.AttemptSpec) execution.AttemptResult {
+				return execution.AttemptResult{
+					DispatchState:   execution.DispatchMaybeSent,
+					ResponseStarted: true,
+					StatusCode:      test.statusCode,
+					Header:          http.Header{"Content-Type": {"application/json"}},
+					Body:            []byte(`{"error":{"code":"` + test.code + `"}}`),
+					Error: &execution.ErrorEvidence{
+						Kind:    execution.ErrorKindHTTP,
+						Code:    test.code,
+						Summary: "provider failure",
+					},
+				}
+			}}
+			result := NewExecutionForwarder(executor).Forward(context.Background(), executionForwardInput())
+			if result.ExecutionError == nil {
+				t.Fatalf("Forward() missing execution evidence: %#v", result)
+			}
+			if result.ExecutionError.Hint != test.wantHint || result.ExecutionError.ScopeHint != test.wantScope {
+				t.Fatalf("Forward() evidence = %#v, want hint=%q scope=%q", result.ExecutionError, test.wantHint, test.wantScope)
+			}
+		})
+	}
+}
+
 func TestExecutionForwarderKeepsHTTPFailureAsUncommittedResponse(t *testing.T) {
 	t.Parallel()
 

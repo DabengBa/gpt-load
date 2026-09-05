@@ -85,6 +85,12 @@ type runtimeCredentialRegistry interface {
 	ClearFailure(credentialID uint) bool
 }
 
+type entryRuntimeRegistry interface {
+	SetEntryCooldownForModel(groupID uint, upstreamModelID string, until time.Time) (exists bool, changed bool)
+	IncrEntryFailureForModel(groupID uint, upstreamModelID string) (int, bool)
+	SetEntryBlacklistedForModel(groupID uint, upstreamModelID string) (exists bool, changed bool)
+}
+
 type Handler struct {
 	manager             *state.Manager
 	channels            *channel.Registry
@@ -259,6 +265,51 @@ func (handler *Handler) applyGroupDecisionEffect(
 	statusCode int,
 	attemptNow time.Time,
 ) {
+	handler.applyGroupDecisionEffectForEntry(
+		group,
+		credentialID,
+		credentialVersion,
+		"",
+		decision,
+		statusCode,
+		attemptNow,
+	)
+}
+
+func (handler *Handler) applyGroupDecisionEffectForEntry(
+	group state.GroupView,
+	credentialID uint,
+	credentialVersion uint64,
+	upstreamModelID string,
+	decision health.Decision,
+	statusCode int,
+	attemptNow time.Time,
+) {
+	if decision.Scope == execution.ErrorScopeModel && strings.TrimSpace(upstreamModelID) != "" {
+		if registry, ok := handler.registry.(entryRuntimeRegistry); ok {
+			mutate := func() {
+				if decision.Effect == health.EffectCooldownCredential && !decision.CooldownUntil.IsZero() {
+					registry.SetEntryCooldownForModel(group.ID, upstreamModelID, decision.CooldownUntil)
+				}
+				if decision.Effect != health.EffectRecordCredentialFailure {
+					return
+				}
+				count, exists := registry.IncrEntryFailureForModel(group.ID, upstreamModelID)
+				if !exists {
+					return
+				}
+				if group.BlacklistThreshold > 0 && count >= group.BlacklistThreshold {
+					registry.SetEntryBlacklistedForModel(group.ID, upstreamModelID)
+				}
+			}
+			if handler.mutations == nil {
+				mutate()
+			} else {
+				handler.mutations.Do(credentialID, mutate)
+			}
+			return
+		}
+	}
 	handler.applyDecisionEffectWithBlacklistPolicy(
 		credentialID,
 		credentialVersion,
@@ -843,7 +894,7 @@ func (handler *Handler) executeAttempts(
 			selection, nil, result, decision, attemptStarted, attemptCompleted,
 		)
 		lastAttemptIndex = recordedAttempt
-		handler.applyGroupDecisionEffect(selection.Group, selection.CredentialID, 0, decision, 0, attemptNow)
+		handler.applyGroupDecisionEffectForEntry(selection.Group, selection.CredentialID, 0, optionalModelValue(selection.UpstreamModelID), decision, 0, attemptNow)
 		if decision.Effect == health.EffectSkipGroup {
 			iterator.SkipGroup(selection.GroupID)
 		}
@@ -1064,10 +1115,11 @@ func (handler *Handler) executeAttempts(
 				)
 				recorder.completeStream(result, optionalModelValue(selection.UpstreamModelID), recordedAttempt)
 			}
-			handler.applyGroupDecisionEffect(
+			handler.applyGroupDecisionEffectForEntry(
 				selection.Group,
 				selection.CredentialID,
 				0,
+				optionalModelValue(selection.UpstreamModelID),
 				decision,
 				result.StatusCode,
 				attemptNow,
@@ -1102,10 +1154,11 @@ func (handler *Handler) executeAttempts(
 			selection, normalizedCredential.secrets, result, decision, attemptStarted, attemptCompleted,
 		)
 		lastAttemptIndex = recordedAttempt
-		handler.applyGroupDecisionEffect(
+		handler.applyGroupDecisionEffectForEntry(
 			selection.Group,
 			selection.CredentialID,
 			refreshCooldownCredentialVersion(result, ref.Version),
+			optionalModelValue(selection.UpstreamModelID),
 			decision,
 			result.StatusCode,
 			attemptNow,

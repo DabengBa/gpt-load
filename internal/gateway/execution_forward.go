@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	platformheader "gpt-load/internal/platform/httpheader"
@@ -47,6 +48,8 @@ func (forwarder *ExecutionForwarder) Forward(
 		return invalidExecutionAttemptResult(executionResult)
 	}
 	result := upstreamFromExecutionResult(ctx, input, executionResult)
+	result = classifyGatewayFailureEvidence(result)
+
 	result = forwarder.prepareBufferedResult(input, result)
 	if (input.ClientProtocol == protocol.OpenAIImages ||
 		input.ClientProtocol == protocol.OpenAIEmbeddings) && input.ObserveUsage &&
@@ -305,6 +308,7 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	}
 	capturedUsage := streamEvents.finalizeUsage()
 	result := upstreamFromExecutionStreamResult(ctx, input, terminal, streamUsage)
+	result = classifyGatewayFailureEvidence(result)
 	result.Usage = preferCapturedStreamUsage(result.Usage, capturedUsage)
 	result.Committed = committed
 	if len(errorBody) > 0 {
@@ -345,11 +349,61 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	return result
 }
 
+func classifyGatewayFailureEvidence(result UpstreamResult) UpstreamResult {
+	if result.ExecutionError == nil {
+		return result
+	}
+	evidence := result.ExecutionError.Clone()
+	statusCode := result.StatusCode
+	if statusCode == 0 {
+		statusCode = evidence.StatusCode
+	}
+	if evidence.Hint == "" && !(statusCode == http.StatusNotFound && !hasExplicitModelFailureMarker(evidence.Type, evidence.Code, evidence.Summary)) {
+		evidence.Hint = channel.FailureHint(
+			statusCode,
+			evidence.Type,
+			evidence.Code,
+			evidence.Summary,
+		)
+	}
+	if evidence.ScopeHint == "" {
+		if statusCode != http.StatusNotFound || hasExplicitModelFailureMarker(evidence.Type, evidence.Code, evidence.Summary) {
+			switch channel.ClassifyFailure(statusCode, evidence.Type, evidence.Code, evidence.Summary) {
+			case channel.FailureClassCredential:
+				evidence.ScopeHint = execution.ErrorScopeCredential
+			case channel.FailureClassModel:
+				evidence.ScopeHint = execution.ErrorScopeModel
+			}
+		}
+	}
+	evidence.StatusCode = statusCode
+	result.ExecutionError = &evidence
+	if result.ErrorSummary == "" {
+		result.ErrorSummary = evidence.Summary
+	}
+	return result
+}
+
+func hasExplicitModelFailureMarker(values ...string) bool {
+	value := strings.ToLower(strings.Join(values, " "))
+	for _, marker := range []string{
+		"model_not_found", "model not found", "model_not_available",
+		"model unavailable", "deployment_not_found", "unsupported_model",
+		"model_access_denied", "model permission denied", "model not authorized",
+	} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func invalidExecutionStreamResult(
 	result execution.StreamResult,
 	ready *execution.StreamEvent,
 	committed bool,
 ) execution.StreamResult {
+
 	dispatchState := execution.DispatchNotSent
 	if result.DispatchState == execution.DispatchLocal && !committed && ready == nil {
 		dispatchState = execution.DispatchLocal
@@ -515,37 +569,18 @@ func sanitizeStreamErrorEvidenceValue(
 }
 
 func streamErrorFailureHint(statusCode int, values ...string) execution.FailureHint {
-	markers := strings.ToLower(strings.Join(values, " "))
-	switch {
-	case statusCode == http.StatusUnauthorized:
-		return execution.FailureHintInvalidCredential
-	case containsStreamErrorMarker(markers,
-		"model_not_found", "model not found", "model_not_available",
-		"model unavailable", "deployment_not_found", "unsupported_model"):
-		return execution.FailureHintModelUnavailable
-	case statusCode == http.StatusTooManyRequests || containsStreamErrorMarker(markers,
-		"rate_limit", "rate limit", "too_many_requests", "quota_exceeded",
-		"resource_exhausted", "throttl"):
-		return execution.FailureHintRateLimited
-	case containsStreamErrorMarker(markers,
-		"invalid_api_key", "api_key_invalid", "authentication_error",
-		"authentication failed",
-		"invalid credential", "api key not valid"):
-		return execution.FailureHintInvalidCredential
-	case statusCode >= http.StatusInternalServerError && statusCode <= 599:
-		return execution.FailureHintHostError
-	default:
+	// A bare 404 carries no model evidence; upgrading it would cool the whole
+	// credential for an unknown routing failure (run finding F-16).
+	if statusCode == http.StatusNotFound && !hasExplicitModelFailureMarker(values...) {
 		return ""
 	}
-}
-
-func containsStreamErrorMarker(value string, markers ...string) bool {
-	for _, marker := range markers {
-		if strings.Contains(value, marker) {
-			return true
-		}
+	if hint := channel.FailureHint(statusCode, values...); hint != "" {
+		return hint
 	}
-	return false
+	if statusCode >= http.StatusInternalServerError && statusCode <= 599 {
+		return execution.FailureHintHostError
+	}
+	return ""
 }
 
 func (forwarder *ExecutionForwarder) prepareBufferedResult(
