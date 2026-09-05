@@ -32,7 +32,7 @@ import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { formatISOInstant, formatInteger, formatLocalInstant, formatPercent } from '@/lib/format'
+import { formatISOInstant, formatInteger, formatLocalInstant } from '@/lib/format'
 
 import { isValidMonitorText, normalizeMonitorText } from './filter-validation'
 import InspectorForm from './InspectorForm.vue'
@@ -489,7 +489,10 @@ function groupShare(group: RouteInspectGroupDto): number {
 
 function groupShareLabel(group: RouteInspectGroupDto): string {
   if (group.route_mode !== activeRouteMode.value) return t('monitor.inspector.groups.standbyShare')
-  return formatPercent(group.effective_share, 1, locale.value)
+  // effective_share 是 0–1 的小数占比;formatPercent 仅接受整数计数,此处直接按百分比格式化。
+  return new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 1 }).format(
+    group.effective_share,
+  )
 }
 
 function candidateCredentialSummary(group: RouteInspectGroupDto): string {

@@ -268,6 +268,13 @@ export default {
       emptyAliasSummary: '有効化されたエイリアスに公開モデル名がありません',
       locateFirstInvalid: '最初の問題へ移動',
       nameConflict: '公開モデル名「{name}」が重複しています',
+      weight: '重み',
+      priority: '優先度',
+      priorityFallback: 'フォールバック',
+      weightDisabled: '振り分け無効',
+      invalidWeight: '重みは 0～100 の整数で入力してください',
+      invalidPriority: '優先度は 1 以上の整数で入力してください',
+      zeroShareSummary: '同じクライアント名の重み合計が 0 のため、このモデルへは振り分けられません',
       sources: {
         catalog: 'カタログ',
         live: '上流から取得',

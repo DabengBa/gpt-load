@@ -271,6 +271,13 @@ export default {
       emptyAliasSummary: 'An enabled alias has no public model name',
       locateFirstInvalid: 'Go to first issue',
       nameConflict: 'Public model name “{name}” is duplicated',
+      weight: 'Weight',
+      priority: 'Priority',
+      priorityFallback: 'Fallback',
+      weightDisabled: 'Splitting disabled',
+      invalidWeight: 'Weight must be an integer between 0 and 100 before saving',
+      invalidPriority: 'Priority must be an integer of at least 1 before saving',
+      zeroShareSummary: 'Entries under one client name sum to weight 0; the model cannot receive traffic',
       sources: {
         catalog: 'Catalog',
         live: 'Live discovery',
