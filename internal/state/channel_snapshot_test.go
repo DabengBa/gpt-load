@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -169,23 +170,52 @@ func TestCompileIndexesAllNativeResponsesExtensions(t *testing.T) {
 	}
 }
 
-func TestCompileOrdersNativeTargetsBeforeConvertedTargets(t *testing.T) {
+// TestCompileOrdersRouteTargetsByPriorityGroupAndUpstream locks the snapshot
+// ordering rule of design §4.3: targets sharing one external model name sort
+// by (Priority, GroupID, UpstreamModelID) ascending. Route mode (native vs
+// converted) is deliberately not a sort key, so a converted target with the
+// lower group ID precedes native targets at equal priority, and a higher
+// priority value demotes a target behind lower-priority groups.
+func TestCompileOrdersRouteTargetsByPriorityGroupAndUpstream(t *testing.T) {
 	t.Parallel()
 
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 1, ChannelID: channel.Anthropic, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "converted", Alias: "public"}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "native", Alias: "public"}}, Enabled: true},
+			{ConnectionType: "api_key", ID: 1, ChannelID: channel.Anthropic, Params: json.RawMessage(`{}`), Models: []ModelConfig{
+				{ID: "fallback", Alias: "public"},
+				{ID: "converted", Alias: "public", Priority: intPointer(2)},
+			}, Enabled: true},
+			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{
+				{ID: "zulu", Alias: "public"},
+				{ID: "alpha", Alias: "public"},
+			}, Enabled: true},
 		},
 	})
 	if err != nil {
 		t.Fatalf("Compile() error = %v", err)
 	}
 	targets := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]["public"]
-	if len(targets) != 2 || targets[0].GroupID != 2 || targets[0].Mode != channel.RouteNative ||
-		targets[1].GroupID != 1 || targets[1].Mode != channel.RouteConverted {
-		t.Fatalf("targets = %#v, want native before converted", targets)
+	want := []RouteTarget{
+		{GroupID: 1, UpstreamModelID: "fallback", Mode: channel.RouteConverted, Priority: 1},
+		{GroupID: 2, UpstreamModelID: "alpha", Mode: channel.RouteNative, Priority: 1},
+		{GroupID: 2, UpstreamModelID: "zulu", Mode: channel.RouteNative, Priority: 1},
+		{GroupID: 1, UpstreamModelID: "converted", Mode: channel.RouteConverted, Priority: 2},
+	}
+	if len(targets) != len(want) {
+		t.Fatalf("targets = %#v, want %d entries", targets, len(want))
+	}
+	for i, expected := range want {
+		got := targets[i]
+		if got.GroupID != expected.GroupID || got.UpstreamModelID != expected.UpstreamModelID ||
+			got.Mode != expected.Mode || got.Priority != expected.Priority {
+			t.Fatalf("targets[%d] = %#v, want group %d upstream %q mode %q priority %d",
+				i, got, expected.GroupID, expected.UpstreamModelID, expected.Mode, expected.Priority)
+		}
+	}
+	catalog := snapshot.ExecutionRouteCatalog[protocol.OpenAICompletions][execution.OperationChatCompletion]["public"]
+	if !reflect.DeepEqual(targets, catalog) {
+		t.Fatalf("catalog targets diverge from candidates: %#v vs %#v", catalog, targets)
 	}
 }
 
