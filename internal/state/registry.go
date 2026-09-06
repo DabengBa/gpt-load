@@ -69,12 +69,14 @@ type CredentialRef struct {
 	FailureGeneration  uint64
 }
 
-// RouteEntryKey identifies one in-memory route-entry health state. It is kept
-// separate from CredentialEntry so entry health can never be persisted as part
-// of credential configuration.
+// RouteEntryKey identifies one in-memory route-entry health state by its
+// route-entry identity (design §2: real entry_id or the process-local derived
+// identity for entries that were never backfilled). It is kept separate from
+// CredentialEntry so entry health can never be persisted as part of credential
+// configuration.
 type RouteEntryKey struct {
-	GroupID         uint
-	UpstreamModelID string
+	GroupID uint
+	EntryID string
 }
 
 // EntryRuntimeState describes the current availability of one route entry.
@@ -727,8 +729,8 @@ func (r *CredentialRegistry) CollectCredentialCandidates(groupIDs []uint, exclud
 
 // EntryRuntime returns one detached, secret-free route-entry health view.
 func (r *CredentialRegistry) EntryRuntime(key RouteEntryKey, now time.Time) (EntryRuntimeView, bool) {
-	key.UpstreamModelID = strings.TrimSpace(key.UpstreamModelID)
-	if key.GroupID == 0 || key.UpstreamModelID == "" {
+	key.EntryID = strings.TrimSpace(key.EntryID)
+	if key.GroupID == 0 || key.EntryID == "" {
 		return EntryRuntimeView{}, false
 	}
 	r.mu.RLock()
@@ -766,7 +768,7 @@ func (r *CredentialRegistry) EntryRuntimeSnapshot() []EntryRuntimeView {
 		if views[i].Key.GroupID != views[j].Key.GroupID {
 			return views[i].Key.GroupID < views[j].Key.GroupID
 		}
-		return views[i].Key.UpstreamModelID < views[j].Key.UpstreamModelID
+		return views[i].Key.EntryID < views[j].Key.EntryID
 	})
 	return views
 }
@@ -789,16 +791,16 @@ func (r *CredentialRegistry) SetEntryCooldown(key RouteEntryKey, until time.Time
 }
 
 func (r *CredentialRegistry) SetEntryCooldownWithChange(key RouteEntryKey, until time.Time) (bool, bool) {
-	return r.SetEntryCooldownForModel(key.GroupID, key.UpstreamModelID, until)
+	return r.SetEntryCooldownForEntry(key.GroupID, key.EntryID, until)
 }
 
-func (r *CredentialRegistry) SetEntryCooldownForModel(
+func (r *CredentialRegistry) SetEntryCooldownForEntry(
 	groupID uint,
-	upstreamModelID string,
+	entryID string,
 	until time.Time,
 ) (bool, bool) {
-	key := RouteEntryKey{GroupID: groupID, UpstreamModelID: strings.TrimSpace(upstreamModelID)}
-	if key.GroupID == 0 || key.UpstreamModelID == "" || until.IsZero() {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" || until.IsZero() {
 		return false, false
 	}
 	r.mu.Lock()
@@ -817,12 +819,12 @@ func (r *CredentialRegistry) SetEntryBlacklisted(key RouteEntryKey) bool {
 }
 
 func (r *CredentialRegistry) SetEntryBlacklistedWithChange(key RouteEntryKey) (bool, bool) {
-	return r.SetEntryBlacklistedForModel(key.GroupID, key.UpstreamModelID)
+	return r.SetEntryBlacklistedForEntry(key.GroupID, key.EntryID)
 }
 
-func (r *CredentialRegistry) SetEntryBlacklistedForModel(groupID uint, upstreamModelID string) (bool, bool) {
-	key := RouteEntryKey{GroupID: groupID, UpstreamModelID: strings.TrimSpace(upstreamModelID)}
-	if key.GroupID == 0 || key.UpstreamModelID == "" {
+func (r *CredentialRegistry) SetEntryBlacklistedForEntry(groupID uint, entryID string) (bool, bool) {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
 		return false, false
 	}
 	r.mu.Lock()
@@ -837,20 +839,20 @@ func (r *CredentialRegistry) SetEntryBlacklistedForModel(groupID uint, upstreamM
 }
 
 func (r *CredentialRegistry) IncrEntryFailure(key RouteEntryKey) (int, bool) {
-	return r.IncrEntryFailureForModel(key.GroupID, key.UpstreamModelID)
+	return r.IncrEntryFailureForEntry(key.GroupID, key.EntryID)
 }
 
 func (r *CredentialRegistry) ClearEntryFailure(key RouteEntryKey) bool {
-	return r.ClearEntryFailureForModel(key.GroupID, key.UpstreamModelID)
+	return r.ClearEntryFailureForEntry(key.GroupID, key.EntryID)
 }
 
 func (r *CredentialRegistry) RecoverEntry(key RouteEntryKey) bool {
-	return r.RecoverEntryForModel(key.GroupID, key.UpstreamModelID)
+	return r.RecoverEntryForEntry(key.GroupID, key.EntryID)
 }
 
-func (r *CredentialRegistry) IncrEntryFailureForModel(groupID uint, upstreamModelID string) (int, bool) {
-	key := RouteEntryKey{GroupID: groupID, UpstreamModelID: strings.TrimSpace(upstreamModelID)}
-	if key.GroupID == 0 || key.UpstreamModelID == "" {
+func (r *CredentialRegistry) IncrEntryFailureForEntry(groupID uint, entryID string) (int, bool) {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
 		return 0, false
 	}
 	r.mu.Lock()
@@ -861,9 +863,9 @@ func (r *CredentialRegistry) IncrEntryFailureForModel(groupID uint, upstreamMode
 	return state.FailureCount, true
 }
 
-func (r *CredentialRegistry) ClearEntryFailureForModel(groupID uint, upstreamModelID string) bool {
-	key := RouteEntryKey{GroupID: groupID, UpstreamModelID: strings.TrimSpace(upstreamModelID)}
-	if key.GroupID == 0 || key.UpstreamModelID == "" {
+func (r *CredentialRegistry) ClearEntryFailureForEntry(groupID uint, entryID string) bool {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
 		return false
 	}
 	r.mu.Lock()
@@ -879,9 +881,9 @@ func (r *CredentialRegistry) ClearEntryFailureForModel(groupID uint, upstreamMod
 	return true
 }
 
-func (r *CredentialRegistry) RecoverEntryForModel(groupID uint, upstreamModelID string) bool {
-	key := RouteEntryKey{GroupID: groupID, UpstreamModelID: strings.TrimSpace(upstreamModelID)}
-	if key.GroupID == 0 || key.UpstreamModelID == "" {
+func (r *CredentialRegistry) RecoverEntryForEntry(groupID uint, entryID string) bool {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
 		return false
 	}
 	r.mu.Lock()

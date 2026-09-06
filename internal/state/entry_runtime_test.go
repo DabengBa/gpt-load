@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-func TestEntryRuntimeIsIndependentByGroupAndModel(t *testing.T) {
+func TestEntryRuntimeIsIndependentByGroupAndEntryID(t *testing.T) {
 	registry := NewCredentialRegistry()
 	now := time.Date(2026, time.September, 5, 12, 0, 0, 0, time.UTC)
-	keyA := RouteEntryKey{GroupID: 1, UpstreamModelID: "model-a"}
-	keyB := RouteEntryKey{GroupID: 1, UpstreamModelID: "model-b"}
-	keyOtherGroup := RouteEntryKey{GroupID: 2, UpstreamModelID: "model-a"}
+	keyA := RouteEntryKey{GroupID: 1, EntryID: "model-a"}
+	keyB := RouteEntryKey{GroupID: 1, EntryID: "model-b"}
+	keyOtherGroup := RouteEntryKey{GroupID: 2, EntryID: "model-a"}
 
 	if count, ok := registry.IncrEntryFailure(keyA); !ok || count != 1 {
 		t.Fatalf("IncrEntryFailure(keyA) = %d/%t", count, ok)
@@ -51,7 +51,7 @@ func TestEntryRuntimeBlacklistAndRecoveryAreIndependentFromCredentialState(t *te
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	key := RouteEntryKey{GroupID: 1, UpstreamModelID: "model-a"}
+	key := RouteEntryKey{GroupID: 1, EntryID: "model-a"}
 	if !registry.SetBlacklisted(1) {
 		t.Fatal("SetBlacklisted(credential) = false")
 	}
@@ -80,7 +80,7 @@ func TestEntryRuntimeBlacklistAndRecoveryAreIndependentFromCredentialState(t *te
 
 func TestEntryRuntimeSnapshotIsDetachedSecretFreeAndConcurrent(t *testing.T) {
 	registry := NewCredentialRegistry()
-	key := RouteEntryKey{GroupID: 7, UpstreamModelID: "model-a"}
+	key := RouteEntryKey{GroupID: 7, EntryID: "model-a"}
 	if _, ok := registry.IncrEntryFailure(key); !ok {
 		t.Fatal("IncrEntryFailure() = false")
 	}
@@ -101,7 +101,7 @@ func TestEntryRuntimeSnapshotIsDetachedSecretFreeAndConcurrent(t *testing.T) {
 		go func(worker int) {
 			defer wg.Done()
 			for operation := 0; operation < operations; operation++ {
-				key := RouteEntryKey{GroupID: uint(worker + 1), UpstreamModelID: "model"}
+				key := RouteEntryKey{GroupID: uint(worker + 1), EntryID: "model"}
 				registry.IncrEntryFailure(key)
 				registry.EntryRuntime(key, time.Time{})
 			}

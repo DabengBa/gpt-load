@@ -15,8 +15,8 @@ func TestIteratorFiltersOnlyUnavailableRouteEntry(t *testing.T) {
 		ConnectionType: "api_key", ID: 1, Name: "entries", ChannelID: "openai",
 		Enabled: true,
 		Models: []state.ModelConfig{
-			{ID: "blocked", Alias: "public", Weight: intPointer(50), Priority: intPointer(1)},
-			{ID: "sibling", Alias: "public", Weight: intPointer(50), Priority: intPointer(1)},
+			{ID: "blocked", Alias: "public", EntryID: "e000000000001", Weight: intPointer(50), Priority: intPointer(1)},
+			{ID: "sibling", Alias: "public", EntryID: "e000000000002", Weight: intPointer(50), Priority: intPointer(1)},
 		},
 	}})
 	registry := state.NewCredentialRegistry()
@@ -27,7 +27,7 @@ func TestIteratorFiltersOnlyUnavailableRouteEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, changed := registry.SetEntryCooldownWithChange(
-		state.RouteEntryKey{GroupID: 1, UpstreamModelID: "blocked"},
+		state.RouteEntryKey{GroupID: 1, EntryID: "e000000000001"},
 		now.Add(time.Minute),
 	); !changed {
 		t.Fatal("SetEntryCooldownWithChange() changed = false")
@@ -54,8 +54,8 @@ func TestInspectReportsEntryRuntimeAndTierReasons(t *testing.T) {
 		ConnectionType: "api_key", ID: 1, Name: "entries", ChannelID: "openai",
 		Enabled: true,
 		Models: []state.ModelConfig{
-			{ID: "primary", Alias: "public", Weight: intPointer(50), Priority: intPointer(1)},
-			{ID: "fallback", Alias: "public", Weight: intPointer(50), Priority: intPointer(2)},
+			{ID: "primary", Alias: "public", EntryID: "e000000000001", Weight: intPointer(50), Priority: intPointer(1)},
+			{ID: "fallback", Alias: "public", EntryID: "e000000000002", Weight: intPointer(50), Priority: intPointer(2)},
 		},
 	}})
 	credentials := []state.CredentialRuntimeView{{
@@ -63,7 +63,7 @@ func TestInspectReportsEntryRuntimeAndTierReasons(t *testing.T) {
 	}}
 
 	inspection, err := InspectWithEntryRuntime(snapshot, credentials, []state.EntryRuntimeView{{
-		Key:           state.RouteEntryKey{GroupID: 1, UpstreamModelID: "primary"},
+		Key:           state.RouteEntryKey{GroupID: 1, EntryID: "e000000000001"},
 		CooldownUntil: now.Add(time.Minute),
 	}}, routeEntryQuery(), now)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestInspectReportsEntryRuntimeAndTierReasons(t *testing.T) {
 	}
 
 	blacklisted, err := InspectWithEntryRuntime(snapshot, credentials, []state.EntryRuntimeView{{
-		Key:         state.RouteEntryKey{GroupID: 1, UpstreamModelID: "primary"},
+		Key:         state.RouteEntryKey{GroupID: 1, EntryID: "e000000000001"},
 		Blacklisted: true,
 	}}, routeEntryQuery(), now)
 	if err != nil {

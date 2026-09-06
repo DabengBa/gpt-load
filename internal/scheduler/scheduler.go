@@ -37,6 +37,7 @@ type Selection struct {
 	ResolvedTarget           channel.ResolvedTarget
 	RouteMode                channel.RouteMode
 	UpstreamModelID          *string
+	EntryID                  string
 	Group                    state.GroupView
 	ResponsesStoreDowngraded bool
 }
@@ -302,7 +303,7 @@ func (iterator *Iterator) weightedTierPool(
 		for _, credential := range credentialsByGroup[target.target.GroupID] {
 			if runtime, ok := iterator.credentials.(state.EntryRuntimeSource); ok {
 				entryState, _ := runtime.EntryRuntime(
-					state.RouteEntryKey{GroupID: target.target.GroupID, UpstreamModelID: target.target.UpstreamModelID},
+					state.RouteEntryKey{GroupID: target.target.GroupID, EntryID: target.target.EntryID},
 					now,
 				)
 
@@ -495,6 +496,7 @@ func newSelection(credential state.CredentialMeta, target candidateTarget) Selec
 		ResolvedTarget:           resolvedTarget,
 		RouteMode:                target.target.Mode,
 		UpstreamModelID:          upstreamModelID,
+		EntryID:                  target.target.EntryID,
 		Group:                    cloneGroupView(target.group),
 		ResponsesStoreDowngraded: target.responsesStoreDowngraded,
 	}

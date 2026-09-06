@@ -3616,7 +3616,7 @@ func TestHandlerAppliesExactCooldownDeadline(t *testing.T) {
 				if recording.cooldownCalls != 0 {
 					t.Fatalf("credential cooldown calls = %d, want 0", recording.cooldownCalls)
 				}
-				view, ok := registry.EntryRuntime(state.RouteEntryKey{GroupID: 1, UpstreamModelID: "gpt-4o"}, test.want)
+				view, ok := registry.EntryRuntime(state.RouteEntryKey{GroupID: 1, EntryID: "e000000000001"}, test.want)
 				if !ok || !view.CooldownUntil.Equal(test.want) {
 					t.Fatalf("entry cooldown = exists:%t until:%v, want until %v", ok, view.CooldownUntil, test.want)
 				}
@@ -5304,7 +5304,7 @@ func newHandlerForTestWithStats(
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`),
-			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+			Models: []state.ModelConfig{{ID: "gpt-4o", EntryID: "e000000000001"}}, Enabled: true,
 		}},
 		Credentials: credentialConfigs,
 		AccessKeys: []state.AccessKeyConfig{{

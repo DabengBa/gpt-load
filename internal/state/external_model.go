@@ -5,8 +5,32 @@ package state
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+var entryIDPattern = regexp.MustCompile(`^e[0-9a-f]{12}$`)
+
+type EntryCircuitBreaker struct {
+	BlacklistThreshold *int `json:"blacklist_threshold,omitempty"`
+	CooldownSeconds    *int `json:"cooldown_seconds,omitempty"`
+}
+
+func cloneEntryCircuitBreaker(value *EntryCircuitBreaker) *EntryCircuitBreaker {
+	if value == nil {
+		return nil
+	}
+	result := &EntryCircuitBreaker{}
+	if value.BlacklistThreshold != nil {
+		v := *value.BlacklistThreshold
+		result.BlacklistThreshold = &v
+	}
+	if value.CooldownSeconds != nil {
+		v := *value.CooldownSeconds
+		result.CooldownSeconds = &v
+	}
+	return result
+}
 
 // ExternalModelName returns the client-facing model name of a route entry:
 // the alias when it is set, otherwise the upstream model ID (design V4).
@@ -50,6 +74,17 @@ func ValidateModelRouteEntries(subject string, models []ModelConfig) error {
 		if model.Priority != nil && *model.Priority < 1 {
 			return fmt.Errorf("%s model %q: priority must be at least 1", subject, upstream)
 		}
+		if model.EntryID != "" && !entryIDPattern.MatchString(model.EntryID) {
+			return fmt.Errorf("%s model %q: entry_id has invalid format", subject, upstream)
+		}
+		if model.CircuitBreaker != nil {
+			if model.CircuitBreaker.BlacklistThreshold != nil && *model.CircuitBreaker.BlacklistThreshold < 1 {
+				return fmt.Errorf("%s model %q: blacklist_threshold must be at least 1", subject, upstream)
+			}
+			if model.CircuitBreaker.CooldownSeconds != nil && *model.CircuitBreaker.CooldownSeconds < 0 {
+				return fmt.Errorf("%s model %q: cooldown_seconds must not be negative", subject, upstream)
+			}
+		}
 		external := ExternalModelName(upstream, model.Alias)
 		entry := routeEntryKey{external: external, upstream: upstream}
 		if _, duplicate := seenEntries[entry]; duplicate {
@@ -59,6 +94,13 @@ func ValidateModelRouteEntries(subject string, models []ModelConfig) error {
 			)
 		}
 		seenEntries[entry] = struct{}{}
+		if model.EntryID != "" {
+			for _, other := range models[:index] {
+				if other.EntryID == model.EntryID {
+					return fmt.Errorf("%s has duplicate entry_id %q", subject, model.EntryID)
+				}
+			}
+		}
 		weight := 1
 		if model.Weight != nil {
 			weight = *model.Weight

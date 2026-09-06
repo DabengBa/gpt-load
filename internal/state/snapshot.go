@@ -61,10 +61,12 @@ type CredentialConfig struct {
 // optional: nil keeps the design defaults (weight 1, priority 1); weight 0
 // retains the entry but excludes it from traffic splitting.
 type ModelConfig struct {
-	ID       string
-	Alias    string
-	Weight   *int
-	Priority *int
+	ID             string
+	Alias          string
+	EntryID        string
+	Weight         *int
+	Priority       *int
+	CircuitBreaker *EntryCircuitBreaker
 }
 
 type AccessKeyConfig struct {
@@ -96,6 +98,7 @@ type FilterSet struct {
 type RouteTarget struct {
 	GroupID         uint
 	UpstreamModelID string
+	EntryID         string
 	Mode            channel.RouteMode
 	ResolvedTarget  channel.ResolvedTarget
 	EntryWeight     int // 条目权重,nil 归一为 1;0 保留条目但不参与分流
@@ -122,24 +125,25 @@ type HeaderRules struct {
 }
 
 type GroupView struct {
-	ID                 uint
-	Name               string
-	ChannelID          channel.ID
-	ConnectionType     string
-	Params             json.RawMessage
-	ResolvedTarget     channel.ResolvedTarget
-	ValidationModel    string
-	ClientProtocols    []protocol.Protocol
-	Models             []ModelConfig
-	Timeouts           TimeoutConfig
-	HeaderRules        HeaderRules
-	InjectUsageOptions bool
-	RetryCount         int
-	BlacklistThreshold int
-	AffinityEnabled    bool
-	WeightManual       *int
-	Proxy              outboundproxy.Effective
-	ParameterOverrides parameteroverride.Rules
+	ID                  uint
+	Name                string
+	ChannelID           channel.ID
+	ConnectionType      string
+	Params              json.RawMessage
+	ResolvedTarget      channel.ResolvedTarget
+	ValidationModel     string
+	ClientProtocols     []protocol.Protocol
+	Models              []ModelConfig
+	Timeouts            TimeoutConfig
+	HeaderRules         HeaderRules
+	InjectUsageOptions  bool
+	RetryCount          int
+	BlacklistThreshold  int
+	AffinityEnabled     bool
+	WeightManual        *int
+	Proxy               outboundproxy.Effective
+	ParameterOverrides  parameteroverride.Rules
+	ModelBreakerByEntry map[uint]map[string]*EntryCircuitBreaker
 }
 
 type GroupCatalogView struct {
@@ -219,20 +223,32 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		}
 
 		view := GroupView{
-			ID:                 group.ID,
-			Name:               group.Name,
-			ValidationModel:    strings.TrimSpace(group.ValidationModel),
-			Models:             cloneModelConfigs(group.Models),
-			Timeouts:           resolved.Timeouts,
-			HeaderRules:        resolved.HeaderRules,
-			InjectUsageOptions: resolved.InjectUsageOptions,
-			RetryCount:         resolved.RetryCount,
-			BlacklistThreshold: resolved.BlacklistThreshold,
-			AffinityEnabled:    resolved.AffinityEnabled,
-			WeightManual:       cloneWeight(group.WeightManual),
-			ConnectionType:     connection.Normalize(group.ConnectionType),
-			Proxy:              groupProxy,
-			ParameterOverrides: resolved.ParameterOverrides,
+			ID:                  group.ID,
+			Name:                group.Name,
+			ValidationModel:     strings.TrimSpace(group.ValidationModel),
+			Models:              cloneModelConfigs(group.Models),
+			Timeouts:            resolved.Timeouts,
+			HeaderRules:         resolved.HeaderRules,
+			InjectUsageOptions:  resolved.InjectUsageOptions,
+			RetryCount:          resolved.RetryCount,
+			BlacklistThreshold:  resolved.BlacklistThreshold,
+			AffinityEnabled:     resolved.AffinityEnabled,
+			WeightManual:        cloneWeight(group.WeightManual),
+			ConnectionType:      connection.Normalize(group.ConnectionType),
+			Proxy:               groupProxy,
+			ParameterOverrides:  resolved.ParameterOverrides,
+			ModelBreakerByEntry: make(map[uint]map[string]*EntryCircuitBreaker),
+		}
+		for _, model := range group.Models {
+			if model.CircuitBreaker == nil {
+				continue
+			}
+			if view.ModelBreakerByEntry[group.ID] == nil {
+				view.ModelBreakerByEntry[group.ID] = make(map[string]*EntryCircuitBreaker)
+			}
+			external := ExternalModelName(model.ID, model.Alias)
+			entryID := routeEntryIdentity(external, model)
+			view.ModelBreakerByEntry[group.ID][entryID] = cloneEntryCircuitBreaker(model.CircuitBreaker)
 		}
 		params, err := input.ChannelRegistry.ValidateParams(group.ChannelID, group.Params)
 		if err != nil {
@@ -364,6 +380,7 @@ func appendExecutionTargets(
 						Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
 						EntryWeight: normalizeRouteEntryValue(model.Weight),
 						Priority:    normalizeRouteEntryValue(model.Priority),
+						EntryID:     routeEntryIdentity(external, model),
 					})
 				}
 			default:
@@ -393,7 +410,13 @@ func appendExecutionTarget(
 	)
 }
 
-// normalizeRouteEntryValue dereferences an optional route entry field, falling
+func routeEntryIdentity(external string, model ModelConfig) string {
+	if model.EntryID != "" {
+		return model.EntryID
+	}
+	return "derived:" + external + "#" + strings.TrimSpace(model.ID)
+}
+
 // back to the design default of 1 (weight and priority, design §3). An
 // explicit 0 weight survives normalization: the target stays indexed but is
 // excluded from traffic splitting by the scheduler (design §4).
@@ -411,8 +434,9 @@ func cloneModelConfigs(models []ModelConfig) []ModelConfig {
 	cloned := make([]ModelConfig, len(models))
 	for index, model := range models {
 		cloned[index] = ModelConfig{
-			ID: model.ID, Alias: model.Alias,
+			ID: model.ID, Alias: model.Alias, EntryID: model.EntryID,
 			Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 		}
 	}
 	return cloned

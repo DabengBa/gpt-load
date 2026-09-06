@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +61,17 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 		},
 		Total:   2,
 		Pending: 1,
+	}
+	// entry_id 由 GET 懒回填（设计 §2.2），其余字段与配置一一对应。
+	entryIDPattern := regexp.MustCompile(`^e[0-9a-f]{12}$`)
+	if len(got.Items) != len(want.Items) {
+		t.Fatalf("GetGroupModels() items = %d, want %d", len(got.Items), len(want.Items))
+	}
+	for index, item := range got.Items {
+		if !entryIDPattern.MatchString(item.EntryID) {
+			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
+		}
+		want.Items[index].EntryID = item.EntryID
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetGroupModels() = %#v, want %#v", got, want)
@@ -312,6 +324,17 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 		Total:   2,
 		Pending: 2,
 	}
+	// entry_id 懒回填后响应携带服务端生成的标识（设计 §2.2）。
+	entryIDPattern := regexp.MustCompile(`^e[0-9a-f]{12}$`)
+	if len(got.Items) != len(want.Items) {
+		t.Fatalf("models response items = %d, want %d", len(got.Items), len(want.Items))
+	}
+	for index, item := range got.Items {
+		if !entryIDPattern.MatchString(item.EntryID) {
+			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
+		}
+		want.Items[index].EntryID = item.EntryID
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("models response = %#v, want %#v", got, want)
 	}
@@ -343,7 +366,18 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 	if settings.Effective.HeaderRules.Set == nil || settings.Effective.HeaderRules.Remove == nil {
 		t.Fatalf("effective header collections = %#v", settings.Effective.HeaderRules)
 	}
-	if stored := loadCreatedGroupModels(t, fixture, created.GroupID); !reflect.DeepEqual(stored, wantModels) {
+	// entry_id 懒回填后存储行携带服务端生成的标识（设计 §2.2）。
+	stored := loadCreatedGroupModels(t, fixture, created.GroupID)
+	if len(stored) != len(wantModels) {
+		t.Fatalf("stored models = %d entries, want %d", len(stored), len(wantModels))
+	}
+	for index, model := range stored {
+		if !entryIDPattern.MatchString(model.EntryID) {
+			t.Fatalf("stored model %d entry_id = %q, want lazy-backfilled e+12hex", index, model.EntryID)
+		}
+		wantModels[index].EntryID = model.EntryID
+	}
+	if !reflect.DeepEqual(stored, wantModels) {
 		t.Fatalf("stored models = %#v, want %#v", stored, wantModels)
 	}
 	if fixture.manager.Current().Revision != beforeRevision+1 {
@@ -712,12 +746,36 @@ func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetGroupModels() error = %v", err)
 	}
+	// 懒回填：直接改库写入的存量条目在首次 GET 时获得服务端生成的 entry_id。
+	entryIDPattern := regexp.MustCompile(`^e[0-9a-f]{12}$`)
 	wantItems := []GroupModelResponse{
 		{ID: "entry-a", Alias: "public", AliasEnabled: true, ClientModel: "public", Weight: intPointer(30), Priority: intPointer(2), PricingStatus: PricingStatusPending},
 		{ID: "entry-b", Alias: "public", AliasEnabled: true, ClientModel: "public", Weight: intPointer(0), PricingStatus: PricingStatusPending},
 	}
-	if !reflect.DeepEqual(got.Items, wantItems) {
-		t.Fatalf("models response items = %#v, want %#v", got.Items, wantItems)
+	if len(got.Items) != len(wantItems) {
+		t.Fatalf("models response items = %#v, want %d items", got.Items, len(wantItems))
+	}
+	for index, item := range got.Items {
+		want := wantItems[index]
+		if item.EntryID == "" || !entryIDPattern.MatchString(item.EntryID) {
+			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
+		}
+		if item.ID != want.ID || item.Alias != want.Alias || item.AliasEnabled != want.AliasEnabled ||
+			item.ClientModel != want.ClientModel || item.PricingStatus != want.PricingStatus {
+			t.Fatalf("item %d = %#v, want core fields %#v", index, item, want)
+		}
+		if !reflect.DeepEqual(item.Weight, want.Weight) || !reflect.DeepEqual(item.Priority, want.Priority) {
+			t.Fatalf("item %d route fields = %v/%v, want %v/%v", index, item.Weight, item.Priority, want.Weight, want.Priority)
+		}
+	}
+	reread, err := fixture.service.GetGroupModels(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("second GetGroupModels() error = %v", err)
+	}
+	for index, item := range reread.Items {
+		if item.EntryID != got.Items[index].EntryID {
+			t.Fatalf("reread item %d entry_id = %q, want stable %q", index, item.EntryID, got.Items[index].EntryID)
+		}
 	}
 
 	var row models.Group
@@ -732,12 +790,27 @@ func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
 		{ID: "entry-a", Alias: "public", Weight: intPointer(30), Priority: intPointer(2)},
 		{ID: "entry-b", Alias: "public", Weight: intPointer(0)},
 	}
-	if !reflect.DeepEqual(candidate.Models, wantModels) {
-		t.Fatalf("state models = %#v, want %#v", candidate.Models, wantModels)
+	if len(candidate.Models) != len(wantModels) {
+		t.Fatalf("state models count = %d, want %d", len(candidate.Models), len(wantModels))
+	}
+	for index, model := range candidate.Models {
+		if !entryIDPattern.MatchString(model.EntryID) {
+			t.Fatalf("state model %d entry_id = %q, want lazy-backfilled", index, model.EntryID)
+		}
+		want := wantModels[index]
+		if model.ID != want.ID || model.Alias != want.Alias ||
+			!reflect.DeepEqual(model.Weight, want.Weight) || !reflect.DeepEqual(model.Priority, want.Priority) {
+			t.Fatalf("state model %d = %#v, want core fields %#v", index, model, want)
+		}
 	}
 	runtimeModels := loadLoaderGroupModels(t, fixture, created.GroupID)
-	if !reflect.DeepEqual(runtimeModels, wantModels) {
-		t.Fatalf("loader models = %#v, want %#v", runtimeModels, wantModels)
+	if len(runtimeModels) != len(wantModels) {
+		t.Fatalf("loader models count = %d, want %d", len(runtimeModels), len(wantModels))
+	}
+	for index, model := range runtimeModels {
+		if model.EntryID != candidate.Models[index].EntryID {
+			t.Fatalf("loader model %d entry_id = %q, want %q", index, model.EntryID, candidate.Models[index].EntryID)
+		}
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -321,8 +322,9 @@ func TestCreateChannelGroupPersistsCanonicalCredentialsAndPublishes(t *testing.T
 	if len(refs) != 2 || refs[0].Version == 0 || refs[0].IdentityGeneration == 0 || refs[0].Fingerprint == "" {
 		t.Fatalf("credential refs = %#v", refs)
 	}
-	if got := loadCreatedGroupModels(t, fixture, group.ID); !reflect.DeepEqual(got, []GroupModel{{ID: "provider-model", Alias: "public"}}) {
-		t.Fatalf("stored models = %#v", got)
+	stored := loadCreatedGroupModels(t, fixture, group.ID)
+	if len(stored) != 1 || stored[0].ID != "provider-model" || stored[0].Alias != "public" || !regexp.MustCompile(`^e[0-9a-f]{12}$`).MatchString(stored[0].EntryID) {
+		t.Fatalf("stored models = %#v", stored)
 	}
 }
 

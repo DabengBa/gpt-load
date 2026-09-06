@@ -30,7 +30,7 @@ func inspectSnapshot(t *testing.T) *state.ConfigSnapshot {
 				Enabled: false,
 			},
 			{ConnectionType: "api_key", ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-				Models:  []state.ModelConfig{{ID: "provider-active", Alias: "public"}},
+				Models:  []state.ModelConfig{{ID: "provider-active", Alias: "public", EntryID: "e000000000001"}},
 				Enabled: true,
 			},
 			{ConnectionType: "api_key", ID: 3, Name: "weight-zero", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
@@ -421,6 +421,43 @@ func TestInspectIgnoresRecordedCredentialQuotaExhaustion(t *testing.T) {
 }
 
 func floatPointer(value float64) *float64 { return &value }
+
+func TestInspectOmitsExpiredEntryCooldown(t *testing.T) {
+	now := inspectNow()
+	got, err := InspectWithEntryRuntime(inspectSnapshot(t), []state.CredentialRuntimeView{{
+		ID: 11, GroupID: 1, Status: state.CredentialStatusActive,
+	}}, []state.EntryRuntimeView{{
+		Key:           state.RouteEntryKey{GroupID: 1, EntryID: "e000000000001"},
+		CooldownUntil: now.Add(-time.Second),
+	}}, Query{
+		ClientProtocol: protocol.OpenAICompletions,
+		Operation:      execution.OperationChatCompletion,
+		ExternalModel:  modelPointer("public"),
+		AccessKey:      state.AccessKeyView{Status: state.AccessKeyStatusActive},
+	}, now)
+	if err != nil {
+		t.Fatalf("InspectWithEntryRuntime() error = %v", err)
+	}
+	if got.Groups[0].EntryCooldownUntil != (time.Time{}) {
+		t.Fatalf("expired entry cooldown = %v, want zero", got.Groups[0].EntryCooldownUntil)
+	}
+}
+
+func TestApplyEffectiveSharesUsesLowestAvailableTier(t *testing.T) {
+	groups := []GroupInspection{
+		{Priority: 1, Routable: false, Credentials: []CredentialInspection{{Available: true, EffectiveWeight: 100}}},
+		{Priority: 2, Routable: true, Credentials: []CredentialInspection{{Available: true, EffectiveWeight: 25}}},
+		{Priority: 2, Routable: true, Credentials: []CredentialInspection{{Available: true, EffectiveWeight: 75}}},
+		{Priority: 3, Routable: true, Credentials: []CredentialInspection{{Available: true, EffectiveWeight: 100}}},
+	}
+	applyEffectiveShares(groups)
+	if groups[0].EffectiveShare != 0 || groups[3].EffectiveShare != 0 {
+		t.Fatalf("inactive tiers received shares: %#v", groups)
+	}
+	if groups[1].EffectiveShare != 0.25 || groups[2].EffectiveShare != 0.75 {
+		t.Fatalf("active tier shares = %v, %v, want 0.25, 0.75", groups[1].EffectiveShare, groups[2].EffectiveShare)
+	}
+}
 
 func TestInspectReportsNoKeysForIncludedGroup(t *testing.T) {
 	got, err := Inspect(inspectSnapshot(t), nil, Query{

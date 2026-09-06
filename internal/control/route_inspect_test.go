@@ -101,18 +101,18 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 			{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), WeightManual: &groupOne, Enabled: true,
 				Models: []state.ModelConfig{
-					{ID: "up-a", Alias: "pub", Weight: &weightA},
-					{ID: "up-b", Alias: "pub", Weight: &weightB},
-					{ID: "up-c", Alias: "pub", Weight: &weightC, Priority: &twoPriority},
+					{ID: "up-a", Alias: "pub", EntryID: "e000000000001", Weight: &weightA},
+					{ID: "up-b", Alias: "pub", EntryID: "e000000000002", Weight: &weightB},
+					{ID: "up-c", Alias: "pub", EntryID: "e000000000003", Weight: &weightC, Priority: &twoPriority},
 				},
 			},
 			{ConnectionType: "api_key", ID: 2, Name: "two", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), WeightManual: &groupTwo, Enabled: true,
-				Models: []state.ModelConfig{{ID: "up-b", Alias: "pub", Weight: &weightFull}},
+				Models: []state.ModelConfig{{ID: "up-b", Alias: "pub", EntryID: "e000000000004", Weight: &weightFull}},
 			},
 			{ConnectionType: "api_key", ID: 3, Name: "three", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), WeightManual: &groupThree, Enabled: true,
-				Models: []state.ModelConfig{{ID: "up-d", Alias: "pub", Weight: &weightFull}},
+				Models: []state.ModelConfig{{ID: "up-d", Alias: "pub", EntryID: "e000000000005", Weight: &weightFull}},
 			},
 		},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -172,8 +172,8 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 	}
 	assertRouteReason(t, result.Groups[4].ReasonCode, scheduler.ReasonTierDemoted)
 
-	if exists, _ := fixture.registry.SetEntryCooldownForModel(1, "up-b", now.Add(30*time.Minute)); !exists {
-		t.Fatal("SetEntryCooldownForModel() exists = false")
+	if exists, _ := fixture.registry.SetEntryCooldownForEntry(1, "e000000000002", now.Add(30*time.Minute)); !exists {
+		t.Fatal("SetEntryCooldownForEntry() exists = false")
 	}
 	cooled := inspect()
 	var cooledRow *routeInspectGroupResponse
@@ -197,6 +197,33 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 	for index, want := range remaining {
 		if diff := cooled.Groups[index].EffectiveShare - want; diff < -1e-9 || diff > 1e-9 {
 			t.Fatalf("row %d share after cooldown = %v, want %v", index, cooled.Groups[index].EffectiveShare, want)
+		}
+	}
+
+	// When every P1 entry is cooled, the P2 entry becomes the active tier.
+	for _, entryID := range []string{"e000000000001", "e000000000002"} {
+		if exists, _ := fixture.registry.SetEntryCooldownForEntry(1, entryID, now.Add(time.Hour)); !exists {
+			t.Fatalf("SetEntryCooldownForEntry(1, %q) exists = false", entryID)
+		}
+	}
+	for _, item := range []struct {
+		group   uint
+		entryID string
+	}{
+		{group: 2, entryID: "e000000000004"},
+		{group: 3, entryID: "e000000000005"},
+	} {
+		if exists, _ := fixture.registry.SetEntryCooldownForEntry(item.group, item.entryID, now.Add(time.Hour)); !exists {
+			t.Fatalf("SetEntryCooldownForEntry(%d, %q) exists = false", item.group, item.entryID)
+		}
+	}
+	allP1Cooled := inspect()
+	if allP1Cooled.Groups[4].EffectiveShare != 1.0 {
+		t.Fatalf("P2 share with all P1 cooled = %v, want 1", allP1Cooled.Groups[4].EffectiveShare)
+	}
+	for index := range allP1Cooled.Groups[:4] {
+		if allP1Cooled.Groups[index].EffectiveShare != 0 {
+			t.Fatalf("P1 row %d share with all P1 cooled = %v, want 0", index, allP1Cooled.Groups[index].EffectiveShare)
 		}
 	}
 }

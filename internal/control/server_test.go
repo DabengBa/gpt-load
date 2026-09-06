@@ -1656,6 +1656,16 @@ func TestUpdateGroupModelsEndpointIDsAuthNotFoundAndSuccessDTO(t *testing.T) {
 		Total:   1,
 		Pending: 1,
 	}
+	// entry_id 懒回填（设计 §2.2）：HTTP 响应携带服务端生成的标识。
+	if len(result.Items) != len(want.Items) {
+		t.Fatalf("success models response items = %d, want %d", len(result.Items), len(want.Items))
+	}
+	for index, item := range result.Items {
+		if len(item.EntryID) != 13 || item.EntryID[0] != 'e' {
+			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
+		}
+		want.Items[index].EntryID = item.EntryID
+	}
 	if !reflect.DeepEqual(result, want) {
 		t.Fatalf("success models response = %#v, want %#v", result, want)
 	}

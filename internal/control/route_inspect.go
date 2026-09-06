@@ -44,6 +44,7 @@ type routeInspectGroupResponse struct {
 	ChannelID                 channel.ID                       `json:"channel_id"`
 	RouteMode                 execution.RouteMode              `json:"route_mode"`
 	RouteRequirementSatisfied bool                             `json:"route_requirement_satisfied"`
+	EntryID                   string                           `json:"entry_id"`
 	UpstreamModel             *string                          `json:"upstream_model"`
 	WeightManual              *int                             `json:"weight_manual"`
 	EntryWeight               int                              `json:"entry_weight"`
@@ -195,6 +196,7 @@ func mapRouteInspectResponse(
 			ChannelID:                 group.ChannelID,
 			RouteMode:                 group.RouteMode,
 			RouteRequirementSatisfied: group.RouteRequirementSatisfied,
+			EntryID:                   group.EntryID,
 			UpstreamModel:             cloneRouteModel(group.UpstreamModelID),
 			WeightManual:              cloneInt(group.WeightManual),
 			EntryWeight:               group.EntryWeight,
