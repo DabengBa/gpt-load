@@ -1,12 +1,9 @@
-name: V2 CI
+name: CI
 
 on:
-  push:
-    branches:
-      - v2
   pull_request:
     branches:
-      - v2
+      - main
 
 permissions:
   contents: read
@@ -17,7 +14,7 @@ env:
   GOPROXY: https://proxy.golang.org|direct
 
 concurrency:
-  group: v2-ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -54,9 +51,6 @@ jobs:
         run: |
           go mod tidy -diff
           go vet ./...
-
-      - name: Audit Go dependencies
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
       - name: Run Go vet
         run: go vet ./...

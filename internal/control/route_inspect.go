@@ -60,6 +60,7 @@ type routeInspectGroupResponse struct {
 type routeInspectResponse struct {
 	ObservedAtMS     int64                         `json:"observed_at_ms"`
 	SnapshotRevision uint64                        `json:"snapshot_revision"`
+	RouteStrategy    state.RouteStrategy           `json:"route_strategy"`
 	Protocol         protocol.Protocol             `json:"protocol"`
 	Operation        execution.Operation           `json:"operation"`
 	RouteRequirement execution.RouteRequirement    `json:"route_requirement"`
@@ -168,6 +169,7 @@ func mapRouteInspectResponse(
 	result := routeInspectResponse{
 		ObservedAtMS:     observedAtMS,
 		SnapshotRevision: observation.snapshot.Revision,
+		RouteStrategy:    observation.snapshot.Settings.RouteStrategy,
 		Protocol:         request.Protocol,
 		Operation:        explanation.Operation,
 		RouteRequirement: explanation.RouteRequirement,

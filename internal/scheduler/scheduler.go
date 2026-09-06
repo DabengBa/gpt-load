@@ -74,11 +74,14 @@ type candidatePool struct {
 }
 
 type Iterator struct {
-	credentials           CredentialSource
-	random                *rand.Rand
-	regular               candidatePool
-	storeDowngraded       candidatePool
-	tiers                 []int
+	credentials     CredentialSource
+	random          *rand.Rand
+	regular         candidatePool
+	storeDowngraded candidatePool
+	tiers           []int
+	// routeModeTiers 来自上游 v2.0.0-rc.7(#570):默认 native 严格先于
+	// converted;RouteStrategy=weighted_mix 时两种模式在同一权重层内竞争。
+	routeModeTiers        [][]channel.RouteMode
 	allowedCredentialIDs  map[uint]struct{}
 	preferredCredentialID uint
 	tried                 map[candidateKey]struct{}
@@ -144,11 +147,15 @@ func newWithClock(
 		random:                random,
 		regular:               newCandidatePool(),
 		storeDowngraded:       newCandidatePool(),
+		routeModeTiers:        [][]channel.RouteMode{{channel.RouteNative}, {channel.RouteConverted}},
 		allowedCredentialIDs:  cloneAllowedCredentialIDs(query),
 		preferredCredentialID: query.PreferredCredentialID,
 		tried:                 make(map[candidateKey]struct{}),
 		skippedGroups:         make(map[uint]struct{}),
 		now:                   now,
+	}
+	if snapshot != nil && snapshot.Settings.RouteStrategy == state.RouteStrategyWeightedMix {
+		iterator.routeModeTiers = [][]channel.RouteMode{{channel.RouteNative, channel.RouteConverted}}
 	}
 	targets, staticReason := filterTargetsWithReason(snapshot, query)
 	iterator.staticReason = staticReason
@@ -247,25 +254,39 @@ func (iterator *Iterator) SkipGroup(groupID uint) {
 }
 
 // weightedTierPool builds the weighted (group, entry, credential) triples of
-// one priority tier inside a pool and route mode. Credentials are collected
-// live so registry changes between Next calls are honored; tried pairs,
-// skipped groups, frozen allowed credentials, and non-positive combined
-// weights are excluded (design §5.1–§5.3).
+// one priority tier inside a pool across the given route-mode set. Credentials
+// are collected live so registry changes between Next calls are honored; tried
+// pairs, skipped groups, frozen allowed credentials, entry runtime state, and
+// non-positive combined weights are excluded (design §5.1–§5.3). The mode set
+// carries one upstream route-mode tier (#570): WeightedMix puts native and
+// converted into the same competitive bucket.
 func (iterator *Iterator) weightedTierPool(
 	candidates *candidatePool,
-	mode channel.RouteMode,
+	modes []channel.RouteMode,
 	tier int,
 	now time.Time,
 ) ([]weightedCandidate, int64) {
 	if iterator == nil || iterator.credentials == nil {
 		return nil, 0
 	}
-	targets := candidates.tierTargetsByMode[mode][tier]
+	targets := make([]candidateTarget, 0)
+	groupIDs := make([]uint, 0)
+	seenGroups := make(map[uint]struct{})
+	for _, mode := range modes {
+		targets = append(targets, candidates.tierTargetsByMode[mode][tier]...)
+		for _, groupID := range candidates.groupIDsByMode[mode] {
+			if _, duplicate := seenGroups[groupID]; duplicate {
+				continue
+			}
+			seenGroups[groupID] = struct{}{}
+			groupIDs = append(groupIDs, groupID)
+		}
+	}
 	if len(targets) == 0 {
 		return nil, 0
 	}
 	collected := iterator.credentials.CollectCredentialCandidates(
-		candidates.groupIDsByMode[mode],
+		groupIDs,
 		nil,
 		now,
 	)
@@ -327,6 +348,14 @@ func (iterator *Iterator) weightedTierPool(
 			})
 		}
 	}
+	// 与上游(#570)的确定性顺序一致:凭据按 (GroupID, ID) 排序;同一凭据的多个
+	// 路由条目保持快照顺序(stable),保证加权随机与偏好命中的结果可复现。
+	sort.SliceStable(weighted, func(i, j int) bool {
+		if weighted[i].credential.GroupID != weighted[j].credential.GroupID {
+			return weighted[i].credential.GroupID < weighted[j].credential.GroupID
+		}
+		return weighted[i].credential.ID < weighted[j].credential.ID
+	})
 	var total int64
 	for _, candidate := range weighted {
 		total += candidate.weight
@@ -339,12 +368,13 @@ func (iterator *Iterator) Next() (Selection, error) {
 		return Selection{}, ErrExhausted
 	}
 	now := iterator.now()
-	// 优先级分层(设计 §5.2):只在当前最高可用层内挑选,层耗尽才降级;
-	// 层内保持既有的 store 降级与路由模式偏好顺序。
+	// 优先级分层(设计 §5.2):只在当前最高可用层内挑选,层耗尽才降级。
+	// 层内先保持既有的 store 降级偏好,再按上游路由模式分层(#570)挑选:
+	// 默认 native 严格先于 converted,weighted_mix 策略下同层竞争。
 	for _, tier := range iterator.tiers {
 		for _, pool := range []*candidatePool{&iterator.regular, &iterator.storeDowngraded} {
-			for _, mode := range []channel.RouteMode{channel.RouteNative, channel.RouteConverted} {
-				weighted, total := iterator.weightedTierPool(pool, mode, tier, now)
+			for _, modes := range iterator.routeModeTiers {
+				weighted, total := iterator.weightedTierPool(pool, modes, tier, now)
 				if total <= 0 {
 					continue
 				}
@@ -490,6 +520,7 @@ func cloneGroupView(group state.GroupView) state.GroupView {
 	group.HeaderRules.Set = cloneStringMap(group.HeaderRules.Set)
 	group.HeaderRules.Remove = append([]string(nil), group.HeaderRules.Remove...)
 	group.ResolvedTarget.TargetConfig = append([]byte(nil), group.ResolvedTarget.TargetConfig...)
+	group.ParameterOverrides = group.ParameterOverrides.Clone()
 	return group
 }
 

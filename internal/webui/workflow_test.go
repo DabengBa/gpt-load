@@ -20,12 +20,12 @@ const (
 	pnpmSetupActionRef        = "pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271"
 	uploadArtifactActionRef   = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 	downloadArtifactActionRef = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
-	qemuActionRef             = "docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8"
+	qemuActionRef             = "docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a"
 	buildxActionRef           = "docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e"
 	dockerLoginActionRef      = "docker/login-action@dbcb813823bdd20940b903addbd779551569679f"
 	dockerMetadataActionRef   = "docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302"
 	dockerBuildActionRef      = "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a"
-	githubReleaseActionRef    = "softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228"
+	githubReleaseActionRef    = "softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64"
 )
 
 func TestWebCICompositeActionRunsCompleteFrontendGate(t *testing.T) {
@@ -41,10 +41,27 @@ func TestWebCICompositeActionRunsCompleteFrontendGate(t *testing.T) {
 		}
 	}
 
+	const pnpmSetupStep = "    - name: Set up pnpm\n"
+	pnpmSetupIndex := strings.Index(content, pnpmSetupStep)
+	if pnpmSetupIndex == -1 {
+		t.Fatal("web-ci action does not contain the pnpm setup step")
+	}
+	pnpmSetupBlock := content[pnpmSetupIndex+len(pnpmSetupStep):]
+	if nextStepIndex := strings.Index(pnpmSetupBlock, "\n    - name: "); nextStepIndex != -1 {
+		pnpmSetupBlock = pnpmSetupBlock[:nextStepIndex]
+	}
+	for _, required := range []string{
+		"        NPM_CONFIG_AUDIT: \"false\"",
+		"        NPM_CONFIG_FUND: \"false\"",
+	} {
+		if !strings.Contains(pnpmSetupBlock, required) {
+			t.Fatalf("pnpm setup step does not contain %q", required)
+		}
+	}
+
 	previousIndex := -1
 	for _, command := range []string{
 		"pnpm --dir web install --frozen-lockfile",
-		"pnpm --dir web audit --prod --audit-level high",
 		"pnpm --dir web run lint",
 		"pnpm --dir web run format",
 		"pnpm --dir web run build",
@@ -61,13 +78,40 @@ func TestWebCICompositeActionRunsCompleteFrontendGate(t *testing.T) {
 	if strings.Contains(content, "pnpm --dir web run type-check") {
 		t.Fatal("web-ci action duplicates the type-check already run by the build script")
 	}
-	// devDependencies 不进入 internal/webui/dist，审计它们只会让发布被无关 CVE 阻断。
-	if strings.Contains(content, "pnpm --dir web audit --audit-level") {
-		t.Fatal("web-ci action audits devDependencies that never reach the release artifact")
-	}
 	packageJSON := readRepositoryFile(t, "web/package.json")
 	if !strings.Contains(packageJSON, `"build": "pnpm run type-check && vite build"`) {
 		t.Fatal("web build script no longer includes the required type-check")
+	}
+}
+
+func TestDependencyVulnerabilityMonitoringIsDelegatedToDependabot(t *testing.T) {
+	for _, file := range []string{
+		".github/actions/web-ci/action.yml",
+		".github/workflows/ci.yml",
+		".github/workflows/release.yml",
+	} {
+		content := readRepositoryFile(t, file)
+		for _, forbidden := range []string{
+			"Audit web dependencies",
+			"pnpm --dir web audit",
+			"Audit Go dependencies",
+			"govulncheck",
+		} {
+			if strings.Contains(content, forbidden) {
+				t.Fatalf("%s duplicates Dependabot dependency monitoring with %q", file, forbidden)
+			}
+		}
+	}
+
+	dependabot := readRepositoryFile(t, ".github/dependabot.yml")
+	for _, required := range []string{
+		"- package-ecosystem: npm\n    directory: /web",
+		"- package-ecosystem: gomod\n    directory: /",
+		"- package-ecosystem: gomod\n    directory: /third_party/cpaembedded",
+	} {
+		if !strings.Contains(dependabot, required) {
+			t.Fatalf("Dependabot configuration does not contain %q", required)
+		}
 	}
 }
 
@@ -81,6 +125,55 @@ func TestMakeCheckDoesNotDuplicateWebTypeCheck(t *testing.T) {
 	}
 }
 
+func TestBranchAndReleaseWorkflowsFollowDefaultBranch(t *testing.T) {
+	ci := readRepositoryFile(t, ".github/workflows/ci.yml")
+	triggers := workflowTopLevelBlock(t, ci, "on")
+	wantTriggers := "on:\n  pull_request:\n    branches:\n      - main"
+	if got := strings.Join(workflowSignificantYAMLLines(triggers), "\n"); got != wantTriggers {
+		t.Fatalf("branch CI triggers = %q, want %q", got, wantTriggers)
+	}
+
+	release := readRepositoryFile(t, ".github/workflows/release.yml")
+	for _, required := range []struct {
+		value string
+		count int
+	}{
+		{value: "git fetch --no-tags origin main", count: 2},
+		{value: `git merge-base --is-ancestor "${GITHUB_SHA}" origin/main`, count: 2},
+	} {
+		if count := strings.Count(release, required.value); count != required.count {
+			t.Fatalf("release workflow contains %q %d times, want %d", required.value, count, required.count)
+		}
+	}
+	for _, forbidden := range []string{"origin/v2", "Require tag commit in v2 history"} {
+		if strings.Contains(release, forbidden) {
+			t.Fatalf("release workflow still contains removed branch reference %q", forbidden)
+		}
+	}
+}
+
+func TestWorkflowNamesDoNotCarryRetiredV2PhaseLabel(t *testing.T) {
+	for _, workflow := range []struct {
+		file string
+		name string
+	}{
+		{file: ".github/workflows/ci.yml", name: "CI"},
+		{file: ".github/workflows/release.yml", name: "Release"},
+	} {
+		content := readRepositoryFile(t, workflow.file)
+		if got := workflowTopLevelScalar(t, content, "name"); got != workflow.name {
+			t.Fatalf("%s does not use workflow name %q", workflow.file, workflow.name)
+		}
+	}
+}
+
+func TestWorkflowTopLevelScalarAllowsLeadingYAMLMetadata(t *testing.T) {
+	content := "---\n# Generated workflow metadata.\nname: CI\non:\n"
+	if got := workflowTopLevelScalar(t, content, "name"); got != "CI" {
+		t.Fatalf("workflow name = %q, want CI", got)
+	}
+}
+
 func TestBranchAndReleaseWorkflowsRunRaceInParallelGates(t *testing.T) {
 	content := readRepositoryFile(t, ".github/workflows/ci.yml")
 	testJob := workflowJobBlock(t, content, "test")
@@ -90,7 +183,6 @@ func TestBranchAndReleaseWorkflowsRunRaceInParallelGates(t *testing.T) {
 		run  string
 	}{
 		{name: "Check module graph", run: "go mod tidy -diff"},
-		{name: "Audit Go dependencies", run: "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./..."},
 		{name: "Run Go vet", run: "go vet ./..."},
 		{name: "Check repository invariants", run: "git diff --check"},
 	} {
@@ -213,7 +305,7 @@ func TestBranchWorkflowCancelsSupersededRuns(t *testing.T) {
 	content := readRepositoryFile(t, ".github/workflows/ci.yml")
 	concurrency := workflowTopLevelBlock(t, content, "concurrency")
 	for _, required := range []string{
-		`group: v2-ci-${{ github.event.pull_request.number || github.ref }}`,
+		`group: ci-pr-${{ github.event.pull_request.number }}`,
 		"cancel-in-progress: true",
 	} {
 		if !strings.Contains(concurrency, required) {
@@ -2580,6 +2672,38 @@ func readRepositoryFile(t *testing.T, name string) string {
 	return string(content)
 }
 
+func workflowTopLevelScalar(t *testing.T, content, key string) string {
+	t.Helper()
+	for _, line := range workflowSignificantYAMLLines(content) {
+		if strings.HasPrefix(line, " ") {
+			continue
+		}
+		lineKey, value, found := strings.Cut(line, ":")
+		if !found || lineKey != key {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			t.Fatalf("workflow top-level %s is not a scalar", key)
+		}
+		return value
+	}
+	t.Fatalf("workflow does not contain top-level %s", key)
+	return ""
+}
+
+func workflowSignificantYAMLLines(content string) []string {
+	lines := make([]string, 0)
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed == "---" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
 func workflowTopLevelBlock(t *testing.T, content, key string) string {
 	t.Helper()
 	lines := strings.Split(content, "\n")
@@ -2595,7 +2719,11 @@ func workflowTopLevelBlock(t *testing.T, content, key string) string {
 	}
 	end := len(lines)
 	for index := start + 1; index < len(lines); index++ {
-		if lines[index] != "" && !strings.HasPrefix(lines[index], " ") {
+		trimmed := strings.TrimSpace(lines[index])
+		if trimmed == "" || trimmed == "---" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if !strings.HasPrefix(lines[index], " ") {
 			end = index
 			break
 		}
@@ -2771,10 +2899,10 @@ func TestReleaseWorkflowSkipsOnlyCIProvenGatesAndStillFailsClosed(t *testing.T) 
 			t.Fatalf("%s does not reuse the CI verdict:\n%s", jobName, job)
 		}
 	}
-	// 静态检查依赖会随时间变化的漏洞库，每次发布都必须重跑。
+	// Release 的静态检查仍需独立执行，不复用 CI 结论。
 	staticChecks := workflowJobBlock(t, content, "static-checks")
 	if strings.Contains(staticChecks, "ci_verified") {
-		t.Fatalf("static checks must not reuse a stale vulnerability audit:\n%s", staticChecks)
+		t.Fatalf("release static checks must run independently of the CI verdict:\n%s", staticChecks)
 	}
 
 	preflight := workflowJobBlock(t, content, "publication-preflight")

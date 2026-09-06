@@ -29,6 +29,7 @@ export default {
       forwarding: '请求与转发',
       affinity: '请求亲和',
       headers: '全局 Header Rules',
+      browserAccess: '浏览器访问',
       logs: '日志与维护',
       system: '系统信息',
     },
@@ -38,6 +39,13 @@ export default {
     runtime: {
       title: '请求与转发',
       description: '显式值覆盖内置默认；恢复默认后由当前版本决定有效值。所有时间设置均以秒为单位。',
+      route_strategy: '路由策略',
+      routeStrategies: {
+        native_first: '原生优先',
+        weighted_mix: '混合权重',
+      },
+      routeStrategyHelp:
+        '原生优先尽量保留原生能力；混合权重让原生与转换候选按有效权重竞争，转换可能存在能力差异。请求亲和仍生效，流量不保证严格按权重分配。',
       first_byte_timeout: '原生响应 / 流式首事件超时',
       request_timeout: '请求总时长',
       stream_idle_timeout: '流空闲超时',
@@ -98,6 +106,39 @@ export default {
       replacementWarning: '分组请求头规则覆盖会替换整个全局对象，不会逐项合并。',
       securityNotice:
         '固定 Header 值属于普通配置；不要保存长期凭证。凭证 Header 必须使用字面量模板 {template}。',
+    },
+    browserAccess: {
+      title: '浏览器访问与下游响应头',
+      description: '仅作用于 /v1 与 /v1beta 数据面；管理 API 不开放跨域访问。',
+      cors: {
+        title: 'CORS 策略',
+        description: '允许匹配的浏览器预检在 AccessKey 鉴权前直接返回 204。',
+        enabled: '启用 CORS',
+        enabledHelp: '关闭时保留现有 OPTIONS 与鉴权行为。',
+        allowedOrigins: '允许的来源',
+        allowedOriginsPlaceholder: 'app://obsidian.md, https://notes.example',
+        allowedMethods: '允许的方法',
+        allowedHeaders: '允许的请求头',
+        exposedHeaders: '向浏览器暴露的响应头',
+        maxAge: '预检缓存时间（秒）',
+        allowCredentials: '允许浏览器凭据',
+        allowCredentialsHelp: '用于 Cookie 或客户端证书；不能与来源 * 同时启用。',
+        securityNotice:
+          '建议填写明确的来源白名单。来源 * 会允许任意网页使用访问者持有的 API Key 调用数据面。列表字段使用英文逗号分隔。',
+        enabledSummary: '已启用，允许 {count} 个来源',
+        disabledSummary: '当前未启用 CORS；OPTIONS 保持原有处理。',
+      },
+      responseHeaders: {
+        title: '下游响应头规则',
+        description: '在所有数据面响应提交前设置、覆盖或移除自定义响应头。',
+        removeHint: '从下游响应中移除此 Header。',
+      },
+      errors: {
+        origins: '请输入唯一且合法的来源；* 必须单独使用，且不能允许凭据。',
+        methods: '请输入以英文逗号分隔的唯一 HTTP 方法。',
+        headers: '请输入以英文逗号分隔的唯一 Header 名称；* 必须单独使用。',
+        maxAge: '请输入 0 或正安全整数。',
+      },
     },
     logs: {
       title: '日志与维护',

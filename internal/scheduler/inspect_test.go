@@ -258,7 +258,7 @@ func TestInspectEligiblePoolMatchesIteratorInitialWeightedPool(t *testing.T) {
 		rand.New(rand.NewSource(1)),
 		func() time.Time { return now },
 	)
-	weighted, _ := iterator.weightedTierPool(&iterator.regular, channel.RouteNative, 1, now)
+	weighted, _ := iterator.weightedTierPool(&iterator.regular, []channel.RouteMode{channel.RouteNative}, 1, now)
 	iteratorPool := make(map[uint]int64, len(weighted))
 	for _, candidate := range weighted {
 		iteratorPool[candidate.credential.ID] = candidate.weight
@@ -319,7 +319,7 @@ func TestInspectEligiblePoolMatchesIteratorCredentialAuthorization(t *testing.T)
 		rand.New(rand.NewSource(1)),
 		func() time.Time { return now },
 	)
-	weighted, _ := iterator.weightedTierPool(&iterator.regular, channel.RouteNative, 1, now)
+	weighted, _ := iterator.weightedTierPool(&iterator.regular, []channel.RouteMode{channel.RouteNative}, 1, now)
 	if len(weighted) != 1 || weighted[0].credential.ID != 11 {
 		t.Fatalf("Iterator pool = %#v, want only ready credential 11", weighted)
 	}
@@ -382,7 +382,7 @@ func TestInspectEligiblePoolMatchesIteratorWhenQuotaObservationsDiffer(t *testin
 		rand.New(rand.NewSource(1)),
 		func() time.Time { return now },
 	)
-	weighted, _ := iterator.weightedTierPool(&iterator.regular, channel.RouteNative, 1, now)
+	weighted, _ := iterator.weightedTierPool(&iterator.regular, []channel.RouteMode{channel.RouteNative}, 1, now)
 	if len(weighted) != 2 || weighted[0].credential.ID != 71 || weighted[1].credential.ID != 72 {
 		t.Fatalf("Iterator pool = %#v, want both weighted credentials", weighted)
 	}

@@ -29,6 +29,7 @@ export default {
       forwarding: 'Request and forwarding',
       affinity: 'Request affinity',
       headers: 'Global Header Rules',
+      browserAccess: 'Browser access',
       logs: 'Logs and maintenance',
       system: 'System information',
     },
@@ -39,6 +40,13 @@ export default {
       title: 'Request and forwarding',
       description:
         'Explicit values override built-in defaults. Restoring a default uses the current version; all time values are in seconds.',
+      route_strategy: 'Route strategy',
+      routeStrategies: {
+        native_first: 'Native first',
+        weighted_mix: 'Weighted mix',
+      },
+      routeStrategyHelp:
+        'Native first favors native capabilities. Weighted mix lets native and converted candidates compete by effective weight; conversion may differ in capabilities. Request affinity still applies, so traffic shares are not guaranteed.',
       first_byte_timeout: 'Native response / stream first-event timeout',
       request_timeout: 'Total request timeout',
       stream_idle_timeout: 'Stream idle timeout',
@@ -108,6 +116,42 @@ export default {
         'A Group Header Rules override replaces the complete global object; individual rules are not merged.',
       securityNotice:
         'Fixed Header values are ordinary configuration. Do not store long-lived credentials; credential Headers must use the literal {template} template.',
+    },
+    browserAccess: {
+      title: 'Browser access and downstream headers',
+      description:
+        'Applies only to the /v1 and /v1beta data plane; management APIs remain cross-origin restricted.',
+      cors: {
+        title: 'CORS policy',
+        description: 'Allowed browser preflights return 204 before AccessKey authentication.',
+        enabled: 'Enable CORS',
+        enabledHelp: 'When disabled, existing OPTIONS and authentication behavior is preserved.',
+        allowedOrigins: 'Allowed origins',
+        allowedOriginsPlaceholder: 'app://obsidian.md, https://notes.example',
+        allowedMethods: 'Allowed methods',
+        allowedHeaders: 'Allowed request headers',
+        exposedHeaders: 'Response headers exposed to browsers',
+        maxAge: 'Preflight cache duration (seconds)',
+        allowCredentials: 'Allow browser credentials',
+        allowCredentialsHelp:
+          'Used for cookies or client certificates; incompatible with origin *.',
+        securityNotice:
+          'Prefer an explicit origin allowlist. Origin * lets any web page call the data plane with an API key held by its visitor. Separate list values with commas.',
+        enabledSummary: 'Enabled for {count} origins',
+        disabledSummary: 'CORS is disabled; OPTIONS keeps its existing behavior.',
+      },
+      responseHeaders: {
+        title: 'Downstream response header rules',
+        description:
+          'Set, override, or remove custom headers before every data-plane response is committed.',
+        removeHint: 'Remove this Header from the downstream response.',
+      },
+      errors: {
+        origins: 'Enter unique valid origins. * must be used alone and cannot allow credentials.',
+        methods: 'Enter unique HTTP methods separated by commas.',
+        headers: 'Enter unique Header names separated by commas. * must be used alone.',
+        maxAge: 'Enter zero or a positive safe integer.',
+      },
     },
     logs: {
       title: 'Logs and maintenance',
