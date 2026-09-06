@@ -26,20 +26,25 @@ export default {
     navigation: {
       label: '設定セクション',
       caption: 'セクション',
-      forwarding: 'リクエストと転送',
-      affinity: 'リクエストアフィニティ',
-      headers: 'グローバル Header Rules',
-      browserAccess: 'ブラウザーアクセス',
-      logs: 'ログとメンテナンス',
+      routing: 'ルーティングとスケジューリング',
+      connection: '接続とタイムアウト',
+      reliability: '再試行と認証情報の健全性',
+      browserAccess: 'Header とクロスオリジン',
+      dataMaintenance: 'データとメンテナンス',
       system: 'システム情報',
     },
     validation: {
       title: '保存前に次の設定を修正してください:',
     },
-    runtime: {
-      title: 'リクエストと転送',
+    reliability: {
+      title: '再試行と認証情報の健全性',
       description:
-        '明示値は組み込み既定値を上書きします。既定値の復元後は現在のバージョンが有効値を決めます。すべての時間設定は秒単位です。',
+        '失敗時の再試行方針と、認証情報がブラックリスト登録されるまでの許容度、再検証の間隔です。',
+    },
+    runtime: {
+      title: '接続とタイムアウト',
+      description:
+        'アップストリームへの接続方法と各段階のタイムアウトです。明示値は組み込み既定値を上書きし、既定値の復元後は現在のバージョンが有効値を決めます。',
       route_strategy: 'ルート戦略',
       routeStrategies: {
         native_first: 'ネイティブ優先',
@@ -56,9 +61,6 @@ export default {
       blacklistThresholdHelp:
         'この連続失敗回数に達すると認証情報をブラックリストへ登録します。0 で自動登録を無効化します。',
       validation_interval: '認証情報の検証間隔',
-      inject_usage_options: 'ストリーミング応答へ usage オプションを注入',
-      injectUsageHelp:
-        '最終 usage を取得するため、この機能をサポートする openai-completions のストリーミング要求でのみ有効です。',
       models_dev_auto_sync_enabled: 'Models.dev カタログと価格を自動同期',
       modelsDevAutoSyncHelp:
         '有効にするとカタログと自動価格を定期同期します。Models 画面からの手動同期は引き続き利用できます。',
@@ -83,9 +85,9 @@ export default {
       disabled: '無効',
     },
     affinity: {
-      title: 'リクエストアフィニティ',
+      title: 'ルーティングとスケジューリング',
       description:
-        '自動ソフトアフィニティのグローバル既定値を制御します。グループごとに継承、有効、無効を選択できます。',
+        'どの候補を先に試すか、直近成功したターゲットを再利用するかを決めます。グループごとに継承または上書きできます。',
       affinity_enabled: 'リクエストアフィニティを有効化',
       enabledHelp:
         '無効の場合、明示的に有効化したグループのみアフィニティ対象を学習して再利用できます。',
@@ -98,27 +100,14 @@ export default {
       entries: '件',
     },
     headers: {
-      title: 'グローバル Header Rules',
-      description: 'すべてのアップストリーム要求の基本ルールです。',
+      description: 'アップストリームへ送る前に設定・上書き・削除するリクエストヘッダーです。',
+      blockTitle: 'アップストリームリクエストヘッダールール',
       ruleCount: '{count} 件のルール',
-      currentPublishedRuleCount: '現在公開中のルール {count} 件',
-      defaultSource: '組み込み既定値',
-      overrideSource: '明示的な上書き',
-      pendingRestoreSource: '復元待ち・現在公開中',
-      override: '上書き',
-      restoreDefault: '既定値に戻す',
-      inherited: '有効な組み込みルールを表示しています。編集するには上書きを有効にしてください。',
-      resetPending:
-        '現在公開中の明示ルールを表示しています。保存後に現在のバージョンの既定値へ戻ります。',
-      replacementWarning:
-        'グループのヘッダールール上書きはグローバルオブジェクト全体を置き換え、個別のルールをマージしません。',
-      securityNotice:
-        '固定 Header 値は通常の設定です。長期認証情報を保存しないでください。認証 Header はリテラルの {template} テンプレートを使用する必要があります。',
     },
     browserAccess: {
-      title: 'ブラウザーアクセスとダウンストリームヘッダー',
+      title: 'Header とクロスオリジン',
       description:
-        '/v1 と /v1beta のデータプレーンだけに適用し、管理 API はクロスオリジンで公開しません。',
+        'クロスオリジンアクセスポリシーと、アップストリームへの送信時およびブラウザーへの返却時の Header 書き換えルールです。/v1 と /v1beta のデータプレーンだけに適用し、管理 API はクロスオリジンで公開しません。',
       cors: {
         title: 'CORS ポリシー',
         description: '許可されたプリフライトは AccessKey 認証前に 204 を返します。',
@@ -153,8 +142,8 @@ export default {
       },
     },
     logs: {
-      title: 'ログとメンテナンス',
-      description: 'リクエストログは毎時のメンテナンスタスクが保持日数に従って削除します。',
+      title: 'データとメンテナンス',
+      description: 'バックグラウンドで実行される定期的なクリーンアップと同期タスクです。',
       retention: 'リクエストログ保持日数',
       effectiveValue: '{value} 日',
       days: '日',

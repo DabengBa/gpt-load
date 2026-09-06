@@ -5,11 +5,10 @@ import { useI18n } from 'vue-i18n'
 import type { HeaderRulesDto } from '@/app/resources/groups'
 import type { RuntimeSettingKey, SettingsResource } from '@/app/resources/settings'
 import HeaderRulesEditor from '@/components/config/HeaderRulesEditor.vue'
-import AppButton from '@/components/ui/AppButton.vue'
+import SettingBlock from '@/components/config/SettingBlock.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import CompactFieldError from '@/components/ui/CompactFieldError.vue'
-import StatusBadge from '@/components/ui/StatusBadge.vue'
 
 import {
   createSettingsDraft,
@@ -20,6 +19,7 @@ import {
 import type { SettingsDraftChange } from './use-settings-controller'
 
 type CORSListKey = 'allowed_origins' | 'allowed_methods' | 'allowed_headers' | 'exposed_headers'
+type ToggleableKey = 'header_rules' | 'cors' | 'response_header_rules'
 
 const props = defineProps<{
   base: SettingsResource
@@ -30,17 +30,27 @@ const props = defineProps<{
 const emit = defineEmits<{
   change: [change: SettingsDraftChange]
   'update:valid': [value: boolean]
+  'update:headerRulesValid': [value: boolean]
   'update:corsValid': [value: boolean]
   'update:responseRulesValid': [value: boolean]
-  'update:invalidEdits': [value: boolean]
+  'update:headerRulesInvalidEdits': [value: boolean]
+  'update:responseRulesInvalidEdits': [value: boolean]
 }>()
 const { t } = useI18n()
+
+const headerRulesRawValid = ref(true)
+const headerRulesInvalidEdits = ref(false)
+const headerRulesEditorResetKey = ref(0)
 const responseRulesValid = ref(true)
 const responseRulesInvalidEdits = ref(false)
 const responseEditorResetKey = ref(0)
 
+const headerRulesOverridden = computed(() => props.draft.overrides.has('header_rules'))
 const corsOverridden = computed(() => props.draft.overrides.has('cors'))
 const responseRulesOverridden = computed(() => props.draft.overrides.has('response_header_rules'))
+const headerRulesPendingRestore = computed(
+  () => !headerRulesOverridden.value && props.base.settings.overrides.includes('header_rules'),
+)
 const corsPendingRestore = computed(
   () => !corsOverridden.value && props.base.settings.overrides.includes('cors'),
 )
@@ -49,16 +59,27 @@ const responseRulesPendingRestore = computed(
     !responseRulesOverridden.value &&
     props.base.settings.overrides.includes('response_header_rules'),
 )
+const headerRules = computed(() =>
+  headerRulesOverridden.value || headerRulesPendingRestore.value
+    ? props.draft.values.header_rules
+    : props.base.settings.values.header_rules,
+)
+const headerRuleCount = computed(
+  () => Object.keys(headerRules.value.set).length + headerRules.value.remove.length,
+)
 const cors = computed(() =>
   corsOverridden.value ? props.draft.values.cors : props.base.settings.values.cors,
 )
 const responseRules = computed(() =>
-  responseRulesOverridden.value
+  responseRulesOverridden.value || responseRulesPendingRestore.value
     ? props.draft.values.response_header_rules
     : props.base.settings.values.response_header_rules,
 )
 const responseRuleCount = computed(
   () => Object.keys(responseRules.value.set).length + responseRules.value.remove.length,
+)
+const effectiveHeaderRulesValid = computed(
+  () => !headerRulesOverridden.value || headerRulesRawValid.value,
 )
 const corsValid = computed(
   () => !corsOverridden.value || isValidCORSConfig(props.draft.values.cors),
@@ -66,22 +87,39 @@ const corsValid = computed(
 const effectiveResponseRulesValid = computed(
   () => !responseRulesOverridden.value || responseRulesValid.value,
 )
-const valid = computed(() => corsValid.value && effectiveResponseRulesValid.value)
+const valid = computed(
+  () => effectiveHeaderRulesValid.value && corsValid.value && effectiveResponseRulesValid.value,
+)
 
 watch(valid, (value) => emit('update:valid', value), { immediate: true })
+watch(headerRulesRawValid, (value) => emit('update:headerRulesValid', value), { immediate: true })
 watch(corsValid, (value) => emit('update:corsValid', value), { immediate: true })
 watch(effectiveResponseRulesValid, (value) => emit('update:responseRulesValid', value), {
   immediate: true,
 })
-watch(responseRulesInvalidEdits, (value) => emit('update:invalidEdits', value), { immediate: true })
+watch(headerRulesInvalidEdits, (value) => emit('update:headerRulesInvalidEdits', value), {
+  immediate: true,
+})
+watch(responseRulesInvalidEdits, (value) => emit('update:responseRulesInvalidEdits', value), {
+  immediate: true,
+})
 watch(
   () => props.resetKey,
   () => {
+    headerRulesRawValid.value = true
+    headerRulesInvalidEdits.value = false
+    headerRulesEditorResetKey.value += 1
     responseRulesValid.value = true
     responseRulesInvalidEdits.value = false
     responseEditorResetKey.value += 1
   },
 )
+watch(headerRulesOverridden, (overridden) => {
+  if (!overridden) {
+    headerRulesRawValid.value = true
+    headerRulesInvalidEdits.value = false
+  }
+})
 watch(responseRulesOverridden, (overridden) => {
   if (!overridden) {
     responseRulesValid.value = true
@@ -101,17 +139,29 @@ function publish(key: RuntimeSettingKey, draft: SettingsDraft): void {
   emit('change', { key, draft })
 }
 
-async function toggleOverride(key: 'cors' | 'response_header_rules'): Promise<void> {
+async function toggleOverride(key: ToggleableKey): Promise<void> {
   publish(
     key,
     setSettingsOverride(props.base.settings, props.draft, key, !props.draft.overrides.has(key)),
   )
+  if (key === 'header_rules') {
+    headerRulesRawValid.value = true
+    headerRulesInvalidEdits.value = false
+    await nextTick()
+    headerRulesEditorResetKey.value += 1
+  }
   if (key === 'response_header_rules') {
     responseRulesValid.value = true
     responseRulesInvalidEdits.value = false
     await nextTick()
     responseEditorResetKey.value += 1
   }
+}
+
+function updateHeaderRules(value: HeaderRulesDto): void {
+  const draft = cloneDraft()
+  draft.values.header_rules = value
+  publish('header_rules', draft)
 }
 
 function setCORSEnabled(value: boolean): void {
@@ -233,36 +283,18 @@ function sourceLabel(overridden: boolean, pendingRestore: boolean): string {
     </header>
 
     <div class="browser-access__blocks">
-      <article class="browser-access__block">
-        <header class="browser-access__block-heading">
-          <div class="browser-access__identity">
-            <strong>{{ t('settings.browserAccess.cors.title') }}</strong>
-            <small>{{ t('settings.browserAccess.cors.description') }}</small>
-          </div>
-          <div class="browser-access__meta">
-            <StatusBadge
-              size="compact"
-              :tone="corsPendingRestore ? 'warning' : corsOverridden ? 'info' : 'neutral'"
-              :icon="corsPendingRestore ? 'alert' : corsOverridden ? 'edit' : 'check'"
-            >
-              {{ sourceLabel(corsOverridden, corsPendingRestore) }}
-            </StatusBadge>
-            <AppButton
-              variant="secondary"
-              :tone="corsOverridden ? 'warning' : 'action'"
-              size="compact"
-              :disabled="disabled"
-              @click="toggleOverride('cors')"
-            >
-              {{
-                corsOverridden
-                  ? t('settings.runtime.restoreDefault')
-                  : t('settings.runtime.override')
-              }}
-            </AppButton>
-          </div>
-        </header>
-
+      <SettingBlock
+        :title="t('settings.browserAccess.cors.title')"
+        :help="t('settings.browserAccess.cors.description')"
+        :source-label="sourceLabel(corsOverridden, corsPendingRestore)"
+        :action-label="
+          corsOverridden ? t('settings.runtime.restoreDefault') : t('settings.runtime.override')
+        "
+        :overridden="corsOverridden"
+        :pending-restore="corsPendingRestore"
+        :disabled="disabled"
+        @toggle="toggleOverride('cors')"
+      >
         <div v-if="corsOverridden" class="browser-access__cors-form">
           <div class="browser-access__switch-field browser-access__field--wide">
             <div>
@@ -408,47 +440,51 @@ function sourceLabel(overridden: boolean, pendingRestore: boolean): string {
               : t('settings.browserAccess.cors.disabledSummary')
           }}
         </p>
-      </article>
+      </SettingBlock>
 
-      <article class="browser-access__block">
-        <header class="browser-access__block-heading">
-          <div class="browser-access__identity">
-            <strong>{{ t('settings.browserAccess.responseHeaders.title') }}</strong>
-            <small>{{ t('settings.browserAccess.responseHeaders.description') }}</small>
-          </div>
-          <div class="browser-access__meta">
-            <span>{{ t('settings.headers.ruleCount', { count: responseRuleCount }) }}</span>
-            <StatusBadge
-              size="compact"
-              :tone="
-                responseRulesPendingRestore
-                  ? 'warning'
-                  : responseRulesOverridden
-                    ? 'info'
-                    : 'neutral'
-              "
-              :icon="
-                responseRulesPendingRestore ? 'alert' : responseRulesOverridden ? 'edit' : 'check'
-              "
-            >
-              {{ sourceLabel(responseRulesOverridden, responseRulesPendingRestore) }}
-            </StatusBadge>
-            <AppButton
-              variant="secondary"
-              :tone="responseRulesOverridden ? 'warning' : 'action'"
-              size="compact"
-              :disabled="disabled"
-              @click="toggleOverride('response_header_rules')"
-            >
-              {{
-                responseRulesOverridden
-                  ? t('settings.runtime.restoreDefault')
-                  : t('settings.runtime.override')
-              }}
-            </AppButton>
-          </div>
-        </header>
+      <SettingBlock
+        :title="t('settings.headers.blockTitle')"
+        :help="t('settings.headers.description')"
+        :meta="t('settings.headers.ruleCount', { count: headerRuleCount })"
+        :source-label="sourceLabel(headerRulesOverridden, headerRulesPendingRestore)"
+        :action-label="
+          headerRulesOverridden
+            ? t('settings.runtime.restoreDefault')
+            : t('settings.runtime.override')
+        "
+        :overridden="headerRulesOverridden"
+        :pending-restore="headerRulesPendingRestore"
+        :disabled="disabled"
+        @toggle="toggleOverride('header_rules')"
+      >
+        <HeaderRulesEditor
+          appearance="ledger"
+          :model-value="headerRules"
+          :disabled="disabled || !headerRulesOverridden"
+          :reset-key="headerRulesEditorResetKey"
+          :show-notice="false"
+          :show-add="headerRulesOverridden"
+          @update:model-value="updateHeaderRules"
+          @update:valid="headerRulesRawValid = $event"
+          @update:invalid-edits="headerRulesInvalidEdits = $event"
+        />
+      </SettingBlock>
 
+      <SettingBlock
+        :title="t('settings.browserAccess.responseHeaders.title')"
+        :help="t('settings.browserAccess.responseHeaders.description')"
+        :meta="t('settings.headers.ruleCount', { count: responseRuleCount })"
+        :source-label="sourceLabel(responseRulesOverridden, responseRulesPendingRestore)"
+        :action-label="
+          responseRulesOverridden
+            ? t('settings.runtime.restoreDefault')
+            : t('settings.runtime.override')
+        "
+        :overridden="responseRulesOverridden"
+        :pending-restore="responseRulesPendingRestore"
+        :disabled="disabled"
+        @toggle="toggleOverride('response_header_rules')"
+      >
         <HeaderRulesEditor
           appearance="ledger"
           validation-policy="response"
@@ -462,7 +498,7 @@ function sourceLabel(overridden: boolean, pendingRestore: boolean): string {
           @update:valid="responseRulesValid = $event"
           @update:invalid-edits="responseRulesInvalidEdits = $event"
         />
-      </article>
+      </SettingBlock>
     </div>
   </section>
 </template>
@@ -471,9 +507,6 @@ function sourceLabel(overridden: boolean, pendingRestore: boolean): string {
 .settings-section,
 .settings-section__heading,
 .browser-access__blocks,
-.browser-access__block,
-.browser-access__identity,
-.browser-access__meta,
 .browser-access__field,
 .browser-access__switch-field {
   display: grid;
@@ -486,20 +519,17 @@ function sourceLabel(overridden: boolean, pendingRestore: boolean): string {
 
 .settings-section__heading h2,
 .settings-section__heading p,
-.browser-access__identity strong,
-.browser-access__identity small,
 .browser-access__summary,
 .browser-access__notice {
   margin: 0;
 }
 
 .settings-section__heading h2 {
-  font-size: var(--text-body);
+  font-size: var(--title-section);
   font-weight: 650;
 }
 
 .settings-section__heading p,
-.browser-access__identity small,
 .browser-access__summary {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
@@ -509,45 +539,17 @@ function sourceLabel(overridden: boolean, pendingRestore: boolean): string {
   gap: var(--space-5);
 }
 
-.browser-access__block {
-  gap: var(--space-3);
-}
-
-.browser-access__block + .browser-access__block {
-  border-top: 1px dashed var(--color-border-subtle);
-  padding-top: var(--space-4);
-}
-
-.browser-access__block-heading {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: var(--space-4);
-}
-
-.browser-access__identity {
-  gap: var(--space-1);
-}
-
-.browser-access__identity strong,
 .browser-access__switch-field strong {
   font-size: var(--text-meta);
-}
-
-.browser-access__meta {
-  justify-items: end;
-  gap: var(--space-1);
-  color: var(--color-text-muted);
-  font-size: var(--text-label-xs);
-  text-align: end;
 }
 
 .browser-access__cors-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3) var(--space-4);
-  border-left: 2px solid var(--color-border-subtle);
-  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-sunken);
+  padding: var(--space-3) var(--space-4);
 }
 
 .browser-access__field {
@@ -592,14 +594,8 @@ function sourceLabel(overridden: boolean, pendingRestore: boolean): string {
 }
 
 @media (max-width: 800px) {
-  .browser-access__block-heading,
   .browser-access__cors-form {
     grid-template-columns: 1fr;
-  }
-
-  .browser-access__meta {
-    justify-items: start;
-    text-align: start;
   }
 
   .browser-access__field--wide,

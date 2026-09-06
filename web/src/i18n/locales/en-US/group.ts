@@ -213,7 +213,7 @@ export default {
         routing: 'Scheduling',
         runtime: 'Runtime overrides',
         parameters: 'Parameter overrides',
-        headers: 'HeaderRules',
+        headers: 'Upstream request header rules',
         danger: 'Danger zone',
       },
       routing: {
@@ -222,7 +222,7 @@ export default {
       },
       headers: {
         description:
-          'Rules are collapsed by default; editing replaces the complete HeaderRules object',
+          'Header rules applied to outgoing upstream requests — set, override, or remove; overriding fully replaces the global rules instead of merging with them.',
       },
       parameterOverrides: {
         description:
@@ -311,6 +311,9 @@ export default {
         customUrlHelp: 'Uses the channel preset or SDK official address by default.',
         paramRequired: 'Enter {field}.',
         validationModel: 'Validation model (optional)',
+        validationModelPlaceholder: 'Search or enter a model ID',
+        validationModelHelp:
+          'Leave empty to use the first model in this Group; enter the upstream model ID, not an alias.',
         weight: 'Manual Group weight',
         auto: 'Auto',
         manual: 'Manual',
@@ -338,6 +341,8 @@ export default {
         nonNegativeIntegerError: 'Enter 0 or a positive whole number.',
         override: 'Overridden by this Group',
         inherited: 'Inherited from global settings',
+        pendingRestoreSource: 'Pending inheritance',
+        resetPending: 'Saving will make this follow the global setting',
         useOverride: 'Override',
         useInherited: 'Use inherited',
         enabledValue: 'Enabled',
@@ -351,14 +356,9 @@ export default {
         headerStorageNoticeEnd: ' for credential values.',
         headerReplacementWarning:
           'This Group override replaces the complete global HeaderRules object; future global changes will not merge into it.',
-        inject_usage_options: 'Inject usage options',
-        injectUsageHelp: 'This override is available only for openai-completions',
         affinity_enabled: 'Request affinity',
         affinityHelp:
           'Controls whether this Group learns or reuses affinity targets without changing normal weights, scheduling, or retries.',
-        affinityInherit: 'Inherit global',
-        affinityEnable: 'Enable',
-        affinityDisable: 'Disable',
       },
       delete: {
         sectionDescription:

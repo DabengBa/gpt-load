@@ -26,19 +26,24 @@ export default {
     navigation: {
       label: '设置章节',
       caption: '章节',
-      forwarding: '请求与转发',
-      affinity: '请求亲和',
-      headers: '全局 Header Rules',
-      browserAccess: '浏览器访问',
-      logs: '日志与维护',
+      routing: '路由与调度',
+      connection: '连接与超时',
+      reliability: '重试与凭据健康',
+      browserAccess: 'Header 与跨域',
+      dataMaintenance: '数据与维护',
       system: '系统信息',
     },
     validation: {
       title: '保存前请修正以下设置：',
     },
+    reliability: {
+      title: '重试与凭据健康',
+      description: '失败时的重试策略，以及凭据被拉黑前的宽容度和复检节奏。',
+    },
     runtime: {
-      title: '请求与转发',
-      description: '显式值覆盖内置默认；恢复默认后由当前版本决定有效值。所有时间设置均以秒为单位。',
+      title: '连接与超时',
+      description:
+        '到上游的连接方式与各阶段超时；显式值覆盖内置默认，恢复默认后由当前版本决定有效值。',
       route_strategy: '路由策略',
       routeStrategies: {
         native_first: '原生优先',
@@ -54,8 +59,6 @@ export default {
       blacklist_threshold: '连续失败拉黑阈值',
       blacklistThresholdHelp: '凭据达到该连续失败次数后自动拉黑；0 表示关闭自动拉黑。',
       validation_interval: '检测间隔',
-      inject_usage_options: '为流式响应注入 usage 选项',
-      injectUsageHelp: '只在支持该能力的 openai-completions 流式请求中生效，用于获取最终 usage。',
       models_dev_auto_sync_enabled: '自动同步 Models.dev 目录与价格',
       modelsDevAutoSyncHelp: '启用后按计划同步目录和自动价格；关闭后仍可在模型页手动同步。',
       environmentSource: '环境变量锁定',
@@ -79,8 +82,8 @@ export default {
       disabled: '已禁用',
     },
     affinity: {
-      title: '请求亲和',
-      description: '控制自动软亲和的全局默认行为；分组可单独继承、开启或关闭。',
+      title: '路由与调度',
+      description: '决定一次请求先尝试谁、以及是否复用上次命中的目标；分组可单独继承或覆盖。',
       affinity_enabled: '启用请求亲和',
       enabledHelp: '关闭后仅显式开启亲和的分组可以学习和复用亲和目标。',
       affinity_ttl: '默认有效期',
@@ -92,24 +95,14 @@ export default {
       entries: '条',
     },
     headers: {
-      title: '全局 Header Rules',
-      description: '用于所有上游请求的基础规则。',
+      description: '发往上游前设置、覆盖或移除的请求头规则。',
+      blockTitle: '上游请求头规则',
       ruleCount: '{count} 条规则',
-      currentPublishedRuleCount: '当前已发布 {count} 条规则',
-      defaultSource: '内置默认',
-      overrideSource: '显式覆盖',
-      pendingRestoreSource: '待恢复 · 当前已发布',
-      override: '覆盖',
-      restoreDefault: '恢复默认',
-      inherited: '当前展示的是有效的内置规则；启用覆盖后才可编辑。',
-      resetPending: '当前仍显示已发布的显式规则；保存后才会恢复当前版本默认。',
-      replacementWarning: '分组请求头规则覆盖会替换整个全局对象，不会逐项合并。',
-      securityNotice:
-        '固定 Header 值属于普通配置；不要保存长期凭证。凭证 Header 必须使用字面量模板 {template}。',
     },
     browserAccess: {
-      title: '浏览器访问与下游响应头',
-      description: '仅作用于 /v1 与 /v1beta 数据面；管理 API 不开放跨域访问。',
+      title: 'Header 与跨域',
+      description:
+        '跨域访问策略，以及发往上游与返回浏览器的 Header 改写规则；仅作用于 /v1 与 /v1beta 数据面，管理 API 不开放跨域访问。',
       cors: {
         title: 'CORS 策略',
         description: '允许匹配的浏览器预检在 AccessKey 鉴权前直接返回 204。',
@@ -141,8 +134,8 @@ export default {
       },
     },
     logs: {
-      title: '日志与维护',
-      description: '请求日志由每小时维护任务按保留天数清理。',
+      title: '数据与维护',
+      description: '后台按计划执行的清理与同步任务。',
       retention: '请求日志保留天数',
       effectiveValue: '{value} 天',
       days: '天',

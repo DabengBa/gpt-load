@@ -213,7 +213,7 @@ export default {
         routing: 'スケジューリング',
         runtime: 'ランタイム上書き',
         parameters: 'パラメーター上書き',
-        headers: 'HeaderRules',
+        headers: 'アップストリームリクエストヘッダールール',
         danger: '危険な操作',
       },
       routing: {
@@ -221,7 +221,8 @@ export default {
         weightHelp: '自動はランタイムスケジューリングで決まり、手動は 1–100 です',
       },
       headers: {
-        description: 'ルールは既定で折りたたまれ、編集すると HeaderRules 全体を置き換えます',
+        description:
+          'アップストリームへのリクエストに適用するヘッダーの設定・上書き・削除ルール。オーバーライドするとグローバルルール全体を置き換え、マージはされません。',
       },
       parameterOverrides: {
         description:
@@ -310,6 +311,9 @@ export default {
         customUrlHelp: '既定ではチャネル設定または SDK 公式アドレスを使用します。',
         paramRequired: '{field} を入力してください。',
         validationModel: '検証モデル（任意）',
+        validationModelPlaceholder: 'モデル ID を検索または入力',
+        validationModelHelp:
+          '空欄の場合はグループの最初のモデルを使用します。エイリアスではなくアップストリームのモデル ID を入力してください。',
         weight: 'グループ手動ウェイト',
         auto: '自動',
         manual: '手動',
@@ -336,6 +340,8 @@ export default {
         nonNegativeIntegerError: '0 または正の整数を入力してください。',
         override: 'このグループで上書き',
         inherited: 'グローバル設定を継承',
+        pendingRestoreSource: '継承待ち',
+        resetPending: '保存するとグローバル設定に従います',
         useOverride: '上書きに変更',
         useInherited: '継承に変更',
         enabledValue: '有効',
@@ -350,14 +356,9 @@ export default {
         headerStorageNoticeEnd: 'を使用してください。',
         headerReplacementWarning:
           'このグループ上書きはグローバル HeaderRules 全体を置き換えます。今後のグローバル変更はマージされません。',
-        inject_usage_options: '使用量オプションを注入',
-        injectUsageHelp: 'この上書きは openai-completions でのみ利用できます',
         affinity_enabled: 'リクエストアフィニティ',
         affinityHelp:
           '通常の重み、スケジューリング、再試行を変えず、このグループがアフィニティ対象を学習または再利用するかを制御します。',
-        affinityInherit: 'グローバルを継承',
-        affinityEnable: '有効',
-        affinityDisable: '無効',
       },
       delete: {
         sectionDescription:
