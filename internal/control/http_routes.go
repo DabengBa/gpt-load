@@ -155,6 +155,40 @@ func (s *Server) HTTPModule() httproute.Module {
 			controlRoute("control.logs.get", http.MethodGet, "/logs/:request_id", s.handleGetRequestLog),
 			controlRoute("control.usage", http.MethodGet, "/usage", s.handleUsage),
 			controlRoute("control.route.inspect", http.MethodPost, "/route/inspect", s.handleRouteInspect),
+			controlRoute(
+				"control.model-route-schedule.index",
+				http.MethodGet,
+				"/model-route/schedule",
+				s.handleModelRouteScheduleIndex,
+			),
+			controlRoute(
+				"control.model-route-schedule.detail",
+				http.MethodGet,
+				"/model-route/schedule/detail",
+				s.handleModelRouteScheduleDetail,
+			),
+			controlRoute(
+				"control.model-route-schedule.update",
+				http.MethodPatch,
+				"/model-route/schedule",
+				s.auditMutation(newMutationDescriptor(
+					"model_route_schedule_update",
+					"model_route_schedule",
+					staticMutationLocator("model-route-schedule:global"),
+				)),
+				s.handleUpdateModelRouteSchedule,
+			),
+			controlRoute(
+				"control.model-route-schedule.recover",
+				http.MethodPost,
+				"/model-route/schedule/recover",
+				s.auditMutation(newMutationDescriptor(
+					"model_route_schedule_recover",
+					"model_route_schedule",
+					staticMutationLocator("model-route-schedule:global"),
+				)),
+				s.handleRecoverModelRouteScheduleEntry,
+			),
 			controlRoute("control.settings.get", http.MethodGet, "/settings", s.handleGetSettings),
 			controlRoute(
 				"control.settings.update",

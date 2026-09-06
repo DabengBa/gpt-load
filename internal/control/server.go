@@ -938,6 +938,57 @@ func (s *Server) handleDeleteAccessKey(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", nil)
 }
 
+func (s *Server) handleModelRouteScheduleIndex(c *gin.Context) {
+	result, err := s.service.GetModelRouteScheduleIndex()
+	if err != nil {
+		writeServiceError(c, "list_model_route_schedule", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", result)
+}
+
+func (s *Server) handleModelRouteScheduleDetail(c *gin.Context) {
+	request, apiErr := parseModelRouteScheduleDetailQuery(c)
+	if apiErr != nil {
+		writeServiceError(c, "get_model_route_schedule_detail", apiErr)
+		return
+	}
+	result, err := s.service.GetModelRouteScheduleDetail(request)
+	if err != nil {
+		writeServiceError(c, "get_model_route_schedule_detail", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", result)
+}
+
+func (s *Server) handleUpdateModelRouteSchedule(c *gin.Context) {
+	var request modelRouteSchedulePatchRequest
+	if err := bindStrictJSON(c, &request); err != nil {
+		writeServiceError(c, "update_model_route_schedule", mapControlJSONError(err))
+		return
+	}
+	result, err := s.service.UpdateModelRouteSchedule(c.Request.Context(), request)
+	if err != nil {
+		writeServiceError(c, "update_model_route_schedule", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", result)
+}
+
+func (s *Server) handleRecoverModelRouteScheduleEntry(c *gin.Context) {
+	var request modelRouteScheduleRecoverRequest
+	if err := bindStrictJSON(c, &request); err != nil {
+		writeServiceError(c, "recover_model_route_schedule", mapControlJSONError(err))
+		return
+	}
+	result, err := s.service.RecoverModelRouteScheduleEntry(request)
+	if err != nil {
+		writeServiceError(c, "recover_model_route_schedule", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", result)
+}
+
 func bindStrictJSON(c *gin.Context, target any) error {
 	if c.Request.ContentLength > maxControlJSONBodyBytes {
 		return &http.MaxBytesError{Limit: maxControlJSONBodyBytes}
@@ -1122,6 +1173,8 @@ func serviceErrorMessageID(
 		return "model_price.referenced"
 	case app_errors.ErrModelPriceAutomaticDeleteForbidden.Code:
 		return "model_price.automatic_delete_forbidden"
+	case modelRouteScheduleRevisionConflict.Code:
+		return "bad_request"
 	case app_errors.ErrRequestTooLarge.Code:
 		return "request_too_large"
 	case app_errors.ErrBadRequest.Code, app_errors.ErrInvalidJSON.Code, app_errors.ErrValidation.Code:
