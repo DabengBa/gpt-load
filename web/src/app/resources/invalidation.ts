@@ -21,12 +21,16 @@ const importedCredentialResourcePlan = (groupID: number) =>
       controlQueryKeys.groups.credentialsAll(groupID),
       controlQueryKeys.groups.collectionAll,
       controlQueryKeys.home.all,
+      controlQueryKeys.modelRouteSchedule.all,
     ],
   )
 
+const modelRouteSchedulePlan = plan([], [controlQueryKeys.modelRouteSchedule.all])
+
 export const mutationInvalidationPlans = {
   settings: {
-    update: () => plan([], [controlQueryKeys.groups.settingsAll()]),
+    update: () =>
+      plan([], [controlQueryKeys.groups.settingsAll(), controlQueryKeys.modelRouteSchedule.all]),
   },
   group: {
     create: plan(
@@ -36,6 +40,7 @@ export const mutationInvalidationPlans = {
         controlQueryKeys.home.all,
         controlQueryKeys.models.all,
         controlQueryKeys.modelPrices(),
+        controlQueryKeys.modelRouteSchedule.all,
       ],
     ),
     delete: plan(
@@ -45,40 +50,47 @@ export const mutationInvalidationPlans = {
         controlQueryKeys.home.all,
         controlQueryKeys.models.all,
         controlQueryKeys.modelPrices(),
+        controlQueryKeys.modelRouteSchedule.all,
       ],
     ),
     importCredentials: importedCredentialResourcePlan,
+    modelsUpdate: modelRouteSchedulePlan,
+    settingsUpdate: modelRouteSchedulePlan,
   },
   accessKey: {
     create: plan(
       [controlQueryKeys.accessKeys.options(), controlQueryKeys.home.base()],
-      [controlQueryKeys.accessKeys.collectionAll],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
     ),
     update: plan(
       [controlQueryKeys.accessKeys.options(), controlQueryKeys.home.base()],
-      [controlQueryKeys.accessKeys.collectionAll],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
     ),
     rotate: plan(
       [controlQueryKeys.accessKeys.options(), controlQueryKeys.home.base()],
-      [controlQueryKeys.accessKeys.collectionAll],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
     ),
     reset: plan(
       [controlQueryKeys.home.base(), controlQueryKeys.health()],
-      [controlQueryKeys.accessKeys.collectionAll],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
     ),
     delete: plan(
       [controlQueryKeys.accessKeys.options(), controlQueryKeys.home.base()],
-      [controlQueryKeys.accessKeys.collectionAll],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
     ),
     reconcile: plan(
       [controlQueryKeys.accessKeys.options()],
-      [controlQueryKeys.accessKeys.collectionAll],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
     ),
     reconcileConfirmed: plan(
       [controlQueryKeys.home.base()],
-      [controlQueryKeys.accessKeys.collectionAll],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
     ),
     reveal: plan(),
+  },
+  modelRouteSchedule: {
+    update: modelRouteSchedulePlan,
+    recover: modelRouteSchedulePlan,
   },
   modelPrice: {
     update: plan(

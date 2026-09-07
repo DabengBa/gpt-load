@@ -145,13 +145,22 @@ export interface GroupSettingsDto {
   proxy: ProxyViewDto
 }
 
+export interface EntryCircuitBreakerDto {
+  blacklist_threshold?: number | null
+  cooldown_seconds?: number | null
+}
+
 export interface GroupModelItemDto {
   id: string
   alias: string
   alias_enabled: boolean
   client_model: string
+  /** Present after the server lazily backfills the route-entry identity. */
+  entry_id?: string
   weight: number | null
   priority: number | null
+  /** Optional for compatibility with responses produced before breaker exposure. */
+  circuit_breaker?: EntryCircuitBreakerDto | null
   pricing_status: ModelPricingStatus
 }
 

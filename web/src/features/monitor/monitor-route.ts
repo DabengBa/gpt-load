@@ -1,6 +1,11 @@
 import type { LocationQueryRaw } from 'vue-router'
 
 import { enabledDataProtocols } from '@/api/control/protocols'
+import type { AccessProtocol } from '@/api/control/types'
+import {
+  routeInspectOperations,
+  type RouteInspectOperation,
+} from '@/app/resources/route-inspection'
 import type { UsageFilters } from '@/app/resources/usage'
 import type { RequestLogFilters } from '@/app/resources/request-logs'
 import { defaultTimeRange } from '@/lib/time'
@@ -14,7 +19,7 @@ import {
 } from './usage-filters'
 import { normalizeMonitorText } from './filter-validation'
 
-export type MonitorTab = 'health' | 'logs' | 'inspector' | 'usage'
+export type MonitorTab = 'health' | 'logs' | 'inspector' | 'usage' | 'schedule'
 export interface HealthMonitorState {
   groupsExpanded: boolean
 }
@@ -33,6 +38,13 @@ export interface LogsMonitorState {
   selectedRequestID?: string
 }
 
+export interface ScheduleMonitorState {
+  protocol?: AccessProtocol
+  externalModel?: string
+  operation?: RouteInspectOperation
+  accessKeyID?: string
+}
+
 export interface InspectorMonitorState {
   protocol?: string
   externalModel?: string
@@ -43,9 +55,30 @@ export interface InspectorMonitorState {
 
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const logCursorPattern = /^[A-Za-z0-9_-]{1,512}$/u
+const scheduleOperationsByProtocol: Record<AccessProtocol, readonly RouteInspectOperation[]> = {
+  'openai-completions': ['chat_completion'],
+  'openai-responses': [
+    'responses_create',
+    'responses_retrieve',
+    'responses_delete',
+    'responses_cancel',
+    'responses_input_items',
+    'responses_compact',
+    'responses_input_tokens',
+    'responses_passthrough',
+  ],
+  'openai-images': ['images_generate', 'images_edit'],
+  'openai-embeddings': ['embeddings_create'],
+  anthropic: ['chat_completion', 'count_tokens'],
+  gemini: ['chat_completion', 'count_tokens'],
+}
 
 export function normalizeMonitorTab(raw: unknown): MonitorTab {
-  return raw === 'logs' || raw === 'inspector' || raw === 'usage' || raw === 'health'
+  return raw === 'logs' ||
+    raw === 'inspector' ||
+    raw === 'usage' ||
+    raw === 'health' ||
+    raw === 'schedule'
     ? raw
     : 'health'
 }
@@ -54,6 +87,7 @@ export function normalizeMonitorQuery(query: Record<string, unknown>): LocationQ
   const tab = normalizeMonitorTab(query.tab)
   if (tab === 'health') return healthMonitorQuery(parseHealthMonitorState(query))
   if (tab === 'inspector') return inspectorMonitorQuery(parseInspectorMonitorState(query))
+  if (tab === 'schedule') return scheduleMonitorQuery(parseScheduleMonitorState(query))
   if (tab === 'usage') {
     return usageMonitorQuery(parseAppliedUsageFilters(query), parseUsageMonitorState(query))
   }
@@ -100,6 +134,41 @@ export function normalizeAccessKeyMonitorQuery(query: Record<string, unknown>): 
     scopeAccessKeyUsageFilters(parseAppliedUsageFilters(query)),
     parseUsageMonitorState(query),
   )
+}
+
+export function parseScheduleMonitorState(query: Record<string, unknown>): ScheduleMonitorState {
+  const protocol = scalarEnum(query.schedule_protocol, enabledDataProtocols)
+  const operation = scalarEnum(query.schedule_operation, routeInspectOperations)
+  return {
+    protocol,
+    externalModel: scalarText(query.schedule_model),
+    operation:
+      protocol !== undefined &&
+      operation !== undefined &&
+      scheduleOperationsByProtocol[protocol].includes(operation)
+        ? operation
+        : undefined,
+    accessKeyID: scalarPositiveID(query.schedule_access_key_id),
+  }
+}
+
+export function scheduleMonitorQuery(state: ScheduleMonitorState): LocationQueryRaw {
+  const normalized: LocationQueryRaw = { tab: 'schedule' }
+  const protocol = scalarEnum(state.protocol, enabledDataProtocols)
+  if (protocol !== undefined) normalized.schedule_protocol = protocol
+  const model = scalarText(state.externalModel)
+  if (model !== undefined) normalized.schedule_model = model
+  const accessKeyID = scalarPositiveID(state.accessKeyID)
+  if (accessKeyID !== undefined) normalized.schedule_access_key_id = accessKeyID
+  const operation = scalarEnum(state.operation, routeInspectOperations)
+  if (
+    protocol !== undefined &&
+    operation !== undefined &&
+    scheduleOperationsByProtocol[protocol].includes(operation)
+  ) {
+    normalized.schedule_operation = operation
+  }
+  return normalized
 }
 
 export function parseHealthMonitorState(query: Record<string, unknown>): HealthMonitorState {

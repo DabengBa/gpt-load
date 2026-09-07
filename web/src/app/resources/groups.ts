@@ -16,6 +16,7 @@ import type {
   GroupModelItemDto,
   GroupModelsDto,
   GroupOptionDto,
+  EntryCircuitBreakerDto,
   GroupSettingsDto,
   GroupSummaryDto,
   ParameterJSONValue,
@@ -73,8 +74,10 @@ const groupModelItemFields = [
   'alias',
   'alias_enabled',
   'client_model',
+  'entry_id',
   'weight',
   'priority',
+  'circuit_breaker',
   'pricing_status',
 ] as const
 const groupCollectionFields = ['observed_at_ms', 'summary', 'items', 'pagination'] as const
@@ -187,8 +190,10 @@ export interface GroupModelUpdateDto {
   id: string
   alias: string
   alias_enabled: boolean
+  entry_id?: string
   weight?: number | null
   priority?: number | null
+  circuit_breaker?: EntryCircuitBreakerDto | null
 }
 
 export interface GroupModelsReplaceRequest {
@@ -429,6 +434,26 @@ function projectNullableSafeInteger(value: unknown): number | null {
   return value === null || value === undefined ? null : projectSafeInteger(value)
 }
 
+function projectGroupModelCircuitBreaker(value: unknown): EntryCircuitBreakerDto | null {
+  if (value === null) return null
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, ['blacklist_threshold', 'cooldown_seconds'])
+  const result: EntryCircuitBreakerDto = {}
+  if (Object.prototype.hasOwnProperty.call(record, 'blacklist_threshold')) {
+    result.blacklist_threshold =
+      record.blacklist_threshold === null
+        ? null
+        : projectSafeInteger(record.blacklist_threshold, { minimum: 1 })
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'cooldown_seconds')) {
+    result.cooldown_seconds =
+      record.cooldown_seconds === null
+        ? null
+        : projectSafeInteger(record.cooldown_seconds, { minimum: 0 })
+  }
+  return result
+}
+
 function projectGroupModelItem(value: unknown): GroupModelItemDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, groupModelItemFields)
@@ -439,7 +464,7 @@ function projectGroupModelItem(value: unknown): GroupModelItemDto {
   if ((alias !== '') !== aliasEnabled || clientModel !== (aliasEnabled ? alias : id)) {
     throw new InvalidResponseError()
   }
-  return {
+  const result: GroupModelItemDto = {
     id,
     alias,
     alias_enabled: aliasEnabled,
@@ -448,6 +473,13 @@ function projectGroupModelItem(value: unknown): GroupModelItemDto {
     priority: projectNullableSafeInteger(record.priority),
     pricing_status: projectEnum(record.pricing_status, ['pending', 'configured'] as const),
   }
+  if (Object.prototype.hasOwnProperty.call(record, 'entry_id')) {
+    result.entry_id = projectNonBlankString(record.entry_id)
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'circuit_breaker')) {
+    result.circuit_breaker = projectGroupModelCircuitBreaker(record.circuit_breaker)
+  }
+  return result
 }
 
 export function projectGroupModels(value: unknown): GroupModelsDto {
@@ -915,6 +947,10 @@ export async function invalidateGroupModelDependents(
       queryKey: controlQueryKeys.models.all,
       refetchType: 'none',
     }),
+    queryClient.invalidateQueries({
+      queryKey: controlQueryKeys.modelRouteSchedule.all,
+      refetchType: 'active',
+    }),
   ])
 }
 
@@ -953,6 +989,10 @@ export async function invalidateGroupSettingsDependents(
     }),
     queryClient.invalidateQueries({
       queryKey: controlQueryKeys.models.all,
+      refetchType: 'active',
+    }),
+    queryClient.invalidateQueries({
+      queryKey: controlQueryKeys.modelRouteSchedule.all,
       refetchType: 'active',
     }),
   ])

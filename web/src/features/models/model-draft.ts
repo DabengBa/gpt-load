@@ -131,13 +131,20 @@ export function normalizeModel(model: GroupModelUpdateDto): GroupModelUpdateDto 
   const id = model.id.trim()
   if (!id) return undefined
   const alias = model.alias_enabled ? model.alias.trim() : ''
-  return {
+  const normalized: GroupModelUpdateDto = {
     id,
     alias,
     alias_enabled: model.alias_enabled,
     weight: model.weight ?? null,
     priority: model.priority ?? null,
   }
+  if (Object.prototype.hasOwnProperty.call(model, 'entry_id')) {
+    normalized.entry_id = model.entry_id
+  }
+  if (Object.prototype.hasOwnProperty.call(model, 'circuit_breaker')) {
+    normalized.circuit_breaker = model.circuit_breaker
+  }
+  return normalized
 }
 
 export function clientModel(model: GroupModelUpdateDto): string {
