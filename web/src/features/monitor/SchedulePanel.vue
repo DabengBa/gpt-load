@@ -26,7 +26,6 @@ export interface SchedulePanelLabels {
   accessKey: string
   selectModel: string
   selectProtocol: string
-  selectOperation: string
   selectAccessKey: string
   loadingOptions: string
   optionsFailed: string

@@ -49,6 +49,7 @@ import {
   inspectGroupCredentialConnection,
   type CredentialStage,
 } from '@/app/resources/credential-stages'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
 import { groupDetailLocation, importLocation } from '@/app/route-locations'
 import { controlQueryKeys } from '@/app/query-keys'
 import { useToast } from '@/app/toast'
@@ -638,6 +639,10 @@ async function refetchActiveCredentialPage(): Promise<void> {
   )
 }
 
+async function invalidateScheduleQueries(): Promise<void> {
+  await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.update)
+}
+
 async function reconcileItem(result: CredentialItemDto, refetchActive: boolean): Promise<void> {
   try {
     const current = cachedCurrentCredential(result.credential_id)
@@ -662,8 +667,8 @@ async function reconcileItem(result: CredentialItemDto, refetchActive: boolean):
     feedback.value = t('group.credentials.reconcileFailed')
     await invalidateReconciliationQueries()
   }
+  await invalidateScheduleQueries()
 }
-
 async function cacheObservation(
   item: CredentialItemDto,
   observation: CredentialObservationDto,
@@ -1146,6 +1151,7 @@ async function saveConnectedAccounts(): Promise<void> {
       connectOperationKey.value,
     )
     await refetchActiveCredentialPage()
+    await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.update)
     void queryClient.invalidateQueries({
       queryKey: controlQueryKeys.groups.summary(props.groupId),
       exact: true,
@@ -1193,6 +1199,7 @@ async function reconcileBatch(
     feedback.value = t('group.credentials.reconcileFailed')
     await invalidateReconciliationQueries()
   }
+  await invalidateScheduleQueries()
 }
 
 function clearDeletedRouteState(ids: readonly number[]): void {

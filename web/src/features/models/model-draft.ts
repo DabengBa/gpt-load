@@ -238,7 +238,9 @@ export function indexesWithZeroShare(models: readonly GroupModelUpdateDto[]): Se
     if (!name) continue
     totals.set(name, (totals.get(name) ?? 0) + effectiveEntryWeight(model))
   }
-  const zeroModels = new Set([...totals.entries()].filter(([, total]) => total === 0).map(([name]) => name))
+  const zeroModels = new Set(
+    [...totals.entries()].filter(([, total]) => total === 0).map(([name]) => name),
+  )
   return new Set(
     models.flatMap((model, index) => (zeroModels.has(clientModel(model)) ? [index] : [])),
   )

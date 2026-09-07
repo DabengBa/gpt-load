@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useQueryClient } from '@tanstack/vue-query'
 import { computed, reactive, ref, watch } from 'vue'
 
 import { useApiClient } from '@/api/client-context'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
 import {
   isModelRouteScheduleRevisionConflict,
   updateModelRouteSchedule,
@@ -28,7 +30,6 @@ export interface SchedulePanelDetailLabels {
   routeUnavailable: string
   groupWeight: string
   channel: string
-  entry: string
   entryId: string
   weight: string
   priority: string
@@ -100,6 +101,7 @@ const emit = defineEmits<{
   recovered: [groupId: number, entryId: string]
 }>()
 
+const queryClient = useQueryClient()
 const client = useApiClient()
 const drafts = reactive<Record<string, Draft>>({})
 const rawInputs = reactive<Record<string, string>>({})
@@ -384,6 +386,7 @@ async function save(): Promise<void> {
   saveError.value = ''
   try {
     const response = await updateModelRouteSchedule(client, body)
+    await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.update)
     resetDrafts()
     saveStatus.value = 'saved'
     emit('saved', response.snapshot_revision_new)
@@ -407,6 +410,7 @@ async function recover(groupID: number, entryID: string): Promise<void> {
   saveError.value = ''
   try {
     await recoverModelRouteScheduleEntry(client, { group_id: groupID, entry_id: entryID })
+    await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.recover)
     emit('recovered', groupID, entryID)
   } catch {
     saveError.value = text('recoverFailed')
