@@ -25,7 +25,10 @@ const importedCredentialResourcePlan = (groupID: number) =>
     ],
   )
 
-const modelRouteSchedulePlan = plan([], [controlQueryKeys.modelRouteSchedule.all])
+const modelRouteSchedulePlan = plan(
+  [],
+  [controlQueryKeys.modelRouteSchedule.all, controlQueryKeys.groups.modelsAll()],
+)
 
 export const mutationInvalidationPlans = {
   settings: {

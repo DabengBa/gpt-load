@@ -305,16 +305,23 @@ async function focusFirstInvalid(): Promise<void> {
   const targetsModelID =
     validity.value.emptyIDIndexes.has(index) ||
     (validity.value.conflictIndexes.has(index) && item?.editable_id && !item.alias_enabled)
+  const targetsWeight =
+    validity.value.invalidWeightIndexes.has(index) || validity.value.zeroShareIndexes.has(index)
+  const targetsPriority = validity.value.invalidPriorityIndexes.has(index)
   if (item) {
     if (targetsModelID) touchModelID(item.key)
-    else if (item.alias_enabled) touchAlias(item.key)
+    else if (item.alias_enabled && !targetsWeight && !targetsPriority) touchAlias(item.key)
   }
   await nextTick()
   const selector = targetsModelID
     ? `[data-model-id-index="${index}"]`
-    : item?.alias_enabled
-      ? `[data-alias-input-index="${index}"]`
-      : `[data-alias-toggle-index="${index}"]`
+    : targetsWeight
+      ? `[data-model-weight-index="${index}"]`
+      : targetsPriority
+        ? `[data-model-priority-index="${index}"]`
+        : item?.alias_enabled
+          ? `[data-alias-input-index="${index}"]`
+          : `[data-alias-toggle-index="${index}"]`
   root.value?.querySelector<HTMLInputElement>(selector)?.focus()
 }
 
@@ -369,19 +376,23 @@ defineExpose({ addManual, focusFirstInvalid })
               :disabled="disabled"
               @click="toggleGroup(render.group.clientModel)"
             >
-              <ChevronDown v-if="!isCollapsed(render.group.clientModel)" :size="14" aria-hidden="true" />
+              <ChevronDown
+                v-if="!isCollapsed(render.group.clientModel)"
+                :size="14"
+                aria-hidden="true"
+              />
               <ChevronRight v-else :size="14" aria-hidden="true" />
               <strong>{{ render.group.clientModel }}</strong>
-              <span class="model-alias-editor__group-count">{{
-                render.group.rows.length
-              }}</span>
+              <span class="model-alias-editor__group-count">{{ render.group.rows.length }}</span>
             </button>
             <div class="model-alias-editor__distribution" aria-hidden="true">
               <i
                 v-for="row in render.group.rows"
                 :key="row.item.key"
                 class="model-alias-editor__distribution-segment"
-                :class="{ 'model-alias-editor__distribution-segment--zero': (row.item.weight ?? 1) === 0 }"
+                :class="{
+                  'model-alias-editor__distribution-segment--zero': (row.item.weight ?? 1) === 0,
+                }"
                 :style="{ width: sharePercent(row.index) }"
               />
             </div>
@@ -441,7 +452,9 @@ defineExpose({ addManual, focusFirstInvalid })
                   type="checkbox"
                   :checked="render.item.alias_enabled"
                   :disabled="disabled"
-                  @change="setAliasEnabled(render.index, ($event.target as HTMLInputElement).checked)"
+                  @change="
+                    setAliasEnabled(render.index, ($event.target as HTMLInputElement).checked)
+                  "
                 />
               </label>
               <CompactFieldError
@@ -493,6 +506,7 @@ defineExpose({ addManual, focusFirstInvalid })
                     placeholder="1"
                     :invalid="invalid"
                     :described-by="describedBy"
+                    :data-model-weight-index="render.index"
                     :spellcheck="false"
                     :disabled="disabled"
                     @update:model-value="updateRouteCount(render.index, 'weight', $event)"
@@ -516,6 +530,7 @@ defineExpose({ addManual, focusFirstInvalid })
                     placeholder="1"
                     :invalid="invalid"
                     :described-by="describedBy"
+                    :data-model-priority-index="render.index"
                     :spellcheck="false"
                     :disabled="disabled"
                     @update:model-value="updateRouteCount(render.index, 'priority', $event)"
