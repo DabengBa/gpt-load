@@ -279,7 +279,8 @@ export default {
       weightDisabled: 'Splitting disabled',
       invalidWeight: 'Weight must be an integer between 0 and 100 before saving',
       invalidPriority: 'Priority must be an integer of at least 1 before saving',
-      zeroShareSummary: 'Entries under one client name sum to weight 0; the model cannot receive traffic',
+      zeroShareSummary:
+        'Entries under one client name sum to weight 0; the model cannot receive traffic',
       sources: {
         catalog: 'Catalog',
         live: 'Live discovery',

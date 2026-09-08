@@ -798,10 +798,7 @@ onBeforeUnmount(() => {
                   </small>
                   <small v-if="group.entry_cooldown_until_ms !== null">
                     {{ t('monitor.inspector.groups.entryCooldown') }}
-                    <AppDateTime
-                      :instant="group.entry_cooldown_until_ms"
-                      :locale="locale"
-                    />
+                    <AppDateTime :instant="group.entry_cooldown_until_ms" :locale="locale" />
                   </small>
                 </div>
                 <div class="route-candidate__measure" role="cell">
