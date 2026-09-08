@@ -66,6 +66,34 @@ func TestVisibleModelIDs(t *testing.T) {
 	}
 }
 
+func TestVisibleModelIDsDeduplicateRouteEntriesByExternalName(t *testing.T) {
+	t.Parallel()
+
+	snapshot, err := state.Compile(state.CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{
+			{ConnectionType: "api_key", ID: 1, Name: "multi", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{
+					{ID: "up-a", Alias: "pub"}, {ID: "up-b", Alias: "pub"}, {ID: "solo"},
+				},
+				Enabled: true,
+			},
+			{ConnectionType: "api_key", ID: 2, Name: "other", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models:  []state.ModelConfig{{ID: "up-c", Alias: "pub"}},
+				Enabled: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	got := visibleModelIDs(snapshot, state.AccessKeyView{}, protocol.OpenAICompletions)
+	if want := []string{"pub", "solo"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("visibleModelIDs() = %#v, want %v (external names must dedupe across entries and groups)", got, want)
+	}
+}
+
 func TestVisibleOpenAIModelIDsUnionsChatAndResponses(t *testing.T) {
 	t.Parallel()
 

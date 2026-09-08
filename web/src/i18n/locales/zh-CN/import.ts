@@ -254,6 +254,13 @@ export default {
       emptyAliasSummary: '存在已启用但为空的别名',
       locateFirstInvalid: '定位首个问题',
       nameConflict: '对外模型名称“{name}”重复',
+      weight: '权重',
+      priority: '优先级',
+      priorityFallback: '兜底',
+      weightDisabled: '已停用分流',
+      invalidWeight: '权重需为 0-100 的整数，修正后才能保存',
+      invalidPriority: '优先级需为不小于 1 的整数，修正后才能保存',
+      zeroShareSummary: '同一对外名下条目权重合计为 0，该模型无法分流',
       sources: {
         catalog: '渠道目录',
         live: '上游发现',

@@ -83,6 +83,151 @@ func routeModelValue(value *string) string {
 	return *value
 }
 
+func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T) {
+	t.Parallel()
+
+	fixture := newServiceFixture(t)
+	now := healthNow()
+	fixture.service.now = func() time.Time { return now }
+	groupOne := 60
+	groupTwo := 30
+	groupThree := 10
+	weightA, weightB, weightC := 30, 50, 20
+	weightFull := 100
+	twoPriority := 2
+	if _, err := fixture.manager.Publish(state.CompileInput{
+		ChannelRegistry: fixture.channelRegistry,
+		Groups: []state.GroupConfig{
+			{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI,
+				Params: json.RawMessage(`{}`), WeightManual: &groupOne, Enabled: true,
+				Models: []state.ModelConfig{
+					{ID: "up-a", Alias: "pub", EntryID: "e000000000001", Weight: &weightA},
+					{ID: "up-b", Alias: "pub", EntryID: "e000000000002", Weight: &weightB},
+					{ID: "up-c", Alias: "pub", EntryID: "e000000000003", Weight: &weightC, Priority: &twoPriority},
+				},
+			},
+			{ConnectionType: "api_key", ID: 2, Name: "two", ChannelID: channel.OpenAI,
+				Params: json.RawMessage(`{}`), WeightManual: &groupTwo, Enabled: true,
+				Models: []state.ModelConfig{{ID: "up-b", Alias: "pub", EntryID: "e000000000004", Weight: &weightFull}},
+			},
+			{ConnectionType: "api_key", ID: 3, Name: "three", ChannelID: channel.OpenAI,
+				Params: json.RawMessage(`{}`), WeightManual: &groupThree, Enabled: true,
+				Models: []state.ModelConfig{{ID: "up-d", Alias: "pub", EntryID: "e000000000005", Weight: &weightFull}},
+			},
+		},
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 10, Name: "client", KeyHash: "hash", Status: state.AccessKeyStatusActive,
+		}},
+	}); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
+		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "k1", Status: state.CredentialStatusActive, WeightAuto: 50, EncryptedValue: "c1"},
+		{ID: 12, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "k2", Status: state.CredentialStatusActive, WeightAuto: 50, EncryptedValue: "c2"},
+		{ID: 13, GroupID: 3, Version: 1, IdentityGeneration: 3, Fingerprint: "k3", Status: state.CredentialStatusActive, WeightAuto: 50, EncryptedValue: "c3"},
+	}); err != nil {
+		t.Fatalf("ReplaceCredentials() error = %v", err)
+	}
+
+	inspect := func() routeInspectResponse {
+		result, err := fixture.service.InspectRoute(routeInspectRequest{
+			Protocol: protocol.OpenAICompletions, ExternalModel: "pub", AccessKeyID: 10,
+		})
+		if err != nil {
+			t.Fatalf("InspectRoute() error = %v", err)
+		}
+		return result
+	}
+
+	result := inspect()
+	if !result.Routable || len(result.Groups) != 5 {
+		t.Fatalf("routable/groups = %t/%d, want routable with 5 entry rows", result.Routable, len(result.Groups))
+	}
+	order := []struct {
+		groupID   uint
+		upstream  string
+		weight    int
+		priority  int
+		fallback  bool
+		wantShare float64
+	}{
+		{1, "up-a", 30, 1, false, 1800.0 / 8800.0},
+		{1, "up-b", 50, 1, false, 3000.0 / 8800.0},
+		{2, "up-b", 100, 1, false, 3000.0 / 8800.0},
+		{3, "up-d", 100, 1, false, 1000.0 / 8800.0},
+		{1, "up-c", 20, 2, true, 0},
+	}
+	for index, want := range order {
+		row := result.Groups[index]
+		if row.GroupID != want.groupID || routeModelValue(row.UpstreamModel) != want.upstream ||
+			row.EntryWeight != want.weight || row.Priority != want.priority || row.Fallback != want.fallback {
+			t.Fatalf("row %d = %#v, want %v", index, row, want)
+		}
+		if diff := row.EffectiveShare - want.wantShare; diff < -1e-9 || diff > 1e-9 {
+			t.Fatalf("row %d effective_share = %v, want %v", index, row.EffectiveShare, want.wantShare)
+		}
+		if row.EntryCooldownUntilMS != nil {
+			t.Fatalf("row %d entry cooldown = %v, want nil", index, row.EntryCooldownUntilMS)
+		}
+	}
+	assertRouteReason(t, result.Groups[4].ReasonCode, scheduler.ReasonTierDemoted)
+
+	if exists, _ := fixture.registry.SetEntryCooldownForEntry(1, "e000000000002", now.Add(30*time.Minute)); !exists {
+		t.Fatal("SetEntryCooldownForEntry() exists = false")
+	}
+	cooled := inspect()
+	var cooledRow *routeInspectGroupResponse
+	for index := range cooled.Groups {
+		row := &cooled.Groups[index]
+		if row.GroupID == 1 && routeModelValue(row.UpstreamModel) == "up-b" {
+			cooledRow = row
+		}
+	}
+	if cooledRow == nil ||
+		cooledRow.EntryCooldownUntilMS == nil ||
+		*cooledRow.EntryCooldownUntilMS != now.Add(30*time.Minute).UnixMilli() {
+		t.Fatalf("cooled row = %#v", cooledRow)
+	}
+	assertRouteReason(t, cooledRow.ReasonCode, scheduler.ReasonEntryCooldown)
+	if cooledRow.EffectiveShare != 0 {
+		t.Fatalf("cooled row share = %v, want 0", cooledRow.EffectiveShare)
+	}
+	// P1 renormalizes over the remaining routable entries: A 1800, G2B 3000, D 1000.
+	remaining := map[int]float64{0: 1800.0 / 5800.0, 2: 3000.0 / 5800.0, 3: 1000.0 / 5800.0}
+	for index, want := range remaining {
+		if diff := cooled.Groups[index].EffectiveShare - want; diff < -1e-9 || diff > 1e-9 {
+			t.Fatalf("row %d share after cooldown = %v, want %v", index, cooled.Groups[index].EffectiveShare, want)
+		}
+	}
+
+	// When every P1 entry is cooled, the P2 entry becomes the active tier.
+	for _, entryID := range []string{"e000000000001", "e000000000002"} {
+		if exists, _ := fixture.registry.SetEntryCooldownForEntry(1, entryID, now.Add(time.Hour)); !exists {
+			t.Fatalf("SetEntryCooldownForEntry(1, %q) exists = false", entryID)
+		}
+	}
+	for _, item := range []struct {
+		group   uint
+		entryID string
+	}{
+		{group: 2, entryID: "e000000000004"},
+		{group: 3, entryID: "e000000000005"},
+	} {
+		if exists, _ := fixture.registry.SetEntryCooldownForEntry(item.group, item.entryID, now.Add(time.Hour)); !exists {
+			t.Fatalf("SetEntryCooldownForEntry(%d, %q) exists = false", item.group, item.entryID)
+		}
+	}
+	allP1Cooled := inspect()
+	if allP1Cooled.Groups[4].EffectiveShare != 1.0 {
+		t.Fatalf("P2 share with all P1 cooled = %v, want 1", allP1Cooled.Groups[4].EffectiveShare)
+	}
+	for index := range allP1Cooled.Groups[:4] {
+		if allP1Cooled.Groups[index].EffectiveShare != 0 {
+			t.Fatalf("P1 row %d share with all P1 cooled = %v, want 0", index, allP1Cooled.Groups[index].EffectiveShare)
+		}
+	}
+}
+
 func TestRouteInspectReportsSnapshotRouteStrategy(t *testing.T) {
 	t.Parallel()
 	initControlI18n(t)

@@ -73,6 +73,9 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 	if err != nil {
 		return GroupCreateResult{}, err
 	}
+	if err := ensureGroupModelEntryIDs(normalized.models); err != nil {
+		return GroupCreateResult{}, err
+	}
 	if isLiteralPrivateHost(normalized.hostname) {
 		utils.LogPlaneBestEffort(
 			logrus.StandardLogger(),
@@ -156,6 +159,26 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 	return result, nil
 }
 
+func ensureGroupModelEntryIDs(groupModels []GroupModel) error {
+	used := make(map[string]struct{}, len(groupModels))
+	for _, model := range groupModels {
+		if model.EntryID != "" {
+			used[model.EntryID] = struct{}{}
+		}
+	}
+	for index := range groupModels {
+		if groupModels[index].EntryID != "" {
+			continue
+		}
+		entryID, err := newEntryID(used)
+		if err != nil {
+			return app_errors.ErrInternalServer
+		}
+		groupModels[index].EntryID = entryID
+	}
+	return nil
+}
+
 func (s *Service) normalizeGroupCreate(
 	ctx context.Context,
 	request GroupCreateRequest,
@@ -219,7 +242,16 @@ func (s *Service) normalizeGroupCreate(
 
 	runtimeModels := make([]state.ModelConfig, 0, len(groupModels))
 	for _, model := range groupModels {
-		runtimeModels = append(runtimeModels, state.ModelConfig{ID: model.ID, Alias: model.Alias})
+		runtimeModels = append(runtimeModels, state.ModelConfig{
+			ID: model.ID, Alias: model.Alias, EntryID: model.EntryID,
+			Weight: cloneInt(model.Weight), Priority: cloneInt(model.Priority),
+			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+		})
+	}
+	if err := state.ValidateModelRouteEntries(
+		fmt.Sprintf("new group (channel %s)", request.ChannelID), runtimeModels,
+	); err != nil {
+		return normalizedGroupCreate{}, app_errors.ErrValidation
 	}
 	systemSettings, globalProxy, err := stateloader.LoadSystemSettingsAndProxy(ctx, s.db, s.encryption)
 	if parentErr := ctx.Err(); parentErr != nil {

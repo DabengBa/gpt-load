@@ -53,7 +53,7 @@ export default {
         group: 'Group',
         status: 'Status',
         channel: 'Channel',
-        models: 'Models',
+        models: 'Client / entries',
         credentialHealth: 'Credential health',
         actions: 'Actions',
       },
@@ -124,6 +124,14 @@ export default {
       addInline: 'Add a model',
       nameConflict: 'Client name “{name}” is duplicated',
       conflictSummary: 'Duplicate client model names must be resolved before saving',
+      weight: 'Weight',
+      priority: 'Priority',
+      priorityFallback: 'Fallback',
+      weightDisabled: 'Splitting disabled',
+      invalidWeight: 'Weight must be an integer between 0 and 100 before saving',
+      invalidPriority: 'Priority must be an integer of at least 1 before saving',
+      zeroShareSummary:
+        'Entries under one client name sum to weight 0; the model cannot receive traffic',
       emptyAliasSummary: 'Enabled aliases without a client name must be completed before saving',
       locateFirstInvalid: 'Clear search and locate the first issue',
       pricingStatus: {

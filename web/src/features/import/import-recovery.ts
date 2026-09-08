@@ -36,6 +36,32 @@ function hasOnlyFields(value: Record<string, unknown>, fields: readonly string[]
   return Object.keys(value).every((field) => allowed.has(field))
 }
 
+function isOptionalRouteCount(value: unknown, minimum: number, maximum?: number): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    (typeof value === 'number' &&
+      Number.isSafeInteger(value) &&
+      value >= minimum &&
+      (maximum === undefined || value <= maximum))
+  )
+}
+
+function isEntryID(value: unknown): value is string {
+  return typeof value === 'string' && /^e[0-9a-f]{12}$/u.test(value)
+}
+
+function isCircuitBreaker(value: unknown): boolean {
+  if (value === null) return true
+  if (!isRecord(value) || !hasOnlyFields(value, ['blacklist_threshold', 'cooldown_seconds'])) {
+    return false
+  }
+  return (
+    isOptionalRouteCount(value.blacklist_threshold, 1) &&
+    isOptionalRouteCount(value.cooldown_seconds, 0)
+  )
+}
+
 function isModel(value: unknown): value is ModelDraftItem {
   return (
     isRecord(value) &&
@@ -48,6 +74,10 @@ function isModel(value: unknown): value is ModelDraftItem {
       'alias_enabled',
       'editable_id',
       'key',
+      'entry_id',
+      'weight',
+      'priority',
+      'circuit_breaker',
     ]) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
@@ -61,7 +91,11 @@ function isModel(value: unknown): value is ModelDraftItem {
     (value.editable_id === undefined || typeof value.editable_id === 'boolean') &&
     typeof value.key === 'number' &&
     Number.isSafeInteger(value.key) &&
-    value.key > 0
+    value.key > 0 &&
+    (value.entry_id === undefined || isEntryID(value.entry_id)) &&
+    isOptionalRouteCount(value.weight, 0, 100) &&
+    isOptionalRouteCount(value.priority, 1) &&
+    (value.circuit_breaker === undefined || isCircuitBreaker(value.circuit_breaker))
   )
 }
 

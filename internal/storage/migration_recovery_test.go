@@ -12,6 +12,7 @@ import (
 
 	"gpt-load/internal/platform/config"
 	migrationfiles "gpt-load/internal/storage/migrations"
+	"gpt-load/internal/storage/models"
 )
 
 func TestApplyMySQLMigrationRecoversEveryInitialDDLBoundary(t *testing.T) {
@@ -146,6 +147,51 @@ func TestApplyMySQLMigrationRecoversAccessKeyLifecycleAddition(t *testing.T) {
 			}
 			assertInternalMigrationComplete(t, db, applied)
 		})
+	}
+}
+
+func TestApplyMySQLMigrationRecoversPartialInjectUsageOptionsCleanup(t *testing.T) {
+	db := openInternalMigrationTestDatabase(t)
+	if err := db.AutoMigrate(&schemaMigration{}); err != nil {
+		t.Fatalf("create migration ledger: %v", err)
+	}
+	for index := 0; index < 7; index++ {
+		if err := migrations[index].Up(db); err != nil {
+			t.Fatalf("apply migration %d: %v", index+1, err)
+		}
+		if err := migrations[index].Validate(db); err != nil {
+			t.Fatalf("validate migration %d: %v", index+1, err)
+		}
+		if err := db.Create(&schemaMigration{ID: migrations[index].ID}).Error; err != nil {
+			t.Fatalf("record migration %d: %v", index+1, err)
+		}
+	}
+	for _, name := range []string{"partial-one", "partial-two"} {
+		if err := db.Exec(`
+			INSERT INTO groups
+				(name, channel_id, connection_type, params, models, overrides, enabled, created_at_ms, updated_at_ms)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			name, "openai", "api_key", `{}`, `[]`, `{"inject_usage_options":false}`, true, 0, 0,
+		).Error; err != nil {
+			t.Fatalf("create partially cleaned group %q: %v", name, err)
+		}
+	}
+	if err := db.Create(&schemaMigration{ID: migrationResumeMarker(migrations[7].ID)}).Error; err != nil {
+		t.Fatalf("record 0008 resume marker: %v", err)
+	}
+
+	if err := applyMySQLMigration(db, migrations[7]); err != nil {
+		t.Fatalf("resume partial 0008 cleanup: %v", err)
+	}
+	assertInternalMigrationComplete(t, db, migrationIDsThrough(migrations, 8))
+	var groups []models.Group
+	if err := db.Order("id ASC").Find(&groups).Error; err != nil {
+		t.Fatalf("load cleaned groups: %v", err)
+	}
+	for _, group := range groups {
+		if strings.Contains(string(group.Overrides), "inject_usage_options") {
+			t.Fatalf("group %d overrides = %s, want retired key removed", group.ID, group.Overrides)
+		}
 	}
 }
 
@@ -589,6 +635,14 @@ func assertInternalMigrationComplete(t *testing.T, db *gorm.DB, wantIDs []string
 			t.Fatalf("migration IDs = %v, want %v", ids, wantIDs)
 		}
 	}
+}
+
+func migrationIDsThrough(entries []migration, count int) []string {
+	result := make([]string, 0, count)
+	for _, entry := range entries[:count] {
+		result = append(result, entry.ID)
+	}
+	return result
 }
 
 func registeredMigrationIDs() []string {

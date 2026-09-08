@@ -14,6 +14,7 @@ import {
   projectBoolean,
   projectEpochMilliseconds,
   projectEnum,
+  projectFiniteNumber,
   projectNullableEpochMilliseconds,
   projectRecord,
   projectSafeInteger,
@@ -41,6 +42,10 @@ export type RouteInspectReasonCode =
   | 'credential_weight_zero'
   | 'credential_not_allowed'
   | 'no_available_credential'
+  | 'entry_blacklisted'
+  | 'entry_cooldown'
+  | 'entry_weight_zero'
+  | 'tier_demoted'
 
 export interface RouteInspectRequest {
   protocol: AccessProtocol
@@ -81,8 +86,14 @@ export interface RouteInspectGroupDto {
   channel_id: string
   route_mode: RouteInspectMode
   route_requirement_satisfied: boolean
+  entry_id: string
   upstream_model: string | null
   weight_manual: number | null
+  entry_weight: number
+  priority: number
+  fallback: boolean
+  effective_share: number
+  entry_cooldown_until_ms: number | null
   included: boolean
   routable: boolean
   reason_code: RouteInspectReasonCode | null
@@ -125,7 +136,7 @@ export const routeInspectOperations = [
 ] as const
 export const routeInspectRequirements = ['any', 'native'] as const
 const routeModes = ['native', 'converted'] as const
-const reasonCodes = [
+export const routeInspectReasonCodes = [
   'access_key_disabled',
   'access_key_expired',
   'protocol_filtered',
@@ -146,6 +157,10 @@ const reasonCodes = [
   'credential_weight_zero',
   'credential_not_allowed',
   'no_available_credential',
+  'entry_blacklisted',
+  'entry_cooldown',
+  'entry_weight_zero',
+  'tier_demoted',
 ] as const
 
 function invalidResponse(): never {
@@ -163,7 +178,7 @@ function projectNullableNonBlankString(value: unknown): string | null {
 }
 
 function projectReason(value: unknown): RouteInspectReasonCode | null {
-  return value === null ? null : projectEnum(value, reasonCodes)
+  return value === null ? null : projectEnum(value, routeInspectReasonCodes)
 }
 
 function projectNullableWeight(value: unknown): number | null {
@@ -200,26 +215,40 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     'channel_id',
     'route_mode',
     'route_requirement_satisfied',
+    'entry_id',
     'upstream_model',
     'weight_manual',
+    'entry_weight',
+    'priority',
+    'fallback',
+    'effective_share',
+    'entry_cooldown_until_ms',
     'included',
     'routable',
     'reason_code',
     'credentials',
   ])
-  return {
+  const result = {
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
     group_name: projectNonBlankString(record.group_name),
     channel_id: projectNonBlankString(record.channel_id),
     route_mode: projectEnum(record.route_mode, routeModes),
     route_requirement_satisfied: projectBoolean(record.route_requirement_satisfied),
+    entry_id: projectNonBlankString(record.entry_id),
     upstream_model: projectNullableNonBlankString(record.upstream_model),
     weight_manual: projectNullableWeight(record.weight_manual),
+    entry_weight: projectSafeInteger(record.entry_weight, { minimum: 0 }),
+    priority: projectSafeInteger(record.priority, { minimum: 1 }),
+    fallback: projectBoolean(record.fallback),
+    effective_share: projectFiniteNumber(record.effective_share, { minimum: 0, maximum: 1 }),
+    entry_cooldown_until_ms: projectNullableEpochMilliseconds(record.entry_cooldown_until_ms),
     included: projectBoolean(record.included),
     routable: projectBoolean(record.routable),
     reason_code: projectReason(record.reason_code),
     credentials: projectArray(record.credentials, projectRouteCredential),
   }
+  if (result.fallback !== result.priority > 1) invalidResponse()
+  return result
 }
 
 function projectAccessKey(value: unknown): RouteInspectResponseDto['access_key'] {
@@ -247,8 +276,18 @@ export function projectRouteInspection(value: unknown): RouteInspectResponseDto 
     'reason_code',
     'groups',
   ])
+  const observedAtMS = projectEpochMilliseconds(record.observed_at_ms)
+  const groups = projectArray(record.groups, projectRouteGroup)
+  if (
+    groups.some(
+      ({ entry_cooldown_until_ms: cooldownUntilMS }) =>
+        cooldownUntilMS !== null && cooldownUntilMS <= observedAtMS,
+    )
+  ) {
+    invalidResponse()
+  }
   return {
-    observed_at_ms: projectEpochMilliseconds(record.observed_at_ms),
+    observed_at_ms: observedAtMS,
     snapshot_revision: projectSafeInteger(record.snapshot_revision, { minimum: 1 }),
     route_strategy: projectEnum(record.route_strategy, routeStrategies),
     protocol: projectEnum(record.protocol, enabledDataProtocols),
@@ -258,7 +297,7 @@ export function projectRouteInspection(value: unknown): RouteInspectResponseDto 
     access_key: projectAccessKey(record.access_key),
     routable: projectBoolean(record.routable),
     reason_code: projectReason(record.reason_code),
-    groups: projectArray(record.groups, projectRouteGroup),
+    groups,
   }
 }
 

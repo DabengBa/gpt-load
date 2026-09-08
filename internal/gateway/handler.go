@@ -85,6 +85,13 @@ type runtimeCredentialRegistry interface {
 	ClearFailure(credentialID uint) bool
 }
 
+type entryRuntimeRegistry interface {
+	SetEntryCooldownForEntry(groupID uint, entryID string, until time.Time) (exists bool, changed bool)
+	IncrEntryFailureForEntry(groupID uint, entryID string) (int, bool)
+	SetEntryBlacklistedForEntry(groupID uint, entryID string) (exists bool, changed bool)
+	ClearEntryFailureForEntry(groupID uint, entryID string) bool
+}
+
 type Handler struct {
 	manager             *state.Manager
 	channels            *channel.Registry
@@ -269,6 +276,48 @@ func (handler *Handler) applyGroupDecisionEffect(
 	statusCode int,
 	attemptNow time.Time,
 ) {
+	handler.applyGroupDecisionEffectForEntry(
+		group,
+		credentialID,
+		credentialVersion,
+		"",
+		decision,
+		statusCode,
+		attemptNow,
+	)
+}
+
+func (handler *Handler) applyGroupDecisionEffectForEntry(
+	group state.GroupView,
+	credentialID uint,
+	credentialVersion uint64,
+	entryID string,
+	decision health.Decision,
+	statusCode int,
+	attemptNow time.Time,
+) {
+	entryID = strings.TrimSpace(entryID)
+	if decision.Scope == execution.ErrorScopeModel && entryID != "" {
+		if registry, ok := handler.registry.(entryRuntimeRegistry); ok {
+			mutate := func() {
+				if !isModelEntryFailure(decision) {
+					// Compatibility C1: model-scoped decisions outside the
+					// counted failure families (safety.replay_unknown and any
+					// other uncounted rule) keep the legacy Effect-driven
+					// behavior byte for byte.
+					applyLegacyModelScopeEntryEffect(registry, group, entryID, decision)
+					return
+				}
+				applyModelEntryBreakerEffect(registry, group, entryID, decision, attemptNow)
+			}
+			if handler.mutations == nil {
+				mutate()
+			} else {
+				handler.mutations.Do(credentialID, mutate)
+			}
+			return
+		}
+	}
 	handler.applyDecisionEffectWithBlacklistPolicy(
 		credentialID,
 		credentialVersion,
@@ -277,6 +326,78 @@ func (handler *Handler) applyGroupDecisionEffect(
 		attemptNow,
 		group.BlacklistThreshold,
 	)
+}
+
+// isModelEntryFailure implements design §4.1: a model-level failure is defined
+// by the decision features alone, independent of Effect. Every upstream-model
+// failure family of the judge qualifies (model.unavailable,
+// images.model_unavailable, embeddings.model_unavailable,
+// candidate.unavailable); only safety.replay_unknown is excluded because the
+// replay safety of the attempt is unknown.
+func isModelEntryFailure(decision health.Decision) bool {
+	return decision.Category == health.FailureCategoryModelUnavailable &&
+		decision.Scope == execution.ErrorScopeModel &&
+		decision.RuleID != "safety.replay_unknown"
+}
+
+// applyModelEntryBreakerEffect counts model-level failures and applies the
+// per-entry circuit breaker configuration. Without an explicit per-entry
+// threshold the failure is not counted at all (design §3.2: the group-level
+// BlacklistThreshold is deliberately not inherited); without an explicit
+// cooldown the decision's own cooldown applies.
+func applyModelEntryBreakerEffect(
+	registry entryRuntimeRegistry,
+	group state.GroupView,
+	entryID string,
+	decision health.Decision,
+	attemptNow time.Time,
+) {
+	breaker := group.ModelBreakerByEntry[group.ID][entryID]
+	if breaker != nil && breaker.BlacklistThreshold != nil {
+		if count, exists := registry.IncrEntryFailureForEntry(group.ID, entryID); exists &&
+			count >= *breaker.BlacklistThreshold {
+			registry.SetEntryBlacklistedForEntry(group.ID, entryID)
+		}
+	}
+	if breaker != nil && breaker.CooldownSeconds != nil {
+		if *breaker.CooldownSeconds > 0 {
+			registry.SetEntryCooldownForEntry(
+				group.ID,
+				entryID,
+				attemptNow.Add(time.Duration(*breaker.CooldownSeconds)*time.Second),
+			)
+		}
+		// cooldown_seconds == 0 counts the failure without any cooldown;
+		// no SetEntryCooldown call so no stale deadline can surface in
+		// route inspection.
+		return
+	}
+	if decision.Effect == health.EffectCooldownCredential && !decision.CooldownUntil.IsZero() {
+		registry.SetEntryCooldownForEntry(group.ID, entryID, decision.CooldownUntil)
+	}
+}
+
+// applyLegacyModelScopeEntryEffect preserves the pre-entry-breaker behavior
+// for model-scoped decisions that are not counted as model-level failures.
+func applyLegacyModelScopeEntryEffect(
+	registry entryRuntimeRegistry,
+	group state.GroupView,
+	entryID string,
+	decision health.Decision,
+) {
+	if decision.Effect == health.EffectCooldownCredential && !decision.CooldownUntil.IsZero() {
+		registry.SetEntryCooldownForEntry(group.ID, entryID, decision.CooldownUntil)
+	}
+	if decision.Effect != health.EffectRecordCredentialFailure {
+		return
+	}
+	count, exists := registry.IncrEntryFailureForEntry(group.ID, entryID)
+	if !exists {
+		return
+	}
+	if group.BlacklistThreshold > 0 && count >= group.BlacklistThreshold {
+		registry.SetEntryBlacklistedForEntry(group.ID, entryID)
+	}
 }
 
 func refreshCooldownCredentialVersion(result UpstreamResult, credentialVersion uint64) uint64 {
@@ -350,6 +471,28 @@ func (handler *Handler) recordCredentialSuccess(credentialID uint, at time.Time)
 			handler.stats.RecordSuccess(credentialID, at)
 		}
 	})
+}
+
+// recordEntrySuccess mirrors the credential success path for route entries
+// (design §4.2): a confirmed success clears the entry failure counter while
+// leaving cooldown and blacklist untouched.
+func (handler *Handler) recordEntrySuccess(groupID uint, entryID string, credentialID uint) {
+	entryID = strings.TrimSpace(entryID)
+	if groupID == 0 || entryID == "" {
+		return
+	}
+	registry, ok := handler.registry.(entryRuntimeRegistry)
+	if !ok {
+		return
+	}
+	clear := func() {
+		registry.ClearEntryFailureForEntry(groupID, entryID)
+	}
+	if handler.mutations == nil {
+		clear()
+	} else {
+		handler.mutations.Do(credentialID, clear)
+	}
 }
 
 func retryAttemptLimit(group state.GroupView) int {
@@ -919,7 +1062,7 @@ func (handler *Handler) executeAttempts(
 			selection, nil, result, decision, attemptStarted, attemptCompleted,
 		)
 		lastAttemptIndex = recordedAttempt
-		handler.applyGroupDecisionEffect(selection.Group, selection.CredentialID, 0, decision, 0, attemptNow)
+		handler.applyGroupDecisionEffectForEntry(selection.Group, selection.CredentialID, 0, selection.EntryID, decision, 0, attemptNow)
 		if decision.Effect == health.EffectSkipGroup {
 			iterator.SkipGroup(selection.GroupID)
 		}
@@ -1180,16 +1323,18 @@ func (handler *Handler) executeAttempts(
 				)
 				recorder.completeStream(result, optionalModelValue(selection.UpstreamModelID), recordedAttempt)
 			}
-			handler.applyGroupDecisionEffect(
+			handler.applyGroupDecisionEffectForEntry(
 				selection.Group,
 				selection.CredentialID,
 				0,
+				selection.EntryID,
 				decision,
 				result.StatusCode,
 				attemptNow,
 			)
 			if stream && result.Stream.EndReason == StreamEndCleanEOF {
 				handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
+				handler.recordEntrySuccess(selection.GroupID, selection.EntryID, selection.CredentialID)
 				handler.recordAffinitySuccess(requestAffinity, selection, ref)
 			}
 			return
@@ -1213,15 +1358,17 @@ func (handler *Handler) executeAttempts(
 			result.StatusCode >= http.StatusOK &&
 			result.StatusCode < http.StatusMultipleChoices {
 			handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
+			handler.recordEntrySuccess(selection.GroupID, selection.EntryID, selection.CredentialID)
 		}
 		recordedAttempt := recorder.recordAttempt(
 			selection, normalizedCredential.secrets, result, decision, attemptStarted, attemptCompleted,
 		)
 		lastAttemptIndex = recordedAttempt
-		handler.applyGroupDecisionEffect(
+		handler.applyGroupDecisionEffectForEntry(
 			selection.Group,
 			selection.CredentialID,
 			refreshCooldownCredentialVersion(result, ref.Version),
+			selection.EntryID,
 			decision,
 			result.StatusCode,
 			attemptNow,

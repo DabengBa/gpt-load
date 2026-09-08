@@ -59,16 +59,16 @@ type CredentialConfig struct {
 	Fingerprint        string
 }
 
+// ModelConfig is one group model route entry. Weight and Priority are
+// optional: nil keeps the design defaults (weight 1, priority 1); weight 0
+// retains the entry but excludes it from traffic splitting.
 type ModelConfig struct {
-	ID    string
-	Alias string
-}
-
-func externalModelName(model ModelConfig) string {
-	if alias := strings.TrimSpace(model.Alias); alias != "" {
-		return alias
-	}
-	return strings.TrimSpace(model.ID)
+	ID             string
+	Alias          string
+	EntryID        string
+	Weight         *int
+	Priority       *int
+	CircuitBreaker *EntryCircuitBreaker
 }
 
 type AccessKeyConfig struct {
@@ -101,8 +101,11 @@ type FilterSet struct {
 type RouteTarget struct {
 	GroupID         uint
 	UpstreamModelID string
+	EntryID         string
 	Mode            channel.RouteMode
 	ResolvedTarget  channel.ResolvedTarget
+	EntryWeight     int // 条目权重,nil 归一为 1;0 保留条目但不参与分流
+	Priority        int // 条目优先级,nil 归一为 1
 }
 
 // NoModelRouteKey identifies operations whose upstream resource ID, rather
@@ -125,31 +128,32 @@ type HeaderRules struct {
 }
 
 type GroupView struct {
-	PriceMultiplier    pricing.PriceMultiplier
-	ID                 uint
-	Name               string
-	ChannelID          channel.ID
-	ConnectionType     string
-	Params             json.RawMessage
-	ResolvedTarget     channel.ResolvedTarget
-	ValidationModel    string
-	ClientProtocols    []protocol.Protocol
-	Models             []ModelConfig
-	Timeouts           TimeoutConfig
-	HeaderRules        HeaderRules
-	RetryCount         int
-	BlacklistThreshold int
-	AffinityEnabled    bool
-	WeightManual       *int
-	Proxy              outboundproxy.Effective
-	ParameterOverrides parameteroverride.Rules
+	PriceMultiplier     pricing.PriceMultiplier
+	ID                  uint
+	Name                string
+	ChannelID           channel.ID
+	ConnectionType      string
+	Params              json.RawMessage
+	ResolvedTarget      channel.ResolvedTarget
+	ValidationModel     string
+	ClientProtocols     []protocol.Protocol
+	Models              []ModelConfig
+	Timeouts            TimeoutConfig
+	HeaderRules         HeaderRules
+	RetryCount          int
+	BlacklistThreshold  int
+	AffinityEnabled     bool
+	WeightManual        *int
+	Proxy               outboundproxy.Effective
+	ParameterOverrides  parameteroverride.Rules
+	ModelBreakerByEntry map[uint]map[string]*EntryCircuitBreaker
 }
-
 type GroupCatalogView struct {
 	ID           uint
 	Name         string
 	Enabled      bool
 	WeightManual *int
+	Models       []ModelConfig
 }
 
 type AccessKeyView struct {
@@ -205,6 +209,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		catalogView := GroupCatalogView{
 			ID: group.ID, Name: group.Name, Enabled: group.Enabled,
 			WeightManual: cloneWeight(group.WeightManual),
+			Models:       cloneModelConfigs(group.Models),
 		}
 		snapshot.GroupCatalog[group.ID] = catalogView
 		if err := appendExecutionTargets(snapshot.ExecutionRouteCatalog, input.ChannelRegistry, group); err != nil {
@@ -223,20 +228,32 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		}
 
 		view := GroupView{
-			PriceMultiplier:    resolvePriceMultiplier(group.PriceMultiplier),
-			ID:                 group.ID,
-			Name:               group.Name,
-			ValidationModel:    strings.TrimSpace(group.ValidationModel),
-			Models:             append([]ModelConfig(nil), group.Models...),
-			Timeouts:           resolved.Timeouts,
-			HeaderRules:        resolved.HeaderRules,
-			RetryCount:         resolved.RetryCount,
-			BlacklistThreshold: resolved.BlacklistThreshold,
-			AffinityEnabled:    resolved.AffinityEnabled,
-			WeightManual:       cloneWeight(group.WeightManual),
-			ConnectionType:     connection.Normalize(group.ConnectionType),
-			Proxy:              groupProxy,
-			ParameterOverrides: resolved.ParameterOverrides,
+			PriceMultiplier:     resolvePriceMultiplier(group.PriceMultiplier),
+			ID:                  group.ID,
+			Name:                group.Name,
+			ValidationModel:     strings.TrimSpace(group.ValidationModel),
+			Models:              cloneModelConfigs(group.Models),
+			Timeouts:            resolved.Timeouts,
+			HeaderRules:         resolved.HeaderRules,
+			RetryCount:          resolved.RetryCount,
+			BlacklistThreshold:  resolved.BlacklistThreshold,
+			AffinityEnabled:     resolved.AffinityEnabled,
+			WeightManual:        cloneWeight(group.WeightManual),
+			ConnectionType:      connection.Normalize(group.ConnectionType),
+			Proxy:               groupProxy,
+			ParameterOverrides:  resolved.ParameterOverrides,
+			ModelBreakerByEntry: make(map[uint]map[string]*EntryCircuitBreaker),
+		}
+		for _, model := range group.Models {
+			if model.CircuitBreaker == nil {
+				continue
+			}
+			if view.ModelBreakerByEntry[group.ID] == nil {
+				view.ModelBreakerByEntry[group.ID] = make(map[string]*EntryCircuitBreaker)
+			}
+			external := ExternalModelName(model.ID, model.Alias)
+			entryID := routeEntryIdentity(external, model)
+			view.ModelBreakerByEntry[group.ID][entryID] = cloneEntryCircuitBreaker(model.CircuitBreaker)
 		}
 		params, err := input.ChannelRegistry.ValidateParams(group.ChannelID, group.Params)
 		if err != nil {
@@ -340,10 +357,12 @@ func appendExecutionTargets(
 				execution.OperationResponsesInputItems:
 				appendExecutionTarget(index, clientProtocol, operation, NoModelRouteKey, RouteTarget{
 					GroupID: group.ID, Mode: mode, ResolvedTarget: cloneResolvedTarget(target),
+					EntryWeight: 1, Priority: 1,
 				})
 			case execution.OperationResponsesPassthrough:
 				appendExecutionTarget(index, clientProtocol, operation, NoModelRouteKey, RouteTarget{
 					GroupID: group.ID, Mode: mode, ResolvedTarget: cloneResolvedTarget(target),
+					EntryWeight: 1, Priority: 1,
 				})
 				fallthrough
 			case execution.OperationChatCompletion,
@@ -354,14 +373,20 @@ func appendExecutionTargets(
 				execution.OperationImagesGenerate,
 				execution.OperationImagesEdit,
 				execution.OperationEmbeddingsCreate:
+				// 每个模型条目产生一个 target:同一分组同一对外名可以产生多个
+				// target(多映射,V1 只约束 (对外名, 上游模型) 组合唯一)。
 				for _, model := range group.Models {
 					modelMode, supported := target.ModeForModel(clientProtocol, operation, model.ID)
 					if !supported {
 						return fmt.Errorf("compile group %d channel has no route mode for %q/%q model %q", group.ID, clientProtocol, operation, model.ID)
 					}
-					appendExecutionTarget(index, clientProtocol, operation, externalModelName(model), RouteTarget{
+					external := ExternalModelName(model.ID, model.Alias)
+					appendExecutionTarget(index, clientProtocol, operation, external, RouteTarget{
 						GroupID: group.ID, UpstreamModelID: strings.TrimSpace(model.ID),
 						Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
+						EntryWeight: normalizeRouteEntryValue(model.Weight),
+						Priority:    normalizeRouteEntryValue(model.Priority),
+						EntryID:     routeEntryIdentity(external, model),
 					})
 				}
 			default:
@@ -391,6 +416,38 @@ func appendExecutionTarget(
 	)
 }
 
+func routeEntryIdentity(external string, model ModelConfig) string {
+	if model.EntryID != "" {
+		return model.EntryID
+	}
+	return "derived:" + external + "#" + strings.TrimSpace(model.ID)
+}
+
+// back to the design default of 1 (weight and priority, design §3). An
+// explicit 0 weight survives normalization: the target stays indexed but is
+// excluded from traffic splitting by the scheduler (design §4).
+func normalizeRouteEntryValue(value *int) int {
+	if value == nil {
+		return 1
+	}
+	return *value
+}
+
+func cloneModelConfigs(models []ModelConfig) []ModelConfig {
+	if models == nil {
+		return nil
+	}
+	cloned := make([]ModelConfig, len(models))
+	for index, model := range models {
+		cloned[index] = ModelConfig{
+			ID: model.ID, Alias: model.Alias, EntryID: model.EntryID,
+			Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+		}
+	}
+	return cloned
+}
+
 func cloneResolvedTarget(target channel.ResolvedTarget) channel.ResolvedTarget {
 	target.TargetConfig = append(json.RawMessage(nil), target.TargetConfig...)
 	return target
@@ -400,10 +457,11 @@ func sortExecutionRouteIndex(index ExecutionCandidateIndex) {
 	for _, byOperation := range index {
 		for _, byModel := range byOperation {
 			for model := range byModel {
-				sort.Slice(byModel[model], func(i, j int) bool {
+				// 稳定排序:同键 target 保持编译期条目顺序,保证快照可复现。
+				sort.SliceStable(byModel[model], func(i, j int) bool {
 					left, right := byModel[model][i], byModel[model][j]
-					if left.Mode != right.Mode {
-						return left.Mode == channel.RouteNative
+					if left.Priority != right.Priority {
+						return left.Priority < right.Priority
 					}
 					if left.GroupID != right.GroupID {
 						return left.GroupID < right.GroupID
@@ -447,16 +505,10 @@ func validateCompileInput(input CompileInput) error {
 		if err := validateManualWeight(fmt.Sprintf("group %d", group.ID), group.WeightManual); err != nil {
 			return err
 		}
-		seenModels := make(map[string]struct{}, len(group.Models))
-		for _, model := range group.Models {
-			if strings.TrimSpace(model.ID) == "" {
-				return fmt.Errorf("group %d model id is required", group.ID)
-			}
-			external := externalModelName(model)
-			if _, duplicate := seenModels[external]; duplicate {
-				return fmt.Errorf("group %d has duplicate external model %q", group.ID, external)
-			}
-			seenModels[external] = struct{}{}
+		// 路由条目规则 V1–V4(设计 §3)在编译期作为最终防线再次执行;
+		// 违规拒绝发布,错误信息携带分组与模型名。
+		if err := ValidateModelRouteEntries(fmt.Sprintf("group %d", group.ID), group.Models); err != nil {
+			return err
 		}
 	}
 

@@ -30,6 +30,7 @@ const (
 	ReasonNoAvailableGroup          ReasonCode = "no_available_group"
 	ReasonNoCredentials             ReasonCode = "no_credentials"
 	ReasonGroupWeightZero           ReasonCode = "group_weight_zero"
+	ReasonEntryWeightZero           ReasonCode = "entry_weight_zero"
 	ReasonCredentialDisabled        ReasonCode = "credential_disabled"
 	ReasonCredentialAuthUnavailable ReasonCode = "credential_auth_unavailable"
 	ReasonCredentialBlacklisted     ReasonCode = "credential_blacklisted"
@@ -37,6 +38,9 @@ const (
 	ReasonCredentialWeightZero      ReasonCode = "credential_weight_zero"
 	ReasonCredentialNotAllowed      ReasonCode = "credential_not_allowed"
 	ReasonNoAvailableCredential     ReasonCode = "no_available_credential"
+	ReasonEntryBlacklisted          ReasonCode = "entry_blacklisted"
+	ReasonEntryCooldown             ReasonCode = "entry_cooldown"
+	ReasonTierDemoted               ReasonCode = "tier_demoted"
 )
 
 type Inspection struct {
@@ -55,12 +59,21 @@ type GroupInspection struct {
 	ChannelID                 channel.ID
 	RouteMode                 channel.RouteMode
 	RouteRequirementSatisfied bool
+	EntryID                   string
 	UpstreamModelID           *string
 	WeightManual              *int
+	EntryWeight               int
+	Priority                  int
+	EntryCooldownUntil        time.Time
 	Included                  bool
 	Routable                  bool
 	Reason                    ReasonCode
-	Credentials               []CredentialInspection
+	// EffectiveShare is the entry's expected traffic share inside the P1 tier
+	// (priority 1) under the current snapshot, access key and availability
+	// constraints. Fallback tiers (priority ≥ 2) stay out of the P1
+	// normalization and always carry share 0.
+	EffectiveShare float64
+	Credentials    []CredentialInspection
 }
 
 type CredentialInspection struct {
@@ -83,6 +96,13 @@ type targetDecision struct {
 	responsesStoreDowngraded bool
 	included                 bool
 	reason                   ReasonCode
+}
+
+// targetEntryKey de-duplicates route targets of one group and upstream model
+// when multi-mapping groups contribute several entries (design §5.1).
+type targetEntryKey struct {
+	groupID         uint
+	upstreamModelID string
 }
 
 func cloneWeight(weight *int) *int {
@@ -139,13 +159,17 @@ func evaluateTargets(
 	}
 
 	decisions := make([]targetDecision, 0, len(routes))
-	seenGroups := make(map[uint]struct{}, len(routes))
+	// 设计 §5.1:同一分组的同一对外名可产生多个条目 target(多映射),
+	// 去重键扩展为 (GroupID, UpstreamModelID);资源类 target 的上游模型为空串,
+	// 每分组仍恰保留一个。
+	seenEntries := make(map[targetEntryKey]struct{}, len(routes))
 	included := 0
 	for _, route := range routes {
-		if _, duplicate := seenGroups[route.GroupID]; duplicate {
+		entryKey := targetEntryKey{groupID: route.GroupID, upstreamModelID: route.UpstreamModelID}
+		if _, duplicate := seenEntries[entryKey]; duplicate {
 			continue
 		}
-		seenGroups[route.GroupID] = struct{}{}
+		seenEntries[entryKey] = struct{}{}
 		group, exists := snapshot.GroupCatalog[route.GroupID]
 		if !exists {
 			return nil, "", fmt.Errorf(
@@ -241,7 +265,18 @@ func normalizedAutoWeight(weight int) int {
 	return weight
 }
 
-func effectiveWeight(groupManual, credentialManual *int, credentialAuto int) int64 {
+// combinedWeight is the single source of scheduling share for a
+// (group, entry, credential) triple: 组权重 × 条目权重 × 密钥权重
+// (design §5.1). Any factor ≤ 0 yields 0 so the triple never joins a
+// weighted pool; callers must treat 0 as excluded. Unset group and
+// credential weights fall back to the state defaults, and the entry weight
+// arrives already normalized by snapshot compilation.
+func combinedWeight(
+	groupManual *int,
+	entryWeight int,
+	credentialManual *int,
+	credentialAuto int,
+) int64 {
 	groupWeight := state.DefaultWeight
 	if groupManual != nil {
 		groupWeight = *groupManual
@@ -250,14 +285,22 @@ func effectiveWeight(groupManual, credentialManual *int, credentialAuto int) int
 	if credentialManual != nil {
 		credentialWeight = *credentialManual
 	}
-	if groupWeight <= 0 || credentialWeight <= 0 {
+	if groupWeight <= 0 || entryWeight <= 0 || credentialWeight <= 0 {
 		return 0
 	}
-	return int64(groupWeight) * int64(credentialWeight)
+	return int64(groupWeight) * int64(entryWeight) * int64(credentialWeight)
+}
+
+// effectiveWeight preserves the pre-route-entry helper contract for existing
+// scheduler tests and compatibility callers. Route-entry scheduling uses
+// combinedWeight directly with the entry factor supplied by the snapshot.
+func effectiveWeight(groupManual, credentialManual *int, credentialAuto int) int64 {
+	return combinedWeight(groupManual, 1, credentialManual, credentialAuto)
 }
 
 func inspectCredential(
 	group state.GroupCatalogView,
+	entryWeight int,
 	credential CredentialRuntimeView,
 	allowedCredentialIDs map[uint]struct{},
 	now time.Time,
@@ -297,8 +340,9 @@ func inspectCredential(
 		result.CooldownUntil = credential.CooldownUntil
 	default:
 		result.Available = true
-		result.EffectiveWeight = effectiveWeight(
+		result.EffectiveWeight = combinedWeight(
 			group.WeightManual,
+			entryWeight,
 			credential.WeightManual,
 			credential.WeightAuto,
 		)
@@ -306,9 +350,24 @@ func inspectCredential(
 	return result
 }
 
+// Inspect preserves the existing credential-only inspection contract.
 func Inspect(
 	snapshot *state.ConfigSnapshot,
 	credentials []CredentialRuntimeView,
+	query Query,
+	now time.Time,
+) (Inspection, error) {
+	return InspectWithEntryRuntime(snapshot, credentials, nil, query, now)
+}
+
+// InspectWithEntryRuntime inspects route targets together with optional
+// in-memory route-entry health. Entry state is keyed by group and route-entry
+// identity (design §2), never by credential, so one model failure cannot hide
+// sibling entries.
+func InspectWithEntryRuntime(
+	snapshot *state.ConfigSnapshot,
+	credentials []CredentialRuntimeView,
+	entryRuntime []state.EntryRuntimeView,
 	query Query,
 	now time.Time,
 ) (Inspection, error) {
@@ -328,6 +387,13 @@ func Inspect(
 		return result, nil
 	}
 
+	entryRuntimeByKey := make(map[state.RouteEntryKey]state.EntryRuntimeView, len(entryRuntime))
+	for _, entry := range entryRuntime {
+		if entry.Key.GroupID == 0 || entry.Key.EntryID == "" {
+			continue
+		}
+		entryRuntimeByKey[entry.Key] = entry
+	}
 	credentialsByGroup := make(map[uint][]CredentialRuntimeView)
 	for _, credential := range credentials {
 		if _, exists := snapshot.GroupCatalog[credential.GroupID]; !exists {
@@ -357,15 +423,28 @@ func Inspect(
 		return Inspection{}, err
 	}
 	for _, decision := range decisions {
+		entryKey := state.RouteEntryKey{
+			GroupID: decision.target.GroupID,
+			EntryID: decision.target.EntryID,
+		}
+		entryState, entryHasRuntime := entryRuntimeByKey[entryKey]
 		groupResult := GroupInspection{
-			GroupID: decision.group.ID, GroupName: decision.group.Name,
+			GroupID:                   decision.group.ID,
+			GroupName:                 decision.group.Name,
 			ChannelID:                 decision.target.ResolvedTarget.ChannelID,
 			RouteMode:                 decision.target.Mode,
 			RouteRequirementSatisfied: decision.requirementOK,
+			EntryID:                   decision.target.EntryID,
 			UpstreamModelID:           optionalModel(decision.target.UpstreamModelID),
 			WeightManual:              cloneWeight(decision.group.WeightManual),
-			Included:                  decision.included, Reason: decision.reason,
-			Credentials: []CredentialInspection{},
+			EntryWeight:               decision.target.EntryWeight,
+			Priority:                  decision.target.Priority,
+			Included:                  decision.included,
+			Reason:                    decision.reason,
+			Credentials:               []CredentialInspection{},
+		}
+		if entryHasRuntime && entryState.RuntimeState(now) == state.EntryRuntimeCooldown {
+			groupResult.EntryCooldownUntil = entryState.CooldownUntil
 		}
 		if !decision.included {
 			result.Groups = append(result.Groups, groupResult)
@@ -374,24 +453,35 @@ func Inspect(
 		groupCredentials := credentialsByGroup[decision.group.ID]
 		groupWeightZero := decision.group.WeightManual != nil &&
 			*decision.group.WeightManual == 0
+		entryUnavailable := entryHasRuntime &&
+			entryState.RuntimeState(now) != state.EntryRuntimeAvailable
 		for _, credential := range groupCredentials {
 			credentialResult := inspectCredential(
 				decision.group,
+				decision.target.EntryWeight,
 				credential,
 				normalized.allowedCredentialIDs,
 				now,
 			)
 			groupResult.Credentials = append(groupResult.Credentials, credentialResult)
 		}
-		for _, credential := range groupResult.Credentials {
-			if credential.Available && credential.EffectiveWeight > 0 {
-				groupResult.Routable = true
-				break
+		if !entryUnavailable {
+			for _, credential := range groupResult.Credentials {
+				if credential.Available && credential.EffectiveWeight > 0 {
+					groupResult.Routable = true
+					break
+				}
 			}
 		}
 		switch {
 		case groupWeightZero:
 			groupResult.Reason = ReasonGroupWeightZero
+		case decision.target.EntryWeight <= 0:
+			groupResult.Reason = ReasonEntryWeightZero
+		case entryUnavailable && entryState.Blacklisted:
+			groupResult.Reason = ReasonEntryBlacklisted
+		case entryUnavailable:
+			groupResult.Reason = ReasonEntryCooldown
 		case len(groupCredentials) == 0:
 			groupResult.Reason = ReasonNoCredentials
 		case !groupResult.Routable:
@@ -402,6 +492,26 @@ func Inspect(
 		}
 		result.Groups = append(result.Groups, groupResult)
 	}
+
+	minimumRoutableTier := 0
+	for _, group := range result.Groups {
+		if !group.Routable || group.Priority <= 0 {
+			continue
+		}
+		if minimumRoutableTier == 0 || group.Priority < minimumRoutableTier {
+			minimumRoutableTier = group.Priority
+		}
+	}
+	if minimumRoutableTier > 0 {
+		for index := range result.Groups {
+			group := &result.Groups[index]
+			if group.Routable && group.Priority > minimumRoutableTier && group.Reason == "" {
+				group.Reason = ReasonTierDemoted
+			}
+		}
+	}
+	applyEffectiveShares(result.Groups)
+
 	if result.Routable {
 		return result, nil
 	}
@@ -411,4 +521,58 @@ func Inspect(
 		result.Reason = ReasonNoAvailableCredential
 	}
 	return result, nil
+}
+
+// applyEffectiveShares normalizes combined weights inside the lowest currently
+// routable priority tier. Rows in other tiers or rows that are not currently
+// routable contribute nothing and receive share 0, mirroring tier-first
+// selection.
+func applyEffectiveShares(groups []GroupInspection) {
+	activeTier := 0
+	for i := range groups {
+		group := &groups[i]
+		if !group.Routable || group.Priority <= 0 {
+			continue
+		}
+		var mass int64
+		for _, credential := range group.Credentials {
+			if credential.Available {
+				mass += credential.EffectiveWeight
+			}
+		}
+		if mass > 0 && (activeTier == 0 || group.Priority < activeTier) {
+			activeTier = group.Priority
+		}
+	}
+	if activeTier == 0 {
+		return
+	}
+	var activeTierTotal int64
+	for i := range groups {
+		group := &groups[i]
+		if group.Priority != activeTier || !group.Routable {
+			continue
+		}
+		for _, credential := range group.Credentials {
+			if credential.Available {
+				activeTierTotal += credential.EffectiveWeight
+			}
+		}
+	}
+	if activeTierTotal <= 0 {
+		return
+	}
+	for i := range groups {
+		group := &groups[i]
+		if group.Priority != activeTier || !group.Routable {
+			continue
+		}
+		var mass int64
+		for _, credential := range group.Credentials {
+			if credential.Available {
+				mass += credential.EffectiveWeight
+			}
+		}
+		group.EffectiveShare = float64(mass) / float64(activeTierTotal)
+	}
 }

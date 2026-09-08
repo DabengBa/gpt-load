@@ -147,3 +147,29 @@ func createGroupOptionGroup(
 		}
 	}
 }
+
+func TestListGroupOptionsDeduplicateRouteEntriesByExternalName(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	createGroupOptionGroup(t, fixture, 30, "multi-entry", true,
+		channel.OpenAICompatible, `{"base_url":"https://multi-entry.example/v1"}`,
+		`[{"id":"up-a","alias":"pub","alias_enabled":true},{"id":"up-b","alias":"pub","alias_enabled":true},{"id":"solo","alias":"","alias_enabled":false}]`,
+	)
+
+	options, err := fixture.service.ListGroupOptions(t.Context())
+	if err != nil {
+		t.Fatalf("ListGroupOptions() error = %v", err)
+	}
+	var target *GroupOption
+	for index := range options {
+		if options[index].ID == 30 {
+			target = &options[index]
+		}
+	}
+	if target == nil {
+		t.Fatalf("group 30 missing from options: %#v", options)
+	}
+	if want := []string{"pub", "solo"}; !reflect.DeepEqual(target.Models, want) {
+		t.Fatalf("option models = %#v, want %v (same external name must appear once)", target.Models, want)
+	}
+}

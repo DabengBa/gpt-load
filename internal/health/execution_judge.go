@@ -297,7 +297,8 @@ func classifyExecutionEvidence(attempt ExecutionAttempt) FailureCategory {
 		return FailureCategoryInvalidKey
 	case containsAny(markers,
 		"model_not_found", "model not found", "model_not_available",
-		"model unavailable", "deployment_not_found", "unsupported_model"):
+		"model unavailable", "deployment_not_found", "unsupported_model",
+		"model_access_denied", "model permission denied", "model not authorized"):
 		return FailureCategoryModelUnavailable
 	case containsAny(markers,
 		"invalid_api_key", "api_key_invalid", "authentication_error",

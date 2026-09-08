@@ -48,6 +48,7 @@ type GroupCollectionItem struct {
 	Params           json.RawMessage                 `json:"params"`
 	Status           GroupCollectionStatus           `json:"status"`
 	ModelCount       int64                           `json:"model_count"`
+	ClientModelCount int64                           `json:"client_model_count"`
 	CredentialCounts GroupCollectionCredentialCounts `json:"credential_counts"`
 }
 
@@ -353,13 +354,26 @@ func mapGroupCollectionRecords(
 		}
 
 		catalog := snapshot.GroupCatalog[group.ID]
+		// 设计 §8.5:分组列表同时给出对外模型数与路由条目数;同一对外名映射到
+		// 多个上游模型时两者不同。
+		clientModels := make(map[string]struct{}, len(groupModels))
+		for _, model := range groupModels {
+			name := model.ID
+			if model.Alias != "" {
+				name = model.Alias
+			}
+			clientModels[name] = struct{}{}
+		}
 		record := groupCollectionRecord{
 			GroupCollectionItem: GroupCollectionItem{
-				PriceMultiplier: priceMultiplierResponse(group.PriceMultiplierMicros),
-				ID:              group.ID, Name: group.Name, ChannelID: channelID,
-				ConnectionType: normalizeGroupConnectionType(group.ConnectionType),
-				Params:         append(json.RawMessage(nil), params...),
-				ModelCount:     int64(len(groupModels)),
+				PriceMultiplier:  priceMultiplierResponse(group.PriceMultiplierMicros),
+				ID:               group.ID,
+				Name:             group.Name,
+				ChannelID:        channelID,
+				ConnectionType:   normalizeGroupConnectionType(group.ConnectionType),
+				Params:           append(json.RawMessage(nil), params...),
+				ModelCount:       int64(len(groupModels)),
+				ClientModelCount: int64(len(clientModels)),
 			},
 			CreatedAtMS: group.CreatedAtMS,
 		}
@@ -432,7 +446,9 @@ func equalGroupCollectionWeight(left, right *int) bool {
 }
 
 func validateGroupCollectionModels(values []GroupModel) error {
-	seen := make(map[string]struct{}, len(values))
+	// 同一对外名的多条目是合法路由映射（设计 §3）；仅重复同一
+	// (对外名, 上游模型) 对属于坏数据。
+	seen := make(map[[2]string]struct{}, len(values))
 	for _, value := range values {
 		id := strings.TrimSpace(value.ID)
 		if id == "" {
@@ -442,10 +458,11 @@ func validateGroupCollectionModels(values []GroupModel) error {
 		if external == "" {
 			external = id
 		}
-		if _, duplicate := seen[external]; duplicate {
-			return fmt.Errorf("duplicate external model %q", external)
+		pair := [2]string{external, id}
+		if _, duplicate := seen[pair]; duplicate {
+			return fmt.Errorf("duplicate route entry for external model %q and upstream model %q", external, id)
 		}
-		seen[external] = struct{}{}
+		seen[pair] = struct{}{}
 	}
 	return nil
 }

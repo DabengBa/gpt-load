@@ -44,8 +44,14 @@ type routeInspectGroupResponse struct {
 	ChannelID                 channel.ID                       `json:"channel_id"`
 	RouteMode                 execution.RouteMode              `json:"route_mode"`
 	RouteRequirementSatisfied bool                             `json:"route_requirement_satisfied"`
+	EntryID                   string                           `json:"entry_id"`
 	UpstreamModel             *string                          `json:"upstream_model"`
 	WeightManual              *int                             `json:"weight_manual"`
+	EntryWeight               int                              `json:"entry_weight"`
+	Priority                  int                              `json:"priority"`
+	Fallback                  bool                             `json:"fallback"`
+	EffectiveShare            float64                          `json:"effective_share"`
+	EntryCooldownUntilMS      *int64                           `json:"entry_cooldown_until_ms"`
 	Included                  bool                             `json:"included"`
 	Routable                  bool                             `json:"routable"`
 	ReasonCode                *scheduler.ReasonCode            `json:"reason_code"`
@@ -121,9 +127,10 @@ func (service *Service) InspectRoute(
 			},
 		)
 	}
-	explanation, err := scheduler.Inspect(
+	explanation, err := scheduler.InspectWithEntryRuntime(
 		observation.snapshot,
 		observation.keys,
+		service.registry.EntryRuntimeSnapshot(),
 		scheduler.Query{
 			ClientProtocol:   request.Protocol,
 			Operation:        metadata.Operation,
@@ -176,14 +183,27 @@ func mapRouteInspectResponse(
 		Groups:     []routeInspectGroupResponse{},
 	}
 	for _, group := range explanation.Groups {
+		entryCooldownUntilMS, err := optionalSafeEpochMilliseconds(group.EntryCooldownUntil)
+		if err != nil {
+			return routeInspectResponse{}, fmt.Errorf(
+				"map route inspection entry_cooldown_until_ms: %w",
+				err,
+			)
+		}
 		groupResponse := routeInspectGroupResponse{
 			GroupID:                   group.GroupID,
 			GroupName:                 group.GroupName,
 			ChannelID:                 group.ChannelID,
 			RouteMode:                 group.RouteMode,
 			RouteRequirementSatisfied: group.RouteRequirementSatisfied,
+			EntryID:                   group.EntryID,
 			UpstreamModel:             cloneRouteModel(group.UpstreamModelID),
 			WeightManual:              cloneInt(group.WeightManual),
+			EntryWeight:               group.EntryWeight,
+			Priority:                  group.Priority,
+			Fallback:                  group.Priority > 1,
+			EffectiveShare:            group.EffectiveShare,
+			EntryCooldownUntilMS:      entryCooldownUntilMS,
 			Included:                  group.Included,
 			Routable:                  group.Routable,
 			ReasonCode:                optionalReason(group.Reason),

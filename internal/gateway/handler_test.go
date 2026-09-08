@@ -1011,17 +1011,12 @@ func TestHandlerRecordsNonStreamingResultStatsByAction(t *testing.T) {
 			},
 		},
 		{
-			name: "model unavailable",
+			name: "model unavailable hits route entry, not credential",
 			result: UpstreamResult{
 				StatusCode: http.StatusNotFound, Header: make(http.Header), Body: []byte(`{"error":"model not found"}`),
 				ClassificationBody: []byte(`{"error":"model not found"}`), RequestWritten: true,
 			},
-			want: health.CredentialStats{
-				Problem:             1,
-				ConsecutiveProblem:  1,
-				LastFailureCategory: health.FailureCategoryModelUnavailable,
-				LastStatusCode:      http.StatusNotFound,
-			},
+			want: health.CredentialStats{},
 		},
 		{
 			name: "host error",
@@ -3563,9 +3558,10 @@ func TestHandlerForwardsOverrideWithoutProviderSemanticValidation(t *testing.T) 
 func TestHandlerAppliesExactCooldownDeadline(t *testing.T) {
 	attemptNow := time.Date(2026, time.July, 21, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name   string
-		result UpstreamResult
-		want   time.Time
+		name      string
+		result    UpstreamResult
+		want      time.Time
+		wantEntry bool
 	}{
 		{
 			name: "rate limit reset",
@@ -3589,14 +3585,15 @@ func TestHandlerAppliesExactCooldownDeadline(t *testing.T) {
 			want: attemptNow.Add(time.Minute),
 		},
 		{
-			name: "model unavailable",
+			name: "model unavailable cools the route entry",
 			result: UpstreamResult{
 				StatusCode: http.StatusNotFound, Header: make(http.Header),
 				Body:               []byte(`{"error":"model_not_found"}`),
 				ClassificationBody: []byte(`{"error":"model_not_found"}`),
 				RequestWritten:     true,
 			},
-			want: attemptNow.Add(time.Hour),
+			want:      attemptNow.Add(time.Hour),
+			wantEntry: true,
 		},
 	}
 	for _, test := range tests {
@@ -3615,6 +3612,16 @@ func TestHandlerAppliesExactCooldownDeadline(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			engine.ServeHTTP(recorder, request)
 
+			if test.wantEntry {
+				if recording.cooldownCalls != 0 {
+					t.Fatalf("credential cooldown calls = %d, want 0", recording.cooldownCalls)
+				}
+				view, ok := registry.EntryRuntime(state.RouteEntryKey{GroupID: 1, EntryID: "e000000000001"}, test.want)
+				if !ok || !view.CooldownUntil.Equal(test.want) {
+					t.Fatalf("entry cooldown = exists:%t until:%v, want until %v", ok, view.CooldownUntil, test.want)
+				}
+				return
+			}
 			if recording.cooldownCalls != 1 || recording.cooldownCredentialID != 1 ||
 				!recording.cooldownUntil.Equal(test.want) {
 				t.Fatalf("cooldown = calls:%d key:%d until:%v, want 1/1/%v",
@@ -5299,7 +5306,7 @@ func newHandlerForTestWithStats(
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`),
-			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+			Models: []state.ModelConfig{{ID: "gpt-4o", EntryID: "e000000000001"}}, Enabled: true,
 		}},
 		Credentials: credentialConfigs,
 		AccessKeys: []state.AccessKeyConfig{{

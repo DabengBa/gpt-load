@@ -69,16 +69,70 @@ type CredentialRef struct {
 	FailureGeneration  uint64
 }
 
+// RouteEntryKey identifies one in-memory route-entry health state by its
+// route-entry identity (design §2: real entry_id or the process-local derived
+// identity for entries that were never backfilled). It is kept separate from
+// CredentialEntry so entry health can never be persisted as part of credential
+// configuration.
+type RouteEntryKey struct {
+	GroupID uint
+	EntryID string
+}
+
+// EntryRuntimeState describes the current availability of one route entry.
+type EntryRuntimeState string
+
+const (
+	EntryRuntimeAvailable   EntryRuntimeState = "available"
+	EntryRuntimeBlacklisted EntryRuntimeState = "blacklisted"
+	EntryRuntimeCooldown    EntryRuntimeState = "cooldown"
+)
+
+// EntryRuntimeView is a secret-free snapshot of one route-entry health state.
+type EntryRuntimeView struct {
+	Key            RouteEntryKey
+	CooldownUntil  time.Time
+	Blacklisted    bool
+	FailureCount   int
+	FailureVersion uint64
+}
+
+func (view EntryRuntimeView) RuntimeState(now time.Time) EntryRuntimeState {
+	if view.Blacklisted {
+		return EntryRuntimeBlacklisted
+	}
+	if view.CooldownUntil.After(now) {
+		return EntryRuntimeCooldown
+	}
+	return EntryRuntimeAvailable
+}
+
+type routeEntryRuntime struct {
+	RouteEntryKey
+	CooldownUntil  time.Time
+	Blacklisted    bool
+	FailureCount   int
+	FailureVersion uint64
+}
+
+type EntryRuntimeKey = RouteEntryKey
+
+type EntryRuntimeSource interface {
+	EntryRuntime(key RouteEntryKey, now time.Time) (EntryRuntimeView, bool)
+}
+
 type CredentialRegistry struct {
 	mu               sync.RWMutex
 	buckets          map[uint]map[uint]*CredentialEntry
 	credentialGroups map[uint]uint
+	entryRuntime     map[RouteEntryKey]*routeEntryRuntime
 }
 
 func NewCredentialRegistry() *CredentialRegistry {
 	return &CredentialRegistry{
 		buckets:          make(map[uint]map[uint]*CredentialEntry),
 		credentialGroups: make(map[uint]uint),
+		entryRuntime:     make(map[RouteEntryKey]*routeEntryRuntime),
 	}
 }
 
@@ -684,13 +738,204 @@ func (r *CredentialRegistry) CollectCredentialCandidates(groupIDs []uint, exclud
 	return filtered
 }
 
-// SetCredentialQuotaObservation publishes an ephemeral provider observation for
-// management-plane health display. Passing nil clears the observation.
+// EntryRuntime returns one detached, secret-free route-entry health view.
+func (r *CredentialRegistry) EntryRuntime(key RouteEntryKey, now time.Time) (EntryRuntimeView, bool) {
+	key.EntryID = strings.TrimSpace(key.EntryID)
+	if key.GroupID == 0 || key.EntryID == "" {
+		return EntryRuntimeView{}, false
+	}
+	r.mu.RLock()
+	state, exists := r.entryRuntime[key]
+	if !exists {
+		r.mu.RUnlock()
+		return EntryRuntimeView{Key: key}, false
+	}
+	view := EntryRuntimeView{
+		Key:            state.RouteEntryKey,
+		CooldownUntil:  state.CooldownUntil,
+		Blacklisted:    state.Blacklisted,
+		FailureCount:   state.FailureCount,
+		FailureVersion: state.FailureVersion,
+	}
+	r.mu.RUnlock()
+	return view, true
+}
+
+// EntryRuntimeSnapshot returns detached, sorted, secret-free route-entry state.
+func (r *CredentialRegistry) EntryRuntimeSnapshot() []EntryRuntimeView {
+	r.mu.RLock()
+	views := make([]EntryRuntimeView, 0, len(r.entryRuntime))
+	for _, state := range r.entryRuntime {
+		views = append(views, EntryRuntimeView{
+			Key:            state.RouteEntryKey,
+			CooldownUntil:  state.CooldownUntil,
+			Blacklisted:    state.Blacklisted,
+			FailureCount:   state.FailureCount,
+			FailureVersion: state.FailureVersion,
+		})
+	}
+	r.mu.RUnlock()
+	sort.Slice(views, func(i, j int) bool {
+		if views[i].Key.GroupID != views[j].Key.GroupID {
+			return views[i].Key.GroupID < views[j].Key.GroupID
+		}
+		return views[i].Key.EntryID < views[j].Key.EntryID
+	})
+	return views
+}
+
+func (r *CredentialRegistry) entryRuntimeLocked(key RouteEntryKey) *routeEntryRuntime {
+	if r.entryRuntime == nil {
+		r.entryRuntime = make(map[RouteEntryKey]*routeEntryRuntime)
+	}
+	state := r.entryRuntime[key]
+	if state == nil {
+		state = &routeEntryRuntime{RouteEntryKey: key}
+		r.entryRuntime[key] = state
+	}
+	return state
+}
+
+func (r *CredentialRegistry) SetEntryCooldown(key RouteEntryKey, until time.Time) bool {
+	exists, _ := r.SetEntryCooldownWithChange(key, until)
+	return exists
+}
+
+func (r *CredentialRegistry) SetEntryCooldownWithChange(key RouteEntryKey, until time.Time) (bool, bool) {
+	return r.SetEntryCooldownForEntry(key.GroupID, key.EntryID, until)
+}
+
+func (r *CredentialRegistry) SetEntryCooldownForEntry(
+	groupID uint,
+	entryID string,
+	until time.Time,
+) (bool, bool) {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" || until.IsZero() {
+		return false, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state := r.entryRuntimeLocked(key)
+	if !until.After(state.CooldownUntil) {
+		return true, false
+	}
+	state.CooldownUntil = until
+	return true, true
+}
+
+func (r *CredentialRegistry) SetEntryBlacklisted(key RouteEntryKey) bool {
+	exists, _ := r.SetEntryBlacklistedWithChange(key)
+	return exists
+}
+
+func (r *CredentialRegistry) SetEntryBlacklistedWithChange(key RouteEntryKey) (bool, bool) {
+	return r.SetEntryBlacklistedForEntry(key.GroupID, key.EntryID)
+}
+
+func (r *CredentialRegistry) SetEntryBlacklistedForEntry(groupID uint, entryID string) (bool, bool) {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
+		return false, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state := r.entryRuntimeLocked(key)
+	if state.Blacklisted {
+		return true, false
+	}
+	state.Blacklisted = true
+	state.FailureVersion++
+	return true, true
+}
+
+func (r *CredentialRegistry) IncrEntryFailure(key RouteEntryKey) (int, bool) {
+	return r.IncrEntryFailureForEntry(key.GroupID, key.EntryID)
+}
+
+func (r *CredentialRegistry) ClearEntryFailure(key RouteEntryKey) bool {
+	return r.ClearEntryFailureForEntry(key.GroupID, key.EntryID)
+}
+
+func (r *CredentialRegistry) RecoverEntry(key RouteEntryKey) bool {
+	return r.RecoverEntryForEntry(key.GroupID, key.EntryID)
+}
+
+func (r *CredentialRegistry) IncrEntryFailureForEntry(groupID uint, entryID string) (int, bool) {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
+		return 0, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state := r.entryRuntimeLocked(key)
+	state.FailureCount++
+	state.FailureVersion++
+	return state.FailureCount, true
+}
+
+func (r *CredentialRegistry) ClearEntryFailureForEntry(groupID uint, entryID string) bool {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state, exists := r.entryRuntime[key]
+	if !exists {
+		return true
+	}
+	if state.FailureCount != 0 {
+		state.FailureCount = 0
+		state.FailureVersion++
+	}
+	return true
+}
+
+func (r *CredentialRegistry) RecoverEntryForEntry(groupID uint, entryID string) bool {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state, exists := r.entryRuntime[key]
+	if !exists {
+		return true
+	}
+	if state.Blacklisted || state.FailureCount != 0 || !state.CooldownUntil.IsZero() {
+		state.Blacklisted = false
+		state.FailureCount = 0
+		state.CooldownUntil = time.Time{}
+		state.FailureVersion++
+	}
+	return true
+}
+
+func (r *CredentialRegistry) ClearExpiredEntryCooldowns(now time.Time) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cleared := 0
+	for key, state := range r.entryRuntime {
+		if state.CooldownUntil.IsZero() || state.CooldownUntil.After(now) {
+			continue
+		}
+		state.CooldownUntil = time.Time{}
+		state.FailureVersion++
+		if !state.Blacklisted && state.FailureCount == 0 {
+			delete(r.entryRuntime, key)
+		}
+		cleared++
+	}
+	return cleared
+}
+
 func (r *CredentialRegistry) SetCredentialQuotaObservation(
 	credentialID uint,
 	remaining *float64,
 	resetAt time.Time,
 ) bool {
+
 	if credentialID == 0 {
 		return false
 	}

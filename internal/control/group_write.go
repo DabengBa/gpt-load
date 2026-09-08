@@ -8,30 +8,46 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"sort"
 	"strings"
 	"unicode"
+
+	"crypto/rand"
+	"encoding/hex"
 
 	"gorm.io/gorm"
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/platform/epochms"
 	app_errors "gpt-load/internal/platform/errors"
+	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 )
 
 const maxCredentialLines = 1000
 
 type GroupModel struct {
-	ID           string `json:"id"`
-	Alias        string `json:"alias"`
-	AliasEnabled bool   `json:"-"`
+	ID                string                     `json:"id"`
+	Alias             string                     `json:"alias"`
+	EntryID           string                     `json:"entry_id,omitempty"`
+	AliasEnabled      bool                       `json:"-"`
+	Weight            *int                       `json:"weight,omitempty"`
+	Priority          *int                       `json:"priority,omitempty"`
+	CircuitBreaker    *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
+	weightSet         bool
+	prioritySet       bool
+	circuitBreakerSet bool
 }
 
 func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	var wire struct {
-		ID           string `json:"id"`
-		Alias        string `json:"alias"`
-		AliasEnabled bool   `json:"alias_enabled"`
+		ID             string          `json:"id"`
+		Alias          string          `json:"alias"`
+		EntryID        string          `json:"entry_id"`
+		AliasEnabled   *bool           `json:"alias_enabled"`
+		Weight         *int            `json:"weight"`
+		Priority       *int            `json:"priority"`
+		CircuitBreaker json.RawMessage `json:"circuit_breaker"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -47,7 +63,20 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	}
 	model.ID = wire.ID
 	model.Alias = wire.Alias
-	model.AliasEnabled = wire.AliasEnabled
+	model.EntryID = wire.EntryID
+	// alias_enabled 缺失按 false 处理：本类型同时用于解码存量存储行
+	// （price_reconcile 等读取路径），存量 JSON 不含该键，不得视为错误。
+	model.AliasEnabled = wire.AliasEnabled != nil && *wire.AliasEnabled
+	model.Weight = cloneInt(wire.Weight)
+	model.Priority = cloneInt(wire.Priority)
+	model.circuitBreakerSet = wire.CircuitBreaker != nil
+	if model.circuitBreakerSet && !bytes.Equal(bytes.TrimSpace(wire.CircuitBreaker), []byte("null")) {
+		var breaker state.EntryCircuitBreaker
+		if err := json.Unmarshal(wire.CircuitBreaker, &breaker); err != nil {
+			return app_errors.ErrValidation
+		}
+		model.CircuitBreaker = &breaker
+	}
 	return nil
 }
 
@@ -73,9 +102,13 @@ type optionalGroupModels struct {
 }
 
 type groupModelRequestWire struct {
-	ID           string `json:"id"`
-	Alias        string `json:"alias"`
-	AliasEnabled *bool  `json:"alias_enabled"`
+	ID             string          `json:"id"`
+	Alias          string          `json:"alias"`
+	EntryID        string          `json:"entry_id"`
+	AliasEnabled   *bool           `json:"alias_enabled"`
+	Weight         json.RawMessage `json:"weight"`
+	Priority       json.RawMessage `json:"priority"`
+	CircuitBreaker json.RawMessage `json:"circuit_breaker"`
 }
 
 type optionalField[T any] struct {
@@ -145,10 +178,29 @@ func (value *optionalGroupModels) UnmarshalJSON(data []byte) error {
 		if wire.AliasEnabled == nil {
 			return app_errors.ErrValidation
 		}
+		weight, weightSet, err := decodeOptionalInt(wire.Weight)
+		if err != nil {
+			return fmt.Errorf("decode group model weight: %w", err)
+		}
+		priority, prioritySet, err := decodeOptionalInt(wire.Priority)
+		if err != nil {
+			return fmt.Errorf("decode group model priority: %w", err)
+		}
+		breaker, err := decodeRequestBreaker(wire.CircuitBreaker)
+		if err != nil {
+			return fmt.Errorf("decode group model circuit_breaker: %w", err)
+		}
 		decoded = append(decoded, GroupModel{
-			ID:           wire.ID,
-			Alias:        wire.Alias,
-			AliasEnabled: *wire.AliasEnabled,
+			ID:                wire.ID,
+			Alias:             wire.Alias,
+			EntryID:           wire.EntryID,
+			AliasEnabled:      *wire.AliasEnabled,
+			Weight:            cloneInt(weight),
+			Priority:          cloneInt(priority),
+			CircuitBreaker:    breaker,
+			weightSet:         weightSet,
+			prioritySet:       prioritySet,
+			circuitBreakerSet: wire.CircuitBreaker != nil,
 		})
 	}
 
@@ -157,6 +209,56 @@ func (value *optionalGroupModels) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func decodeOptionalInt(raw json.RawMessage) (*int, bool, error) {
+	if len(raw) == 0 {
+		return nil, false, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, true, nil
+	}
+	var value int
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if err := decoder.Decode(&value); err != nil {
+		return nil, false, app_errors.ErrValidation
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, false, app_errors.ErrValidation
+	}
+	return &value, true, nil
+}
+
+func decodeRequestBreaker(raw json.RawMessage) (*state.EntryCircuitBreaker, error) {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var breaker state.EntryCircuitBreaker
+	if err := decoder.Decode(&breaker); err != nil {
+		return nil, app_errors.ErrValidation
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, app_errors.ErrValidation
+	}
+	return &breaker, nil
+}
+
+func newEntryID(used map[string]struct{}) (string, error) {
+	for i := 0; i < 10; i++ {
+		buf := make([]byte, 6)
+		if _, err := rand.Read(buf); err != nil {
+			return "", err
+		}
+		id := "e" + hex.EncodeToString(buf)
+		if _, ok := used[id]; !ok {
+			used[id] = struct{}{}
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("unable to generate unique entry_id")
+}
 func normalizeUpstreamBaseURL(raw string) (normalized, hostname string, err error) {
 	parsed, parseErr := url.Parse(strings.TrimSpace(raw))
 	if parseErr != nil || parsed.Opaque != "" || parsed.Host == "" {
@@ -189,12 +291,22 @@ func normalizeUpstreamBaseURL(raw string) (normalized, hostname string, err erro
 
 func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 	result := make([]GroupModel, 0, len(values))
-	indexesByClientModel := make(map[string][]int, len(values))
+	// 同一对外名下的多条目是合法的路由映射（设计 §3）；仅当同一对外名重复
+	// 同一上游模型时才构成冲突。
+	indexesByClientModel := make(map[string]map[string][]int, len(values))
 	clientModelOrder := make([]string, 0, len(values))
 	for index, value := range values {
 		normalized := GroupModel{
-			ID: strings.TrimSpace(value.ID),
+			ID:                strings.TrimSpace(value.ID),
+			EntryID:           strings.TrimSpace(value.EntryID),
+			Weight:            cloneInt(value.Weight),
+			Priority:          cloneInt(value.Priority),
+			CircuitBreaker:    cloneEntryCircuitBreaker(value.CircuitBreaker),
+			weightSet:         value.weightSet || value.Weight != nil,
+			prioritySet:       value.prioritySet || value.Priority != nil,
+			circuitBreakerSet: value.circuitBreakerSet || value.CircuitBreaker != nil,
 		}
+
 		if normalized.ID == "" {
 			return nil, app_errors.ErrValidation
 		}
@@ -212,19 +324,29 @@ func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 		}
 		if _, exists := indexesByClientModel[clientModel]; !exists {
 			clientModelOrder = append(clientModelOrder, clientModel)
+			indexesByClientModel[clientModel] = make(map[string][]int)
 		}
-		indexesByClientModel[clientModel] = append(indexesByClientModel[clientModel], index)
+		indexesByClientModel[clientModel][normalized.ID] = append(
+			indexesByClientModel[clientModel][normalized.ID], index)
 		result = append(result, normalized)
 	}
 	conflicts := make([]ModelNameConflict, 0)
 	for _, clientModel := range clientModelOrder {
-		indexes := indexesByClientModel[clientModel]
-		if len(indexes) < 2 {
+		ids := indexesByClientModel[clientModel]
+		conflictIndexes := make([]int, 0, 2)
+		for _, id := range sortedModelEntryIDs(ids) {
+			if len(ids[id]) < 2 {
+				continue
+			}
+			conflictIndexes = append(conflictIndexes, ids[id]...)
+		}
+		sort.Ints(conflictIndexes)
+		if len(conflictIndexes) < 2 {
 			continue
 		}
 		conflicts = append(conflicts, ModelNameConflict{
 			ClientModel: clientModel,
-			Indexes:     append([]int(nil), indexes...),
+			Indexes:     conflictIndexes,
 		})
 	}
 	if len(conflicts) > 0 {
@@ -234,6 +356,15 @@ func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 		)
 	}
 	return result, nil
+}
+
+func sortedModelEntryIDs(indexes map[string][]int) []string {
+	ids := make([]string, 0, len(indexes))
+	for id := range indexes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func normalizeGroupName(value *string) (*string, error) {

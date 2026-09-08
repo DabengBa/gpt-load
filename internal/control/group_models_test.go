@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
+	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage/models"
 )
 
@@ -59,6 +62,17 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 		Total:   2,
 		Pending: 1,
 	}
+	// entry_id 由 GET 懒回填（设计 §2.2），其余字段与配置一一对应。
+	entryIDPattern := regexp.MustCompile(`^e[0-9a-f]{12}$`)
+	if len(got.Items) != len(want.Items) {
+		t.Fatalf("GetGroupModels() items = %d, want %d", len(got.Items), len(want.Items))
+	}
+	for index, item := range got.Items {
+		if !entryIDPattern.MatchString(item.EntryID) {
+			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
+		}
+		want.Items[index].EntryID = item.EntryID
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetGroupModels() = %#v, want %#v", got, want)
 	}
@@ -68,7 +82,7 @@ func TestMapGroupModelsResponseTreatsContextTierOnlyPriceAsConfigured(t *testing
 	t.Parallel()
 	result, err := mapGroupModelsResponse(
 		string(channel.OpenAI),
-		[]GroupModel{{ID: "tiered-model"}},
+		[]groupModelEntry{{ID: "tiered-model"}},
 		modelPriceRows{
 			{ChannelID: string(channel.OpenAI), ModelID: "tiered-model"}: {
 				ChannelID:         string(channel.OpenAI),
@@ -101,19 +115,22 @@ func TestNormalizeGroupModelsAppliesAliasSwitchAndReportsStableConflicts(t *test
 		wantError     error
 	}{
 		{
-			name: "disabled alias uses upstream ID and conflicts with enabled alias",
+			// 同一对外名映射到不同上游模型是合法的多条目路由（设计 §3）。
+			name: "multi-mapping under one external name no longer conflicts",
 			values: []GroupModel{
 				{ID: "a", Alias: ""},
 				{ID: "b", Alias: "a", AliasEnabled: true},
 			},
-			wantConflicts: []ModelNameConflict{{ClientModel: "a", Indexes: []int{0, 1}}},
-			wantError:     app_errors.ErrModelNameConflict,
+			want: []GroupModel{
+				{ID: "a", Alias: ""},
+				{ID: "b", Alias: "a"},
+			},
 		},
 		{
-			name: "enabled aliases conflict",
+			name: "duplicate upstream pair under one external name conflicts",
 			values: []GroupModel{
 				{ID: "a", Alias: "x", AliasEnabled: true},
-				{ID: "b", Alias: "x", AliasEnabled: true},
+				{ID: "a", Alias: "x", AliasEnabled: true},
 			},
 			wantConflicts: []ModelNameConflict{{ClientModel: "x", Indexes: []int{0, 1}}},
 			wantError:     app_errors.ErrModelNameConflict,
@@ -130,13 +147,16 @@ func TestNormalizeGroupModelsAppliesAliasSwitchAndReportsStableConflicts(t *test
 			},
 		},
 		{
-			name: "trimmed IDs and aliases conflict",
+			// 旧 1:1 冲突在新语义下是合法多条目：不同上游共用对外名。
+			name: "trimmed aliases multi-mapping does not conflict",
 			values: []GroupModel{
 				{ID: " a ", Alias: ""},
 				{ID: "b", Alias: " a ", AliasEnabled: true},
 			},
-			wantConflicts: []ModelNameConflict{{ClientModel: "a", Indexes: []int{0, 1}}},
-			wantError:     app_errors.ErrModelNameConflict,
+			want: []GroupModel{
+				{ID: "a", Alias: ""},
+				{ID: "b", Alias: "a"},
+			},
 		},
 		{
 			name:      "enabled alias cannot be blank after trimming",
@@ -147,9 +167,9 @@ func TestNormalizeGroupModelsAppliesAliasSwitchAndReportsStableConflicts(t *test
 			name: "multiple conflicts use first occurrence order",
 			values: []GroupModel{
 				{ID: "a"},
-				{ID: "b", Alias: "a", AliasEnabled: true},
+				{ID: "a", Alias: "a", AliasEnabled: true},
 				{ID: "c"},
-				{ID: "d", Alias: "c", AliasEnabled: true},
+				{ID: "c", Alias: "c", AliasEnabled: true},
 			},
 			wantConflicts: []ModelNameConflict{
 				{ClientModel: "a", Indexes: []int{0, 1}},
@@ -187,11 +207,27 @@ func TestNormalizeGroupModelsAppliesAliasSwitchAndReportsStableConflicts(t *test
 	}
 }
 
-func TestNormalizeGroupModelsRejectsDuplicateExternalNames(t *testing.T) {
+func TestNormalizeGroupModelsAllowsMultiMappingAndRejectsDuplicatePairs(t *testing.T) {
 	t.Parallel()
+	// 同一对外名映射到不同上游模型是合法的多条目路由（设计 §3）。
+	got, err := normalizeGroupModels([]GroupModel{
+		{ID: "provider-a", Alias: "public", AliasEnabled: true},
+		{ID: "provider-b", Alias: "public", AliasEnabled: true},
+		{ID: "public"},
+	})
+	if err != nil {
+		t.Fatalf("normalizeGroupModels() error = %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("normalizeGroupModels() = %#v, want 3 entries", got)
+	}
+	// 同一对外名下重复同一上游模型才冲突。
 	for _, values := range [][]GroupModel{
-		{{ID: "provider-a", Alias: "public", AliasEnabled: true}, {ID: "provider-b", Alias: "public", AliasEnabled: true}},
-		{{ID: "public"}, {ID: "provider-b", Alias: "public", AliasEnabled: true}},
+		{
+			{ID: "provider-a", Alias: "public", AliasEnabled: true},
+			{ID: "provider-a", Alias: "public", AliasEnabled: true},
+		},
+		{{ID: "public"}, {ID: "public"}},
 	} {
 		var apiErr *app_errors.APIError
 		if _, err := normalizeGroupModels(values); !errors.As(err, &apiErr) ||
@@ -287,6 +323,17 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 		Total:   2,
 		Pending: 2,
 	}
+	// entry_id 懒回填后响应携带服务端生成的标识（设计 §2.2）。
+	entryIDPattern := regexp.MustCompile(`^e[0-9a-f]{12}$`)
+	if len(got.Items) != len(want.Items) {
+		t.Fatalf("models response items = %d, want %d", len(got.Items), len(want.Items))
+	}
+	for index, item := range got.Items {
+		if !entryIDPattern.MatchString(item.EntryID) {
+			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
+		}
+		want.Items[index].EntryID = item.EntryID
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("models response = %#v, want %#v", got, want)
 	}
@@ -316,7 +363,18 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 	if settings.Effective.HeaderRules.Set == nil || settings.Effective.HeaderRules.Remove == nil {
 		t.Fatalf("effective header collections = %#v", settings.Effective.HeaderRules)
 	}
-	if stored := loadCreatedGroupModels(t, fixture, created.GroupID); !reflect.DeepEqual(stored, wantModels) {
+	// entry_id 懒回填后存储行携带服务端生成的标识（设计 §2.2）。
+	stored := loadCreatedGroupModels(t, fixture, created.GroupID)
+	if len(stored) != len(wantModels) {
+		t.Fatalf("stored models = %d entries, want %d", len(stored), len(wantModels))
+	}
+	for index, model := range stored {
+		if !entryIDPattern.MatchString(model.EntryID) {
+			t.Fatalf("stored model %d entry_id = %q, want lazy-backfilled e+12hex", index, model.EntryID)
+		}
+		wantModels[index].EntryID = model.EntryID
+	}
+	if !reflect.DeepEqual(stored, wantModels) {
 		t.Fatalf("stored models = %#v, want %#v", stored, wantModels)
 	}
 	if fixture.manager.Current().Revision != beforeRevision+1 {
@@ -460,7 +518,7 @@ func TestUpdateGroupModelsFailuresDoNotPublish(t *testing.T) {
 				Set: true,
 				Values: []GroupModel{
 					{ID: "provider-a", Alias: "public", AliasEnabled: true},
-					{ID: "provider-b", Alias: "public", AliasEnabled: true},
+					{ID: "provider-a", Alias: "public", AliasEnabled: true},
 				},
 			},
 		})
@@ -552,3 +610,319 @@ func assertModelsUpdateStateUnchanged(
 		t.Fatalf("persisted models changed: got=%#v want=%#v", got, wantModels)
 	}
 }
+
+func TestMapGroupModelsResponseCarriesRouteEntryWeightAndPriority(t *testing.T) {
+	t.Parallel()
+	result, err := mapGroupModelsResponse(
+		string(channel.OpenAI),
+		[]groupModelEntry{
+			{ID: "entry-a", Alias: "public", Weight: intPointer(30), Priority: intPointer(2)},
+			{ID: "entry-b"},
+		},
+		modelPriceRows{},
+	)
+	if err != nil {
+		t.Fatalf("mapGroupModelsResponse() error = %v", err)
+	}
+	want := GroupModelsResponse{
+		Items: []GroupModelResponse{
+			{
+				ID: "entry-a", Alias: "public", AliasEnabled: true, ClientModel: "public",
+				Weight: intPointer(30), Priority: intPointer(2), PricingStatus: PricingStatusPending,
+			},
+			{
+				ID: "entry-b", AliasEnabled: false, ClientModel: "entry-b", PricingStatus: PricingStatusPending,
+			},
+		},
+		Total:   2,
+		Pending: 2,
+	}
+	if !reflect.DeepEqual(result, want) {
+		t.Fatalf("mapGroupModelsResponse() = %#v, want %#v", result, want)
+	}
+}
+
+// loadStoredGroupModelsJSON reads the persisted models column verbatim. Unlike
+// loadCreatedGroupModels it also works for rows carrying route entry fields.
+func loadStoredGroupModelsJSON(t *testing.T, fixture serviceFixture, groupID uint) string {
+	t.Helper()
+	var group models.Group
+	if err := fixture.db.First(&group, groupID).Error; err != nil {
+		t.Fatalf("query group %d: %v", groupID, err)
+	}
+	return string(group.Models)
+}
+
+func loadLoaderGroupModels(
+	t *testing.T,
+	fixture serviceFixture,
+	groupID uint,
+) []state.ModelConfig {
+	t.Helper()
+	input, err := stateloader.BuildCompileInput(t.Context(), fixture.db)
+	if err != nil {
+		t.Fatalf("BuildCompileInput() error = %v", err)
+	}
+	for _, group := range input.Groups {
+		if group.ID == groupID {
+			return group.Models
+		}
+	}
+	t.Fatalf("BuildCompileInput() missing group %d", groupID)
+	return nil
+}
+
+func TestUpdateGroupModelsRoundTripsLegacyPayloadWithoutRouteFields(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	mustEnsureInitialPrices(t, fixture)
+	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		ChannelID: channel.OpenAICompatible,
+		Params:    json.RawMessage(`{"base_url":"https://legacy-models.example.com/v1"}`),
+		Models: optionalGroupModels{
+			Set:    true,
+			Values: []GroupModel{{ID: "provider-old", Alias: "old-public", AliasEnabled: true}},
+		},
+		Credentials: "sk-legacy-models", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertStoredGroupModelsLegacyShape := func(stage string) {
+		t.Helper()
+		if stored := loadStoredGroupModelsJSON(t, fixture, created.GroupID); strings.Contains(stored, "weight") || strings.Contains(stored, "priority") {
+			t.Fatalf("stored models after %s = %s, want legacy shape without route fields", stage, stored)
+		}
+	}
+	assertStoredGroupModelsLegacyShape("create")
+	got, err := fixture.service.GetGroupModels(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupModels() error = %v", err)
+	}
+	if len(got.Items) != 1 || got.Items[0].Weight != nil || got.Items[0].Priority != nil {
+		t.Fatalf("models response = %#v, want nil route fields", got.Items)
+	}
+	runtimeModels := loadLoaderGroupModels(t, fixture, created.GroupID)
+	if len(runtimeModels) != 1 || runtimeModels[0].Weight != nil || runtimeModels[0].Priority != nil {
+		t.Fatalf("loader models = %#v, want nil route fields", runtimeModels)
+	}
+
+	if _, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
+		Models: optionalGroupModels{Set: true, Values: []GroupModel{{ID: "provider-new"}}},
+	}); err != nil {
+		t.Fatalf("UpdateGroupModels() error = %v", err)
+	}
+	assertStoredGroupModelsLegacyShape("update")
+}
+
+func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	mustEnsureInitialPrices(t, fixture)
+	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		ChannelID: channel.OpenAICompatible,
+		Params:    json.RawMessage(`{"base_url":"https://route-fields.example.com/v1"}`),
+		Models: optionalGroupModels{
+			Set:    true,
+			Values: []GroupModel{{ID: "provider-old", Alias: "old-public", AliasEnabled: true}},
+		},
+		Credentials: "sk-route-fields", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.Model(&models.Group{}).
+		Where("id = ?", created.GroupID).
+		Update("models", models.JSON(`[{"id":"entry-a","alias":"public","weight":30,"priority":2},{"id":"entry-b","alias":"public","weight":0}]`)).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := fixture.service.GetGroupModels(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupModels() error = %v", err)
+	}
+	// 懒回填：直接改库写入的存量条目在首次 GET 时获得服务端生成的 entry_id。
+	entryIDPattern := regexp.MustCompile(`^e[0-9a-f]{12}$`)
+	wantItems := []GroupModelResponse{
+		{ID: "entry-a", Alias: "public", AliasEnabled: true, ClientModel: "public", Weight: intPointer(30), Priority: intPointer(2), PricingStatus: PricingStatusPending},
+		{ID: "entry-b", Alias: "public", AliasEnabled: true, ClientModel: "public", Weight: intPointer(0), PricingStatus: PricingStatusPending},
+	}
+	if len(got.Items) != len(wantItems) {
+		t.Fatalf("models response items = %#v, want %d items", got.Items, len(wantItems))
+	}
+	for index, item := range got.Items {
+		want := wantItems[index]
+		if item.EntryID == "" || !entryIDPattern.MatchString(item.EntryID) {
+			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
+		}
+		if item.ID != want.ID || item.Alias != want.Alias || item.AliasEnabled != want.AliasEnabled ||
+			item.ClientModel != want.ClientModel || item.PricingStatus != want.PricingStatus {
+			t.Fatalf("item %d = %#v, want core fields %#v", index, item, want)
+		}
+		if !reflect.DeepEqual(item.Weight, want.Weight) || !reflect.DeepEqual(item.Priority, want.Priority) {
+			t.Fatalf("item %d route fields = %v/%v, want %v/%v", index, item.Weight, item.Priority, want.Weight, want.Priority)
+		}
+	}
+	reread, err := fixture.service.GetGroupModels(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("second GetGroupModels() error = %v", err)
+	}
+	for index, item := range reread.Items {
+		if item.EntryID != got.Items[index].EntryID {
+			t.Fatalf("reread item %d entry_id = %q, want stable %q", index, item.EntryID, got.Items[index].EntryID)
+		}
+	}
+
+	var row models.Group
+	if err := fixture.db.First(&row, created.GroupID).Error; err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := mapGroupRowToState(row)
+	if err != nil {
+		t.Fatalf("mapGroupRowToState() error = %v", err)
+	}
+	wantModels := []state.ModelConfig{
+		{ID: "entry-a", Alias: "public", Weight: intPointer(30), Priority: intPointer(2)},
+		{ID: "entry-b", Alias: "public", Weight: intPointer(0)},
+	}
+	if len(candidate.Models) != len(wantModels) {
+		t.Fatalf("state models count = %d, want %d", len(candidate.Models), len(wantModels))
+	}
+	for index, model := range candidate.Models {
+		if !entryIDPattern.MatchString(model.EntryID) {
+			t.Fatalf("state model %d entry_id = %q, want lazy-backfilled", index, model.EntryID)
+		}
+		want := wantModels[index]
+		if model.ID != want.ID || model.Alias != want.Alias ||
+			!reflect.DeepEqual(model.Weight, want.Weight) || !reflect.DeepEqual(model.Priority, want.Priority) {
+			t.Fatalf("state model %d = %#v, want core fields %#v", index, model, want)
+		}
+	}
+	runtimeModels := loadLoaderGroupModels(t, fixture, created.GroupID)
+	if len(runtimeModels) != len(wantModels) {
+		t.Fatalf("loader models count = %d, want %d", len(runtimeModels), len(wantModels))
+	}
+	for index, model := range runtimeModels {
+		if model.EntryID != candidate.Models[index].EntryID {
+			t.Fatalf("loader model %d entry_id = %q, want %q", index, model.EntryID, candidate.Models[index].EntryID)
+		}
+	}
+}
+
+func TestValidateGroupRowCandidateEnforcesRouteEntryRules(t *testing.T) {
+	fixture := newServiceFixture(t)
+	tests := []struct {
+		name    string
+		models  string
+		wantErr string
+	}{
+		{
+			name:    "duplicate external and upstream pair",
+			models:  `[{"id":"a","alias":"x"},{"id":"a","alias":"x"}]`,
+			wantErr: `group 7 (route-rules) has duplicate route entry for external model "x" and upstream model "a"`,
+		},
+		{
+			name:    "external model with only zero weights",
+			models:  `[{"id":"a","alias":"x","weight":0},{"id":"b","alias":"x","weight":0}]`,
+			wantErr: `group 7 (route-rules) external model "x" entry weights must sum to a positive value`,
+		},
+		{
+			name:    "negative weight",
+			models:  `[{"id":"a","weight":-1}]`,
+			wantErr: `group 7 (route-rules) model "a": weight must be between 0 and 100`,
+		},
+		{
+			name:    "priority below one",
+			models:  `[{"id":"a","priority":0}]`,
+			wantErr: `group 7 (route-rules) model "a": priority must be at least 1`,
+		},
+		{
+			name:    "empty model id",
+			models:  `[{"id":" ","alias":"x"}]`,
+			wantErr: `group 7 (route-rules) model entry 0: model id is required`,
+		},
+		{
+			name:   "weighted entries within limits pass the gate",
+			models: `[{"id":"a","alias":"x","weight":100,"priority":1}]`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			group := models.Group{
+				ID: 7, Name: "route-rules", ChannelID: string(channel.OpenAI),
+				ConnectionType: models.ConnectionTypeAPIKey,
+				Params:         models.JSON(`{}`), Models: models.JSON(test.models),
+			}
+			err := validateGroupRowCandidate(t.Context(), fixture.db, group, fixture.channelRegistry)
+			if test.wantErr == "" {
+				if err != nil {
+					t.Fatalf("validateGroupRowCandidate() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("validateGroupRowCandidate() error = %v, want substring %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestUpdateGroupModelsRejectsUnroutableStoredEntries(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	mustEnsureInitialPrices(t, fixture)
+	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		ChannelID: channel.OpenAICompatible,
+		Params:    json.RawMessage(`{"base_url":"https://unroutable-entries.example.com/v1"}`),
+		Models: optionalGroupModels{
+			Set:    true,
+			Values: []GroupModel{{ID: "provider-a", Alias: "public", AliasEnabled: true}},
+		},
+		Credentials: "sk-unroutable-entries", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.Model(&models.Group{}).
+		Where("id = ?", created.GroupID).
+		Update("models", models.JSON(`[{"id":"provider-a","alias":"public","weight":0}]`)).Error; err != nil {
+		t.Fatal(err)
+	}
+	beforeRevision := fixture.manager.Current().Revision
+	beforeRegistry := fixture.registry.Snapshot()
+	beforeStored := loadStoredGroupModelsJSON(t, fixture, created.GroupID)
+
+	_, err = fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
+		Models: optionalGroupModels{Set: true, Values: []GroupModel{{ID: "provider-b"}}},
+	})
+	var apiErr *app_errors.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != app_errors.ErrInternalServer.Code {
+		t.Fatalf("UpdateGroupModels() error = %#v, want existing-row gate failure", err)
+	}
+	// assertModelsUpdateStateUnchanged 不能用于带路由字段的存储行（GroupModel 解码
+	// 拒绝未知键），这里直接断言 revision/registry/存储原文不变。
+	if fixture.manager.Current().Revision != beforeRevision {
+		t.Fatalf("revision = %d, want unchanged %d", fixture.manager.Current().Revision, beforeRevision)
+	}
+	if !reflect.DeepEqual(fixture.registry.Snapshot(), beforeRegistry) {
+		t.Fatal("Registry changed")
+	}
+	if got := loadStoredGroupModelsJSON(t, fixture, created.GroupID); got != beforeStored {
+		t.Fatalf("persisted models changed: got=%s want=%s", got, beforeStored)
+	}
+
+	// 存储里的路由字段不阻塞保存路径：修复权重后可继续保存旧报文。
+	if err := fixture.db.Model(&models.Group{}).
+		Where("id = ?", created.GroupID).
+		Update("models", models.JSON(`[{"id":"provider-a","alias":"public","weight":5}]`)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
+		Models: optionalGroupModels{Set: true, Values: []GroupModel{{ID: "provider-b"}}},
+	}); err != nil {
+		t.Fatalf("UpdateGroupModels() after repair error = %v", err)
+	}
+}
+
+func intPointer(value int) *int { return &value }

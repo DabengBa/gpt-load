@@ -94,7 +94,9 @@ func removeOverrideKey0008(raw []byte) ([]byte, bool, error) {
 	return encoded, true, nil
 }
 
-// ValidateRecoverable0008 reports whether the retired key is still persisted.
+// ValidateRecoverable0008 accepts every structurally valid partial state.
+// Up0008 only performs idempotent deletes and per-row replacement, so MySQL
+// can safely retry after interruption at any point in its DML sequence.
 func ValidateRecoverable0008(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&systemSetting0008{}) {
 		return fmt.Errorf(
@@ -102,16 +104,13 @@ func ValidateRecoverable0008(db *gorm.DB) error {
 			systemSettingTable0008,
 		)
 	}
-	var settingCount int64
-	if err := db.Model(&systemSetting0008{}).
-		Where(&systemSetting0008{Key: injectUsageOptionsKey0008}).
-		Count(&settingCount).Error; err != nil {
-		return fmt.Errorf("count %s system setting: %w", injectUsageOptionsKey0008, err)
+	if !db.Migrator().HasTable(&group0008{}) {
+		return fmt.Errorf(
+			"validate recoverable inject usage options: table %q is missing",
+			groupTable0008,
+		)
 	}
-	if settingCount > 0 {
-		return fmt.Errorf("system setting %q is still present", injectUsageOptionsKey0008)
-	}
-	return validateGroupOverrides0008(db)
+	return nil
 }
 
 func validateGroupOverrides0008(db *gorm.DB) error {
@@ -139,5 +138,17 @@ func validateGroupOverrides0008(db *gorm.DB) error {
 
 // Validate0008 verifies the retired setting is gone everywhere it was stored.
 func Validate0008(db *gorm.DB) error {
-	return ValidateRecoverable0008(db)
+	if err := ValidateRecoverable0008(db); err != nil {
+		return err
+	}
+	var settingCount int64
+	if err := db.Model(&systemSetting0008{}).
+		Where(&systemSetting0008{Key: injectUsageOptionsKey0008}).
+		Count(&settingCount).Error; err != nil {
+		return fmt.Errorf("count %s system setting: %w", injectUsageOptionsKey0008, err)
+	}
+	if settingCount > 0 {
+		return fmt.Errorf("system setting %q is still present", injectUsageOptionsKey0008)
+	}
+	return validateGroupOverrides0008(db)
 }

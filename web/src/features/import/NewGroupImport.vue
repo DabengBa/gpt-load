@@ -549,6 +549,13 @@ const aliasEditorLabels = computed<ModelAliasEditorLabels>(() => ({
   empty: t('import.models.empty'),
   noMatches: t('import.models.noMatches'),
   nameConflict: (name) => t('import.models.nameConflict', { name }),
+  weight: t('import.models.weight'),
+  priority: t('import.models.priority'),
+  priorityFallback: t('import.models.priorityFallback'),
+  weightDisabled: t('import.models.weightDisabled'),
+  invalidWeight: t('import.models.invalidWeight'),
+  invalidPriority: t('import.models.invalidPriority'),
+  zeroShare: t('import.models.zeroShareSummary'),
 }))
 const discoveryDrawerLabels = computed<ModelDiscoveryDrawerLabels>(() => ({
   title: t('import.models.drawer.title'),

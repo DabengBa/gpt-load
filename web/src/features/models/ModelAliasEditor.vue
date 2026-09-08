@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends ModelDraftValue">
-import { Plus, X } from '@lucide/vue'
+import { ChevronDown, ChevronRight, Plus, X } from '@lucide/vue'
 import { computed, nextTick, ref, useId, watch } from 'vue'
 
 import LedgerRecordList from '@/components/collection/LedgerRecordList.vue'
@@ -10,7 +10,9 @@ import CompactFieldError from '@/components/ui/CompactFieldError.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 
 import {
+  clientModel,
   modelDraftValidity,
+  routeEntryShares,
   type ModelAliasEditorLabels,
   type ModelDraftKey,
   type ModelDraftValue,
@@ -65,18 +67,93 @@ watch(
   },
 )
 const validity = computed(() => modelDraftValidity(props.modelValue, props.conflicts))
-const visibleRows = computed(() => {
+const shares = computed(() => routeEntryShares(props.modelValue))
+
+interface VisibleRow {
+  item: T
+  index: number
+}
+
+interface VisibleGroup {
+  clientModel: string
+  rows: VisibleRow[]
+}
+
+const visibleGroups = computed<VisibleGroup[]>(() => {
   const query = searchValue.value.trim().toLocaleLowerCase()
-  return props.modelValue.flatMap((item, index) =>
+  const rows = props.modelValue.flatMap<VisibleRow>((item, index) =>
     !query || `${item.id} ${item.name} ${item.alias}`.toLocaleLowerCase().includes(query)
       ? [{ item, index }]
       : [],
   )
+  const groups: VisibleGroup[] = []
+  const byName = new Map<string, VisibleGroup>()
+  for (const row of rows) {
+    const name = clientModel(row.item) || '\u0000'
+    let group = byName.get(name)
+    if (!group) {
+      group = { clientModel: name, rows: [] }
+      byName.set(name, group)
+      groups.push(group)
+    }
+    group.rows.push(row)
+  }
+  return groups
 })
+
+const visibleRowCount = computed(() =>
+  visibleGroups.value.reduce((total, group) => total + group.rows.length, 0),
+)
+const groupHeaderCount = computed(
+  () => visibleGroups.value.filter((group) => group.rows.length > 1).length,
+)
+
+const collapsedGroups = ref<Set<string>>(new Set())
+
+function isCollapsed(name: string): boolean {
+  return collapsedGroups.value.has(name)
+}
+
+function toggleGroup(name: string): void {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  collapsedGroups.value = next
+}
+
+type RenderItem<T> =
+  | { kind: 'header'; key: string; group: VisibleGroup }
+  | { kind: 'row'; key: ModelDraftKey; item: T; index: number; nested: boolean }
+
+const renderList = computed<RenderItem<T>[]>(() => {
+  const list: RenderItem<T>[] = []
+  for (const group of visibleGroups.value) {
+    if (group.rows.length > 1) {
+      list.push({ kind: 'header', key: `group:${group.clientModel}`, group })
+      if (isCollapsed(group.clientModel)) continue
+    }
+    const nested = group.rows.length > 1
+    for (const row of group.rows) {
+      list.push({ kind: 'row', key: row.item.key, item: row.item, index: row.index, nested })
+    }
+  }
+  return list
+})
+
+function sharePercent(index: number): string {
+  const share = shares.value[index] ?? 0
+  return `${Math.round(share * 1_000) / 10}%`
+}
+
+function routeCountText(value: number | null): string {
+  return value === null ? '' : String(value)
+}
+
+type RouteCountField = 'weight' | 'priority'
 
 function updateRow(
   index: number,
-  patch: Partial<Pick<ModelDraftValue, 'id' | 'alias' | 'alias_enabled'>>,
+  patch: Partial<Pick<ModelDraftValue, 'id' | 'alias' | 'alias_enabled' | RouteCountField>>,
 ): void {
   emit(
     'update:modelValue',
@@ -90,6 +167,15 @@ function updateRow(
         : ({ ...item, sources: [...item.sources] } as T),
     ),
   )
+}
+
+function updateRouteCount(index: number, field: RouteCountField, raw: string): void {
+  const trimmed = raw.trim()
+  if (trimmed === '') {
+    updateRow(index, { [field]: null })
+    return
+  }
+  updateRow(index, { [field]: Number(trimmed) })
 }
 
 function removeRow(index: number): void {
@@ -132,6 +218,16 @@ function modelAliasError(item: ModelDraftValue, index: number): string {
   return validity.value.conflictIndexes.has(index) ? conflictMessage(index) : ''
 }
 
+function visibleWeightError(index: number): string {
+  if (validity.value.invalidWeightIndexes.has(index)) return props.labels.invalidWeight
+  if (validity.value.zeroShareIndexes.has(index)) return props.labels.zeroShare
+  return ''
+}
+
+function visiblePriorityError(index: number): string {
+  return validity.value.invalidPriorityIndexes.has(index) ? props.labels.invalidPriority : ''
+}
+
 function visibleModelIDError(item: ModelDraftValue, index: number): string {
   const error = modelIDError(item, index)
   if (!error) return ''
@@ -163,7 +259,12 @@ const visibleInvalidIndexes = computed(
   () =>
     new Set(
       props.modelValue.flatMap((item, index) =>
-        visibleModelIDError(item, index) || visibleModelAliasError(item, index) ? [index] : [],
+        visibleModelIDError(item, index) ||
+        visibleModelAliasError(item, index) ||
+        visibleWeightError(index) ||
+        visiblePriorityError(index)
+          ? [index]
+          : [],
       ),
     ),
 )
@@ -204,16 +305,23 @@ async function focusFirstInvalid(): Promise<void> {
   const targetsModelID =
     validity.value.emptyIDIndexes.has(index) ||
     (validity.value.conflictIndexes.has(index) && item?.editable_id && !item.alias_enabled)
+  const targetsWeight =
+    validity.value.invalidWeightIndexes.has(index) || validity.value.zeroShareIndexes.has(index)
+  const targetsPriority = validity.value.invalidPriorityIndexes.has(index)
   if (item) {
     if (targetsModelID) touchModelID(item.key)
-    else if (item.alias_enabled) touchAlias(item.key)
+    else if (item.alias_enabled && !targetsWeight && !targetsPriority) touchAlias(item.key)
   }
   await nextTick()
   const selector = targetsModelID
     ? `[data-model-id-index="${index}"]`
-    : item?.alias_enabled
-      ? `[data-alias-input-index="${index}"]`
-      : `[data-alias-toggle-index="${index}"]`
+    : targetsWeight
+      ? `[data-model-weight-index="${index}"]`
+      : targetsPriority
+        ? `[data-model-priority-index="${index}"]`
+        : item?.alias_enabled
+          ? `[data-alias-input-index="${index}"]`
+          : `[data-alias-toggle-index="${index}"]`
   root.value?.querySelector<HTMLInputElement>(selector)?.focus()
 }
 
@@ -240,119 +348,234 @@ defineExpose({ addManual, focusFirstInvalid })
 
     <LedgerRecordList
       :label="labels.tableLabel"
-      :row-count="(visibleRows.length || 1) + 1"
+      :row-count="visibleRowCount + groupHeaderCount + 1"
       grid-class="model-alias-editor__grid"
     >
       <template #header>
         <span role="columnheader">{{ labels.id }}</span>
         <span role="columnheader">{{ labels.alias }}</span>
+        <span role="columnheader">{{ labels.weight }} / {{ labels.priority }}</span>
         <span role="columnheader">{{ labels.thirdColumn }}</span>
         <span role="columnheader"
           ><span class="sr-only">{{ labels.actions }}</span></span
         >
       </template>
 
-      <article
-        v-for="({ item, index }, visibleIndex) in visibleRows"
-        :key="item.key"
-        class="ledger-record-list__record model-alias-editor__record"
-        :class="{ 'model-alias-editor__record--invalid': visibleInvalidIndexes.has(index) }"
-        role="row"
-        :aria-rowindex="visibleIndex + 2"
-      >
-        <div class="ledger-record-list__cell model-alias-editor__id" role="cell">
-          <span class="model-alias-editor__mobile-label">{{ labels.id }}</span>
-          <CompactFieldError
-            :id="`${instanceId}-model-id-${index}`"
-            class="model-alias-editor__id-field"
-            :error="visibleModelIDError(item, index)"
-          >
-            <template #default="{ invalid, describedBy }">
-              <AppTextInput
-                v-if="item.editable_id"
-                :id="`${instanceId}-model-id-${index}`"
-                :model-value="item.id"
-                appearance="surface"
-                size="compact"
-                monospace
-                :label="labels.id"
-                :placeholder="labels.manualId"
-                :invalid="invalid"
-                :described-by="describedBy"
-                :data-model-id-index="index"
-                :spellcheck="false"
-                :disabled="disabled"
-                @update:model-value="updateRow(index, { id: $event })"
-                @blur="touchModelID(item.key)"
-              />
-              <code v-else :aria-describedby="describedBy">{{ item.id }}</code>
-            </template>
-          </CompactFieldError>
-        </div>
-
-        <div class="ledger-record-list__cell model-alias-editor__alias-cell" role="cell">
-          <span class="model-alias-editor__mobile-label">{{ labels.alias }}</span>
-          <div class="model-alias-editor__alias-control">
-            <label
-              class="model-alias-editor__alias-toggle"
-              :class="{ 'model-alias-editor__alias-toggle--disabled': disabled }"
+      <template v-for="(render, renderIndex) in renderList" :key="render.key">
+        <article
+          v-if="render.kind === 'header'"
+          class="ledger-record-list__record model-alias-editor__group"
+          role="row"
+          :aria-rowindex="renderIndex + 2"
+        >
+          <div class="ledger-record-list__cell model-alias-editor__group-cell" role="cell">
+            <button
+              type="button"
+              class="model-alias-editor__group-toggle"
+              :aria-expanded="!isCollapsed(render.group.clientModel)"
+              :disabled="disabled"
+              @click="toggleGroup(render.group.clientModel)"
             >
-              <span class="sr-only">{{ labels.aliasEnabledFor(item.id) }}</span>
-              <input
-                :data-alias-toggle-index="index"
-                type="checkbox"
-                :checked="item.alias_enabled"
-                :disabled="disabled"
-                @change="setAliasEnabled(index, ($event.target as HTMLInputElement).checked)"
+              <ChevronDown
+                v-if="!isCollapsed(render.group.clientModel)"
+                :size="14"
+                aria-hidden="true"
               />
-            </label>
+              <ChevronRight v-else :size="14" aria-hidden="true" />
+              <strong>{{ render.group.clientModel }}</strong>
+              <span class="model-alias-editor__group-count">{{ render.group.rows.length }}</span>
+            </button>
+            <div class="model-alias-editor__distribution" aria-hidden="true">
+              <i
+                v-for="row in render.group.rows"
+                :key="row.item.key"
+                class="model-alias-editor__distribution-segment"
+                :class="{
+                  'model-alias-editor__distribution-segment--zero': (row.item.weight ?? 1) === 0,
+                }"
+                :style="{ width: sharePercent(row.index) }"
+              />
+            </div>
+          </div>
+        </article>
+        <article
+          v-else
+          class="ledger-record-list__record model-alias-editor__record"
+          :class="{
+            'model-alias-editor__record--invalid': visibleInvalidIndexes.has(render.index),
+            'model-alias-editor__record--nested': render.nested,
+            'model-alias-editor__record--disabled': (render.item.weight ?? 1) === 0,
+          }"
+          role="row"
+          :aria-rowindex="renderIndex + 2"
+        >
+          <div class="ledger-record-list__cell model-alias-editor__id" role="cell">
+            <span class="model-alias-editor__mobile-label">{{ labels.id }}</span>
             <CompactFieldError
-              v-if="item.alias_enabled"
-              :id="`${instanceId}-model-alias-${index}`"
-              class="model-alias-editor__alias-field"
-              :error="visibleModelAliasError(item, index)"
+              :id="`${instanceId}-model-id-${render.index}`"
+              class="model-alias-editor__id-field"
+              :error="visibleModelIDError(render.item, render.index)"
             >
               <template #default="{ invalid, describedBy }">
                 <AppTextInput
-                  :id="`${instanceId}-model-alias-${index}`"
-                  :model-value="item.alias"
+                  v-if="render.item.editable_id"
+                  :id="`${instanceId}-model-id-${render.index}`"
+                  :model-value="render.item.id"
                   appearance="surface"
                   size="compact"
-                  :label="labels.aliasFor(item.id)"
-                  :disabled="disabled"
-                  :placeholder="labels.aliasPlaceholder"
+                  monospace
+                  :label="labels.id"
+                  :placeholder="labels.manualId"
                   :invalid="invalid"
                   :described-by="describedBy"
-                  :data-alias-input-index="index"
+                  :data-model-id-index="render.index"
                   :spellcheck="false"
-                  @update:model-value="updateRow(index, { alias: $event })"
-                  @blur="touchAlias(item.key)"
+                  :disabled="disabled"
+                  @update:model-value="updateRow(render.index, { id: $event })"
+                  @blur="touchModelID(render.item.key)"
                 />
+                <code v-else :aria-describedby="describedBy">{{ render.item.id }}</code>
               </template>
             </CompactFieldError>
           </div>
-        </div>
 
-        <div class="ledger-record-list__cell model-alias-editor__third-column" role="cell">
-          <span class="model-alias-editor__mobile-label">{{ labels.thirdColumn }}</span>
-          <slot name="third-column" :item="item" :index="index" />
-        </div>
+          <div class="ledger-record-list__cell model-alias-editor__alias-cell" role="cell">
+            <span class="model-alias-editor__mobile-label">{{ labels.alias }}</span>
+            <div class="model-alias-editor__alias-control">
+              <label
+                class="model-alias-editor__alias-toggle"
+                :class="{ 'model-alias-editor__alias-toggle--disabled': disabled }"
+              >
+                <span class="sr-only">{{ labels.aliasEnabledFor(render.item.id) }}</span>
+                <input
+                  :data-alias-toggle-index="render.index"
+                  type="checkbox"
+                  :checked="render.item.alias_enabled"
+                  :disabled="disabled"
+                  @change="
+                    setAliasEnabled(render.index, ($event.target as HTMLInputElement).checked)
+                  "
+                />
+              </label>
+              <CompactFieldError
+                v-if="render.item.alias_enabled"
+                :id="`${instanceId}-model-alias-${render.index}`"
+                class="model-alias-editor__alias-field"
+                :error="visibleModelAliasError(render.item, render.index)"
+              >
+                <template #default="{ invalid, describedBy }">
+                  <AppTextInput
+                    :id="`${instanceId}-model-alias-${render.index}`"
+                    :model-value="render.item.alias"
+                    appearance="surface"
+                    size="compact"
+                    :label="labels.aliasFor(render.item.id)"
+                    :disabled="disabled"
+                    :placeholder="labels.aliasPlaceholder"
+                    :invalid="invalid"
+                    :described-by="describedBy"
+                    :data-alias-input-index="render.index"
+                    :spellcheck="false"
+                    @update:model-value="updateRow(render.index, { alias: $event })"
+                    @blur="touchAlias(render.item.key)"
+                  />
+                </template>
+              </CompactFieldError>
+            </div>
+          </div>
 
-        <div class="ledger-record-list__cell model-alias-editor__actions" role="cell">
-          <IconButton
-            variant="ghost"
-            size="compact"
-            :disabled="disabled"
-            :label="labels.removeFor(item.id || labels.manualId)"
-            @click="removeRow(index)"
-          >
-            <X :size="16" aria-hidden="true" />
-          </IconButton>
-        </div>
-      </article>
+          <div class="ledger-record-list__cell model-alias-editor__route" role="cell">
+            <span class="model-alias-editor__mobile-label">
+              {{ labels.weight }} / {{ labels.priority }}
+            </span>
+            <div class="model-alias-editor__route-inputs">
+              <CompactFieldError
+                :id="`${instanceId}-model-weight-${render.index}`"
+                class="model-alias-editor__route-field"
+                :error="visibleWeightError(render.index)"
+              >
+                <template #default="{ invalid, describedBy }">
+                  <AppTextInput
+                    :id="`${instanceId}-model-weight-${render.index}`"
+                    class="model-alias-editor__route-input"
+                    :model-value="routeCountText(render.item.weight ?? null)"
+                    appearance="surface"
+                    size="compact"
+                    monospace
+                    :label="labels.weight"
+                    placeholder="1"
+                    :invalid="invalid"
+                    :described-by="describedBy"
+                    :data-model-weight-index="render.index"
+                    :spellcheck="false"
+                    :disabled="disabled"
+                    @update:model-value="updateRouteCount(render.index, 'weight', $event)"
+                  />
+                </template>
+              </CompactFieldError>
+              <CompactFieldError
+                :id="`${instanceId}-model-priority-${render.index}`"
+                class="model-alias-editor__route-field"
+                :error="visiblePriorityError(render.index)"
+              >
+                <template #default="{ invalid, describedBy }">
+                  <AppTextInput
+                    :id="`${instanceId}-model-priority-${render.index}`"
+                    class="model-alias-editor__route-input"
+                    :model-value="routeCountText(render.item.priority ?? null)"
+                    appearance="surface"
+                    size="compact"
+                    monospace
+                    :label="labels.priority"
+                    placeholder="1"
+                    :invalid="invalid"
+                    :described-by="describedBy"
+                    :data-model-priority-index="render.index"
+                    :spellcheck="false"
+                    :disabled="disabled"
+                    @update:model-value="updateRouteCount(render.index, 'priority', $event)"
+                  />
+                </template>
+              </CompactFieldError>
+            </div>
+            <div class="model-alias-editor__route-meta">
+              <span
+                v-if="(render.item.priority ?? 1) >= 2"
+                class="model-alias-editor__route-flag"
+                >{{ labels.priorityFallback }}</span
+              >
+              <span
+                v-if="(render.item.weight ?? 1) === 0"
+                class="model-alias-editor__route-flag model-alias-editor__route-flag--muted"
+                >{{ labels.weightDisabled }}</span
+              >
+              <span v-else class="model-alias-editor__route-share">{{
+                sharePercent(render.index)
+              }}</span>
+            </div>
+          </div>
+
+          <div class="ledger-record-list__cell model-alias-editor__third-column" role="cell">
+            <span class="model-alias-editor__mobile-label">{{ labels.thirdColumn }}</span>
+            <slot name="third-column" :item="render.item" :index="render.index" />
+          </div>
+
+          <div class="ledger-record-list__cell model-alias-editor__actions" role="cell">
+            <IconButton
+              variant="ghost"
+              size="compact"
+              :disabled="disabled"
+              :label="labels.removeFor(render.item.id || labels.manualId)"
+              @click="removeRow(render.index)"
+            >
+              <X :size="16" aria-hidden="true" />
+            </IconButton>
+          </div>
+        </article>
+      </template>
 
       <div
-        v-if="visibleRows.length === 0"
+        v-if="visibleRowCount === 0"
         class="ledger-record-list__record model-alias-editor__empty"
         role="row"
         aria-rowindex="2"
@@ -408,7 +631,8 @@ defineExpose({ addManual, focusFirstInvalid })
 .model-alias-editor__grid {
   --ledger-record-list-record-min-height: 58px;
   --ledger-record-list-record-padding: 9px 0;
-  --ledger-record-list-grid: minmax(180px, 24fr) minmax(280px, 52fr) minmax(120px, 18fr) 40px;
+  --ledger-record-list-grid: minmax(170px, 22fr) minmax(230px, 36fr) minmax(200px, 22fr)
+    minmax(110px, 15fr) 40px;
   --ledger-record-list-column-gap: 16px;
 }
 
@@ -419,6 +643,114 @@ defineExpose({ addManual, focusFirstInvalid })
 
 .model-alias-editor__record--invalid {
   background: var(--color-danger-bg);
+}
+
+.model-alias-editor__record--nested {
+  border-left: 2px solid var(--color-border-subtle);
+  padding-left: 10px;
+}
+
+.model-alias-editor__record--disabled .model-alias-editor__id,
+.model-alias-editor__record--disabled .model-alias-editor__alias-cell {
+  opacity: 0.55;
+}
+
+.model-alias-editor__group-cell {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.model-alias-editor__group-toggle {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.model-alias-editor__group-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.model-alias-editor__group-count {
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-weight: 500;
+}
+
+.model-alias-editor__distribution {
+  display: flex;
+  width: min(100%, 360px);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-border-subtle);
+}
+
+.model-alias-editor__distribution-segment {
+  height: 100%;
+  background: var(--color-action);
+}
+
+.model-alias-editor__distribution-segment--zero {
+  background: var(--color-border-subtle);
+}
+
+.model-alias-editor__route {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 4px;
+}
+
+.model-alias-editor__route-inputs {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.model-alias-editor__route-field {
+  width: min(96px, 100%);
+}
+
+.model-alias-editor__route-input {
+  width: 100%;
+}
+
+.model-alias-editor__route-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 16px;
+}
+
+.model-alias-editor__route-flag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-warning-bg, var(--color-border-subtle));
+  color: var(--color-text);
+  font-size: var(--text-meta);
+  font-weight: 560;
+}
+
+.model-alias-editor__route-flag--muted {
+  background: var(--color-border-subtle);
+  color: var(--color-text-faint);
+}
+
+.model-alias-editor__route-share {
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
 }
 
 .model-alias-editor__id,
@@ -546,12 +878,14 @@ defineExpose({ addManual, focusFirstInvalid })
   }
 
   .model-alias-editor__id,
-  .model-alias-editor__alias-cell {
+  .model-alias-editor__alias-cell,
+  .model-alias-editor__route {
     grid-column: 1 / -1;
   }
 
   .model-alias-editor__id,
   .model-alias-editor__alias-cell,
+  .model-alias-editor__route,
   .model-alias-editor__third-column {
     display: grid;
     align-content: start;

@@ -153,8 +153,8 @@ func TestCandidateGroupIDsForQueryUsesExecutionRoutesAndAccessKeyFilters(t *test
 			},
 		},
 	}
-	if got := CandidateGroupIDsForQuery(snapshot, query); !slices.Equal(got, []uint{2, 1}) {
-		t.Fatalf("CandidateGroupIDsForQuery() = %#v, want native then converted [2 1]", got)
+	if got := CandidateGroupIDsForQuery(snapshot, query); !slices.Equal(got, []uint{1, 2}) {
+		t.Fatalf("CandidateGroupIDsForQuery() = %#v, want snapshot order [1 2]", got)
 	}
 
 	query.AccessKey.Filters.Groups = map[uint]struct{}{1: {}}
@@ -679,7 +679,7 @@ func TestInspectionExplainsAllowedCredentialScope(t *testing.T) {
 	if !inspection.Routable || len(inspection.Groups) != 2 {
 		t.Fatalf("Inspection = %#v", inspection)
 	}
-	native, converted := inspection.Groups[0], inspection.Groups[1]
+	converted, native := inspection.Groups[0], inspection.Groups[1]
 	if native.RouteMode != channel.RouteNative || native.Routable ||
 		native.Reason != ReasonNoAvailableCredential || len(native.Credentials) != 1 ||
 		native.Credentials[0].Reason != ReasonCredentialNotAllowed {

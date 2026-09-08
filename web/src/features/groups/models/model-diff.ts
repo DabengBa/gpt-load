@@ -23,15 +23,26 @@ export type { ModelNameConflict }
 export { findModelNameConflicts }
 
 export function createModelDraft(items: readonly GroupModelItemDto[]): ModelDraftItem[] {
-  return items.map((item, index) => ({
-    id: item.id,
-    name: item.id,
-    sources: [],
-    alias: item.alias,
-    alias_enabled: item.alias_enabled,
-    pricing_status: item.pricing_status,
-    key: index,
-  }))
+  return items.map((item, index) => {
+    const draft: ModelDraftItem = {
+      id: item.id,
+      name: item.id,
+      sources: [],
+      alias: item.alias,
+      alias_enabled: item.alias_enabled,
+      weight: item.weight ?? null,
+      priority: item.priority ?? null,
+      pricing_status: item.pricing_status,
+      key: index,
+    }
+    if (Object.prototype.hasOwnProperty.call(item, 'entry_id')) {
+      draft.entry_id = item.entry_id
+    }
+    if (Object.prototype.hasOwnProperty.call(item, 'circuit_breaker')) {
+      draft.circuit_breaker = item.circuit_breaker
+    }
+    return draft
+  })
 }
 
 export function normalizedModels(draft: readonly ModelDraftItem[]) {
@@ -68,6 +79,12 @@ export function syncedModels(
   const additions =
     mode === 'cleanup'
       ? []
-      : diff.additions.map(({ id }) => ({ id, alias: '', alias_enabled: false }))
+      : diff.additions.map(({ id }) => ({
+          id,
+          alias: '',
+          alias_enabled: false,
+          weight: null,
+          priority: null,
+        }))
   return normalizeSharedModels([...retained, ...additions])
 }
