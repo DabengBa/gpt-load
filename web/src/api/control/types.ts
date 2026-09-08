@@ -55,6 +55,7 @@ export interface GroupCollectionSummaryDto {
 export interface GroupCollectionItemDto {
   id: number
   name: string
+  price_multiplier: string
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
@@ -81,6 +82,7 @@ export interface GroupCollectionResponseDto {
 export interface GroupSummaryDto {
   id: number
   name: string
+  price_multiplier: string
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
@@ -132,6 +134,7 @@ export interface GroupEffectiveConfigDto {
 
 export interface GroupSettingsDto {
   name: string
+  price_multiplier: string
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
@@ -540,6 +543,7 @@ export interface HealthAccessKeyCostLimitDto {
 export interface AccessKeyDto {
   id: number
   name: string
+  price_multiplier: string
   masked_key: string
   status: 'active' | 'disabled'
   filters: AccessKeyFiltersDto

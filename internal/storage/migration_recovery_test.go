@@ -167,10 +167,12 @@ func TestApplyMySQLMigrationRecoversPartialInjectUsageOptionsCleanup(t *testing.
 		}
 	}
 	for _, name := range []string{"partial-one", "partial-two"} {
-		if err := db.Create(&models.Group{
-			Name: name, ChannelID: "openai", Params: models.JSON(`{}`), Models: models.JSON(`[]`),
-			Overrides: models.JSON(`{"inject_usage_options":false}`), Enabled: true,
-		}).Error; err != nil {
+		if err := db.Exec(`
+			INSERT INTO groups
+				(name, channel_id, connection_type, params, models, overrides, enabled, created_at_ms, updated_at_ms)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			name, "openai", "api_key", `{}`, `[]`, `{"inject_usage_options":false}`, true, 0, 0,
+		).Error; err != nil {
 			t.Fatalf("create partially cleaned group %q: %v", name, err)
 		}
 	}
@@ -181,7 +183,7 @@ func TestApplyMySQLMigrationRecoversPartialInjectUsageOptionsCleanup(t *testing.
 	if err := applyMySQLMigration(db, migrations[7]); err != nil {
 		t.Fatalf("resume partial 0008 cleanup: %v", err)
 	}
-	assertInternalMigrationComplete(t, db, registeredMigrationIDs())
+	assertInternalMigrationComplete(t, db, migrationIDsThrough(migrations, 8))
 	var groups []models.Group
 	if err := db.Order("id ASC").Find(&groups).Error; err != nil {
 		t.Fatalf("load cleaned groups: %v", err)
@@ -633,6 +635,14 @@ func assertInternalMigrationComplete(t *testing.T, db *gorm.DB, wantIDs []string
 			t.Fatalf("migration IDs = %v, want %v", ids, wantIDs)
 		}
 	}
+}
+
+func migrationIDsThrough(entries []migration, count int) []string {
+	result := make([]string, 0, count)
+	for _, entry := range entries[:count] {
+		result = append(result, entry.ID)
+	}
+	return result
 }
 
 func registeredMigrationIDs() []string {

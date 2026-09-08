@@ -39,6 +39,7 @@ import {
   projectEpochMilliseconds,
   projectEnum,
   projectFiniteNumber,
+  projectPriceMultiplier,
   projectRecord,
   projectSafeInteger,
   projectString,
@@ -48,6 +49,7 @@ import { projectProxyView } from './proxy'
 const groupSummaryFields = [
   'id',
   'name',
+  'price_multiplier',
   'channel_id',
   'connection_type',
   'params',
@@ -58,6 +60,7 @@ const groupSummaryFields = [
 ] as const
 const groupSettingsFields = [
   'name',
+  'price_multiplier',
   'channel_id',
   'connection_type',
   'params',
@@ -85,6 +88,7 @@ const groupCollectionSummaryFields = ['total', 'available', 'unavailable', 'disa
 const groupCollectionItemFields = [
   'id',
   'name',
+  'price_multiplier',
   'channel_id',
   'connection_type',
   'params',
@@ -153,6 +157,7 @@ export type {
 
 export type GroupSettingsUpdateRequest = Partial<{
   name: string
+  price_multiplier: string
   params: ChannelParamsDto
   validation_model: string | null
   enabled: boolean
@@ -199,6 +204,7 @@ export interface GroupModelsReplaceRequest {
 
 export interface GroupCreateRequest {
   name?: string
+  price_multiplier: string
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
@@ -396,6 +402,7 @@ export function projectGroupSummary(value: unknown): GroupSummaryDto {
     channel_id: projectChannelID(record.channel_id),
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
+    price_multiplier: projectPriceMultiplier(record.price_multiplier),
     service_status: serviceStatus,
     service_status_reason: serviceStatusReason,
     credential_count: projectSafeInteger(record.credential_count, { minimum: 0 }),
@@ -411,6 +418,7 @@ export function projectGroupSettings(value: unknown): GroupSettingsDto {
     channel_id: projectChannelID(record.channel_id),
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
+    price_multiplier: projectPriceMultiplier(record.price_multiplier),
     validation_model:
       record.validation_model === null ? null : projectNonBlankString(record.validation_model),
     enabled: projectBoolean(record.enabled),
@@ -540,6 +548,7 @@ function projectGroupCollectionItem(value: unknown): GroupCollectionItemDto {
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     status,
+    price_multiplier: projectPriceMultiplier(record.price_multiplier),
     model_count: modelCount,
     client_model_count: projectSafeInteger(record.client_model_count, { minimum: 0 }),
     credential_counts: credentialCounts,

@@ -123,14 +123,19 @@ func (handler *Handler) freezeAttemptPricing(
 	selection scheduler.Selection,
 	observations dialect.RequestMetadata,
 	observationsAvailable bool,
+	accessKeyMultiplier pricing.PriceMultiplier,
 ) frozenAttemptPricing {
 	frozen := frozenAttemptPricing{
-		channelID:        string(selection.ChannelID),
-		groupID:          selection.GroupID,
-		upstreamModel:    optionalModelValue(selection.UpstreamModelID),
-		applicable:       observations.ObserveUsage,
-		metadataSet:      true,
-		pricingMode:      observations.PricingMode,
+		channelID:     string(selection.ChannelID),
+		groupID:       selection.GroupID,
+		upstreamModel: optionalModelValue(selection.UpstreamModelID),
+		applicable:    observations.ObserveUsage,
+		metadataSet:   true,
+		pricingMode:   observations.PricingMode,
+		priceMultipliers: pricing.PriceMultipliers{
+			Group:     selection.Group.PriceMultiplier,
+			AccessKey: accessKeyMultiplier,
+		},
 		usageDiagnostics: observations.UsageDiagnostics,
 		reasoning:        observations.Reasoning.Clone(),
 	}
@@ -546,6 +551,7 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 			selectedRoute.Protocol,
 			handler.requestNow,
 		)
+		recorder.accessKeyMultiplier = accessKey.PriceMultiplier
 		defer func() {
 			recorder.completeMissingOutcome(
 				ginContext.Writer.Written(),
@@ -1028,6 +1034,7 @@ func (handler *Handler) executeAttempts(
 					selection,
 					attemptObservations,
 					attemptObservationsAvailable,
+					recorder.accessKeyMultiplier,
 				),
 			)
 		}
@@ -1275,6 +1282,7 @@ func (handler *Handler) executeAttempts(
 					selection,
 					attemptObservations,
 					attemptObservationsAvailable,
+					recorder.accessKeyMultiplier,
 				),
 			)
 		}

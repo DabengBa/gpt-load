@@ -40,6 +40,7 @@ type GroupCollectionCredentialCounts struct {
 }
 
 type GroupCollectionItem struct {
+	PriceMultiplier  string                          `json:"price_multiplier"`
 	ID               uint                            `json:"id"`
 	Name             string                          `json:"name"`
 	ChannelID        channel.ID                      `json:"channel_id"`
@@ -86,6 +87,7 @@ func cloneGroupRows(rows []models.Group) []models.Group {
 			value := *rows[index].ValidationModel
 			cloned[index].ValidationModel = &value
 		}
+		cloned[index].PriceMultiplierMicros = cloneOptionalInt64(rows[index].PriceMultiplierMicros)
 		cloned[index].Credentials = nil
 	}
 	return cloned
@@ -364,6 +366,7 @@ func mapGroupCollectionRecords(
 		}
 		record := groupCollectionRecord{
 			GroupCollectionItem: GroupCollectionItem{
+				PriceMultiplier:  priceMultiplierResponse(group.PriceMultiplierMicros),
 				ID:               group.ID,
 				Name:             group.Name,
 				ChannelID:        channelID,
