@@ -470,10 +470,10 @@ type scheduleEntryConfiguration struct {
 	circuitBreaker *state.EntryCircuitBreaker
 }
 
-// scheduleEntryConfigurations indexes one snapshot's group models by route
-// entry identity (real entry_id or the derived identity of design §2.2-2) so
-// detail rows can surface alias and configured breaker without extra I/O.
-// Only enabled groups carry a GroupView in the snapshot.
+// scheduleEntryConfigurations indexes every snapshot catalog group's models by
+// route entry identity (real entry_id or the derived identity of design §2.2-2)
+// so detail rows surface persisted alias and breaker configuration even when a
+// group is disabled and therefore absent from snapshot.Groups.
 func scheduleEntryConfigurations(
 	snapshot *state.ConfigSnapshot,
 ) map[uint]map[string]scheduleEntryConfiguration {
@@ -481,7 +481,7 @@ func scheduleEntryConfigurations(
 	if snapshot == nil {
 		return result
 	}
-	for groupID, group := range snapshot.Groups {
+	for groupID, group := range snapshot.GroupCatalog {
 		for _, model := range group.Models {
 			upstream := strings.TrimSpace(model.ID)
 			external := state.ExternalModelName(upstream, model.Alias)

@@ -23,6 +23,8 @@ import (
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
+	stateloader "gpt-load/internal/state/loader"
+	"gpt-load/internal/storage/models"
 )
 
 // scheduleTestScenario seeds a database-backed, published snapshot with two
@@ -394,6 +396,45 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 		t.Fatalf("two/up-b runtime after blacklist = %#v", blacklisted.Runtime)
 	}
 	assertScheduleReason(t, blacklisted.ReasonCode, scheduler.ReasonEntryBlacklisted)
+}
+
+func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
+	t.Parallel()
+	scenario := newScheduleTestScenario(t)
+	if err := scenario.fixture.db.Model(&models.Group{}).
+		Where("id = ?", 1).
+		Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable group: %v", err)
+	}
+	input, err := stateloader.BuildCompileInputWithProxy(
+		t.Context(), scenario.fixture.db, scenario.fixture.service.encryption,
+		scenario.fixture.service.environmentProxy, scenario.fixture.service.channelRegistry,
+	)
+	if err != nil {
+		t.Fatalf("rebuild disabled snapshot input: %v", err)
+	}
+	if _, err := scenario.fixture.manager.Publish(input); err != nil {
+		t.Fatalf("publish disabled snapshot: %v", err)
+	}
+
+	path := fmt.Sprintf(
+		"/api/model-route/schedule/detail?external_model=pub&protocol=openai-completions&access_key_id=%d",
+		scenario.accessKeyID,
+	)
+	recorder := scenario.perform(http.MethodGet, path, "", scenario.authKey)
+	var result modelRouteScheduleDetailResponse
+	decodeScheduleSuccess(t, recorder, &result)
+	if len(result.Groups) != 2 || len(result.Groups[0].Entries) == 0 {
+		t.Fatalf("disabled group detail = %#v", result.Groups)
+	}
+	entry := result.Groups[0].Entries[0]
+	if entry.EntryID != scheduleEntryOneA || entry.Alias != "pub" ||
+		entry.CircuitBreaker.Configured.BlacklistThreshold == nil ||
+		*entry.CircuitBreaker.Configured.BlacklistThreshold != 2 ||
+		entry.CircuitBreaker.Sources.BlacklistThreshold != scheduleBreakerSourceEntry {
+		t.Fatalf("disabled group entry configuration = %#v", entry)
+	}
+	assertScheduleReason(t, entry.ReasonCode, scheduler.ReasonGroupDisabled)
 }
 
 func assertScheduleReason(

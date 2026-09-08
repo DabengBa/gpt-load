@@ -12,6 +12,7 @@ import (
 
 	"gpt-load/internal/platform/config"
 	migrationfiles "gpt-load/internal/storage/migrations"
+	"gpt-load/internal/storage/models"
 )
 
 func TestApplyMySQLMigrationRecoversEveryInitialDDLBoundary(t *testing.T) {
@@ -146,6 +147,49 @@ func TestApplyMySQLMigrationRecoversAccessKeyLifecycleAddition(t *testing.T) {
 			}
 			assertInternalMigrationComplete(t, db, applied)
 		})
+	}
+}
+
+func TestApplyMySQLMigrationRecoversPartialInjectUsageOptionsCleanup(t *testing.T) {
+	db := openInternalMigrationTestDatabase(t)
+	if err := db.AutoMigrate(&schemaMigration{}); err != nil {
+		t.Fatalf("create migration ledger: %v", err)
+	}
+	for index := 0; index < 7; index++ {
+		if err := migrations[index].Up(db); err != nil {
+			t.Fatalf("apply migration %d: %v", index+1, err)
+		}
+		if err := migrations[index].Validate(db); err != nil {
+			t.Fatalf("validate migration %d: %v", index+1, err)
+		}
+		if err := db.Create(&schemaMigration{ID: migrations[index].ID}).Error; err != nil {
+			t.Fatalf("record migration %d: %v", index+1, err)
+		}
+	}
+	for _, name := range []string{"partial-one", "partial-two"} {
+		if err := db.Create(&models.Group{
+			Name: name, ChannelID: "openai", Params: models.JSON(`{}`), Models: models.JSON(`[]`),
+			Overrides: models.JSON(`{"inject_usage_options":false}`), Enabled: true,
+		}).Error; err != nil {
+			t.Fatalf("create partially cleaned group %q: %v", name, err)
+		}
+	}
+	if err := db.Create(&schemaMigration{ID: migrationResumeMarker(migrations[7].ID)}).Error; err != nil {
+		t.Fatalf("record 0008 resume marker: %v", err)
+	}
+
+	if err := applyMySQLMigration(db, migrations[7]); err != nil {
+		t.Fatalf("resume partial 0008 cleanup: %v", err)
+	}
+	assertInternalMigrationComplete(t, db, registeredMigrationIDs())
+	var groups []models.Group
+	if err := db.Order("id ASC").Find(&groups).Error; err != nil {
+		t.Fatalf("load cleaned groups: %v", err)
+	}
+	for _, group := range groups {
+		if strings.Contains(string(group.Overrides), "inject_usage_options") {
+			t.Fatalf("group %d overrides = %s, want retired key removed", group.ID, group.Overrides)
+		}
 	}
 }
 

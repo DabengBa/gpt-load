@@ -150,6 +150,7 @@ type GroupCatalogView struct {
 	Name         string
 	Enabled      bool
 	WeightManual *int
+	Models       []ModelConfig
 }
 
 type AccessKeyView struct {
@@ -204,6 +205,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		catalogView := GroupCatalogView{
 			ID: group.ID, Name: group.Name, Enabled: group.Enabled,
 			WeightManual: cloneWeight(group.WeightManual),
+			Models:       cloneModelConfigs(group.Models),
 		}
 		snapshot.GroupCatalog[group.ID] = catalogView
 		if err := appendExecutionTargets(snapshot.ExecutionRouteCatalog, input.ChannelRegistry, group); err != nil {
