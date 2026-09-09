@@ -3,7 +3,6 @@ package control
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/binary"
 	"hash"
 	"net/http"
@@ -19,7 +18,6 @@ import (
 	"gpt-load/internal/health"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/encryption"
-	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
@@ -34,7 +32,7 @@ type validationSweep interface {
 
 type validationRegistry interface {
 	BlacklistedCredentials() []state.CredentialRef
-	RecoverIfMatch(ref state.CredentialRef, weight int) bool
+	RecoverIfMatch(ref state.CredentialRef) bool
 }
 
 type statsResetter interface {
@@ -223,7 +221,7 @@ func (worker *validationWorker) validateRef(ctx context.Context, snapshot *state
 
 		var matched bool
 		worker.mutations.Do(ref.ID, func() {
-			matched = worker.registry.RecoverIfMatch(ref, state.DefaultWeight)
+			matched = worker.registry.RecoverIfMatch(ref)
 			if matched {
 				worker.stats.Reset(ref.ID)
 			}
@@ -240,51 +238,13 @@ func (worker *validationWorker) validateRef(ctx context.Context, snapshot *state
 }
 
 func validationAttemptProxy(
-	decryptor credentialDecryptor,
 	groupProxy outboundproxy.Effective,
-	ref state.CredentialRef,
 ) (outboundproxy.Effective, string, error) {
-	if groupProxy.Config.Mode == "" && ref.EncryptedProxy == "" {
-		return outboundproxy.Effective{}, "", nil
-	}
-	if ref.EncryptedProxy != "" {
-		hasher, ok := decryptor.(interface{ Hash(string) string })
-		if !ok {
-			return outboundproxy.Effective{}, "", app_errors.ErrInternalServer
-		}
-		plaintext, err := decryptor.Decrypt(ref.EncryptedProxy)
-		if err != nil {
-			return outboundproxy.Effective{}, "", err
-		}
-		fingerprint := hasher.Hash(plaintext)
-		if subtle.ConstantTimeCompare([]byte(fingerprint), []byte(ref.ProxyFingerprint)) != 1 {
-			plaintext = ""
-			return outboundproxy.Effective{}, "", app_errors.ErrInternalServer
-		}
-		config, err := outboundproxy.Decode(plaintext)
-		plaintext = ""
-		if err != nil {
-			return outboundproxy.Effective{}, "", err
-		}
-		effective, err := outboundproxy.Resolve(&config, nil, nil, nil)
-		return effective, fingerprint, err
-	}
 	effective, err := outboundproxy.NormalizeEffective(groupProxy)
 	if err != nil {
 		return outboundproxy.Effective{}, "", err
 	}
-	hasher, ok := decryptor.(interface{ Hash(string) string })
-	if !ok {
-		return effective, "", nil
-	}
-	identity := `{"mode":"environment"}`
-	if effective.Config.Mode != outboundproxy.ModeEnvironment {
-		identity, err = outboundproxy.Encode(effective.Config)
-		if err != nil {
-			return outboundproxy.Effective{}, "", err
-		}
-	}
-	return effective, hasher.Hash(identity), nil
+	return effective, "", nil
 }
 
 func buildGroupValidationTarget(group state.GroupView) (groupValidationTarget, bool) {

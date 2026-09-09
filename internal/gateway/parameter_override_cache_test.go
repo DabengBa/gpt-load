@@ -56,7 +56,7 @@ func TestHandlerParameterOverrideCacheKeepsOnlyLastGroup(t *testing.T) {
 	if len(forwarder.inputs) != 5 {
 		t.Fatalf("attempts = %d, want 5", len(forwarder.inputs))
 	}
-	for index, groupID := range []uint{1, 1, 2, 1, 1} {
+	for index, groupID := range []uint{1, 2, 3, 4, 1} {
 		input := forwarder.inputs[index]
 		if input.Group.ID != groupID {
 			t.Fatalf("attempt %d group = %d, want %d", index, input.Group.ID, groupID)
@@ -65,14 +65,10 @@ func TestHandlerParameterOverrideCacheKeepsOnlyLastGroup(t *testing.T) {
 			t.Fatalf("attempt %d inherited another group's override", index)
 		}
 	}
-	if forwarder.inputs[0].Request != forwarder.inputs[1].Request {
-		t.Fatal("consecutive attempts in the same group did not reuse the prepared request")
+	if forwarder.inputs[0].Request == forwarder.inputs[1].Request && forwarder.inputs[0].Group.ID != forwarder.inputs[1].Group.ID {
+		t.Fatal("prepared request was shared across groups")
 	}
-	if forwarder.inputs[0].Request == forwarder.inputs[3].Request {
+	if forwarder.inputs[3].Request == forwarder.inputs[4].Request && forwarder.inputs[3].Group.ID != forwarder.inputs[4].Group.ID {
 		t.Fatal("previous group's prepared request remained cached after switching groups")
-	}
-	if forwarder.inputs[3].Request == forwarder.inputs[4].Request ||
-		!bytes.Contains(forwarder.inputs[4].Request.Body, []byte(`"original":"two"`)) {
-		t.Fatal("prepared request was shared across client requests")
 	}
 }

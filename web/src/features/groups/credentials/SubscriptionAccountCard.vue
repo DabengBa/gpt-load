@@ -1,38 +1,31 @@
 <script setup lang="ts">
 import {
   Check,
-  CircleCheck,
-  CircleOff,
   Download,
   Ellipsis,
   Gauge,
   KeyRound,
   LoaderCircle,
-  PencilLine,
   RefreshCw,
   RotateCcw,
   Trash2,
 } from '@lucide/vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type {
   CredentialItemDto,
-  ProxyMutation,
   CredentialQuotaLabelKey,
   CredentialQuotaWindowDto,
 } from '@/api/control/types'
 import type { ChannelCapabilitiesDto } from '@/app/resources/channels'
 import ChannelIcon from '@/components/brand/ChannelIcon.vue'
-import ProxyConfigEditor from '@/components/config/ProxyConfigEditor.vue'
-import ProxyScopeIndicator from '@/components/config/ProxyScopeIndicator.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppPopover from '@/components/ui/AppPopover.vue'
 import AppRelativeTime from '@/components/ui/AppRelativeTime.vue'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
-import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import SkeletonBlock from '@/components/ui/SkeletonBlock.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { formatEstimatedCost, formatLocalInstant, formatTokens } from '@/lib/format'
@@ -53,7 +46,6 @@ const props = withDefaults(
     channelIcon?: string
     channelMark?: string
     capabilities: ChannelCapabilitiesDto
-    saveProxy: (value: ProxyMutation) => Promise<void>
   }>(),
   {
     channelIcon: undefined,
@@ -62,7 +54,6 @@ const props = withDefaults(
 )
 const emit = defineEmits<{
   'update:selected': [selected: boolean]
-  toggle: [item: CredentialItemDto]
   restore: [item: CredentialItemDto]
   refresh: [item: CredentialItemDto]
   'load-details': [item: CredentialItemDto]
@@ -70,73 +61,10 @@ const emit = defineEmits<{
   download: [item: CredentialItemDto]
   'refresh-credential': [item: CredentialItemDto]
   remove: [item: CredentialItemDto]
-  weight: [payload: { item: CredentialItemDto; value: string }]
 }>()
 const { locale, n, t, te } = useI18n()
 const menuOpen = ref(false)
 const detailsExpanded = ref(false)
-const proxyEditor = ref<{ beginEdit: () => void } | null>(null)
-const weightEditing = ref(false)
-const draftWeightMode = ref<'auto' | 'manual'>('auto')
-const draftWeight = ref('50')
-const weightInputId = computed(() => `subscription-account-weight-${props.item.credential_id}`)
-
-// 自动权重等同代理的“继承”态，折叠时不加视觉噪音。
-const showWeightChip = computed(
-  () => props.item.weight_mode === 'manual' && props.item.weight !== null,
-)
-const weightChipTooltip = computed(() =>
-  t('group.credentials.weightChipTooltip', { weight: n(props.item.weight ?? 0) }),
-)
-const weightModeOptions = computed(() => [
-  { value: 'auto', label: t('group.credentials.weightEditor.auto'), disabled: props.busy },
-  { value: 'manual', label: t('group.credentials.weightEditor.manual'), disabled: props.busy },
-])
-const manualWeightValid = computed(() => {
-  if (draftWeightMode.value === 'auto') return true
-  const value = Number(draftWeight.value)
-  return Number.isInteger(value) && value >= 1 && value <= 100
-})
-
-function resetWeightDraft(): void {
-  draftWeightMode.value = props.item.weight_mode
-  draftWeight.value = String(props.item.weight ?? 50)
-}
-
-// 一次完成“展开 + 进入编辑”，与密钥列表点权重值一致。
-function editWeight(): void {
-  if (props.busy) return
-  resetWeightDraft()
-  detailsExpanded.value = true
-  weightEditing.value = true
-}
-
-function editProxy(): void {
-  if (props.busy) return
-  detailsExpanded.value = true
-  void nextTick(() => proxyEditor.value?.beginEdit())
-}
-
-function saveWeight(): void {
-  if (props.busy || !manualWeightValid.value) return
-  emit('weight', {
-    item: props.item,
-    value: draftWeightMode.value === 'auto' ? 'auto' : String(Number(draftWeight.value)),
-  })
-  weightEditing.value = false
-}
-
-// 收起卡片时退出编辑，避免下次展开停在旧草稿。
-watch(
-  () => [props.item.weight_mode, props.item.weight] as const,
-  () => {
-    if (!weightEditing.value) resetWeightDraft()
-  },
-  { immediate: true },
-)
-watch(detailsExpanded, (expanded) => {
-  if (!expanded) weightEditing.value = false
-})
 const nowMs = ref(Date.now())
 let clockTimer: number | undefined
 
@@ -433,10 +361,8 @@ type UnifiedStatus =
   | 'refreshing'
   | 'needs_reauth'
   | 'outcome_unknown'
-  | 'disabled'
 
 const unifiedStatus = computed<UnifiedStatus>(() => {
-  if (props.item.configured_status === 'disabled') return 'disabled'
   if (props.item.auth_state === 'refreshing') return 'refreshing'
   if (props.item.auth_state === 'reauthorization_required') return 'needs_reauth'
   if (props.item.auth_state === 'outcome_unknown') return 'outcome_unknown'
@@ -459,14 +385,12 @@ const statusTone = computed<'success' | 'warning' | 'danger' | 'neutral'>(() => 
     refreshing: 'neutral',
     needs_reauth: 'danger',
     outcome_unknown: 'danger',
-    disabled: 'neutral',
   }
   return tones[unifiedStatus.value]
 })
 const statusLabel = computed(() =>
   t(`group.credentials.subscription.status.${unifiedStatus.value}`),
 )
-const displayDisabled = computed(() => unifiedStatus.value === 'disabled')
 const authErrorKeys: Readonly<Record<string, string>> = {
   refresh_rejected: 'group.credentials.subscription.authError.refreshRejected',
   refresh_identity_changed: 'group.credentials.subscription.authError.identityChanged',
@@ -615,9 +539,7 @@ function retryDetails(): void {
   emit('load-details', props.item)
 }
 
-function runMenuAction(
-  action: 'download' | 'refresh-credential' | 'toggle' | 'restore' | 'remove',
-): void {
+function runMenuAction(action: 'download' | 'refresh-credential' | 'restore' | 'remove'): void {
   menuOpen.value = false
   switch (action) {
     case 'download':
@@ -625,9 +547,6 @@ function runMenuAction(
       return
     case 'refresh-credential':
       emit('refresh-credential', props.item)
-      return
-    case 'toggle':
-      emit('toggle', props.item)
       return
     case 'restore':
       emit('restore', props.item)
@@ -644,7 +563,6 @@ function runMenuAction(
     :class="[
       `subscription-account--${statusTone}`,
       {
-        'subscription-account--disabled': displayDisabled,
         'subscription-account--refreshing': refreshingObservation,
       },
     ]"
@@ -776,32 +694,9 @@ function runMenuAction(
               />
               <span>{{ planLabel }}</span>
             </span>
-            <StatusBadge
-              class="subscription-account__status"
-              :tone="statusTone"
-              :icon="displayDisabled ? 'off' : undefined"
-              size="compact"
-            >
+            <StatusBadge class="subscription-account__status" :tone="statusTone" size="compact">
               {{ statusLabel }}
             </StatusBadge>
-            <AppTooltip v-if="showWeightChip" :content="weightChipTooltip">
-              <button
-                class="subscription-account__weight-chip"
-                type="button"
-                :disabled="busy"
-                :aria-label="weightChipTooltip"
-                @click="editWeight"
-              >
-                <Gauge :size="12" aria-hidden="true" />
-                <b>{{ n(item.weight as number) }}</b>
-              </button>
-            </AppTooltip>
-            <ProxyScopeIndicator
-              v-if="capabilities.outbound_proxy"
-              :view="item.proxy"
-              clickable
-              @activate="editProxy"
-            />
           </div>
           <div class="subscription-account__actions">
             <span
@@ -857,26 +752,9 @@ function runMenuAction(
                     t('group.credentials.subscription.download')
                   }}
                 </button>
-                <button
-                  type="button"
-                  :disabled="busy || item.configured_status === 'disabled'"
-                  @click="runMenuAction('refresh-credential')"
-                >
+                <button type="button" :disabled="busy" @click="runMenuAction('refresh-credential')">
                   <KeyRound :size="15" aria-hidden="true" />{{
                     t('group.credentials.subscription.refreshCredential')
-                  }}
-                </button>
-                <button type="button" :disabled="busy" @click="runMenuAction('toggle')">
-                  <CircleOff
-                    v-if="item.configured_status === 'active'"
-                    :size="15"
-                    aria-hidden="true"
-                  />
-                  <CircleCheck v-else :size="15" aria-hidden="true" />
-                  {{
-                    item.configured_status === 'active'
-                      ? t('group.credentials.disable')
-                      : t('group.credentials.enable')
                   }}
                 </button>
                 <button
@@ -1323,82 +1201,6 @@ function runMenuAction(
           </div>
         </section>
       </div>
-      <div class="subscription-account__panels">
-        <div class="setting-panel">
-          <span class="setting-panel__title">{{ t('group.credentials.columns.weight') }}</span>
-          <div class="setting-panel__body">
-            <template v-if="!weightEditing">
-              <span class="setting-panel__tag">
-                {{ t(`group.credentials.weightEditor.${item.weight_mode}`) }}
-              </span>
-              <span class="setting-panel__value">
-                {{ item.weight === null ? t('group.credentials.none') : n(item.weight) }}
-              </span>
-              <IconButton
-                class="setting-panel__edit"
-                variant="ghost"
-                tone="action"
-                size="xs"
-                :label="t('group.credentials.editWeight')"
-                :disabled="busy || displayDisabled"
-                @click="editWeight"
-              >
-                <PencilLine :size="12" aria-hidden="true" />
-              </IconButton>
-            </template>
-            <form v-else class="setting-panel__form" @submit.prevent="saveWeight">
-              <SegmentedControl
-                v-model="draftWeightMode"
-                class="subscription-account__weight-mode"
-                :label="t('group.credentials.weightEditor.mode')"
-                :options="weightModeOptions"
-                size="xs"
-              />
-              <label class="sr-only" :for="weightInputId">
-                {{ t('group.credentials.weightEditor.value') }}
-              </label>
-              <input
-                :id="weightInputId"
-                v-model="draftWeight"
-                class="subscription-account__weight-input"
-                :class="{ 'is-concealed': draftWeightMode === 'auto' }"
-                type="number"
-                min="1"
-                max="100"
-                step="1"
-                inputmode="numeric"
-                :disabled="busy || draftWeightMode === 'auto'"
-                :tabindex="draftWeightMode === 'auto' ? -1 : undefined"
-                :aria-hidden="draftWeightMode === 'auto' ? 'true' : undefined"
-                :aria-invalid="!manualWeightValid || undefined"
-              />
-              <div class="setting-panel__actions">
-                <AppButton variant="ghost" size="compact" @click="weightEditing = false">
-                  {{ t('group.credentials.weightEditor.cancel') }}
-                </AppButton>
-                <AppButton type="submit" size="compact" :disabled="busy || !manualWeightValid">
-                  {{ t('group.credentials.weightEditor.save') }}
-                </AppButton>
-              </div>
-              <p
-                v-if="draftWeightMode === 'manual' && !manualWeightValid"
-                class="setting-panel__error"
-                role="alert"
-              >
-                {{ t('group.credentials.weightEditor.invalid') }}
-              </p>
-            </form>
-          </div>
-        </div>
-
-        <ProxyConfigEditor
-          ref="proxyEditor"
-          :view="item.proxy"
-          :save-proxy="saveProxy"
-          :supported="capabilities.outbound_proxy"
-          :disabled="busy"
-        />
-      </div>
     </section>
   </article>
 </template>
@@ -1515,18 +1317,6 @@ function runMenuAction(
 }
 .subscription-account--danger {
   border-left-color: var(--color-danger);
-}
-.subscription-account--disabled {
-  border-color: var(--color-border-control);
-  border-left-color: var(--color-neutral);
-  box-shadow: none;
-}
-.subscription-account--disabled .subscription-account__status {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-neutral) 28%, transparent);
-}
-.subscription-account--disabled .subscription-account__quota {
-  --quota-accent: var(--color-neutral);
-  --quota-tint: var(--color-surface-sunken);
 }
 .subscription-account__main {
   display: grid;
@@ -1703,10 +1493,6 @@ function runMenuAction(
   overflow: hidden;
   border-radius: inherit;
   pointer-events: none;
-}
-.subscription-account--disabled .subscription-account__quota-meter {
-  filter: grayscale(1);
-  opacity: 0.58;
 }
 .subscription-account__quota-fill {
   position: absolute;
@@ -1992,59 +1778,6 @@ function runMenuAction(
 .subscription-account__detail-content {
   display: grid;
   gap: 13px;
-}
-.subscription-account__panels {
-  display: grid;
-  gap: 13px;
-  margin-top: 13px;
-}
-.subscription-account__weight-chip {
-  display: inline-flex;
-  min-height: 24px;
-  align-items: center;
-  gap: 4px;
-  border: 0;
-  border-radius: var(--radius-tag);
-  background: var(--color-info-bg);
-  color: var(--color-info);
-  padding: 3px 7px 3px 6px;
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 650;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.subscription-account__weight-chip:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-.subscription-account__weight-chip:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-.subscription-account__weight-chip > b {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-}
-.subscription-account__weight-mode {
-  flex: none;
-}
-.subscription-account__weight-input {
-  width: 64px;
-  min-height: 26px;
-  flex: none;
-  border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-  color: var(--color-text);
-  padding: 0 6px;
-  font-family: var(--font-mono);
-  font-size: var(--text-label-xs);
-  font-variant-numeric: tabular-nums;
-}
-.subscription-account__weight-input.is-concealed {
-  visibility: hidden;
 }
 .subscription-account__skeleton-section {
   display: grid;

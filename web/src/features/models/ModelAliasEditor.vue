@@ -31,6 +31,7 @@ const props = withDefaults(
     search?: string
     validationMode?: 'immediate' | 'blur'
     showAllErrors?: boolean
+    readonlyRouteFields?: boolean
   }>(),
   {
     createRow: undefined,
@@ -40,6 +41,7 @@ const props = withDefaults(
     search: undefined,
     validationMode: 'immediate',
     showAllErrors: false,
+    readonlyRouteFields: false,
   },
 )
 const emit = defineEmits<{
@@ -170,6 +172,7 @@ function updateRow(
 }
 
 function updateRouteCount(index: number, field: RouteCountField, raw: string): void {
+  if (props.readonlyRouteFields) return
   const trimmed = raw.trim()
   if (trimmed === '') {
     updateRow(index, { [field]: null })
@@ -489,54 +492,64 @@ defineExpose({ addManual, focusFirstInvalid })
               {{ labels.weight }} / {{ labels.priority }}
             </span>
             <div class="model-alias-editor__route-inputs">
-              <CompactFieldError
-                :id="`${instanceId}-model-weight-${render.index}`"
-                class="model-alias-editor__route-field"
-                :error="visibleWeightError(render.index)"
-              >
-                <template #default="{ invalid, describedBy }">
-                  <AppTextInput
-                    :id="`${instanceId}-model-weight-${render.index}`"
-                    class="model-alias-editor__route-input"
-                    :model-value="routeCountText(render.item.weight ?? null)"
-                    appearance="surface"
-                    size="compact"
-                    monospace
-                    :label="labels.weight"
-                    placeholder="1"
-                    :invalid="invalid"
-                    :described-by="describedBy"
-                    :data-model-weight-index="render.index"
-                    :spellcheck="false"
-                    :disabled="disabled"
-                    @update:model-value="updateRouteCount(render.index, 'weight', $event)"
-                  />
-                </template>
-              </CompactFieldError>
-              <CompactFieldError
-                :id="`${instanceId}-model-priority-${render.index}`"
-                class="model-alias-editor__route-field"
-                :error="visiblePriorityError(render.index)"
-              >
-                <template #default="{ invalid, describedBy }">
-                  <AppTextInput
-                    :id="`${instanceId}-model-priority-${render.index}`"
-                    class="model-alias-editor__route-input"
-                    :model-value="routeCountText(render.item.priority ?? null)"
-                    appearance="surface"
-                    size="compact"
-                    monospace
-                    :label="labels.priority"
-                    placeholder="1"
-                    :invalid="invalid"
-                    :described-by="describedBy"
-                    :data-model-priority-index="render.index"
-                    :spellcheck="false"
-                    :disabled="disabled"
-                    @update:model-value="updateRouteCount(render.index, 'priority', $event)"
-                  />
-                </template>
-              </CompactFieldError>
+              <template v-if="readonlyRouteFields">
+                <span class="model-alias-editor__route-summary" :aria-label="labels.weight">
+                  {{ routeCountText(render.item.weight ?? null) || '—' }}
+                </span>
+                <span class="model-alias-editor__route-summary" :aria-label="labels.priority">
+                  {{ routeCountText(render.item.priority ?? null) || '—' }}
+                </span>
+              </template>
+              <template v-else>
+                <CompactFieldError
+                  :id="`${instanceId}-model-weight-${render.index}`"
+                  class="model-alias-editor__route-field"
+                  :error="visibleWeightError(render.index)"
+                >
+                  <template #default="{ invalid, describedBy }">
+                    <AppTextInput
+                      :id="`${instanceId}-model-weight-${render.index}`"
+                      class="model-alias-editor__route-input"
+                      :model-value="routeCountText(render.item.weight ?? null)"
+                      appearance="surface"
+                      size="compact"
+                      monospace
+                      :label="labels.weight"
+                      placeholder="1"
+                      :invalid="invalid"
+                      :described-by="describedBy"
+                      :data-model-weight-index="render.index"
+                      :spellcheck="false"
+                      :disabled="disabled"
+                      @update:model-value="updateRouteCount(render.index, 'weight', $event)"
+                    />
+                  </template>
+                </CompactFieldError>
+                <CompactFieldError
+                  :id="`${instanceId}-model-priority-${render.index}`"
+                  class="model-alias-editor__route-field"
+                  :error="visiblePriorityError(render.index)"
+                >
+                  <template #default="{ invalid, describedBy }">
+                    <AppTextInput
+                      :id="`${instanceId}-model-priority-${render.index}`"
+                      class="model-alias-editor__route-input"
+                      :model-value="routeCountText(render.item.priority ?? null)"
+                      appearance="surface"
+                      size="compact"
+                      monospace
+                      :label="labels.priority"
+                      placeholder="1"
+                      :invalid="invalid"
+                      :described-by="describedBy"
+                      :data-model-priority-index="render.index"
+                      :spellcheck="false"
+                      :disabled="disabled"
+                      @update:model-value="updateRouteCount(render.index, 'priority', $event)"
+                    />
+                  </template>
+                </CompactFieldError>
+              </template>
             </div>
             <div class="model-alias-editor__route-meta">
               <span
@@ -724,6 +737,20 @@ defineExpose({ addManual, focusFirstInvalid })
 
 .model-alias-editor__route-input {
   width: 100%;
+}
+
+.model-alias-editor__route-summary {
+  display: inline-flex;
+  min-width: 42px;
+  min-height: var(--control-compact);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
 }
 
 .model-alias-editor__route-meta {

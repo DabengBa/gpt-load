@@ -3,12 +3,7 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type { ApiClient } from '@/api/client'
 import { enabledDataProtocols } from '@/api/control/protocols'
-import {
-  routeStrategies,
-  type AccessKeyDto,
-  type AccessProtocol,
-  type RouteStrategy,
-} from '@/api/control/types'
+import { type AccessKeyDto, type AccessProtocol } from '@/api/control/types'
 import { ApiError, InvalidResponseError } from '@/api/errors'
 import { controlQueryKeys } from '@/app/query-keys'
 import {
@@ -36,6 +31,8 @@ import {
 
 export interface ModelRouteScheduleIndexItemDto {
   external_model: string
+  protocol: AccessProtocol
+  operation: RouteInspectOperation
   candidate_count: number
   group_count: number
   has_fallback: boolean
@@ -76,7 +73,6 @@ export interface ModelRouteScheduleEntryDto {
   entry_id: string
   model_id: string
   alias: string
-  weight_manual: number | null
   weight: number
   priority: number
   fallback: boolean
@@ -93,7 +89,6 @@ export interface ModelRouteScheduleGroupDto {
   group_id: number
   group_name: string
   channel_id: string
-  group_weight: number | null
   entries: ModelRouteScheduleEntryDto[]
 }
 
@@ -107,7 +102,6 @@ export interface ModelRouteScheduleDetailRequest {
 export interface ModelRouteScheduleDetailDto {
   observed_at_ms: number
   snapshot_revision: number
-  route_strategy: RouteStrategy
   external_model: string | null
   protocol: AccessProtocol
   operation: RouteInspectOperation
@@ -164,6 +158,8 @@ export const modelRouteScheduleRevisionConflictCode = 'MODEL_ROUTE_SCHEDULE_REVI
 
 const indexFields = [
   'external_model',
+  'protocol',
+  'operation',
   'candidate_count',
   'group_count',
   'has_fallback',
@@ -173,7 +169,6 @@ const indexFields = [
 const detailFields = [
   'observed_at_ms',
   'snapshot_revision',
-  'route_strategy',
   'external_model',
   'protocol',
   'operation',
@@ -183,12 +178,11 @@ const detailFields = [
   'reason_code',
   'groups',
 ] as const
-const groupFields = ['group_id', 'group_name', 'channel_id', 'group_weight', 'entries'] as const
+const groupFields = ['group_id', 'group_name', 'channel_id', 'entries'] as const
 const entryFields = [
   'entry_id',
   'model_id',
   'alias',
-  'weight_manual',
   'weight',
   'priority',
   'fallback',
@@ -200,15 +194,7 @@ const entryFields = [
   'effective_share',
   'credentials',
 ] as const
-const credentialFields = [
-  'credential_id',
-  'available',
-  'reason_code',
-  'weight_manual',
-  'weight_auto',
-  'effective_weight',
-  'cooldown_until_ms',
-] as const
+const credentialFields = ['credential_id', 'available', 'reason_code', 'cooldown_until_ms'] as const
 const breakerFields = ['configured', 'effective', 'sources'] as const
 const breakerParameterFields = ['blacklist_threshold', 'cooldown_seconds'] as const
 const breakerSourceFields = ['blacklist_threshold', 'cooldown_seconds'] as const
@@ -232,10 +218,6 @@ function projectNullableNonBlankString(value: unknown): string | null {
   return value === null ? null : projectNonBlankString(value)
 }
 
-function projectNullableWeight(value: unknown): number | null {
-  return value === null ? null : projectSafeInteger(value, { minimum: 0, maximum: 100 })
-}
-
 function projectReason(value: unknown): RouteInspectReasonCode | null {
   return value === null ? null : projectEnum(value, routeInspectReasonCodes)
 }
@@ -247,9 +229,6 @@ function projectCredential(value: unknown): RouteInspectCredentialDto {
     credential_id: projectSafeInteger(record.credential_id, { minimum: 1 }),
     available: projectBoolean(record.available),
     reason_code: projectReason(record.reason_code),
-    weight_manual: projectNullableWeight(record.weight_manual),
-    weight_auto: projectSafeInteger(record.weight_auto, { minimum: 0, maximum: 100 }),
-    effective_weight: projectSafeInteger(record.effective_weight, { minimum: 0 }),
     cooldown_until_ms: projectNullableEpochMilliseconds(record.cooldown_until_ms),
   }
 }
@@ -317,7 +296,6 @@ function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleE
     entry_id: projectNonBlankString(record.entry_id),
     model_id: projectNonBlankString(record.model_id),
     alias: projectString(record.alias, { allowEmpty: true }),
-    weight_manual: projectNullableWeight(record.weight_manual),
     weight: projectSafeInteger(record.weight, { minimum: 0, maximum: 100 }),
     priority,
     fallback,
@@ -338,7 +316,6 @@ function projectGroup(value: unknown, observedAtMS: number): ModelRouteScheduleG
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
     group_name: projectNonBlankString(record.group_name),
     channel_id: projectNonBlankString(record.channel_id),
-    group_weight: projectNullableWeight(record.group_weight),
     entries: projectArray(record.entries, (entry) => projectEntry(entry, observedAtMS)),
   }
 }
@@ -361,6 +338,8 @@ export function projectModelRouteScheduleIndex(value: unknown): ModelRouteSchedu
     assertNoSecretLikeFields(itemRecord, indexFields)
     const result = {
       external_model: projectNonBlankString(itemRecord.external_model),
+      protocol: projectEnum(itemRecord.protocol, enabledDataProtocols),
+      operation: projectEnum(itemRecord.operation, routeInspectOperations),
       candidate_count: projectSafeInteger(itemRecord.candidate_count, { minimum: 0 }),
       group_count: projectSafeInteger(itemRecord.group_count, { minimum: 0 }),
       has_fallback: projectBoolean(itemRecord.has_fallback),
@@ -395,7 +374,6 @@ export function projectModelRouteScheduleDetail(value: unknown): ModelRouteSched
   return {
     observed_at_ms: observedAtMS,
     snapshot_revision: projectSafeInteger(record.snapshot_revision, { minimum: 1 }),
-    route_strategy: projectEnum(record.route_strategy, routeStrategies),
     external_model: projectNullableNonBlankString(record.external_model),
     protocol: projectEnum(record.protocol, enabledDataProtocols),
     operation: projectEnum(record.operation, routeInspectOperations),

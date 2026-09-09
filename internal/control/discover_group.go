@@ -97,7 +97,7 @@ func (s *Service) readGroupDiscoverySnapshot(
 
 		var credentials []models.Credential
 		if err := tx.
-			Where("group_id = ? AND status = ?", groupID, models.CredentialStatusActive).
+			Where("group_id = ?", groupID).
 			Order("id ASC").
 			Find(&credentials).Error; err != nil {
 			return err
@@ -130,10 +130,6 @@ func cloneDiscoveryCredentialRows(rows []models.Credential) []models.Credential 
 	for index := range rows {
 		cloned[index] = rows[index]
 		cloned[index].Group = nil
-		if rows[index].WeightManual != nil {
-			value := *rows[index].WeightManual
-			cloned[index].WeightManual = &value
-		}
 	}
 	return cloned
 }

@@ -961,7 +961,7 @@ func TestHandlerPublishesUsageForActualNonStreamingResponseAttempt(t *testing.T)
 	engine.ServeHTTP(httptest.NewRecorder(), request)
 
 	events := sink.snapshot()
-	if len(events) != 1 || events[0].Usage.Result != (usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{UncachedInput: 80, CacheRead: 20, Output: 30}}) || events[0].Usage.GroupID != 1 || events[0].Usage.CredentialID != 2 || events[0].Usage.AttemptSequence != 2 {
+	if len(events) != 1 || events[0].Usage.Result != (usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{UncachedInput: 80, CacheRead: 20, Output: 30}}) || events[0].Usage.GroupID != 2 || events[0].Usage.CredentialID != 2 || events[0].Usage.AttemptSequence != 2 {
 		t.Fatalf("events = %#v", events)
 	}
 }
@@ -1319,7 +1319,7 @@ func TestHandlerUsesParameterOverrideAttemptObservations(t *testing.T) {
 			}},
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: 1,
 			Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -1473,7 +1473,7 @@ func TestHandlerDiscardsPreCommitStreamUsageOnRetry(t *testing.T) {
 	}
 	event := events[0]
 	if event.Usage.Result != second || event.Usage.Result == first ||
-		event.Usage.GroupID != 1 || event.Usage.CredentialID != 2 || event.Usage.AttemptSequence != 2 {
+		event.Usage.GroupID != 2 || event.Usage.CredentialID != 2 || event.Usage.AttemptSequence != 2 {
 		t.Fatalf("event Usage = %#v, want second attempt Usage", event.Usage)
 	}
 	if len(event.Attempts) != 2 || event.Attempts[1].GroupID != event.Usage.GroupID ||
@@ -1838,9 +1838,9 @@ func TestHandlerTerminalAttemptUsageKeepsRouteAttribution(t *testing.T) {
 			}},
 			upstreamKeys:        []string{"sk-first", "sk-second", "sk-third"},
 			wantStatus:          telemetry.RequestStatusError,
-			wantGroupID:         1,
-			wantCredentialID:    1,
-			wantAttemptSequence: 1,
+			wantGroupID:         3,
+			wantCredentialID:    3,
+			wantAttemptSequence: 3,
 			wantUpstreamModel:   "gpt-4o",
 		},
 		{

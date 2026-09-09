@@ -681,15 +681,6 @@ func (manager *RuntimeManager) configForAttempt(spec execution.AttemptSpec) (eff
 			return effectiveProviderConfig{}, &failure
 		}
 	}
-	if resolved.ProviderKind.SupportsOutboundProxy() &&
-		spec.Proxy.Source == outboundproxy.SourceCredential &&
-		spec.Proxy.Config.Mode == outboundproxy.ModeCustom {
-		config, err = partitionProviderRuntime(config, spec.Credential)
-		if err != nil {
-			failure := notSentUnaryFailure(execution.ErrorKindInternal, "partition credential proxy runtime")
-			return effectiveProviderConfig{}, &failure
-		}
-	}
 	return config, nil
 }
 

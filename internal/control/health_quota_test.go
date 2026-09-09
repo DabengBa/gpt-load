@@ -31,9 +31,9 @@ func TestRuntimeHealthReportsLowQuotaCredentials(t *testing.T) {
 	}
 
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
-		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", Status: state.CredentialStatusActive, EncryptedValue: "low"},
-		{ID: 12, GroupID: 1, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", Status: state.CredentialStatusActive, EncryptedValue: "healthy"},
-		{ID: 13, GroupID: 1, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", Status: state.CredentialStatusActive, EncryptedValue: "stale"},
+		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, EncryptedValue: "low"},
+		{ID: 12, GroupID: 1, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", AuthState: state.CredentialAuthStateReady, EncryptedValue: "healthy"},
+		{ID: 13, GroupID: 1, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReady, EncryptedValue: "stale"},
 	}); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)
 	}

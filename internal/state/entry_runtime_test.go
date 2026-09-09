@@ -46,7 +46,7 @@ func TestEntryRuntimeIsIndependentByGroupAndEntryID(t *testing.T) {
 func TestEntryRuntimeBlacklistAndRecoveryAreIndependentFromCredentialState(t *testing.T) {
 	registry := NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]CredentialEntry{{
-		ID: 1, GroupID: 1, Status: CredentialStatusActive,
+		ID: 1, GroupID: 1,
 		Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint", EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatal(err)

@@ -576,7 +576,7 @@ func TestRuntimeCooldownProblemDoesNotAffectAutoWeightSeenByCandidateCollection(
 	base := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 10, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive, EncryptedValue: "cipher-one",
+		ID: 1, GroupID: 10, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", AuthState: state.CredentialAuthStateReady, EncryptedValue: "cipher-one",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
 	}
@@ -591,8 +591,8 @@ func TestRuntimeCooldownProblemDoesNotAffectAutoWeightSeenByCandidateCollection(
 	}
 	runtime.recompute(base)
 	candidates := registry.CollectCredentialCandidates([]uint{10}, nil, base)
-	if len(candidates) != 1 || candidates[0].WeightAuto != 92 {
-		t.Fatalf("CollectCandidates() = %#v, want one candidate with WeightAuto 92", candidates)
+	if len(candidates) != 1 {
+		t.Fatalf("CollectCandidates() = %#v, want one candidate", candidates)
 	}
 }
 
@@ -904,9 +904,9 @@ func (*interleavingRegistry) BlacklistedCredentials() []state.CredentialRef {
 	return []state.CredentialRef{{ID: 1, GroupID: 1, EncryptedValue: "cipher-one"}}
 }
 
-func (registry *interleavingRegistry) RecoverIfMatch(_ state.CredentialRef, weight int) bool {
+func (registry *interleavingRegistry) RecoverIfMatch(_ state.CredentialRef) bool {
 	registry.mu.Lock()
-	registry.currentWeight = weight
+	registry.currentWeight = 0
 	registry.recoveries++
 	registry.mu.Unlock()
 	return true

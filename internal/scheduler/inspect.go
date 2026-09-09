@@ -29,13 +29,10 @@ const (
 	ReasonGroupFiltered             ReasonCode = "group_filtered"
 	ReasonNoAvailableGroup          ReasonCode = "no_available_group"
 	ReasonNoCredentials             ReasonCode = "no_credentials"
-	ReasonGroupWeightZero           ReasonCode = "group_weight_zero"
 	ReasonEntryWeightZero           ReasonCode = "entry_weight_zero"
-	ReasonCredentialDisabled        ReasonCode = "credential_disabled"
 	ReasonCredentialAuthUnavailable ReasonCode = "credential_auth_unavailable"
 	ReasonCredentialBlacklisted     ReasonCode = "credential_blacklisted"
 	ReasonCredentialCooldown        ReasonCode = "credential_cooldown"
-	ReasonCredentialWeightZero      ReasonCode = "credential_weight_zero"
 	ReasonCredentialNotAllowed      ReasonCode = "credential_not_allowed"
 	ReasonNoAvailableCredential     ReasonCode = "no_available_credential"
 	ReasonEntryBlacklisted          ReasonCode = "entry_blacklisted"
@@ -61,7 +58,6 @@ type GroupInspection struct {
 	RouteRequirementSatisfied bool
 	EntryID                   string
 	UpstreamModelID           *string
-	WeightManual              *int
 	EntryWeight               int
 	Priority                  int
 	EntryCooldownUntil        time.Time
@@ -80,8 +76,6 @@ type CredentialInspection struct {
 	CredentialID    uint
 	Available       bool
 	Reason          ReasonCode
-	WeightManual    *int
-	WeightAuto      int
 	EffectiveWeight int64
 	CooldownUntil   time.Time
 }
@@ -103,14 +97,6 @@ type targetDecision struct {
 type targetEntryKey struct {
 	groupID         uint
 	upstreamModelID string
-}
-
-func cloneWeight(weight *int) *int {
-	if weight == nil {
-		return nil
-	}
-	value := *weight
-	return &value
 }
 
 func evaluateTargets(
@@ -258,78 +244,21 @@ func accessKeyAllowsGroup(accessKey state.AccessKeyView, groupID uint) bool {
 	return allowed
 }
 
-func normalizedAutoWeight(weight int) int {
-	if weight == 0 {
-		return state.DefaultWeight
-	}
-	return weight
-}
-
-// combinedWeight is the single source of scheduling share for a
-// (group, entry, credential) triple: 组权重 × 条目权重 × 密钥权重
-// (design §5.1). Any factor ≤ 0 yields 0 so the triple never joins a
-// weighted pool; callers must treat 0 as excluded. Unset group and
-// credential weights fall back to the state defaults, and the entry weight
-// arrives already normalized by snapshot compilation.
-func combinedWeight(
-	groupManual *int,
-	entryWeight int,
-	credentialManual *int,
-	credentialAuto int,
-) int64 {
-	groupWeight := state.DefaultWeight
-	if groupManual != nil {
-		groupWeight = *groupManual
-	}
-	credentialWeight := normalizedAutoWeight(credentialAuto)
-	if credentialManual != nil {
-		credentialWeight = *credentialManual
-	}
-	if groupWeight <= 0 || entryWeight <= 0 || credentialWeight <= 0 {
-		return 0
-	}
-	return int64(groupWeight) * int64(entryWeight) * int64(credentialWeight)
-}
-
-// effectiveWeight preserves the pre-route-entry helper contract for existing
-// scheduler tests and compatibility callers. Route-entry scheduling uses
-// combinedWeight directly with the entry factor supplied by the snapshot.
-func effectiveWeight(groupManual, credentialManual *int, credentialAuto int) int64 {
-	return combinedWeight(groupManual, 1, credentialManual, credentialAuto)
-}
-
 func inspectCredential(
-	group state.GroupCatalogView,
 	entryWeight int,
 	credential CredentialRuntimeView,
 	allowedCredentialIDs map[uint]struct{},
 	now time.Time,
 ) CredentialInspection {
-	result := CredentialInspection{
-		CredentialID: credential.ID,
-		WeightManual: cloneWeight(credential.WeightManual),
-		WeightAuto:   normalizedAutoWeight(credential.WeightAuto),
-	}
-	if group.WeightManual != nil && *group.WeightManual == 0 {
-		result.Reason = ReasonGroupWeightZero
-		return result
-	}
+	result := CredentialInspection{CredentialID: credential.ID}
 	if allowedCredentialIDs != nil {
 		if _, allowed := allowedCredentialIDs[credential.ID]; !allowed {
 			result.Reason = ReasonCredentialNotAllowed
 			return result
 		}
 	}
-	if credential.Status != state.CredentialStatusActive {
-		result.Reason = ReasonCredentialDisabled
-		return result
-	}
 	if !credential.AuthReady() {
 		result.Reason = ReasonCredentialAuthUnavailable
-		return result
-	}
-	if credential.WeightManual != nil && *credential.WeightManual == 0 {
-		result.Reason = ReasonCredentialWeightZero
 		return result
 	}
 	switch credential.RuntimeState(now) {
@@ -340,12 +269,9 @@ func inspectCredential(
 		result.CooldownUntil = credential.CooldownUntil
 	default:
 		result.Available = true
-		result.EffectiveWeight = combinedWeight(
-			group.WeightManual,
-			entryWeight,
-			credential.WeightManual,
-			credential.WeightAuto,
-		)
+		if entryWeight > 0 {
+			result.EffectiveWeight = int64(entryWeight)
+		}
 	}
 	return result
 }
@@ -405,7 +331,6 @@ func InspectWithEntryRuntime(
 			)
 		}
 		cloned := credential
-		cloned.WeightManual = cloneWeight(credential.WeightManual)
 		credentialsByGroup[credential.GroupID] = append(credentialsByGroup[credential.GroupID], cloned)
 	}
 	for groupID := range credentialsByGroup {
@@ -436,7 +361,6 @@ func InspectWithEntryRuntime(
 			RouteRequirementSatisfied: decision.requirementOK,
 			EntryID:                   decision.target.EntryID,
 			UpstreamModelID:           optionalModel(decision.target.UpstreamModelID),
-			WeightManual:              cloneWeight(decision.group.WeightManual),
 			EntryWeight:               decision.target.EntryWeight,
 			Priority:                  decision.target.Priority,
 			Included:                  decision.included,
@@ -451,15 +375,12 @@ func InspectWithEntryRuntime(
 			continue
 		}
 		groupCredentials := credentialsByGroup[decision.group.ID]
-		groupWeightZero := decision.group.WeightManual != nil &&
-			*decision.group.WeightManual == 0
 		entryUnavailable := entryHasRuntime &&
 			entryState.RuntimeState(now) != state.EntryRuntimeAvailable
-		for _, credential := range groupCredentials {
+		if len(groupCredentials) == 1 {
 			credentialResult := inspectCredential(
-				decision.group,
 				decision.target.EntryWeight,
-				credential,
+				groupCredentials[0],
 				normalized.allowedCredentialIDs,
 				now,
 			)
@@ -474,8 +395,6 @@ func InspectWithEntryRuntime(
 			}
 		}
 		switch {
-		case groupWeightZero:
-			groupResult.Reason = ReasonGroupWeightZero
 		case decision.target.EntryWeight <= 0:
 			groupResult.Reason = ReasonEntryWeightZero
 		case entryUnavailable && entryState.Blacklisted:
@@ -484,6 +403,8 @@ func InspectWithEntryRuntime(
 			groupResult.Reason = ReasonEntryCooldown
 		case len(groupCredentials) == 0:
 			groupResult.Reason = ReasonNoCredentials
+		case len(groupCredentials) > 1:
+			groupResult.Reason = ReasonNoAvailableCredential
 		case !groupResult.Routable:
 			groupResult.Reason = ReasonNoAvailableCredential
 		}

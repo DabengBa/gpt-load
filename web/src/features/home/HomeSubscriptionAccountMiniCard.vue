@@ -28,7 +28,6 @@ type UnifiedStatus =
   | 'refreshing'
   | 'needs_reauth'
   | 'outcome_unknown'
-  | 'disabled'
 type CardTone = 'success' | 'warning' | 'danger' | 'neutral'
 type ResetCreditDotTone = 'default' | 'warning' | 'danger'
 
@@ -91,7 +90,6 @@ const quotaWindows = computed(() => {
 
 const unifiedStatus = computed<UnifiedStatus>(() => {
   const item = credential.value
-  if (item.configured_status === 'disabled') return 'disabled'
   if (item.auth_state === 'refreshing') return 'refreshing'
   if (item.auth_state === 'reauthorization_required') return 'needs_reauth'
   if (item.auth_state === 'outcome_unknown') return 'outcome_unknown'
@@ -131,7 +129,6 @@ const cardTone = computed<CardTone>(() => {
     refreshing: 'neutral',
     needs_reauth: 'danger',
     outcome_unknown: 'danger',
-    disabled: 'neutral',
   }
   return tones[unifiedStatus.value]
 })
@@ -143,10 +140,6 @@ const statusLabel = computed(() =>
         total: n(props.account.group_count),
       })
     : t(`group.credentials.subscription.status.${unifiedStatus.value}`),
-)
-
-const displayDisabled = computed(
-  () => !showAggregateAvailability.value && unifiedStatus.value === 'disabled',
 )
 
 // 单分组且状态正常时不显示状态角标：首页只在有异常，或聚合可用性值得一提时才发声，
@@ -386,11 +379,7 @@ const resetCreditsTooltip = computed(() => {
 </script>
 
 <template>
-  <article
-    class="home-subscription-mini"
-    :class="{ 'home-subscription-mini--off': displayDisabled }"
-    :aria-label="`${accountName} · ${statusLabel}`"
-  >
+  <article class="home-subscription-mini" :aria-label="`${accountName} · ${statusLabel}`">
     <span class="sr-only">{{ statusLabel }}</span>
 
     <div class="home-subscription-mini__top">
@@ -414,7 +403,6 @@ const resetCreditsTooltip = computed(() => {
         v-if="showStatusChip"
         class="home-subscription-mini__status"
         :tone="cardTone"
-        :icon="displayDisabled ? 'off' : undefined"
         size="compact"
       >
         {{ statusLabel }}

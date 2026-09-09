@@ -604,12 +604,9 @@ func TestLoaderMapsAccessAndCredentials(t *testing.T) {
 	mustCreate(t, db, &activeAccess)
 	mustCreate(t, db, &disabledAccess)
 
-	firstWeight := 7
 	credentials := []models.Credential{
-		{GroupID: firstGroup.ID, Data: "credential-cipher-one", Fingerprint: "credential-fingerprint-one", Status: models.CredentialStatusActive, WeightManual: &firstWeight},
-		{GroupID: firstGroup.ID, Data: "credential-cipher-two", Fingerprint: "credential-fingerprint-two", Status: models.CredentialStatusDisabled},
-		{GroupID: secondGroup.ID, Data: "credential-cipher-three", Fingerprint: "credential-fingerprint-three", Status: models.CredentialStatusActive},
-		{GroupID: secondGroup.ID, Data: "credential-cipher-four", Fingerprint: "credential-fingerprint-four", Status: models.CredentialStatusDisabled},
+		{GroupID: firstGroup.ID, Data: "credential-cipher-one", Fingerprint: "credential-fingerprint-one"},
+		{GroupID: secondGroup.ID, Data: "credential-cipher-three", Fingerprint: "credential-fingerprint-three"},
 	}
 	for index := range credentials {
 		mustCreate(t, db, &credentials[index])
@@ -679,11 +676,11 @@ func TestLoaderMapsAccessAndCredentials(t *testing.T) {
 	if len(candidates) != 2 {
 		t.Fatalf("registry candidates = %#v, want two active credentials", candidates)
 	}
-	if candidates[0].ID != credentials[0].ID || candidates[0].GroupID != firstGroup.ID || candidates[0].WeightManual == nil || *candidates[0].WeightManual != firstWeight {
-		t.Errorf("first candidate = %#v, want active weighted credential %d", candidates[0], credentials[0].ID)
+	if candidates[0].ID != credentials[0].ID || candidates[0].GroupID != firstGroup.ID {
+		t.Errorf("first candidate = %#v, want credential %d", candidates[0], credentials[0].ID)
 	}
-	if candidates[1].ID != credentials[2].ID || candidates[1].GroupID != secondGroup.ID {
-		t.Errorf("second candidate = %#v, want active credential %d", candidates[1], credentials[2].ID)
+	if candidates[1].ID != credentials[1].ID || candidates[1].GroupID != secondGroup.ID {
+		t.Errorf("second candidate = %#v, want active credential %d", candidates[1], credentials[1].ID)
 	}
 	for _, credential := range credentials {
 		got, ok := registry.EncryptedCredentialData(credential.ID)
@@ -695,7 +692,7 @@ func TestLoaderMapsAccessAndCredentials(t *testing.T) {
 	snapshotText := fmt.Sprintf("%#v", snapshot)
 	for _, secret := range []string{
 		activeAccess.KeyValue, disabledAccess.KeyValue,
-		credentials[0].Data, credentials[1].Data, credentials[2].Data, credentials[3].Data,
+		credentials[0].Data, credentials[1].Data,
 	} {
 		if strings.Contains(snapshotText, secret) {
 			t.Errorf("snapshot exposes credential material %q", secret)
@@ -725,20 +722,14 @@ func TestBuildGroupCredentialEntriesReadsOnlyRequestedGroupInStableOrder(t *test
 	db := openMigratedDatabase(t)
 	firstGroup := createRuntimeGroup(t, db, "first-entries", protocol.OpenAICompletions, "gpt-4o")
 	secondGroup := createRuntimeGroup(t, db, "second-entries", protocol.Anthropic, "claude")
-	weight := 9
 	credentials := []models.Credential{
 		{
 			GroupID: secondGroup.ID, Data: "other-cipher",
-			Fingerprint: "other-fingerprint", Status: models.CredentialStatusActive,
+			Fingerprint: "other-fingerprint",
 		},
 		{
 			GroupID: firstGroup.ID, Data: "first-cipher",
-			Fingerprint: "first-fingerprint", Status: models.CredentialStatusActive,
-		},
-		{
-			GroupID: firstGroup.ID, Data: "second-cipher",
-			Fingerprint: "second-fingerprint", Status: models.CredentialStatusDisabled,
-			WeightManual: &weight,
+			Fingerprint: "first-fingerprint",
 		},
 	}
 	for index := range credentials {
@@ -749,13 +740,11 @@ func TestBuildGroupCredentialEntriesReadsOnlyRequestedGroupInStableOrder(t *test
 	if err != nil {
 		t.Fatalf("BuildGroupCredentialEntries() error = %v", err)
 	}
-	if len(got) != 2 || got[0].ID != credentials[1].ID || got[1].ID != credentials[2].ID {
+	if len(got) != 1 || got[0].ID != credentials[1].ID {
 		t.Fatalf("BuildGroupCredentialEntries() = %#v", got)
 	}
-	if got[1].WeightManual == nil || *got[1].WeightManual != weight ||
-		got[1].Status != state.CredentialStatusDisabled ||
-		got[1].EncryptedValue != "second-cipher" {
-		t.Fatalf("second entry = %#v", got[1])
+	if got[0].EncryptedValue != "first-cipher" {
+		t.Fatalf("entry = %#v", got[0])
 	}
 }
 
@@ -951,7 +940,6 @@ func TestLoaderRejectsInvalidCredentialRowsWithoutPublishing(t *testing.T) {
 			insert: func(t *testing.T, db *gorm.DB, group models.Group) {
 				mustCreate(t, db, &models.Credential{
 					GroupID: group.ID, Data: "", Fingerprint: "empty-cipher-fingerprint",
-					Status: models.CredentialStatusActive,
 				})
 			},
 			wantError: "encrypted value is required",

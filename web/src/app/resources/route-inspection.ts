@@ -34,12 +34,9 @@ export type RouteInspectReasonCode =
   | 'group_filtered'
   | 'no_available_group'
   | 'no_credentials'
-  | 'group_weight_zero'
-  | 'credential_disabled'
   | 'credential_blacklisted'
   | 'credential_cooldown'
   | 'credential_auth_unavailable'
-  | 'credential_weight_zero'
   | 'credential_not_allowed'
   | 'no_available_credential'
   | 'entry_blacklisted'
@@ -74,9 +71,6 @@ export interface RouteInspectCredentialDto {
   credential_id: number
   available: boolean
   reason_code: RouteInspectReasonCode | null
-  weight_manual: number | null
-  weight_auto: number
-  effective_weight: number
   cooldown_until_ms: number | null
 }
 
@@ -88,7 +82,6 @@ export interface RouteInspectGroupDto {
   route_requirement_satisfied: boolean
   entry_id: string
   upstream_model: string | null
-  weight_manual: number | null
   entry_weight: number
   priority: number
   fallback: boolean
@@ -149,12 +142,10 @@ export const routeInspectReasonCodes = [
   'group_filtered',
   'no_available_group',
   'no_credentials',
-  'group_weight_zero',
-  'credential_disabled',
   'credential_blacklisted',
+
   'credential_cooldown',
   'credential_auth_unavailable',
-  'credential_weight_zero',
   'credential_not_allowed',
   'no_available_credential',
   'entry_blacklisted',
@@ -181,28 +172,18 @@ function projectReason(value: unknown): RouteInspectReasonCode | null {
   return value === null ? null : projectEnum(value, routeInspectReasonCodes)
 }
 
-function projectNullableWeight(value: unknown): number | null {
-  return value === null ? null : projectSafeInteger(value, { minimum: 0, maximum: 100 })
-}
-
 function projectRouteCredential(value: unknown): RouteInspectCredentialDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, [
     'credential_id',
     'available',
     'reason_code',
-    'weight_manual',
-    'weight_auto',
-    'effective_weight',
     'cooldown_until_ms',
   ])
   return {
     credential_id: projectSafeInteger(record.credential_id, { minimum: 1 }),
     available: projectBoolean(record.available),
     reason_code: projectReason(record.reason_code),
-    weight_manual: projectNullableWeight(record.weight_manual),
-    weight_auto: projectSafeInteger(record.weight_auto, { minimum: 0, maximum: 100 }),
-    effective_weight: projectSafeInteger(record.effective_weight, { minimum: 0 }),
     cooldown_until_ms: projectNullableEpochMilliseconds(record.cooldown_until_ms),
   }
 }
@@ -217,7 +198,6 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     'route_requirement_satisfied',
     'entry_id',
     'upstream_model',
-    'weight_manual',
     'entry_weight',
     'priority',
     'fallback',
@@ -236,7 +216,6 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     route_requirement_satisfied: projectBoolean(record.route_requirement_satisfied),
     entry_id: projectNonBlankString(record.entry_id),
     upstream_model: projectNullableNonBlankString(record.upstream_model),
-    weight_manual: projectNullableWeight(record.weight_manual),
     entry_weight: projectSafeInteger(record.entry_weight, { minimum: 0 }),
     priority: projectSafeInteger(record.priority, { minimum: 1 }),
     fallback: projectBoolean(record.fallback),

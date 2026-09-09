@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -297,100 +295,62 @@ func TestGroupCredentialMutationsPreserveRuntimeIdentityAndHealthContracts(t *te
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("credential mutations"), ChannelID: channel.OpenAI,
 		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true},
-		Credentials: "first-secret\nsecond-secret", ConnectionType: "api_key",
+		Credentials: "first-secret", ConnectionType: "api_key",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
 	}
-	var rows []models.Credential
-	if err := fixture.db.Where("group_id = ?", created.GroupID).Order("id ASC").Find(&rows).Error; err != nil {
+	var row models.Credential
+	if err := fixture.db.Where("group_id = ?", created.GroupID).Take(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("credentials = %#v", rows)
-	}
-	before, ok := findRuntimeCredential(fixture.registry.Snapshot(), rows[0].ID)
+	before, ok := findRuntimeCredential(fixture.registry.Snapshot(), row.ID)
 	if !ok {
 		t.Fatal("first credential missing from Registry")
 	}
-	beforeEntries, err := fixture.registry.SnapshotGroupCredentialEntriesExact(created.GroupID, []uint{rows[0].ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fixture.service.now = func() time.Time { return time.UnixMilli(rows[0].UpdatedAtMS) }
-	weight := 17
-	updated, err := fixture.service.UpdateGroupCredential(t.Context(), created.GroupID, rows[0].ID, CredentialUpdateRequest{
-		Status:       optionalField[state.CredentialStatus]{Set: true, Value: state.CredentialStatusDisabled},
-		WeightManual: optionalField[int]{Set: true, Value: weight},
+	updated, err := fixture.service.UpdateGroupCredential(t.Context(), created.GroupID, row.ID, CredentialUpdateRequest{
+		Credentials: optionalField[string]{Set: true, Value: "replacement-secret"},
 	})
 	if err != nil {
 		t.Fatalf("UpdateGroupCredential() error = %v", err)
 	}
-	if updated.CredentialID != rows[0].ID || updated.ConfiguredStatus != "disabled" ||
-		updated.WeightMode != "manual" {
+	if updated.CredentialID != row.ID || updated.AuthState != string(state.CredentialAuthStateReady) {
 		t.Fatalf("updated credential = %#v", updated)
 	}
 	var committed models.Credential
-	if err := fixture.db.Take(&committed, rows[0].ID).Error; err != nil {
+	if err := fixture.db.Take(&committed, row.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	after, ok := findRuntimeCredential(fixture.registry.Snapshot(), rows[0].ID)
-	afterEntries, entryErr := fixture.registry.SnapshotGroupCredentialEntriesExact(created.GroupID, []uint{rows[0].ID})
-	if !ok || committed.UpdatedAtMS <= rows[0].UpdatedAtMS ||
-		committed.WeightManual == nil || *committed.WeightManual != weight ||
-		after.WeightManual == nil || *after.WeightManual != weight ||
-		after.Version != committed.SecretVersion ||
-		after.IdentityGeneration != before.IdentityGeneration || entryErr != nil ||
-		afterEntries[0].Fingerprint != beforeEntries[0].Fingerprint {
-		t.Fatalf("identity/version after update: row=%#v before=%#v after=%#v", committed, before, after)
+	after, ok := findRuntimeCredential(fixture.registry.Snapshot(), row.ID)
+	if !ok || committed.SecretVersion <= row.SecretVersion || after.Version != committed.SecretVersion ||
+		after.IdentityGeneration == before.IdentityGeneration {
+		t.Fatalf("identity/version after replacement: row=%#v before=%#v after=%#v", committed, before, after)
 	}
 
-	batch, err := fixture.service.BatchGroupCredentials(t.Context(), created.GroupID, CredentialBatchRequest{
-		Action: CredentialBatchEnable, CredentialIDs: []uint{rows[1].ID, rows[0].ID},
-	})
-	if err != nil {
-		t.Fatalf("BatchGroupCredentials() error = %v", err)
-	}
-	if len(batch.AffectedCredentialIDs) != 2 || batch.AffectedCredentialIDs[0] != rows[0].ID ||
-		batch.AffectedCredentialIDs[1] != rows[1].ID || batch.Summary.Available != 2 {
-		t.Fatalf("batch response = %#v", batch)
+	if _, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name: stringPointer("second credential rejected"), ChannelID: channel.OpenAI,
+		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true},
+		Credentials: "one\ntwo", ConnectionType: "api_key",
+	}); err == nil {
+		t.Fatal("multiple credentials in one group error = nil")
 	}
 
-	if !fixture.registry.SetBlacklisted(rows[0].ID) {
-		t.Fatal("blacklist first credential")
+	if !fixture.registry.SetBlacklisted(row.ID) {
+		t.Fatal("blacklist credential")
 	}
-	restored, err := fixture.service.RestoreGroupCredential(t.Context(), created.GroupID, rows[0].ID)
+	restored, err := fixture.service.RestoreGroupCredential(t.Context(), created.GroupID, row.ID)
 	if err != nil {
 		t.Fatalf("RestoreGroupCredential() error = %v", err)
 	}
-	if restored.CredentialID != rows[0].ID || restored.EffectiveStatus != "available" {
+	if restored.CredentialID != row.ID || restored.EffectiveStatus != "available" {
 		t.Fatalf("restored credential = %#v", restored)
 	}
 
-	revealed, err := fixture.service.RevealGroupCredential(t.Context(), created.GroupID, rows[0].ID)
-	if err != nil {
-		t.Fatalf("RevealGroupCredential() error = %v", err)
-	}
-	if revealed.CredentialID != rows[0].ID || string(revealed.Credential) != `{"api_key":"first-secret"}` {
-		t.Fatalf("revealed credential = %#v", revealed)
-	}
-
-	fixture.stats.RecordSuccess(rows[1].ID, fixture.service.now())
-	if err := fixture.service.DeleteGroupCredential(t.Context(), created.GroupID, rows[1].ID); err != nil {
+	if err := fixture.service.DeleteGroupCredential(t.Context(), created.GroupID, row.ID); err != nil {
 		t.Fatalf("DeleteGroupCredential() error = %v", err)
 	}
-	if _, exists := findRuntimeCredential(fixture.registry.Snapshot(), rows[1].ID); exists {
+	if _, exists := findRuntimeCredential(fixture.registry.Snapshot(), row.ID); exists {
 		t.Fatal("deleted credential remains in Registry")
-	}
-	var count int64
-	if err := fixture.db.Model(&models.Credential{}).Where("id = ?", rows[1].ID).Count(&count).Error; err != nil || count != 0 {
-		t.Fatalf("deleted credential count = %d, err=%v", count, err)
-	}
-	if got := fixture.stats.Snapshot(rows[1].ID, fixture.service.now()); got.Success != 0 {
-		t.Fatalf("deleted credential stats = %#v", got)
-	}
-	if got := runtime.retiredCredentialIDs(); !reflect.DeepEqual(got, []uint{rows[1].ID}) {
-		t.Fatalf("retired credential runtimes = %#v, want [%d]", got, rows[1].ID)
 	}
 }
 

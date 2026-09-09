@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import type { ChannelParamsDto, GroupModelItemDto } from '@/api/control/types'
 import type { ChannelFieldDto } from '@/app/resources/channels'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
-import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { isValidPriceMultiplier } from '@/lib/price-multiplier'
 
 const props = defineProps<{
@@ -16,7 +15,6 @@ const props = defineProps<{
   name: string
   validationModel: string | null
   models: GroupModelItemDto[]
-  weightManual: number | null
   priceMultiplier: string
   enabled: boolean
   pending: boolean
@@ -28,7 +26,6 @@ const emit = defineEmits<{
   'update:param': [key: string, value: string | null]
   'update:name': [value: string]
   'update:validationModel': [value: string | null]
-  'update:weightManual': [value: number | null]
   'update:priceMultiplier': [value: string]
   'update:enabled': [value: boolean]
 }>()
@@ -39,16 +36,6 @@ const validationModelOptions = computed(() =>
   [...props.models]
     .map(({ id, alias, alias_enabled }) => ({ id, alias: alias_enabled ? alias : '' }))
     .sort((left, right) => left.id.localeCompare(right.id)),
-)
-const weightMode = computed(() => (props.weightManual === null ? 'auto' : 'manual'))
-const weightModes = computed(() => [
-  { value: 'auto', label: t('group.settings.base.auto'), disabled: props.pending },
-  { value: 'manual', label: t('group.settings.base.manual'), disabled: props.pending },
-])
-const weightValid = computed(
-  () =>
-    props.weightManual === null ||
-    (Number.isInteger(props.weightManual) && props.weightManual >= 1 && props.weightManual <= 100),
 )
 const baseUrlOverrideEnabled = ref(false)
 
@@ -99,11 +86,6 @@ function parameterHelp(field: ChannelFieldDto): string {
     return t('group.settings.base.sub2ApiUrlDescription')
   }
   return t('group.settings.base.urlWarning')
-}
-
-function setWeightMode(value: string): void {
-  if (props.pending) return
-  emit('update:weightManual', value === 'auto' ? null : (props.weightManual ?? 50))
 }
 </script>
 
@@ -205,41 +187,6 @@ function setWeightMode(value: string): void {
         :label="t('group.settings.base.enabled')"
         @update:model-value="emit('update:enabled', $event)"
       />
-    </div>
-  </section>
-
-  <section v-else id="settings-routing" class="group-settings__section">
-    <header class="group-settings__section-heading">
-      <h3>{{ t('group.settings.sections.routing') }}</h3>
-      <p>{{ t('group.settings.routing.description') }}</p>
-    </header>
-    <div class="group-settings__field group-settings__wide">
-      <span>{{ t('group.settings.base.weight') }}</span>
-      <div class="group-settings__weight-editor">
-        <SegmentedControl
-          :model-value="weightMode"
-          :label="t('group.settings.base.weight')"
-          :options="weightModes"
-          size="compact"
-          @update:model-value="setWeightMode"
-        />
-        <input
-          v-if="weightManual !== null"
-          class="group-settings__mono"
-          type="number"
-          min="1"
-          max="100"
-          step="1"
-          inputmode="numeric"
-          :value="weightManual"
-          :disabled="pending"
-          :aria-label="t('group.settings.base.weight')"
-          :aria-invalid="!weightValid || undefined"
-          @input="emit('update:weightManual', Number(($event.target as HTMLInputElement).value))"
-        />
-      </div>
-      <small>{{ t('group.settings.routing.weightHelp') }}</small>
-      <small v-if="!weightValid" role="alert">{{ t('group.settings.base.weightError') }}</small>
     </div>
   </section>
 </template>
@@ -364,18 +311,6 @@ fieldset {
 .group-settings__switch-copy small {
   color: var(--color-text-faint);
   font-size: 11px;
-}
-
-.group-settings__weight-editor {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.group-settings__field .group-settings__weight-editor > input {
-  width: 90px !important;
-  min-height: var(--control-compact);
-  flex: 0 0 90px;
 }
 
 @media (max-width: 800px) {

@@ -18,36 +18,43 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
-func TestCredentialStatusAcceptsOnlyDurableOperatorStates(t *testing.T) {
+func TestCredentialAuthStateAcceptsOnlyDurableStates(t *testing.T) {
 	t.Parallel()
 
 	db := openMigratedDatabase(t)
-	group := models.Group{
-		Name: "credential-status-parent", ChannelID: "openai_compatible",
-		Params: models.JSON(`{"base_url":"https://credential-status.example.com"}`), Models: models.JSON(`[]`),
-	}
-	if err := db.Create(&group).Error; err != nil {
-		t.Fatalf("create parent group: %v", err)
-	}
-	for index, status := range []models.CredentialStatus{
-		models.CredentialStatusActive,
-		models.CredentialStatusDisabled,
+	for index, authState := range []models.CredentialAuthState{
+		models.CredentialAuthStateReady,
+		models.CredentialAuthStateRefreshing,
 	} {
+		group := models.Group{
+			Name: "credential-auth-state-parent-" + string(rune('a'+index)), ChannelID: "openai_compatible",
+			Params: models.JSON(`{"base_url":"https://credential-auth-state.example.com"}`), Models: models.JSON(`[]`),
+		}
+		if err := db.Create(&group).Error; err != nil {
+			t.Fatalf("create auth-state parent group: %v", err)
+		}
 		credential := models.Credential{
 			GroupID: group.ID, Data: "encrypted-data",
-			Fingerprint: "allowed-credential-status-" + string(rune('a'+index)),
-			Status:      status,
+			Fingerprint: "allowed-credential-auth-state-" + string(rune('a'+index)),
+			AuthState:   authState,
 		}
 		if err := db.Create(&credential).Error; err != nil {
-			t.Fatalf("create credential with status %q: %v", status, err)
+			t.Fatalf("create credential with auth state %q: %v", authState, err)
 		}
 	}
+	invalidGroup := models.Group{
+		Name: "credential-auth-state-invalid", ChannelID: "openai_compatible",
+		Params: models.JSON(`{"base_url":"https://credential-auth-state.example.com"}`), Models: models.JSON(`[]`),
+	}
+	if err := db.Create(&invalidGroup).Error; err != nil {
+		t.Fatalf("create invalid auth-state parent group: %v", err)
+	}
 	invalid := models.Credential{
-		GroupID: group.ID, Data: "encrypted-data", Fingerprint: "invalid-credential-status",
-		Status: models.CredentialStatus("blacklisted"),
+		GroupID: invalidGroup.ID, Data: "encrypted-data", Fingerprint: "invalid-credential-auth-state",
+		AuthState: models.CredentialAuthState("blacklisted"),
 	}
 	if err := db.Create(&invalid).Error; err == nil {
-		t.Fatal("create credential with runtime-only blacklisted status error = nil, want constraint error")
+		t.Fatal("create credential with runtime-only blacklisted auth state error = nil")
 	}
 }
 
@@ -658,6 +665,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0007_access_key_lifecycle",
 		"0008_remove_inject_usage_options",
 		"0009_price_multipliers",
+		"0010_single_credential_per_group",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)
@@ -1050,6 +1058,14 @@ func TestAutoMigrateCreatesCriticalUniqueConstraints(t *testing.T) {
 		second.ID = 0
 		second.Data = "encrypted-two"
 		assertDuplicateRejected(t, db.Create(&first).Error, db.Create(&second).Error)
+
+		third := first
+		third.ID = 0
+		third.Fingerprint = "different-fingerprint"
+		third.Data = "encrypted-three"
+		if err := db.Create(&third).Error; err == nil {
+			t.Fatal("create second credential in one group error = nil, want group unique constraint error")
+		}
 	})
 
 	t.Run("model price channel and model", func(t *testing.T) {

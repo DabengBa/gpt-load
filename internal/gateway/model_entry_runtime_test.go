@@ -17,7 +17,7 @@ func newEntryRuntimeTestHandler(t *testing.T) (*Handler, *state.CredentialRegist
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
-		Status: state.CredentialStatusActive, EncryptedValue: "cipher",
+		EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)
 	}

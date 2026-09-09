@@ -84,7 +84,6 @@ const queryClient = useQueryClient()
 const togglingGroupIDs = ref(new Set<number>())
 const optimisticEnabled = ref(new Map<number, boolean>())
 
-// weight_manual 为 0 也判定 disabled，但接口限定 1~100，故 disabled 即已停用。
 // AppSwitch 纯受控，等请求走完才翻转会像卡住，故先本地置位。
 function groupEnabled(group: GroupCollectionItemDto): boolean {
   return optimisticEnabled.value.get(group.id) ?? group.status !== 'disabled'
@@ -491,7 +490,6 @@ function connectionTypeBadgeClass(type: ConnectionType): string {
                   :to="groupDetailLocation(group.id)"
                   :aria-label="t('groups.collection.openDetail', { name: group.name })"
                 >
-                  <span class="group-id">#{{ group.id }}</span>
                   <span class="group-name__label">{{ group.name }}</span>
                 </OverflowTooltip>
               </div>
@@ -660,13 +658,6 @@ function connectionTypeBadgeClass(type: ConnectionType): string {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.group-id {
-  flex: none;
-  color: var(--color-text-faint);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
 }
 
 .endpoint {

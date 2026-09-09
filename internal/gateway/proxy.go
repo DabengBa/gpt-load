@@ -1,53 +1,28 @@
 package gateway
 
 import (
-	"crypto/subtle"
 	"fmt"
 
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/encryption"
-	"gpt-load/internal/state"
 )
 
+// resolveAttemptProxy resolves the Group proxy. Credential-level proxy data is
+// intentionally not part of the runtime credential identity anymore.
 func resolveAttemptProxy(
 	encryptionService encryption.Service,
 	groupProxy outboundproxy.Effective,
-	ref state.CredentialRef,
 ) (outboundproxy.Effective, string, error) {
 	if encryptionService == nil {
 		return outboundproxy.Effective{}, "", fmt.Errorf("proxy encryption service is unavailable")
 	}
-	groupProxy, err := outboundproxy.NormalizeEffective(groupProxy)
+	effective, err := outboundproxy.NormalizeEffective(groupProxy)
 	if err != nil {
 		return outboundproxy.Effective{}, "", fmt.Errorf("group proxy config is invalid")
 	}
-	if ref.EncryptedProxy == "" {
-		if ref.ProxyFingerprint != "" {
-			return outboundproxy.Effective{}, "", fmt.Errorf("credential proxy identity is invalid")
-		}
-		fingerprint, err := effectiveProxyFingerprint(encryptionService, groupProxy)
-		return groupProxy, fingerprint, err
-	}
-	if ref.ProxyFingerprint == "" {
-		return outboundproxy.Effective{}, "", fmt.Errorf("credential proxy identity is invalid")
-	}
-	plaintext, err := encryptionService.Decrypt(ref.EncryptedProxy)
+	fingerprint, err := effectiveProxyFingerprint(encryptionService, effective)
 	if err != nil {
-		return outboundproxy.Effective{}, "", fmt.Errorf("decrypt credential proxy config")
-	}
-	fingerprint := encryptionService.Hash(plaintext)
-	if subtle.ConstantTimeCompare([]byte(fingerprint), []byte(ref.ProxyFingerprint)) != 1 {
-		plaintext = ""
-		return outboundproxy.Effective{}, "", fmt.Errorf("credential proxy fingerprint mismatch")
-	}
-	config, err := outboundproxy.Decode(plaintext)
-	plaintext = ""
-	if err != nil || config.Mode == outboundproxy.ModeInherit {
-		return outboundproxy.Effective{}, "", fmt.Errorf("credential proxy config is invalid")
-	}
-	effective, err := outboundproxy.Resolve(&config, nil, nil, nil)
-	if err != nil {
-		return outboundproxy.Effective{}, "", fmt.Errorf("credential proxy config is invalid")
+		return outboundproxy.Effective{}, "", err
 	}
 	return effective, fingerprint, nil
 }

@@ -21,18 +21,10 @@ func TestIteratorExhaustsNativeTierBeforeConvertedTier(t *testing.T) {
 	t.Parallel()
 
 	snapshot := channelSchedulerSnapshot(t)
-	convertedWeight := 100
-	nativeWeight := 1
-	converted := snapshot.Groups[1]
-	converted.WeightManual = &convertedWeight
-	snapshot.Groups[1] = converted
-	native := snapshot.Groups[2]
-	native.WeightManual = &nativeWeight
-	snapshot.Groups[2] = native
 
 	iterator := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{
-		{ID: 11, GroupID: 1, WeightAuto: state.DefaultWeight},
-		{ID: 21, GroupID: 2, WeightAuto: state.DefaultWeight},
+		{ID: 11, GroupID: 1},
+		{ID: 21, GroupID: 2},
 	}}, Query{
 		ClientProtocol: protocol.OpenAICompletions,
 		Operation:      execution.OperationChatCompletion,
@@ -67,8 +59,8 @@ func TestIteratorDoesNotLetConvertedPreferenceBypassNativeTier(t *testing.T) {
 	t.Parallel()
 
 	iterator := New(channelSchedulerSnapshot(t), fakeCredentialSource{keys: []state.CredentialMeta{
-		{ID: 11, GroupID: 1, WeightAuto: state.DefaultWeight},
-		{ID: 21, GroupID: 2, WeightAuto: state.DefaultWeight},
+		{ID: 11, GroupID: 1},
+		{ID: 21, GroupID: 2},
 	}}, Query{
 		ClientProtocol:        protocol.OpenAICompletions,
 		Operation:             execution.OperationChatCompletion,
@@ -91,7 +83,7 @@ func TestIteratorSkipGroupAndAllowedCredentialIDsApplyAcrossRouteTiers(t *testin
 
 	allowed := map[uint]struct{}{11: {}, 21: {}}
 	iterator := New(channelSchedulerSnapshot(t), fakeCredentialSource{keys: []state.CredentialMeta{
-		{ID: 11, GroupID: 1}, {ID: 12, GroupID: 1}, {ID: 21, GroupID: 2},
+		{ID: 11, GroupID: 1}, {ID: 21, GroupID: 2},
 	}}, Query{
 		ClientProtocol:       protocol.OpenAICompletions,
 		Operation:            execution.OperationChatCompletion,
@@ -229,8 +221,8 @@ func TestRouteRequirementKeepsStatefulResponsesOnNativeTargets(t *testing.T) {
 	}
 
 	inspection, err := Inspect(snapshot, []CredentialRuntimeView{
-		{ID: 71, GroupID: 7, Status: state.CredentialStatusActive},
-		{ID: 81, GroupID: 8, Status: state.CredentialStatusActive},
+		{ID: 71, GroupID: 7},
+		{ID: 81, GroupID: 8},
 	}, nativeQuery, time.Unix(100, 0))
 	if err != nil {
 		t.Fatalf("Inspect() error = %v", err)
@@ -638,7 +630,7 @@ func TestOperationUnsupportedIsStableAndInspectionIsNeutral(t *testing.T) {
 	}
 
 	inspection, err := Inspect(snapshot, []state.CredentialRuntimeView{{
-		ID: 11, GroupID: 1, Status: state.CredentialStatusActive, WeightAuto: state.DefaultWeight,
+		ID: 11, GroupID: 1,
 	}}, query, time.Unix(100, 0))
 	if err != nil {
 		t.Fatalf("Inspect() error = %v", err)
@@ -663,9 +655,8 @@ func TestInspectionExplainsAllowedCredentialScope(t *testing.T) {
 	t.Parallel()
 
 	inspection, err := Inspect(channelSchedulerSnapshot(t), []CredentialRuntimeView{
-		{ID: 11, GroupID: 1, Status: state.CredentialStatusActive},
-		{ID: 12, GroupID: 1, Status: state.CredentialStatusActive},
-		{ID: 21, GroupID: 2, Status: state.CredentialStatusActive},
+		{ID: 11, GroupID: 1},
+		{ID: 21, GroupID: 2},
 	}, Query{
 		ClientProtocol:       protocol.OpenAICompletions,
 		Operation:            execution.OperationChatCompletion,
@@ -685,9 +676,8 @@ func TestInspectionExplainsAllowedCredentialScope(t *testing.T) {
 		native.Credentials[0].Reason != ReasonCredentialNotAllowed {
 		t.Fatalf("native GroupInspection = %#v", native)
 	}
-	if converted.RouteMode != channel.RouteConverted || !converted.Routable || len(converted.Credentials) != 2 ||
-		!converted.Credentials[0].Available || converted.Credentials[0].CredentialID != 11 ||
-		converted.Credentials[1].Reason != ReasonCredentialNotAllowed {
+	if converted.RouteMode != channel.RouteConverted || !converted.Routable || len(converted.Credentials) != 1 ||
+		!converted.Credentials[0].Available || converted.Credentials[0].CredentialID != 11 {
 		t.Fatalf("converted GroupInspection = %#v", converted)
 	}
 }

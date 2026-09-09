@@ -32,9 +32,6 @@ type routeInspectCredentialResponse struct {
 	CredentialID    uint                  `json:"credential_id"`
 	Available       bool                  `json:"available"`
 	ReasonCode      *scheduler.ReasonCode `json:"reason_code"`
-	WeightManual    *int                  `json:"weight_manual"`
-	WeightAuto      int                   `json:"weight_auto"`
-	EffectiveWeight int64                 `json:"effective_weight"`
 	CooldownUntilMS *int64                `json:"cooldown_until_ms"`
 }
 
@@ -46,7 +43,6 @@ type routeInspectGroupResponse struct {
 	RouteRequirementSatisfied bool                             `json:"route_requirement_satisfied"`
 	EntryID                   string                           `json:"entry_id"`
 	UpstreamModel             *string                          `json:"upstream_model"`
-	WeightManual              *int                             `json:"weight_manual"`
 	EntryWeight               int                              `json:"entry_weight"`
 	Priority                  int                              `json:"priority"`
 	Fallback                  bool                             `json:"fallback"`
@@ -198,7 +194,6 @@ func mapRouteInspectResponse(
 			RouteRequirementSatisfied: group.RouteRequirementSatisfied,
 			EntryID:                   group.EntryID,
 			UpstreamModel:             cloneRouteModel(group.UpstreamModelID),
-			WeightManual:              cloneInt(group.WeightManual),
 			EntryWeight:               group.EntryWeight,
 			Priority:                  group.Priority,
 			Fallback:                  group.Priority > 1,
@@ -221,9 +216,6 @@ func mapRouteInspectResponse(
 				CredentialID:    credential.CredentialID,
 				Available:       credential.Available,
 				ReasonCode:      optionalReason(credential.Reason),
-				WeightManual:    cloneInt(credential.WeightManual),
-				WeightAuto:      credential.WeightAuto,
-				EffectiveWeight: credential.EffectiveWeight,
 				CooldownUntilMS: cooldownUntilMS,
 			})
 		}

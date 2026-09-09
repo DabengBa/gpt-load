@@ -42,7 +42,6 @@ type GroupConfig struct {
 	ValidationModel string
 	Models          []ModelConfig
 	Settings        config.Settings
-	WeightManual    *int
 	Enabled         bool
 	Proxy           *outboundproxy.Config
 }
@@ -52,8 +51,6 @@ type GroupConfig struct {
 type CredentialConfig struct {
 	ID                 uint
 	GroupID            uint
-	Status             CredentialStatus
-	WeightManual       *int
 	Version            uint64
 	IdentityGeneration uint64
 	Fingerprint        string
@@ -143,17 +140,15 @@ type GroupView struct {
 	RetryCount          int
 	BlacklistThreshold  int
 	AffinityEnabled     bool
-	WeightManual        *int
 	Proxy               outboundproxy.Effective
 	ParameterOverrides  parameteroverride.Rules
 	ModelBreakerByEntry map[uint]map[string]*EntryCircuitBreaker
 }
 type GroupCatalogView struct {
-	ID           uint
-	Name         string
-	Enabled      bool
-	WeightManual *int
-	Models       []ModelConfig
+	ID      uint
+	Name    string
+	Enabled bool
+	Models  []ModelConfig
 }
 
 type AccessKeyView struct {
@@ -208,8 +203,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 	for _, group := range input.Groups {
 		catalogView := GroupCatalogView{
 			ID: group.ID, Name: group.Name, Enabled: group.Enabled,
-			WeightManual: cloneWeight(group.WeightManual),
-			Models:       cloneModelConfigs(group.Models),
+			Models: cloneModelConfigs(group.Models),
 		}
 		snapshot.GroupCatalog[group.ID] = catalogView
 		if err := appendExecutionTargets(snapshot.ExecutionRouteCatalog, input.ChannelRegistry, group); err != nil {
@@ -238,7 +232,6 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			RetryCount:          resolved.RetryCount,
 			BlacklistThreshold:  resolved.BlacklistThreshold,
 			AffinityEnabled:     resolved.AffinityEnabled,
-			WeightManual:        cloneWeight(group.WeightManual),
 			ConnectionType:      connection.Normalize(group.ConnectionType),
 			Proxy:               groupProxy,
 			ParameterOverrides:  resolved.ParameterOverrides,
@@ -502,17 +495,14 @@ func validateCompileInput(input CompileInput) error {
 		if _, err := input.ChannelRegistry.Resolve(group.ChannelID, group.Params); err != nil {
 			return fmt.Errorf("group %d channel %q: %w", group.ID, group.ChannelID, err)
 		}
-		if err := validateManualWeight(fmt.Sprintf("group %d", group.ID), group.WeightManual); err != nil {
-			return err
-		}
-		// 路由条目规则 V1–V4(设计 §3)在编译期作为最终防线再次执行;
-		// 违规拒绝发布,错误信息携带分组与模型名。
+		// Route entry rules are the final compile-time validation boundary.
 		if err := ValidateModelRouteEntries(fmt.Sprintf("group %d", group.ID), group.Models); err != nil {
 			return err
 		}
 	}
 
 	credentialIDs := make(map[uint]struct{}, len(input.Credentials))
+	credentialGroups := make(map[uint]struct{}, len(input.Credentials))
 	for _, credential := range input.Credentials {
 		if credential.ID == 0 {
 			return fmt.Errorf("credential id is required")
@@ -524,17 +514,13 @@ func validateCompileInput(input CompileInput) error {
 		if credential.GroupID == 0 {
 			return fmt.Errorf("credential %d group id is required", credential.ID)
 		}
-		if _, ok := groupIDs[credential.GroupID]; !ok {
+		if _, exists := groupIDs[credential.GroupID]; !exists {
 			return fmt.Errorf("credential %d belongs to unknown group %d", credential.ID, credential.GroupID)
 		}
-		switch credential.Status {
-		case CredentialStatusActive, CredentialStatusDisabled:
-		default:
-			return fmt.Errorf("credential %d has invalid status %q", credential.ID, credential.Status)
+		if _, exists := credentialGroups[credential.GroupID]; exists {
+			return fmt.Errorf("group %d must have at most one credential", credential.GroupID)
 		}
-		if err := validateManualWeight(fmt.Sprintf("credential %d", credential.ID), credential.WeightManual); err != nil {
-			return err
-		}
+		credentialGroups[credential.GroupID] = struct{}{}
 		if credential.Version == 0 {
 			return fmt.Errorf("credential %d version is required", credential.ID)
 		}

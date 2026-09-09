@@ -84,6 +84,8 @@ export default {
     copyFailure: 'Copy failed',
     modelEditor: {
       title: 'Models and aliases',
+      schedule: 'Schedule',
+      breaker: 'Breaker',
       description:
         'Discovery produces candidates only. Review aliases and the complete selected list before saving.',
       save: 'Save models',
@@ -195,6 +197,7 @@ export default {
     },
     settings: {
       title: 'Group settings',
+      advanced: 'Advanced configuration',
       description: 'Edit Group identity, routing fields, and sparse runtime overrides.',
       save: 'Save settings',
       loading: 'Loading Group settings',
@@ -377,11 +380,11 @@ export default {
         manageAccessKeys: 'Manage access keys',
       },
     },
-    tabs: {
-      label: 'Group detail sections',
-      credentials: 'Credentials',
-      models: 'Models and aliases',
-      settings: 'Settings',
+    unified: {
+      credentialsTitle: 'Credentials',
+      credentialsSummary: 'Credential health and authorization state',
+      manageCredentials: 'Manage',
+      noCredentials: 'No credentials configured',
     },
     credentials: {
       title: 'Keys',
@@ -430,7 +433,6 @@ export default {
       },
       recent: '{success} success · {failure} failure',
       recentSuccessOnly: '{success} success',
-      details: 'Recent failure and recovery',
       detailsFailure: 'Latest failure',
       detailsRecovery: 'Recovery',
       detailsConsecutive: 'Consecutive failures',

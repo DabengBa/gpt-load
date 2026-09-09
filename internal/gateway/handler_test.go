@@ -56,7 +56,7 @@ func TestHandlerForwardsStructuredCloudCredentialWithoutAPIKeyAssumption(t *test
 			Models: []state.ModelConfig{{ID: "anthropic.claude-test"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: 1,
 			Version: 1, IdentityGeneration: 1, Fingerprint: "bedrock-credential",
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -72,7 +72,7 @@ func TestHandlerForwardsStructuredCloudCredentialWithoutAPIKeyAssumption(t *test
 		t.Fatalf("Encrypt() error = %v", err)
 	}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+		ID: 1, GroupID: 1,
 		Version: 1, IdentityGeneration: 1, Fingerprint: "bedrock-credential",
 		EncryptedValue: encrypted,
 	}}); err != nil {
@@ -229,7 +229,7 @@ func TestHandlerCoordinatesCooldownMutation(t *testing.T) {
 	now := time.Date(2026, time.August, 1, 12, 0, 0, 0, time.UTC)
 	registry := &recordingRuntimeRegistry{CredentialRegistry: state.NewCredentialRegistry()}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive, EncryptedValue: "cipher",
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestHandlerSkipsCooldownFromStaleCredentialVersion(t *testing.T) {
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "credential-v1", Status: state.CredentialStatusActive,
+		Fingerprint:    "credential-v1",
 		EncryptedValue: "cipher-v1",
 	}}); err != nil {
 		t.Fatal(err)
@@ -459,7 +459,7 @@ func TestHandlerCoordinatesSuccessMutation(t *testing.T) {
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	registry := &recordingRuntimeRegistry{CredentialRegistry: state.NewCredentialRegistry()}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive, FailureCount: 2, EncryptedValue: "cipher",
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", FailureCount: 2, EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
 	}
@@ -500,7 +500,7 @@ func TestHandlerLogsCredentialStateChanges(t *testing.T) {
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "test-1", Status: state.CredentialStatusActive,
+		Fingerprint:    "test-1",
 		EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatal(err)
@@ -557,7 +557,7 @@ func TestHandlerRecordsCooldownFailureContext(t *testing.T) {
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	registry := &recordingRuntimeRegistry{CredentialRegistry: state.NewCredentialRegistry()}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive, EncryptedValue: "cipher",
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
 	}
@@ -640,7 +640,7 @@ func TestHandlerCoordinatesAttributableFailureMutation(t *testing.T) {
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	registry := &recordingRuntimeRegistry{CredentialRegistry: state.NewCredentialRegistry()}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive, FailureCount: 2, EncryptedValue: "cipher",
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", FailureCount: 2, EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
 	}
@@ -695,7 +695,7 @@ func TestGatewayFailureAndValidationRecoveryFailureFirstKeepsRegistryAndStatsFai
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	baseRegistry := state.NewCredentialRegistry()
 	if err := baseRegistry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive,
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1",
 		Blacklisted: true, FailureCount: 3, EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -724,7 +724,7 @@ func TestGatewayFailureAndValidationRecoveryFailureFirstKeepsRegistryAndStatsFai
 		close(recoveryAttempted)
 		var recovered bool
 		mutations.Do(1, func() {
-			recovered = baseRegistry.RecoverIfMatch(ref, state.DefaultWeight)
+			recovered = baseRegistry.RecoverIfMatch(ref)
 			if recovered {
 				stats.Reset(1)
 			}
@@ -755,7 +755,7 @@ func TestGatewayFailureAndValidationRecoveryRecoveryFirstLeavesNewFailure(t *tes
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive,
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1",
 		Blacklisted: true, FailureCount: 3, EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -774,7 +774,7 @@ func TestGatewayFailureAndValidationRecoveryRecoveryFirstLeavesNewFailure(t *tes
 		mutations.Do(1, func() {
 			close(recoveryEntered)
 			<-releaseRecovery
-			recovered = registry.RecoverIfMatch(ref, state.DefaultWeight)
+			recovered = registry.RecoverIfMatch(ref)
 			if recovered {
 				stats.Reset(1)
 			}
@@ -1936,6 +1936,10 @@ func (panicRuntimeRegistry) CollectCredentialCandidates([]uint, func(uint) bool,
 	panic("model endpoint collected upstream candidates")
 }
 
+func (panicRuntimeRegistry) CredentialCountsByGroup([]uint) map[uint]int {
+	panic("model endpoint counted upstream credentials")
+}
+
 func (panicRuntimeRegistry) ActiveEncryptedCredentialData(uint, uint) (string, bool) {
 	panic("model endpoint read an upstream key")
 }
@@ -2072,7 +2076,7 @@ func TestHandlerReportsFinalAttemptInDebugHeaders(t *testing.T) {
 			name:         "transport skips only group",
 			results:      []UpstreamResult{{Err: errors.New("dial failed")}},
 			upstreamKeys: []string{"sk-dial-one", "sk-dial-two"},
-			wantAttempts: "1",
+			wantAttempts: "2",
 		},
 	}
 
@@ -3122,7 +3126,7 @@ func TestHandlerSkipsGroupAfterRequestNotWrittenTransportFailure(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusBadGateway || len(forwarder.streamInputs) != 1 {
+	if recorder.Code != http.StatusOK || len(forwarder.streamInputs) != 2 {
 		t.Fatalf("status/attempts = %d/%d, body=%s",
 			recorder.Code, len(forwarder.streamInputs), recorder.Body.String())
 	}
@@ -3731,7 +3735,7 @@ func TestSubscriptionRateLimitWithoutResetUsesTenMinuteCooldown(t *testing.T) {
 			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: 1,
 			Version: 1, IdentityGeneration: 1, Fingerprint: "subscription-account",
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -3748,7 +3752,7 @@ func TestSubscriptionRateLimitWithoutResetUsesTenMinuteCooldown(t *testing.T) {
 	}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "subscription-account", Status: state.CredentialStatusActive,
+		Fingerprint:    "subscription-account",
 		EncryptedValue: encrypted,
 	}}); err != nil {
 		t.Fatal(err)
@@ -4017,7 +4021,7 @@ func TestSubscriptionExplicit401RetriesSameCredentialWithForcedRefresh(t *testin
 			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: 1,
 			Version: 1, IdentityGeneration: 1, Fingerprint: "subscription-account",
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -4034,7 +4038,7 @@ func TestSubscriptionExplicit401RetriesSameCredentialWithForcedRefresh(t *testin
 	}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "subscription-account", Status: state.CredentialStatusActive,
+		Fingerprint:    "subscription-account",
 		EncryptedValue: encrypted,
 	}}); err != nil {
 		t.Fatal(err)
@@ -4084,7 +4088,7 @@ func TestSubscriptionExplicit401ForcesRefreshAtMostOncePerRequest(t *testing.T) 
 			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: 1,
 			Version: 1, IdentityGeneration: 1, Fingerprint: "subscription-account",
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -4101,7 +4105,7 @@ func TestSubscriptionExplicit401ForcesRefreshAtMostOncePerRequest(t *testing.T) 
 	}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "subscription-account", Status: state.CredentialStatusActive,
+		Fingerprint:    "subscription-account",
 		EncryptedValue: encrypted,
 	}}); err != nil {
 		t.Fatal(err)
@@ -4148,7 +4152,7 @@ func TestSubscriptionExplicit401UsesNewerCredentialVersionFromConcurrentRefresh(
 			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: 1,
 			Version: 1, IdentityGeneration: 1, Fingerprint: "subscription-account",
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -4165,7 +4169,7 @@ func TestSubscriptionExplicit401UsesNewerCredentialVersionFromConcurrentRefresh(
 	}
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "subscription-account", Status: state.CredentialStatusActive,
+		Fingerprint:    "subscription-account",
 		EncryptedValue: oldEncrypted,
 	}}); err != nil {
 		t.Fatal(err)
@@ -4249,16 +4253,21 @@ func assertSubscriptionRefreshFailureRetriesAnotherCredential(
 	}}
 	handler, manager, registry := newHandlerForTest(t, forwarder, "placeholder-1", "placeholder-2")
 	credentials := []state.CredentialConfig{
-		{ID: 1, GroupID: 1, Status: state.CredentialStatusActive, Version: 1, IdentityGeneration: 1, Fingerprint: "subscription-account-1"},
-		{ID: 2, GroupID: 1, Status: state.CredentialStatusActive, Version: 1, IdentityGeneration: 2, Fingerprint: "subscription-account-2"},
+		{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "subscription-account-1"},
+		{ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "subscription-account-2"},
 	}
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{
-			ID: 1, Name: "subscription", ChannelID: channel.Codex,
-			ConnectionType: "subscription", Params: json.RawMessage(`{}`),
-			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
-		}},
+		Groups: []state.GroupConfig{
+			{ID: 1, Name: "subscription", ChannelID: channel.Codex,
+				ConnectionType: "subscription", Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+			},
+			{ID: 2, Name: "subscription-backup", ChannelID: channel.Codex,
+				ConnectionType: "subscription", Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+			},
+		},
 		Credentials: credentials,
 		AccessKeys: []state.AccessKeyConfig{{
 			ID: 1, Name: "client", KeyHash: handler.encryption.Hash("gl-client"),
@@ -4275,9 +4284,9 @@ func assertSubscriptionRefreshFailureRetriesAnotherCredential(
 			t.Fatal(err)
 		}
 		entries = append(entries, state.CredentialEntry{
-			ID: uint(index), GroupID: 1, Version: 1, IdentityGeneration: uint64(index),
-			Fingerprint: fmt.Sprintf("subscription-account-%d", index),
-			Status:      state.CredentialStatusActive, EncryptedValue: encrypted,
+			ID: uint(index), GroupID: uint(index), Version: 1, IdentityGeneration: uint64(index),
+			Fingerprint:    fmt.Sprintf("subscription-account-%d", index),
+			EncryptedValue: encrypted,
 		})
 	}
 	if err := registry.ReplaceCredentials(entries); err != nil {
@@ -4353,7 +4362,7 @@ func TestHandlerReturnsStableTerminalReasons(t *testing.T) {
 			path: "/v1/chat/completions", accessKey: "gl-client", body: `{"model":"gpt-4o"}`,
 			upstreamKeys: []string{"sk-one", "sk-two"},
 			results:      []UpstreamResult{{Err: errors.New("dial failed")}},
-			wantStatus:   http.StatusBadGateway, wantCode: "upstream_connect_failed", wantAttempts: 1,
+			wantStatus:   http.StatusBadGateway, wantCode: "upstream_connect_failed", wantAttempts: 2,
 		},
 	}
 
@@ -4674,13 +4683,15 @@ func TestHandlerKeepsFrozenSnapshotAcrossRetry(t *testing.T) {
 		}
 		if _, err := manager.Publish(state.CompileInput{
 			ChannelRegistry: channel.NewRegistry(),
-			Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Enabled: true,
-				Models:   []state.ModelConfig{{ID: "gpt-4o"}},
-				Settings: config.Settings{state.SettingBlacklistThreshold: 7},
-			}},
+			Groups: []state.GroupConfig{
+				{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+					Models: []state.ModelConfig{{ID: "gpt-4o"}}, Settings: config.Settings{state.SettingBlacklistThreshold: 7}, Enabled: true},
+				{ConnectionType: "api_key", ID: 2, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+					Models: []state.ModelConfig{{ID: "gpt-4o"}}, Settings: config.Settings{state.SettingBlacklistThreshold: 7}, Enabled: true},
+			},
 			Credentials: []state.CredentialConfig{
 				testCredentialConfig(1, 1),
-				testCredentialConfig(2, 1),
+				testCredentialConfig(2, 2),
 			},
 			AccessKeys: []state.AccessKeyConfig{{
 				ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"), Status: state.AccessKeyStatusActive,
@@ -4714,346 +4725,6 @@ func TestHandlerKeepsFrozenSnapshotAcrossRetry(t *testing.T) {
 	}
 }
 
-func TestHandlerSkipsCandidateChangedAfterCollection(t *testing.T) {
-	tests := []struct {
-		name   string
-		mutate func(*testing.T, *state.CredentialRegistry, encryption.Service)
-	}{
-		{
-			name: "key moved to another group",
-			mutate: func(t *testing.T, registry *state.CredentialRegistry, keyService encryption.Service) {
-				t.Helper()
-				encrypted, err := keyService.Encrypt("sk-group-two")
-				if err != nil {
-					t.Fatalf("Encrypt(group two key) error = %v", err)
-				}
-				if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-					ID: 1, GroupID: 2, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive, EncryptedValue: encrypted,
-				}}); err != nil {
-					t.Fatalf("Replace(moved key) error = %v", err)
-				}
-			},
-		},
-		{
-			name: "key disabled",
-			mutate: func(t *testing.T, registry *state.CredentialRegistry, _ encryption.Service) {
-				t.Helper()
-				if err := registry.SetCredentialStatus(1, state.CredentialStatusDisabled); err != nil {
-					t.Fatalf("SetCredentialStatus(disabled) error = %v", err)
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			forwarder := &scriptedForwarder{results: []UpstreamResult{{
-				StatusCode: http.StatusOK, Header: make(http.Header), Body: []byte(`{"ok":true}`), RequestWritten: true,
-			}}}
-			_, manager, registry := newHandlerTestRuntime(t, forwarder, "sk-group-one")
-			keyService := encryptiontest.Service(t, "handler-test-master-key")
-			runtimeRegistry := &mutatingRuntimeRegistry{
-				CredentialRegistry: registry,
-				mutate:             func() { tt.mutate(t, registry, keyService) },
-			}
-			openAI := dialect.NewOpenAI()
-			handler := NewHandler(
-				manager, registry, keyService, forwarder, dialect.NewSet(openAI), health.NewStatsStore(),
-				health.NewMutationCoordinator(),
-				nil, nil, nil,
-			)
-			handler.registry = runtimeRegistry
-			handler.newRandom = func() *rand.Rand { return rand.New(rand.NewSource(1)) }
-			engine := gin.New()
-			bindGatewayRoutesForTest(t, engine, handler)
-
-			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(`{"model":"gpt-4o"}`))
-			request.Header.Set("Authorization", "Bearer gl-client")
-			recorder := httptest.NewRecorder()
-			engine.ServeHTTP(recorder, request)
-
-			if recorder.Code != http.StatusServiceUnavailable || len(forwarder.inputs) != 0 {
-				t.Fatalf("response/attempts = %d/%d, want 503/0; body=%s", recorder.Code, len(forwarder.inputs), recorder.Body.String())
-			}
-			var body struct {
-				Code string `json:"code"`
-			}
-			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
-				t.Fatalf("decode response: %v", err)
-			}
-			if body.Code != reasonNoCandidate.Code {
-				t.Fatalf("response code = %q, want %q", body.Code, reasonNoCandidate.Code)
-			}
-		})
-	}
-}
-
-func TestHandlerFreezesKeyIdentityAfterInspectingBody(t *testing.T) {
-	tests := []struct {
-		name         string
-		seedPlain    string
-		seedStatus   state.CredentialStatus
-		currentPlain string
-		mutate       func(*state.CredentialRegistry, string) error
-	}{
-		{
-			name: "new import", currentPlain: "sk-imported",
-			mutate: func(registry *state.CredentialRegistry, encrypted string) error {
-				return registry.ApplyCredentialImport(1, []state.CredentialEntry{{
-					ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive,
-					EncryptedValue: encrypted,
-				}})
-			},
-		},
-		{
-			name: "disabled becomes active", seedPlain: "sk-enabled",
-			seedStatus: state.CredentialStatusDisabled, currentPlain: "sk-enabled",
-			mutate: func(registry *state.CredentialRegistry, _ string) error {
-				return registry.SetCredentialStatus(1, state.CredentialStatusActive)
-			},
-		},
-		{
-			name: "same ID gets new ciphertext", seedPlain: "sk-old",
-			seedStatus: state.CredentialStatusActive, currentPlain: "sk-replaced",
-			mutate: func(registry *state.CredentialRegistry, encrypted string) error {
-				return registry.ApplyCredentialImport(1, []state.CredentialEntry{{
-					ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive,
-					EncryptedValue: encrypted,
-				}})
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			forwarder := &scriptedForwarder{results: []UpstreamResult{
-				{
-					StatusCode: http.StatusOK, Header: make(http.Header),
-					Body: []byte(`{"ok":true}`), RequestWritten: true,
-				},
-				{
-					StatusCode: http.StatusOK, Header: make(http.Header),
-					Body: []byte(`{"ok":true}`), RequestWritten: true,
-				},
-			}}
-			handler, _, registry := newHandlerForTest(t, forwarder)
-			keyService := encryptiontest.Service(t, "handler-test-master-key")
-			recordingEncryption := &recordingDecryptEncryption{Service: keyService}
-			handler.encryption = recordingEncryption
-			engine := gin.New()
-			bindGatewayRoutesForTest(t, engine, handler)
-			currentCiphertext := encryptTestCredentialValue(t, keyService, test.currentPlain)
-			if test.seedStatus != "" {
-				seedCiphertext := currentCiphertext
-				if test.seedPlain != test.currentPlain {
-					seedCiphertext = encryptTestCredentialValue(t, keyService, test.seedPlain)
-				}
-				if replaceErr := registry.ReplaceCredentials([]state.CredentialEntry{{
-					ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: test.seedStatus,
-					EncryptedValue: seedCiphertext,
-				}}); replaceErr != nil {
-					t.Fatalf("Replace(seed key) error = %v", replaceErr)
-				}
-			}
-
-			body := newBlockingRequestBody(
-				`{"model":"gpt-4o"}`,
-				func() error { return test.mutate(registry, currentCiphertext) },
-			)
-			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body)
-			request.Header.Set("Authorization", "Bearer gl-client")
-			oldRecorder := httptest.NewRecorder()
-			oldDone := make(chan struct{})
-			go func() {
-				engine.ServeHTTP(oldRecorder, request)
-				close(oldDone)
-			}()
-
-			receiveTestSignal(t, body.started, "blocked request body read")
-			close(body.release)
-			receiveTestSignal(t, oldDone, "blocked request completion")
-			if body.firstReadErr != nil {
-				t.Fatalf("first Read identity mutation error = %v", body.firstReadErr)
-			}
-
-			if oldRecorder.Code != http.StatusOK || len(forwarder.inputs) != 1 {
-				t.Fatalf(
-					"decoded request response/attempts = %d/%d, want 200/1; body=%s",
-					oldRecorder.Code,
-					len(forwarder.inputs),
-					oldRecorder.Body.String(),
-				)
-			}
-			if got := forwarder.inputs[0].APIKey; got != test.currentPlain {
-				t.Fatalf("decoded request API key = %q, want %q", got, test.currentPlain)
-			}
-			if len(recordingEncryption.ciphertexts) != 1 {
-				t.Fatalf("decoded request decrypt calls = %d, want 1", len(recordingEncryption.ciphertexts))
-			}
-
-			newRequest := httptest.NewRequest(
-				http.MethodPost,
-				"/v1/chat/completions",
-				bytes.NewBufferString(`{"model":"gpt-4o"}`),
-			)
-			newRequest.Header.Set("Authorization", "Bearer gl-client")
-			newRecorder := httptest.NewRecorder()
-			engine.ServeHTTP(newRecorder, newRequest)
-
-			if newRecorder.Code != http.StatusOK || len(forwarder.inputs) != 2 {
-				t.Fatalf(
-					"new request response/attempts = %d/%d, want 200/2; body=%s",
-					newRecorder.Code,
-					len(forwarder.inputs),
-					newRecorder.Body.String(),
-				)
-			}
-			if got := forwarder.inputs[1].APIKey; got != test.currentPlain {
-				t.Fatalf("new request API key = %q, want %q", got, test.currentPlain)
-			}
-			if len(recordingEncryption.ciphertexts) != 2 {
-				t.Fatalf(
-					"new request decrypt calls = %d, want 2",
-					len(recordingEncryption.ciphertexts),
-				)
-			}
-		})
-	}
-}
-
-func TestHandlerAllowsCapturedUnavailableIdentityAfterRecovery(t *testing.T) {
-	tests := []struct {
-		name            string
-		makeUnavailable func(*testing.T, *state.CredentialRegistry)
-		recover         func(*testing.T, *state.CredentialRegistry, string)
-	}{
-		{
-			name: "blacklisted",
-			makeUnavailable: func(t *testing.T, registry *state.CredentialRegistry) {
-				t.Helper()
-				if ok := registry.SetBlacklisted(3); !ok {
-					t.Fatal("SetBlacklisted(3) = false")
-				}
-			},
-			recover: func(t *testing.T, registry *state.CredentialRegistry, _ string) {
-				t.Helper()
-				if ok := registry.Recover(3); !ok {
-					t.Fatal("Recover(3) = false")
-				}
-			},
-		},
-		{
-			name: "cooldown",
-			makeUnavailable: func(t *testing.T, registry *state.CredentialRegistry) {
-				t.Helper()
-				if ok := registry.SetCooldown(3, time.Now().Add(time.Hour)); !ok {
-					t.Fatal("SetCooldown(3) = false")
-				}
-			},
-			recover: func(t *testing.T, registry *state.CredentialRegistry, encrypted string) {
-				t.Helper()
-				if err := registry.ApplyCredentialImport(1, []state.CredentialEntry{{
-					ID: 3, GroupID: 1, Version: 1, IdentityGeneration: 3, Fingerprint: "test-3", Status: state.CredentialStatusActive,
-					EncryptedValue: encrypted,
-				}}); err != nil {
-					t.Fatalf("ApplyImport(recovered cooldown key) error = %v", err)
-				}
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			firstForward := make(chan struct{})
-			releaseForward := make(chan struct{})
-			forwarder := &scriptedForwarder{
-				results: []UpstreamResult{
-					{
-						StatusCode: http.StatusTooManyRequests, Header: make(http.Header),
-						Body:               []byte(`{"error":"rate limit"}`),
-						ClassificationBody: []byte(`{"error":"rate limit"}`),
-						RequestWritten:     true,
-					},
-					{
-						StatusCode: http.StatusOK, Header: make(http.Header),
-						Body: []byte(`{"ok":true}`), RequestWritten: true,
-					},
-				},
-				onCall: func(index int) {
-					if index != 0 {
-						return
-					}
-					close(firstForward)
-					<-releaseForward
-				},
-			}
-			handler, _, registry := newHandlerForTest(t, forwarder)
-			handler.newRandom = func() *rand.Rand { return rand.New(zeroSource{}) }
-			engine := gin.New()
-			bindGatewayRoutesForTest(t, engine, handler)
-			keyService := encryptiontest.Service(t, "handler-test-master-key")
-			encrypt := func(plaintext string) string {
-				t.Helper()
-				return encryptTestCredentialValue(t, keyService, plaintext)
-			}
-			recoverableCiphertext := encrypt("sk-recoverable")
-			if err := registry.ReplaceCredentials([]state.CredentialEntry{
-				{
-					ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive,
-					EncryptedValue: encrypt("sk-first"),
-				},
-				{
-					ID: 2, GroupID: 1, Version: 1, IdentityGeneration: 2, Fingerprint: "test-2", Status: state.CredentialStatusDisabled,
-					EncryptedValue: encrypt("sk-newly-enabled"),
-				},
-				{
-					ID: 3, GroupID: 1, Version: 1, IdentityGeneration: 3, Fingerprint: "test-3", Status: state.CredentialStatusActive,
-					EncryptedValue: recoverableCiphertext,
-				},
-			}); err != nil {
-				t.Fatalf("Replace(keys) error = %v", err)
-			}
-			test.makeUnavailable(t, registry)
-
-			request := httptest.NewRequest(
-				http.MethodPost,
-				"/v1/chat/completions",
-				bytes.NewBufferString(`{"model":"gpt-4o"}`),
-			)
-			request.Header.Set("Authorization", "Bearer gl-client")
-			recorder := httptest.NewRecorder()
-			done := make(chan struct{})
-			go func() {
-				engine.ServeHTTP(recorder, request)
-				close(done)
-			}()
-
-			receiveTestSignal(t, firstForward, "first forward")
-			if err := registry.SetCredentialStatus(2, state.CredentialStatusActive); err != nil {
-				t.Fatalf("SetCredentialStatus(2, active) error = %v", err)
-			}
-			test.recover(t, registry, recoverableCiphertext)
-			close(releaseForward)
-			receiveTestSignal(t, done, "recovery request completion")
-
-			if recorder.Code != http.StatusOK || len(forwarder.inputs) != 2 {
-				t.Fatalf(
-					"response/attempts = %d/%d, want 200/2; body=%s",
-					recorder.Code,
-					len(forwarder.inputs),
-					recorder.Body.String(),
-				)
-			}
-			if got := forwarder.inputs[1].APIKey; got != "sk-recoverable" {
-				t.Fatalf(
-					"second attempt API key = %q, want captured recovered identity",
-					got,
-				)
-			}
-		})
-	}
-}
-
 func newRealGatewayEngine(t *testing.T, upstreamURL string, upstreamKeys ...string) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -5062,15 +4733,23 @@ func newRealGatewayEngine(t *testing.T, upstreamURL string, upstreamKeys ...stri
 	baseURL := testUpstreamBaseURL(upstreamURL, protocol.OpenAICompletions)
 	channelID, params := testChannelConfig(t, protocol.OpenAICompletions, baseURL)
 	credentialConfigs := make([]state.CredentialConfig, 0, len(upstreamKeys))
+	groups := make([]state.GroupConfig, 0, len(upstreamKeys))
 	for index := range upstreamKeys {
-		credentialConfigs = append(credentialConfigs, testCredentialConfig(uint(index+1), 1))
+		groupID := uint(index + 1)
+		credentialConfigs = append(credentialConfigs, testCredentialConfig(uint(index+1), groupID))
+		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: groupID, Name: "openai", ChannelID: channelID, Params: params,
+			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+		})
+	}
+	if len(groups) == 0 {
+		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channelID, Params: params,
+			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+		})
 	}
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channelID, Params: params,
-			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
-		}},
-		Credentials: credentialConfigs,
+		Groups:          groups,
+		Credentials:     credentialConfigs,
 		AccessKeys: []state.AccessKeyConfig{{
 			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"),
 			Status: state.AccessKeyStatusActive,
@@ -5081,7 +4760,7 @@ func newRealGatewayEngine(t *testing.T, upstreamURL string, upstreamKeys ...stri
 	registry := state.NewCredentialRegistry()
 	entries := make([]state.CredentialEntry, 0, len(upstreamKeys))
 	for index, plaintext := range upstreamKeys {
-		entries = append(entries, testCredentialEntry(t, keyService, uint(index+1), 1, plaintext))
+		entries = append(entries, testCredentialEntry(t, keyService, uint(index+1), uint(index+1), plaintext))
 	}
 	if err := registry.ReplaceCredentials(entries); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)
@@ -5145,7 +4824,7 @@ func newResponsesStoreHandlerRuntime(
 		Enabled:        true,
 	}}
 	credentials := []state.CredentialConfig{{
-		ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+		ID: 1, GroupID: 1,
 		Version: 1, IdentityGeneration: 1, Fingerprint: "codex-account",
 	}}
 	if includeExact {
@@ -5159,7 +4838,7 @@ func newResponsesStoreHandlerRuntime(
 			Enabled:        true,
 		})
 		credentials = append(credentials, state.CredentialConfig{
-			ID: 2, GroupID: 2, Status: state.CredentialStatusActive,
+			ID: 2, GroupID: 2,
 			Version: 1, IdentityGeneration: 2, Fingerprint: "openai-key",
 		})
 	}
@@ -5201,7 +4880,7 @@ func newResponsesStoreHandlerRuntime(
 			t.Fatalf("Encrypt() error = %v", err)
 		}
 		entries = append(entries, state.CredentialEntry{
-			ID: value.id, GroupID: value.groupID, Status: state.CredentialStatusActive,
+			ID: value.id, GroupID: value.groupID,
 			Version: 1, IdentityGeneration: value.identity, Fingerprint: value.fingerprint,
 			EncryptedValue: encrypted,
 		})
@@ -5227,9 +4906,9 @@ func publishHandlerPolicySettings(
 	credentials := make([]state.CredentialConfig, 0, credentialCount)
 	for index := 0; index < credentialCount; index++ {
 		credentials = append(credentials, state.CredentialConfig{
-			ID:                 uint(index + 1),
-			GroupID:            1,
-			Status:             state.CredentialStatusActive,
+			ID:      uint(index + 1),
+			GroupID: uint(index + 1),
+
 			Version:            1,
 			IdentityGeneration: uint64(index + 1),
 			Fingerprint:        fmt.Sprintf("credential-%d", index+1),
@@ -5238,16 +4917,13 @@ func publishHandlerPolicySettings(
 	if _, err := manager.Publish(state.CompileInput{
 		SystemSettings:  systemSettings,
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key",
-			ID:             1,
-			Name:           "openai",
-			ChannelID:      channel.OpenAI,
-			Params:         json.RawMessage(`{}`),
-			Models:         []state.ModelConfig{{ID: "gpt-4o"}},
-			Settings:       groupSettings,
-			Enabled:        true,
-		}},
+		Groups: func() []state.GroupConfig {
+			groups := make([]state.GroupConfig, 0, credentialCount)
+			for index := 0; index < credentialCount; index++ {
+				groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: uint(index + 1), Name: fmt.Sprintf("openai-%d", index+1), ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Settings: groupSettings, Enabled: true})
+			}
+			return groups
+		}(),
 		Credentials: credentials,
 		AccessKeys: []state.AccessKeyConfig{{
 			ID:      1,
@@ -5294,21 +4970,24 @@ func newHandlerForTestWithStats(
 	credentialConfigs := make([]state.CredentialConfig, 0, len(upstreamKeys))
 	for index := range upstreamKeys {
 		credentialConfigs = append(credentialConfigs, state.CredentialConfig{
-			ID:                 uint(index + 1),
-			GroupID:            1,
-			Status:             state.CredentialStatusActive,
+			ID:      uint(index + 1),
+			GroupID: uint(index + 1),
+
 			Version:            1,
 			IdentityGeneration: uint64(index + 1),
 			Fingerprint:        fmt.Sprintf("credential-%d", index+1),
 		})
 	}
+	groups := make([]state.GroupConfig, 0, len(upstreamKeys)+1)
+	for index := 0; index < len(upstreamKeys) || index == 0; index++ {
+		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: uint(index + 1), Name: "openai", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o", EntryID: "e000000000001"}}, Enabled: true,
+		})
+	}
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
-			Params: json.RawMessage(`{}`),
-			Models: []state.ModelConfig{{ID: "gpt-4o", EntryID: "e000000000001"}}, Enabled: true,
-		}},
-		Credentials: credentialConfigs,
+		Groups:          groups,
+		Credentials:     credentialConfigs,
 		AccessKeys: []state.AccessKeyConfig{{
 			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"),
 			Status: state.AccessKeyStatusActive,
@@ -5328,10 +5007,10 @@ func newHandlerForTestWithStats(
 			t.Fatalf("Encrypt() error = %v", err)
 		}
 		entries = append(entries, state.CredentialEntry{
-			ID: uint(index + 1), GroupID: 1,
+			ID: uint(index + 1), GroupID: uint(index + 1),
 			Version: 1, IdentityGeneration: uint64(index + 1),
-			Fingerprint: fmt.Sprintf("credential-%d", index+1),
-			Status:      state.CredentialStatusActive, EncryptedValue: encrypted,
+			Fingerprint:    fmt.Sprintf("credential-%d", index+1),
+			EncryptedValue: encrypted,
 		})
 	}
 	if err := registry.ReplaceCredentials(entries); err != nil {
@@ -5374,8 +5053,8 @@ func newConvertedFallbackHandlerTestRuntime(
 		}
 	}
 	credentials := []state.CredentialConfig{
-		{ID: 1, GroupID: 1, Status: state.CredentialStatusActive, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-one"},
-		{ID: 2, GroupID: 2, Status: state.CredentialStatusActive, Version: 1, IdentityGeneration: 2, Fingerprint: "credential-two"},
+		{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-one"},
+		{ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "credential-two"},
 	}
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channelRegistry,
@@ -5397,7 +5076,7 @@ func newConvertedFallbackHandlerTestRuntime(
 			t.Fatalf("Encrypt() error = %v", err)
 		}
 		entries = append(entries, state.CredentialEntry{
-			ID: credential.ID, GroupID: credential.GroupID, Status: credential.Status,
+			ID: credential.ID, GroupID: credential.GroupID,
 			Version: credential.Version, IdentityGeneration: credential.IdentityGeneration,
 			Fingerprint: credential.Fingerprint, EncryptedValue: encrypted,
 		})

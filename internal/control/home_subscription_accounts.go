@@ -131,7 +131,6 @@ func (s *Service) readHomeSubscriptionAccounts(
 		}
 		view, exists := runtimeByID[credential.ID]
 		if !exists || view.GroupID != credential.GroupID ||
-			view.Status != state.CredentialStatus(credential.Status) ||
 			view.AuthState != normalizeRuntimeCredentialAuthState(credential.AuthState) ||
 			view.Version != groupCollectionCredentialVersion(credential.SecretVersion) ||
 			view.IdentityGeneration != groupCollectionCredentialIdentity(
@@ -142,7 +141,7 @@ func (s *Service) readHomeSubscriptionAccounts(
 		}
 		catalog := state.GroupCatalogView{
 			ID: credential.Group.ID, Name: credential.Group.Name,
-			Enabled: credential.Group.Enabled, WeightManual: cloneInt(credential.Group.WeightManual),
+			Enabled: credential.Group.Enabled,
 		}
 		key := homeSubscriptionIdentityKey(
 			credential.Group.ChannelID,
@@ -307,11 +306,6 @@ func (s *Service) mapHomeSubscriptionAccount(
 		representative.observation,
 		credential.IdentityFingerprint,
 	)
-	proxyViews, err := s.credentialProxyViews(ctx, s.db, group, []models.Credential{credential})
-	if err != nil {
-		return HomeSubscriptionAccountResponse{}, err
-	}
-	item.Proxy = proxyViews[credential.ID]
 	return HomeSubscriptionAccountResponse{
 		GroupCount:          len(memberships),
 		AvailableGroupCount: available,

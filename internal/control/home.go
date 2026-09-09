@@ -53,7 +53,7 @@ type homeCredentialRow struct {
 	Fingerprint         string
 	IdentityFingerprint string
 	SecretVersion       uint64
-	Status              models.CredentialStatus
+	AuthState           models.CredentialAuthState
 }
 
 type homeAccessKeyRow struct {
@@ -250,7 +250,7 @@ func (s *Service) readHomeRows(
 		if err := tx.Model(&models.Credential{}).
 			Select(
 				"credentials.id", "credentials.group_id", "groups.channel_id", "groups.connection_type", "groups.params",
-				"credentials.fingerprint", "credentials.identity_fingerprint", "credentials.secret_version", "credentials.status",
+				"credentials.fingerprint", "credentials.identity_fingerprint", "credentials.secret_version", "credentials.auth_state",
 			).
 			Joins("JOIN groups ON groups.id = credentials.group_id").
 			Order("credentials.id ASC").
@@ -429,20 +429,7 @@ func countAvailableHomeCredentialsInGroups(
 			)
 		}
 
-		var status state.CredentialStatus
-		switch row.Status {
-		case models.CredentialStatusActive:
-			status = state.CredentialStatusActive
-		case models.CredentialStatusDisabled:
-			status = state.CredentialStatusDisabled
-		default:
-			return 0, fmt.Errorf(
-				"count available home credential %d: invalid persisted status: %w",
-				row.ID,
-				app_errors.ErrInternalServer,
-			)
-		}
-		if credential.Status != status ||
+		if credential.AuthState != normalizeRuntimeCredentialAuthState(row.AuthState) ||
 			credential.Version != groupCollectionCredentialVersion(row.SecretVersion) ||
 			credential.IdentityGeneration != groupCollectionCredentialIdentity(
 				row.IdentityFingerprint,

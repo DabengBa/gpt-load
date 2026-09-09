@@ -24,7 +24,6 @@ const (
 
 type autoWeightRegistry interface {
 	ActiveCredentialIDs() []uint
-	SetAutoWeight(credentialID uint, weight int) bool
 }
 
 type credentialMutationCoordinator interface {
@@ -282,11 +281,4 @@ func (runtime *Runtime) sweepRetention(ctx context.Context, now time.Time) {
 	}
 }
 
-func (runtime *Runtime) recompute(now time.Time) {
-	for _, credentialID := range runtime.registry.ActiveCredentialIDs() {
-		runtime.mutations.Do(credentialID, func() {
-			stats := runtime.stats.Snapshot(credentialID, now)
-			runtime.registry.SetAutoWeight(credentialID, calculateAutoWeight(stats))
-		})
-	}
-}
+func (runtime *Runtime) recompute(_ time.Time) {}

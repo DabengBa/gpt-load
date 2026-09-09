@@ -77,8 +77,6 @@ type Service struct {
 	now                               func() time.Time
 	publishSnapshot                   func(state.CompileInput) (*state.ConfigSnapshot, error)
 	reconcileRegistryGroup            func(uint, []state.CredentialEntry) (bool, error)
-	applyBatchRegistryMutation        func(uint, []uint, CredentialBatchAction) error
-	restoreBatchRegistryEntries       func(uint, []state.CredentialEntry) error
 	beforeAdvanceOperationStage       func(
 		context.Context,
 		*models.ControlOperation,
@@ -277,8 +275,6 @@ func NewService(
 	}
 	service.publishSnapshot = manager.Publish
 	service.reconcileRegistryGroup = registry.ReconcileGroup
-	service.applyBatchRegistryMutation = service.applyCredentialBatchRegistryMutation
-	service.restoreBatchRegistryEntries = registry.RestoreGroupCredentialEntriesExact
 	service.registrySnapshot = registry.Snapshot
 	service.oauthCallback = NewOAuthCallbackManager(service)
 	return service
@@ -502,9 +498,9 @@ func (s *Service) recoverCommittedRuntime(ctx context.Context, includePrices boo
 	}
 	var priceTable *pricing.Table
 	if includePrices {
-		entries, entriesErr := stateloader.BuildCredentialEntriesWithProxy(ctx, s.db, s.encryption)
-		if entriesErr != nil {
-			return fmt.Errorf("reload committed credentials: %w", entriesErr)
+		entries, err := stateloader.BuildCredentialEntries(ctx, s.db)
+		if err != nil {
+			return fmt.Errorf("reload committed credentials: %w", err)
 		}
 		priceTable, err = loadPriceTable(ctx, s.db)
 		if err != nil {
@@ -525,7 +521,7 @@ func (s *Service) recoverCommittedRuntime(ctx context.Context, includePrices boo
 }
 
 func (s *Service) recoverCommittedCredentialRegistryGroup(ctx context.Context, groupID uint) error {
-	entries, err := stateloader.BuildGroupCredentialEntriesWithProxy(ctx, s.db, groupID, s.encryption)
+	entries, err := stateloader.BuildGroupCredentialEntries(ctx, s.db, groupID)
 	if err != nil {
 		return fmt.Errorf("reload committed group credentials: %w", err)
 	}

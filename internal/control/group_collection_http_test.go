@@ -289,7 +289,7 @@ func TestGroupCollectionHTTPReturnsExactCollectionAndOptionsContracts(t *testing
 		t,
 		fixture,
 		10,
-		models.CredentialStatusActive,
+		models.CredentialAuthStateReady,
 		nil,
 	)
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{entry})
@@ -375,7 +375,7 @@ func TestGroupCollectionHTTPAllowsAvailableKeysInAnUnavailableStatus(t *testing.
 	setGroupCollectionChannel(t, fixture, group, channel.Anthropic, models.JSON(`{}`))
 	setGroupCollectionRoute(t, fixture, group, `["openai-completions"]`, `[]`)
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{
-		createGroupCollectionKey(t, fixture, group.ID, models.CredentialStatusActive, nil),
+		createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil),
 	})
 
 	engine := gin.New()
