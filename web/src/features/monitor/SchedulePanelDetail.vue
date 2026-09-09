@@ -1,18 +1,28 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useApiClient } from '@/api/client-context'
+import { useToast } from '@/app/toast'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { groupDetailLocation } from '@/app/route-locations'
+import {
+  cacheGroupSettings,
+  invalidateGroupSettingsDependents,
+  updateGroupSettings,
+} from '@/app/resources/groups'
 import {
   isModelRouteScheduleRevisionConflict,
   recoverModelRouteScheduleEntry,
   updateModelRouteSchedule,
   type ModelRouteScheduleDetailDto,
   type ModelRouteScheduleEntryDto,
+  type ModelRouteScheduleGroupDto,
   type ModelRouteSchedulePatchUpdate,
 } from '@/app/resources/model-route-schedule'
 import AppButton from '@/components/ui/AppButton.vue'
+import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
@@ -54,6 +64,12 @@ export interface SchedulePanelDetailLabels {
   unknownReason?: string
   reasonLabels?: Partial<Record<string, string>>
   draftPreview?: string
+  toggleEnabled?: string
+  toggleFailed?: string
+  enabled?: string
+  disabled?: string
+  calls24h?: string
+  successRate24h?: string
 }
 
 type EditableField = 'weight' | 'priority'
@@ -94,6 +110,8 @@ const emit = defineEmits<{
 
 const queryClient = useQueryClient()
 const client = useApiClient()
+const { t } = useI18n()
+const toast = useToast()
 const draftMap = reactive<Record<string, Draft>>({})
 const rawInputs = reactive<Record<string, string>>({})
 const invalidInputs = reactive<Record<string, boolean>>({})
@@ -101,12 +119,16 @@ const pending = ref(false)
 const saveStatus = ref<'idle' | 'saved' | 'error'>('idle')
 const saveError = ref('')
 const recovering = ref<RecoverKey>('')
+const togglingGroupIDs = ref(new Set<number>())
+const optimisticEnabled = ref(new Map<number, boolean>())
+const preserveDraftRevisions = ref(new Set<number>())
+const preserveDraftSnapshots = ref(new Map<number, ScheduleDrafts>())
 // Ignore the one URL echo caused by a local edit; later history changes hydrate normally.
 const pendingLocalDraftFingerprint = ref<string>()
 
 const text = (key: keyof SchedulePanelDetailLabels): string => {
   const value = props.labels[key]
-  return typeof value === 'string' ? value : ''
+  return typeof value === 'string' && value ? value : t(`monitor.schedule.detail.${key}`)
 }
 
 const rows = computed(() =>
@@ -127,36 +149,26 @@ const hasScheduleDraft = computed(() => Object.keys(draftMap).length > 0)
 const previewShares = computed(() => {
   const result = new Map<string, number>()
   if (!props.detail || !hasScheduleDraft.value) return result
-  const candidates = rows.value
-    .filter(
-      ({ entry }) =>
-        entry.included &&
-        !entry.fallback &&
-        (entry.routable || entry.reason_code === 'entry_weight_zero'),
-    )
-    .map(({ group, entry }) => {
+  const entries = props.detail.groups.flatMap((group) =>
+    group.entries.map((entry) => {
       const draft = draftMap[draftKey(group.group_id, entry.entry_id)]
       return {
         group,
         entry,
         weight: draft?.weight ?? entry.weight,
         priority: draft?.priority ?? entry.priority,
-        mass: draft?.weight ?? entry.weight,
       }
-    })
-  const activeTier = candidates.reduce(
-    (tier, candidate) =>
-      candidate.mass > 0 && (tier === 0 || candidate.priority < tier) ? candidate.priority : tier,
-    0,
+    }),
   )
-  const activeTotal = candidates
-    .filter((candidate) => candidate.priority === activeTier)
-    .reduce((total, candidate) => total + candidate.mass, 0)
-  if (activeTotal <= 0) return result
-  for (const candidate of candidates) {
+  const totals = new Map<number, number>()
+  for (const candidate of entries) {
+    totals.set(candidate.priority, (totals.get(candidate.priority) ?? 0) + candidate.weight)
+  }
+  for (const candidate of entries) {
+    const total = totals.get(candidate.priority) ?? 0
     result.set(
       rowKey(candidate.group.group_id, candidate.entry.entry_id),
-      candidate.priority === activeTier ? Math.max(0, candidate.mass) / activeTotal : 0,
+      total > 0 ? Math.max(0, candidate.weight) / total : 0,
     )
   }
   return result
@@ -167,6 +179,76 @@ const observedLabel = computed(() => {
     ? ''
     : `${text('stale')} ${formatLocalInstant(observed, props.locale)}`
 })
+
+function groupEnabled(group: ModelRouteScheduleGroupDto): boolean {
+  return optimisticEnabled.value.get(group.group_id) ?? group.enabled
+}
+
+function groupTogglePending(groupID: number): boolean {
+  return togglingGroupIDs.value.has(groupID)
+}
+
+async function toggleGroupEnabled(group: ModelRouteScheduleGroupDto, next: boolean): Promise<void> {
+  if (groupTogglePending(group.group_id)) return
+  optimisticEnabled.value = new Map(optimisticEnabled.value).set(group.group_id, next)
+  togglingGroupIDs.value = new Set(togglingGroupIDs.value).add(group.group_id)
+  try {
+    if (props.detail) {
+      preserveDraftRevisions.value = new Set([
+        ...preserveDraftRevisions.value,
+        props.detail.snapshot_revision,
+      ])
+      preserveDraftSnapshots.value = new Map(preserveDraftSnapshots.value).set(
+        props.detail.snapshot_revision,
+        cloneDrafts(draftMap),
+      )
+    }
+    const settings = await updateGroupSettings(client, group.group_id, { enabled: next })
+    cacheGroupSettings(queryClient, group.group_id, settings)
+    await invalidateGroupSettingsDependents(queryClient, group.group_id)
+  } catch {
+    const optimistic = new Map(optimisticEnabled.value)
+    optimistic.delete(group.group_id)
+    optimisticEnabled.value = optimistic
+    toast.show({ message: text('toggleFailed'), tone: 'danger' })
+  } finally {
+    await nextTick()
+    if (props.detail) {
+      const revisions = new Set(preserveDraftRevisions.value)
+      revisions.delete(props.detail.snapshot_revision)
+      const snapshots = new Map(preserveDraftSnapshots.value)
+      snapshots.delete(props.detail.snapshot_revision)
+      preserveDraftSnapshots.value = snapshots
+      preserveDraftRevisions.value = revisions
+    }
+    const optimistic = new Map(optimisticEnabled.value)
+    optimistic.delete(group.group_id)
+    optimisticEnabled.value = optimistic
+    const pending = new Set(togglingGroupIDs.value)
+    pending.delete(group.group_id)
+    togglingGroupIDs.value = pending
+  }
+}
+
+function isFirstGroupRow(index: number): boolean {
+  return index === 0 || rows.value[index - 1]?.group.group_id !== rows.value[index]?.group.group_id
+}
+
+function isPriorityStart(index: number): boolean {
+  return index === 0 || rows.value[index - 1]?.entry.priority !== rows.value[index]?.entry.priority
+}
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat(props.locale).format(value)
+}
+
+function formatRate(value: number): string {
+  return new Intl.NumberFormat(props.locale, {
+    style: 'percent',
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value)
+}
 
 function rowKey(groupID: number, entryID: string): string {
   return `${groupID}:${entryID}`
@@ -278,7 +360,19 @@ function draftFingerprint(source: ScheduleDrafts): string {
   )
 }
 
+function cloneDrafts(source: ScheduleDrafts): ScheduleDrafts {
+  return Object.fromEntries(
+    Object.entries(source).map(([key, draft]) => [key, draft === undefined ? {} : { ...draft }]),
+  )
+}
+
 function emitDraftChange(source: ScheduleDrafts): void {
+  for (const revision of preserveDraftRevisions.value) {
+    preserveDraftSnapshots.value = new Map(preserveDraftSnapshots.value).set(
+      revision,
+      cloneDrafts(source),
+    )
+  }
   pendingLocalDraftFingerprint.value = draftFingerprint(source)
   emit('draft-change', source)
 }
@@ -306,8 +400,15 @@ function hydrateDraftState(source: ScheduleDrafts): void {
   }
 }
 
+type DetailWatchKey = [
+  revision: number,
+  externalModel: string | null,
+  protocol: string,
+  accessKeyID: number,
+]
+
 watch(
-  () => {
+  (): DetailWatchKey => {
     const detail = props.detail
     return detail
       ? [detail.snapshot_revision, detail.external_model, detail.protocol, detail.access_key.id]
@@ -315,6 +416,18 @@ watch(
   },
   (value, previous) => {
     if (previous?.[0] && previous[0] !== value[0]) {
+      const preserve = preserveDraftRevisions.value.has(previous[0])
+      if (preserve) {
+        const revisions = new Set(preserveDraftRevisions.value)
+        revisions.delete(previous[0])
+        preserveDraftRevisions.value = revisions
+        const snapshots = new Map(preserveDraftSnapshots.value)
+        const draftSnapshot = snapshots.get(previous[0]) ?? props.drafts
+        snapshots.delete(previous[0])
+        preserveDraftSnapshots.value = snapshots
+        hydrateDraftState(draftSnapshot)
+        return
+      }
       hydrateDraftState({})
       emitDraftChange({})
       return
@@ -414,13 +527,8 @@ function runtimeTone(entry: ModelRouteScheduleEntryDto): string {
   return `schedule-detail__runtime--${entry.runtime.state}`
 }
 
-function reasonLabel(entry: ModelRouteScheduleEntryDto): string {
-  if (!entry.reason_code) return ''
-  return props.labels.reasonLabels?.[entry.reason_code] ?? ''
-}
-
 function shareValue(groupID: number, entry: ModelRouteScheduleEntryDto): number {
-  return previewShares.value.get(rowKey(groupID, entry.entry_id)) ?? entry.effective_share
+  return previewShares.value.get(rowKey(groupID, entry.entry_id)) ?? entry.configured_share
 }
 
 function isDraftShare(groupID: number, entry: ModelRouteScheduleEntryDto): boolean {
@@ -503,13 +611,35 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
             class="schedule-row"
             :class="{
               'schedule-row--selected': selectedRow === rowKey(group.group_id, entry.entry_id),
+              'schedule-row--priority-start': isPriorityStart(index),
             }"
             role="row"
             @click="emit('row-change', rowKey(group.group_id, entry.entry_id))"
           >
             <div class="schedule-cell schedule-cell--group" role="cell">
-              <strong>{{ group.group_name }}</strong>
-              <small v-if="reasonLabel(entry)">{{ reasonLabel(entry) }}</small>
+              <RouterLink
+                class="schedule-cell__group-link"
+                :to="groupDetailLocation(group.group_id)"
+                @click.stop
+              >
+                <strong>{{ group.group_name }}</strong>
+              </RouterLink>
+              <div v-if="isFirstGroupRow(index)" class="schedule-cell__group-controls">
+                <AppSwitch
+                  :model-value="groupEnabled(group)"
+                  :disabled="groupTogglePending(group.group_id)"
+                  :label="`${text('toggleEnabled')} ${group.group_name}`"
+                  @click.stop
+                  @update:model-value="toggleGroupEnabled(group, $event)"
+                />
+                <span class="schedule-cell__group-state">
+                  {{ groupEnabled(group) ? text('enabled') : text('disabled') }}
+                </span>
+              </div>
+              <small v-if="isFirstGroupRow(index)" class="schedule-cell__stats">
+                {{ text('calls24h') }}: {{ formatCount(group.request_count) }} ·
+                {{ text('successRate24h') }}: {{ formatRate(group.success_rate) }}
+              </small>
             </div>
             <div class="schedule-cell" role="cell">
               <strong>{{ entry.alias || entry.model_id }}</strong>
@@ -688,6 +818,9 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   font-size: 10px;
   font-weight: 700;
 }
+.schedule-row--priority-start:not(.schedule-row--header) {
+  border-top: 2px solid var(--color-border-strong);
+}
 .schedule-row--selected,
 .schedule-row:not(.schedule-row--header):hover {
   background: var(--color-action-soft);
@@ -707,6 +840,28 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
 .schedule-cell strong {
   color: var(--color-text);
   font-weight: 650;
+}
+.schedule-cell__group-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.schedule-cell__group-link:hover strong {
+  color: var(--color-action);
+}
+.schedule-cell__group-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.schedule-cell__group-state {
+  color: var(--color-text-faint);
+  font-size: 10px;
+}
+.schedule-cell__stats {
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
 }
 .schedule-cell small {
   margin-top: 2px;

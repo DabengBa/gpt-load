@@ -64,10 +64,10 @@ type GroupInspection struct {
 	Included                  bool
 	Routable                  bool
 	Reason                    ReasonCode
-	// EffectiveShare is the entry's expected traffic share inside the P1 tier
-	// (priority 1) under the current snapshot, access key and availability
-	// constraints. Fallback tiers (priority ≥ 2) stay out of the P1
-	// normalization and always carry share 0.
+	// EffectiveShare is the entry's expected traffic share inside the lowest
+	// currently routable priority tier under the current snapshot, access key
+	// and availability constraints. Rows in other tiers or unavailable rows
+	// always carry share 0.
 	EffectiveShare float64
 	Credentials    []CredentialInspection
 }

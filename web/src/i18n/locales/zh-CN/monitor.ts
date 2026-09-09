@@ -597,6 +597,12 @@ export default {
         noEntries: '当前没有条目。',
         unknownReason: '未知路由原因',
         draftPreview: '草稿预览',
+        toggleEnabled: '切换分组启用状态',
+        toggleFailed: '更新分组启用状态失败。',
+        enabled: '已启用',
+        disabled: '已停用',
+        calls24h: '24 小时调用',
+        successRate24h: '成功率',
       },
       reasons: {
         access_key_disabled: '访问密钥已停用',

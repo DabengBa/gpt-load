@@ -178,17 +178,7 @@ async function onRecovered(groupID: number, entryID: string): Promise<void> {
 </script>
 
 <template>
-  <section class="schedule-panel" aria-labelledby="schedule-panel-title">
-    <header class="schedule-panel__heading">
-      <div>
-        <p class="schedule-panel__kicker">{{ text('kicker') }}</p>
-        <h1 id="schedule-panel-title">{{ text('model') }}</h1>
-      </div>
-      <span class="schedule-panel__context-state" :data-ready="Boolean(detailRequest)">
-        {{ detailRequest ? text('contextReady') : text('contextRequired') }}
-      </span>
-    </header>
-
+  <section class="schedule-panel" :aria-label="text('model')">
     <div class="schedule-panel__filters" :aria-label="text('context')">
       <label>
         <span>{{ text('mode') }}</span>
@@ -267,32 +257,9 @@ async function onRecovered(groupID: number, entryID: string): Promise<void> {
   min-width: 0;
   gap: var(--space-4);
 }
-.schedule-panel__heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  border-bottom: 1px solid var(--color-border-subtle);
-  padding-bottom: var(--space-3);
-}
-.schedule-panel__kicker {
-  margin: 0 0 4px;
-  color: var(--color-action);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-}
-.schedule-panel h1 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: var(--text-xl);
-}
-.schedule-panel__context-state {
-  color: var(--color-warning);
-  font-size: var(--text-meta);
-}
-.schedule-panel__context-state[data-ready='true'] {
-  color: var(--color-success);
+:global(.monitor-page.ledger-sheet--padded) {
+  width: min(calc(100% + var(--sheet-padding-inline) * 2), var(--content-max));
+  margin-inline: calc(0px - var(--sheet-padding-inline));
 }
 .schedule-panel__filters {
   display: grid;
@@ -311,11 +278,13 @@ async function onRecovered(groupID: number, entryID: string): Promise<void> {
 .schedule-panel__filters label :deep(.app-select__trigger) {
   width: 100%;
 }
-@media (max-width: 620px) {
-  .schedule-panel__heading {
-    display: grid;
-    align-items: start;
+@media (max-width: 860px) {
+  :global(.monitor-page.ledger-sheet--padded) {
+    width: calc(100% + var(--sheet-padding-inline-compact) * 2);
+    margin-inline: calc(0px - var(--sheet-padding-inline-compact));
   }
+}
+@media (max-width: 620px) {
   .schedule-panel__filters {
     grid-template-columns: 1fr;
   }

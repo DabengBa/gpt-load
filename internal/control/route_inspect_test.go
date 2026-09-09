@@ -140,18 +140,19 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 		t.Fatalf("routable/groups = %t/%d, want routable with 5 entry rows", result.Routable, len(result.Groups))
 	}
 	order := []struct {
-		groupID   uint
-		upstream  string
-		weight    int
-		priority  int
-		fallback  bool
-		wantShare float64
+		groupID        uint
+		upstream       string
+		weight         int
+		priority       int
+		fallback       bool
+		wantShare      float64
+		wantConfigured float64
 	}{
-		{1, "up-a", 30, 1, false, 1800.0 / 8800.0},
-		{1, "up-b", 50, 1, false, 3000.0 / 8800.0},
-		{2, "up-b", 100, 1, false, 3000.0 / 8800.0},
-		{3, "up-d", 100, 1, false, 1000.0 / 8800.0},
-		{1, "up-c", 20, 2, true, 0},
+		{1, "up-a", 30, 1, false, 30.0 / 280.0, 30.0 / 280.0},
+		{1, "up-b", 50, 1, false, 50.0 / 280.0, 50.0 / 280.0},
+		{2, "up-b", 100, 1, false, 100.0 / 280.0, 100.0 / 280.0},
+		{3, "up-d", 100, 1, false, 100.0 / 280.0, 100.0 / 280.0},
+		{1, "up-c", 20, 2, true, 0, 1},
 	}
 	for index, want := range order {
 		row := result.Groups[index]
@@ -161,6 +162,9 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 		}
 		if diff := row.EffectiveShare - want.wantShare; diff < -1e-9 || diff > 1e-9 {
 			t.Fatalf("row %d effective_share = %v, want %v", index, row.EffectiveShare, want.wantShare)
+		}
+		if diff := row.ConfiguredShare - want.wantConfigured; diff < -1e-9 || diff > 1e-9 {
+			t.Fatalf("row %d configured_share = %v, want %v", index, row.ConfiguredShare, want.wantConfigured)
 		}
 		if row.EntryCooldownUntilMS != nil {
 			t.Fatalf("row %d entry cooldown = %v, want nil", index, row.EntryCooldownUntilMS)
@@ -188,8 +192,11 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 	if cooledRow.EffectiveShare != 0 {
 		t.Fatalf("cooled row share = %v, want 0", cooledRow.EffectiveShare)
 	}
-	// P1 renormalizes over the remaining routable entries: A 1800, G2B 3000, D 1000.
-	remaining := map[int]float64{0: 1800.0 / 5800.0, 2: 3000.0 / 5800.0, 3: 1000.0 / 5800.0}
+	if diff := cooledRow.ConfiguredShare - 50.0/280.0; diff < -1e-9 || diff > 1e-9 {
+		t.Fatalf("cooled row configured_share = %v, want %v", cooledRow.ConfiguredShare, 50.0/280.0)
+	}
+	// P1 renormalizes over the remaining routable entries: A 30, G2B 100, D 100.
+	remaining := map[int]float64{0: 30.0 / 230.0, 2: 100.0 / 230.0, 3: 100.0 / 230.0}
 	for index, want := range remaining {
 		if diff := cooled.Groups[index].EffectiveShare - want; diff < -1e-9 || diff > 1e-9 {
 			t.Fatalf("row %d share after cooldown = %v, want %v", index, cooled.Groups[index].EffectiveShare, want)
@@ -220,6 +227,26 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 	for index := range allP1Cooled.Groups[:4] {
 		if allP1Cooled.Groups[index].EffectiveShare != 0 {
 			t.Fatalf("P1 row %d share with all P1 cooled = %v, want 0", index, allP1Cooled.Groups[index].EffectiveShare)
+		}
+	}
+	if allP1Cooled.Groups[4].ConfiguredShare != 1 {
+		t.Fatalf("P2 configured_share with all P1 cooled = %v, want 1", allP1Cooled.Groups[4].ConfiguredShare)
+	}
+}
+
+func TestConfiguredEntrySharesNormalizeEachPriorityIncludingUnavailableAndZeroWeight(t *testing.T) {
+	groups := []scheduler.GroupInspection{
+		{Priority: 1, EntryWeight: 25, Routable: false},
+		{Priority: 1, EntryWeight: 75, Routable: true},
+		{Priority: 2, EntryWeight: 40, Routable: false},
+		{Priority: 2, EntryWeight: 0, Routable: true},
+		{Priority: 3, EntryWeight: 0, Routable: false},
+	}
+	got := configuredEntryShares(groups)
+	want := []float64{0.25, 0.75, 1, 0, 0}
+	for index := range want {
+		if diff := got[index] - want[index]; diff < -1e-9 || diff > 1e-9 {
+			t.Fatalf("configured share %d = %v, want %v", index, got[index], want[index])
 		}
 	}
 }

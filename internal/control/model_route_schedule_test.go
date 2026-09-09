@@ -5,6 +5,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/protocol"
+	"gpt-load/internal/requestlog"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
@@ -337,6 +339,37 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 		entryA.Runtime.CooldownUntilMS != nil || entryA.Runtime.FailureCount != 0 {
 		t.Fatalf("entry up-a runtime = %#v", entryA.Runtime)
 	}
+	if first.Enabled != true || second.Enabled != true {
+		t.Fatalf("group enabled state = %v/%v, want true/true", first.Enabled, second.Enabled)
+	}
+
+	// Effective shares are normalized only among routable entries in the
+	// currently active priority tier.
+	shareTotal := first.Entries[0].EffectiveShare + first.Entries[1].EffectiveShare +
+		first.Entries[2].EffectiveShare + second.Entries[0].EffectiveShare
+	if first.Entries[0].EffectiveShare <= 0 || first.Entries[1].EffectiveShare <= 0 ||
+		second.Entries[0].EffectiveShare <= 0 || first.Entries[2].EffectiveShare != 0 ||
+		shareTotal < 1-1e-9 || shareTotal > 1+1e-9 {
+		t.Fatalf("same-priority effective shares = %v/%v/%v/%v, total=%v",
+			first.Entries[0].EffectiveShare, first.Entries[1].EffectiveShare,
+			first.Entries[2].EffectiveShare, second.Entries[0].EffectiveShare, shareTotal)
+	}
+
+	configured := []struct {
+		name string
+		got  float64
+		want float64
+	}{
+		{"up-a", first.Entries[0].ConfiguredShare, 30.0 / 180.0},
+		{"up-b", first.Entries[1].ConfiguredShare, 50.0 / 180.0},
+		{"two/up-b", second.Entries[0].ConfiguredShare, 100.0 / 180.0},
+		{"up-c", first.Entries[2].ConfiguredShare, 1},
+	}
+	for _, test := range configured {
+		if diff := test.got - test.want; diff < -1e-9 || diff > 1e-9 {
+			t.Fatalf("entry %s configured_share = %v, want %v", test.name, test.got, test.want)
+		}
+	}
 
 	entryC := first.Entries[2]
 	if entryC.EntryID != scheduleEntryOneC || !entryC.Fallback ||
@@ -396,6 +429,9 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 		t.Fatalf("two/up-b runtime after blacklist = %#v", blacklisted.Runtime)
 	}
 	assertScheduleReason(t, blacklisted.ReasonCode, scheduler.ReasonEntryBlacklisted)
+	if cooled.ConfiguredShare != 50.0/180.0 || blacklisted.ConfiguredShare != 100.0/180.0 {
+		t.Fatalf("unavailable configured shares = %v/%v, want %v/%v", cooled.ConfiguredShare, blacklisted.ConfiguredShare, 50.0/180.0, 100.0/180.0)
+	}
 }
 
 func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
@@ -446,6 +482,63 @@ func assertScheduleReason(
 	if got == nil || *got != want {
 		t.Fatalf("reason = %v, want %q", got, want)
 	}
+}
+func TestModelRouteScheduleDetailReturnsGroupStateAndRollingUsage(t *testing.T) {
+	t.Parallel()
+	scenario := newScheduleTestScenario(t)
+	scenario.fixture.service.requestLogs = &scheduleUsageReader{usage: map[uint]requestlog.GroupUsage{
+		1: {RequestCount: 8, SuccessCount: 6},
+		2: {RequestCount: 4, SuccessCount: 4},
+	}}
+
+	path := fmt.Sprintf(
+		"/api/model-route/schedule/detail?external_model=pub&protocol=openai-completions&access_key_id=%d",
+		scenario.accessKeyID,
+	)
+	recorder := scenario.perform(http.MethodGet, path, "", scenario.authKey)
+	var result modelRouteScheduleDetailResponse
+	decodeScheduleSuccess(t, recorder, &result)
+	if len(result.Groups) != 2 {
+		t.Fatalf("groups = %#v, want 2", result.Groups)
+	}
+	if result.Groups[0].Enabled != true || result.Groups[0].RequestCount != 8 ||
+		result.Groups[0].SuccessRate != 0.75 {
+		t.Fatalf("group one state/usage = %#v", result.Groups[0])
+	}
+	if result.Groups[1].Enabled != true || result.Groups[1].RequestCount != 4 ||
+		result.Groups[1].SuccessRate != 1 {
+		t.Fatalf("group two state/usage = %#v", result.Groups[1])
+	}
+
+	if _, err := scenario.fixture.service.UpdateGroupSettings(t.Context(), 1, GroupSettingsUpdateRequest{
+		Enabled: optionalField[bool]{Set: true, Value: false},
+	}); err != nil {
+		t.Fatalf("disable group: %v", err)
+	}
+	recorder = scenario.perform(http.MethodGet, path, "", scenario.authKey)
+	decodeScheduleSuccess(t, recorder, &result)
+	if result.Groups[0].Enabled {
+		t.Fatalf("group one enabled = true after safe settings update")
+	}
+}
+
+type scheduleUsageReader struct {
+	usage map[uint]requestlog.GroupUsage
+}
+
+func (reader *scheduleUsageReader) List(context.Context, requestlog.ListQuery) (requestlog.Page, error) {
+	return requestlog.Page{}, nil
+}
+
+func (reader *scheduleUsageReader) Get(context.Context, string) (requestlog.Record, error) {
+	return requestlog.Record{}, nil
+}
+
+func (reader *scheduleUsageReader) QueryGroupUsage(
+	context.Context,
+	requestlog.GroupUsageQuery,
+) (map[uint]requestlog.GroupUsage, error) {
+	return reader.usage, nil
 }
 
 func TestModelRouteScheduleDetailResolvesProtocolAndOperationContext(t *testing.T) {

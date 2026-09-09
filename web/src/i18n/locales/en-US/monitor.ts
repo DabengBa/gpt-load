@@ -619,6 +619,12 @@ export default {
         noEntries: 'No entries are available.',
         unknownReason: 'Unknown route reason',
         draftPreview: 'Draft preview',
+        toggleEnabled: 'Toggle Group enabled state',
+        toggleFailed: 'Unable to update Group enabled state.',
+        enabled: 'Enabled',
+        disabled: 'Disabled',
+        calls24h: '24h calls',
+        successRate24h: 'Success rate',
       },
       reasons: {
         access_key_disabled: 'Access key is disabled',

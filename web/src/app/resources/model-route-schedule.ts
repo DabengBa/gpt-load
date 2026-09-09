@@ -81,6 +81,7 @@ export interface ModelRouteScheduleEntryDto {
   included: boolean
   routable: boolean
   reason_code: RouteInspectReasonCode | null
+  configured_share: number
   effective_share: number
   credentials: RouteInspectCredentialDto[]
 }
@@ -89,6 +90,9 @@ export interface ModelRouteScheduleGroupDto {
   group_id: number
   group_name: string
   channel_id: string
+  enabled: boolean
+  request_count: number
+  success_rate: number
   entries: ModelRouteScheduleEntryDto[]
 }
 
@@ -178,7 +182,15 @@ const detailFields = [
   'reason_code',
   'groups',
 ] as const
-const groupFields = ['group_id', 'group_name', 'channel_id', 'entries'] as const
+const groupFields = [
+  'group_id',
+  'group_name',
+  'channel_id',
+  'enabled',
+  'request_count',
+  'success_rate',
+  'entries',
+] as const
 const entryFields = [
   'entry_id',
   'model_id',
@@ -191,6 +203,7 @@ const entryFields = [
   'included',
   'routable',
   'reason_code',
+  'configured_share',
   'effective_share',
   'credentials',
 ] as const
@@ -304,6 +317,7 @@ function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleE
     included: projectBoolean(record.included),
     routable: projectBoolean(record.routable),
     reason_code: projectReason(record.reason_code),
+    configured_share: projectFiniteNumber(record.configured_share, { minimum: 0, maximum: 1 }),
     effective_share: projectFiniteNumber(record.effective_share, { minimum: 0, maximum: 1 }),
     credentials: projectArray(record.credentials, projectCredential),
   }
@@ -312,10 +326,16 @@ function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleE
 function projectGroup(value: unknown, observedAtMS: number): ModelRouteScheduleGroupDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, groupFields)
+  const requestCount = projectSafeInteger(record.request_count, { minimum: 0 })
+  const successRate = projectFiniteNumber(record.success_rate, { minimum: 0, maximum: 1 })
+  if (requestCount === 0 && successRate !== 0) invalidResponse()
   return {
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
     group_name: projectNonBlankString(record.group_name),
     channel_id: projectNonBlankString(record.channel_id),
+    enabled: projectBoolean(record.enabled),
+    request_count: requestCount,
+    success_rate: successRate,
     entries: projectArray(record.entries, (entry) => projectEntry(entry, observedAtMS)),
   }
 }
@@ -367,6 +387,24 @@ export function projectModelRouteScheduleDetail(value: unknown): ModelRouteSched
   assertNoSecretLikeFields(record, detailFields)
   const observedAtMS = projectEpochMilliseconds(record.observed_at_ms)
   const groups = projectArray(record.groups, (group) => projectGroup(group, observedAtMS))
+  const configuredSharesByPriority = new Map<number, number>()
+  for (const group of groups) {
+    for (const entry of group.entries) {
+      configuredSharesByPriority.set(
+        entry.priority,
+        (configuredSharesByPriority.get(entry.priority) ?? 0) + entry.configured_share,
+      )
+    }
+  }
+  for (const total of configuredSharesByPriority.values()) {
+    if (total > 0 && Math.abs(total - 1) > 1e-9) invalidResponse()
+  }
+
+  const positiveShares = groups.flatMap(({ entries }) =>
+    entries.map(({ effective_share: share }) => share).filter((share) => share > 0),
+  )
+  const shareTotal = positiveShares.reduce((total, share) => total + share, 0)
+  if (positiveShares.length > 0 && Math.abs(shareTotal - 1) > 1e-9) invalidResponse()
   const entryKeys = groups.flatMap(({ group_id: groupID, entries }) =>
     entries.map(({ entry_id: entryID }) => `${groupID}\u0000${entryID}`),
   )

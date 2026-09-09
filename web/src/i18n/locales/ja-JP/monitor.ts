@@ -617,6 +617,12 @@ export default {
         noEntries: 'エントリがありません。',
         unknownReason: '不明なルート理由',
         draftPreview: 'ドラフトプレビュー',
+        toggleEnabled: 'グループの有効状態を切り替え',
+        toggleFailed: 'グループの有効状態を更新できません。',
+        enabled: '有効',
+        disabled: '無効',
+        calls24h: '24 時間の呼び出し',
+        successRate24h: '成功率',
       },
       reasons: {
         access_key_disabled: 'アクセスキーは無効です',
