@@ -313,4 +313,12 @@
 - L3 专题重做：`33fb54bf` + `175949e2`、`6da82242`、`96d3e0d5`、`d4699dd2`。
 - 当前不建议原样接入：`e888fe60`、`9cb3f986`、`e0bfa07e`、`a4255546`。
 
+## 运行与部署验证
+
+- 远端 `vps-kl:/opt/gpt-load` 已运行 `gpt-load:dev-3b528e28`，与合并后的 `dev@3b528e28` 一致；容器状态为 `running/healthy`，重启次数为 0，未重复切换现有持久卷。
+- Docker Compose 使用 `gpt-load_gpt-load-data` 命名卷；数据库、WAL、`auth.key`、`encryption.key` 和 Models.dev catalog 均存在，数据库/WAL 在验证期间持续写入。
+- `https://gptl.tanyaleoallen.cloud/health` 返回 HTTP 200，body 为 `{"status":"ok","version":"dev-3b528e28"}`；未授权管理 API 返回 HTTP 401。
+- 使用管理员会话实际打开分组列表、分组详情的凭据管理区域和 `/monitor?tab=schedule`；页面数据正常渲染，浏览器捕获的相关请求无 4xx/5xx。
+- 远端浏览器截图已写入 `/tmp/gpt-load-remote-groups.webp`、`/tmp/gpt-load-remote-group-detail.webp` 和 `/tmp/gpt-load-remote-schedule.webp`，均为有效 WebP 文件。
+
 本 worktree 当前包含基于 `dev` 的 L1 选择性移植、L2 选择性移植过程和本分析文件，未执行整条 `origin/main` 合并。
