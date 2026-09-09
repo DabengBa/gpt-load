@@ -134,12 +134,7 @@ func (a *Adapter) Execute(ctx context.Context, spec execution.AttemptSpec) (resu
 	}
 	if validator, ok := provider.(providerRequestValidator); ok {
 		if err := validator.ValidateRequest(request); err != nil {
-			return unaryNotSent(
-				execution.ErrorKindInvalidRequest,
-				"subscription request input is not supported",
-				"unsupported_subscription_input",
-				err,
-			)
+			return execution.AttemptResult{DispatchState: execution.DispatchNotSent, Error: requestValidationEvidence(err)}
 		}
 	}
 	if countTokensOperation(spec.Operation) {
@@ -239,11 +234,16 @@ func unaryProviderSuccess(
 			StatusCode: http.StatusOK, Header: headers, Body: body,
 		}
 	}
+	observedUsage := responseUsage(spec, body)
+	if response.Usage != nil {
+		cloned := response.Usage.Clone()
+		observedUsage = &cloned
+	}
 	return execution.AttemptResult{
 		DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
 		UpstreamProtocol: effectiveUpstreamProtocol(provider, response.UpstreamProtocol), AppliedReasoning: appliedReasoning(response.AppliedReasoningEffort), StatusCode: http.StatusOK,
 		Header: headers, Body: body, Model: responseModel(body, spec.UpstreamModel),
-		UpstreamRequestID: upstreamRequestID(headers), Usage: responseUsage(spec, body),
+		UpstreamRequestID: upstreamRequestID(headers), Usage: observedUsage,
 	}
 }
 
@@ -296,7 +296,7 @@ func (a *Adapter) ExecuteStream(
 	}
 	if validator, ok := provider.(providerRequestValidator); ok {
 		if err := validator.ValidateRequest(request); err != nil {
-			return streamNotSent(execution.ErrorKindInvalidRequest, "subscription request input is not supported", "unsupported_subscription_input")
+			return execution.StreamResult{DispatchState: execution.DispatchNotSent, Error: requestValidationEvidence(err)}
 		}
 	}
 	preparedCredential, evidence := a.credentials.Prepare(ctx, channel.ID(spec.ChannelID), spec.Credential, spec.ForceCredentialRefresh)
@@ -547,7 +547,8 @@ func formatFor(clientProtocol protocol.Protocol) string {
 }
 
 func canonicalCPAImagesRequestPath(spec execution.AttemptSpec) (string, error) {
-	if spec.ClientProtocol != protocol.OpenAIImages || spec.RouteMode != execution.RouteNative ||
+	convertedGeneration := spec.RouteMode == execution.RouteConverted && spec.Operation == execution.OperationImagesGenerate
+	if spec.ClientProtocol != protocol.OpenAIImages || (spec.RouteMode != execution.RouteNative && !convertedGeneration) ||
 		spec.Method != http.MethodPost {
 		return "", fmt.Errorf("unsupported Images route tuple")
 	}
@@ -570,7 +571,9 @@ func normalizeCPAImagesAttemptResult(spec execution.AttemptSpec, result *executi
 	if result == nil || spec.ClientProtocol != protocol.OpenAIImages {
 		return
 	}
-	result.Usage = nil
+	if spec.RouteMode != execution.RouteConverted {
+		result.Usage = nil
+	}
 	if responseModel(result.Body, "") == "" {
 		result.Model = ""
 	}
@@ -768,6 +771,14 @@ func modelAttemptPreparationEvidence(evidence *execution.ErrorEvidence) *executi
 	projected := evidence.Clone()
 	projected.StatusCode = 0
 	return &projected
+}
+
+func requestValidationEvidence(err error) *execution.ErrorEvidence {
+	var classified interface{ ConversionCode() string }
+	if errors.As(err, &classified) {
+		return notSentEvidence(execution.ErrorKindConversionUnsupported, "subscription request conversion is not supported", classified.ConversionCode())
+	}
+	return notSentEvidence(execution.ErrorKindInvalidRequest, "subscription request input is not supported", "unsupported_subscription_input")
 }
 
 func notSentEvidence(kind execution.ErrorKind, summary, code string) *execution.ErrorEvidence {
