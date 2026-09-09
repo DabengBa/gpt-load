@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -64,14 +63,12 @@ func TestCacheRoundTripStoresRawJSONValueAndReparsesSnapshot(t *testing.T) {
 		reloadedMetadata.Limits.Context == nil || *reloadedMetadata.Limits.Context != 1_000_000 {
 		t.Fatalf("caller mutation changed cached metadata: %#v", reloadedMetadata)
 	}
-	if runtime.GOOS != "windows" {
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("Stat(cache) error = %v", err)
-		}
-		if info.Mode().Perm() != 0o600 {
-			t.Fatalf("cache mode = %o, want 600", info.Mode().Perm())
-		}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(cache) error = %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("cache mode = %o, want 600", info.Mode().Perm())
 	}
 }
 

@@ -241,32 +241,25 @@ func TestBranchAndReleaseWorkflowsRunRaceInParallelGates(t *testing.T) {
 	}
 }
 
-func TestWindowsCIExecutesManagedStorageACLTests(t *testing.T) {
+func TestCIIsLinuxOnly(t *testing.T) {
 	content := readRepositoryFile(t, ".github/workflows/ci.yml")
-	job := workflowJobBlock(t, content, "windows-encryption-acl")
-	if count := strings.Count(job, "runs-on: windows-2025"); count != 1 {
-		t.Fatalf("Windows ACL job contains runs-on declaration %d times, want exactly once", count)
-	}
-	assertWorkflowGateStep(
-		t,
-		job,
-		"Test Windows secure file and storage ACLs",
-		"go test -v -count=1 ./internal/platform/securefile ./internal/platform/encryption ./internal/storage",
-	)
-	assertWorkflowGateStep(
-		t,
-		job,
-		"Test Windows service lifecycle",
-		"go test -v -count=1 .",
-	)
-	serviceSmoke := workflowStepBlock(t, job, "Smoke Windows service lifecycle")
-	for _, required := range []string{
-		"go build",
-		".github/scripts/ci-windows-service-smoke.ps1",
+	for _, forbidden := range []string{
+		"windows-2025",
+		"macos-",
+		"darwin",
+		"pwsh",
+		".ps1",
+		"installer",
 	} {
-		if !strings.Contains(serviceSmoke, required) {
-			t.Fatalf("Windows service smoke does not contain %q:\n%s", required, serviceSmoke)
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("Linux-only CI still contains platform-specific contract %q", forbidden)
 		}
+	}
+	if !strings.Contains(content, "runs-on: ubuntu-24.04") {
+		t.Fatal("Linux-only CI has no Ubuntu runner")
+	}
+	if !strings.Contains(workflowJobBlock(t, content, "test"), "go build -o gpt-load .") {
+		t.Fatal("Linux CI does not build the backend")
 	}
 }
 
@@ -291,7 +284,7 @@ func TestWorkflowsPinExternalActionsAndHostedRunners(t *testing.T) {
 	}
 
 	ci := readRepositoryFile(t, ".github/workflows/ci.yml")
-	for _, required := range []string{"runs-on: ubuntu-24.04", "runs-on: windows-2025"} {
+	for _, required := range []string{"runs-on: ubuntu-24.04"} {
 		if !strings.Contains(ci, required) {
 			t.Errorf("branch CI does not contain %q", required)
 		}
@@ -752,7 +745,7 @@ func TestReleaseWorkflowDoesNotRequireUntrackedAgentInstructionFiles(t *testing.
 	}
 }
 
-func TestReleaseWorkflowBuildsOneWebDistAndFiveVersionedBinaries(t *testing.T) {
+func TestReleaseWorkflowBuildsOneWebDistAndTwoLinuxVersionedBinaries(t *testing.T) {
 	content := readRepositoryFile(t, ".github/workflows/release.yml")
 	if count := strings.Count(content, "uses: ./.github/actions/web-ci"); count != 1 {
 		t.Fatalf("release workflow invokes web-ci %d times, want exactly once", count)
@@ -769,13 +762,22 @@ func TestReleaseWorkflowBuildsOneWebDistAndFiveVersionedBinaries(t *testing.T) {
 		`gpt-load/internal/platform/version.Version=${{ github.ref_name }}`,
 		"gpt-load-linux-amd64",
 		"gpt-load-linux-arm64",
-		"gpt-load-macos-amd64",
-		"gpt-load-macos-arm64",
-		"gpt-load-windows-amd64.exe",
 		"SHA256SUMS",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("release workflow does not contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"darwin",
+		"macos",
+		"windows",
+		"build-windows-setup",
+		"windows-installer-smoke",
+		".ps1",
+	} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("release workflow retains removed platform contract %q", forbidden)
 		}
 	}
 	for _, forbidden := range []string{"actions/checkout@v6", "actions/setup-go@v6"} {
@@ -1858,101 +1860,46 @@ func TestCommunityTemplatesCaptureVersionCompatibilityAndSecretSafety(t *testing
 	}
 }
 
-func TestReleaseWorkflowVerifiesDownloadedNativeChecksumsAndGeneratedKeys(t *testing.T) {
+func TestReleaseWorkflowVerifiesDownloadedLinuxChecksumsAndGeneratedKeys(t *testing.T) {
 	content := readRepositoryFile(t, ".github/workflows/release.yml")
 	nativeJob := workflowJobBlock(t, content, "native-artifact-smoke")
-	for _, scriptPath := range []string{
-		".github/scripts/release-native-smoke.sh",
-		".github/scripts/release-native-smoke.ps1",
-	} {
-		if !strings.Contains(nativeJob, scriptPath) {
-			t.Fatalf("native smoke does not invoke %s:\n%s", scriptPath, nativeJob)
-		}
+	if !strings.Contains(nativeJob, ".github/scripts/release-native-smoke.sh") {
+		t.Fatalf("Linux native smoke does not invoke its script:\n%s", nativeJob)
 	}
-	nativeShellImplementation := readRepositoryFile(t, ".github/scripts/release-native-smoke.sh")
-	nativePowerShellImplementation := readRepositoryFile(t, ".github/scripts/release-native-smoke.ps1")
-	nativeImplementation := nativeJob + nativeShellImplementation + nativePowerShellImplementation
+	if strings.Contains(nativeJob, ".ps1") || strings.Contains(nativeJob, "pwsh") {
+		t.Fatalf("Linux native smoke invokes a non-Linux script:\n%s", nativeJob)
+	}
+	nativeImplementation := nativeJob + readRepositoryFile(t, ".github/scripts/release-native-smoke.sh")
 	for _, required := range []string{
 		"name: binary-${{ matrix.filename }}",
 		"name: release-checksums",
 		"SHA256SUMS",
 		"sha256sum",
-		"shasum -a 256",
-		"Get-FileHash",
 		"auth.key",
 		"encryption.key",
-		"AreAccessRulesProtected",
-		"WindowsIdentity]::GetCurrent().User",
-		"CreateProcessW",
-		"CREATE_NEW_PROCESS_GROUP",
-		"GenerateConsoleCtrlEvent",
-		"CTRL_BREAK_EVENT",
-		"GetConsoleCP",
-		"AllocConsole",
-		"ERROR_ACCESS_DENIED",
-		"WaitForSingleObject",
-		"GetExitCodeProcess",
-		"$process.WaitForExit(15000)",
-		"$exitCode = $process.GetExitCode()",
-		"if ($exitCode -ne 0)",
-		"if (-not $process.HasExited)",
-		"$process.Dispose()",
+		"Idempotency-Key",
+		"uuid.uuid4()",
+		"stat -c '%a'",
 	} {
 		if !strings.Contains(nativeImplementation, required) {
-			t.Fatalf("native smoke does not contain %q", required)
+			t.Fatalf("Linux native smoke does not contain %q", required)
 		}
 	}
-	for name, implementation := range map[string]string{
-		"POSIX":   nativeShellImplementation,
-		"Windows": nativePowerShellImplementation,
+	for _, forbidden := range []string{
+		"shasum -a 256",
+		"stat -f",
+		"Get-FileHash",
+		"WindowsIdentity",
+		"CreateProcessW",
+		"powershell",
+		".ps1",
 	} {
-		if !strings.Contains(implementation, "Idempotency-Key") {
-			t.Fatalf("%s native smoke does not send Idempotency-Key", name)
-		}
-		if strings.Contains(implementation, "00000000-0000-4000-8000-") {
-			t.Fatalf("%s native smoke reuses a fixed Idempotency-Key", name)
+		if strings.Contains(nativeImplementation, forbidden) {
+			t.Fatalf("Linux native smoke retains platform fallback %q", forbidden)
 		}
 	}
-	if !strings.Contains(nativeShellImplementation, "uuid.uuid4()") {
-		t.Fatal("POSIX native smoke does not generate a UUIDv4 for its write")
-	}
-	if !strings.Contains(nativePowerShellImplementation, "[guid]::NewGuid()") {
-		t.Fatal("Windows native smoke does not generate a GUID for its write")
-	}
-	if strings.Contains(nativeImplementation, "AUTH_KEY=release-native-smoke") ||
-		strings.Contains(nativeImplementation, `$env:AUTH_KEY = "release-native-smoke"`) {
+	if strings.Contains(nativeImplementation, "AUTH_KEY=release-native-smoke") {
 		t.Fatal("native smoke bypasses generated auth.key with an explicit AUTH_KEY")
-	}
-	if strings.Contains(nativeImplementation, "$process = Start-Process") {
-		t.Fatal("Windows native smoke uses Start-Process without a new console process group")
-	}
-	if strings.Contains(nativeImplementation, "CREATE_NEW_CONSOLE") {
-		t.Fatal("Windows native smoke gives the child a separate console that cannot receive the targeted CTRL_BREAK")
-	}
-	if strings.Contains(nativePowerShellImplementation, "Process.GetProcessById") {
-		t.Fatal("Windows native smoke closes the original process handle and reopens the process by ID")
-	}
-}
-
-func TestWindowsNativeSmokeMatchesManagedStorageACLContract(t *testing.T) {
-	script := readRepositoryFile(t, ".github/scripts/release-native-smoke.ps1")
-	for _, required := range []string{
-		"Assert-CurrentUserOnlyAcl",
-		"[bool]$RequireProtected",
-		"if ($RequireProtected -and -not $acl.AreAccessRulesProtected)",
-		"$_.IsInherited",
-		"managed path DACL is neither protected nor inherited: $Path",
-		"@{ Path = $dataDir; RequireProtected = $true }",
-		"@{ Path = $authFile; RequireProtected = $true }",
-		"@{ Path = $encryptionFile; RequireProtected = $true }",
-		"@{ Path = $databaseFile; RequireProtected = $false }",
-		"@{ Path = $walFile; RequireProtected = $false }",
-		"@{ Path = $shmFile; RequireProtected = $false }",
-		"-RequireProtected $target.RequireProtected",
-	} {
-		if !strings.Contains(script, required) {
-			t.Fatalf("Windows native smoke does not contain %q", required)
-		}
 	}
 }
 
@@ -2134,28 +2081,21 @@ func TestReleaseWorkflowPostPublishVerifiesDraftAssetsAgainstCurrentRun(t *testi
 		}
 	}
 
-	// 已上传的原生产物不再重复跑第二遍五平台运行时 smoke：它们与发布前
+	// 已上传的原生产物不再重复跑第二遍 Linux amd64/arm64 运行时 smoke：它们与发布前
 	// native-artifact-smoke 验证过的字节完全相同，这一点由上面对照当前 run
 	// 可信 SHA256SUMS 的校验保证，重复运行不会产生新信息。
 	if strings.Contains(content, "post-publish-native-smoke") {
 		t.Fatal("release workflow reintroduces the duplicated post-publication native smoke")
 	}
 
-	// 发布前的五平台原生 smoke 仍然是必须的门禁。
+	// 发布前的 Linux amd64/arm64 原生 smoke 仍然是必须的门禁。
 	nativeJob := workflowJobBlock(t, content, "native-artifact-smoke")
 	for _, required := range []string{
 		"ubuntu-24.04",
 		"ubuntu-24.04-arm",
-		"macos-15-intel",
-		"macos-15",
-		"windows-2025",
 		"gpt-load-linux-amd64",
 		"gpt-load-linux-arm64",
-		"gpt-load-macos-amd64",
-		"gpt-load-macos-arm64",
-		"gpt-load-windows-amd64.exe",
 		".github/scripts/release-native-smoke.sh",
-		".github/scripts/release-native-smoke.ps1",
 	} {
 		if !strings.Contains(nativeJob, required) {
 			t.Fatalf("pre-publication native smoke does not contain %q:\n%s", required, nativeJob)
@@ -3020,8 +2960,8 @@ func TestReleaseAssetManifestIsTheSingleSourceOfTruth(t *testing.T) {
 			assets = append(assets, name)
 		}
 	}
-	if len(assets) != 14 {
-		t.Fatalf("release asset manifest lists %d assets, want 14", len(assets))
+	if len(assets) != 9 {
+		t.Fatalf("release asset manifest lists %d assets, want 9", len(assets))
 	}
 	sorted := append([]string(nil), assets...)
 	sort.Strings(sorted)
@@ -3036,7 +2976,6 @@ func TestReleaseAssetManifestIsTheSingleSourceOfTruth(t *testing.T) {
 	// 清单与校验和一律从 .github/release-assets.txt 派生。
 	for _, name := range []string{
 		"Apache-2.0.txt",
-		"Inno-Setup.txt",
 		"MIT.txt",
 		"MPL-2.0.txt",
 		"THIRD_PARTY_NOTICES.md",

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -60,7 +59,7 @@ func TestLoadOrCreateHexUsesRestrictivePlatformPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stat(secure file) error = %v", err)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("secure file permissions = %o, want 600", info.Mode().Perm())
 	}
 }
