@@ -20,7 +20,7 @@ func TestRegistryRejectsConvertedAnthropicZeroOutputBeforeDispatch(t *testing.T)
 		{channel.Gemini, nil},
 		{channel.OpenAI, nil},
 		{channel.OpenAICompatible, json.RawMessage(`{"base_url":"https://upstream.example/v1"}`)},
-		{channel.Codex, json.RawMessage(`{"base_url":"https://chatgpt.com/backend-api/codex"}`)},
+		{channel.Codex, nil},
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%t", target.channelID, stream), func(t *testing.T) {
