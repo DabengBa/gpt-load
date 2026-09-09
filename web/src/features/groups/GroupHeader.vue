@@ -43,7 +43,6 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
         </div>
       </div>
       <div class="group-header__details">
-        <span class="group-header__id">#{{ group.id }}</span>
         <span v-if="group.price_multiplier !== '1'" class="meta-tag">
           {{ t('common.priceMultiplier.value', { value: group.price_multiplier }) }}
         </span>
@@ -109,7 +108,7 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
   margin: 0;
   font-size: clamp(26px, 4vw, 34px);
   font-weight: 650;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
@@ -120,11 +119,6 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
   align-items: center;
   gap: 7px 12px;
   margin-top: 13px;
-}
-.group-header__id {
-  color: var(--color-text-faint);
-  font-family: var(--font-mono);
-  font-size: var(--text-label-xs);
 }
 .group-header .meta-tag {
   display: inline-flex;

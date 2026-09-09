@@ -40,7 +40,7 @@ func TestDiscoveryUsesSingleReadSnapshot(t *testing.T) {
 		group.ID,
 		1,
 		"discovery-key-old",
-		models.CredentialStatusActive,
+		models.CredentialAuthStateReady,
 	)
 	if err := fixture.db.Create(&models.SystemSetting{
 		Key: "header_rules", Value: `{"set":{"X-Version":"old"}}`,
@@ -184,7 +184,7 @@ func TestDiscoveryReleasesReadSnapshotBeforeDecrypt(t *testing.T) {
 		group.ID,
 		1,
 		"release-snapshot-key",
-		models.CredentialStatusActive,
+		models.CredentialAuthStateReady,
 	)
 	decryptStarted := make(chan struct{})
 	releaseDecrypt := make(chan struct{})
@@ -242,9 +242,9 @@ func TestDiscoverGroupModelsUsesDisabledGroupAndActiveCredentialsInIDOrder(t *te
 	group := seedPersistedDiscoveryGroup(t, fixture, false, models.JSON(
 		`{"header_rules":{"set":{"X-Group":"group"},"remove":["X-Remove"]}}`,
 	))
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialStatusActive)
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 2, "key-2", models.CredentialStatusDisabled)
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 3, "key-3", models.CredentialStatusActive)
+	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialAuthStateReady)
+	seedPersistedDiscoveryCredential(t, fixture, group.ID, 2, "key-2", models.CredentialAuthStateReauthorizationRequired)
+	seedPersistedDiscoveryCredential(t, fixture, group.ID, 3, "key-3", models.CredentialAuthStateReady)
 	if err := fixture.db.Create(&models.SystemSetting{
 		Key: "header_rules", Value: `{"set":{"X-System":"system"}}`,
 	}).Error; err != nil {
@@ -313,7 +313,7 @@ func TestDiscoverGroupModelsReturnsNotFoundAndNoActiveUpstreamKey(t *testing.T) 
 	t.Run("no active upstream key", func(t *testing.T) {
 		fixture := newServiceFixture(t)
 		group := seedPersistedDiscoveryGroup(t, fixture, true, models.JSON(`{}`))
-		seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "disabled", models.CredentialStatusDisabled)
+		seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "disabled", models.CredentialAuthStateReauthorizationRequired)
 		_, err := fixture.service.DiscoverGroupModels(t.Context(), group.ID)
 		if !errors.Is(err, app_errors.ErrNoActiveCredential) {
 			t.Fatalf("DiscoverGroupModels() error = %v, want ErrNoActiveCredential", err)
@@ -639,10 +639,10 @@ func TestDiscoverGroupModelsDecryptsEveryKeyBeforeHTTP(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	group := seedPersistedDiscoveryGroup(t, fixture, true, models.JSON(`{}`))
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialStatusActive)
+	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialAuthStateReady)
 	if err := fixture.db.Create(&models.Credential{
 		ID: 3, GroupID: group.ID, Data: "corrupt-second-active-ciphertext",
-		Fingerprint: "corrupt-hash", Status: models.CredentialStatusActive,
+		Fingerprint: "corrupt-hash", AuthState: models.CredentialAuthStateReady,
 	}).Error; err != nil {
 		t.Fatalf("seed corrupt active key: %v", err)
 	}
@@ -908,7 +908,7 @@ func seedPersistedDiscoveryCredential(
 	fixture serviceFixture,
 	groupID, credentialID uint,
 	plaintext string,
-	status models.CredentialStatus,
+	status models.CredentialAuthState,
 ) {
 	t.Helper()
 	canonical := `{"api_key":` + fmt.Sprintf("%q", plaintext) + `}`
@@ -918,7 +918,7 @@ func seedPersistedDiscoveryCredential(
 	}
 	if err := fixture.db.Create(&models.Credential{
 		ID: credentialID, GroupID: groupID, Data: ciphertext,
-		Fingerprint: fixture.encryption.Hash(canonical), Status: status,
+		Fingerprint: fixture.encryption.Hash(canonical), AuthState: status,
 	}).Error; err != nil {
 		t.Fatalf("seed persisted discovery credential: %v", err)
 	}

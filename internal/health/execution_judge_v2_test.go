@@ -223,7 +223,6 @@ func TestJudgeExecutionHandlesCandidatePreparationFacts(t *testing.T) {
 	}{
 		{code: "credential_decrypt_failed", scope: execution.ErrorScopeCredential, effect: EffectNone},
 		{code: "credential_normalization_failed", scope: execution.ErrorScopeCredential, effect: EffectNone},
-		{code: "credential_proxy_prepare_failed", scope: execution.ErrorScopeCredential, effect: EffectNone},
 		{code: "group_proxy_prepare_failed", scope: execution.ErrorScopeGroup, effect: EffectSkipGroup},
 	}
 	for _, test := range tests {

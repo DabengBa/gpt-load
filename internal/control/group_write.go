@@ -536,18 +536,24 @@ func (s *Service) persistCredentials(
 	groupID uint,
 	normalized normalizedCredentials,
 ) (int, int, error) {
-	fingerprints := make([]string, 0, len(normalized.candidates))
-	for _, candidate := range normalized.candidates {
-		fingerprints = append(fingerprints, candidate.fingerprint)
+	if len(normalized.candidates) > 1 {
+		return 0, 0, app_errors.ErrDuplicateCredentialIdentity
 	}
 	var existingRows []models.Credential
-	if err := tx.Where("group_id = ? AND fingerprint IN ?", groupID, fingerprints).
+	if err := tx.Where("group_id = ?", groupID).
 		Find(&existingRows).Error; err != nil {
 		return 0, 0, app_errors.ParseDBError(err)
 	}
 	existingByFingerprint := make(map[string]struct{}, len(existingRows))
 	for _, row := range existingRows {
 		existingByFingerprint[row.Fingerprint] = struct{}{}
+	}
+	if len(existingRows) > 0 {
+		for _, candidate := range normalized.candidates {
+			if _, duplicate := existingByFingerprint[candidate.fingerprint]; !duplicate {
+				return 0, 0, app_errors.ErrDuplicateCredentialIdentity
+			}
+		}
 	}
 
 	nowMS, err := epochms.FromTime(s.now())
@@ -571,8 +577,8 @@ func (s *Service) persistCredentials(
 		row := models.Credential{
 			GroupID: groupID, Data: ciphertext, Fingerprint: candidate.fingerprint,
 			IdentityFingerprint: candidate.fingerprint, SecretVersion: 1,
-			AuthState: models.CredentialAuthStateReady,
-			Status:    models.CredentialStatusActive, CreatedAtMS: nowMS, UpdatedAtMS: nowMS,
+			AuthState:   models.CredentialAuthStateReady,
+			CreatedAtMS: nowMS, UpdatedAtMS: nowMS,
 		}
 		if err := tx.Create(&row).Error; err != nil {
 			return 0, 0, app_errors.ParseDBError(err)

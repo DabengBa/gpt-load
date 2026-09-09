@@ -12,7 +12,6 @@ import type {
   CredentialBatchResultDto,
   CredentialCollectionDto,
   CredentialCollectionFilters,
-  CredentialConfiguredStatus,
   CredentialDailyUsageDto,
   CredentialDetailDto,
   CredentialDownloadAllDto,
@@ -28,7 +27,6 @@ import type {
   CredentialStatus,
   CredentialSummaryDto,
   CredentialTestResultDto,
-  ProxyMutation,
 } from '@/api/control/types'
 import { InvalidResponseError } from '@/api/errors'
 import { controlQueryKeys, normalizeCredentialCollectionFilters } from '@/app/query-keys'
@@ -46,13 +44,11 @@ import {
   projectSafeInteger,
   projectString,
 } from './projector'
-import { projectProxyView } from './proxy'
 
 export type {
   CredentialBatchResultDto,
   CredentialCollectionDto,
   CredentialCollectionFilters,
-  CredentialConfiguredStatus,
   CredentialDailyUsageDto,
   CredentialDetailDto,
   CredentialDownloadAllDto,
@@ -65,19 +61,15 @@ export type {
   CredentialTestOutcome,
   CredentialTestReason,
   CredentialTestResultDto,
-  CredentialWeightMode,
 } from '@/api/control/types'
 
 export interface CredentialPatch {
-  status?: CredentialConfiguredStatus
-  weight_manual?: number | null
-  proxy?: ProxyMutation
+  credentials?: string
 }
 
 export interface CredentialBatchRequest {
-  action: 'enable' | 'disable' | 'delete'
-  credential_ids?: number[]
-  scope?: 'all'
+  action: 'delete'
+  credential_ids: number[]
 }
 
 const credentialCollectionFields = [
@@ -100,13 +92,10 @@ const credentialItemFields = [
   'secret_version',
   'mask',
   'account',
+  'effective_status',
   'auth_state',
   'auth_error_code',
   'observation',
-  'configured_status',
-  'effective_status',
-  'weight_mode',
-  'weight',
   'recent_success_count',
   'recent_failure_count',
   'consecutive_failure_count',
@@ -116,7 +105,6 @@ const credentialItemFields = [
   'last_used_at_ms',
   'daily_usage',
   'recovery',
-  'proxy',
 ] as const
 const credentialDetailFields = ['credential', 'observation'] as const
 const credentialDownloadFields = ['filename', 'credential'] as const
@@ -149,9 +137,7 @@ const inconclusiveCredentialTestReasons = [
   'probe_incompatible',
   'unknown',
 ] as const
-const configuredStatuses = ['active', 'disabled'] as const
 const effectiveStatuses = ['available', 'cooldown', 'blacklisted', 'disabled'] as const
-const weightModes = ['auto', 'manual'] as const
 const recoveryModes = ['none', 'cooldown', 'probe', 'manual'] as const
 const failureCategories = [
   'ok',
@@ -541,17 +527,10 @@ export function projectCredentialItem(value: unknown): CredentialItemDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, credentialItemFields)
   const connectionType = projectEnum(record.connection_type, connectionTypes)
-  const configuredStatus = projectEnum(record.configured_status, configuredStatuses)
   const effectiveStatus = projectEnum(record.effective_status, effectiveStatuses)
-  const weightMode = projectEnum(record.weight_mode, weightModes)
-  const weight =
-    record.weight === null ? null : projectSafeInteger(record.weight, { minimum: 1, maximum: 100 })
   const cooldownUntil = projectNullableEpochMilliseconds(record.cooldown_until_ms)
   const recovery = projectRecovery(record.recovery)
   if (
-    // 分组停用或手动权重为 0 时，active 凭据的运行时状态也会是 disabled。
-    (configuredStatus === 'disabled' && effectiveStatus !== 'disabled') ||
-    (effectiveStatus === 'available') !== (weight !== null) ||
     (effectiveStatus === 'cooldown') !== (cooldownUntil !== null) ||
     (recovery.mode === 'cooldown') !== (effectiveStatus === 'cooldown')
   ) {
@@ -570,10 +549,7 @@ export function projectCredentialItem(value: unknown): CredentialItemDto {
     ...(record.observation === undefined
       ? {}
       : { observation: projectObservation(record.observation) }),
-    configured_status: configuredStatus,
     effective_status: effectiveStatus,
-    weight_mode: weightMode,
-    weight,
     recent_success_count: projectSafeInteger(record.recent_success_count, { minimum: 0 }),
     recent_failure_count: projectSafeInteger(record.recent_failure_count, { minimum: 0 }),
     consecutive_failure_count: projectSafeInteger(record.consecutive_failure_count, { minimum: 0 }),
@@ -590,7 +566,6 @@ export function projectCredentialItem(value: unknown): CredentialItemDto {
       ? {}
       : { daily_usage: projectDailyUsage(record.daily_usage) }),
     recovery,
-    proxy: projectProxyView(record.proxy),
   }
 }
 
@@ -662,33 +637,14 @@ export function projectCredentialCollection(value: unknown): CredentialCollectio
 }
 
 function normalizePatch(patch: CredentialPatch): CredentialPatch {
-  const keys = Object.keys(patch)
   if (
-    keys.length === 0 ||
-    keys.some((key) => key !== 'status' && key !== 'weight_manual' && key !== 'proxy')
+    Object.keys(patch).length !== 1 ||
+    typeof patch.credentials !== 'string' ||
+    patch.credentials.trim() === ''
   ) {
     throw new Error('INVALID_CREDENTIAL_PATCH')
   }
-  const body: CredentialPatch = {}
-  if (Object.prototype.hasOwnProperty.call(patch, 'status')) {
-    body.status = projectEnum(patch.status, configuredStatuses)
-  }
-  if (Object.prototype.hasOwnProperty.call(patch, 'weight_manual')) {
-    const weight = patch.weight_manual
-    if (
-      weight === undefined ||
-      (weight !== null && (!Number.isInteger(weight) || weight < 1 || weight > 100))
-    ) {
-      throw new Error('INVALID_CREDENTIAL_WEIGHT')
-    }
-    body.weight_manual = weight
-  }
-  if (Object.prototype.hasOwnProperty.call(patch, 'proxy')) {
-    const proxy = patch.proxy
-    if (proxy === undefined) throw new Error('INVALID_CREDENTIAL_PROXY')
-    body.proxy = proxy
-  }
-  return body
+  return { credentials: patch.credentials }
 }
 
 function credentialCollectionURL(
@@ -1004,17 +960,14 @@ export async function batchCredentials(
   body: CredentialBatchRequest,
   signal?: AbortSignal,
 ): Promise<CredentialBatchResultDto> {
-  const ids = body.credential_ids ?? []
-  const all = body.scope === 'all'
+  const ids = body.credential_ids
   if (
-    !['enable', 'disable', 'delete'].includes(body.action) ||
-    (all
-      ? body.action === 'delete' || body.credential_ids !== undefined
-      : body.scope !== undefined ||
-        ids.length < 1 ||
-        ids.length > 100 ||
-        ids.some((id) => !Number.isSafeInteger(id) || id < 1) ||
-        new Set(ids).size !== ids.length)
+    body.action !== 'delete' ||
+    !Array.isArray(ids) ||
+    ids.length < 1 ||
+    ids.length > 100 ||
+    ids.some((id) => !Number.isSafeInteger(id) || id < 1) ||
+    new Set(ids).size !== ids.length
   ) {
     throw new Error('INVALID_CREDENTIAL_BATCH')
   }
@@ -1031,7 +984,7 @@ export async function batchCredentials(
   )
   if (
     new Set(affectedCredentialIDs).size !== affectedCredentialIDs.length ||
-    (!all && affectedCredentialIDs.length !== ids.length)
+    affectedCredentialIDs.length !== ids.length
   )
     invalidResponse()
   return {
@@ -1191,22 +1144,10 @@ export async function cacheCredentialItem(
   }
 }
 
-/** Marks only this Group's credential pages stale without scheduling an automatic request. */
-export async function invalidateCredentialCollections(
-  queryClient: QueryClient,
-  groupId: number,
-): Promise<void> {
-  await queryClient.invalidateQueries({
-    queryKey: controlQueryKeys.groups.credentialsAll(groupId),
-    refetchType: 'none',
-  })
-}
-
 /** A batch result carries the authoritative aggregate, so cached pages can be reconciled deterministically. */
 export async function cacheCredentialBatch(
   queryClient: QueryClient,
   groupId: number,
-  action: CredentialBatchRequest['action'],
   result: CredentialBatchResultDto,
 ): Promise<void> {
   const affected = new Set(result.affected_credential_ids)
@@ -1220,17 +1161,6 @@ export async function cacheCredentialBatch(
       ? []
       : [{ queryKey: query.queryKey, collection, filters }]
   })
-  if (action !== 'delete') {
-    for (const { queryKey, collection } of pages) {
-      queryClient.setQueryData<CredentialCollectionDto>(queryKey, {
-        ...collection,
-        summary: result.summary,
-      })
-      await invalidateExactCredentialPage(queryClient, queryKey)
-    }
-    return
-  }
-
   const pageSets = new Map<string, MaterializedCredentialPage[]>()
   for (const page of pages) {
     const id = credentialFilterSetID(page.filters)

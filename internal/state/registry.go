@@ -11,13 +11,6 @@ import (
 	providerobservation "gpt-load/internal/subscription/providers/observation"
 )
 
-type CredentialStatus string
-
-const (
-	CredentialStatusActive   CredentialStatus = "active"
-	CredentialStatusDisabled CredentialStatus = "disabled"
-)
-
 type CredentialAuthState string
 
 const (
@@ -33,17 +26,12 @@ type CredentialEntry struct {
 	Version            uint64
 	IdentityGeneration uint64
 	Fingerprint        string
-	WeightManual       *int
-	WeightAuto         int
-	Status             CredentialStatus
 	AuthState          CredentialAuthState
 	CooldownUntil      time.Time
 	Blacklisted        bool
 	FailureCount       int
 	FailureGeneration  uint64
 	EncryptedValue     string
-	EncryptedProxy     string
-	ProxyFingerprint   string
 	quotaRemaining     *float64
 	quotaResetAt       time.Time
 }
@@ -53,8 +41,6 @@ type CredentialMeta struct {
 	GroupID            uint
 	Version            uint64
 	IdentityGeneration uint64
-	WeightManual       *int
-	WeightAuto         int
 }
 
 type CredentialRef struct {
@@ -64,8 +50,6 @@ type CredentialRef struct {
 	IdentityGeneration uint64
 	Fingerprint        string
 	EncryptedValue     string
-	EncryptedProxy     string
-	ProxyFingerprint   string
 	FailureGeneration  uint64
 }
 
@@ -138,6 +122,7 @@ func NewCredentialRegistry() *CredentialRegistry {
 
 func ValidateCredentialEntries(entries []CredentialEntry) error {
 	seen := make(map[uint]struct{}, len(entries))
+	groups := make(map[uint]struct{}, len(entries))
 	for _, entry := range entries {
 		if entry.ID == 0 {
 			return fmt.Errorf("credential id is required")
@@ -145,23 +130,15 @@ func ValidateCredentialEntries(entries []CredentialEntry) error {
 		if entry.GroupID == 0 {
 			return fmt.Errorf("credential %d group id is required", entry.ID)
 		}
-		if entry.Status != CredentialStatusActive && entry.Status != CredentialStatusDisabled {
-			return fmt.Errorf("credential %d has invalid status %q", entry.ID, entry.Status)
+		if _, exists := groups[entry.GroupID]; exists {
+			return fmt.Errorf("group %d must have at most one credential", entry.GroupID)
 		}
+		groups[entry.GroupID] = struct{}{}
 		if !entry.AuthState.valid() {
 			return fmt.Errorf("credential %d has invalid auth state %q", entry.ID, entry.AuthState)
 		}
-		if err := validateManualWeight(fmt.Sprintf("credential %d", entry.ID), entry.WeightManual); err != nil {
-			return err
-		}
-		if entry.WeightAuto < 0 || entry.WeightAuto > MaxWeight {
-			return fmt.Errorf("credential %d auto weight must be between 0 and %d", entry.ID, MaxWeight)
-		}
 		if entry.EncryptedValue == "" {
 			return fmt.Errorf("credential %d encrypted value is required", entry.ID)
-		}
-		if (entry.EncryptedProxy == "") != (entry.ProxyFingerprint == "") {
-			return fmt.Errorf("credential %d proxy identity is incomplete", entry.ID)
 		}
 		if entry.Version == 0 {
 			return fmt.Errorf("credential %d version is required", entry.ID)
@@ -207,6 +184,9 @@ func (r *CredentialRegistry) ApplyCredentialImport(groupID uint, entries []Crede
 	if groupID == 0 {
 		return fmt.Errorf("group id is required")
 	}
+	if len(entries) != 1 {
+		return fmt.Errorf("group %d must have exactly one credential", groupID)
+	}
 	if err := ValidateCredentialEntries(entries); err != nil {
 		return err
 	}
@@ -221,6 +201,11 @@ func (r *CredentialRegistry) ApplyCredentialImport(groupID uint, entries []Crede
 	for _, entry := range entries {
 		if existingGroupID, exists := r.credentialGroups[entry.ID]; exists && existingGroupID != groupID {
 			return fmt.Errorf("credential %d already belongs to group %d", entry.ID, existingGroupID)
+		}
+	}
+	for existingID := range r.buckets[groupID] {
+		if existingID != entries[0].ID {
+			return fmt.Errorf("group %d already has credential %d", groupID, existingID)
 		}
 	}
 	for _, entry := range entries {
@@ -258,8 +243,8 @@ func (r *CredentialRegistry) RestoreGroupCredentialEntriesExact(groupID uint, en
 	if groupID == 0 {
 		return fmt.Errorf("group id is required")
 	}
-	if len(entries) == 0 {
-		return fmt.Errorf("credential entries are required")
+	if len(entries) != 1 {
+		return fmt.Errorf("group %d must have exactly one credential", groupID)
 	}
 	if err := ValidateCredentialEntries(entries); err != nil {
 		return err
@@ -275,6 +260,11 @@ func (r *CredentialRegistry) RestoreGroupCredentialEntriesExact(groupID uint, en
 	for _, entry := range entries {
 		if existingGroupID, exists := r.credentialGroups[entry.ID]; exists && existingGroupID != groupID {
 			return fmt.Errorf("credential %d already belongs to group %d", entry.ID, existingGroupID)
+		}
+	}
+	for existingID := range r.buckets[groupID] {
+		if existingID != entries[0].ID {
+			return fmt.Errorf("group %d already has credential %d", groupID, existingID)
 		}
 	}
 	if r.buckets[groupID] == nil {
@@ -311,8 +301,13 @@ func (r *CredentialRegistry) ReconcileGroup(groupID uint, entries []CredentialEn
 	if groupID == 0 {
 		return false, fmt.Errorf("group id is required")
 	}
-	if err := ValidateCredentialEntries(entries); err != nil {
-		return false, err
+	if len(entries) > 1 {
+		return false, fmt.Errorf("group %d must have at most one credential", groupID)
+	}
+	if len(entries) == 1 {
+		if err := ValidateCredentialEntries(entries); err != nil {
+			return false, err
+		}
 	}
 	for _, entry := range entries {
 		if entry.GroupID != groupID {
@@ -381,21 +376,12 @@ func (r *CredentialRegistry) matchesGroupLocked(groupID uint, entries []Credenti
 }
 
 func samePersistedCredentialConfig(left, right CredentialEntry) bool {
-	if left.ID != right.ID ||
-		left.GroupID != right.GroupID ||
-		left.Version != right.Version ||
-		left.IdentityGeneration != right.IdentityGeneration ||
-		left.Fingerprint != right.Fingerprint ||
-		left.Status != right.Status ||
-		left.EncryptedValue != right.EncryptedValue ||
-		left.EncryptedProxy != right.EncryptedProxy ||
-		left.ProxyFingerprint != right.ProxyFingerprint {
-		return false
-	}
-	if left.WeightManual == nil || right.WeightManual == nil {
-		return left.WeightManual == nil && right.WeightManual == nil
-	}
-	return *left.WeightManual == *right.WeightManual
+	return left.ID == right.ID &&
+		left.GroupID == right.GroupID &&
+		left.Version == right.Version &&
+		left.IdentityGeneration == right.IdentityGeneration &&
+		left.Fingerprint == right.Fingerprint &&
+		left.EncryptedValue == right.EncryptedValue
 }
 
 func (r *CredentialRegistry) RemoveCredential(credentialID uint) bool {
@@ -411,25 +397,6 @@ func (r *CredentialRegistry) RemoveCredential(credentialID uint) bool {
 	}
 	delete(r.credentialGroups, credentialID)
 	return true
-}
-
-func (r *CredentialRegistry) UpdateGroupCredentialStatuses(
-	groupID uint,
-	credentialIDs []uint,
-	status CredentialStatus,
-) error {
-	if status != CredentialStatusActive && status != CredentialStatusDisabled {
-		return fmt.Errorf("invalid credential status %q", status)
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if err := r.validateGroupCredentialIDsLocked(groupID, credentialIDs); err != nil {
-		return err
-	}
-	for _, credentialID := range credentialIDs {
-		r.buckets[groupID][credentialID].Status = status
-	}
-	return nil
 }
 
 func (r *CredentialRegistry) RemoveGroupCredentials(groupID uint, credentialIDs []uint) error {
@@ -493,43 +460,6 @@ func (r *CredentialRegistry) RemoveGroup(groupID uint) bool {
 	}
 	delete(r.buckets, groupID)
 	return true
-}
-
-func (r *CredentialRegistry) SetCredentialStatus(credentialID uint, status CredentialStatus) error {
-	if status != CredentialStatusActive && status != CredentialStatusDisabled {
-		return fmt.Errorf("invalid credential status %q", status)
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	groupID, ok := r.credentialGroups[credentialID]
-	if !ok {
-		return fmt.Errorf("credential %d not found", credentialID)
-	}
-	r.buckets[groupID][credentialID].Status = status
-	return nil
-}
-
-func (r *CredentialRegistry) UpdateCredentialConfig(
-	credentialID uint,
-	status CredentialStatus,
-	weightManual *int,
-) error {
-	if status != CredentialStatusActive && status != CredentialStatusDisabled {
-		return fmt.Errorf("invalid credential status %q", status)
-	}
-	if err := validateManualWeight(fmt.Sprintf("credential %d", credentialID), weightManual); err != nil {
-		return err
-	}
-	clonedWeight := cloneWeight(weightManual)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	entry, ok := r.entryLocked(credentialID)
-	if !ok {
-		return fmt.Errorf("credential %d not found", credentialID)
-	}
-	entry.Status = status
-	entry.WeightManual = clonedWeight
-	return nil
 }
 
 // ReplaceCredentialSecretIfMatch publishes one durable secret rotation without
@@ -605,7 +535,7 @@ func (r *CredentialRegistry) ActiveEncryptedCredentialData(credentialID, expecte
 		return "", false
 	}
 	entry, ok := r.buckets[groupID][credentialID]
-	if !ok || entry.Status != CredentialStatusActive || entry.AuthState.normalize() != CredentialAuthStateReady {
+	if !ok || entry.AuthState.normalize() != CredentialAuthStateReady {
 		return "", false
 	}
 	return entry.EncryptedValue, true
@@ -620,17 +550,17 @@ func (r *CredentialRegistry) CaptureActiveCredentialRefs(groupIDs []uint) []Cred
 	}
 
 	r.mu.RLock()
-	refs := make([]CredentialRef, 0)
+	refs := make([]CredentialRef, 0, len(selectedGroups))
 	for groupID := range selectedGroups {
-		for _, entry := range r.buckets[groupID] {
-			if entry.Status != CredentialStatusActive || entry.AuthState.normalize() != CredentialAuthStateReady {
+		bucket := r.buckets[groupID]
+		for _, entry := range bucket {
+			if entry.AuthState.normalize() != CredentialAuthStateReady {
 				continue
 			}
 			refs = append(refs, CredentialRef{
 				ID: entry.ID, GroupID: entry.GroupID,
 				Version: entry.Version, IdentityGeneration: entry.IdentityGeneration,
 				Fingerprint: entry.Fingerprint, EncryptedValue: entry.EncryptedValue,
-				EncryptedProxy: entry.EncryptedProxy, ProxyFingerprint: entry.ProxyFingerprint,
 				FailureGeneration: entry.FailureGeneration,
 			})
 		}
@@ -660,9 +590,7 @@ func (r *CredentialRegistry) ActiveEncryptedCredentialDataIfMatch(ref Credential
 		entry.IdentityGeneration != ref.IdentityGeneration ||
 		entry.Fingerprint != ref.Fingerprint ||
 		entry.EncryptedValue != ref.EncryptedValue ||
-		entry.EncryptedProxy != ref.EncryptedProxy ||
-		entry.ProxyFingerprint != ref.ProxyFingerprint ||
-		entry.Status != CredentialStatusActive || entry.AuthState.normalize() != CredentialAuthStateReady {
+		entry.AuthState.normalize() != CredentialAuthStateReady {
 		return "", false
 	}
 	// FailureGeneration is intentionally excluded: failure accounting must not
@@ -675,7 +603,7 @@ func (r *CredentialRegistry) ActiveCredentialIDs() []uint {
 	ids := make([]uint, 0, len(r.credentialGroups))
 	for _, bucket := range r.buckets {
 		for _, entry := range bucket {
-			if entry.Status == CredentialStatusActive {
+			if entry.AuthState.normalize() == CredentialAuthStateReady {
 				ids = append(ids, entry.ID)
 			}
 		}
@@ -697,8 +625,7 @@ func (r *CredentialRegistry) CredentialRef(credentialID uint) (CredentialRef, bo
 	return CredentialRef{
 		ID: entry.ID, GroupID: entry.GroupID, Version: entry.Version,
 		IdentityGeneration: entry.IdentityGeneration, Fingerprint: entry.Fingerprint,
-		EncryptedValue: entry.EncryptedValue, EncryptedProxy: entry.EncryptedProxy,
-		ProxyFingerprint: entry.ProxyFingerprint, FailureGeneration: entry.FailureGeneration,
+		EncryptedValue: entry.EncryptedValue, FailureGeneration: entry.FailureGeneration,
 	}, true
 }
 
@@ -715,7 +642,6 @@ func (r *CredentialRegistry) CollectCredentialCandidates(groupIDs []uint, exclud
 			meta := CredentialMeta{
 				ID: view.ID, GroupID: view.GroupID,
 				Version: view.Version, IdentityGeneration: view.IdentityGeneration,
-				WeightManual: cloneWeight(view.WeightManual), WeightAuto: view.WeightAuto,
 			}
 			metas = append(metas, meta)
 		}
@@ -736,6 +662,19 @@ func (r *CredentialRegistry) CollectCredentialCandidates(groupIDs []uint, exclud
 		return filtered[i].ID < filtered[j].ID
 	})
 	return filtered
+}
+
+// CredentialCountsByGroup returns configured credential cardinality before
+// runtime health filtering. Scheduler uses it to reject invalid persisted
+// multi-credential groups even when only one credential is currently ready.
+func (r *CredentialRegistry) CredentialCountsByGroup(groupIDs []uint) map[uint]int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	counts := make(map[uint]int, len(groupIDs))
+	for _, groupID := range groupIDs {
+		counts[groupID] = len(r.buckets[groupID])
+	}
+	return counts
 }
 
 // EntryRuntime returns one detached, secret-free route-entry health view.
@@ -1087,31 +1026,13 @@ func (r *CredentialRegistry) SetBlacklistedWithChange(credentialID uint) (bool, 
 	return true, true
 }
 
-func (r *CredentialRegistry) SetAutoWeight(credentialID uint, weight int) bool {
-	if weight < 1 || weight > MaxWeight {
-		return false
-	}
+func (r *CredentialRegistry) RestoreRuntimeState(credentialID uint) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry, ok := r.entryLocked(credentialID)
 	if !ok {
 		return false
 	}
-	entry.WeightAuto = weight
-	return true
-}
-
-func (r *CredentialRegistry) RestoreRuntimeState(credentialID uint, weight int) bool {
-	if weight < 1 || weight > MaxWeight {
-		return false
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	entry, ok := r.entryLocked(credentialID)
-	if !ok {
-		return false
-	}
-	entry.WeightAuto = weight
 	entry.CooldownUntil = time.Time{}
 	entry.Blacklisted = false
 	entry.FailureCount = 0
@@ -1165,8 +1086,8 @@ func (r *CredentialRegistry) Recover(credentialID uint) bool {
 	return true
 }
 
-func (r *CredentialRegistry) RecoverIfMatch(ref CredentialRef, weight int) bool {
-	return r.restoreRuntimeStateIfMatch(ref, nil, weight)
+func (r *CredentialRegistry) RecoverIfMatch(ref CredentialRef) bool {
+	return r.restoreRuntimeStateIfMatch(ref, nil)
 }
 
 // RestoreRuntimeStateIfMatch restores a tested blacklisted credential only
@@ -1174,36 +1095,30 @@ func (r *CredentialRegistry) RecoverIfMatch(ref CredentialRef, weight int) bool 
 func (r *CredentialRegistry) RestoreRuntimeStateIfMatch(
 	ref CredentialRef,
 	cooldownUntil time.Time,
-	weight int,
 ) bool {
-	return r.restoreRuntimeStateIfMatch(ref, &cooldownUntil, weight)
+	return r.restoreRuntimeStateIfMatch(ref, &cooldownUntil)
 }
 
 func (r *CredentialRegistry) restoreRuntimeStateIfMatch(
 	ref CredentialRef,
 	cooldownUntil *time.Time,
-	weight int,
 ) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if weight < 1 || weight > MaxWeight {
-		return false
-	}
 	groupID, ok := r.credentialGroups[ref.ID]
 	if !ok || groupID != ref.GroupID {
 		return false
 	}
 	entry, ok := r.buckets[groupID][ref.ID]
-	if !ok || entry.Status != CredentialStatusActive || !entry.Blacklisted ||
-		entry.GroupID != ref.GroupID || entry.Version != ref.Version ||
+	if !ok || !entry.Blacklisted || entry.GroupID != ref.GroupID ||
+		entry.Version != ref.Version ||
 		entry.IdentityGeneration != ref.IdentityGeneration ||
-		entry.Fingerprint != ref.Fingerprint || entry.EncryptedValue != ref.EncryptedValue ||
-		entry.EncryptedProxy != ref.EncryptedProxy || entry.ProxyFingerprint != ref.ProxyFingerprint ||
+		entry.Fingerprint != ref.Fingerprint ||
+		entry.EncryptedValue != ref.EncryptedValue ||
 		entry.FailureGeneration != ref.FailureGeneration ||
 		cooldownUntil != nil && !entry.CooldownUntil.Equal(*cooldownUntil) {
 		return false
 	}
-	entry.WeightAuto = weight
 	if cooldownUntil != nil {
 		entry.CooldownUntil = time.Time{}
 	}
@@ -1218,14 +1133,13 @@ func (r *CredentialRegistry) BlacklistedCredentials() []CredentialRef {
 	refs := make([]CredentialRef, 0)
 	for _, bucket := range r.buckets {
 		for _, entry := range bucket {
-			if entry.Status != CredentialStatusActive || !entry.Blacklisted {
+			if !entry.Blacklisted {
 				continue
 			}
 			refs = append(refs, CredentialRef{
 				ID: entry.ID, GroupID: entry.GroupID,
 				Version: entry.Version, IdentityGeneration: entry.IdentityGeneration,
 				Fingerprint: entry.Fingerprint, EncryptedValue: entry.EncryptedValue,
-				EncryptedProxy: entry.EncryptedProxy, ProxyFingerprint: entry.ProxyFingerprint,
 				FailureGeneration: entry.FailureGeneration,
 			})
 		}
@@ -1250,12 +1164,8 @@ func (r *CredentialRegistry) entryLocked(credentialID uint) (*CredentialEntry, b
 }
 
 func cloneCredentialEntry(entry CredentialEntry) CredentialEntry {
-	entry.WeightManual = cloneWeight(entry.WeightManual)
 	entry.quotaRemaining = cloneFloat(entry.quotaRemaining)
 	entry.FailureGeneration = 0
-	if entry.WeightAuto == 0 {
-		entry.WeightAuto = DefaultWeight
-	}
 	return entry
 }
 
@@ -1277,7 +1187,6 @@ func (state CredentialAuthState) valid() bool {
 }
 
 func detachCredentialEntryExact(entry CredentialEntry) CredentialEntry {
-	entry.WeightManual = cloneWeight(entry.WeightManual)
 	entry.quotaRemaining = cloneFloat(entry.quotaRemaining)
 	return entry
 }

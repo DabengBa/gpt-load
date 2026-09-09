@@ -52,19 +52,19 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 	credentials := []models.Credential{
 		{
 			ID: 1, GroupID: enabled.ID, Data: "cipher-1", Fingerprint: "hash-1",
-			Status: models.CredentialStatusActive,
+			AuthState: models.CredentialAuthStateReady,
 		},
 		{
 			ID: 2, GroupID: enabled.ID, Data: "cipher-2", Fingerprint: "hash-2",
-			Status: models.CredentialStatusActive,
+			AuthState: models.CredentialAuthStateReady,
 		},
 		{
 			ID: 3, GroupID: enabledTwo.ID, Data: "cipher-3", Fingerprint: "hash-3",
-			Status: models.CredentialStatusDisabled,
+			AuthState: models.CredentialAuthStateReauthorizationRequired,
 		},
 		{
 			ID: 4, GroupID: disabled.ID, Data: "cipher-4", Fingerprint: "hash-4",
-			Status: models.CredentialStatusActive,
+			AuthState: models.CredentialAuthStateReady,
 		},
 	}
 	if err := fixture.db.Create(&credentials).Error; err != nil {
@@ -72,25 +72,25 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
 		{
-			ID: 1, GroupID: enabled.ID, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: enabled.ID, AuthState: state.CredentialAuthStateReady,
 			Version:            groupCollectionCredentialVersion(credentials[0].SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credentials[0].IdentityFingerprint, *enabled), Fingerprint: credentials[0].Fingerprint,
 			EncryptedValue: "cipher-1",
 		},
 		{
-			ID: 2, GroupID: enabled.ID, Status: state.CredentialStatusActive,
+			ID: 2, GroupID: enabled.ID, AuthState: state.CredentialAuthStateReady,
 			Version:            groupCollectionCredentialVersion(credentials[1].SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credentials[1].IdentityFingerprint, *enabled), Fingerprint: credentials[1].Fingerprint,
 			CooldownUntil: now.Add(time.Hour), EncryptedValue: "cipher-2",
 		},
 		{
-			ID: 3, GroupID: enabledTwo.ID, Status: state.CredentialStatusDisabled,
+			ID: 3, GroupID: enabledTwo.ID, AuthState: state.CredentialAuthStateReauthorizationRequired,
 			Version:            groupCollectionCredentialVersion(credentials[2].SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credentials[2].IdentityFingerprint, *enabledTwo), Fingerprint: credentials[2].Fingerprint,
 			EncryptedValue: "cipher-3",
 		},
 		{
-			ID: 4, GroupID: disabled.ID, Status: state.CredentialStatusActive,
+			ID: 4, GroupID: disabled.ID, AuthState: state.CredentialAuthStateReady,
 			Version:            groupCollectionCredentialVersion(credentials[3].SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credentials[3].IdentityFingerprint, *disabled), Fingerprint: credentials[3].Fingerprint,
 			EncryptedValue: "cipher-4",

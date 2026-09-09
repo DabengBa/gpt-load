@@ -13,7 +13,6 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/connection"
-	"gpt-load/internal/outboundproxy"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
@@ -31,9 +30,7 @@ type CredentialImportResult struct {
 }
 
 type CredentialUpdateRequest struct {
-	Status       optionalField[state.CredentialStatus] `json:"status"`
-	WeightManual optionalField[int]                    `json:"weight_manual"`
-	Proxy        optionalField[outboundproxy.Config]   `json:"proxy"`
+	Credentials optionalField[string] `json:"credentials"`
 }
 
 type CredentialRevealResult struct {
@@ -81,10 +78,7 @@ type CredentialItemResponse struct {
 	AuthState               string                         `json:"auth_state"`
 	AuthErrorCode           string                         `json:"auth_error_code,omitempty"`
 	Observation             *CredentialObservationResponse `json:"observation,omitempty"`
-	ConfiguredStatus        string                         `json:"configured_status"`
 	EffectiveStatus         string                         `json:"effective_status"`
-	WeightMode              string                         `json:"weight_mode"`
-	Weight                  *int                           `json:"weight"`
 	RecentSuccessCount      uint64                         `json:"recent_success_count"`
 	RecentFailureCount      uint64                         `json:"recent_failure_count"`
 	ConsecutiveFailureCount uint64                         `json:"consecutive_failure_count"`
@@ -94,7 +88,6 @@ type CredentialItemResponse struct {
 	LastUsedAtMS            *int64                         `json:"last_used_at_ms,omitempty"`
 	DailyUsage              *CredentialDailyUsageResponse  `json:"daily_usage,omitempty"`
 	Recovery                CredentialRecoveryResponse     `json:"recovery"`
-	Proxy                   outboundproxy.View             `json:"proxy"`
 }
 
 // CredentialDailyUsageResponse 汇报固定 24 小时窗口内的上游尝试结果分布。
@@ -114,33 +107,25 @@ type CredentialRecoveryResponse struct {
 	AtMS      *int64 `json:"at_ms"`
 }
 
-type CredentialPaginationResponse struct {
-	Page       int `json:"page"`
-	PageSize   int `json:"page_size"`
-	TotalItems int `json:"total_items"`
-	TotalPages int `json:"total_pages"`
-}
-
 type CredentialBatchAction string
 
-type CredentialBatchScope string
-
-const (
-	CredentialBatchEnable   CredentialBatchAction = "enable"
-	CredentialBatchDisable  CredentialBatchAction = "disable"
-	CredentialBatchDelete   CredentialBatchAction = "delete"
-	CredentialBatchScopeAll CredentialBatchScope  = "all"
-)
+const CredentialBatchDelete CredentialBatchAction = "delete"
 
 type CredentialBatchRequest struct {
 	Action        CredentialBatchAction `json:"action"`
-	CredentialIDs []uint                `json:"credential_ids,omitempty"`
-	Scope         CredentialBatchScope  `json:"scope,omitempty"`
+	CredentialIDs []uint                `json:"credential_ids"`
 }
 
 type CredentialBatchResponse struct {
 	AffectedCredentialIDs []uint                    `json:"affected_credential_ids"`
 	Summary               CredentialSummaryResponse `json:"summary"`
+}
+
+type CredentialPaginationResponse struct {
+	Page       int `json:"page"`
+	PageSize   int `json:"page_size"`
+	TotalItems int `json:"total_items"`
+	TotalPages int `json:"total_pages"`
 }
 
 type credentialCapture struct {
@@ -228,7 +213,7 @@ func (s *Service) ImportGroupCredentials(
 		if err != nil {
 			return err
 		}
-		entries, err = stateloader.BuildGroupCredentialEntriesWithProxy(ctx, tx, groupID, s.encryption)
+		entries, err = stateloader.BuildGroupCredentialEntries(ctx, tx, groupID)
 		if err != nil {
 			return err
 		}
@@ -328,14 +313,8 @@ func validateCredentialCapture(capture credentialCapture) (credentialObservation
 		if view.GroupID != groupID {
 			return credentialObservation{}, dbRegistryMismatch(mismatchGroupID, groupID, row.ID)
 		}
-		if view.Status != state.CredentialStatus(row.Status) {
-			return credentialObservation{}, dbRegistryMismatch(mismatchStatus, groupID, row.ID)
-		}
 		if view.AuthState != normalizeRuntimeCredentialAuthState(row.AuthState) {
 			return credentialObservation{}, dbRegistryMismatch(mismatchStatus, groupID, row.ID)
-		}
-		if !equalOptionalWeight(view.WeightManual, row.WeightManual) {
-			return credentialObservation{}, dbRegistryMismatch(mismatchWeightManual, groupID, row.ID)
 		}
 		if view.Version != groupCollectionCredentialVersion(row.SecretVersion) ||
 			view.IdentityGeneration != groupCollectionCredentialIdentity(row.IdentityFingerprint, capture.group) {
@@ -404,12 +383,8 @@ func (s *Service) mapCredentialCollection(
 		return CredentialCollectionResponse{}, err
 	}
 	group := state.GroupCatalogView{ID: observation.group.ID, Name: observation.group.Name,
-		Enabled: observation.group.Enabled, WeightManual: cloneInt(observation.group.WeightManual)}
+		Enabled: observation.group.Enabled}
 	records := make([]credentialCollectionRecord, 0, len(observation.rows))
-	proxyViews, err := s.credentialProxyViews(ctx, s.db, observation.group, observation.rows)
-	if err != nil {
-		return CredentialCollectionResponse{}, err
-	}
 	for _, row := range observation.rows {
 		canonical, identity, err := s.decodeCredential(observation.group, row)
 		if err != nil {
@@ -432,7 +407,6 @@ func (s *Service) mapCredentialCollection(
 		item.AuthState = string(row.AuthState)
 		item.AuthErrorCode = safeInternalErrorCode(row.AuthErrorCode)
 		item.Account = account
-		item.Proxy = proxyViews[row.ID]
 		if item.ConnectionType == string(models.ConnectionTypeSubscription) {
 			item.Observation = presentCredentialObservation(observation.subscription[row.ID], row.IdentityFingerprint)
 		}

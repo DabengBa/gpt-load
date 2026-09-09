@@ -255,8 +255,7 @@ func TestEnsureInitialStateRecoversInterruptedSubscriptionAuth(t *testing.T) {
 	}
 	credential := models.Credential{
 		GroupID: group.ID, Data: "cipher", Fingerprint: "secret", IdentityFingerprint: "identity",
-		SecretVersion: 2, AuthState: models.CredentialAuthStateRefreshing,
-		Status: models.CredentialStatusActive, CreatedAtMS: now.Add(-time.Hour).UnixMilli(), UpdatedAtMS: now.Add(-time.Hour).UnixMilli(),
+		SecretVersion: 2, AuthState: models.CredentialAuthStateRefreshing, CreatedAtMS: now.Add(-time.Hour).UnixMilli(), UpdatedAtMS: now.Add(-time.Hour).UnixMilli(),
 	}
 	if err := fixture.db.Create(&credential).Error; err != nil {
 		t.Fatal(err)

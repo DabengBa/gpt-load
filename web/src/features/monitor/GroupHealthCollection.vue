@@ -125,7 +125,6 @@ function credentialHealthLabel(counts: HealthCredentialCountsDto): string {
             >
               {{ group.name }}
             </OverflowTooltip>
-            <small>#{{ group.id }}</small>
           </div>
 
           <div class="ledger-record-list__cell group-health-record__status" role="cell">

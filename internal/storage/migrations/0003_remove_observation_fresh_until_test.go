@@ -22,7 +22,7 @@ func TestRemoveObservationFreshUntilMigrationDropsColumnAndPreservesRows(t *test
 	}
 	credential := models.Credential{
 		GroupID: group.ID, Data: "cipher", Fingerprint: "fingerprint",
-		IdentityFingerprint: "identity", Status: models.CredentialStatusActive,
+		IdentityFingerprint: "identity", AuthState: models.CredentialAuthStateReady,
 	}
 	if err := db.Omit("ProxyConfig").Create(&credential).Error; err != nil {
 		t.Fatalf("create credential: %v", err)

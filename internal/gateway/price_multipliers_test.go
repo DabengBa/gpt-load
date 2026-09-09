@@ -130,17 +130,9 @@ func TestHandlerCrossGroupRetryUsesFinalUsageGroupMultiplier(t *testing.T) {
 		},
 	}}
 	sink := &recordingRequestLogSink{}
-	engine, handler, manager, registry := newRequestLogHandlerTestRuntime(
+	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(
 		t, forwarder, &recordingAccessKeyRPMLimiter{}, sink, "sk-first", "sk-second",
 	)
-	entries, err := registry.SnapshotGroupCredentialEntriesExact(1, []uint{1, 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	entries[1].GroupID = 2
-	if err := registry.ReplaceCredentials(entries); err != nil {
-		t.Fatal(err)
-	}
 	input := gatewayAccessQuotaCompileInput(handler, nil)
 	setGatewayPriceMultipliers(t, &input, "7", "1.5")
 	second := input.Groups[0]
@@ -149,7 +141,7 @@ func TestHandlerCrossGroupRetryUsesFinalUsageGroupMultiplier(t *testing.T) {
 	second.PriceMultiplier = &secondMultiplier
 	input.Groups = append(input.Groups, second)
 	input.Credentials = append(input.Credentials, state.CredentialConfig{
-		ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "credential-2", Status: state.CredentialStatusActive,
+		ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "credential-2",
 	})
 	if _, err := manager.Publish(input); err != nil {
 		t.Fatal(err)

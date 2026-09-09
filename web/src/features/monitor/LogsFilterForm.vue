@@ -45,7 +45,7 @@ const groupOptions = computed(() => [
   { value: '', label: t('monitor.logs.filters.anyGroup') },
   ...props.groups.map((group) => ({
     value: String(group.id),
-    label: `${group.name} · #${group.id}`,
+    label: group.name,
   })),
 ])
 const statusOptions = computed(() => [

@@ -89,6 +89,13 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 	result := GroupCreateResult{}
 	requestedEntries := make([]state.CredentialEntry, 0, len(normalized.credentials.candidates)+len(normalized.stagedCredentialIDs))
 	_, err = s.writeGroupConfig(ctx, func(tx *gorm.DB) error {
+		if normalized.connectionType == models.ConnectionTypeSubscription {
+			if err := s.validateCredentialStageCreateBatch(
+				tx, normalized.channelID, normalized.connectionType, normalized.stagedCredentialIDs,
+			); err != nil {
+				return err
+			}
+		}
 		if !normalized.confirmSameTarget {
 			conflicts, err := findGroupsByTarget(tx, normalized.channelID, normalized.connectionType, normalized.params)
 			if err != nil {
@@ -144,7 +151,7 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 		if err != nil {
 			return err
 		}
-		requestedEntries, err = stateloader.BuildGroupCredentialEntriesWithProxy(ctx, tx, group.ID, s.encryption)
+		requestedEntries, err = stateloader.BuildGroupCredentialEntries(ctx, tx, group.ID)
 		return err
 	}, func() error {
 		_, reconcileErr := s.reconcileRegistryGroup(result.GroupID, requestedEntries)

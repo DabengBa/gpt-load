@@ -21,7 +21,7 @@ import type { ModelCandidate } from '@/app/resources/providers'
 import { useUnsavedChanges } from '@/app/unsaved-changes'
 import { useTransientFlag } from '@/app/use-transient-flag'
 import { constrainCollectionSearch } from '@/app/route-query'
-import { groupDetailLocation } from '@/app/route-locations'
+import { groupDetailLocation, monitorLocation } from '@/app/route-locations'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
@@ -62,7 +62,10 @@ import {
   normalizeGroupTab,
 } from '../group-route'
 
-const props = defineProps<{ groupId: number; channelId: string }>()
+const props = withDefaults(
+  defineProps<{ groupId: number; channelId: string; readonlyRouteFields?: boolean }>(),
+  { readonlyRouteFields: false },
+)
 const client = useApiClient()
 const queryClient = useQueryClient()
 const route = useRoute()
@@ -596,18 +599,31 @@ onBeforeUnmount(() => {
         :labels="aliasEditorLabels"
         :create-row="createManualRow"
         :disabled="pending !== null"
+        :readonly-route-fields="readonlyRouteFields"
         :search="routeState.search ?? ''"
         @update:model-value="updateModels"
         @update:search="setModelSearch"
       >
         <template #third-column="{ item }">
-          <ModelPricingStatus
-            :status="item.pricing_status"
-            :labels="{
-              pending: t('group.modelEditor.pricingStatus.pending'),
-              configured: t('group.modelEditor.pricingStatus.configured'),
-            }"
-          />
+          <div class="group-models__pricing-cell">
+            <ModelPricingStatus
+              :status="item.pricing_status"
+              :labels="{
+                pending: t('group.modelEditor.pricingStatus.pending'),
+                configured: t('group.modelEditor.pricingStatus.configured'),
+              }"
+            />
+            <span v-if="item.circuit_breaker" class="group-models__breaker-summary">
+              {{ t('group.modelEditor.breaker') }}:
+              {{ item.circuit_breaker.blacklist_threshold ?? '—' }}
+            </span>
+            <RouterLink
+              class="group-models__schedule-link"
+              :to="monitorLocation({ tab: 'schedule', schedule_model: item.name || item.id })"
+            >
+              {{ t('group.modelEditor.schedule') }}
+            </RouterLink>
+          </div>
         </template>
       </ModelAliasEditor>
       <ModelDiscoveryDrawer
@@ -719,6 +735,21 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.group-models__pricing-cell {
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+}
+.group-models__schedule-link {
+  color: var(--color-action);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+.group-models__breaker-summary {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
 .group-models {
   display: grid;
   gap: 0;

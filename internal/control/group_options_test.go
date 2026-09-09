@@ -26,7 +26,7 @@ func TestListGroupOptionsReturnsAllGroupsByIDWithExternalModels(t *testing.T) {
 	)
 	if err := fixture.db.Create(&models.Credential{
 		GroupID: 10, Data: "ciphertext-secret", Fingerprint: "hash-secret",
-		Status: models.CredentialStatusActive,
+		AuthState: models.CredentialAuthStateReady,
 	}).Error; err != nil {
 		t.Fatalf("create unrelated upstream key: %v", err)
 	}

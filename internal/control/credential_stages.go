@@ -1428,10 +1428,34 @@ func (s *Service) loadConsumableCredentialStages(
 	return stages, nil
 }
 
+func (s *Service) validateCredentialStageCreateBatch(
+	tx *gorm.DB,
+	channelID channel.ID,
+	connectionType models.ConnectionType,
+	stageIDs []string,
+) error {
+	stages, err := s.loadConsumableCredentialStages(tx, channelID, connectionType, stageIDs, true)
+	if err != nil {
+		return err
+	}
+	if len(stages) != 1 {
+		return app_errors.ErrDuplicateCredentialIdentity
+	}
+	return nil
+}
+
+type credentialStageClassificationMode uint8
+
+const (
+	credentialStageClassificationInspection credentialStageClassificationMode = iota
+	credentialStageClassificationWrite
+)
+
 func classifyCredentialStages(
 	tx *gorm.DB,
 	groupID uint,
 	stages []models.CredentialStage,
+	mode credentialStageClassificationMode,
 ) ([]string, map[string]models.Credential, error) {
 	if tx == nil || groupID == 0 || len(stages) == 0 {
 		return nil, nil, app_errors.ErrValidation
@@ -1461,6 +1485,9 @@ func classifyCredentialStages(
 	replacements := make(map[string]models.Credential)
 	for _, stage := range stages {
 		if _, duplicate := seen[stage.IdentityFingerprint]; duplicate {
+			if mode == credentialStageClassificationWrite {
+				return nil, nil, app_errors.ErrDuplicateCredentialIdentity
+			}
 			duplicatedStageIDs = append(duplicatedStageIDs, stage.ID)
 			continue
 		}
@@ -1472,9 +1499,9 @@ func classifyCredentialStages(
 	return duplicatedStageIDs, replacements, nil
 }
 
-// consumeCredentialStages creates new credentials, repairs credentials that
-// require reauthorization, and consumes every supplied stage in the caller's
-// transaction. Existing healthy or repeated identities are reported as skipped.
+// consumeCredentialStages creates new credentials or replaces credentials that
+// require reauthorization. Ordinary duplicate identities are rejected before
+// any credential or stage mutation is attempted.
 func (s *Service) consumeCredentialStages(
 	tx *gorm.DB,
 	groupID uint,
@@ -1491,7 +1518,9 @@ func (s *Service) consumeCredentialStages(
 	if err != nil {
 		return 0, nil, err
 	}
-	duplicatedStageIDs, replacements, err := classifyCredentialStages(tx, groupID, stages)
+	duplicatedStageIDs, replacements, err := classifyCredentialStages(
+		tx, groupID, stages, credentialStageClassificationWrite,
+	)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1562,7 +1591,7 @@ func (s *Service) consumeCredentialStages(
 				row := models.Credential{
 					GroupID: groupID, Data: ciphertext, Fingerprint: fingerprint,
 					IdentityFingerprint: identity, SecretVersion: 1,
-					AuthState: models.CredentialAuthStateReady, Status: models.CredentialStatusActive,
+					AuthState:   models.CredentialAuthStateReady,
 					CreatedAtMS: nowMS, UpdatedAtMS: nowMS,
 				}
 				if err := tx.Create(&row).Error; err != nil {

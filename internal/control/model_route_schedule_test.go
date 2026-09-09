@@ -225,12 +225,14 @@ func TestModelRouteScheduleIndexAggregatesRealCandidates(t *testing.T) {
 		t.Fatalf("items = %#v, want 2 external models", result.Items)
 	}
 	pub := byModel["pub"]
-	if pub.ExternalModel != "pub" || pub.CandidateCount != 4 || pub.GroupCount != 2 ||
+	if pub.ExternalModel != "pub" || pub.Protocol != protocol.OpenAICompletions ||
+		pub.Operation != execution.OperationChatCompletion || pub.CandidateCount != 4 || pub.GroupCount != 2 ||
 		!pub.HasFallback || pub.CooledCandidates != 0 || pub.BlacklistedCandidates != 0 {
 		t.Fatalf("pub item = %#v", pub)
 	}
 	solo := byModel["solo-model"]
-	if solo.CandidateCount != 1 || solo.GroupCount != 1 || solo.HasFallback {
+	if solo.CandidateCount != 1 || solo.GroupCount != 1 || solo.HasFallback ||
+		solo.Protocol != protocol.OpenAICompletions || solo.Operation != execution.OperationChatCompletion {
 		t.Fatalf("solo item = %#v", solo)
 	}
 
@@ -294,7 +296,6 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 		result.RouteRequirement != execution.RouteRequirementAny ||
 		result.SnapshotRevision != scenario.revision ||
 		result.ObservedAtMS != scenario.now.UnixMilli() ||
-		result.RouteStrategy != state.RouteStrategyNativeFirst ||
 		result.AccessKey.ID != scenario.accessKeyID ||
 		result.AccessKey.Name != "client" ||
 		result.AccessKey.Status != state.AccessKeyStatusActive ||
@@ -307,7 +308,7 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 	}
 	first := result.Groups[0]
 	if first.GroupID != 1 || first.GroupName != "one" || first.ChannelID != channel.OpenAI ||
-		first.GroupWeight != nil || len(first.Entries) != 3 {
+		len(first.Entries) != 3 {
 		t.Fatalf("group one = %#v", first)
 	}
 	second := result.Groups[1]
@@ -317,8 +318,7 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 
 	entryA := first.Entries[0]
 	if entryA.EntryID != scheduleEntryOneA || entryA.ModelID != "up-a" ||
-		entryA.Alias != "pub" || entryA.WeightManual == nil || *entryA.WeightManual != scheduleWeightOneA ||
-		entryA.Weight != scheduleWeightOneA || entryA.Priority != 1 || entryA.Fallback {
+		entryA.Alias != "pub" || entryA.Weight != scheduleWeightOneA || entryA.Priority != 1 || entryA.Fallback {
 		t.Fatalf("entry up-a = %#v", entryA)
 	}
 	// Entry configured threshold 2 only: cooldown stays on the judge default.
@@ -471,6 +471,12 @@ func TestModelRouteScheduleDetailResolvesProtocolAndOperationContext(t *testing.
 	if responsesProtocol.Operation != execution.OperationResponsesCreate ||
 		len(responsesProtocol.Groups) != 2 {
 		t.Fatalf("responses detail = %#v", responsesProtocol)
+	}
+
+	responsesRetrieve := responses(base + "&protocol=openai-responses&operation=responses_retrieve")
+	if responsesRetrieve.RouteRequirement != execution.RouteRequirementNative ||
+		responsesRetrieve.Operation != execution.OperationResponsesRetrieve {
+		t.Fatalf("responses retrieve detail = %#v", responsesRetrieve)
 	}
 
 	unsupported := responses(base + "&protocol=openai-completions&operation=images_generate")

@@ -18,14 +18,13 @@ type Group struct {
 	ConnectionType        ConnectionType `gorm:"type:varchar(32);not null;default:'api_key';check:chk_group_connection_type,connection_type IN ('api_key','subscription')"`
 	Params                JSON           `gorm:"type:json;not null"`
 	Models                JSON           `gorm:"type:json;not null"`
-	WeightManual          *int
-	ValidationModel       *string      `gorm:"type:varchar(255)"`
-	Overrides             JSON         `gorm:"type:json"`
-	ProxyConfig           *string      `gorm:"column:proxy_config;type:text"`
-	Enabled               bool         `gorm:"not null;default:true"`
-	Credentials           []Credential `gorm:"foreignKey:GroupID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	CreatedAtMS           int64        `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_group_created_at,created_at_ms >= 0"`
-	UpdatedAtMS           int64        `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_group_updated_at,updated_at_ms >= 0"`
+	ValidationModel       *string        `gorm:"type:varchar(255)"`
+	Overrides             JSON           `gorm:"type:json"`
+	ProxyConfig           *string        `gorm:"column:proxy_config;type:text"`
+	Enabled               bool           `gorm:"not null;default:true"`
+	Credentials           []Credential   `gorm:"foreignKey:GroupID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	CreatedAtMS           int64          `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_group_created_at,created_at_ms >= 0"`
+	UpdatedAtMS           int64          `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_group_updated_at,updated_at_ms >= 0"`
 }
 
 // BeforeSave keeps channel parameters representable. Channel-specific shape
@@ -46,31 +45,19 @@ const (
 	ConnectionTypeSubscription ConnectionType = connection.Subscription
 )
 
-// CredentialStatus is the durable operator-controlled state of channel data.
-// Runtime cooldown and failure state belongs to the runtime credential registry.
-type CredentialStatus string
-
-const (
-	CredentialStatusActive   CredentialStatus = "active"
-	CredentialStatusDisabled CredentialStatus = "disabled"
-)
-
 // Credential is encrypted channel credential data that belongs to one group.
 type Credential struct {
 	ID                  uint                `gorm:"primaryKey;autoIncrement"`
-	GroupID             uint                `gorm:"not null;uniqueIndex:idx_credentials_group_fingerprint,priority:1;uniqueIndex:idx_credentials_group_identity,priority:1"`
+	GroupID             uint                `gorm:"not null;uniqueIndex:idx_credentials_group;uniqueIndex:idx_credentials_group_fingerprint,priority:1;uniqueIndex:idx_credentials_group_identity,priority:1"`
 	Data                string              `gorm:"type:text;not null"`
 	Fingerprint         string              `gorm:"type:varchar(128);not null;uniqueIndex:idx_credentials_group_fingerprint,priority:2"`
 	IdentityFingerprint string              `gorm:"type:varchar(128);not null;uniqueIndex:idx_credentials_group_identity,priority:2"`
 	SecretVersion       uint64              `gorm:"not null;default:1;check:chk_credential_secret_version,secret_version > 0"`
 	AuthState           CredentialAuthState `gorm:"type:varchar(32);not null;default:'ready';check:chk_credential_auth_state,auth_state IN ('ready','refreshing','reauthorization_required','outcome_unknown')"`
 	AuthErrorCode       string              `gorm:"type:varchar(64);not null;default:''"`
-	Status              CredentialStatus    `gorm:"type:varchar(32);not null;default:'active';check:chk_credential_status,status IN ('active','disabled')"`
-	WeightManual        *int
-	ProxyConfig         *string `gorm:"column:proxy_config;type:text"`
-	Group               *Group  `gorm:"foreignKey:GroupID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	CreatedAtMS         int64   `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_credential_created_at,created_at_ms >= 0"`
-	UpdatedAtMS         int64   `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_credential_updated_at,updated_at_ms >= 0"`
+	Group               *Group              `gorm:"foreignKey:GroupID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	CreatedAtMS         int64               `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_credential_created_at,created_at_ms >= 0"`
+	UpdatedAtMS         int64               `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_credential_updated_at,updated_at_ms >= 0"`
 }
 
 type CredentialAuthState string

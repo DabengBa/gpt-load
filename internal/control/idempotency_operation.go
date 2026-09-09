@@ -406,7 +406,7 @@ func (s *Service) recoverRegistryOperation(
 	}
 	var reconcileErr error
 	reconcile := func() {
-		entries, buildErr := stateloader.BuildGroupCredentialEntriesWithProxy(ctx, s.db, groupID, s.encryption)
+		entries, buildErr := stateloader.BuildGroupCredentialEntries(ctx, s.db, groupID)
 		if buildErr != nil {
 			reconcileErr = buildErr
 			return

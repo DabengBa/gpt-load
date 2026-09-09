@@ -1,14 +1,5 @@
 <script setup lang="ts">
-import {
-  ChevronDown,
-  CircleCheck,
-  CircleOff,
-  Download,
-  KeyRound,
-  ListChecks,
-  Plus,
-  Search,
-} from '@lucide/vue'
+import { KeyRound, Plus, Search } from '@lucide/vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -22,7 +13,6 @@ import type {
   CredentialItemDto,
   CredentialObservationDto,
   CredentialTestResultDto,
-  ProxyMutation,
   CredentialStatus,
 } from '@/api/control/types'
 import { useCollectionLoading } from '@/app/loading-state'
@@ -33,7 +23,6 @@ import {
   cacheCredentialItem,
   consumeCredentialResetCredit,
   credentialCollectionQueryOptions,
-  downloadAllCredentials,
   downloadCredential,
   getCredentialDetail,
   revealCredential,
@@ -42,7 +31,6 @@ import {
   restoreTestedCredential,
   refreshCredentialObservation,
   testCredentialConnection,
-  updateCredential,
 } from '@/app/resources/credentials'
 import {
   connectGroupCredentials,
@@ -60,7 +48,6 @@ import LedgerRecordList from '@/components/collection/LedgerRecordList.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
-import AppPopover from '@/components/ui/AppPopover.vue'
 import AppSearchInput from '@/components/ui/AppSearchInput.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -87,7 +74,6 @@ import {
 } from '../group-route'
 
 const batchCredentialConcurrency = 4
-type FullCredentialAction = 'enable' | 'disable' | 'download'
 type CredentialTestRestoreError = 'failed' | 'conflict' | 'conflict_refresh_failed'
 
 const props = defineProps<{
@@ -141,8 +127,6 @@ const credentialTestRestoreBlocked = ref(false)
 const credentialTestRestoreError = ref<CredentialTestRestoreError>()
 const resetOperationKeys = new Map<number, string>()
 const connectionWorkspaceOpen = ref(false)
-const fullActionsOpen = ref(false)
-const fullActionTarget = ref<FullCredentialAction>()
 const connectionStages = ref<CredentialStage[]>([])
 const connectOperationKey = ref<string>()
 // 抽屉打开时列表区被遮住，连接失败的提示必须落在抽屉内部才看得见。
@@ -200,31 +184,6 @@ const bulkActionsBusy = computed(
   () =>
     batchBusy.value || singleBusy.value || connectBusy.value || credentialsQuery.isFetching.value,
 )
-const fullActionBusy = computed(() =>
-  fullActionTarget.value === undefined
-    ? false
-    : pendingOperations.value.has(`batch:all-${fullActionTarget.value}`),
-)
-const fullCredentialKind = computed(() =>
-  t(
-    props.connectionType === 'subscription'
-      ? 'group.credentials.full.kind.account'
-      : 'group.credentials.full.kind.key',
-  ),
-)
-const fullActionCopy = computed(() => {
-  const action = fullActionTarget.value
-  if (action === undefined) return { title: '', description: '', confirm: '' }
-  return {
-    title: t(`group.credentials.full.confirmTitle.${action}`, {
-      kind: fullCredentialKind.value,
-    }),
-    description: t('group.credentials.full.confirmDescription', {
-      kind: fullCredentialKind.value,
-    }),
-    confirm: t(`group.credentials.full.confirm.${action}`),
-  }
-})
 const dialogBusy = computed(() => {
   const target = deleteTarget.value
   if (target === undefined) return false
@@ -327,8 +286,6 @@ watch(
   () => {
     resetCredentialTestState()
     connectionWorkspaceOpen.value = false
-    fullActionsOpen.value = false
-    fullActionTarget.value = undefined
     connectionStages.value = []
     loadedDetails.value = new Map()
     detailErrors.value = new Map()
@@ -403,35 +360,13 @@ function setExpanded(id: number, expanded: boolean): void {
   const next = new Set(routeState.value.expandedCredentialIDs)
   if (expanded) next.add(id)
   else next.delete(id)
-  // 收起时一并关掉权重编辑，避免下次展开直接落在遗留的编辑态里。
-  const weightCredentialID =
-    !expanded && routeState.value.weightCredentialID === id
-      ? undefined
-      : routeState.value.weightCredentialID
   updateRoute(filters.value, false, {
     ...routeState.value,
     expandedCredentialIDs: [...next],
-    weightCredentialID,
-  })
-}
-// 权重列的值可点：一次操作完成“展开 + 进入编辑”，让折叠区里的设置被发现。
-function openWeightEditor(id: number): void {
-  const expanded = new Set(routeState.value.expandedCredentialIDs)
-  expanded.add(id)
-  updateRoute(filters.value, false, {
-    ...routeState.value,
-    expandedCredentialIDs: [...expanded],
-    weightCredentialID: id,
   })
 }
 function credentialExpanded(id: number): boolean {
   return routeState.value.expandedCredentialIDs.includes(id)
-}
-function setWeightEditor(id: number, open: boolean): void {
-  updateRoute(filters.value, false, {
-    ...routeState.value,
-    weightCredentialID: open ? id : undefined,
-  })
 }
 function setSelected(id: number, checked: boolean): void {
   const next = new Set(selectedIds.value)
@@ -679,6 +614,7 @@ async function cacheObservation(
     observation,
   }
   await cacheCredentialItem(queryClient, props.groupId, reconciled)
+  await invalidateScheduleQueries()
 }
 
 async function refreshObservation(item: CredentialItemDto): Promise<void> {
@@ -757,49 +693,6 @@ async function downloadCredentialFile(item: CredentialItemDto): Promise<void> {
     )
   } finally {
     setPending(item.credential_id, 'download', false)
-  }
-}
-
-function openFullAction(action: FullCredentialAction): void {
-  if (bulkActionsBusy.value || (collection.value?.summary.total ?? 0) === 0) return
-  if (action === 'download' && props.connectionType !== 'subscription') return
-  fullActionsOpen.value = false
-  fullActionTarget.value = action
-}
-
-async function confirmFullAction(): Promise<void> {
-  const action = fullActionTarget.value
-  if (action === undefined || batchBusy.value || singleBusy.value) return
-  feedback.value = ''
-  setPending('batch', `all-${action}`, true)
-  try {
-    let affected = 0
-    if (action === 'download') {
-      const result = await downloadAllCredentials(client, props.groupId)
-      for (const file of result.files) downloadJSONFile(file.filename, file.credential)
-      affected = result.files.length
-    } else {
-      const result = await batchCredentials(client, props.groupId, {
-        action,
-        scope: 'all',
-      })
-      affected = result.affected_credential_ids.length
-      await reconcileBatch(action, result)
-      selectedIds.value = new Set()
-    }
-    toast.show({
-      message: t(`group.credentials.full.succeeded.${action}`, {
-        count: n(affected),
-        kind: fullCredentialKind.value,
-      }),
-      tone: 'success',
-    })
-    fullActionTarget.value = undefined
-  } catch {
-    feedback.value = t('group.credentials.full.failed')
-    fullActionTarget.value = undefined
-  } finally {
-    setPending('batch', `all-${action}`, false)
   }
 }
 
@@ -967,6 +860,7 @@ async function confirmResetCredit(): Promise<void> {
       } catch {
         await invalidateReconciliationQueries()
       }
+      await invalidateScheduleQueries()
     }
     if (observationPending) {
       feedback.value = t('group.credentials.subscription.consumeResetCreditPending')
@@ -1187,12 +1081,9 @@ async function saveConnectedAccounts(): Promise<void> {
 onBeforeUnmount(resetConnectionInspection)
 onBeforeUnmount(resetCredentialTestState)
 
-async function reconcileBatch(
-  action: 'enable' | 'disable' | 'delete',
-  result: Awaited<ReturnType<typeof batchCredentials>>,
-): Promise<void> {
+async function reconcileBatch(result: Awaited<ReturnType<typeof batchCredentials>>): Promise<void> {
   try {
-    await cacheCredentialBatch(queryClient, props.groupId, action, result)
+    await cacheCredentialBatch(queryClient, props.groupId, result)
     await refetchActiveCredentialPage()
     await refetchGroupSummary()
   } catch {
@@ -1206,45 +1097,19 @@ function clearDeletedRouteState(ids: readonly number[]): void {
   const deleted = new Set(ids)
   const next: CredentialRouteState = {
     expandedCredentialIDs: routeState.value.expandedCredentialIDs.filter((id) => !deleted.has(id)),
-    weightCredentialID:
-      routeState.value.weightCredentialID !== undefined &&
-      deleted.has(routeState.value.weightCredentialID)
-        ? undefined
-        : routeState.value.weightCredentialID,
   }
   updateRoute(filters.value, true, next)
 }
 
-async function mutateItem(
-  item: CredentialItemDto,
-  action: 'weight' | 'toggle' | 'restore',
-  value?: string,
-): Promise<void> {
+async function mutateItem(item: CredentialItemDto, action: 'restore'): Promise<void> {
   if (batchBusy.value || pending(item.credential_id)) return
   feedback.value = ''
   setPending(item.credential_id, action, true)
-  let result: CredentialItemDto
   try {
-    result =
-      action === 'restore'
-        ? await restoreCredential(client, props.groupId, item.credential_id)
-        : await updateCredential(
-            client,
-            props.groupId,
-            item.credential_id,
-            action === 'weight'
-              ? { weight_manual: value === 'auto' ? null : Number(value) }
-              : { status: item.configured_status === 'active' ? 'disabled' : 'active' },
-          )
+    const result = await restoreCredential(client, props.groupId, item.credential_id)
+    await reconcileItem(result, true)
   } catch {
-    feedback.value = t(
-      action === 'restore' ? 'group.credentials.restoreFailed' : 'group.credentials.updateFailed',
-    )
-    setPending(item.credential_id, action, false)
-    return
-  }
-  try {
-    await reconcileItem(result, action !== 'weight')
+    feedback.value = t('group.credentials.restoreFailed')
   } finally {
     setPending(item.credential_id, action, false)
   }
@@ -1361,23 +1226,6 @@ async function confirmTestedCredentialRestore(): Promise<void> {
   resetCredentialTestState()
 }
 
-async function saveCredentialProxy(item: CredentialItemDto, value: ProxyMutation): Promise<void> {
-  if (batchBusy.value || pending(item.credential_id)) {
-    throw new Error('CREDENTIAL_PROXY_UNAVAILABLE')
-  }
-
-  feedback.value = ''
-  setPending(item.credential_id, 'proxy', true)
-  try {
-    const result = await updateCredential(client, props.groupId, item.credential_id, {
-      proxy: value,
-    })
-    await reconcileItem(result, false)
-  } finally {
-    setPending(item.credential_id, 'proxy', false)
-  }
-}
-
 async function confirmDelete(): Promise<void> {
   const target = deleteTarget.value
   if (!target || dialogBusy.value || batchBusy.value) return
@@ -1397,7 +1245,7 @@ async function confirmDelete(): Promise<void> {
       return
     }
     try {
-      await reconcileBatch('delete', result)
+      await reconcileBatch(result)
       deleteTarget.value = undefined
       selectedIds.value.delete(id)
       selectedIds.value = new Set(selectedIds.value)
@@ -1410,10 +1258,7 @@ async function confirmDelete(): Promise<void> {
   if (await runBatch('delete', target.ids)) deleteTarget.value = undefined
 }
 
-async function runBatch(
-  action: 'enable' | 'disable' | 'delete',
-  ids = [...selectedIds.value],
-): Promise<boolean> {
+async function runBatch(action: 'delete', ids = [...selectedIds.value]): Promise<boolean> {
   if (ids.length === 0 || batchBusy.value || singleBusy.value) return false
   feedback.value = ''
   setPending('batch', action, true)
@@ -1426,7 +1271,7 @@ async function runBatch(
     return false
   }
   try {
-    await reconcileBatch(action, result)
+    await reconcileBatch(result)
     selectedIds.value = new Set()
     if (action === 'delete') clearDeletedRouteState(ids)
     return true
@@ -1451,42 +1296,6 @@ async function runBatch(
       "
     >
       <template #actions>
-        <AppPopover
-          v-model:open="fullActionsOpen"
-          align="end"
-          content-class="app-popover__content--credential-full-actions"
-        >
-          <template #trigger>
-            <AppButton
-              variant="secondary"
-              :busy="batchBusy"
-              :disabled="bulkActionsBusy || (collection?.summary.total ?? 0) === 0"
-            >
-              <ListChecks :size="16" aria-hidden="true" />
-              {{ t('group.credentials.full.actions') }}
-              <ChevronDown :size="14" aria-hidden="true" />
-            </AppButton>
-          </template>
-          <div class="group-credentials__full-menu">
-            <button
-              v-if="connectionType === 'subscription'"
-              type="button"
-              :disabled="bulkActionsBusy"
-              @click="openFullAction('download')"
-            >
-              <Download :size="15" aria-hidden="true" />
-              {{ t('group.credentials.full.download') }}
-            </button>
-            <button type="button" :disabled="bulkActionsBusy" @click="openFullAction('enable')">
-              <CircleCheck :size="15" aria-hidden="true" />
-              {{ t('group.credentials.full.enable') }}
-            </button>
-            <button type="button" :disabled="bulkActionsBusy" @click="openFullAction('disable')">
-              <CircleOff :size="15" aria-hidden="true" />
-              {{ t('group.credentials.full.disable') }}
-            </button>
-          </div>
-        </AppPopover>
         <AppButton
           v-if="connectionType === 'subscription' && authorizationMethods.length > 0"
           :disabled="bulkActionsBusy"
@@ -1640,8 +1449,6 @@ async function runBatch(
           "
           :can-download="connectionType === 'subscription'"
           @toggle-select="setAllVisible(!allVisibleSelected)"
-          @enable="runBatch('enable')"
-          @disable="runBatch('disable')"
           @sync="syncSelectedObservations"
           @download="downloadSelectedCredentials"
           @remove="deleteTarget = { ids: [...selectedIds] }"
@@ -1721,11 +1528,8 @@ async function runBatch(
               :channel-icon="channelDescriptor?.icon"
               :channel-mark="channelDescriptor?.mark"
               :capabilities="channelCapabilities"
-              :save-proxy="(value) => saveCredentialProxy(item, value)"
               @update:selected="setSelected(item.credential_id, $event)"
-              @toggle="mutateItem($event, 'toggle')"
               @restore="mutateItem($event, 'restore')"
-              @weight="mutateItem($event.item, 'weight', $event.value)"
               @refresh="refreshObservation"
               @load-details="loadCredentialUsage"
               @reset="openResetCreditDialog"
@@ -1750,7 +1554,6 @@ async function runBatch(
             <span role="columnheader" aria-hidden="true"></span>
             <span role="columnheader">{{ t('group.credentials.columns.credential') }}</span>
             <span role="columnheader">{{ t('group.credentials.columns.status') }}</span>
-            <span role="columnheader">{{ t('group.credentials.columns.weight') }}</span>
             <span role="columnheader">{{ t('group.credentials.columns.recent') }}</span>
             <span role="columnheader">{{ t('group.credentials.columns.actions') }}</span>
           </template>
@@ -1765,17 +1568,10 @@ async function runBatch(
             :selected="selectedIds.has(item.credential_id)"
             :busy="rowBusy(item.credential_id)"
             :expanded="credentialExpanded(item.credential_id)"
-            :weight-editor-open="routeState.weightCredentialID === item.credential_id"
             :resolve-copy-value="resolveCopyValue"
-            :save-proxy="(value) => saveCredentialProxy(item, value)"
-            :proxy-supported="channelCapabilities.outbound_proxy"
             @update:selected="setSelected(item.credential_id, $event)"
             @update:expanded="setExpanded(item.credential_id, $event)"
-            @update:weight-editor-open="setWeightEditor(item.credential_id, $event)"
-            @open-weight="openWeightEditor($event.credential_id)"
-            @weight="mutateItem($event.item, 'weight', $event.value)"
             @test="openCredentialTest"
-            @toggle="mutateItem($event, 'toggle')"
             @restore="mutateItem($event, 'restore')"
             @remove="deleteTarget = { ids: [$event.credential_id], mask: $event.mask }"
           />
@@ -1805,20 +1601,6 @@ async function runBatch(
       :restore-error="credentialTestRestoreError"
       @update:open="setCredentialTestOpen"
       @restore="confirmTestedCredentialRestore"
-    />
-    <AppConfirmDialog
-      appearance="ledger"
-      :open="fullActionTarget !== undefined"
-      :title="fullActionCopy.title"
-      :description="fullActionCopy.description"
-      :close-label="t('group.credentials.closeDialog')"
-      :cancel-label="t('group.credentials.cancel')"
-      :confirm-label="fullActionCopy.confirm"
-      :tone="fullActionTarget === 'disable' ? 'danger' : 'default'"
-      description-tone="warning"
-      :pending="fullActionBusy"
-      @update:open="!$event && !fullActionBusy && (fullActionTarget = undefined)"
-      @confirm="confirmFullAction"
     />
     <AppConfirmDialog
       appearance="ledger"
@@ -1963,14 +1745,12 @@ async function runBatch(
 .group-credential-record-grid {
   --ledger-record-list-record-min-height: 52px;
   --ledger-record-list-record-padding: 8px 0;
-  --ledger-record-list-grid: 48px minmax(200px, 1.5fr) 116px minmax(130px, 0.85fr)
-    minmax(170px, 1.1fr) 80px;
+  --ledger-record-list-grid: 48px minmax(200px, 1.5fr) 116px minmax(170px, 1.1fr) 80px;
   --ledger-record-list-column-gap: 12px;
 }
 @media (max-width: 1120px) {
   .group-credential-record-grid {
-    --ledger-record-list-grid: 44px minmax(160px, 1.3fr) 108px minmax(112px, 0.8fr)
-      minmax(140px, 1fr) 76px;
+    --ledger-record-list-grid: 44px minmax(160px, 1.3fr) 108px minmax(140px, 1fr) 76px;
     --ledger-record-list-column-gap: 9px;
   }
 }

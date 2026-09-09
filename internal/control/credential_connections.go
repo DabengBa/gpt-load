@@ -52,7 +52,9 @@ func (s *Service) InspectGroupCredentialConnection(
 	if err != nil {
 		return CredentialConnectInspection{}, err
 	}
-	duplicatedStageIDs, _, err := classifyCredentialStages(db, groupID, stages)
+	duplicatedStageIDs, _, err := classifyCredentialStages(
+		db, groupID, stages, credentialStageClassificationInspection,
+	)
 	if err != nil {
 		return CredentialConnectInspection{}, err
 	}
@@ -160,13 +162,18 @@ func (s *Service) connectGroupCredentialsMutation(
 	if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeSubscription {
 		return CredentialImportResult{}, nil, app_errors.ErrValidation
 	}
+	if err := s.validateCredentialConnectionBatch(
+		tx, group.ID, channel.ID(group.ChannelID), group.ConnectionType, stageIDs,
+	); err != nil {
+		return CredentialImportResult{}, nil, err
+	}
 	added, duplicatedStageIDs, err := s.consumeCredentialStages(
 		tx, group.ID, channel.ID(group.ChannelID), group.ConnectionType, stageIDs,
 	)
 	if err != nil {
 		return CredentialImportResult{}, nil, err
 	}
-	entries, err := stateloader.BuildGroupCredentialEntriesWithProxy(ctx, tx, groupID, s.encryption)
+	entries, err := stateloader.BuildGroupCredentialEntries(ctx, tx, groupID)
 	if err != nil {
 		return CredentialImportResult{}, nil, err
 	}
@@ -174,4 +181,42 @@ func (s *Service) connectGroupCredentialsMutation(
 		GroupID: groupID, CredentialsAdded: added,
 		CredentialsDuplicated: len(duplicatedStageIDs),
 	}, entries, nil
+}
+
+func (s *Service) validateCredentialConnectionBatch(
+	tx *gorm.DB,
+	groupID uint,
+	channelID channel.ID,
+	connectionType models.ConnectionType,
+	stageIDs []string,
+) error {
+	stages, err := s.loadConsumableCredentialStages(tx, channelID, connectionType, stageIDs, true)
+	if err != nil {
+		return err
+	}
+	if len(stages) != 1 {
+		return app_errors.ErrDuplicateCredentialIdentity
+	}
+
+	var existingRows []models.Credential
+	if err := tx.Where("group_id = ?", groupID).Order("id ASC").Find(&existingRows).Error; err != nil {
+		return app_errors.ParseDBError(err)
+	}
+	if len(existingRows) == 0 {
+		return nil
+	}
+	if len(existingRows) != 1 {
+		return app_errors.ErrDuplicateCredentialIdentity
+	}
+	existing := existingRows[0]
+	if existing.IdentityFingerprint != stages[0].IdentityFingerprint {
+		return app_errors.ErrDuplicateCredentialIdentity
+	}
+	switch existing.AuthState {
+	case models.CredentialAuthStateReauthorizationRequired,
+		models.CredentialAuthStateOutcomeUnknown:
+		return nil
+	default:
+		return app_errors.ErrDuplicateCredentialIdentity
+	}
 }

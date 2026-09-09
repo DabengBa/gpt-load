@@ -87,8 +87,8 @@ func TestHandlerRelearnsSoftAffinityWhenModelCandidateRangeChanges(t *testing.T)
 	serveAffinityModelRequest(t, engine, "gpt-4o-mini")
 	serveAffinityModelRequest(t, engine, "gpt-4o")
 
-	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two", "sk-one"})
-	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true, false})
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two", "sk-two"})
+	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true, true})
 	assertAffinityUpstreamModels(t, forwarder.inputs, []string{"gpt-4o", "gpt-4o-mini", "gpt-4o-mini", "gpt-4o"})
 }
 
@@ -108,7 +108,7 @@ func TestHandlerDoesNotLearnAffinityForNonParticipatingGroup(t *testing.T) {
 	serveAffinityRequest(t, engine, body)
 	serveAffinityRequest(t, engine, body)
 
-	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two"})
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false})
 }
 
@@ -128,7 +128,7 @@ func TestHandlerGroupAffinityOverrideWinsOverGlobalSetting(t *testing.T) {
 		{
 			name: "group disables when global is enabled", globalEnabled: true,
 			groupOverrides: config.Settings{state.SettingAffinityEnabled: false},
-			wantKeys:       []string{"sk-one", "sk-two"}, wantHits: []bool{false, false},
+			wantKeys:       []string{"sk-one", "sk-one"}, wantHits: []bool{false, false},
 		},
 	}
 	for _, test := range tests {
@@ -163,60 +163,6 @@ func TestHandlerGroupAffinityOverrideWinsOverGlobalSetting(t *testing.T) {
 	}
 }
 
-func TestHandlerSoftAffinityRetriesAndRebindsAfterFallbackSuccess(t *testing.T) {
-	forwarder := &scriptedForwarder{results: []UpstreamResult{
-		successfulAffinityResult(),
-		{
-			StatusCode:         http.StatusTooManyRequests,
-			Header:             http.Header{"Retry-After": {"30"}},
-			Body:               []byte(`{"error":"rate_limit"}`),
-			ClassificationBody: []byte(`{"error":"rate_limit"}`),
-			RequestWritten:     true,
-		},
-		successfulAffinityResult(),
-		successfulAffinityResult(),
-	}}
-	handler, _, registry := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
-	sink := &recordingRequestLogSink{}
-	handler.requestLogSink = sink
-	useAffinityRandomValues(handler, 0, affinitySecondCredentialRand, 0)
-	engine := newAffinityTestEngine(t, handler)
-	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"stable conversation"}]}`
-
-	serveAffinityRequest(t, engine, body)
-	serveAffinityRequest(t, engine, body)
-	if !registry.RestoreRuntimeState(1, state.DefaultWeight) {
-		t.Fatal("RestoreRuntimeState() = false, want credential 1 restored")
-	}
-	serveAffinityRequest(t, engine, body)
-
-	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one", "sk-two", "sk-two"})
-	assertAffinityHits(t, sink.snapshot(), []bool{false, true, true})
-}
-
-func TestHandlerSoftAffinitySkipsDisabledCredentialAndLearnsReplacement(t *testing.T) {
-	forwarder := &scriptedForwarder{results: successfulAffinityResults(3)}
-	handler, _, registry := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
-	sink := &recordingRequestLogSink{}
-	handler.requestLogSink = sink
-	useAffinityRandomValues(handler, 0, 0, 0)
-	engine := newAffinityTestEngine(t, handler)
-	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"stable conversation"}]}`
-
-	serveAffinityRequest(t, engine, body)
-	if err := registry.SetCredentialStatus(1, state.CredentialStatusDisabled); err != nil {
-		t.Fatalf("SetCredentialStatus(disabled) error = %v", err)
-	}
-	serveAffinityRequest(t, engine, body)
-	if err := registry.SetCredentialStatus(1, state.CredentialStatusActive); err != nil {
-		t.Fatalf("SetCredentialStatus(active) error = %v", err)
-	}
-	serveAffinityRequest(t, engine, body)
-
-	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two"})
-	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true})
-}
-
 func TestHandlerDoesNotApplyAffinityWithoutInitialUserText(t *testing.T) {
 	forwarder := &scriptedForwarder{results: successfulAffinityResults(2)}
 	handler, _, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
@@ -229,7 +175,7 @@ func TestHandlerDoesNotApplyAffinityWithoutInitialUserText(t *testing.T) {
 	serveAffinityRequest(t, engine, body)
 	serveAffinityRequest(t, engine, body)
 
-	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two"})
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false})
 }
 
@@ -250,7 +196,7 @@ func TestHandlerLearnsAffinityOnlyFromCleanCompletedStream(t *testing.T) {
 	serveAffinityRequest(t, engine, body)
 	serveAffinityRequest(t, engine, body)
 
-	assertAffinityAttemptKeys(t, forwarder.streamInputs, []string{"sk-one", "sk-two", "sk-two"})
+	assertAffinityAttemptKeys(t, forwarder.streamInputs, []string{"sk-one", "sk-one", "sk-one"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true})
 }
 
@@ -359,10 +305,19 @@ func addAffinityModelRoute(
 	}
 	byModel := byOperation[execution.OperationChatCompletion]
 	base := byModel["gpt-4o"]
-	if len(base) != 1 {
-		t.Fatalf("gpt-4o routes = %d, want 1", len(base))
+	if len(base) == 0 {
+		t.Fatalf("gpt-4o routes = %d, want at least one", len(base))
 	}
-	route := base[0]
+	var route state.RouteTarget
+	for _, candidate := range base {
+		if candidate.GroupID == groupID {
+			route = candidate
+			break
+		}
+	}
+	if route.GroupID == 0 {
+		t.Fatalf("gpt-4o has no route for group %d", groupID)
+	}
 	route.GroupID = groupID
 	route.UpstreamModelID = externalModel
 	byModel[externalModel] = []state.RouteTarget{route}
@@ -385,7 +340,7 @@ func moveSecondAffinityCredentialToGroup(
 	snapshot.GroupCatalog[2] = catalog
 	addAffinityModelRoute(t, snapshot, "gpt-4o-mini", 2)
 
-	refs := registry.CaptureActiveCredentialRefs([]uint{1})
+	refs := registry.CaptureActiveCredentialRefs([]uint{1, 2})
 	if len(refs) != 2 {
 		t.Fatalf("captured credential refs = %d, want 2", len(refs))
 	}
@@ -398,7 +353,7 @@ func moveSecondAffinityCredentialToGroup(
 		entries = append(entries, state.CredentialEntry{
 			ID: ref.ID, GroupID: groupID, Version: ref.Version,
 			IdentityGeneration: ref.IdentityGeneration, Fingerprint: ref.Fingerprint,
-			Status: state.CredentialStatusActive, EncryptedValue: ref.EncryptedValue,
+			EncryptedValue: ref.EncryptedValue,
 		})
 	}
 	if err := registry.ReplaceCredentials(entries); err != nil {

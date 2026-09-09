@@ -347,7 +347,7 @@ func gatewayAccessQuotaCompileInput(
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: 1,
 			Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
 		}},
 		AccessKeys: []state.AccessKeyConfig{{

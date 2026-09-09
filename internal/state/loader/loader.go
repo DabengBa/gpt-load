@@ -255,7 +255,7 @@ func queryCompileRows(ctx context.Context, db *gorm.DB) (compileRows, error) {
 		return compileRows{}, fmt.Errorf("query groups: %w", err)
 	}
 	if err := db.
-		Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version", "status", "weight_manual").
+		Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version", "auth_state", "auth_error_code").
 		Order("id ASC").
 		Find(&rows.credentials).Error; err != nil {
 		return compileRows{}, fmt.Errorf("query credential metadata: %w", err)
@@ -363,41 +363,6 @@ func BuildGroupCredentialEntries(
 	return entries, nil
 }
 
-// BuildGroupCredentialEntriesWithProxy also captures encrypted credential-level proxy identity.
-func BuildGroupCredentialEntriesWithProxy(
-	ctx context.Context,
-	db *gorm.DB,
-	groupID uint,
-	encryptionService encryption.Service,
-) ([]state.CredentialEntry, error) {
-	if groupID == 0 {
-		return nil, fmt.Errorf("group id is required")
-	}
-	var group models.Group
-	if err := db.WithContext(ctx).
-		Model(&models.Group{}).
-		Select("id", "channel_id", "connection_type", "params").
-		Where("id = ?", groupID).
-		Take(&group).Error; err != nil {
-		return nil, fmt.Errorf("query group %d: %w", groupID, err)
-	}
-	var rows []models.Credential
-	if err := db.WithContext(ctx).
-		Where("group_id = ?", groupID).
-		Order("id ASC").
-		Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("query group %d credentials: %w", groupID, err)
-	}
-	entries, err := mapCredentialsWithProxy(rows, []models.Group{group}, encryptionService)
-	if err != nil {
-		return nil, fmt.Errorf("map group %d credentials: %w", groupID, err)
-	}
-	if err := state.ValidateCredentialEntries(entries); err != nil {
-		return nil, fmt.Errorf("validate group %d credentials: %w", groupID, err)
-	}
-	return entries, nil
-}
-
 // BuildCredentialEntries maps all persisted credential rows into the exact
 // runtime registry representation. It is used to converge runtime state after
 // a committed control-plane write could not publish its incremental update.
@@ -415,33 +380,6 @@ func BuildCredentialEntries(ctx context.Context, db *gorm.DB) ([]state.Credentia
 		return nil, err
 	}
 	entries := mapCredentials(rows, groups)
-	if err := state.ValidateCredentialEntries(entries); err != nil {
-		return nil, fmt.Errorf("validate credentials: %w", err)
-	}
-	return entries, nil
-}
-
-func BuildCredentialEntriesWithProxy(
-	ctx context.Context,
-	db *gorm.DB,
-	encryptionService encryption.Service,
-) ([]state.CredentialEntry, error) {
-	var groups []models.Group
-	if err := db.WithContext(ctx).
-		Model(&models.Group{}).
-		Select("id", "channel_id", "connection_type", "params").
-		Order("id ASC").
-		Find(&groups).Error; err != nil {
-		return nil, fmt.Errorf("query credential targets: %w", err)
-	}
-	rows, err := queryCredentials(ctx, db)
-	if err != nil {
-		return nil, err
-	}
-	entries, err := mapCredentialsWithProxy(rows, groups, encryptionService)
-	if err != nil {
-		return nil, err
-	}
 	if err := state.ValidateCredentialEntries(entries); err != nil {
 		return nil, fmt.Errorf("validate credentials: %w", err)
 	}
@@ -473,10 +411,7 @@ func (l *Loader) read(
 	if err != nil {
 		return state.CompileInput{}, nil, nil, err
 	}
-	entries, err := mapCredentialsWithProxy(credentials, rows.groups, l.encryption)
-	if err != nil {
-		return state.CompileInput{}, nil, nil, err
-	}
+	entries := mapCredentials(credentials, rows.groups)
 	return input, entries, states, nil
 }
 
@@ -656,7 +591,6 @@ func mapSystemAndGroups(
 			ValidationModel: validationModel,
 			Models:          runtimeModels,
 			Settings:        settings,
-			WeightManual:    cloneWeight(row.WeightManual),
 			Enabled:         row.Enabled,
 		}
 		if row.ProxyConfig != nil {
@@ -788,8 +722,7 @@ func mapCredentialConfigs(
 	for _, row := range rows {
 		target := targets[row.GroupID]
 		result = append(result, state.CredentialConfig{
-			ID: row.ID, GroupID: row.GroupID, WeightManual: cloneWeight(row.WeightManual),
-			Status:  state.CredentialStatus(row.Status),
+			ID: row.ID, GroupID: row.GroupID,
 			Version: credentialVersion(row.SecretVersion),
 			IdentityGeneration: CredentialIdentityGeneration(
 				row.IdentityFingerprint,
@@ -817,41 +750,11 @@ func mapCredentials(rows []models.Credential, groups []models.Group) []state.Cre
 				target.connectionType,
 				target.params,
 			),
-			Fingerprint: row.Fingerprint, WeightManual: cloneWeight(row.WeightManual),
-			WeightAuto: state.DefaultWeight,
-			Status:     state.CredentialStatus(row.Status), AuthState: state.CredentialAuthState(row.AuthState), EncryptedValue: row.Data,
+			Fingerprint: row.Fingerprint,
+			AuthState:   state.CredentialAuthState(row.AuthState), EncryptedValue: row.Data,
 		})
 	}
 	return result
-}
-
-func mapCredentialsWithProxy(
-	rows []models.Credential,
-	groups []models.Group,
-	encryptionService encryption.Service,
-) ([]state.CredentialEntry, error) {
-	entries := mapCredentials(rows, groups)
-	for index, row := range rows {
-		if row.ProxyConfig == nil {
-			continue
-		}
-		if encryptionService == nil || *row.ProxyConfig == "" {
-			return nil, fmt.Errorf("credential %d proxy encryption is unavailable", row.ID)
-		}
-		plaintext, err := encryptionService.Decrypt(*row.ProxyConfig)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt credential %d proxy config", row.ID)
-		}
-		config, err := outboundproxy.Decode(plaintext)
-		if err != nil || config.Mode == outboundproxy.ModeInherit {
-			plaintext = ""
-			return nil, fmt.Errorf("validate credential %d proxy config", row.ID)
-		}
-		entries[index].EncryptedProxy = *row.ProxyConfig
-		entries[index].ProxyFingerprint = encryptionService.Hash(plaintext)
-		plaintext = ""
-	}
-	return entries, nil
 }
 
 func credentialVersion(secretVersion uint64) uint64 {

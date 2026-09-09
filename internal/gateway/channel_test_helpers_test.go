@@ -39,7 +39,7 @@ func testChannelConfig(
 
 func testCredentialConfig(id, groupID uint) state.CredentialConfig {
 	return state.CredentialConfig{
-		ID: id, GroupID: groupID, Status: state.CredentialStatusActive,
+		ID: id, GroupID: groupID,
 		Version: 1, IdentityGeneration: uint64(id),
 		Fingerprint: "test-credential-" + strconv.FormatUint(uint64(id), 10),
 	}
@@ -55,7 +55,7 @@ func testCredentialEntry(
 	t.Helper()
 	encrypted := encryptTestCredentialValue(t, service, apiKey)
 	return state.CredentialEntry{
-		ID: id, GroupID: groupID, Status: state.CredentialStatusActive,
+		ID: id, GroupID: groupID,
 		Version: 1, IdentityGeneration: uint64(id),
 		Fingerprint: "test-credential-" + strconv.FormatUint(uint64(id), 10), EncryptedValue: encrypted,
 	}

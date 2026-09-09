@@ -2065,7 +2065,7 @@ func TestServerGroupModelDiscoveryBodyContract(t *testing.T) {
 		if !activeKey {
 			if err := fixture.db.Model(&models.Credential{}).
 				Where("group_id = ?", created.GroupID).
-				Update("status", models.CredentialStatusDisabled).Error; err != nil {
+				Update("status", models.CredentialAuthStateReauthorizationRequired).Error; err != nil {
 				t.Fatalf("disable persisted discovery key: %v", err)
 			}
 		}

@@ -64,7 +64,7 @@ func TestControlWriteLockDoesNotBlockDataPlane(t *testing.T) {
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: upstreamKeyID, GroupID: groupID, Version: 1, IdentityGeneration: 1,
-		Fingerprint: fixture.encryption.Hash(credentialData), Status: state.CredentialStatusActive,
+		Fingerprint: fixture.encryption.Hash(credentialData), AuthState: state.CredentialAuthStateReady,
 		EncryptedValue: ciphertext,
 	}}); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)

@@ -15,7 +15,6 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/platform/config"
-	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 )
 
@@ -40,15 +39,6 @@ func TestReadHomeSubscriptionAccountsUsesBoundedHourlyActivityAndDeduplicates(t 
 	_, outsideWindow := createHomeSubscriptionCredential(
 		t, fixture, "outside-window", "old-account", "old@example.com",
 	)
-
-	if _, err := fixture.service.UpdateGroupCredential(
-		t.Context(), sharedTwoGroupID, sharedTwo.ID,
-		CredentialUpdateRequest{Status: optionalField[state.CredentialStatus]{
-			Set: true, Value: state.CredentialStatusDisabled,
-		}},
-	); err != nil {
-		t.Fatalf("disable duplicate subscription credential: %v", err)
-	}
 
 	createHomeCredentialObservation(t, fixture, sharedOne, now.Add(-10*time.Minute), "Old plan")
 	createHomeCredentialObservation(t, fixture, sharedTwo, now.Add(-time.Minute), "Pro 20x")

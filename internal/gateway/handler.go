@@ -1088,9 +1088,7 @@ func (handler *Handler) executeAttempts(
 			selection = refreshRetry.selection
 			currentRef, exists := handler.registry.CredentialRef(selection.CredentialID)
 			if !exists || currentRef.GroupID != selection.GroupID ||
-				currentRef.IdentityGeneration != refreshRetry.ref.IdentityGeneration ||
-				currentRef.EncryptedProxy != refreshRetry.ref.EncryptedProxy ||
-				currentRef.ProxyFingerprint != refreshRetry.ref.ProxyFingerprint {
+				currentRef.IdentityGeneration != refreshRetry.ref.IdentityGeneration {
 				refreshRetry = nil
 				continue
 			}
@@ -1184,24 +1182,15 @@ func (handler *Handler) executeAttempts(
 		effectiveProxy, proxyFingerprint, err := resolveAttemptProxy(
 			handler.encryption,
 			selection.Group.Proxy,
-			ref,
 		)
 		if err != nil {
-			code := "group_proxy_prepare_failed"
-			summary := "Group proxy configuration could not be prepared."
-			scope := execution.ErrorScopeGroup
-			if ref.EncryptedProxy != "" || ref.ProxyFingerprint != "" {
-				code = "credential_proxy_prepare_failed"
-				summary = "Credential proxy configuration could not be prepared."
-				scope = execution.ErrorScopeCredential
-			}
 			if !recordCandidatePreparationFailure(
 				selection,
 				attemptObservations,
 				attemptObservationsAvailable,
-				code,
-				summary,
-				scope,
+				"group_proxy_prepare_failed",
+				"Group proxy configuration could not be prepared.",
+				execution.ErrorScopeGroup,
 			) {
 				break
 			}

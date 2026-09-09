@@ -84,6 +84,8 @@ export default {
     copyFailure: 'コピーできませんでした',
     modelEditor: {
       title: 'モデルとエイリアス',
+      schedule: 'スケジュール',
+      breaker: 'ブレーカー',
       description:
         '検出は候補のみを生成します。保存前にエイリアスと選択済みモデルの完全な一覧を確認してください。',
       save: 'モデルを保存',
@@ -194,6 +196,7 @@ export default {
     },
     settings: {
       title: 'グループ設定',
+      advanced: '詳細設定',
       description: 'グループの識別情報、ルーティング項目、疎なランタイム上書きを編集します。',
       save: '設定を保存',
       loading: 'グループ設定を読み込み中',
@@ -376,11 +379,11 @@ export default {
         manageAccessKeys: 'アクセスキーを管理',
       },
     },
-    tabs: {
-      label: 'グループ詳細セクション',
-      credentials: '認証情報',
-      models: 'モデルとエイリアス',
-      settings: '設定',
+    unified: {
+      credentialsTitle: '認証情報',
+      credentialsSummary: '認証情報の状態と認可状態',
+      manageCredentials: '管理',
+      noCredentials: '認証情報が設定されていません',
     },
     credentials: {
       title: 'キー',
@@ -429,7 +432,6 @@ export default {
       },
       recent: '成功 {success} · 失敗 {failure}',
       recentSuccessOnly: '成功 {success}',
-      details: '最近の失敗と回復',
       detailsFailure: '最近の失敗',
       detailsRecovery: '回復',
       detailsConsecutive: '連続失敗',

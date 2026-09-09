@@ -84,6 +84,8 @@ export default {
     copyFailure: '复制失败',
     modelEditor: {
       title: '模型与别名',
+      schedule: '调度',
+      breaker: '熔断',
       description: '发现只生成候选项。保存前请检查别名与完整的已选模型列表。',
       save: '保存模型',
       loading: '正在加载模型',
@@ -192,6 +194,7 @@ export default {
     },
     settings: {
       title: '分组设置',
+      advanced: '高级配置',
       description: '编辑分组标识、路由字段与稀疏运行时覆盖。',
       save: '保存设置',
       loading: '正在加载分组设置',
@@ -364,11 +367,11 @@ export default {
         manageAccessKeys: '管理访问密钥',
       },
     },
-    tabs: {
-      label: '分组详情分区',
-      credentials: '凭据',
-      models: '模型与别名',
-      settings: '设置',
+    unified: {
+      credentialsTitle: '凭据',
+      credentialsSummary: '凭据健康和授权状态',
+      manageCredentials: '管理',
+      noCredentials: '尚未配置凭据',
     },
     credentials: {
       title: '密钥',

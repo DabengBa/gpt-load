@@ -53,12 +53,14 @@ var modelRouteScheduleRevisionConflict = &app_errors.APIError{
 }
 
 type modelRouteScheduleIndexItem struct {
-	ExternalModel         string `json:"external_model"`
-	CandidateCount        int    `json:"candidate_count"`
-	GroupCount            int    `json:"group_count"`
-	HasFallback           bool   `json:"has_fallback"`
-	CooledCandidates      int    `json:"cooled_candidates"`
-	BlacklistedCandidates int    `json:"blacklisted_candidates"`
+	ExternalModel         string              `json:"external_model"`
+	Protocol              protocol.Protocol   `json:"protocol"`
+	Operation             execution.Operation `json:"operation"`
+	CandidateCount        int                 `json:"candidate_count"`
+	GroupCount            int                 `json:"group_count"`
+	HasFallback           bool                `json:"has_fallback"`
+	CooledCandidates      int                 `json:"cooled_candidates"`
+	BlacklistedCandidates int                 `json:"blacklisted_candidates"`
 }
 
 type modelRouteScheduleIndexResponse struct {
@@ -101,7 +103,6 @@ type modelRouteScheduleEntryResponse struct {
 	EntryID        string                           `json:"entry_id"`
 	ModelID        string                           `json:"model_id"`
 	Alias          string                           `json:"alias"`
-	WeightManual   *int                             `json:"weight_manual"`
 	Weight         int                              `json:"weight"`
 	Priority       int                              `json:"priority"`
 	Fallback       bool                             `json:"fallback"`
@@ -115,17 +116,15 @@ type modelRouteScheduleEntryResponse struct {
 }
 
 type modelRouteScheduleGroupResponse struct {
-	GroupID     uint                              `json:"group_id"`
-	GroupName   string                            `json:"group_name"`
-	ChannelID   channel.ID                        `json:"channel_id"`
-	GroupWeight *int                              `json:"group_weight"`
-	Entries     []modelRouteScheduleEntryResponse `json:"entries"`
+	GroupID   uint                              `json:"group_id"`
+	GroupName string                            `json:"group_name"`
+	ChannelID channel.ID                        `json:"channel_id"`
+	Entries   []modelRouteScheduleEntryResponse `json:"entries"`
 }
 
 type modelRouteScheduleDetailResponse struct {
 	ObservedAtMS     int64                             `json:"observed_at_ms"`
 	SnapshotRevision uint64                            `json:"snapshot_revision"`
-	RouteStrategy    state.RouteStrategy               `json:"route_strategy"`
 	ExternalModel    *string                           `json:"external_model"`
 	Protocol         protocol.Protocol                 `json:"protocol"`
 	Operation        execution.Operation               `json:"operation"`
@@ -134,6 +133,44 @@ type modelRouteScheduleDetailResponse struct {
 	Routable         bool                              `json:"routable"`
 	ReasonCode       *scheduler.ReasonCode             `json:"reason_code"`
 	Groups           []modelRouteScheduleGroupResponse `json:"groups"`
+}
+
+func scheduleRouteRequirement(
+	clientProtocol protocol.Protocol,
+	operation execution.Operation,
+	defaultRequirement execution.RouteRequirement,
+) execution.RouteRequirement {
+	if clientProtocol == protocol.OpenAIResponses {
+		switch operation {
+		case execution.OperationResponsesRetrieve,
+			execution.OperationResponsesDelete,
+			execution.OperationResponsesCancel,
+			execution.OperationResponsesInputItems,
+			execution.OperationResponsesPassthrough:
+			return execution.RouteRequirementNative
+		}
+	}
+	return defaultRequirement
+}
+
+func preferScheduleContext(candidate protocol.Protocol, current protocol.Protocol) bool {
+	order := map[protocol.Protocol]int{
+		protocol.OpenAICompletions: 0,
+		protocol.OpenAIResponses:   1,
+		protocol.Anthropic:         2,
+		protocol.Gemini:            3,
+		protocol.OpenAIImages:      4,
+		protocol.OpenAIEmbeddings:  5,
+	}
+	candidateRank, candidateKnown := order[candidate]
+	currentRank, currentKnown := order[current]
+	if candidateKnown != currentKnown {
+		return candidateKnown
+	}
+	if candidateKnown && candidateRank != currentRank {
+		return candidateRank < currentRank
+	}
+	return string(candidate) < string(current)
 }
 
 // GetModelRouteScheduleIndex aggregates the real route candidates of the
@@ -151,6 +188,10 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 		groupID uint
 		entryID string
 	}
+	type scheduleIndexContext struct {
+		protocol  protocol.Protocol
+		operation execution.Operation
+	}
 	type scheduleIndexAccumulator struct {
 		candidates  map[scheduleCandidateKey]struct{}
 		groups      map[uint]struct{}
@@ -158,20 +199,26 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 		cooled      int
 		blacklist   int
 	}
-	items := make(map[string]*scheduleIndexAccumulator)
-	for _, byOperation := range observation.snapshot.ExecutionRouteCatalog {
-		for _, byModel := range byOperation {
+	items := make(map[string]map[scheduleIndexContext]*scheduleIndexAccumulator)
+	for protocolKey, byOperation := range observation.snapshot.ExecutionRouteCatalog {
+		for operationKey, byModel := range byOperation {
 			for external, targets := range byModel {
 				if external == state.NoModelRouteKey || len(targets) == 0 {
 					continue
 				}
-				accumulator, exists := items[external]
+				contexts, exists := items[external]
+				if !exists {
+					contexts = make(map[scheduleIndexContext]*scheduleIndexAccumulator)
+					items[external] = contexts
+				}
+				context := scheduleIndexContext{protocol: protocolKey, operation: operationKey}
+				accumulator, exists := contexts[context]
 				if !exists {
 					accumulator = &scheduleIndexAccumulator{
 						candidates: make(map[scheduleCandidateKey]struct{}),
 						groups:     make(map[uint]struct{}),
 					}
-					items[external] = accumulator
+					contexts[context] = accumulator
 				}
 				for _, target := range targets {
 					key := scheduleCandidateKey{groupID: target.GroupID, entryID: target.EntryID}
@@ -203,14 +250,25 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 	result := modelRouteScheduleIndexResponse{
 		Items: make([]modelRouteScheduleIndexItem, 0, len(items)),
 	}
-	for external, accumulator := range items {
+	for external, contexts := range items {
+		var selectedContext scheduleIndexContext
+		var selected *scheduleIndexAccumulator
+		for context, accumulator := range contexts {
+			if selected == nil || preferScheduleContext(context.protocol, selectedContext.protocol) ||
+				(context.protocol == selectedContext.protocol && string(context.operation) < string(selectedContext.operation)) {
+				selectedContext = context
+				selected = accumulator
+			}
+		}
 		result.Items = append(result.Items, modelRouteScheduleIndexItem{
 			ExternalModel:         external,
-			CandidateCount:        len(accumulator.candidates),
-			GroupCount:            len(accumulator.groups),
-			HasFallback:           accumulator.hasFallback,
-			CooledCandidates:      accumulator.cooled,
-			BlacklistedCandidates: accumulator.blacklist,
+			Protocol:              selectedContext.protocol,
+			Operation:             selectedContext.operation,
+			CandidateCount:        len(selected.candidates),
+			GroupCount:            len(selected.groups),
+			HasFallback:           selected.hasFallback,
+			CooledCandidates:      selected.cooled,
+			BlacklistedCandidates: selected.blacklist,
 		})
 	}
 	sort.Slice(result.Items, func(i, j int) bool {
@@ -282,11 +340,12 @@ func (s *Service) GetModelRouteScheduleDetail(
 	if request.Operation != "" {
 		operation = request.Operation
 	}
+	routeRequirement := scheduleRouteRequirement(request.Protocol, operation, metadata.RouteRequirement)
 	entryRuntime := s.registry.EntryRuntimeSnapshot()
 	explanation := scheduler.Inspection{
 		ClientProtocol:   request.Protocol,
 		Operation:        operation,
-		RouteRequirement: metadata.RouteRequirement,
+		RouteRequirement: routeRequirement,
 		ExternalModel:    cloneRouteModel(metadata.Model),
 		Reason:           scheduler.ReasonAccessKeyExpired,
 		Groups:           []scheduler.GroupInspection{},
@@ -300,7 +359,7 @@ func (s *Service) GetModelRouteScheduleDetail(
 			scheduler.Query{
 				ClientProtocol:   request.Protocol,
 				Operation:        operation,
-				RouteRequirement: metadata.RouteRequirement,
+				RouteRequirement: routeRequirement,
 				ExternalModel:    cloneRouteModel(metadata.Model),
 				AccessKey:        accessKey,
 			},
@@ -339,7 +398,6 @@ func mapModelRouteScheduleDetail(
 	result := modelRouteScheduleDetailResponse{
 		ObservedAtMS:     observedAtMS,
 		SnapshotRevision: observation.snapshot.Revision,
-		RouteStrategy:    observation.snapshot.Settings.RouteStrategy,
 		ExternalModel:    cloneRouteModel(explanation.ExternalModel),
 		Protocol:         request.Protocol,
 		Operation:        explanation.Operation,
@@ -372,13 +430,12 @@ func mapModelRouteScheduleDetail(
 			upstreamModel = *group.UpstreamModelID
 		}
 		entry := modelRouteScheduleEntryResponse{
-			EntryID:      group.EntryID,
-			ModelID:      upstreamModel,
-			Alias:        configuration.alias,
-			WeightManual: cloneInt(configuration.weightManual),
-			Weight:       group.EntryWeight,
-			Priority:     group.Priority,
-			Fallback:     group.Priority > 1,
+			EntryID:  group.EntryID,
+			ModelID:  upstreamModel,
+			Alias:    configuration.alias,
+			Weight:   group.EntryWeight,
+			Priority: group.Priority,
+			Fallback: group.Priority > 1,
 			CircuitBreaker: scheduleBreakerViewFromConfiguration(
 				configuration.circuitBreaker,
 			),
@@ -396,11 +453,10 @@ func mapModelRouteScheduleDetail(
 			position = len(result.Groups)
 			groupIndex[group.GroupID] = position
 			result.Groups = append(result.Groups, modelRouteScheduleGroupResponse{
-				GroupID:     group.GroupID,
-				GroupName:   group.GroupName,
-				ChannelID:   group.ChannelID,
-				GroupWeight: cloneInt(group.WeightManual),
-				Entries:     []modelRouteScheduleEntryResponse{},
+				GroupID:   group.GroupID,
+				GroupName: group.GroupName,
+				ChannelID: group.ChannelID,
+				Entries:   []modelRouteScheduleEntryResponse{},
 			})
 		}
 		result.Groups[position].Entries = append(result.Groups[position].Entries, entry)
@@ -421,9 +477,6 @@ func mapScheduleCredentials(
 			CredentialID:    credential.CredentialID,
 			Available:       credential.Available,
 			ReasonCode:      optionalReason(credential.Reason),
-			WeightManual:    cloneInt(credential.WeightManual),
-			WeightAuto:      credential.WeightAuto,
-			EffectiveWeight: credential.EffectiveWeight,
 			CooldownUntilMS: cooldownUntilMS,
 		})
 	}
@@ -465,8 +518,6 @@ func scheduleEntryRuntime(
 
 type scheduleEntryConfiguration struct {
 	alias          string
-	upstreamModel  string
-	weightManual   *int
 	circuitBreaker *state.EntryCircuitBreaker
 }
 
@@ -494,8 +545,6 @@ func scheduleEntryConfigurations(
 			}
 			result[groupID][identity] = scheduleEntryConfiguration{
 				alias:          model.Alias,
-				upstreamModel:  upstream,
-				weightManual:   cloneInt(model.Weight),
 				circuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 			}
 		}

@@ -50,7 +50,6 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 	fixture.service.now = func() time.Time { return now }
 	cooldownPlaintext := "rate-limit-secret-safe"
 	blacklistedPlaintext := "invalid-key-secret-lock"
-	zero := 0
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
 		Groups: []state.GroupConfig{
@@ -61,8 +60,7 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: false,
 			},
 			{ConnectionType: "api_key", ID: 3, Name: "zero-weight", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-				Models:       []state.ModelConfig{{ID: "model"}},
-				WeightManual: &zero, Enabled: true,
+				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
 			{ConnectionType: "api_key", ID: 4, Name: "empty", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
@@ -71,31 +69,25 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
-	keyWeightZero := 0
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
-		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", Status: state.CredentialStatusActive, EncryptedValue: "available"},
+		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, EncryptedValue: "available"},
 		{
-			ID: 12, GroupID: 1, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", Status: state.CredentialStatusActive,
+			ID: 12, GroupID: 1, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", AuthState: state.CredentialAuthStateReady,
 			CooldownUntil: now.Add(time.Minute), FailureCount: 1,
 			EncryptedValue: encryptHealthKey(t, fixture, cooldownPlaintext),
 		},
 		{
-			ID: 13, GroupID: 1, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", Status: state.CredentialStatusActive,
+			ID: 13, GroupID: 1, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReady,
 			Blacklisted: true, CooldownUntil: now.Add(time.Hour),
 			FailureCount:   3,
 			EncryptedValue: encryptHealthKey(t, fixture, blacklistedPlaintext),
 		},
 		{
-			ID: 14, GroupID: 1, Version: 1, IdentityGeneration: 14, Fingerprint: "test-14", Status: state.CredentialStatusDisabled,
+			ID: 14, GroupID: 1, Version: 1, IdentityGeneration: 14, Fingerprint: "test-14", AuthState: state.CredentialAuthStateReauthorizationRequired,
 			Blacklisted: true, EncryptedValue: "disabled",
 		},
-		{
-			ID: 15, GroupID: 1, Version: 1, IdentityGeneration: 15, Fingerprint: "test-15", Status: state.CredentialStatusActive,
-			WeightManual: &keyWeightZero, Blacklisted: true,
-			EncryptedValue: "weight-zero",
-		},
-		{ID: 21, GroupID: 2, Version: 1, IdentityGeneration: 21, Fingerprint: "test-21", Status: state.CredentialStatusActive, EncryptedValue: "disabled-group"},
-		{ID: 31, GroupID: 3, Version: 1, IdentityGeneration: 31, Fingerprint: "test-31", Status: state.CredentialStatusActive, EncryptedValue: "zero-group"},
+		{ID: 21, GroupID: 2, Version: 1, IdentityGeneration: 21, Fingerprint: "test-21", AuthState: state.CredentialAuthStateReady, EncryptedValue: "disabled-group"},
+		{ID: 31, GroupID: 3, Version: 1, IdentityGeneration: 31, Fingerprint: "test-31", AuthState: state.CredentialAuthStateReady, EncryptedValue: "zero-group"},
 	}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
 	}
@@ -189,7 +181,7 @@ func TestRuntimeHealthAdvertisesExecutorValidationForChannelCredential(t *testin
 		t.Fatalf("Publish() error = %v", err)
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", Status: state.CredentialStatusActive, Blacklisted: true,
+		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, Blacklisted: true,
 		EncryptedValue: encryptHealthKey(t, fixture, `{"api_key":"blacklisted-channel-credential"}`),
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -220,7 +212,7 @@ func TestRuntimeHealthExposesProblemCountsInsteadOfFailureAliases(t *testing.T) 
 		t.Fatalf("Publish() error = %v", err)
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", Status: state.CredentialStatusActive,
+		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady,
 		CooldownUntil:  now.Add(time.Minute),
 		EncryptedValue: encryptHealthKey(t, fixture, "rate-limit-secret-safe"),
 	}}); err != nil {
@@ -288,27 +280,27 @@ func TestRuntimeHealthSortsProblemKeysByGroupAndKey(t *testing.T) {
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
 		{
-			ID: 22, GroupID: 2, Version: 1, IdentityGeneration: 22, Fingerprint: "test-22", Status: state.CredentialStatusActive,
+			ID: 22, GroupID: 2, Version: 1, IdentityGeneration: 22, Fingerprint: "test-22", AuthState: state.CredentialAuthStateReady,
 			CooldownUntil:  now.Add(time.Minute),
 			EncryptedValue: encryptHealthKey(t, fixture, "cooldown-secret-0022"),
 		},
 		{
-			ID: 13, GroupID: 1, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", Status: state.CredentialStatusActive,
+			ID: 13, GroupID: 1, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReady,
 			Blacklisted:    true,
 			EncryptedValue: encryptHealthKey(t, fixture, "blacklisted-secret-0013"),
 		},
 		{
-			ID: 12, GroupID: 1, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", Status: state.CredentialStatusActive,
+			ID: 12, GroupID: 1, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", AuthState: state.CredentialAuthStateReady,
 			CooldownUntil:  now.Add(time.Minute),
 			EncryptedValue: encryptHealthKey(t, fixture, "cooldown-secret-0012"),
 		},
 		{
-			ID: 21, GroupID: 2, Version: 1, IdentityGeneration: 21, Fingerprint: "test-21", Status: state.CredentialStatusActive,
+			ID: 21, GroupID: 2, Version: 1, IdentityGeneration: 21, Fingerprint: "test-21", AuthState: state.CredentialAuthStateReady,
 			Blacklisted:    true,
 			EncryptedValue: encryptHealthKey(t, fixture, "blacklisted-secret-0021"),
 		},
 		{
-			ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", Status: state.CredentialStatusActive,
+			ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady,
 			CooldownUntil:  now.Add(time.Minute),
 			EncryptedValue: encryptHealthKey(t, fixture, "cooldown-secret-0011"),
 		},
@@ -363,12 +355,12 @@ func TestRuntimeHealthCapsProblemCredentialDetails(t *testing.T) {
 		entries = append(entries,
 			state.CredentialEntry{
 				ID: cooldownID, GroupID: 1, Version: 1, IdentityGeneration: uint64(cooldownID),
-				Fingerprint: fmt.Sprintf("cooldown-%d", cooldownID), Status: state.CredentialStatusActive,
+				Fingerprint: fmt.Sprintf("cooldown-%d", cooldownID), AuthState: state.CredentialAuthStateReady,
 				CooldownUntil: now.Add(time.Minute), EncryptedValue: ciphertext,
 			},
 			state.CredentialEntry{
 				ID: blacklistedID, GroupID: 1, Version: 1, IdentityGeneration: uint64(blacklistedID),
-				Fingerprint: fmt.Sprintf("blacklisted-%d", blacklistedID), Status: state.CredentialStatusActive,
+				Fingerprint: fmt.Sprintf("blacklisted-%d", blacklistedID), AuthState: state.CredentialAuthStateReady,
 				Blacklisted: true, EncryptedValue: ciphertext,
 			},
 		)
@@ -421,7 +413,7 @@ func TestRuntimeHealthJSONOmitsScoresCredentialsAndZeroTimes(t *testing.T) {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive,
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", AuthState: state.CredentialAuthStateReady,
 		Blacklisted: true, EncryptedValue: ciphertext,
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -505,7 +497,7 @@ func TestRuntimeHealthFailsClosedWhenProblemKeyCannotBeDecrypted(t *testing.T) {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive,
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", AuthState: state.CredentialAuthStateReady,
 		Blacklisted: true, EncryptedValue: "not-a-valid-ciphertext",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -596,7 +588,7 @@ func TestRuntimeHealthFailsLoudForRegistryCatalogMismatch(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 999, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", Status: state.CredentialStatusActive,
+		ID: 1, GroupID: 999, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", AuthState: state.CredentialAuthStateReady,
 		EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
