@@ -369,6 +369,27 @@ export default {
         qualityCompact:
           '缺失 {missing} · 部分 {partial} · 未定价 {unpriced} · 部分定价 {pricingPartial}',
       },
+      breakdown: {
+        title: '模型与路由明细',
+        description: '按模型及可用路由上下文展示当前筛选范围内的全部统计行。',
+        caption: '按模型与路由统计的用量与成本明细',
+        rowCount: '{count} 行',
+        total: '总计',
+        deletedOrUnknownChannel: '#{id} · 已删除或未知',
+        columns: {
+          model: '模型',
+          group: '分组',
+          channel: '渠道',
+          successRate: '成功率',
+          averageLatency: '平均延迟',
+          uncachedInput: '未缓存输入',
+          cacheRead: '缓存读取',
+          cacheWrite5m: '缓存写入 5m',
+          cacheWrite1h: '缓存写入 1h',
+          cacheWriteUnknown: '缓存写入未知',
+          output: '输出',
+        },
+      },
     },
     inspector: {
       title: '路由检查',

@@ -5,6 +5,7 @@ import type { ApiClient } from '@/api/client'
 import { InvalidResponseError } from '@/api/errors'
 import { controlQueryKeys } from '@/app/query-keys'
 import { timeRanges, type TimeRange } from '@/lib/time'
+import { projectChannelID } from './channels'
 
 import {
   assertNoSecretLikeFields,
@@ -43,6 +44,8 @@ export interface UsageAggregateDto {
   output_tokens: number
   total_tokens: number
   estimated_cost_nano_usd: string
+  duration_ms_total: number
+  duration_sample_count: number
   usage_missing_count: number
   partial_count: number
   unpriced_request_count: number
@@ -75,6 +78,21 @@ export interface UsageReportDto {
     write_failure_total: number
     last_write_failure_at_ms: number | null
   }
+  breakdown: UsageBreakdownDto
+}
+
+export type UsageBreakdownScope = 'admin' | 'access_key'
+
+export interface UsageBreakdownRowDto extends UsageAggregateDto {
+  model: string
+  group_id?: number
+  channel_id?: string
+}
+
+export interface UsageBreakdownDto {
+  scope: UsageBreakdownScope
+  rows: UsageBreakdownRowDto[]
+  total: UsageAggregateDto
 }
 
 export interface UsageDistributionDto {
@@ -101,6 +119,8 @@ const aggregateKeys = [
   'cache_write_unknown_tokens',
   'output_tokens',
   'total_tokens',
+  'duration_ms_total',
+  'duration_sample_count',
   'usage_missing_count',
   'partial_count',
   'unpriced_request_count',
@@ -123,6 +143,7 @@ const reportFields = [
   'series',
   'distributions',
   'collection_health',
+  'breakdown',
 ] as const
 const hourMs = 60 * 60 * 1000
 const dayMs = 24 * hourMs
@@ -163,12 +184,15 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
     output_tokens: projectSafeInteger(record.output_tokens, { minimum: 0 }),
     total_tokens: projectSafeInteger(record.total_tokens, { minimum: 0 }),
     estimated_cost_nano_usd: projectNonNegativeInt64String(record.estimated_cost_nano_usd),
+    duration_ms_total: projectSafeInteger(record.duration_ms_total, { minimum: 0 }),
+    duration_sample_count: projectSafeInteger(record.duration_sample_count, { minimum: 0 }),
     usage_missing_count: projectSafeInteger(record.usage_missing_count, { minimum: 0 }),
     partial_count: projectSafeInteger(record.partial_count, { minimum: 0 }),
     unpriced_request_count: projectSafeInteger(record.unpriced_request_count, { minimum: 0 }),
     pricing_partial_count: projectSafeInteger(record.pricing_partial_count, { minimum: 0 }),
   }
   if (
+    result.duration_sample_count > result.request_count ||
     result.success_count + result.failure_count !== result.request_count ||
     result.total_tokens !==
       result.uncached_input_tokens +
@@ -185,6 +209,99 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
     invalidResponse()
   }
   return result
+}
+
+const breakdownAggregateFields = [...aggregateFields] as const
+
+function sameUsageAggregate(left: UsageAggregateDto, right: UsageAggregateDto): boolean {
+  return breakdownAggregateFields.every((field) => left[field] === right[field])
+}
+
+function addSafeUsageNumber(left: number, right: number): number {
+  const result = left + right
+  if (!Number.isSafeInteger(result)) invalidResponse()
+  return result
+}
+
+function sumUsageAggregates(rows: UsageBreakdownRowDto[]): UsageAggregateDto {
+  const result: UsageAggregateDto = {
+    request_count: 0,
+    success_count: 0,
+    failure_count: 0,
+    uncached_input_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_5m_tokens: 0,
+    cache_write_1h_tokens: 0,
+    cache_write_unknown_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    estimated_cost_nano_usd: '0',
+    duration_ms_total: 0,
+    duration_sample_count: 0,
+    usage_missing_count: 0,
+    partial_count: 0,
+    unpriced_request_count: 0,
+    pricing_partial_count: 0,
+  }
+  for (const row of rows) {
+    for (const field of aggregateKeys) {
+      result[field] = addSafeUsageNumber(result[field], row[field])
+    }
+    result.estimated_cost_nano_usd = (
+      BigInt(result.estimated_cost_nano_usd) + BigInt(row.estimated_cost_nano_usd)
+    ).toString()
+  }
+  return result
+}
+
+function projectUsageModel(value: unknown): string {
+  const model = projectString(value)
+  if (
+    new TextEncoder().encode(model).length > 255 ||
+    model !== model.trim() ||
+    /[\p{Cc}]/u.test(model)
+  ) {
+    invalidResponse()
+  }
+  return model
+}
+
+export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, ['scope', 'rows', 'total'])
+  const scope = projectEnum(record.scope, ['admin', 'access_key'] as const)
+  const total = projectUsageAggregate(record.total)
+  const rows = projectArray(record.rows, (value): UsageBreakdownRowDto => {
+    const row = projectRecord(value)
+    const identityFields = scope === 'admin' ? ['model', 'group_id', 'channel_id'] : ['model']
+    assertNoSecretLikeFields(row, [...identityFields, ...breakdownAggregateFields])
+    const model = projectUsageModel(row.model)
+    const aggregate = projectUsageAggregate(
+      Object.fromEntries(breakdownAggregateFields.map((field) => [field, row[field]])),
+    )
+    if (scope === 'admin') {
+      return {
+        ...aggregate,
+        model,
+        group_id: projectSafeInteger(row.group_id, { minimum: 1 }),
+        channel_id: projectChannelID(row.channel_id),
+      }
+    }
+    return { ...aggregate, model }
+  })
+  const identities = new Set<string>()
+  for (const row of rows) {
+    const identity = JSON.stringify([
+      scope,
+      row.model,
+      row.group_id ?? null,
+      row.channel_id ?? null,
+    ])
+    if (identities.has(identity)) invalidResponse()
+    identities.add(identity)
+  }
+  if (!sameUsageAggregate(sumUsageAggregates(rows), total)) invalidResponse()
+  return { scope, rows, total }
 }
 
 function projectUsageDistributionAggregate(value: unknown): UsageDistributionAggregateDto {
@@ -384,6 +501,8 @@ export function projectUsageReport(value: unknown): UsageReportDto {
     ? projectDistributionMetricRecord(distributionsRecord.access_key, 'access_key')
     : undefined
   const summary = projectUsageAggregate(record.summary)
+  const breakdown = projectUsageBreakdown(record.breakdown)
+  if (!sameUsageAggregate(breakdown.total, summary)) invalidResponse()
 
   return {
     range,
@@ -400,6 +519,7 @@ export function projectUsageReport(value: unknown): UsageReportDto {
       ...(accessKeyDistributions === undefined ? {} : { access_key: accessKeyDistributions }),
     },
     collection_health: projectCollectionHealth(record.collection_health),
+    breakdown,
   }
 }
 

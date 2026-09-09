@@ -367,6 +367,14 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
   padding-top: var(--detail-panel-padding-top);
 }
 
+.monitor-tabs {
+  min-width: 0;
+}
+
+.monitor-tabs :deep(.app-tabs__content) {
+  min-width: 0;
+}
+
 .monitor-tabs :deep(.app-tabs__bar) {
   border-top: 0;
 }

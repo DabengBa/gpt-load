@@ -48,6 +48,8 @@ type usageAggregateResponse struct {
 	OutputTokens            int64  `json:"output_tokens"`
 	TotalTokens             int64  `json:"total_tokens"`
 	EstimatedCostNanoUSD    string `json:"estimated_cost_nano_usd"`
+	DurationMsTotal         int64  `json:"duration_ms_total"`
+	DurationSampleCount     int64  `json:"duration_sample_count"`
 	UsageMissingCount       int64  `json:"usage_missing_count"`
 	PartialCount            int64  `json:"partial_count"`
 	UnpricedRequestCount    int64  `json:"unpriced_request_count"`
@@ -95,6 +97,19 @@ type usageCollectionHealthResponse struct {
 	LastWriteFailureAtMS *int64 `json:"last_write_failure_at_ms"`
 }
 
+type usageBreakdownRowResponse struct {
+	Model     string  `json:"model"`
+	GroupID   *uint   `json:"group_id,omitempty"`
+	ChannelID *string `json:"channel_id,omitempty"`
+	usageAggregateResponse
+}
+
+type usageBreakdownResponse struct {
+	Scope string                      `json:"scope"`
+	Rows  []usageBreakdownRowResponse `json:"rows"`
+	Total usageAggregateResponse      `json:"total"`
+}
+
 type usageResponse struct {
 	Range            string                         `json:"range"`
 	Granularity      requestlog.UsageGranularity    `json:"granularity"`
@@ -105,6 +120,7 @@ type usageResponse struct {
 	Summary          usageAggregateResponse         `json:"summary"`
 	Series           []usageSeriesResponse          `json:"series"`
 	Distributions    usageDistributionViewsResponse `json:"distributions"`
+	Breakdown        usageBreakdownResponse         `json:"breakdown"`
 	CollectionHealth usageCollectionHealthResponse  `json:"collection_health"`
 }
 
@@ -333,6 +349,10 @@ func (service *Service) mapUsageResponse(
 	if err != nil {
 		return usageResponse{}, err
 	}
+	breakdown, err := mapUsageBreakdown(report.Breakdown, accessKeyScoped, summary)
+	if err != nil {
+		return usageResponse{}, err
+	}
 	stats := requestlog.Stats{}
 	if !accessKeyScoped {
 		stats = service.requestLogStats.Stats()
@@ -375,8 +395,9 @@ func (service *Service) mapUsageResponse(
 			WriteFailureTotal:    stats.WriteFailureTotal,
 			LastWriteFailureAtMS: lastWriteFailureAtMS,
 		},
-		Summary: summary,
-		Series:  make([]usageSeriesResponse, 0, len(report.Series)),
+		Summary:   summary,
+		Breakdown: breakdown,
+		Series:    make([]usageSeriesResponse, 0, len(report.Series)),
 		Distributions: usageDistributionViewsResponse{
 			Model: make(map[requestlog.UsageDistributionMetric]usageDistributionResponse, 3),
 		},
@@ -445,6 +466,136 @@ func (service *Service) mapUsageResponse(
 	return result, nil
 }
 
+func mapUsageBreakdown(
+	source requestlog.UsageBreakdown,
+	accessKeyScoped bool,
+	summary usageAggregateResponse,
+) (usageBreakdownResponse, error) {
+	wantScope := "admin"
+	if accessKeyScoped {
+		wantScope = "access_key"
+	}
+	if source.Scope != wantScope {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: scope mismatch")
+	}
+	total, err := mapUsageAggregate(source.Total)
+	if err != nil {
+		return usageBreakdownResponse{}, err
+	}
+	if total != summary {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: total mismatch with summary")
+	}
+	result := usageBreakdownResponse{
+		Scope: source.Scope,
+		Rows:  make([]usageBreakdownRowResponse, 0, len(source.Rows)),
+		Total: total,
+	}
+	type identity struct {
+		model, channel string
+		group          uint
+	}
+	seen := make(map[identity]struct{}, len(source.Rows))
+	var rowsTotal usageAggregateResponse
+	rowsTotal.EstimatedCostNanoUSD = "0"
+	for _, row := range source.Rows {
+		if !validUsageModel(row.Model) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid model")
+		}
+		if row.GroupID != nil && uint64(*row.GroupID) > uint64(maxSafeInteger) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: unsafe group")
+		}
+		if accessKeyScoped && (row.GroupID != nil || row.ChannelID != nil) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: access-key row contains admin identity")
+		}
+		if !accessKeyScoped && (row.GroupID == nil || row.ChannelID == nil) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: admin row is missing identity")
+		}
+		key := identity{model: row.Model}
+		if row.GroupID != nil {
+			key.group = *row.GroupID
+		}
+		if row.ChannelID != nil {
+			key.channel = *row.ChannelID
+		}
+		if _, exists := seen[key]; exists {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: duplicate identity")
+		}
+		seen[key] = struct{}{}
+		aggregate, err := mapUsageAggregate(row.UsageAggregate)
+		if err != nil {
+			return usageBreakdownResponse{}, err
+		}
+		rowsTotal, err = addMappedUsageAggregates(rowsTotal, aggregate)
+		if err != nil {
+			return usageBreakdownResponse{}, err
+		}
+		result.Rows = append(result.Rows, usageBreakdownRowResponse{
+			Model: row.Model, GroupID: row.GroupID, ChannelID: row.ChannelID,
+			usageAggregateResponse: aggregate,
+		})
+	}
+	if rowsTotal != total {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: rows total mismatch")
+	}
+	return result, nil
+}
+
+func addMappedUsageAggregates(left, right usageAggregateResponse) (usageAggregateResponse, error) {
+	result := usageAggregateResponse{}
+	fields := []struct {
+		name        string
+		left, right int64
+		target      *int64
+	}{
+		{"request count", left.RequestCount, right.RequestCount, &result.RequestCount},
+		{"success count", left.SuccessCount, right.SuccessCount, &result.SuccessCount},
+		{"failure count", left.FailureCount, right.FailureCount, &result.FailureCount},
+		{"uncached input tokens", left.UncachedInputTokens, right.UncachedInputTokens, &result.UncachedInputTokens},
+		{"cache read tokens", left.CacheReadTokens, right.CacheReadTokens, &result.CacheReadTokens},
+		{"cache write 5m tokens", left.CacheWrite5MTokens, right.CacheWrite5MTokens, &result.CacheWrite5MTokens},
+		{"cache write 1h tokens", left.CacheWrite1HTokens, right.CacheWrite1HTokens, &result.CacheWrite1HTokens},
+		{"cache write unknown tokens", left.CacheWriteUnknownTokens, right.CacheWriteUnknownTokens, &result.CacheWriteUnknownTokens},
+		{"output tokens", left.OutputTokens, right.OutputTokens, &result.OutputTokens},
+		{"duration ms total", left.DurationMsTotal, right.DurationMsTotal, &result.DurationMsTotal},
+		{"duration sample count", left.DurationSampleCount, right.DurationSampleCount, &result.DurationSampleCount},
+		{"usage missing count", left.UsageMissingCount, right.UsageMissingCount, &result.UsageMissingCount},
+		{"partial count", left.PartialCount, right.PartialCount, &result.PartialCount},
+		{"unpriced request count", left.UnpricedRequestCount, right.UnpricedRequestCount, &result.UnpricedRequestCount},
+		{"pricing partial count", left.PricingPartialCount, right.PricingPartialCount, &result.PricingPartialCount},
+	}
+	for _, field := range fields {
+		if field.left < 0 || field.right < 0 || field.left > maxSafeInteger-field.right {
+			return usageAggregateResponse{}, fmt.Errorf("map usage breakdown: %s overflow", field.name)
+		}
+		*field.target = field.left + field.right
+	}
+	totalTokens, err := checkedUsageTokenTotal(
+		result.UncachedInputTokens,
+		result.CacheReadTokens,
+		result.CacheWrite5MTokens,
+		result.CacheWrite1HTokens,
+		result.CacheWriteUnknownTokens,
+		result.OutputTokens,
+	)
+	if err != nil {
+		return usageAggregateResponse{}, err
+	}
+	result.TotalTokens = totalTokens
+	leftCost, err := strconv.ParseInt(left.EstimatedCostNanoUSD, 10, 64)
+	if err != nil {
+		return usageAggregateResponse{}, fmt.Errorf("map usage breakdown: invalid left cost")
+	}
+	rightCost, err := strconv.ParseInt(right.EstimatedCostNanoUSD, 10, 64)
+	if err != nil || leftCost < 0 || rightCost < 0 {
+		return usageAggregateResponse{}, fmt.Errorf("map usage breakdown: cost overflow")
+	}
+	cost, ok := pricing.CheckedAddNanoUSD(pricing.NanoUSD(leftCost), pricing.NanoUSD(rightCost))
+	if !ok {
+		return usageAggregateResponse{}, fmt.Errorf("map usage breakdown: cost overflow")
+	}
+	result.EstimatedCostNanoUSD = strconv.FormatInt(int64(cost), 10)
+	return result, nil
+}
 func mapUsageDistribution(
 	distribution requestlog.UsageDistribution,
 ) (usageDistributionResponse, error) {
@@ -648,7 +799,7 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 		source.UncachedInputTokens, source.CacheReadTokens, source.CacheWrite5MTokens,
 		source.CacheWrite1HTokens, source.OutputTokens, source.UsageMissingCount,
 		source.CacheWriteUnknownTokens, source.PartialCount, source.UnpricedRequestCount,
-		source.PricingPartialCount,
+		source.PricingPartialCount, source.DurationMsTotal, source.DurationSampleCount,
 	}
 	for _, value := range values {
 		if value < 0 || value > maxSafeInteger {
@@ -669,12 +820,17 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 	if source.EstimatedCostNanoUSD < 0 {
 		return usageAggregateResponse{}, fmt.Errorf("map usage cost: negative value")
 	}
+	if source.DurationSampleCount > source.RequestCount {
+		return usageAggregateResponse{}, fmt.Errorf("map usage duration: sample count exceeds requests")
+	}
 	return usageAggregateResponse{
 		RequestCount: source.RequestCount, SuccessCount: source.SuccessCount, FailureCount: source.FailureCount,
 		UncachedInputTokens: source.UncachedInputTokens, CacheReadTokens: source.CacheReadTokens,
 		CacheWrite5MTokens: source.CacheWrite5MTokens, CacheWrite1HTokens: source.CacheWrite1HTokens,
 		CacheWriteUnknownTokens: source.CacheWriteUnknownTokens,
 		OutputTokens:            source.OutputTokens, TotalTokens: totalTokens,
+		DurationMsTotal:      source.DurationMsTotal,
+		DurationSampleCount:  source.DurationSampleCount,
 		EstimatedCostNanoUSD: strconv.FormatInt(source.EstimatedCostNanoUSD, 10),
 		UsageMissingCount:    source.UsageMissingCount, PartialCount: source.PartialCount,
 		UnpricedRequestCount: source.UnpricedRequestCount,

@@ -109,6 +109,8 @@ type UsageAggregationJournal struct {
 	CacheWrite1HTokens      int64  `gorm:"column:cache_write_1h_tokens;not null;check:chk_usage_journal_cache_write_1h,cache_write_1h_tokens >= 0"`
 	CacheWriteUnknownTokens int64  `gorm:"column:cache_write_unknown_tokens;not null;check:chk_usage_journal_cache_write_unknown,cache_write_unknown_tokens >= 0"`
 	EstimatedCostNanoUSD    int64  `gorm:"column:estimated_cost_nano_usd;not null;check:chk_usage_journal_cost_nano,estimated_cost_nano_usd >= 0"`
+	DurationMsTotal         int64  `gorm:"column:duration_ms_total;not null;default:0;check:chk_usage_journal_duration_total,duration_ms_total >= 0"`
+	DurationSampleCount     int64  `gorm:"column:duration_sample_count;not null;default:0;check:chk_usage_journal_duration_samples,duration_sample_count >= 0"`
 	UsageMissingCount       int64  `gorm:"not null;check:chk_usage_journal_usage_missing,usage_missing_count >= 0"`
 	PartialCount            int64  `gorm:"not null;check:chk_usage_journal_partial,partial_count >= 0"`
 	UnpricedRequestCount    int64  `gorm:"not null;check:chk_usage_journal_unpriced,unpriced_request_count >= 0"`
@@ -140,6 +142,8 @@ type UsageStat struct {
 	CacheWrite1HTokens      int64  `gorm:"column:cache_write_1h_tokens;not null;default:0;check:chk_usage_stat_cache_write_1h,cache_write_1h_tokens >= 0"`
 	CacheWriteUnknownTokens int64  `gorm:"column:cache_write_unknown_tokens;not null;default:0;check:chk_usage_stat_cache_write_unknown,cache_write_unknown_tokens >= 0"`
 	EstimatedCostNanoUSD    int64  `gorm:"not null;default:0;check:chk_usage_stat_cost_nano,estimated_cost_nano_usd >= 0"`
+	DurationMsTotal         int64  `gorm:"column:duration_ms_total;not null;default:0;check:chk_usage_stat_duration_total,duration_ms_total >= 0"`
+	DurationSampleCount     int64  `gorm:"column:duration_sample_count;not null;default:0;check:chk_usage_stat_duration_samples,duration_sample_count >= 0"`
 	UsageMissingCount       int64  `gorm:"not null;default:0;check:chk_usage_stat_usage_missing,usage_missing_count >= 0"`
 	PartialCount            int64  `gorm:"not null;default:0;check:chk_usage_stat_partial,partial_count >= 0"`
 	UnpricedRequestCount    int64  `gorm:"not null;default:0;check:chk_usage_stat_unpriced,unpriced_request_count >= 0"`

@@ -267,7 +267,7 @@ func TestUsageAPIReturnsDistributionWithoutCredentialIdentity(t *testing.T) {
 		distribution.Other.RequestCount != 3 {
 		t.Fatalf("distribution response = %#v", distribution)
 	}
-	for _, forbidden := range []string{`"credential_id"`, `"channel_id"`} {
+	for _, forbidden := range []string{`"credential_id"`} {
 		if strings.Contains(recorder.Body.String(), forbidden) {
 			t.Fatalf("usage response exposes removed field %s: %s", forbidden, recorder.Body.String())
 		}
@@ -1038,6 +1038,25 @@ func (reader *recordingUsageStatReader) QueryUsage(
 		return requestlog.UsageReport{}, reader.err
 	}
 	report := reader.report
+	if report.Breakdown.Scope == "" {
+		report.Breakdown.Scope = "admin"
+		if query.AccessKeyID != nil {
+			report.Breakdown.Scope = "access_key"
+		}
+		report.Breakdown.Total = report.Summary
+		if report.Summary.RequestCount > 0 || report.Summary.SuccessCount > 0 || report.Summary.FailureCount > 0 || report.Summary.EstimatedCostNanoUSD != 0 {
+			row := requestlog.UsageBreakdownRow{Model: "fixture-model", UsageAggregate: report.Summary}
+			if query.AccessKeyID == nil {
+				groupID := uint(1)
+				channelID := "fixture-channel"
+				row.GroupID = &groupID
+				row.ChannelID = &channelID
+			}
+			report.Breakdown.Rows = []requestlog.UsageBreakdownRow{row}
+		} else {
+			report.Breakdown.Rows = []requestlog.UsageBreakdownRow{}
+		}
+	}
 	if len(report.Distributions.Group) == 0 && len(report.Distributions.Model) == 0 &&
 		len(report.Distributions.AccessKey) == 0 {
 		report.Distributions = usageTestDistributions(report.Summary, requestlog.UsageDistribution{})
@@ -1085,4 +1104,51 @@ func assertUsageErrorCode(t *testing.T, recorder *httptest.ResponseRecorder, wan
 	if recorder.Code != http.StatusBadRequest || envelope.Code != want {
 		t.Fatalf("error response = %d/%q, want 400/%q; body=%s", recorder.Code, envelope.Code, want, recorder.Body.String())
 	}
+}
+
+func TestMapUsageBreakdownRejectsMissingSection(t *testing.T) {
+	summary := requestlog.UsageAggregate{RequestCount: 1, SuccessCount: 1, EstimatedCostNanoUSD: 3}
+	_, err := mapUsageBreakdown(requestlog.UsageBreakdown{}, false, mustMapUsageAggregateForTest(t, summary))
+	if err == nil {
+		t.Fatal("mapUsageBreakdown() error = nil, want missing breakdown rejection")
+	}
+}
+
+func TestMapUsageBreakdownAccessKeyOmitsAdminAndSecretFields(t *testing.T) {
+	summary := requestlog.UsageAggregate{
+		RequestCount: 1, SuccessCount: 1, OutputTokens: 2,
+		DurationMsTotal: 25, DurationSampleCount: 1,
+		EstimatedCostNanoUSD: 3,
+	}
+	mapped, err := mapUsageBreakdown(requestlog.UsageBreakdown{
+		Scope: "access_key",
+		Rows: []requestlog.UsageBreakdownRow{{
+			Model: "model-a", UsageAggregate: summary,
+		}},
+		Total: summary,
+	}, true, mustMapUsageAggregateForTest(t, summary))
+	if err != nil {
+		t.Fatalf("mapUsageBreakdown() error = %v", err)
+	}
+	payload, err := json.Marshal(mapped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"group_id", "channel_id", "credential_id", "access_key_id", "key_value"} {
+		if strings.Contains(string(payload), forbidden) {
+			t.Fatalf("access-key breakdown contains %q: %s", forbidden, payload)
+		}
+	}
+	if !strings.Contains(string(payload), `"model":"model-a"`) {
+		t.Fatalf("access-key breakdown omitted model: %s", payload)
+	}
+}
+
+func mustMapUsageAggregateForTest(t *testing.T, source requestlog.UsageAggregate) usageAggregateResponse {
+	t.Helper()
+	mapped, err := mapUsageAggregate(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mapped
 }

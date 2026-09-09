@@ -219,6 +219,8 @@ type UsageAggregate struct {
 	CacheWriteUnknownTokens int64
 	OutputTokens            int64
 	EstimatedCostNanoUSD    int64
+	DurationMsTotal         int64
+	DurationSampleCount     int64
 	UsageMissingCount       int64
 	PartialCount            int64
 	UnpricedRequestCount    int64
@@ -255,6 +257,20 @@ type UsageReport struct {
 	Summary       UsageAggregate
 	Series        []UsageSeriesPoint
 	Distributions UsageDistributions
+	Breakdown     UsageBreakdown
+}
+
+type UsageBreakdown struct {
+	Scope string
+	Rows  []UsageBreakdownRow
+	Total UsageAggregate
+}
+
+type UsageBreakdownRow struct {
+	Model     string
+	GroupID   *uint
+	ChannelID *string
+	UsageAggregate
 }
 
 type UsageDistributions struct {

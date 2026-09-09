@@ -36,6 +36,7 @@ import { useAuthSession } from '@/features/auth/auth-session'
 
 import MonitorSectionHeading from './MonitorSectionHeading.vue'
 import UsageBarChart from './UsageBarChart.vue'
+import UsageBreakdownTable from './UsageBreakdownTable.vue'
 import UsageDistribution from './UsageDistribution.vue'
 import {
   applyUsageFilterDraft,
@@ -595,6 +596,20 @@ defineExpose({ openFilters, refresh })
           />
         </section>
 
+        <section class="usage-breakdown-section" aria-labelledby="usage-breakdown-title">
+          <MonitorSectionHeading
+            id="usage-breakdown-title"
+            :title="t('monitor.usage.breakdown.title')"
+            :description="t('monitor.usage.breakdown.description')"
+            :meta="t('monitor.usage.breakdown.rowCount', { count: report.breakdown.rows.length })"
+          />
+          <UsageBreakdownTable
+            :breakdown="report.breakdown"
+            :groups="groupsQuery.data.value ?? []"
+            :channels="channelsQuery.data.value?.items ?? []"
+          />
+        </section>
+
         <details
           class="usage-buckets"
           :open="routeState.seriesExpanded"
@@ -660,7 +675,8 @@ defineExpose({ openFilters, refresh })
 <style scoped>
 .usage-tab,
 .usage-analysis-section,
-.usage-distribution-section {
+.usage-distribution-section,
+.usage-breakdown-section {
   display: grid;
   min-width: 0;
 }
@@ -670,7 +686,8 @@ defineExpose({ openFilters, refresh })
 }
 
 .usage-analysis-section,
-.usage-distribution-section {
+.usage-distribution-section,
+.usage-breakdown-section {
   gap: 12px;
 }
 
