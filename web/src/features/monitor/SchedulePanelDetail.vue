@@ -162,10 +162,7 @@ const previewShares = computed(() => {
   )
   const totals = new Map<number, number>()
   for (const candidate of entries) {
-    totals.set(
-      candidate.priority,
-      (totals.get(candidate.priority) ?? 0) + candidate.weight,
-    )
+    totals.set(candidate.priority, (totals.get(candidate.priority) ?? 0) + candidate.weight)
   }
   for (const candidate of entries) {
     const total = totals.get(candidate.priority) ?? 0
@@ -403,8 +400,15 @@ function hydrateDraftState(source: ScheduleDrafts): void {
   }
 }
 
+type DetailWatchKey = [
+  revision: number,
+  externalModel: string | null,
+  protocol: string,
+  accessKeyID: number,
+]
+
 watch(
-  () => {
+  (): DetailWatchKey => {
     const detail = props.detail
     return detail
       ? [detail.snapshot_revision, detail.external_model, detail.protocol, detail.access_key.id]

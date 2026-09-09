@@ -179,7 +179,6 @@ async function onRecovered(groupID: number, entryID: string): Promise<void> {
 
 <template>
   <section class="schedule-panel" :aria-label="text('model')">
-
     <div class="schedule-panel__filters" :aria-label="text('context')">
       <label>
         <span>{{ text('mode') }}</span>
