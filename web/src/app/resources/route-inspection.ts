@@ -85,6 +85,7 @@ export interface RouteInspectGroupDto {
   entry_weight: number
   priority: number
   fallback: boolean
+  configured_share: number
   effective_share: number
   entry_cooldown_until_ms: number | null
   included: boolean
@@ -201,6 +202,7 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     'entry_weight',
     'priority',
     'fallback',
+    'configured_share',
     'effective_share',
     'entry_cooldown_until_ms',
     'included',
@@ -219,6 +221,7 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     entry_weight: projectSafeInteger(record.entry_weight, { minimum: 0 }),
     priority: projectSafeInteger(record.priority, { minimum: 1 }),
     fallback: projectBoolean(record.fallback),
+    configured_share: projectFiniteNumber(record.configured_share, { minimum: 0, maximum: 1 }),
     effective_share: projectFiniteNumber(record.effective_share, { minimum: 0, maximum: 1 }),
     entry_cooldown_until_ms: projectNullableEpochMilliseconds(record.entry_cooldown_until_ms),
     included: projectBoolean(record.included),
@@ -257,6 +260,16 @@ export function projectRouteInspection(value: unknown): RouteInspectResponseDto 
   ])
   const observedAtMS = projectEpochMilliseconds(record.observed_at_ms)
   const groups = projectArray(record.groups, projectRouteGroup)
+  const configuredSharesByPriority = new Map<number, number>()
+  for (const group of groups) {
+    configuredSharesByPriority.set(
+      group.priority,
+      (configuredSharesByPriority.get(group.priority) ?? 0) + group.configured_share,
+    )
+  }
+  for (const total of configuredSharesByPriority.values()) {
+    if (total > 0 && Math.abs(total - 1) > 1e-9) invalidResponse()
+  }
   if (
     groups.some(
       ({ entry_cooldown_until_ms: cooldownUntilMS }) =>

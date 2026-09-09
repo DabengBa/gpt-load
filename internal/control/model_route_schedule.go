@@ -26,6 +26,7 @@ import (
 	"gpt-load/internal/execution"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/protocol"
+	"gpt-load/internal/requestlog"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
@@ -100,26 +101,30 @@ type scheduleEntryRuntimeView struct {
 }
 
 type modelRouteScheduleEntryResponse struct {
-	EntryID        string                           `json:"entry_id"`
-	ModelID        string                           `json:"model_id"`
-	Alias          string                           `json:"alias"`
-	Weight         int                              `json:"weight"`
-	Priority       int                              `json:"priority"`
-	Fallback       bool                             `json:"fallback"`
-	CircuitBreaker scheduleBreakerView              `json:"circuit_breaker"`
-	Runtime        scheduleEntryRuntimeView         `json:"runtime"`
-	Included       bool                             `json:"included"`
-	Routable       bool                             `json:"routable"`
-	ReasonCode     *scheduler.ReasonCode            `json:"reason_code"`
-	EffectiveShare float64                          `json:"effective_share"`
-	Credentials    []routeInspectCredentialResponse `json:"credentials"`
+	EntryID         string                           `json:"entry_id"`
+	ModelID         string                           `json:"model_id"`
+	Alias           string                           `json:"alias"`
+	Weight          int                              `json:"weight"`
+	Priority        int                              `json:"priority"`
+	Fallback        bool                             `json:"fallback"`
+	CircuitBreaker  scheduleBreakerView              `json:"circuit_breaker"`
+	Runtime         scheduleEntryRuntimeView         `json:"runtime"`
+	Included        bool                             `json:"included"`
+	Routable        bool                             `json:"routable"`
+	ReasonCode      *scheduler.ReasonCode            `json:"reason_code"`
+	ConfiguredShare float64                          `json:"configured_share"`
+	EffectiveShare  float64                          `json:"effective_share"`
+	Credentials     []routeInspectCredentialResponse `json:"credentials"`
 }
 
 type modelRouteScheduleGroupResponse struct {
-	GroupID   uint                              `json:"group_id"`
-	GroupName string                            `json:"group_name"`
-	ChannelID channel.ID                        `json:"channel_id"`
-	Entries   []modelRouteScheduleEntryResponse `json:"entries"`
+	GroupID      uint                              `json:"group_id"`
+	GroupName    string                            `json:"group_name"`
+	ChannelID    channel.ID                        `json:"channel_id"`
+	Enabled      bool                              `json:"enabled"`
+	RequestCount int64                             `json:"request_count"`
+	SuccessRate  float64                           `json:"success_rate"`
+	Entries      []modelRouteScheduleEntryResponse `json:"entries"`
 }
 
 type modelRouteScheduleDetailResponse struct {
@@ -342,6 +347,10 @@ func (s *Service) GetModelRouteScheduleDetail(
 	}
 	routeRequirement := scheduleRouteRequirement(request.Protocol, operation, metadata.RouteRequirement)
 	entryRuntime := s.registry.EntryRuntimeSnapshot()
+	groupUsage, err := s.queryModelRouteScheduleGroupUsage(observation.observedAt)
+	if err != nil {
+		return modelRouteScheduleDetailResponse{}, err
+	}
 	explanation := scheduler.Inspection{
 		ClientProtocol:   request.Protocol,
 		Operation:        operation,
@@ -376,7 +385,7 @@ func (s *Service) GetModelRouteScheduleDetail(
 		}
 	}
 	return mapModelRouteScheduleDetail(
-		observation, request, accessKey, explanation, entryRuntime,
+		observation, request, accessKey, explanation, entryRuntime, groupUsage,
 	)
 }
 
@@ -386,6 +395,7 @@ func mapModelRouteScheduleDetail(
 	accessKey state.AccessKeyView,
 	explanation scheduler.Inspection,
 	entryRuntime []state.EntryRuntimeView,
+	groupUsage map[uint]requestlog.GroupUsage,
 ) (modelRouteScheduleDetailResponse, error) {
 	observedAtMS, err := safeEpochMilliseconds(observation.observedAt)
 	if err != nil {
@@ -411,6 +421,31 @@ func mapModelRouteScheduleDetail(
 	}
 	groupIndex := make(map[uint]int, len(explanation.Groups))
 	for _, group := range explanation.Groups {
+		if _, exists := groupIndex[group.GroupID]; exists {
+			continue
+		}
+		catalog, exists := observation.snapshot.GroupCatalog[group.GroupID]
+		if !exists {
+			return modelRouteScheduleDetailResponse{}, fmt.Errorf(
+				"map model route schedule group %d: %w",
+				group.GroupID, app_errors.ErrInternalServer,
+			)
+		}
+		usage := groupUsage[group.GroupID]
+		successRate := float64(0)
+		if usage.RequestCount > 0 {
+			successRate = float64(usage.SuccessCount) / float64(usage.RequestCount)
+		}
+		result.Groups = append(result.Groups, modelRouteScheduleGroupResponse{
+			GroupID: group.GroupID, GroupName: group.GroupName, ChannelID: group.ChannelID,
+			Enabled: catalog.Enabled, RequestCount: usage.RequestCount, SuccessRate: successRate,
+			Entries: []modelRouteScheduleEntryResponse{},
+		})
+		groupIndex[group.GroupID] = len(result.Groups) - 1
+	}
+	// Entries are appended below after the group metadata is initialized.
+	configuredShares := configuredEntryShares(explanation.Groups)
+	for index, group := range explanation.Groups {
 		credentials, err := mapScheduleCredentials(group)
 		if err != nil {
 			return modelRouteScheduleDetailResponse{}, err
@@ -442,24 +477,47 @@ func mapModelRouteScheduleDetail(
 			Runtime: scheduleEntryRuntime(
 				runtimeByKey, group, entryCooldownUntilMS, observation.observedAt,
 			),
-			Included:       group.Included,
-			Routable:       group.Routable,
-			ReasonCode:     optionalReason(group.Reason),
-			EffectiveShare: group.EffectiveShare,
-			Credentials:    credentials,
+			Included:        group.Included,
+			Routable:        group.Routable,
+			ReasonCode:      optionalReason(group.Reason),
+			ConfiguredShare: configuredShares[index],
+			EffectiveShare:  group.EffectiveShare,
+			Credentials:     credentials,
 		}
-		position, exists := groupIndex[group.GroupID]
-		if !exists {
-			position = len(result.Groups)
-			groupIndex[group.GroupID] = position
-			result.Groups = append(result.Groups, modelRouteScheduleGroupResponse{
-				GroupID:   group.GroupID,
-				GroupName: group.GroupName,
-				ChannelID: group.ChannelID,
-				Entries:   []modelRouteScheduleEntryResponse{},
-			})
-		}
+		position := groupIndex[group.GroupID]
 		result.Groups[position].Entries = append(result.Groups[position].Entries, entry)
+	}
+	return result, nil
+}
+
+func (s *Service) queryModelRouteScheduleGroupUsage(observedAt time.Time) (map[uint]requestlog.GroupUsage, error) {
+	result := make(map[uint]requestlog.GroupUsage)
+	reader, ok := s.requestLogs.(requestlog.GroupUsageReader)
+	if !ok || reader == nil {
+		return result, nil
+	}
+	toMS, err := safeEpochMilliseconds(observedAt)
+	if err != nil {
+		return nil, fmt.Errorf("query model route schedule group usage end: %w", err)
+	}
+	fromMS, err := safeEpochMilliseconds(observedAt.Add(-24 * time.Hour))
+	if err != nil {
+		return nil, fmt.Errorf("query model route schedule group usage start: %w", err)
+	}
+	usage, err := reader.QueryGroupUsage(context.Background(), requestlog.GroupUsageQuery{
+		FromMS: fromMS,
+		ToMS:   toMS,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query model route schedule group usage: %w", err)
+	}
+	for groupID, value := range usage {
+		if groupID == 0 || value.RequestCount < 0 || value.RequestCount > maxSafeInteger ||
+			value.SuccessCount < 0 || value.SuccessCount > maxSafeInteger ||
+			value.SuccessCount > value.RequestCount {
+			return nil, fmt.Errorf("query model route schedule group usage: invalid aggregate")
+		}
+		result[groupID] = value
 	}
 	return result, nil
 }

@@ -1,6 +1,7 @@
 package requestlog
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -180,6 +181,20 @@ const (
 	UsageDistributionMetricTokens   UsageDistributionMetric = "tokens"
 	UsageDistributionMetricCost     UsageDistributionMetric = "cost"
 )
+
+type GroupUsageQuery struct {
+	FromMS int64
+	ToMS   int64
+}
+
+type GroupUsage struct {
+	RequestCount int64
+	SuccessCount int64
+}
+
+type GroupUsageReader interface {
+	QueryGroupUsage(context.Context, GroupUsageQuery) (map[uint]GroupUsage, error)
+}
 
 type UsageQuery struct {
 	FromMS        int64
