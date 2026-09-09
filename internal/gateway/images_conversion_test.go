@@ -12,10 +12,11 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
-	"gpt-load/internal/platform/config"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
 )
+
+func imagePriority(value int) *int { return &value }
 
 func TestGatewayImagesConversionFailureUsesExistingFallback(t *testing.T) {
 	for _, stream := range []bool{false, true} {
@@ -56,18 +57,20 @@ func TestGatewayImagesConversionFailureUsesExistingFallback(t *testing.T) {
 					t.Fatal(err)
 				}
 				groups := []dialectGatewayGroup{{
-					id: 1, name: "gemini", channelID: channel.Gemini, params: params, apiKeys: []string{"gemini-key-one", "gemini-key-two"},
+					id: 1, name: "gemini", channelID: channel.Gemini, params: params, models: []state.ModelConfig{{
+						ID: "gemini-3.1-flash-image", Alias: "public-image", Priority: imagePriority(1),
+					}}, apiKeys: []string{"gemini-key"},
 				}}
 				if native {
 					nativeParams, err := json.Marshal(map[string]string{"base_url": nativeUpstream.URL + "/v1"})
 					if err != nil {
 						t.Fatal(err)
 					}
-					groups = append(groups, dialectGatewayGroup{id: 2, name: "native", channelID: channel.OpenAI, params: nativeParams, apiKeys: []string{"native-key"}})
+					groups = append(groups, dialectGatewayGroup{id: 2, name: "native", channelID: channel.OpenAI, params: nativeParams,
+						models: []state.ModelConfig{{ID: "gpt-image-2", Alias: "public-image", Priority: imagePriority(2)}}, apiKeys: []string{"native-key"}})
 				}
-				engine, registry := newDialectGatewayEngineWithSystemSettings(t, protocol.OpenAIImages, "public-image",
-					dialect.NewSet(dialect.NewOpenAIImages()), newTestExecutionForwarder(t),
-					config.Settings{state.SettingRouteStrategy: string(state.RouteStrategyWeightedMix)}, groups...)
+				engine, registry := newDialectGatewayEngineWithForwarder(t, protocol.OpenAIImages, "public-image",
+					dialect.NewSet(dialect.NewOpenAIImages()), newTestExecutionForwarder(t), groups...)
 				before := registry.Snapshot()
 				body := fmt.Sprintf(`{"model":"public-image","prompt":"draw","n":%d,"stream":%t}`, count, stream)
 				request := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(body))
@@ -93,5 +96,52 @@ func TestGatewayImagesConversionFailureUsesExistingFallback(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestGatewayImagesResponseConversionFailureDoesNotFallback(t *testing.T) {
+	var convertedCalls, nativeCalls atomic.Int32
+	convertedUpstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		convertedCalls.Add(1)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"candidates":[]}`))
+	}))
+	defer convertedUpstream.Close()
+	nativeUpstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		nativeCalls.Add(1)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer nativeUpstream.Close()
+
+	convertedParams, err := json.Marshal(map[string]string{"base_url": convertedUpstream.URL + "/v1beta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeParams, err := json.Marshal(map[string]string{"base_url": nativeUpstream.URL + "/v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, _ := newDialectGatewayEngineWithForwarder(t, protocol.OpenAIImages, "public-image",
+		dialect.NewSet(dialect.NewOpenAIImages()), newTestExecutionForwarder(t),
+		dialectGatewayGroup{
+			id: 1, name: "gemini", channelID: channel.Gemini, params: convertedParams,
+			models:  []state.ModelConfig{{ID: "gemini-3.1-flash-image", Alias: "public-image", Priority: imagePriority(1)}},
+			apiKeys: []string{"gemini-key"},
+		},
+		dialectGatewayGroup{
+			id: 2, name: "native", channelID: channel.OpenAI, params: nativeParams,
+			models:  []state.ModelConfig{{ID: "gpt-image-2", Alias: "public-image", Priority: imagePriority(2)}},
+			apiKeys: []string{"native-key"},
+		},
+	)
+	request := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"public-image","prompt":"draw","n":1}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadGateway || response.Header().Get(debugHeaderAttempts) != "1" ||
+		convertedCalls.Load() != 1 || nativeCalls.Load() != 0 {
+		t.Fatalf("response = %d %s, attempts = %s, converted = %d, native = %d", response.Code, response.Body.String(),
+			response.Header().Get(debugHeaderAttempts), convertedCalls.Load(), nativeCalls.Load())
 	}
 }

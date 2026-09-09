@@ -1,16 +1,11 @@
 package cpa
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
-	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -39,16 +34,6 @@ func (o *antigravityImagesObservations) Emit(event telemetry.RequestEvent) {
 }
 func (o *antigravityImagesObservations) Load() *pricing.Table { return o.table }
 
-type localAntigravityImagesExecutor struct {
-	antigravity.Executor
-	baseURL string
-}
-
-func (executor localAntigravityImagesExecutor) Execute(ctx context.Context, id string, credential antigravity.Credential, request antigravity.ExecuteRequest) (antigravity.ExecuteResponse, error) {
-	request.BaseURL = executor.baseURL
-	return executor.Executor.Execute(ctx, id, credential, request)
-}
-
 func newAntigravityImagesRuntime(t *testing.T) (*gin.Engine, *Adapter, *antigravityImagesObservations, execution.AttemptSpec) {
 	t.Helper()
 	canonical, err := antigravity.MarshalCredential(antigravityProviderTestCredential().value)
@@ -68,7 +53,7 @@ func newAntigravityImagesRuntime(t *testing.T) (*gin.Engine, *Adapter, *antigrav
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gemini-3.1-flash-image", Alias: "public-image"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: row.ID, GroupID: row.GroupID, Status: state.CredentialStatusActive,
+			ID: row.ID, GroupID: row.GroupID,
 			Version: ref.Version, IdentityGeneration: ref.IdentityGeneration, Fingerprint: ref.Fingerprint,
 		}},
 		AccessKeys: []state.AccessKeyConfig{{ID: 1, Name: "client", KeyHash: keyService.Hash("gl-images-client"), Status: state.AccessKeyStatusActive}},
@@ -109,73 +94,33 @@ func newAntigravityImagesRuntime(t *testing.T) (*gin.Engine, *Adapter, *antigrav
 
 func TestAntigravityImagesHTTPGenerationReachesGeminiAndUsesExistingPricing(t *testing.T) {
 	engine, adapter, observations, _ := newAntigravityImagesRuntime(t)
-	var upstreamPayload []byte
-	var upstreamPath string
-	var upstreamMu sync.Mutex
-	calls := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		upstreamMu.Lock()
-		defer upstreamMu.Unlock()
-		calls++
-		upstreamPath = request.URL.Path
-		var err error
-		upstreamPayload, err = io.ReadAll(request.Body)
-		if err != nil {
-			t.Error(err)
-			writer.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		payload := antigravityImagesResponse(t, `{"promptTokenCount":100,"cachedContentTokenCount":40,"candidatesTokenCount":20,"thoughtsTokenCount":5,"totalTokenCount":125}`)
-		writer.Header().Set("Content-Type", "text/event-stream")
-		if _, err := io.WriteString(writer, "data: {\"response\":"+string(payload)+"}\n\n"); err != nil {
-			t.Error(err)
-		}
-	}))
-	t.Cleanup(server.Close)
-	// CPA 会建立自己的隔离 transport；只允许该测试的本地 TLS 服务，禁止访问外部端点。
-	transport := server.Client().Transport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-		if address != server.Listener.Addr().String() {
-			return nil, errors.New("unexpected external test destination")
-		}
-		return (&net.Dialer{}).DialContext(ctx, network, address)
-	}
-	originalTransport := http.DefaultTransport
-	http.DefaultTransport = transport
-	t.Cleanup(func() { http.DefaultTransport = originalTransport; transport.CloseIdleConnections() })
-	adapter.providers[channel.ProviderAntigravity].(*antigravityProviderBridge).executor = localAntigravityImagesExecutor{Executor: antigravity.NewExecutor(), baseURL: server.URL}
+	fake := &recordingAntigravityExecutor{response: antigravityImagesResponse(t, `{"promptTokenCount":100,"cachedContentTokenCount":40,"candidatesTokenCount":20,"thoughtsTokenCount":5,"totalTokenCount":125}`)}
+	adapter.providers[channel.ProviderAntigravity].(*antigravityProviderBridge).executor = fake
 	request := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"public-image","prompt":"draw","n":1,"response_format":"b64_json"}`))
 	request.Header.Set("Authorization", "Bearer gl-images-client")
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
-	upstreamMu.Lock()
-	defer upstreamMu.Unlock()
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"b64_json":"`+antigravityTestImage+`"`) {
 		t.Fatalf("HTTP response = %d %s", recorder.Code, recorder.Body.String())
 	}
 	var upstream struct {
-		Model       string `json:"model"`
-		RequestType string `json:"requestType"`
-		Request     struct {
-			GenerationConfig struct {
-				Modalities []string `json:"responseModalities"`
-			} `json:"generationConfig"`
-			Contents []struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"contents"`
-		} `json:"request"`
+		GenerationConfig struct {
+			Modalities []string `json:"responseModalities"`
+		} `json:"generationConfig"`
+		Contents []struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"contents"`
 	}
-	if err := json.Unmarshal(upstreamPayload, &upstream); err != nil {
+	if err := json.Unmarshal(fake.request.Payload, &upstream); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || upstreamPath != "/v1internal:streamGenerateContent" || upstream.Model != "gemini-3.1-flash-image" ||
-		upstream.RequestType != "image_gen" || len(upstream.Request.Contents) != 1 || len(upstream.Request.Contents[0].Parts) != 1 ||
-		upstream.Request.Contents[0].Parts[0].Text != "draw" || !reflect.DeepEqual(upstream.Request.GenerationConfig.Modalities, []string{"TEXT", "IMAGE"}) {
-		t.Fatalf("upstream calls/path/payload = %d %s %s", calls, upstreamPath, upstreamPayload)
+	if fake.request.Format != "gemini" || fake.request.Model != "gemini-3.1-flash-image" ||
+		len(upstream.Contents) != 1 || len(upstream.Contents[0].Parts) != 1 ||
+		upstream.Contents[0].Parts[0].Text != "draw" || !reflect.DeepEqual(upstream.GenerationConfig.Modalities, []string{"TEXT", "IMAGE"}) {
+		t.Fatalf("Gemini request = %#v, payload = %s", fake.request, fake.request.Payload)
 	}
 	if len(observations.events) != 1 {
 		t.Fatalf("request events = %d", len(observations.events))

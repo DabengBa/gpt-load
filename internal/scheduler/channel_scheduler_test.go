@@ -99,7 +99,7 @@ func TestImagesGenerationPrefersNativeBeforeGeminiConversions(t *testing.T) {
 		ClientProtocol: protocol.OpenAIImages, Operation: execution.OperationImagesGenerate,
 		RouteRequirement: execution.RouteRequirementAny, ExternalModel: modelPointer("public"),
 		PreferredCredentialID: 11,
-	})
+	}, rand.New(zeroRandSource{}))
 	first, err := iterator.Next()
 	if err != nil || first.GroupID != 2 || first.RouteMode != channel.RouteNative {
 		t.Fatalf("first selection = %+v, error = %v", first, err)

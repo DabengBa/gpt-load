@@ -290,22 +290,25 @@
 
 ## L2 接入状态
 
-- `f0bd09b3` 已决定合并，目标是保留不安全上下文中的复制回退，不改变当前凭据管理和 URL 状态合同。
-- `7ed01e66` 已决定合并，目标是接入 Gemini/Antigravity 的 OpenAI Images 生图转换，同时保留当前协议转换错误分类、目标冻结和调度入口。
+- `f0bd09b3` 已选择性移植为 `c3f7b012`，保留不安全上下文中的复制回退，不改变当前凭据管理和 URL 状态合同。
+- `7ed01e66` 已选择性移植为 `1b633a96`，接入 Gemini/Antigravity 的 OpenAI Images 生图转换，同时保留当前协议转换错误分类、目标冻结和调度入口。
+- 图片转换测试已按当前合同适配：CPA 使用现有 recording executor，gateway 使用 native-first helper，scheduler 补齐随机源；未恢复旧的 BaseURL、凭据状态或 weighted-mix 测试 helper。
+- 目标冻结回归覆盖 Bifrost 的目标配置、provider binding、route mode mismatch，以及 CPA 的目标配置和 route mode mismatch；CPA provider binding 由同一不可变 channel registry 的一致性测试覆盖。
+- gateway response representation 测试直接断言发送后失败为 `DispatchMaybeSent` 和 `ReplaySafetyUnknown`；handler 层同时验证 `502`、单次尝试且不回退 native candidate。
+- 图片相关 focused tests 覆盖 channel、dialect、geminiimage、Bifrost、CPA、gateway、httpheader、scheduler 和 provideradapter，共 2265 项通过；嵌入式 Antigravity 代理测试通过；`go build ./...` 与 `git diff --check` 通过。
+- 前端验证通过：`cd web && pnpm run type-check`、`pnpm run lint`、`pnpm run format` 和 `pnpm run build`；build 产物写入现有 `internal/webui/dist` 路径。
 - `a97578fe` 已放弃，不接入当前分支；访问密钥用量和分发能力不作为该提交的原样移植内容。
 
 ## 后续顺序
 
-1. 完成 `f0bd09b3` 的前端选择性移植并验证复制回退、三语类型检查和生产构建。
-2. 完成 `7ed01e66` 的图片转换选择性移植并验证 Gemini、Antigravity、Bifrost、CPA 和网关 focused tests。
-3. 将 `33fb54bf` 与 `175949e2` 作为一个 L3 usage 专题重新设计，不直接叠加原提交。
-4. 单独立项重做 `6da82242`、`96d3e0d5` 和 `d4699dd2`，先写当前领域合同和迁移方案。
-5. 暂不直接合并 `e888fe60`、`9cb3f986`、`e0bfa07e`、`a4255546`；它们需要产品决策或架构重写。
+1. 将 `33fb54bf` 与 `175949e2` 作为一个 L3 usage 专题重新设计，不直接叠加原提交。
+2. 单独立项重做 `6da82242`、`96d3e0d5` 和 `d4699dd2`，先写当前领域合同和迁移方案。
+3. 暂不直接合并 `e888fe60`、`9cb3f986`、`e0bfa07e`、`a4255546`；它们需要产品决策或架构重写。
 
 ## 当前判断
 
 - 已接入：`2bdc1058`、`1898d8ee`。
-- 已决定合并、正在移植：`f0bd09b3`、`7ed01e66`。
+- 已选择性移植并验证：`f0bd09b3` -> `c3f7b012`、`7ed01e66` -> `1b633a96`。
 - 已放弃：`a97578fe`。
 - L3 专题重做：`33fb54bf` + `175949e2`、`6da82242`、`96d3e0d5`、`d4699dd2`。
 - 当前不建议原样接入：`e888fe60`、`9cb3f986`、`e0bfa07e`、`a4255546`。

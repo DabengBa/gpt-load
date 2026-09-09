@@ -20,8 +20,7 @@ func antigravityImagesRequest(payload string) providerRequest {
 	return providerRequest{
 		AttemptID: "images-attempt", Model: "gemini-3.1-flash-image", Format: "openai-image",
 		RequestPath: "/v1/images/generations", Payload: []byte(payload), OriginalRequest: []byte(payload),
-		Headers: http.Header{"Content-Type": {"application/json"}},
-		BaseURL: "https://antigravity.example.test", ProxyURL: "http://proxy.example.test",
+		Headers: http.Header{"Content-Type": {"application/json"}}, ProxyURL: "http://proxy.example.test",
 	}
 }
 
@@ -79,7 +78,7 @@ func TestAntigravityImagesConvertsGenerationAndPreservesUsage(t *testing.T) {
 	}
 	if executor.request.Format != "gemini" || !reflect.DeepEqual(got, want) ||
 		executor.request.Model != request.Model || executor.request.AttemptID != request.AttemptID ||
-		executor.request.BaseURL != request.BaseURL || executor.request.ProxyURL != request.ProxyURL ||
+		executor.request.ProxyURL != request.ProxyURL ||
 		!bytes.Equal(executor.request.OriginalRequest, executor.request.Payload) {
 		t.Fatalf("Gemini request = %#v, payload = %s", executor.request, executor.request.Payload)
 	}
