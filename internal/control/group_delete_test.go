@@ -91,13 +91,14 @@ func TestDeleteGroupRejectsActiveAndDisabledExplicitAccessKeyReferences(t *testi
 func TestDeleteGroupCommitsCascadeThenRemovesRegistryThenPublishes(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	runtime := &recordingCredentialRuntimeExecutor{}
-	fixture.service.executor = runtime
-	groupID := createGroupWithCredentials(t, fixture, "sk-delete-a\nsk-delete-b")
+	groupID := createGroupWithCredentials(t, fixture, "sk-delete-a")
 	beforeRevision := fixture.manager.Current().Revision
 	var keyRows []models.Credential
 	if err := fixture.db.Where("group_id = ?", groupID).Order("id ASC").Find(&keyRows).Error; err != nil {
 		t.Fatal(err)
+	}
+	if len(keyRows) != 1 {
+		t.Fatalf("credentials = %#v, want one", keyRows)
 	}
 
 	if err := fixture.service.DeleteGroup(t.Context(), groupID); err != nil {
@@ -123,9 +124,9 @@ func TestDeleteGroupCommitsCascadeThenRemovesRegistryThenPublishes(t *testing.T)
 	if groupCount != 0 || keyCount != 0 {
 		t.Fatalf("DB counts = group:%d key:%d", groupCount, keyCount)
 	}
-	wantRetired := []uint{keyRows[0].ID, keyRows[1].ID}
-	if got := runtime.retiredCredentialIDs(); !reflect.DeepEqual(got, wantRetired) {
-		t.Fatalf("retired credential runtimes = %#v, want %#v", got, wantRetired)
+	wantRetired := []uint{keyRows[0].ID}
+	if value, ok := fixture.registry.EncryptedCredentialData(wantRetired[0]); ok || value != "" {
+		t.Fatalf("deleted Registry credential remains = %q, %t", value, ok)
 	}
 }
 

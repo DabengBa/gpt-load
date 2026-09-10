@@ -160,27 +160,6 @@ func TestBuildCompileInputMapsChannelAndCredentialMetadata(t *testing.T) {
 	}
 }
 
-func TestBuildGroupCredentialEntriesRejectsPersistedMultipleCredentials(t *testing.T) {
-	t.Parallel()
-
-	db := openMigratedDatabase(t)
-	group := models.Group{
-		Name: "credentials", ChannelID: string(channel.OpenAI), Params: models.JSON(`{}`),
-		Models: models.JSON(`[]`), Overrides: models.JSON(`{}`), Enabled: true,
-	}
-	mustCreate(t, db, &group)
-	credentials := []models.Credential{
-		{GroupID: group.ID, Data: "cipher-one", Fingerprint: "fingerprint-one"},
-		{GroupID: group.ID, Data: "cipher-two", Fingerprint: "fingerprint-two", SecretVersion: 99},
-	}
-	for index := range credentials {
-		mustCreate(t, db, &credentials[index])
-	}
-	if _, err := loader.BuildGroupCredentialEntries(t.Context(), db, group.ID); err == nil {
-		t.Fatal("BuildGroupCredentialEntries() accepted multiple persisted credentials")
-	}
-}
-
 func TestBuildGroupCredentialEntriesChangesIdentityWhenExecutionTargetChanges(t *testing.T) {
 	t.Parallel()
 

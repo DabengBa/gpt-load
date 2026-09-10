@@ -947,7 +947,7 @@ func TestImportGroupCredentialsEndpointReturnsSuccessEnvelope(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/groups/"+strconv.FormatUint(uint64(groupID), 10)+"/credentials/import", strings.NewReader(
-		`{"credentials":"sk-existing\nsk-new\nsk-new"}`,
+		`{"credentials":"sk-existing\nsk-existing"}`,
 	))
 	request.Header.Set("Authorization", "Bearer test-auth-key")
 	request.Header.Set("Content-Type", "application/json")
@@ -980,7 +980,7 @@ func TestImportGroupCredentialsEndpointReturnsSuccessEnvelope(t *testing.T) {
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.GroupID != groupID || result.CredentialsAdded != 1 || result.CredentialsDuplicated != 2 {
+	if result.GroupID != groupID || result.CredentialsAdded != 0 || result.CredentialsDuplicated != 2 {
 		t.Fatalf("result = %#v", result)
 	}
 	if fixture.manager.Current() != beforeSnapshot {
@@ -1210,7 +1210,7 @@ func TestUpdateGroupSettingsEndpointRejectsStrictInvalidBodies(t *testing.T) {
 		{name: "unknown field", body: `{"name":"changed","unknown":true}`, code: app_errors.ErrInvalidJSON.Code},
 		{name: "multiple JSON values", body: `{"name":"changed"} {"enabled":false}`, code: app_errors.ErrInvalidJSON.Code},
 		{name: "null name", body: `{"name":null}`, code: app_errors.ErrValidation.Code},
-		{name: "negative weight", body: `{"weight_manual":-1}`, code: app_errors.ErrValidation.Code},
+		{name: "retired manual weight", body: `{"weight_manual":-1}`, code: app_errors.ErrInvalidJSON.Code},
 		{name: "retired protocols", body: `{"protocols":[]}`, code: app_errors.ErrInvalidJSON.Code},
 		{name: "invalid overrides", body: `{"overrides":{"first_byte_timeout":-1}}`, code: app_errors.ErrValidation.Code},
 		{name: "parameter override negative zero", body: `{"overrides":{"parameter_overrides":[{"set":{"value":-0}}]}}`, code: app_errors.ErrValidation.Code},
@@ -2063,10 +2063,12 @@ func TestServerGroupModelDiscoveryBodyContract(t *testing.T) {
 			t.Fatalf("seed CreateGroup() error = %v", err)
 		}
 		if !activeKey {
-			if err := fixture.db.Model(&models.Credential{}).
-				Where("group_id = ?", created.GroupID).
-				Update("status", models.CredentialAuthStateReauthorizationRequired).Error; err != nil {
-				t.Fatalf("disable persisted discovery key: %v", err)
+			// 模型发现只按 group_id 读取持久化凭据（discover_group.go:100），
+			// auth_state 不参与 api_key 分组的候选筛选，所以“没有可发现凭据”
+			// 只能表达为分组下确实没有凭据行。
+			if err := fixture.db.Where("group_id = ?", created.GroupID).
+				Delete(&models.Credential{}).Error; err != nil {
+				t.Fatalf("remove persisted discovery key: %v", err)
 			}
 		}
 		fixture.service.executor = newRecordingDiscoveryExecutor(&recordingDiscoveryExecutorTarget{

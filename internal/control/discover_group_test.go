@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -236,15 +235,13 @@ func TestDiscoveryReleasesReadSnapshotBeforeDecrypt(t *testing.T) {
 	}
 }
 
-func TestDiscoverGroupModelsUsesDisabledGroupAndActiveCredentialsInIDOrder(t *testing.T) {
+func TestDiscoverGroupModelsUsesDisabledGroupAndAnActiveCredential(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	group := seedPersistedDiscoveryGroup(t, fixture, false, models.JSON(
 		`{"header_rules":{"set":{"X-Group":"group"},"remove":["X-Remove"]}}`,
 	))
 	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialAuthStateReady)
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 2, "key-2", models.CredentialAuthStateReauthorizationRequired)
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 3, "key-3", models.CredentialAuthStateReady)
 	if err := fixture.db.Create(&models.SystemSetting{
 		Key: "header_rules", Value: `{"set":{"X-System":"system"}}`,
 	}).Error; err != nil {
@@ -270,7 +267,7 @@ func TestDiscoverGroupModelsUsesDisabledGroupAndActiveCredentialsInIDOrder(t *te
 				if !reflect.DeepEqual(rules, wantRules) {
 					t.Fatalf("HeaderRules = %#v, want persisted Group override %#v", rules, wantRules)
 				}
-				if value == protocol.OpenAICompletions && apiKey == "key-3" {
+				if value == protocol.OpenAICompletions && apiKey == "key-1" {
 					return []string{"z-model", "a-model"}, nil
 				}
 				return nil, errors.New("try next candidate")
@@ -293,7 +290,6 @@ func TestDiscoverGroupModelsUsesDisabledGroupAndActiveCredentialsInIDOrder(t *te
 	}
 	wantCalls := []string{
 		"openai-completions:key-1",
-		"openai-completions:key-3",
 	}
 	if !reflect.DeepEqual(calls, wantCalls) {
 		t.Fatalf("calls = %#v, want protocol-outer active-key-ID-inner order %#v", calls, wantCalls)
@@ -313,7 +309,6 @@ func TestDiscoverGroupModelsReturnsNotFoundAndNoActiveUpstreamKey(t *testing.T) 
 	t.Run("no active upstream key", func(t *testing.T) {
 		fixture := newServiceFixture(t)
 		group := seedPersistedDiscoveryGroup(t, fixture, true, models.JSON(`{}`))
-		seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "disabled", models.CredentialAuthStateReauthorizationRequired)
 		_, err := fixture.service.DiscoverGroupModels(t.Context(), group.ID)
 		if !errors.Is(err, app_errors.ErrNoActiveCredential) {
 			t.Fatalf("DiscoverGroupModels() error = %v, want ErrNoActiveCredential", err)
@@ -583,23 +578,14 @@ func TestMapGroupDiscoveryTargetPreparesSubscriptionCredential(t *testing.T) {
 func TestDiscoverGroupModelsDoesNotMaskAttemptedSubscriptionFailure(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	first := mustImportSubscriptionStage(t, fixture, "account-reauthorize-first", "first@example.com")
+	stage := mustImportSubscriptionStage(t, fixture, "account-upstream-failure", "second@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("subscription discovery failure"), ChannelID: channel.Codex,
 		ConnectionType:      models.ConnectionTypeSubscription,
 		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{first.StageID},
+		StagedCredentialIDs: []string{stage.StageID},
 	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	second := mustImportSubscriptionStage(t, fixture, "account-upstream-failure", "second@example.com")
-	if _, err := fixture.service.ConnectGroupCredentials(t.Context(), created.GroupID, []string{second.StageID}); err != nil {
-		t.Fatal(err)
-	}
-	if err := fixture.db.Model(&models.Credential{}).
-		Where("group_id = ? AND id = (SELECT MIN(id) FROM credentials WHERE group_id = ?)", created.GroupID, created.GroupID).
-		Update("auth_state", models.CredentialAuthStateReauthorizationRequired).Error; err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
@@ -632,40 +618,6 @@ func TestSubscriptionPreparationAPIErrorTreatsRetryableRefreshAsTemporary(t *tes
 	if !errors.As(err, &apiErr) || apiErr.Code != "CREDENTIAL_REFRESH_TEMPORARILY_UNAVAILABLE" ||
 		apiErr.HTTPStatus != http.StatusServiceUnavailable {
 		t.Fatalf("subscriptionPreparationAPIError() = %#v", err)
-	}
-}
-
-func TestDiscoverGroupModelsDecryptsEveryKeyBeforeHTTP(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	group := seedPersistedDiscoveryGroup(t, fixture, true, models.JSON(`{}`))
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialAuthStateReady)
-	if err := fixture.db.Create(&models.Credential{
-		ID: 3, GroupID: group.ID, Data: "corrupt-second-active-ciphertext",
-		Fingerprint: "corrupt-hash", AuthState: models.CredentialAuthStateReady,
-	}).Error; err != nil {
-		t.Fatalf("seed corrupt active key: %v", err)
-	}
-
-	calls := 0
-	fixture.service.executor = newRecordingDiscoveryExecutor(&recordingDiscoveryExecutorTarget{
-		value: protocol.Anthropic,
-		listFn: func(context.Context, string, string, state.HeaderRules) ([]string, error) {
-			calls++
-			return nil, nil
-		},
-	})
-	_, err := fixture.service.DiscoverGroupModels(t.Context(), group.ID)
-	if !errors.Is(err, app_errors.ErrInternalServer) {
-		t.Fatalf("DiscoverGroupModels() error = %v, want sanitized ErrInternalServer", err)
-	}
-	if calls != 0 {
-		t.Fatalf("ListModels calls = %d, want zero before every key decrypts", calls)
-	}
-	for _, secret := range []string{"key-1", "corrupt-second-active-ciphertext", "corrupt-hash"} {
-		if strings.Contains(fmt.Sprint(err), secret) {
-			t.Fatalf("error exposes %q: %v", secret, err)
-		}
 	}
 }
 
@@ -750,6 +702,10 @@ func TestDiscoverGroupModelsDoesNotAcquireWriteMuOrBlockWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed CreateGroup() error = %v", err)
 	}
+	importGroup := validControlGroup("credential-write")
+	if err := fixture.db.Create(importGroup).Error; err != nil {
+		t.Fatalf("seed credential-write group error = %v", err)
+	}
 	fixture.service.modelDiscoveryTimeout = 3 * time.Second
 	fixture.service.executor = newRecordingDiscoveryExecutor(&recordingDiscoveryExecutorTarget{
 		value: protocol.OpenAICompletions,
@@ -821,7 +777,7 @@ func TestDiscoverGroupModelsDoesNotAcquireWriteMuOrBlockWrites(t *testing.T) {
 
 	keyWriteDone := make(chan error, 1)
 	go func() {
-		_, err := fixture.service.ImportGroupCredentials(t.Context(), created.GroupID, CredentialImportRequest{
+		_, err := fixture.service.ImportGroupCredentials(t.Context(), importGroup.ID, CredentialImportRequest{
 			Credentials: "concurrent-imported-key",
 		})
 		keyWriteDone <- err

@@ -16,15 +16,10 @@ import (
 )
 
 const (
-	autoWeightInterval        = 30 * time.Second
 	defaultValidationInterval = 10 * time.Minute
 	maxValidationJitter       = 3 * time.Minute
 	retentionInterval         = time.Hour
 )
-
-type autoWeightRegistry interface {
-	ActiveCredentialIDs() []uint
-}
 
 type credentialMutationCoordinator interface {
 	Do(uint, func())
@@ -66,9 +61,6 @@ func (ticker standardRuntimeTicker) Stop() {
 }
 
 type Runtime struct {
-	registry           autoWeightRegistry
-	stats              *health.StatsStore
-	mutations          credentialMutationCoordinator
 	validator          validationSweep
 	requestLogCleaner  RequestLogCleaner
 	stageCleaner       credentialStageCleaner
@@ -96,15 +88,11 @@ func NewRuntime(
 	catalogSync *CatalogSyncCoordinator,
 ) *Runtime {
 	runtime := &Runtime{
-		registry:           registry,
-		stats:              stats,
-		mutations:          mutations,
 		requestLogCleaner:  requestLogCleaner,
 		stageCleaner:       operationRecovery,
 		operationRecovery:  operationRecovery,
 		catalogSync:        catalogSync,
 		manager:            manager,
-		autoWeightInterval: autoWeightInterval,
 		validationInterval: defaultValidationInterval,
 		validationJitter: func() time.Duration {
 			return time.Duration(rand.Int64N(int64(maxValidationJitter) + 1))
@@ -130,7 +118,6 @@ func NewRuntime(
 }
 
 func (runtime *Runtime) Run(ctx context.Context) {
-	autoTicker := runtime.newTicker(runtime.autoWeightInterval)
 	currentValidationInterval, validationUpdates := runtime.currentValidationSchedule()
 	validationTicker := runtime.newTicker(validationTickerInterval(
 		currentValidationInterval,
@@ -138,11 +125,7 @@ func (runtime *Runtime) Run(ctx context.Context) {
 	))
 
 	var wait sync.WaitGroup
-	wait.Add(2)
-	go func() {
-		defer wait.Done()
-		runtime.runAutoWeight(ctx, autoTicker)
-	}()
+	wait.Add(1)
 	go func() {
 		defer wait.Done()
 		runtime.runValidation(ctx, validationTicker, currentValidationInterval, validationUpdates)
@@ -177,21 +160,6 @@ func (runtime *Runtime) Run(ctx context.Context) {
 		}()
 	}
 	wait.Wait()
-}
-
-func (runtime *Runtime) runAutoWeight(ctx context.Context, ticker runtimeTicker) {
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C():
-			if ctx.Err() != nil {
-				return
-			}
-			runtime.recompute(runtime.now())
-		}
-	}
 }
 
 func (runtime *Runtime) runValidation(
@@ -280,5 +248,3 @@ func (runtime *Runtime) sweepRetention(ctx context.Context, now time.Time) {
 		}
 	}
 }
-
-func (runtime *Runtime) recompute(_ time.Time) {}

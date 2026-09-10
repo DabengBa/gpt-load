@@ -266,13 +266,25 @@ func TestCreateChannelGroupPersistsCanonicalCredentialsAndPublishes(t *testing.T
 		Models: optionalGroupModels{Set: true, Values: []GroupModel{
 			{ID: " provider-model ", Alias: " public ", AliasEnabled: true},
 		}},
-		Credentials: " sk-one \n sk-one\nsk-two\n", ConnectionType: "api_key",
+		Credentials: " sk-one \n sk-one\n", ConnectionType: "api_key",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
 	}
-	if result.CredentialsAdded != 2 || result.CredentialsDuplicated != 1 {
+	if result.CredentialsAdded != 1 || result.CredentialsDuplicated != 1 {
 		t.Fatalf("CreateGroup() result = %#v", result)
+	}
+	second, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name: stringPointer(" channel group second"), ChannelID: channel.OpenAICompatible,
+		Params:      json.RawMessage(`{"base_url":" HTTPS://Proxy.Example/v1/ "}`),
+		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "provider-model"}}},
+		Credentials: "sk-two", ConfirmSameTarget: true, ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatalf("CreateGroup(second) error = %v", err)
+	}
+	if second.CredentialsAdded != 1 || second.CredentialsDuplicated != 0 {
+		t.Fatalf("CreateGroup(second) result = %#v", second)
 	}
 	encodedResult, err := json.Marshal(result)
 	if err != nil {
@@ -298,10 +310,10 @@ func TestCreateChannelGroupPersistsCanonicalCredentialsAndPublishes(t *testing.T
 	if err := fixture.db.Where("group_id = ?", group.ID).Order("id ASC").Find(&credentials).Error; err != nil {
 		t.Fatalf("load credentials: %v", err)
 	}
-	if len(credentials) != 2 {
-		t.Fatalf("credentials = %#v, want two", credentials)
+	if len(credentials) != 1 {
+		t.Fatalf("credentials = %#v, want one", credentials)
 	}
-	wantCanonical := []string{`{"api_key":"sk-one"}`, `{"api_key":"sk-two"}`}
+	wantCanonical := []string{`{"api_key":"sk-one"}`}
 	for index, row := range credentials {
 		plaintext, decryptErr := fixture.encryption.Decrypt(row.Data)
 		if decryptErr != nil {
@@ -314,11 +326,15 @@ func TestCreateChannelGroupPersistsCanonicalCredentialsAndPublishes(t *testing.T
 	}
 	snapshot := fixture.manager.Current()
 	view, ok := snapshot.Groups[group.ID]
-	if snapshot.Revision != beforeRevision+1 || !ok || view.ChannelID != channel.OpenAICompatible ||
+	if snapshot.Revision != beforeRevision+2 || !ok || view.ChannelID != channel.OpenAICompatible ||
 		string(view.Params) != `{"base_url":"https://proxy.example/v1"}` {
 		t.Fatalf("published snapshot = revision %d group %#v exists=%t", snapshot.Revision, view, ok)
 	}
-	refs := fixture.registry.CaptureActiveCredentialRefs([]uint{group.ID})
+	secondView, secondOK := snapshot.Groups[second.GroupID]
+	if !secondOK || secondView.ChannelID != channel.OpenAICompatible {
+		t.Fatalf("second published snapshot = %#v exists=%t", secondView, secondOK)
+	}
+	refs := fixture.registry.CaptureActiveCredentialRefs([]uint{group.ID, second.GroupID})
 	if len(refs) != 2 || refs[0].Version == 0 || refs[0].IdentityGeneration == 0 || refs[0].Fingerprint == "" {
 		t.Fatalf("credential refs = %#v", refs)
 	}
@@ -503,7 +519,7 @@ func TestChannelGroupCollectionDetailAndOptionsUseChannelCredentialContract(t *t
 	if legacyCredentialQueries != 0 {
 		t.Fatalf("legacy upstream key queries = %d, want 0", legacyCredentialQueries)
 	}
-	if want := []string{"id", "group_id", "fingerprint", "identity_fingerprint", "secret_version", "status", "weight_manual"}; !reflect.DeepEqual(credentialSelects, want) {
+	if want := []string{"id", "group_id", "fingerprint", "identity_fingerprint", "secret_version", "auth_state"}; !reflect.DeepEqual(credentialSelects, want) {
 		t.Fatalf("credential SELECT columns = %#v, want %#v", credentialSelects, want)
 	}
 	item := collection.Items[0]

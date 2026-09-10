@@ -25,6 +25,16 @@ func TestRuntimeHealthReportsLowQuotaCredentials(t *testing.T) {
 				Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
+			{
+				ConnectionType: "api_key", ID: 2, Name: "healthy", ChannelID: channel.OpenAI,
+				Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
+			},
+			{
+				ConnectionType: "api_key", ID: 3, Name: "stale", ChannelID: channel.OpenAI,
+				Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
+			},
 		},
 	}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
@@ -32,8 +42,8 @@ func TestRuntimeHealthReportsLowQuotaCredentials(t *testing.T) {
 
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
 		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, EncryptedValue: "low"},
-		{ID: 12, GroupID: 1, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", AuthState: state.CredentialAuthStateReady, EncryptedValue: "healthy"},
-		{ID: 13, GroupID: 1, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReady, EncryptedValue: "stale"},
+		{ID: 12, GroupID: 2, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", AuthState: state.CredentialAuthStateReady, EncryptedValue: "healthy"},
+		{ID: 13, GroupID: 3, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReady, EncryptedValue: "stale"},
 	}); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)
 	}
