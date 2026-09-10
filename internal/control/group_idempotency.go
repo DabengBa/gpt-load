@@ -103,6 +103,13 @@ func (s *Service) CreateGroupIdempotent(
 			}
 		},
 		Mutate: func(tx *gorm.DB) (idempotentMutationResult, error) {
+			if normalized.connectionType == models.ConnectionTypeSubscription {
+				if err := s.validateCredentialStageCreateBatch(
+					tx, normalized.channelID, normalized.connectionType, normalized.stagedCredentialIDs,
+				); err != nil {
+					return idempotentMutationResult{}, err
+				}
+			}
 			if !normalized.confirmSameTarget {
 				conflicts, err := findGroupsByTarget(tx, normalized.channelID, normalized.connectionType, normalized.params)
 				if err != nil {
@@ -155,7 +162,7 @@ func (s *Service) CreateGroupIdempotent(
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
-			entries, err := stateloader.BuildGroupCredentialEntriesWithProxy(ctx, tx, group.ID, s.encryption)
+			entries, err := stateloader.BuildGroupCredentialEntries(ctx, tx, group.ID)
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
@@ -165,9 +172,7 @@ func (s *Service) CreateGroupIdempotent(
 			if err := reconcileReferencedPrices(tx, catalogSnapshot); err != nil {
 				return idempotentMutationResult{}, err
 			}
-			input, err := stateloader.BuildCompileInputWithProxy(
-				ctx, tx, s.encryption, s.environmentProxy, s.channelRegistry,
-			)
+			input, err := stateloader.BuildCompileInput(ctx, tx, s.channelRegistry)
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
@@ -261,7 +266,7 @@ func (s *Service) ImportGroupCredentialsIdempotent(
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
-			entries, err := stateloader.BuildGroupCredentialEntriesWithProxy(ctx, tx, groupID, s.encryption)
+			entries, err := stateloader.BuildGroupCredentialEntries(ctx, tx, groupID)
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}

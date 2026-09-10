@@ -33,7 +33,7 @@ func TestCreateAccessKeyGeneratesEncryptedSKGLToken(t *testing.T) {
 	})
 	if err := fixture.registry.ApplyCredentialImport(77, []state.CredentialEntry{{
 		ID: 88, GroupID: 77, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "existing-upstream", Status: state.CredentialStatusActive,
+		Fingerprint: "existing-upstream", AuthState: state.CredentialAuthStateReady,
 		EncryptedValue: "existing-upstream-cipher",
 	}}); err != nil {
 		t.Fatalf("seed Registry: %v", err)
@@ -397,7 +397,7 @@ func TestUpdateAccessKeyStatusAndDeletePublishWithoutMutatingRegistry(t *testing
 	row := loadAccessKeyRow(t, fixture.db, created.ID)
 	if err := fixture.registry.ApplyCredentialImport(77, []state.CredentialEntry{{
 		ID: 88, GroupID: 77, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "registry", Status: state.CredentialStatusActive, EncryptedValue: "registry-cipher",
+		Fingerprint: "registry", AuthState: state.CredentialAuthStateReady, EncryptedValue: "registry-cipher",
 	}}); err != nil {
 		t.Fatalf("seed Registry: %v", err)
 	}

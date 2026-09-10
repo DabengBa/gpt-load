@@ -66,7 +66,6 @@ const groupSettingsFields = [
   'params',
   'validation_model',
   'enabled',
-  'weight_manual',
   'overrides',
   'effective',
   'proxy',
@@ -161,7 +160,6 @@ export type GroupSettingsUpdateRequest = Partial<{
   params: ChannelParamsDto
   validation_model: string | null
   enabled: boolean
-  weight_manual: number | null
   overrides: GroupRuntimeConfigDto
   proxy: ProxyMutation
 }>
@@ -422,10 +420,6 @@ export function projectGroupSettings(value: unknown): GroupSettingsDto {
     validation_model:
       record.validation_model === null ? null : projectNonBlankString(record.validation_model),
     enabled: projectBoolean(record.enabled),
-    weight_manual:
-      record.weight_manual === null
-        ? null
-        : projectSafeInteger(record.weight_manual, { minimum: 1, maximum: 100 }),
     overrides: projectRuntimeConfig(record.overrides, false),
     effective: projectRuntimeConfig(record.effective, true),
     proxy: projectProxyView(record.proxy),

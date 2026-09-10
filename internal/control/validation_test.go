@@ -728,7 +728,7 @@ func TestValidationWorkerFailureGenerationChangesDuringProbeRejectsRecovery(t *t
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", Status: state.CredentialStatusActive,
+		ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", AuthState: state.CredentialAuthStateReady,
 		Blacklisted: true, FailureCount: 3, EncryptedValue: "key-7",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -939,11 +939,11 @@ func (registry *publicationValidationRegistry) BlacklistedCredentials() []state.
 	return registry.delegate.BlacklistedCredentials()
 }
 
-func (registry *publicationValidationRegistry) RecoverIfMatch(ref state.CredentialRef, weight int) bool {
+func (registry *publicationValidationRegistry) RecoverIfMatch(ref state.CredentialRef) bool {
 	registry.recoverCallbackActive <- registry.callbackActive()
 	close(registry.recoverEntered)
 	<-registry.releaseRecover
-	return registry.delegate.RecoverIfMatch(ref, weight)
+	return registry.delegate.RecoverIfMatch(ref)
 }
 
 type publicationValidationStats struct {
@@ -969,7 +969,7 @@ func TestValidationWorkerPublicationBoundaryBlocksPublishThroughRecoverAndReset(
 	}
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", Status: state.CredentialStatusActive,
+		ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", AuthState: state.CredentialAuthStateReady,
 		Blacklisted: true, FailureCount: 3, EncryptedValue: "key-7",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -1182,8 +1182,11 @@ func TestValidationWorkerDoesNotRecoverDisabledOrReplacedKeyRef(t *testing.T) {
 		{
 			name: "disabled after sweep", expectedCipher: "cipher-original", mutate: func(t *testing.T, registry *state.CredentialRegistry) {
 				t.Helper()
-				if err := registry.SetCredentialStatus(7, state.CredentialStatusDisabled); err != nil {
-					t.Fatalf("SetCredentialStatus() error = %v", err)
+				if err := registry.ReplaceCredentials([]state.CredentialEntry{{
+					ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", AuthState: state.CredentialAuthStateReauthorizationRequired, Blacklisted: true,
+					FailureCount: 3, EncryptedValue: "cipher-original",
+				}}); err != nil {
+					t.Fatalf("Replace() error = %v", err)
 				}
 			},
 		},
@@ -1191,8 +1194,8 @@ func TestValidationWorkerDoesNotRecoverDisabledOrReplacedKeyRef(t *testing.T) {
 			name: "replaced after sweep", expectedCipher: "cipher-replaced", expectedEnabled: true, mutate: func(t *testing.T, registry *state.CredentialRegistry) {
 				t.Helper()
 				if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-					ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", Status: state.CredentialStatusActive, Blacklisted: true,
-					FailureCount: 5, WeightAuto: 17, EncryptedValue: "cipher-replaced",
+					ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", AuthState: state.CredentialAuthStateReady, Blacklisted: true,
+					FailureCount: 5, EncryptedValue: "cipher-replaced",
 				}}); err != nil {
 					t.Fatalf("Replace() error = %v", err)
 				}
@@ -1204,8 +1207,8 @@ func TestValidationWorkerDoesNotRecoverDisabledOrReplacedKeyRef(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			registry := state.NewCredentialRegistry()
 			if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-				ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", Status: state.CredentialStatusActive, Blacklisted: true,
-				FailureCount: 3, WeightAuto: 17, EncryptedValue: "cipher-original",
+				ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", AuthState: state.CredentialAuthStateReady, Blacklisted: true,
+				FailureCount: 3, EncryptedValue: "cipher-original",
 			}}); err != nil {
 				t.Fatalf("Replace() error = %v", err)
 			}
@@ -1234,11 +1237,6 @@ func TestValidationWorkerDoesNotRecoverDisabledOrReplacedKeyRef(t *testing.T) {
 				t.Fatalf("active key count = %d, want 1", got)
 			} else if !test.expectedEnabled && got != 0 {
 				t.Fatalf("active key count = %d, want 0", got)
-			}
-			if !test.expectedEnabled {
-				if err := registry.SetCredentialStatus(7, state.CredentialStatusActive); err != nil {
-					t.Fatalf("SetCredentialStatus() error = %v", err)
-				}
 			}
 			if got, want := registry.BlacklistedCredentials(), []state.CredentialRef{{
 				ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7,
@@ -1498,14 +1496,13 @@ func (registry *validationRegistryRecorder) BlacklistedCredentials() []state.Cre
 	return append([]state.CredentialRef(nil), registry.refs...)
 }
 
-func (registry *validationRegistryRecorder) RecoverIfMatch(ref state.CredentialRef, weight int) bool {
+func (registry *validationRegistryRecorder) RecoverIfMatch(ref state.CredentialRef) bool {
 	registry.mu.Lock()
 	recoveryOK := registry.recoveryOK
 	registry.mu.Unlock()
 	if !recoveryOK {
 		return false
 	}
-	registry.recorder.add(fmt.Sprintf("registry.weight:%d:%d", ref.ID, weight))
 	registry.recorder.add(fmt.Sprintf("registry.recover:%d", ref.ID))
 	return true
 }

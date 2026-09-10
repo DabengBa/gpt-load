@@ -10,9 +10,6 @@ type CredentialRuntimeView struct {
 	GroupID            uint
 	Version            uint64
 	IdentityGeneration uint64
-	WeightManual       *int
-	WeightAuto         int
-	Status             CredentialStatus
 	AuthState          CredentialAuthState
 	CooldownUntil      time.Time
 	Blacklisted        bool
@@ -33,15 +30,11 @@ type CredentialRuntimeState string
 
 const (
 	CredentialRuntimeAvailable   CredentialRuntimeState = "available"
-	CredentialRuntimeDisabled    CredentialRuntimeState = "disabled"
 	CredentialRuntimeBlacklisted CredentialRuntimeState = "blacklisted"
 	CredentialRuntimeCooldown    CredentialRuntimeState = "cooldown"
 )
 
 func (view CredentialRuntimeView) RuntimeState(now time.Time) CredentialRuntimeState {
-	if view.Status != CredentialStatusActive {
-		return CredentialRuntimeDisabled
-	}
 	if view.Blacklisted {
 		return CredentialRuntimeBlacklisted
 	}
@@ -57,9 +50,6 @@ func runtimeView(entry *CredentialEntry) CredentialRuntimeView {
 		GroupID:            entry.GroupID,
 		Version:            entry.Version,
 		IdentityGeneration: entry.IdentityGeneration,
-		WeightManual:       cloneWeight(entry.WeightManual),
-		WeightAuto:         entry.WeightAuto,
-		Status:             entry.Status,
 		AuthState:          entry.AuthState.normalize(),
 		CooldownUntil:      entry.CooldownUntil,
 		Blacklisted:        entry.Blacklisted,

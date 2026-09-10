@@ -26,7 +26,6 @@ type GroupSettingsResponse struct {
 	Name            string                       `json:"name"`
 	ValidationModel *string                      `json:"validation_model"`
 	Enabled         bool                         `json:"enabled"`
-	WeightManual    *int                         `json:"weight_manual"`
 	Overrides       config.Settings              `json:"overrides"`
 	Effective       GroupEffectiveConfigResponse `json:"effective"`
 	Proxy           outboundproxy.View           `json:"proxy"`
@@ -38,7 +37,6 @@ type GroupSettingsUpdateRequest struct {
 	Params          optionalField[json.RawMessage]      `json:"params"`
 	ValidationModel optionalField[string]               `json:"validation_model"`
 	Enabled         optionalField[bool]                 `json:"enabled"`
-	WeightManual    optionalField[int]                  `json:"weight_manual"`
 	Overrides       optionalField[config.Settings]      `json:"overrides"`
 	Proxy           optionalField[outboundproxy.Config] `json:"proxy"`
 }
@@ -51,8 +49,6 @@ type normalizedGroupSettingsUpdate struct {
 	validationModel       *string
 	validationModelSet    bool
 	enabled               *bool
-	weightManual          *int
-	weightManualSet       bool
 	encodedOverrides      models.JSON
 	overridesSet          bool
 	proxyConfig           *string
@@ -125,7 +121,6 @@ func groupSettingsResponse(
 		Name:            group.Name,
 		ValidationModel: cloneString(group.ValidationModel),
 		Enabled:         group.Enabled,
-		WeightManual:    cloneInt(group.WeightManual),
 		Overrides:       overrides,
 		Effective:       effective,
 	}, nil
@@ -154,7 +149,7 @@ func normalizeGroupSettingsUpdate(
 		}
 	}
 	if !request.Name.Set && !request.Params.Set && !request.ValidationModel.Set &&
-		!request.Enabled.Set && !request.WeightManual.Set && !request.Overrides.Set && !request.Proxy.Set && !request.PriceMultiplier.Set {
+		!request.Enabled.Set && !request.Overrides.Set && !request.Proxy.Set && !request.PriceMultiplier.Set {
 		return normalizedGroupSettingsUpdate{}, app_errors.ErrBadRequest
 	}
 
@@ -190,16 +185,6 @@ func normalizeGroupSettingsUpdate(
 	if request.Enabled.Set {
 		value := request.Enabled.Value
 		result.enabled = &value
-	}
-	if request.WeightManual.Set {
-		result.weightManualSet = true
-		if !request.WeightManual.Null {
-			if request.WeightManual.Value < 1 || request.WeightManual.Value > state.MaxWeight {
-				return normalizedGroupSettingsUpdate{}, app_errors.ErrValidation
-			}
-			value := request.WeightManual.Value
-			result.weightManual = &value
-		}
 	}
 	if request.Overrides.Set {
 		_, encoded, err := normalizeGroupSettings(request.Overrides.Value)
@@ -280,10 +265,6 @@ func (s *Service) UpdateGroupSettings(
 			group.Enabled = *normalized.enabled
 			updates["enabled"] = group.Enabled
 		}
-		if normalized.weightManualSet {
-			group.WeightManual = normalized.weightManual
-			updates["weight_manual"] = normalized.weightManual
-		}
 		if normalized.overridesSet {
 			group.Overrides = normalized.encodedOverrides
 			updates["overrides"] = group.Overrides
@@ -301,7 +282,7 @@ func (s *Service) UpdateGroupSettings(
 			}
 		}
 		if targetChanged {
-			targetEntries, err = stateloader.BuildGroupCredentialEntriesWithProxy(ctx, tx, groupID, s.encryption)
+			targetEntries, err = stateloader.BuildGroupCredentialEntries(ctx, tx, groupID)
 			if err != nil {
 				return err
 			}

@@ -110,20 +110,9 @@ func (s *Service) credentialNetworkContext(
 	ctx context.Context,
 	db *gorm.DB,
 	group models.Group,
-	credential models.Credential,
+	_credential models.Credential,
 ) (subscriptionruntime.NetworkContext, error) {
-	configured, err := decryptProxyOverride(s.encryption, credential.ProxyConfig)
-	if err != nil {
-		return subscriptionruntime.NetworkContext{}, err
-	}
-	if configured == nil {
-		return s.groupNetworkContext(ctx, db, group)
-	}
-	effective, err := outboundproxy.Resolve(configured, nil, nil, nil)
-	if err != nil {
-		return subscriptionruntime.NetworkContext{}, app_errors.ErrInternalServer
-	}
-	return s.proxyNetworkContext(effective)
+	return s.groupNetworkContext(ctx, db, group)
 }
 
 func (s *Service) proxyNetworkContext(
@@ -245,36 +234,4 @@ func (s *Service) groupProxyView(
 		return outboundproxy.View{}, app_errors.ErrInternalServer
 	}
 	return view, nil
-}
-
-func (s *Service) credentialProxyViews(
-	ctx context.Context,
-	db *gorm.DB,
-	group models.Group,
-	rows []models.Credential,
-) (map[uint]outboundproxy.View, error) {
-	_, parent, err := s.resolveGroupProxy(ctx, db, group)
-	if err != nil {
-		return nil, err
-	}
-	views := make(map[uint]outboundproxy.View, len(rows))
-	for _, row := range rows {
-		configured, err := decryptProxyOverride(s.encryption, row.ProxyConfig)
-		if err != nil {
-			return nil, err
-		}
-		effective := parent
-		if configured != nil {
-			effective, err = outboundproxy.Resolve(configured, nil, nil, nil)
-			if err != nil {
-				return nil, app_errors.ErrInternalServer
-			}
-		}
-		view, err := outboundproxy.NewView(configured, effective)
-		if err != nil {
-			return nil, app_errors.ErrInternalServer
-		}
-		views[row.ID] = view
-	}
-	return views, nil
 }

@@ -22,8 +22,7 @@ func TestCompileBuildsOperationAwareChannelCandidates(t *testing.T) {
 			Enabled: true,
 		}},
 		Credentials: []CredentialConfig{{
-			ID: 31, GroupID: 7, Status: CredentialStatusActive,
-			Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-31",
+			ID: 31, GroupID: 7, Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-31",
 		}},
 	}
 
@@ -222,13 +221,11 @@ func TestCompileOrdersRouteTargetsByPriorityGroupAndUpstream(t *testing.T) {
 func TestCompileChannelSnapshotOwnsInputData(t *testing.T) {
 	t.Parallel()
 
-	weight := 12
 	params := json.RawMessage(`{"base_url":"https://proxy.example/v1/"}`)
 	input := CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAICompatible, Params: params,
-			Models:       []ModelConfig{{ID: "upstream", Alias: "public"}},
-			WeightManual: &weight, Enabled: true,
+			Models: []ModelConfig{{ID: "upstream", Alias: "public"}}, Enabled: true,
 		}},
 	}
 	snapshot, err := Compile(input)
@@ -238,7 +235,6 @@ func TestCompileChannelSnapshotOwnsInputData(t *testing.T) {
 
 	params[2] = 'X'
 	input.Groups[0].Models[0] = ModelConfig{ID: "changed", Alias: "changed"}
-	weight = 99
 
 	view := snapshot.Groups[1]
 	if string(view.Params) != `{"base_url":"https://proxy.example/v1"}` {
@@ -246,9 +242,6 @@ func TestCompileChannelSnapshotOwnsInputData(t *testing.T) {
 	}
 	if len(view.Models) != 1 || view.Models[0].ID != "upstream" || view.Models[0].Alias != "public" {
 		t.Fatalf("GroupView.Models = %#v", view.Models)
-	}
-	if view.WeightManual == nil || *view.WeightManual != 12 {
-		t.Fatalf("GroupView.WeightManual = %v", view.WeightManual)
 	}
 	target := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]["public"][0]
 	if string(target.ResolvedTarget.TargetConfig) != `{"base_url":"https://proxy.example/v1"}` {
@@ -262,7 +255,6 @@ func TestCompileChannelSnapshotOwnsInputData(t *testing.T) {
 func TestCompileRejectsInvalidChannelAndCredentialConfiguration(t *testing.T) {
 	t.Parallel()
 
-	invalidWeight := -1
 	tests := []struct {
 		name    string
 		input   CompileInput
@@ -286,34 +278,24 @@ func TestCompileRejectsInvalidChannelAndCredentialConfiguration(t *testing.T) {
 		{
 			name: "credential unknown group",
 			input: CompileInput{ChannelRegistry: channel.NewRegistry(), Credentials: []CredentialConfig{{
-				ID: 1, GroupID: 99, Status: CredentialStatusActive,
-				Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-1",
+				ID: 1, GroupID: 99, Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-1",
 			}}},
 			wantErr: "unknown group",
 		},
 		{
 			name: "duplicate credential",
 			input: CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`)}}, Credentials: []CredentialConfig{
-				{ID: 1, GroupID: 1, Status: CredentialStatusActive, Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-1"},
-				{ID: 1, GroupID: 1, Status: CredentialStatusDisabled, Version: 2, IdentityGeneration: 2, Fingerprint: "fingerprint-2"},
+				{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-1"},
+				{ID: 1, GroupID: 1, Version: 2, IdentityGeneration: 2, Fingerprint: "fingerprint-2"},
 			}},
 			wantErr: "duplicate credential id",
 		},
 		{
-			name: "invalid credential status",
-			input: CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`)}}, Credentials: []CredentialConfig{{
-				ID: 1, GroupID: 1, Status: CredentialStatus("revoked"),
-				Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-1",
-			}}},
-			wantErr: "invalid status",
-		},
-		{
-			name: "invalid credential weight",
-			input: CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`)}}, Credentials: []CredentialConfig{{
-				ID: 1, GroupID: 1, Status: CredentialStatusActive, WeightManual: &invalidWeight,
-				Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-1",
-			}}},
-			wantErr: "manual weight",
+			name: "duplicate credential group", input: CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`)}}, Credentials: []CredentialConfig{
+				{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "fingerprint-1"},
+				{ID: 2, GroupID: 1, Version: 2, IdentityGeneration: 2, Fingerprint: "fingerprint-2"},
+			}},
+			wantErr: "at most one credential",
 		},
 	}
 

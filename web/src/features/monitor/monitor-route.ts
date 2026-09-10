@@ -1,11 +1,6 @@
 import type { LocationQueryRaw } from 'vue-router'
 
 import { enabledDataProtocols } from '@/api/control/protocols'
-import type { AccessProtocol } from '@/api/control/types'
-import {
-  routeInspectOperations,
-  type RouteInspectOperation,
-} from '@/app/resources/route-inspection'
 import type { UsageFilters } from '@/app/resources/usage'
 import type { RequestLogFilters } from '@/app/resources/request-logs'
 import { defaultTimeRange } from '@/lib/time'
@@ -15,6 +10,8 @@ import {
   normalizeUsageGroupID,
   normalizeUsageChannelID,
   normalizeUsageModel,
+  normalizeUsagePage,
+  normalizeUsagePageSize,
   parseAppliedUsageFilters,
 } from './usage-filters'
 import { normalizeMonitorText } from './filter-validation'
@@ -38,11 +35,15 @@ export interface LogsMonitorState {
   selectedRequestID?: string
 }
 
+export type ScheduleMode = 'all' | 'primary' | 'fallback'
+export type ScheduleDraftField = 'weight' | 'priority'
+export type ScheduleDrafts = Record<string, Partial<Record<ScheduleDraftField, number | null>>>
+
 export interface ScheduleMonitorState {
-  protocol?: AccessProtocol
+  mode: ScheduleMode
   externalModel?: string
-  operation?: RouteInspectOperation
-  accessKeyID?: string
+  selectedRow?: string
+  drafts: ScheduleDrafts
 }
 
 export interface InspectorMonitorState {
@@ -55,23 +56,6 @@ export interface InspectorMonitorState {
 
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const logCursorPattern = /^[A-Za-z0-9_-]{1,512}$/u
-const scheduleOperationsByProtocol: Record<AccessProtocol, readonly RouteInspectOperation[]> = {
-  'openai-completions': ['chat_completion'],
-  'openai-responses': [
-    'responses_create',
-    'responses_retrieve',
-    'responses_delete',
-    'responses_cancel',
-    'responses_input_items',
-    'responses_compact',
-    'responses_input_tokens',
-    'responses_passthrough',
-  ],
-  'openai-images': ['images_generate', 'images_edit'],
-  'openai-embeddings': ['embeddings_create'],
-  anthropic: ['chat_completion', 'count_tokens'],
-  gemini: ['chat_completion', 'count_tokens'],
-}
 
 export function normalizeMonitorTab(raw: unknown): MonitorTab {
   return raw === 'logs' ||
@@ -136,38 +120,28 @@ export function normalizeAccessKeyMonitorQuery(query: Record<string, unknown>): 
   )
 }
 
+const scheduleRowPattern = /^\d+:\S{1,512}$/u
+
 export function parseScheduleMonitorState(query: Record<string, unknown>): ScheduleMonitorState {
-  const protocol = scalarEnum(query.schedule_protocol, enabledDataProtocols)
-  const operation = scalarEnum(query.schedule_operation, routeInspectOperations)
   return {
-    protocol,
+    mode:
+      query.schedule_mode === 'primary' || query.schedule_mode === 'fallback'
+        ? query.schedule_mode
+        : 'all',
     externalModel: scalarText(query.schedule_model),
-    operation:
-      protocol !== undefined &&
-      operation !== undefined &&
-      scheduleOperationsByProtocol[protocol].includes(operation)
-        ? operation
-        : undefined,
-    accessKeyID: scalarPositiveID(query.schedule_access_key_id),
+    selectedRow: scalarScheduleRow(query.schedule_row),
+    drafts: parseScheduleDrafts(query.schedule_draft),
   }
 }
 
 export function scheduleMonitorQuery(state: ScheduleMonitorState): LocationQueryRaw {
   const normalized: LocationQueryRaw = { tab: 'schedule' }
-  const protocol = scalarEnum(state.protocol, enabledDataProtocols)
-  if (protocol !== undefined) normalized.schedule_protocol = protocol
+  if (state.mode !== 'all') normalized.schedule_mode = state.mode
   const model = scalarText(state.externalModel)
   if (model !== undefined) normalized.schedule_model = model
-  const accessKeyID = scalarPositiveID(state.accessKeyID)
-  if (accessKeyID !== undefined) normalized.schedule_access_key_id = accessKeyID
-  const operation = scalarEnum(state.operation, routeInspectOperations)
-  if (
-    protocol !== undefined &&
-    operation !== undefined &&
-    scheduleOperationsByProtocol[protocol].includes(operation)
-  ) {
-    normalized.schedule_operation = operation
-  }
+  if (state.selectedRow !== undefined) normalized.schedule_row = state.selectedRow
+  const drafts = serializeScheduleDrafts(state.drafts)
+  if (drafts !== undefined) normalized.schedule_draft = drafts
   return normalized
 }
 
@@ -200,6 +174,10 @@ export function usageMonitorQuery(
   if (channelID !== undefined) normalized.channel_id = channelID
   if (credentialID !== undefined) normalized.credential_id = String(credentialID)
   if (upstreamModel !== undefined) normalized.upstream_model = upstreamModel
+  const breakdownPage = normalizeUsagePage(filters.breakdown_page)
+  const breakdownPageSize = normalizeUsagePageSize(filters.breakdown_page_size)
+  if (breakdownPage !== 1) normalized.breakdown_page = String(breakdownPage)
+  if (breakdownPageSize !== 20) normalized.breakdown_page_size = String(breakdownPageSize)
   if (state.filtersOpen) normalized.panel = 'filters'
   if (state.seriesExpanded) normalized.series = 'expanded'
   return normalized
@@ -305,6 +283,56 @@ function scalarPositiveID(raw: unknown): string | undefined {
 
 function scalarEnum<T extends string>(raw: unknown, values: readonly T[]): T | undefined {
   return typeof raw === 'string' && values.includes(raw as T) ? (raw as T) : undefined
+}
+
+function scalarScheduleRow(raw: unknown): string | undefined {
+  return typeof raw === 'string' && scheduleRowPattern.test(raw) ? raw : undefined
+}
+
+function parseScheduleDrafts(raw: unknown): ScheduleDrafts {
+  if (typeof raw !== 'string' || raw.length > 20_000) return {}
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+    const drafts: ScheduleDrafts = {}
+    for (const [row, draft] of Object.entries(value)) {
+      if (!scheduleRowPattern.test(row) || typeof draft !== 'object' || draft === null) continue
+      const next: Partial<Record<ScheduleDraftField, number | null>> = {}
+      for (const field of ['weight', 'priority'] as const) {
+        const candidate = (draft as Record<string, unknown>)[field]
+        if (candidate === null) {
+          next[field] = null
+        } else if (
+          typeof candidate === 'number' &&
+          Number.isSafeInteger(candidate) &&
+          (field === 'weight' ? candidate >= 0 && candidate <= 100 : candidate >= 1)
+        ) {
+          next[field] = candidate
+        }
+      }
+      if (Object.keys(next).length > 0) drafts[row] = next
+    }
+    return drafts
+  } catch {
+    return {}
+  }
+}
+
+function serializeScheduleDrafts(drafts: ScheduleDrafts): string | undefined {
+  const normalized: ScheduleDrafts = {}
+  for (const row of Object.keys(drafts).sort()) {
+    const draft = drafts[row]
+    if (!scheduleRowPattern.test(row) || draft === undefined) continue
+    const next: Partial<Record<ScheduleDraftField, number | null>> = {}
+    for (const field of ['weight', 'priority'] as const) {
+      const value = draft[field]
+      if (value === null || (typeof value === 'number' && Number.isSafeInteger(value))) {
+        next[field] = value
+      }
+    }
+    if (Object.keys(next).length > 0) normalized[row] = next
+  }
+  return Object.keys(normalized).length > 0 ? JSON.stringify(normalized) : undefined
 }
 
 function scalarUUIDv4(raw: unknown): string | undefined {

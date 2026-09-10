@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -123,17 +124,22 @@ func TestExternalDatabaseLifecycle(t *testing.T) {
 	if err := db.Table("schema_migrations").Order("id").Pluck("id", &migrationIDs).Error; err != nil {
 		t.Fatalf("read migration ledger: %v", err)
 	}
-	if len(migrationIDs) != 10 || migrationIDs[0] != "0001_initial" ||
-		migrationIDs[1] != "0002_access_key_cost_limits" ||
-		migrationIDs[2] != "0003_remove_observation_fresh_until" ||
-		migrationIDs[3] != "0004_usage_stats_group_activity_index" ||
-		migrationIDs[4] != "0005_proxy_config" ||
-		migrationIDs[5] != "0006_error_decision" ||
-		migrationIDs[6] != "0007_access_key_lifecycle" ||
-		migrationIDs[7] != "0008_remove_inject_usage_options" ||
-		migrationIDs[8] != "0009_price_multipliers" ||
-		migrationIDs[9] != "0010_debug_captures" {
-		t.Fatalf("migration ledger = %v, want complete 0001-0010 chain", migrationIDs)
+	wantMigrationIDs := []string{
+		"0001_initial",
+		"0002_access_key_cost_limits",
+		"0003_remove_observation_fresh_until",
+		"0004_usage_stats_group_activity_index",
+		"0005_proxy_config",
+		"0006_error_decision",
+		"0007_access_key_lifecycle",
+		"0008_remove_inject_usage_options",
+		"0009_price_multipliers",
+		"0010_single_credential_per_group",
+		"0011_usage_latency",
+		"0012_debug_captures",
+	}
+	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
+		t.Fatalf("migration ledger = %v, want complete 0001-0012 chain", migrationIDs)
 	}
 	for _, table := range []string{"debug_captures", "debug_capture_attempts", "debug_capture_chunks"} {
 		if !db.Migrator().HasTable(table) {

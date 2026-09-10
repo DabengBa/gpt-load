@@ -87,7 +87,7 @@ func TestGroupDetailLedgerRoutesReplaceLegacyContracts(t *testing.T) {
 		engine,
 		http.MethodPut,
 		fmt.Sprintf("/api/groups/%d/credentials/%d", groupID, credential.ID),
-		`{"weight_manual":25}`,
+		`{"credentials":"sk-ledger-route-updated"}`,
 		"Bearer test-auth-key",
 	)
 	assertGroupDetailLedgerEnvelope(t, updated, http.StatusOK, "")
@@ -98,7 +98,7 @@ func TestGroupDetailLedgerRoutesReplaceLegacyContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, field := range []string{
-		"credential_id", "mask", "configured_status", "effective_status", "weight_mode", "weight",
+		"credential_id", "mask", "effective_status", "auth_state",
 		"recent_success_count", "recent_failure_count", "consecutive_failure_count",
 		"last_failure_category", "last_status_code", "cooldown_until_ms", "recovery",
 	} {
@@ -122,7 +122,7 @@ func TestGroupDetailLedgerRoutesReplaceLegacyContracts(t *testing.T) {
 		`{"weight_manual":0}`,
 		"Bearer test-auth-key",
 	)
-	assertGroupDetailLedgerEnvelope(t, zeroWeight, http.StatusBadRequest, "VALIDATION_FAILED")
+	assertGroupDetailLedgerEnvelope(t, zeroWeight, http.StatusBadRequest, "INVALID_JSON")
 }
 
 func serveGroupDetailLedgerRoute(

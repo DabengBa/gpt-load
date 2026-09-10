@@ -32,20 +32,26 @@ func newModelRewriteTestRuntime(
 	keyService := encryptiontest.Service(t, "model-rewrite-test-master-key")
 	manager := state.NewManager()
 	credentialConfigs := make([]state.CredentialConfig, 0, len(upstreamKeys))
+	groups := make([]state.GroupConfig, 0, len(upstreamKeys))
 	for index := range upstreamKeys {
+		groupID := uint(index + 1)
 		credentialConfigs = append(credentialConfigs, state.CredentialConfig{
-			ID: uint(index + 1), GroupID: 1, Status: state.CredentialStatusActive,
+			ID: uint(index + 1), GroupID: groupID,
 			Version: 1, IdentityGeneration: uint64(index + 1),
 			Fingerprint: "credential-" + string(rune('a'+index)),
 		})
+		groups = append(groups, state.GroupConfig{
+			ConnectionType: "api_key", ID: groupID, Name: "openai", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Models: models, Enabled: true,
+		})
+	}
+	if len(groups) == 0 {
+		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: models, Enabled: true})
 	}
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
-			Params: json.RawMessage(`{}`), Models: models, Enabled: true,
-		}},
-		Credentials: credentialConfigs,
+		Groups:          groups,
+		Credentials:     credentialConfigs,
 		AccessKeys: []state.AccessKeyConfig{{
 			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"),
 			Status: state.AccessKeyStatusActive,
@@ -65,10 +71,10 @@ func newModelRewriteTestRuntime(
 			t.Fatalf("Encrypt() error = %v", err)
 		}
 		entries = append(entries, state.CredentialEntry{
-			ID: uint(index + 1), GroupID: 1,
+			ID: uint(index + 1), GroupID: uint(index + 1),
 			Version: 1, IdentityGeneration: uint64(index + 1),
-			Fingerprint: "credential-" + string(rune('a'+index)),
-			Status:      state.CredentialStatusActive, EncryptedValue: encrypted,
+			Fingerprint:    "credential-" + string(rune('a'+index)),
+			EncryptedValue: encrypted,
 		})
 	}
 	if err := registry.ReplaceCredentials(entries); err != nil {

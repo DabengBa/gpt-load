@@ -34,10 +34,10 @@ func TestGetGroupSummaryUsesCollectionServiceStatusAndOnlyReturnsHeaderCounts(t 
 	setGroupCollectionChannel(t, fixture, noCredentials, channel.Anthropic, models.JSON(`{}`))
 	setGroupCollectionRoute(t, fixture, noCredentials, `["openai-completions"]`, `[{"id":"model"}]`)
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{
-		createGroupCollectionKey(t, fixture, available.ID, models.CredentialStatusActive, nil),
-		createGroupCollectionKey(t, fixture, unavailable.ID, models.CredentialStatusActive, nil),
-		createGroupCollectionKey(t, fixture, openAIWithoutModels.ID, models.CredentialStatusActive, nil),
-		createGroupCollectionKey(t, fixture, disabled.ID, models.CredentialStatusActive, nil),
+		createGroupCollectionKey(t, fixture, available.ID, models.CredentialAuthStateReady, nil),
+		createGroupCollectionKey(t, fixture, unavailable.ID, models.CredentialAuthStateReady, nil),
+		createGroupCollectionKey(t, fixture, openAIWithoutModels.ID, models.CredentialAuthStateReady, nil),
+		createGroupCollectionKey(t, fixture, disabled.ID, models.CredentialAuthStateReady, nil),
 	})
 
 	for _, test := range []struct {
@@ -112,7 +112,7 @@ func TestGroupDetailStatusRequiresAHealthyKeyAndRouteCapability(t *testing.T) {
 	setGroupCollectionChannel(t, fixture, group, channel.Anthropic, models.JSON(`{}`))
 	setGroupCollectionRoute(t, fixture, group, `["openai-completions"]`, `[]`)
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{
-		createGroupCollectionKey(t, fixture, group.ID, models.CredentialStatusActive, nil),
+		createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil),
 	})
 
 	got, err := fixture.service.GetGroupSummary(t.Context(), group.ID)

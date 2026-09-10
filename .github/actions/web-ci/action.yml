@@ -10,7 +10,7 @@ runs:
         NPM_CONFIG_AUDIT: "false"
         NPM_CONFIG_FUND: "false"
       with:
-        version: 11.17.0
+        version: latest
         run_install: false
 
     - name: Set up Node

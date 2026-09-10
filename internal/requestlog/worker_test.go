@@ -812,6 +812,7 @@ func TestWriteBatchPersistsZeroAttemptRequestWithoutUsageAggregation(t *testing.
 		CostState:           string(pricing.CostStateNotApplicable),
 		PricingCompleteness: string(pricing.CompletenessNotApplicable),
 	}
+	zeroAttempt.DurationMs = 99
 	attempted := aggregationRow(
 		aggregationRequestID(29),
 		completedAt.Add(time.Second),
@@ -840,7 +841,8 @@ func TestWriteBatchPersistsZeroAttemptRequestWithoutUsageAggregation(t *testing.
 		t.Fatalf("query attempted UsageStat: %v", err)
 	}
 	if stat.GroupID != attempted.GroupID || stat.Model != attempted.UpstreamModel ||
-		stat.RequestCount != 1 {
+		stat.RequestCount != 1 || stat.DurationMsTotal != attempted.DurationMs ||
+		stat.DurationSampleCount != 1 {
 		t.Fatalf("attempted UsageStat = %+v", stat)
 	}
 }
@@ -1029,6 +1031,27 @@ func TestWriteBatchRejectsIntegerAndCostOverflow(t *testing.T) {
 		assertBatchWriterRejectsRowsWithoutChanges(t, db, nil, []models.RequestLog{first, second})
 	})
 
+	t.Run("batch duration total overflow", func(t *testing.T) {
+		db := openRequestLogQueryDB(t)
+		first := aggregationRow(aggregationRequestID(53), hour, 12, "overflow-model")
+		first.DurationMs = math.MaxInt64
+		second := aggregationRow(aggregationRequestID(54), hour, 12, "overflow-model")
+		second.DurationMs = 1
+		assertBatchWriterRejectsRowsWithoutChanges(t, db, nil, []models.RequestLog{first, second})
+	})
+
+	t.Run("existing duration total overflow", func(t *testing.T) {
+		db := openRequestLogQueryDB(t)
+		existing := models.UsageStat{
+			BucketStartMS:   1_784_905_200_000,
+			AccessKeyID:     1,
+			GroupID:         12,
+			Model:           "overflow-model",
+			DurationMsTotal: math.MaxInt64,
+		}
+		row := aggregationRow(aggregationRequestID(55), hour, 12, "overflow-model")
+		assertBatchWriterRejectsRowsWithoutChanges(t, db, &existing, []models.RequestLog{row})
+	})
 	t.Run("existing count overflow", func(t *testing.T) {
 		db := openRequestLogQueryDB(t)
 		existing := models.UsageStat{
@@ -1207,6 +1230,126 @@ func TestWorkerCountsDuplicateReplayAsSuccessfulDeliveryWithoutReaggregation(t *
 	}
 }
 
+func TestWriteBatchRecoversMixedPendingJournalAndNewRequestBySubmittedIDs(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	hour := time.Date(2026, time.August, 8, 18, 0, 0, 0, time.UTC)
+	pendingRow := aggregationRow(aggregationRequestID(72), hour, 19, "mixed-recovery-model")
+	pendingRow.DurationMs = 5
+	newRow := aggregationRow(aggregationRequestID(73), hour, 19, "mixed-recovery-model")
+	newRow.DurationMs = 7
+	journals, err := buildUsageAggregationJournals([]models.RequestLog{pendingRow})
+	if err != nil || len(journals) != 1 {
+		t.Fatalf("build pending journal = %v, %#v", err, journals)
+	}
+	if err := db.Create(&pendingRow).Error; err != nil {
+		t.Fatalf("seed pending RequestLog: %v", err)
+	}
+	if err := db.Create(&journals[0]).Error; err != nil {
+		t.Fatalf("seed pending usage journal: %v", err)
+	}
+	orphan := journals[0]
+	orphan.RequestID = aggregationRequestID(74)
+	if err := db.Create(&orphan).Error; err != nil {
+		t.Fatalf("seed unrelated pending usage journal: %v", err)
+	}
+
+	rows := []models.RequestLog{pendingRow, newRow}
+	if err := (&gormBatchWriter{db: db}).WriteBatch(context.Background(), rows); err != nil {
+		t.Fatalf("mixed WriteBatch() error = %v", err)
+	}
+	var stat models.UsageStat
+	if err := db.First(&stat).Error; err != nil {
+		t.Fatalf("query mixed UsageStat: %v", err)
+	}
+	if stat.RequestCount != 2 || stat.DurationMsTotal != 12 || stat.DurationSampleCount != 2 {
+		t.Fatalf("mixed UsageStat = %+v, want two requests and samples", stat)
+	}
+	var recovered, inserted, untouched models.UsageAggregationJournal
+	for _, check := range []struct {
+		name string
+		id   string
+		row  *models.UsageAggregationJournal
+	}{
+		{name: "recovered", id: pendingRow.ID, row: &recovered},
+		{name: "inserted", id: newRow.ID, row: &inserted},
+		{name: "untouched", id: orphan.RequestID, row: &untouched},
+	} {
+		if err := db.Where("request_id = ?", check.id).Take(check.row).Error; err != nil {
+			t.Fatalf("query %s journal: %v", check.name, err)
+		}
+	}
+	if !recovered.Applied || !inserted.Applied {
+		t.Fatalf("submitted journals were not applied: recovered=%+v inserted=%+v", recovered, inserted)
+	}
+	if untouched.Applied {
+		t.Fatalf("unsubmitted orphan journal was applied: %+v", untouched)
+	}
+	before := stat
+	if err := (&gormBatchWriter{db: db}).WriteBatch(context.Background(), rows); err != nil {
+		t.Fatalf("secondary mixed replay error = %v", err)
+	}
+	var after models.UsageStat
+	if err := db.First(&after).Error; err != nil {
+		t.Fatalf("query replayed mixed UsageStat: %v", err)
+	}
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("secondary replay changed UsageStat: got %+v want %+v", after, before)
+	}
+	if err := db.Where("request_id = ?", orphan.RequestID).Take(&untouched).Error; err != nil {
+		t.Fatalf("query orphan journal after replay: %v", err)
+	}
+	if untouched.Applied {
+		t.Fatalf("secondary replay applied unsubmitted orphan journal: %+v", untouched)
+	}
+}
+
+func TestWriteBatchRejectsDurationSampleCountOverflowWithoutPartialWrites(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	hour := time.Date(2026, time.July, 24, 15, 30, 0, 0, time.UTC)
+	existing := aggregationRow(aggregationRequestID(56), hour, 12, "sample-overflow-model")
+	bucketStartMS := existing.CompletedAtMS - existing.CompletedAtMS%3_600_000
+	if err := db.Create(&models.UsageStat{
+		BucketStartMS:       bucketStartMS,
+		AccessKeyID:         existing.AccessKeyID,
+		GroupID:             existing.GroupID,
+		Model:               existing.UpstreamModel,
+		RequestCount:        math.MaxInt64,
+		SuccessCount:        math.MaxInt64,
+		DurationMsTotal:     99,
+		DurationSampleCount: math.MaxInt64,
+	}).Error; err != nil {
+		t.Fatalf("seed sample-overflow UsageStat: %v", err)
+	}
+	var beforeStats []models.UsageStat
+	if err := db.Order("id ASC").Find(&beforeStats).Error; err != nil {
+		t.Fatalf("query sample-overflow stats before write: %v", err)
+	}
+	var beforeJournals []models.UsageAggregationJournal
+	if err := db.Order("request_id ASC").Find(&beforeJournals).Error; err != nil {
+		t.Fatalf("query sample-overflow journals before write: %v", err)
+	}
+	row := aggregationRow(aggregationRequestID(57), hour, 12, "sample-overflow-model")
+	if err := (&gormBatchWriter{db: db}).WriteBatch(context.Background(), []models.RequestLog{row}); err == nil ||
+		!strings.Contains(err.Error(), "duration_sample_count") {
+		t.Fatalf("WriteBatch() error = %v, want duration sample overflow", err)
+	}
+	assertRequestLogAndUsageStatCounts(t, db, 0, 1)
+	var afterStats []models.UsageStat
+	if err := db.Order("id ASC").Find(&afterStats).Error; err != nil {
+		t.Fatalf("query sample-overflow stats after write: %v", err)
+	}
+	if !reflect.DeepEqual(afterStats, beforeStats) {
+		t.Fatalf("UsageStats changed after sample overflow: got %+v want %+v", afterStats, beforeStats)
+	}
+	var afterJournals []models.UsageAggregationJournal
+	if err := db.Order("request_id ASC").Find(&afterJournals).Error; err != nil {
+		t.Fatalf("query sample-overflow journals after write: %v", err)
+	}
+	if !reflect.DeepEqual(afterJournals, beforeJournals) {
+		t.Fatalf("UsageAggregationJournals changed after sample overflow: got %+v want %+v", afterJournals, beforeJournals)
+	}
+}
+
 func TestWriteBatchRollsBackUsageJournalWithFailedRequestLogTransaction(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	row := aggregationRow(
@@ -1232,6 +1375,35 @@ func TestWriteBatchRollsBackUsageJournalWithFailedRequestLogTransaction(t *testi
 
 	assertRequestLogAndUsageStatCounts(t, db, 0, 0)
 	assertUsageJournalCount(t, db, 0)
+
+	if err := db.Exec("DROP TRIGGER reject_journal_request_log").Error; err != nil {
+		t.Fatalf("drop rejection trigger: %v", err)
+	}
+	// A commit interruption may leave the request row and its journal durable
+	// while the journal remains pending; a replacement writer must recover it.
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatalf("seed recovered request log: %v", err)
+	}
+	journals, err := buildUsageAggregationJournals([]models.RequestLog{row})
+	if err != nil || len(journals) != 1 {
+		t.Fatalf("buildUsageAggregationJournals() = %v, %#v", err, journals)
+	}
+	if err := db.Create(&journals[0]).Error; err != nil {
+		t.Fatalf("seed pending recovery journal: %v", err)
+	}
+	if err := (&gormBatchWriter{db: db}).WriteBatch(context.Background(), []models.RequestLog{row}); err != nil {
+		t.Fatalf("replacement writer recovery error = %v", err)
+	}
+	if err := (&gormBatchWriter{db: db}).WriteBatch(context.Background(), []models.RequestLog{row}); err != nil {
+		t.Fatalf("replayed replacement writer error = %v", err)
+	}
+	var recovered models.UsageStat
+	if err := db.First(&recovered).Error; err != nil {
+		t.Fatalf("query recovered UsageStat: %v", err)
+	}
+	if recovered.RequestCount != 1 || recovered.DurationMsTotal != row.DurationMs || recovered.DurationSampleCount != 1 {
+		t.Fatalf("recovered UsageStat = %+v, want one latency sample", recovered)
+	}
 }
 
 func TestServiceStartDoesNotAggregateOrphanUsageJournal(t *testing.T) {

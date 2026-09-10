@@ -53,8 +53,6 @@ type healthProblemCredentialResponse struct {
 	RecentSuccessCount      uint64                 `json:"recent_success_count"`
 	RecentProblemCount      uint64                 `json:"recent_problem_count"`
 	ConsecutiveProblemCount uint64                 `json:"consecutive_problem_count"`
-	WeightManual            *int                   `json:"weight_manual"`
-	WeightAuto              int                    `json:"weight_auto"`
 	Recovery                healthRecoveryResponse `json:"recovery"`
 }
 
@@ -149,10 +147,7 @@ func classifyHealthKey(
 	now time.Time,
 ) healthBucket {
 	if !group.Enabled ||
-		(group.WeightManual != nil && *group.WeightManual == 0) ||
-		key.Status != state.CredentialStatusActive ||
-		(key.AuthState != "" && key.AuthState != state.CredentialAuthStateReady) ||
-		(key.WeightManual != nil && *key.WeightManual == 0) {
+		(key.AuthState != "" && key.AuthState != state.CredentialAuthStateReady) {
 		return healthBucketDisabled
 	}
 	switch key.RuntimeState(now) {
@@ -363,8 +358,6 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 			RecentSuccessCount:      stats.Success,
 			RecentProblemCount:      stats.Problem,
 			ConsecutiveProblemCount: stats.ConsecutiveProblem,
-			WeightManual:            cloneInt(key.WeightManual),
-			WeightAuto:              key.WeightAuto,
 		}
 		if bucket == healthBucketCooldown {
 			cooldownUntilMS, err := optionalSafeEpochMilliseconds(key.CooldownUntil)

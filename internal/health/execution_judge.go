@@ -223,8 +223,7 @@ func candidatePreparationDecision(evidence *execution.ErrorEvidence) (Decision, 
 	effect := EffectNone
 	switch evidence.Code {
 	case "credential_decrypt_failed",
-		"credential_normalization_failed",
-		"credential_proxy_prepare_failed":
+		"credential_normalization_failed":
 		if evidence.ScopeHint != execution.ErrorScopeCredential {
 			return Decision{}, false
 		}

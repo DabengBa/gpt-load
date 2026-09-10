@@ -713,7 +713,6 @@ func upstreamErrorCode(result UpstreamResult, category health.FailureCategory) s
 		switch result.ExecutionError.Code {
 		case "credential_decrypt_failed",
 			"credential_normalization_failed",
-			"credential_proxy_prepare_failed",
 			"group_proxy_prepare_failed",
 			"server_is_overloaded",
 			"rate_limit_exceeded":

@@ -17,7 +17,6 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	now := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
-	zeroWeight := 0
 
 	group := validControlGroup("home-available-parity")
 	if err := fixture.db.Create(group).Error; err != nil {
@@ -25,9 +24,9 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 	}
 
 	credentials := []models.Credential{
-		{ID: 1, GroupID: group.ID, Data: "cipher-1", Fingerprint: "hash-1", Status: models.CredentialStatusActive},
-		{ID: 2, GroupID: group.ID, Data: "cipher-2", Fingerprint: "hash-2", Status: models.CredentialStatusActive},
-		{ID: 3, GroupID: group.ID, Data: "cipher-3", Fingerprint: "hash-3", Status: models.CredentialStatusActive},
+		{ID: 1, GroupID: group.ID, Data: "cipher-1", Fingerprint: "hash-1", AuthState: models.CredentialAuthStateReady},
+		{ID: 2, GroupID: group.ID, Data: "cipher-2", Fingerprint: "hash-2", AuthState: models.CredentialAuthStateReady},
+		{ID: 3, GroupID: group.ID, Data: "cipher-3", Fingerprint: "hash-3", AuthState: models.CredentialAuthStateReady},
 	}
 	if err := fixture.db.Create(&credentials).Error; err != nil {
 		t.Fatalf("create credentials: %v", err)
@@ -36,7 +35,7 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 	entries := make([]state.CredentialEntry, 0, len(credentials))
 	for index, credential := range credentials {
 		entries = append(entries, state.CredentialEntry{
-			ID: credential.ID, GroupID: group.ID, Status: state.CredentialStatusActive,
+			ID: credential.ID, GroupID: group.ID,
 			Version:            groupCollectionCredentialVersion(credential.SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credential.IdentityFingerprint, *group),
 			Fingerprint:        credential.Fingerprint,
@@ -46,7 +45,7 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 	}
 	// 2 号待重新授权，3 号被手动停用（权重 0）；两者都不参与调度。
 	entries[1].AuthState = state.CredentialAuthStateReauthorizationRequired
-	entries[2].WeightManual = &zeroWeight
+	entries[2].AuthState = state.CredentialAuthStateReauthorizationRequired
 	if err := fixture.registry.ReplaceCredentials(entries); err != nil {
 		t.Fatalf("registry.ReplaceCredentials() error = %v", err)
 	}

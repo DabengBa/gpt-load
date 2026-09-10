@@ -68,7 +68,9 @@ import {
   normalizeGroupTab,
 } from '../group-route'
 
-const props = defineProps<{ groupId: number }>()
+const props = withDefaults(defineProps<{ groupId: number; unified?: boolean }>(), {
+  unified: false,
+})
 const client = useApiClient()
 const queryClient = useQueryClient()
 const route = useRoute()
@@ -203,12 +205,6 @@ const paramErrors = computed<Record<string, string>>(() => {
   }
   return result
 })
-const weightValid = computed(() => {
-  const value = draft.value?.weight_manual
-  return (
-    value === null || (Number.isInteger(value) && value !== undefined && value >= 1 && value <= 100)
-  )
-})
 const timeoutValid = computed(() =>
   timeoutKeys.every((key) => {
     const value = draft.value?.overrides[key]
@@ -225,7 +221,6 @@ const valid = computed(
   () =>
     !nameError.value &&
     Object.keys(paramErrors.value).length === 0 &&
-    weightValid.value &&
     isValidPriceMultiplier(draft.value?.price_multiplier ?? '') &&
     timeoutValid.value &&
     policyCountsValid.value &&
@@ -516,8 +511,9 @@ onBeforeUnmount(() => {
           {{ t('common.retry') }}
         </AppButton>
       </InlineFeedback>
-      <div class="group-settings__layout">
+      <div class="group-settings__layout" :class="{ 'group-settings__layout--unified': unified }">
         <SectionNav
+          v-if="!unified"
           :model-value="section"
           :items="navItems"
           :label="t('group.settings.sectionNav')"
@@ -534,7 +530,6 @@ onBeforeUnmount(() => {
             :name="draft.name"
             :validation-model="draft.validation_model"
             :models="modelsQuery.data.value?.items ?? []"
-            :weight-manual="draft.weight_manual"
             :price-multiplier="draft.price_multiplier"
             :enabled="draft.enabled"
             :pending="mutationPending"
@@ -544,293 +539,275 @@ onBeforeUnmount(() => {
             @update:param="updateParam"
             @update:name="draft.name = $event"
             @update:validation-model="draft.validation_model = $event"
-            @update:weight-manual="draft.weight_manual = $event"
             @update:price-multiplier="draft.price_multiplier = $event"
             @update:enabled="draft.enabled = $event"
           />
-          <GroupSettingsBaseForm
-            section="routing"
-            :channel-id="draft.channel_id"
-            :param-fields="channelParamFields"
-            :params="draft.params"
-            :name="draft.name"
-            :validation-model="draft.validation_model"
-            :models="modelsQuery.data.value?.items ?? []"
-            :weight-manual="draft.weight_manual"
-            :price-multiplier="draft.price_multiplier"
-            :enabled="draft.enabled"
-            :pending="mutationPending"
-            :params-disabled="channelParamsDisabled"
-            :name-error="nameError"
-            :param-errors="paramErrors"
-            @update:param="updateParam"
-            @update:name="draft.name = $event"
-            @update:validation-model="draft.validation_model = $event"
-            @update:weight-manual="draft.weight_manual = $event"
-            @update:price-multiplier="draft.price_multiplier = $event"
-            @update:enabled="draft.enabled = $event"
-          />
-          <section id="settings-runtime" class="group-settings__section">
-            <header>
-              <h3>{{ t('group.settings.sections.runtime') }}</h3>
-              <p>{{ t('group.settings.runtime.description') }}</p>
-            </header>
-            <div class="group-settings__runtime">
-              <SettingRow
-                :label="t('common.proxy.title')"
-                :value="proxyValue"
-                :help="proxySupported ? undefined : t('common.proxy.unsupportedHelp')"
-                :source-label="
-                  !proxySupported
-                    ? t('common.proxy.unsupportedBadge')
-                    : proxyOverridden
-                      ? t('group.settings.runtime.override')
-                      : proxyPendingRestore
-                        ? t('group.settings.runtime.pendingRestoreSource')
-                        : t('group.settings.runtime.inherited')
-                "
-                :action-label="
-                  proxyOverridden
-                    ? t('group.settings.runtime.useInherited')
-                    : t('group.settings.runtime.useOverride')
-                "
-                :overridden="proxySupported && proxyOverridden"
-                :pending-restore="proxySupported && proxyPendingRestore"
-                :locked="!proxySupported"
-                :disabled="mutationPending || selectedChannel === undefined || !proxySupported"
-                @toggle="toggleProxyOverride"
-              >
-                <template #control>
-                  <ProxyOverrideControl
-                    :base="saved.proxy"
-                    :mode="proxyMode"
-                    :endpoint="proxyEndpoint"
+          <details class="group-settings__advanced" :open="!unified">
+            <summary>{{ t('group.settings.advanced') }}</summary>
+            <div class="group-settings__advanced-content">
+              <section id="settings-runtime" class="group-settings__section">
+                <header>
+                  <h3>{{ t('group.settings.sections.runtime') }}</h3>
+                  <p>{{ t('group.settings.runtime.description') }}</p>
+                </header>
+                <div class="group-settings__runtime">
+                  <SettingRow
+                    :label="t('common.proxy.title')"
+                    :value="proxyValue"
+                    :help="proxySupported ? undefined : t('common.proxy.unsupportedHelp')"
+                    :source-label="
+                      !proxySupported
+                        ? t('common.proxy.unsupportedBadge')
+                        : proxyOverridden
+                          ? t('group.settings.runtime.override')
+                          : proxyPendingRestore
+                            ? t('group.settings.runtime.pendingRestoreSource')
+                            : t('group.settings.runtime.inherited')
+                    "
+                    :action-label="
+                      proxyOverridden
+                        ? t('group.settings.runtime.useInherited')
+                        : t('group.settings.runtime.useOverride')
+                    "
+                    :overridden="proxySupported && proxyOverridden"
+                    :pending-restore="proxySupported && proxyPendingRestore"
+                    :locked="!proxySupported"
+                    :disabled="mutationPending || selectedChannel === undefined || !proxySupported"
+                    @toggle="toggleProxyOverride"
+                  >
+                    <template #control>
+                      <ProxyOverrideControl
+                        :base="saved.proxy"
+                        :mode="proxyMode"
+                        :endpoint="proxyEndpoint"
+                        :disabled="mutationPending"
+                        @update:mode="proxyMode = $event"
+                        @update:endpoint="proxyEndpoint = $event"
+                      />
+                    </template>
+                  </SettingRow>
+                  <SettingRow
+                    v-for="key in timeoutKeys"
+                    :key="key"
+                    :label="t(`group.settings.runtime.${key}`)"
+                    :value="
+                      isPendingRestore(key)
+                        ? t('group.settings.runtime.resetPending')
+                        : t('group.settings.runtime.effective', { value: saved.effective[key] })
+                    "
+                    :source-label="
+                      draft.overrides[key] !== undefined
+                        ? t('group.settings.runtime.override')
+                        : isPendingRestore(key)
+                          ? t('group.settings.runtime.pendingRestoreSource')
+                          : t('group.settings.runtime.inherited')
+                    "
+                    :action-label="
+                      draft.overrides[key] === undefined
+                        ? t('group.settings.runtime.useOverride')
+                        : t('group.settings.runtime.useInherited')
+                    "
+                    :overridden="draft.overrides[key] !== undefined"
+                    :pending-restore="isPendingRestore(key)"
                     :disabled="mutationPending"
-                    @update:mode="proxyMode = $event"
-                    @update:endpoint="proxyEndpoint = $event"
-                  />
-                </template>
-              </SettingRow>
-              <SettingRow
-                v-for="key in timeoutKeys"
-                :key="key"
-                :label="t(`group.settings.runtime.${key}`)"
-                :value="
-                  isPendingRestore(key)
-                    ? t('group.settings.runtime.resetPending')
-                    : t('group.settings.runtime.effective', { value: saved.effective[key] })
-                "
-                :source-label="
-                  draft.overrides[key] !== undefined
-                    ? t('group.settings.runtime.override')
-                    : isPendingRestore(key)
-                      ? t('group.settings.runtime.pendingRestoreSource')
-                      : t('group.settings.runtime.inherited')
-                "
-                :action-label="
-                  draft.overrides[key] === undefined
-                    ? t('group.settings.runtime.useOverride')
-                    : t('group.settings.runtime.useInherited')
-                "
-                :overridden="draft.overrides[key] !== undefined"
-                :pending-restore="isPendingRestore(key)"
-                :disabled="mutationPending"
-                @toggle="setTimeoutOverride(key, draft.overrides[key] === undefined)"
-              >
-                <template #control>
-                  <div class="group-settings__runtime-input">
-                    <AppTextInput
-                      type="number"
-                      min="1"
-                      :model-value="String(draft.overrides[key])"
-                      :label="
-                        t('group.settings.runtime.valueFor', {
-                          field: t(`group.settings.runtime.${key}`),
-                        })
-                      "
-                      appearance="surface"
-                      size="compact"
-                      monospace
-                      :disabled="mutationPending"
-                      @update:model-value="setTimeoutValue(key, $event)"
-                    />
-                    <span aria-hidden="true">{{ t('group.settings.runtime.seconds') }}</span>
-                  </div>
-                </template>
-              </SettingRow>
-              <SettingRow
-                v-for="policy in policyRows"
-                :key="policy.key"
-                :label="t(`group.settings.runtime.${policy.key}`)"
-                :value="
-                  isPendingRestore(policy.key)
-                    ? t('group.settings.runtime.resetPending')
-                    : t('group.settings.runtime.effectiveCount', {
-                        value: saved.effective[policy.key],
-                      })
-                "
-                :help="t(`group.settings.runtime.${policy.helpKey}`)"
-                :source-label="
-                  draft.overrides[policy.key] !== undefined
-                    ? t('group.settings.runtime.override')
-                    : isPendingRestore(policy.key)
-                      ? t('group.settings.runtime.pendingRestoreSource')
-                      : t('group.settings.runtime.inherited')
-                "
-                :action-label="
-                  draft.overrides[policy.key] === undefined
-                    ? t('group.settings.runtime.useOverride')
-                    : t('group.settings.runtime.useInherited')
-                "
-                :overridden="draft.overrides[policy.key] !== undefined"
-                :pending-restore="isPendingRestore(policy.key)"
-                :disabled="mutationPending"
-                @toggle="
-                  setPolicyCountOverride(policy.key, draft.overrides[policy.key] === undefined)
-                "
-              >
-                <template #control>
-                  <div class="group-settings__runtime-input">
-                    <CompactFieldError
-                      :id="`group-settings-${policy.key}`"
-                      :error="policyCountError(policy.key)"
-                    >
-                      <template #default="{ invalid, describedBy }">
+                    @toggle="setTimeoutOverride(key, draft.overrides[key] === undefined)"
+                  >
+                    <template #control>
+                      <div class="group-settings__runtime-input">
                         <AppTextInput
-                          :id="`group-settings-${policy.key}`"
                           type="number"
-                          min="0"
-                          step="1"
-                          inputmode="numeric"
-                          :model-value="String(draft.overrides[policy.key])"
+                          min="1"
+                          :model-value="String(draft.overrides[key])"
                           :label="
                             t('group.settings.runtime.valueFor', {
-                              field: t(`group.settings.runtime.${policy.key}`),
+                              field: t(`group.settings.runtime.${key}`),
                             })
                           "
                           appearance="surface"
                           size="compact"
                           monospace
                           :disabled="mutationPending"
-                          :invalid="invalid"
-                          :described-by="describedBy"
-                          @update:model-value="setPolicyCountValue(policy.key, $event)"
+                          @update:model-value="setTimeoutValue(key, $event)"
                         />
-                      </template>
-                    </CompactFieldError>
-                    <span aria-hidden="true">{{ t('group.settings.runtime.countUnit') }}</span>
-                  </div>
-                </template>
-              </SettingRow>
-              <SettingRow
-                :label="t('group.settings.runtime.affinity_enabled')"
-                :value="
-                  affinityPendingRestore
-                    ? t('group.settings.runtime.resetPending')
-                    : affinityEnabledLabel
-                "
-                :help="t('group.settings.runtime.affinityHelp')"
-                :source-label="
-                  affinityOverridden
-                    ? t('group.settings.runtime.override')
-                    : affinityPendingRestore
-                      ? t('group.settings.runtime.pendingRestoreSource')
-                      : t('group.settings.runtime.inherited')
-                "
-                :action-label="
-                  affinityOverridden
-                    ? t('group.settings.runtime.useInherited')
-                    : t('group.settings.runtime.useOverride')
-                "
-                :overridden="affinityOverridden"
-                :pending-restore="affinityPendingRestore"
-                :divided="false"
-                :disabled="mutationPending"
-                @toggle="toggleAffinityOverride"
-              >
-                <template #control>
-                  <AppSwitch
-                    :model-value="draft.overrides.affinity_enabled ?? false"
+                        <span aria-hidden="true">{{ t('group.settings.runtime.seconds') }}</span>
+                      </div>
+                    </template>
+                  </SettingRow>
+                  <SettingRow
+                    v-for="policy in policyRows"
+                    :key="policy.key"
+                    :label="t(`group.settings.runtime.${policy.key}`)"
+                    :value="
+                      isPendingRestore(policy.key)
+                        ? t('group.settings.runtime.resetPending')
+                        : t('group.settings.runtime.effectiveCount', {
+                            value: saved.effective[policy.key],
+                          })
+                    "
+                    :help="t(`group.settings.runtime.${policy.helpKey}`)"
+                    :source-label="
+                      draft.overrides[policy.key] !== undefined
+                        ? t('group.settings.runtime.override')
+                        : isPendingRestore(policy.key)
+                          ? t('group.settings.runtime.pendingRestoreSource')
+                          : t('group.settings.runtime.inherited')
+                    "
+                    :action-label="
+                      draft.overrides[policy.key] === undefined
+                        ? t('group.settings.runtime.useOverride')
+                        : t('group.settings.runtime.useInherited')
+                    "
+                    :overridden="draft.overrides[policy.key] !== undefined"
+                    :pending-restore="isPendingRestore(policy.key)"
                     :disabled="mutationPending"
+                    @toggle="
+                      setPolicyCountOverride(policy.key, draft.overrides[policy.key] === undefined)
+                    "
+                  >
+                    <template #control>
+                      <div class="group-settings__runtime-input">
+                        <CompactFieldError
+                          :id="`group-settings-${policy.key}`"
+                          :error="policyCountError(policy.key)"
+                        >
+                          <template #default="{ invalid, describedBy }">
+                            <AppTextInput
+                              :id="`group-settings-${policy.key}`"
+                              type="number"
+                              min="0"
+                              step="1"
+                              inputmode="numeric"
+                              :model-value="String(draft.overrides[policy.key])"
+                              :label="
+                                t('group.settings.runtime.valueFor', {
+                                  field: t(`group.settings.runtime.${policy.key}`),
+                                })
+                              "
+                              appearance="surface"
+                              size="compact"
+                              monospace
+                              :disabled="mutationPending"
+                              :invalid="invalid"
+                              :described-by="describedBy"
+                              @update:model-value="setPolicyCountValue(policy.key, $event)"
+                            />
+                          </template>
+                        </CompactFieldError>
+                        <span aria-hidden="true">{{ t('group.settings.runtime.countUnit') }}</span>
+                      </div>
+                    </template>
+                  </SettingRow>
+                  <SettingRow
                     :label="t('group.settings.runtime.affinity_enabled')"
-                    @update:model-value="setAffinityValue"
+                    :value="
+                      affinityPendingRestore
+                        ? t('group.settings.runtime.resetPending')
+                        : affinityEnabledLabel
+                    "
+                    :help="t('group.settings.runtime.affinityHelp')"
+                    :source-label="
+                      affinityOverridden
+                        ? t('group.settings.runtime.override')
+                        : affinityPendingRestore
+                          ? t('group.settings.runtime.pendingRestoreSource')
+                          : t('group.settings.runtime.inherited')
+                    "
+                    :action-label="
+                      affinityOverridden
+                        ? t('group.settings.runtime.useInherited')
+                        : t('group.settings.runtime.useOverride')
+                    "
+                    :overridden="affinityOverridden"
+                    :pending-restore="affinityPendingRestore"
+                    :divided="false"
+                    :disabled="mutationPending"
+                    @toggle="toggleAffinityOverride"
+                  >
+                    <template #control>
+                      <AppSwitch
+                        :model-value="draft.overrides.affinity_enabled ?? false"
+                        :disabled="mutationPending"
+                        :label="t('group.settings.runtime.affinity_enabled')"
+                        @update:model-value="setAffinityValue"
+                      />
+                    </template>
+                  </SettingRow>
+                </div>
+              </section>
+              <section id="settings-parameters" class="group-settings__section">
+                <header>
+                  <h3>{{ t('group.settings.sections.parameters') }}</h3>
+                  <p>{{ t('group.settings.parameterOverrides.description') }}</p>
+                </header>
+                <ParameterOverrideRulesEditor
+                  :key="parameterOverridesEditorRevision"
+                  :model-value="draft.overrides.parameter_overrides ?? []"
+                  :protocols="parameterOverrideProtocols"
+                  :models="modelsQuery.data.value?.items ?? []"
+                  :disabled="mutationPending"
+                  @update:valid="parameterOverridesValid = $event"
+                  @update:invalid-edits="parameterOverridesInvalidEdits = $event"
+                  @update:model-value="updateParameterOverrides"
+                />
+              </section>
+              <section id="settings-headers" class="group-settings__section">
+                <SettingBlock
+                  :title="t('group.settings.sections.headers')"
+                  :help="t('group.settings.headers.description')"
+                  :meta="headerSummary()"
+                  :source-label="
+                    headerRulesOverridden
+                      ? t('group.settings.runtime.override')
+                      : headerRulesPendingRestore
+                        ? t('group.settings.runtime.pendingRestoreSource')
+                        : t('group.settings.runtime.inherited')
+                  "
+                  :action-label="
+                    headerRulesOverridden
+                      ? t('group.settings.runtime.useInherited')
+                      : t('group.settings.runtime.useOverride')
+                  "
+                  :overridden="headerRulesOverridden"
+                  :pending-restore="headerRulesPendingRestore"
+                  :disabled="mutationPending"
+                  @toggle="toggleHeaderRulesOverride"
+                >
+                  <HeaderRulesEditor
+                    :key="headerRulesEditorRevision"
+                    appearance="ledger"
+                    :model-value="displayedHeaderRules"
+                    :disabled="mutationPending || !headerRulesOverridden"
+                    :show-notice="false"
+                    :show-add="headerRulesOverridden"
+                    :remove-label="t('group.settings.runtime.headerRemove')"
+                    :remove-hint="t('group.settings.runtime.headerRemoveHint')"
+                    @update:valid="headerRulesValid = $event"
+                    @update:invalid-edits="headerRulesInvalidEdits = $event"
+                    @update:model-value="updateHeaderRules"
                   />
-                </template>
-              </SettingRow>
+                </SettingBlock>
+              </section>
+              <section id="settings-danger" class="group-settings__section group-settings__danger">
+                <header>
+                  <h3>{{ t('group.settings.sections.danger') }}</h3>
+                  <p>{{ t('group.settings.dangerDescription') }}</p>
+                </header>
+                <div class="group-settings__danger-zone">
+                  <div>
+                    <strong>{{ t('group.settings.delete.open') }}</strong>
+                    <p>{{ t('group.settings.delete.sectionDescription') }}</p>
+                  </div>
+                  <GroupDeleteDialog
+                    :group-id="groupId"
+                    :group-name="saved.name"
+                    :disabled="mutationPending || deleted"
+                    @deleted="onDeleted"
+                    @update:pending="deletePending = $event"
+                  />
+                </div>
+              </section>
             </div>
-          </section>
-          <section id="settings-parameters" class="group-settings__section">
-            <header>
-              <h3>{{ t('group.settings.sections.parameters') }}</h3>
-              <p>{{ t('group.settings.parameterOverrides.description') }}</p>
-            </header>
-            <ParameterOverrideRulesEditor
-              :key="parameterOverridesEditorRevision"
-              :model-value="draft.overrides.parameter_overrides ?? []"
-              :protocols="parameterOverrideProtocols"
-              :models="modelsQuery.data.value?.items ?? []"
-              :disabled="mutationPending"
-              @update:valid="parameterOverridesValid = $event"
-              @update:invalid-edits="parameterOverridesInvalidEdits = $event"
-              @update:model-value="updateParameterOverrides"
-            />
-          </section>
-          <section id="settings-headers" class="group-settings__section">
-            <SettingBlock
-              :title="t('group.settings.sections.headers')"
-              :help="t('group.settings.headers.description')"
-              :meta="headerSummary()"
-              :source-label="
-                headerRulesOverridden
-                  ? t('group.settings.runtime.override')
-                  : headerRulesPendingRestore
-                    ? t('group.settings.runtime.pendingRestoreSource')
-                    : t('group.settings.runtime.inherited')
-              "
-              :action-label="
-                headerRulesOverridden
-                  ? t('group.settings.runtime.useInherited')
-                  : t('group.settings.runtime.useOverride')
-              "
-              :overridden="headerRulesOverridden"
-              :pending-restore="headerRulesPendingRestore"
-              :disabled="mutationPending"
-              @toggle="toggleHeaderRulesOverride"
-            >
-              <HeaderRulesEditor
-                :key="headerRulesEditorRevision"
-                appearance="ledger"
-                :model-value="displayedHeaderRules"
-                :disabled="mutationPending || !headerRulesOverridden"
-                :show-notice="false"
-                :show-add="headerRulesOverridden"
-                :remove-label="t('group.settings.runtime.headerRemove')"
-                :remove-hint="t('group.settings.runtime.headerRemoveHint')"
-                @update:valid="headerRulesValid = $event"
-                @update:invalid-edits="headerRulesInvalidEdits = $event"
-                @update:model-value="updateHeaderRules"
-              />
-            </SettingBlock>
-          </section>
-          <section id="settings-danger" class="group-settings__section group-settings__danger">
-            <header>
-              <h3>{{ t('group.settings.sections.danger') }}</h3>
-              <p>{{ t('group.settings.dangerDescription') }}</p>
-            </header>
-            <div class="group-settings__danger-zone">
-              <div>
-                <strong>{{ t('group.settings.delete.open') }}</strong>
-                <p>{{ t('group.settings.delete.sectionDescription') }}</p>
-              </div>
-              <GroupDeleteDialog
-                :group-id="groupId"
-                :group-name="saved.name"
-                :disabled="mutationPending || deleted"
-                @deleted="onDeleted"
-                @update:pending="deletePending = $event"
-              />
-            </div>
-          </section>
+          </details>
         </div>
       </div>
       <StickySaveBar
@@ -907,6 +884,9 @@ small {
   display: grid;
   min-width: 0;
   gap: var(--space-7);
+}
+.group-settings__layout--unified {
+  grid-template-columns: minmax(0, 1fr);
 }
 .group-settings__section {
   display: grid;

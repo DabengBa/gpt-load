@@ -9,21 +9,12 @@ port="${RELEASE_SMOKE_PORT:-39113}"
 filename="$(basename "${binary}")"
 
 path_mode() {
-  local path="$1"
-  if stat -c '%a' "${path}" >/dev/null 2>&1; then
-    stat -c '%a' "${path}"
-  else
-    stat -f '%Lp' "${path}"
-  fi
+  stat -c '%a' "$1"
 }
 
 expected_hash="$(awk -v name="${filename}" '$2 == name {print $1}' "${checksum_file}")"
 test -n "${expected_hash}"
-if command -v sha256sum >/dev/null 2>&1; then
-  before_hash="$(sha256sum "${binary}" | awk '{print $1}')"
-else
-  before_hash="$(shasum -a 256 "${binary}" | awk '{print $1}')"
-fi
+before_hash="$(sha256sum "${binary}" | awk '{print $1}')"
 test "${before_hash}" = "${expected_hash}"
 
 chmod +x "${binary}"
@@ -85,9 +76,5 @@ kill -TERM "${pid}"
 wait "${pid}"
 pid=
 
-if command -v sha256sum >/dev/null 2>&1; then
-  after_hash="$(sha256sum "${binary}" | awk '{print $1}')"
-else
-  after_hash="$(shasum -a 256 "${binary}" | awk '{print $1}')"
-fi
+after_hash="$(sha256sum "${binary}" | awk '{print $1}')"
 test "${after_hash}" = "${expected_hash}"

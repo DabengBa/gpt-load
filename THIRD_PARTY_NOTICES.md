@@ -35,32 +35,28 @@ file store, WebSocket executor, fallback, or automatic retry.
 
 The complete MIT License text is distributed in `LICENSES/MIT.txt`.
 
-## Inno Setup Simplified Chinese Messages
-
-- Source: `jrsoftware/issrc` `Files/Languages/ChineseSimplified.isl`
-- Revision: `6ef32198ef1f7b7b375cd4b6b90896c2a58eb4c2`
-- Maintainer: Zhenghan Yang (Kira)
-- License: Inno Setup License
-
-GPT-Load vendors the Simplified Chinese message file used to compile the
-Windows installer. Its message content is unchanged; line endings are
-normalized to the repository's LF convention. The compiler installed on
-GitHub-hosted Windows runners does not include this language file.
-
-The complete Inno Setup License text is distributed in
-`LICENSES/Inno-Setup.txt`.
-
 ## fasthttp
 
 - Module: `github.com/valyala/fasthttp`
-- Replaced by: `github.com/tbphp/fasthttp v1.73.1-0.20260828150536-1c6c09a6f6bc`
+- Version: `v1.74.0`
 - Copyright: 2015-present Aliaksandr Valialkin, VertaMedia, Kirill Danshin, Erik
   Dubbelboer, FastHTTP Authors
 - License: MIT License
 
-GPT-Load builds against a pinned fork carrying an unreleased upstream stream
-lifecycle fix (<https://github.com/valyala/fasthttp/pull/2353>). The fork keeps
-the original copyright and MIT license unchanged.
+GPT-Load uses the official upstream release through Bifrost Core for provider
+HTTP requests and streaming responses.
+
+The complete MIT License text is distributed in `LICENSES/MIT.txt`.
+
+## go-brrr
+
+- Module: `github.com/molecule-man/go-brrr`
+- Version: `v1.0.1`
+- Copyright: 2026 Andrii Berezhynskyi
+- License: MIT License
+
+GPT-Load includes go-brrr through fasthttp for Brotli compression and
+decompression.
 
 The complete MIT License text is distributed in `LICENSES/MIT.txt`.
 

@@ -17,6 +17,7 @@ var ErrExhausted = errors.New("scheduler exhausted")
 
 type CredentialSource interface {
 	CollectCredentialCandidates(groupIDs []uint, excluded func(uint) bool, now time.Time) []state.CredentialMeta
+	CredentialCountsByGroup(groupIDs []uint) map[uint]int
 }
 
 type Query struct {
@@ -57,8 +58,7 @@ type candidateKey struct {
 	upstreamModel string
 }
 
-// weightedCandidate is one schedulable (group, entry, credential) triple with
-// its combined weight.
+// weightedCandidate is one schedulable (group, entry, credential) triple.
 type weightedCandidate struct {
 	credential state.CredentialMeta
 	target     candidateTarget
@@ -286,11 +286,7 @@ func (iterator *Iterator) weightedTierPool(
 	if len(targets) == 0 {
 		return nil, 0
 	}
-	collected := iterator.credentials.CollectCredentialCandidates(
-		groupIDs,
-		nil,
-		now,
-	)
+	collected := iterator.credentials.CollectCredentialCandidates(groupIDs, nil, now)
 	if len(collected) == 0 {
 		return nil, 0
 	}
@@ -298,59 +294,55 @@ func (iterator *Iterator) weightedTierPool(
 	for _, credential := range collected {
 		credentialsByGroup[credential.GroupID] = append(credentialsByGroup[credential.GroupID], credential)
 	}
+	configuredCounts := iterator.credentials.CredentialCountsByGroup(groupIDs)
 	weighted := make([]weightedCandidate, 0, len(targets))
 	for _, target := range targets {
-		for _, credential := range credentialsByGroup[target.target.GroupID] {
-			if runtime, ok := iterator.credentials.(state.EntryRuntimeSource); ok {
-				entryState, _ := runtime.EntryRuntime(
-					state.RouteEntryKey{GroupID: target.target.GroupID, EntryID: target.target.EntryID},
-					now,
-				)
-
-				if entryState.RuntimeState(now) != state.EntryRuntimeAvailable {
-					if iterator.runtimeReason == "" {
-						if entryState.Blacklisted {
-							iterator.runtimeReason = ReasonEntryBlacklisted
-						} else {
-							iterator.runtimeReason = ReasonEntryCooldown
-						}
-					}
-					continue
-				}
-			}
-			if iterator.allowedCredentialIDs != nil {
-				if _, allowed := iterator.allowedCredentialIDs[credential.ID]; !allowed {
-					continue
-				}
-			}
-			if _, skipped := iterator.skippedGroups[target.target.GroupID]; skipped {
-				continue
-			}
-			key := candidateKey{
-				credentialID:  credential.ID,
-				upstreamModel: target.target.UpstreamModelID,
-			}
-			if _, triedPair := iterator.tried[key]; triedPair {
-				continue
-			}
-			weight := combinedWeight(
-				target.group.WeightManual,
-				target.target.EntryWeight,
-				credential.WeightManual,
-				credential.WeightAuto,
-			)
-			if weight <= 0 {
-				continue
-			}
-			weighted = append(weighted, weightedCandidate{
-				credential: credential,
-				target:     target,
-				weight:     weight,
-			})
+		if configuredCounts[target.target.GroupID] != 1 {
+			// Cardinality is checked against configured credentials, before health
+			// filtering, so an invalid group cannot use a remaining healthy key.
+			continue
 		}
+		groupCredentials := credentialsByGroup[target.target.GroupID]
+		if len(groupCredentials) != 1 {
+			continue
+		}
+		credential := groupCredentials[0]
+		if runtime, ok := iterator.credentials.(state.EntryRuntimeSource); ok {
+			entryState, _ := runtime.EntryRuntime(state.RouteEntryKey{
+				GroupID: target.target.GroupID, EntryID: target.target.EntryID,
+			}, now)
+			if entryState.RuntimeState(now) != state.EntryRuntimeAvailable {
+				if iterator.runtimeReason == "" {
+					if entryState.Blacklisted {
+						iterator.runtimeReason = ReasonEntryBlacklisted
+					} else {
+						iterator.runtimeReason = ReasonEntryCooldown
+					}
+				}
+				continue
+			}
+		}
+		if iterator.allowedCredentialIDs != nil {
+			if _, allowed := iterator.allowedCredentialIDs[credential.ID]; !allowed {
+				continue
+			}
+		}
+		if _, skipped := iterator.skippedGroups[target.target.GroupID]; skipped {
+			continue
+		}
+		key := candidateKey{credentialID: credential.ID, upstreamModel: target.target.UpstreamModelID}
+		if _, triedPair := iterator.tried[key]; triedPair {
+			continue
+		}
+		if target.target.EntryWeight <= 0 {
+			continue
+		}
+		weighted = append(weighted, weightedCandidate{
+			credential: credential,
+			target:     target,
+			weight:     int64(target.target.EntryWeight),
+		})
 	}
-	// 与上游(#570)的确定性顺序一致:凭据按 (GroupID, ID) 排序;同一凭据的多个
-	// 路由条目保持快照顺序(stable),保证加权随机与偏好命中的结果可复现。
 	sort.SliceStable(weighted, func(i, j int) bool {
 		if weighted[i].credential.GroupID != weighted[j].credential.GroupID {
 			return weighted[i].credential.GroupID < weighted[j].credential.GroupID
@@ -518,7 +510,6 @@ func cloneGroupView(group state.GroupView) state.GroupView {
 	group.Params = append([]byte(nil), group.Params...)
 	group.ClientProtocols = append([]protocol.Protocol(nil), group.ClientProtocols...)
 	group.Models = append([]state.ModelConfig(nil), group.Models...)
-	group.WeightManual = cloneWeight(group.WeightManual)
 	group.HeaderRules.Set = cloneStringMap(group.HeaderRules.Set)
 	group.HeaderRules.Remove = append([]string(nil), group.HeaderRules.Remove...)
 	group.ResolvedTarget.TargetConfig = append([]byte(nil), group.ResolvedTarget.TargetConfig...)

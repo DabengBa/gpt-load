@@ -38,7 +38,6 @@ func TestValidatedLoaderRejectsWrongEncryptionKeyBeforePublishing(t *testing.T) 
 	}
 	mustCreate(t, db, &models.Credential{
 		GroupID: group.ID, Data: ciphertext, Fingerprint: correct.Hash(canonical),
-		Status: models.CredentialStatusActive,
 	})
 	wrong, err := encryption.NewService("wrong-master-key")
 	if err != nil {
@@ -81,7 +80,6 @@ func TestValidatedLoaderRejectsInvalidStoredCredentialShape(t *testing.T) {
 	}
 	mustCreate(t, db, &models.Credential{
 		GroupID: group.ID, Data: ciphertext, Fingerprint: service.Hash(invalid),
-		Status: models.CredentialStatusActive,
 	})
 	manager := state.NewManager()
 	registry := state.NewCredentialRegistry()
@@ -123,7 +121,6 @@ func TestBuildCompileInputMapsChannelAndCredentialMetadata(t *testing.T) {
 	mustCreate(t, db, &group)
 	credential := models.Credential{
 		GroupID: group.ID, Data: "encrypted-channel-secret", Fingerprint: "fingerprint-one",
-		Status: models.CredentialStatusActive,
 	}
 	mustCreate(t, db, &credential)
 	if err := db.Table("credentials").Where("id = ?", credential.ID).
@@ -163,7 +160,7 @@ func TestBuildCompileInputMapsChannelAndCredentialMetadata(t *testing.T) {
 	}
 }
 
-func TestBuildGroupCredentialEntriesUsesStableCredentialIdentity(t *testing.T) {
+func TestBuildGroupCredentialEntriesRejectsPersistedMultipleCredentials(t *testing.T) {
 	t.Parallel()
 
 	db := openMigratedDatabase(t)
@@ -172,34 +169,15 @@ func TestBuildGroupCredentialEntriesUsesStableCredentialIdentity(t *testing.T) {
 		Models: models.JSON(`[]`), Overrides: models.JSON(`{}`), Enabled: true,
 	}
 	mustCreate(t, db, &group)
-	weight := 9
 	credentials := []models.Credential{
-		{GroupID: group.ID, Data: "cipher-one", Fingerprint: "fingerprint-one", Status: models.CredentialStatusActive},
-		{GroupID: group.ID, Data: "cipher-two", Fingerprint: "fingerprint-two", Status: models.CredentialStatusDisabled, WeightManual: &weight, SecretVersion: 99},
+		{GroupID: group.ID, Data: "cipher-one", Fingerprint: "fingerprint-one"},
+		{GroupID: group.ID, Data: "cipher-two", Fingerprint: "fingerprint-two", SecretVersion: 99},
 	}
 	for index := range credentials {
 		mustCreate(t, db, &credentials[index])
 	}
-	if err := db.Table("credentials").Where("id = ?", credentials[1].ID).
-		UpdateColumn("secret_version", 99).Error; err != nil {
-		t.Fatal(err)
-	}
-	credentials[1].SecretVersion = 99
-
-	entries, err := loader.BuildGroupCredentialEntries(t.Context(), db, group.ID)
-	if err != nil {
-		t.Fatalf("BuildGroupCredentialEntries() error = %v", err)
-	}
-	if len(entries) != 2 || entries[0].ID != credentials[0].ID || entries[1].ID != credentials[1].ID {
-		t.Fatalf("entries = %#v", entries)
-	}
-	if entries[0].Version == 0 || entries[0].IdentityGeneration == 0 ||
-		entries[0].Fingerprint != credentials[0].Fingerprint || entries[0].EncryptedValue != credentials[0].Data {
-		t.Fatalf("first entry identity = %#v", entries[0])
-	}
-	if entries[1].Version != 99 || entries[1].IdentityGeneration == entries[0].IdentityGeneration ||
-		entries[1].Status != state.CredentialStatusDisabled || entries[1].WeightManual == nil || *entries[1].WeightManual != weight {
-		t.Fatalf("second entry identity = %#v", entries[1])
+	if _, err := loader.BuildGroupCredentialEntries(t.Context(), db, group.ID); err == nil {
+		t.Fatal("BuildGroupCredentialEntries() accepted multiple persisted credentials")
 	}
 }
 
@@ -215,7 +193,6 @@ func TestBuildGroupCredentialEntriesChangesIdentityWhenExecutionTargetChanges(t 
 	mustCreate(t, db, &group)
 	credential := models.Credential{
 		GroupID: group.ID, Data: "cipher", Fingerprint: "same-fingerprint",
-		Status: models.CredentialStatusActive,
 	}
 	mustCreate(t, db, &credential)
 
@@ -267,7 +244,6 @@ func TestSubscriptionTokenRefreshKeepsIdentityGeneration(t *testing.T) {
 	credential := models.Credential{
 		GroupID: group.ID, Data: "old-cipher", Fingerprint: "old-secret-fingerprint",
 		IdentityFingerprint: "stable-account-fingerprint", SecretVersion: 7,
-		Status: models.CredentialStatusActive,
 	}
 	mustCreate(t, db, &credential)
 
@@ -305,7 +281,6 @@ func TestLoaderUsesCredentialsAndKeepsCiphertextOutOfSnapshot(t *testing.T) {
 	mustCreate(t, db, &group)
 	credential := models.Credential{
 		GroupID: group.ID, Data: "new-credential-cipher", Fingerprint: "new-fingerprint",
-		Status: models.CredentialStatusActive,
 	}
 	mustCreate(t, db, &credential)
 	manager := state.NewManager()

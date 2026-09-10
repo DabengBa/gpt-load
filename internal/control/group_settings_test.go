@@ -48,7 +48,7 @@ func TestGetGroupSettingsReturnsPersistedDraftOverridesAndEffectiveConfig(t *tes
 	}
 	if got.Name != group.Name || got.ChannelID != channel.OpenAICompatible ||
 		string(got.Params) != `{"base_url":"https://settings-read.example/v1"}` ||
-		!got.Enabled || got.WeightManual != nil {
+		!got.Enabled {
 		t.Fatalf("persisted settings = %#v", got)
 	}
 	for _, key := range []string{
@@ -132,14 +132,12 @@ func TestUpdateGroupSettingsPublishesOnceAndReturnsNewSettings(t *testing.T) {
 	}
 	groupID := created.GroupID
 	beforeRevision := fixture.manager.Current().Revision
-	weight := 75
 	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
 		Name: optionalField[string]{Set: true, Value: " updated settings "},
 		Params: optionalField[json.RawMessage]{Set: true,
 			Value: json.RawMessage(`{"base_url":" HTTPS://SETTINGS-UPDATED.EXAMPLE.COM/v1/ "}`)},
 		ValidationModel: optionalField[string]{Set: true, Value: " gpt-4.1 "},
 		Enabled:         optionalField[bool]{Set: true, Value: false},
-		WeightManual:    optionalField[int]{Set: true, Value: weight},
 		Overrides:       optionalField[config.Settings]{Set: true, Value: config.Settings{"request_timeout": json.Number("720")}},
 	})
 	if err != nil {
@@ -148,7 +146,7 @@ func TestUpdateGroupSettingsPublishesOnceAndReturnsNewSettings(t *testing.T) {
 	if result.Name != "updated settings" || result.ChannelID != channel.OpenAICompatible ||
 		string(result.Params) != `{"base_url":"https://settings-updated.example.com/v1"}` ||
 		result.ValidationModel == nil || *result.ValidationModel != "gpt-4.1" || result.Enabled ||
-		result.WeightManual == nil || *result.WeightManual != weight || result.Effective.RequestTimeout != 720 {
+		result.Effective.RequestTimeout != 720 {
 		t.Fatalf("UpdateGroupSettings() = %#v", result)
 	}
 	if got := fixture.manager.Current().Revision; got != beforeRevision+1 {
@@ -388,46 +386,6 @@ func TestUpdateGroupTargetSerializesWithCredentialSecretMutation(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("group target update did not finish")
-	}
-}
-
-func TestUpdateGroupSettingsValidatesWeight(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	groupID := createGroupForCredentialImport(t, fixture, "sk-settings-validation")
-	beforeRevision := fixture.manager.Current().Revision
-
-	for _, weight := range []optionalField[int]{
-		{Set: true, Value: 0},
-		{Set: true, Value: -1},
-		{Set: true, Value: 101},
-	} {
-		if _, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{WeightManual: weight}); !errors.Is(err, app_errors.ErrValidation) {
-			t.Fatalf("weight %#v error = %v, want validation", weight, err)
-		}
-	}
-	for _, test := range []struct {
-		name  string
-		field optionalField[int]
-		want  *int
-	}{
-		{name: "null", field: optionalField[int]{Set: true, Null: true}},
-		{name: "minimum", field: optionalField[int]{Set: true, Value: 1}, want: settingsWeightPointer(1)},
-		{name: "maximum", field: optionalField[int]{Set: true, Value: 100}, want: settingsWeightPointer(100)},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := fixture.service.UpdateGroupSettings(
-				t.Context(),
-				groupID,
-				GroupSettingsUpdateRequest{WeightManual: test.field},
-			)
-			if err != nil || !reflect.DeepEqual(got.WeightManual, test.want) {
-				t.Fatalf("weight update = %#v, %v; want %#v", got, err, test.want)
-			}
-		})
-	}
-	if got := fixture.manager.Current().Revision; got != beforeRevision+3 {
-		t.Fatalf("settings mutation revision = %d, want %d", got, beforeRevision+3)
 	}
 }
 

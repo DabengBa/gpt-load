@@ -601,7 +601,8 @@ func TestExecutionForwarderKeepsExecutionObservationOnRepresentationFailure(t *t
 		result.AppliedReasoning.Mode != "enabled" || result.AppliedReasoning.BudgetTokens == nil ||
 		*result.AppliedReasoning.BudgetTokens != budget || result.ExecutionError == nil ||
 		result.ExecutionError.Kind != execution.ErrorKindInternal ||
-		result.ExecutionError.Code != "response_representation_invalid" {
+		result.ExecutionError.Code != "response_representation_invalid" ||
+		result.ExecutionError.ReplaySafety != execution.ReplaySafetyUnknown {
 		t.Fatalf("Forward() representation failure = %#v", result)
 	}
 }

@@ -79,10 +79,6 @@ func cloneGroupRows(rows []models.Group) []models.Group {
 		cloned[index].Params = append(models.JSON(nil), rows[index].Params...)
 		cloned[index].Models = append(models.JSON(nil), rows[index].Models...)
 		cloned[index].Overrides = append(models.JSON(nil), rows[index].Overrides...)
-		if rows[index].WeightManual != nil {
-			value := *rows[index].WeightManual
-			cloned[index].WeightManual = &value
-		}
 		if rows[index].ValidationModel != nil {
 			value := *rows[index].ValidationModel
 			cloned[index].ValidationModel = &value
@@ -168,7 +164,7 @@ func (s *Service) readGroupCollectionRows(
 		}
 		var credentials []models.Credential
 		if err := tx.Model(&models.Credential{}).
-			Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version", "status", "weight_manual").
+			Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version", "auth_state").
 			Order("group_id ASC, id ASC").Find(&credentials).Error; err != nil {
 			return err
 		}
@@ -234,8 +230,7 @@ func mapGroupCollectionRecords(
 		}
 		if catalog.ID != group.ID ||
 			catalog.Name != group.Name ||
-			catalog.Enabled != group.Enabled ||
-			!equalGroupCollectionWeight(catalog.WeightManual, group.WeightManual) {
+			catalog.Enabled != group.Enabled {
 			return nil, groupCollectionDataError(
 				"persisted group %d differs from runtime catalog",
 				groupID,
@@ -304,19 +299,14 @@ func mapGroupCollectionRecords(
 				credentialID,
 			)
 		}
-		status, err := groupCollectionRuntimeCredentialStatus(persistedCredential.Status)
-		if err != nil {
-			return nil, err
-		}
 		if runtimeCredential.ID != persistedCredential.ID ||
 			runtimeCredential.GroupID != persistedCredential.GroupID ||
-			runtimeCredential.Status != status ||
+			runtimeCredential.AuthState != normalizeRuntimeCredentialAuthState(persistedCredential.AuthState) ||
 			runtimeCredential.Version != groupCollectionCredentialVersion(persistedCredential.SecretVersion) ||
 			runtimeCredential.IdentityGeneration != groupCollectionCredentialIdentity(
 				persistedCredential.IdentityFingerprint,
 				persistedGroups[persistedCredential.GroupID],
-			) ||
-			!equalGroupCollectionWeight(runtimeCredential.WeightManual, persistedCredential.WeightManual) {
+			) {
 			return nil, groupCollectionDataError(
 				"persisted credential %d differs from runtime registry",
 				credentialID,
@@ -402,20 +392,8 @@ func cloneCredentialRows(rows []models.Credential) []models.Credential {
 		cloned[index] = rows[index]
 		cloned[index].Group = nil
 		cloned[index].Data = ""
-		cloned[index].WeightManual = cloneInt(rows[index].WeightManual)
 	}
 	return cloned
-}
-
-func groupCollectionRuntimeCredentialStatus(status models.CredentialStatus) (state.CredentialStatus, error) {
-	switch status {
-	case models.CredentialStatusActive:
-		return state.CredentialStatusActive, nil
-	case models.CredentialStatusDisabled:
-		return state.CredentialStatusDisabled, nil
-	default:
-		return "", groupCollectionDataError("invalid persisted credential status %q", status)
-	}
 }
 
 func groupCollectionCredentialVersion(secretVersion uint64) uint64 {
@@ -499,7 +477,7 @@ func groupCollectionStatusAndReason(
 	counts GroupCollectionCredentialCounts,
 	modelCount int64,
 ) (GroupCollectionStatus, *GroupUnavailableReason) {
-	if !group.Enabled || (group.WeightManual != nil && *group.WeightManual == 0) {
+	if !group.Enabled {
 		return GroupCollectionStatusDisabled, nil
 	}
 	if counts.Available == 0 {

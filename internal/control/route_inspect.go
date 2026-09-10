@@ -32,9 +32,6 @@ type routeInspectCredentialResponse struct {
 	CredentialID    uint                  `json:"credential_id"`
 	Available       bool                  `json:"available"`
 	ReasonCode      *scheduler.ReasonCode `json:"reason_code"`
-	WeightManual    *int                  `json:"weight_manual"`
-	WeightAuto      int                   `json:"weight_auto"`
-	EffectiveWeight int64                 `json:"effective_weight"`
 	CooldownUntilMS *int64                `json:"cooldown_until_ms"`
 }
 
@@ -46,10 +43,10 @@ type routeInspectGroupResponse struct {
 	RouteRequirementSatisfied bool                             `json:"route_requirement_satisfied"`
 	EntryID                   string                           `json:"entry_id"`
 	UpstreamModel             *string                          `json:"upstream_model"`
-	WeightManual              *int                             `json:"weight_manual"`
 	EntryWeight               int                              `json:"entry_weight"`
 	Priority                  int                              `json:"priority"`
 	Fallback                  bool                             `json:"fallback"`
+	ConfiguredShare           float64                          `json:"configured_share"`
 	EffectiveShare            float64                          `json:"effective_share"`
 	EntryCooldownUntilMS      *int64                           `json:"entry_cooldown_until_ms"`
 	Included                  bool                             `json:"included"`
@@ -182,7 +179,8 @@ func mapRouteInspectResponse(
 		ReasonCode: optionalReason(explanation.Reason),
 		Groups:     []routeInspectGroupResponse{},
 	}
-	for _, group := range explanation.Groups {
+	configuredShares := configuredEntryShares(explanation.Groups)
+	for index, group := range explanation.Groups {
 		entryCooldownUntilMS, err := optionalSafeEpochMilliseconds(group.EntryCooldownUntil)
 		if err != nil {
 			return routeInspectResponse{}, fmt.Errorf(
@@ -198,10 +196,10 @@ func mapRouteInspectResponse(
 			RouteRequirementSatisfied: group.RouteRequirementSatisfied,
 			EntryID:                   group.EntryID,
 			UpstreamModel:             cloneRouteModel(group.UpstreamModelID),
-			WeightManual:              cloneInt(group.WeightManual),
 			EntryWeight:               group.EntryWeight,
 			Priority:                  group.Priority,
 			Fallback:                  group.Priority > 1,
+			ConfiguredShare:           configuredShares[index],
 			EffectiveShare:            group.EffectiveShare,
 			EntryCooldownUntilMS:      entryCooldownUntilMS,
 			Included:                  group.Included,
@@ -221,15 +219,32 @@ func mapRouteInspectResponse(
 				CredentialID:    credential.CredentialID,
 				Available:       credential.Available,
 				ReasonCode:      optionalReason(credential.Reason),
-				WeightManual:    cloneInt(credential.WeightManual),
-				WeightAuto:      credential.WeightAuto,
-				EffectiveWeight: credential.EffectiveWeight,
 				CooldownUntilMS: cooldownUntilMS,
 			})
 		}
 		result.Groups = append(result.Groups, groupResponse)
 	}
 	return result, nil
+}
+
+// configuredEntryShares is the display-only configured-weight distribution.
+// It intentionally includes unavailable entries and never changes the
+// scheduler's runtime EffectiveShare calculation.
+func configuredEntryShares(groups []scheduler.GroupInspection) []float64 {
+	totals := make(map[int]int64)
+	for _, group := range groups {
+		if group.Priority > 0 && group.EntryWeight > 0 {
+			totals[group.Priority] += int64(group.EntryWeight)
+		}
+	}
+	shares := make([]float64, len(groups))
+	for index, group := range groups {
+		total := totals[group.Priority]
+		if group.Priority > 0 && group.EntryWeight > 0 && total > 0 {
+			shares[index] = float64(group.EntryWeight) / float64(total)
+		}
+	}
+	return shares
 }
 
 func cloneRouteModel(value *string) *string {

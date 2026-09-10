@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/glebarez/sqlite"
@@ -100,11 +99,6 @@ func rejectExistingDatabaseWithoutMigrationLedger(target sqliteTarget) error {
 		return fmt.Errorf("resolve SQLite database path before migration: %w", err)
 	}
 	uriPath := filepath.ToSlash(absolutePath)
-	if runtime.GOOS == "windows" && len(uriPath) >= 2 && uriPath[1] == ':' {
-		// A Windows drive path must be an absolute file-URI path. Without
-		// the leading slash, net/url treats the drive letter as the URI host.
-		uriPath = "/" + uriPath
-	}
 	readOnlyDSN := (&url.URL{
 		Scheme:   "file",
 		Path:     uriPath,
@@ -229,14 +223,6 @@ func parseSQLiteTarget(dsn string) (sqliteTarget, error) {
 			if err != nil {
 				return sqliteTarget{}, fmt.Errorf("open SQLite database: invalid file URI: %w", err)
 			}
-		}
-		if runtime.GOOS == "windows" &&
-			len(databasePath) >= 3 &&
-			databasePath[0] == '/' &&
-			databasePath[2] == ':' &&
-			(databasePath[1] >= 'A' && databasePath[1] <= 'Z' ||
-				databasePath[1] >= 'a' && databasePath[1] <= 'z') {
-			databasePath = databasePath[1:]
 		}
 		databasePath = filepath.FromSlash(databasePath)
 	}

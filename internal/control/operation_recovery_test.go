@@ -443,7 +443,7 @@ func newDurableGroupOperationInput(
 			}
 			credential := models.Credential{
 				GroupID: group.ID, Data: "cipher-one", Fingerprint: "fingerprint-one",
-				Status: models.CredentialStatusActive, UpdatedAtMS: 1,
+				AuthState: models.CredentialAuthStateReady, UpdatedAtMS: 1,
 			}
 			if err := tx.Create(&credential).Error; err != nil {
 				return idempotentMutationResult{}, err

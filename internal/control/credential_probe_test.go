@@ -259,18 +259,6 @@ func TestGroupCredentialProbeDoesNotMutateDisabledCooldownOrBlacklistedState(t *
 		wantCanRestore bool
 	}{
 		{
-			name: "disabled",
-			prepare: func(t *testing.T, fixture serviceFixture, groupID, credentialID uint) {
-				t.Helper()
-				_, err := fixture.service.UpdateGroupCredential(t.Context(), groupID, credentialID, CredentialUpdateRequest{
-					Status: optionalField[state.CredentialStatus]{Set: true, Value: state.CredentialStatusDisabled},
-				})
-				if err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
-		{
 			name: "cooldown",
 			prepare: func(t *testing.T, fixture serviceFixture, _, credentialID uint) {
 				t.Helper()
@@ -560,21 +548,6 @@ func TestRestoreTestedGroupCredentialRejectsStaleProofWithoutMutation(t *testing
 				t.Helper()
 				if !fixture.registry.SetCooldown(credentialID, time.Now().Add(time.Hour)) {
 					t.Fatal("SetCooldown() = false")
-				}
-			},
-		},
-		{
-			name: "credential proxy",
-			mutate: func(t *testing.T, fixture serviceFixture, groupID, credentialID uint) {
-				t.Helper()
-				_, err := fixture.service.UpdateGroupCredential(t.Context(), groupID, credentialID, CredentialUpdateRequest{
-					Proxy: optionalField[outboundproxy.Config]{Set: true, Value: outboundproxy.Config{
-						Mode: outboundproxy.ModeCustom,
-						URL:  "http://changed-credential-proxy.example:8080",
-					}},
-				})
-				if err != nil {
-					t.Fatal(err)
 				}
 			},
 		},

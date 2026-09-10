@@ -655,7 +655,7 @@ func TestCodexClientImageGenerationReachesSubscriptionExecutor(t *testing.T) {
 			Models: []state.ModelConfig{{ID: "gpt-image-2"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
-			ID: row.ID, GroupID: row.GroupID, Status: state.CredentialStatusActive,
+			ID: row.ID, GroupID: row.GroupID,
 			Version: credentialRef.Version, IdentityGeneration: credentialRef.IdentityGeneration,
 			Fingerprint: credentialRef.Fingerprint,
 		}},
@@ -1552,13 +1552,13 @@ func newSubscriptionAdapterFixture(
 	if err := db.Create(&group).Error; err != nil {
 		t.Fatal(err)
 	}
-	row := models.Credential{GroupID: group.ID, Data: ciphertext, Fingerprint: keyService.Hash(string(canonical)), IdentityFingerprint: keyService.Hash("identity|" + identity), SecretVersion: 1, AuthState: models.CredentialAuthStateReady, Status: models.CredentialStatusActive}
+	row := models.Credential{GroupID: group.ID, Data: ciphertext, Fingerprint: keyService.Hash(string(canonical)), IdentityFingerprint: keyService.Hash("identity|" + identity), SecretVersion: 1, AuthState: models.CredentialAuthStateReady}
 	if err := db.Create(&row).Error; err != nil {
 		t.Fatal(err)
 	}
 	registry := state.NewCredentialRegistry()
 	identityGeneration := stateloader.CredentialIdentityGeneration(row.IdentityFingerprint, group.ChannelID, string(group.ConnectionType), json.RawMessage(group.Params))
-	if err := registry.ReplaceCredentials([]state.CredentialEntry{{ID: row.ID, GroupID: group.ID, Version: 1, IdentityGeneration: identityGeneration, Fingerprint: row.Fingerprint, Status: state.CredentialStatusActive, WeightAuto: state.DefaultWeight, EncryptedValue: row.Data}}); err != nil {
+	if err := registry.ReplaceCredentials([]state.CredentialEntry{{ID: row.ID, GroupID: group.ID, Version: 1, IdentityGeneration: identityGeneration, Fingerprint: row.Fingerprint, EncryptedValue: row.Data}}); err != nil {
 		t.Fatal(err)
 	}
 	channels := channel.NewRegistry()

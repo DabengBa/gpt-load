@@ -7,8 +7,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { lazySurface } from '@/app/async-surface'
 import { monitorLocation } from '@/app/route-locations'
 import { usageRanges } from '@/app/resources/usage'
-import type { AccessProtocol } from '@/api/control/types'
-import type { RouteInspectOperation } from '@/app/resources/route-inspection'
 import LedgerSheet from '@/components/layout/LedgerSheet.vue'
 import PageFrame from '@/components/layout/PageFrame.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -19,6 +17,7 @@ import { isTimeRange } from '@/lib/time'
 import { useAuthSession } from '@/features/auth/auth-session'
 
 import HealthTab from './HealthTab.vue'
+import type { ScheduleDrafts, ScheduleMode } from './monitor-route'
 import {
   normalizeAccessKeyMonitorQuery,
   normalizeMonitorQuery,
@@ -57,12 +56,6 @@ const canonicalQuery = computed(() => {
 })
 const activeTab = computed(() => normalizeMonitorTab(canonicalQuery.value.tab))
 const scheduleState = computed(() => parseScheduleMonitorState(route.query))
-const scheduleAccessKeyID = computed(() => {
-  const raw = scheduleState.value.accessKeyID
-  if (raw === undefined) return undefined
-  const value = Number(raw)
-  return Number.isSafeInteger(value) && value > 0 ? value : undefined
-})
 const isCanonicalQuery = computed(() => sameMonitorQuery(route.query, canonicalQuery.value))
 const items = computed<AppTabItem[]>(() => {
   const shared = [
@@ -156,23 +149,30 @@ function selectUsageRange(value: string): void {
   )
 }
 function updateScheduleContext(next: Partial<ReturnType<typeof parseScheduleMonitorState>>): void {
-  void router.replace(monitorLocation(scheduleMonitorQuery({ ...scheduleState.value, ...next })))
+  const contextChanged =
+    next.externalModel !== undefined && next.externalModel !== scheduleState.value.externalModel
+  const nextState = contextChanged
+    ? { ...scheduleState.value, ...next, selectedRow: undefined, drafts: {} }
+    : { ...scheduleState.value, ...next }
+  void router.replace(monitorLocation(scheduleMonitorQuery(nextState)))
 }
 
-function commitScheduleContext(context: {
-  externalModel: string
-  protocol: AccessProtocol
-  operation?: RouteInspectOperation
-  accessKeyId?: number
-}): void {
-  const next = {
-    externalModel: context.externalModel,
-    protocol: context.protocol,
-    operation: context.operation,
-    accessKeyID: context.accessKeyId === undefined ? undefined : String(context.accessKeyId),
-  }
+function commitScheduleContext(context: { externalModel?: string; mode: ScheduleMode }): void {
+  const externalModel = context.externalModel?.trim() || undefined
+  const contextChanged = externalModel !== scheduleState.value.externalModel
+  const next = contextChanged
+    ? { ...scheduleState.value, ...context, externalModel, selectedRow: undefined, drafts: {} }
+    : { ...scheduleState.value, ...context, externalModel }
   if (sameMonitorQuery(route.query, scheduleMonitorQuery(next))) return
   void router.push(monitorLocation(scheduleMonitorQuery(next)))
+}
+
+function updateScheduleDrafts(drafts: ScheduleDrafts): void {
+  updateScheduleContext({ drafts })
+}
+
+function updateScheduleRow(row: string | undefined): void {
+  updateScheduleContext({ selectedRow: row })
 }
 
 function refreshScheduleRoute(): void {
@@ -181,89 +181,40 @@ function refreshScheduleRoute(): void {
 
 const scheduleLabels = computed<SchedulePanelLabels>(() => ({
   model: t('monitor.schedule.panel.model'),
-  protocol: t('monitor.schedule.panel.protocol'),
-  operation: t('monitor.schedule.panel.operation'),
-  accessKey: t('monitor.schedule.panel.accessKey'),
+  mode: t('monitor.schedule.panel.mode'),
   selectModel: t('monitor.schedule.panel.selectModel'),
-  selectProtocol: t('monitor.schedule.panel.selectProtocol'),
-  selectAccessKey: t('monitor.schedule.panel.selectAccessKey'),
   loadingOptions: t('monitor.schedule.panel.loadingOptions'),
   optionsFailed: t('monitor.schedule.panel.optionsFailed'),
   contextRequired: t('monitor.schedule.panel.contextRequired'),
   kicker: t('monitor.schedule.panel.kicker'),
   contextReady: t('monitor.schedule.panel.contextReady'),
   context: t('monitor.schedule.panel.context'),
-  disabled: t('monitor.schedule.panel.disabled'),
   retry: t('monitor.schedule.panel.retry'),
   indexFailed: t('monitor.schedule.panel.indexFailed'),
   detailFailed: t('monitor.schedule.panel.detailFailed'),
-  protocolLabels: {
-    'openai-completions': t('monitor.schedule.protocols.openai-completions'),
-    'openai-responses': t('monitor.schedule.protocols.openai-responses'),
-    'openai-images': t('monitor.schedule.protocols.openai-images'),
-    'openai-embeddings': t('monitor.schedule.protocols.openai-embeddings'),
-    anthropic: t('monitor.schedule.protocols.anthropic'),
-    gemini: t('monitor.schedule.protocols.gemini'),
-  },
-  operationLabels: {
-    chat_completion: t('monitor.schedule.operations.chat_completion'),
-    responses_create: t('monitor.schedule.operations.responses_create'),
-    responses_retrieve: t('monitor.schedule.operations.responses_retrieve'),
-    responses_delete: t('monitor.schedule.operations.responses_delete'),
-    responses_cancel: t('monitor.schedule.operations.responses_cancel'),
-    responses_input_items: t('monitor.schedule.operations.responses_input_items'),
-    responses_compact: t('monitor.schedule.operations.responses_compact'),
-    responses_input_tokens: t('monitor.schedule.operations.responses_input_tokens'),
-    count_tokens: t('monitor.schedule.operations.count_tokens'),
-    responses_passthrough: t('monitor.schedule.operations.responses_passthrough'),
-    images_generate: t('monitor.schedule.operations.images_generate'),
-    images_edit: t('monitor.schedule.operations.images_edit'),
-    embeddings_create: t('monitor.schedule.operations.embeddings_create'),
-  },
-  index: {
-    title: t('monitor.schedule.index.title'),
-    refresh: t('monitor.schedule.index.refresh'),
-    loading: t('monitor.schedule.index.loading'),
-    failed: t('monitor.schedule.index.failed'),
-    empty: t('monitor.schedule.index.empty'),
-    candidates: t('monitor.schedule.index.candidates'),
-    groups: t('monitor.schedule.index.groups'),
-    fallback: t('monitor.schedule.index.fallback'),
-    cooldown: t('monitor.schedule.index.cooldown'),
-    blacklist: t('monitor.schedule.index.blacklist'),
-    select: t('monitor.schedule.index.select'),
-    eyebrow: t('monitor.schedule.index.eyebrow'),
-    routeExceptions: t('monitor.schedule.index.routeExceptions'),
+  modeLabels: {
+    all: t('monitor.schedule.modes.all'),
+    primary: t('monitor.schedule.modes.primary'),
+    fallback: t('monitor.schedule.modes.fallback'),
   },
   detail: {
     title: t('monitor.schedule.detail.title'),
     loading: t('monitor.schedule.detail.loading'),
-    failed: t('monitor.schedule.detail.failed'),
     refresh: t('monitor.schedule.detail.refresh'),
-    observed: t('monitor.schedule.detail.observed'),
     stale: t('monitor.schedule.detail.stale'),
     routeUnavailable: t('monitor.schedule.detail.routeUnavailable'),
-    groupWeight: t('monitor.schedule.detail.groupWeight'),
-    channel: t('monitor.schedule.detail.channel'),
-    entryId: t('monitor.schedule.detail.entryId'),
+    group: t('monitor.schedule.detail.group'),
+    upstreamModel: t('monitor.schedule.detail.upstreamModel'),
     weight: t('monitor.schedule.detail.weight'),
     priority: t('monitor.schedule.detail.priority'),
-    fallback: t('monitor.schedule.detail.fallback'),
     share: t('monitor.schedule.detail.share'),
-    reason: t('monitor.schedule.detail.reason'),
-    runtime: t('monitor.schedule.detail.runtime'),
+    status: t('monitor.schedule.detail.status'),
     available: t('monitor.schedule.detail.available'),
     cooldown: t('monitor.schedule.detail.cooldown'),
     blacklisted: t('monitor.schedule.detail.blacklisted'),
     failures: t('monitor.schedule.detail.failures'),
     recover: t('monitor.schedule.detail.recover'),
-    credentials: t('monitor.schedule.detail.credentials'),
-    breaker: t('monitor.schedule.detail.breaker'),
-    threshold: t('monitor.schedule.detail.threshold'),
-    cooldownSeconds: t('monitor.schedule.detail.cooldownSeconds'),
-    effective: t('monitor.schedule.detail.effective'),
-    configured: t('monitor.schedule.detail.configured'),
-    inherited: t('monitor.schedule.detail.inherited'),
+    breakerRecovery: t('monitor.schedule.detail.breakerRecovery'),
     clear: t('monitor.schedule.detail.clear'),
     invalidValue: t('monitor.schedule.detail.invalidValue'),
     derivedReadOnly: t('monitor.schedule.detail.derivedReadOnly'),
@@ -277,11 +228,7 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
     recoverFailed: t('monitor.schedule.detail.recoverFailed'),
     noEntries: t('monitor.schedule.detail.noEntries'),
     unknownReason: t('monitor.schedule.detail.unknownReason'),
-    unknownRouteStrategy: t('monitor.schedule.detail.unknownRouteStrategy'),
-    unknownBreakerSource: t('monitor.schedule.detail.unknownBreakerSource'),
-    nativeRoute: t('monitor.schedule.detail.nativeRoute'),
     draftPreview: t('monitor.schedule.detail.draftPreview'),
-    observedShare: t('monitor.schedule.detail.observedShare'),
     reasonLabels: Object.fromEntries(
       [
         'access_key_disabled',
@@ -296,12 +243,9 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
         'group_filtered',
         'no_available_group',
         'no_credentials',
-        'group_weight_zero',
-        'credential_disabled',
         'credential_blacklisted',
         'credential_cooldown',
         'credential_auth_unavailable',
-        'credential_weight_zero',
         'credential_not_allowed',
         'no_available_credential',
         'entry_blacklisted',
@@ -310,14 +254,6 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
         'tier_demoted',
       ].map((code) => [code, t(`monitor.schedule.reasons.${code}`)]),
     ),
-    routeStrategyLabels: {
-      native_first: t('monitor.schedule.routeStrategies.native_first'),
-      weighted_mix: t('monitor.schedule.routeStrategies.weighted_mix'),
-    },
-    sourceLabels: {
-      default: t('monitor.schedule.sources.default'),
-      entry: t('monitor.schedule.sources.entry'),
-    },
   },
 }))
 </script>
@@ -395,20 +331,14 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
           <div v-else-if="activeTab === 'schedule' && isAdmin" class="monitor-panel">
             <SchedulePanel
               :external-model="scheduleState.externalModel"
-              :protocol="scheduleState.protocol"
-              :operation="scheduleState.operation"
-              :access-key-id="scheduleAccessKeyID"
+              :mode="scheduleState.mode"
+              :selected-row="scheduleState.selectedRow"
+              :drafts="scheduleState.drafts"
               :labels="scheduleLabels"
               :locale="locale"
-              @update:external-model="updateScheduleContext({ externalModel: $event })"
-              @update:protocol="updateScheduleContext({ protocol: $event })"
-              @update:operation="updateScheduleContext({ operation: $event })"
-              @update:access-key-id="
-                updateScheduleContext({
-                  accessKeyID: $event === undefined ? undefined : String($event),
-                })
-              "
               @change-context="commitScheduleContext"
+              @draft-change="updateScheduleDrafts"
+              @row-change="updateScheduleRow"
               @saved="refreshScheduleRoute"
               @recovered="refreshScheduleRoute"
               @refresh="refreshScheduleRoute"
@@ -435,6 +365,14 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
 .monitor-panel {
   min-width: 0;
   padding-top: var(--detail-panel-padding-top);
+}
+
+.monitor-tabs {
+  min-width: 0;
+}
+
+.monitor-tabs :deep(.app-tabs__content) {
+  min-width: 0;
 }
 
 .monitor-tabs :deep(.app-tabs__bar) {

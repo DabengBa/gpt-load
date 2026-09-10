@@ -719,6 +719,80 @@ func TestAntigravityExecutionOnlyBridgeUsesOneFixedUpstreamDispatch(t *testing.T
 	}
 }
 
+func TestAntigravityExecutionOnlyBridgeSendsGeminiImageThroughProxy(t *testing.T) {
+	var calls int
+	var target string
+	var body []byte
+	var headers http.Header
+	proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		calls++
+		target = request.URL.String()
+		var err error
+		body, err = io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("read proxied request body: %v", err)
+		}
+		headers = request.Header.Clone()
+		if request.URL.Path != "/v1internal:generateContent" && request.URL.Path != "/v1internal:streamGenerateContent" {
+			t.Fatalf("proxied request path = %q", request.URL.Path)
+		}
+		if request.URL.Path == "/v1internal:streamGenerateContent" {
+			writer.Header().Set("Content-Type", "text/event-stream")
+			_, _ = writer.Write([]byte(`{"response":{"modelVersion":"gemini-3.1-flash-image","candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"aW1hZ2U="}}]}}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1,"totalTokenCount":3}}}` + "\n"))
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"response":{"modelVersion":"gemini-3.1-flash-image","candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"aW1hZ2U="}}]}}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1,"totalTokenCount":3}}}`))
+	}))
+	defer proxy.Close()
+
+	credential := AntigravityCredential{
+		Type: ProviderAntigravity, AccessToken: "access-secret", RefreshToken: "refresh-secret",
+		AccountID: "google-account-one", Email: "owner@example.com", ProjectID: "project-one",
+		Expire: "2030-01-01T00:00:00Z",
+	}
+	payload := []byte(`{"contents":[{"role":"user","parts":[{"text":"draw"}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"]},"session_id":"client-session","prompt_cache_key":"client-cache","metadata":{"sessionId":"nested-session"},"request":{"sessionId":"nested-request","session_id":"nested-request-snake"}}`)
+	original := append([]byte(nil), payload...)
+	requestHeaders := http.Header{
+		"Content-Type":             {"application/json"},
+		"Session-Id":               {"client-session"},
+		"X-Claude-Code-Session-Id": {"client-claude-session"},
+		"X-Claude-Code-Agent-Id":   {"client-claude-agent"},
+	}
+	response, err := newAntigravityHTTPExecutor("http://antigravity.invalid").ExecuteCanonical(t.Context(), "credential-one", credential, ExecuteRequest{
+		Model: "gemini-3.1-flash-image", Format: "gemini", Payload: payload, OriginalRequest: original,
+		Headers: requestHeaders, ProxyURL: proxy.URL, ContinuityKey: "tenant-scope",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteCanonical() error = %v", err)
+	}
+	if calls != 1 || !strings.Contains(string(response.Payload), `"candidates"`) {
+		t.Fatalf("calls=%d target=%q response=%s", calls, target, response.Payload)
+	}
+	if (!strings.Contains(target, "http://antigravity.invalid/v1internal:generateContent") &&
+		!strings.Contains(target, "http://antigravity.invalid/v1internal:streamGenerateContent")) ||
+		headers.Get("Authorization") != "Bearer access-secret" || headers.Get("Content-Type") != "application/json" {
+		t.Fatalf("proxied target/headers = %q / %#v", target, headers)
+	}
+	if headers.Get("Session-Id") != "" || headers.Get("X-Claude-Code-Session-Id") != "" || headers.Get("X-Claude-Code-Agent-Id") != "" {
+		t.Fatalf("replay headers reached upstream: %#v", headers)
+	}
+	wire := string(body)
+	for _, forbidden := range []string{"client-session", "client-cache", "nested-session", "nested-request", "nested-request-snake"} {
+		if strings.Contains(wire, forbidden) {
+			t.Fatalf("replay input %q reached upstream: %s", forbidden, wire)
+		}
+	}
+	for _, required := range []string{`"model":"gemini-3.1-flash-image"`, `"project":"project-one"`, `"requestType":"image_gen"`, `"responseModalities":["TEXT","IMAGE"]`, `"text":"draw"`} {
+		if !strings.Contains(wire, required) {
+			t.Fatalf("translated Gemini request missing %s: %s", required, wire)
+		}
+	}
+	if !strings.Contains(string(payload), "client-session") || !strings.Contains(string(original), "nested-request") {
+		t.Fatal("execution mutated caller request input")
+	}
+}
+
 func TestAntigravityExecutionOnlyBridgeScopesConnectionsByCredential(t *testing.T) {
 	connections := make(map[string][]string)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

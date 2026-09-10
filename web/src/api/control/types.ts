@@ -140,7 +140,6 @@ export interface GroupSettingsDto {
   params: ChannelParamsDto
   validation_model: string | null
   enabled: boolean
-  weight_manual: number | null
   overrides: GroupRuntimeConfigDto
   effective: GroupEffectiveConfigDto
   proxy: ProxyViewDto
@@ -172,8 +171,6 @@ export interface GroupModelsDto {
 }
 
 export type CredentialStatus = 'available' | 'cooldown' | 'blacklisted' | 'disabled'
-export type CredentialConfiguredStatus = 'active' | 'disabled'
-export type CredentialWeightMode = 'auto' | 'manual'
 export type CredentialRecoveryMode = 'none' | 'cooldown' | 'probe' | 'manual'
 export type CredentialAuthState =
   'ready' | 'refreshing' | 'reauthorization_required' | 'outcome_unknown'
@@ -287,10 +284,7 @@ export interface CredentialItemDto {
   auth_state: CredentialAuthState
   auth_error_code?: string
   observation?: CredentialObservationDto
-  configured_status: CredentialConfiguredStatus
   effective_status: CredentialStatus
-  weight_mode: CredentialWeightMode
-  weight: number | null
   recent_success_count: number
   recent_failure_count: number
   consecutive_failure_count: number
@@ -300,7 +294,6 @@ export interface CredentialItemDto {
   last_used_at_ms?: number
   daily_usage?: CredentialDailyUsageDto
   recovery: CredentialRecoveryDto
-  proxy: ProxyViewDto
 }
 
 /** 固定 24 小时窗口的上游尝试结果分布，来源是小时聚合而非 health 的 5 分钟内存窗口。 */
@@ -436,8 +429,6 @@ export interface HealthProblemCredentialDto {
   recent_success_count: number
   recent_problem_count: number
   consecutive_problem_count: number
-  weight_manual: number | null
-  weight_auto: number
   recovery: HealthRecoveryDto
   /** API 密钥仍是掩码，订阅账号给完整邮箱，与凭据卡片、日志的展示约定一致。 */
   identity: string

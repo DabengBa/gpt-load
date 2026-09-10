@@ -36,17 +36,9 @@ function groupOptions() {
     props.draft.group_id &&
     !props.groups.some((group) => String(group.id) === props.draft.group_id)
   ) {
-    options.push(
-      option(
-        props.draft.group_id,
-        t('monitor.usage.filters.deletedOrUnknown', { id: props.draft.group_id }),
-      ),
-    )
+    options.push(option(props.draft.group_id, t('monitor.usage.filters.deletedOrUnknownGroup')))
   }
-  return [
-    ...options,
-    ...props.groups.map((group) => option(String(group.id), `${group.name} · #${group.id}`)),
-  ]
+  return [...options, ...props.groups.map((group) => option(String(group.id), group.name))]
 }
 
 function channelOptions() {

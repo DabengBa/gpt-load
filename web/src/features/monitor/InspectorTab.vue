@@ -60,12 +60,9 @@ const knownReasons = new Set<RouteInspectReasonCode>([
   'group_filtered',
   'no_available_group',
   'no_credentials',
-  'group_weight_zero',
-  'credential_disabled',
   'credential_blacklisted',
   'credential_cooldown',
   'credential_auth_unavailable',
-  'credential_weight_zero',
   'credential_not_allowed',
   'no_available_credential',
   'entry_blacklisted',
@@ -140,7 +137,6 @@ const accessKeyOptions = computed(() => {
     value: String(accessKey.id),
     label: t('monitor.inspector.form.accessKeyOption', {
       name: accessKey.name,
-      id: accessKey.id,
       status: t(`monitor.inspector.accessKeyStatus.${accessKey.status}`),
     }),
   }))
@@ -150,9 +146,7 @@ const accessKeyOptions = computed(() => {
       ? [
           {
             value: draftAccessKeyID.value,
-            label: t('monitor.inspector.form.missingAccessKeyOption', {
-              id: draftAccessKeyID.value,
-            }),
+            label: t('monitor.inspector.form.missingAccessKeyOption'),
           },
         ]
       : []),
@@ -191,8 +185,10 @@ const orderedIncludedGroups = computed(() =>
     const routeModeOrder = routeModePriority(left) - routeModePriority(right)
     if (routeModeOrder !== 0) return routeModeOrder
     if (left.routable !== right.routable) return left.routable ? -1 : 1
-    const weightOrder = groupEffectiveWeight(right) - groupEffectiveWeight(left)
-    return weightOrder !== 0 ? weightOrder : left.group_id - right.group_id
+    const entryWeightOrder = right.entry_weight - left.entry_weight
+    if (entryWeightOrder !== 0) return entryWeightOrder
+    const priorityOrder = left.priority - right.priority
+    return priorityOrder !== 0 ? priorityOrder : left.group_id - right.group_id
   }),
 )
 const activeRouteMode = computed<'native' | 'converted' | null>(() => {
@@ -230,11 +226,11 @@ function channelName(channelID: string): string {
 }
 
 function includedGroupIdentity(group: RouteInspectGroupDto): string {
-  return `#${group.group_id} · ${channelName(group.channel_id)} · ${modelLabel(group.upstream_model)}`
+  return `${channelName(group.channel_id)} · ${modelLabel(group.upstream_model)}`
 }
 
 function excludedGroupIdentity(group: RouteInspectGroupDto): string {
-  return `#${group.group_id} · ${channelName(group.channel_id)} · ${t(
+  return `${channelName(group.channel_id)} · ${t(
     `monitor.inspector.routeModes.${group.route_mode}`,
   )} · ${modelLabel(group.upstream_model)}`
 }
@@ -408,12 +404,13 @@ function retryOptions(): void {
   void Promise.all([accessKeyOptionsQuery.refetch(), groupOptionsQuery.refetch()])
 }
 
+function isKnownReason(reason: string | null): boolean {
+  return reason !== null && knownReasons.has(reason as RouteInspectReasonCode)
+}
+
 function reasonLabel(reason: string | null): string {
   if (reason === null) return t('monitor.inspector.reasons.none')
-  if (knownReasons.has(reason as RouteInspectReasonCode)) {
-    return t(`monitor.inspector.reasons.${reason}`)
-  }
-  return t('monitor.inspector.reasons.unknown')
+  return isKnownReason(reason) ? t(`monitor.inspector.reasons.${reason}`) : ''
 }
 
 function modelLabel(value: string | null): string {
@@ -422,10 +419,6 @@ function modelLabel(value: string | null): string {
 
 function formattedInteger(value: number): string {
   return formatInteger(value, locale.value)
-}
-
-function nullableWeight(value: number | null): string {
-  return value === null ? t('monitor.inspector.weights.none') : formattedInteger(value)
 }
 
 function accessKeyStatusTone(status: 'active' | 'disabled'): 'success' | 'neutral' {
@@ -475,13 +468,6 @@ function groupAvailableCredentialCount(group: RouteInspectGroupDto): number {
   return group.credentials.filter((credential) => credential.available).length
 }
 
-function groupEffectiveWeight(group: RouteInspectGroupDto): number {
-  return group.credentials.reduce(
-    (total, credential) => total + (credential.available ? credential.effective_weight : 0),
-    0,
-  )
-}
-
 function groupShare(group: RouteInspectGroupDto): number {
   // 占比一律以后端归一化结果为准(设计 §8.2);0 是有效值,不做前端回退。
   return Math.round(group.effective_share * 1_000) / 10
@@ -506,8 +492,8 @@ function candidateCredentialSummary(group: RouteInspectGroupDto): string {
 function orderedCredentials(group: RouteInspectGroupDto): RouteInspectCredentialDto[] {
   return [...group.credentials].sort((left, right) => {
     if (left.available !== right.available) return left.available ? -1 : 1
-    const weightOrder = right.effective_weight - left.effective_weight
-    return weightOrder !== 0 ? weightOrder : left.credential_id - right.credential_id
+    const reasonOrder = (left.reason_code ?? '').localeCompare(right.reason_code ?? '')
+    return reasonOrder !== 0 ? reasonOrder : left.credential_id - right.credential_id
   })
 }
 
@@ -629,13 +615,13 @@ onBeforeUnmount(() => {
                   }}
                 </StatusBadge>
               </div>
-              <p class="route-summary__reason">
+              <p v-if="isKnownReason(observation.reason_code)" class="route-summary__reason">
                 {{
                   t('monitor.inspector.result.reasonLine', {
                     reason: reasonLabel(observation.reason_code),
                   })
                 }}
-                <code v-if="observation.reason_code">{{ observation.reason_code }}</code>
+                <code>{{ observation.reason_code }}</code>
               </p>
             </div>
             <div class="route-summary__meta">
@@ -653,24 +639,14 @@ onBeforeUnmount(() => {
                   })
                 }}
               </time>
-              <span>
-                {{
-                  t('monitor.inspector.result.revision', {
-                    revision: observation.snapshot_revision,
-                  })
-                }}
-              </span>
             </div>
           </header>
 
           <dl class="route-facts">
             <div class="route-fact">
               <dt>{{ t('monitor.inspector.result.accessKey') }}</dt>
-              <OverflowTooltip
-                as="dd"
-                :content="`${observation.access_key.name} · #${observation.access_key.id}`"
-              >
-                {{ observation.access_key.name }} · #{{ observation.access_key.id }}
+              <OverflowTooltip as="dd" :content="observation.access_key.name">
+                {{ observation.access_key.name }}
               </OverflowTooltip>
             </div>
             <div class="route-fact">
@@ -816,10 +792,6 @@ onBeforeUnmount(() => {
                     t('monitor.inspector.groups.columns.weight')
                   }}</span>
                   <strong>{{ formattedInteger(group.entry_weight) }}</strong>
-                  <small>
-                    {{ formattedInteger(groupEffectiveWeight(group)) }}
-                    {{ t('monitor.inspector.groups.currentTotal') }}
-                  </small>
                 </div>
                 <div class="route-candidate__share" role="cell">
                   <span class="route-cell-label">{{
@@ -853,13 +825,6 @@ onBeforeUnmount(() => {
                     <strong>{{ t('monitor.inspector.credentials.title') }}</strong>
                     <span>{{ candidateCredentialSummary(group) }}</span>
                   </div>
-                  <span>
-                    {{
-                      t('monitor.inspector.weights.groupManual', {
-                        value: nullableWeight(group.weight_manual),
-                      })
-                    }}
-                  </span>
                 </header>
 
                 <p v-if="group.credentials.length === 0" class="route-credential-details__empty">
@@ -881,15 +846,6 @@ onBeforeUnmount(() => {
                       t('monitor.inspector.credentials.columns.status')
                     }}</span>
                     <span role="columnheader">{{
-                      t('monitor.inspector.credentials.columns.manual')
-                    }}</span>
-                    <span role="columnheader">{{
-                      t('monitor.inspector.credentials.columns.auto')
-                    }}</span>
-                    <span role="columnheader">{{
-                      t('monitor.inspector.credentials.columns.effective')
-                    }}</span>
-                    <span role="columnheader">{{
                       t('monitor.inspector.credentials.columns.cooldown')
                     }}</span>
                   </template>
@@ -908,7 +864,6 @@ onBeforeUnmount(() => {
                       <span class="route-credential-label">{{
                         t('monitor.inspector.credentials.columns.credential')
                       }}</span>
-                      <code>#{{ credential.credential_id }}</code>
                     </div>
                     <div
                       class="ledger-record-list__cell route-credential-record__status"
@@ -921,33 +876,6 @@ onBeforeUnmount(() => {
                         {{ credentialStatusLabel(credential) }}
                       </StatusBadge>
                       <code v-if="credential.reason_code">{{ credential.reason_code }}</code>
-                    </div>
-                    <div
-                      class="ledger-record-list__cell route-credential-record__weight"
-                      role="cell"
-                    >
-                      <span class="route-credential-label">{{
-                        t('monitor.inspector.credentials.columns.manual')
-                      }}</span>
-                      <span>{{ nullableWeight(credential.weight_manual) }}</span>
-                    </div>
-                    <div
-                      class="ledger-record-list__cell route-credential-record__weight"
-                      role="cell"
-                    >
-                      <span class="route-credential-label">{{
-                        t('monitor.inspector.credentials.columns.auto')
-                      }}</span>
-                      <span>{{ formattedInteger(credential.weight_auto) }}</span>
-                    </div>
-                    <div
-                      class="ledger-record-list__cell route-credential-record__weight"
-                      role="cell"
-                    >
-                      <span class="route-credential-label">{{
-                        t('monitor.inspector.credentials.columns.effective')
-                      }}</span>
-                      <span>{{ formattedInteger(credential.effective_weight) }}</span>
                     </div>
                     <div
                       class="ledger-record-list__cell route-credential-record__cooldown"
@@ -1039,13 +967,21 @@ onBeforeUnmount(() => {
                   {{ t('monitor.inspector.groups.excluded') }}
                 </StatusBadge>
               </div>
-              <div class="ledger-record-list__cell route-exclusion-record__reason" role="cell">
+              <div
+                v-if="isKnownReason(group.reason_code)"
+                class="ledger-record-list__cell route-exclusion-record__reason"
+                role="cell"
+              >
                 <span class="route-credential-label">{{
                   t('monitor.inspector.result.reason')
                 }}</span>
                 {{ reasonLabel(group.reason_code) }}
               </div>
-              <div class="ledger-record-list__cell route-exclusion-record__code" role="cell">
+              <div
+                v-if="isKnownReason(group.reason_code)"
+                class="ledger-record-list__cell route-exclusion-record__code"
+                role="cell"
+              >
                 <span class="route-credential-label">{{
                   t('monitor.inspector.excluded.reasonCode')
                 }}</span>
@@ -1402,7 +1338,7 @@ onBeforeUnmount(() => {
 }
 
 .route-credential-grid {
-  --ledger-record-list-grid: 88px minmax(170px, 1.4fr) 92px 92px 108px minmax(148px, 1fr);
+  --ledger-record-list-grid: 88px minmax(170px, 1.4fr) minmax(148px, 1fr);
   --ledger-record-list-column-gap: 14px;
 }
 
@@ -1412,7 +1348,6 @@ onBeforeUnmount(() => {
 }
 
 .route-credential-record__identity code,
-.route-credential-record__weight,
 .route-credential-record__cooldown,
 .route-exclusion-record__code {
   font-family: var(--font-mono);
@@ -1571,7 +1506,6 @@ onBeforeUnmount(() => {
   }
 
   .route-credential-record__identity,
-  .route-credential-record__weight,
   .route-credential-record__cooldown,
   .route-exclusion-record > .ledger-record-list__cell {
     display: grid;

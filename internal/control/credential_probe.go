@@ -66,13 +66,11 @@ const credentialProbeRestoreProofDomain = "gpt-load/control/credential-probe-res
 type credentialProbeRestoreProofPayload struct {
 	CredentialID       uint   `json:"credential_id"`
 	CooldownUntil      string `json:"cooldown_until"`
-	EncryptedProxy     string `json:"encrypted_proxy"`
 	EncryptedValue     string `json:"encrypted_value"`
 	FailureGeneration  uint64 `json:"failure_generation"`
 	Fingerprint        string `json:"fingerprint"`
 	GroupID            uint   `json:"group_id"`
 	IdentityGeneration uint64 `json:"identity_generation"`
-	ProxyFingerprint   string `json:"proxy_fingerprint"`
 	TargetSignature    string `json:"target_signature"`
 	Version            uint64 `json:"version"`
 }
@@ -158,7 +156,7 @@ func (probe *credentialProbeExecutor) Probe(
 		)
 	}
 	apiKey, _ := credential.Value("api_key")
-	proxy, proxyFingerprint, err := validationAttemptProxy(probe.decryptor, group.Proxy, ref)
+	proxy, proxyFingerprint, err := validationAttemptProxy(group.Proxy)
 	if err != nil {
 		return credentialProbeExecution{}, newCredentialProbeFailure(
 			"proxy",
@@ -435,14 +433,8 @@ func (s *Service) captureCredentialProbe(
 		)
 	}
 	entry := entries[0]
-	expectedProxy, expectedProxyFingerprint, err := storedProxyIdentity(s.encryption, credentialRow.ProxyConfig)
-	if err != nil {
-		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, err
-	}
 	if entry.Fingerprint != credentialRow.Fingerprint ||
-		entry.EncryptedValue != credentialRow.Data ||
-		entry.EncryptedProxy != expectedProxy ||
-		entry.ProxyFingerprint != expectedProxyFingerprint {
+		entry.EncryptedValue != credentialRow.Data {
 		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, dbRegistryMismatch(
 			mismatchIdentity,
 			groupID,
@@ -473,7 +465,6 @@ func credentialProbeRef(entry state.CredentialEntry) state.CredentialRef {
 		ID: entry.ID, GroupID: entry.GroupID,
 		Version: entry.Version, IdentityGeneration: entry.IdentityGeneration,
 		Fingerprint: entry.Fingerprint, EncryptedValue: entry.EncryptedValue,
-		EncryptedProxy: entry.EncryptedProxy, ProxyFingerprint: entry.ProxyFingerprint,
 		FailureGeneration: entry.FailureGeneration,
 	}
 }
@@ -522,7 +513,7 @@ func (s *Service) currentCredentialProbeRestoreProof(
 			}
 			current := entries[0]
 			currentCredential := credentialProbeCredentialFromEntry(current)
-			if current.Status != state.CredentialStatusActive || !current.Blacklisted ||
+			if !current.Blacklisted ||
 				currentCredential.ref != tested.ref ||
 				!currentCredential.cooldownUntil.Equal(tested.cooldownUntil) {
 				return
@@ -551,7 +542,6 @@ func (s *Service) credentialProbeRestoreProof(
 		CooldownUntil: credentialProbeCooldownIdentity(credential.cooldownUntil),
 		Version:       ref.Version, IdentityGeneration: ref.IdentityGeneration,
 		Fingerprint: ref.Fingerprint, EncryptedValue: ref.EncryptedValue,
-		EncryptedProxy: ref.EncryptedProxy, ProxyFingerprint: ref.ProxyFingerprint,
 		FailureGeneration: ref.FailureGeneration,
 		TargetSignature:   hex.EncodeToString(targetSignature[:]),
 	})
@@ -567,7 +557,7 @@ func (s *Service) credentialProbeRestoreProofMatches(
 	targetSignature groupValidationSignature,
 	expected string,
 ) bool {
-	if entry.Status != state.CredentialStatusActive || !entry.Blacklisted {
+	if !entry.Blacklisted {
 		return false
 	}
 	current, ok := s.credentialProbeRestoreProof(

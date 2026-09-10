@@ -156,12 +156,11 @@ func TestCompileSubscriptionPublishesOnlyVerifiedCodexOperations(t *testing.T) {
 func TestCompileBuildsManagementCatalogsWithoutChangingActiveIndexes(t *testing.T) {
 	t.Parallel()
 
-	disabledWeight := 20
 	input := CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
 			{ConnectionType: "api_key", ID: 2, Name: "disabled", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-				Models: []ModelConfig{{ID: "provider-disabled", Alias: "public"}}, WeightManual: &disabledWeight,
+				Models: []ModelConfig{{ID: "provider-disabled", Alias: "public"}},
 			},
 			{ConnectionType: "api_key", ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "provider-active", Alias: "public"}}, Enabled: true,
@@ -188,7 +187,7 @@ func TestCompileBuildsManagementCatalogsWithoutChangingActiveIndexes(t *testing.
 	if len(routes) != 2 || routes[0].GroupID != 1 || routes[1].GroupID != 2 {
 		t.Fatalf("route catalog = %#v", routes)
 	}
-	if got := snapshot.GroupCatalog[2]; got.Enabled || got.WeightManual == nil || *got.WeightManual != 20 {
+	if got := snapshot.GroupCatalog[2]; got.Enabled {
 		t.Fatalf("disabled group catalog = %#v", got)
 	}
 	if _, ok := snapshot.AccessKeysByHash["disabled-hash"]; ok {
@@ -223,7 +222,6 @@ func TestCompileCarriesSettingsAndValidationModel(t *testing.T) {
 func TestCompileOwnsInputData(t *testing.T) {
 	t.Parallel()
 
-	weight := 25
 	expiresAtMS := int64(1_900_000_000_000)
 	filters := FilterSet{
 		Groups:    map[uint]struct{}{1: {}},
@@ -233,7 +231,7 @@ func TestCompileOwnsInputData(t *testing.T) {
 	input := CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-			Models: []ModelConfig{{ID: "upstream", Alias: "public"}}, WeightManual: &weight, Enabled: true,
+			Models: []ModelConfig{{ID: "upstream", Alias: "public"}}, Enabled: true,
 		}},
 		AccessKeys: []AccessKeyConfig{{
 			ID: 1, KeyHash: "hash", Status: AccessKeyStatusActive, Filters: filters,
@@ -251,7 +249,6 @@ func TestCompileOwnsInputData(t *testing.T) {
 		t.Fatalf("Compile() error = %v", err)
 	}
 	input.Groups[0].Models[0] = ModelConfig{ID: "changed"}
-	weight = 99
 	filters.Groups[2] = struct{}{}
 	filters.Protocols[protocol.Gemini] = struct{}{}
 	filters.Models["changed"] = struct{}{}
@@ -260,7 +257,7 @@ func TestCompileOwnsInputData(t *testing.T) {
 	input.AccessKeys[0].CostLimitRules[0].LimitNanoUSD = 1
 
 	view := snapshot.Groups[1]
-	if !reflect.DeepEqual(view.Models, []ModelConfig{{ID: "upstream", Alias: "public"}}) || view.WeightManual == nil || *view.WeightManual != 25 {
+	if !reflect.DeepEqual(view.Models, []ModelConfig{{ID: "upstream", Alias: "public"}}) {
 		t.Fatalf("group view changed with input = %#v", view)
 	}
 	gotFilters := snapshot.AccessKeysByID[1].Filters

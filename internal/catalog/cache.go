@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 )
 
 const (
@@ -345,9 +344,6 @@ func writeFull(writer io.Writer, contents []byte) error {
 }
 
 func syncCatalogDirectory(path string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
 	directory, err := os.Open(filepath.Dir(path))
 	if err != nil {
 		return fmt.Errorf("open catalog cache directory: %w", err)

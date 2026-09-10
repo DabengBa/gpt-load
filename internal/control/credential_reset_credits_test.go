@@ -343,7 +343,7 @@ func TestConsumeCredentialResetCreditRestoresRuntimeHealth(t *testing.T) {
 		t.Fatal("credential missing from runtime registry")
 	}
 	if view.Blacklisted || !view.CooldownUntil.IsZero() || view.FailureCount != 0 ||
-		view.Status != "active" {
+		view.AuthState != "ready" {
 		t.Fatalf("runtime credential after reset = %#v", view)
 	}
 	stats := fixture.stats.Snapshot(credentialID, now)

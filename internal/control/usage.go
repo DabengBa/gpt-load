@@ -48,6 +48,8 @@ type usageAggregateResponse struct {
 	OutputTokens            int64  `json:"output_tokens"`
 	TotalTokens             int64  `json:"total_tokens"`
 	EstimatedCostNanoUSD    string `json:"estimated_cost_nano_usd"`
+	DurationMsTotal         int64  `json:"duration_ms_total"`
+	DurationSampleCount     int64  `json:"duration_sample_count"`
 	UsageMissingCount       int64  `json:"usage_missing_count"`
 	PartialCount            int64  `json:"partial_count"`
 	UnpricedRequestCount    int64  `json:"unpriced_request_count"`
@@ -95,6 +97,27 @@ type usageCollectionHealthResponse struct {
 	LastWriteFailureAtMS *int64 `json:"last_write_failure_at_ms"`
 }
 
+type usageBreakdownRowResponse struct {
+	Model     string  `json:"model"`
+	GroupID   *uint   `json:"group_id,omitempty"`
+	ChannelID *string `json:"channel_id,omitempty"`
+	usageAggregateResponse
+}
+
+type usageBreakdownResponse struct {
+	Scope      string                      `json:"scope"`
+	Rows       []usageBreakdownRowResponse `json:"rows"`
+	Total      usageAggregateResponse      `json:"total"`
+	Pagination usagePaginationResponse     `json:"pagination"`
+}
+
+type usagePaginationResponse struct {
+	Page       int `json:"page"`
+	PageSize   int `json:"page_size"`
+	TotalItems int `json:"total_items"`
+	TotalPages int `json:"total_pages"`
+}
+
 type usageResponse struct {
 	Range            string                         `json:"range"`
 	Granularity      requestlog.UsageGranularity    `json:"granularity"`
@@ -105,6 +128,7 @@ type usageResponse struct {
 	Summary          usageAggregateResponse         `json:"summary"`
 	Series           []usageSeriesResponse          `json:"series"`
 	Distributions    usageDistributionViewsResponse `json:"distributions"`
+	Breakdown        usageBreakdownResponse         `json:"breakdown"`
 	CollectionHealth usageCollectionHealthResponse  `json:"collection_health"`
 }
 
@@ -159,13 +183,15 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 		return requestlog.UsageQuery{}, app_errors.ErrBadRequest
 	}
 	allowed := map[string]struct{}{
-		"range":          {},
-		"from_ms":        {},
-		"to_ms":          {},
-		"group_id":       {},
-		"channel_id":     {},
-		"credential_id":  {},
-		"upstream_model": {},
+		"range":               {},
+		"from_ms":             {},
+		"to_ms":               {},
+		"group_id":            {},
+		"channel_id":          {},
+		"credential_id":       {},
+		"upstream_model":      {},
+		"breakdown_page":      {},
+		"breakdown_page_size": {},
 	}
 	for key, value := range values {
 		if _, ok := allowed[key]; !ok || len(value) != 1 {
@@ -265,6 +291,20 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 		}
 		query.UpstreamModel = value
 	}
+	if value, ok := singleQueryValue(values, "breakdown_page"); ok {
+		page, err := parseCanonicalSafeUint(value)
+		if err != nil || page == 0 || page > uint64(maxSafeInteger) {
+			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+		}
+		query.BreakdownPage = int(page)
+	}
+	if value, ok := singleQueryValue(values, "breakdown_page_size"); ok {
+		pageSize, err := parseCanonicalSafeUint(value)
+		if err != nil || (pageSize != 20 && pageSize != 50 && pageSize != 100) {
+			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+		}
+		query.BreakdownPageSize = int(pageSize)
+	}
 	return query, nil
 }
 
@@ -333,6 +373,10 @@ func (service *Service) mapUsageResponse(
 	if err != nil {
 		return usageResponse{}, err
 	}
+	breakdown, err := mapUsageBreakdown(report.Breakdown, accessKeyScoped, summary)
+	if err != nil {
+		return usageResponse{}, err
+	}
 	stats := requestlog.Stats{}
 	if !accessKeyScoped {
 		stats = service.requestLogStats.Stats()
@@ -375,8 +419,9 @@ func (service *Service) mapUsageResponse(
 			WriteFailureTotal:    stats.WriteFailureTotal,
 			LastWriteFailureAtMS: lastWriteFailureAtMS,
 		},
-		Summary: summary,
-		Series:  make([]usageSeriesResponse, 0, len(report.Series)),
+		Summary:   summary,
+		Breakdown: breakdown,
+		Series:    make([]usageSeriesResponse, 0, len(report.Series)),
 		Distributions: usageDistributionViewsResponse{
 			Model: make(map[requestlog.UsageDistributionMetric]usageDistributionResponse, 3),
 		},
@@ -441,6 +486,98 @@ func (service *Service) mapUsageResponse(
 				result.Distributions.AccessKey[metric] = mapped
 			}
 		}
+	}
+	return result, nil
+}
+
+func mapUsageBreakdown(
+	source requestlog.UsageBreakdown,
+	accessKeyScoped bool,
+	summary usageAggregateResponse,
+) (usageBreakdownResponse, error) {
+	wantScope := "admin"
+	if accessKeyScoped {
+		wantScope = "access_key"
+	}
+	if source.Scope != wantScope {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: scope mismatch")
+	}
+	total, err := mapUsageAggregate(source.Total)
+	if err != nil {
+		return usageBreakdownResponse{}, err
+	}
+	if total != summary {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: total mismatch with summary")
+	}
+	result := usageBreakdownResponse{
+		Scope: source.Scope,
+		Rows:  make([]usageBreakdownRowResponse, 0, len(source.Rows)),
+		Total: total,
+		Pagination: usagePaginationResponse{
+			Page: source.Pagination.Page, PageSize: source.Pagination.PageSize,
+			TotalItems: source.Pagination.TotalItems, TotalPages: source.Pagination.TotalPages,
+		},
+	}
+	if result.Pagination.Page < 1 ||
+		(result.Pagination.PageSize != 20 && result.Pagination.PageSize != 50 && result.Pagination.PageSize != 100) ||
+		result.Pagination.TotalItems < 0 || result.Pagination.TotalPages < 0 {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid pagination")
+	}
+	expectedTotalPages := 0
+	if result.Pagination.TotalItems > 0 {
+		expectedTotalPages = (result.Pagination.TotalItems + result.Pagination.PageSize - 1) / result.Pagination.PageSize
+	}
+	if result.Pagination.TotalPages != expectedTotalPages {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid pagination")
+	}
+	expectedRows := 0
+	if result.Pagination.TotalItems > 0 && result.Pagination.Page <= result.Pagination.TotalPages {
+		remaining := result.Pagination.TotalItems - (result.Pagination.Page-1)*result.Pagination.PageSize
+		expectedRows = result.Pagination.PageSize
+		if remaining < expectedRows {
+			expectedRows = remaining
+		}
+	}
+	if len(source.Rows) != expectedRows {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: pagination row count mismatch")
+	}
+	type identity struct {
+		model, channel string
+		group          uint
+	}
+	seen := make(map[identity]struct{}, len(source.Rows))
+	for _, row := range source.Rows {
+		if !validUsageModel(row.Model) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid model")
+		}
+		if row.GroupID != nil && uint64(*row.GroupID) > uint64(maxSafeInteger) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: unsafe group")
+		}
+		if accessKeyScoped && (row.GroupID != nil || row.ChannelID != nil) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: access-key row contains admin identity")
+		}
+		if !accessKeyScoped && (row.GroupID == nil || row.ChannelID == nil) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: admin row is missing identity")
+		}
+		key := identity{model: row.Model}
+		if row.GroupID != nil {
+			key.group = *row.GroupID
+		}
+		if row.ChannelID != nil {
+			key.channel = *row.ChannelID
+		}
+		if _, exists := seen[key]; exists {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: duplicate identity")
+		}
+		seen[key] = struct{}{}
+		aggregate, err := mapUsageAggregate(row.UsageAggregate)
+		if err != nil {
+			return usageBreakdownResponse{}, err
+		}
+		result.Rows = append(result.Rows, usageBreakdownRowResponse{
+			Model: row.Model, GroupID: row.GroupID, ChannelID: row.ChannelID,
+			usageAggregateResponse: aggregate,
+		})
 	}
 	return result, nil
 }
@@ -648,7 +785,7 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 		source.UncachedInputTokens, source.CacheReadTokens, source.CacheWrite5MTokens,
 		source.CacheWrite1HTokens, source.OutputTokens, source.UsageMissingCount,
 		source.CacheWriteUnknownTokens, source.PartialCount, source.UnpricedRequestCount,
-		source.PricingPartialCount,
+		source.PricingPartialCount, source.DurationMsTotal, source.DurationSampleCount,
 	}
 	for _, value := range values {
 		if value < 0 || value > maxSafeInteger {
@@ -669,12 +806,17 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 	if source.EstimatedCostNanoUSD < 0 {
 		return usageAggregateResponse{}, fmt.Errorf("map usage cost: negative value")
 	}
+	if source.DurationSampleCount > source.RequestCount {
+		return usageAggregateResponse{}, fmt.Errorf("map usage duration: sample count exceeds requests")
+	}
 	return usageAggregateResponse{
 		RequestCount: source.RequestCount, SuccessCount: source.SuccessCount, FailureCount: source.FailureCount,
 		UncachedInputTokens: source.UncachedInputTokens, CacheReadTokens: source.CacheReadTokens,
 		CacheWrite5MTokens: source.CacheWrite5MTokens, CacheWrite1HTokens: source.CacheWrite1HTokens,
 		CacheWriteUnknownTokens: source.CacheWriteUnknownTokens,
 		OutputTokens:            source.OutputTokens, TotalTokens: totalTokens,
+		DurationMsTotal:      source.DurationMsTotal,
+		DurationSampleCount:  source.DurationSampleCount,
 		EstimatedCostNanoUSD: strconv.FormatInt(source.EstimatedCostNanoUSD, 10),
 		UsageMissingCount:    source.UsageMissingCount, PartialCount: source.PartialCount,
 		UnpricedRequestCount: source.UnpricedRequestCount,

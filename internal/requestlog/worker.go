@@ -48,7 +48,13 @@ func (writer *gormBatchWriter) WriteBatch(ctx context.Context, rows []models.Req
 		return err
 	}
 	if len(newRows) == 0 {
-		return nil
+		return dbtx.Run(ctx, writer.db, dbtx.Options{
+			Mode:           dbtx.Write,
+			CleanupTimeout: requestLogTransactionCleanupTimeout,
+			Operation:      "recover usage journals",
+		}, func(transaction *gorm.DB) error {
+			return recoverPendingUsageJournals(transaction, rows)
+		})
 	}
 	journals, err := buildUsageAggregationJournals(newRows)
 	if err != nil {
@@ -62,7 +68,10 @@ func (writer *gormBatchWriter) WriteBatch(ctx context.Context, rows []models.Req
 		if err := stageUsageAggregationJournals(transaction, journals); err != nil {
 			return err
 		}
-		return writeRequestLogBatch(transaction, newRows)
+		if err := writeRequestLogBatch(transaction, newRows); err != nil {
+			return err
+		}
+		return recoverPendingUsageJournals(transaction, rows)
 	})
 }
 
@@ -105,6 +114,26 @@ func (writer *gormBatchWriter) prepareNewRequestLogRows(
 	return newRows, nil
 }
 
+func recoverPendingUsageJournals(tx *gorm.DB, rows []models.RequestLog) error {
+	ids := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		if _, exists := seen[row.ID]; exists {
+			continue
+		}
+		seen[row.ID] = struct{}{}
+		ids = append(ids, row.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var journals []models.UsageAggregationJournal
+	if err := tx.Where("request_id IN ? AND applied = ?", ids, false).Find(&journals).Error; err != nil {
+		return fmt.Errorf("query pending usage journals for recovery: %w", err)
+	}
+	return applyUsageJournalBatch(tx, journals)
+}
+
 func stageUsageAggregationJournals(
 	tx *gorm.DB,
 	journals []models.UsageAggregationJournal,
@@ -139,6 +168,8 @@ type usageStatDelta struct {
 	CacheWrite1HTokens      int64
 	CacheWriteUnknownTokens int64
 	EstimatedCostNanoUSD    int64
+	DurationMsTotal         int64
+	DurationSampleCount     int64
 	UsageMissingCount       int64
 	PartialCount            int64
 	UnpricedRequestCount    int64
@@ -397,6 +428,8 @@ func usageStatUpsertClause() clause.OnConflict {
 			"cache_write_1h_tokens",
 			"cache_write_unknown_tokens",
 			"estimated_cost_nano_usd",
+			"duration_ms_total",
+			"duration_sample_count",
 			"usage_missing_count",
 			"partial_count",
 			"unpriced_request_count",
@@ -441,6 +474,8 @@ func buildUsageAggregationJournals(
 				CacheWrite1HTokens:      delta.CacheWrite1HTokens,
 				CacheWriteUnknownTokens: delta.CacheWriteUnknownTokens,
 				EstimatedCostNanoUSD:    delta.EstimatedCostNanoUSD,
+				DurationMsTotal:         delta.DurationMsTotal,
+				DurationSampleCount:     delta.DurationSampleCount,
 				UsageMissingCount:       delta.UsageMissingCount,
 				PartialCount:            delta.PartialCount,
 				UnpricedRequestCount:    delta.UnpricedRequestCount,
@@ -483,10 +518,15 @@ func buildUsageJournalDeltas(
 			{name: "partial_count", target: &delta.PartialCount, value: journal.PartialCount},
 			{name: "unpriced_request_count", target: &delta.UnpricedRequestCount, value: journal.UnpricedRequestCount},
 			{name: "pricing_partial_count", target: &delta.PricingPartialCount, value: journal.PricingPartialCount},
+			{name: "duration_ms_total", target: &delta.DurationMsTotal, value: journal.DurationMsTotal},
+			{name: "duration_sample_count", target: &delta.DurationSampleCount, value: journal.DurationSampleCount},
 		} {
 			if err := checkedInt64Add(field.target, field.value, field.name); err != nil {
 				return nil, err
 			}
+		}
+		if delta.DurationSampleCount > delta.RequestCount {
+			return nil, fmt.Errorf("aggregate usage journal duration_sample_count exceeds request_count")
 		}
 		cost, ok := pricing.CheckedAddNanoUSD(
 			pricing.NanoUSD(delta.EstimatedCostNanoUSD),
@@ -506,6 +546,9 @@ func buildUsageJournalDeltas(
 func buildUsageStatDeltas(rows []models.RequestLog) (map[usageStatKey]usageStatDelta, error) {
 	deltas := make(map[usageStatKey]usageStatDelta)
 	for _, row := range rows {
+		if row.AttemptCount == 0 {
+			continue
+		}
 		bucketStartMS, err := epochms.AlignDown(
 			row.CompletedAtMS,
 			epochms.MillisecondsPerHour,
@@ -547,6 +590,13 @@ func (delta *usageStatDelta) addRow(row models.RequestLog) error {
 		}
 	default:
 		return fmt.Errorf("aggregate request log %q: invalid status %q", row.ID, row.Status)
+	}
+
+	if err := checkedInt64Add(&delta.DurationMsTotal, row.DurationMs, "duration_ms_total"); err != nil {
+		return err
+	}
+	if err := checkedInt64Add(&delta.DurationSampleCount, 1, "duration_sample_count"); err != nil {
+		return err
 	}
 
 	switch row.UsageState {
@@ -730,6 +780,10 @@ func checkedUsageStatTotal(
 	existing models.UsageStat,
 	delta usageStatDelta,
 ) (models.UsageStat, error) {
+	if existing.DurationSampleCount > existing.RequestCount ||
+		delta.DurationSampleCount > delta.RequestCount {
+		return models.UsageStat{}, fmt.Errorf("calculate absolute usage stat duration_sample_count exceeds request_count")
+	}
 	total := existing
 	for _, field := range []struct {
 		name  string
@@ -737,6 +791,8 @@ func checkedUsageStatTotal(
 		right int64
 		set   func(int64)
 	}{
+		{name: "duration_ms_total", left: existing.DurationMsTotal, right: delta.DurationMsTotal, set: func(value int64) { total.DurationMsTotal = value }},
+		{name: "duration_sample_count", left: existing.DurationSampleCount, right: delta.DurationSampleCount, set: func(value int64) { total.DurationSampleCount = value }},
 		{name: "request_count", left: existing.RequestCount, right: delta.RequestCount, set: func(value int64) { total.RequestCount = value }},
 		{name: "success_count", left: existing.SuccessCount, right: delta.SuccessCount, set: func(value int64) { total.SuccessCount = value }},
 		{name: "failure_count", left: existing.FailureCount, right: delta.FailureCount, set: func(value int64) { total.FailureCount = value }},
@@ -770,6 +826,9 @@ func checkedUsageStatTotal(
 		)
 	}
 	total.EstimatedCostNanoUSD = int64(cost)
+	if total.DurationSampleCount > total.RequestCount {
+		return models.UsageStat{}, fmt.Errorf("calculate absolute usage stat duration_sample_count exceeds request_count")
+	}
 	return total, nil
 }
 

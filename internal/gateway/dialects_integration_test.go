@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
@@ -96,6 +97,30 @@ func newDialectGatewayEngineWithForwarder(
 	entries := make([]state.CredentialEntry, 0)
 	credentialConfigs := make([]state.CredentialConfig, 0)
 	credentialID := uint(1)
+	maxGroupID := uint(0)
+	for _, group := range groups {
+		if group.id > maxGroupID {
+			maxGroupID = group.id
+		}
+	}
+	expandedGroups := make([]dialectGatewayGroup, 0, len(groups))
+	for _, group := range groups {
+		if len(group.apiKeys) <= 1 {
+			expandedGroups = append(expandedGroups, group)
+			continue
+		}
+		for index, apiKey := range group.apiKeys {
+			copyGroup := group
+			copyGroup.apiKeys = []string{apiKey}
+			if index > 0 {
+				maxGroupID++
+				copyGroup.id = maxGroupID
+				copyGroup.name = fmt.Sprintf("%s-%d", group.name, index+1)
+			}
+			expandedGroups = append(expandedGroups, copyGroup)
+		}
+	}
+	groups = expandedGroups
 	for _, group := range groups {
 		models := group.models
 		if len(models) == 0 {

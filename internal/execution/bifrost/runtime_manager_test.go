@@ -552,42 +552,6 @@ func TestRuntimeManagerReconcilesGroupEffectiveProxy(t *testing.T) {
 	<-manager.BeginShutdown()
 }
 
-func TestRuntimeManagerPartitionsCredentialProxyByCredential(t *testing.T) {
-	registry := channel.NewRegistry()
-	resolved, err := registry.Resolve(channel.OpenAI, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager, err := newRuntimeManager(runtimeOptions{allowPrivateNetwork: true}, registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := manager.Start(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(manager.Shutdown)
-	config, failure := manager.configForAttempt(execution.AttemptSpec{
-		ChannelID:    string(channel.OpenAI),
-		TargetConfig: resolved.TargetConfig,
-		Credential: execution.NewCredentialSnapshot(
-			17,
-			1,
-			23,
-			[]byte(`{"api_key":"secret"}`),
-		),
-		Proxy: outboundproxy.Effective{
-			Config: outboundproxy.Config{Mode: outboundproxy.ModeCustom, URL: "http://proxy.example.com:8080"},
-			Source: outboundproxy.SourceCredential,
-		},
-	})
-	if failure != nil {
-		t.Fatalf("configForAttempt() failure = %#v", failure)
-	}
-	if config.credentialPartitionID != 17 || config.baseFingerprint == "" || config.targetFingerprint == "" {
-		t.Fatalf("credential proxy partition = %#v", config)
-	}
-}
-
 func TestRuntimeManagerRetiresCredentialPartitionAfterLastLease(t *testing.T) {
 	base := effectiveConfigForTest(
 		t,

@@ -19,7 +19,7 @@ func TestReleaseWorkflowParallelizesIndependentBuildStages(t *testing.T) {
 	}
 
 	binaryJob := workflowJobBlock(t, content, "build-binaries")
-	for _, required := range []string{"verify-and-build-web", "max-parallel: 5"} {
+	for _, required := range []string{"verify-and-build-web", "max-parallel: 2"} {
 		if !strings.Contains(binaryJob, required) {
 			t.Fatalf("binary build job does not contain %q:\n%s", required, binaryJob)
 		}
