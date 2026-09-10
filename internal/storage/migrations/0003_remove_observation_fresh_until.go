@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -39,35 +38,10 @@ func Up0003(db *gorm.DB) error {
 	if strings.EqualFold(db.Dialector.Name(), "sqlite") {
 		return rebuildSQLiteCredentialObservations0003(db)
 	}
-	if strings.EqualFold(db.Dialector.Name(), "mysql") &&
-		db.Migrator().HasConstraint(&credentialObservation0003{}, credentialObservationFreshCheck0003) {
-		if err := dropObservationFreshnessCheck0003(db); err != nil {
-			return fmt.Errorf("remove observation freshness check constraint: %w", err)
-		}
-	}
 	if err := db.Migrator().DropColumn(&credentialObservation0003{}, credentialObservationFreshUntil0003); err != nil {
 		return fmt.Errorf("remove observation freshness column: %w", err)
 	}
 	return nil
-}
-
-func dropObservationFreshnessCheck0003(db *gorm.DB) error {
-	if dialector, ok := db.Dialector.(*gormmysql.Dialector); ok &&
-		dialector.Config != nil &&
-		mysqlRequiresCheckDropSyntax0003(dialector.ServerVersion) {
-		return db.Exec(
-			"ALTER TABLE `credential_observations` DROP CHECK `chk_credential_observation_fresh_until`",
-		).Error
-	}
-	return db.Migrator().DropConstraint(&credentialObservation0003{}, credentialObservationFreshCheck0003)
-}
-
-func mysqlRequiresCheckDropSyntax0003(serverVersion string) bool {
-	var major, minor, patch int
-	if _, err := fmt.Sscanf(serverVersion, "%d.%d.%d", &major, &minor, &patch); err != nil {
-		return false
-	}
-	return major == 8 && minor == 0 && patch >= 16 && patch < 19
 }
 
 func rebuildSQLiteCredentialObservations0003(db *gorm.DB) error {
@@ -119,16 +93,6 @@ func rebuildSQLiteCredentialObservations0003(db *gorm.DB) error {
 	return nil
 }
 
-// ValidateRecoverable0003 accepts the complete schemas before and after the
-// migration, plus the MySQL state after its first non-transactional DDL.
-func ValidateRecoverable0003(db *gorm.DB) error {
-	if db.Migrator().HasColumn(&credentialObservation0003{}, credentialObservationFreshUntil0003) &&
-		!db.Migrator().HasConstraint(&credentialObservation0003{}, credentialObservationFreshCheck0003) {
-		return validateInitialSchemaAfter0003(db)
-	}
-	return ValidateCurrent0001(db)
-}
-
 // Validate0003 verifies that the retired column is absent and the remaining
 // initial schema is intact.
 func Validate0003(db *gorm.DB) error {
@@ -142,12 +106,9 @@ func Validate0003(db *gorm.DB) error {
 	return validateInitialSchemaAfter0003(db)
 }
 
-// ValidateCurrent0001 preserves the frozen 0001 validator before 0003 removes
-// the freshness check constraint, and validates the same schema without it
-// once removed. MySQL drops the constraint and the column as two separate,
-// non-transactional statements, so a crash can leave the column present with
-// the constraint already gone; the constraint's absence, not the column's,
-// is therefore the correct signal that 0003 has progressed past this point.
+// ValidateCurrent0001 preserves the baseline validator while the freshness
+// column and constraint are present, and validates the post-0003 schema after
+// they are removed.
 func ValidateCurrent0001(db *gorm.DB) error {
 	if db.Migrator().HasConstraint(&credentialObservation0003{}, credentialObservationFreshCheck0003) {
 		return Validate0001(db)

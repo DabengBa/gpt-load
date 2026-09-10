@@ -53,7 +53,7 @@
 - **统一入口，保留原生协议** — 官方 API、云平台、模型服务和兼容中转统一管理；客户端继续使用 OpenAI、Anthropic 或 Gemini 原生接口，无需改造代码。
 - **统一管理 API Key 与订阅账号** — Codex、Claude、Antigravity、Grok 等订阅渠道与 API Key 渠道共享凭据管理、调度和健康体系。
 - **内置调度与故障隔离** — 多凭据调度、自动权重、重试、冷却、黑名单与会话亲和，降低单个凭据过载或失效的影响。
-- **可观测、易部署、数据自持** — 提供健康、路由、日志、用量与成本估算；单个 Go 二进制内嵌管理界面，支持 SQLite、MySQL、PostgreSQL 和本地凭据加密。
+- **可观测、易部署、数据自持** — 提供健康、路由、日志、用量与成本估算；单个 Go 二进制内嵌管理界面，支持 SQLite、PostgreSQL 和本地凭据加密。
 
 ## 快速开始
 
@@ -157,10 +157,9 @@ Docker Compose 默认使用应用管理的 SQLite，数据存放在 `gpt-load-da
 <details>
 <summary>使用外部数据库</summary>
 
-通过统一的 `DATABASE_DSN` 连接 SQLite、MySQL 或 PostgreSQL：
+通过统一的 `DATABASE_DSN` 连接 SQLite 或 PostgreSQL：
 
 ```text
-mysql://user:password@db.example:3306/gpt_load?charset=utf8mb4&collation=utf8mb4_bin
 postgres://user:password@db.example:5432/gpt_load?sslmode=require
 ```
 
@@ -209,9 +208,9 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 | `READ_TIMEOUT`                  | `60`                                        | HTTP 请求读取超时，正整数，单位秒。                                                                                                                      |
 | `IDLE_TIMEOUT`                  | `120`                                       | HTTP keep-alive 空闲连接超时，正整数，单位秒。                                                                                                           |
 | `DATA_DIR`                      | `./data`                                    | 托管数据库、`auth.key`、`encryption.key` 和运行状态文件的目录；官方 Compose 固定为 `/app/data`。                                                               |
-| `DATABASE_DSN`                  | 空，使用 `${DATA_DIR}/gpt-load.db`          | 空值使用应用托管的 SQLite；非空值支持 SQLite 路径或 URL、MySQL URL、PostgreSQL URL，并视为运维方管理的外部数据库。容器内文件路径必须位于已挂载目录。     |
-| `DATABASE_MAX_OPEN_CONNECTIONS` | `10`                                        | MySQL 和 PostgreSQL 的最大打开连接数，必须为正整数；SQLite 始终使用单连接。                                                                              |
-| `DATABASE_MAX_IDLE_CONNECTIONS` | `5`                                         | MySQL 和 PostgreSQL 的最大空闲连接数，必须为正整数且不大于 `DATABASE_MAX_OPEN_CONNECTIONS`；SQLite 始终使用单连接。                                      |
+| `DATABASE_DSN`                  | 空，使用 `${DATA_DIR}/gpt-load.db`          | 空值使用应用托管的 SQLite；非空值支持 SQLite 路径或 URL、PostgreSQL URL，并视为运维方管理的外部数据库。容器内文件路径必须位于已挂载目录。     |
+| `DATABASE_MAX_OPEN_CONNECTIONS` | `10`                                        | PostgreSQL 的最大打开连接数，必须为正整数；SQLite 始终使用单连接。                                                                                     |
+| `DATABASE_MAX_IDLE_CONNECTIONS` | `5`                                         | PostgreSQL 的最大空闲连接数，必须为正整数且不大于 `DATABASE_MAX_OPEN_CONNECTIONS`；SQLite 始终使用单连接。                                     |
 | `AUTH_KEY`                      | 空，读取或生成 `${DATA_DIR}/auth.key`       | 管理界面和 `/api` 管理接口的 Bearer 密钥，不是数据面 AccessKey。                                                                                         |
 | `ENCRYPTION_KEY`                | 空，读取或生成 `${DATA_DIR}/encryption.key` | 用于加密渠道凭据；更换或丢失后无法解密已有凭据，必须与数据库一起备份。                                                                                   |
 | `HTTP_PROXY`                    | 空                                          | HTTP 上游请求的环境代理。                                                                                                                                |

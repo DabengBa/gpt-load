@@ -53,7 +53,7 @@ API キー、サブスクリプションアカウント、トラフィック制�
 - **単一ゲートウェイでネイティブプロトコルを維持** — 公式 API、クラウド基盤、モデルサービス、互換中継を一元管理しながら、クライアントは OpenAI、Anthropic、Gemini のネイティブインターフェイスをそのまま使えます。
 - **API キーとサブスクリプションを統一管理** — Codex、Claude、Antigravity、Grok と API キーチャネルで、認証情報管理・スケジューリング・健全性管理を共通化します。
 - **スケジューリングと障害分離を内蔵** — 複数認証情報のスケジューリング、自動ウェイト、リトライ、クールダウン、ブラックリスト、セッションアフィニティにより、過負荷や失効の影響を抑えます。
-- **可観測で導入しやすく、データを自己管理** — 健全性、ルート、ログ、使用量、コスト概算を確認でき、SQLite、MySQL、PostgreSQL とローカル認証情報暗号化を単一バイナリで利用できます。
+- **可観測で導入しやすく、データを自己管理** — 健全性、ルート、ログ、使用量、コスト概算を確認でき、SQLite、PostgreSQL とローカル認証情報暗号化を単一バイナリで利用できます。
 
 ## クイックスタート
 
@@ -157,10 +157,9 @@ Docker Compose は既定でアプリケーション管理の SQLite を使用し
 <details>
 <summary>外部データベースを使う</summary>
 
-統一された `DATABASE_DSN` で SQLite、MySQL、PostgreSQL に接続します：
+統一された `DATABASE_DSN` で SQLite または PostgreSQL に接続します：
 
 ```text
-mysql://user:password@db.example:3306/gpt_load?charset=utf8mb4&collation=utf8mb4_bin
 postgres://user:password@db.example:5432/gpt_load?sslmode=require
 ```
 
@@ -209,9 +208,9 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 | `READ_TIMEOUT` | `60` | HTTP リクエストの読み取りタイムアウト。正の整数、単位は秒です。 |
 | `IDLE_TIMEOUT` | `120` | HTTP keep-alive アイドル接続のタイムアウト。正の整数、単位は秒です。 |
 | `DATA_DIR` | `./data` | 管理対象データベース、`auth.key`、`encryption.key`、実行状態ファイルのディレクトリ。公式 Compose では `/app/data` を使用します。 |
-| `DATABASE_DSN` | 空、`${DATA_DIR}/gpt-load.db` を使用 | 空の場合はアプリケーション管理の SQLite を使用します。空でない場合は SQLite のパスまたは URL、MySQL URL、PostgreSQL URL に対応し、運用者管理の外部データベースとして扱います。コンテナ内のファイルパスはマウント済みディレクトリ内である必要があります。 |
-| `DATABASE_MAX_OPEN_CONNECTIONS` | `10` | MySQL と PostgreSQL の最大オープン接続数。正の整数である必要があります。SQLite は常に単一接続を使用します。 |
-| `DATABASE_MAX_IDLE_CONNECTIONS` | `5` | MySQL と PostgreSQL の最大アイドル接続数。正の整数かつ `DATABASE_MAX_OPEN_CONNECTIONS` 以下である必要があります。SQLite は常に単一接続を使用します。 |
+| `DATABASE_DSN` | 空、`${DATA_DIR}/gpt-load.db` を使用 | 空の場合はアプリケーション管理の SQLite を使用します。空でない場合は SQLite のパスまたは URL、PostgreSQL URL に対応し、運用者管理の外部データベースとして扱います。コンテナ内のファイルパスはマウント済みディレクトリ内である必要があります。 |
+| `DATABASE_MAX_OPEN_CONNECTIONS` | `10` | PostgreSQL の最大オープン接続数。正の整数である必要があります。SQLite は常に単一接続を使用します。 |
+| `DATABASE_MAX_IDLE_CONNECTIONS` | `5` | PostgreSQL の最大アイドル接続数。正の整数かつ `DATABASE_MAX_OPEN_CONNECTIONS` 以下である必要があります。SQLite は常に単一接続を使用します。 |
 | `AUTH_KEY` | 空、`${DATA_DIR}/auth.key` を読み込むか生成 | 管理画面と `/api` 管理 API の Bearer キー。データプレーンの AccessKey とは異なります。 |
 | `ENCRYPTION_KEY` | 空、`${DATA_DIR}/encryption.key` を読み込むか生成 | チャネル認証情報を暗号化します。変更または紛失すると既存の認証情報を復号できないため、データベースと一緒にバックアップしてください。 |
 | `HTTP_PROXY` | 空 | HTTP アップストリームリクエストの環境プロキシ。 |

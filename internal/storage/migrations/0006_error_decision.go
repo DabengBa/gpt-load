@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -127,21 +126,10 @@ func createCheckConstraint0006(db *gorm.DB, name, expression string) error {
 }
 
 func dropCheckConstraint0006(db *gorm.DB, name string) error {
-	if strings.EqualFold(db.Dialector.Name(), "mysql") {
-		if dialector, ok := db.Dialector.(*gormmysql.Dialector); ok && dialector.Config != nil &&
-			mysqlRequiresCheckDropSyntax0003(dialector.ServerVersion) {
-			return db.Exec(fmt.Sprintf(
-				"ALTER TABLE `request_log_attempts` DROP CHECK `%s`", name,
-			)).Error
-		}
-	}
 	return db.Migrator().DropConstraint(requestLogAttemptTable0006, name)
 }
 
-func quoteMigrationIdentifier0006(db *gorm.DB, value string) string {
-	if strings.EqualFold(db.Dialector.Name(), "mysql") {
-		return "`" + value + "`"
-	}
+func quoteMigrationIdentifier0006(_ *gorm.DB, value string) string {
 	return `"` + value + `"`
 }
 
@@ -227,14 +215,15 @@ func rebuildSQLiteRequestLogAttempts0006(db *gorm.DB) error {
 	return nil
 }
 
-// ValidateRecoverable0006 accepts any idempotent prefix of the MySQL DDL.
-func ValidateRecoverable0006(db *gorm.DB) error {
+// validateDecisionColumns0006 verifies the types of any normalized decision
+// columns that are already present.
+func validateDecisionColumns0006(db *gorm.DB) error {
 	if !db.Migrator().HasTable(requestLogAttemptTable0006) {
-		return fmt.Errorf("validate recoverable error decision: table %q is missing", requestLogAttemptTable0006)
+		return fmt.Errorf("validate error decision: table %q is missing", requestLogAttemptTable0006)
 	}
 	columns, err := db.Migrator().ColumnTypes(requestLogAttemptTable0006)
 	if err != nil {
-		return fmt.Errorf("inspect recoverable error decision columns: %w", err)
+		return fmt.Errorf("inspect error decision columns: %w", err)
 	}
 	newColumns := make(map[string]struct{}, len(requestLogAttemptDecisionColumns0006))
 	for _, column := range requestLogAttemptDecisionColumns0006 {
@@ -258,7 +247,7 @@ func ValidateRecoverable0006(db *gorm.DB) error {
 
 // Validate0006 verifies the normalized decision schema and retained indexes.
 func Validate0006(db *gorm.DB) error {
-	if err := ValidateRecoverable0006(db); err != nil {
+	if err := validateDecisionColumns0006(db); err != nil {
 		return err
 	}
 	for _, column := range requestLogAttemptDecisionColumns0006 {
@@ -303,13 +292,6 @@ func failureCategoryConstraintDefinition0006(db *gorm.DB) (string, error) {
 			requestLogAttemptTable0006,
 		).Scan(&definition).Error; err != nil {
 			return "", fmt.Errorf("inspect SQLite failure category constraint: %w", err)
-		}
-	case "mysql":
-		if err := db.Raw(
-			"SELECT CHECK_CLAUSE FROM information_schema.check_constraints WHERE constraint_schema = DATABASE() AND constraint_name = ?",
-			failureCategoryConstraint0006,
-		).Scan(&definition).Error; err != nil {
-			return "", fmt.Errorf("inspect MySQL failure category constraint: %w", err)
 		}
 	case "postgres", "postgresql":
 		if err := db.Raw(

@@ -118,23 +118,9 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - driver: mysql
-            dsn: mysql://root:root@127.0.0.1:3306/gpt_load?charset=utf8mb4&transaction_isolation=%27READ-COMMITTED%27
           - driver: postgres
             dsn: postgres://postgres:postgres@127.0.0.1:5432/gpt_load?sslmode=disable
     services:
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: gpt_load
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
-          --health-interval=5s
-          --health-timeout=10s
-          --health-retries=20
       postgres:
         image: postgres:18
         env:

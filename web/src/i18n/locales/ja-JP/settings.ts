@@ -166,7 +166,6 @@ export default {
       single: '単一インスタンス',
       databases: {
         sqlite: 'SQLite',
-        mysql: 'MySQL',
         postgres: 'PostgreSQL',
       },
       singleBinary: '単一バイナリ',

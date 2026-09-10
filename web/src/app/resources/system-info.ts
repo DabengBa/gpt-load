@@ -13,7 +13,7 @@ import {
 } from './projector'
 
 export type SecretSource = 'environment' | 'key_file'
-export type DatabaseDriver = 'sqlite' | 'mysql' | 'postgres'
+export type DatabaseDriver = 'sqlite' | 'postgres'
 
 export interface SecretSourceInfo {
   source: SecretSource
@@ -76,7 +76,7 @@ export function projectSystemInfo(value: unknown): SystemInfoDto {
   ) {
     invalidResponse()
   }
-  const database = projectEnum(deployment.database, ['sqlite', 'mysql', 'postgres'] as const)
+  const database = projectEnum(deployment.database, ['sqlite', 'postgres'] as const)
   const encryption = projectSecretSource(record.encryption, true)
   return {
     version: projectNonBlankTrimmedString(record.version),

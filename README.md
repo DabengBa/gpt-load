@@ -53,7 +53,7 @@ Your application only needs one base URL and one AccessKey. Providers, accounts,
 - **One gateway, native protocols** — Manage official APIs, cloud platforms, model services, and compatible relays together while clients keep their OpenAI, Anthropic, or Gemini native interfaces.
 - **One mechanism for API keys and subscriptions** — Codex, Claude, Antigravity, Grok, and API-key channels share credential management, scheduling, and health handling.
 - **Scheduling and failure isolation built in** — Multi-credential scheduling, automatic weighting, retries, cooldown, blacklisting, and session affinity reduce the impact of overloaded or failing credentials.
-- **Observable, self-hosted, and simple to deploy** — Inspect health, routes, logs, usage, and cost estimates in an embedded UI backed by SQLite, MySQL, or PostgreSQL with local credential encryption.
+- **Observable, self-hosted, and simple to deploy** — Inspect health, routes, logs, usage, and cost estimates in an embedded UI backed by SQLite or PostgreSQL with local credential encryption.
 
 ## Quick start
 
@@ -157,10 +157,9 @@ Docker Compose uses application-managed SQLite by default. Data lives in the `gp
 <details>
 <summary>Using an external database</summary>
 
-Use the unified `DATABASE_DSN` to connect SQLite, MySQL, or PostgreSQL:
+Use the unified `DATABASE_DSN` to connect SQLite or PostgreSQL:
 
 ```text
-mysql://user:password@db.example:3306/gpt_load?charset=utf8mb4&collation=utf8mb4_bin
 postgres://user:password@db.example:5432/gpt_load?sslmode=require
 ```
 
@@ -209,9 +208,9 @@ At startup, the application reads `.env` in the current directory; existing proc
 | `READ_TIMEOUT` | `60` | HTTP request read timeout, positive integer in seconds. |
 | `IDLE_TIMEOUT` | `120` | HTTP keep-alive idle connection timeout, positive integer in seconds. |
 | `DATA_DIR` | `./data` | Directory for the managed database, `auth.key`, `encryption.key`, and runtime state; official Compose uses `/app/data`. |
-| `DATABASE_DSN` | Empty, uses `${DATA_DIR}/gpt-load.db` | Empty uses application-managed SQLite; non-empty values support SQLite paths or URLs, MySQL URLs, and PostgreSQL URLs, and are treated as operator-managed external databases. Container file paths must be inside a mounted directory. |
-| `DATABASE_MAX_OPEN_CONNECTIONS` | `10` | Maximum open connections for MySQL and PostgreSQL, positive integer. SQLite always uses one connection. |
-| `DATABASE_MAX_IDLE_CONNECTIONS` | `5` | Maximum idle connections for MySQL and PostgreSQL, positive integer and no greater than `DATABASE_MAX_OPEN_CONNECTIONS`. SQLite always uses one connection. |
+| `DATABASE_DSN` | Empty, uses `${DATA_DIR}/gpt-load.db` | Empty uses application-managed SQLite; non-empty values support SQLite paths or URLs and PostgreSQL URLs, and are treated as operator-managed external databases. Container file paths must be inside a mounted directory. |
+| `DATABASE_MAX_OPEN_CONNECTIONS` | `10` | Maximum open connections for PostgreSQL, positive integer. SQLite always uses one connection. |
+| `DATABASE_MAX_IDLE_CONNECTIONS` | `5` | Maximum idle connections for PostgreSQL, positive integer and no greater than `DATABASE_MAX_OPEN_CONNECTIONS`. SQLite always uses one connection. |
 | `AUTH_KEY` | Empty, reads or generates `${DATA_DIR}/auth.key` | Bearer key for the management UI and `/api` management API, not a data-plane AccessKey. |
 | `ENCRYPTION_KEY` | Empty, reads or generates `${DATA_DIR}/encryption.key` | Encrypts channel credentials; changing or losing it makes existing credentials undecryptable, so back it up with the database. |
 | `HTTP_PROXY` | Empty | Environment proxy for HTTP upstream requests. |

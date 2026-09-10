@@ -291,7 +291,6 @@ func TestLoadClassifiesNetworkDatabaseURLs(t *testing.T) {
 		dsn    string
 		driver DatabaseDriver
 	}{
-		{name: "mysql", dsn: "mysql://user:password@db.example:3306/gpt_load", driver: DatabaseDriverMySQL},
 		{name: "postgres", dsn: "postgres://user:password@db.example:5432/gpt_load", driver: DatabaseDriverPostgreSQL},
 		{name: "postgresql alias", dsn: "postgresql://user:password@db.example:5432/gpt_load", driver: DatabaseDriverPostgreSQL},
 	} {
@@ -328,7 +327,6 @@ func TestParseDatabaseDSNSupportsURLAndSQLiteCompatibilityForms(t *testing.T) {
 		{name: "bare path", dsn: "data/gpt-load.db", wantDriver: DatabaseDriverSQLite, wantDSN: "data/gpt-load.db"},
 		{name: "memory", dsn: ":memory:?cache=shared", wantDriver: DatabaseDriverSQLite, wantDSN: ":memory:?cache=shared"},
 		{name: "sqlite URL", dsn: "sqlite:///var/lib/gpt-load/gpt-load.db", wantDriver: DatabaseDriverSQLite, wantDSN: "/var/lib/gpt-load/gpt-load.db"},
-		{name: "mysql URL", dsn: "mysql://user:password@db.example:3306/gpt_load?tls=true", wantDriver: DatabaseDriverMySQL, wantDSN: "mysql://user:password@db.example:3306/gpt_load?tls=true"},
 		{name: "postgres URL", dsn: "postgres://user:password@db.example:5432/gpt_load?sslmode=require", wantDriver: DatabaseDriverPostgreSQL, wantDSN: "postgres://user:password@db.example:5432/gpt_load?sslmode=require"},
 	}
 
@@ -349,7 +347,7 @@ func TestParseDatabaseDSNRejectsUnsupportedOrIncompleteURLs(t *testing.T) {
 	for _, dsn := range []string{
 		"",
 		"redis://localhost/0",
-		"mysql://localhost",
+		"mysql://localhost/gpt_load",
 		"postgres://localhost",
 		"mysql://localhost/gpt_load/%2Fextra",
 	} {

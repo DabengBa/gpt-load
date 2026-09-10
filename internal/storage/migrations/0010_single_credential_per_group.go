@@ -41,7 +41,7 @@ func Up0010(db *gorm.DB) error {
 	return Validate0010(db)
 }
 
-func ValidateRecoverable0010(db *gorm.DB) error {
+func validateSingleCredentialConstraint0010(db *gorm.DB) error {
 	if db == nil || !db.Migrator().HasTable("credentials") {
 		return fmt.Errorf("validate single credential constraint: credentials table is missing")
 	}
@@ -49,7 +49,7 @@ func ValidateRecoverable0010(db *gorm.DB) error {
 }
 
 func Validate0010(db *gorm.DB) error {
-	if err := ValidateRecoverable0010(db); err != nil {
+	if err := validateSingleCredentialConstraint0010(db); err != nil {
 		return err
 	}
 	if !db.Migrator().HasIndex("credentials", credentialGroupUniqueIndex0010) {

@@ -15,9 +15,9 @@ var priceMultiplierTables0009 = []struct{ table, constraint string }{
 	{"access_keys", "chk_access_key_price_multiplier"},
 }
 
-// Up0009 用独立且原子的列 DDL 保持 MySQL 中断后的安全恢复。
+// Up0009 adds price multipliers with independent, idempotent column DDL.
 func Up0009(db *gorm.DB) error {
-	if err := ValidateRecoverable0009(db); err != nil {
+	if err := validatePriceMultiplierTables0009(db); err != nil {
 		return err
 	}
 	for _, definition := range priceMultiplierTables0009 {
@@ -32,7 +32,7 @@ func Up0009(db *gorm.DB) error {
 	return Validate0009(db)
 }
 
-func ValidateRecoverable0009(db *gorm.DB) error {
+func validatePriceMultiplierTables0009(db *gorm.DB) error {
 	for _, definition := range priceMultiplierTables0009 {
 		if !db.Migrator().HasTable(definition.table) {
 			return fmt.Errorf("price multiplier table %q is missing", definition.table)
@@ -99,8 +99,6 @@ func validatePriceMultiplierColumn0009(db *gorm.DB, table, constraint string) er
 	switch strings.ToLower(db.Dialector.Name()) {
 	case "sqlite":
 		err = db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&definition).Error
-	case "mysql":
-		err = db.Raw("SELECT CHECK_CLAUSE FROM information_schema.check_constraints WHERE constraint_schema = DATABASE() AND constraint_name = ?", constraint).Scan(&definition).Error
 	case "postgres", "postgresql":
 		err = db.Raw("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ? AND conrelid = ?::regclass", constraint, table).Scan(&definition).Error
 	default:
@@ -123,9 +121,6 @@ func validatePriceMultiplierColumn0009(db *gorm.DB, table, constraint string) er
 	return nil
 }
 
-func quotePriceMultiplierIdentifier0009(db *gorm.DB, value string) string {
-	if strings.EqualFold(db.Dialector.Name(), "mysql") {
-		return "`" + value + "`"
-	}
+func quotePriceMultiplierIdentifier0009(_ *gorm.DB, value string) string {
 	return `"` + value + `"`
 }

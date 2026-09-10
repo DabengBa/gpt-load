@@ -19,7 +19,7 @@ import (
 )
 
 // TestExternalDatabaseUsageBreakdownSortsAndPaginates exercises aggregate
-// ordering and pagination against real MySQL and PostgreSQL servers.
+// ordering and pagination against a real PostgreSQL server.
 func TestExternalDatabaseUsageBreakdownSortsAndPaginates(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
 	if dsn == "" {
@@ -115,8 +115,8 @@ func TestExternalDatabaseUsageBreakdownSortsAndPaginates(t *testing.T) {
 }
 
 // TestExternalDatabaseRequestLogLifecycle covers the request-log write,
-// aggregate upsert, duplicate replay, and retention chain on real MySQL and
-// PostgreSQL servers. Unit tests cover each branch; this keeps driver SQL and
+// aggregate upsert, duplicate replay, and retention chain on a real
+// PostgreSQL server. Unit tests cover each branch; this keeps driver SQL and
 // transaction differences inside the release contract.
 
 func TestExternalDatabaseRequestLogLifecycle(t *testing.T) {
