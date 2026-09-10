@@ -123,7 +123,7 @@ func TestExternalDatabaseLifecycle(t *testing.T) {
 	if err := db.Table("schema_migrations").Order("id").Pluck("id", &migrationIDs).Error; err != nil {
 		t.Fatalf("read migration ledger: %v", err)
 	}
-	if len(migrationIDs) != 9 || migrationIDs[0] != "0001_initial" ||
+	if len(migrationIDs) != 10 || migrationIDs[0] != "0001_initial" ||
 		migrationIDs[1] != "0002_access_key_cost_limits" ||
 		migrationIDs[2] != "0003_remove_observation_fresh_until" ||
 		migrationIDs[3] != "0004_usage_stats_group_activity_index" ||
@@ -131,9 +131,50 @@ func TestExternalDatabaseLifecycle(t *testing.T) {
 		migrationIDs[5] != "0006_error_decision" ||
 		migrationIDs[6] != "0007_access_key_lifecycle" ||
 		migrationIDs[7] != "0008_remove_inject_usage_options" ||
-		migrationIDs[8] != "0009_price_multipliers" {
-		t.Fatalf("migration ledger = %v, want complete 0001-0009 chain", migrationIDs)
+		migrationIDs[8] != "0009_price_multipliers" ||
+		migrationIDs[9] != "0010_debug_captures" {
+		t.Fatalf("migration ledger = %v, want complete 0001-0010 chain", migrationIDs)
 	}
+	for _, table := range []string{"debug_captures", "debug_capture_attempts", "debug_capture_chunks"} {
+		if !db.Migrator().HasTable(table) {
+			t.Fatalf("debug capture table %q is missing", table)
+		}
+	}
+	for table, columns := range map[string][]string{
+		"debug_captures":         {"request_id", "access_key_id", "protocol", "operation", "expires_at_ms", "state"},
+		"debug_capture_attempts": {"capture_id", "sequence", "state"},
+		"debug_capture_chunks":   {"capture_id", "attempt_id", "part", "direction", "data"},
+	} {
+		for _, column := range columns {
+			if !db.Migrator().HasColumn(table, column) {
+				t.Fatalf("debug capture column %s.%s is missing", table, column)
+			}
+		}
+	}
+	if !db.Migrator().HasIndex("debug_captures", "idx_debug_captures_request_id") ||
+		!db.Migrator().HasIndex("debug_capture_chunks", "idx_debug_capture_chunks_attempt_part_direction_id") {
+		t.Fatal("debug capture query indexes are missing")
+	}
+	if !db.Migrator().HasConstraint("debug_capture_attempts", "fk_debug_captures_attempts") ||
+		!db.Migrator().HasConstraint("debug_capture_chunks", "fk_debug_capture_attempts_chunks") ||
+		!db.Migrator().HasConstraint("debug_capture_chunks", "fk_debug_capture_chunks_capture") {
+		t.Fatal("debug capture cascade foreign keys are missing")
+	}
+	columnTypes, err := db.Migrator().ColumnTypes("debug_capture_chunks")
+	if err != nil {
+		t.Fatalf("inspect debug capture chunk types: %v", err)
+	}
+	var dataType string
+	for _, column := range columnTypes {
+		if column.Name() == "data" {
+			dataType = column.DatabaseTypeName()
+		}
+	}
+	dataType = strings.ToLower(dataType)
+	if !strings.Contains(dataType, "blob") && !strings.Contains(dataType, "bytea") && !strings.Contains(dataType, "binary") {
+		t.Fatalf("debug_capture_chunks.data type = %q, want binary-compatible type", dataType)
+	}
+
 	if !db.Migrator().HasIndex("usage_stats", "idx_usage_stats_group_bucket") {
 		t.Fatal("usage_stats group activity index is missing")
 	}

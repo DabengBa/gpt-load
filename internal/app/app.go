@@ -36,6 +36,7 @@ type App struct {
 	startupRecovery   StartupRecovery
 	requestLogs       RequestLogRuntime
 	executionRuntime  ExecutionRuntime
+	debugCapture      DebugCaptureRuntime
 	listen            func(network, address string) (net.Listener, error)
 
 	mu            sync.Mutex
@@ -79,6 +80,12 @@ type ExecutionRuntime interface {
 	BeginShutdown() <-chan struct{}
 }
 
+// DebugCaptureRuntime owns capture retention cleanup and shutdown admission.
+type DebugCaptureRuntime interface {
+	Start() error
+	Stop(context.Context) error
+}
+
 // AppParams defines dependencies injected into App.
 type AppParams struct {
 	dig.In
@@ -93,7 +100,8 @@ type AppParams struct {
 	Lifecycle         *httplifecycle.Coordinator `optional:"true"`
 	ControlRuntime    ControlRuntime
 	RequestLogs       RequestLogRuntime
-	ExecutionRuntime  ExecutionRuntime `optional:"true"`
+	ExecutionRuntime  ExecutionRuntime    `optional:"true"`
+	DebugCapture      DebugCaptureRuntime `optional:"true"`
 }
 
 // NewEngine creates the process HTTP engine and global middleware.
@@ -135,6 +143,7 @@ func NewApp(params AppParams) *App {
 		startupRecovery:   params.StartupRecovery,
 		requestLogs:       params.RequestLogs,
 		executionRuntime:  params.ExecutionRuntime,
+		debugCapture:      params.DebugCapture,
 		listen:            net.Listen,
 		serveErrors:       make(chan error, 1),
 	}
@@ -210,6 +219,15 @@ func (a *App) Start() error {
 		))
 	}
 	logrus.WithField("event", "startup.request_log_start").Info("request log runtime started")
+	if a.debugCapture != nil {
+		if err := a.debugCapture.Start(); err != nil {
+			logrus.WithError(err).WithField("event", "startup.debug_capture_start").Warn(
+				"debug capture cleanup runtime could not start; continuing without changing the data plane",
+			)
+		} else {
+			logrus.WithField("event", "startup.debug_capture_start").Info("debug capture runtime started")
+		}
+	}
 
 	server := &http.Server{
 		Addr:              address,
@@ -273,11 +291,13 @@ func (a *App) Stop(ctx context.Context) error {
 	runtimeDone := a.runtimeDone
 	requestLogs := a.requestLogs
 	executionRuntime := a.executionRuntime
+	debugCapture := a.debugCapture
 	runtimeCheckpoint := a.runtimeCheckpoint
 	lifecycle := a.lifecycle
 	a.mu.Unlock()
 
 	var errs []error
+	debugCaptureDrained := true
 	if lifecycle != nil {
 		lifecycle.BeginShutdown()
 		logrus.WithField("event", "shutdown.http_requests_cancel").Info("active HTTP requests canceled")
@@ -336,6 +356,18 @@ func (a *App) Stop(ctx context.Context) error {
 			logrus.WithField("event", "shutdown.http_handlers_drained").Info("HTTP handlers drained")
 		}
 	}
+	if debugCapture != nil {
+		if err := debugCapture.Stop(ctx); err != nil {
+			debugCaptureDrained = false
+			errs = append(errs, fmt.Errorf("stop debug capture runtime: %w", err))
+			logrus.WithError(err).WithFields(logrus.Fields{
+				"event":   "shutdown.debug_capture_drain",
+				"outcome": "forced",
+			}).Warn("debug capture runtime did not drain cleanly")
+		} else {
+			logrus.WithField("event", "shutdown.debug_capture_drain").Info("debug capture runtime drained")
+		}
+	}
 	if runtimeCheckpoint != nil {
 		if err := runtimeCheckpoint.Save(context.Background()); err != nil {
 			logrus.WithError(err).WithField("event", "shutdown.checkpoint_save").Warn(
@@ -367,7 +399,7 @@ func (a *App) Stop(ctx context.Context) error {
 			}).Warn("execution runtime is still stopping; process exit will release remaining connections")
 		}
 	}
-	if a.db != nil {
+	if a.db != nil && debugCaptureDrained {
 		sqlDB, err := a.db.DB()
 		if err != nil {
 			errs = append(errs, fmt.Errorf("get database connection pool: %w", err))
@@ -378,6 +410,10 @@ func (a *App) Stop(ctx context.Context) error {
 		} else {
 			logrus.WithField("event", "shutdown.database_close").Info("database closed")
 		}
+	} else if a.db != nil {
+		logrus.WithField("event", "shutdown.database_close").Warn(
+			"database remains open because debug capture runtime did not drain; retry shutdown after capture work finishes",
+		)
 	}
 
 	err := errors.Join(errs...)

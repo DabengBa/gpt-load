@@ -298,6 +298,7 @@ func (bridge *codexProviderBridge) Execute(
 	if !ok || bridge == nil || bridge.executor == nil {
 		return providerResponse{}, errors.New("Codex provider bridge credential mismatch")
 	}
+	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.Execute(ctx, credentialID, codexCredential.value, codex.ExecuteRequest{
 		Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: request.Format,
 		RequestPath: request.RequestPath,
@@ -323,6 +324,7 @@ func (bridge *codexProviderBridge) ExecuteStream(
 	if !ok || bridge == nil || bridge.executor == nil {
 		return nil, errors.New("Codex provider bridge credential mismatch")
 	}
+	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.ExecuteStream(ctx, credentialID, codexCredential.value, codex.ExecuteRequest{
 		Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: request.Format,
 		RequestPath: request.RequestPath,

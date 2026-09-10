@@ -49,6 +49,9 @@ func TestLoadUsesDefaultConfiguration(t *testing.T) {
 	if cfg.Log.Level != "info" || cfg.Log.Format != "text" {
 		t.Fatalf("Log = %#v, want info/text", cfg.Log)
 	}
+	if cfg.DebugCaptureEnabled {
+		t.Fatal("DebugCaptureEnabled = true, want disabled by default")
+	}
 }
 
 func TestLoadPreservesExplicitAllInterfacesHost(t *testing.T) {
@@ -107,6 +110,40 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Log.Level != "debug" || cfg.Log.Format != "json" {
 		t.Fatalf("Log = %#v", cfg.Log)
+	}
+}
+
+func TestLoadDebugCaptureEnabledIsStrictBoolean(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		value   string
+		want    bool
+		wantErr bool
+	}{
+		{name: "true", value: "true", want: true},
+		{name: "false", value: "false", want: false},
+		{name: "strconv true syntax", value: "1", want: true},
+		{name: "invalid", value: "on", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			clearEnvironment(t)
+			t.Setenv("AUTH_KEY", "test-auth-key")
+			t.Setenv("DEBUG_CAPTURE_ENABLED", test.value)
+
+			cfg, err := Load()
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("Load() error = nil, want strict boolean error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.DebugCaptureEnabled != test.want {
+				t.Fatalf("DebugCaptureEnabled = %t, want %t", cfg.DebugCaptureEnabled, test.want)
+			}
+		})
 	}
 }
 

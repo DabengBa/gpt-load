@@ -85,6 +85,29 @@ func TestDownstreamHeadersMiddlewareAnswersAllowedPreflightBeforeAuthentication(
 	}
 }
 
+func TestDownstreamCORSPreflightRemainsOutsideCaptureBoundary(t *testing.T) {
+	handler := newDownstreamHeadersTestHandler(t, configuredBrowserAccessSettings())
+	factory := &captureTestFactory{}
+	handler.captureFactory = factory
+	engine := gin.New()
+	engine.Use(handler.DownstreamHeadersMiddleware())
+	engine.Any("/v1/responses", handler.dataPlaneCaptureBoundary)
+
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, newPreflightRequest(
+		"/v1/responses",
+		"app://obsidian.md",
+		"POST",
+		"authorization",
+	))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("preflight status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+	if factory.starts != 0 {
+		t.Fatalf("preflight unexpectedly entered capture boundary: starts=%d", factory.starts)
+	}
+}
+
 func TestDownstreamHeadersMiddlewareAppliesConfiguredRulesToActualResponses(t *testing.T) {
 	handler := newDownstreamHeadersTestHandler(t, configuredBrowserAccessSettings())
 	engine := gin.New()

@@ -537,6 +537,9 @@ func (e *CodexHTTPExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth
 	return NewCodexAuth(auth.ID, refreshed, auth.Attributes["base_url"]), nil
 }
 
+// CountTokens is a direct CPA SDK facade. It intentionally bypasses the
+// execution context and therefore has no HTTP observer callback; canonical
+// upstream token-count routes use CountTokensCanonical instead.
 func (e *CodexHTTPExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
 	return e.inner.CountTokens(ctx, auth, req, opts)
 }
@@ -727,7 +730,10 @@ func (e *CodexHTTPExecutor) executionContext(
 		ctx = context.Background()
 	}
 	transport := executionRoundTripper(ctx, e.cfg, auth, proxyFromEnvironment)
-	return context.WithValue(ctx, "cliproxy.roundtripper", noRedirectRoundTripper{base: transport, observation: observation})
+	return context.WithValue(ctx, "cliproxy.roundtripper", noRedirectRoundTripper{
+		base: transport, observation: observation,
+		observer: httpObserverFromContext(ctx), attemptID: httpAttemptIDFromContext(ctx),
+	})
 }
 
 // authWithoutProxyURL forces CPA to use the guarded transport already frozen
@@ -744,13 +750,15 @@ func authWithoutProxyURL(auth *cliproxyauth.Auth) *cliproxyauth.Auth {
 type noRedirectRoundTripper struct {
 	base        http.RoundTripper
 	observation *executionObservation
+	observer    HTTPObserver
+	attemptID   string
 }
 
 func (t noRedirectRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.observation != nil {
 		t.observation.observe(req)
 	}
-	resp, err := t.base.RoundTrip(req)
+	resp, err := observeRoundTrip(t.base, req, t.observer, t.attemptID)
 	if err != nil {
 		return nil, err
 	}

@@ -188,7 +188,8 @@ func (executor *antigravityHTTPExecutor) CountTokensCanonical(
 	format := sdktranslator.FromString(request.Format)
 	auth := NewAntigravityAuth(credentialID, credential, executor.baseURL)
 	auth.ProxyURL = request.ProxyURL
-	executionCtx, err := executor.executionContext(ctx, credentialID, credential.AccountID, request.ProxyURL, nil)
+	observation := newProviderExecutionObservation(request, ProviderAntigravity)
+	executionCtx, err := executor.executionContext(ctx, credentialID, credential.AccountID, request.ProxyURL, observation)
 	if err != nil {
 		return ExecuteResponse{}, err
 	}
@@ -463,6 +464,7 @@ func (executor *antigravityHTTPExecutor) executionContext(
 	}
 	return context.WithValue(ctx, "cliproxy.roundtripper", noRedirectRoundTripper{
 		base: transport, observation: observation,
+		observer: httpObserverFromContext(ctx), attemptID: httpAttemptIDFromContext(ctx),
 	}), nil
 }
 

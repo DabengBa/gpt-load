@@ -224,6 +224,7 @@ Windows 普通用户可改为下载 `gpt-load-windows-setup.exe`。双击并确�
 | `LOG_LEVEL`                     | `info`                                      | 支持 `panic`、`fatal`、`error`、`warn`、`warning`、`info`、`debug`、`trace`；无效值会告警并回退到 `info`。                                               |
 | `LOG_FORMAT`                    | `text`                                      | 支持 `text`、`json`；其他值会导致启动失败。                                                                                                              |
 | `MODELS_DEV_AUTO_SYNC_ENABLED`  | 未设置，初始默认 `true`                     | 未设置时使用管理界面的持久化设置；设置后强制开启或关闭 Models.dev 自动同步，并使管理界面中的同名选项变为只读。                                           |
+| `DEBUG_CAPTURE_ENABLED`         | `false`                                    | 可选的明文应用层通讯捕获。保存 Gateway/CPA 观察到的请求和响应 Header、Body 及结果 12 小时后自动清理。仅管理管理员可访问；不要在不受信任或共享环境中启用。 |
 
 环境代理仅在凭据、Group 和全局设置都未指定代理时生效。
 
@@ -233,6 +234,7 @@ Windows 普通用户可改为下载 `gpt-load-windows-setup.exe`。双击并确�
 
 - 默认只监听 `127.0.0.1`。需要远程访问时，应通过受控网络或带 TLS 的反向代理暴露，并配置 ACL 与防火墙。
 - 妥善管理 `AUTH_KEY` 与 `ENCRYPTION_KEY`，不要把真实密钥提交到仓库、日志、截图或公开 Issue。
+- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会在固定 12 小时内保存观察到的明文请求和响应 Header、Body，其中可能包含凭据和 Cookie。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway 和 CPA 集成实际观察到的应用层数据，不代表 Bifrost 底层 HTTP transport、TLS/socket wire，或从未被观察到的数据。
 - 2.0 按**单应用实例**设计，多个实例之间不共享状态，不支持直接横向扩容。
 - 用量与成本是基于上游返回数据的**估算**，用于运行分析和资源评估，不等同于服务商账单或财务对账结果。
 - 订阅渠道依赖上游 OAuth 与兼容协议，可能随上游变化调整。请只接入自己有权使用的账号，并遵守对应服务商条款。

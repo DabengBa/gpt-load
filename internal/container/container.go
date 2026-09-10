@@ -223,17 +223,27 @@ func BuildContainer() (*dig.Container, error) {
 			return nil, err
 		}
 	}
-	if err := dependencyContainer.Invoke(func(
+	if err := provideDebugCapture(dependencyContainer); err != nil {
+		return nil, err
+	}
+	if err := configureDebugCapture(dependencyContainer); err != nil {
+		return nil, err
+	}
+	if err := registerHTTPRoutes(dependencyContainer); err != nil {
+		return nil, fmt.Errorf("register HTTP routes: %w", err)
+	}
+	return dependencyContainer, nil
+}
+
+func registerHTTPRoutes(dependencyContainer *dig.Container) error {
+	return dependencyContainer.Invoke(func(
 		engine *gin.Engine,
 		registry *httproute.Registry,
 		gatewayHandler *gateway.Handler,
 	) error {
 		engine.Use(gatewayHandler.DownstreamHeadersMiddleware())
 		return registry.Bind(engine)
-	}); err != nil {
-		return nil, fmt.Errorf("register HTTP routes: %w", err)
-	}
-	return dependencyContainer, nil
+	})
 }
 
 func newSystemOutboundProxyProvider(manager *state.Manager) httpclient.OutboundProxyProvider {

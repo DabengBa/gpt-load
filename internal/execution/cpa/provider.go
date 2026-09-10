@@ -93,6 +93,7 @@ func annotateProviderErrorEvidence(evidence *execution.ErrorEvidence, err error)
 
 type providerRequest struct {
 	AttemptID       string
+	Observer        execution.HTTPObserver
 	Model           string
 	Payload         []byte
 	Format          string
@@ -192,6 +193,14 @@ type providerRequestValidator interface {
 type providerLocalTokenCounter interface {
 	ValidateLocalTokenCount(providerRequest) error
 	CountTokensLocal(context.Context, providerRequest) (providerResponse, error)
+}
+
+func providerExecutionContext(ctx context.Context, request providerRequest) context.Context {
+	ctx = execution.WithHTTPAttemptID(ctx, request.AttemptID)
+	if request.Observer != nil {
+		ctx = execution.WithHTTPObserver(ctx, request.Observer)
+	}
+	return ctx
 }
 
 func indexProviderBridges(bridges ...providerBridge) map[channel.ProviderKind]providerBridge {

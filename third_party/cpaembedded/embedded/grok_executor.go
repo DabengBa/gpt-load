@@ -120,6 +120,8 @@ func (executor *grokHTTPExecutor) ExecuteCanonical(
 	}, nil
 }
 
+// CountTokensCanonical is CPA's local token estimator for Grok. It does not
+// enter an execution context and must not be represented as upstream HTTP.
 func (executor *grokHTTPExecutor) CountTokensCanonical(
 	ctx context.Context,
 	request ExecuteRequest,
@@ -252,6 +254,7 @@ func (executor *grokHTTPExecutor) executionContext(
 	}
 	return context.WithValue(ctx, "cliproxy.roundtripper", noRedirectRoundTripper{
 		base: transport, observation: observation,
+		observer: httpObserverFromContext(ctx), attemptID: httpAttemptIDFromContext(ctx),
 	})
 }
 

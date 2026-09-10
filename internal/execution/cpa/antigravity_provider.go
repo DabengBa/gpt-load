@@ -155,6 +155,7 @@ func (bridge *antigravityProviderBridge) Execute(
 	if !ok || bridge == nil || bridge.executor == nil {
 		return providerResponse{}, errors.New("Antigravity provider bridge credential mismatch")
 	}
+	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.Execute(ctx, credentialID, value.value, antigravity.ExecuteRequest{
 		AttemptID: request.AttemptID, Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: request.Format,
 		Headers: request.Headers.Clone(), OriginalRequest: append([]byte(nil), request.OriginalRequest...),
@@ -180,6 +181,7 @@ func (bridge *antigravityProviderBridge) CountTokens(
 	if !ok || bridge == nil || bridge.executor == nil {
 		return providerResponse{}, errors.New("Antigravity provider bridge credential mismatch")
 	}
+	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.CountTokens(ctx, credentialID, value.value, antigravity.ExecuteRequest{
 		AttemptID: request.AttemptID, Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: request.Format,
 		Headers: request.Headers.Clone(), OriginalRequest: append([]byte(nil), request.OriginalRequest...),
@@ -199,6 +201,7 @@ func (bridge *antigravityProviderBridge) ExecuteStream(
 	if !ok || bridge == nil || bridge.executor == nil {
 		return nil, errors.New("Antigravity provider bridge credential mismatch")
 	}
+	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.ExecuteStream(ctx, credentialID, value.value, antigravity.ExecuteRequest{
 		AttemptID: request.AttemptID, Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: request.Format,
 		Headers: request.Headers.Clone(), OriginalRequest: append([]byte(nil), request.OriginalRequest...),

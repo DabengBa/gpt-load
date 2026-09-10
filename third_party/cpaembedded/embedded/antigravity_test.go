@@ -1,6 +1,7 @@
 package embedded
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -985,6 +986,67 @@ func TestAntigravityExecutionOnlyBridgeConvertsDeclaredStreamingProtocols(t *tes
 				t.Fatalf("stream wire = %q, want %q", wire.String(), test.want)
 			}
 		})
+	}
+}
+
+func TestAntigravityCountTokensCanonicalObservesActualUpstreamHTTP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1internal:countTokens" {
+			t.Fatalf("request path = %q", request.URL.Path)
+		}
+		writer.Header().Set("X-Upstream", "count-token")
+		writer.Header().Set("X-Trailer", "trailer-value")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte(`{"totalTokens":42}`))
+	}))
+	defer server.Close()
+
+	observer := newRecordingHTTPObserver()
+	ctx := context.WithValue(t.Context(), httpObserverContextKey, HTTPObserver(observer))
+	ctx = context.WithValue(ctx, httpAttemptIDContextKey, "antigravity-count-attempt")
+	executor := newAntigravityHTTPExecutor(server.URL)
+	credential := AntigravityCredential{
+		Type: ProviderAntigravity, AccessToken: "access-secret", RefreshToken: "refresh-secret",
+		AccountID: "google-account-one", Email: "owner@example.com", ProjectID: "project-one",
+		Expire: "2030-01-01T00:00:00Z",
+	}
+	response, err := executor.CountTokensCanonical(ctx, "credential-one", credential, ExecuteRequest{
+		Model: "gemini-live", Format: "gemini",
+		Payload: []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`),
+		Headers: http.Header{"X-Secret": {"secret-value"}},
+	})
+	if err != nil || !strings.Contains(string(response.Payload), `"totalTokens":42`) {
+		t.Fatalf("CountTokensCanonical() = %s, %v", response.Payload, err)
+	}
+	observer.wait(t)
+
+	var requestEvent, responseEvent, complete *observerEvent
+	var requestBody, responseBody []byte
+	for _, event := range observer.snapshot() {
+		switch event.kind {
+		case "request":
+			requestEvent = &event
+		case "request-body":
+			requestBody = append(requestBody, event.body...)
+		case "response":
+			responseEvent = &event
+		case "response-body":
+			responseBody = append(responseBody, event.body...)
+		case "complete":
+			complete = &event
+		}
+	}
+	if requestEvent == nil || requestEvent.headers.Get("Authorization") != "Bearer access-secret" {
+		t.Fatalf("request event = %#v", requestEvent)
+	}
+	if len(requestBody) == 0 || !bytes.Contains(responseBody, []byte(`"totalTokens":42`)) {
+		t.Fatalf("count-token bytes = request %q, response %q", requestBody, responseBody)
+	}
+	if responseEvent == nil || responseEvent.status != http.StatusOK || responseEvent.headers.Get("X-Upstream") != "count-token" {
+		t.Fatalf("response event = %#v", responseEvent)
+	}
+	if complete == nil || complete.err != nil {
+		t.Fatalf("completion event = %#v", complete)
 	}
 }
 

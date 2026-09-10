@@ -108,6 +108,7 @@ type Handler struct {
 	accessQuota         *accessquota.Runtime
 	newRandom           func() *rand.Rand
 	newRequestID        func() (string, error)
+	captureFactory      CaptureFactory
 	requestNow          func() time.Time
 	now                 func() time.Time
 	writeTimeout        time.Duration
@@ -536,6 +537,13 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 	} else {
 		ginContext.Writer.Header().Set(requestIDHeader, requestID)
 	}
+	if capture := captureFromContext(ginContext); capture != nil {
+		capture.updateMetadata(CaptureSessionMetadata{
+			RequestID:   requestID,
+			AccessKeyID: accessKey.ID,
+			Protocol:    string(selectedRoute.Protocol),
+		})
+	}
 
 	quotaAdmission := requestAccessQuotaAdmission{accessKeyID: accessKey.ID}
 	if len(accessKey.CostLimitRules) > 0 {
@@ -679,6 +687,11 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		}
 		handler.completeReason(ginContext, recorder, reasonInvalidProtocolRequest)
 		return
+	}
+	if capture := captureFromContext(ginContext); capture != nil {
+		capture.updateMetadata(CaptureSessionMetadata{
+			Operation: string(metadata.Operation),
+		})
 	}
 	model := ""
 	if metadata.Model != nil {
@@ -1048,6 +1061,20 @@ func (handler *Handler) executeAttempts(
 			DispatchState: execution.DispatchNotSent, ExecutionError: &evidence,
 			ErrorSummary: summary,
 		}
+		capture := captureFromContext(ginContext)
+		executionRequestID := "untracked"
+		if recorder != nil && recorder.requestID != "" {
+			executionRequestID = recorder.requestID
+		}
+		capture.finishPreparationAttempt(CaptureAttemptMetadata{
+			AttemptID: executionRequestID + ":" + strconv.Itoa(attemptSequence),
+			Sequence:  uint32(attemptSequence),
+			Fields: map[string]string{
+				"kind":  "forward",
+				"phase": "preparation",
+				"error": summary,
+			},
+		}, result.Err)
 		attemptCompleted := time.Time{}
 		if recorder != nil {
 			attemptCompleted = recorder.now()
@@ -1075,6 +1102,33 @@ func (handler *Handler) executeAttempts(
 			recorder.retryIfAnotherForward(recordedAttempt)
 		}
 		return decision.Retry != health.RetryNone
+	}
+	recordCaptureCandidatePreparationFailure := func(groupName string, code string, summary string) {
+		attemptSequence++
+		updateDebugHeaders(ginContext.Writer.Header(), groupName, attemptSequence)
+		capture := captureFromContext(ginContext)
+		executionRequestID := "untracked"
+		if recorder != nil && recorder.requestID != "" {
+			executionRequestID = recorder.requestID
+		}
+		evidence := execution.ErrorEvidence{
+			Kind: execution.ErrorKindInternal, OriginHint: execution.ErrorOriginInternal,
+			ScopeHint: execution.ErrorScopeRequest, Code: code, Summary: summary,
+		}
+		result := UpstreamResult{
+			Err:           fmt.Errorf("%w: candidate preparation failed", ErrUpstreamProtocol),
+			DispatchState: execution.DispatchNotSent, ExecutionError: &evidence,
+			ErrorSummary: summary,
+		}
+		capture.finishPreparationAttempt(CaptureAttemptMetadata{
+			AttemptID: executionRequestID + ":" + strconv.Itoa(attemptSequence),
+			Sequence:  uint32(attemptSequence),
+			Fields: map[string]string{
+				"kind":  "forward",
+				"phase": "preparation",
+				"error": summary,
+			},
+		}, result.Err)
 	}
 	for forwardAttempts < forwardAttemptLimit {
 		if ginContext.Request.Context().Err() != nil {
@@ -1119,13 +1173,20 @@ func (handler *Handler) executeAttempts(
 		}
 		prepared := prepareRequest(selection)
 		if prepared.err != nil {
+			code := "parameter_override_failed"
+			summary := "Parameter override could not be applied."
 			if errors.Is(prepared.err, errRequestTooLarge) {
+				code = "parameter_override_request_too_large"
+				summary = "Parameter override produced a request that is too large."
 				if parameterOverrideFailure == nil {
 					parameterOverrideFailure = &reasonRequestTooLarge
 				}
 			} else {
-				parameterOverrideFailure = &reasonParameterOverrideUnavailable
+				if parameterOverrideFailure == nil {
+					parameterOverrideFailure = &reasonParameterOverrideUnavailable
+				}
 			}
+			recordCaptureCandidatePreparationFailure(selection.Group.Name, code, summary)
 			if _, logged := loggedOverrideFailures[selection.GroupID]; !logged {
 				utils.LogPlaneBestEffort(
 					handler.logger,
@@ -1288,12 +1349,19 @@ func (handler *Handler) executeAttempts(
 		}
 		attemptStarted := recorder.beforeForward()
 		var result UpstreamResult
-		if stream {
-			result = handler.forwarder.ForwardStream(ginContext.Request.Context(), input, ginContext.Writer)
-		} else {
-			result = handler.forwarder.Forward(ginContext.Request.Context(), input)
-		}
-		result = normalizeUpstreamResultContract(result)
+		capture := captureFromContext(ginContext)
+		captureAttempt, captureObserver, attemptContext, captureStarted := capture.beginForward(
+			ginContext.Request.Context(),
+			input,
+		)
+		func() {
+			if stream {
+				result = handler.forwarder.ForwardStream(attemptContext, input, ginContext.Writer)
+			} else {
+				result = handler.forwarder.Forward(attemptContext, input)
+			}
+		}()
+		result = capture.normalizeAndFinishForwardOwned(captureAttempt, captureObserver, result, captureStarted)
 		attemptCompleted := time.Time{}
 		if recorder != nil {
 			attemptCompleted = recorder.now()

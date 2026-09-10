@@ -44,15 +44,35 @@ func (handler *Handler) HTTPModule() httproute.Module {
 		Owner:             httproute.OwnerData,
 		Auth:              httproute.AuthAccessKey,
 		NamespacePrefixes: []string{"/v1", "/v1beta"},
+		BeforeAuth:        gin.HandlersChain{handler.dataPlaneCaptureBoundary},
 		Authenticate:      handler.authenticateDataPlaneRequest,
 		Routes:            routes,
-		NotFound:          handler.dataPlaneRouteNotFound,
-		MethodNotAllowed:  handler.dataPlaneMethodNotAllowed,
-	}
-	if handler != nil && handler.lifecycle != nil {
-		module.BeforeAuth = gin.HandlersChain{handler.bindDataPlaneRequest}
+		NotFound:          handler.captureTerminal(handler.dataPlaneRouteNotFound),
+		MethodNotAllowed:  handler.captureTerminal(handler.dataPlaneMethodNotAllowed),
 	}
 	return module
+}
+
+func (handler *Handler) dataPlaneCaptureBoundary(ginContext *gin.Context) {
+	captureDataPlaneRequest(handler, ginContext)
+	defer func() { _ = finalizeDataPlaneCapture(ginContext) }()
+	if handler != nil && handler.lifecycle != nil {
+		handler.bindDataPlaneRequest(ginContext)
+		return
+	}
+	if ginContext != nil {
+		ginContext.Next()
+	}
+}
+
+func (handler *Handler) captureTerminal(terminal gin.HandlerFunc) gin.HandlerFunc {
+	return func(ginContext *gin.Context) {
+		captureDataPlaneRequest(handler, ginContext)
+		defer func() { _ = finalizeDataPlaneCapture(ginContext) }()
+		if terminal != nil {
+			terminal(ginContext)
+		}
+	}
 }
 
 func (handler *Handler) bindDataPlaneRequest(ginContext *gin.Context) {
@@ -115,6 +135,12 @@ func (handler *Handler) authenticateDataPlaneRequest(ginContext *gin.Context) {
 	requestContext.snapshot = snapshot
 	requestContext.accessKey = accessKey
 	requestContext.authenticated = true
+	if capture := captureFromContext(ginContext); capture != nil {
+		capture.updateMetadata(CaptureSessionMetadata{
+			AccessKeyID: accessKey.ID,
+			Protocol:    string(requestContext.selectedRoute.Protocol),
+		})
+	}
 }
 
 func dataPlaneRequestContextFrom(

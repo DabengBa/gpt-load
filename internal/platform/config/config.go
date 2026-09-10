@@ -119,6 +119,7 @@ type Config struct {
 	EncryptionKeyMetadata     SecretMetadata
 	Log                       LogConfig
 	ModelsDevAutoSyncOverride *bool
+	DebugCaptureEnabled       bool
 }
 
 // Settings is the dynamic settings shape shared by system and group layers.
@@ -241,6 +242,14 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	debugCaptureOverride, err := parseOptionalBool("DEBUG_CAPTURE_ENABLED")
+	if err != nil {
+		return nil, err
+	}
+	debugCaptureEnabled := false
+	if debugCaptureOverride != nil {
+		debugCaptureEnabled = *debugCaptureOverride
+	}
 
 	return &Config{
 		Server: ServerConfig{
@@ -266,6 +275,7 @@ func Load() (*Config, error) {
 			Format: logFormat,
 		},
 		ModelsDevAutoSyncOverride: modelsDevAutoSyncOverride,
+		DebugCaptureEnabled:       debugCaptureEnabled,
 	}, nil
 }
 

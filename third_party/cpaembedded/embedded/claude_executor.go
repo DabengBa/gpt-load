@@ -271,6 +271,7 @@ func (e *claudeHTTPExecutor) executionContext(
 	transport := executionRoundTripper(ctx, e.cfg, auth, proxyFromEnvironment)
 	return context.WithValue(ctx, "cliproxy.roundtripper", noRedirectRoundTripper{
 		base: transport, observation: observation,
+		observer: httpObserverFromContext(ctx), attemptID: httpAttemptIDFromContext(ctx),
 	})
 }
 

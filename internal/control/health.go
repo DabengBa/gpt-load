@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gpt-load/internal/channel"
+	"gpt-load/internal/debugcapture"
 	"gpt-load/internal/health"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/response"
@@ -111,6 +112,7 @@ type runtimeHealthResponse struct {
 	ExpiringResetCredits   []healthExpiringResetCreditResponse `json:"expiring_reset_credits"`
 	BlockedAccessKeys      []healthAccessKeyCostLimitResponse  `json:"blocked_access_keys"`
 	RequestLog             requestLogHealthResponse            `json:"request_log"`
+	DebugCapture           debugcapture.Health                 `json:"debug_capture"`
 }
 
 type healthAccessKeyCostLimitResponse struct {
@@ -435,6 +437,13 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 		return runtimeHealthResponse{}, fmt.Errorf("map request log health: %w", err)
 	}
 	result.RequestLog = requestLog
+	if service.debugCaptureHealth != nil {
+		debugCapture, err := service.debugCaptureHealth.Health()
+		if err != nil {
+			return runtimeHealthResponse{}, fmt.Errorf("map debug capture health: %w", app_errors.ErrInternalServer)
+		}
+		result.DebugCapture = debugCapture
+	}
 	return result, nil
 }
 
