@@ -1722,7 +1722,7 @@ func TestHandlerRetryExhaustionUsesProviderErrorAttemptAndItsFrozenPrice(t *test
 	}
 
 	sink := &recordingRequestLogSink{}
-	engine, handler, _, _ := newRequestLogHandlerTestRuntime(
+	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(
 		t,
 		forwarder,
 		&recordingAccessKeyRPMLimiter{},
@@ -1732,6 +1732,7 @@ func TestHandlerRetryExhaustionUsesProviderErrorAttemptAndItsFrozenPrice(t *test
 		"sk-third",
 	)
 	handler.newRandom = func() *rand.Rand { return rand.New(zeroSource{}) }
+	publishHandlerPolicySettings(t, handler, manager, 3, config.Settings{state.SettingRetryCount: 2}, nil)
 	handler.priceTables = provider
 	request := httptest.NewRequest(
 		http.MethodPost,
@@ -1803,6 +1804,7 @@ func TestHandlerTerminalAttemptUsageKeepsRouteAttribution(t *testing.T) {
 		name                string
 		forwarder           *scriptedForwarder
 		upstreamKeys        []string
+		retryCount          int
 		wantStatus          telemetry.RequestStatus
 		wantGroupID         uint
 		wantCredentialID    uint
@@ -1830,7 +1832,8 @@ func TestHandlerTerminalAttemptUsageKeepsRouteAttribution(t *testing.T) {
 			wantUpstreamModel:   "gpt-4o",
 		},
 		{
-			name: "transport failure keeps the skipped group attempt",
+			name:       "transport failure keeps the skipped group attempt",
+			retryCount: 2,
 			forwarder: &scriptedForwarder{results: []UpstreamResult{
 				{Err: errors.New("transport one")},
 				{Err: errors.New("transport two")},
@@ -1851,7 +1854,10 @@ func TestHandlerTerminalAttemptUsageKeepsRouteAttribution(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			sink := &recordingRequestLogSink{}
-			engine, handler, _, _ := newRequestLogHandlerTestRuntime(t, test.forwarder, &recordingAccessKeyRPMLimiter{}, sink, test.upstreamKeys...)
+			engine, handler, manager, _ := newRequestLogHandlerTestRuntime(t, test.forwarder, &recordingAccessKeyRPMLimiter{}, sink, test.upstreamKeys...)
+			if test.retryCount > 0 {
+				publishHandlerPolicySettings(t, handler, manager, len(test.upstreamKeys), config.Settings{state.SettingRetryCount: test.retryCount}, nil)
+			}
 			handler.newRandom = func() *rand.Rand { return rand.New(zeroSource{}) }
 			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o"}`))
 			request.Header.Set("Authorization", "Bearer gl-client")
