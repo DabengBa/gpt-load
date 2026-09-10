@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	usageDistributionLimit = 5
-	maxUsageSeriesHours    = 30 * 24
-	usageRollbackTimeout   = time.Second
+	usageDistributionLimit        = 5
+	usageBreakdownDefaultPageSize = 20
+	maxUsageSeriesHours           = 30 * 24
+	usageRollbackTimeout          = time.Second
 )
 
 func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (UsageReport, error) {
@@ -55,8 +56,12 @@ func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (Usage
 		if err != nil {
 			return err
 		}
+		breakdown, err := queryUsageBreakdown(usageStatScope(connection, input), summary, input.AccessKeyID != nil, input)
+		if err != nil {
+			return err
+		}
 		report = UsageReport{
-			Summary: summary, Series: series, Distributions: distributions,
+			Summary: summary, Series: series, Distributions: distributions, Breakdown: breakdown,
 		}
 		return nil
 	})
@@ -82,6 +87,16 @@ func validateUsageQuery(input UsageQuery) (int64, error) {
 	}
 	if input.CredentialID != nil && *input.CredentialID == 0 {
 		return 0, fmt.Errorf("query usage: invalid credential scope")
+	}
+	if input.BreakdownPage == 0 {
+		input.BreakdownPage = 1
+	}
+	if input.BreakdownPageSize == 0 {
+		input.BreakdownPageSize = usageBreakdownDefaultPageSize
+	}
+	if input.BreakdownPage < 1 ||
+		(input.BreakdownPageSize != 20 && input.BreakdownPageSize != 50 && input.BreakdownPageSize != 100) {
+		return 0, fmt.Errorf("query usage: invalid breakdown pagination")
 	}
 	bucketWidthMS := input.BucketWidthMS
 	switch input.Granularity {
@@ -205,13 +220,17 @@ func validateUsageStatIntegrity(scope *gorm.DB) error {
 					OR cache_write_unknown_tokens < 0
 			THEN 1 ELSE 0 END), 0) AS invalid_token,
 		COALESCE(MAX(CASE
+			WHEN duration_ms_total < 0 OR duration_sample_count < 0
+				OR duration_sample_count > request_count
+			THEN 1 ELSE 0 END), 0) AS invalid_duration,
+		COALESCE(MAX(CASE
 			WHEN estimated_cost_nano_usd < 0
 			THEN 1 ELSE 0 END), 0) AS invalid_cost
 	`).Find(&integrity).Error; err != nil {
 		return fmt.Errorf("check usage stat integrity: %w", err)
 	}
 	if integrity.InvalidBucket != 0 || integrity.InvalidCount != 0 ||
-		integrity.InvalidToken != 0 || integrity.InvalidCost != 0 {
+		integrity.InvalidToken != 0 || integrity.InvalidCost != 0 || integrity.InvalidDuration != 0 {
 		return fmt.Errorf("check usage stat integrity: corrupt row")
 	}
 	return nil
@@ -261,6 +280,77 @@ func queryUsageSeries(scope *gorm.DB, bucketWidthMS int64) ([]UsageSeriesPoint, 
 	return mergeUsageHours(source, bucketWidthMS)
 }
 
+func queryUsageBreakdown(
+	scope *gorm.DB,
+	summary UsageAggregate,
+	accessKeyScoped bool,
+	input UsageQuery,
+) (UsageBreakdown, error) {
+	breakdownPage := input.BreakdownPage
+	breakdownPageSize := input.BreakdownPageSize
+	if breakdownPage == 0 {
+		breakdownPage = 1
+	}
+	if breakdownPageSize == 0 {
+		breakdownPageSize = usageBreakdownDefaultPageSize
+	}
+	query := scope.Session(&gorm.Session{})
+	if accessKeyScoped {
+		query = query.Select("model, NULL AS group_id, NULL AS channel_id, " + usageAggregateSelect).
+			Group("model").Order("model ASC")
+	} else {
+		query = query.Select("model, group_id, channel_id, " + usageAggregateSelect).
+			Group("model, group_id, channel_id").
+			Order("model ASC").Order("group_id ASC").Order("channel_id ASC")
+	}
+	var grouped *gorm.DB
+	if accessKeyScoped {
+		grouped = scope.Session(&gorm.Session{}).Select("model").Group("model")
+	} else {
+		grouped = scope.Session(&gorm.Session{}).Select("model, group_id, channel_id").
+			Group("model, group_id, channel_id")
+	}
+	var totalItems int64
+	if err := grouped.Count(&totalItems).Error; err != nil {
+		return UsageBreakdown{}, fmt.Errorf("count usage breakdown: %w", err)
+	}
+	var source []usageBreakdownRow
+	if err := query.Offset((breakdownPage - 1) * breakdownPageSize).Limit(breakdownPageSize).Find(&source).Error; err != nil {
+		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: %w", err)
+	}
+	breakdown := UsageBreakdown{
+		Scope: "admin",
+		Rows:  make([]UsageBreakdownRow, 0, len(source)),
+		Total: summary,
+		Pagination: UsagePagination{
+			Page: breakdownPage, PageSize: breakdownPageSize, TotalItems: int(totalItems),
+			TotalPages: totalPages(int(totalItems), breakdownPageSize),
+		},
+	}
+	if accessKeyScoped {
+		breakdown.Scope = "access_key"
+	}
+	for _, row := range source {
+		if err := validateUsageAggregate(row.UsageAggregate); err != nil {
+			return UsageBreakdown{}, fmt.Errorf("validate usage breakdown: %w", err)
+		}
+		if accessKeyScoped && (row.GroupID != nil || row.ChannelID != nil) {
+			return UsageBreakdown{}, fmt.Errorf("query usage breakdown: access-key row contains admin identity")
+		}
+		breakdown.Rows = append(breakdown.Rows, UsageBreakdownRow{
+			Model: row.Model, GroupID: row.GroupID, ChannelID: row.ChannelID,
+			UsageAggregate: row.UsageAggregate,
+		})
+	}
+	return breakdown, nil
+}
+
+func totalPages(totalItems, pageSize int) int {
+	if totalItems == 0 {
+		return 0
+	}
+	return (totalItems + pageSize - 1) / pageSize
+}
 func queryUsageDistribution(
 	scope *gorm.DB,
 	summary UsageAggregate,
@@ -399,6 +489,8 @@ func addUsageAggregates(left, right UsageAggregate) (UsageAggregate, error) {
 		{"partial count", left.PartialCount, right.PartialCount, &result.PartialCount},
 		{"unpriced request count", left.UnpricedRequestCount, right.UnpricedRequestCount, &result.UnpricedRequestCount},
 		{"pricing partial count", left.PricingPartialCount, right.PricingPartialCount, &result.PricingPartialCount},
+		{"duration ms total", left.DurationMsTotal, right.DurationMsTotal, &result.DurationMsTotal},
+		{"duration sample count", left.DurationSampleCount, right.DurationSampleCount, &result.DurationSampleCount},
 	}
 	for _, field := range fields {
 		value, ok := usage.CheckedAdd(field.left, field.right)
@@ -482,6 +574,8 @@ func validateUsageAggregate(aggregate UsageAggregate) error {
 		{"partial count", aggregate.PartialCount},
 		{"unpriced request count", aggregate.UnpricedRequestCount},
 		{"pricing partial count", aggregate.PricingPartialCount},
+		{"duration ms total", aggregate.DurationMsTotal},
+		{"duration sample count", aggregate.DurationSampleCount},
 	}
 	for _, field := range fields {
 		if field.value < 0 {
@@ -491,6 +585,9 @@ func validateUsageAggregate(aggregate UsageAggregate) error {
 	requestCount, ok := usage.CheckedAdd(aggregate.SuccessCount, aggregate.FailureCount)
 	if !ok || requestCount != aggregate.RequestCount {
 		return fmt.Errorf("request count does not equal success plus failure")
+	}
+	if aggregate.DurationSampleCount > aggregate.RequestCount {
+		return fmt.Errorf("duration sample count exceeds request count")
 	}
 	if _, err := usageAggregateTotalTokens(aggregate); err != nil {
 		return err
@@ -532,6 +629,8 @@ const usageAggregateSelect = "" +
 	"COALESCE(SUM(cache_write_unknown_tokens), 0) AS cache_write_unknown_tokens, " +
 	"COALESCE(SUM(output_tokens), 0) AS output_tokens, " +
 	"COALESCE(SUM(estimated_cost_nano_usd), 0) AS estimated_cost_nano_usd, " +
+	"COALESCE(SUM(duration_ms_total), 0) AS duration_ms_total, " +
+	"COALESCE(SUM(duration_sample_count), 0) AS duration_sample_count, " +
 	"COALESCE(SUM(usage_missing_count), 0) AS usage_missing_count, " +
 	"COALESCE(SUM(partial_count), 0) AS partial_count, " +
 	"COALESCE(SUM(unpriced_request_count), 0) AS unpriced_request_count, " +
@@ -550,16 +649,24 @@ const usageDistributionAggregateSelect = "" +
 	usageDistributionTotalTokensExpression + " AS total_tokens, " +
 	"COALESCE(SUM(estimated_cost_nano_usd), 0) AS estimated_cost_nano_usd"
 
+type usageBreakdownRow struct {
+	Model     string
+	GroupID   *uint
+	ChannelID *string
+	UsageAggregate
+}
+
 type usageHourPoint struct {
 	BucketStartMS int64
 	UsageAggregate
 }
 
 type usageStatIntegrity struct {
-	InvalidBucket int64
-	InvalidCount  int64
-	InvalidToken  int64
-	InvalidCost   int64
+	InvalidBucket   int64
+	InvalidCount    int64
+	InvalidToken    int64
+	InvalidCost     int64
+	InvalidDuration int64
 }
 
 type usageDistributionRow struct {

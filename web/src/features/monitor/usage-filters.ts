@@ -1,4 +1,4 @@
-import type { UsageFilters } from '@/app/resources/usage'
+import type { UsageBreakdownPageSize, UsageFilters } from '@/app/resources/usage'
 import { defaultTimeRange, isTimeRange } from '@/lib/time'
 
 import { normalizeMonitorText } from './filter-validation'
@@ -39,6 +39,17 @@ export function normalizeUsageModel(raw: unknown): string | undefined {
   return normalizeMonitorText(raw)
 }
 
+export function normalizeUsagePage(raw: unknown): number {
+  if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw > 0 ? raw : 1
+  if (typeof raw !== 'string' || !/^\d+$/u.test(raw)) return 1
+  const value = Number(raw)
+  return Number.isSafeInteger(value) && value > 0 ? value : 1
+}
+
+export function normalizeUsagePageSize(raw: unknown): UsageBreakdownPageSize {
+  return raw === 50 || raw === '50' ? 50 : raw === 100 || raw === '100' ? 100 : 20
+}
+
 export function normalizeUsageChannelID(raw: unknown): string | undefined {
   if (typeof raw !== 'string' || !/^[a-z][a-z0-9_]{0,99}$/u.test(raw)) return undefined
   return raw
@@ -54,6 +65,10 @@ export function parseAppliedUsageFilters(query: Record<string, unknown>): UsageF
   if (channelID !== undefined) filters.channel_id = channelID
   if (credentialID !== undefined) filters.credential_id = credentialID
   if (upstreamModel !== undefined) filters.upstream_model = upstreamModel
+  const page = normalizeUsagePage(query.breakdown_page)
+  const pageSize = normalizeUsagePageSize(query.breakdown_page_size)
+  if (page !== 1) filters.breakdown_page = page
+  if (pageSize !== 20) filters.breakdown_page_size = pageSize
   return filters
 }
 

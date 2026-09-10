@@ -385,6 +385,27 @@ export default {
         qualityCompact:
           'Missing {missing} · Partial {partial} · Unpriced {unpriced} · Partial pricing {pricingPartial}',
       },
+      breakdown: {
+        title: 'Model and route breakdown',
+        description: 'All filtered usage rows, grouped by model and the available route context.',
+        caption: 'Usage and cost breakdown by model and route',
+        rowCount: '{count} rows',
+        total: 'Total',
+        deletedOrUnknownChannel: '#{id} · Deleted or unknown',
+        columns: {
+          model: 'Model',
+          group: 'Group',
+          channel: 'Channel',
+          successRate: 'Success rate',
+          averageLatency: 'Average latency',
+          uncachedInput: 'Uncached input',
+          cacheRead: 'Cache read',
+          cacheWrite5m: 'Cache write 5m',
+          cacheWrite1h: 'Cache write 1h',
+          cacheWriteUnknown: 'Cache write unknown',
+          output: 'Output',
+        },
+      },
     },
     inspector: {
       title: 'Route inspector',

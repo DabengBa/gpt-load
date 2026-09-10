@@ -385,6 +385,28 @@ export default {
         qualityCompact:
           'なし {missing} · 部分 {partial} · 未設定 {unpriced} · 部分価格 {pricingPartial}',
       },
+      breakdown: {
+        title: 'モデルとルートの内訳',
+        description:
+          '現在の絞り込み範囲にあるすべての使用量をモデルと利用可能なルート情報別に表示します。',
+        caption: 'モデルとルート別の使用量・コスト内訳',
+        rowCount: '{count} 行',
+        total: '合計',
+        deletedOrUnknownChannel: '#{id} · 削除済みまたは不明',
+        columns: {
+          model: 'モデル',
+          group: 'グループ',
+          channel: 'チャネル',
+          successRate: '成功率',
+          averageLatency: '平均レイテンシ',
+          uncachedInput: '未キャッシュ入力',
+          cacheRead: 'キャッシュ読み取り',
+          cacheWrite5m: 'キャッシュ書き込み 5m',
+          cacheWrite1h: 'キャッシュ書き込み 1h',
+          cacheWriteUnknown: 'キャッシュ書き込み 不明',
+          output: '出力',
+        },
+      },
     },
     inspector: {
       title: 'ルート検査',

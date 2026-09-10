@@ -197,15 +197,17 @@ type GroupUsageReader interface {
 }
 
 type UsageQuery struct {
-	FromMS        int64
-	ToMS          int64
-	Granularity   UsageGranularity
-	BucketWidthMS int64
-	AccessKeyID   *uint
-	GroupID       *uint
-	ChannelID     channel.ID
-	CredentialID  *uint
-	UpstreamModel string
+	FromMS            int64
+	ToMS              int64
+	Granularity       UsageGranularity
+	BucketWidthMS     int64
+	AccessKeyID       *uint
+	GroupID           *uint
+	ChannelID         channel.ID
+	CredentialID      *uint
+	UpstreamModel     string
+	BreakdownPage     int
+	BreakdownPageSize int
 }
 
 type UsageAggregate struct {
@@ -219,6 +221,8 @@ type UsageAggregate struct {
 	CacheWriteUnknownTokens int64
 	OutputTokens            int64
 	EstimatedCostNanoUSD    int64
+	DurationMsTotal         int64
+	DurationSampleCount     int64
 	UsageMissingCount       int64
 	PartialCount            int64
 	UnpricedRequestCount    int64
@@ -255,6 +259,28 @@ type UsageReport struct {
 	Summary       UsageAggregate
 	Series        []UsageSeriesPoint
 	Distributions UsageDistributions
+	Breakdown     UsageBreakdown
+}
+
+type UsageBreakdown struct {
+	Scope      string
+	Rows       []UsageBreakdownRow
+	Total      UsageAggregate
+	Pagination UsagePagination
+}
+
+type UsagePagination struct {
+	Page       int
+	PageSize   int
+	TotalItems int
+	TotalPages int
+}
+
+type UsageBreakdownRow struct {
+	Model     string
+	GroupID   *uint
+	ChannelID *string
+	UsageAggregate
 }
 
 type UsageDistributions struct {
