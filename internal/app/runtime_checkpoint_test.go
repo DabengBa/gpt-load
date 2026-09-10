@@ -294,6 +294,36 @@ func TestFileRuntimeStateCheckpointReturnsErrorWhenDeleteFails(t *testing.T) {
 	}
 }
 
+func TestFileRuntimeStateCheckpointToleratesOlderAndNewerDocuments(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		document string
+	}{
+		// 旧文件只带凭据与统计，没有响应归属字段。
+		{name: "older document without responses", document: `{"credentials":[],"stats":[]}`},
+		// 未来版本追加的字段必须被忽略，而不是让启动失败。
+		{name: "newer document with unknown fields", document: `{"credentials":[],"stats":[],"unknown_future_state":{"a":1}}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			path := filepath.Join(dataDir, runtimeStateCheckpointFileName)
+			if err := os.WriteFile(path, []byte(test.document), 0o600); err != nil {
+				t.Fatalf("write checkpoint fixture: %v", err)
+			}
+			bindings := state.NewResponseBindings()
+			if err := NewFileRuntimeStateCheckpoint(dataDir, nil, nil, bindings).Restore(context.Background()); err != nil {
+				t.Fatalf("Restore() error = %v", err)
+			}
+			if captured := bindings.CaptureCheckpoint(); len(captured) != 0 {
+				t.Fatalf("restored bindings = %#v, want empty", captured)
+			}
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("checkpoint file was not consumed, stat error = %v", err)
+			}
+		})
+	}
+}
+
 func TestFileRuntimeStateCheckpointConsumesMalformedFileAndReturnsError(t *testing.T) {
 	dataDir := t.TempDir()
 	path := filepath.Join(dataDir, runtimeStateCheckpointFileName)
