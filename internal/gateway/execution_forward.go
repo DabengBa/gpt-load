@@ -37,6 +37,19 @@ func NewExecutionForwarder(executor execution.Executor) *ExecutionForwarder {
 	}
 }
 
+func (forwarder *ExecutionForwarder) OpenWebsocket(ctx context.Context, input ForwardInput) (execution.WebsocketSession, execution.WebsocketResult) {
+	spec, err := newExecutionAttemptSpec(input)
+	if forwarder != nil && err == nil {
+		if opener, ok := forwarder.executor.(execution.WebsocketOpener); ok {
+			return opener.OpenWebsocket(ctx, spec)
+		}
+	}
+	return nil, execution.WebsocketResult{DispatchState: execution.DispatchNotSent, Error: &execution.ErrorEvidence{
+		Kind: execution.ErrorKindInvalidRequest, OriginHint: execution.ErrorOriginInternal,
+		ScopeHint: execution.ErrorScopeRequest, Code: "websocket_not_supported", Summary: "Native WebSocket is not supported.",
+	}}
+}
+
 func (forwarder *ExecutionForwarder) Forward(
 	ctx context.Context,
 	input ForwardInput,
@@ -158,6 +171,17 @@ func (forwarder *ExecutionForwarder) forwardStream(
 		if err != nil {
 			return false, err
 		}
+		if !wasTerminal && !providerError && input.OnResponse != nil {
+			object, err := decodeResponsesStoreObject(event.Payload)
+			if err != nil {
+				return false, err
+			}
+			if response, exists := object["response"]; exists {
+				if err := input.OnResponse(response); err != nil {
+					return false, err
+				}
+			}
+		}
 		if !wasTerminal {
 			streamEvents.observeUsageEvent(event)
 			if providerError {
@@ -240,7 +264,7 @@ func (forwarder *ExecutionForwarder) forwardStream(
 				return downstreamErr
 			}
 			forwardData := observedData
-			if input.ClientProtocol == protocol.OpenAIImages || responsesStoreBuffer != nil {
+			if input.ClientProtocol == protocol.OpenAIImages || responsesStoreBuffer != nil || input.OnResponse != nil {
 				forwardData = completeData
 				if len(forwardData) == 0 {
 					return nil
@@ -780,6 +804,7 @@ func newExecutionAttemptSpec(input ForwardInput) (execution.AttemptSpec, error) 
 		ClientProtocol:           input.ClientProtocol,
 		Operation:                input.Operation,
 		RouteRequirement:         input.RouteRequirement,
+		ResponsesStorePreference: input.ResponsesStorePreference,
 		ResponsesStoreDowngraded: input.ResponsesStoreDowngraded,
 		ClientModel:              input.ExternalModel,
 		UpstreamModel:            input.UpstreamModelID,

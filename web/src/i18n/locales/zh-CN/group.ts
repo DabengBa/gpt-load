@@ -349,6 +349,8 @@ export default {
           '此分组覆盖会完整替换全局 HeaderRules；后续全局更改不会合并到这里。',
         buffered_stream: '缓冲流式响应',
         bufferedStreamHelp: '继承全局设置，或为本分组显式开启响应缓冲。',
+        responses_websocket_enabled: 'Responses WebSocket',
+        websocketHelp: '关闭会立即断开本分组的 WS 连接并中断生成，HTTP/SSE 不受影响。',
         affinity_enabled: '请求亲和',
         affinityHelp: '只控制本分组是否学习或复用亲和目标，不改变普通轮询、权重或重试。',
       },

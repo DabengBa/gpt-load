@@ -139,6 +139,7 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 	}
 
 	return definition{
+		responsesWebsocket: source.ResponsesWebsocket,
 		descriptor: Descriptor{
 			ID:               source.ID,
 			Name:             source.Name,

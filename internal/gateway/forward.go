@@ -37,6 +37,8 @@ type ForwardInput struct {
 	UpstreamModelID   string
 	OnStreamReady     func()
 	OnFirstResponse   func()
+	// OnResponse 在原生 Response 对象下发前登记归属，不承担上游执行。
+	OnResponse func([]byte) error
 
 	// BufferedStream freezes the request-level delivery and replay contract.
 	BufferedStream bool
@@ -47,6 +49,7 @@ type ForwardInput struct {
 	ClientProtocol           protocol.Protocol
 	Operation                execution.Operation
 	RouteRequirement         execution.RouteRequirement
+	ResponsesStorePreference execution.ResponsesStorePreference
 	ResponsesStoreDowngraded bool
 	ChannelID                string
 	RouteMode                execution.RouteMode

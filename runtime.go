@@ -12,6 +12,7 @@ import (
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/redact"
 	"gpt-load/internal/platform/utils"
+	"gpt-load/internal/subscription/providers/codex"
 )
 
 type managedApplication interface {
@@ -36,6 +37,8 @@ func buildManagedRuntime() (*managedRuntime, error) {
 			Level:  cfg.Log.Level,
 			Format: cfg.Log.Format,
 		})
+		// Codex WS 脱敏先于通用脱敏注册：CPA 的断连日志必须在这里已经被处理。
+		logrus.AddHook(codex.NewLogHook())
 		logrus.AddHook(redact.NewHook(runtimeRedactor))
 	}); err != nil {
 		return nil, fmt.Errorf("configure logger: %w", err)
