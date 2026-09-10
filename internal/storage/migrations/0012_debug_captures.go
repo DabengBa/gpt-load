@@ -17,8 +17,8 @@ var debugCaptureTables0012 = []any{
 }
 
 // Up0012 installs the database-only raw capture store. AutoMigrate is used
-// here so SQLite, MySQL, and PostgreSQL receive their native binary type
-// (BLOB, VARBINARY/BLOB, and bytea respectively) from the GORM dialector.
+// here so SQLite and PostgreSQL receive their native binary type (BLOB and
+// bytea respectively) from the GORM dialector.
 func Up0012(db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("debug capture migration: database is nil")
@@ -29,11 +29,11 @@ func Up0012(db *gorm.DB) error {
 	return Validate0012(db)
 }
 
-// ValidateRecoverable0012 permits an interrupted AutoMigrate to be retried,
-// while rejecting a same-named table that cannot be completed safely.
-func ValidateRecoverable0012(db *gorm.DB) error {
+// validateExistingTables0012 checks the columns of debug capture tables that
+// are already present, so Up0012 can report a partially created schema.
+func validateExistingTables0012(db *gorm.DB) error {
 	if db == nil {
-		return fmt.Errorf("validate recoverable debug capture schema: database is nil")
+		return fmt.Errorf("validate debug capture schema: database is nil")
 	}
 	for _, table := range debugCaptureTables0012 {
 		name := tableName0012(table)
@@ -48,7 +48,7 @@ func ValidateRecoverable0012(db *gorm.DB) error {
 }
 
 func Validate0012(db *gorm.DB) error {
-	if err := ValidateRecoverable0012(db); err != nil {
+	if err := validateExistingTables0012(db); err != nil {
 		return err
 	}
 	for _, table := range debugCaptureTables0012 {
