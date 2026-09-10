@@ -355,6 +355,11 @@ func (recorder *requestRecorder) recordStreamAttempt(
 	if result.Stream.EndReason == StreamEndSSEError {
 		rules = selection.Group.HeaderRules
 	}
+	errorCode := streamErrorCode(result.Stream.EndReason)
+	if result.Stream.EndReason == StreamEndUpstreamFailure {
+		// 这次的 attempt 没有流级终止观测，上游错误才是更精确的错误码。
+		errorCode = upstreamErrorCode(result, decision.Category)
+	}
 	summarySecrets := resolvedErrorSummarySecretValues(
 		"",
 		rules,
@@ -364,7 +369,7 @@ func (recorder *requestRecorder) recordStreamAttempt(
 		selection,
 		result,
 		decision,
-		streamErrorCode(result.Stream.EndReason),
+		errorCode,
 		sanitizeErrorSummary(
 			recorder.redactor,
 			result.Stream.ErrorSummary,
@@ -488,7 +493,7 @@ func (recorder *requestRecorder) completeStream(
 	switch result.Stream.EndReason {
 	case StreamEndCleanEOF:
 		outcome.status = telemetry.RequestStatusSuccess
-	case StreamEndSSEError:
+	case StreamEndSSEError, StreamEndUpstreamFailure:
 		outcome.status = telemetry.RequestStatusError
 	case StreamEndClientCanceled, StreamEndServerShutdown:
 		outcome.status = telemetry.RequestStatusCanceled
@@ -829,6 +834,8 @@ func fixedErrorSummary(code string) string {
 		return "No upstream target could preserve or convert the request."
 	case "upstream_sse_error":
 		return "Upstream stream reported an error."
+	case "upstream_failed":
+		return "The upstream attempt failed before any response content was released."
 	case "upstream_stream_terminated":
 		return "Upstream stream terminated before completion."
 	case "upstream_stream_idle_timeout":

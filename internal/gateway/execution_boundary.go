@@ -149,6 +149,10 @@ func decisionEvidence(result UpstreamResult) (*execution.ErrorEvidence, error) {
 			}, nil
 		}
 		return evidence, downstreamErr
+	case StreamEndUpstreamFailure:
+		// 没有流级终止观测的失败（buffered 心跳已提交、payload 未释放）：执行层证据
+		// 就是这次失败的全部可分类信息，不能被当成契约违规丢掉。
+		return evidence, downstreamErr
 	case StreamEndCleanEOF:
 		return nil, nil
 	case StreamEndProviderIncomplete:

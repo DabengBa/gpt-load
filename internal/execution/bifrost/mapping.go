@@ -275,22 +275,8 @@ func passthroughHTTPError(status int, headers http.Header, body []byte, secrets 
 }
 
 func failureHintFromHTTP(status int, body []byte) execution.FailureHint {
-	var payload struct {
-		Error struct {
-			Type    json.RawMessage `json:"type"`
-			Code    json.RawMessage `json:"code"`
-			Status  json.RawMessage `json:"status"`
-			Message string          `json:"message"`
-		} `json:"error"`
-	}
-	_ = json.Unmarshal(body, &payload)
-	return neutralFailureHint(
-		status,
-		evidenceScalar(payload.Error.Type),
-		evidenceScalar(payload.Error.Code),
-		evidenceScalar(payload.Error.Status),
-		payload.Error.Message,
-	)
+	typeValue, codeValue, statusValue, messageValue := providerErrorEnvelope(body)
+	return neutralFailureHint(status, typeValue, codeValue, statusValue, messageValue)
 }
 
 func neutralFailureHint(status int, values ...string) execution.FailureHint {
@@ -382,16 +368,39 @@ func containsAnyMarker(value string, markers ...string) bool {
 }
 
 func openAIErrorTypeCode(body []byte) (string, string) {
+	typeValue, codeValue, _, _ := providerErrorEnvelope(body)
+	return typeValue, codeValue
+}
+
+// providerErrorEnvelope reads the type/code/status/message fields of an upstream
+// error body. The canonical OpenAI shape nests them under "error", while the
+// reseller gateways this deployment talks to answer with a top-level
+// {"code","message"} object. The nested shape keeps precedence so a wrapper can
+// never override it; both shapes carry the same failure markers.
+func providerErrorEnvelope(body []byte) (string, string, string, string) {
+	type errorFields struct {
+		Type    json.RawMessage `json:"type"`
+		Code    json.RawMessage `json:"code"`
+		Status  json.RawMessage `json:"status"`
+		Message string          `json:"message"`
+	}
 	var payload struct {
-		Error struct {
-			Type json.RawMessage `json:"type"`
-			Code json.RawMessage `json:"code"`
-		} `json:"error"`
+		errorFields
+		Error errorFields `json:"error"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", ""
+		return "", "", "", ""
 	}
-	return evidenceScalar(payload.Error.Type), evidenceScalar(payload.Error.Code)
+	preferred := func(nested, top string) string {
+		if nested != "" {
+			return nested
+		}
+		return top
+	}
+	return preferred(evidenceScalar(payload.Error.Type), evidenceScalar(payload.errorFields.Type)),
+		preferred(evidenceScalar(payload.Error.Code), evidenceScalar(payload.errorFields.Code)),
+		preferred(evidenceScalar(payload.Error.Status), evidenceScalar(payload.errorFields.Status)),
+		preferred(payload.Error.Message, payload.errorFields.Message)
 }
 
 func evidenceScalar(raw json.RawMessage) string {
