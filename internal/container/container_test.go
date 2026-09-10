@@ -1125,7 +1125,7 @@ func TestContainerHealthEndpointReadsSharedStatsStore(t *testing.T) {
 			t.Fatalf("Encrypt() error = %v", encryptErr)
 		}
 		if replaceErr := registry.ReplaceCredentials([]state.CredentialEntry{{
-			ID: 1, GroupID: 1, Status: state.CredentialStatusActive,
+			ID: 1, GroupID: 1, AuthState: state.CredentialAuthStateReady,
 			Version: 1, IdentityGeneration: 1, Fingerprint: "container-credential",
 			Blacklisted: true, EncryptedValue: ciphertext,
 		}}); replaceErr != nil {

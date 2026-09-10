@@ -18,7 +18,6 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
-	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/encryption"
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
@@ -285,21 +284,6 @@ func TestCredentialManagerControlRefreshPreservesNewerCooldown(t *testing.T) {
 
 func TestCredentialManagerReconcilesRegistryAfterIncrementalPublicationMiss(t *testing.T) {
 	manager, db, registry, keyService, row := newCredentialManagerFixture(t, credentialJSON("old-access", "old-refresh", time.Now().Add(time.Minute)))
-	encodedProxy, err := outboundproxy.Encode(outboundproxy.Config{
-		Mode: outboundproxy.ModeCustom,
-		URL:  "socks5://proxy-user:proxy-password@127.0.0.1:1080",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	encryptedProxy, err := keyService.Encrypt(encodedProxy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Model(&models.Credential{}).Where("id = ?", row.ID).
-		Update("proxy_config", encryptedProxy).Error; err != nil {
-		t.Fatal(err)
-	}
 	manager.refresh = adaptCodexRefresh(refreshedCredential)
 	manager.replaceSecret = func(uint, uint64, uint64, string, string) bool { return false }
 
@@ -321,8 +305,7 @@ func TestCredentialManagerReconcilesRegistryAfterIncrementalPublicationMiss(t *t
 	}
 	ref, ok := registry.CredentialRef(row.ID)
 	if !ok || ref.Version != row.SecretVersion+1 || ref.Fingerprint != stored.Fingerprint ||
-		ref.EncryptedValue != stored.Data || ref.EncryptedProxy != encryptedProxy ||
-		ref.ProxyFingerprint != keyService.Hash(encodedProxy) {
+		ref.EncryptedValue != stored.Data {
 		t.Fatalf("registry ref = %#v, ok = %t", ref, ok)
 	}
 }
@@ -596,7 +579,7 @@ func newCredentialManagerFixture(
 	row := models.Credential{
 		GroupID: group.ID, Data: ciphertext, Fingerprint: keyService.Hash(string(canonical)),
 		IdentityFingerprint: keyService.Hash("identity|" + credential.AccountID), SecretVersion: 1,
-		AuthState: models.CredentialAuthStateReady, Status: models.CredentialStatusActive,
+		AuthState: models.CredentialAuthStateReady,
 	}
 	if err := db.Create(&row).Error; err != nil {
 		t.Fatal(err)
@@ -607,8 +590,8 @@ func newCredentialManagerFixture(
 	)
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: row.ID, GroupID: group.ID, Version: 1, IdentityGeneration: identityGeneration,
-		Fingerprint: row.Fingerprint, Status: state.CredentialStatusActive,
-		WeightAuto: state.DefaultWeight, EncryptedValue: row.Data,
+		Fingerprint: row.Fingerprint, AuthState: state.CredentialAuthStateReady,
+		EncryptedValue: row.Data,
 	}}); err != nil {
 		t.Fatal(err)
 	}
