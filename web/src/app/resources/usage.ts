@@ -24,12 +24,16 @@ export type UsageDistributionMetric = 'requests' | 'tokens' | 'cost'
 export const usageRanges = timeRanges
 export type UsageRange = TimeRange
 
+export type UsageBreakdownPageSize = 20 | 50 | 100
+
 export interface UsageFilters {
   range: UsageRange
   group_id?: number
   channel_id?: string
   credential_id?: number
   upstream_model?: string
+  breakdown_page?: number
+  breakdown_page_size?: UsageBreakdownPageSize
 }
 
 export interface UsageAggregateDto {
@@ -93,6 +97,12 @@ export interface UsageBreakdownDto {
   scope: UsageBreakdownScope
   rows: UsageBreakdownRowDto[]
   total: UsageAggregateDto
+  pagination: {
+    page: number
+    page_size: UsageBreakdownPageSize
+    total_items: number
+    total_pages: number
+  }
 }
 
 export interface UsageDistributionDto {
@@ -217,43 +227,6 @@ function sameUsageAggregate(left: UsageAggregateDto, right: UsageAggregateDto): 
   return breakdownAggregateFields.every((field) => left[field] === right[field])
 }
 
-function addSafeUsageNumber(left: number, right: number): number {
-  const result = left + right
-  if (!Number.isSafeInteger(result)) invalidResponse()
-  return result
-}
-
-function sumUsageAggregates(rows: UsageBreakdownRowDto[]): UsageAggregateDto {
-  const result: UsageAggregateDto = {
-    request_count: 0,
-    success_count: 0,
-    failure_count: 0,
-    uncached_input_tokens: 0,
-    cache_read_tokens: 0,
-    cache_write_5m_tokens: 0,
-    cache_write_1h_tokens: 0,
-    cache_write_unknown_tokens: 0,
-    output_tokens: 0,
-    total_tokens: 0,
-    estimated_cost_nano_usd: '0',
-    duration_ms_total: 0,
-    duration_sample_count: 0,
-    usage_missing_count: 0,
-    partial_count: 0,
-    unpriced_request_count: 0,
-    pricing_partial_count: 0,
-  }
-  for (const row of rows) {
-    for (const field of aggregateKeys) {
-      result[field] = addSafeUsageNumber(result[field], row[field])
-    }
-    result.estimated_cost_nano_usd = (
-      BigInt(result.estimated_cost_nano_usd) + BigInt(row.estimated_cost_nano_usd)
-    ).toString()
-  }
-  return result
-}
-
 function projectUsageModel(value: unknown): string {
   const model = projectString(value)
   if (
@@ -266,11 +239,40 @@ function projectUsageModel(value: unknown): string {
   return model
 }
 
+function expectedUsagePageItems(pagination: UsageBreakdownDto['pagination']): number {
+  if (pagination.total_items === 0 || pagination.page > pagination.total_pages) return 0
+  if (pagination.page < pagination.total_pages) return pagination.page_size
+  const remainder = pagination.total_items % pagination.page_size
+  return remainder === 0 ? pagination.page_size : remainder
+}
+
+function projectUsagePagination(value: unknown): UsageBreakdownDto['pagination'] {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, ['page', 'page_size', 'total_items', 'total_pages'])
+  const page = projectSafeInteger(record.page, { minimum: 1 })
+  const pageSize = projectSafeInteger(record.page_size, { minimum: 20, maximum: 100 })
+  const totalItems = projectSafeInteger(record.total_items, { minimum: 0 })
+  const totalPages = projectSafeInteger(record.total_pages, { minimum: 0 })
+  if (
+    (pageSize !== 20 && pageSize !== 50 && pageSize !== 100) ||
+    totalPages !== (totalItems === 0 ? 0 : Math.ceil(totalItems / pageSize))
+  ) {
+    invalidResponse()
+  }
+  return {
+    page,
+    page_size: pageSize as UsageBreakdownPageSize,
+    total_items: totalItems,
+    total_pages: totalPages,
+  }
+}
+
 export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
   const record = projectRecord(value)
-  assertNoSecretLikeFields(record, ['scope', 'rows', 'total'])
+  assertNoSecretLikeFields(record, ['scope', 'rows', 'total', 'pagination'])
   const scope = projectEnum(record.scope, ['admin', 'access_key'] as const)
   const total = projectUsageAggregate(record.total)
+  const pagination = projectUsagePagination(record.pagination)
   const rows = projectArray(record.rows, (value): UsageBreakdownRowDto => {
     const row = projectRecord(value)
     const identityFields = scope === 'admin' ? ['model', 'group_id', 'channel_id'] : ['model']
@@ -300,8 +302,8 @@ export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
     if (identities.has(identity)) invalidResponse()
     identities.add(identity)
   }
-  if (!sameUsageAggregate(sumUsageAggregates(rows), total)) invalidResponse()
-  return { scope, rows, total }
+  if (rows.length !== expectedUsagePageItems(pagination)) invalidResponse()
+  return { scope, rows, total, pagination }
 }
 
 function projectUsageDistributionAggregate(value: unknown): UsageDistributionAggregateDto {
@@ -524,12 +526,24 @@ export function projectUsageReport(value: unknown): UsageReportDto {
 }
 
 export function normalizeUsageFilters(filters: UsageFilters): UsageFilters {
-  const result: UsageFilters = { range: filters.range }
+  const result: UsageFilters = {
+    range: filters.range,
+    breakdown_page: normalizeUsagePage(filters.breakdown_page),
+    breakdown_page_size: normalizeUsagePageSize(filters.breakdown_page_size),
+  }
   if (filters.group_id !== undefined) result.group_id = filters.group_id
   if (filters.channel_id !== undefined) result.channel_id = filters.channel_id
   if (filters.credential_id !== undefined) result.credential_id = filters.credential_id
   if (filters.upstream_model !== undefined) result.upstream_model = filters.upstream_model
   return result
+}
+
+function normalizeUsagePage(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 1
+}
+
+function normalizeUsagePageSize(value: unknown): UsageBreakdownPageSize {
+  return value === 50 || value === 100 ? value : 20
 }
 
 export function usageQueryIdentity(filters: UsageFilters) {
@@ -551,6 +565,8 @@ export async function getUsageReport(
   if (normalized.upstream_model !== undefined) {
     params.append('upstream_model', normalized.upstream_model)
   }
+  params.append('breakdown_page', String(normalized.breakdown_page))
+  params.append('breakdown_page_size', String(normalized.breakdown_page_size))
   const report = projectUsageReport(
     await client.request(`/api/usage?${params.toString()}`, { method: 'GET', signal }),
   )

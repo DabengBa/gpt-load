@@ -10,6 +10,7 @@ import (
 
 func TestUsageBreakdownAggregatesByScopeAndMasksAccessKeyDimensions(t *testing.T) {
 	db := openRequestLogQueryDB(t)
+
 	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)
 	row := func(id, model, channel string, group, credential, access uint, requests int64) models.UsageStat {
 		value := usageStat(start, group, model, requests)
@@ -77,5 +78,39 @@ func TestUsageBreakdownAggregatesByScopeAndMasksAccessKeyDimensions(t *testing.T
 	}
 	if scoped.Breakdown.Total != scoped.Summary {
 		t.Fatalf("access-key total = %#v, summary = %#v", scoped.Breakdown.Total, scoped.Summary)
+	}
+}
+
+func TestUsageBreakdownPaginatesRowsWithoutChangingTotal(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)
+	rows := make([]models.UsageStat, 0, 25)
+	for index := 0; index < 25; index++ {
+		model := string(rune('a' + index))
+		row := usageStat(start, 7, model, 1)
+		row.ID = 0
+		row.ChannelID = "channel-a"
+		row.CredentialID = uint(index + 1)
+		rows = append(rows, row)
+	}
+	createUsageStats(t, db, rows...)
+
+	report, err := newRequestLogTestService(db).QueryUsage(context.Background(), UsageQuery{
+		FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(),
+		Granularity: UsageGranularityHour, BreakdownPage: 2, BreakdownPageSize: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Breakdown.Pagination.Page != 2 || report.Breakdown.Pagination.PageSize != 20 ||
+		report.Breakdown.Pagination.TotalItems != 25 || report.Breakdown.Pagination.TotalPages != 2 {
+		t.Fatalf("breakdown pagination = %#v", report.Breakdown.Pagination)
+	}
+	if len(report.Breakdown.Rows) != 5 || report.Breakdown.Rows[0].Model != "u" ||
+		report.Breakdown.Rows[4].Model != "y" {
+		t.Fatalf("breakdown page rows = %#v", report.Breakdown.Rows)
+	}
+	if report.Breakdown.Total != report.Summary {
+		t.Fatalf("breakdown total = %#v, summary = %#v", report.Breakdown.Total, report.Summary)
 	}
 }

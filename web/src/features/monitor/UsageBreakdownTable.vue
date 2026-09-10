@@ -10,12 +10,18 @@ import type {
   UsageBreakdownRowDto,
 } from '@/app/resources/usage'
 import DataTable from '@/components/ui/DataTable.vue'
+import PaginationBar from '@/components/ui/PaginationBar.vue'
 import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from '@/lib/format'
 
 const props = defineProps<{
   breakdown: UsageBreakdownDto
   groups: GroupOptionDto[]
   channels: ChannelDto[]
+}>()
+
+const emit = defineEmits<{
+  page: [page: number]
+  'update:pageSize': [pageSize: 20 | 50 | 100]
 }>()
 
 const { locale, t } = useI18n()
@@ -136,6 +142,15 @@ function quality(aggregate: UsageAggregateDto): string {
     unpriced: formatInteger(aggregate.unpriced_request_count, locale.value),
     pricingPartial: formatInteger(aggregate.pricing_partial_count, locale.value),
   })
+}
+
+function setPage(page: number): void {
+  if (page < 1 || page > props.breakdown.pagination.total_pages) return
+  emit('page', page)
+}
+
+function setPageSize(pageSize: 20 | 50 | 100): void {
+  emit('update:pageSize', pageSize)
 }
 </script>
 
@@ -293,6 +308,17 @@ function quality(aggregate: UsageAggregateDto): string {
       </tr>
     </tfoot>
   </DataTable>
+  <PaginationBar
+    :page="breakdown.pagination.page"
+    :page-size="breakdown.pagination.page_size"
+    :total-items="breakdown.pagination.total_items"
+    :total-pages="breakdown.pagination.total_pages"
+    show-page-size
+    appearance="detail"
+    @previous="setPage(breakdown.pagination.page - 1)"
+    @next="setPage(breakdown.pagination.page + 1)"
+    @update:page-size="setPageSize"
+  />
 </template>
 
 <style scoped>

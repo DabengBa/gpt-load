@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	usageDistributionLimit = 5
-	maxUsageSeriesHours    = 30 * 24
-	usageRollbackTimeout   = time.Second
+	usageDistributionLimit        = 5
+	usageBreakdownDefaultPageSize = 20
+	maxUsageSeriesHours           = 30 * 24
+	usageRollbackTimeout          = time.Second
 )
 
 func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (UsageReport, error) {
@@ -55,7 +56,7 @@ func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (Usage
 		if err != nil {
 			return err
 		}
-		breakdown, err := queryUsageBreakdown(usageStatScope(connection, input), summary, input.AccessKeyID != nil)
+		breakdown, err := queryUsageBreakdown(usageStatScope(connection, input), summary, input.AccessKeyID != nil, input)
 		if err != nil {
 			return err
 		}
@@ -86,6 +87,16 @@ func validateUsageQuery(input UsageQuery) (int64, error) {
 	}
 	if input.CredentialID != nil && *input.CredentialID == 0 {
 		return 0, fmt.Errorf("query usage: invalid credential scope")
+	}
+	if input.BreakdownPage == 0 {
+		input.BreakdownPage = 1
+	}
+	if input.BreakdownPageSize == 0 {
+		input.BreakdownPageSize = usageBreakdownDefaultPageSize
+	}
+	if input.BreakdownPage < 1 ||
+		(input.BreakdownPageSize != 20 && input.BreakdownPageSize != 50 && input.BreakdownPageSize != 100) {
+		return 0, fmt.Errorf("query usage: invalid breakdown pagination")
 	}
 	bucketWidthMS := input.BucketWidthMS
 	switch input.Granularity {
@@ -273,7 +284,16 @@ func queryUsageBreakdown(
 	scope *gorm.DB,
 	summary UsageAggregate,
 	accessKeyScoped bool,
+	input UsageQuery,
 ) (UsageBreakdown, error) {
+	breakdownPage := input.BreakdownPage
+	breakdownPageSize := input.BreakdownPageSize
+	if breakdownPage == 0 {
+		breakdownPage = 1
+	}
+	if breakdownPageSize == 0 {
+		breakdownPageSize = usageBreakdownDefaultPageSize
+	}
 	query := scope.Session(&gorm.Session{})
 	if accessKeyScoped {
 		query = query.Select("model, NULL AS group_id, NULL AS channel_id, " + usageAggregateSelect).
@@ -283,28 +303,37 @@ func queryUsageBreakdown(
 			Group("model, group_id, channel_id").
 			Order("model ASC").Order("group_id ASC").Order("channel_id ASC")
 	}
+	var grouped *gorm.DB
+	if accessKeyScoped {
+		grouped = scope.Session(&gorm.Session{}).Select("model").Group("model")
+	} else {
+		grouped = scope.Session(&gorm.Session{}).Select("model, group_id, channel_id").
+			Group("model, group_id, channel_id")
+	}
+	var totalItems int64
+	if err := grouped.Count(&totalItems).Error; err != nil {
+		return UsageBreakdown{}, fmt.Errorf("count usage breakdown: %w", err)
+	}
 	var source []usageBreakdownRow
-	if err := query.Find(&source).Error; err != nil {
+	if err := query.Offset((breakdownPage - 1) * breakdownPageSize).Limit(breakdownPageSize).Find(&source).Error; err != nil {
 		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: %w", err)
 	}
 	breakdown := UsageBreakdown{
 		Scope: "admin",
 		Rows:  make([]UsageBreakdownRow, 0, len(source)),
 		Total: summary,
+		Pagination: UsagePagination{
+			Page: breakdownPage, PageSize: breakdownPageSize, TotalItems: int(totalItems),
+			TotalPages: totalPages(int(totalItems), breakdownPageSize),
+		},
 	}
 	if accessKeyScoped {
 		breakdown.Scope = "access_key"
 	}
-	var rowsTotal UsageAggregate
 	for _, row := range source {
 		if err := validateUsageAggregate(row.UsageAggregate); err != nil {
 			return UsageBreakdown{}, fmt.Errorf("validate usage breakdown: %w", err)
 		}
-		merged, err := addUsageAggregates(rowsTotal, row.UsageAggregate)
-		if err != nil {
-			return UsageBreakdown{}, fmt.Errorf("sum usage breakdown: %w", err)
-		}
-		rowsTotal = merged
 		if accessKeyScoped && (row.GroupID != nil || row.ChannelID != nil) {
 			return UsageBreakdown{}, fmt.Errorf("query usage breakdown: access-key row contains admin identity")
 		}
@@ -313,10 +342,14 @@ func queryUsageBreakdown(
 			UsageAggregate: row.UsageAggregate,
 		})
 	}
-	if rowsTotal != summary {
-		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: total mismatch")
-	}
 	return breakdown, nil
+}
+
+func totalPages(totalItems, pageSize int) int {
+	if totalItems == 0 {
+		return 0
+	}
+	return (totalItems + pageSize - 1) / pageSize
 }
 func queryUsageDistribution(
 	scope *gorm.DB,

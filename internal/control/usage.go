@@ -105,9 +105,17 @@ type usageBreakdownRowResponse struct {
 }
 
 type usageBreakdownResponse struct {
-	Scope string                      `json:"scope"`
-	Rows  []usageBreakdownRowResponse `json:"rows"`
-	Total usageAggregateResponse      `json:"total"`
+	Scope      string                      `json:"scope"`
+	Rows       []usageBreakdownRowResponse `json:"rows"`
+	Total      usageAggregateResponse      `json:"total"`
+	Pagination usagePaginationResponse     `json:"pagination"`
+}
+
+type usagePaginationResponse struct {
+	Page       int `json:"page"`
+	PageSize   int `json:"page_size"`
+	TotalItems int `json:"total_items"`
+	TotalPages int `json:"total_pages"`
 }
 
 type usageResponse struct {
@@ -175,13 +183,15 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 		return requestlog.UsageQuery{}, app_errors.ErrBadRequest
 	}
 	allowed := map[string]struct{}{
-		"range":          {},
-		"from_ms":        {},
-		"to_ms":          {},
-		"group_id":       {},
-		"channel_id":     {},
-		"credential_id":  {},
-		"upstream_model": {},
+		"range":               {},
+		"from_ms":             {},
+		"to_ms":               {},
+		"group_id":            {},
+		"channel_id":          {},
+		"credential_id":       {},
+		"upstream_model":      {},
+		"breakdown_page":      {},
+		"breakdown_page_size": {},
 	}
 	for key, value := range values {
 		if _, ok := allowed[key]; !ok || len(value) != 1 {
@@ -280,6 +290,20 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 			return requestlog.UsageQuery{}, app_errors.ErrValidation
 		}
 		query.UpstreamModel = value
+	}
+	if value, ok := singleQueryValue(values, "breakdown_page"); ok {
+		page, err := parseCanonicalSafeUint(value)
+		if err != nil || page == 0 || page > uint64(maxSafeInteger) {
+			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+		}
+		query.BreakdownPage = int(page)
+	}
+	if value, ok := singleQueryValue(values, "breakdown_page_size"); ok {
+		pageSize, err := parseCanonicalSafeUint(value)
+		if err != nil || (pageSize != 20 && pageSize != 50 && pageSize != 100) {
+			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+		}
+		query.BreakdownPageSize = int(pageSize)
 	}
 	return query, nil
 }
@@ -489,14 +513,39 @@ func mapUsageBreakdown(
 		Scope: source.Scope,
 		Rows:  make([]usageBreakdownRowResponse, 0, len(source.Rows)),
 		Total: total,
+		Pagination: usagePaginationResponse{
+			Page: source.Pagination.Page, PageSize: source.Pagination.PageSize,
+			TotalItems: source.Pagination.TotalItems, TotalPages: source.Pagination.TotalPages,
+		},
+	}
+	if result.Pagination.Page < 1 ||
+		(result.Pagination.PageSize != 20 && result.Pagination.PageSize != 50 && result.Pagination.PageSize != 100) ||
+		result.Pagination.TotalItems < 0 || result.Pagination.TotalPages < 0 {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid pagination")
+	}
+	expectedTotalPages := 0
+	if result.Pagination.TotalItems > 0 {
+		expectedTotalPages = (result.Pagination.TotalItems + result.Pagination.PageSize - 1) / result.Pagination.PageSize
+	}
+	if result.Pagination.TotalPages != expectedTotalPages {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid pagination")
+	}
+	expectedRows := 0
+	if result.Pagination.TotalItems > 0 && result.Pagination.Page <= result.Pagination.TotalPages {
+		remaining := result.Pagination.TotalItems - (result.Pagination.Page-1)*result.Pagination.PageSize
+		expectedRows = result.Pagination.PageSize
+		if remaining < expectedRows {
+			expectedRows = remaining
+		}
+	}
+	if len(source.Rows) != expectedRows {
+		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: pagination row count mismatch")
 	}
 	type identity struct {
 		model, channel string
 		group          uint
 	}
 	seen := make(map[identity]struct{}, len(source.Rows))
-	var rowsTotal usageAggregateResponse
-	rowsTotal.EstimatedCostNanoUSD = "0"
 	for _, row := range source.Rows {
 		if !validUsageModel(row.Model) {
 			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid model")
@@ -525,77 +574,14 @@ func mapUsageBreakdown(
 		if err != nil {
 			return usageBreakdownResponse{}, err
 		}
-		rowsTotal, err = addMappedUsageAggregates(rowsTotal, aggregate)
-		if err != nil {
-			return usageBreakdownResponse{}, err
-		}
 		result.Rows = append(result.Rows, usageBreakdownRowResponse{
 			Model: row.Model, GroupID: row.GroupID, ChannelID: row.ChannelID,
 			usageAggregateResponse: aggregate,
 		})
 	}
-	if rowsTotal != total {
-		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: rows total mismatch")
-	}
 	return result, nil
 }
 
-func addMappedUsageAggregates(left, right usageAggregateResponse) (usageAggregateResponse, error) {
-	result := usageAggregateResponse{}
-	fields := []struct {
-		name        string
-		left, right int64
-		target      *int64
-	}{
-		{"request count", left.RequestCount, right.RequestCount, &result.RequestCount},
-		{"success count", left.SuccessCount, right.SuccessCount, &result.SuccessCount},
-		{"failure count", left.FailureCount, right.FailureCount, &result.FailureCount},
-		{"uncached input tokens", left.UncachedInputTokens, right.UncachedInputTokens, &result.UncachedInputTokens},
-		{"cache read tokens", left.CacheReadTokens, right.CacheReadTokens, &result.CacheReadTokens},
-		{"cache write 5m tokens", left.CacheWrite5MTokens, right.CacheWrite5MTokens, &result.CacheWrite5MTokens},
-		{"cache write 1h tokens", left.CacheWrite1HTokens, right.CacheWrite1HTokens, &result.CacheWrite1HTokens},
-		{"cache write unknown tokens", left.CacheWriteUnknownTokens, right.CacheWriteUnknownTokens, &result.CacheWriteUnknownTokens},
-		{"output tokens", left.OutputTokens, right.OutputTokens, &result.OutputTokens},
-		{"duration ms total", left.DurationMsTotal, right.DurationMsTotal, &result.DurationMsTotal},
-		{"duration sample count", left.DurationSampleCount, right.DurationSampleCount, &result.DurationSampleCount},
-		{"usage missing count", left.UsageMissingCount, right.UsageMissingCount, &result.UsageMissingCount},
-		{"partial count", left.PartialCount, right.PartialCount, &result.PartialCount},
-		{"unpriced request count", left.UnpricedRequestCount, right.UnpricedRequestCount, &result.UnpricedRequestCount},
-		{"pricing partial count", left.PricingPartialCount, right.PricingPartialCount, &result.PricingPartialCount},
-	}
-	for _, field := range fields {
-		if field.left < 0 || field.right < 0 || field.left > maxSafeInteger-field.right {
-			return usageAggregateResponse{}, fmt.Errorf("map usage breakdown: %s overflow", field.name)
-		}
-		*field.target = field.left + field.right
-	}
-	totalTokens, err := checkedUsageTokenTotal(
-		result.UncachedInputTokens,
-		result.CacheReadTokens,
-		result.CacheWrite5MTokens,
-		result.CacheWrite1HTokens,
-		result.CacheWriteUnknownTokens,
-		result.OutputTokens,
-	)
-	if err != nil {
-		return usageAggregateResponse{}, err
-	}
-	result.TotalTokens = totalTokens
-	leftCost, err := strconv.ParseInt(left.EstimatedCostNanoUSD, 10, 64)
-	if err != nil {
-		return usageAggregateResponse{}, fmt.Errorf("map usage breakdown: invalid left cost")
-	}
-	rightCost, err := strconv.ParseInt(right.EstimatedCostNanoUSD, 10, 64)
-	if err != nil || leftCost < 0 || rightCost < 0 {
-		return usageAggregateResponse{}, fmt.Errorf("map usage breakdown: cost overflow")
-	}
-	cost, ok := pricing.CheckedAddNanoUSD(pricing.NanoUSD(leftCost), pricing.NanoUSD(rightCost))
-	if !ok {
-		return usageAggregateResponse{}, fmt.Errorf("map usage breakdown: cost overflow")
-	}
-	result.EstimatedCostNanoUSD = strconv.FormatInt(int64(cost), 10)
-	return result, nil
-}
 func mapUsageDistribution(
 	distribution requestlog.UsageDistribution,
 ) (usageDistributionResponse, error) {

@@ -151,6 +151,28 @@ func TestParseUsageQueryUsesFixedUTCAlignedWindows(t *testing.T) {
 	}
 }
 
+func TestParseUsageQueryAcceptsBreakdownPagination(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.July, 27, 12, 34, 56, 789, time.UTC)
+	query, apiErr := parseUsageQuery("range=24h&breakdown_page=2&breakdown_page_size=100", now.UnixMilli())
+	if apiErr != nil {
+		t.Fatalf("parseUsageQuery() error = %v", apiErr)
+	}
+	if query.BreakdownPage != 2 || query.BreakdownPageSize != 100 {
+		t.Fatalf("breakdown pagination = %d/%d, want 2/100", query.BreakdownPage, query.BreakdownPageSize)
+	}
+	for _, rawQuery := range []string{
+		"range=24h&breakdown_page=0",
+		"range=24h&breakdown_page=01",
+		"range=24h&breakdown_page_size=10",
+		"range=24h&breakdown_page_size=101",
+	} {
+		if _, apiErr := parseUsageQuery(rawQuery, now.UnixMilli()); apiErr == nil {
+			t.Fatalf("parseUsageQuery(%q) error = nil", rawQuery)
+		}
+	}
+}
+
 func TestUsageAPIReturnsExactPresetRange(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 27, 12, 34, 56, 789, time.UTC)
@@ -1056,10 +1078,30 @@ func (reader *recordingUsageStatReader) QueryUsage(
 		} else {
 			report.Breakdown.Rows = []requestlog.UsageBreakdownRow{}
 		}
+		report.Breakdown.Pagination = requestlog.UsagePagination{
+			Page: 1, PageSize: 20, TotalItems: len(report.Breakdown.Rows),
+			TotalPages: func() int {
+				if len(report.Breakdown.Rows) == 0 {
+					return 0
+				}
+				return 1
+			}(),
+		}
 	}
 	if len(report.Distributions.Group) == 0 && len(report.Distributions.Model) == 0 &&
 		len(report.Distributions.AccessKey) == 0 {
 		report.Distributions = usageTestDistributions(report.Summary, requestlog.UsageDistribution{})
+	}
+	if report.Breakdown.Pagination.Page == 0 {
+		report.Breakdown.Pagination = requestlog.UsagePagination{
+			Page: 1, PageSize: 20, TotalItems: len(report.Breakdown.Rows),
+			TotalPages: func() int {
+				if len(report.Breakdown.Rows) == 0 {
+					return 0
+				}
+				return 1
+			}(),
+		}
 	}
 	return report, nil
 }
@@ -1125,7 +1167,8 @@ func TestMapUsageBreakdownAccessKeyOmitsAdminAndSecretFields(t *testing.T) {
 		Rows: []requestlog.UsageBreakdownRow{{
 			Model: "model-a", UsageAggregate: summary,
 		}},
-		Total: summary,
+		Total:      summary,
+		Pagination: requestlog.UsagePagination{Page: 1, PageSize: 20, TotalItems: 1, TotalPages: 1},
 	}, true, mustMapUsageAggregateForTest(t, summary))
 	if err != nil {
 		t.Fatalf("mapUsageBreakdown() error = %v", err)

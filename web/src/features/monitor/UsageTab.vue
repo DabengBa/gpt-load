@@ -321,6 +321,13 @@ async function resetFilters(): Promise<void> {
   await navigate({ range: appliedFilters.value.range })
 }
 
+async function setBreakdownPage(page: number): Promise<void> {
+  await navigate({ ...appliedFilters.value, breakdown_page: page })
+}
+
+async function setBreakdownPageSize(pageSize: 20 | 50 | 100): Promise<void> {
+  await navigate({ ...appliedFilters.value, breakdown_page: 1, breakdown_page_size: pageSize })
+}
 function updateDistributionDimension(value: string): void {
   if (value !== 'group' && value !== 'model' && value !== 'access_key') return
   if (
@@ -601,12 +608,18 @@ defineExpose({ openFilters, refresh })
             id="usage-breakdown-title"
             :title="t('monitor.usage.breakdown.title')"
             :description="t('monitor.usage.breakdown.description')"
-            :meta="t('monitor.usage.breakdown.rowCount', { count: report.breakdown.rows.length })"
+            :meta="
+              t('monitor.usage.breakdown.rowCount', {
+                count: report.breakdown.pagination.total_items,
+              })
+            "
           />
           <UsageBreakdownTable
             :breakdown="report.breakdown"
             :groups="groupsQuery.data.value ?? []"
             :channels="channelsQuery.data.value?.items ?? []"
+            @page="setBreakdownPage"
+            @update:page-size="setBreakdownPageSize"
           />
         </section>
 

@@ -10,6 +10,8 @@ import {
   normalizeUsageGroupID,
   normalizeUsageChannelID,
   normalizeUsageModel,
+  normalizeUsagePage,
+  normalizeUsagePageSize,
   parseAppliedUsageFilters,
 } from './usage-filters'
 import { normalizeMonitorText } from './filter-validation'
@@ -172,6 +174,10 @@ export function usageMonitorQuery(
   if (channelID !== undefined) normalized.channel_id = channelID
   if (credentialID !== undefined) normalized.credential_id = String(credentialID)
   if (upstreamModel !== undefined) normalized.upstream_model = upstreamModel
+  const breakdownPage = normalizeUsagePage(filters.breakdown_page)
+  const breakdownPageSize = normalizeUsagePageSize(filters.breakdown_page_size)
+  if (breakdownPage !== 1) normalized.breakdown_page = String(breakdownPage)
+  if (breakdownPageSize !== 20) normalized.breakdown_page_size = String(breakdownPageSize)
   if (state.filtersOpen) normalized.panel = 'filters'
   if (state.seriesExpanded) normalized.series = 'expanded'
   return normalized

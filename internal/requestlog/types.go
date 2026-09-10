@@ -197,15 +197,17 @@ type GroupUsageReader interface {
 }
 
 type UsageQuery struct {
-	FromMS        int64
-	ToMS          int64
-	Granularity   UsageGranularity
-	BucketWidthMS int64
-	AccessKeyID   *uint
-	GroupID       *uint
-	ChannelID     channel.ID
-	CredentialID  *uint
-	UpstreamModel string
+	FromMS            int64
+	ToMS              int64
+	Granularity       UsageGranularity
+	BucketWidthMS     int64
+	AccessKeyID       *uint
+	GroupID           *uint
+	ChannelID         channel.ID
+	CredentialID      *uint
+	UpstreamModel     string
+	BreakdownPage     int
+	BreakdownPageSize int
 }
 
 type UsageAggregate struct {
@@ -261,9 +263,17 @@ type UsageReport struct {
 }
 
 type UsageBreakdown struct {
-	Scope string
-	Rows  []UsageBreakdownRow
-	Total UsageAggregate
+	Scope      string
+	Rows       []UsageBreakdownRow
+	Total      UsageAggregate
+	Pagination UsagePagination
+}
+
+type UsagePagination struct {
+	Page       int
+	PageSize   int
+	TotalItems int
+	TotalPages int
 }
 
 type UsageBreakdownRow struct {
