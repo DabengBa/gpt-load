@@ -3,11 +3,12 @@
 ## 基线
 
 - 分析分支：`plan/main-ahead-integration`
-- 当前基线：`dev@ab89c3869ae3fa602b547640b31730ee889bbe33`
-- 对比目标：`origin/main@0c9d188892aa4e998f7ec3fcea0f3219da25afcb`
-- `git rev-list --left-right --count origin/dev...origin/main`：`81 22`
-  - `dev` 独有 81 个提交
-  - `main` 独有 22 个提交
+- 当前基线：`dev@93942d5ebd78203d6ffe8a813d9b86b6968aca46`
+- 对比目标：`upstream/main@f091528bdbc3ea3cd9ba8130f3927c4dd73c83f8`（`feat(gateway): 接入原生 Responses WebSocket 与逐轮治理 (#616)`）
+- 本地 `main` 跟踪 `upstream/main`，是本仓对上游的镜像；`origin/main` 当前落后上游 1 个提交（`0c9d1888`），需要时用 `git push origin main` 快进。
+- `git rev-list --left-right --count dev...upstream/main`：`86 23`
+  - `dev` 独有 86 个提交
+  - 上游独有 23 个提交
 - 合并基点：`0ddc41d8b718c0281b1ba2f5bdfe5b23622621ce`
 - 本文件只保留需要重新设计、拆分移植或单独验证的 L3 内容；已合入 dev 的 L1/L2 选择性移植和不纳入范围不在本文展开。
 
@@ -152,7 +153,8 @@ L3 方案必须以当前 `dev` 合同为边界：
 
 涉及提交：
 
-- `7d80a981` `feat(codex): 添加独立上游 WebSocket Session 封装 (#612)`
+- `7d80a981` `feat(codex): 添加独立上游 WebSocket Session 封装 (#612)`：已按合同落地独立 Session，仍未接入数据面。
+- `f091528b` `feat(gateway): 接入原生 Responses WebSocket 与逐轮治理 (#616)`：同一专题的数据面半边，把 Session 接进网关、逐轮治理与响应状态续接，尚未移植。
 
 这是当前最新 upstream-only 范围中唯一新增的 L3 专题。
 
@@ -161,6 +163,7 @@ L3 方案必须以当前 `dev` 合同为边界：
 - 为 CPA 增加独立 Codex WebSocket Session facade。
 - 支持 `NewWSSession`、`ExecuteTurn`、连接复用、取消、代理和生命周期管理。
 - 增加连接日志、session 测试和禁止业务请求重放的边界覆盖。
+- `f091528b` 把 WS 接成数据面：`internal/execution/wsnative/session.go` 原生会话、CPA/bifrost 执行器分支、channel spec 的 WS 能力位、设置页分层开关，以及分组停用/删除时关闭 WS 连接。
 
 重新设计边界：
 
@@ -181,6 +184,11 @@ L3 方案必须以当前 `dev` 合同为边界：
 ## 结论
 
 - 当前 `dev` 已吸收此前选择性移植的 L1/L2 能力；本文件不再把这些历史内容当作待合并范围。
-- `origin/main` 仍不能整体合并：L3 领域合同与当前单凭据、入口级调度、迁移和 URL 状态存在结构差异。
-- 当前下一项上游工作是 `7d80a981` Codex WebSocket Session；完成合同和证据后，再决定是否建立独立实现提交。
+- 上游 `main` 仍不能整体合并：L3 领域合同与当前单凭据、入口级调度、迁移和 URL 状态存在结构差异。
+- `7d80a981` Codex WebSocket Session 的合同见 `docs/design/codex-websocket-session.md`；已按该合同落地
+  独立 Session（vendored `CodexWSSession` + `codex.WSSession`）并补齐编译与行为证据，仍未接入数据面。
+- 专题 1（凭据全量导入）、2（入口公平调度）、3（模型错误重试与健康恢复）、4（自定义订阅上游）、
+  5（Usage 时间窗口）不再纳入范围：收益低于维护成本，且都要求改动当前已稳定的合同。
+- 保留的上游工作剩下两项：专题 7 的数据面接入（`f091528b`，需要先定义逐轮治理、`previous_response_id` 续接与
+  `DispatchMaybeSent` 在当前 attempt/session 合同下的边界）和专题 6 全局请求重试预算（`a4255546`）。
 - 本次只更新基线和 L3 分析，不对上述 upstream commit 做代码 cherry-pick。
