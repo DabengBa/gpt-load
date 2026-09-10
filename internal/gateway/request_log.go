@@ -196,7 +196,7 @@ func maxInt64(left, right int64) int64 {
 func (recorder *requestRecorder) freezeSensitiveInputErrorSummaries() {
 	if recorder == nil ||
 		(recorder.protocol != protocol.OpenAIImages &&
-			recorder.protocol != protocol.OpenAIEmbeddings) {
+			recorder.protocol != protocol.OpenAIEmbeddings && recorder.protocol != protocol.Rerank) {
 		return
 	}
 	if recorder.outcome.errorCode != "" {

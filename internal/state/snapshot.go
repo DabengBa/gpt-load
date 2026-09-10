@@ -365,7 +365,7 @@ func appendExecutionTargets(
 				execution.OperationCountTokens,
 				execution.OperationImagesGenerate,
 				execution.OperationImagesEdit,
-				execution.OperationEmbeddingsCreate:
+				execution.OperationEmbeddingsCreate, execution.OperationRerank:
 				// 每个模型条目产生一个 target:同一分组同一对外名可以产生多个
 				// target(多映射,V1 只约束 (对外名, 上游模型) 组合唯一)。
 				for _, model := range group.Models {
