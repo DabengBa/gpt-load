@@ -33,7 +33,10 @@ quota policy. This bridge only exposes:
   WebSocket, image, or video execution paths.
 
 It intentionally excludes CPA Manager, selector, pool, file store, server,
-watcher, WebSocket/Auto executors, fallback, and internal retry loops.
+watcher, Auto executor, fallback, and internal retry loops. `CodexWSSession` is
+the one WebSocket entry point: an explicit-only facade that reuses the pinned
+Codex WebSocket executor with HTTP fallback and business-request replay blocked,
+and it is not registered in the request data plane.
 
 ## Pinned upstream
 
@@ -53,7 +56,8 @@ bumps:
    executor, translation, headers, identity, model discovery, and usage observation code.
 2. Update the CPA version in this module and run `go mod tidy` here.
 3. Fix only bridge compatibility issues; keep the execution-only boundary and
-   do not adopt CPA Manager, retry, WebSocket, fallback, or file persistence.
+   do not adopt CPA Manager, retry, fallback, or file persistence. Keep the
+   Codex WebSocket entry point explicit-only and isolated from the data plane.
 4. Run `go test -count=1 ./...` in this module, then GPT-Load's full
    `make check` from the repository root.
 5. With authorized disposable CPA credentials, run the applicable opt-in live
