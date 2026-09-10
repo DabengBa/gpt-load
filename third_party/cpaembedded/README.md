@@ -38,6 +38,22 @@ the one WebSocket entry point: an explicit-only facade that reuses the pinned
 Codex WebSocket executor with HTTP fallback and business-request replay blocked,
 and it is not registered in the request data plane.
 
+## Codex HTTP request identity
+
+The HTTP bridge preserves CPA's default and model-specific User-Agent values.
+Explicit GPT-Load request-header rules for `User-Agent`, `Originator`, and
+`Version` take precedence after CPA constructs the upstream request, including
+explicit removal. Downstream headers alone do not override CPA's default identity.
+Unless `Version` is explicitly configured, it follows the final `codex-tui` or
+`codex_cli_rs` User-Agent version; an unrecognized custom UA drops the unrelated
+client version.
+
+Both `Session-Id` and `Session_id` are accepted, with `Session-Id` taking precedence
+if both exist. The upstream receives one `Session-Id`; explicit client sessions
+keep CPA's existing precedence over its prompt-cache fallback. This applies to
+HTTP inference, including streaming and images; account queries and the independent
+WebSocket facade keep their existing behavior.
+
 ## Pinned upstream
 
 - Module: `github.com/router-for-me/CLIProxyAPI/v7`
@@ -56,8 +72,9 @@ bumps:
    executor, translation, headers, identity, model discovery, and usage observation code.
 2. Update the CPA version in this module and run `go mod tidy` here.
 3. Fix only bridge compatibility issues; keep the execution-only boundary and
-   do not adopt CPA Manager, retry, fallback, or file persistence. Keep the
-   Codex WebSocket entry point explicit-only and isolated from the data plane.
+   do not adopt CPA Manager, business-request retry, Auto, fallback, or file persistence.
+   Revalidate the explicit WS facade's lifecycle, continuation, proxy and cancellation
+   contracts when changing the pinned SDK.
 4. Run `go test -count=1 ./...` in this module, then GPT-Load's full
    `make check` from the repository root.
 5. With authorized disposable CPA credentials, run the applicable opt-in live

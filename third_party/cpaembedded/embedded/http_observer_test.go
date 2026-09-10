@@ -400,7 +400,7 @@ func TestSupportedExecutorContextsCarryHTTPObserver(t *testing.T) {
 	ctx = context.WithValue(ctx, httpAttemptIDContextKey, "attempt-context")
 
 	codex := NewCodexHTTPExecutor()
-	codexContext := codex.executionContext(ctx, NewCodexAuth("id", CodexCredential{}, ""), nil, false)
+	codexContext := codex.executionContext(ctx, NewCodexAuth("id", CodexCredential{}, ""), nil, false, &ExecuteRequest{ConfiguredHeaders: []string{"User-Agent"}})
 	assertObserverContext(t, codexContext)
 
 	claude, ok := NewClaudeHTTPExecutor().(*claudeHTTPExecutor)
