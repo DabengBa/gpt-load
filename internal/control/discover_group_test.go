@@ -235,7 +235,7 @@ func TestDiscoveryReleasesReadSnapshotBeforeDecrypt(t *testing.T) {
 	}
 }
 
-func TestDiscoverGroupModelsUsesDisabledGroupAndActiveCredentialsInIDOrder(t *testing.T) {
+func TestDiscoverGroupModelsUsesDisabledGroupAndAnActiveCredential(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	group := seedPersistedDiscoveryGroup(t, fixture, false, models.JSON(

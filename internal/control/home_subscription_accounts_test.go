@@ -15,6 +15,7 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/platform/config"
+	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 )
 
@@ -39,6 +40,20 @@ func TestReadHomeSubscriptionAccountsUsesBoundedHourlyActivityAndDeduplicates(t 
 	_, outsideWindow := createHomeSubscriptionCredential(
 		t, fixture, "outside-window", "old-account", "old@example.com",
 	)
+
+	// 可用性来自运行时凭据状态（classifyHealthKey），不再由小时级失败计数决定。
+	// 持久化行与运行时视图必须一致（见 home_subscription_accounts.go 的
+	// auth 状态一致性校验），所以两边一起标成需重新授权。
+	if err := fixture.db.Model(&models.Credential{}).
+		Where("id = ?", sharedTwo.ID).
+		Update("auth_state", models.CredentialAuthStateReauthorizationRequired).Error; err != nil {
+		t.Fatalf("mark shared account membership reauthorization required: %v", err)
+	}
+	if !fixture.registry.SetCredentialAuthState(
+		sharedTwo.ID, state.CredentialAuthStateReauthorizationRequired,
+	) {
+		t.Fatal("mark shared account membership unavailable: SetCredentialAuthState returned false")
+	}
 
 	createHomeCredentialObservation(t, fixture, sharedOne, now.Add(-10*time.Minute), "Old plan")
 	createHomeCredentialObservation(t, fixture, sharedTwo, now.Add(-time.Minute), "Pro 20x")

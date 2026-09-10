@@ -1165,7 +1165,7 @@ func groupMutationAuditCases() []groupMutationAuditCase {
 			operation: "group_credential_update",
 			success: groupCredentialAuditSeedRequest(
 				http.MethodPut,
-				`{"status":"disabled"}`,
+				`{"credentials":"sk-group-key-audit-rotated"}`,
 			),
 			rejected: func(
 				_ *testing.T,
@@ -1174,14 +1174,14 @@ func groupMutationAuditCases() []groupMutationAuditCase {
 				return mutationAuditRequest{
 						method: http.MethodPut,
 						path:   "/api/groups/raw-secret/credentials/1",
-						body:   `{"status":"disabled"}`,
+						body:   `{"credentials":"sk-group-key-audit-rotated"}`,
 					},
 					"group:unknown/credential:1",
 					app_errors.ErrBadRequest.Code
 			},
 			database: groupCredentialAuditSeedRequest(
 				http.MethodPut,
-				`{"status":"disabled"}`,
+				`{"credentials":"sk-group-key-audit-rotated"}`,
 			),
 		},
 		{
@@ -1325,7 +1325,7 @@ func groupCredentialImportAuditSeedRequest(
 				"/api/groups/%d/credentials/import",
 				groupID,
 			),
-			body:           `{"credentials":"sk-new-audit-key"}`,
+			body:           `{"credentials":"sk-import-audit"}`,
 			idempotencyKey: idempotencyKey,
 		}, fmt.Sprintf("group:%d/credentials", groupID)
 	}

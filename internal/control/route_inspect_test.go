@@ -555,8 +555,14 @@ func TestRouteInspectEndpointReturnsCurrentSafeExplanation(t *testing.T) {
 		ChannelRegistry: fixture.channelRegistry,
 		Groups: []state.GroupConfig{
 			{ConnectionType: "api_key", ID: 2, Name: "backup", ChannelID: channel.OpenAI,
-				Params: json.RawMessage(`{}`),
-				Models: []state.ModelConfig{{ID: "provider-backup", Alias: "public-model"}},
+				Params:  json.RawMessage(`{}`),
+				Models:  []state.ModelConfig{{ID: "provider-backup", Alias: "public-model"}},
+				Enabled: true,
+			},
+			{ConnectionType: "api_key", ID: 3, Name: "cooling", ChannelID: channel.OpenAI,
+				Params:  json.RawMessage(`{}`),
+				Models:  []state.ModelConfig{{ID: "provider-cooling", Alias: "public-model"}},
+				Enabled: true,
 			},
 			{ConnectionType: "api_key", ID: 1, Name: "primary", ChannelID: channel.OpenAI,
 				Params:  json.RawMessage(`{}`),
@@ -574,9 +580,10 @@ func TestRouteInspectEndpointReturnsCurrentSafeExplanation(t *testing.T) {
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
 		{
 			ID: 31, GroupID: 2, Version: 1, IdentityGeneration: 31, Fingerprint: "test-31", AuthState: state.CredentialAuthStateReady,
+			EncryptedValue: "cipher-31",
 		},
 		{
-			ID: 22, GroupID: 1, Version: 1, IdentityGeneration: 22, Fingerprint: "test-22", AuthState: state.CredentialAuthStateReady,
+			ID: 22, GroupID: 3, Version: 1, IdentityGeneration: 22, Fingerprint: "test-22", AuthState: state.CredentialAuthStateReady,
 			CooldownUntil:  now.Add(time.Minute),
 			EncryptedValue: "cipher-two",
 		},
@@ -607,8 +614,8 @@ func TestRouteInspectEndpointReturnsCurrentSafeExplanation(t *testing.T) {
 		!got.Routable || got.ReasonCode != nil {
 		t.Fatalf("route response = %#v", got)
 	}
-	if len(got.Groups) != 2 || got.Groups[0].GroupID != 1 ||
-		got.Groups[1].GroupID != 2 {
+	if len(got.Groups) != 3 || got.Groups[0].GroupID != 1 ||
+		got.Groups[1].GroupID != 2 || got.Groups[2].GroupID != 3 {
 		t.Fatalf("group order = %#v", got.Groups)
 	}
 	primary := got.Groups[0]
@@ -619,8 +626,8 @@ func TestRouteInspectEndpointReturnsCurrentSafeExplanation(t *testing.T) {
 		routeModelValue(primary.UpstreamModel) != "provider-model" ||
 		!primary.Included ||
 		!primary.Routable || primary.ReasonCode != nil ||
-		len(primary.Credentials) != 2 ||
-		primary.Credentials[0].CredentialID != 21 || primary.Credentials[1].CredentialID != 22 {
+		len(primary.Credentials) != 1 ||
+		primary.Credentials[0].CredentialID != 21 {
 		t.Fatalf("primary group = %#v", primary)
 	}
 	available := primary.Credentials[0]
@@ -628,7 +635,15 @@ func TestRouteInspectEndpointReturnsCurrentSafeExplanation(t *testing.T) {
 		available.CooldownUntilMS != nil {
 		t.Fatalf("available key = %#v", available)
 	}
-	cooldown := primary.Credentials[1]
+	cooling := got.Groups[2]
+	if cooling.GroupName != "cooling" ||
+		routeModelValue(cooling.UpstreamModel) != "provider-cooling" ||
+		!cooling.Included || cooling.Routable ||
+		len(cooling.Credentials) != 1 || cooling.Credentials[0].CredentialID != 22 {
+		t.Fatalf("cooling group = %#v", cooling)
+	}
+	assertRouteReason(t, cooling.ReasonCode, scheduler.ReasonNoAvailableCredential)
+	cooldown := cooling.Credentials[0]
 	if cooldown.Available ||
 		cooldown.CooldownUntilMS == nil ||
 		*cooldown.CooldownUntilMS != now.Add(time.Minute).UnixMilli() {
@@ -700,7 +715,8 @@ func TestRouteInspectEndpointReturnsFilterExplanations(t *testing.T) {
 				ChannelRegistry: fixture.channelRegistry,
 				Groups: []state.GroupConfig{
 					{ConnectionType: "api_key", ID: 2, Name: "second", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-						Models: []state.ModelConfig{{ID: "provider-two", Alias: "public-model"}},
+						Models:  []state.ModelConfig{{ID: "provider-two", Alias: "public-model"}},
+						Enabled: true,
 					},
 					{ConnectionType: "api_key", ID: 1, Name: "first", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 						Models:  []state.ModelConfig{{ID: "provider-one", Alias: "public-model"}},
@@ -808,17 +824,22 @@ func TestRouteInspectEndpointReturnsNoAvailableKeyExplanation(t *testing.T) {
 	fixture.service.now = func() time.Time { return now }
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "primary", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-			Models: []state.ModelConfig{{ID: "provider-model", Alias: "public-model"}},
-		}},
+		Groups: []state.GroupConfig{
+			{ConnectionType: "api_key", ID: 1, Name: "primary", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "provider-one", Alias: "public-model"}}, Enabled: true},
+			{ConnectionType: "api_key", ID: 2, Name: "secondary", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "provider-two", Alias: "public-model"}}, Enabled: true},
+			{ConnectionType: "api_key", ID: 3, Name: "tertiary", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "provider-three", Alias: "public-model"}}, Enabled: true},
+		},
 		AccessKeys: []state.AccessKeyConfig{{ID: 10, Name: "production", KeyHash: "active-hash", Status: state.AccessKeyStatusActive}},
 	}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
-		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReauthorizationRequired},
-		{ID: 12, GroupID: 1, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", AuthState: state.CredentialAuthStateReauthorizationRequired},
-		{ID: 13, GroupID: 1, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReauthorizationRequired},
+		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReauthorizationRequired, EncryptedValue: "cipher-11"},
+		{ID: 12, GroupID: 2, Version: 1, IdentityGeneration: 12, Fingerprint: "test-12", AuthState: state.CredentialAuthStateReauthorizationRequired, EncryptedValue: "cipher-12"},
+		{ID: 13, GroupID: 3, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReauthorizationRequired, EncryptedValue: "cipher-13"},
 	}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
 	}
@@ -826,11 +847,15 @@ func TestRouteInspectEndpointReturnsNoAvailableKeyExplanation(t *testing.T) {
 	NewServer(&config.Config{AuthKey: "test-auth-key"}, fixture.service).RegisterRoutes(engine)
 	recorder := performRouteInspectRequest(engine, "test-auth-key", `{"protocol":"openai-completions","external_model":"public-model","access_key_id":10}`)
 	got := decodeRouteInspectSuccess(t, recorder)
-	if got.Routable || len(got.Groups) != 1 || len(got.Groups[0].Credentials) != 3 {
+	if got.Routable || len(got.Groups) != 3 {
 		t.Fatalf("unavailable response = %#v", got)
 	}
 	assertRouteReason(t, got.ReasonCode, scheduler.ReasonNoAvailableCredential)
-	for _, credential := range got.Groups[0].Credentials {
+	for index, group := range got.Groups {
+		if len(group.Credentials) != 1 {
+			t.Fatalf("group %d credentials = %#v", index, group.Credentials)
+		}
+		credential := group.Credentials[0]
 		if credential.Available || credential.ReasonCode == nil || credential.CooldownUntilMS != nil {
 			t.Fatalf("unavailable credential = %#v", credential)
 		}
