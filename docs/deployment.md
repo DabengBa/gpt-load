@@ -5,17 +5,20 @@
 ## 拓扑
 
 - 反代：Caddy 容器 `gptl-proxy`（配置 `/opt/gptl-proxy/Caddyfile`），`https://gptl.tanyaleoallen.cloud:1443` → `127.0.0.1:3001`。
-- 应用：Compose 项目 `/opt/gpt-load`，容器 `gpt-load`，镜像为自建 `gpt-load:dev-<短sha>`，数据在具名卷 `gpt-load_gpt-load-data`（含 `gpt-load.db`、`auth.key`、`encryption.key`）。
-- 源码与构建：`/opt/gpt-load-src`，跟踪 `dev` 分支，只作为构建源；每次发布由脚本 `git reset --hard origin/dev`。
+- 应用：Compose 项目 `/opt/gpt-load`，容器 `gpt-load`，镜像为自建 `gpt-load:<分支>-<短sha>`，数据在具名卷 `gpt-load_gpt-load-data`（含 `gpt-load.db`、`auth.key`、`encryption.key`）。
+- 源码与构建：`/opt/gpt-load-src`，是 `origin` 的克隆，只作为构建源；每次发布由脚本 `git reset --hard origin/<分支>`。
 - 该容器已用 `com.centurylinklabs.watchtower.enable: "false"` 关闭自动更新，镜像只通过下面的脚本切换。
 
 ## 发布
 
 ```bash
-ssh vps-kl /opt/gpt-load/deploy.sh
+ssh vps-kl /opt/gpt-load-src/scripts/deploy.sh            # 默认发布 dev
+ssh vps-kl /opt/gpt-load-src/scripts/deploy.sh <分支>      # 发布其它分支，用于上线前验证
 ```
 
-脚本按顺序执行：拉取 `dev` 最新提交 → `docker build --build-arg VERSION=dev-<短sha> -t gpt-load:dev-<短sha>` → 备份当前 `docker-compose.yml` → 改 `image` 标签与来源注释 → `docker compose up -d` → 轮询容器健康并打印 `/health`。健康未通过时脚本以非零退出，按下面的回滚步骤处理。
+入口就是仓库里的 `scripts/deploy.sh`，服务器直接执行构建源中的这一份，所以发布逻辑只有一个版本，不存在需要同步的服务器副本。脚本按顺序执行：`git fetch` 目标分支 → `git reset --hard origin/<分支>` → `docker build --build-arg VERSION=<分支>-<短sha> -t gpt-load:<分支>-<短sha>` → 备份当前 `docker-compose.yml` → 改 `image` 标签与来源注释 → `docker compose up -d` → 轮询容器健康并打印 `/health`。健康未通过时脚本以非零退出，按下面的回滚步骤处理。
+
+脚本会把 `/opt/gpt-load-src` reset 到目标提交，因此开跑前先把自己复制到 `/tmp` 再重新执行，避免 bash 边读边执行一个刚被覆盖的脚本。分支名里的 `/` 在镜像标签中写成 `-`。
 
 ## 验证
 
@@ -31,8 +34,8 @@ docker logs --since 5m gpt-load 2>&1 | grep -icE 'error|fatal|panic'
 ssh vps-kl
 cd /opt/gpt-load
 ls docker-compose.yml.bak-*                              # 每次发布都会留一份
-cp docker-compose.yml.bak-<时间戳>-dev-<旧短sha> docker-compose.yml
-docker compose up -d
+cp docker-compose.yml.bak-<时间戳>-<旧分支>-<旧短sha> docker-compose.yml
+docker compose up -d                                      # 必须在 /opt/gpt-load 下执行，保持项目名 gpt-load
 ```
 
 旧镜像不会自动清理，`docker images | grep gpt-load` 可直接看到待回滚的版本。回滚只切镜像标签，`gpt-load_gpt-load-data` 卷保持不动。
