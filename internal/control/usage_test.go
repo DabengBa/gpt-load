@@ -173,6 +173,30 @@ func TestParseUsageQueryAcceptsBreakdownPagination(t *testing.T) {
 	}
 }
 
+func TestParseUsageQueryAcceptsBreakdownSorting(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.July, 27, 12, 34, 56, 789, time.UTC)
+	query, apiErr := parseUsageQuery(
+		"range=24h&breakdown_sort=estimated_cost_nano_usd&breakdown_sort_direction=asc",
+		now.UnixMilli(),
+	)
+	if apiErr != nil {
+		t.Fatalf("parseUsageQuery() error = %v", apiErr)
+	}
+	if query.BreakdownSort != requestlog.UsageBreakdownSortEstimatedCost ||
+		query.BreakdownSortDirection != requestlog.UsageBreakdownSortAscending {
+		t.Fatalf("breakdown sorting = %q/%q", query.BreakdownSort, query.BreakdownSortDirection)
+	}
+	for _, rawQuery := range []string{
+		"range=24h&breakdown_sort=invalid",
+		"range=24h&breakdown_sort_direction=invalid",
+	} {
+		if _, apiErr := parseUsageQuery(rawQuery, now.UnixMilli()); apiErr == nil {
+			t.Fatalf("parseUsageQuery(%q) error = nil", rawQuery)
+		}
+	}
+}
+
 func TestUsageAPIReturnsExactPresetRange(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 27, 12, 34, 56, 789, time.UTC)
@@ -933,6 +957,12 @@ func TestUsageAPIBindsAccessKeyScopeAndRedactsProcessHealth(t *testing.T) {
 		*reader.queries[0].AccessKeyID != created.ID || reader.queries[0].GroupID != nil {
 		t.Fatalf("AccessKey UsageQuery = %#v", reader.queries)
 	}
+	sorted := performUsageRequest(engine, created.Key, "range=7d&breakdown_sort=request_count&breakdown_sort_direction=asc")
+	if sorted.Code != http.StatusOK || len(reader.queries) != 2 ||
+		reader.queries[1].BreakdownSort != requestlog.UsageBreakdownSortRequestCount ||
+		reader.queries[1].BreakdownSortDirection != requestlog.UsageBreakdownSortAscending {
+		t.Fatalf("AccessKey sorted UsageQuery = %d %s %#v", sorted.Code, sorted.Body.String(), reader.queries)
+	}
 	var envelope struct {
 		Data struct {
 			Distributions struct {
@@ -962,9 +992,12 @@ func TestUsageAPIBindsAccessKeyScopeAndRedactsProcessHealth(t *testing.T) {
 		t.Fatalf("AccessKey usage redaction = %#v", envelope.Data)
 	}
 
-	for _, filter := range []string{"group_id=1", "channel_id=openai", "credential_id=101"} {
+	for _, filter := range []string{
+		"group_id=1", "channel_id=openai", "credential_id=101",
+		"breakdown_sort=group", "breakdown_sort=channel",
+	} {
 		forbidden := performUsageRequest(engine, created.Key, filter)
-		if forbidden.Code != http.StatusBadRequest || len(reader.queries) != 1 {
+		if forbidden.Code != http.StatusBadRequest || len(reader.queries) != 2 {
 			t.Fatalf(
 				"AccessKey internal filter %q = %d %s, calls=%d, want 400/no query",
 				filter,

@@ -25,6 +25,64 @@ export const usageRanges = timeRanges
 export type UsageRange = TimeRange
 
 export type UsageBreakdownPageSize = 20 | 50 | 100
+export type UsageBreakdownSort =
+  | 'model'
+  | 'group'
+  | 'channel'
+  | 'request_count'
+  | 'success_count'
+  | 'failure_count'
+  | 'success_rate'
+  | 'average_latency'
+  | 'uncached_input_tokens'
+  | 'cache_read_tokens'
+  | 'cache_write_5m_tokens'
+  | 'cache_write_1h_tokens'
+  | 'cache_write_unknown_tokens'
+  | 'output_tokens'
+  | 'total_tokens'
+  | 'estimated_cost_nano_usd'
+export type UsageBreakdownSortDirection = 'asc' | 'desc'
+
+export const defaultUsageBreakdownSort: UsageBreakdownSort = 'estimated_cost_nano_usd'
+
+export function normalizeUsageBreakdownSort(value: unknown): UsageBreakdownSort {
+  switch (value) {
+    case 'model':
+    case 'group':
+    case 'channel':
+    case 'request_count':
+    case 'success_count':
+    case 'failure_count':
+    case 'success_rate':
+    case 'average_latency':
+    case 'uncached_input_tokens':
+    case 'cache_read_tokens':
+    case 'cache_write_5m_tokens':
+    case 'cache_write_1h_tokens':
+    case 'cache_write_unknown_tokens':
+    case 'output_tokens':
+    case 'total_tokens':
+    case 'estimated_cost_nano_usd':
+      return value
+    default:
+      return defaultUsageBreakdownSort
+  }
+}
+
+export function defaultUsageBreakdownSortDirectionFor(
+  sort: UsageBreakdownSort,
+): UsageBreakdownSortDirection {
+  return sort === 'model' || sort === 'group' || sort === 'channel' ? 'asc' : 'desc'
+}
+
+export function normalizeUsageBreakdownSortDirection(
+  value: unknown,
+  sort: UsageBreakdownSort,
+): UsageBreakdownSortDirection {
+  if (value === 'asc' || value === 'desc') return value
+  return defaultUsageBreakdownSortDirectionFor(sort)
+}
 
 export interface UsageFilters {
   range: UsageRange
@@ -34,6 +92,8 @@ export interface UsageFilters {
   upstream_model?: string
   breakdown_page?: number
   breakdown_page_size?: UsageBreakdownPageSize
+  breakdown_sort?: UsageBreakdownSort
+  breakdown_sort_direction?: UsageBreakdownSortDirection
 }
 
 export interface UsageAggregateDto {
@@ -526,15 +586,21 @@ export function projectUsageReport(value: unknown): UsageReportDto {
 }
 
 export function normalizeUsageFilters(filters: UsageFilters): UsageFilters {
+  const breakdownSort = normalizeUsageBreakdownSort(filters.breakdown_sort)
   const result: UsageFilters = {
     range: filters.range,
     breakdown_page: normalizeUsagePage(filters.breakdown_page),
     breakdown_page_size: normalizeUsagePageSize(filters.breakdown_page_size),
+    breakdown_sort: breakdownSort,
   }
   if (filters.group_id !== undefined) result.group_id = filters.group_id
   if (filters.channel_id !== undefined) result.channel_id = filters.channel_id
   if (filters.credential_id !== undefined) result.credential_id = filters.credential_id
   if (filters.upstream_model !== undefined) result.upstream_model = filters.upstream_model
+  result.breakdown_sort_direction = normalizeUsageBreakdownSortDirection(
+    filters.breakdown_sort_direction,
+    breakdownSort,
+  )
   return result
 }
 
@@ -556,6 +622,11 @@ export async function getUsageReport(
   signal?: AbortSignal,
 ): Promise<UsageReportDto> {
   const normalized = normalizeUsageFilters(filters)
+  const breakdownSort = normalizeUsageBreakdownSort(normalized.breakdown_sort)
+  const breakdownSortDirection = normalizeUsageBreakdownSortDirection(
+    normalized.breakdown_sort_direction,
+    breakdownSort,
+  )
   const params = new URLSearchParams([['range', normalized.range]])
   if (normalized.group_id !== undefined) params.append('group_id', String(normalized.group_id))
   if (normalized.channel_id !== undefined) params.append('channel_id', normalized.channel_id)
@@ -567,6 +638,9 @@ export async function getUsageReport(
   }
   params.append('breakdown_page', String(normalized.breakdown_page))
   params.append('breakdown_page_size', String(normalized.breakdown_page_size))
+  params.append('breakdown_sort', breakdownSort)
+  params.append('breakdown_sort_direction', breakdownSortDirection)
+
   const report = projectUsageReport(
     await client.request(`/api/usage?${params.toString()}`, { method: 'GET', signal }),
   )

@@ -3,10 +3,12 @@ package requestlog
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
 
+	"gpt-load/internal/channel"
 	"gpt-load/internal/platform/epochms"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/storage/dbtx"
@@ -28,6 +30,7 @@ func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (Usage
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	input = normalizeUsageBreakdownQuery(input)
 	bucketWidthMS, err := validateUsageQuery(input)
 	if err != nil {
 		return UsageReport{}, err
@@ -72,6 +75,7 @@ func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (Usage
 }
 
 func validateUsageQuery(input UsageQuery) (int64, error) {
+	input = normalizeUsageBreakdownQuery(input)
 	if input.FromMS < 0 || input.ToMS <= input.FromMS {
 		return 0, fmt.Errorf("query usage: invalid time range")
 	}
@@ -97,6 +101,17 @@ func validateUsageQuery(input UsageQuery) (int64, error) {
 	if input.BreakdownPage < 1 ||
 		(input.BreakdownPageSize != 20 && input.BreakdownPageSize != 50 && input.BreakdownPageSize != 100) {
 		return 0, fmt.Errorf("query usage: invalid breakdown pagination")
+	}
+	if !validUsageBreakdownSort(input.BreakdownSort) {
+		return 0, fmt.Errorf("query usage: invalid breakdown sort %q", input.BreakdownSort)
+	}
+	if input.BreakdownSortDirection != UsageBreakdownSortAscending &&
+		input.BreakdownSortDirection != UsageBreakdownSortDescending {
+		return 0, fmt.Errorf("query usage: invalid breakdown sort direction %q", input.BreakdownSortDirection)
+	}
+	if input.AccessKeyID != nil &&
+		(input.BreakdownSort == UsageBreakdownSortGroup || input.BreakdownSort == UsageBreakdownSortChannel) {
+		return 0, fmt.Errorf("query usage: access-key scope cannot sort by admin identity")
 	}
 	bucketWidthMS := input.BucketWidthMS
 	switch input.Granularity {
@@ -129,6 +144,124 @@ func validateUsageQuery(input UsageQuery) (int64, error) {
 		return 0, fmt.Errorf("query usage: time range is not bucket aligned")
 	}
 	return bucketWidthMS, nil
+}
+
+func normalizeUsageBreakdownQuery(input UsageQuery) UsageQuery {
+	if input.BreakdownPage == 0 {
+		input.BreakdownPage = 1
+	}
+	if input.BreakdownPageSize == 0 {
+		input.BreakdownPageSize = usageBreakdownDefaultPageSize
+	}
+	if input.BreakdownSort == "" {
+		input.BreakdownSort = UsageBreakdownSortEstimatedCost
+	}
+	if input.BreakdownSortDirection == "" {
+		input.BreakdownSortDirection = defaultUsageBreakdownSortDirection(input.BreakdownSort)
+	}
+	return input
+}
+
+func defaultUsageBreakdownSortDirection(sort UsageBreakdownSort) UsageBreakdownSortDirection {
+	switch sort {
+	case UsageBreakdownSortModel, UsageBreakdownSortGroup, UsageBreakdownSortChannel:
+		return UsageBreakdownSortAscending
+	default:
+		return UsageBreakdownSortDescending
+	}
+}
+
+func validUsageBreakdownSort(sort UsageBreakdownSort) bool {
+	switch sort {
+	case UsageBreakdownSortModel,
+		UsageBreakdownSortGroup,
+		UsageBreakdownSortChannel,
+		UsageBreakdownSortRequestCount,
+		UsageBreakdownSortSuccessCount,
+		UsageBreakdownSortFailureCount,
+		UsageBreakdownSortSuccessRate,
+		UsageBreakdownSortAverageLatency,
+		UsageBreakdownSortUncachedInputTokens,
+		UsageBreakdownSortCacheReadTokens,
+		UsageBreakdownSortCacheWrite5MTokens,
+		UsageBreakdownSortCacheWrite1HTokens,
+		UsageBreakdownSortCacheWriteUnknown,
+		UsageBreakdownSortOutputTokens,
+		UsageBreakdownSortTotalTokens,
+		UsageBreakdownSortEstimatedCost:
+		return true
+	default:
+		return false
+	}
+}
+
+func usageBreakdownSortExpression(db *gorm.DB, sort UsageBreakdownSort) (string, bool) {
+	switch sort {
+	case UsageBreakdownSortModel:
+		return "usage_stats.model", true
+	case UsageBreakdownSortGroup:
+		return usageBreakdownGroupNameExpression(db), true
+	case UsageBreakdownSortChannel:
+		return usageBreakdownChannelNameExpression(db), true
+	case UsageBreakdownSortRequestCount:
+		return "COALESCE(SUM(request_count), 0)", true
+	case UsageBreakdownSortSuccessCount:
+		return "COALESCE(SUM(success_count), 0)", true
+	case UsageBreakdownSortFailureCount:
+		return "COALESCE(SUM(failure_count), 0)", true
+	case UsageBreakdownSortSuccessRate:
+		return "CASE WHEN COALESCE(SUM(request_count), 0) = 0 THEN 0 ELSE 1.0 * COALESCE(SUM(success_count), 0) / COALESCE(SUM(request_count), 0) END", true
+	case UsageBreakdownSortAverageLatency:
+		return "CASE WHEN COALESCE(SUM(duration_sample_count), 0) = 0 THEN 0 ELSE 1.0 * COALESCE(SUM(duration_ms_total), 0) / COALESCE(SUM(duration_sample_count), 0) END", true
+	case UsageBreakdownSortUncachedInputTokens:
+		return "COALESCE(SUM(uncached_input_tokens), 0)", true
+	case UsageBreakdownSortCacheReadTokens:
+		return "COALESCE(SUM(cache_read_tokens), 0)", true
+	case UsageBreakdownSortCacheWrite5MTokens:
+		return "COALESCE(SUM(cache_write_5m_tokens), 0)", true
+	case UsageBreakdownSortCacheWrite1HTokens:
+		return "COALESCE(SUM(cache_write_1h_tokens), 0)", true
+	case UsageBreakdownSortCacheWriteUnknown:
+		return "COALESCE(SUM(cache_write_unknown_tokens), 0)", true
+	case UsageBreakdownSortOutputTokens:
+		return "COALESCE(SUM(output_tokens), 0)", true
+	case UsageBreakdownSortTotalTokens:
+		return usageDistributionTotalTokensExpression, true
+	case UsageBreakdownSortEstimatedCost:
+		return "COALESCE(SUM(estimated_cost_nano_usd), 0)", true
+	default:
+		return "", false
+	}
+}
+
+func usageBreakdownGroupNameExpression(db *gorm.DB) string {
+	return "COALESCE(usage_breakdown_groups.name, " + usageBreakdownUnknownIdentityExpression(db, "usage_stats.group_id") + ")"
+}
+
+func usageBreakdownChannelNameExpression(db *gorm.DB) string {
+	expression := "CASE usage_stats.channel_id"
+	for _, descriptor := range channel.NewRegistry().List() {
+		expression += " WHEN " + usageBreakdownSQLString(string(descriptor.ID)) + " THEN " + usageBreakdownSQLString(descriptor.Name)
+	}
+	return expression + " ELSE " + usageBreakdownUnknownIdentityExpression(db, "usage_stats.channel_id") + " END"
+}
+
+func usageBreakdownUnknownIdentityExpression(db *gorm.DB, identifier string) string {
+	if strings.EqualFold(db.Dialector.Name(), "mysql") {
+		return "CONCAT('#', " + identifier + ")"
+	}
+	return usageBreakdownSQLString("#") + " || CAST(" + identifier + " AS TEXT)"
+}
+
+func usageBreakdownGroupsTable(db *gorm.DB) string {
+	if strings.EqualFold(db.Dialector.Name(), "mysql") {
+		return "`groups`"
+	}
+	return `"groups"`
+}
+
+func usageBreakdownSQLString(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func queryUsageDistributions(
@@ -286,34 +419,54 @@ func queryUsageBreakdown(
 	accessKeyScoped bool,
 	input UsageQuery,
 ) (UsageBreakdown, error) {
+	input = normalizeUsageBreakdownQuery(input)
 	breakdownPage := input.BreakdownPage
 	breakdownPageSize := input.BreakdownPageSize
-	if breakdownPage == 0 {
-		breakdownPage = 1
-	}
-	if breakdownPageSize == 0 {
-		breakdownPageSize = usageBreakdownDefaultPageSize
+	maxInt := maxUsageBreakdownInt()
+	if breakdownPage-1 > maxInt/breakdownPageSize {
+		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: pagination offset overflows int")
 	}
 	query := scope.Session(&gorm.Session{})
+	if !accessKeyScoped && input.BreakdownSort == UsageBreakdownSortGroup {
+		query = query.Joins("LEFT JOIN " + usageBreakdownGroupsTable(scope) + " AS usage_breakdown_groups ON usage_breakdown_groups.id = usage_stats.group_id")
+	}
 	if accessKeyScoped {
-		query = query.Select("model, NULL AS group_id, NULL AS channel_id, " + usageAggregateSelect).
-			Group("model").Order("model ASC")
+		query = query.Select("usage_stats.model, NULL AS group_id, NULL AS channel_id, " + usageAggregateSelect).
+			Group("usage_stats.model")
 	} else {
-		query = query.Select("model, group_id, channel_id, " + usageAggregateSelect).
-			Group("model, group_id, channel_id").
-			Order("model ASC").Order("group_id ASC").Order("channel_id ASC")
+		selectSQL := "usage_stats.model, usage_stats.group_id, usage_stats.channel_id, " + usageAggregateSelect
+		groupBy := "usage_stats.model, usage_stats.group_id, usage_stats.channel_id"
+		if input.BreakdownSort == UsageBreakdownSortGroup {
+			selectSQL = "usage_stats.model, usage_stats.group_id, usage_stats.channel_id, " + usageBreakdownGroupNameExpression(scope) + " AS usage_breakdown_group_name, " + usageAggregateSelect
+			groupBy += ", usage_breakdown_groups.name"
+		}
+		query = query.Select(selectSQL).Group(groupBy)
+	}
+	sortExpression, ok := usageBreakdownSortExpression(scope, input.BreakdownSort)
+	if !ok {
+		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: invalid sort %q", input.BreakdownSort)
+	}
+	query = query.Order(sortExpression + " " + string(input.BreakdownSortDirection))
+	if accessKeyScoped {
+		query = query.Order("usage_stats.model ASC")
+	} else {
+		query = query.Order("usage_stats.model ASC").Order("usage_stats.group_id ASC").Order("usage_stats.channel_id ASC")
 	}
 	var grouped *gorm.DB
 	if accessKeyScoped {
-		grouped = scope.Session(&gorm.Session{}).Select("model").Group("model")
+		grouped = scope.Session(&gorm.Session{}).Select("usage_stats.model").Group("usage_stats.model")
 	} else {
-		grouped = scope.Session(&gorm.Session{}).Select("model, group_id, channel_id").
-			Group("model, group_id, channel_id")
+		grouped = scope.Session(&gorm.Session{}).Select("usage_stats.model, usage_stats.group_id, usage_stats.channel_id").
+			Group("usage_stats.model, usage_stats.group_id, usage_stats.channel_id")
 	}
 	var totalItems int64
 	if err := grouped.Count(&totalItems).Error; err != nil {
 		return UsageBreakdown{}, fmt.Errorf("count usage breakdown: %w", err)
 	}
+	if totalItems < 0 || uint64(totalItems) > uint64(maxUsageBreakdownInt()) {
+		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: total item count overflows int")
+	}
+	totalItemsInt := int(totalItems)
 	var source []usageBreakdownRow
 	if err := query.Offset((breakdownPage - 1) * breakdownPageSize).Limit(breakdownPageSize).Find(&source).Error; err != nil {
 		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: %w", err)
@@ -323,8 +476,8 @@ func queryUsageBreakdown(
 		Rows:  make([]UsageBreakdownRow, 0, len(source)),
 		Total: summary,
 		Pagination: UsagePagination{
-			Page: breakdownPage, PageSize: breakdownPageSize, TotalItems: int(totalItems),
-			TotalPages: totalPages(int(totalItems), breakdownPageSize),
+			Page: breakdownPage, PageSize: breakdownPageSize, TotalItems: totalItemsInt,
+			TotalPages: totalPages(totalItemsInt, breakdownPageSize),
 		},
 	}
 	if accessKeyScoped {
@@ -345,11 +498,15 @@ func queryUsageBreakdown(
 	return breakdown, nil
 }
 
+func maxUsageBreakdownInt() int {
+	return int(^uint(0) >> 1)
+}
+
 func totalPages(totalItems, pageSize int) int {
 	if totalItems == 0 {
 		return 0
 	}
-	return (totalItems + pageSize - 1) / pageSize
+	return (totalItems-1)/pageSize + 1
 }
 func queryUsageDistribution(
 	scope *gorm.DB,

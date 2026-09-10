@@ -158,7 +158,9 @@ func (server *Server) handleUsage(c *gin.Context) {
 		return
 	}
 	if accessKeyID, scoped := currentAccessKeyID(c); scoped {
-		if query.GroupID != nil || query.ChannelID != "" || query.CredentialID != nil {
+		if query.GroupID != nil || query.ChannelID != "" || query.CredentialID != nil ||
+			query.BreakdownSort == requestlog.UsageBreakdownSortGroup ||
+			query.BreakdownSort == requestlog.UsageBreakdownSortChannel {
 			writeServiceError(c, "usage", app_errors.ErrBadRequest)
 			return
 		}
@@ -183,15 +185,17 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 		return requestlog.UsageQuery{}, app_errors.ErrBadRequest
 	}
 	allowed := map[string]struct{}{
-		"range":               {},
-		"from_ms":             {},
-		"to_ms":               {},
-		"group_id":            {},
-		"channel_id":          {},
-		"credential_id":       {},
-		"upstream_model":      {},
-		"breakdown_page":      {},
-		"breakdown_page_size": {},
+		"range":                    {},
+		"from_ms":                  {},
+		"to_ms":                    {},
+		"group_id":                 {},
+		"channel_id":               {},
+		"credential_id":            {},
+		"upstream_model":           {},
+		"breakdown_page":           {},
+		"breakdown_page_size":      {},
+		"breakdown_sort":           {},
+		"breakdown_sort_direction": {},
 	}
 	for key, value := range values {
 		if _, ok := allowed[key]; !ok || len(value) != 1 {
@@ -293,7 +297,7 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 	}
 	if value, ok := singleQueryValue(values, "breakdown_page"); ok {
 		page, err := parseCanonicalSafeUint(value)
-		if err != nil || page == 0 || page > uint64(maxSafeInteger) {
+		if err != nil || page == 0 || page > uint64(maxSafeInteger) || page > uint64(^uint(0)>>1) {
 			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
 		}
 		query.BreakdownPage = int(page)
@@ -305,7 +309,45 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 		}
 		query.BreakdownPageSize = int(pageSize)
 	}
+	if value, ok := singleQueryValue(values, "breakdown_sort"); ok {
+		sort := requestlog.UsageBreakdownSort(value)
+		if !validUsageBreakdownSort(sort) {
+			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+		}
+		query.BreakdownSort = sort
+	}
+	if value, ok := singleQueryValue(values, "breakdown_sort_direction"); ok {
+		direction := requestlog.UsageBreakdownSortDirection(value)
+		if direction != requestlog.UsageBreakdownSortAscending && direction != requestlog.UsageBreakdownSortDescending {
+			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+		}
+		query.BreakdownSortDirection = direction
+	}
 	return query, nil
+}
+
+func validUsageBreakdownSort(sort requestlog.UsageBreakdownSort) bool {
+	switch sort {
+	case requestlog.UsageBreakdownSortModel,
+		requestlog.UsageBreakdownSortGroup,
+		requestlog.UsageBreakdownSortChannel,
+		requestlog.UsageBreakdownSortRequestCount,
+		requestlog.UsageBreakdownSortSuccessCount,
+		requestlog.UsageBreakdownSortFailureCount,
+		requestlog.UsageBreakdownSortSuccessRate,
+		requestlog.UsageBreakdownSortAverageLatency,
+		requestlog.UsageBreakdownSortUncachedInputTokens,
+		requestlog.UsageBreakdownSortCacheReadTokens,
+		requestlog.UsageBreakdownSortCacheWrite5MTokens,
+		requestlog.UsageBreakdownSortCacheWrite1HTokens,
+		requestlog.UsageBreakdownSortCacheWriteUnknown,
+		requestlog.UsageBreakdownSortOutputTokens,
+		requestlog.UsageBreakdownSortTotalTokens,
+		requestlog.UsageBreakdownSortEstimatedCost:
+		return true
+	default:
+		return false
+	}
 }
 
 type usagePreset struct {
@@ -520,12 +562,15 @@ func mapUsageBreakdown(
 	}
 	if result.Pagination.Page < 1 ||
 		(result.Pagination.PageSize != 20 && result.Pagination.PageSize != 50 && result.Pagination.PageSize != 100) ||
-		result.Pagination.TotalItems < 0 || result.Pagination.TotalPages < 0 {
+		result.Pagination.TotalItems < 0 || result.Pagination.TotalPages < 0 ||
+		uint64(result.Pagination.Page) > uint64(maxSafeInteger) ||
+		uint64(result.Pagination.TotalItems) > uint64(maxSafeInteger) ||
+		uint64(result.Pagination.TotalPages) > uint64(maxSafeInteger) {
 		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid pagination")
 	}
 	expectedTotalPages := 0
 	if result.Pagination.TotalItems > 0 {
-		expectedTotalPages = (result.Pagination.TotalItems + result.Pagination.PageSize - 1) / result.Pagination.PageSize
+		expectedTotalPages = (result.Pagination.TotalItems-1)/result.Pagination.PageSize + 1
 	}
 	if result.Pagination.TotalPages != expectedTotalPages {
 		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid pagination")

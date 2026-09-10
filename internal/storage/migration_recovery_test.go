@@ -341,6 +341,100 @@ func TestExternalDatabaseMySQLInterruptedBaselineRecovery(t *testing.T) {
 	runExternalMySQLCostLimitRecovery(t, admin, parsed)
 }
 
+func TestExternalDatabaseMySQLRecoversPartialUsageLatencyMigration(t *testing.T) {
+	rawDSN := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
+	if rawDSN == "" {
+		t.Skip("GPT_LOAD_DATABASE_TEST_DSN is not set")
+	}
+	parsed, err := url.Parse(rawDSN)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "mysql") {
+		t.Skip("usage latency recovery is specific to MySQL")
+	}
+	scenarios := []struct {
+		name  string
+		setup func(*gorm.DB) error
+	}{
+		{
+			name: "column_added_before_constraint",
+			setup: func(db *gorm.DB) error {
+				return db.Exec(
+					"ALTER TABLE `usage_aggregation_journal` ADD COLUMN `duration_ms_total` BIGINT NOT NULL DEFAULT 0",
+				).Error
+			},
+		},
+		{
+			name: "journal_table_completed",
+			setup: func(db *gorm.DB) error {
+				for _, statement := range []string{
+					"ALTER TABLE `usage_aggregation_journal` ADD COLUMN `duration_ms_total` BIGINT NOT NULL DEFAULT 0",
+					"ALTER TABLE `usage_aggregation_journal` ADD CONSTRAINT `chk_usage_journal_duration_total` CHECK (`duration_ms_total` >= 0)",
+					"ALTER TABLE `usage_aggregation_journal` ADD COLUMN `duration_sample_count` BIGINT NOT NULL DEFAULT 0",
+					"ALTER TABLE `usage_aggregation_journal` ADD CONSTRAINT `chk_usage_journal_duration_samples` CHECK (`duration_sample_count` >= 0 AND `duration_sample_count` <= `request_count`)",
+				} {
+					if err := db.Exec(statement).Error; err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+	}
+	for _, scenario := range scenarios {
+		t.Run(scenario.name, func(t *testing.T) {
+			db := openExternalIncrementalMigrationDatabase(t, rawDSN)
+			if err := db.AutoMigrate(&schemaMigration{}); err != nil {
+				t.Fatalf("create migration ledger: %v", err)
+			}
+			for index := 0; index < 10; index++ {
+				if err := migrations[index].Up(db); err != nil {
+					t.Fatalf("apply migration %d: %v", index+1, err)
+				}
+				if err := migrations[index].Validate(db); err != nil {
+					t.Fatalf("validate migration %d: %v", index+1, err)
+				}
+				if err := db.Create(&schemaMigration{ID: migrations[index].ID}).Error; err != nil {
+					t.Fatalf("record migration %d: %v", index+1, err)
+				}
+			}
+			if err := db.Create(&schemaMigration{ID: migrationResumeMarker(migrations[10].ID)}).Error; err != nil {
+				t.Fatalf("record usage latency recovery marker: %v", err)
+			}
+			if err := scenario.setup(db); err != nil {
+				t.Fatalf("create partial usage latency schema: %v", err)
+			}
+
+			if err := AutoMigrate(db); err != nil {
+				t.Fatalf("resume usage latency migration: %v", err)
+			}
+			if err := AutoMigrate(db); err != nil {
+				t.Fatalf("repeat usage latency migration: %v", err)
+			}
+			assertInternalMigrationComplete(t, db, registeredMigrationIDs())
+			for _, constraint := range []string{
+				"chk_usage_journal_duration_total", "chk_usage_journal_duration_samples",
+				"chk_usage_stat_duration_total", "chk_usage_stat_duration_samples",
+			} {
+				if !db.Migrator().HasConstraint("usage_aggregation_journal", constraint) && strings.HasPrefix(constraint, "chk_usage_journal") {
+					t.Errorf("journal constraint %q is missing", constraint)
+				}
+				if !db.Migrator().HasConstraint("usage_stats", constraint) && strings.HasPrefix(constraint, "chk_usage_stat") {
+					t.Errorf("stats constraint %q is missing", constraint)
+				}
+			}
+			var checkClause string
+			if err := db.Raw(
+				"SELECT CHECK_CLAUSE FROM information_schema.check_constraints WHERE constraint_schema = DATABASE() AND constraint_name = ?",
+				"chk_usage_journal_duration_samples",
+			).Scan(&checkClause).Error; err != nil {
+				t.Fatalf("inspect recovered usage latency constraint: %v", err)
+			}
+			if !strings.Contains(strings.ToLower(checkClause), "request_count") {
+				t.Fatalf("recovered sample constraint = %q, want request_count bound", checkClause)
+			}
+		})
+	}
+}
+
 func TestExternalDatabaseIncrementalMigrations(t *testing.T) {
 	rawDSN := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
 	if rawDSN == "" {

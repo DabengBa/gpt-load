@@ -18,10 +18,107 @@ import (
 	"gpt-load/internal/telemetry"
 )
 
+// TestExternalDatabaseUsageBreakdownSortsAndPaginates exercises aggregate
+// ordering and pagination against real MySQL and PostgreSQL servers.
+func TestExternalDatabaseUsageBreakdownSortsAndPaginates(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
+	if dsn == "" {
+		t.Skip("GPT_LOAD_DATABASE_TEST_DSN is not set")
+	}
+	db, err := storage.OpenWithSource(dsn, config.DatabaseSourceExternal)
+	if err != nil {
+		t.Fatalf("OpenWithSource() error = %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("DB() error = %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := storage.AutoMigrate(db); err != nil {
+		t.Fatalf("AutoMigrate() error = %v", err)
+	}
+
+	bucket := time.Now().UTC().Truncate(time.Hour).UnixMilli()
+	groupID := uint(time.Now().UnixNano() & 0x3fffffff)
+	groupNamePrefix := fmt.Sprintf("external-usage-group-%d-", time.Now().UnixNano())
+	groups := []models.Group{
+		{
+			ID: groupID, Name: groupNamePrefix + "zulu", ChannelID: "openai",
+			Params: models.JSON(`{}`), Models: models.JSON(`[]`), Enabled: true,
+		},
+		{
+			ID: groupID + 1, Name: groupNamePrefix + "alpha", ChannelID: "anthropic",
+			Params: models.JSON(`{}`), Models: models.JSON(`[]`), Enabled: true,
+		},
+	}
+	if err := db.Create(&groups).Error; err != nil {
+		t.Fatalf("create usage sort groups: %v", err)
+	}
+	modelPrefix := fmt.Sprintf("external-usage-sort-%d-", time.Now().UnixNano())
+	rows := make([]models.UsageStat, 0, 21)
+	for index := 1; index <= 21; index++ {
+		rowGroupID := groupID
+		rowChannelID := "openai"
+		if index <= 10 {
+			rowGroupID = groupID + 1
+			rowChannelID = "anthropic"
+		}
+		rows = append(rows, models.UsageStat{
+			BucketStartMS: bucket, ChannelID: rowChannelID, GroupID: rowGroupID,
+			CredentialID: uint(index), Model: fmt.Sprintf("%s%02d", modelPrefix, index),
+			RequestCount: 1, SuccessCount: 1, EstimatedCostNanoUSD: int64(index),
+			DurationMsTotal: int64(index), DurationSampleCount: 1,
+		})
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatalf("create usage rows: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Where("model LIKE ?", modelPrefix+"%").Delete(&models.UsageStat{}).Error
+		_ = db.Where("id IN ?", []uint{groupID, groupID + 1}).Delete(&models.Group{}).Error
+	})
+
+	service := NewService(db, redact.New(), staticRetentionPolicy{days: 1})
+	query := UsageQuery{
+		FromMS: bucket, ToMS: bucket + int64(time.Hour/time.Millisecond),
+		Granularity: UsageGranularityHour, BreakdownPageSize: 20,
+		BreakdownSort: UsageBreakdownSortEstimatedCost, BreakdownSortDirection: UsageBreakdownSortDescending,
+	}
+	firstPage, err := service.QueryUsage(t.Context(), query)
+	if err != nil {
+		t.Fatalf("QueryUsage() first page error = %v", err)
+	}
+	query.BreakdownPage = 2
+	secondPage, err := service.QueryUsage(t.Context(), query)
+	if err != nil {
+		t.Fatalf("QueryUsage() second page error = %v", err)
+	}
+	if len(firstPage.Breakdown.Rows) != 20 || len(secondPage.Breakdown.Rows) != 1 ||
+		firstPage.Breakdown.Rows[0].Model != modelPrefix+"21" ||
+		firstPage.Breakdown.Rows[19].Model != modelPrefix+"02" ||
+		secondPage.Breakdown.Rows[0].Model != modelPrefix+"01" {
+		t.Fatalf("external sorted pages = %#v / %#v", firstPage.Breakdown.Rows, secondPage.Breakdown.Rows)
+	}
+
+	for _, sort := range []UsageBreakdownSort{UsageBreakdownSortGroup, UsageBreakdownSortChannel} {
+		query.BreakdownPage = 1
+		query.BreakdownSort = sort
+		query.BreakdownSortDirection = UsageBreakdownSortAscending
+		report, err := service.QueryUsage(t.Context(), query)
+		if err != nil {
+			t.Fatalf("QueryUsage() %s sort error = %v", sort, err)
+		}
+		if len(report.Breakdown.Rows) != 20 || report.Breakdown.Rows[0].Model != modelPrefix+"01" {
+			t.Fatalf("external %s sorted rows = %#v", sort, report.Breakdown.Rows)
+		}
+	}
+}
+
 // TestExternalDatabaseRequestLogLifecycle covers the request-log write,
 // aggregate upsert, duplicate replay, and retention chain on real MySQL and
 // PostgreSQL servers. Unit tests cover each branch; this keeps driver SQL and
 // transaction differences inside the release contract.
+
 func TestExternalDatabaseRequestLogLifecycle(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
 	if dsn == "" {

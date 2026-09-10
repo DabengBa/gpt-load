@@ -23,35 +23,58 @@ func Up0011(db *gorm.DB) error {
 		return err
 	}
 	for _, table := range usageLatencyTables0011 {
-		if err := addUsageLatencyColumn0011(db, table.table, "duration_ms_total", table.totalConstraint); err != nil {
+		if err := ensureUsageLatencyColumn0011(db, table.table, "duration_ms_total", table.totalConstraint); err != nil {
 			return err
 		}
-		if err := addUsageLatencyColumn0011(db, table.table, "duration_sample_count", table.sampleConstraint); err != nil {
+		if err := ensureUsageLatencyColumn0011(db, table.table, "duration_sample_count", table.sampleConstraint); err != nil {
 			return err
 		}
 	}
 	return Validate0011(db)
 }
 
-func addUsageLatencyColumn0011(db *gorm.DB, table, column, constraint string) error {
-	if db.Migrator().HasColumn(table, column) {
+func ensureUsageLatencyColumn0011(db *gorm.DB, table, column, constraint string) error {
+	if !db.Migrator().HasColumn(table, column) {
+		statement := fmt.Sprintf(
+			"ALTER TABLE %s ADD COLUMN %s BIGINT NOT NULL DEFAULT 0",
+			quoteUsageLatencyIdentifier0011(db, table),
+			quoteUsageLatencyIdentifier0011(db, column),
+		)
+		if strings.EqualFold(db.Dialector.Name(), "sqlite") {
+			statement += fmt.Sprintf(
+				" CONSTRAINT %s CHECK (%s)",
+				quoteUsageLatencyIdentifier0011(db, constraint),
+				usageLatencyConstraintExpression0011(db, column),
+			)
+		}
+		if err := db.Exec(statement).Error; err != nil {
+			return fmt.Errorf("add %s.%s: %w", table, column, err)
+		}
+	}
+	if db.Migrator().HasConstraint(table, constraint) {
 		return nil
 	}
+	if strings.EqualFold(db.Dialector.Name(), "sqlite") {
+		return fmt.Errorf("%s.%s constraint %q is missing", table, column, constraint)
+	}
+	statement := fmt.Sprintf(
+		"ALTER TABLE %s ADD CONSTRAINT %s CHECK (%s)",
+		quoteUsageLatencyIdentifier0011(db, table),
+		quoteUsageLatencyIdentifier0011(db, constraint),
+		usageLatencyConstraintExpression0011(db, column),
+	)
+	if err := db.Exec(statement).Error; err != nil {
+		return fmt.Errorf("add %s.%s constraint: %w", table, column, err)
+	}
+	return nil
+}
+
+func usageLatencyConstraintExpression0011(db *gorm.DB, column string) string {
 	expression := quoteUsageLatencyIdentifier0011(db, column) + " >= 0"
 	if column == "duration_sample_count" {
 		expression += " AND " + quoteUsageLatencyIdentifier0011(db, column) + " <= " + quoteUsageLatencyIdentifier0011(db, "request_count")
 	}
-	statement := fmt.Sprintf(
-		"ALTER TABLE %s ADD COLUMN %s BIGINT NOT NULL DEFAULT 0 CONSTRAINT %s CHECK (%s)",
-		quoteUsageLatencyIdentifier0011(db, table),
-		quoteUsageLatencyIdentifier0011(db, column),
-		quoteUsageLatencyIdentifier0011(db, constraint),
-		expression,
-	)
-	if err := db.Exec(statement).Error; err != nil {
-		return fmt.Errorf("add %s.%s: %w", table, column, err)
-	}
-	return nil
+	return expression
 }
 
 // ValidateRecoverable0011 accepts the initial schema and each completed column
@@ -69,7 +92,8 @@ func ValidateRecoverable0011(db *gorm.DB) error {
 			if column == "duration_sample_count" {
 				constraint = table.sampleConstraint
 			}
-			if err := validateUsageLatencyColumn0011(db, table.table, column, constraint); err != nil {
+			requireConstraint := strings.EqualFold(db.Dialector.Name(), "sqlite")
+			if err := validateUsageLatencyColumn0011(db, table.table, column, constraint, requireConstraint); err != nil {
 				return err
 			}
 		}
@@ -90,7 +114,7 @@ func Validate0011(db *gorm.DB) error {
 			if !db.Migrator().HasColumn(table.table, definition.column) {
 				return fmt.Errorf("%s.%s is missing", table.table, definition.column)
 			}
-			if err := validateUsageLatencyColumn0011(db, table.table, definition.column, definition.constraint); err != nil {
+			if err := validateUsageLatencyColumn0011(db, table.table, definition.column, definition.constraint, true); err != nil {
 				return err
 			}
 		}
@@ -98,7 +122,7 @@ func Validate0011(db *gorm.DB) error {
 	return nil
 }
 
-func validateUsageLatencyColumn0011(db *gorm.DB, table, column, constraint string) error {
+func validateUsageLatencyColumn0011(db *gorm.DB, table, column, constraint string, requireConstraint bool) error {
 	columns, err := db.Migrator().ColumnTypes(table)
 	if err != nil {
 		return fmt.Errorf("inspect %s.%s: %w", table, column, err)
@@ -132,7 +156,10 @@ func validateUsageLatencyColumn0011(db *gorm.DB, table, column, constraint strin
 		return fmt.Errorf("%s.%s is missing", table, column)
 	}
 	if !db.Migrator().HasConstraint(table, constraint) {
-		return fmt.Errorf("%s.%s constraint %q is missing", table, column, constraint)
+		if requireConstraint {
+			return fmt.Errorf("%s.%s constraint %q is missing", table, column, constraint)
+		}
+		return nil
 	}
 	definition, err := usageLatencyConstraintDefinition0011(db, table, constraint)
 	if err != nil {

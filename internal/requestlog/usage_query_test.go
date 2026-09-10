@@ -450,6 +450,56 @@ func TestQueryUsageMergesHourlyRowsIntoAdaptiveBuckets(t *testing.T) {
 	}
 }
 
+func TestQueryUsageRejectsInvalidBreakdownSortAndOverflowingPage(t *testing.T) {
+	start := time.Date(2026, time.June, 1, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name  string
+		query UsageQuery
+	}{
+		{
+			name: "unknown sort",
+			query: UsageQuery{
+				FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(),
+				Granularity: UsageGranularityHour, BreakdownSort: UsageBreakdownSort("unknown"),
+			},
+		},
+		{
+			name: "unknown direction",
+			query: UsageQuery{
+				FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(),
+				Granularity: UsageGranularityHour, BreakdownSortDirection: UsageBreakdownSortDirection("sideways"),
+			},
+		},
+		{
+			name: "offset overflows platform int",
+			query: UsageQuery{
+				FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(),
+				Granularity: UsageGranularityHour, BreakdownPage: int(^uint(0) >> 1),
+				BreakdownPageSize: 100,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := openRequestLogQueryDB(t)
+			_, err := newRequestLogTestService(db).QueryUsage(context.Background(), test.query)
+			if err == nil {
+				t.Fatal("QueryUsage() error = nil, want rejection")
+			}
+		})
+	}
+
+	accessKeyID := uint(1)
+	_, err := newRequestLogTestService(openRequestLogQueryDB(t)).QueryUsage(context.Background(), UsageQuery{
+		FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(),
+		Granularity: UsageGranularityHour, AccessKeyID: &accessKeyID,
+		BreakdownSort: UsageBreakdownSortGroup,
+	})
+	if err == nil {
+		t.Fatal("access-key identity sort error = nil, want rejection")
+	}
+}
+
 func TestQueryUsageRejectsInvalidBucketWidths(t *testing.T) {
 	start := time.Date(2026, time.June, 1, 0, 0, 0, 0, time.UTC)
 	tests := []struct {

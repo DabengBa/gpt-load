@@ -52,10 +52,18 @@ export function normalizeAccessKeyCollectionFilters(
 }
 
 function normalizeUsageFilters(filters: UsageFilters): UsageFilters {
+  const breakdownSort = filters.breakdown_sort ?? 'estimated_cost_nano_usd'
+  const breakdownSortDirection =
+    filters.breakdown_sort_direction ??
+    (breakdownSort === 'model' || breakdownSort === 'group' || breakdownSort === 'channel'
+      ? 'asc'
+      : 'desc')
   const result: UsageFilters = {
     range: filters.range,
     breakdown_page: filters.breakdown_page ?? 1,
     breakdown_page_size: filters.breakdown_page_size ?? 20,
+    breakdown_sort: breakdownSort,
+    breakdown_sort_direction: breakdownSortDirection,
   }
   if (filters.group_id !== undefined) result.group_id = filters.group_id
   if (filters.channel_id !== undefined) result.channel_id = filters.channel_id

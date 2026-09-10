@@ -166,6 +166,34 @@ const (
 	UsageGranularityDay  UsageGranularity = "day"
 )
 
+type UsageBreakdownSort string
+
+const (
+	UsageBreakdownSortModel               UsageBreakdownSort = "model"
+	UsageBreakdownSortGroup               UsageBreakdownSort = "group"
+	UsageBreakdownSortChannel             UsageBreakdownSort = "channel"
+	UsageBreakdownSortRequestCount        UsageBreakdownSort = "request_count"
+	UsageBreakdownSortSuccessCount        UsageBreakdownSort = "success_count"
+	UsageBreakdownSortFailureCount        UsageBreakdownSort = "failure_count"
+	UsageBreakdownSortSuccessRate         UsageBreakdownSort = "success_rate"
+	UsageBreakdownSortAverageLatency      UsageBreakdownSort = "average_latency"
+	UsageBreakdownSortUncachedInputTokens UsageBreakdownSort = "uncached_input_tokens"
+	UsageBreakdownSortCacheReadTokens     UsageBreakdownSort = "cache_read_tokens"
+	UsageBreakdownSortCacheWrite5MTokens  UsageBreakdownSort = "cache_write_5m_tokens"
+	UsageBreakdownSortCacheWrite1HTokens  UsageBreakdownSort = "cache_write_1h_tokens"
+	UsageBreakdownSortCacheWriteUnknown   UsageBreakdownSort = "cache_write_unknown_tokens"
+	UsageBreakdownSortOutputTokens        UsageBreakdownSort = "output_tokens"
+	UsageBreakdownSortTotalTokens         UsageBreakdownSort = "total_tokens"
+	UsageBreakdownSortEstimatedCost       UsageBreakdownSort = "estimated_cost_nano_usd"
+)
+
+type UsageBreakdownSortDirection string
+
+const (
+	UsageBreakdownSortAscending  UsageBreakdownSortDirection = "asc"
+	UsageBreakdownSortDescending UsageBreakdownSortDirection = "desc"
+)
+
 type UsageDistributionDimension string
 
 const (
@@ -197,17 +225,19 @@ type GroupUsageReader interface {
 }
 
 type UsageQuery struct {
-	FromMS            int64
-	ToMS              int64
-	Granularity       UsageGranularity
-	BucketWidthMS     int64
-	AccessKeyID       *uint
-	GroupID           *uint
-	ChannelID         channel.ID
-	CredentialID      *uint
-	UpstreamModel     string
-	BreakdownPage     int
-	BreakdownPageSize int
+	FromMS                 int64
+	ToMS                   int64
+	Granularity            UsageGranularity
+	BucketWidthMS          int64
+	AccessKeyID            *uint
+	GroupID                *uint
+	ChannelID              channel.ID
+	CredentialID           *uint
+	UpstreamModel          string
+	BreakdownPage          int
+	BreakdownPageSize      int
+	BreakdownSort          UsageBreakdownSort
+	BreakdownSortDirection UsageBreakdownSortDirection
 }
 
 type UsageAggregate struct {

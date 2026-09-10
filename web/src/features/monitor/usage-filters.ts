@@ -1,4 +1,9 @@
-import type { UsageBreakdownPageSize, UsageFilters } from '@/app/resources/usage'
+import {
+  normalizeUsageBreakdownSort,
+  normalizeUsageBreakdownSortDirection,
+  type UsageBreakdownPageSize,
+  type UsageFilters,
+} from '@/app/resources/usage'
 import { defaultTimeRange, isTimeRange } from '@/lib/time'
 
 import { normalizeMonitorText } from './filter-validation'
@@ -69,6 +74,13 @@ export function parseAppliedUsageFilters(query: Record<string, unknown>): UsageF
   const pageSize = normalizeUsagePageSize(query.breakdown_page_size)
   if (page !== 1) filters.breakdown_page = page
   if (pageSize !== 20) filters.breakdown_page_size = pageSize
+  const sort = normalizeUsageBreakdownSort(query.breakdown_sort)
+  filters.breakdown_sort = sort
+  filters.breakdown_sort_direction = normalizeUsageBreakdownSortDirection(
+    query.breakdown_sort_direction,
+    sort,
+  )
+
   return filters
 }
 

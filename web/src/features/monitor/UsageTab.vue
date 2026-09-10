@@ -13,7 +13,11 @@ import { listChannels } from '@/app/resources/channels'
 import { controlQueryKeys } from '@/app/query-keys'
 import {
   usageQueryOptions,
+  normalizeUsageBreakdownSort,
+  normalizeUsageBreakdownSortDirection,
   type UsageAggregateDto,
+  type UsageBreakdownSort,
+  type UsageBreakdownSortDirection,
   type UsageDistributionDimension,
   type UsageDistributionMetric,
   type UsageFilters,
@@ -67,6 +71,15 @@ const appliedFilters = computed(() => {
   const filters = parseAppliedUsageFilters(route.query)
   return isAccessKey.value ? scopeAccessKeyUsageFilters(filters) : filters
 })
+const breakdownSort = computed<UsageBreakdownSort>(() =>
+  normalizeUsageBreakdownSort(appliedFilters.value.breakdown_sort),
+)
+const breakdownSortDirection = computed<UsageBreakdownSortDirection>(() =>
+  normalizeUsageBreakdownSortDirection(
+    appliedFilters.value.breakdown_sort_direction,
+    breakdownSort.value,
+  ),
+)
 const routeState = computed(() => parseUsageMonitorState(route.query))
 const filterOpen = computed(() => routeState.value.filtersOpen)
 const draft = ref<UsageFilterDraft>(createUsageFilterDraft(appliedFilters.value))
@@ -314,11 +327,19 @@ async function applyFilters(): Promise<void> {
   const errors = validateUsageFilterDraft(draft.value)
   filterErrors.value = errors
   if (Object.keys(errors).length > 0) return
-  await navigate(applyUsageFilterDraft(draft.value))
+  await navigate({
+    ...applyUsageFilterDraft(draft.value),
+    breakdown_sort: breakdownSort.value,
+    breakdown_sort_direction: breakdownSortDirection.value,
+  })
 }
 
 async function resetFilters(): Promise<void> {
-  await navigate({ range: appliedFilters.value.range })
+  await navigate({
+    range: appliedFilters.value.range,
+    breakdown_sort: breakdownSort.value,
+    breakdown_sort_direction: breakdownSortDirection.value,
+  })
 }
 
 async function setBreakdownPage(page: number): Promise<void> {
@@ -328,6 +349,18 @@ async function setBreakdownPage(page: number): Promise<void> {
 async function setBreakdownPageSize(pageSize: 20 | 50 | 100): Promise<void> {
   await navigate({ ...appliedFilters.value, breakdown_page: 1, breakdown_page_size: pageSize })
 }
+async function setBreakdownSort(
+  sort: UsageBreakdownSort,
+  direction: UsageBreakdownSortDirection,
+): Promise<void> {
+  await navigate({
+    ...appliedFilters.value,
+    breakdown_page: 1,
+    breakdown_sort: sort,
+    breakdown_sort_direction: direction,
+  })
+}
+
 function updateDistributionDimension(value: string): void {
   if (value !== 'group' && value !== 'model' && value !== 'access_key') return
   if (
@@ -618,8 +651,11 @@ defineExpose({ openFilters, refresh })
             :breakdown="report.breakdown"
             :groups="groupsQuery.data.value ?? []"
             :channels="channelsQuery.data.value?.items ?? []"
+            :sort="breakdownSort"
+            :sort-direction="breakdownSortDirection"
             @page="setBreakdownPage"
             @update:page-size="setBreakdownPageSize"
+            @sort="setBreakdownSort"
           />
         </section>
 

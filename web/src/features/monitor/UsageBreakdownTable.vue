@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { GroupOptionDto } from '@/api/control/types'
 import type { ChannelDto } from '@/app/resources/channels'
-import type {
-  UsageAggregateDto,
-  UsageBreakdownDto,
-  UsageBreakdownRowDto,
+import {
+  defaultUsageBreakdownSortDirectionFor,
+  type UsageAggregateDto,
+  type UsageBreakdownDto,
+  type UsageBreakdownPageSize,
+  type UsageBreakdownRowDto,
+  type UsageBreakdownSort,
+  type UsageBreakdownSortDirection,
 } from '@/app/resources/usage'
 import DataTable from '@/components/ui/DataTable.vue'
 import PaginationBar from '@/components/ui/PaginationBar.vue'
@@ -17,30 +21,18 @@ const props = defineProps<{
   breakdown: UsageBreakdownDto
   groups: GroupOptionDto[]
   channels: ChannelDto[]
+  sort: UsageBreakdownSort
+  sortDirection: UsageBreakdownSortDirection
 }>()
 
 const emit = defineEmits<{
   page: [page: number]
-  'update:pageSize': [pageSize: 20 | 50 | 100]
+  'update:pageSize': [pageSize: UsageBreakdownPageSize]
+  sort: [sort: UsageBreakdownSort, direction: UsageBreakdownSortDirection]
 }>()
 
 const { locale, t } = useI18n()
-type SortKey =
-  'model' | 'group' | 'channel' | 'success_rate' | 'average_latency' | keyof UsageAggregateDto
-
-type SortDirection = 'asc' | 'desc'
-
-const sortKey = ref<SortKey>('estimated_cost_nano_usd')
-const sortDirection = ref<SortDirection>('desc')
-
 const isAdmin = computed(() => props.breakdown.scope === 'admin')
-const sortedRows = computed(() =>
-  [...props.breakdown.rows].sort((left, right) => {
-    const result = compareRows(left, right, sortKey.value)
-    if (result !== 0) return sortDirection.value === 'asc' ? result : -result
-    return rowKey(left).localeCompare(rowKey(right))
-  }),
-)
 
 function rowKey(row: UsageBreakdownRowDto): string {
   return JSON.stringify([
@@ -67,60 +59,18 @@ function channelName(row: UsageBreakdownRowDto): string {
   )
 }
 
-function compareRows(
-  left: UsageBreakdownRowDto,
-  right: UsageBreakdownRowDto,
-  key: SortKey,
-): number {
-  if (key === 'model') return left.model.localeCompare(right.model)
-  if (key === 'group') return groupName(left).localeCompare(groupName(right))
-  if (key === 'channel') return channelName(left).localeCompare(channelName(right))
-  if (key === 'success_rate') {
-    return compareBigInt(
-      BigInt(left.success_count) * BigInt(right.request_count),
-      BigInt(right.success_count) * BigInt(left.request_count),
-    )
-  }
-  if (key === 'average_latency') {
-    if (left.duration_sample_count === 0 || right.duration_sample_count === 0) {
-      return left.duration_sample_count - right.duration_sample_count
-    }
-    return compareBigInt(
-      BigInt(left.duration_ms_total) * BigInt(right.duration_sample_count),
-      BigInt(right.duration_ms_total) * BigInt(left.duration_sample_count),
-    )
-  }
-  if (key === 'estimated_cost_nano_usd') {
-    return compareBigInt(BigInt(left[key]), BigInt(right[key]))
-  }
-  if (key === 'duration_ms_total' || key === 'duration_sample_count') {
-    return compareBigInt(BigInt(left[key]), BigInt(right[key]))
-  }
-  const leftValue = left[key]
-  const rightValue = right[key]
-  if (typeof leftValue !== 'number' || typeof rightValue !== 'number') return 0
-  return leftValue - rightValue
+function setSort(key: UsageBreakdownSort): void {
+  const direction =
+    props.sort === key
+      ? props.sortDirection === 'asc'
+        ? 'desc'
+        : 'asc'
+      : defaultUsageBreakdownSortDirectionFor(key)
+  emit('sort', key, direction)
 }
 
-function compareBigInt(left: bigint, right: bigint): number {
-  return left < right ? -1 : left > right ? 1 : 0
-}
-
-function setSort(key: SortKey): void {
-  if (sortKey.value === key) {
-    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
-    return
-  }
-  sortKey.value = key
-  sortDirection.value = key === 'model' || key === 'group' || key === 'channel' ? 'asc' : 'desc'
-}
-
-function ariaSort(key: SortKey): 'ascending' | 'descending' | 'none' {
-  return sortKey.value === key
-    ? sortDirection.value === 'asc'
-      ? 'ascending'
-      : 'descending'
-    : 'none'
+function ariaSort(key: UsageBreakdownSort): 'ascending' | 'descending' | 'none' {
+  return props.sort === key ? (props.sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'
 }
 
 function averageLatency(aggregate: UsageAggregateDto): string {
@@ -266,7 +216,7 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
       </tr>
     </thead>
     <tbody>
-      <tr v-for="row in sortedRows" :key="rowKey(row)">
+      <tr v-for="row in breakdown.rows" :key="rowKey(row)">
         <td class="usage-breakdown__identity">{{ row.model }}</td>
         <td v-if="isAdmin">{{ groupName(row) }}</td>
         <td v-if="isAdmin">{{ channelName(row) }}</td>

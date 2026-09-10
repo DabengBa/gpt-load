@@ -1,7 +1,13 @@
 import type { LocationQueryRaw } from 'vue-router'
 
 import { enabledDataProtocols } from '@/api/control/protocols'
-import type { UsageFilters } from '@/app/resources/usage'
+import {
+  defaultUsageBreakdownSort,
+  defaultUsageBreakdownSortDirectionFor,
+  normalizeUsageBreakdownSort,
+  normalizeUsageBreakdownSortDirection,
+  type UsageFilters,
+} from '@/app/resources/usage'
 import type { RequestLogFilters } from '@/app/resources/request-logs'
 import { defaultTimeRange } from '@/lib/time'
 
@@ -97,6 +103,10 @@ export function scopeAccessKeyUsageFilters(filters: UsageFilters): UsageFilters 
   delete scoped.group_id
   delete scoped.channel_id
   delete scoped.credential_id
+  if (scoped.breakdown_sort === 'group' || scoped.breakdown_sort === 'channel') {
+    scoped.breakdown_sort = 'model'
+    scoped.breakdown_sort_direction = 'asc'
+  }
   return scoped
 }
 
@@ -178,6 +188,17 @@ export function usageMonitorQuery(
   const breakdownPageSize = normalizeUsagePageSize(filters.breakdown_page_size)
   if (breakdownPage !== 1) normalized.breakdown_page = String(breakdownPage)
   if (breakdownPageSize !== 20) normalized.breakdown_page_size = String(breakdownPageSize)
+  const breakdownSort = normalizeUsageBreakdownSort(filters.breakdown_sort)
+  const breakdownSortDirection = normalizeUsageBreakdownSortDirection(
+    filters.breakdown_sort_direction,
+    breakdownSort,
+  )
+  if (breakdownSort !== defaultUsageBreakdownSort) {
+    normalized.breakdown_sort = breakdownSort
+  }
+  if (breakdownSortDirection !== defaultUsageBreakdownSortDirectionFor(breakdownSort)) {
+    normalized.breakdown_sort_direction = breakdownSortDirection
+  }
   if (state.filtersOpen) normalized.panel = 'filters'
   if (state.seriesExpanded) normalized.series = 'expanded'
   return normalized
