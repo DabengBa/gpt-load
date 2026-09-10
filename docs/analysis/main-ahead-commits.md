@@ -1,19 +1,22 @@
-# Main Ahead Commits 评估
+# Main Ahead Commits 评估（历史分析快照）
 
 ## 基线
 
 - 分析分支：`plan/main-ahead-integration`
 - Worktree：`/mnt/projects/repos/gpt-load-main-ahead-integration`
-- 当前集成基线：`dev@3b528e28`
+- 历史分析快照基线：`dev@3b528e28`
+- 当前 PR 合并目标：`dev@cbc6592a`，已包含 PR #12 和 PR #13
 - 对比目标：`origin/main@7ed01e66`
-- `dev...origin/main`：`36 14`
+- 历史快照中的 `dev...origin/main`：`36 14`
   - `dev` 独有 36 个提交
   - `main` 独有 14 个提交
-- 分析范围：只评估 `dev..origin/main` 的 14 个提交，不执行合并。
+- 分析范围：只评估历史快照中的 `dev..origin/main` 14 个提交，不执行整条分支合并。
+
+本文件保留的是历史快照分析；它不替代当前 PR 与 `dev@cbc6592a` 的实际合并预演和变更验证。
 
 ## 总体结论
 
-`origin/main` 不是可以直接合入当前 `dev` 的线性补丁集合。两条分支在统一分组调度改造前后形成了不同的领域合同：
+`origin/main` 不是可以直接合入历史快照 `dev` 的线性补丁集合。两条分支在统一分组调度改造前后形成了不同的领域合同：
 
 - 当前 `dev` 强制每个分组只有一个凭据；普通第二凭据创建、导入、连接必须原子拒绝。
 - 当前 `dev` 删除分组权重和凭据权重，只保留模型入口权重、优先级和入口级熔断。
@@ -21,7 +24,7 @@
 - 当前 `dev` 使用 `0010_single_credential_per_group` 迁移。
 - `main` 的部分提交仍依赖多凭据、分组/凭据权重、分组 retry 或旧的监控和凭据 API。
 
-`git merge-tree --write-tree dev origin/main` 预演失败，记录到约 50 个冲突路径，涉及：
+历史快照上的 `git merge-tree --write-tree dev origin/main` 预演失败，记录到约 50 个冲突路径，涉及：
 
 - `internal/control` 凭据、健康、分组和运行时合同
 - `internal/scheduler`、`internal/state` 调度器和 Registry
