@@ -829,7 +829,7 @@ func TestConnectSubscriptionGroupConsumesReadyStage(t *testing.T) {
 	fixture := newServiceFixture(t)
 	first := mustImportSubscriptionStage(t, fixture, "account-one", "one@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("subscription connect"), ChannelID: channel.Codex,
+		Name: stringPointer("subscription connect replacement"), ChannelID: channel.Codex,
 		ConnectionType:      models.ConnectionTypeSubscription,
 		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
 		StagedCredentialIDs: []string{first.StageID},
@@ -837,20 +837,46 @@ func TestConnectSubscriptionGroupConsumesReadyStage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := mustImportSubscriptionStage(t, fixture, "account-two", "two@example.com")
-	result, err := fixture.service.ConnectGroupCredentials(t.Context(), created.GroupID, []string{second.StageID})
+	var before models.Credential
+	if err := fixture.db.Where("group_id = ?", created.GroupID).Take(&before).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.Model(&models.Credential{}).Where("id = ?", before.ID).Updates(map[string]any{
+		"auth_state": models.CredentialAuthStateReauthorizationRequired, "auth_error_code": "refresh_rejected",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	replacement := mustImportSubscriptionStage(t, fixture, "account-one", "replacement@example.com")
+	result, err := fixture.service.ConnectGroupCredentials(t.Context(), created.GroupID, []string{replacement.StageID})
 	if err != nil {
 		t.Fatalf("ConnectGroupCredentials() error = %v", err)
 	}
-	if result.CredentialsAdded != 1 || result.GroupID != created.GroupID {
+	if result.CredentialsAdded != 1 || result.CredentialsDuplicated != 0 || result.GroupID != created.GroupID {
 		t.Fatalf("result = %#v", result)
+	}
+	var after models.Credential
+	if err := fixture.db.Where("group_id = ?", created.GroupID).Take(&after).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after.ID != before.ID || after.IdentityFingerprint != before.IdentityFingerprint ||
+		after.Data == before.Data || after.SecretVersion != before.SecretVersion+1 ||
+		after.AuthState != models.CredentialAuthStateReady || after.AuthErrorCode != "" {
+		t.Fatalf("replacement credential = %#v, before %#v", after, before)
 	}
 	var count int64
 	if err := fixture.db.Model(&models.Credential{}).Where("group_id = ?", created.GroupID).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if count != 2 || len(fixture.registry.CaptureActiveCredentialRefs([]uint{created.GroupID})) != 2 {
-		t.Fatalf("connected state = db %d registry %#v", count, fixture.registry.Snapshot())
+	if count != 1 {
+		t.Fatalf("credential count = %d, want 1", count)
+	}
+	var consumed models.CredentialStage
+	if err := fixture.db.Take(&consumed, "id = ?", replacement.StageID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if consumed.Status != models.CredentialStageConsumed || consumed.EncryptedPayload != "" ||
+		consumed.ConsumedGroupID == nil || *consumed.ConsumedGroupID != created.GroupID {
+		t.Fatalf("consumed stage = %#v", consumed)
 	}
 }
 
@@ -860,7 +886,7 @@ func TestConnectSubscriptionGroupIdempotentReplaysConsumedStage(t *testing.T) {
 	fixture := newServiceFixture(t)
 	first := mustImportSubscriptionStage(t, fixture, "account-one", "one@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("subscription connect replay"), ChannelID: channel.Codex,
+		Name: stringPointer("subscription connect replacement replay"), ChannelID: channel.Codex,
 		ConnectionType:      models.ConnectionTypeSubscription,
 		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
 		StagedCredentialIDs: []string{first.StageID},
@@ -868,29 +894,46 @@ func TestConnectSubscriptionGroupIdempotentReplaysConsumedStage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := mustImportSubscriptionStage(t, fixture, "account-two", "two@example.com")
+	var existing models.Credential
+	if err := fixture.db.Where("group_id = ?", created.GroupID).Take(&existing).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.Model(&models.Credential{}).Where("id = ?", existing.ID).Updates(map[string]any{
+		"auth_state": models.CredentialAuthStateReauthorizationRequired, "auth_error_code": "refresh_rejected",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	replacement := mustImportSubscriptionStage(t, fixture, "account-one", "replacement@example.com")
 	key := "123e4567-e89b-42d3-a456-426614174000"
 	firstResult, err := fixture.service.ConnectGroupCredentialsIdempotent(
-		t.Context(), key, created.GroupID, []string{second.StageID},
+		t.Context(), key, created.GroupID, []string{replacement.StageID},
 	)
 	if err != nil {
 		t.Fatalf("first connect error = %v", err)
 	}
 	replayed, err := fixture.service.ConnectGroupCredentialsIdempotent(
-		t.Context(), key, created.GroupID, []string{second.StageID},
+		t.Context(), key, created.GroupID, []string{replacement.StageID},
 	)
 	if err != nil {
 		t.Fatalf("replayed connect error = %v", err)
 	}
-	if firstResult != replayed || replayed.CredentialsAdded != 1 {
+	if firstResult != replayed || replayed.CredentialsAdded != 1 || replayed.CredentialsDuplicated != 0 ||
+		replayed.GroupID != created.GroupID {
 		t.Fatalf("first = %#v, replayed = %#v", firstResult, replayed)
 	}
 	var count int64
 	if err := fixture.db.Model(&models.Credential{}).Where("group_id = ?", created.GroupID).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if count != 2 {
-		t.Fatalf("credential count = %d, want 2", count)
+	if count != 1 {
+		t.Fatalf("credential count = %d, want 1", count)
+	}
+	var consumed models.CredentialStage
+	if err := fixture.db.Take(&consumed, "id = ?", replacement.StageID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if consumed.Status != models.CredentialStageConsumed || consumed.EncryptedPayload != "" {
+		t.Fatalf("consumed stage after replay = %#v", consumed)
 	}
 }
 

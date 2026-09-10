@@ -87,49 +87,26 @@ func TestDownloadGroupCredentialHTTPReturnsJSONObjectAndNoStoreHeaders(t *testin
 	}
 }
 
-func TestDownloadAllGroupCredentialsReturnsEveryAccountAndNoStoreHeaders(t *testing.T) {
+func TestDownloadAllGroupCredentialsReturnsAccountAndNoStoreHeaders(t *testing.T) {
 	t.Parallel()
 	initControlI18n(t)
 	fixture, groupID, _ := newSubscriptionCredentialFixture(t)
-	stageIDs := make([]string, 0, 24)
-	for index := 1; index <= 24; index++ {
-		stage := mustImportSubscriptionStage(
-			t,
-			fixture,
-			fmt.Sprintf("account-export-%02d", index),
-			fmt.Sprintf("export-%02d@example.com", index),
-		)
-		stageIDs = append(stageIDs, stage.StageID)
-	}
-	if _, err := fixture.service.ConnectGroupCredentials(t.Context(), groupID, stageIDs); err != nil {
-		t.Fatal(err)
-	}
 
 	result, err := fixture.service.DownloadAllGroupCredentials(t.Context(), groupID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 25 {
-		t.Fatalf("downloaded file count = %d, want 25", len(result.Files))
+	if len(result.Files) != 1 {
+		t.Fatalf("downloaded file count = %d, want 1", len(result.Files))
 	}
-	accountIDs := make(map[string]struct{}, len(result.Files))
-	filenames := make(map[string]struct{}, len(result.Files))
-	for _, file := range result.Files {
-		filenames[file.Filename] = struct{}{}
-		var credential map[string]any
-		if err := json.Unmarshal(file.Credential, &credential); err != nil {
-			t.Fatal(err)
-		}
-		accountID, _ := credential["account_id"].(string)
-		accountIDs[accountID] = struct{}{}
+	var credential struct {
+		AccountID string `json:"account_id"`
 	}
-	if len(filenames) != 25 || len(accountIDs) != 25 {
-		t.Fatalf("downloaded files = %#v", result.Files)
+	if err := json.Unmarshal(result.Files[0].Credential, &credential); err != nil {
+		t.Fatal(err)
 	}
-	for _, accountID := range []string{"account-observation", "account-export-01", "account-export-24"} {
-		if _, exists := accountIDs[accountID]; !exists {
-			t.Fatalf("account %q missing from download", accountID)
-		}
+	if credential.AccountID != "account-observation" {
+		t.Fatalf("downloaded account_id = %q, want account-observation", credential.AccountID)
 	}
 
 	server := NewServer(&config.Config{AuthKey: "credential-download-all-auth"}, fixture.service)
@@ -144,10 +121,27 @@ func TestDownloadAllGroupCredentialsReturnsEveryAccountAndNoStoreHeaders(t *test
 		"credential-download-all-auth",
 		"",
 	)
-	if response.Code != http.StatusOK ||
-		response.Header().Get("Cache-Control") != "no-store" ||
-		response.Header().Get("Pragma") != "no-cache" {
-		t.Fatalf("download-all response = %d headers=%#v body=%s", response.Code, response.Header(), response.Body.String())
+	if response.Code != http.StatusOK {
+		t.Fatalf("download-all response = %d %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Pragma") != "no-cache" {
+		t.Fatalf("download-all response headers = %#v", response.Header())
+	}
+	var envelope struct {
+		Code int                         `json:"code"`
+		Data CredentialDownloadAllResult `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Code != 0 || len(envelope.Data.Files) != 1 {
+		t.Fatalf("download-all envelope = %#v", envelope)
+	}
+	if err := json.Unmarshal(envelope.Data.Files[0].Credential, &credential); err != nil {
+		t.Fatal(err)
+	}
+	if credential.AccountID != "account-observation" {
+		t.Fatalf("HTTP downloaded account_id = %q, want account-observation", credential.AccountID)
 	}
 }
 
