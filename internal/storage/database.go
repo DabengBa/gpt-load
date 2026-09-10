@@ -7,14 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/sirupsen/logrus"
-	gormmysql "gorm.io/driver/mysql"
 	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -180,12 +177,6 @@ func newDatabaseDialector(database config.DatabaseConfig) (gorm.Dialector, error
 	switch database.Driver {
 	case config.DatabaseDriverSQLite:
 		return sqlite.Open(database.DSN), nil
-	case config.DatabaseDriverMySQL:
-		dsn, err := mysqlDSNFromURL(database.DSN)
-		if err != nil {
-			return nil, err
-		}
-		return gormmysql.Open(dsn), nil
 	case config.DatabaseDriverPostgreSQL:
 		// Schema migrations rename/rebuild tables while the process is running.
 		// pgx's implicit statement cache otherwise can retain a result shape from
@@ -199,47 +190,6 @@ func newDatabaseDialector(database config.DatabaseConfig) (gorm.Dialector, error
 	}
 }
 
-func mysqlDSNFromURL(rawDSN string) (string, error) {
-	parsed, err := url.Parse(rawDSN)
-	if err != nil || !strings.EqualFold(parsed.Scheme, "mysql") || parsed.Host == "" {
-		return "", fmt.Errorf("DATABASE_DSN has an invalid MySQL URL")
-	}
-	databaseName := strings.TrimPrefix(parsed.EscapedPath(), "/")
-	if databaseName == "" || strings.Contains(strings.TrimPrefix(parsed.Path, "/"), "/") {
-		return "", fmt.Errorf("DATABASE_DSN MySQL URL must include one database name")
-	}
-	if parsed.Fragment != "" {
-		return "", fmt.Errorf("DATABASE_DSN MySQL URL must not include a fragment")
-	}
-	query, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil {
-		return "", fmt.Errorf("DATABASE_DSN has an invalid MySQL query")
-	}
-	// Keep the application-visible behavior stable across MySQL installations:
-	// parseTime is required for time-valued driver fields, clientFoundRows is
-	// required by existing RowsAffected contracts, and utf8mb4/binary lets
-	// connection literals represent exact identifiers. Schema migration 0001
-	// enforces the corresponding binary identity on model_prices.model_id.
-	query.Set("parseTime", "true")
-	query.Set("clientFoundRows", "true")
-	if query.Get("charset") == "" {
-		query.Set("charset", "utf8mb4")
-	}
-	if query.Get("collation") == "" {
-		query.Set("collation", "utf8mb4_bin")
-	}
-
-	credentials := ""
-	if parsed.User != nil {
-		credentials = parsed.User.Username()
-		if password, ok := parsed.User.Password(); ok {
-			credentials += ":" + password
-		}
-		credentials += "@"
-	}
-	return credentials + "tcp(" + parsed.Host + ")/" + databaseName + "?" + query.Encode(), nil
-}
-
 func logExternalDatabaseSource(driver config.DatabaseDriver) {
 	logrus.WithFields(logrus.Fields{
 		"database_source": config.DatabaseSourceExternal,
@@ -251,8 +201,6 @@ func databaseDisplayName(driver config.DatabaseDriver) string {
 	switch driver {
 	case config.DatabaseDriverSQLite:
 		return "SQLite"
-	case config.DatabaseDriverMySQL:
-		return "MySQL"
 	case config.DatabaseDriverPostgreSQL:
 		return "PostgreSQL"
 	default:

@@ -167,7 +167,6 @@ export default {
       single: 'Single instance',
       databases: {
         sqlite: 'SQLite',
-        mysql: 'MySQL',
         postgres: 'PostgreSQL',
       },
       singleBinary: 'Single binary',

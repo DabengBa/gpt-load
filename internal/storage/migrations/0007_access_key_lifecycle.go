@@ -30,11 +30,12 @@ func Up0007(db *gorm.DB) error {
 	return nil
 }
 
-// ValidateRecoverable0007 accepts either side of the idempotent column addition.
-func ValidateRecoverable0007(db *gorm.DB) error {
+// validateAccessKeyLifecycle0007 checks the table and, when present, the
+// nullable expiry column.
+func validateAccessKeyLifecycle0007(db *gorm.DB) error {
 	model := &accessKeyLifecycle0007{}
 	if !db.Migrator().HasTable(model) {
-		return fmt.Errorf("validate recoverable access key lifecycle: table %q is missing", model.TableName())
+		return fmt.Errorf("validate access key lifecycle: table %q is missing", model.TableName())
 	}
 	if !db.Migrator().HasColumn(model, "expires_at_ms") {
 		return nil
@@ -44,7 +45,7 @@ func ValidateRecoverable0007(db *gorm.DB) error {
 
 // Validate0007 verifies the nullable AccessKey expiry column.
 func Validate0007(db *gorm.DB) error {
-	if err := ValidateRecoverable0007(db); err != nil {
+	if err := validateAccessKeyLifecycle0007(db); err != nil {
 		return err
 	}
 	if !db.Migrator().HasColumn(&accessKeyLifecycle0007{}, "expires_at_ms") {

@@ -13,7 +13,7 @@ import (
 )
 
 // TestExternalDatabaseAccessKeyCostLimitPeriodPermutation verifies that the
-// retained-rule two-phase period move obeys the real MySQL/PostgreSQL unique
+// retained-rule two-phase period move obeys the real PostgreSQL unique
 // index while preserving IDs and resetting each changed revision.
 func TestExternalDatabaseAccessKeyCostLimitPeriodPermutation(t *testing.T) {
 	// 不标记 t.Parallel()：依赖 GPT_LOAD_DATABASE_TEST_DSN 的共享外部数据库，并发执行有唯一索引冲突等正确性风险。

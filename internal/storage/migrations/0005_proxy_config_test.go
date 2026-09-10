@@ -68,7 +68,7 @@ func TestProxyConfigMigrationAddsNullableEncryptedColumnsAndPreservesRows(t *tes
 	}
 }
 
-func TestProxyConfigMigrationRecoverableValidationAcceptsPartialColumns(t *testing.T) {
+func TestProxyConfigMigrationHandlesPartialColumns(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		statement string
@@ -87,9 +87,6 @@ func TestProxyConfigMigrationRecoverableValidationAcceptsPartialColumns(t *testi
 				if err := db.Exec(test.statement).Error; err != nil {
 					t.Fatalf("prepare partial schema: %v", err)
 				}
-			}
-			if err := migrations.ValidateRecoverable0005(db); err != nil {
-				t.Fatalf("ValidateRecoverable0005() error = %v", err)
 			}
 			if err := migrations.Up0005(db); err != nil {
 				t.Fatalf("Up0005() after partial schema error = %v", err)

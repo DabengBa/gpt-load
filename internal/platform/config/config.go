@@ -71,14 +71,13 @@ type DatabaseDriver string
 
 const (
 	DatabaseDriverSQLite     DatabaseDriver = "sqlite"
-	DatabaseDriverMySQL      DatabaseDriver = "mysql"
 	DatabaseDriverPostgreSQL DatabaseDriver = "postgres"
 	DatabaseDriverPostgres                  = DatabaseDriverPostgreSQL
 )
 
 // DatabaseConfig is the normalized database connection target. DSN contains
 // a driver-ready DSN; SQLite URLs are normalized to the native SQLite DSN
-// while network database URLs remain URLs until storage opens them.
+// while PostgreSQL URLs remain URLs until storage opens them.
 type DatabaseConfig struct {
 	Driver DatabaseDriver
 	DSN    string
@@ -270,8 +269,8 @@ func Load() (*Config, error) {
 }
 
 // ParseDatabaseDSN parses the single DATABASE_DSN configuration format. Bare
-// paths and :memory: remain SQLite compatibility forms; network databases must
-// use a URL with a supported scheme.
+// paths and :memory: remain SQLite compatibility forms; PostgreSQL must use a
+// URL with a supported scheme.
 func ParseDatabaseDSN(rawDSN string) (DatabaseConfig, error) {
 	dsn := strings.TrimSpace(rawDSN)
 	if dsn == "" {
@@ -306,11 +305,6 @@ func ParseDatabaseDSN(rawDSN string) (DatabaseConfig, error) {
 			return DatabaseConfig{}, err
 		}
 		return DatabaseConfig{Driver: DatabaseDriverSQLite, DSN: normalizedDSN}, nil
-	case "mysql":
-		if err := validateNetworkDatabaseURL(parsed, DatabaseDriverMySQL); err != nil {
-			return DatabaseConfig{}, err
-		}
-		return DatabaseConfig{Driver: DatabaseDriverMySQL, DSN: dsn}, nil
 	case "postgres", "postgresql":
 		if err := validateNetworkDatabaseURL(parsed, DatabaseDriverPostgreSQL); err != nil {
 			return DatabaseConfig{}, err

@@ -48,9 +48,6 @@ func TestAccessKeyLifecycleMigrationValidationRejectsMissingColumn(t *testing.T)
 	if err := migrations.Up0001(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrations.ValidateRecoverable0007(db); err != nil {
-		t.Fatalf("ValidateRecoverable0007() before column = %v", err)
-	}
 	if err := migrations.Validate0007(db); err == nil {
 		t.Fatal("Validate0007() error = nil, want missing column error")
 	}

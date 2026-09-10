@@ -61,9 +61,9 @@ func TestExternalDatabaseConcurrentMigrations(t *testing.T) {
 }
 
 // TestExternalDatabaseLifecycle is opt-in so ordinary unit tests remain
-// hermetic. Set GPT_LOAD_DATABASE_TEST_DSN to one MySQL or PostgreSQL URL to
-// exercise connection, migration, reserved-column queries, foreign keys, and
-// the dialect-specific GORM upsert against a real server.
+// hermetic. Set GPT_LOAD_DATABASE_TEST_DSN to a PostgreSQL URL to exercise
+// connection, migration, reserved-column queries, foreign keys, and the
+// dialect-specific GORM upsert against a real server.
 func TestExternalDatabaseLifecycle(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
 	if dsn == "" {
@@ -288,7 +288,7 @@ func TestExternalDatabaseLifecycle(t *testing.T) {
 	}
 
 	stat := models.UsageStat{
-		BucketStartMS: time.Now().UnixMilli(),
+		BucketStartMS: time.Now().UTC().Truncate(time.Hour).Add(-time.Hour).UnixMilli(),
 		AccessKeyID:   1,
 		ChannelID:     group.ChannelID,
 		GroupID:       group.ID,
@@ -316,9 +316,7 @@ func TestExternalDatabaseLifecycle(t *testing.T) {
 }
 
 // TestExternalDatabaseModelPriceIdentityUsesExactComparison protects the
-// case-sensitive model ID contract on every supported external database.
-// MySQL requires an explicit binary column collation; PostgreSQL already
-// preserves case under its normal text semantics.
+// case-sensitive model ID contract on PostgreSQL.
 func TestExternalDatabaseModelPriceIdentityUsesExactComparison(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
 	if dsn == "" {
@@ -346,64 +344,5 @@ func TestExternalDatabaseModelPriceIdentityUsesExactComparison(t *testing.T) {
 	}
 	if err := db.Create(&lower).Error; err != nil {
 		t.Fatalf("create second case-distinct model price: %v", err)
-	}
-}
-
-// TestExternalDatabaseReadSnapshotUsesRepeatableRead is run against a MySQL
-// connection configured with READ COMMITTED. The transaction helper must
-// explicitly promote the one report transaction before requesting its stable
-// snapshot; WITH CONSISTENT SNAPSHOT alone follows the session isolation.
-func TestExternalDatabaseReadSnapshotUsesRepeatableRead(t *testing.T) {
-	dsn := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
-	if dsn == "" {
-		t.Skip("GPT_LOAD_DATABASE_TEST_DSN is not set")
-	}
-
-	db, err := storage.OpenWithSource(dsn, config.DatabaseSourceExternal)
-	if err != nil {
-		t.Fatalf("OpenWithSource() error = %v", err)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("DB() error = %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := storage.AutoMigrate(db); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
-	if db.Dialector.Name() != "mysql" {
-		t.Skip("repeatable-read setup is specific to MySQL")
-	}
-
-	modelID := fmt.Sprintf("external-snapshot-%d", time.Now().UnixNano())
-	err = dbtx.Run(t.Context(), db, dbtx.Options{
-		Mode:      dbtx.ReadSnapshot,
-		Operation: "external read snapshot contract",
-	}, func(tx *gorm.DB) error {
-		var before int64
-		if err := tx.Model(&models.ModelPrice{}).
-			Where("model_id = ?", modelID).
-			Count(&before).Error; err != nil {
-			return err
-		}
-		if before != 0 {
-			return fmt.Errorf("initial model price count = %d, want 0", before)
-		}
-		if err := db.Create(&models.ModelPrice{ChannelID: "openai", ModelID: modelID}).Error; err != nil {
-			return err
-		}
-		var after int64
-		if err := tx.Model(&models.ModelPrice{}).
-			Where("model_id = ?", modelID).
-			Count(&after).Error; err != nil {
-			return err
-		}
-		if after != 0 {
-			return fmt.Errorf("snapshot model price count after concurrent write = %d, want 0", after)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("ReadSnapshot transaction error = %v", err)
 	}
 }

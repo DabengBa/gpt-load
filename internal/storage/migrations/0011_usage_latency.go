@@ -19,7 +19,7 @@ var usageLatencyTables0011 = []struct {
 
 // Up0011 adds durable latency aggregates to both usage persistence tables.
 func Up0011(db *gorm.DB) error {
-	if err := ValidateRecoverable0011(db); err != nil {
+	if err := validateUsageLatencyTables0011(db); err != nil {
 		return err
 	}
 	for _, table := range usageLatencyTables0011 {
@@ -77,12 +77,12 @@ func usageLatencyConstraintExpression0011(db *gorm.DB, column string) string {
 	return expression
 }
 
-// ValidateRecoverable0011 accepts the initial schema and each completed column
-// addition, allowing a retry after a non-transactional DDL interruption.
-func ValidateRecoverable0011(db *gorm.DB) error {
+// validateUsageLatencyTables0011 accepts the initial schema and each completed
+// column addition so the migration remains idempotent.
+func validateUsageLatencyTables0011(db *gorm.DB) error {
 	for _, table := range usageLatencyTables0011 {
 		if !db.Migrator().HasTable(table.table) {
-			return fmt.Errorf("validate recoverable usage latency: table %q is missing", table.table)
+			return fmt.Errorf("validate usage latency: table %q is missing", table.table)
 		}
 		for _, column := range []string{"duration_ms_total", "duration_sample_count"} {
 			if !db.Migrator().HasColumn(table.table, column) {
@@ -103,7 +103,7 @@ func ValidateRecoverable0011(db *gorm.DB) error {
 
 // Validate0011 verifies both non-negative latency aggregates are complete.
 func Validate0011(db *gorm.DB) error {
-	if err := ValidateRecoverable0011(db); err != nil {
+	if err := validateUsageLatencyTables0011(db); err != nil {
 		return err
 	}
 	for _, table := range usageLatencyTables0011 {
@@ -193,8 +193,6 @@ func usageLatencyConstraintDefinition0011(db *gorm.DB, table, constraint string)
 	switch strings.ToLower(db.Dialector.Name()) {
 	case "sqlite":
 		err = db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&definition).Error
-	case "mysql":
-		err = db.Raw("SELECT CHECK_CLAUSE FROM information_schema.check_constraints WHERE constraint_schema = DATABASE() AND constraint_name = ?", constraint).Scan(&definition).Error
 	case "postgres", "postgresql":
 		err = db.Raw("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ? AND conrelid = ?::regclass", constraint, table).Scan(&definition).Error
 	default:
@@ -206,9 +204,6 @@ func usageLatencyConstraintDefinition0011(db *gorm.DB, table, constraint string)
 	return definition, nil
 }
 
-func quoteUsageLatencyIdentifier0011(db *gorm.DB, value string) string {
-	if strings.EqualFold(db.Dialector.Name(), "mysql") {
-		return "`" + value + "`"
-	}
+func quoteUsageLatencyIdentifier0011(_ *gorm.DB, value string) string {
 	return `"` + value + `"`
 }

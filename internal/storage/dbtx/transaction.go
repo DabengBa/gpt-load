@@ -84,10 +84,9 @@ type Capabilities struct {
 type BeginMode string
 
 const (
-	BeginStandard                BeginMode = "standard"
-	BeginSQLiteImmediate         BeginMode = "sqlite_immediate"
-	BeginMySQLConsistentSnapshot BeginMode = "mysql_consistent_snapshot"
-	BeginPostgresRepeatableRead  BeginMode = "postgres_repeatable_read"
+	BeginStandard               BeginMode = "standard"
+	BeginSQLiteImmediate        BeginMode = "sqlite_immediate"
+	BeginPostgresRepeatableRead BeginMode = "postgres_repeatable_read"
 )
 
 // CapabilitiesForDriver maps the GORM driver name to the transaction
@@ -100,12 +99,6 @@ func CapabilitiesForDriver(driverName string) (Capabilities, error) {
 			Driver:     "sqlite",
 			WriteBegin: BeginSQLiteImmediate,
 			ReadBegin:  BeginStandard,
-		}, nil
-	case "mysql":
-		return Capabilities{
-			Driver:     "mysql",
-			WriteBegin: BeginStandard,
-			ReadBegin:  BeginMySQLConsistentSnapshot,
 		}, nil
 	case "postgres", "postgresql":
 		return Capabilities{
@@ -186,9 +179,6 @@ func Run(
 		for index, statement := range beginStatements {
 			if _, err := sqlConn.ExecContext(ctx, statement); err != nil {
 				cleanupErr := discardBadConnection(options.Operation, sqlConn, err)
-				// MySQL's SET TRANSACTION applies to the next transaction on this
-				// connection. If START TRANSACTION then fails, discard the connection
-				// so the pending one-shot isolation level cannot leak to another caller.
 				if index > 0 && !errors.Is(err, driver.ErrBadConn) {
 					cleanupErr = errors.Join(cleanupErr, discardConnection(options.Operation, sqlConn))
 				}
@@ -259,15 +249,6 @@ func (capabilities Capabilities) beginStatements(mode Mode) ([]string, error) {
 		return []string{"BEGIN"}, nil
 	case BeginSQLiteImmediate:
 		return []string{"BEGIN IMMEDIATE"}, nil
-	case BeginMySQLConsistentSnapshot:
-		// WITH CONSISTENT SNAPSHOT only provides a stable snapshot while the
-		// transaction isolation is REPEATABLE READ. Operators can configure a
-		// MySQL connection for READ COMMITTED, so establish the one-shot level
-		// on the same pinned connection before opening the transaction.
-		return []string{
-			"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
-			"START TRANSACTION WITH CONSISTENT SNAPSHOT",
-		}, nil
 	case BeginPostgresRepeatableRead:
 		return []string{"BEGIN ISOLATION LEVEL REPEATABLE READ"}, nil
 	default:

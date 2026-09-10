@@ -14,7 +14,6 @@ import (
 	"time"
 
 	gormsqlite "github.com/glebarez/sqlite"
-	gormmysql "gorm.io/driver/mysql"
 	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -46,15 +45,6 @@ func TestUsageStatUpsertUsesDialectSpecificGORMConflictSQL(t *testing.T) {
 			dialector:      gormsqlite.Open(":memory:"),
 			mustContain:    "ON CONFLICT",
 			mustNotContain: "ON DUPLICATE KEY UPDATE",
-		},
-		{
-			name: "mysql",
-			dialector: gormmysql.New(gormmysql.Config{
-				DSN:                       "user:password@tcp(127.0.0.1:3306)/gpt_load",
-				SkipInitializeWithVersion: true,
-			}),
-			mustContain:    "ON DUPLICATE KEY UPDATE",
-			mustNotContain: "ON CONFLICT",
 		},
 		{
 			name: "postgres",

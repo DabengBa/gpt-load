@@ -158,7 +158,6 @@ export default {
       single: '单实例',
       databases: {
         sqlite: 'SQLite',
-        mysql: 'MySQL',
         postgres: 'PostgreSQL',
       },
       singleBinary: '单二进制',

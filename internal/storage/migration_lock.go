@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -26,15 +25,6 @@ func acquireMigrationLock(db *gorm.DB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), migrationLockTimeout)
 	defer cancel()
 	switch strings.ToLower(db.Dialector.Name()) {
-	case "mysql":
-		var result sql.NullInt64
-		if err := db.WithContext(ctx).Raw("SELECT GET_LOCK(?, ?)", migrationLockName, int(migrationLockTimeout/time.Second)).Scan(&result).Error; err != nil {
-			return fmt.Errorf("acquire MySQL migration lock: %w", err)
-		}
-		if !result.Valid || result.Int64 != 1 {
-			return fmt.Errorf("acquire MySQL migration lock: timed out")
-		}
-		return nil
 	case "postgres", "postgresql":
 		return acquirePostgresMigrationLock(ctx, db, migrationLockRetry)
 	default:
@@ -78,15 +68,6 @@ func acquirePostgresMigrationLock(ctx context.Context, db *gorm.DB, retryInterva
 
 func releaseMigrationLock(db *gorm.DB) error {
 	switch strings.ToLower(db.Dialector.Name()) {
-	case "mysql":
-		var result sql.NullInt64
-		if err := db.Raw("SELECT RELEASE_LOCK(?)", migrationLockName).Scan(&result).Error; err != nil {
-			return fmt.Errorf("release MySQL migration lock: %w", err)
-		}
-		if !result.Valid || result.Int64 != 1 {
-			return fmt.Errorf("release MySQL migration lock: lock was not held")
-		}
-		return nil
 	case "postgres", "postgresql":
 		var released bool
 		if err := db.Raw("SELECT pg_advisory_unlock(hashtext(?))", migrationLockName).Scan(&released).Error; err != nil {

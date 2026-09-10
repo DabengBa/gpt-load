@@ -101,8 +101,7 @@ func ParseDBError(err error) *APIError {
 	// never exposes the database error text.
 	normalized := strings.ToLower(err.Error())
 	if strings.Contains(normalized, "unique constraint failed") ||
-		strings.Contains(normalized, "duplicate key value violates unique constraint") ||
-		strings.Contains(normalized, "duplicate entry") {
+		strings.Contains(normalized, "duplicate key value violates unique constraint") {
 		return ErrDuplicateResource
 	}
 

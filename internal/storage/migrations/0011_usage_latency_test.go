@@ -19,9 +19,6 @@ func TestUsageLatencyMigrationAddsValidatedColumnsAndIsIdempotent(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	if err := migrations.ValidateRecoverable0011(db); err != nil {
-		t.Fatalf("ValidateRecoverable0011() before migration = %v", err)
-	}
 	if err := migrations.Up0011(db); err != nil {
 		t.Fatalf("Up0011() error = %v", err)
 	}

@@ -7,7 +7,7 @@ import (
 )
 
 // validateMigrationForeignKeys performs SQLite's post-migration integrity
-// check. MySQL and PostgreSQL enforce their foreign keys during normal writes.
+// check. PostgreSQL enforces foreign keys during normal writes.
 func validateMigrationForeignKeys(db *gorm.DB) error {
 	if db == nil || db.Dialector == nil || db.Dialector.Name() != "sqlite" {
 		return nil

@@ -246,17 +246,11 @@ func usageBreakdownChannelNameExpression(db *gorm.DB) string {
 	return expression + " ELSE " + usageBreakdownUnknownIdentityExpression(db, "usage_stats.channel_id") + " END"
 }
 
-func usageBreakdownUnknownIdentityExpression(db *gorm.DB, identifier string) string {
-	if strings.EqualFold(db.Dialector.Name(), "mysql") {
-		return "CONCAT('#', " + identifier + ")"
-	}
+func usageBreakdownUnknownIdentityExpression(_ *gorm.DB, identifier string) string {
 	return usageBreakdownSQLString("#") + " || CAST(" + identifier + " AS TEXT)"
 }
 
-func usageBreakdownGroupsTable(db *gorm.DB) string {
-	if strings.EqualFold(db.Dialector.Name(), "mysql") {
-		return "`groups`"
-	}
+func usageBreakdownGroupsTable(_ *gorm.DB) string {
 	return `"groups"`
 }
 
