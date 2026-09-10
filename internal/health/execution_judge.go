@@ -79,6 +79,22 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 				"success.upstream_response",
 			)
 		}
+		if retryableStatusWithoutEvidence(attempt.StatusCode) {
+			// The upstream answered with a status the gateway treats as
+			// transient but exposed no classifiable evidence. The candidate is
+			// suspected, not proven: count the failure against its credential so
+			// a candidate that keeps answering this way reaches the blacklist
+			// threshold and is recovered by the validation probe, and switch
+			// candidate for this request instead of failing it.
+			return constrainCommittedDecision(decision(
+				FailureCategoryAmbiguous,
+				originForDispatch(attempt.DispatchState),
+				execution.ErrorScopeCredential,
+				RetryNextCandidate,
+				EffectRecordCredentialFailure,
+				"fallback.missing_evidence_retry",
+			), attempt)
+		}
 		return decision(
 			FailureCategoryAmbiguous,
 			originForDispatch(attempt.DispatchState),
@@ -536,6 +552,16 @@ func ambiguousRuleID(evidence *execution.ErrorEvidence) RuleID {
 	default:
 		return "fallback.ambiguous"
 	}
+}
+
+// retryableStatusWithoutEvidence reports whether a failure that carried no
+// classifiable evidence still answered with a status the gateway treats as
+// transient. Anything else stays final because no candidate was proven bad.
+func retryableStatusWithoutEvidence(statusCode int) bool {
+	if statusCode == http.StatusRequestTimeout || statusCode == http.StatusTooManyRequests {
+		return true
+	}
+	return statusCode >= http.StatusInternalServerError && statusCode < 600
 }
 
 func normalizeDecisionContext(value DecisionContext) DecisionContext {

@@ -115,7 +115,6 @@ export interface GroupRuntimeConfigDto {
   first_byte_timeout?: number
   request_timeout?: number
   stream_idle_timeout?: number
-  retry_count?: number
   blacklist_threshold?: number
   header_rules?: HeaderRulesDto
   buffered_stream?: boolean
@@ -127,7 +126,6 @@ export interface GroupEffectiveConfigDto {
   first_byte_timeout: number
   request_timeout: number
   stream_idle_timeout: number
-  retry_count: number
   blacklist_threshold: number
   header_rules: HeaderRulesDto
   buffered_stream: boolean

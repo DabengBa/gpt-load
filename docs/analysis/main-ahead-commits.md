@@ -129,25 +129,21 @@ L3 方案必须以当前 `dev` 合同为边界：
 - 时间范围跨越数据保留边界、空桶、时区和分页时，必须保持排序、总数和成本汇总一致。
 - 需要分别验证最近一小时、非整点自定义窗口、跨天窗口、无数据窗口和 AccessKey 过滤，不把图表显示正确当作后端合同完成。
 
-### 6. 全局请求重试预算
+### 6. 全局请求重试预算（已完成）
 
 涉及提交：
 
-- `a4255546` `feat(gateway): 统一全局请求重试预算 (#598)`
+- `a4255546` `feat(gateway): 统一全局请求重试预算 (#598)`：已随 dev 的 `3274e32c` 按上游 plumbing 同步完成。
 
-上游内容：
+同步结果：
 
-- 将分组级额外重试次数改为系统级全局重试预算。
-- 让一次请求跨多个分组时使用统一预算。
-- 从分组设置和资源投影中移除 retry count。
+- 重试预算改为系统级单一来源：请求开始时从 `snapshot.Settings.RetryCount` 冻结后传入 `executeAttempts`。
+- 分组 `retry_count` 退役：从后端状态、API、UI 与三语文案移除；存量分组配置读取时容忍（`continue`），写入直接拒绝，界面不展示，且任何一次分组保存都会把持久化 overrides 里的该键删掉（比上游多做一步，上游要再保存该分组设置时才丢弃）。
 
-重新设计边界：
+两处本地差异（不随本次同步改动）：
 
-- 当前 dev 明确保留分组 retry 配置，不能直接删除配置字段或旧 UI 高级配置。
-- 需要先定义 group retry 与全局预算的关系：预算是上限、补充额度还是候选链共享额度。
-- 预算必须覆盖 native/conversion fallback、stream retry、credential refresh 和 `DispatchMaybeSent` 禁止重试场景。
-- 重试计数必须在一次逻辑请求内全局递减，不能因跨 group、协议转换或 stream/unary 分支重新初始化。
-- 运行日志、health effect、usage attempt sequence 和前端 settings 投影必须继续保持当前合同。
+- 记数约定：`retryAttemptLimit(retryCount) = max(retryCount, 1)`，即 `retry_count` 是一次请求的尝试总次数（0 与 1 都只尝试一次，2 表示失败后可换一次候选），默认 5；上游为 `retryCount + 1`（额外重试次数，默认 2）。`internal/gateway/retry_budget_test.go` 的 7 个用例按本地约定固定。
+- replay 许可：无分类证据但上游状态可重试（408、429、5xx）时按 `fallback.missing_evidence_retry` 允许换候选并计入凭据连续失败；属于 `internal/health/execution_judge.go` 的 replay 裁决，与预算互不接管。
 
 ### 7. Codex 独立 WebSocket Session
 
@@ -176,10 +172,8 @@ L3 方案必须以当前 `dev` 合同为边界：
 
 ## L3 执行顺序
 
-1. 先定义 Codex WebSocket Session 的 dispatch、replay safety、credential identity 和 proxy 生命周期合同，并补最小编译/行为证据。
-2. 再处理 Usage 专题，先冻结时间范围与 URL/resource 查询合同，再实现后端聚合和前端状态。
-3. 并行前先完成 scheduler/health 的权威状态设计，避免连续分配、模型冷却和入口 breaker 形成多个真相源。
-4. 最后按当前单凭据写入边界拆分凭据导入、target freeze 和 retry budget 能力。
+1. Codex WebSocket Session 的 dispatch、replay safety、credential identity 和 proxy 生命周期合同：已定义并落地独立 Session（`docs/design/codex-websocket-session.md`），编译与行为证据已补齐。
+2. 数据面接入（`f091528b`）：把 Session 接进网关与逐轮治理，含 `previous_response_id` 续接、CPA/bifrost 执行器分支、channel WS 能力位、分层开关，以及分组停用/删除时关闭 WS 连接。
 
 ## 结论
 
@@ -189,6 +183,7 @@ L3 方案必须以当前 `dev` 合同为边界：
   独立 Session（vendored `CodexWSSession` + `codex.WSSession`）并补齐编译与行为证据，仍未接入数据面。
 - 专题 1（凭据全量导入）、2（入口公平调度）、3（模型错误重试与健康恢复）、4（自定义订阅上游）、
   5（Usage 时间窗口）不再纳入范围：收益低于维护成本，且都要求改动当前已稳定的合同。
-- 保留的上游工作剩下两项：专题 7 的数据面接入（`f091528b`，需要先定义逐轮治理、`previous_response_id` 续接与
-  `DispatchMaybeSent` 在当前 attempt/session 合同下的边界）和专题 6 全局请求重试预算（`a4255546`）。
+- 专题 6 全局请求重试预算（`a4255546`）已随 dev 的 `3274e32c` 同步完成，记数约定与 replay 许可保留本地差异（见专题 6）。
+- 保留的上游工作只剩专题 7 的数据面接入（`f091528b`，需要先定义逐轮治理、`previous_response_id` 续接与
+  `DispatchMaybeSent` 在当前 attempt/session 合同下的边界）。
 - 本次只更新基线和 L3 分析，不对上述 upstream commit 做代码 cherry-pick。
