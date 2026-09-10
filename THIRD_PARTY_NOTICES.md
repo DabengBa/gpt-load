@@ -31,7 +31,9 @@ GPT-Load uses a pinned, execution-only embedded adapter around CLIProxyAPI's
 Codex, Claude, Antigravity, and xAI OAuth and HTTP executor code. GPT-Load retains ownership of
 credential storage, account selection, retry, health, affinity, logging, and
 usage policy; the embedded adapter does not use CLIProxyAPI's manager, pool,
-file store, WebSocket executor, fallback, or automatic retry.
+file store, fallback, or automatic retry. A separate, explicitly called Codex
+WebSocket session facade reuses the pinned WebSocket executor with HTTP fallback
+and business-request replay blocked; it is not wired into the request data plane.
 
 The complete MIT License text is distributed in `LICENSES/MIT.txt`.
 

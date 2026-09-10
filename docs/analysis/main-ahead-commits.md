@@ -1,334 +1,189 @@
-# Main Ahead Commits 评估（历史分析快照）
+# Main Ahead L3 专题分析
 
 ## 基线
 
 - 分析分支：`plan/main-ahead-integration`
-- Worktree：`/mnt/projects/repos/gpt-load-main-ahead-integration`
-- 历史分析快照基线：`dev@3b528e28`
-- 当前 PR 合并目标：`dev@cbc6592a`，已包含 PR #12 和 PR #13
-- 对比目标：`origin/main@7ed01e66`
-- 历史快照中的 `dev...origin/main`：`36 14`
-  - `dev` 独有 36 个提交
-  - `main` 独有 14 个提交
-- 分析范围：只评估历史快照中的 `dev..origin/main` 14 个提交，不执行整条分支合并。
+- 当前基线：`dev@93942d5ebd78203d6ffe8a813d9b86b6968aca46`
+- 对比目标：`upstream/main@f091528bdbc3ea3cd9ba8130f3927c4dd73c83f8`（`feat(gateway): 接入原生 Responses WebSocket 与逐轮治理 (#616)`）
+- 本地 `main` 跟踪 `upstream/main`，是本仓对上游的镜像；`origin/main` 当前落后上游 1 个提交（`0c9d1888`），需要时用 `git push origin main` 快进。
+- `git rev-list --left-right --count dev...upstream/main`：`86 23`
+  - `dev` 独有 86 个提交
+  - 上游独有 23 个提交
+- 合并基点：`0ddc41d8b718c0281b1ba2f5bdfe5b23622621ce`
+- 本文件只保留需要重新设计、拆分移植或单独验证的 L3 内容；已合入 dev 的 L1/L2 选择性移植和不纳入范围不在本文展开。
 
-本文件保留的是历史快照分析；它不替代当前 PR 与 `dev@cbc6592a` 的实际合并预演和变更验证。
+## 当前合同
 
-## 总体结论
+L3 方案必须以当前 `dev` 合同为边界：
 
-`origin/main` 不是可以直接合入历史快照 `dev` 的线性补丁集合。两条分支在统一分组调度改造前后形成了不同的领域合同：
+- 每个分组只有一个上游凭据；普通第二凭据创建、导入、连接必须原子拒绝。
+- 权重、优先级、熔断只属于模型 Route Entry；不恢复分组权重或凭据权重。
+- 调度中心负责入口级路由、候选排序和运行态；不恢复旧 scheduler、Registry 或前端调度 API。
+- 分组级 retry 配置仍属于当前高级配置；全局预算方案不能直接删除该配置。
+- `(group_id, entry_id)` 只用于后端定位和 mutation，不进入用户可见的调度文案或筛选维度。
+- Protocol、operation、external model 和 target config 必须保持当前 URL、API、目标冻结和候选 fallback 语义。
+- 迁移必须避开当前迁移编号和状态恢复合同；不添加兼容字段、旧 API fallback 或批量多凭据迁移层。
 
-- 当前 `dev` 强制每个分组只有一个凭据；普通第二凭据创建、导入、连接必须原子拒绝。
-- 当前 `dev` 删除分组权重和凭据权重，只保留模型入口权重、优先级和入口级熔断。
-- 当前 `dev` 保留分组级 retry 配置，并由调度中心管理模型入口调度。
-- 当前 `dev` 使用 `0010_single_credential_per_group` 迁移。
-- `main` 的部分提交仍依赖多凭据、分组/凭据权重、分组 retry 或旧的监控和凭据 API。
+## L3 专题
 
-历史快照上的 `git merge-tree --write-tree dev origin/main` 预演失败，记录到约 50 个冲突路径，涉及：
+### 1. 凭据全量操作与单凭据导入
 
-- `internal/control` 凭据、健康、分组和运行时合同
-- `internal/scheduler`、`internal/state` 调度器和 Registry
-- `internal/storage` 迁移与数据库测试
-- `web/src/features/groups` 凭据和分组设置页面
-- `web/src/features/monitor` 监控、用量和调度页面
+涉及提交：
 
-因此建议使用选择性 cherry-pick 或按能力重新移植，不建议直接 merge 整条 `main`。
+- `e888fe60` `feat(credentials): 统一全量操作并支持五千条密钥导入 (#587)`
+- `96d3e0d5` `feat(subscription): 支持多格式订阅凭据导入 (#596)`
 
-## 难度分级
+上游内容：
 
-- **L1 低**：功能边界清晰，主要是隔离修复或依赖变更；可先 cherry-pick，再跑 focused tests。
-- **L2 中**：跨后端、资源层和前端页面，需要手工适配当前 API/URL 状态并补验证。
-- **L3 高**：改变当前领域合同、调度架构或数据库迁移；不能原样合并，需要重新设计或只移植局部能力。
+- 增加全量恢复、全量下载、API Key 文本导出和大批量订阅凭据导入。
+- 增加多格式 importfile 解析、provider importer、批量暂存 API 和导入报告。
+- 增加重复身份、格式错误、大小、超时和授权失败分类。
 
-## L1：低难度，可优先处理
+重新设计边界：
 
-### `2bdc1058` chore(deps): 升级官方 fasthttp 并移除临时替换
+- 导出、恢复、输入大小校验和多格式解析具有独立价值，可以拆分移植。
+- 批量 endpoint 和导入 UI 必须收敛为单个最终凭据，不能按 main 的多凭据模型写入多个同组账号。
+- 必须复用当前重复身份只读检查、写入前拒绝、同身份 replacement 和 `reauthorization_required`/`outcome_unknown` 替换边界。
+- 导入失败必须在持久化前返回，不能产生部分成功或绕过单凭据唯一约束的中间状态。
 
-**内容**
+### 2. 入口公平调度与连续分配限制
 
-- 升级官方 `fasthttp` 依赖。
-- 移除临时 `replace`。
-- 同步 `go.sum`、许可证和第三方声明。
+涉及提交：
 
-**当前价值**
+- `9cb3f986` `feat(scheduler): 实现全局加权轮询与连续分配限制 (#591)`
 
-- 减少临时依赖维护和版本漂移。
-- 使用上游官方版本，降低后续升级和安全审计成本。
+上游内容：
 
-**合并评估**
+- 引入全局加权公平调度、连续分配限制、SchedulingState、检查点和恢复校准。
+- 替换随机候选选择，并处理亲和、回放和分组生命周期。
 
-- 难度：**L1**。
-- 与当前统一调度领域基本无关，适合独立 cherry-pick。
-- 合并后必须运行 Go build、依赖相关测试和许可证检查。
+重新设计边界：
 
-### `1898d8ee` fix(gateway): 修复协议查询参数与零输出边界
+- 只研究入口级公平分配，不移植 main 的分组权重和凭据权重。
+- 输入维度应是当前 Route Entry 的 weight、priority、breaker 和候选健康事实。
+- 必须保持单凭据分组、入口级 retry deduplication、cooldown、blacklist、affinity 和 `DispatchMaybeSent` 语义。
+- 检查点只能恢复调度运行态，不能恢复已删除的旧权重字段或改变模型路由 API。
+- 需要先定义连续分配限制与入口 priority、breaker、preferred credential 的优先级，再实现公平算法。
 
-**内容**
+### 3. 模型错误重试与健康恢复
 
-- 协议转换时移除不属于目标协议的查询参数。
-- 防止 Anthropic `max_tokens: 0` 在转换过程中被静默改变语义。
-- 将无法保持零输出语义的转换标记为不可转换，并补充回退测试。
+涉及提交：
 
-**当前价值**
+- `e0bfa07e` `feat(scheduler): 统一凭据权重并调整模型错误重试 (#597)`
+- `d4699dd2` `feat(health): 支持凭据按模型冷却与统一恢复 (#599)`
 
-- 直接修复跨协议请求正确性问题。
-- 避免目标上游收到错误参数，也避免返回非预期输出。
-- 属于网关可靠性和协议边界修复，和统一调度的产品合同不冲突。
+上游内容：
 
-**合并评估**
+- 调整模型不可用错误分类、冷却和重试语义。
+- 增加凭据加模型维度的冷却运行态、检查点、请求日志字段、恢复 API 和监控展示。
+- 删除或统一自动凭据权重。
 
-- 难度：**L1**。
-- 变更集中在 dialect、Bifrost 和 provider adapter，单独应用时结构冲突小。
-- 优先级高于大多数新功能。
+重新设计边界：
 
-## L2：中等难度，需要手工适配
+- 凭据权重部分不适用于当前模型；权重只能留在 Route Entry。
+- 必须明确 credential+model cooldown 与入口级 breaker 的权威关系，避免两个运行态同时决定候选可用性。
+- 模型冷却不能让同一凭据的其他模型被错误隔离，也不能绕过入口 priority 或 group enabled 状态。
+- 错误分类必须区分请求级、模型级、凭据级和上游主机级失败，并与 retry deduplication 和 `DispatchMaybeSent` 一致。
+- 恢复 API 要保持当前 health observation/reset cache invalidation 合同；迁移编号和启动恢复必须单独验证。
 
-### `f0bd09b3` fix(web): 兼容 HTTP 密钥复制并统一失败弹窗
+### 4. 自定义订阅上游与目标冻结
 
-**内容**
+涉及提交：
 
-- 在 HTTP 或不安全上下文无法使用 Clipboard API 时提供明文只读输入框回退。
-- 统一复制成功和失败反馈。
-- 覆盖访问密钥、凭据、首页、模型和日志详情中的复制入口。
+- `6da82242` `feat(subscription): support custom upstream URLs (#579)`
 
-**当前价值**
-
-- 本地 HTTP、内网 IP 和部分反向代理部署会遇到 Clipboard API 失败。
-- 回退输入框能避免管理员无法复制凭据或访问密钥。
-
-**合并评估**
-
-- 难度：**L2**。
-- 已决定合并；通用 clipboard composable、fallback dialog 和基础组件可移植到当前前端。
-- `GroupCredentialRecord.vue` 与当前凭据管理页已被改造，移植时保留当前单凭据管理流程和现有 `secret_version` 刷新逻辑。
-
-### `7ed01e66` feat(images): 支持 Antigravity 与 Gemini 共享生图转换
-
-**内容**
-
-- 增加 OpenAI Images 到 Gemini `generateContent` 的单向转换。
-- 增加 Gemini/Antigravity 图片响应转换、用量保留和输入校验。
-- 支持候选回退，并补充 Bifrost、CPA、网关和转换测试。
-
-**当前价值**
-
-- 复用现有 OpenAI Images 接口，减少客户端对 Gemini 和 Antigravity 渠道差异的感知。
-- 图片请求转换、响应校验和用量保留对实际使用图片接口的部署直接有价值。
-
-**合并评估**
-
-- 难度：**L2**。
-- 已决定合并；主要冲突集中在执行器、平台响应头和当前协议边界，但功能边界仍可独立移植。
-- 必须保留 `1898d8ee` 的转换失败分类、当前目标冻结合同和现有调度入口，不恢复 main 的旧调度或凭据模型。
-
-## L3：高难度，需要重新设计或拆分移植
-
-### `e888fe60` feat(credentials): 统一全量操作并支持五千条密钥导入
-
-**内容**
-
-- 增加全量恢复、全量下载和 API Key 文本导出。
-- 增加大批量订阅凭据导入和导入上限处理。
-- 补充下载、恢复、批量边界测试。
-
-**当前价值**
-
-- 全量恢复和导出有运营价值。
-- 多凭据批量导入与当前“一组一个凭据”合同冲突，不能作为功能原样引入。
-
-**合并评估**
-
-- 难度：**L3**。
-- 当前 `credential_mutations.go`、`credentials.ts` 和 `GroupCredentialsTab.vue` 已有严格单凭据写入逻辑，直接合并会破坏原子拒绝和替换边界。
-- 只应移植导出、恢复和输入大小校验；批量导入解析必须限制为单个最终凭据。
-
-### `9cb3f986` feat(scheduler): 实现全局加权轮询与连续分配限制
-
-**内容**
-
-- 引入全局加权公平调度和连续分配限制。
-- 增加 SchedulingState、调度检查点和恢复校准。
-- 替换随机凭据选择，并处理亲和、回放和分组生命周期。
-
-**当前价值**
-
-- 全局公平调度可以改善高流量下的分配稳定性和可预测性。
-- 连续分配限制能避免某个候选长期占满流量。
-
-**合并评估**
-
-- 难度：**L3**。
-- main 版本按分组权重和凭据权重计算；当前 `dev` 已明确删除这两个维度。
-- 正确做法是重新设计为模型入口权重/优先级下的公平调度，不能恢复旧字段或旧 UI。
-
-### Usage 专题：`33fb54bf` + `175949e2`
-
-**涉及提交**
-
-- `33fb54bf` `fix(monitor): 修正最近一小时用量与成本统计`
-- `175949e2` `feat(usage): 支持自定义时间统计并统一时间筛选`
-
-**内容**
-
-- 将最近 1 小时从单个小时桶改为 12 个 5 分钟桶，并补齐缺失空桶。
-- 用精确 `from_ms`/`to_ms` 替换固定快捷范围作为查询核心，支持非整点窗口和动态桶宽。
-- 统一用量、日志、访问密钥之间的时间筛选和跳转上下文。
-- 重构时间选择器、URL 状态、趋势图、后端 usage 查询和三语文案。
-
-**当前价值**
-
-- 对成本审计、事故定位和指定时间段排障价值高。
-- 能把监控、日志和访问密钥用量串成同一时间上下文，也能改善短时流量、失败和成本变化的可见性。
-
-**合并评估**
-
-- 难度：**L3**。
-- `33fb54bf` 是 5 分钟滚动统计的中间形态，`175949e2` 又改变时间窗口和查询合同；两者必须作为一个 usage 子项目整体重新设计，不能按原提交顺序直接叠加。
-- 变更同时触及后端查询合同、前端资源投影、时间选择器、Monitor URL 状态、日志跳转和图表聚合。
-- 移植时保留当前 Scheduling Center URL 状态、单凭据页面边界和已有缓存失效规则，避免覆盖统一调度体验。
-
-### `e0bfa07e` feat(scheduler): 统一凭据权重并调整模型错误重试
-
-**内容**
-
-- 删除自动凭据权重，统一手动权重。
-- 调整模型不可用的错误分类、冷却和重试语义。
-- 更新凭据恢复、运行时和巡检展示。
-
-**当前价值**
-
-- 模型错误分类和重试语义可能改善故障恢复。
-- 凭据权重部分对当前项目没有价值，反而违反当前调度模型。
-
-**合并评估**
-
-- 难度：**L3**。
-- 当前分组和凭据不再有权重，权重属于模型入口；main 的 scheduler、Registry 和前端巡检合同均不适用。
-- 只应单独审查错误分类部分，并重新对齐入口级 breaker 和 retry deduplication。
-
-### `6da82242` feat(subscription): support custom upstream URLs
-
-**内容**
+上游内容：
 
 - 允许订阅渠道配置自定义上游地址。
 - 对涉及凭据的订阅地址强制 HTTPS。
-- 让模型发现、额度重置、健康状态和网关请求使用冻结后的 target 配置。
+- 让模型发现、额度重置、健康状态和网关请求使用冻结后的 target config。
 
-**当前价值**
+重新设计边界：
 
-- 企业代理、兼容网关、自建上游和区域化端点都需要该能力。
-- HTTPS 校验和操作期间冻结 target 能降低配置变更导致的请求归属错误。
+- 保留 target freeze 和 HTTPS 校验的思想，按当前 Group、单凭据、proxy 和生命周期合同重新接入。
+- target config 必须在候选准备阶段冻结，并在 discovery、health、reset、probe 和实际 execution 间保持一致。
+- 不新增生产 `BaseURL` 兼容字段，不恢复 main 的旧 channel endpoint contract。
+- 自定义地址与 managed proxy、credential identity、provider binding 和 route mode 必须一起校验。
+- 目标配置改变时必须有明确的 cache invalidation 和运行态重建边界，不能让旧 runtime 使用新目标或反之。
 
-**合并评估**
+### 5. Usage 时间窗口与监控上下文
 
-- 难度：**L3**。
-- 改动横跨 channel、subscription runtime、control、gateway 和分组设置 UI。
-- 当前统一分组页、代理配置和凭据生命周期已重构，应保留 target freeze/HTTPS 的思想，重新接入当前合同。
+涉及提交：
 
-### `96d3e0d5` feat(subscription): 支持多格式订阅凭据导入
+- `33fb54bf` `fix(monitor): 修正最近一小时用量与成本统计 (#588)`
+- `175949e2` `feat(usage): 支持自定义时间统计并统一时间筛选 (#594)`
 
-**内容**
+这两个提交必须作为一个专题处理，不能按历史顺序直接 cherry-pick。
 
-- 支持 CPA、Codex、Claude Code、Sub2API 等多种 JSON 格式。
-- 增加通用 importfile 解析器、provider importer、批量暂存 API 和前端导入报告。
-- 增加重复身份、格式错误、大小、超时和授权失败分类。
+上游内容：
 
-**当前价值**
+- 将最近一小时从单个小时桶改为 12 个 5 分钟桶，并补齐缺失空桶。
+- 用精确 `from_ms`/`to_ms` 替换固定快捷范围作为查询核心，支持非整点窗口和动态桶宽。
+- 统一用量、日志、AccessKey 之间的时间筛选、URL 状态和跳转上下文。
 
-- 降低从其他工具迁移授权的成本。
-- 对 Codex、Claude 和其他订阅渠道的实际导入体验有明显提升。
+重新设计边界：
 
-**合并评估**
+- 后端查询、request log 聚合、cost 估算、前端资源投影、图表桶宽和三语文案必须使用同一个时间范围合同。
+- 保留当前 Monitor URL state、Scheduling Center 上下文、日志跳转和缓存失效规则。
+- `preset` 只能是输入来源；保存后的 `from_ms`/`to_ms` 是可复现的权威查询状态。
+- 时间范围跨越数据保留边界、空桶、时区和分页时，必须保持排序、总数和成本汇总一致。
+- 需要分别验证最近一小时、非整点自定义窗口、跨天窗口、无数据窗口和 AccessKey 过滤，不把图表显示正确当作后端合同完成。
 
-- 难度：**L3**。
-- main 设计面向批量多条凭据；当前只能接受一个分组凭据，必须保留解析器但重写批量 endpoint 和 UI 状态。
-- 还要复用当前重复身份只读检查、写入前拒绝和同身份替换规则。
+### 6. 全局请求重试预算（已完成）
 
-### `a4255546` feat(gateway): 统一全局请求重试预算
+涉及提交：
 
-**内容**
+- `a4255546` `feat(gateway): 统一全局请求重试预算 (#598)`：已随 dev 的 `3274e32c` 按上游 plumbing 同步完成。
 
-- 将分组级额外重试次数改为系统级全局重试预算。
-- 让一次请求跨多个分组时使用统一预算。
-- 从分组设置和资源投影中移除 retry count。
+同步结果：
 
-**当前价值**
+- 重试预算改为系统级单一来源：请求开始时从 `snapshot.Settings.RetryCount` 冻结后传入 `executeAttempts`。
+- 分组 `retry_count` 退役：从后端状态、API、UI 与三语文案移除；存量分组配置读取时容忍（`continue`），写入直接拒绝，界面不展示，且任何一次分组保存都会把持久化 overrides 里的该键删掉（比上游多做一步，上游要再保存该分组设置时才丢弃）。
 
-- 可以避免跨分组请求链条出现重试预算叠加。
-- 有助于控制上游压力、响应延迟和费用。
+两处本地差异（不随本次同步改动）：
 
-**合并评估**
+- 记数约定：`retryAttemptLimit(retryCount) = max(retryCount, 1)`，即 `retry_count` 是一次请求的尝试总次数（0 与 1 都只尝试一次，2 表示失败后可换一次候选），默认 5；上游为 `retryCount + 1`（额外重试次数，默认 2）。`internal/gateway/retry_budget_test.go` 的 7 个用例按本地约定固定。
+- replay 许可：无分类证据但上游状态可重试（408、429、5xx）时按 `fallback.missing_evidence_retry` 允许换候选并计入凭据连续失败；属于 `internal/health/execution_judge.go` 的 replay 裁决，与预算互不接管。
 
-- 难度：**L3**（原评估）。
-- 当前项目明确保留分组 retry 配置，且 retry 属于分组高级配置；main 直接删除该配置会改变已确定的产品契约。
-- 需要先决定全局预算和分组预算的关系，再移植 gateway 预算计算，不能直接采用删除分组字段的版本。
+### 7. Codex 独立 WebSocket Session
 
-**同步状态（已完成）**
+涉及提交：
 
-- 产品决策已给出：重试预算改为系统级单一来源，分组 `retry_count` 退役。据此按上游 plumbing 同步：预算在请求开始从 `snapshot.Settings.RetryCount` 冻结后传入 `executeAttempts`；分组字段从后端状态、API、UI 与三语文案移除；存量分组配置读取时容忍（`continue`），写入直接拒绝，界面不展示，并且任何一次分组保存都会把持久化 overrides 里的该键删掉（本地比上游多做的一步：上游只在再次保存该分组设置时才丢弃）。
-- 本地差异一（记数约定）：`retryAttemptLimit(retryCount) = max(retryCount, 1)`，即 `retry_count` 是一次请求的尝试总次数（0 与 1 都只尝试一次，2 表示失败后可换一次候选），默认 5；上游为 `retryCount + 1`（额外重试次数，默认 2）。`internal/gateway/retry_budget_test.go` 的 7 个用例按本地约定固定。
-- 本地差异二（replay 许可）：无分类证据但上游状态可重试（408、429、5xx）时按 `fallback.missing_evidence_retry` 允许换候选并计入凭据连续失败。它属于 `internal/health/execution_judge.go` 的 replay 裁决，与预算互不接管，也不随本次同步改动。
+- `7d80a981` `feat(codex): 添加独立上游 WebSocket Session 封装 (#612)`：已按合同落地独立 Session，仍未接入数据面。
+- `f091528b` `feat(gateway): 接入原生 Responses WebSocket 与逐轮治理 (#616)`：同一专题的数据面半边，把 Session 接进网关、逐轮治理与响应状态续接，尚未移植。
 
-### `d4699dd2` feat(health): 支持凭据按模型冷却与统一恢复
+这是当前最新 upstream-only 范围中唯一新增的 L3 专题。
 
-**内容**
+上游内容：
 
-- 将限流冷却细化为凭据+模型维度。
-- 增加模型冷却运行态、检查点、请求日志字段、恢复 API 和监控展示。
-- 增加 `0010_model_cooldown` 数据库迁移。
+- 为 CPA 增加独立 Codex WebSocket Session facade。
+- 支持 `NewWSSession`、`ExecuteTurn`、连接复用、取消、代理和生命周期管理。
+- 增加连接日志、session 测试和禁止业务请求重放的边界覆盖。
+- `f091528b` 把 WS 接成数据面：`internal/execution/wsnative/session.go` 原生会话、CPA/bifrost 执行器分支、channel spec 的 WS 能力位、设置页分层开关，以及分组停用/删除时关闭 WS 连接。
 
-**当前价值**
+重新设计边界：
 
-- 一个模型被限流时，不必让同一凭据上的其他模型全部失效。
-- 对共享账号、多模型渠道和限流恢复非常有价值。
+- 该能力不是简单替换 HTTP executor，而是新增连续多轮 Responses 传输生命周期。
+- Session 必须使用调度器已经选定的 credential，不自行选择凭据、不绕过入口级 priority/breaker，也不恢复旧 CPA Manager。
+- `previous_response_id`、连接复用、关闭、取消、代理和 credential identity 必须与当前 attempt/session contract 对齐。
+- 发送前失败必须是 `DispatchNotSent` 并允许当前候选策略处理；发送后断线、半响应和关闭必须保留 `DispatchMaybeSent` 与 `ReplaySafetyUnknown` 证据。
+- 不得加入 HTTP fallback、业务请求重放、隐式跨 credential 迁移或旧 retry/fallback 行为。
+- 需要覆盖连接复用、同一 session 多轮、代理传播、主动取消、上游关闭、超时、发送后错误和 credential replacement 后的 session 隔离。
 
-**合并评估**
+## L3 执行顺序
 
-- 难度：**L3**。
-- 当前调度中心已经有模型入口级 breaker；需要先定义入口 breaker 与凭据模型冷却的权威关系。
-- main 的 `0010_model_cooldown` 与当前 `0010_single_credential_per_group` 发生迁移编号冲突，必须重新编号并验证升级、恢复和回滚状态。
-- 应按当前入口级 runtime 和单凭据模型重写，而不是直接移植 Registry API。
+1. Codex WebSocket Session 的 dispatch、replay safety、credential identity 和 proxy 生命周期合同：已定义并落地独立 Session（`docs/design/codex-websocket-session.md`），编译与行为证据已补齐。
+2. 数据面接入（`f091528b`）：把 Session 接进网关与逐轮治理，含 `previous_response_id` 续接、CPA/bifrost 执行器分支、channel WS 能力位、分层开关，以及分组停用/删除时关闭 WS 连接。
 
-## L1 已接入状态
+## 结论
 
-- `2bdc1058` 已选择性 cherry-pick 为 `75a0d361`，完成 fasthttp 官方版本升级、临时替换移除及第三方声明同步。
-- `1898d8ee` 已选择性 cherry-pick 为 `e447cfb1`，接入转换查询参数清理和 Anthropic 零输出保护。
-- 当前 `dev` 的 Codex channel 使用 `EndpointNone`，不能接收自定义 `base_url`；因此将该提交中的回归测试目标配置适配为 `nil`，没有增加运行时兼容层或恢复旧合同。
-- 已验证 `go test ./internal/provideradapter ./internal/execution/bifrost ./internal/gateway ./internal/dialect`（1782 项通过）、`go build ./...` 和 `git diff --check`。
-- 以上是选择性移植，不是合并整条 `origin/main`；当前分支仍保留统一分组调度和单凭据合同。
-
-## L2 接入状态
-
-- `f0bd09b3` 已选择性移植为 `c3f7b012`，保留不安全上下文中的复制回退，不改变当前凭据管理和 URL 状态合同。
-- `7ed01e66` 已选择性移植为 `1b633a96`，接入 Gemini/Antigravity 的 OpenAI Images 生图转换，同时保留当前协议转换错误分类、目标冻结和调度入口。
-- 图片转换测试已按当前合同适配：CPA 使用现有 recording executor，gateway 使用 native-first helper，scheduler 补齐随机源；未恢复旧的 BaseURL、凭据状态或 weighted-mix 测试 helper。
-- 目标冻结回归覆盖 Bifrost 的目标配置、provider binding、route mode mismatch，以及 CPA 的目标配置和 route mode mismatch；CPA provider binding 由同一不可变 channel registry 的一致性测试覆盖。
-- gateway response representation 测试直接断言发送后失败为 `DispatchMaybeSent` 和 `ReplaySafetyUnknown`；handler 层同时验证 `502`、单次尝试且不回退 native candidate。
-- 图片相关 focused tests 覆盖 channel、dialect、geminiimage、Bifrost、CPA、gateway、httpheader、scheduler 和 provideradapter，共 2265 项通过；嵌入式 Antigravity 代理测试通过；`go build ./...` 与 `git diff --check` 通过。
-- 前端验证通过：`cd web && pnpm run type-check`、`pnpm run lint`、`pnpm run format` 和 `pnpm run build`；build 产物写入现有 `internal/webui/dist` 路径。
-- `a97578fe` 已放弃，不接入当前分支；访问密钥用量和分发能力不作为该提交的原样移植内容。
-
-## 后续顺序
-
-1. 将 `33fb54bf` 与 `175949e2` 作为一个 L3 usage 专题重新设计，不直接叠加原提交。
-2. 单独立项重做 `6da82242`、`96d3e0d5` 和 `d4699dd2`，先写当前领域合同和迁移方案。
-3. 暂不直接合并 `e888fe60`、`9cb3f986`、`e0bfa07e`；它们需要产品决策或架构重写。
-
-## 当前判断
-
-- 已接入：`2bdc1058`、`1898d8ee`。
-- 已选择性移植并验证：`f0bd09b3` -> `c3f7b012`、`7ed01e66` -> `1b633a96`。
-- 已放弃：`a97578fe`。
-- L3 专题重做：`33fb54bf` + `175949e2`、`6da82242`、`96d3e0d5`、`d4699dd2`。
-- 已与上游同步完成：`a4255546`（系统级全局重试预算；记数约定与 replay 许可按本地契约保留差异，见该条目）。
-- 当前不建议原样接入：`e888fe60`、`9cb3f986`、`e0bfa07e`。
-
-## 运行与部署验证
-
-- 远端 `vps-kl:/opt/gpt-load` 已运行 `gpt-load:dev-3b528e28`，与合并后的 `dev@3b528e28` 一致；容器状态为 `running/healthy`，重启次数为 0，未重复切换现有持久卷。
-- Docker Compose 使用 `gpt-load_gpt-load-data` 命名卷；数据库、WAL、`auth.key`、`encryption.key` 和 Models.dev catalog 均存在，数据库/WAL 在验证期间持续写入。
-- `https://gptl.tanyaleoallen.cloud/health` 返回 HTTP 200，body 为 `{"status":"ok","version":"dev-3b528e28"}`；未授权管理 API 返回 HTTP 401。
-- 使用管理员会话实际打开分组列表、分组详情的凭据管理区域和 `/monitor?tab=schedule`；页面数据正常渲染，浏览器捕获的相关请求无 4xx/5xx。
-- 远端浏览器截图已写入 `/tmp/gpt-load-remote-groups.webp`、`/tmp/gpt-load-remote-group-detail.webp` 和 `/tmp/gpt-load-remote-schedule.webp`，均为有效 WebP 文件。
-
-本 worktree 当前包含基于 `dev` 的 L1 选择性移植、L2 选择性移植过程和本分析文件，未执行整条 `origin/main` 合并。
+- 当前 `dev` 已吸收此前选择性移植的 L1/L2 能力；本文件不再把这些历史内容当作待合并范围。
+- 上游 `main` 仍不能整体合并：L3 领域合同与当前单凭据、入口级调度、迁移和 URL 状态存在结构差异。
+- `7d80a981` Codex WebSocket Session 的合同见 `docs/design/codex-websocket-session.md`；已按该合同落地
+  独立 Session（vendored `CodexWSSession` + `codex.WSSession`）并补齐编译与行为证据，仍未接入数据面。
+- 专题 1（凭据全量导入）、2（入口公平调度）、3（模型错误重试与健康恢复）、4（自定义订阅上游）、
+  5（Usage 时间窗口）不再纳入范围：收益低于维护成本，且都要求改动当前已稳定的合同。
+- 专题 6 全局请求重试预算（`a4255546`）已随 dev 的 `3274e32c` 同步完成，记数约定与 replay 许可保留本地差异（见专题 6）。
+- 保留的上游工作只剩专题 7 的数据面接入（`f091528b`，需要先定义逐轮治理、`previous_response_id` 续接与
+  `DispatchMaybeSent` 在当前 attempt/session 合同下的边界）。
+- 本次只更新基线和 L3 分析，不对上述 upstream commit 做代码 cherry-pick。
