@@ -331,7 +331,6 @@ export default {
         first_byte_timeout: 'Native response / stream first-event timeout',
         request_timeout: 'Request timeout',
         stream_idle_timeout: 'Stream-idle timeout',
-          'Total upstream attempts allowed for one request; 0 or 1 means a single attempt without retry, 2 allows switching candidate once.',
         blacklist_threshold: 'Consecutive-failure blacklist threshold',
         blacklistThresholdHelp:
           'A credential is blacklisted after this many consecutive failures; 0 disables automatic blacklisting.',
