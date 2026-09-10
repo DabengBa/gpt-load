@@ -122,6 +122,10 @@ func judgeUpstreamResult(
 		Header:              result.Header,
 		Evidence:            evidence,
 		DownstreamCommitted: result.Committed,
+		HTTPCommitted:       result.HTTPCommitted,
+		PayloadReleased:     result.PayloadReleased,
+		ClientVisibleBytes:  result.ClientVisibleBytes,
+		BufferedStream:      result.BufferedStream,
 		DownstreamErr:       downstreamErr,
 		Now:                 now,
 	}, decisionContext)
@@ -213,12 +217,16 @@ func normalizeUpstreamResultContract(result UpstreamResult) UpstreamResult {
 		ReplaySafety: execution.ReplaySafetyUnknown,
 	}
 	normalized := UpstreamResult{
-		Err:            fmt.Errorf("%w: invalid attempt forwarder result", ErrUpstreamProtocol),
-		RequestWritten: dispatchState == execution.DispatchMaybeSent,
-		Committed:      result.Committed,
-		DispatchState:  dispatchState,
-		ExecutionError: &evidence,
-		ErrorSummary:   evidence.Summary,
+		Err:                fmt.Errorf("%w: invalid attempt forwarder result", ErrUpstreamProtocol),
+		RequestWritten:     dispatchState == execution.DispatchMaybeSent,
+		Committed:          result.Committed,
+		HTTPCommitted:      result.HTTPCommitted,
+		PayloadReleased:    result.PayloadReleased,
+		ClientVisibleBytes: result.ClientVisibleBytes,
+		BufferedStream:     result.BufferedStream,
+		DispatchState:      dispatchState,
+		ExecutionError:     &evidence,
+		ErrorSummary:       evidence.Summary,
 	}
 	if result.Committed {
 		normalized.Stream = streamTerminalObservation(StreamEndUpstreamProtocolError)

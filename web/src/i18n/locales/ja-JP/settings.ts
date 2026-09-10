@@ -61,6 +61,9 @@ export default {
       blacklistThresholdHelp:
         'この連続失敗回数に達すると認証情報をブラックリストへ登録します。0 で自動登録を無効化します。',
       validation_interval: '認証情報の検証間隔',
+      buffered_stream: 'ストリーミング応答をバッファリング',
+      bufferedStreamHelp:
+        'デフォルトでは無効です。増分配信ではなく完全にバッファリングした応答が必要な場合のみ有効にします。',
       models_dev_auto_sync_enabled: 'Models.dev カタログと価格を自動同期',
       modelsDevAutoSyncHelp:
         '有効にするとカタログと自動価格を定期同期します。Models 画面からの手動同期は引き続き利用できます。',

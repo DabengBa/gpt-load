@@ -105,6 +105,18 @@ Codex、Claude、Antigravity 的 OAuth 客户端使用固定回调端口。Compo
 
 </details>
 
+### 缓冲流式响应
+
+GPT-Load 支持对 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 的 SSE 流启用 `buffered_stream`。该开关默认关闭，可在全局设置中控制，并由 Group 通过既有继承/显式覆盖机制单独调整。保存中控件会禁用；保存失败保留失败反馈，重载后以服务端值为准。关闭只影响新请求，已开始的请求不会切换模式。
+
+启用后，上游仍保持流式请求，但网关会先验证完整事件序列和协议终态，再一次性按原顺序释放模型 payload。验证期间客户端只收到 `: keep-alive` 注释心跳，默认每 15 秒一次；心跳不代表模型首字节，也不会刷新上游首字节或空闲超时。每个 attempt 默认在内存中暂存 1 MiB，单次响应硬上限 32 MiB，进程总暂存预算 256 MiB；超过内存阈值使用受限临时文件，超限、磁盘失败或读回失败会终止请求，不降级实时透传。
+
+只有尚未释放 payload、已收到上游响应、明确属于连接中断/空闲超时/半帧/协议错误，并且请求被证明无供应商副作用时，才允许按候选预算重试。OpenAI Responses 的存储、continuity、资源引用、供应商工具和未知语义不会重放；符合条件的生成可能被重新执行，因此可能重复计费，不承诺幂等。Responses 的 `completed`、`incomplete`、`failed` 会严格区分；OpenAI Chat 和 Anthropic 的终态及 block 生命周期也必须完整。缓冲请求使用冻结的总 deadline 覆盖候选等待、验证、重试和释放，慢客户端不会永久保活。
+
+不支持的客户端协议不会静默降级，会在 dispatch 前返回 `buffered_stream_unsupported_protocol`；非流式和关闭状态保持原行为。协议兼容性 smoke 对 Chat/Anthropic 使用 wire 上真实可观察的合并 `error` 场景，对 Responses 分别验证 `completed`、`incomplete`、`failed` 和流内 `error`，不把相同错误字节伪称为不同覆盖。遇到 SDK/代理超时、临时卷空间不足或费用异常时，关闭 Group 或全局开关即可回滚到新请求的实时路径；生产灰度仍需验证反向代理和客户端超时。
+
+详细设计与本地官方 SDK smoke 证据见 [`docs/design/buffered-stream.md`](docs/design/buffered-stream.md)。
+
 ## 界面预览
 
 **分组总览** — 统一查看渠道、模型、凭据数量与健康状态

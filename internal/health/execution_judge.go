@@ -18,8 +18,18 @@ type ExecutionAttempt struct {
 	Header              http.Header
 	Evidence            *execution.ErrorEvidence
 	DownstreamCommitted bool
-	DownstreamErr       error
-	Now                 time.Time
+	// HTTPCommitted is true once the gateway has sent response headers or a
+	// heartbeat. It is deliberately independent from payload release.
+	HTTPCommitted bool
+	// PayloadReleased is irreversible: a true value means real upstream
+	// payload bytes were made visible to the client.
+	PayloadReleased bool
+	// ClientVisibleBytes includes heartbeats and released payload bytes.
+	ClientVisibleBytes int64
+	// BufferedStream identifies the explicit buffered-stream retry contract.
+	BufferedStream bool
+	DownstreamErr  error
+	Now            time.Time
 }
 
 // JudgeExecution decides the complete GPT-Load retry and runtime effect for one
@@ -182,6 +192,7 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 	}
 	category := classifyExecutionEvidence(attempt)
 	result := decisionForExecutionCategory(category, attempt, decisionContext)
+	result = bufferedStreamRetryDecision(result, attempt, decisionContext)
 	if attempt.Evidence.ReplaySafety == execution.ReplaySafetyUnknown &&
 		result.RuleID == "fallback.ambiguous" {
 		result.RuleID = "safety.replay_unknown"
@@ -461,6 +472,33 @@ func transientCapacityDecision(attempt ExecutionAttempt) (Decision, bool) {
 	), true
 }
 
+func bufferedStreamRetryDecision(
+	result Decision,
+	attempt ExecutionAttempt,
+	decisionContext DecisionContext,
+) Decision {
+	if !attempt.BufferedStream || !attempt.HTTPCommitted || attempt.PayloadReleased ||
+		attempt.ClientVisibleBytes <= 0 || !decisionContext.BufferedReplayEligible ||
+		attempt.Evidence == nil || result.Retry != RetryNone {
+		return result
+	}
+	// Only failures produced by the buffered collector may use this gate. In
+	// particular, a legal provider incomplete result is not a transient retry.
+	switch attempt.Evidence.Code {
+	case "upstream_stream_terminated", "upstream_stream_idle_timeout", "upstream_protocol_error":
+		return decision(
+			FailureCategoryAmbiguous,
+			execution.ErrorOriginUpstream,
+			execution.ErrorScopeGroup,
+			RetryNextCandidate,
+			EffectSkipGroup,
+			"buffered_stream.retry_before_release",
+		)
+	default:
+		return result
+	}
+}
+
 func constrainOperationReplay(
 	result Decision,
 	attempt ExecutionAttempt,
@@ -614,7 +652,13 @@ func authenticationDecision(attempt ExecutionAttempt, decisionContext DecisionCo
 }
 
 func constrainCommittedDecision(result Decision, attempt ExecutionAttempt) Decision {
-	if !attempt.DownstreamCommitted {
+	if attempt.BufferedStream && attempt.HTTPCommitted && !attempt.PayloadReleased &&
+		attempt.ClientVisibleBytes > 0 {
+		// A heartbeat commits HTTP but does not expose provider payload. Keep the
+		// explicit buffered retry decision instead of treating Committed as final.
+		return result
+	}
+	if !attempt.DownstreamCommitted && !attempt.PayloadReleased {
 		return result
 	}
 	originalRetry := result.Retry

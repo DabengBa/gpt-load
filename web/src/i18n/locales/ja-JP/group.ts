@@ -359,6 +359,9 @@ export default {
         headerStorageNoticeEnd: 'を使用してください。',
         headerReplacementWarning:
           'このグループ上書きはグローバル HeaderRules 全体を置き換えます。今後のグローバル変更はマージされません。',
+        buffered_stream: 'ストリーミング応答をバッファリング',
+        bufferedStreamHelp:
+          'グローバル設定を継承するか、このグループで応答バッファリングを明示的に有効にします。',
         affinity_enabled: 'リクエストアフィニティ',
         affinityHelp:
           '通常の重み、スケジューリング、再試行を変えず、このグループがアフィニティ対象を学習または再利用するかを制御します。',

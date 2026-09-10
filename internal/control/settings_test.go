@@ -128,6 +128,53 @@ func TestUpdateSettingsRouteStrategyPersistsPublishesReloadsAndResets(t *testing
 	}
 }
 
+func TestUpdateSettingsPersistsAndResetsBufferedStream(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+
+	defaults, err := fixture.service.GetSettings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.Values.BufferedStream {
+		t.Fatal("default buffered_stream = true, want false")
+	}
+
+	updated, err := fixture.service.UpdateSettings(t.Context(), SettingsUpdateRequest{
+		Settings: map[string]json.RawMessage{state.SettingBufferedStream: json.RawMessage("true")},
+	})
+	if err != nil || !updated.Values.BufferedStream {
+		t.Fatalf("UpdateSettings(true) = %#v, %v", updated, err)
+	}
+	if !reflect.DeepEqual(updated.Overrides, []string{state.SettingBufferedStream}) {
+		t.Fatalf("overrides = %#v", updated.Overrides)
+	}
+	reloaded := state.NewManager()
+	if err := stateloader.New(fixture.db, reloaded, state.NewCredentialRegistry()).Load(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.Current().Settings.BufferedStream {
+		t.Fatal("reloaded BufferedStream = false, want true")
+	}
+
+	reset, err := fixture.service.UpdateSettings(t.Context(), SettingsUpdateRequest{
+		Settings: map[string]json.RawMessage{state.SettingBufferedStream: json.RawMessage("null")},
+	})
+	if err != nil || reset.Values.BufferedStream || len(reset.Overrides) != 0 {
+		t.Fatalf("UpdateSettings(null) = %#v, %v", reset, err)
+	}
+
+	for _, raw := range []json.RawMessage{json.RawMessage("1"), json.RawMessage(`"true"`)} {
+		before := fixture.manager.Current()
+		_, err := fixture.service.UpdateSettings(t.Context(), SettingsUpdateRequest{
+			Settings: map[string]json.RawMessage{state.SettingBufferedStream: raw},
+		})
+		if !errors.Is(err, app_errors.ErrValidation) || fixture.manager.Current() != before {
+			t.Fatalf("UpdateSettings(%s) error/revision = %v/%d, want validation/%d", raw, err, fixture.manager.Current().Revision, before.Revision)
+		}
+	}
+}
+
 func TestSettingsProxyRejectsInvalidConfigWithoutMutation(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)

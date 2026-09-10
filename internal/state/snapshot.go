@@ -137,6 +137,7 @@ type GroupView struct {
 	Models              []ModelConfig
 	Timeouts            TimeoutConfig
 	HeaderRules         HeaderRules
+	BufferedStream      bool
 	RetryCount          int
 	BlacklistThreshold  int
 	AffinityEnabled     bool
@@ -229,6 +230,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			Models:              cloneModelConfigs(group.Models),
 			Timeouts:            resolved.Timeouts,
 			HeaderRules:         resolved.HeaderRules,
+			BufferedStream:      resolved.BufferedStream,
 			RetryCount:          resolved.RetryCount,
 			BlacklistThreshold:  resolved.BlacklistThreshold,
 			AffinityEnabled:     resolved.AffinityEnabled,

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"strings"
+	"time"
 
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
@@ -37,6 +38,9 @@ type ForwardInput struct {
 	OnStreamReady     func()
 	OnFirstResponse   func()
 
+	// BufferedStream freezes the request-level delivery and replay contract.
+	BufferedStream bool
+
 	RequestID                string
 	AttemptID                string
 	AttemptSequence          uint32
@@ -61,17 +65,30 @@ type ForwardInput struct {
 // UpstreamResult is the gateway's stable view of one logical execution
 // attempt. SDK-internal transport recovery remains inside this result.
 type UpstreamResult struct {
-	StatusCode                int
-	Header                    http.Header
-	Body                      []byte
-	ClassificationBody        []byte
-	UpstreamReportedModel     string
-	ResponseModelObserved     bool
-	ResponseModelMismatch     bool
-	ErrorSummary              string
-	Err                       error
-	RequestWritten            bool
-	Committed                 bool
+	StatusCode            int
+	Header                http.Header
+	Body                  []byte
+	ClassificationBody    []byte
+	UpstreamReportedModel string
+	ResponseModelObserved bool
+	ResponseModelMismatch bool
+	ErrorSummary          string
+	Err                   error
+	RequestWritten        bool
+	Committed             bool
+	// HTTPCommitted records response headers or a heartbeat reaching the
+	// downstream writer. It must not be inferred as payload release.
+	HTTPCommitted bool
+	// PayloadReleased is irreversible once real provider payload starts writing.
+	PayloadReleased bool
+	// ClientVisibleBytes counts bytes successfully written to the client,
+	// including gateway heartbeats.
+	ClientVisibleBytes      int64
+	BufferedPeakBytes       int64
+	BufferedSpilled         bool
+	PayloadReleaseStartedAt time.Time
+
+	BufferedStream            bool
 	ProviderErrorBeforeCommit bool
 	Stream                    StreamObservation
 	Usage                     usage.Result

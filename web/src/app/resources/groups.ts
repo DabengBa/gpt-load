@@ -117,6 +117,7 @@ const runtimeSettingFields = [
   'retry_count',
   'blacklist_threshold',
   'header_rules',
+  'buffered_stream',
   'affinity_enabled',
 ] as const
 const groupRuntimeSettingFields = [...runtimeSettingFields, 'parameter_overrides'] as const
@@ -133,6 +134,7 @@ export interface GroupRuntimeConfigDto {
   retry_count?: number
   blacklist_threshold?: number
   header_rules?: HeaderRulesDto
+  buffered_stream?: boolean
   affinity_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
 }
@@ -144,6 +146,7 @@ export interface GroupEffectiveConfigDto {
   retry_count: number
   blacklist_threshold: number
   header_rules: HeaderRulesDto
+  buffered_stream: boolean
   affinity_enabled: boolean
 }
 
@@ -370,6 +373,9 @@ function projectRuntimeConfig(
   }
   if (complete || Object.prototype.hasOwnProperty.call(record, 'header_rules')) {
     result.header_rules = projectHeaderRules(record.header_rules)
+  }
+  if (complete || Object.prototype.hasOwnProperty.call(record, 'buffered_stream')) {
+    result.buffered_stream = projectBoolean(record.buffered_stream)
   }
   if (complete || Object.prototype.hasOwnProperty.call(record, 'affinity_enabled')) {
     result.affinity_enabled = projectBoolean(record.affinity_enabled)

@@ -21,17 +21,19 @@ import (
 // ExecutionForwarder adapts the provider-neutral executor to the gateway's
 // downstream commit boundary while the handler orchestration remains intact.
 type ExecutionForwarder struct {
-	executor       execution.Executor
-	representation *responseProcessor
-	usageCapture   *usageCaptureBoundary
-	writeTimeout   time.Duration
+	executor          execution.Executor
+	representation    *responseProcessor
+	usageCapture      *usageCaptureBoundary
+	writeTimeout      time.Duration
+	heartbeatInterval time.Duration
 }
 
 func NewExecutionForwarder(executor execution.Executor) *ExecutionForwarder {
 	return &ExecutionForwarder{
 		executor: executor, representation: &responseProcessor{redactor: redact.New()},
-		usageCapture: newUsageCaptureBoundary(),
-		writeTimeout: downstreamWriteTimeout,
+		usageCapture:      newUsageCaptureBoundary(),
+		writeTimeout:      downstreamWriteTimeout,
+		heartbeatInterval: 15 * time.Second,
 	}
 }
 
@@ -99,6 +101,17 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	input ForwardInput,
 	downstream http.ResponseWriter,
 ) UpstreamResult {
+	if input.BufferedStream {
+		return forwarder.forwardBufferedStream(ctx, input, downstream)
+	}
+	return forwarder.forwardStream(ctx, input, downstream)
+}
+
+func (forwarder *ExecutionForwarder) forwardStream(
+	ctx context.Context,
+	input ForwardInput,
+	downstream http.ResponseWriter,
+) UpstreamResult {
 	spec, err := newExecutionAttemptSpec(input)
 	if err != nil || forwarder == nil || forwarder.executor == nil || downstream == nil {
 		return executionInputFailure(err)
@@ -117,6 +130,7 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	streamEvents := newStreamEventObserver(
 		input.Dialect,
 		usageCapture.newStreamForRequest(input.Dialect, input.ObserveUsage),
+		input.BufferedStream,
 	)
 	redactor := redact.New()
 	if forwarder.representation != nil && forwarder.representation.redactor != nil {
@@ -311,6 +325,9 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	result = classifyGatewayFailureEvidence(result)
 	result.Usage = preferCapturedStreamUsage(result.Usage, capturedUsage)
 	result.Committed = committed
+	result.HTTPCommitted = committed
+	result.PayloadReleased = committed
+	result.BufferedStream = false
 	if len(errorBody) > 0 {
 		result.Body = append([]byte(nil), errorBody...)
 		result.ClassificationBody = append([]byte(nil), errorBody...)
@@ -987,7 +1004,7 @@ func executionStreamObservation(
 	case execution.ErrorKindCanceled:
 		return observeStreamTermination(ctx, context.Canceled, streamEvents)
 	case execution.ErrorKindTimeout:
-		return streamTerminalObservation(StreamEndIdleTimeout)
+		return streamTerminalObservationWithResponseID(StreamEndIdleTimeout, streamEvents.responseID)
 	case execution.ErrorKindProvider, execution.ErrorKindHTTP:
 		observation := streamEvents.endObservation()
 		if observation.EndReason == StreamEndSSEError {
@@ -996,11 +1013,12 @@ func executionStreamObservation(
 		return StreamObservation{
 			EndReason:    StreamEndSSEError,
 			ErrorSummary: terminal.Error.Summary,
+			ResponseID:   streamEvents.responseID,
 		}
 	case execution.ErrorKindInvalidRequest, execution.ErrorKindInternal:
-		return streamTerminalObservation(StreamEndUpstreamProtocolError)
+		return streamTerminalObservationWithResponseID(StreamEndUpstreamProtocolError, streamEvents.responseID)
 	default:
-		return streamTerminalObservation(StreamEndUpstreamTerminated)
+		return streamTerminalObservationWithResponseID(StreamEndUpstreamTerminated, streamEvents.responseID)
 	}
 }
 

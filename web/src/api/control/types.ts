@@ -118,6 +118,7 @@ export interface GroupRuntimeConfigDto {
   retry_count?: number
   blacklist_threshold?: number
   header_rules?: HeaderRulesDto
+  buffered_stream?: boolean
   affinity_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
 }
@@ -129,6 +130,7 @@ export interface GroupEffectiveConfigDto {
   retry_count: number
   blacklist_threshold: number
   header_rules: HeaderRulesDto
+  buffered_stream: boolean
   affinity_enabled: boolean
 }
 

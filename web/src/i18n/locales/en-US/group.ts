@@ -360,6 +360,9 @@ export default {
         headerStorageNoticeEnd: ' for credential values.',
         headerReplacementWarning:
           'This Group override replaces the complete global HeaderRules object; future global changes will not merge into it.',
+        buffered_stream: 'Buffer streaming responses',
+        bufferedStreamHelp:
+          'Inherit the global setting or explicitly enable buffering for this Group.',
         affinity_enabled: 'Request affinity',
         affinityHelp:
           'Controls whether this Group learns or reuses affinity targets without changing normal weights, scheduling, or retries.',

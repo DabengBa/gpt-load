@@ -149,6 +149,76 @@ func responsesPromptReferencesProviderResource(value any) bool {
 	return ok && hasMeaningfulField(prompt, "id")
 }
 
+// ResponsesReplayEligible reports whether a Responses create request is safe for
+// the buffered stream's post-response replay gate.
+func ResponsesReplayEligible(body []byte) bool {
+	root, ok := decodeExecutionFeatureObject(body)
+	if !ok || !responsesReplayObjectFieldsKnown(root) || hasMeaningfulField(root, "previous_response_id") ||
+		hasMeaningfulField(root, "conversation") ||
+		hasMeaningfulField(root, "prompt_cache_key") ||
+		responsesPromptReferencesProviderResource(root["prompt"]) ||
+		(responsesBackgroundEnabled(root["background"])) ||
+		responsesInputReferencesProviderResource(root["input"]) ||
+		responsesToolsReferenceProviderResource(root["tools"]) {
+		return false
+	}
+	store, ok := root["store"].(bool)
+	if !ok || store {
+		return false
+	}
+	if tools, exists := root["tools"]; exists {
+		values, ok := tools.([]any)
+		if !ok {
+			return false
+		}
+		for _, raw := range values {
+			tool, ok := raw.(map[string]any)
+			if !ok {
+				return false
+			}
+			typeName, ok := tool["type"].(string)
+			if !ok || (typeName != "function" && typeName != "custom") {
+				return false
+			}
+			allowed := []string{"type", "name", "description", "parameters", "strict"}
+			if typeName == "custom" {
+				allowed = []string{"type", "name", "description", "format"}
+			}
+			if !responsesReplayObjectFieldsKnown(tool, allowed...) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func responsesReplayObjectFieldsKnown(object map[string]any, allowed ...string) bool {
+	known := make(map[string]struct{}, len(allowed))
+	if len(allowed) == 0 {
+		allowed = []string{
+			"background", "include", "input", "instructions", "max_output_tokens",
+			"max_tool_calls", "metadata", "model", "parallel_tool_calls", "prompt",
+			"prompt_cache_key", "previous_response_id", "reasoning", "service_tier", "store",
+			"stream", "temperature", "text", "tool_choice", "tools", "top_logprobs", "top_p",
+			"truncation", "user",
+		}
+	}
+	for _, name := range allowed {
+		known[name] = struct{}{}
+	}
+	for name := range object {
+		if _, ok := known[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func responsesBackgroundEnabled(value any) bool {
+	background, ok := value.(bool)
+	return ok && background
+}
+
 func chatRequiresNativeRoute(clientProtocol protocol.Protocol, body []byte) bool {
 	root, ok := decodeExecutionFeatureObject(body)
 	if !ok {

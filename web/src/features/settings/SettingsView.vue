@@ -315,7 +315,12 @@ function sectionForKey(key: RuntimeSettingKey): SettingsSection {
     return 'routing'
   if (key === 'first_byte_timeout' || key === 'request_timeout' || key === 'stream_idle_timeout')
     return 'connection'
-  if (key === 'retry_count' || key === 'blacklist_threshold' || key === 'validation_interval')
+  if (
+    key === 'retry_count' ||
+    key === 'blacklist_threshold' ||
+    key === 'validation_interval' ||
+    key === 'buffered_stream'
+  )
     return 'reliability'
   return 'data-maintenance'
 }

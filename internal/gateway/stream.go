@@ -88,6 +88,7 @@ type streamWriteController struct {
 	deadlineController *http.ResponseController
 	flushController    *http.ResponseController
 	timeout            time.Duration
+	ctx                context.Context
 }
 
 func newStreamWriteController(writer http.ResponseWriter, timeout time.Duration) *streamWriteController {
@@ -172,10 +173,25 @@ func (writer *streamWriteController) arm() error {
 	if writer == nil || writer.writer == nil || writer.timeout <= 0 {
 		return fmt.Errorf("downstream stream writer is invalid")
 	}
+	timeout := writer.timeout
+	if writer.ctx != nil {
+		if err := writer.ctx.Err(); err != nil {
+			return err
+		}
+		if deadline, ok := writer.ctx.Deadline(); ok {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return context.DeadlineExceeded
+			}
+			if remaining < timeout {
+				timeout = remaining
+			}
+		}
+	}
 	if writer.deadlineController == nil {
 		return nil
 	}
-	err := writer.deadlineController.SetWriteDeadline(time.Now().Add(writer.timeout))
+	err := writer.deadlineController.SetWriteDeadline(time.Now().Add(timeout))
 	if errors.Is(err, http.ErrNotSupported) {
 		return nil
 	}
@@ -267,6 +283,7 @@ func normalizeStreamResponseHeaders(headers http.Header) http.Header {
 	}
 	// Tell common reverse proxies not to coalesce SSE chunks before they reach
 	// the client. The gateway already flushes each upstream chunk itself.
+	normalized.Set("Cache-Control", "no-cache, no-transform")
 	normalized.Set("X-Accel-Buffering", "no")
 	return normalized
 }

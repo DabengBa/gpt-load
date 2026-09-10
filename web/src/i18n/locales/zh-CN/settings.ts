@@ -59,6 +59,8 @@ export default {
       blacklist_threshold: '连续失败拉黑阈值',
       blacklistThresholdHelp: '凭据达到该连续失败次数后自动拉黑；0 表示关闭自动拉黑。',
       validation_interval: '检测间隔',
+      buffered_stream: '缓冲流式响应',
+      bufferedStreamHelp: '默认关闭。仅在客户端需要完整缓冲响应而非增量传输时开启。',
       models_dev_auto_sync_enabled: '自动同步 Models.dev 目录与价格',
       modelsDevAutoSyncHelp: '启用后按计划同步目录和自动价格；关闭后仍可在模型页手动同步。',
       environmentSource: '环境变量锁定',
