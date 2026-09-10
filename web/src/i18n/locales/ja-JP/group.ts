@@ -360,6 +360,9 @@ export default {
         buffered_stream: 'ストリーミング応答をバッファリング',
         bufferedStreamHelp:
           'グローバル設定を継承するか、このグループで応答バッファリングを明示的に有効にします。',
+        responses_websocket_enabled: 'Responses WebSocket',
+        websocketHelp:
+          '無効化すると、このグループの WS 接続と生成を直ちに終了します。HTTP/SSE は影響を受けません。',
         affinity_enabled: 'リクエストアフィニティ',
         affinityHelp:
           '通常の重み、スケジューリング、再試行を変えず、このグループがアフィニティ対象を学習または再利用するかを制御します。',

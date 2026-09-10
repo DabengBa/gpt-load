@@ -35,6 +35,7 @@ export const runtimeSettingKeys = [
   'response_header_rules',
   'buffered_stream',
   'affinity_enabled',
+  'responses_websocket_enabled',
   'affinity_ttl',
   'affinity_capacity',
   'validation_interval',
@@ -53,6 +54,7 @@ export type TimeoutSettingKey = Exclude<
   | 'response_header_rules'
   | 'buffered_stream'
   | 'affinity_enabled'
+  | 'responses_websocket_enabled'
   | 'affinity_capacity'
   | 'request_log_retention_days'
   | 'models_dev_auto_sync_enabled'
@@ -81,6 +83,7 @@ export interface SettingsValues {
   response_header_rules: HeaderRulesDto
   buffered_stream: boolean
   affinity_enabled: boolean
+  responses_websocket_enabled: boolean
   affinity_ttl: number
   affinity_capacity: number
   validation_interval: number
@@ -107,6 +110,7 @@ export type SettingsPatch = Partial<{
   response_header_rules: HeaderRulesDto | null
   buffered_stream: boolean | null
   affinity_enabled: boolean | null
+  responses_websocket_enabled: boolean | null
   affinity_ttl: number | null
   affinity_capacity: number | null
   validation_interval: number | null
@@ -207,6 +211,7 @@ export function projectSettings(value: unknown): SettingsDto {
       response_header_rules: projectHeaderRules(values.response_header_rules),
       buffered_stream: projectBoolean(values.buffered_stream),
       affinity_enabled: projectBoolean(values.affinity_enabled),
+      responses_websocket_enabled: projectBoolean(values.responses_websocket_enabled),
       affinity_ttl: projectSafeInteger(values.affinity_ttl, { minimum: 1 }),
       affinity_capacity: projectSafeInteger(values.affinity_capacity, {
         minimum: 1,

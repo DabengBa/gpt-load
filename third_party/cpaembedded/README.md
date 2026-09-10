@@ -32,11 +32,10 @@ quota policy. This bridge only exposes:
   translators, without CPA manager, refresh, retry, fallback,
   WebSocket, image, or video execution paths.
 
-It intentionally excludes CPA Manager, selector, pool, file store, server,
-watcher, Auto executor, fallback, and internal retry loops. `CodexWSSession` is
-the one WebSocket entry point: an explicit-only facade that reuses the pinned
-Codex WebSocket executor with HTTP fallback and business-request replay blocked,
-and it is not registered in the request data plane.
+It intentionally excludes CPA Manager, selector, account pool, file store, server,
+watcher, and Auto executors. The Codex WS facade blocks HTTP fallback and business
+request replay. The gateway explicitly wires this facade into its native WS route;
+the existing HTTP executor remains separate.
 
 ## Codex HTTP request identity
 
@@ -108,8 +107,8 @@ CPA_LIVE_CLAUDE_MODEL=optional-claude-model-id \
 
 This live test deliberately does not complete interactive browser OAuth, rotate
 a refresh token, or force real 401/429 responses. Those gates require a disposable
-	account and an explicitly supervised run; deterministic bridge tests cover their
-	local classification contracts, but do not constitute real-provider evidence.
+account and an explicitly supervised run; deterministic bridge tests cover their
+local classification contracts, but do not constitute real-provider evidence.
 
 The Antigravity contract requires a disposable credential whose Google account is
 authorized for the service. It verifies dynamic models, account/credits observation,

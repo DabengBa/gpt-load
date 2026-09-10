@@ -360,6 +360,9 @@ export default {
         buffered_stream: 'Buffer streaming responses',
         bufferedStreamHelp:
           'Inherit the global setting or explicitly enable buffering for this Group.',
+        responses_websocket_enabled: 'Responses WebSocket',
+        websocketHelp:
+          'Disabling closes this group’s WS connections and interrupts generation immediately; HTTP/SSE remains available.',
         affinity_enabled: 'Request affinity',
         affinityHelp:
           'Controls whether this Group learns or reuses affinity targets without changing normal weights, scheduling, or retries.',
