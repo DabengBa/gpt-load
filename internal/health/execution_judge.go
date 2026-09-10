@@ -79,7 +79,7 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 				"success.upstream_response",
 			)
 		}
-		if retryableStatusWithoutEvidence(attempt.StatusCode) {
+		if transientUpstreamStatus(attempt.statusCode()) {
 			// The upstream answered with a status the gateway treats as
 			// transient but exposed no classifiable evidence. The candidate is
 			// suspected, not proven: count the failure against its credential so
@@ -276,11 +276,20 @@ func (attempt ExecutionAttempt) ResponseStarted() bool {
 	return attempt.StatusCode != 0 || attempt.Evidence != nil && attempt.Evidence.StatusCode != 0
 }
 
-func classifyExecutionEvidence(attempt ExecutionAttempt) FailureCategory {
-	statusCode := attempt.StatusCode
-	if statusCode == 0 && attempt.Evidence != nil {
-		statusCode = attempt.Evidence.StatusCode
+// statusCode resolves the upstream HTTP status of one attempt, preferring the
+// status the gateway recorded over the one carried by the evidence.
+func (attempt ExecutionAttempt) statusCode() int {
+	if attempt.StatusCode != 0 {
+		return attempt.StatusCode
 	}
+	if attempt.Evidence != nil {
+		return attempt.Evidence.StatusCode
+	}
+	return 0
+}
+
+func classifyExecutionEvidence(attempt ExecutionAttempt) FailureCategory {
+	statusCode := attempt.statusCode()
 	markers := ""
 	if attempt.Evidence != nil {
 		if statusCode == http.StatusUnauthorized && attempt.Evidence.ReplaySafety == execution.ReplaySafetyUnknown &&
@@ -513,9 +522,16 @@ func bufferedStreamRetryDecision(
 			EffectSkipGroup,
 			"buffered_stream.retry_before_release",
 		)
-	default:
-		return result
 	}
+	if transientUpstreamStatus(attempt.statusCode()) {
+		// The upstream answered with a status the gateway treats as transient and
+		// released no payload: this attempt may still switch candidate. Category,
+		// scope and effect stay with the evidence, so a classified host error keeps
+		// skipping its group instead of degrading to an unclassified fallback.
+		result.Retry = RetryNextCandidate
+		result.RuleID = "buffered_stream.retry_before_release_upstream_status"
+	}
+	return result
 }
 
 func constrainOperationReplay(
@@ -557,10 +573,11 @@ func ambiguousRuleID(evidence *execution.ErrorEvidence) RuleID {
 	}
 }
 
-// retryableStatusWithoutEvidence reports whether a failure that carried no
-// classifiable evidence still answered with a status the gateway treats as
-// transient. Anything else stays final because no candidate was proven bad.
-func retryableStatusWithoutEvidence(statusCode int) bool {
+// transientUpstreamStatus reports whether an upstream status is transient:
+// either the attempt carried no classifiable evidence and the status alone
+// grants a candidate switch, or the attempt failed with that status before any
+// payload release. Anything else stays final because no candidate was proven bad.
+func transientUpstreamStatus(statusCode int) bool {
 	if statusCode == http.StatusRequestTimeout || statusCode == http.StatusTooManyRequests {
 		return true
 	}

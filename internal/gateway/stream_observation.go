@@ -42,6 +42,10 @@ const (
 	StreamEndClientCanceled
 	StreamEndServerShutdown
 	StreamEndProviderIncomplete
+	// StreamEndUpstreamFailure marks an attempt that failed upstream without any
+	// stream-level terminal observation, the shape a buffered attempt takes when
+	// only its heartbeat was committed and no provider payload was released.
+	StreamEndUpstreamFailure
 )
 
 type StreamObservation struct {
@@ -636,6 +640,8 @@ func streamErrorCode(reason StreamEndReason) string {
 		return "server_shutdown"
 	case StreamEndProviderIncomplete:
 		return "upstream_response_incomplete"
+	case StreamEndUpstreamFailure:
+		return "upstream_failed"
 	default:
 		return "upstream_stream_terminated"
 	}

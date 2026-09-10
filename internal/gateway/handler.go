@@ -1419,11 +1419,20 @@ func (handler *Handler) executeAttempts(
 		}
 		requestCanceled := ginContext.Request.Context().Err() != nil || requestContext.Err() != nil
 		if stream && result.Committed && result.Stream.EndReason == StreamEndNone {
-			result.Stream = prioritizeStreamObservation(
-				ginContext.Request.Context(),
-				result.Err,
-				result.Stream,
-			)
+			if result.Err == nil && result.ExecutionError != nil {
+				// 上游以错误结束但没走到任何流级终止观测（buffered 心跳已提交、payload 未释放）。
+				// 记成正常结束会丢掉执行层证据：裁决退化成「无证据」、请求日志把失败记成成功。
+				result.Stream = streamTerminalObservationWithResponseID(
+					StreamEndUpstreamFailure,
+					result.Stream.ResponseID,
+				)
+			} else {
+				result.Stream = prioritizeStreamObservation(
+					ginContext.Request.Context(),
+					result.Err,
+					result.Stream,
+				)
+			}
 		}
 		attemptNow := handler.now()
 		resultForDecision := result
