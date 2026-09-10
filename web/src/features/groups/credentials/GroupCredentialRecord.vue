@@ -80,6 +80,7 @@ function removeCredential(): void {
           t('group.credentials.columns.credential')
         }}</span>
         <CopyChip
+          :key="item.secret_version"
           :value="item.mask"
           :label="t('group.credentials.copy')"
           :success-label="t('common.copied')"

@@ -19,7 +19,9 @@ import (
 	"github.com/maximhq/bifrost/core/schemas"
 
 	"gpt-load/internal/channel"
+	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/execution/geminiimage"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/reasoning"
 )
@@ -90,7 +92,7 @@ func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (r
 		return r.executeEmbedding(parent, spec, prepared)
 	}
 	if prepared.passthrough != nil {
-		return r.executeNative(parent, spec, prepared)
+		return r.executePassthrough(parent, spec, prepared)
 	}
 	if prepared.countTokensRequest != nil {
 		return r.executeCountTokens(parent, spec, prepared)
@@ -456,7 +458,18 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		return preparedAttempt{}, &failure
 	}
 	safeQuery := safeAttemptQuery(spec)
-	if mode == channel.RouteNative && spec.ClientProtocol == protocol.Gemini &&
+	if mode == channel.RouteConverted {
+		// 源协议的调用标记和响应格式不能继承到其他协议的目标 URL。
+		switch spec.ClientProtocol {
+		case protocol.Anthropic:
+			safeQuery = removeRawQueryValue(safeQuery, "beta")
+		case protocol.Gemini:
+			safeQuery = removeRawQueryValue(safeQuery, "alt")
+			safeQuery = removeRawQueryValue(safeQuery, "$alt")
+		}
+	}
+	convertedImages := mode == channel.RouteConverted && spec.ClientProtocol == protocol.OpenAIImages && providerKind == channel.ProviderGemini
+	if convertedImages || mode == channel.RouteNative && spec.ClientProtocol == protocol.Gemini &&
 		(providerKind == channel.ProviderGemini || providerKind == channel.ProviderGoogleVertex ||
 			providerKind == channel.ProviderMultiProtocolGateway) {
 		safeQuery = removeRawQueryValue(safeQuery, "alt")
@@ -585,7 +598,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 			clientProtocol: spec.ClientProtocol, directKey: directKey, secrets: secrets,
 		}, nil
 	}
-	if mode == channel.RouteNative && providerSupportsPassthrough(providerKind, customTargetBaseURL, spec.ClientProtocol) {
+	if convertedImages || mode == channel.RouteNative && providerSupportsPassthrough(providerKind, customTargetBaseURL, spec.ClientProtocol) {
 		body, sanitizedHeaders, err := sanitizeNativePassthroughRequest(spec, stream)
 		if err != nil {
 			failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid native request body")
@@ -596,7 +609,23 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 			}
 			return preparedAttempt{}, &failure
 		}
-		passthroughPath, err := nativePassthroughPath(spec, providerKind)
+		passthroughPath := ""
+		if convertedImages {
+			body, err = geminiimage.ConvertRequest(body)
+			if err != nil {
+				var classified interface{ ConversionCode() string }
+				if errors.As(err, &classified) {
+					failure := notSentConversionFailure(classified.ConversionCode(), err.Error())
+					return preparedAttempt{}, &failure
+				}
+				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "unsupported Gemini image generation input")
+				failure.Error.OriginHint, failure.Error.ScopeHint = execution.ErrorOriginClient, execution.ErrorScopeRequest
+				return preparedAttempt{}, &failure
+			}
+			passthroughPath = "/models/" + url.PathEscape(spec.UpstreamModel) + ":generateContent"
+		} else {
+			passthroughPath, err = nativePassthroughPath(spec, providerKind)
+		}
 		if err != nil {
 			failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid native request path")
 			return preparedAttempt{}, &failure
@@ -641,6 +670,10 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 			}
 		}
 		upstreamProtocol := spec.ClientProtocol
+		if convertedImages {
+			upstreamProtocol = protocol.Gemini
+			passthroughHeaders["Accept-Encoding"] = "identity"
+		}
 		return preparedAttempt{
 			provider:         provider,
 			mode:             mode,
@@ -658,6 +691,16 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 			directKey: directKey,
 			secrets:   secrets,
 		}, nil
+	}
+	if spec.ClientProtocol == protocol.Anthropic && spec.Operation == execution.OperationChatCompletion &&
+		dialect.AnthropicRequestsZeroOutput(spec.Body) {
+		failure := notSentConversionFailure(
+			execution.ErrorCodeCriticalSemanticLoss,
+			"typed conversion cannot preserve Anthropic zero-output semantics",
+		)
+		failure.Error.OriginHint = execution.ErrorOriginInternal
+		failure.Error.ScopeHint = execution.ErrorScopeGroup
+		return preparedAttempt{}, &failure
 	}
 	if spec.Operation == execution.OperationListModels {
 		typedURL, upstreamProtocol, targetErr := convertedListModelsTarget(providerKind, customTargetBaseURL, safeQuery)
@@ -893,7 +936,8 @@ func supportedRequestShape(spec execution.AttemptSpec, stream bool) bool {
 			return validResponsesPassthroughShape(spec, stream)
 		}
 	case protocol.OpenAIImages:
-		if spec.RouteMode != execution.RouteNative || spec.Method != http.MethodPost {
+		convertedGeneration := spec.RouteMode == execution.RouteConverted && spec.Operation == execution.OperationImagesGenerate
+		if (spec.RouteMode != execution.RouteNative && !convertedGeneration) || spec.Method != http.MethodPost {
 			return false
 		}
 		switch spec.Operation {
@@ -943,7 +987,9 @@ func normalizeImagesAttemptResult(spec execution.AttemptSpec, result *execution.
 	if result == nil || spec.ClientProtocol != protocol.OpenAIImages {
 		return
 	}
-	result.Usage = nil
+	if spec.RouteMode != execution.RouteConverted {
+		result.Usage = nil
+	}
 	if openAIResponseModel(result.Body, "") == "" {
 		result.Model = ""
 	}
