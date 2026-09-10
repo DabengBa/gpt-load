@@ -40,7 +40,9 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 	disabled := validControlGroup("home-disabled")
 	disabled.Enabled = false
 	disabled.Models = models.JSON(`[{"id":"disabled-model"}]`)
-	for _, group := range []*models.Group{enabled, enabledTwo, disabled} {
+	runtimeOnly := validControlGroup("home-runtime-only")
+	runtimeOnly.Models = models.JSON(`[]`)
+	for _, group := range []*models.Group{enabled, enabledTwo, disabled, runtimeOnly} {
 		if err := fixture.db.Create(group).Error; err != nil {
 			t.Fatalf("create group %q: %v", group.Name, err)
 		}
@@ -55,11 +57,11 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 			AuthState: models.CredentialAuthStateReady,
 		},
 		{
-			ID: 2, GroupID: enabled.ID, Data: "cipher-2", Fingerprint: "hash-2",
+			ID: 2, GroupID: enabledTwo.ID, Data: "cipher-2", Fingerprint: "hash-2",
 			AuthState: models.CredentialAuthStateReady,
 		},
 		{
-			ID: 3, GroupID: enabledTwo.ID, Data: "cipher-3", Fingerprint: "hash-3",
+			ID: 3, GroupID: runtimeOnly.ID, Data: "cipher-3", Fingerprint: "hash-3",
 			AuthState: models.CredentialAuthStateReauthorizationRequired,
 		},
 		{
@@ -78,15 +80,15 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 			EncryptedValue: "cipher-1",
 		},
 		{
-			ID: 2, GroupID: enabled.ID, AuthState: state.CredentialAuthStateReady,
+			ID: 2, GroupID: enabledTwo.ID, AuthState: state.CredentialAuthStateReady,
 			Version:            groupCollectionCredentialVersion(credentials[1].SecretVersion),
-			IdentityGeneration: groupCollectionCredentialIdentity(credentials[1].IdentityFingerprint, *enabled), Fingerprint: credentials[1].Fingerprint,
+			IdentityGeneration: groupCollectionCredentialIdentity(credentials[1].IdentityFingerprint, *enabledTwo), Fingerprint: credentials[1].Fingerprint,
 			CooldownUntil: now.Add(time.Hour), EncryptedValue: "cipher-2",
 		},
 		{
-			ID: 3, GroupID: enabledTwo.ID, AuthState: state.CredentialAuthStateReauthorizationRequired,
+			ID: 3, GroupID: runtimeOnly.ID, AuthState: state.CredentialAuthStateReauthorizationRequired,
 			Version:            groupCollectionCredentialVersion(credentials[2].SecretVersion),
-			IdentityGeneration: groupCollectionCredentialIdentity(credentials[2].IdentityFingerprint, *enabledTwo), Fingerprint: credentials[2].Fingerprint,
+			IdentityGeneration: groupCollectionCredentialIdentity(credentials[2].IdentityFingerprint, *runtimeOnly), Fingerprint: credentials[2].Fingerprint,
 			EncryptedValue: "cipher-3",
 		},
 		{
@@ -148,7 +150,7 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 	}
 	want := HomeBase{
 		Inventory: HomeInventory{
-			GroupCount:               3,
+			GroupCount:               4,
 			CredentialCount:          4,
 			AvailableCredentialCount: 1,
 			ModelCount:               4,
