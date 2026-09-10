@@ -59,6 +59,8 @@ type Service struct {
 	stats                             *health.StatsStore
 	mutations                         credentialMutationCoordinator
 	requestLogStats                   RequestLogStatsReader
+	debugCaptures                     DebugCaptureReader
+	debugCaptureHealth                DebugCaptureHealthReader
 	accessQuota                       *accessquota.Runtime
 	modelDiscoveryTimeout             time.Duration
 	random                            io.Reader

@@ -59,6 +59,13 @@ type requestLogRuntimeFake struct {
 	stopCalls  atomic.Int32
 }
 
+type debugCaptureRuntimeFake struct {
+	startFunc  func() error
+	stopFunc   func(context.Context) error
+	startCalls atomic.Int32
+	stopCalls  atomic.Int32
+}
+
 type executionRuntimeFake struct {
 	startFunc     func(context.Context) error
 	shutdownFunc  func()
@@ -66,6 +73,22 @@ type executionRuntimeFake struct {
 	shutdownCalls atomic.Int32
 	shutdownOnce  sync.Once
 	shutdownDone  chan struct{}
+}
+
+func (fake *debugCaptureRuntimeFake) Start() error {
+	fake.startCalls.Add(1)
+	if fake.startFunc == nil {
+		return nil
+	}
+	return fake.startFunc()
+}
+
+func (fake *debugCaptureRuntimeFake) Stop(ctx context.Context) error {
+	fake.stopCalls.Add(1)
+	if fake.stopFunc == nil {
+		return nil
+	}
+	return fake.stopFunc(ctx)
 }
 
 func (fake *executionRuntimeFake) Start(ctx context.Context) error {
@@ -100,6 +123,96 @@ func TestAppStopShutsDownExecutionRuntime(t *testing.T) {
 	}
 	if got := runtime.shutdownCalls.Load(); got != 1 {
 		t.Fatalf("Shutdown() calls = %d, want 1", got)
+	}
+}
+
+func TestAppKeepsDatabaseOpenWhenDebugCaptureDoesNotDrain(t *testing.T) {
+	db, err := storage.Open(":memory:")
+	if err != nil {
+		t.Fatalf("storage.Open() error = %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	runtime := &debugCaptureRuntimeFake{stopFunc: func(context.Context) error {
+		return context.DeadlineExceeded
+	}}
+	application := NewApp(AppParams{DB: db, DebugCapture: runtime})
+	if err := application.Stop(context.Background()); err == nil {
+		t.Fatal("Stop() error = nil, want debug capture drain failure")
+	}
+	if err := sqlDB.Ping(); err != nil {
+		t.Fatalf("database was closed after incomplete debug capture drain: %v", err)
+	}
+}
+
+func TestAppContinuesWhenDebugCaptureRuntimeStartFails(t *testing.T) {
+	db, err := storage.Open(":memory:")
+	if err != nil {
+		t.Fatalf("storage.Open() error = %v", err)
+	}
+	startErr := errors.New("debug capture cleanup unavailable")
+	runtime := &debugCaptureRuntimeFake{startFunc: func() error { return startErr }}
+	controlRuntime := newControlRuntimeFake(nil, false)
+	application := NewApp(AppParams{
+		Engine:           mustNewEngine(t),
+		Config:           testConfig(t),
+		DB:               db,
+		StartupBootstrap: startupBootstrapFunc(noopStartupBootstrap),
+		RuntimeState:     runtimeStateLoaderFunc(func(context.Context) error { return nil }),
+		ControlRuntime:   controlRuntime,
+		RequestLogs:      newRequestLogRuntimeFake(nil, nil),
+		DebugCapture:     runtime,
+	})
+	cleanupApp(t, application)
+
+	if err := application.Start(); err != nil {
+		t.Fatalf("Start() error = %v, want data plane to continue", err)
+	}
+	if got := runtime.startCalls.Load(); got != 1 {
+		t.Fatalf("DebugCaptureRuntime.Start() calls = %d, want 1", got)
+	}
+	if application.Address() == "" {
+		t.Fatal("application did not listen after debug capture runtime failure")
+	}
+	if err := application.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if got := runtime.stopCalls.Load(); got != 1 {
+		t.Fatalf("DebugCaptureRuntime.Stop() calls = %d, want 1", got)
+	}
+}
+
+func TestAppStopsDebugCaptureBeforeClosingDatabase(t *testing.T) {
+	db, err := storage.Open(":memory:")
+	if err != nil {
+		t.Fatalf("storage.Open() error = %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
+	var stopErr error
+	runtime := &debugCaptureRuntimeFake{stopFunc: func(context.Context) error {
+		if err := sqlDB.Ping(); err != nil {
+			stopErr = fmt.Errorf("database closed before debug capture drain: %w", err)
+		}
+		return stopErr
+	}}
+	application := NewApp(AppParams{DB: db, DebugCapture: runtime})
+	if err := application.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if stopErr != nil {
+		t.Fatalf("debug capture stop error = %v", stopErr)
+	}
+	if got := runtime.stopCalls.Load(); got != 1 {
+		t.Fatalf("DebugCaptureRuntime.Stop() calls = %d, want 1", got)
+	}
+	if err := sqlDB.Ping(); err == nil {
+		t.Fatal("database remained open after Stop()")
 	}
 }
 

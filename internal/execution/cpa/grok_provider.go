@@ -67,6 +67,7 @@ func (bridge *grokProviderBridge) Execute(
 	if !ok || bridge == nil || bridge.executor == nil {
 		return providerResponse{}, errors.New("Grok provider bridge credential mismatch")
 	}
+	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.Execute(ctx, credentialID, value.value, grokRequest(request, credentialID))
 	return providerResponse{
 		Payload: append([]byte(nil), response.Payload...), Headers: response.Headers.Clone(),
@@ -84,6 +85,7 @@ func (bridge *grokProviderBridge) ExecuteStream(
 	if !ok || bridge == nil || bridge.executor == nil {
 		return nil, errors.New("Grok provider bridge credential mismatch")
 	}
+	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.ExecuteStream(ctx, credentialID, value.value, grokRequest(request, credentialID))
 	if response == nil {
 		return nil, err

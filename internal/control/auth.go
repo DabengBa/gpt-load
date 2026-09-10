@@ -67,6 +67,9 @@ func retryAfterSeconds(remaining time.Duration) int64 {
 
 func (s *Server) authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/debug-captures") {
+			setSecretResponseHeaders(c)
+		}
 		peer, err := utils.NormalizePeerIP(c.Request.RemoteAddr)
 		if err != nil {
 			logServiceError("authenticate_peer", err, app_errors.ErrInternalServer.Code)

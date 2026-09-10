@@ -29,6 +29,44 @@ func bindGatewayRoutesForTest(
 	}
 }
 
+func TestHTTPModuleCapturesOwnershipAndMethodTerminals(t *testing.T) {
+	factory := &captureTestFactory{}
+	handler := &Handler{captureFactory: factory, writeTimeout: downstreamWriteTimeout}
+	engine := gin.New()
+	engine.Use(handler.CaptureMiddleware())
+	bindGatewayRoutesForTest(t, engine, handler)
+
+	unknown := httptest.NewRequest(http.MethodGet, "/v1/not-a-route", nil)
+	unknown.Header.Set("Authorization", "Bearer secret")
+	unknownRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(unknownRecorder, unknown)
+	if unknownRecorder.Code != http.StatusNotFound {
+		t.Fatalf("unknown route status = %d, body=%q, want %d", unknownRecorder.Code, unknownRecorder.Body.String(), http.StatusNotFound)
+	}
+	unknownSession, unknownStarts := factory.snapshot()
+	if !waitForCapture(t, func() bool {
+		unknownSession, unknownStarts = factory.snapshot()
+		return unknownStarts == 1 && unknownSession != nil && unknownSession.isWaited()
+	}) {
+		t.Fatalf("not-found terminal was not captured: starts=%d session=%v", unknownStarts, unknownSession != nil)
+	}
+
+	method := httptest.NewRequest(http.MethodPost, "/v1/models", nil)
+	method.Header.Set("Authorization", "Bearer secret")
+	methodRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(methodRecorder, method)
+	if methodRecorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("method terminal status = %d, want %d", methodRecorder.Code, http.StatusMethodNotAllowed)
+	}
+	methodSession, methodStarts := factory.snapshot()
+	if !waitForCapture(t, func() bool {
+		methodSession, methodStarts = factory.snapshot()
+		return methodStarts == 2 && methodSession != nil && methodSession.isWaited()
+	}) {
+		t.Fatalf("method-not-allowed terminal was not captured: starts=%d session=%v", methodStarts, methodSession != nil)
+	}
+}
+
 func TestHTTPModuleCancelsInFlightDataPlaneHandlerOnShutdown(t *testing.T) {
 	coordinator := httplifecycle.NewCoordinator()
 	handler := &Handler{lifecycle: coordinator}

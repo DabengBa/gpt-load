@@ -219,6 +219,7 @@ At startup, the application reads `.env` in the current directory; existing proc
 | `LOG_LEVEL` | `info` | Supports `panic`, `fatal`, `error`, `warn`, `warning`, `info`, `debug`, and `trace`; invalid values warn and fall back to `info`. |
 | `LOG_FORMAT` | `text` | Supports `text` and `json`; any other value fails startup. |
 | `MODELS_DEV_AUTO_SYNC_ENABLED` | Unset, initial default `true` | When unset, uses the persisted management UI setting; when set, forces Models.dev auto-sync on or off and makes the same UI option read-only. |
+| `DEBUG_CAPTURE_ENABLED` | `false` | Optional plaintext application-layer communication capture. Retains observed Gateway/CPA request and response headers, bodies, and material outcomes for 12 hours, then cleans them up automatically. Management-admin access only; do not enable on an untrusted or shared environment. |
 
 Environment proxies apply only when no proxy is specified on the credential, group, or global settings.
 
@@ -228,6 +229,7 @@ Environment proxies apply only when no proxy is specified on the credential, gro
 
 - The service listens on `127.0.0.1` only by default. For remote access, expose it through a controlled network or a TLS reverse proxy, and configure ACLs and firewall rules.
 - Manage `AUTH_KEY` and `ENCRYPTION_KEY` carefully. Never commit real keys to a repository, log, screenshot, or public issue.
+- Debug communication capture is disabled by default. When `DEBUG_CAPTURE_ENABLED=true`, the separate capture store retains observed plaintext request and response headers and bodies, including credentials and cookies, for a fixed 12-hour period. Inspect or download captures only through the management-admin debug-capture API; protect `AUTH_KEY`, the database, backups, and exported ZIP files accordingly. The boundary covers application-layer data observed by Gateway and CPA integrations. It does not claim Bifrost's underlying HTTP transport, TLS/socket wire bytes, or data that was never observed.
 - 2.0 is designed for a **single application instance**. Instances do not share state, so horizontal scaling is not supported.
 - Usage and cost are **estimates** derived from upstream responses. They support operational analysis and capacity planning, and do not equal a provider invoice or a financial reconciliation.
 - Subscription channels depend on upstream OAuth and compatibility protocols and may change as upstreams change. Only connect accounts you are entitled to use, and follow each provider's terms.

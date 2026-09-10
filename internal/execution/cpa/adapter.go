@@ -102,6 +102,7 @@ func (a *Adapter) ValidateRouteCapability(
 
 func (a *Adapter) Execute(ctx context.Context, spec execution.AttemptSpec) (result execution.AttemptResult) {
 	spec = execution.NewAttemptSpec(spec)
+	ctx = execution.WithHTTPAttemptID(ctx, spec.AttemptID)
 	defer func() {
 		normalizeCPAImagesAttemptResult(spec, &result)
 	}()
@@ -132,6 +133,7 @@ func (a *Adapter) Execute(ctx context.Context, spec execution.AttemptSpec) (resu
 			err,
 		)
 	}
+	request.Observer = execution.HTTPObserverFromContext(ctx)
 	if validator, ok := provider.(providerRequestValidator); ok {
 		if err := validator.ValidateRequest(request); err != nil {
 			return execution.AttemptResult{DispatchState: execution.DispatchNotSent, Error: requestValidationEvidence(err)}
@@ -260,6 +262,7 @@ func (a *Adapter) ExecuteStream(
 	sink execution.StreamSink,
 ) (result execution.StreamResult) {
 	spec = execution.NewAttemptSpec(spec)
+	ctx = execution.WithHTTPAttemptID(ctx, spec.AttemptID)
 	defer func() {
 		normalizeCPAImagesStreamResult(spec, &result)
 	}()
@@ -294,6 +297,7 @@ func (a *Adapter) ExecuteStream(
 			"unsupported_subscription_input",
 		)
 	}
+	request.Observer = execution.HTTPObserverFromContext(ctx)
 	if validator, ok := provider.(providerRequestValidator); ok {
 		if err := validator.ValidateRequest(request); err != nil {
 			return execution.StreamResult{DispatchState: execution.DispatchNotSent, Error: requestValidationEvidence(err)}
