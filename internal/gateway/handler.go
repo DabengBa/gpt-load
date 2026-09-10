@@ -496,14 +496,15 @@ func (handler *Handler) recordEntrySuccess(groupID uint, entryID string, credent
 	}
 }
 
-// retryAttemptLimit converts the configured retry_count into the total forward
+// retryAttemptLimit converts the system retry_count into the total forward
 // attempt budget of one request. retry_count is that budget itself: 0 and 1 both
-// stop after the first attempt, 2 allows one candidate switch.
-func retryAttemptLimit(group state.GroupView) int {
-	if group.RetryCount <= 1 {
+// stop after the first attempt, 2 allows one candidate switch. The budget never
+// decides whether a candidate switch is legal; replay safety owns that.
+func retryAttemptLimit(retryCount int) int {
+	if retryCount <= 1 {
 		return 1
 	}
-	return group.RetryCount
+	return retryCount
 }
 
 func (handler *Handler) Handle(ginContext *gin.Context) {
@@ -743,6 +744,7 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 	handler.executeAttempts(
 		ginContext,
 		iterator,
+		retryAttemptLimit(snapshot.Settings.RetryCount),
 		allowedCredentialRefs,
 		selectedDialect,
 		parsed,
@@ -914,6 +916,7 @@ func headerFieldValues(headers http.Header, name string) []string {
 func (handler *Handler) executeAttempts(
 	ginContext *gin.Context,
 	iterator *scheduler.Iterator,
+	forwardAttemptLimit int,
 	allowedCredentialRefs map[uint]state.CredentialRef,
 	selectedDialect dialect.Dialect,
 	parsed *dialect.ParsedRequest,
@@ -938,7 +941,6 @@ func (handler *Handler) executeAttempts(
 	lastAttemptIndex := -1
 	attemptSequence := 0
 	forwardAttempts := 0
-	forwardAttemptLimit := 1
 	bufferedModeFrozen := false
 	bufferedMode := false
 	bufferedReplayEligible := false
@@ -949,7 +951,6 @@ func (handler *Handler) executeAttempts(
 			bufferedCancel()
 		}
 	}()
-	retryPolicyResolved := false
 	type credentialRefreshRetry struct {
 		selection scheduler.Selection
 		ref       state.CredentialRef
@@ -1215,12 +1216,6 @@ func (handler *Handler) executeAttempts(
 		}
 		attemptObservations := prepared.observations
 		attemptObservationsAvailable := prepared.observationsAvailable
-		if !retryPolicyResolved {
-			// A request can fail over across Groups. Freeze the first active
-			// candidate's effective Group policy for the whole retry chain.
-			forwardAttemptLimit = retryAttemptLimit(selection.Group)
-			retryPolicyResolved = true
-		}
 		decryptedCredential, err := handler.encryption.Decrypt(encrypted)
 		if err != nil {
 			if !recordCandidatePreparationFailure(

@@ -55,7 +55,7 @@ export default {
       request_timeout: '请求总时长',
       stream_idle_timeout: '流空闲超时',
       retry_count: '最大尝试次数',
-      retryCountHelp: '单次请求允许的上游尝试总次数；0 或 1 表示只尝试一次（不重试），2 表示首次失败后可换一次候选。',
+      retryCountHelp: '单次请求允许的上游尝试总次数；跨分组共享，切换分组不会重置；0 或 1 表示只尝试一次（不重试），2 表示首次失败后可换一次候选。',
       blacklist_threshold: '连续失败拉黑阈值',
       blacklistThresholdHelp: '凭据达到该连续失败次数后自动拉黑；0 表示关闭自动拉黑。',
       validation_interval: '检测间隔',

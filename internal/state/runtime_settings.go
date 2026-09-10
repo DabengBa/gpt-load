@@ -73,7 +73,6 @@ type ResolvedGroupSettings struct {
 	Timeouts           TimeoutConfig
 	HeaderRules        HeaderRules
 	BufferedStream     bool
-	RetryCount         int
 	BlacklistThreshold int
 	AffinityEnabled    bool
 	ParameterOverrides parameteroverride.Rules
@@ -81,16 +80,17 @@ type ResolvedGroupSettings struct {
 
 func DefaultRuntimeSettings() RuntimeSettings {
 	return RuntimeSettings{
-		FirstByteTimeout:         120 * time.Second,
-		RequestTimeout:           600 * time.Second,
-		StreamIdleTimeout:        300 * time.Second,
-		HeaderRules:              HeaderRules{Set: map[string]string{}},
-		CORS:                     defaultCORSConfig(),
-		ResponseHeaderRules:      HeaderRules{Set: map[string]string{}},
-		BufferedStream:           false,
-		// retry_count is the total attempt budget of one request, so the
-		// shipped default keeps the established single retry.
-		RetryCount:               2,
+		FirstByteTimeout:    120 * time.Second,
+		RequestTimeout:      600 * time.Second,
+		StreamIdleTimeout:   300 * time.Second,
+		HeaderRules:         HeaderRules{Set: map[string]string{}},
+		CORS:                defaultCORSConfig(),
+		ResponseHeaderRules: HeaderRules{Set: map[string]string{}},
+		BufferedStream:      false,
+		// retry_count is the total attempt budget of one request and comes from
+		// the system settings only. The shipped default allows four candidate
+		// switches inside a five attempt budget.
+		RetryCount:               5,
 		RouteStrategy:            RouteStrategyNativeFirst,
 		BlacklistThreshold:       3,
 		AffinityEnabled:          true,
@@ -250,7 +250,6 @@ func ResolveGroupRuntimeSettings(
 		},
 		HeaderRules:        cloneHeaderRules(base.HeaderRules),
 		BufferedStream:     base.BufferedStream,
-		RetryCount:         base.RetryCount,
 		BlacklistThreshold: base.BlacklistThreshold,
 		AffinityEnabled:    base.AffinityEnabled,
 	}
@@ -287,11 +286,8 @@ func ResolveGroupRuntimeSettings(
 			}
 			resolved.BufferedStream = parsed
 		case SettingRetryCount:
-			parsed, err := nonNegativeWholeNumber(key, value)
-			if err != nil {
-				return ResolvedGroupSettings{}, err
-			}
-			resolved.RetryCount = parsed
+			// 兼容读取历史分组配置；重试预算仅由系统设置决定。
+			continue
 		case SettingBlacklistThreshold:
 			parsed, err := nonNegativeWholeNumber(key, value)
 			if err != nil {

@@ -54,7 +54,7 @@ func TestCompilePublishesDefaultRuntimeSettingsWithoutGroups(t *testing.T) {
 			MaxAgeSeconds:  600,
 		},
 		ResponseHeaderRules:      HeaderRules{Set: map[string]string{}},
-		RetryCount:               2,
+		RetryCount:               5,
 		RouteStrategy:            RouteStrategyNativeFirst,
 		BlacklistThreshold:       3,
 		AffinityEnabled:          true,
@@ -262,18 +262,18 @@ func TestRetryAndBlacklistCountsArePublicAndResolveByGroupPrecedence(t *testing.
 	if err != nil {
 		t.Fatalf("ResolveGroupRuntimeSettings() error = %v", err)
 	}
-	if resolved.RetryCount != 4 || resolved.BlacklistThreshold != 5 {
+	if resolved.BlacklistThreshold != 5 {
 		t.Fatalf("group policies = %#v", resolved)
 	}
 }
 
-func TestRetryCountDefaultsToTwoAttemptsAndPreservesExplicitOverrides(t *testing.T) {
+func TestRetryCountDefaultsToFiveAttemptsAndPreservesExplicitOverrides(t *testing.T) {
 	defaults, err := ResolveRuntimeSettings(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if defaults.RetryCount != 2 {
-		t.Fatalf("default RetryCount = %d, want 2 (one retry within a two attempt budget)", defaults.RetryCount)
+	if defaults.RetryCount != 5 {
+		t.Fatalf("default RetryCount = %d, want 5 (four candidate switches in a five attempt budget)", defaults.RetryCount)
 	}
 
 	for _, value := range []json.Number{"0", "7"} {
@@ -287,27 +287,25 @@ func TestRetryCountDefaultsToTwoAttemptsAndPreservesExplicitOverrides(t *testing
 		}
 	}
 
-	group, err := ResolveGroupRuntimeSettings(
-		defaults,
-		config.Settings{SettingRetryCount: json.Number("0")},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if group.RetryCount != 0 {
-		t.Fatalf("group RetryCount = %d, want explicit 0", group.RetryCount)
-	}
+}
 
-	global, err := ResolveRuntimeSettings(config.Settings{SettingRetryCount: json.Number("7")})
+// 历史分组配置里的 retry_count 必须被静默忽略：重试预算只来自系统设置，存量行不能阻止分组加载。
+func TestGroupRuntimeSettingsIgnoreLegacyRetryCount(t *testing.T) {
+	base := DefaultRuntimeSettings()
+	settings := config.Settings{SettingBlacklistThreshold: 5}
+	want, err := ResolveGroupRuntimeSettings(base, settings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inherited, err := ResolveGroupRuntimeSettings(global, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if inherited.RetryCount != 7 {
-		t.Fatalf("inherited group RetryCount = %d, want 7", inherited.RetryCount)
+	for _, count := range []int{0, 4} {
+		settings[SettingRetryCount] = count
+		got, err := ResolveGroupRuntimeSettings(base, settings)
+		if err != nil {
+			t.Fatalf("legacy retry_count=%d prevented loading: %v", count, err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("legacy retry_count=%d changed effective group settings", count)
+		}
 	}
 }
 

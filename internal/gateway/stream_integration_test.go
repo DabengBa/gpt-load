@@ -1011,6 +1011,7 @@ func newStreamingGatewayEngine(t *testing.T, groups ...streamGatewayGroup) (*gin
 
 	manager := state.NewManager()
 	snapshot, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(), Groups: groupConfigs,
 		Credentials: credentialConfigs,
 		AccessKeys: []state.AccessKeyConfig{{

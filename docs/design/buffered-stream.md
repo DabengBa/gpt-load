@@ -20,7 +20,7 @@ Gemini、Images、音频流、非 SSE 请求不进入 buffered stream。对不�
 2. 上游每个 attempt 继续使用原有流式执行、转换、脱敏和 usage 处理。网关每 15 秒发送一次注释心跳；心跳不是模型首字节，也不刷新上游 first-byte 或 stream-idle 计时器。
 3. 每个 attempt 独立暂存并验证事件。Chat 必须有合法的 choice 终态和 `[DONE]`；Responses 区分 `response.completed`、`response.incomplete` 和 `response.failed`；Anthropic 必须有 `message_stop`，且每个已开始的 content block 都必须闭合。
 4. 合法 EOF 和协议终态验证成功后，才开始一次不可逆的 payload release。释放从成功 attempt 开始，失败 attempt 的内容不会泄漏给客户端。
-5. 已提交 heartbeat 但尚未释放 payload 时，只有明确的上游断流、idle timeout、半帧或协议错误，并且请求被证明没有供应商副作用，才允许按既有候选预算重试。payload release 开始后禁止重试，即使下游部分写入后失败也不会重放。上游状态可重试（408、429、5xx）却没有带回任何可分类证据的失败按 `fallback.missing_evidence_retry` 同样获得候选切换许可，不再直接终止请求；该分支按 `record_credential_failure` 计入凭据连续失败，达到 `blacklist_threshold` 后该凭据被拉黑，并由凭据检测探活恢复；它同样受尝试预算与 payload release 约束，已释放 payload 或已提交的非缓冲实时流既不再重放也不再计入凭据失败。`retry_count` 是一次请求的上游尝试总次数上限：0 与 1 都表示只尝试一次，2 表示可以换一次候选。
+5. 已提交 heartbeat 但尚未释放 payload 时，只有明确的上游断流、idle timeout、半帧或协议错误，并且请求被证明没有供应商副作用，才允许按既有候选预算重试。payload release 开始后禁止重试，即使下游部分写入后失败也不会重放。上游状态可重试（408、429、5xx）却没有带回任何可分类证据的失败按 `fallback.missing_evidence_retry` 同样获得候选切换许可，不再直接终止请求；该分支按 `record_credential_failure` 计入凭据连续失败，达到 `blacklist_threshold` 后该凭据被拉黑，并由凭据检测探活恢复；它同样受尝试预算与 payload release 约束，已释放 payload 或已提交的非缓冲实时流既不再重放也不再计入凭据失败。`retry_count` 是一次请求的上游尝试总次数上限，来自系统设置并在请求开始时冻结（跨分组共享，切换分组不重置）：0 与 1 都表示只尝试一次，2 表示可以换一次候选，默认 5；分组设置里的 `retry_count` 已退役，读取时容忍存量值、写入被拒绝、界面不展示，且任何一次保存分组都会把库里的残留删掉。
 
 HTTP 响应头由请求级输出 owner 串行管理，包含 `Cache-Control: no-cache, no-transform` 和 `X-Accel-Buffering: no`，并移除不适用的 `Content-Length`。心跳提交 HTTP 后不会再补写上游成功响应头。
 

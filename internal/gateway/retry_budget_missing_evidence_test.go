@@ -14,28 +14,6 @@ import (
 	"gpt-load/internal/state"
 )
 
-// retry_count is the total attempt budget for one request: 1 means a single
-// attempt, 2 means the request may still switch candidate once.
-func TestRetryAttemptLimitTreatsRetryCountAsTotalAttemptBudget(t *testing.T) {
-	tests := []struct {
-		retryCount int
-		want       int
-	}{
-		{retryCount: 0, want: 1},
-		{retryCount: 1, want: 1},
-		{retryCount: 2, want: 2},
-		{retryCount: 3, want: 3},
-		{retryCount: 100, want: 100},
-	}
-
-	for _, test := range tests {
-		got := retryAttemptLimit(state.GroupView{RetryCount: test.retryCount})
-		if got != test.want {
-			t.Fatalf("retryAttemptLimit(retry_count=%d) = %d, want %d", test.retryCount, got, test.want)
-		}
-	}
-}
-
 type missingEvidenceStreamForwarder struct {
 	calls  int
 	groups []uint
@@ -70,22 +48,21 @@ func serveMissingEvidenceStreamRequest(t *testing.T, engine http.Handler) {
 }
 
 func TestHandlerBufferedStreamRetriesMissingEvidenceWithinAttemptBudget(t *testing.T) {
-	tests := []struct {
+	for _, test := range []struct {
 		name       string
 		retryCount string
 		wantCalls  int
 	}{
 		{name: "single attempt budget stops after the first attempt", retryCount: "1", wantCalls: 1},
 		{name: "two attempt budget switches candidate", retryCount: "2", wantCalls: 2},
-	}
-
-	for _, test := range tests {
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			forwarder := &missingEvidenceStreamForwarder{}
-			engine, _ := newConvertedFallbackHandlerTestRuntime(t, forwarder, config.Settings{
-				state.SettingBufferedStream: true,
-				state.SettingRetryCount:     json.Number(test.retryCount),
-			})
+			engine, _ := newConvertedFallbackHandlerTestRuntimeWithSystemSettings(
+				t, forwarder,
+				config.Settings{state.SettingRetryCount: json.Number(test.retryCount)},
+				config.Settings{state.SettingBufferedStream: true},
+			)
 			serveMissingEvidenceStreamRequest(t, engine)
 
 			if forwarder.calls != test.wantCalls {
@@ -104,11 +81,14 @@ func TestHandlerBufferedStreamRetriesMissingEvidenceWithinAttemptBudget(t *testi
 // pays for the same broken candidate first.
 func TestHandlerBlacklistsCandidateAfterMissingEvidenceFailures(t *testing.T) {
 	forwarder := &missingEvidenceStreamForwarder{}
-	engine, _ := newConvertedFallbackHandlerTestRuntime(t, forwarder, config.Settings{
-		state.SettingBufferedStream:     true,
-		state.SettingRetryCount:         json.Number("1"),
-		state.SettingBlacklistThreshold: json.Number("1"),
-	})
+	engine, _ := newConvertedFallbackHandlerTestRuntimeWithSystemSettings(
+		t, forwarder,
+		config.Settings{
+			state.SettingRetryCount:         json.Number("1"),
+			state.SettingBlacklistThreshold: json.Number("1"),
+		},
+		config.Settings{state.SettingBufferedStream: true},
+	)
 
 	serveMissingEvidenceStreamRequest(t, engine)
 	if len(forwarder.groups) != 1 {

@@ -90,6 +90,19 @@ func newDialectGatewayEngineWithForwarder(
 	groups ...dialectGatewayGroup,
 ) (*gin.Engine, *state.CredentialRegistry) {
 	t.Helper()
+	return newDialectGatewayEngineWithSystemSettings(t, selectedProtocol, model, dialects, forwarder, config.Settings{state.SettingRetryCount: testDefaultRetryBudget}, groups...)
+}
+
+func newDialectGatewayEngineWithSystemSettings(
+	t *testing.T,
+	selectedProtocol protocol.Protocol,
+	model string,
+	dialects dialect.Set,
+	forwarder AttemptForwarder,
+	systemSettings config.Settings,
+	groups ...dialectGatewayGroup,
+) (*gin.Engine, *state.CredentialRegistry) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	keyService := encryptiontest.Service(t, "dialect-gateway-test-master-key")
 
@@ -143,6 +156,7 @@ func newDialectGatewayEngineWithForwarder(
 
 	manager := state.NewManager()
 	snapshot, err := manager.Publish(state.CompileInput{
+		SystemSettings:  systemSettings,
 		ChannelRegistry: channel.NewRegistry(), Groups: configs,
 		Credentials: credentialConfigs,
 		AccessKeys: []state.AccessKeyConfig{{

@@ -81,6 +81,33 @@ func (s *Service) GetGroupSettings(ctx context.Context, groupID uint) (GroupSett
 	return response, err
 }
 
+// dropRetiredGroupOverrides 删除分组 overrides 里已退役的 retry_count，返回清理后的 JSON 与是否需要回写。
+// 存量行 JSON 损坏时不在这里报错：分组设置读取路径会把损坏如实报出来。
+func dropRetiredGroupOverrides(overrides models.JSON) (models.JSON, bool) {
+	if len(overrides) == 0 {
+		return overrides, false
+	}
+	settings := make(config.Settings)
+	if err := decodeGroupDiscoveryJSON(overrides, &settings); err != nil {
+		return overrides, false
+	}
+	if _, exists := settings[state.SettingRetryCount]; !exists {
+		return overrides, false
+	}
+	delete(settings, state.SettingRetryCount)
+	for key, value := range settings {
+		if key == state.SettingParameterOverrides {
+			continue
+		}
+		settings[key] = canonicalizeGroupSettingNumbers(value)
+	}
+	encoded, err := json.Marshal(settings)
+	if err != nil {
+		return overrides, false
+	}
+	return models.JSON(encoded), true
+}
+
 func groupSettingsResponse(
 	group models.Group,
 	system state.RuntimeSettings,
@@ -107,6 +134,8 @@ func groupSettingsResponse(
 	if overrides == nil {
 		overrides = make(config.Settings)
 	}
+	// retry_count 是系统级预算；历史分组配置不再作为覆盖展示。
+	delete(overrides, state.SettingRetryCount)
 	effective, err := effectiveGroupConfig(system, overrides)
 	if err != nil {
 		return GroupSettingsResponse{}, fmt.Errorf(
@@ -268,6 +297,10 @@ func (s *Service) UpdateGroupSettings(
 		if normalized.overridesSet {
 			group.Overrides = normalized.encodedOverrides
 			updates["overrides"] = group.Overrides
+		} else if purged, changed := dropRetiredGroupOverrides(group.Overrides); changed {
+			// 分组 retry_count 已退役：任何一次保存都顺手把存量残留从库里删掉。
+			group.Overrides = purged
+			updates["overrides"] = purged
 		}
 		if normalized.proxySet {
 			group.ProxyConfig = normalized.proxyConfig

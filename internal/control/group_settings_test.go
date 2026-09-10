@@ -193,7 +193,7 @@ func TestUpdateGroupSettingsOverridesAffinityParticipation(t *testing.T) {
 	}
 }
 
-func TestUpdateGroupSettingsOverridesRetryAndBlacklistPolicies(t *testing.T) {
+func TestUpdateGroupSettingsOverridesBlacklistPolicy(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	groupID := createGroupForCredentialImport(t, fixture, "sk-settings-policies")
@@ -224,7 +224,6 @@ func TestUpdateGroupSettingsOverridesRetryAndBlacklistPolicies(t *testing.T) {
 
 	got, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
 		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
-			state.SettingRetryCount:         json.Number("4"),
 			state.SettingBlacklistThreshold: json.Number("5"),
 		}},
 	})
@@ -236,7 +235,6 @@ func TestUpdateGroupSettingsOverridesRetryAndBlacklistPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, fragment := range []string{
-		`"retry_count":4`,
 		`"blacklist_threshold":5`,
 	} {
 		if !strings.Contains(string(encoded), fragment) {
@@ -244,8 +242,72 @@ func TestUpdateGroupSettingsOverridesRetryAndBlacklistPolicies(t *testing.T) {
 		}
 	}
 	view := fixture.manager.Current().Groups[groupID]
-	if view.RetryCount != 4 || view.BlacklistThreshold != 5 {
+	if view.BlacklistThreshold != 5 {
 		t.Fatalf("snapshot group policies = %#v", view)
+	}
+}
+
+// 重试预算只来自系统设置：存量分组里的 retry_count 既不展示、也不因无关更新被改写，再次保存时被丢弃。
+func TestGroupSettingsIgnorePersistedRetryCount(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	group := validControlGroup("legacy-retry-settings")
+	group.Overrides = models.JSON(`{"retry_count":4,"blacklist_threshold":5,"request_timeout":480}`)
+	if err := fixture.db.Create(group).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.manager.Publish(mustBuildCompileInput(t, fixture.db)); err != nil {
+		t.Fatal(err)
+	}
+	assertResponse := func(got GroupSettingsResponse) {
+		t.Helper()
+		encoded, err := json.Marshal(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(encoded), `"retry_count"`) {
+			t.Errorf("group settings still expose retry_count: %s", encoded)
+		}
+		if len(got.Overrides) != 2 || got.Effective.BlacklistThreshold != 5 || got.Effective.RequestTimeout != 480 {
+			t.Errorf("remaining group settings = %#v", got)
+		}
+	}
+	got, err := fixture.service.GetGroupSettings(t.Context(), group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertResponse(got)
+
+	got, err = fixture.service.UpdateGroupSettings(t.Context(), group.ID, GroupSettingsUpdateRequest{
+		Name: optionalField[string]{Set: true, Value: "renamed-legacy-retry"},
+		Params: optionalField[json.RawMessage]{Set: true,
+			Value: json.RawMessage(`{"base_url":"https://renamed-legacy-retry.example/v1"}`)},
+	})
+	if err != nil {
+		t.Fatalf("update unrelated group settings: %v", err)
+	}
+	assertResponse(got)
+	stored, err := loadGroupRow(fixture.db, group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(stored.Overrides), `"retry_count"`) {
+		t.Fatalf("unrelated update kept the retired retry_count: %s", stored.Overrides)
+	}
+
+	got, err = fixture.service.UpdateGroupSettings(t.Context(), group.ID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: got.Overrides},
+	})
+	if err != nil {
+		t.Fatalf("save supported group overrides: %v", err)
+	}
+	assertResponse(got)
+	stored, err = loadGroupRow(fixture.db, group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(stored.Overrides), `"retry_count"`) {
+		t.Fatalf("replaced overrides still contain retry_count: %s", stored.Overrides)
 	}
 }
 

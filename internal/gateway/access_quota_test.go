@@ -16,6 +16,7 @@ import (
 	"gpt-load/internal/accessquota"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/platform/config"
 	"gpt-load/internal/state"
 	"gpt-load/internal/usage"
 )
@@ -341,6 +342,7 @@ func gatewayAccessQuotaCompileInput(
 	rules []accessquota.Rule,
 ) state.CompileInput {
 	return state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
 			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,

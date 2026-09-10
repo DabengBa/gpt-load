@@ -4014,6 +4014,7 @@ func TestSubscriptionExplicit401RetriesSameCredentialWithForcedRefresh(t *testin
 	}}
 	handler, manager, registry := newHandlerForTest(t, forwarder, "placeholder")
 	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
 			ID: 1, Name: "subscription", ChannelID: channel.Codex,
@@ -4081,6 +4082,7 @@ func TestSubscriptionExplicit401ForcesRefreshAtMostOncePerRequest(t *testing.T) 
 	}}
 	handler, manager, registry := newHandlerForTest(t, forwarder, "placeholder")
 	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
 			ID: 1, Name: "subscription", ChannelID: channel.Codex,
@@ -4145,6 +4147,7 @@ func TestSubscriptionExplicit401UsesNewerCredentialVersionFromConcurrentRefresh(
 	}}
 	handler, manager, registry := newHandlerForTest(t, forwarder, "placeholder")
 	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
 			ID: 1, Name: "subscription", ChannelID: channel.Codex,
@@ -4257,6 +4260,7 @@ func assertSubscriptionRefreshFailureRetriesAnotherCredential(
 		{ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "subscription-account-2"},
 	}
 	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
 			{ID: 1, Name: "subscription", ChannelID: channel.Codex,
@@ -4516,7 +4520,7 @@ func TestHandlerRetries401WithAnotherKeyThenReturnsSuccess(t *testing.T) {
 	}
 }
 
-func TestHandlerAppliesSystemAndGroupRetrySettings(t *testing.T) {
+func TestHandlerAppliesSystemRetrySettingsAndIgnoresLegacyGroupOverrides(t *testing.T) {
 	invalid := UpstreamResult{
 		StatusCode: http.StatusUnauthorized, Header: make(http.Header),
 		Body:               []byte(`{"error":"invalid_api_key"}`),
@@ -4537,24 +4541,24 @@ func TestHandlerAppliesSystemAndGroupRetrySettings(t *testing.T) {
 			wantAttempts: 1,
 		},
 		{
-			name: "group attempt budget enables four attempts over disabled system policy",
+			name: "legacy group budget cannot enable attempts over the disabled system budget",
 			systemSettings: config.Settings{
 				state.SettingRetryCount: 0,
 			},
 			groupSettings: config.Settings{
 				state.SettingRetryCount: 4,
 			},
-			wantAttempts: 4,
+			wantAttempts: 1,
 		},
 		{
-			name: "group attempt budget of one overrides system budget",
+			name: "legacy group budget cannot reduce the system budget",
 			systemSettings: config.Settings{
 				state.SettingRetryCount: 4,
 			},
 			groupSettings: config.Settings{
 				state.SettingRetryCount: 1,
 			},
-			wantAttempts: 1,
+			wantAttempts: 4,
 		},
 	}
 	for _, test := range tests {
@@ -4600,7 +4604,7 @@ func TestHandlerAppliesSystemAndGroupRetrySettings(t *testing.T) {
 }
 
 func TestHandlerReturnsLastUpstreamResponseWhenBudgetIsExhausted(t *testing.T) {
-	wantAttempts := state.DefaultRuntimeSettings().RetryCount
+	wantAttempts := testDefaultRetryBudget
 	steps := make([]fakeupstream.Step, 0, wantAttempts)
 	for range wantAttempts - 1 {
 		steps = append(steps, fakeupstream.Step{Status: http.StatusTooManyRequests, Fixture: "openai/429.json"})
@@ -4751,6 +4755,7 @@ func newRealGatewayEngine(t *testing.T, upstreamURL string, upstreamKeys ...stri
 		ChannelRegistry: channel.NewRegistry(),
 		Groups:          groups,
 		Credentials:     credentialConfigs,
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		AccessKeys: []state.AccessKeyConfig{{
 			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"),
 			Status: state.AccessKeyStatusActive,
@@ -4950,6 +4955,10 @@ func newStatsHandlerTestRuntime(
 	return engine, handler, registry, stats
 }
 
+// 生产默认预算是 1 次尝试（不重试）；共享 harness 服务于「首次失败后换候选」的历史用例，
+// 因此固定声明 2 次；要验证别的预算就用带 SystemSettings 的显式入口。
+const testDefaultRetryBudget = 2
+
 func newHandlerForTest(
 	t *testing.T,
 	forwarder AttemptForwarder,
@@ -4989,6 +4998,7 @@ func newHandlerForTestWithStats(
 		ChannelRegistry: channel.NewRegistry(),
 		Groups:          groups,
 		Credentials:     credentialConfigs,
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		AccessKeys: []state.AccessKeyConfig{{
 			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"),
 			Status: state.AccessKeyStatusActive,
@@ -5034,6 +5044,20 @@ func newConvertedFallbackHandlerTestRuntime(
 	groupSettings ...config.Settings,
 ) (*gin.Engine, *state.CredentialRegistry) {
 	t.Helper()
+	return newConvertedFallbackHandlerTestRuntimeWithSystemSettings(
+		t, forwarder,
+		config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
+		groupSettings...,
+	)
+}
+
+func newConvertedFallbackHandlerTestRuntimeWithSystemSettings(
+	t *testing.T,
+	forwarder AttemptForwarder,
+	systemSettings config.Settings,
+	groupSettings ...config.Settings,
+) (*gin.Engine, *state.CredentialRegistry) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	keyService := encryptiontest.Service(t, "handler-conversion-fallback-test-key")
 	channelRegistry := channel.NewRegistry()
@@ -5058,6 +5082,7 @@ func newConvertedFallbackHandlerTestRuntime(
 		{ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "credential-two"},
 	}
 	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  systemSettings,
 		ChannelRegistry: channelRegistry,
 		Groups:          groups,
 		Credentials:     credentials,

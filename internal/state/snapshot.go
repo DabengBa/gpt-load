@@ -138,7 +138,6 @@ type GroupView struct {
 	Timeouts            TimeoutConfig
 	HeaderRules         HeaderRules
 	BufferedStream      bool
-	RetryCount          int
 	BlacklistThreshold  int
 	AffinityEnabled     bool
 	Proxy               outboundproxy.Effective
@@ -231,7 +230,6 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			Timeouts:            resolved.Timeouts,
 			HeaderRules:         resolved.HeaderRules,
 			BufferedStream:      resolved.BufferedStream,
-			RetryCount:          resolved.RetryCount,
 			BlacklistThreshold:  resolved.BlacklistThreshold,
 			AffinityEnabled:     resolved.AffinityEnabled,
 			ConnectionType:      connection.Normalize(group.ConnectionType),

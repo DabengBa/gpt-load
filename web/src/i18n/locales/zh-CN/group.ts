@@ -322,8 +322,6 @@ export default {
         first_byte_timeout: '原生响应 / 流式首事件超时',
         request_timeout: '请求超时',
         stream_idle_timeout: '流空闲超时',
-        retry_count: '最大尝试次数',
-        retryCountHelp: '单次请求允许的上游尝试总次数；0 或 1 表示只尝试一次（不重试），2 表示首次失败后可换一次候选。',
         blacklist_threshold: '连续失败拉黑阈值',
         blacklistThresholdHelp: '凭据达到该连续失败次数后自动拉黑；0 表示关闭自动拉黑。',
         effective: '{value} 秒',

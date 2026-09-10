@@ -15,6 +15,7 @@ import (
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
+	"gpt-load/internal/platform/config"
 	"gpt-load/internal/state"
 	"gpt-load/internal/testutil/encryptiontest"
 )
@@ -49,6 +50,7 @@ func newModelRewriteTestRuntime(
 		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: models, Enabled: true})
 	}
 	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups:          groups,
 		Credentials:     credentialConfigs,
