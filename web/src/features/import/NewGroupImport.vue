@@ -137,16 +137,17 @@ const operationDraft =
   (appendOperation.operation.value?.payload.draft.mode === 'new'
     ? appendOperation.operation.value.payload.draft
     : null)
+const isFreshNewGroup = !operationDraft && !props.initialDraft
 const draft = reactive<ImportDraft>(
   cloneDraft(operationDraft ?? props.initialDraft ?? defaultDraft),
 )
-const baseUrlOverrideEnabled = ref(Boolean(draft.params.base_url?.trim()))
+const baseUrlOverrideEnabled = ref(isFreshNewGroup || Boolean(draft.params.base_url?.trim()))
 const paramTouched = reactive<Record<string, boolean>>({})
 const visibleModelInvalidIndexes = ref<Set<number>>(new Set())
 const revealAllModelErrors = ref(false)
 let nextModelKey = Math.max(0, ...draft.models.map(({ key }) => key)) + 1
 const discoveryCandidates = ref<ModelCandidate[]>([])
-const shouldApplyDefaultChannel = ref(!operationDraft && !props.initialDraft)
+const shouldApplyDefaultChannel = ref(isFreshNewGroup)
 const allChannelsQuery = useQuery(channelsQueryOptions(api, ''))
 const allChannels = computed(() => allChannelsQuery.data.value?.items ?? [])
 const selectedChannelCache = ref<ChannelDto | null>(null)
@@ -707,7 +708,7 @@ watch(
     if (draft.connection_type === connectionType) return
     draft.connection_type = connectionType
     draft.params = initialChannelParams(channel)
-    baseUrlOverrideEnabled.value = false
+    baseUrlOverrideEnabled.value = true
   },
   { immediate: true },
 )
@@ -743,7 +744,7 @@ function selectChannel(channel: ChannelDto): void {
   draft.channel_id = channel.channel_id
   draft.connection_type = channel.connection.type
   draft.params = initialChannelParams(channel)
-  baseUrlOverrideEnabled.value = false
+  baseUrlOverrideEnabled.value = true
   setPanel(undefined)
 }
 
@@ -1278,8 +1279,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section
-        class="new-group-import__step"
-        :data-state="credentialStepState"
+        class="new-group-import__step new-group-import__credentials-step"
         aria-labelledby="import-credentials-step-heading"
       >
         <PanelHeader
@@ -1325,6 +1325,7 @@ onBeforeUnmount(() => {
             :disabled="payloadLocked"
             hide-header
             compact
+            :rows="4"
           />
         </div>
       </section>
@@ -1559,7 +1560,7 @@ onBeforeUnmount(() => {
 }
 
 .new-group-import__step {
-  padding: var(--space-5) 0 var(--space-6);
+  padding: 14px 0 18px;
 }
 
 .new-group-import__step + .new-group-import__step {
@@ -1609,7 +1610,20 @@ onBeforeUnmount(() => {
 }
 
 .new-group-import__step-body {
-  margin: var(--space-4) 0 0 34px;
+  margin: 12px 0 0 34px;
+}
+
+.new-group-import__credentials-step :deep(.credential-entry textarea) {
+  min-height: 96px;
+}
+
+.new-group-import__credentials-step :deep(.credential-entry__counters) {
+  min-height: 24px;
+  margin-top: 10px;
+}
+
+.new-group-import__credentials-step :deep(.credential-entry__note) {
+  margin-top: 12px;
 }
 
 .new-group-import__requirement {
@@ -1737,7 +1751,7 @@ onBeforeUnmount(() => {
 }
 
 .new-group-import :deep(.sticky-save-bar--ledger) {
-  margin-top: var(--space-5);
+  margin-top: 12px;
 }
 
 .new-group-import :deep(.sticky-save-bar--ledger .sticky-save-bar__actions) {

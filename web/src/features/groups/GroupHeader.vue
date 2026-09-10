@@ -55,6 +55,7 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
           />
           <span>{{ channelName }}</span>
         </span>
+        <div id="group-header-actions" class="group-header__actions-target" />
         <CopyChip
           v-if="group.params.base_url"
           :value="group.params.base_url"
@@ -84,12 +85,17 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
   color: var(--color-action);
 }
 .group-header__body {
+  display: grid;
   min-width: 0;
-  padding: var(--space-2) 0 22px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-5);
+  padding: var(--space-2) 0 16px;
 }
 .group-header__topline {
   display: flex;
   min-width: 0;
+  grid-column: 1;
   align-items: center;
 }
 .group-header__title {
@@ -115,17 +121,30 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
 .group-header__details {
   display: flex;
   min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 7px 12px;
-  margin-top: 13px;
+  margin-top: 0;
+}
+.group-header__actions-target {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+}
+.group-header__actions-target :deep(.group-settings__switch-row) {
+  min-height: 20px;
+  gap: 0;
+  padding: 0;
+}
+.group-header__actions-target :deep(.group-settings__switch-copy) {
+  display: none;
 }
 .group-header .meta-tag {
   display: inline-flex;
   min-height: 24px;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--color-border-subtle);
   background: var(--color-surface-sunken);
   padding: 3px 7px;
   font-size: var(--text-label-xs);
@@ -140,7 +159,16 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
   padding: 3px 5px;
   font-size: var(--text-sm);
 }
-@media (max-width: 800px) {
+@media (max-width: 860px) {
+  .group-header__body {
+    display: block;
+  }
+
+  .group-header__details {
+    justify-content: flex-start;
+    margin-top: 10px;
+  }
+
   .group-header h1 {
     font-size: 27px;
   }
@@ -162,8 +190,9 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
     font-size: 25px;
   }
   .group-header__details {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    row-gap: 8px;
   }
   .group-header__details :deep(.copy-chip-wrap) {
     width: 100%;

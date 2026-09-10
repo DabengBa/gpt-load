@@ -84,7 +84,7 @@ func DefaultRuntimeSettings() RuntimeSettings {
 		HeaderRules:              HeaderRules{Set: map[string]string{}},
 		CORS:                     defaultCORSConfig(),
 		ResponseHeaderRules:      HeaderRules{Set: map[string]string{}},
-		RetryCount:               2,
+		RetryCount:               1,
 		RouteStrategy:            RouteStrategyNativeFirst,
 		BlacklistThreshold:       3,
 		AffinityEnabled:          true,

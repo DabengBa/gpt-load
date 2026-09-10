@@ -138,9 +138,9 @@ function updateMode(mode: string): void {
 </script>
 
 <template>
-  <PageFrame aria-labelledby="import-page-title">
+  <PageFrame wide aria-labelledby="import-page-title">
     <LedgerSheet class="import-page">
-      <PageHeader id="import-page-title" :title="t('import.title')">
+      <PageHeader id="import-page-title" appearance="ledger" :title="t('import.title')">
         <template #actions>
           <SegmentedControl
             :model-value="activeMode"
@@ -159,7 +159,8 @@ function updateMode(mode: string): void {
 
 <style scoped>
 .import-page {
-  min-height: calc(100vh - 143px);
+  min-height: 0;
+  padding-bottom: var(--space-3);
 }
 
 @media (max-width: 680px) {

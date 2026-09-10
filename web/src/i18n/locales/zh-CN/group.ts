@@ -368,9 +368,6 @@ export default {
       },
     },
     unified: {
-      credentialsTitle: '凭据',
-      credentialsSummary: '凭据健康和授权状态',
-      manageCredentials: '管理',
       noCredentials: '尚未配置凭据',
     },
     credentials: {

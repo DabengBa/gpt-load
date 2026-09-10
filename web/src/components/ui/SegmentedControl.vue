@@ -15,12 +15,14 @@ withDefaults(
     controlsId?: string
     idPrefix?: string
     scrollable?: boolean
+    disabled?: boolean
     appearance?: 'joined' | 'pills' | 'drawer'
     size?: 'xs' | 'sm' | 'compact' | 'touch'
   }>(),
   {
     controlsId: undefined,
     idPrefix: undefined,
+    disabled: false,
     appearance: 'joined',
     size: 'compact',
   },
@@ -63,7 +65,9 @@ function handleSegmentKeydown(event: KeyboardEvent): void {
     :model-value="modelValue"
     orientation="horizontal"
     activation-mode="manual"
-    @update:model-value="(value) => typeof value === 'string' && emit('update:modelValue', value)"
+    @update:model-value="
+      (value) => !disabled && typeof value === 'string' && emit('update:modelValue', value)
+    "
   >
     <TabsList
       class="segmented-control__list"
@@ -80,7 +84,7 @@ function handleSegmentKeydown(event: KeyboardEvent): void {
         :key="option.value"
         class="segmented-control__trigger"
         :value="option.value"
-        :disabled="option.disabled"
+        :disabled="disabled || option.disabled"
         :aria-controls="controlsId"
         :data-segment-value="option.value"
         @keydown="handleSegmentKeydown"

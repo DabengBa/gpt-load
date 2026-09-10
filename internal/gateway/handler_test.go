@@ -4600,11 +4600,13 @@ func TestHandlerAppliesSystemAndGroupRetrySettings(t *testing.T) {
 }
 
 func TestHandlerReturnsLastUpstreamResponseWhenBudgetIsExhausted(t *testing.T) {
-	upstream := fakeupstream.New(
-		fakeupstream.Step{Status: http.StatusUnauthorized, Fixture: "openai/401.json"},
-		fakeupstream.Step{Status: http.StatusTooManyRequests, Fixture: "openai/429.json"},
-		fakeupstream.Step{Status: http.StatusInternalServerError, Fixture: "openai/500.json"},
-	)
+	wantAttempts := state.DefaultRuntimeSettings().RetryCount + 1
+	steps := make([]fakeupstream.Step, 0, wantAttempts)
+	for range wantAttempts - 1 {
+		steps = append(steps, fakeupstream.Step{Status: http.StatusTooManyRequests, Fixture: "openai/429.json"})
+	}
+	steps = append(steps, fakeupstream.Step{Status: http.StatusInternalServerError, Fixture: "openai/500.json"})
+	upstream := fakeupstream.New(steps...)
 	defer upstream.Close()
 
 	engine := newRealGatewayEngine(t, upstream.URL, "sk-one", "sk-two", "sk-three", "sk-unused")
@@ -4613,7 +4615,6 @@ func TestHandlerReturnsLastUpstreamResponseWhenBudgetIsExhausted(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
 
-	wantAttempts := state.DefaultRuntimeSettings().RetryCount + 1
 	if recorder.Code != http.StatusInternalServerError || len(upstream.Requests()) != wantAttempts {
 		t.Fatalf("response/attempts = %d/%d, want 500/%d", recorder.Code, len(upstream.Requests()), wantAttempts)
 	}

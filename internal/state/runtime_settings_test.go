@@ -54,7 +54,7 @@ func TestCompilePublishesDefaultRuntimeSettingsWithoutGroups(t *testing.T) {
 			MaxAgeSeconds:  600,
 		},
 		ResponseHeaderRules:      HeaderRules{Set: map[string]string{}},
-		RetryCount:               2,
+		RetryCount:               1,
 		RouteStrategy:            RouteStrategyNativeFirst,
 		BlacklistThreshold:       3,
 		AffinityEnabled:          true,
@@ -264,6 +264,50 @@ func TestRetryAndBlacklistCountsArePublicAndResolveByGroupPrecedence(t *testing.
 	}
 	if resolved.RetryCount != 4 || resolved.BlacklistThreshold != 5 {
 		t.Fatalf("group policies = %#v", resolved)
+	}
+}
+
+func TestRetryCountDefaultsToOneAndPreservesExplicitOverrides(t *testing.T) {
+	defaults, err := ResolveRuntimeSettings(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.RetryCount != 1 {
+		t.Fatalf("default RetryCount = %d, want 1", defaults.RetryCount)
+	}
+
+	for _, value := range []json.Number{"0", "7"} {
+		global, err := ResolveRuntimeSettings(config.Settings{SettingRetryCount: value})
+		if err != nil {
+			t.Fatalf("ResolveRuntimeSettings(%s) error = %v", value, err)
+		}
+		want := int(value[0] - '0')
+		if global.RetryCount != want {
+			t.Fatalf("global RetryCount = %d, want %d for %s", global.RetryCount, want, value)
+		}
+	}
+
+	group, err := ResolveGroupRuntimeSettings(
+		defaults,
+		config.Settings{SettingRetryCount: json.Number("0")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if group.RetryCount != 0 {
+		t.Fatalf("group RetryCount = %d, want explicit 0", group.RetryCount)
+	}
+
+	global, err := ResolveRuntimeSettings(config.Settings{SettingRetryCount: json.Number("7")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inherited, err := ResolveGroupRuntimeSettings(global, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inherited.RetryCount != 7 {
+		t.Fatalf("inherited group RetryCount = %d, want 7", inherited.RetryCount)
 	}
 }
 

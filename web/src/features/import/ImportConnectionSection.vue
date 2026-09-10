@@ -284,14 +284,14 @@ function baseURLVersionWarning(key: string): string | undefined {
 <style scoped>
 .import-connection {
   min-width: 0;
-  margin-top: var(--space-5);
+  margin-top: 12px;
 }
 
 .import-connection__fields {
   display: grid;
   grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
   align-items: start;
-  gap: 18px;
+  gap: 10px 14px;
 }
 
 .import-connection__name,
@@ -304,12 +304,15 @@ function baseURLVersionWarning(key: string): string | undefined {
 .import-connection__params {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  gap: var(--space-4);
+  gap: 10px 14px;
 }
 
-.import-connection__multiplier,
+.import-connection__multiplier {
+  grid-column: 1;
+}
+
 .import-connection__proxy {
-  grid-column: 1 / -1;
+  grid-column: 2;
 }
 
 .import-connection__multiplier input {
@@ -347,6 +350,11 @@ function baseURLVersionWarning(key: string): string | undefined {
 @media (max-width: 860px) {
   .import-connection__fields {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-connection__multiplier,
+  .import-connection__proxy {
+    grid-column: auto;
   }
 
   .import-connection__switch-row {

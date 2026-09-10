@@ -26,10 +26,11 @@ const props = withDefaults(
     error: string
     labels: ModelDiscoveryDrawerLabels
     dismissible?: boolean
+    blocked?: boolean
     search?: string
     filter?: DiscoveryFilter
   }>(),
-  { dismissible: true, search: undefined, filter: undefined },
+  { dismissible: true, blocked: false, search: undefined, filter: undefined },
 )
 const emit = defineEmits<{
   'update:open': [open: boolean]
@@ -149,7 +150,7 @@ function toggleVisibleCandidates(): void {
 }
 
 function confirm(): void {
-  if (!selectedCandidates.value.length || props.loading) return
+  if (props.blocked || !selectedCandidates.value.length || props.loading) return
   const selectedIDs = new Set(selectedCandidates.value)
   emit(
     'confirm',
@@ -176,12 +177,14 @@ function confirm(): void {
         :label="labels.search"
         :placeholder="labels.search"
         :clear-label="labels.clearSearch"
+        :disabled="blocked"
       />
       <SegmentedControl
         :model-value="filterValue"
         :label="labels.filterLabel"
         :options="filterOptions"
         appearance="drawer"
+        :disabled="blocked"
         @update:model-value="setFilter"
       />
     </template>
@@ -202,7 +205,7 @@ function confirm(): void {
         <InlineFeedback tone="danger">
           {{ error }}
           <template #action>
-            <AppButton variant="link" size="inline" @click="emit('retry')">
+            <AppButton variant="link" size="inline" :disabled="blocked" @click="emit('retry')">
               <RefreshCw :size="15" aria-hidden="true" />{{ labels.retry }}
             </AppButton>
           </template>
@@ -220,7 +223,7 @@ function confirm(): void {
             <input
               type="checkbox"
               :checked="currentIds.has(candidate.id) || selected.has(candidate.id)"
-              :disabled="currentIds.has(candidate.id)"
+              :disabled="blocked || currentIds.has(candidate.id)"
               :title="currentIds.has(candidate.id) ? labels.alreadyAdded : undefined"
               @change="setCandidate(candidate, ($event.target as HTMLInputElement).checked)"
             />
@@ -273,7 +276,7 @@ function confirm(): void {
           <AppButton
             variant="secondary"
             size="compact"
-            :disabled="loading || !selectableVisibleCandidates.length"
+            :disabled="blocked || loading || !selectableVisibleCandidates.length"
             @click="toggleVisibleCandidates"
           >
             {{ allVisibleSelected ? labels.deselectAll : labels.selectAll }}
@@ -285,14 +288,14 @@ function confirm(): void {
           <AppButton
             variant="secondary"
             size="compact"
-            :disabled="loading"
+            :disabled="blocked || loading"
             @click="emit('update:open', false)"
           >
             {{ labels.cancel }}
           </AppButton>
           <AppButton
             size="compact"
-            :disabled="loading || !selectedCandidates.length"
+            :disabled="blocked || loading || !selectedCandidates.length"
             @click="confirm"
           >
             {{ labels.confirm }}
