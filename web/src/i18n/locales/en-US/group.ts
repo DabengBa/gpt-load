@@ -381,9 +381,6 @@ export default {
       },
     },
     unified: {
-      credentialsTitle: 'Credentials',
-      credentialsSummary: 'Credential health and authorization state',
-      manageCredentials: 'Manage',
       noCredentials: 'No credentials configured',
     },
     credentials: {

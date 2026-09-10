@@ -12,8 +12,6 @@ import {
 } from '@/app/route-query'
 
 export type GroupTab = 'credentials' | 'models' | 'settings'
-export type GroupSettingsSection =
-  'general' | 'routing' | 'runtime' | 'parameters' | 'headers' | 'danger'
 export type GroupModelDiscoveryFilter = 'unadded' | 'all'
 
 export interface CredentialRouteState {
@@ -21,14 +19,9 @@ export interface CredentialRouteState {
 }
 
 export interface GroupModelsRouteState {
-  search?: string
   discoveryOpen: boolean
   discoverySearch?: string
   discoveryFilter: GroupModelDiscoveryFilter
-}
-
-export interface GroupSettingsRouteState {
-  section: GroupSettingsSection
 }
 
 const credentialStatuses = new Set<CredentialStatus>([
@@ -38,14 +31,6 @@ const credentialStatuses = new Set<CredentialStatus>([
   'disabled',
 ])
 const credentialPageSizes = new Set<CredentialCollectionFilters['page_size']>([20, 50, 100])
-const settingsSections = new Set<GroupSettingsSection>([
-  'general',
-  'routing',
-  'runtime',
-  'parameters',
-  'headers',
-  'danger',
-])
 
 export function parsePositiveId(raw: unknown): number | undefined {
   if (typeof raw !== 'string' || !/^\d+$/u.test(raw)) return undefined
@@ -114,7 +99,6 @@ export function isCanonicalCredentialRouteQuery(
 export function parseGroupModelsRouteQuery(query: LocationQuery): GroupModelsRouteState {
   const discoveryOpen = scalarRouteQuery(query.panel) === 'discovery'
   return {
-    search: normalizeCollectionSearch(scalarRouteQuery(query.q)),
     discoveryOpen,
     discoverySearch: discoveryOpen
       ? normalizeCollectionSearch(scalarRouteQuery(query.discovery_q))
@@ -126,30 +110,12 @@ export function parseGroupModelsRouteQuery(query: LocationQuery): GroupModelsRou
 
 export function serializeGroupModelsRouteQuery(state: GroupModelsRouteState): LocationQueryRaw {
   const query: LocationQueryRaw = { tab: 'models' }
-  const search = normalizeCollectionSearch(state.search)
-  if (search !== undefined) query.q = search
   if (state.discoveryOpen) {
     query.panel = 'discovery'
     const discoverySearch = normalizeCollectionSearch(state.discoverySearch)
     if (discoverySearch !== undefined) query.discovery_q = discoverySearch
     if (state.discoveryFilter === 'all') query.discovery_filter = 'all'
   }
-  return query
-}
-
-export function parseGroupSettingsRouteQuery(query: LocationQuery): GroupSettingsRouteState {
-  const rawSection = scalarRouteQuery(query.section)
-  return {
-    section:
-      rawSection !== undefined && settingsSections.has(rawSection as GroupSettingsSection)
-        ? (rawSection as GroupSettingsSection)
-        : 'general',
-  }
-}
-
-export function serializeGroupSettingsRouteQuery(state: GroupSettingsRouteState): LocationQueryRaw {
-  const query: LocationQueryRaw = { tab: 'settings' }
-  if (state.section !== 'general') query.section = state.section
   return query
 }
 
@@ -162,5 +128,5 @@ export function normalizeGroupQuery(query: LocationQuery): LocationQueryRaw {
     )
   }
   if (tab === 'models') return serializeGroupModelsRouteQuery(parseGroupModelsRouteQuery(query))
-  return serializeGroupSettingsRouteQuery(parseGroupSettingsRouteQuery(query))
+  return { tab: 'settings' }
 }

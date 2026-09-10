@@ -63,9 +63,26 @@ import {
 } from '../group-route'
 
 const props = withDefaults(
-  defineProps<{ groupId: number; channelId: string; readonlyRouteFields?: boolean }>(),
-  { readonlyRouteFields: false },
+  defineProps<{
+    groupId: number
+    channelId: string
+    readonlyRouteFields?: boolean
+    unified?: boolean
+    blocked?: boolean
+  }>(),
+  { readonlyRouteFields: false, unified: false, blocked: false },
 )
+const emit = defineEmits<{
+  state: [
+    state: {
+      dirty: boolean
+      pending: boolean
+      error: string
+      saved: boolean
+      invalidRowCount: number
+    },
+  ]
+}>()
 const client = useApiClient()
 const queryClient = useQueryClient()
 const route = useRoute()
@@ -157,11 +174,26 @@ const dirty = computed(
     draft.value.some((item) => item.editable_id && !item.id.trim()),
 )
 const savePending = computed(() => pending.value === 'save' || pending.value === 'sync')
+const operationBlocked = computed(() => pending.value !== null || props.blocked)
+
+watch(
+  [dirty, operationBlocked, saveBarError, savedFeedback],
+  ([isDirty, isPending, currentError, saved]) => {
+    emit('state', {
+      dirty: isDirty,
+      pending: isPending,
+      error: currentError,
+      saved,
+      invalidRowCount: invalidRowCount.value,
+    })
+  },
+  { immediate: true },
+)
 const empty = computed(() => normalizedModels(draft.value).length === 0)
 const canSave = computed(
   () =>
     dirty.value &&
-    pending.value === null &&
+    !operationBlocked.value &&
     conflicts.value.length === 0 &&
     emptyIDIndexes.value.size === 0 &&
     emptyAliasIndexes.value.size === 0 &&
@@ -184,7 +216,7 @@ const syncChangeCount = computed(() => {
   const removals = syncMode.value === 'add' ? 0 : syncDiff.value.removals.length
   return additions + removals
 })
-const syncDisabled = computed(() => !discoveryReady.value || dirty.value || pending.value !== null)
+const syncDisabled = computed(() => !discoveryReady.value || dirty.value || operationBlocked.value)
 const syncDisabledReason = computed(() =>
   dirty.value ? t('group.modelEditor.sync.dirty') : undefined,
 )
@@ -252,12 +284,15 @@ const discoveryDrawerLabels = computed<ModelDiscoveryDrawerLabels>(() => ({
   },
 }))
 useUnsavedChanges(dirty, {
-  blocked: computed(() => pending.value !== null),
-  allowRouteUpdate: (to, from) =>
-    to.name === from.name &&
-    String(to.params.id) === String(from.params.id) &&
-    normalizeGroupTab(to.query.tab) === 'models' &&
-    normalizeGroupTab(from.query.tab) === 'models',
+  blocked: operationBlocked,
+  allowRouteUpdate: (to, from) => {
+    const sameGroup = to.name === from.name && String(to.params.id) === String(from.params.id)
+    if (!sameGroup) return false
+    if (props.unified) return to.query.tab !== 'credentials'
+    return (
+      normalizeGroupTab(to.query.tab) === 'models' && normalizeGroupTab(from.query.tab) === 'models'
+    )
+  },
 })
 
 watch(dirty, (isDirty) => {
@@ -274,17 +309,22 @@ watch(
   },
 )
 
+function hydrateModels(models: GroupModelsDto | undefined): void {
+  if (!models || dirty.value || operationBlocked.value) return
+  const next = createModelDraft(models.items).map((item) => ({ ...item, key: nextKey++ }))
+  saved.value = next
+  draft.value = next.map((item) => ({ ...item, sources: [...item.sources] }))
+  serverConflicts.value = []
+  saveError.value = ''
+}
+
+watch(() => query.data.value, hydrateModels, { immediate: true })
+
 watch(
-  () => query.data.value,
-  (models) => {
-    if (!models || dirty.value || pending.value) return
-    const next = createModelDraft(models.items).map((item) => ({ ...item, key: nextKey++ }))
-    saved.value = next
-    draft.value = next.map((item) => ({ ...item, sources: [...item.sources] }))
-    serverConflicts.value = []
-    saveError.value = ''
+  () => props.blocked,
+  (blocked, wasBlocked) => {
+    if (wasBlocked && !blocked) hydrateModels(query.data.value)
   },
-  { immediate: true },
 )
 
 watch(
@@ -294,7 +334,7 @@ watch(
       if (pending.value === 'discover') controller?.abort()
       return
     }
-    if (supported && models && pending.value === null && !discoveryReady.value) void runDiscovery()
+    if (supported && models && !operationBlocked.value && !discoveryReady.value) void runDiscovery()
   },
   { immediate: true },
 )
@@ -308,19 +348,18 @@ function updateRoute(patch: Partial<GroupModelsRouteState>, replace = false): vo
   navigateRoute({ ...routeState.value, ...patch }, replace)
 }
 
-function setModelSearch(value: string): void {
-  updateRoute({ search: constrainCollectionSearch(value) }, true)
-}
-
 function setDiscoverySearch(value: string): void {
+  if (operationBlocked.value) return
   updateRoute({ discoverySearch: constrainCollectionSearch(value) }, true)
 }
 
 function setDiscoveryFilter(value: 'unadded' | 'all'): void {
+  if (operationBlocked.value) return
   updateRoute({ discoveryFilter: value })
 }
 
 function setDiscoveryOpen(open: boolean): void {
+  if (operationBlocked.value) return
   updateRoute(
     open
       ? { discoveryOpen: true }
@@ -333,6 +372,7 @@ function setDiscoveryOpen(open: boolean): void {
 }
 
 function updateModels(models: ModelDraftItem[]): void {
+  if (operationBlocked.value) return
   serverConflicts.value = []
   saveError.value = ''
   const previousByKey = new Map(draft.value.map((item) => [item.key, item] as const))
@@ -372,7 +412,7 @@ function addManual(): void {
 }
 
 function requestDiscovery(): void {
-  if (!supportsModelDiscovery.value || pending.value) return
+  if (!supportsModelDiscovery.value || operationBlocked.value) return
   candidates.value = []
   discoveryReady.value = false
   discoveryError.value = ''
@@ -381,7 +421,7 @@ function requestDiscovery(): void {
 }
 
 async function runDiscovery(): Promise<void> {
-  if (!supportsModelDiscovery.value || pending.value !== null) return
+  if (!supportsModelDiscovery.value || operationBlocked.value) return
   controller?.abort()
   discoveryReady.value = false
   const active = new AbortController()
@@ -389,7 +429,7 @@ async function runDiscovery(): Promise<void> {
   pending.value = 'discover'
   try {
     const result = await discoverGroupModels(client, props.groupId, active.signal)
-    if (controller !== active) return
+    if (controller !== active || props.blocked) return
     candidates.value = result.models
     draft.value = mergeCandidateMetadata(draft.value, result.models)
     discoveryReady.value = true
@@ -409,6 +449,7 @@ async function runDiscovery(): Promise<void> {
 }
 
 function confirmCandidates(selectedCandidates: ModelCandidate[]): void {
+  if (operationBlocked.value) return
   draft.value = appendSelectedCandidates(draft.value, selectedCandidates, (candidate) => ({
     id: candidate.id,
     name: candidate.name,
@@ -452,7 +493,7 @@ function acceptSavedModels(result: GroupModelsDto): void {
 }
 
 async function confirmSync(): Promise<void> {
-  if (pending.value !== null || syncChangeCount.value === 0 || syncConflicts.value.length) return
+  if (operationBlocked.value || syncChangeCount.value === 0 || syncConflicts.value.length) return
   const active = new AbortController()
   const models = syncRequestModels.value
   controller = active
@@ -466,7 +507,7 @@ async function confirmSync(): Promise<void> {
       { models },
       active.signal,
     )
-    if (controller !== active) return
+    if (controller !== active || props.blocked) return
     acceptSavedModels(result)
     discoveryReady.value = false
     syncDialogOpen.value = false
@@ -485,7 +526,7 @@ async function confirmSync(): Promise<void> {
 }
 
 function requestSave(): void {
-  if (!canSave.value) return
+  if (operationBlocked.value || !canSave.value) return
   if (empty.value) {
     emptyConfirmOpen.value = true
     return
@@ -494,7 +535,7 @@ function requestSave(): void {
 }
 
 async function save(): Promise<void> {
-  if (!canSave.value) return
+  if (operationBlocked.value || !canSave.value) return
   const active = new AbortController()
   controller = active
   pending.value = 'save'
@@ -510,7 +551,7 @@ async function save(): Promise<void> {
       },
       active.signal,
     )
-    if (controller !== active) return
+    if (controller !== active || props.blocked) return
     acceptSavedModels(result)
     emptyConfirmOpen.value = false
     await invalidateGroupModelDependents(queryClient, props.groupId)
@@ -540,11 +581,18 @@ async function save(): Promise<void> {
 }
 
 function discard(): void {
+  if (operationBlocked.value) return
   clearSavedFeedback()
   serverConflicts.value = []
   saveError.value = ''
   draft.value = saved.value.map((item) => ({ ...item, sources: [...item.sources] }))
 }
+
+async function focusFirstInvalid(): Promise<void> {
+  await modelEditor.value?.focusFirstInvalid()
+}
+
+defineExpose({ requestSave, discard, focusFirstInvalid })
 
 onBeforeUnmount(() => {
   controller?.abort()
@@ -559,12 +607,12 @@ onBeforeUnmount(() => {
           v-if="supportsModelDiscovery"
           variant="secondary"
           :busy="pending === 'discover'"
-          :disabled="!query.data.value || pending !== null"
+          :disabled="!query.data.value || operationBlocked"
           @click="requestDiscovery"
         >
           <RefreshCw :size="16" aria-hidden="true" />{{ t('group.modelEditor.discover') }}
         </AppButton>
-        <AppButton :disabled="!query.data.value || pending !== null" @click="addManual">
+        <AppButton :disabled="!query.data.value || operationBlocked" @click="addManual">
           <Plus :size="16" aria-hidden="true" />{{ t('group.modelEditor.add') }}
         </AppButton>
       </template>
@@ -598,11 +646,10 @@ onBeforeUnmount(() => {
         :conflicts="conflicts"
         :labels="aliasEditorLabels"
         :create-row="createManualRow"
-        :disabled="pending !== null"
+        :disabled="operationBlocked"
+        :searchable="false"
         :readonly-route-fields="readonlyRouteFields"
-        :search="routeState.search ?? ''"
         @update:model-value="updateModels"
-        @update:search="setModelSearch"
       >
         <template #third-column="{ item }">
           <div class="group-models__pricing-cell">
@@ -634,7 +681,8 @@ onBeforeUnmount(() => {
         :loading="pending === 'discover'"
         :error="discoveryError"
         :labels="discoveryDrawerLabels"
-        :dismissible="pending === null"
+        :dismissible="!operationBlocked"
+        :blocked="operationBlocked"
         :search="routeState.discoverySearch ?? ''"
         :filter="routeState.discoveryFilter"
         @update:open="setDiscoveryOpen"
@@ -684,6 +732,7 @@ onBeforeUnmount(() => {
       />
 
       <StickySaveBar
+        v-if="!unified"
         appearance="ledger"
         error-placement="floating"
         always-visible

@@ -380,9 +380,6 @@ export default {
       },
     },
     unified: {
-      credentialsTitle: '認証情報',
-      credentialsSummary: '認証情報の状態と認可状態',
-      manageCredentials: '管理',
       noCredentials: '認証情報が設定されていません',
     },
     credentials: {

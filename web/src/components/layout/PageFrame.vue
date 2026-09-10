@@ -3,16 +3,22 @@ withDefaults(
   defineProps<{
     as?: 'div' | 'main' | 'section'
     centered?: boolean
+    wide?: boolean
   }>(),
   {
     as: 'div',
     centered: false,
+    wide: false,
   },
 )
 </script>
 
 <template>
-  <component :is="as" class="page-frame" :class="{ 'page-frame--centered': centered }">
+  <component
+    :is="as"
+    class="page-frame"
+    :class="{ 'page-frame--centered': centered, 'page-frame--wide': wide }"
+  >
     <div class="page-frame__inner">
       <slot />
     </div>
@@ -23,6 +29,10 @@ withDefaults(
 .page-frame {
   width: 100%;
   padding: var(--stage-padding-top) var(--stage-padding-inline) var(--stage-padding-bottom);
+}
+
+.page-frame--wide .page-frame__inner {
+  width: min(100%, 1240px);
 }
 
 .page-frame--centered {

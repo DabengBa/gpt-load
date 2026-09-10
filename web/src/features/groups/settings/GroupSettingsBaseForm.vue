@@ -7,21 +7,27 @@ import type { ChannelFieldDto } from '@/app/resources/channels'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import { isValidPriceMultiplier } from '@/lib/price-multiplier'
 
-const props = defineProps<{
-  section: 'general' | 'routing'
-  channelId: string
-  paramFields: ChannelFieldDto[]
-  params: ChannelParamsDto
-  name: string
-  validationModel: string | null
-  models: GroupModelItemDto[]
-  priceMultiplier: string
-  enabled: boolean
-  pending: boolean
-  paramsDisabled?: boolean
-  nameError: string
-  paramErrors: Record<string, string>
-}>()
+const props = withDefaults(
+  defineProps<{
+    section: 'general' | 'routing'
+    channelId: string
+    paramFields: ChannelFieldDto[]
+    params: ChannelParamsDto
+    name: string
+    validationModel: string | null
+    models: GroupModelItemDto[]
+    priceMultiplier: string
+    enabled: boolean
+    pending: boolean
+    paramsDisabled?: boolean
+    nameError: string
+    paramErrors: Record<string, string>
+    showTitle?: boolean
+    showDescription?: boolean
+    unified?: boolean
+  }>(),
+  { showTitle: true, showDescription: true, unified: false },
+)
 const emit = defineEmits<{
   'update:param': [key: string, value: string | null]
   'update:name': [value: string]
@@ -37,12 +43,12 @@ const validationModelOptions = computed(() =>
     .map(({ id, alias, alias_enabled }) => ({ id, alias: alias_enabled ? alias : '' }))
     .sort((left, right) => left.id.localeCompare(right.id)),
 )
-const baseUrlOverrideEnabled = ref(false)
+const baseUrlOverrideEnabled = ref(true)
 
 watch(
   () => props.channelId,
   () => {
-    baseUrlOverrideEnabled.value = Boolean(props.params.base_url?.trim())
+    baseUrlOverrideEnabled.value = true
   },
   { immediate: true },
 )
@@ -91,9 +97,9 @@ function parameterHelp(field: ChannelFieldDto): string {
 
 <template>
   <section v-if="section === 'general'" id="settings-general" class="group-settings__section">
-    <header class="group-settings__section-heading">
-      <h3>{{ t('group.settings.sections.general') }}</h3>
-      <p>{{ t('group.settings.base.description') }}</p>
+    <header v-if="showTitle || showDescription" class="group-settings__section-heading">
+      <h3 v-if="showTitle">{{ t('group.settings.sections.general') }}</h3>
+      <p v-if="showDescription">{{ t('group.settings.base.description') }}</p>
     </header>
     <div class="group-settings__grid">
       <label class="group-settings__field">
@@ -143,7 +149,10 @@ function parameterHelp(field: ChannelFieldDto): string {
         <small v-else>{{ t('common.priceMultiplier.groupHelp') }}</small>
       </label>
       <template v-for="field in paramFields" :key="field.key">
-        <div v-if="isOptionalBaseURL(field)" class="group-settings__field group-settings__wide">
+        <div
+          v-if="isOptionalBaseURL(field)"
+          class="group-settings__field group-settings__base-url-toggle"
+        >
           <span>{{ t('group.settings.base.customUrl') }}</span>
           <div class="group-settings__base-url-switch">
             <small>{{ t('group.settings.base.customUrlHelp') }}</small>
@@ -157,7 +166,10 @@ function parameterHelp(field: ChannelFieldDto): string {
         </div>
         <label
           v-if="!isOptionalBaseURL(field) || baseUrlOverrideEnabled"
-          class="group-settings__field group-settings__wide"
+          class="group-settings__field"
+          :class="
+            isOptionalBaseURL(field) ? 'group-settings__base-url-input' : 'group-settings__wide'
+          "
         >
           <span>{{
             field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label
@@ -175,18 +187,20 @@ function parameterHelp(field: ChannelFieldDto): string {
           <small v-else-if="field.input_kind === 'url'">{{ parameterHelp(field) }}</small>
         </label>
       </template>
-    </div>
-    <div class="group-settings__switch-row">
-      <span class="group-settings__switch-copy">
-        <strong>{{ t('group.settings.base.enabled') }}</strong>
-        <small>{{ t('group.settings.base.enabledHelp') }}</small>
-      </span>
-      <AppSwitch
-        :model-value="enabled"
-        :disabled="pending"
-        :label="t('group.settings.base.enabled')"
-        @update:model-value="emit('update:enabled', $event)"
-      />
+      <Teleport :disabled="!unified" defer to="#group-header-actions">
+        <div class="group-settings__switch-row">
+          <span class="group-settings__switch-copy">
+            <strong>{{ t('group.settings.base.enabled') }}</strong>
+            <small>{{ t('group.settings.base.enabledHelp') }}</small>
+          </span>
+          <AppSwitch
+            :model-value="enabled"
+            :disabled="pending"
+            :label="t('group.settings.base.enabled')"
+            @update:model-value="emit('update:enabled', $event)"
+          />
+        </div>
+      </Teleport>
     </div>
   </section>
 </template>
@@ -230,6 +244,10 @@ function parameterHelp(field: ChannelFieldDto): string {
 
 .group-settings__wide {
   grid-column: 1 / -1;
+}
+
+.group-settings__base-url-input {
+  grid-column: auto;
 }
 
 .group-settings__field {
