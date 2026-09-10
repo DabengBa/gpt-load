@@ -1,189 +1,338 @@
-# Main Ahead L3 专题分析
+# Main Ahead 提交评估（#606–#619）
+
+- 最新提交（评估基线）：`d0f75e97c6340d7793d9170f9ad1007c6bcc5350`（`Merge pull request #28 from DabengBa/plan/main-ahead-integration`）
+- 生成时间：`2026-09-11T05:44:00+08:00`（本文件自身的提交哈希不写入本文，避免自引用）
 
 ## 基线
 
-- 分析分支：`plan/main-ahead-integration`
-- 当前基线：`dev@93942d5ebd78203d6ffe8a813d9b86b6968aca46`
-- 对比目标：`upstream/main@f091528bdbc3ea3cd9ba8130f3927c4dd73c83f8`（`feat(gateway): 接入原生 Responses WebSocket 与逐轮治理 (#616)`）
-- 本地 `main` 跟踪 `upstream/main`，是本仓对上游的镜像；`origin/main` 当前落后上游 1 个提交（`0c9d1888`），需要时用 `git push origin main` 快进。
-- `git rev-list --left-right --count dev...upstream/main`：`86 23`
-  - `dev` 独有 86 个提交
-  - 上游独有 23 个提交
+- 分析分支：`dev`
+- 当前基线：`dev@d0f75e97c6340d7793d9170f9ad1007c6bcc5350`
+- 对比目标：`upstream/main@abc6483d0ed081e305859d88eba41c81b6efd1d8`（`fix(codex): 升级 CPA 并固定上游版本声明 (#619)`）
+- 本地 `main`、`origin/main`、`upstream/main` 三者已对齐（同为 `abc6483d`），`main` 是上游镜像。
+- `git rev-list --left-right --count dev...upstream/main`：`91 24`
+  - `dev` 独有 91 个提交
+  - 上游独有 24 个提交
 - 合并基点：`0ddc41d8b718c0281b1ba2f5bdfe5b23622621ce`
-- 本文件只保留需要重新设计、拆分移植或单独验证的 L3 内容；已合入 dev 的 L1/L2 选择性移植和不纳入范围不在本文展开。
+- `git merge-tree --write-tree dev upstream/main` 预演：**103 个冲突路径**
+  - `web/src` 28、`internal/control` 21、`internal/state` 11、`internal/gateway` 9、`third_party` 6、`internal/scheduler` 6
+- 评估范围：上游 `#606`–`#619` 共 10 个提交（`#605` 及更早的结论见「前置结论」，不在本文重开）。
+- 上游仍有一个未合并的开放 PR 未计入本文范围：`#620` `fix(gateway): 兼容 WS 请求中的 stream 布尔参数`（分支 `tbphp/fix-responses-websocket-stream@76176c58`，base `main`）。它是 `#616` 的兼容性修复，`#616` 未落地前不可评估。
 
 ## 当前合同
 
-L3 方案必须以当前 `dev` 合同为边界：
+L1/L2/L3 判断以当前 `dev` 合同为边界：
 
 - 每个分组只有一个上游凭据；普通第二凭据创建、导入、连接必须原子拒绝。
 - 权重、优先级、熔断只属于模型 Route Entry；不恢复分组权重或凭据权重。
 - 调度中心负责入口级路由、候选排序和运行态；不恢复旧 scheduler、Registry 或前端调度 API。
-- 分组级 retry 配置仍属于当前高级配置；全局预算方案不能直接删除该配置。
+- 请求重试预算是系统级单一来源（`snapshot.Settings.RetryCount`），分组 `retry_count` 已退役。
 - `(group_id, entry_id)` 只用于后端定位和 mutation，不进入用户可见的调度文案或筛选维度。
+- 监控筛选的权威查询状态是 `range` preset；`from_ms`/`to_ms` 查询合同（上游 `#594`）未引入。
+- 迁移台账只允许追加，编号必须与注册表位置连续（见「迁移编号重排方案」）。
+- 存储层只支持 SQLite 与 PostgreSQL；MySQL 支持已随 `cef04938` 移除，`gormmysql` 与
+  `mysqlRequiresCheckDropSyntax0003` 已从 `internal/storage` 删除。
+- 交付面只覆盖 Linux 与 Docker；Windows service、`securefile` Windows ACL、Windows 打包不在范围内。
 - Protocol、operation、external model 和 target config 必须保持当前 URL、API、目标冻结和候选 fallback 语义。
-- 迁移必须避开当前迁移编号和状态恢复合同；不添加兼容字段、旧 API fallback 或批量多凭据迁移层。
 
-## L3 专题
+## 迁移编号重排方案
 
-### 1. 凭据全量操作与单凭据导入
+### 冲突事实
 
-涉及提交：
+`dev` 与 `upstream/main` 对 `0010`–`0012` 三号码段赋予完全不同的语义：
 
-- `e888fe60` `feat(credentials): 统一全量操作并支持五千条密钥导入 (#587)`
-- `96d3e0d5` `feat(subscription): 支持多格式订阅凭据导入 (#596)`
+| 编号 | `dev` | `upstream/main` |
+| --- | --- | --- |
+| `0010` | `0010_single_credential_per_group` | `0010_model_cooldown` |
+| `0011` | `0011_usage_latency` | `0011_custom_access_keys` |
+| `0012` | `0012_debug_captures` | `0012_access_key_mask_prefix` |
 
-上游内容：
+`0001`–`0009` 号码一致，但文件内容不同：`dev` 在这 6 个文件里删掉了全部 MySQL 分支
+（`gormmysql` 导入、`DROP CHECK` 语法选择、`ValidateRecoverable0006` 重命名为
+`validateDecisionColumns0006`）。因此上游 `0010`–`0012` 不能按原文复制，也不能只改文件名。
 
-- 增加全量恢复、全量下载、API Key 文本导出和大批量订阅凭据导入。
-- 增加多格式 importfile 解析、provider importer、批量暂存 API 和导入报告。
-- 增加重复身份、格式错误、大小、超时和授权失败分类。
+### 代码级约束（`internal/storage/migration.go`）
 
-重新设计边界：
+1. `validateMigrationRegistry` 要求 ID 匹配 `^(\d{4})_[a-z0-9]+(?:_[a-z0-9]+)*$`，并且
+   **ID 的数字部分必须等于注册表切片中的 1-based 位置**。号码不连续或位置错位直接启动失败。
+2. `applyMigrationsLocked` 用 `ORDER BY id ASC` 读取 `schema_migrations`，并要求
+   `entries[index].ID == applied[index]`。**已应用的迁移永远不能改号或改 ID 字符串**，
+   否则现网实例下次启动即报 `unknown or non-contiguous migration`。
+3. 结论：上游待移植的 3 个迁移只能**追加**到 `0013`、`0014`、`0015`，且必须保持上游的相对顺序。
+4. 符号名冲突是真的编译错误：上游 `const ID0010` 与 `dev` 的 `const ID0010` 同名；
+   上游 `Up0010`/`Validate0010`/`ValidateRecoverable0010` 与 `dev` 的 `Up0010`/`Validate0010` 同名。
+   一号之差同时解决号码冲突和符号冲突。
+5. 上游 `0010`/`0011` 依赖 `mysqlRequiresCheckDropSyntax0003` 与 `gormmysql`，两者在 `dev` 已不存在；
+   不删这两个分支就是编译失败，不是风格问题。
 
-- 导出、恢复、输入大小校验和多格式解析具有独立价值，可以拆分移植。
-- 批量 endpoint 和导入 UI 必须收敛为单个最终凭据，不能按 main 的多凭据模型写入多个同组账号。
-- 必须复用当前重复身份只读检查、写入前拒绝、同身份 replacement 和 `reauthorization_required`/`outcome_unknown` 替换边界。
-- 导入失败必须在持久化前返回，不能产生部分成功或绕过单凭据唯一约束的中间状态。
+### 重排映射
 
-### 2. 入口公平调度与连续分配限制
+| 上游 | `dev` 目标 | 文件 | ID 常量 | 重命名符号 |
+| --- | --- | --- | --- | --- |
+| `0010_model_cooldown` | `0013` | `0013_model_cooldown.go` | `ID0013 = "0013_model_cooldown"` | `Up0010`→`Up0013`、`Validate0010`→`Validate0013`、`ValidateRecoverable0010`→`ValidateRecoverable0013`、`*0010` 私有常量全部改 `0013` |
+| `0011_custom_access_keys` | `0014` | `0014_custom_access_keys.go` | `ID0014 = "0014_custom_access_keys"` | `Up0011`→`Up0014`、`Validate0011`→`Validate0014`、`ValidateRecoverable0011`→`ValidateRecoverable0014`、`*0011` 私有常量全部改 `0014` |
+| `0012_access_key_mask_prefix` | `0015` | `0015_access_key_mask_prefix.go` | `ID0015 = "0015_access_key_mask_prefix"` | `Up0012`→`Up0015`、`Validate0012`→`Validate0015`、`ValidateRecoverable0012`→`ValidateRecoverable0015`、`*0012` 私有常量全部改 `0015` |
 
-涉及提交：
+顺序不可调换：上游 `0012` 给 `access_keys` 加 `key_prefix` 列，上游 `0011` 重写同表的
+`chk_access_key_suffix` 约束；两者同表，必须按上游顺序串行。
+`0013_model_cooldown` 扩展的是 `request_log_attempts.effect` 约束与 `cooldown_until_ms` 列，
+与 `dev` 的 `0010`/`0011`/`0012` 表集合（`credentials`、usage/延迟列、`debug_captures`）无交集，可独立先落。
 
-- `9cb3f986` `feat(scheduler): 实现全局加权轮询与连续分配限制 (#591)`
+### 依赖前提（已核对，成立）
 
-上游内容：
+- `dev` 的 `request_log_attempts` 自 `0006` 之后没有任何迁移再触碰它，SQLite DDL 与上游
+  `0010` 的 `rebuildModelCooldownSQLite0010` 前置状态一致；`0006` 的
+  `CONSTRAINT chk_request_log_attempt_effect CHECK (effect IN ('','none','cooldown_credential','record_credential_failure','skip_group'))`
+  与上游要替换的 `old` 字符串逐字相同。
+- `dev` 的 `access_keys.key_suffix` 仍是上游 `0011` 的前置形态（`char(4)` + 四位十六进制校验），
+  `key_prefix` 列在 `dev` 不存在，`0014`/`0015` 的 `HasColumn` 幂等判断成立。
+- 反例：所有 `dev` 侧前置条件只对 **SQLite/PostgreSQL** 成立，MySQL 路径必须整段删除而不是保留。
 
-- 引入全局加权公平调度、连续分配限制、SchedulingState、检查点和恢复校准。
-- 替换随机候选选择，并处理亲和、回放和分组生命周期。
+### 移植步骤
 
-重新设计边界：
+1. 复制上游三个文件并改名、改 `const IDxxxx`、改全部 `Up/Validate/ValidateRecoverable` 与私有常量后缀。
+2. 删除 MySQL 分支：`gormmysql` 导入、`mysqlRequiresCheckDropSyntax0003` 调用、
+   `DROP CHECK`/`information_schema.check_constraints` 查询，只保留 SQLite 与 PostgreSQL 路径。
+   与 `dev` 现有 `0006`/`0009` 的处理方式保持一致（`dev` 已删除「可恢复的 MySQL DDL 中断」概念，
+   因此 `ValidateRecoverable` 命名是否保留需按 `dev` 风格决定）。
+3. 在 `internal/storage/migration.go` 的 `migrations` 切片末尾按 `0013`→`0014`→`0015` 追加三项。
+4. 同步 `internal/storage/migration_test.go` 的期望 ID 列表（当前只列到 `ID0012`）。
+5. 若同批移植 `#611` 的 `internal/storage/migration_sqlite.go`（上游新增，SQLite 关闭外键后重建
+   被引用表），需先确认 `dev` 现有迁移链是否已在该路径上处理同一问题；该文件同样只支持 SQLite。
+6. 决定性验证：现网实例的 `schema_migrations` 已有 `0001`–`0012` 共 12 行，重排后的注册表必须
+   前 12 项 ID 逐字不变；用真实数据卷跑一次启动，确认只新增 3 行且不触发 `unknown or non-contiguous`。
+7. 平台验证：`0013` 的 `rebuildModelCooldownSQLite0010` 与 `0014` 的 `rebuildAccessKeysSQLite0011`
+   都是「读 `sqlite_master` 原文 → 字符串替换 → 重建表 → 恢复索引」，必须在 SQLite 上实跑一次
+   （含索引恢复与外键校验），不能只靠 PostgreSQL 通过。
 
-- 只研究入口级公平分配，不移植 main 的分组权重和凭据权重。
-- 输入维度应是当前 Route Entry 的 weight、priority、breaker 和候选健康事实。
-- 必须保持单凭据分组、入口级 retry deduplication、cooldown、blacklist、affinity 和 `DispatchMaybeSent` 语义。
-- 检查点只能恢复调度运行态，不能恢复已删除的旧权重字段或改变模型路由 API。
-- 需要先定义连续分配限制与入口 priority、breaker、preferred credential 的优先级，再实现公平算法。
+## L1 / L2 / L3 汇总
 
-### 3. 模型错误重试与健康恢复
+| 上游提交 | PR | 主题 | 级别 | 硬前置 |
+| --- | --- | --- | --- | --- |
+| `eecef9f4` | #614 | README 赞助展示 | **L1** | 无 |
+| `fe4b6ac1` | #607 | 原生文本重排序协议 | **L2** | 无（重试分类需改接 `dev` 判定链） |
+| `0c9d1888` | #617 | 请求身份头覆盖与会话兼容 | **L2** | 无（需补 `HeaderRules.ConfiguredNames`） |
+| `fb18dc9e` | #606 | 精简模型冷却展示与管理接口 | L3 | `#599`（`dev` 不存在） |
+| `d417b7de` | #608 | 统一日志与用量时间筛选交互 | L3 | `#594`（`dev` 现为 `range` preset） |
+| `de6d2d44` | #611 | 自定义访问密钥与编辑生成交互 | L3 | 迁移 `0014`/`0015` |
+| `7cbd2e67` | #609 | 响应状态续接路由 | L3 | 新状态合同 |
+| `f091528b` | #616 | 原生 Responses WebSocket 与逐轮治理 | L3 | `#609` 的续接合同 |
+| `abc6483d` | #619 | 升级 CPA 并固定上游版本声明 | L3 | `#616`（`internal/execution/cpa/websocket.go`） |
+| `7d80a981` | #612 | Codex 独立 WebSocket Session 封装 | 已完成 | — |
 
-涉及提交：
+## 前置结论（沿用，不重开）
 
-- `e0bfa07e` `feat(scheduler): 统一凭据权重并调整模型错误重试 (#597)`
-- `d4699dd2` `feat(health): 支持凭据按模型冷却与统一恢复 (#599)`
+- 专题 1（凭据全量操作与单凭据导入，`e888fe60`+`96d3e0d5`）、专题 2（入口公平调度，`9cb3f986`）、
+  专题 3（模型错误重试与健康恢复，`e0bfa07e`+`d4699dd2`）、专题 4（自定义订阅上游，`6da82242`）、
+  专题 5（Usage 时间窗口，`33fb54bf`+`175949e2`）保持「不纳入范围」。
+- 专题 6（全局请求重试预算，`a4255546`）已随 `dev` 的 `3274e32c` 同步完成；保留两处本地差异：
+  `retryAttemptLimit(retryCount) = max(retryCount, 1)`（尝试总次数，默认 5，上游为 `retryCount + 1`）
+  与 `fallback.missing_evidence_retry` replay 许可（`internal/health/execution_judge.go`）。
+- 专题 7（Codex WebSocket）的合同半边已落地（`docs/design/codex-websocket-session.md`），
+  数据面半边未落地。
 
-上游内容：
+## L1
 
-- 调整模型不可用错误分类、冷却和重试语义。
-- 增加凭据加模型维度的冷却运行态、检查点、请求日志字段、恢复 API 和监控展示。
-- 删除或统一自动凭据权重。
-
-重新设计边界：
-
-- 凭据权重部分不适用于当前模型；权重只能留在 Route Entry。
-- 必须明确 credential+model cooldown 与入口级 breaker 的权威关系，避免两个运行态同时决定候选可用性。
-- 模型冷却不能让同一凭据的其他模型被错误隔离，也不能绕过入口 priority 或 group enabled 状态。
-- 错误分类必须区分请求级、模型级、凭据级和上游主机级失败，并与 retry deduplication 和 `DispatchMaybeSent` 一致。
-- 恢复 API 要保持当前 health observation/reset cache invalidation 合同；迁移编号和启动恢复必须单独验证。
-
-### 4. 自定义订阅上游与目标冻结
-
-涉及提交：
-
-- `6da82242` `feat(subscription): support custom upstream URLs (#579)`
-
-上游内容：
-
-- 允许订阅渠道配置自定义上游地址。
-- 对涉及凭据的订阅地址强制 HTTPS。
-- 让模型发现、额度重置、健康状态和网关请求使用冻结后的 target config。
-
-重新设计边界：
-
-- 保留 target freeze 和 HTTPS 校验的思想，按当前 Group、单凭据、proxy 和生命周期合同重新接入。
-- target config 必须在候选准备阶段冻结，并在 discovery、health、reset、probe 和实际 execution 间保持一致。
-- 不新增生产 `BaseURL` 兼容字段，不恢复 main 的旧 channel endpoint contract。
-- 自定义地址与 managed proxy、credential identity、provider binding 和 route mode 必须一起校验。
-- 目标配置改变时必须有明确的 cache invalidation 和运行态重建边界，不能让旧 runtime 使用新目标或反之。
-
-### 5. Usage 时间窗口与监控上下文
-
-涉及提交：
-
-- `33fb54bf` `fix(monitor): 修正最近一小时用量与成本统计 (#588)`
-- `175949e2` `feat(usage): 支持自定义时间统计并统一时间筛选 (#594)`
-
-这两个提交必须作为一个专题处理，不能按历史顺序直接 cherry-pick。
-
-上游内容：
-
-- 将最近一小时从单个小时桶改为 12 个 5 分钟桶，并补齐缺失空桶。
-- 用精确 `from_ms`/`to_ms` 替换固定快捷范围作为查询核心，支持非整点窗口和动态桶宽。
-- 统一用量、日志、AccessKey 之间的时间筛选、URL 状态和跳转上下文。
-
-重新设计边界：
-
-- 后端查询、request log 聚合、cost 估算、前端资源投影、图表桶宽和三语文案必须使用同一个时间范围合同。
-- 保留当前 Monitor URL state、Scheduling Center 上下文、日志跳转和缓存失效规则。
-- `preset` 只能是输入来源；保存后的 `from_ms`/`to_ms` 是可复现的权威查询状态。
-- 时间范围跨越数据保留边界、空桶、时区和分页时，必须保持排序、总数和成本汇总一致。
-- 需要分别验证最近一小时、非整点自定义窗口、跨天窗口、无数据窗口和 AccessKey 过滤，不把图表显示正确当作后端合同完成。
-
-### 6. 全局请求重试预算（已完成）
-
-涉及提交：
-
-- `a4255546` `feat(gateway): 统一全局请求重试预算 (#598)`：已随 dev 的 `3274e32c` 按上游 plumbing 同步完成。
-
-同步结果：
-
-- 重试预算改为系统级单一来源：请求开始时从 `snapshot.Settings.RetryCount` 冻结后传入 `executeAttempts`。
-- 分组 `retry_count` 退役：从后端状态、API、UI 与三语文案移除；存量分组配置读取时容忍（`continue`），写入直接拒绝，界面不展示，且任何一次分组保存都会把持久化 overrides 里的该键删掉（比上游多做一步，上游要再保存该分组设置时才丢弃）。
-
-两处本地差异（不随本次同步改动）：
-
-- 记数约定：`retryAttemptLimit(retryCount) = max(retryCount, 1)`，即 `retry_count` 是一次请求的尝试总次数（0 与 1 都只尝试一次，2 表示失败后可换一次候选），默认 5；上游为 `retryCount + 1`（额外重试次数，默认 2）。`internal/gateway/retry_budget_test.go` 的 7 个用例按本地约定固定。
-- replay 许可：无分类证据但上游状态可重试（408、429、5xx）时按 `fallback.missing_evidence_retry` 允许换候选并计入凭据连续失败；属于 `internal/health/execution_judge.go` 的 replay 裁决，与预算互不接管。
-
-### 7. Codex 独立 WebSocket Session
-
-涉及提交：
-
-- `7d80a981` `feat(codex): 添加独立上游 WebSocket Session 封装 (#612)`：已按合同落地独立 Session，仍未接入数据面。
-- `f091528b` `feat(gateway): 接入原生 Responses WebSocket 与逐轮治理 (#616)`：同一专题的数据面半边，把 Session 接进网关、逐轮治理与响应状态续接，尚未移植。
-
-这是当前最新 upstream-only 范围中唯一新增的 L3 专题。
+### `eecef9f4` `docs(readme): 添加 OfoxAI 赞助展示 (#614)`
 
 上游内容：
 
-- 为 CPA 增加独立 Codex WebSocket Session facade。
-- 支持 `NewWSSession`、`ExecuteTurn`、连接复用、取消、代理和生命周期管理。
-- 增加连接日志、session 测试和禁止业务请求重放的边界覆盖。
-- `f091528b` 把 WS 接成数据面：`internal/execution/wsnative/session.go` 原生会话、CPA/bifrost 执行器分支、channel spec 的 WS 能力位、设置页分层开关，以及分组停用/删除时关闭 WS 连接。
+- `README.md`、`README_CN.md`、`README_JP.md` 增加赞助位，新增 `screenshot/ofoxai.svg`。
+
+当前价值与适配边界：
+
+- 零代码，不触碰任何运行合同，是本次新增范围里唯一可独立 cherry-pick 的提交。
+- 唯一适配点是插入位置：`dev` 的 README 有自建实例、发布与回滚等自有章节，赞助位需手工对齐，不要整文件覆盖。
+
+## L2
+
+### `fe4b6ac1` `feat(gateway): 接入原生文本重排序协议 (#607)`
+
+上游内容：
+
+- 新增 `internal/dialect/rerank.go`、`internal/dialect/rerank_usage.go`、`internal/execution/bifrost/rerank.go`。
+- 在 channel 能力位、Bifrost executor/passthrough/runtime_manager、`internal/execution/contracts.go`、
+  `internal/provideradapter`、`internal/gateway/{execution_forward,models,request_log}.go` 接入 rerank 协议。
+- 57 个文件，+1138/-41，其中 20 个是测试。
+
+当前价值与适配边界：
+
+- 纯 additive：新增协议不影响单凭据、入口级调度、重试预算和路由条目合同，是 L2 而不是 L3 的原因。
+- 必须改接 `dev` 的失败判定链：上游把 rerank 的错误分类接到 `internal/execution/model_cooldown.go`，
+  该文件在 `dev` 不存在（属 `#599`）。分类应落到 `dev` 的 `internal/health/execution_judge.go`。
+- `dev` 的 `internal/gateway/execution_forward.go`、`internal/channel/compiler.go` 已被模型路由条目改造，
+  接入时要保留入口级 priority/breaker 与候选 fallback 语义。
+- `dev` 无 `internal/execution/wsnative`，rerank 与 WS 无关，不引入。
+- 验证：新增协议的转换正确性、usage 保留、不可转换时的拒绝路径，以及 404/400 不被误升级为可重试。
+
+### `0c9d1888` `fix(codex): 修正请求身份头覆盖与会话兼容 (#617)`
+
+上游内容：
+
+- 新增 `third_party/cpaembedded/embedded/codex_headers.go`（含测试），把 Codex 身份头的「显式配置」与
+  「默认注入」分开，锁定覆盖优先级。
+- `internal/execution/contracts.go` 增加 `ConfiguredHeaders []string`（reference-backed，`json:"-"`），
+  由 `input.Group.HeaderRules.ConfiguredNames()` 填充。
+- `internal/control/{credential_probe,discover_executor}.go`、`internal/execution/cpa/{adapter,codex_provider,provider}.go`、
+  `internal/gateway/execution_forward.go`、`internal/state/snapshot.go`、
+  `internal/subscription/providers/codex/codex.go` 跟随该合同调整。
+
+当前价值与适配边界：
+
+- 主体是身份头覆盖顺序修复，diff 里只有 3 处 websocket 提及，与 `#616` 的数据面**弱耦合**，
+  可以先于 `#616` 单独落地，作为独立的请求身份正确性修复。
+- `dev` 已有 `state.HeaderRules`（`internal/control/group_detail.go`、`discover_executor.go`），
+  但没有 `ConfiguredNames()`；需要按 `dev` 的 `HeaderRulesResponse`/resolved 形态补齐该查询方法。
+- `dev` 的 `internal/execution/cpa/codex_provider.go` 存在且被 `#619` 继续修改，迁移时要保证
+  与后续 `#619` 的 CPA 版本声明兼容，避免两次改同一处身份头逻辑。
+- 验证：显式头覆盖默认头、显式置空表示移除、Codex 订阅分支与 API Key 分支的身份头一致。
+
+## L3
+
+### `fb18dc9e` `refactor(cooldown): 精简模型冷却展示与管理接口 (#606)`
+
+上游内容：
+
+- 30 文件，+207/-323，`internal/control/model_cooldown.go`、`runtime_observation.go`、
+  `web/src/components/ui/ModelCooldownDetails.vue`、健康页与凭据页展示、三语文案。
+
+硬前置：
+
+- 修改 `internal/control/model_cooldown.go`，该文件由 `#599` 新增，`dev` 不存在。
+- 属专题 3（模型错误重试与健康恢复），已判「不纳入范围」。单独移植 `#606` 无从落地。
+
+### `d417b7de` `feat(monitor): 统一日志与用量的时间筛选交互 (#608)`
+
+上游内容：
+
+- 14 个前端文件，+666/-620：`AppDateTimeRangePicker.vue`、`LogsAdvancedFilterDrawer.vue`、
+  `LogsFilterForm.vue`、`UsageTab.vue`、`log-filters.ts`、`usage-filters.ts`、`monitor-route.ts`、
+  `web/src/lib/time.ts`、三语文案。
+
+硬前置：
+
+- 依赖 `#594` 的 `from_ms`/`to_ms` 查询合同（上游 `usage-filters.ts` 是 `preset` + `from_ms`/`to_ms` 双轨）。
+- `dev` 现合同是 `range` preset（`UsageFilters['range']`、`defaultTimeRange`），后端也没有 `from_ms`/`to_ms` 查询参数。
+- 属专题 5（Usage 时间窗口），已判「不纳入范围」。只移植前端会直接对不上后端查询。
+
+### `de6d2d44` `feat(access-keys): 支持自定义密钥并统一编辑与生成交互 (#611)`
+
+上游内容：
+
+- 55 文件，+2065/-633，覆盖后端、存储、前端和三语文案。
+- 新增迁移 `0011_custom_access_keys`、`0012_access_key_mask_prefix`，新增
+  `internal/storage/migration_sqlite.go`。
+- 新增 `internal/control/access_key_update_idempotency.go`，改 `access_keys.go`、`bootstrap.go`、
+  `health.go`、`home.go`、幂等摘要与操作恢复、`internal/platform/errors`、i18n locales、
+  `internal/state/{loader,snapshot}.go`、`internal/storage/models/access_key.go`。
+- 前端新增 `AccessKeyCredentialField.vue`、`AccessKeySelect.vue`、`AccessKeyHandoff.vue`、
+  `access-key-strength.ts` 等。
+
+当前价值与适配边界：
+
+- 必须与「迁移编号重排方案」一起做：`0011`→`0014`、`0012`→`0015`，并删除迁移里的 MySQL 分支。
+- `dev` 的 `access_keys` 表形态与上游前置状态一致（四位十六进制尾号、无 `key_prefix`），
+  所以约束重写和加列都能落；但 `dev` 的访问密钥管理页有自己的分发/交接流程，
+  上游新增的 `AccessKeyHandoff.vue` 等组件不能整目录覆盖。
+- 幂等与操作恢复路径（`access_key_update_idempotency.go`、`operation_recovery.go`）与 `dev` 的
+  单凭据原子拒绝逻辑同域，需要逐处确认不会绕过写入前拒绝。
+- 验证：自定义密钥创建/编辑/轮换、短密钥全遮罩、列表无需解密即可显示前缀、
+  幂等重放、以及迁移在 SQLite 上的表重建与索引恢复。
+
+### `7cbd2e67` `feat(responses): 实现响应状态续接路由 (#609)`
+
+上游内容：
+
+- 38 文件，+1226/-85。
+- 新增 `internal/gateway/responses_continuation.go`、`internal/state/response_bindings.go`、
+  `internal/app/runtime_checkpoint.go`。
+- 改 `internal/dialect/{dialect,openai,openai_responses,anthropic,request_execution,request_fields,rerank}.go`、
+  `internal/execution/{contracts,validation,bifrost/executor}.go`、
+  `internal/gateway/{execution_forward,forward,handler,reason}.go`、
+  `internal/parameteroverride/rules.go`、`internal/scheduler/inspect.go`、`internal/control/group_create.go`、
+  `internal/container/container.go`。
+
+当前价值与适配边界：
+
+- 引入新的运行态合同（响应绑定 + 检查点），必须先定义再实现，不能按提交顺序直接叠加。
+- `dev` 只在 `internal/dialect/request_execution.go` 里把 `previous_response_id` 当作「不可重放字段」识别
+  （`hasMeaningfulField(root, "previous_response_id")`，测试在 `prompt_affinity_test.go`），
+  没有绑定表、没有检查点；续接路由是全新维度。
+- `#609` 修改 `internal/dialect/rerank.go`，即**依赖 `#607` 已落地**；顺序上 `#607` 必须先做。
+- 检查点只能恢复续接运行态，不能改变 `dev` 的模型路由 API、入口级 breaker 或重试预算。
+- 验证：跨请求续接命中/未命中、检查点恢复后绑定不丢失、候选切换后续接语义、以及续接与
+  `DispatchMaybeSent`/replay safety 的一致性。
+
+### `f091528b` `feat(gateway): 接入原生 Responses WebSocket 与逐轮治理 (#616)`
+
+上游内容：
+
+- 55 文件，+4719/-152，是本次范围里最大的提交。
+- 新增 `internal/execution/websocket.go`、`internal/execution/wsnative/session.go`、
+  `internal/execution/bifrost/websocket.go`、`internal/execution/cpa/websocket.go`、
+  `internal/provideradapter/websocket.go`、`internal/gateway/websocket.go`、
+  `internal/gateway/websocket_turn.go`。
+- 改 `internal/channel/{channel,compiler}.go`（WS 能力位）、`internal/channel/modules/{codex,openai,gpt_load,sub2api,cliproxyapi,xai}.go`、
+  `internal/channel/spec/definition.go`、`internal/control/{settings,group_detail}.go`、
+  `internal/gateway/{execution_forward,handler}.go`、`internal/scheduler/{scheduler,inspect}.go`、
+  `internal/state/{snapshot,runtime_settings}.go`、`internal/subscription/providers/codex/websocket.go`、
+  `third_party/cpaembedded/embedded/codex_websocket.go`、设置页与分组设置的前端和三语文案。
+- diff 中出现 656 处 websocket、18 处 `previous_response_id`，即逐轮治理是内联在 `websocket_turn.go` 里实现的。
 
 重新设计边界：
 
-- 该能力不是简单替换 HTTP executor，而是新增连续多轮 Responses 传输生命周期。
-- Session 必须使用调度器已经选定的 credential，不自行选择凭据、不绕过入口级 priority/breaker，也不恢复旧 CPA Manager。
-- `previous_response_id`、连接复用、关闭、取消、代理和 credential identity 必须与当前 attempt/session contract 对齐。
-- 发送前失败必须是 `DispatchNotSent` 并允许当前候选策略处理；发送后断线、半响应和关闭必须保留 `DispatchMaybeSent` 与 `ReplaySafetyUnknown` 证据。
+- 这不是替换 HTTP executor，而是新增连续多轮 Responses 传输生命周期，必须作为整体设计。
+- Session 必须使用调度器已选定的 credential，不自行选凭据、不绕过入口级 priority/breaker，也不恢复旧 CPA Manager。
+- 发送前失败必须是 `DispatchNotSent` 并交给当前候选策略；发送后断线、半响应和关闭必须保留
+  `DispatchMaybeSent` 与 `ReplaySafetyUnknown` 证据。
 - 不得加入 HTTP fallback、业务请求重放、隐式跨 credential 迁移或旧 retry/fallback 行为。
-- 需要覆盖连接复用、同一 session 多轮、代理传播、主动取消、上游关闭、超时、发送后错误和 credential replacement 后的 session 隔离。
+- `internal/channel` 能力位与设置页分层开关要按 `dev` 的分组设置覆盖交互重接，不能覆盖调度中心 URL 状态。
+- 已知缺口（`#612` 落地时记录）：CPA 在通知 lifecycle 之前用默认 logger 输出上游正文，
+  数据面接入前必须在 `dev` 运行时关闭，不在 vendored 层注册 `init()` 全局 hook。
+- 验证：连接复用、同一 session 多轮、代理传播、主动取消、上游关闭、超时、发送后错误、
+  credential replacement 后的 session 隔离、分组停用/删除时关闭连接。
 
-## L3 执行顺序
+### `abc6483d` `fix(codex): 升级 CPA 并固定上游版本声明 (#619)`
 
-1. Codex WebSocket Session 的 dispatch、replay safety、credential identity 和 proxy 生命周期合同：已定义并落地独立 Session（`docs/design/codex-websocket-session.md`），编译与行为证据已补齐。
-2. 数据面接入（`f091528b`）：把 Session 接进网关与逐轮治理，含 `previous_response_id` 续接、CPA/bifrost 执行器分支、channel WS 能力位、分层开关，以及分组停用/删除时关闭 WS 连接。
+上游内容：
+
+- 19 文件：`go.mod`/`go.sum`、`third_party/cpaembedded/{README.md,go.mod,go.sum}`、
+  vendored `embedded/{embedded,codex_headers,codex_websocket}.go`、
+  `internal/execution/cpa/{codex_provider,websocket}.go`、`THIRD_PARTY_NOTICES.md`。
+
+硬前置：
+
+- 修改 `internal/execution/cpa/websocket.go`，该文件由 `#616` 新增，`dev` 不存在。
+- 因此 `#619` 必须排在 `#616` 之后，且自身没有可独立落地的部分。
+- `dev` 的 `third_party/cpaembedded/embedded/codex_websocket.go` 目前是 `#612` 那一版（随 PR #28 落地），
+  升级时要注意 `#616` 与 `#619` 两次修改的先后，不能跳版本。
+
+## 已完成
+
+### `7d80a981` `feat(codex): 添加独立上游 WebSocket Session 封装 (#612)`
+
+- 已随 PR #28（`dev@2994c96e`）落地：vendored `CodexWSSession` + `internal/subscription/providers/codex.WSSession`。
+- 边界：不注册到 `provideradapter`/`executor`、不在网关请求路径上被调用、不加 UI/配置项/数据库字段。
+- 合同：`docs/design/codex-websocket-session.md`。
+- 后续 `#616` 会反过来修改 `internal/subscription/providers/codex/websocket.go` 与 vendored
+  `codex_websocket.go`，接数据面时以 `#616` 的版本为基准。
+
+## 执行顺序
+
+1. `eecef9f4`（#614）：L1，独立 cherry-pick，随时可做。
+2. `fe4b6ac1`（#607）：L2，纯新增协议，先把 rerank 的失败分类改接到 `dev` 的 execution_judge。
+3. `0c9d1888`（#617）：L2，身份头覆盖修复，补 `HeaderRules.ConfiguredNames()`；与第 2 步无耦合，可并行。
+4. 「迁移编号重排方案」先行落地为独立一步：`0013_model_cooldown` 单独落，验证现网 `schema_migrations`
+   仍为连续前缀，再考虑 `0014`/`0015`。
+5. `de6d2d44`（#611）：L3，依赖第 4 步的 `0014`/`0015`。
+6. `7cbd2e67`（#609）→ `f091528b`（#616）→ `abc6483d`（#619）：L3 链，必须整体设计、按序落地。
+   `#616` 之后才评估上游开放 PR `#620`（WS `stream` 布尔兼容）。
 
 ## 结论
 
-- 当前 `dev` 已吸收此前选择性移植的 L1/L2 能力；本文件不再把这些历史内容当作待合并范围。
-- 上游 `main` 仍不能整体合并：L3 领域合同与当前单凭据、入口级调度、迁移和 URL 状态存在结构差异。
-- `7d80a981` Codex WebSocket Session 的合同见 `docs/design/codex-websocket-session.md`；已按该合同落地
-  独立 Session（vendored `CodexWSSession` + `codex.WSSession`）并补齐编译与行为证据，仍未接入数据面。
-- 专题 1（凭据全量导入）、2（入口公平调度）、3（模型错误重试与健康恢复）、4（自定义订阅上游）、
-  5（Usage 时间窗口）不再纳入范围：收益低于维护成本，且都要求改动当前已稳定的合同。
-- 专题 6 全局请求重试预算（`a4255546`）已随 dev 的 `3274e32c` 同步完成，记数约定与 replay 许可保留本地差异（见专题 6）。
-- 保留的上游工作只剩专题 7 的数据面接入（`f091528b`，需要先定义逐轮治理、`previous_response_id` 续接与
-  `DispatchMaybeSent` 在当前 attempt/session 合同下的边界）。
-- 本次只更新基线和 L3 分析，不对上述 upstream commit 做代码 cherry-pick。
+- 上游 `main` 整体合并不成立：`merge-tree` 预演 103 个冲突路径，且 `0010`–`0012` 号码语义完全对撞。
+- 新增 #606–#619 里 L1 只有 1 个、L2 有 2 个、L3 有 6 个、已完成 1 个。
+- L2 两项（`#607` rerank、`#617` 身份头修复）不含迁移、不碰单凭据与入口调度合同，是当前性价比最高的移植目标。
+- `#606`、`#608` 的硬前置分别落在已判「不纳入范围」的专题 3 和专题 5 上，本次不单独移植。
+- `#611` 自带迁移，是唯一必须先完成「迁移编号重排方案」才能动的 L3。
+- `#609` → `#616` → `#619` 是一条不可拆的依赖链，且 `#616` 是本次范围里体量与风险都最高的提交。
+- 本文只做评估与方案，不对上述上游提交执行任何代码 cherry-pick。
