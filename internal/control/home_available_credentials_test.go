@@ -11,29 +11,38 @@ import (
 )
 
 // 首页的「X/Y 个凭据可用」必须和健康页 classifyHealthKey 用同一套分桶：
-// 只看 status/拉黑/冷却会把「待重新授权」和「权重手动置 0」的凭据算成可用，
-// 而调度器根本不会选中它们，两页并排就会自相矛盾。
+// 待重新授权的凭据不参与调度，两页并排时必须保持同一结论。
 func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	now := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 
-	group := validControlGroup("home-available-parity")
-	if err := fixture.db.Create(group).Error; err != nil {
-		t.Fatalf("create group: %v", err)
+	groups := []*models.Group{
+		validControlGroup("home-available-parity"),
+		validControlGroup("home-reauthorization-one"),
+		validControlGroup("home-reauthorization-two"),
+	}
+	for _, group := range groups {
+		if err := fixture.db.Create(group).Error; err != nil {
+			t.Fatalf("create group: %v", err)
+		}
 	}
 
 	credentials := []models.Credential{
-		{ID: 1, GroupID: group.ID, Data: "cipher-1", Fingerprint: "hash-1", AuthState: models.CredentialAuthStateReady},
-		{ID: 2, GroupID: group.ID, Data: "cipher-2", Fingerprint: "hash-2", AuthState: models.CredentialAuthStateReady},
-		{ID: 3, GroupID: group.ID, Data: "cipher-3", Fingerprint: "hash-3", AuthState: models.CredentialAuthStateReady},
+		{ID: 1, GroupID: groups[0].ID, Data: "cipher-1", Fingerprint: "hash-1", AuthState: models.CredentialAuthStateReady},
+		{ID: 2, GroupID: groups[1].ID, Data: "cipher-2", Fingerprint: "hash-2", AuthState: models.CredentialAuthStateReauthorizationRequired},
+		{ID: 3, GroupID: groups[2].ID, Data: "cipher-3", Fingerprint: "hash-3", AuthState: models.CredentialAuthStateReauthorizationRequired},
 	}
 	if err := fixture.db.Create(&credentials).Error; err != nil {
 		t.Fatalf("create credentials: %v", err)
 	}
+	if err := fixture.db.Order("id ASC").Find(&credentials).Error; err != nil {
+		t.Fatalf("reload credentials: %v", err)
+	}
 
 	entries := make([]state.CredentialEntry, 0, len(credentials))
 	for index, credential := range credentials {
+		group := groups[index]
 		entries = append(entries, state.CredentialEntry{
 			ID: credential.ID, GroupID: group.ID,
 			Version:            groupCollectionCredentialVersion(credential.SecretVersion),
@@ -43,7 +52,7 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 			AuthState:          state.CredentialAuthStateReady,
 		})
 	}
-	// 2 号待重新授权，3 号被手动停用（权重 0）；两者都不参与调度。
+	// 2、3 号待重新授权；统一分组凭据模型下，每个状态使用独立分组承载。
 	entries[1].AuthState = state.CredentialAuthStateReauthorizationRequired
 	entries[2].AuthState = state.CredentialAuthStateReauthorizationRequired
 	if err := fixture.registry.ReplaceCredentials(entries); err != nil {
@@ -69,7 +78,7 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 	}
 	if base.Inventory.AvailableCredentialCount != 1 {
 		t.Fatalf(
-			"AvailableCredentialCount = %d, want 1 (待重新授权与权重 0 的凭据不可用)",
+			"AvailableCredentialCount = %d, want 1 (待重新授权的凭据不可用)",
 			base.Inventory.AvailableCredentialCount,
 		)
 	}
