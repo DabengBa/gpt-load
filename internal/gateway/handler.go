@@ -496,15 +496,14 @@ func (handler *Handler) recordEntrySuccess(groupID uint, entryID string, credent
 	}
 }
 
+// retryAttemptLimit converts the configured retry_count into the total forward
+// attempt budget of one request. retry_count is that budget itself: 0 and 1 both
+// stop after the first attempt, 2 allows one candidate switch.
 func retryAttemptLimit(group state.GroupView) int {
-	if group.RetryCount <= 0 {
+	if group.RetryCount <= 1 {
 		return 1
 	}
-	maximum := int(^uint(0) >> 1)
-	if group.RetryCount >= maximum {
-		return maximum
-	}
-	return group.RetryCount + 1
+	return group.RetryCount
 }
 
 func (handler *Handler) Handle(ginContext *gin.Context) {

@@ -1732,7 +1732,7 @@ func TestHandlerRetryExhaustionUsesProviderErrorAttemptAndItsFrozenPrice(t *test
 		"sk-third",
 	)
 	handler.newRandom = func() *rand.Rand { return rand.New(zeroSource{}) }
-	publishHandlerPolicySettings(t, handler, manager, 3, config.Settings{state.SettingRetryCount: 2}, nil)
+	publishHandlerPolicySettings(t, handler, manager, 3, config.Settings{state.SettingRetryCount: 3}, nil)
 	handler.priceTables = provider
 	request := httptest.NewRequest(
 		http.MethodPost,
@@ -1833,7 +1833,7 @@ func TestHandlerTerminalAttemptUsageKeepsRouteAttribution(t *testing.T) {
 		},
 		{
 			name:       "transport failure keeps the skipped group attempt",
-			retryCount: 2,
+			retryCount: 3,
 			forwarder: &scriptedForwarder{results: []UpstreamResult{
 				{Err: errors.New("transport one")},
 				{Err: errors.New("transport two")},

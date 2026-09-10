@@ -20,7 +20,7 @@ func TestHandlerParameterOverrideCacheKeepsOnlyLastGroup(t *testing.T) {
 	forwarder := &scriptedForwarder{results: []UpstreamResult{failure, failure, failure, success, success}}
 	settings := func(field string) config.Settings {
 		return config.Settings{
-			state.SettingRetryCount:         3,
+			state.SettingRetryCount:         4,
 			state.SettingParameterOverrides: []any{map[string]any{"set": map[string]any{field: true}}},
 		}
 	}

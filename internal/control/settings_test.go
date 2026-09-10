@@ -306,7 +306,7 @@ func TestUpdateSettingsResolvesRetryAndBlacklistPolicies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertSettingsPolicyJSON(t, defaults.Values, 1, 3)
+	assertSettingsPolicyJSON(t, defaults.Values, 2, 3)
 
 	updated, err := fixture.service.UpdateSettings(t.Context(), SettingsUpdateRequest{
 		Settings: map[string]json.RawMessage{

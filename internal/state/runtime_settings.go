@@ -88,7 +88,9 @@ func DefaultRuntimeSettings() RuntimeSettings {
 		CORS:                     defaultCORSConfig(),
 		ResponseHeaderRules:      HeaderRules{Set: map[string]string{}},
 		BufferedStream:           false,
-		RetryCount:               1,
+		// retry_count is the total attempt budget of one request, so the
+		// shipped default keeps the established single retry.
+		RetryCount:               2,
 		RouteStrategy:            RouteStrategyNativeFirst,
 		BlacklistThreshold:       3,
 		AffinityEnabled:          true,

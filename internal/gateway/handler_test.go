@@ -4537,24 +4537,24 @@ func TestHandlerAppliesSystemAndGroupRetrySettings(t *testing.T) {
 			wantAttempts: 1,
 		},
 		{
-			name: "group count enables four retries over disabled system policy",
+			name: "group attempt budget enables four attempts over disabled system policy",
 			systemSettings: config.Settings{
 				state.SettingRetryCount: 0,
 			},
 			groupSettings: config.Settings{
 				state.SettingRetryCount: 4,
 			},
-			wantAttempts: 5,
+			wantAttempts: 4,
 		},
 		{
-			name: "group retry count overrides system count",
+			name: "group attempt budget of one overrides system budget",
 			systemSettings: config.Settings{
 				state.SettingRetryCount: 4,
 			},
 			groupSettings: config.Settings{
 				state.SettingRetryCount: 1,
 			},
-			wantAttempts: 2,
+			wantAttempts: 1,
 		},
 	}
 	for _, test := range tests {
@@ -4600,7 +4600,7 @@ func TestHandlerAppliesSystemAndGroupRetrySettings(t *testing.T) {
 }
 
 func TestHandlerReturnsLastUpstreamResponseWhenBudgetIsExhausted(t *testing.T) {
-	wantAttempts := state.DefaultRuntimeSettings().RetryCount + 1
+	wantAttempts := state.DefaultRuntimeSettings().RetryCount
 	steps := make([]fakeupstream.Step, 0, wantAttempts)
 	for range wantAttempts - 1 {
 		steps = append(steps, fakeupstream.Step{Status: http.StatusTooManyRequests, Fixture: "openai/429.json"})

@@ -54,7 +54,7 @@ func TestCompilePublishesDefaultRuntimeSettingsWithoutGroups(t *testing.T) {
 			MaxAgeSeconds:  600,
 		},
 		ResponseHeaderRules:      HeaderRules{Set: map[string]string{}},
-		RetryCount:               1,
+		RetryCount:               2,
 		RouteStrategy:            RouteStrategyNativeFirst,
 		BlacklistThreshold:       3,
 		AffinityEnabled:          true,
@@ -267,13 +267,13 @@ func TestRetryAndBlacklistCountsArePublicAndResolveByGroupPrecedence(t *testing.
 	}
 }
 
-func TestRetryCountDefaultsToOneAndPreservesExplicitOverrides(t *testing.T) {
+func TestRetryCountDefaultsToTwoAttemptsAndPreservesExplicitOverrides(t *testing.T) {
 	defaults, err := ResolveRuntimeSettings(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if defaults.RetryCount != 1 {
-		t.Fatalf("default RetryCount = %d, want 1", defaults.RetryCount)
+	if defaults.RetryCount != 2 {
+		t.Fatalf("default RetryCount = %d, want 2 (one retry within a two attempt budget)", defaults.RetryCount)
 	}
 
 	for _, value := range []json.Number{"0", "7"} {

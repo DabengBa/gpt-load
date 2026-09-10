@@ -55,8 +55,8 @@ export default {
       first_byte_timeout: 'ネイティブ応答 / ストリーム初回イベントのタイムアウト',
       request_timeout: 'リクエスト全体のタイムアウト',
       stream_idle_timeout: 'ストリームアイドルタイムアウト',
-      retry_count: '追加再試行回数',
-      retryCountHelp: '最初の上流試行後に追加する再試行の上限です。0 で再試行を無効化します。',
+      retry_count: '最大試行回数',
+      retryCountHelp: '1 リクエストで許容する上流試行の総回数です。0 または 1 は 1 回のみ（再試行なし）、2 で初回失敗後に候補を 1 回切り替えられます。',
       blacklist_threshold: '連続失敗のブラックリストしきい値',
       blacklistThresholdHelp:
         'この連続失敗回数に達すると認証情報をブラックリストへ登録します。0 で自動登録を無効化します。',
