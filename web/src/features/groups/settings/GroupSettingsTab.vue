@@ -238,6 +238,17 @@ const affinityOverridden = computed(() => draft.value?.overrides.affinity_enable
 const affinityPendingRestore = computed(
   () => !affinityOverridden.value && saved.value?.overrides.affinity_enabled !== undefined,
 )
+const bufferedStreamOverridden = computed(
+  () => draft.value?.overrides.buffered_stream !== undefined,
+)
+const bufferedStreamPendingRestore = computed(
+  () => !bufferedStreamOverridden.value && saved.value?.overrides.buffered_stream !== undefined,
+)
+const bufferedStreamEnabledLabel = computed(() =>
+  saved.value?.effective.buffered_stream
+    ? t('group.settings.runtime.enabledValue')
+    : t('group.settings.runtime.disabledValue'),
+)
 const affinityEnabledLabel = computed(() =>
   saved.value?.effective.affinity_enabled
     ? t('group.settings.runtime.enabledValue')
@@ -378,6 +389,22 @@ function toggleAffinityOverride(): void {
   if (affinityOverridden.value) delete overrides.affinity_enabled
   else overrides.affinity_enabled = saved.value.effective.affinity_enabled
   draft.value = { ...draft.value, overrides }
+}
+
+function setBufferedStreamOverride(enabled: boolean): void {
+  if (!draft.value || !saved.value) return
+  const overrides = { ...draft.value.overrides }
+  if (enabled) overrides.buffered_stream = saved.value.effective.buffered_stream
+  else delete overrides.buffered_stream
+  draft.value = { ...draft.value, overrides }
+}
+
+function setBufferedStreamValue(value: boolean): void {
+  if (!draft.value) return
+  draft.value = {
+    ...draft.value,
+    overrides: { ...draft.value.overrides, buffered_stream: value },
+  }
 }
 
 function setAffinityValue(value: boolean): void {
@@ -675,6 +702,40 @@ onBeforeUnmount(() => {
                               t('group.settings.runtime.countUnit')
                             }}</span>
                           </div>
+                        </template>
+                      </SettingRow>
+                      <SettingRow
+                        :label="t('group.settings.runtime.buffered_stream')"
+                        :value="
+                          bufferedStreamPendingRestore
+                            ? t('group.settings.runtime.resetPending')
+                            : bufferedStreamEnabledLabel
+                        "
+                        :help="t('group.settings.runtime.bufferedStreamHelp')"
+                        :source-label="
+                          bufferedStreamOverridden
+                            ? t('group.settings.runtime.override')
+                            : bufferedStreamPendingRestore
+                              ? t('group.settings.runtime.pendingRestoreSource')
+                              : t('group.settings.runtime.inherited')
+                        "
+                        :action-label="
+                          bufferedStreamOverridden
+                            ? t('group.settings.runtime.useInherited')
+                            : t('group.settings.runtime.useOverride')
+                        "
+                        :overridden="bufferedStreamOverridden"
+                        :pending-restore="bufferedStreamPendingRestore"
+                        :disabled="mutationPending"
+                        @toggle="setBufferedStreamOverride(!bufferedStreamOverridden)"
+                      >
+                        <template #control>
+                          <AppSwitch
+                            :model-value="draft.overrides.buffered_stream ?? false"
+                            :disabled="mutationPending"
+                            :label="t('group.settings.runtime.buffered_stream')"
+                            @update:model-value="setBufferedStreamValue"
+                          />
                         </template>
                       </SettingRow>
                       <SettingRow

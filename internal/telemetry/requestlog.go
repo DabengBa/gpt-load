@@ -80,33 +80,41 @@ const (
 )
 
 type Attempt struct {
-	Sequence          int
-	CompletedAt       time.Time
-	GroupID           uint
-	GroupName         string
-	ChannelID         channel.ID
-	CredentialID      uint
-	Operation         execution.Operation
-	RouteMode         channel.RouteMode
-	UpstreamModel     string
-	UpstreamRequestID string
-	DispatchState     execution.DispatchState
-	ResponseStarted   bool
-	UpstreamProtocol  protocol.Protocol
-	Reasoning         reasoning.Config
-	StatusCode        int
-	DurationMs        int64
-	FailureCategory   FailureCategory
-	FailureOrigin     execution.ErrorOrigin
-	FailureScope      execution.ErrorScope
-	RetryDirective    RetryDirective
-	Effect            Effect
-	RuleID            string
-	Action            Action
-	WillRetry         bool
-	ErrorCode         string
-	ErrorSummary      string
-	Committed         bool
+	Sequence                int
+	CompletedAt             time.Time
+	GroupID                 uint
+	GroupName               string
+	ChannelID               channel.ID
+	CredentialID            uint
+	Operation               execution.Operation
+	RouteMode               channel.RouteMode
+	UpstreamModel           string
+	UpstreamRequestID       string
+	DispatchState           execution.DispatchState
+	ResponseStarted         bool
+	UpstreamProtocol        protocol.Protocol
+	Reasoning               reasoning.Config
+	StatusCode              int
+	DurationMs              int64
+	FailureCategory         FailureCategory
+	FailureOrigin           execution.ErrorOrigin
+	FailureScope            execution.ErrorScope
+	RetryDirective          RetryDirective
+	Effect                  Effect
+	RuleID                  string
+	Action                  Action
+	WillRetry               bool
+	ErrorCode               string
+	ErrorSummary            string
+	Committed               bool
+	HTTPCommitted           bool
+	PayloadReleased         bool
+	ClientVisibleBytes      int64
+	BufferedPeakBytes       int64
+	BufferedSpilled         bool
+	BufferedStream          bool
+	PayloadReleaseStartedMs int64
+	Usage                   usage.Result
 }
 
 // PricingObservation is the frozen, dependency-neutral quote selected by the
@@ -149,6 +157,9 @@ type RequestEvent struct {
 	Reasoning             reasoning.Config
 	Attempts              []Attempt
 	Usage                 UsageObservation
+	BufferedStream        bool
+	BufferedPeakBytes     int64
+	ReleaseStartedMs      *int64
 }
 
 type RequestLogSink interface {

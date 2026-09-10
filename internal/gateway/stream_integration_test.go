@@ -26,7 +26,9 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
+	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
+	"gpt-load/internal/platform/config"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
 	"gpt-load/internal/testutil/encryptiontest"
@@ -687,6 +689,136 @@ func TestStreamWriteDeadlineStopsRealTCPSlowReader(t *testing.T) {
 	}
 }
 
+func TestBufferedStreamRealTCPSlowClientStopsDuringRelease(t *testing.T) {
+	payload := []byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"" + strings.Repeat("x", 1<<20) + "\"},\"finish_reason\":null}]}\n\n")
+	executor := fakeExecutionExecutor{stream: func(_ context.Context, _ execution.AttemptSpec, sink execution.StreamSink) execution.StreamResult {
+		if err := sink(execution.StreamEvent{Sequence: 1, Kind: execution.StreamEventReady, StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}}); err != nil {
+			return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK}
+		}
+		for sequence, data := range [][]byte{payload, []byte("data: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}]}\n\n"), []byte("data: [DONE]\n\n")} {
+			if err := sink(execution.StreamEvent{Sequence: uint64(sequence + 2), Kind: execution.StreamEventData, Data: data}); err != nil {
+				return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindInternal, Summary: err.Error()}}
+			}
+		}
+		return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK}
+	}}
+	forwarder := NewExecutionForwarder(executor)
+	forwarder.writeTimeout = 25 * time.Millisecond
+	input := executionForwardInput()
+	input.BufferedStream = true
+	done := make(chan UpstreamResult, 1)
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/", func(ctx *gin.Context) { done <- forwarder.ForwardStream(ctx.Request.Context(), input, ctx.Writer) })
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: engine}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(&smallWriteBufferListener{Listener: listener}) }()
+	var client net.Conn
+	t.Cleanup(func() {
+		if client != nil {
+			_ = client.Close()
+		}
+		_ = server.Close()
+		_ = listener.Close()
+		select {
+		case serveErr := <-serveDone:
+			if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+				t.Errorf("server.Serve() error = %v", serveErr)
+			}
+		case <-time.After(time.Second):
+			t.Error("server.Serve() did not stop")
+		}
+	})
+	client, err = net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tcp, ok := client.(*net.TCPConn); ok {
+		_ = tcp.SetReadBuffer(1024)
+	}
+	if _, err := fmt.Fprintf(client, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", listener.Addr().String()); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.ReadResponse(bufio.NewReader(client), &http.Request{Method: http.MethodGet})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	select {
+	case result := <-done:
+		if result.Err == nil || result.Stream.EndReason != StreamEndDownstreamWriteFailure {
+			t.Fatalf("buffered slow-client result = %#v", result)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("buffered slow client did not stop during release")
+	}
+}
+
+func TestBufferedStreamRealTCPRSTCancelsUpstream(t *testing.T) {
+	started := make(chan struct{})
+	canceled := make(chan struct{})
+	executor := fakeExecutionExecutor{stream: func(ctx context.Context, _ execution.AttemptSpec, sink execution.StreamSink) execution.StreamResult {
+		if err := sink(execution.StreamEvent{Sequence: 1, Kind: execution.StreamEventReady, StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}}); err != nil {
+			return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK}
+		}
+		close(started)
+		<-ctx.Done()
+		close(canceled)
+		return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindCanceled, Summary: "canceled"}}
+	}}
+	forwarder := NewExecutionForwarder(executor)
+	input := executionForwardInput()
+	input.BufferedStream = true
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/", func(ctx *gin.Context) { _ = forwarder.ForwardStream(ctx.Request.Context(), input, ctx.Writer) })
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: engine}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	var client net.Conn
+	t.Cleanup(func() {
+		if client != nil {
+			_ = client.Close()
+		}
+		_ = server.Close()
+		_ = listener.Close()
+		select {
+		case <-serveDone:
+		case <-time.After(time.Second):
+			t.Error("RST server did not stop")
+		}
+	})
+	client, err = net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fmt.Fprintf(client, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: keep-alive\r\n\r\n", listener.Addr().String()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("buffered upstream did not start")
+	}
+	if tcp, ok := client.(*net.TCPConn); ok {
+		_ = tcp.SetLinger(0)
+	}
+	_ = client.Close()
+	select {
+	case <-canceled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("TCP RST did not cancel buffered upstream")
+	}
+}
+
 func TestBufferedWriteDeadlineStopsRealTCPSlowReader(t *testing.T) {
 	done := make(chan error, 1)
 	handler := &Handler{writeTimeout: 25 * time.Millisecond}
@@ -842,14 +974,15 @@ func (listener *smallWriteBufferListener) Accept() (net.Conn, error) {
 }
 
 type streamGatewayGroup struct {
-	id          uint
-	name        string
-	upstreamURL string
-	apiKey      string
-	modelID     string
-	alias       string
-	firstByte   time.Duration
-	streamIdle  time.Duration
+	id             uint
+	name           string
+	upstreamURL    string
+	apiKey         string
+	modelID        string
+	alias          string
+	firstByte      time.Duration
+	streamIdle     time.Duration
+	bufferedStream bool
 }
 
 func newStreamingGatewayEngine(t *testing.T, groups ...streamGatewayGroup) (*gin.Engine, *state.CredentialRegistry) {
@@ -869,6 +1002,7 @@ func newStreamingGatewayEngine(t *testing.T, groups ...streamGatewayGroup) (*gin
 		channelID, params := testChannelConfig(t, protocol.OpenAICompletions, baseURL)
 		groupConfigs = append(groupConfigs, state.GroupConfig{ConnectionType: "api_key", ID: group.id, Name: group.name, ChannelID: channelID, Params: params,
 			Models: []state.ModelConfig{{ID: modelID, Alias: group.alias}}, Enabled: true,
+			Settings: config.Settings{state.SettingBufferedStream: group.bufferedStream},
 		})
 		credentialID := uint(index + 1)
 		entries = append(entries, testCredentialEntry(t, keyService, credentialID, group.id, group.apiKey))

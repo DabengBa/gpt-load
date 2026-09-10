@@ -940,6 +940,16 @@ func (handler *Handler) executeAttempts(
 	attemptSequence := 0
 	forwardAttempts := 0
 	forwardAttemptLimit := 1
+	bufferedModeFrozen := false
+	bufferedMode := false
+	bufferedReplayEligible := false
+	requestContext := ginContext.Request.Context()
+	var bufferedCancel context.CancelFunc
+	defer func() {
+		if bufferedCancel != nil {
+			bufferedCancel()
+		}
+	}()
 	retryPolicyResolved := false
 	type credentialRefreshRetry struct {
 		selection scheduler.Selection
@@ -1025,6 +1035,7 @@ func (handler *Handler) executeAttempts(
 			CredentialRefreshable:    credentialRefreshable,
 			Method:                   method,
 			Operation:                operation,
+			BufferedReplayEligible:   stream && bufferedMode && bufferedReplayEligible,
 		}
 	}
 	recordCandidatePreparationFailure := func(
@@ -1131,8 +1142,8 @@ func (handler *Handler) executeAttempts(
 		}, result.Err)
 	}
 	for forwardAttempts < forwardAttemptLimit {
-		if ginContext.Request.Context().Err() != nil {
-			recorder.completeCanceled(ginContext.Request.Context(), 0, lastAttemptIndex)
+		if ginContext.Request.Context().Err() != nil || requestContext.Err() != nil {
+			recorder.completeCanceled(requestContext, 0, lastAttemptIndex)
 			return
 		}
 		forceCredentialRefresh := false
@@ -1164,6 +1175,11 @@ func (handler *Handler) executeAttempts(
 				continue
 			}
 			ref = candidateRef
+		}
+		if stream && !bufferedModeFrozen && selection.Group.BufferedStream &&
+			!supportsBufferedStreamProtocol(selectedDialect.Protocol()) {
+			handler.completeReason(ginContext, recorder, reasonBufferedStreamUnsupported)
+			return
 		}
 		encrypted, active := handler.registry.ActiveEncryptedCredentialDataIfMatch(ref)
 		if !active {
@@ -1292,13 +1308,25 @@ func (handler *Handler) executeAttempts(
 			recorder.setAffinityHit(true)
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, attemptSequence)
+		if stream && !bufferedModeFrozen {
+			bufferedModeFrozen = true
+			bufferedMode = selection.Group.BufferedStream
+			if bufferedMode {
+				bufferedReplayEligible = bufferedStreamReplayEligible(parsed, selectedDialect)
+				requestContext = context.WithValue(requestContext, bufferedStreamSessionContextKey{}, &bufferedStreamSession{})
+				if timeout := selection.Group.Timeouts.Request; timeout > 0 {
+					requestContext, bufferedCancel = context.WithTimeout(requestContext, timeout)
+				}
+			}
+		}
 		executionRequestID := "untracked"
 		if recorder != nil && recorder.requestID != "" {
 			executionRequestID = recorder.requestID
 		}
 		input := ForwardInput{
 			Dialect: selectedDialect, ObserveUsage: attemptObservations.ObserveUsage,
-			Group: selection.Group, APIKey: normalizedCredential.apiKey,
+			BufferedStream: bufferedMode,
+			Group:          selection.Group, APIKey: normalizedCredential.apiKey,
 			CredentialSecrets: normalizedCredential.secrets, Request: prepared.request,
 			ExternalModel:            externalModel,
 			UpstreamModelID:          optionalModelValue(selection.UpstreamModelID),
@@ -1340,7 +1368,7 @@ func (handler *Handler) executeAttempts(
 		var result UpstreamResult
 		capture := captureFromContext(ginContext)
 		captureAttempt, captureObserver, attemptContext, captureStarted := capture.beginForward(
-			ginContext.Request.Context(),
+			requestContext,
 			input,
 		)
 		func() {
@@ -1355,7 +1383,7 @@ func (handler *Handler) executeAttempts(
 		if recorder != nil {
 			attemptCompleted = recorder.now()
 		}
-		requestCanceled := ginContext.Request.Context().Err() != nil
+		requestCanceled := ginContext.Request.Context().Err() != nil || requestContext.Err() != nil
 		if stream && result.Committed && result.Stream.EndReason == StreamEndNone {
 			result.Stream = prioritizeStreamObservation(
 				ginContext.Request.Context(),
@@ -1366,13 +1394,52 @@ func (handler *Handler) executeAttempts(
 		attemptNow := handler.now()
 		resultForDecision := result
 		if requestCanceled {
-			resultForDecision.Err = ginContext.Request.Context().Err()
+			if requestContext.Err() != nil {
+				resultForDecision.Err = requestContext.Err()
+			} else {
+				resultForDecision.Err = ginContext.Request.Context().Err()
+			}
 		}
 		decision := judgeUpstreamResult(
 			resultForDecision,
 			attemptNow,
 			decisionContextForSelection(selection),
 		)
+		if stream && result.BufferedStream && result.HTTPCommitted && !result.PayloadReleased {
+			// A heartbeat has committed HTTP, but no provider payload is visible;
+			// this is the only committed state in which an explicit buffered retry
+			// may proceed. Committed is intentionally left true.
+			recordedAttempt := recorder.recordStreamAttempt(
+				selection, normalizedCredential.secrets, result, decision, attemptStarted, attemptCompleted,
+			)
+			lastAttemptIndex = recordedAttempt
+			handler.applyGroupDecisionEffectForEntry(
+				selection.Group, selection.CredentialID,
+				refreshCooldownCredentialVersion(result, ref.Version),
+				selection.EntryID, decision, result.StatusCode, attemptNow,
+			)
+			if decision.Effect == health.EffectSkipGroup {
+				iterator.SkipGroup(selection.GroupID)
+			}
+			if requestCanceled {
+				recorder.completeCanceled(ginContext.Request.Context(), 0, recordedAttempt)
+				return
+			}
+			if decision.Retry != health.RetryNone && forwardAttempts < forwardAttemptLimit {
+				recorder.retryIfAnotherForward(recordedAttempt)
+				continue
+			}
+			recorder.completeStream(result, optionalModelValue(selection.UpstreamModelID), recordedAttempt)
+			if result.Stream.EndReason != StreamEndDownstreamWriteFailure &&
+				result.Stream.EndReason != StreamEndClientCanceled &&
+				result.Stream.EndReason != StreamEndServerShutdown &&
+				!errors.Is(result.Err, context.Canceled) {
+				if err := handler.writeBufferedStreamError(ginContext, selectedDialect.Protocol(), result.Stream.ResponseID); err != nil {
+					handler.completeWriteTerminal(ginContext, recorder, result.StatusCode)
+				}
+			}
+			return
+		}
 		if result.Committed {
 			if recorder != nil {
 				recordedAttempt := recorder.recordStreamAttempt(

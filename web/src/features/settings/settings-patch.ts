@@ -29,6 +29,7 @@ const requestForwardingKeys: RuntimeSettingKey[] = [
   'retry_count',
   'blacklist_threshold',
   'header_rules',
+  'buffered_stream',
   'validation_interval',
 ]
 const logsMaintenanceKeys: RuntimeSettingKey[] = ['request_log_retention_days']
@@ -83,6 +84,8 @@ export function setSettingsOverride(
     next.overrides.add(key)
     if (key === 'route_strategy') {
       next.values.route_strategy = base.values.route_strategy
+    } else if (key === 'buffered_stream') {
+      next.values.buffered_stream = base.values.buffered_stream
     } else if (key === 'affinity_enabled') {
       next.values.affinity_enabled = base.values.affinity_enabled
     } else if (key === 'models_dev_auto_sync_enabled') {

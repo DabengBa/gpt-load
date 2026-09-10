@@ -61,6 +61,9 @@ type DecisionContext struct {
 	CredentialRefreshable    bool
 	Method                   string
 	Operation                execution.Operation
+	// BufferedReplayEligible is a request-level proof that another buffered
+	// attempt cannot repeat a provider-side operation or continuity state.
+	BufferedReplayEligible bool
 }
 
 // Decision is the complete business decision for one execution attempt.

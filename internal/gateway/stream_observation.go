@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -46,6 +47,7 @@ const (
 type StreamObservation struct {
 	EndReason    StreamEndReason
 	ErrorSummary string
+	ResponseID   string
 }
 
 type streamEventObserver struct {
@@ -60,6 +62,12 @@ type streamEventObserver struct {
 	firstSummary        string
 	firstErrorPayload   []byte
 	usage               *streamUsageCapture
+	chatChoices         map[int]bool
+	chatChoiceSeen      bool
+	anthropicBlocks     map[int]bool
+	anthropicBlockSeen  bool
+	responseID          string
+	strict              bool
 }
 
 // sseEventObservationBuffer frames arbitrary executor data chunks without
@@ -198,8 +206,12 @@ func (buffer *sseEventObservationBuffer) discard(count int) {
 func newStreamEventObserver(
 	selected dialect.Dialect,
 	capture *streamUsageCapture,
+	strict ...bool,
 ) *streamEventObserver {
 	observer := &streamEventObserver{usage: capture}
+	if len(strict) > 0 {
+		observer.strict = strict[0]
+	}
 	classifier, ok := selected.(dialect.StreamEventClassifier)
 	if !ok {
 		return observer
@@ -240,8 +252,13 @@ func (observer *streamEventObserver) classify(
 		return genericProviderError, nil
 	}
 	if observer.sawTerminal {
-		// 首个协议终态确定观测结果；后续数据仅透传。
+		if observer.strict {
+			return false, fmt.Errorf("%w: event received after stream terminal", ErrUpstreamProtocol)
+		}
 		return false, nil
+	}
+	if err := observer.observeProtocolState(event); err != nil {
+		return false, err
 	}
 
 	classification := dialect.StreamEventClassification{
@@ -276,6 +293,165 @@ func (observer *streamEventObserver) classify(
 	return providerError, nil
 }
 
+func (observer *streamEventObserver) observeProtocolState(event dialect.StreamEvent) error {
+	if observer == nil {
+		return nil
+	}
+	if observer.classifier == nil {
+		return nil
+	}
+	switch observer.classifier.(type) {
+	case *dialect.OpenAI:
+		if observer.strict {
+			return observer.observeChatChoices(event)
+		}
+	case *dialect.Anthropic:
+		if observer.strict {
+			return observer.observeAnthropicBlocks(event)
+		}
+	case *dialect.OpenAIResponses:
+		observer.captureResponsesID(event)
+	}
+	return nil
+}
+
+func (observer *streamEventObserver) observeChatChoices(event dialect.StreamEvent) error {
+	if observer.chatChoices == nil {
+		observer.chatChoices = make(map[int]bool)
+	}
+	if bytes.Equal(bytes.TrimSpace(event.Payload), []byte("[DONE]")) {
+		if !observer.chatChoiceSeen {
+			return fmt.Errorf("%w: Chat stream ended without a choice", ErrUpstreamProtocol)
+		}
+		for index, closed := range observer.chatChoices {
+			if !closed {
+				return fmt.Errorf("%w: Chat choice %d did not finish", ErrUpstreamProtocol, index)
+			}
+		}
+		return nil
+	}
+	var envelope struct {
+		Choices []struct {
+			Index        *int            `json:"index"`
+			FinishReason json.RawMessage `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(event.Payload, &envelope); err != nil {
+		return nil
+	}
+	for position, choice := range envelope.Choices {
+		index := position
+		if choice.Index != nil {
+			index = *choice.Index
+		}
+		observer.chatChoiceSeen = true
+		closed := len(bytes.TrimSpace(choice.FinishReason)) > 0 && !bytes.Equal(bytes.TrimSpace(choice.FinishReason), []byte("null"))
+		if closed {
+			var finishReason string
+			if err := json.Unmarshal(choice.FinishReason, &finishReason); err != nil || !validChatFinishReason(finishReason) {
+				return fmt.Errorf("%w: invalid Chat finish_reason", ErrUpstreamProtocol)
+			}
+		}
+		if previous, exists := observer.chatChoices[index]; exists && previous && !closed {
+			return fmt.Errorf("%w: Chat choice %d reopened", ErrUpstreamProtocol, index)
+		}
+		if closed {
+			observer.chatChoices[index] = true
+		} else if _, exists := observer.chatChoices[index]; !exists {
+			observer.chatChoices[index] = false
+		}
+	}
+	return nil
+}
+
+func validChatFinishReason(value string) bool {
+	switch value {
+	case "stop", "length", "content_filter", "tool_calls", "function_call":
+		return true
+	default:
+		return false
+	}
+}
+
+func (observer *streamEventObserver) observeAnthropicBlocks(event dialect.StreamEvent) error {
+	if observer.anthropicBlocks == nil {
+		observer.anthropicBlocks = make(map[int]bool)
+	}
+	eventType, err := anthropicStreamEventType(event)
+	if err != nil {
+		return err
+	}
+	var envelope struct {
+		Index *int `json:"index"`
+	}
+	if err := json.Unmarshal(event.Payload, &envelope); err != nil {
+		return fmt.Errorf("%w: decode Anthropic stream event", ErrUpstreamProtocol)
+	}
+	index := 0
+	if envelope.Index != nil {
+		index = *envelope.Index
+	}
+	switch eventType {
+	case "content_block_start":
+		observer.anthropicBlockSeen = true
+		if _, exists := observer.anthropicBlocks[index]; exists {
+			return fmt.Errorf("%w: duplicate Anthropic content block start", ErrUpstreamProtocol)
+		}
+		observer.anthropicBlocks[index] = false
+	case "content_block_stop":
+		closed, exists := observer.anthropicBlocks[index]
+		if !exists || closed {
+			return fmt.Errorf("%w: invalid Anthropic content block stop", ErrUpstreamProtocol)
+		}
+		observer.anthropicBlocks[index] = true
+	case "message_stop":
+		for index, closed := range observer.anthropicBlocks {
+			if !closed {
+				return fmt.Errorf("%w: Anthropic content block %d did not stop", ErrUpstreamProtocol, index)
+			}
+		}
+	}
+	return nil
+}
+
+func anthropicStreamEventType(event dialect.StreamEvent) (string, error) {
+	if event.Name != "" {
+		var envelope struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(event.Payload, &envelope); err != nil {
+			return "", fmt.Errorf("%w: decode Anthropic stream event", ErrUpstreamProtocol)
+		}
+		if envelope.Type != "" && envelope.Type != event.Name {
+			return "", fmt.Errorf("%w: Anthropic event name conflicts with payload type", ErrUpstreamProtocol)
+		}
+		return event.Name, nil
+	}
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(event.Payload, &envelope); err != nil {
+		return "", fmt.Errorf("%w: decode Anthropic stream event", ErrUpstreamProtocol)
+	}
+	return envelope.Type, nil
+}
+
+func (observer *streamEventObserver) captureResponsesID(event dialect.StreamEvent) {
+	var envelope struct {
+		ID       string `json:"id"`
+		Response struct {
+			ID string `json:"id"`
+		} `json:"response"`
+	}
+	if json.Unmarshal(event.Payload, &envelope) != nil {
+		return
+	}
+	if envelope.Response.ID != "" {
+		observer.responseID = envelope.Response.ID
+	} else if envelope.ID != "" {
+		observer.responseID = envelope.ID
+	}
+}
 func (observer *streamEventObserver) firstEventWasProviderError() bool {
 	return observer != nil && observer.firstProviderError
 }
@@ -325,13 +501,25 @@ func (observer *streamEventObserver) endObservation() StreamObservation {
 		return StreamObservation{
 			EndReason:    StreamEndSSEError,
 			ErrorSummary: observer.firstSummary,
+			ResponseID:   observer.responseID,
+		}
+	}
+	if observer.sawTerminal && observer.terminalDisposition == dialect.StreamEventFailed {
+		return StreamObservation{
+			EndReason:    StreamEndSSEError,
+			ErrorSummary: fixedErrorSummary("upstream_sse_error"),
+			ResponseID:   observer.responseID,
 		}
 	}
 	if observer.sawTerminal &&
 		observer.terminalDisposition == dialect.StreamEventIncomplete {
-		return streamTerminalObservation(StreamEndProviderIncomplete)
+		return StreamObservation{
+			EndReason:    StreamEndProviderIncomplete,
+			ErrorSummary: fixedErrorSummary("upstream_response_incomplete"),
+			ResponseID:   observer.responseID,
+		}
 	}
-	return StreamObservation{EndReason: StreamEndCleanEOF}
+	return StreamObservation{EndReason: StreamEndCleanEOF, ResponseID: observer.responseID}
 }
 
 func (observer *streamEventObserver) validateEOF() error {
@@ -355,14 +543,22 @@ func observeStreamTermination(
 	observation := events.endObservation()
 	if events != nil && events.terminalForwarded {
 		if errors.Is(err, ErrUpstreamProtocol) {
-			return prioritizeStreamObservation(nil, err, observation)
+			result := prioritizeStreamObservation(nil, err, observation)
+			result.ResponseID = observation.ResponseID
+			return result
 		}
 		if errors.Is(err, context.Canceled) ||
 			(ctx != nil && errors.Is(ctx.Err(), context.Canceled)) {
 			return observation
 		}
 	}
-	return prioritizeStreamObservation(ctx, err, observation)
+	if events != nil && events.sawTerminal && events.terminalDisposition == dialect.StreamEventIncomplete &&
+		(errors.Is(err, context.Canceled) || (ctx != nil && errors.Is(ctx.Err(), context.Canceled))) {
+		return StreamObservation{EndReason: StreamEndProviderIncomplete, ErrorSummary: fixedErrorSummary("upstream_response_incomplete"), ResponseID: observation.ResponseID}
+	}
+	result := prioritizeStreamObservation(ctx, err, observation)
+	result.ResponseID = observation.ResponseID
+	return result
 }
 
 func prioritizeStreamObservation(
@@ -415,6 +611,11 @@ func streamTerminalObservation(reason StreamEndReason) StreamObservation {
 	}
 }
 
+func streamTerminalObservationWithResponseID(reason StreamEndReason, responseID string) StreamObservation {
+	observation := streamTerminalObservation(reason)
+	observation.ResponseID = responseID
+	return observation
+}
 func streamErrorCode(reason StreamEndReason) string {
 	switch reason {
 	case StreamEndCleanEOF, StreamEndNone:

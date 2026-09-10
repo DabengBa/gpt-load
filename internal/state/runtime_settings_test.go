@@ -703,6 +703,7 @@ func TestIsRuntimeSettingKeyRecognizesOnlyPublicRuntimeKeys(t *testing.T) {
 		SettingHeaderRules,
 		SettingCORS,
 		SettingResponseHeaderRules,
+		SettingBufferedStream,
 		SettingRetryCount,
 		SettingBlacklistThreshold,
 		SettingAffinityEnabled,
@@ -756,6 +757,70 @@ func TestResolveGroupRuntimeSettingsOwnsSystemHeaderRuleCopy(t *testing.T) {
 	system.HeaderRules.Remove[0] = "X-Mutated"
 	if resolved.HeaderRules.Set["X-System"] != "system" || resolved.HeaderRules.Remove[0] != "X-Old" {
 		t.Fatalf("group rules changed with system settings: %#v", resolved.HeaderRules)
+	}
+}
+
+func TestBufferedStreamDefaultsToDisabledAndUsesStrictBooleanInheritance(t *testing.T) {
+	if !IsRuntimeSettingKey(SettingBufferedStream) {
+		t.Fatal("buffered_stream is not a public runtime setting")
+	}
+
+	defaults, err := ResolveRuntimeSettings(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.BufferedStream {
+		t.Fatal("BufferedStream = true, want default false")
+	}
+
+	for _, value := range []bool{true, false} {
+		resolved, err := ResolveRuntimeSettings(config.Settings{SettingBufferedStream: value})
+		if err != nil || resolved.BufferedStream != value {
+			t.Fatalf("ResolveRuntimeSettings(%t) = %#v, %v", value, resolved, err)
+		}
+	}
+
+	global, err := ResolveRuntimeSettings(config.Settings{SettingBufferedStream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inherited, err := ResolveGroupRuntimeSettings(global, nil)
+	if err != nil || !inherited.BufferedStream {
+		t.Fatalf("inherited BufferedStream = %#v, %v; want true", inherited, err)
+	}
+	overridden, err := ResolveGroupRuntimeSettings(global, config.Settings{SettingBufferedStream: false})
+	if err != nil || overridden.BufferedStream {
+		t.Fatalf("group BufferedStream = %#v, %v; want false", overridden, err)
+	}
+
+	for _, value := range []any{nil, 0, 1, "true", []any{}, map[string]any{}} {
+		if err := ValidateRuntimeSetting(SettingBufferedStream, value); err == nil {
+			t.Errorf("ValidateRuntimeSetting(%#v) accepted non-boolean", value)
+		}
+		if _, err := ResolveRuntimeSettings(config.Settings{SettingBufferedStream: value}); err == nil {
+			t.Errorf("ResolveRuntimeSettings(%#v) accepted non-boolean", value)
+		}
+		if _, err := ResolveGroupRuntimeSettings(DefaultRuntimeSettings(), config.Settings{SettingBufferedStream: value}); err == nil {
+			t.Errorf("ResolveGroupRuntimeSettings(%#v) accepted non-boolean", value)
+		}
+	}
+}
+
+func TestResolvedGroupSettingsOwnsBufferedStreamInheritance(t *testing.T) {
+	global, err := ResolveRuntimeSettings(config.Settings{SettingBufferedStream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := ResolveGroupRuntimeSettings(global, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ResolveGroupRuntimeSettings(global, config.Settings{SettingBufferedStream: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.BufferedStream || second.BufferedStream {
+		t.Fatalf("group buffered stream values = %t/%t, want true/false", first.BufferedStream, second.BufferedStream)
 	}
 }
 

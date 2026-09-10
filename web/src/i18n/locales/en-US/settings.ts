@@ -62,6 +62,9 @@ export default {
       blacklistThresholdHelp:
         'A credential is blacklisted after this many consecutive failures; 0 disables automatic blacklisting.',
       validation_interval: 'Credential validation interval',
+      buffered_stream: 'Buffer streaming responses',
+      bufferedStreamHelp:
+        'Disabled by default. Enable only when the client needs a buffered response instead of incremental delivery.',
       models_dev_auto_sync_enabled: 'Automatically sync the Models.dev catalog and prices',
       modelsDevAutoSyncHelp:
         'When enabled, the catalog and automatic prices sync on schedule. Manual sync remains available on Models.',

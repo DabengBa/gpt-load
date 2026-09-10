@@ -21,6 +21,7 @@ import (
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
+	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage/models"
 )
 
@@ -463,6 +464,77 @@ func serveGroupSettingsRequest(t *testing.T, engine *gin.Engine, method, path, a
 
 func stringGroupID(groupID uint) string {
 	return strconv.FormatUint(uint64(groupID), 10)
+}
+
+func TestUpdateGroupSettingsReturnsBufferedStreamOverrideAndEffectiveValue(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupForCredentialImport(t, fixture, "sk-settings-buffered-stream")
+
+	if _, err := fixture.service.UpdateSettings(t.Context(), SettingsUpdateRequest{
+		Settings: map[string]json.RawMessage{state.SettingBufferedStream: json.RawMessage("true")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	inherited, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inherited.Effective.BufferedStream || inherited.Overrides[state.SettingBufferedStream] != nil {
+		t.Fatalf("inherited buffered stream = %#v/%#v, want true/no override", inherited.Effective.BufferedStream, inherited.Overrides)
+	}
+
+	overridden, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingBufferedStream: false,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overridden.Effective.BufferedStream || overridden.Overrides[state.SettingBufferedStream] != false {
+		t.Fatalf("buffered stream response = %#v/%#v, want false/false", overridden.Effective.BufferedStream, overridden.Overrides)
+	}
+
+	reloadedSettings, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings() after buffered stream override error = %v", err)
+	}
+	if reloadedSettings.Effective.BufferedStream || reloadedSettings.Overrides[state.SettingBufferedStream] != false {
+		t.Fatalf("reloaded buffered stream settings = %#v/%#v, want false/false", reloadedSettings.Effective.BufferedStream, reloadedSettings.Overrides)
+	}
+	reloadedManager := state.NewManager()
+	if err := stateloader.New(fixture.db, reloadedManager, state.NewCredentialRegistry()).Load(t.Context()); err != nil {
+		t.Fatalf("reload runtime settings: %v", err)
+	}
+	if view := reloadedManager.Current().Groups[groupID]; view.BufferedStream {
+		t.Fatal("reloaded group buffered stream = true, want false")
+	}
+
+	before := fixture.manager.Current()
+	var beforeGroup models.Group
+	if err := fixture.db.Take(&beforeGroup, groupID).Error; err != nil {
+		t.Fatalf("read group before invalid override: %v", err)
+	}
+	_, err = fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingBufferedStream: "false",
+		}},
+	})
+	if !errors.Is(err, app_errors.ErrValidation) {
+		t.Fatalf("invalid buffered stream override error = %v, want validation", err)
+	}
+	if fixture.manager.Current() != before {
+		t.Fatal("invalid buffered stream override published a snapshot")
+	}
+	var afterGroup models.Group
+	if err := fixture.db.Take(&afterGroup, groupID).Error; err != nil {
+		t.Fatalf("read group after invalid override: %v", err)
+	}
+	if !reflect.DeepEqual(afterGroup.Overrides, beforeGroup.Overrides) {
+		t.Fatalf("invalid buffered stream override mutated persisted overrides: before=%s after=%s", beforeGroup.Overrides, afterGroup.Overrides)
+	}
 }
 
 func settingsWeightPointer(value int) *int {

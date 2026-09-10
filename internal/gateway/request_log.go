@@ -151,7 +151,46 @@ func (recorder *requestRecorder) emit() {
 		Operation:             recorder.operation,
 		Attempts:              append([]telemetry.Attempt(nil), recorder.attempts...),
 		Usage:                 recorder.usage,
+		BufferedStream:        recorder.stream && hasBufferedAttempts(recorder.attempts),
+		BufferedPeakBytes:     maxBufferedAttemptBytes(recorder.attempts),
+		ReleaseStartedMs:      firstReleaseStarted(recorder.attempts),
 	})
+}
+
+func hasBufferedAttempts(attempts []telemetry.Attempt) bool {
+	for _, attempt := range attempts {
+		if attempt.BufferedStream || attempt.BufferedPeakBytes > 0 || attempt.BufferedSpilled || attempt.HTTPCommitted && !attempt.PayloadReleased {
+			return true
+		}
+	}
+	return false
+}
+
+func maxBufferedAttemptBytes(attempts []telemetry.Attempt) int64 {
+	var value int64
+	for _, attempt := range attempts {
+		if attempt.BufferedPeakBytes > value {
+			value = attempt.BufferedPeakBytes
+		}
+	}
+	return value
+}
+
+func firstReleaseStarted(attempts []telemetry.Attempt) *int64 {
+	for _, attempt := range attempts {
+		if attempt.PayloadReleased {
+			value := attempt.PayloadReleaseStartedMs
+			return &value
+		}
+	}
+	return nil
+}
+
+func maxInt64(left, right int64) int64 {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func (recorder *requestRecorder) freezeSensitiveInputErrorSummaries() {
@@ -353,36 +392,47 @@ func (recorder *requestRecorder) appendDecisionAttempt(
 		duration = 0
 	}
 	attempt := telemetry.Attempt{
-		Sequence:          len(recorder.attempts) + 1,
-		CompletedAt:       completedAt,
-		GroupID:           selection.GroupID,
-		GroupName:         selection.Group.Name,
-		ChannelID:         selection.ChannelID,
-		CredentialID:      selection.CredentialID,
-		Operation:         recorder.operation,
-		RouteMode:         selection.RouteMode,
-		UpstreamModel:     optionalModelValue(selection.UpstreamModelID),
-		UpstreamRequestID: result.UpstreamRequestID,
-		DispatchState:     result.DispatchState,
-		ResponseStarted:   result.ResponseStarted,
-		UpstreamProtocol:  result.UpstreamProtocol,
-		Reasoning:         result.AppliedReasoning.Clone(),
-		StatusCode:        result.StatusCode,
-		DurationMs:        duration.Milliseconds(),
-		FailureCategory:   telemetryFailureCategory(decision.Category),
-		FailureOrigin:     decision.Origin,
-		FailureScope:      decision.Scope,
-		RetryDirective:    telemetry.RetryDirective(decision.Retry),
-		Effect:            telemetry.Effect(decision.Effect),
-		RuleID:            string(decision.RuleID),
-		Action:            telemetryAction(decision),
-		ErrorCode:         errorCode,
-		ErrorSummary:      errorSummary,
-		Committed:         result.Committed,
+		Sequence:           len(recorder.attempts) + 1,
+		CompletedAt:        completedAt,
+		GroupID:            selection.GroupID,
+		GroupName:          selection.Group.Name,
+		ChannelID:          selection.ChannelID,
+		CredentialID:       selection.CredentialID,
+		Operation:          recorder.operation,
+		RouteMode:          selection.RouteMode,
+		UpstreamModel:      optionalModelValue(selection.UpstreamModelID),
+		UpstreamRequestID:  result.UpstreamRequestID,
+		DispatchState:      result.DispatchState,
+		ResponseStarted:    result.ResponseStarted,
+		UpstreamProtocol:   result.UpstreamProtocol,
+		Reasoning:          result.AppliedReasoning.Clone(),
+		StatusCode:         result.StatusCode,
+		DurationMs:         duration.Milliseconds(),
+		FailureCategory:    telemetryFailureCategory(decision.Category),
+		FailureOrigin:      decision.Origin,
+		FailureScope:       decision.Scope,
+		RetryDirective:     telemetry.RetryDirective(decision.Retry),
+		Effect:             telemetry.Effect(decision.Effect),
+		RuleID:             string(decision.RuleID),
+		Action:             telemetryAction(decision),
+		ErrorCode:          errorCode,
+		ErrorSummary:       errorSummary,
+		Committed:          result.Committed,
+		HTTPCommitted:      result.HTTPCommitted,
+		PayloadReleased:    result.PayloadReleased,
+		ClientVisibleBytes: result.ClientVisibleBytes,
+		BufferedPeakBytes:  result.BufferedPeakBytes,
+		BufferedSpilled:    result.BufferedSpilled,
+		BufferedStream:     result.BufferedStream,
+		Usage:              result.Usage,
 	}
 	if attempt.ErrorCode != "" && attempt.ErrorSummary == "" {
 		attempt.ErrorSummary = fixedErrorSummary(attempt.ErrorCode)
 	}
+	if !result.PayloadReleaseStartedAt.IsZero() {
+		attempt.PayloadReleaseStartedMs = maxInt64(0, result.PayloadReleaseStartedAt.Sub(recorder.startedAt).Milliseconds())
+	}
+
 	recorder.attempts = append(recorder.attempts, attempt)
 	frozen := frozenAttemptPricing{}
 	if recorder.pricingPending {
