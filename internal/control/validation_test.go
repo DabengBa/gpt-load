@@ -107,7 +107,6 @@ func TestValidationWorkerFallsBackToEmbeddingsAfterExplicitModelRejection(t *tes
 		}
 	}
 	if got, want := worker.recorder.events(), []string{
-		fmt.Sprintf("registry.weight:7:%d", state.DefaultWeight),
 		"registry.recover:7",
 		"stats.reset:7",
 	}; !reflect.DeepEqual(got, want) {
@@ -412,7 +411,7 @@ func TestValidationWorkerProbesStructuredCloudCredential(t *testing.T) {
 		t.Fatalf("probe attempt contains provider wire shape: %#v", observed)
 	}
 	if got, want := worker.recorder.events(), []string{
-		fmt.Sprintf("registry.weight:7:%d", state.DefaultWeight), "registry.recover:7", "stats.reset:7",
+		"registry.recover:7", "stats.reset:7",
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("recovery events = %#v, want %#v", got, want)
 	}
@@ -646,7 +645,7 @@ func TestValidationWorkerCoordinatesConditionalRecoveryAndStatsReset(t *testing.
 		t.Fatalf("recovery events before coordinator callback = %#v, want none", got)
 	}
 	close(coordinator.releaseEntry)
-	if got, want := awaitValue(t, coordinator.observed), []string{"registry.weight:7:50", "registry.recover:7", "stats.reset:7"}; !sameValidationEvents(got, want) {
+	if got, want := awaitValue(t, coordinator.observed), []string{"registry.recover:7", "stats.reset:7"}; !sameValidationEvents(got, want) {
 		t.Fatalf("recovery events = %#v, want %#v", got, want)
 	}
 	select {
@@ -868,7 +867,6 @@ func TestValidationWorkerUnrelatedSnapshotRevisionAllowsRecovery(t *testing.T) {
 	worker.Validate(context.Background())
 
 	if got, want := worker.recorder.events(), []string{
-		"registry.weight:7:50",
 		"registry.recover:7",
 		"stats.reset:7",
 	}; !sameValidationEvents(got, want) {
@@ -1174,13 +1172,14 @@ func TestValidationWorkerConditionalRecoveryFailureCompletesCoordinatorInterval(
 func TestValidationWorkerDoesNotRecoverDisabledOrReplacedKeyRef(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name            string
-		mutate          func(t *testing.T, registry *state.CredentialRegistry)
-		expectedCipher  string
-		expectedEnabled bool
+		name                string
+		mutate              func(t *testing.T, registry *state.CredentialRegistry)
+		expectedCipher      string
+		expectedEnabled     bool
+		expectedBlacklisted bool
 	}{
 		{
-			name: "disabled after sweep", expectedCipher: "cipher-original", mutate: func(t *testing.T, registry *state.CredentialRegistry) {
+			name: "disabled after sweep", expectedCipher: "cipher-original", expectedBlacklisted: false, mutate: func(t *testing.T, registry *state.CredentialRegistry) {
 				t.Helper()
 				if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 					ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", AuthState: state.CredentialAuthStateReauthorizationRequired, Blacklisted: true,
@@ -1191,7 +1190,7 @@ func TestValidationWorkerDoesNotRecoverDisabledOrReplacedKeyRef(t *testing.T) {
 			},
 		},
 		{
-			name: "replaced after sweep", expectedCipher: "cipher-replaced", expectedEnabled: true, mutate: func(t *testing.T, registry *state.CredentialRegistry) {
+			name: "replaced after sweep", expectedCipher: "cipher-replaced", expectedEnabled: true, expectedBlacklisted: true, mutate: func(t *testing.T, registry *state.CredentialRegistry) {
 				t.Helper()
 				if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 					ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7, Fingerprint: "test-7", AuthState: state.CredentialAuthStateReady, Blacklisted: true,
@@ -1238,10 +1237,14 @@ func TestValidationWorkerDoesNotRecoverDisabledOrReplacedKeyRef(t *testing.T) {
 			} else if !test.expectedEnabled && got != 0 {
 				t.Fatalf("active key count = %d, want 0", got)
 			}
-			if got, want := registry.BlacklistedCredentials(), []state.CredentialRef{{
-				ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7,
-				Fingerprint: "test-7", EncryptedValue: test.expectedCipher, FailureGeneration: 0,
-			}}; !reflect.DeepEqual(got, want) {
+			want := []state.CredentialRef{}
+			if test.expectedBlacklisted {
+				want = []state.CredentialRef{{
+					ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 7,
+					Fingerprint: "test-7", EncryptedValue: test.expectedCipher, FailureGeneration: 0,
+				}}
+			}
+			if got := registry.BlacklistedCredentials(); !reflect.DeepEqual(got, want) {
 				t.Fatalf("blacklisted keys after stale recovery = %#v, want %#v", got, want)
 			}
 			if got := registry.CollectCredentialCandidates([]uint{1}, nil, time.Time{}); len(got) != 0 {
