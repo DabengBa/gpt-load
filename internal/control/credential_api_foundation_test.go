@@ -122,23 +122,23 @@ func TestImportAndListGroupCredentialsUseCanonicalCredentialStorage(t *testing.T
 		t.Fatalf("CreateGroup() error = %v", err)
 	}
 	result, err := fixture.service.ImportGroupCredentials(t.Context(), created.GroupID, CredentialImportRequest{
-		Credentials: " second-secret \nfirst-secret\nsecond-secret\n",
+		Credentials: " first-secret \nfirst-secret\n",
 	})
 	if err != nil {
 		t.Fatalf("ImportGroupCredentials() error = %v", err)
 	}
-	if result.CredentialsAdded != 1 || result.CredentialsDuplicated != 2 {
+	if result.CredentialsAdded != 0 || result.CredentialsDuplicated != 2 {
 		t.Fatalf("import result = %#v", result)
 	}
 	var stored []models.Credential
 	if err := fixture.db.Where("group_id = ?", created.GroupID).Order("id ASC").Find(&stored).Error; err != nil {
 		t.Fatalf("load credentials: %v", err)
 	}
-	if len(stored) != 2 {
+	if len(stored) != 1 {
 		t.Fatalf("stored credentials = %#v", stored)
 	}
 	response, err := fixture.service.ListGroupCredentials(t.Context(), created.GroupID, CredentialCollectionQuery{Page: 1, PageSize: 20})
-	if err != nil || response.Summary.Total != 2 || len(response.Items) != 2 {
+	if err != nil || response.Summary.Total != 1 || len(response.Items) != 1 {
 		t.Fatalf("ListGroupCredentials() = %#v, %v", response, err)
 	}
 	encoded, err := json.Marshal(response)
@@ -270,20 +270,30 @@ func TestVertexCredentialImportAcceptsPastedServiceAccountJSON(t *testing.T) {
 func TestVertexCredentialImportAcceptsOneRawServiceAccountPerLine(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	credentials := strings.Join([]string{
+	credentials := []string{
 		`{"type":"service_account","project_id":"project-one","client_email":"first@example.iam.gserviceaccount.com","private_key":"first-secret"}`,
 		`{"type":"service_account","project_id":"project-one","client_email":"second@example.iam.gserviceaccount.com","private_key":"second-secret"}`,
-	}, "\n")
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("vertex credential batch"), ChannelID: channel.GoogleVertex,
-		Params: json.RawMessage(`{"location":"us-central1"}`),
-		Models: optionalGroupModels{Set: true}, Credentials: credentials, ConnectionType: "api_key",
-	})
-	if err != nil {
-		t.Fatalf("CreateGroup() error = %v", err)
 	}
-	if created.CredentialsAdded != 2 || created.CredentialsDuplicated != 0 {
-		t.Fatalf("create result = %#v", created)
+	for index, credential := range credentials {
+		created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+			Name: stringPointer(fmt.Sprintf("vertex credential batch %d", index)), ChannelID: channel.GoogleVertex,
+			Params: json.RawMessage(`{"location":"us-central1"}`),
+			Models: optionalGroupModels{Set: true}, Credentials: credential, ConnectionType: "api_key",
+			ConfirmSameTarget: index > 0,
+		})
+		if err != nil {
+			t.Fatalf("CreateGroup() error = %v", err)
+		}
+		if created.CredentialsAdded != 1 || created.CredentialsDuplicated != 0 {
+			t.Fatalf("create result = %#v", created)
+		}
+		var rows []models.Credential
+		if err := fixture.db.Where("group_id = ?", created.GroupID).Find(&rows).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("stored credentials = %#v", rows)
+		}
 	}
 }
 
@@ -382,14 +392,14 @@ func TestCredentialHTTPUsesCanonicalWireAndRejectsLegacyFields(t *testing.T) {
 	const idempotencyKey = "00000000-0000-4000-8000-0000000000c1"
 	imported := serveCredentialRequest(t, engine, http.MethodPost,
 		fmt.Sprintf("/api/groups/%d/credentials/import", created.GroupID),
-		`{"credentials":"second-secret"}`, auth, idempotencyKey)
-	if imported.Code != http.StatusOK || !strings.Contains(imported.Body.String(), `"credentials_added":1`) ||
-		strings.Contains(imported.Body.String(), "keys_added") {
+		`{"credentials":"first-secret"}`, auth, idempotencyKey)
+	if imported.Code != http.StatusOK || !strings.Contains(imported.Body.String(), `"credentials_added":0`) ||
+		!strings.Contains(imported.Body.String(), `"credentials_duplicated":1`) || strings.Contains(imported.Body.String(), "keys_added") {
 		t.Fatalf("credential import = %d %s", imported.Code, imported.Body.String())
 	}
 	replayed := serveCredentialRequest(t, engine, http.MethodPost,
 		fmt.Sprintf("/api/groups/%d/credentials/import", created.GroupID),
-		`{"credentials":"second-secret"}`, auth, idempotencyKey)
+		`{"credentials":"first-secret"}`, auth, idempotencyKey)
 	if replayed.Code != http.StatusOK || replayed.Body.String() != imported.Body.String() {
 		t.Fatalf("credential import replay = %d %s, want %s", replayed.Code, replayed.Body.String(), imported.Body.String())
 	}
@@ -403,8 +413,7 @@ func TestCredentialHTTPUsesCanonicalWireAndRejectsLegacyFields(t *testing.T) {
 	list := serveCredentialRequest(t, engine, http.MethodGet,
 		fmt.Sprintf("/api/groups/%d/credentials", created.GroupID), "", auth, "")
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"credential_id":`) ||
-		strings.Contains(list.Body.String(), "key_id") || strings.Contains(list.Body.String(), "first-secret") ||
-		strings.Contains(list.Body.String(), "second-secret") {
+		strings.Contains(list.Body.String(), "key_id") || strings.Contains(list.Body.String(), "first-secret") {
 		t.Fatalf("credential list = %d %s", list.Code, list.Body.String())
 	}
 

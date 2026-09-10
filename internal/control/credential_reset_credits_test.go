@@ -505,14 +505,20 @@ func TestConsumeCredentialResetCreditRejectsReusedKeyForAnotherCredential(t *tes
 	}
 
 	stage := mustImportSubscriptionStage(t, fixture, "reset-credit-other", "other-reset@example.com")
-	if _, err := fixture.service.ConnectGroupCredentials(t.Context(), groupID, []string{stage.StageID}); err != nil {
+	otherGroup, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name: stringPointer("reset credit other group"), ChannelID: channel.Codex,
+		ConnectionType:      models.ConnectionTypeSubscription,
+		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialIDs: []string{stage.StageID}, ConfirmSameTarget: true,
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	var other models.Credential
-	if err := fixture.db.Where("group_id = ? AND id <> ?", groupID, credentialID).Take(&other).Error; err != nil {
+	if err := fixture.db.Where("group_id = ?", otherGroup.GroupID).Take(&other).Error; err != nil {
 		t.Fatal(err)
 	}
-	_, reuseErr := fixture.service.ConsumeCredentialResetCredit(t.Context(), groupID, other.ID, resetCreditTestKey)
+	_, reuseErr := fixture.service.ConsumeCredentialResetCredit(t.Context(), otherGroup.GroupID, other.ID, resetCreditTestKey)
 	var apiErr *app_errors.APIError
 	if !errors.As(reuseErr, &apiErr) || apiErr.Code != app_errors.ErrIdempotencyKeyReused.Code {
 		t.Fatalf("error = %#v", reuseErr)

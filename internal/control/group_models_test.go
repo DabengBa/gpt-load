@@ -268,7 +268,7 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 			Set:    true,
 			Values: []GroupModel{{ID: "provider-old", Alias: "old-public", AliasEnabled: true}},
 		},
-		Credentials: "sk-model-save-a\nsk-model-save-b", ConnectionType: "api_key",
+		Credentials: "sk-model-save-a", ConnectionType: "api_key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -345,7 +345,7 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 	if err != nil {
 		t.Fatalf("GetGroupSummary() error = %v", err)
 	}
-	if settings.ValidationModel == nil || *settings.ValidationModel != validation || summary.CredentialCount != 2 {
+	if settings.ValidationModel == nil || *settings.ValidationModel != validation || summary.CredentialCount != 1 {
 		t.Fatalf("settings/summary = %#v/%#v", settings, summary)
 	}
 	streamIdle, ok := settings.Overrides[state.SettingStreamIdleTimeout].(json.Number)

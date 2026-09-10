@@ -78,14 +78,25 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	t.Parallel()
 	initControlI18n(t)
 	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "probe-first-secret\nprobe-second-secret")
+	createGroupWithCredentials(t, fixture, "probe-first-secret")
+	secondName := "credential-group-probe-second"
+	secondResult, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name: &secondName, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-4o"}}},
+		Credentials: "probe-second-secret", ConfirmSameTarget: true, ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatalf("CreateGroup(second) error = %v", err)
+	}
+	secondGroupID := secondResult.GroupID
 	var credentials []models.Credential
-	if err := fixture.db.Where("group_id = ?", groupID).Order("id ASC").Find(&credentials).Error; err != nil {
+	if err := fixture.db.Where("group_id = ?", secondGroupID).Order("id ASC").Find(&credentials).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(credentials) != 2 {
-		t.Fatalf("credentials = %#v, want two", credentials)
+	if len(credentials) != 1 {
+		t.Fatalf("credentials = %#v, want one", credentials)
 	}
+
 	executor := &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
 	fixture.service.executor = executor
 	fixture.service.now = func() time.Time {
@@ -95,7 +106,7 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	const auth = "credential-probe-auth"
 	engine := gin.New()
 	NewServer(&config.Config{AuthKey: auth}, fixture.service).RegisterRoutes(engine)
-	path := fmt.Sprintf("/api/groups/%d/credentials/%d/test", groupID, credentials[1].ID)
+	path := fmt.Sprintf("/api/groups/%d/credentials/%d/test", secondGroupID, credentials[0].ID)
 	unauthorized := serveCredentialRequest(t, engine, http.MethodPost, path, "{}", "", "")
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthorized response = %d %s", unauthorized.Code, unauthorized.Body.String())
@@ -126,7 +137,7 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 		t.Fatalf("probe calls = %d, want one", len(calls))
 	}
 	call := calls[0]
-	if call.Credential.ID != credentials[1].ID || call.Operation != execution.OperationProbe ||
+	if call.Credential.ID != credentials[0].ID || call.Operation != execution.OperationProbe ||
 		call.ClientModel != "gpt-4o" || call.UpstreamModel != "gpt-4o" ||
 		call.ClientProtocol != protocol.OpenAICompletions {
 		t.Fatalf("probe attempt = %#v", call)
