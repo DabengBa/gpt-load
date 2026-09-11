@@ -74,7 +74,44 @@ func TestBufferedStreamResponsesDefaultStoreIsNotReplayEligible(t *testing.T) {
 		`{"model":"gpt-5","input":"hello","prompt":{"id":"pmpt_1"},"store":false}`,
 		`{"model":"gpt-5","input":[{"type":"item_reference","id":"item_1"}],"store":false}`,
 		`{"model":"gpt-5","input":"hello","tools":[{"type":"file_search","vector_store_ids":["vs_1"]}],"store":false}`,
-		`{"model":"gpt-5","input":"hello","prompt_cache_key":"cache_1","store":false}`,
+	} {
+		request.Body = []byte(body)
+		if bufferedStreamReplayEligible(request, dialect.NewOpenAIResponses()) {
+			t.Fatalf("Responses request %s was replay-eligible", body)
+		}
+	}
+}
+
+func TestBufferedStreamResponsesCacheHintsStayReplayEligible(t *testing.T) {
+	request := &dialect.ParsedRequest{
+		Method: http.MethodPost,
+		Path:   "/v1/responses",
+	}
+	for _, body := range []string{
+		`{"model":"gpt-5","input":"hello","store":false}`,
+		`{"model":"gpt-5","input":"hello","stream":true,"prompt_cache_key":"cache_1","store":false}`,
+		`{"model":"gpt-5","input":"hello","prompt_cache_key":"cache_1","prompt_cache_retention":"24h","store":false}`,
+		`{"model":"gpt-5","input":"hello","prompt_cache_key":"cache_1","prompt_cache_options":{"mode":"explicit"},"store":false}`,
+		`{"model":"gpt-5","input":"hello","prompt_cache_options":{"ttl":"30m"},"store":false}`,
+	} {
+		request.Body = []byte(body)
+		if !bufferedStreamReplayEligible(request, dialect.NewOpenAIResponses()) {
+			t.Fatalf("Responses request %s was not replay-eligible", body)
+		}
+	}
+}
+
+func TestBufferedStreamResponsesCacheHintsDoNotOverrideProviderState(t *testing.T) {
+	request := &dialect.ParsedRequest{
+		Method: http.MethodPost,
+		Path:   "/v1/responses",
+	}
+	for _, body := range []string{
+		`{"model":"gpt-5","input":"hello","prompt_cache_key":"cache_1","previous_response_id":"resp_1","store":false}`,
+		`{"model":"gpt-5","input":"hello","prompt_cache_key":"cache_1","conversation":"conv_1","store":false}`,
+		`{"model":"gpt-5","input":"hello","prompt_cache_key":"cache_1","prompt":{"id":"pmpt_1"},"store":false}`,
+		`{"model":"gpt-5","input":"hello","prompt_cache_key":"cache_1"}`,
+		`{"model":"gpt-5","input":"hello","prompt_cache_key":"cache_1","store":true}`,
 	} {
 		request.Body = []byte(body)
 		if bufferedStreamReplayEligible(request, dialect.NewOpenAIResponses()) {
