@@ -11,6 +11,7 @@ import type {
   HealthCredentialCountsDto,
   HealthAccessKeyCostLimitDto,
   RequestLogHealthDto,
+  RuntimeDebugCaptureHealthDto,
   RuntimeHealthDto,
 } from '@/api/control/types'
 import { InvalidResponseError } from '@/api/errors'
@@ -37,10 +38,25 @@ export type {
   HealthRecoveryDto,
   HealthCredentialCountsDto,
   RequestLogHealthDto,
+  RuntimeDebugCaptureHealthDto,
   RuntimeHealthDto,
 } from '@/api/control/types'
 
 const countFields = ['credentials', 'available', 'cooldown', 'blacklisted'] as const
+const debugCaptureFields = [
+  'enabled',
+  'running',
+  'retention_seconds',
+  'active',
+  'completed',
+  'failed',
+  'sweep_total',
+  'removed_total',
+  'sweep_failure_total',
+  'error',
+  'last_sweep_at_ms',
+  'last_failure_at_ms',
+] as const
 const healthFields = [
   'observed_at_ms',
   'version',
@@ -55,6 +71,7 @@ const healthFields = [
   'expiring_reset_credits',
   'blocked_access_keys',
   'request_log',
+  'debug_capture',
 ] as const
 const blockedAccessKeyFields = [
   'access_key_id',
@@ -310,6 +327,25 @@ function projectRequestLogHealth(value: unknown): RequestLogHealthDto {
   }
 }
 
+function projectDebugCaptureHealth(value: unknown): RuntimeDebugCaptureHealthDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, debugCaptureFields)
+  return {
+    enabled: projectBoolean(record.enabled),
+    running: projectBoolean(record.running),
+    retention_seconds: projectSafeInteger(record.retention_seconds, { minimum: 0 }),
+    active: projectSafeInteger(record.active, { minimum: 0 }),
+    completed: projectSafeInteger(record.completed, { minimum: 0 }),
+    failed: projectSafeInteger(record.failed, { minimum: 0 }),
+    sweep_total: projectSafeInteger(record.sweep_total, { minimum: 0 }),
+    removed_total: projectSafeInteger(record.removed_total, { minimum: 0 }),
+    sweep_failure_total: projectSafeInteger(record.sweep_failure_total, { minimum: 0 }),
+    error: projectString(record.error, { allowEmpty: true }),
+    last_sweep_at_ms: projectNullableEpochMilliseconds(record.last_sweep_at_ms),
+    last_failure_at_ms: projectNullableEpochMilliseconds(record.last_failure_at_ms),
+  }
+}
+
 export function projectRuntimeHealth(value: unknown): RuntimeHealthDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, healthFields)
@@ -327,6 +363,7 @@ export function projectRuntimeHealth(value: unknown): RuntimeHealthDto {
     expiring_reset_credits: projectArray(record.expiring_reset_credits, projectExpiringResetCredit),
     blocked_access_keys: projectArray(record.blocked_access_keys, projectBlockedAccessKey),
     request_log: projectRequestLogHealth(record.request_log),
+    debug_capture: projectDebugCaptureHealth(record.debug_capture),
   }
 }
 

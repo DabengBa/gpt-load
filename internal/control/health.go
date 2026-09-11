@@ -96,6 +96,21 @@ type requestLogHealthResponse struct {
 	LastRetentionFailureAtMS                  *int64 `json:"last_retention_failure_at_ms"`
 }
 
+type debugCaptureHealthResponse struct {
+	Enabled           bool   `json:"enabled"`
+	Running           bool   `json:"running"`
+	RetentionSeconds  int64  `json:"retention_seconds"`
+	Active            int64  `json:"active"`
+	Completed         int64  `json:"completed"`
+	Failed            int64  `json:"failed"`
+	SweepTotal        uint64 `json:"sweep_total"`
+	RemovedTotal      uint64 `json:"removed_total"`
+	SweepFailureTotal uint64 `json:"sweep_failure_total"`
+	Error             string `json:"error"`
+	LastSweepAtMS     *int64 `json:"last_sweep_at_ms"`
+	LastFailureAtMS   *int64 `json:"last_failure_at_ms"`
+}
+
 type runtimeHealthResponse struct {
 	ObservedAtMS           int64                               `json:"observed_at_ms"`
 	Version                string                              `json:"version"`
@@ -110,7 +125,7 @@ type runtimeHealthResponse struct {
 	ExpiringResetCredits   []healthExpiringResetCreditResponse `json:"expiring_reset_credits"`
 	BlockedAccessKeys      []healthAccessKeyCostLimitResponse  `json:"blocked_access_keys"`
 	RequestLog             requestLogHealthResponse            `json:"request_log"`
-	DebugCapture           debugcapture.Health                 `json:"debug_capture"`
+	DebugCapture           debugCaptureHealthResponse          `json:"debug_capture"`
 }
 
 type healthAccessKeyCostLimitResponse struct {
@@ -435,7 +450,10 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 		if err != nil {
 			return runtimeHealthResponse{}, fmt.Errorf("map debug capture health: %w", app_errors.ErrInternalServer)
 		}
-		result.DebugCapture = debugCapture
+		result.DebugCapture, err = mapDebugCaptureHealth(debugCapture)
+		if err != nil {
+			return runtimeHealthResponse{}, fmt.Errorf("map debug capture health: %w", app_errors.ErrInternalServer)
+		}
 	}
 	return result, nil
 }
@@ -497,6 +515,51 @@ func mapRequestLogHealth(stats requestlog.Stats) (requestLogHealthResponse, erro
 		LastWriteFailureAtMS:                      lastWriteFailureAtMS,
 		LastAccessQuotaCheckpointWriteFailureAtMS: lastAccessQuotaCheckpointWriteFailureAtMS,
 		LastRetentionFailureAtMS:                  lastRetentionFailureAtMS,
+	}, nil
+}
+
+// mapDebugCaptureHealth 把内部 debugcapture.Health 投影到管理面 wire 契约：
+// 时间字段改用 _at_ms（epoch 毫秒且可空），12 个键恒定出现（无 omitempty），
+// 三个 uint64 累加计数器受 maxSafeInteger 守卫，与 mapRequestLogHealth 一致。
+func mapDebugCaptureHealth(health debugcapture.Health) (debugCaptureHealthResponse, error) {
+	for _, value := range []uint64{
+		health.SweepTotal,
+		health.RemovedTotal,
+		health.SweepFailureTotal,
+	} {
+		if value > uint64(maxSafeInteger) {
+			return debugCaptureHealthResponse{}, fmt.Errorf("map debug capture health: unsafe counter")
+		}
+	}
+	var lastSweepAtMS *int64
+	if health.LastSweepAt != nil {
+		milliseconds, err := optionalSafeEpochMilliseconds(*health.LastSweepAt)
+		if err != nil {
+			return debugCaptureHealthResponse{}, fmt.Errorf("map debug capture last sweep timestamp: %w", err)
+		}
+		lastSweepAtMS = milliseconds
+	}
+	var lastFailureAtMS *int64
+	if health.LastFailureAt != nil {
+		milliseconds, err := optionalSafeEpochMilliseconds(*health.LastFailureAt)
+		if err != nil {
+			return debugCaptureHealthResponse{}, fmt.Errorf("map debug capture last failure timestamp: %w", err)
+		}
+		lastFailureAtMS = milliseconds
+	}
+	return debugCaptureHealthResponse{
+		Enabled:           health.Enabled,
+		Running:           health.Running,
+		RetentionSeconds:  health.RetentionSeconds,
+		Active:            health.Active,
+		Completed:         health.Completed,
+		Failed:            health.Failed,
+		SweepTotal:        health.SweepTotal,
+		RemovedTotal:      health.RemovedTotal,
+		SweepFailureTotal: health.SweepFailureTotal,
+		Error:             health.Error,
+		LastSweepAtMS:     lastSweepAtMS,
+		LastFailureAtMS:   lastFailureAtMS,
 	}, nil
 }
 

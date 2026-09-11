@@ -2,9 +2,12 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"gpt-load/internal/debugcapture"
 	"gpt-load/internal/scheduler"
 )
 
@@ -224,6 +227,8 @@ func assertNoLegacyManagementWireKeys(t *testing.T, value any, encoded []byte) {
 		"from",
 		"to",
 		"estimated_cost" + "_usd",
+		"last_sweep_at",
+		"last_failure_at",
 	} {
 		legacyKeys[key] = struct{}{}
 	}
@@ -244,4 +249,147 @@ func assertNoLegacyManagementWireKeys(t *testing.T, value any, encoded []byte) {
 		}
 	}
 	visit(value)
+}
+
+func TestDebugCaptureHealthWireHasExactlyTwelveKeys(t *testing.T) {
+	t.Parallel()
+	expectedKeys := []string{
+		"enabled",
+		"running",
+		"retention_seconds",
+		"active",
+		"completed",
+		"failed",
+		"sweep_total",
+		"removed_total",
+		"sweep_failure_total",
+		"error",
+		"last_sweep_at_ms",
+		"last_failure_at_ms",
+	}
+	// 1) 零值 debugcapture.Health：功能未启用时经真实映射路径得到的契约对象必须恒定 12 键。
+	assertDebugCaptureExactWireKeys(t, mustMapDebugCaptureHealth(t, debugcapture.Health{}), expectedKeys)
+	// 2) Error: "counts_unavailable"（store 计数失败降级场景）同样恒定 12 键。
+	assertDebugCaptureExactWireKeys(t, mustMapDebugCaptureHealth(t, debugcapture.Health{Error: "counts_unavailable"}), expectedKeys)
+	// 3) 直接序列化零值响应对象：service.debugCaptureHealth == nil 时的序列化路径。
+	assertDebugCaptureExactWireKeys(t, debugCaptureHealthResponse{}, expectedKeys)
+	// 真实 marshal 证据：零值响应对象恰好 12 键且时间位为显式 null。
+	if dump, err := json.Marshal(debugCaptureHealthResponse{}); err != nil {
+		t.Fatalf("json.Marshal(zero debug_capture) error = %v", err)
+	} else {
+		t.Logf("debug_capture zero = %s", dump)
+	}
+	if dump, err := json.Marshal(mustMapDebugCaptureHealth(t, debugcapture.Health{Error: "counts_unavailable"})); err != nil {
+		t.Fatalf("json.Marshal(counts_unavailable debug_capture) error = %v", err)
+	} else {
+		t.Logf("debug_capture counts_unavailable = %s", dump)
+	}
+}
+
+func mustMapDebugCaptureHealth(t *testing.T, health debugcapture.Health) debugCaptureHealthResponse {
+	t.Helper()
+	response, err := mapDebugCaptureHealth(health)
+	if err != nil {
+		t.Fatalf("mapDebugCaptureHealth() error = %v", err)
+	}
+	return response
+}
+
+func assertDebugCaptureExactWireKeys(t *testing.T, value debugCaptureHealthResponse, expectedKeys []string) {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal(debug_capture) error = %v", err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatalf("json.Unmarshal(debug_capture) error = %v", err)
+	}
+	if len(document) != len(expectedKeys) {
+		t.Fatalf("debug_capture wire has %d keys, want exactly %d: %s", len(document), len(expectedKeys), encoded)
+	}
+	for _, key := range expectedKeys {
+		if _, exists := document[key]; !exists {
+			t.Fatalf("debug_capture wire missing required key %q: %s", key, encoded)
+		}
+	}
+	var decoded any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(debug_capture decoded) error = %v", err)
+	}
+	assertNoLegacyManagementWireKeys(t, decoded, encoded)
+}
+
+func TestDebugCaptureHealthWireOmitsLegacyTimestampKeys(t *testing.T) {
+	t.Parallel()
+	sweepAt := time.Date(2026, 9, 11, 5, 15, 56, 0, time.UTC)
+	failureAt := time.Date(2026, 9, 11, 5, 16, 0, 0, time.UTC)
+	encoded, err := json.Marshal(mustMapDebugCaptureHealth(t, debugcapture.Health{
+		LastSweepAt:   &sweepAt,
+		LastFailureAt: &failureAt,
+	}))
+	if err != nil {
+		t.Fatalf("json.Marshal(debug_capture) error = %v", err)
+	}
+	text := string(encoded)
+	if strings.Contains(text, `"last_sweep_at"`) || strings.Contains(text, `"last_failure_at"`) {
+		t.Fatalf("debug_capture wire exposes legacy timestamp key: %s", text)
+	}
+	if !strings.Contains(text, `"last_sweep_at_ms"`) || !strings.Contains(text, `"last_failure_at_ms"`) {
+		t.Fatalf("debug_capture wire missing _at_ms timestamp key: %s", text)
+	}
+}
+
+func TestDebugCaptureHealthWireTimesAreEpochMilliseconds(t *testing.T) {
+	t.Parallel()
+	sweepAt := time.Date(2026, 9, 11, 5, 15, 56, 0, time.UTC)
+	failureAt := time.Date(2026, 9, 11, 5, 16, 0, 0, time.UTC)
+	response := mustMapDebugCaptureHealth(t, debugcapture.Health{
+		LastSweepAt:   &sweepAt,
+		LastFailureAt: &failureAt,
+	})
+	if response.LastSweepAtMS == nil || response.LastFailureAtMS == nil {
+		t.Fatalf("debug_capture wire timestamps must be non-nil epoch milliseconds, got %+v", response)
+	}
+	wantSweepMS, err := optionalSafeEpochMilliseconds(sweepAt)
+	if err != nil {
+		t.Fatalf("optionalSafeEpochMilliseconds(sweep) error = %v", err)
+	}
+	wantFailureMS, err := optionalSafeEpochMilliseconds(failureAt)
+	if err != nil {
+		t.Fatalf("optionalSafeEpochMilliseconds(failure) error = %v", err)
+	}
+	if *response.LastSweepAtMS != *wantSweepMS || *response.LastFailureAtMS != *wantFailureMS {
+		t.Fatalf("debug_capture wire timestamps = %v/%v, want %v/%v",
+			response.LastSweepAtMS, response.LastFailureAtMS, wantSweepMS, wantFailureMS)
+	}
+	// 序列化后必须是 epoch 毫秒整数，而非 RFC3339 字符串。
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("json.Marshal(debug_capture) error = %v", err)
+	}
+	text := string(encoded)
+	if want := fmt.Sprintf(`"last_sweep_at_ms":%d`, *wantSweepMS); !strings.Contains(text, want) {
+		t.Fatalf("debug_capture wire last_sweep_at_ms not integer %s: %s", want, text)
+	}
+	if want := fmt.Sprintf(`"last_failure_at_ms":%d`, *wantFailureMS); !strings.Contains(text, want) {
+		t.Fatalf("debug_capture wire last_failure_at_ms not integer %s: %s", want, text)
+	}
+	if strings.Contains(text, "T") || strings.Contains(text, "Z") {
+		t.Fatalf("debug_capture wire exposes RFC3339 timestamp: %s", text)
+	}
+}
+
+func TestDebugCaptureHealthWireNullTimestampsWhenUnset(t *testing.T) {
+	t.Parallel()
+	encoded, err := json.Marshal(mustMapDebugCaptureHealth(t, debugcapture.Health{}))
+	if err != nil {
+		t.Fatalf("json.Marshal(debug_capture) error = %v", err)
+	}
+	text := string(encoded)
+	if !strings.Contains(text, `"last_sweep_at_ms":null`) ||
+		!strings.Contains(text, `"last_failure_at_ms":null`) {
+		t.Fatalf("debug_capture wire timestamps must be explicit null when unset: %s", text)
+	}
+	t.Logf("debug_capture unset timestamps = %s", text)
 }

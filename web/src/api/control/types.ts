@@ -459,6 +459,21 @@ export interface RequestLogHealthDto {
   last_retention_failure_at_ms: number | null
 }
 
+export interface RuntimeDebugCaptureHealthDto {
+  enabled: boolean
+  running: boolean
+  retention_seconds: number
+  active: number
+  completed: number
+  failed: number
+  sweep_total: number
+  removed_total: number
+  sweep_failure_total: number
+  error: string
+  last_sweep_at_ms: number | null
+  last_failure_at_ms: number | null
+}
+
 export interface RuntimeHealthDto {
   observed_at_ms: number
   version: string
@@ -473,6 +488,7 @@ export interface RuntimeHealthDto {
   expiring_reset_credits: HealthExpiringResetCreditDto[]
   blocked_access_keys: HealthAccessKeyCostLimitDto[]
   request_log: RequestLogHealthDto
+  debug_capture: RuntimeDebugCaptureHealthDto
 }
 
 export interface HealthExpiringResetCreditDto {
