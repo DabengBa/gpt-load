@@ -236,6 +236,8 @@ function formatFormulaLine(line: RequestLogPricingLineDto): string {
 function accessKeyLabel(): string {
   const key = log.value?.access_key
   if (!key) return '—'
+  // 控制面观察（access_key_id = 0）没有访问密钥，不能读成“引用的密钥已删除”。
+  if (key.id === 0) return '—'
   if (key.deleted) return t('monitor.logs.deletedRef', { id: key.id })
   return key.name ? `${key.name} · #${key.id}` : `#${key.id}`
 }

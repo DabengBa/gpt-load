@@ -62,7 +62,9 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       adminOnly: true,
       primaryNav: 'groups',
-      messageNamespaces: ['group', 'import'],
+      // 模型 Tab 的「测活」入口与 ModelProbeDialog 用的是 monitor.modelProbe.* 文案，
+      // 命名空间必须在这里声明；少一个就会在页面上渲染出原始 key。
+      messageNamespaces: ['group', 'import', 'monitor'],
     },
   }),
   pageRoute(pageRouteNames.accessKeys, {

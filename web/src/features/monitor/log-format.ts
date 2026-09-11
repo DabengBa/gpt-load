@@ -126,6 +126,9 @@ export function hasRequestLogCache(log: RequestLogItemDto): boolean {
  * 日志是历史记录，实体随时可能已被删除，三者因此共用同一套回退：
  * 有名称就用名称，确认删除就标已删除，两者都不成立时只能给编号
  * （名称来源尚未加载，或该实体压根没有名称数据源）。
+ *
+ * 编号 0 是控制面观察（模型测活、凭据测活）占用的“没有实体”位，直接显示缺省符
+ * ——否则会渲染出“#0”或“已删除 · #0”这种不存在的实体。
  */
 export function formatRouteEntity(options: {
   id: number | null
@@ -134,7 +137,7 @@ export function formatRouteEntity(options: {
   prefix: string
   deletedText: (id: number) => string
 }): string {
-  if (options.id === null) return '—'
+  if (options.id === null || options.id === 0) return '—'
   const name = options.name?.trim()
   if (name) return name
   if (options.deleted) return options.deletedText(options.id)

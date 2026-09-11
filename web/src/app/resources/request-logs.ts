@@ -340,7 +340,8 @@ function projectAccessKey(value: unknown): RequestLogItemDto['access_key'] {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, ['id', 'name', 'deleted'])
   return {
-    id: projectSafeInteger(record.id, { minimum: 1 }),
+    // id = 0 是控制面观察（模型测活、凭据测活），没有对应的访问密钥。
+    id: projectSafeInteger(record.id, { minimum: 0 }),
     name: record.name === null ? null : projectNonBlankString(record.name),
     deleted: projectBoolean(record.deleted),
   }
