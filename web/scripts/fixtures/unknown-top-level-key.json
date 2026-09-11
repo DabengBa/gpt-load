@@ -1,0 +1,53 @@
+{
+  "observed_at_ms": 1700000000000,
+  "version": "1.2.3",
+  "uptime_seconds": 12345,
+  "snapshot_revision": 7,
+  "stats_window_seconds": 300,
+  "counts": {
+    "credentials": 0,
+    "available": 0,
+    "cooldown": 0,
+    "blacklisted": 0
+  },
+  "groups": [],
+  "cooldown_credentials": [],
+  "blacklisted_credentials": [],
+  "low_quota_credentials": [],
+  "expiring_reset_credits": [],
+  "blocked_access_keys": [],
+  "request_log": {
+    "enqueued_total": 0,
+    "persisted_total": 0,
+    "dropped_not_running_total": 0,
+    "dropped_queue_full_total": 0,
+    "dropped_stopping_total": 0,
+    "dropped_persist_failed_total": 0,
+    "dropped_shutdown_total": 0,
+    "dropped_total": 0,
+    "write_failure_total": 0,
+    "access_quota_checkpoint_write_failure_total": 0,
+    "retention_delete_failure_total": 0,
+    "queue_depth": 0,
+    "queue_capacity": 0,
+    "access_quota_checkpoint_degraded": false,
+    "last_write_failure_at_ms": null,
+    "last_access_quota_checkpoint_write_failure_at_ms": null,
+    "last_retention_failure_at_ms": null
+  },
+  "debug_capture": {
+    "enabled": false,
+    "running": false,
+    "retention_seconds": 0,
+    "active": 0,
+    "completed": 0,
+    "failed": 0,
+    "sweep_total": 0,
+    "removed_total": 0,
+    "sweep_failure_total": 0,
+    "error": "",
+    "last_sweep_at_ms": null,
+    "last_failure_at_ms": null
+  },
+  "extra_top_level_key": true
+}

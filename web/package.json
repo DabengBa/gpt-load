@@ -13,6 +13,7 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
+    "verify:health-projection": "node scripts/verify-health-projection.mjs",
     "type-check": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
