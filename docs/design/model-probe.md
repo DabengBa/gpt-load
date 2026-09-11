@@ -232,3 +232,5 @@ POST /api/model-probe
 4. **3A 的必要性已被实现证实**：`web/src/app/resources/credentials.ts` 的 `credentialTestResultFields` 是精确 key 白名单，因此后端给凭据测活响应加 `log_id` 后，前端不同步更新就会对**每一次**测试连接响应抛 `InvalidResponseError`（不是可选优化）。凭据页展示请求 ID 与日志深链已实现于 `CredentialTestDialog.vue` + `GroupCredentialsTab.vue`。
 5. **凭据页入参白名单**：`GroupCredentialsTab.vue` 把 `credentialTestResult` 显式收窄后才传给弹窗（`restore_proof` 永不进组件或 DOM），`log_id` 是显式新增的一行，而不是透传。
 6. **宿主并发限制**：U001/U002 的 Worker 与 Reviewer 均为串行派发（宿主一次消息只允许一个工具调用），已在裁决日志披露；依赖顺序与写集合隔离本身不受影响。
+7. **R7 的 i18n 一致性用实测 key 集合对比**：三个 locale 模块都以 `as const` 结尾，因此 `satisfies typeof zhCNMonitor` 比较的是**字面量值**而不是键集合，不能用于三语一致性检查（按形状比较需要自定义递归类型，属过度设计）。实际证据：抽取三份 `monitor.modelProbe` 块后 `diff` 为空（47 键一致）。同时发现**既有漂移**（与本次改动无关）：`monitor.*` 的 `not_retried` / `retried` 两个键只存在于 zh-CN，en-US / ja-JP 缺失；本次不修。
+8. **未能执行的验收项**：R5/R6 的浏览器手动走查（点按钮 → 弹窗 → 跳日志详情）在本环境无法执行（无浏览器/无运行中的后端与上游）。已用 `vue-tsc` + `eslint --max-warnings=0` + `prettier` + `vite build` 与 Go 侧端到端测试替代；深链参数 `monitorLocation({tab:'logs', selected_request_id})` 已核对存在（`monitor-route.ts`），但没有真实点击证据。
