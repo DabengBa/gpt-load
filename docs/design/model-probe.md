@@ -223,3 +223,12 @@ POST /api/model-probe
 2. **命名**：按钮用「测活」（用户口径）；弹窗字段沿用日志页的「请求 ID」，不新增"日志 ID"叫法；日志内 `operation=probe` 显示为"健康探测"（现成 i18n）。
 3. **凭据测活同步获得请求 ID**：`TestGroupCredential` 复用同一日志写入路径（§3 D3 末段、§6.6），响应回传 `log_id`，并在凭据页展示该 ID 与日志深链（§5.2）。
 4. **批量范围** = 当前可见行，按钮文案带真实数量「测活当前 N 行」。更大范围（该模型下所有分组 / 全部分组全部模型）不在 v1，需另立成本上限与进度交互。
+
+## 9. 实现补充（交付时记录）
+
+1. **未执行目标的 outcome = `inconclusive`**（见 §3 D1 末段）：已实现为 `probeWithoutExecution`，与 `probe_incompatible` 在凭据测活里的既有口径一致。
+2. **文案注入改为 `useI18n` 直用**：`ModelProbeDialog.vue` 按 `CredentialTestDialog.vue` 的现有范式直接 `t('monitor.modelProbe.*')`，不用 labels prop。设计 §5.1 原本要求 labels prop（其在仓库里的先例 `ModelAliasEditorLabels` / `SchedulePanelDetailLabels` 都是槽内子组件），而本弹窗是独立浮层，且批量文案需要由子级持有的可见行数量做插值。三语文案已齐（zh-CN / en-US / ja-JP）。
+3. **前后端字段集合的双向钉法**：TS 侧 `assertNoSecretLikeFields(record, modelProbeResultFields)` 在运行期要求响应 key 集合**恰好**等于清单，投影返回对象用 `satisfies ModelProbeResultDto`，于是“DTO 新增字段但投影没跟上”会在 `type-check` 失败；Go 侧 `TestModelProbeResponseContract` 钉住同一份清单。这比“`Exclude<...> extends never` 类型别名”更直接：不引入额外类型声明，也不会被 `--max-warnings=0` 的 unused 规则误伤。
+4. **3A 的必要性已被实现证实**：`web/src/app/resources/credentials.ts` 的 `credentialTestResultFields` 是精确 key 白名单，因此后端给凭据测活响应加 `log_id` 后，前端不同步更新就会对**每一次**测试连接响应抛 `InvalidResponseError`（不是可选优化）。凭据页展示请求 ID 与日志深链已实现于 `CredentialTestDialog.vue` + `GroupCredentialsTab.vue`。
+5. **凭据页入参白名单**：`GroupCredentialsTab.vue` 把 `credentialTestResult` 显式收窄后才传给弹窗（`restore_proof` 永不进组件或 DOM），`log_id` 是显式新增的一行，而不是透传。
+6. **宿主并发限制**：U001/U002 的 Worker 与 Reviewer 均为串行派发（宿主一次消息只允许一个工具调用），已在裁决日志披露；依赖顺序与写集合隔离本身不受影响。
