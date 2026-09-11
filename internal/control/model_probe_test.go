@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -398,6 +399,91 @@ func TestCredentialProbeLog(t *testing.T) {
 	}
 	if len(event.Attempts) != 1 || event.Attempts[0].CredentialID != credential.ID {
 		t.Fatalf("credential probe attempts = %#v", event.Attempts)
+	}
+}
+
+// TestModelProbeResponseContract pins the response key set, because the web
+// projector asserts that set exactly (web/src/app/resources/model-probe.ts): a
+// field added on one side only fails at runtime instead of failing a build.
+func TestModelProbeResponseContract(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "model-probe-contract-secret")
+	fixture.service.executor = &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
+
+	response, err := fixture.service.ProbeGroupModels(t.Context(), ModelProbeRequest{
+		Targets: []ModelProbeTargetRequest{
+			{GroupID: groupID, Model: probeTestModel},
+			{GroupID: 999_999, Model: probeTestModel},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProbeGroupModels() error = %v", err)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal probe response: %v", err)
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("decode probe response: %v", err)
+	}
+	assertJSONKeys(t, payload, []string{"results"})
+	var results []map[string]json.RawMessage
+	if err := json.Unmarshal(payload["results"], &results); err != nil {
+		t.Fatalf("decode probe results: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2", len(results))
+	}
+	wantFields := []string{
+		"group_id",
+		"group_name",
+		"model",
+		"outcome",
+		"reason",
+		"protocol",
+		"route_mode",
+		"status_code",
+		"latency_ms",
+		"credential_id",
+		"credential_label",
+		"log_id",
+		"tested_at_ms",
+	}
+	for index, result := range results {
+		assertJSONKeys(t, result, wantFields)
+		if index == 1 {
+			continue
+		}
+		for _, field := range []string{"reason", "log_id"} {
+			if string(result[field]) == "" {
+				t.Fatalf("executed target lost field %q", field)
+			}
+		}
+	}
+	// A target that never dispatched must not claim execution evidence.
+	for _, field := range []string{
+		"protocol", "route_mode", "status_code", "latency_ms",
+		"credential_id", "credential_label", "log_id",
+	} {
+		if string(results[1][field]) != "null" {
+			t.Fatalf("unexecuted target %s = %s, want null", field, results[1][field])
+		}
+	}
+}
+
+func assertJSONKeys(t *testing.T, payload map[string]json.RawMessage, want []string) {
+	t.Helper()
+	got := make([]string, 0, len(payload))
+	for key := range payload {
+		got = append(got, key)
+	}
+	sort.Strings(got)
+	expected := append([]string(nil), want...)
+	sort.Strings(expected)
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("response field set = %v, want %v", got, expected)
 	}
 }
 
