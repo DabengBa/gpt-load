@@ -260,8 +260,13 @@ function groupTogglePending(groupID: number): boolean {
   return togglingGroupIDs.value.has(groupID)
 }
 
-async function toggleGroupEnabled(group: ModelRouteScheduleGroupDto, next: boolean): Promise<void> {
-  if (groupTogglePending(group.group_id)) return
+async function toggleGroupEnabled(
+  group: ModelRouteScheduleGroupDto,
+  next: boolean,
+): Promise<boolean> {
+  // The switch is disabled while a toggle is pending, so this guard is nearly
+  // unreachable in the modal flow; report failure instead of a false success.
+  if (groupTogglePending(group.group_id)) return false
   optimisticEnabled.value = new Map(optimisticEnabled.value).set(group.group_id, next)
   togglingGroupIDs.value = new Set(togglingGroupIDs.value).add(group.group_id)
   try {
@@ -278,6 +283,7 @@ async function toggleGroupEnabled(group: ModelRouteScheduleGroupDto, next: boole
     const settings = await updateGroupSettings(client, group.group_id, { enabled: next })
     cacheGroupSettings(queryClient, group.group_id, settings)
     await invalidateGroupSettingsDependents(queryClient, group.group_id)
+    return true
   } catch {
     const optimistic = new Map(optimisticEnabled.value)
     optimistic.delete(group.group_id)
@@ -300,6 +306,20 @@ async function toggleGroupEnabled(group: ModelRouteScheduleGroupDto, next: boole
     pending.delete(group.group_id)
     togglingGroupIDs.value = pending
   }
+  return false
+}
+
+async function applyProbeEnabled(changes: Map<number, boolean>): Promise<boolean> {
+  let attempted = false
+  let allSucceeded = true
+  for (const [groupID, next] of changes) {
+    const group = props.detail?.groups.find((g) => g.group_id === groupID)
+    if (!group) continue
+    attempted = true
+    const ok = await toggleGroupEnabled(group, next)
+    if (!ok) allSucceeded = false
+  }
+  return attempted && allSucceeded
 }
 
 function isFirstGroupRow(index: number): boolean {
@@ -617,6 +637,8 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
       : ` · ${formatLocalInstant(entry.runtime.cooldown_until_ms, props.locale)}`
   return `${threshold}/${cooldown}s${recovery}`
 }
+
+defineExpose({ applyProbeEnabled })
 </script>
 
 <template>

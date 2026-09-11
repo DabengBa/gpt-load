@@ -14,12 +14,15 @@ import {
   discoverGroupModels,
   groupModelsQueryOptions,
   invalidateGroupModelDependents,
+  invalidateGroupSettingsDependents,
   replaceGroupModelsResource,
+  updateGroupSettings,
   type GroupModelsDto,
 } from '@/app/resources/groups'
 import type { ModelCandidate } from '@/app/resources/providers'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import { useUnsavedChanges } from '@/app/unsaved-changes'
+import { useToast } from '@/app/toast'
 import { useTransientFlag } from '@/app/use-transient-flag'
 import { constrainCollectionSearch } from '@/app/route-query'
 import { groupDetailLocation, monitorLocation } from '@/app/route-locations'
@@ -92,6 +95,7 @@ const queryClient = useQueryClient()
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const toast = useToast()
 const routeState = computed(() => parseGroupModelsRouteQuery(route.query))
 const query = useQuery(groupModelsQueryOptions(client, () => props.groupId))
 const channelsQuery = useQuery(channelsQueryOptions(client, ''))
@@ -129,6 +133,13 @@ const {
   stop: stopProbe,
   close: closeProbe,
 } = useModelProbe()
+
+// In-flight guard for the probe's "apply enabled" action. Drives the dialog's
+// controlled `applying` prop and must be reset before returning on every path.
+const probeApplying = ref(false)
+// The enabled state for the only group this tab controls. `props.enabled` is the
+// single source of truth for the enabled initial value (withDefaults gives true).
+const groupEnabledById = computed(() => new Map<number, boolean>([[props.groupId, props.enabled]]))
 
 // Only a saved, unrenamed row identifies a model that is compiled into the route
 // targets; probing a draft would return a meaningless target_unavailable.
@@ -168,6 +179,34 @@ function handleProbeOpen(value: boolean): void {
 
 function viewProbeLog(logId: string): void {
   void router.push(monitorLocation({ tab: 'logs', selected_request_id: logId }))
+}
+
+// Persist the probe's proposed enabled changes per group and invalidate the
+// affected group representations. Keeps the dialog open on failure so the user
+// can retry; never reports success unless every write settled.
+async function onApplyProbeEnabled(changes: Map<number, boolean>): Promise<void> {
+  probeApplying.value = true
+  const results = await Promise.allSettled(
+    [...changes.entries()].map(async ([groupID, next]) => {
+      await updateGroupSettings(client, groupID, { enabled: next })
+      await invalidateGroupSettingsDependents(queryClient, groupID)
+    }),
+  )
+  const ok = results.every((result) => result.status === 'fulfilled')
+  const count = changes.size
+  probeApplying.value = false
+  if (ok) {
+    toast.show({
+      message: t('monitor.modelProbe.toggle.applied', { count }),
+      tone: 'success',
+    })
+    closeProbe()
+  } else {
+    toast.show({
+      message: t('monitor.modelProbe.toggle.applyFailed'),
+      tone: 'danger',
+    })
+  }
 }
 const modelEditor = ref<{
   addManual: () => Promise<void>
@@ -749,12 +788,15 @@ onBeforeUnmount(() => {
         :failed="probeFailed"
         :stopped="probeStopped"
         :results="probeResults"
+        :group-enabled-by-id="groupEnabledById"
+        :applying="probeApplying"
         :disabled-group-ids="props.enabled ? [] : [props.groupId]"
         :total="probeTotal"
         :completed="probeCompleted"
         @update:open="handleProbeOpen"
         @stop="stopProbe"
         @view-log="viewProbeLog"
+        @apply-enabled="onApplyProbeEnabled"
       />
       <AppConfirmDialog
         :open="pendingProbe !== null"

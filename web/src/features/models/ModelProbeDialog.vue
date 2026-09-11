@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ModelProbeResultDto } from '@/app/resources/model-probe'
+import type { ModelProbeOutcome, ModelProbeResultDto } from '@/app/resources/model-probe'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSwitch from '@/components/ui/AppSwitch.vue'
 import CopyChip from '@/components/ui/CopyChip.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
@@ -19,11 +20,14 @@ const props = defineProps<{
   disabledGroupIds: readonly number[]
   completed: number
   total: number
+  groupEnabledById: ReadonlyMap<number, boolean>
+  applying: boolean
 }>()
 const emit = defineEmits<{
   'update:open': [open: boolean]
   stop: []
   'view-log': [logId: string]
+  'apply-enabled': [changes: Map<number, boolean>]
 }>()
 const { locale, n, t } = useI18n()
 
@@ -67,6 +71,133 @@ const disabledGroupIdSet = computed(() => new Set(props.disabledGroupIds))
 
 function isDisabledGroup(result: ModelProbeResultDto): boolean {
   return disabledGroupIdSet.value.has(result.group_id)
+}
+
+const proposedEnabled = ref<Map<number, boolean>>(new Map<number, boolean>())
+const initialized = ref(false)
+
+function currentEnabled(groupId: number): boolean {
+  return props.groupEnabledById?.get(groupId) ?? true
+}
+
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      initialized.value = false
+    } else {
+      proposedEnabled.value = new Map<number, boolean>()
+    }
+  },
+)
+
+watch(
+  [() => props.open, () => props.pending, () => props.results],
+  () => {
+    if (
+      props.open &&
+      !props.pending &&
+      props.results.length > 0 &&
+      !props.failed &&
+      !initialized.value
+    ) {
+      const next = new Map<number, boolean>()
+      for (const result of props.results) {
+        next.set(result.group_id, props.groupEnabledById?.get(result.group_id) ?? true)
+      }
+      proposedEnabled.value = next
+      initialized.value = true
+    }
+  },
+  { immediate: true },
+)
+
+// Re-probe within the same open session: reset proposed state so a fresh
+// round of results does not reuse the previous proposal.
+watch(
+  () => props.pending,
+  (p) => {
+    if (p) {
+      initialized.value = false
+      proposedEnabled.value = new Map<number, boolean>()
+    }
+  },
+)
+
+const groups = computed(() => {
+  const byId = new Map<
+    number,
+    { group_id: number; group_name: string; outcomes: ModelProbeOutcome[] }
+  >()
+  for (const result of props.results) {
+    const entry = byId.get(result.group_id)
+    if (entry) {
+      entry.outcomes.push(result.outcome)
+    } else {
+      byId.set(result.group_id, {
+        group_id: result.group_id,
+        group_name: result.group_name,
+        outcomes: [result.outcome],
+      })
+    }
+  }
+  return [...byId.values()].map(({ group_id, group_name, outcomes }) => {
+    let outcome: ModelProbeOutcome
+    if (outcomes.some((o) => o === 'failed')) outcome = 'failed'
+    else if (outcomes.every((o) => o === 'passed')) outcome = 'passed'
+    else outcome = 'inconclusive'
+    return { group_id, group_name, outcome }
+  })
+})
+
+function groupToggleLabel(groupId: number, groupName: string): string {
+  const label = groupName === '' ? `#${groupId}` : groupName
+  return `${label}: ${t('monitor.modelProbe.toggle.title')}`
+}
+
+function setProposed(groupId: number, value: boolean): void {
+  const next = new Map(proposedEnabled.value)
+  next.set(groupId, value)
+  proposedEnabled.value = next
+}
+
+function enablePassedGroups(): void {
+  const next = new Map(proposedEnabled.value)
+  for (const group of groups.value) {
+    if (group.outcome === 'passed') next.set(group.group_id, true)
+  }
+  proposedEnabled.value = next
+}
+
+function disableNotPassedGroups(): void {
+  const next = new Map(proposedEnabled.value)
+  for (const group of groups.value) {
+    if (group.outcome !== 'passed') next.set(group.group_id, false)
+  }
+  proposedEnabled.value = next
+}
+
+function resetProposedGroups(): void {
+  const next = new Map<number, boolean>()
+  for (const group of groups.value) {
+    next.set(group.group_id, props.groupEnabledById?.get(group.group_id) ?? true)
+  }
+  proposedEnabled.value = next
+}
+
+const diff = computed(() => {
+  const changes = new Map<number, boolean>()
+  for (const [id, value] of proposedEnabled.value) {
+    if (value !== currentEnabled(id)) changes.set(id, value)
+  }
+  return changes
+})
+
+const hasChanges = computed(() => diff.value.size > 0)
+
+function apply(): void {
+  if (props.applying || diff.value.size === 0) return
+  emit('apply-enabled', new Map(diff.value))
 }
 </script>
 
@@ -194,6 +325,73 @@ function isDisabledGroup(result: ModelProbeResultDto): boolean {
             </div>
           </li>
         </ul>
+
+        <section
+          v-if="!pending && results.length > 0 && !failed"
+          class="model-probe-dialog__toggle"
+          aria-labelledby="model-probe-toggle-title"
+        >
+          <h3 id="model-probe-toggle-title" class="model-probe-dialog__toggle-title">
+            {{ t('monitor.modelProbe.toggle.title') }}
+          </h3>
+          <p class="model-probe-dialog__toggle-hint">
+            {{ t('monitor.modelProbe.toggle.hint') }}
+          </p>
+
+          <div class="model-probe-dialog__toggle-actions">
+            <AppButton variant="secondary" size="compact" @click="enablePassedGroups">
+              {{ t('monitor.modelProbe.toggle.enablePassed') }}
+            </AppButton>
+            <AppButton variant="secondary" size="compact" @click="disableNotPassedGroups">
+              {{ t('monitor.modelProbe.toggle.disableNotPassed') }}
+            </AppButton>
+            <AppButton variant="secondary" size="compact" @click="resetProposedGroups">
+              {{ t('monitor.modelProbe.toggle.reset') }}
+            </AppButton>
+          </div>
+
+          <ul class="model-probe-dialog__toggle-list">
+            <li
+              v-for="group in groups"
+              :key="group.group_id"
+              class="model-probe-dialog__toggle-row"
+            >
+              <span class="model-probe-dialog__toggle-identity">
+                {{ group.group_name === '' ? `#${group.group_id}` : group.group_name }}
+              </span>
+              <span
+                class="model-probe-dialog__toggle-state"
+                :class="proposedEnabled.get(group.group_id) ? 'is-enabled' : 'is-disabled'"
+              >
+                {{
+                  proposedEnabled.get(group.group_id)
+                    ? t('monitor.modelProbe.toggle.groupEnabled')
+                    : t('monitor.modelProbe.toggle.groupDisabled')
+                }}
+              </span>
+              <AppSwitch
+                :model-value="proposedEnabled.get(group.group_id) ?? true"
+                :disabled="props.applying"
+                :label="groupToggleLabel(group.group_id, group.group_name)"
+                @update:model-value="setProposed(group.group_id, $event)"
+              />
+            </li>
+          </ul>
+
+          <div class="model-probe-dialog__toggle-footer">
+            <AppButton
+              variant="primary"
+              size="compact"
+              :disabled="props.applying || !hasChanges"
+              @click="apply"
+            >
+              {{ t('monitor.modelProbe.toggle.apply') }}
+            </AppButton>
+            <span v-if="!hasChanges" class="model-probe-dialog__toggle-note">
+              {{ t('monitor.modelProbe.toggle.noChanges') }}
+            </span>
+          </div>
+        </section>
       </div>
     </template>
 
@@ -298,6 +496,90 @@ function isDisabledGroup(result: ModelProbeResultDto): boolean {
   gap: var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
+}
+
+.model-probe-dialog__toggle {
+  display: grid;
+  gap: var(--space-3);
+  max-height: 40vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: var(--space-3);
+}
+
+.model-probe-dialog__toggle-title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.model-probe-dialog__toggle-hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--line-normal);
+}
+
+.model-probe-dialog__toggle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.model-probe-dialog__toggle-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-probe-dialog__toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.model-probe-dialog__toggle-identity {
+  min-width: 0;
+  color: var(--color-text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.model-probe-dialog__toggle-state {
+  flex: none;
+  font-size: var(--text-sm);
+}
+
+.model-probe-dialog__toggle-state.is-enabled {
+  color: var(--color-text-success, var(--color-text));
+}
+
+.model-probe-dialog__toggle-state.is-disabled {
+  color: var(--color-text-muted);
+}
+
+.model-probe-dialog__toggle-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.model-probe-dialog__toggle-note {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 480px) {
+  .model-probe-dialog__toggle-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
 }
 
 @media (max-width: 480px) {
