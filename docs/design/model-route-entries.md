@@ -177,8 +177,28 @@ type RouteTarget struct {
 - `tried` 集合从"密钥维度"扩展为 `(密钥, 上游模型)` 维度:同一密钥换一个
   条目(上游模型)允许再试,同一 `(密钥, 上游模型)` 失败后不再重试。
 - `SkipGroup` 整组跳过语义不变。
-- 会话亲和(`PreferredCredentialID`)优先命中的是三元组中的密钥维度,其余走
-  正常分层;亲和命中密钥但该密钥被当前层排除时,按现有降级路径处理。
+- 会话亲和(`PreferredCredentialID`)是**偏好层,不是锁定层**:它只决定当前层内
+  已可用候选的挑选顺序,从不扩大或削减候选集合。
+  - 命中判定发生在可用性过滤、优先级分层、组合权重构造完成**之后**:
+    `scheduler.preferredCandidate` 在已构造好的层内候选池中查找亲和目标,
+    命中即返回,未命中走正常加权随机。
+  - 亲和目标不可用(被 `evaluateTargets` 排除、冷却、拉黑、凭据身份代际变更)
+    时视为**未命中**,直接走正常分层;请求不阻断,也不需要主动清理亲和记录。
+  - 成功后亲和指针**迁移**到本次实际服务的 `(GroupID, CredentialID,
+    IdentityGeneration)`,由 `affinity.Cache.RecordSuccess` 的版本 CAS 保证;
+    同一请求内的故障转移(先试亲和目标失败、换候选成功)允许迁移。
+  - 这是与 `previous_response_id` **硬锁定**互斥的另一种机制:续接请求把候选
+    收窄到唯一归属凭据(`AllowedCredentialIDs` 单元素),亲和始终保留完整候选
+    集合兜底。两者不得合并。
+- 跨候选故障转移的前提是「尚未向客户端释放任何内容」,buffered 模式下由
+  `ResponsesReplayEligible` 判定请求是否引用了上游状态:
+  - 引用上游状态的字段(`previous_response_id`、`conversation`、`prompt.id`、
+    `input`/`tools` 中的 provider resource 引用)阻断重放;
+  - 缓存与呈现提示(`prompt_cache_key`、`prompt_cache_retention`、
+    `prompt_cache_options`、`reasoning`、`service_tier`)不引用上游状态,
+    保持可重放——换候选只损失一次缓存命中。
+- 组合后的完整链条:**第 1 轮建会话 → 第 2 轮亲和命中;第 3 轮亲和目标失败且
+  未释放内容 → 换候选成功 → 亲和指针迁移;第 4 轮亲和命中新目标。**
 
 ---
 
@@ -304,3 +324,6 @@ type RouteTarget struct {
 6. **巡检一致性**:巡检页显示的占比与实际流量分布一致;原因码与注入的故障类型
    一一对应;
 7. **日志**:`A → B` 双模型名落日志;用量按上游模型计价正确。
+8. **亲和 + 故障转移链**:同一会话前缀连续四轮请求——第 1 轮落到分组 A;第 2 轮
+   亲和命中 A;第 3 轮 A 未释放内容即失败 → 换到分组 B 并成功;第 4 轮亲和命中 B。
+   同时验证亲和目标不可用时请求不被阻断(降级到正常分层)。

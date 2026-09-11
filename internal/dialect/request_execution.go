@@ -148,11 +148,16 @@ func responsesPromptReferencesProviderResource(value any) bool {
 
 // ResponsesReplayEligible reports whether a Responses create request is safe for
 // the buffered stream's post-response replay gate.
+//
+// The gate blocks exactly the fields that reference provider-side state: moving
+// such a request to another upstream either fails or silently resolves a
+// different resource. Cache and presentation hints reference no provider state
+// and stay replay-eligible, so a prompt_cache_key request that switches
+// candidate only loses its cache hit.
 func ResponsesReplayEligible(body []byte) bool {
 	root, ok := decodeExecutionFeatureObject(body)
 	if !ok || !responsesReplayObjectFieldsKnown(root) || hasMeaningfulField(root, "previous_response_id") ||
 		hasMeaningfulField(root, "conversation") ||
-		hasMeaningfulField(root, "prompt_cache_key") ||
 		responsesPromptReferencesProviderResource(root["prompt"]) ||
 		(responsesBackgroundEnabled(root["background"])) ||
 		responsesInputReferencesProviderResource(root["input"]) ||
@@ -189,13 +194,18 @@ func ResponsesReplayEligible(body []byte) bool {
 	return true
 }
 
+// responsesReplayObjectFieldsKnown rejects objects carrying fields the replay
+// gate has no semantics for. Known-but-not-blocking fields stay listed here so
+// their presence alone never makes a request unknown; whether a field blocks
+// replay is decided in ResponsesReplayEligible.
 func responsesReplayObjectFieldsKnown(object map[string]any, allowed ...string) bool {
 	known := make(map[string]struct{}, len(allowed))
 	if len(allowed) == 0 {
 		allowed = []string{
 			"background", "include", "input", "instructions", "max_output_tokens",
 			"max_tool_calls", "metadata", "model", "parallel_tool_calls", "prompt",
-			"prompt_cache_key", "previous_response_id", "reasoning", "service_tier", "store",
+			"prompt_cache_key", "prompt_cache_options", "prompt_cache_retention",
+			"previous_response_id", "reasoning", "service_tier", "store",
 			"stream", "temperature", "text", "tool_choice", "tools", "top_logprobs", "top_p",
 			"truncation", "user",
 		}
