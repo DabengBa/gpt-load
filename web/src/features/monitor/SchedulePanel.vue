@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { useApiClient } from '@/api/client-context'
+import { useToast } from '@/app/toast'
 import { accessKeyOptionsQueryOptions } from '@/app/resources/access-keys'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import { monitorLocation } from '@/app/route-locations'
@@ -65,6 +67,8 @@ const emit = defineEmits<{
 }>()
 
 const client = useApiClient()
+const { t } = useI18n()
+const toast = useToast()
 const selectedModel = ref(props.externalModel)
 const selectedMode = ref<ScheduleMode>(props.mode)
 const selectedAccessKeyID = ref<number>()
@@ -213,6 +217,38 @@ function handleProbeOpen(value: boolean): void {
 function viewProbeLog(logID: string): void {
   void router.push(monitorLocation({ tab: 'logs', selected_request_id: logID }))
 }
+
+const probeApplying = ref(false)
+const groupEnabledById = computed(
+  () => new Map((detailQuery.data.value?.groups ?? []).map((g) => [g.group_id, g.enabled])),
+)
+const detailRef = ref<InstanceType<typeof SchedulePanelDetail> | null>(null)
+
+async function onApplyProbeEnabled(changes: Map<number, boolean>): Promise<void> {
+  probeApplying.value = true
+  try {
+    const target = detailRef.value
+    if (!target) {
+      toast.show({ message: t('monitor.modelProbe.toggle.applyFailed'), tone: 'danger' })
+      return
+    }
+    const ok = await target.applyProbeEnabled(changes)
+    if (ok) {
+      const groups = detailQuery.data.value?.groups ?? []
+      const count = [...changes.keys()].filter((id) => groups.some((g) => g.group_id === id)).length
+      toast.show({ message: t('monitor.modelProbe.toggle.applied', { count }), tone: 'success' })
+      closeProbe()
+      return
+    }
+    const groups = detailQuery.data.value?.groups ?? []
+    const hadRealCall = [...changes.keys()].some((id) => groups.some((g) => g.group_id === id))
+    if (!hadRealCall) {
+      toast.show({ message: t('monitor.modelProbe.toggle.applyFailed'), tone: 'danger' })
+    }
+  } finally {
+    probeApplying.value = false
+  }
+}
 </script>
 
 <template>
@@ -267,6 +303,7 @@ function viewProbeLog(logID: string): void {
     />
 
     <SchedulePanelDetail
+      ref="detailRef"
       :detail="detailQuery.data.value"
       :loading="
         detailQuery.isPending.value &&
@@ -297,9 +334,12 @@ function viewProbeLog(logID: string): void {
       :disabled-group-ids="probeDisabledGroupIds"
       :total="probeTotal"
       :completed="probeCompleted"
+      :group-enabled-by-id="groupEnabledById"
+      :applying="probeApplying"
       @update:open="handleProbeOpen"
       @stop="stopProbe"
       @view-log="viewProbeLog"
+      @apply-enabled="onApplyProbeEnabled"
     />
   </section>
 </template>
