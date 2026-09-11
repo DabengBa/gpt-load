@@ -39,6 +39,7 @@ import {
   projectEpochMilliseconds,
   projectFiniteNumber,
   projectNullableEpochMilliseconds,
+  projectNullableRequestID,
   projectNonNegativeInt64String,
   projectRecord,
   projectSafeInteger,
@@ -126,6 +127,7 @@ const credentialTestResultFields = [
   'reason',
   'can_restore',
   'restore_proof',
+  'log_id',
   'tested_at_ms',
 ] as const
 const credentialTestOutcomes = ['passed', 'failed', 'inconclusive'] as const
@@ -853,6 +855,7 @@ export function projectCredentialTestResult(value: unknown): CredentialTestResul
     reason,
     can_restore: canRestore,
     restore_proof: restoreProof,
+    log_id: projectNullableRequestID(record.log_id),
     tested_at_ms: projectEpochMilliseconds(record.tested_at_ms),
   }
 }

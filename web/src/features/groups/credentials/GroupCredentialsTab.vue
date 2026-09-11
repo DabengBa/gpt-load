@@ -38,7 +38,7 @@ import {
   type CredentialStage,
 } from '@/app/resources/credential-stages'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
-import { groupDetailLocation, importLocation } from '@/app/route-locations'
+import { groupDetailLocation, importLocation, monitorLocation } from '@/app/route-locations'
 import { controlQueryKeys } from '@/app/query-keys'
 import { useToast } from '@/app/toast'
 import { useAbortControllerPool } from '@/app/use-abort-controller-pool'
@@ -215,6 +215,7 @@ const credentialTestDialogResult = computed(() => {
     latency_ms: result.latency_ms,
     reason: result.reason,
     can_restore: result.can_restore,
+    log_id: result.log_id,
     tested_at_ms: result.tested_at_ms,
   }
 })
@@ -1136,6 +1137,10 @@ function setCredentialTestOpen(open: boolean): void {
   resetCredentialTestState()
 }
 
+function viewCredentialTestLog(logID: string): void {
+  void router.push(monitorLocation({ tab: 'logs', selected_request_id: logID }))
+}
+
 async function openCredentialTest(item: CredentialItemDto): Promise<void> {
   if (props.connectionType !== 'api_key' || batchBusy.value || pending(item.credential_id)) return
 
@@ -1601,6 +1606,7 @@ async function runBatch(action: 'delete', ids = [...selectedIds.value]): Promise
       :restore-error="credentialTestRestoreError"
       @update:open="setCredentialTestOpen"
       @restore="confirmTestedCredentialRestore"
+      @view-log="viewCredentialTestLog"
     />
     <AppConfirmDialog
       appearance="ledger"

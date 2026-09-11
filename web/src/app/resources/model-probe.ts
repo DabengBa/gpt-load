@@ -1,12 +1,12 @@
 import type { ApiClient } from '@/api/client'
 import { enabledDataProtocols } from '@/api/control/protocols'
-import { InvalidResponseError } from '@/api/errors'
 
 import {
   assertNoSecretLikeFields,
   projectArray,
   projectEnum,
   projectEpochMilliseconds,
+  projectNullableRequestID,
   projectRecord,
   projectSafeInteger,
   projectString,
@@ -59,7 +59,6 @@ const probeReasons = [
   'no_schedulable_credential',
 ] as const
 const routeModes = ['native', 'converted'] as const
-const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 // The response key set is asserted exactly, so the backend cannot add a field to
 // this contract in one change and leave the projector behind: an unknown key
@@ -82,14 +81,6 @@ export const modelProbeResultFields = [
 ] as const satisfies readonly (keyof ModelProbeResultDto)[]
 
 const modelProbeResponseFields = ['results'] as const
-
-function projectNullableLogID(value: unknown): string | null {
-  if (value === null) return null
-  if (typeof value !== 'string' || !requestIDPattern.test(value)) {
-    throw new InvalidResponseError()
-  }
-  return value
-}
 
 export function projectModelProbeResult(value: unknown): ModelProbeResultDto {
   const record = projectRecord(value)
@@ -114,7 +105,7 @@ export function projectModelProbeResult(value: unknown): ModelProbeResultDto {
         : projectSafeInteger(record.credential_id, { minimum: 1 }),
     credential_label:
       record.credential_label === null ? null : projectString(record.credential_label),
-    log_id: projectNullableLogID(record.log_id),
+    log_id: projectNullableRequestID(record.log_id),
     tested_at_ms: projectEpochMilliseconds(record.tested_at_ms),
   } satisfies ModelProbeResultDto
 }

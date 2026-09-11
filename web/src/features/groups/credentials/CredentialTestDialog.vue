@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import type { CredentialTestResultDto } from '@/api/control/types'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import CopyChip from '@/components/ui/CopyChip.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import { formatLocalInstant } from '@/lib/format'
@@ -25,6 +26,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:open': [open: boolean]
   restore: []
+  'view-log': [logId: string]
 }>()
 const { locale, n, t } = useI18n()
 
@@ -86,6 +88,21 @@ function setOpen(open: boolean): void {
             <dd>{{ reasonLabel }}</dd>
             <dt>{{ t('group.credentials.test.fields.testedAt') }}</dt>
             <dd>{{ formatLocalInstant(result.tested_at_ms, locale) }}</dd>
+            <dt>{{ t('monitor.modelProbe.fields.logId') }}</dt>
+            <dd>
+              <template v-if="result.log_id">
+                <CopyChip
+                  :value="result.log_id"
+                  :label="t('monitor.modelProbe.fields.logId')"
+                  :success-label="t('common.copied')"
+                  :failure-label="t('common.copyFailed')"
+                />
+                <AppButton variant="link" size="inline" @click="emit('view-log', result.log_id)">
+                  {{ t('monitor.modelProbe.viewLog') }}
+                </AppButton>
+              </template>
+              <template v-else>{{ t('monitor.modelProbe.notExecuted') }}</template>
+            </dd>
           </dl>
           <InlineFeedback
             v-if="result.outcome === 'passed' && result.can_restore && !restoreBlocked"
