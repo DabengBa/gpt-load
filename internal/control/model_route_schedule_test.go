@@ -471,6 +471,14 @@ func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 		t.Fatalf("disabled group entry configuration = %#v", entry)
 	}
 	assertScheduleReason(t, entry.ReasonCode, scheduler.ReasonGroupDisabled)
+	for index, disabledEntry := range result.Groups[0].Entries {
+		if disabledEntry.ConfiguredShare != 0 {
+			t.Fatalf("disabled group entry %d configured share = %v, want 0", index, disabledEntry.ConfiguredShare)
+		}
+	}
+	if len(result.Groups[1].Entries) != 1 || result.Groups[1].Entries[0].ConfiguredShare != 1 {
+		t.Fatalf("enabled group configured shares = %#v, want 1", result.Groups[1].Entries)
+	}
 }
 
 func assertScheduleReason(
