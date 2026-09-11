@@ -164,6 +164,8 @@ export interface GroupModelItemDto {
   /** Optional for compatibility with responses produced before breaker exposure. */
   circuit_breaker?: EntryCircuitBreakerDto | null
   pricing_status: ModelPricingStatus
+  /** Present when a price record exists for this model; absent means no record yet. */
+  price_id?: number
 }
 
 export interface GroupModelsDto {

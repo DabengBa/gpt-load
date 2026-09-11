@@ -10,6 +10,8 @@ export interface ModelDraftValue extends GroupModelUpdateDto {
   name: string
   sources: ModelCandidateSource[]
   pricing_status: ModelPricingStatus
+  /** Price record ID for direct navigation to the price editor; absent when no record exists. */
+  price_id?: number
 }
 
 export interface ModelNameConflict {

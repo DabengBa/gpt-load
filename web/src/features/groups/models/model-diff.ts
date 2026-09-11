@@ -33,6 +33,7 @@ export function createModelDraft(items: readonly GroupModelItemDto[]): ModelDraf
       weight: item.weight ?? null,
       priority: item.priority ?? null,
       pricing_status: item.pricing_status,
+      price_id: item.price_id,
       key: index,
     }
     if (Object.prototype.hasOwnProperty.call(item, 'entry_id')) {

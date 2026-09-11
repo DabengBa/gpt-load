@@ -28,6 +28,7 @@ type GroupModelResponse struct {
 	Priority       *int                       `json:"priority"`
 	CircuitBreaker *state.EntryCircuitBreaker `json:"circuit_breaker"`
 	PricingStatus  PricingStatus              `json:"pricing_status"`
+	PriceID        *uint                      `json:"price_id,omitempty"`
 }
 
 type GroupModelsResponse struct {
@@ -160,7 +161,10 @@ func mapGroupModelsResponse(
 		if item.AliasEnabled {
 			item.ClientModel = model.Alias
 		}
-		item.PricingStatus = resolvePricingStatus(rows[pricing.Identity{ChannelID: channelID, ModelID: model.ID}])
+		if price, priceExists := rows[pricing.Identity{ChannelID: channelID, ModelID: model.ID}]; priceExists {
+			item.PricingStatus = resolvePricingStatus(price)
+			item.PriceID = &price.ID
+		}
 		if item.PricingStatus == PricingStatusPending {
 			result.Pending++
 		}

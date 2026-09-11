@@ -72,6 +72,7 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
 		}
 		want.Items[index].EntryID = item.EntryID
+		want.Items[index].PriceID = item.PriceID
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetGroupModels() = %#v, want %#v", got, want)
@@ -100,6 +101,7 @@ func TestMapGroupModelsResponseTreatsContextTierOnlyPriceAsConfigured(t *testing
 		}},
 		Total: 1,
 	}
+	want.Items[0].PriceID = result.Items[0].PriceID
 	if !reflect.DeepEqual(result, want) {
 		t.Fatalf("mapGroupModelsResponse() = %#v, want %#v", result, want)
 	}
@@ -333,6 +335,7 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
 		}
 		want.Items[index].EntryID = item.EntryID
+		want.Items[index].PriceID = item.PriceID
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("models response = %#v, want %#v", got, want)

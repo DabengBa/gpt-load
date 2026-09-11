@@ -1668,6 +1668,7 @@ func TestUpdateGroupModelsEndpointIDsAuthNotFoundAndSuccessDTO(t *testing.T) {
 			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
 		}
 		want.Items[index].EntryID = item.EntryID
+		want.Items[index].PriceID = item.PriceID
 	}
 	if !reflect.DeepEqual(result, want) {
 		t.Fatalf("success models response = %#v, want %#v", result, want)
