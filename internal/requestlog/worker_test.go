@@ -585,6 +585,50 @@ func TestWriteBatchAggregatesCredentialAttemptsByOwnCompletionHour(t *testing.T)
 	}
 }
 
+func TestBuildUsageAttemptAggregationJournalsTracksRetriedRouteFailure(t *testing.T) {
+	completedAt := time.Date(2026, time.August, 15, 14, 2, 0, 0, time.UTC)
+	row := aggregationRow("retry-route", completedAt, 7, "provider-b")
+	row.AttemptCount = 2
+	row.AttemptRows = []models.RequestLogAttempt{
+		{
+			RequestID:       row.ID,
+			Sequence:        1,
+			CompletedAtMS:   completedAt.Add(-time.Second).UnixMilli(),
+			GroupID:         7,
+			ChannelID:       string(channel.OpenAI),
+			CredentialID:    11,
+			UpstreamModel:   "provider-a",
+			DispatchState:   string(execution.DispatchMaybeSent),
+			FailureCategory: string(telemetry.FailureCategoryUpstreamHost),
+		},
+		{
+			RequestID:       row.ID,
+			Sequence:        2,
+			CompletedAtMS:   completedAt.UnixMilli(),
+			GroupID:         7,
+			ChannelID:       string(channel.OpenAI),
+			CredentialID:    12,
+			UpstreamModel:   "provider-b",
+			DispatchState:   string(execution.DispatchMaybeSent),
+			FailureCategory: string(telemetry.FailureCategoryOK),
+		},
+	}
+
+	journals, err := buildUsageAttemptAggregationJournals([]models.RequestLog{row})
+	if err != nil {
+		t.Fatalf("buildUsageAttemptAggregationJournals() error = %v", err)
+	}
+	if len(journals) != 2 {
+		t.Fatalf("attempt journals = %#v, want two route attempts", journals)
+	}
+	if journals[0].Model != "provider-a" || journals[0].AttemptCount != 1 || journals[0].FailureCount != 1 {
+		t.Fatalf("failed route journal = %#v, want provider-a/1/1", journals[0])
+	}
+	if journals[1].Model != "provider-b" || journals[1].AttemptCount != 1 || journals[1].FailureCount != 0 {
+		t.Fatalf("successful route journal = %#v, want provider-b/1/0", journals[1])
+	}
+}
+
 func credentialAttemptRow(
 	requestID string,
 	sequence int,

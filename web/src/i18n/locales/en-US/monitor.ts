@@ -477,6 +477,8 @@ export default {
           model: 'Model',
           group: 'Group',
           channel: 'Channel',
+          attempts: 'Attempts',
+          attemptFailures: 'Attempt failures',
           successRate: 'Success rate',
           averageLatency: 'Average latency',
           uncachedInput: 'Uncached input',

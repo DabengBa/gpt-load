@@ -147,7 +147,12 @@ export interface UsageReportDto {
 
 export type UsageBreakdownScope = 'admin' | 'access_key'
 
-export interface UsageBreakdownRowDto extends UsageAggregateDto {
+export interface UsageAttemptAggregateDto {
+  attempt_count: number
+  attempt_failure_count: number
+}
+
+export interface UsageBreakdownRowDto extends UsageAggregateDto, UsageAttemptAggregateDto {
   model: string
   group_id?: number
   channel_id?: string
@@ -157,6 +162,7 @@ export interface UsageBreakdownDto {
   scope: UsageBreakdownScope
   rows: UsageBreakdownRowDto[]
   total: UsageAggregateDto
+  attempt_total: UsageAttemptAggregateDto
   pagination: {
     page: number
     page_size: UsageBreakdownPageSize
@@ -282,6 +288,7 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
 }
 
 const breakdownAggregateFields = [...aggregateFields] as const
+const attemptAggregateFields = ['attempt_count', 'attempt_failure_count'] as const
 
 function sameUsageAggregate(left: UsageAggregateDto, right: UsageAggregateDto): boolean {
   return breakdownAggregateFields.every((field) => left[field] === right[field])
@@ -329,27 +336,36 @@ function projectUsagePagination(value: unknown): UsageBreakdownDto['pagination']
 
 export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
   const record = projectRecord(value)
-  assertNoSecretLikeFields(record, ['scope', 'rows', 'total', 'pagination'])
+  assertNoSecretLikeFields(record, ['scope', 'rows', 'total', 'attempt_total', 'pagination'])
   const scope = projectEnum(record.scope, ['admin', 'access_key'] as const)
   const total = projectUsageAggregate(record.total)
+  const attemptTotal = projectUsageAttemptAggregate(record.attempt_total)
   const pagination = projectUsagePagination(record.pagination)
   const rows = projectArray(record.rows, (value): UsageBreakdownRowDto => {
     const row = projectRecord(value)
     const identityFields = scope === 'admin' ? ['model', 'group_id', 'channel_id'] : ['model']
-    assertNoSecretLikeFields(row, [...identityFields, ...breakdownAggregateFields])
+    assertNoSecretLikeFields(row, [
+      ...identityFields,
+      ...breakdownAggregateFields,
+      ...attemptAggregateFields,
+    ])
     const model = projectUsageModel(row.model)
     const aggregate = projectUsageAggregate(
       Object.fromEntries(breakdownAggregateFields.map((field) => [field, row[field]])),
     )
+    const attempts = projectUsageAttemptAggregate(
+      Object.fromEntries(attemptAggregateFields.map((field) => [field, row[field]])),
+    )
     if (scope === 'admin') {
       return {
         ...aggregate,
+        ...attempts,
         model,
         group_id: projectSafeInteger(row.group_id, { minimum: 1 }),
         channel_id: projectChannelID(row.channel_id),
       }
     }
-    return { ...aggregate, model }
+    return { ...aggregate, ...attempts, model }
   })
   const identities = new Set<string>()
   for (const row of rows) {
@@ -363,7 +379,16 @@ export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
     identities.add(identity)
   }
   if (rows.length !== expectedUsagePageItems(pagination)) invalidResponse()
-  return { scope, rows, total, pagination }
+  return { scope, rows, total, attempt_total: attemptTotal, pagination }
+}
+
+function projectUsageAttemptAggregate(value: unknown): UsageAttemptAggregateDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, attemptAggregateFields)
+  const attemptCount = projectSafeInteger(record.attempt_count, { minimum: 0 })
+  const attemptFailureCount = projectSafeInteger(record.attempt_failure_count, { minimum: 0 })
+  if (attemptFailureCount > attemptCount) invalidResponse()
+  return { attempt_count: attemptCount, attempt_failure_count: attemptFailureCount }
 }
 
 function projectUsageDistributionAggregate(value: unknown): UsageDistributionAggregateDto {

@@ -478,6 +478,8 @@ export default {
           model: 'モデル',
           group: 'グループ',
           channel: 'チャネル',
+          attempts: '試行数',
+          attemptFailures: '試行失敗',
           successRate: '成功率',
           averageLatency: '平均レイテンシ',
           uncachedInput: '未キャッシュ入力',

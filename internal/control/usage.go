@@ -97,18 +97,25 @@ type usageCollectionHealthResponse struct {
 	LastWriteFailureAtMS *int64 `json:"last_write_failure_at_ms"`
 }
 
+type usageAttemptAggregateResponse struct {
+	AttemptCount        int64 `json:"attempt_count"`
+	AttemptFailureCount int64 `json:"attempt_failure_count"`
+}
+
 type usageBreakdownRowResponse struct {
 	Model     string  `json:"model"`
 	GroupID   *uint   `json:"group_id,omitempty"`
 	ChannelID *string `json:"channel_id,omitempty"`
 	usageAggregateResponse
+	usageAttemptAggregateResponse
 }
 
 type usageBreakdownResponse struct {
-	Scope      string                      `json:"scope"`
-	Rows       []usageBreakdownRowResponse `json:"rows"`
-	Total      usageAggregateResponse      `json:"total"`
-	Pagination usagePaginationResponse     `json:"pagination"`
+	Scope        string                        `json:"scope"`
+	Rows         []usageBreakdownRowResponse   `json:"rows"`
+	Total        usageAggregateResponse        `json:"total"`
+	AttemptTotal usageAttemptAggregateResponse `json:"attempt_total"`
+	Pagination   usagePaginationResponse       `json:"pagination"`
 }
 
 type usagePaginationResponse struct {
@@ -548,13 +555,18 @@ func mapUsageBreakdown(
 	if err != nil {
 		return usageBreakdownResponse{}, err
 	}
+	attemptTotal, err := mapUsageAttemptAggregate(source.AttemptTotal)
+	if err != nil {
+		return usageBreakdownResponse{}, err
+	}
 	if total != summary {
 		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: total mismatch with summary")
 	}
 	result := usageBreakdownResponse{
-		Scope: source.Scope,
-		Rows:  make([]usageBreakdownRowResponse, 0, len(source.Rows)),
-		Total: total,
+		Scope:        source.Scope,
+		Rows:         make([]usageBreakdownRowResponse, 0, len(source.Rows)),
+		Total:        total,
+		AttemptTotal: attemptTotal,
 		Pagination: usagePaginationResponse{
 			Page: source.Pagination.Page, PageSize: source.Pagination.PageSize,
 			TotalItems: source.Pagination.TotalItems, TotalPages: source.Pagination.TotalPages,
@@ -619,9 +631,13 @@ func mapUsageBreakdown(
 		if err != nil {
 			return usageBreakdownResponse{}, err
 		}
+		attemptAggregate, err := mapUsageAttemptAggregate(row.UsageAttemptAggregate)
+		if err != nil {
+			return usageBreakdownResponse{}, err
+		}
 		result.Rows = append(result.Rows, usageBreakdownRowResponse{
 			Model: row.Model, GroupID: row.GroupID, ChannelID: row.ChannelID,
-			usageAggregateResponse: aggregate,
+			usageAggregateResponse: aggregate, usageAttemptAggregateResponse: attemptAggregate,
 		})
 	}
 	return result, nil
@@ -866,6 +882,18 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 		UsageMissingCount:    source.UsageMissingCount, PartialCount: source.PartialCount,
 		UnpricedRequestCount: source.UnpricedRequestCount,
 		PricingPartialCount:  source.PricingPartialCount,
+	}, nil
+}
+
+func mapUsageAttemptAggregate(source requestlog.UsageAttemptAggregate) (usageAttemptAggregateResponse, error) {
+	if source.AttemptCount < 0 || source.AttemptFailureCount < 0 ||
+		source.AttemptCount > maxSafeInteger || source.AttemptFailureCount > maxSafeInteger ||
+		source.AttemptFailureCount > source.AttemptCount {
+		return usageAttemptAggregateResponse{}, fmt.Errorf("map usage attempt aggregate: unsafe integer")
+	}
+	return usageAttemptAggregateResponse{
+		AttemptCount:        source.AttemptCount,
+		AttemptFailureCount: source.AttemptFailureCount,
 	}, nil
 }
 

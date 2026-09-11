@@ -122,6 +122,38 @@ func (UsageAggregationJournal) TableName() string {
 	return "usage_aggregation_journal"
 }
 
+// UsageAttemptAggregationJournal is the request-idempotent input for hourly
+// route-attempt aggregates. Its composite identity permits one row per
+// upstream attempt in a retried request.
+type UsageAttemptAggregationJournal struct {
+	RequestID     string `gorm:"column:request_id;type:varchar(36);primaryKey;not null"`
+	Sequence      int    `gorm:"primaryKey;not null;check:chk_usage_attempt_journal_sequence,sequence > 0"`
+	BucketStartMS int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_attempt_journal_bucket,bucket_start_ms >= 0;index:idx_usage_attempt_journal_pending_bucket,priority:2"`
+	AccessKeyID   uint   `gorm:"not null"`
+	GroupID       uint   `gorm:"not null;check:chk_usage_attempt_journal_group,group_id > 0"`
+	ChannelID     string `gorm:"type:varchar(64);not null;default:''"`
+	CredentialID  uint   `gorm:"not null;check:chk_usage_attempt_journal_credential,credential_id > 0"`
+	Model         string `gorm:"type:varchar(255);not null"`
+	AttemptCount  int64  `gorm:"not null;check:chk_usage_attempt_journal_attempt_count,attempt_count = 1"`
+	FailureCount  int64  `gorm:"not null;check:chk_usage_attempt_journal_failure_count,failure_count >= 0 AND failure_count <= attempt_count"`
+	Applied       bool   `gorm:"not null;default:false;check:chk_usage_attempt_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_attempt_journal_pending_bucket,priority:1"`
+}
+
+// UsageAttemptStat is an hourly route-attempt aggregate. Unlike UsageStat,
+// it records every upstream route tried, including routes that only failed
+// before a later candidate completed the client request.
+type UsageAttemptStat struct {
+	ID            uint   `gorm:"primaryKey;autoIncrement"`
+	BucketStartMS int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_attempt_stat_bucket,bucket_start_ms >= 0;uniqueIndex:idx_usage_attempt_stats_identity,priority:1"`
+	AccessKeyID   uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:2"`
+	ChannelID     string `gorm:"type:varchar(64);not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:3"`
+	GroupID       uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:4"`
+	CredentialID  uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:5"`
+	Model         string `gorm:"type:varchar(255);not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:6"`
+	AttemptCount  int64  `gorm:"not null;default:0;check:chk_usage_attempt_stat_attempt_count,attempt_count >= 0"`
+	FailureCount  int64  `gorm:"not null;default:0;check:chk_usage_attempt_stat_failure_count,failure_count >= 0;check:chk_usage_attempt_stat_failure_le_attempt, failure_count <= attempt_count"`
+}
+
 // UsageStat is an hourly aggregate by access key, channel, upstream group,
 // credential, and upstream model.
 type UsageStat struct {

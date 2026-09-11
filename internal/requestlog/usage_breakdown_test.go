@@ -83,6 +83,45 @@ func TestUsageBreakdownAggregatesByScopeAndMasksAccessKeyDimensions(t *testing.T
 	}
 }
 
+func TestUsageBreakdownIncludesFailedRetriedRoute(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)
+	requestStat := usageStat(start, 7, "provider-b", 1)
+	requestStat.ID = 0
+	requestStat.ChannelID = "openai"
+	requestStat.CredentialID = 12
+	requestStat.AccessKeyID = 41
+	createUsageStats(t, db, requestStat)
+	if err := db.Create([]models.UsageAttemptStat{
+		{BucketStartMS: start.UnixMilli(), AccessKeyID: 41, GroupID: 7, ChannelID: "openai", CredentialID: 11, Model: "provider-a", AttemptCount: 1, FailureCount: 1},
+		{BucketStartMS: start.UnixMilli(), AccessKeyID: 41, GroupID: 7, ChannelID: "openai", CredentialID: 12, Model: "provider-b", AttemptCount: 1},
+	}).Error; err != nil {
+		t.Fatalf("create usage attempt stats: %v", err)
+	}
+
+	report, err := newRequestLogTestService(db).QueryUsage(context.Background(), UsageQuery{
+		FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(),
+		Granularity: UsageGranularityHour, BreakdownSort: UsageBreakdownSortModel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Breakdown.AttemptTotal.AttemptCount != 2 || report.Breakdown.AttemptTotal.AttemptFailureCount != 1 {
+		t.Fatalf("attempt total = %#v, want 2/1", report.Breakdown.AttemptTotal)
+	}
+	if len(report.Breakdown.Rows) != 2 {
+		t.Fatalf("breakdown rows = %#v, want failed retry route included", report.Breakdown.Rows)
+	}
+	failedRoute := report.Breakdown.Rows[0]
+	if failedRoute.Model != "provider-a" || failedRoute.RequestCount != 0 || failedRoute.AttemptCount != 1 || failedRoute.AttemptFailureCount != 1 {
+		t.Fatalf("failed retry route = %#v, want provider-a request 0 attempt 1/1", failedRoute)
+	}
+	finalRoute := report.Breakdown.Rows[1]
+	if finalRoute.Model != "provider-b" || finalRoute.RequestCount != 1 || finalRoute.SuccessCount != 1 || finalRoute.AttemptCount != 1 || finalRoute.AttemptFailureCount != 0 {
+		t.Fatalf("final route = %#v, want provider-b request 1 attempt 1/0", finalRoute)
+	}
+}
+
 func TestUsageBreakdownSortsGloballyAcrossPages(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)

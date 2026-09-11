@@ -3,6 +3,7 @@ package requestlog
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -195,69 +196,6 @@ func validUsageBreakdownSort(sort UsageBreakdownSort) bool {
 	}
 }
 
-func usageBreakdownSortExpression(db *gorm.DB, sort UsageBreakdownSort) (string, bool) {
-	switch sort {
-	case UsageBreakdownSortModel:
-		return "usage_stats.model", true
-	case UsageBreakdownSortGroup:
-		return usageBreakdownGroupNameExpression(db), true
-	case UsageBreakdownSortChannel:
-		return usageBreakdownChannelNameExpression(db), true
-	case UsageBreakdownSortRequestCount:
-		return "COALESCE(SUM(request_count), 0)", true
-	case UsageBreakdownSortSuccessCount:
-		return "COALESCE(SUM(success_count), 0)", true
-	case UsageBreakdownSortFailureCount:
-		return "COALESCE(SUM(failure_count), 0)", true
-	case UsageBreakdownSortSuccessRate:
-		return "CASE WHEN COALESCE(SUM(request_count), 0) = 0 THEN 0 ELSE 1.0 * COALESCE(SUM(success_count), 0) / COALESCE(SUM(request_count), 0) END", true
-	case UsageBreakdownSortAverageLatency:
-		return "CASE WHEN COALESCE(SUM(duration_sample_count), 0) = 0 THEN 0 ELSE 1.0 * COALESCE(SUM(duration_ms_total), 0) / COALESCE(SUM(duration_sample_count), 0) END", true
-	case UsageBreakdownSortUncachedInputTokens:
-		return "COALESCE(SUM(uncached_input_tokens), 0)", true
-	case UsageBreakdownSortCacheReadTokens:
-		return "COALESCE(SUM(cache_read_tokens), 0)", true
-	case UsageBreakdownSortCacheWrite5MTokens:
-		return "COALESCE(SUM(cache_write_5m_tokens), 0)", true
-	case UsageBreakdownSortCacheWrite1HTokens:
-		return "COALESCE(SUM(cache_write_1h_tokens), 0)", true
-	case UsageBreakdownSortCacheWriteUnknown:
-		return "COALESCE(SUM(cache_write_unknown_tokens), 0)", true
-	case UsageBreakdownSortOutputTokens:
-		return "COALESCE(SUM(output_tokens), 0)", true
-	case UsageBreakdownSortTotalTokens:
-		return usageDistributionTotalTokensExpression, true
-	case UsageBreakdownSortEstimatedCost:
-		return "COALESCE(SUM(estimated_cost_nano_usd), 0)", true
-	default:
-		return "", false
-	}
-}
-
-func usageBreakdownGroupNameExpression(db *gorm.DB) string {
-	return "COALESCE(usage_breakdown_groups.name, " + usageBreakdownUnknownIdentityExpression(db, "usage_stats.group_id") + ")"
-}
-
-func usageBreakdownChannelNameExpression(db *gorm.DB) string {
-	expression := "CASE usage_stats.channel_id"
-	for _, descriptor := range channel.NewRegistry().List() {
-		expression += " WHEN " + usageBreakdownSQLString(string(descriptor.ID)) + " THEN " + usageBreakdownSQLString(descriptor.Name)
-	}
-	return expression + " ELSE " + usageBreakdownUnknownIdentityExpression(db, "usage_stats.channel_id") + " END"
-}
-
-func usageBreakdownUnknownIdentityExpression(_ *gorm.DB, identifier string) string {
-	return usageBreakdownSQLString("#") + " || CAST(" + identifier + " AS TEXT)"
-}
-
-func usageBreakdownGroupsTable(_ *gorm.DB) string {
-	return `"groups"`
-}
-
-func usageBreakdownSQLString(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
-}
-
 func queryUsageDistributions(
 	scope *gorm.DB,
 	summary UsageAggregate,
@@ -416,80 +354,372 @@ func queryUsageBreakdown(
 	input = normalizeUsageBreakdownQuery(input)
 	breakdownPage := input.BreakdownPage
 	breakdownPageSize := input.BreakdownPageSize
-	maxInt := maxUsageBreakdownInt()
-	if breakdownPage-1 > maxInt/breakdownPageSize {
+	if breakdownPage-1 > maxUsageBreakdownInt()/breakdownPageSize {
 		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: pagination offset overflows int")
 	}
-	query := scope.Session(&gorm.Session{})
-	if !accessKeyScoped && input.BreakdownSort == UsageBreakdownSortGroup {
-		query = query.Joins("LEFT JOIN " + usageBreakdownGroupsTable(scope) + " AS usage_breakdown_groups ON usage_breakdown_groups.id = usage_stats.group_id")
+
+	usageRows, err := queryUsageBreakdownRows(scope, accessKeyScoped)
+	if err != nil {
+		return UsageBreakdown{}, err
 	}
-	if accessKeyScoped {
-		query = query.Select("usage_stats.model, NULL AS group_id, NULL AS channel_id, " + usageAggregateSelect).
-			Group("usage_stats.model")
-	} else {
-		selectSQL := "usage_stats.model, usage_stats.group_id, usage_stats.channel_id, " + usageAggregateSelect
-		groupBy := "usage_stats.model, usage_stats.group_id, usage_stats.channel_id"
-		if input.BreakdownSort == UsageBreakdownSortGroup {
-			selectSQL = "usage_stats.model, usage_stats.group_id, usage_stats.channel_id, " + usageBreakdownGroupNameExpression(scope) + " AS usage_breakdown_group_name, " + usageAggregateSelect
-			groupBy += ", usage_breakdown_groups.name"
-		}
-		query = query.Select(selectSQL).Group(groupBy)
+	attemptRows, attemptTotal, err := queryUsageAttemptBreakdown(scope, input, accessKeyScoped)
+	if err != nil {
+		return UsageBreakdown{}, err
 	}
-	sortExpression, ok := usageBreakdownSortExpression(scope, input.BreakdownSort)
-	if !ok {
-		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: invalid sort %q", input.BreakdownSort)
+	rows, err := mergeUsageBreakdownRows(usageRows, attemptRows, accessKeyScoped)
+	if err != nil {
+		return UsageBreakdown{}, err
 	}
-	query = query.Order(sortExpression + " " + string(input.BreakdownSortDirection))
-	if accessKeyScoped {
-		query = query.Order("usage_stats.model ASC")
-	} else {
-		query = query.Order("usage_stats.model ASC").Order("usage_stats.group_id ASC").Order("usage_stats.channel_id ASC")
+	if err := sortUsageBreakdownRows(scope, rows, input); err != nil {
+		return UsageBreakdown{}, err
 	}
-	var grouped *gorm.DB
-	if accessKeyScoped {
-		grouped = scope.Session(&gorm.Session{}).Select("usage_stats.model").Group("usage_stats.model")
-	} else {
-		grouped = scope.Session(&gorm.Session{}).Select("usage_stats.model, usage_stats.group_id, usage_stats.channel_id").
-			Group("usage_stats.model, usage_stats.group_id, usage_stats.channel_id")
+	totalItems := len(rows)
+	start := (breakdownPage - 1) * breakdownPageSize
+	if start > totalItems {
+		start = totalItems
 	}
-	var totalItems int64
-	if err := grouped.Count(&totalItems).Error; err != nil {
-		return UsageBreakdown{}, fmt.Errorf("count usage breakdown: %w", err)
+	end := totalItems
+	if totalItems-start > breakdownPageSize {
+		end = start + breakdownPageSize
 	}
-	if totalItems < 0 || uint64(totalItems) > uint64(maxUsageBreakdownInt()) {
-		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: total item count overflows int")
-	}
-	totalItemsInt := int(totalItems)
-	var source []usageBreakdownRow
-	if err := query.Offset((breakdownPage - 1) * breakdownPageSize).Limit(breakdownPageSize).Find(&source).Error; err != nil {
-		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: %w", err)
+	pageRows := make([]UsageBreakdownRow, 0, end-start)
+	for _, candidate := range rows[start:end] {
+		pageRows = append(pageRows, candidate.row)
 	}
 	breakdown := UsageBreakdown{
-		Scope: "admin",
-		Rows:  make([]UsageBreakdownRow, 0, len(source)),
-		Total: summary,
+		Scope:        "admin",
+		Rows:         pageRows,
+		Total:        summary,
+		AttemptTotal: attemptTotal,
 		Pagination: UsagePagination{
-			Page: breakdownPage, PageSize: breakdownPageSize, TotalItems: totalItemsInt,
-			TotalPages: totalPages(totalItemsInt, breakdownPageSize),
+			Page: breakdownPage, PageSize: breakdownPageSize, TotalItems: totalItems,
+			TotalPages: totalPages(totalItems, breakdownPageSize),
 		},
 	}
 	if accessKeyScoped {
 		breakdown.Scope = "access_key"
 	}
-	for _, row := range source {
-		if err := validateUsageAggregate(row.UsageAggregate); err != nil {
-			return UsageBreakdown{}, fmt.Errorf("validate usage breakdown: %w", err)
-		}
-		if accessKeyScoped && (row.GroupID != nil || row.ChannelID != nil) {
-			return UsageBreakdown{}, fmt.Errorf("query usage breakdown: access-key row contains admin identity")
-		}
-		breakdown.Rows = append(breakdown.Rows, UsageBreakdownRow{
-			Model: row.Model, GroupID: row.GroupID, ChannelID: row.ChannelID,
-			UsageAggregate: row.UsageAggregate,
-		})
-	}
 	return breakdown, nil
+}
+
+type usageAttemptBreakdownRow struct {
+	Model               string
+	GroupID             *uint
+	ChannelID           *string
+	AttemptCount        int64
+	AttemptFailureCount int64 `gorm:"column:attempt_failure_count"`
+}
+
+type usageBreakdownKey struct {
+	Model     string
+	GroupID   uint
+	ChannelID string
+}
+
+type usageBreakdownCandidate struct {
+	row         UsageBreakdownRow
+	groupName   string
+	channelName string
+}
+
+func queryUsageBreakdownRows(scope *gorm.DB, accessKeyScoped bool) ([]usageBreakdownRow, error) {
+	query := scope.Session(&gorm.Session{})
+	if accessKeyScoped {
+		query = query.Select("usage_stats.model, NULL AS group_id, NULL AS channel_id, " + usageAggregateSelect).
+			Group("usage_stats.model")
+	} else {
+		query = query.Select("usage_stats.model, usage_stats.group_id, usage_stats.channel_id, " + usageAggregateSelect).
+			Group("usage_stats.model, usage_stats.group_id, usage_stats.channel_id")
+	}
+	var rows []usageBreakdownRow
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("query usage breakdown rows: %w", err)
+	}
+	return rows, nil
+}
+
+func usageAttemptStatScope(db *gorm.DB, input UsageQuery) *gorm.DB {
+	scope := db.Session(&gorm.Session{NewDB: true}).Model(&models.UsageAttemptStat{}).
+		Where("bucket_start_ms >= ? AND bucket_start_ms < ?", input.FromMS, input.ToMS)
+	if input.GroupID != nil {
+		scope = scope.Where("group_id = ?", *input.GroupID)
+	}
+	if input.ChannelID != "" {
+		scope = scope.Where("channel_id = ?", input.ChannelID)
+	}
+	if input.CredentialID != nil {
+		scope = scope.Where("credential_id = ?", *input.CredentialID)
+	}
+	if input.AccessKeyID != nil {
+		scope = scope.Where("access_key_id = ?", *input.AccessKeyID)
+	}
+	if input.UpstreamModel != "" {
+		scope = scope.Where("model = ?", input.UpstreamModel)
+	}
+	return scope
+}
+
+func queryUsageAttemptBreakdown(
+	scope *gorm.DB,
+	input UsageQuery,
+	accessKeyScoped bool,
+) ([]usageAttemptBreakdownRow, UsageAttemptAggregate, error) {
+	attemptScope := usageAttemptStatScope(scope, input)
+	var total UsageAttemptAggregate
+	if err := attemptScope.Select("COALESCE(SUM(attempt_count), 0) AS attempt_count, COALESCE(SUM(failure_count), 0) AS attempt_failure_count").Find(&total).Error; err != nil {
+		return nil, UsageAttemptAggregate{}, fmt.Errorf("query usage attempt total: %w", err)
+	}
+	if err := validateUsageAttemptAggregate(total); err != nil {
+		return nil, UsageAttemptAggregate{}, err
+	}
+	query := attemptScope.Select("model, NULL AS group_id, NULL AS channel_id, SUM(attempt_count) AS attempt_count, SUM(failure_count) AS attempt_failure_count")
+	if !accessKeyScoped {
+		query = attemptScope.Select("model, group_id, channel_id, SUM(attempt_count) AS attempt_count, SUM(failure_count) AS attempt_failure_count").
+			Group("model, group_id, channel_id")
+	} else {
+		query = query.Group("model")
+	}
+	var rows []usageAttemptBreakdownRow
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, UsageAttemptAggregate{}, fmt.Errorf("query usage attempt breakdown: %w", err)
+	}
+	for _, row := range rows {
+		if err := validateUsageAttemptAggregate(UsageAttemptAggregate{AttemptCount: row.AttemptCount, AttemptFailureCount: row.AttemptFailureCount}); err != nil {
+			return nil, UsageAttemptAggregate{}, err
+		}
+	}
+	return rows, total, nil
+}
+
+func validateUsageAttemptAggregate(value UsageAttemptAggregate) error {
+	if value.AttemptCount < 0 || value.AttemptFailureCount < 0 || value.AttemptFailureCount > value.AttemptCount {
+		return fmt.Errorf("invalid usage attempt aggregate")
+	}
+	return nil
+}
+
+func mergeUsageBreakdownRows(
+	usageRows []usageBreakdownRow,
+	attemptRows []usageAttemptBreakdownRow,
+	accessKeyScoped bool,
+) ([]usageBreakdownCandidate, error) {
+	merged := make(map[usageBreakdownKey]usageBreakdownCandidate, len(usageRows)+len(attemptRows))
+	for _, row := range usageRows {
+		if err := validateUsageAggregate(row.UsageAggregate); err != nil {
+			return nil, fmt.Errorf("validate usage breakdown: %w", err)
+		}
+		key := usageBreakdownKey{Model: row.Model}
+		if row.GroupID != nil {
+			key.GroupID = *row.GroupID
+		}
+		if row.ChannelID != nil {
+			key.ChannelID = *row.ChannelID
+		}
+		merged[key] = usageBreakdownCandidate{row: UsageBreakdownRow{
+			Model: row.Model, GroupID: cloneUintPointer(row.GroupID), ChannelID: cloneStringPointer(row.ChannelID),
+			UsageAggregate: row.UsageAggregate,
+		}}
+	}
+	for _, row := range attemptRows {
+		attempts := UsageAttemptAggregate{AttemptCount: row.AttemptCount, AttemptFailureCount: row.AttemptFailureCount}
+		key := usageBreakdownKey{Model: row.Model}
+		if row.GroupID != nil {
+			key.GroupID = *row.GroupID
+		}
+		if row.ChannelID != nil {
+			key.ChannelID = *row.ChannelID
+		}
+		candidate, ok := merged[key]
+		if !ok {
+			candidate.row.Model = row.Model
+			if !accessKeyScoped {
+				candidate.row.GroupID = cloneUintPointer(row.GroupID)
+				candidate.row.ChannelID = cloneStringPointer(row.ChannelID)
+			}
+		}
+		if ok {
+			candidate.row.AttemptCount += attempts.AttemptCount
+			candidate.row.AttemptFailureCount += attempts.AttemptFailureCount
+		} else {
+			candidate.row.AttemptCount = attempts.AttemptCount
+			candidate.row.AttemptFailureCount = attempts.AttemptFailureCount
+		}
+		if err := validateUsageAttemptAggregate(candidate.row.UsageAttemptAggregate); err != nil {
+			return nil, err
+		}
+		merged[key] = candidate
+	}
+	rows := make([]usageBreakdownCandidate, 0, len(merged))
+	for _, candidate := range merged {
+		rows = append(rows, candidate)
+	}
+	return rows, nil
+}
+
+func cloneUintPointer(value *uint) *uint {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func sortUsageBreakdownRows(scope *gorm.DB, rows []usageBreakdownCandidate, input UsageQuery) error {
+	groupNames := make(map[uint]string)
+	groupIDs := make([]uint, 0)
+	seenGroups := make(map[uint]struct{})
+	for index := range rows {
+		if rows[index].row.GroupID == nil {
+			continue
+		}
+		id := *rows[index].row.GroupID
+		if _, seen := seenGroups[id]; !seen {
+			seenGroups[id] = struct{}{}
+			groupIDs = append(groupIDs, id)
+		}
+	}
+	if len(groupIDs) > 0 {
+		var groups []models.Group
+		if err := scope.Session(&gorm.Session{NewDB: true}).Model(&models.Group{}).Where("id IN ?", groupIDs).Find(&groups).Error; err != nil {
+			return fmt.Errorf("query usage breakdown group names: %w", err)
+		}
+		for _, group := range groups {
+			groupNames[group.ID] = group.Name
+		}
+	}
+	for index := range rows {
+		if rows[index].row.GroupID != nil {
+			id := *rows[index].row.GroupID
+			rows[index].groupName = groupNames[id]
+			if rows[index].groupName == "" {
+				rows[index].groupName = "#" + fmt.Sprint(id)
+			}
+		}
+		if rows[index].row.ChannelID != nil {
+			id := channel.ID(*rows[index].row.ChannelID)
+			if descriptor, ok := channel.NewRegistry().Get(id); ok {
+				rows[index].channelName = descriptor.Name
+			} else {
+				rows[index].channelName = "#" + *rows[index].row.ChannelID
+			}
+		}
+	}
+	sort.Slice(rows, func(left, right int) bool {
+		comparison := compareUsageBreakdownPrimary(rows[left], rows[right], input.BreakdownSort)
+		if input.BreakdownSortDirection == UsageBreakdownSortDescending {
+			comparison = -comparison
+		}
+		if comparison != 0 {
+			return comparison < 0
+		}
+		if rows[left].row.Model != rows[right].row.Model {
+			return rows[left].row.Model < rows[right].row.Model
+		}
+		leftGroup, rightGroup := uint(0), uint(0)
+		if rows[left].row.GroupID != nil {
+			leftGroup = *rows[left].row.GroupID
+		}
+		if rows[right].row.GroupID != nil {
+			rightGroup = *rows[right].row.GroupID
+		}
+		if leftGroup != rightGroup {
+			return leftGroup < rightGroup
+		}
+		leftChannel, rightChannel := "", ""
+		if rows[left].row.ChannelID != nil {
+			leftChannel = *rows[left].row.ChannelID
+		}
+		if rows[right].row.ChannelID != nil {
+			rightChannel = *rows[right].row.ChannelID
+		}
+		return leftChannel < rightChannel
+	})
+	return nil
+}
+
+func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy UsageBreakdownSort) int {
+	compareInt64 := func(a, b int64) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	}
+	leftAggregate, rightAggregate := left.row.UsageAggregate, right.row.UsageAggregate
+	switch sortBy {
+	case UsageBreakdownSortModel:
+		return strings.Compare(left.row.Model, right.row.Model)
+	case UsageBreakdownSortGroup:
+		return strings.Compare(left.groupName, right.groupName)
+	case UsageBreakdownSortChannel:
+		return strings.Compare(left.channelName, right.channelName)
+	case UsageBreakdownSortRequestCount:
+		return compareInt64(leftAggregate.RequestCount, rightAggregate.RequestCount)
+	case UsageBreakdownSortSuccessCount:
+		return compareInt64(leftAggregate.SuccessCount, rightAggregate.SuccessCount)
+	case UsageBreakdownSortFailureCount:
+		return compareInt64(leftAggregate.FailureCount, rightAggregate.FailureCount)
+	case UsageBreakdownSortSuccessRate:
+		leftRate, rightRate := float64(leftAggregate.SuccessCount), float64(rightAggregate.SuccessCount)
+		if leftAggregate.RequestCount > 0 {
+			leftRate /= float64(leftAggregate.RequestCount)
+		}
+		if rightAggregate.RequestCount > 0 {
+			rightRate /= float64(rightAggregate.RequestCount)
+		}
+		if leftRate < rightRate {
+			return -1
+		}
+		if leftRate > rightRate {
+			return 1
+		}
+		return 0
+	case UsageBreakdownSortAverageLatency:
+		leftRate, rightRate := float64(leftAggregate.DurationMsTotal), float64(rightAggregate.DurationMsTotal)
+		if leftAggregate.DurationSampleCount > 0 {
+			leftRate /= float64(leftAggregate.DurationSampleCount)
+		}
+		if rightAggregate.DurationSampleCount > 0 {
+			rightRate /= float64(rightAggregate.DurationSampleCount)
+		}
+		if leftRate < rightRate {
+			return -1
+		}
+		if leftRate > rightRate {
+			return 1
+		}
+		return 0
+	case UsageBreakdownSortUncachedInputTokens:
+		return compareInt64(leftAggregate.UncachedInputTokens, rightAggregate.UncachedInputTokens)
+	case UsageBreakdownSortCacheReadTokens:
+		return compareInt64(leftAggregate.CacheReadTokens, rightAggregate.CacheReadTokens)
+	case UsageBreakdownSortCacheWrite5MTokens:
+		return compareInt64(leftAggregate.CacheWrite5MTokens, rightAggregate.CacheWrite5MTokens)
+	case UsageBreakdownSortCacheWrite1HTokens:
+		return compareInt64(leftAggregate.CacheWrite1HTokens, rightAggregate.CacheWrite1HTokens)
+	case UsageBreakdownSortCacheWriteUnknown:
+		return compareInt64(leftAggregate.CacheWriteUnknownTokens, rightAggregate.CacheWriteUnknownTokens)
+	case UsageBreakdownSortOutputTokens:
+		return compareInt64(leftAggregate.OutputTokens, rightAggregate.OutputTokens)
+	case UsageBreakdownSortTotalTokens:
+		leftTokens, _ := usageAggregateTotalTokens(leftAggregate)
+		rightTokens, _ := usageAggregateTotalTokens(rightAggregate)
+		return compareInt64(leftTokens, rightTokens)
+	case UsageBreakdownSortEstimatedCost:
+		return compareInt64(leftAggregate.EstimatedCostNanoUSD, rightAggregate.EstimatedCostNanoUSD)
+	default:
+		return 0
+	}
 }
 
 func maxUsageBreakdownInt() int {

@@ -293,10 +293,16 @@ type UsageReport struct {
 }
 
 type UsageBreakdown struct {
-	Scope      string
-	Rows       []UsageBreakdownRow
-	Total      UsageAggregate
-	Pagination UsagePagination
+	Scope        string
+	Rows         []UsageBreakdownRow
+	Total        UsageAggregate
+	AttemptTotal UsageAttemptAggregate
+	Pagination   UsagePagination
+}
+
+type UsageAttemptAggregate struct {
+	AttemptCount        int64
+	AttemptFailureCount int64
 }
 
 type UsagePagination struct {
@@ -311,6 +317,7 @@ type UsageBreakdownRow struct {
 	GroupID   *uint
 	ChannelID *string
 	UsageAggregate
+	UsageAttemptAggregate
 }
 
 type UsageDistributions struct {

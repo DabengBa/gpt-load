@@ -60,12 +60,19 @@ func (writer *gormBatchWriter) WriteBatch(ctx context.Context, rows []models.Req
 	if err != nil {
 		return err
 	}
+	attemptJournals, err := buildUsageAttemptAggregationJournals(newRows)
+	if err != nil {
+		return err
+	}
 	return dbtx.Run(ctx, writer.db, dbtx.Options{
 		Mode:           dbtx.Write,
 		CleanupTimeout: requestLogTransactionCleanupTimeout,
 		Operation:      "request log transaction",
 	}, func(transaction *gorm.DB) error {
 		if err := stageUsageAggregationJournals(transaction, journals); err != nil {
+			return err
+		}
+		if err := stageUsageAttemptAggregationJournals(transaction, attemptJournals); err != nil {
 			return err
 		}
 		if err := writeRequestLogBatch(transaction, newRows); err != nil {
@@ -131,7 +138,15 @@ func recoverPendingUsageJournals(tx *gorm.DB, rows []models.RequestLog) error {
 	if err := tx.Where("request_id IN ? AND applied = ?", ids, false).Find(&journals).Error; err != nil {
 		return fmt.Errorf("query pending usage journals for recovery: %w", err)
 	}
-	return applyUsageJournalBatch(tx, journals)
+	if err := applyUsageJournalBatch(tx, journals); err != nil {
+		return err
+	}
+	var attemptJournals []models.UsageAttemptAggregationJournal
+	if err := tx.Where("request_id IN ? AND applied = ?", ids, false).
+		Find(&attemptJournals).Error; err != nil {
+		return fmt.Errorf("query pending usage attempt journals for recovery: %w", err)
+	}
+	return applyUsageAttemptJournalBatch(tx, attemptJournals)
 }
 
 func stageUsageAggregationJournals(
@@ -144,6 +159,20 @@ func stageUsageAggregationJournals(
 	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).
 		CreateInBatches(journals, batchSize).Error; err != nil {
 		return fmt.Errorf("stage usage aggregation journals: %w", err)
+	}
+	return nil
+}
+
+func stageUsageAttemptAggregationJournals(
+	tx *gorm.DB,
+	journals []models.UsageAttemptAggregationJournal,
+) error {
+	if len(journals) == 0 {
+		return nil
+	}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).
+		CreateInBatches(journals, batchSize).Error; err != nil {
+		return fmt.Errorf("stage usage attempt aggregation journals: %w", err)
 	}
 	return nil
 }
@@ -200,6 +229,11 @@ func writeRequestLogBatch(tx *gorm.DB, rows []models.RequestLog) error {
 		Order("request_id ASC").Find(&journals).Error; err != nil {
 		return fmt.Errorf("query current usage journals: %w", err)
 	}
+	var attemptJournals []models.UsageAttemptAggregationJournal
+	if err := tx.Where("request_id IN ? AND applied = ?", ids, false).
+		Order("request_id ASC").Order("sequence ASC").Find(&attemptJournals).Error; err != nil {
+		return fmt.Errorf("query current usage attempt journals: %w", err)
+	}
 	if len(attemptRows) > 0 && len(journals) > 0 {
 		pendingRequestIDs := make(map[string]struct{}, len(journals))
 		for _, journal := range journals {
@@ -215,7 +249,10 @@ func writeRequestLogBatch(tx *gorm.DB, rows []models.RequestLog) error {
 			return err
 		}
 	}
-	return applyUsageJournalBatch(tx, journals)
+	if err := applyUsageJournalBatch(tx, journals); err != nil {
+		return err
+	}
+	return applyUsageAttemptJournalBatch(tx, attemptJournals)
 }
 
 type credentialAttemptStatKey struct {
@@ -407,6 +444,185 @@ func applyUsageJournalBatch(
 	return nil
 }
 
+type usageAttemptStatKey struct {
+	BucketStartMS int64
+	AccessKeyID   uint
+	ChannelID     string
+	GroupID       uint
+	CredentialID  uint
+	Model         string
+}
+
+type usageAttemptStatDelta struct {
+	AttemptCount int64
+	FailureCount int64
+}
+
+func buildUsageAttemptJournalDeltas(
+	journals []models.UsageAttemptAggregationJournal,
+) (map[usageAttemptStatKey]usageAttemptStatDelta, error) {
+	deltas := make(map[usageAttemptStatKey]usageAttemptStatDelta)
+	for _, journal := range journals {
+		key := usageAttemptStatKey{
+			BucketStartMS: journal.BucketStartMS,
+			AccessKeyID:   journal.AccessKeyID,
+			ChannelID:     journal.ChannelID,
+			GroupID:       journal.GroupID,
+			CredentialID:  journal.CredentialID,
+			Model:         journal.Model,
+		}
+		delta := deltas[key]
+		if err := checkedInt64Add(&delta.AttemptCount, journal.AttemptCount, "attempt_count"); err != nil {
+			return nil, err
+		}
+		if err := checkedInt64Add(&delta.FailureCount, journal.FailureCount, "attempt_failure_count"); err != nil {
+			return nil, err
+		}
+		if delta.FailureCount > delta.AttemptCount {
+			return nil, fmt.Errorf("aggregate usage attempt failure count exceeds attempt count")
+		}
+		deltas[key] = delta
+	}
+	return deltas, nil
+}
+
+func applyUsageAttemptJournalBatch(
+	tx *gorm.DB,
+	journals []models.UsageAttemptAggregationJournal,
+) error {
+	if len(journals) == 0 {
+		return nil
+	}
+	deltas, err := buildUsageAttemptJournalDeltas(journals)
+	if err != nil {
+		return err
+	}
+	keys := sortedUsageAttemptStatKeys(deltas)
+	existing, err := queryExistingUsageAttemptStats(tx, keys)
+	if err != nil {
+		return err
+	}
+	absolute := make([]models.UsageAttemptStat, 0, len(keys))
+	for _, key := range keys {
+		stat := existing[key]
+		stat.BucketStartMS = key.BucketStartMS
+		stat.AccessKeyID = key.AccessKeyID
+		stat.ChannelID = key.ChannelID
+		stat.GroupID = key.GroupID
+		stat.CredentialID = key.CredentialID
+		stat.Model = key.Model
+		var ok bool
+		stat.AttemptCount, ok = usage.CheckedAdd(stat.AttemptCount, deltas[key].AttemptCount)
+		if !ok {
+			return fmt.Errorf("aggregate usage attempt count: checked addition failed")
+		}
+		stat.FailureCount, ok = usage.CheckedAdd(stat.FailureCount, deltas[key].FailureCount)
+		if !ok {
+			return fmt.Errorf("aggregate usage attempt failure count: checked addition failed")
+		}
+		if stat.FailureCount > stat.AttemptCount {
+			return fmt.Errorf("aggregate usage attempt failure count exceeds attempt count")
+		}
+		absolute = append(absolute, stat)
+	}
+	for _, stat := range absolute {
+		if err := tx.Clauses(usageAttemptStatUpsertClause()).Create(&stat).Error; err != nil {
+			return fmt.Errorf("upsert usage attempt stat: %w", err)
+		}
+	}
+	ids := make([]string, 0, len(journals))
+	seen := make(map[string]struct{}, len(journals))
+	for _, journal := range journals {
+		if _, ok := seen[journal.RequestID]; ok {
+			continue
+		}
+		seen[journal.RequestID] = struct{}{}
+		ids = append(ids, journal.RequestID)
+	}
+	result := tx.Model(&models.UsageAttemptAggregationJournal{}).
+		Where("request_id IN ? AND applied = ?", ids, false).
+		Update("applied", true)
+	if result.Error != nil {
+		return fmt.Errorf("mark usage attempt journals applied: %w", result.Error)
+	}
+	if result.RowsAffected != int64(len(journals)) {
+		return fmt.Errorf("mark usage attempt journals applied: updated %d of %d rows", result.RowsAffected, len(journals))
+	}
+	return nil
+}
+
+func usageAttemptStatUpsertClause() clause.OnConflict {
+	return clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "bucket_start_ms"},
+			{Name: "access_key_id"},
+			{Name: "channel_id"},
+			{Name: "group_id"},
+			{Name: "credential_id"},
+			{Name: "model"},
+		},
+		DoUpdates: clause.AssignmentColumns([]string{"attempt_count", "failure_count"}),
+	}
+}
+
+func sortedUsageAttemptStatKeys(deltas map[usageAttemptStatKey]usageAttemptStatDelta) []usageAttemptStatKey {
+	keys := make([]usageAttemptStatKey, 0, len(deltas))
+	for key := range deltas {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool {
+		if keys[left].BucketStartMS != keys[right].BucketStartMS {
+			return keys[left].BucketStartMS < keys[right].BucketStartMS
+		}
+		if keys[left].AccessKeyID != keys[right].AccessKeyID {
+			return keys[left].AccessKeyID < keys[right].AccessKeyID
+		}
+		if keys[left].ChannelID != keys[right].ChannelID {
+			return keys[left].ChannelID < keys[right].ChannelID
+		}
+		if keys[left].GroupID != keys[right].GroupID {
+			return keys[left].GroupID < keys[right].GroupID
+		}
+		if keys[left].CredentialID != keys[right].CredentialID {
+			return keys[left].CredentialID < keys[right].CredentialID
+		}
+		return keys[left].Model < keys[right].Model
+	})
+	return keys
+}
+
+func queryExistingUsageAttemptStats(
+	tx *gorm.DB,
+	keys []usageAttemptStatKey,
+) (map[usageAttemptStatKey]models.UsageAttemptStat, error) {
+	query := tx.Model(&models.UsageAttemptStat{})
+	for index, key := range keys {
+		condition := "bucket_start_ms = ? AND access_key_id = ? AND channel_id = ? AND group_id = ? AND credential_id = ? AND model = ?"
+		args := []any{key.BucketStartMS, key.AccessKeyID, key.ChannelID, key.GroupID, key.CredentialID, key.Model}
+		if index == 0 {
+			query = query.Where(condition, args...)
+		} else {
+			query = query.Or(condition, args...)
+		}
+	}
+	var rows []models.UsageAttemptStat
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("query existing usage attempt stats: %w", err)
+	}
+	existing := make(map[usageAttemptStatKey]models.UsageAttemptStat, len(rows))
+	for _, row := range rows {
+		existing[usageAttemptStatKey{
+			BucketStartMS: row.BucketStartMS,
+			AccessKeyID:   row.AccessKeyID,
+			ChannelID:     row.ChannelID,
+			GroupID:       row.GroupID,
+			CredentialID:  row.CredentialID,
+			Model:         row.Model,
+		}] = row
+	}
+	return existing, nil
+}
+
 func usageStatUpsertClause() clause.OnConflict {
 	return clause.OnConflict{
 		Columns: []clause.Column{
@@ -486,6 +702,49 @@ func buildUsageAggregationJournals(
 				PartialCount:            delta.PartialCount,
 				UnpricedRequestCount:    delta.UnpricedRequestCount,
 				PricingPartialCount:     delta.PricingPartialCount,
+			})
+		}
+	}
+	return journals, nil
+}
+
+func buildUsageAttemptAggregationJournals(
+	rows []models.RequestLog,
+) ([]models.UsageAttemptAggregationJournal, error) {
+	journals := make([]models.UsageAttemptAggregationJournal, 0)
+	for _, row := range rows {
+		if usageAggregationExcluded(row) {
+			continue
+		}
+		bucketStartMS, err := epochms.AlignDown(
+			row.CompletedAtMS,
+			epochms.MillisecondsPerHour,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("aggregate request attempt %q completion time: %w", row.ID, err)
+		}
+		for _, attempt := range row.AttemptRows {
+			if attempt.DispatchState == string(execution.DispatchLocal) {
+				continue
+			}
+			if attempt.GroupID == 0 || attempt.CredentialID == 0 {
+				return nil, fmt.Errorf("aggregate request attempt %q: route identity is incomplete", row.ID)
+			}
+			failureCount := int64(0)
+			if attempt.FailureCategory != string(telemetry.FailureCategoryOK) {
+				failureCount = 1
+			}
+			journals = append(journals, models.UsageAttemptAggregationJournal{
+				RequestID:     row.ID,
+				Sequence:      attempt.Sequence,
+				BucketStartMS: bucketStartMS,
+				AccessKeyID:   row.AccessKeyID,
+				GroupID:       attempt.GroupID,
+				ChannelID:     attempt.ChannelID,
+				CredentialID:  attempt.CredentialID,
+				Model:         attempt.UpstreamModel,
+				AttemptCount:  1,
+				FailureCount:  failureCount,
 			})
 		}
 	}
