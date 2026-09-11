@@ -104,7 +104,7 @@ POST /api/model-probe
 
   `dispatch_state` 只可能出现 `not_sent` / `maybe_sent`：`local` 的唯一生产者是 `internal/execution/cpa/adapter.go` 的本地 token 计数，受 `countTokensOperation(OperationCountTokens | OperationResponsesInputTokens)` 门禁，而 probe 用 `OperationProbe`、订阅分组在目标构建阶段即被排除，所以 **probe 的 attempt 不可能是 `local`**，本次不为它扩枚举。（`web/src/app/resources/request-logs.ts` 的闭集缺 `'local'` 是独立的既有缺陷：订阅分组的一次 `count_tokens` 请求会让该行日志详情投影抛错；另立小任务，不在本方案内。）
 
-  `attempt.failure_origin/scope` 取 `Decision.Origin/Scope`；`attempt.upstream_request_id` 取 `result.UpstreamRequestID`；`dispatch_state` / `response_started` / `upstream_protocol` / `status_code` 取 `result`。`error_code` 用测活自己的 reason 词表（与凭据测活一致、且未被 web 端 i18n 映射，纯机器字段），**不是**网关的 `upstream_*` 词表——两套词表分别属于控制面观测与数据面流量；统一是另一个任务。
+  `attempt.failure_origin/scope` 取 `Decision.Origin/Scope`；`attempt.upstream_request_id` 取 `result.UpstreamRequestID`；`dispatch_state` / `response_started` / `upstream_protocol` / `status_code` 取 `result`。`error_summary` 取 `result.Error.Summary`（上游原话；执行层已脱敏/折叠/截断），再按分组 header 规则的字面值脱敏；行级摘要取末次 attempt 的摘要、只有为空时才回退到 `error_code`（与网关「完成响应时用末次 attempt 摘要、再回退到错误码」的取值顺序一致，见 §9 第 18 项）。`error_code` 用测活自己的 reason 词表（与凭据测活一致、且未被 web 端 i18n 映射，纯机器字段），**不是**网关的 `upstream_*` 词表——两套词表分别属于控制面观测与数据面流量；统一是另一个任务。
 - **用量隔离（本方案唯一的既有不变量改动，2 行）**：`internal/requestlog/worker.go` `buildUsageAggregationJournals` / `buildUsageStatDeltas` 在既有 `AttemptCount == 0` 判据旁增加 `operation == probe` 判据。
   - `CredentialAttemptStat` **不需要额外改动**：`writeRequestLogBatch` 只对"有 pending journal 的请求 ID"应用 attempt 统计，probe 行不产生 journal，自动被排除。
   - 因此：probe 行只出现在日志页（可查、可深链），不会出现在用量/成本/首页统计与凭据24h成功率里。
@@ -252,3 +252,6 @@ POST /api/model-probe
     - 编译失败面不变：`appendExecutionTargets(ExecutionRouteCatalog, …)`、`ResolveGroupRuntimeSettings`、`outboundproxy.Resolve` 原本就对停用分组执行，而 `ChannelRegistry.Resolve` 内含 `ValidateParams`，所以为停用分组补建视图不新增任何错误分支。
     - 交互（`web/`）：批量范围仍＝当前可见行；可见行里含停用分组时先弹「是否一并测活」（`ModelProbeScopeDialog`：一并测活 / 仅测启用分组 / 取消，取消即不发请求），单行测活命中停用分组时用 `AppConfirmDialog` 先确认；结果行按发起时的 `disabledGroupIds` 标注「已停用」。停用判定取自调度行 `group.enabled`（分组详情页取 settings 的 `enabled`）。
     - 仍未改动：凭据测活（`TestGroupCredential`）、分组校验与模型发现仍走 `snapshot.Groups`，停用分组在这三处仍不可用；如需要属另一任务。
+18. **测活日志保留上游错误原话（交付后补入）**：探测行原先把行级 `error_summary` 写成 `error_code` 的副本，而 attempt 行的 `error_summary` 从未赋值；上游原话（「该令牌无权使用模型 X」/ `permission_error` / 边缘拦截页文案）虽一直在 `AttemptResult.Error.Summary` 里，却在落库这一步被丢掉，于是同凭据 48h 大量成功、唯独某模型每次 403 的场景里，三类完全不同的成因在 UI 上同形。
+    - 修复：attempt 行取 `result.Error.Summary`，行级取末次 attempt 的摘要、空则回退 reason code（§3 D3 字段映射已同步）。额外按分组 header 规则字面值做一次脱敏——`${API_KEY}` 解析出的就是凭据本身、执行层已覆盖，剩下的字面量如果被上游回显，网关有专门代码拦，探测行不该成为新出口。
+    - 边界不变：不可判定结果（`result.Validate() != nil`）仍以 reason code 作行摘要，日志列表不会出现空消息；行仍不进用量/健康统计。
