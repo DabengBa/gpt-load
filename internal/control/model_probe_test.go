@@ -142,6 +142,49 @@ func TestModelProbe(t *testing.T) {
 	}
 }
 
+// TestModelProbeDisabledGroup pins the honest behaviour for a disabled group: it
+// keeps a compiled view, so an explicit probe still executes and reports the real
+// group name instead of the "#<id>" placeholder that reads as a deleted group.
+func TestModelProbeDisabledGroup(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createProbeGroup(t, fixture, []string{probeTestModel})
+	if _, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Enabled: optionalField[bool]{Set: true, Value: false},
+	}); err != nil {
+		t.Fatalf("UpdateGroupSettings(disable) error = %v", err)
+	}
+	var group models.Group
+	if err := fixture.db.First(&group, groupID).Error; err != nil {
+		t.Fatalf("load group %d: %v", groupID, err)
+	}
+	if group.Enabled {
+		t.Fatalf("group %d is still enabled after the disable update", groupID)
+	}
+	fixture.service.executor = &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
+
+	response, err := fixture.service.ProbeGroupModels(t.Context(), ModelProbeRequest{
+		Targets: []ModelProbeTargetRequest{{GroupID: groupID, Model: probeTestModel}},
+	})
+	if err != nil {
+		t.Fatalf("ProbeGroupModels() error = %v", err)
+	}
+	if len(response.Results) != 1 {
+		t.Fatalf("results = %#v, want exactly one result", response.Results)
+	}
+	result := response.Results[0]
+	if result.Outcome != ProbeOutcomePassed || result.Reason != nil {
+		t.Fatalf("disabled group outcome/reason = %q/%#v, want passed/nil: a disabled group must stay probeable",
+			result.Outcome, result.Reason)
+	}
+	if result.GroupName != group.Name {
+		t.Fatalf("group_name = %q, want the persisted name %q", result.GroupName, group.Name)
+	}
+	if result.LogID == nil {
+		t.Fatal("log_id must be the durable request-log primary key of an executed probe")
+	}
+}
+
 func TestModelProbeBatch(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)

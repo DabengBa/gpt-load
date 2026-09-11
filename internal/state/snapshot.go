@@ -183,6 +183,7 @@ type ConfigSnapshot struct {
 	ExecutionCandidates   ExecutionCandidateIndex
 	ExecutionRouteCatalog ExecutionCandidateIndex
 	Groups                map[uint]GroupView
+	DisabledGroups        map[uint]GroupView
 	AccessKeysByHash      map[string]AccessKeyView
 	GroupCatalog          map[uint]GroupCatalogView
 	AccessKeysByID        map[uint]AccessKeyView
@@ -207,6 +208,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		ExecutionCandidates:   make(ExecutionCandidateIndex),
 		ExecutionRouteCatalog: make(ExecutionCandidateIndex),
 		Groups:                make(map[uint]GroupView),
+		DisabledGroups:        make(map[uint]GroupView),
 		AccessKeysByHash:      make(map[string]AccessKeyView),
 		GroupCatalog:          make(map[uint]GroupCatalogView),
 		AccessKeysByID:        make(map[uint]AccessKeyView),
@@ -230,10 +232,6 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		if err != nil {
 			return nil, fmt.Errorf("compile group %d proxy: %w", group.ID, err)
 		}
-		if !group.Enabled {
-			continue
-		}
-
 		view := GroupView{
 			PriceMultiplier:           resolvePriceMultiplier(group.PriceMultiplier),
 			ID:                        group.ID,
@@ -275,6 +273,13 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		view.Params = params.CanonicalJSON()
 		view.ResolvedTarget = cloneResolvedTarget(target)
 		view.ClientProtocols = append([]protocol.Protocol(nil), descriptor.ClientProtocols...)
+		if !group.Enabled {
+			// A disabled group still keeps a compiled view: control-plane
+			// observations probe it on explicit request, while the dispatch index
+			// stays enabled-only.
+			snapshot.DisabledGroups[group.ID] = view
+			continue
+		}
 		if err := appendExecutionTargets(snapshot.ExecutionCandidates, input.ChannelRegistry, group); err != nil {
 			return nil, err
 		}
@@ -314,6 +319,20 @@ func newAccessKeyView(input AccessKeyConfig) AccessKeyView {
 		RPMLimit:         input.RPMLimit,
 		CostLimitRules:   rules,
 	}
+}
+
+// LookupGroup returns the compiled view of one group, enabled or not. Disabled
+// groups keep their view so control-plane observations can probe them on explicit
+// request; only enabled groups are routable.
+func (snapshot *ConfigSnapshot) LookupGroup(id uint) (GroupView, bool) {
+	if snapshot == nil {
+		return GroupView{}, false
+	}
+	if view, ok := snapshot.Groups[id]; ok {
+		return view, true
+	}
+	view, ok := snapshot.DisabledGroups[id]
+	return view, ok
 }
 
 // AccessQuotaDefinitions returns a caller-owned rules map for runtime reconciliation.

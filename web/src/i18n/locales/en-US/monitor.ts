@@ -32,6 +32,21 @@ export default {
       latency: '{value} ms',
       notExecuted: 'No upstream request was sent, so there is no request ID',
       unknownValue: '—',
+      disabledBadge: 'Disabled',
+      disabledScope: {
+        title: 'Disabled groups included',
+        description:
+          'Of the current {total} rows, {disabled} belong to disabled groups. Disabled groups do not serve traffic, but a probe can still confirm their upstream availability.',
+        cancel: 'Cancel',
+        enabledOnly: 'Probe enabled only ({count} rows)',
+        includeDisabled: 'Probe all ({count} rows)',
+      },
+      disabledConfirm: {
+        title: 'This group is disabled',
+        description: 'Disabled groups do not serve traffic. Probe it anyway?',
+        cancel: 'Cancel',
+        confirm: 'Probe',
+      },
       fields: {
         group: 'Group',
         model: 'Model',

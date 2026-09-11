@@ -23,11 +23,13 @@ import {
 } from '@/app/resources/model-route-schedule'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import AppButton from '@/components/ui/AppButton.vue'
+import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import StickySaveBar from '@/components/ui/StickySaveBar.vue'
+import ModelProbeScopeDialog from '@/features/models/ModelProbeScopeDialog.vue'
 import { formatLocalInstant } from '@/lib/format'
 
 import type { ScheduleDrafts, ScheduleMode } from './monitor-route'
@@ -105,8 +107,8 @@ const emit = defineEmits<{
   refresh: []
   saved: [snapshotRevision: number]
   recovered: [groupId: number, entryId: string]
-  probe: [groupId: number, modelId: string]
-  'probe-all': [targets: ModelProbeTargetDto[]]
+  probe: [groupId: number, modelId: string, disabled: boolean]
+  'probe-all': [targets: ModelProbeTargetDto[], disabledGroupIds: number[]]
   'draft-change': [drafts: ScheduleDrafts]
   'row-change': [row: string | undefined]
 }>()
@@ -146,26 +148,70 @@ const rows = computed(() =>
   ),
 )
 // Batch scope is exactly what is on screen: the same mode-filtered rows the
-// table renders, deduplicated to (group, model) targets.
-const probeTargets = computed<ModelProbeTargetDto[]>(() => {
-  const targets: ModelProbeTargetDto[] = []
+// table renders, deduplicated to (group, model) targets. Disabled groups are
+// split out so the operator decides whether to spend an upstream call on a group
+// that is not serving traffic.
+const probeScopes = computed(() => {
+  const all: ModelProbeTargetDto[] = []
+  const enabled: ModelProbeTargetDto[] = []
+  const disabledGroupIds = new Set<number>()
   const seen = new Set<string>()
   for (const { group, entry } of rows.value) {
     const key = `${group.group_id}:${entry.model_id}`
     if (seen.has(key)) continue
     seen.add(key)
-    targets.push({ group_id: group.group_id, model: entry.model_id })
+    const target = { group_id: group.group_id, model: entry.model_id }
+    all.push(target)
+    if (groupEnabled(group)) {
+      enabled.push(target)
+    } else {
+      disabledGroupIds.add(group.group_id)
+    }
   }
-  return targets
+  return { all, enabled, disabledGroupIds: [...disabledGroupIds] }
 })
+const probeScopeOpen = ref(false)
+const pendingProbe = ref<{ groupId: number; modelId: string } | null>(null)
 
-function probeEntry(groupId: number, modelId: string): void {
-  emit('probe', groupId, modelId)
+// A disabled row still probes on explicit request, so it asks first.
+function requestProbe(groupId: number, modelId: string, disabled: boolean): void {
+  if (!disabled) {
+    emit('probe', groupId, modelId, false)
+    return
+  }
+  pendingProbe.value = { groupId, modelId }
+}
+
+function confirmSingleProbe(): void {
+  const pending = pendingProbe.value
+  pendingProbe.value = null
+  if (pending) emit('probe', pending.groupId, pending.modelId, true)
+}
+
+function handleSingleProbeOpen(value: boolean): void {
+  if (!value) pendingProbe.value = null
 }
 
 function probeVisibleRows(): void {
-  if (probeTargets.value.length === 0) return
-  emit('probe-all', probeTargets.value)
+  const { all, enabled } = probeScopes.value
+  if (all.length === 0) return
+  if (enabled.length === all.length) {
+    emit('probe-all', all, [])
+    return
+  }
+  probeScopeOpen.value = true
+}
+
+function confirmProbeAll(): void {
+  const { all, disabledGroupIds } = probeScopes.value
+  probeScopeOpen.value = false
+  emit('probe-all', all, disabledGroupIds)
+}
+
+function confirmProbeEnabled(): void {
+  const { enabled } = probeScopes.value
+  probeScopeOpen.value = false
+  emit('probe-all', enabled, [])
 }
 
 const dirty = computed(() => Object.keys(draftMap).length > 0)
@@ -591,7 +637,7 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
         :title="t('monitor.modelProbe.description')"
         @click="probeVisibleRows"
       >
-        {{ t('monitor.modelProbe.batch', { count: probeTargets.length }) }}
+        {{ t('monitor.modelProbe.batch', { count: probeScopes.all.length }) }}
       </AppButton>
     </header>
 
@@ -751,7 +797,7 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
                 variant="secondary"
                 size="compact"
                 :disabled="pending || entry.entry_id.startsWith('derived:')"
-                @click.stop="probeEntry(group.group_id, entry.model_id)"
+                @click.stop="requestProbe(group.group_id, entry.model_id, !groupEnabled(group))"
               >
                 {{ t('monitor.modelProbe.button') }}
               </AppButton>
@@ -785,6 +831,26 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
         </template>
       </StickySaveBar>
     </template>
+
+    <ModelProbeScopeDialog
+      :open="probeScopeOpen"
+      :total="probeScopes.all.length"
+      :disabled-count="probeScopes.all.length - probeScopes.enabled.length"
+      @update:open="probeScopeOpen = $event"
+      @probe-all="confirmProbeAll"
+      @probe-enabled="confirmProbeEnabled"
+    />
+    <AppConfirmDialog
+      :open="pendingProbe !== null"
+      :title="t('monitor.modelProbe.disabledConfirm.title')"
+      :description="t('monitor.modelProbe.disabledConfirm.description')"
+      :close-label="t('monitor.modelProbe.disabledConfirm.cancel')"
+      :cancel-label="t('monitor.modelProbe.disabledConfirm.cancel')"
+      :confirm-label="t('monitor.modelProbe.disabledConfirm.confirm')"
+      appearance="ledger"
+      @update:open="handleSingleProbeOpen"
+      @confirm="confirmSingleProbe"
+    />
   </section>
 </template>
 

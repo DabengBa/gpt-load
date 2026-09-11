@@ -135,7 +135,7 @@ func (service *Service) probeModelTarget(
 		Model:      target.Model,
 		TestedAtMS: probeTestedAtMS(observation.observedAt),
 	}
-	group, exists := observation.snapshot.Groups[target.GroupID]
+	group, exists := observation.snapshot.LookupGroup(target.GroupID)
 	if !exists {
 		return probeWithoutExecution(result, ProbeReasonTargetUnavailable)
 	}

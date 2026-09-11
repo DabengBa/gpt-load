@@ -188,6 +188,7 @@ const {
   failed: probeFailed,
   stopped: probeStopped,
   results: probeResults,
+  disabledGroupIds: probeDisabledGroupIds,
   total: probeTotal,
   completed: probeCompleted,
   start: startProbe,
@@ -195,12 +196,14 @@ const {
   close: closeProbe,
 } = useModelProbe()
 
-function probeRow(groupID: number, modelID: string): void {
-  void startProbe([{ group_id: groupID, model: modelID }])
+function probeRow(groupID: number, modelID: string, disabled: boolean): void {
+  void startProbe([{ group_id: groupID, model: modelID }], {
+    disabledGroupIds: disabled ? [groupID] : [],
+  })
 }
 
-function probeRows(targets: ModelProbeTargetDto[]): void {
-  void startProbe(targets)
+function probeRows(targets: ModelProbeTargetDto[], disabledGroupIds: number[]): void {
+  void startProbe(targets, { disabledGroupIds })
 }
 
 function handleProbeOpen(value: boolean): void {
@@ -291,6 +294,7 @@ function viewProbeLog(logID: string): void {
       :failed="probeFailed"
       :stopped="probeStopped"
       :results="probeResults"
+      :disabled-group-ids="probeDisabledGroupIds"
       :total="probeTotal"
       :completed="probeCompleted"
       @update:open="handleProbeOpen"

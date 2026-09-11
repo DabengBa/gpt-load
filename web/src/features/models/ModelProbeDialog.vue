@@ -16,6 +16,7 @@ const props = defineProps<{
   failed: boolean
   stopped: boolean
   results: readonly ModelProbeResultDto[]
+  disabledGroupIds: readonly number[]
   completed: number
   total: number
 }>()
@@ -61,6 +62,12 @@ function routeModeLabel(result: ModelProbeResultDto): string {
 function groupLabel(result: ModelProbeResultDto): string {
   return result.group_name === '' ? `#${result.group_id}` : result.group_name
 }
+
+const disabledGroupIdSet = computed(() => new Set(props.disabledGroupIds))
+
+function isDisabledGroup(result: ModelProbeResultDto): boolean {
+  return disabledGroupIdSet.value.has(result.group_id)
+}
 </script>
 
 <template>
@@ -101,7 +108,12 @@ function groupLabel(result: ModelProbeResultDto): string {
 
         <dl v-if="detail" class="model-probe-dialog__details">
           <dt>{{ t('monitor.modelProbe.fields.group') }}</dt>
-          <dd>{{ groupLabel(detail) }}</dd>
+          <dd>
+            {{ groupLabel(detail) }}
+            <span v-if="isDisabledGroup(detail)" class="model-probe-dialog__disabled">
+              {{ t('monitor.modelProbe.disabledBadge') }}
+            </span>
+          </dd>
           <dt>{{ t('monitor.modelProbe.fields.model') }}</dt>
           <dd>{{ detail.model }}</dd>
           <dt>{{ t('monitor.modelProbe.fields.outcome') }}</dt>
@@ -150,6 +162,9 @@ function groupLabel(result: ModelProbeResultDto): string {
             <div class="model-probe-dialog__row">
               <span class="model-probe-dialog__identity">
                 {{ groupLabel(result) }} · {{ result.model }}
+                <span v-if="isDisabledGroup(result)" class="model-probe-dialog__disabled">
+                  {{ t('monitor.modelProbe.disabledBadge') }}
+                </span>
               </span>
               <span class="model-probe-dialog__outcome" :class="`tone-${tone(result)}`">
                 {{ outcomeLabel(result) }}
@@ -263,6 +278,17 @@ function groupLabel(result: ModelProbeResultDto): string {
 
 .model-probe-dialog__outcome.tone-warning {
   color: var(--color-text-warning, var(--color-text));
+}
+
+.model-probe-dialog__disabled {
+  margin-left: var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  padding: 0 var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .model-probe-dialog__meta {
