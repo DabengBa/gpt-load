@@ -305,13 +305,18 @@ func TestProbeUsageIsolation(t *testing.T) {
 		normalID = "33333333-3333-4333-8333-333333333333"
 	)
 	db, _ := openRequestLogFileDB(t)
-	emitRequestLogEvents(t, db,
+	// Both events share one window so the group-usage assertion has a positive
+	// control inside its own range: the normal row must still be counted.
+	windowStart := time.Date(2026, time.September, 11, 8, 0, 0, 0, time.UTC)
+	normalEvent := billableEvent(normalID)
+	normalEvent.CompletedAt = windowStart.Add(50 * time.Minute)
+	service := emitRequestLogEvents(t, db,
 		probeEvent(probeID, true, "", []probeAttemptFixture{{
 			sequence: 1, statusCode: 200,
 			dispatchState:   execution.DispatchMaybeSent,
 			failureCategory: telemetry.FailureCategoryOK,
 		}}),
-		billableEvent(normalID),
+		normalEvent,
 	)
 
 	var journals int64
@@ -346,5 +351,98 @@ func TestProbeUsageIsolation(t *testing.T) {
 	}
 	if logRows != 2 {
 		t.Fatalf("request_logs = %d, want 2（隔离不影响日志本身落库）", logRows)
+	}
+
+	// 调度中心的分组 24h 请求数/成功率直接读 request_logs（QueryGroupUsage，
+	// 与用量聚合 journal 无关），所以 probe 行必须在查询侧排除，
+	// 而不是只靠“不产出 journal”。
+	groupUsage, err := service.QueryGroupUsage(context.Background(), GroupUsageQuery{
+		FromMS: time.Date(2026, time.September, 11, 8, 0, 0, 0, time.UTC).UnixMilli(),
+		ToMS:   time.Date(2026, time.September, 11, 10, 0, 0, 0, time.UTC).UnixMilli(),
+	})
+	if err != nil {
+		t.Fatalf("QueryGroupUsage() error = %v", err)
+	}
+	group, exists := groupUsage[probeGroupID]
+	if !exists {
+		t.Fatal("normal row missing from group usage: the negative assertion lost its positive control")
+	}
+	if group.RequestCount != 1 || group.SuccessCount != 1 {
+		t.Fatalf("group usage = %#v, want exactly the normal row (probe rows must not count)", group)
+	}
+}
+
+// Probe rows must also stay out of the credential views, which the aggregation
+// tables cannot guarantee on their own: whole-hour segments read
+// CredentialAttemptStat / usage_stats (always clean), but the residual sub-hour
+// and boundary segments read request_log_attempts / request_logs directly.
+func TestProbeCredentialActivityIsolation(t *testing.T) {
+	t.Parallel()
+	const (
+		probeID  = "44444444-4444-4444-8444-444444444444"
+		normalID = "55555555-5555-4555-8555-555555555555"
+	)
+	db, _ := openRequestLogFileDB(t)
+	// Residual hour segment below is [08:45Z, 09:00Z); both events fall inside it,
+	// so the whole-hour segments are empty and the outcome depends entirely on the
+	// direct reads filtering the control-plane operation.
+	residual := time.Date(2026, time.September, 11, 8, 50, 0, 0, time.UTC)
+	probe := probeEvent(probeID, true, "", []probeAttemptFixture{{
+		sequence: 1, statusCode: 200,
+		dispatchState:   execution.DispatchMaybeSent,
+		failureCategory: telemetry.FailureCategoryOK,
+	}})
+	probe.CompletedAt = residual
+	probe.Attempts[0].CompletedAt = residual
+	normal := billableEvent(normalID)
+	normal.CompletedAt = residual
+	service := emitRequestLogEvents(t, db, probe, normal)
+
+	fromMS := residual.Add(-5 * time.Minute).UnixMilli()
+	toMS := residual.Add(30 * time.Minute).UnixMilli()
+	activity, err := service.QueryCredentialActivity(context.Background(), CredentialActivityQuery{
+		CredentialIDs: []uint{probeCredentialID, 8},
+		FromMS:        fromMS,
+		ToMS:          toMS,
+	})
+	if err != nil {
+		t.Fatalf("QueryCredentialActivity() error = %v", err)
+	}
+	if value := activity[probeCredentialID]; value.SuccessCount != 0 || value.FailureCount != 0 {
+		t.Fatalf("probe attempt leaked into the 24h credential success/failure counts: %#v", value)
+	}
+	if value := activity[8]; value.SuccessCount != 1 || value.FailureCount != 0 {
+		t.Fatalf("normal credential activity = %#v, want one success (positive control)", value)
+	}
+
+	probeWindow, err := service.QueryCredentialWindowUsage(
+		context.Background(),
+		CredentialWindowUsageQuery{
+			CredentialID: probeCredentialID,
+			FromMS:       fromMS,
+			ToMS:         toMS,
+			Source:       CredentialWindowUsageSourceHourlyStats,
+		},
+	)
+	if err != nil {
+		t.Fatalf("QueryCredentialWindowUsage() error = %v", err)
+	}
+	if probeWindow.RequestCount != 0 || probeWindow.SuccessCount != 0 || probeWindow.LastUsedAtMS != nil {
+		t.Fatalf("probe row leaked into the credential window usage: %#v", probeWindow)
+	}
+	normalWindow, err := service.QueryCredentialWindowUsage(
+		context.Background(),
+		CredentialWindowUsageQuery{
+			CredentialID: 8,
+			FromMS:       fromMS,
+			ToMS:         toMS,
+			Source:       CredentialWindowUsageSourceHourlyStats,
+		},
+	)
+	if err != nil {
+		t.Fatalf("QueryCredentialWindowUsage() error = %v", err)
+	}
+	if normalWindow.RequestCount != 1 || normalWindow.LastUsedAtMS == nil {
+		t.Fatalf("normal credential window usage = %#v, want one request (positive control)", normalWindow)
 	}
 }

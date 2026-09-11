@@ -10,9 +10,11 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
-// QueryGroupUsage returns request-level outcomes by group for a half-open time
-// window. It intentionally reads request_logs rather than hourly usage_stats so
-// a rolling window does not include a partially overlapping bucket.
+// QueryGroupUsage returns request-level traffic outcomes by group for a half-open
+// time window. It intentionally reads request_logs rather than hourly usage_stats
+// so a rolling window does not include a partially overlapping bucket, which is
+// also why the control-plane exclusion has to be applied here and not only on the
+// aggregation-journal side.
 func (service *Service) QueryGroupUsage(
 	ctx context.Context,
 	input GroupUsageQuery,
@@ -38,7 +40,7 @@ func (service *Service) QueryGroupUsage(
 			RequestCount int64 `gorm:"column:request_count"`
 			SuccessCount int64 `gorm:"column:success_count"`
 		}
-		if err := connection.Model(&models.RequestLog{}).
+		if err := withoutControlPlaneObservations(connection.Model(&models.RequestLog{})).
 			Select("group_id, COUNT(*) AS request_count, "+
 				"COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0) AS success_count").
 			Where("completed_at_ms >= ? AND completed_at_ms < ?", input.FromMS, input.ToMS).
