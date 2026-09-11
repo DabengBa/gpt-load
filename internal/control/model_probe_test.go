@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
+	"gpt-load/internal/protocol"
+	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 	"gpt-load/internal/telemetry"
 	"gpt-load/internal/usage"
@@ -527,6 +530,112 @@ func assertJSONKeys(t *testing.T, payload map[string]json.RawMessage, want []str
 	sort.Strings(expected)
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("response field set = %v, want %v", got, expected)
+	}
+}
+
+// probeLogObservationForSummary builds the probe log observation of a single
+// 403 attempt so the row/attempt summary mapping is asserted in isolation.
+func probeLogObservationForSummary(result execution.AttemptResult, completedAt time.Time) probeLogObservation {
+	return probeLogObservation{
+		group:      state.GroupView{ID: 7, Name: "probe-log-group", ChannelID: channel.OpenAI},
+		model:      probeTestModel,
+		credential: state.CredentialRef{ID: 11},
+		executed: credentialProbeExecution{
+			requestID: "probe-log-summary",
+			result:    result,
+			latency:   120 * time.Millisecond,
+			protocol:  protocol.OpenAICompletions,
+			attempts: []credentialProbeAttempt{{
+				sequence: 1, routeMode: execution.RouteNative,
+				completedAt: completedAt, duration: 120 * time.Millisecond, result: result,
+			}},
+		},
+		evidence:    classifyCredentialProbeEvidence(result),
+		completedAt: completedAt,
+	}
+}
+
+// A 403 whose body names the real cause must reach the log verbatim: the reason
+// code alone cannot tell "this token may not use that model" apart from an edge
+// WAF block or an account ban.
+func TestProbeRequestLogKeepsUpstreamErrorSummary(t *testing.T) {
+	t.Parallel()
+	const upstreamMessage = "该令牌无权使用模型 claude-opus-4-8"
+	result := failedCredentialProbeResult(http.StatusForbidden, execution.ErrorKindHTTP, "")
+	result.Body = []byte(`{"error":{"message":"` + upstreamMessage + `"}}`)
+	result.Error.Summary = upstreamMessage
+
+	event := buildProbeRequestEvent(probeLogObservationForSummary(
+		result,
+		time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
+	))
+
+	if event.Status != telemetry.RequestStatusError || event.ErrorCode != "upstream_error" {
+		t.Fatalf("event status/code = %q/%q, want error/upstream_error", event.Status, event.ErrorCode)
+	}
+	if event.ErrorSummary != upstreamMessage {
+		t.Fatalf("event error summary = %q, want the upstream message", event.ErrorSummary)
+	}
+	if len(event.Attempts) != 1 {
+		t.Fatalf("attempts = %d, want 1", len(event.Attempts))
+	}
+	if event.Attempts[0].ErrorSummary != upstreamMessage {
+		t.Fatalf("attempt error summary = %q, want the upstream message", event.Attempts[0].ErrorSummary)
+	}
+	if event.Attempts[0].ErrorCode != "upstream_error" {
+		t.Fatalf("attempt error code = %q, want upstream_error", event.Attempts[0].ErrorCode)
+	}
+}
+
+// Without judgeable provider evidence the reason code stays the row summary, so
+// the log list never renders an error with an empty message.
+func TestProbeRequestLogFallsBackToReasonCodeWithoutUpstreamMessage(t *testing.T) {
+	t.Parallel()
+	result := execution.AttemptResult{
+		DispatchState:   execution.DispatchMaybeSent,
+		ResponseStarted: true,
+		StatusCode:      http.StatusForbidden,
+		Header:          http.Header{},
+	}
+
+	event := buildProbeRequestEvent(probeLogObservationForSummary(
+		result,
+		time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
+	))
+
+	if event.ErrorCode != "unknown" {
+		t.Fatalf("event error code = %q, want unknown", event.ErrorCode)
+	}
+	if event.ErrorSummary != "unknown" {
+		t.Fatalf("event error summary = %q, want the reason code fallback", event.ErrorSummary)
+	}
+	if event.Attempts[0].ErrorSummary != "" {
+		t.Fatalf("attempt error summary = %q, want empty", event.Attempts[0].ErrorSummary)
+	}
+}
+
+// A group header rule can carry a literal credential that upstream echoes back
+// inside its error body, so the probe log must redact it like the gateway does.
+func TestProbeRequestLogRedactsHeaderRuleLiterals(t *testing.T) {
+	t.Parallel()
+	const headerSecret = "hb-live-9f3c2a7d5e1b4c60"
+	result := failedCredentialProbeResult(http.StatusForbidden, execution.ErrorKindHTTP, "")
+	result.Error.Summary = "invalid credential " + headerSecret
+	observation := probeLogObservationForSummary(
+		result,
+		time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
+	)
+	observation.group.HeaderRules = state.HeaderRules{
+		Set: map[string]string{"x-probe-auth": headerSecret},
+	}
+
+	event := buildProbeRequestEvent(observation)
+
+	if strings.Contains(event.ErrorSummary, headerSecret) {
+		t.Fatalf("event error summary leaked a header rule literal: %q", event.ErrorSummary)
+	}
+	if strings.Contains(event.Attempts[0].ErrorSummary, headerSecret) {
+		t.Fatalf("attempt error summary leaked a header rule literal: %q", event.Attempts[0].ErrorSummary)
 	}
 }
 

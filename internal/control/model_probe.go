@@ -10,6 +10,7 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	app_errors "gpt-load/internal/platform/errors"
+	"gpt-load/internal/platform/redact"
 	"gpt-load/internal/platform/response"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/protocol"
@@ -297,7 +298,6 @@ func buildProbeRequestEvent(observation probeLogObservation) telemetry.RequestEv
 		event.Status = telemetry.RequestStatusError
 		event.ModelConsistency = telemetry.ModelConsistencyNotApplicable
 		event.ErrorCode = probeReasonValue(observation.evidence.reason)
-		event.ErrorSummary = event.ErrorCode
 	}
 	attempts := make([]telemetry.Attempt, 0, len(executed.attempts))
 	for _, attempt := range executed.attempts {
@@ -324,9 +324,18 @@ func buildProbeRequestEvent(observation probeLogObservation) telemetry.RequestEv
 			Action:            telemetry.ActionTerminate,
 			Effect:            telemetry.EffectNone,
 			ErrorCode:         probeReasonValue(attemptEvidence.reason),
+			ErrorSummary:      probeAttemptErrorSummary(attempt.result, observation.group.HeaderRules),
 		})
 	}
 	event.Attempts = attempts
+	if event.Status != telemetry.RequestStatusSuccess {
+		// The terminal attempt owns the row summary: the reason code is only the
+		// classification, while the upstream message is what names the cause.
+		event.ErrorSummary = attempts[len(attempts)-1].ErrorSummary
+		if event.ErrorSummary == "" {
+			event.ErrorSummary = event.ErrorCode
+		}
+	}
 	returned := executed.attempts[len(executed.attempts)-1]
 	event.Usage = telemetry.UsageObservation{
 		GroupID:         observation.group.ID,
@@ -341,6 +350,24 @@ func buildProbeRequestEvent(observation probeLogObservation) telemetry.RequestEv
 		},
 	}
 	return event
+}
+
+// probeAttemptErrorSummary returns the upstream message retained by one probe
+// attempt, redacted against the group's own header rule literals. The execution
+// layer already redacts the credential it presented; ${API_KEY} placeholders
+// resolve to that same credential, so only the literal rule values are left for
+// the control plane to remove.
+func probeAttemptErrorSummary(result execution.AttemptResult, rules state.HeaderRules) string {
+	if result.Error == nil {
+		return ""
+	}
+	secrets := make([]string, 0, len(rules.Set))
+	for _, value := range rules.Set {
+		if value != "" {
+			secrets = append(secrets, value)
+		}
+	}
+	return redact.New().String(result.Error.Summary, secrets...)
 }
 
 // probeAttemptFailureCategory maps one attempt judgement onto the closed
