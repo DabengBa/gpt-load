@@ -162,7 +162,7 @@ POST /api/model-probe
 
 ### 5.1 新增文件
 
-- `web/src/app/resources/model-probe.ts`：`runModelProbe(client, targets, signal)` + DTO 投影（严格投影，枚举用 `projectEnum`）。
+- `web/src/app/resources/model-probe.ts`：`runModelProbe(client, targets)` + DTO 投影（严格投影，枚举用 `projectEnum`；不带 `AbortSignal`——“停止”只在状态机层停止发送后续块，不做请求取消）。
 - `web/src/features/models/use-model-probe.ts`：共享状态机（`pending` / `results` / `error` / `stop` / 分块循环），两个页面各持有一个实例。
 - `web/src/features/models/ModelProbeDialog.vue`：中央弹窗。`results.length === 1` 渲染详情 `dl`（分组/模型/结果/说明/协议/路由模式/状态码/耗时/凭据/请求 ID/时间），`>1` 渲染列表 + 顶部汇总（通过 N · 未通过 M · 无法判断 K）+ 进度/停止；每行请求 ID 提供复制与「查看日志」。字段名沿用日志页的「请求 ID」（已确认），不自造「日志 ID」叫法。
 - 文案一律经 `labels` prop 注入（仓库既有范式：`ModelAliasEditorLabels` / `SchedulePanelDetailLabels`），弹窗组件内不写死 i18n key。
@@ -232,5 +232,9 @@ POST /api/model-probe
 4. **3A 的必要性已被实现证实**：`web/src/app/resources/credentials.ts` 的 `credentialTestResultFields` 是精确 key 白名单，因此后端给凭据测活响应加 `log_id` 后，前端不同步更新就会对**每一次**测试连接响应抛 `InvalidResponseError`（不是可选优化）。凭据页展示请求 ID 与日志深链已实现于 `CredentialTestDialog.vue` + `GroupCredentialsTab.vue`。
 5. **凭据页入参白名单**：`GroupCredentialsTab.vue` 把 `credentialTestResult` 显式收窄后才传给弹窗（`restore_proof` 永不进组件或 DOM），`log_id` 是显式新增的一行，而不是透传。
 6. **宿主并发限制**：U001/U002 的 Worker 与 Reviewer 均为串行派发（宿主一次消息只允许一个工具调用），已在裁决日志披露；依赖顺序与写集合隔离本身不受影响。
-7. **R7 的 i18n 一致性用实测 key 集合对比**：三个 locale 模块都以 `as const` 结尾，因此 `satisfies typeof zhCNMonitor` 比较的是**字面量值**而不是键集合，不能用于三语一致性检查（按形状比较需要自定义递归类型，属过度设计）。实际证据：抽取三份 `monitor.modelProbe` 块后 `diff` 为空（47 键一致）。同时发现**既有漂移**（与本次改动无关）：`monitor.*` 的 `not_retried` / `retried` 两个键只存在于 zh-CN，en-US / ja-JP 缺失；本次不修。
+7. **R7 的 i18n 一致性用实测 key 集合对比**：三个 locale 模块都以 `as const` 结尾，因此 `satisfies typeof zhCNMonitor` 比较的是**字面量值**而不是键集合，不能用于三语一致性检查（按形状比较需要自定义递归类型，属过度设计）。实际证据：抽取三份 `monitor.modelProbe` 块后 `diff` 为空（47 键一致）。**更正**：本项先前错误的记录了一条“既有漂移”（`not_retried` / `retried` 只存在于 zh-CN）——复审后不成立：三语都有，只是 en-US / ja-JP 把它们写在单行对象里（`retryState: { retried: ..., not_retried: ... }`），行首键名抽取脚本漏看。该结论已撤销；日后若要做脚本化对比，必须解析对象字面量而不是行首键名。
 8. **未能执行的验收项**：R5/R6 的浏览器手动走查（点按钮 → 弹窗 → 跳日志详情）在本环境无法执行（无浏览器/无运行中的后端与上游）。已用 `vue-tsc` + `eslint --max-warnings=0` + `prettier` + `vite build` 与 Go 侧端到端测试替代；深链参数 `monitorLocation({tab:'logs', selected_request_id})` 已核对存在（`monitor-route.ts`），但没有真实点击证据。
+9. **独立复审（code-reviewer）的结论与处置**：三处缺陷已确认并修复，其中一处是本设计自己也漏掉的承诺缺口——`internal/requestlog/group_usage.go` 的 `QueryGroupUsage`（调度中心分组 24h 请求数/成功率）与另两条残段直读路径（`credential_activity.go` 的残小时段、`credential_window_usage.go` 的残边界段）**都不经 journal**，因此“只靠不产 journal”挡不住它们。三处已统一收敛为 `internal/requestlog/control_plane.go` 的 `withoutControlPlaneObservations(db)` 单一判据，并配上带**正向对照**的回归断言（`TestProbeUsageIsolation` 要求同窗口普通行仍计 1 次成功；新增 `TestProbeCredentialActivityIsolation` 覆盖凭据 24h 计数与窗口用量）。**反向验证**：逐一把三处过滤摘掉，三条断言分别以 `SuccessCount:1`、`RequestCount:1`、`RequestCount:2` 失败；恢复后包内全绿。
+10. **一处经裁决保留**：`credential_activity.go` 的 `LastUsedAtMS`（在 `request_log_attempts` 里按 `dispatch_state <> 'local'` 取最近一次）仍会把一次探测记为“最近使用”。保留理由：探测确实真实调用了该凭据，记为最近使用是诚实信息；它既不是“用量统计”也不是“凭据健康计数”，不在 §3 D4 的承诺范围内。若日后要求凭据视图完全不含探测痕迹，这里就是第四个修点（同一处加一条 `operation <> probe` 即可）。
+11. **服务端去重与前端进度的关系（不改）**：`dedupeModelProbeTargets` 使 `results` 长度可以小于 `targets` 长度（§3 D1 已规定“结果顺序 = 去重后的输入顺序”），前端因此以 `total = 目标数`、`completed = 结果数` 计算进度；两个入口都从行列表构造目标、天然唯一，重复目标不可达。保留去重语义，不额外加校验。
+12. **单目标弹窗的深链**：复审发现单目标弹窗缺「查看日志」（已补）——R5 的主体路径恰恰是 `results.length === 1` 的详情分支。深链链路：`ModelProbeDialog.vue` emit `view-log` → `GroupModelsTab.vue` / `SchedulePanel.vue` 的 handler → `router.push(monitorLocation({tab:'logs', selected_request_id: logId}))`。
