@@ -26,35 +26,42 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
-type CredentialProbeOutcome string
+type ProbeOutcome string
 
 const (
-	CredentialProbeOutcomePassed       CredentialProbeOutcome = "passed"
-	CredentialProbeOutcomeFailed       CredentialProbeOutcome = "failed"
-	CredentialProbeOutcomeInconclusive CredentialProbeOutcome = "inconclusive"
+	ProbeOutcomePassed       ProbeOutcome = "passed"
+	ProbeOutcomeFailed       ProbeOutcome = "failed"
+	ProbeOutcomeInconclusive ProbeOutcome = "inconclusive"
 )
 
-type CredentialProbeReason string
+// ProbeReason is the shared probe reason vocabulary. Execution outcomes come from
+// classifyCredentialProbeEvidence; the two target-level reasons are only produced
+// by the model probe, which resolves (group, model) before it can execute.
+type ProbeReason string
 
 const (
-	CredentialProbeReasonInvalidCredential CredentialProbeReason = "invalid_credential"
-	CredentialProbeReasonModelUnavailable  CredentialProbeReason = "model_unavailable"
-	CredentialProbeReasonRateLimited       CredentialProbeReason = "rate_limited"
-	CredentialProbeReasonTimeout           CredentialProbeReason = "timeout"
-	CredentialProbeReasonUpstreamError     CredentialProbeReason = "upstream_error"
-	CredentialProbeReasonIncompatible      CredentialProbeReason = "probe_incompatible"
-	CredentialProbeReasonUnknown           CredentialProbeReason = "unknown"
+	ProbeReasonInvalidCredential ProbeReason = "invalid_credential"
+	ProbeReasonModelUnavailable  ProbeReason = "model_unavailable"
+	ProbeReasonRateLimited       ProbeReason = "rate_limited"
+	ProbeReasonTimeout           ProbeReason = "timeout"
+	ProbeReasonUpstreamError     ProbeReason = "upstream_error"
+	ProbeReasonIncompatible      ProbeReason = "probe_incompatible"
+	ProbeReasonUnknown           ProbeReason = "unknown"
+
+	ProbeReasonTargetUnavailable       ProbeReason = "target_unavailable"
+	ProbeReasonNoSchedulableCredential ProbeReason = "no_schedulable_credential"
 )
 
 type CredentialProbeResponse struct {
-	Outcome      CredentialProbeOutcome `json:"outcome"`
-	Model        string                 `json:"model"`
-	Protocol     protocol.Protocol      `json:"protocol"`
-	LatencyMS    int64                  `json:"latency_ms"`
-	Reason       *CredentialProbeReason `json:"reason"`
-	CanRestore   bool                   `json:"can_restore"`
-	RestoreProof *string                `json:"restore_proof"`
-	TestedAtMS   int64                  `json:"tested_at_ms"`
+	Outcome      ProbeOutcome      `json:"outcome"`
+	Model        string            `json:"model"`
+	Protocol     protocol.Protocol `json:"protocol"`
+	LatencyMS    int64             `json:"latency_ms"`
+	Reason       *ProbeReason      `json:"reason"`
+	CanRestore   bool              `json:"can_restore"`
+	RestoreProof *string           `json:"restore_proof"`
+	LogID        *string           `json:"log_id"`
+	TestedAtMS   int64             `json:"tested_at_ms"`
 }
 
 type CredentialProbeRestoreRequest struct {
@@ -80,10 +87,24 @@ type credentialProbeCredential struct {
 	cooldownUntil time.Time
 }
 
+// credentialProbeExecution is one completed probe execution: the returned attempt
+// plus every attempt executed before it. A protocol fallback runs the executor
+// more than once, and the durable request log must record one row per executed
+// protocol instead of silently keeping only the last one.
 type credentialProbeExecution struct {
-	result   execution.AttemptResult
-	latency  time.Duration
-	protocol protocol.Protocol
+	requestID string
+	result    execution.AttemptResult
+	latency   time.Duration
+	protocol  protocol.Protocol
+	attempts  []credentialProbeAttempt
+}
+
+type credentialProbeAttempt struct {
+	sequence    uint32
+	routeMode   channel.RouteMode
+	completedAt time.Time
+	duration    time.Duration
+	result      execution.AttemptResult
 }
 
 type credentialProbeExecutor struct {
@@ -180,6 +201,7 @@ func (probe *credentialProbeExecutor) Probe(
 	}
 	probeProtocols := []protocol.Protocol{target.protocol}
 	probeProtocols = append(probeProtocols, target.fallbackProtocols...)
+	attempts := make([]credentialProbeAttempt, 0, len(probeProtocols))
 	startedAt := probe.now()
 	for index, probeProtocol := range probeProtocols {
 		routeMode, supported := group.ResolvedTarget.ModeForModel(
@@ -223,13 +245,25 @@ func (probe *credentialProbeExecutor) Probe(
 				app_errors.ErrValidation,
 			)
 		}
+		attemptStartedAt := probe.now()
 		result := probe.executor.Execute(ctx, spec)
 		if err := ctx.Err(); err != nil {
 			return credentialProbeExecution{}, err
 		}
+		attempts = append(attempts, credentialProbeAttempt{
+			sequence:    spec.Sequence,
+			routeMode:   channel.RouteMode(routeMode),
+			completedAt: probe.now().UTC(),
+			duration:    max(probe.now().Sub(attemptStartedAt), 0),
+			result:      result,
+		})
 		latency := max(probe.now().Sub(startedAt), 0)
 		executed := credentialProbeExecution{
-			result: result, latency: latency, protocol: probeProtocol,
+			requestID: requestID,
+			result:    result,
+			latency:   latency,
+			protocol:  probeProtocol,
+			attempts:  attempts,
 		}
 		if credentialProbePassed(result) || index+1 == len(probeProtocols) ||
 			!validationProbeNeedsProtocolFallback(result) {
@@ -260,23 +294,40 @@ func credentialProbePassed(result execution.AttemptResult) bool {
 		result.StatusCode < http.StatusMultipleChoices
 }
 
+// credentialProbeEvidence is one probe judgement: the reported outcome and reason
+// plus the health decision behind them. The response needs outcome/reason and the
+// durable log needs the decision (category/origin/scope), so both read a single
+// judgement instead of judging twice and drifting apart.
+type credentialProbeEvidence struct {
+	outcome  ProbeOutcome
+	reason   *ProbeReason
+	decision health.Decision
+}
+
 func classifyCredentialProbeResult(result execution.AttemptResult) (
-	CredentialProbeOutcome,
-	*CredentialProbeReason,
+	ProbeOutcome,
+	*ProbeReason,
 ) {
+	evidence := classifyCredentialProbeEvidence(result)
+	return evidence.outcome, evidence.reason
+}
+
+func classifyCredentialProbeEvidence(result execution.AttemptResult) credentialProbeEvidence {
 	if result.Validate() != nil {
-		return credentialProbeOutcomeWithReason(
-			CredentialProbeOutcomeInconclusive,
-			CredentialProbeReasonUnknown,
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeInconclusive,
+			ProbeReasonUnknown,
+			health.Decision{},
 		)
 	}
 	if credentialProbePassed(result) {
-		return CredentialProbeOutcomePassed, nil
+		return credentialProbeEvidence{outcome: ProbeOutcomePassed}
 	}
 	if result.Error == nil {
-		return credentialProbeOutcomeWithReason(
-			CredentialProbeOutcomeInconclusive,
-			CredentialProbeReasonUnknown,
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeInconclusive,
+			ProbeReasonUnknown,
+			health.Decision{},
 		)
 	}
 	decision := health.JudgeExecution(health.ExecutionAttempt{
@@ -288,54 +339,62 @@ func classifyCredentialProbeResult(result execution.AttemptResult) (
 	}, health.DecisionContext{Operation: execution.OperationProbe})
 	switch decision.Category {
 	case health.FailureCategoryInvalidKey:
-		return credentialProbeOutcomeWithReason(
-			CredentialProbeOutcomeFailed,
-			CredentialProbeReasonInvalidCredential,
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeFailed,
+			ProbeReasonInvalidCredential,
+			decision,
 		)
 	case health.FailureCategoryModelUnavailable:
-		return credentialProbeOutcomeWithReason(
-			CredentialProbeOutcomeFailed,
-			CredentialProbeReasonModelUnavailable,
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeFailed,
+			ProbeReasonModelUnavailable,
+			decision,
 		)
 	case health.FailureCategoryRateLimited:
-		return credentialProbeOutcomeWithReason(
-			CredentialProbeOutcomeInconclusive,
-			CredentialProbeReasonRateLimited,
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeInconclusive,
+			ProbeReasonRateLimited,
+			decision,
 		)
 	}
-	if result.Error.Kind == execution.ErrorKindTimeout {
-		return credentialProbeOutcomeWithReason(
-			CredentialProbeOutcomeInconclusive,
-			CredentialProbeReasonTimeout,
+	switch {
+	case result.Error.Kind == execution.ErrorKindTimeout:
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeInconclusive,
+			ProbeReasonTimeout,
+			decision,
 		)
-	}
-	if result.Error.Kind == execution.ErrorKindConversionUnsupported ||
-		result.Error.Kind == execution.ErrorKindInvalidRequest {
-		return credentialProbeOutcomeWithReason(
-			CredentialProbeOutcomeInconclusive,
-			CredentialProbeReasonIncompatible,
+	case result.Error.Kind == execution.ErrorKindConversionUnsupported ||
+		result.Error.Kind == execution.ErrorKindInvalidRequest:
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeInconclusive,
+			ProbeReasonIncompatible,
+			decision,
 		)
-	}
-	if decision.Category == health.FailureCategoryUpstreamHostError ||
+	case decision.Category == health.FailureCategoryUpstreamHostError ||
 		result.Error.Kind == execution.ErrorKindTransport ||
 		result.Error.Kind == execution.ErrorKindHTTP ||
-		result.Error.Kind == execution.ErrorKindProvider {
-		return credentialProbeOutcomeWithReason(
-			CredentialProbeOutcomeInconclusive,
-			CredentialProbeReasonUpstreamError,
+		result.Error.Kind == execution.ErrorKindProvider:
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeInconclusive,
+			ProbeReasonUpstreamError,
+			decision,
 		)
 	}
-	return credentialProbeOutcomeWithReason(
-		CredentialProbeOutcomeInconclusive,
-		CredentialProbeReasonUnknown,
+	return credentialProbeEvidenceWith(
+		ProbeOutcomeInconclusive,
+		ProbeReasonUnknown,
+		decision,
 	)
 }
 
-func credentialProbeOutcomeWithReason(
-	outcome CredentialProbeOutcome,
-	reason CredentialProbeReason,
-) (CredentialProbeOutcome, *CredentialProbeReason) {
-	return outcome, &reason
+func credentialProbeEvidenceWith(
+	outcome ProbeOutcome,
+	reason ProbeReason,
+	decision health.Decision,
+) credentialProbeEvidence {
+	value := reason
+	return credentialProbeEvidence{outcome: outcome, reason: &value, decision: decision}
 }
 
 func (s *Service) TestGroupCredential(
@@ -355,8 +414,9 @@ func (s *Service) TestGroupCredential(
 	if err != nil {
 		return CredentialProbeResponse{}, err
 	}
-	outcome, reason := classifyCredentialProbeResult(executed.result)
-	testedAt, err := epochms.FromTime(s.now().UTC())
+	evidence := classifyCredentialProbeEvidence(executed.result)
+	completedAt := s.now().UTC()
+	testedAt, err := epochms.FromTime(completedAt)
 	if err != nil {
 		return CredentialProbeResponse{}, fmt.Errorf(
 			"encode credential probe time: %w",
@@ -364,15 +424,23 @@ func (s *Service) TestGroupCredential(
 		)
 	}
 	response := CredentialProbeResponse{
-		Outcome: outcome, Model: target.model, Protocol: executed.protocol,
+		Outcome: evidence.outcome, Model: target.model, Protocol: executed.protocol,
 		LatencyMS:  max(executed.latency.Milliseconds(), 0),
-		Reason:     reason,
+		Reason:     evidence.reason,
 		TestedAtMS: testedAt,
 	}
-	if outcome == CredentialProbeOutcomePassed {
+	if evidence.outcome == ProbeOutcomePassed {
 		response.RestoreProof = s.currentCredentialProbeRestoreProof(credential, target.signature)
 		response.CanRestore = response.RestoreProof != nil
 	}
+	response.LogID = s.emitProbeRequestLog(probeLogObservation{
+		group:       group,
+		model:       target.model,
+		credential:  credential.ref,
+		executed:    executed,
+		evidence:    evidence,
+		completedAt: completedAt,
+	})
 	logCredentialProbe(credential.ref, response)
 	return response, nil
 }

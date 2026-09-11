@@ -80,6 +80,7 @@ POST /api/model-probe
 - 请求级只做**形状**校验（目标数 1..64、`group_id>0`、`model` 非空），形状错误 → 400。
 - 逐目标问题**不失败整批**，而是落成该目标的结果：`target_unavailable`（分组不存在/未加载/订阅类型分组/模型不在该分组模型列表）、`no_schedulable_credential`（分组存在但当前无可调度凭据）、`probe_incompatible`（该模型在当前分组无可用探测路由）、`unknown`（内部错误）。
 - `log_id` 非空 **当且仅当**确实执行了一次上游尝试（无论 `dispatch_state` 是 `not_sent` 还是 `maybe_sent`）；上表的三个"未执行"原因返回 `log_id: null`。
+- **未执行目标的形状（实现补充，原设计未写）**：`target_unavailable` / `no_schedulable_credential` / `probe_incompatible` / `unknown` 的 `outcome` 一律为 `inconclusive` —— 没有任何上游观测，不能宣称「通过」或「未通过」；`log_id`/`status_code`/`latency_ms`/`credential_id`/`credential_label` 为 `null`，而 `no_schedulable_credential` 与 `probe_incompatible` 仍回传已解析出的 `protocol` / `route_mode`（前端需要区分"没法测"与"分组/模型根本不存在"）。
 
 ### D2 凭据选择：当前可调度凭据中 ID 最小者，且结果回传凭据身份
 

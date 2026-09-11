@@ -248,6 +248,13 @@ func validationAttemptProxy(
 }
 
 func buildGroupValidationTarget(group state.GroupView) (groupValidationTarget, bool) {
+	return buildGroupProbeTarget(group, "")
+}
+
+// buildGroupProbeTarget builds a probe target for one explicit model. An empty
+// model keeps the validation-sweep semantics: group.ValidationModel, then the
+// first configured model.
+func buildGroupProbeTarget(group state.GroupView, model string) (groupValidationTarget, bool) {
 	if strings.TrimSpace(group.ConnectionType) == string(models.ConnectionTypeSubscription) {
 		return groupValidationTarget{}, false
 	}
@@ -255,9 +262,12 @@ func buildGroupValidationTarget(group state.GroupView) (groupValidationTarget, b
 		!group.ResolvedTarget.ProviderKind.Valid() {
 		return groupValidationTarget{}, false
 	}
-	probeModel := strings.TrimSpace(group.ValidationModel)
-	if probeModel == "" && len(group.Models) > 0 {
-		probeModel = strings.TrimSpace(group.Models[0].ID)
+	probeModel := strings.TrimSpace(model)
+	if probeModel == "" {
+		probeModel = strings.TrimSpace(group.ValidationModel)
+		if probeModel == "" && len(group.Models) > 0 {
+			probeModel = strings.TrimSpace(group.Models[0].ID)
+		}
 	}
 	if probeModel == "" {
 		return groupValidationTarget{}, false

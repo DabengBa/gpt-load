@@ -5,6 +5,7 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/health"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/reasoning"
 	"gpt-load/internal/usage"
@@ -42,6 +43,34 @@ const (
 	FailureCategoryAuthenticationRequired FailureCategory = "authentication_required"
 	FailureCategoryAmbiguous              FailureCategory = "ambiguous"
 )
+
+// FailureCategoryFromHealth is the single source of truth for the
+// health → request-log failure category mapping. Control-plane observations and
+// gateway traffic must agree, so both call this instead of keeping private copies.
+func FailureCategoryFromHealth(value health.FailureCategory) FailureCategory {
+	switch value {
+	case health.FailureCategoryOK:
+		return FailureCategoryOK
+	case health.FailureCategoryRateLimited:
+		return FailureCategoryRateLimited
+	case health.FailureCategoryModelUnavailable:
+		return FailureCategoryModelUnavailable
+	case health.FailureCategoryInvalidKey:
+		return FailureCategoryInvalidKey
+	case health.FailureCategoryUpstreamHostError:
+		return FailureCategoryUpstreamHost
+	case health.FailureCategoryClientError:
+		return FailureCategoryClientError
+	case health.FailureCategoryConversionUnsupported:
+		return FailureCategoryConversionUnsupported
+	case health.FailureCategoryDownstreamCancel:
+		return FailureCategoryDownstreamCancel
+	case health.FailureCategoryAuthenticationRequired:
+		return FailureCategoryAuthenticationRequired
+	default:
+		return FailureCategoryAmbiguous
+	}
+}
 
 type RetryDirective string
 

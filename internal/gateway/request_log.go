@@ -413,7 +413,7 @@ func (recorder *requestRecorder) appendDecisionAttempt(
 		Reasoning:          result.AppliedReasoning.Clone(),
 		StatusCode:         result.StatusCode,
 		DurationMs:         duration.Milliseconds(),
-		FailureCategory:    telemetryFailureCategory(decision.Category),
+		FailureCategory:    telemetry.FailureCategoryFromHealth(decision.Category),
 		FailureOrigin:      decision.Origin,
 		FailureScope:       decision.Scope,
 		RetryDirective:     telemetry.RetryDirective(decision.Retry),
@@ -720,31 +720,6 @@ func (recorder *requestRecorder) completeMissingOutcome(written bool, statusCode
 	if written {
 		recorder.outcome.status = telemetry.RequestStatusIncomplete
 		recorder.outcome.statusCode = statusCode
-	}
-}
-
-func telemetryFailureCategory(value health.FailureCategory) telemetry.FailureCategory {
-	switch value {
-	case health.FailureCategoryOK:
-		return telemetry.FailureCategoryOK
-	case health.FailureCategoryRateLimited:
-		return telemetry.FailureCategoryRateLimited
-	case health.FailureCategoryModelUnavailable:
-		return telemetry.FailureCategoryModelUnavailable
-	case health.FailureCategoryInvalidKey:
-		return telemetry.FailureCategoryInvalidKey
-	case health.FailureCategoryUpstreamHostError:
-		return telemetry.FailureCategoryUpstreamHost
-	case health.FailureCategoryClientError:
-		return telemetry.FailureCategoryClientError
-	case health.FailureCategoryConversionUnsupported:
-		return telemetry.FailureCategoryConversionUnsupported
-	case health.FailureCategoryDownstreamCancel:
-		return telemetry.FailureCategoryDownstreamCancel
-	case health.FailureCategoryAuthenticationRequired:
-		return telemetry.FailureCategoryAuthenticationRequired
-	default:
-		return telemetry.FailureCategoryAmbiguous
 	}
 }
 
