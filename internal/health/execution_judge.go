@@ -186,6 +186,17 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 	}
 	if !attempt.ResponseStarted() &&
 		(attempt.Evidence.Kind == execution.ErrorKindTransport || attempt.Evidence.Kind == execution.ErrorKindTimeout) {
+		if attempt.BufferedStream && attempt.HTTPCommitted && !attempt.PayloadReleased &&
+			attempt.ClientVisibleBytes > 0 && decisionContext.BufferedReplayEligible {
+			return decision(
+				FailureCategoryAmbiguous,
+				execution.ErrorOriginUpstream,
+				execution.ErrorScopeGroup,
+				RetryNextCandidate,
+				EffectSkipGroup,
+				"buffered_stream.retry_before_release_unknown",
+			)
+		}
 		return decision(
 			FailureCategoryAmbiguous,
 			execution.ErrorOriginUpstream,
