@@ -21,6 +21,7 @@ import {
   type ModelRouteScheduleGroupDto,
   type ModelRouteSchedulePatchUpdate,
 } from '@/app/resources/model-route-schedule'
+import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
@@ -104,6 +105,8 @@ const emit = defineEmits<{
   refresh: []
   saved: [snapshotRevision: number]
   recovered: [groupId: number, entryId: string]
+  probe: [groupId: number, modelId: string]
+  'probe-all': [targets: ModelProbeTargetDto[]]
   'draft-change': [drafts: ScheduleDrafts]
   'row-change': [row: string | undefined]
 }>()
@@ -142,6 +145,29 @@ const rows = computed(() =>
       .map((entry) => ({ group, entry })),
   ),
 )
+// Batch scope is exactly what is on screen: the same mode-filtered rows the
+// table renders, deduplicated to (group, model) targets.
+const probeTargets = computed<ModelProbeTargetDto[]>(() => {
+  const targets: ModelProbeTargetDto[] = []
+  const seen = new Set<string>()
+  for (const { group, entry } of rows.value) {
+    const key = `${group.group_id}:${entry.model_id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    targets.push({ group_id: group.group_id, model: entry.model_id })
+  }
+  return targets
+})
+
+function probeEntry(groupId: number, modelId: string): void {
+  emit('probe', groupId, modelId)
+}
+
+function probeVisibleRows(): void {
+  if (probeTargets.value.length === 0) return
+  emit('probe-all', probeTargets.value)
+}
+
 const dirty = computed(() => Object.keys(draftMap).length > 0)
 const invalid = computed(() => Object.values(invalidInputs).some(Boolean))
 const hasDetail = computed(() => props.detail !== undefined)
@@ -557,6 +583,16 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
       <div class="schedule-detail__observed">
         <span>{{ observedLabel }}</span>
       </div>
+      <AppButton
+        v-if="rows.length > 0"
+        variant="secondary"
+        size="compact"
+        :disabled="pending"
+        :title="t('monitor.modelProbe.description')"
+        @click="probeVisibleRows"
+      >
+        {{ t('monitor.modelProbe.batch', { count: probeTargets.length }) }}
+      </AppButton>
     </header>
 
     <QueryFeedback v-if="loading" state="loading" :message="text('loading')" />
@@ -710,6 +746,14 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
                 @click.stop="recover(group.group_id, entry.entry_id)"
               >
                 {{ text('recover') }}
+              </AppButton>
+              <AppButton
+                variant="secondary"
+                size="compact"
+                :disabled="pending || entry.entry_id.startsWith('derived:')"
+                @click.stop="probeEntry(group.group_id, entry.model_id)"
+              >
+                {{ t('monitor.modelProbe.button') }}
               </AppButton>
             </div>
           </div>

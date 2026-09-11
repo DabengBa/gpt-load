@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { useApiClient } from '@/api/client-context'
 import { accessKeyOptionsQueryOptions } from '@/app/resources/access-keys'
+import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
+import { monitorLocation } from '@/app/route-locations'
 import {
   modelRouteScheduleDetailQueryOptions,
   modelRouteScheduleIndexQueryOptions,
@@ -11,6 +14,8 @@ import {
 } from '@/app/resources/model-route-schedule'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
+import ModelProbeDialog from '@/features/models/ModelProbeDialog.vue'
+import { useModelProbe } from '@/features/models/use-model-probe'
 
 import { type ScheduleDrafts, type ScheduleMode } from './monitor-route'
 import SchedulePanelDetail, { type SchedulePanelDetailLabels } from './SchedulePanelDetail.vue'
@@ -175,6 +180,36 @@ async function onRecovered(groupID: number, entryID: string): Promise<void> {
   emit('recovered', groupID, entryID)
   await refreshAll()
 }
+
+const router = useRouter()
+const {
+  open: probeOpen,
+  pending: probePending,
+  failed: probeFailed,
+  stopped: probeStopped,
+  results: probeResults,
+  total: probeTotal,
+  completed: probeCompleted,
+  start: startProbe,
+  stop: stopProbe,
+  close: closeProbe,
+} = useModelProbe()
+
+function probeRow(groupID: number, modelID: string): void {
+  void startProbe([{ group_id: groupID, model: modelID }])
+}
+
+function probeRows(targets: ModelProbeTargetDto[]): void {
+  void startProbe(targets)
+}
+
+function handleProbeOpen(value: boolean): void {
+  if (!value) closeProbe()
+}
+
+function viewProbeLog(logID: string): void {
+  void router.push(monitorLocation({ tab: 'logs', selected_request_id: logID }))
+}
 </script>
 
 <template>
@@ -245,8 +280,22 @@ async function onRecovered(groupID: number, entryID: string): Promise<void> {
       @refresh="refreshDetail"
       @saved="onSaved"
       @recovered="onRecovered"
+      @probe="probeRow"
+      @probe-all="probeRows"
       @draft-change="emit('draft-change', $event)"
       @row-change="emit('row-change', $event)"
+    />
+    <ModelProbeDialog
+      :open="probeOpen"
+      :pending="probePending"
+      :failed="probeFailed"
+      :stopped="probeStopped"
+      :results="probeResults"
+      :total="probeTotal"
+      :completed="probeCompleted"
+      @update:open="handleProbeOpen"
+      @stop="stopProbe"
+      @view-log="viewProbeLog"
     />
   </section>
 </template>
