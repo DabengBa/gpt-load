@@ -31,6 +31,21 @@ export default {
       latency: '{value} 毫秒',
       notExecuted: '未执行上游请求，没有请求 ID',
       unknownValue: '—',
+      disabledBadge: '已停用',
+      disabledScope: {
+        title: '包含已停用分组',
+        description:
+          '当前 {total} 行中有 {disabled} 个分组已停用。停用分组不参与调度，但仍可发起测活以确认上游可用性。',
+        cancel: '取消',
+        enabledOnly: '仅测启用分组（{count} 行）',
+        includeDisabled: '一并测活（{count} 行）',
+      },
+      disabledConfirm: {
+        title: '该分组已停用',
+        description: '停用分组不参与调度。是否仍要发起一次测活？',
+        cancel: '取消',
+        confirm: '测活',
+      },
       fields: {
         group: '分组',
         model: '模型',

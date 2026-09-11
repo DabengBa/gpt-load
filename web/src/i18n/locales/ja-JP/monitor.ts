@@ -32,6 +32,21 @@ export default {
       latency: '{value} ミリ秒',
       notExecuted: '上流リクエストを送信していないため、リクエスト ID はありません',
       unknownValue: '—',
+      disabledBadge: '無効',
+      disabledScope: {
+        title: '無効化されたグループを含みます',
+        description:
+          '現在の {total} 行のうち {disabled} 件は無効化されたグループです。無効化グループは振り分けに参加しませんが、疎通確認で上流の可用性を確認できます。',
+        cancel: 'キャンセル',
+        enabledOnly: '有効なグループのみ疎通確認（{count} 行）',
+        includeDisabled: 'まとめて疎通確認（{count} 行）',
+      },
+      disabledConfirm: {
+        title: 'このグループは無効化されています',
+        description: '無効化グループは振り分けに参加しません。それでも疎通確認しますか？',
+        cancel: 'キャンセル',
+        confirm: '疎通確認',
+      },
       fields: {
         group: 'グループ',
         model: 'モデル',

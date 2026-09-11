@@ -18,6 +18,14 @@ export interface ModelProbeSummary {
 }
 
 /**
+ * A disabled group still serves a probe on explicit request; the dialog labels
+ * those targets so an opted-in result is never mistaken for a routable group.
+ */
+export interface ModelProbeStartOptions {
+  disabledGroupIds?: readonly number[]
+}
+
+/**
  * Shared model-probe state machine. Both probe entry points (group models tab and
  * dispatch center) own an instance and only differ in which targets they collect.
  */
@@ -28,6 +36,7 @@ export function useModelProbe() {
   const failed = ref(false)
   const stopped = ref(false)
   const targets = ref<ModelProbeTargetDto[]>([])
+  const disabledGroupIds = ref<number[]>([])
   const results = ref<ModelProbeResultDto[]>([])
   // Bumped on close/restart so an in-flight chunk cannot append into a newer run.
   let generation = 0
@@ -40,11 +49,15 @@ export function useModelProbe() {
     return value
   })
 
-  async function start(nextTargets: readonly ModelProbeTargetDto[]): Promise<void> {
+  async function start(
+    nextTargets: readonly ModelProbeTargetDto[],
+    options: ModelProbeStartOptions = {},
+  ): Promise<void> {
     if (nextTargets.length === 0) return
     generation += 1
     const current = generation
     targets.value = [...nextTargets]
+    disabledGroupIds.value = [...(options.disabledGroupIds ?? [])]
     results.value = []
     failed.value = false
     stopped.value = false
@@ -76,6 +89,7 @@ export function useModelProbe() {
     open.value = false
     generation += 1
     targets.value = []
+    disabledGroupIds.value = []
     results.value = []
     failed.value = false
     stopped.value = false
@@ -87,6 +101,7 @@ export function useModelProbe() {
     failed,
     stopped,
     targets,
+    disabledGroupIds,
     results,
     total,
     completed,

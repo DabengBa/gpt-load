@@ -37,6 +37,9 @@ const queryClient = useQueryClient()
 const { t } = useI18n()
 const groupId = computed(() => parsePositiveId(route.params.id))
 const summaryQuery = useQuery(groupSummaryQueryOptions(client, groupId))
+// The summary omits the enabled flag, so the models tab reads it from the
+// settings query (same cache entry the settings tab prefetches).
+const settingsQuery = useQuery(groupSettingsQueryOptions(client, groupId))
 const credentialFilters: CredentialCollectionFilters = { page: 1, page_size: 20 }
 const credentialsQuery = useQuery({
   ...credentialCollectionQueryOptions(client, () => groupId.value as number, credentialFilters),
@@ -230,6 +233,7 @@ watch(
               :key="`models-${groupId}`"
               :group-id="groupId"
               :channel-id="summaryQuery.data.value.channel_id"
+              :enabled="settingsQuery.data.value?.enabled ?? true"
               unified
               :blocked="deletePending"
               readonly-route-fields

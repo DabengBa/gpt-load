@@ -72,8 +72,9 @@ const props = withDefaults(
     readonlyRouteFields?: boolean
     unified?: boolean
     blocked?: boolean
+    enabled?: boolean
   }>(),
-  { readonlyRouteFields: false, unified: false, blocked: false },
+  { readonlyRouteFields: false, unified: false, blocked: false, enabled: true },
 )
 const emit = defineEmits<{
   state: [
@@ -137,10 +138,28 @@ function probeRowTarget(item: ModelDraftItem): ModelProbeTargetDto | null {
   return { group_id: props.groupId, model: id }
 }
 
+const pendingProbe = ref<ModelProbeTargetDto | null>(null)
+
+// A disabled group still serves a probe on explicit request, but it asks first so
+// the upstream call is never a surprise.
 function probeRow(item: ModelDraftItem): void {
   const target = probeRowTarget(item)
   if (target === null) return
-  void startProbe([target])
+  if (props.enabled) {
+    void startProbe([target])
+    return
+  }
+  pendingProbe.value = target
+}
+
+function confirmProbe(): void {
+  const target = pendingProbe.value
+  pendingProbe.value = null
+  if (target !== null) void startProbe([target], { disabledGroupIds: [target.group_id] })
+}
+
+function handleProbeConfirmOpen(value: boolean): void {
+  if (!value) pendingProbe.value = null
 }
 
 function handleProbeOpen(value: boolean): void {
@@ -730,11 +749,23 @@ onBeforeUnmount(() => {
         :failed="probeFailed"
         :stopped="probeStopped"
         :results="probeResults"
+        :disabled-group-ids="props.enabled ? [] : [props.groupId]"
         :total="probeTotal"
         :completed="probeCompleted"
         @update:open="handleProbeOpen"
         @stop="stopProbe"
         @view-log="viewProbeLog"
+      />
+      <AppConfirmDialog
+        :open="pendingProbe !== null"
+        :title="t('monitor.modelProbe.disabledConfirm.title')"
+        :description="t('monitor.modelProbe.disabledConfirm.description')"
+        :close-label="t('monitor.modelProbe.disabledConfirm.cancel')"
+        :cancel-label="t('monitor.modelProbe.disabledConfirm.cancel')"
+        :confirm-label="t('monitor.modelProbe.disabledConfirm.confirm')"
+        appearance="ledger"
+        @update:open="handleProbeConfirmOpen"
+        @confirm="confirmProbe"
       />
       <ModelDiscoveryDrawer
         v-if="supportsModelDiscovery"

@@ -78,7 +78,7 @@ POST /api/model-probe
 
 - 单行按钮发 1 个目标；批量按钮发 N 个目标。响应形状相同，前端只有一条渲染/投影路径。
 - 请求级只做**形状**校验（目标数 1..64、`group_id>0`、`model` 非空），形状错误 → 400。
-- 逐目标问题**不失败整批**，而是落成该目标的结果：`target_unavailable`（分组不存在/未加载/订阅类型分组/模型不在该分组模型列表）、`no_schedulable_credential`（分组存在但当前无可调度凭据）、`probe_incompatible`（该模型在当前分组无可用探测路由）、`unknown`（内部错误）。
+- 逐目标问题**不失败整批**，而是落成该目标的结果：`target_unavailable`（分组不存在/模型不在该分组模型列表；停用分组不再落入这一支，见 §9 第 17 项）、`no_schedulable_credential`（分组存在但当前无可调度凭据）、`probe_incompatible`（该模型在当前分组无可用探测路由）、`unknown`（内部错误）。
 - `log_id` 非空 **当且仅当**确实执行了一次上游尝试（无论 `dispatch_state` 是 `not_sent` 还是 `maybe_sent`）；上表的三个"未执行"原因返回 `log_id: null`。
 - **未执行目标的形状（实现补充，原设计未写）**：`target_unavailable` / `no_schedulable_credential` / `probe_incompatible` / `unknown` 的 `outcome` 一律为 `inconclusive` —— 没有任何上游观测，不能宣称「通过」或「未通过」；`log_id`/`status_code`/`latency_ms`/`credential_id`/`credential_label` 为 `null`，而 `no_schedulable_credential` 与 `probe_incompatible` 仍回传已解析出的 `protocol` / `route_mode`（前端需要区分"没法测"与"分组/模型根本不存在"）。
 
@@ -248,3 +248,7 @@ POST /api/model-probe
     - **修复**：`.schedule-table-wrap` 加 `position: relative`（让滚动容器成为内部绝对定位元素的包含块，无需 `contain`），外扩量改用 `--stage-padding-inline(-compact)`。未在 `AppDialog` 上写补偿——它是仓库统一的弹窗范式，宿主不再溢出后不需要特例。
     - **证据**：同一场景（选中 mock-chat、桌面视口、无注入）11 档视口 1440/1120/1024/900/860/800/620/560/414/375/360 的横向溢出由 `0/8/8/8/6/6/6/6/71/110/125` 变为全 0；移动端仿真下 `innerWidth` 由 486 回到 375（= visualViewport），表格仍可在容器内横滚（375px 下 `maxScrollLeft=645`，滚到末端时末列完整落在容器内），页面 console error 与 ≥400 响应均为 0。单因子对照：只加 `position: relative` 时 375px 溢出降到 6（= 只剩 (b)），只改外扩 token 时 375px 反而升到 116（卡片变窄使 (a) 的静态位置右移），两项都做才归零。
 16. **深链的写入时延（设计已覆盖，不改）**：请求日志是 best-effort 写入（§6.3b）。实测探测结束后约 3 秒点「查看日志」时 `GET /api/logs/{request_id}` 仍返回 404，页面显示「无法加载请求日志详情。重试」；约 10 秒后同一 id 返回 200 且抽屉正常渲染（含 `operation = 健康探测`、访问密钥 `—`）。属设计已接受的边界，页面已有重试入口与列表兜底，不为此加同步写库路径。
+17. **停用分组可显式测活（交付后补入）**：`state.Compile` 原先对 `!group.Enabled` 直接 `continue`，只建 `GroupCatalog`，因此 `snapshot.Groups` 里没有停用分组，探测落入 `target_unavailable` 并把名字退化成 `#<id>`（前端对空 `group_name` 的回退），读起来像「分组已被删除」。修复：`ConfigSnapshot` 新增 `DisabledGroups`（与 `Groups` 同构的编译视图），停用分组的视图放这里；新增 `LookupGroup(id)` 统一查两个 map，只有启用分组进 `ExecutionCandidates`（数据面索引逐字不变）。`probeModelTarget` 改用 `LookupGroup`，于是停用分组照常执行探测、照常写日志、并回传真实分组名。
+    - 编译失败面不变：`appendExecutionTargets(ExecutionRouteCatalog, …)`、`ResolveGroupRuntimeSettings`、`outboundproxy.Resolve` 原本就对停用分组执行，而 `ChannelRegistry.Resolve` 内含 `ValidateParams`，所以为停用分组补建视图不新增任何错误分支。
+    - 交互（`web/`）：批量范围仍＝当前可见行；可见行里含停用分组时先弹「是否一并测活」（`ModelProbeScopeDialog`：一并测活 / 仅测启用分组 / 取消，取消即不发请求），单行测活命中停用分组时用 `AppConfirmDialog` 先确认；结果行按发起时的 `disabledGroupIds` 标注「已停用」。停用判定取自调度行 `group.enabled`（分组详情页取 settings 的 `enabled`）。
+    - 仍未改动：凭据测活（`TestGroupCredential`）、分组校验与模型发现仍走 `snapshot.Groups`，停用分组在这三处仍不可用；如需要属另一任务。
