@@ -92,6 +92,7 @@ func TestExternalDatabaseLifecycle(t *testing.T) {
 		"jobs", "control_operations", "credential_stages", "credential_observations",
 		"credential_reset_operations", "credential_attempt_stats", "schema_migrations",
 		"access_key_cost_limit_rules", "access_key_cost_limit_states",
+		"usage_attempt_aggregation_journals", "usage_attempt_stats",
 	} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("table %q is missing", table)
@@ -137,9 +138,10 @@ func TestExternalDatabaseLifecycle(t *testing.T) {
 		"0010_single_credential_per_group",
 		"0011_usage_latency",
 		"0012_debug_captures",
+		"0013_usage_attempt_stats",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
-		t.Fatalf("migration ledger = %v, want complete 0001-0012 chain", migrationIDs)
+		t.Fatalf("migration ledger = %v, want complete 0001-0013 chain", migrationIDs)
 	}
 	for _, table := range []string{"debug_captures", "debug_capture_attempts", "debug_capture_chunks"} {
 		if !db.Migrator().HasTable(table) {

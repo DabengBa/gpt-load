@@ -643,6 +643,8 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"credential_observations",
 		"credential_reset_operations",
 		"credential_attempt_stats",
+		"usage_attempt_aggregation_journals",
+		"usage_attempt_stats",
 		"schema_migrations",
 	}
 	for _, table := range wantTables {
@@ -668,6 +670,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0010_single_credential_per_group",
 		"0011_usage_latency",
 		"0012_debug_captures",
+		"0013_usage_attempt_stats",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)

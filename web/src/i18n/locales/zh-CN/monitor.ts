@@ -460,6 +460,8 @@ export default {
           model: '模型',
           group: '分组',
           channel: '渠道',
+          attempts: '尝试数',
+          attemptFailures: '尝试失败',
           successRate: '成功率',
           averageLatency: '平均延迟',
           uncachedInput: '未缓存输入',

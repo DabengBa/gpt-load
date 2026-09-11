@@ -142,6 +142,8 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
             {{ t('monitor.usage.columns.failure') }}
           </button>
         </th>
+        <th scope="col">{{ t('monitor.usage.breakdown.columns.attempts') }}</th>
+        <th scope="col">{{ t('monitor.usage.breakdown.columns.attemptFailures') }}</th>
         <th scope="col" :aria-sort="ariaSort('success_rate')">
           <button type="button" class="usage-breakdown__sort" @click="setSort('success_rate')">
             {{ t('monitor.usage.breakdown.columns.successRate') }}
@@ -223,6 +225,8 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         <td>{{ formatInteger(row.request_count, locale) }}</td>
         <td>{{ formatInteger(row.success_count, locale) }}</td>
         <td>{{ formatInteger(row.failure_count, locale) }}</td>
+        <td>{{ formatInteger(row.attempt_count, locale) }}</td>
+        <td>{{ formatInteger(row.attempt_failure_count, locale) }}</td>
         <td>{{ successRate(row) }}</td>
         <td>{{ averageLatency(row) }}</td>
         <td>{{ formatTokens(row.uncached_input_tokens, locale) }}</td>
@@ -244,6 +248,8 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         <td>{{ formatInteger(breakdown.total.request_count, locale) }}</td>
         <td>{{ formatInteger(breakdown.total.success_count, locale) }}</td>
         <td>{{ formatInteger(breakdown.total.failure_count, locale) }}</td>
+        <td>{{ formatInteger(breakdown.attempt_total.attempt_count, locale) }}</td>
+        <td>{{ formatInteger(breakdown.attempt_total.attempt_failure_count, locale) }}</td>
         <td>{{ successRate(breakdown.total) }}</td>
         <td>{{ averageLatency(breakdown.total) }}</td>
         <td>{{ formatTokens(breakdown.total.uncached_input_tokens, locale) }}</td>
