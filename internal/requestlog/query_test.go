@@ -755,6 +755,9 @@ func TestServiceListBatchLoadsCurrentAccessKeyNames(t *testing.T) {
 	createRequestLogQueryRow(t, db, requestLogQueryRow(
 		"00000000-0000-4000-8000-000000000303", base.Add(2*time.Second), deleted.ID, "three", nil,
 	))
+	createRequestLogQueryRow(t, db, requestLogQueryRow(
+		"00000000-0000-4000-8000-000000000304", base.Add(3*time.Second), 0, "probe", nil,
+	))
 	if err := db.Model(&current).Update("name", "after-rename").Error; err != nil {
 		t.Fatalf("rename AccessKey: %v", err)
 	}
@@ -779,8 +782,8 @@ func TestServiceListBatchLoadsCurrentAccessKeyNames(t *testing.T) {
 	if accessKeyQueries != 1 {
 		t.Fatalf("AccessKey query count = %d, want one batch query", accessKeyQueries)
 	}
-	if len(page.Items) != 3 {
-		t.Fatalf("items = %#v, want three", page.Items)
+	if len(page.Items) != 4 {
+		t.Fatalf("items = %#v, want four", page.Items)
 	}
 	byID := make(map[string]Record, len(page.Items))
 	for _, item := range page.Items {
@@ -799,6 +802,11 @@ func TestServiceListBatchLoadsCurrentAccessKeyNames(t *testing.T) {
 	deletedRef := byID["00000000-0000-4000-8000-000000000303"].AccessKey
 	if deletedRef.ID != deleted.ID || deletedRef.Name != nil || !deletedRef.Deleted {
 		t.Fatalf("deleted AccessKey ref = %#v", deletedRef)
+	}
+	// 控制面观察（access_key_id = 0）不属于任何访问密钥，不能被读成“引用的密钥已删除”。
+	controlPlaneRef := byID["00000000-0000-4000-8000-000000000304"].AccessKey
+	if controlPlaneRef.ID != 0 || controlPlaneRef.Name != nil || controlPlaneRef.Deleted {
+		t.Fatalf("control-plane AccessKey ref = %#v", controlPlaneRef)
 	}
 }
 
