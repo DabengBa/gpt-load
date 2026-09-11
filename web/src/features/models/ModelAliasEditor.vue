@@ -638,7 +638,7 @@ defineExpose({ addManual, focusFirstInvalid })
   flex: none;
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 10.8px;
+  font-size: var(--text-label-xs);
 }
 
 .model-alias-editor__grid {

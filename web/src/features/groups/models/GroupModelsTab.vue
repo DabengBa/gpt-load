@@ -25,7 +25,7 @@ import { useUnsavedChanges } from '@/app/unsaved-changes'
 import { useToast } from '@/app/toast'
 import { useTransientFlag } from '@/app/use-transient-flag'
 import { constrainCollectionSearch } from '@/app/route-query'
-import { groupDetailLocation, monitorLocation } from '@/app/route-locations'
+import { groupDetailLocation, modelsLocation, monitorLocation } from '@/app/route-locations'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
@@ -753,7 +753,21 @@ onBeforeUnmount(() => {
       >
         <template #third-column="{ item }">
           <div class="group-models__pricing-cell">
+            <RouterLink
+              v-if="item.pricing_status === 'pending' && item.id"
+              class="group-models__pricing-link"
+              :to="modelsLocation({ q: item.id, pricing_status: 'pending' })"
+            >
+              <ModelPricingStatus
+                :status="item.pricing_status"
+                :labels="{
+                  pending: t('group.modelEditor.pricingStatus.pending'),
+                  configured: t('group.modelEditor.pricingStatus.configured'),
+                }"
+              />
+            </RouterLink>
             <ModelPricingStatus
+              v-else
               :status="item.pricing_status"
               :labels="{
                 pending: t('group.modelEditor.pricingStatus.pending'),
@@ -924,6 +938,16 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 5px;
   justify-items: start;
+}
+.group-models__pricing-link {
+  text-decoration: none;
+  color: inherit;
+}
+.group-models__pricing-link:hover .status-badge,
+.group-models__pricing-link:focus-visible .status-badge {
+  outline: 2px solid var(--color-action);
+  outline-offset: 1px;
+  border-radius: var(--radius-control);
 }
 .group-models__schedule-link {
   color: var(--color-action);
