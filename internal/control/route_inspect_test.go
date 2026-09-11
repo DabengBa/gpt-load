@@ -251,6 +251,20 @@ func TestConfiguredEntrySharesNormalizeEachPriorityIncludingUnavailableAndZeroWe
 	}
 }
 
+func TestConfiguredEntrySharesExcludeDisabledGroups(t *testing.T) {
+	groups := []scheduler.GroupInspection{
+		{Priority: 1, EntryWeight: 50, Reason: scheduler.ReasonGroupDisabled},
+		{Priority: 1, EntryWeight: 50, Included: true},
+	}
+	got := configuredEntryShares(groups)
+	want := []float64{0, 1}
+	for index := range want {
+		if diff := got[index] - want[index]; diff < -1e-9 || diff > 1e-9 {
+			t.Fatalf("configured share %d = %v, want %v", index, got[index], want[index])
+		}
+	}
+}
+
 func TestRouteInspectReportsSnapshotRouteStrategy(t *testing.T) {
 	t.Parallel()
 	initControlI18n(t)

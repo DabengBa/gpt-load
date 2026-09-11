@@ -228,17 +228,24 @@ func mapRouteInspectResponse(
 }
 
 // configuredEntryShares is the display-only configured-weight distribution.
-// It intentionally includes unavailable entries and never changes the
-// scheduler's runtime EffectiveShare calculation.
+// It includes unavailable entries, but disabled groups do not participate in
+// the distribution. It never changes the scheduler's runtime EffectiveShare
+// calculation.
 func configuredEntryShares(groups []scheduler.GroupInspection) []float64 {
 	totals := make(map[int]int64)
 	for _, group := range groups {
+		if group.Reason == scheduler.ReasonGroupDisabled {
+			continue
+		}
 		if group.Priority > 0 && group.EntryWeight > 0 {
 			totals[group.Priority] += int64(group.EntryWeight)
 		}
 	}
 	shares := make([]float64, len(groups))
 	for index, group := range groups {
+		if group.Reason == scheduler.ReasonGroupDisabled {
+			continue
+		}
 		total := totals[group.Priority]
 		if group.Priority > 0 && group.EntryWeight > 0 && total > 0 {
 			shares[index] = float64(group.EntryWeight) / float64(total)
