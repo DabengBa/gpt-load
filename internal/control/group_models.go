@@ -248,6 +248,10 @@ func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel
 		key := model.ID + "\x00" + model.Alias
 		previousByModel[key] = append(previousByModel[key], model)
 	}
+	// 同一组中 ID 相同的多条新行无法通过回退匹配共享同一个已保存条目。
+	// 每个已保存条目仅归首次精确或回退匹配到它的新行所有；
+	// 后续回退命中同一个已保存条目时视为不存在，以便分配新的 EntryID。
+	assigned := make(map[string]struct{}, len(previous))
 	result := make([]GroupModel, 0, len(requested))
 	for _, model := range requested {
 		var preserved groupModelEntry
@@ -262,9 +266,14 @@ func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel
 			} else if len(matches) == 0 {
 				matches = previousByModel[model.ID+"\x00"]
 				if len(matches) == 1 {
-					preserved, exists = matches[0], true
+					if _, alreadyAssigned := assigned[matches[0].EntryID]; !alreadyAssigned {
+						preserved, exists = matches[0], true
+					}
 				}
 			}
+		}
+		if exists {
+			assigned[preserved.EntryID] = struct{}{}
 		}
 		if model.EntryID == "" && exists {
 			model.EntryID = preserved.EntryID
