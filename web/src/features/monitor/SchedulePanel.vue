@@ -306,9 +306,11 @@ function viewProbeLog(logID: string): void {
   min-width: 0;
   gap: var(--space-4);
 }
+/* 卡片向外铺满舞台：外扩量必须等于舞台自身的内边距（stage-padding-*），
+   用 sheet 的内边距会多撑出 8px(桌面) / 6px(窄屏)，让整页出现横向滚动。 */
 :global(.monitor-page.ledger-sheet--padded) {
-  width: min(calc(100% + var(--sheet-padding-inline) * 2), var(--content-max));
-  margin-inline: calc(0px - var(--sheet-padding-inline));
+  width: min(calc(100% + var(--stage-padding-inline) * 2), var(--content-max));
+  margin-inline: calc(0px - var(--stage-padding-inline));
 }
 .schedule-panel__filters {
   display: grid;
@@ -329,8 +331,8 @@ function viewProbeLog(logID: string): void {
 }
 @media (max-width: 860px) {
   :global(.monitor-page.ledger-sheet--padded) {
-    width: calc(100% + var(--sheet-padding-inline-compact) * 2);
-    margin-inline: calc(0px - var(--sheet-padding-inline-compact));
+    width: calc(100% + var(--stage-padding-inline-compact) * 2);
+    margin-inline: calc(0px - var(--stage-padding-inline-compact));
   }
 }
 @media (max-width: 620px) {

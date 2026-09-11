@@ -830,6 +830,10 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   text-align: center;
 }
 .schedule-table-wrap {
+  /* position 让滚动容器成为内部绝对定位元素（如 .sr-only）的包含块：
+     否则这些 1px 隐藏标签会把容器外的位置计入文档可滚动溢出，
+     在窄屏上把整个页面撑宽。 */
+  position: relative;
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
