@@ -48,6 +48,58 @@ func TestBufferedStreamRetryUsesPayloadReleaseGate(t *testing.T) {
 	}
 }
 
+func TestBufferedStreamRetriesBeforeFirstUpstreamResponse(t *testing.T) {
+	base := ExecutionAttempt{
+		DispatchState:      execution.DispatchMaybeSent,
+		HTTPCommitted:      true,
+		ClientVisibleBytes: 16, // gateway heartbeat only
+		BufferedStream:     true,
+		Evidence: &execution.ErrorEvidence{
+			Kind:       execution.ErrorKindTimeout,
+			OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			Code:       "upstream_stream_terminated",
+			Summary:    "upstream request timed out before the first response",
+		},
+	}
+
+	decision := JudgeExecution(base, DecisionContext{
+		Method:                 http.MethodPost,
+		Operation:              execution.OperationResponsesCreate,
+		BufferedReplayEligible: true,
+	})
+	if decision.Retry != RetryNextCandidate || decision.Effect != EffectSkipGroup ||
+		decision.RuleID != "buffered_stream.retry_before_release_unknown" {
+		t.Fatalf("first-response timeout decision = %#v, want buffered candidate retry", decision)
+	}
+
+	for name, mutate := range map[string]func(*ExecutionAttempt, *DecisionContext){
+		"not buffered": func(attempt *ExecutionAttempt, _ *DecisionContext) {
+			attempt.BufferedStream = false
+		},
+		"not replay eligible": func(_ *ExecutionAttempt, context *DecisionContext) {
+			context.BufferedReplayEligible = false
+		},
+		"payload released": func(attempt *ExecutionAttempt, _ *DecisionContext) {
+			attempt.PayloadReleased = true
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			attempt := base
+			context := DecisionContext{
+				Method:                 http.MethodPost,
+				Operation:              execution.OperationResponsesCreate,
+				BufferedReplayEligible: true,
+			}
+			mutate(&attempt, &context)
+			decision := JudgeExecution(attempt, context)
+			if decision.Retry != RetryNone {
+				t.Fatalf("decision = %#v, want no retry", decision)
+			}
+		})
+	}
+}
+
 func TestBufferedStreamHealthDoesNotTreatHTTPCommitAsPayloadRelease(t *testing.T) {
 	attempt := ExecutionAttempt{
 		DispatchState:       execution.DispatchMaybeSent,
