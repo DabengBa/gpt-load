@@ -127,3 +127,58 @@ func withReleasedPayload(attempt ExecutionAttempt) ExecutionAttempt {
 	attempt.ClientVisibleBytes = 4096
 	return attempt
 }
+
+// 上游以 200 开始流、心跳已提交但 payload 未释放就失败（SSE 错误事件或连接中断）：
+// 这类失败没有可重试的状态码，只能靠证据码识别。此前 upstream_error 不在白名单里，
+// 请求被误判为终局直接反馈用户（run finding 68e01adf）。
+func TestJudgeExecutionRetriesBufferedStreamOnSuccessStatusWithoutPayload(t *testing.T) {
+	base := ExecutionAttempt{
+		DispatchState:      execution.DispatchMaybeSent,
+		StatusCode:         http.StatusOK,
+		BufferedStream:     true,
+		HTTPCommitted:      true,
+		ClientVisibleBytes: 14,
+		Evidence: &execution.ErrorEvidence{
+			Kind:       execution.ErrorKindProvider,
+			OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			StatusCode: http.StatusOK,
+			Code:       "upstream_error",
+			Summary:    "The upstream attempt failed before any response content was released.",
+		},
+	}
+
+	for _, code := range []string{"upstream_error", "upstream_sse_error"} {
+		t.Run(code, func(t *testing.T) {
+			attempt := base
+			attempt.Evidence.Code = code
+			decision := JudgeExecution(attempt, DecisionContext{BufferedReplayEligible: true})
+			if decision.Retry != RetryNextCandidate || decision.Effect != EffectSkipGroup {
+				t.Fatalf("JudgeExecution() = %#v, want retry %v effect %v", decision, RetryNextCandidate, EffectSkipGroup)
+			}
+			if decision.RuleID != "buffered_stream.retry_before_release" {
+				t.Fatalf("JudgeExecution() = %#v, want rule %q", decision, "buffered_stream.retry_before_release")
+			}
+		})
+	}
+
+	// 已释放 payload 的 200 失败必须保持终局：客户端已经看到输出，不能换候选重放。
+	attempt := base
+	attempt.PayloadReleased = true
+	attempt.DownstreamCommitted = true
+	attempt.ClientVisibleBytes = 4096
+	decision := JudgeExecution(attempt, DecisionContext{BufferedReplayEligible: true})
+	if decision.Retry != RetryNone {
+		t.Fatalf("released payload JudgeExecution() = %#v, want no retry", decision)
+	}
+
+	// 客户端错误（4xx）即使带 upstream_error 证据码也必须保持终局。
+	attempt = base
+	attempt.StatusCode = http.StatusNotFound
+	attempt.Evidence.StatusCode = http.StatusNotFound
+	attempt.Evidence.Hint = ""
+	decision = JudgeExecution(attempt, DecisionContext{BufferedReplayEligible: true})
+	if decision.Retry != RetryNone {
+		t.Fatalf("client error JudgeExecution() = %#v, want no retry", decision)
+	}
+}

@@ -530,6 +530,24 @@ func bufferedStreamRetryDecision(
 		// skipping its group instead of degrading to an unclassified fallback.
 		result.Retry = RetryNextCandidate
 		result.RuleID = "buffered_stream.retry_before_release_upstream_status"
+		return result
+	}
+	// 上游以 2xx 状态开始流但未释放任何 payload 就失败（SSE 错误事件、连接中断等）：
+	// 心跳已提交、payload 未释放，换候选是安全的。这类证据没有可重试的状态码，
+	// 只能靠证据码识别（run finding: upstream 200 后无内容被误判为终局）。
+	// 客户端错误（4xx）仍保持终局：请求本身无效，换候选无意义。
+	if isSuccessStatus(attempt.statusCode()) {
+		switch attempt.Evidence.Code {
+		case "upstream_error", "upstream_sse_error":
+			return decision(
+				FailureCategoryAmbiguous,
+				execution.ErrorOriginUpstream,
+				execution.ErrorScopeGroup,
+				RetryNextCandidate,
+				EffectSkipGroup,
+				"buffered_stream.retry_before_release",
+			)
+		}
 	}
 	return result
 }
