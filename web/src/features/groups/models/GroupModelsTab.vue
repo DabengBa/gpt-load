@@ -754,7 +754,7 @@ onBeforeUnmount(() => {
         <template #third-column="{ item }">
           <div class="group-models__pricing-cell">
             <RouterLink
-              v-if="item.pricing_status === 'pending' && item.price_id"
+              v-if="item.pricing_status === 'pending' && item.price_id !== undefined"
               class="group-models__pricing-link"
               :to="modelsLocation({ selected_price_id: item.price_id })"
             >
@@ -766,14 +766,6 @@ onBeforeUnmount(() => {
                 }"
               />
             </RouterLink>
-            <ModelPricingStatus
-              v-else-if="item.pricing_status === 'pending' && item.id"
-              :status="item.pricing_status"
-              :labels="{
-                pending: t('group.modelEditor.pricingStatus.pending'),
-                configured: t('group.modelEditor.pricingStatus.configured'),
-              }"
-            />
             <ModelPricingStatus
               v-else
               :status="item.pricing_status"
