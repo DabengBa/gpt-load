@@ -73,6 +73,21 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 		}
 		want.Items[index].EntryID = item.EntryID
 	}
+	// price_id 必须是该 (渠道, 模型) 价格行的主键；价格协调会为每个被引用的模型
+	// materialize 价格行，pending 行同样带 ID（前端据此深链到价格编辑器）。
+	for index, modelID := range []string{"gpt-4o", "missing-price"} {
+		var priceRow models.ModelPrice
+		if err := fixture.db.
+			Where("channel_id = ? AND model_id = ?", string(channel.OpenAI), modelID).
+			First(&priceRow).Error; err != nil {
+			t.Fatalf("load price row for %q: %v", modelID, err)
+		}
+		priceID := priceRow.ID
+		if got.Items[index].PriceID == nil || *got.Items[index].PriceID != priceID {
+			t.Fatalf("item %d price_id = %v, want %d", index, got.Items[index].PriceID, priceID)
+		}
+		want.Items[index].PriceID = &priceID
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetGroupModels() = %#v, want %#v", got, want)
 	}
@@ -85,6 +100,7 @@ func TestMapGroupModelsResponseTreatsContextTierOnlyPriceAsConfigured(t *testing
 		[]groupModelEntry{{ID: "tiered-model"}},
 		modelPriceRows{
 			{ChannelID: string(channel.OpenAI), ModelID: "tiered-model"}: {
+				ID:                41,
 				ChannelID:         string(channel.OpenAI),
 				ModelID:           "tiered-model",
 				ContextPriceTiers: models.JSON(`[{"threshold_tokens":1000,"input_price_nano_usd_per_million_tokens":1,"output_price_nano_usd_per_million_tokens":null,"cache_read_price_nano_usd_per_million_tokens":null,"cache_write_price_nano_usd_per_million_tokens":null}]`),
@@ -100,8 +116,107 @@ func TestMapGroupModelsResponseTreatsContextTierOnlyPriceAsConfigured(t *testing
 		}},
 		Total: 1,
 	}
+	wantPriceID := uint(41)
+	want.Items[0].PriceID = &wantPriceID
 	if !reflect.DeepEqual(result, want) {
 		t.Fatalf("mapGroupModelsResponse() = %#v, want %#v", result, want)
+	}
+}
+
+func TestMapGroupModelsResponseOmitsPriceIDWithoutPriceRow(t *testing.T) {
+	t.Parallel()
+	result, err := mapGroupModelsResponse(
+		string(channel.OpenAI),
+		[]groupModelEntry{{ID: "unreferenced-model"}},
+		modelPriceRows{},
+	)
+	if err != nil {
+		t.Fatalf("mapGroupModelsResponse() error = %v", err)
+	}
+	want := GroupModelsResponse{
+		Items: []GroupModelResponse{{
+			ID: "unreferenced-model", ClientModel: "unreferenced-model", PricingStatus: PricingStatusPending,
+		}},
+		Total:   1,
+		Pending: 1,
+	}
+	if !reflect.DeepEqual(result, want) {
+		t.Fatalf("mapGroupModelsResponse() = %#v, want %#v", result, want)
+	}
+	encoded, err := json.Marshal(result.Items[0])
+	if err != nil {
+		t.Fatalf("marshal item: %v", err)
+	}
+	if strings.Contains(string(encoded), "price_id") {
+		t.Fatalf("price_id must be omitted without a price row: %s", encoded)
+	}
+}
+
+func TestPreserveGroupModelFieldsAssignsEachSavedEntryOnce(t *testing.T) {
+	t.Parallel()
+	// 同一上游模型的多条新行不能共享同一个已保存条目，否则
+	// ValidateModelRouteEntries 会以重复 entry_id 拒绝保存。
+	previous := []groupModelEntry{{
+		ID: "gpt-4o", Alias: "", EntryID: "e000000000001", Weight: intPtr(3), Priority: intPtr(2),
+	}}
+	tests := []struct {
+		name      string
+		requested []GroupModel
+	}{
+		{
+			name: "two new aliases for one alias-free entry",
+			requested: []GroupModel{
+				{ID: "gpt-4o", Alias: "fast", AliasEnabled: true},
+				{ID: "gpt-4o", Alias: "slow", AliasEnabled: true},
+			},
+		},
+		{
+			name: "aliased row before the alias-free entry",
+			requested: []GroupModel{
+				{ID: "gpt-4o", Alias: "fast", AliasEnabled: true},
+				{ID: "gpt-4o", Alias: ""},
+			},
+		},
+		{
+			name: "alias-free entry before the aliased row",
+			requested: []GroupModel{
+				{ID: "gpt-4o", Alias: ""},
+				{ID: "gpt-4o", Alias: "fast", AliasEnabled: true},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := preserveGroupModelFields(previous, test.requested)
+			if err != nil {
+				t.Fatalf("preserveGroupModelFields() error = %v", err)
+			}
+			if len(result) != len(test.requested) {
+				t.Fatalf("preserveGroupModelFields() rows = %d, want %d", len(result), len(test.requested))
+			}
+			kept := 0
+			seen := make(map[string]struct{}, len(result))
+			for _, model := range result {
+				if model.EntryID == "" {
+					t.Fatalf("model %q alias %q entry_id empty, want assigned", model.ID, model.Alias)
+				}
+				if _, duplicate := seen[model.EntryID]; duplicate {
+					t.Fatalf("duplicate entry_id %q in %#v", model.EntryID, result)
+				}
+				seen[model.EntryID] = struct{}{}
+				if model.EntryID != "e000000000001" {
+					continue
+				}
+				kept++
+				if model.Weight == nil || *model.Weight != 3 || model.Priority == nil || *model.Priority != 2 {
+					t.Fatalf("preserved entry %#v, want weight 3 priority 2", model)
+				}
+			}
+			if kept != 1 {
+				t.Fatalf("rows reusing the saved entry_id = %d, want 1", kept)
+			}
+		})
 	}
 }
 
@@ -333,6 +448,11 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
 		}
 		want.Items[index].EntryID = item.EntryID
+		// price_id 必须随响应返回，前端据此深链到价格编辑器。
+		if item.PriceID == nil || *item.PriceID == 0 {
+			t.Fatalf("item %d price_id = %v, want the reconciled price row id", index, item.PriceID)
+		}
+		want.Items[index].PriceID = item.PriceID
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("models response = %#v, want %#v", got, want)
