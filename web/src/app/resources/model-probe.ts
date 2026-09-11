@@ -119,13 +119,11 @@ export function projectModelProbeResponse(value: unknown): ModelProbeResultDto[]
 export async function runModelProbe(
   client: ApiClient,
   targets: readonly ModelProbeTargetDto[],
-  signal?: AbortSignal,
 ): Promise<ModelProbeResultDto[]> {
   return projectModelProbeResponse(
     await client.request('/api/model-probe', {
       method: 'POST',
       json: { targets },
-      signal,
     }),
   )
 }

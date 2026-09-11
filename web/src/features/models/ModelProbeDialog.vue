@@ -131,7 +131,15 @@ function groupLabel(result: ModelProbeResultDto): string {
               :success-label="t('common.copied')"
               :failure-label="t('common.copyFailed')"
             />
-            <template v-else>{{ t('monitor.modelProbe.notExecuted') }}</template>
+            <AppButton
+              v-if="detail.log_id"
+              variant="link"
+              size="inline"
+              @click="emit('view-log', detail.log_id)"
+            >
+              {{ t('monitor.modelProbe.viewLog') }}
+            </AppButton>
+            <template v-if="!detail.log_id">{{ t('monitor.modelProbe.notExecuted') }}</template>
           </dd>
           <dt>{{ t('monitor.modelProbe.fields.testedAt') }}</dt>
           <dd>{{ formatLocalInstant(detail.tested_at_ms, locale) }}</dd>
