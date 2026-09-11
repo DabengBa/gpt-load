@@ -81,6 +81,7 @@ const groupModelItemFields = [
   'priority',
   'circuit_breaker',
   'pricing_status',
+  'price_id',
 ] as const
 const groupCollectionFields = ['observed_at_ms', 'summary', 'items', 'pagination'] as const
 const groupCollectionSummaryFields = ['total', 'available', 'unavailable', 'disabled'] as const
@@ -481,6 +482,9 @@ function projectGroupModelItem(value: unknown): GroupModelItemDto {
   }
   if (Object.prototype.hasOwnProperty.call(record, 'circuit_breaker')) {
     result.circuit_breaker = projectGroupModelCircuitBreaker(record.circuit_breaker)
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'price_id')) {
+    result.price_id = projectSafeInteger(record.price_id, { minimum: 1 })
   }
   return result
 }
