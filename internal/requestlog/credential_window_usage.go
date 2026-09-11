@@ -81,7 +81,11 @@ func (service *Service) queryCredentialRequestLogUsage(
 	input CredentialWindowUsageQuery,
 ) (CredentialWindowUsage, error) {
 	var row credentialRequestLogUsageRow
-	query := db.Model(&models.RequestLog{}).
+	// The whole-hour segments read usage_stats, which never receives probe rows;
+	// the residual boundary segments fall back to request_logs and therefore need
+	// the control-plane exclusion themselves (request count and last-used are
+	// otherwise moved by a probe of that credential).
+	query := withoutControlPlaneObservations(db.Model(&models.RequestLog{})).
 		Where("credential_id = ?", input.CredentialID).
 		Where("completed_at_ms >= ? AND completed_at_ms < ?", input.FromMS, input.ToMS)
 	if err := query.Select(credentialRequestLogUsageSelect).Find(&row).Error; err != nil {

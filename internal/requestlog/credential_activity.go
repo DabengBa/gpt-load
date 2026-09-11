@@ -204,7 +204,10 @@ func queryCredentialBoundaryActivity(
 	result map[uint]CredentialActivity,
 ) error {
 	var rows []credentialActivityCountRow
-	if err := db.Model(&models.RequestLogAttempt{}).
+	// The whole-hour segments read CredentialAttemptStat, which never receives
+	// probe rows; this residual sub-hour segment reads request_log_attempts
+	// directly and therefore needs the control-plane exclusion itself.
+	if err := withoutControlPlaneObservations(db.Model(&models.RequestLogAttempt{})).
 		Select("credential_id, "+
 			"COALESCE(SUM(CASE WHEN failure_category = ? THEN 1 ELSE 0 END), 0) AS success_count, "+
 			"COALESCE(SUM(CASE WHEN failure_category <> ? AND failure_category <> ? THEN 1 ELSE 0 END), 0) AS failure_count",

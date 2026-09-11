@@ -303,6 +303,16 @@ func decodeAttemptPricingReceipt(row models.RequestLogAttempt) (*pricing.Receipt
 	return &decoded, nil
 }
 
+func decodeAccessKeyRef(accessKeyID uint) AccessKeyRef {
+	// access_key_id = 0 是控制面观察（模型测活、凭据测活）：这一行不属于任何访问密钥。
+	// 不能沿用“先标记已删除、批量补名时再降级”的默认值，否则这类行会被渲染成
+	// “已删除 · #0”，把“没有访问密钥”误报成“引用的密钥已消失”。
+	if accessKeyID == 0 {
+		return AccessKeyRef{}
+	}
+	return AccessKeyRef{ID: accessKeyID, Deleted: true}
+}
+
 func decodeRequestLogRows(rows []models.RequestLog) ([]Record, error) {
 	records := make([]Record, 0, len(rows))
 	for _, row := range rows {
@@ -315,7 +325,7 @@ func decodeRequestLogRows(rows []models.RequestLog) ([]Record, error) {
 		records = append(records, Record{
 			RequestID:             row.ID,
 			CompletedAtMS:         row.CompletedAtMS,
-			AccessKey:             AccessKeyRef{ID: row.AccessKeyID, Deleted: true},
+			AccessKey:             decodeAccessKeyRef(row.AccessKeyID),
 			Protocol:              protocol.Protocol(row.Protocol),
 			Operation:             execution.Operation(row.Operation),
 			ClientModel:           row.ClientModel,
@@ -548,11 +558,17 @@ func loadAccessKeyRefs(ctx context.Context, db *gorm.DB, records []Record) error
 	ids := make([]uint, 0, len(records))
 	seen := make(map[uint]struct{}, len(records))
 	for _, record := range records {
+		if record.AccessKey.ID == 0 {
+			continue
+		}
 		if _, ok := seen[record.AccessKey.ID]; ok {
 			continue
 		}
 		seen[record.AccessKey.ID] = struct{}{}
 		ids = append(ids, record.AccessKey.ID)
+	}
+	if len(ids) == 0 {
+		return nil
 	}
 
 	var accessKeys []struct {

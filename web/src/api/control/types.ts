@@ -346,6 +346,7 @@ export interface CredentialTestResultDto {
   reason: CredentialTestReason | null
   can_restore: boolean
   restore_proof: string | null
+  log_id: string | null
   tested_at_ms: number
 }
 

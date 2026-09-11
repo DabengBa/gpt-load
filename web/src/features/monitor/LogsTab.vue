@@ -366,6 +366,7 @@ async function filterByCredential(credentialID: number): Promise<void> {
 }
 
 async function filterByAccessKey(accessKeyID: number): Promise<void> {
+  if (accessKeyID === 0) return
   await commitFilters({ ...appliedFilters.value, access_key_id: accessKeyID })
 }
 
@@ -478,6 +479,11 @@ function accessKeyLabel(log: RequestLogItemDto): string {
     prefix: '#',
     deletedText: (id) => t('monitor.logs.deletedRef', { id }),
   })
+}
+
+// 控制面观察（access_key_id = 0）不属于任何访问密钥，没有可筛选的目标。
+function accessKeyFilterable(log: RequestLogItemDto): boolean {
+  return log.access_key.id !== 0
 }
 
 // 分组名靠 options 反查：查询就绪后仍找不到，才能断定分组已被删除。
@@ -712,11 +718,15 @@ function costLabel(log: RequestLogItemDto): string {
             :data-label="t('monitor.logs.columns.accessKey')"
           >
             <OverflowTooltip
-              as="button"
-              type="button"
-              class="filterable-value"
+              :as="accessKeyFilterable(log) ? 'button' : 'span'"
+              :type="accessKeyFilterable(log) ? 'button' : undefined"
+              :class="{ 'filterable-value': accessKeyFilterable(log) }"
               :content="accessKeyLabel(log)"
-              :aria-label="t('monitor.logs.filterAccessKey', { name: accessKeyLabel(log) })"
+              :aria-label="
+                accessKeyFilterable(log)
+                  ? t('monitor.logs.filterAccessKey', { name: accessKeyLabel(log) })
+                  : undefined
+              "
               @click="filterByAccessKey(log.access_key.id)"
             >
               {{ accessKeyLabel(log) }}

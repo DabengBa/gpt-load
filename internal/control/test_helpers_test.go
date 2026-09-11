@@ -31,6 +31,7 @@ import (
 	"gpt-load/internal/subscription"
 	subscriptionproviders "gpt-load/internal/subscription/providers"
 	subscriptionruntime "gpt-load/internal/subscription/runtime"
+	"gpt-load/internal/telemetry"
 	"gpt-load/internal/testutil/encryptiontest"
 	"gpt-load/internal/testutil/sqlitetest"
 )
@@ -126,7 +127,27 @@ type serviceFixture struct {
 	mutations       *health.MutationCoordinator
 	requestLogStats *staticRequestLogStatsReader
 	accessQuota     *accessquota.Runtime
+	probeSink       *recordingRequestLogSink
 	service         *Service
+}
+
+// recordingRequestLogSink captures probe log events so control-plane tests can
+// assert the durable row contract without a running request-log worker.
+type recordingRequestLogSink struct {
+	mu     sync.Mutex
+	events []telemetry.RequestEvent
+}
+
+func (sink *recordingRequestLogSink) Emit(event telemetry.RequestEvent) {
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	sink.events = append(sink.events, event)
+}
+
+func (sink *recordingRequestLogSink) Events() []telemetry.RequestEvent {
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	return append([]telemetry.RequestEvent(nil), sink.events...)
 }
 
 type staticRequestLogStatsReader struct {
@@ -208,6 +229,7 @@ func newServiceFixtureWithDatabase(t *testing.T, db *gorm.DB) serviceFixture {
 	requestLogStats := &staticRequestLogStatsReader{}
 	priceRuntime := NewPriceRuntime()
 	catalogRuntime := &catalog.Runtime{}
+	probeSink := &recordingRequestLogSink{}
 	service := NewService(
 		db,
 		manager,
@@ -225,6 +247,7 @@ func newServiceFixtureWithDatabase(t *testing.T, db *gorm.DB) serviceFixture {
 		mutations,
 		requestLogStats,
 		accessQuota,
+		probeSink,
 		channelRegistry,
 	)
 	installCodexControlTestHooks(service)
@@ -235,7 +258,8 @@ func newServiceFixtureWithDatabase(t *testing.T, db *gorm.DB) serviceFixture {
 		db: db, manager: manager, registry: registry, channelRegistry: channelRegistry, encryption: keyService,
 		priceRuntime: priceRuntime, catalogRuntime: catalogRuntime,
 		stats: stats, mutations: mutations, requestLogStats: requestLogStats, accessQuota: accessQuota,
-		service: service,
+		probeSink: probeSink,
+		service:   service,
 	}
 }
 

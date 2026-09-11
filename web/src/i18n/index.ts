@@ -70,12 +70,21 @@ function createI18nPlugin(
       Boolean(entry[1]),
     ),
   )
-  return createI18n({
+  const plugin = createI18n({
     legacy: false as const,
     locale: initialLocale,
     fallbackLocale: 'en-US',
     messages: loadedMessages,
   })
+  if (import.meta.env.DEV) {
+    // 缺 key 时 vue-i18n 会把 key 路径原样渲染到页面上（例如 monitor.modelProbe.title）。
+    // 这类漏配（最常见的是路由没把组件用到的命名空间写进 messageNamespaces）能通过
+    // type-check / lint / build，开发态因此直接把每个缺失的 key 报到 console。
+    plugin.global.setMissingHandler((locale, key) => {
+      console.error(`[i18n] missing message "${key}" for locale "${locale}"`)
+    })
+  }
+  return plugin
 }
 
 export interface AppI18n {

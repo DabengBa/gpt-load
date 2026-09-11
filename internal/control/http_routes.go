@@ -158,6 +158,7 @@ func (s *Server) HTTPModule() httproute.Module {
 			controlRoute("control.logs.get", http.MethodGet, "/logs/:request_id", s.handleGetRequestLog),
 			controlRoute("control.usage", http.MethodGet, "/usage", s.handleUsage),
 			controlRoute("control.route.inspect", http.MethodPost, "/route/inspect", s.handleRouteInspect),
+			controlRoute("control.model-probe.run", http.MethodPost, "/model-probe", s.handleModelProbe),
 			controlRoute(
 				"control.model-route-schedule.index",
 				http.MethodGet,

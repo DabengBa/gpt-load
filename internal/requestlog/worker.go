@@ -438,14 +438,20 @@ func usageStatUpsertClause() clause.OnConflict {
 	}
 }
 
+// usageAggregationExcluded reports whether a durable log row must stay out of
+// every usage statistic. Zero-attempt rows never reached an upstream; probe rows
+// are control-plane observations (execution.OperationProbe) that must not be
+// counted as traffic even though they do carry an attempt.
+func usageAggregationExcluded(row models.RequestLog) bool {
+	return row.AttemptCount == 0 || row.Operation == string(execution.OperationProbe)
+}
+
 func buildUsageAggregationJournals(
 	rows []models.RequestLog,
 ) ([]models.UsageAggregationJournal, error) {
 	journals := make([]models.UsageAggregationJournal, 0, len(rows))
 	for _, row := range rows {
-		// Zero-attempt requests are durable request-log observations only. They did
-		// not reach an upstream and must not contribute to any usage statistics.
-		if row.AttemptCount == 0 {
+		if usageAggregationExcluded(row) {
 			continue
 		}
 		deltas, err := buildUsageStatDeltas([]models.RequestLog{row})
@@ -546,7 +552,7 @@ func buildUsageJournalDeltas(
 func buildUsageStatDeltas(rows []models.RequestLog) (map[usageStatKey]usageStatDelta, error) {
 	deltas := make(map[usageStatKey]usageStatDelta)
 	for _, row := range rows {
-		if row.AttemptCount == 0 {
+		if usageAggregationExcluded(row) {
 			continue
 		}
 		bucketStartMS, err := epochms.AlignDown(

@@ -125,7 +125,7 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Code != 0 || envelope.Data.Outcome != CredentialProbeOutcomePassed ||
+	if envelope.Code != 0 || envelope.Data.Outcome != ProbeOutcomePassed ||
 		envelope.Data.Model != "gpt-4o" || envelope.Data.Protocol != protocol.OpenAICompletions ||
 		envelope.Data.Reason != nil || envelope.Data.CanRestore ||
 		envelope.Data.TestedAtMS != time.Date(2026, time.August, 29, 12, 30, 0, 0, time.UTC).UnixMilli() ||
@@ -173,7 +173,7 @@ func TestGroupCredentialProbeUsesExplicitValidationModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Model != "explicit-probe-model" || response.Outcome != CredentialProbeOutcomePassed {
+	if response.Model != "explicit-probe-model" || response.Outcome != ProbeOutcomePassed {
 		t.Fatalf("probe response = %#v", response)
 	}
 	calls := executor.recordedCalls()
@@ -208,7 +208,7 @@ func TestGroupCredentialProbeFallsBackToEmbeddingsAndReportsProtocol(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Outcome != CredentialProbeOutcomePassed ||
+	if response.Outcome != ProbeOutcomePassed ||
 		response.Protocol != protocol.OpenAIEmbeddings {
 		t.Fatalf("probe response = %#v", response)
 	}
@@ -318,7 +318,7 @@ func TestGroupCredentialProbeDoesNotMutateDisabledCooldownOrBlacklistedState(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			if response.Outcome != CredentialProbeOutcomePassed || response.CanRestore != test.wantCanRestore {
+			if response.Outcome != ProbeOutcomePassed || response.CanRestore != test.wantCanRestore {
 				t.Fatalf("probe response = %#v", response)
 			}
 			afterEntries, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
@@ -433,7 +433,7 @@ func TestGroupCredentialProbeRevokesRestoreEligibilityWhenTargetChangesDuringPro
 			if err != nil {
 				t.Fatal(err)
 			}
-			if response.Outcome != CredentialProbeOutcomePassed || response.CanRestore || response.RestoreProof != nil {
+			if response.Outcome != ProbeOutcomePassed || response.CanRestore || response.RestoreProof != nil {
 				t.Fatalf("probe response after target change = %#v", response)
 			}
 		})
@@ -642,19 +642,19 @@ func TestClassifyCredentialProbeResultUsesStableSafeOutcomes(t *testing.T) {
 	tests := []struct {
 		name        string
 		result      execution.AttemptResult
-		wantOutcome CredentialProbeOutcome
-		wantReason  *CredentialProbeReason
+		wantOutcome ProbeOutcome
+		wantReason  *ProbeReason
 	}{
-		{name: "passed", result: successfulCredentialProbeResult(), wantOutcome: CredentialProbeOutcomePassed},
+		{name: "passed", result: successfulCredentialProbeResult(), wantOutcome: ProbeOutcomePassed},
 		{
 			name:        "invalid credential hint",
 			result:      failedCredentialProbeResult(http.StatusForbidden, execution.ErrorKindHTTP, execution.FailureHintInvalidCredential),
-			wantOutcome: CredentialProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(CredentialProbeReasonInvalidCredential),
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInvalidCredential),
 		},
 		{
 			name:        "unauthorized",
 			result:      failedCredentialProbeResult(http.StatusUnauthorized, execution.ErrorKindHTTP, ""),
-			wantOutcome: CredentialProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(CredentialProbeReasonInvalidCredential),
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInvalidCredential),
 		},
 		{
 			name: "unauthorized without required error evidence is unknown",
@@ -663,42 +663,42 @@ func TestClassifyCredentialProbeResultUsesStableSafeOutcomes(t *testing.T) {
 				ResponseStarted: true,
 				StatusCode:      http.StatusUnauthorized,
 			},
-			wantOutcome: CredentialProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(CredentialProbeReasonUnknown),
+			wantOutcome: ProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(ProbeReasonUnknown),
 		},
 		{
 			name:        "model unavailable",
 			result:      failedCredentialProbeResult(http.StatusNotFound, execution.ErrorKindHTTP, execution.FailureHintModelUnavailable),
-			wantOutcome: CredentialProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(CredentialProbeReasonModelUnavailable),
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonModelUnavailable),
 		},
 		{
 			name:        "model hint wins over local request kind",
 			result:      failedCredentialProbeResult(0, execution.ErrorKindInvalidRequest, execution.FailureHintModelUnavailable),
-			wantOutcome: CredentialProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(CredentialProbeReasonModelUnavailable),
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonModelUnavailable),
 		},
 		{
 			name:        "rate limited",
 			result:      failedCredentialProbeResult(http.StatusTooManyRequests, execution.ErrorKindHTTP, ""),
-			wantOutcome: CredentialProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(CredentialProbeReasonRateLimited),
+			wantOutcome: ProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(ProbeReasonRateLimited),
 		},
 		{
 			name:        "timeout",
 			result:      failedCredentialProbeResult(0, execution.ErrorKindTimeout, ""),
-			wantOutcome: CredentialProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(CredentialProbeReasonTimeout),
+			wantOutcome: ProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(ProbeReasonTimeout),
 		},
 		{
 			name:        "incompatible",
 			result:      failedCredentialProbeResult(0, execution.ErrorKindConversionUnsupported, ""),
-			wantOutcome: CredentialProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(CredentialProbeReasonIncompatible),
+			wantOutcome: ProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(ProbeReasonIncompatible),
 		},
 		{
 			name:        "upstream error",
 			result:      failedCredentialProbeResult(http.StatusServiceUnavailable, execution.ErrorKindHTTP, ""),
-			wantOutcome: CredentialProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(CredentialProbeReasonUpstreamError),
+			wantOutcome: ProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(ProbeReasonUpstreamError),
 		},
 		{
 			name:        "unknown",
 			result:      execution.AttemptResult{},
-			wantOutcome: CredentialProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(CredentialProbeReasonUnknown),
+			wantOutcome: ProbeOutcomeInconclusive, wantReason: credentialProbeReasonPointer(ProbeReasonUnknown),
 		},
 	}
 
@@ -743,7 +743,7 @@ func failedCredentialProbeResult(
 	}
 }
 
-func credentialProbeReasonPointer(reason CredentialProbeReason) *CredentialProbeReason {
+func credentialProbeReasonPointer(reason ProbeReason) *ProbeReason {
 	return &reason
 }
 

@@ -18,6 +18,7 @@ import {
   type GroupModelsDto,
 } from '@/app/resources/groups'
 import type { ModelCandidate } from '@/app/resources/providers'
+import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import { useUnsavedChanges } from '@/app/unsaved-changes'
 import { useTransientFlag } from '@/app/use-transient-flag'
 import { constrainCollectionSearch } from '@/app/route-query'
@@ -42,6 +43,8 @@ import {
   type ModelDiscoveryDrawerLabels,
 } from '@/features/models/model-draft'
 import ModelPricingStatus from '@/features/models/ModelPricingStatus.vue'
+import ModelProbeDialog from '@/features/models/ModelProbeDialog.vue'
+import { useModelProbe } from '@/features/models/use-model-probe'
 
 import GroupModelSyncDialog from './GroupModelSyncDialog.vue'
 import {
@@ -108,6 +111,45 @@ const discoveryReady = ref(false)
 const saveError = ref('')
 const serverConflicts = ref<ModelNameConflict[]>([])
 const drawerOpen = computed(() => routeState.value.discoveryOpen)
+const savedModelIDByKey = computed(() => {
+  const ids = new Map<number, string>()
+  for (const item of saved.value) ids.set(item.key, item.id.trim())
+  return ids
+})
+const {
+  open: probeOpen,
+  pending: probePending,
+  failed: probeFailed,
+  stopped: probeStopped,
+  results: probeResults,
+  total: probeTotal,
+  completed: probeCompleted,
+  start: startProbe,
+  stop: stopProbe,
+  close: closeProbe,
+} = useModelProbe()
+
+// Only a saved, unrenamed row identifies a model that is compiled into the route
+// targets; probing a draft would return a meaningless target_unavailable.
+function probeRowTarget(item: ModelDraftItem): ModelProbeTargetDto | null {
+  const id = item.id.trim()
+  if (id === '' || savedModelIDByKey.value.get(item.key) !== id) return null
+  return { group_id: props.groupId, model: id }
+}
+
+function probeRow(item: ModelDraftItem): void {
+  const target = probeRowTarget(item)
+  if (target === null) return
+  void startProbe([target])
+}
+
+function handleProbeOpen(value: boolean): void {
+  if (!value) closeProbe()
+}
+
+function viewProbeLog(logId: string): void {
+  void router.push(monitorLocation({ tab: 'logs', selected_request_id: logId }))
+}
 const modelEditor = ref<{
   addManual: () => Promise<void>
   focusFirstInvalid: () => Promise<void>
@@ -670,9 +712,30 @@ onBeforeUnmount(() => {
             >
               {{ t('group.modelEditor.schedule') }}
             </RouterLink>
+            <AppButton
+              variant="link"
+              size="inline"
+              :disabled="probeRowTarget(item) === null || probePending"
+              :title="probeRowTarget(item) === null ? t('monitor.modelProbe.draftHint') : undefined"
+              @click="probeRow(item)"
+            >
+              {{ t('monitor.modelProbe.button') }}
+            </AppButton>
           </div>
         </template>
       </ModelAliasEditor>
+      <ModelProbeDialog
+        :open="probeOpen"
+        :pending="probePending"
+        :failed="probeFailed"
+        :stopped="probeStopped"
+        :results="probeResults"
+        :total="probeTotal"
+        :completed="probeCompleted"
+        @update:open="handleProbeOpen"
+        @stop="stopProbe"
+        @view-log="viewProbeLog"
+      />
       <ModelDiscoveryDrawer
         v-if="supportsModelDiscovery"
         :open="drawerOpen"
