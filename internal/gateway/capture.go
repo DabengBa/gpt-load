@@ -16,7 +16,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 )
 
@@ -75,6 +74,10 @@ type captureResponseEvents interface {
 	RecordResponseFlush() error
 	RecordResponseShortWrite(int, int) error
 	RecordResponseError(error) error
+}
+
+type captureResponseTerminationEvents interface {
+	RecordResponseTermination(string, string) error
 }
 
 type captureResponseHijackEvents interface {
@@ -540,6 +543,15 @@ func (attempt *deferredCaptureAttempt) RecordResponseError(err error) error {
 		return events.RecordResponseError(err)
 	})
 }
+func (attempt *deferredCaptureAttempt) RecordResponseTermination(termination, detail string) error {
+	return attempt.enqueue(func(target CaptureAttempt) error {
+		events, ok := target.(captureResponseTerminationEvents)
+		if !ok {
+			return nil
+		}
+		return events.RecordResponseTermination(termination, detail)
+	})
+}
 func (attempt *deferredCaptureAttempt) RecordResponseHijack(err error) error {
 	return attempt.enqueue(func(target CaptureAttempt) error {
 		events, ok := target.(captureResponseHijackEvents)
@@ -949,13 +961,9 @@ func (capture *dataPlaneCapture) beginForward(ctx context.Context, input Forward
 }
 
 func captureObserverSourceAvailable(input ForwardInput) bool {
-	switch input.ChannelID {
-	case string(channel.ProviderCodex), string(channel.ProviderClaude),
-		string(channel.ProviderAntigravity), string(channel.ProviderGrok):
-		return true
-	default:
-		return false
-	}
+	// Every registered channel that reaches beginForward uses an HTTP provider
+	// adapter. WebSocket attempts use a separate path and never reach here.
+	return input.ChannelID != ""
 }
 func (capture *dataPlaneCapture) normalizeAndFinishForward(
 	attempt CaptureAttempt,
@@ -1082,16 +1090,18 @@ func (body *captureRequestBody) recordCancellation() {
 // appends. The provider transport owns callback scheduling; Wait is the
 // barrier before the attempt is terminally marked.
 type captureHTTPObserver struct {
-	attempt     CaptureAttempt
-	expected    string
-	mu          sync.Mutex
-	cond        *sync.Cond
-	failure     error
-	failureSink func(error)
-	active      int
-	complete    bool
-	await       bool
-	stopped     bool
+	attempt             CaptureAttempt
+	expected            string
+	mu                  sync.Mutex
+	cond                *sync.Cond
+	failure             error
+	failureSink         func(error)
+	active              int
+	complete            bool
+	await               bool
+	stopped             bool
+	responseObserved    bool
+	terminationObserved bool
 }
 
 func newCaptureHTTPObserver(attempt CaptureAttempt, expected ...string) *captureHTTPObserver {
@@ -1172,6 +1182,64 @@ func (observer *captureHTTPObserver) enter(id string) bool {
 	observer.active++
 	observer.mu.Unlock()
 	return true
+}
+
+func (observer *captureHTTPObserver) enterResponse(id string) bool {
+	if observer == nil || observer.attempt == nil {
+		return false
+	}
+	observer.mu.Lock()
+	if observer.expected != "" && id != observer.expected {
+		observer.failLocked(fmt.Errorf("capture observer attempt mismatch: got %q want %q", id, observer.expected))
+		observer.mu.Unlock()
+		return false
+	}
+	if observer.stopped || observer.complete {
+		observer.failLocked(errors.New("capture observer callback arrived after completion"))
+		observer.mu.Unlock()
+		return false
+	}
+	observer.active++
+	observer.responseObserved = true
+	observer.mu.Unlock()
+	return true
+}
+
+func (observer *captureHTTPObserver) enterTermination(id string) bool {
+	if observer == nil || observer.attempt == nil {
+		return false
+	}
+	observer.mu.Lock()
+	if observer.expected != "" && id != observer.expected {
+		observer.failLocked(fmt.Errorf("capture observer attempt mismatch: got %q want %q", id, observer.expected))
+		observer.mu.Unlock()
+		return false
+	}
+	if observer.stopped || observer.complete {
+		observer.failLocked(errors.New("capture observer callback arrived after completion"))
+		observer.mu.Unlock()
+		return false
+	}
+	observer.active++
+	observer.terminationObserved = true
+	observer.mu.Unlock()
+	return true
+}
+
+func (observer *captureHTTPObserver) inferredTermination(err error) (string, string, bool) {
+	observer.mu.Lock()
+	defer observer.mu.Unlock()
+	if observer.terminationObserved {
+		return "", "", false
+	}
+	observer.terminationObserved = true
+	if err == nil {
+		return "eof", "", true
+	}
+	if !observer.responseObserved {
+		return "no_response", err.Error(), true
+	}
+	return "read_error", err.Error(), true
 }
 
 func (observer *captureHTTPObserver) enterCompletion(id string) bool {
@@ -1262,7 +1330,7 @@ func (observer *captureHTTPObserver) ObserveRequestBody(id string, data []byte) 
 	}
 }
 func (observer *captureHTTPObserver) ObserveResponse(id string, status int, headers http.Header) {
-	if !observer.checkAttempt(id) {
+	if !observer.enterResponse(id) {
 		return
 	}
 	defer observer.leave()
@@ -1290,6 +1358,13 @@ func (observer *captureHTTPObserver) ObserveResponseComplete(id string, headers 
 	}
 	defer observer.leave()
 	defer observer.recoverCallback()
+	if termination, detail, inferred := observer.inferredTermination(err); inferred {
+		if events, ok := observer.attempt.(captureResponseTerminationEvents); ok {
+			if eventErr := events.RecordResponseTermination(termination, detail); eventErr != nil {
+				observer.recordFailure(eventErr)
+			}
+		}
+	}
 	if len(headers) > 0 {
 		if appendErr := observer.attempt.AppendResponseHeaders(serializeHeaders(headers)); appendErr != nil {
 			observer.recordFailure(appendErr)
@@ -1302,6 +1377,21 @@ func (observer *captureHTTPObserver) ObserveResponseComplete(id string, headers 
 				observer.recordFailure(eventErr)
 			}
 		}
+	}
+}
+
+func (observer *captureHTTPObserver) ObserveResponseTermination(id, termination, detail string) {
+	if !observer.enterTermination(id) {
+		return
+	}
+	defer observer.leave()
+	defer observer.recoverCallback()
+	events, ok := observer.attempt.(captureResponseTerminationEvents)
+	if !ok {
+		return
+	}
+	if err := events.RecordResponseTermination(termination, detail); err != nil {
+		observer.recordFailure(err)
 	}
 }
 

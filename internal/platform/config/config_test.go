@@ -49,9 +49,6 @@ func TestLoadUsesDefaultConfiguration(t *testing.T) {
 	if cfg.Log.Level != "info" || cfg.Log.Format != "text" {
 		t.Fatalf("Log = %#v, want info/text", cfg.Log)
 	}
-	if cfg.DebugCaptureEnabled {
-		t.Fatal("DebugCaptureEnabled = true, want disabled by default")
-	}
 }
 
 func TestLoadPreservesExplicitAllInterfacesHost(t *testing.T) {
@@ -113,35 +110,17 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 }
 
-func TestLoadDebugCaptureEnabledIsStrictBoolean(t *testing.T) {
-	for _, test := range []struct {
-		name    string
-		value   string
-		want    bool
-		wantErr bool
-	}{
-		{name: "true", value: "true", want: true},
-		{name: "false", value: "false", want: false},
-		{name: "strconv true syntax", value: "1", want: true},
-		{name: "invalid", value: "on", wantErr: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+func TestLoadIgnoresRemovedDebugCaptureSwitch(t *testing.T) {
+	// The debug capture switch was removed: Unix always enables capture, so
+	// DEBUG_CAPTURE_ENABLED must no longer be parsed or rejected.
+	for _, value := range []string{"true", "false", "1", "on", "not-a-bool"} {
+		t.Run(value, func(t *testing.T) {
 			clearEnvironment(t)
 			t.Setenv("AUTH_KEY", "test-auth-key")
-			t.Setenv("DEBUG_CAPTURE_ENABLED", test.value)
+			t.Setenv("DEBUG_CAPTURE_ENABLED", value)
 
-			cfg, err := Load()
-			if test.wantErr {
-				if err == nil {
-					t.Fatal("Load() error = nil, want strict boolean error")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Load() error = %v", err)
-			}
-			if cfg.DebugCaptureEnabled != test.want {
-				t.Fatalf("DebugCaptureEnabled = %t, want %t", cfg.DebugCaptureEnabled, test.want)
+			if _, err := Load(); err != nil {
+				t.Fatalf("Load() error = %v, want removed capture switch to be ignored", err)
 			}
 		})
 	}

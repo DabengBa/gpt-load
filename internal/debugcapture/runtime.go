@@ -12,12 +12,12 @@ import (
 
 const defaultCleanupInterval = time.Hour
 
-// Runtime owns cleanup and shutdown admission for the optional capture store.
-// Capture requests remain independent of the cleanup worker: sweep failures are
-// recorded for health reporting and never returned to the data plane.
+// Runtime owns cleanup and shutdown admission for the capture store. Capture
+// requests remain independent of the cleanup worker: sweep failures are
+// recorded for health reporting and never returned to the data plane. Capture
+// is always enabled; there is no configuration switch to disable it.
 type Runtime struct {
 	store    *Store
-	enabled  bool
 	interval time.Duration
 	now      func() time.Time
 
@@ -39,17 +39,16 @@ type Runtime struct {
 	lastSweepFailure  time.Time
 }
 
-func NewRuntime(enabled bool, store *Store) *Runtime {
-	return NewRuntimeWithInterval(enabled, store, defaultCleanupInterval)
+func NewRuntime(store *Store) *Runtime {
+	return NewRuntimeWithInterval(store, defaultCleanupInterval)
 }
 
-func NewRuntimeWithInterval(enabled bool, store *Store, interval time.Duration) *Runtime {
+func NewRuntimeWithInterval(store *Store, interval time.Duration) *Runtime {
 	if interval <= 0 {
 		interval = defaultCleanupInterval
 	}
 	return &Runtime{
 		store:    store,
-		enabled:  enabled,
 		interval: interval,
 		now:      time.Now,
 	}
@@ -74,17 +73,12 @@ func (r *Runtime) Start() error {
 		r.mu.Unlock()
 		return errors.New("debug capture runtime failed to start")
 	}
-	if r.enabled && r.store == nil {
+	if r.store == nil {
 		r.startFailed = true
 		r.mu.Unlock()
 		return errors.New("debug capture runtime store is required")
 	}
 	r.started = true
-	if !r.enabled {
-		r.mu.Unlock()
-		r.sweep()
-		return nil
-	}
 	r.stop = make(chan struct{})
 	r.workerDone = make(chan struct{})
 	r.startupDone = make(chan struct{})
@@ -136,7 +130,7 @@ func (r *Runtime) sweep() {
 // AcquireSession prevents shutdown from closing the database while a capture
 // session is still being finalized. The returned release function is idempotent.
 func (r *Runtime) AcquireSession() (func(), bool) {
-	if r == nil || !r.enabled {
+	if r == nil {
 		return nil, false
 	}
 	r.mu.Lock()
@@ -172,7 +166,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	r.mu.Lock()
-	if !r.enabled || !r.started {
+	if !r.started {
 		r.mu.Unlock()
 		return nil
 	}
@@ -207,14 +201,14 @@ func (r *Runtime) Health() (Health, error) {
 		return Health{}, nil
 	}
 	r.mu.Lock()
-	running := r.enabled && r.started && !r.stopping && !r.startFailed
+	running := r.started && !r.stopping && !r.startFailed
 	r.mu.Unlock()
 	r.statsMu.RLock()
 	lastSweepAt := r.lastSweepAt
 	lastFailureAt := r.lastSweepFailure
 	r.statsMu.RUnlock()
 	result := Health{
-		Enabled:           r.enabled,
+		Enabled:           true,
 		Running:           running,
 		RetentionSeconds:  int64(retention / time.Second),
 		SweepTotal:        r.sweepTotal.Load(),
@@ -227,7 +221,7 @@ func (r *Runtime) Health() (Health, error) {
 	if !lastFailureAt.IsZero() {
 		result.LastFailureAt = &lastFailureAt
 	}
-	if !r.enabled || r.store == nil {
+	if r.store == nil {
 		return result, nil
 	}
 	counts, err := r.store.Counts()

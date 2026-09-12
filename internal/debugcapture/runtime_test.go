@@ -19,7 +19,7 @@ func TestRuntimeSweepsOnStartupAndDrainsRegisteredSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(retention)
-	runtime := NewRuntimeWithInterval(true, store, time.Millisecond)
+	runtime := NewRuntimeWithInterval(store, time.Millisecond)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -51,23 +51,33 @@ func TestRuntimeSweepsOnStartupAndDrainsRegisteredSessions(t *testing.T) {
 	}
 }
 
-func TestRuntimeDisabledStillCleansExpiredSessions(t *testing.T) {
+func TestRuntimeAlwaysEnabledCleansExpiredSessionsAndAdmits(t *testing.T) {
 	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
 	store := newTestStore(t, &now)
-	expired, err := store.StartSession(SessionMetadata{RequestID: "expired-disabled"})
+	expired, err := store.StartSession(SessionMetadata{RequestID: "expired-always-enabled"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(retention)
-	runtime := NewRuntimeWithInterval(false, store, time.Hour)
+	runtime := NewRuntime(store)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.Stop(context.Background()); err != nil {
+	defer func() { _ = runtime.Stop(context.Background()) }()
+	if _, err := store.ReadSession(expired.ID()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("startup sweep ReadSession() = %v, want ErrNotFound", err)
+	}
+	release, ok := runtime.AcquireSession()
+	if !ok {
+		t.Fatal("AcquireSession() = false, want always-enabled admission")
+	}
+	release()
+	health, err := runtime.Health()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReadSession(expired.ID()); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("disabled runtime ReadSession() = %v, want ErrNotFound", err)
+	if !health.Enabled || !health.Running {
+		t.Fatalf("health = %#v, want always-enabled running runtime", health)
 	}
 }
 
@@ -78,7 +88,7 @@ func TestRuntimePeriodicallyCleansExpiredSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := NewRuntimeWithInterval(true, store, time.Millisecond)
+	runtime := NewRuntimeWithInterval(store, time.Millisecond)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +122,7 @@ func TestRuntimeHealthReportsCountsUnavailableWithoutFailing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := NewRuntimeWithInterval(true, store, time.Hour)
+	runtime := NewRuntimeWithInterval(store, time.Hour)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +138,7 @@ func TestRuntimeHealthReportsCountsUnavailableWithoutFailing(t *testing.T) {
 }
 
 func TestRuntimeStartFailureRejectsSessionAdmission(t *testing.T) {
-	runtime := NewRuntimeWithInterval(true, nil, time.Hour)
+	runtime := NewRuntimeWithInterval(nil, time.Hour)
 	if err := runtime.Start(); err == nil {
 		t.Fatal("Start() error = nil, want missing-store error")
 	}

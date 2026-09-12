@@ -1,14 +1,12 @@
 # Debug Communication Capture
 
-Debug communication capture is an opt-in operational tool for investigating gateway and provider integration behavior. It is disabled by default.
+Debug communication capture is an always-on operational tool for investigating gateway and provider integration behavior. On Unix runtimes capture is enabled unconditionally; there is no configuration switch to turn it off.
 
-## Enablement and retention
+## Retention
 
-Set `DEBUG_CAPTURE_ENABLED=true` before starting GPT-Load. The setting is process configuration and takes effect after restart. The capture store uses the existing configured database and remains separate from `request_logs`.
+The capture store uses the existing configured database and remains separate from `request_logs`. Captures are retained for a fixed 12-hour expiry, then startup and periodic cleanup remove expired rows and chunks automatically.
 
-When capture is disabled, no new sessions are admitted; existing unexpired captures remain available to management administrators until their fixed expiry. Startup cleanup still removes expired rows and chunks even when the feature is disabled, and enabled deployments also run periodic cleanup.
-
-The capture can contain complete observed sensitive values, including `Authorization`, `Cookie`, API keys, request bodies, response bodies, and provider credentials passed through the supported observation boundary. Protect `AUTH_KEY`, the database, database backups, and exported archives. Do not enable this feature on an untrusted or shared deployment unless that exposure is intentional.
+The capture can contain complete observed sensitive values, including `Authorization`, `Cookie`, API keys, request bodies, response bodies, and provider credentials passed through the supported observation boundary. Protect `AUTH_KEY`, the database, database backups, and exported archives. Because capture cannot be disabled, run GPT-Load only in deployments where this plaintext exposure is acceptable.
 
 ## Administrator API
 
@@ -24,14 +22,14 @@ The detail response contains session metadata, lifecycle state, errors, and orde
 
 The `/api/health` response includes `debug_capture` with enabled/running state, fixed retention seconds, active/completed/failed counts, sweep counters, and timestamps. If the optional store cannot provide counts, the component reports `error: "counts_unavailable"` while the broader health response remains available.
 
-Feature-specific capture storage and adapters are Unix-only. Windows retains the public application types and no-op container assembly so the unrelated Windows binary continues to compile; enabling capture on Windows does not install a capture store or Gateway factory.
+Feature-specific capture storage and adapters are Unix-only. Windows retains the public application types and no-op container assembly so the unrelated Windows binary continues to compile; Windows does not install a capture store or Gateway factory and does not provide raw capture.
 
 ## Capture boundary
 
 A session starts at the Gateway data-plane boundary for `/v1` and `/v1beta` namespaces, before authentication and early route termination. It records the client request that is actually observed, final client response writes, material write/read/close/flush/hijack outcomes, logical retries and refresh attempts, and preparation failures.
 
-CPA integrations for Codex, Claude, Antigravity, and Grok pass a real per-request observer through the supported execution context. Their observed upstream request and response headers, bodies, trailers, EOF, close, and callback errors are recorded in the corresponding logical attempt.
+CPA integrations for Codex, Claude, Antigravity, and Grok, plus the Bifrost-backed HTTP provider adapters, pass a real per-request observer through the supported execution context. Their observed upstream request and response headers, bodies, termination events, and callback errors are recorded in the corresponding logical attempt.
 
-The feature records only data that the Gateway or a supported CPA observer actually observes. It does not claim to capture Bifrost's underlying HTTP transport, TLS or socket wire bytes, data never read or written, or bytes lost before observation because of cancellation, timeout, process failure, or connection close.
+The feature records only data that the Gateway or a supported CPA/Bifrost HTTP observer actually observes. It does not claim to capture TLS or socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed before cancellation, timeout, process failure, or connection close.
 
 Capture persistence is isolated from the data plane. Storage, queue, callback, or cleanup failures do not change the response returned to the client. The affected capture is instead failed or left explicitly incomplete, and the runtime health section reports cleanup state and active/completed/failed counts where available.

@@ -11,7 +11,6 @@ import (
 	"gpt-load/internal/control"
 	"gpt-load/internal/debugcapture"
 	"gpt-load/internal/gateway"
-	"gpt-load/internal/platform/config"
 )
 
 func provideDebugCapture(container *dig.Container) error {
@@ -19,8 +18,8 @@ func provideDebugCapture(container *dig.Container) error {
 		func(db *gorm.DB) (*debugcapture.Store, error) {
 			return debugcapture.New(db)
 		},
-		func(cfg *config.Config, store *debugcapture.Store) *debugcapture.Runtime {
-			return debugcapture.NewRuntime(cfg.DebugCaptureEnabled, store)
+		func(store *debugcapture.Store) *debugcapture.Runtime {
+			return debugcapture.NewRuntime(store)
 		},
 		func(runtime *debugcapture.Runtime) app.DebugCaptureRuntime {
 			return runtime
@@ -36,7 +35,6 @@ func provideDebugCapture(container *dig.Container) error {
 
 func configureDebugCapture(container *dig.Container) error {
 	return container.Invoke(func(
-		cfg *config.Config,
 		store *debugcapture.Store,
 		runtime *debugcapture.Runtime,
 		service *control.Service,
@@ -45,9 +43,7 @@ func configureDebugCapture(container *dig.Container) error {
 	) error {
 		service.SetDebugCaptureReader(store)
 		service.SetDebugCaptureHealthReader(runtime)
-		if cfg.DebugCaptureEnabled {
-			gatewayHandler.SetCaptureFactory(newDebugCaptureFactory(store, runtime))
-		}
+		gatewayHandler.SetCaptureFactory(newDebugCaptureFactory(store, runtime))
 		engine.Use(gatewayHandler.CaptureMiddleware())
 		return nil
 	})

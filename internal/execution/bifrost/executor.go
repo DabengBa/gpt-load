@@ -1334,6 +1334,15 @@ func (r *Runtime) newSDKContext(parent context.Context, spec execution.AttemptSp
 	bifrostContext := schemas.NewBifrostContext(parent, schemas.NoDeadline)
 	bifrostContext.SetValue(schemas.BifrostContextKeyRequestID, spec.RequestID)
 	bifrostContext.SetValue(schemas.BifrostContextKeyDirectKey, directKey)
+	// The fork in third_party/bifrost-core reads the request-scoped raw HTTP
+	// observer and attempt identity from these same string keys. They are set
+	// here so every fasthttp/net-http send performed by the SDK for this
+	// attempt is observed under spec.AttemptID. Without an observer the keys
+	// are absent and the fork's observation code is a no-op.
+	if observer := execution.HTTPObserverFromContext(parent); observer != nil {
+		bifrostContext.SetValue(execution.HTTPObserverContextKey, observer)
+	}
+	bifrostContext.SetValue(execution.HTTPAttemptIDContextKey, spec.AttemptID)
 	bifrostContext.SetValue(
 		schemas.BifrostContextKeyLargeResponseThreshold,
 		r.unaryResponseBodyLimit(spec),

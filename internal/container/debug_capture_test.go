@@ -39,7 +39,7 @@ func TestDebugCaptureFactoryPanicReleasesRuntimeAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := debugcapture.NewRuntimeWithInterval(true, store, time.Hour)
+	runtime := debugcapture.NewRuntimeWithInterval(store, time.Hour)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestDebugCaptureFailurePanicReleasesRuntimeAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := debugcapture.NewRuntimeWithInterval(true, store, time.Hour)
+	runtime := debugcapture.NewRuntimeWithInterval(store, time.Hour)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestDebugCaptureSessionRetainsAdmissionAfterTerminalFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := debugcapture.NewRuntimeWithInterval(true, store, time.Hour)
+	runtime := debugcapture.NewRuntimeWithInterval(store, time.Hour)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}

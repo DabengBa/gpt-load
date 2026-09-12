@@ -1,0 +1,2914 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/anthropic/anthropic.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/anthropic/anthropic.go
+--- a/providers/anthropic/anthropic.go
++++ b/providers/anthropic/anthropic.go
+@@ -900,7 +900,7 @@
+ 		}
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -1566,7 +1566,7 @@
+ 		// Decompress gzip-encoded streams on-the-fly. Returns a reader that is either
+ 		// the gzip reader (if gzip-encoded) or the original body stream. Does NOT modify
+ 		// resp, so ReleaseStreamingResponse can properly drain the underlying connection.
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/azure/azure.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/azure/azure.go
+--- a/providers/azure/azure.go
++++ b/providers/azure/azure.go
+@@ -836,7 +836,7 @@
+ 		// Always release response on exit; bodyStream close should prevent indefinite blocking.
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams (e.g., Azure TPM throttling
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/cohere/cohere.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/cohere/cohere.go
+--- a/providers/cohere/cohere.go
++++ b/providers/cohere/cohere.go
+@@ -521,7 +521,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -816,7 +816,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/elevenlabs/elevenlabs.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/elevenlabs/elevenlabs.go
+--- a/providers/elevenlabs/elevenlabs.go
++++ b/providers/elevenlabs/elevenlabs.go
+@@ -406,7 +406,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/gemini/gemini.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/gemini/gemini.go
+--- a/providers/gemini/gemini.go
++++ b/providers/gemini/gemini.go
+@@ -459,6 +459,11 @@
+ 	// Check for HTTP errors — use parseGeminiError to preserve upstream error details
+ 	if resp.StatusCode() != fasthttp.StatusOK {
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
++		// This response is streamed (resp.StreamBody is set above), so resp.Body()
++		// would drain the raw body stream directly and bypass the request-scoped
++		// raw observer. Materialize it through the observer first; the bytes and
++		// resp.Body() semantics (no decoding, no size cap) are unchanged.
++		providerUtils.MaterializeObservedStreamBody(ctx, resp)
+ 		respBody := append([]byte(nil), resp.Body()...)
+ 		return nil, providerUtils.EnrichError(ctx, parseGeminiError(resp), jsonBody, respBody, sendBackRawRequest, sendBackRawResponse, latency)
+ 	}
+@@ -497,7 +502,7 @@
+ 		}
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		decompressedReader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		decompressedReader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -1013,7 +1018,7 @@
+ 		}
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		decompressedReader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		decompressedReader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -1498,7 +1503,7 @@
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -1784,7 +1789,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/gemini/http_observer_stream_error_test.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/gemini/http_observer_stream_error_test.go
+--- a/providers/gemini/http_observer_stream_error_test.go
++++ b/providers/gemini/http_observer_stream_error_test.go
+@@ -0,0 +1,171 @@
++package gemini
++
++import (
++	"bytes"
++	"context"
++	"net"
++	"net/http"
++	"strconv"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/maximhq/bifrost/core/schemas"
++	"github.com/valyala/fasthttp"
++)
++
++// geminiRecordingObserver records the raw HTTP observation stream for the
++// gemini streaming error path. It satisfies the fork's providers/utils
++// HTTPObserver contract structurally and is attached with the same untyped
++// string keys gpt-load uses, which is also a cross-package check of that
++// contract.
++type geminiRecordingObserver struct {
++	mu              sync.Mutex
++	statuses        []int
++	responseHeaders []http.Header
++	responseBodies  []byte
++	completions     int
++	completionErr   error
++	terminations    []string
++}
++
++func (o *geminiRecordingObserver) ObserveRequest(string, *http.Request) {}
++
++func (o *geminiRecordingObserver) ObserveRequestBody(string, []byte) {}
++
++func (o *geminiRecordingObserver) ObserveResponse(_ string, status int, headers http.Header) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	o.statuses = append(o.statuses, status)
++	o.responseHeaders = append(o.responseHeaders, headers.Clone())
++}
++
++func (o *geminiRecordingObserver) ObserveResponseBody(_ string, data []byte) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	o.responseBodies = append(o.responseBodies, data...)
++}
++
++func (o *geminiRecordingObserver) ObserveResponseComplete(_ string, _ http.Header, err error) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	o.completions++
++	o.completionErr = err
++}
++
++func (o *geminiRecordingObserver) ObserveResponseTermination(_ string, termination string, _ string) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	o.terminations = append(o.terminations, termination)
++}
++
++func (o *geminiRecordingObserver) snapshot() ([]int, []http.Header, []byte, int, error, []string) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	headers := make([]http.Header, 0, len(o.responseHeaders))
++	for _, h := range o.responseHeaders {
++		headers = append(headers, h.Clone())
++	}
++	return append([]int(nil), o.statuses...), headers, bytes.Clone(o.responseBodies), o.completions, o.completionErr, append([]string(nil), o.terminations...)
++}
++
++func TestGeminiStreamErrorBodyIsObserved(t *testing.T) {
++	fixture := []byte(`{"error":{"code":400,"message":"bad request from gemini","status":"INVALID_ARGUMENT"}}`)
++
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatalf("listen: %v", err)
++	}
++	server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("application/json")
++		ctx.SetStatusCode(fasthttp.StatusBadRequest)
++		ctx.SetBody(fixture)
++	}}
++	go func() { _ = server.Serve(listener) }()
++	defer func() {
++		_ = server.Shutdown()
++		_ = listener.Close()
++	}()
++
++	observer := &geminiRecordingObserver{}
++	ctx := schemas.NewBifrostContext(context.Background(), schemas.NoDeadline)
++	ctx.SetValue("gpt-load.http-observer", observer)
++	ctx.SetValue("gpt-load.http-attempt-id", "gemini-attempt")
++
++	client := &fasthttp.Client{}
++	_, bifrostErr := HandleGeminiChatCompletionStream(
++		ctx,
++		client,
++		"http://"+listener.Addr().String()+"/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse",
++		[]byte(`{"contents":[{"parts":[{"text":"hi"}]}]}`),
++		map[string]string{"Content-Type": "application/json"},
++		nil,
++		30,
++		false,
++		false,
++		schemas.Gemini,
++		"gemini-2.0-flash",
++		nil,
++		nil,
++		nil,
++		nil,
++	)
++	if bifrostErr == nil {
++		t.Fatal("expected an error for the 400 response")
++	}
++
++	statuses, responseHeaders, responseBodies, completions, completionErr, terminations := observer.snapshot()
++	if len(statuses) != 1 || statuses[0] != fasthttp.StatusBadRequest {
++		t.Fatalf("observed statuses = %v, want [400]", statuses)
++	}
++	if !bytes.Equal(responseBodies, fixture) {
++		t.Fatalf("streaming error body was not observed from the raw reader\n got %q\nwant %q", responseBodies, fixture)
++	}
++	if completions != 1 {
++		t.Fatalf("expected exactly one completion, got %d", completions)
++	}
++	if completionErr != nil {
++		t.Fatalf("expected eof completion after a fully read error body, got %v", completionErr)
++	}
++	if len(terminations) != 1 || terminations[0] != "eof" {
++		t.Fatalf("terminations = %v, want [eof]", terminations)
++	}
++	// Headers must be captured before any mutation: the recorded Content-Length is
++	// the upstream one (the fixture length), not a recomputed value.
++	if len(responseHeaders) != 1 {
++		t.Fatalf("expected one recorded response header set, got %d", len(responseHeaders))
++	}
++	if got := responseHeaders[0].Get("Content-Length"); got != strconv.Itoa(len(fixture)) {
++		t.Fatalf("recorded Content-Length = %q, want %d", got, len(fixture))
++	}
++
++	// Behaviour preservation: the caller still receives the parsed upstream error
++	// built from the same body bytes, and raw-response enrichment is unchanged.
++	if bifrostErr.Error == nil || bifrostErr.Error.Message != "bad request from gemini" {
++		t.Fatalf("error message changed: %#v", bifrostErr.Error)
++	}
++	if bifrostErr.Error.Code == nil || *bifrostErr.Error.Code != "400" {
++		t.Fatalf("error code changed: %#v", bifrostErr.Error)
++	}
++	if bifrostErr.ExtraFields.RawResponse != nil {
++		t.Fatalf("raw response enrichment changed: %v", bifrostErr.ExtraFields.RawResponse)
++	}
++
++	if err := retryProbe(listener.Addr().String()); err != nil {
++		t.Fatalf("probe: %v", err)
++	}
++}
++
++// retryProbe is a tiny liveness helper that proves the test server accepts a
++// second connection after the streamed error response (the stream must have
++// been closed/released, not leaked).
++func retryProbe(addr string) error {
++	client := &fasthttp.Client{ReadTimeout: time.Second, WriteTimeout: time.Second}
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++	req.SetRequestURI("http://" + addr + "/probe")
++	req.Header.SetMethod(fasthttp.MethodGet)
++	return client.DoTimeout(req, resp, time.Second)
++}
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/huggingface/huggingface.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/huggingface/huggingface.go
+--- a/providers/huggingface/huggingface.go
++++ b/providers/huggingface/huggingface.go
+@@ -1116,7 +1116,7 @@
+ 		}
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -1500,7 +1500,7 @@
+ 		}
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/mistral/mistral.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/mistral/mistral.go
+--- a/providers/mistral/mistral.go
++++ b/providers/mistral/mistral.go
+@@ -480,7 +480,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/openai/openai.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/openai/openai.go
+--- a/providers/openai/openai.go
++++ b/providers/openai/openai.go
+@@ -563,7 +563,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -1192,7 +1192,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -1918,7 +1918,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -2534,7 +2534,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -3044,7 +3044,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -3495,7 +3495,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -5101,7 +5101,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/openai/responseslifecycle.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/openai/responseslifecycle.go
+--- a/providers/openai/responseslifecycle.go
++++ b/providers/openai/responseslifecycle.go
+@@ -264,7 +264,7 @@
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip).
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/replicate/replicate.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/replicate/replicate.go
+--- a/providers/replicate/replicate.go
++++ b/providers/replicate/replicate.go
+@@ -608,7 +608,7 @@
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -958,7 +958,7 @@
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -1361,7 +1361,7 @@
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		if reader == nil {
+@@ -1957,7 +1957,7 @@
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+@@ -2383,7 +2383,7 @@
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+ 		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		// Wrap reader with idle timeout to detect stalled streams.
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/sarvam/sarvam.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/sarvam/sarvam.go
+--- a/providers/sarvam/sarvam.go
++++ b/providers/sarvam/sarvam.go
+@@ -340,7 +340,7 @@
+ 		}()
+ 		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 		defer releaseGzip()
+ 
+ 		reader, stopIdleTimeout := providerUtils.NewIdleTimeoutReader(reader, resp.BodyStream(), providerUtils.GetStreamIdleTimeout(ctx), ctx)
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/http_observer.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/http_observer.go
+--- a/providers/utils/http_observer.go
++++ b/providers/utils/http_observer.go
+@@ -0,0 +1,621 @@
++package utils
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"net/url"
++	"sync"
++
++	"github.com/maximhq/bifrost/core/schemas"
++	"github.com/valyala/fasthttp"
++)
++
++// HTTPObserver is the raw request/response observer contract shared with the
++// gpt-load root module (internal/execution.HTTPObserver) and its nested CPA
++// module (third_party/cpaembedded/embedded.HTTPObserver). This fork cannot
++// import either of them, so the interface is re-declared here with the exact
++// same method set. Because Go interface satisfaction is structural, the
++// concrete observer that gpt-load stores in the request context satisfies this
++// interface too.
++//
++// The observer is purely observational: implementations must not block the
++// transport, and any failure in an implementation must be isolated by the
++// implementation itself (gpt-load already recovers and records observer
++// failures). This fork additionally recovers panics around every callback so a
++// broken observer can never change Bifrost data-plane behavior.
++type HTTPObserver interface {
++	ObserveRequest(attemptID string, request *http.Request)
++	ObserveRequestBody(attemptID string, data []byte)
++	ObserveResponse(attemptID string, status int, headers http.Header)
++	ObserveResponseBody(attemptID string, data []byte)
++	ObserveResponseComplete(attemptID string, headers http.Header, err error)
++}
++
++// HTTPObserverTermination is an optional extension. When the observer
++// implements it, the fork reports how the observed body stream ended. The base
++// five-method contract is unchanged, so the CPA adapter and any other existing
++// observer keep working.
++type HTTPObserverTermination interface {
++	ObserveResponseTermination(attemptID string, termination string, detail string)
++}
++
++// Termination values reported through HTTPObserverTermination.
++const (
++	TerminationEOF            = "eof"
++	TerminationClosed         = "closed"
++	TerminationCancel         = "cancel"
++	TerminationTimeout        = "timeout"
++	TerminationIdleTimeout    = "idle_timeout"
++	TerminationUnexpectedEOF  = "unexpected_eof"
++	TerminationReadError      = "read_error"
++	TerminationNoResponse     = "no_response"
++	TerminationTransportError = "transport_error"
++)
++
++// String keys, not private types: gpt-load stores the observer under the
++// untyped string constant execution.HTTPObserverContextKey and the attempt ID
++// under execution.HTTPAttemptIDContextKey. Values stored with a `string` key
++// are visible to a Value lookup that uses an equal `string` key, which is what
++// the nested CPA module already relies on.
++const (
++	httpObserverContextKey  = "gpt-load.http-observer"
++	httpAttemptIDContextKey = "gpt-load.http-attempt-id"
++	// httpObserverStateContextKey carries the per-attempt observation handle
++	// (not the observer itself) so that the send helper and every later read
++	// site share one exactly-once completion guard.
++	httpObserverStateContextKey = "gpt-load.http-observer-state"
++)
++
++// httpObserverState is the request-scoped observation handle for one real HTTP
++// send. It is created by the send helper and attached to the
++// *schemas.BifrostContext; every reader that delivers response body bytes
++// afterwards (parser readers, error-body materialization, large-response
++// readers, the release drain) looks the same handle up and emits through it.
++//
++// One state per send keeps: request/response events ordered, body bytes emitted
++// once each, and exactly one completion even when a parser stops early and the
++// release drain later reads the tail.
++type httpObserverState struct {
++	observer    HTTPObserver
++	termination HTTPObserverTermination
++	attemptID   string
++
++	mu                 sync.Mutex
++	responseHeaders    http.Header
++	responseReceived   bool
++	completed          bool
++	pendingTermination string
++
++	completeOnce sync.Once
++}
++
++// newHTTPObserverState returns a state bound to the observer and attempt ID
++// carried by ctx, or nil when no observer is active (the overwhelmingly common
++// case for direct SDK users and for tests that do not observe).
++func newHTTPObserverState(ctx context.Context) *httpObserverState {
++	if ctx == nil || typedNilContext(ctx) {
++		return nil
++	}
++	observer, _ := ctx.Value(httpObserverContextKey).(HTTPObserver)
++	if observer == nil {
++		return nil
++	}
++	attemptID, _ := ctx.Value(httpAttemptIDContextKey).(string)
++	state := &httpObserverState{observer: observer, attemptID: attemptID}
++	if termination, ok := observer.(HTTPObserverTermination); ok {
++		state.termination = termination
++	}
++	return state
++}
++
++// attachToContext makes the state discoverable by later read sites that receive
++// the same *schemas.BifrostContext (or a context derived from it). It is a
++// no-op when ctx is not the request-scoped Bifrost context, in which case only
++// the send helper's own events are emitted (still correct, just no body
++// wrappers downstream).
++func (s *httpObserverState) attachToContext(ctx context.Context) {
++	if s == nil || typedNilContext(ctx) {
++		return
++	}
++	if bifrostContext, ok := ctx.(*schemas.BifrostContext); ok {
++		bifrostContext.SetValue(httpObserverStateContextKey, s)
++	}
++}
++
++// typedNilContext reports whether ctx is a nil *schemas.BifrostContext wrapped
++// in a non-nil interface (a common call pattern that would otherwise panic on
++// the first Value call).
++func typedNilContext(ctx context.Context) bool {
++	if bifrostContext, ok := ctx.(*schemas.BifrostContext); ok {
++		return bifrostContext == nil
++	}
++	return false
++}
++
++// httpObserverStateFromContext returns the state attached by the send helper,
++// if any. It is nil-safe so call sites can stay one-liners.
++func httpObserverStateFromContext(ctx context.Context) *httpObserverState {
++	if ctx == nil || typedNilContext(ctx) {
++		return nil
++	}
++	if bifrostContext, ok := ctx.(*schemas.BifrostContext); ok {
++		if state, ok := bifrostContext.Value(httpObserverStateContextKey).(*httpObserverState); ok {
++			return state
++		}
++		return nil
++	}
++	state, _ := ctx.Value(httpObserverStateContextKey).(*httpObserverState)
++	return state
++}
++
++// recoverObserverPanic isolates observer failures from the data plane. A
++// panicking observer must never abort a provider request or change its error.
++func recoverObserverPanic() {
++	_ = recover()
++}
++
++func (s *httpObserverState) observeRequest(request *http.Request) {
++	if s == nil || request == nil {
++		return
++	}
++	defer recoverObserverPanic()
++	s.observer.ObserveRequest(s.attemptID, request)
++}
++
++func (s *httpObserverState) observeRequestBody(data []byte) {
++	if s == nil || len(data) == 0 {
++		return
++	}
++	defer recoverObserverPanic()
++	s.observer.ObserveRequestBody(s.attemptID, data)
++}
++
++func (s *httpObserverState) observeResponse(status int, headers http.Header) {
++	if s == nil {
++		return
++	}
++	s.mu.Lock()
++	if s.responseReceived {
++		s.mu.Unlock()
++		return
++	}
++	s.responseReceived = true
++	if headers == nil {
++		headers = http.Header{}
++	}
++	s.responseHeaders = headers.Clone()
++	s.mu.Unlock()
++	defer recoverObserverPanic()
++	s.observer.ObserveResponse(s.attemptID, status, headers)
++}
++
++func (s *httpObserverState) observeResponseBody(data []byte) {
++	if s == nil || len(data) == 0 {
++		return
++	}
++	defer recoverObserverPanic()
++	s.observer.ObserveResponseBody(s.attemptID, data)
++}
++
++// complete emits the single completion event. Normal transport EOF is reported
++// as a nil error (matching the CPA contract); every other termination is
++// reported as an error together with its termination label. Headers are not
++// repeated here: ObserveResponse already carried them, so re-sending them would
++// duplicate them in the capture. Only trailers would be new, and the current
++// contract has no trailer channel.
++func (s *httpObserverState) complete(err error, termination string) {
++	if s == nil {
++		return
++	}
++	s.completeOnce.Do(func() {
++		s.mu.Lock()
++		s.completed = true
++		s.mu.Unlock()
++		if s.termination != nil {
++			func() {
++				defer recoverObserverPanic()
++				s.termination.ObserveResponseTermination(s.attemptID, termination, errorDetail(err))
++			}()
++		}
++		defer recoverObserverPanic()
++		s.observer.ObserveResponseComplete(s.attemptID, nil, err)
++	})
++}
++
++// completeIncomplete emits the single completion for an attempt that is torn
++// down before its reader reached a natural end. err may be nil, in which case a
++// representative error for the termination label is used so the completion is
++// still marked incomplete. It is observation-only: it never reads, drains or
++// closes the stream, so it cannot delay a close, change cancellation
++// propagation or alter the provider data plane. It is a no-op once the state
++// already completed.
++func (s *httpObserverState) completeIncomplete(err error, termination string) {
++	if s == nil {
++		return
++	}
++	if err == nil {
++		err = terminationError(termination)
++	}
++	s.complete(err, termination)
++}
++
++// completePending emits an incomplete completion for a stream whose close was
++// already claimed by another teardown owner. The pending semantic termination
++// (cancel / timeout / idle) is preferred, falling back to a generic closed.
++func (s *httpObserverState) completePending() {
++	if s == nil {
++		return
++	}
++	s.mu.Lock()
++	pending := s.pendingTermination
++	s.mu.Unlock()
++	if pending == "" {
++		pending = TerminationClosed
++	}
++	s.completeIncomplete(nil, pending)
++}
++
++// terminationError returns a representative error for a teardown label so the
++// completion is marked incomplete and distinguishable from a natural EOF.
++func terminationError(termination string) error {
++	switch termination {
++	case TerminationCancel:
++		return context.Canceled
++	case TerminationTimeout:
++		return context.DeadlineExceeded
++	case TerminationIdleTimeout:
++		return ErrStreamIdleTimeout
++	case TerminationUnexpectedEOF:
++		return io.ErrUnexpectedEOF
++	case TerminationReadError:
++		return errors.New("stream read error")
++	default:
++		return ErrStreamClosed
++	}
++}
++
++func errorDetail(err error) string {
++	if err == nil {
++		return ""
++	}
++	return err.Error()
++}
++
++// markPendingTermination records the semantic reason a stream is about to be
++// torn down (idle timeout / cancellation). The raw transport error that follows
++// is then labelled with that reason instead of a generic read_error, because the
++// observer sits below the layer that performs the mapping.
++func (s *httpObserverState) markPendingTermination(termination string) {
++	if s == nil || termination == "" {
++		return
++	}
++	s.mu.Lock()
++	s.pendingTermination = termination
++	s.mu.Unlock()
++}
++
++// classify converts a body-read error into the termination label for this
++// attempt, preferring an explicit teardown reason recorded by the owner of the
++// close (idle-timeout timer / cancellation).
++func (s *httpObserverState) classify(err error) string {
++	if err == nil || errors.Is(err, io.EOF) {
++		return TerminationEOF
++	}
++	s.mu.Lock()
++	pending := s.pendingTermination
++	s.mu.Unlock()
++	if pending != "" {
++		return pending
++	}
++	return classifyStreamError(err)
++}
++
++// classifyStreamError maps a body-read error to a termination label without
++// changing the error that flows back to the caller.
++func classifyStreamError(err error) string {
++	switch {
++	case err == nil:
++		return TerminationEOF
++	case errors.Is(err, io.EOF):
++		return TerminationEOF
++	case errors.Is(err, ErrStreamIdleTimeout):
++		return TerminationIdleTimeout
++	case errors.Is(err, ErrStreamClosed):
++		return TerminationClosed
++	case errors.Is(err, io.ErrClosedPipe):
++		return TerminationClosed
++	case errors.Is(err, context.Canceled):
++		return TerminationCancel
++	case errors.Is(err, context.DeadlineExceeded):
++		return TerminationTimeout
++	case errors.Is(err, fasthttp.ErrTimeout):
++		return TerminationTimeout
++	case errors.Is(err, io.ErrUnexpectedEOF):
++		return TerminationUnexpectedEOF
++	default:
++		return TerminationReadError
++	}
++}
++
++// classifyTransportError maps a send-level (no body available) failure.
++func classifyTransportError(err error) string {
++	switch {
++	case err == nil:
++		return TerminationTransportError
++	case errors.Is(err, context.Canceled):
++		return TerminationCancel
++	case errors.Is(err, context.DeadlineExceeded):
++		return TerminationTimeout
++	case errors.Is(err, fasthttp.ErrTimeout):
++		return TerminationTimeout
++	default:
++		return TerminationTransportError
++	}
++}
++
++// observeFasthttpSendResult records the outcome of a fasthttp send. On success
++// the response status/headers are emitted before any Content-Encoding header is
++// deleted downstream. When no response was produced (DNS, connect, TLS, send
++// failure, timeout, cancellation) the attempt is completed as a legal
++// "no response" rather than as a capture failure.
++func (s *httpObserverState) observeFasthttpSendResult(resp *fasthttp.Response, err error) {
++	if s == nil {
++		return
++	}
++	if err != nil || resp == nil {
++		var sendErr error = err
++		if sendErr == nil {
++			sendErr = io.ErrUnexpectedEOF
++		}
++		s.complete(sendErr, TerminationNoResponse)
++		return
++	}
++	s.observeResponse(resp.StatusCode(), headerFromFasthttpResponse(&resp.Header))
++}
++
++// observeHTTPResponse records a net/http response status/headers. A nil
++// response or a non-nil error is a legal no-response attempt.
++func (s *httpObserverState) observeHTTPResponse(resp *http.Response, err error) {
++	if s == nil {
++		return
++	}
++	if err != nil || resp == nil {
++		var sendErr error = err
++		if sendErr == nil {
++			sendErr = io.ErrUnexpectedEOF
++		}
++		s.complete(sendErr, TerminationNoResponse)
++		return
++	}
++	s.observeResponse(resp.StatusCode, resp.Header)
++}
++
++// observeFasthttpBufferedBody emits a fully buffered fasthttp body. Streamed
++// responses (resp.BodyStream() != nil) are deliberately skipped here: their
++// bytes are delivered through the reader wrappers so that the parser and the
++// release drain both observe the same stream exactly once.
++func (s *httpObserverState) observeFasthttpBufferedBody(resp *fasthttp.Response) {
++	if s == nil || resp == nil {
++		return
++	}
++	if resp.BodyStream() != nil {
++		return
++	}
++	body := resp.Body()
++	if len(body) > 0 {
++		s.observeResponseBody(body)
++	}
++	s.complete(nil, TerminationEOF)
++}
++
++// MaterializeObservedStreamBody drains a streamed fasthttp response body into
++// resp through the request-scoped raw observer, mirroring fasthttp's
++// Response.Body() semantics exactly: transfer framing was already removed by the
++// transport, no Content-Encoding decoding and no size cap are applied, a read
++// error becomes the body string, the stream is closed once, and the response
++// header is left untouched. Buffered responses (BodyStream() == nil) are a
++// no-op because the send helper already emitted their bytes.
++//
++// Call sites that read a streamed body with resp.Body() instead of a reader
++// wrapper must call this first, otherwise those bytes bypass the observer.
++func MaterializeObservedStreamBody(ctx *schemas.BifrostContext, resp *fasthttp.Response) {
++	if resp == nil || resp.BodyStream() == nil {
++		return
++	}
++	bodyStream := httpObserverStateFromContext(ctx).wrapBody(resp.BodyStream())
++	body, readErr := io.ReadAll(bodyStream)
++	// Close the real stream (never the wrapper) so fasthttp releases the pooled
++	// reader/connection exactly once, matching Response.Body().
++	resp.CloseBodyStream()
++	if readErr != nil {
++		body = []byte(readErr.Error())
++	}
++	resp.SetBody(body)
++}
++
++// wrapBody wraps a response body reader at the raw transport observation point:
++// after the transport has removed transfer framing (chunked) and before any
++// Content-Encoding decoding. The wrapper never implements io.Closer or
++// fasthttp's CloseWithError so that closeBodyStream's io.Closer check keeps
++// targeting the real body stream and idle-timeout teardown keeps propagating
++// ErrStreamIdleTimeout.
++func (s *httpObserverState) wrapBody(reader io.Reader) io.Reader {
++	if s == nil || reader == nil {
++		return reader
++	}
++	if _, ok := reader.(*observedBodyReader); ok {
++		// Already observed (e.g. the same reader is wrapped twice along one
++		// chain). Re-wrapping would double-emit every byte.
++		return reader
++	}
++	return &observedBodyReader{state: s, inner: reader}
++}
++
++// wrapReadCloser wraps a net/http body. Unlike fasthttp, net/http teardown
++// relies on io.Closer, so the wrapper forwards Close while still emitting the
++// completion event.
++func (s *httpObserverState) wrapReadCloser(reader io.ReadCloser) io.ReadCloser {
++	if s == nil || reader == nil {
++		return reader
++	}
++	if existing, ok := reader.(*observedBodyReadCloser); ok {
++		return existing
++	}
++	return &observedBodyReadCloser{observedBodyReader: observedBodyReader{state: s, inner: reader}, closer: reader}
++}
++
++type observedBodyReader struct {
++	state *httpObserverState
++	inner io.Reader
++}
++
++func (r *observedBodyReader) Read(p []byte) (int, error) {
++	n, err := r.inner.Read(p)
++	if n > 0 {
++		r.state.observeResponseBody(p[:n])
++	}
++	if err != nil {
++		if errors.Is(err, io.EOF) {
++			r.state.complete(nil, TerminationEOF)
++		} else {
++			r.state.complete(err, r.state.classify(err))
++		}
++	}
++	return n, err
++}
++
++type observedBodyReadCloser struct {
++	observedBodyReader
++	closer io.Closer
++}
++
++func (r *observedBodyReadCloser) Close() error {
++	err := r.closer.Close()
++	// The EOF completion is sync.Once-guarded, so reaching here means the body
++	// was closed before its natural end: report an incomplete termination. When a
++	// teardown owner (cancellation / idle timer) already recorded the semantic
++	// reason, prefer it over a generic closed. Observation-only: the close above
++	// is unchanged and its error is still passed through to the caller.
++	r.state.completeClosed(err)
++	return err
++}
++
++// completeClosed emits the single completion for a net/http response body that
++// was closed before EOF. It never reads, drains or closes anything itself, and
++// it never changes the error Close returns.
++func (s *httpObserverState) completeClosed(err error) {
++	if s == nil {
++		return
++	}
++	s.mu.Lock()
++	pending := s.pendingTermination
++	s.mu.Unlock()
++	if pending != "" {
++		s.completeIncomplete(err, pending)
++		return
++	}
++	s.completeIncomplete(err, TerminationClosed)
++}
++
++// headerFromFasthttpResponse copies the transport-exposed response header.
++func headerFromFasthttpResponse(header *fasthttp.ResponseHeader) http.Header {
++	result := make(http.Header, header.Len())
++	header.VisitAll(func(key, value []byte) {
++		result.Add(string(key), string(value))
++	})
++	return result
++}
++
++// headerFromFasthttpRequest copies the transport-exposed request header.
++func headerFromFasthttpRequest(header *fasthttp.RequestHeader) http.Header {
++	result := make(http.Header, header.Len())
++	header.VisitAll(func(key, value []byte) {
++		result.Add(string(key), string(value))
++	})
++	return result
++}
++
++// fasthttpRequestToHTTP builds the *http.Request view of a fasthttp request for
++// the observer contract. It carries method, URL, host and header values; it is
++// not a wire-level representation.
++func fasthttpRequestToHTTP(req *fasthttp.Request) *http.Request {
++	if req == nil {
++		return nil
++	}
++	target := &url.URL{Path: string(req.URI().Path())}
++	if query := string(req.URI().QueryString()); query != "" {
++		target.RawQuery = query
++	}
++	target.Scheme = string(req.URI().Scheme())
++	target.Host = string(req.URI().Host())
++	result := &http.Request{
++		Method:     string(req.Header.Method()),
++		URL:        target,
++		Proto:      "HTTP/1.1",
++		ProtoMajor: 1,
++		ProtoMinor: 1,
++		Header:     headerFromFasthttpRequest(&req.Header),
++		Host:       string(req.URI().Host()),
++	}
++	return result
++}
++
++// observeFasthttpRequest emits the request line and the request body. All
++// gpt-load-reachable requests are buffered (the streamed-request key is never
++// set), so the buffered branch is the one that actually runs; the streamed
++// branch observes the bytes as the transport pulls them without buffering.
++func (s *httpObserverState) observeFasthttpRequest(req *fasthttp.Request) {
++	if s == nil || req == nil {
++		return
++	}
++	s.observeRequest(fasthttpRequestToHTTP(req))
++	if !req.IsBodyStream() {
++		s.observeRequestBody(req.Body())
++		return
++	}
++	if bodyStream := req.BodyStream(); bodyStream != nil {
++		req.SetBodyStream(s.wrapBody(bodyStream), req.Header.ContentLength())
++	}
++}
++
++// observeHTTPRequest emits a net/http request and wraps its body so the bytes
++// are observed as they are sent. The body is never buffered. The wrapper is
++// request-only: net/http closes req.Body right after writing it, before the
++// response is read, so its Close must never emit a response completion.
++func (s *httpObserverState) observeHTTPRequest(req *http.Request) {
++	if s == nil || req == nil {
++		return
++	}
++	cloned := req.Clone(req.Context())
++	cloned.Body = nil
++	s.observeRequest(cloned)
++	if req.Body != nil {
++		if _, ok := req.Body.(*observedRequestBodyReadCloser); ok {
++			return
++		}
++		req.Body = &observedRequestBodyReadCloser{state: s, inner: req.Body}
++	}
++}
++
++// observedRequestBodyReadCloser observes request-body bytes as they are sent and
++// forwards Close untouched. It deliberately does not complete the response
++// state: the response lifecycle belongs to the response body reader or the
++// transport error, never to net/http closing the request body.
++type observedRequestBodyReadCloser struct {
++	state *httpObserverState
++	inner io.ReadCloser
++}
++
++func (r *observedRequestBodyReadCloser) Read(p []byte) (int, error) {
++	n, err := r.inner.Read(p)
++	if n > 0 {
++		r.state.observeRequestBody(p[:n])
++	}
++	return n, err
++}
++
++func (r *observedRequestBodyReadCloser) Close() error {
++	return r.inner.Close()
++}
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/http_observer_test.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/http_observer_test.go
+--- a/providers/utils/http_observer_test.go
++++ b/providers/utils/http_observer_test.go
+@@ -0,0 +1,1419 @@
++package utils
++
++import (
++	"bufio"
++	"bytes"
++	"context"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/maximhq/bifrost/core/schemas"
++	"github.com/valyala/fasthttp"
++	"github.com/valyala/fasthttp/fasthttputil"
++)
++
++const testAttemptID = "attempt-1"
++
++type responseRecord struct {
++	status  int
++	headers http.Header
++}
++
++type completionRecord struct {
++	headers http.Header
++	err     error
++}
++
++type terminationRecord struct {
++	termination string
++	detail      string
++}
++
++// recordingObserver captures every callback in order. It also implements the
++// optional termination extension.
++type recordingObserver struct {
++	mu             sync.Mutex
++	requests       []*http.Request
++	requestBodies  [][]byte
++	responses      []responseRecord
++	responseBodies []byte
++	completions    []completionRecord
++	terminations   []terminationRecord
++	panicMode      bool
++}
++
++func (o *recordingObserver) call(fn func()) {
++	o.mu.Lock()
++	panicMode := o.panicMode
++	o.mu.Unlock()
++	if panicMode {
++		panic("observer failure")
++	}
++	fn()
++}
++
++func (o *recordingObserver) ObserveRequest(id string, request *http.Request) {
++	if id != testAttemptID {
++		panic("unexpected attempt id " + id)
++	}
++	o.call(func() {
++		o.mu.Lock()
++		defer o.mu.Unlock()
++		o.requests = append(o.requests, request)
++	})
++}
++
++func (o *recordingObserver) ObserveRequestBody(id string, data []byte) {
++	o.call(func() {
++		o.mu.Lock()
++		defer o.mu.Unlock()
++		o.requestBodies = append(o.requestBodies, bytes.Clone(data))
++	})
++}
++
++func (o *recordingObserver) ObserveResponse(id string, status int, headers http.Header) {
++	o.call(func() {
++		o.mu.Lock()
++		defer o.mu.Unlock()
++		o.responses = append(o.responses, responseRecord{status: status, headers: headers.Clone()})
++	})
++}
++
++func (o *recordingObserver) ObserveResponseBody(id string, data []byte) {
++	o.call(func() {
++		o.mu.Lock()
++		defer o.mu.Unlock()
++		o.responseBodies = append(o.responseBodies, data...)
++	})
++}
++
++func (o *recordingObserver) ObserveResponseComplete(id string, headers http.Header, err error) {
++	o.call(func() {
++		o.mu.Lock()
++		defer o.mu.Unlock()
++		o.completions = append(o.completions, completionRecord{headers: headers, err: err})
++	})
++}
++
++func (o *recordingObserver) ObserveResponseTermination(id string, termination string, detail string) {
++	o.call(func() {
++		o.mu.Lock()
++		defer o.mu.Unlock()
++		o.terminations = append(o.terminations, terminationRecord{termination: termination, detail: detail})
++	})
++}
++
++func (o *recordingObserver) bodyBytes() []byte {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	return bytes.Clone(o.responseBodies)
++}
++
++func (o *recordingObserver) firstCompletionErr() error {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	if len(o.completions) == 0 {
++		return nil
++	}
++	return o.completions[0].err
++}
++
++func (o *recordingObserver) completionCount() int {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	return len(o.completions)
++}
++
++func (o *recordingObserver) lastTermination() string {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	if len(o.terminations) == 0 {
++		return ""
++	}
++	return o.terminations[len(o.terminations)-1].termination
++}
++
++func (o *recordingObserver) requestBodyBytes() []byte {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	var out []byte
++	for _, part := range o.requestBodies {
++		out = append(out, part...)
++	}
++	return out
++}
++
++func newObserverContext(observer HTTPObserver) *schemas.BifrostContext {
++	ctx := schemas.NewBifrostContext(context.Background(), schemas.NoDeadline)
++	ctx.SetValue(httpObserverContextKey, observer)
++	ctx.SetValue(httpAttemptIDContextKey, testAttemptID)
++	return ctx
++}
++
++func startServer(t *testing.T, handler fasthttp.RequestHandler) (*fasthttp.Client, func()) {
++	t.Helper()
++	listener := fasthttputil.NewInmemoryListener()
++	server := &fasthttp.Server{Handler: handler}
++	go func() { _ = server.Serve(listener) }()
++	client := &fasthttp.Client{
++		Dial: func(string) (net.Conn, error) { return listener.Dial() },
++	}
++	cleanup := func() {
++		_ = server.Shutdown()
++		_ = listener.Close()
++	}
++	return client, cleanup
++}
++
++func startTCPServer(t *testing.T, handler fasthttp.RequestHandler) (string, func()) {
++	t.Helper()
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatalf("listen: %v", err)
++	}
++	server := &fasthttp.Server{Handler: handler}
++	go func() { _ = server.Serve(listener) }()
++	return "http://" + listener.Addr().String(), func() {
++		_ = server.Shutdown()
++		_ = listener.Close()
++	}
++}
++
++func TestMakeRequestWithContextUnaryObservesRequestAndBufferedResponse(t *testing.T) {
++	requestBody := []byte(`{"hello":"world"}`)
++	responseBody := []byte(`{"ok":true}`)
++	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
++		if !bytes.Equal(ctx.PostBody(), requestBody) {
++			t.Errorf("server saw body %q", ctx.PostBody())
++		}
++		ctx.Response.Header.Set("X-Test", "yes")
++		ctx.SetStatusCode(200)
++		ctx.SetBody(responseBody)
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat")
++	req.Header.Set("X-Request", "1")
++	req.SetBody(requestBody)
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++
++	_, bifrostErr, wait := MakeRequestWithContext(ctx, client, req, resp)
++	wait()
++	if bifrostErr != nil {
++		t.Fatalf("unexpected error: %v", bifrostErr)
++	}
++
++	if len(observer.requests) != 1 {
++		t.Fatalf("expected 1 request event, got %d", len(observer.requests))
++	}
++	if got := observer.requests[0].Header.Get("X-Request"); got != "1" {
++		t.Fatalf("request header not observed: %q", got)
++	}
++	if got := observer.requestBodyBytes(); !bytes.Equal(got, requestBody) {
++		t.Fatalf("request body mismatch: %q", got)
++	}
++	if len(observer.responses) != 1 || observer.responses[0].status != 200 {
++		t.Fatalf("response not observed: %#v", observer.responses)
++	}
++	if got := observer.responses[0].headers.Get("X-Test"); got != "yes" {
++		t.Fatalf("response header not observed: %q", got)
++	}
++	if got := observer.bodyBytes(); !bytes.Equal(got, responseBody) {
++		t.Fatalf("response body mismatch: %q", got)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if err := observer.firstCompletionErr(); err != nil {
++		t.Fatalf("expected eof completion, got %v", err)
++	}
++	if got := observer.lastTermination(); got != TerminationEOF {
++		t.Fatalf("expected eof termination, got %q", got)
++	}
++}
++
++func TestStreamingSSEBytesArePreservedExactly(t *testing.T) {
++	fixture := []byte("event: message\n" +
++		"data: {\"a\":1}\n" +
++		"\n" +
++		": keep-alive comment\n" +
++		"data: line1\r\ndata: line2\n\n" +
++		"data: [DONE]\n\n")
++	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("text/event-stream")
++		ctx.SetBody(fixture)
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat/stream")
++	resp := fasthttp.AcquireResponse()
++	resp.StreamBody = true
++
++	if err := DoStreamingRequest(ctx, client, req, resp); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	reader, releaseGzip := DecompressStreamBody(ctx, resp)
++	defer releaseGzip()
++	got, err := io.ReadAll(reader)
++	if err != nil {
++		t.Fatalf("read error: %v", err)
++	}
++	if !bytes.Equal(got, fixture) {
++		t.Fatalf("parser-visible bytes changed\n got %q\nwant %q", got, fixture)
++	}
++	if !bytes.Equal(observer.bodyBytes(), fixture) {
++		t.Fatalf("observed bytes changed\n got %q\nwant %q", observer.bodyBytes(), fixture)
++	}
++	ReleaseStreamingResponse(ctx, resp)
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++}
++
++func TestReleaseStreamingResponseDrainsTailThroughObserver(t *testing.T) {
++	fixture := []byte("data: one\n\ndata: [DONE]\n\n" + "tail-after-marker")
++	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("text/event-stream")
++		ctx.SetBody(fixture)
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat/stream")
++	resp := fasthttp.AcquireResponse()
++	resp.StreamBody = true
++
++	if err := DoStreamingRequest(ctx, client, req, resp); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	reader, releaseGzip := DecompressStreamBody(ctx, resp)
++	// Simulate a parser that stops at the [DONE] marker: read exactly the
++	// prefix, then stop touching the reader.
++	markerEnd := bytes.Index(fixture, []byte("[DONE]\n\n")) + len("[DONE]\n\n")
++	head := make([]byte, markerEnd)
++	if _, err := io.ReadFull(reader, head); err != nil {
++		t.Fatalf("read head: %v", err)
++	}
++	releaseGzip()
++
++	ReleaseStreamingResponse(ctx, resp)
++
++	if got := observer.bodyBytes(); !bytes.Equal(got, fixture) {
++		t.Fatalf("drain tail was not observed exactly once\n got %q\nwant %q", got, fixture)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if got := observer.lastTermination(); got != TerminationEOF {
++		t.Fatalf("expected eof termination after drain, got %q", got)
++	}
++}
++
++func TestTruncatedStreamTerminatesWithErrorAndKeepsBytes(t *testing.T) {
++	// A stream that dies mid-frame: the fixture has no terminal marker.
++	fixture := []byte("data: {\"partial\":")
++	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("text/event-stream")
++		ctx.Response.Header.SetContentLength(-1)
++		ctx.SetBody(fixture)
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat/stream")
++	resp := fasthttp.AcquireResponse()
++	resp.StreamBody = true
++
++	if err := DoStreamingRequest(ctx, client, req, resp); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	reader, releaseGzip := DecompressStreamBody(ctx, resp)
++	got, err := io.ReadAll(reader)
++	releaseGzip()
++	if err != nil {
++		t.Fatalf("read error: %v", err)
++	}
++	if !bytes.Equal(got, fixture) {
++		t.Fatalf("truncated bytes changed: %q", got)
++	}
++	if !bytes.Equal(observer.bodyBytes(), fixture) {
++		t.Fatalf("truncated bytes not captured: %q", observer.bodyBytes())
++	}
++	ReleaseStreamingResponse(ctx, resp)
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++}
++
++func TestConnectionFailureIsLegalNoResponse(t *testing.T) {
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	client := &fasthttp.Client{
++		Dial: func(string) (net.Conn, error) { return nil, errors.New("dial refused") },
++	}
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat")
++	req.SetBody([]byte(`{"prompt":"x"}`))
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++
++	_, bifrostErr, wait := MakeRequestWithContext(ctx, client, req, resp)
++	wait()
++	if bifrostErr == nil {
++		t.Fatal("expected transport error")
++	}
++	if len(observer.requests) != 1 {
++		t.Fatalf("request must still be observed, got %d", len(observer.requests))
++	}
++	if got := observer.requestBodyBytes(); !bytes.Equal(got, []byte(`{"prompt":"x"}`)) {
++		t.Fatalf("request body not observed: %q", got)
++	}
++	if len(observer.responses) != 0 {
++		t.Fatalf("no response must be emitted, got %#v", observer.responses)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("no-response completion must carry the transport error")
++	}
++	if got := observer.lastTermination(); got != TerminationNoResponse {
++		t.Fatalf("expected no_response termination, got %q", got)
++	}
++}
++
++func TestObserverFailureDoesNotChangeDataPlane(t *testing.T) {
++	responseBody := []byte(`{"ok":true}`)
++	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.SetBody(responseBody)
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{panicMode: true}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat")
++	req.SetBody([]byte("body"))
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++
++	_, bifrostErr, wait := MakeRequestWithContext(ctx, client, req, resp)
++	wait()
++	if bifrostErr != nil {
++		t.Fatalf("observer panic changed the result: %v", bifrostErr)
++	}
++	if got := resp.Body(); !bytes.Equal(got, responseBody) {
++		t.Fatalf("body changed: %q", got)
++	}
++	if resp.StatusCode() != 200 {
++		t.Fatalf("status changed: %d", resp.StatusCode())
++	}
++}
++
++func TestRedirectChainOnlyInitialAndFinalAreObservable(t *testing.T) {
++	// Pins the present-but-unreachable redirect helper (gpt-load plan decision
++	// R-B, 2026-09-12). fasthttp runs the redirect loop inside unexported
++	// doRequestFollowRedirects, so a Bifrost-only fork cannot emit per-hop
++	// attempts. Both Bifrost call sites are unreachable from the current
++	// gpt-load production route registry, so this is not an omitted production
++	// attempt: the initial request and final response are observed, intermediate
++	// 3xx hops are explicitly not claimed, and this test fixes that behavior so
++	// it can never be silently upgraded to "covered".
++	hops := 0
++	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
++		if string(ctx.Path()) == "/start" {
++			hops++
++			ctx.Response.Header.Set("Location", "/next")
++			ctx.SetStatusCode(fasthttp.StatusFound)
++			return
++		}
++		hops++
++		ctx.SetStatusCode(200)
++		ctx.SetBody([]byte("final"))
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodGet)
++	req.SetRequestURI("http://example.invalid/start")
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++
++	_, bifrostErr, wait := MakeRequestWithContextFollowRedirects(ctx, client, req, resp, 3)
++	wait()
++	if bifrostErr != nil {
++		t.Fatalf("unexpected error: %v", bifrostErr)
++	}
++	if hops != 2 {
++		t.Fatalf("expected 2 real HTTP sends, got %d", hops)
++	}
++	if len(observer.responses) != 1 {
++		t.Fatalf("B1: intermediate 3xx hops are not observable, got %d response events", len(observer.responses))
++	}
++	if observer.responses[0].status != 200 {
++		t.Fatalf("only the final response is observable, got %d", observer.responses[0].status)
++	}
++	if got := observer.bodyBytes(); !bytes.Equal(got, []byte("final")) {
++		t.Fatalf("final body mismatch: %q", got)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++}
++
++func TestNoRedirectIsASingleAttempt(t *testing.T) {
++	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.SetBody([]byte("ok"))
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodGet)
++	req.SetRequestURI("http://example.invalid/plain")
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++
++	_, bifrostErr, wait := MakeRequestWithContextFollowRedirects(ctx, client, req, resp, 3)
++	wait()
++	if bifrostErr != nil {
++		t.Fatalf("unexpected error: %v", bifrostErr)
++	}
++	if len(observer.responses) != 1 || observer.completionCount() != 1 {
++		t.Fatalf("expected one response and one completion, got %d/%d", len(observer.responses), observer.completionCount())
++	}
++}
++
++func TestIdleTimeoutTerminationIsReported(t *testing.T) {
++	baseURL, cleanup := startTCPServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("text/event-stream")
++		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
++			_, _ = w.Write([]byte("data: first\n\n"))
++			_ = w.Flush()
++			time.Sleep(500 * time.Millisecond)
++		})
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	client := &fasthttp.Client{}
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI(baseURL + "/v1/chat/stream")
++	resp := fasthttp.AcquireResponse()
++	resp.StreamBody = true
++
++	if err := DoStreamingRequest(ctx, client, req, resp); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	reader, releaseGzip := DecompressStreamBody(ctx, resp)
++	defer releaseGzip()
++	rawStream := resp.BodyStream()
++	reader, stopIdle := NewIdleTimeoutReader(reader, rawStream, 50*time.Millisecond, ctx)
++	defer stopIdle()
++
++	buffer := make([]byte, 1024)
++	var err error
++	for {
++		_, err = reader.Read(buffer)
++		if err != nil {
++			break
++		}
++	}
++	if !errors.Is(err, ErrStreamIdleTimeout) {
++		t.Fatalf("expected idle timeout, got %v", err)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if got := observer.lastTermination(); got != TerminationIdleTimeout {
++		t.Fatalf("expected idle_timeout termination, got %q", got)
++	}
++}
++
++func TestCancellationTerminationIsReported(t *testing.T) {
++	baseURL, cleanup := startTCPServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("text/event-stream")
++		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
++			_, _ = w.Write([]byte("data: first\n\n"))
++			_ = w.Flush()
++			time.Sleep(2 * time.Second)
++		})
++	})
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
++	defer cancel()
++	ctx.SetValue(httpObserverContextKey, observer)
++	ctx.SetValue(httpAttemptIDContextKey, testAttemptID)
++
++	client := &fasthttp.Client{}
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI(baseURL + "/v1/chat/stream")
++	resp := fasthttp.AcquireResponse()
++	resp.StreamBody = true
++
++	if err := DoStreamingRequest(ctx, client, req, resp); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	reader, releaseGzip := DecompressStreamBody(ctx, resp)
++	defer releaseGzip()
++	stopCancellation := SetupStreamCancellation(ctx, resp.BodyStream(), nil)
++	defer stopCancellation()
++
++	readErr := make(chan error, 1)
++	go func() {
++		buffer := make([]byte, 1024)
++		for {
++			if _, err := reader.Read(buffer); err != nil {
++				readErr <- err
++				return
++			}
++		}
++	}()
++	time.Sleep(30 * time.Millisecond)
++	cancel()
++
++	select {
++	case err := <-readErr:
++		if err == nil {
++			t.Fatal("expected cancellation error")
++		}
++	case <-time.After(3 * time.Second):
++		t.Fatal("read did not unblock after cancellation")
++	}
++	// Completion is emitted by the read that observes the closed stream; wait
++	// for it rather than assuming it already happened.
++	deadline := time.Now().Add(2 * time.Second)
++	for observer.completionCount() == 0 && time.Now().Before(deadline) {
++		time.Sleep(5 * time.Millisecond)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if got := observer.lastTermination(); got != TerminationCancel {
++		t.Fatalf("expected cancel termination, got %q", got)
++	}
++}
++
++// TestStreamTerminationClassification pins the termination labels for the
++// non-EOF body endings without depending on transport-specific error values.
++func TestStreamTerminationClassification(t *testing.T) {
++	cases := []struct {
++		name        string
++		err         error
++		termination string
++	}{
++		{"idle timeout", ErrStreamIdleTimeout, TerminationIdleTimeout},
++		{"closed", ErrStreamClosed, TerminationClosed},
++		{"cancel", context.Canceled, TerminationCancel},
++		{"timeout", context.DeadlineExceeded, TerminationTimeout},
++		{"read error", errors.New("boom"), TerminationReadError},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			observer := &recordingObserver{}
++			ctx := newObserverContext(observer)
++			state := newHTTPObserverState(ctx)
++			if state == nil {
++				t.Fatal("state must exist")
++			}
++			reader := state.wrapBody(&failingReader{err: tc.err})
++			if _, err := io.ReadAll(reader); !errors.Is(err, tc.err) {
++				t.Fatalf("error changed: %v", err)
++			}
++			if observer.completionCount() != 1 {
++				t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++			}
++			if observer.firstCompletionErr() == nil {
++				t.Fatal("completion must carry the read error")
++			}
++			if got := observer.lastTermination(); got != tc.termination {
++				t.Fatalf("expected %q, got %q", tc.termination, got)
++			}
++		})
++	}
++}
++
++type failingReader struct{ err error }
++
++func (r *failingReader) Read([]byte) (int, error) { return 0, r.err }
++
++func TestHTTPObserverWrapsNetHTTPBody(t *testing.T) {
++	responseBody := []byte("net-http-body")
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatalf("listen: %v", err)
++	}
++	defer listener.Close()
++	server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
++		ctx.SetBody(responseBody)
++	}}
++	go func() { _ = server.Serve(listener) }()
++	defer server.Shutdown()
++
++	observer := &recordingObserver{}
++	ctx := schemas.NewBifrostContext(context.Background(), schemas.NoDeadline)
++	ctx.SetValue(httpObserverContextKey, observer)
++	ctx.SetValue(httpAttemptIDContextKey, testAttemptID)
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s/thing", listener.Addr()), nil)
++	if err != nil {
++		t.Fatalf("new request: %v", err)
++	}
++	resp, err := DoHTTPRequest(http.DefaultClient, req)
++	if err != nil {
++		t.Fatalf("do request: %v", err)
++	}
++	got, readErr := io.ReadAll(resp.Body)
++	if readErr != nil {
++		t.Fatalf("read body: %v", readErr)
++	}
++	if closeErr := resp.Body.Close(); closeErr != nil {
++		t.Fatalf("close body: %v", closeErr)
++	}
++	if !bytes.Equal(got, responseBody) {
++		t.Fatalf("body changed: %q", got)
++	}
++	if !bytes.Equal(observer.bodyBytes(), responseBody) {
++		t.Fatalf("observed body mismatch: %q", observer.bodyBytes())
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++}
++
++// waitForCompletion polls until the observer has at least n completions or the
++// deadline elapses. Completion can be emitted by a teardown owner goroutine
++// (cancellation / idle timer), so tests must not assume it is synchronous.
++func waitForCompletion(t *testing.T, observer *recordingObserver, n int, timeout time.Duration) {
++	t.Helper()
++	deadline := time.Now().Add(timeout)
++	for observer.completionCount() < n && time.Now().Before(deadline) {
++		time.Sleep(2 * time.Millisecond)
++	}
++}
++
++// netHTTPPost opens a real net/http POST against a live fasthttp server so the
++// request-body and response-body lifecycles are exercised end to end.
++func netHTTPPost(t *testing.T, handler fasthttp.RequestHandler, requestBody []byte) (*recordingObserver, *http.Response, []byte) {
++	t.Helper()
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatalf("listen: %v", err)
++	}
++	server := &fasthttp.Server{Handler: handler}
++	go func() { _ = server.Serve(listener) }()
++	t.Cleanup(func() {
++		_ = server.Shutdown()
++		_ = listener.Close()
++	})
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/thing", listener.Addr()), bytes.NewReader(requestBody))
++	if err != nil {
++		t.Fatalf("new request: %v", err)
++	}
++	resp, err := DoHTTPRequest(http.DefaultClient, req)
++	if err != nil {
++		t.Fatalf("do request: %v", err)
++	}
++	return observer, resp, requestBody
++}
++
++// Finding 1: the net/http request-body wrapper must only record request bytes.
++// It must not complete the response state when net/http closes the request body
++// (which it does right after writing it, before the response is consumed).
++func TestNetHTTPPostSuccessCompletesOnResponseEOF(t *testing.T) {
++	requestBody := []byte(`{"prompt":"hello world"}`)
++	responseBody := []byte(`{"ok":true}`)
++
++	observer, resp, _ := netHTTPPost(t, func(ctx *fasthttp.RequestCtx) {
++		if !bytes.Equal(ctx.PostBody(), requestBody) {
++			t.Errorf("server saw body %q", ctx.PostBody())
++		}
++		ctx.Response.Header.Set("X-Test", "yes")
++		ctx.SetStatusCode(fasthttp.StatusOK)
++		ctx.SetBody(responseBody)
++	}, requestBody)
++
++	got, readErr := io.ReadAll(resp.Body)
++	if readErr != nil {
++		t.Fatalf("read body: %v", readErr)
++	}
++	if closeErr := resp.Body.Close(); closeErr != nil {
++		t.Fatalf("close body: %v", closeErr)
++	}
++
++	if !bytes.Equal(observer.requestBodyBytes(), requestBody) {
++		t.Fatalf("request body not observed on its own channel: %q", observer.requestBodyBytes())
++	}
++	if len(observer.responses) != 1 || observer.responses[0].status != fasthttp.StatusOK {
++		t.Fatalf("response status not observed: %#v", observer.responses)
++	}
++	if got := observer.responses[0].headers.Get("X-Test"); got != "yes" {
++		t.Fatalf("response header not observed: %q", got)
++	}
++	if !bytes.Equal(got, responseBody) || !bytes.Equal(observer.bodyBytes(), responseBody) {
++		t.Fatalf("response body mismatch: read %q observed %q", got, observer.bodyBytes())
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("request-body Close must not complete the state; got %d completions (termination %q)",
++			observer.completionCount(), observer.lastTermination())
++	}
++	if err := observer.firstCompletionErr(); err != nil {
++		t.Fatalf("expected eof completion, got %v", err)
++	}
++	if got := observer.lastTermination(); got != TerminationEOF {
++		t.Fatalf("expected eof termination, got %q", got)
++	}
++}
++
++func TestNetHTTPResponseErrorLifecycle(t *testing.T) {
++	requestBody := []byte(`{"prompt":"hello"}`)
++	responseBody := []byte(`{"error":"boom"}`)
++
++	observer, resp, _ := netHTTPPost(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
++		ctx.SetBody(responseBody)
++	}, requestBody)
++
++	got, readErr := io.ReadAll(resp.Body)
++	if readErr != nil {
++		t.Fatalf("read body: %v", readErr)
++	}
++	_ = resp.Body.Close()
++
++	if len(observer.responses) != 1 || observer.responses[0].status != fasthttp.StatusInternalServerError {
++		t.Fatalf("error status not observed: %#v", observer.responses)
++	}
++	if !bytes.Equal(got, responseBody) || !bytes.Equal(observer.bodyBytes(), responseBody) {
++		t.Fatalf("error body mismatch: read %q observed %q", got, observer.bodyBytes())
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if err := observer.firstCompletionErr(); err != nil {
++		t.Fatalf("expected eof completion, got %v", err)
++	}
++	if got := observer.lastTermination(); got != TerminationEOF {
++		t.Fatalf("expected eof termination, got %q", got)
++	}
++}
++
++// TestNetHTTPSendErrorIsNoResponseAfterRequestBodyRead drives a raw TCP peer
++// that consumes the request (so the request body really is read and observed)
++// and then closes without responding: a legal no-response attempt.
++func TestNetHTTPSendErrorIsNoResponseAfterRequestBodyRead(t *testing.T) {
++	requestBody := []byte(`{"prompt":"send-error"}`)
++
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatalf("listen: %v", err)
++	}
++	defer listener.Close()
++	serverDone := make(chan struct{})
++	go func() {
++		defer close(serverDone)
++		conn, err := listener.Accept()
++		if err != nil {
++			return
++		}
++		defer conn.Close()
++		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
++		var seen []byte
++		buf := make([]byte, 1024)
++		for !bytes.Contains(seen, requestBody) {
++			n, readErr := conn.Read(buf)
++			if n > 0 {
++				seen = append(seen, buf[:n]...)
++			}
++			if readErr != nil {
++				return
++			}
++		}
++		// Body fully received: close without ever sending a response.
++	}()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/thing", listener.Addr()), bytes.NewReader(requestBody))
++	if err != nil {
++		t.Fatalf("new request: %v", err)
++	}
++	resp, err := DoHTTPRequest(&http.Client{}, req)
++	if err == nil {
++		if resp != nil && resp.Body != nil {
++			_ = resp.Body.Close()
++		}
++		t.Fatal("expected a send error")
++	}
++	if resp != nil {
++		t.Fatalf("expected no response, got %#v", resp)
++	}
++	<-serverDone
++
++	if !bytes.Equal(observer.requestBodyBytes(), requestBody) {
++		t.Fatalf("request body not observed: %q", observer.requestBodyBytes())
++	}
++	if len(observer.responses) != 0 {
++		t.Fatalf("no response must be emitted, got %#v", observer.responses)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one no-response completion, got %d", observer.completionCount())
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("no-response completion must carry the transport error")
++	}
++	if got := observer.lastTermination(); got != TerminationNoResponse {
++		t.Fatalf("expected no_response termination, got %q", got)
++	}
++}
++
++// openNetHTTPStream sends a real net/http streaming request the way the
++// Bedrock provider does (DoHTTPRequest, then teardown on resp.Body) and returns
++// the observed response after the server has flushed one SSE chunk.
++func openNetHTTPStream(t *testing.T, ctx *schemas.BifrostContext) *http.Response {
++	t.Helper()
++	baseURL, cleanup := startTCPServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("text/event-stream")
++		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
++			_, _ = w.Write(netHTTPStreamChunk)
++			_ = w.Flush()
++			time.Sleep(2 * time.Second)
++		})
++	})
++	t.Cleanup(cleanup)
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/chat/stream", nil)
++	if err != nil {
++		t.Fatalf("new request: %v", err)
++	}
++	resp, err := DoHTTPRequest(&http.Client{}, req)
++	if err != nil {
++		t.Fatalf("do request: %v", err)
++	}
++	t.Cleanup(func() { _ = resp.Body.Close() })
++
++	head := make([]byte, len(netHTTPStreamChunk))
++	if _, err := io.ReadFull(resp.Body, head); err != nil {
++		t.Fatalf("read head: %v", err)
++	}
++	if !bytes.Equal(head, netHTTPStreamChunk) {
++		t.Fatalf("head mismatch: %q", head)
++	}
++	return resp
++}
++
++var netHTTPStreamChunk = []byte("data: first\n\n")
++
++// Finding 2 for the net/http body: an early-returning parser plus a cancel must
++// complete exactly once with an accurate, incomplete termination. net/http
++// teardown closes resp.Body, so the response-body wrapper is the close owner.
++func TestNetHTTPEarlyReturnCancelReportsIncompleteTermination(t *testing.T) {
++	observer := &recordingObserver{}
++	ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
++	defer cancel()
++	ctx.SetValue(httpObserverContextKey, observer)
++	ctx.SetValue(httpAttemptIDContextKey, testAttemptID)
++
++	resp := openNetHTTPStream(t, ctx)
++	stopCancellation := SetupStreamCancellation(ctx, resp.Body, nil)
++	defer stopCancellation()
++
++	cancel()
++	waitForCompletion(t, observer, 1, 2*time.Second)
++
++	if got := observer.completionCount(); got != 1 {
++		t.Fatalf("expected exactly one completion, got %d", got)
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("cancel termination must be marked incomplete (non-nil error)")
++	}
++	if got := observer.lastTermination(); got != TerminationCancel {
++		t.Fatalf("expected cancel termination, got %q", got)
++	}
++	if got := observer.bodyBytes(); !bytes.Equal(got, netHTTPStreamChunk) {
++		t.Fatalf("observed bytes changed: %q", got)
++	}
++}
++
++func TestNetHTTPEarlyReturnDeadlineReportsIncompleteTermination(t *testing.T) {
++	observer := &recordingObserver{}
++	ctx, cancel := schemas.NewBifrostContextWithTimeout(context.Background(), 400*time.Millisecond)
++	defer cancel()
++	ctx.SetValue(httpObserverContextKey, observer)
++	ctx.SetValue(httpAttemptIDContextKey, testAttemptID)
++
++	resp := openNetHTTPStream(t, ctx)
++	stopCancellation := SetupStreamCancellation(ctx, resp.Body, nil)
++	defer stopCancellation()
++
++	waitForCompletion(t, observer, 1, 3*time.Second)
++
++	if got := observer.completionCount(); got != 1 {
++		t.Fatalf("expected exactly one completion, got %d", got)
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("deadline termination must be marked incomplete (non-nil error)")
++	}
++	if got := observer.lastTermination(); got != TerminationTimeout {
++		t.Fatalf("expected timeout termination, got %q", got)
++	}
++}
++
++func TestNetHTTPEarlyReturnIdleTimeoutReportsIncompleteTermination(t *testing.T) {
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++
++	resp := openNetHTTPStream(t, ctx)
++	reader, stopIdle := NewIdleTimeoutReader(resp.Body, resp.Body, 100*time.Millisecond, ctx)
++	defer stopIdle()
++
++	// Drain reads until the idle timer fires; the parser has long since stopped
++	// reading, which is the early-return shape.
++	buf := make([]byte, 64)
++	var err error
++	for err == nil {
++		_, err = reader.Read(buf)
++	}
++	if !errors.Is(err, ErrStreamIdleTimeout) {
++		t.Fatalf("expected idle timeout from read, got %v", err)
++	}
++	waitForCompletion(t, observer, 1, 2*time.Second)
++
++	if got := observer.completionCount(); got != 1 {
++		t.Fatalf("expected exactly one completion, got %d", got)
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("idle-timeout termination must be marked incomplete (non-nil error)")
++	}
++	if got := observer.lastTermination(); got != TerminationIdleTimeout {
++		t.Fatalf("expected idle_timeout termination, got %q", got)
++	}
++}
++
++// Finding 2 for the net/http body: a caller closing the response body before
++// EOF must be reported as an incomplete "closed" termination, exactly once.
++func TestNetHTTPEarlyCloseReportsIncompleteTermination(t *testing.T) {
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++
++	resp := openNetHTTPStream(t, ctx)
++	if err := resp.Body.Close(); err != nil {
++		t.Fatalf("close body: %v", err)
++	}
++
++	if got := observer.completionCount(); got != 1 {
++		t.Fatalf("expected exactly one completion, got %d", got)
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("early close must be marked incomplete (non-nil error)")
++	}
++	if got := observer.lastTermination(); got != TerminationClosed {
++		t.Fatalf("expected closed termination, got %q", got)
++	}
++}
++
++// streamedAttempt bundles the teardown handles of one streamed response so a
++// test can reproduce the production defer order.
++type streamedAttempt struct {
++	resp             *fasthttp.Response
++	reader           io.Reader
++	rawStream        io.Reader
++	releaseGzip      func()
++	stopIdle         func()
++	stopCancellation func()
++}
++
++func (a *streamedAttempt) teardown(ctx *schemas.BifrostContext) {
++	a.stopCancellation()
++	a.stopIdle()
++	a.releaseGzip()
++	ReleaseStreamingResponse(ctx, a.resp)
++}
++
++// openStreamedAttempt performs the same wiring the providers use: streaming
++// send, decompress, idle-timeout wrapper, cancellation hookup.
++func openStreamedAttempt(t *testing.T, ctx *schemas.BifrostContext, baseURL string, idleTimeout time.Duration) *streamedAttempt {
++	t.Helper()
++	client := &fasthttp.Client{}
++	req := fasthttp.AcquireRequest()
++	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI(baseURL + "/v1/chat/stream")
++	resp := fasthttp.AcquireResponse()
++	resp.StreamBody = true
++	if err := DoStreamingRequest(ctx, client, req, resp); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	reader, releaseGzip := DecompressStreamBody(ctx, resp)
++	rawStream := resp.BodyStream()
++	reader, stopIdle := NewIdleTimeoutReader(reader, rawStream, idleTimeout, ctx)
++	stopCancellation := SetupStreamCancellation(ctx, rawStream, nil)
++	return &streamedAttempt{
++		resp:             resp,
++		reader:           reader,
++		rawStream:        rawStream,
++		releaseGzip:      releaseGzip,
++		stopIdle:         stopIdle,
++		stopCancellation: stopCancellation,
++	}
++}
++
++func startChunkThenHold(t *testing.T, chunk []byte, hold time.Duration) (string, func()) {
++	t.Helper()
++	return startTCPServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("text/event-stream")
++		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
++			_, _ = w.Write(chunk)
++			_ = w.Flush()
++			time.Sleep(hold)
++		})
++	})
++}
++
++// Finding 2: after the parser returns early there may be no pending Read. A
++// cancel that closes the stream and causes ReleaseStreamingResponse to skip its
++// drain must still emit exactly one incomplete termination.
++func TestEarlyReturnCancelReportsIncompleteTermination(t *testing.T) {
++	chunk := []byte("data: first\n\n")
++	baseURL, cleanup := startChunkThenHold(t, chunk, 2*time.Second)
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
++	defer cancel()
++	ctx.SetValue(httpObserverContextKey, observer)
++	ctx.SetValue(httpAttemptIDContextKey, testAttemptID)
++
++	attempt := openStreamedAttempt(t, ctx, baseURL, 5*time.Second)
++
++	head := make([]byte, len(chunk))
++	if _, err := io.ReadFull(attempt.reader, head); err != nil {
++		t.Fatalf("read head: %v", err)
++	}
++	// Parser early return: no pending Read from here on.
++	cancel()
++
++	waitForCompletion(t, observer, 1, 2*time.Second)
++	attempt.teardown(ctx)
++
++	if got := observer.completionCount(); got != 1 {
++		t.Fatalf("expected exactly one completion, got %d", got)
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("cancel termination must be marked incomplete (non-nil error)")
++	}
++	if got := observer.lastTermination(); got != TerminationCancel {
++		t.Fatalf("expected cancel termination, got %q", got)
++	}
++	if got := observer.bodyBytes(); !bytes.Equal(got, chunk) {
++		t.Fatalf("observed bytes changed: %q", got)
++	}
++}
++
++// Finding 2: deadline exceeded and no pending Read.
++func TestEarlyReturnDeadlineReportsIncompleteTermination(t *testing.T) {
++	chunk := []byte("data: first\n\n")
++	baseURL, cleanup := startChunkThenHold(t, chunk, 2*time.Second)
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx, cancel := schemas.NewBifrostContextWithTimeout(context.Background(), 500*time.Millisecond)
++	defer cancel()
++	ctx.SetValue(httpObserverContextKey, observer)
++	ctx.SetValue(httpAttemptIDContextKey, testAttemptID)
++
++	attempt := openStreamedAttempt(t, ctx, baseURL, 5*time.Second)
++
++	head := make([]byte, len(chunk))
++	if _, err := io.ReadFull(attempt.reader, head); err != nil {
++		t.Fatalf("read head: %v", err)
++	}
++	waitForCompletion(t, observer, 1, 3*time.Second)
++	attempt.teardown(ctx)
++
++	if got := observer.completionCount(); got != 1 {
++		t.Fatalf("expected exactly one completion, got %d", got)
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("deadline termination must be marked incomplete (non-nil error)")
++	}
++	if got := observer.lastTermination(); got != TerminationTimeout {
++		t.Fatalf("expected timeout termination, got %q", got)
++	}
++	if got := observer.bodyBytes(); !bytes.Equal(got, chunk) {
++		t.Fatalf("observed bytes changed: %q", got)
++	}
++}
++
++// Finding 2: idle timeout fires after the parser returned early and nobody is
++// reading; the timer owns the close and must also own the completion.
++func TestEarlyReturnIdleTimeoutReportsIncompleteTermination(t *testing.T) {
++	chunk := []byte("data: first\n\n")
++	baseURL, cleanup := startChunkThenHold(t, chunk, 2*time.Second)
++	defer cleanup()
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++
++	attempt := openStreamedAttempt(t, ctx, baseURL, 100*time.Millisecond)
++
++	head := make([]byte, len(chunk))
++	if _, err := io.ReadFull(attempt.reader, head); err != nil {
++		t.Fatalf("read head: %v", err)
++	}
++	waitForCompletion(t, observer, 1, 3*time.Second)
++	attempt.teardown(ctx)
++
++	if got := observer.completionCount(); got != 1 {
++		t.Fatalf("expected exactly one completion, got %d", got)
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("idle-timeout termination must be marked incomplete (non-nil error)")
++	}
++	if got := observer.lastTermination(); got != TerminationIdleTimeout {
++		t.Fatalf("expected idle_timeout termination, got %q", got)
++	}
++	if got := observer.bodyBytes(); !bytes.Equal(got, chunk) {
++		t.Fatalf("observed bytes changed: %q", got)
++	}
++}
++
++// Finding 2: LargeResponseReader.Close is another teardown owner. When another
++// owner already marked the connection closed it skips the drain; it must still
++// complete the unfinished state without touching the stream again.
++func TestLargeResponseReaderCloseAfterOwnerStillCompletes(t *testing.T) {
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	state := newHTTPObserverState(ctx)
++	state.attachToContext(ctx)
++	state.observeResponse(200, http.Header{})
++
++	// Another owner already closed the stream.
++	ctx.SetValue(schemas.BifrostContextKeyConnectionClosed, true)
++
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++	resp.SetBodyStream(io.NopCloser(bytes.NewReader([]byte("unread"))), -1)
++
++	closable := &LargeResponseReader{Reader: bytes.NewReader(nil), Resp: resp, ctx: ctx}
++	if err := closable.Close(); err != nil {
++		t.Fatalf("close: %v", err)
++	}
++
++	if got := observer.completionCount(); got != 1 {
++		t.Fatalf("expected exactly one completion, got %d", got)
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("closed termination must be marked incomplete (non-nil error)")
++	}
++	if got := observer.lastTermination(); got != TerminationClosed {
++		t.Fatalf("expected closed termination, got %q", got)
++	}
++}
++
++// Finding 3 helpers.
++func openStreamedErrorResponse(t *testing.T, ctx *schemas.BifrostContext, handler fasthttp.RequestHandler) (*fasthttp.Response, func()) {
++	t.Helper()
++	baseURL, serverCleanup := startTCPServer(t, handler)
++	client := &fasthttp.Client{}
++	req := fasthttp.AcquireRequest()
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI(baseURL + "/v1/chat/completions")
++	req.SetBody([]byte(`{}`))
++	resp := fasthttp.AcquireResponse()
++	streamingClient := PrepareResponseStreaming(ctx, client, resp)
++	_, bifrostErr, wait := MakeRequestWithContext(ctx, streamingClient, req, resp)
++	wait()
++	fasthttp.ReleaseRequest(req)
++	if bifrostErr != nil {
++		fasthttp.ReleaseResponse(resp)
++		serverCleanup()
++		t.Fatalf("send failed: %v", bifrostErr)
++	}
++	return resp, func() {
++		fasthttp.ReleaseResponse(resp)
++		serverCleanup()
++	}
++}
++
++// Finding 3: a streamed error body larger than the 512 KiB parser cap must
++// still be observed in full to the real transport termination, while the parser
++// copy stays capped.
++func TestMaterializeStreamErrorBodyBeyondParserCapKeepsRawComplete(t *testing.T) {
++	const capBytes = 512 * 1024
++	fixture := bytes.Repeat([]byte("x"), capBytes+4096)
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	ctx.SetValue(schemas.BifrostContextKeyLargeResponseThreshold, int64(1))
++
++	resp, cleanup := openStreamedErrorResponse(t, ctx, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("application/json")
++		ctx.SetStatusCode(fasthttp.StatusBadRequest)
++		ctx.SetBody(fixture)
++	})
++	defer cleanup()
++
++	MaterializeStreamErrorBody(ctx, resp)
++
++	if got := observer.bodyBytes(); !bytes.Equal(got, fixture) {
++		t.Fatalf("raw capture truncated: got %d bytes want %d", len(got), len(fixture))
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if err := observer.firstCompletionErr(); err != nil {
++		t.Fatalf("expected eof completion, got %v", err)
++	}
++	if got := observer.lastTermination(); got != TerminationEOF {
++		t.Fatalf("expected eof termination, got %q", got)
++	}
++	if got := resp.Body(); !bytes.Equal(got, fixture[:capBytes]) {
++		t.Fatalf("parser copy changed: got %d bytes want %d", len(got), capBytes)
++	}
++}
++
++func TestMaterializeStreamErrorBodyAtParserCapStillCompletes(t *testing.T) {
++	const capBytes = 512 * 1024
++	fixture := bytes.Repeat([]byte("y"), capBytes)
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	ctx.SetValue(schemas.BifrostContextKeyLargeResponseThreshold, int64(1))
++
++	resp, cleanup := openStreamedErrorResponse(t, ctx, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("application/json")
++		ctx.SetStatusCode(fasthttp.StatusBadRequest)
++		ctx.SetBody(fixture)
++	})
++	defer cleanup()
++
++	MaterializeStreamErrorBody(ctx, resp)
++
++	if got := observer.bodyBytes(); !bytes.Equal(got, fixture) {
++		t.Fatalf("raw capture truncated: got %d bytes want %d", len(got), len(fixture))
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if got := observer.lastTermination(); got != TerminationEOF {
++		t.Fatalf("expected eof termination, got %q", got)
++	}
++	if got := resp.Body(); !bytes.Equal(got, fixture) {
++		t.Fatalf("parser copy changed: got %d bytes want %d", len(got), len(fixture))
++	}
++}
++
++func TestMaterializeStreamErrorBodyNormalEOFKeepsRawComplete(t *testing.T) {
++	fixture := []byte(`{"error":{"message":"small error"}}`)
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	ctx.SetValue(schemas.BifrostContextKeyLargeResponseThreshold, int64(1))
++
++	resp, cleanup := openStreamedErrorResponse(t, ctx, func(ctx *fasthttp.RequestCtx) {
++		ctx.Response.Header.SetContentType("application/json")
++		ctx.SetStatusCode(fasthttp.StatusBadRequest)
++		ctx.SetBody(fixture)
++	})
++	defer cleanup()
++
++	MaterializeStreamErrorBody(ctx, resp)
++
++	if got := observer.bodyBytes(); !bytes.Equal(got, fixture) {
++		t.Fatalf("raw capture changed: got %q want %q", got, fixture)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if got := observer.lastTermination(); got != TerminationEOF {
++		t.Fatalf("expected eof termination, got %q", got)
++	}
++}
++
++// errorAfterReader delivers data first and then a fixed error.
++type errorAfterReader struct {
++	data []byte
++	err  error
++}
++
++func (r *errorAfterReader) Read(p []byte) (int, error) {
++	if len(r.data) > 0 {
++		n := copy(p, r.data)
++		r.data = r.data[n:]
++		return n, nil
++	}
++	return 0, r.err
++}
++
++// Finding 3: a read error must be reported as an incomplete termination exactly
++// once and must not be swallowed by the parser cap.
++func TestMaterializeStreamErrorBodyReadErrorIsIncomplete(t *testing.T) {
++	prefix := []byte(`{"error":"part`)
++	readErr := errors.New("upstream read failed")
++
++	observer := &recordingObserver{}
++	ctx := newObserverContext(observer)
++	ctx.SetValue(schemas.BifrostContextKeyLargeResponseThreshold, int64(1))
++	state := newHTTPObserverState(ctx)
++	state.attachToContext(ctx)
++
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++	resp.SetBodyStream(&errorAfterReader{data: bytes.Clone(prefix), err: readErr}, -1)
++
++	MaterializeStreamErrorBody(ctx, resp)
++
++	if got := observer.bodyBytes(); !bytes.Equal(got, prefix) {
++		t.Fatalf("raw capture changed: got %q want %q", got, prefix)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("expected exactly one completion, got %d", observer.completionCount())
++	}
++	if observer.firstCompletionErr() == nil {
++		t.Fatal("read-error termination must be marked incomplete (non-nil error)")
++	}
++}
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/largeresponse.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/largeresponse.go
+--- a/providers/utils/largeresponse.go
++++ b/providers/utils/largeresponse.go
+@@ -55,12 +55,21 @@
+ 	}
+ 	if r.ctx != nil {
+ 		if closed, ok := r.ctx.Value(schemas.BifrostContextKeyConnectionClosed).(bool); ok && closed {
++			// Another owner (cancel/timeout/idle) already closed the stream and
++			// skipped the drain. Complete any still-unfinished observation so the
++			// attempt emits exactly one termination without a second close, a
++			// drain, or a delayed close.
++			httpObserverStateFromContext(r.ctx).completePending()
+ 			r.Resp = nil
+ 			return nil
+ 		}
+ 	}
+ 	if !r.consumed {
+ 		if bodyStream := r.Resp.BodyStream(); bodyStream != nil {
++			// Drain through the same request-scoped observer wrapper the parser
++			// used, so tail bytes left behind by an early stop are captured
++			// exactly once instead of bypassing the observer.
++			bodyStream = httpObserverStateFromContext(r.ctx).wrapBody(bodyStream)
+ 			_, _ = io.Copy(io.Discard, bodyStream)
+ 			if closer, ok := bodyStream.(io.Closer); ok {
+ 				_ = closer.Close()
+@@ -105,24 +114,63 @@
+ 
+ // MaterializeStreamErrorBody reads a streamed error body into resp so that resp.Body()
+ // returns the error payload for parsing. No-op when response streaming is not active.
++//
++// The parser copy is capped at 512 KiB, but raw observation is not: after the
++// capped read the remaining stream is drained to its real transport termination
++// through the same request-scoped observer wrapper. Without that drain the
++// observer would never see the tail bytes and the reader's real EOF/error, and
++// resp.SetBody would close the stream before they were delivered.
+ func MaterializeStreamErrorBody(ctx *schemas.BifrostContext, resp *fasthttp.Response) {
+ 	responseThreshold, _ := ctx.Value(schemas.BifrostContextKeyLargeResponseThreshold).(int64)
+ 	if responseThreshold <= 0 {
+ 		return
+ 	}
+ 	if bodyStream := resp.BodyStream(); bodyStream != nil {
+-		gz, reader, wasGzip := decompressBodyStreamIfGzip(resp, bodyStream)
++		state := httpObserverStateFromContext(ctx)
++		rawStream := state.wrapBody(bodyStream)
++		gz, reader, wasGzip := decompressBodyStreamIfGzip(resp, rawStream)
+ 		if wasGzip {
+ 			defer ReleaseGzipReader(gz)
+ 		}
+ 		bodyBytes, readErr := io.ReadAll(io.LimitReader(reader, 512*1024)) // 512KB cap for error bodies
+ 		if readErr != nil {
++			// Preserve the caller's resp.Body() behaviour: do not consume or
++			// drain further. Still guarantee an exactly-once incomplete
++			// completion for an error that surfaced above the raw transport
++			// layer (for example a gzip framing error). nil-state safe.
++			state.completeIncomplete(readErr, TerminationReadError)
+ 			return
+ 		}
++		// Raw observation must reach the transport's true termination; only do
++		// that work when an observer is actually active, so a direct SDK caller
++		// with no observer keeps the exact upstream behaviour (capped read then
++		// close). The decompressed reader may stop at the gzip member boundary
++		// before the raw stream reports EOF, so drain the raw observed stream
++		// as well. Both reads share one wrapper, so every byte is emitted
++		// exactly once and the state completes exactly once.
++		if state != nil {
++			drainToTermination(reader, rawStream)
++		}
+ 		resp.SetBody(bodyBytes)
+ 	}
+ }
+ 
++// drainToTermination consumes primary (and the raw stream beneath it when it is
++// a decompression layer) to its natural termination, discarding the bytes. The
++// request-scoped observer wrapper beneath emits them and emits the single
++// completion. It is used only where the parser intentionally stops early; it
++// never closes the stream itself, leaving that to the existing owner.
++func drainToTermination(primary io.Reader, raw io.Reader) {
++	if primary == nil {
++		return
++	}
++	_, _ = io.Copy(io.Discard, primary)
++	if raw == nil || raw == primary {
++		return
++	}
++	_, _ = io.Copy(io.Discard, raw)
++}
++
+ // FinalizeResponseWithLargeDetection processes the response body with optional large response
+ // detection. Takes ownership semantics: when isLargeResponse is true, the caller must NOT
+ // release resp (it's wrapped in a reader stored in context). When false, resp is unchanged
+@@ -168,6 +216,7 @@
+ 	// Known small response — read from stream, return body for normal parsing
+ 	if contentLength > 0 && int64(contentLength) <= responseThreshold {
+ 		if bodyStream := resp.BodyStream(); bodyStream != nil {
++			bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
+ 			gz, reader, wasGzip := decompressBodyStreamIfGzip(resp, bodyStream)
+ 			if wasGzip {
+ 				defer ReleaseGzipReader(gz)
+@@ -191,6 +240,7 @@
+ 	// buffered for normal parsing/logging; only responses exceeding threshold are streamed.
+ 	if contentLength <= 0 {
+ 		if bodyStream := resp.BodyStream(); bodyStream != nil {
++			bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
+ 			gz, reader, wasGzip := decompressBodyStreamIfGzip(resp, bodyStream)
+ 			releaseGzip := func() {}
+ 			if wasGzip {
+@@ -236,6 +286,9 @@
+ 	// Known large response (Content-Length > threshold) — prefetch first 64KB for
+ 	// metadata extraction, then stream the rest without full materialization.
+ 	bodyStream := resp.BodyStream()
++	if bodyStream != nil {
++		bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
++	}
+ 	if bodyStream == nil {
+ 		// No stream available — fall back to buffered read
+ 		if logger != nil {
+@@ -344,7 +397,7 @@
+ 		return false
+ 	}
+ 
+-	reader, releaseGzip := DecompressStreamBody(resp)
++	reader, releaseGzip := DecompressStreamBody(ctx, resp)
+ 
+ 	// Wrap reader with idle timeout to detect stalled streams.
+ 	reader, stopIdleTimeout := NewIdleTimeoutReader(reader, resp.BodyStream(), GetStreamIdleTimeout(ctx), ctx)
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/passthrough_stream.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/passthrough_stream.go
+--- a/providers/utils/passthrough_stream.go
++++ b/providers/utils/passthrough_stream.go
+@@ -52,8 +52,11 @@
+ 	rawBodyStream io.Reader,
+ 	params PassthroughStreamParams,
+ ) chan *schemas.BifrostStreamChunk {
+-	// Wrap reader with idle timeout to detect stalled streams.
+-	bodyStream, stopIdleTimeout := NewIdleTimeoutReader(rawBodyStream, rawBodyStream, GetStreamIdleTimeout(ctx), ctx)
++	// Wrap reader with idle timeout to detect stalled streams. The observer
++	// wrapper sits at the raw transport layer (arg 1 only): the close/idle
++	// teardown keeps targeting the unwrapped bodyStream, so CloseWithError
++	// semantics are unchanged.
++	bodyStream, stopIdleTimeout := NewIdleTimeoutReader(httpObserverStateFromContext(ctx).wrapBody(rawBodyStream), rawBodyStream, GetStreamIdleTimeout(ctx), ctx)
+ 	// Cancellation must close the raw stream to unblock reads.
+ 	stopCancellation := SetupStreamCancellation(ctx, rawBodyStream, params.Logger)
+ 
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/utils.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/utils.go
+--- a/providers/utils/utils.go
++++ b/providers/utils/utils.go
+@@ -432,14 +432,52 @@
+ // path it blocks until the background client.Do goroutine finishes, preventing a data race
+ // between the still-running goroutine and the caller's release of req/resp.
+ func MakeRequestWithContext(ctx context.Context, client *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) (time.Duration, *schemas.BifrostError, func()) {
+-	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error { return client.Do(req, resp) })
++	state := newHTTPObserverState(ctx)
++	if state != nil {
++		state.attachToContext(ctx)
++		state.observeFasthttpRequest(req)
++	}
++	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error {
++		err := client.Do(req, resp)
++		state.observeFasthttpSendResult(resp, err)
++		if err == nil {
++			state.observeFasthttpBufferedBody(resp)
++		}
++		return err
++	})
+ 	return latency, bifrostErr, wait
+ }
+ 
+ // MakeRequestWithContextFollowRedirects is like MakeRequestWithContext but follows up to
+ // maxRedirects HTTP redirects automatically (equivalent to curl's -L flag).
++//
++// Observation boundary: fasthttp performs the redirect loop internally
++// (unexported doRequestFollowRedirects, one real c.Do per hop), so only the
++// initial request and the final response are visible from this module;
++// intermediate 3xx hops are deliberately NOT claimed as observed.
++//
++// Status: present-but-unreachable. Both call sites
++// (GeminiProvider.VideoDownload and the GeminiProvider.Passthrough ":download"
++// branch) are unreachable from the current gpt-load production route registry,
++// so no production Provider attempt uses this helper today. The reachability
++// proof lives in gpt-load .tmp/raw-provider-capture/units/U000/evidence and the
++// behavior is pinned by TestRedirectChainOnlyInitialAndFinalAreObservable; the
++// plan records this as present-but-unreachable rather than as a covered path.
++// Do not add a second fasthttp fork or alter redirect semantics.
+ func MakeRequestWithContextFollowRedirects(ctx context.Context, client *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) (time.Duration, *schemas.BifrostError, func()) {
+-	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error { return client.DoRedirects(req, resp, maxRedirects) })
++	state := newHTTPObserverState(ctx)
++	if state != nil {
++		state.attachToContext(ctx)
++		state.observeFasthttpRequest(req)
++	}
++	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error {
++		err := client.DoRedirects(req, resp, maxRedirects)
++		state.observeFasthttpSendResult(resp, err)
++		if err == nil {
++			state.observeFasthttpBufferedBody(resp)
++		}
++		return err
++	})
+ 	return latency, bifrostErr, wait
+ }
+ 
+@@ -455,9 +493,21 @@
+ // Returns client.Do's error untouched so callers keep their own error
+ // classification and latency bookkeeping.
+ func DoStreamingRequest(ctx context.Context, client *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
++	state := newHTTPObserverState(ctx)
++	if state != nil {
++		state.attachToContext(ctx)
++		state.observeFasthttpRequest(req)
++	}
+ 	startTime := time.Now()
+ 	err := client.Do(req, resp)
+ 	schemas.AddUpstreamLatency(ctx, time.Since(startTime))
++	state.observeFasthttpSendResult(resp, err)
++	if err == nil {
++		// A streaming request may still receive a fully buffered response (for
++		// example a small error payload). Streamed bodies are observed by the
++		// reader wrappers instead; this call is a no-op for them.
++		state.observeFasthttpBufferedBody(resp)
++	}
+ 	return err
+ }
+ 
+@@ -492,11 +542,22 @@
+ // reads that drain it. Streamed responses consumed through NewIdleTimeoutReader
+ // are unwrapped there — the idle reader does its own per-chunk timing.
+ func DoHTTPRequest(client *http.Client, req *http.Request) (*http.Response, error) {
++	state := newHTTPObserverState(req.Context())
++	if state != nil {
++		state.attachToContext(req.Context())
++		state.observeHTTPRequest(req)
++	}
+ 	startTime := time.Now()
+ 	resp, err := client.Do(req)
+ 	schemas.AddUpstreamLatency(req.Context(), time.Since(startTime))
++	state.observeHTTPResponse(resp, err)
+ 	if err == nil && resp != nil && resp.Body != nil {
+ 		resp.Body = &upstreamTimingBody{inner: resp.Body, ctx: req.Context()}
++		// Observation sits outside the timing wrapper so the observer never
++		// observes timing-internal reads, and the timing wrapper stays inner
++		// (NewIdleTimeoutReader unwraps it; it would not unwrap an observer
++		// wrapper, so timing must not be hidden behind the observer).
++		resp.Body = state.wrapReadCloser(resp.Body)
+ 	}
+ 	return resp, err
+ }
+@@ -1490,13 +1551,17 @@
+ //     original body stream otherwise).
+ //   - func(): cleanup function that releases the gzip reader back to the pool.
+ //     Must be called (typically via defer) after streaming is complete.
+-func DecompressStreamBody(resp *fasthttp.Response) (io.Reader, func()) {
++func DecompressStreamBody(ctx context.Context, resp *fasthttp.Response) (io.Reader, func()) {
+ 	bodyStream := resp.BodyStream()
+ 	if bodyStream == nil {
+ 		// Return an empty reader instead of nil to prevent panics in callers
+ 		// that pass the reader to bufio.NewScanner without nil checks.
+ 		return bytes.NewReader(nil), func() {}
+ 	}
++	// Observe the raw transport body stream (transfer framing already removed
++	// by fasthttp, Content-Encoding decoding not yet applied) so that the same
++	// bytes are seen by the parser reader and, later, by the release drain.
++	bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
+ 	gz, decompressed, wasGzip := decompressBodyStreamIfGzip(resp, bodyStream)
+ 	if !wasGzip {
+ 		return bodyStream, func() {}
+@@ -2929,6 +2994,14 @@
+ 			if prev, _ := ctx.GetAndSetValue(schemas.BifrostContextKeyConnectionClosed, true).(bool); prev {
+ 				return
+ 			}
++			// Leave a semantic termination label for the raw-layer observer,
++			// which sees the transport error produced by the close below.
++			termination := TerminationCancel
++			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
++				termination = TerminationTimeout
++			}
++			state := httpObserverStateFromContext(ctx)
++			state.markPendingTermination(termination)
+ 			// Context cancelled or deadline exceeded - close the body stream to unblock reads
+ 			if closer, ok := bodyStream.(io.Closer); ok {
+ 				if err := closer.Close(); err != nil {
+@@ -2939,6 +3012,13 @@
+ 					getLogger().Debug(fmt.Sprintf("Error closing body stream on context done: %v", err))
+ 				}
+ 			}
++			// The close owner also owns the completion. A parser that returned
++			// early ([DONE]/finish_reason/protocol error) leaves no pending Read,
++			// and ReleaseStreamingResponse then skips its drain, so without this
++			// the attempt would carry no termination evidence. Observation-only:
++			// the stream is already closed above, nothing is drained and the
++			// close is not delayed.
++			state.completeIncomplete(ctx.Err(), termination)
+ 		case <-done:
+ 			// Race between done and ctx.Done: the streaming goroutine has reached its defer
+ 			// chain (Read has returned), and ctx is also cancelled. The body may already be
+@@ -2953,6 +3033,12 @@
+ 				if prev, _ := ctx.GetAndSetValue(schemas.BifrostContextKeyConnectionClosed, true).(bool); prev {
+ 					return
+ 				}
++				termination := TerminationCancel
++				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
++					termination = TerminationTimeout
++				}
++				state := httpObserverStateFromContext(ctx)
++				state.markPendingTermination(termination)
+ 				if closer, ok := bodyStream.(io.Closer); ok {
+ 					if err := closer.Close(); err != nil {
+ 						getLogger().Debug(fmt.Sprintf("Error closing body stream on done with cancelled context: %v", err))
+@@ -2962,6 +3048,7 @@
+ 						getLogger().Debug(fmt.Sprintf("Error closing body stream on done with cancelled context: %v", err))
+ 					}
+ 				}
++				state.completeIncomplete(ctx.Err(), termination)
+ 			}
+ 		}
+ 	}()
+@@ -3082,6 +3169,14 @@
+ 				}
+ 			}
+ 			r.fired.Store(true)
++			state := httpObserverStateFromContext(r.ctx)
++			state.markPendingTermination(TerminationIdleTimeout)
++			// The idle timer owns this teardown, so it also owns exactly-once
++			// completion for a parser that already returned and left no pending
++			// Read. The deferred call survives a panic from closing a stale
++			// timer's already-released stream and is observation-only: nothing is
++			// drained and the close is not delayed.
++			defer state.completeIncomplete(ErrStreamIdleTimeout, TerminationIdleTimeout)
+ 			// closeBodyStream may panic: an orphaned timer can fire after the
+ 			// stream's connection has already been released to / reused from
+ 			// the fasthttp pool, so CloseWithError nil-derefs in
+@@ -3490,6 +3585,10 @@
+ 	}
+ 	bodyStream := resp.BodyStream()
+ 	if bodyStream == nil {
++		// No stream remains (buffered response already observed by the send
++		// helper, or the stream was detached by a materializing read). Still
++		// guarantee an exactly-once termination for an unfinished state.
++		httpObserverStateFromContext(ctx).completePending()
+ 		fasthttp.ReleaseResponse(resp)
+ 		return
+ 	}
+@@ -3501,6 +3600,11 @@
+ 	// is a single locked compare-and-swap, closing the race the previous
+ 	// Value-only check left open against a concurrent timer/cancellation close.
+ 	if prev, _ := ctx.GetAndSetValue(schemas.BifrostContextKeyConnectionClosed, true).(bool); prev {
++		// Another owner (cancel/timeout/idle) already closed the stream and
++		// skipped the drain. Complete any still-unfinished observation so the
++		// attempt emits exactly one termination without a second close, a
++		// drain, or a delayed close.
++		httpObserverStateFromContext(ctx).completePending()
+ 		return
+ 	}
+ 	defer func() {
+@@ -3511,6 +3615,17 @@
+ 	// Drain any remaining data from the body stream before releasing.
+ 	// This prevents "whitespace in header" errors when the connection is reused
+ 	// (see: https://github.com/valyala/fasthttp/issues/1743).
++	//
++	// The drain reads through the same request-scoped observer wrapper that the
++	// parser used (both wrap resp.BodyStream() at the raw transport layer), so
++	// bytes a parser left behind after an early [DONE]/finish_reason/error stop
++	// are captured exactly once instead of bypassing the observer. Re-wrapping
++	// the same underlying stream with the same state does not duplicate bytes:
++	// the parser already emitted the bytes it read, the drain emits only the
++	// remainder, and completion is guarded by sync.Once on the state.
++	if state := httpObserverStateFromContext(ctx); state != nil {
++		bodyStream = state.wrapBody(bodyStream)
++	}
+ 	if _, err := io.Copy(io.Discard, bodyStream); err != nil {
+ 		getLogger().Warn("failed to drain streaming response body before release (may cause stale connection reuse): %v", err)
+ 	}
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/utils_test.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/utils_test.go
+--- a/providers/utils/utils_test.go
++++ b/providers/utils/utils_test.go
+@@ -850,7 +850,7 @@
+ 	resp.Header.Set("Content-Encoding", "gzip")
+ 	resp.SetBodyStream(bytes.NewReader(compressed), len(compressed))
+ 
+-	decompressed, releaseGzip := DecompressStreamBody(resp)
++	decompressed, releaseGzip := DecompressStreamBody(nil, resp)
+ 	defer releaseGzip()
+ 
+ 	reader, drained := DrainNonSSEStreamReader(resp, decompressed)
+@@ -1121,7 +1121,7 @@
+ 	}
+ 
+ 	// Mirror the streaming goroutine path in openai.go
+-	reader, releaseGzip := DecompressStreamBody(resp)
++	reader, releaseGzip := DecompressStreamBody(nil, resp)
+ 	defer releaseGzip()
+ 
+ 	reader, drained := DrainNonSSEStreamReader(resp, reader)
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/vllm/vllm.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/vllm/vllm.go
+--- a/providers/vllm/vllm.go
++++ b/providers/vllm/vllm.go
+@@ -677,7 +677,7 @@
+ 			}()
+ 			defer providerUtils.ReleaseStreamingResponse(ctx, resp)
+ 			// Decompress gzip-encoded streams transparently (no-op for non-gzip)
+-			reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++			reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+ 			defer releaseGzip()
+ 
+ 			// Wrap reader with idle timeout to detect stalled streams.

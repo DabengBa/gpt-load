@@ -14,6 +14,7 @@ require (
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/router-for-me/CLIProxyAPI/v7/gptload-embedded v0.0.0
 	github.com/sirupsen/logrus v1.10.2
+	github.com/valyala/fasthttp v1.74.0
 	go.uber.org/dig v1.19.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
@@ -108,7 +109,6 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.74.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.1 // indirect
@@ -125,5 +125,7 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.54.0 // indirect
 )
+
+replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core
 
 replace github.com/router-for-me/CLIProxyAPI/v7/gptload-embedded => ./third_party/cpaembedded

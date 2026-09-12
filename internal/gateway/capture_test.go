@@ -33,6 +33,7 @@ type captureTestAttempt struct {
 	requestErrs      []error
 	requestCloseErrs []error
 	requestOutcomes  []string
+	terminations     []string
 	bodyBlock        <-chan struct{}
 	bodyEntered      chan struct{}
 	bodyOnce         sync.Once
@@ -113,6 +114,12 @@ func (a *captureTestAttempt) RecordRequestOutcome(kind string, _ error) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.requestOutcomes = append(a.requestOutcomes, kind)
+	return nil
+}
+func (a *captureTestAttempt) RecordResponseTermination(termination, detail string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.terminations = append(a.terminations, termination+":"+detail)
 	return nil
 }
 
@@ -389,19 +396,19 @@ func TestCaptureObserverWaitsForAsynchronousCompletion(t *testing.T) {
 	}
 }
 
-func TestCaptureDoesNotClaimBifrostAsHTTPObserverSource(t *testing.T) {
+func TestCaptureBifrostUsesHTTPObserverSource(t *testing.T) {
 	session := &captureTestSession{}
 	capture := &dataPlaneCapture{session: session}
 	attempt, observer, context, accepted := capture.beginForward(context.Background(), ForwardInput{
 		AttemptID: "bifrost-attempt", ChannelID: "openai",
 	})
-	if !accepted || attempt == nil || observer != nil {
-		t.Fatalf("bifrost capture attempt=%T observer=%v, want attempt without observer", attempt, observer)
+	if !accepted || attempt == nil || observer == nil {
+		t.Fatalf("bifrost capture attempt=%T observer=%v, want attempt and observer", attempt, observer)
 	}
-	if execution.HTTPObserverFromContext(context) != nil {
-		t.Fatal("Bifrost capture unexpectedly claimed an upstream HTTP observer")
+	if execution.HTTPObserverFromContext(context) == nil {
+		t.Fatal("Bifrost capture did not attach an upstream HTTP observer")
 	}
-	capture.finishForward(attempt, observer, UpstreamResult{DispatchState: execution.DispatchMaybeSent, StatusCode: http.StatusOK})
+	capture.finishForward(attempt, observer, UpstreamResult{DispatchState: execution.DispatchNotSent, StatusCode: http.StatusOK})
 	if !waitForCapture(t, session.attemptTerminal) {
 		t.Fatal("Bifrost capture attempt did not finalize")
 	}
@@ -983,6 +990,55 @@ func TestCaptureObserverLateFailureNotifiesCoordinator(t *testing.T) {
 	observer.ObserveResponseBody("attempt", []byte("late"))
 	if !waitForCapture(t, func() bool { return capture.failureValue() != nil }) {
 		t.Fatal("late observer failure did not reach capture coordinator")
+	}
+}
+
+func TestCaptureObserverPersistsResponseTermination(t *testing.T) {
+	attempt := &captureTestAttempt{}
+	observer := newCaptureHTTPObserver(attempt, "attempt")
+	observer.AwaitCompletion()
+	observer.ObserveResponse("attempt", http.StatusOK, http.Header{"Content-Type": {"text/event-stream"}})
+	observer.ObserveResponseBody("attempt", []byte("data: [DONE]\\r\\n\\r\\n"))
+	observer.ObserveResponseTermination("attempt", "eof", "")
+	observer.ObserveResponseComplete("attempt", nil, nil)
+	observer.Wait()
+
+	attempt.mu.Lock()
+	defer attempt.mu.Unlock()
+	if len(attempt.terminations) != 1 || attempt.terminations[0] != "eof:" {
+		t.Fatalf("terminations = %#v, want one EOF termination", attempt.terminations)
+	}
+}
+
+func TestCaptureObserverInfersTerminationFromCompletion(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		observeResponse bool
+		completionErr   error
+		wantTermination string
+		wantDetail      string
+	}{
+		{name: "eof", wantTermination: "eof"},
+		{name: "no response", completionErr: errors.New("dial failed"), wantTermination: "no_response", wantDetail: "dial failed"},
+		{name: "response read error", observeResponse: true, completionErr: errors.New("stream read failed"), wantTermination: "read_error", wantDetail: "stream read failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			attempt := &captureTestAttempt{}
+			observer := newCaptureHTTPObserver(attempt, "attempt")
+			observer.AwaitCompletion()
+			if test.observeResponse {
+				observer.ObserveResponse("attempt", http.StatusOK, nil)
+			}
+			observer.ObserveResponseComplete("attempt", nil, test.completionErr)
+			observer.Wait()
+
+			attempt.mu.Lock()
+			defer attempt.mu.Unlock()
+			want := test.wantTermination + ":" + test.wantDetail
+			if len(attempt.terminations) != 1 || attempt.terminations[0] != want {
+				t.Fatalf("terminations = %#v, want %q", attempt.terminations, want)
+			}
+		})
 	}
 }
 

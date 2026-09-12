@@ -671,13 +671,6 @@ func streamChunks(tx *gorm.DB, captureID, attemptID string, part Part, direction
 }
 
 func addChunksToZIP(tx *gorm.DB, archive *zip.Writer, captureID, attemptID string, part Part, direction Direction) error {
-	var count int64
-	if err := tx.Model(&models.DebugCaptureChunk{}).Where("capture_id = ? AND attempt_id = ? AND part = ? AND direction = ?", captureID, attemptID, part, direction).Count(&count).Error; err != nil {
-		return err
-	}
-	if count == 0 {
-		return nil
-	}
 	header := &zip.FileHeader{Name: archivePartName(attemptID, part, direction), Method: zip.Deflate}
 	header.SetMode(0600)
 	writer, err := archive.CreateHeader(header)
@@ -770,6 +763,10 @@ func (a *Attempt) RecordResponseShortWrite(written, requested int) error {
 
 func (a *Attempt) RecordResponseError(err error) error {
 	return a.recordEvent(EventRecord{Kind: "response_error", Error: errorText(err)})
+}
+
+func (a *Attempt) RecordResponseTermination(termination, detail string) error {
+	return a.recordEvent(EventRecord{Kind: "response_termination", Outcome: termination, Error: detail})
 }
 
 func (a *Attempt) RecordResponseHijack(err error) error {
