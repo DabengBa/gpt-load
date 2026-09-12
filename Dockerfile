@@ -33,6 +33,7 @@ RUN go mod download
 COPY *.go ./
 COPY internal ./internal
 COPY third_party/cpaembedded ./third_party/cpaembedded
+COPY third_party/bifrost-core ./third_party/bifrost-core
 COPY --from=web-builder /build/internal/webui/dist ./internal/webui/dist
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags "-s -w -X gpt-load/internal/platform/version.Version=${VERSION}" \
