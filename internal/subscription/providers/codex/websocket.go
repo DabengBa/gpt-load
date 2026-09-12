@@ -21,6 +21,7 @@ type WSSessionOptions struct {
 	MaxRequestBytes int
 	MaxEventBytes   int
 	Headers         http.Header
+	ObserveHeaders  func(http.Header, time.Time)
 }
 
 // WSTurnResult 的 Usage 保留上游 JSON，缺失时为 nil，不伪造零用量。
@@ -53,9 +54,10 @@ type WSSession struct{ bridge *cpaembedded.CodexWSSession }
 func NewWSSession(options WSSessionOptions) (*WSSession, error) {
 	bridge, err := cpaembedded.NewCodexWSSession(cpaembedded.CodexWSSessionOptions{
 		CredentialID: options.CredentialID, Credential: credentialToBridge(options.Credential),
-		ProxyURL:    options.ProxyURL,
-		Headers:     options.Headers.Clone(),
-		TurnTimeout: options.TurnTimeout, MaxRequestBytes: options.MaxRequestBytes, MaxEventBytes: options.MaxEventBytes,
+		ProxyURL: proxyURL,
+		Headers:         options.Headers.Clone(),
+		ObserveHeaders:  options.ObserveHeaders,
+		TurnTimeout:     options.TurnTimeout, MaxRequestBytes: options.MaxRequestBytes, MaxEventBytes: options.MaxEventBytes,
 	})
 	if err != nil {
 		return nil, wsErrorFromBridge(err)
