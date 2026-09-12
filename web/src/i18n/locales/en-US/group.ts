@@ -82,6 +82,7 @@ export default {
     copyUpstreamUrl: 'Copy upstream address {url}',
     copySuccess: 'Copied',
     copyFailure: 'Copy failed',
+    openProviderUrl: 'Open provider website {url} in a new tab',
     modelEditor: {
       title: 'Models and aliases',
       schedule: 'Schedule',
@@ -313,6 +314,9 @@ export default {
           'Enter the Sub2API gateway root or deployment prefix. Do not include standard protocol paths such as /v1 or /v1beta.',
         customUrl: 'Custom upstream URL',
         customUrlHelp: 'Uses the channel preset or SDK official address by default.',
+        providerUrl: 'Provider website',
+        providerUrlHelp:
+          'Optional. Shown as a link in the Group header; it does not change where requests are sent.',
         paramRequired: 'Enter {field}.',
         validationModel: 'Validation model (optional)',
         validationModelPlaceholder: 'Search or enter a model ID',

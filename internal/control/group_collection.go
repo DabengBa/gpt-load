@@ -58,6 +58,7 @@ type groupCollectionRecord struct {
 	LastActiveAtMS             *int64
 	LastActiveHourRequestCount int64
 	UnavailableReason          *GroupUnavailableReason
+	ProviderURL                *string
 }
 
 type groupCollectionRows struct {
@@ -366,6 +367,7 @@ func mapGroupCollectionRecords(
 				ClientModelCount: int64(len(clientModels)),
 			},
 			CreatedAtMS: group.CreatedAtMS,
+			ProviderURL: cloneString(group.ProviderURL),
 		}
 		if activity, exists := activityByGroup[group.ID]; exists {
 			lastActiveAtMS := activity.LastActiveAtMS

@@ -550,6 +550,7 @@ onBeforeUnmount(() => {
             :params="draft.params"
             :name="draft.name"
             :validation-model="draft.validation_model"
+            :provider-url="draft.provider_url"
             :models="modelsQuery.data.value?.items ?? []"
             :price-multiplier="draft.price_multiplier"
             :enabled="draft.enabled"
@@ -560,6 +561,7 @@ onBeforeUnmount(() => {
             @update:param="updateParam"
             @update:name="draft.name = $event"
             @update:validation-model="draft.validation_model = $event"
+            @update:provider-url="draft.provider_url = $event"
             @update:price-multiplier="draft.price_multiplier = $event"
             @update:enabled="draft.enabled = $event"
           />

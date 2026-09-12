@@ -82,6 +82,7 @@ export default {
     copyUpstreamUrl: '复制上游地址 {url}',
     copySuccess: '已复制',
     copyFailure: '复制失败',
+    openProviderUrl: '在新标签页打开供应商官网 {url}',
     modelEditor: {
       title: '模型与别名',
       schedule: '调度',
@@ -305,6 +306,8 @@ export default {
           '填写 Sub2API 网关根地址或部署前缀；不要填写 /v1 或 /v1beta 等标准协议路径。',
         customUrl: '自定义上游地址',
         customUrlHelp: '默认使用渠道预设或 SDK 官方地址。',
+        providerUrl: '供应商官网',
+        providerUrlHelp: '可选。保存后在分组详情头部显示为外链，不影响请求发送地址。',
         paramRequired: '请输入{field}。',
         validationModel: '验活模型（可选）',
         validationModelPlaceholder: '搜索或输入模型 ID',

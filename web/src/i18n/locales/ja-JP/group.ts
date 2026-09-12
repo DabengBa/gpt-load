@@ -82,6 +82,7 @@ export default {
     copyUpstreamUrl: 'アップストリームアドレス {url} をコピー',
     copySuccess: 'コピーしました',
     copyFailure: 'コピーできませんでした',
+    openProviderUrl: 'プロバイダーサイト {url} を新しいタブで開く',
     modelEditor: {
       title: 'モデルとエイリアス',
       schedule: 'スケジュール',
@@ -312,6 +313,9 @@ export default {
           'Sub2API ゲートウェイのルートまたはデプロイ接頭辞を入力してください。/v1 や /v1beta などの標準プロトコルパスは含めないでください。',
         customUrl: 'カスタム上流 URL',
         customUrlHelp: '既定ではチャネル設定または SDK 公式アドレスを使用します。',
+        providerUrl: 'プロバイダーサイト',
+        providerUrlHelp:
+          '任意。グループ詳細ヘッダーに外部リンクとして表示され、リクエストの送信先は変わりません。',
         paramRequired: '{field} を入力してください。',
         validationModel: '検証モデル（任意）',
         validationModelPlaceholder: 'モデル ID を検索または入力',

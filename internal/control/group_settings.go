@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
 	"gpt-load/internal/channel"
+	"gpt-load/internal/channel/spec"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/encryption"
@@ -25,6 +27,7 @@ type GroupSettingsResponse struct {
 	Params          json.RawMessage              `json:"params"`
 	Name            string                       `json:"name"`
 	ValidationModel *string                      `json:"validation_model"`
+	ProviderURL     *string                      `json:"provider_url"`
 	Enabled         bool                         `json:"enabled"`
 	Overrides       config.Settings              `json:"overrides"`
 	Effective       GroupEffectiveConfigResponse `json:"effective"`
@@ -36,6 +39,7 @@ type GroupSettingsUpdateRequest struct {
 	Name            optionalField[string]               `json:"name"`
 	Params          optionalField[json.RawMessage]      `json:"params"`
 	ValidationModel optionalField[string]               `json:"validation_model"`
+	ProviderURL     optionalField[string]               `json:"provider_url"`
 	Enabled         optionalField[bool]                 `json:"enabled"`
 	Overrides       optionalField[config.Settings]      `json:"overrides"`
 	Proxy           optionalField[outboundproxy.Config] `json:"proxy"`
@@ -48,6 +52,8 @@ type normalizedGroupSettingsUpdate struct {
 	paramsSet             bool
 	validationModel       *string
 	validationModelSet    bool
+	providerURL           *string
+	providerURLSet        bool
 	enabled               *bool
 	encodedOverrides      models.JSON
 	overridesSet          bool
@@ -149,6 +155,7 @@ func groupSettingsResponse(
 		Params:          validated.CanonicalJSON(),
 		Name:            group.Name,
 		ValidationModel: cloneString(group.ValidationModel),
+		ProviderURL:     cloneString(group.ProviderURL),
 		Enabled:         group.Enabled,
 		Overrides:       overrides,
 		Effective:       effective,
@@ -178,7 +185,8 @@ func normalizeGroupSettingsUpdate(
 		}
 	}
 	if !request.Name.Set && !request.Params.Set && !request.ValidationModel.Set &&
-		!request.Enabled.Set && !request.Overrides.Set && !request.Proxy.Set && !request.PriceMultiplier.Set {
+		!request.ProviderURL.Set && !request.Enabled.Set && !request.Overrides.Set &&
+		!request.Proxy.Set && !request.PriceMultiplier.Set {
 		return normalizedGroupSettingsUpdate{}, app_errors.ErrBadRequest
 	}
 
@@ -209,6 +217,21 @@ func normalizeGroupSettingsUpdate(
 				return normalizedGroupSettingsUpdate{}, err
 			}
 			result.validationModel = &value
+		}
+	}
+	if request.ProviderURL.Set {
+		result.providerURLSet = true
+		if !request.ProviderURL.Null {
+			value := strings.TrimSpace(request.ProviderURL.Value)
+			if value == "" {
+				result.providerURL = nil
+			} else {
+				normalized, err := spec.NormalizeBaseURL(value)
+				if err != nil {
+					return normalizedGroupSettingsUpdate{}, app_errors.ErrValidation
+				}
+				result.providerURL = &normalized
+			}
 		}
 	}
 	if request.Enabled.Set {
@@ -289,6 +312,10 @@ func (s *Service) UpdateGroupSettings(
 		if normalized.validationModelSet {
 			group.ValidationModel = normalized.validationModel
 			updates["validation_model"] = normalized.validationModel
+		}
+		if normalized.providerURLSet {
+			group.ProviderURL = normalized.providerURL
+			updates["provider_url"] = normalized.providerURL
 		}
 		if normalized.enabled != nil {
 			group.Enabled = *normalized.enabled
