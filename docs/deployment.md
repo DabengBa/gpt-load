@@ -20,6 +20,17 @@ ssh vps-kl /opt/gpt-load-src/scripts/deploy.sh <分支>      # 发布其它分�
 
 脚本会把 `/opt/gpt-load-src` reset 到目标提交，因此开跑前先把自己复制到 `/tmp` 再重新执行，避免 bash 边读边执行一个刚被覆盖的脚本。分支名里的 `/` 在镜像标签中写成 `-`。
 
+## Raw 通信证据
+
+当前版本在 Unix 运行时默认且始终保存每个 HTTP Provider attempt 的 raw request/response；不再提供保存开关。raw capture 与 `request_logs` 分离，固定保留 12 小时，只能通过管理员身份访问：
+
+```text
+GET /api/debug-captures?request_id=<request-id>
+GET /api/debug-captures/<capture-id>/download
+```
+
+`request_logs` 用于状态、重试、错误分类和计费结果，不能替代 Provider 原始 Body 或 SSE。可在发布后使用 `scripts/fetch-hostinger-request-log.sh <request-id>` 下载结构化日志、全部 capture ZIP 和脱敏 attempt evidence matrix。脚本只把原始文件写入本地 `tmp/`，不会打印认证信息或 raw 内容。
+
 ## 验证
 
 ```bash

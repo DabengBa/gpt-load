@@ -10,7 +10,10 @@ import (
 	"time"
 )
 
-const defaultCleanupInterval = time.Hour
+const (
+	defaultCleanupInterval   = time.Hour
+	maxActiveCaptureSessions = 64
+)
 
 // Runtime owns cleanup and shutdown admission for the optional capture store.
 // Capture requests remain independent of the cleanup worker: sweep failures are
@@ -141,7 +144,7 @@ func (r *Runtime) AcquireSession() (func(), bool) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.stopping || r.startFailed || !r.started {
+	if r.stopping || r.startFailed || !r.started || r.activeSessions >= maxActiveCaptureSessions {
 		return nil, false
 	}
 	if r.activeSessions == 0 {

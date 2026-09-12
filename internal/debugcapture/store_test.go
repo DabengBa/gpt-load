@@ -130,6 +130,47 @@ func TestDBStoreCapturesSensitiveBytesChunksQueriesAndStreamingZIP(t *testing.T)
 	}
 }
 
+func TestDBStoreExportsEmptyRawParts(t *testing.T) {
+	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore(t, &now)
+	session, err := store.StartSession(SessionMetadata{RequestID: "empty-parts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := session.StartAttempt(AttemptMetadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := attempt.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Complete(); err != nil {
+		t.Fatal(err)
+	}
+
+	var exported bytes.Buffer
+	if err := store.ExportZIP(session.ID(), &exported); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(exported.Bytes()), int64(exported.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make(map[string]uint64, len(archive.File))
+	for _, file := range archive.File {
+		entries[file.Name] = file.UncompressedSize64
+	}
+	for _, direction := range []Direction{DirectionRequest, DirectionResponse} {
+		for _, part := range []Part{PartHeaders, PartBody} {
+			name := archivePartName(attempt.ID(), part, direction)
+			size, ok := entries[name]
+			if !ok || size != 0 {
+				t.Fatalf("ZIP entry %q = %d, exists=%t; want present zero-byte raw part", name, size, ok)
+			}
+		}
+	}
+}
+
 func TestDBStorePersistsAttemptOutcomeEvents(t *testing.T) {
 	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
 	store := newTestStore(t, &now)
@@ -150,6 +191,9 @@ func TestDBStorePersistsAttemptOutcomeEvents(t *testing.T) {
 	if err := attempt.RecordResponseError(errors.New("upstream response failed")); err != nil {
 		t.Fatal(err)
 	}
+	if err := attempt.RecordResponseTermination("timeout", "deadline exceeded"); err != nil {
+		t.Fatal(err)
+	}
 	if err := attempt.RecordResponseHijack(nil); err != nil {
 		t.Fatal(err)
 	}
@@ -167,15 +211,18 @@ func TestDBStorePersistsAttemptOutcomeEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(record.Attempts) != 1 || len(record.Attempts[0].Metadata.Events) != 5 {
-		t.Fatalf("attempt events = %#v, want five events", record.Attempts)
+	if len(record.Attempts) != 1 || len(record.Attempts[0].Metadata.Events) != 6 {
+		t.Fatalf("attempt events = %#v, want six events", record.Attempts)
 	}
 	if record.Attempts[0].Metadata.Events[1].Written != 2 ||
 		record.Attempts[0].Metadata.Events[1].Requested != 4 {
 		t.Fatalf("short write event = %#v", record.Attempts[0].Metadata.Events[1])
 	}
 	if record.Attempts[0].Metadata.Events[2].Error != "upstream response failed" ||
-		record.Attempts[0].Metadata.Events[4].Error != context.Canceled.Error() {
+		record.Attempts[0].Metadata.Events[3].Kind != "response_termination" ||
+		record.Attempts[0].Metadata.Events[3].Outcome != "timeout" ||
+		record.Attempts[0].Metadata.Events[4].Error != "" ||
+		record.Attempts[0].Metadata.Events[5].Error != context.Canceled.Error() {
 		t.Fatalf("event errors = %#v", record.Attempts[0].Metadata.Events)
 	}
 }
