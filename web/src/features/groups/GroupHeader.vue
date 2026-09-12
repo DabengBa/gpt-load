@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft } from '@lucide/vue'
+import { ArrowLeft, ExternalLink } from '@lucide/vue'
 import { useQuery } from '@tanstack/vue-query'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -56,6 +56,17 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
           <span>{{ channelName }}</span>
         </span>
         <div id="group-header-actions" class="group-header__actions-target" />
+        <a
+          v-if="group.provider_url"
+          class="group-header__provider-link"
+          :href="group.provider_url"
+          target="_blank"
+          rel="noopener noreferrer"
+          :aria-label="t('group.openProviderUrl', { url: group.provider_url })"
+        >
+          <ExternalLink :size="13" aria-hidden="true" />
+          <span>{{ t('group.settings.base.providerUrl') }}</span>
+        </a>
         <CopyChip
           v-if="group.params.base_url"
           :value="group.params.base_url"
@@ -153,6 +164,27 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
   flex: none;
   font-size: 15px;
 }
+.group-header__provider-link {
+  display: inline-flex;
+  min-height: var(--control-compact);
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-tag);
+  color: var(--color-text-muted);
+  padding: 3px 7px;
+  font-size: var(--text-label-xs);
+  font-weight: 560;
+  transition:
+    color var(--duration-fast) var(--easing-standard),
+    background-color var(--duration-fast) var(--easing-standard);
+}
+.group-header__provider-link:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-action);
+}
+.group-header__provider-link svg {
+  flex: none;
+}
 .group-header__details :deep(.copy-chip) {
   max-width: 20rem;
   min-height: var(--control-compact);
@@ -167,6 +199,10 @@ const channelName = computed(() => channel.value?.name.trim() || props.group.cha
   .group-header__details {
     justify-content: flex-start;
     margin-top: 10px;
+  }
+
+  .group-header__provider-link {
+    min-height: var(--touch-target);
   }
 
   .group-header h1 {

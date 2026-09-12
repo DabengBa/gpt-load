@@ -35,6 +35,7 @@ type GroupSummaryResponse struct {
 	ChannelID           channel.ID              `json:"channel_id"`
 	ConnectionType      models.ConnectionType   `json:"connection_type"`
 	Params              json.RawMessage         `json:"params"`
+	ProviderURL         *string                 `json:"provider_url"`
 	ServiceStatus       GroupCollectionStatus   `json:"service_status"`
 	ServiceStatusReason *GroupUnavailableReason `json:"service_status_reason"`
 	CredentialCount     int64                   `json:"credential_count"`
@@ -58,6 +59,7 @@ func (s *Service) GetGroupSummary(ctx context.Context, groupID uint) (GroupSumma
 			ID:              record.ID, Name: record.Name,
 			ChannelID: record.ChannelID, Params: append(json.RawMessage(nil), record.Params...),
 			ConnectionType:      record.ConnectionType,
+			ProviderURL:         record.ProviderURL,
 			ServiceStatus:       record.Status,
 			ServiceStatusReason: record.UnavailableReason,
 			CredentialCount:     record.CredentialCounts.Total,

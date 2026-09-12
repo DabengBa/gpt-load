@@ -15,6 +15,7 @@ const props = withDefaults(
     params: ChannelParamsDto
     name: string
     validationModel: string | null
+    providerUrl: string | null
     models: GroupModelItemDto[]
     priceMultiplier: string
     enabled: boolean
@@ -31,6 +32,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:param': [key: string, value: string | null]
   'update:name': [value: string]
+  'update:providerUrl': [value: string]
   'update:validationModel': [value: string | null]
   'update:priceMultiplier': [value: string]
   'update:enabled': [value: boolean]
@@ -187,6 +189,18 @@ function parameterHelp(field: ChannelFieldDto): string {
           <small v-else-if="field.input_kind === 'url'">{{ parameterHelp(field) }}</small>
         </label>
       </template>
+      <label class="group-settings__field group-settings__wide">
+        <span>{{ t('group.settings.base.providerUrl') }}</span>
+        <input
+          class="group-settings__mono"
+          type="url"
+          :value="providerUrl ?? ''"
+          :aria-label="t('group.settings.base.providerUrl')"
+          :disabled="pending"
+          @input="emit('update:providerUrl', ($event.target as HTMLInputElement).value)"
+        />
+        <small>{{ t('group.settings.base.providerUrlHelp') }}</small>
+      </label>
       <Teleport :disabled="!unified" defer to="#group-header-actions">
         <div class="group-settings__switch-row">
           <span class="group-settings__switch-copy">

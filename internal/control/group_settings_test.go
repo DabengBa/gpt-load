@@ -631,6 +631,173 @@ func TestUpdateGroupSettingsReturnsBufferedStreamOverrideAndEffectiveValue(t *te
 	}
 }
 
+func TestGroupSettingsProviderURLNormalizationAndPersistence(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-provider-url-persistence")
+
+	// Set a valid provider URL
+	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		ProviderURL: optionalField[string]{Set: true, Value: " HTTPS://PROVIDER.EXAMPLE.COM/v1/ "},
+	})
+	if err != nil {
+		t.Fatalf("UpdateGroupSettings(set provider_url) error = %v", err)
+	}
+	if result.ProviderURL == nil || *result.ProviderURL != "https://provider.example.com/v1" {
+		t.Fatalf("provider_url = %v, want https://provider.example.com/v1", result.ProviderURL)
+	}
+
+	// Read back through GetGroupSettings
+	got, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings() error = %v", err)
+	}
+	if got.ProviderURL == nil || *got.ProviderURL != "https://provider.example.com/v1" {
+		t.Fatalf("GetGroupSettings provider_url = %v, want https://provider.example.com/v1", got.ProviderURL)
+	}
+
+	// Database still has canonical params
+	var stored models.Group
+	if err := fixture.db.First(&stored, groupID).Error; err != nil {
+		t.Fatalf("read group from db: %v", err)
+	}
+	if string(stored.Params) == "" {
+		t.Fatal("params were corrupted after provider_url update")
+	}
+
+	// provider_url not present in params (isolation)
+	if strings.Contains(string(stored.Params), "provider_url") {
+		t.Fatal("provider_url leaked into params")
+	}
+}
+
+func TestGroupSettingsProviderURLUnsetFieldDoesNotModify(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-provider-url-unset")
+
+	// Set a provider_url first
+	_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		ProviderURL: optionalField[string]{Set: true, Value: "https://original.example.com"},
+	})
+	if err != nil {
+		t.Fatalf("set initial provider_url error = %v", err)
+	}
+
+	// Update without provider_url field — should not change it
+	_, err = fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Name: optionalField[string]{Set: true, Value: "renamed-no-provider"},
+	})
+	if err != nil {
+		t.Fatalf("update without provider_url error = %v", err)
+	}
+	got, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings error = %v", err)
+	}
+	if got.ProviderURL == nil || *got.ProviderURL != "https://original.example.com" {
+		t.Fatalf("provider_url changed by unrelated update = %v, want https://original.example.com", got.ProviderURL)
+	}
+}
+
+func TestGroupSettingsProviderURLNullClears(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-provider-url-null")
+
+	// Set a provider_url first
+	_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		ProviderURL: optionalField[string]{Set: true, Value: "https://to-clear.example.com"},
+	})
+	if err != nil {
+		t.Fatalf("set initial provider_url error = %v", err)
+	}
+
+	// Clear with explicit null
+	_, err = fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		ProviderURL: optionalField[string]{Set: true, Null: true},
+	})
+	if err != nil {
+		t.Fatalf("clear provider_url with null error = %v", err)
+	}
+	got, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings error = %v", err)
+	}
+	if got.ProviderURL != nil {
+		t.Fatalf("provider_url after null = %v, want nil", *got.ProviderURL)
+	}
+}
+
+func TestGroupSettingsProviderURLBlankClears(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-provider-url-blank")
+
+	_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		ProviderURL: optionalField[string]{Set: true, Value: "https://to-clear-by-blank.example.com"},
+	})
+	if err != nil {
+		t.Fatalf("set initial provider_url error = %v", err)
+	}
+
+	// Clear with empty string
+	_, err = fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		ProviderURL: optionalField[string]{Set: true, Value: "   "},
+	})
+	if err != nil {
+		t.Fatalf("clear provider_url with blank error = %v", err)
+	}
+	got, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings error = %v", err)
+	}
+	if got.ProviderURL != nil {
+		t.Fatalf("provider_url after blank = %v, want nil", *got.ProviderURL)
+	}
+}
+
+func TestGroupSettingsProviderURLRejectsInvalidURL(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-provider-url-invalid")
+
+	before, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings before error = %v", err)
+	}
+
+	for _, invalid := range []string{
+		"ftp://provider.example.com",
+		"//provider.example.com",
+		"/relative/path",
+		"https://user:pass@provider.example.com",
+		"https://provider.example.com?query=1",
+		"https://provider.example.com#fragment",
+		"not-a-url",
+		":invalid",
+	} {
+		_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+			ProviderURL: optionalField[string]{Set: true, Value: invalid},
+		})
+		if err == nil {
+			t.Fatalf("invalid provider_url %q error = nil, want validation", invalid)
+		}
+		if !errors.Is(err, app_errors.ErrValidation) {
+			t.Fatalf("invalid provider_url %q error = %v, want validation", invalid, err)
+		}
+	}
+
+	// Verify original value unchanged
+	after, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings after error = %v", err)
+	}
+	if after.ProviderURL != before.ProviderURL {
+		t.Fatalf("provider_url changed after failed updates: before=%v after=%v", before.ProviderURL, after.ProviderURL)
+	}
+}
+
 func settingsWeightPointer(value int) *int {
 	return &value
 }

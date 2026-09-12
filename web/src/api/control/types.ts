@@ -86,6 +86,7 @@ export interface GroupSummaryDto {
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
+  provider_url: string | null
   service_status: GroupCollectionStatus
   service_status_reason: GroupUnavailableReason | null
   credential_count: number
@@ -140,6 +141,7 @@ export interface GroupSettingsDto {
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
+  provider_url: string | null
   validation_model: string | null
   enabled: boolean
   overrides: GroupRuntimeConfigDto

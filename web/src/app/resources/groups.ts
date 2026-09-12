@@ -39,6 +39,7 @@ import {
   projectEpochMilliseconds,
   projectEnum,
   projectFiniteNumber,
+  projectHTTPURL,
   projectPriceMultiplier,
   projectRecord,
   projectSafeInteger,
@@ -53,6 +54,7 @@ const groupSummaryFields = [
   'channel_id',
   'connection_type',
   'params',
+  'provider_url',
   'service_status',
   'service_status_reason',
   'credential_count',
@@ -64,6 +66,7 @@ const groupSettingsFields = [
   'channel_id',
   'connection_type',
   'params',
+  'provider_url',
   'validation_model',
   'enabled',
   'overrides',
@@ -163,6 +166,7 @@ export type GroupSettingsUpdateRequest = Partial<{
   price_multiplier: string
   params: ChannelParamsDto
   validation_model: string | null
+  provider_url: string | null
   enabled: boolean
   overrides: GroupRuntimeConfigDto
   proxy: ProxyMutation
@@ -388,6 +392,10 @@ function projectRuntimeConfig(
   return result as GroupRuntimeConfigDto | GroupEffectiveConfigDto
 }
 
+function projectNullableHTTPURL(value: unknown): string | null {
+  return value === null ? null : projectHTTPURL(value)
+}
+
 export function projectGroupSummary(value: unknown): GroupSummaryDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, groupSummaryFields)
@@ -408,6 +416,7 @@ export function projectGroupSummary(value: unknown): GroupSummaryDto {
     channel_id: projectChannelID(record.channel_id),
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
+    provider_url: projectNullableHTTPURL(record.provider_url),
     price_multiplier: projectPriceMultiplier(record.price_multiplier),
     service_status: serviceStatus,
     service_status_reason: serviceStatusReason,
@@ -424,6 +433,7 @@ export function projectGroupSettings(value: unknown): GroupSettingsDto {
     channel_id: projectChannelID(record.channel_id),
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
+    provider_url: projectNullableHTTPURL(record.provider_url),
     price_multiplier: projectPriceMultiplier(record.price_multiplier),
     validation_model:
       record.validation_model === null ? null : projectNonBlankString(record.validation_model),

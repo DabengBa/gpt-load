@@ -137,9 +137,10 @@ func TestExternalDatabaseLifecycle(t *testing.T) {
 		"0010_single_credential_per_group",
 		"0011_usage_latency",
 		"0012_debug_captures",
+		"0013_provider_url",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
-		t.Fatalf("migration ledger = %v, want complete 0001-0012 chain", migrationIDs)
+		t.Fatalf("migration ledger = %v, want complete 0001-0013 chain", migrationIDs)
 	}
 	for _, table := range []string{"debug_captures", "debug_capture_attempts", "debug_capture_chunks"} {
 		if !db.Migrator().HasTable(table) {
