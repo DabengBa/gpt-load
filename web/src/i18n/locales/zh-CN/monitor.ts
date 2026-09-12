@@ -1116,6 +1116,22 @@ export default {
           '上游请求模型：{upstream}\n上游返回模型：未观察到\n提示：未观察到上游返回模型',
         mismatchTooltip: '上游请求模型：{upstream}\n上游返回模型：{reported}\n告警：模型不一致',
       },
+      affinitySourceLabel: '软亲和来源：{source}',
+      affinityStateLabel: '软亲和状态：{state}',
+      continuityHit: '硬续接：已采用',
+      affinitySource: {
+        none: '无',
+        prompt_cache_key: 'prompt_cache_key',
+        prompt_prefix: 'prompt_prefix',
+      },
+      affinityState: {
+        no_signal: '未评估或无信号',
+        cache_miss: '未命中缓存队列',
+        hit: '命中缓存队列',
+        group_disabled: '分组已禁用软亲和',
+        target_unavailable: '目标凭据不可用',
+        cache_unavailable: '软亲和缓存不可用',
+      },
       reasoning: {
         compact: '[{value}]',
         disabled: '[off]',

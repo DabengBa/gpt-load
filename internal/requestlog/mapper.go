@@ -118,6 +118,9 @@ func mapEvent(
 		ErrorCode:               event.ErrorCode,
 		ErrorSummary:            sanitizeSummary(redactor, event.ErrorSummary),
 		AffinityHit:             event.AffinityHit,
+		ContinuityHit:           event.ContinuityHit,
+		AffinitySource:          projectAffinitySource(event.AffinitySource),
+		AffinityState:           projectAffinityState(event.AffinityState),
 		ReasoningMode:           event.Reasoning.Mode,
 		ReasoningEffort:         event.Reasoning.Effort,
 		ReasoningBudgetTokens:   event.Reasoning.BudgetTokens,
@@ -141,6 +144,56 @@ func normalizeModelObservation(event telemetry.RequestEvent) telemetry.RequestEv
 		event.ModelConsistency = telemetry.ModelConsistencyNotApplicable
 	}
 	return event
+}
+
+// projectAffinitySource 将 bounded telemetry source 映射到其持久化值。
+// 缺失的观测被存储为显式零值，使读取者无需解释空字符串，且原始信号不会泄露。
+func projectAffinitySource(source telemetry.AffinitySource) string {
+	switch source {
+	case telemetry.AffinitySourcePromptCacheKey:
+		return AffinitySourcePromptCacheKey
+	case telemetry.AffinitySourcePromptPrefix:
+		return AffinitySourcePromptPrefix
+	default:
+		return AffinitySourceNone
+	}
+}
+
+// projectAffinityState 将 bounded telemetry state 映射到其持久化值。
+func projectAffinityState(state telemetry.AffinityState) string {
+	switch state {
+	case telemetry.AffinityStateCacheMiss:
+		return AffinityStateCacheMiss
+	case telemetry.AffinityStateHit:
+		return AffinityStateHit
+	case telemetry.AffinityStateGroupDisabled:
+		return AffinityStateGroupDisabled
+	case telemetry.AffinityStateTargetUnavailable:
+		return AffinityStateTargetUnavailable
+	case telemetry.AffinityStateCacheUnavailable:
+		return AffinityStateCacheUnavailable
+	default:
+		return AffinityStateNoSignal
+	}
+}
+
+// NormalizeAffinityObservation 将存储的亲和观测映射到 bounded 持久化投影。
+// 在 0013 迁移之前写入的行以及由其他进程写入的行可能携带空或未知值；
+// 这些值被报告为安全的零值而非未验证的信号，因此原始 prompt_cache_key
+// 材料永远不会到达 API 响应或 UI 投影。
+func NormalizeAffinityObservation(source, state string) (string, string) {
+	switch source {
+	case AffinitySourcePromptCacheKey, AffinitySourcePromptPrefix:
+	default:
+		source = AffinitySourceNone
+	}
+	switch state {
+	case AffinityStateCacheMiss, AffinityStateHit, AffinityStateGroupDisabled,
+		AffinityStateTargetUnavailable, AffinityStateCacheUnavailable:
+	default:
+		state = AffinityStateNoSignal
+	}
+	return source, state
 }
 
 func validateModelObservation(event telemetry.RequestEvent) error {

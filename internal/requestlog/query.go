@@ -322,6 +322,7 @@ func decodeRequestLogRows(rows []models.RequestLog) ([]Record, error) {
 		if err := validateRequestLogUsageCost(row); err != nil {
 			return nil, err
 		}
+		storedAffinitySource, storedAffinityState := NormalizeAffinityObservation(row.AffinitySource, row.AffinityState)
 		records = append(records, Record{
 			RequestID:             row.ID,
 			CompletedAtMS:         row.CompletedAtMS,
@@ -341,6 +342,9 @@ func decodeRequestLogRows(rows []models.RequestLog) ([]Record, error) {
 			ErrorCode:             row.ErrorCode,
 			ErrorSummary:          row.ErrorSummary,
 			AffinityHit:           row.AffinityHit,
+			ContinuityHit:         row.ContinuityHit,
+			AffinitySource:        storedAffinitySource,
+			AffinityState:         storedAffinityState,
 			Reasoning: reasoning.Config{
 				Mode:         row.ReasoningMode,
 				Effort:       row.ReasoningEffort,

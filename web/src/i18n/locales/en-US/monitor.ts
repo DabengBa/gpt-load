@@ -1140,6 +1140,22 @@ export default {
         mismatchTooltip:
           'Upstream request model: {upstream}\nUpstream response model: {reported}\nWarning: Model mismatch',
       },
+      affinitySourceLabel: 'Soft affinity source: {source}',
+      affinityStateLabel: 'Soft affinity state: {state}',
+      continuityHit: 'Hard continuation: applied',
+      affinitySource: {
+        none: 'none',
+        prompt_cache_key: 'prompt_cache_key',
+        prompt_prefix: 'prompt_prefix',
+      },
+      affinityState: {
+        no_signal: 'not evaluated or no signal',
+        cache_miss: 'cache queue miss',
+        hit: 'cache queue hit',
+        group_disabled: 'group disabled soft affinity',
+        target_unavailable: 'target credential unavailable',
+        cache_unavailable: 'soft affinity cache unavailable',
+      },
       reasoning: {
         compact: '[{value}]',
         disabled: '[off]',

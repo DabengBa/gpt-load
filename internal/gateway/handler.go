@@ -760,10 +760,12 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		}
 	} else {
 		requestAffinity = handler.resolveRequestAffinity(
-			snapshot, accessKey.ID, selectedRoute.Protocol, metadata.AffinityPrefix, allowedCredentialRefs,
+			snapshot, accessKey.ID, selectedRoute.Protocol, model, metadata.Operation,
+			metadata, allowedCredentialRefs,
 		)
 		query.PreferredCredentialID = requestAffinity.preferredCredentialID
 	}
+	recorder.setAffinityObservations(requestAffinity.source, requestAffinity.state)
 	iterator := scheduler.New(snapshot, handler.registry, query, handler.newRandom())
 	handler.executeAttempts(
 		ginContext,
@@ -1071,9 +1073,13 @@ func (handler *Handler) executeAttempts(
 		scope execution.ErrorScope,
 	) bool {
 		attemptSequence++
-		if attemptSequence == 1 && (originalMetadata.PreviousResponseID != "" ||
-			(requestAffinity.preferredCredentialID != 0 && selection.CredentialID == requestAffinity.preferredCredentialID)) {
-			recorder.setAffinityHit(true)
+		if attemptSequence == 1 {
+			if originalMetadata.PreviousResponseID != "" {
+				recorder.setContinuityHit(true)
+			} else if requestAffinity.preferredCredentialID != 0 &&
+				selection.CredentialID == requestAffinity.preferredCredentialID {
+				recorder.setAffinityHit(true)
+			}
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, attemptSequence)
 		if recorder != nil {
@@ -1321,9 +1327,13 @@ func (handler *Handler) executeAttempts(
 
 		attemptSequence++
 		forwardAttempts++
-		if attemptSequence == 1 && (originalMetadata.PreviousResponseID != "" ||
-			(requestAffinity.preferredCredentialID != 0 && selection.CredentialID == requestAffinity.preferredCredentialID)) {
-			recorder.setAffinityHit(true)
+		if attemptSequence == 1 {
+			if originalMetadata.PreviousResponseID != "" {
+				recorder.setContinuityHit(true)
+			} else if requestAffinity.preferredCredentialID != 0 &&
+				selection.CredentialID == requestAffinity.preferredCredentialID {
+				recorder.setAffinityHit(true)
+			}
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, attemptSequence)
 		if stream && !bufferedModeFrozen {

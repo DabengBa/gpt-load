@@ -108,6 +108,38 @@ const (
 	ActionSkipGroup          Action = "skip_group"
 )
 
+// AffinitySource 标识哪个可选请求提示驱动了软亲和。
+type AffinitySource string
+
+const (
+	// AffinitySourceNone 表示未评估任何软亲和提示。
+	AffinitySourceNone AffinitySource = ""
+	// AffinitySourcePromptCacheKey 表示使用了显式 prompt_cache_key。
+	AffinitySourcePromptCacheKey AffinitySource = "prompt_cache_key"
+	// AffinitySourcePromptPrefix 表示使用了推断的稳定 prompt 前缀。
+	AffinitySourcePromptPrefix AffinitySource = "prompt_prefix"
+)
+
+// AffinityState 是一次软亲和查找的 bounded、可解释结果。
+type AffinityState string
+
+const (
+	// AffinityStateNone 表示请求未评估软亲和。
+	AffinityStateNone AffinityState = ""
+	// AffinityStateNoSignal 表示不存在显式或前缀亲和信号。
+	AffinityStateNoSignal AffinityState = "no_signal"
+	// AffinityStateCacheMiss 表示该信号没有存储的首选项。
+	AffinityStateCacheMiss AffinityState = "cache_miss"
+	// AffinityStateHit 表示存储的首选项解析到了一个合格的目标。
+	AffinityStateHit AffinityState = "hit"
+	// AffinityStateGroupDisabled 表示存储的目标组已禁用亲和。
+	AffinityStateGroupDisabled AffinityState = "group_disabled"
+	// AffinityStateTargetUnavailable 表示存储的目标不再合格。
+	AffinityStateTargetUnavailable AffinityState = "target_unavailable"
+	// AffinityStateCacheUnavailable 表示进程本地缓存无法提供服务。
+	AffinityStateCacheUnavailable AffinityState = "cache_unavailable"
+)
+
 type Attempt struct {
 	Sequence                int
 	CompletedAt             time.Time
@@ -183,6 +215,9 @@ type RequestEvent struct {
 	FirstResponseMs       *int64
 	DurationMs            int64
 	AffinityHit           bool
+	ContinuityHit         bool
+	AffinitySource        AffinitySource
+	AffinityState         AffinityState
 	Reasoning             reasoning.Config
 	Attempts              []Attempt
 	Usage                 UsageObservation

@@ -236,10 +236,15 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		}
 		return
 	}
-	affinity := h.resolveRequestAffinity(snapshot, key.ID, protocol.OpenAIResponses, original.metadata.AffinityPrefix, allowedCredentialRefs)
+	var affinity requestAffinity
 	if requiredRef == nil {
+		affinity = h.resolveRequestAffinity(
+			snapshot, key.ID, protocol.OpenAIResponses, model,
+			execution.OperationResponsesCreate, original.metadata, allowedCredentialRefs,
+		)
 		query.PreferredCredentialID = affinity.preferredCredentialID
 	}
+	recorder.setAffinityObservations(affinity.source, affinity.state)
 	iterator := scheduler.New(snapshot, h.registry, query, h.newRandom())
 	limit := retryAttemptLimit(snapshot.Settings.RetryCount)
 	var refreshSelection *scheduler.Selection
@@ -358,7 +363,14 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		recorder.setPricingMode(effective.metadata.PricingMode)
 		recorder.setUsageDiagnostics(effective.metadata.UsageDiagnostics)
 		recorder.freezeNextAttemptPricing(h.freezeAttemptPricing(selection, effective.metadata, true, key.PriceMultiplier))
-		recorder.setAffinityHit(requiredRef != nil || selection.CredentialID == affinity.preferredCredentialID)
+		if sequence == 1 {
+			if requiredRef != nil || binding != nil {
+				recorder.setContinuityHit(true)
+			} else if affinity.preferredCredentialID != 0 &&
+				selection.CredentialID == affinity.preferredCredentialID {
+				recorder.setAffinityHit(true)
+			}
+		}
 		started := recorder.beforeForward()
 		ctx, cancel := context.WithTimeout(s.ctx, selection.Group.Timeouts.Request)
 		var firstByteDeadline time.Time

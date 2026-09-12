@@ -24,6 +24,9 @@ import {
   projectString,
 } from './projector'
 
+export type RequestLogAffinitySource = 'none' | 'prompt_cache_key' | 'prompt_prefix'
+export type RequestLogAffinityState =
+  'no_signal' | 'cache_miss' | 'hit' | 'group_disabled' | 'target_unavailable' | 'cache_unavailable'
 export type RequestLogStatus = 'success' | 'error' | 'incomplete' | 'canceled'
 export type RequestLogModelConsistency = 'not_applicable' | 'match' | 'unknown' | 'mismatch'
 export type RequestLogAction =
@@ -183,6 +186,9 @@ export interface RequestLogItemDto {
   error_code: string
   error_summary: string
   affinity_hit: boolean
+  continuity_hit: boolean
+  affinity_source: RequestLogAffinitySource
+  affinity_state: RequestLogAffinityState
   group_id: number | null
   channel_id: string | null
   credential_id: number | null
@@ -215,6 +221,18 @@ export interface RequestLogPageDto {
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const statuses = ['success', 'error', 'incomplete', 'canceled'] as const
 const modelConsistencyValues = ['not_applicable', 'match', 'unknown', 'mismatch'] as const
+// bounded 持久化软亲和观测。API 合约永远不会携带原始
+// prompt_cache_key、派生 key 或 HMAC 输入，因此这些枚举是
+// 唯一可接受的值。
+const affinitySources = ['none', 'prompt_cache_key', 'prompt_prefix'] as const
+const affinityStates = [
+  'no_signal',
+  'cache_miss',
+  'hit',
+  'group_disabled',
+  'target_unavailable',
+  'cache_unavailable',
+] as const
 const failureCategories = [
   'ok',
   'rate_limited',
@@ -287,6 +305,9 @@ const itemFields = [
   'error_code',
   'error_summary',
   'affinity_hit',
+  'continuity_hit',
+  'affinity_source',
+  'affinity_state',
   'group_id',
   'channel_id',
   'credential_id',
@@ -629,6 +650,9 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
     error_code: projectString(record.error_code, { allowEmpty: true }),
     error_summary: projectString(record.error_summary, { allowEmpty: true }),
     affinity_hit: projectBoolean(record.affinity_hit),
+    continuity_hit: projectBoolean(record.continuity_hit),
+    affinity_source: projectEnum(record.affinity_source, affinitySources),
+    affinity_state: projectEnum(record.affinity_state, affinityStates),
     group_id: record.group_id === null ? null : projectSafeInteger(record.group_id, { minimum: 1 }),
     channel_id: record.channel_id === null ? null : projectChannelID(record.channel_id),
     credential_id:

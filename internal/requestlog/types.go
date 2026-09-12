@@ -134,6 +134,9 @@ type Record struct {
 	ErrorCode               string
 	ErrorSummary            string
 	AffinityHit             bool
+	ContinuityHit           bool
+	AffinitySource          string
+	AffinityState           string
 	Reasoning               reasoning.Config
 	Attempts                []Attempt
 	GroupID                 uint
@@ -158,6 +161,24 @@ type Page struct {
 	Items      []Record
 	NextCursor *Cursor
 }
+
+// 软亲和观测的 bounded 持久化值。AffinitySourceNone 和
+// AffinityStateNoSignal 是针对历史行以及未评估软亲和的请求所持久化的显式零值。
+// 这些值永远不会携带原始 prompt_cache_key、派生 key 或 HMAC 输入。
+const (
+	AffinitySourceNone           = "none"
+	AffinitySourcePromptCacheKey = "prompt_cache_key"
+	AffinitySourcePromptPrefix   = "prompt_prefix"
+)
+
+const (
+	AffinityStateNoSignal          = "no_signal"
+	AffinityStateCacheMiss         = "cache_miss"
+	AffinityStateHit               = "hit"
+	AffinityStateGroupDisabled     = "group_disabled"
+	AffinityStateTargetUnavailable = "target_unavailable"
+	AffinityStateCacheUnavailable  = "cache_unavailable"
+)
 
 type UsageGranularity string
 

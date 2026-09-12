@@ -34,6 +34,9 @@ func TestRequestTelemetryContractUsesExactFieldAllowlist(t *testing.T) {
 			"FirstResponseMs",
 			"DurationMs",
 			"AffinityHit",
+			"ContinuityHit",
+			"AffinitySource",
+			"AffinityState",
 			"Reasoning",
 			"Attempts",
 			"Usage",
@@ -103,6 +106,21 @@ func TestRequestTelemetryContractUsesExactFieldAllowlist(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s fields = %v, want exact allowlist %v", typ.Name(), got, want)
 		}
+	}
+}
+
+func TestAffinityObservabilityEnumValuesAreStable(t *testing.T) {
+	if AffinitySourcePromptCacheKey != "prompt_cache_key" ||
+		AffinitySourcePromptPrefix != "prompt_prefix" {
+		t.Fatalf("affinity source values changed")
+	}
+	if AffinityStateNoSignal != "no_signal" ||
+		AffinityStateCacheMiss != "cache_miss" ||
+		AffinityStateHit != "hit" ||
+		AffinityStateGroupDisabled != "group_disabled" ||
+		AffinityStateTargetUnavailable != "target_unavailable" ||
+		AffinityStateCacheUnavailable != "cache_unavailable" {
+		t.Fatalf("affinity state values changed")
 	}
 }
 

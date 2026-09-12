@@ -20,7 +20,7 @@ func TestErrorDecisionMigrationPreservesAttemptsAndAddsDecisionContract(t *testi
 		UsageState: "not_applicable", CostState: "not_applicable",
 		PricingCompleteness: "not_applicable",
 	}
-	if err := db.Create(&request).Error; err != nil {
+	if err := db.Omit("ContinuityHit", "AffinitySource", "AffinityState").Create(&request).Error; err != nil {
 		t.Fatalf("create request log: %v", err)
 	}
 	attempt := models.RequestLogAttempt{

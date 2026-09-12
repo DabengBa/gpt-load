@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -27,6 +28,7 @@ func inspectJSONRequestFields(body []byte, requireModel, responsesCreate bool) (
 	modelSeen := false
 	streamSeen := false
 	previousResponseSeen := false
+	promptCacheKeySeen := false
 	for decoder.More() {
 		fieldToken, err := decoder.Token()
 		if err != nil {
@@ -71,6 +73,19 @@ func inspectJSONRequestFields(body []byte, requireModel, responsesCreate bool) (
 			if !valid {
 				return RequestMetadata{}, fmt.Errorf("stream must be a boolean")
 			}
+		case responsesCreate && field == "prompt_cache_key":
+			if promptCacheKeySeen {
+				return RequestMetadata{}, fmt.Errorf("prompt_cache_key must be unique")
+			}
+			promptCacheKeySeen = true
+			var raw json.RawMessage
+			if err := decoder.Decode(&raw); err != nil {
+				return RequestMetadata{}, fmt.Errorf("decode prompt_cache_key: %w", err)
+			}
+			var value string
+			if json.Unmarshal(raw, &value) == nil && validPromptCacheKey(value) {
+				result.PromptCacheKey = value
+			}
 		case responsesCreate && field == "previous_response_id":
 			if previousResponseSeen {
 				return RequestMetadata{}, fmt.Errorf("previous_response_id must be unique")
@@ -106,4 +121,16 @@ func inspectJSONRequestFields(body []byte, requireModel, responsesCreate bool) (
 		return RequestMetadata{}, fmt.Errorf("model is required")
 	}
 	return result, nil
+}
+
+// maxPromptCacheKeyBytes 限定单个显式 prompt 缓存键信号的长度。
+const maxPromptCacheKeyBytes = 256
+
+// validPromptCacheKey 接受一个可选的显式亲和信号。无效或
+// 超长提示会被忽略而不是拒绝，从而不会阻断请求。
+func validPromptCacheKey(value string) bool {
+	return value != "" &&
+		len(value) <= maxPromptCacheKeyBytes &&
+		strings.TrimSpace(value) == value &&
+		!strings.ContainsFunc(value, unicode.IsControl)
 }

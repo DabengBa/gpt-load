@@ -56,7 +56,7 @@ func (d *OpenAIResponses) InspectRequest(req *ParsedRequest) (RequestMetadata, e
 	metadata.ObserveUsage = req.Method == http.MethodPost &&
 		(req.Path == openAIResponsesPath || req.Path == openAIResponsesCompactPath)
 	if len(req.Body) > 0 {
-		if metadata.PreviousResponseID == "" {
+		if metadata.PreviousResponseID == "" && metadata.PromptCacheKey == "" {
 			metadata.AffinityPrefix = inspectPromptAffinityPrefix(d.Protocol(), req.Body)
 		}
 		pricingMode, diagnostics, err := openAIRequestPricing(req.Body)

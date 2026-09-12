@@ -67,6 +67,9 @@ type requestRecorder struct {
 	requestedPricingMode pricing.Mode
 	usageDiagnostics     usage.Diagnostics
 	affinityHit          bool
+	continuityHit        bool
+	affinitySource       telemetry.AffinitySource
+	affinityState        telemetry.AffinityState
 	attempts             []telemetry.Attempt
 	attemptPricing       []frozenAttemptPricing
 	pendingPricing       frozenAttemptPricing
@@ -147,6 +150,9 @@ func (recorder *requestRecorder) emit() {
 		FirstResponseMs:       recorder.firstResponseMs,
 		DurationMs:            duration.Milliseconds(),
 		AffinityHit:           recorder.affinityHit,
+		ContinuityHit:         recorder.continuityHit,
+		AffinitySource:        recorder.affinitySource,
+		AffinityState:         recorder.affinityState,
 		Reasoning:             recorder.reasoning,
 		Operation:             recorder.operation,
 		Attempts:              append([]telemetry.Attempt(nil), recorder.attempts...),
@@ -222,6 +228,23 @@ func (recorder *requestRecorder) setAffinityHit(hit bool) {
 	if recorder != nil && hit {
 		recorder.affinityHit = true
 	}
+}
+
+func (recorder *requestRecorder) setContinuityHit(hit bool) {
+	if recorder != nil && hit {
+		recorder.continuityHit = true
+	}
+}
+
+func (recorder *requestRecorder) setAffinityObservations(
+	source telemetry.AffinitySource,
+	state telemetry.AffinityState,
+) {
+	if recorder == nil {
+		return
+	}
+	recorder.affinitySource = source
+	recorder.affinityState = state
 }
 
 func requestOutcomeModelConsistency(
