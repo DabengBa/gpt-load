@@ -27,6 +27,7 @@ WORKDIR /build
 
 COPY go.mod go.sum ./
 COPY third_party/cpaembedded/go.mod third_party/cpaembedded/go.sum ./third_party/cpaembedded/
+COPY third_party/bifrost-core/go.mod third_party/bifrost-core/go.sum ./third_party/bifrost-core/
 RUN go mod download
 
 COPY *.go ./
