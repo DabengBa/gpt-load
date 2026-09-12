@@ -10,6 +10,8 @@ API キー、サブスクリプションアカウント、トラフィック制�
 
 [English](README.md) · [中文](README_CN.md) · 日本語 | [公式サイト](https://www.gpt-load.com)
 
+> このリポジトリは **[DabengBa/gpt-load](https://github.com/DabengBa/gpt-load)** です。以下に残る `tbphp/gpt-load` のリンクは上流の公式リリースまたはコンテナ成果物を指すものであり、このリポジトリの所有者を示すものではありません。
+
 [![Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v2.*)](https://github.com/tbphp/gpt-load/releases)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Ftbphp%2Fgpt--load%3A2-2496ED?logo=docker&logoColor=white)](https://github.com/tbphp/gpt-load/pkgs/container/gpt-load)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -65,7 +67,7 @@ API キー、サブスクリプションアカウント、トラフィック制�
 Docker と Docker Compose が必要です。
 
 ```bash
-git clone --depth 1 https://github.com/tbphp/gpt-load.git
+git clone --depth 1 https://github.com/DabengBa/gpt-load.git
 cd gpt-load
 
 cp .env.example .env

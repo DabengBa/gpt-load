@@ -10,6 +10,8 @@
 
 [English](README.md) · 中文 · [日本語](README_JP.md) | [官方网站](https://www.gpt-load.com)
 
+> 本仓库是 **[DabengBa/gpt-load](https://github.com/DabengBa/gpt-load)**。下文保留的 `tbphp/gpt-load` 链接仅指向上游官方发布物或容器产物，不代表本仓库归属。
+
 [![Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v2.*)](https://github.com/tbphp/gpt-load/releases)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Ftbphp%2Fgpt--load%3A2-2496ED?logo=docker&logoColor=white)](https://github.com/tbphp/gpt-load/pkgs/container/gpt-load)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -65,7 +67,7 @@
 需要 Docker 与 Docker Compose。
 
 ```bash
-git clone --depth 1 https://github.com/tbphp/gpt-load.git
+git clone --depth 1 https://github.com/DabengBa/gpt-load.git
 cd gpt-load
 
 cp .env.example .env

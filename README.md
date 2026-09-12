@@ -10,6 +10,8 @@ API keys, subscription accounts, traffic scheduling, failure handling, request l
 
 English · [中文](README_CN.md) · [日本語](README_JP.md) | [Official Website](https://www.gpt-load.com)
 
+> This checkout is the **[DabengBa/gpt-load](https://github.com/DabengBa/gpt-load)** repository. Any `tbphp/gpt-load` links retained below refer to upstream official release or container artifacts, not this repository.
+
 [![Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v2.*)](https://github.com/tbphp/gpt-load/releases)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Ftbphp%2Fgpt--load%3A2-2496ED?logo=docker&logoColor=white)](https://github.com/tbphp/gpt-load/pkgs/container/gpt-load)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -65,7 +67,7 @@ Your application only needs one base URL and one AccessKey. Providers, accounts,
 Requires Docker and Docker Compose.
 
 ```bash
-git clone --depth 1 https://github.com/tbphp/gpt-load.git
+git clone --depth 1 https://github.com/DabengBa/gpt-load.git
 cd gpt-load
 
 cp .env.example .env
