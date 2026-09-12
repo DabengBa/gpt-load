@@ -2,6 +2,7 @@ package dialect
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"gpt-load/internal/pricing"
@@ -53,6 +54,57 @@ func TestOpenAIResponsesProtocolAndRequestMetadata(t *testing.T) {
 				}
 			} else if metadata.Model == nil || *metadata.Model != test.wantModel {
 				t.Fatalf("model = %v, want %q", metadata.Model, test.wantModel)
+			}
+		})
+	}
+}
+
+func TestOpenAIResponsesExtractsPromptCacheKeyForCreateOnly(t *testing.T) {
+	responsesCreateBody := func(fields string) *ParsedRequest {
+		return &ParsedRequest{
+			Method: http.MethodPost, Path: "/v1/responses",
+			Body: []byte(`{"model":"gpt-4o",` + fields + `}`),
+		}
+	}
+	exactLimit := strings.Repeat("b", maxPromptCacheKeyBytes)
+	oversized := strings.Repeat("a", maxPromptCacheKeyBytes+1)
+	tests := []struct {
+		name    string
+		request *ParsedRequest
+		wantKey string
+		wantErr bool
+	}{
+		{name: "valid key", request: responsesCreateBody(`"prompt_cache_key":"Session-42"`), wantKey: "Session-42"},
+		{name: "preserves case unicode and inner whitespace", request: responsesCreateBody(`"prompt_cache_key":"Key 内 部-A"`), wantKey: "Key 内 部-A"},
+		{name: "exact byte limit", request: responsesCreateBody(`"prompt_cache_key":"` + exactLimit + `"`), wantKey: exactLimit},
+		{name: "null", request: responsesCreateBody(`"prompt_cache_key":null`)},
+		{name: "number", request: responsesCreateBody(`"prompt_cache_key":7`)},
+		{name: "bool", request: responsesCreateBody(`"prompt_cache_key":true`)},
+		{name: "object", request: responsesCreateBody(`"prompt_cache_key":{"key":"x"}`)},
+		{name: "array", request: responsesCreateBody(`"prompt_cache_key":["x"]`)},
+		{name: "empty", request: responsesCreateBody(`"prompt_cache_key":""`)},
+		{name: "leading whitespace", request: responsesCreateBody(`"prompt_cache_key":" leading"`)},
+		{name: "trailing whitespace", request: responsesCreateBody(`"prompt_cache_key":"trailing "`)},
+		{name: "control character", request: responsesCreateBody(`"prompt_cache_key":"bad\u0000key"`)},
+		{name: "oversized", request: responsesCreateBody(`"prompt_cache_key":"` + oversized + `"`)},
+		{name: "nested only", request: responsesCreateBody(`"metadata":{"prompt_cache_key":"nested"}`)},
+		{name: "case variant", request: responsesCreateBody(`"Prompt_Cache_Key":"other"`)},
+		{name: "duplicate", request: responsesCreateBody(`"prompt_cache_key":"a","prompt_cache_key":"b"`), wantErr: true},
+		{name: "compact ignores", request: &ParsedRequest{Method: http.MethodPost, Path: "/v1/responses/compact", Body: []byte(`{"model":"gpt-5","prompt_cache_key":"compact"}`)}},
+		{name: "input tokens ignores", request: &ParsedRequest{Method: http.MethodPost, Path: "/v1/responses/input_tokens", Body: []byte(`{"model":"gpt-5","prompt_cache_key":"tokens"}`)}},
+		{name: "retrieve ignores", request: &ParsedRequest{Method: http.MethodGet, Path: "/v1/responses/resp_1", Body: []byte(`{"model":"gpt-5","prompt_cache_key":"retrieve"}`)}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			metadata, err := NewOpenAIResponses().InspectRequest(test.request)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("InspectRequest() = %#v, nil", metadata)
+				}
+				return
+			}
+			if err != nil || metadata.PromptCacheKey != test.wantKey {
+				t.Fatalf("PromptCacheKey = %q, %v; want %q", metadata.PromptCacheKey, err, test.wantKey)
 			}
 		})
 	}

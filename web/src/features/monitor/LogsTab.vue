@@ -551,6 +551,33 @@ function modelConsistencyLabel(log: RequestLogItemDto): string {
   )
 }
 
+// showAffinityObservation 保留现有响应单元格提示槽位，仅当存在真实的亲和或
+// 连续性观测时才显示它。零值（source "none" / state "no_signal"）保持隐藏，
+// 因此普通行不受影响。
+function showAffinityObservation(log: RequestLogItemDto): boolean {
+  return (
+    log.affinity_hit ||
+    log.continuity_hit ||
+    log.affinity_source !== 'none' ||
+    log.affinity_state !== 'no_signal'
+  )
+}
+
+// affinityTooltip 将 bounded source/state 对渲染为可读文本。它
+// 永远不会接收或展示原始 prompt_cache_key、派生 key 或 HMAC 输入。
+function affinityTooltip(log: RequestLogItemDto): string {
+  const source = t(`monitor.logs.affinitySource.${log.affinity_source}`)
+  const state = t(`monitor.logs.affinityState.${log.affinity_state}`)
+  return [
+    t('monitor.logs.affinitySourceLabel', { source }),
+    t('monitor.logs.affinityStateLabel', { state }),
+    log.continuity_hit ? t('monitor.logs.continuityHit') : '',
+    log.affinity_hit ? t('monitor.logs.drawer.affinity') : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
 function reasoningLabel(log: RequestLogItemDto): string {
   if (log.reasoning === null) return ''
   if (
@@ -838,13 +865,15 @@ function costLabel(log: RequestLogItemDto): string {
                   {{ responseLabel(log) }}
                 </StatusBadge>
               </OverflowTooltip>
-              <AppTooltip v-if="log.affinity_hit" :content="t('monitor.logs.drawer.affinity')">
+              <AppTooltip v-if="showAffinityObservation(log)" :content="affinityTooltip(log)">
                 <span
                   class="logs-list__hint logs-list__affinity"
                   tabindex="0"
-                  :aria-label="t('monitor.logs.drawer.affinity')"
+                  :aria-label="affinityTooltip(log)"
                 >
-                  <Magnet :size="13" aria-hidden="true" />
+                  <Magnet v-if="log.affinity_hit" :size="13" aria-hidden="true" />
+                  <ArrowRight v-else-if="log.continuity_hit" :size="13" aria-hidden="true" />
+                  <Info v-else :size="13" aria-hidden="true" />
                 </span>
               </AppTooltip>
             </div>

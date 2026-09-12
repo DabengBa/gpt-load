@@ -385,6 +385,9 @@ func TestRequestLogEndpointReturnsOpaqueCursorAndSafeDTO(t *testing.T) {
 					StatusCode:             200,
 					DurationMs:             1234,
 					AffinityHit:            true,
+					ContinuityHit:          true,
+					AffinitySource:         string(telemetry.AffinitySourcePromptCacheKey),
+					AffinityState:          string(telemetry.AffinityStateHit),
 					GroupID:                12,
 					ChannelID:              channel.OpenAI,
 					CredentialID:           99,
@@ -1201,6 +1204,9 @@ func assertAccessKeyLogRedaction(t *testing.T, body []byte, detail bool) {
 		"upstream_reported_model": "null",
 		"model_consistency":       `"not_applicable"`,
 		"affinity_hit":            "false",
+		"continuity_hit":          "false",
+		"affinity_source":         `"none"`,
+		"affinity_state":          `"no_signal"`,
 		"group_id":                "null",
 		"channel_id":              "null",
 		"credential_id":           "null",
@@ -1441,5 +1447,92 @@ func TestRequestLogCredentialIDsCollectsItemAndAttempts(t *testing.T) {
 		if ids[index] != want[index] {
 			t.Fatalf("ids = %v, want %v", ids, want)
 		}
+	}
+}
+
+func TestRequestLogEndpointsProjectBoundedAffinityObservations(t *testing.T) {
+	t.Parallel()
+	requestID := "00000000-0000-4000-8000-000000000801"
+	record := requestlog.Record{
+		RequestID:             requestID,
+		CompletedAtMS:         1_786_215_600_000,
+		Protocol:              protocol.OpenAICompletions,
+		Operation:             execution.OperationChatCompletion,
+		ClientModel:           "client-model",
+		UpstreamModel:         "upstream-model",
+		UpstreamReportedModel: "upstream-model",
+		ModelConsistency:      telemetry.ModelConsistencyMatch,
+		Status:                telemetry.RequestStatusSuccess,
+		StatusCode:            http.StatusOK,
+		DurationMs:            120,
+		ContinuityHit:         true,
+		AffinitySource:        "raw-prompt-cache-key-material",
+		AffinityState:         "raw-affinity-state-material",
+		UsageState:            usage.StateComplete,
+		CostState:             pricing.CostStatePriced,
+		PricingCompleteness:   pricing.CompletenessComplete,
+		PricingMode:           pricing.ModeStandard,
+		UncachedInputTokens:   10,
+		OutputTokens:          2,
+		EstimatedCostNanoUSD:  50,
+	}
+	reader := &recordingRequestLogReader{
+		pages: []requestlog.Page{
+			{Items: []requestlog.Record{record}},
+			{Items: []requestlog.Record{}},
+		},
+		details: map[string]requestlog.Record{requestID: record},
+	}
+	engine := newRequestLogTestEngine(t, reader)
+
+	list := performRequestLogRequest(engine, "test-auth-key", "")
+	if list.Code != http.StatusOK {
+		t.Fatalf("list response = %d %s, want 200", list.Code, list.Body.String())
+	}
+	assertBoundedAffinityItem(t, list.Body.Bytes())
+
+	detailRequest := httptest.NewRequest(http.MethodGet, "/api/logs/"+requestID, nil)
+	detailRequest.Header.Set("Authorization", "Bearer test-auth-key")
+	detail := httptest.NewRecorder()
+	engine.ServeHTTP(detail, detailRequest)
+	if detail.Code != http.StatusOK {
+		t.Fatalf("detail response = %d %s, want 200", detail.Code, detail.Body.String())
+	}
+	assertBoundedAffinityItem(t, detail.Body.Bytes())
+
+	for _, body := range []string{list.Body.String(), detail.Body.String()} {
+		for _, raw := range []string{"raw-prompt-cache-key-material", "raw-affinity-state-material"} {
+			if strings.Contains(body, raw) {
+				t.Fatalf("request log response exposes raw affinity material %q: %s", raw, body)
+			}
+		}
+	}
+}
+
+type requestLogAffinityProjection struct {
+	ContinuityHit  bool   `json:"continuity_hit"`
+	AffinitySource string `json:"affinity_source"`
+	AffinityState  string `json:"affinity_state"`
+}
+
+func assertBoundedAffinityItem(t *testing.T, body []byte) {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			requestLogAffinityProjection
+			Items []requestLogAffinityProjection `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("decode request log response: %v; body=%s", err, body)
+	}
+	item := envelope.Data.requestLogAffinityProjection
+	if len(envelope.Data.Items) == 1 {
+		item = envelope.Data.Items[0]
+	}
+	if !item.ContinuityHit ||
+		item.AffinitySource != requestlog.AffinitySourceNone ||
+		item.AffinityState != requestlog.AffinityStateNoSignal {
+		t.Fatalf("bounded affinity projection = %#v; body=%s", item, body)
 	}
 }

@@ -671,6 +671,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0011_usage_latency",
 		"0012_debug_captures",
 		"0013_usage_attempt_stats",
+		"0014_affinity_observability",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)
@@ -840,6 +841,9 @@ func TestAutoMigrateCreatesRequestLogFieldsAndCompositeIndexes(t *testing.T) {
 		"reasoning_budget_tokens",
 		"upstream_reported_model",
 		"model_consistency",
+		"continuity_hit",
+		"affinity_source",
+		"affinity_state",
 	} {
 		if _, ok := columnNames[name]; !ok {
 			t.Errorf("request_logs column %q is missing", name)

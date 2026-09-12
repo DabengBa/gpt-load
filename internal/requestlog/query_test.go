@@ -980,3 +980,68 @@ func containsJSONFragment(encoded []byte, fragment string) bool {
 	}
 	return false
 }
+
+func TestDecodeRequestLogRowsNormalizesAffinityObservations(t *testing.T) {
+	base := func() models.RequestLog {
+		return models.RequestLog{
+			ID:                    "00000000-0000-4000-8000-000000000701",
+			CompletedAtMS:         1_785_085_323_000,
+			AccessKeyID:           61,
+			Protocol:              string(protocol.OpenAICompletions),
+			Operation:             string(execution.OperationChatCompletion),
+			ClientModel:           "client-model",
+			UpstreamModel:         "upstream-model",
+			UpstreamReportedModel: "upstream-model",
+			ModelConsistency:      string(telemetry.ModelConsistencyMatch),
+			Status:                string(telemetry.RequestStatusSuccess),
+			StatusCode:            200,
+			DurationMs:            25,
+			UsageState:            string(usage.StateComplete),
+			CostState:             string(pricing.CostStatePriced),
+			PricingCompleteness:   string(pricing.CompletenessComplete),
+		}
+	}
+
+	t.Run("bounded values pass through", func(t *testing.T) {
+		row := base()
+		row.ContinuityHit = true
+		row.AffinitySource = AffinitySourcePromptCacheKey
+		row.AffinityState = AffinityStateGroupDisabled
+
+		records, err := decodeRequestLogRows([]models.RequestLog{row})
+		if err != nil {
+			t.Fatalf("decodeRequestLogRows() error = %v", err)
+		}
+		if !records[0].ContinuityHit ||
+			records[0].AffinitySource != AffinitySourcePromptCacheKey ||
+			records[0].AffinityState != AffinityStateGroupDisabled {
+			t.Fatalf("decoded affinity = %#v", records[0])
+		}
+	})
+
+	t.Run("legacy empty and unknown values collapse to safe zero values", func(t *testing.T) {
+		row := base()
+		row.AffinitySource = ""
+		row.AffinityState = ""
+		records, err := decodeRequestLogRows([]models.RequestLog{row})
+		if err != nil {
+			t.Fatalf("decodeRequestLogRows() error = %v", err)
+		}
+		if records[0].ContinuityHit ||
+			records[0].AffinitySource != AffinitySourceNone ||
+			records[0].AffinityState != AffinityStateNoSignal {
+			t.Fatalf("decoded legacy affinity = %#v", records[0])
+		}
+
+		row.AffinitySource = "raw-prompt-cache-key-material"
+		row.AffinityState = "raw-state-material"
+		records, err = decodeRequestLogRows([]models.RequestLog{row})
+		if err != nil {
+			t.Fatalf("decodeRequestLogRows() error = %v", err)
+		}
+		if records[0].AffinitySource != AffinitySourceNone ||
+			records[0].AffinityState != AffinityStateNoSignal {
+			t.Fatalf("decoded unknown affinity = %#v", records[0])
+		}
+	})
+}

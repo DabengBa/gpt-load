@@ -103,6 +103,10 @@ var migrations = []migration{
 		Up:       migrationfiles.Up0013,
 		Validate: migrationfiles.Validate0013,
 	},
+	{
+		ID: migrationfiles.ID0014, Up: migrationfiles.Up0014,
+		Validate: migrationfiles.Validate0014,
+	},
 }
 
 func applyMigrations(db *gorm.DB) error {

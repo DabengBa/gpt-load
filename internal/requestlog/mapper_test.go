@@ -361,3 +361,67 @@ func TestMapEventIgnoresModelObservationForUnsuccessfulRequest(t *testing.T) {
 		t.Fatalf("unsuccessful model observation = %q/%q", row.UpstreamReportedModel, row.ModelConsistency)
 	}
 }
+
+func TestMapEventProjectsBoundedAffinityObservations(t *testing.T) {
+	tests := []struct {
+		name       string
+		source     telemetry.AffinitySource
+		state      telemetry.AffinityState
+		wantSource string
+		wantState  string
+	}{
+		{
+			name: "prompt cache key hit", source: telemetry.AffinitySourcePromptCacheKey,
+			state: telemetry.AffinityStateHit, wantSource: AffinitySourcePromptCacheKey, wantState: AffinityStateHit,
+		},
+		{
+			name: "prompt prefix miss", source: telemetry.AffinitySourcePromptPrefix,
+			state: telemetry.AffinityStateCacheMiss, wantSource: AffinitySourcePromptPrefix, wantState: AffinityStateCacheMiss,
+		},
+		{
+			name: "unevaluated observation", source: telemetry.AffinitySourceNone,
+			state: telemetry.AffinityStateNone, wantSource: AffinitySourceNone, wantState: AffinityStateNoSignal,
+		},
+		{
+			name: "unavailable cache", source: telemetry.AffinitySourceNone,
+			state: telemetry.AffinityStateCacheUnavailable, wantSource: AffinitySourceNone, wantState: AffinityStateCacheUnavailable,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := testEvent("00000000-0000-4000-8000-000000000601")
+			event.AffinitySource = test.source
+			event.AffinityState = test.state
+			event.ContinuityHit = true
+
+			row, err := mapEvent(redact.New(), event)
+			if err != nil {
+				t.Fatalf("mapEvent() error = %v", err)
+			}
+			if row.AffinitySource != test.wantSource || row.AffinityState != test.wantState || !row.ContinuityHit {
+				t.Fatalf("mapped affinity = %q/%q/%t, want %q/%q/true",
+					row.AffinitySource, row.AffinityState, row.ContinuityHit, test.wantSource, test.wantState)
+			}
+		})
+	}
+}
+
+func TestNormalizeAffinityObservationFallsBackToSafeZeroValues(t *testing.T) {
+	tests := []struct {
+		source, state         string
+		wantSource, wantState string
+	}{
+		{"", "", AffinitySourceNone, AffinityStateNoSignal},
+		{"", "hit", AffinitySourceNone, AffinityStateHit},
+		{"prompt_cache_key", "", AffinitySourcePromptCacheKey, AffinityStateNoSignal},
+		{"raw-secret-key", "hit", AffinitySourceNone, AffinityStateHit},
+		{"prompt_cache_key", "raw-secret-state", AffinitySourcePromptCacheKey, AffinityStateNoSignal},
+	}
+	for _, test := range tests {
+		source, state := NormalizeAffinityObservation(test.source, test.state)
+		if source != test.wantSource || state != test.wantState {
+			t.Fatalf("NormalizeAffinityObservation(%q, %q) = (%q, %q), want (%q, %q)",
+				test.source, test.state, source, state, test.wantSource, test.wantState)
+		}
+	}
+}

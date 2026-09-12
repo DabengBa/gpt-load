@@ -148,6 +148,9 @@ type requestLogItemResponse struct {
 	ErrorCode               string                       `json:"error_code"`
 	ErrorSummary            string                       `json:"error_summary"`
 	AffinityHit             bool                         `json:"affinity_hit"`
+	ContinuityHit           bool                         `json:"continuity_hit"`
+	AffinitySource          string                       `json:"affinity_source"`
+	AffinityState           string                       `json:"affinity_state"`
 	GroupID                 *uint                        `json:"group_id"`
 	ChannelID               *channel.ID                  `json:"channel_id"`
 	CredentialID            *uint                        `json:"credential_id"`
@@ -328,6 +331,9 @@ func sanitizeAccessKeyRequestLog(record requestlog.Record) requestlog.Record {
 	record.ModelConsistency = telemetry.ModelConsistencyNotApplicable
 	record.AttemptCount = 0
 	record.AffinityHit = false
+	record.ContinuityHit = false
+	record.AffinitySource = requestlog.AffinitySourceNone
+	record.AffinityState = requestlog.AffinityStateNoSignal
 	record.GroupID = 0
 	record.ChannelID = ""
 	record.CredentialID = 0
@@ -899,6 +905,12 @@ func mapRequestLogItemResponse(
 		value := strconv.FormatInt(*record.ContextThresholdTokens, 10)
 		contextThresholdTokens = &value
 	}
+	// 在 API 边界重新施加 bounded affinity 投影，确保没有
+	// 未限定或原始信号能到达响应，包括由早于 0013 迁移的
+	// 读取者产生的行。
+	affinitySource, affinityState := requestlog.NormalizeAffinityObservation(
+		record.AffinitySource, record.AffinityState,
+	)
 	return requestLogItemResponse{
 		RequestID:     record.RequestID,
 		CompletedAtMS: record.CompletedAtMS,
@@ -924,6 +936,9 @@ func mapRequestLogItemResponse(
 		ErrorCode:               record.ErrorCode,
 		ErrorSummary:            record.ErrorSummary,
 		AffinityHit:             record.AffinityHit,
+		ContinuityHit:           record.ContinuityHit,
+		AffinitySource:          affinitySource,
+		AffinityState:           affinityState,
 		GroupID:                 usageCost.groupID,
 		ChannelID:               usageCost.channelID,
 		CredentialID:            usageCost.credentialID,

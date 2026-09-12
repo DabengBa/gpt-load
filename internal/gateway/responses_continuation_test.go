@@ -20,6 +20,7 @@ import (
 	"gpt-load/internal/execution"
 	"gpt-load/internal/parameteroverride"
 	"gpt-load/internal/state"
+	"gpt-load/internal/telemetry"
 )
 
 func TestResponsesContinuationPinsCredentialWithoutSoftAffinity(t *testing.T) {
@@ -41,7 +42,9 @@ func TestResponsesContinuationPinsCredentialWithoutSoftAffinity(t *testing.T) {
 			serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","input":"continue"}`, http.StatusOK)
 
 			assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one", "sk-two"})
-			assertAffinityHits(t, sink.snapshot(), []bool{false, true, false})
+			events := sink.snapshot()
+			assertAffinityHits(t, events, []bool{false, false, false})
+			assertAffinityContinuityHits(t, events, []bool{false, true, false})
 		})
 	}
 }
@@ -87,7 +90,8 @@ func TestResponsesContinuationUsesNativeStorageCapabilities(t *testing.T) {
 					t.Fatalf("request %d lost continuation semantics: %+v", index, observed)
 				}
 			}
-			assertAffinityHits(t, sink.snapshot(), []bool{false, true, true})
+			assertAffinityHits(t, sink.snapshot(), []bool{false, false, false})
+			assertAffinityContinuityHits(t, sink.snapshot(), []bool{false, true, true})
 			if _, ok := handler.responseBindings.Lookup(1, "response-3"); ok {
 				t.Fatal("store:false registered a new continuation ID")
 			}
@@ -110,6 +114,7 @@ func TestResponsesContinuationRejectsUnknownAndOtherAccessKeyIDs(t *testing.T) {
 		t.Fatalf("upstream attempts = %d, want only the initial request", len(forwarder.inputs))
 	}
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false, false})
+	assertAffinityContinuityHits(t, sink.snapshot(), []bool{false, false, false})
 }
 
 func TestResponsesContinuationUsesCurrentCandidateIntersection(t *testing.T) {
@@ -125,6 +130,7 @@ func TestResponsesContinuationUsesCurrentCandidateIntersection(t *testing.T) {
 		t.Fatal("continuation escaped to the other credential")
 	}
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false})
+	assertAffinityContinuityHits(t, sink.snapshot(), []bool{false, false})
 }
 
 func TestResponsesContinuationRegistersSSEBeforeDelivery(t *testing.T) {
@@ -199,7 +205,9 @@ func TestResponsesContinuationKeepsBindingAcrossEntryCooldownAndConfigPublicatio
 	handler.manager.Current().Revision++
 	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","previous_response_id":"first","input":"continue"}`, http.StatusOK)
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
-	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true})
+	events := sink.snapshot()
+	assertAffinityHits(t, events, []bool{false, false, false})
+	assertAffinityContinuityHits(t, events, []bool{false, false, true})
 }
 
 func TestResponsesContinuationFailureExhaustsBoundCandidate(t *testing.T) {
@@ -217,7 +225,7 @@ func TestResponsesContinuationFailureExhaustsBoundCandidate(t *testing.T) {
 	}
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
 	events := sink.snapshot()
-	if len(events[1].Attempts) != 1 || events[1].Attempts[0].WillRetry || !events[1].AffinityHit {
+	if len(events[1].Attempts) != 1 || events[1].Attempts[0].WillRetry || events[1].AffinityHit || !events[1].ContinuityHit {
 		t.Fatalf("failure telemetry = %#v", events[1])
 	}
 }
@@ -331,6 +339,84 @@ func TestResponsesContinuationLearnsCompressedJSONResponse(t *testing.T) {
 	if fmt.Sprint(credentials) != "[1 1]" {
 		t.Fatalf("compressed response resumed through credentials %v", credentials)
 	}
+}
+
+func TestResponsesPromptCacheKeySoftAffinitySeparatesSignalsAndContinuity(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{
+		storedResponse("one"), storedResponse("two"), storedResponse("three"), storedResponse("four"),
+	}}
+	handler, engine, sink := newContinuationFixture(t, forwarder)
+	// 每个请求都会创建一次调度迭代器，因此随机值按请求顺序消耗；
+	// 第三次请求（cache-b）需要落到第二个凭据上。
+	useAffinityRandomValues(handler, 0, 0, 1, 0)
+
+	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","prompt_cache_key":"cache-a"}`, http.StatusOK)
+	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","prompt_cache_key":"cache-a"}`, http.StatusOK)
+	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","prompt_cache_key":"cache-b"}`, http.StatusOK)
+	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","prompt_cache_key":"cache-b"}`, http.StatusOK)
+
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one", "sk-two", "sk-two"})
+	events := sink.snapshot()
+	assertAffinityHits(t, events, []bool{false, true, false, true})
+	assertAffinityContinuityHits(t, events, []bool{false, false, false, false})
+	assertAffinitySources(t, events, []telemetry.AffinitySource{
+		telemetry.AffinitySourcePromptCacheKey, telemetry.AffinitySourcePromptCacheKey,
+		telemetry.AffinitySourcePromptCacheKey, telemetry.AffinitySourcePromptCacheKey,
+	})
+	assertAffinityStates(t, events, []telemetry.AffinityState{
+		telemetry.AffinityStateCacheMiss, telemetry.AffinityStateHit,
+		telemetry.AffinityStateCacheMiss, telemetry.AffinityStateHit,
+	})
+}
+
+func TestResponsesPromptCacheKeyIsolatesFromPrefixFallback(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{
+		storedResponse("one"), storedResponse("two"), storedResponse("three"),
+	}}
+	handler, engine, sink := newContinuationFixture(t, forwarder)
+	useAffinityRandomValues(handler, 0, 1)
+
+	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","prompt_cache_key":"explicit-key","input":"stable-turn"}`, http.StatusOK)
+	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","input":"stable-turn"}`, http.StatusOK)
+	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","input":"stable-turn"}`, http.StatusOK)
+
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two"})
+	events := sink.snapshot()
+	assertAffinityHits(t, events, []bool{false, false, true})
+	assertAffinitySources(t, events, []telemetry.AffinitySource{
+		telemetry.AffinitySourcePromptCacheKey,
+		telemetry.AffinitySourcePromptPrefix,
+		telemetry.AffinitySourcePromptPrefix,
+	})
+	assertAffinityStates(t, events, []telemetry.AffinityState{
+		telemetry.AffinityStateCacheMiss,
+		telemetry.AffinityStateCacheMiss,
+		telemetry.AffinityStateHit,
+	})
+}
+
+func TestResponsesPromptCacheKeyFailureDoesNotLearn(t *testing.T) {
+	forwarder := &scriptedForwarder{streamResults: []UpstreamResult{
+		{StatusCode: http.StatusOK, Committed: true, Stream: StreamObservation{EndReason: StreamEndProviderIncomplete}},
+		{StatusCode: http.StatusOK, Committed: true, Stream: StreamObservation{EndReason: StreamEndCleanEOF}},
+		{StatusCode: http.StatusOK, Committed: true, Stream: StreamObservation{EndReason: StreamEndCleanEOF}},
+	}}
+	handler, engine, sink := newContinuationFixture(t, forwarder)
+	useAffinityRandomValues(handler, 0, 1)
+	body := `{"model":"gpt-4o","stream":true,"input":"stable-turn","prompt_cache_key":"failure-key"}`
+
+	serveContinuation(t, engine, "gl-client", body, http.StatusOK)
+	serveContinuation(t, engine, "gl-client", body, http.StatusOK)
+	serveContinuation(t, engine, "gl-client", body, http.StatusOK)
+
+	assertAffinityAttemptKeys(t, forwarder.streamInputs, []string{"sk-one", "sk-two", "sk-two"})
+	events := sink.snapshot()
+	assertAffinityHits(t, events, []bool{false, false, true})
+	assertAffinityStates(t, events, []telemetry.AffinityState{
+		telemetry.AffinityStateCacheMiss,
+		telemetry.AffinityStateCacheMiss,
+		telemetry.AffinityStateHit,
+	})
 }
 
 func storedResponse(id string) UpstreamResult {
