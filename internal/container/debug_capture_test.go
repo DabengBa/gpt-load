@@ -39,7 +39,7 @@ func TestDebugCaptureFactoryPanicReleasesRuntimeAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := debugcapture.NewRuntimeWithInterval(store, time.Hour)
+	runtime := debugcapture.NewRuntimeWithInterval(true, store, time.Hour)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestDebugCaptureFailurePanicReleasesRuntimeAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := debugcapture.NewRuntimeWithInterval(store, time.Hour)
+	runtime := debugcapture.NewRuntimeWithInterval(true, store, time.Hour)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestDebugCaptureSessionRetainsAdmissionAfterTerminalFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := debugcapture.NewRuntimeWithInterval(store, time.Hour)
+	runtime := debugcapture.NewRuntimeWithInterval(true, store, time.Hour)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -222,6 +222,15 @@ func TestDebugCaptureFactoryPreservesRawGatewayCommunication(t *testing.T) {
 	if err := events.RecordResponseFlush(); err != nil {
 		t.Fatal(err)
 	}
+	terminationEvents, ok := attempt.(interface {
+		RecordResponseTermination(string, string) error
+	})
+	if !ok {
+		t.Fatal("capture attempt does not expose response termination persistence")
+	}
+	if err := terminationEvents.RecordResponseTermination("eof", ""); err != nil {
+		t.Fatal(err)
+	}
 	if err := attempt.Complete(); err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +247,7 @@ func TestDebugCaptureFactoryPreservesRawGatewayCommunication(t *testing.T) {
 		t.Fatalf("session metadata = %#v", record.Metadata)
 	}
 	if len(record.Attempts) != 1 || record.Attempts[0].Metadata.Fields["logical_attempt_id"] != "request-1:1" ||
-		len(record.Attempts[0].Metadata.Events) != 1 {
+		len(record.Attempts[0].Metadata.Events) != 2 {
 		t.Fatalf("attempt metadata = %#v", record.Attempts)
 	}
 	gotRequestBody, err := store.ReadPart(record.ID, record.Attempts[0].ID, debugcapture.PartBody, debugcapture.DirectionRequest)

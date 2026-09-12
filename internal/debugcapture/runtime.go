@@ -10,14 +10,17 @@ import (
 	"time"
 )
 
-const defaultCleanupInterval = time.Hour
+const (
+	defaultCleanupInterval   = time.Hour
+	maxActiveCaptureSessions = 64
+)
 
-// Runtime owns cleanup and shutdown admission for the capture store. Capture
-// requests remain independent of the cleanup worker: sweep failures are
-// recorded for health reporting and never returned to the data plane. Capture
-// is always enabled; there is no configuration switch to disable it.
+// Runtime owns cleanup and shutdown admission for the optional capture store.
+// Capture requests remain independent of the cleanup worker: sweep failures are
+// recorded for health reporting and never returned to the data plane.
 type Runtime struct {
 	store    *Store
+	enabled  bool
 	interval time.Duration
 	now      func() time.Time
 
@@ -39,16 +42,17 @@ type Runtime struct {
 	lastSweepFailure  time.Time
 }
 
-func NewRuntime(store *Store) *Runtime {
-	return NewRuntimeWithInterval(store, defaultCleanupInterval)
+func NewRuntime(enabled bool, store *Store) *Runtime {
+	return NewRuntimeWithInterval(enabled, store, defaultCleanupInterval)
 }
 
-func NewRuntimeWithInterval(store *Store, interval time.Duration) *Runtime {
+func NewRuntimeWithInterval(enabled bool, store *Store, interval time.Duration) *Runtime {
 	if interval <= 0 {
 		interval = defaultCleanupInterval
 	}
 	return &Runtime{
 		store:    store,
+		enabled:  enabled,
 		interval: interval,
 		now:      time.Now,
 	}
@@ -73,12 +77,17 @@ func (r *Runtime) Start() error {
 		r.mu.Unlock()
 		return errors.New("debug capture runtime failed to start")
 	}
-	if r.store == nil {
+	if r.enabled && r.store == nil {
 		r.startFailed = true
 		r.mu.Unlock()
 		return errors.New("debug capture runtime store is required")
 	}
 	r.started = true
+	if !r.enabled {
+		r.mu.Unlock()
+		r.sweep()
+		return nil
+	}
 	r.stop = make(chan struct{})
 	r.workerDone = make(chan struct{})
 	r.startupDone = make(chan struct{})
@@ -130,12 +139,12 @@ func (r *Runtime) sweep() {
 // AcquireSession prevents shutdown from closing the database while a capture
 // session is still being finalized. The returned release function is idempotent.
 func (r *Runtime) AcquireSession() (func(), bool) {
-	if r == nil {
+	if r == nil || !r.enabled {
 		return nil, false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.stopping || r.startFailed || !r.started {
+	if r.stopping || r.startFailed || !r.started || r.activeSessions >= maxActiveCaptureSessions {
 		return nil, false
 	}
 	if r.activeSessions == 0 {
@@ -166,7 +175,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	r.mu.Lock()
-	if !r.started {
+	if !r.enabled || !r.started {
 		r.mu.Unlock()
 		return nil
 	}
@@ -201,14 +210,14 @@ func (r *Runtime) Health() (Health, error) {
 		return Health{}, nil
 	}
 	r.mu.Lock()
-	running := r.started && !r.stopping && !r.startFailed
+	running := r.enabled && r.started && !r.stopping && !r.startFailed
 	r.mu.Unlock()
 	r.statsMu.RLock()
 	lastSweepAt := r.lastSweepAt
 	lastFailureAt := r.lastSweepFailure
 	r.statsMu.RUnlock()
 	result := Health{
-		Enabled:           true,
+		Enabled:           r.enabled,
 		Running:           running,
 		RetentionSeconds:  int64(retention / time.Second),
 		SweepTotal:        r.sweepTotal.Load(),
@@ -221,7 +230,7 @@ func (r *Runtime) Health() (Health, error) {
 	if !lastFailureAt.IsZero() {
 		result.LastFailureAt = &lastFailureAt
 	}
-	if r.store == nil {
+	if !r.enabled || r.store == nil {
 		return result, nil
 	}
 	counts, err := r.store.Counts()

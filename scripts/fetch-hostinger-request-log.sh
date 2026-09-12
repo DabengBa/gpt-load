@@ -32,7 +32,7 @@ while (($# > 0)); do
     --container) (($# >= 2)) || { echo "missing --container value" >&2; exit 2; }; container=$2; shift 2 ;;
     --since) (($# >= 2)) || { echo "missing --since value" >&2; exit 2; }; since=$2; shift 2 ;;
     --tail) (($# >= 2)) || { echo "missing --tail value" >&2; exit 2; }; tail_lines=$2; shift 2 ;;
-    --output) (($# >= 2)) || { echo "missing --output value" >&2; }; output_root=$2; shift 2 ;;
+    --output) (($# >= 2)) || { echo "missing --output value" >&2; exit 2; }; output_root=$2; shift 2 ;;
     --*) echo "unknown option: $1" >&2; usage; exit 2 ;;
     *) [[ -z "$request_id" ]] || { echo "only one request-id is allowed" >&2; exit 2; }; request_id=$1; shift ;;
   esac

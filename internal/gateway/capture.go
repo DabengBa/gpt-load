@@ -412,6 +412,16 @@ func (capture *dataPlaneCapture) startAttempt(metadata CaptureAttemptMetadata) C
 	return deferred
 }
 
+const (
+	maxCaptureQueueEvents = 128
+	maxCaptureBodyBytes   = 8 << 20
+)
+
+var (
+	errCaptureQueueFull = errors.New("capture queue is full")
+	errCaptureBodyLimit = errors.New("capture body byte limit exceeded")
+)
+
 // deferredCaptureAttempt owns caller bytes and drains them only after the
 // storage attempt has been created. It keeps all storage work off the request.
 type deferredCaptureAttempt struct {
@@ -421,6 +431,7 @@ type deferredCaptureAttempt struct {
 	mu          sync.Mutex
 	target      CaptureAttempt
 	queue       []func(CaptureAttempt) error
+	bodyBytes   int64
 	open        bool
 	failure     error
 	waitOnce    sync.Once
@@ -492,6 +503,9 @@ func (attempt *deferredCaptureAttempt) enqueue(event func(CaptureAttempt) error)
 	if !attempt.open {
 		return errors.New("capture attempt is closed")
 	}
+	if len(attempt.queue) >= maxCaptureQueueEvents {
+		return errCaptureQueueFull
+	}
 	attempt.queue = append(attempt.queue, event)
 	select {
 	case attempt.wake <- struct{}{}:
@@ -500,21 +514,54 @@ func (attempt *deferredCaptureAttempt) enqueue(event func(CaptureAttempt) error)
 	return nil
 }
 
-func (attempt *deferredCaptureAttempt) AppendRequestHeaders(data []byte) error {
+func (attempt *deferredCaptureAttempt) enqueueBytes(data []byte, countBody bool, event func(CaptureAttempt, []byte) error) error {
+	if attempt == nil || event == nil {
+		return errors.New("capture attempt is unavailable")
+	}
+	attempt.mu.Lock()
+	defer attempt.mu.Unlock()
+	if !attempt.open {
+		return errors.New("capture attempt is closed")
+	}
+	if len(attempt.queue) >= maxCaptureQueueEvents {
+		return errCaptureQueueFull
+	}
+	if countBody && attempt.bodyBytes+int64(len(data)) > maxCaptureBodyBytes {
+		return errCaptureBodyLimit
+	}
 	snapshot := bytes.Clone(data)
-	return attempt.enqueue(func(target CaptureAttempt) error { return target.AppendRequestHeaders(snapshot) })
+	if countBody {
+		attempt.bodyBytes += int64(len(snapshot))
+	}
+	attempt.queue = append(attempt.queue, func(target CaptureAttempt) error {
+		return event(target, snapshot)
+	})
+	select {
+	case attempt.wake <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (attempt *deferredCaptureAttempt) AppendRequestHeaders(data []byte) error {
+	return attempt.enqueueBytes(data, false, func(target CaptureAttempt, snapshot []byte) error {
+		return target.AppendRequestHeaders(snapshot)
+	})
 }
 func (attempt *deferredCaptureAttempt) AppendRequestBody(data []byte) error {
-	snapshot := bytes.Clone(data)
-	return attempt.enqueue(func(target CaptureAttempt) error { return target.AppendRequestBody(snapshot) })
+	return attempt.enqueueBytes(data, true, func(target CaptureAttempt, snapshot []byte) error {
+		return target.AppendRequestBody(snapshot)
+	})
 }
 func (attempt *deferredCaptureAttempt) AppendResponseHeaders(data []byte) error {
-	snapshot := bytes.Clone(data)
-	return attempt.enqueue(func(target CaptureAttempt) error { return target.AppendResponseHeaders(snapshot) })
+	return attempt.enqueueBytes(data, false, func(target CaptureAttempt, snapshot []byte) error {
+		return target.AppendResponseHeaders(snapshot)
+	})
 }
 func (attempt *deferredCaptureAttempt) AppendResponseBody(data []byte) error {
-	snapshot := bytes.Clone(data)
-	return attempt.enqueue(func(target CaptureAttempt) error { return target.AppendResponseBody(snapshot) })
+	return attempt.enqueueBytes(data, true, func(target CaptureAttempt, snapshot []byte) error {
+		return target.AppendResponseBody(snapshot)
+	})
 }
 func (attempt *deferredCaptureAttempt) RecordResponseFlush() error {
 	return attempt.enqueue(func(target CaptureAttempt) error {

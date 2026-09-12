@@ -26,6 +26,7 @@ func TestBuildContainerCapturesAllowedPreflightAtOutermostBoundary(t *testing.T)
 	t.Setenv("DATA_DIR", t.TempDir())
 	t.Setenv("DATABASE_DSN", ":memory:")
 	t.Setenv("ENCRYPTION_KEY", "test-master-key-long")
+	t.Setenv("DEBUG_CAPTURE_ENABLED", "true")
 	if err := i18n.Init(); err != nil {
 		t.Fatalf("i18n.Init() error = %v", err)
 	}

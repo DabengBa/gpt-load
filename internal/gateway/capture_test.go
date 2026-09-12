@@ -993,6 +993,39 @@ func TestCaptureObserverLateFailureNotifiesCoordinator(t *testing.T) {
 	}
 }
 
+func TestDeferredCaptureAttemptBoundsQueuedBodyEvents(t *testing.T) {
+	release := make(chan struct{})
+	target := &captureTestAttempt{bodyBlock: release, bodyEntered: make(chan struct{})}
+	attempt := newDeferredCaptureAttempt()
+	attempt.setTarget(target, nil)
+	if err := attempt.AppendResponseBody([]byte("in-flight")); err != nil {
+		t.Fatal(err)
+	}
+	<-target.bodyEntered
+	for range maxCaptureQueueEvents {
+		if err := attempt.AppendResponseBody([]byte("queued")); err != nil {
+			t.Fatalf("queued body event rejected before limit: %v", err)
+		}
+	}
+	if err := attempt.AppendResponseBody([]byte("overflow")); err == nil {
+		t.Fatal("body event above queue limit was accepted")
+	}
+	close(release)
+	attempt.Wait()
+}
+
+func TestDeferredCaptureAttemptBoundsBodyBytes(t *testing.T) {
+	attempt := newDeferredCaptureAttempt()
+	attempt.setTarget(&captureTestAttempt{}, nil)
+	if err := attempt.AppendResponseBody(bytes.Repeat([]byte{'x'}, maxCaptureBodyBytes)); err != nil {
+		t.Fatal(err)
+	}
+	if err := attempt.AppendResponseBody([]byte("overflow")); err == nil {
+		t.Fatal("body event above capture byte limit was accepted")
+	}
+	attempt.Wait()
+}
+
 func TestCaptureObserverPersistsResponseTermination(t *testing.T) {
 	attempt := &captureTestAttempt{}
 	observer := newCaptureHTTPObserver(attempt, "attempt")

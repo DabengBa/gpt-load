@@ -19,7 +19,7 @@ func TestRuntimeSweepsOnStartupAndDrainsRegisteredSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(retention)
-	runtime := NewRuntimeWithInterval(store, time.Millisecond)
+	runtime := NewRuntimeWithInterval(true, store, time.Millisecond)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestRuntimeSweepsOnStartupAndDrainsRegisteredSessions(t *testing.T) {
 	}
 }
 
-func TestRuntimeAlwaysEnabledCleansExpiredSessionsAndAdmits(t *testing.T) {
+func TestRuntimeEnabledCleansExpiredSessionsAndAdmits(t *testing.T) {
 	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
 	store := newTestStore(t, &now)
 	expired, err := store.StartSession(SessionMetadata{RequestID: "expired-always-enabled"})
@@ -59,7 +59,7 @@ func TestRuntimeAlwaysEnabledCleansExpiredSessionsAndAdmits(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(retention)
-	runtime := NewRuntime(store)
+	runtime := NewRuntime(true, store)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,51 @@ func TestRuntimeAlwaysEnabledCleansExpiredSessionsAndAdmits(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !health.Enabled || !health.Running {
-		t.Fatalf("health = %#v, want always-enabled running runtime", health)
+		t.Fatalf("health = %#v, want enabled running runtime", health)
+	}
+}
+
+func TestRuntimeLimitsActiveCaptureSessions(t *testing.T) {
+	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
+	runtime := NewRuntimeWithInterval(true, newTestStore(t, &now), time.Hour)
+	if err := runtime.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = runtime.Stop(context.Background()) }()
+
+	releases := make([]func(), 0, maxActiveCaptureSessions)
+	for range maxActiveCaptureSessions {
+		release, ok := runtime.AcquireSession()
+		if !ok {
+			t.Fatal("AcquireSession() rejected a session below the configured limit")
+		}
+		releases = append(releases, release)
+	}
+	if release, ok := runtime.AcquireSession(); ok || release != nil {
+		t.Fatal("AcquireSession() accepted a session above the configured limit")
+	}
+	for _, release := range releases {
+		release()
+	}
+}
+
+func TestRuntimeDisabledStillCleansExpiredSessions(t *testing.T) {
+	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore(t, &now)
+	expired, err := store.StartSession(SessionMetadata{RequestID: "expired-disabled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(retention)
+	runtime := NewRuntimeWithInterval(false, store, time.Hour)
+	if err := runtime.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReadSession(expired.ID()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("disabled runtime ReadSession() = %v, want ErrNotFound", err)
 	}
 }
 
@@ -88,7 +132,7 @@ func TestRuntimePeriodicallyCleansExpiredSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := NewRuntimeWithInterval(store, time.Millisecond)
+	runtime := NewRuntimeWithInterval(true, store, time.Millisecond)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +166,7 @@ func TestRuntimeHealthReportsCountsUnavailableWithoutFailing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := NewRuntimeWithInterval(store, time.Hour)
+	runtime := NewRuntimeWithInterval(true, store, time.Hour)
 	if err := runtime.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +182,7 @@ func TestRuntimeHealthReportsCountsUnavailableWithoutFailing(t *testing.T) {
 }
 
 func TestRuntimeStartFailureRejectsSessionAdmission(t *testing.T) {
-	runtime := NewRuntimeWithInterval(nil, time.Hour)
+	runtime := NewRuntimeWithInterval(true, nil, time.Hour)
 	if err := runtime.Start(); err == nil {
 		t.Fatal("Start() error = nil, want missing-store error")
 	}

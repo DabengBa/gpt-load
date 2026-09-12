@@ -151,6 +151,10 @@ func (attempt *debugCaptureAttempt) RecordResponseError(err error) error {
 	return attempt.inner.RecordResponseError(err)
 }
 
+func (attempt *debugCaptureAttempt) RecordResponseTermination(termination, detail string) error {
+	return attempt.inner.RecordResponseTermination(termination, detail)
+}
+
 func (attempt *debugCaptureAttempt) RecordResponseHijack(err error) error {
 	return attempt.inner.RecordResponseHijack(err)
 }

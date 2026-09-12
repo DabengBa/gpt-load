@@ -245,7 +245,7 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 
 - 默认只监听 `127.0.0.1`。需要远程访问时，应通过受控网络或带 TLS 的反向代理暴露，并配置 ACL 与防火墙。
 - 妥善管理 `AUTH_KEY` 与 `ENCRYPTION_KEY`，不要把真实密钥提交到仓库、日志、截图或公开 Issue。
-- 调试通讯捕获在 Unix 运行时始终启用，没有关闭开关。独立捕获存储会在固定 12 小时内保存观察到的明文请求和响应 Header、Body，其中可能包含凭据和 Cookie。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway、CPA 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
+- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会在固定 12 小时内保存观察到的明文请求和响应 Header、Body，其中可能包含凭据和 Cookie。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway、CPA 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
 - 2.0 按**单应用实例**设计，多个实例之间不共享状态，不支持直接横向扩容。
 - 用量与成本是基于上游返回数据的**估算**，用于运行分析和资源评估，不等同于服务商账单或财务对账结果。
 - 订阅渠道依赖上游 OAuth 与兼容协议，可能随上游变化调整。请只接入自己有权使用的账号，并遵守对应服务商条款。

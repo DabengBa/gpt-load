@@ -1,12 +1,12 @@
 # Debug Communication Capture
 
-Debug communication capture is an always-on operational tool for investigating gateway and provider integration behavior. On Unix runtimes capture is enabled unconditionally; there is no configuration switch to turn it off.
+Debug communication capture is an opt-in operational tool for investigating gateway and provider integration behavior. On Unix runtimes, set `DEBUG_CAPTURE_ENABLED=true` to enable it; it is disabled by default.
 
 ## Retention
 
-The capture store uses the existing configured database and remains separate from `request_logs`. Captures are retained for a fixed 12-hour expiry, then startup and periodic cleanup remove expired rows and chunks automatically.
+The capture store uses the existing configured database and remains separate from `request_logs`. Captures are retained for a fixed 12-hour expiry, then startup and periodic cleanup remove expired rows and chunks automatically. Each runtime admits at most 64 concurrent capture sessions; each attempt retains at most 8 MiB of raw body data and 128 pending persistence events. Exceeding a limit fails the affected capture without changing the data-plane response.
 
-The capture can contain complete observed sensitive values, including `Authorization`, `Cookie`, API keys, request bodies, response bodies, and provider credentials passed through the supported observation boundary. Protect `AUTH_KEY`, the database, database backups, and exported archives. Because capture cannot be disabled, run GPT-Load only in deployments where this plaintext exposure is acceptable.
+The capture can contain complete observed sensitive values, including `Authorization`, `Cookie`, API keys, request bodies, response bodies, and provider credentials passed through the supported observation boundary. Protect `AUTH_KEY`, the database, database backups, and exported archives. Do not enable this feature on an untrusted or shared deployment unless that exposure is intentional.
 
 ## Administrator API
 

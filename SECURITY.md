@@ -11,7 +11,7 @@ The repository's 2.0 candidate receives security fixes while its first public re
 
 ## Debug communication capture
 
-Debug communication capture is always enabled on Unix runtimes; there is no configuration switch to turn it off. It writes observed application-layer request and response headers and bodies to the separate debug-capture store in plaintext, including sensitive `Authorization`, `Cookie`, and API-key values. Captures are retained for a fixed 12 hours and cleaned automatically.
+Debug communication capture is an opt-in operational tool. On Unix runtimes it is disabled by default and is enabled with `DEBUG_CAPTURE_ENABLED=true`. It writes observed application-layer request and response headers and bodies to the separate debug-capture store in plaintext, including sensitive `Authorization`, `Cookie`, and API-key values. Captures are retained for a fixed 12 hours and cleaned automatically.
 
 Only authenticated management administrators can list, inspect, or download captures through `GET /api/debug-captures`, `GET /api/debug-captures/:capture_id`, and `GET /api/debug-captures/:capture_id/download`. Do not expose these endpoints or exported ZIP files to access-key users or untrusted operators. Protect `AUTH_KEY`, the database, backups, and downloaded archives as sensitive material. Capture storage failures are isolated from gateway request results; a capture may be marked failed or incomplete when observation or persistence was not completed.
 
