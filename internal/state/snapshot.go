@@ -155,6 +155,7 @@ type GroupView struct {
 	ResponsesWebsocketEnabled bool
 	Proxy                     outboundproxy.Effective
 	ParameterOverrides        parameteroverride.Rules
+	ReasoningEffortOverrides  map[string]string
 	ModelBreakerByEntry       map[uint]map[string]*EntryCircuitBreaker
 }
 type GroupCatalogView struct {
@@ -188,6 +189,17 @@ type ConfigSnapshot struct {
 	GroupCatalog          map[uint]GroupCatalogView
 	AccessKeysByID        map[uint]AccessKeyView
 	GlobalProxy           outboundproxy.Effective
+}
+
+func cloneReasoningEffortOverrides(value map[string]string) map[string]string {
+	if len(value) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(value))
+	for model, effort := range value {
+		result[model] = effort
+	}
+	return result
 }
 
 func Compile(input CompileInput) (*ConfigSnapshot, error) {
@@ -228,6 +240,9 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		if err != nil {
 			return nil, fmt.Errorf("compile group %d settings: %w", group.ID, err)
 		}
+		if err := validateReasoningEffortOverrideModels(resolved.ReasoningEffortOverrides, group.Models); err != nil {
+			return nil, fmt.Errorf("compile group %d reasoning effort overrides: %w", group.ID, err)
+		}
 		groupProxy, err := outboundproxy.Resolve(nil, group.Proxy, input.GlobalProxy, input.EnvironmentProxy)
 		if err != nil {
 			return nil, fmt.Errorf("compile group %d proxy: %w", group.ID, err)
@@ -247,6 +262,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			ConnectionType:            connection.Normalize(group.ConnectionType),
 			Proxy:                     groupProxy,
 			ParameterOverrides:        resolved.ParameterOverrides,
+			ReasoningEffortOverrides:  cloneReasoningEffortOverrides(resolved.ReasoningEffortOverrides),
 			ModelBreakerByEntry:       make(map[uint]map[string]*EntryCircuitBreaker),
 		}
 		for _, model := range group.Models {

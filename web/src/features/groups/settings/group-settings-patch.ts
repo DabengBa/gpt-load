@@ -79,6 +79,8 @@ function cloneOverrides(value: GroupRuntimeConfigDto): GroupRuntimeConfigDto {
     next.responses_websocket_enabled = value.responses_websocket_enabled
   if (value.parameter_overrides?.length)
     next.parameter_overrides = cloneParameterOverrides(value.parameter_overrides)
+  if (value.reasoning_effort_overrides)
+    next.reasoning_effort_overrides = { ...value.reasoning_effort_overrides }
   return next
 }
 
@@ -110,6 +112,14 @@ function normalizeOverrides(value: GroupRuntimeConfigDto): GroupRuntimeConfigDto
     })
     if (rules.length > 0) next.parameter_overrides = rules
     else delete next.parameter_overrides
+  }
+  if (next.reasoning_effort_overrides) {
+    const entries = Object.entries(next.reasoning_effort_overrides)
+      .map(([model, effort]) => [model.trim(), effort] as const)
+      .filter(([model]) => model)
+      .sort(([left], [right]) => left.localeCompare(right))
+    if (entries.length) next.reasoning_effort_overrides = Object.fromEntries(entries)
+    else delete next.reasoning_effort_overrides
   }
   return next
 }

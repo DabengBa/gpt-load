@@ -12,7 +12,7 @@ import (
 	"gpt-load/internal/subscription/providers/codex"
 )
 
-func TestWebsocketModelCapacityDoesNotApplyQuotaCooldown(t *testing.T) {
+func TestWebsocketModelCapacityAdvancesWithoutQuotaCooldown(t *testing.T) {
 	for _, code := range []string{"model_at_capacity", "model_is_at_capacity"} {
 		evidence := codexWebsocketEvidence(t.Context(), &codex.WSError{
 			Code: "upstream_error", UpstreamCode: code, HTTPStatus: http.StatusTooManyRequests,
@@ -25,8 +25,9 @@ func TestWebsocketModelCapacityDoesNotApplyQuotaCooldown(t *testing.T) {
 		decision := health.JudgeExecution(health.ExecutionAttempt{
 			DispatchState: execution.DispatchMaybeSent, StatusCode: http.StatusTooManyRequests, Evidence: evidence,
 		}, health.DecisionContext{Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
-		if decision.Effect != health.EffectNone || decision.Retry != health.RetryNone {
-			t.Fatalf("capacity rejection caused cooldown or unsafe replay: %+v", decision)
+		if decision.Effect != health.EffectNone || decision.Retry != health.RetryNextCandidate ||
+			decision.Scope != execution.ErrorScopeModel {
+			t.Fatalf("capacity rejection = %+v, want model-scoped retry without cooldown", decision)
 		}
 	}
 }

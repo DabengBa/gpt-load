@@ -991,15 +991,19 @@ func (handler *Handler) executeAttempts(
 	}
 	// 缓存仅属于本次请求；切换分组时释放旧结果，避免重试累积完整请求体。
 	var preparedGroupID uint
+	var preparedUpstreamModel string
 	var cachedPrepared *preparedRequest
 	loggedOverrideFailures := make(map[uint]struct{})
 	var parameterOverrideFailure *reason
+	originalReasoningEffortPresent := dialect.HasReasoningEffort(parsed.Body, selectedDialect.Protocol())
 	prepareRequest := func(selection scheduler.Selection) preparedRequest {
-		if cachedPrepared != nil && preparedGroupID == selection.GroupID {
+		upstreamModel := optionalModelValue(selection.UpstreamModelID)
+		if cachedPrepared != nil && preparedGroupID == selection.GroupID && preparedUpstreamModel == upstreamModel {
 			return *cachedPrepared
 		}
 		cachedPrepared = nil
 		preparedGroupID = selection.GroupID
+		preparedUpstreamModel = upstreamModel
 		prepared := preparedRequest{
 			request: parsed, observations: originalMetadata, observationsAvailable: true,
 		}
@@ -1013,6 +1017,17 @@ func (handler *Handler) executeAttempts(
 			prepared.err = err
 			cachedPrepared = &prepared
 			return prepared
+		}
+		if effort := selection.Group.ReasoningEffortOverrides[upstreamModel]; dialect.SupportsReasoningEffortOverride(selectedDialect.Protocol(), originalMetadata.Operation) &&
+			originalReasoningEffortPresent && effort != "" {
+			var effortApplied bool
+			body, effortApplied, err = dialect.OverrideReasoningEffort(body, effort, selectedDialect.Protocol())
+			if err != nil {
+				prepared.err = err
+				cachedPrepared = &prepared
+				return prepared
+			}
+			applied = applied || effortApplied
 		}
 		if !applied {
 			cachedPrepared = &prepared

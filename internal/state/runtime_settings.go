@@ -33,6 +33,7 @@ const (
 	SettingRequestLogRetentionDays   = "request_log_retention_days"
 	SettingModelsDevAutoSyncEnabled  = "models_dev_auto_sync_enabled"
 	SettingParameterOverrides        = "parameter_overrides"
+	SettingReasoningEffortOverrides  = "reasoning_effort_overrides"
 )
 
 type RouteStrategy string
@@ -79,6 +80,7 @@ type ResolvedGroupSettings struct {
 	AffinityEnabled           bool
 	ResponsesWebsocketEnabled bool
 	ParameterOverrides        parameteroverride.Rules
+	ReasoningEffortOverrides  map[string]string
 }
 
 func DefaultRuntimeSettings() RuntimeSettings {
@@ -318,6 +320,12 @@ func ResolveGroupRuntimeSettings(
 				return ResolvedGroupSettings{}, err
 			}
 			resolved.ResponsesWebsocketEnabled = parsed
+		case SettingReasoningEffortOverrides:
+			parsed, err := ParseReasoningEffortOverrides(value)
+			if err != nil {
+				return ResolvedGroupSettings{}, err
+			}
+			resolved.ReasoningEffortOverrides = parsed
 		case SettingParameterOverrides:
 			parsed, err := parameteroverride.Compile(value)
 			if err != nil {
@@ -329,6 +337,48 @@ func ResolveGroupRuntimeSettings(
 		}
 	}
 	return resolved, nil
+}
+
+func ParseReasoningEffortOverrides(value any) (map[string]string, error) {
+	raw, ok := value.(map[string]any)
+	if !ok || len(raw) == 0 {
+		return nil, fmt.Errorf("%s must be a non-empty object", SettingReasoningEffortOverrides)
+	}
+	result := make(map[string]string, len(raw))
+	for model, rawEffort := range raw {
+		model = strings.TrimSpace(model)
+		effort, ok := rawEffort.(string)
+		if model == "" || !ok {
+			return nil, fmt.Errorf("%s entries require model and effort strings", SettingReasoningEffortOverrides)
+		}
+		effort = strings.ToLower(strings.TrimSpace(effort))
+		switch effort {
+		case "none", "minimal", "low", "medium", "high", "xhigh", "max":
+		default:
+			return nil, fmt.Errorf("%s has unsupported effort %q", SettingReasoningEffortOverrides, effort)
+		}
+		if _, exists := result[model]; exists {
+			return nil, fmt.Errorf("%s has duplicate model %q", SettingReasoningEffortOverrides, model)
+		}
+		result[model] = effort
+	}
+	return result, nil
+}
+
+func validateReasoningEffortOverrideModels(overrides map[string]string, models []ModelConfig) error {
+	if len(overrides) == 0 {
+		return nil
+	}
+	available := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		available[strings.TrimSpace(model.ID)] = struct{}{}
+	}
+	for model := range overrides {
+		if _, exists := available[model]; !exists {
+			return fmt.Errorf("%s references unknown group model %q", SettingReasoningEffortOverrides, model)
+		}
+	}
+	return nil
 }
 
 func ValidateRuntimeSetting(key string, value any) error {

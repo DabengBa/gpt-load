@@ -290,6 +290,16 @@ export default {
           actionRequired: 'パラメータを 1 つ以上追加してください。',
         },
       },
+      reasoningEffort: {
+        title: '上游モデル別 Reasoning effort',
+        description:
+          'この Group と上流モデルに対してのみ、既存の reasoning effort を置き換えます。',
+        empty: 'モデル別の reasoning effort 上書きはありません。',
+        model: '上流モデル',
+        add: 'モデル上書きを追加',
+        effort: '{model} の Reasoning effort',
+        remove: '{model} の reasoning 上書きを削除',
+      },
       dangerDescription: '元に戻せない操作を通常の設定から明確に分離します。',
       saveFailed: 'グループ設定を更新できませんでした。',
       base: {

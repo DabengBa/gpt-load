@@ -284,6 +284,15 @@ export default {
           actionRequired: '至少添加一个参数。',
         },
       },
+      reasoningEffort: {
+        title: '按上游模型设置推理强度',
+        description: '仅对当前分组和上游模型替换已存在的 reasoning effort。',
+        empty: '没有按模型设置的 reasoning effort 覆盖。',
+        model: '上游模型',
+        add: '添加模型覆盖',
+        effort: '{model} 的 reasoning effort',
+        remove: '移除 {model} 的 reasoning 覆盖',
+      },
       dangerDescription: '不可逆操作与常规设置保持明确距离。',
       saveFailed: '无法更新分组设置。',
       base: {

@@ -51,6 +51,15 @@ type zeroRandSource struct{}
 func (zeroRandSource) Int63() int64 { return 0 }
 func (zeroRandSource) Seed(int64)   {}
 
+func TestCloneGroupViewClonesReasoningEffortOverrides(t *testing.T) {
+	original := state.GroupView{ReasoningEffortOverrides: map[string]string{"upstream": "high"}}
+	cloned := cloneGroupView(original)
+	cloned.ReasoningEffortOverrides["upstream"] = "low"
+	if original.ReasoningEffortOverrides["upstream"] != "high" {
+		t.Fatalf("original overrides = %#v", original.ReasoningEffortOverrides)
+	}
+}
+
 func TestIteratorRejectsMultiCredentialGroupWithoutSilentSelection(t *testing.T) {
 	query := Query{ClientProtocol: protocol.OpenAICompletions, Operation: execution.OperationChatCompletion, ExternalModel: modelPointer("gpt-4o")}
 	if _, err := New(schedulerSnapshot(), fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}, {ID: 12, GroupID: 1}}}, query, rand.New(zeroRandSource{})).Next(); err != ErrExhausted {

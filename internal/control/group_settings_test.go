@@ -120,6 +120,51 @@ func TestUpdateGroupSettingsPublishesParameterOverrides(t *testing.T) {
 	}
 }
 
+func TestUpdateGroupSettingsPublishesReasoningEffortOverrides(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-reasoning-effort-overrides")
+
+	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingReasoningEffortOverrides: map[string]any{" gpt-4o ": " HIGH "},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"gpt-4o": "high"}
+	if got := result.Overrides[state.SettingReasoningEffortOverrides]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("stored override = %#v, want %#v", got, want)
+	}
+	if got := fixture.manager.Current().Groups[groupID].ReasoningEffortOverrides; !reflect.DeepEqual(got, map[string]string{"gpt-4o": "high"}) {
+		t.Fatalf("runtime override = %#v", got)
+	}
+	stored, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil || !reflect.DeepEqual(stored.Overrides[state.SettingReasoningEffortOverrides], want) {
+		t.Fatalf("GetGroupSettings() = %#v, %v", stored.Overrides, err)
+	}
+
+	before := fixture.manager.Current()
+	for _, overrides := range []map[string]any{
+		{},
+		{"gpt-4o": "high", " gpt-4o ": "low"},
+		{"unknown-model": "high"},
+	} {
+		_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+			Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+				state.SettingReasoningEffortOverrides: overrides,
+			}},
+		})
+		if !errors.Is(err, app_errors.ErrValidation) {
+			t.Fatalf("UpdateGroupSettings(%#v) error = %v, want validation", overrides, err)
+		}
+		if fixture.manager.Current() != before {
+			t.Fatal("invalid reasoning effort overrides published a snapshot")
+		}
+	}
+}
+
 func TestGroupSettingsRejectNewContinuationOverridesButKeepLegacyReadable(t *testing.T) {
 	fixture := newServiceFixture(t)
 	group := validControlGroup("legacy-continuation")

@@ -48,12 +48,13 @@ func TestJudgeExecutionSwitchesCandidateWithoutEvidenceOnRetryableStatus(t *test
 			wantRule:   "fallback.missing_evidence_retry",
 		},
 		{
-			name:       "client error stays final",
+			name:       "bodyless client error retries next candidate",
 			status:     http.StatusNotFound,
 			dispatch:   execution.DispatchMaybeSent,
-			wantRetry:  RetryNone,
+			wantRetry:  RetryNextCandidate,
 			wantEffect: EffectNone,
-			wantRule:   "fallback.missing_evidence",
+			wantScope:  execution.ErrorScopeRequest,
+			wantRule:   "upstream.http_4xx_rejected_before_processing",
 		},
 		{
 			name:       "unclassified status stays final",

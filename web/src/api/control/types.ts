@@ -122,7 +122,11 @@ export interface GroupRuntimeConfigDto {
   affinity_enabled?: boolean
   responses_websocket_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
+  reasoning_effort_overrides?: Record<string, ReasoningEffortOverrideDto>
 }
+
+export type ReasoningEffortOverrideDto =
+  'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export interface GroupEffectiveConfigDto {
   first_byte_timeout: number
