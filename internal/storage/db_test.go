@@ -212,6 +212,7 @@ func TestOpenCreatesSQLiteDatabase(t *testing.T) {
 }
 
 func TestOpenWithSourceManagedRejectsMissingParentWithoutCreation(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	parent := filepath.Join(root, "startup-must-create")
 	dsn := filepath.Join(parent, "managed.db")
@@ -232,6 +233,7 @@ func TestOpenWithSourceManagedRejectsMissingParentWithoutCreation(t *testing.T) 
 }
 
 func TestOpenWithSourceExternalRejectsMissingParentWithoutCreation(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	parent := filepath.Join(root, "operator-must-create")
 	dsn := filepath.Join(parent, "external.db")
@@ -252,6 +254,7 @@ func TestOpenWithSourceExternalRejectsMissingParentWithoutCreation(t *testing.T)
 }
 
 func TestOpenAllowsUnversionedFileWithExternalTables(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "external-tables.db")
 	db, err := storage.Open(path)
 	if err != nil {
@@ -376,6 +379,7 @@ func TestOpenWithSourceExternalHintDoesNotExposeDSN(t *testing.T) {
 }
 
 func TestOpenWithSourceFileModeMemoryURIStaysInMemory(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "named-memory.db")
 	dsn := "file:" + filepath.ToSlash(databasePath) + "?mode=memory&cache=shared"
 
@@ -405,6 +409,7 @@ func TestOpenWithSourceFileModeMemoryURIStaysInMemory(t *testing.T) {
 }
 
 func TestOpenWithSourceColonMemoryQueryStaysInMemory(t *testing.T) {
+	t.Parallel()
 	db, err := storage.OpenWithSource(
 		":memory:?cache=shared",
 		config.DatabaseSourceExternal,
@@ -457,6 +462,7 @@ func assertSQLiteMemoryDatabase(t *testing.T, db *gorm.DB) {
 }
 
 func TestOpenOverridesSQLiteRuntimeOptions(t *testing.T) {
+	t.Parallel()
 	dsn := filepath.Join(t.TempDir(), "runtime.db") +
 		"?_txlock=deferred&_pragma=foreign_keys(0)" +
 		"&_pragma=busy_timeout(1)&_pragma=journal_mode(DELETE)"
@@ -494,6 +500,7 @@ func TestOpenOverridesSQLiteRuntimeOptions(t *testing.T) {
 }
 
 func TestOpenDoesNotForceWALForMemoryDatabase(t *testing.T) {
+	t.Parallel()
 	db, err := storage.Open(":memory:")
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -517,6 +524,7 @@ func TestOpenDoesNotForceWALForMemoryDatabase(t *testing.T) {
 }
 
 func TestOpenUsesImmediateTransactions(t *testing.T) {
+	t.Parallel()
 	dsn := filepath.Join(t.TempDir(), "immediate.db")
 	appDB, err := storage.Open(dsn)
 	if err != nil {
@@ -691,6 +699,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 }
 
 func TestAutoMigrateRejectsRetiredV2MigrationLedgers(t *testing.T) {
+	t.Parallel()
 	for _, retiredID := range []string{"0001_initial_v2", "0001_final_v2"} {
 		t.Run(retiredID, func(t *testing.T) {
 			db, err := storage.Open(":memory:")
@@ -728,6 +737,7 @@ func TestAutoMigrateRejectsRetiredV2MigrationLedgers(t *testing.T) {
 }
 
 func TestAutoMigrateRejectsAppliedMigrationWithIncompleteSchema(t *testing.T) {
+	t.Parallel()
 	db, err := storage.Open(":memory:")
 	if err != nil {
 		t.Fatalf("Open(:memory:) error = %v", err)
