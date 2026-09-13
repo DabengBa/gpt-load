@@ -25,8 +25,8 @@ func TestWebsocketModelCapacityDoesNotApplyQuotaCooldown(t *testing.T) {
 		decision := health.JudgeExecution(health.ExecutionAttempt{
 			DispatchState: execution.DispatchMaybeSent, StatusCode: http.StatusTooManyRequests, Evidence: evidence,
 		}, health.DecisionContext{Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
-		if decision.Effect != health.EffectNone || decision.Retry != health.RetryNone {
-			t.Fatalf("capacity rejection caused cooldown or unsafe replay: %+v", decision)
+		if decision.Effect != health.EffectNone || decision.Retry != health.RetryNextCandidate {
+			t.Fatalf("capacity rejection did not preserve candidate retry without cooldown: %+v", decision)
 		}
 	}
 }

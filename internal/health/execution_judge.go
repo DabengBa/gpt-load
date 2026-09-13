@@ -79,7 +79,7 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 				"success.upstream_response",
 			)
 		}
-		if transientUpstreamStatus(attempt.statusCode()) {
+		if retryableUpstreamStatus(attempt.statusCode()) {
 			// The upstream answered with a status the gateway treats as
 			// transient but exposed no classifiable evidence. The candidate is
 			// suspected, not proven: count the failure against its credential so
@@ -222,6 +222,7 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 	category := classifyExecutionEvidence(attempt)
 	result := decisionForExecutionCategory(category, attempt, decisionContext)
 	result = bufferedStreamRetryDecision(result, attempt, decisionContext)
+	result = retryUpstreamClientStatus(result, attempt)
 	if attempt.Evidence.ReplaySafety == execution.ReplaySafetyUnknown &&
 		result.RuleID == "fallback.ambiguous" {
 		result.RuleID = "safety.replay_unknown"
@@ -496,6 +497,19 @@ func decisionForExecutionCategory(
 	}
 }
 
+func retryUpstreamClientStatus(result Decision, attempt ExecutionAttempt) Decision {
+	statusCode := attempt.statusCode()
+	if statusCode < http.StatusBadRequest || statusCode >= http.StatusInternalServerError ||
+		attempt.DownstreamCommitted || attempt.PayloadReleased || result.Retry != RetryNone {
+		return result
+	}
+	result.Retry = RetryNextCandidate
+	if result.Effect == EffectNone {
+		result.RuleID = "upstream.http_4xx_retry"
+	}
+	return result
+}
+
 func transientCapacityDecision(attempt ExecutionAttempt) (Decision, bool) {
 	evidence := attempt.Evidence
 	if attempt.statusCode() == http.StatusTooManyRequests {
@@ -549,7 +563,7 @@ func bufferedStreamRetryDecision(
 			"buffered_stream.retry_before_release",
 		)
 	}
-	if transientUpstreamStatus(attempt.statusCode()) {
+	if retryableUpstreamStatus(attempt.statusCode()) {
 		// The upstream answered with a status the gateway treats as transient and
 		// released no payload: this attempt may still switch candidate. Category,
 		// scope and effect stay with the evidence, so a classified host error keeps
@@ -589,6 +603,10 @@ func constrainOperationReplay(
 		decisionContext.Operation.ReplayPolicy() != execution.ReplayPolicyRequireRejectedBeforeProcessing {
 		return result
 	}
+	if statusCode := attempt.statusCode(); statusCode >= http.StatusBadRequest &&
+		statusCode < http.StatusInternalServerError {
+		return result
+	}
 	if attempt.Evidence != nil &&
 		attempt.Evidence.ReplaySafety == execution.ReplaySafetyRejectedBeforeProcessing {
 		return result
@@ -618,15 +636,11 @@ func ambiguousRuleID(evidence *execution.ErrorEvidence) RuleID {
 	}
 }
 
-// transientUpstreamStatus reports whether an upstream status is transient:
-// either the attempt carried no classifiable evidence and the status alone
-// grants a candidate switch, or the attempt failed with that status before any
-// payload release. Anything else stays final because no candidate was proven bad.
-func transientUpstreamStatus(statusCode int) bool {
-	if statusCode == http.StatusRequestTimeout || statusCode == http.StatusTooManyRequests {
-		return true
-	}
-	return statusCode >= http.StatusInternalServerError && statusCode < 600
+// retryableUpstreamStatus reports whether an upstream status permits a candidate switch:
+// any client or server error response is eligible when the request has not
+// released payload; 1xx and 2xx statuses are not status-only failures.
+func retryableUpstreamStatus(statusCode int) bool {
+	return statusCode >= http.StatusBadRequest && statusCode < 600
 }
 
 func normalizeDecisionContext(value DecisionContext) DecisionContext {

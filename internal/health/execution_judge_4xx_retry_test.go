@@ -17,13 +17,13 @@ func TestJudgeExecutionProviderClientStatusRequiresReplayProof(t *testing.T) {
 		wantRule   RuleID
 	}{
 		{
-			name:   "unknown 400 does not replay",
+			name:   "unknown 400 switches candidate",
 			status: http.StatusBadRequest,
 			evidence: &execution.ErrorEvidence{
 				Kind: execution.ErrorKindHTTP, StatusCode: http.StatusBadRequest,
 				ReplaySafety: execution.ReplaySafetyUnknown, Summary: "invalid request",
 			},
-			wantRetry: RetryNone, wantEffect: EffectNone, wantRule: "fallback.http_client_error",
+			wantRetry: RetryNextCandidate, wantEffect: EffectNone, wantRule: "upstream.http_4xx_retry",
 		},
 		{
 			name:   "explicit rejection retries",
@@ -36,13 +36,13 @@ func TestJudgeExecutionProviderClientStatusRequiresReplayProof(t *testing.T) {
 			wantRule: "upstream.http_4xx_rejected_before_processing",
 		},
 		{
-			name:   "unknown 401 keeps replay boundary",
+			name:   "unknown 401 switches candidate",
 			status: http.StatusUnauthorized,
 			evidence: &execution.ErrorEvidence{
 				Kind: execution.ErrorKindHTTP, StatusCode: http.StatusUnauthorized,
 				ReplaySafety: execution.ReplaySafetyUnknown, Summary: "authorization failed",
 			},
-			wantRetry: RetryNone, wantEffect: EffectNone, wantRule: "safety.replay_unknown",
+			wantRetry: RetryNextCandidate, wantEffect: EffectNone, wantRule: "upstream.http_4xx_retry",
 		},
 		{
 			name:   "explicit invalid credential retries",
@@ -56,14 +56,23 @@ func TestJudgeExecutionProviderClientStatusRequiresReplayProof(t *testing.T) {
 			wantRule: "auth.invalid_credential",
 		},
 		{
-			name:   "request scoped 429 does not switch candidate",
+			name:   "request scoped 429 switches candidate",
 			status: http.StatusTooManyRequests,
 			evidence: &execution.ErrorEvidence{
 				Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintRateLimited,
 				ScopeHint: execution.ErrorScopeRequest, StatusCode: http.StatusTooManyRequests,
 				ReplaySafety: execution.ReplaySafetyRejectedBeforeProcessing,
 			},
-			wantRetry: RetryNone, wantEffect: EffectNone, wantRule: "rate_limit.scoped",
+			wantRetry: RetryNextCandidate, wantEffect: EffectNone, wantRule: "upstream.http_4xx_retry",
+		},
+		{
+			name:   "other 4xx switches candidate",
+			status: http.StatusTeapot,
+			evidence: &execution.ErrorEvidence{
+				Kind: execution.ErrorKindHTTP, StatusCode: http.StatusTeapot,
+				ReplaySafety: execution.ReplaySafetyUnknown, Summary: "provider rejected request",
+			},
+			wantRetry: RetryNextCandidate, wantEffect: EffectNone, wantRule: "upstream.http_4xx_retry",
 		},
 	}
 
