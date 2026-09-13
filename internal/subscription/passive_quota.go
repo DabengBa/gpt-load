@@ -103,7 +103,6 @@ func (manager *CredentialManager) recordPassiveQuotaObservation(
 		manager.passiveQuota.record(credentialID, identityGeneration, observedAtMS, windows, preceding)
 	})
 }
-}
 
 // DirtyPassiveQuotaObservations returns up to limit pending observations that
 // have not yet been acknowledged, ordered by credential ID for determinism.

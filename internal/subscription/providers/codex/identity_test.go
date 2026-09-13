@@ -12,6 +12,10 @@ import (
 	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
+type targetRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f targetRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 func identityTestToken(t *testing.T, claims map[string]string, padded bool) string {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{"https://api.openai.com/auth": claims})

@@ -552,7 +552,6 @@ func TestRuntimeManagerReconcilesGroupEffectiveProxy(t *testing.T) {
 	<-manager.BeginShutdown()
 }
 
-
 func TestNativeMessageRuntimesStayReusableAfterReconcile(t *testing.T) {
 	t.Parallel()
 	registry := channel.NewRegistry()
@@ -644,7 +643,6 @@ func TestRuntimeManagerPartitionsCredentialProxyByCredential(t *testing.T) {
 		t.Fatalf("credential proxy partition = %#v", config)
 	}
 }
-
 
 func TestRuntimeManagerRetiresCredentialPartitionAfterLastLease(t *testing.T) {
 	base := effectiveConfigForTest(

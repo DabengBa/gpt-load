@@ -31,7 +31,6 @@ import (
 	"gpt-load/internal/platform/httproute"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
-	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage/models"
 	"gpt-load/internal/subscription"
 	subscriptionproviders "gpt-load/internal/subscription/providers"
@@ -1563,7 +1562,7 @@ func newSubscriptionAdapterFixture(
 		t.Fatal(err)
 	}
 	registry := state.NewCredentialRegistry()
-	identityGeneration := stateloader.CredentialIdentityGeneration(row.IdentityFingerprint, group.ChannelID, string(group.ConnectionType), json.RawMessage(group.Params))
+	identityGeneration := uint64(1)
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{ID: row.ID, GroupID: group.ID, Version: 1, IdentityGeneration: identityGeneration, Fingerprint: row.Fingerprint, EncryptedValue: row.Data}}); err != nil {
 		t.Fatal(err)
 	}

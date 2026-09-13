@@ -681,14 +681,22 @@ func (manager *RuntimeManager) configForAttempt(spec execution.AttemptSpec) (eff
 			return effectiveProviderConfig{}, &failure
 		}
 		apiKey, _ := credential.Value("api_key")
-		if apiKey != "" {
+		if apiKey == "" {
+			config, err = partitionProviderRuntime(config, spec.Credential)
+			if err != nil {
+				failure := notSentUnaryFailure(execution.ErrorKindInternal, "partition provider runtime")
+				return effectiveProviderConfig{}, &failure
+			}
 			return config, nil
 		}
-		config, err = partitionProviderRuntime(config, spec.Credential)
-		if err != nil {
-			failure := notSentUnaryFailure(execution.ErrorKindInternal, "partition provider runtime")
-			return effectiveProviderConfig{}, &failure
-		}
+	}
+	if spec.Proxy.Source != outboundproxy.SourceCredential || spec.Proxy.Config.Mode == outboundproxy.ModeDirect {
+		return config, nil
+	}
+	config, err = partitionProviderRuntime(config, spec.Credential)
+	if err != nil {
+		failure := notSentUnaryFailure(execution.ErrorKindInternal, "partition provider runtime")
+		return effectiveProviderConfig{}, &failure
 	}
 	return config, nil
 }

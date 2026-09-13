@@ -257,7 +257,7 @@ func TestFlushWebsocketQuotaPairPreservesEachSampleTime(t *testing.T) {
 }
 
 func TestWebsocketQuotaPairCoalescesWithoutRedatingHandshake(t *testing.T) {
-	manager := testCredentialManagerForPassiveQuota(t)
+	manager := testCredentialManagerForPassiveQuota()
 	header := PassiveQuotaSample{ObservedAtMS: 1000, Windows: []providerobservation.QuotaWindow{{ID: "account", Used: floatPointer(12)}}}
 	event := PassiveQuotaSample{ObservedAtMS: 2000, Windows: []providerobservation.QuotaWindow{{ID: "spark", Used: floatPointer(20)}}}
 	manager.RecordPassiveQuotaPair(7, 100, header, event)

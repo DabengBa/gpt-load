@@ -19,11 +19,7 @@ import (
 )
 
 type websocketProvider interface {
-<<<<<<< HEAD
 	openWebsocket(execution.AttemptSpec, providerCredential, string, func(http.Header, time.Time)) (execution.WebsocketSession, error)
-=======
-	openWebsocket(execution.AttemptSpec, providerCredential, string, string, func(http.Header, time.Time)) (execution.WebsocketSession, error)
->>>>>>> 5b03d29d (fix(codex): 补齐 WebSocket 额度观测并约束来源匹配 (#632))
 }
 
 // OpenWebsocket 使用既有凭据刷新和网络准备，Session 仍由单个下游连接拥有。
@@ -95,7 +91,21 @@ func (s *observedWebsocketSession) ExecuteTurn(ctx context.Context, payload []by
 	})
 }
 
-func (*codexProviderBridge) openWebsocket(spec execution.AttemptSpec, credential providerCredential, proxyURL string, observeHeaders func(http.Header, time.Time)) (execution.WebsocketSession, error)
+// observeHeaders 保留响应头的原始额度样本；握手在交付本连接的事件之前记录。
+func (s *observedWebsocketSession) observeHeaders(headers http.Header, observedAt time.Time) {
+	if len(headers) == 0 || observedAt.IsZero() {
+		return
+	}
+	signals := make(map[string]string, len(headers))
+	for name, values := range headers {
+		signals[name] = strings.Join(values, ",")
+	}
+	windows := codex.NormalizePassiveQuotaWindows(signals, observedAt)
+	s.handshake = subscription.PassiveQuotaSample{ObservedAtMS: observedAt.UnixMilli(), Windows: windows}
+	s.adapter.recordPassiveQuotaObservation(s.spec, observedAt, windows)
+}
+
+func (*codexProviderBridge) openWebsocket(spec execution.AttemptSpec, credential providerCredential, proxyURL string, observeHeaders func(http.Header, time.Time)) (execution.WebsocketSession, error) {
 	value, ok := credential.(codexProviderCredential)
 	if !ok {
 		return nil, errors.New("invalid websocket credential")

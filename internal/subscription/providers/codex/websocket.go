@@ -54,10 +54,10 @@ type WSSession struct{ bridge *cpaembedded.CodexWSSession }
 func NewWSSession(options WSSessionOptions) (*WSSession, error) {
 	bridge, err := cpaembedded.NewCodexWSSession(cpaembedded.CodexWSSessionOptions{
 		CredentialID: options.CredentialID, Credential: credentialToBridge(options.Credential),
-		ProxyURL: proxyURL,
-		Headers:         options.Headers.Clone(),
-		ObserveHeaders:  options.ObserveHeaders,
-		TurnTimeout:     options.TurnTimeout, MaxRequestBytes: options.MaxRequestBytes, MaxEventBytes: options.MaxEventBytes,
+		ProxyURL:       options.ProxyURL,
+		Headers:        options.Headers.Clone(),
+		ObserveHeaders: options.ObserveHeaders,
+		TurnTimeout:    options.TurnTimeout, MaxRequestBytes: options.MaxRequestBytes, MaxEventBytes: options.MaxEventBytes,
 	})
 	if err != nil {
 		return nil, wsErrorFromBridge(err)

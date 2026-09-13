@@ -32,7 +32,7 @@ type quotaTestWebsocketProvider struct {
 	headerAt time.Time
 }
 
-func (p *quotaTestWebsocketProvider) openWebsocket(_ execution.AttemptSpec, _ providerCredential, _, _ string, observeHeaders func(http.Header, time.Time)) (execution.WebsocketSession, error) {
+func (p *quotaTestWebsocketProvider) openWebsocket(_ execution.AttemptSpec, _ providerCredential, _ string, observeHeaders func(http.Header, time.Time)) (execution.WebsocketSession, error) {
 	return &quotaEventSession{event: p.event, result: execution.WebsocketResult{DispatchState: execution.DispatchMaybeSent, Header: p.header, HeaderObservedAt: p.headerAt},
 		beforeEmit: func() { observeHeaders(p.header, p.headerAt) }}, nil
 }

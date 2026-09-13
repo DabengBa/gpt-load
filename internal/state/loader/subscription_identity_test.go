@@ -37,7 +37,7 @@ func TestLoadPreservesLegacySubscriptionDataAndIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			legacyIdentity := crypto.Hash("credential-identity/v1|" + string(test.channel) + "|" + string(test.channel) + "|account")
-			row := models.Credential{GroupID: group.ID, Data: ciphertext, Fingerprint: crypto.Hash(test.canonical), IdentityFingerprint: legacyIdentity, SecretVersion: 1, AuthState: models.CredentialAuthStateReady, Status: models.CredentialStatusActive}
+			row := models.Credential{GroupID: group.ID, Data: ciphertext, Fingerprint: crypto.Hash(test.canonical), IdentityFingerprint: legacyIdentity, SecretVersion: 1, AuthState: models.CredentialAuthStateReady}
 			mustCreate(t, db, &row)
 			observation := models.CredentialObservation{CredentialID: row.ID, IdentityFingerprint: legacyIdentity, SchemaVersion: 1, ObservationVersion: 1, SnapshotJSON: models.JSON(`{}`), State: models.CredentialObservationFresh}
 			mustCreate(t, db, &observation)
