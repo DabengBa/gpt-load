@@ -795,6 +795,16 @@ func newExecutionAttemptSpec(input ForwardInput) (execution.AttemptSpec, error) 
 	}
 	sanitizeUpstreamRequestHeaders(headers)
 	headers.Set("Accept-Encoding", "identity")
+	body := input.Request.Body
+	if input.Group.ResponsesReasoningStatusFilterEnabled &&
+		input.ClientProtocol == protocol.OpenAIResponses &&
+		input.Operation == execution.OperationResponsesCreate {
+		rewritten, err := removeResponsesReasoningStatus(body)
+		if err != nil {
+			return execution.AttemptSpec{}, err
+		}
+		body = rewritten
+	}
 	spec := execution.NewAttemptSpec(execution.AttemptSpec{
 		RequestID:                input.RequestID,
 		AttemptID:                input.AttemptID,
@@ -813,7 +823,7 @@ func newExecutionAttemptSpec(input ForwardInput) (execution.AttemptSpec, error) 
 		RawQuery:                 input.Request.RawQuery,
 		Header:                   headers,
 		ConfiguredHeaders:        input.Group.HeaderRules.ConfiguredNames(),
-		Body:                     input.Request.Body,
+		Body:                     body,
 		IncludeUsage:             input.ObserveUsage,
 		ForceCredentialRefresh:   input.ForceCredentialRefresh,
 		ContinuityKey:            input.ContinuityKey,

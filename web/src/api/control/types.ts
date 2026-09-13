@@ -121,6 +121,7 @@ export interface GroupRuntimeConfigDto {
   buffered_stream?: boolean
   affinity_enabled?: boolean
   responses_websocket_enabled?: boolean
+  responses_reasoning_status_filter_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
 }
 
@@ -133,6 +134,7 @@ export interface GroupEffectiveConfigDto {
   buffered_stream: boolean
   affinity_enabled: boolean
   responses_websocket_enabled: boolean
+  responses_reasoning_status_filter_enabled: boolean
 }
 
 export interface GroupSettingsDto {

@@ -15,24 +15,25 @@ import (
 )
 
 const (
-	SettingFirstByteTimeout          = "first_byte_timeout"
-	SettingRequestTimeout            = "request_timeout"
-	SettingStreamIdleTimeout         = "stream_idle_timeout"
-	SettingHeaderRules               = "header_rules"
-	SettingCORS                      = "cors"
-	SettingResponseHeaderRules       = "response_header_rules"
-	SettingBufferedStream            = "buffered_stream"
-	SettingRetryCount                = "retry_count"
-	SettingRouteStrategy             = "route_strategy"
-	SettingBlacklistThreshold        = "blacklist_threshold"
-	SettingAffinityEnabled           = "affinity_enabled"
-	SettingResponsesWebsocketEnabled = "responses_websocket_enabled"
-	SettingAffinityTTL               = "affinity_ttl"
-	SettingAffinityCapacity          = "affinity_capacity"
-	SettingValidationInterval        = "validation_interval"
-	SettingRequestLogRetentionDays   = "request_log_retention_days"
-	SettingModelsDevAutoSyncEnabled  = "models_dev_auto_sync_enabled"
-	SettingParameterOverrides        = "parameter_overrides"
+	SettingFirstByteTimeout                      = "first_byte_timeout"
+	SettingRequestTimeout                        = "request_timeout"
+	SettingStreamIdleTimeout                     = "stream_idle_timeout"
+	SettingHeaderRules                           = "header_rules"
+	SettingCORS                                  = "cors"
+	SettingResponseHeaderRules                   = "response_header_rules"
+	SettingBufferedStream                        = "buffered_stream"
+	SettingRetryCount                            = "retry_count"
+	SettingRouteStrategy                         = "route_strategy"
+	SettingBlacklistThreshold                    = "blacklist_threshold"
+	SettingAffinityEnabled                       = "affinity_enabled"
+	SettingResponsesWebsocketEnabled             = "responses_websocket_enabled"
+	SettingAffinityTTL                           = "affinity_ttl"
+	SettingAffinityCapacity                      = "affinity_capacity"
+	SettingValidationInterval                    = "validation_interval"
+	SettingRequestLogRetentionDays               = "request_log_retention_days"
+	SettingModelsDevAutoSyncEnabled              = "models_dev_auto_sync_enabled"
+	SettingParameterOverrides                    = "parameter_overrides"
+	SettingResponsesReasoningStatusFilterEnabled = "responses_reasoning_status_filter_enabled"
 )
 
 type RouteStrategy string
@@ -72,13 +73,14 @@ type RuntimeSettings struct {
 }
 
 type ResolvedGroupSettings struct {
-	Timeouts                  TimeoutConfig
-	HeaderRules               HeaderRules
-	BufferedStream            bool
-	BlacklistThreshold        int
-	AffinityEnabled           bool
-	ResponsesWebsocketEnabled bool
-	ParameterOverrides        parameteroverride.Rules
+	Timeouts                              TimeoutConfig
+	HeaderRules                           HeaderRules
+	BufferedStream                        bool
+	BlacklistThreshold                    int
+	AffinityEnabled                       bool
+	ResponsesWebsocketEnabled             bool
+	ResponsesReasoningStatusFilterEnabled bool
+	ParameterOverrides                    parameteroverride.Rules
 }
 
 func DefaultRuntimeSettings() RuntimeSettings {
@@ -259,11 +261,12 @@ func ResolveGroupRuntimeSettings(
 			Request:    base.RequestTimeout,
 			StreamIdle: base.StreamIdleTimeout,
 		},
-		HeaderRules:               cloneHeaderRules(base.HeaderRules),
-		BufferedStream:            base.BufferedStream,
-		BlacklistThreshold:        base.BlacklistThreshold,
-		AffinityEnabled:           base.AffinityEnabled,
-		ResponsesWebsocketEnabled: base.ResponsesWebsocketEnabled,
+		HeaderRules:                           cloneHeaderRules(base.HeaderRules),
+		BufferedStream:                        base.BufferedStream,
+		BlacklistThreshold:                    base.BlacklistThreshold,
+		AffinityEnabled:                       base.AffinityEnabled,
+		ResponsesWebsocketEnabled:             base.ResponsesWebsocketEnabled,
+		ResponsesReasoningStatusFilterEnabled: false,
 	}
 	for key, value := range settings {
 		switch key {
@@ -318,6 +321,12 @@ func ResolveGroupRuntimeSettings(
 				return ResolvedGroupSettings{}, err
 			}
 			resolved.ResponsesWebsocketEnabled = parsed
+		case SettingResponsesReasoningStatusFilterEnabled:
+			parsed, err := strictBoolean(key, value)
+			if err != nil {
+				return ResolvedGroupSettings{}, err
+			}
+			resolved.ResponsesReasoningStatusFilterEnabled = parsed
 		case SettingParameterOverrides:
 			parsed, err := parameteroverride.Compile(value)
 			if err != nil {
