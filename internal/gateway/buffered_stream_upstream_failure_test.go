@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
@@ -11,10 +12,18 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
+	"gpt-load/internal/channel"
+	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/health"
 	"gpt-load/internal/platform/config"
+	"gpt-load/internal/platform/redact"
+	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
 	"gpt-load/internal/telemetry"
+	"gpt-load/internal/testutil/encryptiontest"
 )
 
 // 上游以非 2xx 结束、下游只收到心跳时，attempt 既没有流级终止观测也不是正常结束。
@@ -183,5 +192,178 @@ func (forwarder *bufferedUpstreamFailureForwarder) ForwardStream(
 			Summary:    summary,
 		},
 		ErrorSummary: summary,
+	}
+}
+
+// newBufferedFallbackRuntime 构建两个 buffered 候选 + 真实执行层的 gateway，指向传入上游。
+// groupSettings 会合并进每个分组的 Settings（例如自定义 header 规则）并返回请求日志 sink。
+func newBufferedFallbackRuntime(
+	t *testing.T,
+	upstreamURL string,
+	groupSettings config.Settings,
+) (*gin.Engine, *recordingRequestLogSink) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	keyService := encryptiontest.Service(t, "buffered-fallback-summary-master-key")
+	manager := state.NewManager()
+	baseURL := testUpstreamBaseURL(upstreamURL, protocol.OpenAICompletions)
+	channelID, params := testChannelConfig(t, protocol.OpenAICompletions, baseURL)
+	groups := make([]state.GroupConfig, 0, 2)
+	credentials := make([]state.CredentialConfig, 0, 2)
+	entries := make([]state.CredentialEntry, 0, 2)
+	for index := 1; index <= 2; index++ {
+		id := uint(index)
+		settings := config.Settings{state.SettingBufferedStream: true}
+		for key, value := range groupSettings {
+			settings[key] = value
+		}
+		groups = append(groups, state.GroupConfig{
+			ConnectionType: "api_key", ID: id, Name: fmt.Sprintf("openai-%d", index),
+			ChannelID: channelID, Params: params,
+			Models:   []state.ModelConfig{{ID: "gpt-4o"}},
+			Settings: settings,
+			Enabled:  true,
+		})
+		credentials = append(credentials, testCredentialConfig(id, id))
+		entries = append(entries, testCredentialEntry(t, keyService, id, id, fmt.Sprintf("sk-%d", index)))
+	}
+	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: 3},
+		ChannelRegistry: channel.NewRegistry(), Groups: groups, Credentials: credentials,
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"), Status: state.AccessKeyStatusActive,
+		}},
+	}); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	registry := state.NewCredentialRegistry()
+	if err := registry.ReplaceCredentials(entries); err != nil {
+		t.Fatalf("ReplaceCredentials() error = %v", err)
+	}
+	sink := &recordingRequestLogSink{}
+	handler := NewHandler(
+		manager, registry, keyService, newTestExecutionForwarder(t),
+		dialect.NewSet(dialect.NewOpenAI()), health.NewStatsStore(), health.NewMutationCoordinator(),
+		nil, nil, nil,
+	)
+	handler.requestLogSink = sink
+	handler.newRequestID = func() (string, error) { return fixedRequestID, nil }
+	handler.requestNow = newSteppingRequestClock()
+	engine := gin.New()
+	bindGatewayRoutesForTest(t, engine, handler)
+	return engine, sink
+}
+
+func performBufferedFallbackRequest(t *testing.T, engine *gin.Engine) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","stream":true}`),
+	)
+	request.Header.Set("Authorization", "Bearer gl-client")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	return recorder
+}
+
+// 真实执行层 + 真实上游：buffered 请求在两个候选都被上游 429 拒绝、重试预算仍有剩余但已无
+// 候选可换时，请求级摘要必须保留供应商短摘要，而不是只剩「没有候选」的泛化文案。
+func TestHandlerBufferedCandidateExhaustionKeepsProviderSummary(t *testing.T) {
+	const providerSummary = "Rate limit reached for gpt-4o in organization org-abc on tokens per min."
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(writer, `{"error":{"message":"`+providerSummary+`","type":"rate_limit_exceeded","code":"rate_limit_exceeded"}}`)
+	}))
+	defer upstream.Close()
+
+	engine, sink := newBufferedFallbackRuntime(t, upstream.URL, nil)
+	recorder := performBufferedFallbackRequest(t, engine)
+
+	if !strings.Contains(recorder.Body.String(), `"code":"no_available_candidate"`) {
+		t.Fatalf("downstream body = %q, want the candidate fallback envelope", recorder.Body.String())
+	}
+	events := sink.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("request log events = %d, want one", len(events))
+	}
+	event := events[0]
+	if len(event.Attempts) != 2 {
+		t.Fatalf("logged attempts = %d, want two", len(event.Attempts))
+	}
+	if event.ErrorSummary != providerSummary {
+		t.Fatalf("request summary = %q, want the provider summary %q", event.ErrorSummary, providerSummary)
+	}
+	if event.ErrorCode != "no_available_candidate" {
+		t.Fatalf("request error code = %q, want %q", event.ErrorCode, "no_available_candidate")
+	}
+	for index, attempt := range event.Attempts {
+		if attempt.ErrorSummary != providerSummary {
+			t.Fatalf("attempt[%d] summary = %q, want the provider summary", index, attempt.ErrorSummary)
+		}
+	}
+	for _, surface := range []string{event.ErrorSummary, event.Attempts[0].ErrorSummary} {
+		for _, forbidden := range []string{`{"error"`, `"code":"rate_limit_exceeded"`, `"type":"rate_limit_exceeded"`} {
+			if strings.Contains(surface, forbidden) {
+				t.Fatalf("summary %q retained raw provider JSON %q", surface, forbidden)
+			}
+		}
+	}
+}
+
+// 真实执行层 + 真实上游：分组自定义 header 规则会被发送到上游；上游在供应商 message 里回显
+// 该值时，attempt 级和请求级摘要都必须先按同一次选中的 HeaderRules secret 脱敏。
+func TestHandlerBufferedCandidateExhaustionRedactsGroupHeaderRuleSecret(t *testing.T) {
+	const tenantSecret = "tenant-alpha-9f3a2c"
+	var applied atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		echoed := request.Header.Get("X-Tenant-Key")
+		if echoed == tenantSecret {
+			applied.Add(1)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(writer, `{"error":{"message":"tenant `+echoed+` was rate limited","type":"rate_limit_exceeded","code":"rate_limit_exceeded"}}`)
+	}))
+	defer upstream.Close()
+
+	engine, sink := newBufferedFallbackRuntime(t, upstream.URL, config.Settings{
+		state.SettingHeaderRules: map[string]any{
+			"set": map[string]any{"X-Tenant-Key": tenantSecret},
+		},
+	})
+	recorder := performBufferedFallbackRequest(t, engine)
+
+	if !strings.Contains(recorder.Body.String(), `"code":"no_available_candidate"`) {
+		t.Fatalf("downstream body = %q, want the candidate fallback envelope", recorder.Body.String())
+	}
+	if applied.Load() != 2 {
+		t.Fatalf("upstream received the group header rule %d times, want 2", applied.Load())
+	}
+	events := sink.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("request log events = %d, want one", len(events))
+	}
+	event := events[0]
+	if len(event.Attempts) != 2 {
+		t.Fatalf("logged attempts = %d, want two", len(event.Attempts))
+	}
+	surfaces := map[string]string{
+		"request": event.ErrorSummary,
+	}
+	for index, attempt := range event.Attempts {
+		surfaces[fmt.Sprintf("attempt[%d]", index)] = attempt.ErrorSummary
+	}
+	for label, surface := range surfaces {
+		if strings.Contains(surface, tenantSecret) {
+			t.Fatalf("%s summary leaked the group header rule secret: %q", label, surface)
+		}
+		if !strings.Contains(surface, redact.Placeholder) {
+			t.Fatalf("%s summary = %q, want the redaction placeholder", label, surface)
+		}
+		if !strings.Contains(surface, "was rate limited") {
+			t.Fatalf("%s summary = %q, want the provider message retained", label, surface)
+		}
 	}
 }

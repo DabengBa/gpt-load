@@ -374,14 +374,27 @@ func (recorder *requestRecorder) recordStreamAttempt(
 	if recorder == nil {
 		return -1
 	}
+	providerSummary := ""
+	if result.Stream.EndReason == StreamEndUpstreamFailure {
+		providerSummary = strings.TrimSpace(result.ErrorSummary)
+	}
 	rules := state.HeaderRules{}
-	if result.Stream.EndReason == StreamEndSSEError {
+	if result.Stream.EndReason == StreamEndSSEError ||
+		(result.Stream.EndReason == StreamEndUpstreamFailure && providerSummary != "") {
+		// 上游回显的报文可能包含分组自定义 header 的值；只要摘要取自上游报文，就必须
+		// 并入同一次选中的 HeaderRules secret 再脱敏。
 		rules = selection.Group.HeaderRules
 	}
 	errorCode := streamErrorCode(result.Stream.EndReason)
+	summary := result.Stream.ErrorSummary
 	if result.Stream.EndReason == StreamEndUpstreamFailure {
-		// 这次的 attempt 没有流级终止观测，上游错误才是更精确的错误码。
+		// 这次的 attempt 没有流级终止观测：上游错误才是更精确的错误码。该终止观测由网关
+		// 在上游失败且未释放任何 payload 时合成，其摘要恒为固定分类文案；执行层保留的
+		// 供应商短摘要只在 result.ErrorSummary 上，不能在这里丢掉。
 		errorCode = upstreamErrorCode(result, decision.Category)
+		if providerSummary != "" {
+			summary = providerSummary
+		}
 	}
 	summarySecrets := resolvedErrorSummarySecretValues(
 		"",
@@ -395,7 +408,7 @@ func (recorder *requestRecorder) recordStreamAttempt(
 		errorCode,
 		sanitizeErrorSummary(
 			recorder.redactor,
-			result.Stream.ErrorSummary,
+			summary,
 			summarySecrets...,
 		),
 		startedAt,
@@ -482,10 +495,35 @@ func (recorder *requestRecorder) completeReason(value reason) {
 	if recorder == nil {
 		return
 	}
+	summary := value.Message
+	if value == reasonNoCandidate {
+		// 候选耗尽只是缓冲回退的兜底结论；前面 attempt 已经保存的安全供应商短摘要
+		// 不能被这句泛化文案覆盖。
+		if providerSummary := recorder.newestProviderAttemptSummary(); providerSummary != "" {
+			summary = providerSummary
+		}
+	}
 	recorder.outcome = requestOutcome{
 		status: telemetry.RequestStatusError, statusCode: value.Status,
-		errorCode: value.Code, errorSummary: value.Message,
+		errorCode: value.Code, errorSummary: summary,
 	}
+}
+
+// newestProviderAttemptSummary returns the most recent attempt summary that is
+// not a gateway fixed classification text. Attempt summaries are sanitized when
+// they are recorded, so reusing one keeps redaction, flattening and truncation
+// on the server.
+func (recorder *requestRecorder) newestProviderAttemptSummary() string {
+	if recorder == nil {
+		return ""
+	}
+	for index := len(recorder.attempts) - 1; index >= 0; index-- {
+		summary := recorder.attempts[index].ErrorSummary
+		if summary != "" && !isFixedErrorSummary(summary) {
+			return summary
+		}
+	}
+	return ""
 }
 
 func (recorder *requestRecorder) completeStream(
@@ -808,47 +846,60 @@ func upstreamErrorCode(result UpstreamResult, category health.FailureCategory) s
 	}
 }
 
+// defaultErrorSummary is the classification text for codes outside the catalog.
+// It is part of the fixed catalog even though it has no dedicated code: any
+// unknown code resolves to it.
+const defaultErrorSummary = "Upstream request failed."
+
+// fixedErrorSummaries is the closed set of gateway classification texts. A
+// summary outside this set is provider-, channel- or execution-derived and
+// therefore carries information the fixed text cannot.
+var fixedErrorSummaries = map[string]string{
+	"upstream_rate_limited":            "Upstream rate limited the request.",
+	"upstream_model_unavailable":       "The requested upstream model is unavailable.",
+	"upstream_invalid_key":             "The upstream credential was rejected.",
+	"upstream_authentication_required": "The upstream credential requires authentication.",
+	"upstream_host_error":              "The upstream service returned a server error.",
+	"upstream_client_error":            "The upstream service rejected the request.",
+	"upstream_connect_failed":          "Could not connect to an upstream service.",
+	"upstream_timeout":                 "Upstream request timed out.",
+	"upstream_protocol_error":          "Upstream returned an unsupported response.",
+	"protocol_conversion_unsupported":  "No upstream target could preserve or convert the request.",
+	"upstream_sse_error":               "Upstream stream reported an error.",
+	"upstream_failed":                  "The upstream attempt failed before any response content was released.",
+	"upstream_stream_terminated":       "Upstream stream terminated before completion.",
+	"upstream_stream_idle_timeout":     "Upstream stream timed out while idle.",
+	"upstream_response_incomplete":     defaultErrorSummary,
+	"downstream_write_failed":          "The downstream response could not be completed.",
+	"internal_error":                   "The request failed due to an internal error.",
+	"client_canceled":                  "The client canceled the request.",
+	"server_shutdown":                  "The server canceled the request during shutdown.",
+}
+
 func fixedErrorSummary(code string) string {
-	switch code {
-	case "upstream_rate_limited":
-		return "Upstream rate limited the request."
-	case "upstream_model_unavailable":
-		return "The requested upstream model is unavailable."
-	case "upstream_invalid_key":
-		return "The upstream credential was rejected."
-	case "upstream_authentication_required":
-		return "The upstream credential requires authentication."
-	case "upstream_host_error":
-		return "The upstream service returned a server error."
-	case "upstream_client_error":
-		return "The upstream service rejected the request."
-	case "upstream_connect_failed":
-		return "Could not connect to an upstream service."
-	case "upstream_timeout":
-		return "Upstream request timed out."
-	case "upstream_protocol_error":
-		return "Upstream returned an unsupported response."
-	case "protocol_conversion_unsupported":
-		return "No upstream target could preserve or convert the request."
-	case "upstream_sse_error":
-		return "Upstream stream reported an error."
-	case "upstream_failed":
-		return "The upstream attempt failed before any response content was released."
-	case "upstream_stream_terminated":
-		return "Upstream stream terminated before completion."
-	case "upstream_stream_idle_timeout":
-		return "Upstream stream timed out while idle."
-	case "downstream_write_failed":
-		return "The downstream response could not be completed."
-	case "internal_error":
-		return "The request failed due to an internal error."
-	case "client_canceled":
-		return "The client canceled the request."
-	case "server_shutdown":
-		return "The server canceled the request during shutdown."
-	default:
-		return "Upstream request failed."
+	if summary, exists := fixedErrorSummaries[code]; exists {
+		return summary
 	}
+	return defaultErrorSummary
+}
+
+// isFixedErrorSummary reports whether the summary is one of the gateway
+// classification texts rather than a provider-derived message. The default
+// classification text is included, because any code outside the catalog (for
+// example "upstream_response_incomplete" before it was listed) resolves to it.
+func isFixedErrorSummary(summary string) bool {
+	if summary == "" {
+		return false
+	}
+	if summary == defaultErrorSummary {
+		return true
+	}
+	for _, value := range fixedErrorSummaries {
+		if summary == value {
+			return true
+		}
+	}
+	return false
 }
 
 func summarizeErrorBody(
