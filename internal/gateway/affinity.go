@@ -53,6 +53,18 @@ func (handler *Handler) resolveRequestAffinity(
 	}
 	signalType, source, signalValue, hasSignal := affinitySignal(metadata)
 	result := requestAffinity{source: source, state: telemetry.AffinityStateNoSignal}
+	if len(metadata.AffinityPrefix) > 0 {
+		continuity := affinity.DeriveKey(
+			handler.encryption,
+			accessKeyID,
+			clientProtocol,
+			clientModel,
+			operation,
+			affinity.SignalPromptPrefix,
+			metadata.AffinityPrefix,
+		)
+		result.continuityKey = string(continuity)
+	}
 	if !hasSignal {
 		return result
 	}
@@ -65,8 +77,6 @@ func (handler *Handler) resolveRequestAffinity(
 		signalType,
 		signalValue,
 	)
-	// 连续性键即使在软亲和缓存本身不可用时也用于 provider 私有重放范围限定。
-	result.continuityKey = string(key)
 	if handler.affinityCache == nil ||
 		!handler.affinityCache.Configure(
 			snapshot.Revision,

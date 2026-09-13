@@ -8,12 +8,44 @@ import (
 
 	"gpt-load/internal/execution"
 	"gpt-load/internal/protocol"
+	"gpt-load/internal/subscription/providers/codex"
 )
 
 type codexClassifiedTestError struct {
 	status     int
 	payload    string
 	retryAfter time.Duration
+}
+
+func TestCodexProviderForwardsContinuityKeyForUnaryAndStream(t *testing.T) {
+	t.Parallel()
+
+	for _, stream := range []bool{false, true} {
+		fake := &fakeExecutor{}
+		bridge := &codexProviderBridge{executor: fake}
+		request := providerRequest{
+			Model: "gpt-5", Payload: []byte(`{}`), Format: "openai-response",
+			ContinuityKey: "prompt-prefix-scope",
+		}
+		credential := codexProviderCredential{value: codex.Credential{AccountID: "account"}}
+		if stream {
+			fake.stream = &codex.ExecuteStreamResponse{Chunks: closedCodexChunks()}
+			if _, err := bridge.ExecuteStream(t.Context(), "credential", credential, request); err != nil {
+				t.Fatalf("ExecuteStream() error = %v", err)
+			}
+		} else if _, err := bridge.Execute(t.Context(), "credential", credential, request); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+		if fake.request.ContinuityKey != "prompt-prefix-scope" {
+			t.Fatalf("stream=%t continuity key = %q", stream, fake.request.ContinuityKey)
+		}
+	}
+}
+
+func closedCodexChunks() <-chan codex.ExecuteStreamChunk {
+	chunks := make(chan codex.ExecuteStreamChunk)
+	close(chunks)
+	return chunks
 }
 
 func TestCodexUpstreamProtocolUsesObservedRequestPath(t *testing.T) {

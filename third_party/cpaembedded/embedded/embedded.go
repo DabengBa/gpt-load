@@ -395,6 +395,7 @@ func (e *CodexHTTPExecutor) ExecuteCanonical(ctx context.Context, credentialID s
 	executionCtx := e.executionContext(ctx, auth, observation, request.ProxyFromEnvironment, &request)
 	response, err := e.inner.Execute(executionCtx, authWithoutProxyURL(auth), cliproxyexecutor.Request{
 		Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: format,
+		Metadata: codexSessionMetadata(request, format),
 	}, codexExecutionOptions(request, format, false))
 	if err != nil {
 		return ExecuteResponse{
@@ -476,6 +477,7 @@ func (e *CodexHTTPExecutor) ExecuteStreamCanonical(ctx context.Context, credenti
 	executionCtx := e.executionContext(ctx, auth, observation, request.ProxyFromEnvironment, &request)
 	response, err := e.inner.ExecuteStream(executionCtx, authWithoutProxyURL(auth), cliproxyexecutor.Request{
 		Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: format,
+		Metadata: codexSessionMetadata(request, format),
 	}, codexExecutionOptions(request, format, true))
 	if err != nil {
 		return &ExecuteStreamResponse{
@@ -501,6 +503,24 @@ func (e *CodexHTTPExecutor) ExecuteStreamCanonical(ctx context.Context, credenti
 		UpstreamRequestPath:    observation.upstreamRequestPath(),
 		QuotaSignals:           observation.quotaSignalObservation(),
 	}, nil
+}
+
+func codexSessionMetadata(request ExecuteRequest, format sdktranslator.Format) map[string]any {
+	switch format {
+	case sdktranslator.FormatOpenAI, sdktranslator.FormatOpenAIResponse, sdktranslator.FormatClaude, sdktranslator.FormatGemini:
+	default:
+		return nil
+	}
+	if strings.TrimSpace(request.Headers.Get("Session-Id")) != "" {
+		return nil
+	}
+	continuityKey := strings.TrimSpace(request.ContinuityKey)
+	if continuityKey == "" {
+		return nil
+	}
+	return map[string]any{
+		cliproxyexecutor.DerivedSessionIDMetadataKey: continuityKey,
+	}
 }
 
 func codexExecutionOptions(

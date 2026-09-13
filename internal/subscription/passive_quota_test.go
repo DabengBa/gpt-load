@@ -3,11 +3,16 @@ package subscription
 import (
 	"testing"
 
+	"gpt-load/internal/state"
 	providerobservation "gpt-load/internal/subscription/providers/observation"
 )
 
 func testCredentialManagerForPassiveQuota() *CredentialManager {
-	return NewCredentialManager(nil, nil, nil, nil, nil)
+	registry := state.NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]state.CredentialEntry{{ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 100, Fingerprint: "fingerprint", EncryptedValue: "cipher"}}); err != nil {
+		panic(err)
+	}
+	return NewCredentialManager(nil, nil, registry, nil, nil)
 }
 
 func floatPointer(value float64) *float64 { return &value }
@@ -105,6 +110,9 @@ func TestRecordPassiveQuotaObservationReplacesOnIdentityGenerationChange(t *test
 	manager.RecordPassiveQuotaObservation(7, 100, 1000, []providerobservation.QuotaWindow{
 		{ID: "primary", Used: floatPointer(10)},
 	})
+	if err := manager.registry.ReplaceCredentials([]state.CredentialEntry{{ID: 7, GroupID: 1, Version: 1, IdentityGeneration: 200, Fingerprint: "fingerprint", EncryptedValue: "cipher"}}); err != nil {
+		t.Fatal(err)
+	}
 	manager.RecordPassiveQuotaObservation(7, 200, 2000, []providerobservation.QuotaWindow{
 		{ID: "secondary", Used: floatPointer(20)},
 	})

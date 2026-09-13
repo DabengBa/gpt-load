@@ -26,6 +26,69 @@ func forceStatelessResponsesRequest(payload []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+func removeResponsesReasoningStatus(payload []byte) ([]byte, error) {
+	object, err := decodeResponsesStoreObject(payload)
+	if err != nil {
+		return nil, fmt.Errorf("remove Responses reasoning status: %w", err)
+	}
+	rawInput, exists := object["input"]
+	if !exists || bytes.Equal(bytes.TrimSpace(rawInput), []byte("null")) {
+		return bytes.Clone(payload), nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(rawInput, &items); err != nil {
+		return bytes.Clone(payload), nil
+	}
+	changed := false
+	for index, rawItem := range items {
+		var item map[string]json.RawMessage
+		if err := json.Unmarshal(rawItem, &item); err != nil || item == nil {
+			continue
+		}
+		var itemType string
+		if err := json.Unmarshal(item["type"], &itemType); err != nil || itemType != "reasoning" {
+			continue
+		}
+		if _, exists := item["status"]; !exists {
+			continue
+		}
+		delete(item, "status")
+		encoded, err := marshalResponsesJSON(item)
+		if err != nil {
+			return nil, fmt.Errorf("encode reasoning input item: %w", err)
+		}
+		items[index] = encoded
+		changed = true
+	}
+	if !changed {
+		return bytes.Clone(payload), nil
+	}
+	encodedInput, err := marshalResponsesJSON(items)
+	if err != nil {
+		return nil, fmt.Errorf("encode Responses input: %w", err)
+	}
+	object["input"] = encodedInput
+	encoded, err := encodeResponsesStoreObject(object, len(payload))
+	if err != nil {
+		return nil, fmt.Errorf("encode Responses request without reasoning status: %w", err)
+	}
+	return encoded, nil
+}
+
+func marshalResponsesJSON(value any) ([]byte, error) {
+	var output bytes.Buffer
+	encoder := json.NewEncoder(&output)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return nil, err
+	}
+	encoded := output.Bytes()
+	if len(encoded) > 0 && encoded[len(encoded)-1] == '\n' {
+		encoded = encoded[:len(encoded)-1]
+	}
+	return encoded, nil
+}
+
 func normalizeStatelessResponsesSuccess(payload []byte) ([]byte, error) {
 	object, err := decodeResponsesStoreObject(payload)
 	if err != nil {

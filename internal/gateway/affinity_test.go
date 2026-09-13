@@ -255,6 +255,35 @@ func TestHandlerLearnsAffinityOnlyFromCleanCompletedStream(t *testing.T) {
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true})
 }
 
+func TestHandlerUsesPromptCacheKeyForAffinityButPromptPrefixForContinuity(t *testing.T) {
+	t.Parallel()
+
+	handler, manager, _ := newHandlerForTest(t, &scriptedForwarder{}, "sk-one")
+	snapshot := manager.Current()
+	metadata := dialect.RequestMetadata{
+		PromptCacheKey: "cache-a",
+		AffinityPrefix: []byte(`{"v":1,"user":["stable"]}`),
+	}
+	resolved := handler.resolveRequestAffinity(
+		snapshot, 1, protocol.OpenAIResponses, "gpt-4o", execution.OperationResponsesCreate,
+		metadata, map[uint]state.CredentialRef{1: {ID: 1, GroupID: 1, IdentityGeneration: 1}},
+	)
+	wantAffinity := affinity.DeriveKey(
+		handler.encryption, 1, protocol.OpenAIResponses, "gpt-4o", execution.OperationResponsesCreate,
+		affinity.SignalPromptCacheKey, []byte("cache-a"),
+	)
+	wantContinuity := affinity.DeriveKey(
+		handler.encryption, 1, protocol.OpenAIResponses, "gpt-4o", execution.OperationResponsesCreate,
+		affinity.SignalPromptPrefix, metadata.AffinityPrefix,
+	)
+	if resolved.key != wantAffinity {
+		t.Fatalf("affinity key = %q, want explicit cache key %q", resolved.key, wantAffinity)
+	}
+	if resolved.continuityKey != string(wantContinuity) {
+		t.Fatalf("continuity key = %q, want prompt prefix %q", resolved.continuityKey, wantContinuity)
+	}
+}
+
 func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 	handler, manager, _ := newHandlerForTest(t, &scriptedForwarder{}, "sk-one")
 	snapshot := manager.Current()

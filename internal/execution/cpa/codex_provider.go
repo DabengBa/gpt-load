@@ -302,8 +302,8 @@ func (bridge *codexProviderBridge) Execute(
 	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.Execute(ctx, credentialID, codexCredential.value, codex.ExecuteRequest{
 		Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: request.Format,
-		RequestPath: request.RequestPath,
-		Headers:     request.Headers.Clone(), OriginalRequest: append([]byte(nil), request.OriginalRequest...),
+		ContinuityKey: request.ContinuityKey, RequestPath: request.RequestPath,
+		Headers: request.Headers.Clone(), OriginalRequest: append([]byte(nil), request.OriginalRequest...),
 		ConfiguredHeaders: append([]string(nil), request.ConfiguredHeaders...),
 		ProxyURL:          request.ProxyURL, ProxyFromEnvironment: request.ProxyFromEnvironment,
 	})
@@ -329,8 +329,8 @@ func (bridge *codexProviderBridge) ExecuteStream(
 	ctx = providerExecutionContext(ctx, request)
 	response, err := bridge.executor.ExecuteStream(ctx, credentialID, codexCredential.value, codex.ExecuteRequest{
 		Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: request.Format,
-		RequestPath: request.RequestPath,
-		Headers:     request.Headers.Clone(), OriginalRequest: append([]byte(nil), request.OriginalRequest...),
+		ContinuityKey: request.ContinuityKey, RequestPath: request.RequestPath,
+		Headers: request.Headers.Clone(), OriginalRequest: append([]byte(nil), request.OriginalRequest...),
 		ConfiguredHeaders: append([]string(nil), request.ConfiguredHeaders...),
 		ProxyURL:          request.ProxyURL, ProxyFromEnvironment: request.ProxyFromEnvironment,
 	})

@@ -106,7 +106,7 @@ func TestDialectsExtractStablePromptAffinityPrefix(t *testing.T) {
 	}
 }
 
-func TestOpenAIResponsesPromptCacheKeySuppressesInferredPrefix(t *testing.T) {
+func TestOpenAIResponsesPromptCacheKeyKeepsPromptPrefixForContinuity(t *testing.T) {
 	t.Parallel()
 
 	inspect := func(body string) RequestMetadata {
@@ -125,12 +125,12 @@ func TestOpenAIResponsesPromptCacheKeySuppressesInferredPrefix(t *testing.T) {
 		t.Fatalf("implicit metadata = %#v, want prompt prefix without cache key", implicit)
 	}
 	explicit := inspect(`{"model":"gpt-4o","input":"Hello","prompt_cache_key":"queue-a"}`)
-	if explicit.PromptCacheKey != "queue-a" || len(explicit.AffinityPrefix) != 0 {
-		t.Fatalf("explicit metadata = %#v, want cache key without prompt prefix", explicit)
+	if explicit.PromptCacheKey != "queue-a" || len(explicit.AffinityPrefix) == 0 {
+		t.Fatalf("explicit metadata = %#v, want cache key and prompt prefix", explicit)
 	}
 	other := inspect(`{"model":"gpt-4o","input":"Hello","prompt_cache_key":"queue-b"}`)
-	if other.PromptCacheKey != "queue-b" || len(other.AffinityPrefix) != 0 {
-		t.Fatalf("other metadata = %#v, want distinct cache key without prompt prefix", other)
+	if other.PromptCacheKey != "queue-b" || len(other.AffinityPrefix) == 0 {
+		t.Fatalf("other metadata = %#v, want distinct cache key and prompt prefix", other)
 	}
 	ignored := inspect(`{"model":"gpt-4o","input":"Hello","prompt_cache_key":" "}`)
 	if ignored.PromptCacheKey != "" || len(ignored.AffinityPrefix) == 0 {

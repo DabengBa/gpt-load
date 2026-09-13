@@ -347,7 +347,15 @@ func (forwarder *ExecutionForwarder) forwardStream(
 	capturedUsage := streamEvents.finalizeUsage()
 	result := upstreamFromExecutionStreamResult(ctx, input, terminal, streamUsage)
 	result = classifyGatewayFailureEvidence(result)
-	result.Usage = preferCapturedStreamUsage(result.Usage, capturedUsage)
+	if input.ObserveUsage && input.ClientProtocol == protocol.Anthropic &&
+		input.RouteMode == execution.RouteNative && capturedUsage.State != usage.StateMissing {
+		// 原生 Anthropic 流以实际事件为用量依据。SDK 的最大值合并会丢失
+		// 输入修正、明确的零、缓存 TTL 明细，以及流是否完整结束的信息。
+		result.Usage = capturedUsage
+	} else {
+		// 未采集到用量时，保留执行层已经取得的证据。
+		result.Usage = preferCapturedStreamUsage(result.Usage, capturedUsage)
+	}
 	result.Committed = committed
 	result.HTTPCommitted = committed
 	result.PayloadReleased = committed
@@ -795,6 +803,16 @@ func newExecutionAttemptSpec(input ForwardInput) (execution.AttemptSpec, error) 
 	}
 	sanitizeUpstreamRequestHeaders(headers)
 	headers.Set("Accept-Encoding", "identity")
+	body := input.Request.Body
+	if input.Group.ResponsesReasoningStatusFilterEnabled &&
+		input.ClientProtocol == protocol.OpenAIResponses &&
+		input.Operation == execution.OperationResponsesCreate {
+		rewritten, err := removeResponsesReasoningStatus(body)
+		if err != nil {
+			return execution.AttemptSpec{}, err
+		}
+		body = rewritten
+	}
 	spec := execution.NewAttemptSpec(execution.AttemptSpec{
 		RequestID:                input.RequestID,
 		AttemptID:                input.AttemptID,
@@ -813,7 +831,7 @@ func newExecutionAttemptSpec(input ForwardInput) (execution.AttemptSpec, error) 
 		RawQuery:                 input.Request.RawQuery,
 		Header:                   headers,
 		ConfiguredHeaders:        input.Group.HeaderRules.ConfiguredNames(),
-		Body:                     input.Request.Body,
+		Body:                     body,
 		IncludeUsage:             input.ObserveUsage,
 		ForceCredentialRefresh:   input.ForceCredentialRefresh,
 		ContinuityKey:            input.ContinuityKey,

@@ -56,6 +56,39 @@ func TestOpenAIInspectRequest(t *testing.T) {
 	}
 }
 
+func TestOpenAIPromptCacheKeyKeepsPromptPrefixForContinuity(t *testing.T) {
+	t.Parallel()
+
+	metadata, err := NewOpenAI().InspectRequest(&ParsedRequest{
+		Method: "POST", Path: "/v1/chat/completions",
+		Body: []byte(`{"model":"gpt-4o","prompt_cache_key":"cache-a","messages":[{"role":"user","content":"stable"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("InspectRequest() error = %v", err)
+	}
+	if metadata.PromptCacheKey != "cache-a" || len(metadata.AffinityPrefix) == 0 {
+		t.Fatalf("metadata = %#v, want cache key and prompt prefix", metadata)
+	}
+}
+
+func TestOpenAIPromptCacheKeyExtractionIsBoundedAndNonBlocking(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`{"model":"gpt-4o","prompt_cache_key":" invalid ","messages":[{"role":"user","content":"stable"}]}`,
+		`{"model":"gpt-4o","prompt_cache_key":7,"messages":[{"role":"user","content":"stable"}]}`,
+		`{"model":"gpt-4o","prompt_cache_key":"a","prompt_cache_key":"b","messages":[{"role":"user","content":"stable"}]}`,
+	} {
+		metadata, err := NewOpenAI().InspectRequest(&ParsedRequest{Body: []byte(body)})
+		if err != nil {
+			t.Fatalf("InspectRequest(%s) error = %v", body, err)
+		}
+		if metadata.PromptCacheKey != "" {
+			t.Fatalf("PromptCacheKey = %q for invalid key input", metadata.PromptCacheKey)
+		}
+	}
+}
+
 func TestOpenAIInspectRequestSelectsSupportedPricingModes(t *testing.T) {
 	selected := NewOpenAI()
 	for _, test := range []struct {
