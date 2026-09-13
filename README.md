@@ -107,6 +107,16 @@ When working over SSH or from a remote browser, the browser's `localhost` may no
 
 </details>
 
+### Streaming responses
+
+OpenAI Chat Completions, OpenAI Responses `create`, and Anthropic Messages SSE streams **always use buffered delivery**. The upstream request stays streaming, but the gateway validates the complete event sequence and protocol terminal state before releasing the model payload once, in original order. The gateway commits the SSE response only after local pre-dispatch validation passes and dispatch is proven; a local failure keeps its original HTTP status and sends no heartbeat. While validating, the client only receives `: keep-alive` comment heartbeats, by default every 15 seconds; a heartbeat is not the model's first byte and does not refresh upstream first-byte or idle timers. Each attempt buffers up to 1 MiB in memory, with a 32 MiB per-response hard limit and a 256 MiB process-wide spool budget; above the memory threshold it uses restricted temporary files. Exceeding a limit or failing a disk write/read-back terminates the request instead of degrading to live pass-through.
+
+Retries are allowed only before payload release, when the failure is clearly a connection break, idle timeout, half frame, or protocol error and the request is proven free of provider side effects. OpenAI Responses storage, continuity, resource references, provider tools, and unknown semantics are never replayed; an eligible generation may be re-executed and billed twice, with no idempotency guarantee. Responses `completed`, `incomplete`, and `failed` stay strictly distinguished, and the OpenAI Chat and Anthropic terminal states and block lifecycles must be complete. Buffered requests freeze a total deadline covering candidate wait, validation, retry, and release, so a slow client cannot keep a request alive forever.
+
+Gemini and OpenAI Images are explicit live exceptions: they keep real-time pass-through, never enter the buffered validation, release, or replay window, and have no buffered retry. Other Responses `stream:true` operations (`retrieve`, `passthrough`, `input_items`, `compact`, `input_tokens`, and similar) do not support streaming and are rejected before dispatch with HTTP 400. A known protocol with an unsupported operation returns `streaming_operation_unsupported`; an unknown client protocol returns `streaming_protocol_unsupported`. Neither silently degrades to a live stream; the previous protocol-specific rejection code has been removed.
+
+Streaming delivery has no switch, group override, default value, or rollback path. See [`docs/design/buffered-stream.md`](docs/design/buffered-stream.md) for the full design and the local official-SDK smoke evidence.
+
 ## Screenshots
 
 **Groups** — View channels, models, credential counts, and health in one place

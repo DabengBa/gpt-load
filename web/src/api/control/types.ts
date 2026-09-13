@@ -118,7 +118,6 @@ export interface GroupRuntimeConfigDto {
   stream_idle_timeout?: number
   blacklist_threshold?: number
   header_rules?: HeaderRulesDto
-  buffered_stream?: boolean
   affinity_enabled?: boolean
   responses_websocket_enabled?: boolean
   responses_reasoning_status_filter_enabled?: boolean
@@ -135,7 +134,6 @@ export interface GroupEffectiveConfigDto {
   stream_idle_timeout: number
   blacklist_threshold: number
   header_rules: HeaderRulesDto
-  buffered_stream: boolean
   affinity_enabled: boolean
   responses_websocket_enabled: boolean
   responses_reasoning_status_filter_enabled: boolean

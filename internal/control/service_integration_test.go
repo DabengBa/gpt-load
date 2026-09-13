@@ -19,6 +19,19 @@ import (
 	"gpt-load/internal/state"
 )
 
+const (
+	// bufferedHeartbeat is the keep-alive frame the buffered path commits HTTP 200
+	// with before the validated payload is released.
+	bufferedHeartbeat = ": keep-alive\n\n"
+	// forcedBufferedCompletionsStream is a protocol-complete OpenAI Chat
+	// Completions SSE sequence: a content chunk, a terminal chunk carrying
+	// finish_reason "stop", and the [DONE] sentinel. The buffered validator
+	// rejects any sequence missing the terminal chunk, so this fixture is what
+	// makes the payload release observable.
+	forcedBufferedCompletionsStream = "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"first\"},\"finish_reason\":null}]}\n\n" +
+		"data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+)
+
 func TestControlWriteLockDoesNotBlockDataPlane(t *testing.T) {
 	t.Parallel()
 	requestReached := make(chan bool, 2)
@@ -28,7 +41,7 @@ func TestControlWriteLockDoesNotBlockDataPlane(t *testing.T) {
 		requestReached <- streaming
 		if streaming {
 			writer.Header().Set("Content-Type", "text/event-stream")
-			_, _ = writer.Write([]byte("data: {\"id\":\"chunk\"}\n\n"))
+			_, _ = writer.Write([]byte(forcedBufferedCompletionsStream))
 			writer.(http.Flusher).Flush()
 			return
 		}
@@ -128,8 +141,15 @@ func TestControlWriteLockDoesNotBlockDataPlane(t *testing.T) {
 			if got.recorder.Code != http.StatusOK {
 				t.Fatalf("streaming=%t response = %d %s", got.streaming, got.recorder.Code, got.recorder.Body.String())
 			}
-			if got.streaming && !bytes.Contains(got.recorder.Body.Bytes(), []byte("data:")) {
-				t.Fatalf("streaming body = %q, want SSE data", got.recorder.Body.Bytes())
+			if got.streaming {
+				body := got.recorder.Body.Bytes()
+				if !bytes.Contains(body, []byte(bufferedHeartbeat)) {
+					t.Fatalf("streaming body = %q, want heartbeat %q", body, bufferedHeartbeat)
+				}
+				want := bufferedHeartbeat + forcedBufferedCompletionsStream
+				if string(body) != want {
+					t.Fatalf("streaming body = %q, want heartbeat plus released OpenAI SSE payload %q", body, want)
+				}
 			}
 		case <-time.After(2 * time.Second):
 			t.Fatal("data-plane request did not complete while control writeMu was held")

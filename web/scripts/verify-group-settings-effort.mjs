@@ -26,7 +26,6 @@ const baseSettings = {
     stream_idle_timeout: 300,
     blacklist_threshold: 3,
     header_rules: { set: {}, remove: [] },
-    buffered_stream: false,
     affinity_enabled: true,
     responses_websocket_enabled: true,
   },

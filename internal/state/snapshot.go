@@ -149,7 +149,6 @@ type GroupView struct {
 	Models                                []ModelConfig
 	Timeouts                              TimeoutConfig
 	HeaderRules                           HeaderRules
-	BufferedStream                        bool
 	BlacklistThreshold                    int
 	AffinityEnabled                       bool
 	ResponsesWebsocketEnabled             bool
@@ -256,7 +255,6 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			Models:                                cloneModelConfigs(group.Models),
 			Timeouts:                              resolved.Timeouts,
 			HeaderRules:                           resolved.HeaderRules,
-			BufferedStream:                        resolved.BufferedStream,
 			BlacklistThreshold:                    resolved.BlacklistThreshold,
 			AffinityEnabled:                       resolved.AffinityEnabled,
 			ResponsesWebsocketEnabled:             resolved.ResponsesWebsocketEnabled,

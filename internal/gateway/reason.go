@@ -32,9 +32,15 @@ var (
 	reasonUpstreamTimeout               = reason{Status: http.StatusGatewayTimeout, Code: "upstream_timeout", Message: "Upstream request timed out."}
 	reasonUpstreamProtocol              = reason{Status: http.StatusBadGateway, Code: "upstream_protocol_error", Message: "Upstream returned an unsupported response."}
 	reasonProtocolConversionUnsupported = reason{Status: http.StatusUnprocessableEntity, Code: "protocol_conversion_unsupported", Message: "No upstream target could preserve or convert the request."}
-	reasonBufferedStreamUnsupported     = reason{
-		Status: http.StatusBadRequest, Code: "buffered_stream_unsupported_protocol",
-		Message: "Buffered streaming is not supported for this protocol.",
+	reasonStreamingOperationUnsupported = reason{
+		Status:  http.StatusBadRequest,
+		Code:    "streaming_operation_unsupported",
+		Message: "Streaming is not supported for this operation.",
+	}
+	reasonStreamingProtocolUnsupported = reason{
+		Status:  http.StatusBadRequest,
+		Code:    "streaming_protocol_unsupported",
+		Message: "Streaming is not supported for this protocol.",
 	}
 	reasonRequestTooLarge            = reason{Status: http.StatusRequestEntityTooLarge, Code: "request_too_large", Message: "Request body is too large."}
 	reasonUnsupportedContentEncoding = reason{

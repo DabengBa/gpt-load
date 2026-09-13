@@ -939,16 +939,23 @@ func TestGatewayRewritesAliasedStreams(t *testing.T) {
 			name: "OpenAI", value: protocol.OpenAICompletions,
 			dialects: dialect.NewSet(dialect.NewOpenAI()),
 			path:     "/v1/chat/completions", requestBody: `{"model":"public-model","stream":true}`,
-			streamBody: "data: {\"id\":\"1\",\"model\":\"provider-model\",\"choices\":[]}\n\ndata: [DONE]\n\n",
+			// Forced buffered delivery requires every Chat choice to close before
+			// [DONE]; otherwise the payload is never released.
+			streamBody: "data: {\"id\":\"1\",\"model\":\"provider-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
 			want:       `"model":"public-model"`, unchanged: "data: [DONE]\n\n",
 		},
 		{
 			name: "Anthropic", value: protocol.Anthropic,
 			dialects: dialect.NewSet(dialect.NewAnthropic()),
 			path:     "/v1/messages", requestBody: `{"model":"public-model","stream":true}`,
+			// Forced buffered delivery requires a closed content block lifecycle
+			// before message_stop; otherwise the payload is never released.
 			streamBody: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"provider-model\"}}\n\n" +
-				"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"unchanged\"}}\n\n",
-			want: `"model":"public-model"`, unchanged: "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"unchanged\"}}\n\n",
+				"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n" +
+				"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"text\":\"unchanged\"}}\n\n" +
+				"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n" +
+				"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+			want: `"model":"public-model"`, unchanged: "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"text\":\"unchanged\"}}\n\n",
 		},
 		{
 			name: "Gemini", value: protocol.Gemini,
@@ -1122,19 +1129,25 @@ func TestAnthropicGatewayStream(t *testing.T) {
 	release := make(chan struct{})
 	requestHeaders := make(chan http.Header, 1)
 	var releaseOnce sync.Once
-	defer releaseOnce.Do(func() { close(release) })
 	primary := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_, _ = io.Copy(io.Discard, request.Body)
 		requestHeaders <- request.Header.Clone()
 		writer.Header().Set("Content-Type", "text/event-stream")
-		_, _ = writer.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\"}\n\n"))
+		_, _ = writer.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-3-5-sonnet\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}\n\n"))
+		_, _ = writer.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"))
+		_, _ = writer.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n"))
+		_, _ = writer.Write([]byte("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"))
 		writer.(http.Flusher).Flush()
 		close(firstEventSent)
 		<-release
+		_, _ = writer.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":5}}\n\n"))
 		_, _ = writer.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
 		writer.(http.Flusher).Flush()
 	}))
 	defer primary.Close()
+	// Close the release channel before the upstream server so a failed
+	// assertion cannot deadlock httptest.Server.Close on its handler.
+	defer releaseOnce.Do(func() { close(release) })
 	backup := fakeupstream.New(fakeupstream.Step{Status: http.StatusOK, Fixture: "stream.sse", Stream: true})
 	defer backup.Close()
 
@@ -1164,10 +1177,16 @@ func TestAnthropicGatewayStream(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("first upstream event was not sent")
 	}
+	// Anthropic Messages is forced buffered: the client first sees only the
+	// keep-alive heartbeat, and the provider payload is released after the
+	// upstream reaches its validated terminal state.
 	reader := bufio.NewReader(response.Body)
-	firstLine, err := reader.ReadString('\n')
-	if err != nil || firstLine != "event: message_start\n" {
-		t.Fatalf("first streamed line = %q, %v", firstLine, err)
+	heartbeat, err := reader.ReadString('\n')
+	if err != nil || heartbeat != ": keep-alive\n" {
+		t.Fatalf("first buffered line = %q, %v", heartbeat, err)
+	}
+	if boundary, err := reader.ReadString('\n'); err != nil || boundary != "\n" {
+		t.Fatalf("heartbeat boundary = %q, %v", boundary, err)
 	}
 	headers := <-requestHeaders
 	if headers.Get("Accept-Encoding") != "identity" || headers.Get("X-Api-Key") != "sk-primary" {
@@ -1178,7 +1197,12 @@ func TestAnthropicGatewayStream(t *testing.T) {
 	}
 	releaseOnce.Do(func() { close(release) })
 	rest, err := io.ReadAll(reader)
-	if err != nil || !strings.Contains(string(rest), "message_stop") || strings.Contains(string(rest), `"code":`) {
+	if err != nil || !strings.Contains(string(rest), "event: message_start") ||
+		!strings.Contains(string(rest), "content_block_start") ||
+		!strings.Contains(string(rest), "content_block_delta") ||
+		!strings.Contains(string(rest), "content_block_stop") ||
+		!strings.Contains(string(rest), "message_delta") ||
+		!strings.Contains(string(rest), "message_stop") || strings.Contains(string(rest), `"code":`) {
 		t.Fatalf("remaining stream = %q, %v", rest, err)
 	}
 	if values := response.Header.Values(debugHeaderKey); len(values) != 0 {
@@ -1311,6 +1335,155 @@ func TestGeminiGatewayStream(t *testing.T) {
 		requests[0].Headers.Get("Accept-Encoding") != "identity" ||
 		requests[0].Headers.Get("X-Goog-Api-Key") != "gemini-stream-key" {
 		t.Fatalf("upstream request = %#v query=%v", requests[0], query)
+	}
+}
+
+// TestGeminiStreamDeliversFirstEventBeforeEOF proves the Gemini live exception:
+// the first provider event reaches the client before the upstream reaches EOF,
+// with no buffered heartbeat, spool or release gate.
+func TestGeminiStreamDeliversFirstEventBeforeEOF(t *testing.T) {
+	const (
+		first  = "data: {\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"first\"}]}}]}\n\n"
+		second = "data: {\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"second\"}]},\"finishReason\":\"STOP\"}]}\n\n"
+	)
+	firstEventSent := make(chan struct{})
+	releaseSecondEvent := make(chan struct{})
+	var releaseOnce sync.Once
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte(first))
+		writer.(http.Flusher).Flush()
+		close(firstEventSent)
+		select {
+		case <-releaseSecondEvent:
+			_, _ = writer.Write([]byte(second))
+			writer.(http.Flusher).Flush()
+		case <-request.Context().Done():
+		}
+	}))
+	defer upstream.Close()
+	defer releaseOnce.Do(func() { close(releaseSecondEvent) })
+
+	engine, _ := newDialectGatewayEngine(t, protocol.Gemini, "gemini-2.5-pro",
+		dialect.NewSet(dialect.NewGemini()),
+		dialectGatewayGroup{id: 1, name: "gemini-progressive", upstreamURL: upstream.URL, apiKeys: []string{"gemini-key"}},
+	)
+	gatewayServer := httptest.NewServer(engine)
+	defer gatewayServer.Close()
+
+	request, err := http.NewRequest(http.MethodPost, gatewayServer.URL+"/v1beta/models/gemini-2.5-pro:streamGenerateContent?key=gl-client", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("stream request error = %v", err)
+	}
+	defer response.Body.Close()
+
+	select {
+	case <-firstEventSent:
+	case <-time.After(time.Second):
+		t.Fatal("upstream did not send first event")
+	}
+	reader := bufio.NewReader(response.Body)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read first data line: %v", err)
+	}
+	blank, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read first event boundary: %v", err)
+	}
+	if line == ": keep-alive\n" {
+		t.Fatalf("Gemini live exception received a buffered heartbeat: %q", line+blank)
+	}
+	if !strings.Contains(line+blank, `"text":"first"`) {
+		t.Fatalf("first live event was not delivered before EOF: %q", line+blank)
+	}
+
+	releaseOnce.Do(func() { close(releaseSecondEvent) })
+	rest, err := io.ReadAll(reader)
+	if err != nil || !strings.Contains(string(rest), `"text":"second"`) {
+		t.Fatalf("remaining live stream = %q, %v", rest, err)
+	}
+}
+
+// TestGeminiAliasedStreamDeliversFirstEventBeforeEOF proves the live exception
+// also applies to aliased Gemini streams: the rewritten first event is visible
+// before EOF and no buffered payload gate is introduced.
+func TestGeminiAliasedStreamDeliversFirstEventBeforeEOF(t *testing.T) {
+	const (
+		first  = "data: {\"modelVersion\":\"provider-model\",\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"first\"}]}}]}\n\n"
+		second = "data: {\"modelVersion\":\"provider-model\",\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"second\"}]},\"finishReason\":\"STOP\"}]}\n\n"
+	)
+	var receivedPath string
+	firstEventSent := make(chan struct{})
+	releaseSecondEvent := make(chan struct{})
+	var releaseOnce sync.Once
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		receivedPath = request.URL.Path
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte(first))
+		writer.(http.Flusher).Flush()
+		close(firstEventSent)
+		select {
+		case <-releaseSecondEvent:
+			_, _ = writer.Write([]byte(second))
+			writer.(http.Flusher).Flush()
+		case <-request.Context().Done():
+		}
+	}))
+	defer upstream.Close()
+	defer releaseOnce.Do(func() { close(releaseSecondEvent) })
+
+	engine, _ := newDialectGatewayEngine(t, protocol.Gemini, "provider-model",
+		dialect.NewSet(dialect.NewGemini()),
+		dialectGatewayGroup{id: 1, name: "gemini-alias", upstreamURL: upstream.URL, apiKeys: []string{"gemini-key"},
+			models: []state.ModelConfig{{ID: "provider-model", Alias: "public-model"}}},
+	)
+	gatewayServer := httptest.NewServer(engine)
+	defer gatewayServer.Close()
+
+	request, err := http.NewRequest(http.MethodPost, gatewayServer.URL+"/v1beta/models/public-model:streamGenerateContent?key=gl-client", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("stream request error = %v", err)
+	}
+	defer response.Body.Close()
+
+	select {
+	case <-firstEventSent:
+	case <-time.After(time.Second):
+		t.Fatal("upstream did not send first event")
+	}
+	reader := bufio.NewReader(response.Body)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read rewritten first data line: %v", err)
+	}
+	blank, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read rewritten first boundary: %v", err)
+	}
+	if got := line + blank; !strings.Contains(got, `"modelVersion":"public-model"`) ||
+		strings.Contains(got, `"modelVersion":"provider-model"`) || !strings.Contains(got, `"text":"first"`) {
+		t.Fatalf("first live alias event = %q", got)
+	}
+	if receivedPath != "/v1beta/models/provider-model:streamGenerateContent" {
+		t.Fatalf("upstream path = %q", receivedPath)
+	}
+
+	releaseOnce.Do(func() { close(releaseSecondEvent) })
+	rest, err := io.ReadAll(reader)
+	if err != nil || !strings.Contains(string(rest), `"modelVersion":"public-model"`) ||
+		!strings.Contains(string(rest), `"text":"second"`) {
+		t.Fatalf("remaining live alias stream = %q, %v", rest, err)
 	}
 }
 

@@ -190,8 +190,10 @@ type RouteTarget struct {
   - 这是与 `previous_response_id` **硬锁定**互斥的另一种机制:续接请求把候选
     收窄到唯一归属凭据(`AllowedCredentialIDs` 单元素),亲和始终保留完整候选
     集合兜底。两者不得合并。
-- 跨候选故障转移的前提是「尚未向客户端释放任何内容」,buffered 模式下由
-  `ResponsesReplayEligible` 判定请求是否引用了上游状态:
+- 跨候选故障转移的前提是「尚未向客户端释放任何内容」,强制 buffered 的三个生成流
+  (OpenAI Chat Completions、OpenAI Responses `create`、Anthropic Messages) 由
+  `ResponsesReplayEligible` 判定请求是否引用了上游状态;Gemini 与 OpenAI Images 是
+  实时例外,不进入该重放窗口,也不具备 buffered retry:
   - 引用上游状态的字段(`previous_response_id`、`conversation`、`prompt.id`、
     `input`/`tools` 中的 provider resource 引用)阻断重放;
   - 缓存与呈现提示(`prompt_cache_key`、`prompt_cache_retention`、

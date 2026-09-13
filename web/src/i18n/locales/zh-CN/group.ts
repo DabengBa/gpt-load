@@ -361,8 +361,6 @@ export default {
         headerStorageNoticeEnd: '。',
         headerReplacementWarning:
           '此分组覆盖会完整替换全局 HeaderRules；后续全局更改不会合并到这里。',
-        buffered_stream: '缓冲流式响应',
-        bufferedStreamHelp: '继承全局设置，或为本分组显式开启响应缓冲。',
         responses_websocket_enabled: 'Responses WebSocket',
         websocketHelp: '关闭会立即断开本分组的 WS 连接并中断生成，HTTP/SSE 不受影响。',
         responses_reasoning_status_filter_enabled: '移除 reasoning status 字段',

@@ -121,7 +121,6 @@ const runtimeSettingFields = [
   'stream_idle_timeout',
   'blacklist_threshold',
   'header_rules',
-  'buffered_stream',
   'affinity_enabled',
   'responses_websocket_enabled',
   'responses_reasoning_status_filter_enabled',
@@ -152,7 +151,6 @@ export interface GroupRuntimeConfigDto {
   stream_idle_timeout?: number
   blacklist_threshold?: number
   header_rules?: HeaderRulesDto
-  buffered_stream?: boolean
   affinity_enabled?: boolean
   responses_websocket_enabled?: boolean
   responses_reasoning_status_filter_enabled?: boolean
@@ -166,7 +164,6 @@ export interface GroupEffectiveConfigDto {
   stream_idle_timeout: number
   blacklist_threshold: number
   header_rules: HeaderRulesDto
-  buffered_stream: boolean
   affinity_enabled: boolean
   responses_websocket_enabled: boolean
   responses_reasoning_status_filter_enabled: boolean
@@ -407,9 +404,6 @@ function projectRuntimeConfig(
   }
   if (complete || Object.prototype.hasOwnProperty.call(record, 'header_rules')) {
     result.header_rules = projectHeaderRules(record.header_rules)
-  }
-  if (complete || Object.prototype.hasOwnProperty.call(record, 'buffered_stream')) {
-    result.buffered_stream = projectBoolean(record.buffered_stream)
   }
   if (complete || Object.prototype.hasOwnProperty.call(record, 'affinity_enabled')) {
     result.affinity_enabled = projectBoolean(record.affinity_enabled)

@@ -43,7 +43,6 @@ type SettingsValuesResponse struct {
 	HeaderRules               HeaderRulesResponse `json:"header_rules"`
 	CORS                      CORSConfigResponse  `json:"cors"`
 	ResponseHeaderRules       HeaderRulesResponse `json:"response_header_rules"`
-	BufferedStream            bool                `json:"buffered_stream"`
 	RetryCount                int                 `json:"retry_count"`
 	RouteStrategy             state.RouteStrategy `json:"route_strategy"`
 	BlacklistThreshold        int                 `json:"blacklist_threshold"`
@@ -354,7 +353,6 @@ func mapSettingsResponse(
 				Set:    responseSet,
 				Remove: responseRemove,
 			},
-			BufferedStream:            settings.BufferedStream,
 			RetryCount:                settings.RetryCount,
 			RouteStrategy:             settings.RouteStrategy,
 			BlacklistThreshold:        settings.BlacklistThreshold,

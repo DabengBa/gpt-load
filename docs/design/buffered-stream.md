@@ -2,21 +2,26 @@
 
 ## 功能边界
 
-`buffered_stream` 让网关继续以 SSE 从上游接收流，但在协议终态、JSON 结构和事件生命周期全部验证完成前，不向客户端释放模型 payload。验证期间客户端只会收到网关注释心跳；成功后网关按原事件顺序集中释放已验证的事件。该模式不是非流式上游，也不提供断点续传、Exactly-once 或跨请求恢复。
+HTTP/SSE 流式交付由单一策略入口固定，不再有 `buffered_stream` 开关、Group 覆盖、默认值或回滚路径。网关继续以 SSE 从上游接收流，但在协议终态、JSON 结构和事件生命周期全部验证完成前，不向客户端释放模型 payload。验证期间客户端只会收到网关注释心跳；成功后网关按原事件顺序集中释放已验证的事件。该模式不是非流式上游，也不提供断点续传、Exactly-once 或跨请求恢复。
 
-功能默认关闭。全局设置和 Group 设置都使用既有稀疏 override：Group 未覆盖时继承全局值，显式覆盖可开启或关闭，恢复继承后使用全局值。保存期间控件禁用；保存失败保留草稿并显示失败反馈，重载后以服务端持久化值为准。关闭开关只影响新请求，已开始的请求不会在途切换模式。
+固定交付矩阵（`internal/gateway/stream_policy.go` 的单一入口判定）：
 
-当前支持客户端 SSE 协议：
+| 客户端协议 | 流式 operation | 交付 |
+| --- | --- | --- |
+| OpenAI Chat Completions | chat completions | 强制 buffered |
+| OpenAI Responses | `create` | 强制 buffered |
+| Anthropic Messages | messages | 强制 buffered |
+| Gemini | 生成型 operation | live exception：实时透传，不进入 buffered 验证、释放和重放窗口 |
+| OpenAI Images | generate / edit | live exception：同上 |
+| 其它协议或 operation | 任意 | dispatch 前拒绝 |
 
-- OpenAI Chat Completions
-- OpenAI Responses
-- Anthropic Messages
+被拒绝的流式请求在 dialect 解析成功后、scheduler 选候选和 provider dispatch 之前返回 HTTP 400：已知协议的不支持 operation 返回 `streaming_operation_unsupported`，未知客户端协议返回 `streaming_protocol_unsupported`。malformed 请求仍优先返回既有 `invalid_protocol_request`。此前的协议专用拒绝错误码已删除。
 
-Gemini、Images、音频流、非 SSE 请求不进入 buffered stream。对不支持的客户端协议，网关在 dispatch 前返回 `buffered_stream_unsupported_protocol`，不会静默降级为普通实时流。非流式请求行为不变。
+Gemini 与 OpenAI Images 是明确的实时例外：它们保持原有实时流行为及统一 health judge，不产生 buffered heartbeat、spool 或 release gate，也不获得 buffered 重放/重试许可。非流式请求不进入本策略，行为不变。
 
 ## 交付流程
 
-1. 请求完成鉴权、校验和首次准入后，网关提交 `text/event-stream` 响应，并发送 `: keep-alive\n\n`。
+1. 请求完成鉴权、校验和首次准入后，每个 attempt 先完成本地 pre-dispatch 校验。只有收到 dispatch proof（`forwardStream` 的 `StreamEventReady` 或 capture writer 首次写入）后，网关才提交 `text/event-stream` 响应并发送 `: keep-alive\n\n`；本地校验失败保留原 HTTP 状态和错误码，不提交 buffered heartbeat。
 2. 上游每个 attempt 继续使用原有流式执行、转换、脱敏和 usage 处理。网关每 15 秒发送一次注释心跳；心跳不是模型首字节，也不刷新上游 first-byte 或 stream-idle 计时器。
 3. 每个 attempt 独立暂存并验证事件。Chat 必须有合法的 choice 终态和 `[DONE]`；Responses 区分 `response.completed`、`response.incomplete` 和 `response.failed`；Anthropic 必须有 `message_stop`，且每个已开始的 content block 都必须闭合。
 4. 合法 EOF 和协议终态验证成功后，才开始一次不可逆的 payload release。释放从成功 attempt 开始，失败 attempt 的内容不会泄漏给客户端。
@@ -40,13 +45,13 @@ HTTP 响应头由请求级输出 owner 串行管理，包含 `Cache-Control: no-
 
 缓冲重试只对明确证明为无副作用的请求新增许可。OpenAI Responses 的存储、`previous_response_id`、conversation/continuity、background、prompt/resource reference、供应商工具或未知语义都不会获得这项许可；未知工具字段和未知顶层语义按保守规则拒绝重放。客户端自行执行的明确 `function`/`custom` 工具描述可以符合资格，但网关不会替请求关闭 store 或删除工具字段。
 
-开启 buffered stream 意味着符合资格的生成在上游中途失败后可能被另一个候选重新执行，因此可能产生重复 token、重复请求或重复计费；该功能不承诺幂等。受保护请求可以完整缓冲，但失败时只返回失败，不新增 buffered 重试。HTTP 200、心跳或已观察到的 response ID 都不等于模型成功，也不会被伪造为成功终态。
+强制 buffered 意味着符合资格的生成在上游中途失败后可能被另一个候选重新执行，因此可能产生重复 token、重复请求或重复计费；该功能不承诺幂等。受保护请求可以完整缓冲，但失败时只返回失败，不新增 buffered 重试。HTTP 200、心跳或已观察到的 response ID 都不等于模型成功，也不会被伪造为成功终态。
 
 建立 SSE 后的终失败使用客户端协议的流内错误：OpenAI 使用 `data.error` 或 Responses `event:error`，Anthropic 使用 `event:error`；保留已观察到的 Responses response ID，不回放失败 attempt 内容。供应商错误、协议错误、超时和下游写失败会分别记录 attempt 状态、usage、可见字节、暂存峰值、spill 状态和 release 起点，但不会记录响应原文。
 
-## 灰度与回滚
+## 固定策略与发布注意事项
 
-建议先在单个 Group 开启并观察请求日志、失败 attempt、重复计费和客户端超时。回滚时先关闭 Group override 或恢复继承，再按需关闭全局 `buffered_stream`；关闭只阻止新请求进入缓冲模式，已在途请求继续完成其冻结的模式。遇到 SDK 超时、代理不转发注释、临时卷空间不足或费用异常时，应立即关闭开关并保留旧的实时流路径。生产网关、反向代理和目标客户端的超时仍需在灰度环境单独确认。
+流式交付没有开关：三个生成协议始终 buffered，Gemini/Images 始终 live exception，不存在“关掉开关回到实时路径”的操作。发布前应确认反向代理不缓冲注释心跳、临时卷容量充足，并让客户端超时覆盖完整缓冲与释放窗口。遇到 SDK 超时、代理不转发注释、临时卷空间不足或费用异常时，只能修复代理、容量或超时配置，或升级版本；没有关闭开关的逃生路径。生产网关、反向代理和目标客户端的超时仍需在灰度环境单独确认。
 
 ## 本地兼容性证明
 
