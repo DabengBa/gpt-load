@@ -123,6 +123,7 @@ const runtimeSettingFields = [
   'buffered_stream',
   'affinity_enabled',
   'responses_websocket_enabled',
+  'responses_reasoning_status_filter_enabled',
 ] as const
 const groupRuntimeSettingFields = [...runtimeSettingFields, 'parameter_overrides'] as const
 
@@ -140,6 +141,7 @@ export interface GroupRuntimeConfigDto {
   buffered_stream?: boolean
   affinity_enabled?: boolean
   responses_websocket_enabled?: boolean
+  responses_reasoning_status_filter_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
 }
 
@@ -152,6 +154,7 @@ export interface GroupEffectiveConfigDto {
   buffered_stream: boolean
   affinity_enabled: boolean
   responses_websocket_enabled: boolean
+  responses_reasoning_status_filter_enabled: boolean
 }
 
 export type {
@@ -385,6 +388,14 @@ function projectRuntimeConfig(
   }
   if (complete || Object.prototype.hasOwnProperty.call(record, 'responses_websocket_enabled')) {
     result.responses_websocket_enabled = projectBoolean(record.responses_websocket_enabled)
+  }
+  if (
+    complete ||
+    Object.prototype.hasOwnProperty.call(record, 'responses_reasoning_status_filter_enabled')
+  ) {
+    result.responses_reasoning_status_filter_enabled = projectBoolean(
+      record.responses_reasoning_status_filter_enabled,
+    )
   }
   if (!complete && Object.prototype.hasOwnProperty.call(record, 'parameter_overrides')) {
     result.parameter_overrides = projectParameterOverrides(record.parameter_overrides)

@@ -15,14 +15,15 @@ import (
 )
 
 type GroupEffectiveConfigResponse struct {
-	FirstByteTimeout          int64               `json:"first_byte_timeout"`
-	RequestTimeout            int64               `json:"request_timeout"`
-	StreamIdleTimeout         int64               `json:"stream_idle_timeout"`
-	HeaderRules               HeaderRulesResponse `json:"header_rules"`
-	BufferedStream            bool                `json:"buffered_stream"`
-	BlacklistThreshold        int                 `json:"blacklist_threshold"`
-	AffinityEnabled           bool                `json:"affinity_enabled"`
-	ResponsesWebsocketEnabled bool                `json:"responses_websocket_enabled"`
+	FirstByteTimeout                      int64               `json:"first_byte_timeout"`
+	RequestTimeout                        int64               `json:"request_timeout"`
+	StreamIdleTimeout                     int64               `json:"stream_idle_timeout"`
+	HeaderRules                           HeaderRulesResponse `json:"header_rules"`
+	BufferedStream                        bool                `json:"buffered_stream"`
+	BlacklistThreshold                    int                 `json:"blacklist_threshold"`
+	AffinityEnabled                       bool                `json:"affinity_enabled"`
+	ResponsesWebsocketEnabled             bool                `json:"responses_websocket_enabled"`
+	ResponsesReasoningStatusFilterEnabled bool                `json:"responses_reasoning_status_filter_enabled"`
 }
 
 // GroupSummaryResponse contains the group fields required by the detail page header.
@@ -89,10 +90,11 @@ func effectiveGroupConfig(
 			Set:    set,
 			Remove: append([]string{}, resolved.HeaderRules.Remove...),
 		},
-		BufferedStream:            resolved.BufferedStream,
-		BlacklistThreshold:        resolved.BlacklistThreshold,
-		AffinityEnabled:           resolved.AffinityEnabled,
-		ResponsesWebsocketEnabled: resolved.ResponsesWebsocketEnabled,
+		BufferedStream:                        resolved.BufferedStream,
+		BlacklistThreshold:                    resolved.BlacklistThreshold,
+		AffinityEnabled:                       resolved.AffinityEnabled,
+		ResponsesWebsocketEnabled:             resolved.ResponsesWebsocketEnabled,
+		ResponsesReasoningStatusFilterEnabled: resolved.ResponsesReasoningStatusFilterEnabled,
 	}, nil
 }
 

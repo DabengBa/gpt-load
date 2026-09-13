@@ -34,7 +34,8 @@ func TestGetGroupSettingsReturnsPersistedDraftOverridesAndEffectiveConfig(t *tes
 		"request_timeout":480,
 		"stream_idle_timeout":270,
 		"header_rules":{"set":{"X-Group":"value"},"remove":["X-Removed"]},
-		"affinity_enabled":false
+		"affinity_enabled":false,
+		"responses_reasoning_status_filter_enabled":true
 	}`)
 	if err := fixture.db.Create(group).Error; err != nil {
 		t.Fatal(err)
@@ -58,6 +59,7 @@ func TestGetGroupSettingsReturnsPersistedDraftOverridesAndEffectiveConfig(t *tes
 		state.SettingStreamIdleTimeout,
 		state.SettingHeaderRules,
 		state.SettingAffinityEnabled,
+		state.SettingResponsesReasoningStatusFilterEnabled,
 	} {
 		if got.Overrides[key] == nil {
 			t.Fatalf("overrides missing %q: %#v", key, got.Overrides)
@@ -66,9 +68,32 @@ func TestGetGroupSettingsReturnsPersistedDraftOverridesAndEffectiveConfig(t *tes
 	if got.Effective.FirstByteTimeout != 180 ||
 		got.Effective.RequestTimeout != 480 || got.Effective.StreamIdleTimeout != 270 ||
 		got.Effective.AffinityEnabled ||
+		!got.Effective.ResponsesReasoningStatusFilterEnabled ||
 		!reflect.DeepEqual(got.Effective.HeaderRules.Set, map[string]string{"X-Group": "value"}) ||
 		!reflect.DeepEqual(got.Effective.HeaderRules.Remove, []string{"X-Removed"}) {
 		t.Fatalf("effective = %#v", got.Effective)
+	}
+}
+
+func TestUpdateGroupSettingsPublishesResponsesReasoningStatusFilter(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-reasoning-status-filter")
+
+	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingResponsesReasoningStatusFilterEnabled: true,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Effective.ResponsesReasoningStatusFilterEnabled ||
+		result.Overrides[state.SettingResponsesReasoningStatusFilterEnabled] != true {
+		t.Fatalf("settings response = %#v", result)
+	}
+	if !fixture.manager.Current().Groups[groupID].ResponsesReasoningStatusFilterEnabled {
+		t.Fatal("published group view did not enable reasoning status filtering")
 	}
 }
 

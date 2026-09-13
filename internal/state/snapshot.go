@@ -137,25 +137,26 @@ func (rules HeaderRules) ConfiguredNames() []string {
 }
 
 type GroupView struct {
-	PriceMultiplier           pricing.PriceMultiplier
-	ID                        uint
-	Name                      string
-	ChannelID                 channel.ID
-	ConnectionType            string
-	Params                    json.RawMessage
-	ResolvedTarget            channel.ResolvedTarget
-	ValidationModel           string
-	ClientProtocols           []protocol.Protocol
-	Models                    []ModelConfig
-	Timeouts                  TimeoutConfig
-	HeaderRules               HeaderRules
-	BufferedStream            bool
-	BlacklistThreshold        int
-	AffinityEnabled           bool
-	ResponsesWebsocketEnabled bool
-	Proxy                     outboundproxy.Effective
-	ParameterOverrides        parameteroverride.Rules
-	ModelBreakerByEntry       map[uint]map[string]*EntryCircuitBreaker
+	PriceMultiplier                       pricing.PriceMultiplier
+	ID                                    uint
+	Name                                  string
+	ChannelID                             channel.ID
+	ConnectionType                        string
+	Params                                json.RawMessage
+	ResolvedTarget                        channel.ResolvedTarget
+	ValidationModel                       string
+	ClientProtocols                       []protocol.Protocol
+	Models                                []ModelConfig
+	Timeouts                              TimeoutConfig
+	HeaderRules                           HeaderRules
+	BufferedStream                        bool
+	BlacklistThreshold                    int
+	AffinityEnabled                       bool
+	ResponsesWebsocketEnabled             bool
+	ResponsesReasoningStatusFilterEnabled bool
+	Proxy                                 outboundproxy.Effective
+	ParameterOverrides                    parameteroverride.Rules
+	ModelBreakerByEntry                   map[uint]map[string]*EntryCircuitBreaker
 }
 type GroupCatalogView struct {
 	ID      uint
@@ -233,21 +234,22 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			return nil, fmt.Errorf("compile group %d proxy: %w", group.ID, err)
 		}
 		view := GroupView{
-			PriceMultiplier:           resolvePriceMultiplier(group.PriceMultiplier),
-			ID:                        group.ID,
-			Name:                      group.Name,
-			ValidationModel:           strings.TrimSpace(group.ValidationModel),
-			Models:                    cloneModelConfigs(group.Models),
-			Timeouts:                  resolved.Timeouts,
-			HeaderRules:               resolved.HeaderRules,
-			BufferedStream:            resolved.BufferedStream,
-			BlacklistThreshold:        resolved.BlacklistThreshold,
-			AffinityEnabled:           resolved.AffinityEnabled,
-			ResponsesWebsocketEnabled: resolved.ResponsesWebsocketEnabled,
-			ConnectionType:            connection.Normalize(group.ConnectionType),
-			Proxy:                     groupProxy,
-			ParameterOverrides:        resolved.ParameterOverrides,
-			ModelBreakerByEntry:       make(map[uint]map[string]*EntryCircuitBreaker),
+			PriceMultiplier:                       resolvePriceMultiplier(group.PriceMultiplier),
+			ID:                                    group.ID,
+			Name:                                  group.Name,
+			ValidationModel:                       strings.TrimSpace(group.ValidationModel),
+			Models:                                cloneModelConfigs(group.Models),
+			Timeouts:                              resolved.Timeouts,
+			HeaderRules:                           resolved.HeaderRules,
+			BufferedStream:                        resolved.BufferedStream,
+			BlacklistThreshold:                    resolved.BlacklistThreshold,
+			AffinityEnabled:                       resolved.AffinityEnabled,
+			ResponsesWebsocketEnabled:             resolved.ResponsesWebsocketEnabled,
+			ResponsesReasoningStatusFilterEnabled: resolved.ResponsesReasoningStatusFilterEnabled,
+			ConnectionType:                        connection.Normalize(group.ConnectionType),
+			Proxy:                                 groupProxy,
+			ParameterOverrides:                    resolved.ParameterOverrides,
+			ModelBreakerByEntry:                   make(map[uint]map[string]*EntryCircuitBreaker),
 		}
 		for _, model := range group.Models {
 			if model.CircuitBreaker == nil {
