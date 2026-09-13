@@ -69,33 +69,6 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 	}
 
 	if attempt.Evidence == nil {
-		if attempt.DispatchState == execution.DispatchMaybeSent &&
-			attempt.statusCode() == http.StatusUnauthorized {
-			result := decision(
-				FailureCategoryInvalidKey,
-				execution.ErrorOriginUpstream,
-				execution.ErrorScopeCredential,
-				RetryNextCandidate,
-				EffectRecordCredentialFailure,
-				"auth.invalid_credential",
-			)
-			result = constrainOperationReplay(result, attempt, decisionContext)
-			return constrainCommittedDecision(result, attempt)
-		}
-		if attempt.DispatchState == execution.DispatchMaybeSent &&
-			attempt.statusCode() != http.StatusTooManyRequests &&
-			isProviderClientStatus(attempt.statusCode()) {
-			result := decision(
-				FailureCategoryClientError,
-				execution.ErrorOriginUpstream,
-				execution.ErrorScopeRequest,
-				RetryNextCandidate,
-				EffectNone,
-				"upstream.http_4xx_rejected_before_processing",
-			)
-			result = constrainOperationReplay(result, attempt, decisionContext)
-			return constrainCommittedDecision(result, attempt)
-		}
 		if attempt.DispatchState.Valid() && isSuccessStatus(attempt.StatusCode) {
 			return decision(
 				FailureCategoryOK,
@@ -143,13 +116,6 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 			EffectNone,
 			"safety.execution_canceled",
 		)
-	}
-	if attempt.DispatchState == execution.DispatchMaybeSent && isProviderClientStatus(attempt.statusCode()) {
-		// The provider HTTP contract classifies every actual 4xx as rejected
-		// before processing, including unknown or bodyless evidence.
-		evidence := attempt.Evidence.Clone()
-		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
-		attempt.Evidence = &evidence
 	}
 	if attempt.DispatchState == execution.DispatchNotSent {
 		if result, ok := candidatePreparationDecision(attempt.Evidence); ok {
@@ -505,7 +471,7 @@ func decisionForExecutionCategory(
 			"conversion.unsupported",
 		)
 	case FailureCategoryClientError:
-		if isProviderClientStatus(attempt.statusCode()) && attempt.DispatchState == execution.DispatchMaybeSent {
+		if attempt.Evidence.ReplaySafety == execution.ReplaySafetyRejectedBeforeProcessing {
 			return decision(
 				category,
 				origin,
@@ -528,10 +494,6 @@ func decisionForExecutionCategory(
 	default:
 		return decision(category, origin, scope, RetryNone, EffectNone, ambiguousRuleID(attempt.Evidence))
 	}
-}
-
-func isProviderClientStatus(statusCode int) bool {
-	return statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError
 }
 
 func transientCapacityDecision(attempt ExecutionAttempt) (Decision, bool) {
@@ -627,11 +589,6 @@ func constrainOperationReplay(
 		decisionContext.Operation.ReplayPolicy() != execution.ReplayPolicyRequireRejectedBeforeProcessing {
 		return result
 	}
-	if attempt.DispatchState == execution.DispatchMaybeSent && isProviderClientStatus(attempt.statusCode()) {
-		// The provider HTTP contract treats every actual 4xx response, including
-		// bodyless responses, as rejected before processing for replay policy.
-		return result
-	}
 	if attempt.Evidence != nil &&
 		attempt.Evidence.ReplaySafety == execution.ReplaySafetyRejectedBeforeProcessing {
 		return result
@@ -705,7 +662,7 @@ func rateLimitDecision(attempt ExecutionAttempt, decisionContext DecisionContext
 			FailureCategoryRateLimited,
 			originForEvidence(attempt.Evidence),
 			scope,
-			RetryNextCandidate,
+			RetryNone,
 			EffectNone,
 			"rate_limit.scoped",
 		)
@@ -800,7 +757,7 @@ func constrainCommittedDecision(result Decision, attempt ExecutionAttempt) Decis
 	result.Retry = RetryNone
 	switch result.Effect {
 	case EffectCooldownCredential, EffectRecordCredentialFailure:
-		if !trustedCommittedCredentialEffect(result, attempt) {
+		if !trustedCommittedCredentialEffect(result, attempt.Evidence) {
 			result.Effect = EffectNone
 			result.CooldownUntil = time.Time{}
 		}
@@ -818,21 +775,16 @@ func constrainCommittedDecision(result Decision, attempt ExecutionAttempt) Decis
 
 func trustedCommittedCredentialEffect(
 	result Decision,
-	attempt ExecutionAttempt,
+	evidence *execution.ErrorEvidence,
 ) bool {
-	if result.Scope != execution.ErrorScopeCredential {
+	if evidence == nil || result.Scope != execution.ErrorScopeCredential {
 		return false
 	}
-	if attempt.Evidence == nil {
-		return result.Effect == EffectRecordCredentialFailure &&
-			result.Category == FailureCategoryInvalidKey &&
-			attempt.statusCode() == http.StatusUnauthorized
-	}
-	if attempt.Evidence.ScopeHint == execution.ErrorScopeCredential {
+	if evidence.ScopeHint == execution.ErrorScopeCredential {
 		return true
 	}
 	return result.Effect == EffectRecordCredentialFailure &&
-		attempt.Evidence.Hint == execution.FailureHintInvalidCredential
+		evidence.Hint == execution.FailureHintInvalidCredential
 }
 
 func retryUnlessExplicitlyUnknown(evidence *execution.ErrorEvidence) RetryDirective {

@@ -291,7 +291,7 @@ export default {
         },
       },
       reasoningEffort: {
-        title: '上游モデル別 Reasoning effort',
+        title: '上流モデル別 Reasoning effort',
         description:
           'この Group と上流モデルに対してのみ、既存の reasoning effort を置き換えます。',
         empty: 'モデル別の reasoning effort 上書きはありません。',

@@ -33,10 +33,10 @@ func TestJudgeExecutionSwitchesCandidateOnTransientUpstreamStatusBeforeRelease(t
 			wantEffect: EffectSkipGroup,
 		},
 		{
-			name:       "request timeout retries as provider 4xx",
+			name:       "request timeout preserves buffered retry rule",
 			status:     http.StatusRequestTimeout,
 			scope:      execution.ErrorScopeRequest,
-			wantRule:   "upstream.http_4xx_rejected_before_processing",
+			wantRule:   "buffered_stream.retry_before_release_upstream_status",
 			wantEffect: EffectNone,
 		},
 		{
@@ -172,13 +172,13 @@ func TestJudgeExecutionRetriesBufferedStreamOnSuccessStatusWithoutPayload(t *tes
 		t.Fatalf("released payload JudgeExecution() = %#v, want no retry", decision)
 	}
 
-	// Provider 4xx with no released payload also switches candidate.
+	// Provider 4xx with no released payload remains final without replay proof.
 	attempt = base
 	attempt.StatusCode = http.StatusNotFound
 	attempt.Evidence.StatusCode = http.StatusNotFound
 	attempt.Evidence.Hint = ""
 	decision = JudgeExecution(attempt, DecisionContext{BufferedReplayEligible: true})
-	if decision.Retry != RetryNextCandidate || decision.Effect != EffectNone {
-		t.Fatalf("client error JudgeExecution() = %#v, want request-only retry", decision)
+	if decision.Retry != RetryNone || decision.Effect != EffectNone {
+		t.Fatalf("client error JudgeExecution() = %#v, want no retry", decision)
 	}
 }

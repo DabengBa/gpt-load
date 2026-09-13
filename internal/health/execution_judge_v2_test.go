@@ -130,29 +130,6 @@ func TestEmbeddingsExecutionJudgePreservesUnifiedHealthAndReplayRules(t *testing
 	}
 }
 
-func TestJudgeExecutionBodylessUnauthorizedRetainsCredentialEffectAfterCommit(t *testing.T) {
-	for name, attempt := range map[string]ExecutionAttempt{
-		"payload released": {
-			DispatchState:   execution.DispatchMaybeSent,
-			StatusCode:      http.StatusUnauthorized,
-			PayloadReleased: true,
-		},
-		"downstream committed": {
-			DispatchState:       execution.DispatchMaybeSent,
-			StatusCode:          http.StatusUnauthorized,
-			DownstreamCommitted: true,
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			decision := JudgeExecution(attempt, DecisionContext{})
-			if decision.Retry != RetryNone || decision.Effect != EffectRecordCredentialFailure ||
-				decision.Scope != execution.ErrorScopeCredential || decision.RuleID != "safety.committed" {
-				t.Fatalf("decision = %#v, want committed credential failure", decision)
-			}
-		})
-	}
-}
-
 func TestJudgeExecutionCommittedKeepsOnlyTrustedCredentialEffect(t *testing.T) {
 	now := time.Date(2026, time.August, 24, 8, 0, 0, 0, time.UTC)
 	context := DecisionContext{DefaultRateLimitCooldown: time.Minute}
@@ -211,7 +188,7 @@ func TestJudgeExecutionCommittedKeepsOnlyTrustedCredentialEffect(t *testing.T) {
 	}
 }
 
-func TestJudgeExecutionRetriesScopedRateLimitWithoutCredentialEffects(t *testing.T) {
+func TestJudgeExecutionDoesNotRotateScopedRateLimitWithoutReplayProof(t *testing.T) {
 	for _, scope := range []execution.ErrorScope{
 		execution.ErrorScopeRequest,
 		execution.ErrorScopeModel,
@@ -228,7 +205,7 @@ func TestJudgeExecutionRetriesScopedRateLimitWithoutCredentialEffects(t *testing
 					Summary:    "scoped rate limit",
 				},
 			}, DecisionContext{})
-			if decision.Scope != scope || decision.Retry != RetryNextCandidate || decision.Effect != EffectNone {
+			if decision.Scope != scope || decision.Retry != RetryNone || decision.Effect != EffectNone {
 				t.Fatalf("JudgeExecution() = %#v", decision)
 			}
 			if err := decision.Validate(); err != nil {
@@ -311,7 +288,7 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 		wantRule  RuleID
 	}{
 		{
-			name: "generic payment required retries",
+			name: "generic payment required terminates",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusPaymentRequired,
@@ -320,8 +297,8 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 					Summary: "billing disabled",
 				},
 			},
-			wantRetry: RetryNextCandidate,
-			wantRule:  RuleID("upstream.http_4xx_rejected_before_processing"),
+			wantRetry: RetryNone,
+			wantRule:  RuleID("fallback.http_client_error"),
 		},
 		{
 			name: "candidate payment required retries",
@@ -338,7 +315,7 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 			wantRule:  RuleID("candidate.unavailable"),
 		},
 		{
-			name: "provider unauthorized retries despite unknown replay safety",
+			name: "provider unauthorized preserves replay boundary",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusUnauthorized,
@@ -347,8 +324,8 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 					ReplaySafety: execution.ReplaySafetyUnknown, Summary: "authorization failed",
 				},
 			},
-			wantRetry: RetryNextCandidate,
-			wantRule:  RuleID("auth.invalid_credential"),
+			wantRetry: RetryNone,
+			wantRule:  RuleID("safety.replay_unknown"),
 		},
 		{
 			name: "read only host error retries",
@@ -500,48 +477,6 @@ func TestJudgeExecutionDoesNotBroadenBootstrapCapacityRetry(t *testing.T) {
 	}
 }
 
-func TestJudgeExecutionProvider4xxOverridesUnknownReplaySafety(t *testing.T) {
-	tests := []struct {
-		name     string
-		status   int
-		evidence execution.ErrorEvidence
-		wantRule RuleID
-	}{
-		{
-			name:   "request scoped rate limit",
-			status: http.StatusTooManyRequests,
-			evidence: execution.ErrorEvidence{
-				Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintRateLimited,
-				ScopeHint: execution.ErrorScopeRequest, StatusCode: http.StatusTooManyRequests,
-				ReplaySafety: execution.ReplaySafetyUnknown, Summary: "request rate limited",
-			},
-			wantRule: "rate_limit.scoped",
-		},
-		{
-			name:   "generic client error",
-			status: http.StatusForbidden,
-			evidence: execution.ErrorEvidence{
-				Kind: execution.ErrorKindHTTP, StatusCode: http.StatusForbidden,
-				ReplaySafety: execution.ReplaySafetyUnknown, Summary: "permission denied",
-			},
-			wantRule: "upstream.http_4xx_rejected_before_processing",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			decision := JudgeExecution(ExecutionAttempt{
-				DispatchState: execution.DispatchMaybeSent,
-				StatusCode:    test.status,
-				Evidence:      &test.evidence,
-			}, DecisionContext{})
-			if decision.Retry != RetryNextCandidate || decision.RuleID != test.wantRule {
-				t.Fatalf("JudgeExecution() = %#v, want rule %q", decision, test.wantRule)
-			}
-		})
-	}
-}
-
 func TestJudgeExecutionStableFallbackRuleMatrix(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -586,7 +521,7 @@ func TestJudgeExecutionStableFallbackRuleMatrix(t *testing.T) {
 			want: "transport.outcome_unknown",
 		},
 		{
-			name: "authentication 4xx is rejected before processing",
+			name: "authentication replay unsafe",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusUnauthorized,
@@ -596,7 +531,7 @@ func TestJudgeExecutionStableFallbackRuleMatrix(t *testing.T) {
 					Summary: "authentication failed",
 				},
 			},
-			want: "auth.refresh_required",
+			want: "auth.replay_unsafe",
 		},
 	}
 
@@ -627,43 +562,43 @@ func TestJudgeExecutionImagesRequireExplicitReplaySafety(t *testing.T) {
 		wantCooldown bool
 	}{
 		{
-			name:   "model unavailable provider 4xx advances",
+			name:   "model unavailable without rejection proof",
 			status: http.StatusNotFound,
 			evidence: execution.ErrorEvidence{
 				Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintModelUnavailable,
 				ScopeHint: execution.ErrorScopeModel, StatusCode: http.StatusNotFound,
 				Summary: "model unavailable",
 			},
-			wantRetry: RetryNextCandidate, wantEffect: EffectNone,
+			wantRetry: RetryNone, wantEffect: EffectNone,
 		},
 		{
-			name:   "candidate unavailable provider 4xx advances",
+			name:   "candidate unavailable without rejection proof",
 			status: http.StatusBadRequest,
 			evidence: execution.ErrorEvidence{
 				Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintCandidateUnavailable,
 				ScopeHint: execution.ErrorScopeModel, StatusCode: http.StatusBadRequest,
 				Summary: "operation unsupported",
 			},
-			wantRetry: RetryNextCandidate, wantEffect: EffectNone,
+			wantRetry: RetryNone, wantEffect: EffectNone,
 		},
 		{
-			name:   "rate limit provider 4xx advances",
+			name:   "rate limit without rejection proof",
 			status: http.StatusTooManyRequests,
 			evidence: execution.ErrorEvidence{
 				Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintRateLimited,
 				StatusCode: http.StatusTooManyRequests, Summary: "rate limited",
 			},
-			wantRetry: RetryNextCandidate, wantEffect: EffectCooldownCredential, wantCooldown: true,
+			wantRetry: RetryNone, wantEffect: EffectCooldownCredential, wantCooldown: true,
 		},
 		{
-			name:   "invalid credential provider 4xx advances",
+			name:   "invalid credential without rejection proof",
 			status: http.StatusUnauthorized,
 			evidence: execution.ErrorEvidence{
 				Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintInvalidCredential,
 				ScopeHint: execution.ErrorScopeCredential, StatusCode: http.StatusUnauthorized,
 				Summary: "credential rejected",
 			},
-			wantRetry: RetryNextCandidate, wantEffect: EffectRecordCredentialFailure,
+			wantRetry: RetryNone, wantEffect: EffectRecordCredentialFailure,
 		},
 		{
 			name:   "explicit pre-processing rejection may advance",
@@ -761,7 +696,7 @@ func TestJudgeExecutionCompatibilityRuleMatrix(t *testing.T) {
 				Summary: "permission denied",
 			},
 			category: FailureCategoryClientError, scope: execution.ErrorScopeRequest,
-			retry: RetryNextCandidate, effect: EffectNone, ruleID: "upstream.http_4xx_rejected_before_processing",
+			retry: RetryNone, effect: EffectNone, ruleID: "fallback.http_client_error",
 		},
 		{
 			name: "candidate scoped 403", status: http.StatusForbidden,
@@ -782,7 +717,7 @@ func TestJudgeExecutionCompatibilityRuleMatrix(t *testing.T) {
 				Summary: "request credits unavailable",
 			},
 			category: FailureCategoryClientError, scope: execution.ErrorScopeRequest,
-			retry: RetryNextCandidate, effect: EffectNone, ruleID: "upstream.http_4xx_rejected_before_processing",
+			retry: RetryNone, effect: EffectNone, ruleID: "fallback.http_client_error",
 		},
 		{
 			name: "model unavailable retains credential cooldown", status: http.StatusNotFound,

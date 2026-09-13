@@ -168,6 +168,12 @@ func TestHandlerRetriesProvider4xxWithCandidateReasoningEffortOverrides(t *testi
 			StatusCode:     http.StatusBadRequest,
 			Header:         make(http.Header),
 			RequestWritten: true,
+			ExecutionError: &execution.ErrorEvidence{
+				Kind:         execution.ErrorKindHTTP,
+				StatusCode:   http.StatusBadRequest,
+				ReplaySafety: execution.ReplaySafetyRejectedBeforeProcessing,
+				Summary:      "rejected before processing",
+			},
 		},
 		successScriptedResult(),
 	}}

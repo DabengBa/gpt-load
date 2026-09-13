@@ -1101,7 +1101,7 @@ func TestHandlerRecordsInvalidKeyPerAttempt(t *testing.T) {
 	}
 }
 
-func TestHandlerRetriesRequestRejected429WithoutCredentialPenalty(t *testing.T) {
+func TestHandlerDoesNotRotateOrPenalizeRequestRejected429(t *testing.T) {
 	now := time.Date(2026, time.August, 16, 12, 0, 0, 0, time.UTC)
 	forwarder := &scriptedForwarder{results: []UpstreamResult{
 		{
@@ -1134,8 +1134,8 @@ func TestHandlerRetriesRequestRejected429WithoutCredentialPenalty(t *testing.T) 
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusOK || len(forwarder.inputs) != 2 {
-		t.Fatalf("response/attempts = %d/%d, want 200/2; body=%s", recorder.Code, len(forwarder.inputs), recorder.Body.String())
+	if recorder.Code != http.StatusTooManyRequests || len(forwarder.inputs) != 1 {
+		t.Fatalf("response/attempts = %d/%d, want 429/1; body=%s", recorder.Code, len(forwarder.inputs), recorder.Body.String())
 	}
 	if recording.cooldownCalls != 0 || recording.incrFailureCalls != 0 || recording.blacklistCalls != 0 {
 		t.Fatalf("credential mutations = cooldown:%d failure:%d blacklist:%d, want none",
@@ -1143,9 +1143,6 @@ func TestHandlerRetriesRequestRejected429WithoutCredentialPenalty(t *testing.T) 
 	}
 	if got := stats.Snapshot(1, now); got != (health.CredentialStats{}) {
 		t.Fatalf("request-rejected credential stats = %#v, want empty", got)
-	}
-	if got := stats.Snapshot(2, now); got != (health.CredentialStats{Success: 1}) {
-		t.Fatalf("retry credential stats = %#v, want success", got)
 	}
 }
 
@@ -1570,16 +1567,14 @@ func TestHandlerRejectsCaseCollidingModelBeforeAttempt(t *testing.T) {
 	}
 }
 
-func TestHandlerRejectsUltrafastServiceTierBeforeAttempt(t *testing.T) {
+func TestHandlerRejectsNonCanonicalServiceTierFieldsBeforeAttempt(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		path string
 		body string
 	}{
-		{name: "chat completions", path: "/v1/chat/completions", body: `{"model":"gpt-4o","service_tier":"ultrafast"}`},
 		{name: "chat completions uppercase", path: "/v1/chat/completions", body: `{"model":"gpt-4o","SERVICE_TIER":"ultrafast"}`},
 		{name: "chat completions collision", path: "/v1/chat/completions", body: `{"model":"gpt-4o","service_tier":"default","SERVICE_TIER":"ultrafast"}`},
-		{name: "responses", path: "/v1/responses", body: `{"model":"gpt-4o","service_tier":"ultrafast"}`},
 		{name: "responses uppercase", path: "/v1/responses", body: `{"model":"gpt-4o","SERVICE_TIER":"ultrafast"}`},
 		{name: "responses collision", path: "/v1/responses", body: `{"model":"gpt-4o","service_tier":"default","SERVICE_TIER":"ultrafast"}`},
 	} {
@@ -3293,7 +3288,7 @@ func TestHandlerUsesClassifierForStreamingNonSuccess(t *testing.T) {
 }
 
 func TestHandlerUsesClassifierForNonStreamingNonSuccess(t *testing.T) {
-	t.Run("client error advances to the next candidate", func(t *testing.T) {
+	t.Run("client error terminates after one attempt", func(t *testing.T) {
 		forwarder := &scriptedForwarder{results: []UpstreamResult{
 			{StatusCode: http.StatusBadRequest, Header: make(http.Header),
 				Body:               []byte(`{"error":"invalid input"}`),
@@ -3306,8 +3301,8 @@ func TestHandlerUsesClassifierForNonStreamingNonSuccess(t *testing.T) {
 		request.Header.Set("Authorization", "Bearer gl-client")
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusOK || len(forwarder.inputs) != 2 {
-			t.Fatalf("status/attempts = %d/%d, want 200/2", recorder.Code, len(forwarder.inputs))
+		if recorder.Code != http.StatusBadRequest || len(forwarder.inputs) != 1 {
+			t.Fatalf("status/attempts = %d/%d, want 400/1", recorder.Code, len(forwarder.inputs))
 		}
 	})
 
@@ -3417,7 +3412,7 @@ func TestHandlerRetriesAnotherGroupAfterLocalConversionFailure(t *testing.T) {
 		}
 	})
 
-	t.Run("upstream unsupported model 400 advances then preserves the final response", func(t *testing.T) {
+	t.Run("upstream unsupported model 400 is passed through once", func(t *testing.T) {
 		forwarder := &scriptedForwarder{results: []UpstreamResult{{
 			StatusCode:      http.StatusBadRequest,
 			Header:          http.Header{"Content-Type": {"application/json"}},
@@ -3441,11 +3436,8 @@ func TestHandlerRetriesAnotherGroupAfterLocalConversionFailure(t *testing.T) {
 		request.Header.Set("Authorization", "Bearer gl-client")
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusBadRequest || recorder.Body.String() != `{"error":{"code":"unsupported_model"}}` || len(forwarder.inputs) != 2 {
+		if recorder.Code != http.StatusBadRequest || recorder.Body.String() != `{"error":{"code":"unsupported_model"}}` || len(forwarder.inputs) != 1 {
 			t.Fatalf("response/attempts = %d %s / %d", recorder.Code, recorder.Body.String(), len(forwarder.inputs))
-		}
-		if forwarder.inputs[0].Group.ID == forwarder.inputs[1].Group.ID {
-			t.Fatalf("attempts stayed in group %d", forwarder.inputs[0].Group.ID)
 		}
 		if after := registry.Snapshot(); !reflect.DeepEqual(after, before) {
 			t.Fatalf("credential health changed: before=%#v after=%#v", before, after)

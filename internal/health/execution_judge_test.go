@@ -128,7 +128,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			},
 		},
 		{
-			name: "request-scoped 429 retries without credential penalty",
+			name: "request-scoped 429 terminates without credential penalty",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusTooManyRequests,
@@ -141,7 +141,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 					Summary:    "usage credits are required for fast mode",
 				},
 			},
-			want: Result{Category: FailureCategoryClientError, Action: ActionRetry},
+			want: Result{Category: FailureCategoryClientError, Action: ActionTerminate},
 		},
 		{
 			name: "candidate rejection retries without credential penalty",
@@ -213,7 +213,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 					ReplaySafety: execution.ReplaySafetyUnknown,
 				},
 			},
-			want: Result{Category: FailureCategoryInvalidKey, Action: ActionFailCredential},
+			want: Result{Category: FailureCategoryAmbiguous, Action: ActionTerminate},
 		},
 		{
 			name: "payment required is a client error",
@@ -222,7 +222,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 				StatusCode:    http.StatusPaymentRequired,
 				Evidence:      evidence(execution.ErrorKindHTTP, http.StatusPaymentRequired, "billing disabled"),
 			},
-			want: Result{Category: FailureCategoryClientError, Action: ActionRetry},
+			want: Result{Category: FailureCategoryClientError, Action: ActionTerminate},
 		},
 		{
 			name: "generic forbidden is a client error",
@@ -231,7 +231,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 				StatusCode:    http.StatusForbidden,
 				Evidence:      evidence(execution.ErrorKindHTTP, http.StatusForbidden, "permission denied"),
 			},
-			want: Result{Category: FailureCategoryClientError, Action: ActionRetry},
+			want: Result{Category: FailureCategoryClientError, Action: ActionTerminate},
 		},
 		{
 			name: "forbidden model marker cools credential",
@@ -297,7 +297,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 					Summary:    "authorization expired",
 				},
 			},
-			want: Result{Category: FailureCategoryAuthenticationRequired, Action: ActionRetry},
+			want: Result{Category: FailureCategoryAuthenticationRequired, Action: ActionTerminate},
 		},
 		{
 			name: "model not found cools credential",
@@ -319,13 +319,13 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			},
 		},
 		{
-			name: "generic not found retries",
+			name: "generic not found terminates",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusNotFound,
 				Evidence:      evidence(execution.ErrorKindHTTP, http.StatusNotFound, "endpoint not found"),
 			},
-			want: Result{Category: FailureCategoryClientError, Action: ActionRetry},
+			want: Result{Category: FailureCategoryClientError, Action: ActionTerminate},
 		},
 		{
 			name: "provider rate limit under success status still cools credential",
@@ -375,7 +375,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			want: Result{Category: FailureCategoryConversionUnsupported, Action: ActionSkipGroup},
 		},
 		{
-			name: "structured unsupported model 400 retries candidate",
+			name: "structured unsupported model 400 is a client error",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusBadRequest,
@@ -387,7 +387,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 					Summary:    "request capability is unavailable",
 				},
 			},
-			want: Result{Category: FailureCategoryClientError, Action: ActionRetry},
+			want: Result{Category: FailureCategoryClientError, Action: ActionTerminate},
 		},
 		{
 			name: "clean success terminates",
