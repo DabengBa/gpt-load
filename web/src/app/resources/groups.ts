@@ -22,6 +22,7 @@ import type {
   ParameterJSONValue,
   ParameterOverrideMatchDto,
   ParameterOverrideRuleDto,
+  ReasoningEffortOverrideDto,
   ProxyConfigInput,
   ProxyMutation,
 } from '@/api/control/types'
@@ -125,7 +126,20 @@ const runtimeSettingFields = [
   'responses_websocket_enabled',
   'responses_reasoning_status_filter_enabled',
 ] as const
-const groupRuntimeSettingFields = [...runtimeSettingFields, 'parameter_overrides'] as const
+const reasoningEffortOverrideValues = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const
+const groupRuntimeSettingFields = [
+  ...runtimeSettingFields,
+  'parameter_overrides',
+  'reasoning_effort_overrides',
+] as const
 
 export interface HeaderRulesDto {
   set: Record<string, string>
@@ -143,6 +157,7 @@ export interface GroupRuntimeConfigDto {
   responses_websocket_enabled?: boolean
   responses_reasoning_status_filter_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
+  reasoning_effort_overrides?: Record<string, ReasoningEffortOverrideDto>
 }
 
 export interface GroupEffectiveConfigDto {
@@ -359,6 +374,19 @@ function projectParameterOverrides(value: unknown): ParameterOverrideRuleDto[] {
   return projectArray(value, projectParameterOverrideRule)
 }
 
+function projectReasoningEffortOverrides(
+  value: unknown,
+): Record<string, ReasoningEffortOverrideDto> {
+  const record = projectRecord(value)
+  const result: Record<string, ReasoningEffortOverrideDto> = {}
+  for (const [model, effort] of Object.entries(record)) {
+    if (model.trim().length === 0 || model !== model.trim()) throw new InvalidResponseError()
+    result[model] = projectEnum(effort, reasoningEffortOverrideValues) as ReasoningEffortOverrideDto
+  }
+  if (Object.keys(result).length === 0) throw new InvalidResponseError()
+  return result
+}
+
 function projectRuntimeConfig(value: unknown, complete: false): GroupRuntimeConfigDto
 function projectRuntimeConfig(value: unknown, complete: true): GroupEffectiveConfigDto
 function projectRuntimeConfig(
@@ -399,6 +427,11 @@ function projectRuntimeConfig(
   }
   if (!complete && Object.prototype.hasOwnProperty.call(record, 'parameter_overrides')) {
     result.parameter_overrides = projectParameterOverrides(record.parameter_overrides)
+  }
+  if (!complete && Object.prototype.hasOwnProperty.call(record, 'reasoning_effort_overrides')) {
+    result.reasoning_effort_overrides = projectReasoningEffortOverrides(
+      record.reasoning_effort_overrides,
+    )
   }
   return result as GroupRuntimeConfigDto | GroupEffectiveConfigDto
 }

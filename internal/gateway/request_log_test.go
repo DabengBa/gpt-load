@@ -1352,6 +1352,152 @@ func TestHandlerUsesParameterOverrideAttemptObservations(t *testing.T) {
 	}
 }
 
+func TestHandlerUsesGroupReasoningEffortOverrideAttemptObservations(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{{
+		StatusCode: http.StatusOK, Header: make(http.Header), RequestWritten: true,
+	}}}
+	sink := &recordingRequestLogSink{}
+	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(
+		t, forwarder, &recordingAccessKeyRPMLimiter{}, sink, "sk-first",
+	)
+	if _, err := manager.Publish(state.CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{{
+			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+			Settings: config.Settings{state.SettingReasoningEffortOverrides: map[string]any{
+				"gpt-4o": "low",
+			}},
+		}},
+		Credentials: []state.CredentialConfig{{
+			ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
+		}},
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 1, Name: "client", KeyHash: handler.encryption.Hash("gl-client"),
+			Status: state.AccessKeyStatusActive,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","reasoning_effort":"high"}`),
+	)
+	request.Header.Set("Authorization", "Bearer gl-client")
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+
+	if len(forwarder.inputs) != 1 {
+		t.Fatalf("forward inputs = %#v", forwarder.inputs)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(forwarder.inputs[0].Request.Body, &body); err != nil {
+		t.Fatalf("decode forwarded body: %v", err)
+	}
+	if body["reasoning_effort"] != "low" {
+		t.Fatalf("forwarded body = %#v", body)
+	}
+	events := sink.snapshot()
+	if len(events) != 1 || events[0].Reasoning.Effort != "low" {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
+func TestHandlerDoesNotReplaceParameterInjectedReasoningEffort(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{{
+		StatusCode: http.StatusOK, Header: make(http.Header), RequestWritten: true,
+	}}}
+	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(
+		t, forwarder, &recordingAccessKeyRPMLimiter{}, &recordingRequestLogSink{}, "sk-first",
+	)
+	if _, err := manager.Publish(state.CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{{
+			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+			Settings: config.Settings{
+				state.SettingParameterOverrides: []any{map[string]any{
+					"set": map[string]any{"reasoning_effort": "medium"},
+				}},
+				state.SettingReasoningEffortOverrides: map[string]any{"gpt-4o": "low"},
+			},
+		}},
+		Credentials: []state.CredentialConfig{{
+			ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
+		}},
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 1, Name: "client", KeyHash: handler.encryption.Hash("gl-client"),
+			Status: state.AccessKeyStatusActive,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o"}`),
+	)
+	request.Header.Set("Authorization", "Bearer gl-client")
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+
+	if len(forwarder.inputs) != 1 {
+		t.Fatalf("forward inputs = %#v", forwarder.inputs)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(forwarder.inputs[0].Request.Body, &body); err != nil {
+		t.Fatalf("decode forwarded body: %v", err)
+	}
+	if body["reasoning_effort"] != "medium" {
+		t.Fatalf("forwarded body = %#v, want parameter override effort", body)
+	}
+}
+
+func TestHandlerDoesNotReplaceReasoningEffortForUnsupportedOperation(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{{
+		StatusCode: http.StatusOK, Header: make(http.Header), RequestWritten: true,
+	}}}
+	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(
+		t, forwarder, &recordingAccessKeyRPMLimiter{}, &recordingRequestLogSink{}, "sk-first",
+	)
+	if _, err := manager.Publish(state.CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{{
+			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+			Settings: config.Settings{state.SettingReasoningEffortOverrides: map[string]any{
+				"gpt-4o": "low",
+			}},
+		}},
+		Credentials: []state.CredentialConfig{{
+			ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
+		}},
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 1, Name: "client", KeyHash: handler.encryption.Hash("gl-client"),
+			Status: state.AccessKeyStatusActive,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	handler.dialects = dialect.NewSet(dialect.NewOpenAIResponses())
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/responses/input_tokens",
+		strings.NewReader(`{"model":"gpt-4o","reasoning":{"effort":"high"},"input":[]}`),
+	)
+	request.Header.Set("Authorization", "Bearer gl-client")
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+
+	if len(forwarder.inputs) != 1 {
+		t.Fatalf("forward inputs = %#v", forwarder.inputs)
+	}
+	if got := string(forwarder.inputs[0].Request.Body); got != `{"model":"gpt-4o","reasoning":{"effort":"high"},"input":[]}` {
+		t.Fatalf("forwarded body = %s, want original reasoning effort", got)
+	}
+}
+
 func TestHandlerUsesClientRequestPricingMode(t *testing.T) {
 	for _, test := range []struct {
 		name        string

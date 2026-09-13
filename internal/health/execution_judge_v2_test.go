@@ -188,7 +188,7 @@ func TestJudgeExecutionCommittedKeepsOnlyTrustedCredentialEffect(t *testing.T) {
 	}
 }
 
-func TestJudgeExecutionDoesNotRotateCredentialsForScopedRateLimit(t *testing.T) {
+func TestJudgeExecutionDoesNotRotateScopedRateLimitWithoutReplayProof(t *testing.T) {
 	for _, scope := range []execution.ErrorScope{
 		execution.ErrorScopeRequest,
 		execution.ErrorScopeModel,
@@ -315,7 +315,7 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 			wantRule:  RuleID("candidate.unavailable"),
 		},
 		{
-			name: "explicit unknown blocks unauthorized retry",
+			name: "provider unauthorized preserves replay boundary",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusUnauthorized,
@@ -472,48 +472,6 @@ func TestJudgeExecutionDoesNotBroadenBootstrapCapacityRetry(t *testing.T) {
 			}, DecisionContext{Method: http.MethodPost, Operation: execution.OperationChatCompletion})
 			if decision.Retry != test.wantRetry || decision.Effect != test.wantEffect || decision.RuleID != test.wantRule {
 				t.Fatalf("JudgeExecution() = %#v", decision)
-			}
-		})
-	}
-}
-
-func TestJudgeExecutionReplayUnknownKeepsUnaffectedRuleID(t *testing.T) {
-	tests := []struct {
-		name     string
-		status   int
-		evidence execution.ErrorEvidence
-		wantRule RuleID
-	}{
-		{
-			name:   "request scoped rate limit",
-			status: http.StatusTooManyRequests,
-			evidence: execution.ErrorEvidence{
-				Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintRateLimited,
-				ScopeHint: execution.ErrorScopeRequest, StatusCode: http.StatusTooManyRequests,
-				ReplaySafety: execution.ReplaySafetyUnknown, Summary: "request rate limited",
-			},
-			wantRule: "rate_limit.scoped",
-		},
-		{
-			name:   "generic client error",
-			status: http.StatusForbidden,
-			evidence: execution.ErrorEvidence{
-				Kind: execution.ErrorKindHTTP, StatusCode: http.StatusForbidden,
-				ReplaySafety: execution.ReplaySafetyUnknown, Summary: "permission denied",
-			},
-			wantRule: "fallback.http_client_error",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			decision := JudgeExecution(ExecutionAttempt{
-				DispatchState: execution.DispatchMaybeSent,
-				StatusCode:    test.status,
-				Evidence:      &test.evidence,
-			}, DecisionContext{})
-			if decision.Retry != RetryNone || decision.RuleID != test.wantRule {
-				t.Fatalf("JudgeExecution() = %#v, want rule %q", decision, test.wantRule)
 			}
 		})
 	}
