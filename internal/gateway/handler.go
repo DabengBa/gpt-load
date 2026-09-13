@@ -716,6 +716,13 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		recorder.completeCanceled(ginContext.Request.Context(), 0, -1)
 		return
 	}
+	recorder.setClientModel(model)
+	recorder.setOperation(metadata.Operation)
+	recorder.setStream(metadata.Stream)
+	recorder.setReasoning(metadata.Reasoning)
+	recorder.setUsageApplicable(metadata.ObserveUsage)
+	recorder.setPricingMode(metadata.PricingMode)
+	recorder.setUsageDiagnostics(metadata.UsageDiagnostics)
 	streamMode, streamRejectReason := evaluateStreamDelivery(
 		selectedRoute.Protocol,
 		metadata.Operation,
@@ -739,13 +746,6 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 	for _, ref := range capturedRefs {
 		allowedCredentialRefs[ref.ID] = ref
 	}
-	recorder.setClientModel(model)
-	recorder.setOperation(metadata.Operation)
-	recorder.setStream(metadata.Stream)
-	recorder.setReasoning(metadata.Reasoning)
-	recorder.setUsageApplicable(metadata.ObserveUsage)
-	recorder.setPricingMode(metadata.PricingMode)
-	recorder.setUsageDiagnostics(metadata.UsageDiagnostics)
 
 	allowedCredentialIDs := make(map[uint]struct{}, len(allowedCredentialRefs))
 	for credentialID := range allowedCredentialRefs {

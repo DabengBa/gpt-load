@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -199,4 +200,37 @@ func TestBufferedStreamDispatchedSlowStreamHeartbeatsBeforeRelease(t *testing.T)
 	if body := writer.body(); !strings.Contains(body, `"content":"first"`) || !strings.Contains(body, "[DONE]") {
 		t.Fatalf("released body = %q", body)
 	}
+}
+
+func TestBufferedStreamCommitFailureDoesNotWaitForConsumedResult(t *testing.T) {
+	executor := fakeExecutionExecutor{stream: func(
+		_ context.Context,
+		_ execution.AttemptSpec,
+		_ execution.StreamSink,
+	) execution.StreamResult {
+		return execution.StreamResult{StatusCode: http.StatusOK, DispatchState: execution.DispatchMaybeSent, ResponseStarted: true}
+	}}
+	input := executionForwardInput()
+	input.BufferedStream = true
+	input.ClientProtocol = protocol.OpenAICompletions
+	writer := &bufferedStreamDeadlineFailureWriter{ResponseRecorder: httptest.NewRecorder()}
+	resultCh := make(chan UpstreamResult, 1)
+	go func() { resultCh <- NewExecutionForwarder(executor).ForwardStream(context.Background(), input, writer) }()
+
+	select {
+	case result := <-resultCh:
+		if result.Err == nil {
+			t.Fatalf("commit failure result = %#v, want error", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("buffered stream commit failure blocked after consuming the execution result")
+	}
+}
+
+type bufferedStreamDeadlineFailureWriter struct {
+	*httptest.ResponseRecorder
+}
+
+func (*bufferedStreamDeadlineFailureWriter) SetWriteDeadline(time.Time) error {
+	return errors.New("downstream deadline setup failed")
 }

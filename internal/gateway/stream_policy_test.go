@@ -302,6 +302,34 @@ func TestStreamPolicyMalformedStreamRemainsInvalidProtocolRequest(t *testing.T) 
 	}
 }
 
+func TestStreamPolicyRejectionRecordsParsedRequestMetadata(t *testing.T) {
+	forwarder := streamPolicyForwarder()
+	sink := &recordingRequestLogSink{}
+	engine, handler, _, _ := newRequestLogHandlerTestRuntime(
+		t, forwarder, &recordingAccessKeyRPMLimiter{}, sink, "sk-provider",
+	)
+	handler.dialects = dialect.NewSet(dialect.NewOpenAIResponses())
+
+	request := httptest.NewRequest(http.MethodGet, "/v1/responses/resp_policy_1/input_items?stream=true", nil)
+	request.Header.Set("Authorization", "Bearer gl-client")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest ||
+		!strings.Contains(recorder.Body.String(), `"code":"streaming_operation_unsupported"`) {
+		t.Fatalf("status/body = %d/%s", recorder.Code, recorder.Body.String())
+	}
+	events := sink.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("request log events = %#v, want one event", events)
+	}
+	event := events[0]
+	if event.Operation != execution.OperationResponsesInputItems || !event.Stream ||
+		event.StatusCode != http.StatusBadRequest || event.ErrorCode != "streaming_operation_unsupported" {
+		t.Fatalf("request log event = %#v", event)
+	}
+}
+
 // TestStreamPolicyWebsocketNeverEntersPolicy pins that an upgrade request to
 // the Responses endpoint is short-circuited by the WebSocket path and never
 // reaches the HTTP/SSE streaming delivery policy.

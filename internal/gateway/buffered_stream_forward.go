@@ -129,7 +129,9 @@ streamWait:
 				// not written after the downstream deadline has passed.
 				if streamCtx.Err() == nil {
 					if failure, committed := commitClient(); !committed {
-						return abort(failure)
+						// done was already consumed by this branch, so the executor
+						// is complete and there is nothing left to drain.
+						return failure
 					}
 				}
 			}
