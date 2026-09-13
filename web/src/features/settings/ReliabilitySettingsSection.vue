@@ -6,7 +6,6 @@ import type {
   RuntimeSettingKey,
   SettingsResource,
 } from '@/app/resources/settings'
-import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import CompactFieldError from '@/components/ui/CompactFieldError.vue'
 import { formatInteger } from '@/lib/format'
@@ -99,12 +98,6 @@ function setValidationInterval(value: string): void {
   const draft = cloneDraft()
   draft.values.validation_interval = value.trim() === '' ? Number.NaN : Number(value)
   publish('validation_interval', draft)
-}
-
-function setBufferedStream(value: boolean): void {
-  const draft = cloneDraft()
-  draft.values.buffered_stream = value
-  publish('buffered_stream', draft)
 }
 
 function validationIntervalError(): string | undefined {
@@ -211,34 +204,6 @@ function validationIntervalError(): string | undefined {
             </CompactFieldError>
             <span aria-hidden="true">{{ t('settings.runtime.seconds') }}</span>
           </div>
-        </template>
-      </SettingRow>
-
-      <SettingRow
-        :label="t('settings.runtime.buffered_stream')"
-        :value="
-          isPendingRestore('buffered_stream')
-            ? t('settings.runtime.resetPending')
-            : draft.values.buffered_stream
-              ? t('settings.runtime.enabled')
-              : t('settings.runtime.disabled')
-        "
-        :help="t('settings.runtime.bufferedStreamHelp')"
-        :source-label="sourceLabel('buffered_stream')"
-        :action-label="actionLabel('buffered_stream')"
-        :overridden="hasOverride('buffered_stream')"
-        :pending-restore="isPendingRestore('buffered_stream')"
-        :divided="false"
-        :disabled="disabled"
-        @toggle="toggleOverride('buffered_stream')"
-      >
-        <template #control>
-          <AppSwitch
-            :model-value="draft.values.buffered_stream"
-            :disabled="disabled"
-            :label="t('settings.runtime.buffered_stream')"
-            @update:model-value="setBufferedStream"
-          />
         </template>
       </SettingRow>
     </div>

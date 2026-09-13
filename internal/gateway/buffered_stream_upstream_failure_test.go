@@ -71,7 +71,7 @@ func TestHandlerBufferedUpstreamFailureKeepsEvidenceAndSwitchesCandidate(t *test
 			publishHandlerPolicySettings(
 				t, handler, manager, 2,
 				config.Settings{state.SettingRetryCount: 2},
-				config.Settings{state.SettingBufferedStream: true},
+				config.Settings{},
 			)
 			handler.newRandom = func() *rand.Rand { return rand.New(zeroSource{}) }
 
@@ -137,8 +137,8 @@ func TestBufferedStreamRecoversFromUpstreamForbiddenBeforeRelease(t *testing.T) 
 	defer upstream.Close()
 
 	engine, _ := newStreamingGatewayEngine(t,
-		streamGatewayGroup{id: 1, name: "forbidden-a", upstreamURL: upstream.URL, apiKey: "sk-a", bufferedStream: true},
-		streamGatewayGroup{id: 2, name: "forbidden-b", upstreamURL: upstream.URL, apiKey: "sk-b", bufferedStream: true},
+		streamGatewayGroup{id: 1, name: "forbidden-a", upstreamURL: upstream.URL, apiKey: "sk-a"},
+		streamGatewayGroup{id: 2, name: "forbidden-b", upstreamURL: upstream.URL, apiKey: "sk-b"},
 	)
 	recorder := performStreamingRequest(engine)
 
@@ -213,7 +213,7 @@ func newBufferedFallbackRuntime(
 	entries := make([]state.CredentialEntry, 0, 2)
 	for index := 1; index <= 2; index++ {
 		id := uint(index)
-		settings := config.Settings{state.SettingBufferedStream: true}
+		settings := config.Settings{}
 		for key, value := range groupSettings {
 			settings[key] = value
 		}

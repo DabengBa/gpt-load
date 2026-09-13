@@ -361,9 +361,6 @@ export default {
         headerStorageNoticeEnd: ' for credential values.',
         headerReplacementWarning:
           'This Group override replaces the complete global HeaderRules object; future global changes will not merge into it.',
-        buffered_stream: 'Buffer streaming responses',
-        bufferedStreamHelp:
-          'Inherit the global setting or explicitly enable buffering for this Group.',
         responses_websocket_enabled: 'Responses WebSocket',
         websocketHelp:
           'Disabling closes this group’s WS connections and interrupts generation immediately; HTTP/SSE remains available.',

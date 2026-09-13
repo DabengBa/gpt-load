@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
+	"time"
 
 	"gpt-load/internal/execution"
 	"gpt-load/internal/protocol"
@@ -66,20 +66,27 @@ func TestBufferedStreamForwarderHidesPayloadUntilValidatedEOF(t *testing.T) {
 	input := executionForwardInput()
 	input.BufferedStream = true
 	input.ClientProtocol = protocol.OpenAICompletions
-	recorder := httptest.NewRecorder()
+	// The heartbeat is committed as soon as the attempt proves dispatch, and the
+	// provider payload stays hidden until the validated terminal event.
+	writer := newBufferedStreamCommitWriter()
 	finished := make(chan UpstreamResult, 1)
 	go func() {
-		finished <- NewExecutionForwarder(executor).ForwardStream(context.Background(), input, recorder)
+		finished <- NewExecutionForwarder(executor).ForwardStream(context.Background(), input, writer)
 	}()
 	<-started
-	if got := recorder.Body.String(); got != bufferedStreamHeartbeat {
+	select {
+	case <-writer.committed:
+	case <-time.After(time.Second):
+		t.Fatal("buffered forwarder did not commit a heartbeat")
+	}
+	if got := writer.body(); got != bufferedStreamHeartbeat {
 		t.Fatalf("visible body before validated EOF = %q, want heartbeat only", got)
 	}
 	close(release)
 	result := <-finished
 	if result.Err != nil || !result.HTTPCommitted || !result.PayloadReleased ||
 		result.ClientVisibleBytes <= int64(len(bufferedStreamHeartbeat)) ||
-		!bytes.Contains(recorder.Body.Bytes(), []byte("secret")) {
-		t.Fatalf("buffered result = %#v, body = %q", result, recorder.Body.String())
+		!bytes.Contains([]byte(writer.body()), []byte("secret")) {
+		t.Fatalf("buffered result = %#v, body = %q", result, writer.body())
 	}
 }

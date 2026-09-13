@@ -5,9 +5,11 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -139,6 +141,7 @@ func TestResponsesContinuationRegistersSSEBeforeDelivery(t *testing.T) {
 	var credentials []uint
 	created := "event: response.created\r\n" + `data: {"type":"response.created","response":{"id":"first","object":"response","store":true}}` + "\r\n\r\n"
 	completed := "event: response.completed\r\n" + `data: {"type":"response.completed","response":{"id":"first","object":"response","store":true}}` + "\r\n\r\n"
+	var streamErr error
 	executor := fakeExecutionExecutor{
 		unary: func(_ context.Context, spec execution.AttemptSpec) execution.AttemptResult {
 			credentials = append(credentials, spec.Credential.ID)
@@ -151,25 +154,16 @@ func TestResponsesContinuationRegistersSSEBeforeDelivery(t *testing.T) {
 			credentials = append(credentials, spec.Credential.ID)
 			for _, event := range []execution.StreamEvent{
 				{Sequence: 1, Kind: execution.StreamEventReady, StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}},
-				{Sequence: 2, Kind: execution.StreamEventData, Data: []byte(created[:len(created)-4])},
+				{Sequence: 2, Kind: execution.StreamEventData, Data: []byte(created)},
+				{Sequence: 3, Kind: execution.StreamEventData, Data: []byte(completed)},
 			} {
 				if err := sink(event); err != nil {
-					t.Fatal(err)
+					// The executor callback must never block on a test
+					// channel: ServeHTTP joins this goroutine, so the outer
+					// test goroutine records/asserts the error after return.
+					streamErr = err
+					return execution.StreamResult{StatusCode: http.StatusOK, DispatchState: execution.DispatchMaybeSent, ResponseStarted: true}
 				}
-			}
-			if writer.Body.Len() != 0 {
-				t.Fatal("partial response ID was delivered before registration")
-			}
-			if err := sink(execution.StreamEvent{Sequence: 3, Kind: execution.StreamEventData, Data: []byte(created[len(created)-4:])}); err != nil {
-				t.Fatal(err)
-			}
-			if writer.Body.String() != created {
-				t.Fatalf("created event was not delivered intact: %q", writer.Body.String())
-			}
-			// 客户端收到 created 即可续接，无需等待原请求 completed。
-			serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","previous_response_id":"first","input":"continue"}`, http.StatusOK)
-			if err := sink(execution.StreamEvent{Sequence: 4, Kind: execution.StreamEventData, Data: []byte(completed)}); err != nil {
-				t.Fatal(err)
 			}
 			return execution.StreamResult{StatusCode: http.StatusOK, DispatchState: execution.DispatchMaybeSent, ResponseStarted: true}
 		},
@@ -180,9 +174,84 @@ func TestResponsesContinuationRegistersSSEBeforeDelivery(t *testing.T) {
 	setContinuationChannel(t, handler, channel.NewAPI, "https://upstream.example")
 	request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4o","input":"initial","stream":true}`))
 	request.Header.Set("Authorization", "Bearer gl-client")
+	// ServeHTTP returns only after the buffered forwarder has joined the
+	// executor goroutine, so no extra completion channel is needed here. The
+	// success path is the full created + completed payload with the response ID
+	// registered for a continuation.
 	engine.ServeHTTP(writer, request)
-	if writer.Body.String() != created+completed || fmt.Sprint(credentials) != "[1 1]" {
+	if streamErr != nil {
+		t.Fatalf("stream executor error: %v", streamErr)
+	}
+	want := bufferedStreamHeartbeat + created + completed
+	if writer.Body.String() != want || fmt.Sprint(credentials) != "[1]" {
 		t.Fatalf("SSE response = %q, credentials = %v", writer.Body.String(), credentials)
+	}
+	// After buffered release the response ID is registered and a continuation
+	// can be made on the same credential.
+	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","previous_response_id":"first","input":"continue"}`, http.StatusOK)
+	if fmt.Sprint(credentials) != "[1 1]" {
+		t.Fatalf("after continuation credentials = %v, want second call on same credential", credentials)
+	}
+}
+
+// TestResponsesContinuationRecordsSinkErrorWithoutHang proves the buffered
+// continuation request cannot deadlock when the executor's sink rejects an
+// event. The executor records the sink error without any blocking channel send,
+// and the request must return in finite time. ServeHTTP joins the executor
+// goroutine, so the outer test goroutine asserts the recorded error afterwards.
+func TestResponsesContinuationRecordsSinkErrorWithoutHang(t *testing.T) {
+	writer := httptest.NewRecorder()
+	var credentials []uint
+	var sinkMu sync.Mutex
+	var sinkErr error
+	created := "event: response.created\r\n" + `data: {"type":"response.created","response":{"id":"first","object":"response","store":true}}` + "\r\n\r\n"
+	executor := fakeExecutionExecutor{
+		unary: func(_ context.Context, spec execution.AttemptSpec) execution.AttemptResult {
+			credentials = append(credentials, spec.Credential.ID)
+			return execution.AttemptResult{
+				StatusCode: http.StatusOK, DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+				Header: http.Header{"Content-Type": {"application/json"}}, Body: storedResponse("second").Body,
+			}
+		},
+		stream: func(_ context.Context, spec execution.AttemptSpec, sink execution.StreamSink) execution.StreamResult {
+			credentials = append(credentials, spec.Credential.ID)
+			// Data before response metadata is a protocol violation: sink must
+			// reject it. Recording the error must not block, otherwise the
+			// executor goroutine joined by ServeHTTP would deadlock.
+			if err := sink(execution.StreamEvent{Sequence: 1, Kind: execution.StreamEventData, Data: []byte(created)}); err != nil {
+				sinkMu.Lock()
+				sinkErr = err
+				sinkMu.Unlock()
+			}
+			return execution.StreamResult{StatusCode: http.StatusOK, DispatchState: execution.DispatchMaybeSent, ResponseStarted: true}
+		},
+	}
+	handler, engine, _ := newContinuationFixture(t, NewExecutionForwarder(executor))
+	useAffinityRandomValues(handler, 0, 0, 0)
+	setContinuationChannel(t, handler, channel.NewAPI, "https://upstream.example")
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4o","input":"initial","stream":true}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	done := make(chan struct{})
+	go func() {
+		engine.ServeHTTP(writer, request)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("buffered continuation sink-error path did not return in finite time")
+	}
+	sinkMu.Lock()
+	recorded := sinkErr
+	sinkMu.Unlock()
+	if recorded == nil {
+		t.Fatal("the sink rejection was not recorded by the executor")
+	}
+	if !errors.Is(recorded, ErrUpstreamProtocol) {
+		t.Fatalf("sink error = %v, want ErrUpstreamProtocol", recorded)
+	}
+	if len(credentials) == 0 {
+		t.Fatal("the executor never observed a credential")
 	}
 }
 

@@ -231,6 +231,9 @@ func (forwarder *ExecutionForwarder) forwardStream(
 				copy.Header = sanitizeForwardResponseHeaders(copy.Header, input)
 			}
 			ready = &copy
+			// Response metadata proves the attempt reached provider dispatch, which
+			// is what authorizes the buffered heartbeat before the first byte.
+			markDownstreamDispatched(downstream)
 			return nil
 		case execution.StreamEventUsage:
 			if event.Usage != nil {

@@ -35,8 +35,8 @@ func TestBufferedStreamRetriesFirstResponseTimeoutBeforePayloadRelease(t *testin
 	defer upstream.Close()
 
 	engine, _ := newStreamingGatewayEngine(t,
-		streamGatewayGroup{id: 1, name: "timeout-a", upstreamURL: upstream.URL, apiKey: "sk-a", firstByte: 30 * time.Millisecond, bufferedStream: true},
-		streamGatewayGroup{id: 2, name: "timeout-b", upstreamURL: upstream.URL, apiKey: "sk-b", firstByte: 200 * time.Millisecond, bufferedStream: true},
+		streamGatewayGroup{id: 1, name: "timeout-a", upstreamURL: upstream.URL, apiKey: "sk-a", firstByte: 30 * time.Millisecond},
+		streamGatewayGroup{id: 2, name: "timeout-b", upstreamURL: upstream.URL, apiKey: "sk-b", firstByte: 200 * time.Millisecond},
 	)
 	gateway := httptest.NewServer(engine)
 	defer gateway.Close()
@@ -88,8 +88,8 @@ func TestBufferedStreamRealHTTPRetriesBeforePayloadRelease(t *testing.T) {
 	defer upstream.Close()
 
 	engine, _ := newStreamingGatewayEngine(t,
-		streamGatewayGroup{id: 1, name: "buffered-a", upstreamURL: upstream.URL, apiKey: "sk-a", bufferedStream: true},
-		streamGatewayGroup{id: 2, name: "buffered-b", upstreamURL: upstream.URL, apiKey: "sk-b", bufferedStream: true},
+		streamGatewayGroup{id: 1, name: "buffered-a", upstreamURL: upstream.URL, apiKey: "sk-a"},
+		streamGatewayGroup{id: 2, name: "buffered-b", upstreamURL: upstream.URL, apiKey: "sk-b"},
 	)
 	gateway := httptest.NewServer(engine)
 	defer gateway.Close()

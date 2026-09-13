@@ -21,7 +21,6 @@ const (
 	SettingHeaderRules               = "header_rules"
 	SettingCORS                      = "cors"
 	SettingResponseHeaderRules       = "response_header_rules"
-	SettingBufferedStream            = "buffered_stream"
 	SettingRetryCount                = "retry_count"
 	SettingRouteStrategy             = "route_strategy"
 	SettingBlacklistThreshold        = "blacklist_threshold"
@@ -58,7 +57,6 @@ type RuntimeSettings struct {
 	HeaderRules               HeaderRules
 	CORS                      CORSConfig
 	ResponseHeaderRules       HeaderRules
-	BufferedStream            bool
 	RetryCount                int
 	RouteStrategy             RouteStrategy
 	BlacklistThreshold        int
@@ -74,7 +72,6 @@ type RuntimeSettings struct {
 type ResolvedGroupSettings struct {
 	Timeouts                  TimeoutConfig
 	HeaderRules               HeaderRules
-	BufferedStream            bool
 	BlacklistThreshold        int
 	AffinityEnabled           bool
 	ResponsesWebsocketEnabled bool
@@ -89,7 +86,6 @@ func DefaultRuntimeSettings() RuntimeSettings {
 		HeaderRules:         HeaderRules{Set: map[string]string{}},
 		CORS:                defaultCORSConfig(),
 		ResponseHeaderRules: HeaderRules{Set: map[string]string{}},
-		BufferedStream:      false,
 		// retry_count is the total attempt budget of one request and comes from
 		// the system settings only. The shipped default allows four candidate
 		// switches inside a five attempt budget.
@@ -114,7 +110,6 @@ func IsRuntimeSettingKey(key string) bool {
 		SettingHeaderRules,
 		SettingCORS,
 		SettingResponseHeaderRules,
-		SettingBufferedStream,
 		SettingRetryCount,
 		SettingRouteStrategy,
 		SettingBlacklistThreshold,
@@ -171,12 +166,6 @@ func ResolveRuntimeSettings(settings config.Settings) (RuntimeSettings, error) {
 				return RuntimeSettings{}, err
 			}
 			resolved.ResponseHeaderRules = rules
-		case SettingBufferedStream:
-			value, err := strictBoolean(key, value)
-			if err != nil {
-				return RuntimeSettings{}, err
-			}
-			resolved.BufferedStream = value
 		case SettingRetryCount:
 			count, err := nonNegativeWholeNumber(key, value)
 			if err != nil {
@@ -260,7 +249,6 @@ func ResolveGroupRuntimeSettings(
 			StreamIdle: base.StreamIdleTimeout,
 		},
 		HeaderRules:               cloneHeaderRules(base.HeaderRules),
-		BufferedStream:            base.BufferedStream,
 		BlacklistThreshold:        base.BlacklistThreshold,
 		AffinityEnabled:           base.AffinityEnabled,
 		ResponsesWebsocketEnabled: base.ResponsesWebsocketEnabled,
@@ -291,12 +279,6 @@ func ResolveGroupRuntimeSettings(
 				return ResolvedGroupSettings{}, err
 			}
 			resolved.HeaderRules = parsed
-		case SettingBufferedStream:
-			parsed, err := strictBoolean(key, value)
-			if err != nil {
-				return ResolvedGroupSettings{}, err
-			}
-			resolved.BufferedStream = parsed
 		case SettingRetryCount:
 			// 兼容读取历史分组配置；重试预算仅由系统设置决定。
 			continue
@@ -347,9 +329,6 @@ func ValidateRuntimeSetting(key string, value any) error {
 		return err
 	case SettingResponseHeaderRules:
 		_, err := parseResponseHeaderRules(value)
-		return err
-	case SettingBufferedStream:
-		_, err := strictBoolean(key, value)
 		return err
 	case SettingRetryCount, SettingBlacklistThreshold:
 		_, err := nonNegativeWholeNumber(key, value)

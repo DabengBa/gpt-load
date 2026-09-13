@@ -325,7 +325,7 @@ func TestHandlerBufferedStreamUsesOneTotalDeadlineAcrossAttempts(t *testing.T) {
 	engine, _ := newConvertedFallbackHandlerTestRuntimeWithSystemSettings(
 		t, forwarder,
 		config.Settings{state.SettingRetryCount: json.Number("2")},
-		config.Settings{state.SettingBufferedStream: true, state.SettingRequestTimeout: json.Number("1")},
+		config.Settings{state.SettingRequestTimeout: json.Number("1")},
 	)
 	request := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewBufferString(`{"model":"claude-client","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"stream":true}`))
 	request.Header.Set("Authorization", "Bearer gl-client")

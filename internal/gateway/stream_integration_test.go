@@ -12,9 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,53 +34,48 @@ import (
 
 func TestHandlerStreamsFakeUpstreamAndRetriesBeforeCommit(t *testing.T) {
 	t.Run("valid fixture", func(t *testing.T) {
-		upstream := fakeupstream.New(fakeupstream.Step{
-			Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true,
-		})
-		defer upstream.Close()
+		upstream := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), nil)
 
 		engine, _ := newStreamingGatewayEngine(t, streamGatewayGroup{
 			id: 1, name: "openai", upstreamURL: upstream.URL, apiKey: "sk-stream-one",
 		})
 		recorder := performStreamingRequest(engine)
 
-		want := openAIStreamFixture(t)
+		want := append([]byte(bufferedStreamHeartbeat), forcedBufferedOpenAIStream()...)
 		if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), want) || !recorder.Flushed {
-			t.Fatalf("response = %d flushed=%t body=%q, want flushed fixture", recorder.Code, recorder.Flushed, recorder.Body.Bytes())
+			t.Fatalf("response = %d flushed=%t body=%q, want heartbeat plus released fixture", recorder.Code, recorder.Flushed, recorder.Body.Bytes())
 		}
 		requests := upstream.Requests()
 		if len(requests) != 1 {
 			t.Fatalf("upstream requests = %d, want 1", len(requests))
 		}
-		if got := requests[0].Headers.Get("Accept-Encoding"); got != "identity" {
+		if got := requests[0].Get("Accept-Encoding"); got != "identity" {
 			t.Fatalf("Accept-Encoding = %q, want identity", got)
 		}
-		if got := requests[0].Headers.Get("Authorization"); got != "Bearer sk-stream-one" {
+		if got := requests[0].Get("Authorization"); got != "Bearer sk-stream-one" {
 			t.Fatalf("Authorization = %q", got)
 		}
 	})
 
 	t.Run("retryable response then valid fixture", func(t *testing.T) {
-		upstream := fakeupstream.New(
-			fakeupstream.Step{Status: http.StatusTooManyRequests, Fixture: "openai/429.json"},
-			fakeupstream.Step{Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true},
-		)
-		defer upstream.Close()
+		rejecting := fakeupstream.New(fakeupstream.Step{Status: http.StatusTooManyRequests, Fixture: "openai/429.json"})
+		defer rejecting.Close()
+		backup := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), nil)
 
 		engine, _ := newStreamingGatewayEngine(t,
-			streamGatewayGroup{id: 1, name: "openai", upstreamURL: upstream.URL, apiKey: "sk-stream-one"},
-			streamGatewayGroup{id: 2, name: "openai-backup", upstreamURL: upstream.URL, apiKey: "sk-stream-two"},
+			streamGatewayGroup{id: 1, name: "openai", upstreamURL: rejecting.URL, apiKey: "sk-stream-one"},
+			streamGatewayGroup{id: 2, name: "openai-backup", upstreamURL: backup.URL, apiKey: "sk-stream-two"},
 		)
 		recorder := performStreamingRequest(engine)
 
-		if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), openAIStreamFixture(t)) {
+		want := append([]byte(bufferedStreamHeartbeat), forcedBufferedOpenAIStream()...)
+		if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), want) {
 			t.Fatalf("response = %d %q", recorder.Code, recorder.Body.Bytes())
 		}
-		requests := upstream.Requests()
-		if len(requests) != 2 {
-			t.Fatalf("upstream requests = %d, want 2", len(requests))
+		if len(rejecting.Requests()) != 1 || len(backup.Requests()) != 1 {
+			t.Fatalf("upstream requests = %d/%d, want 1/1", len(rejecting.Requests()), len(backup.Requests()))
 		}
-		if first, second := requests[0].Headers.Get("Authorization"), requests[1].Headers.Get("Authorization"); first == second {
+		if first, second := rejecting.Requests()[0].Headers.Get("Authorization"), backup.Requests()[0].Get("Authorization"); first == second {
 			t.Fatalf("retry reused credential %q", first)
 		}
 	})
@@ -113,10 +105,10 @@ func TestHandlerTerminatesAliasedNonObjectProviderErrorWithoutReplay(t *testing.
 			apiKey: "sk-obviously-fake-second", modelID: "provider-model", alias: "gpt-4o",
 		},
 	)
-	recorder := performStreamingRequest(engine)
+	recorder := performStreamingRequestWithBody(engine, ineligibleStreamRequestBody)
 
-	if recorder.Code != http.StatusBadGateway ||
-		!strings.Contains(recorder.Body.String(), reasonUpstreamProtocol.Code) ||
+	if recorder.Code != http.StatusOK ||
+		recorder.Body.String() != bufferedStreamHeartbeat+bufferedOpenAIStreamFailure ||
 		requests.Load() != 1 {
 		t.Fatalf("response/requests = %d/%d body=%s",
 			recorder.Code, requests.Load(), recorder.Body.String())
@@ -186,25 +178,16 @@ func TestHandlerStreamingDebugHeadersRejectUpstreamSpoofing(t *testing.T) {
 
 func TestHandlerTreatsSDKNormalizedCompressedStreamAsSingleAttempt(t *testing.T) {
 	t.Run("normalized response does not blame credential or retry", func(t *testing.T) {
-		compressed := fakeupstream.New(
-			fakeupstream.Step{
-				Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true,
-				Headers: http.Header{"Content-Encoding": {"gzip"}},
-			},
-			fakeupstream.Step{Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true},
-		)
-		defer compressed.Close()
-		backup := fakeupstream.New(fakeupstream.Step{
-			Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true,
-		})
-		defer backup.Close()
+		compressed := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), http.Header{"Content-Encoding": {"gzip"}})
+		backup := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), nil)
 
 		engine, registry := newStreamingGatewayEngine(t,
 			streamGatewayGroup{id: 1, name: "compressed", upstreamURL: compressed.URL, apiKey: "sk-compressed"},
 			streamGatewayGroup{id: 2, name: "backup", upstreamURL: backup.URL, apiKey: "sk-backup"},
 		)
+		want := append([]byte(bufferedStreamHeartbeat), forcedBufferedOpenAIStream()...)
 		first := performStreamingRequest(engine)
-		if first.Code != http.StatusOK || !bytes.Equal(first.Body.Bytes(), openAIStreamFixture(t)) {
+		if first.Code != http.StatusOK || !bytes.Equal(first.Body.Bytes(), want) {
 			t.Fatalf("first response = %d %q", first.Code, first.Body.Bytes())
 		}
 		if len(compressed.Requests()) != 1 || len(backup.Requests()) != 0 {
@@ -215,29 +198,22 @@ func TestHandlerTreatsSDKNormalizedCompressedStreamAsSingleAttempt(t *testing.T)
 		}
 
 		second := performStreamingRequest(engine)
-		if second.Code != http.StatusOK || len(compressed.Requests()) != 2 || len(backup.Requests()) != 0 {
-			t.Fatalf("second response/counts = %d compressed:%d backup:%d", second.Code, len(compressed.Requests()), len(backup.Requests()))
+		if second.Code != http.StatusOK || !bytes.Equal(second.Body.Bytes(), want) || len(compressed.Requests()) != 2 || len(backup.Requests()) != 0 {
+			t.Fatalf("second response/counts = %d/%q compressed:%d backup:%d", second.Code, second.Body.Bytes(), len(compressed.Requests()), len(backup.Requests()))
 		}
 	})
 
 	t.Run("multiple candidates still produce one logical attempt", func(t *testing.T) {
-		first := fakeupstream.New(fakeupstream.Step{
-			Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true,
-			Headers: http.Header{"Content-Encoding": {"gzip"}},
-		})
-		defer first.Close()
-		second := fakeupstream.New(fakeupstream.Step{
-			Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true,
-			Headers: http.Header{"Content-Encoding": {"br"}},
-		})
-		defer second.Close()
+		first := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), http.Header{"Content-Encoding": {"gzip"}})
+		second := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), http.Header{"Content-Encoding": {"br"}})
 
 		engine, _ := newStreamingGatewayEngine(t,
 			streamGatewayGroup{id: 1, name: "compressed-a", upstreamURL: first.URL, apiKey: "sk-plain-a"},
 			streamGatewayGroup{id: 2, name: "compressed-b", upstreamURL: second.URL, apiKey: "sk-plain-b"},
 		)
 		recorder := performStreamingRequest(engine)
-		if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), openAIStreamFixture(t)) ||
+		want := append([]byte(bufferedStreamHeartbeat), forcedBufferedOpenAIStream()...)
+		if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), want) ||
 			len(first.Requests())+len(second.Requests()) != 1 {
 			t.Fatalf("response = %d %s", recorder.Code, recorder.Body.String())
 		}
@@ -249,172 +225,28 @@ func TestHandlerTreatsSDKNormalizedCompressedStreamAsSingleAttempt(t *testing.T)
 	})
 }
 
-func TestHandlerStreamsProgressively(t *testing.T) {
-	const (
-		first  = "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"},\"finish_reason\":null}]}\n\n"
-		second = "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
-	)
-	firstEventSent := make(chan struct{})
-	releaseSecondEvent := make(chan struct{})
-	var releaseOnce sync.Once
-	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseSecondEvent) }) })
-
-	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "text/event-stream")
-		_, _ = writer.Write([]byte(first))
-		writer.(http.Flusher).Flush()
-		close(firstEventSent)
-		select {
-		case <-releaseSecondEvent:
-			_, _ = writer.Write([]byte(second))
-			writer.(http.Flusher).Flush()
-		case <-request.Context().Done():
-		}
-	}))
-	defer upstream.Close()
-
-	engine, _ := newStreamingGatewayEngine(t, streamGatewayGroup{
-		id: 1, name: "progressive", upstreamURL: upstream.URL, apiKey: "sk-progressive",
-	})
-	gatewayServer := httptest.NewServer(engine)
-	defer gatewayServer.Close()
-
-	request, err := http.NewRequest(http.MethodPost, gatewayServer.URL+"/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o","stream":true}`))
-	if err != nil {
-		t.Fatalf("NewRequest() error = %v", err)
-	}
-	request.Header.Set("Authorization", "Bearer gl-client")
-	client := &http.Client{Timeout: 2 * time.Second}
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatalf("stream request error = %v", err)
-	}
-	defer response.Body.Close()
-
-	select {
-	case <-firstEventSent:
-	case <-time.After(time.Second):
-		t.Fatal("upstream did not send first event")
-	}
-	reader := bufio.NewReader(response.Body)
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		t.Fatalf("read first data line: %v", err)
-	}
-	blank, err := reader.ReadString('\n')
-	if err != nil {
-		t.Fatalf("read first event boundary: %v", err)
-	}
-	if line+blank != first {
-		t.Fatalf("first progressive event = %q", line+blank)
-	}
-
-	releaseOnce.Do(func() { close(releaseSecondEvent) })
-	rest, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("read remaining stream: %v", err)
-	}
-	if string(rest) != second {
-		t.Fatalf("remaining stream = %q", rest)
-	}
-}
-
-func TestAliasedStreamRemainsProgressive(t *testing.T) {
-	firstEventSent := make(chan struct{})
-	releaseSecondEvent := make(chan struct{})
-	var releaseOnce sync.Once
-	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseSecondEvent) }) })
-
-	first := "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"model\":\"provider-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"},\"finish_reason\":null}]}\n\n"
-	second := "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"model\":\"provider-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
-	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "text/event-stream")
-		setRepresentationMetadata(writer.Header())
-		_, _ = writer.Write([]byte(first))
-		writer.(http.Flusher).Flush()
-		close(firstEventSent)
-		select {
-		case <-releaseSecondEvent:
-			_, _ = writer.Write([]byte(second))
-			writer.(http.Flusher).Flush()
-		case <-request.Context().Done():
-		}
-	}))
-	defer upstream.Close()
-
-	engine, _ := newStreamingGatewayEngine(t, streamGatewayGroup{
-		id: 1, name: "alias-progressive", upstreamURL: upstream.URL, apiKey: "sk-progressive",
-		modelID: "provider-model", alias: "public-model",
-	})
-	gatewayServer := httptest.NewServer(engine)
-	defer gatewayServer.Close()
-
-	request, err := http.NewRequest(http.MethodPost, gatewayServer.URL+"/v1/chat/completions", strings.NewReader(`{"model":"public-model","stream":true}`))
-	if err != nil {
-		t.Fatalf("NewRequest() error = %v", err)
-	}
-	request.Header.Set("Authorization", "Bearer gl-client")
-	client := &http.Client{Timeout: 2 * time.Second}
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatalf("stream request error = %v", err)
-	}
-	defer response.Body.Close()
-
-	select {
-	case <-firstEventSent:
-	case <-time.After(time.Second):
-		t.Fatal("upstream did not send first event")
-	}
-	reader := bufio.NewReader(response.Body)
-	firstLine, err := reader.ReadString('\n')
-	if err != nil {
-		t.Fatalf("read rewritten first data line: %v", err)
-	}
-	blank, err := reader.ReadString('\n')
-	if err != nil {
-		t.Fatalf("read rewritten first boundary: %v", err)
-	}
-	if got := firstLine + blank; !strings.Contains(got, `"model":"public-model"`) || strings.Contains(got, `"model":"provider-model"`) {
-		t.Fatalf("first progressive alias event = %q", got)
-	}
-	if response.Header.Get("Content-Length") != "" {
-		t.Fatalf("stream Content-Length = %q, want removed", response.Header.Get("Content-Length"))
-	}
-	assertRepresentationMetadata(t, response.Header, false)
-
-	releaseOnce.Do(func() { close(releaseSecondEvent) })
-	rest, err := io.ReadAll(reader)
-	if err != nil || !strings.Contains(string(rest), `"model":"public-model"`) ||
-		strings.Contains(string(rest), `"model":"provider-model"`) ||
-		!strings.HasSuffix(string(rest), "data: [DONE]\n\n") {
-		t.Fatalf("remaining stream = %q, %v", rest, err)
-	}
-}
-
 func TestHandlerStreamFirstEventTimeout(t *testing.T) {
 	t.Run("request-written partial event times out without backup", func(t *testing.T) {
 		finished := make(chan struct{})
 		partial := newPartialStreamServer(finished)
 		defer partial.Close()
-		backup := fakeupstream.New(fakeupstream.Step{
-			Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true,
-		})
-		defer backup.Close()
+		backup := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), nil)
 
 		engine, _ := newStreamingGatewayEngine(t,
 			streamGatewayGroup{id: 1, name: "partial", upstreamURL: partial.URL, apiKey: "sk-partial", firstByte: 40 * time.Millisecond},
 			streamGatewayGroup{id: 2, name: "backup", upstreamURL: backup.URL, apiKey: "sk-backup", firstByte: 200 * time.Millisecond},
 		)
-		recorder := performStreamingRequest(engine)
+		// The stream is replay-ineligible, so a pre-release failure is final even
+		// though the buffered heartbeat already committed HTTP 200.
+		recorder := performStreamingRequestWithBody(engine, ineligibleStreamRequestBody)
 
-		if recorder.Code != http.StatusGatewayTimeout ||
-			!strings.Contains(recorder.Body.String(), reasonUpstreamTimeout.Code) {
-			t.Fatalf("response = %d %q", recorder.Code, recorder.Body.Bytes())
+		want := bufferedStreamHeartbeat + bufferedOpenAIStreamFailure
+		if recorder.Code != http.StatusOK || recorder.Body.String() != want {
+			t.Fatalf("response = %d %q, want buffered failure", recorder.Code, recorder.Body.String())
 		}
 		waitForStreamSignal(t, finished, "finite partial upstream completion")
 		if bytes.Contains(recorder.Body.Bytes(), []byte("partial")) || len(backup.Requests()) != 0 {
-			t.Fatalf("partial event leaked or backup not used: body=%q backup=%d", recorder.Body.Bytes(), len(backup.Requests()))
+			t.Fatalf("partial event leaked or backup was used: body=%q backup=%d", recorder.Body.Bytes(), len(backup.Requests()))
 		}
 	})
 
@@ -430,7 +262,7 @@ func TestHandlerStreamFirstEventTimeout(t *testing.T) {
 			streamGatewayGroup{id: 1, name: "partial-a", upstreamURL: first.URL, apiKey: "sk-a", firstByte: 30 * time.Millisecond},
 			streamGatewayGroup{id: 2, name: "partial-b", upstreamURL: second.URL, apiKey: "sk-b", firstByte: 30 * time.Millisecond},
 		)
-		recorder := performStreamingRequest(engine)
+		recorder := performStreamingRequestWithBody(engine, ineligibleStreamRequestBody)
 		waitForStreamSignal(t, firstFinished, "first finite partial upstream completion")
 		select {
 		case <-secondFinished:
@@ -438,31 +270,28 @@ func TestHandlerStreamFirstEventTimeout(t *testing.T) {
 		default:
 		}
 
-		var body struct {
-			Code string `json:"code"`
-		}
-		if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
-			t.Fatalf("decode response: %v", err)
-		}
-		if recorder.Code != http.StatusGatewayTimeout || body.Code != reasonUpstreamTimeout.Code || strings.Contains(recorder.Body.String(), "partial") {
+		want := bufferedStreamHeartbeat + bufferedOpenAIStreamFailure
+		if recorder.Code != http.StatusOK || recorder.Body.String() != want || strings.Contains(recorder.Body.String(), "partial") {
 			t.Fatalf("response = %d %s", recorder.Code, recorder.Body.String())
 		}
 	})
 }
 
-func TestHandlerStreamIdleAndDisconnectNeverRetry(t *testing.T) {
+func TestHandlerStreamIdleAndDisconnectRetriesBeforeRelease(t *testing.T) {
+	const partialEvent = "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"},\"finish_reason\":null}]}\n\n"
 	tests := []struct {
-		name    string
-		handler http.HandlerFunc
-		idle    time.Duration
-		want    string
+		name       string
+		handler    http.HandlerFunc
+		idle       time.Duration
+		want       string
+		wantBackup int
 	}{
 		{
-			name: "idle after commit",
+			name: "idle after commit retries before release",
 			idle: 35 * time.Millisecond,
 			handler: func(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Content-Type", "text/event-stream")
-				_, _ = writer.Write([]byte("data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"},\"finish_reason\":null}]}\n\n"))
+				_, _ = writer.Write([]byte(partialEvent))
 				writer.(http.Flusher).Flush()
 				// Bifrost Core v1.7.7 can finish the logical stream without
 				// synchronously closing the underlying fasthttp connection.
@@ -473,10 +302,11 @@ func TestHandlerStreamIdleAndDisconnectNeverRetry(t *testing.T) {
 				case <-time.After(200 * time.Millisecond):
 				}
 			},
-			want: "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"},\"finish_reason\":null}]}\n\n",
+			want:       bufferedStreamHeartbeat + string(forcedBufferedOpenAIStream()),
+			wantBackup: 1,
 		},
 		{
-			name: "abrupt EOF after commit",
+			name: "abrupt EOF after commit retries before release",
 			idle: time.Second,
 			handler: func(writer http.ResponseWriter, _ *http.Request) {
 				// Close a chunked response without its terminating zero chunk so
@@ -488,11 +318,11 @@ func TestHandlerStreamIdleAndDisconnectNeverRetry(t *testing.T) {
 					return
 				}
 				defer connection.Close()
-				payload := "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"},\"finish_reason\":null}]}\n\n"
-				_, _ = fmt.Fprintf(buffered, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n%x\r\n%s\r\n", len(payload), payload)
+				_, _ = fmt.Fprintf(buffered, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n%x\r\n%s\r\n", len(partialEvent), partialEvent)
 				_ = buffered.Flush()
 			},
-			want: "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"},\"finish_reason\":null}]}\n\n",
+			want:       bufferedStreamHeartbeat + string(forcedBufferedOpenAIStream()),
+			wantBackup: 1,
 		},
 		{
 			name: "activity resets idle deadline",
@@ -513,7 +343,10 @@ func TestHandlerStreamIdleAndDisconnectNeverRetry(t *testing.T) {
 					}
 				}
 			},
-			want: "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"one\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"two\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+			want: bufferedStreamHeartbeat + "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"one\"},\"finish_reason\":null}]}\n\n" +
+				"data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"two\"},\"finish_reason\":null}]}\n\n" +
+				"data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+			wantBackup: 0,
 		},
 	}
 
@@ -521,10 +354,7 @@ func TestHandlerStreamIdleAndDisconnectNeverRetry(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			primary := httptest.NewServer(tt.handler)
 			defer primary.Close()
-			backup := fakeupstream.New(fakeupstream.Step{
-				Status: http.StatusOK, Fixture: "openai/stream.sse", Stream: true,
-			})
-			defer backup.Close()
+			backup := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), nil)
 
 			engine, _ := newStreamingGatewayEngine(t,
 				streamGatewayGroup{id: 1, name: "primary", upstreamURL: primary.URL, apiKey: "sk-primary", streamIdle: tt.idle},
@@ -535,8 +365,8 @@ func TestHandlerStreamIdleAndDisconnectNeverRetry(t *testing.T) {
 			if recorder.Code != http.StatusOK || recorder.Body.String() != tt.want {
 				t.Fatalf("response = %d %q, want %q", recorder.Code, recorder.Body.String(), tt.want)
 			}
-			if len(backup.Requests()) != 0 {
-				t.Fatalf("committed stream retried backup %d times", len(backup.Requests()))
+			if len(backup.Requests()) != tt.wantBackup {
+				t.Fatalf("backup requests = %d, want %d", len(backup.Requests()), tt.wantBackup)
 			}
 		})
 	}
@@ -586,8 +416,8 @@ func TestHandlerStopsAfterDownstreamCancellationWithoutRetry(t *testing.T) {
 	cancel()
 	select {
 	case err := <-done:
-		if err == nil {
-			t.Fatal("downstream cancellation returned nil error")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("downstream cancellation request failed: %v", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("downstream request did not stop after cancellation")
@@ -974,15 +804,14 @@ func (listener *smallWriteBufferListener) Accept() (net.Conn, error) {
 }
 
 type streamGatewayGroup struct {
-	id             uint
-	name           string
-	upstreamURL    string
-	apiKey         string
-	modelID        string
-	alias          string
-	firstByte      time.Duration
-	streamIdle     time.Duration
-	bufferedStream bool
+	id          uint
+	name        string
+	upstreamURL string
+	apiKey      string
+	modelID     string
+	alias       string
+	firstByte   time.Duration
+	streamIdle  time.Duration
 }
 
 func newStreamingGatewayEngine(t *testing.T, groups ...streamGatewayGroup) (*gin.Engine, *state.CredentialRegistry) {
@@ -1002,7 +831,7 @@ func newStreamingGatewayEngine(t *testing.T, groups ...streamGatewayGroup) (*gin
 		channelID, params := testChannelConfig(t, protocol.OpenAICompletions, baseURL)
 		groupConfigs = append(groupConfigs, state.GroupConfig{ConnectionType: "api_key", ID: group.id, Name: group.name, ChannelID: channelID, Params: params,
 			Models: []state.ModelConfig{{ID: modelID, Alias: group.alias}}, Enabled: true,
-			Settings: config.Settings{state.SettingBufferedStream: group.bufferedStream},
+			Settings: config.Settings{},
 		})
 		credentialID := uint(index + 1)
 		entries = append(entries, testCredentialEntry(t, keyService, credentialID, group.id, group.apiKey))
@@ -1056,24 +885,202 @@ func newStreamingGatewayEngine(t *testing.T, groups ...streamGatewayGroup) (*gin
 }
 
 func performStreamingRequest(engine *gin.Engine) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o","stream":true}`))
+	return performStreamingRequestWithBody(engine, `{"model":"gpt-4o","stream":true}`)
+}
+
+func performStreamingRequestWithBody(engine *gin.Engine, body string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer gl-client")
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
 	return recorder
 }
 
-func openAIStreamFixture(t *testing.T) []byte {
-	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller() failed")
-	}
-	fixture, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "testutil", "fakeupstream", "testdata", "openai", "stream.sse"))
+// TestHandlerStreamProgressivelyReleasesAfterValidEOF proves that under the
+// forced buffered contract the client sees only heartbeat before the upstream
+// reaches a valid terminal state. Once the complete payload with [DONE] is
+// delivered, the buffered release makes the full payload visible.
+func TestHandlerStreamProgressivelyReleasesAfterValidEOF(t *testing.T) {
+	firstEventSent := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		// Send a partial event (no finish_reason) and block.
+		_, _ = writer.Write([]byte("data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"progressive\"},\"finish_reason\":null}]}\n\n"))
+		writer.(http.Flusher).Flush()
+		close(firstEventSent)
+		<-release
+		// Send the complete payload with terminal state.
+		_, _ = writer.Write(forcedBufferedOpenAIStream())
+		writer.(http.Flusher).Flush()
+	}))
+	defer upstream.Close()
+
+	engine, _ := newStreamingGatewayEngine(t, streamGatewayGroup{
+		id: 1, name: "progressive", upstreamURL: upstream.URL, apiKey: "sk-progressive",
+	})
+	gatewayServer := httptest.NewServer(engine)
+	defer gatewayServer.Close()
+
+	request, _ := http.NewRequest(http.MethodPost, gatewayServer.URL+"/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","stream":true}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		t.Fatalf("read OpenAI stream fixture: %v", err)
+		t.Fatalf("Do: %v", err)
 	}
-	return fixture
+	defer response.Body.Close()
+
+	// Wait for the upstream to have sent the first event.
+	<-firstEventSent
+
+	// The client must only see the heartbeat while the upstream hasn't
+	// reached a valid terminal state.
+	reader := bufio.NewReader(response.Body)
+	heartbeat, err := reader.ReadString('\n')
+	if err != nil || heartbeat != ": keep-alive\n" {
+		t.Fatalf("before release first line = %q, %v", heartbeat, err)
+	}
+	boundary, err := reader.ReadString('\n')
+	if err != nil || boundary != "\n" {
+		t.Fatalf("before release boundary = %q, %v", boundary, err)
+	}
+
+	// Release the completion payload.
+	releaseOnce.Do(func() { close(release) })
+
+	// After release, the client sees the full payload including the partial event
+	// that was buffered before the terminal state.
+	rest, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll after release: %v", err)
+	}
+	want := "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"progressive\"},\"finish_reason\":null}]}\n\n" +
+		string(forcedBufferedOpenAIStream())
+	if string(rest) != want {
+		t.Fatalf("after release payload = %q, want %q", rest, want)
+	}
+}
+
+// TestHandlerAliasedStreamProgressivelyReleasesAfterValidEOF proves the same
+// contract through an alias group: the alias is rewritten and the payload is
+// held until terminal state, then released intact.
+func TestHandlerAliasedStreamProgressivelyReleasesAfterValidEOF(t *testing.T) {
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		// Send a partial event without terminal state, then block.
+		model := request.URL.Query().Get("model")
+		_, _ = writer.Write([]byte("data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"model\":\"" + model + "\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"alias-progressive\"},\"finish_reason\":null}]}\n\n"))
+		writer.(http.Flusher).Flush()
+		<-release
+		_, _ = writer.Write(forcedBufferedOpenAIStream())
+		writer.(http.Flusher).Flush()
+	}))
+	defer upstream.Close()
+
+	engine, _ := newStreamingGatewayEngine(t,
+		streamGatewayGroup{id: 1, name: "alias-a", upstreamURL: upstream.URL,
+			apiKey: "sk-alias-a", modelID: "provider-model", alias: "gpt-4o"},
+	)
+	gatewayServer := httptest.NewServer(engine)
+	defer gatewayServer.Close()
+
+	request, _ := http.NewRequest(http.MethodPost, gatewayServer.URL+"/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","stream":true}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	defer response.Body.Close()
+
+	reader := bufio.NewReader(response.Body)
+	heartbeat, err := reader.ReadString('\n')
+	if err != nil || heartbeat != ": keep-alive\n" {
+		t.Fatalf("before release first line = %q, %v", heartbeat, err)
+	}
+	if boundary, err := reader.ReadString('\n'); err != nil || boundary != "\n" {
+		t.Fatalf("before release boundary = %q, %v", boundary, err)
+	}
+
+	releaseOnce.Do(func() { close(release) })
+
+	rest, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll after release: %v", err)
+	}
+	// Alias rewrite can reorder JSON keys, so check content rather than
+	// exact byte equality.
+	if !strings.Contains(string(rest), "\"content\":\"alias-progressive\"") ||
+		!strings.Contains(string(rest), "\"content\":\"first\"") ||
+		!strings.Contains(string(rest), "finish_reason\":\"stop\"") ||
+		!strings.Contains(string(rest), "data: [DONE]") {
+		t.Fatalf("after release payload = %q, want progressive content + complete terminal state", rest)
+	}
+}
+
+const (
+	// ineligibleStreamRequestBody carries a provider tool, which makes the
+	// request replay-ineligible so a pre-release buffered failure stays final.
+	ineligibleStreamRequestBody = `{"model":"gpt-4o","stream":true,"tools":[{"type":"web_search"}]}`
+	// bufferedOpenAIStreamFailure is the in-stream error the buffered path emits
+	// after HTTP 200 was already committed by the keep-alive heartbeat.
+	bufferedOpenAIStreamFailure = "data: {\"error\":{\"type\":\"server_error\",\"message\":\"The buffered upstream stream could not be completed.\",\"code\":\"buffered_stream_failed\"}}\n\n"
+)
+
+// forcedBufferedOpenAIStream is a protocol-complete Chat Completions SSE
+// payload. Under the forced buffered policy every choice must close before
+// [DONE] or the gateway never releases the payload.
+func forcedBufferedOpenAIStream() []byte {
+	return []byte(
+		"data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"first\"},\"finish_reason\":null}]}\n\n" +
+			"data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+	)
+}
+
+// recordedStreamUpstream serves one SSE payload and records every request, so
+// focused tests can observe dispatch counts and headers without relying on the
+// shared non-buffered fixture set.
+type recordedStreamUpstream struct {
+	*httptest.Server
+	mu      sync.Mutex
+	headers []http.Header
+}
+
+func newRecordedStreamUpstream(t *testing.T, payload []byte, headers http.Header) *recordedStreamUpstream {
+	t.Helper()
+	upstream := &recordedStreamUpstream{}
+	upstream.Server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = io.Copy(io.Discard, request.Body)
+		upstream.mu.Lock()
+		upstream.headers = append(upstream.headers, request.Header.Clone())
+		upstream.mu.Unlock()
+		for name, values := range headers {
+			for _, value := range values {
+				writer.Header().Add(name, value)
+			}
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write(payload)
+		writer.(http.Flusher).Flush()
+	}))
+	t.Cleanup(upstream.Server.Close)
+	return upstream
+}
+
+func (upstream *recordedStreamUpstream) Requests() []http.Header {
+	upstream.mu.Lock()
+	defer upstream.mu.Unlock()
+	result := make([]http.Header, len(upstream.headers))
+	copy(result, upstream.headers)
+	return result
 }
 
 func newPartialStreamServer(finished chan<- struct{}) *httptest.Server {

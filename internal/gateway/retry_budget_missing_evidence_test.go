@@ -61,7 +61,7 @@ func TestHandlerBufferedStreamRetriesMissingEvidenceWithinAttemptBudget(t *testi
 			engine, _ := newConvertedFallbackHandlerTestRuntimeWithSystemSettings(
 				t, forwarder,
 				config.Settings{state.SettingRetryCount: json.Number(test.retryCount)},
-				config.Settings{state.SettingBufferedStream: true},
+				config.Settings{},
 			)
 			serveMissingEvidenceStreamRequest(t, engine)
 
@@ -87,7 +87,7 @@ func TestHandlerBlacklistsCandidateAfterMissingEvidenceFailures(t *testing.T) {
 			state.SettingRetryCount:         json.Number("1"),
 			state.SettingBlacklistThreshold: json.Number("1"),
 		},
-		config.Settings{state.SettingBufferedStream: true},
+		config.Settings{},
 	)
 
 	serveMissingEvidenceStreamRequest(t, engine)

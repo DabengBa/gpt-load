@@ -86,8 +86,9 @@ func TestGatewayNeverExposesPlaintextKeys(t *testing.T) {
 		recorder := performStreamingRequest(engine)
 
 		assertNoPlaintextSecrets(t, recorder, logs.String(), firstSecret, secondSecret)
-		const expected = "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"forbidden\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
-		if recorder.Code != http.StatusOK || recorder.Body.String() != expected {
+		const payload = "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"forbidden\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+		want := bufferedStreamHeartbeat + payload
+		if recorder.Code != http.StatusOK || recorder.Body.String() != want {
 			t.Fatalf("normalized response = %d %s", recorder.Code, recorder.Body.String())
 		}
 	})
@@ -422,7 +423,21 @@ func TestForwardStripsCookiesAndCredentialHeadersOnEveryPath(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			engine.ServeHTTP(recorder, request)
 
-			if recorder.Code != test.status || recorder.Header().Get("X-Safe") != "kept" {
+			if test.stream {
+				// Buffered mode: downstream headers are committed before the upstream
+				// responds, so upstream custom headers (X-Safe) are not propagated.
+				// The security guarantee is that sensitive upstream headers never appear
+				// in the client response.
+				wantBody := bufferedStreamHeartbeat
+				if test.status == http.StatusOK {
+					wantBody += "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+				} else {
+					wantBody += bufferedOpenAIStreamFailure
+				}
+				if recorder.Code != http.StatusOK || recorder.Body.String() != wantBody {
+					t.Fatalf("response = %d headers=%v body=%s", recorder.Code, recorder.Header(), recorder.Body.String())
+				}
+			} else if recorder.Code != test.status || recorder.Header().Get("X-Safe") != "kept" {
 				t.Fatalf("response = %d headers=%v body=%s", recorder.Code, recorder.Header(), recorder.Body.String())
 			}
 			for _, name := range []string{

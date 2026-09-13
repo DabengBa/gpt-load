@@ -716,6 +716,15 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		recorder.completeCanceled(ginContext.Request.Context(), 0, -1)
 		return
 	}
+	streamMode, streamRejectReason := evaluateStreamDelivery(
+		selectedRoute.Protocol,
+		metadata.Operation,
+		metadata.Stream,
+	)
+	if streamMode == streamDeliveryReject {
+		handler.completeReason(ginContext, recorder, *streamRejectReason)
+		return
+	}
 	query := scheduler.Query{
 		ClientProtocol:           selectedRoute.Protocol,
 		Operation:                metadata.Operation,
@@ -776,6 +785,7 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		parsed,
 		model,
 		metadata,
+		streamMode,
 		requestAffinity,
 		recorder,
 		&quotaAdmission,
@@ -948,6 +958,7 @@ func (handler *Handler) executeAttempts(
 	parsed *dialect.ParsedRequest,
 	externalModel string,
 	originalMetadata dialect.RequestMetadata,
+	streamMode streamDelivery,
 	requestAffinity requestAffinity,
 	recorder *requestRecorder,
 	quotaAdmission *requestAccessQuotaAdmission,
@@ -967,16 +978,18 @@ func (handler *Handler) executeAttempts(
 	lastAttemptIndex := -1
 	attemptSequence := 0
 	forwardAttempts := 0
-	bufferedModeFrozen := false
-	bufferedMode := false
+	buffered := stream && streamMode == streamDeliveryBuffered
+	bufferedTimeoutFrozen := false
 	bufferedReplayEligible := false
 	requestContext := ginContext.Request.Context()
-	var bufferedCancel context.CancelFunc
-	defer func() {
-		if bufferedCancel != nil {
-			bufferedCancel()
-		}
-	}()
+	if buffered {
+		bufferedReplayEligible = bufferedStreamReplayEligible(parsed, selectedDialect)
+		requestContext = context.WithValue(
+			requestContext,
+			bufferedStreamSessionContextKey{},
+			&bufferedStreamSession{},
+		)
+	}
 	type credentialRefreshRetry struct {
 		selection scheduler.Selection
 		ref       state.CredentialRef
@@ -1061,7 +1074,7 @@ func (handler *Handler) executeAttempts(
 			CredentialRefreshable:    credentialRefreshable,
 			Method:                   method,
 			Operation:                operation,
-			BufferedReplayEligible:   stream && bufferedMode && bufferedReplayEligible,
+			BufferedReplayEligible:   buffered && bufferedReplayEligible,
 		}
 	}
 	recordCandidatePreparationFailure := func(
@@ -1206,11 +1219,6 @@ func (handler *Handler) executeAttempts(
 			}
 			ref = candidateRef
 		}
-		if stream && !bufferedModeFrozen && selection.Group.BufferedStream &&
-			!supportsBufferedStreamProtocol(selectedDialect.Protocol()) {
-			handler.completeReason(ginContext, recorder, reasonBufferedStreamUnsupported)
-			return
-		}
 		encrypted, active := handler.registry.ActiveEncryptedCredentialDataIfMatch(ref)
 		if !active {
 			continue
@@ -1336,15 +1344,12 @@ func (handler *Handler) executeAttempts(
 			}
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, attemptSequence)
-		if stream && !bufferedModeFrozen {
-			bufferedModeFrozen = true
-			bufferedMode = selection.Group.BufferedStream
-			if bufferedMode {
-				bufferedReplayEligible = bufferedStreamReplayEligible(parsed, selectedDialect)
-				requestContext = context.WithValue(requestContext, bufferedStreamSessionContextKey{}, &bufferedStreamSession{})
-				if timeout := selection.Group.Timeouts.Request; timeout > 0 {
-					requestContext, bufferedCancel = context.WithTimeout(requestContext, timeout)
-				}
+		if buffered && !bufferedTimeoutFrozen {
+			bufferedTimeoutFrozen = true
+			if timeout := selection.Group.Timeouts.Request; timeout > 0 {
+				var cancel context.CancelFunc
+				requestContext, cancel = context.WithTimeout(requestContext, timeout)
+				defer cancel()
 			}
 		}
 		executionRequestID := "untracked"
@@ -1353,7 +1358,7 @@ func (handler *Handler) executeAttempts(
 		}
 		input := ForwardInput{
 			Dialect: selectedDialect, ObserveUsage: attemptObservations.ObserveUsage,
-			BufferedStream: bufferedMode,
+			BufferedStream: buffered,
 			Group:          selection.Group, APIKey: normalizedCredential.apiKey,
 			CredentialSecrets: normalizedCredential.secrets, Request: prepared.request,
 			ExternalModel:            externalModel,
