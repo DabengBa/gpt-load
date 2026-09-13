@@ -51,6 +51,8 @@ import {
   hasRequestLogCache,
   reasoningBudgetSemantic,
   requestLogCostDisplayState,
+  requestLogResponseTooltip,
+  requestLogResponseTooltipVisible,
   requestLogUsageDisplayState,
 } from './log-format'
 import LogDetailDrawer from './LogDetailDrawer.vue'
@@ -521,8 +523,19 @@ function statusTone(
   return 'neutral'
 }
 
+// 列表首屏只揭示最终状态、尝试次数和关键原因；供应商原始证据仍由详情抽屉与
+// debug capture 承担，提示里不出现任何 raw body/headers。
+// 翻译函数只暴露纯函数需要的形状，取值规则本身在 log-format 内固定并已测试。
+function translateLogMessage(key: string, named?: Record<string, string | number>): string {
+  return named ? t(key, named) : t(key)
+}
+
+function responseTooltipVisible(log: RequestLogItemDto): boolean {
+  return requestLogResponseTooltipVisible(log)
+}
+
 function responseTooltip(log: RequestLogItemDto): string {
-  return [log.error_code, log.error_summary].filter(Boolean).join(' · ')
+  return requestLogResponseTooltip(log, translateLogMessage)
 }
 
 function modelMappingTooltip(log: RequestLogItemDto): string {
@@ -853,7 +866,7 @@ function costLabel(log: RequestLogItemDto): string {
             :data-label="t('monitor.logs.columns.response')"
           >
             <div class="logs-list__response-primary">
-              <AppTooltip v-if="responseTooltip(log)" :content="responseTooltip(log)">
+              <AppTooltip v-if="responseTooltipVisible(log)" :content="responseTooltip(log)">
                 <span
                   ><StatusBadge :tone="statusTone(log.status)" size="compact">{{
                     responseLabel(log)
