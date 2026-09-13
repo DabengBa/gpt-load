@@ -172,13 +172,13 @@ func TestJudgeExecutionRetriesBufferedStreamOnSuccessStatusWithoutPayload(t *tes
 		t.Fatalf("released payload JudgeExecution() = %#v, want no retry", decision)
 	}
 
-	// Provider 4xx with no released payload remains final without replay proof.
+	// Provider 4xx with no released payload switches to the next candidate.
 	attempt = base
 	attempt.StatusCode = http.StatusNotFound
 	attempt.Evidence.StatusCode = http.StatusNotFound
 	attempt.Evidence.Hint = ""
 	decision = JudgeExecution(attempt, DecisionContext{BufferedReplayEligible: true})
-	if decision.Retry != RetryNone || decision.Effect != EffectNone {
-		t.Fatalf("client error JudgeExecution() = %#v, want no retry", decision)
+	if decision.Retry != RetryNextCandidate || decision.Effect != EffectNone {
+		t.Fatalf("client error JudgeExecution() = %#v, want candidate retry", decision)
 	}
 }

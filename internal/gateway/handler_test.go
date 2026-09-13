@@ -1101,7 +1101,7 @@ func TestHandlerRecordsInvalidKeyPerAttempt(t *testing.T) {
 	}
 }
 
-func TestHandlerDoesNotRotateOrPenalizeRequestRejected429(t *testing.T) {
+func TestHandlerRotatesWithoutPenalizingRequestRejected429(t *testing.T) {
 	now := time.Date(2026, time.August, 16, 12, 0, 0, 0, time.UTC)
 	forwarder := &scriptedForwarder{results: []UpstreamResult{
 		{
@@ -1134,8 +1134,8 @@ func TestHandlerDoesNotRotateOrPenalizeRequestRejected429(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusTooManyRequests || len(forwarder.inputs) != 1 {
-		t.Fatalf("response/attempts = %d/%d, want 429/1; body=%s", recorder.Code, len(forwarder.inputs), recorder.Body.String())
+	if recorder.Code != http.StatusOK || len(forwarder.inputs) != 2 {
+		t.Fatalf("response/attempts = %d/%d, want 200/2; body=%s", recorder.Code, len(forwarder.inputs), recorder.Body.String())
 	}
 	if recording.cooldownCalls != 0 || recording.incrFailureCalls != 0 || recording.blacklistCalls != 0 {
 		t.Fatalf("credential mutations = cooldown:%d failure:%d blacklist:%d, want none",
@@ -3288,7 +3288,7 @@ func TestHandlerUsesClassifierForStreamingNonSuccess(t *testing.T) {
 }
 
 func TestHandlerUsesClassifierForNonStreamingNonSuccess(t *testing.T) {
-	t.Run("client error terminates after one attempt", func(t *testing.T) {
+	t.Run("client error advances to a second key", func(t *testing.T) {
 		forwarder := &scriptedForwarder{results: []UpstreamResult{
 			{StatusCode: http.StatusBadRequest, Header: make(http.Header),
 				Body:               []byte(`{"error":"invalid input"}`),
@@ -3301,8 +3301,8 @@ func TestHandlerUsesClassifierForNonStreamingNonSuccess(t *testing.T) {
 		request.Header.Set("Authorization", "Bearer gl-client")
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusBadRequest || len(forwarder.inputs) != 1 {
-			t.Fatalf("status/attempts = %d/%d, want 400/1", recorder.Code, len(forwarder.inputs))
+		if recorder.Code != http.StatusOK || len(forwarder.inputs) != 2 {
+			t.Fatalf("status/attempts = %d/%d, want 200/2", recorder.Code, len(forwarder.inputs))
 		}
 	})
 
@@ -3412,22 +3412,39 @@ func TestHandlerRetriesAnotherGroupAfterLocalConversionFailure(t *testing.T) {
 		}
 	})
 
-	t.Run("upstream unsupported model 400 is passed through once", func(t *testing.T) {
-		forwarder := &scriptedForwarder{results: []UpstreamResult{{
-			StatusCode:      http.StatusBadRequest,
-			Header:          http.Header{"Content-Type": {"application/json"}},
-			Body:            []byte(`{"error":{"code":"unsupported_model"}}`),
-			RequestWritten:  true,
-			DispatchState:   execution.DispatchMaybeSent,
-			ResponseStarted: true,
-			ExecutionError: &execution.ErrorEvidence{
-				Kind:       execution.ErrorKindHTTP,
-				Hint:       execution.FailureHintModelUnavailable,
-				StatusCode: http.StatusBadRequest,
-				Code:       "unsupported_model",
-				Summary:    "request capability is unavailable",
+	t.Run("upstream unsupported model 400 switches candidate", func(t *testing.T) {
+		forwarder := &scriptedForwarder{results: []UpstreamResult{
+			{
+				StatusCode:      http.StatusBadRequest,
+				Header:          http.Header{"Content-Type": {"application/json"}},
+				Body:            []byte(`{"error":{"code":"unsupported_model"}}`),
+				RequestWritten:  true,
+				DispatchState:   execution.DispatchMaybeSent,
+				ResponseStarted: true,
+				ExecutionError: &execution.ErrorEvidence{
+					Kind:       execution.ErrorKindHTTP,
+					Hint:       execution.FailureHintModelUnavailable,
+					StatusCode: http.StatusBadRequest,
+					Code:       "unsupported_model",
+					Summary:    "request capability is unavailable",
+				},
 			},
-		}}}
+			{
+				StatusCode:      http.StatusBadRequest,
+				Header:          http.Header{"Content-Type": {"application/json"}},
+				Body:            []byte(`{"error":{"code":"unsupported_model"}}`),
+				RequestWritten:  true,
+				DispatchState:   execution.DispatchMaybeSent,
+				ResponseStarted: true,
+				ExecutionError: &execution.ErrorEvidence{
+					Kind:       execution.ErrorKindHTTP,
+					Hint:       execution.FailureHintModelUnavailable,
+					StatusCode: http.StatusBadRequest,
+					Code:       "unsupported_model",
+					Summary:    "request capability is unavailable",
+				},
+			},
+		}}
 		engine, registry := newConvertedFallbackHandlerTestRuntime(t, forwarder)
 		before := registry.Snapshot()
 		request := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewBufferString(
@@ -3436,7 +3453,7 @@ func TestHandlerRetriesAnotherGroupAfterLocalConversionFailure(t *testing.T) {
 		request.Header.Set("Authorization", "Bearer gl-client")
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusBadRequest || recorder.Body.String() != `{"error":{"code":"unsupported_model"}}` || len(forwarder.inputs) != 1 {
+		if recorder.Code != http.StatusBadRequest || recorder.Body.String() != `{"error":{"code":"unsupported_model"}}` || len(forwarder.inputs) != 2 {
 			t.Fatalf("response/attempts = %d %s / %d", recorder.Code, recorder.Body.String(), len(forwarder.inputs))
 		}
 		if after := registry.Snapshot(); !reflect.DeepEqual(after, before) {

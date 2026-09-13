@@ -432,7 +432,7 @@ func TestForwardStripsCookiesAndCredentialHeadersOnEveryPath(t *testing.T) {
 				if test.status == http.StatusOK {
 					wantBody += "data: {\"id\":\"chat_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
 				} else {
-					wantBody += bufferedOpenAIStreamFailure
+					wantBody += `{"code":"no_available_candidate","message":"No available upstream candidate."}`
 				}
 				if recorder.Code != http.StatusOK || recorder.Body.String() != wantBody {
 					t.Fatalf("response = %d headers=%v body=%s", recorder.Code, recorder.Header(), recorder.Body.String())
