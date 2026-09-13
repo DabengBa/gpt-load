@@ -346,9 +346,11 @@ export default {
         nonNegativeIntegerError: 'Enter 0 or a positive whole number.',
         override: 'Overridden by this Group',
         inherited: 'Inherited from global settings',
+        groupDefault: 'Group default',
         pendingRestoreSource: 'Pending inheritance',
         resetPending: 'Saving will make this follow the global setting',
         useOverride: 'Override',
+        useDefault: 'Use group default',
         useInherited: 'Use inherited',
         enabledValue: 'Enabled',
         disabledValue: 'Disabled',
@@ -367,6 +369,9 @@ export default {
         responses_websocket_enabled: 'Responses WebSocket',
         websocketHelp:
           'Disabling closes this group’s WS connections and interrupts generation immediately; HTTP/SSE remains available.',
+        responses_reasoning_status_filter_enabled: 'Remove reasoning status fields',
+        reasoningStatusFilterHelp:
+          'Removes status only from reasoning items in Responses input; message and tool-call status is preserved.',
         affinity_enabled: 'Request affinity',
         affinityHelp:
           'Controls whether this Group learns or reuses affinity targets without changing normal weights, scheduling, or retries.',

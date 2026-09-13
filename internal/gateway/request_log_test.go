@@ -3878,3 +3878,424 @@ func TestRerankRequestLogFreezesProviderInputEcho(t *testing.T) {
 		}
 	}
 }
+
+// 缓冲回退在候选耗尽时只能给出「没有候选」这句泛化文案；前置 attempt 已经保存的供应商
+// 短摘要不能被它覆盖，只有确实没有安全摘要时才保留泛化文案。
+func TestRequestRecorderKeepsProviderSummaryOverCandidateFallback(t *testing.T) {
+	const providerSummary = "Rate limit reached for gpt-4o in organization org-abc on tokens per min."
+	fixedSummary := fixedErrorSummary("upstream_failed")
+	secondProviderSummary := "Second candidate quota exhausted for this key."
+	tests := []struct {
+		name             string
+		attemptSummaries []string
+		wantSummary      string
+	}{
+		{
+			name:             "provider summary survives candidate exhaustion",
+			attemptSummaries: []string{providerSummary},
+			wantSummary:      providerSummary,
+		},
+		{
+			name:             "newest provider summary wins",
+			attemptSummaries: []string{providerSummary, secondProviderSummary},
+			wantSummary:      secondProviderSummary,
+		},
+		{
+			name:             "earlier provider summary beats a later fixed summary",
+			attemptSummaries: []string{providerSummary, fixedSummary},
+			wantSummary:      providerSummary,
+		},
+		{
+			name:             "fixed summaries keep the candidate fallback text",
+			attemptSummaries: []string{fixedSummary, fixedSummary},
+			wantSummary:      reasonNoCandidate.Message,
+		},
+		{
+			name:        "no attempt keeps the candidate fallback text",
+			wantSummary: reasonNoCandidate.Message,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sink := &recordingRequestLogSink{}
+			recorder := newRequestRecorder(
+				sink,
+				"req-candidate-fallback",
+				time.Unix(100, 0),
+				9,
+				protocol.OpenAICompletions,
+				func() time.Time { return time.Unix(102, 0) },
+			)
+			for _, summary := range test.attemptSummaries {
+				recorder.appendAttempt(
+					requestLogSelection(1, 1, "primary"),
+					UpstreamResult{StatusCode: http.StatusTooManyRequests},
+					telemetry.FailureCategoryRateLimited,
+					telemetry.ActionCooldownCredential,
+					"upstream_rate_limited",
+					summary,
+					time.Unix(100, 0),
+					time.Unix(101, 0),
+				)
+			}
+			recorder.completeReason(reasonNoCandidate)
+			recorder.emit()
+
+			if len(sink.events) != 1 {
+				t.Fatalf("events = %d, want one", len(sink.events))
+			}
+			event := sink.events[0]
+			if event.ErrorSummary != test.wantSummary {
+				t.Fatalf("request summary = %q, want %q", event.ErrorSummary, test.wantSummary)
+			}
+			if event.ErrorCode != reasonNoCandidate.Code {
+				t.Fatalf("request error code = %q, want %q", event.ErrorCode, reasonNoCandidate.Code)
+			}
+			if len(event.Attempts) != len(test.attemptSummaries) {
+				t.Fatalf("attempts = %d, want %d", len(event.Attempts), len(test.attemptSummaries))
+			}
+		})
+	}
+}
+
+// StreamEndUpstreamFailure 的流级观测是网关在提交 HTTP、未释放 payload 且执行层有错误证据时
+// 合成的，其摘要恒为固定分类文案；执行层保存的供应商短摘要必须继续进入 attempt 级摘要。
+func TestRequestStreamAttemptKeepsProviderSummaryForSynthesizedUpstreamFailure(t *testing.T) {
+	const (
+		providerSummary = "Rate limit reached for gpt-4o in organization org-abc on tokens per min."
+		secret          = "sk-live-provider-secret-value"
+	)
+	longSummary := strings.Repeat("quota exceeded ", maxRequestLogSummaryBytes/len("quota exceeded ")+2) + secret
+	fixedSummary := fixedErrorSummary("upstream_failed")
+	tests := []struct {
+		name          string
+		endReason     StreamEndReason
+		streamSummary string
+		errorSummary  string
+		secrets       []string
+		wantSummary   string
+		wantContains  []string
+		wantAbsent    []string
+		wantTruncated bool
+	}{
+		{
+			name:          "provider summary replaces synthesized fixed text",
+			endReason:     StreamEndUpstreamFailure,
+			streamSummary: fixedSummary,
+			errorSummary:  providerSummary,
+			wantSummary:   providerSummary,
+		},
+		{
+			name:          "missing provider summary keeps synthesized fixed text",
+			endReason:     StreamEndUpstreamFailure,
+			streamSummary: fixedSummary,
+			errorSummary:  "",
+			wantSummary:   fixedSummary,
+		},
+		{
+			name:          "provider summary is redacted and flattened",
+			endReason:     StreamEndUpstreamFailure,
+			streamSummary: fixedSummary,
+			errorSummary:  "quota exceeded for key " + secret + "\nretry after a short wait",
+			secrets:       []string{secret},
+			wantContains:  []string{redact.Placeholder, "retry after a short wait"},
+			wantAbsent:    []string{secret, "\n"},
+		},
+		{
+			name:          "provider summary is truncated on the server",
+			endReason:     StreamEndUpstreamFailure,
+			streamSummary: fixedSummary,
+			errorSummary:  longSummary,
+			secrets:       []string{secret},
+			wantAbsent:    []string{secret},
+			wantTruncated: true,
+		},
+		{
+			name:          "SSE error observation keeps its provider summary",
+			endReason:     StreamEndSSEError,
+			streamSummary: "upstream overloaded, retry later",
+			errorSummary:  providerSummary,
+			wantSummary:   "upstream overloaded, retry later",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sink := &recordingRequestLogSink{}
+			recorder := newRequestRecorder(
+				sink,
+				"req-synthesized-upstream-failure",
+				time.Unix(100, 0),
+				9,
+				protocol.OpenAICompletions,
+				func() time.Time { return time.Unix(102, 0) },
+			)
+			result := UpstreamResult{
+				StatusCode:     http.StatusTooManyRequests,
+				Committed:      true,
+				HTTPCommitted:  true,
+				BufferedStream: true,
+				Stream: StreamObservation{
+					EndReason:    test.endReason,
+					ErrorSummary: test.streamSummary,
+				},
+				ErrorSummary: test.errorSummary,
+			}
+			attempt := recorder.recordStreamAttempt(
+				requestLogSelection(1, 1, "primary"),
+				test.secrets,
+				result,
+				health.Decision{
+					Category: health.FailureCategoryRateLimited,
+					Retry:    health.RetryNextCandidate,
+					Effect:   health.EffectCooldownCredential,
+					RuleID:   "buffered_stream.retry_before_release_upstream_status",
+				},
+				time.Unix(100, 0),
+				time.Unix(101, 0),
+			)
+			recorder.completeStream(result, "gpt-4o", attempt)
+			recorder.emit()
+
+			if len(sink.events) != 1 || len(sink.events[0].Attempts) != 1 {
+				t.Fatalf("events = %#v, want one event with one attempt", sink.events)
+			}
+			event := sink.events[0]
+			summary := event.Attempts[0].ErrorSummary
+			if test.wantSummary != "" && summary != test.wantSummary {
+				t.Fatalf("attempt summary = %q, want %q", summary, test.wantSummary)
+			}
+			if event.ErrorSummary != summary {
+				t.Fatalf("request summary = %q, want the attempt summary %q", event.ErrorSummary, summary)
+			}
+			for _, fragment := range test.wantContains {
+				if !strings.Contains(summary, fragment) {
+					t.Fatalf("attempt summary = %q, want it to contain %q", summary, fragment)
+				}
+			}
+			for _, fragment := range test.wantAbsent {
+				if strings.Contains(summary, fragment) {
+					t.Fatalf("attempt summary = %q, must not contain %q", summary, fragment)
+				}
+			}
+			if test.wantTruncated {
+				if !strings.HasSuffix(summary, requestLogTruncatedMarker) ||
+					len(summary) > maxRequestLogSummaryBytes || !utf8.ValidString(summary) {
+					t.Fatalf("attempt summary was not truncated safely: %q", summary)
+				}
+			}
+		})
+	}
+}
+
+// 上游回显的报文可能包含分组自定义 header 的值；只要 attempt 摘要取自上游报文，就必须
+// 并入同一次选中的 HeaderRules secret，attempt 级和请求级摘要都不得泄露。
+func TestRequestSummariesRedactGroupHeaderRuleSecrets(t *testing.T) {
+	const (
+		headerSecret = "tenant-alpha-9f3a2c"
+		providerText = "tenant " + headerSecret + " was rate limited"
+	)
+	selectionWith := func(rules state.HeaderRules) scheduler.Selection {
+		selection := requestLogSelection(1, 1, "primary")
+		selection.Group.HeaderRules = rules
+		return selection
+	}
+	tenantRules := state.HeaderRules{Set: map[string]string{"X-Tenant-Key": headerSecret}}
+	shortRules := state.HeaderRules{Set: map[string]string{"X-Short": "a"}}
+	tests := []struct {
+		name          string
+		selection     scheduler.Selection
+		endReason     StreamEndReason
+		streamSummary string
+		errorSummary  string
+		expectSummary bool
+		wantSummary   string
+	}{
+		{
+			name:          "synthesized upstream failure redacts header rule secret",
+			selection:     selectionWith(tenantRules),
+			endReason:     StreamEndUpstreamFailure,
+			errorSummary:  providerText,
+			expectSummary: true,
+		},
+		{
+			name:          "SSE error observation redacts header rule secret",
+			selection:     selectionWith(tenantRules),
+			endReason:     StreamEndSSEError,
+			streamSummary: providerText,
+			expectSummary: true,
+		},
+		{
+			name:          "fixed fallback text is untouched by a short header literal",
+			selection:     selectionWith(shortRules),
+			endReason:     StreamEndUpstreamFailure,
+			streamSummary: fixedErrorSummary("upstream_failed"),
+			errorSummary:  "",
+			wantSummary:   fixedErrorSummary("upstream_failed"),
+		},
+		{
+			name:          "fixed terminal summary is untouched by a short header literal",
+			selection:     selectionWith(shortRules),
+			endReason:     StreamEndUpstreamTerminated,
+			streamSummary: fixedErrorSummary("upstream_stream_terminated"),
+			errorSummary:  providerText,
+			wantSummary:   fixedErrorSummary("upstream_stream_terminated"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sink := &recordingRequestLogSink{}
+			recorder := newRequestRecorder(
+				sink,
+				"req-header-rule-provider-summary",
+				time.Unix(100, 0),
+				9,
+				protocol.OpenAICompletions,
+				func() time.Time { return time.Unix(102, 0) },
+			)
+			result := UpstreamResult{
+				StatusCode:     http.StatusTooManyRequests,
+				Committed:      true,
+				HTTPCommitted:  true,
+				BufferedStream: true,
+				Stream: StreamObservation{
+					EndReason:    test.endReason,
+					ErrorSummary: test.streamSummary,
+				},
+				ErrorSummary: test.errorSummary,
+			}
+			attempt := recorder.recordStreamAttempt(
+				test.selection,
+				nil,
+				result,
+				health.Decision{
+					Category: health.FailureCategoryRateLimited,
+					Retry:    health.RetryNextCandidate,
+					Effect:   health.EffectCooldownCredential,
+					RuleID:   "buffered_stream.retry_before_release_upstream_status",
+				},
+				time.Unix(100, 0),
+				time.Unix(101, 0),
+			)
+			recorder.completeStream(result, "gpt-4o", attempt)
+			recorder.emit()
+
+			if len(sink.events) != 1 || len(sink.events[0].Attempts) != 1 {
+				t.Fatalf("events = %#v, want one event with one attempt", sink.events)
+			}
+			event := sink.events[0]
+			for label, surface := range map[string]string{
+				"attempt": event.Attempts[0].ErrorSummary,
+				"request": event.ErrorSummary,
+			} {
+				if strings.Contains(surface, headerSecret) {
+					t.Fatalf("%s summary leaked the group header rule secret: %q", label, surface)
+				}
+				if test.expectSummary && !strings.Contains(surface, redact.Placeholder) {
+					t.Fatalf("%s summary = %q, want the redaction placeholder", label, surface)
+				}
+			}
+			if test.wantSummary != "" && event.Attempts[0].ErrorSummary != test.wantSummary {
+				t.Fatalf("attempt summary = %q, want %q", event.Attempts[0].ErrorSummary, test.wantSummary)
+			}
+		})
+	}
+}
+
+// 固定摘要识别必须覆盖默认泛化文案与所有实际固定 code，否则网关固定文案会被当成
+// provider 摘要，在候选耗尽时顶掉真实的兜底结论。
+func TestIsFixedErrorSummaryRecognizesGatewayCatalog(t *testing.T) {
+	for code, summary := range fixedErrorSummaries {
+		if !isFixedErrorSummary(summary) {
+			t.Fatalf("isFixedErrorSummary(%q) = false for catalog code %q", summary, code)
+		}
+	}
+	for _, test := range []struct {
+		name    string
+		summary string
+		want    bool
+	}{
+		{name: "default classification text", summary: defaultErrorSummary, want: true},
+		{name: "unknown code resolves to default", summary: fixedErrorSummary("unknown_code"), want: true},
+		{name: "response incomplete resolves to default", summary: fixedErrorSummary("upstream_response_incomplete"), want: true},
+		{name: "empty summary", summary: "", want: false},
+		{name: "provider summary", summary: "Rate limit reached for gpt-4o in organization org-abc.", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isFixedErrorSummary(test.summary); got != test.want {
+				t.Fatalf("isFixedErrorSummary(%q) = %v, want %v", test.summary, got, test.want)
+			}
+		})
+	}
+	if fixedErrorSummary("unknown_code") != defaultErrorSummary ||
+		fixedErrorSummary("upstream_response_incomplete") != defaultErrorSummary {
+		t.Fatal("unknown and response-incomplete codes must keep the default classification text")
+	}
+}
+
+func TestRequestRecorderCandidateFallbackSkipsDefaultClassificationText(t *testing.T) {
+	const providerSummary = "Rate limit reached for gpt-4o in organization org-abc on tokens per min."
+	tests := []struct {
+		name             string
+		attemptSummaries []string
+		wantSummary      string
+	}{
+		{
+			name:             "default classification text keeps the candidate fallback text",
+			attemptSummaries: []string{defaultErrorSummary},
+			wantSummary:      reasonNoCandidate.Message,
+		},
+		{
+			name:             "response incomplete keeps the candidate fallback text",
+			attemptSummaries: []string{fixedErrorSummary("upstream_response_incomplete")},
+			wantSummary:      reasonNoCandidate.Message,
+		},
+		{
+			name:             "unknown code default keeps the candidate fallback text",
+			attemptSummaries: []string{fixedErrorSummary("unknown_code")},
+			wantSummary:      reasonNoCandidate.Message,
+		},
+		{
+			name:             "earlier provider summary beats a later default text",
+			attemptSummaries: []string{providerSummary, defaultErrorSummary},
+			wantSummary:      providerSummary,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sink := &recordingRequestLogSink{}
+			recorder := newRequestRecorder(
+				sink,
+				"req-default-classification",
+				time.Unix(100, 0),
+				9,
+				protocol.OpenAICompletions,
+				func() time.Time { return time.Unix(102, 0) },
+			)
+			for _, summary := range test.attemptSummaries {
+				recorder.appendAttempt(
+					requestLogSelection(1, 1, "primary"),
+					UpstreamResult{StatusCode: http.StatusTooManyRequests},
+					telemetry.FailureCategoryRateLimited,
+					telemetry.ActionCooldownCredential,
+					"upstream_rate_limited",
+					summary,
+					time.Unix(100, 0),
+					time.Unix(101, 0),
+				)
+			}
+			recorder.completeReason(reasonNoCandidate)
+			recorder.emit()
+
+			if len(sink.events) != 1 {
+				t.Fatalf("events = %d, want one", len(sink.events))
+			}
+			if got := sink.events[0].ErrorSummary; got != test.wantSummary {
+				t.Fatalf("request summary = %q, want %q", got, test.wantSummary)
+			}
+		})
+	}
+}

@@ -345,9 +345,11 @@ export default {
         nonNegativeIntegerError: '0 または正の整数を入力してください。',
         override: 'このグループで上書き',
         inherited: 'グローバル設定を継承',
+        groupDefault: 'グループのデフォルト',
         pendingRestoreSource: '継承待ち',
         resetPending: '保存するとグローバル設定に従います',
         useOverride: '上書きに変更',
+        useDefault: 'グループのデフォルトに戻す',
         useInherited: '継承に変更',
         enabledValue: '有効',
         disabledValue: '無効',
@@ -367,6 +369,9 @@ export default {
         responses_websocket_enabled: 'Responses WebSocket',
         websocketHelp:
           '無効化すると、このグループの WS 接続と生成を直ちに終了します。HTTP/SSE は影響を受けません。',
+        responses_reasoning_status_filter_enabled: 'reasoning status フィールドを削除',
+        reasoningStatusFilterHelp:
+          'Responses 入力の reasoning 項目からのみ status を削除し、メッセージとツール呼び出しの status は保持します。',
         affinity_enabled: 'リクエストアフィニティ',
         affinityHelp:
           '通常の重み、スケジューリング、再試行を変えず、このグループがアフィニティ対象を学習または再利用するかを制御します。',

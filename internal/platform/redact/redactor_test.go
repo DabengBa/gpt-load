@@ -46,6 +46,20 @@ func TestExtractErrorMessageUsesOnlySafeMessageShapes(t *testing.T) {
 			want: "invalid credentials",
 		},
 		{
+			name: "nested JSON message keeps precedence",
+			body: []byte(`{"error":{"message":"nested reason"},"message":"wrapper text"}`),
+			want: "nested reason",
+		},
+		{
+			name: "top-level reseller code and message",
+			body: []byte(`{"code":"rate_limit_exceeded","message":"Reseller quota exhausted for this key."}`),
+			want: "Reseller quota exhausted for this key.",
+		},
+		{
+			name: "reseller msg field stays unsupported",
+			body: []byte(`{"code":"1001","msg":"Insufficient balance"}`),
+		},
+		{
 			name: "plain text message",
 			body: []byte(`auth_unavailable: no auth available`),
 			want: "auth_unavailable: no auth available",

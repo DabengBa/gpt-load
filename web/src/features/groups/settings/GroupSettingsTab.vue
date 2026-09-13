@@ -263,6 +263,14 @@ const websocketEnabledLabel = computed(() =>
     ? t('group.settings.runtime.enabledValue')
     : t('group.settings.runtime.disabledValue'),
 )
+const reasoningStatusFilterOverridden = computed(
+  () => draft.value?.overrides.responses_reasoning_status_filter_enabled !== undefined,
+)
+const reasoningStatusFilterEnabledLabel = computed(() =>
+  saved.value?.effective.responses_reasoning_status_filter_enabled
+    ? t('group.settings.runtime.enabledValue')
+    : t('group.settings.runtime.disabledValue'),
+)
 function resetSavedDraft(settings: GroupSettingsDto): void {
   saved.value = settings
   draft.value = createGroupSettingsDraft(settings)
@@ -440,6 +448,26 @@ function setWebsocketValue(value: boolean): void {
   }
 }
 
+function toggleReasoningStatusFilterOverride(): void {
+  if (!draft.value || !saved.value) return
+  const overrides = { ...draft.value.overrides }
+  if (reasoningStatusFilterOverridden.value)
+    delete overrides.responses_reasoning_status_filter_enabled
+  else {
+    overrides.responses_reasoning_status_filter_enabled =
+      saved.value.effective.responses_reasoning_status_filter_enabled
+  }
+  draft.value = { ...draft.value, overrides }
+}
+
+function setReasoningStatusFilterValue(value: boolean): void {
+  if (!draft.value) return
+  draft.value = {
+    ...draft.value,
+    overrides: { ...draft.value.overrides, responses_reasoning_status_filter_enabled: value },
+  }
+}
+
 function requestSave(): void {
   if (!dirty.value || !valid.value || mutationPending.value) return
   void save()
@@ -607,6 +635,39 @@ onBeforeUnmount(() => {
                             :disabled="mutationPending"
                             :label="t('group.settings.runtime.responses_websocket_enabled')"
                             @update:model-value="setWebsocketValue"
+                          />
+                        </template>
+                      </SettingRow>
+                      <SettingRow
+                        :label="
+                          t('group.settings.runtime.responses_reasoning_status_filter_enabled')
+                        "
+                        :value="reasoningStatusFilterEnabledLabel"
+                        :help="t('group.settings.runtime.reasoningStatusFilterHelp')"
+                        :source-label="
+                          reasoningStatusFilterOverridden
+                            ? t('group.settings.runtime.override')
+                            : t('group.settings.runtime.groupDefault')
+                        "
+                        :action-label="
+                          reasoningStatusFilterOverridden
+                            ? t('group.settings.runtime.useDefault')
+                            : t('group.settings.runtime.useOverride')
+                        "
+                        :overridden="reasoningStatusFilterOverridden"
+                        :disabled="mutationPending"
+                        @toggle="toggleReasoningStatusFilterOverride"
+                      >
+                        <template #control>
+                          <AppSwitch
+                            :model-value="
+                              draft.overrides.responses_reasoning_status_filter_enabled ?? false
+                            "
+                            :disabled="mutationPending"
+                            :label="
+                              t('group.settings.runtime.responses_reasoning_status_filter_enabled')
+                            "
+                            @update:model-value="setReasoningStatusFilterValue"
                           />
                         </template>
                       </SettingRow>

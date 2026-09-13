@@ -424,7 +424,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			result.Err = s.ctx.Err()
 			result.ExecutionError = &execution.ErrorEvidence{Kind: execution.ErrorKindCanceled, OriginHint: execution.ErrorOriginDownstream, Code: "websocket_canceled"}
 		} else if binding != nil {
-			result = s.runWebsocketAttempt(ctx, cancel, binding, turn.lane, selection, ref, input, recorder, unlock, firstByteDeadline)
+			result = s.runWebsocketAttempt(ctx, cancel, binding, turn.lane, selection, ref, input, spec.Body, recorder, unlock, firstByteDeadline)
 		} else {
 			result.Err = executionFailureError(ctx, wsResult.Error)
 			result.StatusCode = wsResult.Error.StatusCode
@@ -543,7 +543,7 @@ type websocketCancelCloser struct {
 
 func (c websocketCancelCloser) Close() error { c.timedOut.Store(true); c.cancel(); return nil }
 
-func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel context.CancelFunc, binding *websocketBinding, lane string, selection scheduler.Selection, ref state.CredentialRef, input ForwardInput, recorder *requestRecorder, unlock func(), firstByteDeadline time.Time) UpstreamResult {
+func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel context.CancelFunc, binding *websocketBinding, lane string, selection scheduler.Selection, ref state.CredentialRef, input ForwardInput, body []byte, recorder *requestRecorder, unlock func(), firstByteDeadline time.Time) UpstreamResult {
 	observer := newStreamEventObserver(input.Dialect, newUsageCaptureBoundary().newStreamForRequest(input.Dialect, input.ObserveUsage))
 	result := UpstreamResult{UpstreamProtocol: protocol.OpenAIResponses}
 	var responseID string
@@ -564,7 +564,7 @@ func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel co
 		}
 	}()
 	onResponse := s.handler.responseBindingObserver(s.keyID, selection, ref, input.Request)
-	wsResult := binding.session.ExecuteTurn(ctx, input.Request.Body, func(ctx context.Context, body []byte) error {
+	wsResult := binding.session.ExecuteTurn(ctx, body, func(ctx context.Context, body []byte) error {
 		var event struct {
 			Type       string          `json:"type"`
 			StreamID   json.RawMessage `json:"stream_id"`
