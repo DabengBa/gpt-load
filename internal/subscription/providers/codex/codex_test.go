@@ -210,6 +210,15 @@ func TestExecuteRequestToBridgePreservesEnvironmentProxyPolicy(t *testing.T) {
 	}
 }
 
+func TestExecuteRequestToBridgePreservesContinuityKey(t *testing.T) {
+	t.Parallel()
+
+	request := executeRequestToBridge(ExecuteRequest{ContinuityKey: "prompt-prefix-scope"})
+	if request.ContinuityKey != "prompt-prefix-scope" {
+		t.Fatalf("bridge continuity key = %q", request.ContinuityKey)
+	}
+}
+
 func TestExecuteRequestToBridgePreservesFixedRequestPath(t *testing.T) {
 	t.Parallel()
 

@@ -123,6 +123,38 @@ func inspectJSONRequestFields(body []byte, requireModel, responsesCreate bool) (
 	return result, nil
 }
 
+// inspectPromptCacheKey extracts one valid top-level prompt cache key without changing the request.
+func inspectPromptCacheKey(body []byte) string {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	root, err := decoder.Token()
+	if err != nil || root != json.Delim('{') {
+		return ""
+	}
+	seen := false
+	var result string
+	for decoder.More() {
+		field, err := decoder.Token()
+		if err != nil {
+			return ""
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return ""
+		}
+		if field != "prompt_cache_key" {
+			continue
+		}
+		if seen {
+			return ""
+		}
+		seen = true
+		if json.Unmarshal(value, &result) != nil || !validPromptCacheKey(result) {
+			return ""
+		}
+	}
+	return result
+}
+
 // maxPromptCacheKeyBytes 限定单个显式 prompt 缓存键信号的长度。
 const maxPromptCacheKeyBytes = 256
 

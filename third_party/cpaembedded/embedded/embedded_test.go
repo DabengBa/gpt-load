@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -72,6 +73,34 @@ func TestParseCodexCredentialJSONRejectsMalformedCPAControlMetadata(t *testing.T
 	}`)
 	if _, err := ParseCodexCredentialJSON(raw); err == nil {
 		t.Fatal("ParseCodexCredentialJSON() accepted malformed CPA prefix metadata")
+	}
+}
+
+func TestCodexSessionMetadataUsesContinuityKeyWithoutOverridingExplicitSession(t *testing.T) {
+	t.Parallel()
+
+	for _, format := range []sdktranslator.Format{
+		sdktranslator.FormatOpenAI,
+		sdktranslator.FormatOpenAIResponse,
+		sdktranslator.FormatClaude,
+		sdktranslator.FormatGemini,
+	} {
+		metadata := codexSessionMetadata(ExecuteRequest{ContinuityKey: "prompt-prefix-scope"}, format)
+		if got := metadata[cliproxyexecutor.DerivedSessionIDMetadataKey]; got != "prompt-prefix-scope" {
+			t.Fatalf("format %q metadata = %#v", format, metadata)
+		}
+
+		explicit := ExecuteRequest{
+			ContinuityKey: "prompt-prefix-scope",
+			Headers:       http.Header{"Session_id": {"client-session"}},
+		}
+		explicit.Headers = normalizedCodexHeaders(explicit.Headers)
+		if metadata := codexSessionMetadata(explicit, format); metadata != nil {
+			t.Fatalf("format %q overrode explicit session: %#v", format, metadata)
+		}
+	}
+	if metadata := codexSessionMetadata(ExecuteRequest{ContinuityKey: "scope"}, sdktranslator.FromString("openai-image")); metadata != nil {
+		t.Fatalf("unsupported format metadata = %#v", metadata)
 	}
 }
 
@@ -515,6 +544,50 @@ func TestCodexHTTPExecutorKeepsOtherBootstrapErrorsInStream(t *testing.T) {
 	}
 	if streamErr == nil || !strings.Contains(streamErr.Error(), "bad_request") {
 		t.Fatalf("stream error = %v", streamErr)
+	}
+}
+
+func TestCodexHTTPExecutorCanonicalUsesContinuitySessionForUnaryAndStream(t *testing.T) {
+	t.Parallel()
+
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			var sessions []string
+			transport := claudeRoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+				sessions = append(sessions, request.Header.Get("Session-Id"))
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"text/event-stream"}},
+					Body:       io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5.2\",\"output\":[]}}\n\n")),
+					Request:    request,
+				}, nil
+			})
+			ctx := context.WithValue(t.Context(), "cliproxy.roundtripper", http.RoundTripper(transport))
+			executor := NewCodexHTTPExecutor()
+			for _, scope := range []string{"prompt-prefix-a", "prompt-prefix-a", "prompt-prefix-b"} {
+				request := ExecuteRequest{
+					Model: "gpt-5.2", Payload: []byte(`{"model":"gpt-5.2","messages":[{"role":"user","content":"hello"}]}`),
+					Format: "openai", ContinuityKey: scope,
+				}
+				if stream {
+					response, err := executor.ExecuteStreamCanonical(ctx, "credential-one", CodexCredential{
+						Type: ProviderCodex, AccessToken: "access", RefreshToken: "refresh", AccountID: "account-123",
+					}, request)
+					if err != nil {
+						t.Fatalf("ExecuteStreamCanonical() error = %v", err)
+					}
+					for range response.Chunks {
+					}
+				} else if _, err := executor.ExecuteCanonical(ctx, "credential-one", CodexCredential{
+					Type: ProviderCodex, AccessToken: "access", RefreshToken: "refresh", AccountID: "account-123",
+				}, request); err != nil {
+					t.Fatalf("ExecuteCanonical() error = %v", err)
+				}
+			}
+			if len(sessions) != 3 || sessions[0] == "" || sessions[0] != sessions[1] || sessions[0] == sessions[2] {
+				t.Fatalf("stream=%t Session-Ids = %#v", stream, sessions)
+			}
+		})
 	}
 }
 
