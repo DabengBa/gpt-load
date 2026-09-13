@@ -33,7 +33,8 @@ func TestGetGroupSettingsReturnsPersistedDraftOverridesAndEffectiveConfig(t *tes
 		"request_timeout":480,
 		"stream_idle_timeout":270,
 		"header_rules":{"set":{"X-Group":"value"},"remove":["X-Removed"]},
-		"affinity_enabled":false
+		"affinity_enabled":false,
+		"responses_reasoning_status_filter_enabled":true
 	}`)
 	if err := fixture.db.Create(group).Error; err != nil {
 		t.Fatal(err)
@@ -57,6 +58,7 @@ func TestGetGroupSettingsReturnsPersistedDraftOverridesAndEffectiveConfig(t *tes
 		state.SettingStreamIdleTimeout,
 		state.SettingHeaderRules,
 		state.SettingAffinityEnabled,
+		state.SettingResponsesReasoningStatusFilterEnabled,
 	} {
 		if got.Overrides[key] == nil {
 			t.Fatalf("overrides missing %q: %#v", key, got.Overrides)
@@ -65,9 +67,32 @@ func TestGetGroupSettingsReturnsPersistedDraftOverridesAndEffectiveConfig(t *tes
 	if got.Effective.FirstByteTimeout != 180 ||
 		got.Effective.RequestTimeout != 480 || got.Effective.StreamIdleTimeout != 270 ||
 		got.Effective.AffinityEnabled ||
+		!got.Effective.ResponsesReasoningStatusFilterEnabled ||
 		!reflect.DeepEqual(got.Effective.HeaderRules.Set, map[string]string{"X-Group": "value"}) ||
 		!reflect.DeepEqual(got.Effective.HeaderRules.Remove, []string{"X-Removed"}) {
 		t.Fatalf("effective = %#v", got.Effective)
+	}
+}
+
+func TestUpdateGroupSettingsPublishesResponsesReasoningStatusFilter(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-reasoning-status-filter")
+
+	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingResponsesReasoningStatusFilterEnabled: true,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Effective.ResponsesReasoningStatusFilterEnabled ||
+		result.Overrides[state.SettingResponsesReasoningStatusFilterEnabled] != true {
+		t.Fatalf("settings response = %#v", result)
+	}
+	if !fixture.manager.Current().Groups[groupID].ResponsesReasoningStatusFilterEnabled {
+		t.Fatal("published group view did not enable reasoning status filtering")
 	}
 }
 
@@ -116,6 +141,51 @@ func TestUpdateGroupSettingsPublishesParameterOverrides(t *testing.T) {
 	}
 	if fixture.manager.Current() != before {
 		t.Fatal("invalid parameter overrides published a snapshot")
+	}
+}
+
+func TestUpdateGroupSettingsPublishesReasoningEffortOverrides(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-reasoning-effort-overrides")
+
+	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingReasoningEffortOverrides: map[string]any{" gpt-4o ": " HIGH "},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"gpt-4o": "high"}
+	if got := result.Overrides[state.SettingReasoningEffortOverrides]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("stored override = %#v, want %#v", got, want)
+	}
+	if got := fixture.manager.Current().Groups[groupID].ReasoningEffortOverrides; !reflect.DeepEqual(got, map[string]string{"gpt-4o": "high"}) {
+		t.Fatalf("runtime override = %#v", got)
+	}
+	stored, err := fixture.service.GetGroupSettings(t.Context(), groupID)
+	if err != nil || !reflect.DeepEqual(stored.Overrides[state.SettingReasoningEffortOverrides], want) {
+		t.Fatalf("GetGroupSettings() = %#v, %v", stored.Overrides, err)
+	}
+
+	before := fixture.manager.Current()
+	for _, overrides := range []map[string]any{
+		{},
+		{"gpt-4o": "high", " gpt-4o ": "low"},
+		{"unknown-model": "high"},
+	} {
+		_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+			Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+				state.SettingReasoningEffortOverrides: overrides,
+			}},
+		})
+		if !errors.Is(err, app_errors.ErrValidation) {
+			t.Fatalf("UpdateGroupSettings(%#v) error = %v, want validation", overrides, err)
+		}
+		if fixture.manager.Current() != before {
+			t.Fatal("invalid reasoning effort overrides published a snapshot")
+		}
 	}
 }
 

@@ -86,14 +86,16 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 			// a candidate that keeps answering this way reaches the blacklist
 			// threshold and is recovered by the validation probe, and switch
 			// candidate for this request instead of failing it.
-			return constrainCommittedDecision(decision(
+			result := decision(
 				FailureCategoryAmbiguous,
 				originForDispatch(attempt.DispatchState),
 				execution.ErrorScopeCredential,
 				RetryNextCandidate,
 				EffectRecordCredentialFailure,
 				"fallback.missing_evidence_retry",
-			), attempt)
+			)
+			result = constrainOperationReplay(result, attempt, decisionContext)
+			return constrainCommittedDecision(result, attempt)
 		}
 		return decision(
 			FailureCategoryAmbiguous,
@@ -469,6 +471,16 @@ func decisionForExecutionCategory(
 			"conversion.unsupported",
 		)
 	case FailureCategoryClientError:
+		if attempt.Evidence.ReplaySafety == execution.ReplaySafetyRejectedBeforeProcessing {
+			return decision(
+				category,
+				origin,
+				execution.ErrorScopeRequest,
+				RetryNextCandidate,
+				EffectNone,
+				"upstream.http_4xx_rejected_before_processing",
+			)
+		}
 		return decision(
 			category,
 			origin,
@@ -486,6 +498,9 @@ func decisionForExecutionCategory(
 
 func transientCapacityDecision(attempt ExecutionAttempt) (Decision, bool) {
 	evidence := attempt.Evidence
+	if attempt.statusCode() == http.StatusTooManyRequests {
+		return Decision{}, false
+	}
 	if evidence == nil || evidence.ReplaySafety != execution.ReplaySafetyRejectedBeforeProcessing ||
 		originForEvidence(evidence) != execution.ErrorOriginUpstream ||
 		(evidence.Kind != execution.ErrorKindHTTP && evidence.Kind != execution.ErrorKindProvider) {
@@ -546,7 +561,8 @@ func bufferedStreamRetryDecision(
 	// 上游以 2xx 状态开始流但未释放任何 payload 就失败（SSE 错误事件、连接中断等）：
 	// 心跳已提交、payload 未释放，换候选是安全的。这类证据没有可重试的状态码，
 	// 只能靠证据码识别（run finding: upstream 200 后无内容被误判为终局）。
-	// 客户端错误（4xx）仍保持终局：请求本身无效，换候选无意义。
+	// 实际上游 4xx 已在判定阶段按安全门限授予候选切换；此处仅处理
+	// 2xx 流式响应在未释放 payload 前中断的证据。
 	if isSuccessStatus(attempt.statusCode()) {
 		switch attempt.Evidence.Code {
 		case "upstream_error", "upstream_sse_error":

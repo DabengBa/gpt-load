@@ -58,6 +58,7 @@ type GroupEditorState = {
   pending: boolean
   error: string
   saved: boolean
+  invalid?: boolean
   invalidRowCount?: number
 }
 
@@ -77,6 +78,9 @@ const deletePending = ref(false)
 const unifiedDirty = computed(() => settingsState.value.dirty || modelsState.value.dirty)
 const unifiedPending = computed(
   () => settingsState.value.pending || modelsState.value.pending || deletePending.value,
+)
+const unifiedInvalid = computed(
+  () => settingsState.value.invalid === true || (modelsState.value.invalidRowCount ?? 0) > 0,
 )
 const unifiedError = computed(() => settingsState.value.error || modelsState.value.error)
 const unifiedSaved = computed(
@@ -284,7 +288,11 @@ watch(
                   :disabled="disabled || unifiedPending || unifiedDirty"
                   @update:pending="deletePending = $event"
                 />
-                <AppButton size="sm" :disabled="disabled || !unifiedDirty" @click="saveUnified">
+                <AppButton
+                  size="sm"
+                  :disabled="disabled || !unifiedDirty || unifiedInvalid"
+                  @click="saveUnified"
+                >
                   {{ t('group.settings.save') }}
                 </AppButton>
               </template>

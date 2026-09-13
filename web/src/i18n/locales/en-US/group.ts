@@ -291,6 +291,15 @@ export default {
           actionRequired: 'Add at least one parameter.',
         },
       },
+      reasoningEffort: {
+        title: 'Reasoning effort by upstream model',
+        description: 'Replace an existing reasoning effort only for this Group and upstream model.',
+        empty: 'No model-specific reasoning effort overrides.',
+        model: 'Upstream model',
+        add: 'Add model override',
+        effort: 'Reasoning effort for {model}',
+        remove: 'Remove reasoning override for {model}',
+      },
       dangerDescription: 'Keep irreversible actions clearly separated from routine settings.',
       saveFailed: 'Unable to update the Group settings.',
       base: {
@@ -346,9 +355,11 @@ export default {
         nonNegativeIntegerError: 'Enter 0 or a positive whole number.',
         override: 'Overridden by this Group',
         inherited: 'Inherited from global settings',
+        groupDefault: 'Group default',
         pendingRestoreSource: 'Pending inheritance',
         resetPending: 'Saving will make this follow the global setting',
         useOverride: 'Override',
+        useDefault: 'Use group default',
         useInherited: 'Use inherited',
         enabledValue: 'Enabled',
         disabledValue: 'Disabled',
@@ -364,6 +375,9 @@ export default {
         responses_websocket_enabled: 'Responses WebSocket',
         websocketHelp:
           'Disabling closes this group’s WS connections and interrupts generation immediately; HTTP/SSE remains available.',
+        responses_reasoning_status_filter_enabled: 'Remove reasoning status fields',
+        reasoningStatusFilterHelp:
+          'Removes status only from reasoning items in Responses input; message and tool-call status is preserved.',
         affinity_enabled: 'Request affinity',
         affinityHelp:
           'Controls whether this Group learns or reuses affinity targets without changing normal weights, scheduling, or retries.',

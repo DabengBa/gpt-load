@@ -33,7 +33,7 @@ func TestJudgeExecutionSwitchesCandidateOnTransientUpstreamStatusBeforeRelease(t
 			wantEffect: EffectSkipGroup,
 		},
 		{
-			name:       "request timeout keeps the client error effect",
+			name:       "request timeout preserves buffered retry rule",
 			status:     http.StatusRequestTimeout,
 			scope:      execution.ErrorScopeRequest,
 			wantRule:   "buffered_stream.retry_before_release_upstream_status",
@@ -64,7 +64,7 @@ func TestJudgeExecutionSwitchesCandidateOnTransientUpstreamStatusBeforeRelease(t
 }
 
 // buffered 合同只在「心跳已提交、payload 未释放」这一种已提交状态下放宽重放；
-// 未分类的客户端错误、已释放 payload、已提交的实时流和未标记 buffered 的尝试都保持终局。
+// 只有真实 payload 已释放或已提交的实时流才保持终局；未释放的 provider 4xx 应切换候选。
 func TestJudgeExecutionKeepsTransientUpstreamStatusFinalOutsideBufferedReleaseWindow(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -84,12 +84,12 @@ func TestJudgeExecutionKeepsTransientUpstreamStatusFinalOutsideBufferedReleaseWi
 			}(),
 		},
 		{
-			name: "client error stays final",
-			attempt: func() ExecutionAttempt {
+			name: "released client error stays final",
+			attempt: withReleasedPayload(func() ExecutionAttempt {
 				attempt := bufferedUpstreamStatusAttempt(http.StatusNotFound, execution.ErrorScopeRequest)
 				attempt.Evidence.Hint = ""
 				return attempt
-			}(),
+			}()),
 		},
 	}
 
@@ -172,13 +172,13 @@ func TestJudgeExecutionRetriesBufferedStreamOnSuccessStatusWithoutPayload(t *tes
 		t.Fatalf("released payload JudgeExecution() = %#v, want no retry", decision)
 	}
 
-	// 客户端错误（4xx）即使带 upstream_error 证据码也必须保持终局。
+	// Provider 4xx with no released payload remains final without replay proof.
 	attempt = base
 	attempt.StatusCode = http.StatusNotFound
 	attempt.Evidence.StatusCode = http.StatusNotFound
 	attempt.Evidence.Hint = ""
 	decision = JudgeExecution(attempt, DecisionContext{BufferedReplayEligible: true})
-	if decision.Retry != RetryNone {
+	if decision.Retry != RetryNone || decision.Effect != EffectNone {
 		t.Fatalf("client error JudgeExecution() = %#v, want no retry", decision)
 	}
 }

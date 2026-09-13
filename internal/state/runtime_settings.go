@@ -15,23 +15,25 @@ import (
 )
 
 const (
-	SettingFirstByteTimeout          = "first_byte_timeout"
-	SettingRequestTimeout            = "request_timeout"
-	SettingStreamIdleTimeout         = "stream_idle_timeout"
-	SettingHeaderRules               = "header_rules"
-	SettingCORS                      = "cors"
-	SettingResponseHeaderRules       = "response_header_rules"
-	SettingRetryCount                = "retry_count"
-	SettingRouteStrategy             = "route_strategy"
-	SettingBlacklistThreshold        = "blacklist_threshold"
-	SettingAffinityEnabled           = "affinity_enabled"
-	SettingResponsesWebsocketEnabled = "responses_websocket_enabled"
-	SettingAffinityTTL               = "affinity_ttl"
-	SettingAffinityCapacity          = "affinity_capacity"
-	SettingValidationInterval        = "validation_interval"
-	SettingRequestLogRetentionDays   = "request_log_retention_days"
-	SettingModelsDevAutoSyncEnabled  = "models_dev_auto_sync_enabled"
-	SettingParameterOverrides        = "parameter_overrides"
+	SettingFirstByteTimeout                      = "first_byte_timeout"
+	SettingRequestTimeout                        = "request_timeout"
+	SettingStreamIdleTimeout                     = "stream_idle_timeout"
+	SettingHeaderRules                           = "header_rules"
+	SettingCORS                                  = "cors"
+	SettingResponseHeaderRules                   = "response_header_rules"
+	SettingRetryCount                            = "retry_count"
+	SettingRouteStrategy                         = "route_strategy"
+	SettingBlacklistThreshold                    = "blacklist_threshold"
+	SettingAffinityEnabled                       = "affinity_enabled"
+	SettingResponsesWebsocketEnabled             = "responses_websocket_enabled"
+	SettingAffinityTTL                           = "affinity_ttl"
+	SettingAffinityCapacity                      = "affinity_capacity"
+	SettingValidationInterval                    = "validation_interval"
+	SettingRequestLogRetentionDays               = "request_log_retention_days"
+	SettingModelsDevAutoSyncEnabled              = "models_dev_auto_sync_enabled"
+	SettingParameterOverrides                    = "parameter_overrides"
+	SettingReasoningEffortOverrides              = "reasoning_effort_overrides"
+	SettingResponsesReasoningStatusFilterEnabled = "responses_reasoning_status_filter_enabled"
 )
 
 type RouteStrategy string
@@ -70,12 +72,14 @@ type RuntimeSettings struct {
 }
 
 type ResolvedGroupSettings struct {
-	Timeouts                  TimeoutConfig
-	HeaderRules               HeaderRules
-	BlacklistThreshold        int
-	AffinityEnabled           bool
-	ResponsesWebsocketEnabled bool
-	ParameterOverrides        parameteroverride.Rules
+	Timeouts                              TimeoutConfig
+	HeaderRules                           HeaderRules
+	BlacklistThreshold                    int
+	AffinityEnabled                       bool
+	ResponsesWebsocketEnabled             bool
+	ResponsesReasoningStatusFilterEnabled bool
+	ParameterOverrides                    parameteroverride.Rules
+	ReasoningEffortOverrides              map[string]string
 }
 
 func DefaultRuntimeSettings() RuntimeSettings {
@@ -248,10 +252,11 @@ func ResolveGroupRuntimeSettings(
 			Request:    base.RequestTimeout,
 			StreamIdle: base.StreamIdleTimeout,
 		},
-		HeaderRules:               cloneHeaderRules(base.HeaderRules),
-		BlacklistThreshold:        base.BlacklistThreshold,
-		AffinityEnabled:           base.AffinityEnabled,
-		ResponsesWebsocketEnabled: base.ResponsesWebsocketEnabled,
+		HeaderRules:                           cloneHeaderRules(base.HeaderRules),
+		BlacklistThreshold:                    base.BlacklistThreshold,
+		AffinityEnabled:                       base.AffinityEnabled,
+		ResponsesWebsocketEnabled:             base.ResponsesWebsocketEnabled,
+		ResponsesReasoningStatusFilterEnabled: false,
 	}
 	for key, value := range settings {
 		switch key {
@@ -300,6 +305,18 @@ func ResolveGroupRuntimeSettings(
 				return ResolvedGroupSettings{}, err
 			}
 			resolved.ResponsesWebsocketEnabled = parsed
+		case SettingReasoningEffortOverrides:
+			parsed, err := ParseReasoningEffortOverrides(value)
+			if err != nil {
+				return ResolvedGroupSettings{}, err
+			}
+			resolved.ReasoningEffortOverrides = parsed
+		case SettingResponsesReasoningStatusFilterEnabled:
+			parsed, err := strictBoolean(key, value)
+			if err != nil {
+				return ResolvedGroupSettings{}, err
+			}
+			resolved.ResponsesReasoningStatusFilterEnabled = parsed
 		case SettingParameterOverrides:
 			parsed, err := parameteroverride.Compile(value)
 			if err != nil {
@@ -311,6 +328,48 @@ func ResolveGroupRuntimeSettings(
 		}
 	}
 	return resolved, nil
+}
+
+func ParseReasoningEffortOverrides(value any) (map[string]string, error) {
+	raw, ok := value.(map[string]any)
+	if !ok || len(raw) == 0 {
+		return nil, fmt.Errorf("%s must be a non-empty object", SettingReasoningEffortOverrides)
+	}
+	result := make(map[string]string, len(raw))
+	for model, rawEffort := range raw {
+		model = strings.TrimSpace(model)
+		effort, ok := rawEffort.(string)
+		if model == "" || !ok {
+			return nil, fmt.Errorf("%s entries require model and effort strings", SettingReasoningEffortOverrides)
+		}
+		effort = strings.ToLower(strings.TrimSpace(effort))
+		switch effort {
+		case "none", "minimal", "low", "medium", "high", "xhigh", "max":
+		default:
+			return nil, fmt.Errorf("%s has unsupported effort %q", SettingReasoningEffortOverrides, effort)
+		}
+		if _, exists := result[model]; exists {
+			return nil, fmt.Errorf("%s has duplicate model %q", SettingReasoningEffortOverrides, model)
+		}
+		result[model] = effort
+	}
+	return result, nil
+}
+
+func validateReasoningEffortOverrideModels(overrides map[string]string, models []ModelConfig) error {
+	if len(overrides) == 0 {
+		return nil
+	}
+	available := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		available[strings.TrimSpace(model.ID)] = struct{}{}
+	}
+	for model := range overrides {
+		if _, exists := available[model]; !exists {
+			return fmt.Errorf("%s references unknown group model %q", SettingReasoningEffortOverrides, model)
+		}
+	}
+	return nil
 }
 
 func ValidateRuntimeSetting(key string, value any) error {

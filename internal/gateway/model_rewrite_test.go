@@ -161,6 +161,85 @@ func TestHandlerModelRewriteSwitchesRouteEntryAfterModelFailure(t *testing.T) {
 	}
 }
 
+func TestHandlerRetriesProvider4xxWithCandidateReasoningEffortOverrides(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{
+		{
+			DispatchState:  execution.DispatchMaybeSent,
+			StatusCode:     http.StatusBadRequest,
+			Header:         make(http.Header),
+			RequestWritten: true,
+			ExecutionError: &execution.ErrorEvidence{
+				Kind:         execution.ErrorKindHTTP,
+				StatusCode:   http.StatusBadRequest,
+				ReplaySafety: execution.ReplaySafetyRejectedBeforeProcessing,
+				Summary:      "rejected before processing",
+			},
+		},
+		successScriptedResult(),
+	}}
+	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(
+		t,
+		forwarder,
+		&recordingAccessKeyRPMLimiter{},
+		&recordingRequestLogSink{},
+		"sk-one",
+	)
+	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{{
+			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`),
+			Models: []state.ModelConfig{
+				{ID: "up-a", Alias: "pub"},
+				{ID: "up-b", Alias: "pub"},
+			},
+			Settings: config.Settings{state.SettingReasoningEffortOverrides: map[string]any{
+				"up-a": "low",
+				"up-b": "high",
+			}},
+			Enabled: true,
+		}},
+		Credentials: []state.CredentialConfig{{
+			ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
+		}},
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 1, Name: "client", KeyHash: handler.encryption.Hash("gl-client"),
+			Status: state.AccessKeyStatusActive,
+		}},
+	}); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/chat/completions",
+		bytes.NewBufferString(`{"model":"pub","reasoning_effort":"medium","keep":"original"}`),
+	)
+	request.Header.Set("Authorization", "Bearer gl-client")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || len(forwarder.inputs) != 2 {
+		t.Fatalf("status/attempts = %d/%d body=%s", response.Code, len(forwarder.inputs), response.Body.String())
+	}
+	wantEffort := map[string]string{"up-a": "low", "up-b": "high"}
+	seen := make(map[string]struct{}, len(forwarder.inputs))
+	for index, input := range forwarder.inputs {
+		seen[input.UpstreamModelID] = struct{}{}
+		var body map[string]any
+		if err := json.Unmarshal(input.Request.Body, &body); err != nil {
+			t.Fatalf("attempt %d decode body: %v", index, err)
+		}
+		if body["reasoning_effort"] != wantEffort[input.UpstreamModelID] || body["keep"] != "original" {
+			t.Fatalf("attempt %d body = %#v", index, body)
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("retry models = %#v, want both candidate models", seen)
+	}
+}
+
 func TestHandlerModelRewriteStreamSwitchesRouteEntryAfterModelFailure(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 10, 0, 0, 0, time.UTC)
 	forwarder := &scriptedForwarder{
