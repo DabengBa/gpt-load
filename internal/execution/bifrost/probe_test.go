@@ -96,7 +96,7 @@ func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			got := probeAnswerPresent(test.clientProtocol, []byte(test.body))
+			got := probeAnswerPresent(test.clientProtocol, []byte(test.body), false)
 			if got != test.want {
 				t.Fatalf("probeAnswerPresent() = %#v, want %#v for %s", got, test.want, test.body)
 			}
@@ -184,6 +184,19 @@ func TestNativeResponsesProbeUsesInputAndMaxOutputTokens(t *testing.T) {
 	}
 }
 
+func TestRawPassthroughProbeDoesNotUseOpenAIChatFallback(t *testing.T) {
+	t.Parallel()
+
+	got := probeAnswerPresent(
+		protocol.Gemini,
+		[]byte(`{"choices":[{"message":{"content":"4"}}]}`),
+		true,
+	)
+	if got.present || got.valid {
+		t.Fatalf("raw Gemini probe accepted OpenAI Chat shape: %#v", got)
+	}
+}
+
 func TestProbeWithoutGeneratedTextDoesNotSetAnswerPresent(t *testing.T) {
 	t.Parallel()
 
@@ -224,7 +237,7 @@ func TestNormalizeProbeAttemptResultDistinguishesNoAnswerFromInvalidShape(t *tes
 		StatusCode: http.StatusOK, Header: http.Header{},
 		Body: []byte(`{"choices":[]}`),
 	}
-	normalizeProbeAttemptResult(spec, noAnswer)
+	normalizeProbeAttemptResult(spec, noAnswer, false)
 	if noAnswer.ProbeAnswerPresent || noAnswer.ProbeResponseInvalid {
 		t.Fatalf("legal empty response must stay a plain no-answer: %+v", noAnswer)
 	}
@@ -235,7 +248,7 @@ func TestNormalizeProbeAttemptResultDistinguishesNoAnswerFromInvalidShape(t *tes
 		StatusCode: http.StatusOK, Header: http.Header{},
 		Body: []byte(`{"unexpected":"payload"}`),
 	}
-	normalizeProbeAttemptResult(spec, wrongShape)
+	normalizeProbeAttemptResult(spec, wrongShape, false)
 	if wrongShape.ProbeAnswerPresent || !wrongShape.ProbeResponseInvalid {
 		t.Fatalf("wrong protocol shape must be invalid, not empty: %+v", wrongShape)
 	}
@@ -246,7 +259,7 @@ func TestNormalizeProbeAttemptResultDistinguishesNoAnswerFromInvalidShape(t *tes
 		StatusCode: http.StatusOK, Header: http.Header{},
 		Body: []byte(`<html>gateway error</html>`),
 	}
-	normalizeProbeAttemptResult(spec, nonJSON)
+	normalizeProbeAttemptResult(spec, nonJSON, false)
 	if nonJSON.ProbeAnswerPresent || !nonJSON.ProbeResponseInvalid {
 		t.Fatalf("non-JSON body must be invalid, not empty: %+v", nonJSON)
 	}
@@ -257,7 +270,7 @@ func TestNormalizeProbeAttemptResultDistinguishesNoAnswerFromInvalidShape(t *tes
 		Header: http.Header{}, Body: []byte(`{"choices":[{"message":{"content":"4"}}]}`),
 		Error: &execution.ErrorEvidence{Kind: execution.ErrorKindHTTP},
 	}
-	normalizeProbeAttemptResult(spec, withError)
+	normalizeProbeAttemptResult(spec, withError, false)
 	if withError.ProbeAnswerPresent || withError.ProbeResponseInvalid {
 		t.Fatalf("error results must not carry probe evidence: %+v", withError)
 	}

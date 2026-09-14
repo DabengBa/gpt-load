@@ -682,6 +682,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0014_affinity_observability",
 		"0015_provider_url",
 		"0016_affinity_key",
+		"0017_remove_validation_interval",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)
@@ -696,6 +697,32 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 	}
 	if count != int64(len(wantMigrationIDs)) {
 		t.Fatalf("schema_migrations row count after a second migration = %d, want %d", count, len(wantMigrationIDs))
+	}
+}
+
+func TestAutoMigrateRemovesRetiredValidationInterval(t *testing.T) {
+	t.Parallel()
+
+	db := openMigratedDatabase(t)
+	if err := db.Create(&models.SystemSetting{
+		Key:         "validation_interval",
+		Value:       "3600",
+		UpdatedAtMS: 1,
+	}).Error; err != nil {
+		t.Fatalf("create legacy validation_interval setting: %v", err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = ?", "0017_remove_validation_interval").Error; err != nil {
+		t.Fatalf("simulate pre-0017 migration ledger: %v", err)
+	}
+	if err := storage.AutoMigrate(db); err != nil {
+		t.Fatalf("second AutoMigrate() error = %v", err)
+	}
+	var count int64
+	if err := db.Model(&models.SystemSetting{}).Where("key = ?", "validation_interval").Count(&count).Error; err != nil {
+		t.Fatalf("count retired validation_interval setting: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("retired validation_interval setting count = %d, want 0", count)
 	}
 }
 
