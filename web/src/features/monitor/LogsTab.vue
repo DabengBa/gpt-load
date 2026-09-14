@@ -87,6 +87,7 @@ const appliedFilters = computed(() => {
 const routeState = computed(() => parseLogsMonitorState(route.query))
 const selectedRequestID = computed(() => routeState.value.selectedRequestID)
 const advancedOpen = computed(() => routeState.value.filtersOpen)
+const detailClosing = ref(false)
 const draft = ref(createLogFilterDraft(appliedFilters.value))
 const filterErrors = ref<LogFilterErrors>(
   invalidAffinityKey.value !== undefined ? { affinity_key: 'monitor.logs.errors.affinityKey' } : {},
@@ -95,6 +96,7 @@ const paginationPending = ref(false)
 const pageTransitionOrigin = ref<LogsMonitorState | null>(null)
 const currentCursor = computed(() => routeState.value.cursorHistory.at(-1))
 let detailFocusTimer: number | undefined
+let pendingDetailNavigation: Promise<unknown> | undefined
 
 const groupsQuery = useQuery(groupOptionsQueryOptions(client, () => !isAccessKey.value))
 const channelsQuery = useQuery({
@@ -249,6 +251,13 @@ const appliedChips = computed(() => {
 })
 
 watch(
+  () => selectedRequestID.value,
+  () => {
+    detailClosing.value = false
+  },
+)
+
+watch(
   filterSignature,
   () => {
     draft.value = createLogFilterDraft(appliedFilters.value)
@@ -359,6 +368,7 @@ function updateDraftField(field: keyof LogFilterDraft, value: string): void {
 }
 
 async function commitFilters(filters: RequestLogFilters): Promise<void> {
+  if (pendingDetailNavigation) await pendingDetailNavigation
   if (isAccessKey.value) filters = scopeAccessKeyLogFilters(filters)
   const serialized = serializeAppliedLogFilters(filters)
   const nextSignature = JSON.stringify([serialized, undefined])
@@ -486,7 +496,8 @@ function setAdvancedOpen(open: boolean): void {
 
 async function setDetailOpen(requestID: string | undefined, open: boolean): Promise<void> {
   const closingID = selectedRequestID.value
-  await router.push(
+  detailClosing.value = !open
+  const navigation = router.push(
     monitorLocation(
       logsMonitorQuery(appliedFilters.value, {
         ...routeState.value,
@@ -495,9 +506,16 @@ async function setDetailOpen(requestID: string | undefined, open: boolean): Prom
       }),
     ),
   )
+  pendingDetailNavigation = navigation
+  try {
+    await navigation
+  } finally {
+    if (pendingDetailNavigation === navigation) pendingDetailNavigation = undefined
+  }
   if (open || !closingID) return
   window.clearTimeout(detailFocusTimer)
   detailFocusTimer = window.setTimeout(() => {
+    if (document.activeElement && document.activeElement !== document.body) return
     document.getElementById(`log-details-${closingID}`)?.focus()
   }, 30)
 }
@@ -1094,7 +1112,7 @@ function costLabel(log: RequestLogItemDto): string {
     </template>
 
     <LogDetailDrawer
-      :open="Boolean(selectedRequestID) && invalidAffinityKey === undefined"
+      :open="Boolean(selectedRequestID) && !detailClosing && invalidAffinityKey === undefined"
       :request-id="invalidAffinityKey === undefined ? selectedRequestID : undefined"
       :self-scoped="isAccessKey"
       :group-names="groupNames"
