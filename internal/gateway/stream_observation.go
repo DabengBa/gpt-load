@@ -55,23 +55,24 @@ type StreamObservation struct {
 }
 
 type streamEventObserver struct {
-	classifier          dialect.StreamEventClassifier
-	terminalRequired    bool
-	sawTerminal         bool
-	terminalForwarded   bool
-	terminalDisposition dialect.StreamEventDisposition
-	eventCount          int
-	firstProviderError  bool
-	sawErrorEvent       bool
-	firstSummary        string
-	firstErrorPayload   []byte
-	usage               *streamUsageCapture
-	chatChoices         map[int]bool
-	chatChoiceSeen      bool
-	anthropicBlocks     map[int]bool
-	anthropicBlockSeen  bool
-	responseID          string
-	strict              bool
+	classifier                dialect.StreamEventClassifier
+	terminalRequired          bool
+	sawTerminal               bool
+	terminalForwarded         bool
+	terminalDisposition       dialect.StreamEventDisposition
+	eventCount                int
+	firstProviderError        bool
+	sawErrorEvent             bool
+	firstSummary              string
+	firstErrorPayload         []byte
+	usage                     *streamUsageCapture
+	chatChoices               map[int]bool
+	chatChoiceSeen            bool
+	anthropicBlocks           map[int]bool
+	anthropicBlockSeen        bool
+	responseID                string
+	strict                    bool
+	doneAcceptedAfterTerminal bool
 }
 
 // sseEventObservationBuffer frames arbitrary executor data chunks without
@@ -257,6 +258,9 @@ func (observer *streamEventObserver) classify(
 	}
 	if observer.sawTerminal {
 		if observer.strict {
+			if observer.acceptsPostTerminalDone(event) {
+				return false, nil
+			}
 			return false, fmt.Errorf("%w: event received after stream terminal", ErrUpstreamProtocol)
 		}
 		return false, nil
@@ -456,6 +460,26 @@ func (observer *streamEventObserver) captureResponsesID(event dialect.StreamEven
 		observer.responseID = envelope.ID
 	}
 }
+func (observer *streamEventObserver) acceptsPostTerminalDone(event dialect.StreamEvent) bool {
+	if observer == nil || observer.doneAcceptedAfterTerminal {
+		return false
+	}
+	if _, ok := observer.classifier.(*dialect.OpenAIResponses); !ok {
+		return false
+	}
+	if observer.terminalDisposition != dialect.StreamEventCompleted {
+		return false
+	}
+	if event.Name != "" {
+		return false
+	}
+	if !bytes.Equal(bytes.TrimSpace(event.Payload), []byte("[DONE]")) {
+		return false
+	}
+	observer.doneAcceptedAfterTerminal = true
+	return true
+}
+
 func (observer *streamEventObserver) firstEventWasProviderError() bool {
 	return observer != nil && observer.firstProviderError
 }

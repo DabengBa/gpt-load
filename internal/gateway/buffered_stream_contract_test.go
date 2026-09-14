@@ -19,6 +19,7 @@ import (
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
+	"strings"
 )
 
 func TestBufferedStreamChatRequiresFinishReasonBeforeDone(t *testing.T) {
@@ -437,5 +438,133 @@ func TestBufferedStreamTerminalErrorKeepsResponsesID(t *testing.T) {
 	}
 	if result.Stream.ResponseID != "resp_keep" {
 		t.Fatalf("terminal result response ID = %q, want resp_keep", result.Stream.ResponseID)
+	}
+}
+
+func TestBufferedStreamResponsesAcceptsDoneAfterCompleted(t *testing.T) {
+	observer := newStreamEventObserver(dialect.NewOpenAIResponses(), nil, true)
+	if _, err := observer.classify(dialect.StreamEvent{
+		Name:    "response.completed",
+		Payload: []byte(`{"type":"response.completed","response":{"id":"resp_1"}}`),
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := observer.classify(dialect.StreamEvent{
+		Payload: []byte(`[DONE]`),
+	}, false); err != nil {
+		t.Fatalf("unnamed [DONE] after response.completed was rejected: %v", err)
+	}
+}
+
+func TestBufferedStreamResponsesRejectsNamedDoneAfterCompleted(t *testing.T) {
+	observer := newStreamEventObserver(dialect.NewOpenAIResponses(), nil, true)
+	if _, err := observer.classify(dialect.StreamEvent{
+		Name:    "response.completed",
+		Payload: []byte(`{"type":"response.completed","response":{"id":"resp_1"}}`),
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := observer.classify(dialect.StreamEvent{
+		Name:    "done",
+		Payload: []byte(`[DONE]`),
+	}, false); err == nil {
+		t.Fatal("named [DONE] after response.completed was accepted")
+	}
+}
+
+func TestBufferedStreamResponsesRejectsDuplicateDoneAfterCompleted(t *testing.T) {
+	observer := newStreamEventObserver(dialect.NewOpenAIResponses(), nil, true)
+	if _, err := observer.classify(dialect.StreamEvent{
+		Name:    "response.completed",
+		Payload: []byte(`{"type":"response.completed","response":{"id":"resp_1"}}`),
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := observer.classify(dialect.StreamEvent{
+		Payload: []byte(`[DONE]`),
+	}, false); err != nil {
+		t.Fatalf("first [DONE] after response.completed was rejected: %v", err)
+	}
+	if _, err := observer.classify(dialect.StreamEvent{
+		Payload: []byte(`[DONE]`),
+	}, false); err == nil {
+		t.Fatal("duplicate [DONE] after response.completed was accepted")
+	}
+}
+
+func TestBufferedStreamResponsesRejectsDoneAfterFailed(t *testing.T) {
+	observer := newStreamEventObserver(dialect.NewOpenAIResponses(), nil, true)
+	if _, err := observer.classify(dialect.StreamEvent{
+		Name:    "response.failed",
+		Payload: []byte(`{"type":"response.failed","response":{"id":"resp_fail"}}`),
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := observer.classify(dialect.StreamEvent{
+		Payload: []byte(`[DONE]`),
+	}, false); err == nil {
+		t.Fatal("[DONE] after response.failed was accepted")
+	}
+}
+
+func TestBufferedStreamResponsesRejectsDoneAfterIncomplete(t *testing.T) {
+	observer := newStreamEventObserver(dialect.NewOpenAIResponses(), nil, true)
+	if _, err := observer.classify(dialect.StreamEvent{
+		Name:    "response.incomplete",
+		Payload: []byte(`{"type":"response.incomplete","response":{"id":"resp_inc"}}`),
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := observer.classify(dialect.StreamEvent{
+		Payload: []byte(`[DONE]`),
+	}, false); err == nil {
+		t.Fatal("[DONE] after response.incomplete was accepted")
+	}
+}
+
+func TestBufferedStreamResponsesRejectsOtherEventsAfterCompleted(t *testing.T) {
+	observer := newStreamEventObserver(dialect.NewOpenAIResponses(), nil, true)
+	if _, err := observer.classify(dialect.StreamEvent{
+		Name:    "response.completed",
+		Payload: []byte(`{"type":"response.completed","response":{"id":"resp_1"}}`),
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := observer.classify(dialect.StreamEvent{
+		Name:    "response.created",
+		Payload: []byte(`{"type":"response.created","response":{"id":"resp_2"}}`),
+	}, false); err == nil {
+		t.Fatal("other event after response.completed was accepted")
+	}
+}
+
+func TestBufferedStreamResponsesDoneWireCompletedCleanEOF(t *testing.T) {
+	executor := fakeExecutionExecutor{stream: func(_ context.Context, _ execution.AttemptSpec, sink execution.StreamSink) execution.StreamResult {
+		if err := sink(execution.StreamEvent{Sequence: 1, Kind: execution.StreamEventReady, StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}}); err != nil {
+			return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindInternal, Summary: err.Error()}}
+		}
+		for _, event := range []execution.StreamEvent{
+			{Sequence: 2, Kind: execution.StreamEventData, Data: []byte("event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_done\"}}\n\n")},
+			{Sequence: 3, Kind: execution.StreamEventData, Data: []byte("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_done\"}}\n\n")},
+			{Sequence: 4, Kind: execution.StreamEventData, Data: []byte("data: [DONE]\n\n")},
+		} {
+			if err := sink(event); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK}
+	}}
+	input := responsesExecutionForwardInput()
+	input.BufferedStream = true
+	response := httptest.NewRecorder()
+	result := NewExecutionForwarder(executor).ForwardStream(context.Background(), input, response)
+	if result.Stream.EndReason != StreamEndCleanEOF {
+		t.Fatalf("response.completed + [DONE] end reason = %v, want clean EOF", result.Stream.EndReason)
+	}
+	if result.Stream.ResponseID != "resp_done" {
+		t.Fatalf("response ID = %q, want resp_done", result.Stream.ResponseID)
+	}
+	if !strings.Contains(response.Body.String(), "data: [DONE]") {
+		t.Fatal("response body does not contain data: [DONE]")
 	}
 }
