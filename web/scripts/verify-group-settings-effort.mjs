@@ -28,6 +28,7 @@ const baseSettings = {
     header_rules: { set: {}, remove: [] },
     affinity_enabled: true,
     responses_websocket_enabled: true,
+    responses_reasoning_status_filter_enabled: true,
   },
   proxy: {
     configured_mode: 'inherit',
@@ -82,6 +83,43 @@ async function main() {
     assert.deepEqual(removedPatch.overrides, {
       parameter_overrides: baseSettings.overrides.parameter_overrides,
     })
+    const channelChanged = patching.createGroupSettingsDraft(projected)
+    channelChanged.channel_id = 'anthropic'
+    const channelPatch = patching.buildGroupSettingsPatch(projected, channelChanged)
+    assert.equal(channelPatch.channel_id, 'anthropic')
+    assert.deepEqual(
+      patching.preserveChannelParams(
+        { base_url: 'https://old.example', stale: 'drop me', shared: 'keep me' },
+        [
+          {
+            key: 'base_url',
+            label: 'Base URL',
+            input_kind: 'url',
+            required: false,
+            sensitive: false,
+            default_value: 'https://new.example',
+          },
+          {
+            key: 'shared',
+            label: 'Shared',
+            input_kind: 'text',
+            required: false,
+            sensitive: false,
+            default_value: null,
+          },
+          {
+            key: 'required',
+            label: 'Required',
+            input_kind: 'text',
+            required: true,
+            sensitive: false,
+            default_value: null,
+          },
+        ],
+      ),
+      { base_url: 'https://old.example', shared: 'keep me', required: '' },
+    )
+
     console.log('PASS  group reasoning effort projection and patch preservation')
   } finally {
     await server.close()

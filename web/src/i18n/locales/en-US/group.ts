@@ -305,7 +305,7 @@ export default {
       base: {
         description: 'Name, channel parameters, and enabled status affect the entire Group.',
         channel: 'Channel',
-        channelHelp: 'The channel is fixed when the Group is created.',
+        channelHelp: 'The channel can be changed when the target accepts the existing settings.',
         channelCatalogUnavailable:
           'The channel directory is unavailable. Channel parameters are locked; other settings remain editable.',
         name: 'Name',
@@ -417,6 +417,16 @@ export default {
       loadFailed: 'Unable to load channel credentials.',
       stale: 'Credential data may be stale because the background refresh failed.',
       updateFailed: 'Unable to update the channel credential.',
+      update: {
+        action: 'Update key',
+        inputLabel: 'New API key',
+        placeholder: 'Paste a new API key',
+        required: 'Enter an API key.',
+        cancel: 'Cancel update',
+        saving: 'Updating…',
+        submit: 'Save key',
+        succeeded: 'API key updated',
+      },
       deleteFailed: 'Unable to delete the channel credential.',
       reconcileFailed:
         'The operation succeeded but local data synchronization failed, refresh manually',
