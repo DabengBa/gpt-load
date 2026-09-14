@@ -505,7 +505,6 @@ export default {
       recovery: {
         none: 'No recovery needed',
         cooldown: 'Recovers when cooldown ends',
-        probe: 'Waiting for probe recovery',
         manual: 'Needs manual recovery',
         at: 'Recovers automatically at {time}',
       },

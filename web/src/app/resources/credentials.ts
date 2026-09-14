@@ -145,7 +145,7 @@ const inconclusiveCredentialTestReasons = [
   'unknown',
 ] as const
 const effectiveStatuses = ['available', 'cooldown', 'blacklisted', 'disabled'] as const
-const recoveryModes = ['none', 'cooldown', 'probe', 'manual'] as const
+const recoveryModes = ['none', 'cooldown', 'manual'] as const
 const failureCategories = [
   'ok',
   'rate_limited',
@@ -521,7 +521,6 @@ function projectRecovery(value: unknown): CredentialRecoveryDto {
   }
   if (
     (result.mode === 'cooldown' && (!result.automatic || result.at_ms === null)) ||
-    (result.mode === 'probe' && !result.automatic) ||
     (result.mode === 'manual' && result.automatic) ||
     (result.mode === 'none' && (result.automatic || result.at_ms !== null))
   ) {

@@ -180,7 +180,7 @@ export interface GroupModelsDto {
 }
 
 export type CredentialStatus = 'available' | 'cooldown' | 'blacklisted' | 'disabled'
-export type CredentialRecoveryMode = 'none' | 'cooldown' | 'probe' | 'manual'
+export type CredentialRecoveryMode = 'none' | 'cooldown' | 'manual'
 export type CredentialAuthState =
   'ready' | 'refreshing' | 'reauthorization_required' | 'outcome_unknown'
 export type CredentialObservationState = 'fresh' | 'stale' | 'refreshing' | 'error' | 'unavailable'

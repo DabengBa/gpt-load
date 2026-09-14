@@ -489,7 +489,6 @@ export default {
       recovery: {
         none: '无需恢复',
         cooldown: '冷却结束后自动恢复',
-        probe: '等待探测恢复',
         manual: '需手动恢复',
         at: '将于 {time} 自动恢复',
       },

@@ -508,7 +508,6 @@ export default {
       recovery: {
         none: '回復は不要',
         cooldown: 'クールダウン終了時に回復',
-        probe: 'プローブによる回復待ち',
         manual: '手動回復が必要',
         at: '{time} に自動回復',
       },
