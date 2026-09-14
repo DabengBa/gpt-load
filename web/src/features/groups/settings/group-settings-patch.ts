@@ -4,6 +4,7 @@ import type {
   ParameterJSONValue,
   ParameterOverrideRuleDto,
 } from '@/api/control/types'
+import type { ChannelFieldDto } from '@/app/resources/channels'
 import type {
   GroupRuntimeConfigDto,
   GroupSettingsUpdateRequest,
@@ -153,6 +154,20 @@ export function createGroupSettingsDraft(group: GroupSettingsDto): GroupSettings
   return { ...group, params: { ...group.params }, overrides: cloneOverrides(group.overrides) }
 }
 
+export function preserveChannelParams(
+  current: ChannelParamsDto,
+  fields: readonly ChannelFieldDto[],
+): ChannelParamsDto {
+  return Object.fromEntries(
+    fields
+      .filter(
+        ({ key, required, default_value: defaultValue }) =>
+          Object.prototype.hasOwnProperty.call(current, key) || required || defaultValue !== null,
+      )
+      .map(({ key, default_value: defaultValue }) => [key, current[key] ?? defaultValue ?? '']),
+  )
+}
+
 export function setGroupConfigOverride(
   draft: GroupSettingsDraft,
   key: GroupTimeoutKey,
@@ -183,6 +198,7 @@ export function buildGroupSettingsPatch(
 ): GroupSettingsUpdateRequest {
   const patch: GroupSettingsUpdateRequest = {}
   const overrides = normalizeOverrides(draft.overrides)
+  if (draft.channel_id !== base.channel_id) patch.channel_id = draft.channel_id
   if (draft.name.trim() !== base.name) patch.name = draft.name.trim()
   const params = Object.fromEntries(
     Object.entries(draft.params)

@@ -305,7 +305,7 @@ export default {
       base: {
         description: '名前、チャネルパラメータ、有効状態はグループ全体に適用されます。',
         channel: 'チャネル',
-        channelHelp: 'チャネルはグループ作成時に確定し、後から変更できません。',
+        channelHelp: '既存の設定が対象チャネルで利用できる場合は、チャネルを変更できます。',
         channelCatalogUnavailable:
           'チャネル一覧を読み込めないため、チャネルパラメータをロックしました。他の設定は編集できます。',
         name: '名前',
@@ -418,6 +418,16 @@ export default {
       loadFailed: 'チャネル認証情報を読み込めません。',
       stale: 'バックグラウンド更新に失敗したため、認証情報が古い可能性があります。',
       updateFailed: 'チャネル認証情報を更新できません。',
+      update: {
+        action: 'キーを更新',
+        inputLabel: '新しい API キー',
+        placeholder: '新しい API キーを貼り付け',
+        required: 'API キーを入力してください。',
+        cancel: '更新をキャンセル',
+        saving: '更新中…',
+        submit: 'キーを保存',
+        succeeded: 'API キーを更新しました',
+      },
       deleteFailed: 'チャネル認証情報を削除できません。',
       reconcileFailed:
         '操作は成功しましたがローカルデータの同期に失敗しました 手動で更新してください',

@@ -469,7 +469,6 @@ func TestChannelGroupSettingsExposeImmutableChannelAndEditableParams(t *testing.
 	}
 
 	for _, body := range []string{
-		`{"channel_id":"anthropic"}`,
 		`{"upstream_url":"https://legacy.example/v1"}`,
 		`{"protocols":["anthropic"]}`,
 		`{"provider_id":"anthropic"}`,

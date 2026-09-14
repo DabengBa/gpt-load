@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -37,6 +38,7 @@ type GroupSettingsResponse struct {
 type GroupSettingsUpdateRequest struct {
 	PriceMultiplier optionalField[string]               `json:"price_multiplier"`
 	Name            optionalField[string]               `json:"name"`
+	ChannelID       optionalField[channel.ID]           `json:"channel_id"`
 	Params          optionalField[json.RawMessage]      `json:"params"`
 	ValidationModel optionalField[string]               `json:"validation_model"`
 	ProviderURL     optionalField[string]               `json:"provider_url"`
@@ -48,6 +50,7 @@ type GroupSettingsUpdateRequest struct {
 type normalizedGroupSettingsUpdate struct {
 	priceMultiplierMicros *int64
 	name                  *string
+	channelID             *channel.ID
 	params                json.RawMessage
 	paramsSet             bool
 	validationModel       *string
@@ -176,6 +179,7 @@ func normalizeGroupSettingsUpdate(
 ) (normalizedGroupSettingsUpdate, error) {
 	for _, nullable := range []bool{
 		request.Name.Set && request.Name.Null,
+		request.ChannelID.Set && request.ChannelID.Null,
 		request.Params.Set && request.Params.Null,
 		request.Enabled.Set && request.Enabled.Null,
 		request.Overrides.Set && request.Overrides.Null,
@@ -184,9 +188,9 @@ func normalizeGroupSettingsUpdate(
 			return normalizedGroupSettingsUpdate{}, app_errors.ErrValidation
 		}
 	}
-	if !request.Name.Set && !request.Params.Set && !request.ValidationModel.Set &&
-		!request.ProviderURL.Set && !request.Enabled.Set && !request.Overrides.Set &&
-		!request.Proxy.Set && !request.PriceMultiplier.Set {
+	if !request.Name.Set && !request.ChannelID.Set && !request.Params.Set &&
+		!request.ValidationModel.Set && !request.ProviderURL.Set && !request.Enabled.Set &&
+		!request.Overrides.Set && !request.Proxy.Set && !request.PriceMultiplier.Set {
 		return normalizedGroupSettingsUpdate{}, app_errors.ErrBadRequest
 	}
 
@@ -204,6 +208,13 @@ func normalizeGroupSettingsUpdate(
 			return normalizedGroupSettingsUpdate{}, err
 		}
 		result.name = value
+	}
+	if request.ChannelID.Set {
+		value := channel.ID(strings.TrimSpace(string(request.ChannelID.Value)))
+		if value == "" {
+			return normalizedGroupSettingsUpdate{}, app_errors.ErrValidation
+		}
+		result.channelID = &value
 	}
 	if request.Params.Set {
 		result.paramsSet = true
@@ -279,12 +290,40 @@ func (s *Service) UpdateGroupSettings(
 		if err := validateGroupRowCandidate(ctx, tx, group, s.channelRegistry); err != nil {
 			return fmt.Errorf("validate existing group %d: %w", groupID, app_errors.ErrInternalServer)
 		}
+		// 目标通道完全由 registry 派生：客户端只提交 channel_id，连接类型不参与信任边界。
+		targetChannelID := channel.ID(group.ChannelID)
+		if normalized.channelID != nil {
+			targetChannelID = *normalized.channelID
+		}
+		targetConnectionType, known := s.channelRegistry.ConnectionType(targetChannelID)
+		if !known {
+			return app_errors.ErrValidation
+		}
+		channelChanged := targetChannelID != channel.ID(group.ChannelID)
+		if channelChanged {
+			// 读取凭据行前独立比较 registry 派生的源/目标 connection type；
+			// 即使组没有 credential rows，API-key↔subscription（双向）也必须 ErrValidation。
+			sourceConnectionType, sourceKnown := s.channelRegistry.ConnectionType(channel.ID(group.ChannelID))
+			if !sourceKnown {
+				return app_errors.ErrInternalServer
+			}
+			if sourceConnectionType != targetConnectionType {
+				return app_errors.ErrValidation
+			}
+		}
 		if request.Proxy.Set && !request.Proxy.Null &&
-			!s.channelRegistry.SupportsOutboundProxy(channel.ID(group.ChannelID)) {
+			!s.channelRegistry.SupportsOutboundProxy(targetChannelID) {
 			return app_errors.ErrValidation
 		}
 
-		updates := make(map[string]any, 8)
+		updates := make(map[string]any, 10)
+		if channelChanged {
+			group.ChannelID = string(targetChannelID)
+			group.ConnectionType = models.ConnectionType(targetConnectionType)
+			updates["channel_id"] = group.ChannelID
+			updates["connection_type"] = group.ConnectionType
+			targetChanged = true
+		}
 		if normalized.priceMultiplierMicros != nil {
 			group.PriceMultiplierMicros = normalized.priceMultiplierMicros
 			updates["price_multiplier_micros"] = *normalized.priceMultiplierMicros
@@ -293,20 +332,24 @@ func (s *Service) UpdateGroupSettings(
 			group.Name = *normalized.name
 			updates["name"] = group.Name
 		}
-		if normalized.paramsSet {
+		if normalized.paramsSet || channelChanged {
+			candidateParams := json.RawMessage(group.Params)
+			if normalized.paramsSet {
+				candidateParams = normalized.params
+			}
 			previousParams := append([]byte(nil), group.Params...)
-			params, validateErr := s.channelRegistry.ValidateParams(
-				channel.ID(group.ChannelID), normalized.params,
-			)
+			params, validateErr := s.channelRegistry.ValidateParams(targetChannelID, candidateParams)
 			if validateErr != nil {
 				return app_errors.ErrValidation
 			}
-			if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription &&
+			if targetConnectionType == string(models.ConnectionTypeSubscription) &&
 				string(params.CanonicalJSON()) != "{}" {
 				return app_errors.ErrValidation
 			}
 			group.Params = models.JSON(params.CanonicalJSON())
-			targetChanged = !bytes.Equal(bytes.TrimSpace(previousParams), bytes.TrimSpace(group.Params))
+			if !bytes.Equal(bytes.TrimSpace(previousParams), bytes.TrimSpace(group.Params)) {
+				targetChanged = true
+			}
 			updates["params"] = append(models.JSON(nil), group.Params...)
 		}
 		if normalized.validationModelSet {
@@ -332,6 +375,12 @@ func (s *Service) UpdateGroupSettings(
 		if normalized.proxySet {
 			group.ProxyConfig = normalized.proxyConfig
 			updates["proxy_config"] = normalized.proxyConfig
+		}
+		if channelChanged {
+			// 目标凭据 schema 不兼容时整次更新失败：凭据行只读校验，绝不删除或置空。
+			if err := s.validateGroupTargetCredentials(tx, group); err != nil {
+				return err
+			}
 		}
 		if err := validateGroupRowCandidate(ctx, tx, group, s.channelRegistry); err != nil {
 			return app_errors.ErrValidation
@@ -370,4 +419,37 @@ func (s *Service) UpdateGroupSettings(
 	}
 	response.Proxy, err = s.groupProxyView(ctx, s.db, committed)
 	return response, err
+}
+
+// validateGroupTargetCredentials verifies that every persisted encrypted
+// credential still validates against the mutated execution target before a
+// channel switch commits. It reuses the existing credential presentation path
+// (decrypt + channel/subscription validation) and never mutates or clears the
+// stored rows, so an incompatible target rolls the whole update back.
+// For each credential row, it also validates the canonical fingerprint
+// matches the stored fingerprint, matching the full loader semantics.
+func (s *Service) validateGroupTargetCredentials(tx *gorm.DB, group models.Group) error {
+	if s == nil || s.encryption == nil || s.channelRegistry == nil {
+		return app_errors.ErrInternalServer
+	}
+	var rows []models.Credential
+	if err := tx.Where("group_id = ?", group.ID).Order("id ASC").Find(&rows).Error; err != nil {
+		return app_errors.ParseDBError(err)
+	}
+	for _, row := range rows {
+		canonical, _, err := s.decodeCredential(group, row)
+		if err != nil {
+			clear(canonical)
+			return app_errors.ErrValidation
+		}
+		// Verify canonical fingerprint matches stored fingerprint,
+		// matching the full loader validatePersistedCredentials semantics.
+		fingerprint := s.encryption.Hash(string(canonical))
+		match := subtle.ConstantTimeCompare([]byte(fingerprint), []byte(row.Fingerprint)) == 1
+		clear(canonical)
+		if !match {
+			return app_errors.ErrValidation
+		}
+	}
+	return nil
 }

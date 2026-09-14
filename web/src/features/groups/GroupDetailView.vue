@@ -24,6 +24,7 @@ import StickySaveBar from '@/components/ui/StickySaveBar.vue'
 
 import GroupHeader from './GroupHeader.vue'
 import GroupCredentialsTab from './credentials/GroupCredentialsTab.vue'
+import GroupApiKeyEditor from './credentials/GroupApiKeyEditor.vue'
 import GroupModelsTab from './models/GroupModelsTab.vue'
 import GroupSettingsTab from './settings/GroupSettingsTab.vue'
 import GroupDeleteDialog from './settings/GroupDeleteDialog.vue'
@@ -217,7 +218,10 @@ watch(
                   :key="credential.mask"
                   class="group-detail__credential-input-row"
                 >
-                  <label class="group-detail__credential-field">
+                  <label
+                    v-if="credential.connection_type === 'subscription'"
+                    class="group-detail__credential-field"
+                  >
                     <span>{{
                       credential.connection_type === 'subscription'
                         ? t('group.credentials.full.kind.account')
@@ -225,6 +229,12 @@ watch(
                     }}</span>
                     <input :value="credential.mask" readonly autocomplete="off" />
                   </label>
+                  <GroupApiKeyEditor
+                    v-else
+                    :group-id="groupId"
+                    :credential="credential"
+                    :disabled="unifiedPending"
+                  />
                   <StatusBadge :status="unifiedCredentialSummary(credential).status" size="compact">
                     {{ unifiedCredentialSummary(credential).label }}
                   </StatusBadge>
