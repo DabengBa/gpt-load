@@ -11,7 +11,11 @@ import {
 import type { RequestLogFilters } from '@/app/resources/request-logs'
 import { defaultTimeRange } from '@/lib/time'
 
-import { parseAppliedLogFilters, serializeAppliedLogFilters } from './log-filters'
+import {
+  parseAppliedLogFilterState,
+  parseAppliedLogFilters,
+  serializeAppliedLogFilters,
+} from './log-filters'
 import {
   normalizeUsageGroupID,
   normalizeUsageChannelID,
@@ -39,6 +43,7 @@ export interface LogsMonitorState {
   filtersOpen: boolean
   cursorHistory: string[]
   selectedRequestID?: string
+  invalidAffinityKey?: string
 }
 
 export type ScheduleMode = 'all' | 'primary' | 'fallback'
@@ -81,7 +86,8 @@ export function normalizeMonitorQuery(query: Record<string, unknown>): LocationQ
   if (tab === 'usage') {
     return usageMonitorQuery(parseAppliedUsageFilters(query), parseUsageMonitorState(query))
   }
-  return logsMonitorQuery(parseAppliedLogFilters(query), parseLogsMonitorState(query))
+  const filtersState = parseAppliedLogFilterState(query)
+  return logsMonitorQuery(filtersState.filters, parseLogsMonitorState(query))
 }
 
 const accessKeyForbiddenLogFilters: readonly (keyof RequestLogFilters)[] = [
@@ -96,6 +102,7 @@ const accessKeyForbiddenLogFilters: readonly (keyof RequestLogFilters)[] = [
   'retry_state',
   'retry_count_min',
   'retry_count_max',
+  'affinity_key',
 ]
 
 export function scopeAccessKeyUsageFilters(filters: UsageFilters): UsageFilters {
@@ -119,10 +126,10 @@ export function scopeAccessKeyLogFilters(filters: RequestLogFilters): RequestLog
 export function normalizeAccessKeyMonitorQuery(query: Record<string, unknown>): LocationQueryRaw {
   const tab = normalizeMonitorTab(query.tab)
   if (tab === 'logs') {
-    return logsMonitorQuery(
-      scopeAccessKeyLogFilters(parseAppliedLogFilters(query)),
-      parseLogsMonitorState(query),
-    )
+    return logsMonitorQuery(scopeAccessKeyLogFilters(parseAppliedLogFilters(query)), {
+      ...parseLogsMonitorState(query),
+      invalidAffinityKey: undefined,
+    })
   }
   return usageMonitorQuery(
     scopeAccessKeyUsageFilters(parseAppliedUsageFilters(query)),
@@ -271,6 +278,7 @@ export function parseLogsMonitorState(query: Record<string, unknown>): LogsMonit
     filtersOpen: query.panel === 'filters',
     cursorHistory: parseLogCursorHistory(query.log_cursors),
     selectedRequestID: parseSelectedRequestID(query),
+    invalidAffinityKey: parseAppliedLogFilterState(query).invalidAffinityKey,
   }
 }
 
@@ -284,6 +292,9 @@ export function logsMonitorQuery(
   if (cursorHistory !== undefined) normalized.log_cursors = cursorHistory
   if (state.selectedRequestID !== undefined) {
     normalized.selected_request_id = state.selectedRequestID
+  }
+  if (state.invalidAffinityKey !== undefined) {
+    normalized.affinity_key = state.invalidAffinityKey
   }
   return normalized
 }

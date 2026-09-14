@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/platform/epochms"
 	"gpt-load/internal/platform/redact"
 	"gpt-load/internal/pricing"
@@ -119,6 +120,7 @@ func mapEvent(
 		ErrorSummary:            sanitizeSummary(redactor, event.ErrorSummary),
 		AffinityHit:             event.AffinityHit,
 		ContinuityHit:           event.ContinuityHit,
+		AffinityKey:             projectAffinityKey(event.AffinityKey),
 		AffinitySource:          projectAffinitySource(event.AffinitySource),
 		AffinityState:           projectAffinityState(event.AffinityState),
 		ReasoningMode:           event.Reasoning.Mode,
@@ -144,6 +146,13 @@ func normalizeModelObservation(event telemetry.RequestEvent) telemetry.RequestEv
 		event.ModelConsistency = telemetry.ModelConsistencyNotApplicable
 	}
 	return event
+}
+
+func projectAffinityKey(value string) string {
+	if !affinity.ValidDisplayKey(value) {
+		return ""
+	}
+	return value
 }
 
 // projectAffinitySource 将 bounded telemetry source 映射到其持久化值。
@@ -175,6 +184,16 @@ func projectAffinityState(state telemetry.AffinityState) string {
 	default:
 		return AffinityStateNoSignal
 	}
+}
+
+// ValidAffinityKey reports whether a user-supplied request-log filter is canonical.
+func ValidAffinityKey(value string) bool {
+	return affinity.ValidDisplayKey(value)
+}
+
+// 非法历史值降级为空值，使其在 API 中呈现为 null。
+func NormalizeAffinityKey(value string) string {
+	return projectAffinityKey(value)
 }
 
 // NormalizeAffinityObservation 将存储的亲和观测映射到 bounded 持久化投影。

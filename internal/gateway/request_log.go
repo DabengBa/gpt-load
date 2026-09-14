@@ -68,6 +68,7 @@ type requestRecorder struct {
 	usageDiagnostics     usage.Diagnostics
 	affinityHit          bool
 	continuityHit        bool
+	affinityKey          string
 	affinitySource       telemetry.AffinitySource
 	affinityState        telemetry.AffinityState
 	attempts             []telemetry.Attempt
@@ -151,6 +152,7 @@ func (recorder *requestRecorder) emit() {
 		DurationMs:            duration.Milliseconds(),
 		AffinityHit:           recorder.affinityHit,
 		ContinuityHit:         recorder.continuityHit,
+		AffinityKey:           recorder.affinityKey,
 		AffinitySource:        recorder.affinitySource,
 		AffinityState:         recorder.affinityState,
 		Reasoning:             recorder.reasoning,
@@ -233,6 +235,12 @@ func (recorder *requestRecorder) setAffinityHit(hit bool) {
 func (recorder *requestRecorder) setContinuityHit(hit bool) {
 	if recorder != nil && hit {
 		recorder.continuityHit = true
+	}
+}
+
+func (recorder *requestRecorder) setAffinityKey(key string) {
+	if recorder != nil {
+		recorder.affinityKey = key
 	}
 }
 

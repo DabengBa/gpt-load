@@ -2,12 +2,12 @@ package models
 
 // RequestLog is the durable request-level audit and usage record.
 //
-// ContinuityHit、AffinitySource 和 AffinityState 是由 0014 迁移添加的 bounded 亲和
-// 观测字段。其数据库默认值是 bounded 零值（false、"none"、"no_signal"），
+// ContinuityHit、AffinityKey、AffinitySource 和 AffinityState 是由 0014/0016 迁移添加的
+// bounded 亲和观测字段。其数据库默认值是 bounded 零值（false、""、"none"、"no_signal"），
 // 因此未评估软亲和的请求会持久化一个安全、不敏感的观测结果。
 type RequestLog struct {
-	ID                      string              `gorm:"type:varchar(36);primaryKey;not null;index:idx_request_logs_completed_id,priority:2,sort:desc;index:idx_request_logs_access_completed_id,priority:3,sort:desc;index:idx_request_logs_status_completed_id,priority:3,sort:desc;index:idx_request_logs_model_completed_id,priority:3,sort:desc;index:idx_request_logs_upstream_model_completed_id,priority:3,sort:desc"`
-	CompletedAtMS           int64               `gorm:"column:completed_at_ms;not null;check:chk_request_log_completed_at,completed_at_ms >= 0;index:idx_request_logs_completed_id,priority:1,sort:desc;index:idx_request_logs_access_completed_id,priority:2,sort:desc;index:idx_request_logs_status_completed_id,priority:2,sort:desc;index:idx_request_logs_model_completed_id,priority:2,sort:desc;index:idx_request_logs_upstream_model_completed_id,priority:2,sort:desc"`
+	ID                      string              `gorm:"type:varchar(36);primaryKey;not null;index:idx_request_logs_completed_id,priority:2,sort:desc;index:idx_request_logs_access_completed_id,priority:3,sort:desc;index:idx_request_logs_status_completed_id,priority:3,sort:desc;index:idx_request_logs_model_completed_id,priority:3,sort:desc;index:idx_request_logs_upstream_model_completed_id,priority:3,sort:desc;index:idx_request_logs_affinity_completed_id,priority:3,sort:desc"`
+	CompletedAtMS           int64               `gorm:"column:completed_at_ms;not null;check:chk_request_log_completed_at,completed_at_ms >= 0;index:idx_request_logs_completed_id,priority:1,sort:desc;index:idx_request_logs_access_completed_id,priority:2,sort:desc;index:idx_request_logs_status_completed_id,priority:2,sort:desc;index:idx_request_logs_model_completed_id,priority:2,sort:desc;index:idx_request_logs_upstream_model_completed_id,priority:2,sort:desc;index:idx_request_logs_affinity_completed_id,priority:2,sort:desc"`
 	AccessKeyID             uint                `gorm:"not null;index:idx_request_logs_access_completed_id,priority:1"`
 	GroupID                 uint                `gorm:"not null;default:0"`
 	ChannelID               string              `gorm:"type:varchar(64);not null;default:''"`
@@ -28,6 +28,7 @@ type RequestLog struct {
 	ErrorSummary            string              `gorm:"type:text;not null"`
 	AffinityHit             bool                `gorm:"not null;default:false"`
 	ContinuityHit           bool                `gorm:"column:continuity_hit;not null;default:false"`
+	AffinityKey             string              `gorm:"column:affinity_key;type:varchar(36);not null;default:'';index:idx_request_logs_affinity_completed_id,priority:1;index:idx_request_logs_affinity_completed_id,priority:2,sort:desc;index:idx_request_logs_affinity_completed_id,priority:3,sort:desc"`
 	AffinitySource          string              `gorm:"type:varchar(32);not null;default:'none'"`
 	AffinityState           string              `gorm:"type:varchar(32);not null;default:'no_signal'"`
 	ReasoningMode           string              `gorm:"type:varchar(64);not null;default:''"`

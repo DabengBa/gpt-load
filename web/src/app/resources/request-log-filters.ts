@@ -33,6 +33,7 @@ export const requestLogFilterFields = [
   'output_tokens_max',
   'cost_min_nano_usd',
   'cost_max_nano_usd',
+  'affinity_key',
 ] as const
 
 type RequestLogFilterField = (typeof requestLogFilterFields)[number]

@@ -216,6 +216,7 @@ type RequestEvent struct {
 	DurationMs            int64
 	AffinityHit           bool
 	ContinuityHit         bool
+	AffinityKey           string
 	AffinitySource        AffinitySource
 	AffinityState         AffinityState
 	Reasoning             reasoning.Config

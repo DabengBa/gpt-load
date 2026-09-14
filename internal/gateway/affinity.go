@@ -12,6 +12,7 @@ import (
 
 type requestAffinity struct {
 	key                   affinity.Key
+	displayKey            string
 	observation           affinity.Observation
 	preferredCredentialID uint
 	continuityKey         string
@@ -77,6 +78,7 @@ func (handler *Handler) resolveRequestAffinity(
 		signalType,
 		signalValue,
 	)
+	result.displayKey = affinity.DisplayKey(key)
 	if handler.affinityCache == nil ||
 		!handler.affinityCache.Configure(
 			snapshot.Revision,

@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"gpt-load/internal/accessquota"
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
@@ -895,9 +896,12 @@ func TestWebsocketRetriesOnlyUnsentUnboundTurns(t *testing.T) {
 			server := httptest.NewServer(engine)
 			defer server.Close()
 			conn := dialGatewayWebsocket(t, server.URL)
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"public","input":"hello","store":false}`))
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"public","prompt_cache_key":"ws-retry-key","input":"hello","store":false}`))
 			_, _, _ = conn.ReadMessage()
 			events := waitWebsocketLogs(t, sink, 1)
+			if events[0].AffinityKey == "" || !affinity.ValidDisplayKey(events[0].AffinityKey) {
+				t.Fatalf("WebSocket reconnect/retry affinity key = %q, want canonical display key", events[0].AffinityKey)
+			}
 			if dispatch == execution.DispatchNotSent {
 				if opens.Load() != 2 || events[0].Status != telemetry.RequestStatusSuccess || len(events[0].Attempts) != 2 {
 					t.Fatalf("unsent recovery opens=%d status=%s attempts=%d", opens.Load(), events[0].Status, len(events[0].Attempts))

@@ -149,6 +149,7 @@ type requestLogItemResponse struct {
 	ErrorSummary            string                       `json:"error_summary"`
 	AffinityHit             bool                         `json:"affinity_hit"`
 	ContinuityHit           bool                         `json:"continuity_hit"`
+	AffinityKey             *string                      `json:"affinity_key"`
 	AffinitySource          string                       `json:"affinity_source"`
 	AffinityState           string                       `json:"affinity_state"`
 	GroupID                 *uint                        `json:"group_id"`
@@ -311,6 +312,7 @@ func requestLogQueryUsesInternalFields(rawQuery string) bool {
 		"credential_id",
 		"upstream_model",
 		"access_key_id",
+		"affinity_key",
 		"attempt_status_code",
 		"failure_category",
 		"error_code",
@@ -332,6 +334,7 @@ func sanitizeAccessKeyRequestLog(record requestlog.Record) requestlog.Record {
 	record.AttemptCount = 0
 	record.AffinityHit = false
 	record.ContinuityHit = false
+	record.AffinityKey = ""
 	record.AffinitySource = requestlog.AffinitySourceNone
 	record.AffinityState = requestlog.AffinityStateNoSignal
 	record.GroupID = 0
@@ -350,7 +353,7 @@ func parseRequestLogQuery(rawQuery string) (requestlog.ListQuery, *app_errors.AP
 	}
 	allowed := map[string]struct{}{
 		"from_ms": {}, "to_ms": {}, "group_id": {}, "channel_id": {}, "credential_id": {},
-		"client_model": {}, "upstream_model": {}, "access_key_id": {},
+		"client_model": {}, "upstream_model": {}, "access_key_id": {}, "affinity_key": {},
 		"status": {}, "request_id": {}, "protocol": {}, "stream": {}, "final_status_code": {},
 		"usage_state": {}, "cost_state": {}, "pricing_completeness": {}, "cache_present": {},
 		"attempt_status_code": {}, "failure_category": {}, "error_code": {},
@@ -425,6 +428,12 @@ func parseRequestLogQuery(rawQuery string) (requestlog.ListQuery, *app_errors.AP
 			return requestlog.ListQuery{}, apiErr
 		}
 		query.AccessKeyID = &parsed
+	}
+	if value, ok := singleQueryValue(values, "affinity_key"); ok {
+		if !requestlog.ValidAffinityKey(value) {
+			return requestlog.ListQuery{}, app_errors.ErrBadRequest
+		}
+		query.AffinityKey = value
 	}
 	if value, ok := singleQueryValue(values, "protocol"); ok {
 		parsed := protocol.Protocol(value)
@@ -939,6 +948,7 @@ func mapRequestLogItemResponse(
 		ContinuityHit:           record.ContinuityHit,
 		AffinitySource:          affinitySource,
 		AffinityState:           affinityState,
+		AffinityKey:             nullableRequestLogAffinityKey(record.AffinityKey),
 		GroupID:                 usageCost.groupID,
 		ChannelID:               usageCost.channelID,
 		CredentialID:            usageCost.credentialID,
@@ -1203,6 +1213,14 @@ func mapRequestLogPricingReceipt(
 		result.LineItems = append(result.LineItems, mapped)
 	}
 	return result, nil
+}
+
+func nullableRequestLogAffinityKey(value string) *string {
+	value = requestlog.NormalizeAffinityKey(value)
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func nullableRequestLogModel(value string) *string {

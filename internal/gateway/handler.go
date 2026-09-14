@@ -774,6 +774,7 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		)
 		query.PreferredCredentialID = requestAffinity.preferredCredentialID
 	}
+	recorder.setAffinityKey(requestAffinity.displayKey)
 	recorder.setAffinityObservations(requestAffinity.source, requestAffinity.state)
 	iterator := scheduler.New(snapshot, handler.registry, query, handler.newRandom())
 	handler.executeAttempts(
