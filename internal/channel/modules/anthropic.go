@@ -28,6 +28,7 @@ func Anthropic() spec.Module {
 				Required: true, Sensitive: true, Normalizer: spec.NormalizeNonEmpty,
 			}},
 			Provider: spec.ProviderBinding{
+				ProbeContract:     spec.ProbeContract{Protocol: protocol.Anthropic, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:      spec.ProviderAnthropic,
 				CatalogProviderID: "anthropic",
 				EndpointPolicy:    spec.EndpointSDKDefault,

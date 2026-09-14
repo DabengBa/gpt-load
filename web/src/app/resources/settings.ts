@@ -37,7 +37,6 @@ export const runtimeSettingKeys = [
   'responses_websocket_enabled',
   'affinity_ttl',
   'affinity_capacity',
-  'validation_interval',
   'request_log_retention_days',
   'models_dev_auto_sync_enabled',
 ] as const
@@ -83,7 +82,6 @@ export interface SettingsValues {
   responses_websocket_enabled: boolean
   affinity_ttl: number
   affinity_capacity: number
-  validation_interval: number
   request_log_retention_days: number
   models_dev_auto_sync_enabled: boolean
   proxy_config: ProxyViewDto
@@ -109,7 +107,6 @@ export type SettingsPatch = Partial<{
   responses_websocket_enabled: boolean | null
   affinity_ttl: number | null
   affinity_capacity: number | null
-  validation_interval: number | null
   request_log_retention_days: number | null
   models_dev_auto_sync_enabled: boolean | null
   proxy_config: ProxyMutation
@@ -212,7 +209,6 @@ export function projectSettings(value: unknown): SettingsDto {
         minimum: 1,
         maximum: 1_000_000,
       }),
-      validation_interval: projectSafeInteger(values.validation_interval, { minimum: 1 }),
       request_log_retention_days: projectSafeInteger(values.request_log_retention_days, {
         minimum: 1,
         maximum: 365,

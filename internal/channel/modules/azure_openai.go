@@ -35,6 +35,7 @@ func AzureOpenAI() spec.Module {
 			},
 			CredentialValidator: azureCredentialValidator,
 			Provider: spec.ProviderBinding{
+				ProbeContract:     spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:      spec.ProviderAzureOpenAI,
 				CatalogProviderID: "azure",
 				EndpointPolicy:    spec.EndpointCloudParams,

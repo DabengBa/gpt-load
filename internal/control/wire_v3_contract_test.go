@@ -54,6 +54,9 @@ func TestHealthMillisWireUsesNullableEpochMilliseconds(t *testing.T) {
 					AtMS:      &cooldownUntilMS,
 				},
 			}},
+			BlacklistedCredentials: []healthProblemCredentialResponse{{
+				Recovery: healthRecoveryResponse{Mode: "manual_probe"},
+			}},
 			RequestLog: requestLogHealthResponse{
 				LastWriteFailureAtMS: &cooldownUntilMS,
 			},
@@ -61,9 +64,35 @@ func TestHealthMillisWireUsesNullableEpochMilliseconds(t *testing.T) {
 		[]string{
 			"observed_at_ms",
 			"cooldown_credentials",
+			"blacklisted_credentials",
 			"request_log",
 		},
 	)
+
+	// Manual health actions are explicitly non-automatic and never use the retired mode.
+	encoded, err := json.Marshal(runtimeHealthResponse{
+		BlacklistedCredentials: []healthProblemCredentialResponse{
+			{Recovery: healthRecoveryResponse{Mode: "manual_probe"}},
+			{Recovery: healthRecoveryResponse{Mode: "manual_restore"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal(manual health) error = %v", err)
+	}
+	text := string(encoded)
+	for _, expected := range []string{
+		`"automatic":false,"mode":"manual_probe"`,
+		`"automatic":false,"mode":"manual_restore"`,
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("health wire missing %s: %s", expected, text)
+		}
+	}
+	legacyValidationMode := "validation" + "_" + "probe"
+	legacyConfigurationMode := "configuration" + "_" + "required"
+	if strings.Contains(text, legacyValidationMode) || strings.Contains(text, legacyConfigurationMode) {
+		t.Fatalf("health wire exposes retired recovery mode: %s", text)
+	}
 }
 
 func TestInspectMillisWireUsesEpochMilliseconds(t *testing.T) {

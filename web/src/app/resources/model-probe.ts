@@ -21,6 +21,8 @@ export type ModelProbeReason =
   | 'timeout'
   | 'upstream_error'
   | 'probe_incompatible'
+  | 'no_answer'
+  | 'invalid_response'
   | 'unknown'
   | 'target_unavailable'
   | 'no_schedulable_credential'
@@ -54,6 +56,8 @@ const probeReasons = [
   'timeout',
   'upstream_error',
   'probe_incompatible',
+  'no_answer',
+  'invalid_response',
   'unknown',
   'target_unavailable',
   'no_schedulable_credential',

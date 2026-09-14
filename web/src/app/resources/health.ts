@@ -143,7 +143,7 @@ const requestLogCounterFields = [
   'queue_depth',
   'queue_capacity',
 ] as const
-const recoveryModes = ['cooldown_expiry', 'validation_probe', 'configuration_required'] as const
+const recoveryModes = ['cooldown_expiry', 'manual_probe', 'manual_restore'] as const
 const problemFailureCategories = [
   'rate_limited',
   'model_unavailable',
@@ -208,10 +208,6 @@ function projectProblemCredential(value: unknown): HealthProblemCredentialDto {
 
   if (recovery.mode === 'cooldown_expiry') {
     if (!recovery.automatic || recovery.at_ms !== cooldownUntilMS) invalidResponse()
-  } else if (recovery.mode === 'validation_probe') {
-    if (!recovery.automatic || cooldownUntilMS !== null || recovery.at_ms !== null) {
-      invalidResponse()
-    }
   } else if (recovery.automatic || cooldownUntilMS !== null || recovery.at_ms !== null) {
     invalidResponse()
   }

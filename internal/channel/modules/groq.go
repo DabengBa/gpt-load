@@ -28,6 +28,7 @@ func Groq() spec.Module {
 				Required: true, Sensitive: true, Normalizer: spec.NormalizeNonEmpty,
 			}},
 			Provider: spec.ProviderBinding{
+				ProbeContract:     spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:      spec.ProviderGroq,
 				CatalogProviderID: "groq",
 				EndpointPolicy:    spec.EndpointSDKDefault,

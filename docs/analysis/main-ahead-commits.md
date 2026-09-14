@@ -267,12 +267,12 @@
 
 **内容（完整上游）**：分组测活时支持选择协议（API/Responses）和模型，并修复禁用分组时的测试问题。涉及：`credential_probe.go` 扩展 `ProbeRequest` 协议/模型字段；`group_settings.go` 新增 `protocol` 和 `model` 设置；快照编译与存储层增加 validation protocol 迁移（`0013_validation_protocol.go`）；前端 `GroupTestFields.vue` 协议/模型选择 UI；`CredentialTestDialog.vue` 扩展。
 
-**采用决策**：只取模型选择 + 禁用分组修复，跳过协议选择。测活使用分组已有协议。
+**合并后的决策**：测活使用分组的代码合同和用户选定的已保存模型；不提供独立协议选择，也不依赖可配置的旧模型字段；黑名单凭据的健康恢复仅支持显式手动操作；冷却到期自动恢复语义保留。
 
 **保留范围**：
-- `CredentialProbeRequest.Model` 可选字段 + `normalizeValidationModel` 校验
+- `CredentialProbeRequest.Model` 可选字段与输入校验
 - `captureCredentialProbe` 的模型覆盖逻辑
-- `compileDisabledGroupProbe`（禁用分组也可测活）
+- 停用分组也可显式测活的处理
 - 前端模型输入（`GroupTestFields.vue` 去掉协议选择器）
 
 **跳过范围**：
@@ -285,9 +285,9 @@
 
 **与 dev 的关系**：`dev` 在 PR #32/#37 已实现测活闭环。模型选择让用户在测试时指定特定模型而不是仅靠默认。禁用分组修复解决了一个实际问题：分组关闭后无法测活。
 
-**用户意义**：高。禁用分组可测活直接修复了一个使用 bug。模型选择让验证更灵活。
+**用户意义**：高。停用分组可测活直接修复了一个使用 bug；显式模型选择让用户能观察指定模型。
 
-**合并难度**：L2。切除协议选择后，`credential_probe.go` 的增量收敛到 Model 可选参数 + 禁用分组路径；无迁移、无协议发现代码、无 `group_settings.go`/`loader.go`/`snapshot.go` 的协议改动。
+**合并难度**：L2。切除协议选择后，增量收敛到显式模型与停用分组路径；无迁移、无协议发现代码。
 
 **价值判断**：**最值得移植**。与 `dev` 现有功能直接互补，切除协议选择后冲突范围可控。
 

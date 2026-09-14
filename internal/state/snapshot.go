@@ -39,7 +39,6 @@ type GroupConfig struct {
 	ChannelID       channel.ID
 	ConnectionType  string
 	Params          json.RawMessage
-	ValidationModel string
 	Models          []ModelConfig
 	Settings        config.Settings
 	Enabled         bool
@@ -144,7 +143,6 @@ type GroupView struct {
 	ConnectionType                        string
 	Params                                json.RawMessage
 	ResolvedTarget                        channel.ResolvedTarget
-	ValidationModel                       string
 	ClientProtocols                       []protocol.Protocol
 	Models                                []ModelConfig
 	Timeouts                              TimeoutConfig
@@ -251,7 +249,6 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			PriceMultiplier:                       resolvePriceMultiplier(group.PriceMultiplier),
 			ID:                                    group.ID,
 			Name:                                  group.Name,
-			ValidationModel:                       strings.TrimSpace(group.ValidationModel),
 			Models:                                cloneModelConfigs(group.Models),
 			Timeouts:                              resolved.Timeouts,
 			HeaderRules:                           resolved.HeaderRules,

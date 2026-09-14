@@ -222,29 +222,29 @@ function credentialMeta(credential: HealthProblemCredentialDto): string {
               </OverflowTooltip>
             </template>
             <template v-else>
-              <template v-if="item.credential.recovery.mode === 'validation_probe'">
+              <template v-if="item.credential.recovery.mode === 'manual_probe'">
                 <OverflowTooltip
                   as="span"
-                  :content="t('monitor.health.problems.validationRecovery')"
+                  :content="t('monitor.health.problems.manualProbeRecovery')"
                 >
-                  {{ t('monitor.health.problems.validationRecovery') }}
+                  {{ t('monitor.health.problems.manualProbeRecovery') }}
                 </OverflowTooltip>
-                <OverflowTooltip as="small" :content="t('monitor.health.problems.validationHint')">
-                  {{ t('monitor.health.problems.validationHint') }}
+                <OverflowTooltip as="small" :content="t('monitor.health.problems.manualProbeHint')">
+                  {{ t('monitor.health.problems.manualProbeHint') }}
                 </OverflowTooltip>
               </template>
               <template v-else>
                 <OverflowTooltip
                   as="span"
-                  :content="t('monitor.health.problems.configurationRecovery')"
+                  :content="t('monitor.health.problems.manualRestoreRecovery')"
                 >
-                  {{ t('monitor.health.problems.configurationRecovery') }}
+                  {{ t('monitor.health.problems.manualRestoreRecovery') }}
                 </OverflowTooltip>
                 <OverflowTooltip
                   as="small"
-                  :content="t('monitor.health.problems.configurationHint')"
+                  :content="t('monitor.health.problems.manualRestoreHint')"
                 >
-                  {{ t('monitor.health.problems.configurationHint') }}
+                  {{ t('monitor.health.problems.manualRestoreHint') }}
                 </OverflowTooltip>
               </template>
             </template>

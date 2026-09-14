@@ -726,18 +726,11 @@ func TestBuildContainerWiresSingletonMutationCoordinator(t *testing.T) {
 		handlerMutation := mutationCoordinatorFieldPointer(t, reflect.ValueOf(handler), "mutations")
 
 		runtimeValue := reflect.ValueOf(runtime).Elem()
-		validator := runtimeValue.FieldByName("validator")
-		if !validator.IsValid() || validator.IsNil() {
-			t.Fatal("Runtime validator is not wired")
+		if validator := runtimeValue.FieldByName("validator"); validator.IsValid() {
+			t.Fatal("Runtime unexpectedly retains background validator")
 		}
-		validationMutation := mutationCoordinatorFieldPointer(t, validator.Elem(), "mutations")
-		if handlerMutation != want || validationMutation != want {
-			t.Fatalf(
-				"mutation coordinators = handler:%#x validation:%#x want:%#x",
-				handlerMutation,
-				validationMutation,
-				want,
-			)
+		if handlerMutation != want {
+			t.Fatalf("mutation coordinator = handler:%#x want:%#x", handlerMutation, want)
 		}
 	})
 	if err != nil {

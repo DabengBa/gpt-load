@@ -69,6 +69,7 @@ func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (r
 		normalizeImagesAttemptResult(spec, &result)
 		normalizeEmbeddingsAttemptResult(spec, &result)
 		normalizeRerankAttemptResult(spec, &result)
+		normalizeProbeAttemptResult(spec, &result)
 	}()
 	prepared, preflightError := r.prepare(spec, false)
 	if preflightError != nil {
@@ -508,19 +509,6 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		return prepareRerank(spec, resolved, provider, directKey, secrets)
 	}
 	if spec.Operation == execution.OperationProbe {
-		if spec.ClientProtocol == protocol.OpenAIEmbeddings {
-			typedURL, targetErr := embeddingTypedTarget(providerKind, resolved.TargetConfig, "")
-			if targetErr != nil {
-				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid Embeddings probe target")
-				return preparedAttempt{}, &failure
-			}
-			return preparedAttempt{
-				provider: provider, mode: mode, upstreamProtocol: protocol.OpenAIEmbeddings,
-				embeddingRequest: newEmbeddingProbeRequest(provider, spec.UpstreamModel),
-				typedURL:         typedURL, clientProtocol: spec.ClientProtocol,
-				directKey: directKey, secrets: secrets,
-			}, nil
-		}
 		if mode == channel.RouteNative && providerKind == channel.ProviderGoogleVertex {
 			passthroughPath, pathErr := vertexNativeGeminiPath(spec.UpstreamModel, "generateContent")
 			if pathErr != nil {
@@ -536,7 +524,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 					Model:    spec.UpstreamModel,
 					Method:   http.MethodPost,
 					Path:     passthroughPath,
-					Body:     []byte(`{"contents":[{"role":"user","parts":[{"text":"ping"}]}],"generationConfig":{"maxOutputTokens":1}}`),
+					Body:     geminiProbeRequestBody(probeOutputTokenBudget(spec)),
 					SafeHeaders: map[string]string{
 						"Content-Type": "application/json",
 					},
@@ -545,7 +533,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 				secrets:   secrets,
 			}, nil
 		}
-		request := newProbeRequest(provider, providerKind, spec.UpstreamModel)
+		request := newProbeRequest(provider, providerKind, spec.UpstreamModel, probeOutputTokenBudget(spec))
 		if providerKind == channel.ProviderMultiProtocolGateway {
 			if spec.ClientProtocol != protocol.OpenAICompletions {
 				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "unsupported multi-protocol gateway probe protocol")
@@ -860,12 +848,16 @@ func newProbeRequest(
 	provider schemas.ModelProvider,
 	providerKind channel.ProviderKind,
 	model string,
+	maxOutputTokens int,
 ) *schemas.BifrostChatRequest {
-	content := "ping"
-	params := &schemas.ChatParameters{MaxCompletionTokens: schemas.Ptr(1)}
-	if providerKind == channel.ProviderOpenAICompatible {
+	content := probeQuestion
+	params := &schemas.ChatParameters{MaxCompletionTokens: schemas.Ptr(maxOutputTokens)}
+	if providerKind == channel.ProviderOpenAICompatible ||
+		providerKind == channel.ProviderMultiProtocolGateway {
+		// OpenAI-compatible endpoints are not guaranteed to understand
+		// max_completion_tokens, so send the legacy max_tokens field instead.
 		params.MaxCompletionTokens = nil
-		params.ExtraParams = map[string]any{"max_tokens": 1}
+		params.ExtraParams = map[string]any{"max_tokens": maxOutputTokens}
 	}
 	return &schemas.BifrostChatRequest{
 		Provider: provider,
@@ -878,6 +870,22 @@ func newProbeRequest(
 		}},
 		Params: params,
 	}
+}
+
+// geminiProbeRequestBody builds the native Gemini generateContent body used by
+// the Vertex passthrough probe.
+func geminiProbeRequestBody(maxOutputTokens int) []byte {
+	body, err := json.Marshal(map[string]any{
+		"contents": []map[string]any{{
+			"role":  "user",
+			"parts": []map[string]string{{"text": probeQuestion}},
+		}},
+		"generationConfig": map[string]int{"maxOutputTokens": maxOutputTokens},
+	})
+	if err != nil {
+		return nil
+	}
+	return body
 }
 
 func providerSupportsPassthrough(providerKind channel.ProviderKind) bool {
@@ -935,9 +943,9 @@ func supportedRequestShape(spec execution.AttemptSpec, stream bool) bool {
 			spec.Path != "" || len(spec.Query) != 0 || spec.RawQuery != "" || len(spec.Body) != 0 {
 			return false
 		}
+		// Probes are generative-only: Embeddings and Rerank must never be probed.
 		switch spec.ClientProtocol {
-		case protocol.OpenAICompletions, protocol.OpenAIResponses, protocol.OpenAIEmbeddings, protocol.Rerank,
-			protocol.Anthropic, protocol.Gemini:
+		case protocol.OpenAICompletions, protocol.OpenAIResponses, protocol.Anthropic, protocol.Gemini:
 			return true
 		default:
 			return false
@@ -1378,7 +1386,11 @@ func (r *Runtime) newSDKContext(parent context.Context, spec execution.AttemptSp
 		bifrostContext.SetValue(schemas.BifrostContextKeyPassthroughExtraParams, true)
 	}
 	if spec.Operation == execution.OperationProbe &&
-		r.providerKind(spec) == channel.ProviderOpenAICompatible {
+		(r.providerKind(spec) == channel.ProviderOpenAICompatible ||
+			r.providerKind(spec) == channel.ProviderMultiProtocolGateway) {
+		// Multi-protocol gateways serialize the same OpenAI-compatible Chat wire
+		// as OpenAICompatible, so their probe's legacy max_tokens in ExtraParams
+		// must pass through the same way.
 		bifrostContext.SetValue(schemas.BifrostContextKeyPassthroughExtraParams, true)
 	}
 	if spec.Timeouts.StreamIdle > 0 {

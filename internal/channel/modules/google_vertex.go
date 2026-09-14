@@ -32,6 +32,7 @@ func GoogleVertex() spec.Module {
 				Required: true, Sensitive: true, Normalizer: spec.NormalizeServiceAccountJSON,
 			}},
 			Provider: spec.ProviderBinding{
+				ProbeContract:     spec.ProbeContract{Protocol: protocol.Gemini, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:      spec.ProviderGoogleVertex,
 				CatalogProviderID: "google-vertex",
 				EndpointPolicy:    spec.EndpointCloudParams,

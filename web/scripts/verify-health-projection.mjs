@@ -20,10 +20,53 @@ const CASES = [
   { name: 'full', file: 'full.json', expect: 'success' },
   { name: 'unknown-nested-key', file: 'unknown-nested-key.json', expect: 'invalid' },
   { name: 'unknown-top-level-key', file: 'unknown-top-level-key.json', expect: 'invalid' },
+  {
+    name: 'recovery-cooldown-expiry',
+    file: 'recovery-cooldown-expiry.json',
+    expect: 'success',
+    expectRecovery: { automatic: true, mode: 'cooldown_expiry', at_ms: 1700000005000 },
+  },
+  {
+    name: 'recovery-manual-probe',
+    file: 'recovery-manual-probe.json',
+    expect: 'success',
+    expectRecovery: { automatic: false, mode: 'manual_probe', at_ms: null },
+  },
+  {
+    name: 'recovery-manual-restore',
+    file: 'recovery-manual-restore.json',
+    expect: 'success',
+    expectRecovery: { automatic: false, mode: 'manual_restore', at_ms: null },
+  },
+  {
+    name: 'recovery-manual-probe-automatic',
+    file: 'recovery-manual-probe-automatic.json',
+    expect: 'invalid',
+  },
+  {
+    name: 'recovery-manual-restore-at-ms',
+    file: 'recovery-manual-restore-at-ms.json',
+    expect: 'invalid',
+  },
+  {
+    name: 'recovery-cooldown-expiry-missing-at-ms',
+    file: 'recovery-cooldown-expiry-missing-at-ms.json',
+    expect: 'invalid',
+  },
+  { name: 'recovery-invalid-mode', file: 'recovery-invalid-mode.json', expect: 'invalid' },
+  { name: 'recovery-invalid-at-ms', file: 'recovery-invalid-at-ms.json', expect: 'invalid' },
 ]
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
+}
+
+function findRecovery(payload) {
+  for (const collection of ['cooldown_credentials', 'blacklisted_credentials']) {
+    const record = payload[collection]?.[0]
+    if (record?.recovery !== undefined) return record.recovery
+  }
+  return null
 }
 
 async function main() {
@@ -44,17 +87,26 @@ async function main() {
 
     for (const c of CASES) {
       const payload = readJson(FIXTURES_DIR + c.file)
+      const inputRecovery = findRecovery(payload)
       const expected = c.expect === 'success' ? 'success' : 'InvalidResponseError'
       let actual = 'success'
+      let outputRecovery = null
       let detail = ''
 
       try {
         const result = projectRuntimeHealth(payload)
+        outputRecovery = findRecovery(result)
         if (c.expect !== 'success') {
           actual = 'success'
         } else if (c.expectError !== undefined && result.debug_capture.error !== c.expectError) {
           actual = 'success'
           detail = `error mismatch: expected "${c.expectError}" got "${result.debug_capture.error}"`
+        } else if (
+          c.expectRecovery !== undefined &&
+          JSON.stringify(outputRecovery) !== JSON.stringify(c.expectRecovery)
+        ) {
+          actual = 'success'
+          detail = `recovery mismatch: expected ${JSON.stringify(c.expectRecovery)} got ${JSON.stringify(outputRecovery)}`
         }
       } catch (err) {
         actual =
@@ -67,12 +119,15 @@ async function main() {
       }
 
       const ok = actual === expected && detail === ''
+      const output = actual === 'success' ? { recovery: outputRecovery } : { error: actual }
       if (ok) {
-        console.log(`PASS  ${c.name}: expected=${expected} actual=${actual}`)
+        console.log(
+          `PASS  ${c.name}: input.recovery=${JSON.stringify(inputRecovery)} output=${JSON.stringify(output)}`,
+        )
       } else {
         failed++
         console.log(
-          `FAIL  ${c.name}: expected=${expected} actual=${actual}${detail ? ` detail=${detail}` : ''}`,
+          `FAIL  ${c.name}: input.recovery=${JSON.stringify(inputRecovery)} output=${JSON.stringify(output)} expected=${expected}${detail ? ` detail=${detail}` : ''}`,
         )
       }
     }

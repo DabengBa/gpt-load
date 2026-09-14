@@ -148,14 +148,7 @@ func (service *Service) probeModelTarget(
 	if !supported {
 		return probeWithoutExecution(result, ProbeReasonIncompatible)
 	}
-	routeMode, routeSupported := group.ResolvedTarget.ModeForModel(
-		probeTarget.protocol,
-		execution.OperationProbe,
-		target.Model,
-	)
-	if !routeSupported {
-		return probeWithoutExecution(result, ProbeReasonIncompatible)
-	}
+	routeMode := probeTarget.routeMode
 	result.Protocol = &probeTarget.protocol
 	result.RouteMode = &routeMode
 	entry, found := service.schedulableProbeCredential(group.ID, observation.observedAt)

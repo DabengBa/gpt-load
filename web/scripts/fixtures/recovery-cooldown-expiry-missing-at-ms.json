@@ -1,0 +1,83 @@
+{
+  "observed_at_ms": 1700000000000,
+  "version": "1.2.3",
+  "uptime_seconds": 12345,
+  "snapshot_revision": 7,
+  "stats_window_seconds": 300,
+  "counts": {
+    "credentials": 1,
+    "available": 0,
+    "cooldown": 1,
+    "blacklisted": 0
+  },
+  "groups": [
+    {
+      "id": 1,
+      "name": "default",
+      "enabled": true,
+      "counts": {
+        "credentials": 1,
+        "available": 0,
+        "cooldown": 1,
+        "blacklisted": 0
+      }
+    }
+  ],
+  "cooldown_credentials": [
+    {
+      "credential_id": 1,
+      "group_id": 1,
+      "group_name": "default",
+      "cooldown_until_ms": 1700000005000,
+      "failure_count": 3,
+      "recent_success_count": 0,
+      "recent_problem_count": 3,
+      "consecutive_problem_count": 3,
+      "recovery": {
+        "automatic": true,
+        "mode": "cooldown_expiry",
+        "at_ms": null
+      },
+      "identity": "masked-credential",
+      "last_failure_category": "invalid_key",
+      "last_status_code": 401
+    }
+  ],
+  "blacklisted_credentials": [],
+  "low_quota_credentials": [],
+  "expiring_reset_credits": [],
+  "blocked_access_keys": [],
+  "request_log": {
+    "enqueued_total": 42,
+    "persisted_total": 40,
+    "dropped_not_running_total": 0,
+    "dropped_queue_full_total": 1,
+    "dropped_stopping_total": 0,
+    "dropped_persist_failed_total": 0,
+    "dropped_shutdown_total": 1,
+    "dropped_total": 2,
+    "write_failure_total": 0,
+    "access_quota_checkpoint_write_failure_total": 0,
+    "retention_delete_failure_total": 0,
+    "queue_depth": 3,
+    "queue_capacity": 1000,
+    "access_quota_checkpoint_degraded": false,
+    "last_write_failure_at_ms": null,
+    "last_access_quota_checkpoint_write_failure_at_ms": null,
+    "last_retention_failure_at_ms": null
+  },
+  "debug_capture": {
+    "enabled": true,
+    "running": true,
+    "retention_seconds": 3600,
+    "active": 5,
+    "completed": 100,
+    "failed": 3,
+    "sweep_total": 10,
+    "removed_total": 7,
+    "sweep_failure_total": 0,
+    "error": "",
+    "last_sweep_at_ms": 1700000000100,
+    "last_failure_at_ms": 1700000000200
+  }
+}

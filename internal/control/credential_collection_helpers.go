@@ -166,7 +166,7 @@ func mapCredentialRuntimeItem(
 			Mode: "cooldown", Automatic: true, AtMS: cooldownUntilMS,
 		}
 	case healthBucketBlacklisted:
-		item.Recovery = CredentialRecoveryResponse{Mode: "probe", Automatic: true}
+		item.Recovery = CredentialRecoveryResponse{Mode: "manual"}
 	case healthBucketDisabled:
 		item.Recovery = CredentialRecoveryResponse{Mode: "manual"}
 	default:

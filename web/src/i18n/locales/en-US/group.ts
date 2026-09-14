@@ -327,10 +327,6 @@ export default {
         providerUrlHelp:
           'Optional. Shown as a link in the Group header; it does not change where requests are sent.',
         paramRequired: 'Enter {field}.',
-        validationModel: 'Validation model (optional)',
-        validationModelPlaceholder: 'Search or enter a model ID',
-        validationModelHelp:
-          'Leave empty to use the first model in this Group; enter the upstream model ID, not an alias.',
         weight: 'Manual Group weight',
         auto: 'Auto',
         manual: 'Manual',
@@ -473,7 +469,7 @@ export default {
         action: 'Test connection',
         title: 'Test connection',
         description:
-          'This sends one minimal real upstream request and may incur a small charge. Testing does not change scheduling or blacklist state.',
+          'This sends one low-cost real upstream question and may incur a small charge. Testing does not change scheduling, cooldown, or blacklist state.',
         loading: 'Testing {mask}…',
         outcome: {
           passed: 'Test passed',
@@ -496,7 +492,9 @@ export default {
           rate_limited: 'The upstream rate limit was reached',
           timeout: 'The request timed out',
           upstream_error: 'The upstream service returned an error',
-          probe_incompatible: 'This channel or model cannot run the probe',
+          probe_incompatible: 'The selected protocol or request is incompatible with this target',
+          no_answer: 'The upstream returned no usable answer text',
+          invalid_response: 'The upstream response was invalid for the selected protocol',
           unknown: 'The reason could not be determined',
         },
         restorePrompt: 'This API key is blacklisted. Restoring it returns it to scheduling.',
@@ -517,7 +515,6 @@ export default {
       recovery: {
         none: 'No recovery needed',
         cooldown: 'Recovers when cooldown ends',
-        probe: 'Waiting for probe recovery',
         manual: 'Needs manual recovery',
         at: 'Recovers automatically at {time}',
       },

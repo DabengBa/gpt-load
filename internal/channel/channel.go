@@ -225,6 +225,7 @@ type ResolvedTarget struct {
 	TargetConfig      json.RawMessage `json:"-"`
 	CatalogProviderID string          `json:"-"`
 
+	probeContract           spec.ProbeContract
 	modes                   map[protocol.Protocol]map[execution.Operation]RouteMode
 	resolvers               map[routeKey]spec.RouteResolver
 	responsesStoreHandlings map[routeKey]ResponsesStoreHandling
@@ -305,6 +306,15 @@ func (t ResolvedTarget) PreferredProtocol(
 ) (protocol.Protocol, bool) {
 	clientProtocol, _, ok := t.PreferredRoute(operation, upstreamModel)
 	return clientProtocol, ok
+}
+
+// ProbeContract returns the code-owned manual probe contract. API-key channels
+// declare exactly one; subscription channels have none.
+func (t ResolvedTarget) ProbeContract() (spec.ProbeContract, bool) {
+	if !t.probeContract.Valid() {
+		return spec.ProbeContract{}, false
+	}
+	return t.probeContract, true
 }
 
 // NormalizeVertexGeminiModel returns the Vertex resource ID for a Gemini,
@@ -542,6 +552,7 @@ func (r *Registry) Resolve(id ID, raw json.RawMessage) (ResolvedTarget, error) {
 		ProviderKind:      definition.providerKind,
 		TargetConfig:      append(json.RawMessage(nil), targetConfig...),
 		CatalogProviderID: definition.catalogProviderID,
+		probeContract:     definition.probeContract,
 		modes:             cloneRouteModes(definition.modes),
 		resolvers:         cloneRouteResolvers(definition.resolvers),
 		responsesStoreHandlings: cloneResponsesStoreHandlings(
@@ -666,6 +677,7 @@ type definition struct {
 	validateCredential      func(map[string]string) error
 	catalogProviderID       string
 	providerKind            ProviderKind
+	probeContract           spec.ProbeContract
 	connection              spec.Connection
 	capabilities            spec.CapabilityBindings
 	endpointPolicy          spec.EndpointPolicy

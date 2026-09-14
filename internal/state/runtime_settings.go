@@ -28,7 +28,6 @@ const (
 	SettingResponsesWebsocketEnabled             = "responses_websocket_enabled"
 	SettingAffinityTTL                           = "affinity_ttl"
 	SettingAffinityCapacity                      = "affinity_capacity"
-	SettingValidationInterval                    = "validation_interval"
 	SettingRequestLogRetentionDays               = "request_log_retention_days"
 	SettingModelsDevAutoSyncEnabled              = "models_dev_auto_sync_enabled"
 	SettingParameterOverrides                    = "parameter_overrides"
@@ -66,7 +65,6 @@ type RuntimeSettings struct {
 	ResponsesWebsocketEnabled bool
 	AffinityTTL               time.Duration
 	AffinityCapacity          int
-	ValidationInterval        time.Duration
 	RequestLogRetentionDays   int
 	ModelsDevAutoSyncEnabled  bool
 }
@@ -100,7 +98,6 @@ func DefaultRuntimeSettings() RuntimeSettings {
 		ResponsesWebsocketEnabled: true,
 		AffinityTTL:               time.Hour,
 		AffinityCapacity:          defaultAffinityCapacity,
-		ValidationInterval:        10 * time.Minute,
 		RequestLogRetentionDays:   defaultRequestLogRetentionDays,
 		ModelsDevAutoSyncEnabled:  true,
 	}
@@ -121,7 +118,6 @@ func IsRuntimeSettingKey(key string) bool {
 		SettingResponsesWebsocketEnabled,
 		SettingAffinityTTL,
 		SettingAffinityCapacity,
-		SettingValidationInterval,
 		SettingRequestLogRetentionDays,
 		SettingModelsDevAutoSyncEnabled:
 		return true
@@ -212,12 +208,6 @@ func ResolveRuntimeSettings(settings config.Settings) (RuntimeSettings, error) {
 				return RuntimeSettings{}, err
 			}
 			resolved.AffinityCapacity = capacity
-		case SettingValidationInterval:
-			seconds, err := positiveWholeSeconds(key, value)
-			if err != nil {
-				return RuntimeSettings{}, err
-			}
-			resolved.ValidationInterval = time.Duration(seconds) * time.Second
 		case SettingRequestLogRetentionDays:
 			days, err := wholeNumberInRange(
 				key,
@@ -376,8 +366,7 @@ func ValidateRuntimeSetting(key string, value any) error {
 	switch key {
 	case SettingFirstByteTimeout,
 		SettingRequestTimeout,
-		SettingStreamIdleTimeout,
-		SettingValidationInterval:
+		SettingStreamIdleTimeout:
 		_, err := positiveWholeSeconds(key, value)
 		return err
 	case SettingHeaderRules:

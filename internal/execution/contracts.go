@@ -246,6 +246,10 @@ type AttemptSpec struct {
 	// IncludeUsage asks the executor to request provider usage details when the
 	// selected operation supports an explicit wire option.
 	IncludeUsage bool `json:"include_usage,omitempty"`
+	// ProbeMaxOutputTokens is the code-owned output budget for a probe. The
+	// channel probe contract selects it; it is never applied to ordinary
+	// requests. A generation probe must set it.
+	ProbeMaxOutputTokens int `json:"probe_max_output_tokens,omitempty"`
 	// ForceCredentialRefresh is set only by GPT-Load after a provider explicitly
 	// rejects this selected subscription credential before processing.
 	ForceCredentialRefresh bool `json:"force_credential_refresh,omitempty"`
@@ -468,6 +472,15 @@ type AttemptResult struct {
 	UpstreamRequestID string            `json:"upstream_request_id,omitempty"`
 	Usage             *UsageEvidence    `json:"usage,omitempty"`
 	Error             *ErrorEvidence    `json:"error,omitempty"`
+	// ProbeAnswerPresent reports whether a probe response contained usable
+	// generated text. It is only set for OperationProbe results.
+	ProbeAnswerPresent bool `json:"probe_answer_present,omitempty"`
+	// ProbeResponseInvalid reports whether a probe response could not be parsed
+	// as the selected protocol's wire shape at all (non-JSON body, missing
+	// required protocol fields). It is only set for OperationProbe results and
+	// lets the control layer distinguish invalid_response from no_answer: a
+	// parseable response without text is no_answer, an unparseable one is invalid.
+	ProbeResponseInvalid bool `json:"probe_response_invalid,omitempty"`
 }
 
 // Clone returns an independent attempt result.

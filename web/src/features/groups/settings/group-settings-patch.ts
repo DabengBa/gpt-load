@@ -20,7 +20,6 @@ export interface GroupSettingsDraft {
   connection_type: GroupSettingsDto['connection_type']
   params: ChannelParamsDto
   name: string
-  validation_model: string | null
   provider_url: string | null
   enabled: boolean
   price_multiplier: string
@@ -209,8 +208,6 @@ export function buildGroupSettingsPatch(
     Object.entries(base.params).sort(([left], [right]) => left.localeCompare(right)),
   )
   if (JSON.stringify(params) !== JSON.stringify(baseParams)) patch.params = params
-  const validationModel = draft.validation_model?.trim() || null
-  if (validationModel !== base.validation_model) patch.validation_model = validationModel
   const providerURL = draft.provider_url?.trim() || null
   if (providerURL !== base.provider_url) patch.provider_url = providerURL
   if (draft.enabled !== base.enabled) patch.enabled = draft.enabled

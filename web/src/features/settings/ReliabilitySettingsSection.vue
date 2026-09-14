@@ -14,7 +14,6 @@ import SettingRow from '@/components/config/SettingRow.vue'
 import {
   createSettingsDraft,
   isValidNonNegativeInteger,
-  isValidTimeout,
   setSettingsOverride,
   type SettingsDraft,
 } from './settings-patch'
@@ -86,26 +85,6 @@ function policyCountError(key: PolicyCountSettingKey): string | undefined {
     ? t('settings.runtime.nonNegativeIntegerError')
     : undefined
 }
-
-function validationIntervalValue(): string {
-  if (isPendingRestore('validation_interval')) return t('settings.runtime.resetPending')
-  return t('settings.runtime.effectiveValue', {
-    value: formatInteger(props.base.settings.values.validation_interval, locale.value),
-  })
-}
-
-function setValidationInterval(value: string): void {
-  const draft = cloneDraft()
-  draft.values.validation_interval = value.trim() === '' ? Number.NaN : Number(value)
-  publish('validation_interval', draft)
-}
-
-function validationIntervalError(): string | undefined {
-  return hasOverride('validation_interval') &&
-    !isValidTimeout(props.draft.values.validation_interval)
-    ? t('settings.runtime.timeoutError')
-    : undefined
-}
 </script>
 
 <template>
@@ -157,52 +136,6 @@ function validationIntervalError(): string | undefined {
               </template>
             </CompactFieldError>
             <span aria-hidden="true">{{ t('settings.runtime.countUnit') }}</span>
-          </div>
-        </template>
-      </SettingRow>
-
-      <SettingRow
-        :label="t('settings.runtime.validation_interval')"
-        :value="validationIntervalValue()"
-        :source-label="sourceLabel('validation_interval')"
-        :action-label="actionLabel('validation_interval')"
-        :overridden="hasOverride('validation_interval')"
-        :pending-restore="isPendingRestore('validation_interval')"
-        :divided="false"
-        :disabled="disabled"
-        @toggle="toggleOverride('validation_interval')"
-      >
-        <template #control>
-          <div class="settings-reliability__input">
-            <CompactFieldError
-              id="settings-value-validation_interval"
-              :error="validationIntervalError()"
-            >
-              <template #default="{ invalid, describedBy }">
-                <AppTextInput
-                  id="settings-value-validation_interval"
-                  type="number"
-                  :model-value="String(draft.values.validation_interval)"
-                  :label="
-                    t('settings.runtime.valueFor', {
-                      field: t('settings.runtime.validation_interval'),
-                    })
-                  "
-                  appearance="surface"
-                  size="compact"
-                  monospace
-                  min="1"
-                  max="9223372036"
-                  step="1"
-                  inputmode="numeric"
-                  :disabled="disabled"
-                  :invalid="invalid"
-                  :described-by="describedBy"
-                  @update:model-value="setValidationInterval"
-                />
-              </template>
-            </CompactFieldError>
-            <span aria-hidden="true">{{ t('settings.runtime.seconds') }}</span>
           </div>
         </template>
       </SettingRow>
