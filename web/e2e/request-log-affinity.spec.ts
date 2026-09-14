@@ -87,6 +87,19 @@ test.describe('request log affinity filter', () => {
     await expect(page.getByText(DIFFERENT_AFFINITY_KEY).first()).toBeVisible()
   })
 
+  test('reapplying unchanged filters refreshes the current log page', async ({ page }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin')
+    await openRequestLogs(
+      page,
+      routes,
+      '&from_ms=1700000000000&to_ms=1700003600000&status=success&client_model=gpt-4o&limit=50',
+    )
+    const initialRequestCount = routes.logRequests.length
+
+    await page.getByRole('button', { name: 'Apply' }).first().click()
+    await expect.poll(() => routes.logRequests.length).toBe(initialRequestCount + 1)
+  })
+
   test('empty filtered pages show the filtered empty state', async ({ page }) => {
     const routes = await installRequestLogAffinityRoutes(page, 'admin')
     await openRequestLogs(page, routes, `&affinity_key=${encodeURIComponent(EMPTY_AFFINITY_KEY)}`)

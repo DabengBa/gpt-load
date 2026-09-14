@@ -361,7 +361,7 @@ function updateDraftField(field: keyof LogFilterDraft, value: string): void {
 async function commitFilters(filters: RequestLogFilters): Promise<void> {
   if (isAccessKey.value) filters = scopeAccessKeyLogFilters(filters)
   const serialized = serializeAppliedLogFilters(filters)
-  const nextSignature = JSON.stringify(serialized)
+  const nextSignature = JSON.stringify([serialized, undefined])
   draft.value = createLogFilterDraft(filters)
   filterErrors.value = {}
 
