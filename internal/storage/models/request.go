@@ -28,7 +28,7 @@ type RequestLog struct {
 	ErrorSummary            string              `gorm:"type:text;not null"`
 	AffinityHit             bool                `gorm:"not null;default:false"`
 	ContinuityHit           bool                `gorm:"column:continuity_hit;not null;default:false"`
-	AffinityKey             string              `gorm:"column:affinity_key;type:varchar(36);not null;default:'';index:idx_request_logs_affinity_completed_id,priority:1;index:idx_request_logs_affinity_completed_id,priority:2,sort:desc;index:idx_request_logs_affinity_completed_id,priority:3,sort:desc"`
+	AffinityKey             string              `gorm:"column:affinity_key;type:varchar(36);not null;default:'';index:idx_request_logs_affinity_completed_id,priority:1"`
 	AffinitySource          string              `gorm:"type:varchar(32);not null;default:'none'"`
 	AffinityState           string              `gorm:"type:varchar(32);not null;default:'no_signal'"`
 	ReasoningMode           string              `gorm:"type:varchar(64);not null;default:''"`

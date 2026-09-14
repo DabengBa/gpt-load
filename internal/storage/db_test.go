@@ -902,6 +902,11 @@ func TestAutoMigrateCreatesRequestLogFieldsAndCompositeIndexes(t *testing.T) {
 			{name: "completed_at_ms", desc: 1},
 			{name: "id", desc: 1},
 		},
+		"idx_request_logs_affinity_completed_id": {
+			{name: "affinity_key"},
+			{name: "completed_at_ms", desc: 1},
+			{name: "id", desc: 1},
+		},
 	}
 	type indexedColumn struct {
 		Sequence int    `gorm:"column:seqno"`
@@ -937,6 +942,61 @@ func TestAutoMigrateCreatesRequestLogFieldsAndCompositeIndexes(t *testing.T) {
 		}
 	}
 
+}
+
+func TestRequestLogModelCreatesCanonicalAffinityIndex(t *testing.T) {
+	t.Parallel()
+
+	dsn := filepath.Join(t.TempDir(), "request-log-model.db")
+	db, err := storage.Open(dsn)
+	if err != nil {
+		t.Fatalf("Open(%q) error = %v", dsn, err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("close database: %v", err)
+		}
+	})
+	if err := db.AutoMigrate(&models.RequestLog{}); err != nil {
+		t.Fatalf("AutoMigrate(RequestLog) error = %v", err)
+	}
+
+	var columns []struct {
+		Sequence int    `gorm:"column:seqno"`
+		Name     string `gorm:"column:name"`
+		Desc     int    `gorm:"column:desc"`
+		Key      int    `gorm:"column:key"`
+	}
+	if err := db.Raw("PRAGMA index_xinfo('idx_request_logs_affinity_completed_id')").Scan(&columns).Error; err != nil {
+		t.Fatalf("inspect affinity index: %v", err)
+	}
+	var got []struct {
+		Name string
+		Desc int
+	}
+	for _, column := range columns {
+		if column.Key == 1 {
+			got = append(got, struct {
+				Name string
+				Desc int
+			}{Name: column.Name, Desc: column.Desc})
+		}
+	}
+	want := []struct {
+		Name string
+		Desc int
+	}{
+		{Name: "affinity_key", Desc: 0},
+		{Name: "completed_at_ms", Desc: 1},
+		{Name: "id", Desc: 1},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("affinity index = %+v, want %+v", got, want)
+	}
 }
 
 func TestAutoMigrateOmitsGroupSignature(t *testing.T) {
