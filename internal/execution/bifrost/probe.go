@@ -36,7 +36,11 @@ func probeOutputTokenBudget(spec execution.AttemptSpec) int {
 // parsed as the selected protocol's wire shape at all (ProbeResponseInvalid). It
 // only sets these probe fields and never changes ordinary result semantics or
 // health decisions.
-func normalizeProbeAttemptResult(spec execution.AttemptSpec, result *execution.AttemptResult) {
+func normalizeProbeAttemptResult(
+	spec execution.AttemptSpec,
+	result *execution.AttemptResult,
+	rawPassthrough bool,
+) {
 	if result == nil || spec.Operation != execution.OperationProbe {
 		return
 	}
@@ -54,7 +58,7 @@ func normalizeProbeAttemptResult(spec execution.AttemptSpec, result *execution.A
 		result.ProbeResponseInvalid = true
 		return
 	}
-	extraction := probeAnswerPresent(spec.ClientProtocol, body)
+	extraction := probeAnswerPresent(spec.ClientProtocol, body, rawPassthrough)
 	result.ProbeAnswerPresent = extraction.present
 	result.ProbeResponseInvalid = !extraction.valid
 }
@@ -90,9 +94,10 @@ type probeExtraction struct {
 // converted Responses path emits the client protocol's own shape, the generic
 // chat path emits the normalized OpenAI chat shape, and native passthrough
 // emits the raw upstream shape. The selected client protocol picks the first
-// shape, then the normalized OpenAI chat shape covers every converted chat
-// route. A body matching neither shape is invalid, not merely empty.
-func probeAnswerPresent(clientProtocol protocol.Protocol, body []byte) probeExtraction {
+// shape; converted chat routes may then fall back to normalized OpenAI Chat,
+// while raw passthrough responses must match the selected protocol only. A body
+// matching neither shape is invalid, not merely empty.
+func probeAnswerPresent(clientProtocol protocol.Protocol, body []byte, rawPassthrough bool) probeExtraction {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 {
 		return probeExtraction{}
@@ -103,15 +108,18 @@ func probeAnswerPresent(clientProtocol protocol.Protocol, body []byte) probeExtr
 	}
 	switch clientProtocol {
 	case protocol.OpenAIResponses:
-		if extraction := openAIResponsesExtraction(envelope); extraction.valid {
+		extraction := openAIResponsesExtraction(envelope)
+		if extraction.valid || rawPassthrough {
 			return extraction
 		}
 	case protocol.Anthropic:
-		if extraction := anthropicExtraction(envelope); extraction.valid {
+		extraction := anthropicExtraction(envelope)
+		if extraction.valid || rawPassthrough {
 			return extraction
 		}
 	case protocol.Gemini:
-		if extraction := geminiExtraction(envelope); extraction.valid {
+		extraction := geminiExtraction(envelope)
+		if extraction.valid || rawPassthrough {
 			return extraction
 		}
 	}

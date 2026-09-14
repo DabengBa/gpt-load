@@ -65,16 +65,18 @@ type streamSDKResult struct {
 
 // Execute executes one non-streaming attempt.
 func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (result execution.AttemptResult) {
+	var rawProbePassthrough bool
 	defer func() {
 		normalizeImagesAttemptResult(spec, &result)
 		normalizeEmbeddingsAttemptResult(spec, &result)
 		normalizeRerankAttemptResult(spec, &result)
-		normalizeProbeAttemptResult(spec, &result)
+		normalizeProbeAttemptResult(spec, &result, rawProbePassthrough)
 	}()
 	prepared, preflightError := r.prepare(spec, false)
 	if preflightError != nil {
 		return *preflightError
 	}
+	rawProbePassthrough = spec.Operation == execution.OperationProbe && prepared.passthrough != nil
 	var appliedReasoning *reasoning.Config
 	defer func() {
 		if result.AppliedReasoning == nil {
