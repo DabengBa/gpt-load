@@ -178,6 +178,7 @@ export type {
 export type GroupSettingsUpdateRequest = Partial<{
   name: string
   price_multiplier: string
+  channel_id: string
   params: ChannelParamsDto
   provider_url: string | null
   enabled: boolean

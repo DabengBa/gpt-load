@@ -25,7 +25,6 @@ import {
   credentialCollectionQueryOptions,
   downloadCredential,
   getCredentialDetail,
-  revealCredential,
   refreshCredential as refreshCredentialRequest,
   restoreCredential,
   restoreTestedCredential,
@@ -41,7 +40,6 @@ import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resource
 import { groupDetailLocation, importLocation, monitorLocation } from '@/app/route-locations'
 import { controlQueryKeys } from '@/app/query-keys'
 import { useToast } from '@/app/toast'
-import { useAbortControllerPool } from '@/app/use-abort-controller-pool'
 import { useDebouncedAction } from '@/app/use-debounced-action'
 import CollectionStatusSummary from '@/components/collection/CollectionStatusSummary.vue'
 import LedgerRecordList from '@/components/collection/LedgerRecordList.vue'
@@ -138,7 +136,6 @@ let connectionInspectionController: AbortController | undefined
 let connectionInspectionOwner = 0
 let credentialTestController: AbortController | undefined
 let credentialTestOwner = 0
-const copyControllers = useAbortControllerPool()
 const searchDebounce = useDebouncedAction(250)
 const collection = computed(() => credentialsQuery.data.value)
 const {
@@ -295,14 +292,6 @@ watch(
   },
 )
 watch(
-  () => [
-    props.groupId,
-    filters.value.page,
-    collection.value?.items.map(({ credential_id }) => credential_id).join(','),
-  ],
-  () => concealCopiedCredentials(),
-)
-watch(
   () => ({
     totalPages: collection.value?.pagination.total_pages,
     page: filters.value.page,
@@ -455,19 +444,6 @@ function clearDetailState(id: number): void {
   const errors = new Map(detailErrors.value)
   errors.delete(id)
   detailErrors.value = errors
-}
-async function resolveCopyValue(id: number): Promise<string> {
-  const controller = copyControllers.create()
-  try {
-    const result = await revealCredential(client, props.groupId, id, controller.signal)
-    const values = Object.values(result.credential)
-    return values.length === 1 ? values[0] : JSON.stringify(result.credential)
-  } finally {
-    copyControllers.release(controller)
-  }
-}
-function concealCopiedCredentials(): void {
-  copyControllers.abortAll()
 }
 function setPending(id: number | 'batch', action: string, value: boolean): void {
   const next = new Set(pendingOperations.value)
@@ -1567,13 +1543,13 @@ async function runBatch(action: 'delete', ids = [...selectedIds.value]): Promise
             v-for="(item, index) in collection.items"
             :key="item.credential_id"
             :item="item"
+            :group-id="groupId"
             :row-index="
               (collection.pagination.page - 1) * collection.pagination.page_size + index + 2
             "
             :selected="selectedIds.has(item.credential_id)"
             :busy="rowBusy(item.credential_id)"
             :expanded="credentialExpanded(item.credential_id)"
-            :resolve-copy-value="resolveCopyValue"
             @update:selected="setSelected(item.credential_id, $event)"
             @update:expanded="setExpanded(item.credential_id, $event)"
             @test="openCredentialTest"

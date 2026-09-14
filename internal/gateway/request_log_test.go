@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
@@ -2818,7 +2819,7 @@ func TestHandlerRecordsNonStreamingRetryChain(t *testing.T) {
 		request := httptest.NewRequest(
 			http.MethodPost,
 			"/v1/chat/completions",
-			strings.NewReader(`{"model":"gpt-4o"}`),
+			strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"stable retry"}]}`),
 		)
 		request.Header.Set("Authorization", "Bearer gl-client")
 		recorder := httptest.NewRecorder()
@@ -2833,6 +2834,9 @@ func TestHandlerRecordsNonStreamingRetryChain(t *testing.T) {
 			event.ErrorCode != "" || event.ClientModel != "gpt-4o" ||
 			event.UpstreamModel != "gpt-4o" || len(event.Attempts) != 2 {
 			t.Fatalf("event = %#v", event)
+		}
+		if event.AffinityKey == "" || !affinity.ValidDisplayKey(event.AffinityKey) {
+			t.Fatalf("HTTP retry affinity key = %q, want canonical display key", event.AffinityKey)
 		}
 		first, second := event.Attempts[0], event.Attempts[1]
 		if first.Sequence != 1 || !first.WillRetry ||

@@ -3,6 +3,7 @@ package affinity
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	"gpt-load/internal/execution"
@@ -17,6 +18,27 @@ func (testHasher) Hash(value string) string {
 }
 
 const testSignalValue = "stable-signal"
+
+func TestDisplayKeyStrictlyProjectsProductionHMAC(t *testing.T) {
+	t.Parallel()
+
+	valid := Key("0123456789abcdef0123456789abcdeffedcba9876543210fedcba9876543210")
+	if got := DisplayKey(valid); got != "0123456789abcdef****fedcba9876543210" {
+		t.Fatalf("DisplayKey(valid) = %q, want fixed first/last 16 projection", got)
+	}
+	if got := DisplayKey(valid); strings.Contains(got, string(valid)) {
+		t.Fatalf("DisplayKey(valid) leaked raw key: %q", got)
+	}
+	for _, invalid := range []Key{
+		"",
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde",
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789ABCDEf",
+	} {
+		if got := DisplayKey(invalid); got != "" {
+			t.Fatalf("DisplayKey(%q) = %q, want empty projection", invalid, got)
+		}
+	}
+}
 
 func TestDeriveKeyScopesStableSignal(t *testing.T) {
 	t.Parallel()

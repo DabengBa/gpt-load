@@ -3,14 +3,19 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { ChannelParamsDto } from '@/api/control/types'
-import type { ChannelFieldDto } from '@/app/resources/channels'
+import type { ChannelDto, ChannelFieldDto } from '@/app/resources/channels'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
+import ChannelPresetPicker from '@/features/import/ChannelPresetPicker.vue'
 import { isValidPriceMultiplier } from '@/lib/price-multiplier'
 
 const props = withDefaults(
   defineProps<{
     section: 'general' | 'routing'
     channelId: string
+    channels: readonly ChannelDto[]
+    selectedChannel: ChannelDto | null
+    channelsLoading: boolean
+    channelsError: boolean
     paramFields: ChannelFieldDto[]
     params: ChannelParamsDto
     name: string
@@ -29,6 +34,8 @@ const props = withDefaults(
 )
 const emit = defineEmits<{
   'update:param': [key: string, value: string | null]
+  'update:channel': [channel: ChannelDto]
+  'retry:channels': []
   'update:name': [value: string]
   'update:providerUrl': [value: string]
   'update:priceMultiplier': [value: string]
@@ -93,6 +100,22 @@ function parameterHelp(field: ChannelFieldDto): string {
       <h3 v-if="showTitle">{{ t('group.settings.sections.general') }}</h3>
       <p v-if="showDescription">{{ t('group.settings.base.description') }}</p>
     </header>
+    <div class="group-settings__channel-field">
+      <span class="group-settings__field-label">{{ t('group.settings.base.channel') }}</span>
+      <small>{{ t('group.settings.base.channelHelp') }}</small>
+      <ChannelPresetPicker
+        :model-value="channelId"
+        :channels="channels"
+        :selected-channel="selectedChannel"
+        :loading="channelsLoading"
+        :error="channelsError"
+        :disabled="pending"
+        hide-header
+        compact
+        @select="emit('update:channel', $event)"
+        @retry="emit('retry:channels')"
+      />
+    </div>
     <div class="group-settings__grid">
       <label class="group-settings__field">
         <span>{{ t('group.settings.base.name') }}</span>
@@ -240,10 +263,29 @@ function parameterHelp(field: ChannelFieldDto): string {
 }
 
 .group-settings__field > span,
-.group-settings__field > legend {
+.group-settings__field > legend,
+.group-settings__field-label {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: 560;
+}
+.group-settings__channel-field {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: var(--space-3);
+}
+.group-settings__channel-field > small {
+  color: var(--color-text-faint);
+  font-size: var(--text-label-xs);
+  line-height: var(--line-normal);
+}
+.group-settings__channel-field :deep(.channel-picker) {
+  margin-top: 3px;
+}
+.group-settings__channel-field :deep(.channel-picker__selector) {
+  align-items: flex-start;
 }
 
 .group-settings__field small {
