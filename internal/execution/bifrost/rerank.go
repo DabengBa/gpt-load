@@ -21,16 +21,6 @@ func prepareRerank(
 	secrets []string,
 ) (preparedAttempt, *execution.AttemptResult) {
 	request := &dialect.ParsedRequest{Method: http.MethodPost, Path: "/v1/rerank", Header: spec.Header.Clone(), Body: spec.Body}
-	if spec.Operation == execution.OperationProbe {
-		body, err := json.Marshal(map[string]any{
-			"model": spec.UpstreamModel, "query": "ping", "documents": []string{"ping"}, "top_n": 1,
-		})
-		if err != nil {
-			failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode rerank probe")
-			return preparedAttempt{}, &failure
-		}
-		request.Body = body
-	}
 	request, err := dialect.NewRerank().RewriteRequestModel(request, spec.UpstreamModel)
 	if err != nil {
 		failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid rerank request body")

@@ -30,6 +30,7 @@ func XAI() spec.Module {
 				Required: true, Sensitive: true, Normalizer: spec.NormalizeNonEmpty,
 			}},
 			Provider: spec.ProviderBinding{
+				ProbeContract:     spec.ProbeContract{Protocol: protocol.OpenAIResponses, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:      spec.ProviderXAI,
 				CatalogProviderID: "xai",
 				EndpointPolicy:    spec.EndpointSDKDefault,

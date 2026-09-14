@@ -35,10 +35,18 @@ type healthGroupResponse struct {
 	Counts  healthCountsResponse `json:"counts"`
 }
 
+type healthRecoveryMode string
+
+const (
+	healthRecoveryModeCooldownExpiry healthRecoveryMode = "cooldown_expiry"
+	healthRecoveryModeManualProbe    healthRecoveryMode = "manual_probe"
+	healthRecoveryModeManualRestore  healthRecoveryMode = "manual_restore"
+)
+
 type healthRecoveryResponse struct {
-	Automatic bool   `json:"automatic"`
-	Mode      string `json:"mode"`
-	AtMS      *int64 `json:"at_ms"`
+	Automatic bool               `json:"automatic"`
+	Mode      healthRecoveryMode `json:"mode"`
+	AtMS      *int64             `json:"at_ms"`
 }
 
 type healthProblemCredentialResponse struct {
@@ -385,16 +393,16 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 			detail.CooldownUntilMS = cooldownUntilMS
 			detail.Recovery = healthRecoveryResponse{
 				Automatic: true,
-				Mode:      "cooldown_expiry",
+				Mode:      healthRecoveryModeCooldownExpiry,
 				AtMS:      cooldownUntilMS,
 			}
 			result.CooldownCredentials = append(result.CooldownCredentials, detail)
 		} else {
-			detail.Recovery = healthRecoveryResponse{Mode: "configuration_required"}
+			detail.Recovery = healthRecoveryResponse{Mode: healthRecoveryModeManualRestore}
 			if service.executor != nil && service.channelRegistry != nil {
-				if validationGroup, exists := observation.snapshot.Groups[key.GroupID]; exists {
-					if _, valid := buildGroupValidationTarget(validationGroup); valid {
-						detail.Recovery = healthRecoveryResponse{Automatic: true, Mode: "validation_probe"}
+				if probeGroup, exists := observation.snapshot.Groups[key.GroupID]; exists {
+					if _, valid := buildGroupValidationTarget(probeGroup); valid {
+						detail.Recovery.Mode = healthRecoveryModeManualProbe
 					}
 				}
 			}

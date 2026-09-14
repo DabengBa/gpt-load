@@ -30,7 +30,6 @@ const requestForwardingKeys: RuntimeSettingKey[] = [
   'retry_count',
   'blacklist_threshold',
   'header_rules',
-  'validation_interval',
 ]
 const logsMaintenanceKeys: RuntimeSettingKey[] = ['request_log_retention_days']
 const affinityKeys: RuntimeSettingKey[] = ['affinity_enabled', 'affinity_ttl', 'affinity_capacity']
@@ -329,7 +328,6 @@ export function validateSettingsSection(draft: SettingsDraft, section: SettingsS
     'first_byte_timeout',
     'request_timeout',
     'stream_idle_timeout',
-    'validation_interval',
   ]
   const policyCounts: PolicyCountSettingKey[] = ['retry_count', 'blacklist_threshold']
   return (

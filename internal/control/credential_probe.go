@@ -47,6 +47,8 @@ const (
 	ProbeReasonTimeout           ProbeReason = "timeout"
 	ProbeReasonUpstreamError     ProbeReason = "upstream_error"
 	ProbeReasonIncompatible      ProbeReason = "probe_incompatible"
+	ProbeReasonNoAnswer          ProbeReason = "no_answer"
+	ProbeReasonInvalidResponse   ProbeReason = "invalid_response"
 	ProbeReasonUnknown           ProbeReason = "unknown"
 
 	ProbeReasonTargetUnavailable       ProbeReason = "target_unavailable"
@@ -200,81 +202,58 @@ func (probe *credentialProbeExecutor) Probe(
 	if generation == 0 {
 		generation = 1
 	}
-	probeProtocols := []protocol.Protocol{target.protocol}
-	probeProtocols = append(probeProtocols, target.fallbackProtocols...)
-	attempts := make([]credentialProbeAttempt, 0, len(probeProtocols))
 	startedAt := probe.now()
-	for index, probeProtocol := range probeProtocols {
-		routeMode, supported := group.ResolvedTarget.ModeForModel(
-			probeProtocol,
-			execution.OperationProbe,
-			target.model,
+	probeProtocol := target.protocol
+	attemptID, err := newOperationID(cryptorand.Reader)
+	if err != nil {
+		return credentialProbeExecution{}, newCredentialProbeFailure(
+			"attempt_identity",
+			app_errors.ErrInternalServer,
 		)
-		if !supported {
-			return credentialProbeExecution{}, newCredentialProbeFailure(
-				"request",
-				app_errors.ErrValidation,
-			)
-		}
-		attemptID, attemptErr := newOperationID(cryptorand.Reader)
-		if attemptErr != nil {
-			return credentialProbeExecution{}, newCredentialProbeFailure(
-				"attempt_identity",
-				app_errors.ErrInternalServer,
-			)
-		}
-		spec := execution.NewAttemptSpec(execution.AttemptSpec{
-			RequestID: requestID, AttemptID: attemptID, Sequence: uint32(index + 1),
-			ChannelID: string(group.ChannelID),
-			RouteMode: execution.RouteMode(routeMode), ClientProtocol: probeProtocol,
-			Operation: execution.OperationProbe, ClientModel: target.model, UpstreamModel: target.model,
-			Header:            applyControlHeaderRules(group.HeaderRules, apiKey),
-			ConfiguredHeaders: group.HeaderRules.ConfiguredNames(),
-			TargetConfig:      group.ResolvedTarget.TargetConfig,
-			Timeouts:          executionTimeouts(group.Timeouts),
-			Credential: execution.NewCredentialSnapshot(
-				ref.ID,
-				version,
-				generation,
-				credential.CanonicalJSON(),
-			),
-			Proxy: proxy, ProxyFingerprint: proxyFingerprint,
-		})
-		if err := spec.Validate(); err != nil {
-			return credentialProbeExecution{}, newCredentialProbeFailure(
-				"request",
-				app_errors.ErrValidation,
-			)
-		}
-		attemptStartedAt := probe.now()
-		result := probe.executor.Execute(ctx, spec)
-		if err := ctx.Err(); err != nil {
-			return credentialProbeExecution{}, err
-		}
-		attempts = append(attempts, credentialProbeAttempt{
-			sequence:    spec.Sequence,
-			routeMode:   channel.RouteMode(routeMode),
-			completedAt: probe.now().UTC(),
-			duration:    max(probe.now().Sub(attemptStartedAt), 0),
-			result:      result,
-		})
-		latency := max(probe.now().Sub(startedAt), 0)
-		executed := credentialProbeExecution{
-			requestID: requestID,
-			result:    result,
-			latency:   latency,
-			protocol:  probeProtocol,
-			attempts:  attempts,
-		}
-		if credentialProbePassed(result) || index+1 == len(probeProtocols) ||
-			!validationProbeNeedsProtocolFallback(result) {
-			return executed, nil
-		}
 	}
-	return credentialProbeExecution{}, newCredentialProbeFailure(
-		"probe",
-		app_errors.ErrInternalServer,
-	)
+	spec := execution.NewAttemptSpec(execution.AttemptSpec{
+		RequestID: requestID, AttemptID: attemptID, Sequence: 1,
+		ChannelID: string(group.ChannelID),
+		RouteMode: execution.RouteMode(target.routeMode), ClientProtocol: probeProtocol,
+		Operation: execution.OperationProbe, ClientModel: target.model, UpstreamModel: target.model,
+		Header:            applyControlHeaderRules(group.HeaderRules, apiKey),
+		ConfiguredHeaders: group.HeaderRules.ConfiguredNames(),
+		TargetConfig:      group.ResolvedTarget.TargetConfig,
+		Timeouts:          executionTimeouts(group.Timeouts),
+		Credential: execution.NewCredentialSnapshot(
+			ref.ID,
+			version,
+			generation,
+			credential.CanonicalJSON(),
+		),
+		ProbeMaxOutputTokens: target.maxOutputTokens,
+		Proxy:                proxy, ProxyFingerprint: proxyFingerprint,
+	})
+	if err := spec.Validate(); err != nil {
+		return credentialProbeExecution{}, newCredentialProbeFailure(
+			"request",
+			app_errors.ErrValidation,
+		)
+	}
+	attemptStartedAt := probe.now()
+	result := probe.executor.Execute(ctx, spec)
+	if err := ctx.Err(); err != nil {
+		return credentialProbeExecution{}, err
+	}
+	completedAt := probe.now().UTC()
+	return credentialProbeExecution{
+		requestID: requestID,
+		result:    result,
+		latency:   max(probe.now().Sub(startedAt), 0),
+		protocol:  probeProtocol,
+		attempts: []credentialProbeAttempt{{
+			sequence:    spec.Sequence,
+			routeMode:   target.routeMode,
+			completedAt: completedAt,
+			duration:    max(completedAt.Sub(attemptStartedAt), 0),
+			result:      result,
+		}},
+	}, nil
 }
 
 func newCredentialProbeFailure(stage string, cause error) error {
@@ -292,7 +271,8 @@ func credentialProbeFailureStage(err error) string {
 func credentialProbePassed(result execution.AttemptResult) bool {
 	return result.Validate() == nil && result.Error == nil &&
 		result.StatusCode >= http.StatusOK &&
-		result.StatusCode < http.StatusMultipleChoices
+		result.StatusCode < http.StatusMultipleChoices &&
+		result.ProbeAnswerPresent && !result.ProbeResponseInvalid
 }
 
 // credentialProbeEvidence is one probe judgement: the reported outcome and reason
@@ -325,6 +305,25 @@ func classifyCredentialProbeEvidence(result execution.AttemptResult) credentialP
 		return credentialProbeEvidence{outcome: ProbeOutcomePassed}
 	}
 	if result.Error == nil {
+		if result.StatusCode >= http.StatusOK && result.StatusCode < http.StatusMultipleChoices {
+			if result.ProbeResponseInvalid {
+				// The upstream answered 2xx but the body cannot be parsed as the
+				// selected protocol's shape. That is response corruption, not
+				// merely a missing answer.
+				return credentialProbeEvidenceWith(
+					ProbeOutcomeFailed,
+					ProbeReasonInvalidResponse,
+					health.Decision{},
+				)
+			}
+			// The upstream accepted the probe but produced no usable text. This is
+			// a definitive negative observation, not an execution failure.
+			return credentialProbeEvidenceWith(
+				ProbeOutcomeFailed,
+				ProbeReasonNoAnswer,
+				health.Decision{},
+			)
+		}
 		return credentialProbeEvidenceWith(
 			ProbeOutcomeInconclusive,
 			ProbeReasonUnknown,

@@ -38,6 +38,7 @@ func AWSBedrock() spec.Module {
 			},
 			CredentialValidator: bedrockCredentialValidator,
 			Provider: spec.ProviderBinding{
+				ProbeContract:     spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:      spec.ProviderAWSBedrock,
 				CatalogProviderID: "amazon-bedrock",
 				EndpointPolicy:    spec.EndpointCloudParams,

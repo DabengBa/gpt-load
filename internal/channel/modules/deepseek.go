@@ -28,6 +28,7 @@ func DeepSeek() spec.Module {
 				Required: true, Sensitive: true, Normalizer: spec.NormalizeNonEmpty,
 			}},
 			Provider: spec.ProviderBinding{
+				ProbeContract:     spec.ProbeContract{Protocol: protocol.OpenAIResponses, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:      spec.ProviderDeepSeek,
 				CatalogProviderID: "deepseek",
 				EndpointPolicy:    spec.EndpointSDKDefault,

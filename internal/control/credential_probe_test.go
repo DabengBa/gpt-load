@@ -67,10 +67,11 @@ func (executor *credentialProbeTestExecutor) recordedCalls() []execution.Attempt
 
 func successfulCredentialProbeResult() execution.AttemptResult {
 	return execution.AttemptResult{
-		DispatchState:   execution.DispatchMaybeSent,
-		ResponseStarted: true,
-		StatusCode:      http.StatusOK,
-		Header:          http.Header{},
+		DispatchState:      execution.DispatchMaybeSent,
+		ResponseStarted:    true,
+		StatusCode:         http.StatusOK,
+		Header:             http.Header{},
+		ProbeAnswerPresent: true,
 	}
 }
 
@@ -126,7 +127,7 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 		t.Fatal(err)
 	}
 	if envelope.Code != 0 || envelope.Data.Outcome != ProbeOutcomePassed ||
-		envelope.Data.Model != "gpt-4o" || envelope.Data.Protocol != protocol.OpenAICompletions ||
+		envelope.Data.Model != "gpt-4o" || envelope.Data.Protocol != protocol.OpenAIResponses ||
 		envelope.Data.Reason != nil || envelope.Data.CanRestore ||
 		envelope.Data.TestedAtMS != time.Date(2026, time.August, 29, 12, 30, 0, 0, time.UTC).UnixMilli() ||
 		envelope.Data.LatencyMS < 0 {
@@ -139,7 +140,7 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	call := calls[0]
 	if call.Credential.ID != credentials[0].ID || call.Operation != execution.OperationProbe ||
 		call.ClientModel != "gpt-4o" || call.UpstreamModel != "gpt-4o" ||
-		call.ClientProtocol != protocol.OpenAICompletions {
+		call.ClientProtocol != protocol.OpenAIResponses {
 		t.Fatalf("probe attempt = %#v", call)
 	}
 	var canonical struct {
@@ -153,17 +154,12 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	}
 }
 
-func TestGroupCredentialProbeUsesExplicitValidationModel(t *testing.T) {
+func TestGroupCredentialProbeUsesFirstConfiguredModelAndContractBudget(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "probe-explicit-secret")
+	groupID := createGroupWithCredentials(t, fixture, "probe-first-model-secret")
 	var credential models.Credential
 	if err := fixture.db.Where("group_id = ?", groupID).Take(&credential).Error; err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-		ValidationModel: optionalField[string]{Set: true, Value: " explicit-probe-model "},
-	}); err != nil {
 		t.Fatal(err)
 	}
 	executor := &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
@@ -173,27 +169,29 @@ func TestGroupCredentialProbeUsesExplicitValidationModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Model != "explicit-probe-model" || response.Outcome != ProbeOutcomePassed {
+	if response.Model != "gpt-4o" || response.Outcome != ProbeOutcomePassed ||
+		response.Protocol != protocol.OpenAIResponses {
 		t.Fatalf("probe response = %#v", response)
 	}
 	calls := executor.recordedCalls()
-	if len(calls) != 1 || calls[0].UpstreamModel != "explicit-probe-model" {
+	if len(calls) != 1 || calls[0].UpstreamModel != "gpt-4o" ||
+		calls[0].ClientProtocol != protocol.OpenAIResponses {
 		t.Fatalf("probe calls = %#v", calls)
+	}
+	if calls[0].ProbeMaxOutputTokens < 3 {
+		t.Fatalf("probe budget = %d, want at least 3", calls[0].ProbeMaxOutputTokens)
 	}
 }
 
-func TestGroupCredentialProbeFallsBackToEmbeddingsAndReportsProtocol(t *testing.T) {
+func TestGroupCredentialProbeDoesNotFallBackToEmbeddings(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "probe-embeddings-secret")
+	groupID := createGroupWithCredentials(t, fixture, "probe-no-fallback-secret")
 	var credential models.Credential
 	if err := fixture.db.Where("group_id = ?", groupID).Take(&credential).Error; err != nil {
 		t.Fatal(err)
 	}
 	executor := &credentialProbeTestExecutor{execute: func(spec execution.AttemptSpec) execution.AttemptResult {
-		if spec.ClientProtocol == protocol.OpenAIEmbeddings {
-			return successfulCredentialProbeResult()
-		}
 		result := failedCredentialProbeResult(
 			http.StatusNotFound,
 			execution.ErrorKindHTTP,
@@ -208,18 +206,13 @@ func TestGroupCredentialProbeFallsBackToEmbeddingsAndReportsProtocol(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Outcome != ProbeOutcomePassed ||
-		response.Protocol != protocol.OpenAIEmbeddings {
+	if response.Outcome != ProbeOutcomeFailed || response.Reason == nil ||
+		*response.Reason != ProbeReasonModelUnavailable || response.Protocol != protocol.OpenAIResponses {
 		t.Fatalf("probe response = %#v", response)
 	}
 	calls := executor.recordedCalls()
-	if len(calls) != 2 ||
-		calls[0].ClientProtocol != protocol.OpenAICompletions ||
-		calls[1].ClientProtocol != protocol.OpenAIEmbeddings ||
-		calls[0].RequestID != calls[1].RequestID ||
-		calls[0].AttemptID == calls[1].AttemptID ||
-		calls[0].Sequence != 1 || calls[1].Sequence != 2 {
-		t.Fatalf("probe calls = %#v", calls)
+	if len(calls) != 1 || calls[0].ClientProtocol != protocol.OpenAIResponses {
+		t.Fatalf("probe must execute exactly one declared protocol, calls = %#v", calls)
 	}
 }
 
@@ -341,18 +334,6 @@ func TestGroupCredentialProbeRevokesRestoreEligibilityWhenTargetChangesDuringPro
 		name   string
 		mutate func(t *testing.T, fixture serviceFixture, groupID uint)
 	}{
-		{
-			name: "validation model",
-			mutate: func(t *testing.T, fixture serviceFixture, groupID uint) {
-				t.Helper()
-				_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-					ValidationModel: optionalField[string]{Set: true, Value: "changed-probe-model"},
-				})
-				if err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
 		{
 			name: "header rules",
 			mutate: func(t *testing.T, fixture serviceFixture, groupID uint) {
@@ -518,7 +499,9 @@ func TestRestoreTestedGroupCredentialRejectsStaleProofWithoutMutation(t *testing
 			mutate: func(t *testing.T, fixture serviceFixture, groupID, _ uint) {
 				t.Helper()
 				_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-					ValidationModel: optionalField[string]{Set: true, Value: "new-restore-model"},
+					Params: optionalField[json.RawMessage]{Set: true, Value: json.RawMessage(
+						`{"base_url":"https://stale-proof-target.example/v1"}`,
+					)},
 				})
 				if err != nil {
 					t.Fatal(err)
@@ -646,6 +629,31 @@ func TestClassifyCredentialProbeResultUsesStableSafeOutcomes(t *testing.T) {
 		wantReason  *ProbeReason
 	}{
 		{name: "passed", result: successfulCredentialProbeResult(), wantOutcome: ProbeOutcomePassed},
+		{
+			name: "http success without generated text",
+			result: execution.AttemptResult{
+				DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+				StatusCode: http.StatusOK, Header: http.Header{},
+			},
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonNoAnswer),
+		},
+		{
+			name: "http success with unparseable body",
+			result: execution.AttemptResult{
+				DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+				StatusCode: http.StatusOK, Header: http.Header{}, ProbeResponseInvalid: true,
+			},
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInvalidResponse),
+		},
+		{
+			name: "http success with unparseable body and text",
+			result: execution.AttemptResult{
+				DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+				StatusCode: http.StatusOK, Header: http.Header{},
+				ProbeAnswerPresent: true, ProbeResponseInvalid: true,
+			},
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInvalidResponse),
+		},
 		{
 			name:        "invalid credential hint",
 			result:      failedCredentialProbeResult(http.StatusForbidden, execution.ErrorKindHTTP, execution.FailureHintInvalidCredential),

@@ -50,7 +50,6 @@ type SettingsValuesResponse struct {
 	ResponsesWebsocketEnabled bool                `json:"responses_websocket_enabled"`
 	AffinityTTL               int64               `json:"affinity_ttl"`
 	AffinityCapacity          int                 `json:"affinity_capacity"`
-	ValidationInterval        int64               `json:"validation_interval"`
 	RequestLogRetentionDays   int                 `json:"request_log_retention_days"`
 	ModelsDevAutoSyncEnabled  bool                `json:"models_dev_auto_sync_enabled"`
 	ProxyConfig               outboundproxy.View  `json:"proxy_config"`
@@ -360,7 +359,6 @@ func mapSettingsResponse(
 			ResponsesWebsocketEnabled: settings.ResponsesWebsocketEnabled,
 			AffinityTTL:               durationSeconds(settings.AffinityTTL),
 			AffinityCapacity:          settings.AffinityCapacity,
-			ValidationInterval:        durationSeconds(settings.ValidationInterval),
 			RequestLogRetentionDays:   settings.RequestLogRetentionDays,
 			ModelsDevAutoSyncEnabled:  modelsDevAutoSyncEnabled,
 			ProxyConfig:               proxyView,

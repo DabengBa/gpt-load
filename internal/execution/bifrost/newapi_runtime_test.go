@@ -350,19 +350,20 @@ func TestNewAPIUtilityOperationsUseGatewayRoot(t *testing.T) {
 		t.Fatalf("chat probe = %+v err=%v", chatResult, err)
 	}
 
+	// Embeddings must never be probed: the generative probe boundary rejects
+	// the attempt before any upstream request is built.
 	embeddingProbe := utilitySpec(channel.NewAPI, protocol.OpenAIEmbeddings, execution.OperationProbe, "", "", nil)
 	embeddingProbe.TargetConfig = resolved.TargetConfig
 	embeddingProbe.ClientModel, embeddingProbe.UpstreamModel = "probe-client", "probe-upstream"
 	embeddingProbe = freezeTestAttempt(embeddingProbe)
 	embeddingResult := manager.Execute(context.Background(), embeddingProbe)
-	if err := embeddingResult.Validate(); err != nil || embeddingResult.Error != nil {
-		t.Fatalf("embedding probe = %+v err=%v", embeddingResult, err)
+	if embeddingResult.Error == nil || embeddingResult.DispatchState == execution.DispatchMaybeSent {
+		t.Fatalf("embedding probe must be rejected, result = %+v", embeddingResult)
 	}
 
 	wantPaths := []string{
 		"/team-a/v1/models",
 		"/team-a/v1/chat/completions",
-		"/team-a/v1/embeddings",
 	}
 	if !reflect.DeepEqual(paths, wantPaths) {
 		t.Fatalf("utility paths = %#v, want %#v", paths, wantPaths)

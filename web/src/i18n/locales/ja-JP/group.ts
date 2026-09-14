@@ -327,10 +327,6 @@ export default {
         providerUrlHelp:
           '任意。グループ詳細ヘッダーに外部リンクとして表示され、リクエストの送信先は変わりません。',
         paramRequired: '{field} を入力してください。',
-        validationModel: '検証モデル（任意）',
-        validationModelPlaceholder: 'モデル ID を検索または入力',
-        validationModelHelp:
-          '空欄の場合はグループの最初のモデルを使用します。エイリアスではなくアップストリームのモデル ID を入力してください。',
         weight: 'グループ手動ウェイト',
         auto: '自動',
         manual: '手動',
@@ -464,7 +460,7 @@ export default {
         action: '接続をテスト',
         title: '接続をテスト',
         description:
-          'このキーで最小限の実リクエストを上流へ 1 回送信するため、少額の料金が発生する場合があります。テストはスケジューリングやブラックリスト状態を変更しません。',
+          '低コストの実際の上流質問を 1 回送信するため、少額の料金が発生する場合があります。テストはスケジューリング、クールダウン、ブラックリスト状態を変更しません。',
         loading: '{mask} をテスト中…',
         outcome: {
           passed: 'テストに成功しました',
@@ -487,7 +483,10 @@ export default {
           rate_limited: '上流のレート制限に達しました',
           timeout: 'リクエストがタイムアウトしました',
           upstream_error: '上流サービスでエラーが発生しました',
-          probe_incompatible: 'このチャネルまたはモデルではプローブを実行できません',
+          probe_incompatible:
+            '選択したプロトコルまたはリクエストがこのターゲットと互換性がありません',
+          no_answer: '上流から利用可能な回答テキストが返りませんでした',
+          invalid_response: '上流レスポンスが選択したプロトコルに適合しません',
           unknown: '理由を特定できませんでした',
         },
         restorePrompt:

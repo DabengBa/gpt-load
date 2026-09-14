@@ -11,7 +11,6 @@ const baseSettings = {
   connection_type: 'api_key',
   params: {},
   provider_url: null,
-  validation_model: null,
   enabled: true,
   overrides: {
     parameter_overrides: [{ match: { model: 'public-*' }, set: { temperature: 0.4 } }],
@@ -28,6 +27,7 @@ const baseSettings = {
     header_rules: { set: {}, remove: [] },
     affinity_enabled: true,
     responses_websocket_enabled: true,
+    responses_reasoning_status_filter_enabled: true,
   },
   proxy: {
     configured_mode: 'inherit',

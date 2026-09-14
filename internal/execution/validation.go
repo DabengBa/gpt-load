@@ -94,6 +94,12 @@ func (s AttemptSpec) Validate() error {
 		if s.Method != "" || s.Path != "" || len(s.Query) != 0 || s.RawQuery != "" || len(s.Body) != 0 {
 			return validationError("probe", "must not contain provider wire fields")
 		}
+		if probeGenerationProtocol(s.ClientProtocol) && s.ProbeMaxOutputTokens <= 0 {
+			return validationError(
+				"probe_max_output_tokens",
+				"must be greater than zero for a generation probe",
+			)
+		}
 	} else {
 		if !validHTTPToken(s.Method) {
 			return validationError("method", "must be a valid HTTP method")
@@ -313,6 +319,18 @@ func validateResultMetadata(
 		return validationError("error.status_code", "must match result status_code")
 	}
 	return nil
+}
+
+// probeGenerationProtocol reports whether a probe produces generated text and
+// therefore needs an explicit output budget. Embeddings and rerank probes use
+// their own fixed shapes and do not consume a token budget.
+func probeGenerationProtocol(clientProtocol protocol.Protocol) bool {
+	switch clientProtocol {
+	case protocol.OpenAICompletions, protocol.OpenAIResponses, protocol.Anthropic, protocol.Gemini:
+		return true
+	default:
+		return false
+	}
 }
 
 func operationRequiresModel(operation Operation) bool {

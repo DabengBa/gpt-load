@@ -39,7 +39,7 @@ export default {
     reliability: {
       title: 'Retries and credential health',
       description:
-        'The retry policy on failure, plus how much slack a credential gets before being blacklisted and how often it is rechecked.',
+        'The retry policy on failure and how much slack a credential gets before being blacklisted.',
     },
     runtime: {
       title: 'Connection and timeouts',
@@ -64,7 +64,6 @@ export default {
       blacklist_threshold: 'Consecutive-failure blacklist threshold',
       blacklistThresholdHelp:
         'A credential is blacklisted after this many consecutive failures; 0 disables automatic blacklisting.',
-      validation_interval: 'Credential validation interval',
       models_dev_auto_sync_enabled: 'Automatically sync the Models.dev catalog and prices',
       modelsDevAutoSyncHelp:
         'When enabled, the catalog and automatic prices sync on schedule. Manual sync remains available on Models.',

@@ -198,23 +198,22 @@ func TestCompileBuildsManagementCatalogsWithoutChangingActiveIndexes(t *testing.
 	}
 }
 
-func TestCompileCarriesSettingsAndValidationModel(t *testing.T) {
+func TestCompileCarriesSettings(t *testing.T) {
 	t.Parallel()
 
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		SystemSettings:  config.Settings{"first_byte_timeout": json.Number("20")},
 		Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-			ValidationModel: "  probe-model  ",
-			Models:          []ModelConfig{{ID: "real-model", Alias: "public-model"}},
-			Settings:        config.Settings{"request_timeout": json.Number("30")}, Enabled: true,
+			Models:   []ModelConfig{{ID: "real-model", Alias: "public-model"}},
+			Settings: config.Settings{"request_timeout": json.Number("30")}, Enabled: true,
 		}},
 	})
 	if err != nil {
 		t.Fatalf("Compile() error = %v", err)
 	}
 	view := snapshot.Groups[1]
-	if view.ValidationModel != "probe-model" || view.Timeouts.FirstByte.Seconds() != 20 || view.Timeouts.Request.Seconds() != 30 {
+	if view.Timeouts.FirstByte.Seconds() != 20 || view.Timeouts.Request.Seconds() != 30 {
 		t.Fatalf("group runtime view = %#v", view)
 	}
 }

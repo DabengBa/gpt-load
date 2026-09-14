@@ -199,12 +199,34 @@ const (
 	EndpointNone              EndpointPolicy = "none"
 )
 
+// ProbeContract is the single, code-owned probe contract for one provider.
+// Every API-key channel must declare exactly one probe protocol and its
+// minimum output token budget. Subscription channels leave this zero-valued.
+type ProbeContract struct {
+	// Protocol is the single client protocol used for probe requests.
+	// It must be a generative data-plane protocol supported by the channel
+	// definition (Chat Completions, Responses, Anthropic, or Gemini).
+	// Embeddings, Rerank, and Images are not probeable.
+	Protocol protocol.Protocol
+
+	// MinOutputTokens is the minimum output token budget for the probe
+	// request. The actual value sent respects provider-specific minimums
+	// (e.g., 3 for OpenAI Chat, 16 for native OpenAI Responses).
+	MinOutputTokens int
+}
+
+// Valid reports whether the probe contract is well-formed for an API-key channel.
+func (c ProbeContract) Valid() bool {
+	return c.Protocol.Valid() && c.MinOutputTokens > 0
+}
+
 // ProviderBinding identifies the adapter and its non-secret target policy.
 type ProviderBinding struct {
 	ProviderKind      ProviderKind
 	CatalogProviderID string
 	EndpointPolicy    EndpointPolicy
 	FixedBaseURL      string
+	ProbeContract     ProbeContract
 }
 
 // ExtensionID is a strongly typed code-owned extension binding.

@@ -38,7 +38,7 @@ export default {
     },
     reliability: {
       title: '重试与凭据健康',
-      description: '失败时的重试策略，以及凭据被拉黑前的宽容度和复检节奏。',
+      description: '失败时的重试策略，以及凭据被拉黑前的宽容度。',
     },
     runtime: {
       title: '连接与超时',
@@ -62,7 +62,6 @@ export default {
         '单次请求允许的上游尝试总次数；跨分组共享，切换分组不会重置；0 或 1 表示只尝试一次（不重试），2 表示首次失败后可换一次候选。',
       blacklist_threshold: '连续失败拉黑阈值',
       blacklistThresholdHelp: '凭据达到该连续失败次数后自动拉黑；0 表示关闭自动拉黑。',
-      validation_interval: '检测间隔',
       models_dev_auto_sync_enabled: '自动同步 Models.dev 目录与价格',
       modelsDevAutoSyncHelp: '启用后按计划同步目录和自动价格；关闭后仍可在模型页手动同步。',
       environmentSource: '环境变量锁定',

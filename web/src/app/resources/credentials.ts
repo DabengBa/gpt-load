@@ -131,7 +131,12 @@ const credentialTestResultFields = [
   'tested_at_ms',
 ] as const
 const credentialTestOutcomes = ['passed', 'failed', 'inconclusive'] as const
-const failedCredentialTestReasons = ['invalid_credential', 'model_unavailable'] as const
+const failedCredentialTestReasons = [
+  'invalid_credential',
+  'model_unavailable',
+  'no_answer',
+  'invalid_response',
+] as const
 const inconclusiveCredentialTestReasons = [
   'rate_limited',
   'timeout',

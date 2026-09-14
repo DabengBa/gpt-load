@@ -2,14 +2,12 @@ package control
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"gpt-load/internal/health"
-	"gpt-load/internal/platform/config"
 	"gpt-load/internal/state"
 )
 
@@ -34,27 +32,24 @@ func (ticker *fakeRuntimeTicker) Stop() {
 	ticker.stopOnce.Do(func() { close(ticker.stopped) })
 }
 
-type fakeValidationSweep struct {
+type controlledOperationRecovery struct {
 	started  chan struct{}
 	returned chan struct{}
-	block    bool
-	once     sync.Once
 }
 
-func newFakeValidationSweep(block bool) *fakeValidationSweep {
-	return &fakeValidationSweep{
-		started:  make(chan struct{}),
-		returned: make(chan struct{}),
-		block:    block,
-	}
+type controlledStageCleaner struct {
+	calls chan time.Time
 }
 
-func (sweep *fakeValidationSweep) Validate(ctx context.Context) {
-	sweep.once.Do(func() { close(sweep.started) })
-	if sweep.block {
-		<-ctx.Done()
-	}
-	close(sweep.returned)
+func (cleaner *controlledStageCleaner) CleanupCredentialStages(_ context.Context, now time.Time) error {
+	cleaner.calls <- now
+	return nil
+}
+
+func (recovery *controlledOperationRecovery) RunOperationRecovery(ctx context.Context) {
+	close(recovery.started)
+	<-ctx.Done()
+	close(recovery.returned)
 }
 
 type fakeRuntimeClock struct {
@@ -113,24 +108,31 @@ func (cleaner *controlledRequestLogCleaner) Sweep(ctx context.Context, now time.
 	cleaner.returned <- struct{}{}
 }
 
-type controlledOperationRecovery struct {
-	started  chan struct{}
-	returned chan struct{}
-}
+func TestRuntimeRunsOnlyExplicitRuntimes(t *testing.T) {
+	t.Parallel()
+	recovery := &controlledOperationRecovery{
+		started:  make(chan struct{}),
+		returned: make(chan struct{}),
+	}
+	unexpectedTicker := make(chan struct{})
+	runtime := &Runtime{
+		operationRecovery: recovery,
+		newTicker: func(time.Duration) runtimeTicker {
+			close(unexpectedTicker)
+			return newFakeRuntimeTicker()
+		},
+	}
 
-type controlledStageCleaner struct {
-	calls chan time.Time
-}
-
-func (cleaner *controlledStageCleaner) CleanupCredentialStages(_ context.Context, now time.Time) error {
-	cleaner.calls <- now
-	return nil
-}
-
-func (recovery *controlledOperationRecovery) RunOperationRecovery(ctx context.Context) {
-	close(recovery.started)
-	<-ctx.Done()
-	close(recovery.returned)
+	cancel, done := startRuntime(t, runtime)
+	awaitSignal(t, recovery.started)
+	select {
+	case <-unexpectedTicker:
+		t.Fatal("Runtime.Run started an unexpected scheduler")
+	default:
+	}
+	cancel()
+	awaitSignal(t, recovery.returned)
+	awaitSignal(t, done)
 }
 
 func TestRuntimeRunsOperationRecoveryUntilCancellation(t *testing.T) {
@@ -139,14 +141,9 @@ func TestRuntimeRunsOperationRecoveryUntilCancellation(t *testing.T) {
 		started:  make(chan struct{}),
 		returned: make(chan struct{}),
 	}
-	runtime, _, created := newRuntimeHarness(
-		newFakeValidationSweep(false),
-		time.Now,
-	)
-	runtime.operationRecovery = recovery
+	runtime := &Runtime{operationRecovery: recovery}
 
 	cancel, done := startRuntime(t, runtime)
-	awaitTickers(t, created)
 	awaitSignal(t, recovery.started)
 	cancel()
 	awaitSignal(t, recovery.returned)
@@ -158,32 +155,12 @@ func TestRuntimeSweepsRequestLogsImmediatelyAndHourlyWithoutOverlap(t *testing.T
 	base := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
 	clock := &fakeRuntimeClock{now: base}
 	cleaner := newControlledRequestLogCleaner(false)
-	validationTicker := newFakeRuntimeTicker()
 	retentionTicker := newFakeRuntimeTicker()
-	created := make(chan time.Duration, 2)
-	runtime := newTestRuntime(
-		newFakeValidationSweep(false),
-		validationTicker,
-		created,
-		clock.current,
-	)
+	created := make(chan time.Duration, 1)
+	runtime := newTestRuntime(retentionTicker, created, clock.current)
 	runtime.requestLogCleaner = cleaner
-	runtime.newTicker = func(interval time.Duration) runtimeTicker {
-		created <- interval
-		switch interval {
-		case 32 * time.Minute:
-			return validationTicker
-		case time.Hour:
-			return retentionTicker
-		default:
-			testingPanic("unexpected ticker interval", interval)
-			return nil
-		}
-	}
+
 	cancel, done := startRuntime(t, runtime)
-	if interval := awaitValue(t, created); interval != 32*time.Minute {
-		t.Fatalf("validation ticker interval = %v, want 32m", interval)
-	}
 	if interval := awaitValue(t, created); interval != time.Hour {
 		t.Fatalf("retention ticker interval = %v, want 1h", interval)
 	}
@@ -207,7 +184,6 @@ func TestRuntimeSweepsRequestLogsImmediatelyAndHourlyWithoutOverlap(t *testing.T
 	awaitSignal(t, cleaner.returned)
 
 	stopRuntime(t, cancel, done)
-	awaitSignal(t, validationTicker.stopped)
 	awaitSignal(t, retentionTicker.stopped)
 	if got := cleaner.maxActive.Load(); got != 1 {
 		t.Fatalf("maximum concurrent Sweeps = %d, want 1", got)
@@ -217,26 +193,13 @@ func TestRuntimeSweepsRequestLogsImmediatelyAndHourlyWithoutOverlap(t *testing.T
 func TestRuntimeSweepsCredentialStagesWithoutRequestLogCleaner(t *testing.T) {
 	t.Parallel()
 	base := time.Date(2026, time.August, 13, 8, 0, 0, 0, time.UTC)
-	validationTicker := newFakeRuntimeTicker()
 	retentionTicker := newFakeRuntimeTicker()
-	created := make(chan time.Duration, 2)
-	runtime := newTestRuntime(newFakeValidationSweep(false), validationTicker, created, func() time.Time { return base })
+	created := make(chan time.Duration, 1)
+	runtime := newTestRuntime(retentionTicker, created, func() time.Time { return base })
 	cleaner := &controlledStageCleaner{calls: make(chan time.Time, 2)}
 	runtime.stageCleaner = cleaner
-	runtime.newTicker = func(interval time.Duration) runtimeTicker {
-		created <- interval
-		switch interval {
-		case 32 * time.Minute:
-			return validationTicker
-		case time.Hour:
-			return retentionTicker
-		default:
-			testingPanic("unexpected ticker interval", interval)
-			return nil
-		}
-	}
+
 	cancel, done := startRuntime(t, runtime)
-	awaitTickers(t, created)
 	if interval := awaitValue(t, created); interval != time.Hour {
 		t.Fatalf("retention interval = %v", interval)
 	}
@@ -250,33 +213,14 @@ func TestRuntimeSweepsCredentialStagesWithoutRequestLogCleaner(t *testing.T) {
 func TestRuntimeCancellationWaitsForRetentionSweep(t *testing.T) {
 	t.Parallel()
 	cleaner := newControlledRequestLogCleaner(true)
-	validationTicker := newFakeRuntimeTicker()
 	retentionTicker := newFakeRuntimeTicker()
-	created := make(chan time.Duration, 2)
-	runtime := newTestRuntime(
-		newFakeValidationSweep(false),
-		validationTicker,
-		created,
-		time.Now,
-	)
+	created := make(chan time.Duration, 1)
+	runtime := newTestRuntime(retentionTicker, created, time.Now)
 	runtime.requestLogCleaner = cleaner
-	runtime.newTicker = func(interval time.Duration) runtimeTicker {
-		created <- interval
-		switch interval {
-		case 32 * time.Minute:
-			return validationTicker
-		case time.Hour:
-			return retentionTicker
-		default:
-			testingPanic("unexpected ticker interval", interval)
-			return nil
-		}
-	}
 
 	cancel, done := startRuntime(t, runtime)
-	awaitTickers(t, created)
 	if interval := awaitValue(t, created); interval != time.Hour {
-		t.Fatalf("retention ticker interval = %v, want 1h", interval)
+		t.Fatalf("retention interval = %v, want 1h", interval)
 	}
 	_ = awaitValue(t, cleaner.calls)
 	cancel()
@@ -289,93 +233,6 @@ func TestRuntimeCancellationWaitsForRetentionSweep(t *testing.T) {
 	awaitSignal(t, cleaner.returned)
 	awaitSignal(t, done)
 	awaitSignal(t, retentionTicker.stopped)
-}
-
-func TestRuntimeCreatesJitteredValidationTicker(t *testing.T) {
-	t.Parallel()
-	validationTicker := newFakeRuntimeTicker()
-	created := make(chan time.Duration, 1)
-	runtime := newTestRuntime(newFakeValidationSweep(false), validationTicker, created, time.Now)
-	runtime.validationJitter = func() time.Duration { return 2 * time.Minute }
-
-	cancel, done := startRuntime(t, runtime)
-	if interval := awaitValue(t, created); interval != 32*time.Minute {
-		t.Fatalf("validation ticker interval = %v, want 32m", interval)
-	}
-	stopRuntime(t, cancel, done)
-	awaitSignal(t, validationTicker.stopped)
-}
-
-func TestRuntimeValidationJitterDoesNotOverflow(t *testing.T) {
-	t.Parallel()
-	validationTicker := newFakeRuntimeTicker()
-	created := make(chan time.Duration, 1)
-	runtime := newTestRuntime(
-		newFakeValidationSweep(false),
-		validationTicker,
-		created,
-		time.Now,
-	)
-	runtime.validationInterval = time.Duration(1<<63 - 1)
-	runtime.validationJitter = func() time.Duration { return maxValidationJitter }
-	runtime.newTicker = func(interval time.Duration) runtimeTicker {
-		created <- interval
-		return validationTicker
-	}
-
-	cancel, done := startRuntime(t, runtime)
-	if interval := awaitValue(t, created); interval != time.Duration(1<<63-1) {
-		t.Fatalf("validation ticker interval = %v, want capped maximum duration", interval)
-	}
-	stopRuntime(t, cancel, done)
-	awaitSignal(t, validationTicker.stopped)
-}
-
-func TestRuntimeReschedulesValidationWhenPublishedIntervalChanges(t *testing.T) {
-	t.Parallel()
-	manager := state.NewManager()
-	if _, err := manager.Publish(state.CompileInput{}); err != nil {
-		t.Fatal(err)
-	}
-	defaultTicker := newFakeRuntimeTicker()
-	overriddenTicker := newFakeRuntimeTicker()
-	created := make(chan time.Duration, 2)
-	runtime := newTestRuntime(
-		newFakeValidationSweep(false),
-		defaultTicker,
-		created,
-		time.Now,
-	)
-	runtime.manager = manager
-	runtime.newTicker = func(interval time.Duration) runtimeTicker {
-		created <- interval
-		switch interval {
-		case 12 * time.Minute:
-			return defaultTicker
-		case 22 * time.Minute:
-			return overriddenTicker
-		default:
-			testingPanic("unexpected ticker interval", interval)
-			return nil
-		}
-	}
-
-	cancel, done := startRuntime(t, runtime)
-	if interval := awaitValue(t, created); interval != 12*time.Minute {
-		t.Fatalf("default validation ticker interval = %v, want 12m", interval)
-	}
-	if _, err := manager.Publish(state.CompileInput{SystemSettings: config.Settings{
-		state.SettingValidationInterval: json.Number("1200"),
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	if interval := awaitValue(t, created); interval != 22*time.Minute {
-		t.Fatalf("updated validation ticker interval = %v, want 22m", interval)
-	}
-	awaitSignal(t, defaultTicker.stopped)
-
-	stopRuntime(t, cancel, done)
-	awaitSignal(t, overriddenTicker.stopped)
 }
 
 func TestCooldownProblemDoesNotAffectCandidateCollection(t *testing.T) {
@@ -399,99 +256,20 @@ func TestCooldownProblemDoesNotAffectCandidateCollection(t *testing.T) {
 	}
 }
 
-func TestRuntimeWaitsForValidationTick(t *testing.T) {
-	t.Parallel()
-	validator := newFakeValidationSweep(false)
-	runtime, validationTicker, created := newRuntimeHarness(validator, time.Now)
-
-	cancel, done := startRuntime(t, runtime)
-	awaitTickers(t, created)
-	select {
-	case <-validator.started:
-		t.Fatal("validation ran before its first tick")
-	default:
-	}
-	validationTicker.ticks <- time.Now()
-	awaitSignal(t, validator.started)
-	awaitSignal(t, validator.returned)
-	stopRuntime(t, cancel, done)
-}
-
-func TestRuntimeCancellationStopsValidationAndWaitsForValidation(t *testing.T) {
-	t.Parallel()
-	validator := newFakeValidationSweep(true)
-	runtime, validationTicker, created := newRuntimeHarness(validator, time.Now)
-
-	cancel, done := startRuntime(t, runtime)
-	awaitTickers(t, created)
-	validationTicker.ticks <- time.Now()
-	awaitSignal(t, validator.started)
-	cancel()
-	awaitSignal(t, validator.returned)
-	awaitSignal(t, done)
-	awaitSignal(t, validationTicker.stopped)
-}
-
-func TestRuntimeStopsOnContextCancellation(t *testing.T) {
-	t.Parallel()
-	validator := newFakeValidationSweep(false)
-	runtime, validationTicker, created := newRuntimeHarness(validator, time.Now)
-
-	cancel, done := startRuntime(t, runtime)
-	awaitTickers(t, created)
-	stopRuntime(t, cancel, done)
-	awaitSignal(t, validationTicker.stopped)
-
-	validationTicker.ticks <- time.Now()
-	select {
-	case <-validator.started:
-		t.Fatal("validation started after cancellation")
-	default:
-	}
-}
-
-func newRuntimeHarness(
-	validator validationSweep,
-	now func() time.Time,
-) (*Runtime, *fakeRuntimeTicker, <-chan time.Duration) {
-	validationTicker := newFakeRuntimeTicker()
-	created := make(chan time.Duration, 1)
-	runtime := newTestRuntime(validator, validationTicker, created, now)
-	return runtime, validationTicker, created
-}
-
 func newTestRuntime(
-	validator validationSweep,
-	validationTicker *fakeRuntimeTicker,
+	retentionTicker *fakeRuntimeTicker,
 	created chan<- time.Duration,
 	now func() time.Time,
 ) *Runtime {
 	return &Runtime{
-		validator:          validator,
-		validationInterval: 30 * time.Minute,
-		validationJitter:   func() time.Duration { return 2 * time.Minute },
-		now:                now,
+		now: now,
 		newTicker: func(interval time.Duration) runtimeTicker {
 			created <- interval
-			switch interval {
-			case 32 * time.Minute:
-				return validationTicker
-			default:
-				testingPanic("unexpected ticker interval", interval)
-				return nil
+			if interval != retentionInterval {
+				panic("unexpected runtime ticker interval: " + interval.String())
 			}
+			return retentionTicker
 		},
-	}
-}
-
-func testingPanic(message string, value time.Duration) {
-	panic(message + ": " + value.String())
-}
-
-func awaitTickers(t *testing.T, created <-chan time.Duration) {
-	t.Helper()
-	if interval := awaitValue(t, created); interval != 32*time.Minute {
-		t.Fatalf("validation ticker interval = %v, want 32m", interval)
 	}
 }
 
