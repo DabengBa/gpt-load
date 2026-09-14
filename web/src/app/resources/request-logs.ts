@@ -8,6 +8,8 @@ import { InvalidResponseError } from '@/api/errors'
 import { controlQueryKeys } from '@/app/query-keys'
 import { projectChannelID } from '@/app/resources/channels'
 
+import { projectRequestLogAffinityKey } from '@/features/monitor/request-log-affinity'
+
 import { normalizeRequestLogFilters, requestLogFilterFields } from './request-log-filters'
 
 import {
@@ -102,6 +104,7 @@ export interface RequestLogFilters {
   output_tokens_max?: number
   cost_min_nano_usd?: string
   cost_max_nano_usd?: string
+  affinity_key?: string
 }
 
 export interface RequestLogPricingLineDto {
@@ -189,6 +192,7 @@ export interface RequestLogItemDto {
   continuity_hit: boolean
   affinity_source: RequestLogAffinitySource
   affinity_state: RequestLogAffinityState
+  affinity_key: string | null
   group_id: number | null
   channel_id: string | null
   credential_id: number | null
@@ -308,6 +312,7 @@ const itemFields = [
   'continuity_hit',
   'affinity_source',
   'affinity_state',
+  'affinity_key',
   'group_id',
   'channel_id',
   'credential_id',
@@ -653,6 +658,7 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
     continuity_hit: projectBoolean(record.continuity_hit),
     affinity_source: projectEnum(record.affinity_source, affinitySources),
     affinity_state: projectEnum(record.affinity_state, affinityStates),
+    affinity_key: projectRequestLogAffinityKey(record.affinity_key),
     group_id: record.group_id === null ? null : projectSafeInteger(record.group_id, { minimum: 1 }),
     channel_id: record.channel_id === null ? null : projectChannelID(record.channel_id),
     credential_id:
@@ -732,6 +738,7 @@ export function requestLogQueryOptions(
   client: ApiClient,
   filters: MaybeRefOrGetter<RequestLogFilters>,
   cursor: MaybeRefOrGetter<string | undefined>,
+  enabled: MaybeRefOrGetter<boolean> = true,
 ) {
   return queryOptions({
     queryKey: computed(() => [
@@ -741,6 +748,7 @@ export function requestLogQueryOptions(
     ]),
     queryFn: ({ signal }) => listRequestLogs(client, toValue(filters), toValue(cursor), signal),
     placeholderData: keepPreviousData,
+    enabled: computed(() => toValue(enabled)),
   })
 }
 

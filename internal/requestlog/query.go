@@ -43,6 +43,9 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 	if input.AccessKeyID != nil {
 		query = query.Where("access_key_id = ?", *input.AccessKeyID)
 	}
+	if input.AffinityKey != "" {
+		query = query.Where("affinity_key = ?", input.AffinityKey)
+	}
 	if input.Status != "" {
 		query = query.Where("status = ?", input.Status)
 	}
@@ -343,6 +346,7 @@ func decodeRequestLogRows(rows []models.RequestLog) ([]Record, error) {
 			ErrorSummary:          row.ErrorSummary,
 			AffinityHit:           row.AffinityHit,
 			ContinuityHit:         row.ContinuityHit,
+			AffinityKey:           NormalizeAffinityKey(row.AffinityKey),
 			AffinitySource:        storedAffinitySource,
 			AffinityState:         storedAffinityState,
 			Reasoning: reasoning.Config{

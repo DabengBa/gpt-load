@@ -27,7 +27,7 @@ func Test0014AffinityObservabilityAddsColumnsAndBackfillsLegacyRows(t *testing.T
 
 	legacy := legacyAffinityRequestLog("00000000-0000-4000-8000-000000000013")
 	// 本插入特意针对 0014 之前的 schema，因此亲和观测列像其他迁移前夹具一样被省略。
-	if err := db.Omit("ContinuityHit", "AffinitySource", "AffinityState").Create(&legacy).Error; err != nil {
+	if err := db.Omit("AffinityKey", "ContinuityHit", "AffinitySource", "AffinityState").Create(&legacy).Error; err != nil {
 		t.Fatalf("create pre-0014 request log: %v", err)
 	}
 
@@ -52,7 +52,7 @@ func Test0014AffinityObservabilityAddsColumnsAndBackfillsLegacyRows(t *testing.T
 	}
 
 	fresh := legacyAffinityRequestLog("00000000-0000-4000-8000-000000000014")
-	if err := db.Create(&fresh).Error; err != nil {
+	if err := db.Omit("AffinityKey").Create(&fresh).Error; err != nil {
 		t.Fatalf("create post-0014 request log: %v", err)
 	}
 	var stored models.RequestLog

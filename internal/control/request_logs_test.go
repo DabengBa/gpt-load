@@ -152,6 +152,9 @@ func TestRequestLogEndpointRejectsUnknownDuplicateAndMalformedQueries(t *testing
 		{name: "access key plus", query: "access_key_id=%2B1"},
 		{name: "access key whitespace", query: "access_key_id=%201"},
 		{name: "access key duplicate", query: "access_key_id=1&access_key_id=2"},
+		{name: "affinity key invalid", query: "affinity_key=raw-secret"},
+		{name: "affinity key uppercase", query: "affinity_key=0123456789abcdef****FEDCBA9876543210"},
+		{name: "affinity key duplicate", query: "affinity_key=0123456789abcdef****fedcba9876543210&affinity_key=0123456789abcdef****fedcba9876543210"},
 		{name: "legacy upstream key", query: "upstream_key_id=9"},
 		{name: "legacy key", query: "key_id=9"},
 		{name: "limit leading zero", query: "limit=01"},
@@ -386,6 +389,7 @@ func TestRequestLogEndpointReturnsOpaqueCursorAndSafeDTO(t *testing.T) {
 					DurationMs:             1234,
 					AffinityHit:            true,
 					ContinuityHit:          true,
+					AffinityKey:            "0123456789abcdef****fedcba9876543210",
 					AffinitySource:         string(telemetry.AffinitySourcePromptCacheKey),
 					AffinityState:          string(telemetry.AffinityStateHit),
 					GroupID:                12,
@@ -415,6 +419,7 @@ func TestRequestLogEndpointReturnsOpaqueCursorAndSafeDTO(t *testing.T) {
 		"client_model=client-model",
 		"upstream_model=upstream-model",
 		"access_key_id=41",
+		"affinity_key=0123456789abcdef%2A%2A%2A%2Afedcba9876543210",
 		"status=success",
 		"request_id=00000000-0000-4000-8000-000000000501",
 	}, "&")
@@ -433,6 +438,7 @@ func TestRequestLogEndpointReturnsOpaqueCursorAndSafeDTO(t *testing.T) {
 		gotQuery.AccessKeyID == nil || *gotQuery.AccessKeyID != 41 ||
 		gotQuery.ClientModel != "client-model" ||
 		gotQuery.UpstreamModel != "upstream-model" ||
+		gotQuery.AffinityKey != "0123456789abcdef****fedcba9876543210" ||
 		gotQuery.Status != telemetry.RequestStatusSuccess ||
 		gotQuery.RequestID != "00000000-0000-4000-8000-000000000501" {
 		t.Fatalf("parsed ListQuery = %#v", gotQuery)
@@ -451,6 +457,9 @@ func TestRequestLogEndpointReturnsOpaqueCursorAndSafeDTO(t *testing.T) {
 	if envelope.Code != 0 || len(envelope.Data.Items) != 1 ||
 		envelope.Data.NextCursor == nil || *envelope.Data.NextCursor == "" {
 		t.Fatalf("first response envelope = %#v", envelope)
+	}
+	if envelope.Data.Items[0]["affinity_key"] != "0123456789abcdef****fedcba9876543210" {
+		t.Fatalf("affinity key response = %#v", envelope.Data.Items[0]["affinity_key"])
 	}
 	if _, exists := envelope.Data.Items[0]["attempts"]; exists {
 		t.Fatalf("list item unexpectedly exposes attempts: %#v", envelope.Data.Items[0])
@@ -1096,6 +1105,7 @@ func TestRequestLogEndpointsBindAccessKeyScopeAndRedactRoutingInternals(t *testi
 		DurationMs:            120,
 		AttemptCount:          2,
 		AffinityHit:           true,
+		AffinityKey:           "0123456789abcdef****fedcba9876543210",
 		GroupID:               99,
 		ChannelID:             channel.OpenAI,
 		CredentialID:          101,
@@ -1142,6 +1152,7 @@ func TestRequestLogEndpointsBindAccessKeyScopeAndRedactRoutingInternals(t *testi
 		"credential_id=101",
 		"upstream_model=private-upstream-model",
 		"retry_state=retried",
+		"affinity_key=0123456789abcdef%2A%2A%2A%2Afedcba9876543210",
 	} {
 		recorder := performRequestLogRequest(engine, current.Key, query)
 		if recorder.Code != http.StatusBadRequest || len(reader.queries) != 1 {
@@ -1205,6 +1216,7 @@ func assertAccessKeyLogRedaction(t *testing.T, body []byte, detail bool) {
 		"model_consistency":       `"not_applicable"`,
 		"affinity_hit":            "false",
 		"continuity_hit":          "false",
+		"affinity_key":            "null",
 		"affinity_source":         `"none"`,
 		"affinity_state":          `"no_signal"`,
 		"group_id":                "null",
@@ -1510,9 +1522,10 @@ func TestRequestLogEndpointsProjectBoundedAffinityObservations(t *testing.T) {
 }
 
 type requestLogAffinityProjection struct {
-	ContinuityHit  bool   `json:"continuity_hit"`
-	AffinitySource string `json:"affinity_source"`
-	AffinityState  string `json:"affinity_state"`
+	ContinuityHit  bool    `json:"continuity_hit"`
+	AffinityKey    *string `json:"affinity_key"`
+	AffinitySource string  `json:"affinity_source"`
+	AffinityState  string  `json:"affinity_state"`
 }
 
 func assertBoundedAffinityItem(t *testing.T, body []byte) {
@@ -1530,7 +1543,7 @@ func assertBoundedAffinityItem(t *testing.T, body []byte) {
 	if len(envelope.Data.Items) == 1 {
 		item = envelope.Data.Items[0]
 	}
-	if !item.ContinuityHit ||
+	if item.AffinityKey != nil || !item.ContinuityHit ||
 		item.AffinitySource != requestlog.AffinitySourceNone ||
 		item.AffinityState != requestlog.AffinityStateNoSignal {
 		t.Fatalf("bounded affinity projection = %#v; body=%s", item, body)

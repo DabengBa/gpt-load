@@ -1,6 +1,7 @@
 package requestlog
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -403,6 +404,66 @@ func TestMapEventProjectsBoundedAffinityObservations(t *testing.T) {
 					row.AffinitySource, row.AffinityState, row.ContinuityHit, test.wantSource, test.wantState)
 			}
 		})
+	}
+}
+
+func TestMapEventProjectsOnlyCanonicalAffinityKey(t *testing.T) {
+	event := testEvent("00000000-0000-4000-8000-000000000602")
+	event.AffinityKey = "0123456789abcdef****fedcba9876543210"
+	row := mustMapEvent(t, redact.New(), event)
+	if row.AffinityKey != event.AffinityKey {
+		t.Fatalf("mapped affinity key = %q, want %q", row.AffinityKey, event.AffinityKey)
+	}
+	for _, invalid := range []string{"raw-prompt-cache-key", "0123456789abcdef****FEDCBA9876543210"} {
+		event.AffinityKey = invalid
+		row = mustMapEvent(t, redact.New(), event)
+		if row.AffinityKey != "" {
+			t.Fatalf("mapped invalid affinity key %q = %q, want empty", invalid, row.AffinityKey)
+		}
+	}
+}
+
+func TestNormalizeAffinityKeyFallsBackToEmptyForInvalidPersistedValue(t *testing.T) {
+	if got := NormalizeAffinityKey("raw-prompt-cache-key"); got != "" {
+		t.Fatalf("NormalizeAffinityKey() = %q, want empty", got)
+	}
+	valid := "0123456789abcdef****fedcba9876543210"
+	if got := NormalizeAffinityKey(valid); got != valid {
+		t.Fatalf("NormalizeAffinityKey(valid) = %q, want %q", got, valid)
+	}
+}
+
+func TestListFiltersAffinityKeyExactlyAndNormalizesPersistedValues(t *testing.T) {
+	db, _ := openRequestLogFileDB(t)
+	valid := "0123456789abcdef****fedcba9876543210"
+	other := "fedcba9876543210****0123456789abcdef"
+	for index, key := range []string{valid, valid, other, "raw-secret"} {
+		event := testEvent(fmt.Sprintf("00000000-0000-4000-8000-%012d", 700+index))
+		event.AffinityKey = key
+		row := mustMapEvent(t, redact.New(), event)
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatalf("create request log %d: %v", index, err)
+		}
+	}
+
+	page, err := newRequestLogTestService(db).List(t.Context(), ListQuery{AffinityKey: valid, Limit: 10})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("filtered request logs = %d, want 2", len(page.Items))
+	}
+	for _, item := range page.Items {
+		if item.AffinityKey != valid {
+			t.Fatalf("filtered affinity key = %q, want %q", item.AffinityKey, valid)
+		}
+	}
+	all, err := newRequestLogTestService(db).List(t.Context(), ListQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("List(all) error = %v", err)
+	}
+	if len(all.Items) != 4 || all.Items[0].AffinityKey != "" {
+		t.Fatalf("persisted affinity normalization = %#v, want invalid value empty", all.Items)
 	}
 }
 

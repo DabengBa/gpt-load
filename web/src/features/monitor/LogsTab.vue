@@ -36,7 +36,7 @@ import {
   applyLogFilterDraft,
   createLogFilterDraft,
   defaultRequestLogFilters,
-  parseAppliedLogFilters,
+  parseAppliedLogFilterState,
   serializeAppliedLogFilters,
   validateLogFilterDraft,
   type LogFilterDraft,
@@ -61,6 +61,7 @@ import LogRouteIdentity from './LogRouteIdentity.vue'
 import LogsFilterForm from './LogsFilterForm.vue'
 import PricingModeIndicator from './PricingModeIndicator.vue'
 import { formatRouteEntity } from './log-format'
+import { isValidRequestLogAffinityKey } from './request-log-affinity'
 import {
   logsMonitorQuery,
   parseLogsMonitorState,
@@ -75,15 +76,21 @@ const router = useRouter()
 const { locale, t } = useI18n()
 const logPageSizes = [20, 50, 100] as const
 const isAccessKey = computed(() => session.state.principalType === 'access_key')
+const appliedFilterState = computed(() => parseAppliedLogFilterState(route.query))
+const invalidAffinityKey = computed(() =>
+  isAccessKey.value ? undefined : appliedFilterState.value.invalidAffinityKey,
+)
 const appliedFilters = computed(() => {
-  const filters = parseAppliedLogFilters(route.query)
+  const filters = appliedFilterState.value.filters
   return isAccessKey.value ? scopeAccessKeyLogFilters(filters) : filters
 })
 const routeState = computed(() => parseLogsMonitorState(route.query))
 const selectedRequestID = computed(() => routeState.value.selectedRequestID)
 const advancedOpen = computed(() => routeState.value.filtersOpen)
 const draft = ref(createLogFilterDraft(appliedFilters.value))
-const filterErrors = ref<LogFilterErrors>({})
+const filterErrors = ref<LogFilterErrors>(
+  invalidAffinityKey.value !== undefined ? { affinity_key: 'monitor.logs.errors.affinityKey' } : {},
+)
 const paginationPending = ref(false)
 const pageTransitionOrigin = ref<LogsMonitorState | null>(null)
 const currentCursor = computed(() => routeState.value.cursorHistory.at(-1))
@@ -107,7 +114,10 @@ const channelsByID = computed<Record<string, ChannelDto>>(() =>
     (channelsQuery.data.value?.items ?? []).map((channel) => [channel.channel_id, channel]),
   ),
 )
-const logsQuery = useQuery(requestLogQueryOptions(client, appliedFilters, currentCursor))
+const logsQuery = useQuery({
+  ...requestLogQueryOptions(client, appliedFilters, currentCursor),
+  enabled: computed(() => invalidAffinityKey.value === undefined),
+})
 const logs = computed(() => logsQuery.data.value?.items ?? [])
 const {
   initial: initialLoading,
@@ -138,7 +148,7 @@ const logsRefreshing = computed(
 const currentPage = computed(() => routeState.value.cursorHistory.length + 1)
 const paginationBusy = computed(() => paginationPending.value || logsQuery.isFetching.value)
 const filterSignature = computed(() =>
-  JSON.stringify(serializeAppliedLogFilters(appliedFilters.value)),
+  JSON.stringify([serializeAppliedLogFilters(appliedFilters.value), invalidAffinityKey.value]),
 )
 const allAdvancedFilterKeys: readonly (keyof RequestLogFilters)[] = [
   'channel_id',
@@ -169,6 +179,7 @@ const allAdvancedFilterKeys: readonly (keyof RequestLogFilters)[] = [
   'output_tokens_max',
   'cost_min_nano_usd',
   'cost_max_nano_usd',
+  'affinity_key',
 ]
 const accessKeyForbiddenFilterKeys = new Set<keyof RequestLogFilters>([
   'group_id',
@@ -182,6 +193,7 @@ const accessKeyForbiddenFilterKeys = new Set<keyof RequestLogFilters>([
   'retry_state',
   'retry_count_min',
   'retry_count_max',
+  'affinity_key',
 ])
 const advancedFilterKeys = computed(() =>
   isAccessKey.value
@@ -236,12 +248,19 @@ const appliedChips = computed(() => {
   return values
 })
 
-watch(filterSignature, () => {
-  draft.value = createLogFilterDraft(appliedFilters.value)
-  filterErrors.value = {}
-  paginationPending.value = false
-  pageTransitionOrigin.value = null
-})
+watch(
+  filterSignature,
+  () => {
+    draft.value = createLogFilterDraft(appliedFilters.value)
+    filterErrors.value =
+      invalidAffinityKey.value !== undefined
+        ? { affinity_key: 'monitor.logs.errors.affinityKey' }
+        : {}
+    paginationPending.value = false
+    pageTransitionOrigin.value = null
+  },
+  { immediate: true },
+)
 
 watch(
   () => logsQuery.dataUpdatedAt.value,
@@ -295,6 +314,7 @@ function advancedChipLabel(key: keyof RequestLogFilters, value: unknown): string
   if (key === 'client_model') return t('monitor.logs.filters.appliedClientModel', { value })
   if (key === 'upstream_model') return t('monitor.logs.filters.appliedUpstreamModel', { value })
   if (key === 'request_id') return t('monitor.logs.filters.appliedRequestId', { value })
+  if (key === 'affinity_key') return t('monitor.logs.filters.appliedAffinityKey', { value })
   if (key === 'protocol') return String(value)
   if (key === 'failure_category') return t(`monitor.logs.failureCategory.${String(value)}`)
   if (key === 'retry_state') return t(`monitor.logs.filters.retryState.${String(value)}`)
@@ -376,8 +396,17 @@ async function filterByClientModel(clientModel: string): Promise<void> {
   await commitFilters({ ...appliedFilters.value, client_model: clientModel })
 }
 
+async function filterByAffinityKey(affinityKey: string | null): Promise<void> {
+  if (isAccessKey.value || affinityKey === null || !isValidRequestLogAffinityKey(affinityKey))
+    return
+  await commitFilters({ ...appliedFilters.value, affinity_key: affinityKey })
+}
+
 async function applyFilters(): Promise<void> {
   const errors = validateLogFilterDraft(draft.value)
+  if (invalidAffinityKey.value !== undefined) {
+    errors.affinity_key = 'monitor.logs.errors.affinityKey'
+  }
   filterErrors.value = errors
   if (Object.keys(errors).length > 0) return
 
@@ -486,6 +515,10 @@ function accessKeyLabel(log: RequestLogItemDto): string {
 // 控制面观察（access_key_id = 0）不属于任何访问密钥，没有可筛选的目标。
 function accessKeyFilterable(log: RequestLogItemDto): boolean {
   return log.access_key.id !== 0
+}
+
+function affinityKeyFilterable(log: RequestLogItemDto): boolean {
+  return !isAccessKey.value && log.affinity_key !== null
 }
 
 // 分组名靠 options 反查：查询就绪后仍找不到，才能断定分组已被删除。
@@ -679,23 +712,25 @@ function costLabel(log: RequestLogItemDto): string {
     <AsyncRefreshIndicator :active="logsRefreshing" :label="t('monitor.logs.loading')" />
 
     <SkeletonSurface
-      v-if="logsQuery.isPending.value || initialLoading"
+      v-if="invalidAffinityKey === undefined && (logsQuery.isPending.value || initialLoading)"
       variant="collection"
       :rows="appliedFilters.limit ?? 20"
-      :columns="isAccessKey ? 7 : 9"
+      :columns="isAccessKey ? 7 : 10"
       row-height="72px"
       mobile-row-height="176px"
       :concealed="!initialLoading"
       :label="t('monitor.logs.loading')"
     />
     <QueryFeedback
-      v-else-if="logsQuery.isError.value && !logsQuery.data.value"
+      v-else-if="
+        invalidAffinityKey === undefined && logsQuery.isError.value && !logsQuery.data.value
+      "
       state="error"
       :message="t('monitor.logs.loadFailed')"
       :retry-label="t('common.retry')"
       @retry="logsQuery.refetch()"
     />
-    <template v-else-if="logsQuery.data.value">
+    <template v-else-if="invalidAffinityKey === undefined && logsQuery.data.value">
       <QueryFeedback
         v-if="logsQuery.isError.value"
         state="stale"
@@ -707,7 +742,7 @@ function costLabel(log: RequestLogItemDto): string {
         v-if="collectionTransition"
         variant="collection"
         :rows="skeletonRows"
-        :columns="isAccessKey ? 7 : 9"
+        :columns="isAccessKey ? 7 : 10"
         row-height="72px"
         mobile-row-height="176px"
         :label="t('monitor.logs.loading')"
@@ -724,6 +759,9 @@ function costLabel(log: RequestLogItemDto): string {
           <span v-if="!isAccessKey" role="columnheader">
             {{ t('monitor.logs.columns.accessKey') }}
           </span>
+          <span v-if="!isAccessKey" role="columnheader">{{
+            t('monitor.logs.columns.affinityKey')
+          }}</span>
           <span v-if="!isAccessKey" role="columnheader">{{ t('monitor.logs.columns.route') }}</span>
           <span role="columnheader">{{ t('monitor.logs.columns.modelProtocol') }}</span>
           <span role="columnheader">{{ t('monitor.logs.columns.response') }}</span>
@@ -771,6 +809,26 @@ function costLabel(log: RequestLogItemDto): string {
             >
               {{ accessKeyLabel(log) }}
             </OverflowTooltip>
+          </div>
+          <div
+            v-if="!isAccessKey"
+            class="ledger-record-list__cell logs-list__cell logs-list__affinity-key-cell"
+            role="cell"
+            :data-label="t('monitor.logs.columns.affinityKey')"
+          >
+            <OverflowTooltip
+              v-if="affinityKeyFilterable(log)"
+              as="button"
+              type="button"
+              class="logs-list__affinity-key filterable-value"
+              :content="log.affinity_key ?? ''"
+              :aria-label="t('monitor.logs.filterAffinityKey', { value: log.affinity_key })"
+              data-testid="logs-affinity-key-filter"
+              @click="filterByAffinityKey(log.affinity_key)"
+            >
+              {{ log.affinity_key }}
+            </OverflowTooltip>
+            <code v-else class="logs-list__affinity-key logs-list__state--warning">—</code>
           </div>
           <div
             v-if="!isAccessKey"
@@ -1036,8 +1094,8 @@ function costLabel(log: RequestLogItemDto): string {
     </template>
 
     <LogDetailDrawer
-      :open="Boolean(selectedRequestID)"
-      :request-id="selectedRequestID"
+      :open="Boolean(selectedRequestID) && invalidAffinityKey === undefined"
+      :request-id="invalidAffinityKey === undefined ? selectedRequestID : undefined"
       :self-scoped="isAccessKey"
       :group-names="groupNames"
       :channels="channelsByID"
@@ -1055,8 +1113,8 @@ function costLabel(log: RequestLogItemDto): string {
 
 .logs-list {
   /* 时间定长、Token/耗时/成本按实际内容重算，压出的宽度装下新增的密钥列。 */
-  --ledger-record-list-grid: 96px minmax(96px, 0.62fr) minmax(132px, 0.86fr) minmax(180px, 1.2fr)
-    96px minmax(76px, 0.42fr) minmax(104px, 0.6fr) 100px 34px;
+  --ledger-record-list-grid: 96px minmax(96px, 0.62fr) minmax(132px, 0.86fr) minmax(132px, 0.86fr)
+    minmax(180px, 1.2fr) 96px minmax(76px, 0.42fr) minmax(104px, 0.6fr) 100px 34px;
   --ledger-record-list-column-gap: 16px;
   --ledger-record-list-record-min-height: 72px;
   --ledger-record-list-record-padding: 10px 0;
@@ -1097,6 +1155,35 @@ function costLabel(log: RequestLogItemDto): string {
 .logs-list__time {
   font-family: var(--font-mono);
   font-size: var(--text-label-xs);
+}
+
+.logs-list__affinity-key {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-label-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logs-list__affinity-key-cell {
+  align-content: center;
+}
+
+.logs-list__affinity-key.filterable-value {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-action);
+  padding: 0;
+  text-align: left;
+}
+
+.logs-list__affinity-key.filterable-value:hover {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .logs-list__inline,
@@ -1260,8 +1347,8 @@ function costLabel(log: RequestLogItemDto): string {
 @media (max-width: 1080px) {
   .logs-list {
     --ledger-record-list-column-gap: 10px;
-    --ledger-record-list-grid: 92px minmax(88px, 0.6fr) minmax(118px, 0.82fr) minmax(160px, 1.15fr)
-      92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px;
+    --ledger-record-list-grid: 92px minmax(88px, 0.6fr) minmax(118px, 0.82fr) minmax(118px, 0.82fr)
+      minmax(160px, 1.15fr) 92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px;
   }
 }
 

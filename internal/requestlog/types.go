@@ -92,6 +92,7 @@ type ListQuery struct {
 	FailureCategory     telemetry.FailureCategory
 	AttemptErrorCode    string
 	RetryState          RetryState
+	AffinityKey         string
 	RetryCountMin       *int
 	RetryCountMax       *int
 	FirstResponseMinMS  *int64
@@ -135,6 +136,7 @@ type Record struct {
 	ErrorSummary            string
 	AffinityHit             bool
 	ContinuityHit           bool
+	AffinityKey             string
 	AffinitySource          string
 	AffinityState           string
 	Reasoning               reasoning.Config

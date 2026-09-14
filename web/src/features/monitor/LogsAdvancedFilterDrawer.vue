@@ -136,6 +136,26 @@ function update(field: keyof LogFilterDraft, value: string): void {
               />
             </template>
           </FormField>
+          <FormField
+            v-if="!selfScoped"
+            id="logs-affinity-key"
+            :label="t('monitor.logs.filters.affinityKey')"
+            size="compact"
+            :error="error('affinity_key')"
+          >
+            <template #default="{ describedBy, invalid }">
+              <input
+                id="logs-affinity-key"
+                :value="draft.affinity_key"
+                class="logs-advanced__mono"
+                autocomplete="off"
+                spellcheck="false"
+                :aria-describedby="describedBy"
+                :aria-invalid="invalid || undefined"
+                @input="update('affinity_key', ($event.target as HTMLInputElement).value)"
+              />
+            </template>
+          </FormField>
           <FormField id="logs-protocol" :label="t('monitor.logs.filters.protocol')" size="compact">
             <AppSelect
               id="logs-protocol"
