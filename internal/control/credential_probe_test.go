@@ -67,10 +67,11 @@ func (executor *credentialProbeTestExecutor) recordedCalls() []execution.Attempt
 
 func successfulCredentialProbeResult() execution.AttemptResult {
 	return execution.AttemptResult{
-		DispatchState:   execution.DispatchMaybeSent,
-		ResponseStarted: true,
-		StatusCode:      http.StatusOK,
-		Header:          http.Header{},
+		DispatchState:      execution.DispatchMaybeSent,
+		ResponseStarted:    true,
+		StatusCode:         http.StatusOK,
+		Header:             http.Header{},
+		ProbeAnswerPresent: true,
 	}
 }
 
@@ -126,8 +127,8 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 		t.Fatal(err)
 	}
 	if envelope.Code != 0 || envelope.Data.Outcome != ProbeOutcomePassed ||
-		envelope.Data.Model != "gpt-4o" || envelope.Data.Protocol != protocol.OpenAICompletions ||
-		envelope.Data.Reason != nil || envelope.Data.CanRestore ||
+		envelope.Data.Model != "gpt-4o" || envelope.Data.Protocol != protocol.OpenAIResponses ||
+		envelope.Data.Reason != nil || envelope.Data.Recovered ||
 		envelope.Data.TestedAtMS != time.Date(2026, time.August, 29, 12, 30, 0, 0, time.UTC).UnixMilli() ||
 		envelope.Data.LatencyMS < 0 {
 		t.Fatalf("probe envelope = %#v", envelope)
@@ -139,7 +140,7 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	call := calls[0]
 	if call.Credential.ID != credentials[0].ID || call.Operation != execution.OperationProbe ||
 		call.ClientModel != "gpt-4o" || call.UpstreamModel != "gpt-4o" ||
-		call.ClientProtocol != protocol.OpenAICompletions {
+		call.ClientProtocol != protocol.OpenAIResponses {
 		t.Fatalf("probe attempt = %#v", call)
 	}
 	var canonical struct {
@@ -153,17 +154,12 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	}
 }
 
-func TestGroupCredentialProbeUsesExplicitValidationModel(t *testing.T) {
+func TestGroupCredentialProbeUsesFirstConfiguredModelAndContractBudget(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "probe-explicit-secret")
+	groupID := createGroupWithCredentials(t, fixture, "probe-first-model-secret")
 	var credential models.Credential
 	if err := fixture.db.Where("group_id = ?", groupID).Take(&credential).Error; err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-		ValidationModel: optionalField[string]{Set: true, Value: " explicit-probe-model "},
-	}); err != nil {
 		t.Fatal(err)
 	}
 	executor := &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
@@ -173,27 +169,29 @@ func TestGroupCredentialProbeUsesExplicitValidationModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Model != "explicit-probe-model" || response.Outcome != ProbeOutcomePassed {
+	if response.Model != "gpt-4o" || response.Outcome != ProbeOutcomePassed ||
+		response.Protocol != protocol.OpenAIResponses {
 		t.Fatalf("probe response = %#v", response)
 	}
 	calls := executor.recordedCalls()
-	if len(calls) != 1 || calls[0].UpstreamModel != "explicit-probe-model" {
+	if len(calls) != 1 || calls[0].UpstreamModel != "gpt-4o" ||
+		calls[0].ClientProtocol != protocol.OpenAIResponses {
 		t.Fatalf("probe calls = %#v", calls)
+	}
+	if calls[0].ProbeMaxOutputTokens < 3 {
+		t.Fatalf("probe budget = %d, want at least 3", calls[0].ProbeMaxOutputTokens)
 	}
 }
 
-func TestGroupCredentialProbeFallsBackToEmbeddingsAndReportsProtocol(t *testing.T) {
+func TestGroupCredentialProbeDoesNotFallBackToEmbeddings(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "probe-embeddings-secret")
+	groupID := createGroupWithCredentials(t, fixture, "probe-no-fallback-secret")
 	var credential models.Credential
 	if err := fixture.db.Where("group_id = ?", groupID).Take(&credential).Error; err != nil {
 		t.Fatal(err)
 	}
 	executor := &credentialProbeTestExecutor{execute: func(spec execution.AttemptSpec) execution.AttemptResult {
-		if spec.ClientProtocol == protocol.OpenAIEmbeddings {
-			return successfulCredentialProbeResult()
-		}
 		result := failedCredentialProbeResult(
 			http.StatusNotFound,
 			execution.ErrorKindHTTP,
@@ -208,18 +206,13 @@ func TestGroupCredentialProbeFallsBackToEmbeddingsAndReportsProtocol(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Outcome != ProbeOutcomePassed ||
-		response.Protocol != protocol.OpenAIEmbeddings {
+	if response.Outcome != ProbeOutcomeFailed || response.Reason == nil ||
+		*response.Reason != ProbeReasonModelUnavailable || response.Protocol != protocol.OpenAIResponses {
 		t.Fatalf("probe response = %#v", response)
 	}
 	calls := executor.recordedCalls()
-	if len(calls) != 2 ||
-		calls[0].ClientProtocol != protocol.OpenAICompletions ||
-		calls[1].ClientProtocol != protocol.OpenAIEmbeddings ||
-		calls[0].RequestID != calls[1].RequestID ||
-		calls[0].AttemptID == calls[1].AttemptID ||
-		calls[0].Sequence != 1 || calls[1].Sequence != 2 {
-		t.Fatalf("probe calls = %#v", calls)
+	if len(calls) != 1 || calls[0].ClientProtocol != protocol.OpenAIResponses {
+		t.Fatalf("probe must execute exactly one declared protocol, calls = %#v", calls)
 	}
 }
 
@@ -262,16 +255,17 @@ func TestGroupCredentialProbeHTTPReturnsCompletedUpstreamFailureAsData(t *testin
 	}
 }
 
-func TestGroupCredentialProbeDoesNotMutateDisabledCooldownOrBlacklistedState(t *testing.T) {
+func TestGroupCredentialProbeRecoversBlacklistedCredentialImmediately(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name           string
-		prepare        func(t *testing.T, fixture serviceFixture, groupID, credentialID uint)
-		wantCanRestore bool
+		name          string
+		prepare       func(t *testing.T, fixture serviceFixture, credentialID uint)
+		wantRecovered bool
+		wantMutated   bool
 	}{
 		{
 			name: "cooldown",
-			prepare: func(t *testing.T, fixture serviceFixture, _, credentialID uint) {
+			prepare: func(t *testing.T, fixture serviceFixture, credentialID uint) {
 				t.Helper()
 				if !fixture.registry.SetCooldown(credentialID, time.Now().Add(time.Hour)) {
 					t.Fatal("SetCooldown() = false")
@@ -280,56 +274,70 @@ func TestGroupCredentialProbeDoesNotMutateDisabledCooldownOrBlacklistedState(t *
 		},
 		{
 			name: "blacklisted",
-			prepare: func(t *testing.T, fixture serviceFixture, _, credentialID uint) {
+			prepare: func(t *testing.T, fixture serviceFixture, credentialID uint) {
 				t.Helper()
 				if _, ok := fixture.registry.IncrFailure(credentialID); !ok || !fixture.registry.SetBlacklisted(credentialID) {
 					t.Fatal("failed to blacklist credential")
 				}
-				fixture.stats.RecordFailure(
-					credentialID,
-					health.FailureCategoryInvalidKey,
-					http.StatusUnauthorized,
-					time.Now(),
-				)
+				fixture.stats.RecordFailure(credentialID, health.FailureCategoryInvalidKey, http.StatusUnauthorized, time.Now())
 			},
-			wantCanRestore: true,
+			wantRecovered: true,
+			wantMutated:   true,
 		},
 	}
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			fixture := newServiceFixture(t)
 			groupID := createGroupWithCredentials(t, fixture, "probe-state-secret")
-			var credential models.Credential
-			if err := fixture.db.Where("group_id = ?", groupID).Take(&credential).Error; err != nil {
-				t.Fatal(err)
-			}
-			test.prepare(t, fixture, groupID, credential.ID)
+			credential := takeGroupCredential(t, fixture, groupID)
+			test.prepare(t, fixture, credential.ID)
 			beforeEntries, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
 			if err != nil {
 				t.Fatal(err)
 			}
-			observedAt := time.Now()
-			beforeStats := fixture.stats.Snapshot(credential.ID, observedAt)
+			beforeStats := fixture.stats.Snapshot(credential.ID, time.Now())
 			fixture.service.executor = &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
 
 			response, err := fixture.service.TestGroupCredential(t.Context(), groupID, credential.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if response.Outcome != ProbeOutcomePassed || response.CanRestore != test.wantCanRestore {
-				t.Fatalf("probe response = %#v", response)
+			encoded, err := json.Marshal(response)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var payload map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &payload); err != nil {
+				t.Fatal(err)
+			}
+			var recovered bool
+			if raw, exists := payload["recovered"]; exists {
+				if err := json.Unmarshal(raw, &recovered); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if response.Outcome != ProbeOutcomePassed || recovered != test.wantRecovered {
+				t.Fatalf("probe response = %#v, recovered=%t", response, recovered)
 			}
 			afterEntries, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(afterEntries, beforeEntries) {
-				t.Fatalf("registry mutated by probe:\nbefore=%#v\nafter=%#v", beforeEntries, afterEntries)
+			if test.wantMutated {
+				if afterEntries[0].Blacklisted || afterEntries[0].FailureCount != 0 {
+					t.Fatalf("recovered credential = %#v", afterEntries[0])
+				}
+			} else if !reflect.DeepEqual(afterEntries, beforeEntries) {
+				t.Fatalf("non-recovering probe mutated registry: before=%#v after=%#v", beforeEntries, afterEntries)
 			}
-			if afterStats := fixture.stats.Snapshot(credential.ID, observedAt); !reflect.DeepEqual(afterStats, beforeStats) {
-				t.Fatalf("stats mutated by probe: before=%#v after=%#v", beforeStats, afterStats)
+			if test.wantMutated {
+				stats := fixture.stats.Snapshot(credential.ID, time.Now())
+				if stats.ConsecutiveFailure != 0 || stats.ConsecutiveProblem != 0 {
+					t.Fatalf("recovered stats = %#v", stats)
+				}
+			} else if afterStats := fixture.stats.Snapshot(credential.ID, time.Now()); !reflect.DeepEqual(afterStats, beforeStats) {
+				t.Fatalf("non-recovering probe mutated stats: before=%#v after=%#v", beforeStats, afterStats)
 			}
 		})
 	}
@@ -341,18 +349,6 @@ func TestGroupCredentialProbeRevokesRestoreEligibilityWhenTargetChangesDuringPro
 		name   string
 		mutate func(t *testing.T, fixture serviceFixture, groupID uint)
 	}{
-		{
-			name: "validation model",
-			mutate: func(t *testing.T, fixture serviceFixture, groupID uint) {
-				t.Helper()
-				_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-					ValidationModel: optionalField[string]{Set: true, Value: "changed-probe-model"},
-				})
-				if err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
 		{
 			name: "header rules",
 			mutate: func(t *testing.T, fixture serviceFixture, groupID uint) {
@@ -378,6 +374,28 @@ func TestGroupCredentialProbeRevokesRestoreEligibilityWhenTargetChangesDuringPro
 						Mode: outboundproxy.ModeCustom,
 						URL:  "http://changed-probe-proxy.example:8080",
 					}},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "credential auth state",
+			mutate: func(t *testing.T, fixture serviceFixture, groupID uint) {
+				t.Helper()
+				credential := takeGroupCredential(t, fixture, groupID)
+				if !fixture.registry.SetCredentialAuthState(credential.ID, state.CredentialAuthStateReauthorizationRequired) {
+					t.Fatal("SetCredentialAuthState() = false")
+				}
+			},
+		},
+		{
+			name: "tested model removed",
+			mutate: func(t *testing.T, fixture serviceFixture, groupID uint) {
+				t.Helper()
+				_, err := fixture.service.UpdateGroupModels(t.Context(), groupID, GroupModelsUpdateRequest{
+					Models: optionalGroupModels{Set: true, Values: []GroupModel{}},
 				})
 				if err != nil {
 					t.Fatal(err)
@@ -433,173 +451,8 @@ func TestGroupCredentialProbeRevokesRestoreEligibilityWhenTargetChangesDuringPro
 			if err != nil {
 				t.Fatal(err)
 			}
-			if response.Outcome != ProbeOutcomePassed || response.CanRestore || response.RestoreProof != nil {
+			if response.Outcome != ProbeOutcomePassed || response.Recovered {
 				t.Fatalf("probe response after target change = %#v", response)
-			}
-		})
-	}
-}
-
-func TestRestoreTestedGroupCredentialRequiresMatchingProofAndRestoresAtomically(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "probe-restore-secret")
-	var credential models.Credential
-	if err := fixture.db.Where("group_id = ?", groupID).Take(&credential).Error; err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := fixture.registry.IncrFailure(credential.ID); !ok ||
-		!fixture.registry.SetBlacklisted(credential.ID) {
-		t.Fatal("failed to blacklist credential")
-	}
-	observedAt := time.Now()
-	if !fixture.registry.SetCooldown(credential.ID, observedAt.Add(time.Hour)) {
-		t.Fatal("failed to set credential cooldown")
-	}
-	fixture.stats.RecordFailure(
-		credential.ID,
-		health.FailureCategoryInvalidKey,
-		http.StatusUnauthorized,
-		observedAt,
-	)
-	fixture.service.executor = &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
-	probe, err := fixture.service.TestGroupCredential(t.Context(), groupID, credential.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !probe.CanRestore || probe.RestoreProof == nil || *probe.RestoreProof == "" {
-		t.Fatalf("probe response = %#v, want restore proof", probe)
-	}
-
-	before, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fixture.service.RestoreTestedGroupCredential(
-		t.Context(), groupID, credential.ID, "forged-restore-proof",
-	); !errors.Is(err, app_errors.ErrCredentialVersionConflict) {
-		t.Fatalf("forged proof error = %v, want credential version conflict", err)
-	}
-	afterForged, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(afterForged, before) {
-		t.Fatalf("forged proof mutated registry: before=%#v after=%#v", before, afterForged)
-	}
-
-	restored, err := fixture.service.RestoreTestedGroupCredential(
-		t.Context(), groupID, credential.ID, *probe.RestoreProof,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if restored.EffectiveStatus != "available" {
-		t.Fatalf("restored credential = %#v", restored)
-	}
-	after, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if after[0].Blacklisted || after[0].FailureCount != 0 ||
-		fixture.stats.Snapshot(credential.ID, observedAt) != (health.CredentialStats{Failure: 1, Problem: 1}) {
-		t.Fatalf("restore state = %#v stats=%#v", after[0], fixture.stats.Snapshot(credential.ID, observedAt))
-	}
-}
-
-func TestRestoreTestedGroupCredentialRejectsStaleProofWithoutMutation(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name   string
-		mutate func(t *testing.T, fixture serviceFixture, groupID, credentialID uint)
-	}{
-		{
-			name: "target signature",
-			mutate: func(t *testing.T, fixture serviceFixture, groupID, _ uint) {
-				t.Helper()
-				_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-					ValidationModel: optionalField[string]{Set: true, Value: "new-restore-model"},
-				})
-				if err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
-		{
-			name: "credential ref",
-			mutate: func(t *testing.T, fixture serviceFixture, groupID, credentialID uint) {
-				t.Helper()
-				entries, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credentialID})
-				if err != nil {
-					t.Fatal(err)
-				}
-				entries[0].Version++
-				if err := fixture.db.Model(&models.Credential{}).
-					Where("id = ? AND group_id = ?", credentialID, groupID).
-					Update("secret_version", entries[0].Version).Error; err != nil {
-					t.Fatal(err)
-				}
-				if err := fixture.registry.RestoreGroupCredentialEntriesExact(groupID, entries); err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
-		{
-			name: "failure generation",
-			mutate: func(t *testing.T, fixture serviceFixture, _, credentialID uint) {
-				t.Helper()
-				if _, ok := fixture.registry.IncrFailure(credentialID); !ok {
-					t.Fatal("IncrFailure() = false")
-				}
-			},
-		},
-		{
-			name: "cooldown",
-			mutate: func(t *testing.T, fixture serviceFixture, _, credentialID uint) {
-				t.Helper()
-				if !fixture.registry.SetCooldown(credentialID, time.Now().Add(time.Hour)) {
-					t.Fatal("SetCooldown() = false")
-				}
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			fixture := newServiceFixture(t)
-			groupID := createGroupWithCredentials(t, fixture, "stale-proof-secret")
-			var credential models.Credential
-			if err := fixture.db.Where("group_id = ?", groupID).Take(&credential).Error; err != nil {
-				t.Fatal(err)
-			}
-			if _, ok := fixture.registry.IncrFailure(credential.ID); !ok ||
-				!fixture.registry.SetBlacklisted(credential.ID) {
-				t.Fatal("failed to blacklist credential")
-			}
-			fixture.service.executor = &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
-			probe, err := fixture.service.TestGroupCredential(t.Context(), groupID, credential.ID)
-			if err != nil || probe.RestoreProof == nil {
-				t.Fatalf("probe = %#v, error = %v", probe, err)
-			}
-			test.mutate(t, fixture, groupID, credential.ID)
-			before, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			_, err = fixture.service.RestoreTestedGroupCredential(
-				t.Context(), groupID, credential.ID, *probe.RestoreProof,
-			)
-			if !errors.Is(err, app_errors.ErrCredentialVersionConflict) {
-				t.Fatalf("stale proof error = %v, want credential version conflict", err)
-			}
-			after, snapshotErr := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
-			if snapshotErr != nil {
-				t.Fatal(snapshotErr)
-			}
-			if !reflect.DeepEqual(after, before) {
-				t.Fatalf("stale proof mutated registry: before=%#v after=%#v", before, after)
 			}
 		})
 	}
@@ -646,6 +499,31 @@ func TestClassifyCredentialProbeResultUsesStableSafeOutcomes(t *testing.T) {
 		wantReason  *ProbeReason
 	}{
 		{name: "passed", result: successfulCredentialProbeResult(), wantOutcome: ProbeOutcomePassed},
+		{
+			name: "http success without generated text",
+			result: execution.AttemptResult{
+				DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+				StatusCode: http.StatusOK, Header: http.Header{},
+			},
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonNoAnswer),
+		},
+		{
+			name: "http success with unparseable body",
+			result: execution.AttemptResult{
+				DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+				StatusCode: http.StatusOK, Header: http.Header{}, ProbeResponseInvalid: true,
+			},
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInvalidResponse),
+		},
+		{
+			name: "http success with unparseable body and text",
+			result: execution.AttemptResult{
+				DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+				StatusCode: http.StatusOK, Header: http.Header{},
+				ProbeAnswerPresent: true, ProbeResponseInvalid: true,
+			},
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInvalidResponse),
+		},
 		{
 			name:        "invalid credential hint",
 			result:      failedCredentialProbeResult(http.StatusForbidden, execution.ErrorKindHTTP, execution.FailureHintInvalidCredential),

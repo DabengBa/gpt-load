@@ -84,34 +84,22 @@ func TestRerankRuntimePreservesNativeWireAcrossSupportedChannels(t *testing.T) {
 	}
 }
 
-func TestRerankProbeUsesMinimalBodyAndRejectsInvalidSuccess(t *testing.T) {
-	for _, response := range []string{`{"results":[{"index":0,"relevance_score":0.8}]}`, `{"results":[]}`, `{"choices":[]}`} {
-		t.Run(response, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				body, err := io.ReadAll(r.Body)
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				var object map[string]json.RawMessage
-				if json.Unmarshal(body, &object) != nil || len(object) != 4 || string(object["query"]) != `"ping"` || string(object["documents"]) != `["ping"]` || string(object["top_n"]) != "1" {
-					t.Errorf("probe=%s", body)
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = io.WriteString(w, response)
-			}))
-			defer server.Close()
-			spec := rerankSpec(channel.OpenAICompatible, server.URL+"/v1")
-			spec.Operation = execution.OperationProbe
-			spec.Method, spec.Path, spec.RawQuery = "", "", ""
-			spec.Body = nil
-			runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true})
-			result := runtime.Execute(context.Background(), freezeTestAttempt(spec))
-			wantSuccess := strings.Contains(response, "relevance_score")
-			if err := result.Validate(); err != nil || (result.Error == nil) != wantSuccess {
-				t.Fatalf("result=%+v error=%+v contract=%v", result, result.Error, err)
-			}
-		})
+func TestRerankProbeIsRejectedAtTheGenerativeProbeBoundary(t *testing.T) {
+	t.Parallel()
+
+	// Rerank must never be probed: the request-shape contract closes the
+	// boundary before any upstream request is built.
+	spec := rerankSpec(channel.OpenAICompatible, "https://rerank.example/v1")
+	spec.Operation = execution.OperationProbe
+	spec.Method, spec.Path, spec.RawQuery = "", "", ""
+	spec.Body = nil
+	runtime := newProtocolTestRuntime(t, testRuntimeOptions{})
+	result := runtime.Execute(context.Background(), freezeTestAttempt(spec))
+	if err := result.Validate(); err != nil {
+		t.Fatalf("result validation: %v; result=%+v", err, result)
+	}
+	if result.Error == nil || result.DispatchState != execution.DispatchNotSent {
+		t.Fatalf("rerank probe must be rejected before dispatch: %+v", result)
 	}
 }
 

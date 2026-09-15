@@ -10,8 +10,7 @@ import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import { formatLocalInstant } from '@/lib/format'
 
-type RestoreError = 'failed' | 'conflict' | 'conflict_refresh_failed'
-type CredentialTestDialogResult = Omit<CredentialTestResultDto, 'restore_proof'>
+type CredentialTestDialogResult = CredentialTestResultDto
 
 const props = defineProps<{
   open: boolean
@@ -19,21 +18,14 @@ const props = defineProps<{
   pending: boolean
   requestFailed: boolean
   result?: CredentialTestDialogResult
-  restorePending: boolean
-  restoreBlocked: boolean
-  restoreError?: RestoreError
 }>()
 const emit = defineEmits<{
   'update:open': [open: boolean]
-  restore: []
   'view-log': [logId: string]
 }>()
 const { locale, n, t } = useI18n()
 
-const busy = computed(() => props.pending || props.restorePending)
-const canRestore = computed(
-  () => props.result?.outcome === 'passed' && props.result.can_restore && !props.restoreBlocked,
-)
+const busy = computed(() => props.pending)
 const resultTone = computed(() => {
   if (props.result?.outcome === 'passed') return 'success' as const
   if (props.result?.outcome === 'failed') return 'danger' as const
@@ -86,6 +78,16 @@ function setOpen(open: boolean): void {
             <dd>{{ t('group.credentials.test.latency', { value: n(result.latency_ms) }) }}</dd>
             <dt>{{ t('group.credentials.test.fields.reason') }}</dt>
             <dd>{{ reasonLabel }}</dd>
+            <dt v-if="result.outcome === 'passed'">
+              {{ t('group.credentials.test.fields.recovered') }}
+            </dt>
+            <dd v-if="result.outcome === 'passed'">
+              {{
+                result.recovered
+                  ? t('group.credentials.test.recovered')
+                  : t('group.credentials.test.alreadyAvailable')
+              }}
+            </dd>
             <dt>{{ t('group.credentials.test.fields.testedAt') }}</dt>
             <dd>{{ formatLocalInstant(result.tested_at_ms, locale) }}</dd>
             <dt>{{ t('monitor.modelProbe.fields.logId') }}</dt>
@@ -104,41 +106,19 @@ function setOpen(open: boolean): void {
               <template v-else>{{ t('monitor.modelProbe.notExecuted') }}</template>
             </dd>
           </dl>
-          <InlineFeedback
-            v-if="result.outcome === 'passed' && result.can_restore && !restoreBlocked"
-            tone="warning"
-            appearance="ledger"
-          >
-            {{ t('group.credentials.test.restorePrompt') }}
-          </InlineFeedback>
-          <InlineFeedback v-if="restoreError" tone="danger" appearance="ledger">
-            {{ t(`group.credentials.test.restoreError.${restoreError}`) }}
+          <InlineFeedback v-if="result.outcome === 'passed'" tone="success" appearance="ledger">
+            {{
+              result.recovered
+                ? t('group.credentials.test.recovered')
+                : t('group.credentials.test.alreadyAvailable')
+            }}
           </InlineFeedback>
         </template>
       </div>
     </template>
 
     <template #footer>
-      <template v-if="canRestore">
-        <AppButton
-          variant="secondary"
-          size="compact"
-          :disabled="restorePending"
-          @click="setOpen(false)"
-        >
-          {{ t('group.credentials.test.keepBlocked') }}
-        </AppButton>
-        <AppButton size="compact" :busy="restorePending" @click="emit('restore')">
-          {{
-            t(
-              restorePending
-                ? 'group.credentials.test.restoring'
-                : 'group.credentials.test.restore',
-            )
-          }}
-        </AppButton>
-      </template>
-      <AppButton v-else variant="secondary" size="compact" :disabled="busy" @click="setOpen(false)">
+      <AppButton variant="secondary" size="compact" :disabled="busy" @click="setOpen(false)">
         {{ t('group.credentials.test.close') }}
       </AppButton>
     </template>

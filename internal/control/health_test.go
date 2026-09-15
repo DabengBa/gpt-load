@@ -88,8 +88,9 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 		{
 			ID: 13, GroupID: 6, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReady,
 			Blacklisted: true, CooldownUntil: now.Add(time.Hour),
-			FailureCount:   3,
-			EncryptedValue: encryptHealthKey(t, fixture, blacklistedPlaintext),
+			BlacklistReleaseAt: now.Add(2 * time.Hour),
+			FailureCount:       3,
+			EncryptedValue:     encryptHealthKey(t, fixture, blacklistedPlaintext),
 		},
 		{
 			ID: 14, GroupID: 7, Version: 1, IdentityGeneration: 14, Fingerprint: "test-14", AuthState: state.CredentialAuthStateReauthorizationRequired,
@@ -168,8 +169,10 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 		got.BlacklistedCredentials[0].LastStatusCode == nil ||
 		*got.BlacklistedCredentials[0].LastStatusCode != 401 ||
 		got.BlacklistedCredentials[0].ConsecutiveProblemCount != 1 ||
-		got.BlacklistedCredentials[0].Recovery.Mode != "validation_probe" ||
-		got.BlacklistedCredentials[0].Recovery.AtMS != nil {
+		!got.BlacklistedCredentials[0].Recovery.Automatic ||
+		got.BlacklistedCredentials[0].Recovery.Mode != "scheduled_release" ||
+		got.BlacklistedCredentials[0].Recovery.AtMS == nil ||
+		*got.BlacklistedCredentials[0].Recovery.AtMS != now.Add(2*time.Hour).UnixMilli() {
 		t.Fatalf("blacklisted details = %#v", got.BlacklistedCredentials)
 	}
 	if got.RequestLog.DroppedTotal != 2 ||
@@ -178,9 +181,19 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 		got.RequestLog.LastRetentionFailureAtMS != nil {
 		t.Fatalf("request log stats = %#v", got.RequestLog)
 	}
+	healthJSON, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("Marshal health = %v", err)
+	}
+	legacyValidationMode := "validation" + "_" + "probe"
+	if strings.Contains(string(healthJSON), legacyValidationMode) ||
+		strings.Contains(string(healthJSON), `"mode":"manual_probe"`) ||
+		!strings.Contains(string(healthJSON), `"automatic":true,"mode":"scheduled_release"`) {
+		t.Fatalf("health JSON recovery contract = %s", healthJSON)
+	}
 }
 
-func TestRuntimeHealthAdvertisesExecutorValidationForChannelCredential(t *testing.T) {
+func TestRuntimeHealthAdvertisesScheduledReleaseForChannelCredential(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	now := healthNow()
@@ -194,7 +207,7 @@ func TestRuntimeHealthAdvertisesExecutorValidationForChannelCredential(t *testin
 		t.Fatalf("Publish() error = %v", err)
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, Blacklisted: true,
+		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, Blacklisted: true, BlacklistReleaseAt: now.Add(time.Hour),
 		EncryptedValue: encryptHealthKey(t, fixture, `{"api_key":"blacklisted-channel-credential"}`),
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -209,8 +222,9 @@ func TestRuntimeHealthAdvertisesExecutorValidationForChannelCredential(t *testin
 		t.Fatalf("blacklisted keys = %#v", got.BlacklistedCredentials)
 	}
 	recovery := got.BlacklistedCredentials[0].Recovery
-	if !recovery.Automatic || recovery.Mode != "validation_probe" || recovery.AtMS != nil {
-		t.Fatalf("recovery = %#v, want automatic validation probe", recovery)
+	if !recovery.Automatic || recovery.Mode != "scheduled_release" || recovery.AtMS == nil ||
+		*recovery.AtMS != now.Add(time.Hour).UnixMilli() {
+		t.Fatalf("recovery = %#v, want automatic scheduled release", recovery)
 	}
 }
 
@@ -644,6 +658,19 @@ func TestRuntimeHealthEndpointRequiresManagementAuthentication(t *testing.T) {
 	initControlI18n(t)
 	fixture := newServiceFixture(t)
 	fixture.service.now = healthNow
+	if _, err := fixture.manager.Publish(state.CompileInput{
+		ChannelRegistry: fixture.channelRegistry,
+		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "manual-health", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "model"}}, Enabled: true}},
+	}); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
+		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, Blacklisted: true,
+		EncryptedValue: encryptHealthKey(t, fixture, `{"api_key":"manual-handler-credential"}`),
+	}}); err != nil {
+		t.Fatalf("Replace() error = %v", err)
+	}
 	engine := gin.New()
 	NewServer(&config.Config{AuthKey: "test-auth-key"}, fixture.service).RegisterRoutes(engine)
 
@@ -674,10 +701,15 @@ func TestRuntimeHealthEndpointRequiresManagementAuthentication(t *testing.T) {
 	}
 	body := success.Body.String()
 	for _, emptyArray := range []string{
-		`"groups":[]`, `"cooldown_credentials":[]`, `"blacklisted_credentials":[]`,
+		`"groups":[`, `"cooldown_credentials":[]`,
 	} {
 		if !strings.Contains(body, emptyArray) {
 			t.Fatalf("response must contain %s: %s", emptyArray, body)
 		}
+	}
+	if !strings.Contains(body, `"automatic":true,"mode":"scheduled_release"`) ||
+		strings.Contains(body, "validation"+"_"+"probe") ||
+		strings.Contains(body, `"mode":"manual_probe"`) {
+		t.Fatalf("response must expose scheduled health recovery: %s", body)
 	}
 }

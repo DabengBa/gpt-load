@@ -30,6 +30,7 @@ func CLIProxyAPI() spec.Module {
 				Required: true, Sensitive: true, Normalizer: spec.NormalizeNonEmpty,
 			}},
 			Provider: spec.ProviderBinding{
+				ProbeContract:  spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:   spec.ProviderMultiProtocolGateway,
 				EndpointPolicy: spec.EndpointRequiredBaseURL,
 			},

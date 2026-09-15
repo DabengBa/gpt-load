@@ -16,7 +16,11 @@ import { RequestCancelledError } from '@/api/errors'
 import { useApiClient } from '@/api/client-context'
 import { useStableLoading } from '@/app/loading-state'
 import { proxyDraftState, proxyOverrideToggleMode } from '@/app/resources/proxy'
-import { channelsQueryOptions, type ChannelFieldDto } from '@/app/resources/channels'
+import {
+  channelsQueryOptions,
+  type ChannelDto,
+  type ChannelFieldDto,
+} from '@/app/resources/channels'
 import {
   cacheGroupSettings,
   groupModelsQueryOptions,
@@ -53,6 +57,7 @@ import {
   createGroupSettingsDraft,
   groupPolicyCountKeys,
   groupTimeoutKeys,
+  preserveChannelParams,
   setGroupConfigOverride,
   setGroupPolicyCountOverride,
   type GroupSettingsDraft,
@@ -140,7 +145,7 @@ const selectedChannel = computed(() =>
   channelsQuery.data.value?.items.find(({ channel_id }) => channel_id === draft.value?.channel_id),
 )
 const channelParamFields = computed<ChannelFieldDto[]>(() =>
-  saved.value?.connection_type === 'subscription'
+  selectedChannel.value?.connection.type === 'subscription'
     ? []
     : (selectedChannel.value?.param_fields ?? []),
 )
@@ -360,6 +365,18 @@ function updateParam(key: string, value: string | null): void {
   if (value === null) delete params[key]
   else params[key] = value
   draft.value = { ...draft.value, params }
+}
+
+function selectChannel(channel: ChannelDto): void {
+  if (!draft.value || mutationPending.value) return
+  const currentParams = draft.value.params
+  const params = preserveChannelParams(currentParams, channel.param_fields)
+  draft.value = {
+    ...draft.value,
+    channel_id: channel.channel_id,
+    connection_type: channel.connection.type,
+    params,
+  }
 }
 
 function setTimeoutOverride(key: GroupTimeoutKey, enabled: boolean): void {
@@ -619,12 +636,14 @@ onBeforeUnmount(() => {
             :show-description="!unified"
             :unified="unified"
             :channel-id="draft.channel_id"
+            :channels="channelsQuery.data.value?.items ?? []"
+            :selected-channel="selectedChannel ?? null"
+            :channels-loading="channelsQuery.isFetching.value"
+            :channels-error="channelsQuery.isError.value"
             :param-fields="channelParamFields"
             :params="draft.params"
             :name="draft.name"
-            :validation-model="draft.validation_model"
             :provider-url="draft.provider_url"
-            :models="modelsQuery.data.value?.items ?? []"
             :price-multiplier="draft.price_multiplier"
             :enabled="draft.enabled"
             :pending="mutationPending"
@@ -632,8 +651,9 @@ onBeforeUnmount(() => {
             :name-error="nameError"
             :param-errors="paramErrors"
             @update:param="updateParam"
+            @update:channel="selectChannel"
+            @retry:channels="channelsQuery.refetch()"
             @update:name="draft.name = $event"
-            @update:validation-model="draft.validation_model = $event"
             @update:provider-url="draft.provider_url = $event"
             @update:price-multiplier="draft.price_multiplier = $event"
             @update:enabled="draft.enabled = $event"

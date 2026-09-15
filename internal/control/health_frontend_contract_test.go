@@ -91,6 +91,32 @@ func TestFrontendHealthAllowlistCoversWireKeys(t *testing.T) {
 	}
 }
 
+// TestFrontendHealthRecoveryProjectorUsesScheduledReleaseMode locks the nested health
+// recovery contract at the backend-owned boundary. It deliberately avoids a second
+// frontend test harness: the Go health tests exercise wire output, while this test
+// verifies the projector's accepted input boundary.
+func TestFrontendHealthRecoveryProjectorUsesScheduledReleaseMode(t *testing.T) {
+	source, err := os.ReadFile(resolveFrontendHealthTS(t))
+	if err != nil {
+		t.Fatalf("read frontend health.ts: %v", err)
+	}
+	text := string(source)
+	for _, required := range []string{
+		"const recoveryModes = ['cooldown_expiry', 'scheduled_release'] as const",
+		"else if (recovery.mode === 'scheduled_release')",
+		"if (!recovery.automatic || cooldownUntilMS !== null)",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("frontend health projector missing recovery contract %q", required)
+		}
+	}
+	for _, retired := range []string{"validation" + "_" + "probe", "configuration" + "_" + "required"} {
+		if strings.Contains(text, retired) {
+			t.Fatalf("frontend health projector exposes retired recovery mode %q", retired)
+		}
+	}
+}
+
 // backendHealthWireKeys 通过反射 runtimeHealthResponse 取得权威后端顶层 JSON 键集合，
 // 忽略 "-" 与带选项的 tag（按逗号切分取首段）。不手抄任何键列表。
 func backendHealthWireKeys(t *testing.T) []string {

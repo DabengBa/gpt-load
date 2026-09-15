@@ -2,23 +2,17 @@ package control
 
 import (
 	"context"
-	"math/rand/v2"
 	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
 
-	"gpt-load/internal/channel"
-	"gpt-load/internal/execution"
-	"gpt-load/internal/health"
-	"gpt-load/internal/platform/encryption"
 	"gpt-load/internal/state"
 )
 
 const (
-	defaultValidationInterval = 10 * time.Minute
-	maxValidationJitter       = 3 * time.Minute
-	retentionInterval         = time.Hour
+	retentionInterval        = time.Hour
+	blacklistReleaseInterval = time.Minute
 )
 
 type credentialMutationCoordinator interface {
@@ -61,43 +55,30 @@ func (ticker standardRuntimeTicker) Stop() {
 }
 
 type Runtime struct {
-	validator          validationSweep
-	requestLogCleaner  RequestLogCleaner
-	stageCleaner       credentialStageCleaner
-	operationRecovery  operationRecoveryRuntime
-	catalogSync        catalogSyncRuntime
-	oauthCallback      *OAuthCallbackManager
-	manager            *state.Manager
-	autoWeightInterval time.Duration
-	validationInterval time.Duration
-	validationJitter   func() time.Duration
-	now                func() time.Time
-	newTicker          func(time.Duration) runtimeTicker
+	requestLogCleaner RequestLogCleaner
+	stageCleaner      credentialStageCleaner
+	operationRecovery operationRecoveryRuntime
+	catalogSync       catalogSyncRuntime
+	oauthCallback     *OAuthCallbackManager
+	registry          *state.CredentialRegistry
+	healthStats       interface{ ClearProblemState(uint) }
+	now               func() time.Time
+	newTicker         func(time.Duration) runtimeTicker
 }
 
 func NewRuntime(
 	registry *state.CredentialRegistry,
-	stats *health.StatsStore,
-	mutations *health.MutationCoordinator,
-	manager *state.Manager,
-	encryptionService encryption.Service,
-	channelRegistry *channel.Registry,
-	executor execution.Executor,
 	requestLogCleaner RequestLogCleaner,
 	operationRecovery *Service,
 	catalogSync *CatalogSyncCoordinator,
 ) *Runtime {
 	runtime := &Runtime{
-		requestLogCleaner:  requestLogCleaner,
-		stageCleaner:       operationRecovery,
-		operationRecovery:  operationRecovery,
-		catalogSync:        catalogSync,
-		manager:            manager,
-		validationInterval: defaultValidationInterval,
-		validationJitter: func() time.Duration {
-			return time.Duration(rand.Int64N(int64(maxValidationJitter) + 1))
-		},
-		now: time.Now,
+		requestLogCleaner: requestLogCleaner,
+		stageCleaner:      operationRecovery,
+		operationRecovery: operationRecovery,
+		catalogSync:       catalogSync,
+		registry:          registry,
+		now:               time.Now,
 		newTicker: func(interval time.Duration) runtimeTicker {
 			return standardRuntimeTicker{ticker: time.NewTicker(interval)}
 		},
@@ -105,118 +86,46 @@ func NewRuntime(
 	if operationRecovery != nil {
 		runtime.oauthCallback = operationRecovery.oauthCallback
 	}
-	runtime.validator = newValidationWorker(
-		manager,
-		registry,
-		stats,
-		mutations,
-		encryptionService,
-		channelRegistry,
-		executor,
-	)
 	return runtime
 }
 
-func (runtime *Runtime) Run(ctx context.Context) {
-	currentValidationInterval, validationUpdates := runtime.currentValidationSchedule()
-	validationTicker := runtime.newTicker(validationTickerInterval(
-		currentValidationInterval,
-		runtime.validationJitter(),
-	))
+// SetHealthStats connects release maintenance to the shared health window.
+func (runtime *Runtime) SetHealthStats(stats interface{ ClearProblemState(uint) }) {
+	if runtime != nil {
+		runtime.healthStats = stats
+	}
+}
 
+func (runtime *Runtime) Run(ctx context.Context) {
 	var wait sync.WaitGroup
-	wait.Add(1)
-	go func() {
-		defer wait.Done()
-		runtime.runValidation(ctx, validationTicker, currentValidationInterval, validationUpdates)
-	}()
+	if runtime.registry != nil {
+		releaseTicker := runtime.newTicker(blacklistReleaseInterval)
+		wait.Go(func() {
+			runtime.runBlacklistRelease(ctx, releaseTicker)
+		})
+	}
 	if runtime.requestLogCleaner != nil || runtime.stageCleaner != nil {
 		retentionTicker := runtime.newTicker(retentionInterval)
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			runtime.runRetention(ctx, retentionTicker)
-		}()
+		})
 	}
 	if runtime.operationRecovery != nil {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			runtime.operationRecovery.RunOperationRecovery(ctx)
-		}()
+		})
 	}
 	if runtime.catalogSync != nil {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			runtime.catalogSync.Run(ctx)
-		}()
+		})
 	}
 	if runtime.oauthCallback != nil {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			runtime.oauthCallback.Run(ctx)
-		}()
+		})
 	}
 	wait.Wait()
-}
-
-func (runtime *Runtime) runValidation(
-	ctx context.Context,
-	ticker runtimeTicker,
-	interval time.Duration,
-	updates <-chan struct{},
-) {
-	defer func() { ticker.Stop() }()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-updates:
-			nextInterval, nextUpdates := runtime.currentValidationSchedule()
-			updates = nextUpdates
-			if nextInterval == interval {
-				continue
-			}
-			ticker.Stop()
-			interval = nextInterval
-			ticker = runtime.newTicker(validationTickerInterval(interval, runtime.validationJitter()))
-		case <-ticker.C():
-			if ctx.Err() != nil {
-				return
-			}
-			if runtime.validator != nil {
-				runtime.validator.Validate(ctx)
-			}
-		}
-	}
-}
-
-func validationTickerInterval(interval, jitter time.Duration) time.Duration {
-	const maxDuration = time.Duration(1<<63 - 1)
-	if jitter <= 0 {
-		return interval
-	}
-	if interval > maxDuration-jitter {
-		return maxDuration
-	}
-	return interval + jitter
-}
-
-func (runtime *Runtime) currentValidationSchedule() (time.Duration, <-chan struct{}) {
-	interval := runtime.validationInterval
-	if interval <= 0 {
-		interval = defaultValidationInterval
-	}
-	if runtime.manager == nil {
-		return interval, nil
-	}
-	snapshot, updates := runtime.manager.CurrentWithUpdates()
-	if snapshot != nil && snapshot.Settings.ValidationInterval > 0 {
-		interval = snapshot.Settings.ValidationInterval
-	}
-	return interval, updates
 }
 
 func (runtime *Runtime) runRetention(ctx context.Context, ticker runtimeTicker) {
@@ -247,4 +156,36 @@ func (runtime *Runtime) sweepRetention(ctx context.Context, now time.Time) {
 			logrus.WithError(err).WithField("event", "control.credential_stage_cleanup_failed").Warn("credential stage cleanup failed")
 		}
 	}
+}
+
+// runBlacklistRelease applies scheduled credential and route-entry blacklist
+// releases using only in-memory registry state. It never calls an upstream.
+func (runtime *Runtime) runBlacklistRelease(ctx context.Context, ticker runtimeTicker) {
+	defer ticker.Stop()
+	if ctx.Err() != nil {
+		return
+	}
+	runtime.releaseExpiredBlacklists(runtime.now())
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C():
+			if ctx.Err() != nil {
+				return
+			}
+			runtime.releaseExpiredBlacklists(runtime.now())
+		}
+	}
+}
+
+func (runtime *Runtime) releaseExpiredBlacklists(now time.Time) {
+	if runtime.registry == nil {
+		return
+	}
+	runtime.registry.ReleaseExpiredBlacklists(now, func(credentialID uint) {
+		if runtime.healthStats != nil {
+			runtime.healthStats.ClearProblemState(credentialID)
+		}
+	})
 }

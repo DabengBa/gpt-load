@@ -1,9 +1,11 @@
 import type { ApiClient } from '@/api/client'
-import { enabledDataProtocols } from '@/api/control/protocols'
+import { InvalidResponseError } from '@/api/errors'
+import { enabledDataProtocols, type ProtocolValue } from '@/api/control/protocols'
 
 import {
   assertNoSecretLikeFields,
   projectArray,
+  projectBoolean,
   projectEnum,
   projectEpochMilliseconds,
   projectNullableRequestID,
@@ -21,6 +23,8 @@ export type ModelProbeReason =
   | 'timeout'
   | 'upstream_error'
   | 'probe_incompatible'
+  | 'no_answer'
+  | 'invalid_response'
   | 'unknown'
   | 'target_unavailable'
   | 'no_schedulable_credential'
@@ -36,12 +40,13 @@ export interface ModelProbeResultDto {
   model: string
   outcome: ModelProbeOutcome
   reason: ModelProbeReason | null
-  protocol: string | null
+  protocol: ProtocolValue | null
   route_mode: 'native' | 'converted' | null
   status_code: number | null
   latency_ms: number | null
   credential_id: number | null
   credential_label: string | null
+  recovered: boolean
   log_id: string | null
   tested_at_ms: number
 }
@@ -54,6 +59,8 @@ const probeReasons = [
   'timeout',
   'upstream_error',
   'probe_incompatible',
+  'no_answer',
+  'invalid_response',
   'unknown',
   'target_unavailable',
   'no_schedulable_credential',
@@ -76,20 +83,29 @@ export const modelProbeResultFields = [
   'latency_ms',
   'credential_id',
   'credential_label',
+  'recovered',
   'log_id',
   'tested_at_ms',
 ] as const satisfies readonly (keyof ModelProbeResultDto)[]
 
 const modelProbeResponseFields = ['results'] as const
 
+function invalidResponse(): never {
+  throw new InvalidResponseError()
+}
+
 export function projectModelProbeResult(value: unknown): ModelProbeResultDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, modelProbeResultFields)
+  const outcome = projectEnum(record.outcome, probeOutcomes)
+  const recovered = projectBoolean(record.recovered)
+  if (recovered && outcome !== 'passed') invalidResponse()
   return {
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
     group_name: projectString(record.group_name, { allowEmpty: true }),
     model: projectString(record.model),
-    outcome: projectEnum(record.outcome, probeOutcomes),
+    outcome,
+
     reason: record.reason === null ? null : projectEnum(record.reason, probeReasons),
     protocol: record.protocol === null ? null : projectEnum(record.protocol, enabledDataProtocols),
     route_mode: record.route_mode === null ? null : projectEnum(record.route_mode, routeModes),
@@ -105,6 +121,7 @@ export function projectModelProbeResult(value: unknown): ModelProbeResultDto {
         : projectSafeInteger(record.credential_id, { minimum: 1 }),
     credential_label:
       record.credential_label === null ? null : projectString(record.credential_label),
+    recovered,
     log_id: projectNullableRequestID(record.log_id),
     tested_at_ms: projectEpochMilliseconds(record.tested_at_ms),
   } satisfies ModelProbeResultDto

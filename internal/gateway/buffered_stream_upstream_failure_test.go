@@ -1,7 +1,9 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,7 +28,182 @@ import (
 	"gpt-load/internal/testutil/encryptiontest"
 )
 
-// 上游以非 2xx 结束、下游只收到心跳时，attempt 既没有流级终止观测也不是正常结束。
+func TestHandlerNativeResponsesBufferedFailureRetriesCandidate(t *testing.T) {
+	const (
+		failedEvent  = "event: response.failed\ndata: {\"type\":\"response.failed\",\"error\":{\"code\":\"internal_error\",\"message\":\"capacity exhausted\"},\"response\":{}}\n\n"
+		createdEvent = "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_2\",\"status\":\"in_progress\",\"output\":[]}}\n\n"
+		successEvent = "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"recovered\"}\n\n" +
+			"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_2\",\"status\":\"completed\",\"output\":[]}}\n\n"
+	)
+
+	for _, test := range []struct {
+		name       string
+		firstEvent string
+		wantRetry  bool
+		budget     int
+	}{
+		{name: "response failed", firstEvent: failedEvent, wantRetry: true, budget: 2},
+		{name: "missing terminal EOF", firstEvent: createdEvent, wantRetry: true, budget: 2},
+		{name: "budget one", firstEvent: failedEvent, budget: 1},
+		{name: "budget two", firstEvent: failedEvent, wantRetry: true, budget: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := make([]execution.AttemptSpec, 0, 2)
+			executor := fakeExecutionExecutor{stream: func(
+				_ context.Context,
+				spec execution.AttemptSpec,
+				sink execution.StreamSink,
+			) execution.StreamResult {
+				calls = append(calls, spec.Clone())
+				if spec.ClientProtocol != protocol.OpenAIResponses ||
+					spec.Operation != execution.OperationResponsesCreate ||
+					spec.RouteMode != execution.RouteNative ||
+					spec.Method != http.MethodPost || spec.Path != "/v1/responses" ||
+					!bytes.Contains(spec.Body, []byte(`"store":false`)) {
+					t.Fatalf("attempt spec = %#v", spec)
+				}
+				if err := sink(execution.StreamEvent{
+					Sequence: 1, Kind: execution.StreamEventReady,
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"text/event-stream"}},
+				}); err != nil {
+					t.Fatalf("ready sink: %v", err)
+				}
+				event := successEvent
+				if len(calls) == 1 {
+					event = test.firstEvent
+				}
+				if err := sink(execution.StreamEvent{
+					Sequence: 2, Kind: execution.StreamEventData, Data: []byte(event),
+				}); err != nil {
+					t.Fatalf("data sink: %v", err)
+				}
+				return execution.StreamResult{
+					DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"text/event-stream"}},
+				}
+			}}
+
+			forwarder := &capturingExecutionForwarder{delegate: NewExecutionForwarder(executor)}
+			engine, _ := newDialectGatewayEngineWithSystemSettings(
+				t, protocol.OpenAIResponses, "gpt-4o", dialect.NewSet(dialect.NewOpenAIResponses()),
+				forwarder, config.Settings{state.SettingRetryCount: test.budget},
+				dialectGatewayGroup{id: 1, name: "responses-first", channelID: channel.OpenAI, params: json.RawMessage(`{"base_url":"https://provider.example/v1"}`), apiKeys: []string{"sk-first"}},
+				dialectGatewayGroup{id: 2, name: "responses-second", channelID: channel.OpenAI, params: json.RawMessage(`{"base_url":"https://provider.example/v1"}`), apiKeys: []string{"sk-second"}},
+			)
+
+			request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(
+				`{"model":"gpt-4o","input":"hello","stream":true,"store":false}`,
+			))
+			request.Header.Set("Authorization", "Bearer gl-client")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+
+			wantCalls := 1
+			if test.wantRetry {
+				wantCalls = 2
+			}
+			if len(calls) != wantCalls {
+				t.Fatalf("attempt count = %d, want %d", len(calls), wantCalls)
+			}
+			if len(forwarder.inputs) != wantCalls || len(forwarder.results) != wantCalls {
+				t.Fatalf("captured attempts = inputs:%d results:%d, want %d", len(forwarder.inputs), len(forwarder.results), wantCalls)
+			}
+			for index, input := range forwarder.inputs {
+				if input.ClientProtocol != protocol.OpenAIResponses ||
+					input.Operation != execution.OperationResponsesCreate ||
+					input.RouteMode != execution.RouteNative ||
+					input.Request.Method != http.MethodPost || input.Request.Path != "/v1/responses" ||
+					!bufferedStreamReplayEligible(input.Request, input.Dialect) {
+					t.Fatalf("forward input[%d] = %#v, want native replay-eligible Responses attempt", index, input)
+				}
+			}
+			if test.wantRetry {
+				first := forwarder.results[0]
+				second := forwarder.results[1]
+				if !first.HTTPCommitted || first.PayloadReleased || first.ClientVisibleBytes != int64(len(bufferedStreamHeartbeat)) {
+					t.Fatalf("first buffered result = %#v, want heartbeat-only unreleased attempt", first)
+				}
+				if !second.HTTPCommitted || !second.PayloadReleased || second.ClientVisibleBytes <= int64(len(bufferedStreamHeartbeat)) {
+					t.Fatalf("second buffered result = %#v, want released payload", second)
+				}
+			}
+			if test.wantRetry && calls[0].Credential.ID == calls[1].Credential.ID {
+				t.Fatalf("credentials = %d/%d, want a different candidate", calls[0].Credential.ID, calls[1].Credential.ID)
+			}
+			if test.wantRetry {
+				body := recorder.Body.String()
+				if body != bufferedStreamHeartbeat+successEvent || strings.Contains(body, "capacity exhausted") || strings.Contains(body, "buffered_stream_failed") {
+					t.Fatalf("downstream body = %q, want only first heartbeat and second payload", body)
+				}
+			} else if !strings.Contains(recorder.Body.String(), "buffered_stream_failed") || strings.Contains(recorder.Body.String(), "recovered") {
+				t.Fatalf("budget-limited body = %q, want buffered failure without a candidate payload", recorder.Body.String())
+			}
+		})
+	}
+
+	// A valid provider-incomplete terminal is a semantic result, not a transport
+	// failure, and therefore must not use the buffered candidate retry gate.
+	calls := 0
+	executor := fakeExecutionExecutor{stream: func(
+		_ context.Context,
+		_ execution.AttemptSpec,
+		sink execution.StreamSink,
+	) execution.StreamResult {
+		calls++
+		if err := sink(execution.StreamEvent{Sequence: 1, Kind: execution.StreamEventReady,
+			StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}}); err != nil {
+			t.Fatalf("ready sink: %v", err)
+		}
+		if err := sink(execution.StreamEvent{Sequence: 2, Kind: execution.StreamEventData, Data: []byte(
+			"event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{}}\n\n",
+		)}); err != nil {
+			t.Fatalf("incomplete sink: %v", err)
+		}
+		return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+			StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}}
+	}}
+	engine, _ := newDialectGatewayEngineWithSystemSettings(
+		t, protocol.OpenAIResponses, "gpt-4o", dialect.NewSet(dialect.NewOpenAIResponses()),
+		NewExecutionForwarder(executor), config.Settings{state.SettingRetryCount: 2},
+		dialectGatewayGroup{id: 1, name: "responses-first", channelID: channel.OpenAI, params: json.RawMessage(`{"base_url":"https://provider.example/v1"}`), apiKeys: []string{"sk-first"}},
+		dialectGatewayGroup{id: 2, name: "responses-second", channelID: channel.OpenAI, params: json.RawMessage(`{"base_url":"https://provider.example/v1"}`), apiKeys: []string{"sk-second"}},
+	)
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(
+		`{"model":"gpt-4o","input":"hello","stream":true,"store":false}`,
+	))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+	if calls != 1 {
+		t.Fatalf("incomplete attempts = %d, want one", calls)
+	}
+}
+
+type capturingExecutionForwarder struct {
+	delegate *ExecutionForwarder
+	inputs   []ForwardInput
+	results  []UpstreamResult
+}
+
+func (forwarder *capturingExecutionForwarder) Forward(ctx context.Context, input ForwardInput) UpstreamResult {
+	forwarder.inputs = append(forwarder.inputs, input)
+	result := forwarder.delegate.Forward(ctx, input)
+	forwarder.results = append(forwarder.results, result)
+	return result
+}
+
+func (forwarder *capturingExecutionForwarder) ForwardStream(
+	ctx context.Context,
+	input ForwardInput,
+	downstream http.ResponseWriter,
+) UpstreamResult {
+	forwarder.inputs = append(forwarder.inputs, input)
+	result := forwarder.delegate.ForwardStream(ctx, input, downstream)
+	forwarder.results = append(forwarder.results, result)
+	return result
+}
+
 // 旧路径把它记成 StreamEndCleanEOF，证据因此被 decisionEvidence 丢掉：请求日志记成功、
 // 403 落进「无证据」分支终局、不换候选也不计凭据失败。
 func TestHandlerBufferedUpstreamFailureKeepsEvidenceAndSwitchesCandidate(t *testing.T) {

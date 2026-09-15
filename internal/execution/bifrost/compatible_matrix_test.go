@@ -230,6 +230,9 @@ func TestCompatibleListModelsAndProbeUseConfiguredPrefix(t *testing.T) {
 			if err := probeResult.Validate(); err != nil || probeResult.Error != nil {
 				t.Fatalf("probe = %+v err=%v", probeResult, err)
 			}
+			if !probeResult.ProbeAnswerPresent {
+				t.Fatalf("probe answer not observed = %+v body=%s", probeResult, probeResult.Body)
+			}
 		})
 	}
 }
@@ -250,8 +253,14 @@ func TestOpenAICompatibleNonV1PrefixKeepsListModelsAndProbeFunctional(t *testing
 				var payload map[string]json.RawMessage
 				if err := json.Unmarshal(body, &payload); err != nil {
 					t.Errorf("decode probe body: %v", err)
-				} else if string(payload["max_tokens"]) != "1" || payload["max_completion_tokens"] != nil {
+				} else if string(payload["max_tokens"]) != "16" || payload["max_completion_tokens"] != nil {
 					t.Errorf("compatible probe token limit = %s, want legacy max_tokens only", body)
+				} else {
+					var messages []map[string]any
+					if err := json.Unmarshal(payload["messages"], &messages); err != nil || len(messages) == 0 || messages[0]["content"] != probeQuestion {
+						t.Errorf("compatible probe question = %s", body)
+					}
+
 				}
 			}
 			_, _ = io.WriteString(writer, `{"id":"chat_1","object":"chat.completion","created":1,"model":"served","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)

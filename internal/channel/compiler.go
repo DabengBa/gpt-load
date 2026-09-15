@@ -121,6 +121,9 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 	if err != nil {
 		return definition{}, err
 	}
+	if err := validateProbeContract(source, modes); err != nil {
+		return definition{}, err
+	}
 	if err := validateTargetPolicy(source, params); err != nil {
 		return definition{}, err
 	}
@@ -169,6 +172,7 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 		validateCredential:      validateCredential,
 		catalogProviderID:       source.Provider.CatalogProviderID,
 		providerKind:            source.Provider.ProviderKind,
+		probeContract:           source.Provider.ProbeContract,
 		connection:              cloneConnection(source.Connection),
 		capabilities:            cloneCapabilityBindings(source.Capabilities),
 		endpointPolicy:          source.Provider.EndpointPolicy,
@@ -419,6 +423,57 @@ func compileRoutes(
 	return modes, resolvers, responsesStoreHandlings, public, nil
 }
 
+// minProbeOutputTokens is the smallest output budget any provider is known to
+// accept for a probe. The observed upstream rejection (`max_tokens must be
+// greater than 2`) fixes this floor for Chat-style providers.
+const minProbeOutputTokens = 3
+
+// validateProbeContract enforces the single-protocol probe contract: API-key
+// channels must declare one probe protocol with a usable output budget and a
+// declared probe route for that protocol; subscription channels must not.
+func validateProbeContract(
+	source spec.Definition,
+	modes map[protocol.Protocol]map[execution.Operation]RouteMode,
+) error {
+	id := source.ID
+	contract := source.Provider.ProbeContract
+	if source.Connection.Type == spec.ConnectionSubscription {
+		if contract.Protocol != "" || contract.MinOutputTokens != 0 {
+			return fmt.Errorf("channel %q declares a probe contract for a subscription connection", id)
+		}
+		return nil
+	}
+	if !contract.Valid() {
+		return fmt.Errorf("channel %q has an invalid probe contract", id)
+	}
+	if !validProtocolOperation(contract.Protocol, execution.OperationProbe) {
+		// The probe contract is restricted to generative protocols; a contract
+		// naming Embeddings, Rerank, or Images would reopen a non-generative
+		// probe path that the route table and executor deliberately close.
+		return fmt.Errorf(
+			"channel %q probe contract protocol %q is not a generative probe protocol",
+			id,
+			contract.Protocol,
+		)
+	}
+	if contract.MinOutputTokens < minProbeOutputTokens {
+		return fmt.Errorf(
+			"channel %q probe contract budget %d is below the minimum %d",
+			id,
+			contract.MinOutputTokens,
+			minProbeOutputTokens,
+		)
+	}
+	if _, ok := modes[contract.Protocol][execution.OperationProbe]; !ok {
+		return fmt.Errorf(
+			"channel %q probe contract protocol %q has no declared probe route",
+			id,
+			contract.Protocol,
+		)
+	}
+	return nil
+}
+
 func containsRouteMode(modes []execution.RouteMode, want execution.RouteMode) bool {
 	for _, mode := range modes {
 		if mode == want {
@@ -455,7 +510,10 @@ func validProtocolOperation(clientProtocol protocol.Protocol, operation executio
 		return clientProtocol != protocol.OpenAIResponses && clientProtocol != protocol.OpenAIImages &&
 			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.Rerank
 	case execution.OperationProbe:
-		return clientProtocol != protocol.OpenAIImages
+		// Probes are generative-only: Embeddings, Rerank, and Images must never
+		// be probed; their normal business operations stay data-plane routes.
+		return clientProtocol != protocol.OpenAIImages &&
+			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.Rerank
 	default:
 		return false
 	}

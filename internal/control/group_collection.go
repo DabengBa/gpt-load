@@ -80,10 +80,6 @@ func cloneGroupRows(rows []models.Group) []models.Group {
 		cloned[index].Params = append(models.JSON(nil), rows[index].Params...)
 		cloned[index].Models = append(models.JSON(nil), rows[index].Models...)
 		cloned[index].Overrides = append(models.JSON(nil), rows[index].Overrides...)
-		if rows[index].ValidationModel != nil {
-			value := *rows[index].ValidationModel
-			cloned[index].ValidationModel = &value
-		}
 		cloned[index].PriceMultiplierMicros = cloneOptionalInt64(rows[index].PriceMultiplierMicros)
 		cloned[index].Credentials = nil
 	}

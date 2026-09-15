@@ -14,6 +14,7 @@ import { requestLogFilterFields } from '@/app/resources/request-log-filters'
 import { defaultTimeRange, timeRangeMilliseconds } from '@/lib/time'
 
 import { isValidMonitorText, maxSignedInt64 } from './filter-validation'
+import { parseRequestLogAffinityKey, serializeRequestLogAffinityKey } from './request-log-affinity'
 
 export interface LogFilterDraft {
   from: string
@@ -49,6 +50,7 @@ export interface LogFilterDraft {
   output_tokens_max: string
   cost_min_usd: string
   cost_max_usd: string
+  affinity_key: string
 }
 
 export type LogFilterErrors = Partial<Record<keyof LogFilterDraft, string>>
@@ -126,6 +128,7 @@ function emptyDraft(): LogFilterDraft {
     output_tokens_max: '',
     cost_min_usd: '',
     cost_max_usd: '',
+    affinity_key: '',
   }
 }
 
@@ -201,9 +204,9 @@ export function createLogFilterDraft(filters: RequestLogFilters = defaultRange()
       filters.output_tokens_max === undefined ? '' : String(filters.output_tokens_max),
     cost_min_usd: nanoUSDToUSD(filters.cost_min_nano_usd),
     cost_max_usd: nanoUSDToUSD(filters.cost_max_nano_usd),
+    affinity_key: filters.affinity_key ?? '',
   }
 }
-
 export function applyLogFilterDraft(draft: LogFilterDraft): RequestLogFilters {
   const filters: RequestLogFilters = {}
   if (draft.from) filters.from_ms = new Date(draft.from).getTime()
@@ -249,6 +252,7 @@ export function applyLogFilterDraft(draft: LogFilterDraft): RequestLogFilters {
   const costMax = usdToNanoUSD(draft.cost_max_usd)
   if (costMin !== undefined) filters.cost_min_nano_usd = costMin
   if (costMax !== undefined) filters.cost_max_nano_usd = costMax
+  if (draft.affinity_key) filters.affinity_key = serializeRequestLogAffinityKey(draft.affinity_key)
   return filters
 }
 
@@ -286,7 +290,12 @@ function parseNanoUSD(raw: unknown): string | undefined {
   }
 }
 
-export function parseAppliedLogFilters(query: Record<string, unknown>): RequestLogFilters {
+export interface AppliedLogFilterState {
+  filters: RequestLogFilters
+  invalidAffinityKey?: string
+}
+
+export function parseAppliedLogFilterState(query: Record<string, unknown>): AppliedLogFilterState {
   const filters: RequestLogFilters = {}
   const from = parseSafeInteger(query.from_ms)
   const to = parseSafeInteger(query.to_ms)
@@ -353,7 +362,21 @@ export function parseAppliedLogFilters(query: Record<string, unknown>): RequestL
   const maxCost = parseNanoUSD(query.cost_max_nano_usd)
   if (minCost !== undefined) filters.cost_min_nano_usd = minCost
   if (maxCost !== undefined) filters.cost_max_nano_usd = maxCost
-  return filters
+  const affinityKey = parseRequestLogAffinityKey(query.affinity_key)
+  if (affinityKey.kind === 'valid') filters.affinity_key = affinityKey.value
+  return {
+    filters,
+    invalidAffinityKey:
+      affinityKey.kind === 'invalid' && typeof affinityKey.raw === 'string'
+        ? affinityKey.raw
+        : affinityKey.kind === 'invalid'
+          ? String(affinityKey.raw)
+          : undefined,
+  }
+}
+
+export function parseAppliedLogFilters(query: Record<string, unknown>): RequestLogFilters {
+  return parseAppliedLogFilterState(query).filters
 }
 
 export function serializeAppliedLogFilters(filters: RequestLogFilters): LocationQueryRaw {
@@ -444,6 +467,9 @@ export function validateLogFilterDraft(draft: LogFilterDraft): LogFilterErrors {
   }
   if (draft.cost_max_usd && usdToNanoUSD(draft.cost_max_usd) === undefined) {
     errors.cost_max_usd = 'monitor.logs.errors.usd'
+  }
+  if (draft.affinity_key && parseRequestLogAffinityKey(draft.affinity_key).kind === 'invalid') {
+    errors.affinity_key = 'monitor.logs.errors.affinityKey'
   }
   for (const [minimum, maximum] of [
     ['retry_count_min', 'retry_count_max'],

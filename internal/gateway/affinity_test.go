@@ -62,7 +62,12 @@ func TestHandlerLearnsAndReusesAutomaticSoftAffinity(t *testing.T) {
 	}`)
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
-	assertAffinityHits(t, sink.snapshot(), []bool{false, true})
+	events := sink.snapshot()
+	assertAffinityHits(t, events, []bool{false, true})
+	if events[0].AffinityKey == "" || events[0].AffinityKey != events[1].AffinityKey ||
+		!affinity.ValidDisplayKey(events[0].AffinityKey) {
+		t.Fatalf("affinity display keys = %q / %q, want equal canonical masked projections", events[0].AffinityKey, events[1].AffinityKey)
+	}
 }
 
 func TestHandlerIsolatesSoftAffinityAcrossClientModels(t *testing.T) {
@@ -353,7 +358,8 @@ func TestHandlerDerivesPrivateContinuityWithoutReenablingDisabledAffinity(t *tes
 		dialect.RequestMetadata{AffinityPrefix: []byte(`{"v":1,"user":["hello"]}`)},
 		map[uint]state.CredentialRef{1: {ID: 1, GroupID: 1, IdentityGeneration: 1}},
 	)
-	if resolved.key.Valid() || resolved.preferredCredentialID != 0 || resolved.continuityKey == "" {
+	if resolved.key.Valid() || resolved.preferredCredentialID != 0 || resolved.continuityKey == "" ||
+		resolved.displayKey == "" || resolved.displayKey == resolved.continuityKey {
 		t.Fatalf("disabled affinity resolution = %#v", resolved)
 	}
 	if resolved.state != telemetry.AffinityStateCacheUnavailable {
@@ -384,6 +390,64 @@ func TestHandlerReportsPromptPrefixAffinitySourceAndState(t *testing.T) {
 	assertAffinityStates(t, events, []telemetry.AffinityState{
 		telemetry.AffinityStateCacheMiss, telemetry.AffinityStateHit,
 	})
+}
+
+func TestWebsocketBindingOnlyResolvesAffinityButHardContinuationIsKeyless(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(writer, request, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var turns atomic.Int32
+		for {
+			if _, _, err = conn.ReadMessage(); err != nil {
+				return
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, websocketCompleted(
+				fmt.Sprintf("resp_%d", turns.Add(1)), "")); err != nil {
+				return
+			}
+		}
+	}))
+	defer upstream.Close()
+	_, engine, sink := newAffinityWebsocketFixture(t, upstream.URL+"/v1")
+	server := httptest.NewServer(engine)
+	defer server.Close()
+
+	conn := dialGatewayWebsocket(t, server.URL)
+	body := `{"type":"response.create","model":"public","prompt_cache_key":"binding-key"}`
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+	waitWebsocketLogs(t, sink, 1)
+
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+	events := waitWebsocketLogs(t, sink, 2)
+	if events[0].AffinityKey == "" || events[0].AffinityKey != events[1].AffinityKey ||
+		!affinity.ValidDisplayKey(events[0].AffinityKey) {
+		t.Fatalf("binding-only affinity keys = %q / %q, want equal canonical projections", events[0].AffinityKey, events[1].AffinityKey)
+	}
+
+	continuation := `{"type":"response.create","model":"public","input":"continue","previous_response_id":"resp_1","store":false}`
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(continuation)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+	events = waitWebsocketLogs(t, sink, 3)
+	if events[2].AffinityKey != "" {
+		t.Fatalf("hard continuation affinity key = %q, want empty", events[2].AffinityKey)
+	}
 }
 
 func TestWebsocketPromptCacheKeyAffinitySeparatesContinuity(t *testing.T) {
@@ -432,6 +496,10 @@ func TestWebsocketPromptCacheKeyAffinitySeparatesContinuity(t *testing.T) {
 	assertAffinitySources(t, events, []telemetry.AffinitySource{
 		telemetry.AffinitySourcePromptCacheKey, telemetry.AffinitySourcePromptCacheKey,
 	})
+	if events[0].AffinityKey == "" || events[0].AffinityKey != events[1].AffinityKey ||
+		!affinity.ValidDisplayKey(events[0].AffinityKey) {
+		t.Fatalf("WebSocket reconnect affinity keys = %q / %q, want equal canonical display keys", events[0].AffinityKey, events[1].AffinityKey)
+	}
 
 	third := dialGatewayWebsocket(t, server.URL)
 	_ = third.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"public","input":"continue","previous_response_id":"resp_1","store":false}`))

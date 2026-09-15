@@ -4,6 +4,7 @@ import type {
   ParameterJSONValue,
   ParameterOverrideRuleDto,
 } from '@/api/control/types'
+import type { ChannelFieldDto } from '@/app/resources/channels'
 import type {
   GroupRuntimeConfigDto,
   GroupSettingsUpdateRequest,
@@ -19,7 +20,6 @@ export interface GroupSettingsDraft {
   connection_type: GroupSettingsDto['connection_type']
   params: ChannelParamsDto
   name: string
-  validation_model: string | null
   provider_url: string | null
   enabled: boolean
   price_multiplier: string
@@ -153,6 +153,20 @@ export function createGroupSettingsDraft(group: GroupSettingsDto): GroupSettings
   return { ...group, params: { ...group.params }, overrides: cloneOverrides(group.overrides) }
 }
 
+export function preserveChannelParams(
+  current: ChannelParamsDto,
+  fields: readonly ChannelFieldDto[],
+): ChannelParamsDto {
+  return Object.fromEntries(
+    fields
+      .filter(
+        ({ key, required, default_value: defaultValue }) =>
+          Object.prototype.hasOwnProperty.call(current, key) || required || defaultValue !== null,
+      )
+      .map(({ key, default_value: defaultValue }) => [key, current[key] ?? defaultValue ?? '']),
+  )
+}
+
 export function setGroupConfigOverride(
   draft: GroupSettingsDraft,
   key: GroupTimeoutKey,
@@ -183,6 +197,7 @@ export function buildGroupSettingsPatch(
 ): GroupSettingsUpdateRequest {
   const patch: GroupSettingsUpdateRequest = {}
   const overrides = normalizeOverrides(draft.overrides)
+  if (draft.channel_id !== base.channel_id) patch.channel_id = draft.channel_id
   if (draft.name.trim() !== base.name) patch.name = draft.name.trim()
   const params = Object.fromEntries(
     Object.entries(draft.params)
@@ -193,8 +208,6 @@ export function buildGroupSettingsPatch(
     Object.entries(base.params).sort(([left], [right]) => left.localeCompare(right)),
   )
   if (JSON.stringify(params) !== JSON.stringify(baseParams)) patch.params = params
-  const validationModel = draft.validation_model?.trim() || null
-  if (validationModel !== base.validation_model) patch.validation_model = validationModel
   const providerURL = draft.provider_url?.trim() || null
   if (providerURL !== base.provider_url) patch.provider_url = providerURL
   if (draft.enabled !== base.enabled) patch.enabled = draft.enabled

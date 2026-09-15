@@ -20,10 +20,7 @@ func TestOpenAIEmbeddingsNativeRouteIsLimitedToSupportedAPIKeyChannels(t *testin
 			t.Fatalf("lookup(%q) missing", descriptor.ID)
 		}
 		_, want := supported[descriptor.ID]
-		for _, operation := range []execution.Operation{
-			execution.OperationEmbeddingsCreate,
-			execution.OperationProbe,
-		} {
+		for _, operation := range []execution.Operation{execution.OperationEmbeddingsCreate} {
 			mode, ok := definition.modes[protocol.OpenAIEmbeddings][operation]
 			if want {
 				if !ok || mode != RouteNative {
@@ -35,6 +32,10 @@ func TestOpenAIEmbeddingsNativeRouteIsLimitedToSupportedAPIKeyChannels(t *testin
 				t.Errorf("%q unexpectedly advertises embeddings %q route %q", descriptor.ID, operation, mode)
 			}
 		}
+		// Embeddings must never be probed; the probe boundary is generative-only.
+		if _, ok := definition.modes[protocol.OpenAIEmbeddings][execution.OperationProbe]; ok {
+			t.Errorf("%q unexpectedly advertises an embeddings probe route", descriptor.ID)
+		}
 	}
 }
 
@@ -44,8 +45,8 @@ func TestValidProtocolOperationOpenAIEmbeddingsMatrix(t *testing.T) {
 	if !validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationEmbeddingsCreate) {
 		t.Fatal("openai-embeddings/embeddings_create must be valid")
 	}
-	if !validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationProbe) {
-		t.Fatal("openai-embeddings/probe must be valid")
+	if validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationProbe) {
+		t.Fatal("openai-embeddings/probe must be invalid: probes are generative-only")
 	}
 	for _, operation := range []execution.Operation{
 		execution.OperationChatCompletion,

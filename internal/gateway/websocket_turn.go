@@ -237,13 +237,14 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		return
 	}
 	var affinity requestAffinity
-	if requiredRef == nil {
+	if original.previous == "" {
 		affinity = h.resolveRequestAffinity(
 			snapshot, key.ID, protocol.OpenAIResponses, model,
 			execution.OperationResponsesCreate, original.metadata, allowedCredentialRefs,
 		)
 		query.PreferredCredentialID = affinity.preferredCredentialID
 	}
+	recorder.setAffinityKey(affinity.displayKey)
 	recorder.setAffinityObservations(affinity.source, affinity.state)
 	iterator := scheduler.New(snapshot, h.registry, query, h.newRandom())
 	limit := retryAttemptLimit(snapshot.Settings.RetryCount)

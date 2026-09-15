@@ -681,6 +681,8 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0013_usage_attempt_stats",
 		"0014_affinity_observability",
 		"0015_provider_url",
+		"0016_affinity_key",
+		"0017_remove_validation_interval",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)
@@ -695,6 +697,32 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 	}
 	if count != int64(len(wantMigrationIDs)) {
 		t.Fatalf("schema_migrations row count after a second migration = %d, want %d", count, len(wantMigrationIDs))
+	}
+}
+
+func TestAutoMigrateRemovesRetiredValidationInterval(t *testing.T) {
+	t.Parallel()
+
+	db := openMigratedDatabase(t)
+	if err := db.Create(&models.SystemSetting{
+		Key:         "validation_interval",
+		Value:       "3600",
+		UpdatedAtMS: 1,
+	}).Error; err != nil {
+		t.Fatalf("create legacy validation_interval setting: %v", err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = ?", "0017_remove_validation_interval").Error; err != nil {
+		t.Fatalf("simulate pre-0017 migration ledger: %v", err)
+	}
+	if err := storage.AutoMigrate(db); err != nil {
+		t.Fatalf("second AutoMigrate() error = %v", err)
+	}
+	var count int64
+	if err := db.Model(&models.SystemSetting{}).Where("key = ?", "validation_interval").Count(&count).Error; err != nil {
+		t.Fatalf("count retired validation_interval setting: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("retired validation_interval setting count = %d, want 0", count)
 	}
 }
 
@@ -901,6 +929,11 @@ func TestAutoMigrateCreatesRequestLogFieldsAndCompositeIndexes(t *testing.T) {
 			{name: "completed_at_ms", desc: 1},
 			{name: "id", desc: 1},
 		},
+		"idx_request_logs_affinity_completed_id": {
+			{name: "affinity_key"},
+			{name: "completed_at_ms", desc: 1},
+			{name: "id", desc: 1},
+		},
 	}
 	type indexedColumn struct {
 		Sequence int    `gorm:"column:seqno"`
@@ -936,6 +969,61 @@ func TestAutoMigrateCreatesRequestLogFieldsAndCompositeIndexes(t *testing.T) {
 		}
 	}
 
+}
+
+func TestRequestLogModelCreatesCanonicalAffinityIndex(t *testing.T) {
+	t.Parallel()
+
+	dsn := filepath.Join(t.TempDir(), "request-log-model.db")
+	db, err := storage.Open(dsn)
+	if err != nil {
+		t.Fatalf("Open(%q) error = %v", dsn, err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("close database: %v", err)
+		}
+	})
+	if err := db.AutoMigrate(&models.RequestLog{}); err != nil {
+		t.Fatalf("AutoMigrate(RequestLog) error = %v", err)
+	}
+
+	var columns []struct {
+		Sequence int    `gorm:"column:seqno"`
+		Name     string `gorm:"column:name"`
+		Desc     int    `gorm:"column:desc"`
+		Key      int    `gorm:"column:key"`
+	}
+	if err := db.Raw("PRAGMA index_xinfo('idx_request_logs_affinity_completed_id')").Scan(&columns).Error; err != nil {
+		t.Fatalf("inspect affinity index: %v", err)
+	}
+	var got []struct {
+		Name string
+		Desc int
+	}
+	for _, column := range columns {
+		if column.Key == 1 {
+			got = append(got, struct {
+				Name string
+				Desc int
+			}{Name: column.Name, Desc: column.Desc})
+		}
+	}
+	want := []struct {
+		Name string
+		Desc int
+	}{
+		{Name: "affinity_key", Desc: 0},
+		{Name: "completed_at_ms", Desc: 1},
+		{Name: "id", Desc: 1},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("affinity index = %+v, want %+v", got, want)
+	}
 }
 
 func TestAutoMigrateOmitsGroupSignature(t *testing.T) {

@@ -23,6 +23,8 @@ interface HealthProblemItem {
 interface RecoveryDisplay {
   relative: string
   exact: string
+  labelKey: 'cooldownRecovery' | 'scheduledReleaseRecovery'
+  hintKey: 'cooldownHint' | 'scheduledReleaseHint'
 }
 
 const props = defineProps<{
@@ -202,52 +204,38 @@ function credentialMeta(credential: HealthProblemCredentialDto): string {
           </div>
 
           <div class="ledger-record-list__cell problem-health-record__recovery" role="cell">
-            <template
-              v-if="item.kind === 'cooldown' && recoveryByCredential[item.credential.credential_id]"
-            >
+            <template v-if="recoveryByCredential[item.credential.credential_id]">
               <AppTooltip
                 :content="recoveryByCredential[item.credential.credential_id]!.exact"
                 side="bottom"
               >
                 <span class="problem-health-record__recovery-time" tabindex="0">
                   {{
-                    t('monitor.health.problems.cooldownRecovery', {
-                      time: recoveryByCredential[item.credential.credential_id]!.relative,
-                    })
+                    t(
+                      `monitor.health.problems.${recoveryByCredential[item.credential.credential_id]!.labelKey}`,
+                      {
+                        time: recoveryByCredential[item.credential.credential_id]!.relative,
+                      },
+                    )
                   }}
                 </span>
               </AppTooltip>
-              <OverflowTooltip as="small" :content="t('monitor.health.problems.cooldownHint')">
-                {{ t('monitor.health.problems.cooldownHint') }}
+              <OverflowTooltip
+                as="small"
+                :content="
+                  t(
+                    `monitor.health.problems.${recoveryByCredential[item.credential.credential_id]!.hintKey}`,
+                  )
+                "
+              >
+                {{
+                  t(
+                    `monitor.health.problems.${recoveryByCredential[item.credential.credential_id]!.hintKey}`,
+                  )
+                }}
               </OverflowTooltip>
             </template>
-            <template v-else>
-              <template v-if="item.credential.recovery.mode === 'validation_probe'">
-                <OverflowTooltip
-                  as="span"
-                  :content="t('monitor.health.problems.validationRecovery')"
-                >
-                  {{ t('monitor.health.problems.validationRecovery') }}
-                </OverflowTooltip>
-                <OverflowTooltip as="small" :content="t('monitor.health.problems.validationHint')">
-                  {{ t('monitor.health.problems.validationHint') }}
-                </OverflowTooltip>
-              </template>
-              <template v-else>
-                <OverflowTooltip
-                  as="span"
-                  :content="t('monitor.health.problems.configurationRecovery')"
-                >
-                  {{ t('monitor.health.problems.configurationRecovery') }}
-                </OverflowTooltip>
-                <OverflowTooltip
-                  as="small"
-                  :content="t('monitor.health.problems.configurationHint')"
-                >
-                  {{ t('monitor.health.problems.configurationHint') }}
-                </OverflowTooltip>
-              </template>
-            </template>
+
           </div>
 
           <div class="ledger-record-list__cell problem-health-record__actions" role="cell">

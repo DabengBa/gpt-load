@@ -305,7 +305,7 @@ export default {
       base: {
         description: '名前、チャネルパラメータ、有効状態はグループ全体に適用されます。',
         channel: 'チャネル',
-        channelHelp: 'チャネルはグループ作成時に確定し、後から変更できません。',
+        channelHelp: '既存の設定が対象チャネルで利用できる場合は、チャネルを変更できます。',
         channelCatalogUnavailable:
           'チャネル一覧を読み込めないため、チャネルパラメータをロックしました。他の設定は編集できます。',
         name: '名前',
@@ -327,10 +327,6 @@ export default {
         providerUrlHelp:
           '任意。グループ詳細ヘッダーに外部リンクとして表示され、リクエストの送信先は変わりません。',
         paramRequired: '{field} を入力してください。',
-        validationModel: '検証モデル（任意）',
-        validationModelPlaceholder: 'モデル ID を検索または入力',
-        validationModelHelp:
-          '空欄の場合はグループの最初のモデルを使用します。エイリアスではなくアップストリームのモデル ID を入力してください。',
         weight: 'グループ手動ウェイト',
         auto: '自動',
         manual: '手動',
@@ -418,6 +414,16 @@ export default {
       loadFailed: 'チャネル認証情報を読み込めません。',
       stale: 'バックグラウンド更新に失敗したため、認証情報が古い可能性があります。',
       updateFailed: 'チャネル認証情報を更新できません。',
+      update: {
+        action: 'キーを更新',
+        inputLabel: '新しい API キー',
+        placeholder: '新しい API キーを貼り付け',
+        required: 'API キーを入力してください。',
+        cancel: '更新をキャンセル',
+        saving: '更新中…',
+        submit: 'キーを保存',
+        succeeded: 'API キーを更新しました',
+      },
       deleteFailed: 'チャネル認証情報を削除できません。',
       reconcileFailed:
         '操作は成功しましたがローカルデータの同期に失敗しました 手動で更新してください',
@@ -464,7 +470,7 @@ export default {
         action: '接続をテスト',
         title: '接続をテスト',
         description:
-          'このキーで最小限の実リクエストを上流へ 1 回送信するため、少額の料金が発生する場合があります。テストはスケジューリングやブラックリスト状態を変更しません。',
+          'このキーで最小限の実リクエストを上流へ 1 回送信するため、少額の料金が発生する場合があります。テスト成功時は、テスト時点の状態が変わっていない場合に限り、この認証情報を直ちに回復します。',
         loading: '{mask} をテスト中…',
         outcome: {
           passed: 'テストに成功しました',
@@ -477,6 +483,7 @@ export default {
           protocol: 'プロトコル',
           latency: '所要時間',
           reason: '結果の詳細',
+          recovered: '復旧状態',
           testedAt: 'テスト日時',
         },
         latency: '{value} ミリ秒',
@@ -487,29 +494,21 @@ export default {
           rate_limited: '上流のレート制限に達しました',
           timeout: 'リクエストがタイムアウトしました',
           upstream_error: '上流サービスでエラーが発生しました',
-          probe_incompatible: 'このチャネルまたはモデルではプローブを実行できません',
+          probe_incompatible:
+            '選択したプロトコルまたはリクエストがこのターゲットと互換性がありません',
+          no_answer: '上流から利用可能な回答テキストが返りませんでした',
+          invalid_response: '上流レスポンスが選択したプロトコルに適合しません',
           unknown: '理由を特定できませんでした',
         },
-        restorePrompt:
-          'この API キーはブラックリストに登録されています。回復すると再びスケジューリングに参加します。',
-        keepBlocked: '今は回復しない',
-        restore: '利用を回復',
-        restoring: '回復中…',
         close: '閉じる',
+        recovered: 'API キーを直ちに復旧し、再びスケジューリングに参加させました。',
+        alreadyAvailable: 'API キーはすでに利用可能で、復旧状態の変更は不要でした。',
         requestFailed: 'テストを完了できませんでした。しばらくしてから再試行してください。',
-        restoreSucceeded: 'API キーを回復し、再びスケジューリングに参加します',
-        restoreError: {
-          failed: 'API キーを回復できませんでした。しばらくしてから再試行してください。',
-          conflict:
-            'API キーの状態が変わったため一覧を更新しました。回復する前にもう一度テストしてください。',
-          conflict_refresh_failed:
-            'API キーの状態が変わりましたが一覧を更新できませんでした。手動で更新してから再試行してください。',
-        },
       },
       recovery: {
         none: '回復は不要',
         cooldown: 'クールダウン終了時に回復',
-        probe: 'プローブによる回復待ち',
+        scheduled_release: 'ローカルのブラックリスト遅延後に復帰',
         manual: '手動回復が必要',
         at: '{time} に自動回復',
       },

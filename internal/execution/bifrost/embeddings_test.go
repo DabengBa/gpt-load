@@ -104,10 +104,7 @@ func TestOpenAIEmbeddingsRequestShapeAndCapabilityAreExact(t *testing.T) {
 		channel.ProviderOpenRouter,
 		channel.ProviderOpenAICompatible,
 	} {
-		for _, operation := range []execution.Operation{
-			execution.OperationEmbeddingsCreate,
-			execution.OperationProbe,
-		} {
+		for _, operation := range []execution.Operation{execution.OperationEmbeddingsCreate} {
 			if err := manager.ValidateRouteCapability(providerKind, channel.RouteDescriptor{
 				ClientProtocol: protocol.OpenAIEmbeddings,
 				Operation:      operation,
@@ -115,6 +112,14 @@ func TestOpenAIEmbeddingsRequestShapeAndCapabilityAreExact(t *testing.T) {
 			}); err != nil {
 				t.Errorf("ValidateRouteCapability(%q, %q) error = %v", providerKind, operation, err)
 			}
+		}
+		// Embeddings must never be probed; the probe boundary is generative-only.
+		if err := manager.ValidateRouteCapability(providerKind, channel.RouteDescriptor{
+			ClientProtocol: protocol.OpenAIEmbeddings,
+			Operation:      execution.OperationProbe,
+			RouteMode:      execution.RouteNative,
+		}); err == nil {
+			t.Errorf("provider %q unexpectedly supports an Embeddings probe", providerKind)
 		}
 	}
 	for _, providerKind := range []channel.ProviderKind{
@@ -154,8 +159,8 @@ func TestOpenAIEmbeddingsRequestShapeAndCapabilityAreExact(t *testing.T) {
 	probe.Method = ""
 	probe.Path = ""
 	probe.Body = nil
-	if !supportedRequestShape(probe, false) || supportedRequestShape(probe, true) {
-		t.Fatal("Embeddings probe shape must be semantic and unary only")
+	if supportedRequestShape(probe, false) || supportedRequestShape(probe, true) {
+		t.Fatal("Embeddings probe shape must be rejected at the generative probe boundary")
 	}
 }
 

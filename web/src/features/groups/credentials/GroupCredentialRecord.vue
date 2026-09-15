@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { CredentialItemDto } from '@/api/control/types'
 import AppPopover from '@/components/ui/AppPopover.vue'
-import CopyChip from '@/components/ui/CopyChip.vue'
+import GroupApiKeyEditor from './GroupApiKeyEditor.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { formatLocalInstant } from '@/lib/format'
@@ -13,11 +13,11 @@ import { presentCredentialFailureCategory } from './credential-failure-presenter
 
 const props = defineProps<{
   item: CredentialItemDto
+  groupId: number
   rowIndex: number
   selected: boolean
   busy: boolean
   expanded: boolean
-  resolveCopyValue: (id: number) => Promise<string>
 }>()
 const emit = defineEmits<{
   'update:selected': [selected: boolean]
@@ -79,14 +79,7 @@ function removeCredential(): void {
         <span class="group-credential-record__mobile-label">{{
           t('group.credentials.columns.credential')
         }}</span>
-        <CopyChip
-          :key="item.secret_version"
-          :value="item.mask"
-          :label="t('group.credentials.copy')"
-          :success-label="t('common.copied')"
-          :failure-label="t('common.copyFailed')"
-          :resolve-value="() => resolveCopyValue(item.credential_id)"
-        />
+        <GroupApiKeyEditor :group-id="groupId" :credential="item" :disabled="busy" />
       </div>
       <div class="ledger-record-list__cell" role="cell">
         <span class="group-credential-record__mobile-label">{{
@@ -151,7 +144,9 @@ function removeCredential(): void {
           <dd>
             {{
               item.recovery.at_ms
-                ? formatLocalInstant(item.recovery.at_ms, locale)
+                ? t('group.credentials.recovery.at', {
+                    time: formatLocalInstant(item.recovery.at_ms, locale),
+                  })
                 : t(`group.credentials.recovery.${item.recovery.mode}`)
             }}
           </dd>

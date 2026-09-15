@@ -305,7 +305,7 @@ export default {
       base: {
         description: 'Name, channel parameters, and enabled status affect the entire Group.',
         channel: 'Channel',
-        channelHelp: 'The channel is fixed when the Group is created.',
+        channelHelp: 'The channel can be changed when the target accepts the existing settings.',
         channelCatalogUnavailable:
           'The channel directory is unavailable. Channel parameters are locked; other settings remain editable.',
         name: 'Name',
@@ -327,10 +327,6 @@ export default {
         providerUrlHelp:
           'Optional. Shown as a link in the Group header; it does not change where requests are sent.',
         paramRequired: 'Enter {field}.',
-        validationModel: 'Validation model (optional)',
-        validationModelPlaceholder: 'Search or enter a model ID',
-        validationModelHelp:
-          'Leave empty to use the first model in this Group; enter the upstream model ID, not an alias.',
         weight: 'Manual Group weight',
         auto: 'Auto',
         manual: 'Manual',
@@ -417,6 +413,16 @@ export default {
       loadFailed: 'Unable to load channel credentials.',
       stale: 'Credential data may be stale because the background refresh failed.',
       updateFailed: 'Unable to update the channel credential.',
+      update: {
+        action: 'Update key',
+        inputLabel: 'New API key',
+        placeholder: 'Paste a new API key',
+        required: 'Enter an API key.',
+        cancel: 'Cancel update',
+        saving: 'Updating…',
+        submit: 'Save key',
+        succeeded: 'API key updated',
+      },
       deleteFailed: 'Unable to delete the channel credential.',
       reconcileFailed:
         'The operation succeeded but local data synchronization failed, refresh manually',
@@ -463,7 +469,7 @@ export default {
         action: 'Test connection',
         title: 'Test connection',
         description:
-          'This sends one minimal real upstream request and may incur a small charge. Testing does not change scheduling or blacklist state.',
+          'This sends one minimal real upstream request and may incur a small charge. A successful test immediately restores this credential only when the tested state is still current.',
         loading: 'Testing {mask}…',
         outcome: {
           passed: 'Test passed',
@@ -476,6 +482,7 @@ export default {
           protocol: 'Protocol',
           latency: 'Latency',
           reason: 'Result details',
+          recovered: 'Recovery',
           testedAt: 'Tested at',
         },
         latency: '{value} ms',
@@ -486,28 +493,20 @@ export default {
           rate_limited: 'The upstream rate limit was reached',
           timeout: 'The request timed out',
           upstream_error: 'The upstream service returned an error',
-          probe_incompatible: 'This channel or model cannot run the probe',
+          probe_incompatible: 'The selected protocol or request is incompatible with this target',
+          no_answer: 'The upstream returned no usable answer text',
+          invalid_response: 'The upstream response was invalid for the selected protocol',
           unknown: 'The reason could not be determined',
         },
-        restorePrompt: 'This API key is blacklisted. Restoring it returns it to scheduling.',
-        keepBlocked: 'Not now',
-        restore: 'Restore API key',
-        restoring: 'Restoring…',
         close: 'Close',
+        recovered: 'The API key was recovered immediately and returned to scheduling.',
+        alreadyAvailable: 'The API key was already available; no recovery change was needed.',
         requestFailed: 'Unable to complete the test. Try again later.',
-        restoreSucceeded: 'The API key was restored and will return to scheduling',
-        restoreError: {
-          failed: 'Unable to restore the API key. Try again later.',
-          conflict:
-            'The API key state changed. The list was refreshed; test again before restoring.',
-          conflict_refresh_failed:
-            'The API key state changed, but the list could not be refreshed. Refresh manually and try again.',
-        },
       },
       recovery: {
         none: 'No recovery needed',
         cooldown: 'Recovers when cooldown ends',
-        probe: 'Waiting for probe recovery',
+        scheduled_release: 'Returns after the local blacklist delay',
         manual: 'Needs manual recovery',
         at: 'Recovers automatically at {time}',
       },

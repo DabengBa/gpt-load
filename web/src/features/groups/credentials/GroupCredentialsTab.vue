@@ -25,10 +25,8 @@ import {
   credentialCollectionQueryOptions,
   downloadCredential,
   getCredentialDetail,
-  revealCredential,
   refreshCredential as refreshCredentialRequest,
   restoreCredential,
-  restoreTestedCredential,
   refreshCredentialObservation,
   testCredentialConnection,
 } from '@/app/resources/credentials'
@@ -41,7 +39,6 @@ import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resource
 import { groupDetailLocation, importLocation, monitorLocation } from '@/app/route-locations'
 import { controlQueryKeys } from '@/app/query-keys'
 import { useToast } from '@/app/toast'
-import { useAbortControllerPool } from '@/app/use-abort-controller-pool'
 import { useDebouncedAction } from '@/app/use-debounced-action'
 import CollectionStatusSummary from '@/components/collection/CollectionStatusSummary.vue'
 import LedgerRecordList from '@/components/collection/LedgerRecordList.vue'
@@ -74,7 +71,6 @@ import {
 } from '../group-route'
 
 const batchCredentialConcurrency = 4
-type CredentialTestRestoreError = 'failed' | 'conflict' | 'conflict_refresh_failed'
 
 const props = defineProps<{
   groupId: number
@@ -123,8 +119,6 @@ const resetTarget = ref<{ item: CredentialItemDto; idempotencyKey: string } | un
 const credentialTestTarget = ref<CredentialItemDto>()
 const credentialTestResult = ref<CredentialTestResultDto>()
 const credentialTestRequestFailed = ref(false)
-const credentialTestRestoreBlocked = ref(false)
-const credentialTestRestoreError = ref<CredentialTestRestoreError>()
 const resetOperationKeys = new Map<number, string>()
 const connectionWorkspaceOpen = ref(false)
 const connectionStages = ref<CredentialStage[]>([])
@@ -138,7 +132,6 @@ let connectionInspectionController: AbortController | undefined
 let connectionInspectionOwner = 0
 let credentialTestController: AbortController | undefined
 let credentialTestOwner = 0
-const copyControllers = useAbortControllerPool()
 const searchDebounce = useDebouncedAction(250)
 const collection = computed(() => credentialsQuery.data.value)
 const {
@@ -197,28 +190,7 @@ const credentialTestPending = computed(() =>
     ? false
     : pendingOperations.value.has(operation(credentialTestTarget.value.credential_id, 'test')),
 )
-const credentialTestRestorePending = computed(() =>
-  credentialTestTarget.value === undefined
-    ? false
-    : pendingOperations.value.has(
-        operation(credentialTestTarget.value.credential_id, 'test-restore'),
-      ),
-)
-// restore_proof 仅在父级请求状态中持有，不传给展示组件或渲染到 DOM。
-const credentialTestDialogResult = computed(() => {
-  const result = credentialTestResult.value
-  if (result === undefined) return undefined
-  return {
-    outcome: result.outcome,
-    model: result.model,
-    protocol: result.protocol,
-    latency_ms: result.latency_ms,
-    reason: result.reason,
-    can_restore: result.can_restore,
-    log_id: result.log_id,
-    tested_at_ms: result.tested_at_ms,
-  }
-})
+const credentialTestDialogResult = computed(() => credentialTestResult.value)
 const hasChangedConditions = computed(
   () => filters.value.q !== undefined || filters.value.status !== undefined,
 )
@@ -293,14 +265,6 @@ watch(
     observationErrors.value = new Map()
     batchObservationPending.value = new Set()
   },
-)
-watch(
-  () => [
-    props.groupId,
-    filters.value.page,
-    collection.value?.items.map(({ credential_id }) => credential_id).join(','),
-  ],
-  () => concealCopiedCredentials(),
 )
 watch(
   () => ({
@@ -455,19 +419,6 @@ function clearDetailState(id: number): void {
   const errors = new Map(detailErrors.value)
   errors.delete(id)
   detailErrors.value = errors
-}
-async function resolveCopyValue(id: number): Promise<string> {
-  const controller = copyControllers.create()
-  try {
-    const result = await revealCredential(client, props.groupId, id, controller.signal)
-    const values = Object.values(result.credential)
-    return values.length === 1 ? values[0] : JSON.stringify(result.credential)
-  } finally {
-    copyControllers.release(controller)
-  }
-}
-function concealCopiedCredentials(): void {
-  copyControllers.abortAll()
 }
 function setPending(id: number | 'batch', action: string, value: boolean): void {
   const next = new Set(pendingOperations.value)
@@ -1123,17 +1074,14 @@ function resetCredentialTestState(): void {
   credentialTestController = undefined
   if (credentialID !== undefined) {
     setPending(credentialID, 'test', false)
-    setPending(credentialID, 'test-restore', false)
   }
   credentialTestTarget.value = undefined
   credentialTestResult.value = undefined
   credentialTestRequestFailed.value = false
-  credentialTestRestoreBlocked.value = false
-  credentialTestRestoreError.value = undefined
 }
 
 function setCredentialTestOpen(open: boolean): void {
-  if (open || credentialTestPending.value || credentialTestRestorePending.value) return
+  if (open || credentialTestPending.value) return
   resetCredentialTestState()
 }
 
@@ -1152,8 +1100,6 @@ async function openCredentialTest(item: CredentialItemDto): Promise<void> {
   credentialTestTarget.value = item
   credentialTestResult.value = undefined
   credentialTestRequestFailed.value = false
-  credentialTestRestoreBlocked.value = false
-  credentialTestRestoreError.value = undefined
   setPending(item.credential_id, 'test', true)
   try {
     const result = await testCredentialConnection(
@@ -1164,6 +1110,10 @@ async function openCredentialTest(item: CredentialItemDto): Promise<void> {
     )
     if (owner !== credentialTestOwner || groupID !== props.groupId) return
     credentialTestResult.value = result
+    if (result.recovered) {
+      await Promise.allSettled([refetchActiveCredentialPage(), refetchGroupSummary()])
+      await invalidateScheduleQueries()
+    }
   } catch {
     if (owner !== credentialTestOwner || groupID !== props.groupId) return
     credentialTestRequestFailed.value = true
@@ -1173,62 +1123,6 @@ async function openCredentialTest(item: CredentialItemDto): Promise<void> {
       setPending(item.credential_id, 'test', false)
     }
   }
-}
-
-async function confirmTestedCredentialRestore(): Promise<void> {
-  const item = credentialTestTarget.value
-  const result = credentialTestResult.value
-  if (
-    item === undefined ||
-    result?.outcome !== 'passed' ||
-    !result.can_restore ||
-    result.restore_proof === null ||
-    credentialTestRestoreBlocked.value ||
-    pending(item.credential_id)
-  ) {
-    return
-  }
-
-  const owner = credentialTestOwner
-  const groupID = props.groupId
-  credentialTestRestoreError.value = undefined
-  setPending(item.credential_id, 'test-restore', true)
-  let restored = false
-  try {
-    const restoredItem = await restoreTestedCredential(
-      client,
-      groupID,
-      item.credential_id,
-      result.restore_proof,
-    )
-    if (owner !== credentialTestOwner || groupID !== props.groupId) return
-    await reconcileItem(restoredItem, true)
-    restored = true
-  } catch (cause) {
-    if (owner !== credentialTestOwner || groupID !== props.groupId) return
-    if (cause instanceof ApiError && cause.status === 409) {
-      credentialTestRestoreBlocked.value = true
-      const [credentialPageRefresh] = await Promise.allSettled([
-        refetchActiveCredentialPage(),
-        refetchGroupSummary(),
-      ])
-      if (owner !== credentialTestOwner || groupID !== props.groupId) return
-      credentialTestRestoreError.value =
-        credentialPageRefresh.status === 'fulfilled' ? 'conflict' : 'conflict_refresh_failed'
-    } else {
-      credentialTestRestoreError.value = 'failed'
-    }
-  } finally {
-    if (owner === credentialTestOwner && groupID === props.groupId) {
-      setPending(item.credential_id, 'test-restore', false)
-    }
-  }
-  if (!restored || owner !== credentialTestOwner || groupID !== props.groupId) return
-  toast.show({
-    message: t('group.credentials.test.restoreSucceeded'),
-    tone: 'success',
-  })
-  resetCredentialTestState()
 }
 
 async function confirmDelete(): Promise<void> {
@@ -1567,13 +1461,13 @@ async function runBatch(action: 'delete', ids = [...selectedIds.value]): Promise
             v-for="(item, index) in collection.items"
             :key="item.credential_id"
             :item="item"
+            :group-id="groupId"
             :row-index="
               (collection.pagination.page - 1) * collection.pagination.page_size + index + 2
             "
             :selected="selectedIds.has(item.credential_id)"
             :busy="rowBusy(item.credential_id)"
             :expanded="credentialExpanded(item.credential_id)"
-            :resolve-copy-value="resolveCopyValue"
             @update:selected="setSelected(item.credential_id, $event)"
             @update:expanded="setExpanded(item.credential_id, $event)"
             @test="openCredentialTest"
@@ -1601,11 +1495,7 @@ async function runBatch(action: 'delete', ids = [...selectedIds.value]): Promise
       :pending="credentialTestPending"
       :request-failed="credentialTestRequestFailed"
       :result="credentialTestDialogResult"
-      :restore-pending="credentialTestRestorePending"
-      :restore-blocked="credentialTestRestoreBlocked"
-      :restore-error="credentialTestRestoreError"
       @update:open="setCredentialTestOpen"
-      @restore="confirmTestedCredentialRestore"
       @view-log="viewCredentialTestLog"
     />
     <AppConfirmDialog

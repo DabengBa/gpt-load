@@ -138,6 +138,9 @@ func decisionEvidence(result UpstreamResult) (*execution.ErrorEvidence, error) {
 	if summary == "" {
 		summary = fixedErrorSummary(streamErrorCode(result.Stream.EndReason))
 	}
+	if bufferedStreamFailureWindow(result) {
+		evidence = canonicalizeBufferedStreamFailureEvidence(result, evidence, summary)
+	}
 	switch result.Stream.EndReason {
 	case StreamEndNone:
 		if evidence == nil && errors.Is(downstreamErr, ErrUpstreamProtocol) {
@@ -197,6 +200,63 @@ func decisionEvidence(result UpstreamResult) (*execution.ErrorEvidence, error) {
 			Kind: execution.ErrorKindInternal, OriginHint: execution.ErrorOriginInternal,
 			Code: "attempt_result_contract_invalid", Summary: "Attempt ended with an invalid terminal state.",
 		}, nil
+	}
+}
+
+func bufferedStreamFailureWindow(result UpstreamResult) bool {
+	return result.BufferedStream && result.HTTPCommitted && !result.PayloadReleased &&
+		result.ClientVisibleBytes > 0 && result.Err == nil &&
+		(result.Stream.EndReason == StreamEndSSEError || result.Stream.EndReason == StreamEndUpstreamFailure)
+}
+
+func canonicalizeBufferedStreamFailureEvidence(
+	result UpstreamResult,
+	evidence *execution.ErrorEvidence,
+	summary string,
+) *execution.ErrorEvidence {
+	if evidence == nil {
+		return &execution.ErrorEvidence{
+			Kind: execution.ErrorKindProvider, OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			StatusCode: result.StatusCode, Code: "upstream_sse_error", Summary: summary,
+		}
+	}
+	if !isBufferedUpstreamEvidence(evidence) {
+		return evidence
+	}
+	clone := evidence.Clone()
+	if clone.Hint == "" && isUnknownBufferedProviderCode(clone) {
+		clone.Code = "upstream_sse_error"
+	}
+	return &clone
+}
+
+func isBufferedUpstreamEvidence(evidence *execution.ErrorEvidence) bool {
+	if evidence == nil || evidence.OriginHint != "" && evidence.OriginHint != execution.ErrorOriginUpstream {
+		return false
+	}
+	switch evidence.Kind {
+	case execution.ErrorKindProvider, execution.ErrorKindHTTP,
+		execution.ErrorKindTransport, execution.ErrorKindTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func isUnknownBufferedProviderCode(evidence execution.ErrorEvidence) bool {
+	if strings.TrimSpace(evidence.Code) == "" {
+		return true
+	}
+	if channel.FailureHint(evidence.StatusCode, evidence.Type, evidence.Code, evidence.Summary) != "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(evidence.Code)) {
+	case "server_is_overloaded", "upstream_error", "upstream_sse_error", "upstream_stream_terminated",
+		"upstream_stream_idle_timeout", "upstream_protocol_error", "upstream_response_incomplete":
+		return false
+	default:
+		return true
 	}
 }
 

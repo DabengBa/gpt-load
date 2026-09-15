@@ -54,6 +54,12 @@ func TestHealthMillisWireUsesNullableEpochMilliseconds(t *testing.T) {
 					AtMS:      &cooldownUntilMS,
 				},
 			}},
+			BlacklistedCredentials: []healthProblemCredentialResponse{{
+				Recovery: healthRecoveryResponse{
+					Automatic: true,
+					Mode:      "scheduled_release",
+				},
+			}},
 			RequestLog: requestLogHealthResponse{
 				LastWriteFailureAtMS: &cooldownUntilMS,
 			},
@@ -61,9 +67,33 @@ func TestHealthMillisWireUsesNullableEpochMilliseconds(t *testing.T) {
 		[]string{
 			"observed_at_ms",
 			"cooldown_credentials",
+			"blacklisted_credentials",
 			"request_log",
 		},
 	)
+
+	// Scheduled release may be advertised without a persisted deadline.
+	encoded, err := json.Marshal(runtimeHealthResponse{
+		BlacklistedCredentials: []healthProblemCredentialResponse{
+			{Recovery: healthRecoveryResponse{
+				Automatic: true,
+				Mode:      "scheduled_release",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal(scheduled release health) error = %v", err)
+	}
+	text := string(encoded)
+	if !strings.Contains(text, `"automatic":true,"mode":"scheduled_release","at_ms":null`) {
+		t.Fatalf("health wire missing nullable scheduled release: %s", text)
+	}
+	legacyValidationMode := "validation" + "_" + "probe"
+	legacyConfigurationMode := "configuration" + "_" + "required"
+	if strings.Contains(text, legacyValidationMode) || strings.Contains(text, legacyConfigurationMode) ||
+		strings.Contains(text, "manual_probe") || strings.Contains(text, "manual_restore") {
+		t.Fatalf("health wire exposes retired recovery mode: %s", text)
+	}
 }
 
 func TestInspectMillisWireUsesEpochMilliseconds(t *testing.T) {

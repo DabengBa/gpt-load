@@ -1,22 +1,25 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ChannelParamsDto, GroupModelItemDto } from '@/api/control/types'
-import type { ChannelFieldDto } from '@/app/resources/channels'
+import type { ChannelParamsDto } from '@/api/control/types'
+import type { ChannelDto, ChannelFieldDto } from '@/app/resources/channels'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
+import ChannelPresetPicker from '@/features/import/ChannelPresetPicker.vue'
 import { isValidPriceMultiplier } from '@/lib/price-multiplier'
 
 const props = withDefaults(
   defineProps<{
     section: 'general' | 'routing'
     channelId: string
+    channels: readonly ChannelDto[]
+    selectedChannel: ChannelDto | null
+    channelsLoading: boolean
+    channelsError: boolean
     paramFields: ChannelFieldDto[]
     params: ChannelParamsDto
     name: string
-    validationModel: string | null
     providerUrl: string | null
-    models: GroupModelItemDto[]
     priceMultiplier: string
     enabled: boolean
     pending: boolean
@@ -31,20 +34,14 @@ const props = withDefaults(
 )
 const emit = defineEmits<{
   'update:param': [key: string, value: string | null]
+  'update:channel': [channel: ChannelDto]
+  'retry:channels': []
   'update:name': [value: string]
   'update:providerUrl': [value: string]
-  'update:validationModel': [value: string | null]
   'update:priceMultiplier': [value: string]
   'update:enabled': [value: boolean]
 }>()
 const { t } = useI18n()
-const validationModelListId = `${useId()}-validation-models`
-// 验活直接把该值当成上游模型 ID 使用，所以候选取 id 而不是可能被别名替换的 client_model。
-const validationModelOptions = computed(() =>
-  [...props.models]
-    .map(({ id, alias, alias_enabled }) => ({ id, alias: alias_enabled ? alias : '' }))
-    .sort((left, right) => left.id.localeCompare(right.id)),
-)
 const baseUrlOverrideEnabled = ref(true)
 
 watch(
@@ -103,6 +100,22 @@ function parameterHelp(field: ChannelFieldDto): string {
       <h3 v-if="showTitle">{{ t('group.settings.sections.general') }}</h3>
       <p v-if="showDescription">{{ t('group.settings.base.description') }}</p>
     </header>
+    <div class="group-settings__channel-field">
+      <span class="group-settings__field-label">{{ t('group.settings.base.channel') }}</span>
+      <small>{{ t('group.settings.base.channelHelp') }}</small>
+      <ChannelPresetPicker
+        :model-value="channelId"
+        :channels="channels"
+        :selected-channel="selectedChannel"
+        :loading="channelsLoading"
+        :error="channelsError"
+        :disabled="pending"
+        hide-header
+        compact
+        @select="emit('update:channel', $event)"
+        @retry="emit('retry:channels')"
+      />
+    </div>
     <div class="group-settings__grid">
       <label class="group-settings__field">
         <span>{{ t('group.settings.base.name') }}</span>
@@ -113,27 +126,6 @@ function parameterHelp(field: ChannelFieldDto): string {
           @input="emit('update:name', ($event.target as HTMLInputElement).value)"
         />
         <small v-if="nameError" role="alert">{{ nameError }}</small>
-      </label>
-      <label class="group-settings__field">
-        <span>{{ t('group.settings.base.validationModel') }}</span>
-        <input
-          class="group-settings__mono"
-          :value="validationModel ?? ''"
-          :list="validationModelListId"
-          :placeholder="t('group.settings.base.validationModelPlaceholder')"
-          :disabled="pending"
-          autocomplete="off"
-          @input="emit('update:validationModel', ($event.target as HTMLInputElement).value || null)"
-        />
-        <datalist :id="validationModelListId">
-          <option
-            v-for="option in validationModelOptions"
-            :key="option.id"
-            :value="option.id"
-            :label="option.alias || undefined"
-          />
-        </datalist>
-        <small>{{ t('group.settings.base.validationModelHelp') }}</small>
       </label>
       <label class="group-settings__field">
         <span>{{ t('common.priceMultiplier.label') }}</span>
@@ -271,10 +263,29 @@ function parameterHelp(field: ChannelFieldDto): string {
 }
 
 .group-settings__field > span,
-.group-settings__field > legend {
+.group-settings__field > legend,
+.group-settings__field-label {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: 560;
+}
+.group-settings__channel-field {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: var(--space-3);
+}
+.group-settings__channel-field > small {
+  color: var(--color-text-faint);
+  font-size: var(--text-label-xs);
+  line-height: var(--line-normal);
+}
+.group-settings__channel-field :deep(.channel-picker) {
+  margin-top: 3px;
+}
+.group-settings__channel-field :deep(.channel-picker__selector) {
+  align-items: flex-start;
 }
 
 .group-settings__field small {

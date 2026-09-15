@@ -225,6 +225,7 @@ type ResolvedTarget struct {
 	TargetConfig      json.RawMessage `json:"-"`
 	CatalogProviderID string          `json:"-"`
 
+	probeContract           spec.ProbeContract
 	modes                   map[protocol.Protocol]map[execution.Operation]RouteMode
 	resolvers               map[routeKey]spec.RouteResolver
 	responsesStoreHandlings map[routeKey]ResponsesStoreHandling
@@ -279,6 +280,31 @@ func (t ResolvedTarget) ModeForModel(
 	return mode, true
 }
 
+// ProbeProtocol returns the single generative protocol declared by the channel.
+// It is derived from the code-owned probe contract rather than from protocol
+// ordering or provider kind.
+func (t ResolvedTarget) ProbeProtocol() (protocol.Protocol, bool) {
+	contract, ok := t.ProbeContract()
+	if !ok {
+		return "", false
+	}
+	return contract.Protocol, true
+}
+
+// ProbeRoute resolves the declared probe protocol and the model-dependent mode
+// for one upstream model. Every probe target uses one protocol and one route.
+func (t ResolvedTarget) ProbeRoute(upstreamModel string) (protocol.Protocol, RouteMode, bool) {
+	contract, ok := t.ProbeContract()
+	if !ok {
+		return "", "", false
+	}
+	mode, ok := t.ModeForModel(contract.Protocol, execution.OperationProbe, upstreamModel)
+	if !ok {
+		return "", "", false
+	}
+	return contract.Protocol, mode, true
+}
+
 // PreferredRoute selects one declared route for a utility operation,
 // preferring native mode and then canonical protocol order.
 func (t ResolvedTarget) PreferredRoute(
@@ -305,6 +331,15 @@ func (t ResolvedTarget) PreferredProtocol(
 ) (protocol.Protocol, bool) {
 	clientProtocol, _, ok := t.PreferredRoute(operation, upstreamModel)
 	return clientProtocol, ok
+}
+
+// ProbeContract returns the code-owned manual probe contract. API-key channels
+// declare exactly one; subscription channels have none.
+func (t ResolvedTarget) ProbeContract() (spec.ProbeContract, bool) {
+	if !t.probeContract.Valid() {
+		return spec.ProbeContract{}, false
+	}
+	return t.probeContract, true
 }
 
 // NormalizeVertexGeminiModel returns the Vertex resource ID for a Gemini,
@@ -542,6 +577,7 @@ func (r *Registry) Resolve(id ID, raw json.RawMessage) (ResolvedTarget, error) {
 		ProviderKind:      definition.providerKind,
 		TargetConfig:      append(json.RawMessage(nil), targetConfig...),
 		CatalogProviderID: definition.catalogProviderID,
+		probeContract:     definition.probeContract,
 		modes:             cloneRouteModes(definition.modes),
 		resolvers:         cloneRouteResolvers(definition.resolvers),
 		responsesStoreHandlings: cloneResponsesStoreHandlings(
@@ -666,6 +702,7 @@ type definition struct {
 	validateCredential      func(map[string]string) error
 	catalogProviderID       string
 	providerKind            ProviderKind
+	probeContract           spec.ProbeContract
 	connection              spec.Connection
 	capabilities            spec.CapabilityBindings
 	endpointPolicy          spec.EndpointPolicy
@@ -690,10 +727,10 @@ func (d definition) matches(query string) bool {
 func newRegistry(definitions []definition) (*Registry, error) {
 	registry := &Registry{byID: make(map[ID]definition, len(definitions)), order: make([]ID, 0, len(definitions))}
 	for _, definition := range definitions {
+		id := definition.descriptor.ID
 		if err := validateDefinition(definition); err != nil {
 			return nil, err
 		}
-		id := definition.descriptor.ID
 		if _, duplicate := registry.byID[id]; duplicate {
 			return nil, fmt.Errorf("duplicate channel ID %q", id)
 		}

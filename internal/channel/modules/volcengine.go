@@ -28,6 +28,7 @@ func Volcengine() spec.Module {
 				Required: true, Sensitive: true, Normalizer: spec.NormalizeNonEmpty,
 			}},
 			Provider: spec.ProviderBinding{
+				ProbeContract:     spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: probeMinOutputTokens},
 				ProviderKind:      spec.ProviderOpenAICompatible,
 				CatalogProviderID: "volcengine",
 				EndpointPolicy:    spec.EndpointFixedWithOverride,

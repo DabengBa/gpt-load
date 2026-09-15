@@ -30,6 +30,7 @@ export const runtimeSettingKeys = [
   'stream_idle_timeout',
   'retry_count',
   'blacklist_threshold',
+  'blacklist_release_seconds',
   'header_rules',
   'cors',
   'response_header_rules',
@@ -37,7 +38,6 @@ export const runtimeSettingKeys = [
   'responses_websocket_enabled',
   'affinity_ttl',
   'affinity_capacity',
-  'validation_interval',
   'request_log_retention_days',
   'models_dev_auto_sync_enabled',
 ] as const
@@ -76,6 +76,7 @@ export interface SettingsValues {
   stream_idle_timeout: number
   retry_count: number
   blacklist_threshold: number
+  blacklist_release_seconds: number
   header_rules: HeaderRulesDto
   cors: CORSConfigDto
   response_header_rules: HeaderRulesDto
@@ -83,7 +84,6 @@ export interface SettingsValues {
   responses_websocket_enabled: boolean
   affinity_ttl: number
   affinity_capacity: number
-  validation_interval: number
   request_log_retention_days: number
   models_dev_auto_sync_enabled: boolean
   proxy_config: ProxyViewDto
@@ -102,6 +102,7 @@ export type SettingsPatch = Partial<{
   stream_idle_timeout: number | null
   retry_count: number | null
   blacklist_threshold: number | null
+  blacklist_release_seconds: number | null
   header_rules: HeaderRulesDto | null
   cors: CORSConfigDto | null
   response_header_rules: HeaderRulesDto | null
@@ -109,7 +110,6 @@ export type SettingsPatch = Partial<{
   responses_websocket_enabled: boolean | null
   affinity_ttl: number | null
   affinity_capacity: number | null
-  validation_interval: number | null
   request_log_retention_days: number | null
   models_dev_auto_sync_enabled: boolean | null
   proxy_config: ProxyMutation
@@ -202,6 +202,10 @@ export function projectSettings(value: unknown): SettingsDto {
       stream_idle_timeout: projectSafeInteger(values.stream_idle_timeout, { minimum: 1 }),
       retry_count: projectSafeInteger(values.retry_count, { minimum: 0 }),
       blacklist_threshold: projectSafeInteger(values.blacklist_threshold, { minimum: 0 }),
+      blacklist_release_seconds: projectSafeInteger(values.blacklist_release_seconds, {
+        minimum: 1,
+        maximum: 9_223_372_036,
+      }),
       header_rules: projectHeaderRules(values.header_rules),
       cors: projectCORSConfig(values.cors),
       response_header_rules: projectHeaderRules(values.response_header_rules),
@@ -212,7 +216,6 @@ export function projectSettings(value: unknown): SettingsDto {
         minimum: 1,
         maximum: 1_000_000,
       }),
-      validation_interval: projectSafeInteger(values.validation_interval, { minimum: 1 }),
       request_log_retention_days: projectSafeInteger(values.request_log_retention_days, {
         minimum: 1,
         maximum: 365,

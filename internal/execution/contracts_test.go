@@ -294,6 +294,7 @@ func TestProbeAttemptIsSemanticAndDoesNotCarryProviderWireShape(t *testing.T) {
 	spec.Query = nil
 	spec.RawQuery = ""
 	spec.Body = nil
+	spec.ProbeMaxOutputTokens = 16
 
 	if err := spec.Validate(); err != nil {
 		t.Fatalf("semantic Probe Validate() error = %v", err)
@@ -304,11 +305,12 @@ func TestProbeAttemptIsSemanticAndDoesNotCarryProviderWireShape(t *testing.T) {
 		func(value *AttemptSpec) { value.Path = "/v1/chat/completions" },
 		func(value *AttemptSpec) { value.RawQuery = "alt=sse" },
 		func(value *AttemptSpec) { value.Body = []byte(`{"model":"probe"}`) },
+		func(value *AttemptSpec) { value.ProbeMaxOutputTokens = 0 },
 	} {
 		invalid := spec.Clone()
 		mutate(&invalid)
 		if err := invalid.Validate(); err == nil {
-			t.Fatalf("Probe accepted provider wire fields: %#v", invalid)
+			t.Fatalf("Probe accepted invalid fields: %#v", invalid)
 		}
 	}
 }
@@ -509,6 +511,7 @@ func TestValidationAcceptsValidContractsAndRejectsInvalidFields(t *testing.T) {
 			modelRequired.Path = ""
 			modelRequired.Query = nil
 			modelRequired.Body = nil
+			modelRequired.ProbeMaxOutputTokens = 16
 		}
 		if err := modelRequired.Validate(); err == nil {
 			t.Fatalf("expected %q without a model to be rejected", operation)

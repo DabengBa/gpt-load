@@ -88,14 +88,20 @@ func TestOfficialNativeProbeUsesSelectedModelAndProtocolTarget(t *testing.T) {
 		response  string
 		assert    func(*testing.T, *http.Request, map[string]any)
 	}{
-		{name: "openai", channelID: channel.OpenAI, protocol: protocol.OpenAICompletions, runtime: func(t *testing.T, base string) *testRuntime {
+		{name: "openai", channelID: channel.OpenAI, protocol: protocol.OpenAIResponses, runtime: func(t *testing.T, base string) *testRuntime {
 			return newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true, openAIBaseURL: base})
-		}, response: `{"id":"chat_1","object":"chat.completion","created":1,"model":"probe-upstream","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`, assert: func(t *testing.T, request *http.Request, payload map[string]any) {
-			if request.URL.Path != "/v1/chat/completions" || payload["model"] != "probe-upstream" {
-				t.Errorf("OpenAI probe = %s %#v", request.URL.Path, payload)
+		}, response: `{"id":"resp_1","object":"response","status":"completed","model":"probe-upstream","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`, assert: func(t *testing.T, request *http.Request, payload map[string]any) {
+			if request.URL.Path != "/v1/responses" || payload["model"] != "probe-upstream" {
+				t.Errorf("OpenAI Responses probe = %s %#v", request.URL.Path, payload)
 			}
-			if stream, exists := payload["stream"]; exists && stream != false {
-				t.Errorf("OpenAI probe stream = %#v", stream)
+			if payload["input"] == nil || payload["max_output_tokens"] != float64(testProbeOutputTokens) {
+				t.Errorf("OpenAI Responses probe controls = %#v", payload)
+			}
+			if _, exists := payload["max_tokens"]; exists {
+				t.Errorf("OpenAI Responses probe has Chat max_tokens: %#v", payload)
+			}
+			if _, exists := payload["max_completion_tokens"]; exists {
+				t.Errorf("OpenAI Responses probe has Chat max_completion_tokens: %#v", payload)
 			}
 		}},
 		{name: "anthropic", channelID: channel.Anthropic, protocol: protocol.Anthropic, runtime: func(t *testing.T, base string) *testRuntime {
@@ -107,9 +113,10 @@ func TestOfficialNativeProbeUsesSelectedModelAndProtocolTarget(t *testing.T) {
 			if stream, exists := payload["stream"]; exists && stream != false {
 				t.Errorf("Anthropic probe stream = %#v", stream)
 			}
-			if payload["max_tokens"] != float64(1) {
+			if payload["max_tokens"] != float64(testProbeOutputTokens) {
 				t.Errorf("Anthropic max_tokens = %#v", payload["max_tokens"])
 			}
+			assertProbeQuestion(t, payload)
 		}},
 		{name: "gemini", channelID: channel.Gemini, protocol: protocol.Gemini, runtime: func(t *testing.T, base string) *testRuntime {
 			return newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true, geminiBaseURL: base + "/v1beta"})
@@ -118,9 +125,10 @@ func TestOfficialNativeProbeUsesSelectedModelAndProtocolTarget(t *testing.T) {
 				t.Errorf("Gemini probe path = %s", request.URL.Path)
 			}
 			generationConfig, _ := payload["generationConfig"].(map[string]any)
-			if generationConfig["maxOutputTokens"] != float64(1) {
+			if generationConfig["maxOutputTokens"] != float64(testProbeOutputTokens) {
 				t.Errorf("Gemini generationConfig = %#v", generationConfig)
 			}
+			assertProbeQuestion(t, payload)
 		}},
 	}
 	for _, test := range tests {
@@ -150,6 +158,9 @@ func TestOfficialNativeProbeUsesSelectedModelAndProtocolTarget(t *testing.T) {
 			if calls.Load() != 1 || result.Error != nil || result.StatusCode != http.StatusOK {
 				t.Fatalf("calls/result = %d/%+v", calls.Load(), result)
 			}
+			if !result.ProbeAnswerPresent {
+				t.Fatalf("probe answer not observed: %+v body=%s", result, result.Body)
+			}
 		})
 	}
 }
@@ -161,8 +172,47 @@ func utilitySpec(channelID channel.ID, clientProtocol protocol.Protocol, operati
 		Method: method, Path: path, Query: make(map[string][]string), Header: http.Header{"Authorization": {"Bearer client"}}, Body: body,
 		TargetConfig: json.RawMessage(`{}`), Credential: execution.NewCredentialSnapshot(10, 1, 1, []byte(`{"api_key":"`+testAPIKey+`"}`)),
 	})
+	if operation == execution.OperationProbe {
+		spec.ProbeMaxOutputTokens = testProbeOutputTokens
+	}
 	if _, err := channel.NewRegistry().ResolveExecutionTarget(channelID, spec.TargetConfig); err == nil {
 		return freezeTestAttempt(spec)
 	}
 	return spec
+}
+
+// testProbeOutputTokens mirrors the code-owned probe budget declared by the
+// channel modules so wire fixtures assert the real contract value.
+const testProbeOutputTokens = 16
+
+// assertProbeQuestion checks the wire request carries the code-owned realistic
+// question instead of the old fixed ping.
+func assertProbeQuestion(t *testing.T, payload map[string]any) {
+	t.Helper()
+	if messages, ok := payload["messages"].([]any); ok && len(messages) > 0 {
+		if message, ok := messages[0].(map[string]any); ok {
+			if message["content"] == probeQuestion {
+				return
+			}
+			if blocks, ok := message["content"].([]any); ok {
+				for _, raw := range blocks {
+					if block, ok := raw.(map[string]any); ok && block["text"] == probeQuestion {
+						return
+					}
+				}
+			}
+			t.Errorf("probe chat content = %#v", message["content"])
+			return
+		}
+	}
+	if contents, ok := payload["contents"].([]any); ok && len(contents) > 0 {
+		if content, ok := contents[0].(map[string]any); ok {
+			if parts, ok := content["parts"].([]any); ok && len(parts) > 0 {
+				if part, ok := parts[0].(map[string]any); ok && part["text"] == probeQuestion {
+					return
+				}
+			}
+		}
+	}
+	t.Errorf("probe question missing from payload: %#v", payload)
 }

@@ -68,7 +68,6 @@ const groupSettingsFields = [
   'connection_type',
   'params',
   'provider_url',
-  'validation_model',
   'enabled',
   'overrides',
   'effective',
@@ -179,8 +178,8 @@ export type {
 export type GroupSettingsUpdateRequest = Partial<{
   name: string
   price_multiplier: string
+  channel_id: string
   params: ChannelParamsDto
-  validation_model: string | null
   provider_url: string | null
   enabled: boolean
   overrides: GroupRuntimeConfigDto
@@ -473,8 +472,6 @@ export function projectGroupSettings(value: unknown): GroupSettingsDto {
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
     price_multiplier: projectPriceMultiplier(record.price_multiplier),
-    validation_model:
-      record.validation_model === null ? null : projectNonBlankString(record.validation_model),
     enabled: projectBoolean(record.enabled),
     overrides: projectRuntimeConfig(record.overrides, false),
     effective: projectRuntimeConfig(record.effective, true),

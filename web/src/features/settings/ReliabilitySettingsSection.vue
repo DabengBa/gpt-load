@@ -14,7 +14,6 @@ import SettingRow from '@/components/config/SettingRow.vue'
 import {
   createSettingsDraft,
   isValidNonNegativeInteger,
-  isValidTimeout,
   setSettingsOverride,
   type SettingsDraft,
 } from './settings-patch'
@@ -87,22 +86,22 @@ function policyCountError(key: PolicyCountSettingKey): string | undefined {
     : undefined
 }
 
-function validationIntervalValue(): string {
-  if (isPendingRestore('validation_interval')) return t('settings.runtime.resetPending')
+function blacklistReleaseValue(): string {
+  if (isPendingRestore('blacklist_release_seconds')) return t('settings.runtime.resetPending')
   return t('settings.runtime.effectiveValue', {
-    value: formatInteger(props.base.settings.values.validation_interval, locale.value),
+    value: formatInteger(props.base.settings.values.blacklist_release_seconds, locale.value),
   })
 }
 
-function setValidationInterval(value: string): void {
+function setBlacklistRelease(value: string): void {
   const draft = cloneDraft()
-  draft.values.validation_interval = value.trim() === '' ? Number.NaN : Number(value)
-  publish('validation_interval', draft)
+  draft.values.blacklist_release_seconds = value.trim() === '' ? Number.NaN : Number(value)
+  publish('blacklist_release_seconds', draft)
 }
 
-function validationIntervalError(): string | undefined {
-  return hasOverride('validation_interval') &&
-    !isValidTimeout(props.draft.values.validation_interval)
+function blacklistReleaseError(): string | undefined {
+  return hasOverride('blacklist_release_seconds') &&
+    !isValidTimeout(props.draft.values.blacklist_release_seconds)
     ? t('settings.runtime.timeoutError')
     : undefined
 }
@@ -162,30 +161,31 @@ function validationIntervalError(): string | undefined {
       </SettingRow>
 
       <SettingRow
-        :label="t('settings.runtime.validation_interval')"
-        :value="validationIntervalValue()"
-        :source-label="sourceLabel('validation_interval')"
-        :action-label="actionLabel('validation_interval')"
-        :overridden="hasOverride('validation_interval')"
-        :pending-restore="isPendingRestore('validation_interval')"
+        :label="t('settings.runtime.blacklist_release_seconds')"
+        :value="blacklistReleaseValue()"
+        :help="t('settings.runtime.blacklistReleaseHelp')"
+        :source-label="sourceLabel('blacklist_release_seconds')"
+        :action-label="actionLabel('blacklist_release_seconds')"
+        :overridden="hasOverride('blacklist_release_seconds')"
+        :pending-restore="isPendingRestore('blacklist_release_seconds')"
         :divided="false"
         :disabled="disabled"
-        @toggle="toggleOverride('validation_interval')"
+        @toggle="toggleOverride('blacklist_release_seconds')"
       >
         <template #control>
           <div class="settings-reliability__input">
             <CompactFieldError
-              id="settings-value-validation_interval"
-              :error="validationIntervalError()"
+              id="settings-value-blacklist_release_seconds"
+              :error="blacklistReleaseError()"
             >
               <template #default="{ invalid, describedBy }">
                 <AppTextInput
-                  id="settings-value-validation_interval"
+                  id="settings-value-blacklist_release_seconds"
                   type="number"
-                  :model-value="String(draft.values.validation_interval)"
+                  :model-value="String(draft.values.blacklist_release_seconds)"
                   :label="
                     t('settings.runtime.valueFor', {
-                      field: t('settings.runtime.validation_interval'),
+                      field: t('settings.runtime.blacklist_release_seconds'),
                     })
                   "
                   appearance="surface"
@@ -198,7 +198,7 @@ function validationIntervalError(): string | undefined {
                   :disabled="disabled"
                   :invalid="invalid"
                   :described-by="describedBy"
-                  @update:model-value="setValidationInterval"
+                  @update:model-value="setBlacklistRelease"
                 />
               </template>
             </CompactFieldError>

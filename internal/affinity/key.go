@@ -8,7 +8,12 @@ import (
 	"gpt-load/internal/protocol"
 )
 
-const keyDomain = "gpt-load/affinity/signal-hmac/v3"
+const (
+	keyDomain                 = "gpt-load/affinity/signal-hmac/v3"
+	displayKeyRawLength       = 64
+	displayKeyVisiblePartSize = 16
+	displayKeyMask            = "****"
+)
 
 // SignalType 标识哪个可选请求提示作为亲和缓存键的输入。
 type SignalType string
@@ -29,6 +34,43 @@ type Key string
 
 func (key Key) Valid() bool {
 	return key != ""
+}
+
+// DisplayKey returns the fixed, non-reversible projection used by request logs.
+// It accepts only the production HMAC representation, not arbitrary cache keys.
+func DisplayKey(key Key) string {
+	value := string(key)
+	if len(value) != displayKeyRawLength {
+		return ""
+	}
+	for index := range value {
+		character := value[index]
+		if !((character >= '0' && character <= '9') ||
+			(character >= 'a' && character <= 'f')) {
+			return ""
+		}
+	}
+	return value[:displayKeyVisiblePartSize] + displayKeyMask +
+		value[len(value)-displayKeyVisiblePartSize:]
+}
+
+// ValidDisplayKey reports whether value is the canonical request-log projection.
+func ValidDisplayKey(value string) bool {
+	if len(value) != displayKeyVisiblePartSize*2+len(displayKeyMask) ||
+		value[displayKeyVisiblePartSize:displayKeyVisiblePartSize+len(displayKeyMask)] != displayKeyMask {
+		return false
+	}
+	for index := range value {
+		if index >= displayKeyVisiblePartSize && index < displayKeyVisiblePartSize+len(displayKeyMask) {
+			continue
+		}
+		character := value[index]
+		if !((character >= '0' && character <= '9') ||
+			(character >= 'a' && character <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 // Hasher computes a keyed digest without exposing its key material.
