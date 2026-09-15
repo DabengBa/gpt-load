@@ -1,6 +1,8 @@
 package bifrost
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -279,6 +281,34 @@ func TestNormalizeProbeAttemptResultDistinguishesNoAnswerFromInvalidShape(t *tes
 	normalizeProbeAttemptResult(spec, withError, false)
 	if withError.ProbeAnswerPresent || withError.ProbeResponseInvalid {
 		t.Fatalf("error results must not carry probe evidence: %+v", withError)
+	}
+}
+
+func TestNormalizeProbeAttemptResultDecodesContentEncoding(t *testing.T) {
+	t.Parallel()
+
+	var encoded bytes.Buffer
+	writer := gzip.NewWriter(&encoded)
+	if _, err := writer.Write([]byte(`{"candidates":[{"content":{"parts":[{"text":"4"}]}}]}`)); err != nil {
+		t.Fatalf("gzip.Write() error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("gzip.Close() error = %v", err)
+	}
+
+	result := &execution.AttemptResult{
+		DispatchState:   execution.DispatchMaybeSent,
+		ResponseStarted: true,
+		StatusCode:      http.StatusOK,
+		Header:          http.Header{"Content-Encoding": []string{"gzip"}},
+		Body:            encoded.Bytes(),
+	}
+	normalizeProbeAttemptResult(execution.AttemptSpec{
+		Operation:      execution.OperationProbe,
+		ClientProtocol: protocol.Gemini,
+	}, result, true)
+	if !result.ProbeAnswerPresent || result.ProbeResponseInvalid {
+		t.Fatalf("gzip probe response evidence = %+v", result)
 	}
 }
 
