@@ -92,6 +92,290 @@ func testCredentialRuntimes(t *testing.T) (*channel.Registry, *subscriptionrunti
 	return channels, subscriptions
 }
 
+func TestDecisionEvidenceCanonicalizesOnlyBufferedUpstreamStreamFailures(t *testing.T) {
+	newResult := func(reason StreamEndReason, evidence *execution.ErrorEvidence) UpstreamResult {
+		return UpstreamResult{
+			DispatchState:      execution.DispatchMaybeSent,
+			StatusCode:         http.StatusOK,
+			BufferedStream:     true,
+			HTTPCommitted:      true,
+			ClientVisibleBytes: int64(len(bufferedStreamHeartbeat)),
+			ExecutionError:     evidence,
+			Stream:             StreamObservation{EndReason: reason},
+		}
+	}
+	newEvidence := func(kind execution.ErrorKind, origin execution.ErrorOrigin, hint execution.FailureHint, code string) *execution.ErrorEvidence {
+		return &execution.ErrorEvidence{
+			Kind: kind, OriginHint: origin, ScopeHint: execution.ErrorScopeRequest,
+			Hint: hint, StatusCode: http.StatusOK, Code: code,
+			Summary: "provider stream failed", ReplaySafety: execution.ReplaySafetyUnknown,
+			Header: http.Header{"X-Evidence": {"kept"}},
+		}
+	}
+
+	tests := []struct {
+		name            string
+		result          func(*execution.ErrorEvidence) UpstreamResult
+		wantCode        string
+		wantSamePointer bool
+	}{
+		{
+			name:     "SSE error unknown code is canonicalized on a clone",
+			result:   func(evidence *execution.ErrorEvidence) UpstreamResult { return newResult(StreamEndSSEError, evidence) },
+			wantCode: "upstream_sse_error",
+		},
+		{
+			name: "upstream failure unknown code is canonicalized on a clone",
+			result: func(evidence *execution.ErrorEvidence) UpstreamResult {
+				return newResult(StreamEndUpstreamFailure, evidence)
+			},
+			wantCode: "upstream_sse_error",
+		},
+		{
+			name: "empty evidence is created only for the upstream stream reason",
+			result: func(_ *execution.ErrorEvidence) UpstreamResult {
+				return newResult(StreamEndUpstreamFailure, nil)
+			},
+			wantCode: "upstream_sse_error",
+		},
+		{
+			name: "empty origin provider evidence is canonicalized",
+			result: func(_ *execution.ErrorEvidence) UpstreamResult {
+				return newResult(StreamEndSSEError, newEvidence(
+					execution.ErrorKindProvider, "", "", "internal_error",
+				))
+			},
+			wantCode: "upstream_sse_error",
+		},
+		{
+			name: "client origin provider evidence is unchanged",
+			result: func(_ *execution.ErrorEvidence) UpstreamResult {
+				return newResult(StreamEndSSEError, newEvidence(
+					execution.ErrorKindProvider, execution.ErrorOriginClient, "", "internal_error",
+				))
+			},
+			wantCode:        "internal_error",
+			wantSamePointer: true,
+		},
+		{
+			name: "server overload preserves the health capacity code",
+			result: func(_ *execution.ErrorEvidence) UpstreamResult {
+				evidence := newEvidence(
+					execution.ErrorKindProvider, execution.ErrorOriginUpstream, "", "server_is_overloaded",
+				)
+				evidence.ScopeHint = execution.ErrorScopeGroup
+				evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
+				return newResult(StreamEndSSEError, evidence)
+			},
+			wantCode: "server_is_overloaded",
+		},
+		{
+			name: "server overload keeps the replay unsafe fallback",
+			result: func(_ *execution.ErrorEvidence) UpstreamResult {
+				evidence := newEvidence(
+					execution.ErrorKindProvider, execution.ErrorOriginUpstream, "", "server_is_overloaded",
+				)
+				evidence.StatusCode = http.StatusServiceUnavailable
+				evidence.ScopeHint = execution.ErrorScopeGroup
+				evidence.ReplaySafety = execution.ReplaySafetyUnknown
+				result := newResult(StreamEndSSEError, evidence)
+				result.StatusCode = http.StatusServiceUnavailable
+				return result
+			},
+			wantCode: "server_is_overloaded",
+		},
+		{
+			name: "non buffered stream is unchanged",
+			result: func(evidence *execution.ErrorEvidence) UpstreamResult {
+				result := newResult(StreamEndSSEError, evidence)
+				result.BufferedStream = false
+				return result
+			},
+			wantCode:        "internal_error",
+			wantSamePointer: true,
+		},
+		{
+			name: "released payload is unchanged",
+			result: func(evidence *execution.ErrorEvidence) UpstreamResult {
+				result := newResult(StreamEndSSEError, evidence)
+				result.PayloadReleased = true
+				return result
+			},
+			wantCode:        "internal_error",
+			wantSamePointer: true,
+		},
+		{
+			name: "uncommitted heartbeat is unchanged",
+			result: func(evidence *execution.ErrorEvidence) UpstreamResult {
+				result := newResult(StreamEndSSEError, evidence)
+				result.HTTPCommitted = false
+				return result
+			},
+			wantCode:        "internal_error",
+			wantSamePointer: true,
+		},
+		{
+			name: "no visible bytes is unchanged",
+			result: func(evidence *execution.ErrorEvidence) UpstreamResult {
+				result := newResult(StreamEndSSEError, evidence)
+				result.ClientVisibleBytes = 0
+				return result
+			},
+			wantCode:        "internal_error",
+			wantSamePointer: true,
+		},
+		{
+			name: "internal evidence is unchanged",
+			result: func(_ *execution.ErrorEvidence) UpstreamResult {
+				return newResult(StreamEndSSEError, newEvidence(
+					execution.ErrorKindInternal, execution.ErrorOriginInternal, "", "internal_error",
+				))
+			},
+			wantCode: "internal_error",
+		},
+		{
+			name: "downstream evidence is unchanged",
+			result: func(_ *execution.ErrorEvidence) UpstreamResult {
+				return newResult(StreamEndSSEError, newEvidence(
+					execution.ErrorKindProvider, execution.ErrorOriginDownstream, "", "internal_error",
+				))
+			},
+			wantCode: "internal_error",
+		},
+		{
+			name: "canceled evidence is unchanged",
+			result: func(_ *execution.ErrorEvidence) UpstreamResult {
+				return newResult(StreamEndSSEError, newEvidence(
+					execution.ErrorKindCanceled, execution.ErrorOriginDownstream, "", "internal_error",
+				))
+			},
+			wantCode: "internal_error",
+		},
+		{
+			name: "canceled result error is unchanged",
+			result: func(evidence *execution.ErrorEvidence) UpstreamResult {
+				result := newResult(StreamEndSSEError, evidence)
+				result.Err = context.Canceled
+				return result
+			},
+			wantCode:        "internal_error",
+			wantSamePointer: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			evidence := newEvidence(execution.ErrorKindProvider, execution.ErrorOriginUpstream, "", "internal_error")
+			result := test.result(evidence)
+			var original *execution.ErrorEvidence
+			if result.ExecutionError != nil {
+				copy := result.ExecutionError.Clone()
+				original = &copy
+			}
+			got, err := decisionEvidence(result)
+			if err != nil {
+				t.Fatalf("decisionEvidence() error = %v", err)
+			}
+			if got == nil || got.Code != test.wantCode {
+				t.Fatalf("decisionEvidence() = %#v, want code %q", got, test.wantCode)
+			}
+			if test.wantSamePointer && got != result.ExecutionError {
+				t.Fatalf("decisionEvidence() returned a normalized copy for an ineligible result")
+			}
+			if result.ExecutionError != nil && original != nil && !reflect.DeepEqual(*result.ExecutionError, *original) {
+				t.Fatalf("decisionEvidence() mutated original evidence: got %#v, want %#v", *result.ExecutionError, *original)
+			}
+			if test.wantCode == "upstream_sse_error" {
+				decision := judgeUpstreamResult(result, timeNowForBufferedTest(), health.DecisionContext{
+					Method: http.MethodPost, Operation: execution.OperationResponsesCreate,
+					BufferedReplayEligible: true,
+				})
+				if decision.Retry != health.RetryNextCandidate {
+					t.Fatalf("buffered failure decision = %#v, want candidate retry", decision)
+				}
+			}
+		})
+	}
+}
+
+func TestDecisionEvidencePreservesServerOverloadedHealthDecisions(t *testing.T) {
+	newResult := func(status int, replaySafety execution.ReplaySafety) UpstreamResult {
+		evidence := &execution.ErrorEvidence{
+			Kind: execution.ErrorKindProvider, OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint: execution.ErrorScopeGroup, StatusCode: status,
+			Code: "server_is_overloaded", Summary: "provider is overloaded",
+			ReplaySafety: replaySafety,
+		}
+		return UpstreamResult{
+			DispatchState: execution.DispatchMaybeSent, StatusCode: status,
+			BufferedStream: true, HTTPCommitted: true,
+			ClientVisibleBytes: int64(len(bufferedStreamHeartbeat)),
+			ExecutionError:     evidence,
+			Stream:             StreamObservation{EndReason: StreamEndSSEError},
+		}
+	}
+
+	tests := []struct {
+		name           string
+		status         int
+		replaySafety   execution.ReplaySafety
+		buffered       bool
+		replayEligible bool
+		want           health.Decision
+	}{
+		{
+			name:           "replay eligible uses transient capacity decision",
+			status:         http.StatusOK,
+			replaySafety:   execution.ReplaySafetyRejectedBeforeProcessing,
+			buffered:       true,
+			replayEligible: true,
+			want: health.Decision{
+				Category: health.FailureCategoryUpstreamHostError,
+				Origin:   execution.ErrorOriginUpstream, Scope: execution.ErrorScopeGroup,
+				Retry: health.RetryNextCandidate, Effect: health.EffectNone,
+				RuleID: "candidate.transient_capacity",
+			},
+		},
+		{
+			name:           "replay ineligible keeps safe fallback",
+			status:         http.StatusServiceUnavailable,
+			replaySafety:   execution.ReplaySafetyUnknown,
+			buffered:       true,
+			replayEligible: false,
+			want: health.Decision{
+				Category: health.FailureCategoryUpstreamHostError,
+				Origin:   execution.ErrorOriginUpstream, Scope: execution.ErrorScopeGroup,
+				Retry: health.RetryNone, Effect: health.EffectSkipGroup,
+				RuleID: "upstream.host_error.replay_unsafe",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := newResult(test.status, test.replaySafety)
+			result.BufferedStream = test.buffered
+			evidence, err := decisionEvidence(result)
+			if err != nil {
+				t.Fatalf("decisionEvidence() error = %v", err)
+			}
+			if evidence == nil || evidence.Code != "server_is_overloaded" {
+				t.Fatalf("decisionEvidence() = %#v, want preserved capacity code", evidence)
+			}
+			result.ExecutionError = evidence
+			decision := judgeUpstreamResult(result, timeNowForBufferedTest(), health.DecisionContext{
+				Method: http.MethodPost, Operation: execution.OperationResponsesCreate,
+				BufferedReplayEligible: test.replayEligible,
+			})
+			if decision.Category != test.want.Category || decision.Origin != test.want.Origin ||
+				decision.Scope != test.want.Scope || decision.Retry != test.want.Retry ||
+				decision.Effect != test.want.Effect || decision.RuleID != test.want.RuleID {
+				t.Fatalf("judgeUpstreamResult() = %#v, want %#v", decision, test.want)
+			}
+		})
+	}
+}
+
 func TestJudgeUpstreamResultUsesNeutralExecutionEvidence(t *testing.T) {
 	t.Parallel()
 
