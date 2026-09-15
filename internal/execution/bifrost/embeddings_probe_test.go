@@ -60,10 +60,8 @@ func TestOpenAIEmbeddingsProbeUsesMinimalNativeWireAndResolvedTarget(t *testing.
 			if err := result.Validate(); err != nil {
 				t.Fatalf("result validation: %v; result=%+v", err, result)
 			}
-			if calls.Load() != 1 || result.Error != nil || result.StatusCode != http.StatusOK ||
-				result.UpstreamProtocol != protocol.OpenAIEmbeddings ||
-				result.UpstreamRequestID != "embedding-probe" {
-				t.Fatalf("calls/result = %d/%+v", calls.Load(), result)
+			if calls.Load() != 0 || result.Error == nil || result.DispatchState != execution.DispatchNotSent {
+				t.Fatalf("calls/result = %d/%+v; want unsupported before dispatch", calls.Load(), result)
 			}
 		})
 	}
@@ -93,8 +91,7 @@ func TestOpenAIEmbeddingsProbeRejectsInvalidSuccessShape(t *testing.T) {
 			if err := result.Validate(); err != nil {
 				t.Fatalf("result validation: %v; result=%+v", err, result)
 			}
-			if result.Error == nil || result.StatusCode != http.StatusOK ||
-				result.DispatchState != execution.DispatchMaybeSent || !result.ResponseStarted {
+			if result.Error == nil || result.DispatchState != execution.DispatchNotSent {
 				t.Fatalf("invalid probe result = %+v", result)
 			}
 		})

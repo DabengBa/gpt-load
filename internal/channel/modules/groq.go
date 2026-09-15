@@ -29,6 +29,7 @@ func Groq() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderGroq,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "groq",
 				EndpointPolicy:    spec.EndpointSDKDefault,
 			},

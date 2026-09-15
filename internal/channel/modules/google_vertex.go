@@ -33,6 +33,7 @@ func GoogleVertex() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderGoogleVertex,
+				ProbeProtocol:     protocol.Gemini,
 				CatalogProviderID: "google-vertex",
 				EndpointPolicy:    spec.EndpointCloudParams,
 			},

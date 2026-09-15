@@ -88,8 +88,9 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 		{
 			ID: 13, GroupID: 6, Version: 1, IdentityGeneration: 13, Fingerprint: "test-13", AuthState: state.CredentialAuthStateReady,
 			Blacklisted: true, CooldownUntil: now.Add(time.Hour),
-			FailureCount:   3,
-			EncryptedValue: encryptHealthKey(t, fixture, blacklistedPlaintext),
+			BlacklistReleaseAt: now.Add(2 * time.Hour),
+			FailureCount:       3,
+			EncryptedValue:     encryptHealthKey(t, fixture, blacklistedPlaintext),
 		},
 		{
 			ID: 14, GroupID: 7, Version: 1, IdentityGeneration: 14, Fingerprint: "test-14", AuthState: state.CredentialAuthStateReauthorizationRequired,
@@ -168,8 +169,9 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 		got.BlacklistedCredentials[0].LastStatusCode == nil ||
 		*got.BlacklistedCredentials[0].LastStatusCode != 401 ||
 		got.BlacklistedCredentials[0].ConsecutiveProblemCount != 1 ||
-		got.BlacklistedCredentials[0].Recovery.Mode != "validation_probe" ||
-		got.BlacklistedCredentials[0].Recovery.AtMS != nil {
+		got.BlacklistedCredentials[0].Recovery.Mode != "scheduled_release" ||
+		got.BlacklistedCredentials[0].Recovery.AtMS == nil ||
+		*got.BlacklistedCredentials[0].Recovery.AtMS != now.Add(2*time.Hour).UnixMilli() {
 		t.Fatalf("blacklisted details = %#v", got.BlacklistedCredentials)
 	}
 	if got.RequestLog.DroppedTotal != 2 ||
@@ -194,7 +196,7 @@ func TestRuntimeHealthAdvertisesExecutorValidationForChannelCredential(t *testin
 		t.Fatalf("Publish() error = %v", err)
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, Blacklisted: true,
+		ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 11, Fingerprint: "test-11", AuthState: state.CredentialAuthStateReady, Blacklisted: true, BlacklistReleaseAt: now.Add(time.Hour),
 		EncryptedValue: encryptHealthKey(t, fixture, `{"api_key":"blacklisted-channel-credential"}`),
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
@@ -209,8 +211,9 @@ func TestRuntimeHealthAdvertisesExecutorValidationForChannelCredential(t *testin
 		t.Fatalf("blacklisted keys = %#v", got.BlacklistedCredentials)
 	}
 	recovery := got.BlacklistedCredentials[0].Recovery
-	if !recovery.Automatic || recovery.Mode != "validation_probe" || recovery.AtMS != nil {
-		t.Fatalf("recovery = %#v, want automatic validation probe", recovery)
+	if !recovery.Automatic || recovery.Mode != "scheduled_release" || recovery.AtMS == nil ||
+		*recovery.AtMS != now.Add(time.Hour).UnixMilli() {
+		t.Fatalf("recovery = %#v, want automatic scheduled release", recovery)
 	}
 }
 

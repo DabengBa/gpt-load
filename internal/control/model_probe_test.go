@@ -53,6 +53,74 @@ func takeGroupCredential(t *testing.T, fixture serviceFixture, groupID uint) mod
 	return credential
 }
 
+func TestModelProbeRecoversOnlyTheTestedRouteEntry(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createProbeGroup(t, fixture, []string{probeTestModel, "other-model"})
+	group := fixture.manager.Current().Groups[groupID]
+	var testedModel state.ModelConfig
+	for _, model := range group.Models {
+		if model.ID == probeTestModel {
+			testedModel = model
+			break
+		}
+	}
+	testedEntryID := testedModel.EntryID
+	if testedEntryID == "" {
+		testedEntryID = "derived:" + state.ExternalModelName(testedModel.ID, testedModel.Alias) + "#" + strings.TrimSpace(testedModel.ID)
+	}
+	untestedEntryID := "derived:" + state.ExternalModelName("other-model", "") + "#other-model"
+	if _, ok := fixture.registry.SetEntryBlacklistedWithChange(state.RouteEntryKey{GroupID: groupID, EntryID: testedEntryID}); !ok {
+		t.Fatal("failed to seed tested route blacklist")
+	}
+	if _, ok := fixture.registry.SetEntryBlacklistedWithChange(state.RouteEntryKey{GroupID: groupID, EntryID: untestedEntryID}); !ok {
+		t.Fatal("failed to seed untested route blacklist")
+	}
+	credential := takeGroupCredential(t, fixture, groupID)
+	beforeCredential, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.service.executor = &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
+
+	response, err := fixture.service.ProbeGroupModels(t.Context(), ModelProbeRequest{
+		Targets: []ModelProbeTargetRequest{{GroupID: groupID, Model: probeTestModel}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Results) != 1 || response.Results[0].Outcome != ProbeOutcomePassed {
+		t.Fatalf("probe response = %#v", response)
+	}
+	encoded, err := json.Marshal(response.Results[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatal(err)
+	}
+	var recovered bool
+	if err := json.Unmarshal(payload["recovered"], &recovered); err != nil || !recovered {
+		t.Fatalf("model probe recovered = %s, want true", payload["recovered"])
+	}
+	tested, ok := fixture.registry.EntryRuntime(state.RouteEntryKey{GroupID: groupID, EntryID: testedEntryID}, time.Now())
+	if !ok || tested.Blacklisted {
+		t.Fatalf("tested route runtime = %#v/%t, want recovered", tested, ok)
+	}
+	untested, ok := fixture.registry.EntryRuntime(state.RouteEntryKey{GroupID: groupID, EntryID: untestedEntryID}, time.Now())
+	if !ok || !untested.Blacklisted {
+		t.Fatalf("untested route runtime = %#v/%t, want blacklisted", untested, ok)
+	}
+	afterCredential, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(afterCredential, beforeCredential) {
+		t.Fatalf("model probe changed credential runtime: before=%#v after=%#v", beforeCredential, afterCredential)
+	}
+}
+
 func TestModelProbe(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
@@ -494,6 +562,7 @@ func TestModelProbeResponseContract(t *testing.T) {
 		"latency_ms",
 		"credential_id",
 		"credential_label",
+		"recovered",
 		"log_id",
 		"tested_at_ms",
 	}
@@ -660,5 +729,165 @@ func TestModelProbeRouteContract(t *testing.T) {
 	// control route: access keys may not reach it.
 	if _, exists := accessKeyControlRoutes["/api/model-probe"]; exists {
 		t.Fatal("accessKeyControlRoutes must not be widened to the model probe route")
+	}
+}
+
+func TestModelProbeDoesNotRecoverAfterCredentialRotation(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createProbeGroup(t, fixture, []string{probeTestModel})
+	group := fixture.manager.Current().Groups[groupID]
+	entryID := probeModelEntryID(group, probeTestModel)
+	key := state.RouteEntryKey{GroupID: groupID, EntryID: entryID}
+	if _, changed := fixture.registry.SetEntryBlacklistedWithChange(key); !changed {
+		t.Fatal("failed to seed route blacklist")
+	}
+	credential := takeGroupCredential(t, fixture, groupID)
+	entries, err := fixture.registry.SnapshotGroupCredentialEntriesExact(groupID, []uint{credential.ID})
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("snapshot credential = %#v/%v", entries, err)
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	fixture.service.executor = &credentialProbeTestExecutor{execute: func(execution.AttemptSpec) execution.AttemptResult {
+		close(started)
+		<-release
+		return successfulCredentialProbeResult()
+	}}
+	resultCh := make(chan ModelProbeResponse, 1)
+	go func() {
+		response, probeErr := fixture.service.ProbeGroupModels(t.Context(), ModelProbeRequest{
+			Targets: []ModelProbeTargetRequest{{GroupID: groupID, Model: probeTestModel}},
+		})
+		if probeErr != nil {
+			t.Errorf("ProbeGroupModels() error = %v", probeErr)
+		}
+		resultCh <- response
+	}()
+	<-started
+
+	rotated := entries[0]
+	rotated.Version++
+	rotated.IdentityGeneration++
+	rotated.Fingerprint = "rotated-fingerprint"
+	rotated.EncryptedValue = "rotated-secret"
+	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{rotated}); err != nil {
+		t.Fatalf("rotate credential in registry: %v", err)
+	}
+	close(release)
+	response := <-resultCh
+	if len(response.Results) != 1 {
+		t.Fatalf("probe response = %#v", response)
+	}
+	if response.Results[0].Recovered {
+		t.Fatal("model probe recovered a route after credential rotation")
+	}
+	runtime, ok := fixture.registry.EntryRuntime(key, time.Now())
+	if !ok || !runtime.Blacklisted {
+		t.Fatalf("route runtime = %#v/%t, want to remain blacklisted", runtime, ok)
+	}
+}
+
+func TestModelProbeDoesNotRecoverAfterRouteCooldownChanges(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createProbeGroup(t, fixture, []string{probeTestModel})
+	group := fixture.manager.Current().Groups[groupID]
+	entryID := probeModelEntryID(group, probeTestModel)
+	key := state.RouteEntryKey{GroupID: groupID, EntryID: entryID}
+	if _, changed := fixture.registry.SetEntryBlacklistedWithChange(key); !changed {
+		t.Fatal("failed to seed route blacklist")
+	}
+	initialCooldown := time.Now().UTC().Add(time.Minute)
+	if exists, changed := fixture.registry.SetEntryCooldownForEntry(groupID, entryID, initialCooldown); !exists || !changed {
+		t.Fatal("failed to seed route cooldown")
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	fixture.service.executor = &credentialProbeTestExecutor{execute: func(execution.AttemptSpec) execution.AttemptResult {
+		close(started)
+		<-release
+		return successfulCredentialProbeResult()
+	}}
+	resultCh := make(chan ModelProbeResponse, 1)
+	go func() {
+		response, probeErr := fixture.service.ProbeGroupModels(t.Context(), ModelProbeRequest{
+			Targets: []ModelProbeTargetRequest{{GroupID: groupID, Model: probeTestModel}},
+		})
+		if probeErr != nil {
+			t.Errorf("ProbeGroupModels() error = %v", probeErr)
+		}
+		resultCh <- response
+	}()
+	<-started
+
+	updatedCooldown := initialCooldown.Add(time.Minute)
+	if exists, changed := fixture.registry.SetEntryCooldownForEntry(groupID, entryID, updatedCooldown); !exists || !changed {
+		t.Fatal("failed to update route cooldown")
+	}
+	close(release)
+	response := <-resultCh
+	if len(response.Results) != 1 {
+		t.Fatalf("probe response = %#v", response)
+	}
+	if response.Results[0].Recovered {
+		t.Fatal("model probe recovered a route after its cooldown changed")
+	}
+	runtime, ok := fixture.registry.EntryRuntime(key, time.Now())
+	if !ok || !runtime.Blacklisted || !runtime.CooldownUntil.Equal(updatedCooldown) {
+		t.Fatalf("route runtime = %#v/%t, want blacklist and updated cooldown", runtime, ok)
+	}
+}
+
+func TestModelProbeDoesNotRecoverAfterTargetChange(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createProbeGroup(t, fixture, []string{probeTestModel})
+	group := fixture.manager.Current().Groups[groupID]
+	entryID := probeModelEntryID(group, probeTestModel)
+	key := state.RouteEntryKey{GroupID: groupID, EntryID: entryID}
+	if _, changed := fixture.registry.SetEntryBlacklistedWithChange(key); !changed {
+		t.Fatal("failed to seed route blacklist")
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	fixture.service.executor = &credentialProbeTestExecutor{execute: func(execution.AttemptSpec) execution.AttemptResult {
+		close(started)
+		<-release
+		return successfulCredentialProbeResult()
+	}}
+	resultCh := make(chan ModelProbeResponse, 1)
+	go func() {
+		response, probeErr := fixture.service.ProbeGroupModels(t.Context(), ModelProbeRequest{
+			Targets: []ModelProbeTargetRequest{{GroupID: groupID, Model: probeTestModel}},
+		})
+		if probeErr != nil {
+			t.Errorf("ProbeGroupModels() error = %v", probeErr)
+		}
+		resultCh <- response
+	}()
+	<-started
+
+	if _, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Params: optionalField[json.RawMessage]{
+			Set: true, Value: json.RawMessage(`{"base_url":"https://changed.example"}`),
+		},
+	}); err != nil {
+		t.Fatalf("UpdateGroupSettings() error = %v", err)
+	}
+	close(release)
+	response := <-resultCh
+	if len(response.Results) != 1 {
+		t.Fatalf("probe response = %#v", response)
+	}
+	if response.Results[0].Recovered {
+		t.Fatal("model probe recovered a route after its target changed")
+	}
+	runtime, ok := fixture.registry.EntryRuntime(key, time.Now())
+	if !ok || !runtime.Blacklisted {
+		t.Fatalf("route runtime = %#v/%t, want to remain blacklisted", runtime, ok)
 	}
 }

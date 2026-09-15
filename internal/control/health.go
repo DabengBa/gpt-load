@@ -390,13 +390,17 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 			}
 			result.CooldownCredentials = append(result.CooldownCredentials, detail)
 		} else {
-			detail.Recovery = healthRecoveryResponse{Mode: "configuration_required"}
-			if service.executor != nil && service.channelRegistry != nil {
-				if validationGroup, exists := observation.snapshot.Groups[key.GroupID]; exists {
-					if _, valid := buildGroupValidationTarget(validationGroup); valid {
-						detail.Recovery = healthRecoveryResponse{Automatic: true, Mode: "validation_probe"}
-					}
-				}
+			releaseAtMS, err := optionalSafeEpochMilliseconds(key.BlacklistReleaseAt)
+			if err != nil {
+				return runtimeHealthResponse{}, fmt.Errorf(
+					"map runtime health blacklist_release_at_ms: %w",
+					err,
+				)
+			}
+			detail.Recovery = healthRecoveryResponse{
+				Automatic: true,
+				Mode:      "scheduled_release",
+				AtMS:      releaseAtMS,
 			}
 			result.BlacklistedCredentials = append(result.BlacklistedCredentials, detail)
 		}

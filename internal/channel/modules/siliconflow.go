@@ -29,6 +29,7 @@ func SiliconFlow() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderOpenAICompatible,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "siliconflow",
 				EndpointPolicy:    spec.EndpointFixedWithOverride,
 				FixedBaseURL:      "https://api.siliconflow.cn/v1",

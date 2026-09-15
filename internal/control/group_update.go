@@ -4,31 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"unicode"
 
 	"gorm.io/gorm"
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/platform/config"
-	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage/models"
 )
-
-func normalizeValidationModel(raw string) (string, error) {
-	normalized := strings.TrimSpace(raw)
-	if normalized == "" || len([]byte(normalized)) > 255 {
-		return "", app_errors.ErrValidation
-	}
-	for _, character := range normalized {
-		if unicode.IsControl(character) {
-			return "", app_errors.ErrValidation
-		}
-	}
-	return normalized, nil
-}
 
 func mapGroupRowToState(group models.Group) (state.GroupConfig, error) {
 	var storedModels []groupModelEntry
@@ -45,10 +29,6 @@ func mapGroupRowToState(group models.Group) (state.GroupConfig, error) {
 	for _, model := range storedModels {
 		runtimeModels = append(runtimeModels, model.toModelConfig())
 	}
-	validationModel := ""
-	if group.ValidationModel != nil {
-		validationModel = *group.ValidationModel
-	}
 	multiplier := priceMultiplierFromStorage(group.PriceMultiplierMicros)
 	result := state.GroupConfig{
 		PriceMultiplier: &multiplier,
@@ -57,7 +37,6 @@ func mapGroupRowToState(group models.Group) (state.GroupConfig, error) {
 		ChannelID:       channel.ID(group.ChannelID),
 		ConnectionType:  string(group.ConnectionType),
 		Params:          append(json.RawMessage(nil), group.Params...),
-		ValidationModel: validationModel,
 		Models:          runtimeModels,
 		Settings:        settings,
 		Enabled:         group.Enabled,

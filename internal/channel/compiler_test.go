@@ -340,7 +340,7 @@ func TestResolvedTargetRejectsRouteResolverModeOutsideDeclaredSet(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := newRegistry(definitions)
+	registry, err := newRegistry(definitions, probeProtocolsByChannel([]spec.Module{openAI}))
 	if err != nil {
 		t.Fatal(err)
 	}

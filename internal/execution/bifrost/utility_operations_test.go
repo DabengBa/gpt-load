@@ -88,14 +88,17 @@ func TestOfficialNativeProbeUsesSelectedModelAndProtocolTarget(t *testing.T) {
 		response  string
 		assert    func(*testing.T, *http.Request, map[string]any)
 	}{
-		{name: "openai", channelID: channel.OpenAI, protocol: protocol.OpenAICompletions, runtime: func(t *testing.T, base string) *testRuntime {
+		{name: "openai", channelID: channel.OpenAI, protocol: protocol.OpenAIResponses, runtime: func(t *testing.T, base string) *testRuntime {
 			return newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true, openAIBaseURL: base})
-		}, response: `{"id":"chat_1","object":"chat.completion","created":1,"model":"probe-upstream","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`, assert: func(t *testing.T, request *http.Request, payload map[string]any) {
-			if request.URL.Path != "/v1/chat/completions" || payload["model"] != "probe-upstream" {
-				t.Errorf("OpenAI probe = %s %#v", request.URL.Path, payload)
+		}, response: `{"id":"resp_1","object":"response","status":"completed","model":"probe-upstream","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`, assert: func(t *testing.T, request *http.Request, payload map[string]any) {
+			if request.URL.Path != "/v1/responses" || payload["model"] != "probe-upstream" {
+				t.Errorf("OpenAI Responses probe = %s %#v", request.URL.Path, payload)
 			}
-			if stream, exists := payload["stream"]; exists && stream != false {
-				t.Errorf("OpenAI probe stream = %#v", stream)
+			if payload["input"] == nil || payload["max_output_tokens"] != float64(16) {
+				t.Errorf("OpenAI Responses probe controls = %#v", payload)
+			}
+			if _, exists := payload["max_tokens"]; exists {
+				t.Errorf("OpenAI Responses probe has Chat max_tokens: %#v", payload)
 			}
 		}},
 		{name: "anthropic", channelID: channel.Anthropic, protocol: protocol.Anthropic, runtime: func(t *testing.T, base string) *testRuntime {

@@ -29,6 +29,7 @@ func Volcengine() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderOpenAICompatible,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "volcengine",
 				EndpointPolicy:    spec.EndpointFixedWithOverride,
 				FixedBaseURL:      "https://ark.cn-beijing.volces.com/api/v3",

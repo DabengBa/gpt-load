@@ -201,7 +201,11 @@ const (
 
 // ProviderBinding identifies the adapter and its non-secret target policy.
 type ProviderBinding struct {
-	ProviderKind      ProviderKind
+	ProviderKind ProviderKind
+	// ProbeProtocol is the single generative wire protocol this channel uses for
+	// manual probes. The zero value declares that the channel has no probe
+	// contract: probes must report unsupported instead of guessing a protocol.
+	ProbeProtocol     protocol.Protocol
 	CatalogProviderID string
 	EndpointPolicy    EndpointPolicy
 	FixedBaseURL      string

@@ -53,6 +53,12 @@ var modelRouteScheduleRevisionConflict = &app_errors.APIError{
 	Message:    "Snapshot revision changed, reload and retry",
 }
 
+var modelRouteScheduleRuntimeConflict = &app_errors.APIError{
+	HTTPStatus: http.StatusConflict,
+	Code:       "MODEL_ROUTE_SCHEDULE_RUNTIME_CONFLICT",
+	Message:    "Route entry runtime changed, reload and retry",
+}
+
 type modelRouteScheduleIndexItem struct {
 	ExternalModel         string              `json:"external_model"`
 	Protocol              protocol.Protocol   `json:"protocol"`
@@ -95,9 +101,11 @@ type scheduleBreakerView struct {
 }
 
 type scheduleEntryRuntimeView struct {
-	State           state.EntryRuntimeState `json:"state"`
-	CooldownUntilMS *int64                  `json:"cooldown_until_ms"`
-	FailureCount    int                     `json:"failure_count"`
+	State                state.EntryRuntimeState `json:"state"`
+	CooldownUntilMS      *int64                  `json:"cooldown_until_ms"`
+	BlacklistReleaseAtMS *int64                  `json:"blacklist_release_at_ms"`
+	FailureCount         int                     `json:"failure_count"`
+	FailureVersion       uint64                  `json:"failure_version"`
 }
 
 type modelRouteScheduleEntryResponse struct {
@@ -464,6 +472,12 @@ func mapModelRouteScheduleDetail(
 		if group.UpstreamModelID != nil {
 			upstreamModel = *group.UpstreamModelID
 		}
+		runtimeView, err := scheduleEntryRuntime(
+			runtimeByKey, group, entryCooldownUntilMS, observation.observedAt,
+		)
+		if err != nil {
+			return modelRouteScheduleDetailResponse{}, err
+		}
 		entry := modelRouteScheduleEntryResponse{
 			EntryID:  group.EntryID,
 			ModelID:  upstreamModel,
@@ -474,9 +488,7 @@ func mapModelRouteScheduleDetail(
 			CircuitBreaker: scheduleBreakerViewFromConfiguration(
 				configuration.circuitBreaker,
 			),
-			Runtime: scheduleEntryRuntime(
-				runtimeByKey, group, entryCooldownUntilMS, observation.observedAt,
-			),
+			Runtime:         runtimeView,
 			Included:        group.Included,
 			Routable:        group.Routable,
 			ReasonCode:      optionalReason(group.Reason),
@@ -559,7 +571,7 @@ func scheduleEntryRuntime(
 	group scheduler.GroupInspection,
 	entryCooldownUntilMS *int64,
 	observedAt time.Time,
-) scheduleEntryRuntimeView {
+) (scheduleEntryRuntimeView, error) {
 	result := scheduleEntryRuntimeView{
 		State:           state.EntryRuntimeAvailable,
 		CooldownUntilMS: entryCooldownUntilMS,
@@ -567,11 +579,20 @@ func scheduleEntryRuntime(
 	view, exists := runtimeByKey[state.RouteEntryKey{
 		GroupID: group.GroupID, EntryID: group.EntryID,
 	}]
-	if exists {
-		result.FailureCount = view.FailureCount
-		result.State = view.RuntimeState(observedAt)
+	if !exists {
+		return result, nil
 	}
-	return result
+	blacklistReleaseAtMS, err := optionalSafeEpochMilliseconds(view.BlacklistReleaseAt)
+	if err != nil {
+		return scheduleEntryRuntimeView{}, fmt.Errorf(
+			"map model route schedule blacklist_release_at_ms: %w", err,
+		)
+	}
+	result.FailureCount = view.FailureCount
+	result.FailureVersion = view.FailureVersion
+	result.BlacklistReleaseAtMS = blacklistReleaseAtMS
+	result.State = view.RuntimeState(observedAt)
+	return result, nil
 }
 
 type scheduleEntryConfiguration struct {
@@ -949,8 +970,9 @@ func (s *Service) scheduleDetailAfterPatch(
 }
 
 type modelRouteScheduleRecoverRequest struct {
-	GroupID uint   `json:"group_id"`
-	EntryID string `json:"entry_id"`
+	GroupID        uint    `json:"group_id"`
+	EntryID        string  `json:"entry_id"`
+	FailureVersion *uint64 `json:"failure_version"`
 }
 
 type modelRouteScheduleRecoverResponse struct {
@@ -969,8 +991,13 @@ func (s *Service) RecoverModelRouteScheduleEntry(
 	if request.GroupID == 0 || entryID == "" {
 		return modelRouteScheduleRecoverResponse{}, app_errors.ErrValidation
 	}
-	if !s.registry.RecoverEntryForEntry(request.GroupID, entryID) {
-		return modelRouteScheduleRecoverResponse{}, app_errors.ErrInternalServer
+	if request.FailureVersion == nil {
+		return modelRouteScheduleRecoverResponse{}, modelRouteScheduleRuntimeConflict
+	}
+	if !s.registry.RecoverEntryIfVersionMatch(
+		request.GroupID, entryID, *request.FailureVersion,
+	) {
+		return modelRouteScheduleRecoverResponse{}, modelRouteScheduleRuntimeConflict
 	}
 	now := s.now().UTC()
 	view, _ := s.registry.EntryRuntime(state.RouteEntryKey{
@@ -982,13 +1009,21 @@ func (s *Service) RecoverModelRouteScheduleEntry(
 			"map model route schedule recovery cooldown: %w", err,
 		)
 	}
+	blacklistReleaseAtMS, err := optionalSafeEpochMilliseconds(view.BlacklistReleaseAt)
+	if err != nil {
+		return modelRouteScheduleRecoverResponse{}, fmt.Errorf(
+			"map model route schedule recovery blacklist_release_at_ms: %w", err,
+		)
+	}
 	return modelRouteScheduleRecoverResponse{
 		GroupID: request.GroupID,
 		EntryID: entryID,
 		Runtime: scheduleEntryRuntimeView{
-			State:           view.RuntimeState(now),
-			CooldownUntilMS: cooldownUntilMS,
-			FailureCount:    view.FailureCount,
+			State:                view.RuntimeState(now),
+			CooldownUntilMS:      cooldownUntilMS,
+			BlacklistReleaseAtMS: blacklistReleaseAtMS,
+			FailureCount:         view.FailureCount,
+			FailureVersion:       view.FailureVersion,
 		},
 	}, nil
 }

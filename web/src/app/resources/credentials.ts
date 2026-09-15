@@ -125,8 +125,7 @@ const credentialTestResultFields = [
   'protocol',
   'latency_ms',
   'reason',
-  'can_restore',
-  'restore_proof',
+  'recovered',
   'log_id',
   'tested_at_ms',
 ] as const
@@ -140,7 +139,7 @@ const inconclusiveCredentialTestReasons = [
   'unknown',
 ] as const
 const effectiveStatuses = ['available', 'cooldown', 'blacklisted', 'disabled'] as const
-const recoveryModes = ['none', 'cooldown', 'probe', 'manual'] as const
+const recoveryModes = ['none', 'cooldown', 'scheduled_release', 'manual'] as const
 const failureCategories = [
   'ok',
   'rate_limited',
@@ -516,7 +515,7 @@ function projectRecovery(value: unknown): CredentialRecoveryDto {
   }
   if (
     (result.mode === 'cooldown' && (!result.automatic || result.at_ms === null)) ||
-    (result.mode === 'probe' && !result.automatic) ||
+    (result.mode === 'scheduled_release' && (!result.automatic || result.at_ms === null)) ||
     (result.mode === 'manual' && result.automatic) ||
     (result.mode === 'none' && (result.automatic || result.at_ms !== null))
   ) {
@@ -534,7 +533,8 @@ export function projectCredentialItem(value: unknown): CredentialItemDto {
   const recovery = projectRecovery(record.recovery)
   if (
     (effectiveStatus === 'cooldown') !== (cooldownUntil !== null) ||
-    (recovery.mode === 'cooldown') !== (effectiveStatus === 'cooldown')
+    (recovery.mode === 'cooldown') !== (effectiveStatus === 'cooldown') ||
+    (recovery.mode === 'scheduled_release') !== (effectiveStatus === 'blacklisted')
   ) {
     invalidResponse()
   }
@@ -838,13 +838,8 @@ export function projectCredentialTestResult(value: unknown): CredentialTestResul
         : outcome === 'inconclusive'
           ? projectEnum(record.reason, inconclusiveCredentialTestReasons)
           : invalidResponse()
-  const canRestore = projectBoolean(record.can_restore)
-  const restoreProof = record.restore_proof === null ? null : projectString(record.restore_proof)
-  if (
-    (outcome === 'passed') !== (reason === null) ||
-    (canRestore && outcome !== 'passed') ||
-    canRestore !== (restoreProof !== null)
-  ) {
+  const recovered = projectBoolean(record.recovered)
+  if ((outcome === 'passed') !== (reason === null) || (recovered && outcome !== 'passed')) {
     invalidResponse()
   }
   return {
@@ -853,8 +848,7 @@ export function projectCredentialTestResult(value: unknown): CredentialTestResul
     protocol: projectEnum(record.protocol, enabledDataProtocols),
     latency_ms: projectSafeInteger(record.latency_ms, { minimum: 0 }),
     reason,
-    can_restore: canRestore,
-    restore_proof: restoreProof,
+    recovered,
     log_id: projectNullableRequestID(record.log_id),
     tested_at_ms: projectEpochMilliseconds(record.tested_at_ms),
   }
@@ -870,22 +864,6 @@ export async function testCredentialConnection(
     await client.request(`/api/groups/${groupId}/credentials/${credentialId}/test`, {
       method: 'POST',
       json: {},
-      signal,
-    }),
-  )
-}
-
-export async function restoreTestedCredential(
-  client: ApiClient,
-  groupId: number,
-  credentialId: number,
-  restoreProof: string,
-  signal?: AbortSignal,
-): Promise<CredentialItemDto> {
-  return projectCredentialItem(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}/test/restore`, {
-      method: 'POST',
-      json: { restore_proof: restoreProof },
       signal,
     }),
   )

@@ -46,11 +46,11 @@ type SettingsValuesResponse struct {
 	RetryCount                int                 `json:"retry_count"`
 	RouteStrategy             state.RouteStrategy `json:"route_strategy"`
 	BlacklistThreshold        int                 `json:"blacklist_threshold"`
+	BlacklistReleaseSeconds   int                 `json:"blacklist_release_seconds"`
 	AffinityEnabled           bool                `json:"affinity_enabled"`
 	ResponsesWebsocketEnabled bool                `json:"responses_websocket_enabled"`
 	AffinityTTL               int64               `json:"affinity_ttl"`
 	AffinityCapacity          int                 `json:"affinity_capacity"`
-	ValidationInterval        int64               `json:"validation_interval"`
 	RequestLogRetentionDays   int                 `json:"request_log_retention_days"`
 	ModelsDevAutoSyncEnabled  bool                `json:"models_dev_auto_sync_enabled"`
 	ProxyConfig               outboundproxy.View  `json:"proxy_config"`
@@ -356,11 +356,11 @@ func mapSettingsResponse(
 			RetryCount:                settings.RetryCount,
 			RouteStrategy:             settings.RouteStrategy,
 			BlacklistThreshold:        settings.BlacklistThreshold,
+			BlacklistReleaseSeconds:   settings.BlacklistReleaseSeconds,
 			AffinityEnabled:           settings.AffinityEnabled,
 			ResponsesWebsocketEnabled: settings.ResponsesWebsocketEnabled,
 			AffinityTTL:               durationSeconds(settings.AffinityTTL),
 			AffinityCapacity:          settings.AffinityCapacity,
-			ValidationInterval:        durationSeconds(settings.ValidationInterval),
 			RequestLogRetentionDays:   settings.RequestLogRetentionDays,
 			ModelsDevAutoSyncEnabled:  modelsDevAutoSyncEnabled,
 			ProxyConfig:               proxyView,

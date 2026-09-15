@@ -39,6 +39,7 @@ func AWSBedrock() spec.Module {
 			CredentialValidator: bedrockCredentialValidator,
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderAWSBedrock,
+				ProbeProtocol:     protocol.Anthropic,
 				CatalogProviderID: "amazon-bedrock",
 				EndpointPolicy:    spec.EndpointCloudParams,
 			},

@@ -327,10 +327,6 @@ export default {
         providerUrlHelp:
           'Optional. Shown as a link in the Group header; it does not change where requests are sent.',
         paramRequired: 'Enter {field}.',
-        validationModel: 'Validation model (optional)',
-        validationModelPlaceholder: 'Search or enter a model ID',
-        validationModelHelp:
-          'Leave empty to use the first model in this Group; enter the upstream model ID, not an alias.',
         weight: 'Manual Group weight',
         auto: 'Auto',
         manual: 'Manual',
@@ -463,7 +459,7 @@ export default {
         action: 'Test connection',
         title: 'Test connection',
         description:
-          'This sends one minimal real upstream request and may incur a small charge. Testing does not change scheduling or blacklist state.',
+          'This sends one minimal real upstream request and may incur a small charge. A successful test immediately restores this credential only when the tested state is still current.',
         loading: 'Testing {mask}…',
         outcome: {
           passed: 'Test passed',
@@ -476,6 +472,7 @@ export default {
           protocol: 'Protocol',
           latency: 'Latency',
           reason: 'Result details',
+          recovered: 'Recovery',
           testedAt: 'Tested at',
         },
         latency: '{value} ms',
@@ -489,25 +486,15 @@ export default {
           probe_incompatible: 'This channel or model cannot run the probe',
           unknown: 'The reason could not be determined',
         },
-        restorePrompt: 'This API key is blacklisted. Restoring it returns it to scheduling.',
-        keepBlocked: 'Not now',
-        restore: 'Restore API key',
-        restoring: 'Restoring…',
         close: 'Close',
+        recovered: 'The API key was recovered immediately and returned to scheduling.',
+        alreadyAvailable: 'The API key was already available; no recovery change was needed.',
         requestFailed: 'Unable to complete the test. Try again later.',
-        restoreSucceeded: 'The API key was restored and will return to scheduling',
-        restoreError: {
-          failed: 'Unable to restore the API key. Try again later.',
-          conflict:
-            'The API key state changed. The list was refreshed; test again before restoring.',
-          conflict_refresh_failed:
-            'The API key state changed, but the list could not be refreshed. Refresh manually and try again.',
-        },
       },
       recovery: {
         none: 'No recovery needed',
         cooldown: 'Recovers when cooldown ends',
-        probe: 'Waiting for probe recovery',
+        scheduled_release: 'Returns after the local blacklist delay',
         manual: 'Needs manual recovery',
         at: 'Recovers automatically at {time}',
       },

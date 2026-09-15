@@ -238,16 +238,15 @@ func TestUpdateGroupSettingsPublishesOnceAndReturnsNewSettings(t *testing.T) {
 		Name: optionalField[string]{Set: true, Value: " updated settings "},
 		Params: optionalField[json.RawMessage]{Set: true,
 			Value: json.RawMessage(`{"base_url":" HTTPS://SETTINGS-UPDATED.EXAMPLE.COM/v1/ "}`)},
-		ValidationModel: optionalField[string]{Set: true, Value: " gpt-4.1 "},
-		Enabled:         optionalField[bool]{Set: true, Value: false},
-		Overrides:       optionalField[config.Settings]{Set: true, Value: config.Settings{"request_timeout": json.Number("720")}},
+		Enabled:   optionalField[bool]{Set: true, Value: false},
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{"request_timeout": json.Number("720")}},
 	})
 	if err != nil {
 		t.Fatalf("UpdateGroupSettings() error = %v", err)
 	}
 	if result.Name != "updated settings" || result.ChannelID != channel.OpenAICompatible ||
 		string(result.Params) != `{"base_url":"https://settings-updated.example.com/v1"}` ||
-		result.ValidationModel == nil || *result.ValidationModel != "gpt-4.1" || result.Enabled ||
+		result.Enabled ||
 		result.Effective.RequestTimeout != 720 {
 		t.Fatalf("UpdateGroupSettings() = %#v", result)
 	}

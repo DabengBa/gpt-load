@@ -69,6 +69,7 @@ func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (r
 		normalizeImagesAttemptResult(spec, &result)
 		normalizeEmbeddingsAttemptResult(spec, &result)
 		normalizeRerankAttemptResult(spec, &result)
+		normalizeProbeAttemptResult(spec, &result)
 	}()
 	prepared, preflightError := r.prepare(spec, false)
 	if preflightError != nil {
@@ -138,6 +139,18 @@ func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (r
 	}
 	if outcome.response != nil {
 		captureAppliedReasoning(&outcome.response.ExtraFields.RawRequest, &appliedReasoning)
+		if spec.Operation == execution.OperationProbe && prepared.upstreamProtocol == spec.ClientProtocol &&
+			outcome.response.ExtraFields.RawResponse != nil {
+			rawBody, marshalErr := json.Marshal(outcome.response.ExtraFields.RawResponse)
+			if marshalErr != nil || !probeResponseHasGeneratedText(spec.ClientProtocol, rawBody) {
+				return startedUnaryFailure(
+					http.StatusOK,
+					responseHeaders(outcome.response.ExtraFields.ProviderResponseHeaders, bifrostContext, false),
+					execution.ErrorKindProvider,
+					"upstream returned invalid generated text evidence for the probe",
+				)
+			}
+		}
 	}
 	if failure := largeUnaryResponseFailure(bifrostContext); failure != nil {
 		return *failure
@@ -387,6 +400,10 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "unsupported protocol or operation")
 		return preparedAttempt{}, &failure
 	}
+	if spec.Operation == execution.OperationProbe && !spec.ClientProtocol.SupportsGeneratedText() {
+		failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "probe protocol does not support generated text")
+		return preparedAttempt{}, &failure
+	}
 
 	channelID := channel.ID(spec.ChannelID)
 	if len(bytes.TrimSpace(spec.TargetConfig)) == 0 {
@@ -397,6 +414,17 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 	if err != nil {
 		failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid channel target: "+safeValidationReason(err))
 		return preparedAttempt{}, &failure
+	}
+	if spec.Operation == execution.OperationProbe {
+		probeProtocol, probeMode, probeOK := resolved.ProbeRoute(spec.UpstreamModel)
+		if !probeOK || !probeProtocol.SupportsGeneratedText() ||
+			probeProtocol != spec.ClientProtocol || channel.RouteMode(probeMode) != channel.RouteMode(spec.RouteMode) {
+			failure := notSentConversionFailure(
+				execution.ErrorCodeTargetConversionNotSupported,
+				"channel probe contract does not match the requested protocol or route",
+			)
+			return preparedAttempt{}, &failure
+		}
 	}
 	providerKind := resolved.ProviderKind
 	if r.fixedConfig == nil {
@@ -508,23 +536,21 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		return prepareRerank(spec, resolved, provider, directKey, secrets)
 	}
 	if spec.Operation == execution.OperationProbe {
-		if spec.ClientProtocol == protocol.OpenAIEmbeddings {
-			typedURL, targetErr := embeddingTypedTarget(providerKind, resolved.TargetConfig, "")
-			if targetErr != nil {
-				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid Embeddings probe target")
-				return preparedAttempt{}, &failure
-			}
-			return preparedAttempt{
-				provider: provider, mode: mode, upstreamProtocol: protocol.OpenAIEmbeddings,
-				embeddingRequest: newEmbeddingProbeRequest(provider, spec.UpstreamModel),
-				typedURL:         typedURL, clientProtocol: spec.ClientProtocol,
-				directKey: directKey, secrets: secrets,
-			}, nil
-		}
 		if mode == channel.RouteNative && providerKind == channel.ProviderGoogleVertex {
 			passthroughPath, pathErr := vertexNativeGeminiPath(spec.UpstreamModel, "generateContent")
 			if pathErr != nil {
 				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid channel probe target")
+				return preparedAttempt{}, &failure
+			}
+			vertexProbeBody, marshalErr := json.Marshal(map[string]any{
+				"contents": []map[string]any{{
+					"role":  "user",
+					"parts": []map[string]string{{"text": "What is 2 + 2? Please answer briefly."}},
+				}},
+				"generationConfig": map[string]any{"maxOutputTokens": 1},
+			})
+			if marshalErr != nil {
+				failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode Gemini probe body")
 				return preparedAttempt{}, &failure
 			}
 			return preparedAttempt{
@@ -536,7 +562,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 					Model:    spec.UpstreamModel,
 					Method:   http.MethodPost,
 					Path:     passthroughPath,
-					Body:     []byte(`{"contents":[{"role":"user","parts":[{"text":"ping"}]}],"generationConfig":{"maxOutputTokens":1}}`),
+					Body:     vertexProbeBody,
 					SafeHeaders: map[string]string{
 						"Content-Type": "application/json",
 					},
@@ -545,7 +571,31 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 				secrets:   secrets,
 			}, nil
 		}
-		request := newProbeRequest(provider, providerKind, spec.UpstreamModel)
+		if mode == channel.RouteNative &&
+			(providerKind == channel.ProviderAnthropic || providerKind == channel.ProviderGemini) {
+			probeBody, marshalErr := marshalNativeProbeBody(spec.ClientProtocol, spec.UpstreamModel)
+			if marshalErr != nil {
+				failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode native probe body")
+				return preparedAttempt{}, &failure
+			}
+			probePath := "/v1/messages"
+			if providerKind == channel.ProviderGemini {
+				probePath = "/models/" + url.PathEscape(spec.UpstreamModel) + ":generateContent"
+			}
+			return preparedAttempt{
+				provider: provider, mode: mode, upstreamProtocol: spec.ClientProtocol,
+				passthrough: &schemas.BifrostPassthroughRequest{
+					Provider: provider, Model: spec.UpstreamModel, Method: http.MethodPost,
+					Path: probePath, Body: probeBody,
+					SafeHeaders: map[string]string{"Content-Type": "application/json"},
+				},
+				directKey: directKey, secrets: secrets,
+			}, nil
+		}
+		responses := spec.ClientProtocol == protocol.OpenAIResponses ||
+			(mode == channel.RouteConverted &&
+				(spec.ClientProtocol == protocol.Anthropic || spec.ClientProtocol == protocol.Gemini))
+		request := newProbeRequest(provider, providerKind, spec.UpstreamModel, responses)
 		if providerKind == channel.ProviderMultiProtocolGateway {
 			if spec.ClientProtocol != protocol.OpenAICompletions {
 				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "unsupported multi-protocol gateway probe protocol")
@@ -567,7 +617,6 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 				directKey: directKey, secrets: secrets,
 			}, nil
 		}
-		responses := spec.ClientProtocol == protocol.OpenAIResponses
 		typedURL, upstreamProtocol, targetErr := convertedTypedTarget(
 			providerKind,
 			customTargetBaseURL,
@@ -860,12 +909,18 @@ func newProbeRequest(
 	provider schemas.ModelProvider,
 	providerKind channel.ProviderKind,
 	model string,
+	responses bool,
 ) *schemas.BifrostChatRequest {
-	content := "ping"
+	content := "What is 2 + 2? Please answer briefly."
 	params := &schemas.ChatParameters{MaxCompletionTokens: schemas.Ptr(1)}
-	if providerKind == channel.ProviderOpenAICompatible {
+	switch {
+	case responses:
+		// Responses carries its own output budget; the Chat field is the only
+		// channel into the Responses serializer.
+		params.MaxCompletionTokens = schemas.Ptr(16)
+	case providerKind == channel.ProviderOpenAICompatible || providerKind == channel.ProviderMultiProtocolGateway:
 		params.MaxCompletionTokens = nil
-		params.ExtraParams = map[string]any{"max_tokens": 1}
+		params.ExtraParams = map[string]any{"max_tokens": 3}
 	}
 	return &schemas.BifrostChatRequest{
 		Provider: provider,
@@ -877,6 +932,29 @@ func newProbeRequest(
 			},
 		}},
 		Params: params,
+	}
+}
+
+func marshalNativeProbeBody(clientProtocol protocol.Protocol, model string) ([]byte, error) {
+	content := "What is 2 + 2? Please answer briefly."
+	switch clientProtocol {
+	case protocol.Anthropic:
+		return json.Marshal(map[string]any{
+			"model":      model,
+			"max_tokens": 1,
+			"messages": []map[string]any{{
+				"role": "user", "content": content,
+			}},
+		})
+	case protocol.Gemini:
+		return json.Marshal(map[string]any{
+			"contents": []map[string]any{{
+				"role": "user", "parts": []map[string]string{{"text": content}},
+			}},
+			"generationConfig": map[string]any{"maxOutputTokens": 1},
+		})
+	default:
+		return nil, fmt.Errorf("unsupported native probe protocol %q", clientProtocol)
 	}
 }
 
@@ -936,7 +1014,7 @@ func supportedRequestShape(spec execution.AttemptSpec, stream bool) bool {
 			return false
 		}
 		switch spec.ClientProtocol {
-		case protocol.OpenAICompletions, protocol.OpenAIResponses, protocol.OpenAIEmbeddings, protocol.Rerank,
+		case protocol.OpenAICompletions, protocol.OpenAIResponses, protocol.OpenAIImages, protocol.OpenAIEmbeddings, protocol.Rerank,
 			protocol.Anthropic, protocol.Gemini:
 			return true
 		default:
@@ -1372,13 +1450,18 @@ func (r *Runtime) newSDKContext(parent context.Context, spec execution.AttemptSp
 		schemas.BifrostContextKeyLargeResponseThreshold,
 		r.unaryResponseBodyLimit(spec),
 	)
+	if spec.Operation == execution.OperationProbe {
+		bifrostContext.SetValue(schemas.BifrostContextKeyAllowPerRequestRawOverride, true)
+		bifrostContext.SetValue(schemas.BifrostContextKeySendBackRawResponse, true)
+	}
 	if spec.Operation == execution.OperationChatCompletion &&
 		r.providerKind(spec) == channel.ProviderDeepSeek &&
 		spec.ClientProtocol == protocol.Anthropic {
 		bifrostContext.SetValue(schemas.BifrostContextKeyPassthroughExtraParams, true)
 	}
 	if spec.Operation == execution.OperationProbe &&
-		r.providerKind(spec) == channel.ProviderOpenAICompatible {
+		(r.providerKind(spec) == channel.ProviderOpenAICompatible ||
+			r.providerKind(spec) == channel.ProviderMultiProtocolGateway) {
 		bifrostContext.SetValue(schemas.BifrostContextKeyPassthroughExtraParams, true)
 	}
 	if spec.Timeouts.StreamIdle > 0 {

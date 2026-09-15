@@ -29,6 +29,7 @@ func ZhipuAI() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderOpenAICompatible,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "zhipuai",
 				EndpointPolicy:    spec.EndpointFixedWithOverride,
 				FixedBaseURL:      "https://open.bigmodel.cn/api/paas/v4",

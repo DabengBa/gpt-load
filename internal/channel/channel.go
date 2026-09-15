@@ -225,6 +225,7 @@ type ResolvedTarget struct {
 	TargetConfig      json.RawMessage `json:"-"`
 	CatalogProviderID string          `json:"-"`
 
+	probeProtocol           protocol.Protocol
 	modes                   map[protocol.Protocol]map[execution.Operation]RouteMode
 	resolvers               map[routeKey]spec.RouteResolver
 	responsesStoreHandlings map[routeKey]ResponsesStoreHandling
@@ -277,6 +278,30 @@ func (t ResolvedTarget) ModeForModel(
 		return resolved, true
 	}
 	return mode, true
+}
+
+// ProbeProtocol returns the single generative probe protocol declared by the
+// channel. A channel without a contract reports false: it has no probe route,
+// so probes must report unsupported instead of guessing a protocol.
+func (t ResolvedTarget) ProbeProtocol() (protocol.Protocol, bool) {
+	if t.probeProtocol == "" {
+		return "", false
+	}
+	return t.probeProtocol, true
+}
+
+// ProbeRoute resolves the declared probe protocol and the model-dependent mode
+// for one upstream model. It is the single probe protocol source: every probe
+// target uses one protocol and one wire request, never a protocol fallback.
+func (t ResolvedTarget) ProbeRoute(upstreamModel string) (protocol.Protocol, RouteMode, bool) {
+	if t.probeProtocol == "" {
+		return "", "", false
+	}
+	mode, ok := t.ModeForModel(t.probeProtocol, execution.OperationProbe, upstreamModel)
+	if !ok {
+		return "", "", false
+	}
+	return t.probeProtocol, mode, true
 }
 
 // PreferredRoute selects one declared route for a utility operation,
@@ -351,15 +376,27 @@ type Registry struct {
 // runtime registry. Production startup propagates any invalid module as an
 // initialization error instead of publishing a partial registry.
 func CompileRegistry() (*Registry, error) {
-	definitions, err := compileBuiltInModules(builtInModules())
+	moduleList := builtInModules()
+	definitions, err := compileBuiltInModules(moduleList)
 	if err != nil {
 		return nil, fmt.Errorf("compile channel modules: %w", err)
 	}
-	registry, err := newRegistry(definitions)
+	registry, err := newRegistry(definitions, probeProtocolsByChannel(moduleList))
 	if err != nil {
 		return nil, fmt.Errorf("build channel registry: %w", err)
 	}
 	return registry, nil
+}
+
+// probeProtocolsByChannel collects the single generative probe protocol each
+// module declares. It is read from the same code-owned module list the compiler
+// consumed; protocol order and provider kind never select a probe protocol.
+func probeProtocolsByChannel(moduleList []spec.Module) map[ID]protocol.Protocol {
+	probeProtocols := make(map[ID]protocol.Protocol, len(moduleList))
+	for _, module := range moduleList {
+		probeProtocols[module.Definition.ID] = module.Definition.Provider.ProbeProtocol
+	}
+	return probeProtocols
 }
 
 // NewRegistry constructs the built-in, read-only channel registry for compact
@@ -542,6 +579,7 @@ func (r *Registry) Resolve(id ID, raw json.RawMessage) (ResolvedTarget, error) {
 		ProviderKind:      definition.providerKind,
 		TargetConfig:      append(json.RawMessage(nil), targetConfig...),
 		CatalogProviderID: definition.catalogProviderID,
+		probeProtocol:     definition.probeProtocol,
 		modes:             cloneRouteModes(definition.modes),
 		resolvers:         cloneRouteResolvers(definition.resolvers),
 		responsesStoreHandlings: cloneResponsesStoreHandlings(
@@ -666,6 +704,7 @@ type definition struct {
 	validateCredential      func(map[string]string) error
 	catalogProviderID       string
 	providerKind            ProviderKind
+	probeProtocol           protocol.Protocol
 	connection              spec.Connection
 	capabilities            spec.CapabilityBindings
 	endpointPolicy          spec.EndpointPolicy
@@ -687,13 +726,14 @@ func (d definition) matches(query string) bool {
 	return false
 }
 
-func newRegistry(definitions []definition) (*Registry, error) {
+func newRegistry(definitions []definition, probeProtocols map[ID]protocol.Protocol) (*Registry, error) {
 	registry := &Registry{byID: make(map[ID]definition, len(definitions)), order: make([]ID, 0, len(definitions))}
 	for _, definition := range definitions {
+		id := definition.descriptor.ID
+		definition.probeProtocol = probeProtocols[id]
 		if err := validateDefinition(definition); err != nil {
 			return nil, err
 		}
-		id := definition.descriptor.ID
 		if _, duplicate := registry.byID[id]; duplicate {
 			return nil, fmt.Errorf("duplicate channel ID %q", id)
 		}
@@ -715,6 +755,20 @@ func validateDefinition(definition definition) error {
 	id := string(definition.descriptor.ID)
 	if id == "" || strings.Trim(id, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" || strings.HasPrefix(id, "_") || strings.HasSuffix(id, "_") {
 		return fmt.Errorf("invalid channel ID %q", id)
+	}
+	if definition.probeProtocol != "" {
+		if !definition.probeProtocol.SupportsGeneratedText() {
+			return fmt.Errorf("channel %q declares a non-generative probe protocol %q", id, definition.probeProtocol)
+		}
+		if _, ok := definition.modes[definition.probeProtocol][execution.OperationProbe]; !ok {
+			return fmt.Errorf("channel %q declares probe protocol %q without a probe route", id, definition.probeProtocol)
+		}
+	} else {
+		for clientProtocol, modes := range definition.modes {
+			if _, ok := modes[execution.OperationProbe]; ok {
+				return fmt.Errorf("channel %q declares a probe route for %q without a probe protocol", id, clientProtocol)
+			}
+		}
 	}
 	if strings.TrimSpace(definition.descriptor.Name) == "" {
 		return fmt.Errorf("channel %q has no name", id)

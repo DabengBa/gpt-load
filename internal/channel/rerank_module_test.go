@@ -15,7 +15,7 @@ func TestRerankNativeCapabilitiesAreExplicit(t *testing.T) {
 			t.Fatal("missing definition")
 		}
 		want := descriptor.ID == OpenAICompatible || descriptor.ID == NewAPI || descriptor.ID == GPTLoad
-		for _, operation := range []execution.Operation{execution.OperationRerank, execution.OperationProbe} {
+		for _, operation := range []execution.Operation{execution.OperationRerank} {
 			mode, present := definition.modes[protocol.Rerank][operation]
 			if present != want || present && mode != RouteNative {
 				t.Errorf("%s/%s: mode=%s present=%t want=%t", descriptor.ID, operation, mode, present, want)

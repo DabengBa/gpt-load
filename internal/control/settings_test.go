@@ -172,7 +172,7 @@ func TestGetSettingsReturnsSnapshotDefaultsAndNoOverrides(t *testing.T) {
 	}
 	if got.Values.FirstByteTimeout != 120 ||
 		got.Values.RequestTimeout != 600 || got.Values.StreamIdleTimeout != 300 ||
-		got.Values.ValidationInterval != 600 ||
+		got.Values.BlacklistReleaseSeconds != 3600 ||
 		got.Values.RouteStrategy != state.RouteStrategyNativeFirst ||
 		got.Values.RequestLogRetentionDays != 7 {
 		t.Fatalf("values = %#v", got.Values)
@@ -318,33 +318,33 @@ func assertSettingsPolicyJSON(
 	}
 }
 
-func TestUpdateSettingsChangesAndResetsValidationInterval(t *testing.T) {
+func TestUpdateSettingsChangesAndResetsBlacklistReleaseSeconds(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	updated, err := fixture.service.UpdateSettings(t.Context(), SettingsUpdateRequest{
 		Settings: map[string]json.RawMessage{
-			state.SettingValidationInterval: json.RawMessage("900"),
+			state.SettingBlacklistReleaseSeconds: json.RawMessage("900"),
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Values.ValidationInterval != 900 ||
-		fixture.manager.Current().Settings.ValidationInterval != 15*time.Minute ||
-		!reflect.DeepEqual(updated.Overrides, []string{state.SettingValidationInterval}) {
-		t.Fatalf("updated validation interval = %#v", updated)
+	if updated.Values.BlacklistReleaseSeconds != 900 ||
+		fixture.manager.Current().Settings.BlacklistReleaseSeconds != 900 ||
+		!reflect.DeepEqual(updated.Overrides, []string{state.SettingBlacklistReleaseSeconds}) {
+		t.Fatalf("updated blacklist release seconds = %#v", updated)
 	}
 
 	reset, err := fixture.service.UpdateSettings(t.Context(), SettingsUpdateRequest{
 		Settings: map[string]json.RawMessage{
-			state.SettingValidationInterval: json.RawMessage("null"),
+			state.SettingBlacklistReleaseSeconds: json.RawMessage("null"),
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reset.Values.ValidationInterval != 600 || len(reset.Overrides) != 0 {
-		t.Fatalf("reset validation interval = %#v", reset)
+	if reset.Values.BlacklistReleaseSeconds != 3600 || len(reset.Overrides) != 0 {
+		t.Fatalf("reset blacklist release seconds = %#v", reset)
 	}
 }
 

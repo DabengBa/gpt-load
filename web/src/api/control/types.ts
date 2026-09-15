@@ -146,7 +146,6 @@ export interface GroupSettingsDto {
   connection_type: ConnectionType
   params: ChannelParamsDto
   provider_url: string | null
-  validation_model: string | null
   enabled: boolean
   overrides: GroupRuntimeConfigDto
   effective: GroupEffectiveConfigDto
@@ -181,7 +180,7 @@ export interface GroupModelsDto {
 }
 
 export type CredentialStatus = 'available' | 'cooldown' | 'blacklisted' | 'disabled'
-export type CredentialRecoveryMode = 'none' | 'cooldown' | 'probe' | 'manual'
+export type CredentialRecoveryMode = 'none' | 'cooldown' | 'scheduled_release' | 'manual'
 export type CredentialAuthState =
   'ready' | 'refreshing' | 'reauthorization_required' | 'outcome_unknown'
 export type CredentialObservationState = 'fresh' | 'stale' | 'refreshing' | 'error' | 'unavailable'
@@ -352,8 +351,7 @@ export interface CredentialTestResultDto {
   protocol: ProtocolValue
   latency_ms: number
   reason: CredentialTestReason | null
-  can_restore: boolean
-  restore_proof: string | null
+  recovered: boolean
   log_id: string | null
   tested_at_ms: number
 }
@@ -427,7 +425,7 @@ export interface HealthGroupDto {
 
 export interface HealthRecoveryDto {
   automatic: boolean
-  mode: 'cooldown_expiry' | 'validation_probe' | 'configuration_required'
+  mode: 'cooldown_expiry' | 'scheduled_release'
   at_ms: number | null
 }
 

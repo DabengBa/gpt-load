@@ -89,7 +89,15 @@ type entryRuntimeRegistry interface {
 	SetEntryCooldownForEntry(groupID uint, entryID string, until time.Time) (exists bool, changed bool)
 	IncrEntryFailureForEntry(groupID uint, entryID string) (int, bool)
 	SetEntryBlacklistedForEntry(groupID uint, entryID string) (exists bool, changed bool)
+	SetEntryBlacklistReleaseAt(groupID uint, entryID string, releaseAt time.Time) bool
 	ClearEntryFailureForEntry(groupID uint, entryID string) bool
+}
+
+// blacklistReleaseRegistry schedules the local-only release of a blacklisted
+// credential. It is resolved by assertion like the entry runtime boundary so
+// registries that only need the compact mutation contract keep compiling.
+type blacklistReleaseRegistry interface {
+	SetBlacklistReleaseAt(credentialID uint, releaseAt time.Time) bool
 }
 
 type Handler struct {
@@ -273,6 +281,7 @@ func (handler *Handler) applyDecisionEffect(
 		statusCode,
 		attemptNow,
 		defaults.BlacklistThreshold,
+		handler.blacklistReleaseDeadline(attemptNow),
 	)
 }
 
@@ -305,6 +314,7 @@ func (handler *Handler) applyGroupDecisionEffectForEntry(
 	attemptNow time.Time,
 ) {
 	entryID = strings.TrimSpace(entryID)
+	releaseAt := handler.blacklistReleaseDeadline(attemptNow)
 	if decision.Scope == execution.ErrorScopeModel && entryID != "" {
 		if registry, ok := handler.registry.(entryRuntimeRegistry); ok {
 			mutate := func() {
@@ -313,10 +323,10 @@ func (handler *Handler) applyGroupDecisionEffectForEntry(
 					// counted failure families (safety.replay_unknown and any
 					// other uncounted rule) keep the legacy Effect-driven
 					// behavior byte for byte.
-					applyLegacyModelScopeEntryEffect(registry, group, entryID, decision)
+					applyLegacyModelScopeEntryEffect(registry, group, entryID, decision, releaseAt)
 					return
 				}
-				applyModelEntryBreakerEffect(registry, group, entryID, decision, attemptNow)
+				applyModelEntryBreakerEffect(registry, group, entryID, decision, attemptNow, releaseAt)
 			}
 			if handler.mutations == nil {
 				mutate()
@@ -333,7 +343,22 @@ func (handler *Handler) applyGroupDecisionEffectForEntry(
 		statusCode,
 		attemptNow,
 		group.BlacklistThreshold,
+		releaseAt,
 	)
+}
+
+// blacklistReleaseDeadline computes the local-only blacklist release deadline
+// for one failure event from the current published system setting, falling back
+// to the shipped default when no snapshot is available.
+func (handler *Handler) blacklistReleaseDeadline(attemptNow time.Time) time.Time {
+	seconds := state.DefaultRuntimeSettings().BlacklistReleaseSeconds
+	if handler != nil && handler.manager != nil {
+		if snapshot := handler.manager.Current(); snapshot != nil &&
+			snapshot.Settings.BlacklistReleaseSeconds > 0 {
+			seconds = snapshot.Settings.BlacklistReleaseSeconds
+		}
+	}
+	return attemptNow.Add(time.Duration(seconds) * time.Second)
 }
 
 // isModelEntryFailure implements design §4.1: a model-level failure is defined
@@ -359,12 +384,19 @@ func applyModelEntryBreakerEffect(
 	entryID string,
 	decision health.Decision,
 	attemptNow time.Time,
+	releaseAt time.Time,
 ) {
 	breaker := group.ModelBreakerByEntry[group.ID][entryID]
 	if breaker != nil && breaker.BlacklistThreshold != nil {
-		if count, exists := registry.IncrEntryFailureForEntry(group.ID, entryID); exists &&
+		if atomicRegistry, ok := registry.(*state.CredentialRegistry); ok {
+			atomicRegistry.RecordEntryFailureWithBlacklist(
+				group.ID, entryID, *breaker.BlacklistThreshold, releaseAt,
+			)
+		} else if count, exists := registry.IncrEntryFailureForEntry(group.ID, entryID); exists &&
 			count >= *breaker.BlacklistThreshold {
-			registry.SetEntryBlacklistedForEntry(group.ID, entryID)
+			if _, changed := registry.SetEntryBlacklistedForEntry(group.ID, entryID); changed {
+				registry.SetEntryBlacklistReleaseAt(group.ID, entryID, releaseAt)
+			}
 		}
 	}
 	if breaker != nil && breaker.CooldownSeconds != nil {
@@ -392,6 +424,7 @@ func applyLegacyModelScopeEntryEffect(
 	group state.GroupView,
 	entryID string,
 	decision health.Decision,
+	releaseAt time.Time,
 ) {
 	if decision.Effect == health.EffectCooldownCredential && !decision.CooldownUntil.IsZero() {
 		registry.SetEntryCooldownForEntry(group.ID, entryID, decision.CooldownUntil)
@@ -399,12 +432,20 @@ func applyLegacyModelScopeEntryEffect(
 	if decision.Effect != health.EffectRecordCredentialFailure {
 		return
 	}
+	if atomicRegistry, ok := registry.(*state.CredentialRegistry); ok {
+		atomicRegistry.RecordEntryFailureWithBlacklist(
+			group.ID, entryID, group.BlacklistThreshold, releaseAt,
+		)
+		return
+	}
 	count, exists := registry.IncrEntryFailureForEntry(group.ID, entryID)
 	if !exists {
 		return
 	}
 	if group.BlacklistThreshold > 0 && count >= group.BlacklistThreshold {
-		registry.SetEntryBlacklistedForEntry(group.ID, entryID)
+		if _, changed := registry.SetEntryBlacklistedForEntry(group.ID, entryID); changed {
+			registry.SetEntryBlacklistReleaseAt(group.ID, entryID, releaseAt)
+		}
 	}
 }
 
@@ -423,6 +464,7 @@ func (handler *Handler) applyDecisionEffectWithBlacklistPolicy(
 	statusCode int,
 	attemptNow time.Time,
 	blacklistThreshold int,
+	releaseAt time.Time,
 ) {
 	switch decision.Effect {
 	case health.EffectCooldownCredential:
@@ -453,17 +495,27 @@ func (handler *Handler) applyDecisionEffectWithBlacklistPolicy(
 		}
 	case health.EffectRecordCredentialFailure:
 		handler.mutations.Do(credentialID, func() {
-			count, ok := handler.registry.IncrFailure(credentialID)
+			count := 0
+			ok := false
+			becameBlacklisted := false
+			if atomicRegistry, atomic := handler.registry.(*state.CredentialRegistry); atomic {
+				count, ok, becameBlacklisted = atomicRegistry.RecordFailureWithBlacklist(
+					credentialID, blacklistThreshold, releaseAt,
+				)
+			} else {
+				count, ok = handler.registry.IncrFailure(credentialID)
+				if ok && blacklistThreshold > 0 && count >= blacklistThreshold {
+					var exists bool
+					exists, becameBlacklisted = handler.registry.SetBlacklistedWithChange(credentialID)
+					if exists && becameBlacklisted {
+						if releaser, releaserOK := handler.registry.(blacklistReleaseRegistry); releaserOK {
+							releaser.SetBlacklistReleaseAt(credentialID, releaseAt)
+						}
+					}
+				}
+			}
 			if !ok {
 				return
-			}
-			becameBlacklisted := false
-			if blacklistThreshold > 0 && count >= blacklistThreshold {
-				var exists bool
-				exists, becameBlacklisted = handler.registry.SetBlacklistedWithChange(credentialID)
-				if !exists {
-					return
-				}
 			}
 			handler.stats.RecordFailure(credentialID, decision.Category, statusCode, attemptNow)
 			if becameBlacklisted {

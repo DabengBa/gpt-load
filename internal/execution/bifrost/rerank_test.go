@@ -107,8 +107,8 @@ func TestRerankProbeUsesMinimalBodyAndRejectsInvalidSuccess(t *testing.T) {
 			spec.Body = nil
 			runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true})
 			result := runtime.Execute(context.Background(), freezeTestAttempt(spec))
-			wantSuccess := strings.Contains(response, "relevance_score")
-			if err := result.Validate(); err != nil || (result.Error == nil) != wantSuccess {
+			if err := result.Validate(); err != nil || result.Error == nil ||
+				result.DispatchState != execution.DispatchNotSent {
 				t.Fatalf("result=%+v error=%+v contract=%v", result, result.Error, err)
 			}
 		})

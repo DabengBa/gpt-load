@@ -106,7 +106,6 @@ func TestOpenAIEmbeddingsRequestShapeAndCapabilityAreExact(t *testing.T) {
 	} {
 		for _, operation := range []execution.Operation{
 			execution.OperationEmbeddingsCreate,
-			execution.OperationProbe,
 		} {
 			if err := manager.ValidateRouteCapability(providerKind, channel.RouteDescriptor{
 				ClientProtocol: protocol.OpenAIEmbeddings,

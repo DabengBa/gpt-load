@@ -117,6 +117,49 @@ func TestCredentialRegistryRestoreRuntimeStateIfMatchRequiresAndClearsCooldown(t
 	}
 }
 
+func TestCredentialRegistryCooldownChangesInvalidateStaleRestoreRef(t *testing.T) {
+	registry := NewCredentialRegistry()
+	entry := testCredential(1, 10)
+	entry.Blacklisted = true
+	if err := registry.ReplaceCredentials([]CredentialEntry{entry}); err != nil {
+		t.Fatal(err)
+	}
+	ref, ok := registry.CredentialRef(1)
+	if !ok {
+		t.Fatal("CredentialRef() failed")
+	}
+	cooldown := time.Now().Add(time.Hour).UTC()
+	if exists, changed := registry.SetCooldownWithChange(1, cooldown); !exists || !changed {
+		t.Fatalf("SetCooldownWithChange() = %t/%t", exists, changed)
+	}
+	if !registry.ClearCooldownIfMatch(1, cooldown) {
+		t.Fatal("ClearCooldownIfMatch() failed")
+	}
+	if registry.RestoreRuntimeStateIfMatch(ref, time.Time{}) {
+		t.Fatal("stale restore succeeded after cooldown ABA")
+	}
+}
+
+func TestCredentialRegistryRestoreRuntimeStateIfMatchRequiresReadyAuthState(t *testing.T) {
+	registry := NewCredentialRegistry()
+	entry := testCredential(1, 10)
+	entry.Blacklisted = true
+	entry.AuthState = CredentialAuthStateReauthorizationRequired
+	if err := registry.ReplaceCredentials([]CredentialEntry{entry}); err != nil {
+		t.Fatal(err)
+	}
+	ref, ok := registry.CredentialRef(1)
+	if !ok {
+		t.Fatal("CredentialRef() failed")
+	}
+	if registry.RestoreRuntimeStateIfMatch(ref, time.Time{}) {
+		t.Fatal("restore succeeded for credential requiring reauthorization")
+	}
+	if got := registryEntry(t, registry, 1); !got.Blacklisted || got.AuthState != CredentialAuthStateReauthorizationRequired {
+		t.Fatalf("non-ready credential changed during restore: %#v", got)
+	}
+}
+
 func TestCredentialRegistryQuotaObservationDoesNotAffectCandidates(t *testing.T) {
 	registry := NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]CredentialEntry{testCredential(1, 10)}); err != nil {

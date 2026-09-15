@@ -22,7 +22,6 @@ func TestOpenAIEmbeddingsNativeRouteIsLimitedToSupportedAPIKeyChannels(t *testin
 		_, want := supported[descriptor.ID]
 		for _, operation := range []execution.Operation{
 			execution.OperationEmbeddingsCreate,
-			execution.OperationProbe,
 		} {
 			mode, ok := definition.modes[protocol.OpenAIEmbeddings][operation]
 			if want {
@@ -44,8 +43,8 @@ func TestValidProtocolOperationOpenAIEmbeddingsMatrix(t *testing.T) {
 	if !validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationEmbeddingsCreate) {
 		t.Fatal("openai-embeddings/embeddings_create must be valid")
 	}
-	if !validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationProbe) {
-		t.Fatal("openai-embeddings/probe must be valid")
+	if validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationProbe) {
+		t.Fatal("openai-embeddings/probe must be invalid")
 	}
 	for _, operation := range []execution.Operation{
 		execution.OperationChatCompletion,

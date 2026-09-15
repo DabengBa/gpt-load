@@ -41,7 +41,7 @@ func convertedRouteImplemented(providerKind channel.ProviderKind, clientProtocol
 	case execution.OperationListModels:
 		return clientProtocol != protocol.OpenAIResponses && clientProtocol != protocol.Rerank && clientProtocol.Valid()
 	case execution.OperationProbe:
-		return clientProtocol != protocol.Rerank && clientProtocol.Valid()
+		return clientProtocol.SupportsGeneratedText()
 	case execution.OperationChatCompletion:
 		return clientProtocol == protocol.OpenAICompletions ||
 			clientProtocol == protocol.Anthropic ||
@@ -63,12 +63,12 @@ func nativeRouteImplemented(
 	operation execution.Operation,
 ) bool {
 	if clientProtocol == protocol.Rerank {
-		return (providerKind == channel.ProviderOpenAICompatible || providerKind == channel.ProviderMultiProtocolGateway) && (operation == execution.OperationRerank || operation == execution.OperationProbe)
+		return (providerKind == channel.ProviderOpenAICompatible || providerKind == channel.ProviderMultiProtocolGateway) && operation == execution.OperationRerank
 	}
 	switch providerKind {
 	case channel.ProviderOpenAI:
 		if clientProtocol == protocol.OpenAIEmbeddings {
-			return operation == execution.OperationEmbeddingsCreate || operation == execution.OperationProbe
+			return operation == execution.OperationEmbeddingsCreate
 		}
 		if clientProtocol == protocol.OpenAIImages {
 			return operation == execution.OperationImagesGenerate || operation == execution.OperationImagesEdit
@@ -91,8 +91,7 @@ func nativeRouteImplemented(
 			return operation == execution.OperationImagesGenerate ||
 				operation == execution.OperationImagesEdit
 		case protocol.OpenAIEmbeddings:
-			return operation == execution.OperationEmbeddingsCreate ||
-				operation == execution.OperationProbe
+			return operation == execution.OperationEmbeddingsCreate
 		case protocol.Anthropic, protocol.Gemini:
 			return operation == execution.OperationChatCompletion ||
 				operation == execution.OperationCountTokens ||
@@ -102,7 +101,7 @@ func nativeRouteImplemented(
 		}
 	case channel.ProviderOpenAICompatible:
 		if clientProtocol == protocol.OpenAIEmbeddings {
-			return operation == execution.OperationEmbeddingsCreate || operation == execution.OperationProbe
+			return operation == execution.OperationEmbeddingsCreate
 		}
 		if clientProtocol == protocol.OpenAIImages {
 			return operation == execution.OperationImagesGenerate || operation == execution.OperationImagesEdit
@@ -119,7 +118,7 @@ func nativeRouteImplemented(
 		}
 	case channel.ProviderOpenRouter:
 		if clientProtocol == protocol.OpenAIEmbeddings {
-			return operation == execution.OperationEmbeddingsCreate || operation == execution.OperationProbe
+			return operation == execution.OperationEmbeddingsCreate
 		}
 		return nativeOpenAIProtocolOperation(clientProtocol, operation, false)
 	case channel.ProviderXAI:

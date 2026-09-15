@@ -84,8 +84,8 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 			// transient but exposed no classifiable evidence. The candidate is
 			// suspected, not proven: count the failure against its credential so
 			// a candidate that keeps answering this way reaches the blacklist
-			// threshold and is recovered by the validation probe, and switch
-			// candidate for this request instead of failing it.
+			// threshold and is released by local blacklist maintenance, and
+			// switch candidate for this request instead of failing it.
 			result := decision(
 				FailureCategoryAmbiguous,
 				originForDispatch(attempt.DispatchState),

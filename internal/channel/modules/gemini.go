@@ -29,6 +29,7 @@ func Gemini() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderGemini,
+				ProbeProtocol:     protocol.Gemini,
 				CatalogProviderID: "google",
 				EndpointPolicy:    spec.EndpointSDKDefault,
 			},

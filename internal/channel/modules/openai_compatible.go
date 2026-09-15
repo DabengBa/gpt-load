@@ -29,14 +29,13 @@ func OpenAICompatible() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:   spec.ProviderOpenAICompatible,
+				ProbeProtocol:  protocol.OpenAICompletions,
 				EndpointPolicy: spec.EndpointRequiredBaseURL,
 			},
 			Routes: []spec.Route{
 				spec.NewRoute(protocol.Rerank, execution.OperationRerank, execution.RouteNative),
-				spec.NewRoute(protocol.Rerank, execution.OperationProbe, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAICompletions, execution.OperationChatCompletion, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAIEmbeddings, execution.OperationEmbeddingsCreate, execution.RouteNative),
-				spec.NewRoute(protocol.OpenAIEmbeddings, execution.OperationProbe, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAIImages, execution.OperationImagesGenerate, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAIImages, execution.OperationImagesEdit, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAICompletions, execution.OperationListModels, execution.RouteNative),

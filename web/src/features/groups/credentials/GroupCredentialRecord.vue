@@ -151,7 +151,9 @@ function removeCredential(): void {
           <dd>
             {{
               item.recovery.at_ms
-                ? formatLocalInstant(item.recovery.at_ms, locale)
+                ? t('group.credentials.recovery.at', {
+                    time: formatLocalInstant(item.recovery.at_ms, locale),
+                  })
                 : t(`group.credentials.recovery.${item.recovery.mode}`)
             }}
           </dd>

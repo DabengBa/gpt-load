@@ -388,12 +388,6 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	validation := "validation-model-must-stay"
-	if _, err := fixture.service.UpdateGroupSettings(t.Context(), created.GroupID, GroupSettingsUpdateRequest{
-		ValidationModel: optionalField[string]{Set: true, Value: validation},
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if err := fixture.db.Model(&models.Group{}).
 		Where("id = ?", created.GroupID).
 		Update("overrides", models.JSON(`{
@@ -465,7 +459,7 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 	if err != nil {
 		t.Fatalf("GetGroupSummary() error = %v", err)
 	}
-	if settings.ValidationModel == nil || *settings.ValidationModel != validation || summary.CredentialCount != 1 {
+	if summary.CredentialCount != 1 {
 		t.Fatalf("settings/summary = %#v/%#v", settings, summary)
 	}
 	streamIdle, ok := settings.Overrides[state.SettingStreamIdleTimeout].(json.Number)

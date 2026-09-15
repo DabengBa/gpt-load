@@ -29,13 +29,13 @@ func OpenRouter() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderOpenRouter,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "openrouter",
 				EndpointPolicy:    spec.EndpointSDKDefault,
 			},
 			Routes: []spec.Route{
 				spec.NewRoute(protocol.OpenAICompletions, execution.OperationChatCompletion, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAIEmbeddings, execution.OperationEmbeddingsCreate, execution.RouteNative),
-				spec.NewRoute(protocol.OpenAIEmbeddings, execution.OperationProbe, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAICompletions, execution.OperationListModels, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAICompletions, execution.OperationProbe, execution.RouteNative),
 				spec.NewResponsesCreateRoute(execution.RouteNative, spec.ResponsesStoreHandlingStateless),

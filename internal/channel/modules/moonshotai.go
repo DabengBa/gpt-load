@@ -29,6 +29,7 @@ func MoonshotAI() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderOpenAICompatible,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "moonshotai",
 				EndpointPolicy:    spec.EndpointFixedWithOverride,
 				FixedBaseURL:      "https://api.moonshot.cn/v1",

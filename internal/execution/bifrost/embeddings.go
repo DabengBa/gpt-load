@@ -54,23 +54,6 @@ func buildEmbeddingRequest(
 	}, nil
 }
 
-func newEmbeddingProbeRequest(
-	provider schemas.ModelProvider,
-	model string,
-) *schemas.BifrostEmbeddingRequest {
-	input := "ping"
-	body, _ := json.Marshal(struct {
-		Model string `json:"model"`
-		Input string `json:"input"`
-	}{Model: model, Input: input})
-	return &schemas.BifrostEmbeddingRequest{
-		Provider:       provider,
-		Model:          model,
-		Input:          &schemas.EmbeddingInput{Text: &input},
-		RawRequestBody: body,
-	}
-}
-
 // embeddingInputMarker preserves only the validated input shape needed by
 // Bifrost's typed preflight. The selected provider receives RawRequestBody, so
 // GPT-Load does not impose Go integer bounds on token IDs or rebuild the wire.
@@ -270,16 +253,8 @@ func (r *Runtime) executeEmbedding(
 	// The raw body is the response authority. Clear typed data defensively before
 	// alias projection and gateway processing.
 	outcome.response.Data = nil
-	if spec.Operation == execution.OperationProbe && !validEmbeddingProbeResponse(body) {
-		return startedUnaryFailure(
-			http.StatusOK,
-			headers,
-			execution.ErrorKindProvider,
-			"upstream returned an invalid Embeddings probe response",
-		)
-	}
 	model := openAIResponseModel(body, "")
-	if spec.Operation != execution.OperationProbe && needsClientModelAlias(spec) {
+	if needsClientModelAlias(spec) {
 		var err error
 		body, err = rewriteClientResponseModel(spec.ClientProtocol, body, spec.ClientModel)
 		if err != nil {
@@ -410,19 +385,6 @@ func normalizeMaterializedEmbeddingHeaders(
 	result.Del("Content-Length")
 	result.Set("Content-Length", strconv.Itoa(bodyLength))
 	return result, nil
-}
-
-func validEmbeddingProbeResponse(body []byte) bool {
-	var envelope struct {
-		Data []struct {
-			Embedding json.RawMessage `json:"embedding"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil || len(envelope.Data) == 0 {
-		return false
-	}
-	embedding := bytes.TrimSpace(envelope.Data[0].Embedding)
-	return len(embedding) > 0 && !bytes.Equal(embedding, []byte("null"))
 }
 
 func takeRawEmbeddingResponse(response *schemas.BifrostEmbeddingResponse) ([]byte, bool) {

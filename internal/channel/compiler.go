@@ -455,7 +455,7 @@ func validProtocolOperation(clientProtocol protocol.Protocol, operation executio
 		return clientProtocol != protocol.OpenAIResponses && clientProtocol != protocol.OpenAIImages &&
 			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.Rerank
 	case execution.OperationProbe:
-		return clientProtocol != protocol.OpenAIImages
+		return clientProtocol.SupportsGeneratedText()
 	default:
 		return false
 	}

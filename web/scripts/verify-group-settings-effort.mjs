@@ -11,7 +11,6 @@ const baseSettings = {
   connection_type: 'api_key',
   params: {},
   provider_url: null,
-  validation_model: null,
   enabled: true,
   overrides: {
     parameter_overrides: [{ match: { model: 'public-*' }, set: { temperature: 0.4 } }],

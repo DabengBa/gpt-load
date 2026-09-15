@@ -29,6 +29,7 @@ type CredentialEntry struct {
 	AuthState          CredentialAuthState
 	CooldownUntil      time.Time
 	Blacklisted        bool
+	BlacklistReleaseAt time.Time
 	FailureCount       int
 	FailureGeneration  uint64
 	EncryptedValue     string
@@ -74,11 +75,12 @@ const (
 
 // EntryRuntimeView is a secret-free snapshot of one route-entry health state.
 type EntryRuntimeView struct {
-	Key            RouteEntryKey
-	CooldownUntil  time.Time
-	Blacklisted    bool
-	FailureCount   int
-	FailureVersion uint64
+	Key                RouteEntryKey
+	CooldownUntil      time.Time
+	Blacklisted        bool
+	BlacklistReleaseAt time.Time
+	FailureCount       int
+	FailureVersion     uint64
 }
 
 func (view EntryRuntimeView) RuntimeState(now time.Time) EntryRuntimeState {
@@ -93,10 +95,11 @@ func (view EntryRuntimeView) RuntimeState(now time.Time) EntryRuntimeState {
 
 type routeEntryRuntime struct {
 	RouteEntryKey
-	CooldownUntil  time.Time
-	Blacklisted    bool
-	FailureCount   int
-	FailureVersion uint64
+	CooldownUntil      time.Time
+	Blacklisted        bool
+	BlacklistReleaseAt time.Time
+	FailureCount       int
+	FailureVersion     uint64
 }
 
 type EntryRuntimeKey = RouteEntryKey
@@ -496,10 +499,15 @@ func (r *CredentialRegistry) SetCredentialAuthState(credentialID uint, authState
 	if !ok {
 		return false
 	}
-	entry.AuthState = authState.normalize()
+	next := authState.normalize()
+	changed := entry.AuthState.normalize() != next
+	entry.AuthState = next
 	if entry.AuthState != CredentialAuthStateReady {
 		entry.quotaRemaining = nil
 		entry.quotaResetAt = time.Time{}
+	}
+	if changed {
+		entry.FailureGeneration++
 	}
 	return true
 }
@@ -690,11 +698,12 @@ func (r *CredentialRegistry) EntryRuntime(key RouteEntryKey, now time.Time) (Ent
 		return EntryRuntimeView{Key: key}, false
 	}
 	view := EntryRuntimeView{
-		Key:            state.RouteEntryKey,
-		CooldownUntil:  state.CooldownUntil,
-		Blacklisted:    state.Blacklisted,
-		FailureCount:   state.FailureCount,
-		FailureVersion: state.FailureVersion,
+		Key:                state.RouteEntryKey,
+		CooldownUntil:      state.CooldownUntil,
+		Blacklisted:        state.Blacklisted,
+		BlacklistReleaseAt: state.BlacklistReleaseAt,
+		FailureCount:       state.FailureCount,
+		FailureVersion:     state.FailureVersion,
 	}
 	r.mu.RUnlock()
 	return view, true
@@ -706,11 +715,12 @@ func (r *CredentialRegistry) EntryRuntimeSnapshot() []EntryRuntimeView {
 	views := make([]EntryRuntimeView, 0, len(r.entryRuntime))
 	for _, state := range r.entryRuntime {
 		views = append(views, EntryRuntimeView{
-			Key:            state.RouteEntryKey,
-			CooldownUntil:  state.CooldownUntil,
-			Blacklisted:    state.Blacklisted,
-			FailureCount:   state.FailureCount,
-			FailureVersion: state.FailureVersion,
+			Key:                state.RouteEntryKey,
+			CooldownUntil:      state.CooldownUntil,
+			Blacklisted:        state.Blacklisted,
+			BlacklistReleaseAt: state.BlacklistReleaseAt,
+			FailureCount:       state.FailureCount,
+			FailureVersion:     state.FailureVersion,
 		})
 	}
 	r.mu.RUnlock()
@@ -760,6 +770,7 @@ func (r *CredentialRegistry) SetEntryCooldownForEntry(
 		return true, false
 	}
 	state.CooldownUntil = until
+	state.FailureVersion++
 	return true, true
 }
 
@@ -788,8 +799,65 @@ func (r *CredentialRegistry) SetEntryBlacklistedForEntry(groupID uint, entryID s
 	return true, true
 }
 
+// SetEntryBlacklistReleaseAt schedules the local-only release of an already
+// blacklisted route entry. A zero or non-blacklisted target is ignored, and an
+// existing deadline is never overwritten by a stale writer.
+func (r *CredentialRegistry) SetEntryBlacklistReleaseAt(
+	groupID uint,
+	entryID string,
+	releaseAt time.Time,
+) bool {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" || releaseAt.IsZero() {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state, exists := r.entryRuntime[key]
+	if !exists || !state.Blacklisted || !state.BlacklistReleaseAt.IsZero() {
+		return false
+	}
+	state.BlacklistReleaseAt = releaseAt
+	state.FailureVersion++
+	return true
+}
+
 func (r *CredentialRegistry) IncrEntryFailure(key RouteEntryKey) (int, bool) {
 	return r.IncrEntryFailureForEntry(key.GroupID, key.EntryID)
+}
+
+// RecordEntryFailureWithBlacklist applies one route-entry failure, its
+// threshold transition and its local release deadline under the registry lock.
+// A repeated failure while blacklisted refreshes the deadline intentionally so
+// maintenance cannot release the newly recorded failure.
+func (r *CredentialRegistry) RecordEntryFailureWithBlacklist(
+	groupID uint,
+	entryID string,
+	threshold int,
+	releaseAt time.Time,
+) (count int, exists bool, becameBlacklisted bool) {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
+		return 0, false, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state := r.entryRuntimeLocked(key)
+	state.FailureCount++
+	state.FailureVersion++
+	if threshold <= 0 || state.FailureCount < threshold {
+		return state.FailureCount, true, false
+	}
+	if !state.Blacklisted {
+		state.Blacklisted = true
+		state.FailureVersion++
+		becameBlacklisted = true
+	}
+	if !releaseAt.IsZero() && !state.BlacklistReleaseAt.Equal(releaseAt) {
+		state.BlacklistReleaseAt = releaseAt
+		state.FailureVersion++
+	}
+	return state.FailureCount, true, becameBlacklisted
 }
 
 func (r *CredentialRegistry) ClearEntryFailure(key RouteEntryKey) bool {
@@ -844,11 +912,79 @@ func (r *CredentialRegistry) RecoverEntryForEntry(groupID uint, entryID string) 
 	}
 	if state.Blacklisted || state.FailureCount != 0 || !state.CooldownUntil.IsZero() {
 		state.Blacklisted = false
+		state.BlacklistReleaseAt = time.Time{}
 		state.FailureCount = 0
 		state.CooldownUntil = time.Time{}
 		state.FailureVersion++
 	}
 	return true
+}
+
+// RecoverEntryIfVersionMatch restores a tested route entry only while its
+// failure version still matches the caller's observed view. A stale entry view
+// therefore cannot clear a newer failure, blacklist or release deadline.
+func (r *CredentialRegistry) RecoverEntryIfVersionMatch(
+	groupID uint,
+	entryID string,
+	expectedVersion uint64,
+) bool {
+	key := RouteEntryKey{GroupID: groupID, EntryID: strings.TrimSpace(entryID)}
+	if key.GroupID == 0 || key.EntryID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state, exists := r.entryRuntime[key]
+	if !exists || state.FailureVersion != expectedVersion {
+		return false
+	}
+	if state.Blacklisted || state.FailureCount != 0 || !state.CooldownUntil.IsZero() {
+		state.Blacklisted = false
+		state.BlacklistReleaseAt = time.Time{}
+		state.FailureCount = 0
+		state.CooldownUntil = time.Time{}
+		state.FailureVersion++
+	}
+	return true
+}
+
+// ReleaseExpiredBlacklists applies scheduled blacklist releases for
+// credentials and route entries whose local deadline has passed. It performs
+// registry-memory changes only: no upstream request, probe, usage accounting or
+// recovery network flow is triggered. Provider cooldown deadlines are left
+// untouched, and a credential that is not ready stays blacklisted until a later
+// maintenance run observes it ready.
+func (r *CredentialRegistry) ReleaseExpiredBlacklists(now time.Time) (credentials int, entries int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, bucket := range r.buckets {
+		for _, entry := range bucket {
+			if !entry.Blacklisted || entry.BlacklistReleaseAt.IsZero() ||
+				entry.BlacklistReleaseAt.After(now) {
+				continue
+			}
+			if entry.AuthState.normalize() != CredentialAuthStateReady {
+				continue
+			}
+			entry.Blacklisted = false
+			entry.BlacklistReleaseAt = time.Time{}
+			entry.FailureCount = 0
+			entry.FailureGeneration++
+			credentials++
+		}
+	}
+	for _, state := range r.entryRuntime {
+		if !state.Blacklisted || state.BlacklistReleaseAt.IsZero() ||
+			state.BlacklistReleaseAt.After(now) {
+			continue
+		}
+		state.Blacklisted = false
+		state.BlacklistReleaseAt = time.Time{}
+		state.FailureCount = 0
+		state.FailureVersion++
+		entries++
+	}
+	return credentials, entries
 }
 
 func (r *CredentialRegistry) ClearExpiredEntryCooldowns(now time.Time) int {
@@ -974,6 +1110,7 @@ func (r *CredentialRegistry) ClearCooldownIfMatch(credentialID uint, expected ti
 		return false
 	}
 	entry.CooldownUntil = time.Time{}
+	entry.FailureGeneration++
 	return true
 }
 
@@ -988,6 +1125,7 @@ func (r *CredentialRegistry) SetCooldownWithChange(credentialID uint, until time
 		return true, false
 	}
 	entry.CooldownUntil = until
+	entry.FailureGeneration++
 	return true, true
 }
 
@@ -1008,6 +1146,7 @@ func (r *CredentialRegistry) SetCooldownWithChangeIfVersion(
 		return true, false
 	}
 	entry.CooldownUntil = until
+	entry.FailureGeneration++
 	return true, true
 }
 
@@ -1026,6 +1165,24 @@ func (r *CredentialRegistry) SetBlacklistedWithChange(credentialID uint) (bool, 
 	return true, true
 }
 
+// SetBlacklistReleaseAt schedules the local-only release of an already
+// blacklisted credential. A zero or non-blacklisted target is ignored, and an
+// existing deadline is never overwritten by a stale writer.
+func (r *CredentialRegistry) SetBlacklistReleaseAt(credentialID uint, releaseAt time.Time) bool {
+	if credentialID == 0 || releaseAt.IsZero() {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok := r.entryLocked(credentialID)
+	if !ok || !entry.Blacklisted || !entry.BlacklistReleaseAt.IsZero() {
+		return false
+	}
+	entry.BlacklistReleaseAt = releaseAt
+	entry.FailureGeneration++
+	return true
+}
+
 func (r *CredentialRegistry) RestoreRuntimeState(credentialID uint) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1035,6 +1192,7 @@ func (r *CredentialRegistry) RestoreRuntimeState(credentialID uint) bool {
 	}
 	entry.CooldownUntil = time.Time{}
 	entry.Blacklisted = false
+	entry.BlacklistReleaseAt = time.Time{}
 	entry.FailureCount = 0
 	entry.FailureGeneration++
 	return true
@@ -1043,6 +1201,38 @@ func (r *CredentialRegistry) RestoreRuntimeState(credentialID uint) bool {
 func (r *CredentialRegistry) SetBlacklisted(credentialID uint) bool {
 	exists, _ := r.SetBlacklistedWithChange(credentialID)
 	return exists
+}
+
+// RecordFailureWithBlacklist applies one credential failure, its threshold
+// transition and its local release deadline under the registry lock.
+// Repeated failures while blacklisted refresh the deadline intentionally so
+// maintenance cannot release the newly recorded failure.
+func (r *CredentialRegistry) RecordFailureWithBlacklist(
+	credentialID uint,
+	threshold int,
+	releaseAt time.Time,
+) (count int, exists bool, becameBlacklisted bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok := r.entryLocked(credentialID)
+	if !ok {
+		return 0, false, false
+	}
+	entry.FailureCount++
+	entry.FailureGeneration++
+	if threshold <= 0 || entry.FailureCount < threshold {
+		return entry.FailureCount, true, false
+	}
+	if !entry.Blacklisted {
+		entry.Blacklisted = true
+		entry.FailureGeneration++
+		becameBlacklisted = true
+	}
+	if !releaseAt.IsZero() && !entry.BlacklistReleaseAt.Equal(releaseAt) {
+		entry.BlacklistReleaseAt = releaseAt
+		entry.FailureGeneration++
+	}
+	return entry.FailureCount, true, becameBlacklisted
 }
 
 func (r *CredentialRegistry) IncrFailure(credentialID uint) (int, bool) {
@@ -1080,6 +1270,7 @@ func (r *CredentialRegistry) Recover(credentialID uint) bool {
 	}
 	if entry.Blacklisted || entry.FailureCount != 0 {
 		entry.Blacklisted = false
+		entry.BlacklistReleaseAt = time.Time{}
 		entry.FailureCount = 0
 		entry.FailureGeneration++
 	}
@@ -1116,6 +1307,7 @@ func (r *CredentialRegistry) restoreRuntimeStateIfMatch(
 		entry.Fingerprint != ref.Fingerprint ||
 		entry.EncryptedValue != ref.EncryptedValue ||
 		entry.FailureGeneration != ref.FailureGeneration ||
+		entry.AuthState.normalize() != CredentialAuthStateReady ||
 		cooldownUntil != nil && !entry.CooldownUntil.Equal(*cooldownUntil) {
 		return false
 	}
@@ -1123,6 +1315,7 @@ func (r *CredentialRegistry) restoreRuntimeStateIfMatch(
 		entry.CooldownUntil = time.Time{}
 	}
 	entry.Blacklisted = false
+	entry.BlacklistReleaseAt = time.Time{}
 	entry.FailureCount = 0
 	entry.FailureGeneration++
 	return true

@@ -52,6 +52,8 @@ export interface SchedulePanelDetailLabels {
   failures: string
   recover: string
   breakerRecovery: string
+  cooldownUntil?: string
+  scheduledReleaseAt?: string
   clear: string
   invalidValue: string
   derivedReadOnly: string
@@ -594,14 +596,18 @@ function discard(): void {
   emitDraftChange({})
 }
 
-async function recover(groupID: number, entryID: string): Promise<void> {
-  const key = rowKey(groupID, entryID)
+async function recover(groupID: number, entry: ModelRouteScheduleEntryDto): Promise<void> {
+  const key = rowKey(groupID, entry.entry_id)
   recovering.value = key
   saveError.value = ''
   try {
-    await recoverModelRouteScheduleEntry(client, { group_id: groupID, entry_id: entryID })
+    await recoverModelRouteScheduleEntry(client, {
+      group_id: groupID,
+      entry_id: entry.entry_id,
+      failure_version: entry.runtime.failure_version,
+    })
     await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.recover)
-    emit('recovered', groupID, entryID)
+    emit('recovered', groupID, entry.entry_id)
   } catch {
     saveError.value = text('recoverFailed')
   } finally {
@@ -631,11 +637,18 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   const breaker = entry.circuit_breaker.effective
   const threshold = breaker.blacklist_threshold ?? '-'
   const cooldown = breaker.cooldown_seconds ?? '-'
-  const recovery =
-    entry.runtime.cooldown_until_ms === null
-      ? ''
-      : ` · ${formatLocalInstant(entry.runtime.cooldown_until_ms, props.locale)}`
-  return `${threshold}/${cooldown}s${recovery}`
+  const recovery: string[] = []
+  if (entry.runtime.cooldown_until_ms !== null) {
+    recovery.push(
+      `${text('cooldownUntil')}: ${formatLocalInstant(entry.runtime.cooldown_until_ms, props.locale)}`,
+    )
+  }
+  if (entry.runtime.blacklist_release_at_ms !== null) {
+    recovery.push(
+      `${text('scheduledReleaseAt')}: ${formatLocalInstant(entry.runtime.blacklist_release_at_ms, props.locale)}`,
+    )
+  }
+  return `${threshold}/${cooldown}s${recovery.length > 0 ? ` · ${recovery.join(' · ')}` : ''}`
 }
 
 defineExpose({ applyProbeEnabled })
@@ -811,7 +824,7 @@ defineExpose({ applyProbeEnabled })
                 size="compact"
                 :busy="recovering === rowKey(group.group_id, entry.entry_id)"
                 :disabled="entry.entry_id.startsWith('derived:')"
-                @click.stop="recover(group.group_id, entry.entry_id)"
+                @click.stop="recover(group.group_id, entry)"
               >
                 {{ text('recover') }}
               </AppButton>

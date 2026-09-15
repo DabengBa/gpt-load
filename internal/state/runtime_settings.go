@@ -24,11 +24,11 @@ const (
 	SettingRetryCount                            = "retry_count"
 	SettingRouteStrategy                         = "route_strategy"
 	SettingBlacklistThreshold                    = "blacklist_threshold"
+	SettingBlacklistReleaseSeconds               = "blacklist_release_seconds"
 	SettingAffinityEnabled                       = "affinity_enabled"
 	SettingResponsesWebsocketEnabled             = "responses_websocket_enabled"
 	SettingAffinityTTL                           = "affinity_ttl"
 	SettingAffinityCapacity                      = "affinity_capacity"
-	SettingValidationInterval                    = "validation_interval"
 	SettingRequestLogRetentionDays               = "request_log_retention_days"
 	SettingModelsDevAutoSyncEnabled              = "models_dev_auto_sync_enabled"
 	SettingParameterOverrides                    = "parameter_overrides"
@@ -50,6 +50,9 @@ const (
 	defaultAffinityCapacity        = 10_000
 	maxAffinityCapacity            = 1_000_000
 	maxJSONSafeInteger             = int64(1<<53 - 1)
+	// defaultBlacklistReleaseSeconds is the local-only release delay applied when
+	// a credential or route entry reaches its blacklist threshold.
+	defaultBlacklistReleaseSeconds = 3600
 )
 
 type RuntimeSettings struct {
@@ -62,11 +65,11 @@ type RuntimeSettings struct {
 	RetryCount                int
 	RouteStrategy             RouteStrategy
 	BlacklistThreshold        int
+	BlacklistReleaseSeconds   int
 	AffinityEnabled           bool
 	ResponsesWebsocketEnabled bool
 	AffinityTTL               time.Duration
 	AffinityCapacity          int
-	ValidationInterval        time.Duration
 	RequestLogRetentionDays   int
 	ModelsDevAutoSyncEnabled  bool
 }
@@ -96,11 +99,11 @@ func DefaultRuntimeSettings() RuntimeSettings {
 		RetryCount:                5,
 		RouteStrategy:             RouteStrategyNativeFirst,
 		BlacklistThreshold:        3,
+		BlacklistReleaseSeconds:   defaultBlacklistReleaseSeconds,
 		AffinityEnabled:           true,
 		ResponsesWebsocketEnabled: true,
 		AffinityTTL:               time.Hour,
 		AffinityCapacity:          defaultAffinityCapacity,
-		ValidationInterval:        10 * time.Minute,
 		RequestLogRetentionDays:   defaultRequestLogRetentionDays,
 		ModelsDevAutoSyncEnabled:  true,
 	}
@@ -117,11 +120,11 @@ func IsRuntimeSettingKey(key string) bool {
 		SettingRetryCount,
 		SettingRouteStrategy,
 		SettingBlacklistThreshold,
+		SettingBlacklistReleaseSeconds,
 		SettingAffinityEnabled,
 		SettingResponsesWebsocketEnabled,
 		SettingAffinityTTL,
 		SettingAffinityCapacity,
-		SettingValidationInterval,
 		SettingRequestLogRetentionDays,
 		SettingModelsDevAutoSyncEnabled:
 		return true
@@ -188,6 +191,12 @@ func ResolveRuntimeSettings(settings config.Settings) (RuntimeSettings, error) {
 				return RuntimeSettings{}, err
 			}
 			resolved.BlacklistThreshold = threshold
+		case SettingBlacklistReleaseSeconds:
+			seconds, err := positiveWholeSeconds(key, value)
+			if err != nil {
+				return RuntimeSettings{}, err
+			}
+			resolved.BlacklistReleaseSeconds = int(seconds)
 		case SettingAffinityEnabled:
 			value, err := strictBoolean(key, value)
 			if err != nil {
@@ -212,12 +221,6 @@ func ResolveRuntimeSettings(settings config.Settings) (RuntimeSettings, error) {
 				return RuntimeSettings{}, err
 			}
 			resolved.AffinityCapacity = capacity
-		case SettingValidationInterval:
-			seconds, err := positiveWholeSeconds(key, value)
-			if err != nil {
-				return RuntimeSettings{}, err
-			}
-			resolved.ValidationInterval = time.Duration(seconds) * time.Second
 		case SettingRequestLogRetentionDays:
 			days, err := wholeNumberInRange(
 				key,
@@ -376,8 +379,7 @@ func ValidateRuntimeSetting(key string, value any) error {
 	switch key {
 	case SettingFirstByteTimeout,
 		SettingRequestTimeout,
-		SettingStreamIdleTimeout,
-		SettingValidationInterval:
+		SettingStreamIdleTimeout:
 		_, err := positiveWholeSeconds(key, value)
 		return err
 	case SettingHeaderRules:
@@ -391,6 +393,9 @@ func ValidateRuntimeSetting(key string, value any) error {
 		return err
 	case SettingRetryCount, SettingBlacklistThreshold:
 		_, err := nonNegativeWholeNumber(key, value)
+		return err
+	case SettingBlacklistReleaseSeconds:
+		_, err := positiveWholeSeconds(key, value)
 		return err
 	case SettingRouteStrategy:
 		_, err := parseRouteStrategy(value)

@@ -31,6 +31,7 @@ func XAI() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderXAI,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "xai",
 				EndpointPolicy:    spec.EndpointSDKDefault,
 			},

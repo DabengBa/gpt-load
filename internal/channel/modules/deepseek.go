@@ -29,6 +29,7 @@ func DeepSeek() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderDeepSeek,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "deepseek",
 				EndpointPolicy:    spec.EndpointSDKDefault,
 			},

@@ -29,6 +29,8 @@ interface ProblemItem {
 interface RecoveryDisplay {
   relative: string
   exact: string
+  labelKey: 'cooldownRecovery' | 'scheduledReleaseRecovery'
+  hintKey: 'cooldownHint' | 'scheduledReleaseHint'
 }
 
 const client = useApiClient()
@@ -75,8 +77,8 @@ const problemItems = computed<ProblemItem[]>(() => {
     const rightUnavailable = groupCounts.get(right.credential.group_id)?.available === 0 ? 0 : 1
     const leftKind = left.kind === 'blacklisted' ? 0 : 1
     const rightKind = right.kind === 'blacklisted' ? 0 : 1
-    const leftRecovery = left.credential.cooldown_until_ms ?? Number.MAX_SAFE_INTEGER
-    const rightRecovery = right.credential.cooldown_until_ms ?? Number.MAX_SAFE_INTEGER
+    const leftRecovery = left.credential.recovery.at_ms ?? Number.MAX_SAFE_INTEGER
+    const rightRecovery = right.credential.recovery.at_ms ?? Number.MAX_SAFE_INTEGER
     return (
       leftUnavailable - rightUnavailable ||
       leftKind - rightKind ||
@@ -169,16 +171,20 @@ function remainingLabel(totalSeconds: number): string {
 
 function recoveryDisplay(credential: HealthProblemCredentialDto): RecoveryDisplay | undefined {
   const observedAtMS = healthQuery.data.value?.observed_at_ms
-  if (credential.cooldown_until_ms === null || observedAtMS === undefined) return undefined
+  const recoveryAtMS = credential.recovery.at_ms
+  if (recoveryAtMS === null || observedAtMS === undefined) return undefined
   const remainingSeconds = Math.max(
     0,
-    Math.ceil((credential.cooldown_until_ms - (observedAtMS + elapsedMs.value)) / 1_000),
+    Math.ceil((recoveryAtMS - (observedAtMS + elapsedMs.value)) / 1_000),
   )
+  const scheduled = credential.recovery.mode === 'scheduled_release'
   return {
     relative: remainingLabel(remainingSeconds),
     exact: t('monitor.health.recovery.exact', {
-      time: formatLocalInstant(credential.cooldown_until_ms, locale.value),
+      time: formatLocalInstant(recoveryAtMS, locale.value),
     }),
+    labelKey: scheduled ? 'scheduledReleaseRecovery' : 'cooldownRecovery',
+    hintKey: scheduled ? 'scheduledReleaseHint' : 'cooldownHint',
   }
 }
 

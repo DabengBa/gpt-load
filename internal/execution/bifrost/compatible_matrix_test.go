@@ -250,8 +250,8 @@ func TestOpenAICompatibleNonV1PrefixKeepsListModelsAndProbeFunctional(t *testing
 				var payload map[string]json.RawMessage
 				if err := json.Unmarshal(body, &payload); err != nil {
 					t.Errorf("decode probe body: %v", err)
-				} else if string(payload["max_tokens"]) != "1" || payload["max_completion_tokens"] != nil {
-					t.Errorf("compatible probe token limit = %s, want legacy max_tokens only", body)
+				} else if string(payload["max_tokens"]) != "3" || payload["max_completion_tokens"] != nil {
+					t.Errorf("compatible probe token limit = %s, want legacy max_tokens=3 only", body)
 				}
 			}
 			_, _ = io.WriteString(writer, `{"id":"chat_1","object":"chat.completion","created":1,"model":"served","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)

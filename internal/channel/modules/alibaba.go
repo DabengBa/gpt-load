@@ -29,6 +29,7 @@ func Alibaba() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderOpenAICompatible,
+				ProbeProtocol:     protocol.OpenAICompletions,
 				CatalogProviderID: "alibaba",
 				EndpointPolicy:    spec.EndpointFixedWithOverride,
 				FixedBaseURL:      "https://dashscope.aliyuncs.com/compatible-mode/v1",

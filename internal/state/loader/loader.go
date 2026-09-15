@@ -564,11 +564,6 @@ func mapSystemAndGroups(
 		if err := decodeJSON(row.Overrides, &settings); err != nil {
 			return state.CompileInput{}, fmt.Errorf("decode group %d overrides: %w", row.ID, err)
 		}
-		validationModel := ""
-		if row.ValidationModel != nil {
-			validationModel = strings.TrimSpace(*row.ValidationModel)
-		}
-
 		runtimeModels := make([]state.ModelConfig, 0, len(storedModels))
 		for _, model := range storedModels {
 			runtimeModels = append(runtimeModels, state.ModelConfig{
@@ -588,7 +583,6 @@ func mapSystemAndGroups(
 			ChannelID:       channel.ID(row.ChannelID),
 			ConnectionType:  string(row.ConnectionType),
 			Params:          append(json.RawMessage(nil), row.Params...),
-			ValidationModel: validationModel,
 			Models:          runtimeModels,
 			Settings:        settings,
 			Enabled:         row.Enabled,

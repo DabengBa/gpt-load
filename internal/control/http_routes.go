@@ -389,17 +389,6 @@ func (s *Server) HTTPModule() httproute.Module {
 				s.handleTestGroupCredential,
 			),
 			controlRoute(
-				"control.group-credentials.test-restore",
-				http.MethodPost,
-				"/groups/:group_id/credentials/:credential_id/test/restore",
-				s.auditMutation(newMutationDescriptor(
-					"group_credential_test_restore",
-					"group_credential",
-					groupCredentialMutationLocator,
-				)),
-				s.handleRestoreTestedGroupCredential,
-			),
-			controlRoute(
 				"control.group-credentials.batch",
 				http.MethodPost,
 				"/groups/:group_id/credentials/batch",

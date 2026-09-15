@@ -29,6 +29,7 @@ func Anthropic() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:      spec.ProviderAnthropic,
+				ProbeProtocol:     protocol.Anthropic,
 				CatalogProviderID: "anthropic",
 				EndpointPolicy:    spec.EndpointSDKDefault,
 			},

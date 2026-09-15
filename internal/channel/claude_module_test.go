@@ -17,7 +17,7 @@ func TestClaudeModuleDeclaresSubscriptionContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := newRegistry(definitions)
+	registry, err := newRegistry(definitions, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

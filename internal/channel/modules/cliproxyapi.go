@@ -31,6 +31,7 @@ func CLIProxyAPI() spec.Module {
 			}},
 			Provider: spec.ProviderBinding{
 				ProviderKind:   spec.ProviderMultiProtocolGateway,
+				ProbeProtocol:  protocol.OpenAICompletions,
 				EndpointPolicy: spec.EndpointRequiredBaseURL,
 			},
 			Routes: []spec.Route{

@@ -26,7 +26,6 @@ type GroupSettingsResponse struct {
 	ConnectionType  models.ConnectionType        `json:"connection_type"`
 	Params          json.RawMessage              `json:"params"`
 	Name            string                       `json:"name"`
-	ValidationModel *string                      `json:"validation_model"`
 	ProviderURL     *string                      `json:"provider_url"`
 	Enabled         bool                         `json:"enabled"`
 	Overrides       config.Settings              `json:"overrides"`
@@ -38,7 +37,6 @@ type GroupSettingsUpdateRequest struct {
 	PriceMultiplier optionalField[string]               `json:"price_multiplier"`
 	Name            optionalField[string]               `json:"name"`
 	Params          optionalField[json.RawMessage]      `json:"params"`
-	ValidationModel optionalField[string]               `json:"validation_model"`
 	ProviderURL     optionalField[string]               `json:"provider_url"`
 	Enabled         optionalField[bool]                 `json:"enabled"`
 	Overrides       optionalField[config.Settings]      `json:"overrides"`
@@ -50,8 +48,6 @@ type normalizedGroupSettingsUpdate struct {
 	name                  *string
 	params                json.RawMessage
 	paramsSet             bool
-	validationModel       *string
-	validationModelSet    bool
 	providerURL           *string
 	providerURLSet        bool
 	enabled               *bool
@@ -154,7 +150,6 @@ func groupSettingsResponse(
 		ConnectionType:  normalizeGroupConnectionType(group.ConnectionType),
 		Params:          validated.CanonicalJSON(),
 		Name:            group.Name,
-		ValidationModel: cloneString(group.ValidationModel),
 		ProviderURL:     cloneString(group.ProviderURL),
 		Enabled:         group.Enabled,
 		Overrides:       overrides,
@@ -184,7 +179,7 @@ func normalizeGroupSettingsUpdate(
 			return normalizedGroupSettingsUpdate{}, app_errors.ErrValidation
 		}
 	}
-	if !request.Name.Set && !request.Params.Set && !request.ValidationModel.Set &&
+	if !request.Name.Set && !request.Params.Set &&
 		!request.ProviderURL.Set && !request.Enabled.Set && !request.Overrides.Set &&
 		!request.Proxy.Set && !request.PriceMultiplier.Set {
 		return normalizedGroupSettingsUpdate{}, app_errors.ErrBadRequest
@@ -208,16 +203,6 @@ func normalizeGroupSettingsUpdate(
 	if request.Params.Set {
 		result.paramsSet = true
 		result.params = append(json.RawMessage(nil), request.Params.Value...)
-	}
-	if request.ValidationModel.Set {
-		result.validationModelSet = true
-		if !request.ValidationModel.Null {
-			value, err := normalizeValidationModel(request.ValidationModel.Value)
-			if err != nil {
-				return normalizedGroupSettingsUpdate{}, err
-			}
-			result.validationModel = &value
-		}
 	}
 	if request.ProviderURL.Set {
 		result.providerURLSet = true
@@ -308,10 +293,6 @@ func (s *Service) UpdateGroupSettings(
 			group.Params = models.JSON(params.CanonicalJSON())
 			targetChanged = !bytes.Equal(bytes.TrimSpace(previousParams), bytes.TrimSpace(group.Params))
 			updates["params"] = append(models.JSON(nil), group.Params...)
-		}
-		if normalized.validationModelSet {
-			group.ValidationModel = normalized.validationModel
-			updates["validation_model"] = normalized.validationModel
 		}
 		if normalized.providerURLSet {
 			group.ProviderURL = normalized.providerURL

@@ -691,7 +691,7 @@ func TestHandlerCoordinatesAttributableFailureMutation(t *testing.T) {
 	receiveTestSignal(t, done, "failure mutation completion")
 }
 
-func TestGatewayFailureAndValidationRecoveryFailureFirstKeepsRegistryAndStatsFailed(t *testing.T) {
+func TestGatewayFailureAndCredentialRecoveryFailureFirstKeepsRegistryAndStatsFailed(t *testing.T) {
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	baseRegistry := state.NewCredentialRegistry()
 	if err := baseRegistry.ReplaceCredentials([]state.CredentialEntry{{
@@ -731,11 +731,11 @@ func TestGatewayFailureAndValidationRecoveryFailureFirstKeepsRegistryAndStatsFai
 		})
 		recoveryResult <- recovered
 	}()
-	receiveTestSignal(t, recoveryAttempted, "validation recovery attempt")
+	receiveTestSignal(t, recoveryAttempted, "credential recovery attempt")
 	close(registry.releaseFailure)
 	receiveTestSignal(t, failureDone, "gateway failure completion")
-	if recovered := receiveTestSignal(t, recoveryResult, "validation recovery completion"); recovered {
-		t.Fatal("stale validation recovery = true after gateway failure, want false")
+	if recovered := receiveTestSignal(t, recoveryResult, "credential recovery completion"); recovered {
+		t.Fatal("stale credential recovery = true after gateway failure, want false")
 	}
 
 	if got, want := baseRegistry.BlacklistedCredentials(), []state.CredentialRef{{
@@ -751,7 +751,7 @@ func TestGatewayFailureAndValidationRecoveryFailureFirstKeepsRegistryAndStatsFai
 	}
 }
 
-func TestGatewayFailureAndValidationRecoveryRecoveryFirstLeavesNewFailure(t *testing.T) {
+func TestGatewayFailureAndCredentialRecoveryRecoveryFirstLeavesNewFailure(t *testing.T) {
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
@@ -781,7 +781,7 @@ func TestGatewayFailureAndValidationRecoveryRecoveryFirstLeavesNewFailure(t *tes
 		})
 		recoveryResult <- recovered
 	}()
-	receiveTestSignal(t, recoveryEntered, "validation recovery mutation")
+	receiveTestSignal(t, recoveryEntered, "credential recovery mutation")
 
 	failureAttempted := make(chan struct{})
 	failureDone := make(chan struct{})
@@ -792,8 +792,8 @@ func TestGatewayFailureAndValidationRecoveryRecoveryFirstLeavesNewFailure(t *tes
 	}()
 	receiveTestSignal(t, failureAttempted, "gateway failure attempt")
 	close(releaseRecovery)
-	if recovered := receiveTestSignal(t, recoveryResult, "validation recovery completion"); !recovered {
-		t.Fatal("fresh validation recovery = false, want true")
+	if recovered := receiveTestSignal(t, recoveryResult, "credential recovery completion"); !recovered {
+		t.Fatal("fresh credential recovery = false, want true")
 	}
 	receiveTestSignal(t, failureDone, "gateway failure completion")
 
