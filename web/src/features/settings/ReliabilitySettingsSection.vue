@@ -14,6 +14,7 @@ import SettingRow from '@/components/config/SettingRow.vue'
 import {
   createSettingsDraft,
   isValidNonNegativeInteger,
+  isValidTimeout,
   setSettingsOverride,
   type SettingsDraft,
 } from './settings-patch'
