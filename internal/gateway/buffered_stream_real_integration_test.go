@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bufio"
 	"bytes"
 	"io"
 	"net/http"
@@ -9,7 +10,114 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gpt-load/internal/channel"
+	"gpt-load/internal/dialect"
+	"gpt-load/internal/protocol"
 )
+
+func TestBufferedStreamNativeResponsesUnknownFailureRetriesWithoutLeak(t *testing.T) {
+	const failedSSE = "event: response.created\n" +
+		"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_failed\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"public-model\",\"output\":[]}}\n\n" +
+		"event: response.failed\n" +
+		"data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_failed\",\"object\":\"response\",\"status\":\"failed\",\"error\":{\"code\":\"provider_unknown_code\",\"message\":\"first-candidate-secret-failure\"}}}\n\n"
+	const successSSE = "event: response.created\n" +
+		"data: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_second\",\"object\":\"response\",\"created_at\":123,\"status\":\"in_progress\",\"model\":\"public-model\",\"output\":[]}}\n\n" +
+		"event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"sequence_number\":1,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg_second\",\"delta\":\"second-candidate-payload\"}\n\n" +
+		"event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"sequence_number\":2,\"response\":{\"id\":\"resp_second\",\"object\":\"response\",\"created_at\":123,\"status\":\"completed\",\"model\":\"public-model\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n"
+
+	var firstCalls atomic.Int32
+	first := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		firstCalls.Add(1)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(writer, failedSSE)
+		writer.(http.Flusher).Flush()
+	}))
+	t.Cleanup(first.Close)
+
+	var secondCalls atomic.Int32
+	second := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		secondCalls.Add(1)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(writer, successSSE)
+		writer.(http.Flusher).Flush()
+	}))
+	t.Cleanup(second.Close)
+
+	_, firstParams := testChannelConfig(
+		t,
+		protocol.OpenAIResponses,
+		testUpstreamBaseURL(first.URL, protocol.OpenAIResponses),
+	)
+	_, secondParams := testChannelConfig(
+		t,
+		protocol.OpenAIResponses,
+		testUpstreamBaseURL(second.URL, protocol.OpenAIResponses),
+	)
+	engine, _ := newDialectGatewayEngine(
+		t,
+		protocol.OpenAIResponses,
+		"public-model",
+		dialect.NewSet(dialect.NewOpenAIResponses()),
+		dialectGatewayGroup{
+			id: 1, name: "responses-first", upstreamURL: first.URL,
+			channelID: channel.OpenAI, params: firstParams, apiKeys: []string{"sk-first"},
+		},
+		dialectGatewayGroup{
+			id: 2, name: "responses-second", upstreamURL: second.URL,
+			channelID: channel.OpenAI, params: secondParams, apiKeys: []string{"sk-second"},
+		},
+	)
+	gateway := httptest.NewServer(engine)
+	t.Cleanup(gateway.Close)
+
+	request, err := http.NewRequest(
+		http.MethodPost,
+		gateway.URL+"/v1/responses",
+		strings.NewReader(`{"model":"public-model","input":"hello","stream":true,"store":false}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer gl-client")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("gateway status = %d body=%q", response.StatusCode, body)
+	}
+	reader := bufio.NewReader(response.Body)
+	if line, err := reader.ReadString('\n'); err != nil || line != ": keep-alive\n" {
+		t.Fatalf("first response line = %q, %v; want buffered heartbeat", line, err)
+	}
+	if line, err := reader.ReadString('\n'); err != nil || line != "\n" {
+		t.Fatalf("heartbeat boundary = %q, %v", line, err)
+	}
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if firstCalls.Load() != 1 || secondCalls.Load() != 1 {
+		t.Fatalf("upstream calls = %d/%d, want first failure plus second candidate", firstCalls.Load(), secondCalls.Load())
+	}
+	if !bytes.Contains(body, []byte("second-candidate-payload")) {
+		t.Fatalf("upstream calls = %d/%d body = %q, want second candidate payload", firstCalls.Load(), secondCalls.Load(), body)
+	}
+	for _, leaked := range []string{"provider_unknown_code", "first-candidate-secret-failure", "resp_failed"} {
+		if bytes.Contains(body, []byte(leaked)) {
+			t.Fatalf("failed candidate payload leaked %q: body=%q", leaked, body)
+		}
+	}
+}
 
 func TestBufferedStreamRetriesFirstResponseTimeoutBeforePayloadRelease(t *testing.T) {
 	var calls atomic.Int32
