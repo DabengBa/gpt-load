@@ -225,7 +225,7 @@ func TestGroupCredentialProbeWithoutGeneratedTextIsNoAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	if response.Outcome != ProbeOutcomeFailed || response.Reason == nil ||
-		*response.Reason != ProbeReasonNoAnswer || response.CanRestore {
+		*response.Reason != ProbeReasonNoAnswer || response.Recovered {
 		t.Fatalf("probe response = %#v", response)
 	}
 	if calls := executor.recordedCalls(); len(calls) != 1 {
@@ -258,7 +258,7 @@ func TestGroupCredentialProbeUnparseableBodyIsInvalidResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if response.Outcome != ProbeOutcomeFailed || response.Reason == nil ||
-		*response.Reason != ProbeReasonInvalidResponse || response.CanRestore {
+		*response.Reason != ProbeReasonInvalidResponse || response.Recovered {
 		t.Fatalf("probe response = %#v", response)
 	}
 	if calls := executor.recordedCalls(); len(calls) != 1 {

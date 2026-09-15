@@ -36,8 +36,8 @@
       "consecutive_problem_count": 3,
       "recovery": {
         "automatic": false,
-        "mode": "manual_restore",
-        "at_ms": null
+        "mode": "scheduled_release",
+        "at_ms": 1700000005000
       },
       "identity": "masked-credential",
       "last_failure_category": "invalid_key",

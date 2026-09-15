@@ -8,7 +8,7 @@ import (
 	"gpt-load/internal/state"
 )
 
-func TestMapCredentialRuntimeItemBlacklistedRecoveryIsManual(t *testing.T) {
+func TestMapCredentialRuntimeItemBlacklistedRecoveryIsScheduledRelease(t *testing.T) {
 	t.Parallel()
 
 	item, err := mapCredentialRuntimeItem(
@@ -22,7 +22,7 @@ func TestMapCredentialRuntimeItemBlacklistedRecoveryIsManual(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mapCredentialRuntimeItem() error = %v", err)
 	}
-	if item.Recovery.Automatic || item.Recovery.Mode != "manual" || item.Recovery.AtMS != nil {
-		t.Fatalf("blacklisted recovery = %#v, want non-automatic manual recovery", item.Recovery)
+	if !item.Recovery.Automatic || item.Recovery.Mode != "scheduled_release" || item.Recovery.AtMS != nil {
+		t.Fatalf("blacklisted recovery = %#v, want automatic scheduled release without deadline", item.Recovery)
 	}
 }

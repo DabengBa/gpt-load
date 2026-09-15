@@ -57,6 +57,7 @@ func TestCompilePublishesDefaultRuntimeSettingsWithoutGroups(t *testing.T) {
 		RetryCount:                5,
 		RouteStrategy:             RouteStrategyNativeFirst,
 		BlacklistThreshold:        3,
+		BlacklistReleaseSeconds:   3600,
 		AffinityEnabled:           true,
 		ResponsesWebsocketEnabled: true,
 		AffinityTTL:               time.Hour,
@@ -435,6 +436,31 @@ func TestCompileRejectsRetiredRuntimeSetting(t *testing.T) {
 	}
 }
 
+func TestResolveBlacklistReleaseDefaultsAndSystemOverride(t *testing.T) {
+	defaults, err := ResolveRuntimeSettings(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.BlacklistReleaseSeconds != 3600 {
+		t.Fatalf("BlacklistReleaseSeconds = %d, want 3600", defaults.BlacklistReleaseSeconds)
+	}
+	overridden, err := ResolveRuntimeSettings(config.Settings{
+		SettingBlacklistReleaseSeconds: json.Number("900"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overridden.BlacklistReleaseSeconds != 900 {
+		t.Fatalf("BlacklistReleaseSeconds = %d, want 900", overridden.BlacklistReleaseSeconds)
+	}
+	if _, err := ResolveGroupRuntimeSettings(
+		defaults,
+		config.Settings{SettingBlacklistReleaseSeconds: json.Number("900")},
+	); err == nil {
+		t.Fatal("Group override accepted system-only blacklist_release_seconds")
+	}
+}
+
 func TestCompileRejectsInvalidGlobalSettingsWithoutGroups(t *testing.T) {
 	for _, input := range []config.Settings{
 		{"request_log_retention_days": json.Number("0")},
@@ -597,9 +623,10 @@ func TestParseHeaderRulesRejectsSDKOwnedCredentialHeaders(t *testing.T) {
 
 func TestResolveRuntimeSettingsAppliesSystemOverrides(t *testing.T) {
 	got, err := ResolveRuntimeSettings(config.Settings{
-		SettingFirstByteTimeout:  json.Number("180"),
-		SettingRequestTimeout:    json.Number("900"),
-		SettingStreamIdleTimeout: json.Number("45"),
+		SettingFirstByteTimeout:        json.Number("180"),
+		SettingRequestTimeout:          json.Number("900"),
+		SettingStreamIdleTimeout:       json.Number("45"),
+		SettingBlacklistReleaseSeconds: json.Number("900"),
 		SettingHeaderRules: map[string]any{
 			"set":    map[string]any{"x-test": "value"},
 			"remove": []any{"x-old"},
@@ -612,6 +639,7 @@ func TestResolveRuntimeSettingsAppliesSystemOverrides(t *testing.T) {
 	if got.FirstByteTimeout != 180*time.Second ||
 		got.RequestTimeout != 900*time.Second ||
 		got.StreamIdleTimeout != 45*time.Second ||
+		got.BlacklistReleaseSeconds != 900 ||
 		got.RequestLogRetentionDays != 30 {
 		t.Fatalf("settings = %#v", got)
 	}
@@ -686,6 +714,7 @@ func TestIsRuntimeSettingKeyRecognizesOnlyPublicRuntimeKeys(t *testing.T) {
 		SettingResponseHeaderRules,
 		SettingRetryCount,
 		SettingBlacklistThreshold,
+		SettingBlacklistReleaseSeconds,
 		SettingAffinityEnabled,
 		SettingAffinityTTL,
 		SettingAffinityCapacity,
@@ -777,5 +806,41 @@ func TestResolvedGroupSettingsOwnsHeaderRuleCopies(t *testing.T) {
 	if base.HeaderRules.Set["X-System"] != "system" || base.HeaderRules.Remove[0] != "X-Old" ||
 		second.HeaderRules.Set["X-System"] != "system" || second.HeaderRules.Remove[0] != "X-Old" {
 		t.Fatalf("header rules aliased: base=%#v second=%#v", base.HeaderRules, second.HeaderRules)
+	}
+}
+
+func TestBlacklistReleaseSecondsDefaultsAndResolvesPositively(t *testing.T) {
+	if got := DefaultRuntimeSettings().BlacklistReleaseSeconds; got != 3600 {
+		t.Fatalf("default BlacklistReleaseSeconds = %d, want 3600", got)
+	}
+	resolved, err := ResolveRuntimeSettings(config.Settings{
+		SettingBlacklistReleaseSeconds: json.Number("900"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.BlacklistReleaseSeconds != 900 {
+		t.Fatalf("BlacklistReleaseSeconds = %d, want 900", resolved.BlacklistReleaseSeconds)
+	}
+	if !IsRuntimeSettingKey(SettingBlacklistReleaseSeconds) {
+		t.Fatalf("IsRuntimeSettingKey(%q) = false", SettingBlacklistReleaseSeconds)
+	}
+	for _, invalid := range []any{json.Number("0"), json.Number("-1"), "3600", 1.5} {
+		if err := ValidateRuntimeSetting(SettingBlacklistReleaseSeconds, invalid); err == nil {
+			t.Errorf("ValidateRuntimeSetting(%v) accepted invalid value", invalid)
+		}
+		if _, err := ResolveRuntimeSettings(config.Settings{
+			SettingBlacklistReleaseSeconds: invalid,
+		}); err == nil {
+			t.Errorf("ResolveRuntimeSettings(%v) accepted invalid value", invalid)
+		}
+	}
+	// blacklist_release_seconds stays a system-level policy; group settings must
+	// not override it.
+	if _, err := ResolveGroupRuntimeSettings(
+		DefaultRuntimeSettings(),
+		config.Settings{SettingBlacklistReleaseSeconds: json.Number("60")},
+	); err == nil {
+		t.Fatal("ResolveGroupRuntimeSettings accepted system-only blacklist_release_seconds")
 	}
 }

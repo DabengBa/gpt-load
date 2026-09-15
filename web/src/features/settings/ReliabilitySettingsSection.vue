@@ -85,6 +85,26 @@ function policyCountError(key: PolicyCountSettingKey): string | undefined {
     ? t('settings.runtime.nonNegativeIntegerError')
     : undefined
 }
+
+function blacklistReleaseValue(): string {
+  if (isPendingRestore('blacklist_release_seconds')) return t('settings.runtime.resetPending')
+  return t('settings.runtime.effectiveValue', {
+    value: formatInteger(props.base.settings.values.blacklist_release_seconds, locale.value),
+  })
+}
+
+function setBlacklistRelease(value: string): void {
+  const draft = cloneDraft()
+  draft.values.blacklist_release_seconds = value.trim() === '' ? Number.NaN : Number(value)
+  publish('blacklist_release_seconds', draft)
+}
+
+function blacklistReleaseError(): string | undefined {
+  return hasOverride('blacklist_release_seconds') &&
+    !isValidTimeout(props.draft.values.blacklist_release_seconds)
+    ? t('settings.runtime.timeoutError')
+    : undefined
+}
 </script>
 
 <template>
@@ -136,6 +156,53 @@ function policyCountError(key: PolicyCountSettingKey): string | undefined {
               </template>
             </CompactFieldError>
             <span aria-hidden="true">{{ t('settings.runtime.countUnit') }}</span>
+          </div>
+        </template>
+      </SettingRow>
+
+      <SettingRow
+        :label="t('settings.runtime.blacklist_release_seconds')"
+        :value="blacklistReleaseValue()"
+        :help="t('settings.runtime.blacklistReleaseHelp')"
+        :source-label="sourceLabel('blacklist_release_seconds')"
+        :action-label="actionLabel('blacklist_release_seconds')"
+        :overridden="hasOverride('blacklist_release_seconds')"
+        :pending-restore="isPendingRestore('blacklist_release_seconds')"
+        :divided="false"
+        :disabled="disabled"
+        @toggle="toggleOverride('blacklist_release_seconds')"
+      >
+        <template #control>
+          <div class="settings-reliability__input">
+            <CompactFieldError
+              id="settings-value-blacklist_release_seconds"
+              :error="blacklistReleaseError()"
+            >
+              <template #default="{ invalid, describedBy }">
+                <AppTextInput
+                  id="settings-value-blacklist_release_seconds"
+                  type="number"
+                  :model-value="String(draft.values.blacklist_release_seconds)"
+                  :label="
+                    t('settings.runtime.valueFor', {
+                      field: t('settings.runtime.blacklist_release_seconds'),
+                    })
+                  "
+                  appearance="surface"
+                  size="compact"
+                  monospace
+                  min="1"
+                  max="9223372036"
+                  step="1"
+                  inputmode="numeric"
+                  :disabled="disabled"
+                  :invalid="invalid"
+                  :described-by="describedBy"
+                  @update:model-value="setBlacklistRelease"
+                />
+              </template>
+            </CompactFieldError>
+            <span aria-hidden="true">{{ t('settings.runtime.seconds') }}</span>
           </div>
         </template>
       </SettingRow>

@@ -1,7 +1,7 @@
 # 设计方案:模型调度中心面板与候选级熔断参数
 
 - 分支:`feature/model-route-entries`
-- 状态:**设计草案 v2(已吸收评审修订),待确认后作为下一轮交付的最高依据**
+- 状态:**已实现，随 scheduled-release/no-liveness 改造进行集成验收**
 - 日期:2026-09-06
 - 前置:构建于《模型路由条目》特性之上(`docs/design/model-route-entries.md`);吸收 AIRelayHub 两条经验(跨供应商同别名调度中心化、候选级熔断参数显式化)
 - v1 → v2 修订对照:见文末附录 A(评审 8 项 → 修订章节映射)
@@ -68,7 +68,7 @@
    - 修改上游模型(`id`):该行保留 entry_id(身份是条目而非上游名),运行态不重置;
    - 未回填条目使用派生身份,alias 改名会重置运行态(一次性,回填后消失)。
 4. **传播**:RouteTarget / Selection / 路由检查响应行 / 调度面板行均携带 `entry_id`;
-   PATCH 与恢复请求以 `(group_id, entry_id)` 定位条目。
+   PATCH 与恢复请求以 `(group_id, entry_id)` 定位条目，恢复请求另带当前 `failure_version`。
 5. **重试去重保持不变**:调度器 `tried` 仍为 `(credentialID, upstreamModelID)`——
    同一上游模型 + 同一密钥就是同一个重试目标,与 alias 无关。这是**有意保留**的语义:
    重试维度 ≠ 健康维度。
@@ -103,8 +103,10 @@
 
 | 参数 | 条目显式配置 | 缺省(未配置) |
 |---|---|---|
-| `blacklist_threshold` | 模型级失败计数,达阈值拉黑(手动恢复) | **不计数、不拉黑**(现状;不继承分组 BlacklistThreshold,保 C1) |
+| `blacklist_threshold` | 模型级失败计数,达阈值拉黑;黑名单按本地释放延迟自动释放 | **不计数、不拉黑**(现状;不继承分组 BlacklistThreshold,保 C1) |
 | `cooldown_seconds` | 条目冷却 = 该值;`0` = 不冷却、仅计数 | 判定器默认 1h(现状) |
+
+黑名单释放使用系统级 `blacklist_release_seconds`（默认 3600 秒），不通过上游验证探测恢复。
 
 两个字段**彼此独立**:可只配阈值、只配冷却,或都配(响应三元组见 §5.3)。
 
@@ -153,7 +155,10 @@ applyGroupDecisionEffectForEntry(scope=model 分支):
   if counted:
     1. 计数/拉黑:if breaker?.BlacklistThreshold != nil:
          count := IncrEntryFailureForModel(groupID, entryID)
-         if count >= *threshold: SetEntryBlacklistedForModel(groupID, entryID)
+         if count >= *threshold:
+             SetEntryBlacklistedForModel(groupID, entryID)
+             SetEntryBlacklistReleaseAt(groupID, entryID, now + blacklist_release_seconds)
+
     2. 冷却:if breaker?.CooldownSeconds != nil:
          if *secs > 0: SetEntryCooldownForModel(groupID, entryID, now + *secs)
          if *secs == 0: 不调用 SetEntryCooldown(评审修正 6:避免遗留非零
@@ -172,15 +177,17 @@ applyGroupDecisionEffectForEntry(scope=model 分支):
 
 `recordCredentialSuccess` 处对称补 `ClearEntryFailureForModel(groupID, entryID)`
 (选中候选条目在非流式 2xx 与流式 CleanEOF 两个成功点清计数),与凭据侧
-`ClearFailure` 对称。
+`ClearFailure` 对称。黑名单本身由本地释放维护清除；显式成功的手动模型测活可在版本
+匹配时立即清除被测条目。
 
 ### 4.3 运行态键与文件
 
 - `EntryRuntimeKey` → `(GroupID, EntryID)`(registry.go,相关签名同步调整);
 - `internal/gateway/handler.go` + `model_entry_breaker_test.go`(new):覆盖 §4.1
   全分支 + §4.2 + C1 一致性;
-- 巡检响应 `entry_cooldown_until_ms` 仅在 `state == cooldown`(未来时间)时返回
-  (评审修正 6:消除"可用但回显过去冷却时间"的歧义)。
+- 巡检响应 `cooldown_until_ms` 仅在 `state == cooldown`(未来时间)时返回;
+  `blacklist_release_at_ms` 仅在 `state == blacklisted` 且存在本地释放截止时间时返回;
+  `failure_version` 用于并发恢复保护。
 
 ---
 
@@ -210,7 +217,8 @@ GET /api/model-route/schedule/detail
     groups: [ { group_id, group_name, channel_id, group_weight,
       entries: [ { entry_id, model_id, alias, weight, priority,
         circuit_breaker: { configured, effective, sources },   // §5.3
-        runtime: { state, cooldown_until_ms|null, failure_count },
+        runtime: { state, cooldown_until_ms|null, blacklist_release_at_ms|null,
+                   failure_count, failure_version },
         included, routable, reason_code, effective_share,     // §6 口径
         credentials: [...] } ] } ] }
 ```
@@ -273,13 +281,16 @@ PATCH /api/model-route/schedule
 - 服务端字段级合并意味着面板**不提交完整 Models 列表**,消除客户端读改写竞态
   (评审修正 3 的配套要求)。
 
-### 5.6 恢复
+### 5.6 管理员手动恢复
 
 ```
 POST /api/model-route/schedule/recover
-{ group_id, entry_id }
-→ registry.RecoverEntryForModel(三清);不影响凭据运行态。
+{ group_id, entry_id, failure_version }
+→ registry.RecoverEntryIfVersionMatch(三清);缺失或过期版本返回 409;
+  不影响凭据运行态。
 ```
+
+该接口是显式管理员操作，不是自动验证探测；正常请求和本地释放仍按 §4 的规则执行。
 
 ---
 
@@ -310,7 +321,7 @@ P2 显示归一化到 100%,而非固定 0。这是对**既有路由检查响应�
    - 权重(占比实时预览)、优先级、熔断参数(占位符显示 effective 默认值;留空 =
      不变;显式清空按钮 = 清除覆盖回继承);
    - 行内校验(0–100、≥1、≥0)与**事务式保存条**(整体成功/失败,409 时提示刷新);
-   - 运行态徽标(冷却中/已拉黑/连续失败 N)+ 恢复按钮(§5.6);
+   - 运行态徽标(冷却中/已拉黑/连续失败 N)+ 黑名单释放时间、冷却时间与管理员恢复按钮(§5.6);
    - 协议/操作选择沿用路由检查页形态(operation 按协议给默认值,可切换);
 3. 路由检查页保持只读巡检语义;两页共享资源层
    (`route-inspection.ts` + 新增 `model-route-schedule.ts`)。

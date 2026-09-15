@@ -38,7 +38,8 @@ export default {
     },
     reliability: {
       title: '再試行と認証情報の健全性',
-      description: '失敗時の再試行方針と、認証情報がブラックリスト登録されるまでの許容度です。',
+      description:
+        '失敗時の再試行方針と、認証情報がブラックリスト登録されるまでの許容度、登録後のローカル解放遅延です。',
     },
     runtime: {
       title: '接続とタイムアウト',
@@ -63,6 +64,9 @@ export default {
       blacklist_threshold: '連続失敗のブラックリストしきい値',
       blacklistThresholdHelp:
         'この連続失敗回数に達すると認証情報をブラックリストへ登録します。0 で自動登録を無効化します。',
+      blacklist_release_seconds: 'ブラックリスト解放遅延',
+      blacklistReleaseHelp:
+        'ブラックリスト登録された認証情報は、このローカル遅延が終わるまでスケジュールに参加しません。上流プローブは送信しません。',
       models_dev_auto_sync_enabled: 'Models.dev カタログと価格を自動同期',
       modelsDevAutoSyncHelp:
         '有効にするとカタログと自動価格を定期同期します。Models 画面からの手動同期は引き続き利用できます。',

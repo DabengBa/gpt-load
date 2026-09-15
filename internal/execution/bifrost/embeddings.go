@@ -254,7 +254,7 @@ func (r *Runtime) executeEmbedding(
 	// alias projection and gateway processing.
 	outcome.response.Data = nil
 	model := openAIResponseModel(body, "")
-	if spec.Operation != execution.OperationProbe && needsClientModelAlias(spec) {
+	if needsClientModelAlias(spec) {
 		var err error
 		body, err = rewriteClientResponseModel(spec.ClientProtocol, body, spec.ClientModel)
 		if err != nil {

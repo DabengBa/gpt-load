@@ -495,6 +495,30 @@ func TestLoaderMapsSystemAndGroupRows(t *testing.T) {
 	}
 }
 
+func TestLoaderMapsGroupModelsIntoRuntimeSnapshot(t *testing.T) {
+	db := openMigratedDatabase(t)
+	group := models.Group{
+		Name:      "models-runtime-snapshot",
+		ChannelID: string(channel.OpenAI),
+		Params:    models.JSON(`{}`),
+		Models:    models.JSON(`[{"id":"real-model","alias":"public-model"}]`),
+		Overrides: models.JSON(`{}`),
+		Enabled:   true,
+	}
+	mustCreate(t, db, &group)
+
+	manager := state.NewManager()
+	registry := state.NewCredentialRegistry()
+	if err := loader.New(db, manager, registry).Load(context.Background()); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	snapshot := manager.Current()
+	if got := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]["public-model"][0].UpstreamModelID; got != "real-model" {
+		t.Fatalf("candidate upstream model = %q, want real-model", got)
+	}
+}
+
 func TestLoaderRejectsInvalidGroupRowsWithoutPublishing(t *testing.T) {
 	tests := []struct {
 		name      string

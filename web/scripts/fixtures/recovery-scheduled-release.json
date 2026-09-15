@@ -35,8 +35,8 @@
       "recent_problem_count": 3,
       "consecutive_problem_count": 3,
       "recovery": {
-        "automatic": false,
-        "mode": "manual_restore",
+        "automatic": true,
+        "mode": "scheduled_release",
         "at_ms": 1700000005000
       },
       "identity": "masked-credential",

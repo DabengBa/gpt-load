@@ -13,6 +13,7 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
+	"gpt-load/internal/platform/config"
 	"gpt-load/internal/state"
 )
 
@@ -344,4 +345,141 @@ func serveBreakerRequest(engine http.Handler, body string) {
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(body))
 	request.Header.Set("Authorization", "Bearer gl-client")
 	engine.ServeHTTP(httptest.NewRecorder(), request)
+}
+
+// R1: reaching the per-entry threshold records a local blacklist release
+// deadline on the entry runtime, derived from the shipped default when no
+// snapshot setting is available.
+func TestModelEntryBreakerSchedulesReleaseDeadlineAtThreshold(t *testing.T) {
+	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
+	handler, registry := newEntryRuntimeTestHandler(t)
+	group := breakerGroupView(breakerIntPtr(2), nil)
+
+	for range 2 {
+		handler.applyGroupDecisionEffectForEntry(
+			group, 1, 0, breakerTestEntryID,
+			modelFailureDecision("model.unavailable", health.EffectNone, time.Time{}),
+			http.StatusNotFound, now,
+		)
+	}
+
+	view := breakerEntryView(registry)
+	want := now.Add(3600 * time.Second)
+	if view.RuntimeState(now) != state.EntryRuntimeBlacklisted || !view.BlacklistReleaseAt.Equal(want) {
+		t.Fatalf("entry runtime = %#v, want blacklisted with deadline %v", view, want)
+	}
+}
+
+// R1: an expired entry blacklist is released by local maintenance only, keeping
+// a still-valid entry cooldown and leaving sibling entries and the credential
+// state untouched.
+func TestModelEntryBreakerReleaseClearsBlacklistAndKeepsCooldown(t *testing.T) {
+	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
+	handler, registry := newEntryRuntimeTestHandler(t)
+	group := breakerGroupView(breakerIntPtr(1), breakerIntPtr(900))
+
+	handler.applyGroupDecisionEffectForEntry(
+		group, 1, 0, breakerTestEntryID,
+		modelFailureDecision("model.unavailable", health.EffectNone, time.Time{}),
+		http.StatusNotFound, now,
+	)
+	view := breakerEntryView(registry)
+	if !view.Blacklisted || view.BlacklistReleaseAt.IsZero() {
+		t.Fatalf("entry runtime = %#v, want blacklisted with deadline", view)
+	}
+	if _, entries := registry.ReleaseExpiredBlacklists(view.BlacklistReleaseAt); entries != 1 {
+		t.Fatalf("ReleaseExpiredBlacklists() entries = %d, want 1", entries)
+	}
+
+	released := breakerEntryView(registry)
+	if released.Blacklisted || released.FailureCount != 0 {
+		t.Fatalf("released entry = %#v, want cleared blacklist", released)
+	}
+	if !released.CooldownUntil.Equal(now.Add(900 * time.Second)) {
+		t.Fatalf("entry cooldown = %v, want preserved", released.CooldownUntil)
+	}
+	if _, exists := registry.EntryRuntime(
+		state.RouteEntryKey{GroupID: 1, EntryID: "e000000000002"}, now,
+	); exists {
+		t.Fatal("release created state for a sibling entry")
+	}
+	if registry.Snapshot()[0].Blacklisted {
+		t.Fatal("entry release changed the credential blacklist")
+	}
+}
+
+// R1: a credential that reaches its group threshold records an independent
+// blacklist release deadline, and a local release clears it without touching a
+// still-valid Provider cooldown.
+func TestHandlerCredentialBlacklistSchedulesAndReleasesDeadline(t *testing.T) {
+	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
+	registry := state.NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
+		Fingerprint: "credential-1", EncryptedValue: "cipher", FailureCount: 2,
+	}}); err != nil {
+		t.Fatalf("ReplaceCredentials() error = %v", err)
+	}
+	handler := &Handler{
+		registry:  registry,
+		stats:     health.NewStatsStore(),
+		mutations: health.NewMutationCoordinator(),
+	}
+	cooldown := now.Add(10 * time.Minute)
+	if _, changed := registry.SetCooldownWithChange(1, cooldown); !changed {
+		t.Fatal("SetCooldownWithChange() changed = false")
+	}
+	handler.applyDecisionEffect(1, health.Decision{
+		Category: health.FailureCategoryInvalidKey,
+		Effect:   health.EffectRecordCredentialFailure,
+	}, http.StatusUnauthorized, now)
+
+	view := registry.Snapshot()[0]
+	want := now.Add(3600 * time.Second)
+	if !view.Blacklisted || !view.BlacklistReleaseAt.Equal(want) {
+		t.Fatalf("credential view = %#v, want blacklisted with deadline %v", view, want)
+	}
+	if credentials, _ := registry.ReleaseExpiredBlacklists(view.BlacklistReleaseAt); credentials != 1 {
+		t.Fatalf("ReleaseExpiredBlacklists() credentials = %d, want 1", credentials)
+	}
+	released := registry.Snapshot()[0]
+	if released.Blacklisted || released.FailureCount != 0 {
+		t.Fatalf("released credential = %#v, want cleared blacklist", released)
+	}
+	if !released.CooldownUntil.Equal(cooldown) {
+		t.Fatalf("credential cooldown = %v, want preserved %v", released.CooldownUntil, cooldown)
+	}
+}
+
+// R1: the release deadline honours a published blacklist_release_seconds value.
+func TestHandlerCredentialBlacklistUsesPublishedReleaseSeconds(t *testing.T) {
+	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
+	manager := state.NewManager()
+	if _, err := manager.Publish(state.CompileInput{SystemSettings: config.Settings{
+		state.SettingBlacklistReleaseSeconds: json.Number("120"),
+	}}); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	registry := state.NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
+		Fingerprint: "credential-1", EncryptedValue: "cipher", FailureCount: 2,
+	}}); err != nil {
+		t.Fatalf("ReplaceCredentials() error = %v", err)
+	}
+	handler := &Handler{
+		manager:   manager,
+		registry:  registry,
+		stats:     health.NewStatsStore(),
+		mutations: health.NewMutationCoordinator(),
+	}
+	handler.applyDecisionEffect(1, health.Decision{
+		Category: health.FailureCategoryInvalidKey,
+		Effect:   health.EffectRecordCredentialFailure,
+	}, http.StatusUnauthorized, now)
+
+	view := registry.Snapshot()[0]
+	if !view.BlacklistReleaseAt.Equal(now.Add(120 * time.Second)) {
+		t.Fatalf("release deadline = %v, want published 120s", view.BlacklistReleaseAt)
+	}
 }

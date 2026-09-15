@@ -357,8 +357,9 @@ func TestNewAPIUtilityOperationsUseGatewayRoot(t *testing.T) {
 	embeddingProbe.ClientModel, embeddingProbe.UpstreamModel = "probe-client", "probe-upstream"
 	embeddingProbe = freezeTestAttempt(embeddingProbe)
 	embeddingResult := manager.Execute(context.Background(), embeddingProbe)
-	if embeddingResult.Error == nil || embeddingResult.DispatchState == execution.DispatchMaybeSent {
-		t.Fatalf("embedding probe must be rejected, result = %+v", embeddingResult)
+	if err := embeddingResult.Validate(); err != nil || embeddingResult.Error == nil ||
+		embeddingResult.DispatchState != execution.DispatchNotSent {
+		t.Fatalf("embedding probe = %+v err=%v", embeddingResult, err)
 	}
 
 	wantPaths := []string{

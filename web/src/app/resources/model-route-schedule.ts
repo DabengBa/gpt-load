@@ -66,7 +66,9 @@ export interface ModelRouteScheduleBreakerDto {
 export interface ModelRouteScheduleRuntimeDto {
   state: ModelRouteScheduleRuntimeState
   cooldown_until_ms: number | null
+  blacklist_release_at_ms: number | null
   failure_count: number
+  failure_version: number
 }
 
 export interface ModelRouteScheduleEntryDto {
@@ -150,6 +152,7 @@ export interface ModelRouteSchedulePatchResponse {
 export interface ModelRouteScheduleRecoverRequest {
   group_id: number
   entry_id: string
+  failure_version: number
 }
 
 export interface ModelRouteScheduleRecoverResponse {
@@ -211,7 +214,13 @@ const credentialFields = ['credential_id', 'available', 'reason_code', 'cooldown
 const breakerFields = ['configured', 'effective', 'sources'] as const
 const breakerParameterFields = ['blacklist_threshold', 'cooldown_seconds'] as const
 const breakerSourceFields = ['blacklist_threshold', 'cooldown_seconds'] as const
-const runtimeFields = ['state', 'cooldown_until_ms', 'failure_count'] as const
+const runtimeFields = [
+  'state',
+  'cooldown_until_ms',
+  'blacklist_release_at_ms',
+  'failure_count',
+  'failure_version',
+] as const
 const accessKeyFields = ['id', 'name', 'status'] as const
 const accessKeyStatuses = ['active', 'disabled'] as const
 const runtimeStates = ['available', 'blacklisted', 'cooldown'] as const
@@ -289,13 +298,16 @@ function projectRuntime(value: unknown, observedAtMS?: number): ModelRouteSchedu
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, runtimeFields)
   const cooldownUntilMS = projectNullableEpochMilliseconds(record.cooldown_until_ms)
+  const blacklistReleaseAtMS = projectNullableEpochMilliseconds(record.blacklist_release_at_ms)
   if (observedAtMS !== undefined && cooldownUntilMS !== null && cooldownUntilMS <= observedAtMS) {
     invalidResponse()
   }
   return {
     state: projectEnum(record.state, runtimeStates),
     cooldown_until_ms: cooldownUntilMS,
+    blacklist_release_at_ms: blacklistReleaseAtMS,
     failure_count: projectSafeInteger(record.failure_count, { minimum: 0 }),
+    failure_version: projectSafeInteger(record.failure_version, { minimum: 0 }),
   }
 }
 

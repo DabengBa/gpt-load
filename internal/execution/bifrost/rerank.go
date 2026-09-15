@@ -1,7 +1,6 @@
 package bifrost
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/maximhq/bifrost/core/schemas"
@@ -9,7 +8,6 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
-	"gpt-load/internal/platform/contentcoding"
 	"gpt-load/internal/protocol"
 )
 
@@ -57,24 +55,5 @@ func normalizeRerankAttemptResult(spec execution.AttemptSpec, result *execution.
 			result.Error.ReplaySafety = execution.ReplaySafetyUnknown
 		}
 		return
-	}
-	if spec.Operation != execution.OperationProbe || result.StatusCode < 200 || result.StatusCode >= 300 {
-		return
-	}
-	encoding, err := contentcoding.ParseContentEncoding(result.Header.Values("Content-Encoding"))
-	var body []byte
-	if err == nil {
-		body, err = contentcoding.DecodeLimited(encoding, result.Body, execution.UnaryResponseBodyLimit(protocol.Rerank))
-	}
-	var response struct {
-		Results []struct {
-			Index *int     `json:"index"`
-			Score *float64 `json:"relevance_score"`
-		} `json:"results"`
-	}
-	if err != nil || json.Unmarshal(body, &response) != nil || len(response.Results) != 1 ||
-		response.Results[0].Index == nil || *response.Results[0].Index != 0 || response.Results[0].Score == nil {
-		*result = startedUnaryFailure(result.StatusCode, result.Header, execution.ErrorKindInternal, "upstream returned an invalid rerank probe response")
-		result.UpstreamProtocol = protocol.Rerank
 	}
 }

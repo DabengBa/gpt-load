@@ -3,13 +3,9 @@ package control
 import (
 	"context"
 	cryptorand "crypto/rand"
-	"crypto/subtle"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -18,6 +14,7 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
+	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/epochms"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/utils"
@@ -56,33 +53,31 @@ const (
 )
 
 type CredentialProbeResponse struct {
-	Outcome      ProbeOutcome      `json:"outcome"`
-	Model        string            `json:"model"`
-	Protocol     protocol.Protocol `json:"protocol"`
-	LatencyMS    int64             `json:"latency_ms"`
-	Reason       *ProbeReason      `json:"reason"`
-	CanRestore   bool              `json:"can_restore"`
-	RestoreProof *string           `json:"restore_proof"`
-	LogID        *string           `json:"log_id"`
-	TestedAtMS   int64             `json:"tested_at_ms"`
+	Outcome    ProbeOutcome      `json:"outcome"`
+	Model      string            `json:"model"`
+	Protocol   protocol.Protocol `json:"protocol"`
+	LatencyMS  int64             `json:"latency_ms"`
+	Reason     *ProbeReason      `json:"reason"`
+	Recovered  bool              `json:"recovered"`
+	LogID      *string           `json:"log_id"`
+	TestedAtMS int64             `json:"tested_at_ms"`
 }
 
-type CredentialProbeRestoreRequest struct {
-	RestoreProof string `json:"restore_proof"`
+type credentialProbeFailure struct {
+	stage string
+	cause error
 }
 
-const credentialProbeRestoreProofDomain = "gpt-load/control/credential-probe-restore/v1"
+func (failure *credentialProbeFailure) Error() string {
+	return "credential probe preparation failed at " + failure.stage
+}
 
-type credentialProbeRestoreProofPayload struct {
-	CredentialID       uint   `json:"credential_id"`
-	CooldownUntil      string `json:"cooldown_until"`
-	EncryptedValue     string `json:"encrypted_value"`
-	FailureGeneration  uint64 `json:"failure_generation"`
-	Fingerprint        string `json:"fingerprint"`
-	GroupID            uint   `json:"group_id"`
-	IdentityGeneration uint64 `json:"identity_generation"`
-	TargetSignature    string `json:"target_signature"`
-	Version            uint64 `json:"version"`
+func (failure *credentialProbeFailure) Unwrap() error {
+	return failure.cause
+}
+
+func newCredentialProbeFailure(stage string, cause error) error {
+	return &credentialProbeFailure{stage: stage, cause: cause}
 }
 
 type credentialProbeCredential struct {
@@ -90,10 +85,8 @@ type credentialProbeCredential struct {
 	cooldownUntil time.Time
 }
 
-// credentialProbeExecution is one completed probe execution: the returned attempt
-// plus every attempt executed before it. A protocol fallback runs the executor
-// more than once, and the durable request log must record one row per executed
-// protocol instead of silently keeping only the last one.
+// credentialProbeExecution is one completed probe. A manual target resolves
+// exactly one protocol and therefore produces at most one upstream attempt.
 type credentialProbeExecution struct {
 	requestID string
 	result    execution.AttemptResult
@@ -115,19 +108,6 @@ type credentialProbeExecutor struct {
 	channels  *channel.Registry
 	executor  execution.Executor
 	now       func() time.Time
-}
-
-type credentialProbeFailure struct {
-	stage string
-	cause error
-}
-
-func (failure *credentialProbeFailure) Error() string {
-	return "credential probe preparation failed at " + failure.stage
-}
-
-func (failure *credentialProbeFailure) Unwrap() error {
-	return failure.cause
 }
 
 func newCredentialProbeExecutor(
@@ -180,7 +160,7 @@ func (probe *credentialProbeExecutor) Probe(
 		)
 	}
 	apiKey, _ := credential.Value("api_key")
-	proxy, proxyFingerprint, err := validationAttemptProxy(group.Proxy)
+	proxy, proxyFingerprint, err := probeAttemptProxy(group.Proxy)
 	if err != nil {
 		return credentialProbeExecution{}, newCredentialProbeFailure(
 			"proxy",
@@ -202,8 +182,10 @@ func (probe *credentialProbeExecutor) Probe(
 	if generation == 0 {
 		generation = 1
 	}
+	attempts := make([]credentialProbeAttempt, 0, 1)
 	startedAt := probe.now()
 	probeProtocol := target.protocol
+	routeMode := target.routeMode
 	attemptID, err := newOperationID(cryptorand.Reader)
 	if err != nil {
 		return credentialProbeExecution{}, newCredentialProbeFailure(
@@ -241,23 +223,28 @@ func (probe *credentialProbeExecutor) Probe(
 		return credentialProbeExecution{}, err
 	}
 	completedAt := probe.now().UTC()
+	attempts = append(attempts, credentialProbeAttempt{
+		sequence:    spec.Sequence,
+		routeMode:   routeMode,
+		completedAt: completedAt,
+		duration:    max(completedAt.Sub(attemptStartedAt), 0),
+		result:      result,
+	})
 	return credentialProbeExecution{
 		requestID: requestID,
 		result:    result,
 		latency:   max(probe.now().Sub(startedAt), 0),
 		protocol:  probeProtocol,
-		attempts: []credentialProbeAttempt{{
-			sequence:    spec.Sequence,
-			routeMode:   target.routeMode,
-			completedAt: completedAt,
-			duration:    max(completedAt.Sub(attemptStartedAt), 0),
-			result:      result,
-		}},
+		attempts:  attempts,
 	}, nil
 }
 
-func newCredentialProbeFailure(stage string, cause error) error {
-	return &credentialProbeFailure{stage: stage, cause: cause}
+func probeAttemptProxy(groupProxy outboundproxy.Effective) (outboundproxy.Effective, string, error) {
+	effective, err := outboundproxy.NormalizeEffective(groupProxy)
+	if err != nil {
+		return outboundproxy.Effective{}, "", err
+	}
+	return effective, "", nil
 }
 
 func credentialProbeFailureStage(err error) string {
@@ -430,8 +417,7 @@ func (s *Service) TestGroupCredential(
 		TestedAtMS: testedAt,
 	}
 	if evidence.outcome == ProbeOutcomePassed {
-		response.RestoreProof = s.currentCredentialProbeRestoreProof(credential, target.signature)
-		response.CanRestore = response.RestoreProof != nil
+		response.Recovered = s.recoverTestedCredential(credential, target.model, target.signature)
 	}
 	response.LogID = s.emitProbeRequestLog(probeLogObservation{
 		group:       group,
@@ -443,22 +429,6 @@ func (s *Service) TestGroupCredential(
 	})
 	logCredentialProbe(credential.ref, response)
 	return response, nil
-}
-
-func (s *Service) RestoreTestedGroupCredential(
-	ctx context.Context,
-	groupID uint,
-	credentialID uint,
-	restoreProof string,
-) (CredentialItemResponse, error) {
-	if groupID == 0 || credentialID == 0 {
-		return CredentialItemResponse{}, app_errors.ErrBadRequest
-	}
-	restoreProof = strings.TrimSpace(restoreProof)
-	if restoreProof == "" {
-		return CredentialItemResponse{}, app_errors.ErrValidation
-	}
-	return s.restoreGroupCredential(ctx, groupID, credentialID, restoreProof)
 }
 
 func (s *Service) captureCredentialProbe(
@@ -527,7 +497,7 @@ func (s *Service) captureCredentialProbe(
 			credentialID,
 		)
 	}
-	target, valid := buildGroupValidationTarget(group)
+	target, valid := buildGroupProbeTarget(group, "")
 	if !valid {
 		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, app_errors.ErrValidation
 	}
@@ -550,98 +520,55 @@ func credentialProbeCredentialFromEntry(entry state.CredentialEntry) credentialP
 	}
 }
 
-func credentialProbeCooldownIdentity(value time.Time) string {
-	if value.IsZero() {
-		return ""
-	}
-	return value.UTC().Format(time.RFC3339Nano)
-}
-
-func (s *Service) currentCredentialProbeRestoreProof(
+func (s *Service) recoverTestedCredential(
 	tested credentialProbeCredential,
+	model string,
 	testedSignature groupValidationSignature,
-) *string {
-	if s == nil || s.manager == nil || s.registry == nil || s.encryption == nil || s.mutations == nil {
-		return nil
+) bool {
+	if s == nil || s.manager == nil || s.registry == nil {
+		return false
 	}
-	var proof *string
+	recovered := false
 	s.manager.WithCurrentSnapshot(func(snapshot *state.ConfigSnapshot) bool {
 		if snapshot == nil {
 			return false
 		}
-		group, exists := snapshot.Groups[tested.ref.GroupID]
-		if !exists {
+		group, exists := snapshot.LookupGroup(tested.ref.GroupID)
+		if !exists || !groupHasModel(group, model) {
 			return false
 		}
-		currentTarget, valid := buildGroupValidationTarget(group)
+		currentTarget, valid := buildGroupProbeTarget(group, model)
 		if !valid || currentTarget.signature != testedSignature {
 			return false
 		}
-		capture := func() {
+		restore := func() {
 			entries, err := s.registry.SnapshotGroupCredentialEntriesExact(
-				tested.ref.GroupID,
-				[]uint{tested.ref.ID},
+				tested.ref.GroupID, []uint{tested.ref.ID},
 			)
 			if err != nil || len(entries) != 1 {
 				return
 			}
-			current := entries[0]
-			currentCredential := credentialProbeCredentialFromEntry(current)
-			if !current.Blacklisted ||
-				currentCredential.ref != tested.ref ||
-				!currentCredential.cooldownUntil.Equal(tested.cooldownUntil) {
+			current := credentialProbeCredentialFromEntry(entries[0])
+			if !entries[0].Blacklisted || current.ref != tested.ref ||
+				!current.cooldownUntil.Equal(tested.cooldownUntil) ||
+				(entries[0].AuthState != "" && entries[0].AuthState != state.CredentialAuthStateReady) {
 				return
 			}
-			value, ok := s.credentialProbeRestoreProof(tested, testedSignature)
-			if ok {
-				proof = &value
+			recovered = s.registry.RestoreRuntimeStateIfMatch(
+				tested.ref, tested.cooldownUntil,
+			)
+			if recovered && s.stats != nil {
+				s.stats.ClearProblemState(tested.ref.ID)
 			}
 		}
-		s.mutations.Do(tested.ref.ID, capture)
-		return proof != nil
+		if s.mutations != nil {
+			s.mutations.Do(tested.ref.ID, restore)
+		} else {
+			restore()
+		}
+		return recovered
 	})
-	return proof
-}
-
-func (s *Service) credentialProbeRestoreProof(
-	credential credentialProbeCredential,
-	targetSignature groupValidationSignature,
-) (string, bool) {
-	if s == nil || s.encryption == nil {
-		return "", false
-	}
-	ref := credential.ref
-	payload, err := json.Marshal(credentialProbeRestoreProofPayload{
-		CredentialID: ref.ID, GroupID: ref.GroupID,
-		CooldownUntil: credentialProbeCooldownIdentity(credential.cooldownUntil),
-		Version:       ref.Version, IdentityGeneration: ref.IdentityGeneration,
-		Fingerprint: ref.Fingerprint, EncryptedValue: ref.EncryptedValue,
-		FailureGeneration: ref.FailureGeneration,
-		TargetSignature:   hex.EncodeToString(targetSignature[:]),
-	})
-	if err != nil {
-		return "", false
-	}
-	proof := s.encryption.Hash(credentialProbeRestoreProofDomain + "\n" + string(payload))
-	return proof, proof != ""
-}
-
-func (s *Service) credentialProbeRestoreProofMatches(
-	entry state.CredentialEntry,
-	targetSignature groupValidationSignature,
-	expected string,
-) bool {
-	if !entry.Blacklisted {
-		return false
-	}
-	current, ok := s.credentialProbeRestoreProof(
-		credentialProbeCredentialFromEntry(entry),
-		targetSignature,
-	)
-	if !ok {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(current), []byte(expected)) == 1
+	return recovered
 }
 
 // compileDisabledGroupProbe 为禁用手动测试的分组编译局部快照视图。

@@ -401,12 +401,16 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 	}
 
 	// Runtime badges: failure counting, future cooldown and blacklist surface
-	// through the same entry runtime the inspection kernel consumed.
 	_, _ = scenario.fixture.registry.IncrEntryFailureForEntry(1, scheduleEntryOneA)
 	_, _ = scenario.fixture.registry.SetEntryCooldownForEntry(
 		1, scheduleEntryOneB, scenario.now.Add(30*time.Minute),
 	)
 	_, _ = scenario.fixture.registry.SetEntryBlacklistedForEntry(2, scheduleEntryTwoB)
+	if !scenario.fixture.registry.SetEntryBlacklistReleaseAt(
+		2, scheduleEntryTwoB, scenario.now.Add(2*time.Hour),
+	) {
+		t.Fatal("entry blacklist deadline = false")
+	}
 	runtime := scenario.perform(http.MethodGet, path, "", scenario.authKey)
 	var runtimeResult modelRouteScheduleDetailResponse
 	decodeScheduleSuccess(t, runtime, &runtimeResult)
@@ -415,6 +419,10 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 	if first.Entries[0].Runtime.FailureCount != 1 ||
 		first.Entries[0].Runtime.State != state.EntryRuntimeAvailable {
 		t.Fatalf("up-a runtime after failure = %#v", first.Entries[0].Runtime)
+	}
+	if first.Entries[0].Runtime.FailureVersion == 0 ||
+		first.Entries[0].Runtime.BlacklistReleaseAtMS != nil {
+		t.Fatalf("up-a runtime proof fields = %#v", first.Entries[0].Runtime)
 	}
 	cooled := first.Entries[1]
 	if cooled.Runtime.State != state.EntryRuntimeCooldown ||
@@ -425,7 +433,10 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 	assertScheduleReason(t, cooled.ReasonCode, scheduler.ReasonEntryCooldown)
 	blacklisted := second.Entries[0]
 	if blacklisted.Runtime.State != state.EntryRuntimeBlacklisted ||
-		blacklisted.Runtime.CooldownUntilMS != nil {
+		blacklisted.Runtime.CooldownUntilMS != nil ||
+		blacklisted.Runtime.BlacklistReleaseAtMS == nil ||
+		*blacklisted.Runtime.BlacklistReleaseAtMS != scenario.now.Add(2*time.Hour).UnixMilli() ||
+		blacklisted.Runtime.FailureVersion == 0 {
 		t.Fatalf("two/up-b runtime after blacklist = %#v", blacklisted.Runtime)
 	}
 	assertScheduleReason(t, blacklisted.ReasonCode, scheduler.ReasonEntryBlacklisted)
@@ -815,6 +826,39 @@ func TestModelRouteSchedulePatchRejectsStaleSnapshotRevision(t *testing.T) {
 	}
 }
 
+func TestModelRouteScheduleRecoverRejectsStaleFailureVersion(t *testing.T) {
+	t.Parallel()
+	scenario := newScheduleTestScenario(t)
+	missing := scenario.perform(
+		http.MethodPost, "/api/model-route/schedule/recover",
+		fmt.Sprintf(`{"group_id": 1, "entry_id": "%s"}`, scheduleEntryOneA), scenario.authKey,
+	)
+	if code := decodeScheduleError(t, missing, http.StatusConflict); code != modelRouteScheduleRuntimeConflict.Code {
+		t.Fatalf("missing failure version code = %q, want %q", code, modelRouteScheduleRuntimeConflict.Code)
+	}
+	key := state.RouteEntryKey{GroupID: 1, EntryID: scheduleEntryOneA}
+	if _, changed := scenario.fixture.registry.SetEntryBlacklistedWithChange(key); !changed {
+		t.Fatal("SetEntryBlacklistedWithChange() changed = false")
+	}
+	observed, ok := scenario.fixture.registry.EntryRuntime(key, scenario.now)
+	if !ok {
+		t.Fatal("EntryRuntime() observed = false")
+	}
+	if _, exists, _ := scenario.fixture.registry.RecordEntryFailureWithBlacklist(1, scheduleEntryOneA, 1, scenario.now.Add(time.Hour)); !exists {
+		t.Fatal("RecordEntryFailureWithBlacklist() exists = false")
+	}
+
+	body := fmt.Sprintf(`{"group_id": 1, "entry_id": "%s", "failure_version": %d}`, scheduleEntryOneA, observed.FailureVersion)
+	recorder := scenario.perform(http.MethodPost, "/api/model-route/schedule/recover", body, scenario.authKey)
+	if code := decodeScheduleError(t, recorder, http.StatusConflict); code != modelRouteScheduleRuntimeConflict.Code {
+		t.Fatalf("stale recovery code = %q, want %q", code, modelRouteScheduleRuntimeConflict.Code)
+	}
+	current, ok := scenario.fixture.registry.EntryRuntime(key, scenario.now)
+	if !ok || !current.Blacklisted || current.FailureCount != 1 {
+		t.Fatalf("runtime after stale recovery = %#v/%t, want unchanged", current, ok)
+	}
+}
+
 func TestModelRouteScheduleRecoverClearsEntryRuntimeOnly(t *testing.T) {
 	t.Parallel()
 	scenario := newScheduleTestScenario(t)
@@ -833,13 +877,20 @@ func TestModelRouteScheduleRecoverClearsEntryRuntimeOnly(t *testing.T) {
 		t.Fatal("SetCooldown() exists = false")
 	}
 
-	body := fmt.Sprintf(`{"group_id": 1, "entry_id": "%s"}`, scheduleEntryOneA)
+	observed, ok := scenario.fixture.registry.EntryRuntime(
+		state.RouteEntryKey{GroupID: 1, EntryID: scheduleEntryOneA}, scenario.now,
+	)
+	if !ok {
+		t.Fatal("EntryRuntime() observed = false")
+	}
+	body := fmt.Sprintf(`{"group_id": 1, "entry_id": "%s", "failure_version": %d}`, scheduleEntryOneA, observed.FailureVersion)
 	recorder := scenario.perform(http.MethodPost, "/api/model-route/schedule/recover", body, scenario.authKey)
 	var result modelRouteScheduleRecoverResponse
 	decodeScheduleSuccess(t, recorder, &result)
 	if result.GroupID != 1 || result.EntryID != scheduleEntryOneA ||
 		result.Runtime.State != state.EntryRuntimeAvailable ||
-		result.Runtime.CooldownUntilMS != nil || result.Runtime.FailureCount != 0 {
+		result.Runtime.CooldownUntilMS != nil || result.Runtime.FailureCount != 0 ||
+		result.Runtime.BlacklistReleaseAtMS != nil {
 		t.Fatalf("recover response = %#v", result)
 	}
 
@@ -861,10 +912,18 @@ func TestModelRouteScheduleRecoverClearsEntryRuntimeOnly(t *testing.T) {
 		t.Fatalf("credential runtime changed by entry recovery: %v %v", until, ok)
 	}
 
-	// Idempotent: recovering again keeps the cleared state.
+	// A successful recovery increments the version; a later idempotent request
+	// must carry the newly observed version rather than replaying stale proof.
+	currentVersion, ok := scenario.fixture.registry.EntryRuntime(
+		state.RouteEntryKey{GroupID: 1, EntryID: scheduleEntryOneA}, scenario.now,
+	)
+	if !ok {
+		t.Fatal("EntryRuntime() after recovery = false")
+	}
+	body = fmt.Sprintf(`{"group_id": 1, "entry_id": "%s", "failure_version": %d}`, scheduleEntryOneA, currentVersion.FailureVersion)
 	recorder = scenario.perform(http.MethodPost, "/api/model-route/schedule/recover", body, scenario.authKey)
 	decodeScheduleSuccess(t, recorder, &result)
-	if result.Runtime.State != state.EntryRuntimeAvailable {
+	if result.Runtime.State != state.EntryRuntimeAvailable || result.Runtime.FailureVersion == 0 {
 		t.Fatalf("second recover = %#v", result.Runtime)
 	}
 

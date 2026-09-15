@@ -273,6 +273,139 @@ func newTestRuntime(
 	}
 }
 
+func TestRuntimeBlacklistReleaseMaintenanceStartsRunsImmediatelyAndTicks(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
+	registry := state.NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
+		Fingerprint: "runtime-release", AuthState: state.CredentialAuthStateReady,
+		EncryptedValue: "cipher",
+	}}); err != nil {
+		t.Fatalf("ReplaceCredentials() error = %v", err)
+	}
+	if _, changed := registry.SetBlacklistedWithChange(1); !changed ||
+		!registry.SetBlacklistReleaseAt(1, base.Add(-time.Second)) {
+		t.Fatal("failed to seed expired credential blacklist")
+	}
+	releaseTicker := newFakeRuntimeTicker()
+	created := make(chan time.Duration, 1)
+	runtime := &Runtime{
+		registry: registry,
+		now:      func() time.Time { return base },
+		newTicker: func(interval time.Duration) runtimeTicker {
+			created <- interval
+			if interval != blacklistReleaseInterval {
+				testingPanic("unexpected ticker interval", interval)
+			}
+			return releaseTicker
+		},
+	}
+	cancel, done := startRuntime(t, runtime)
+	if interval := awaitValue(t, created); interval != blacklistReleaseInterval {
+		t.Fatalf("release ticker interval = %v, want %v", interval, blacklistReleaseInterval)
+	}
+	awaitCondition(t, func() bool { return !registry.Snapshot()[0].Blacklisted })
+
+	if _, changed := registry.SetBlacklistedWithChange(1); !changed ||
+		!registry.SetBlacklistReleaseAt(1, base.Add(-time.Second)) {
+		t.Fatal("failed to seed tick release")
+	}
+	releaseTicker.ticks <- base
+	awaitCondition(t, func() bool { return !registry.Snapshot()[0].Blacklisted })
+
+	cancel()
+	awaitSignal(t, done)
+	awaitSignal(t, releaseTicker.stopped)
+}
+
+func TestRuntimeBlacklistReleaseClearsCredentialHealthProblemState(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
+	registry := state.NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
+		Fingerprint: "runtime-stats", AuthState: state.CredentialAuthStateReady,
+		EncryptedValue: "cipher",
+	}}); err != nil {
+		t.Fatalf("ReplaceCredentials() error = %v", err)
+	}
+	if _, changed := registry.SetBlacklistedWithChange(1); !changed ||
+		!registry.SetBlacklistReleaseAt(1, base.Add(-time.Second)) {
+		t.Fatal("failed to seed expired credential blacklist")
+	}
+	stats := health.NewStatsStore()
+	stats.RecordFailure(1, health.FailureCategoryInvalidKey, 401, base)
+
+	runtime := &Runtime{
+		registry:    registry,
+		healthStats: stats,
+		now:         func() time.Time { return base },
+	}
+	runtime.releaseExpiredBlacklists(base)
+
+	if registry.Snapshot()[0].Blacklisted {
+		t.Fatal("expired credential remains blacklisted")
+	}
+	got := stats.Snapshot(1, base)
+	if got.Problem != 1 || got.Failure != 1 || got.ConsecutiveProblem != 0 ||
+		got.ConsecutiveFailure != 0 || got.LastFailureCategory != health.FailureCategoryAmbiguous ||
+		got.LastStatusCode != 0 {
+		t.Fatalf("health stats after release = %#v, want retained buckets with cleared problem state", got)
+	}
+}
+
+func TestRuntimeBlacklistReleaseMaintenanceCancellationSkipsInitialRun(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
+	registry := state.NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
+		Fingerprint: "runtime-cancel", AuthState: state.CredentialAuthStateReady,
+		EncryptedValue: "cipher",
+	}}); err != nil {
+		t.Fatalf("ReplaceCredentials() error = %v", err)
+	}
+	if _, changed := registry.SetBlacklistedWithChange(1); !changed ||
+		!registry.SetBlacklistReleaseAt(1, base.Add(-time.Second)) {
+		t.Fatal("failed to seed expired credential blacklist")
+	}
+	ticker := newFakeRuntimeTicker()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runtime := &Runtime{registry: registry, now: func() time.Time { return base }}
+		runtime.runBlacklistRelease(ctx, ticker)
+	}()
+	awaitSignal(t, done)
+	awaitSignal(t, ticker.stopped)
+	if !registry.Snapshot()[0].Blacklisted {
+		t.Fatal("canceled release maintenance performed an initial release")
+	}
+}
+
+func awaitCondition(t *testing.T, condition func() bool) {
+	t.Helper()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if condition() {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("timed out waiting for condition")
+		case <-ticker.C:
+		}
+	}
+}
+
+func testingPanic(message string, value time.Duration) { panic(message + ": " + value.String()) }
+
 func startRuntime(t *testing.T, runtime *Runtime) (context.CancelFunc, <-chan struct{}) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())

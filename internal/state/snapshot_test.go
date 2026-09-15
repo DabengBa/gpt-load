@@ -198,7 +198,7 @@ func TestCompileBuildsManagementCatalogsWithoutChangingActiveIndexes(t *testing.
 	}
 }
 
-func TestCompileCarriesSettings(t *testing.T) {
+func TestCompileCarriesSettingsAndRuntimeGroupState(t *testing.T) {
 	t.Parallel()
 
 	snapshot, err := Compile(CompileInput{

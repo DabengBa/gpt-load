@@ -666,33 +666,6 @@ func (s *Server) handleTestGroupCredential(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", result)
 }
 
-func (s *Server) handleRestoreTestedGroupCredential(c *gin.Context) {
-	groupID, ok := groupID(c, "restore_tested_group_credential")
-	if !ok {
-		return
-	}
-	credentialID, ok := credentialID(c, "restore_tested_group_credential")
-	if !ok {
-		return
-	}
-	var request CredentialProbeRestoreRequest
-	if err := bindStrictJSON(c, &request); err != nil {
-		writeServiceError(c, "restore_tested_group_credential", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.RestoreTestedGroupCredential(
-		c.Request.Context(),
-		groupID,
-		credentialID,
-		request.RestoreProof,
-	)
-	if err != nil {
-		writeServiceError(c, "restore_tested_group_credential", err)
-		return
-	}
-	response.SuccessI18n(c, "common.success", result)
-}
-
 func (s *Server) handleBatchGroupCredentials(c *gin.Context) {
 	groupID, ok := groupID(c, "batch_group_credentials")
 	if !ok {

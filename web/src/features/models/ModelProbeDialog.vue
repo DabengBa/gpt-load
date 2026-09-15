@@ -249,6 +249,16 @@ function apply(): void {
           <dd>{{ detail.model }}</dd>
           <dt>{{ t('monitor.modelProbe.fields.outcome') }}</dt>
           <dd>{{ outcomeLabel(detail) }}</dd>
+          <dt v-if="detail.outcome === 'passed'">
+            {{ t('monitor.modelProbe.fields.recovered') }}
+          </dt>
+          <dd v-if="detail.outcome === 'passed'">
+            {{
+              detail.recovered
+                ? t('monitor.modelProbe.recovered')
+                : t('monitor.modelProbe.recoveryNotNeeded')
+            }}
+          </dd>
           <dt v-if="detail.reason">{{ t('monitor.modelProbe.fields.reason') }}</dt>
           <dd v-if="detail.reason">{{ reasonLabel(detail) }}</dd>
           <dt v-if="detail.protocol">{{ t('monitor.modelProbe.fields.protocol') }}</dt>
@@ -302,9 +312,24 @@ function apply(): void {
               </span>
             </div>
             <div class="model-probe-dialog__meta">
+              <span>
+                {{ t('monitor.modelProbe.fields.protocol') }}:
+                {{ result.protocol ?? t('monitor.modelProbe.unknownValue') }}
+              </span>
+              <span>
+                {{ t('monitor.modelProbe.fields.routeMode') }}:
+                {{ routeModeLabel(result) }}
+              </span>
               <span v-if="result.reason">{{ reasonLabel(result) }}</span>
               <span v-if="result.credential_label">
                 {{ t('monitor.modelProbe.credential', { credential: result.credential_label }) }}
+              </span>
+              <span v-if="result.outcome === 'passed'">
+                {{
+                  result.recovered
+                    ? t('monitor.modelProbe.recovered')
+                    : t('monitor.modelProbe.recoveryNotNeeded')
+                }}
               </span>
               <template v-if="result.log_id">
                 <CopyChip

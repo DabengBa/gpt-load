@@ -55,7 +55,10 @@ func TestHealthMillisWireUsesNullableEpochMilliseconds(t *testing.T) {
 				},
 			}},
 			BlacklistedCredentials: []healthProblemCredentialResponse{{
-				Recovery: healthRecoveryResponse{Mode: "manual_probe"},
+				Recovery: healthRecoveryResponse{
+					Automatic: true,
+					Mode:      "scheduled_release",
+				},
 			}},
 			RequestLog: requestLogHealthResponse{
 				LastWriteFailureAtMS: &cooldownUntilMS,
@@ -69,28 +72,26 @@ func TestHealthMillisWireUsesNullableEpochMilliseconds(t *testing.T) {
 		},
 	)
 
-	// Manual health actions are explicitly non-automatic and never use the retired mode.
+	// Scheduled release may be advertised without a persisted deadline.
 	encoded, err := json.Marshal(runtimeHealthResponse{
 		BlacklistedCredentials: []healthProblemCredentialResponse{
-			{Recovery: healthRecoveryResponse{Mode: "manual_probe"}},
-			{Recovery: healthRecoveryResponse{Mode: "manual_restore"}},
+			{Recovery: healthRecoveryResponse{
+				Automatic: true,
+				Mode:      "scheduled_release",
+			}},
 		},
 	})
 	if err != nil {
-		t.Fatalf("json.Marshal(manual health) error = %v", err)
+		t.Fatalf("json.Marshal(scheduled release health) error = %v", err)
 	}
 	text := string(encoded)
-	for _, expected := range []string{
-		`"automatic":false,"mode":"manual_probe"`,
-		`"automatic":false,"mode":"manual_restore"`,
-	} {
-		if !strings.Contains(text, expected) {
-			t.Fatalf("health wire missing %s: %s", expected, text)
-		}
+	if !strings.Contains(text, `"automatic":true,"mode":"scheduled_release","at_ms":null`) {
+		t.Fatalf("health wire missing nullable scheduled release: %s", text)
 	}
 	legacyValidationMode := "validation" + "_" + "probe"
 	legacyConfigurationMode := "configuration" + "_" + "required"
-	if strings.Contains(text, legacyValidationMode) || strings.Contains(text, legacyConfigurationMode) {
+	if strings.Contains(text, legacyValidationMode) || strings.Contains(text, legacyConfigurationMode) ||
+		strings.Contains(text, "manual_probe") || strings.Contains(text, "manual_restore") {
 		t.Fatalf("health wire exposes retired recovery mode: %s", text)
 	}
 }

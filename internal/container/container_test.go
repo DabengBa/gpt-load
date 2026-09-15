@@ -724,7 +724,6 @@ func TestBuildContainerWiresSingletonMutationCoordinator(t *testing.T) {
 		})
 		want := reflect.ValueOf(coordinator).Pointer()
 		handlerMutation := mutationCoordinatorFieldPointer(t, reflect.ValueOf(handler), "mutations")
-
 		runtimeValue := reflect.ValueOf(runtime).Elem()
 		if validator := runtimeValue.FieldByName("validator"); validator.IsValid() {
 			t.Fatal("Runtime unexpectedly retains background validator")

@@ -95,11 +95,11 @@ func TestRerankProbeIsRejectedAtTheGenerativeProbeBoundary(t *testing.T) {
 	spec.Body = nil
 	runtime := newProtocolTestRuntime(t, testRuntimeOptions{})
 	result := runtime.Execute(context.Background(), freezeTestAttempt(spec))
-	if result.Error == nil {
-		t.Fatalf("rerank probe must be rejected, result = %+v", result)
+	if err := result.Validate(); err != nil {
+		t.Fatalf("result validation: %v; result=%+v", err, result)
 	}
-	if result.DispatchState == execution.DispatchMaybeSent {
-		t.Fatalf("rerank probe must not reach the upstream: %+v", result)
+	if result.Error == nil || result.DispatchState != execution.DispatchNotSent {
+		t.Fatalf("rerank probe must be rejected before dispatch: %+v", result)
 	}
 }
 

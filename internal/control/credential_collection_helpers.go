@@ -166,7 +166,15 @@ func mapCredentialRuntimeItem(
 			Mode: "cooldown", Automatic: true, AtMS: cooldownUntilMS,
 		}
 	case healthBucketBlacklisted:
-		item.Recovery = CredentialRecoveryResponse{Mode: "manual"}
+		releaseAtMS, err := optionalSafeEpochMilliseconds(view.BlacklistReleaseAt)
+		if err != nil {
+			return CredentialItemResponse{}, fmt.Errorf(
+				"map credential %d blacklist_release_at_ms: %w", credentialID, err,
+			)
+		}
+		item.Recovery = CredentialRecoveryResponse{
+			Mode: "scheduled_release", Automatic: true, AtMS: releaseAtMS,
+		}
 	case healthBucketDisabled:
 		item.Recovery = CredentialRecoveryResponse{Mode: "manual"}
 	default:

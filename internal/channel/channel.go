@@ -280,6 +280,31 @@ func (t ResolvedTarget) ModeForModel(
 	return mode, true
 }
 
+// ProbeProtocol returns the single generative protocol declared by the channel.
+// It is derived from the code-owned probe contract rather than from protocol
+// ordering or provider kind.
+func (t ResolvedTarget) ProbeProtocol() (protocol.Protocol, bool) {
+	contract, ok := t.ProbeContract()
+	if !ok {
+		return "", false
+	}
+	return contract.Protocol, true
+}
+
+// ProbeRoute resolves the declared probe protocol and the model-dependent mode
+// for one upstream model. Every probe target uses one protocol and one route.
+func (t ResolvedTarget) ProbeRoute(upstreamModel string) (protocol.Protocol, RouteMode, bool) {
+	contract, ok := t.ProbeContract()
+	if !ok {
+		return "", "", false
+	}
+	mode, ok := t.ModeForModel(contract.Protocol, execution.OperationProbe, upstreamModel)
+	if !ok {
+		return "", "", false
+	}
+	return contract.Protocol, mode, true
+}
+
 // PreferredRoute selects one declared route for a utility operation,
 // preferring native mode and then canonical protocol order.
 func (t ResolvedTarget) PreferredRoute(
@@ -702,10 +727,10 @@ func (d definition) matches(query string) bool {
 func newRegistry(definitions []definition) (*Registry, error) {
 	registry := &Registry{byID: make(map[ID]definition, len(definitions)), order: make([]ID, 0, len(definitions))}
 	for _, definition := range definitions {
+		id := definition.descriptor.ID
 		if err := validateDefinition(definition); err != nil {
 			return nil, err
 		}
-		id := definition.descriptor.ID
 		if _, duplicate := registry.byID[id]; duplicate {
 			return nil, fmt.Errorf("duplicate channel ID %q", id)
 		}

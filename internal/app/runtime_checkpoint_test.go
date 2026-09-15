@@ -195,6 +195,7 @@ func TestFileRuntimeStateCheckpointRestoresAndConsumesFile(t *testing.T) {
 	}
 	registry.SetCooldown(1, time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC))
 	registry.SetBlacklisted(1)
+	registry.SetBlacklistReleaseAt(1, time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC))
 	registry.IncrFailure(1)
 	stats := health.NewStatsStore()
 	stats.RecordFailure(1, health.FailureCategoryUpstreamHostError, 503, time.Date(2026, 8, 7, 11, 59, 0, 0, time.UTC))
@@ -228,7 +229,8 @@ func TestFileRuntimeStateCheckpointRestoresAndConsumesFile(t *testing.T) {
 
 	entry := loadedRegistry.Snapshot()[0]
 	if entry.ID != 1 || !entry.CooldownUntil.Equal(time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)) ||
-		!entry.Blacklisted || entry.FailureCount != 1 {
+		!entry.Blacklisted || !entry.BlacklistReleaseAt.Equal(time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC)) ||
+		entry.FailureCount != 1 {
 		t.Fatalf("restored key runtime state = %#v", entry)
 	}
 	gotStats := loadedStats.Snapshot(1, time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC))

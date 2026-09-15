@@ -91,19 +91,20 @@ func TestFrontendHealthAllowlistCoversWireKeys(t *testing.T) {
 	}
 }
 
-// TestFrontendHealthRecoveryProjectorUsesManualModes locks the nested health
-// recovery contract at the existing backend-owned boundary. It deliberately
-// avoids a second frontend test harness: the Go health tests exercise wire
-// output, while this test verifies the projector's accepted input boundary.
-func TestFrontendHealthRecoveryProjectorUsesManualModes(t *testing.T) {
+// TestFrontendHealthRecoveryProjectorUsesScheduledReleaseMode locks the nested health
+// recovery contract at the backend-owned boundary. It deliberately avoids a second
+// frontend test harness: the Go health tests exercise wire output, while this test
+// verifies the projector's accepted input boundary.
+func TestFrontendHealthRecoveryProjectorUsesScheduledReleaseMode(t *testing.T) {
 	source, err := os.ReadFile(resolveFrontendHealthTS(t))
 	if err != nil {
 		t.Fatalf("read frontend health.ts: %v", err)
 	}
 	text := string(source)
 	for _, required := range []string{
-		"const recoveryModes = ['cooldown_expiry', 'manual_probe', 'manual_restore'] as const",
-		"else if (recovery.automatic || cooldownUntilMS !== null || recovery.at_ms !== null)",
+		"const recoveryModes = ['cooldown_expiry', 'scheduled_release'] as const",
+		"else if (recovery.mode === 'scheduled_release')",
+		"if (!recovery.automatic || cooldownUntilMS !== null)",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("frontend health projector missing recovery contract %q", required)

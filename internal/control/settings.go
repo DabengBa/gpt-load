@@ -46,6 +46,7 @@ type SettingsValuesResponse struct {
 	RetryCount                int                 `json:"retry_count"`
 	RouteStrategy             state.RouteStrategy `json:"route_strategy"`
 	BlacklistThreshold        int                 `json:"blacklist_threshold"`
+	BlacklistReleaseSeconds   int                 `json:"blacklist_release_seconds"`
 	AffinityEnabled           bool                `json:"affinity_enabled"`
 	ResponsesWebsocketEnabled bool                `json:"responses_websocket_enabled"`
 	AffinityTTL               int64               `json:"affinity_ttl"`
@@ -355,6 +356,7 @@ func mapSettingsResponse(
 			RetryCount:                settings.RetryCount,
 			RouteStrategy:             settings.RouteStrategy,
 			BlacklistThreshold:        settings.BlacklistThreshold,
+			BlacklistReleaseSeconds:   settings.BlacklistReleaseSeconds,
 			AffinityEnabled:           settings.AffinityEnabled,
 			ResponsesWebsocketEnabled: settings.ResponsesWebsocketEnabled,
 			AffinityTTL:               durationSeconds(settings.AffinityTTL),

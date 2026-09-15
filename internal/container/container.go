@@ -123,7 +123,17 @@ func BuildContainer() (*dig.Container, error) {
 		) app.RuntimeStateCheckpoint {
 			return app.NewFileRuntimeStateCheckpoint(cfg.DataDir, registry, stats, responseBindings)
 		},
-		control.NewRuntime,
+		func(
+			registry *state.CredentialRegistry,
+			requestLogCleaner control.RequestLogCleaner,
+			operationRecovery *control.Service,
+			catalogSync *control.CatalogSyncCoordinator,
+			stats *health.StatsStore,
+		) *control.Runtime {
+			runtime := control.NewRuntime(registry, requestLogCleaner, operationRecovery, catalogSync)
+			runtime.SetHealthStats(stats)
+			return runtime
+		},
 		func(runtime *control.Runtime) app.ControlRuntime { return runtime },
 		httpclient.NewHTTPClientManager,
 		newSystemOutboundProxyProvider,

@@ -6,9 +6,18 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
+	"gpt-load/internal/state"
 )
 
-const retentionInterval = time.Hour
+const (
+	retentionInterval        = time.Hour
+	blacklistReleaseInterval = time.Minute
+)
+
+type credentialMutationCoordinator interface {
+	Do(uint, func())
+}
 
 type operationRecoveryRuntime interface {
 	RunOperationRecovery(context.Context)
@@ -51,11 +60,14 @@ type Runtime struct {
 	operationRecovery operationRecoveryRuntime
 	catalogSync       catalogSyncRuntime
 	oauthCallback     *OAuthCallbackManager
+	registry          *state.CredentialRegistry
+	healthStats       interface{ ClearProblemState(uint) }
 	now               func() time.Time
 	newTicker         func(time.Duration) runtimeTicker
 }
 
 func NewRuntime(
+	registry *state.CredentialRegistry,
 	requestLogCleaner RequestLogCleaner,
 	operationRecovery *Service,
 	catalogSync *CatalogSyncCoordinator,
@@ -65,6 +77,7 @@ func NewRuntime(
 		stageCleaner:      operationRecovery,
 		operationRecovery: operationRecovery,
 		catalogSync:       catalogSync,
+		registry:          registry,
 		now:               time.Now,
 		newTicker: func(interval time.Duration) runtimeTicker {
 			return standardRuntimeTicker{ticker: time.NewTicker(interval)}
@@ -76,8 +89,21 @@ func NewRuntime(
 	return runtime
 }
 
+// SetHealthStats connects release maintenance to the shared health window.
+func (runtime *Runtime) SetHealthStats(stats interface{ ClearProblemState(uint) }) {
+	if runtime != nil {
+		runtime.healthStats = stats
+	}
+}
+
 func (runtime *Runtime) Run(ctx context.Context) {
 	var wait sync.WaitGroup
+	if runtime.registry != nil {
+		releaseTicker := runtime.newTicker(blacklistReleaseInterval)
+		wait.Go(func() {
+			runtime.runBlacklistRelease(ctx, releaseTicker)
+		})
+	}
 	if runtime.requestLogCleaner != nil || runtime.stageCleaner != nil {
 		retentionTicker := runtime.newTicker(retentionInterval)
 		wait.Go(func() {
@@ -130,4 +156,36 @@ func (runtime *Runtime) sweepRetention(ctx context.Context, now time.Time) {
 			logrus.WithError(err).WithField("event", "control.credential_stage_cleanup_failed").Warn("credential stage cleanup failed")
 		}
 	}
+}
+
+// runBlacklistRelease applies scheduled credential and route-entry blacklist
+// releases using only in-memory registry state. It never calls an upstream.
+func (runtime *Runtime) runBlacklistRelease(ctx context.Context, ticker runtimeTicker) {
+	defer ticker.Stop()
+	if ctx.Err() != nil {
+		return
+	}
+	runtime.releaseExpiredBlacklists(runtime.now())
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C():
+			if ctx.Err() != nil {
+				return
+			}
+			runtime.releaseExpiredBlacklists(runtime.now())
+		}
+	}
+}
+
+func (runtime *Runtime) releaseExpiredBlacklists(now time.Time) {
+	if runtime.registry == nil {
+		return
+	}
+	runtime.registry.ReleaseExpiredBlacklists(now, func(credentialID uint) {
+		if runtime.healthStats != nil {
+			runtime.healthStats.ClearProblemState(credentialID)
+		}
+	})
 }
