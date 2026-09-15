@@ -206,9 +206,15 @@ func TestProbeWithoutGeneratedTextDoesNotSetAnswerPresent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true, openAIBaseURL: server.URL})
-	spec := utilitySpec(channel.OpenAI, protocol.OpenAICompletions, execution.OperationProbe, "", "", nil)
+	runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true})
+	spec := utilitySpec(channel.OpenAICompatible, protocol.OpenAICompletions, execution.OperationProbe, "", "", nil)
 	spec.ClientModel, spec.UpstreamModel = "probe-client", "probe-upstream"
+	target, err := json.Marshal(map[string]string{"base_url": server.URL})
+	if err != nil {
+		t.Fatalf("marshal target: %v", err)
+	}
+	spec.TargetConfig = target
+	spec = freezeTestAttempt(spec)
 	result := runtime.Execute(context.Background(), spec)
 	if err := result.Validate(); err != nil {
 		t.Fatalf("result validation: %v", err)

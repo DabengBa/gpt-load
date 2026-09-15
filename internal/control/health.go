@@ -38,9 +38,8 @@ type healthGroupResponse struct {
 type healthRecoveryMode string
 
 const (
-	healthRecoveryModeCooldownExpiry healthRecoveryMode = "cooldown_expiry"
-	healthRecoveryModeManualProbe    healthRecoveryMode = "manual_probe"
-	healthRecoveryModeManualRestore  healthRecoveryMode = "manual_restore"
+	healthRecoveryModeCooldownExpiry   healthRecoveryMode = "cooldown_expiry"
+	healthRecoveryModeScheduledRelease healthRecoveryMode = "scheduled_release"
 )
 
 type healthRecoveryResponse struct {
@@ -398,13 +397,17 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 			}
 			result.CooldownCredentials = append(result.CooldownCredentials, detail)
 		} else {
-			detail.Recovery = healthRecoveryResponse{Mode: healthRecoveryModeManualRestore}
-			if service.executor != nil && service.channelRegistry != nil {
-				if probeGroup, exists := observation.snapshot.Groups[key.GroupID]; exists {
-					if _, valid := buildGroupValidationTarget(probeGroup); valid {
-						detail.Recovery.Mode = healthRecoveryModeManualProbe
-					}
-				}
+			releaseAtMS, err := optionalSafeEpochMilliseconds(key.BlacklistReleaseAt)
+			if err != nil {
+				return runtimeHealthResponse{}, fmt.Errorf(
+					"map runtime health blacklist_release_at_ms: %w",
+					err,
+				)
+			}
+			detail.Recovery = healthRecoveryResponse{
+				Automatic: true,
+				Mode:      healthRecoveryModeScheduledRelease,
+				AtMS:      releaseAtMS,
 			}
 			result.BlacklistedCredentials = append(result.BlacklistedCredentials, detail)
 		}

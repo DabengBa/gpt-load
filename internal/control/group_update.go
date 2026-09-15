@@ -14,10 +14,6 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
-type credentialMutationCoordinator interface {
-	Do(uint, func())
-}
-
 func mapGroupRowToState(group models.Group) (state.GroupConfig, error) {
 	var storedModels []groupModelEntry
 	if err := decodeGroupDiscoveryJSON(group.Models, &storedModels); err != nil {

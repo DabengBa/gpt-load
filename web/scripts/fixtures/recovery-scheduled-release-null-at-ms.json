@@ -36,7 +36,7 @@
       "consecutive_problem_count": 3,
       "recovery": {
         "automatic": true,
-        "mode": "manual_probe",
+        "mode": "scheduled_release",
         "at_ms": null
       },
       "identity": "masked-credential",

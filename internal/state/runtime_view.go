@@ -13,6 +13,7 @@ type CredentialRuntimeView struct {
 	AuthState          CredentialAuthState
 	CooldownUntil      time.Time
 	Blacklisted        bool
+	BlacklistReleaseAt time.Time
 	FailureCount       int
 	QuotaRemaining     *float64
 	QuotaResetAt       time.Time
@@ -53,6 +54,7 @@ func runtimeView(entry *CredentialEntry) CredentialRuntimeView {
 		AuthState:          entry.AuthState.normalize(),
 		CooldownUntil:      entry.CooldownUntil,
 		Blacklisted:        entry.Blacklisted,
+		BlacklistReleaseAt: entry.BlacklistReleaseAt,
 		FailureCount:       entry.FailureCount,
 		QuotaRemaining:     cloneFloat(entry.quotaRemaining),
 		QuotaResetAt:       entry.quotaResetAt,

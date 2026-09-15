@@ -35,6 +35,18 @@ func (p Protocol) SupportsModelOptionalRequests() bool {
 	return p == OpenAIResponses
 }
 
+// SupportsGeneratedText reports whether a protocol response carries generated
+// text that a probe can verify. Embeddings, Rerank, and Images return data
+// instead of generated text, so they never satisfy a probe contract.
+func (p Protocol) SupportsGeneratedText() bool {
+	switch p {
+	case OpenAICompletions, OpenAIResponses, Anthropic, Gemini:
+		return true
+	default:
+		return false
+	}
+}
+
 func DataPlaneProtocols() []Protocol {
 	return []Protocol{
 		OpenAICompletions,

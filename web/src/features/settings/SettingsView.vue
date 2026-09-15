@@ -146,6 +146,7 @@ const timeoutKeys = [
   'first_byte_timeout',
   'request_timeout',
   'stream_idle_timeout',
+  'blacklist_release_seconds',
   'affinity_ttl',
 ] as const
 const changedKeys = computed(() => {
@@ -319,7 +320,8 @@ function sectionForKey(key: RuntimeSettingKey): SettingsSection {
     key === 'responses_websocket_enabled'
   )
     return 'connection'
-  if (key === 'retry_count' || key === 'blacklist_threshold') return 'reliability'
+  if (key === 'retry_count' || key === 'blacklist_threshold' || key === 'blacklist_release_seconds')
+    return 'reliability'
   return 'data-maintenance'
 }
 

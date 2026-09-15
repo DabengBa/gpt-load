@@ -29,6 +29,7 @@ const requestForwardingKeys: RuntimeSettingKey[] = [
   'stream_idle_timeout',
   'retry_count',
   'blacklist_threshold',
+  'blacklist_release_seconds',
   'header_rules',
 ]
 const logsMaintenanceKeys: RuntimeSettingKey[] = ['request_log_retention_days']
@@ -328,6 +329,7 @@ export function validateSettingsSection(draft: SettingsDraft, section: SettingsS
     'first_byte_timeout',
     'request_timeout',
     'stream_idle_timeout',
+    'blacklist_release_seconds',
   ]
   const policyCounts: PolicyCountSettingKey[] = ['retry_count', 'blacklist_threshold']
   return (

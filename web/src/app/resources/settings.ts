@@ -30,6 +30,7 @@ export const runtimeSettingKeys = [
   'stream_idle_timeout',
   'retry_count',
   'blacklist_threshold',
+  'blacklist_release_seconds',
   'header_rules',
   'cors',
   'response_header_rules',
@@ -75,6 +76,7 @@ export interface SettingsValues {
   stream_idle_timeout: number
   retry_count: number
   blacklist_threshold: number
+  blacklist_release_seconds: number
   header_rules: HeaderRulesDto
   cors: CORSConfigDto
   response_header_rules: HeaderRulesDto
@@ -100,6 +102,7 @@ export type SettingsPatch = Partial<{
   stream_idle_timeout: number | null
   retry_count: number | null
   blacklist_threshold: number | null
+  blacklist_release_seconds: number | null
   header_rules: HeaderRulesDto | null
   cors: CORSConfigDto | null
   response_header_rules: HeaderRulesDto | null
@@ -199,6 +202,10 @@ export function projectSettings(value: unknown): SettingsDto {
       stream_idle_timeout: projectSafeInteger(values.stream_idle_timeout, { minimum: 1 }),
       retry_count: projectSafeInteger(values.retry_count, { minimum: 0 }),
       blacklist_threshold: projectSafeInteger(values.blacklist_threshold, { minimum: 0 }),
+      blacklist_release_seconds: projectSafeInteger(values.blacklist_release_seconds, {
+        minimum: 1,
+        maximum: 9_223_372_036,
+      }),
       header_rules: projectHeaderRules(values.header_rules),
       cors: projectCORSConfig(values.cors),
       response_header_rules: projectHeaderRules(values.response_header_rules),

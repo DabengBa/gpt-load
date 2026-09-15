@@ -9,11 +9,12 @@ import (
 // carry across a process restart. Persisted key configuration remains owned by
 // SQLite and is matched by ID plus group ID during restore.
 type CredentialRuntimeCheckpoint struct {
-	ID            uint      `json:"id"`
-	GroupID       uint      `json:"group_id"`
-	CooldownUntil time.Time `json:"cooldown_until"`
-	Blacklisted   bool      `json:"blacklisted"`
-	FailureCount  int       `json:"failure_count"`
+	ID                 uint      `json:"id"`
+	GroupID            uint      `json:"group_id"`
+	CooldownUntil      time.Time `json:"cooldown_until"`
+	Blacklisted        bool      `json:"blacklisted"`
+	BlacklistReleaseAt time.Time `json:"blacklist_release_at"`
+	FailureCount       int       `json:"failure_count"`
 }
 
 // CaptureRuntimeCheckpoint returns detached runtime health state in stable
@@ -24,11 +25,12 @@ func (r *CredentialRegistry) CaptureRuntimeCheckpoint() []CredentialRuntimeCheck
 	for _, bucket := range r.buckets {
 		for _, entry := range bucket {
 			checkpoints = append(checkpoints, CredentialRuntimeCheckpoint{
-				ID:            entry.ID,
-				GroupID:       entry.GroupID,
-				CooldownUntil: entry.CooldownUntil,
-				Blacklisted:   entry.Blacklisted,
-				FailureCount:  entry.FailureCount,
+				ID:                 entry.ID,
+				GroupID:            entry.GroupID,
+				CooldownUntil:      entry.CooldownUntil,
+				Blacklisted:        entry.Blacklisted,
+				BlacklistReleaseAt: entry.BlacklistReleaseAt,
+				FailureCount:       entry.FailureCount,
 			})
 		}
 	}
@@ -64,6 +66,7 @@ func (r *CredentialRegistry) RestoreRuntimeCheckpoint(checkpoints []CredentialRu
 		}
 		entry.CooldownUntil = checkpoint.CooldownUntil
 		entry.Blacklisted = checkpoint.Blacklisted
+		entry.BlacklistReleaseAt = checkpoint.BlacklistReleaseAt
 		entry.FailureCount = checkpoint.FailureCount
 		restored++
 	}

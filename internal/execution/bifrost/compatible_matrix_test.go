@@ -260,6 +260,7 @@ func TestOpenAICompatibleNonV1PrefixKeepsListModelsAndProbeFunctional(t *testing
 					if err := json.Unmarshal(payload["messages"], &messages); err != nil || len(messages) == 0 || messages[0]["content"] != probeQuestion {
 						t.Errorf("compatible probe question = %s", body)
 					}
+
 				}
 			}
 			_, _ = io.WriteString(writer, `{"id":"chat_1","object":"chat.completion","created":1,"model":"served","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)

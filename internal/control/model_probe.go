@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,6 +52,7 @@ type ModelProbeResultResponse struct {
 	LatencyMS       *int64             `json:"latency_ms"`
 	CredentialID    *uint              `json:"credential_id"`
 	CredentialLabel *string            `json:"credential_label"`
+	Recovered       bool               `json:"recovered"`
 	LogID           *string            `json:"log_id"`
 	TestedAtMS      int64              `json:"tested_at_ms"`
 }
@@ -155,6 +157,11 @@ func (service *Service) probeModelTarget(
 	if !found {
 		return probeWithoutExecution(result, ProbeReasonNoSchedulableCredential)
 	}
+	entryID := probeModelEntryID(group, target.Model)
+	entryKey := state.RouteEntryKey{GroupID: group.ID, EntryID: entryID}
+	entryView, _ := service.registry.EntryRuntime(entryKey, observation.observedAt)
+	expectedFailureVersion := entryView.FailureVersion
+	wasUnhealthy := entryView.Blacklisted || entryView.FailureCount != 0 || !entryView.CooldownUntil.IsZero()
 	if err := ctx.Err(); err != nil {
 		return probeWithoutExecution(result, ProbeReasonUnknown)
 	}
@@ -171,6 +178,13 @@ func (service *Service) probeModelTarget(
 	result.StatusCode = &statusCode
 	result.LatencyMS = &latencyMS
 	result.CredentialID = &credentialID
+	if evidence.outcome == ProbeOutcomePassed && wasUnhealthy {
+		testedCredential := credentialProbeCredentialFromEntry(entry)
+		result.Recovered = service.recoverTestedModelRoute(
+			group.ID, target.Model, probeTarget.signature, testedCredential,
+			entryID, expectedFailureVersion,
+		)
+	}
 	if label, known := service.CredentialLabels([]uint{entry.ID})[entry.ID]; known && label != "" {
 		result.CredentialLabel = &label
 	}
@@ -196,6 +210,72 @@ func probeWithoutExecution(
 	result.Outcome = ProbeOutcomeInconclusive
 	result.Reason = &value
 	return result
+}
+
+func probeModelEntryID(group state.GroupView, model string) string {
+	for _, configured := range group.Models {
+		if configured.ID != model {
+			continue
+		}
+		if configured.EntryID != "" {
+			return configured.EntryID
+		}
+		external := state.ExternalModelName(configured.ID, configured.Alias)
+		return "derived:" + external + "#" + strings.TrimSpace(configured.ID)
+	}
+	return ""
+}
+
+func (service *Service) recoverTestedModelRoute(
+	groupID uint,
+	model string,
+	testedSignature groupValidationSignature,
+	tested credentialProbeCredential,
+	entryID string,
+	expectedFailureVersion uint64,
+) bool {
+	if service == nil || service.manager == nil || service.registry == nil ||
+		groupID == 0 || strings.TrimSpace(entryID) == "" || tested.ref.ID == 0 {
+		return false
+	}
+	recovered := false
+	service.manager.WithCurrentSnapshot(func(snapshot *state.ConfigSnapshot) bool {
+		if snapshot == nil {
+			return false
+		}
+		group, exists := snapshot.LookupGroup(groupID)
+		if !exists {
+			return false
+		}
+		currentTarget, valid := buildGroupProbeTarget(group, model)
+		if !valid || currentTarget.signature != testedSignature ||
+			probeModelEntryID(group, model) != entryID {
+			return false
+		}
+		restore := func() {
+			entries, err := service.registry.SnapshotGroupCredentialEntriesExact(
+				tested.ref.GroupID, []uint{tested.ref.ID},
+			)
+			if err != nil || len(entries) != 1 {
+				return
+			}
+			current := credentialProbeCredentialFromEntry(entries[0])
+			if current.ref != tested.ref || !current.cooldownUntil.Equal(tested.cooldownUntil) ||
+				(entries[0].AuthState != "" && entries[0].AuthState != state.CredentialAuthStateReady) {
+				return
+			}
+			recovered = service.registry.RecoverEntryIfVersionMatch(
+				groupID, entryID, expectedFailureVersion,
+			)
+		}
+		if service.mutations != nil {
+			service.mutations.Do(tested.ref.ID, restore)
+		} else {
+			restore()
+		}
+		return recovered
+	})
+	return recovered
 }
 
 func groupHasModel(group state.GroupView, model string) bool {
