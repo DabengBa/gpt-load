@@ -8,7 +8,6 @@ export default {
     tabs: {
       label: '监控分区',
       health: '健康',
-      logs: '请求日志',
       usage: '用量与成本',
       inspector: '路由检查',
       schedule: '调度中心',

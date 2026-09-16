@@ -196,6 +196,7 @@ export default {
     groups: 'Groups',
     accessKeys: 'Access keys',
     monitor: 'Monitor',
+    logs: 'Request logs',
     models: 'Models',
     settings: 'Settings',
     import: 'Import credentials',

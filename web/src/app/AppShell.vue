@@ -9,6 +9,7 @@ import {
   groupsLocation,
   homeLocation,
   importLocation,
+  logsLocation,
   loginLocation,
   monitorLocation,
   modelsLocation,
@@ -39,6 +40,7 @@ const navigation = computed(() => {
     { key: 'home', to: homeLocation(), label: t('shell.home') },
     { key: 'models', to: modelsLocation(), label: t('shell.models') },
     { key: 'monitor', to: monitorLocation(), label: t('shell.monitor') },
+    { key: 'logs', to: logsLocation(), label: t('shell.logs') },
   ]
   if (isAccessKey.value) return shared
   return [
@@ -51,6 +53,7 @@ const navigation = computed(() => {
       label: t('shell.accessKeys'),
     },
     shared[2]!,
+    shared[3]!,
     { key: 'settings', to: settingsLocation(), label: t('shell.settings') },
   ]
 })

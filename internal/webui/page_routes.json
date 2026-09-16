@@ -8,6 +8,7 @@
     { "name": "group-detail", "path": "/groups/:id" },
     { "name": "access-keys", "path": "/access-keys" },
     { "name": "monitor", "path": "/monitor" },
+    { "name": "logs", "path": "/logs" },
     { "name": "models", "path": "/models" },
     { "name": "settings", "path": "/settings" }
   ]

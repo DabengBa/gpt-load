@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 import type { HealthProblemCredentialDto } from '@/app/resources/health'
-import { groupDetailLocation, monitorLocation } from '@/app/route-locations'
+import { groupDetailLocation, logsLocation } from '@/app/route-locations'
 import LedgerRecordList from '@/components/collection/LedgerRecordList.vue'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
 import IconButton from '@/components/ui/IconButton.vue'
@@ -242,8 +242,7 @@ function credentialMeta(credential: HealthProblemCredentialDto): string {
             <RouterLink
               v-slot="{ navigate }"
               :to="
-                monitorLocation({
-                  tab: 'logs',
+                logsLocation({
                   group_id: String(item.credential.group_id),
                   credential_id: String(item.credential.credential_id),
                 })

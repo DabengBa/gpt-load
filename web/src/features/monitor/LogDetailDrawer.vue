@@ -53,7 +53,7 @@ const { locale, t } = useI18n()
 const query = useQuery(requestLogDetailQueryOptions(client, () => props.requestId))
 const initialLoading = useStableLoading(() => props.open && query.isPending.value)
 const log = computed(() => query.data.value)
-const errorMessageExpanded = ref(false)
+const errorMessageExpanded = ref(true)
 const expandedAttemptErrorMessages = ref<Set<number>>(new Set())
 const finalAttempt = computed(() => {
   const value = log.value
@@ -157,10 +157,20 @@ const costAmountLabel = computed(() => {
 })
 
 watch(
+  () => log.value?.request_id,
+  () => {
+    expandedAttemptErrorMessages.value = new Set(
+      log.value?.attempts.map(({ sequence }) => sequence) ?? [],
+    )
+  },
+  { immediate: true },
+)
+
+watch(
   () => props.requestId,
   () => {
     copyControllers.abortAll()
-    errorMessageExpanded.value = false
+    errorMessageExpanded.value = true
     expandedAttemptErrorMessages.value = new Set()
   },
 )
@@ -172,8 +182,10 @@ watch(
       copyControllers.abortAll()
       return
     }
-    errorMessageExpanded.value = false
-    expandedAttemptErrorMessages.value = new Set()
+    errorMessageExpanded.value = true
+    expandedAttemptErrorMessages.value = new Set(
+      log.value?.attempts.map(({ sequence }) => sequence) ?? [],
+    )
   },
 )
 
@@ -680,7 +692,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
       </section>
 
       <section v-if="!selfScoped" class="log-detail__section log-detail__attempt-section">
-        <details v-if="log.attempts.length > 0" class="log-attempt-chain">
+        <details v-if="log.attempts.length > 0" class="log-attempt-chain" open>
           <summary>
             <ChevronRight class="log-attempt-chain__chevron" :size="15" aria-hidden="true" />
             <span>{{ t('monitor.logs.drawer.attempts') }}</span>
@@ -741,7 +753,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
                 }}
               </AppButton>
             </div>
-            <details class="log-attempt__details">
+            <details class="log-attempt__details" open>
               <summary>
                 <ChevronRight class="log-attempt-chain__chevron" :size="13" aria-hidden="true" />
                 <span>{{ t('monitor.logs.drawer.attemptDetails') }}</span>

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import {
   ACCESS_KEY,
@@ -19,7 +19,180 @@ function latestLogRequest(routes: { logRequests: URL[] }): URL {
   return request as URL
 }
 
+async function installHealthRoute(page: Page): Promise<void> {
+  await page.route('**/api/health', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'OK',
+        data: {
+          observed_at_ms: 1700000000000,
+          version: 'e2e',
+          uptime_seconds: 1,
+          snapshot_revision: 1,
+          stats_window_seconds: 300,
+          counts: { credentials: 1, available: 0, cooldown: 1, blacklisted: 0 },
+          groups: [
+            {
+              id: 1,
+              name: 'alpha',
+              enabled: true,
+              counts: { credentials: 1, available: 0, cooldown: 1, blacklisted: 0 },
+            },
+          ],
+          cooldown_credentials: [
+            {
+              credential_id: 2,
+              group_id: 1,
+              group_name: 'alpha',
+              cooldown_until_ms: 1700000060000,
+              failure_count: 1,
+              recent_success_count: 0,
+              recent_problem_count: 1,
+              consecutive_problem_count: 1,
+              recovery: {
+                automatic: true,
+                mode: 'cooldown_expiry',
+                at_ms: 1700000060000,
+              },
+              identity: 'credential-alpha',
+              last_failure_category: 'rate_limited',
+              last_status_code: 429,
+            },
+          ],
+          blacklisted_credentials: [],
+          low_quota_credentials: [],
+          expiring_reset_credits: [],
+          blocked_access_keys: [],
+          request_log: {
+            enqueued_total: 0,
+            persisted_total: 0,
+            dropped_not_running_total: 0,
+            dropped_queue_full_total: 0,
+            dropped_stopping_total: 0,
+            dropped_persist_failed_total: 0,
+            dropped_shutdown_total: 0,
+            dropped_total: 0,
+            write_failure_total: 0,
+            access_quota_checkpoint_write_failure_total: 0,
+            access_quota_checkpoint_degraded: false,
+            retention_delete_failure_total: 0,
+            queue_depth: 0,
+            queue_capacity: 1,
+            last_write_failure_at_ms: null,
+            last_access_quota_checkpoint_write_failure_at_ms: null,
+            last_retention_failure_at_ms: null,
+          },
+          debug_capture: {
+            enabled: false,
+            running: false,
+            retention_seconds: 0,
+            active: 0,
+            completed: 0,
+            failed: 0,
+            sweep_total: 0,
+            removed_total: 0,
+            sweep_failure_total: 0,
+            error: '',
+            last_sweep_at_ms: null,
+            last_failure_at_ms: null,
+          },
+        },
+      }),
+    })
+  })
+}
+
+async function expectCollectionSkeletonColumns(page: Page, expectedColumns: number): Promise<void> {
+  const skeleton = page.locator('.skeleton-surface--collection')
+  await expect(skeleton).toBeVisible()
+  await expect(
+    skeleton.locator('.skeleton-surface__collection-header .skeleton-block'),
+  ).toHaveCount(expectedColumns)
+  await expect(
+    skeleton.locator('.skeleton-surface__collection-row').first().locator('.skeleton-block'),
+  ).toHaveCount(expectedColumns)
+}
+
 test.describe('request log affinity filter', () => {
+  test('direct logs route loads and is available in the primary navigation', async ({ page }) => {
+    for (const principal of ['admin', 'access_key'] as const) {
+      const routes = await installRequestLogAffinityRoutes(page, principal)
+      await openRequestLogs(page, routes)
+
+      await expect(page).toHaveURL(/\/logs$/u)
+      await expect(page.getByRole('link', { name: 'Request logs' }).first()).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Request logs' }).first()).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+    }
+  })
+
+  test('legacy monitor logs query normalizes to the principal default without log filters', async ({
+    page,
+  }) => {
+    const logQuery =
+      'tab=logs&from_ms=1700000000000&to_ms=1700003600000&selected_request_id=11111111-1111-4111-8111-111111111111&log_cursors=%5B%22old-cursor%22%5D&affinity_key=0123456789abcdef%2A%2A%2A%2Afedcba9876543210&status=success&client_model=gpt-4o&upstream_model=legacy-log-model&limit=50'
+
+    for (const [principal, expectedTab] of [
+      ['admin', 'health'],
+      ['access_key', 'usage'],
+    ] as const) {
+      const routes = await installRequestLogAffinityRoutes(page, principal)
+      await page.goto(`/monitor?${logQuery}`)
+      await expect(page).toHaveURL(/\/monitor(?:\?|$)/u)
+      await expect.poll(() => new URL(page.url()).searchParams.get('tab')).toBe(expectedTab)
+
+      const normalizedURL = new URL(page.url())
+      expect(normalizedURL.pathname).toBe('/monitor')
+      expect(normalizedURL.searchParams.get('tab')).toBe(expectedTab)
+      for (const key of [
+        'from_ms',
+        'to_ms',
+        'selected_request_id',
+        'log_cursors',
+        'affinity_key',
+        'status',
+        'client_model',
+        'upstream_model',
+        'limit',
+      ]) {
+        expect(normalizedURL.searchParams.has(key)).toBe(false)
+      }
+      await expect(page.getByRole('link', { name: 'Request logs' }).first()).toBeVisible()
+      await expect(page.locator('.logs-tab')).toHaveCount(0)
+      expect(routes.logRequests).toHaveLength(0)
+    }
+  })
+
+  test('health shortcuts open the standalone logs page with scope filters', async ({ page }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin')
+    await installHealthRoute(page)
+
+    await page.goto('/monitor?tab=health')
+    const groupLogsLink = page.getByRole('link', { name: 'View request logs for alpha' })
+    await expect(groupLogsLink).toBeVisible()
+    await groupLogsLink.click()
+    await expect(page).toHaveURL(/\/logs\?group_id=1$/u)
+    await expect(page.locator('.logs-tab')).toBeVisible()
+    expect(latestLogRequest(routes).searchParams.get('group_id')).toBe('1')
+
+    await page.goto('/monitor?tab=health')
+    const credentialLogsLink = page.getByRole('link', {
+      name: 'View request logs for credential credential-alpha',
+    })
+    await expect(credentialLogsLink).toBeVisible()
+    await credentialLogsLink.click()
+    await expect(page).toHaveURL(/\/logs\?group_id=1&credential_id=2$/u)
+    await expect(page.locator('.logs-tab')).toBeVisible()
+    const credentialRequest = latestLogRequest(routes)
+    expect(credentialRequest.searchParams.get('group_id')).toBe('1')
+    expect(credentialRequest.searchParams.get('credential_id')).toBe('2')
+  })
+
   test('admin key supports click, Enter, Space, exact first page, and preserved filters', async ({
     page,
   }) => {
@@ -28,6 +201,17 @@ test.describe('request log affinity filter', () => {
 
     const keyButtons = page.getByTestId('logs-affinity-key-filter')
     await expect(keyButtons).toHaveCount(3)
+    const columnHeaders = page.locator('.ledger-record-list__header > [role="columnheader"]')
+    await expect(columnHeaders).toHaveCount(9)
+    await expect(columnHeaders.filter({ hasText: 'Access key' })).toHaveCount(0)
+    await expect(keyButtons.first()).toHaveText('…543210')
+    await expect(keyButtons.first()).toHaveAttribute(
+      'aria-label',
+      `Show only logs for affinity scope key ${AFFINITY_KEY}`,
+    )
+    const emptyAffinityCell = page.locator('.logs-list__affinity-key-cell').filter({ hasText: '—' })
+    await expect(emptyAffinityCell).toHaveCount(1)
+    await expect(emptyAffinityCell.locator('.logs-list__state--warning')).toHaveCount(0)
     await expect(page.locator('.logs-list__affinity-key-cell code')).toHaveCount(1)
     const timeColumnStyle = await page
       .locator('.logs-list__time')
@@ -87,6 +271,99 @@ test.describe('request log affinity filter', () => {
     await expect(page.getByText(DIFFERENT_AFFINITY_KEY).first()).toBeVisible()
   })
 
+  test('access-key list keeps seven aligned tracks through the intermediate breakpoint', async ({
+    page,
+  }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'access_key')
+
+    for (const width of [1080, 861]) {
+      await page.setViewportSize({ width, height: 900 })
+      await openRequestLogs(page, routes)
+      const metrics = await page.locator('.logs-list').evaluate((list) => {
+        const headers = Array.from(
+          list.querySelectorAll<HTMLElement>('.ledger-record-list__header > [role="columnheader"]'),
+        )
+        const cells = Array.from(
+          list.querySelectorAll<HTMLElement>('.logs-list__record:first-of-type [role="cell"]'),
+        )
+        const style = getComputedStyle(list)
+        return {
+          trackCount: style.gridTemplateColumns.trim().split(/\s+/u).length,
+          headerCount: headers.length,
+          cellCount: cells.length,
+          alignment: headers.map((header, index) => {
+            const cell = cells[index]
+            if (!cell) return null
+            const headerRect = header.getBoundingClientRect()
+            const cellRect = cell.getBoundingClientRect()
+            return {
+              left: Math.abs(headerRect.left - cellRect.left),
+              width: Math.abs(headerRect.width - cellRect.width),
+            }
+          }),
+        }
+      })
+
+      expect(metrics.trackCount).toBe(7)
+      expect(metrics.headerCount).toBe(7)
+      expect(metrics.cellCount).toBe(7)
+      for (const pair of metrics.alignment) {
+        expect(pair).not.toBeNull()
+        expect(pair?.left ?? Infinity).toBeLessThanOrEqual(2)
+        expect(pair?.width ?? Infinity).toBeLessThanOrEqual(2)
+      }
+    }
+
+    await page.setViewportSize({ width: 860, height: 900 })
+    await openRequestLogs(page, routes)
+    const mobileLayout = await page.locator('.logs-list').evaluate((list) => {
+      const header = list.querySelector<HTMLElement>('.ledger-record-list__header')
+      const record = list.querySelector<HTMLElement>('.logs-list__record')
+      const cells = record ? Array.from(record.querySelectorAll('[role="cell"]')) : []
+      return {
+        headerDisplay: header ? getComputedStyle(header).display : 'missing',
+        recordTrackCount: record
+          ? getComputedStyle(record).gridTemplateColumns.trim().split(/\s+/u).length
+          : 0,
+        cellCount: cells.length,
+        dataLabels: cells.map((cell) => cell.getAttribute('data-label')),
+      }
+    })
+
+    expect(mobileLayout.headerDisplay).toBe('none')
+    expect(mobileLayout.recordTrackCount).toBe(2)
+    expect(mobileLayout.cellCount).toBe(7)
+    expect(mobileLayout.dataLabels).toHaveLength(7)
+  })
+
+  test('collection skeleton renders nine columns for admin in pending and transition states', async ({
+    page,
+  }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin', { logDelayMs: 800 })
+    await page.goto('/logs')
+    await expectCollectionSkeletonColumns(page, 9)
+    await expect(page.locator('.logs-list')).toBeVisible()
+
+    await page.locator('.pagination-bar select').selectOption('50')
+    await expectCollectionSkeletonColumns(page, 9)
+    await expect(page.locator('.logs-list')).toBeVisible()
+    expect(routes.logRequests.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test('collection skeleton renders seven columns for access-key in pending and transition states', async ({
+    page,
+  }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'access_key', { logDelayMs: 800 })
+    await page.goto('/logs')
+    await expectCollectionSkeletonColumns(page, 7)
+    await expect(page.locator('.logs-list')).toBeVisible()
+
+    await page.locator('.pagination-bar select').selectOption('50')
+    await expectCollectionSkeletonColumns(page, 7)
+    await expect(page.locator('.logs-list')).toBeVisible()
+    expect(routes.logRequests.length).toBeGreaterThanOrEqual(2)
+  })
+
   test('reapplying unchanged filters refreshes the current log page', async ({ page }) => {
     const routes = await installRequestLogAffinityRoutes(page, 'admin')
     await openRequestLogs(
@@ -121,7 +398,7 @@ test.describe('request log affinity filter', () => {
     await expect(page.getByRole('alert')).toContainText('canonical 16')
     expect(routes.logRequests).toHaveLength(initialRequestCount)
 
-    await page.goto('/monitor?tab=logs&affinity_key=not-a-canonical-key')
+    await page.goto('/logs?affinity_key=not-a-canonical-key')
     await expect(page.getByRole('alert')).toContainText('canonical 16')
     expect(routes.logRequests).toHaveLength(initialRequestCount)
   })
@@ -152,7 +429,9 @@ test.describe('request log affinity filter', () => {
       `&affinity_key=${encodeURIComponent(AFFINITY_KEY)}&from_ms=1700000000000&to_ms=1700003600000`,
     )
 
-    await expect(page.getByRole('columnheader', { name: 'Affinity scope key' })).toHaveCount(0)
+    const columnHeaders = page.locator('.ledger-record-list__header > [role="columnheader"]')
+    await expect(columnHeaders).toHaveCount(7)
+    await expect(columnHeaders.filter({ hasText: 'Affinity scope key' })).toHaveCount(0)
     await expect(page.getByTestId('logs-affinity-key-filter')).toHaveCount(0)
     await expect(page.locator('#logs-affinity-key')).toHaveCount(0)
     await expect(page.getByRole('button', { name: /Affinity scope key/u })).toHaveCount(0)

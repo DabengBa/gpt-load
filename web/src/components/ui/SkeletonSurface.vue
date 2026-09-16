@@ -30,7 +30,7 @@ const props = withDefaults(
 )
 
 const safeRows = computed(() => Math.min(100, Math.max(1, Math.trunc(props.rows))))
-const safeColumns = computed(() => Math.min(8, Math.max(1, Math.trunc(props.columns))))
+const safeColumns = computed(() => Math.min(9, Math.max(1, Math.trunc(props.columns))))
 const surfaceStyle = computed<Record<string, string>>(() => {
   const style: Record<string, string> = {
     '--skeleton-row-height': props.rowHeight,
