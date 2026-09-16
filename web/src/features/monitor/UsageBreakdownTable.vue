@@ -85,15 +85,6 @@ function successRate(aggregate: UsageAggregateDto): string {
   return formatPercent(aggregate.success_count, aggregate.request_count, locale.value)
 }
 
-function quality(aggregate: UsageAggregateDto): string {
-  return t('monitor.usage.columns.qualityCompact', {
-    missing: formatInteger(aggregate.usage_missing_count, locale.value),
-    partial: formatInteger(aggregate.partial_count, locale.value),
-    unpriced: formatInteger(aggregate.unpriced_request_count, locale.value),
-    pricingPartial: formatInteger(aggregate.pricing_partial_count, locale.value),
-  })
-}
-
 function setPage(page: number): void {
   if (page < 1 || page > props.breakdown.pagination.total_pages) return
   emit('page', page)
@@ -168,33 +159,6 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
             {{ t('monitor.usage.breakdown.columns.cacheRead') }}
           </button>
         </th>
-        <th scope="col" :aria-sort="ariaSort('cache_write_5m_tokens')">
-          <button
-            type="button"
-            class="usage-breakdown__sort"
-            @click="setSort('cache_write_5m_tokens')"
-          >
-            {{ t('monitor.usage.breakdown.columns.cacheWrite5m') }}
-          </button>
-        </th>
-        <th scope="col" :aria-sort="ariaSort('cache_write_1h_tokens')">
-          <button
-            type="button"
-            class="usage-breakdown__sort"
-            @click="setSort('cache_write_1h_tokens')"
-          >
-            {{ t('monitor.usage.breakdown.columns.cacheWrite1h') }}
-          </button>
-        </th>
-        <th scope="col" :aria-sort="ariaSort('cache_write_unknown_tokens')">
-          <button
-            type="button"
-            class="usage-breakdown__sort"
-            @click="setSort('cache_write_unknown_tokens')"
-          >
-            {{ t('monitor.usage.breakdown.columns.cacheWriteUnknown') }}
-          </button>
-        </th>
         <th scope="col" :aria-sort="ariaSort('output_tokens')">
           <button type="button" class="usage-breakdown__sort" @click="setSort('output_tokens')">
             {{ t('monitor.usage.breakdown.columns.output') }}
@@ -214,7 +178,6 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
             {{ t('monitor.usage.columns.estimatedCost') }}
           </button>
         </th>
-        <th scope="col">{{ t('monitor.usage.columns.quality') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -231,13 +194,9 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         <td>{{ averageLatency(row) }}</td>
         <td>{{ formatTokens(row.uncached_input_tokens, locale) }}</td>
         <td>{{ formatTokens(row.cache_read_tokens, locale) }}</td>
-        <td>{{ formatTokens(row.cache_write_5m_tokens, locale) }}</td>
-        <td>{{ formatTokens(row.cache_write_1h_tokens, locale) }}</td>
-        <td>{{ formatTokens(row.cache_write_unknown_tokens, locale) }}</td>
         <td>{{ formatTokens(row.output_tokens, locale) }}</td>
         <td>{{ formatTokens(row.total_tokens, locale) }}</td>
         <td>{{ formatEstimatedCost(row.estimated_cost_nano_usd, locale) }}</td>
-        <td :title="quality(row)">{{ quality(row) }}</td>
       </tr>
     </tbody>
     <tfoot>
@@ -254,13 +213,9 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         <td>{{ averageLatency(breakdown.total) }}</td>
         <td>{{ formatTokens(breakdown.total.uncached_input_tokens, locale) }}</td>
         <td>{{ formatTokens(breakdown.total.cache_read_tokens, locale) }}</td>
-        <td>{{ formatTokens(breakdown.total.cache_write_5m_tokens, locale) }}</td>
-        <td>{{ formatTokens(breakdown.total.cache_write_1h_tokens, locale) }}</td>
-        <td>{{ formatTokens(breakdown.total.cache_write_unknown_tokens, locale) }}</td>
         <td>{{ formatTokens(breakdown.total.output_tokens, locale) }}</td>
         <td>{{ formatTokens(breakdown.total.total_tokens, locale) }}</td>
         <td>{{ formatEstimatedCost(breakdown.total.estimated_cost_nano_usd, locale) }}</td>
-        <td :title="quality(breakdown.total)">{{ quality(breakdown.total) }}</td>
       </tr>
     </tfoot>
   </DataTable>

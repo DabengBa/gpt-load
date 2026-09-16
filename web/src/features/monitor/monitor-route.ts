@@ -31,7 +31,7 @@ export interface HealthMonitorState {
   groupsExpanded: boolean
 }
 
-export type UsageTrendMetric = 'requests' | 'tokens' | 'cost'
+export type UsageTrendMetric = 'tokens' | 'cost'
 
 export interface UsageMonitorState {
   filtersOpen: boolean
@@ -175,13 +175,13 @@ export function usageMonitorQuery(
   state: UsageMonitorState = {
     filtersOpen: false,
     seriesExpanded: false,
-    metric: 'requests',
+    metric: 'tokens',
   },
 ): LocationQueryRaw {
   const normalized: LocationQueryRaw = {
     tab: 'usage',
     range: filters.range,
-    metric: state.metric,
+    metric: normalizeUsageTrendMetric(state.metric),
   }
   const groupID = normalizeUsageGroupID(filters.group_id)
   const channelID = normalizeUsageChannelID(filters.channel_id)
@@ -195,11 +195,12 @@ export function usageMonitorQuery(
   const breakdownPageSize = normalizeUsagePageSize(filters.breakdown_page_size)
   if (breakdownPage !== 1) normalized.breakdown_page = String(breakdownPage)
   if (breakdownPageSize !== 20) normalized.breakdown_page_size = String(breakdownPageSize)
-  const breakdownSort = normalizeUsageBreakdownSort(filters.breakdown_sort)
-  const breakdownSortDirection = normalizeUsageBreakdownSortDirection(
-    filters.breakdown_sort_direction,
-    breakdownSort,
-  )
+  const rawBreakdownSort = filters.breakdown_sort
+  const breakdownSort = normalizeUsageBreakdownSort(rawBreakdownSort)
+  const breakdownSortDirection =
+    rawBreakdownSort === breakdownSort
+      ? normalizeUsageBreakdownSortDirection(filters.breakdown_sort_direction, breakdownSort)
+      : defaultUsageBreakdownSortDirectionFor(breakdownSort)
   if (breakdownSort !== defaultUsageBreakdownSort) {
     normalized.breakdown_sort = breakdownSort
   }
@@ -220,7 +221,7 @@ export function parseUsageMonitorState(query: Record<string, unknown>): UsageMon
 }
 
 function normalizeUsageTrendMetric(raw: unknown): UsageTrendMetric {
-  return raw === 'tokens' || raw === 'cost' ? raw : 'requests'
+  return raw === 'tokens' || raw === 'cost' ? raw : 'tokens'
 }
 
 export function sameMonitorQuery(left: LocationQueryRaw, right: LocationQueryRaw): boolean {

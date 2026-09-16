@@ -36,9 +36,6 @@ export type UsageBreakdownSort =
   | 'average_latency'
   | 'uncached_input_tokens'
   | 'cache_read_tokens'
-  | 'cache_write_5m_tokens'
-  | 'cache_write_1h_tokens'
-  | 'cache_write_unknown_tokens'
   | 'output_tokens'
   | 'total_tokens'
   | 'estimated_cost_nano_usd'
@@ -58,9 +55,6 @@ export function normalizeUsageBreakdownSort(value: unknown): UsageBreakdownSort 
     case 'average_latency':
     case 'uncached_input_tokens':
     case 'cache_read_tokens':
-    case 'cache_write_5m_tokens':
-    case 'cache_write_1h_tokens':
-    case 'cache_write_unknown_tokens':
     case 'output_tokens':
     case 'total_tokens':
     case 'estimated_cost_nano_usd':
@@ -611,7 +605,8 @@ export function projectUsageReport(value: unknown): UsageReportDto {
 }
 
 export function normalizeUsageFilters(filters: UsageFilters): UsageFilters {
-  const breakdownSort = normalizeUsageBreakdownSort(filters.breakdown_sort)
+  const rawBreakdownSort = filters.breakdown_sort
+  const breakdownSort = normalizeUsageBreakdownSort(rawBreakdownSort)
   const result: UsageFilters = {
     range: filters.range,
     breakdown_page: normalizeUsagePage(filters.breakdown_page),
@@ -622,10 +617,10 @@ export function normalizeUsageFilters(filters: UsageFilters): UsageFilters {
   if (filters.channel_id !== undefined) result.channel_id = filters.channel_id
   if (filters.credential_id !== undefined) result.credential_id = filters.credential_id
   if (filters.upstream_model !== undefined) result.upstream_model = filters.upstream_model
-  result.breakdown_sort_direction = normalizeUsageBreakdownSortDirection(
-    filters.breakdown_sort_direction,
-    breakdownSort,
-  )
+  result.breakdown_sort_direction =
+    rawBreakdownSort === breakdownSort
+      ? normalizeUsageBreakdownSortDirection(filters.breakdown_sort_direction, breakdownSort)
+      : defaultUsageBreakdownSortDirectionFor(breakdownSort)
   return result
 }
 

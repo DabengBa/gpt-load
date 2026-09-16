@@ -363,14 +363,7 @@ export default {
         estimatedCostBasis: '報告済みトークンとリクエスト時の倍率に基づく推定',
       },
       tokens: {
-        title: '報告済みトークン分類',
-        description: 'アップストリームが返す標準化された使用量フィールド別に表示します。',
-        uncachedInput: 'キャッシュなし入力',
         cacheRead: 'キャッシュ読み取り',
-        cacheWrite5m: 'キャッシュ書き込み（5 分）',
-        cacheWrite1h: 'キャッシュ書き込み（1 時間）',
-        cacheWriteUnknown: 'キャッシュ書き込み',
-        output: '出力',
       },
       quality: {
         title: '使用量と永続化の品質',
@@ -406,9 +399,6 @@ export default {
         warning: '現在プロセスの収集異常: 破棄 {dropped}、書き込み失敗 {failures}。',
       },
       trend: {
-        title: '成功・失敗リクエストの推移',
-        description: '同じ期間の成功リクエスト数と失敗リクエスト数を比較します。',
-        accessibleDescription: '返された UTC バケットごとの成功リクエスト数と失敗リクエスト数。',
         tokensTitle: 'Token とキャッシュの推移',
         tokensDescription: 'Token 合計とキャッシュ読み取り Token を同じ尺度で表示します。',
         tokensAccessibleDescription:
@@ -418,7 +408,6 @@ export default {
         costAccessibleDescription: '返された UTC バケットごとの推定コスト。',
         metrics: {
           label: '推移の指標',
-          requests: 'リクエスト',
           tokens: 'Token',
           cost: 'コスト',
         },
@@ -426,7 +415,6 @@ export default {
         hourly: '時間別',
         everyHours: '{count}時間ごと',
         daily: '日別',
-        failureRate: '失敗率',
         inputTokens: '入力 Token',
         outputTokens: '出力 Token',
       },
@@ -486,9 +474,6 @@ export default {
           averageLatency: '平均レイテンシ',
           uncachedInput: '未キャッシュ入力',
           cacheRead: 'キャッシュ読み取り',
-          cacheWrite5m: 'キャッシュ書き込み 5m',
-          cacheWrite1h: 'キャッシュ書き込み 1h',
-          cacheWriteUnknown: 'キャッシュ書き込み 不明',
           output: '出力',
         },
       },
