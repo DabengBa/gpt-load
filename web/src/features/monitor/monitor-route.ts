@@ -82,6 +82,7 @@ export function scopeAccessKeyUsageFilters(filters: UsageFilters): UsageFilters 
 }
 
 export function normalizeAccessKeyMonitorQuery(query: Record<string, unknown>): LocationQueryRaw {
+  if (query.tab === 'logs') return usageMonitorQuery()
   return usageMonitorQuery(
     scopeAccessKeyUsageFilters(parseAppliedUsageFilters(query)),
     parseUsageMonitorState(query),

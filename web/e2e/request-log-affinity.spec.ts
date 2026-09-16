@@ -38,7 +38,7 @@ test.describe('request log affinity filter', () => {
     page,
   }) => {
     const logQuery =
-      'tab=logs&from_ms=1700000000000&to_ms=1700003600000&selected_request_id=11111111-1111-4111-8111-111111111111&log_cursors=%5B%22old-cursor%22%5D&affinity_key=0123456789abcdef%2A%2A%2A%2Afedcba9876543210&status=success&client_model=gpt-4o&limit=50'
+      'tab=logs&from_ms=1700000000000&to_ms=1700003600000&selected_request_id=11111111-1111-4111-8111-111111111111&log_cursors=%5B%22old-cursor%22%5D&affinity_key=0123456789abcdef%2A%2A%2A%2Afedcba9876543210&status=success&client_model=gpt-4o&upstream_model=legacy-log-model&limit=50'
 
     for (const [principal, expectedTab] of [
       ['admin', 'health'],
@@ -60,6 +60,7 @@ test.describe('request log affinity filter', () => {
         'affinity_key',
         'status',
         'client_model',
+        'upstream_model',
         'limit',
       ]) {
         expect(normalizedURL.searchParams.has(key)).toBe(false)
