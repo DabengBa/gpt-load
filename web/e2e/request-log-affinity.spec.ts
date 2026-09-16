@@ -79,6 +79,17 @@ test.describe('request log affinity filter', () => {
 
     const keyButtons = page.getByTestId('logs-affinity-key-filter')
     await expect(keyButtons).toHaveCount(3)
+    const columnHeaders = page.locator('.ledger-record-list__header > [role="columnheader"]')
+    await expect(columnHeaders).toHaveCount(9)
+    await expect(columnHeaders.filter({ hasText: 'Access key' })).toHaveCount(0)
+    await expect(keyButtons.first()).toHaveText('…543210')
+    await expect(keyButtons.first()).toHaveAttribute(
+      'aria-label',
+      `Show only logs for affinity scope key ${AFFINITY_KEY}`,
+    )
+    const emptyAffinityCell = page.locator('.logs-list__affinity-key-cell').filter({ hasText: '—' })
+    await expect(emptyAffinityCell).toHaveCount(1)
+    await expect(emptyAffinityCell.locator('.logs-list__state--warning')).toHaveCount(0)
     await expect(page.locator('.logs-list__affinity-key-cell code')).toHaveCount(1)
     const timeColumnStyle = await page
       .locator('.logs-list__time')
@@ -203,7 +214,9 @@ test.describe('request log affinity filter', () => {
       `&affinity_key=${encodeURIComponent(AFFINITY_KEY)}&from_ms=1700000000000&to_ms=1700003600000`,
     )
 
-    await expect(page.getByRole('columnheader', { name: 'Affinity scope key' })).toHaveCount(0)
+    const columnHeaders = page.locator('.ledger-record-list__header > [role="columnheader"]')
+    await expect(columnHeaders).toHaveCount(7)
+    await expect(columnHeaders.filter({ hasText: 'Affinity scope key' })).toHaveCount(0)
     await expect(page.getByTestId('logs-affinity-key-filter')).toHaveCount(0)
     await expect(page.locator('#logs-affinity-key')).toHaveCount(0)
     await expect(page.getByRole('button', { name: /Affinity scope key/u })).toHaveCount(0)

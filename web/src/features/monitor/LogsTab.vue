@@ -60,7 +60,6 @@ import LogProtocolConversion from './LogProtocolConversion.vue'
 import LogRouteIdentity from './LogRouteIdentity.vue'
 import LogsFilterForm from './LogsFilterForm.vue'
 import PricingModeIndicator from './PricingModeIndicator.vue'
-import { formatRouteEntity } from './log-format'
 import { isValidRequestLogAffinityKey } from './request-log-affinity'
 import {
   logsMonitorQuery,
@@ -397,11 +396,6 @@ async function filterByCredential(credentialID: number): Promise<void> {
   await commitFilters({ ...appliedFilters.value, credential_id: credentialID })
 }
 
-async function filterByAccessKey(accessKeyID: number): Promise<void> {
-  if (accessKeyID === 0) return
-  await commitFilters({ ...appliedFilters.value, access_key_id: accessKeyID })
-}
-
 async function filterByClientModel(clientModel: string): Promise<void> {
   await commitFilters({ ...appliedFilters.value, client_model: clientModel })
 }
@@ -518,21 +512,6 @@ async function setDetailOpen(requestID: string | undefined, open: boolean): Prom
     if (document.activeElement && document.activeElement !== document.body) return
     document.getElementById(`log-details-${closingID}`)?.focus()
   }, 30)
-}
-
-function accessKeyLabel(log: RequestLogItemDto): string {
-  return formatRouteEntity({
-    id: log.access_key.id,
-    name: log.access_key.name,
-    deleted: log.access_key.deleted,
-    prefix: '#',
-    deletedText: (id) => t('monitor.logs.deletedRef', { id }),
-  })
-}
-
-// 控制面观察（access_key_id = 0）不属于任何访问密钥，没有可筛选的目标。
-function accessKeyFilterable(log: RequestLogItemDto): boolean {
-  return log.access_key.id !== 0
 }
 
 function affinityKeyFilterable(log: RequestLogItemDto): boolean {
@@ -733,7 +712,7 @@ function costLabel(log: RequestLogItemDto): string {
       v-if="invalidAffinityKey === undefined && (logsQuery.isPending.value || initialLoading)"
       variant="collection"
       :rows="appliedFilters.limit ?? 20"
-      :columns="isAccessKey ? 7 : 10"
+      :columns="isAccessKey ? 7 : 9"
       row-height="72px"
       mobile-row-height="176px"
       :concealed="!initialLoading"
@@ -760,7 +739,7 @@ function costLabel(log: RequestLogItemDto): string {
         v-if="collectionTransition"
         variant="collection"
         :rows="skeletonRows"
-        :columns="isAccessKey ? 7 : 10"
+        :columns="isAccessKey ? 7 : 9"
         row-height="72px"
         mobile-row-height="176px"
         :label="t('monitor.logs.loading')"
@@ -774,9 +753,6 @@ function costLabel(log: RequestLogItemDto): string {
       >
         <template #header>
           <span role="columnheader">{{ t('monitor.logs.columns.time') }}</span>
-          <span v-if="!isAccessKey" role="columnheader">
-            {{ t('monitor.logs.columns.accessKey') }}
-          </span>
           <span v-if="!isAccessKey" role="columnheader">{{
             t('monitor.logs.columns.affinityKey')
           }}</span>
@@ -809,27 +785,6 @@ function costLabel(log: RequestLogItemDto): string {
           </div>
           <div
             v-if="!isAccessKey"
-            class="ledger-record-list__cell logs-list__cell"
-            role="cell"
-            :data-label="t('monitor.logs.columns.accessKey')"
-          >
-            <OverflowTooltip
-              :as="accessKeyFilterable(log) ? 'button' : 'span'"
-              :type="accessKeyFilterable(log) ? 'button' : undefined"
-              :class="{ 'filterable-value': accessKeyFilterable(log) }"
-              :content="accessKeyLabel(log)"
-              :aria-label="
-                accessKeyFilterable(log)
-                  ? t('monitor.logs.filterAccessKey', { name: accessKeyLabel(log) })
-                  : undefined
-              "
-              @click="filterByAccessKey(log.access_key.id)"
-            >
-              {{ accessKeyLabel(log) }}
-            </OverflowTooltip>
-          </div>
-          <div
-            v-if="!isAccessKey"
             class="ledger-record-list__cell logs-list__cell logs-list__affinity-key-cell"
             role="cell"
             :data-label="t('monitor.logs.columns.affinityKey')"
@@ -844,9 +799,9 @@ function costLabel(log: RequestLogItemDto): string {
               data-testid="logs-affinity-key-filter"
               @click="filterByAffinityKey(log.affinity_key)"
             >
-              {{ log.affinity_key }}
+              …{{ log.affinity_key?.slice(-6) ?? '' }}
             </OverflowTooltip>
-            <code v-else class="logs-list__affinity-key logs-list__state--warning">—</code>
+            <code v-else class="logs-list__affinity-key">—</code>
           </div>
           <div
             v-if="!isAccessKey"
@@ -1130,9 +1085,8 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list {
-  /* 时间定长、Token/耗时/成本按实际内容重算，压出的宽度装下新增的密钥列。 */
-  --ledger-record-list-grid: 96px minmax(96px, 0.62fr) minmax(132px, 0.86fr) minmax(132px, 0.86fr)
-    minmax(180px, 1.2fr) 96px minmax(76px, 0.42fr) minmax(104px, 0.6fr) 100px 34px;
+  --ledger-record-list-grid: 96px minmax(132px, 0.86fr) minmax(132px, 0.86fr) minmax(180px, 1.2fr)
+    96px minmax(76px, 0.42fr) minmax(104px, 0.6fr) 100px 34px;
   --ledger-record-list-column-gap: 16px;
   --ledger-record-list-record-min-height: 72px;
   --ledger-record-list-record-padding: 10px 0;
@@ -1365,7 +1319,7 @@ function costLabel(log: RequestLogItemDto): string {
 @media (max-width: 1080px) {
   .logs-list {
     --ledger-record-list-column-gap: 10px;
-    --ledger-record-list-grid: 92px minmax(88px, 0.6fr) minmax(118px, 0.82fr) minmax(118px, 0.82fr)
+    --ledger-record-list-grid: 92px minmax(118px, 0.82fr) minmax(118px, 0.82fr)
       minmax(160px, 1.15fr) 92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px;
   }
 }
