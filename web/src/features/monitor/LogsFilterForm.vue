@@ -106,10 +106,12 @@ function applyAdvanced(): void {
         :from-label="t('monitor.logs.filters.from')"
         :to-label="t('monitor.logs.filters.to')"
         :timezone-label="t('monitor.logs.filters.timezone')"
+        :apply-label="t('monitor.logs.filters.apply')"
         :from-error="errors.from ? t(errors.from) : undefined"
         :to-error="errors.to ? t(errors.to) : undefined"
         @update:from="update('from', $event)"
         @update:to="update('to', $event)"
+        @apply="submit"
       />
 
       <AppSelect
