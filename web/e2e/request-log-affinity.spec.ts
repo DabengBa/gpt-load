@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import {
   ACCESS_KEY,
@@ -17,6 +17,17 @@ function latestLogRequest(routes: { logRequests: URL[] }): URL {
   const request = routes.logRequests.at(-1)
   expect(request).toBeDefined()
   return request as URL
+}
+
+async function expectCollectionSkeletonColumns(page: Page, expectedColumns: number): Promise<void> {
+  const skeleton = page.locator('.skeleton-surface--collection')
+  await expect(skeleton).toBeVisible()
+  await expect(
+    skeleton.locator('.skeleton-surface__collection-header .skeleton-block'),
+  ).toHaveCount(expectedColumns)
+  await expect(
+    skeleton.locator('.skeleton-surface__collection-row').first().locator('.skeleton-block'),
+  ).toHaveCount(expectedColumns)
 }
 
 test.describe('request log affinity filter', () => {
@@ -147,6 +158,99 @@ test.describe('request log affinity filter', () => {
       `&affinity_key=${encodeURIComponent(DIFFERENT_AFFINITY_KEY)}`,
     )
     await expect(page.getByText(DIFFERENT_AFFINITY_KEY).first()).toBeVisible()
+  })
+
+  test('access-key list keeps seven aligned tracks through the intermediate breakpoint', async ({
+    page,
+  }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'access_key')
+
+    for (const width of [1080, 861]) {
+      await page.setViewportSize({ width, height: 900 })
+      await openRequestLogs(page, routes)
+      const metrics = await page.locator('.logs-list').evaluate((list) => {
+        const headers = Array.from(
+          list.querySelectorAll<HTMLElement>('.ledger-record-list__header > [role="columnheader"]'),
+        )
+        const cells = Array.from(
+          list.querySelectorAll<HTMLElement>('.logs-list__record:first-of-type [role="cell"]'),
+        )
+        const style = getComputedStyle(list)
+        return {
+          trackCount: style.gridTemplateColumns.trim().split(/\s+/u).length,
+          headerCount: headers.length,
+          cellCount: cells.length,
+          alignment: headers.map((header, index) => {
+            const cell = cells[index]
+            if (!cell) return null
+            const headerRect = header.getBoundingClientRect()
+            const cellRect = cell.getBoundingClientRect()
+            return {
+              left: Math.abs(headerRect.left - cellRect.left),
+              width: Math.abs(headerRect.width - cellRect.width),
+            }
+          }),
+        }
+      })
+
+      expect(metrics.trackCount).toBe(7)
+      expect(metrics.headerCount).toBe(7)
+      expect(metrics.cellCount).toBe(7)
+      for (const pair of metrics.alignment) {
+        expect(pair).not.toBeNull()
+        expect(pair?.left ?? Infinity).toBeLessThanOrEqual(2)
+        expect(pair?.width ?? Infinity).toBeLessThanOrEqual(2)
+      }
+    }
+
+    await page.setViewportSize({ width: 860, height: 900 })
+    await openRequestLogs(page, routes)
+    const mobileLayout = await page.locator('.logs-list').evaluate((list) => {
+      const header = list.querySelector<HTMLElement>('.ledger-record-list__header')
+      const record = list.querySelector<HTMLElement>('.logs-list__record')
+      const cells = record ? Array.from(record.querySelectorAll('[role="cell"]')) : []
+      return {
+        headerDisplay: header ? getComputedStyle(header).display : 'missing',
+        recordTrackCount: record
+          ? getComputedStyle(record).gridTemplateColumns.trim().split(/\s+/u).length
+          : 0,
+        cellCount: cells.length,
+        dataLabels: cells.map((cell) => cell.getAttribute('data-label')),
+      }
+    })
+
+    expect(mobileLayout.headerDisplay).toBe('none')
+    expect(mobileLayout.recordTrackCount).toBe(2)
+    expect(mobileLayout.cellCount).toBe(7)
+    expect(mobileLayout.dataLabels).toHaveLength(7)
+  })
+
+  test('collection skeleton renders nine columns for admin in pending and transition states', async ({
+    page,
+  }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin', { logDelayMs: 800 })
+    await page.goto('/logs')
+    await expectCollectionSkeletonColumns(page, 9)
+    await expect(page.locator('.logs-list')).toBeVisible()
+
+    await page.locator('.pagination-bar select').selectOption('50')
+    await expectCollectionSkeletonColumns(page, 9)
+    await expect(page.locator('.logs-list')).toBeVisible()
+    expect(routes.logRequests.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test('collection skeleton renders seven columns for access-key in pending and transition states', async ({
+    page,
+  }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'access_key', { logDelayMs: 800 })
+    await page.goto('/logs')
+    await expectCollectionSkeletonColumns(page, 7)
+    await expect(page.locator('.logs-list')).toBeVisible()
+
+    await page.locator('.pagination-bar select').selectOption('50')
+    await expectCollectionSkeletonColumns(page, 7)
+    await expect(page.locator('.logs-list')).toBeVisible()
+    expect(routes.logRequests.length).toBeGreaterThanOrEqual(2)
   })
 
   test('reapplying unchanged filters refreshes the current log page', async ({ page }) => {

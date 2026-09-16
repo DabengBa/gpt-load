@@ -1322,6 +1322,11 @@ function costLabel(log: RequestLogItemDto): string {
     --ledger-record-list-grid: 92px minmax(118px, 0.82fr) minmax(118px, 0.82fr)
       minmax(160px, 1.15fr) 92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px;
   }
+
+  .logs-list--scoped {
+    --ledger-record-list-grid: 92px minmax(160px, 1.15fr) 92px minmax(72px, 0.42fr)
+      minmax(96px, 0.58fr) 96px 32px;
+  }
 }
 
 @media (max-width: 860px) {

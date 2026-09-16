@@ -92,9 +92,14 @@ export interface RequestLogAffinityRoutes {
   readonly logRequestPaths: string[]
 }
 
+interface RequestLogAffinityRouteOptions {
+  logDelayMs?: number
+}
+
 export async function installRequestLogAffinityRoutes(
   page: Page,
   principal: 'admin' | 'access_key' = 'admin',
+  options: RequestLogAffinityRouteOptions = {},
 ): Promise<RequestLogAffinityRoutes> {
   const key = principal === 'admin' ? ADMIN_KEY : ACCESS_KEY
   await page.addInitScript((authKey) => {
@@ -137,6 +142,9 @@ export async function installRequestLogAffinityRoutes(
               : rows.map((row) =>
                   isAccessKeyRequest(request) ? { ...row, affinity_key: null } : row,
                 )
+        if (options.logDelayMs !== undefined) {
+          await new Promise((resolve) => setTimeout(resolve, options.logDelayMs))
+        }
         await route.fulfill(response({ items, next_cursor: null }))
         return
       }
