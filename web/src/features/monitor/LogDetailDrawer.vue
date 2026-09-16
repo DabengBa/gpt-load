@@ -53,7 +53,7 @@ const { locale, t } = useI18n()
 const query = useQuery(requestLogDetailQueryOptions(client, () => props.requestId))
 const initialLoading = useStableLoading(() => props.open && query.isPending.value)
 const log = computed(() => query.data.value)
-const errorMessageExpanded = ref(false)
+const errorMessageExpanded = ref(true)
 const expandedAttemptErrorMessages = ref<Set<number>>(new Set())
 const finalAttempt = computed(() => {
   const value = log.value
@@ -157,10 +157,20 @@ const costAmountLabel = computed(() => {
 })
 
 watch(
+  () => log.value?.request_id,
+  () => {
+    expandedAttemptErrorMessages.value = new Set(
+      log.value?.attempts.map(({ sequence }) => sequence) ?? [],
+    )
+  },
+  { immediate: true },
+)
+
+watch(
   () => props.requestId,
   () => {
     copyControllers.abortAll()
-    errorMessageExpanded.value = false
+    errorMessageExpanded.value = true
     expandedAttemptErrorMessages.value = new Set()
   },
 )
@@ -172,8 +182,10 @@ watch(
       copyControllers.abortAll()
       return
     }
-    errorMessageExpanded.value = false
-    expandedAttemptErrorMessages.value = new Set()
+    errorMessageExpanded.value = true
+    expandedAttemptErrorMessages.value = new Set(
+      log.value?.attempts.map(({ sequence }) => sequence) ?? [],
+    )
   },
 )
 
