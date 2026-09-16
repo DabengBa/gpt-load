@@ -8,7 +8,6 @@ export default {
     tabs: {
       label: 'モニターのセクション',
       health: 'ヘルス',
-      logs: 'リクエストログ',
       usage: '使用量とコスト',
       inspector: 'ルート検査',
       schedule: 'スケジュールセンター',

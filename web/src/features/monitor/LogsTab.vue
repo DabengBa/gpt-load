@@ -17,7 +17,7 @@ import {
   type RequestLogItemDto,
   type RequestLogPageSize,
 } from '@/app/resources/request-logs'
-import { monitorLocation } from '@/app/route-locations'
+import { logsLocation } from '@/app/route-locations'
 import LedgerRecordList from '@/components/collection/LedgerRecordList.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
@@ -67,7 +67,7 @@ import {
   parseLogsMonitorState,
   scopeAccessKeyLogFilters,
   type LogsMonitorState,
-} from './monitor-route'
+} from '../logs/logs-route'
 
 const client = useApiClient()
 const session = useAuthSession()
@@ -287,7 +287,7 @@ watch(
     const origin = pageTransitionOrigin.value
     paginationPending.value = false
     pageTransitionOrigin.value = null
-    void router.replace(monitorLocation(logsMonitorQuery(appliedFilters.value, origin)))
+    void router.replace(logsLocation(logsMonitorQuery(appliedFilters.value, origin)))
   },
 )
 
@@ -385,7 +385,7 @@ async function commitFilters(filters: RequestLogFilters): Promise<void> {
     return
   }
 
-  await router.push(monitorLocation(logsMonitorQuery(filters)))
+  await router.push(logsLocation(logsMonitorQuery(filters)))
 }
 
 // 就地收窄而非跳转：排查时要看的是同一维度的其他请求，且目标可能已删。
@@ -456,7 +456,7 @@ function nextPage(): void {
   }
   paginationPending.value = true
   void router.push(
-    monitorLocation(
+    logsLocation(
       logsMonitorQuery(appliedFilters.value, {
         filtersOpen: false,
         cursorHistory: [...routeState.value.cursorHistory, cursor],
@@ -473,7 +473,7 @@ function previousPage(): void {
   }
   paginationPending.value = true
   void router.push(
-    monitorLocation(
+    logsLocation(
       logsMonitorQuery(appliedFilters.value, {
         filtersOpen: false,
         cursorHistory: routeState.value.cursorHistory.slice(0, -1),
@@ -484,7 +484,7 @@ function previousPage(): void {
 
 function setAdvancedOpen(open: boolean): void {
   void router.push(
-    monitorLocation(
+    logsLocation(
       logsMonitorQuery(appliedFilters.value, {
         ...routeState.value,
         filtersOpen: open,
@@ -498,7 +498,7 @@ async function setDetailOpen(requestID: string | undefined, open: boolean): Prom
   const closingID = selectedRequestID.value
   detailClosing.value = !open
   const navigation = router.push(
-    monitorLocation(
+    logsLocation(
       logsMonitorQuery(appliedFilters.value, {
         ...routeState.value,
         filtersOpen: false,

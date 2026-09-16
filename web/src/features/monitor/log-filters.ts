@@ -380,7 +380,7 @@ export function parseAppliedLogFilters(query: Record<string, unknown>): RequestL
 }
 
 export function serializeAppliedLogFilters(filters: RequestLogFilters): LocationQueryRaw {
-  const query: LocationQueryRaw = { tab: 'logs' }
+  const query: LocationQueryRaw = {}
   for (const field of requestLogFilterFields) {
     const value = filters[field]
     if (value !== undefined) query[field] = String(value)

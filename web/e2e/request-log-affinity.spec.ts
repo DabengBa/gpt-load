@@ -20,6 +20,56 @@ function latestLogRequest(routes: { logRequests: URL[] }): URL {
 }
 
 test.describe('request log affinity filter', () => {
+  test('direct logs route loads and is available in the primary navigation', async ({ page }) => {
+    for (const principal of ['admin', 'access_key'] as const) {
+      const routes = await installRequestLogAffinityRoutes(page, principal)
+      await openRequestLogs(page, routes)
+
+      await expect(page).toHaveURL(/\/logs$/u)
+      await expect(page.getByRole('link', { name: 'Request logs' }).first()).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Request logs' }).first()).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+    }
+  })
+
+  test('legacy monitor logs query normalizes to the principal default without log filters', async ({
+    page,
+  }) => {
+    const logQuery =
+      'tab=logs&from_ms=1700000000000&to_ms=1700003600000&selected_request_id=11111111-1111-4111-8111-111111111111&log_cursors=%5B%22old-cursor%22%5D&affinity_key=0123456789abcdef%2A%2A%2A%2Afedcba9876543210&status=success&client_model=gpt-4o&limit=50'
+
+    for (const [principal, expectedTab] of [
+      ['admin', 'health'],
+      ['access_key', 'usage'],
+    ] as const) {
+      const routes = await installRequestLogAffinityRoutes(page, principal)
+      await page.goto(`/monitor?${logQuery}`)
+      await expect(page).toHaveURL(/\/monitor(?:\?|$)/u)
+      await expect.poll(() => new URL(page.url()).searchParams.get('tab')).toBe(expectedTab)
+
+      const normalizedURL = new URL(page.url())
+      expect(normalizedURL.pathname).toBe('/monitor')
+      expect(normalizedURL.searchParams.get('tab')).toBe(expectedTab)
+      for (const key of [
+        'from_ms',
+        'to_ms',
+        'selected_request_id',
+        'log_cursors',
+        'affinity_key',
+        'status',
+        'client_model',
+        'limit',
+      ]) {
+        expect(normalizedURL.searchParams.has(key)).toBe(false)
+      }
+      await expect(page.getByRole('link', { name: 'Request logs' }).first()).toBeVisible()
+      await expect(page.locator('.logs-tab')).toHaveCount(0)
+      expect(routes.logRequests).toHaveLength(0)
+    }
+  })
+
   test('admin key supports click, Enter, Space, exact first page, and preserved filters', async ({
     page,
   }) => {
@@ -121,7 +171,7 @@ test.describe('request log affinity filter', () => {
     await expect(page.getByRole('alert')).toContainText('canonical 16')
     expect(routes.logRequests).toHaveLength(initialRequestCount)
 
-    await page.goto('/monitor?tab=logs&affinity_key=not-a-canonical-key')
+    await page.goto('/logs?affinity_key=not-a-canonical-key')
     await expect(page.getByRole('alert')).toContainText('canonical 16')
     expect(routes.logRequests).toHaveLength(initialRequestCount)
   })

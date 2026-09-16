@@ -86,6 +86,15 @@ const routes: RouteRecordRaw[] = [
       messageNamespaces: ['monitor'],
     },
   }),
+  pageRoute(pageRouteNames.logs, {
+    component: lazyView(() => import('@/features/logs/LogsView.vue')),
+    meta: {
+      titleKey: 'shell.logs',
+      requiresAuth: true,
+      primaryNav: 'logs',
+      messageNamespaces: ['monitor'],
+    },
+  }),
   pageRoute(pageRouteNames.models, {
     component: lazyView(() => import('@/features/models/ModelsView.vue')),
     meta: {

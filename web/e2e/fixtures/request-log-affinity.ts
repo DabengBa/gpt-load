@@ -163,7 +163,8 @@ export async function openRequestLogs(
   routes: RequestLogAffinityRoutes,
   query = '',
 ): Promise<void> {
-  await page.goto(`/monitor?tab=logs${query}`)
+  const normalizedQuery = query.startsWith('&') ? `?${query.slice(1)}` : query
+  await page.goto(`/logs${normalizedQuery}`)
   await page.locator('.logs-tab').waitFor()
   await page.waitForLoadState('networkidle')
   if (routes.logRequests.length === 0) {

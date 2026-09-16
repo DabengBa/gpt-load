@@ -33,7 +33,6 @@ import type { SchedulePanelLabels } from './SchedulePanel.vue'
 import { parseAppliedUsageFilters } from './usage-filters'
 
 const InspectorTab = lazySurface(() => import('./InspectorTab.vue'))
-const LogsTab = lazySurface(() => import('./LogsTab.vue'))
 const UsageTab = lazySurface(() => import('./UsageTab.vue'))
 const SchedulePanel = lazySurface(() => import('./SchedulePanel.vue'))
 
@@ -58,10 +57,7 @@ const activeTab = computed(() => normalizeMonitorTab(canonicalQuery.value.tab))
 const scheduleState = computed(() => parseScheduleMonitorState(route.query))
 const isCanonicalQuery = computed(() => sameMonitorQuery(route.query, canonicalQuery.value))
 const items = computed<AppTabItem[]>(() => {
-  const shared = [
-    { value: 'usage', label: t('monitor.tabs.usage') },
-    { value: 'logs', label: t('monitor.tabs.logs') },
-  ]
+  const shared = [{ value: 'usage', label: t('monitor.tabs.usage') }]
   return isAdmin.value
     ? [
         { value: 'health', label: t('monitor.tabs.health') },
@@ -108,7 +104,7 @@ function selectTab(value: string): void {
     void router.push(monitorLocation(scheduleMonitorQuery(scheduleState.value)))
     return
   }
-  if (isAccessKey.value && tab !== 'usage' && tab !== 'logs') return
+  if (isAccessKey.value && tab !== 'usage') return
   void router.push(monitorLocation({ tab }))
 }
 
@@ -321,9 +317,6 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
         <template v-if="isCanonicalQuery">
           <div v-if="activeTab === 'health'" class="monitor-panel">
             <HealthTab ref="healthTab" />
-          </div>
-          <div v-else-if="activeTab === 'logs'" class="monitor-panel">
-            <LogsTab />
           </div>
           <div v-else-if="activeTab === 'usage'" class="monitor-panel">
             <UsageTab ref="usageTab" />

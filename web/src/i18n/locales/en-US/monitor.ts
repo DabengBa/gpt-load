@@ -8,7 +8,6 @@ export default {
     tabs: {
       label: 'Monitor sections',
       health: 'Health',
-      logs: 'Request logs',
       usage: 'Usage & cost',
       inspector: 'Route inspector',
       schedule: 'Dispatch center',

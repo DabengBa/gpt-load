@@ -195,6 +195,7 @@ export default {
     groups: 'グループ',
     accessKeys: 'アクセスキー',
     monitor: 'モニター',
+    logs: 'リクエストログ',
     models: 'モデル',
     settings: '設定',
     import: 'チャネル認証情報をインポート',
