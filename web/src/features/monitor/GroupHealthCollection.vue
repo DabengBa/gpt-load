@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 import type { HealthCredentialCountsDto, HealthGroupDto } from '@/app/resources/health'
-import { groupDetailLocation, monitorLocation } from '@/app/route-locations'
+import { groupDetailLocation, logsLocation } from '@/app/route-locations'
 import LedgerRecordList from '@/components/collection/LedgerRecordList.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import IconButton from '@/components/ui/IconButton.vue'
@@ -162,7 +162,7 @@ function credentialHealthLabel(counts: HealthCredentialCountsDto): string {
           <div class="ledger-record-list__cell group-health-record__actions" role="cell">
             <RouterLink
               v-slot="{ navigate }"
-              :to="monitorLocation({ tab: 'logs', group_id: String(group.id) })"
+              :to="logsLocation({ group_id: String(group.id) })"
               custom
             >
               <IconButton

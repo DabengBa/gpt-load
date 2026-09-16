@@ -19,6 +19,92 @@ function latestLogRequest(routes: { logRequests: URL[] }): URL {
   return request as URL
 }
 
+async function installHealthRoute(page: Page): Promise<void> {
+  await page.route('**/api/health', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'OK',
+        data: {
+          observed_at_ms: 1700000000000,
+          version: 'e2e',
+          uptime_seconds: 1,
+          snapshot_revision: 1,
+          stats_window_seconds: 300,
+          counts: { credentials: 1, available: 0, cooldown: 1, blacklisted: 0 },
+          groups: [
+            {
+              id: 1,
+              name: 'alpha',
+              enabled: true,
+              counts: { credentials: 1, available: 0, cooldown: 1, blacklisted: 0 },
+            },
+          ],
+          cooldown_credentials: [
+            {
+              credential_id: 2,
+              group_id: 1,
+              group_name: 'alpha',
+              cooldown_until_ms: 1700000060000,
+              failure_count: 1,
+              recent_success_count: 0,
+              recent_problem_count: 1,
+              consecutive_problem_count: 1,
+              recovery: {
+                automatic: true,
+                mode: 'cooldown_expiry',
+                at_ms: 1700000060000,
+              },
+              identity: 'credential-alpha',
+              last_failure_category: 'rate_limited',
+              last_status_code: 429,
+            },
+          ],
+          blacklisted_credentials: [],
+          low_quota_credentials: [],
+          expiring_reset_credits: [],
+          blocked_access_keys: [],
+          request_log: {
+            enqueued_total: 0,
+            persisted_total: 0,
+            dropped_not_running_total: 0,
+            dropped_queue_full_total: 0,
+            dropped_stopping_total: 0,
+            dropped_persist_failed_total: 0,
+            dropped_shutdown_total: 0,
+            dropped_total: 0,
+            write_failure_total: 0,
+            access_quota_checkpoint_write_failure_total: 0,
+            access_quota_checkpoint_degraded: false,
+            retention_delete_failure_total: 0,
+            queue_depth: 0,
+            queue_capacity: 1,
+            last_write_failure_at_ms: null,
+            last_access_quota_checkpoint_write_failure_at_ms: null,
+            last_retention_failure_at_ms: null,
+          },
+          debug_capture: {
+            enabled: false,
+            running: false,
+            retention_seconds: 0,
+            active: 0,
+            completed: 0,
+            failed: 0,
+            sweep_total: 0,
+            removed_total: 0,
+            sweep_failure_total: 0,
+            error: '',
+            last_sweep_at_ms: null,
+            last_failure_at_ms: null,
+          },
+        },
+      }),
+    })
+  })
+}
+
 async function expectCollectionSkeletonColumns(page: Page, expectedColumns: number): Promise<void> {
   const skeleton = page.locator('.skeleton-surface--collection')
   await expect(skeleton).toBeVisible()
@@ -80,6 +166,31 @@ test.describe('request log affinity filter', () => {
       await expect(page.locator('.logs-tab')).toHaveCount(0)
       expect(routes.logRequests).toHaveLength(0)
     }
+  })
+
+  test('health shortcuts open the standalone logs page with scope filters', async ({ page }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin')
+    await installHealthRoute(page)
+
+    await page.goto('/monitor?tab=health')
+    const groupLogsLink = page.getByRole('link', { name: 'View request logs for alpha' })
+    await expect(groupLogsLink).toBeVisible()
+    await groupLogsLink.click()
+    await expect(page).toHaveURL(/\/logs\?group_id=1$/u)
+    await expect(page.locator('.logs-tab')).toBeVisible()
+    expect(latestLogRequest(routes).searchParams.get('group_id')).toBe('1')
+
+    await page.goto('/monitor?tab=health')
+    const credentialLogsLink = page.getByRole('link', {
+      name: 'View request logs for credential credential-alpha',
+    })
+    await expect(credentialLogsLink).toBeVisible()
+    await credentialLogsLink.click()
+    await expect(page).toHaveURL(/\/logs\?group_id=1&credential_id=2$/u)
+    await expect(page.locator('.logs-tab')).toBeVisible()
+    const credentialRequest = latestLogRequest(routes)
+    expect(credentialRequest.searchParams.get('group_id')).toBe('1')
+    expect(credentialRequest.searchParams.get('credential_id')).toBe('2')
   })
 
   test('admin key supports click, Enter, Space, exact first page, and preserved filters', async ({

@@ -36,7 +36,7 @@ import {
   type CredentialStage,
 } from '@/app/resources/credential-stages'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
-import { groupDetailLocation, importLocation, monitorLocation } from '@/app/route-locations'
+import { groupDetailLocation, importLocation, logsLocation } from '@/app/route-locations'
 import { controlQueryKeys } from '@/app/query-keys'
 import { useToast } from '@/app/toast'
 import { useDebouncedAction } from '@/app/use-debounced-action'
@@ -1086,7 +1086,7 @@ function setCredentialTestOpen(open: boolean): void {
 }
 
 function viewCredentialTestLog(logID: string): void {
-  void router.push(monitorLocation({ tab: 'logs', selected_request_id: logID }))
+  void router.push(logsLocation({ selected_request_id: logID }))
 }
 
 async function openCredentialTest(item: CredentialItemDto): Promise<void> {

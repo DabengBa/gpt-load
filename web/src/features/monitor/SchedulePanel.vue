@@ -8,7 +8,7 @@ import { useApiClient } from '@/api/client-context'
 import { useToast } from '@/app/toast'
 import { accessKeyOptionsQueryOptions } from '@/app/resources/access-keys'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
-import { monitorLocation } from '@/app/route-locations'
+import { logsLocation } from '@/app/route-locations'
 import {
   modelRouteScheduleDetailQueryOptions,
   modelRouteScheduleIndexQueryOptions,
@@ -215,7 +215,7 @@ function handleProbeOpen(value: boolean): void {
 }
 
 function viewProbeLog(logID: string): void {
-  void router.push(monitorLocation({ tab: 'logs', selected_request_id: logID }))
+  void router.push(logsLocation({ selected_request_id: logID }))
 }
 
 const probeApplying = ref(false)

@@ -25,7 +25,7 @@ import { useUnsavedChanges } from '@/app/unsaved-changes'
 import { useToast } from '@/app/toast'
 import { useTransientFlag } from '@/app/use-transient-flag'
 import { constrainCollectionSearch } from '@/app/route-query'
-import { groupDetailLocation, modelsLocation, monitorLocation } from '@/app/route-locations'
+import { groupDetailLocation, logsLocation, modelsLocation, monitorLocation } from '@/app/route-locations'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
@@ -178,7 +178,7 @@ function handleProbeOpen(value: boolean): void {
 }
 
 function viewProbeLog(logId: string): void {
-  void router.push(monitorLocation({ tab: 'logs', selected_request_id: logId }))
+  void router.push(logsLocation({ selected_request_id: logId }))
 }
 
 // Persist the probe's proposed enabled changes per group and invalidate the
