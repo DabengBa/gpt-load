@@ -1,4 +1,5 @@
 import {
+  defaultUsageBreakdownSortDirectionFor,
   normalizeUsageBreakdownSort,
   normalizeUsageBreakdownSortDirection,
   type UsageBreakdownPageSize,
@@ -74,12 +75,13 @@ export function parseAppliedUsageFilters(query: Record<string, unknown>): UsageF
   const pageSize = normalizeUsagePageSize(query.breakdown_page_size)
   if (page !== 1) filters.breakdown_page = page
   if (pageSize !== 20) filters.breakdown_page_size = pageSize
-  const sort = normalizeUsageBreakdownSort(query.breakdown_sort)
+  const rawSort = query.breakdown_sort
+  const sort = normalizeUsageBreakdownSort(rawSort)
   filters.breakdown_sort = sort
-  filters.breakdown_sort_direction = normalizeUsageBreakdownSortDirection(
-    query.breakdown_sort_direction,
-    sort,
-  )
+  filters.breakdown_sort_direction =
+    rawSort === sort
+      ? normalizeUsageBreakdownSortDirection(query.breakdown_sort_direction, sort)
+      : defaultUsageBreakdownSortDirectionFor(sort)
 
   return filters
 }

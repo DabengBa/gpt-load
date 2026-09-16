@@ -362,14 +362,7 @@ export default {
         estimatedCostBasis: 'Reported tokens and multipliers at request time',
       },
       tokens: {
-        title: 'Reported token categories',
-        description: 'Split by standardized usage fields returned upstream.',
-        uncachedInput: 'Uncached input',
         cacheRead: 'Cache read',
-        cacheWrite5m: 'Cache write (5m)',
-        cacheWrite1h: 'Cache write (1h)',
-        cacheWriteUnknown: 'Cache write',
-        output: 'Output',
       },
       quality: {
         title: 'Usage and persistence quality',
@@ -405,9 +398,6 @@ export default {
         warning: 'Current-process collection issues: {dropped} dropped, {failures} write failures.',
       },
       trend: {
-        title: 'Successful and failed request trend',
-        description: 'Compare successful and failed request counts over the same time range.',
-        accessibleDescription: 'Successful and failed request counts for each returned UTC bucket.',
         tokensTitle: 'Token and cache trend',
         tokensDescription: 'Total tokens and cache-read tokens use the same scale.',
         tokensAccessibleDescription:
@@ -417,7 +407,6 @@ export default {
         costAccessibleDescription: 'Estimated cost for each returned UTC bucket.',
         metrics: {
           label: 'Trend metric',
-          requests: 'Requests',
           tokens: 'Tokens',
           cost: 'Cost',
         },
@@ -425,7 +414,6 @@ export default {
         hourly: 'Hourly',
         everyHours: 'Every {count} hours',
         daily: 'Daily',
-        failureRate: 'Failure rate',
         inputTokens: 'Input tokens',
         outputTokens: 'Output tokens',
       },
@@ -484,9 +472,6 @@ export default {
           averageLatency: 'Average latency',
           uncachedInput: 'Uncached input',
           cacheRead: 'Cache read',
-          cacheWrite5m: 'Cache write 5m',
-          cacheWrite1h: 'Cache write 1h',
-          cacheWriteUnknown: 'Cache write unknown',
           output: 'Output',
         },
       },

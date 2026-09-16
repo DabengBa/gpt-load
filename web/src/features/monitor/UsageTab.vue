@@ -24,8 +24,6 @@ import {
   type UsageRange,
 } from '@/app/resources/usage'
 import { monitorLocation } from '@/app/route-locations'
-import TrendChart from '@/components/charts/TrendChart.vue'
-import type { TrendDatum } from '@/components/charts/trend-chart'
 import AppDateTime from '@/components/ui/AppDateTime.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
@@ -165,36 +163,25 @@ const distributionMetricOptions = computed(() => [
 ])
 const costChartResolution = 1_000_000_000n
 const trendMetricOptions = computed(() => [
-  { value: 'requests', label: t('monitor.usage.trend.metrics.requests') },
   { value: 'tokens', label: t('monitor.usage.trend.metrics.tokens') },
   { value: 'cost', label: t('monitor.usage.trend.metrics.cost') },
 ])
 const trendPresentation = computed(() => {
-  switch (routeState.value.metric) {
-    case 'tokens':
-      return {
-        title: t('monitor.usage.trend.tokensTitle'),
-        description: t('monitor.usage.trend.tokensDescription'),
-        accessibleDescription: t('monitor.usage.trend.tokensAccessibleDescription'),
-        valueLabel: t('monitor.usage.columns.totalTokens'),
-        secondaryLabel: t('monitor.usage.tokens.cacheRead'),
-      }
-    case 'cost':
-      return {
-        title: t('monitor.usage.trend.costTitle'),
-        description: t('monitor.usage.trend.costDescription'),
-        accessibleDescription: t('monitor.usage.trend.costAccessibleDescription'),
-        valueLabel: t('monitor.usage.columns.estimatedCost'),
-        secondaryLabel: undefined,
-      }
-    default:
-      return {
-        title: t('monitor.usage.trend.title'),
-        description: t('monitor.usage.trend.description'),
-        accessibleDescription: t('monitor.usage.trend.accessibleDescription'),
-        valueLabel: t('monitor.usage.columns.success'),
-        secondaryLabel: t('monitor.usage.columns.failure'),
-      }
+  if (routeState.value.metric === 'cost') {
+    return {
+      title: t('monitor.usage.trend.costTitle'),
+      description: t('monitor.usage.trend.costDescription'),
+      accessibleDescription: t('monitor.usage.trend.costAccessibleDescription'),
+      valueLabel: t('monitor.usage.columns.estimatedCost'),
+      secondaryLabel: undefined,
+    }
+  }
+  return {
+    title: t('monitor.usage.trend.tokensTitle'),
+    description: t('monitor.usage.trend.tokensDescription'),
+    accessibleDescription: t('monitor.usage.trend.tokensAccessibleDescription'),
+    valueLabel: t('monitor.usage.columns.totalTokens'),
+    secondaryLabel: t('monitor.usage.tokens.cacheRead'),
   }
 })
 
@@ -210,15 +197,6 @@ function normalizeTrendCost(value: bigint, maximum: bigint): number {
   if (maximum === 0n) return 0
   return Number((value * costChartResolution + maximum / 2n) / maximum)
 }
-
-const requestTrendSeries = computed<TrendDatum[]>(() =>
-  (report.value?.series ?? []).map((bucket) => ({
-    bucket_start_ms: bucket.bucket_start_ms,
-    bucket_end_ms: bucket.bucket_end_ms,
-    request_count: bucket.success_count,
-    failure_count: bucket.failure_count,
-  })),
-)
 
 const barTrendSeries = computed<UsageBarDatum[]>(() => {
   const buckets = report.value?.series ?? []
@@ -242,18 +220,15 @@ const barTrendSeries = computed<UsageBarDatum[]>(() => {
       ],
     }))
   }
-  if (routeState.value.metric === 'cost') {
-    const costs = buckets.map((bucket) => BigInt(bucket.estimated_cost_nano_usd))
-    const maximum = costs.reduce((current, value) => (value > current ? value : current), 0n)
-    return buckets.map((bucket, index) => ({
-      bucket_start_ms: bucket.bucket_start_ms,
-      bucket_end_ms: bucket.bucket_end_ms,
-      primary_value: normalizeTrendCost(costs[index]!, maximum),
-      secondary_value: 0,
-      primary_display: formatTrendCost(bucket),
-    }))
-  }
-  return []
+  const costs = buckets.map((bucket) => BigInt(bucket.estimated_cost_nano_usd))
+  const maximum = costs.reduce((current, value) => (value > current ? value : current), 0n)
+  return buckets.map((bucket, index) => ({
+    bucket_start_ms: bucket.bucket_start_ms,
+    bucket_end_ms: bucket.bucket_end_ms,
+    primary_value: normalizeTrendCost(costs[index]!, maximum),
+    secondary_value: 0,
+    primary_display: formatTrendCost(bucket),
+  }))
 })
 
 watch(
@@ -378,7 +353,7 @@ function updateDistributionMetric(value: string): void {
 }
 
 async function updateTrendMetric(value: string): Promise<void> {
-  if (value !== 'requests' && value !== 'tokens' && value !== 'cost') return
+  if (value !== 'tokens' && value !== 'cost') return
   await navigate(appliedFilters.value, {
     ...routeState.value,
     metric: value as UsageTrendMetric,
@@ -501,23 +476,7 @@ defineExpose({ openFilters, refresh })
             </template>
           </MonitorSectionHeading>
           <div class="usage-trend-panel__chart">
-            <TrendChart
-              v-if="routeState.metric === 'requests'"
-              :series="requestTrendSeries"
-              :title="trendPresentation.title"
-              :description="trendPresentation.accessibleDescription"
-              :empty-label="t('monitor.usage.trend.empty')"
-              :request-label="trendPresentation.valueLabel"
-              :failure-label="trendPresentation.secondaryLabel ?? ''"
-              :range-start="report.from_ms"
-              :range-end="report.to_ms"
-              :locale="locale"
-              show-bucket-range
-              show-single-point
-              :failure-rate-label="t('monitor.usage.trend.failureRate')"
-            />
             <UsageBarChart
-              v-else
               :series="barTrendSeries"
               :title="trendPresentation.title"
               :description="trendPresentation.accessibleDescription"
@@ -539,64 +498,29 @@ defineExpose({ openFilters, refresh })
           </div>
         </section>
 
-        <section class="usage-analysis-grid">
-          <div class="usage-analysis-section">
-            <MonitorSectionHeading
-              :title="t('monitor.usage.tokens.title')"
-              :description="t('monitor.usage.tokens.description')"
-            />
-            <dl class="usage-token-grid">
-              <div>
-                <dt>{{ t('monitor.usage.tokens.uncachedInput') }}</dt>
-                <dd>{{ formatTokens(report.summary.uncached_input_tokens, locale) }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('monitor.usage.tokens.cacheRead') }}</dt>
-                <dd>{{ formatTokens(report.summary.cache_read_tokens, locale) }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('monitor.usage.tokens.cacheWrite5m') }}</dt>
-                <dd>{{ formatTokens(report.summary.cache_write_5m_tokens, locale) }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('monitor.usage.tokens.cacheWrite1h') }}</dt>
-                <dd>{{ formatTokens(report.summary.cache_write_1h_tokens, locale) }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('monitor.usage.tokens.cacheWriteUnknown') }}</dt>
-                <dd>{{ formatTokens(report.summary.cache_write_unknown_tokens, locale) }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('monitor.usage.tokens.output') }}</dt>
-                <dd>{{ formatTokens(report.summary.output_tokens, locale) }}</dd>
-              </div>
-            </dl>
-          </div>
-
-          <div class="usage-analysis-section">
-            <MonitorSectionHeading
-              :title="t('monitor.usage.quality.title')"
-              :description="t('monitor.usage.quality.description')"
-            />
-            <dl class="usage-quality-grid">
-              <div>
-                <dt>{{ t('monitor.usage.quality.missing') }}</dt>
-                <dd>{{ formatInteger(report.summary.usage_missing_count, locale) }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('monitor.usage.quality.partial') }}</dt>
-                <dd>{{ formatInteger(report.summary.partial_count, locale) }}</dd>
-              </div>
-              <div class="usage-quality-grid__danger">
-                <dt>{{ t('monitor.usage.quality.unpriced') }}</dt>
-                <dd>{{ formatInteger(report.summary.unpriced_request_count, locale) }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('monitor.usage.quality.pricingPartial') }}</dt>
-                <dd>{{ formatInteger(report.summary.pricing_partial_count, locale) }}</dd>
-              </div>
-            </dl>
-          </div>
+        <section class="usage-analysis-section">
+          <MonitorSectionHeading
+            :title="t('monitor.usage.quality.title')"
+            :description="t('monitor.usage.quality.description')"
+          />
+          <dl class="usage-quality-grid">
+            <div>
+              <dt>{{ t('monitor.usage.quality.missing') }}</dt>
+              <dd>{{ formatInteger(report.summary.usage_missing_count, locale) }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('monitor.usage.quality.partial') }}</dt>
+              <dd>{{ formatInteger(report.summary.partial_count, locale) }}</dd>
+            </div>
+            <div class="usage-quality-grid__danger">
+              <dt>{{ t('monitor.usage.quality.unpriced') }}</dt>
+              <dd>{{ formatInteger(report.summary.unpriced_request_count, locale) }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('monitor.usage.quality.pricingPartial') }}</dt>
+              <dd>{{ formatInteger(report.summary.pricing_partial_count, locale) }}</dd>
+            </div>
+          </dl>
         </section>
 
         <section class="usage-distribution-section" aria-labelledby="usage-distribution-title">
@@ -784,14 +708,6 @@ defineExpose({ openFilters, refresh })
   }
 }
 
-.usage-analysis-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.9fr);
-  align-items: start;
-  gap: 20px;
-}
-
-.usage-token-grid,
 .usage-quality-grid {
   display: grid;
   overflow: hidden;
@@ -800,17 +716,9 @@ defineExpose({ openFilters, refresh })
   border-radius: var(--radius-card);
   background: var(--color-border-subtle);
   gap: 1px;
-}
-
-.usage-token-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.usage-quality-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.usage-token-grid > div,
 .usage-quality-grid > div {
   min-width: 0;
   min-height: 78px;
@@ -818,7 +726,6 @@ defineExpose({ openFilters, refresh })
   padding: 13px 15px;
 }
 
-.usage-token-grid dt,
 .usage-quality-grid dt {
   display: flex;
   align-items: center;
@@ -840,7 +747,6 @@ defineExpose({ openFilters, refresh })
   background: var(--color-danger);
 }
 
-.usage-token-grid dd,
 .usage-quality-grid dd {
   margin: 7px 0 0;
   color: var(--color-text-muted);
@@ -892,14 +798,7 @@ defineExpose({ openFilters, refresh })
   padding: 14px 16px;
 }
 
-@media (max-width: 980px) {
-  .usage-analysis-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 @media (max-width: 620px) {
-  .usage-token-grid,
   .usage-quality-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
