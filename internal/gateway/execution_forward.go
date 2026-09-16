@@ -202,6 +202,13 @@ func (forwarder *ExecutionForwarder) forwardStream(
 	if input.ResponsesStoreDowngraded {
 		responsesStoreBuffer = newStatelessResponsesSSEBuffer()
 	}
+	// The framing normalizer is enabled only for the buffered OpenAI Responses
+	// wire. It rewrites the final forwardData bytes after the existing store
+	// rewrite and observation buffering, and before anything reaches the spool.
+	var responsesFraming *responsesSSEFramingNormalizer
+	if responsesSSEFramingEnabled(input) {
+		responsesFraming = newResponsesSSEFramingNormalizer(execution.SSEEventLimit(input.ClientProtocol))
+	}
 
 	var (
 		ready         *execution.StreamEvent
@@ -273,6 +280,20 @@ func (forwarder *ExecutionForwarder) forwardStream(
 					return nil
 				}
 			}
+			if responsesFraming != nil {
+				// A recoverable event/data gap is merged into one block here; an
+				// unprovable framing is a protocol failure, never a downstream write
+				// failure merely because it was discovered on the release path.
+				normalized, framingErr := responsesFraming.push(forwardData)
+				if framingErr != nil {
+					downstreamErr = executionStreamProtocolFailure(framingErr)
+					return downstreamErr
+				}
+				forwardData = normalized
+				if len(forwardData) == 0 {
+					return nil
+				}
+			}
 			if !committed {
 				if !firstResponse {
 					firstResponse = true
@@ -334,16 +355,30 @@ func (forwarder *ExecutionForwarder) forwardStream(
 		terminal = invalidExecutionStreamResult(terminal, ready, committed)
 	}
 	if downstreamErr == nil && terminal.Error == nil {
-		if responsesStoreBuffer != nil {
-			if err := responsesStoreBuffer.finish(); err != nil {
-				downstreamErr = executionStreamProtocolFailure(err)
+		if responsesFraming != nil {
+			// Finish the framing before the observation buffer validates EOF, so
+			// any unprovable trailing framing fails before payload release.
+			remaining, framingErr := responsesFraming.finish()
+			if framingErr != nil {
+				downstreamErr = executionStreamProtocolFailure(framingErr)
+			} else {
+				committed, downstreamErr = writeResponsesFramingRemainder(
+					controller, ready, remaining, committed, input.OnStreamReady,
+				)
 			}
 		}
 		if downstreamErr == nil {
-			if err := streamBuffer.finish(); err != nil {
-				downstreamErr = executionStreamProtocolFailure(err)
-			} else if err := streamEvents.validateEOF(); err != nil {
-				downstreamErr = err
+			if responsesStoreBuffer != nil {
+				if err := responsesStoreBuffer.finish(); err != nil {
+					downstreamErr = executionStreamProtocolFailure(err)
+				}
+			}
+			if downstreamErr == nil {
+				if err := streamBuffer.finish(); err != nil {
+					downstreamErr = executionStreamProtocolFailure(err)
+				} else if err := streamEvents.validateEOF(); err != nil {
+					downstreamErr = err
+				}
 			}
 		}
 	}
@@ -1012,6 +1047,63 @@ func executionStreamProtocolFailure(cause error) error {
 		kind: streamFailureProtocol,
 		err:  fmt.Errorf("%w: %v", ErrUpstreamProtocol, cause),
 	}
+}
+
+// responsesSSEFramingEnabled reports whether this attempt forwards the buffered
+// OpenAI Responses wire. Every other dialect and the live path keep their exact
+// previous behavior; only this case applies the Responses framing normalizer.
+func responsesSSEFramingEnabled(input ForwardInput) bool {
+	return input.BufferedStream && input.ClientProtocol == protocol.OpenAIResponses
+}
+
+// writeResponsesFramingRemainder flushes the normalizer's final bytes through
+// the same commit/write/flush path as the streaming sink. Framing output that
+// arrives before any response metadata is a protocol failure.
+func writeResponsesFramingRemainder(
+	controller *streamWriteController,
+	ready *execution.StreamEvent,
+	remaining []byte,
+	committed bool,
+	onStreamReady func(),
+) (bool, error) {
+	if len(remaining) == 0 {
+		return committed, nil
+	}
+	if !committed {
+		if ready == nil {
+			return false, &streamFailure{
+				kind: streamFailureProtocol,
+				err:  fmt.Errorf("%w: framing output arrived before response metadata", ErrUpstreamProtocol),
+			}
+		}
+		if err := commitStream(controller, ready.StatusCode, ready.Header, remaining); err != nil {
+			return false, err
+		}
+		if onStreamReady != nil {
+			onStreamReady()
+		}
+		return true, nil
+	}
+	written, err := controller.write(remaining)
+	if err != nil {
+		return committed, &streamFailure{
+			kind: streamFailureDownstreamWrite,
+			err:  fmt.Errorf("write execution stream: %w", err),
+		}
+	}
+	if written != len(remaining) {
+		return committed, &streamFailure{
+			kind: streamFailureDownstreamWrite,
+			err:  fmt.Errorf("write execution stream: %w", io.ErrShortWrite),
+		}
+	}
+	if err := controller.flush(); err != nil {
+		return committed, &streamFailure{
+			kind: streamFailureDownstreamWrite,
+			err:  fmt.Errorf("flush execution stream: %w", err),
+		}
+	}
+	return committed, nil
 }
 
 func preferCapturedStreamUsage(

@@ -21,8 +21,10 @@ import (
 
 type captureTestAttempt struct {
 	mu               sync.Mutex
+	metadata         CaptureAttemptMetadata
 	request          []byte
 	response         []byte
+	responseBody     []byte
 	waited           bool
 	completed        bool
 	failed           error
@@ -72,8 +74,18 @@ func (a *captureTestAttempt) AppendResponseBody(data []byte) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.response = append(a.response, data...)
+	a.responseBody = append(a.responseBody, data...)
 	return nil
 }
+
+// responseBodyValue returns the raw response body bytes delivered to this
+// attempt by the HTTP observer, isolated from the serialized response headers.
+func (a *captureTestAttempt) responseBodyValue() []byte {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]byte(nil), a.responseBody...)
+}
+
 func (a *captureTestAttempt) RecordResponseFlush() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -158,13 +170,26 @@ type captureTestSession struct {
 	waitRelease   <-chan struct{}
 }
 
-func (s *captureTestSession) StartAttempt(CaptureAttemptMetadata) (CaptureAttempt, error) {
+func (s *captureTestSession) StartAttempt(metadata CaptureAttemptMetadata) (CaptureAttempt, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	attempt := &captureTestAttempt{}
+	attempt := &captureTestAttempt{metadata: metadata}
 	s.attempts = append(s.attempts, attempt)
 	return attempt, nil
 }
+
+// attemptByID returns the observed attempt with the given attempt ID.
+func (s *captureTestSession) attemptByID(id string) *captureTestAttempt {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, attempt := range s.attempts {
+		if attempt.metadata.AttemptID == id {
+			return attempt
+		}
+	}
+	return nil
+}
+
 func (s *captureTestSession) UpdateMetadata(metadata CaptureSessionMetadata) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
