@@ -60,6 +60,7 @@ import { useImportRecovery } from './import-recovery'
 import { isValidPriceMultiplier, normalizePriceMultiplier } from '@/lib/price-multiplier'
 
 import { analyzeCredentials } from './credential-analysis'
+import { mapConnectionToChannel, parseConnectionJSON } from './connection-json'
 import CredentialTextarea from './CredentialTextarea.vue'
 import SubscriptionCredentialStager from './SubscriptionCredentialStager.vue'
 import type { ImportDraft, ModelDraftItem } from './model-draft'
@@ -167,6 +168,9 @@ const modelEditor = ref<{
 }>()
 const errorKey = ref('')
 const credentialValidation = ref<CredentialValidationData | null>(null)
+const connectionParsedSuccess = ref(false)
+// 识别到连接 JSON 但当前渠道无法完整映射 URL/API key 时，阻断 discover/create 提交原始 JSON。
+const connectionUnsupported = ref(false)
 const submissionError = ref<HTMLElement>()
 const conflict = ref<SameTargetConflictData | null>(
   sameTargetConflict(createOperation.lastError.value),
@@ -293,6 +297,19 @@ const structuredCredentials = computed(
     (selectedChannel.value.credential_fields.length !== 1 ||
       selectedChannel.value.credential_fields[0]?.key !== 'api_key'),
 )
+const connectionMappingBlocked = computed(() => {
+  if (draft.connection_type !== 'api_key') return false
+  const parsed = parseConnectionJSON(draft.credentials)
+  if (!parsed) return connectionUnsupported.value
+  const channel = selectedChannel.value
+  if (!channel || channel.connection.type !== 'api_key') return true
+  const mapping = mapConnectionToChannel(parsed, channel)
+  return (
+    mapping.credentials === null ||
+    mapping.urlParamKey === null ||
+    draft.credentials !== mapping.credentials
+  )
+})
 const allParamErrors = computed<Record<string, string>>(() => {
   const errors: Record<string, string> = {}
   const channel = connectionChannel.value
@@ -377,6 +394,7 @@ const canDiscover = computed(
     selectedChannel.value?.capabilities.model_discovery === true &&
     !payloadLocked.value &&
     !paramsError.value &&
+    !connectionMappingBlocked.value &&
     credentialCount.value > 0 &&
     (draft.connection_type === 'subscription' || !credentialAnalysis.value.tooManyCredentials),
 )
@@ -386,6 +404,7 @@ const canCreate = computed(
     !mutationPending.value &&
     isValidPriceMultiplier(draft.price_multiplier) &&
     !paramsError.value &&
+    !connectionMappingBlocked.value &&
     credentialCount.value > 0 &&
     (draft.connection_type === 'subscription' || !credentialAnalysis.value.tooManyCredentials) &&
     modelValidity.value.invalidIndexes.size === 0,
@@ -705,10 +724,16 @@ watch(
       draft.proxy = { mode: 'inherit', url: '' }
     }
     const connectionType = channel.connection.type
-    if (draft.connection_type === connectionType) return
-    draft.connection_type = connectionType
-    draft.params = initialChannelParams(channel)
-    baseUrlOverrideEnabled.value = true
+    if (draft.connection_type !== connectionType) {
+      draft.connection_type = connectionType
+      draft.params = initialChannelParams(channel)
+      baseUrlOverrideEnabled.value = true
+    }
+    // 初始/恢复草稿的凭据可能在 schema 到达前已经写入；selectedChannel
+    // resolve 后重新走同一映射路径，避免依赖用户再次编辑 credentials。
+    void nextTick(() => {
+      if (componentActive) applyConnectionMapping()
+    })
   },
   { immediate: true },
 )
@@ -750,6 +775,7 @@ function selectChannel(channel: ChannelDto): void {
 
 function setChannelParam(key: string, value: string): void {
   cancelDefaultChannel()
+  connectionParsedSuccess.value = false
   const params = { ...draft.params }
   if (key === 'base_url' && !value.trim()) delete params.base_url
   else params[key] = value
@@ -762,6 +788,7 @@ function setBaseURLOverride(enabled: boolean): void {
   delete paramTouched.base_url
   baseUrlOverrideEnabled.value = enabled
   if (enabled) return
+  connectionParsedSuccess.value = false
   const params = { ...draft.params }
   delete params.base_url
   draft.params = params
@@ -797,7 +824,7 @@ function updateModels(models: ModelDraftItem[]): void {
 }
 
 function requestDiscovery(): void {
-  if (!canDiscover.value) return
+  if (!ensureConnectionMapping() || !canDiscover.value) return
   if (!discoveryDrawerOpen.value) {
     setPanel('discovery')
     return
@@ -807,7 +834,7 @@ function requestDiscovery(): void {
 }
 
 function startDiscovery(): void {
-  if (!canDiscover.value || discoveryLoading.value) return
+  if (!ensureConnectionMapping() || !canDiscover.value || discoveryLoading.value) return
   const subscriptionStage =
     draft.connection_type === 'subscription' ? currentReadyStages()[0] : undefined
   if (draft.connection_type === 'subscription' && !subscriptionStage) {
@@ -974,6 +1001,7 @@ async function reportSubmissionError(key: string): Promise<void> {
 }
 
 async function submitCreate(): Promise<void> {
+  if (!ensureConnectionMapping()) return
   if (
     draft.connection_type === 'subscription' &&
     readyStages.value.length > 0 &&
@@ -1190,6 +1218,84 @@ watch([() => draft.channel_id, () => draft.credentials, () => JSON.stringify(dra
   credentialValidation.value = null
 })
 
+let connectionAutoFilled = false
+
+// 将连接 JSON 按当前渠道 schema 映射到既有字段。无法完整映射时保留用户可见
+// 原输入并阻断 discover/create，避免原始 JSON 越过请求边界。
+function applyConnectionMapping(): void {
+  connectionParsedSuccess.value = false
+  connectionUnsupported.value = false
+
+  const channel = selectedChannel.value
+  if (!channel || channel.connection.type !== 'api_key') return
+
+  const parsed = parseConnectionJSON(draft.credentials)
+  if (!parsed) return
+
+  const mapping = mapConnectionToChannel(parsed, channel)
+  if (mapping.credentials === null || mapping.urlParamKey === null) {
+    // 无法同时映射 URL 与 api_key：保留原输入，阻断请求边界。
+    connectionUnsupported.value = true
+    return
+  }
+
+  connectionAutoFilled = true
+  if (mapping.urlParamKey !== null) {
+    setChannelParam(mapping.urlParamKey, parsed.baseURL)
+    touchChannelParam(mapping.urlParamKey)
+  }
+  draft.credentials = mapping.credentials
+  // 非法 URL 继续交给既有字段错误展示，不显示“已自动填入”的成功提示。
+  connectionParsedSuccess.value = isValidUpstreamBaseURL(parsed.baseURL)
+}
+
+function ensureConnectionMapping(): boolean {
+  if (draft.connection_type !== 'api_key') {
+    connectionUnsupported.value = false
+    return true
+  }
+
+  const parsed = parseConnectionJSON(draft.credentials)
+  if (!parsed) {
+    connectionUnsupported.value = false
+    return true
+  }
+
+  const channel = selectedChannel.value
+  if (!channel || channel.connection.type !== 'api_key') {
+    connectionUnsupported.value = true
+    return false
+  }
+
+  // 请求构造前同步重试一次，覆盖 schema resolve 与 watcher 尚未收敛的窗口。
+  applyConnectionMapping()
+  return !connectionUnsupported.value && !connectionMappingBlocked.value
+}
+
+watch(
+  () => draft.credentials,
+  () => {
+    if (connectionAutoFilled) {
+      connectionAutoFilled = false
+      return
+    }
+    applyConnectionMapping()
+  },
+  // 必须早于依赖 draft 的 discover/invalidate watcher 完成收敛，否则原始连接 JSON
+  // 可能先一步进入发现请求。
+  { flush: 'sync' },
+)
+
+// 切换渠道后凭据不变，凭据 watcher 不会触发；重新评估映射以收敛残留的原始 JSON
+// 或清除阻断状态。nextTick 等待 channel_id 相关的 pre-flush watcher 先完成。
+watch(
+  () => draft.channel_id,
+  () => {
+    connectionParsedSuccess.value = false
+    void nextTick(applyConnectionMapping)
+  },
+)
+
 function updateConflictDialog(open: boolean): void {
   if (!open && conflict.value !== null) returnToEdit()
 }
@@ -1327,6 +1433,9 @@ onBeforeUnmount(() => {
             compact
             :rows="4"
           />
+          <InlineFeedback v-if="connectionParsedSuccess" tone="neutral" appearance="hint">
+            {{ t('import.connection.connectionParsed') }}
+          </InlineFeedback>
         </div>
       </section>
 

@@ -96,6 +96,7 @@ export default {
         '填写 GPT-Load 网关根地址或部署前缀，例如 https://gpt-load.example.com；不要填写 /v1 或 /v1beta 等标准协议路径',
       newApiUrlDescription:
         '填写 New API 网关根地址或部署前缀，例如 https://new-api.example.com；不要填写 /v1 或 /v1beta 等标准协议路径',
+      connectionParsed: '已识别连接配置，已自动填入上游地址和 API 密钥',
       cpaUrlDescription:
         '填写 CLIProxyAPI 网关根地址或部署前缀，例如 https://cpa.example.com；不要填写 /v1 或 /v1beta 等标准协议路径',
       sub2ApiUrlDescription:
