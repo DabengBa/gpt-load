@@ -19,6 +19,9 @@ var usageLatencyTables0011 = []struct {
 
 // Up0011 adds durable latency aggregates to both usage persistence tables.
 func Up0011(db *gorm.DB) error {
+	if !strings.EqualFold(db.Dialector.Name(), "sqlite") {
+		return fmt.Errorf("usage latency migration: unsupported database driver %q", db.Dialector.Name())
+	}
 	if err := validateUsageLatencyTables0011(db); err != nil {
 		return err
 	}
@@ -36,17 +39,12 @@ func Up0011(db *gorm.DB) error {
 func ensureUsageLatencyColumn0011(db *gorm.DB, table, column, constraint string) error {
 	if !db.Migrator().HasColumn(table, column) {
 		statement := fmt.Sprintf(
-			"ALTER TABLE %s ADD COLUMN %s BIGINT NOT NULL DEFAULT 0",
+			"ALTER TABLE %s ADD COLUMN %s BIGINT NOT NULL DEFAULT 0 CONSTRAINT %s CHECK (%s)",
 			quoteUsageLatencyIdentifier0011(db, table),
 			quoteUsageLatencyIdentifier0011(db, column),
+			quoteUsageLatencyIdentifier0011(db, constraint),
+			usageLatencyConstraintExpression0011(db, column),
 		)
-		if strings.EqualFold(db.Dialector.Name(), "sqlite") {
-			statement += fmt.Sprintf(
-				" CONSTRAINT %s CHECK (%s)",
-				quoteUsageLatencyIdentifier0011(db, constraint),
-				usageLatencyConstraintExpression0011(db, column),
-			)
-		}
 		if err := db.Exec(statement).Error; err != nil {
 			return fmt.Errorf("add %s.%s: %w", table, column, err)
 		}
@@ -54,19 +52,7 @@ func ensureUsageLatencyColumn0011(db *gorm.DB, table, column, constraint string)
 	if db.Migrator().HasConstraint(table, constraint) {
 		return nil
 	}
-	if strings.EqualFold(db.Dialector.Name(), "sqlite") {
-		return fmt.Errorf("%s.%s constraint %q is missing", table, column, constraint)
-	}
-	statement := fmt.Sprintf(
-		"ALTER TABLE %s ADD CONSTRAINT %s CHECK (%s)",
-		quoteUsageLatencyIdentifier0011(db, table),
-		quoteUsageLatencyIdentifier0011(db, constraint),
-		usageLatencyConstraintExpression0011(db, column),
-	)
-	if err := db.Exec(statement).Error; err != nil {
-		return fmt.Errorf("add %s.%s constraint: %w", table, column, err)
-	}
-	return nil
+	return fmt.Errorf("%s.%s constraint %q is missing", table, column, constraint)
 }
 
 func usageLatencyConstraintExpression0011(db *gorm.DB, column string) string {
@@ -92,8 +78,7 @@ func validateUsageLatencyTables0011(db *gorm.DB) error {
 			if column == "duration_sample_count" {
 				constraint = table.sampleConstraint
 			}
-			requireConstraint := strings.EqualFold(db.Dialector.Name(), "sqlite")
-			if err := validateUsageLatencyColumn0011(db, table.table, column, constraint, requireConstraint); err != nil {
+			if err := validateUsageLatencyColumn0011(db, table.table, column, constraint); err != nil {
 				return err
 			}
 		}
@@ -114,7 +99,7 @@ func Validate0011(db *gorm.DB) error {
 			if !db.Migrator().HasColumn(table.table, definition.column) {
 				return fmt.Errorf("%s.%s is missing", table.table, definition.column)
 			}
-			if err := validateUsageLatencyColumn0011(db, table.table, definition.column, definition.constraint, true); err != nil {
+			if err := validateUsageLatencyColumn0011(db, table.table, definition.column, definition.constraint); err != nil {
 				return err
 			}
 		}
@@ -122,7 +107,7 @@ func Validate0011(db *gorm.DB) error {
 	return nil
 }
 
-func validateUsageLatencyColumn0011(db *gorm.DB, table, column, constraint string, requireConstraint bool) error {
+func validateUsageLatencyColumn0011(db *gorm.DB, table, column, constraint string) error {
 	columns, err := db.Migrator().ColumnTypes(table)
 	if err != nil {
 		return fmt.Errorf("inspect %s.%s: %w", table, column, err)
@@ -156,10 +141,7 @@ func validateUsageLatencyColumn0011(db *gorm.DB, table, column, constraint strin
 		return fmt.Errorf("%s.%s is missing", table, column)
 	}
 	if !db.Migrator().HasConstraint(table, constraint) {
-		if requireConstraint {
-			return fmt.Errorf("%s.%s constraint %q is missing", table, column, constraint)
-		}
-		return nil
+		return fmt.Errorf("%s.%s constraint %q is missing", table, column, constraint)
 	}
 	definition, err := usageLatencyConstraintDefinition0011(db, table, constraint)
 	if err != nil {
@@ -193,8 +175,6 @@ func usageLatencyConstraintDefinition0011(db *gorm.DB, table, constraint string)
 	switch strings.ToLower(db.Dialector.Name()) {
 	case "sqlite":
 		err = db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&definition).Error
-	case "postgres", "postgresql":
-		err = db.Raw("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ? AND conrelid = ?::regclass", constraint, table).Scan(&definition).Error
 	default:
 		return "", fmt.Errorf("unsupported usage latency migration driver %q", db.Dialector.Name())
 	}

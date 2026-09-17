@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	gormpostgres "gorm.io/driver/postgres"
+	gormsqlite "github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
@@ -200,12 +200,9 @@ func TestHomeSubscriptionAccountsRouteIsAdminOnly(t *testing.T) {
 	}
 }
 
-func TestHomeSubscriptionActivityScopeUsesOnlyHourlyAccountAggregatesAndQuotesGroupsForPostgreSQL(t *testing.T) {
+func TestHomeSubscriptionActivityScopeUsesOnlyHourlyAccountAggregatesAndQuotesGroups(t *testing.T) {
 	t.Parallel()
-	db, err := gorm.Open(gormpostgres.New(gormpostgres.Config{
-		DSN:                  "postgres://user:password@127.0.0.1:5432/gpt_load?sslmode=disable",
-		PreferSimpleProtocol: true,
-	}), &gorm.Config{
+	db, err := gorm.Open(gormsqlite.Open(":memory:"), &gorm.Config{
 		DryRun:                 true,
 		DisableAutomaticPing:   true,
 		SkipDefaultTransaction: true,
@@ -220,7 +217,7 @@ func TestHomeSubscriptionActivityScopeUsesOnlyHourlyAccountAggregatesAndQuotesGr
 		t.Fatalf("home subscription activity query error = %v", result.Error)
 	}
 	sql := result.Statement.SQL.String()
-	if strings.Contains(sql, `JOIN "groups"`) || !strings.Contains(sql, `FROM "groups"`) {
+	if strings.Contains(sql, "JOIN `groups`") || !strings.Contains(sql, "FROM `groups`") {
 		t.Fatalf("generated SQL = %q, want a quoted groups subquery", sql)
 	}
 	if !strings.Contains(sql, "credential_attempt_stats") || strings.Contains(sql, "request_log") {

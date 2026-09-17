@@ -17,8 +17,8 @@ var debugCaptureTables0012 = []any{
 }
 
 // Up0012 installs the database-only raw capture store. AutoMigrate is used
-// here so SQLite and PostgreSQL receive their native binary type (BLOB and
-// bytea respectively) from the GORM dialector.
+// here so the binary payload columns receive SQLite's native BLOB type from
+// the GORM dialector.
 func Up0012(db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("debug capture migration: database is nil")

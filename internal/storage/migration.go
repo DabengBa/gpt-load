@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -140,35 +139,15 @@ func applyMigrationRegistry(db *gorm.DB, entries []migration) error {
 		return err
 	}
 
-	switch strings.ToLower(db.Dialector.Name()) {
-	case "sqlite":
-		// SQLite has no advisory-lock API. BEGIN IMMEDIATE pins a connection and
-		// serializes competing writers before any schema inspection occurs.
-		return dbtx.Run(context.Background(), db, dbtx.Options{
-			Mode:      dbtx.Write,
-			Operation: "database migration",
-		}, func(transaction *gorm.DB) error {
-			return applyMigrationsLocked(transaction, entries, false)
-		})
-	case "postgres", "postgresql":
-		return db.Connection(func(connection *gorm.DB) error {
-			if err := acquireMigrationLock(connection); err != nil {
-				return err
-			}
-			// Raw lock acquisition and Scan may populate GORM's statement schema
-			// with the scalar result type. Start fresh sessions for migration and
-			// release so that state cannot leak into the schema/table operations.
-			operationErr := applyMigrationsLocked(
-				connection.Session(&gorm.Session{NewDB: true}),
-				entries,
-				true,
-			)
-			releaseErr := releaseMigrationLock(connection.Session(&gorm.Session{NewDB: true}))
-			return errors.Join(operationErr, releaseErr)
-		})
-	default:
+	if !strings.EqualFold(db.Dialector.Name(), "sqlite") {
 		return fmt.Errorf("apply migrations: unsupported database driver %q", db.Dialector.Name())
 	}
+	return dbtx.Run(context.Background(), db, dbtx.Options{
+		Mode:      dbtx.Write,
+		Operation: "database migration",
+	}, func(transaction *gorm.DB) error {
+		return applyMigrationsLocked(transaction, entries)
+	})
 }
 
 func validateMigrationRegistry(entries []migration) error {
@@ -193,7 +172,7 @@ func validateMigrationRegistry(entries []migration) error {
 	return nil
 }
 
-func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransactions bool) error {
+func applyMigrationsLocked(db *gorm.DB, entries []migration) error {
 	hadMigrationLedger := db.Migrator().HasTable(migrationLedgerTable)
 	if !hadMigrationLedger {
 		if db.Migrator().HasTable(initialSchemaSentinelTable) {
@@ -227,14 +206,14 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 	}
 
 	for _, entry := range entries[len(applied):] {
-		if err := applyMigration(db, entry, useMigrationTransactions); err != nil {
+		if err := applyMigration(db, entry); err != nil {
 			return err
 		}
 	}
 	return validateMigrationForeignKeys(db)
 }
 
-func applyMigration(db *gorm.DB, entry migration, useMigrationTransactions bool) error {
+func applyMigration(db *gorm.DB, entry migration) error {
 	apply := func(tx *gorm.DB) error {
 		if err := entry.Up(tx); err != nil {
 			return fmt.Errorf("apply migration %s: %w", entry.ID, err)
@@ -250,15 +229,9 @@ func applyMigration(db *gorm.DB, entry migration, useMigrationTransactions bool)
 		return nil
 	}
 
-	// PostgreSQL and SQLite retain transactional DDL, so preserve their
-	// all-or-nothing migration behavior.
-	if !useMigrationTransactions {
-		return apply(db)
-	}
-	if err := db.Transaction(apply); err != nil {
-		return err
-	}
-	return nil
+	// The outer BEGIN IMMEDIATE transaction provides SQLite's all-or-nothing
+	// migration behavior.
+	return apply(db)
 }
 
 // AutoMigrate applies every pending migration before the application starts.

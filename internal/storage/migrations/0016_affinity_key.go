@@ -21,6 +21,9 @@ func Up0016(db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("affinity key migration: database is nil")
 	}
+	if !strings.EqualFold(db.Dialector.Name(), "sqlite") {
+		return fmt.Errorf("affinity key migration: unsupported database driver %q", db.Dialector.Name())
+	}
 	if err := ValidateRecoverable0016(db); err != nil {
 		return err
 	}
@@ -98,7 +101,7 @@ func validateAffinityKeyColumn0016(db *gorm.DB) error {
 		if !strings.Contains(dbType, "char") && !strings.Contains(dbType, "text") {
 			return fmt.Errorf("request_logs.%s type %q is not textual", affinityKeyColumn0016, dbType)
 		}
-		value, known := affinityKeyColumnDefault0016(db, column)
+		value, known := affinityKeyColumnDefault0016(db)
 		if !known || value != "" {
 			return fmt.Errorf("request_logs.%s default %q is not empty", affinityKeyColumn0016, value)
 		}
@@ -107,20 +110,19 @@ func validateAffinityKeyColumn0016(db *gorm.DB) error {
 	return fmt.Errorf("request_logs.%s is missing", affinityKeyColumn0016)
 }
 
-func affinityKeyColumnDefault0016(db *gorm.DB, column gorm.ColumnType) (string, bool) {
-	if strings.EqualFold(db.Dialector.Name(), "sqlite") {
-		var defaultValue string
-		if err := db.Raw(
-			"SELECT dflt_value FROM pragma_table_info(?) WHERE name = ?",
-			affinityKeyTable0016,
-			affinityKeyColumn0016,
-		).Scan(&defaultValue).Error; err != nil {
-			return "", false
-		}
-		return normalizeAffinityKeyDefault0016(defaultValue), defaultValue != ""
+func affinityKeyColumnDefault0016(db *gorm.DB) (string, bool) {
+	if !strings.EqualFold(db.Dialector.Name(), "sqlite") {
+		return "", false
 	}
-	value, known := column.DefaultValue()
-	return normalizeAffinityKeyDefault0016(value), known
+	var defaultValue string
+	if err := db.Raw(
+		"SELECT dflt_value FROM pragma_table_info(?) WHERE name = ?",
+		affinityKeyTable0016,
+		affinityKeyColumn0016,
+	).Scan(&defaultValue).Error; err != nil {
+		return "", false
+	}
+	return normalizeAffinityKeyDefault0016(defaultValue), defaultValue != ""
 }
 
 func normalizeAffinityKeyDefault0016(value string) string {
@@ -132,8 +134,6 @@ func validateAffinityKeyIndex0016(db *gorm.DB) error {
 	switch strings.ToLower(db.Dialector.Name()) {
 	case "sqlite":
 		return validateAffinityKeySQLiteIndex0016(db)
-	case "postgres", "postgresql":
-		return validateAffinityKeyPostgresIndex0016(db)
 	default:
 		return fmt.Errorf("validate affinity key index: unsupported database driver %q", db.Dialector.Name())
 	}
@@ -183,31 +183,4 @@ func validateAffinityKeySQLiteIndex0016(db *gorm.DB) error {
 		return nil
 	}
 	return fmt.Errorf("request log affinity index %q is missing", affinityKeyIndex0016)
-}
-
-func validateAffinityKeyPostgresIndex0016(db *gorm.DB) error {
-	var index struct {
-		Unique     bool
-		Definition string
-	}
-	if err := db.Raw(`
-		SELECT i.indisunique AS unique, pg_get_indexdef(i.indexrelid) AS definition
-		FROM pg_class AS table_class
-		JOIN pg_index AS i ON i.indrelid = table_class.oid
-		JOIN pg_class AS index_class ON index_class.oid = i.indexrelid
-		WHERE table_class.relname = ? AND index_class.relname = ?
-	`, affinityKeyTable0016, affinityKeyIndex0016).Scan(&index).Error; err != nil {
-		return fmt.Errorf("inspect request log affinity index: %w", err)
-	}
-	if index.Definition == "" {
-		return fmt.Errorf("request log affinity index %q is missing", affinityKeyIndex0016)
-	}
-	if index.Unique {
-		return fmt.Errorf("request log affinity index is unique")
-	}
-	normalized := strings.Join(strings.Fields(strings.ToLower(index.Definition)), " ")
-	if !strings.Contains(normalized, "(affinity_key, completed_at_ms desc, id desc)") {
-		return fmt.Errorf("request log affinity index definition = %q", index.Definition)
-	}
-	return nil
 }

@@ -2,8 +2,6 @@ package storage
 
 import (
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -28,14 +26,6 @@ func TestPriceMultiplierMigrationAddsConfigurationColumns(t *testing.T) {
 func TestPriceMultiplierMigrationUpgradeAndRecovery(t *testing.T) {
 	t.Parallel()
 	testPriceMultiplierMigrationContract(t, func(t *testing.T) *gorm.DB { return openInternalMigrationTestDatabase(t) })
-}
-
-func TestExternalPriceMultiplierMigrationContract(t *testing.T) {
-	dsn := strings.TrimSpace(os.Getenv("GPT_LOAD_DATABASE_TEST_DSN"))
-	if dsn == "" {
-		t.Skip("GPT_LOAD_DATABASE_TEST_DSN is not set")
-	}
-	testPriceMultiplierMigrationContract(t, func(t *testing.T) *gorm.DB { return openExternalIncrementalMigrationDatabase(t, dsn) })
 }
 
 func testPriceMultiplierMigrationContract(t *testing.T, open func(*testing.T) *gorm.DB) {
@@ -117,4 +107,75 @@ func testPriceMultiplierMigrationContract(t *testing.T, open func(*testing.T) *g
 			}
 		})
 	}
+}
+
+// Shared SQLite migration test helpers preserved from the removed external
+// database migration contract test.
+
+func openInternalMigrationTestDatabase(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	return db
+}
+
+func assertInternalMigrationComplete(t *testing.T, db *gorm.DB, wantIDs []string) {
+	t.Helper()
+	for _, table := range migrationfiles.TableNames0001() {
+		if !db.Migrator().HasTable(table) {
+			t.Errorf("table %q is missing", table)
+		}
+	}
+	if len(wantIDs) >= 2 {
+		for _, table := range migrationfiles.TableNames0002() {
+			if !db.Migrator().HasTable(table) {
+				t.Errorf("table %q is missing", table)
+			}
+		}
+	}
+	if len(wantIDs) >= 3 && db.Migrator().HasColumn("credential_observations", "fresh_until_ms") {
+		t.Error("credential_observations.fresh_until_ms remains after migration 0003")
+	}
+	if len(wantIDs) >= 4 && !db.Migrator().HasIndex("usage_stats", "idx_usage_stats_group_bucket") {
+		t.Error("usage_stats group activity index is missing after migration 0004")
+	}
+	if len(wantIDs) >= 6 {
+		for _, column := range []string{
+			"failure_origin", "failure_scope", "retry_directive", "effect", "rule_id",
+		} {
+			if !db.Migrator().HasColumn("request_log_attempts", column) {
+				t.Errorf("request_log_attempts.%s is missing after migration 0006", column)
+			}
+		}
+	}
+	if len(wantIDs) >= 7 && !db.Migrator().HasColumn("access_keys", "expires_at_ms") {
+		t.Error("access_keys.expires_at_ms is missing after migration 0007")
+	}
+	var ids []string
+	if err := db.Table(migrationLedgerTable).Order("id").Pluck("id", &ids).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != len(wantIDs) {
+		t.Fatalf("migration IDs = %v, want %v", ids, wantIDs)
+	}
+	for index := range wantIDs {
+		if ids[index] != wantIDs[index] {
+			t.Fatalf("migration IDs = %v, want %v", ids, wantIDs)
+		}
+	}
+}
+
+func registeredMigrationIDs() []string {
+	result := make([]string, 0, len(migrations))
+	for _, entry := range migrations {
+		result = append(result, entry.ID)
+	}
+	return result
 }

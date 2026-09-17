@@ -109,7 +109,6 @@ func TestSystemInfoResponseReportsSelectedDatabaseDriver(t *testing.T) {
 		want   string
 	}{
 		{name: "sqlite", driver: config.DatabaseDriverSQLite, want: "sqlite"},
-		{name: "postgres", driver: config.DatabaseDriverPostgreSQL, want: "postgres"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := newSystemInfoResponse(&config.Config{

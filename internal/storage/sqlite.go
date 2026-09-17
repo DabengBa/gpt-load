@@ -27,7 +27,6 @@ var hardenManagedFileIfExists = securefile.HardenManagedFileIfExists
 func openSQLite(
 	dsn string,
 	source config.DatabaseSource,
-	pool config.DatabasePoolConfig,
 ) (*gorm.DB, error) {
 	target, err := parseSQLiteTarget(dsn)
 	if err != nil {
@@ -59,7 +58,7 @@ func openSQLite(
 	if err != nil {
 		return nil, err
 	}
-	db, err := openDatabase(config.DatabaseDriverSQLite, dialector, pool)
+	db, err := openDatabase(config.DatabaseDriverSQLite, dialector)
 	if err != nil {
 		return nil, err
 	}

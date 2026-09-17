@@ -100,8 +100,7 @@ func ParseDBError(err error) *APIError {
 	// instead of GORM's translated sentinel. The response remains generic and
 	// never exposes the database error text.
 	normalized := strings.ToLower(err.Error())
-	if strings.Contains(normalized, "unique constraint failed") ||
-		strings.Contains(normalized, "duplicate key value violates unique constraint") {
+	if strings.Contains(normalized, "unique constraint failed") {
 		return ErrDuplicateResource
 	}
 

@@ -18,8 +18,6 @@ func TestCapabilitiesForDriverPreserveDatabaseTransactionSemantics(t *testing.T)
 		readSQL  []string
 	}{
 		{name: "sqlite", driver: "sqlite", writeSQL: []string{"BEGIN IMMEDIATE"}, readSQL: []string{"BEGIN"}},
-		{name: "postgres", driver: "postgres", writeSQL: []string{"BEGIN"}, readSQL: []string{"BEGIN ISOLATION LEVEL REPEATABLE READ"}},
-		{name: "postgresql alias", driver: "postgresql", writeSQL: []string{"BEGIN"}, readSQL: []string{"BEGIN ISOLATION LEVEL REPEATABLE READ"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
