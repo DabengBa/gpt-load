@@ -78,7 +78,7 @@ attempts/<attempt-id>/parts/response.body
 
 ### Retention
 
-Raw capture 与 `request_logs` 分开存储。raw capture 按现有服务端策略自动清理；当前固定 retention 为 12 小时，并由启动清理和周期性清理共同处理。清理必须只影响 debug capture session、attempt 和 chunks，不得删除 request log、统计、token、cost 或 retry 记录。
+Raw capture 与 `request_logs` 分开存储。raw capture 按现有服务端策略自动清理；当前固定 retention 为 4 小时，并由启动清理和周期性清理共同处理。清理必须只影响 debug capture session、attempt 和 chunks，不得删除 request log、统计、token、cost 或 retry 记录。
 
 ## 执行流程
 

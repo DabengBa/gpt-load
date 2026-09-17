@@ -100,8 +100,8 @@ type CredentialAttemptStat struct {
 // aggregation. It is staged, applied, and committed in the same transaction as
 // its RequestLog, and intentionally excludes request and error payloads.
 type UsageAggregationJournal struct {
-	RequestID               string `gorm:"column:request_id;type:varchar(36);primaryKey;not null"`
-	BucketStartMS           int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_journal_bucket, bucket_start_ms >= 0;index:idx_usage_aggregation_journal_pending_bucket,priority:2"`
+	RequestID               string `gorm:"column:request_id;type:varchar(36);primaryKey;not null;index:idx_usage_aggregation_journal_bucket_start,priority:2"`
+	BucketStartMS           int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_journal_bucket, bucket_start_ms >= 0;index:idx_usage_aggregation_journal_pending_bucket,priority:2;index:idx_usage_aggregation_journal_bucket_start,priority:1"`
 	AccessKeyID             uint   `gorm:"not null"`
 	GroupID                 uint   `gorm:"not null"`
 	ChannelID               string `gorm:"type:varchar(64);not null;default:''"`

@@ -47,7 +47,7 @@ func openSQLite(
 		return nil, fmt.Errorf("open SQLite database: unsupported database source")
 	}
 
-	runtimeDSN, err := withSQLiteRuntimeOptions(dsn, target.fileBacked)
+	runtimeDSN, journalMode, err := withSQLiteRuntimeOptions(dsn, target.fileBacked)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func openSQLite(
 	if err != nil {
 		return nil, fmt.Errorf("get SQLite connection pool: %w", err)
 	}
-	if err := verifySQLiteRuntime(db, target.fileBacked); err != nil {
+	if err := verifySQLiteRuntime(db, target.fileBacked, journalMode); err != nil {
 		_ = sqlDB.Close()
 		return nil, err
 	}
@@ -125,14 +125,22 @@ func rejectExistingDatabaseWithoutMigrationLedger(target sqliteTarget) error {
 	return nil
 }
 
-func withSQLiteRuntimeOptions(dsn string, fileBacked bool) (string, error) {
+var sqliteAllowedJournalModes = map[string]bool{
+	"wal":      true,
+	"delete":   true,
+	"truncate": true,
+	"persist":  true,
+}
+
+func withSQLiteRuntimeOptions(dsn string, fileBacked bool) (string, string, error) {
 	base, rawQuery, _ := strings.Cut(dsn, "?")
 	query, err := url.ParseQuery(rawQuery)
 	if err != nil {
-		return "", fmt.Errorf("open SQLite database: invalid DSN query: %w", err)
+		return "", "", fmt.Errorf("open SQLite database: invalid DSN query: %w", err)
 	}
 	query.Set("_txlock", "immediate")
 
+	journalMode := "wal"
 	pragmas := make([]string, 0, len(query["_pragma"])+3)
 	for _, pragma := range query["_pragma"] {
 		name := strings.ToLower(strings.TrimSpace(pragma))
@@ -140,8 +148,14 @@ func withSQLiteRuntimeOptions(dsn string, fileBacked bool) (string, error) {
 			name = strings.TrimSpace(name[:index])
 		}
 		switch name {
-		case "foreign_keys", "busy_timeout", "journal_mode":
+		case "foreign_keys", "busy_timeout":
 			continue
+		case "journal_mode":
+			mode, err := sqliteJournalModeValue(pragma)
+			if err != nil {
+				return "", "", err
+			}
+			journalMode = mode
 		default:
 			pragmas = append(pragmas, pragma)
 		}
@@ -151,10 +165,24 @@ func withSQLiteRuntimeOptions(dsn string, fileBacked bool) (string, error) {
 		fmt.Sprintf("busy_timeout(%d)", sqliteBusyTimeoutMS),
 	)
 	if fileBacked {
-		pragmas = append(pragmas, "journal_mode(WAL)")
+		pragmas = append(pragmas, fmt.Sprintf("journal_mode(%s)", journalMode))
 	}
 	query["_pragma"] = pragmas
-	return base + "?" + query.Encode(), nil
+	return base + "?" + query.Encode(), journalMode, nil
+}
+
+func sqliteJournalModeValue(pragma string) (string, error) {
+	value := strings.TrimSpace(pragma)
+	if index := strings.Index(value, "("); index >= 0 {
+		value = strings.TrimSuffix(value[index+1:], ")")
+	} else if index := strings.Index(value, "="); index >= 0 {
+		value = value[index+1:]
+	}
+	mode := strings.ToLower(strings.TrimSpace(strings.Trim(value, "'\"`")))
+	if !sqliteAllowedJournalModes[mode] {
+		return "", fmt.Errorf("open SQLite database: unsupported journal_mode %q", mode)
+	}
+	return mode, nil
 }
 
 func isSQLiteMemoryDSN(dsn string) bool {
@@ -175,7 +203,7 @@ func isSQLiteMemoryDSN(dsn string) bool {
 	return parsed.Path == ":memory:" || parsed.Opaque == ":memory:"
 }
 
-func verifySQLiteRuntime(db *gorm.DB, fileBacked bool) error {
+func verifySQLiteRuntime(db *gorm.DB, fileBacked bool, wantJournalMode string) error {
 	var foreignKeys, busyTimeout int
 	if err := db.Raw("PRAGMA foreign_keys").Scan(&foreignKeys).Error; err != nil {
 		return fmt.Errorf("verify SQLite foreign_keys: %w", err)
@@ -194,8 +222,8 @@ func verifySQLiteRuntime(db *gorm.DB, fileBacked bool) error {
 		if err := db.Raw("PRAGMA journal_mode").Scan(&journalMode).Error; err != nil {
 			return fmt.Errorf("verify SQLite journal_mode: %w", err)
 		}
-		if !strings.EqualFold(journalMode, "wal") {
-			return fmt.Errorf("verify SQLite journal_mode: got %q, want wal", journalMode)
+		if !strings.EqualFold(journalMode, wantJournalMode) {
+			return fmt.Errorf("verify SQLite journal_mode: got %q, want %s", journalMode, wantJournalMode)
 		}
 	}
 	return nil
