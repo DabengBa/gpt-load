@@ -182,6 +182,9 @@ func Load() (*Config, error) {
 	if rawDatabaseDSN == "" {
 		databaseSource = DatabaseSourceManaged
 		databaseDSN = filepath.Join(dataDir, "gpt-load.db")
+		if journalMode := strings.TrimSpace(os.Getenv("SQLITE_JOURNAL_MODE")); journalMode != "" {
+			databaseDSN += "?_pragma=journal_mode(" + url.QueryEscape(journalMode) + ")"
+		}
 	}
 	database, err := ParseDatabaseDSN(databaseDSN)
 	if err != nil {
