@@ -214,6 +214,7 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 | `IDLE_TIMEOUT` | `120` | HTTP keep-alive アイドル接続のタイムアウト。正の整数、単位は秒です。 |
 | `DATA_DIR` | `./data` | 管理対象データベース、`auth.key`、`encryption.key`、実行状態ファイルのディレクトリ。公式 Compose では `/app/data` を使用します。 |
 | `DATABASE_DSN` | 空、`${DATA_DIR}/gpt-load.db` を使用 | 空の場合はアプリケーション管理の SQLite を使用します。空でない場合は SQLite のパスまたは URL、PostgreSQL URL に対応し、運用者管理の外部データベースとして扱います。コンテナ内のファイルパスはマウント済みディレクトリ内である必要があります。 |
+| `SQLITE_JOURNAL_MODE` | `wal` | `DATABASE_DSN` が空の場合のアプリケーション管理 SQLite のジャーナルモード。`wal`、`delete`、`truncate`、`persist` を指定できます。外部データベースでは DSN の `_pragma` パラメータで設定します。 |
 | `DATABASE_MAX_OPEN_CONNECTIONS` | `10` | PostgreSQL の最大オープン接続数。正の整数である必要があります。SQLite は常に単一接続を使用します。 |
 | `DATABASE_MAX_IDLE_CONNECTIONS` | `5` | PostgreSQL の最大アイドル接続数。正の整数かつ `DATABASE_MAX_OPEN_CONNECTIONS` 以下である必要があります。SQLite は常に単一接続を使用します。 |
 | `AUTH_KEY` | 空、`${DATA_DIR}/auth.key` を読み込むか生成 | 管理画面と `/api` 管理 API の Bearer キー。データプレーンの AccessKey とは異なります。 |
@@ -233,7 +234,7 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 
 - 既定では `127.0.0.1` のみを待ち受けます。リモートアクセスが必要な場合は、管理されたネットワークまたは TLS 対応のリバースプロキシ経由で公開し、ACL とファイアウォールを設定してください。
 - `AUTH_KEY` と `ENCRYPTION_KEY` は厳重に管理し、実際のキーをリポジトリ、ログ、スクリーンショット、公開 Issue に含めないでください。
-- デバッグ通信捕捉はオプトインの運用ツールです。Unix ランタイムではデフォルトで無効で、`DEBUG_CAPTURE_ENABLED=true` で有効になります。独立した捕捉ストレージに、観測された平文のリクエストとレスポンスの Header、Body が固定 12 時間保存され、資格情報や Cookie を含む場合があります。詳細と ZIP ダウンロードは管理者向け API のみで提供されます。`AUTH_KEY`、データベース、バックアップ、エクスポートした ZIP を保護してください。捕捉範囲は Gateway、CPA、Bifrost HTTP 統合が実際に観測したアプリケーション層データです。TLS/socket wire、transport が除去した HTTP transfer framing、observer contract が公開しない HTTP trailers、または観測されなかったデータの捕捉は保証しません。
+- デバッグ通信捕捉はオプトインの運用ツールです。Unix ランタイムではデフォルトで無効で、`DEBUG_CAPTURE_ENABLED=true` で有効になります。独立した捕捉ストレージに、観測された平文のリクエストとレスポンスの Header、Body が固定 4 時間保存され、資格情報や Cookie を含む場合があります。詳細と ZIP ダウンロードは管理者向け API のみで提供されます。`AUTH_KEY`、データベース、バックアップ、エクスポートした ZIP を保護してください。捕捉範囲は Gateway、CPA、Bifrost HTTP 統合が実際に観測したアプリケーション層データです。TLS/socket wire、transport が除去した HTTP transfer framing、observer contract が公開しない HTTP trailers、または観測されなかったデータの捕捉は保証しません。
 - 2.0 は**単一アプリケーションインスタンス**を前提に設計されています。インスタンス間で状態を共有しないため、そのままの水平スケールには対応していません。
 - 使用量とコストはアップストリームの応答に基づく**概算**です。運用分析やリソース評価には使えますが、プロバイダーの請求書や会計上の照合結果とは一致しません。
 - サブスクリプションチャネルはアップストリームの OAuth と互換プロトコルに依存し、アップストリームの変更に伴って調整が必要になる場合があります。利用権限のあるアカウントのみを接続し、各プロバイダーの規約に従ってください。

@@ -4,7 +4,7 @@ Debug communication capture is an opt-in operational tool for investigating gate
 
 ## Retention
 
-The capture store uses the existing configured database and remains separate from `request_logs`. Captures are retained for a fixed 12-hour expiry, then startup and periodic cleanup remove expired rows and chunks automatically. Each runtime admits at most 64 concurrent capture sessions; each attempt retains at most 8 MiB of raw body data and 128 pending persistence events. Exceeding a limit fails the affected capture without changing the data-plane response.
+The capture store uses the existing configured database and remains separate from `request_logs`. Captures are retained for a fixed 4-hour expiry, then startup and periodic cleanup remove expired rows and chunks automatically. Each runtime admits at most 64 concurrent capture sessions; each attempt retains at most 8 MiB of raw body data and 128 pending persistence events. Exceeding a limit fails the affected capture without changing the data-plane response.
 
 The capture can contain complete observed sensitive values, including `Authorization`, `Cookie`, API keys, request bodies, response bodies, and provider credentials passed through the supported observation boundary. Protect `AUTH_KEY`, the database, database backups, and exported archives. Do not enable this feature on an untrusted or shared deployment unless that exposure is intentional.
 

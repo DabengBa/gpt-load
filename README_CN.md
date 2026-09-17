@@ -226,6 +226,7 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 | `IDLE_TIMEOUT`                  | `120`                                       | HTTP keep-alive 空闲连接超时，正整数，单位秒。                                                                                                           |
 | `DATA_DIR`                      | `./data`                                    | 托管数据库、`auth.key`、`encryption.key` 和运行状态文件的目录；官方 Compose 固定为 `/app/data`。                                                               |
 | `DATABASE_DSN`                  | 空，使用 `${DATA_DIR}/gpt-load.db`          | 空值使用应用托管的 SQLite；非空值支持 SQLite 路径或 URL、PostgreSQL URL，并视为运维方管理的外部数据库。容器内文件路径必须位于已挂载目录。     |
+| `SQLITE_JOURNAL_MODE`           | `wal`                                       | `DATABASE_DSN` 为空时应用托管 SQLite 的日志模式，可选 `wal`、`delete`、`truncate`、`persist`；外部数据库改用 DSN 的 `_pragma` 参数设置。          |
 | `DATABASE_MAX_OPEN_CONNECTIONS` | `10`                                        | PostgreSQL 的最大打开连接数，必须为正整数；SQLite 始终使用单连接。                                                                                     |
 | `DATABASE_MAX_IDLE_CONNECTIONS` | `5`                                         | PostgreSQL 的最大空闲连接数，必须为正整数且不大于 `DATABASE_MAX_OPEN_CONNECTIONS`；SQLite 始终使用单连接。                                     |
 | `AUTH_KEY`                      | 空，读取或生成 `${DATA_DIR}/auth.key`       | 管理界面和 `/api` 管理接口的 Bearer 密钥，不是数据面 AccessKey。                                                                                         |
@@ -245,7 +246,7 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 
 - 默认只监听 `127.0.0.1`。需要远程访问时，应通过受控网络或带 TLS 的反向代理暴露，并配置 ACL 与防火墙。
 - 妥善管理 `AUTH_KEY` 与 `ENCRYPTION_KEY`，不要把真实密钥提交到仓库、日志、截图或公开 Issue。
-- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会在固定 12 小时内保存观察到的明文请求和响应 Header、Body，其中可能包含凭据和 Cookie。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway、CPA 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
+- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会在固定 4 小时内保存观察到的明文请求和响应 Header、Body，其中可能包含凭据和 Cookie。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway、CPA 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
 - 2.0 按**单应用实例**设计，多个实例之间不共享状态，不支持直接横向扩容。
 - 用量与成本是基于上游返回数据的**估算**，用于运行分析和资源评估，不等同于服务商账单或财务对账结果。
 - 订阅渠道依赖上游 OAuth 与兼容协议，可能随上游变化调整。请只接入自己有权使用的账号，并遵守对应服务商条款。
