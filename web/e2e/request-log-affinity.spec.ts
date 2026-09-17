@@ -448,3 +448,116 @@ test.describe('request log affinity filter', () => {
     await installRequestLogAffinityRoutes(page, 'admin')
   })
 })
+
+test.describe('request log date range picker', () => {
+  const fixedRangeQuery =
+    '&from_ms=1700000000000&to_ms=1700003600000&status=success&client_model=gpt-4o&limit=50'
+
+  async function openPicker(page: Page): Promise<void> {
+    await page.locator('.app-date-range__trigger').click()
+    await expect(page.locator('.app-date-range__calendar')).toBeVisible()
+  }
+
+  // The fixture range starts on 2023-11-14, so the calendar opens on that month.
+  function firstMonthDay(page: Page, day: number): ReturnType<Page['locator']> {
+    return page
+      .locator('.app-date-range__calendar-month')
+      .first()
+      .locator('.app-date-range__calendar-day')
+      .filter({ hasText: String(day) })
+      .first()
+  }
+
+  test('shows the applied from and to range in the trigger on load', async ({ page }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin')
+    await openRequestLogs(page, routes, fixedRangeQuery)
+
+    const trigger = page.locator('.app-date-range__trigger')
+    await expect(trigger).toBeVisible()
+    // The trigger mirrors the applied draft from/to (local time, "YYYY-MM-DD HH:MM:SS").
+    const triggerText = (await trigger.textContent()) ?? ''
+    expect(triggerText).toContain('2023-11-')
+    expect(triggerText).toContain('→')
+  })
+
+  test('selecting a full calendar range updates the draft and Apply submits the query', async ({
+    page,
+  }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin')
+    await openRequestLogs(page, routes, fixedRangeQuery)
+    const initialRequestCount = routes.logRequests.length
+
+    await openPicker(page)
+
+    const startCell = firstMonthDay(page, 14)
+    await expect(startCell).toBeVisible()
+    await startCell.click()
+
+    // Only start selected: the in-picker Apply must be disabled.
+    const applyButton = page.locator('.app-date-range__apply')
+    await expect(applyButton).toBeDisabled()
+
+    // Complete the range by selecting a later day as the end.
+    const endCell = firstMonthDay(page, 16)
+    await endCell.click()
+    await expect(applyButton).toBeEnabled()
+
+    await applyButton.click()
+    await expect(page.locator('.app-date-range__calendar')).toBeHidden()
+    await expect.poll(() => routes.logRequests.length).toBe(initialRequestCount + 1)
+
+    const submitted = latestLogRequest(routes).searchParams
+    expect(submitted.has('from_ms')).toBe(true)
+    expect(submitted.has('to_ms')).toBe(true)
+    // The new range spans 2023-11-14..16; both bounds must differ from the fixture.
+    expect(submitted.get('from_ms')).not.toBe('1700000000000')
+    expect(submitted.get('to_ms')).not.toBe('1700003600000')
+  })
+
+  test('editing the time field preserves the selected date', async ({ page }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin')
+    await openRequestLogs(page, routes, fixedRangeQuery)
+
+    await openPicker(page)
+    const startCell = firstMonthDay(page, 14)
+    await startCell.click()
+    await firstMonthDay(page, 16).click()
+
+    // The from time field renders HH:MM:SS segments; type a new hour into the first segment.
+    const fromTimeField = page.locator('.app-date-range__fields .app-date-range__time-field').first()
+    const hourSegment = fromTimeField.locator('.app-date-range__time-segment').first()
+    await hourSegment.click()
+    await page.keyboard.type('05')
+
+    const applyButton = page.locator('.app-date-range__apply')
+    await expect(applyButton).toBeEnabled()
+    await applyButton.click()
+    await expect.poll(() => routes.logRequests.length).toBeGreaterThan(0)
+
+    const submitted = latestLogRequest(routes).searchParams
+    const fromMs = Number(submitted.get('from_ms'))
+    const fromDate = new Date(fromMs)
+    const pad = (part: number) => String(part).padStart(2, '0')
+    expect(`${pad(fromDate.getHours())}`).toBe('05')
+  })
+
+  test('cancel without applying does not submit a new query', async ({ page }) => {
+    const routes = await installRequestLogAffinityRoutes(page, 'admin')
+    await openRequestLogs(page, routes, fixedRangeQuery)
+    const initialRequestCount = routes.logRequests.length
+
+    await openPicker(page)
+    const startCell = firstMonthDay(page, 14)
+    await startCell.click()
+    await firstMonthDay(page, 16).click()
+
+    // Close the popover without applying.
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.app-date-range__calendar')).toBeHidden()
+
+    expect(routes.logRequests).toHaveLength(initialRequestCount)
+    const url = new URL(page.url())
+    expect(url.searchParams.get('from_ms')).toBe('1700000000000')
+    expect(url.searchParams.get('to_ms')).toBe('1700003600000')
+  })
+})
