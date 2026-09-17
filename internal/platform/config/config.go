@@ -22,8 +22,6 @@ const (
 	defaultGracefulShutdownSeconds = 10
 	defaultReadTimeoutSeconds      = 60
 	defaultIdleTimeoutSeconds      = 120
-	defaultDatabaseMaxOpenConns    = 10
-	defaultDatabaseMaxIdleConns    = 5
 )
 
 // ServerConfig contains process-level HTTP server settings.
@@ -70,32 +68,14 @@ const (
 type DatabaseDriver string
 
 const (
-	DatabaseDriverSQLite     DatabaseDriver = "sqlite"
-	DatabaseDriverPostgreSQL DatabaseDriver = "postgres"
-	DatabaseDriverPostgres                  = DatabaseDriverPostgreSQL
+	DatabaseDriverSQLite DatabaseDriver = "sqlite"
 )
 
 // DatabaseConfig is the normalized database connection target. DSN contains
-// a driver-ready DSN; SQLite URLs are normalized to the native SQLite DSN
-// while PostgreSQL URLs remain URLs until storage opens them.
+// a driver-ready SQLite DSN.
 type DatabaseConfig struct {
 	Driver DatabaseDriver
 	DSN    string
-}
-
-// DatabasePoolConfig contains connection-pool limits for network databases.
-// SQLite always uses one open and one idle connection regardless of these values.
-type DatabasePoolConfig struct {
-	MaxOpenConnections int
-	MaxIdleConnections int
-}
-
-// DefaultDatabasePoolConfig returns the default network database pool limits.
-func DefaultDatabasePoolConfig() DatabasePoolConfig {
-	return DatabasePoolConfig{
-		MaxOpenConnections: defaultDatabaseMaxOpenConns,
-		MaxIdleConnections: defaultDatabaseMaxIdleConns,
-	}
 }
 
 // DatabaseMetadata describes database ownership without retaining its DSN or
@@ -111,7 +91,6 @@ type Config struct {
 	DataDir                   string
 	DatabaseDSN               string
 	DatabaseMetadata          DatabaseMetadata
-	DatabasePool              DatabasePoolConfig
 	EncryptionKey             string
 	AuthKey                   string
 	AuthKeyMetadata           SecretMetadata
@@ -152,26 +131,6 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	databaseMaxOpenConnections, err := parsePositiveInt(
-		"DATABASE_MAX_OPEN_CONNECTIONS",
-		defaultDatabaseMaxOpenConns,
-	)
-	if err != nil {
-		return nil, err
-	}
-	databaseMaxIdleConnections, err := parsePositiveInt(
-		"DATABASE_MAX_IDLE_CONNECTIONS",
-		defaultDatabaseMaxIdleConns,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if databaseMaxIdleConnections > databaseMaxOpenConnections {
-		return nil, fmt.Errorf(
-			"DATABASE_MAX_IDLE_CONNECTIONS must be less than or equal to DATABASE_MAX_OPEN_CONNECTIONS",
-		)
-	}
-
 	dataDir := valueOrDefault("DATA_DIR", defaultDataDir)
 	if err := securefile.PrepareManagedDataDir(dataDir); err != nil {
 		return nil, fmt.Errorf("prepare DATA_DIR: %w", err)
@@ -258,13 +217,9 @@ func Load() (*Config, error) {
 			ReadTimeout:             readTimeout,
 			IdleTimeout:             idleTimeout,
 		},
-		DataDir:          dataDir,
-		DatabaseDSN:      databaseDSN,
-		DatabaseMetadata: databaseMetadata,
-		DatabasePool: DatabasePoolConfig{
-			MaxOpenConnections: databaseMaxOpenConnections,
-			MaxIdleConnections: databaseMaxIdleConnections,
-		},
+		DataDir:               dataDir,
+		DatabaseDSN:           databaseDSN,
+		DatabaseMetadata:      databaseMetadata,
 		EncryptionKey:         explicitEncryptionKey,
 		AuthKey:               authKey,
 		AuthKeyMetadata:       authKeyMetadata,
@@ -279,8 +234,7 @@ func Load() (*Config, error) {
 }
 
 // ParseDatabaseDSN parses the single DATABASE_DSN configuration format. Bare
-// paths and :memory: remain SQLite compatibility forms; PostgreSQL must use a
-// URL with a supported scheme.
+// paths and :memory: remain SQLite compatibility forms.
 func ParseDatabaseDSN(rawDSN string) (DatabaseConfig, error) {
 	dsn := strings.TrimSpace(rawDSN)
 	if dsn == "" {
@@ -315,11 +269,6 @@ func ParseDatabaseDSN(rawDSN string) (DatabaseConfig, error) {
 			return DatabaseConfig{}, err
 		}
 		return DatabaseConfig{Driver: DatabaseDriverSQLite, DSN: normalizedDSN}, nil
-	case "postgres", "postgresql":
-		if err := validateNetworkDatabaseURL(parsed, DatabaseDriverPostgreSQL); err != nil {
-			return DatabaseConfig{}, err
-		}
-		return DatabaseConfig{Driver: DatabaseDriverPostgreSQL, DSN: dsn}, nil
 	default:
 		return DatabaseConfig{}, fmt.Errorf("DATABASE_DSN uses unsupported database scheme")
 	}
@@ -355,23 +304,6 @@ func normalizeSQLiteURL(parsed *url.URL) (string, error) {
 		databasePath += "?" + parsed.RawQuery
 	}
 	return databasePath, nil
-}
-
-func validateNetworkDatabaseURL(parsed *url.URL, driver DatabaseDriver) error {
-	if parsed.Hostname() == "" {
-		return fmt.Errorf("DATABASE_DSN %s URL must include a host", driver)
-	}
-	databaseName := strings.TrimPrefix(parsed.Path, "/")
-	if databaseName == "" || strings.Contains(databaseName, "/") {
-		return fmt.Errorf("DATABASE_DSN %s URL must include one database name", driver)
-	}
-	if parsed.Fragment != "" {
-		return fmt.Errorf("DATABASE_DSN %s URL must not include a fragment", driver)
-	}
-	if _, err := url.ParseQuery(parsed.RawQuery); err != nil {
-		return fmt.Errorf("DATABASE_DSN has an invalid %s query", driver)
-	}
-	return nil
 }
 
 func parseOptionalBool(key string) (*bool, error) {

@@ -172,7 +172,6 @@ export default {
       single: 'Single instance',
       databases: {
         sqlite: 'SQLite',
-        postgres: 'PostgreSQL',
       },
       singleBinary: 'Single binary',
       dataDir: 'Data directory',

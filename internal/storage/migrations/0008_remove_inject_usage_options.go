@@ -62,8 +62,8 @@ func stripGroupInjectUsageOptions0008(db *gorm.DB) error {
 		if !changed {
 			continue
 		}
-		// json 列必须收到文本；写 []byte 时 PostgreSQL 驱动会当成 bytea 而报
-		// invalid input syntax for type json。
+		// overrides 是 json 列，在 SQLite 中存为 TEXT，必须写入字符串；
+		// 传 []byte 会被绑定为 BLOB，因此这里写 string(stripped)。
 		if err := db.Model(&group0008{}).
 			Where("id = ?", group.ID).
 			Update("overrides", string(stripped)).Error; err != nil {

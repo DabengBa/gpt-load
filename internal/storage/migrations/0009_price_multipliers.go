@@ -17,6 +17,9 @@ var priceMultiplierTables0009 = []struct{ table, constraint string }{
 
 // Up0009 adds price multipliers with independent, idempotent column DDL.
 func Up0009(db *gorm.DB) error {
+	if !strings.EqualFold(db.Dialector.Name(), "sqlite") {
+		return fmt.Errorf("price multiplier migration: unsupported database driver %q", db.Dialector.Name())
+	}
 	if err := validatePriceMultiplierTables0009(db); err != nil {
 		return err
 	}
@@ -99,8 +102,6 @@ func validatePriceMultiplierColumn0009(db *gorm.DB, table, constraint string) er
 	switch strings.ToLower(db.Dialector.Name()) {
 	case "sqlite":
 		err = db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&definition).Error
-	case "postgres", "postgresql":
-		err = db.Raw("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ? AND conrelid = ?::regclass", constraint, table).Scan(&definition).Error
 	default:
 		return fmt.Errorf("unsupported price multiplier migration driver %q", db.Dialector.Name())
 	}

@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/sirupsen/logrus"
-	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
@@ -74,7 +72,7 @@ func Open(dsn string) (*gorm.DB, error) {
 // OpenWithSource opens a database and applies file controls only when the
 // application owns the managed SQLite location.
 func OpenWithSource(dsn string, source config.DatabaseSource) (*gorm.DB, error) {
-	return openWithSourceAndPool(dsn, source, config.DefaultDatabasePoolConfig())
+	return openWithSource(dsn, source)
 }
 
 // OpenConfigured opens the database using the process configuration resolved
@@ -83,53 +81,34 @@ func OpenConfigured(cfg *config.Config) (*gorm.DB, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("open database: configuration is unavailable")
 	}
-	return openWithSourceAndPool(
-		cfg.DatabaseDSN,
-		cfg.DatabaseMetadata.Source,
-		cfg.DatabasePool,
-	)
+	return openWithSource(cfg.DatabaseDSN, cfg.DatabaseMetadata.Source)
 }
 
-func openWithSourceAndPool(
-	dsn string,
-	source config.DatabaseSource,
-	pool config.DatabasePoolConfig,
-) (*gorm.DB, error) {
+func openWithSource(dsn string, source config.DatabaseSource) (*gorm.DB, error) {
 	database, err := config.ParseDatabaseDSN(dsn)
 	if err != nil {
 		return nil, err
 	}
+	if database.Driver != config.DatabaseDriverSQLite {
+		return nil, fmt.Errorf("open database: unsupported database driver %q", database.Driver)
+	}
 	switch source {
-	case config.DatabaseSourceManaged:
-	case config.DatabaseSourceExternal:
+	case config.DatabaseSourceManaged, config.DatabaseSourceExternal:
 	default:
 		return nil, fmt.Errorf("open database: unsupported database source")
 	}
 
-	if database.Driver == config.DatabaseDriverSQLite {
-		if source == config.DatabaseSourceExternal {
-			logExternalDatabaseSource(database.Driver)
-		}
-		return openSQLite(database.DSN, source, pool)
+	if source == config.DatabaseSourceExternal {
+		logExternalDatabaseSource(database.Driver)
 	}
-	if source == config.DatabaseSourceManaged {
-		return nil, fmt.Errorf("open %s database: managed source is only supported by SQLite", databaseDisplayName(database.Driver))
-	}
-	logExternalDatabaseSource(database.Driver)
-	dialector, err := newDatabaseDialector(database)
-	if err != nil {
-		return nil, err
-	}
-	return openDatabase(database.Driver, dialector, pool)
+	return openSQLite(database.DSN, source)
 }
 
-// openDatabase is the shared GORM/SQL lifecycle for every supported driver.
-// Driver-specific behavior is limited to dialector construction and the
-// SQLite runtime hook in sqlite.go.
+// openDatabase is the SQLite GORM/SQL lifecycle. SQLite requires one
+// physical connection for its single-writer runtime and shared in-memory DSNs.
 func openDatabase(
 	driver config.DatabaseDriver,
 	dialector gorm.Dialector,
-	pool config.DatabasePoolConfig,
 ) (*gorm.DB, error) {
 	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger:         databaseLogger,
@@ -143,7 +122,8 @@ func openDatabase(
 	if err != nil {
 		return nil, fmt.Errorf("get %s connection pool: %w", databaseDisplayName(driver), err)
 	}
-	configureDatabasePool(sqlDB, driver, pool)
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 	if err := sqlDB.PingContext(context.Background()); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping %s database: %w", databaseDisplayName(driver), err)
@@ -151,43 +131,11 @@ func openDatabase(
 	return db, nil
 }
 
-func configureDatabasePool(
-	sqlDB *sql.DB,
-	driver config.DatabaseDriver,
-	pool config.DatabasePoolConfig,
-) {
-	maxOpenConnections, maxIdleConnections := databasePoolLimits(driver, pool)
-	sqlDB.SetMaxOpenConns(maxOpenConnections)
-	sqlDB.SetMaxIdleConns(maxIdleConnections)
-}
-
-func databasePoolLimits(
-	driver config.DatabaseDriver,
-	pool config.DatabasePoolConfig,
-) (int, int) {
-	if driver == config.DatabaseDriverSQLite {
-		// SQLite's single-writer runtime and shared :memory: compatibility both
-		// require one physical connection.
-		return 1, 1
-	}
-	return pool.MaxOpenConnections, pool.MaxIdleConnections
-}
-
 func newDatabaseDialector(database config.DatabaseConfig) (gorm.Dialector, error) {
-	switch database.Driver {
-	case config.DatabaseDriverSQLite:
-		return sqlite.Open(database.DSN), nil
-	case config.DatabaseDriverPostgreSQL:
-		// Schema migrations rename/rebuild tables while the process is running.
-		// pgx's implicit statement cache otherwise can retain a result shape from
-		// the legacy table and fail the first query against the rebuilt table.
-		return gormpostgres.New(gormpostgres.Config{
-			DSN:                  database.DSN,
-			PreferSimpleProtocol: true,
-		}), nil
-	default:
+	if database.Driver != config.DatabaseDriverSQLite {
 		return nil, fmt.Errorf("unsupported database driver")
 	}
+	return sqlite.Open(database.DSN), nil
 }
 
 func logExternalDatabaseSource(driver config.DatabaseDriver) {
@@ -201,8 +149,6 @@ func databaseDisplayName(driver config.DatabaseDriver) string {
 	switch driver {
 	case config.DatabaseDriverSQLite:
 		return "SQLite"
-	case config.DatabaseDriverPostgreSQL:
-		return "PostgreSQL"
 	default:
 		return string(driver)
 	}

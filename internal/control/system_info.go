@@ -11,7 +11,6 @@ import (
 const (
 	systemInstanceModeSingle       = "single"
 	systemDatabaseSQLite           = "sqlite"
-	systemDatabasePostgreSQL       = "postgres"
 	systemDistributionSingleBinary = "single_binary"
 )
 
@@ -42,12 +41,6 @@ type systemInfoResponse struct {
 
 func newSystemInfoResponse(cfg *config.Config) systemInfoResponse {
 	database := systemDatabaseSQLite
-	switch cfg.DatabaseMetadata.Driver {
-	case config.DatabaseDriverPostgreSQL:
-		database = systemDatabasePostgreSQL
-	case config.DatabaseDriverSQLite:
-		database = systemDatabaseSQLite
-	}
 	return systemInfoResponse{
 		Version: version.Version,
 		Deployment: systemDeploymentResponse{

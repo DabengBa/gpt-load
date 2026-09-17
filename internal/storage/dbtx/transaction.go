@@ -84,14 +84,12 @@ type Capabilities struct {
 type BeginMode string
 
 const (
-	BeginStandard               BeginMode = "standard"
-	BeginSQLiteImmediate        BeginMode = "sqlite_immediate"
-	BeginPostgresRepeatableRead BeginMode = "postgres_repeatable_read"
+	BeginStandard        BeginMode = "standard"
+	BeginSQLiteImmediate BeginMode = "sqlite_immediate"
 )
 
 // CapabilitiesForDriver maps the GORM driver name to the transaction
-// capability used by Run. The aliases accepted here avoid coupling callers to
-// one spelling of the PostgreSQL driver name.
+// capability used by Run.
 func CapabilitiesForDriver(driverName string) (Capabilities, error) {
 	switch strings.ToLower(strings.TrimSpace(driverName)) {
 	case "sqlite":
@@ -99,12 +97,6 @@ func CapabilitiesForDriver(driverName string) (Capabilities, error) {
 			Driver:     "sqlite",
 			WriteBegin: BeginSQLiteImmediate,
 			ReadBegin:  BeginStandard,
-		}, nil
-	case "postgres", "postgresql":
-		return Capabilities{
-			Driver:     "postgres",
-			WriteBegin: BeginStandard,
-			ReadBegin:  BeginPostgresRepeatableRead,
 		}, nil
 	default:
 		return Capabilities{}, &Error{
@@ -249,8 +241,6 @@ func (capabilities Capabilities) beginStatements(mode Mode) ([]string, error) {
 		return []string{"BEGIN"}, nil
 	case BeginSQLiteImmediate:
 		return []string{"BEGIN IMMEDIATE"}, nil
-	case BeginPostgresRepeatableRead:
-		return []string{"BEGIN ISOLATION LEVEL REPEATABLE READ"}, nil
 	default:
 		return nil, &Error{
 			Phase: PhaseDriver,

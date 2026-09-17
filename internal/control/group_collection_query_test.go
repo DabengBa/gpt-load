@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	gormpostgres "gorm.io/driver/postgres"
+	gormsqlite "github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
@@ -90,12 +90,9 @@ func TestListGroupCollectionSortsRecentActivityByHourThenRequestCount(t *testing
 	}
 }
 
-func TestGroupCollectionLatestActivityScopeQuotesGroupsForPostgreSQL(t *testing.T) {
+func TestGroupCollectionLatestActivityScopeQuotesGroups(t *testing.T) {
 	t.Parallel()
-	db, err := gorm.Open(gormpostgres.New(gormpostgres.Config{
-		DSN:                  "postgres://user:password@127.0.0.1:5432/gpt_load?sslmode=disable",
-		PreferSimpleProtocol: true,
-	}), &gorm.Config{
+	db, err := gorm.Open(gormsqlite.Open(":memory:"), &gorm.Config{
 		DryRun:                 true,
 		DisableAutomaticPing:   true,
 		SkipDefaultTransaction: true,
@@ -110,10 +107,10 @@ func TestGroupCollectionLatestActivityScopeQuotesGroupsForPostgreSQL(t *testing.
 		t.Fatalf("latest activity query error = %v", result.Error)
 	}
 	sql := result.Statement.SQL.String()
-	if strings.Contains(sql, "JOIN groups") {
-		t.Fatalf("generated SQL = %q, must not contain an unquoted groups join", sql)
+	if strings.Contains(sql, "JOIN `groups`") {
+		t.Fatalf("generated SQL = %q, must not contain a direct groups join", sql)
 	}
-	if !strings.Contains(sql, `FROM "groups"`) {
+	if !strings.Contains(sql, "FROM `groups`") {
 		t.Fatalf("generated SQL = %q, want GORM-quoted groups subquery", sql)
 	}
 }

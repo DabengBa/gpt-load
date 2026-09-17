@@ -19,15 +19,12 @@ const (
 	effectConstraint0006          = "chk_request_log_attempt_effect"
 )
 
-var requestLogAttemptDecisionColumns0006 = []struct {
-	field  string
-	column string
-}{
-	{field: "FailureOrigin", column: "failure_origin"},
-	{field: "FailureScope", column: "failure_scope"},
-	{field: "RetryDirective", column: "retry_directive"},
-	{field: "Effect", column: "effect"},
-	{field: "RuleID", column: "rule_id"},
+var requestLogAttemptDecisionColumns0006 = []string{
+	"failure_origin",
+	"failure_scope",
+	"retry_directive",
+	"effect",
+	"rule_id",
 }
 
 var requestLogAttemptIndexes0006 = []string{
@@ -39,16 +36,6 @@ var requestLogAttemptIndexes0006 = []string{
 	"idx_request_log_attempts_failure_completed_request",
 	"idx_request_log_attempts_error_completed_request",
 }
-
-type requestLogAttemptDecision0006 struct {
-	FailureOrigin  string `gorm:"column:failure_origin;type:varchar(16);not null;default:''"`
-	FailureScope   string `gorm:"column:failure_scope;type:varchar(16);not null;default:''"`
-	RetryDirective string `gorm:"column:retry_directive;type:varchar(32);not null;default:''"`
-	Effect         string `gorm:"column:effect;type:varchar(32);not null;default:''"`
-	RuleID         string `gorm:"column:rule_id;type:varchar(128);not null;default:''"`
-}
-
-func (requestLogAttemptDecision0006) TableName() string { return requestLogAttemptTable0006 }
 
 var decisionConstraints0006 = []struct {
 	name       string
@@ -77,60 +64,16 @@ const failureCategoryExpression0006 = "failure_category IN ('ok','rate_limited',
 // Up0006 adds the normalized Judge decision fields and extends the retained
 // legacy failure category with authentication_required.
 func Up0006(db *gorm.DB) error {
+	if !strings.EqualFold(db.Dialector.Name(), "sqlite") {
+		return fmt.Errorf("add error decision: unsupported database driver %q", db.Dialector.Name())
+	}
 	if !db.Migrator().HasTable(requestLogAttemptTable0006) {
 		return fmt.Errorf("add error decision: table %q is missing", requestLogAttemptTable0006)
 	}
-	if strings.EqualFold(db.Dialector.Name(), "sqlite") {
-		if Validate0006(db) == nil {
-			return nil
-		}
-		return rebuildSQLiteRequestLogAttempts0006(db)
+	if Validate0006(db) == nil {
+		return nil
 	}
-
-	model := &requestLogAttemptDecision0006{}
-	for _, column := range requestLogAttemptDecisionColumns0006 {
-		if db.Migrator().HasColumn(model, column.column) {
-			continue
-		}
-		if err := db.Migrator().AddColumn(model, column.field); err != nil {
-			return fmt.Errorf("add request_log_attempts.%s: %w", column.column, err)
-		}
-	}
-	if db.Migrator().HasConstraint(requestLogAttemptTable0006, failureCategoryConstraint0006) {
-		if err := dropCheckConstraint0006(db, failureCategoryConstraint0006); err != nil {
-			return fmt.Errorf("replace request log failure category constraint: %w", err)
-		}
-	}
-	if err := createCheckConstraint0006(db, failureCategoryConstraint0006, failureCategoryExpression0006); err != nil {
-		return err
-	}
-	for _, constraint := range decisionConstraints0006 {
-		if db.Migrator().HasConstraint(requestLogAttemptTable0006, constraint.name) {
-			continue
-		}
-		if err := createCheckConstraint0006(db, constraint.name, constraint.expression); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func createCheckConstraint0006(db *gorm.DB, name, expression string) error {
-	table, constraint := quoteMigrationIdentifier0006(db, requestLogAttemptTable0006), quoteMigrationIdentifier0006(db, name)
-	if err := db.Exec(fmt.Sprintf(
-		"ALTER TABLE %s ADD CONSTRAINT %s CHECK (%s)", table, constraint, expression,
-	)).Error; err != nil {
-		return fmt.Errorf("create request log decision constraint %q: %w", name, err)
-	}
-	return nil
-}
-
-func dropCheckConstraint0006(db *gorm.DB, name string) error {
-	return db.Migrator().DropConstraint(requestLogAttemptTable0006, name)
-}
-
-func quoteMigrationIdentifier0006(_ *gorm.DB, value string) string {
-	return `"` + value + `"`
+	return rebuildSQLiteRequestLogAttempts0006(db)
 }
 
 func rebuildSQLiteRequestLogAttempts0006(db *gorm.DB) error {
@@ -227,7 +170,7 @@ func validateDecisionColumns0006(db *gorm.DB) error {
 	}
 	newColumns := make(map[string]struct{}, len(requestLogAttemptDecisionColumns0006))
 	for _, column := range requestLogAttemptDecisionColumns0006 {
-		newColumns[column.column] = struct{}{}
+		newColumns[column] = struct{}{}
 	}
 	for _, column := range columns {
 		if _, relevant := newColumns[strings.ToLower(column.Name())]; !relevant {
@@ -251,8 +194,8 @@ func Validate0006(db *gorm.DB) error {
 		return err
 	}
 	for _, column := range requestLogAttemptDecisionColumns0006 {
-		if !db.Migrator().HasColumn(requestLogAttemptTable0006, column.column) {
-			return fmt.Errorf("validate error decision: column %q is missing", column.column)
+		if !db.Migrator().HasColumn(requestLogAttemptTable0006, column) {
+			return fmt.Errorf("validate error decision: column %q is missing", column)
 		}
 	}
 	for _, name := range append([]string{failureCategoryConstraint0006}, decisionConstraintNames0006()...) {
@@ -292,13 +235,6 @@ func failureCategoryConstraintDefinition0006(db *gorm.DB) (string, error) {
 			requestLogAttemptTable0006,
 		).Scan(&definition).Error; err != nil {
 			return "", fmt.Errorf("inspect SQLite failure category constraint: %w", err)
-		}
-	case "postgres", "postgresql":
-		if err := db.Raw(
-			"SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ? AND conrelid = 'request_log_attempts'::regclass",
-			failureCategoryConstraint0006,
-		).Scan(&definition).Error; err != nil {
-			return "", fmt.Errorf("inspect PostgreSQL failure category constraint: %w", err)
 		}
 	default:
 		return "", fmt.Errorf("inspect failure category constraint: unsupported driver %q", db.Dialector.Name())

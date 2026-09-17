@@ -163,7 +163,6 @@ export default {
       single: '单实例',
       databases: {
         sqlite: 'SQLite',
-        postgres: 'PostgreSQL',
       },
       singleBinary: '单二进制',
       dataDir: '数据目录',
