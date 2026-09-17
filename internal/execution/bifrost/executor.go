@@ -71,6 +71,9 @@ func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (r
 		normalizeEmbeddingsAttemptResult(spec, &result)
 		normalizeRerankAttemptResult(spec, &result)
 		normalizeProbeAttemptResult(spec, &result, rawProbePassthrough)
+		if r.providerKind(spec) == channel.ProviderMultiProtocolGateway {
+			normalizeGatewayProtocolProbeResult(spec, &result)
+		}
 	}()
 	prepared, preflightError := r.prepare(spec, false)
 	if preflightError != nil {
@@ -426,9 +429,21 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		return preparedAttempt{}, &failure
 	}
 	if spec.Operation == execution.OperationProbe {
-		probeProtocol, probeMode, probeOK := resolved.ProbeRoute(spec.UpstreamModel)
-		if !probeOK || !probeProtocol.SupportsGeneratedText() ||
-			probeProtocol != spec.ClientProtocol || channel.RouteMode(probeMode) != channel.RouteMode(spec.RouteMode) {
+		var probeOK bool
+		if providerKind := resolved.ProviderKind; providerKind == channel.ProviderMultiProtocolGateway {
+			var probeMode channel.RouteMode
+			probeMode, probeOK = resolved.ModeForModel(
+				spec.ClientProtocol, execution.OperationProbe, spec.UpstreamModel,
+			)
+			if probeOK && channel.RouteMode(probeMode) != channel.RouteMode(spec.RouteMode) {
+				probeOK = false
+			}
+		} else {
+			probeProtocol, probeMode, contractOK := resolved.ProbeRoute(spec.UpstreamModel)
+			probeOK = contractOK && probeProtocol.SupportsGeneratedText() &&
+				probeProtocol == spec.ClientProtocol && channel.RouteMode(probeMode) == channel.RouteMode(spec.RouteMode)
+		}
+		if !probeOK {
 			failure := notSentConversionFailure(
 				execution.ErrorCodeTargetConversionNotSupported,
 				"channel probe contract does not match the requested protocol or route",
@@ -570,6 +585,9 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 				secrets:   secrets,
 			}, nil
 		}
+		if providerKind == channel.ProviderMultiProtocolGateway && spec.ClientProtocol != protocol.OpenAICompletions {
+			return prepareGatewayProtocolProbe(spec, resolved, provider, directKey, secrets)
+		}
 		if mode == channel.RouteNative &&
 			(providerKind == channel.ProviderAnthropic || providerKind == channel.ProviderGemini) {
 			probeBody, marshalErr := marshalNativeProbeBody(spec.ClientProtocol, spec.UpstreamModel, probeOutputTokenBudget(spec))
@@ -596,10 +614,6 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 				(spec.ClientProtocol == protocol.Anthropic || spec.ClientProtocol == protocol.Gemini))
 		request := newProbeRequest(provider, providerKind, spec.UpstreamModel, probeOutputTokenBudget(spec))
 		if providerKind == channel.ProviderMultiProtocolGateway {
-			if spec.ClientProtocol != protocol.OpenAICompletions {
-				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "unsupported multi-protocol gateway probe protocol")
-				return preparedAttempt{}, &failure
-			}
 			baseURL, configured, targetErr := targetBaseURL(resolved.TargetConfig)
 			if targetErr != nil || !configured {
 				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid multi-protocol gateway probe target")
