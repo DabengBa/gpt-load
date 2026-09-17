@@ -100,6 +100,7 @@ export default {
         'GPT-Load ゲートウェイのルートまたはデプロイ接頭辞を入力します（例: https://gpt-load.example.com）。/v1 や /v1beta などの標準プロトコルパスは含めないでください。',
       newApiUrlDescription:
         'New API ゲートウェイのルートまたはデプロイ接頭辞を入力します（例: https://new-api.example.com）。/v1 や /v1beta などの標準プロトコルパスは含めないでください。',
+      connectionParsed: '接続設定を検出し、アップストリーム URL と API キーを自動入力しました',
       cpaUrlDescription:
         'CLIProxyAPI ゲートウェイのルートまたはデプロイ接頭辞を入力します（例: https://cpa.example.com）。/v1 や /v1beta などの標準プロトコルパスは含めないでください。',
       sub2ApiUrlDescription:

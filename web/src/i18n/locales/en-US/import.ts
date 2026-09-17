@@ -102,6 +102,8 @@ export default {
         'Enter the GPT-Load gateway root or deployment prefix, for example https://gpt-load.example.com. Do not include standard protocol paths such as /v1 or /v1beta.',
       newApiUrlDescription:
         'Enter the New API gateway root or deployment prefix, for example https://new-api.example.com. Do not include standard protocol paths such as /v1 or /v1beta.',
+      connectionParsed:
+        'Connection config detected; the upstream URL and API key were filled in automatically',
       cpaUrlDescription:
         'Enter the CLIProxyAPI gateway root or deployment prefix, for example https://cpa.example.com. Do not include standard protocol paths such as /v1 or /v1beta.',
       sub2ApiUrlDescription:
