@@ -71,31 +71,6 @@ func Validate0018(db *gorm.DB) error {
 			}
 		}
 		return nil
-	case "postgres", "postgresql":
-		var index struct {
-			Unique     bool
-			Definition string
-		}
-		if err := db.Raw(`
-			SELECT i.indisunique AS unique, pg_get_indexdef(i.indexrelid) AS definition
-			FROM pg_class AS table_class
-			JOIN pg_index AS i ON i.indrelid = table_class.oid
-			JOIN pg_class AS index_class ON index_class.oid = i.indexrelid
-			WHERE table_class.relname = ? AND index_class.relname = ?
-		`, usageJournalTable0018, usageJournalIndex0018).Scan(&index).Error; err != nil {
-			return fmt.Errorf("inspect usage journal bucket index: %w", err)
-		}
-		if index.Definition == "" {
-			return fmt.Errorf("usage journal bucket index %q is missing", usageJournalIndex0018)
-		}
-		if index.Unique {
-			return fmt.Errorf("usage journal bucket index is unique")
-		}
-		normalized := strings.Join(strings.Fields(strings.ToLower(index.Definition)), " ")
-		if !strings.Contains(normalized, "(bucket_start_ms, request_id)") {
-			return fmt.Errorf("usage journal bucket index definition = %q", index.Definition)
-		}
-		return nil
 	default:
 		return fmt.Errorf("validate usage journal bucket index: unsupported database driver %q", db.Dialector.Name())
 	}
