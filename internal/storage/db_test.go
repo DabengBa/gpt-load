@@ -461,7 +461,7 @@ func assertSQLiteMemoryDatabase(t *testing.T, db *gorm.DB) {
 	t.Fatal("PRAGMA database_list did not contain main database")
 }
 
-func TestOpenOverridesSQLiteRuntimeOptions(t *testing.T) {
+func TestOpenSQLiteRuntimeOptions(t *testing.T) {
 	t.Parallel()
 	dsn := filepath.Join(t.TempDir(), "runtime.db") +
 		"?_txlock=deferred&_pragma=foreign_keys(0)" +
@@ -491,11 +491,19 @@ func TestOpenOverridesSQLiteRuntimeOptions(t *testing.T) {
 	if err := db.Raw("PRAGMA busy_timeout").Scan(&busyTimeout).Error; err != nil {
 		t.Fatalf("busy_timeout: %v", err)
 	}
-	if !strings.EqualFold(journalMode, "wal") || foreignKeys != 1 || busyTimeout != 5000 {
+	if !strings.EqualFold(journalMode, "delete") || foreignKeys != 1 || busyTimeout != 5000 {
 		t.Fatalf("runtime = journal:%q foreign_keys:%d busy_timeout:%d", journalMode, foreignKeys, busyTimeout)
 	}
 	if got := sqlDB.Stats().MaxOpenConnections; got != 1 {
 		t.Fatalf("MaxOpenConnections = %d, want 1", got)
+	}
+}
+
+func TestOpenRejectsUnsupportedSQLiteJournalMode(t *testing.T) {
+	t.Parallel()
+	dsn := filepath.Join(t.TempDir(), "badmode.db") + "?_pragma=journal_mode(memory)"
+	if _, err := storage.Open(dsn); err == nil {
+		t.Fatal("Open() expected journal_mode rejection")
 	}
 }
 
@@ -683,6 +691,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0015_provider_url",
 		"0016_affinity_key",
 		"0017_remove_validation_interval",
+		"0018_usage_journal_bucket_index",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)
@@ -711,7 +720,7 @@ func TestAutoMigrateRemovesRetiredValidationInterval(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("create legacy validation_interval setting: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE id = ?", "0017_remove_validation_interval").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{"0017_remove_validation_interval", "0018_usage_journal_bucket_index"}).Error; err != nil {
 		t.Fatalf("simulate pre-0017 migration ledger: %v", err)
 	}
 	if err := storage.AutoMigrate(db); err != nil {
