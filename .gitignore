@@ -62,5 +62,8 @@ internal/webui/dist/*
 internal/webui/dist/assets/*
 !internal/webui/dist/assets/embed-placeholder.txt
 
+# Playwright artifacts
+web/test-results/
+
 # Worktrees
 .worktrees/

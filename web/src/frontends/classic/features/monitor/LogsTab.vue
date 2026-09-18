@@ -110,6 +110,13 @@ const accessKeyOptionsQuery = useQuery(
 const groupNames = computed<Record<number, string>>(() =>
   Object.fromEntries((groupsQuery.data.value ?? []).map((group) => [group.id, group.name])),
 )
+const groupProviderUrls = computed<Record<number, string>>(() =>
+  Object.fromEntries(
+    (groupsQuery.data.value ?? [])
+      .filter((group) => group.provider_url !== null)
+      .map((group) => [group.id, group.provider_url as string]),
+  ),
+)
 const channelsByID = computed<Record<string, ChannelDto>>(() =>
   Object.fromEntries(
     (channelsQuery.data.value?.items ?? []).map((channel) => [channel.channel_id, channel]),
@@ -581,13 +588,6 @@ function responseTooltip(log: RequestLogItemDto): string {
   return requestLogResponseTooltip(log, translateLogMessage)
 }
 
-function modelMappingTooltip(log: RequestLogItemDto): string {
-  return t('monitor.logs.modelMapping', {
-    client: log.client_model ?? '—',
-    upstream: log.upstream_model ?? '—',
-  })
-}
-
 function modelConsistencyTooltip(log: RequestLogItemDto): string {
   const key =
     log.model_consistency === 'mismatch'
@@ -825,6 +825,7 @@ function costLabel(log: RequestLogItemDto): string {
             <LogRouteIdentity
               :group-id="log.group_id"
               :group-name="groupName(log)"
+              :provider-url="log.group_id === null ? null : (groupProviderUrls[log.group_id] ?? null)"
               :channel-id="log.channel_id"
               :channel="channelDefinition(log)"
               :credential-id="log.credential_id"
@@ -855,6 +856,14 @@ function costLabel(log: RequestLogItemDto): string {
               </OverflowTooltip>
               <code v-else class="logs-list__model">—</code>
               <OverflowTooltip
+                v-if="log.upstream_model && log.upstream_model !== log.client_model"
+                as="span"
+                class="logs-list__model-mapping"
+                :content="log.upstream_model"
+              >
+                -&gt;{{ log.upstream_model }}
+              </OverflowTooltip>
+              <OverflowTooltip
                 v-if="reasoningLabel(log)"
                 as="small"
                 class="logs-list__reasoning"
@@ -862,18 +871,6 @@ function costLabel(log: RequestLogItemDto): string {
               >
                 {{ reasoningLabel(log) }}
               </OverflowTooltip>
-              <AppTooltip
-                v-if="log.upstream_model && log.upstream_model !== log.client_model"
-                :content="modelMappingTooltip(log)"
-              >
-                <button
-                  type="button"
-                  class="logs-list__hint"
-                  :aria-label="t('monitor.logs.modelMappingLabel')"
-                >
-                  <Info :size="13" aria-hidden="true" />
-                </button>
-              </AppTooltip>
               <AppTooltip
                 v-if="log.model_consistency === 'unknown' || log.model_consistency === 'mismatch'"
                 :content="modelConsistencyTooltip(log)"
@@ -1019,7 +1016,13 @@ function costLabel(log: RequestLogItemDto): string {
             :data-label="t('monitor.logs.columns.timing')"
           >
             <OverflowTooltip as="span" :content="timingPrimary(log)">
-              {{ timingPrimary(log) }}
+              <template v-if="log.stream && log.first_response_ms !== null">
+                <span :class="{ 'logs-list__timing--slow': log.first_response_ms > 15_000 }">{{
+                  formatLogDuration(log.first_response_ms)
+                }}</span>
+                <span aria-hidden="true"> / </span>{{ formatLogDuration(log.duration_ms) }}
+              </template>
+              <template v-else>{{ formatLogDuration(log.duration_ms) }}</template>
             </OverflowTooltip>
             <OverflowTooltip
               v-if="formatLogOutputRate(log, locale) !== '—'"
@@ -1084,6 +1087,7 @@ function costLabel(log: RequestLogItemDto): string {
       :request-id="invalidAffinityKey === undefined ? selectedRequestID : undefined"
       :self-scoped="isAccessKey"
       :group-names="groupNames"
+      :provider-urls="groupProviderUrls"
       :channels="channelsByID"
       @update:open="setDetailOpen(undefined, $event)"
     />
@@ -1224,6 +1228,20 @@ function costLabel(log: RequestLogItemDto): string {
 .logs-list__model {
   flex: 0 1 auto;
   font-family: var(--font-mono);
+}
+
+.logs-list__model-mapping {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logs-list__timing--slow {
+  color: var(--color-warning);
 }
 
 .logs-list__reasoning {
