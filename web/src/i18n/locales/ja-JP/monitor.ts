@@ -996,6 +996,7 @@ export default {
         rerank: 'ドキュメントを再ランキング',
         list_models: 'モデル一覧',
         probe: 'ヘルスプローブ',
+        web_search: 'Codex スタンドアロン検索',
       },
       dispatchState: {
         not_sent: 'アップストリームへ未送信',

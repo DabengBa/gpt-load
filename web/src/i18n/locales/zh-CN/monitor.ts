@@ -975,6 +975,7 @@ export default {
         rerank: '文档重排序',
         list_models: '列出模型',
         probe: '健康探测',
+        web_search: 'Codex 独立搜索',
       },
       dispatchState: {
         not_sent: '未发送到上游',

@@ -995,6 +995,7 @@ export default {
         rerank: 'Rerank documents',
         list_models: 'List models',
         probe: 'Health probe',
+        web_search: 'Codex standalone search',
       },
       dispatchState: {
         not_sent: 'Not sent upstream',
