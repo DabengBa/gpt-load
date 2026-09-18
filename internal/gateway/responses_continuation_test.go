@@ -25,14 +25,14 @@ import (
 	"gpt-load/internal/telemetry"
 )
 
-func TestResponsesContinuationPinsCredentialWithoutSoftAffinity(t *testing.T) {
+func TestResponsesContinuationPinsCredentialWithoutAffinity(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
 			forwarder := &scriptedForwarder{results: []UpstreamResult{
 				storedResponse("first"), storedResponse("second"), storedResponse("third"),
 			}}
 			handler, engine, sink := newContinuationFixture(t, forwarder)
-			// 第三次请求是本用例的对照：续接不学软亲和，普通请求仍走权重随机选择。
+			// 第三次请求是本用例的对照：续接不学亲和，普通请求仍走权重随机选择。
 			useAffinityRandomValues(handler, 0, 0, 1)
 			group := handler.manager.Current().Groups[1]
 			group.AffinityEnabled = enabled
@@ -410,7 +410,7 @@ func TestResponsesContinuationLearnsCompressedJSONResponse(t *testing.T) {
 	}
 }
 
-func TestResponsesPromptCacheKeySoftAffinitySeparatesSignalsAndContinuity(t *testing.T) {
+func TestResponsesPromptCacheKeyAffinitySeparatesSignalsAndContinuity(t *testing.T) {
 	forwarder := &scriptedForwarder{results: []UpstreamResult{
 		storedResponse("one"), storedResponse("two"), storedResponse("three"), storedResponse("four"),
 	}}

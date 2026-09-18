@@ -78,19 +78,34 @@ func TestIteratorWeightedMixFreezesStrategyAndPrefersEligibleConvertedCredential
 }
 
 func TestIteratorWeightedMixPreservesStoredResponsesPriority(t *testing.T) {
-	for _, preferred := range []uint{0, 31} {
-		snapshot := responsesStoreSchedulerSnapshot(t, true)
-		setSnapshotRouteStrategy(t, snapshot, "weighted_mix")
-		iterator := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}, {ID: 21, GroupID: 2}, {ID: 31, GroupID: 3}, {ID: 41, GroupID: 4}}}, Query{
-			ClientProtocol: protocol.OpenAIResponses, Operation: execution.OperationResponsesCreate,
-			ResponsesStorePreference: execution.ResponsesStorePreferencePreferStored, ExternalModel: modelPointer("gpt"), PreferredCredentialID: preferred,
-		}, rand.New(routeStrategyRandSource(50)))
-		for index := range []uint{21, 31} {
-			selection, err := iterator.Next()
-			if err != nil || selection.ResponsesStoreDowngraded != (index > 0) {
-				t.Fatalf("preferred %d Next() %d = (%#v, %v), want stable store semantics", preferred, index, selection, err)
-			}
+	snapshot := responsesStoreSchedulerSnapshot(t, true)
+	setSnapshotRouteStrategy(t, snapshot, "weighted_mix")
+	iterator := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}, {ID: 21, GroupID: 2}, {ID: 31, GroupID: 3}, {ID: 41, GroupID: 4}}}, Query{
+		ClientProtocol: protocol.OpenAIResponses, Operation: execution.OperationResponsesCreate,
+		ResponsesStorePreference: execution.ResponsesStorePreferencePreferStored, ExternalModel: modelPointer("gpt"),
+	}, rand.New(routeStrategyRandSource(50)))
+	for index := range []uint{21, 31} {
+		selection, err := iterator.Next()
+		if err != nil || selection.ResponsesStoreDowngraded != (index > 0) {
+			t.Fatalf("Next() %d = (%#v, %v), want stable store semantics", index, selection, err)
 		}
+	}
+}
+
+func TestIteratorPreferredCredentialBeatsStoreDowngradeBucket(t *testing.T) {
+	snapshot := responsesStoreSchedulerSnapshot(t, true)
+	iterator := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}, {ID: 21, GroupID: 2}, {ID: 31, GroupID: 3}, {ID: 41, GroupID: 4}}}, Query{
+		ClientProtocol: protocol.OpenAIResponses, Operation: execution.OperationResponsesCreate,
+		ResponsesStorePreference: execution.ResponsesStorePreferencePreferStored, ExternalModel: modelPointer("gpt"),
+		PreferredCredentialID: 31,
+	}, rand.New(routeStrategyRandSource(50)))
+	first, err := iterator.Next()
+	if err != nil || first.CredentialID != 31 || !first.ResponsesStoreDowngraded {
+		t.Fatalf("first Next() = (%#v, %v), want preferred store-downgraded credential 31 first", first, err)
+	}
+	second, err := iterator.Next()
+	if err != nil || second.CredentialID != 21 || second.ResponsesStoreDowngraded {
+		t.Fatalf("second Next() = (%#v, %v), want exact upstream-managed credential 21 next", second, err)
 	}
 }
 

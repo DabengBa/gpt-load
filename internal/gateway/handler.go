@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -101,34 +102,36 @@ type blacklistReleaseRegistry interface {
 }
 
 type Handler struct {
-	manager             *state.Manager
-	channels            *channel.Registry
-	subscriptions       *subscriptionruntime.Runtime
-	registry            runtimeCredentialRegistry
-	encryption          encryption.Service
-	forwarder           AttemptForwarder
-	dialects            dialect.Set
-	stats               *health.StatsStore
-	mutations           credentialMutationCoordinator
-	limiter             AccessKeyRPMLimiter
-	requestLogSink      telemetry.RequestLogSink
-	priceTables         PriceTableProvider
-	accessQuota         *accessquota.Runtime
-	newRandom           func() *rand.Rand
-	newRequestID        func() (string, error)
-	captureFactory      CaptureFactory
-	requestNow          func() time.Time
-	now                 func() time.Time
-	writeTimeout        time.Duration
-	modelListLimit      int64
-	logger              *logrus.Logger
-	authFailureEvents   *utils.RateLimitedEventCounter
-	routeNotFoundEvents *utils.RateLimitedEventCounter
-	lifecycle           *httplifecycle.Coordinator
-	affinityCache       *affinity.Cache
-	responseBindings    *state.ResponseBindings
-	websocketLimits     websocketLimits
-	websocketBudget     websocketBudget
+	manager              *state.Manager
+	channels             *channel.Registry
+	subscriptions        *subscriptionruntime.Runtime
+	registry             runtimeCredentialRegistry
+	encryption           encryption.Service
+	forwarder            AttemptForwarder
+	dialects             dialect.Set
+	stats                *health.StatsStore
+	mutations            credentialMutationCoordinator
+	limiter              AccessKeyRPMLimiter
+	requestLogSink       telemetry.RequestLogSink
+	priceTables          PriceTableProvider
+	accessQuota          *accessquota.Runtime
+	newRandom            func() *rand.Rand
+	newRequestID         func() (string, error)
+	captureFactory       CaptureFactory
+	requestNow           func() time.Time
+	now                  func() time.Time
+	writeTimeout         time.Duration
+	modelListLimit       int64
+	logger               *logrus.Logger
+	authFailureEvents    *utils.RateLimitedEventCounter
+	routeNotFoundEvents  *utils.RateLimitedEventCounter
+	lifecycle            *httplifecycle.Coordinator
+	affinityCache        *affinity.Cache
+	affinityStore        affinity.BindingStore
+	affinityBindingLocks [affinityBindingLockStripes]sync.Mutex
+	responseBindings     *state.ResponseBindings
+	websocketLimits      websocketLimits
+	websocketBudget      websocketBudget
 }
 
 func (handler *Handler) freezeAttemptPricing(
@@ -229,6 +232,8 @@ func NewHandlerWithLifecycle(
 	accessQuota *accessquota.Runtime,
 	lifecycle *httplifecycle.Coordinator,
 	responseBindings *state.ResponseBindings,
+	affinityCache *affinity.Cache,
+	affinityStore affinity.BindingStore,
 ) *Handler {
 	handler := NewHandler(
 		manager,
@@ -251,6 +256,10 @@ func NewHandlerWithLifecycle(
 	}
 	handler.lifecycle = lifecycle
 	handler.responseBindings = responseBindings
+	if affinityCache != nil {
+		handler.affinityCache = affinityCache
+	}
+	handler.affinityStore = affinityStore
 	return handler
 }
 
@@ -824,6 +833,7 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		}
 	} else {
 		requestAffinity = handler.resolveRequestAffinity(
+			ginContext.Request.Context(),
 			snapshot, accessKey.ID, selectedRoute.Protocol, model, metadata.Operation,
 			metadata, allowedCredentialRefs,
 		)
@@ -831,6 +841,10 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 	}
 	recorder.setAffinityKey(requestAffinity.displayKey)
 	recorder.setAffinityObservations(requestAffinity.source, requestAffinity.state)
+	if requestAffinity.err != nil {
+		handler.completeConfigurationChanged(ginContext, recorder)
+		return
+	}
 	iterator := scheduler.New(snapshot, handler.registry, query, handler.newRandom())
 	handler.executeAttempts(
 		ginContext,
@@ -1480,6 +1494,7 @@ func (handler *Handler) executeAttempts(
 			requestContext,
 			input,
 		)
+		requestAffinity.markBoundAttempt(selection, ref)
 		func() {
 			if stream {
 				result = handler.forwarder.ForwardStream(attemptContext, input, ginContext.Writer)
@@ -1537,6 +1552,7 @@ func (handler *Handler) executeAttempts(
 			attemptNow,
 			decisionContextForSelection(selection),
 		)
+		requestAffinity.markBoundProviderFailure(selection, ref, resultForDecision.DispatchState, decision)
 		if stream && result.BufferedStream && result.HTTPCommitted && !result.PayloadReleased {
 			// A heartbeat has committed HTTP, but no provider payload is visible;
 			// this is the only committed state in which an explicit buffered retry
@@ -1592,7 +1608,7 @@ func (handler *Handler) executeAttempts(
 				handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
 				handler.recordEntrySuccess(selection.GroupID, selection.EntryID, selection.CredentialID)
 				if originalMetadata.PreviousResponseID == "" {
-					handler.recordAffinitySuccess(requestAffinity, selection, ref)
+					handler.recordAffinitySuccess(ginContext.Request.Context(), requestAffinity, selection, ref)
 				}
 			}
 			return
@@ -1688,7 +1704,7 @@ func (handler *Handler) executeAttempts(
 				result.StatusCode >= http.StatusOK && result.StatusCode < http.StatusMultipleChoices &&
 				originalMetadata.PreviousResponseID == "" &&
 				!(result.ExecutionError != nil && isUpstreamDiagnosticErrorCode(result.ExecutionError.Code)) {
-				handler.recordAffinitySuccess(requestAffinity, selection, ref)
+				handler.recordAffinitySuccess(ginContext.Request.Context(), requestAffinity, selection, ref)
 			}
 			return
 		}

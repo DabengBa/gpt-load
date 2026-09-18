@@ -165,8 +165,8 @@ type RouteTarget struct {
 
 ### 5.2 优先级分层调度
 
-- `Iterator` 构建时按 `Priority` 将候选分层;`Next()` 只在**当前最高可用优先级层**
-  内加权随机。
+- 无合格亲和绑定时,`Iterator` 构建后按 `Priority` 分层,`Next()` 在**当前最高可用优先级层**
+  内加权随机;合格绑定的跨层首试优先适用 §5.3。
 - 层内候选耗尽(全部 tried / 冷却 / 拉黑)→ 降到下一优先级层;所有层耗尽 →
   返回现有 `ErrExhausted` 语义,配 `staticReason` 原因码(新增:条目权重为 0、
   条目熔断等,见 §6.3)。
@@ -177,19 +177,33 @@ type RouteTarget struct {
 - `tried` 集合从"密钥维度"扩展为 `(密钥, 上游模型)` 维度:同一密钥换一个
   条目(上游模型)允许再试,同一 `(密钥, 上游模型)` 失败后不再重试。
 - `SkipGroup` 整组跳过语义不变。
-- 会话亲和(`PreferredCredentialID`)是**偏好层,不是锁定层**:它只决定当前层内
-  已可用候选的挑选顺序,从不扩大或削减候选集合。
-  - 命中判定发生在可用性过滤、优先级分层、组合权重构造完成**之后**:
-    `scheduler.preferredCandidate` 在已构造好的层内候选池中查找亲和目标,
-    命中即返回,未命中走正常加权随机。
-  - 亲和目标不可用(被 `evaluateTargets` 排除、冷却、拉黑、凭据身份代际变更)
-    时视为**未命中**,直接走正常分层;请求不阻断,也不需要主动清理亲和记录。
-  - 成功后亲和指针**迁移**到本次实际服务的 `(GroupID, CredentialID,
-    IdentityGeneration)`,由 `affinity.Cache.RecordSuccess` 的版本 CAS 保证;
-    同一请求内的故障转移(先试亲和目标失败、换候选成功)允许迁移。
-  - 这是与 `previous_response_id` **硬锁定**互斥的另一种机制:续接请求把候选
-    收窄到唯一归属凭据(`AllowedCredentialIDs` 单元素),亲和始终保留完整候选
-    集合兜底。两者不得合并。
+- 会话亲和(`PreferredCredentialID`)是合格候选中的**首试绑定**:它不扩大候选集合,
+  但在所有通过资格过滤的优先级、路由模式和响应存储 bucket 中先尝试绑定目标。
+  - 首试仍须通过 `evaluateTargets`、access-key filter、group enable/affinity enable、
+    route requirement、entry weight、credential identity、cooldown/blacklist 等全部硬资格过滤;
+    在所有合格 priority tier、route mode 和 regular/store-downgraded bucket 中查找绑定凭据。
+  - 亲和目标被资格过滤排除时保留 durable row,当前请求可由其他合格候选正常服务,
+    但其成功不能覆盖旧绑定。过滤、准备阶段错误、本地执行或下游失败不算 provider failure。
+  - 对仍合格的绑定目标,只有实际 provider attempt 发生可重试的上游失败后,
+    才按既有重试/重放规则 fallback;fallback 成功后才可迁移到实际成功的
+    `(GroupID, CredentialID, IdentityGeneration)`。同目标成功可刷新绑定,无绑定时成功可建立绑定。
+  - gateway 在单进程 singleton Handler 内用同 key 条纹锁协调 Cache CAS 与 durable upsert;
+    不承诺跨进程写入排序。绑定粒度沿用 `PreferredCredentialID`,不增加 affinity EntryID。
+  - 持久权威是现有 `system_settings` 的 `_internal.affinity.binding.<raw-hmac>` 行,
+    值只含目标 ID 与身份代际,没有 TTL,不新增 schema migration。热缓存 miss、TTL 到期、
+    LRU/capacity 淘汰或进程重启后由 gateway read-through 恢复,合格绑定仍为 `hit`;
+    恢复需要同一数据库与键派生材料,不依赖停机 checkpoint。
+  - 无关 group/entry weight、catalog/Models.dev 更新和 snapshot revision 变化不删除绑定。
+    revision-only 不清热缓存,capacity/TTL 变化至多清热缓存;关闭分组亲和也保留 durable row。
+  - `cache_miss` 是适用查找路径未找到绑定,生产启用路径包括 durable lookup;
+    `hit` 包括 durable 恢复。`cache_unavailable` 同时涵盖本地 cache/config/key 不可用及
+    store lookup/decode error;后者在 provider dispatch 前 fail-closed,不普通 fallback。
+    all-disabled 候选跳过 store lookup,继续普通调度;memory-only 测试保留本地边界。
+    provider 成功后的 upsert error 保留已交付响应与热绑定,记录 `affinity_binding_persist_failed`,
+    不触发新 attempt;该失败写入不保证缓存丢失或重启后的恢复。
+  - 这是与 `previous_response_id` **continuation ownership** 独立的另一种机制:
+    续接请求把候选收窄到唯一归属凭据(`AllowedCredentialIDs` 单元素),亲和始终保留
+    完整候选集合兜底。两者不得合并。
 - 跨候选故障转移的前提是「尚未向客户端释放任何内容」,强制 buffered 的三个生成流
   (OpenAI Chat Completions、OpenAI Responses `create`、Anthropic Messages) 由
   `ResponsesReplayEligible` 判定请求是否引用了上游状态;Gemini 与 OpenAI Images 是
@@ -199,7 +213,7 @@ type RouteTarget struct {
   - 缓存与呈现提示(`prompt_cache_key`、`prompt_cache_retention`、
     `prompt_cache_options`、`reasoning`、`service_tier`)不引用上游状态,
     保持可重放——换候选只损失一次缓存命中。
-- 组合后的完整链条:**第 1 轮建会话 → 第 2 轮亲和命中;第 3 轮亲和目标失败且
+- 组合后的完整链条:**第 1 轮建会话 → 第 2 轮亲和命中;第 3 轮绑定目标实际失败且
   未释放内容 → 换候选成功 → 亲和指针迁移;第 4 轮亲和命中新目标。**
 
 ---
@@ -235,8 +249,8 @@ type RouteTarget struct {
 
 - 请求体 `model` 改写继续消费 `Selection.UpstreamModelID`,机制不变;
   本设计只改变"UpstreamModelID 的候选来源"。
-- 会话亲和、Responses passthrough(NoModelRouteKey)、流式改写等链路行为不变,
-  回归测试覆盖。
+- 会话亲和按 §5.3 的 durable binding、跨合格 bucket 首试和失败后迁移规则执行;
+  Responses passthrough(NoModelRouteKey)、流式改写等既有链路继续由回归测试覆盖。
 
 ---
 
@@ -327,5 +341,9 @@ type RouteTarget struct {
    一一对应;
 7. **日志**:`A → B` 双模型名落日志;用量按上游模型计价正确。
 8. **亲和 + 故障转移链**:同一会话前缀连续四轮请求——第 1 轮落到分组 A;第 2 轮
-   亲和命中 A;第 3 轮 A 未释放内容即失败 → 换到分组 B 并成功;第 4 轮亲和命中 B。
-   同时验证亲和目标不可用时请求不被阻断(降级到正常分层)。
+   亲和命中 A;第 3 轮 A 实际 attempt 失败且未释放内容 → 换到分组 B 并成功;
+   第 4 轮亲和命中 B。同时验证目标未通过资格过滤时正常候选可服务,但不删除或覆盖旧 durable row。
+9. **恢复与无关发布**:覆盖 TTL/LRU/capacity 热缓存丢失、同数据库重启后的 read-through hit,
+   以及无关 entry weight、catalog-like snapshot republish 后仍首试原目标。
+   现有 catalog-like 回归仅复现本地 Models.dev 风格 revision 发布,
+   未调用真实 Models.dev 网络客户端或 `control/catalog_sync` 生产同步链路。

@@ -55,7 +55,7 @@ func TestIteratorExhaustsNativeTierBeforeConvertedTier(t *testing.T) {
 	}
 }
 
-func TestIteratorDoesNotLetConvertedPreferenceBypassNativeTier(t *testing.T) {
+func TestIteratorPreferredCredentialBeatsNativeRouteTier(t *testing.T) {
 	t.Parallel()
 
 	iterator := New(channelSchedulerSnapshot(t), fakeCredentialSource{keys: []state.CredentialMeta{
@@ -69,13 +69,64 @@ func TestIteratorDoesNotLetConvertedPreferenceBypassNativeTier(t *testing.T) {
 	}, rand.New(zeroRandSource{}))
 
 	first, err := iterator.Next()
-	if err != nil || first.CredentialID != 21 || first.RouteMode != channel.RouteNative {
-		t.Fatalf("first Next() = (%#v, %v), want native credential 21", first, err)
+	if err != nil || first.CredentialID != 11 || first.RouteMode != channel.RouteConverted {
+		t.Fatalf("first Next() = (%#v, %v), want preferred converted credential 11 before native", first, err)
 	}
 	second, err := iterator.Next()
-	if err != nil || second.CredentialID != 11 || second.RouteMode != channel.RouteConverted {
-		t.Fatalf("second Next() = (%#v, %v), want preferred converted credential 11", second, err)
+	if err != nil || second.CredentialID != 21 || second.RouteMode != channel.RouteNative {
+		t.Fatalf("second Next() = (%#v, %v), want remaining native credential 21", second, err)
 	}
+	if _, err := iterator.Next(); !errors.Is(err, ErrExhausted) {
+		t.Fatalf("third Next() error = %v, want ErrExhausted", err)
+	}
+}
+
+func TestIteratorPreferredCredentialRespectsHardFilters(t *testing.T) {
+	t.Parallel()
+
+	t.Run("allowed credentials exclude preferred", func(t *testing.T) {
+		iterator := New(channelSchedulerSnapshot(t), fakeCredentialSource{keys: []state.CredentialMeta{
+			{ID: 11, GroupID: 1},
+			{ID: 21, GroupID: 2},
+		}}, Query{
+			ClientProtocol:        protocol.OpenAICompletions,
+			Operation:             execution.OperationChatCompletion,
+			ExternalModel:         modelPointer("public"),
+			PreferredCredentialID: 11,
+			AllowedCredentialIDs:  map[uint]struct{}{21: {}},
+		}, rand.New(zeroRandSource{}))
+
+		selection, err := iterator.Next()
+		if err != nil || selection.CredentialID != 21 {
+			t.Fatalf("Next() = (%#v, %v), want hard-filtered fallback credential 21", selection, err)
+		}
+	})
+
+	t.Run("cooldown excludes preferred", func(t *testing.T) {
+		now := time.Unix(100, 0)
+		registry := state.NewCredentialRegistry()
+		entries := []state.CredentialEntry{
+			{ID: 11, GroupID: 1, AuthState: state.CredentialAuthStateReady, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "one"},
+			{ID: 21, GroupID: 2, AuthState: state.CredentialAuthStateReady, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "two"},
+		}
+		if err := registry.ReplaceCredentials(entries); err != nil {
+			t.Fatalf("ReplaceCredentials() error = %v", err)
+		}
+		if !registry.SetCooldown(11, now.Add(time.Minute)) {
+			t.Fatal("SetCooldown() did not find preferred credential")
+		}
+		iterator := newWithClock(channelSchedulerSnapshot(t), registry, Query{
+			ClientProtocol:        protocol.OpenAICompletions,
+			Operation:             execution.OperationChatCompletion,
+			ExternalModel:         modelPointer("public"),
+			PreferredCredentialID: 11,
+		}, rand.New(zeroRandSource{}), func() time.Time { return now })
+
+		selection, err := iterator.Next()
+		if err != nil || selection.CredentialID != 21 || selection.RouteMode != channel.RouteNative {
+			t.Fatalf("Next() = (%#v, %v), want cooldown-filtered fallback credential 21", selection, err)
+		}
+	})
 }
 
 func TestImagesGenerationPrefersNativeBeforeGeminiConversions(t *testing.T) {
@@ -98,7 +149,6 @@ func TestImagesGenerationPrefersNativeBeforeGeminiConversions(t *testing.T) {
 	}}, Query{
 		ClientProtocol: protocol.OpenAIImages, Operation: execution.OperationImagesGenerate,
 		RouteRequirement: execution.RouteRequirementAny, ExternalModel: modelPointer("public"),
-		PreferredCredentialID: 11,
 	}, rand.New(zeroRandSource{}))
 	first, err := iterator.Next()
 	if err != nil || first.GroupID != 2 || first.RouteMode != channel.RouteNative {

@@ -17,7 +17,7 @@ const (
 	affinityStateColumn0014      = "affinity_state"
 
 	// affinitySourceZero0014 和 affinityStateZero0014 是在此迁移之前创建的行以及
-	// 未评估软亲和的请求所持久化的 bounded 零值。它们永远不会携带 prompt 缓存键、
+	// 未评估亲和的请求所持久化的 bounded 零值。它们永远不会携带 prompt 缓存键、
 	// 派生 key 或 HMAC 输入。
 	affinitySourceZero0014 = "none"
 	affinityStateZero0014  = "no_signal"
@@ -53,7 +53,7 @@ func affinityObservabilityColumns0014() []affinityObservabilityColumn0014 {
 	}
 }
 
-// Up0014 向请求日志表添加携带 bounded 软亲和观测的列。每列都是增量的且幂等的，
+// Up0014 向请求日志表添加携带 bounded 亲和观测的列。每列都是增量的且幂等的，
 // 因此可以安全地恢复中断的运行，并且每列都有 bounded 零值默认值，使得历史行
 // 永远不会暴露未设置或原始的亲和信号。
 func Up0014(db *gorm.DB) error {

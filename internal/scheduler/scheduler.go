@@ -365,6 +365,13 @@ func (iterator *Iterator) Next() (Selection, error) {
 		return Selection{}, ErrExhausted
 	}
 	now := iterator.now()
+	// 亲和首试(计划 §4):已通过全部硬资格过滤的绑定 credential 先于任何
+	// 其他合格候选返回,不受 priority tier、route mode 或 store bucket 限制。
+	// 扫描沿用普通调度的 bucket 顺序,使同 credential 的多 entry 保持既有顺序。
+	if selected, found := iterator.preferredSelection(now); found {
+		iterator.markTried(selected)
+		return newSelection(selected.credential, selected.target), nil
+	}
 	// 优先级分层(设计 §5.2):只在当前最高可用层内挑选,层耗尽才降级。
 	// 层内先保持既有的 store 降级偏好,再按上游路由模式分层(#570)挑选:
 	// 默认 native 严格先于 converted,weighted_mix 策略下同层竞争。
@@ -391,10 +398,7 @@ func (iterator *Iterator) Next() (Selection, error) {
 						ticket -= candidate.weight
 					}
 				}
-				iterator.tried[candidateKey{
-					credentialID:  selected.credential.ID,
-					upstreamModel: selected.target.target.UpstreamModelID,
-				}] = struct{}{}
+				iterator.markTried(selected)
 				return newSelection(selected.credential, selected.target), nil
 			}
 		}
@@ -402,9 +406,40 @@ func (iterator *Iterator) Next() (Selection, error) {
 	return Selection{}, ErrExhausted
 }
 
+// preferredSelection scans every eligible bucket in the same deterministic
+// order as ordinary scheduling and returns the affinity credential once it is
+// found. Each bucket already applies the hard eligibility filters through
+// weightedTierPool, so a filtered, cooled-down or blacklisted target is never
+// forced back into scheduling.
+func (iterator *Iterator) preferredSelection(now time.Time) (weightedCandidate, bool) {
+	if iterator.preferredCredentialID == 0 {
+		return weightedCandidate{}, false
+	}
+	for _, tier := range iterator.tiers {
+		for _, pool := range []*candidatePool{&iterator.regular, &iterator.storeDowngraded} {
+			for _, modes := range iterator.routeModeTiers {
+				weighted, _ := iterator.weightedTierPool(pool, modes, tier, now)
+				if selected, found := preferredCandidate(weighted, iterator.preferredCredentialID); found {
+					return selected, true
+				}
+			}
+		}
+	}
+	return weightedCandidate{}, false
+}
+
+// markTried records the selected (credential, upstream model) pair so retries
+// never repeat it and the affinity credential moves on after its first attempt.
+func (iterator *Iterator) markTried(selected weightedCandidate) {
+	iterator.tried[candidateKey{
+		credentialID:  selected.credential.ID,
+		upstreamModel: selected.target.target.UpstreamModelID,
+	}] = struct{}{}
+}
+
 // preferredCandidate resolves the session-affinity credential inside the
-// current tier bucket: the affinity hit pins the credential dimension of the
-// triple, while the entry follows the frozen target order (design §5.3).
+// current weighted bucket: the affinity hit pins the credential dimension of
+// the triple, while the entry follows the frozen target order (design §5.3).
 func preferredCandidate(
 	weighted []weightedCandidate,
 	credentialID uint,

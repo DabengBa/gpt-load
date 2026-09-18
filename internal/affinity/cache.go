@@ -2,6 +2,7 @@ package affinity
 
 import (
 	"container/list"
+	"context"
 	"sync"
 	"time"
 )
@@ -11,7 +12,15 @@ const (
 	DefaultCapacity = 10_000
 )
 
-// Target is the exact Credential identity remembered as a soft preference.
+// BindingStore is the durable authority for affinity bindings that the gateway
+// coordinates with its evictable hot cache. A lookup error is an authoritative
+// failure and must not be mistaken for a missing binding.
+type BindingStore interface {
+	Lookup(context.Context, Key) (Target, bool, error)
+	Upsert(context.Context, Key, Target) error
+}
+
+// Target is the exact Credential identity remembered as a preference.
 type Target struct {
 	GroupID            uint
 	CredentialID       uint
@@ -42,7 +51,8 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
-// Cache is a bounded, process-local soft-affinity cache.
+// Cache is a bounded hot cache for affinity bindings. Eviction only removes
+// the in-memory copy; the owning storage layer is responsible for recovery.
 type Cache struct {
 	mu          sync.Mutex
 	entries     map[Key]*list.Element
@@ -67,9 +77,12 @@ func newCache(capacity int, ttl time.Duration, now func() time.Time) *Cache {
 	}
 }
 
-// Configure applies one frozen runtime configuration revision. Moving to a
-// newer revision clears entries so changed TTL, capacity, and group policy
-// take effect atomically. Older requests cannot restore stale configuration.
+// Configure applies one frozen runtime configuration revision. A newer revision
+// adopts the given capacity and TTL but clears entries only when capacity or TTL
+// changed relative to the current cache state, so unrelated revision bumps keep
+// established bindings. Revision stays monotonic and doubles as the stale-write
+// guard: RecordSuccess rejects observations taken under an older revision, while
+// older Configure calls are refused outright.
 func (cache *Cache) Configure(revision uint64, capacity int, ttl time.Duration) bool {
 	if cache == nil || revision == 0 || capacity <= 0 || ttl <= 0 || cache.now == nil {
 		return false
@@ -83,10 +96,12 @@ func (cache *Cache) Configure(revision uint64, capacity int, ttl time.Duration) 
 		return cache.capacity == capacity && cache.ttl == ttl
 	}
 	cache.revision = revision
+	if cache.capacity != capacity || cache.ttl != ttl {
+		clear(cache.entries)
+		cache.recent.Init()
+	}
 	cache.capacity = capacity
 	cache.ttl = ttl
-	cache.entries = make(map[Key]*list.Element)
-	cache.recent.Init()
 	return true
 }
 

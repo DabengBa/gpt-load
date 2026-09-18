@@ -228,10 +228,14 @@ export interface RequestLogPageDto {
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const statuses = ['success', 'error', 'incomplete', 'canceled'] as const
 const modelConsistencyValues = ['not_applicable', 'match', 'unknown', 'mismatch'] as const
-// bounded 持久化软亲和观测。API 合约永远不会携带原始
-// prompt_cache_key、派生 key 或 HMAC 输入，因此这些枚举是
-// 唯一可接受的值。
+// bounded 亲和观测。API 不携带原始 prompt_cache_key、前缀输入或完整 HMAC；
+// affinity_key 仅允许掩码投影，以下枚举值保持既有协议。
 const affinitySources = ['none', 'prompt_cache_key', 'prompt_prefix'] as const
+// cache_miss 表示适用查找路径未找到绑定，生产启用路径包含 durable read-through；
+// hit 包括从持久层恢复并通过解析资格检查的绑定，实际首试仍须通过全部调度硬过滤。
+// cache_unavailable 涵盖本地缓存/配置/键及持久查询/解码错误；必需持久查询失败
+// 在 provider dispatch 前 fail-closed，不普通 fallback。all-disabled 跳过 store 查询，
+// memory-only 测试保留本地边界。成功后的写入错误另记 affinity_binding_persist_failed。
 const affinityStates = [
   'no_signal',
   'cache_miss',

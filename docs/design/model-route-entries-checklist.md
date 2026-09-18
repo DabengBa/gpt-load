@@ -50,14 +50,26 @@
 - [ ] 组合权重:`组权重 × 条目权重 × 密钥权重`,任一 ≤ 0 剔除
       (替换 `inspect.go:244` `effectiveWeight` 两因子逻辑,保留旧函数供兼容路径
       或标注废弃)
-- [ ] 优先级分层:`Iterator` 构建时按 `Priority` 分层,`Next()` 仅在当前最高
-      可用层内加权随机;层耗尽降级;全耗尽 → `ErrExhausted` + `staticReason`
+- [ ] 普通调度按 `Priority` 分层,在当前最高可用层内加权随机;
+      合格亲和绑定先适用下述跨 bucket 首试;普通层耗尽后降级,全耗尽 → `ErrExhausted` + `staticReason`
 - [ ] `tried` 集合改为 `(密钥, 上游模型)` 维度(设计文档 §5.3)
 - [ ] `SkipGroup` 整组跳过语义不变(整组 = 跳过该组所有条目)
-- [ ] 会话亲和:优先密钥命中逻辑回归;亲和密钥不在当前层时的降级路径
+- [ ] 亲和首试:通过 access-key、group、route requirement、entry weight、credential identity、
+      cooldown/blacklist 等全部硬资格过滤后,跨所有 priority/route/regular-store/store-downgraded
+      bucket 首试绑定供应商/凭据;只有该目标实际发生可重试 provider failure 后才按既有规则 fallback
+- [ ] 资格过滤不删除 durable row:目标不合格时正常候选可继续服务,但其成功不得覆盖旧绑定;
+      preparation/local/downstream failure 不算 provider failure;`previous_response_id` 独立续接归属不变
+- [ ] durable binding:使用现有 `system_settings` 的 `_internal.affinity.binding.<raw-hmac>` 行;
+      热缓存 miss、TTL/LRU/capacity 淘汰或同数据库重启后 read-through,合格绑定仍报告 `hit`,
+      不依赖停机 checkpoint;无关 group/weight/catalog/Models.dev 更新或 revision 变化不丢绑定
+- [ ] 状态与错误边界:`cache_miss` 是适用查找路径(启用时含 durable store)未找到绑定;
+      `cache_unavailable` 涵盖本地缓存/配置/键与 store lookup/decode error,必需的持久查询失败
+      在 dispatch 前 fail-closed,不普通 fallback;all-disabled 跳过 store 查询,继续普通调度
+- [ ] 写入失败边界:provider 成功后的 upsert error 保留热绑定与已交付响应,
+      记录 `affinity_binding_persist_failed`,不触发新 attempt;失败写入不保证重启/缓存丢失后恢复
 - [ ] 单测:
       - 比例正确性:基准场景大样本统计 ≈18/30/30/10(±3%)
-      - 分层:P1 耗尽后进入 P2;P2 也可用时不与 P1 混选
+      - 普通分层:P1 耗尽后进入 P2;无合格亲和绑定时,P2 不与 P1 混选
       - 边缘占比与组内密钥数量无关
       - `(密钥, 上游模型)` 去重:同密钥换条目可重试
 
@@ -130,6 +142,9 @@
       断言不变(C3),新增多条目用例
 - [ ] 集成测试:基准场景(设计文档 §1.2)端到端:
       - 比例分布、优先级降级、条目熔断、密钥熔断、恢复回归
+- [ ] 亲和 gateway 回归:真实 Forward 与 request-log attempt 链证明跨 priority/route/store bucket 首试;
+      无关 entry weight 与 catalog-like revision 发布后 durable row、`hit` 与首试目标保持
+      (catalog-like fixture 仅为本地快照发布,不是实际 Models.dev 网络或 control/catalog_sync 同步证据)
 - [ ] 兼容回归:全库删除 weight/priority 字段的数据跑既有测试套件(C1)
 - [ ] `go test ./...` 全绿;`go vet` / lint 通过;前端 lint/build 通过
 

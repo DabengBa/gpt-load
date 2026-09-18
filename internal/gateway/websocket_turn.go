@@ -244,6 +244,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	var affinity requestAffinity
 	if original.previous == "" {
 		affinity = h.resolveRequestAffinity(
+			s.ctx,
 			snapshot, key.ID, protocol.OpenAIResponses, model,
 			execution.OperationResponsesCreate, original.metadata, allowedCredentialRefs,
 		)
@@ -251,6 +252,11 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	}
 	recorder.setAffinityKey(affinity.displayKey)
 	recorder.setAffinityObservations(affinity.source, affinity.state)
+	if affinity.err != nil {
+		reject(reasonConfigurationChanged)
+		s.cancel()
+		return
+	}
 	iterator := scheduler.New(snapshot, h.registry, query, h.newRandom())
 	limit := retryAttemptLimit(snapshot.Settings.RetryCount)
 	var refreshSelection *scheduler.Selection
@@ -390,6 +396,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		}
 		var wsResult execution.WebsocketResult
 		newBinding := binding == nil
+		affinity.markBoundAttempt(selection, ref)
 		if binding == nil {
 			opener, ok := h.forwarder.(interface {
 				OpenWebsocket(context.Context, ForwardInput) (execution.WebsocketSession, execution.WebsocketResult)
@@ -450,6 +457,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 		}
 		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{DefaultRateLimitCooldown: fixedCooldown, CredentialRefreshable: selection.Group.ConnectionType == "subscription", Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
+		affinity.markBoundProviderFailure(selection, ref, result.DispatchState, decision)
 		index := recorder.recordStreamAttempt(selection, credential.secrets, result, decision, started, recorder.now())
 		h.applyGroupDecisionEffectForEntry(selection.Group, ref.ID, 0, selection.EntryID, decision, result.StatusCode, h.now())
 		if decision.Effect == health.EffectSkipGroup {
@@ -469,7 +477,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			h.recordCredentialSuccess(ref.ID, h.now())
 			h.recordEntrySuccess(selection.GroupID, selection.EntryID, ref.ID)
 			if original.previous == "" {
-				h.recordAffinitySuccess(affinity, selection, ref)
+				h.recordAffinitySuccess(s.ctx, affinity, selection, ref)
 			}
 		}
 		// 未绑定的串行首轮允许重试未发送失败或尚未交付的上游错误事件。

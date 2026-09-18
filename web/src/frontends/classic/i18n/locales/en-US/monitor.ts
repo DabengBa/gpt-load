@@ -1172,9 +1172,9 @@ export default {
         mismatchTooltip:
           'Upstream request model: {upstream}\nUpstream response model: {reported}\nWarning: Model mismatch',
       },
-      affinitySourceLabel: 'Soft affinity source: {source}',
-      affinityStateLabel: 'Soft affinity state: {state}',
-      continuityHit: 'Hard continuation: applied',
+      affinitySourceLabel: 'Affinity source: {source}',
+      affinityStateLabel: 'Affinity state: {state}',
+      continuityHit: 'Continuation: applied',
       affinitySource: {
         none: 'none',
         prompt_cache_key: 'prompt_cache_key',
@@ -1182,11 +1182,11 @@ export default {
       },
       affinityState: {
         no_signal: 'not evaluated or no signal',
-        cache_miss: 'cache queue miss',
-        hit: 'cache queue hit',
-        group_disabled: 'group disabled soft affinity',
+        cache_miss: 'no affinity binding found',
+        hit: 'affinity binding resolved (includes storage recovery)',
+        group_disabled: 'group disabled affinity',
         target_unavailable: 'target credential unavailable',
-        cache_unavailable: 'soft affinity cache unavailable',
+        cache_unavailable: 'affinity resolution unavailable (cache, configuration or storage)',
       },
       reasoning: {
         compact: '[{value}]',

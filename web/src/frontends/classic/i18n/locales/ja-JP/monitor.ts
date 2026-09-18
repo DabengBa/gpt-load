@@ -1172,9 +1172,9 @@ export default {
         mismatchTooltip:
           'アップストリーム要求モデル：{upstream}\nアップストリーム応答モデル：{reported}\n警告：モデル不一致',
       },
-      affinitySourceLabel: 'ソフトアフィニティのソース：{source}',
-      affinityStateLabel: 'ソフトアフィニティの状態：{state}',
-      continuityHit: 'ハード継続：適用済み',
+      affinitySourceLabel: 'アフィニティのソース：{source}',
+      affinityStateLabel: 'アフィニティの状態：{state}',
+      continuityHit: '継続：適用済み',
       affinitySource: {
         none: 'なし',
         prompt_cache_key: 'prompt_cache_key',
@@ -1182,11 +1182,11 @@ export default {
       },
       affinityState: {
         no_signal: '未評価またはシグナルなし',
-        cache_miss: 'キャッシュキュー未一致',
-        hit: 'キャッシュキュー一致',
-        group_disabled: 'グループがソフトアフィニティを無効化',
+        cache_miss: 'アフィニティのバインディングなし',
+        hit: 'アフィニティのバインディング解決済み（永続ストアからの復元を含む）',
+        group_disabled: 'グループがアフィニティを無効化',
         target_unavailable: '対象クレデンシャル利用不可',
-        cache_unavailable: 'ソフトアフィニティキャッシュ利用不可',
+        cache_unavailable: 'アフィニティ解決不可（キャッシュ・設定・ストレージ）',
       },
       reasoning: {
         compact: '[{value}]',
