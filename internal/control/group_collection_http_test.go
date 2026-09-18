@@ -285,6 +285,11 @@ func TestGroupCollectionHTTPReturnsExactCollectionAndOptionsContracts(t *testing
 		`{}`,
 		`[{"id":"private-zulu","alias":"public-zulu"}]`,
 	)
+	if err := fixture.db.Model(&models.Group{}).
+		Where("id = ?", 10).
+		Update("provider_url", "https://provider-alpha.example.com").Error; err != nil {
+		t.Fatalf("set provider_url: %v", err)
+	}
 	entry := createGroupCollectionKey(
 		t,
 		fixture,
@@ -347,12 +352,15 @@ func TestGroupCollectionHTTPReturnsExactCollectionAndOptionsContracts(t *testing
 		!optionData[0].Enabled ||
 		optionData[0].ChannelID != channel.OpenAICompatible ||
 		string(optionData[0].Params) != `{"base_url":"https://alpha.example/v1"}` ||
+		optionData[0].ProviderURL == nil ||
+		*optionData[0].ProviderURL != "https://provider-alpha.example.com" ||
 		len(optionData[0].Models) != 2 ||
 		optionData[0].Models[0] != "public-alpha" ||
 		optionData[0].Models[1] != "second-alpha" ||
 		optionData[1].ID != 20 || optionData[1].Name != "zulu" ||
 		optionData[1].Enabled ||
 		optionData[1].ChannelID != channel.Anthropic || string(optionData[1].Params) != `{}` ||
+		optionData[1].ProviderURL != nil ||
 		len(optionData[1].Models) != 1 || optionData[1].Models[0] != "public-zulu" {
 		t.Fatalf("options data = %#v, want exact ID-ordered directory", optionData)
 	}
@@ -532,10 +540,10 @@ func decodeGroupOptionsSuccess(
 		t.Fatalf("decode raw options data: %v", err)
 	}
 	for _, rawOption := range rawOptions {
-		if len(rawOption) != 7 {
-			t.Fatalf("option fields = %#v, want exactly id/name/channel_id/connection_type/params/enabled/models", rawOption)
+		if len(rawOption) != 8 {
+			t.Fatalf("option fields = %#v, want exactly id/name/channel_id/connection_type/params/provider_url/enabled/models", rawOption)
 		}
-		for _, field := range []string{"id", "name", "channel_id", "connection_type", "params", "enabled", "models"} {
+		for _, field := range []string{"id", "name", "channel_id", "connection_type", "params", "provider_url", "enabled", "models"} {
 			if _, ok := rawOption[field]; !ok {
 				t.Fatalf("option fields = %#v, missing %q", rawOption, field)
 			}

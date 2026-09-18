@@ -9,6 +9,7 @@ import AppDateTimeRangePicker from '@/components/ui/AppDateTimeRangePicker.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 
 import type { LogFilterDraft, LogFilterErrors } from './log-filters'
 import LogsAdvancedFilterDrawer from './LogsAdvancedFilterDrawer.vue'
@@ -48,6 +49,19 @@ const groupOptions = computed(() => [
     label: group.name,
   })),
 ])
+// 客户端模型筛选沿用分组目录里已声明的对外模型名，精确匹配语义不变。
+const clientModelOptions = computed(() => {
+  const models = [...new Set(props.groups.flatMap((group) => group.models))].sort((a, b) =>
+    a.localeCompare(b),
+  )
+  const options = [
+    { value: '', label: t('monitor.logs.filters.anyClientModel') },
+    ...models.map((model) => ({ value: model, label: model })),
+  ]
+  const pending = props.draft.client_model
+  if (pending && !models.includes(pending)) options.push({ value: pending, label: pending })
+  return options
+})
 const statusOptions = computed(() => [
   { value: '', label: t('monitor.logs.filters.anyStatus') },
   ...(['success', 'error', 'incomplete', 'canceled'] as const).map((value) => ({
@@ -114,18 +128,21 @@ function applyAdvanced(): void {
         @apply="submit"
       />
 
-      <AppSelect
-        v-if="!selfScoped"
-        class="logs-filter__group"
-        :model-value="draft.group_id"
-        :label="t('monitor.logs.filters.group')"
-        :options="groupOptions"
-        size="compact"
-        :disabled="groupsFailed"
-        @update:model-value="update('group_id', $event)"
-      />
+      <span v-if="!selfScoped" class="logs-filter__group">
+        <SearchableSelect
+          :model-value="draft.group_id"
+          :label="t('monitor.logs.filters.group')"
+          :options="groupOptions"
+          :search-placeholder="t('monitor.logs.filters.searchGroups')"
+          :empty-label="t('monitor.logs.filters.noMatches')"
+          size="compact"
+          :disabled="groupsFailed"
+          @update:model-value="update('group_id', $event)"
+        />
+      </span>
       <span class="logs-filter__model">
         <AppTextInput
+          v-if="selfScoped"
           :model-value="draft.client_model"
           :label="t('monitor.logs.filters.clientModel')"
           :placeholder="t('monitor.logs.filters.clientModel')"
@@ -134,6 +151,17 @@ function applyAdvanced(): void {
           size="compact"
           data-1p-ignore="true"
           data-lpignore="true"
+          @update:model-value="update('client_model', $event)"
+        />
+        <SearchableSelect
+          v-else
+          :model-value="draft.client_model"
+          :label="t('monitor.logs.filters.clientModel')"
+          :options="clientModelOptions"
+          :search-placeholder="t('monitor.logs.filters.searchClientModels')"
+          :empty-label="t('monitor.logs.filters.noMatches')"
+          size="compact"
+          :disabled="groupsFailed"
           @update:model-value="update('client_model', $event)"
         />
       </span>
@@ -239,6 +267,7 @@ function applyAdvanced(): void {
 }
 
 .logs-filter__group {
+  display: block;
   width: 150px;
 }
 
@@ -249,17 +278,15 @@ function applyAdvanced(): void {
   flex: 1 1 180px;
 }
 
-.logs-filter__model :deep(.app-text-input) {
+.logs-filter__model :deep(.app-text-input),
+.logs-filter__group :deep(.app-select__trigger),
+.logs-filter__model :deep(.app-select__trigger),
+.logs-filter__status :deep(.app-select__trigger) {
   width: 100%;
 }
 
 .logs-filter__status {
   width: 108px;
-}
-
-.logs-filter__group :deep(.app-select__trigger),
-.logs-filter__status :deep(.app-select__trigger) {
-  width: 100%;
 }
 
 .logs-filter__count {
@@ -288,7 +315,7 @@ function applyAdvanced(): void {
 
 @media (max-width: 860px) {
   .logs-filter__row > :deep(.app-button),
-  .logs-filter__row > :deep(.app-select__trigger) {
+  .logs-filter__row :deep(.app-select__trigger) {
     min-height: var(--touch-target);
   }
 }

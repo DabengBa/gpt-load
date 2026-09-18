@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ExternalLink } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -12,6 +13,7 @@ const props = withDefaults(
   defineProps<{
     groupId: number | null
     groupName?: string | null
+    providerUrl?: string | null
     channelId: string | null
     channel?: Pick<ChannelDto, 'name' | 'icon' | 'mark'> | null
     credentialId: number | null
@@ -25,6 +27,7 @@ const props = withDefaults(
   }>(),
   {
     groupName: undefined,
+    providerUrl: undefined,
     credentialName: undefined,
     channel: undefined,
     groupDeleted: false,
@@ -129,6 +132,17 @@ const credentialAction = computed(() =>
         >
           {{ groupLabel }}
         </span>
+        <a
+          v-if="providerUrl"
+          class="log-route-identity__provider"
+          :href="providerUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          :aria-label="t('monitor.logs.routeIdentity.openProviderUrl', { url: providerUrl })"
+          @click.stop
+        >
+          <ExternalLink :size="12" aria-hidden="true" />
+        </a>
       </span>
 
       <template v-if="credentialLabel">
@@ -217,6 +231,17 @@ const credentialAction = computed(() =>
 .log-route-identity__group--code {
   color: var(--color-text-faint);
   font-size: var(--text-label-xs);
+}
+
+.log-route-identity__provider {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--color-text-faint);
+}
+
+.log-route-identity__provider:hover {
+  color: var(--color-action);
 }
 
 /* 下方两条规则设了字色，与全局悬停色特异性相同却后加载，这里叠类名压过它们。 */
