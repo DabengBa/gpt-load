@@ -1650,6 +1650,11 @@ func isSearchToolType(toolType string) bool {
 type Part struct {
 	// Optional. Metadata for a given video.
 	VideoMetadata *VideoMetadata `json:"videoMetadata,omitempty"`
+	// Optional. Media resolution for this part's input media, overriding
+	// generationConfig.mediaResolution for this part alone (Gemini 3+ only).
+	// It is Part field 12 in Vertex AI v1 and sits outside both the data and metadata
+	// oneofs, so it rides alongside inlineData/fileData rather than replacing them.
+	MediaResolution *PartMediaResolution `json:"mediaResolution,omitempty"`
 	// Optional. Indicates if the part is thought from the model.
 	Thought bool `json:"thought,omitempty"`
 	// Optional. Inlined bytes data.
@@ -1684,6 +1689,7 @@ type Part struct {
 func (p Part) MarshalJSON() ([]byte, error) {
 	type PartAlias struct {
 		VideoMetadata       *VideoMetadata       `json:"videoMetadata,omitempty"`
+		MediaResolution     *PartMediaResolution `json:"mediaResolution,omitempty"`
 		Thought             bool                 `json:"thought,omitempty"`
 		InlineData          *Blob                `json:"inlineData,omitempty"`
 		FileData            *FileData            `json:"fileData,omitempty"`
@@ -1694,11 +1700,15 @@ func (p Part) MarshalJSON() ([]byte, error) {
 		FunctionResponse    *FunctionResponse    `json:"functionResponse,omitempty"`
 		ToolCall            *ToolCall            `json:"toolCall,omitempty"`
 		ToolResponse        *ToolResponse        `json:"toolResponse,omitempty"`
-		Text                string               `json:"text,omitempty"`
+		// Text is a pointer so that "set to empty" and "not set" stay distinguishable:
+		// omitempty drops a nil pointer but keeps a pointer to "". See the empty-text
+		// restoration below for why that distinction has to survive the round trip.
+		Text *string `json:"text,omitempty"`
 	}
 
 	aux := PartAlias{
 		VideoMetadata:       p.VideoMetadata,
+		MediaResolution:     p.MediaResolution,
 		Thought:             p.Thought,
 		InlineData:          p.InlineData,
 		FileData:            p.FileData,
@@ -1708,7 +1718,9 @@ func (p Part) MarshalJSON() ([]byte, error) {
 		FunctionResponse:    p.FunctionResponse,
 		ToolCall:            p.ToolCall,
 		ToolResponse:        p.ToolResponse,
-		Text:                p.Text,
+	}
+	if p.Text != "" {
+		aux.Text = &p.Text
 	}
 
 	if len(p.ThoughtSignature) > 0 {
@@ -1719,7 +1731,42 @@ func (p Part) MarshalJSON() ([]byte, error) {
 		}
 	}
 
+	// A standalone thought signature arrives from Gemini in a part whose text is set but
+	// empty -- "the model may return the thought signature in a part with an empty text
+	// content part", and stream parsers are told to look for signatures "even if the text
+	// field is empty"
+	// (https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures,
+	// https://ai.google.dev/gemini-api/docs/generate-content/gemini-3#thought-signatures).
+	// text belongs to Part's data union, so proto3 JSON prints it once it is set: the
+	// bytes on the wire are {"text":"","thoughtSignature":"..."}. Marshalling Text with
+	// omitempty erased the data field and left a metadata-only object Google itself never
+	// emits. Its own clients tolerate that, but adapters that require a representable
+	// payload do not -- pydantic-ai's Google adapter raises UnexpectedModelBehavior and
+	// the visible answer is never delivered.
+	//
+	// The empty payload is restored only for a part that carries nothing else. A signature
+	// riding on a functionCall, toolCall, inlineData or any other data field is already
+	// representable, and a second member of the data union on one part is invalid.
+	if aux.Text == nil && aux.ThoughtSignature != "" && !p.hasNonTextData() {
+		aux.Text = new("")
+	}
+
 	return providerUtils.MarshalSorted(aux)
+}
+
+// hasNonTextData reports whether the part already carries a member of Part's data union
+// other than text. Thought and VideoMetadata are excluded on purpose: they are metadata
+// that ride alongside a data field rather than being one, so a thought-marked part with
+// only a signature still needs its empty text payload restored.
+func (p Part) hasNonTextData() bool {
+	return p.InlineData != nil ||
+		p.FileData != nil ||
+		p.CodeExecutionResult != nil ||
+		p.ExecutableCode != nil ||
+		p.FunctionCall != nil ||
+		p.FunctionResponse != nil ||
+		p.ToolCall != nil ||
+		p.ToolResponse != nil
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for Part.
@@ -1727,6 +1774,7 @@ func (p Part) MarshalJSON() ([]byte, error) {
 func (p *Part) UnmarshalJSON(data []byte) error {
 	type PartAlias struct {
 		VideoMetadata       *VideoMetadata       `json:"videoMetadata,omitempty"`
+		MediaResolution     *PartMediaResolution `json:"mediaResolution,omitempty"`
 		Thought             bool                 `json:"thought,omitempty"`
 		InlineData          *Blob                `json:"inlineData,omitempty"`
 		FileData            *FileData            `json:"fileData,omitempty"`
@@ -1740,8 +1788,11 @@ func (p *Part) UnmarshalJSON(data []byte) error {
 		Text                string               `json:"text,omitempty"`
 		// snake_case fallbacks: the google-genai SDK serializes FunctionResponsePart
 		// (nested inside functionResponse.parts) with snake_case keys, unlike top-level parts.
-		InlineDataSnake *Blob     `json:"inline_data,omitempty"`
-		FileDataSnake   *FileData `json:"file_data,omitempty"`
+		// mediaResolution needs one for a separate reason: Google's own REST reference documents
+		// the per-part field as "media_resolution".
+		InlineDataSnake      *Blob                `json:"inline_data,omitempty"`
+		FileDataSnake        *FileData            `json:"file_data,omitempty"`
+		MediaResolutionSnake *PartMediaResolution `json:"media_resolution,omitempty"`
 	}
 
 	var aux PartAlias
@@ -1758,6 +1809,13 @@ func (p *Part) UnmarshalJSON(data []byte) error {
 	p.FileData = aux.FileData
 	if p.FileData == nil {
 		p.FileData = aux.FileDataSnake
+	}
+	// Presence-based precedence, per snakecasekeypresence_test.go: an explicit camelCase
+	// key wins even when it decodes to nil, so `"mediaResolution": null` is honoured as a
+	// deliberate "no resolution" rather than being overwritten by a snake_case sibling.
+	p.MediaResolution = aux.MediaResolution
+	if !hasJSONKey(data, "mediaResolution") && aux.MediaResolutionSnake != nil {
+		p.MediaResolution = aux.MediaResolutionSnake
 	}
 	p.CodeExecutionResult = aux.CodeExecutionResult
 	p.ExecutableCode = aux.ExecutableCode
@@ -1786,6 +1844,42 @@ func (p *Part) UnmarshalJSON(data []byte) error {
 			}
 			p.ThoughtSignature = decoded
 		}
+	}
+
+	return nil
+}
+
+// PartMediaResolution is the per-part media resolution carried on Part.mediaResolution.
+// Vertex AI v1 models it as a nested Part.MediaResolution message holding Level alone; the
+// Gemini API surface adds NumTokens. Both are modelled here and forwarded verbatim -- Bifrost
+// does not validate the level, because per-part support tracks Google's model rollout (it is
+// Gemini 3+ only, and MEDIA_RESOLUTION_ULTRA_HIGH is image-only) and gating it here would
+// create a second thing to keep in sync. Google rejects an unsupported level with a clear 400.
+type PartMediaResolution struct {
+	// Optional. The tokenization quality used for the given media, e.g. MEDIA_RESOLUTION_HIGH.
+	Level string `json:"level,omitempty"`
+	// Optional. The required sequence length for media tokenization. Gemini API only.
+	NumTokens *int32 `json:"numTokens,omitempty"`
+}
+
+// UnmarshalJSON accepts the snake_case num_tokens spelling alongside camelCase numTokens,
+// preferring camelCase when both are present -- the same precedence GenerationConfig uses.
+func (m *PartMediaResolution) UnmarshalJSON(data []byte) error {
+	type PartMediaResolutionAlias struct {
+		Level          string `json:"level,omitempty"`
+		NumTokens      *int32 `json:"numTokens,omitempty"`
+		NumTokensSnake *int32 `json:"num_tokens,omitempty"`
+	}
+
+	var aux PartMediaResolutionAlias
+	if err := sonic.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	m.Level = aux.Level
+	m.NumTokens = aux.NumTokens
+	if !hasJSONKey(data, "numTokens") && aux.NumTokensSnake != nil {
+		m.NumTokens = aux.NumTokensSnake
 	}
 
 	return nil

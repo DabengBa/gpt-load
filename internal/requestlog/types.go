@@ -77,10 +77,12 @@ type ListQuery struct {
 	ChannelID           channel.ID
 	ClientModel         string
 	UpstreamModel       string
+	ModelConsistency    telemetry.ModelConsistency
 	AccessKeyID         *uint
 	Status              telemetry.RequestStatus
 	RequestID           string
 	Protocol            protocol.Protocol
+	Operation           execution.Operation
 	Stream              *bool
 	FinalStatusCode     *int
 	UsageState          usage.State

@@ -1,8 +1,11 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -677,6 +680,9 @@ func (forwarder *ExecutionForwarder) prepareBufferedResult(
 	if forwarder == nil || !result.HasResponse() {
 		return result
 	}
+	if input.Operation == execution.OperationWebSearch && result.ProviderErrorBeforeCommit {
+		return result
+	}
 	representation := forwarder.representation
 	if representation == nil {
 		representation = &responseProcessor{redactor: redact.New()}
@@ -897,6 +903,160 @@ func newExecutionAttemptSpec(input ForwardInput) (execution.AttemptSpec, error) 
 	return spec, nil
 }
 
+const (
+	// upstreamContentFilterCode marks a successful upstream response that a
+	// content filter blocked and that carried no assistant content. GPT-Load
+	// records the attempt as a client error instead of a silent success.
+	upstreamContentFilterCode = "upstream_content_filter"
+	// upstreamContentFilterSummary is the fixed classification text of that
+	// evidence.
+	upstreamContentFilterSummary = "upstream response was blocked by content filter and contained no assistant content"
+	// upstreamEmptyCompletionCode marks a successful non-streaming completion
+	// whose usage proves generation occurred but whose assistant messages carry
+	// no known payload.
+	upstreamEmptyCompletionCode    = "upstream_empty_completion"
+	upstreamEmptyCompletionSummary = "upstream response completed without assistant payload"
+)
+
+// blockedChatCompletion reports whether a successful non-streaming OpenAI Chat
+// Completions response finished with "content_filter" while the first choice
+// released no assistant content. Detection reads the upstream shape only: the
+// body passed to the client stays untouched.
+func blockedChatCompletion(protocolValue protocol.Protocol, statusCode int, body []byte) bool {
+	if protocolValue != protocol.OpenAICompletions ||
+		statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices ||
+		len(body) == 0 {
+		return false
+	}
+	var envelope struct {
+		Choices []struct {
+			Message struct {
+				Content jsontext.Value `json:"content"`
+			} `json:"message"`
+			FinishReason jsontext.Value `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if jsonv2.Unmarshal(body, &envelope) != nil || len(envelope.Choices) == 0 {
+		return false
+	}
+	var finishReason string
+	if jsonv2.Unmarshal(envelope.Choices[0].FinishReason, &finishReason) != nil ||
+		finishReason != "content_filter" {
+		return false
+	}
+	return !hasAssistantAnswer(envelope.Choices[0].Message.Content)
+}
+
+// hasAssistantAnswer reports whether message.content carries an answer the
+// client can use. A missing, null, empty-string or empty-container content is
+// no answer; every other JSON value is.
+func hasAssistantAnswer(content jsontext.Value) bool {
+	switch string(bytes.TrimSpace(content)) {
+	case "", "null", `""`, "[]", "{}":
+		return false
+	default:
+		return true
+	}
+}
+
+// emptyChatCompletion reports a complete, successful OpenAI Chat Completions
+// response that proves output tokens were generated but contains no known
+// assistant payload. It only inspects the classification copy; the raw body is
+// never rewritten or replaced for the client.
+func emptyChatCompletion(
+	protocolValue protocol.Protocol,
+	statusCode int,
+	body []byte,
+	resultUsage usage.Result,
+) bool {
+	if protocolValue != protocol.OpenAICompletions ||
+		statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices ||
+		resultUsage.State != usage.StateComplete || resultUsage.Tokens.Output <= 0 ||
+		len(body) == 0 {
+		return false
+	}
+
+	var envelope map[string]json.RawMessage
+	if jsonv2.Unmarshal(body, &envelope) != nil {
+		return false
+	}
+	var rawChoices []json.RawMessage
+	if jsonv2.Unmarshal(envelope["choices"], &rawChoices) != nil || len(rawChoices) == 0 {
+		return false
+	}
+	for _, rawChoice := range rawChoices {
+		var choice map[string]json.RawMessage
+		if jsonv2.Unmarshal(rawChoice, &choice) != nil || !emptyCompletionChoice(choice) {
+			return false
+		}
+	}
+	return true
+}
+
+func emptyCompletionChoice(choice map[string]json.RawMessage) bool {
+	rawMessage, ok := choice["message"]
+	if !ok {
+		return false
+	}
+	var message map[string]json.RawMessage
+	if jsonv2.Unmarshal(rawMessage, &message) != nil {
+		return false
+	}
+	var role string
+	if jsonv2.Unmarshal(message["role"], &role) != nil || role != "assistant" {
+		return false
+	}
+
+	for field := range message {
+		switch field {
+		case "role", "content", "tool_calls", "function_call", "refusal",
+			"reasoning_content", "reasoning", "audio":
+		default:
+			return false
+		}
+	}
+	for _, field := range []string{
+		"content", "tool_calls", "function_call", "refusal",
+		"reasoning_content", "reasoning", "audio",
+	} {
+		if value, exists := message[field]; exists && hasJSONPayload(value) {
+			return false
+		}
+	}
+
+	if rawFinishReason, exists := choice["finish_reason"]; exists {
+		if bytes.Equal(bytes.TrimSpace(rawFinishReason), []byte("null")) {
+			return false
+		}
+		var finishReason string
+		if jsonv2.Unmarshal(rawFinishReason, &finishReason) != nil ||
+			(finishReason != "" && finishReason != "stop") {
+			return false
+		}
+	}
+	return true
+}
+
+func hasJSONPayload(value json.RawMessage) bool {
+	value = bytes.TrimSpace(value)
+	if len(value) == 0 || bytes.Equal(value, []byte("null")) {
+		return false
+	}
+	switch value[0] {
+	case '"':
+		var stringValue string
+		return jsonv2.Unmarshal(value, &stringValue) != nil || stringValue != ""
+	case '[':
+		var arrayValue []json.RawMessage
+		return jsonv2.Unmarshal(value, &arrayValue) != nil || len(arrayValue) > 0
+	case '{':
+		var objectValue map[string]json.RawMessage
+		return jsonv2.Unmarshal(value, &objectValue) != nil || len(objectValue) > 0
+	default:
+		return true
+	}
+}
+
 func upstreamFromExecutionResult(
 	ctx context.Context,
 	input ForwardInput,
@@ -922,6 +1082,30 @@ func upstreamFromExecutionResult(
 	}
 	if !result.ResponseStarted && result.Error != nil {
 		upstream.Err = executionFailureError(ctx, result.Error)
+	}
+	if upstream.ExecutionError == nil && blockedChatCompletion(
+		input.ClientProtocol, upstream.StatusCode, upstream.ClassificationBody) {
+		upstream.ExecutionError = &execution.ErrorEvidence{
+			Kind:       execution.ErrorKindProvider,
+			OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			StatusCode: upstream.StatusCode,
+			Code:       upstreamContentFilterCode,
+			Summary:    upstreamContentFilterSummary,
+		}
+		upstream.ErrorSummary = upstreamContentFilterSummary
+	}
+	if upstream.ExecutionError == nil && emptyChatCompletion(
+		input.ClientProtocol, upstream.StatusCode, upstream.ClassificationBody, upstream.Usage) {
+		upstream.ExecutionError = &execution.ErrorEvidence{
+			Kind:       execution.ErrorKindProvider,
+			OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			StatusCode: upstream.StatusCode,
+			Code:       upstreamEmptyCompletionCode,
+			Summary:    upstreamEmptyCompletionSummary,
+		}
+		upstream.ErrorSummary = upstreamEmptyCompletionSummary
 	}
 	return upstream
 }

@@ -26,6 +26,7 @@ type groupCreateDigestBody struct {
 	ChannelID           channel.ID            `json:"channel_id"`
 	ConnectionType      models.ConnectionType `json:"connection_type"`
 	Params              json.RawMessage       `json:"params"`
+	ProviderURL         *string               `json:"provider_url,omitempty"`
 	Models              []GroupModel          `json:"models"`
 	Credentials         []string              `json:"credentials"`
 	StagedCredentialIDs []string              `json:"staged_credential_ids,omitempty"`
@@ -59,6 +60,7 @@ func (s *Service) CreateGroupIdempotent(
 		ChannelID:           normalized.channelID,
 		ConnectionType:      normalized.connectionType,
 		Params:              append(json.RawMessage(nil), normalized.params...),
+		ProviderURL:         cloneString(normalized.providerURL),
 		Models:              append([]GroupModel(nil), normalized.models...),
 		Credentials:         credentialLines,
 		StagedCredentialIDs: append([]string(nil), normalized.stagedCredentialIDs...),
@@ -136,6 +138,7 @@ func (s *Service) CreateGroupIdempotent(
 				ChannelID:             string(normalized.channelID),
 				ConnectionType:        normalized.connectionType,
 				Params:                append(models.JSON(nil), normalized.params...),
+				ProviderURL:           normalized.providerURL,
 				Models:                models.JSON(encodedModels),
 				Overrides:             normalized.encodedOverrides,
 				ProxyConfig:           normalized.proxyConfig,

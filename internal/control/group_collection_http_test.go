@@ -33,98 +33,98 @@ func TestParseGroupCollectionQueryAcceptsStrictContract(t *testing.T) {
 		{
 			name: "no query uses defaults",
 			want: GroupCollectionQuery{
-				Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "q is trimmed",
 			rawQuery: "q=++needle++",
 			want: GroupCollectionQuery{
-				Query: "needle", Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				Query: "needle", Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "q may trim to empty",
 			rawQuery: "q=+++",
 			want: GroupCollectionQuery{
-				Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "q accepts 200 Unicode code points",
 			rawQuery: "q=" + q200,
 			want: GroupCollectionQuery{
-				Query: q200, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				Query: q200, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "status available",
 			rawQuery: "status=available",
 			want: GroupCollectionQuery{
-				Status: &available, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				Status: &available, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "status unavailable",
 			rawQuery: "status=unavailable",
 			want: GroupCollectionQuery{
-				Status: &unavailable, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				Status: &unavailable, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "status disabled",
 			rawQuery: "status=disabled",
 			want: GroupCollectionQuery{
-				Status: &disabled, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				Status: &disabled, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "connection type subscription",
 			rawQuery: "connection_type=subscription",
 			want: GroupCollectionQuery{
-				ConnectionType: &subscription, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				ConnectionType: &subscription, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "sort recent",
 			rawQuery: "sort=recent",
 			want: GroupCollectionQuery{
-				Sort: GroupCollectionSortRecent, Page: 1, PageSize: 20,
+				Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "sort status",
 			rawQuery: "sort=status",
 			want: GroupCollectionQuery{
-				Sort: GroupCollectionSortStatus, Page: 1, PageSize: 20,
+				Sort: GroupCollectionSortStatus, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "sort name",
 			rawQuery: "sort=name",
 			want: GroupCollectionQuery{
-				Sort: GroupCollectionSortName, Page: 1, PageSize: 20,
+				Sort: GroupCollectionSortName, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "sort credentials",
 			rawQuery: "sort=credentials",
 			want: GroupCollectionQuery{
-				Sort: GroupCollectionSortCredentials, Page: 1, PageSize: 20,
+				Sort: GroupCollectionSortCredentials, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "sort created",
 			rawQuery: "sort=created",
 			want: GroupCollectionQuery{
-				Sort: GroupCollectionSortCreated, Page: 1, PageSize: 20,
+				Sort: GroupCollectionSortCreated, Page: 1, PageSize: 100,
 			},
 		},
 		{
 			name:     "page accepts positive integer",
 			rawQuery: "page=9223372036854775807",
 			want: GroupCollectionQuery{
-				Sort: GroupCollectionSortRecent, Page: 9223372036854775807, PageSize: 20,
+				Sort: GroupCollectionSortRecent, Page: 9223372036854775807, PageSize: 100,
 			},
 		},
 		{
@@ -285,6 +285,11 @@ func TestGroupCollectionHTTPReturnsExactCollectionAndOptionsContracts(t *testing
 		`{}`,
 		`[{"id":"private-zulu","alias":"public-zulu"}]`,
 	)
+	if err := fixture.db.Model(&models.Group{}).
+		Where("id = ?", 10).
+		Update("provider_url", "https://provider-alpha.example.com").Error; err != nil {
+		t.Fatalf("set provider_url: %v", err)
+	}
 	entry := createGroupCollectionKey(
 		t,
 		fixture,
@@ -347,12 +352,15 @@ func TestGroupCollectionHTTPReturnsExactCollectionAndOptionsContracts(t *testing
 		!optionData[0].Enabled ||
 		optionData[0].ChannelID != channel.OpenAICompatible ||
 		string(optionData[0].Params) != `{"base_url":"https://alpha.example/v1"}` ||
+		optionData[0].ProviderURL == nil ||
+		*optionData[0].ProviderURL != "https://provider-alpha.example.com" ||
 		len(optionData[0].Models) != 2 ||
 		optionData[0].Models[0] != "public-alpha" ||
 		optionData[0].Models[1] != "second-alpha" ||
 		optionData[1].ID != 20 || optionData[1].Name != "zulu" ||
 		optionData[1].Enabled ||
 		optionData[1].ChannelID != channel.Anthropic || string(optionData[1].Params) != `{}` ||
+		optionData[1].ProviderURL != nil ||
 		len(optionData[1].Models) != 1 || optionData[1].Models[0] != "public-zulu" {
 		t.Fatalf("options data = %#v, want exact ID-ordered directory", optionData)
 	}
@@ -363,6 +371,61 @@ func TestGroupCollectionHTTPReturnsExactCollectionAndOptionsContracts(t *testing
 	} {
 		if strings.Contains(combined, forbidden) {
 			t.Fatalf("group HTTP responses exposed %q: %s", forbidden, combined)
+		}
+	}
+}
+
+func TestGroupCollectionHTTPExposesProviderURLAndDefaultsToOneHundredItems(t *testing.T) {
+	t.Parallel()
+	initControlI18n(t)
+	fixture := newServiceFixture(t)
+	linked := createGroupCollectionGroup(t, fixture, "provider-linked", true, nil)
+	if err := fixture.db.Model(linked).
+		Update("provider_url", "https://provider.example").Error; err != nil {
+		t.Fatalf("set provider_url: %v", err)
+	}
+	createGroupCollectionGroup(t, fixture, "provider-missing", true, nil)
+	publishGroupCollectionRuntime(t, fixture, nil)
+
+	engine := gin.New()
+	NewServer(
+		&config.Config{AuthKey: authTestKey},
+		fixture.service,
+	).RegisterRoutes(engine)
+	recorder := performGroupCollectionRequest(
+		engine,
+		"/api/groups?sort=name",
+		"Bearer "+authTestKey,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("collection response = %d %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	var body struct {
+		Data struct {
+			Items      []map[string]json.RawMessage `json:"items"`
+			Pagination struct {
+				PageSize int64 `json:"page_size"`
+			} `json:"pagination"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode collection response: %v", err)
+	}
+	if body.Data.Pagination.PageSize != 100 {
+		t.Fatalf("default page_size = %d, want 100", body.Data.Pagination.PageSize)
+	}
+	if len(body.Data.Items) != 2 {
+		t.Fatalf("collection items = %#v, want both groups", body.Data.Items)
+	}
+	if got := string(body.Data.Items[0]["provider_url"]); got != `"https://provider.example"` {
+		t.Fatalf("provider-linked provider_url = %s, want %q", got, `"https://provider.example"`)
+	}
+	if got := string(body.Data.Items[1]["provider_url"]); got != `null` {
+		t.Fatalf("provider-missing provider_url = %s, want null", got)
+	}
+	for _, forbidden := range []string{"key_value", "secret", "cipher"} {
+		if strings.Contains(strings.ToLower(recorder.Body.String()), forbidden) {
+			t.Fatalf("collection response exposed %q: %s", forbidden, recorder.Body.String())
 		}
 	}
 }
@@ -532,10 +595,10 @@ func decodeGroupOptionsSuccess(
 		t.Fatalf("decode raw options data: %v", err)
 	}
 	for _, rawOption := range rawOptions {
-		if len(rawOption) != 7 {
-			t.Fatalf("option fields = %#v, want exactly id/name/channel_id/connection_type/params/enabled/models", rawOption)
+		if len(rawOption) != 8 {
+			t.Fatalf("option fields = %#v, want exactly id/name/channel_id/connection_type/params/provider_url/enabled/models", rawOption)
 		}
-		for _, field := range []string{"id", "name", "channel_id", "connection_type", "params", "enabled", "models"} {
+		for _, field := range []string{"id", "name", "channel_id", "connection_type", "params", "provider_url", "enabled", "models"} {
 			if _, ok := rawOption[field]; !ok {
 				t.Fatalf("option fields = %#v, missing %q", rawOption, field)
 			}

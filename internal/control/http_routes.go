@@ -238,6 +238,17 @@ func (s *Server) HTTPModule() httproute.Module {
 				s.handleCreateGroup,
 			),
 			controlRoute(
+				"control.groups.copy",
+				http.MethodPost,
+				"/groups/:group_id/copy",
+				s.auditMutation(newMutationDescriptor(
+					"group_copy",
+					"group",
+					groupMutationLocator,
+				)),
+				s.handleCopyGroup,
+			),
+			controlRoute(
 				"control.groups.settings.update",
 				http.MethodPut,
 				"/groups/:group_id/settings",

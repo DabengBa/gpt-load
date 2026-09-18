@@ -116,7 +116,7 @@ func judgeUpstreamResult(
 		!errors.Is(result.Err, context.DeadlineExceeded) {
 		downstreamErr = nil
 	}
-	return health.JudgeExecution(health.ExecutionAttempt{
+	decision := health.JudgeExecution(health.ExecutionAttempt{
 		DispatchState:       result.DispatchState,
 		StatusCode:          result.StatusCode,
 		Header:              result.Header,
@@ -129,6 +129,15 @@ func judgeUpstreamResult(
 		DownstreamErr:       downstreamErr,
 		Now:                 now,
 	}, decisionContext)
+	// 搜索错误不写入模型冷却或自动权重；明确的账号认证故障仍沿用生命周期处理。
+	if decisionContext.Operation == execution.OperationWebSearch &&
+		decision.Effect != health.EffectSkipGroup &&
+		decision.Category != health.FailureCategoryAuthenticationRequired &&
+		decision.Category != health.FailureCategoryInvalidKey {
+		decision.Effect = health.EffectNone
+		decision.CooldownUntil = time.Time{}
+	}
+	return decision
 }
 
 func decisionEvidence(result UpstreamResult) (*execution.ErrorEvidence, error) {
@@ -195,6 +204,12 @@ func decisionEvidence(result UpstreamResult) (*execution.ErrorEvidence, error) {
 		return evidence, errors.New("downstream write failed")
 	case StreamEndClientCanceled, StreamEndServerShutdown:
 		return evidence, context.Canceled
+	case StreamEndContentFilter:
+		return &execution.ErrorEvidence{
+			Kind: execution.ErrorKindProvider, OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			StatusCode: result.StatusCode, Code: upstreamContentFilterCode, Summary: summary,
+		}, nil
 	default:
 		return &execution.ErrorEvidence{
 			Kind: execution.ErrorKindInternal, OriginHint: execution.ErrorOriginInternal,

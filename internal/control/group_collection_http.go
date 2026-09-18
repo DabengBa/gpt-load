@@ -15,7 +15,7 @@ import (
 
 const (
 	groupCollectionDefaultPage     int64 = 1
-	groupCollectionDefaultPageSize int64 = 20
+	groupCollectionDefaultPageSize int64 = 100
 	groupCollectionMaxPageSize     int64 = 100
 	groupCollectionMaxQueryRunes         = 200
 )

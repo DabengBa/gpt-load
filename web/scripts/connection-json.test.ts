@@ -6,7 +6,7 @@ import {
   mapConnectionToChannel,
   type ConnectionJSON,
   type ChannelSchema,
-} from '../src/features/import/connection-json.ts'
+} from '../src/frontends/classic/features/import/connection-json.ts'
 
 // ---------------------------------------------------------------------------
 // Parser — 严格识别 newapi_channel_conn 连接 JSON

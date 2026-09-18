@@ -351,6 +351,35 @@ func (s *Server) handleCreateGroup(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", result)
 }
 
+func (s *Server) handleCopyGroup(c *gin.Context) {
+	idempotencyKey, ok := requiredIdempotencyKey(c, "copy_group")
+	if !ok {
+		return
+	}
+	id, ok := groupID(c, "copy_group")
+	if !ok {
+		return
+	}
+	if err := bindOptionalEmptyJSONObject(c); err != nil {
+		writeServiceError(c, "copy_group", mapControlJSONError(err))
+		return
+	}
+	result, err := s.service.CopyGroupIdempotent(
+		c.Request.Context(),
+		idempotencyKey,
+		id,
+	)
+	if err != nil {
+		writeServiceError(c, "copy_group", err)
+		return
+	}
+	setMutationResourceLocator(
+		c,
+		fmt.Sprintf("group:%d", result.GroupID),
+	)
+	response.SuccessI18n(c, "common.success", result)
+}
+
 func (s *Server) handleUpdateGroupSettings(c *gin.Context) {
 	id, ok := groupID(c, "update_group_settings")
 	if !ok {
