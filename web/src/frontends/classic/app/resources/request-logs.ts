@@ -62,6 +62,7 @@ export type RequestLogOperation =
   | 'rerank'
   | 'list_models'
   | 'probe'
+  | 'web_search'
 export type RequestLogRouteMode = 'native' | 'converted'
 export type RequestLogDispatchState = 'not_sent' | 'maybe_sent'
 export type RequestLogUpstreamProtocol = ProtocolValue
@@ -78,10 +79,12 @@ export interface RequestLogFilters {
   credential_id?: number
   client_model?: string
   upstream_model?: string
+  model_consistency?: RequestLogModelConsistency
   access_key_id?: number
   status?: RequestLogStatus
   request_id?: string
   protocol?: AccessProtocol
+  operation?: RequestLogOperation
   stream?: boolean
   final_status_code?: number
   usage_state?: RequestLogUsageState
@@ -273,6 +276,7 @@ const operations = [
   'rerank',
   'list_models',
   'probe',
+  'web_search',
 ] as const
 const routeModes = ['native', 'converted'] as const
 const dispatchStates = ['not_sent', 'maybe_sent'] as const

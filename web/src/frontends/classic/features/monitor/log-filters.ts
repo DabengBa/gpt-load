@@ -4,6 +4,8 @@ import { enabledDataProtocols } from '@/api/control/protocols'
 import type {
   RequestLogCostState,
   RequestLogFilters,
+  RequestLogModelConsistency,
+  RequestLogOperation,
   RequestLogPageSize,
   RequestLogPricingCompleteness,
   RequestLogRetryState,
@@ -25,9 +27,11 @@ export interface LogFilterDraft {
   status: string
   client_model: string
   upstream_model: string
+  model_consistency: string
   access_key_id: string
   request_id: string
   protocol: string
+  operation: string
   stream: string
   final_status_code: string
   usage_state: string
@@ -77,6 +81,25 @@ export const requestLogFailureCategories = [
   'ambiguous',
 ] as const
 export const requestLogRetryStates = ['retried', 'not_retried'] as const
+export const requestLogModelConsistencies = ['match', 'mismatch', 'unknown'] as const
+export const requestLogOperations = [
+  'chat_completion',
+  'responses_create',
+  'responses_retrieve',
+  'responses_delete',
+  'responses_cancel',
+  'responses_input_items',
+  'responses_compact',
+  'responses_input_tokens',
+  'count_tokens',
+  'responses_passthrough',
+  'images_generate',
+  'images_edit',
+  'embeddings_create',
+  'rerank',
+  'list_models',
+  'probe',
+] as const
 
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const channelIDPattern = /^[a-z][a-z0-9_]{0,99}$/u
@@ -103,9 +126,11 @@ function emptyDraft(): LogFilterDraft {
     status: '',
     client_model: '',
     upstream_model: '',
+    model_consistency: '',
     access_key_id: '',
     request_id: '',
     protocol: '',
+    operation: '',
     stream: '',
     final_status_code: '',
     usage_state: '',
@@ -171,9 +196,11 @@ export function createLogFilterDraft(filters: RequestLogFilters = defaultRange()
     status: filters.status ?? '',
     client_model: filters.client_model ?? '',
     upstream_model: filters.upstream_model ?? '',
+    model_consistency: filters.model_consistency ?? '',
     access_key_id: filters.access_key_id === undefined ? '' : String(filters.access_key_id),
     request_id: filters.request_id ?? '',
     protocol: filters.protocol ?? '',
+    operation: filters.operation ?? '',
     stream: filters.stream === undefined ? '' : String(filters.stream),
     final_status_code:
       filters.final_status_code === undefined ? '' : String(filters.final_status_code),
@@ -217,9 +244,13 @@ export function applyLogFilterDraft(draft: LogFilterDraft): RequestLogFilters {
   if (draft.status) filters.status = draft.status as RequestLogStatus
   if (draft.client_model) filters.client_model = draft.client_model
   if (draft.upstream_model) filters.upstream_model = draft.upstream_model
+  if (draft.model_consistency) {
+    filters.model_consistency = draft.model_consistency as RequestLogModelConsistency
+  }
   if (draft.access_key_id) filters.access_key_id = Number(draft.access_key_id)
   if (draft.request_id) filters.request_id = draft.request_id
   if (draft.protocol) filters.protocol = draft.protocol as RequestLogFilters['protocol']
+  if (draft.operation) filters.operation = draft.operation as RequestLogOperation
   if (draft.stream) filters.stream = draft.stream === 'true'
   if (draft.final_status_code) filters.final_status_code = Number(draft.final_status_code)
   if (draft.usage_state) filters.usage_state = draft.usage_state as RequestLogUsageState
@@ -354,6 +385,10 @@ export function parseAppliedLogFilterState(query: Record<string, unknown>): Appl
   if (failure) filters.failure_category = failure
   const retryState = parseEnum(query.retry_state, requestLogRetryStates)
   if (retryState) filters.retry_state = retryState
+  const modelConsistency = parseEnum(query.model_consistency, requestLogModelConsistencies)
+  if (modelConsistency) filters.model_consistency = modelConsistency
+  const operation = parseEnum(query.operation, requestLogOperations)
+  if (operation) filters.operation = operation
   for (const field of ['stream', 'cache_present'] as const) {
     const value = parseBoolean(query[field])
     if (value !== undefined) Object.assign(filters, { [field]: value })

@@ -163,6 +163,7 @@ type QuotaSignalObservation struct {
 }
 
 type ExecuteResponse struct {
+	StatusCode             int
 	Payload                []byte
 	Headers                http.Header
 	AppliedReasoningEffort string
@@ -387,6 +388,9 @@ func NewCodexHTTPExecutor() *CodexHTTPExecutor {
 func (e *CodexHTTPExecutor) Identifier() string { return ProviderCodex }
 
 func (e *CodexHTTPExecutor) ExecuteCanonical(ctx context.Context, credentialID string, credential CodexCredential, request ExecuteRequest) (ExecuteResponse, error) {
+	if request.RequestPath == "/v1/alpha/search" {
+		return e.executeSearchCanonical(ctx, credentialID, credential, request)
+	}
 	request.Headers = normalizedCodexHeaders(request.Headers)
 	format := sdktranslator.FromString(request.Format)
 	auth := NewCodexAuth(credentialID, credential, "")
