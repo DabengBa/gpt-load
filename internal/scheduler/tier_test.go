@@ -36,6 +36,36 @@ func TestIteratorKeepsPriorityTiersSeparate(t *testing.T) {
 	}
 }
 
+func TestIteratorPreferredCredentialBeatsHigherPriorityTier(t *testing.T) {
+	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
+		{ID: 1, Name: "fallback", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+			Models: []state.ModelConfig{{ID: "fallback-model", Alias: "public", Weight: intPointer(100), Priority: intPointer(2)}}},
+		{ID: 2, Name: "primary", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+			Models: []state.ModelConfig{{ID: "primary-model", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}}},
+	})
+	iterator := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{
+		{ID: 11, GroupID: 1},
+		{ID: 21, GroupID: 2},
+	}}, Query{
+		ClientProtocol:        protocol.OpenAICompletions,
+		Operation:             execution.OperationChatCompletion,
+		ExternalModel:         modelPointer("public"),
+		PreferredCredentialID: 11,
+	}, rand.New(zeroRandSource{}))
+
+	first, err := iterator.Next()
+	if err != nil || first.CredentialID != 11 || first.UpstreamModelID == nil || *first.UpstreamModelID != "fallback-model" {
+		t.Fatalf("first Next() = (%#v, %v), want preferred priority-2 credential 11", first, err)
+	}
+	second, err := iterator.Next()
+	if err != nil || second.CredentialID != 21 || second.UpstreamModelID == nil || *second.UpstreamModelID != "primary-model" {
+		t.Fatalf("second Next() = (%#v, %v), want priority-1 credential 21", second, err)
+	}
+	if _, err := iterator.Next(); !errors.Is(err, ErrExhausted) {
+		t.Fatalf("third Next() error = %v, want ErrExhausted", err)
+	}
+}
+
 func TestIteratorWeightedMixUsesEntryWeight(t *testing.T) {
 	snapshot, err := state.Compile(state.CompileInput{ChannelRegistry: channel.NewRegistry(), SystemSettings: config.Settings{state.SettingRouteStrategy: string(state.RouteStrategyWeightedMix)}, Groups: []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "model", Alias: "public", Weight: intPointer(100)}}}}})
 	if err != nil {

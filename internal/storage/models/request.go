@@ -4,7 +4,7 @@ package models
 //
 // ContinuityHit、AffinityKey、AffinitySource 和 AffinityState 是由 0014/0016 迁移添加的
 // bounded 亲和观测字段。其数据库默认值是 bounded 零值（false、""、"none"、"no_signal"），
-// 因此未评估软亲和的请求会持久化一个安全、不敏感的观测结果。
+// 因此未评估亲和的请求会持久化一个安全、不敏感的观测结果。
 type RequestLog struct {
 	ID                      string              `gorm:"type:varchar(36);primaryKey;not null;index:idx_request_logs_completed_id,priority:2,sort:desc;index:idx_request_logs_access_completed_id,priority:3,sort:desc;index:idx_request_logs_status_completed_id,priority:3,sort:desc;index:idx_request_logs_model_completed_id,priority:3,sort:desc;index:idx_request_logs_upstream_model_completed_id,priority:3,sort:desc;index:idx_request_logs_affinity_completed_id,priority:3,sort:desc"`
 	CompletedAtMS           int64               `gorm:"column:completed_at_ms;not null;check:chk_request_log_completed_at,completed_at_ms >= 0;index:idx_request_logs_completed_id,priority:1,sort:desc;index:idx_request_logs_access_completed_id,priority:2,sort:desc;index:idx_request_logs_status_completed_id,priority:2,sort:desc;index:idx_request_logs_model_completed_id,priority:2,sort:desc;index:idx_request_logs_upstream_model_completed_id,priority:2,sort:desc;index:idx_request_logs_affinity_completed_id,priority:2,sort:desc"`

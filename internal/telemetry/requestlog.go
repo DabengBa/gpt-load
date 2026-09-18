@@ -108,11 +108,11 @@ const (
 	ActionSkipGroup          Action = "skip_group"
 )
 
-// AffinitySource 标识哪个可选请求提示驱动了软亲和。
+// AffinitySource 标识哪个可选请求提示驱动了亲和。
 type AffinitySource string
 
 const (
-	// AffinitySourceNone 表示未评估任何软亲和提示。
+	// AffinitySourceNone 表示未评估任何亲和提示。
 	AffinitySourceNone AffinitySource = ""
 	// AffinitySourcePromptCacheKey 表示使用了显式 prompt_cache_key。
 	AffinitySourcePromptCacheKey AffinitySource = "prompt_cache_key"
@@ -120,23 +120,27 @@ const (
 	AffinitySourcePromptPrefix AffinitySource = "prompt_prefix"
 )
 
-// AffinityState 是一次软亲和查找的 bounded、可解释结果。
+// AffinityState 是一次亲和绑定解析的 bounded 结果，不是热缓存命中率。
 type AffinityState string
 
 const (
-	// AffinityStateNone 表示请求未评估软亲和。
+	// AffinityStateNone 表示请求未评估亲和。
 	AffinityStateNone AffinityState = ""
 	// AffinityStateNoSignal 表示不存在显式或前缀亲和信号。
 	AffinityStateNoSignal AffinityState = "no_signal"
-	// AffinityStateCacheMiss 表示该信号没有存储的首选项。
+	// AffinityStateCacheMiss 表示适用查找路径未找到绑定；生产亲和启用时包含 durable store 查询。
+	// all-disabled 跳过持久查询，memory-only 测试仅查询热缓存，均沿用此既有状态。
 	AffinityStateCacheMiss AffinityState = "cache_miss"
-	// AffinityStateHit 表示存储的首选项解析到了一个合格的目标。
+	// AffinityStateHit 表示热缓存或 durable read-through 得到的绑定通过了解析阶段的资格检查。
+	// 实际首试仍受调度器当前的全部硬资格过滤约束。
 	AffinityStateHit AffinityState = "hit"
-	// AffinityStateGroupDisabled 表示存储的目标组已禁用亲和。
+	// AffinityStateGroupDisabled 表示绑定目标组已禁用亲和，保留 durable row。
 	AffinityStateGroupDisabled AffinityState = "group_disabled"
-	// AffinityStateTargetUnavailable 表示存储的目标不再合格。
+	// AffinityStateTargetUnavailable 表示绑定目标未通过当前解析资格检查，保留 durable row。
 	AffinityStateTargetUnavailable AffinityState = "target_unavailable"
-	// AffinityStateCacheUnavailable 表示进程本地缓存无法提供服务。
+	// AffinityStateCacheUnavailable 表示亲和解析不可用，涵盖本地缓存/配置/键条件及持久查询/解码错误。
+	// 必需的持久查询失败在 provider dispatch 前 fail-closed，不普通 fallback；本地边界不由此枚举决定。
+	// provider 成功后的持久写入失败另记 affinity_binding_persist_failed，不改已交付响应或此状态。
 	AffinityStateCacheUnavailable AffinityState = "cache_unavailable"
 )
 

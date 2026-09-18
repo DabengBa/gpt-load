@@ -164,8 +164,8 @@ type Page struct {
 	NextCursor *Cursor
 }
 
-// 软亲和观测的 bounded 持久化值。AffinitySourceNone 和
-// AffinityStateNoSignal 是针对历史行以及未评估软亲和的请求所持久化的显式零值。
+// 亲和观测的 bounded 持久化值。AffinitySourceNone 和
+// AffinityStateNoSignal 是针对历史行以及未评估亲和的请求所持久化的显式零值。
 // 这些值永远不会携带原始 prompt_cache_key、派生 key 或 HMAC 输入。
 const (
 	AffinitySourceNone           = "none"
@@ -173,6 +173,13 @@ const (
 	AffinitySourcePromptPrefix   = "prompt_prefix"
 )
 
+// These persisted states describe binding resolution, not hot-cache hit/miss.
+// Enabled production lookups include durable read-through: cache_miss means no
+// binding was found, and hit includes an eligible binding recovered from storage.
+// cache_unavailable covers local resolver conditions and durable lookup/decode
+// errors; required durable lookup errors fail closed before provider dispatch.
+// All-disabled candidates skip durable lookup; memory-only tests stay local.
+// Post-success write errors use affinity_binding_persist_failed, not a new state.
 const (
 	AffinityStateNoSignal          = "no_signal"
 	AffinityStateCacheMiss         = "cache_miss"

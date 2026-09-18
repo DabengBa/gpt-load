@@ -83,18 +83,25 @@ A、B 都不可用时：P2 生效，C=100%
 
 调度中心显示分组和凭据状态作为只读事实，但不再把它们乘进可编辑权重公式。
 
-### 3.1 会话亲和层（候选计算之后的偏好层）
+### 3.1 会话亲和层（合格候选中的绑定首试）
 
-候选计算完成后，再叠加一层**只改挑选顺序、不改候选集合**的会话亲和：
+候选计算和资格过滤完成后，再叠加一层**不改候选集合、但必须首试绑定目标**的会话亲和：
 
 ```text
-priority 分层 → 层内可用性过滤 → 亲和命中项前置 → 其余按条目权重加权随机
+热缓存查找 → miss 时 durable store read-through → 当前资格过滤
+  ├─ 绑定目标合格 → 跨 priority/route/regular-store/store-downgraded bucket 首试
+  │                 → 实际可重试 provider failure → 按既有规则 fallback → 成功后可迁移
+  └─ 绑定目标不合格 → 正常候选选择,保留旧 durable row
 ```
 
 - 一个分组只有一个凭据，因此亲和命中的凭据等价于亲和命中的分组；粘性优先的粒度就是分组。
-- 亲和是偏好层，不是锁定层：命中项不可用（被排除、冷却、拉黑、分组停用、凭据身份代际变更）时视为未命中，直接走正常分层；请求不阻断，也不需要主动清理亲和记录。
-- 成功后亲和指针迁移到本次实际服务的分组与凭据；同一请求内的故障转移（先试亲和目标失败、换候选成功）允许迁移。
-- 与 `previous_response_id` 续接的硬锁定是两种机制，不得合并：续接把候选收窄到唯一归属凭据，亲和始终保留完整候选集合兜底。
+- 亲和绑定不绕过 access-key、group、route requirement、entry weight、credential identity、cooldown/blacklist 等硬资格过滤。目标被排除时其他合格候选可正常服务,但其成功不删除或覆盖旧 durable row;过滤、preparation、本地执行和下游失败均不算 provider failure。
+- 对仍合格的绑定目标,只有实际 attempt 发生可重试 provider failure 后才允许 affinity fallback;后续成功才能迁移到实际服务的分组与凭据,并继续遵守既有重试/重放边界。
+- durable binding 存放在现有 `system_settings` 的 `_internal.affinity.binding.<raw-hmac>` 行,值只含目标 ID 与身份代际。gateway 在热缓存 miss、TTL/LRU/capacity 淘汰或进程重启后 read-through 恢复,合格绑定仍是 `hit`;需要同一数据库与键派生材料,不依赖停机 checkpoint。无关 group/entry weight/catalog/Models.dev 更新和 snapshot revision 变化不会丢弃绑定。
+- `cache_miss` 表示适用查找路径未找到绑定(启用时含 durable lookup);`cache_unavailable` 涵盖本地缓存/配置/键条件及 store lookup/decode error。必需的持久查询失败在 dispatch 前 fail-closed,不普通 fallback;all-disabled 候选跳过持久查询,继续普通调度,memory-only 测试保留本地边界。
+- provider 成功后的 durable upsert error 保留热绑定和已交付响应,记录 `affinity_binding_persist_failed`,不触发新 attempt;该失败写入不保证缓存丢失或重启后恢复。同 key Cache CAS 与 upsert 的顺序保证限定于单进程 singleton Handler。
+- 无关发布的现有 gateway 回归包括 entry weight 和 catalog-like 本地快照变更;后者未调用真实 Models.dev 网络客户端或 `control/catalog_sync`,不能作为真实外部同步证据。
+- 与 `previous_response_id` 的 continuation ownership 独立，不得合并：续接把候选收窄到唯一归属凭据，亲和绑定仍按自身资格边界处理。
 
 因此上面的示例描述的是**稳态占比**。亲和命中会把同一会话的连续请求临时压到某个候选上，本章的「当前占比」一律按稳态占比展示，不叠加粘性扰动。
 

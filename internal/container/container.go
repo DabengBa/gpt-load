@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpt-load/internal/accessquota"
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/app"
 	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
@@ -66,6 +67,9 @@ func BuildContainer() (*dig.Container, error) {
 		webui.NewServer,
 		state.NewCredentialRegistry,
 		state.NewResponseBindings,
+		affinity.NewCache,
+		storage.NewAffinityStore,
+		func(store *storage.AffinityStore) affinity.BindingStore { return store },
 		accessquota.NewRuntime,
 		channel.CompileRegistry,
 		control.NewPriceRuntime,

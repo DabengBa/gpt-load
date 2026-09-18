@@ -36,7 +36,7 @@ const affinitySecondCredentialRand int64 = 3000
 func (source affinityFixedRandSource) Int63() int64 { return source.value }
 func (affinityFixedRandSource) Seed(int64)          {}
 
-func TestHandlerLearnsAndReusesAutomaticSoftAffinity(t *testing.T) {
+func TestHandlerLearnsAndReusesAutomaticAffinity(t *testing.T) {
 	forwarder := &scriptedForwarder{results: successfulAffinityResults(2)}
 	handler, _, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
 	sink := &recordingRequestLogSink{}
@@ -70,7 +70,7 @@ func TestHandlerLearnsAndReusesAutomaticSoftAffinity(t *testing.T) {
 	}
 }
 
-func TestHandlerIsolatesSoftAffinityAcrossClientModels(t *testing.T) {
+func TestHandlerIsolatesAffinityAcrossClientModels(t *testing.T) {
 	forwarder := &scriptedForwarder{results: successfulAffinityResults(2)}
 	handler, manager, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
 	addAffinityModelRoute(t, manager.Current(), "gpt-4o-mini", 1)
@@ -83,7 +83,7 @@ func TestHandlerIsolatesSoftAffinityAcrossClientModels(t *testing.T) {
 	serveAffinityModelRequest(t, engine, "gpt-4o-mini")
 
 	// 客户端模型是亲和键的一部分：第二个模型只能看到第一个凭据，且不得命中
-	// 第一个模型学到的软亲和。
+	// 第一个模型学到的亲和绑定。
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
 	events := sink.snapshot()
 	assertAffinityHits(t, events, []bool{false, false})
@@ -95,7 +95,7 @@ func TestHandlerIsolatesSoftAffinityAcrossClientModels(t *testing.T) {
 	})
 }
 
-func TestHandlerRelearnsSoftAffinityWhenModelCandidateRangeChanges(t *testing.T) {
+func TestHandlerPreservesAffinityWhenModelCandidateRangeChangesWithoutBoundAttempt(t *testing.T) {
 	forwarder := &scriptedForwarder{results: successfulAffinityResults(3)}
 	handler, manager, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
 	sink := &recordingRequestLogSink{}
@@ -104,19 +104,19 @@ func TestHandlerRelearnsSoftAffinityWhenModelCandidateRangeChanges(t *testing.T)
 	engine := newAffinityTestEngine(t, handler)
 
 	serveAffinityModelRequest(t, engine, "gpt-4o")
-	// 将 gpt-4o 候选范围缩小到第二个凭据，使存储的首选项变得不合格，
-	// 必须在下次成功时重新学习。
+	// 将 gpt-4o 候选范围缩小到第二个凭据，使存储的首选项变得不合格。
+	// 目标从未进入 Forward，因此后续成功不能静默迁移亲和绑定。
 	addAffinityModelRoute(t, manager.Current(), "gpt-4o", 2)
 	serveAffinityModelRequest(t, engine, "gpt-4o")
 	serveAffinityModelRequest(t, engine, "gpt-4o")
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two"})
 	events := sink.snapshot()
-	assertAffinityHits(t, events, []bool{false, false, true})
+	assertAffinityHits(t, events, []bool{false, false, false})
 	assertAffinityStates(t, events, []telemetry.AffinityState{
 		telemetry.AffinityStateCacheMiss,
 		telemetry.AffinityStateTargetUnavailable,
-		telemetry.AffinityStateHit,
+		telemetry.AffinityStateTargetUnavailable,
 	})
 }
 
@@ -270,7 +270,7 @@ func TestHandlerUsesPromptCacheKeyForAffinityButPromptPrefixForContinuity(t *tes
 		AffinityPrefix: []byte(`{"v":1,"user":["stable"]}`),
 	}
 	resolved := handler.resolveRequestAffinity(
-		snapshot, 1, protocol.OpenAIResponses, "gpt-4o", execution.OperationResponsesCreate,
+		t.Context(), snapshot, 1, protocol.OpenAIResponses, "gpt-4o", execution.OperationResponsesCreate,
 		metadata, map[uint]state.CredentialRef{1: {ID: 1, GroupID: 1, IdentityGeneration: 1}},
 	)
 	wantAffinity := affinity.DeriveKey(
@@ -295,7 +295,7 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 	prefix := []byte(`{"v":1,"user":["hello"]}`)
 	oldRef := state.CredentialRef{ID: 1, GroupID: 1, IdentityGeneration: 1}
 	initial := handler.resolveRequestAffinity(
-		snapshot,
+		t.Context(), snapshot,
 		1,
 		protocol.OpenAICompletions,
 		"gpt-4o",
@@ -315,7 +315,7 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 	}
 
 	hit := handler.resolveRequestAffinity(
-		snapshot,
+		t.Context(), snapshot,
 		1,
 		protocol.OpenAICompletions,
 		"gpt-4o",
@@ -329,7 +329,7 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 	changedRef := oldRef
 	changedRef.IdentityGeneration = 2
 	stale := handler.resolveRequestAffinity(
-		snapshot,
+		t.Context(), snapshot,
 		1,
 		protocol.OpenAICompletions,
 		"gpt-4o",
@@ -350,7 +350,7 @@ func TestHandlerDerivesPrivateContinuityWithoutReenablingDisabledAffinity(t *tes
 	snapshot := manager.Current()
 	snapshot.Settings.AffinityCapacity = 0
 	resolved := handler.resolveRequestAffinity(
-		snapshot,
+		t.Context(), snapshot,
 		1,
 		protocol.OpenAICompletions,
 		"gpt-4o",
@@ -392,7 +392,7 @@ func TestHandlerReportsPromptPrefixAffinitySourceAndState(t *testing.T) {
 	})
 }
 
-func TestWebsocketBindingOnlyResolvesAffinityButHardContinuationIsKeyless(t *testing.T) {
+func TestWebsocketBindingOnlyResolvesAffinityButContinuationIsKeyless(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		conn, err := (&websocket.Upgrader{}).Upgrade(writer, request, nil)
 		if err != nil {
@@ -446,7 +446,7 @@ func TestWebsocketBindingOnlyResolvesAffinityButHardContinuationIsKeyless(t *tes
 	}
 	events = waitWebsocketLogs(t, sink, 3)
 	if events[2].AffinityKey != "" {
-		t.Fatalf("hard continuation affinity key = %q, want empty", events[2].AffinityKey)
+		t.Fatalf("continuation affinity key = %q, want empty", events[2].AffinityKey)
 	}
 }
 
@@ -560,12 +560,12 @@ func newAffinityWebsocketFixture(t *testing.T, endpoint string) (*Handler, *gin.
 	return handler, engine, sink
 }
 
-func TestResponsesContinuationDoesNotLearnSoftAffinity(t *testing.T) {
+func TestResponsesContinuationDoesNotLearnAffinity(t *testing.T) {
 	forwarder := &scriptedForwarder{results: []UpstreamResult{
 		storedResponse("first"), storedResponse("second"), storedResponse("third"),
 	}}
 	handler, engine, sink := newContinuationFixture(t, forwarder)
-	// 续接请求会创建自己的调度迭代器但不参与软亲和，因此随机值按请求顺序
+	// 续接请求会创建自己的调度迭代器但不参与亲和，因此随机值按请求顺序
 	// 消耗，最后一个普通请求需要落到第二个凭据上。
 	useAffinityRandomValues(handler, 0, 0, 1)
 
@@ -774,5 +774,191 @@ func assertAffinityUpstreamModels(t *testing.T, inputs []ForwardInput, want []st
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("upstream models = %#v, want %#v", got, want)
+	}
+}
+
+func affinityUpstreamFailure() UpstreamResult {
+	return UpstreamResult{
+		StatusCode:         http.StatusUnauthorized,
+		Header:             make(http.Header),
+		Body:               []byte(`{"error":"invalid key"}`),
+		ClassificationBody: []byte(`{"error":"invalid key"}`),
+		RequestWritten:     true,
+	}
+}
+
+// affinityRuntimeInput rebuilds the runtime configuration that
+// newHandlerForTest publishes for the two-credential affinity fixture. Tests
+// republish it with an unrelated change so the resulting revision bump is the
+// only variable under test.
+func affinityRuntimeInput(
+	handler *Handler,
+	settings config.Settings,
+	extraGroups ...state.GroupConfig,
+) state.CompileInput {
+	groups := []state.GroupConfig{
+		affinityFixtureGroup(1, "gpt-4o"),
+		affinityFixtureGroup(2, "gpt-4o"),
+	}
+	groups = append(groups, extraGroups...)
+	return state.CompileInput{
+		SystemSettings:  settings,
+		ChannelRegistry: channel.NewRegistry(),
+		Groups:          groups,
+		Credentials: []state.CredentialConfig{
+			{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1"},
+			{ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "credential-2"},
+		},
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 1, Name: "client", KeyHash: handler.encryption.Hash("gl-client"),
+			Status: state.AccessKeyStatusActive,
+		}},
+	}
+}
+
+func affinityFixtureGroup(id uint, model string) state.GroupConfig {
+	return state.GroupConfig{
+		ConnectionType: "api_key", ID: id, Name: "openai", ChannelID: channel.OpenAI,
+		Params: json.RawMessage(`{}`), Enabled: true,
+		Models: []state.ModelConfig{{ID: model, EntryID: "e000000000001"}},
+	}
+}
+
+// TestAffinityBindingSurvivesUnrelatedSnapshotChanges proves R3/R7 and R4: an
+// established binding keeps preferring its supplier across a revision bump that
+// only touches an unrelated group (R3/R7) or publishes an unchanged
+// configuration (R4). Each request line asserts both the actual upstream
+// attempts and the persisted affinity_state sequence, which regression-tests
+// the request_logs observability contract. The memory-only cases stay sensitive
+// because a bare miss with the second random value selects the second
+// credential. The store-backed case covers R5b: an affinity capacity change
+// evicts only the hot copy, so the binding is recovered through durable
+// read-through and is never reported as a final cache_miss.
+func TestAffinityBindingSurvivesUnrelatedSnapshotChanges(t *testing.T) {
+	baseSettings := config.Settings{state.SettingRetryCount: testDefaultRetryBudget}
+	tests := []struct {
+		name        string
+		settings    config.Settings
+		extraGroups []state.GroupConfig
+		withStore   bool
+		wantKeys    []string
+		wantHits    []bool
+		wantStates  []telemetry.AffinityState
+	}{
+		{
+			name:     "unrelated group added (R3/R7)",
+			settings: baseSettings,
+			extraGroups: []state.GroupConfig{
+				affinityFixtureGroup(3, "unrelated-model"),
+			},
+			wantKeys: []string{"sk-one", "sk-one", "sk-one"},
+			wantHits: []bool{false, true, true},
+			wantStates: []telemetry.AffinityState{
+				telemetry.AffinityStateCacheMiss,
+				telemetry.AffinityStateHit,
+				telemetry.AffinityStateHit,
+			},
+		},
+		{
+			name:     "revision only publish (R4)",
+			settings: baseSettings,
+			wantKeys: []string{"sk-one", "sk-one", "sk-one"},
+			wantHits: []bool{false, true, true},
+			wantStates: []telemetry.AffinityState{
+				telemetry.AffinityStateCacheMiss,
+				telemetry.AffinityStateHit,
+				telemetry.AffinityStateHit,
+			},
+		},
+		{
+			name: "affinity capacity change keeps durable binding (R5b)",
+			settings: config.Settings{
+				state.SettingRetryCount:       testDefaultRetryBudget,
+				state.SettingAffinityCapacity: 1,
+			},
+			withStore: true,
+			wantKeys:  []string{"sk-one", "sk-one", "sk-one"},
+			wantHits:  []bool{false, true, true},
+			wantStates: []telemetry.AffinityState{
+				telemetry.AffinityStateCacheMiss,
+				telemetry.AffinityStateHit,
+				telemetry.AffinityStateHit,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			forwarder := &scriptedForwarder{results: successfulAffinityResults(3)}
+			handler, manager, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
+			if test.withStore {
+				handler.affinityStore = &affinityStoreStub{}
+			}
+			sink := &recordingRequestLogSink{}
+			handler.requestLogSink = sink
+			// A bare miss with these values selects the second credential, so the
+			// expected hits only hold while the learned binding survives.
+			useAffinityRandomValues(handler, 0, 1, 1)
+			engine := newAffinityTestEngine(t, handler)
+			body := `{"model":"gpt-4o","messages":[{"role":"user","content":"stable conversation"}]}`
+
+			serveAffinityRequest(t, engine, body)
+			serveAffinityRequest(t, engine, body)
+			revisionBefore := manager.Current().Revision
+
+			next, err := manager.Publish(
+				affinityRuntimeInput(handler, test.settings, test.extraGroups...),
+			)
+			if err != nil {
+				t.Fatalf("Publish() error = %v", err)
+			}
+			if next.Revision <= revisionBefore {
+				t.Fatalf("revision after publish = %d, want > %d", next.Revision, revisionBefore)
+			}
+
+			serveAffinityRequest(t, engine, body)
+
+			assertAffinityAttemptKeys(t, forwarder.inputs, test.wantKeys)
+			events := sink.snapshot()
+			assertAffinityHits(t, events, test.wantHits)
+			assertAffinityStates(t, events, test.wantStates)
+		})
+	}
+}
+
+// TestAffinityHitIsAttemptedBeforeFallbackAfterUpstreamFailure proves R1/R2:
+// the request actually attempts the bound supplier first, and only after that
+// supplier returns a real failure does the same request fall back to another
+// supplier.
+func TestAffinityHitIsAttemptedBeforeFallbackAfterUpstreamFailure(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{
+		successfulAffinityResult(),
+		affinityUpstreamFailure(),
+		successfulAffinityResult(),
+	}}
+	handler, _, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
+	sink := &recordingRequestLogSink{}
+	handler.requestLogSink = sink
+	// Request 1 learns credential 1. Request 2 must attempt credential 1 first
+	// through affinity, and only then fall back to credential 2.
+	useAffinityRandomValues(handler, 0, 1)
+	engine := newAffinityTestEngine(t, handler)
+	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"stable conversation"}]}`
+
+	serveAffinityRequest(t, engine, body)
+	serveAffinityRequest(t, engine, body)
+
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one", "sk-two"})
+	events := sink.snapshot()
+	assertAffinityHits(t, events, []bool{false, true})
+	assertAffinityStates(t, events, []telemetry.AffinityState{
+		telemetry.AffinityStateCacheMiss,
+		telemetry.AffinityStateHit,
+	})
+	attempts := events[1].Attempts
+	if len(attempts) != 2 || attempts[0].CredentialID != 1 || attempts[1].CredentialID != 2 {
+		t.Fatalf("second request attempts = %#v, want credential 1 then credential 2", attempts)
+	}
+	if attempts[0].WillRetry != true {
+		t.Fatalf("failed bound attempt WillRetry = %v, want true", attempts[0].WillRetry)
 	}
 }

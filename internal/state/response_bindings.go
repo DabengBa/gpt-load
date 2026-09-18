@@ -30,7 +30,7 @@ type responseBindingKey struct {
 	responseID  string
 }
 
-// ResponseBindings 是有界的内存归属索引，不持有 DB、文件或软亲和配置。
+// ResponseBindings 是有界的内存归属索引，不持有 DB、文件或亲和配置。
 type ResponseBindings struct {
 	mu       sync.Mutex
 	entries  map[responseBindingKey]*list.Element
