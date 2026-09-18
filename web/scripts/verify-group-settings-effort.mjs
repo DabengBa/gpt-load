@@ -46,9 +46,9 @@ async function main() {
   })
 
   try {
-    const groups = await server.ssrLoadModule('/src/app/resources/groups.ts')
+    const groups = await server.ssrLoadModule('/src/frontends/classic/app/resources/groups.ts')
     const patching = await server.ssrLoadModule(
-      '/src/features/groups/settings/group-settings-patch.ts',
+      '/src/frontends/classic/features/groups/settings/group-settings-patch.ts',
     )
     const projected = groups.projectGroupSettings(baseSettings)
     assert.deepEqual(projected.overrides.reasoning_effort_overrides, {
