@@ -338,6 +338,7 @@ func operationRequiresModel(operation Operation) bool {
 		operation == OperationResponsesCreate ||
 		operation == OperationResponsesCompact ||
 		operation == OperationResponsesInputTokens ||
+		operation == OperationWebSearch ||
 		operation == OperationCountTokens ||
 		operation == OperationImagesGenerate ||
 		operation == OperationImagesEdit ||
