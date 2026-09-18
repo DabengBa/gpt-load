@@ -150,6 +150,7 @@ func TestGroupCreateWireAcceptsOnlyChannelContract(t *testing.T) {
 		"channel_id":"openai_compatible",
 		"connection_type":"api_key",
 		"params":{"base_url":"https://proxy.example/v1"},
+		"provider_url":"https://provider.example",
 		"models":[],
 		"credentials":"sk-one",
 		"confirm_same_target":true
@@ -158,7 +159,8 @@ func TestGroupCreateWireAcceptsOnlyChannelContract(t *testing.T) {
 		t.Fatalf("decode channel GroupCreateRequest: %v", err)
 	}
 	if request.ChannelID != channel.OpenAICompatible || request.ConnectionType != models.ConnectionTypeAPIKey ||
-		request.Credentials != "sk-one" || !request.ConfirmSameTarget {
+		request.Credentials != "sk-one" || !request.ConfirmSameTarget ||
+		!request.ProviderURL.Set || request.ProviderURL.Value != "https://provider.example" {
 		t.Fatalf("GroupCreateRequest = %#v", request)
 	}
 	for _, legacy := range []string{"keys", "provider_id", "upstream_url", "protocols", "confirm_same_upstream_url"} {

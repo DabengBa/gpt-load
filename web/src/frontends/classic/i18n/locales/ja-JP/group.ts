@@ -58,9 +58,9 @@ export default {
         actions: '操作',
       },
       openDetail: '{name} の詳細を表示',
-      copyUrl: 'アップストリームアドレス {url} をコピー',
-      copySuccess: 'コピーしました',
-      copyFailure: 'コピーできませんでした',
+      copyFor: 'グループ {name} をコピー',
+      copySucceeded: 'コピー {name} を作成しました',
+      copyFailed: 'グループをコピーできませんでした。再試行してください。',
       credentialHealthLabel:
         '合計 {total} 件の認証情報、正常 {available}、クールダウン中 {cooldown}、ブラックリスト {blacklisted}、無効 {disabled}',
       toggleEnabled: '{name} を有効化',

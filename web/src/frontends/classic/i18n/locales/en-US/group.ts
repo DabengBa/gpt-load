@@ -58,9 +58,9 @@ export default {
         actions: 'Actions',
       },
       openDetail: 'View details for {name}',
-      copyUrl: 'Copy upstream address {url}',
-      copySuccess: 'Copied',
-      copyFailure: 'Copy failed',
+      copyFor: 'Copy group {name}',
+      copySucceeded: 'Created a copy named {name}',
+      copyFailed: 'Could not copy the group. Try again.',
       credentialHealthLabel:
         '{total} credentials total: {available} available, {cooldown} cooling down, {blacklisted} blacklisted, {disabled} disabled',
       toggleEnabled: 'Enable {name}',

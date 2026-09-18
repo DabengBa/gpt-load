@@ -288,5 +288,6 @@ func groupCollectionPageItems(
 func cloneGroupCollectionItem(value GroupCollectionItem) GroupCollectionItem {
 	cloned := value
 	cloned.Params = append([]byte(nil), value.Params...)
+	cloned.ProviderURL = cloneString(value.ProviderURL)
 	return cloned
 }

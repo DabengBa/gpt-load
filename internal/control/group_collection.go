@@ -46,6 +46,7 @@ type GroupCollectionItem struct {
 	ChannelID        channel.ID                      `json:"channel_id"`
 	ConnectionType   models.ConnectionType           `json:"connection_type"`
 	Params           json.RawMessage                 `json:"params"`
+	ProviderURL      *string                         `json:"provider_url"`
 	Status           GroupCollectionStatus           `json:"status"`
 	ModelCount       int64                           `json:"model_count"`
 	ClientModelCount int64                           `json:"client_model_count"`
@@ -58,7 +59,6 @@ type groupCollectionRecord struct {
 	LastActiveAtMS             *int64
 	LastActiveHourRequestCount int64
 	UnavailableReason          *GroupUnavailableReason
-	ProviderURL                *string
 }
 
 type groupCollectionRows struct {
@@ -359,11 +359,11 @@ func mapGroupCollectionRecords(
 				ChannelID:        channelID,
 				ConnectionType:   normalizeGroupConnectionType(group.ConnectionType),
 				Params:           append(json.RawMessage(nil), params...),
+				ProviderURL:      cloneString(group.ProviderURL),
 				ModelCount:       int64(len(groupModels)),
 				ClientModelCount: int64(len(clientModels)),
 			},
 			CreatedAtMS: group.CreatedAtMS,
-			ProviderURL: cloneString(group.ProviderURL),
 		}
 		if activity, exists := activityByGroup[group.ID]; exists {
 			lastActiveAtMS := activity.LastActiveAtMS

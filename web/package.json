@@ -13,6 +13,7 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
+    "verify:group-collection": "node scripts/verify-group-collection.mjs",
     "verify:health-projection": "node scripts/verify-health-projection.mjs",
     "verify:request-log-affinity": "node scripts/verify-request-log-affinity.mjs",
     "test:connection-json": "node --experimental-strip-types --test scripts/connection-json.test.ts",
