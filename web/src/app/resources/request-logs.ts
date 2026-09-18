@@ -62,6 +62,7 @@ export type RequestLogOperation =
   | 'rerank'
   | 'list_models'
   | 'probe'
+  | 'web_search'
 export type RequestLogRouteMode = 'native' | 'converted'
 export type RequestLogDispatchState = 'not_sent' | 'maybe_sent'
 export type RequestLogUpstreamProtocol = ProtocolValue
@@ -273,6 +274,7 @@ const operations = [
   'rerank',
   'list_models',
   'probe',
+  'web_search',
 ] as const
 const routeModes = ['native', 'converted'] as const
 const dispatchStates = ['not_sent', 'maybe_sent'] as const
