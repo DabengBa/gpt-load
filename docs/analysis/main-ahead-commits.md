@@ -24,7 +24,11 @@
 | #652 | 确定移植（并入 #646） | 已落地：`d8f2eca5` 拣选上游提交并解决两处冲突——`runWebsocketAttempt` 保留本地 `spec.Body` 形参；`websocket_retry_test.go` 按本地重试合同适配：bound 连接上 4xx/429 均可重试（`retryUpstreamClientStatus`），故 "explicit request rejection"（Effect none）与 "unknown replay safety"（Effect cooldown_credential）转入重连用例表，"unknown provider error"（无 status → RetryNone）转入边界用例表；`websocket_test.go` fork/cache 用例的错误事件去掉 `status` 以保持不可重放。`cooldown_model` 断言统一改 `cooldown_credential`。 |
 | #653 | 确定移植 | 已落地：`8590f49b` 直接拣选上游提交，零冲突；恢复 `OpenAICompatible` 渠道工具降级转发、`bifrost/tool_compatibility.go` 白名单适配、压缩上下文与 tool history 丢失拒绝、count-tokens 工具约束、CPA `prepareConvertedFidelity` 白名单边界。 |
 | #657 | 低价值挂起 | 仅上游 README 赞助位新增（Fluxion AI 行 + 图片）；本地 README 独立维护，如需赞助位同步再处理。 |
+| #674（`dad1f050`） | 确定移植 | 已落地（本提交手工适配）：新增 `POST /v1/alpha/search` 与 `web_search` 操作全链路——方言早退校验（POST/非流式/非空 id）、Codex native 路由、CPA 状态码透传与读体失败元数据保留（不回填 #599 通用 header 块）、embedded 独立执行器、gateway 健康/quota/定价豁免、requestlog 聚合与直读排除、前端 operation 枚举与三语标签。本地差异适配：无 `BaseURL`/`ResolveCodexAPIEndpoints`，搜索目标固定 `defaultCodexBaseURL + /alpha/search`；上游 `usage_query_minute.go` 直读排除由本地 `withoutControlPlaneObservations` 集中覆盖；前端组件体系不同，仅补枚举与标签，未移植 Globe 图标。 |
+| #673 | 确定移植 | 待移植。 |
+| #656、#682 | 不适用 | 与本地架构不匹配，不移植。 |
 
 ## 当前动作
 
 #646、#652、#653 均已落地于工作树 `dev@d8f2eca5`（4 个未推送提交，含测试适配）。待推送并通过 PR 合入 `origin/dev`。后续观察 `tbphp/fix-codex-ws-passive-quota` 分支合并情况；#657 保持挂起。
+#674 已按本地合同手工适配并随本提交落地，全量定向测试与 `go build ./...` 通过；#673 为下一项移植候选。

@@ -656,10 +656,12 @@ func usageStatUpsertClause() clause.OnConflict {
 
 // usageAggregationExcluded reports whether a durable log row must stay out of
 // every usage statistic. Zero-attempt rows never reached an upstream; probe rows
-// are control-plane observations (execution.OperationProbe) that must not be
-// counted as traffic even though they do carry an attempt.
+// are control-plane observations (execution.OperationProbe) and standalone
+// search rows (execution.OperationWebSearch) are not model traffic, so neither
+// may be counted even though they do carry an attempt.
 func usageAggregationExcluded(row models.RequestLog) bool {
-	return row.AttemptCount == 0 || row.Operation == string(execution.OperationProbe)
+	return row.AttemptCount == 0 || row.Operation == string(execution.OperationProbe) ||
+		row.Operation == string(execution.OperationWebSearch)
 }
 
 func buildUsageAggregationJournals(

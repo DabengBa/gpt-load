@@ -15,12 +15,12 @@ import (
 // TestFrontendHealthAllowlistCoversWireKeys locks the cross-end invariant:
 // the set of top-level JSON keys of backend runtimeHealthResponse (served at
 // /api/health) must be a subset of the frontend healthFields allowlist in
-// web/src/app/resources/health.ts. This catches the drift class "backend adds a
+// web/src/frontends/classic/app/resources/health.ts. This catches the drift class "backend adds a
 // field, frontend allowlist not updated" at `go test ./internal/control/...`.
 //
 // Design (per U003 scope):
 //  1. backend keys come from reflecting runtimeHealthResponse json tags (no hand list)
-//  2. frontend path default ../../web/src/app/resources/health.ts relative to this
+//  2. frontend path default ../../web/src/frontends/classic/app/resources/health.ts relative to this
 //     test source dir; overridable via FRONTEND_HEALTH_TS; CWD-independent
 //  3. parse healthFields array literal, extract string literals
 //  4. parser self-check after parse: >=13 keys and must contain observed_at_ms,
@@ -145,7 +145,7 @@ func backendHealthWireKeys(t *testing.T) []string {
 }
 
 // resolveFrontendHealthTS 解析前端 health.ts 路径：
-// 默认相对本测试源文件目录（internal/control）为 ../../web/src/app/resources/health.ts，
+// 默认相对本测试源文件目录（internal/control）为 ../../web/src/frontends/classic/app/resources/health.ts，
 // 可用环境变量 FRONTEND_HEALTH_TS 覆盖。基于 runtime.Caller，与运行目录无关。
 func resolveFrontendHealthTS(t *testing.T) string {
 	t.Helper()
@@ -157,7 +157,7 @@ func resolveFrontendHealthTS(t *testing.T) string {
 		t.Fatal("解析器失效: 无法通过 runtime.Caller 定位测试源文件以解析前端 health.ts 路径")
 	}
 	pkgDir := filepath.Dir(thisFile)
-	return filepath.Join(pkgDir, "..", "..", "web", "src", "app", "resources", "health.ts")
+	return filepath.Join(pkgDir, "..", "..", "web", "src", "frontends", "classic", "app", "resources", "health.ts")
 }
 
 // extractHealthFields 定位 `const healthFields = [ ... ] as const` 并提取其中的字符串字面量。
