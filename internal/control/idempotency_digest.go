@@ -26,6 +26,7 @@ const (
 	operationKindAccessKeyCreate  operationKind = "access_key_create"
 	operationKindAccessKeyRotate  operationKind = "access_key_rotate"
 	operationKindGroupCreate      operationKind = "group_create"
+	operationKindGroupCopy        operationKind = "group_copy"
 	operationKindCredentialImport operationKind = "credential_import"
 )
 
@@ -106,7 +107,7 @@ func buildIdempotencyDigest(
 func (kind operationKind) valid() bool {
 	switch kind {
 	case operationKindAccessKeyCreate, operationKindAccessKeyRotate, operationKindGroupCreate,
-		operationKindCredentialImport:
+		operationKindGroupCopy, operationKindCredentialImport:
 		return true
 	default:
 		return false

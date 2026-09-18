@@ -77,7 +77,7 @@ func operationRequiredStages(kind operationKind) ([]operationStage, error) {
 			operationStageSnapshotPublished,
 			operationStageCompleted,
 		}
-	case operationKindGroupCreate:
+	case operationKindGroupCreate, operationKindGroupCopy:
 		stages = []operationStage{
 			operationStageDBCommitted,
 			operationStagePricesPublished,

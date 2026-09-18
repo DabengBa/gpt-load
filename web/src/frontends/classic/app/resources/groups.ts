@@ -95,6 +95,7 @@ const groupCollectionItemFields = [
   'channel_id',
   'connection_type',
   'params',
+  'provider_url',
   'status',
   'model_count',
   'client_model_count',
@@ -229,6 +230,7 @@ export interface GroupCreateRequest {
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
+  provider_url?: string | null
   models: GroupModelUpdateDto[]
   credentials?: string
   staged_credential_ids?: string[]
@@ -598,6 +600,7 @@ function projectGroupCollectionItem(value: unknown): GroupCollectionItemDto {
     channel_id: projectChannelID(record.channel_id),
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
+    provider_url: projectNullableHTTPURL(record.provider_url),
     status,
     price_multiplier: projectPriceMultiplier(record.price_multiplier),
     model_count: modelCount,
@@ -611,7 +614,7 @@ function projectGroupCollectionPagination(value: unknown): GroupCollectionPagina
   assertNoSecretLikeFields(record, groupCollectionPaginationFields)
   return {
     page: projectSafeInteger(record.page, { minimum: 1 }),
-    page_size: projectSafeInteger(record.page_size, { minimum: 20, maximum: 20 }) as 20,
+    page_size: projectSafeInteger(record.page_size, { minimum: 100, maximum: 100 }) as 100,
     total_items: projectSafeInteger(record.total_items, { minimum: 0 }),
     total_pages: projectSafeInteger(record.total_pages, { minimum: 0 }),
   }
@@ -1092,6 +1095,22 @@ export async function createGroup(
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
       json: body,
+      signal,
+    }),
+  )
+}
+
+export async function copyGroup(
+  client: ApiClient,
+  groupID: number,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<GroupCreateResult> {
+  return projectGroupCreateResult(
+    await client.request(`/api/groups/${groupID}/copy`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      json: {},
       signal,
     }),
   )

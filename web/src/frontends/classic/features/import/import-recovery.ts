@@ -22,7 +22,7 @@ export interface ImportRecoveryService {
 }
 
 interface ImportRecoveryRecord {
-  version: 8
+  version: 9
   expires_at: number
   draft: ImportRecoveryDraft
 }
@@ -128,6 +128,7 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
       'proxy',
       'name',
       'price_multiplier',
+      'provider_url',
       'credentials',
       'staged_credentials',
       'models',
@@ -139,6 +140,7 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
     isImportProxyDraft(value.proxy) &&
     typeof value.name === 'string' &&
     typeof value.price_multiplier === 'string' &&
+    typeof value.provider_url === 'string' &&
     typeof value.credentials === 'string' &&
     Array.isArray(value.staged_credentials) &&
     value.staged_credentials.every(isRecoveredStage) &&
@@ -232,10 +234,17 @@ function parseRecoveryRecord(raw: string): ImportRecoveryRecord | null {
         draft: value.draft.mode === 'new' ? { ...value.draft, price_multiplier: '1' } : value.draft,
       }
     }
+    if (isRecord(value) && value.version === 8 && isRecord(value.draft)) {
+      value = {
+        ...value,
+        version: 9,
+        draft: value.draft.mode === 'new' ? { ...value.draft, provider_url: '' } : value.draft,
+      }
+    }
     if (
       !isRecord(value) ||
       !hasOnlyFields(value, ['version', 'expires_at', 'draft']) ||
-      value.version !== 8 ||
+      value.version !== 9 ||
       typeof value.expires_at !== 'number' ||
       !Number.isFinite(value.expires_at) ||
       !isImportDraft(value.draft)
@@ -313,7 +322,7 @@ export function createImportRecoveryService(
     if (!deps.storage) return 'storage-unavailable'
 
     const record: ImportRecoveryRecord = {
-      version: 8,
+      version: 9,
       expires_at: deps.now() + importRecoveryTtlMs,
       draft,
     }

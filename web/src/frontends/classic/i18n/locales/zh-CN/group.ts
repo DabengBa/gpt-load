@@ -58,9 +58,9 @@ export default {
         actions: '操作',
       },
       openDetail: '查看 {name} 详情',
-      copyUrl: '复制上游地址 {url}',
-      copySuccess: '已复制',
-      copyFailure: '复制失败',
+      copyFor: '复制分组 {name}',
+      copySucceeded: '已创建分组副本 {name}',
+      copyFailed: '复制分组失败，请重试',
       credentialHealthLabel:
         '共 {total} 个凭据，正常 {available}，冷却中 {cooldown}，已拉黑 {blacklisted}，已停用 {disabled}',
       toggleEnabled: '启用 {name}',

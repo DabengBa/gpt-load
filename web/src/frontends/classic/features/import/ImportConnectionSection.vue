@@ -17,6 +17,7 @@ import type { ImportProxyDraft } from './model-draft'
 const props = defineProps<{
   channel: ChannelDto | null
   name: string
+  providerUrl: string
   priceMultiplier: string
   params: Record<string, string>
   proxy: ImportProxyDraft
@@ -27,6 +28,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   'update:name': [value: string]
+  'update:providerUrl': [value: string]
   'update:priceMultiplier': [value: string]
   'update:param': [key: string, value: string]
   'update:proxy': [value: ImportProxyDraft]
@@ -125,6 +127,29 @@ function baseURLVersionWarning(key: string): string | undefined {
         </template>
       </FormField>
 
+      <FormField
+        id="import-price-multiplier"
+        class="import-connection__multiplier"
+        :label="t('common.priceMultiplier.label')"
+        :description="t('common.priceMultiplier.groupHelp')"
+        :error="
+          isValidPriceMultiplier(priceMultiplier) ? undefined : t('common.priceMultiplier.invalid')
+        "
+        size="compact"
+      >
+        <template #default="field">
+          <input
+            id="import-price-multiplier"
+            :value="priceMultiplier"
+            inputmode="decimal"
+            :disabled="disabled"
+            :aria-describedby="field.describedBy"
+            :aria-invalid="field.invalid || undefined"
+            @input="emit('update:priceMultiplier', ($event.target as HTMLInputElement).value)"
+          />
+        </template>
+      </FormField>
+
       <div v-if="channel?.param_fields.length" class="import-connection__params">
         <template v-for="param in channel.param_fields" :key="param.key">
           <FormField
@@ -209,24 +234,26 @@ function baseURLVersionWarning(key: string): string | undefined {
       </div>
 
       <FormField
-        id="import-price-multiplier"
-        class="import-connection__multiplier"
-        :label="t('common.priceMultiplier.label')"
-        :description="t('common.priceMultiplier.groupHelp')"
-        :error="
-          isValidPriceMultiplier(priceMultiplier) ? undefined : t('common.priceMultiplier.invalid')
-        "
+        id="import-provider-url"
+        class="import-connection__provider-url"
+        :label="t('group.settings.base.providerUrl')"
+        :label-suffix="t('import.optional')"
+        :description="t('group.settings.base.providerUrlHelp')"
         size="compact"
       >
         <template #default="field">
           <input
-            id="import-price-multiplier"
-            :value="priceMultiplier"
-            inputmode="decimal"
+            id="import-provider-url"
+            class="import-connection__url"
+            :value="providerUrl"
+            type="url"
             :disabled="disabled"
             :aria-describedby="field.describedBy"
-            :aria-invalid="field.invalid || undefined"
-            @input="emit('update:priceMultiplier', ($event.target as HTMLInputElement).value)"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            placeholder="https://"
+            @input="emit('update:providerUrl', ($event.target as HTMLInputElement).value)"
           />
         </template>
       </FormField>
@@ -297,22 +324,21 @@ function baseURLVersionWarning(key: string): string | undefined {
 .import-connection__name,
 .import-connection__params,
 .import-connection__param,
+.import-connection__provider-url,
 .import-connection__proxy {
   min-width: 0;
 }
 
 .import-connection__params {
   display: grid;
+  grid-column: 1 / -1;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 10px 14px;
 }
 
-.import-connection__multiplier {
-  grid-column: 1;
-}
-
+.import-connection__provider-url,
 .import-connection__proxy {
-  grid-column: 2;
+  grid-column: 1 / -1;
 }
 
 .import-connection__multiplier input {

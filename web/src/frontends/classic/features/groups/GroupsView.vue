@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { ArrowRight, KeyRound, Layers3, Plus, Search, TriangleAlert, UserRound } from '@lucide/vue'
+import {
+  ArrowRight,
+  Copy,
+  ExternalLink,
+  KeyRound,
+  Layers3,
+  Plus,
+  Search,
+  TriangleAlert,
+  UserRound,
+} from '@lucide/vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -17,10 +27,15 @@ import type {
 import { channelsQueryOptions, type ChannelDto } from '@/app/resources/channels'
 import {
   cacheGroupSettings,
+  copyGroup,
   groupCollectionQueryOptions,
   invalidateGroupSettingsDependents,
   updateGroupSettings,
 } from '@/app/resources/groups'
+import {
+  applyInvalidationPlan,
+  mutationInvalidationPlans,
+} from '@/app/resources/invalidation'
 import { groupDetailLocation, groupsLocation, importLocation } from '@/app/route-locations'
 import { useCollectionLoading } from '@/app/loading-state'
 import { useDebouncedAction } from '@/app/use-debounced-action'
@@ -37,7 +52,6 @@ import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
 import AppSearchInput from '@/components/ui/AppSearchInput.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
-import CopyChip from '@/components/ui/CopyChip.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import CredentialHealthBar from '@/components/ui/CredentialHealthBar.vue'
@@ -47,6 +61,7 @@ import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
+import { createUUID } from '@/lib/uuid'
 
 import {
   constrainGroupCollectionSearchQuery,
@@ -82,6 +97,7 @@ const data = computed(() => groupsQuery.data.value)
 const toast = useToast()
 const queryClient = useQueryClient()
 const togglingGroupIDs = ref(new Set<number>())
+const copyingGroupIDs = ref(new Set<number>())
 const optimisticEnabled = ref(new Map<number, boolean>())
 
 // AppSwitch 纯受控，等请求走完才翻转会像卡住，故先本地置位。
@@ -112,6 +128,26 @@ async function toggleGroupEnabled(group: GroupCollectionItemDto, next: boolean):
     const pending = new Set(togglingGroupIDs.value)
     pending.delete(group.id)
     togglingGroupIDs.value = pending
+  }
+}
+
+async function copyGroupRecord(group: GroupCollectionItemDto): Promise<void> {
+  if (copyingGroupIDs.value.has(group.id)) return
+  copyingGroupIDs.value = new Set(copyingGroupIDs.value).add(group.id)
+  try {
+    const result = await copyGroup(client, group.id, createUUID())
+    await applyInvalidationPlan(queryClient, mutationInvalidationPlans.group.create)
+    toast.show({
+      message: t('groups.collection.copySucceeded', { name: result.group_name }),
+      tone: 'success',
+    })
+    await router.push(groupDetailLocation(result.group_id))
+  } catch {
+    toast.show({ message: t('groups.collection.copyFailed'), tone: 'danger' })
+  } finally {
+    const pending = new Set(copyingGroupIDs.value)
+    pending.delete(group.id)
+    copyingGroupIDs.value = pending
   }
 }
 const hasFilterCriteria = computed(
@@ -256,7 +292,7 @@ function setSort(value: string): void {
 function resetConditions(): void {
   searchDebounce.cancel()
   searchDraft.value = ''
-  routeWithFilters({ sort: 'recent', page: 1, page_size: 20 })
+  routeWithFilters({ sort: 'recent', page: 1, page_size: 100 })
 }
 
 function setPage(page: number): void {
@@ -297,18 +333,9 @@ function connectionTypeBadgeClass(type: ConnectionType): string {
 </script>
 
 <template>
-  <PageFrame aria-labelledby="groups-title">
+  <PageFrame wide aria-labelledby="groups-title">
     <LedgerSheet class="groups-ledger" :aria-busy="collectionBusy ? 'true' : undefined">
-      <PageHeader id="groups-title" :title="t('groups.title')">
-        <template #actions>
-          <RouterLink v-slot="{ navigate }" :to="importLocation()" custom>
-            <AppButton role="link" @click="navigate">
-              <KeyRound :size="16" aria-hidden="true" />
-              {{ t('groups.collection.importCredentials') }}
-            </AppButton>
-          </RouterLink>
-        </template>
-      </PageHeader>
+      <PageHeader id="groups-title" :title="t('groups.title')" />
 
       <AsyncRefreshIndicator
         :active="collectionRefreshing"
@@ -542,13 +569,17 @@ function connectionTypeBadgeClass(type: ConnectionType): string {
                     {{ connectionTypeLabel(group.connection_type) }}
                   </span>
                 </span>
-                <CopyChip
-                  v-if="group.params.base_url"
-                  :value="group.params.base_url"
-                  :label="t('groups.collection.copyUrl', { url: group.params.base_url })"
-                  :success-label="t('groups.collection.copySuccess')"
-                  :failure-label="t('groups.collection.copyFailure')"
-                />
+                <a
+                  v-if="group.provider_url"
+                  class="provider-link"
+                  :href="group.provider_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :aria-label="t('group.openProviderUrl', { url: group.provider_url })"
+                >
+                  <ExternalLink :size="11" aria-hidden="true" />
+                  <span>{{ t('group.settings.base.providerUrl') }}</span>
+                </a>
               </div>
 
               <div class="ledger-record-list__cell model-count" role="cell">
@@ -586,6 +617,15 @@ function connectionTypeBadgeClass(type: ConnectionType): string {
                     <Plus :size="15" aria-hidden="true" />
                   </IconButton>
                 </RouterLink>
+                <IconButton
+                  variant="surface"
+                  size="compact"
+                  :label="t('groups.collection.copyFor', { name: group.name })"
+                  :busy="copyingGroupIDs.has(group.id)"
+                  @click="copyGroupRecord(group)"
+                >
+                  <Copy :size="15" aria-hidden="true" />
+                </IconButton>
                 <RouterLink v-slot="{ navigate }" :to="groupDetailLocation(group.id)" custom>
                   <IconButton
                     role="link"
@@ -666,8 +706,29 @@ function connectionTypeBadgeClass(type: ConnectionType): string {
   gap: var(--space-2);
 }
 
-.endpoint :deep(.copy-chip-wrap) {
-  width: 100%;
+.provider-link {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: var(--control-compact);
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-tag);
+  color: var(--color-text-muted);
+  padding: 3px 7px;
+  font-size: var(--text-label-xs);
+  font-weight: 560;
+  transition:
+    color var(--duration-fast) var(--easing-standard),
+    background-color var(--duration-fast) var(--easing-standard);
+}
+
+.provider-link:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-action);
+}
+
+.provider-link svg {
+  flex: none;
 }
 
 .channel-heading {

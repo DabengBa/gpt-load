@@ -42,7 +42,7 @@ export interface GroupCollectionFilters {
   connection_type?: ConnectionType
   sort: GroupCollectionSort
   page: number
-  page_size: 20
+  page_size: 100
 }
 
 export interface GroupCollectionSummaryDto {
@@ -59,6 +59,7 @@ export interface GroupCollectionItemDto {
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
+  provider_url: string | null
   status: GroupCollectionStatus
   model_count: number
   client_model_count: number
@@ -67,7 +68,7 @@ export interface GroupCollectionItemDto {
 
 export interface GroupCollectionPaginationDto {
   page: number
-  page_size: 20
+  page_size: 100
   total_items: number
   total_pages: number
 }

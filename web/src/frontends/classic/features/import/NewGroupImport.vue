@@ -96,6 +96,7 @@ function freshDraft(): ImportDraft {
     params: {},
     proxy: { mode: 'inherit', url: '' },
     name: '',
+    provider_url: '',
     price_multiplier: '1',
     credentials: '',
     staged_credentials: [],
@@ -946,6 +947,7 @@ function buildCreateBody(confirmSameTarget: boolean): GroupCreateRequest {
     ),
     ...(draftProxyOverride.value === undefined ? {} : { proxy: draftProxyOverride.value }),
     ...(name ? { name } : {}),
+    provider_url: draft.provider_url.trim() || null,
     price_multiplier: normalizePriceMultiplier(draft.price_multiplier),
     models: toGroupModels(draft.models),
     ...(draft.connection_type === 'subscription'
@@ -1367,6 +1369,7 @@ onBeforeUnmount(() => {
           <ImportConnectionSection
             :channel="connectionChannel"
             :name="draft.name"
+            :provider-url="draft.provider_url"
             :price-multiplier="draft.price_multiplier"
             :params="draft.params"
             :proxy="draft.proxy"
@@ -1375,6 +1378,7 @@ onBeforeUnmount(() => {
             :base-url-override-enabled="baseUrlOverrideEnabled"
             :disabled="payloadLocked"
             @update:name="draft.name = $event"
+            @update:provider-url="draft.provider_url = $event"
             @update:price-multiplier="draft.price_multiplier = $event"
             @update:param="setChannelParam"
             @update:proxy="draft.proxy = $event"
