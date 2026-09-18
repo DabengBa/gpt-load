@@ -2007,3 +2007,298 @@ func TestStreamErrorFailureHintDoesNotTreatGenericForbiddenAsInvalidCredential(t
 		})
 	}
 }
+
+// TestUpstreamResultContentFilterNoContent proves R1 for the non-streaming
+// boundary: an HTTP 200 OpenAI Chat Completions body that finished with
+// "content_filter" and carried no assistant content becomes provider error
+// evidence instead of a silent success. The upstream payload is still passed
+// through unchanged, so no client-visible error is claimed before the commit
+// boundary.
+func TestUpstreamResultContentFilterNoContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "content null",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":null},"finish_reason":"content_filter"}]}`,
+		},
+		{
+			name: "content empty string",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":""},"finish_reason":"content_filter"}]}`,
+		},
+		{
+			name: "content empty container",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":[]},"finish_reason":"content_filter"}]}`,
+		},
+		{
+			name: "content missing",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant"},"finish_reason":"content_filter"}]}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			body := []byte(test.body)
+			executor := fakeExecutionExecutor{unary: func(context.Context, execution.AttemptSpec) execution.AttemptResult {
+				return execution.AttemptResult{
+					DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"application/json"}},
+					Body:       body,
+				}
+			}}
+			result := NewExecutionForwarder(executor).Forward(t.Context(), forwardRawUpstreamInput())
+			if result.Err != nil || !result.HasResponse() || result.ExecutionError == nil {
+				t.Fatalf("Forward() = %#v, want uncommitted upstream response with error evidence", result)
+			}
+			evidence := result.ExecutionError
+			const wantSummary = "upstream response was blocked by content filter and contained no assistant content"
+			if evidence.Kind != execution.ErrorKindProvider ||
+				evidence.Code != "upstream_content_filter" ||
+				evidence.Summary != wantSummary {
+				t.Fatalf("Forward() evidence = %#v, want provider error code upstream_content_filter", evidence)
+			}
+			if evidence.OriginHint != execution.ErrorOriginUpstream ||
+				evidence.ScopeHint != execution.ErrorScopeRequest ||
+				evidence.StatusCode != http.StatusOK {
+				t.Fatalf("Forward() evidence boundary = %#v", evidence)
+			}
+			if result.ErrorSummary != wantSummary {
+				t.Fatalf("Forward() ErrorSummary = %q, want %q", result.ErrorSummary, wantSummary)
+			}
+			if !bytes.Contains(result.Body, []byte(`"finish_reason":"content_filter"`)) {
+				t.Fatalf("Forward() body = %s, want the upstream content-filter payload passed through", result.Body)
+			}
+			if result.ProviderErrorBeforeCommit {
+				t.Fatal("content filter evidence must not turn the upstream 200 into a client-visible protocol failure")
+			}
+			decision := judgeUpstreamResult(result, time.Date(2026, time.September, 18, 7, 0, 0, 0, time.UTC), health.DecisionContext{})
+			if decision.Category != health.FailureCategoryClientError ||
+				decision.Retry != health.RetryNone ||
+				decision.Effect != health.EffectNone ||
+				decision.RuleID != health.RuleID("content_filter.no_content") {
+				t.Fatalf("judgeUpstreamResult() = %#v, want client_error with rule content_filter.no_content", decision)
+			}
+		})
+	}
+}
+
+// TestUpstreamResultContentFilterWithContent proves R2: a content-filter finish
+// reason that still carries assistant content is a usable answer, not an error.
+func TestUpstreamResultContentFilterWithContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "content present",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":"partial answer"},"finish_reason":"content_filter"}]}`,
+		},
+		{
+			name: "content whitespace only",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":" "},"finish_reason":"content_filter"}]}`,
+		},
+		{
+			name: "content structured",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":[{"type":"text","text":"hi"}]},"finish_reason":"content_filter"}]}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := forwardContentFilterBody(t, []byte(test.body))
+			if result.Err != nil || !result.HasResponse() {
+				t.Fatalf("Forward() = %#v", result)
+			}
+			if result.ExecutionError != nil {
+				t.Fatalf("Forward() evidence = %#v, want no content-filter error for usable content", result.ExecutionError)
+			}
+		})
+	}
+}
+
+// TestUpstreamResultStopReasonEmptyContent proves the R2 boundary: an empty
+// assistant message that stopped normally must not be reported as content
+// filtering.
+func TestUpstreamResultStopReasonEmptyContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "stop with empty content",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":""},"finish_reason":"stop"}]}`,
+		},
+		{
+			name: "stop with null content",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":null},"finish_reason":"stop"}]}`,
+		},
+		{
+			name: "length with empty content",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":""},"finish_reason":"length"}]}`,
+		},
+		{
+			name: "missing finish reason",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":null}}]}`,
+		},
+		{
+			name: "empty choices",
+			body: `{"id":"chat-1","choices":[]}`,
+		},
+		{
+			name: "error envelope",
+			body: `{"error":{"message":"content blocked","type":"invalid_request_error"}}`,
+		},
+		{
+			name: "non json body",
+			body: `content blocked`,
+		},
+		{
+			name: "non string finish reason",
+			body: `{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":null},"finish_reason":42}]}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := forwardContentFilterBody(t, []byte(test.body))
+			if result.Err != nil || !result.HasResponse() {
+				t.Fatalf("Forward() = %#v", result)
+			}
+			if result.ExecutionError != nil {
+				t.Fatalf("Forward() evidence = %#v, want no content-filter error", result.ExecutionError)
+			}
+		})
+	}
+}
+
+func forwardContentFilterBody(t *testing.T, body []byte) UpstreamResult {
+	t.Helper()
+	executor := fakeExecutionExecutor{unary: func(context.Context, execution.AttemptSpec) execution.AttemptResult {
+		return execution.AttemptResult{
+			DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       body,
+		}
+	}}
+	return NewExecutionForwarder(executor).Forward(t.Context(), forwardRawUpstreamInput())
+}
+
+// forwardRawUpstreamInput detaches response model rewriting so the raw upstream
+// body shape reaches representation handling unchanged. The content-filter
+// detection point runs on the assembled upstream result and must not depend on
+// the rewrite step.
+func forwardRawUpstreamInput() ForwardInput {
+	input := executionForwardInput()
+	input.ExternalModel = input.UpstreamModelID
+	return input
+}
+
+func TestUpstreamResultEmptyCompletionBoundaries(t *testing.T) {
+	t.Parallel()
+
+	const emptyChoice = `{"index":0,"message":{"role":"assistant","content":null},"finish_reason":"stop"}`
+	const emptyChoiceMissingFinish = `{"index":0,"message":{"role":"assistant","content":null}}`
+	base := func(choice string, usageBody string) string {
+		return `{"id":"chat-empty","object":"chat.completion","choices":[` + choice + `],"usage":` + usageBody + `}`
+	}
+	completeUsage := `{"prompt_tokens":3,"completion_tokens":12,"total_tokens":15}`
+	cases := []struct {
+		name     string
+		body     string
+		status   int
+		input    ForwardInput
+		usage    usage.Result
+		wantCode string
+	}{
+		{name: "e7ca shape", body: base(emptyChoice, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "e7ca exact shape", body: base(`{"index":0,"message":{"role":"assistant"},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "missing finish reason", body: base(emptyChoiceMissingFinish, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "multi choice all empty", body: base(emptyChoice+`,`+strings.Replace(emptyChoice, `"index":0`, `"index":1`, 1), completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "output zero", body: base(emptyChoice, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete}, wantCode: ""},
+		{name: "usage missing", body: `{"choices":[` + emptyChoice + `]}`, status: http.StatusOK, usage: usage.Result{State: usage.StateMissing}, wantCode: ""},
+		{name: "usage partial", body: base(emptyChoice, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StatePartial, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "content payload", body: base(`{"message":{"role":"assistant","content":"answer"},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "tool calls payload", body: base(`{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_1"}]},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "function call payload", body: base(`{"message":{"role":"assistant","content":null,"function_call":{"name":"f"}},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "refusal payload", body: base(`{"message":{"role":"assistant","content":null,"refusal":"no"},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "reasoning content payload", body: base(`{"message":{"role":"assistant","content":null,"reasoning_content":"thought"},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "reasoning payload", body: base(`{"message":{"role":"assistant","content":null,"reasoning":"thought"},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "audio payload", body: base(`{"message":{"role":"assistant","content":null,"audio":{"id":"a"}},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "empty finish reason", body: base(`{"message":{"role":"assistant","content":null},"finish_reason":""}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "empty string content", body: base(`{"message":{"role":"assistant","content":""},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "empty array content", body: base(`{"message":{"role":"assistant","content":[]},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "empty object content", body: base(`{"message":{"role":"assistant","content":{}},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "empty tool calls", body: base(`{"message":{"role":"assistant","content":null,"tool_calls":[]},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_empty_completion"},
+		{name: "null finish reason", body: base(`{"message":{"role":"assistant","content":null},"finish_reason":null}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "duplicate message field", body: base(`{"message":{"role":"assistant","content":"answer","content":null},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "duplicate finish reason", body: base(`{"message":{"role":"assistant","content":null},"finish_reason":"length","finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "duplicate nested payload field", body: base(`{"message":{"role":"assistant","content":{"x":1,"x":null}},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "unknown message field", body: base(`{"message":{"role":"assistant","content":null,"provider_extra":true},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "unknown finish reason", body: base(`{"message":{"role":"assistant","content":null},"finish_reason":"mystery"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "length finish reason", body: base(`{"message":{"role":"assistant","content":null},"finish_reason":"length"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "tool calls finish reason", body: base(`{"message":{"role":"assistant","content":null},"finish_reason":"tool_calls"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "function call finish reason", body: base(`{"message":{"role":"assistant","content":null},"finish_reason":"function_call"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "content filter finish reason", body: base(`{"message":{"role":"assistant","content":null},"finish_reason":"content_filter"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: "upstream_content_filter"},
+		{name: "empty choices", body: `{"choices":[],"usage":` + completeUsage + `}`, status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "message missing", body: base(`{"index":0,"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "role not assistant", body: base(`{"message":{"role":"user","content":null},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "one multi choice payload", body: base(emptyChoice+`,`+`{"message":{"role":"assistant","content":"answer"},"finish_reason":"stop"}`, completeUsage), status: http.StatusOK, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "non OpenAI protocol", body: base(emptyChoice, completeUsage), status: http.StatusOK, input: func() ForwardInput {
+			input := forwardRawUpstreamInput()
+			input.ClientProtocol = protocol.OpenAIResponses
+			input.Dialect = dialect.NewOpenAIResponses()
+			input.Operation = execution.OperationResponsesCreate
+			return input
+		}(), usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+		{name: "non 2xx", body: base(emptyChoice, completeUsage), status: http.StatusBadRequest, usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 12}}, wantCode: ""},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			input := test.input
+			if input.ClientProtocol == "" {
+				input = forwardRawUpstreamInput()
+			}
+			executor := fakeExecutionExecutor{unary: func(context.Context, execution.AttemptSpec) execution.AttemptResult {
+				attempt := execution.AttemptResult{
+					DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+					StatusCode: test.status, Header: http.Header{"Content-Type": {"application/json"}},
+					Body: []byte(test.body), Usage: &execution.UsageEvidence{Normalized: test.usage},
+				}
+				if test.status < http.StatusOK || test.status >= http.StatusMultipleChoices {
+					attempt.Error = &execution.ErrorEvidence{
+						Kind: execution.ErrorKindHTTP, StatusCode: test.status,
+						Summary: "upstream rejected request",
+					}
+				}
+				return attempt
+			}}
+			result := NewExecutionForwarder(executor).Forward(t.Context(), input)
+			gotCode := ""
+			if result.ExecutionError != nil {
+				gotCode = result.ExecutionError.Code
+			}
+			if gotCode != test.wantCode {
+				t.Fatalf("Forward() error code = %q, want %q; result=%#v", gotCode, test.wantCode, result)
+			}
+			if test.wantCode != "" {
+				if result.StatusCode != test.status || string(result.Body) != test.body ||
+					!result.ResponseStarted || result.ProviderErrorBeforeCommit {
+					t.Fatalf("Forward() changed passthrough result = %#v", result)
+				}
+			}
+		})
+	}
+}

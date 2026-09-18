@@ -180,7 +180,7 @@ streamWait:
 	result.HTTPCommitted = output.HTTPCommitted
 	result.ClientVisibleBytes = output.ClientVisibleBytes
 	var releaseStartedAt time.Time
-	if result.Err == nil && result.Stream.EndReason == StreamEndCleanEOF {
+	if result.Err == nil && (result.Stream.EndReason == StreamEndCleanEOF || result.Stream.EndReason == StreamEndContentFilter) {
 		if err := streamCtx.Err(); err != nil {
 			result.Err = &streamFailure{kind: streamFailureDownstreamWrite, err: fmt.Errorf("buffered stream deadline expired before release: %w", err)}
 			result.Stream = streamTerminalObservationWithResponseID(StreamEndDownstreamWriteFailure, responseID)

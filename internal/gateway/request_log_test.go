@@ -4449,3 +4449,271 @@ func TestRequestRecorderCandidateFallbackSkipsDefaultClassificationText(t *testi
 		})
 	}
 }
+
+// newContentFilterRequestLogRuntime wires the real execution forwarder against
+// a real upstream so the complete HTTP 200 + content_filter path (evidence,
+// judge, request-log persistence) is exercised end to end.
+func newContentFilterRequestLogRuntime(
+	t *testing.T,
+	upstreamURL string,
+	sink telemetry.RequestLogSink,
+) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	keyService := encryptiontest.Service(t, "content-filter-e2e-test-key")
+	baseURL := testUpstreamBaseURL(upstreamURL, protocol.OpenAICompletions)
+	channelID, params := testChannelConfig(t, protocol.OpenAICompletions, baseURL)
+	manager := state.NewManager()
+	if _, err := manager.Publish(state.CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{{
+			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channelID,
+			Params: params, Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+		}},
+		Credentials: []state.CredentialConfig{{
+			ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
+		}},
+		SystemSettings: config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"), Status: state.AccessKeyStatusActive,
+		}},
+	}); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	encrypted, err := keyService.Encrypt(`{"api_key":"sk-upstream"}`)
+	if err != nil {
+		t.Fatalf("Encrypt() error = %v", err)
+	}
+	registry := state.NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1",
+		EncryptedValue: encrypted,
+	}}); err != nil {
+		t.Fatalf("ReplaceCredentials() error = %v", err)
+	}
+	handler := NewHandler(
+		manager, registry, keyService, newTestExecutionForwarder(t),
+		dialect.NewSet(dialect.NewOpenAI()),
+		health.NewStatsStore(), health.NewMutationCoordinator(),
+		nil, sink, nil,
+	)
+	handler.newRandom = func() *rand.Rand { return rand.New(rand.NewSource(1)) }
+	handler.newRequestID = func() (string, error) { return fixedRequestID, nil }
+	handler.requestNow = newSteppingRequestClock()
+	engine := gin.New()
+	bindGatewayRoutesForTest(t, engine, handler)
+	return engine
+}
+
+// TestRequestLogContentFilterEndToEnd proves R4 for the non-streaming path: an
+// upstream HTTP 200 OpenAI Chat Completions response that finished with
+// "content_filter" without assistant content is recorded as a client-side error,
+// while the client still receives the upstream status and JSON verbatim.
+func TestRequestLogContentFilterEndToEnd(t *testing.T) {
+	const upstreamBody = `{"id":"chat-cf","object":"chat.completion","created":1,"model":"gpt-4o",` +
+		`"choices":[{"index":0,"message":{"role":"assistant","content":null},"finish_reason":"content_filter"}],` +
+		`"usage":{"prompt_tokens":3,"completion_tokens":12,"total_tokens":15}}`
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(upstreamBody))
+	}))
+	defer upstream.Close()
+
+	sink := &recordingRequestLogSink{}
+	engine := newContentFilterRequestLogRuntime(t, upstream.URL, sink)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"ping"}]}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK || recorder.Body.String() != upstreamBody {
+		t.Fatalf("client response = %d %q, want passthrough 200 %q",
+			recorder.Code, recorder.Body.String(), upstreamBody)
+	}
+	events := sink.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("request log events = %d, want 1", len(events))
+	}
+	event := events[0]
+	if event.Status != telemetry.RequestStatusError ||
+		event.ErrorCode != "upstream_content_filter" ||
+		event.StatusCode != http.StatusOK {
+		t.Fatalf("request log = %#v, want status=error code=upstream_content_filter status_code=200", event)
+	}
+	if len(event.Attempts) != 1 ||
+		event.Attempts[0].FailureCategory != telemetry.FailureCategoryClientError ||
+		event.Attempts[0].ErrorCode != "upstream_content_filter" {
+		t.Fatalf("attempts = %#v, want one client_error attempt with upstream_content_filter", event.Attempts)
+	}
+	if event.Usage.Result.State != usage.StateComplete || event.Usage.Result.Tokens.Output != 12 {
+		t.Fatalf("usage = %#v, want complete usage with 12 output tokens", event.Usage)
+	}
+}
+
+func TestRequestLogEmptyCompletionEndToEnd(t *testing.T) {
+	const upstreamBody = `{"id":"chat-empty","object":"chat.completion","created":1,"model":"gpt-4o",` +
+		`"choices":[{"index":0,"message":{"role":"assistant","content":null},"finish_reason":"stop"}],` +
+		`"usage":{"prompt_tokens":3,"completion_tokens":12,"total_tokens":15}}`
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(upstreamBody))
+	}))
+	defer upstream.Close()
+
+	sink := &recordingRequestLogSink{}
+	engine := newContentFilterRequestLogRuntime(t, upstream.URL, sink)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"ping"}]}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK || recorder.Body.String() != upstreamBody {
+		t.Fatalf("client response = %d %q, want passthrough 200", recorder.Code, recorder.Body.String())
+	}
+	events := sink.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("request log events = %d, want 1", len(events))
+	}
+	event := events[0]
+	if event.Status != telemetry.RequestStatusError ||
+		event.ErrorCode != "upstream_empty_completion" ||
+		event.StatusCode != http.StatusOK {
+		t.Fatalf("request log = %#v, want status=error code=upstream_empty_completion status_code=200", event)
+	}
+	if len(event.Attempts) != 1 ||
+		event.Attempts[0].FailureCategory != telemetry.FailureCategoryAmbiguous ||
+		event.Attempts[0].RetryDirective != telemetry.RetryNone ||
+		event.Attempts[0].Effect != telemetry.EffectNone ||
+		event.Attempts[0].RuleID != "upstream.empty_completion" ||
+		event.Attempts[0].ErrorCode != "upstream_empty_completion" {
+		t.Fatalf("attempts = %#v, want one ambiguous no-retry attempt with upstream_empty_completion", event.Attempts)
+	}
+	if event.Usage.Result.State != usage.StateComplete || event.Usage.Result.Tokens.Output != 12 {
+		t.Fatalf("usage = %#v, want complete usage with 12 output tokens", event.Usage)
+	}
+}
+
+func TestHandlerDiagnosticsDoNotRecordCredentialOrEntrySuccess(t *testing.T) {
+	now := time.Date(2026, time.September, 18, 7, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name string
+		code string
+	}{
+		{name: "content filter", code: "upstream_content_filter"},
+		{name: "empty completion", code: "upstream_empty_completion"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			forwarder := &scriptedForwarder{results: []UpstreamResult{{
+				StatusCode:     http.StatusOK,
+				Header:         make(http.Header),
+				Body:           []byte(`{"diagnostic":true}`),
+				RequestWritten: true,
+				ExecutionError: &execution.ErrorEvidence{
+					Kind:       execution.ErrorKindProvider,
+					OriginHint: execution.ErrorOriginUpstream,
+					ScopeHint:  execution.ErrorScopeRequest,
+					StatusCode: http.StatusOK,
+					Code:       test.code,
+					Summary:    "diagnostic response",
+				},
+			}}}
+			engine, handler, registry, stats := newStatsHandlerTestRuntime(t, forwarder, "sk-one")
+			handler.now = func() time.Time { return now }
+			if count, ok := registry.IncrFailure(1); !ok || count != 1 {
+				t.Fatalf("seed credential failure = %d/%t, want 1/true", count, ok)
+			}
+			if count, ok := registry.IncrEntryFailureForEntry(1, "e000000000001"); !ok || count != 1 {
+				t.Fatalf("seed entry failure = %d/%t, want 1/true", count, ok)
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+				strings.NewReader(`{"model":"gpt-4o"}`))
+			request.Header.Set("Authorization", "Bearer gl-client")
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("response status = %d, want 200", response.Code)
+			}
+			credential := registry.Snapshot()
+			if len(credential) != 1 || credential[0].FailureCount != 1 {
+				t.Fatalf("credential runtime = %#v, want failure count preserved", credential)
+			}
+			if got := stats.Snapshot(1, now); got != (health.CredentialStats{}) {
+				t.Fatalf("credential stats = %#v, want no success or failure mutation", got)
+			}
+			entry, ok := registry.EntryRuntime(state.RouteEntryKey{GroupID: 1, EntryID: "e000000000001"}, now)
+			if !ok || entry.FailureCount != 1 {
+				t.Fatalf("entry runtime = %#v/%t, want failure count preserved", entry, ok)
+			}
+			if len(forwarder.inputs) != 1 {
+				t.Fatalf("forward attempts = %d, want 1", len(forwarder.inputs))
+			}
+		})
+	}
+}
+
+// TestStreamRequestLogContentFilterEndToEnd proves R3/R4 for the buffered
+// streaming path: a stream whose only terminal state is "content_filter" without
+// released assistant payload is recorded as a client-side error, while the
+// fully framed upstream SSE is replayed byte-for-byte after the heartbeat.
+func TestStreamRequestLogContentFilterEndToEnd(t *testing.T) {
+	const upstreamStream = "data: {\"id\":\"chat-cf\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o\"," +
+		"\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\n" +
+		"data: {\"id\":\"chat-cf\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4o\"," +
+		"\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\n" +
+		"data: [DONE]\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte(upstreamStream))
+		writer.(http.Flusher).Flush()
+	}))
+	defer upstream.Close()
+
+	sink := &recordingRequestLogSink{}
+	engine := newContentFilterRequestLogRuntime(t, upstream.URL, sink)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":"ping"}]}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	body := recorder.Body.String()
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("client status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if contentType := recorder.Header().Get("Content-Type"); contentType != "text/event-stream" {
+		t.Fatalf("client Content-Type = %q, want text/event-stream", contentType)
+	}
+	if want := bufferedStreamHeartbeat + upstreamStream; body != want {
+		t.Fatalf("client stream = %q, want heartbeat plus replayed upstream SSE %q", body, want)
+	}
+	if done := strings.Count(body, "data: [DONE]"); done != 1 {
+		t.Fatalf("client stream [DONE] count = %d, want 1 (body %q)", done, body)
+	}
+
+	events := sink.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("request log events = %d, want 1", len(events))
+	}
+	event := events[0]
+	if event.Status != telemetry.RequestStatusError || !event.Stream ||
+		event.ErrorCode != "upstream_content_filter" || event.StatusCode != http.StatusOK {
+		t.Fatalf("request log = %#v, want stream status=error code=upstream_content_filter status_code=200", event)
+	}
+	if len(event.Attempts) != 1 {
+		t.Fatalf("attempts = %d, want 1", len(event.Attempts))
+	}
+	attempt := event.Attempts[0]
+	if attempt.FailureCategory != telemetry.FailureCategoryClientError ||
+		attempt.ErrorCode != "upstream_content_filter" ||
+		attempt.FailureOrigin != execution.ErrorOriginUpstream ||
+		attempt.FailureScope != execution.ErrorScopeRequest ||
+		attempt.RetryDirective != telemetry.RetryNone ||
+		attempt.Effect != telemetry.EffectNone ||
+		!attempt.PayloadReleased {
+		t.Fatalf("attempt = %#v, want upstream client_error with no retry, no effect and released payload", attempt)
+	}
+}

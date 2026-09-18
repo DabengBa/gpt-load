@@ -32,6 +32,17 @@ type ExecutionAttempt struct {
 	Now            time.Time
 }
 
+// contentFilterErrorCode marks upstream evidence for a response that a content
+// filter blocked while releasing no assistant content.
+const contentFilterErrorCode = "upstream_content_filter"
+
+// contentFilterRuleID is the stable rule that records such a response as a
+// client error with no retry and no runtime effect on credential or group.
+const contentFilterRuleID = RuleID("content_filter.no_content")
+
+const emptyCompletionErrorCode = "upstream_empty_completion"
+const emptyCompletionRuleID = RuleID("upstream.empty_completion")
+
 // JudgeExecution decides the complete GPT-Load retry and runtime effect for one
 // executor result.
 func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) Decision {
@@ -218,6 +229,31 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 			EffectNone,
 			"safety.final_informational_response",
 		)
+	}
+	if attempt.Evidence.Code == emptyCompletionErrorCode {
+		return constrainCommittedDecision(decision(
+			FailureCategoryAmbiguous,
+			originForEvidence(attempt.Evidence),
+			scopeOrDefault(attempt.Evidence.ScopeHint, execution.ErrorScopeRequest),
+			RetryNone,
+			EffectNone,
+			emptyCompletionRuleID,
+		), attempt)
+	}
+	if attempt.Evidence.Code == contentFilterErrorCode {
+		// The upstream answered successfully but the content filter removed the
+		// assistant answer. The request is a client-side content failure, not a
+		// credential or candidate failure: replaying it would be filtered again
+		// and must not change credential or group health, yet the request is
+		// recorded as failed instead of successful.
+		return constrainCommittedDecision(decision(
+			FailureCategoryClientError,
+			originForEvidence(attempt.Evidence),
+			scopeOrDefault(attempt.Evidence.ScopeHint, execution.ErrorScopeRequest),
+			RetryNone,
+			EffectNone,
+			contentFilterRuleID,
+		), attempt)
 	}
 	category := classifyExecutionEvidence(attempt)
 	result := decisionForExecutionCategory(category, attempt, decisionContext)
