@@ -399,6 +399,7 @@ export interface GroupOptionDto {
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
+  provider_url: string | null
   enabled: boolean
   models: string[]
 }

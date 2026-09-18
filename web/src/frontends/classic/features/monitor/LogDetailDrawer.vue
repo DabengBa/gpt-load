@@ -45,6 +45,7 @@ const props = defineProps<{
   requestId: string | undefined
   selfScoped?: boolean
   groupNames?: Record<number, string>
+  providerUrls?: Record<number, string>
   channels?: Record<string, ChannelDto>
 }>()
 defineEmits<{ 'update:open': [open: boolean] }>()
@@ -423,7 +424,12 @@ function toggleAttemptErrorMessage(sequence: number): void {
           </div>
           <div v-if="log.stream">
             <dt>{{ t('monitor.logs.drawer.firstResponse') }}</dt>
-            <dd>
+            <dd
+              :class="{
+                'log-detail__slow-first':
+                  log.first_response_ms !== null && log.first_response_ms > 15_000,
+              }"
+            >
               {{ log.first_response_ms === null ? '—' : formatLogDuration(log.first_response_ms) }}
             </dd>
           </div>
@@ -510,6 +516,9 @@ function toggleAttemptErrorMessage(sequence: number): void {
               <LogRouteIdentity
                 :group-id="log.group_id"
                 :group-name="finalGroupName()"
+                :provider-url="
+                  log.group_id === null ? null : (providerUrls?.[log.group_id] ?? null)
+                "
                 :channel-id="log.channel_id"
                 :channel="finalChannel()"
                 :credential-id="log.credential_id"
@@ -595,8 +604,12 @@ function toggleAttemptErrorMessage(sequence: number): void {
       </section>
 
       <section class="log-detail__section">
-        <h3>{{ t('monitor.logs.drawer.usage.title') }}</h3>
-        <dl class="log-detail__grid">
+        <details class="log-attempt-chain log-usage-chain">
+          <summary>
+            <ChevronRight class="log-attempt-chain__chevron" :size="15" aria-hidden="true" />
+            <span>{{ t('monitor.logs.drawer.usage.title') }}</span>
+          </summary>
+          <dl class="log-detail__grid">
           <div>
             <dt>{{ t('monitor.logs.drawer.usage.usageStateLabel') }}</dt>
             <dd>{{ usageStateLabel }}</dd>
@@ -688,7 +701,8 @@ function toggleAttemptErrorMessage(sequence: number): void {
               </template>
             </dd>
           </div>
-        </dl>
+          </dl>
+        </details>
       </section>
 
       <section v-if="!selfScoped" class="log-detail__section log-detail__attempt-section">
@@ -710,6 +724,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
               <LogRouteIdentity
                 :group-id="attempt.group_id"
                 :group-name="attempt.group_name"
+                :provider-url="providerUrls?.[attempt.group_id] ?? null"
                 :channel-id="attempt.channel_id"
                 :channel="channelDefinition(attempt.channel_id)"
                 :credential-id="attempt.credential_id"
@@ -1012,6 +1027,10 @@ function toggleAttemptErrorMessage(sequence: number): void {
   gap: 6px;
 }
 
+.log-detail__slow-first {
+  color: var(--color-warning);
+}
+
 .log-model-observation {
   display: grid;
   gap: 10px;
@@ -1071,6 +1090,10 @@ function toggleAttemptErrorMessage(sequence: number): void {
 
 .log-attempt-chain[open] .log-attempt:first-of-type {
   margin-top: 4px;
+}
+
+.log-usage-chain .log-detail__grid {
+  margin-top: 12px;
 }
 
 .log-attempt + .log-attempt {

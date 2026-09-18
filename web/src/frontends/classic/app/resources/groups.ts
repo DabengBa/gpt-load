@@ -107,6 +107,7 @@ const groupOptionFields = [
   'channel_id',
   'connection_type',
   'params',
+  'provider_url',
   'enabled',
   'models',
 ] as const
@@ -663,6 +664,7 @@ function projectGroupOption(value: unknown): GroupOptionDto {
     channel_id: projectChannelID(record.channel_id),
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
+    provider_url: projectNullableHTTPURL(record.provider_url),
     enabled: projectBoolean(record.enabled),
     models,
   }
