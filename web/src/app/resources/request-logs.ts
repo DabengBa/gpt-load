@@ -78,10 +78,12 @@ export interface RequestLogFilters {
   credential_id?: number
   client_model?: string
   upstream_model?: string
+  model_consistency?: RequestLogModelConsistency
   access_key_id?: number
   status?: RequestLogStatus
   request_id?: string
   protocol?: AccessProtocol
+  operation?: RequestLogOperation
   stream?: boolean
   final_status_code?: number
   usage_state?: RequestLogUsageState

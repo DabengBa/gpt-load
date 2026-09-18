@@ -12,6 +12,8 @@ import FormField from '@/components/ui/FormField.vue'
 import {
   requestLogCostStates,
   requestLogFailureCategories,
+  requestLogModelConsistencies,
+  requestLogOperations,
   requestLogPricingCompleteness,
   requestLogRetryStates,
   requestLogUsageStates,
@@ -47,6 +49,10 @@ const protocolOptions = () => [
   option('', t('monitor.logs.filters.anyProtocol')),
   ...enabledDataProtocols.map((value) => option(value, value)),
 ]
+const operationOptions = () => [
+  option('', t('monitor.logs.filters.anyOperation')),
+  ...requestLogOperations.map((value) => option(value, t(`monitor.logs.operation.${value}`))),
+]
 const usageOptions = () => [
   option('', t('monitor.logs.filters.any')),
   ...requestLogUsageStates.map((value) =>
@@ -75,6 +81,12 @@ const retryOptions = () => [
   option('', t('monitor.logs.filters.any')),
   ...requestLogRetryStates.map((value) =>
     option(value, t(`monitor.logs.filters.retryState.${value}`)),
+  ),
+]
+const modelConsistencyOptions = () => [
+  option('', t('monitor.logs.filters.any')),
+  ...requestLogModelConsistencies.map((value) =>
+    option(value, t(`monitor.logs.filters.modelConsistency.${value}`)),
   ),
 ]
 const accessKeyOptions = () => [
@@ -164,6 +176,20 @@ function update(field: keyof LogFilterDraft, value: string): void {
               :options="protocolOptions()"
               size="compact"
               @update:model-value="update('protocol', $event)"
+            />
+          </FormField>
+          <FormField
+            id="logs-operation"
+            :label="t('monitor.logs.filters.operation')"
+            size="compact"
+          >
+            <AppSelect
+              id="logs-operation"
+              :model-value="draft.operation"
+              :label="t('monitor.logs.filters.operation')"
+              :options="operationOptions()"
+              size="compact"
+              @update:model-value="update('operation', $event)"
             />
           </FormField>
           <FormField
@@ -262,6 +288,20 @@ function update(field: keyof LogFilterDraft, value: string): void {
                 @input="update('upstream_model', ($event.target as HTMLInputElement).value)"
               />
             </template>
+          </FormField>
+          <FormField
+            id="logs-model-consistency"
+            :label="t('monitor.logs.filters.modelConsistencyLabel')"
+            size="compact"
+          >
+            <AppSelect
+              id="logs-model-consistency"
+              :model-value="draft.model_consistency"
+              :label="t('monitor.logs.filters.modelConsistencyLabel')"
+              :options="modelConsistencyOptions()"
+              size="compact"
+              @update:model-value="update('model_consistency', $event)"
+            />
           </FormField>
           <FormField
             id="logs-retry-state"

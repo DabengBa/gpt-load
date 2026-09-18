@@ -155,9 +155,11 @@ const allAdvancedFilterKeys: readonly (keyof RequestLogFilters)[] = [
   'channel_id',
   'credential_id',
   'upstream_model',
+  'model_consistency',
   'access_key_id',
   'request_id',
   'protocol',
+  'operation',
   'stream',
   'final_status_code',
   'usage_state',
@@ -187,6 +189,7 @@ const accessKeyForbiddenFilterKeys = new Set<keyof RequestLogFilters>([
   'channel_id',
   'credential_id',
   'upstream_model',
+  'model_consistency',
   'access_key_id',
   'attempt_status_code',
   'failure_category',
@@ -321,9 +324,19 @@ function advancedChipLabel(key: keyof RequestLogFilters, value: unknown): string
   }
   if (key === 'client_model') return t('monitor.logs.filters.appliedClientModel', { value })
   if (key === 'upstream_model') return t('monitor.logs.filters.appliedUpstreamModel', { value })
+  if (key === 'model_consistency') {
+    return t('monitor.logs.filters.appliedModelConsistency', {
+      value: t(`monitor.logs.filters.modelConsistency.${String(value)}`),
+    })
+  }
   if (key === 'request_id') return t('monitor.logs.filters.appliedRequestId', { value })
   if (key === 'affinity_key') return t('monitor.logs.filters.appliedAffinityKey', { value })
   if (key === 'protocol') return String(value)
+  if (key === 'operation') {
+    return t('monitor.logs.filters.appliedOperation', {
+      value: t(`monitor.logs.operation.${String(value)}`),
+    })
+  }
   if (key === 'failure_category') return t(`monitor.logs.failureCategory.${String(value)}`)
   if (key === 'retry_state') return t(`monitor.logs.filters.retryState.${String(value)}`)
   if (key === 'usage_state') {
