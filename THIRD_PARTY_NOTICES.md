@@ -8,7 +8,7 @@ SBOM (`bom.cdx.json`) inventorying the resolved Go module graph.
 ## Bifrost Core
 
 - Module: `github.com/maximhq/bifrost/core`
-- Version: `v1.8.4`
+- Version: `v1.9.0`
 - Copyright: 2025 H3 Labs Inc.
 - License: Apache License 2.0
 

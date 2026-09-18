@@ -1,7 +1,7 @@
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/anthropic/anthropic.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/anthropic/anthropic.go
---- a/providers/anthropic/anthropic.go
-+++ b/providers/anthropic/anthropic.go
-@@ -900,7 +900,7 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/anthropic/anthropic.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/anthropic/anthropic.go
+--- bifrost-pristine-check/providers/anthropic/anthropic.go	2026-09-18 12:03:53.136568745 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/anthropic/anthropic.go	2026-09-18 11:47:36.493144876 +0800
+@@ -925,7 +925,7 @@
  		}
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -10,7 +10,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -1566,7 +1566,7 @@
+@@ -1595,7 +1595,7 @@
  		// Decompress gzip-encoded streams on-the-fly. Returns a reader that is either
  		// the gzip reader (if gzip-encoded) or the original body stream. Does NOT modify
  		// resp, so ReleaseStreamingResponse can properly drain the underlying connection.
@@ -19,10 +19,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/azure/azure.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/azure/azure.go
---- a/providers/azure/azure.go
-+++ b/providers/azure/azure.go
-@@ -836,7 +836,7 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/azure/azure.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/azure/azure.go
+--- bifrost-pristine-check/providers/azure/azure.go	2026-09-18 12:03:53.141888444 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/azure/azure.go	2026-09-18 11:47:36.494469575 +0800
+@@ -858,7 +858,7 @@
  		// Always release response on exit; bodyStream close should prevent indefinite blocking.
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
@@ -31,9 +31,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams (e.g., Azure TPM throttling
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/cohere/cohere.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/cohere/cohere.go
---- a/providers/cohere/cohere.go
-+++ b/providers/cohere/cohere.go
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/cohere/cohere.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/cohere/cohere.go
+--- bifrost-pristine-check/providers/cohere/cohere.go	2026-09-18 12:03:53.146173982 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/cohere/cohere.go	2026-09-18 11:47:36.494748905 +0800
 @@ -521,7 +521,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
@@ -43,7 +43,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -816,7 +816,7 @@
+@@ -820,7 +820,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -52,10 +52,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/elevenlabs/elevenlabs.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/elevenlabs/elevenlabs.go
---- a/providers/elevenlabs/elevenlabs.go
-+++ b/providers/elevenlabs/elevenlabs.go
-@@ -406,7 +406,7 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/elevenlabs/elevenlabs.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/elevenlabs/elevenlabs.go
+--- bifrost-pristine-check/providers/elevenlabs/elevenlabs.go	2026-09-18 12:03:53.148352177 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/elevenlabs/elevenlabs.go	2026-09-18 11:47:36.494920054 +0800
+@@ -423,7 +423,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -64,10 +64,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/gemini/gemini.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/gemini/gemini.go
---- a/providers/gemini/gemini.go
-+++ b/providers/gemini/gemini.go
-@@ -459,6 +459,11 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/gemini/gemini.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/gemini/gemini.go
+--- bifrost-pristine-check/providers/gemini/gemini.go	2026-09-18 12:03:53.149317086 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/gemini/gemini.go	2026-09-18 11:47:36.495159810 +0800
+@@ -468,6 +468,11 @@
  	// Check for HTTP errors — use parseGeminiError to preserve upstream error details
  	if resp.StatusCode() != fasthttp.StatusOK {
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
@@ -79,7 +79,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		respBody := append([]byte(nil), resp.Body()...)
  		return nil, providerUtils.EnrichError(ctx, parseGeminiError(resp), jsonBody, respBody, sendBackRawRequest, sendBackRawResponse, latency)
  	}
-@@ -497,7 +502,7 @@
+@@ -506,7 +511,7 @@
  		}
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -88,7 +88,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -1013,7 +1018,7 @@
+@@ -1041,7 +1046,7 @@
  		}
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -97,7 +97,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -1498,7 +1503,7 @@
+@@ -1534,7 +1539,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -106,7 +106,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -1784,7 +1789,7 @@
+@@ -1822,7 +1827,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -115,9 +115,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/gemini/http_observer_stream_error_test.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/gemini/http_observer_stream_error_test.go
---- a/providers/gemini/http_observer_stream_error_test.go
-+++ b/providers/gemini/http_observer_stream_error_test.go
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/gemini/http_observer_stream_error_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/gemini/http_observer_stream_error_test.go
+--- bifrost-pristine-check/providers/gemini/http_observer_stream_error_test.go	1970-01-01 08:00:00.000000000 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/gemini/http_observer_stream_error_test.go	2026-09-18 11:47:36.495411499 +0800
 @@ -0,0 +1,171 @@
 +package gemini
 +
@@ -290,10 +290,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +	req.Header.SetMethod(fasthttp.MethodGet)
 +	return client.DoTimeout(req, resp, time.Second)
 +}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/huggingface/huggingface.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/huggingface/huggingface.go
---- a/providers/huggingface/huggingface.go
-+++ b/providers/huggingface/huggingface.go
-@@ -1116,7 +1116,7 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/huggingface/huggingface.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/huggingface/huggingface.go
+--- bifrost-pristine-check/providers/huggingface/huggingface.go	2026-09-18 12:03:53.152150254 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/huggingface/huggingface.go	2026-09-18 11:47:36.495542352 +0800
+@@ -1134,7 +1134,7 @@
  		}
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -302,7 +302,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -1500,7 +1500,7 @@
+@@ -1524,7 +1524,7 @@
  		}
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -311,10 +311,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/mistral/mistral.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/mistral/mistral.go
---- a/providers/mistral/mistral.go
-+++ b/providers/mistral/mistral.go
-@@ -480,7 +480,7 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/mistral/mistral.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/mistral/mistral.go
+--- bifrost-pristine-check/providers/mistral/mistral.go	2026-09-18 12:03:53.152685984 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/mistral/mistral.go	2026-09-18 11:47:36.495723800 +0800
+@@ -498,7 +498,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -323,10 +323,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/openai/openai.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/openai/openai.go
---- a/providers/openai/openai.go
-+++ b/providers/openai/openai.go
-@@ -563,7 +563,7 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/openai/openai.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/openai/openai.go
+--- bifrost-pristine-check/providers/openai/openai.go	2026-09-18 12:03:53.153675472 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/openai/openai.go	2026-09-18 11:47:36.496162436 +0800
+@@ -572,7 +572,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -335,7 +335,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -1192,7 +1192,7 @@
+@@ -1291,7 +1291,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -344,7 +344,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -1918,7 +1918,7 @@
+@@ -2182,7 +2182,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -353,7 +353,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -2534,7 +2534,7 @@
+@@ -2812,7 +2812,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -362,7 +362,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -3044,7 +3044,7 @@
+@@ -3383,7 +3383,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -371,7 +371,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -3495,7 +3495,7 @@
+@@ -3845,7 +3845,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -380,7 +380,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -5101,7 +5101,7 @@
+@@ -5491,7 +5491,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -389,9 +389,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/openai/responseslifecycle.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/openai/responseslifecycle.go
---- a/providers/openai/responseslifecycle.go
-+++ b/providers/openai/responseslifecycle.go
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/openai/responseslifecycle.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/openai/responseslifecycle.go
+--- bifrost-pristine-check/providers/openai/responseslifecycle.go	2026-09-18 12:03:53.154316951 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/openai/responseslifecycle.go	2026-09-18 11:47:36.496634174 +0800
 @@ -264,7 +264,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
@@ -401,10 +401,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/replicate/replicate.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/replicate/replicate.go
---- a/providers/replicate/replicate.go
-+++ b/providers/replicate/replicate.go
-@@ -608,7 +608,7 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/replicate/replicate.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/replicate/replicate.go
+--- bifrost-pristine-check/providers/replicate/replicate.go	2026-09-18 12:03:53.156328164 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/replicate/replicate.go	2026-09-18 11:47:36.496923533 +0800
+@@ -622,7 +622,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -413,7 +413,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -958,7 +958,7 @@
+@@ -972,7 +972,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -422,7 +422,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -1361,7 +1361,7 @@
+@@ -1375,7 +1375,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -431,7 +431,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		if reader == nil {
-@@ -1957,7 +1957,7 @@
+@@ -1971,7 +1971,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -440,7 +440,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-@@ -2383,7 +2383,7 @@
+@@ -2397,7 +2397,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
  		// Decompress gzip-encoded streams transparently (no-op for non-gzip)
@@ -449,10 +449,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/sarvam/sarvam.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/sarvam/sarvam.go
---- a/providers/sarvam/sarvam.go
-+++ b/providers/sarvam/sarvam.go
-@@ -340,7 +340,7 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/sarvam/sarvam.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/sarvam/sarvam.go
+--- bifrost-pristine-check/providers/sarvam/sarvam.go	2026-09-18 12:03:53.158263149 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/sarvam/sarvam.go	2026-09-18 11:47:36.497179479 +0800
+@@ -357,7 +357,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
@@ -461,9 +461,61 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		reader, stopIdleTimeout := providerUtils.NewIdleTimeoutReader(reader, resp.BodyStream(), providerUtils.GetStreamIdleTimeout(ctx), ctx)
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/http_observer.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/http_observer.go
---- a/providers/utils/http_observer.go
-+++ b/providers/utils/http_observer.go
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/fasthttpreplace_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/fasthttpreplace_test.go
+--- bifrost-pristine-check/providers/utils/fasthttpreplace_test.go	2026-09-18 12:03:53.158657177 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/fasthttpreplace_test.go	2026-09-18 12:03:44.654547355 +0800
+@@ -164,7 +164,12 @@
+ // TestFasthttpVersionIsConsistentAcrossModules prevents a module from keeping
+ // an older version or reintroducing a replacement hidden by the local workspace.
+ func TestFasthttpVersionIsConsistentAcrossModules(t *testing.T) {
+-	root := repoRoot(t)
++	root, ok := tryRepoRoot()
++	if !ok {
++		// gpt-load vendors the core module alone (third_party/bifrost-core);
++		// the upstream monorepo layout this guard walks does not exist there.
++		t.Skip("bifrost monorepo root (core/framework/transports) not found; vendored core-only tree")
++	}
+ 	var checked int
+ 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+ 		if err != nil {
+@@ -233,9 +238,19 @@
+ func repoRoot(t *testing.T) string {
+ 	t.Helper()
+ 
++	if root, ok := tryRepoRoot(); ok {
++		return root
++	}
++	t.Fatal("repository root with core, framework, and transports modules not found")
++	return ""
++}
++
++// tryRepoRoot is the non-fatal variant of repoRoot, used so the vendored
++// core-only tree can skip the monorepo-wide guard instead of failing.
++func tryRepoRoot() (string, bool) {
+ 	dir, err := os.Getwd()
+ 	if err != nil {
+-		t.Fatalf("getwd: %v", err)
++		return "", false
+ 	}
+ 	for {
+ 		isRoot := true
+@@ -247,11 +262,11 @@
+ 			}
+ 		}
+ 		if isRoot {
+-			return dir
++			return dir, true
+ 		}
+ 		parent := filepath.Dir(dir)
+ 		if parent == dir {
+-			t.Fatal("repository root with core, framework, and transports modules not found")
++			return "", false
+ 		}
+ 		dir = parent
+ 	}
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/http_observer.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/http_observer.go
+--- bifrost-pristine-check/providers/utils/http_observer.go	1970-01-01 08:00:00.000000000 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/http_observer.go	2026-09-18 11:47:36.497359595 +0800
 @@ -0,0 +1,621 @@
 +package utils
 +
@@ -1086,9 +1138,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +func (r *observedRequestBodyReadCloser) Close() error {
 +	return r.inner.Close()
 +}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/http_observer_test.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/http_observer_test.go
---- a/providers/utils/http_observer_test.go
-+++ b/providers/utils/http_observer_test.go
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/http_observer_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/http_observer_test.go
+--- bifrost-pristine-check/providers/utils/http_observer_test.go	1970-01-01 08:00:00.000000000 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/http_observer_test.go	2026-09-18 11:47:36.497422452 +0800
 @@ -0,0 +1,1419 @@
 +package utils
 +
@@ -2509,10 +2561,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +		t.Fatal("read-error termination must be marked incomplete (non-nil error)")
 +	}
 +}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/largeresponse.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/largeresponse.go
---- a/providers/utils/largeresponse.go
-+++ b/providers/utils/largeresponse.go
-@@ -55,12 +55,21 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/largeresponse.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/largeresponse.go
+--- bifrost-pristine-check/providers/utils/largeresponse.go	2026-09-18 12:03:53.158657177 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/largeresponse.go	2026-09-18 11:55:26.810200566 +0800
+@@ -56,12 +56,21 @@
  	}
  	if r.ctx != nil {
  		if closed, ok := r.ctx.Value(schemas.BifrostContextKeyConnectionClosed).(bool); ok && closed {
@@ -2534,7 +2586,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  			_, _ = io.Copy(io.Discard, bodyStream)
  			if closer, ok := bodyStream.(io.Closer); ok {
  				_ = closer.Close()
-@@ -105,24 +114,63 @@
+@@ -110,24 +119,63 @@
  
  // MaterializeStreamErrorBody reads a streamed error body into resp so that resp.Body()
  // returns the error payload for parsing. No-op when response streaming is not active.
@@ -2599,33 +2651,41 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  // FinalizeResponseWithLargeDetection processes the response body with optional large response
  // detection. Takes ownership semantics: when isLargeResponse is true, the caller must NOT
  // release resp (it's wrapped in a reader stored in context). When false, resp is unchanged
-@@ -168,6 +216,7 @@
- 	// Known small response — read from stream, return body for normal parsing
- 	if contentLength > 0 && int64(contentLength) <= responseThreshold {
- 		if bodyStream := resp.BodyStream(); bodyStream != nil {
-+			bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
- 			gz, reader, wasGzip := decompressBodyStreamIfGzip(resp, bodyStream)
- 			if wasGzip {
- 				defer ReleaseGzipReader(gz)
-@@ -191,6 +240,7 @@
- 	// buffered for normal parsing/logging; only responses exceeding threshold are streamed.
- 	if contentLength <= 0 {
- 		if bodyStream := resp.BodyStream(); bodyStream != nil {
-+			bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
- 			gz, reader, wasGzip := decompressBodyStreamIfGzip(resp, bodyStream)
- 			releaseGzip := func() {}
- 			if wasGzip {
-@@ -236,6 +286,9 @@
- 	// Known large response (Content-Length > threshold) — prefetch first 64KB for
- 	// metadata extraction, then stream the rest without full materialization.
- 	bodyStream := resp.BodyStream()
-+	if bodyStream != nil {
-+		bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
-+	}
- 	if bodyStream == nil {
+@@ -170,8 +218,8 @@
+ 
+ 	contentLength := resp.Header.ContentLength()
+ 
+-	bodyStream := resp.BodyStream()
+-	if bodyStream == nil {
++	rawBodyStream := resp.BodyStream()
++	if rawBodyStream == nil {
  		// No stream available — fall back to buffered read
- 		if logger != nil {
-@@ -344,7 +397,7 @@
+ 		if logger != nil && contentLength > 0 && int64(contentLength) > responseThreshold {
+ 			logger.Warn("large-response fallback to buffered path: content_length=%d threshold=%d body_stream_nil=true", contentLength, responseThreshold)
+@@ -190,6 +238,11 @@
+ 	// pin neither the provider worker during the prefetch nor the transport writer
+ 	// draining the LargeResponseReader afterwards. Decompression is set up once so
+ 	// the prefetched bytes and the streamed remainder share one gzip reader.
++	//
++	// The observer wraps only the read path (decompression input); idle-timeout
++	// and cancellation teardown keep targeting the raw transport stream so
++	// CloseWithError semantics are unchanged.
++	bodyStream := httpObserverStateFromContext(ctx).wrapBody(rawBodyStream)
+ 	gz, reader, wasGzip := decompressBodyStreamIfGzip(resp, bodyStream)
+ 	if wasGzip {
+ 		// Content-Length describes the compressed body. Classify by decompressed
+@@ -198,8 +251,8 @@
+ 		// transport then serves it chunked, as it always did for gzip bodies.
+ 		contentLength = -1
+ 	}
+-	reader, stopIdleTimeout := NewIdleTimeoutReader(reader, bodyStream, GetStreamIdleTimeout(ctx), ctx)
+-	stopCancellation := SetupStreamCancellation(ctx, bodyStream, logger)
++	reader, stopIdleTimeout := NewIdleTimeoutReader(reader, rawBodyStream, GetStreamIdleTimeout(ctx), ctx)
++	stopCancellation := SetupStreamCancellation(ctx, rawBodyStream, logger)
+ 	cleanup := func() {
+ 		stopCancellation()
+ 		stopIdleTimeout()
+@@ -346,7 +399,7 @@
  		return false
  	}
  
@@ -2634,10 +2694,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  
  	// Wrap reader with idle timeout to detect stalled streams.
  	reader, stopIdleTimeout := NewIdleTimeoutReader(reader, resp.BodyStream(), GetStreamIdleTimeout(ctx), ctx)
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/passthrough_stream.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/passthrough_stream.go
---- a/providers/utils/passthrough_stream.go
-+++ b/providers/utils/passthrough_stream.go
-@@ -52,8 +52,11 @@
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/passthrough_stream.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/passthrough_stream.go
+--- bifrost-pristine-check/providers/utils/passthrough_stream.go	2026-09-18 12:03:53.158657177 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/passthrough_stream.go	2026-09-18 11:47:36.497867049 +0800
+@@ -54,8 +54,11 @@
  	rawBodyStream io.Reader,
  	params PassthroughStreamParams,
  ) chan *schemas.BifrostStreamChunk {
@@ -2651,27 +2711,40 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  	// Cancellation must close the raw stream to unblock reads.
  	stopCancellation := SetupStreamCancellation(ctx, rawBodyStream, params.Logger)
  
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/utils.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/utils.go
---- a/providers/utils/utils.go
-+++ b/providers/utils/utils.go
-@@ -432,14 +432,52 @@
- // path it blocks until the background client.Do goroutine finishes, preventing a data race
- // between the still-running goroutine and the caller's release of req/resp.
- func MakeRequestWithContext(ctx context.Context, client *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) (time.Duration, *schemas.BifrostError, func()) {
--	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error { return client.Do(req, resp) })
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/streampoison_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/streampoison_test.go
+--- bifrost-pristine-check/providers/utils/streampoison_test.go	2026-09-18 12:03:53.158657177 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/streampoison_test.go	2026-09-18 11:55:46.793736295 +0800
+@@ -150,7 +150,7 @@
+ 	}
+ 
+ 	defer ReleaseStreamingResponse(ctx, resp)
+-	reader, releaseGzip := DecompressStreamBody(resp)
++	reader, releaseGzip := DecompressStreamBody(ctx, resp)
+ 	defer releaseGzip()
+ 	reader, stopIdleTimeout := NewIdleTimeoutReader(reader, resp.BodyStream(), GetStreamIdleTimeout(ctx), ctx)
+ 	defer stopIdleTimeout()
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/utils.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/utils.go
+--- bifrost-pristine-check/providers/utils/utils.go	2026-09-18 12:03:53.158657177 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/utils.go	2026-09-18 11:54:19.759720709 +0800
+@@ -462,20 +462,54 @@
+ 	// ctx-cancelled return of makeRequestWithDoFunc and be gone before the
+ 	// caller's wait() returns, since req is pooled.
+ 	unbind := bindRequestContext(req, ctx)
 +	state := newHTTPObserverState(ctx)
 +	if state != nil {
 +		state.attachToContext(ctx)
 +		state.observeFasthttpRequest(req)
 +	}
-+	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error {
+ 	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error {
+ 		defer unbind()
+-		return client.Do(req, resp)
 +		err := client.Do(req, resp)
 +		state.observeFasthttpSendResult(resp, err)
 +		if err == nil {
 +			state.observeFasthttpBufferedBody(resp)
 +		}
 +		return err
-+	})
+ 	})
  	return latency, bifrostErr, wait
  }
  
@@ -2692,24 +2765,25 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +// plan records this as present-but-unreachable rather than as a covered path.
 +// Do not add a second fasthttp fork or alter redirect semantics.
  func MakeRequestWithContextFollowRedirects(ctx context.Context, client *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) (time.Duration, *schemas.BifrostError, func()) {
--	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error { return client.DoRedirects(req, resp, maxRedirects) })
+ 	unbind := bindRequestContext(req, ctx)
 +	state := newHTTPObserverState(ctx)
 +	if state != nil {
 +		state.attachToContext(ctx)
 +		state.observeFasthttpRequest(req)
 +	}
-+	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error {
+ 	latency, bifrostErr, wait := makeRequestWithDoFunc(ctx, func() error {
+ 		defer unbind()
+-		return client.DoRedirects(req, resp, maxRedirects)
 +		err := client.DoRedirects(req, resp, maxRedirects)
 +		state.observeFasthttpSendResult(resp, err)
 +		if err == nil {
 +			state.observeFasthttpBufferedBody(resp)
 +		}
 +		return err
-+	})
+ 	})
  	return latency, bifrostErr, wait
  }
- 
-@@ -455,9 +493,21 @@
+@@ -500,11 +534,23 @@
  // Returns client.Do's error untouched so callers keep their own error
  // classification and latency bookkeeping.
  func DoStreamingRequest(ctx context.Context, client *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
@@ -2718,8 +2792,10 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +		state.attachToContext(ctx)
 +		state.observeFasthttpRequest(req)
 +	}
+ 	unbind := bindRequestContext(req, ctx)
  	startTime := time.Now()
  	err := client.Do(req, resp)
+ 	unbind()
  	schemas.AddUpstreamLatency(ctx, time.Since(startTime))
 +	state.observeFasthttpSendResult(resp, err)
 +	if err == nil {
@@ -2731,7 +2807,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  	return err
  }
  
-@@ -492,11 +542,22 @@
+@@ -539,11 +585,22 @@
  // reads that drain it. Streamed responses consumed through NewIdleTimeoutReader
  // are unwrapped there — the idle reader does its own per-chunk timing.
  func DoHTTPRequest(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -2754,7 +2830,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  	}
  	return resp, err
  }
-@@ -1490,13 +1551,17 @@
+@@ -1575,13 +1632,17 @@
  //     original body stream otherwise).
  //   - func(): cleanup function that releases the gzip reader back to the pool.
  //     Must be called (typically via defer) after streaming is complete.
@@ -2773,7 +2849,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  	gz, decompressed, wasGzip := decompressBodyStreamIfGzip(resp, bodyStream)
  	if !wasGzip {
  		return bodyStream, func() {}
-@@ -2929,6 +2994,14 @@
+@@ -3211,6 +3272,14 @@
  			if prev, _ := ctx.GetAndSetValue(schemas.BifrostContextKeyConnectionClosed, true).(bool); prev {
  				return
  			}
@@ -2785,13 +2861,13 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +			}
 +			state := httpObserverStateFromContext(ctx)
 +			state.markPendingTermination(termination)
- 			// Context cancelled or deadline exceeded - close the body stream to unblock reads
- 			if closer, ok := bodyStream.(io.Closer); ok {
- 				if err := closer.Close(); err != nil {
-@@ -2939,6 +3012,13 @@
- 					getLogger().Debug(fmt.Sprintf("Error closing body stream on context done: %v", err))
- 				}
- 			}
+ 			// Closing here interrupts a read that is still in flight. That is safe
+ 			// only on a fasthttp carrying upstream commit fb3b29e ("wait for
+ 			// streaming reads before releasing pooled resources", #2353), where
+@@ -3224,6 +3293,13 @@
+ 			// and TestStreamCloseUnderActiveReaderIsSafe is the guard: it fails
+ 			// under -race on any fasthttp without that fix.
+ 			closeBodyStream(bodyStream, ctx.Err())
 +			// The close owner also owns the completion. A parser that returned
 +			// early ([DONE]/finish_reason/protocol error) leaves no pending Read,
 +			// and ReleaseStreamingResponse then skips its drain, so without this
@@ -2800,9 +2876,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +			// close is not delayed.
 +			state.completeIncomplete(ctx.Err(), termination)
  		case <-done:
- 			// Race between done and ctx.Done: the streaming goroutine has reached its defer
- 			// chain (Read has returned), and ctx is also cancelled. The body may already be
-@@ -2953,6 +3033,12 @@
+ 			// The streaming goroutine reached its defer chain and ctx is also
+ 			// cancelled. Claim and close so ReleaseStreamingResponse does not drain
+@@ -3233,7 +3309,14 @@
  				if prev, _ := ctx.GetAndSetValue(schemas.BifrostContextKeyConnectionClosed, true).(bool); prev {
  					return
  				}
@@ -2812,18 +2888,12 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +				}
 +				state := httpObserverStateFromContext(ctx)
 +				state.markPendingTermination(termination)
- 				if closer, ok := bodyStream.(io.Closer); ok {
- 					if err := closer.Close(); err != nil {
- 						getLogger().Debug(fmt.Sprintf("Error closing body stream on done with cancelled context: %v", err))
-@@ -2962,6 +3048,7 @@
- 						getLogger().Debug(fmt.Sprintf("Error closing body stream on done with cancelled context: %v", err))
- 					}
- 				}
+ 				closeBodyStream(bodyStream, ctx.Err())
 +				state.completeIncomplete(ctx.Err(), termination)
  			}
  		}
  	}()
-@@ -3082,6 +3169,14 @@
+@@ -3354,6 +3437,14 @@
  				}
  			}
  			r.fired.Store(true)
@@ -2838,7 +2908,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  			// closeBodyStream may panic: an orphaned timer can fire after the
  			// stream's connection has already been released to / reused from
  			// the fasthttp pool, so CloseWithError nil-derefs in
-@@ -3490,6 +3585,10 @@
+@@ -3842,6 +3933,10 @@
  	}
  	bodyStream := resp.BodyStream()
  	if bodyStream == nil {
@@ -2849,7 +2919,7 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		fasthttp.ReleaseResponse(resp)
  		return
  	}
-@@ -3501,6 +3600,11 @@
+@@ -3853,6 +3948,11 @@
  	// is a single locked compare-and-swap, closing the race the previous
  	// Value-only check left open against a concurrent timer/cancellation close.
  	if prev, _ := ctx.GetAndSetValue(schemas.BifrostContextKeyConnectionClosed, true).(bool); prev {
@@ -2861,28 +2931,52 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		return
  	}
  	defer func() {
-@@ -3511,6 +3615,17 @@
- 	// Drain any remaining data from the body stream before releasing.
- 	// This prevents "whitespace in header" errors when the connection is reused
- 	// (see: https://github.com/valyala/fasthttp/issues/1743).
-+	//
-+	// The drain reads through the same request-scoped observer wrapper that the
-+	// parser used (both wrap resp.BodyStream() at the raw transport layer), so
-+	// bytes a parser left behind after an early [DONE]/finish_reason/error stop
-+	// are captured exactly once instead of bypassing the observer. Re-wrapping
-+	// the same underlying stream with the same state does not duplicate bytes:
-+	// the parser already emitted the bytes it read, the drain emits only the
-+	// remainder, and completion is guarded by sync.Once on the state.
-+	if state := httpObserverStateFromContext(ctx); state != nil {
-+		bodyStream = state.wrapBody(bodyStream)
-+	}
- 	if _, err := io.Copy(io.Discard, bodyStream); err != nil {
- 		getLogger().Warn("failed to drain streaming response body before release (may cause stale connection reuse): %v", err)
+@@ -3869,7 +3969,18 @@
+ 	// the early return above: fasthttp.ReleaseResponse would Reset and fire the
+ 	// close callback a second time.
+ 	if ctx.Err() != nil {
++		// This close owner labels and completes the observation exactly as the
++		// cancellation goroutine does: a parser that already returned leaves no
++		// pending Read, so without this the attempt would carry no termination
++		// evidence.
++		termination := TerminationCancel
++		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
++			termination = TerminationTimeout
++		}
++		state := httpObserverStateFromContext(ctx)
++		state.markPendingTermination(termination)
+ 		closeBodyStream(bodyStream, ctx.Err())
++		state.completeIncomplete(ctx.Err(), termination)
+ 		return
  	}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/utils_test.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/utils/utils_test.go
---- a/providers/utils/utils_test.go
-+++ b/providers/utils/utils_test.go
-@@ -850,7 +850,7 @@
+ 	// Drain any remaining data from the body stream before releasing.
+@@ -3890,9 +4001,22 @@
+ 		parked, _ := ctx.Value(schemas.BifrostContextKeyStreamParkedAfterFinish).(bool)
+ 		doesNotSendDoneMarker, _ := ctx.Value(schemas.BifrostContextKeyDoesNotSendDoneMarker).(bool)
+ 		if parked || doesNotSendDoneMarker {
++			state := httpObserverStateFromContext(ctx)
++			state.markPendingTermination(TerminationClosed)
+ 			closeBodyStream(bodyStream, errStreamParkedAfterFinish)
++			state.completeIncomplete(errStreamParkedAfterFinish, TerminationClosed)
+ 			return
+ 		}
++		// The drain reads through the same request-scoped observer wrapper that the
++		// parser used (both wrap resp.BodyStream() at the raw transport layer), so
++		// bytes a parser left behind after an early [DONE]/finish_reason/error stop
++		// are captured exactly once instead of bypassing the observer. Re-wrapping
++		// the same underlying stream with the same state does not duplicate bytes:
++		// the parser already emitted the bytes it read, the drain emits only the
++		// remainder, and completion is guarded by sync.Once on the state.
++		if state := httpObserverStateFromContext(ctx); state != nil {
++			bodyStream = state.wrapBody(bodyStream)
++		}
+ 		if _, err := io.Copy(io.Discard, bodyStream); err != nil {
+ 			getLogger().Warn("failed to drain streaming response body before release (may cause stale connection reuse): %v", err)
+ 		}
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/utils_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/utils_test.go
+--- bifrost-pristine-check/providers/utils/utils_test.go	2026-09-18 12:03:53.158657177 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/utils_test.go	2026-09-18 11:47:36.498707624 +0800
+@@ -851,7 +851,7 @@
  	resp.Header.Set("Content-Encoding", "gzip")
  	resp.SetBodyStream(bytes.NewReader(compressed), len(compressed))
  
@@ -2890,8 +2984,8 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +	decompressed, releaseGzip := DecompressStreamBody(nil, resp)
  	defer releaseGzip()
  
- 	reader, drained := DrainNonSSEStreamReader(resp, decompressed)
-@@ -1121,7 +1121,7 @@
+ 	reader, nonSSE := DrainNonSSEStreamReader(resp, decompressed)
+@@ -1195,7 +1195,7 @@
  	}
  
  	// Mirror the streaming goroutine path in openai.go
@@ -2899,11 +2993,11 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +	reader, releaseGzip := DecompressStreamBody(nil, resp)
  	defer releaseGzip()
  
- 	reader, drained := DrainNonSSEStreamReader(resp, reader)
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/vllm/vllm.go /mnt/projects/repos/gpt-load/third_party/bifrost-core/providers/vllm/vllm.go
---- a/providers/vllm/vllm.go
-+++ b/providers/vllm/vllm.go
-@@ -677,7 +677,7 @@
+ 	reader, nonSSE := DrainNonSSEStreamReader(resp, reader)
+diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/vllm/vllm.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/vllm/vllm.go
+--- bifrost-pristine-check/providers/vllm/vllm.go	2026-09-18 12:03:53.160425003 +0800
++++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/vllm/vllm.go	2026-09-18 11:47:36.498952209 +0800
+@@ -682,7 +682,7 @@
  			}()
  			defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  			// Decompress gzip-encoded streams transparently (no-op for non-gzip)
