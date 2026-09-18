@@ -21,6 +21,7 @@ export interface ImportDraft {
   proxy: ImportProxyDraft
   name: string
   price_multiplier: string
+  provider_url: string
   credentials: string
   staged_credentials: CredentialStage[]
   models: ModelDraftItem[]

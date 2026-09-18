@@ -16,7 +16,7 @@ export function normalizeGroupCollectionFilters(
   const normalized: GroupCollectionFilters = {
     sort: filters.sort,
     page: filters.page,
-    page_size: 20,
+    page_size: 100,
   }
   const query = filters.q?.trim()
   if (query) normalized.q = query

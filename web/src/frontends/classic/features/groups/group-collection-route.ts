@@ -17,7 +17,7 @@ import {
 const defaultFilters: GroupCollectionFilters = {
   sort: 'recent',
   page: 1,
-  page_size: 20,
+  page_size: 100,
 }
 const statuses = new Set<GroupCollectionStatus>(['available', 'unavailable', 'disabled'])
 const connectionTypes = new Set<ConnectionType>(['api_key', 'subscription'])

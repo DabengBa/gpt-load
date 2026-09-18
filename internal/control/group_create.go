@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpt-load/internal/channel"
+	"gpt-load/internal/channel/spec"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/parameteroverride"
 	"gpt-load/internal/platform/config"
@@ -29,6 +30,7 @@ type GroupCreateRequest struct {
 	ChannelID           channel.ID                          `json:"channel_id"`
 	ConnectionType      models.ConnectionType               `json:"connection_type"`
 	Params              json.RawMessage                     `json:"params"`
+	ProviderURL         optionalField[string]               `json:"provider_url"`
 	Models              optionalGroupModels                 `json:"models"`
 	Credentials         string                              `json:"credentials"`
 	StagedCredentialIDs []string                            `json:"staged_credential_ids"`
@@ -57,6 +59,7 @@ type normalizedGroupCreate struct {
 	channelID           channel.ID
 	connectionType      models.ConnectionType
 	params              models.JSON
+	providerURL         *string
 	defaultName         string
 	hostname            string
 	explicitName        *string
@@ -124,6 +127,7 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 			ChannelID:             string(normalized.channelID),
 			ConnectionType:        normalized.connectionType,
 			Params:                append(models.JSON(nil), normalized.params...),
+			ProviderURL:           normalized.providerURL,
 			Models:                models.JSON(encodedModels),
 			Overrides:             normalized.encodedOverrides,
 			ProxyConfig:           normalized.proxyConfig,
@@ -215,6 +219,17 @@ func (s *Service) normalizeGroupCreate(
 	}
 	if connectionType == models.ConnectionTypeSubscription && string(params.CanonicalJSON()) != "{}" {
 		return normalizedGroupCreate{}, app_errors.ErrValidation
+	}
+	var providerURL *string
+	if request.ProviderURL.Set && !request.ProviderURL.Null {
+		value := strings.TrimSpace(request.ProviderURL.Value)
+		if value != "" {
+			normalized, normalizeErr := spec.NormalizeBaseURL(value)
+			if normalizeErr != nil {
+				return normalizedGroupCreate{}, app_errors.ErrValidation
+			}
+			providerURL = &normalized
+		}
 	}
 	descriptor, ok := s.channelRegistry.Get(request.ChannelID)
 	if !ok {
@@ -310,6 +325,7 @@ func (s *Service) normalizeGroupCreate(
 		channelID:           request.ChannelID,
 		connectionType:      connectionType,
 		params:              models.JSON(canonicalParams),
+		providerURL:         providerURL,
 		defaultName:         defaultName,
 		hostname:            hostname,
 		explicitName:        explicitName,
