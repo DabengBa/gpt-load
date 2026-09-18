@@ -40,6 +40,9 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 	if input.ClientModel != "" {
 		query = query.Where("client_model = ?", input.ClientModel)
 	}
+	if input.ModelConsistency != "" {
+		query = query.Where("model_consistency = ?", input.ModelConsistency)
+	}
 	if input.AccessKeyID != nil {
 		query = query.Where("access_key_id = ?", *input.AccessKeyID)
 	}
@@ -54,6 +57,9 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 	}
 	if input.Protocol != "" {
 		query = query.Where("protocol = ?", input.Protocol)
+	}
+	if input.Operation != "" {
+		query = query.Where("operation = ?", input.Operation)
 	}
 	if input.Stream != nil {
 		query = query.Where("stream = ?", *input.Stream)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -27,6 +28,8 @@ import (
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/reasoning"
 	"gpt-load/internal/requestlog"
+	"gpt-load/internal/scheduler"
+	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 	"gpt-load/internal/telemetry"
 	"gpt-load/internal/usage"
@@ -266,6 +269,7 @@ func TestRequestLogEndpointParsesAdvancedFilters(t *testing.T) {
 		"cache_present=true",
 		"channel_id=openai",
 		"credential_id=9",
+		"model_consistency=mismatch",
 		"attempt_status_code=429",
 		"failure_category=rate_limited",
 		"error_code=provider_rate_limit",
@@ -298,6 +302,7 @@ func TestRequestLogEndpointParsesAdvancedFilters(t *testing.T) {
 		got.CachePresent == nil || !*got.CachePresent ||
 		got.ChannelID != channel.OpenAI ||
 		got.CredentialID == nil || *got.CredentialID != 9 ||
+		got.ModelConsistency != telemetry.ModelConsistencyMismatch ||
 		got.AttemptStatusCode == nil || *got.AttemptStatusCode != 429 ||
 		got.FailureCategory != telemetry.FailureCategoryRateLimited ||
 		got.AttemptErrorCode != "provider_rate_limit" || got.RetryState != requestlog.RetryStateRetried ||
@@ -317,6 +322,25 @@ func TestRequestLogEndpointParsesAdvancedFilters(t *testing.T) {
 	}
 }
 
+func TestRequestLogEndpointAcceptsModelConsistencyMismatchFilter(t *testing.T) {
+	t.Parallel()
+	reader := &recordingRequestLogReader{}
+	recorder := performRequestLogRequest(
+		newRequestLogTestEngine(t, reader),
+		"test-auth-key",
+		"model_consistency=mismatch",
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("response = %d %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	if len(reader.queries) != 1 {
+		t.Fatalf("Reader calls = %d, want one", len(reader.queries))
+	}
+	if reader.queries[0].ModelConsistency != telemetry.ModelConsistencyMismatch {
+		t.Fatalf("ModelConsistency = %q, want mismatch", reader.queries[0].ModelConsistency)
+	}
+}
+
 func TestRequestLogEndpointRejectsInvalidAdvancedFilters(t *testing.T) {
 	t.Parallel()
 	tests := []string{
@@ -329,6 +353,7 @@ func TestRequestLogEndpointRejectsInvalidAdvancedFilters(t *testing.T) {
 		"cache_present=yes",
 		"channel_id=unknown",
 		"credential_id=0",
+		"model_consistency=invalid",
 		"attempt_status_code=-1",
 		"failure_category=unknown",
 		"error_code=",
@@ -1151,6 +1176,7 @@ func TestRequestLogEndpointsBindAccessKeyScopeAndRedactRoutingInternals(t *testi
 		"channel_id=openai",
 		"credential_id=101",
 		"upstream_model=private-upstream-model",
+		"model_consistency=mismatch",
 		"retry_state=retried",
 		"affinity_key=0123456789abcdef%2A%2A%2A%2Afedcba9876543210",
 	} {
@@ -1547,5 +1573,174 @@ func assertBoundedAffinityItem(t *testing.T, body []byte) {
 		item.AffinitySource != requestlog.AffinitySourceNone ||
 		item.AffinityState != requestlog.AffinityStateNoSignal {
 		t.Fatalf("bounded affinity projection = %#v; body=%s", item, body)
+	}
+}
+
+// 运行态不可用的凭据仍是历史事实：注册表按持久身份收录，标签照常解析，
+// 但调度器依旧不会把它放进候选——保留引用不等于恢复调度。
+func TestHistoricalCredentialLabelsPreserveUnavailableDataWithoutSchedulingIt(t *testing.T) {
+	t.Parallel()
+	for _, scenario := range []string{
+		"disabled group", "no models", "cooldown", "blacklisted",
+		"refreshing", "reauthorization required", "outcome unknown",
+	} {
+		t.Run(scenario, func(t *testing.T) {
+			t.Parallel()
+			fixture := newServiceFixture(t)
+			group := createGroupCollectionGroup(t, fixture, scenario, scenario != "disabled group", nil)
+			routeModels := `[{"id":"model-a"}]`
+			if scenario == "no models" {
+				routeModels = `[]`
+			}
+			setGroupCollectionRoute(t, fixture, group, "", routeModels)
+			entry := createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil)
+			switch scenario {
+			case "cooldown":
+				entry.CooldownUntil = time.Now().Add(time.Hour)
+			case "blacklisted":
+				entry.Blacklisted = true
+			case "refreshing":
+				entry.AuthState = state.CredentialAuthStateRefreshing
+			case "reauthorization required":
+				entry.AuthState = state.CredentialAuthStateReauthorizationRequired
+			case "outcome unknown":
+				entry.AuthState = state.CredentialAuthStateOutcomeUnknown
+			}
+			publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{entry})
+			labels := fixture.service.CredentialLabels([]uint{entry.ID})
+			if label := labels[entry.ID]; label == "" {
+				t.Fatalf("existing unavailable credential has no historical label: %q", label)
+			}
+			snapshot := fixture.manager.Current()
+			if snapshot.GroupCatalog[group.ID].Name != group.Name {
+				t.Fatal("historical group identity disappeared")
+			}
+			model := "model-a"
+			query := scheduler.Query{
+				ClientProtocol: protocol.OpenAICompletions,
+				Operation:      execution.OperationChatCompletion,
+				ExternalModel:  &model,
+				AccessKey:      state.AccessKeyView{Status: state.AccessKeyStatusActive},
+			}
+			if _, err := scheduler.New(
+				snapshot, fixture.registry, query, rand.New(rand.NewSource(1)),
+			).Next(); !errors.Is(err, scheduler.ErrExhausted) {
+				t.Fatalf("unavailable data became schedulable: %v", err)
+			}
+		})
+	}
+}
+
+// 标识解析失败与凭据不存在是两回事：前者保留空值交给前端占位，后者才是真的删除。
+func TestHistoricalCredentialLabelFailuresAreNotDeletion(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	group := createGroupCollectionGroup(t, fixture, "unreadable identity", true, nil)
+	entry := createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil)
+	entry.EncryptedValue = "invalid-ciphertext"
+	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{entry})
+	labels := fixture.service.CredentialLabels([]uint{entry.ID, 9_999})
+	if _, exists := labels[entry.ID]; !exists {
+		t.Fatal("existing credential with unreadable identity was treated as deleted")
+	}
+	if _, exists := labels[9_999]; exists {
+		t.Fatal("missing credential was treated as existing")
+	}
+}
+
+// 响应的线缆结构不变：有标签给标签，存在但不可读给占位符，确认删除才留空。
+func TestRequestLogCredentialLabelsPreserveExistingWireSchema(t *testing.T) {
+	t.Parallel()
+	for _, scenario := range []struct {
+		name         string
+		labels       map[uint]string
+		credentialID uint
+		wantLabel    string
+	}{
+		{name: "named", labels: map[uint]string{41: "masked"}, credentialID: 41, wantLabel: "masked"},
+		{name: "unreadable", labels: map[uint]string{41: ""}, credentialID: 41, wantLabel: "—"},
+		{name: "unknown catalog", credentialID: 41, wantLabel: "—"},
+		{name: "deleted", labels: map[uint]string{}, credentialID: 41},
+		{name: "unassociated", labels: map[uint]string{}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			record := requestlog.Record{
+				RequestID: "11111111-1111-4111-8111-111111111111", CompletedAtMS: 1_700_000_000_000,
+				GroupID: 3, CredentialID: scenario.credentialID, UsageState: usage.StateComplete,
+				CostState: pricing.CostStatePriced, PricingCompleteness: pricing.CompletenessComplete,
+				Attempts: []requestlog.Attempt{{Sequence: 1, GroupID: 3, CredentialID: scenario.credentialID}},
+			}
+			detail, err := mapRequestLogDetailResponse(record, scenario.labels)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := json.Marshal(detail)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var result map[string]any
+			if err := json.Unmarshal(raw, &result); err != nil {
+				t.Fatal(err)
+			}
+			attempt := result["attempts"].([]any)[0].(map[string]any)
+			list, err := mapRequestLogListResponse(requestlog.Page{Items: []requestlog.Record{record}}, scenario.labels)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(list.Items) != 1 || list.Items[0].CredentialName != scenario.wantLabel {
+				t.Fatalf("list credential_name = %#v, want %q", list.Items, scenario.wantLabel)
+			}
+			for _, item := range []map[string]any{result, attempt} {
+				if label := item["credential_name"]; label != scenario.wantLabel {
+					t.Fatalf("credential_name = %v, want %q", label, scenario.wantLabel)
+				}
+				if _, exists := item["credential_deleted"]; exists {
+					t.Fatal("response added credential_deleted to the existing wire schema")
+				}
+			}
+		})
+	}
+}
+
+// 订阅账号停用后历史标签仍在（含邮箱为空时只证明存在），真正删除后才消失。
+func TestHistoricalSubscriptionLabelsSurviveDisableUntilActualDeletion(t *testing.T) {
+	t.Parallel()
+	for _, email := range []string{"history@example.com", ""} {
+		t.Run("email="+email, func(t *testing.T) {
+			t.Parallel()
+			fixture := newServiceFixture(t)
+			stage := mustImportSubscriptionStage(t, fixture, "history-"+email, email)
+			created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+				Name: stringPointer("history subscription"), ChannelID: channel.Codex,
+				ConnectionType: models.ConnectionTypeSubscription,
+				Models:         optionalGroupModels{Set: true}, StagedCredentialIDs: []string{stage.StageID},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var credential models.Credential
+			if err := fixture.db.Where("group_id = ?", created.GroupID).Take(&credential).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := fixture.db.Model(&models.Group{}).Where("id = ?", created.GroupID).
+				Update("enabled", false).Error; err != nil {
+				t.Fatal(err)
+			}
+			entries, err := fixture.registry.SnapshotGroupCredentialEntriesExact(created.GroupID, []uint{credential.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			publishGroupCollectionRuntime(t, fixture, entries)
+			labels := fixture.service.CredentialLabels([]uint{credential.ID})
+			if label, exists := labels[credential.ID]; !exists || label != email {
+				t.Fatalf("disabled subscription label = %q, exists = %t", label, exists)
+			}
+			if err := fixture.service.DeleteGroupCredential(t.Context(), created.GroupID, credential.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, exists := fixture.service.CredentialLabels([]uint{credential.ID})[credential.ID]; exists {
+				t.Fatal("actually deleted credential remains associated")
+			}
+		})
 	}
 }

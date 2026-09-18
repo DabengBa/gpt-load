@@ -780,6 +780,8 @@ export default {
         anyAccessKey: '全部访问密钥',
         protocol: '协议',
         anyProtocol: '全部协议',
+        operation: '操作',
+        anyOperation: '全部操作',
         stream: '流式请求',
         status: '状态',
         anyStatus: '全部状态',
@@ -792,6 +794,7 @@ export default {
         failureCategory: '任一尝试失败分类',
         errorCode: '任一尝试错误码',
         retryStateLabel: '重试状态',
+        modelConsistencyLabel: '返回模型',
         retryMin: '最少重试次数',
         retryMax: '最多重试次数',
         usageStateLabel: '用量状态',
@@ -810,6 +813,8 @@ export default {
         appliedModel: '客户端模型 {value}',
         appliedClientModel: '客户端模型 {value}',
         appliedUpstreamModel: '尝试上游模型 {value}',
+        appliedModelConsistency: '返回模型 {value}',
+        appliedOperation: '操作 {value}',
         appliedAccessKey: '访问密钥 {value}',
         appliedAffinityKey: '亲和 Scope Key {value}',
         appliedChannel: '渠道 {value}',
@@ -834,6 +839,11 @@ export default {
         retryState: {
           retried: '发生过重试',
           not_retried: '未发生重试',
+        },
+        modelConsistency: {
+          match: '一致',
+          mismatch: '不一致',
+          unknown: '未知',
         },
         usageState: {
           complete: '完整',
