@@ -42,8 +42,9 @@ test.describe('request log display', () => {
       .locator('[data-label="First / total"]')
     await expect(timingCell).toContainText('16s / 24s')
     await expect(timingCell.locator('.logs-list__timing--slow')).toHaveCount(1)
-    await expect(page.locator('.logs-list__record').nth(1).locator('.logs-list__timing--slow'))
-      .toHaveCount(0)
+    await expect(
+      page.locator('.logs-list__record').nth(1).locator('.logs-list__timing--slow'),
+    ).toHaveCount(0)
   })
 
   test('client to upstream model mapping renders inline without the hint icon', async ({
@@ -55,9 +56,7 @@ test.describe('request log display', () => {
     const mapping = page.locator('.logs-list__model-mapping')
     await expect(mapping).toHaveCount(1)
     await expect(mapping).toHaveText('->gpt-5.6-luna')
-    await expect(
-      page.getByRole('button', { name: 'View model mapping' }),
-    ).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'View model mapping' })).toHaveCount(0)
     // 客户端模型仍可点击收窄，上游模型只是展示文本。
     const controlRow = page.locator('.logs-list__record').nth(1)
     await expect(controlRow.locator('.logs-list__model-mapping')).toHaveCount(0)
@@ -70,9 +69,7 @@ test.describe('request log display', () => {
     await page.getByRole('button', { name: 'Any-attempt Group' }).click()
     const searchInput = page.locator('.searchable-select__search')
     await expect(searchInput).toBeFocused()
-    await expect(
-      page.locator('.searchable-select__content .app-select__item'),
-    ).toHaveCount(3)
+    await expect(page.locator('.searchable-select__content .app-select__item')).toHaveCount(3)
 
     await searchInput.fill('bet')
     const narrowed = page.locator('.searchable-select__content .app-select__item')
@@ -92,9 +89,7 @@ test.describe('request log display', () => {
 
     await page.getByRole('button', { name: 'Client model' }).click()
     const searchInput = page.locator('.searchable-select__search')
-    await expect(
-      page.locator('.searchable-select__content .app-select__item'),
-    ).toHaveCount(4)
+    await expect(page.locator('.searchable-select__content .app-select__item')).toHaveCount(4)
 
     await searchInput.fill('zzz')
     await expect(page.locator('.searchable-select__content .app-select__item')).toHaveCount(0)
@@ -111,9 +106,7 @@ test.describe('request log display', () => {
     expect(latestLogRequest(routes).searchParams.get('client_model')).toBe('worker')
   })
 
-  test('usage and cost section is collapsed by default in the detail drawer', async ({
-    page,
-  }) => {
+  test('usage and cost section is collapsed by default in the detail drawer', async ({ page }) => {
     await installRequestLogDisplayRoutes(page)
     await openRequestLogs(page)
 
