@@ -32,4 +32,18 @@ CPA integrations for Codex, Claude, Antigravity, and Grok, plus the Bifrost-back
 
 The feature records only data that the Gateway or a supported CPA/Bifrost HTTP observer actually observes. It does not claim to capture TLS or socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed before cancellation, timeout, process failure, or connection close.
 
-Capture persistence is isolated from the data plane. Storage, queue, callback, or cleanup failures do not change the response returned to the client. The affected capture is instead failed or left explicitly incomplete, and the runtime health section reports cleanup state and active/completed/failed counts where available.
+Capture persistence is isolated from the data plane. Storage, queue, callback, or cleanup failures do not change the response returned to the client. The affected capture is instead marked failed or remains non-terminal, and the runtime health section reports cleanup state and active/completed/failed counts where available.
+
+## 空完成排查顺序
+
+先读取 structured request log，确认请求的 `error_code=upstream_empty_completion`、HTTP status、usage 和每个 attempt 的错误分类与决策；request log 是索引和结果记录，不能替代 Provider 原始 body。再使用管理员 debug capture API 按同一 `request_id` 查询全部 capture，并按 attempt sequence 关联原始 request/response：
+
+```text
+GET /api/logs/<request-id>
+GET /api/debug-captures?request_id=<request-id>
+GET /api/debug-captures/<capture-id>/download
+```
+
+完整的 raw capture 可以核对实际观察到的 response body、usage、finish reason 和 message 字段是否真的缺失，从而区分空完成与 `upstream_content_filter`。capture 的 metadata、解析结果或只有部分 body 都不是完整 raw 证据；capture 查询时仍为 `active`、已为 `failed`、已过期或已不存在，缺少应有的 response parts，或终止信息不完整时，必须标记证据不完整，不能把 metadata-only 结果当作完整 raw 证据。
+
+raw capture 只记录 Gateway、支持的 provider observer 或 transport reader 实际观察到的字节和事件。它不声称是 TLS/socket wire capture，也不补齐已经被 transport 移除的 framing、未暴露的 trailers，或在取消、超时、进程失败、连接关闭前从未观察到的数据。

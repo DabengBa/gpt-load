@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 
@@ -46,6 +48,11 @@ const (
 	// stream-level terminal observation, the shape a buffered attempt takes when
 	// only its heartbeat was committed and no provider payload was released.
 	StreamEndUpstreamFailure
+	// StreamEndContentFilter marks an OpenAI Chat stream that ended with
+	// finish_reason "content_filter" without ever releasing assistant payload.
+	// The client received no answer, so the attempt is not a successful stream
+	// even though its SSE framing was complete.
+	StreamEndContentFilter
 )
 
 type StreamObservation struct {
@@ -68,6 +75,8 @@ type streamEventObserver struct {
 	usage                     *streamUsageCapture
 	chatChoices               map[int]bool
 	chatChoiceSeen            bool
+	chatContentFiltered       bool
+	chatAssistantPayload      bool
 	anthropicBlocks           map[int]bool
 	anthropicBlockSeen        bool
 	responseID                string
@@ -310,6 +319,7 @@ func (observer *streamEventObserver) observeProtocolState(event dialect.StreamEv
 	}
 	switch observer.classifier.(type) {
 	case *dialect.OpenAI:
+		observer.observeChatStreamPayload(event)
 		if observer.strict {
 			return observer.observeChatChoices(event)
 		}
@@ -321,6 +331,67 @@ func (observer *streamEventObserver) observeProtocolState(event dialect.StreamEv
 		observer.captureResponsesID(event)
 	}
 	return nil
+}
+
+// contentFilterStreamSummary is the fixed classification text for a stream the
+// upstream blocked with finish_reason "content_filter" without an answer.
+const contentFilterStreamSummary = "upstream stream was blocked by content filter and contained no assistant content"
+
+// chatChoiceDelta carries the assistant-visible payload fields a Chat stream
+// choice may release. Empty strings, null and empty containers do not carry an
+// answer for the client and therefore do not count as released payload.
+type chatChoiceDelta struct {
+	Content          jsontext.Value `json:"content"`
+	Refusal          jsontext.Value `json:"refusal"`
+	ToolCalls        jsontext.Value `json:"tool_calls"`
+	FunctionCall     jsontext.Value `json:"function_call"`
+	ReasoningContent jsontext.Value `json:"reasoning_content"`
+}
+
+func releasedChatPayload(fields ...jsontext.Value) bool {
+	for _, field := range fields {
+		switch string(bytes.TrimSpace(field)) {
+		case "", "null", `""`, "[]", "{}":
+			continue
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+// observeChatStreamPayload records whether an OpenAI Chat stream released any
+// assistant payload and whether a choice finished because of a content filter.
+// It runs for every OpenAI stream, not only strict (buffered) ones, so a
+// filtered stream is recognized before the observation terminates.
+func (observer *streamEventObserver) observeChatStreamPayload(event dialect.StreamEvent) {
+	if observer == nil || bytes.Equal(bytes.TrimSpace(event.Payload), []byte("[DONE]")) {
+		return
+	}
+	var envelope struct {
+		Choices []struct {
+			Delta        chatChoiceDelta `json:"delta"`
+			FinishReason jsontext.Value  `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if jsonv2.Unmarshal(event.Payload, &envelope) != nil {
+		return
+	}
+	for _, choice := range envelope.Choices {
+		if releasedChatPayload(
+			choice.Delta.Content,
+			choice.Delta.Refusal,
+			choice.Delta.ToolCalls,
+			choice.Delta.FunctionCall,
+			choice.Delta.ReasoningContent,
+		) {
+			observer.chatAssistantPayload = true
+		}
+		var finishReason string
+		if jsonv2.Unmarshal(choice.FinishReason, &finishReason) == nil && finishReason == "content_filter" {
+			observer.chatContentFiltered = true
+		}
+	}
 }
 
 func (observer *streamEventObserver) observeChatChoices(event dialect.StreamEvent) error {
@@ -547,6 +618,13 @@ func (observer *streamEventObserver) endObservation() StreamObservation {
 			ResponseID:   observer.responseID,
 		}
 	}
+	if observer.chatContentFiltered && !observer.chatAssistantPayload {
+		return StreamObservation{
+			EndReason:    StreamEndContentFilter,
+			ErrorSummary: contentFilterStreamSummary,
+			ResponseID:   observer.responseID,
+		}
+	}
 	return StreamObservation{EndReason: StreamEndCleanEOF, ResponseID: observer.responseID}
 }
 
@@ -664,6 +742,8 @@ func streamErrorCode(reason StreamEndReason) string {
 		return "server_shutdown"
 	case StreamEndProviderIncomplete:
 		return "upstream_response_incomplete"
+	case StreamEndContentFilter:
+		return "upstream_content_filter"
 	case StreamEndUpstreamFailure:
 		return "upstream_failed"
 	default:
