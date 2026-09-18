@@ -204,6 +204,12 @@ func decisionEvidence(result UpstreamResult) (*execution.ErrorEvidence, error) {
 		return evidence, errors.New("downstream write failed")
 	case StreamEndClientCanceled, StreamEndServerShutdown:
 		return evidence, context.Canceled
+	case StreamEndContentFilter:
+		return &execution.ErrorEvidence{
+			Kind: execution.ErrorKindProvider, OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			StatusCode: result.StatusCode, Code: upstreamContentFilterCode, Summary: summary,
+		}, nil
 	default:
 		return &execution.ErrorEvidence{
 			Kind: execution.ErrorKindInternal, OriginHint: execution.ErrorOriginInternal,

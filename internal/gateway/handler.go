@@ -1614,7 +1614,8 @@ func (handler *Handler) executeAttempts(
 		if operation != execution.OperationWebSearch && !stream && result.DispatchState != execution.DispatchLocal &&
 			!result.ProviderErrorBeforeCommit && result.HasResponse() &&
 			result.StatusCode >= http.StatusOK &&
-			result.StatusCode < http.StatusMultipleChoices {
+			result.StatusCode < http.StatusMultipleChoices &&
+			!(result.ExecutionError != nil && isUpstreamDiagnosticErrorCode(result.ExecutionError.Code)) {
 			handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
 			handler.recordEntrySuccess(selection.GroupID, selection.EntryID, selection.CredentialID)
 		}
@@ -1685,7 +1686,8 @@ func (handler *Handler) executeAttempts(
 			}
 			if result.DispatchState != execution.DispatchLocal &&
 				result.StatusCode >= http.StatusOK && result.StatusCode < http.StatusMultipleChoices &&
-				originalMetadata.PreviousResponseID == "" {
+				originalMetadata.PreviousResponseID == "" &&
+				!(result.ExecutionError != nil && isUpstreamDiagnosticErrorCode(result.ExecutionError.Code)) {
 				handler.recordAffinitySuccess(requestAffinity, selection, ref)
 			}
 			return

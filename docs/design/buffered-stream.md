@@ -19,6 +19,8 @@ HTTP/SSE 流式交付由单一策略入口固定，不再有 `buffered_stream` �
 
 Gemini 与 OpenAI Images 是明确的实时例外：它们保持原有实时流行为及统一 health judge，不产生 buffered heartbeat、spool 或 release gate，也不获得 buffered 重放/重试许可。非流式请求不进入本策略，行为不变。
 
+`upstream_empty_completion` 的第一阶段诊断只适用于非流式 OpenAI Chat Completions。流式响应必须先完成 delta 聚合、choice 终态和协议终止契约；单个空 delta 不判定为空完成，也不会因此生成该错误码。上一轮 `upstream_content_filter` 的 buffered SSE replay 行为保持不变；空完成诊断不改变 buffered stream 的 retry 或 replay 规则。
+
 ## 交付流程
 
 1. 请求完成鉴权、校验和首次准入后，每个 attempt 先完成本地 pre-dispatch 校验。只有收到 dispatch proof（`forwardStream` 的 `StreamEventReady` 或 capture writer 首次写入）后，网关才提交 `text/event-stream` 响应并发送 `: keep-alive\n\n`；本地校验失败保留原 HTTP 状态和错误码，不提交 buffered heartbeat。

@@ -562,7 +562,7 @@ func (recorder *requestRecorder) completeStream(
 	switch result.Stream.EndReason {
 	case StreamEndCleanEOF:
 		outcome.status = telemetry.RequestStatusSuccess
-	case StreamEndSSEError, StreamEndUpstreamFailure:
+	case StreamEndSSEError, StreamEndUpstreamFailure, StreamEndContentFilter:
 		outcome.status = telemetry.RequestStatusError
 	case StreamEndClientCanceled, StreamEndServerShutdown:
 		outcome.status = telemetry.RequestStatusCanceled
@@ -582,7 +582,8 @@ func (recorder *requestRecorder) completeResponse(
 	if recorder == nil {
 		return
 	}
-	if result.StatusCode >= 200 && result.StatusCode < 300 {
+	if result.StatusCode >= 200 && result.StatusCode < 300 &&
+		!(result.ExecutionError != nil && isUpstreamDiagnosticErrorCode(result.ExecutionError.Code)) {
 		recorder.outcome = requestOutcome{
 			status:                telemetry.RequestStatusSuccess,
 			statusCode:            result.StatusCode,
@@ -606,7 +607,13 @@ func (recorder *requestRecorder) completeResponse(
 		status: telemetry.RequestStatusError, statusCode: result.StatusCode,
 		errorCode: code, errorSummary: summary, upstreamModel: upstreamModel,
 	}
-	recorder.bindUsage(attemptIndex, result.Usage, false)
+	diagnostic := result.StatusCode >= http.StatusOK && result.StatusCode < http.StatusMultipleChoices &&
+		result.ExecutionError != nil && isUpstreamDiagnosticErrorCode(result.ExecutionError.Code)
+	if diagnostic {
+		recorder.bindUsage(attemptIndex, result.Usage, true)
+	} else {
+		recorder.bindUsage(attemptIndex, result.Usage, false)
+	}
 }
 
 func (recorder *requestRecorder) completeProviderError(
@@ -807,6 +814,14 @@ func telemetryAction(decision health.Decision) telemetry.Action {
 	}
 }
 
+// isUpstreamDiagnosticErrorCode reports whether a 2xx execution error code is a
+// gateway diagnostic rather than an upstream failure status. Such codes are
+// recorded as failed requests even though the client still receives the raw
+// upstream response.
+func isUpstreamDiagnosticErrorCode(code string) bool {
+	return code == upstreamContentFilterCode || code == upstreamEmptyCompletionCode
+}
+
 func upstreamErrorCode(result UpstreamResult, category health.FailureCategory) string {
 	if result.ExecutionError != nil {
 		switch result.ExecutionError.Code {
@@ -814,7 +829,9 @@ func upstreamErrorCode(result UpstreamResult, category health.FailureCategory) s
 			"credential_normalization_failed",
 			"group_proxy_prepare_failed",
 			"server_is_overloaded",
-			"rate_limit_exceeded":
+			"rate_limit_exceeded",
+			upstreamContentFilterCode,
+			upstreamEmptyCompletionCode:
 			return result.ExecutionError.Code
 		}
 	}
