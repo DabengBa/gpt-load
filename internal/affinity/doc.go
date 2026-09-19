@@ -1,10 +1,12 @@
 // Package affinity defines upstream target bindings and their evictable hot cache.
 // The gateway coordinates read-through with the durable BindingStore, backed in
 // production by system_settings keys _internal.affinity.binding.<raw-hmac>.
-// Hot-cache misses, TTL/LRU/capacity eviction and process restarts do not delete
-// persisted bindings; recovery uses the same database and key derivation material.
+// Hot-cache misses, LRU/capacity eviction and process restarts do not delete
+// persisted bindings; durable TTL/capacity cleanup is owned by the storage and
+// control layers. Recovery uses the same database and key derivation material.
 // Unrelated configuration, catalog/Models.dev updates and snapshot revisions do
-// not discard bindings, and recovery does not depend on a shutdown checkpoint.
+// not directly discard bindings, and recovery does not depend on a shutdown
+// checkpoint.
 //
 // A bound target must pass all current access-key, group, route, entry-weight,
 // credential identity and cooldown/blacklist checks before being tried first

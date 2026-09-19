@@ -60,8 +60,10 @@
 - [ ] 资格过滤不删除 durable row:目标不合格时正常候选可继续服务,但其成功不得覆盖旧绑定;
       preparation/local/downstream failure 不算 provider failure;`previous_response_id` 独立续接归属不变
 - [ ] durable binding:使用现有 `system_settings` 的 `_internal.affinity.binding.<raw-hmac>` 行;
-      热缓存 miss、TTL/LRU/capacity 淘汰或同数据库重启后 read-through,合格绑定仍报告 `hit`,
-      不依赖停机 checkpoint;无关 group/weight/catalog/Models.dev 更新或 revision 变化不丢绑定
+      热缓存 miss、LRU/capacity 淘汰或同数据库重启后,仍未过期且未被 durable capacity 清理的
+      合格绑定可 read-through 并报告 `hit`;durable TTL/capacity 由 lookup、upsert 或 control
+      runtime 清理,不依赖停机 checkpoint;无关 group/weight/catalog/Models.dev 更新或 revision
+      变化不直接丢弃未过期绑定
 - [ ] 状态与错误边界:`cache_miss` 是适用查找路径(启用时含 durable store)未找到绑定;
       `cache_unavailable` 涵盖本地缓存/配置/键与 store lookup/decode error,必需的持久查询失败
       在 dispatch 前 fail-closed,不普通 fallback;all-disabled 跳过 store 查询,继续普通调度

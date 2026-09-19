@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/health"
 	"gpt-load/internal/state"
 )
@@ -39,6 +40,21 @@ type controlledOperationRecovery struct {
 
 type controlledStageCleaner struct {
 	calls chan time.Time
+}
+
+type controlledAffinityCleaner struct {
+	calls    chan time.Time
+	policies chan affinity.DurablePolicy
+}
+
+func (cleaner *controlledAffinityCleaner) SweepAffinityBindings(
+	_ context.Context,
+	now time.Time,
+	policy affinity.DurablePolicy,
+) error {
+	cleaner.calls <- now
+	cleaner.policies <- policy
+	return nil
 }
 
 func (cleaner *controlledStageCleaner) CleanupCredentialStages(_ context.Context, now time.Time) error {
@@ -205,6 +221,34 @@ func TestRuntimeSweepsCredentialStagesWithoutRequestLogCleaner(t *testing.T) {
 	}
 	if got := awaitValue(t, cleaner.calls); !got.Equal(base) {
 		t.Fatalf("cleanup time = %v", got)
+	}
+	stopRuntime(t, cancel, done)
+	awaitSignal(t, retentionTicker.stopped)
+}
+
+func TestRuntimeSweepsDurableAffinityWithCurrentPolicy(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, time.August, 13, 8, 0, 0, 0, time.UTC)
+	retentionTicker := newFakeRuntimeTicker()
+	created := make(chan time.Duration, 1)
+	cleaner := &controlledAffinityCleaner{
+		calls:    make(chan time.Time, 2),
+		policies: make(chan affinity.DurablePolicy, 2),
+	}
+	policy := affinity.DurablePolicy{TTL: 2 * time.Hour, Capacity: 42}
+	runtime := newTestRuntime(retentionTicker, created, func() time.Time { return base })
+	runtime.affinityCleaner = cleaner
+	runtime.affinityPolicy = func() affinity.DurablePolicy { return policy }
+
+	cancel, done := startRuntime(t, runtime)
+	if interval := awaitValue(t, created); interval != time.Hour {
+		t.Fatalf("retention interval = %v", interval)
+	}
+	if got := awaitValue(t, cleaner.calls); !got.Equal(base) {
+		t.Fatalf("affinity cleanup time = %v, want %v", got, base)
+	}
+	if got := awaitValue(t, cleaner.policies); got != policy {
+		t.Fatalf("affinity cleanup policy = %#v, want %#v", got, policy)
 	}
 	stopRuntime(t, cancel, done)
 	awaitSignal(t, retentionTicker.stopped)

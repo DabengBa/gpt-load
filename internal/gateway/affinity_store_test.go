@@ -38,7 +38,7 @@ type affinityStoreStub struct {
 	upserts   int
 }
 
-func (store *affinityStoreStub) Lookup(_ context.Context, key affinity.Key) (affinity.Target, bool, error) {
+func (store *affinityStoreStub) Lookup(_ context.Context, key affinity.Key, _ affinity.DurablePolicy) (affinity.Target, bool, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.lookups++
@@ -49,7 +49,7 @@ func (store *affinityStoreStub) Lookup(_ context.Context, key affinity.Key) (aff
 	return target, found, nil
 }
 
-func (store *affinityStoreStub) Upsert(_ context.Context, key affinity.Key, target affinity.Target) error {
+func (store *affinityStoreStub) Upsert(_ context.Context, key affinity.Key, target affinity.Target, _ affinity.DurablePolicy) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.upserts++
@@ -87,7 +87,7 @@ type orderedAffinityStore struct {
 	upserts      int
 }
 
-func (store *orderedAffinityStore) Lookup(context.Context, affinity.Key) (affinity.Target, bool, error) {
+func (store *orderedAffinityStore) Lookup(context.Context, affinity.Key, affinity.DurablePolicy) (affinity.Target, bool, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if store.upserts == 0 || !store.target.Valid() {
@@ -96,7 +96,7 @@ func (store *orderedAffinityStore) Lookup(context.Context, affinity.Key) (affini
 	return store.target, true, nil
 }
 
-func (store *orderedAffinityStore) Upsert(_ context.Context, _ affinity.Key, target affinity.Target) error {
+func (store *orderedAffinityStore) Upsert(_ context.Context, _ affinity.Key, target affinity.Target, _ affinity.DurablePolicy) error {
 	store.mu.Lock()
 	store.upserts++
 	upsert := store.upserts

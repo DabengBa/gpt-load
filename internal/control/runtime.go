@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/state"
 )
 
@@ -61,6 +62,8 @@ type Runtime struct {
 	catalogSync       catalogSyncRuntime
 	oauthCallback     *OAuthCallbackManager
 	registry          *state.CredentialRegistry
+	affinityCleaner   affinity.DurableBindingCleaner
+	affinityPolicy    func() affinity.DurablePolicy
 	healthStats       interface{ ClearProblemState(uint) }
 	now               func() time.Time
 	newTicker         func(time.Duration) runtimeTicker
@@ -71,6 +74,8 @@ func NewRuntime(
 	requestLogCleaner RequestLogCleaner,
 	operationRecovery *Service,
 	catalogSync *CatalogSyncCoordinator,
+	affinityCleaner affinity.DurableBindingCleaner,
+	affinityPolicy func() affinity.DurablePolicy,
 ) *Runtime {
 	runtime := &Runtime{
 		requestLogCleaner: requestLogCleaner,
@@ -78,6 +83,8 @@ func NewRuntime(
 		operationRecovery: operationRecovery,
 		catalogSync:       catalogSync,
 		registry:          registry,
+		affinityCleaner:   affinityCleaner,
+		affinityPolicy:    affinityPolicy,
 		now:               time.Now,
 		newTicker: func(interval time.Duration) runtimeTicker {
 			return standardRuntimeTicker{ticker: time.NewTicker(interval)}
@@ -104,7 +111,7 @@ func (runtime *Runtime) Run(ctx context.Context) {
 			runtime.runBlacklistRelease(ctx, releaseTicker)
 		})
 	}
-	if runtime.requestLogCleaner != nil || runtime.stageCleaner != nil {
+	if runtime.requestLogCleaner != nil || runtime.stageCleaner != nil || runtime.affinityCleaner != nil {
 		retentionTicker := runtime.newTicker(retentionInterval)
 		wait.Go(func() {
 			runtime.runRetention(ctx, retentionTicker)
@@ -154,6 +161,16 @@ func (runtime *Runtime) sweepRetention(ctx context.Context, now time.Time) {
 	if runtime.stageCleaner != nil {
 		if err := runtime.stageCleaner.CleanupCredentialStages(ctx, now); err != nil {
 			logrus.WithError(err).WithField("event", "control.credential_stage_cleanup_failed").Warn("credential stage cleanup failed")
+		}
+	}
+	if runtime.affinityCleaner != nil && runtime.affinityPolicy != nil {
+		policy := runtime.affinityPolicy()
+		if !policy.Valid() {
+			logrus.WithField("event", "control.affinity_cleanup_invalid_policy").Warn("durable affinity cleanup skipped because runtime policy is unavailable")
+			return
+		}
+		if err := runtime.affinityCleaner.SweepAffinityBindings(ctx, now, policy); err != nil {
+			logrus.WithError(err).WithField("event", "control.affinity_cleanup_failed").Warn("durable affinity cleanup failed")
 		}
 	}
 }

@@ -12,12 +12,29 @@ const (
 	DefaultCapacity = 10_000
 )
 
+// DurablePolicy bounds the durable affinity binding set with the same runtime
+// limits used by the hot cache.
+type DurablePolicy struct {
+	TTL      time.Duration
+	Capacity int
+}
+
+func (policy DurablePolicy) Valid() bool {
+	return policy.TTL > 0 && policy.Capacity > 0
+}
+
 // BindingStore is the durable authority for affinity bindings that the gateway
 // coordinates with its evictable hot cache. A lookup error is an authoritative
 // failure and must not be mistaken for a missing binding.
 type BindingStore interface {
-	Lookup(context.Context, Key) (Target, bool, error)
-	Upsert(context.Context, Key, Target) error
+	Lookup(context.Context, Key, DurablePolicy) (Target, bool, error)
+	Upsert(context.Context, Key, Target, DurablePolicy) error
+}
+
+// DurableBindingCleaner owns the lifecycle bound of persisted affinity rows.
+// It is called by the control runtime using the current runtime policy.
+type DurableBindingCleaner interface {
+	SweepAffinityBindings(context.Context, time.Time, DurablePolicy) error
 }
 
 // Target is the exact Credential identity remembered as a preference.

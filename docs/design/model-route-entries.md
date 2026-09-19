@@ -190,11 +190,13 @@ type RouteTarget struct {
   - gateway 在单进程 singleton Handler 内用同 key 条纹锁协调 Cache CAS 与 durable upsert;
     不承诺跨进程写入排序。绑定粒度沿用 `PreferredCredentialID`,不增加 affinity EntryID。
   - 持久权威是现有 `system_settings` 的 `_internal.affinity.binding.<raw-hmac>` 行,
-    值只含目标 ID 与身份代际,没有 TTL,不新增 schema migration。热缓存 miss、TTL 到期、
-    LRU/capacity 淘汰或进程重启后由 gateway read-through 恢复,合格绑定仍为 `hit`;
-    恢复需要同一数据库与键派生材料,不依赖停机 checkpoint。
-  - 无关 group/entry weight、catalog/Models.dev 更新和 snapshot revision 变化不删除绑定。
-    revision-only 不清热缓存,capacity/TTL 变化至多清热缓存;关闭分组亲和也保留 durable row。
+    值只含目标 ID 与身份代际,生命周期沿用运行态 affinity TTL/capacity,不新增 schema
+    migration。热缓存 miss、LRU/capacity 淘汰或进程重启后由 gateway read-through 恢复仍
+    未过期且未被 durable capacity 清理的绑定;durable TTL 到期和 capacity 超限由 lookup、
+    upsert 或 control runtime 清理。恢复需要同一数据库与键派生材料,不依赖停机 checkpoint。
+  - 无关 group/entry weight、catalog/Models.dev 更新和 snapshot revision 变化不直接删除
+    未过期绑定。revision-only 不清热缓存;capacity/TTL 变化会由下一次 upsert 或 control
+    runtime sweep 应用到 durable rows;关闭分组亲和不触发额外删除,但仍遵守 TTL/capacity。
   - `cache_miss` 是适用查找路径未找到绑定,生产启用路径包括 durable lookup;
     `hit` 包括 durable 恢复。`cache_unavailable` 同时涵盖本地 cache/config/key 不可用及
     store lookup/decode error;后者在 provider dispatch 前 fail-closed,不普通 fallback。
@@ -343,7 +345,8 @@ type RouteTarget struct {
 8. **亲和 + 故障转移链**:同一会话前缀连续四轮请求——第 1 轮落到分组 A;第 2 轮
    亲和命中 A;第 3 轮 A 实际 attempt 失败且未释放内容 → 换到分组 B 并成功;
    第 4 轮亲和命中 B。同时验证目标未通过资格过滤时正常候选可服务,但不删除或覆盖旧 durable row。
-9. **恢复与无关发布**:覆盖 TTL/LRU/capacity 热缓存丢失、同数据库重启后的 read-through hit,
-   以及无关 entry weight、catalog-like snapshot republish 后仍首试原目标。
+9. **恢复与无关发布**:覆盖热缓存 TTL/LRU/capacity 丢失、同数据库重启后的 read-through hit,
+   durable TTL/capacity 清理,以及无关 entry weight、catalog-like snapshot republish 后仍首试
+   未过期原目标。
    现有 catalog-like 回归仅复现本地 Models.dev 风格 revision 发布,
    未调用真实 Models.dev 网络客户端或 `control/catalog_sync` 生产同步链路。
