@@ -97,7 +97,7 @@ A、B 都不可用时：P2 生效，C=100%
 - 一个分组只有一个凭据，因此亲和命中的凭据等价于亲和命中的分组；粘性优先的粒度就是分组。
 - 亲和绑定不绕过 access-key、group、route requirement、entry weight、credential identity、cooldown/blacklist 等硬资格过滤。目标被排除时其他合格候选可正常服务,但其成功不删除或覆盖旧 durable row;过滤、preparation、本地执行和下游失败均不算 provider failure。
 - 对仍合格的绑定目标,只有实际 attempt 发生可重试 provider failure 后才允许 affinity fallback;后续成功才能迁移到实际服务的分组与凭据,并继续遵守既有重试/重放边界。
-- durable binding 存放在现有 `system_settings` 的 `_internal.affinity.binding.<raw-hmac>` 行,值只含目标 ID 与身份代际。gateway 在热缓存 miss、TTL/LRU/capacity 淘汰或进程重启后 read-through 恢复,合格绑定仍是 `hit`;需要同一数据库与键派生材料,不依赖停机 checkpoint。无关 group/entry weight/catalog/Models.dev 更新和 snapshot revision 变化不会丢弃绑定。
+- durable binding 存放在现有 `system_settings` 的 `_internal.affinity.binding.<raw-hmac>` 行,值只含目标 ID 与身份代际。gateway 在热缓存 miss、LRU/capacity 淘汰或进程重启后 read-through 恢复仍未过期的合格绑定;durable TTL 到期后由 lookup、upsert 或 control runtime 清理,超过 capacity 的旧行由 upsert 或 control runtime 清理。需要同一数据库与键派生材料,不依赖停机 checkpoint。无关 group/entry weight/catalog/Models.dev 更新和 snapshot revision 变化不会直接丢弃未过期绑定。
 - `cache_miss` 表示适用查找路径未找到绑定(启用时含 durable lookup);`cache_unavailable` 涵盖本地缓存/配置/键条件及 store lookup/decode error。必需的持久查询失败在 dispatch 前 fail-closed,不普通 fallback;all-disabled 候选跳过持久查询,继续普通调度,memory-only 测试保留本地边界。
 - provider 成功后的 durable upsert error 保留热绑定和已交付响应,记录 `affinity_binding_persist_failed`,不触发新 attempt;该失败写入不保证缓存丢失或重启后恢复。同 key Cache CAS 与 upsert 的顺序保证限定于单进程 singleton Handler。
 - 无关发布的现有 gateway 回归包括 entry weight 和 catalog-like 本地快照变更;后者未调用真实 Models.dev 网络客户端或 `control/catalog_sync`,不能作为真实外部同步证据。

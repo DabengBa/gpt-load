@@ -70,6 +70,19 @@ func BuildContainer() (*dig.Container, error) {
 		affinity.NewCache,
 		storage.NewAffinityStore,
 		func(store *storage.AffinityStore) affinity.BindingStore { return store },
+		func(store *storage.AffinityStore) affinity.DurableBindingCleaner { return store },
+		func(manager *state.Manager) func() affinity.DurablePolicy {
+			return func() affinity.DurablePolicy {
+				snapshot := manager.Current()
+				if snapshot == nil {
+					return affinity.DurablePolicy{}
+				}
+				return affinity.DurablePolicy{
+					TTL:      snapshot.Settings.AffinityTTL,
+					Capacity: snapshot.Settings.AffinityCapacity,
+				}
+			}
+		},
 		accessquota.NewRuntime,
 		channel.CompileRegistry,
 		control.NewPriceRuntime,
@@ -132,9 +145,18 @@ func BuildContainer() (*dig.Container, error) {
 			requestLogCleaner control.RequestLogCleaner,
 			operationRecovery *control.Service,
 			catalogSync *control.CatalogSyncCoordinator,
+			affinityCleaner affinity.DurableBindingCleaner,
+			affinityPolicy func() affinity.DurablePolicy,
 			stats *health.StatsStore,
 		) *control.Runtime {
-			runtime := control.NewRuntime(registry, requestLogCleaner, operationRecovery, catalogSync)
+			runtime := control.NewRuntime(
+				registry,
+				requestLogCleaner,
+				operationRecovery,
+				catalogSync,
+				affinityCleaner,
+				affinityPolicy,
+			)
 			runtime.SetHealthStats(stats)
 			return runtime
 		},

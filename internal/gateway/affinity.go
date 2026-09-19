@@ -27,6 +27,7 @@ const (
 type requestAffinity struct {
 	key                   affinity.Key
 	displayKey            string
+	policy                affinity.DurablePolicy
 	observation           affinity.Observation
 	boundTarget           affinity.Target
 	boundAttempted        bool
@@ -149,7 +150,14 @@ func (handler *Handler) resolveRequestAffinity(
 		return requestAffinity{state: telemetry.AffinityStateCacheUnavailable}
 	}
 	signalType, source, signalValue, hasSignal := affinitySignal(metadata)
-	result := requestAffinity{source: source, state: telemetry.AffinityStateNoSignal}
+	result := requestAffinity{
+		source: source,
+		state:  telemetry.AffinityStateNoSignal,
+		policy: affinity.DurablePolicy{
+			TTL:      snapshot.Settings.AffinityTTL,
+			Capacity: snapshot.Settings.AffinityCapacity,
+		},
+	}
 	if len(metadata.AffinityPrefix) > 0 {
 		continuity := affinity.DeriveKey(
 			handler.encryption,
@@ -197,7 +205,7 @@ func (handler *Handler) resolveRequestAffinity(
 	} else if handler.affinityStore != nil && hasAffinityEnabledCandidate(snapshot, allowedCredentialRefs) {
 		lock := handler.affinityBindingLock(key)
 		lock.Lock()
-		stored, found, err := handler.affinityStore.Lookup(ctx, key)
+		stored, found, err := handler.affinityStore.Lookup(ctx, key, result.policy)
 		if err == nil && found {
 			// The hot cache is evictable: a durable hit refills it so this
 			// request and later ones keep the bound target.
@@ -269,7 +277,7 @@ func (handler *Handler) recordAffinitySuccess(
 	}
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), affinityBindingWriteTimeout)
 	defer cancel()
-	if err := handler.affinityStore.Upsert(writeCtx, request.key, target); err != nil {
+	if err := handler.affinityStore.Upsert(writeCtx, request.key, target, request.policy); err != nil {
 		utils.LogPlaneBestEffort(
 			handler.logger,
 			logrus.ErrorLevel,
