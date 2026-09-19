@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gpt-load/internal/channel"
+	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/storage/models"
@@ -141,6 +142,85 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 	}
 	if second.GroupName != "copy-source-copy-2" {
 		t.Fatalf("second copy name = %q, want copy-source-copy-2", second.GroupName)
+	}
+}
+
+func TestCopyGroupIdempotentLoadsEncryptedProxyPolicies(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	source := createGroupCopySource(t, fixture, "copy-proxy")
+	encryptProxy := func(proxy outboundproxy.Config) string {
+		t.Helper()
+		encoded, err := outboundproxy.Encode(proxy)
+		if err != nil {
+			t.Fatalf("encode proxy: %v", err)
+		}
+		ciphertext, err := fixture.encryption.Encrypt(encoded)
+		if err != nil {
+			t.Fatalf("encrypt proxy: %v", err)
+		}
+		return ciphertext
+	}
+	groupProxy := encryptProxy(outboundproxy.Config{
+		Mode: outboundproxy.ModeCustom,
+		URL:  "http://group-proxy.example.com:8080",
+	})
+	if err := fixture.db.Model(&models.Group{}).
+		Where("id = ?", source.GroupID).
+		Update("proxy_config", groupProxy).Error; err != nil {
+		t.Fatalf("persist group proxy: %v", err)
+	}
+	if err := fixture.db.Create(&models.SystemSetting{
+		Key: outboundproxy.SystemSettingKey,
+		Value: encryptProxy(outboundproxy.Config{
+			Mode: outboundproxy.ModeCustom,
+			URL:  "http://global-proxy.example.com:8080",
+		}),
+	}).Error; err != nil {
+		t.Fatalf("persist global proxy: %v", err)
+	}
+
+	if _, err := fixture.service.CopyGroupIdempotent(
+		t.Context(),
+		"618f47a2-9c35-4d6e-8b1a-1234567890ab",
+		source.GroupID,
+	); err != nil {
+		t.Fatalf("CopyGroupIdempotent() with encrypted proxies error = %v", err)
+	}
+}
+
+func TestCopyGroupIdempotentNormalizesRefreshingCredential(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	source := createGroupCopySource(t, fixture, "copy-refreshing")
+	credentials := loadGroupCredentials(t, fixture, source.GroupID)
+	if len(credentials) != 1 {
+		t.Fatalf("source credentials = %d, want 1", len(credentials))
+	}
+	if err := fixture.db.Model(&models.Credential{}).
+		Where("id = ?", credentials[0].ID).
+		Updates(map[string]any{
+			"auth_state":      models.CredentialAuthStateRefreshing,
+			"auth_error_code": "",
+		}).Error; err != nil {
+		t.Fatalf("mark source credential refreshing: %v", err)
+	}
+
+	result, err := fixture.service.CopyGroupIdempotent(
+		t.Context(),
+		"718f47a2-9c35-4d6e-8b1a-1234567890ab",
+		source.GroupID,
+	)
+	if err != nil {
+		t.Fatalf("CopyGroupIdempotent() error = %v", err)
+	}
+	cloned := loadGroupCredentials(t, fixture, result.GroupID)
+	if len(cloned) != 1 {
+		t.Fatalf("cloned credentials = %d, want 1", len(cloned))
+	}
+	if cloned[0].AuthState != models.CredentialAuthStateOutcomeUnknown ||
+		cloned[0].AuthErrorCode != "refresh_interrupted" {
+		t.Fatalf("cloned credential auth state = %q/%q, want outcome_unknown/refresh_interrupted", cloned[0].AuthState, cloned[0].AuthErrorCode)
 	}
 }
 
