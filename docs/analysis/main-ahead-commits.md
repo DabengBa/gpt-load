@@ -2,13 +2,13 @@
 
 ## 基线
 
-- 更新时间：`2026-09-18T11:46:20+08:00`
-- `dev` 评估基线：`origin/dev@74dcee49`；当前工作树为 `dev@74dcee49`，无未推送提交。
-- `upstream/main`：`37cd99fb`（#686）。
-- 分叉统计：`origin/dev...upstream/main = 248 66`；仅用于观察长期分叉，不作为待移植数量。
-- 上一轮对比目标：`upstream/main@fbefb458`（#657）。本轮新增上游范围为 #659、#656、#660、#664、#668~#686（共 22 个 commits）。
-- 策略：不整体合并 `upstream/main`，只按 `dev` 合同进行行为级移植。判定沿用一组一凭据、entry 级健康、全局重试预算、已提交流不可重放、续接/WS 身份隔离和迁移只追加。
-- 观察：上游分支 `tbphp/fix-codex-ws-passive-quota` 含 2 个未合并的 Codex WS 额度修复（`6dcddb59`、`6ff818b0`），合并入 main 后再评估。
+- 更新时间：`2026-09-19T09:27:47+08:00`
+- `dev` 评估基线：`origin/dev@d356e731`（PR #96 合并后）；当前评估工作树基于该提交。
+- `origin/main`：`b517f713`（#691，`2026-09-18T19:33:36+08:00`）。
+- 分析截止：已分析到 #691；后续只考虑 `b517f713` 的后继提交（预期从 #692 开始），不重复处理 #673–#691。
+- 分叉统计：`origin/dev...origin/main = 284 70`；仅用于观察长期分叉，不作为待移植数量。
+- 本轮已核对范围：#673 至 #691；其中 #679、#689 没有对应的 `origin/main` 提交，另含依赖更新 #640。
+- 策略：不整体合并 `origin/main`，只按 `dev` 合同进行行为级移植。判定沿用一组一凭据、entry 级健康、全局重试预算、已提交流不可重放、续接/WS 身份隔离和迁移只追加。
 
 ## 上一轮取舍（本轮更新）
 
@@ -26,9 +26,12 @@
 | #657 | 低价值挂起 | 仅上游 README 赞助位新增（Fluxion AI 行 + 图片）；本地 README 独立维护，如需赞助位同步再处理。 |
 | #674（`dad1f050`） | 确定移植 | 已落地（本提交手工适配）：新增 `POST /v1/alpha/search` 与 `web_search` 操作全链路——方言早退校验（POST/非流式/非空 id）、Codex native 路由、CPA 状态码透传与读体失败元数据保留（不回填 #599 通用 header 块）、embedded 独立执行器、gateway 健康/quota/定价豁免、requestlog 聚合与直读排除、前端 operation 枚举与三语标签。本地差异适配：无 `BaseURL`/`ResolveCodexAPIEndpoints`，搜索目标固定 `defaultCodexBaseURL + /alpha/search`；上游 `usage_query_minute.go` 直读排除由本地 `withoutControlPlaneObservations` 集中覆盖；前端组件体系不同，仅补枚举与标签，未移植 Globe 图标。 |
 | #673 | 确定移植 | 已落地：`c37ab19` 拣选上游网关协议 probe 实现，并按本地单一 probe contract/raw evidence 边界适配；仅多协议 gateway 使用显式声明的 OpenAI Responses/Anthropic/Gemini probe 路由，保留现有其他 provider 合同。全量 Go 测试通过。 |
+| #688 | 已分析，暂不移植 | 仅调整 CI/Release 的 race 命令为 `go test -race -vet=off`，并将 SQLite 迁移测试并行化；属于验证效率优化，不改变运行时行为。 |
+| #690 | 已分析，暂不移植 | 将 Release 的静态检查、race、CPA 和数据库合同验证迁回自托管 ARM64 runner，制品发布仍使用 GitHub-hosted runner；依赖本地 runner 基础设施，不直接改变产品行为。 |
+| #691 | 已分析，待单独决定 | 现代首页账户与健康提醒增加渠道图标、分组 tooltip 和三语文案；需要按本地现代前端的账户/分组查询合同评估适配，不直接拣选上游提交。 |
 | #656、#682 | 不适用 | 与本地架构不匹配，不移植。 |
 
 ## 当前动作
 
-#646、#652、#653 均已落地于工作树 `dev@d8f2eca5`（4 个未推送提交，含测试适配）。待推送并通过 PR 合入 `origin/dev`。后续观察 `tbphp/fix-codex-ws-passive-quota` 分支合并情况；#657 保持挂起。
-#674 已按本地合同手工适配并随本提交落地，全量定向测试与 `go build ./...` 通过；#673 已按本地合同移植并完成全量 Go 验证。
+#673 已按本地合同移植并通过 PR #96 合入 `origin/dev`；#674 已按本地合同手工适配并通过 PR #85 合入 `origin/dev`。
+#688、#690、#691 已完成分析记录，当前不自动移植；分析边界停在 `origin/main@b517f713`（#691）。后续只检查该提交之后的新 commits，不再回看 #673–#691。
