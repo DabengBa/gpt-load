@@ -25,10 +25,10 @@
 | #653 | 确定移植 | 已落地：`8590f49b` 直接拣选上游提交，零冲突；恢复 `OpenAICompatible` 渠道工具降级转发、`bifrost/tool_compatibility.go` 白名单适配、压缩上下文与 tool history 丢失拒绝、count-tokens 工具约束、CPA `prepareConvertedFidelity` 白名单边界。 |
 | #657 | 低价值挂起 | 仅上游 README 赞助位新增（Fluxion AI 行 + 图片）；本地 README 独立维护，如需赞助位同步再处理。 |
 | #674（`dad1f050`） | 确定移植 | 已落地（本提交手工适配）：新增 `POST /v1/alpha/search` 与 `web_search` 操作全链路——方言早退校验（POST/非流式/非空 id）、Codex native 路由、CPA 状态码透传与读体失败元数据保留（不回填 #599 通用 header 块）、embedded 独立执行器、gateway 健康/quota/定价豁免、requestlog 聚合与直读排除、前端 operation 枚举与三语标签。本地差异适配：无 `BaseURL`/`ResolveCodexAPIEndpoints`，搜索目标固定 `defaultCodexBaseURL + /alpha/search`；上游 `usage_query_minute.go` 直读排除由本地 `withoutControlPlaneObservations` 集中覆盖；前端组件体系不同，仅补枚举与标签，未移植 Globe 图标。 |
-| #673 | 确定移植 | 待移植。 |
+| #673 | 确定移植 | 已落地：`c37ab19` 拣选上游网关协议 probe 实现，并按本地单一 probe contract/raw evidence 边界适配；仅多协议 gateway 使用显式声明的 OpenAI Responses/Anthropic/Gemini probe 路由，保留现有其他 provider 合同。全量 Go 测试通过。 |
 | #656、#682 | 不适用 | 与本地架构不匹配，不移植。 |
 
 ## 当前动作
 
 #646、#652、#653 均已落地于工作树 `dev@d8f2eca5`（4 个未推送提交，含测试适配）。待推送并通过 PR 合入 `origin/dev`。后续观察 `tbphp/fix-codex-ws-passive-quota` 分支合并情况；#657 保持挂起。
-#674 已按本地合同手工适配并随本提交落地，全量定向测试与 `go build ./...` 通过；#673 为下一项移植候选。
+#674 已按本地合同手工适配并随本提交落地，全量定向测试与 `go build ./...` 通过；#673 已按本地合同移植并完成全量 Go 验证。
