@@ -1,7 +1,7 @@
 # 设计方案:模型调度中心面板与候选级熔断参数
 
-- 分支:`feature/model-route-entries`
-- 状态:**已实现，随 scheduled-release/no-liveness 改造进行集成验收**
+- 分支:`feature/model-route-entries`（设计起点）
+- 状态:**基础调度中心能力已集成到当前 `dev`；本轮提供独立入口、跨分组权重/优先级批量编辑、运行态恢复与测活**
 - 日期:2026-09-06
 - 前置:构建于《模型路由条目》特性之上(`docs/design/model-route-entries.md`);吸收 AIRelayHub 两条经验(跨供应商同别名调度中心化、候选级熔断参数显式化)
 - v1 → v2 修订对照:见文末附录 A(评审 8 项 → 修订章节映射)
@@ -311,27 +311,38 @@ P2 显示归一化到 100%,而非固定 0。这是对**既有路由检查响应�
 
 ## 6A. 前端(中心调度面板)
 
-### 6A.1 定位:路由检查页升级为"调度面板"
+### 6A.1 定位:独立的 `/schedule` 调度中心页面（当前实现）
 
-不新建独立页面。现有**监控 → 路由检查**骨架(访问密钥/协议选择、条目行、占比、
-凭据明细)原地升级为读写;另在其上新增"调度面板"入口:
+本轮实现不把调度中心挂在 **监控 → 路由检查** Tab 下。管理员通过一级导航或 `/schedule`
+进入独立页面；`/monitor` 保持健康、用量与路由检查三个 Tab。AccessKey 身份不显示调度中心
+入口，直接访问 `/schedule` 会回到首页。
 
-1. **索引视图**(§5.1):对外模型名列表(候选数/分组数/异常计数),点击进详情;
-2. **详情视图**(§5.2):分组分节 + 候选行编辑:
-   - 权重(占比实时预览)、优先级、熔断参数(占位符显示 effective 默认值;留空 =
-     不变;显式清空按钮 = 清除覆盖回继承);
-   - 行内校验(0–100、≥1、≥0)与**事务式保存条**(整体成功/失败,409 时提示刷新);
-   - 运行态徽标(冷却中/已拉黑/连续失败 N)+ 黑名单释放时间、冷却时间与管理员恢复按钮(§5.6);
-   - 协议/操作选择沿用路由检查页形态(operation 按协议给默认值,可切换);
-3. 路由检查页保持只读巡检语义;两页共享资源层
-   (`route-inspection.ts` + 新增 `model-route-schedule.ts`)。
+当前页面行为:
+
+1. **索引视图**(§5.1):按对外模型名列出候选数、分组数、是否存在 fallback，以及冷却/黑名单
+   数量；选择模型后进入详情。
+2. **详情视图**(§5.2):跨分组展示候选行，并支持 `all`、`primary`、`fallback` 三种显示范围；
+   行内编辑权重和优先级，空值可清除显式覆盖，表格即时预览占比。
+3. **统一保存**:同一模型下多个分组的草稿通过一次 PATCH 提交，携带 `snapshot_revision` 做
+   乐观并发检查；保存失败或 409 冲突时保留草稿，等待管理员刷新处理。
+4. **运行态与测活**:展示分组启停、24 小时请求数/成功率、候选运行态、熔断恢复信息与失败次数；
+   支持恢复冷却或黑名单条目，并支持单条或当前可见候选批量测活。测活涉及停用分组时先要求
+   管理员确认是否启用该分组后再发起请求。
+5. **路由状态**:模型、显示范围、选中行和未保存草稿写入 `/schedule` 查询参数；切换模型时
+   清理旧模型的行选择与草稿，刷新或前进/后退可恢复当前上下文。
+
+候选级熔断参数在详情中以 effective 值和运行态展示；本轮没有新增熔断参数编辑控件。路由检查
+页面仍保持只读巡检语义，两者共享 `route-inspection.ts` 与 `model-route-schedule.ts` 资源类型。
 
 ### 6A.2 涉及文件
 
-`web/src/app/resources/model-route-schedule.ts`(new)、
-`web/src/features/monitor/`(调度面板组件,new;`InspectorTab.vue` 仅加入口与共享
-工具)、分组模型页 `model-draft.ts` 贯通 `entry_id/circuit_breaker` 原样回传(§5.4)、
-i18n 三语全量;验证 `pnpm build` + `pnpm lint` + 浏览器走查(含 §8.8 回归)。
+`web/src/frontends/classic/app/resources/model-route-schedule.ts`、
+`web/src/frontends/classic/features/monitor/ScheduleView.vue`、`SchedulePanel.vue`、
+`SchedulePanelDetail.vue`、`monitor-route.ts`、`web/src/frontends/classic/app/router.ts`、
+`route-locations.ts`、`internal/webui/page_routes.json` 与三语 i18n；分组模型保存路径贯通
+`entry_id/circuit_breaker`，并在删除模型时清理失效的 reasoning 参数覆盖。验证覆盖
+`web/e2e/schedule-routing.spec.ts` 与 `web/e2e/schedule-editing.spec.ts`，另运行 `pnpm build`
+与 `pnpm lint`。
 
 ---
 
