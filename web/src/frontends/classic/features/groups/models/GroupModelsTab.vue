@@ -25,7 +25,12 @@ import { useUnsavedChanges } from '@/app/unsaved-changes'
 import { useToast } from '@/app/toast'
 import { useTransientFlag } from '@/app/use-transient-flag'
 import { constrainCollectionSearch } from '@/app/route-query'
-import { groupDetailLocation, logsLocation, modelsLocation, monitorLocation } from '@/app/route-locations'
+import {
+  groupDetailLocation,
+  logsLocation,
+  modelsLocation,
+  scheduleLocation,
+} from '@/app/route-locations'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
@@ -780,7 +785,7 @@ onBeforeUnmount(() => {
             </span>
             <RouterLink
               class="group-models__schedule-link"
-              :to="monitorLocation({ tab: 'schedule', schedule_model: item.name || item.id })"
+              :to="scheduleLocation({ schedule_model: item.name || item.id })"
             >
               {{ t('group.modelEditor.schedule') }}
             </RouterLink>

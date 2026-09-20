@@ -196,6 +196,7 @@ export default {
     groups: 'Groups',
     accessKeys: 'Access keys',
     monitor: 'Monitor',
+    schedule: 'Dispatch center',
     logs: 'Request logs',
     models: 'Models',
     settings: 'Settings',

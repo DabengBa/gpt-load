@@ -17,29 +17,24 @@ import { isTimeRange } from '@/lib/time'
 import { useAuthSession } from '@/features/auth/auth-session'
 
 import HealthTab from './HealthTab.vue'
-import type { ScheduleDrafts, ScheduleMode } from './monitor-route'
 import {
   normalizeAccessKeyMonitorQuery,
   normalizeMonitorQuery,
   normalizeMonitorTab,
-  parseScheduleMonitorState,
   parseUsageMonitorState,
   sameMonitorQuery,
-  scheduleMonitorQuery,
   scopeAccessKeyUsageFilters,
 } from './monitor-route'
 import { usageMonitorQuery } from './monitor-route'
-import type { SchedulePanelLabels } from './SchedulePanel.vue'
 import { parseAppliedUsageFilters } from './usage-filters'
 
 const InspectorTab = lazySurface(() => import('./InspectorTab.vue'))
 const UsageTab = lazySurface(() => import('./UsageTab.vue'))
-const SchedulePanel = lazySurface(() => import('./SchedulePanel.vue'))
 
 const route = useRoute()
 const session = useAuthSession()
 const router = useRouter()
-const { locale, t } = useI18n()
+const { t } = useI18n()
 const healthTab = ref<InstanceType<typeof HealthTab> | null>(null)
 const usageTab = ref<{ openFilters: () => void; refresh: () => Promise<void> } | null>(null)
 const healthRefreshPending = ref(false)
@@ -48,13 +43,10 @@ const isAccessKey = computed(() => session.state.principalType === 'access_key')
 const isAdmin = computed(() => session.state.principalType === 'admin')
 const canonicalQuery = computed(() => {
   if (isAdmin.value) return normalizeMonitorQuery(route.query)
-  if (isAccessKey.value || normalizeMonitorTab(route.query.tab) === 'schedule') {
-    return normalizeAccessKeyMonitorQuery(route.query)
-  }
+  if (isAccessKey.value) return normalizeAccessKeyMonitorQuery(route.query)
   return normalizeMonitorQuery(route.query)
 })
 const activeTab = computed(() => normalizeMonitorTab(canonicalQuery.value.tab))
-const scheduleState = computed(() => parseScheduleMonitorState(route.query))
 const isCanonicalQuery = computed(() => sameMonitorQuery(route.query, canonicalQuery.value))
 const items = computed<AppTabItem[]>(() => {
   const shared = [{ value: 'usage', label: t('monitor.tabs.usage') }]
@@ -63,7 +55,6 @@ const items = computed<AppTabItem[]>(() => {
         { value: 'health', label: t('monitor.tabs.health') },
         ...shared,
         { value: 'inspector', label: t('monitor.tabs.inspector') },
-        { value: 'schedule', label: t('monitor.tabs.schedule') },
       ]
     : shared
 })
@@ -99,11 +90,6 @@ watch(
 function selectTab(value: string): void {
   const tab = normalizeMonitorTab(value)
   if (tab === activeTab.value) return
-  if (tab === 'schedule') {
-    if (!isAdmin.value) return
-    void router.push(monitorLocation(scheduleMonitorQuery(scheduleState.value)))
-    return
-  }
   if (isAccessKey.value && tab !== 'usage') return
   void router.push(monitorLocation({ tab }))
 }
@@ -144,114 +130,6 @@ function selectUsageRange(value: string): void {
     ),
   )
 }
-function updateScheduleContext(next: Partial<ReturnType<typeof parseScheduleMonitorState>>): void {
-  const contextChanged =
-    next.externalModel !== undefined && next.externalModel !== scheduleState.value.externalModel
-  const nextState = contextChanged
-    ? { ...scheduleState.value, ...next, selectedRow: undefined, drafts: {} }
-    : { ...scheduleState.value, ...next }
-  void router.replace(monitorLocation(scheduleMonitorQuery(nextState)))
-}
-
-function commitScheduleContext(context: { externalModel?: string; mode: ScheduleMode }): void {
-  const externalModel = context.externalModel?.trim() || undefined
-  const contextChanged = externalModel !== scheduleState.value.externalModel
-  const next = contextChanged
-    ? { ...scheduleState.value, ...context, externalModel, selectedRow: undefined, drafts: {} }
-    : { ...scheduleState.value, ...context, externalModel }
-  if (sameMonitorQuery(route.query, scheduleMonitorQuery(next))) return
-  void router.push(monitorLocation(scheduleMonitorQuery(next)))
-}
-
-function updateScheduleDrafts(drafts: ScheduleDrafts): void {
-  updateScheduleContext({ drafts })
-}
-
-function updateScheduleRow(row: string | undefined): void {
-  updateScheduleContext({ selectedRow: row })
-}
-
-function refreshScheduleRoute(): void {
-  void router.replace(monitorLocation(scheduleMonitorQuery(scheduleState.value)))
-}
-
-const scheduleLabels = computed<SchedulePanelLabels>(() => ({
-  model: t('monitor.schedule.panel.model'),
-  mode: t('monitor.schedule.panel.mode'),
-  selectModel: t('monitor.schedule.panel.selectModel'),
-  loadingOptions: t('monitor.schedule.panel.loadingOptions'),
-  optionsFailed: t('monitor.schedule.panel.optionsFailed'),
-  contextRequired: t('monitor.schedule.panel.contextRequired'),
-  kicker: t('monitor.schedule.panel.kicker'),
-  contextReady: t('monitor.schedule.panel.contextReady'),
-  context: t('monitor.schedule.panel.context'),
-  retry: t('monitor.schedule.panel.retry'),
-  indexFailed: t('monitor.schedule.panel.indexFailed'),
-  detailFailed: t('monitor.schedule.panel.detailFailed'),
-  modeLabels: {
-    all: t('monitor.schedule.modes.all'),
-    primary: t('monitor.schedule.modes.primary'),
-    fallback: t('monitor.schedule.modes.fallback'),
-  },
-  detail: {
-    title: t('monitor.schedule.detail.title'),
-    loading: t('monitor.schedule.detail.loading'),
-    refresh: t('monitor.schedule.detail.refresh'),
-    stale: t('monitor.schedule.detail.stale'),
-    routeUnavailable: t('monitor.schedule.detail.routeUnavailable'),
-    group: t('monitor.schedule.detail.group'),
-    upstreamModel: t('monitor.schedule.detail.upstreamModel'),
-    weight: t('monitor.schedule.detail.weight'),
-    priority: t('monitor.schedule.detail.priority'),
-    share: t('monitor.schedule.detail.share'),
-    status: t('monitor.schedule.detail.status'),
-    available: t('monitor.schedule.detail.available'),
-    cooldown: t('monitor.schedule.detail.cooldown'),
-    blacklisted: t('monitor.schedule.detail.blacklisted'),
-    failures: t('monitor.schedule.detail.failures'),
-    recover: t('monitor.schedule.detail.recover'),
-    breakerRecovery: t('monitor.schedule.detail.breakerRecovery'),
-    clear: t('monitor.schedule.detail.clear'),
-    invalidValue: t('monitor.schedule.detail.invalidValue'),
-    derivedReadOnly: t('monitor.schedule.detail.derivedReadOnly'),
-    save: t('monitor.schedule.detail.save'),
-    discard: t('monitor.schedule.detail.discard'),
-    unsaved: t('monitor.schedule.detail.unsaved'),
-    saved: t('monitor.schedule.detail.saved'),
-    saveFailed: t('monitor.schedule.detail.saveFailed'),
-    conflict: t('monitor.schedule.detail.conflict'),
-    refreshToResolve: t('monitor.schedule.detail.refreshToResolve'),
-    recoverFailed: t('monitor.schedule.detail.recoverFailed'),
-    noEntries: t('monitor.schedule.detail.noEntries'),
-    unknownReason: t('monitor.schedule.detail.unknownReason'),
-    draftPreview: t('monitor.schedule.detail.draftPreview'),
-    reasonLabels: Object.fromEntries(
-      [
-        'access_key_disabled',
-        'access_key_expired',
-        'protocol_filtered',
-        'model_filtered',
-        'model_required_by_filter',
-        'operation_unsupported',
-        'native_route_required',
-        'no_route_target',
-        'group_disabled',
-        'group_filtered',
-        'no_available_group',
-        'no_credentials',
-        'credential_blacklisted',
-        'credential_cooldown',
-        'credential_auth_unavailable',
-        'credential_not_allowed',
-        'no_available_credential',
-        'entry_blacklisted',
-        'entry_cooldown',
-        'entry_weight_zero',
-        'tier_demoted',
-      ].map((code) => [code, t(`monitor.schedule.reasons.${code}`)]),
-    ),
-  },
-}))
 </script>
 
 <template>
@@ -320,22 +198,6 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
           </div>
           <div v-else-if="activeTab === 'usage'" class="monitor-panel">
             <UsageTab ref="usageTab" />
-          </div>
-          <div v-else-if="activeTab === 'schedule' && isAdmin" class="monitor-panel">
-            <SchedulePanel
-              :external-model="scheduleState.externalModel"
-              :mode="scheduleState.mode"
-              :selected-row="scheduleState.selectedRow"
-              :drafts="scheduleState.drafts"
-              :labels="scheduleLabels"
-              :locale="locale"
-              @change-context="commitScheduleContext"
-              @draft-change="updateScheduleDrafts"
-              @row-change="updateScheduleRow"
-              @saved="refreshScheduleRoute"
-              @recovered="refreshScheduleRoute"
-              @refresh="refreshScheduleRoute"
-            />
           </div>
           <div v-else-if="activeTab === 'inspector'" class="monitor-panel">
             <InspectorTab />

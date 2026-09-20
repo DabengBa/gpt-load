@@ -204,6 +204,7 @@ function apply(): void {
 <template>
   <AppDialog
     appearance="ledger"
+    content-class="model-probe-dialog__surface"
     :open="open"
     :title="t('monitor.modelProbe.title')"
     :description="t('monitor.modelProbe.description')"
@@ -463,11 +464,9 @@ function apply(): void {
 
 .model-probe-dialog__list {
   display: grid;
-  max-height: 60vh;
   gap: var(--space-3);
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   list-style: none;
 }
 
@@ -526,8 +525,6 @@ function apply(): void {
 .model-probe-dialog__toggle {
   display: grid;
   gap: var(--space-3);
-  max-height: 40vh;
-  overflow-y: auto;
   border-top: 1px solid var(--color-border-subtle);
   padding-top: var(--space-3);
 }
@@ -616,5 +613,35 @@ function apply(): void {
   .model-probe-dialog__details dd + dt {
     margin-top: var(--space-2);
   }
+}
+</style>
+
+<style>
+/*
+  目标弹窗的容器尺寸与滚动层级只由本文件决定：AppDialog 只新增一个 content-class 出口，
+  其他 ledger 弹窗保持 420px。
+  内容区实测：720 - 左右内边距 20px×2 - 边框 2px = 678px，是基线 380px 的 1.78 倍。
+  滚动层级：结果列表与分组开关区不再各自内嵌滚动（原先 60vh / 40vh），改为弹窗正文
+  承担唯一滚动，footer 作为独立一行钉在底部，与正文不重叠，Stop / Close 在结果很长时
+  仍可直接操作。
+*/
+.model-probe-dialog__surface.app-dialog__content {
+  display: flex;
+  width: min(calc(100vw - 32px), 720px);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.model-probe-dialog__surface.app-dialog__content .app-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.model-probe-dialog__surface.app-dialog__content .app-dialog__footer {
+  flex: none;
+  /* footer 现在是固定行，正文滚到它上面；补回 ledger 取消的分隔线，避免内容看起来被截断。 */
+  border-top: 1px solid var(--color-border-subtle);
 }
 </style>
