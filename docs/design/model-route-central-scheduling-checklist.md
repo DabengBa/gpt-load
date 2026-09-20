@@ -81,21 +81,27 @@
 
 ## S5 · 前端调度面板(设计 §6A)
 
-- 写集合:`web/src/app/resources/model-route-schedule.ts`(new)、
-  `web/src/app/resources/route-inspection.ts`(共享类型扩展)、
-  `web/src/features/monitor/SchedulePanel*.vue`(new)、`web/src/features/monitor/MonitorView*.vue`
-  (入口)、`web/src/features/models/model-draft.ts`、
-  `web/src/features/groups/models/GroupModelsTab.vue`(round-trip 原样回传)、
-  `web/src/features/groups/models/model-diff.ts`、
-  `web/src/i18n/locales/{zh-CN,en-US,ja-JP}/{monitor,group}.ts`
-- 完成标准:
-  1. 索引视图(对外模型名/候选数/异常计数)+ 详情视图(分组分节、行编辑);
-  2. 权重/优先级/熔断参数编辑;熔断占位符显示 effective 默认,显式清空 = 清除覆盖;
-  3. 事务式保存条(整体成功/失败 + 409 刷新提示);运行态徽标 + 恢复按钮;
-  4. 协议/操作选择(默认操作可切换);
-  5. 分组模型页 round-trip:entry_id/circuit_breaker 原样携带回传,不丢字段;
-  6. i18n 三语无缺失;浏览器走查(参照上一轮实测清单)。
-- Proof:`pnpm build && pnpm lint`;浏览器截图走查记录写入结果文件
+本轮已交付独立 `/schedule` 页面及其批量编辑体验；完整的候选级熔断参数编辑仍属于设计目标，
+不是本轮交付范围。
+
+- 写集合:`web/src/frontends/classic/app/resources/model-route-schedule.ts`、
+  `web/src/frontends/classic/features/monitor/ScheduleView.vue`、`SchedulePanel.vue`、
+  `SchedulePanelDetail.vue`、`monitor-route.ts`、`web/src/frontends/classic/app/router.ts`、
+  `route-locations.ts`、`internal/webui/page_routes.json`、三语 i18n，以及
+  `web/e2e/schedule-routing.spec.ts`、`web/e2e/schedule-editing.spec.ts`
+- 已交付标准:
+  1. 索引视图(对外模型名/候选数/异常计数)+ 详情视图(跨分组候选行);
+  2. 权重/优先级编辑、空值清除、占比预览与多分组统一保存;
+  3. `snapshot_revision` 乐观并发、保存失败/409 冲突保留草稿;
+  4. 运行态展示、条目恢复、分组启停、单条与当前可见候选批量测活;
+  5. `/schedule` 查询参数保存模型、显示范围、选中行和草稿，上下文可深链恢复;
+  6. 管理员入口与 AccessKey 隔离、三语文案及路由/编辑 E2E 覆盖。
+- 未随本轮交付:
+  1. 在页面编辑 `circuit_breaker` 参数；当前只展示 effective 值和运行态并提供恢复操作;
+  2. 页面内协议/操作切换；当前详情沿用索引返回的协议/操作上下文;
+  3. 浏览器截图走查记录。
+- Proof:`pnpm build && pnpm lint`；路由与编辑回归为
+  `pnpm exec playwright test e2e/schedule-routing.spec.ts e2e/schedule-editing.spec.ts`。
 
 ## S6 · 全量回归与验收部署
 

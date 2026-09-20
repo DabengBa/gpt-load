@@ -350,9 +350,8 @@ async function onApplyProbeEnabled(changes: Map<number, boolean>): Promise<void>
   min-width: 0;
   gap: var(--space-4);
 }
-/* 卡片向外铺满舞台：外扩量必须等于舞台自身的内边距（stage-padding-*），
-   用 sheet 的内边距会多撑出 8px(桌面) / 6px(窄屏)，让整页出现横向滚动。 */
-:global(.monitor-page.ledger-sheet--padded) {
+/* 由独立页面壳控制满宽卡片，不再依赖 MonitorView 的 tab 页面 class。 */
+:global(.schedule-page.ledger-sheet--padded) {
   width: min(calc(100% + var(--stage-padding-inline) * 2), var(--content-max));
   margin-inline: calc(0px - var(--stage-padding-inline));
 }
@@ -374,7 +373,7 @@ async function onApplyProbeEnabled(changes: Map<number, boolean>): Promise<void>
   width: 100%;
 }
 @media (max-width: 860px) {
-  :global(.monitor-page.ledger-sheet--padded) {
+  :global(.schedule-page.ledger-sheet--padded) {
     width: calc(100% + var(--stage-padding-inline-compact) * 2);
     margin-inline: calc(0px - var(--stage-padding-inline-compact));
   }

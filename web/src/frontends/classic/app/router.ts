@@ -86,6 +86,16 @@ const routes: RouteRecordRaw[] = [
       messageNamespaces: ['monitor'],
     },
   }),
+  pageRoute(pageRouteNames.schedule, {
+    component: lazyView(() => import('@/features/monitor/ScheduleView.vue')),
+    meta: {
+      titleKey: 'shell.schedule',
+      requiresAuth: true,
+      adminOnly: true,
+      primaryNav: 'schedule',
+      messageNamespaces: ['monitor'],
+    },
+  }),
   pageRoute(pageRouteNames.logs, {
     component: lazyView(() => import('@/features/logs/LogsView.vue')),
     meta: {

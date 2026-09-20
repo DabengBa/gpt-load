@@ -22,8 +22,16 @@ const props = withDefaults(
     appearance?: 'default' | 'ledger'
     tone?: 'default' | 'danger'
     descriptionTone?: 'default' | 'warning'
+    // 调用方自带 class 的受控出口：只让目标弹窗改变容器尺寸，避免改动所有 ledger 弹窗。
+    contentClass?: string
   }>(),
-  { dismissible: true, appearance: 'default', tone: 'default', descriptionTone: 'default' },
+  {
+    dismissible: true,
+    appearance: 'default',
+    tone: 'default',
+    descriptionTone: 'default',
+    contentClass: '',
+  },
 )
 const emit = defineEmits<{ 'update:open': [open: boolean] }>()
 
@@ -44,7 +52,11 @@ function guardDismiss(event: Event): void {
       <DialogOverlay class="app-dialog__overlay" />
       <DialogContent
         class="app-dialog__content"
-        :class="[`app-dialog__content--${appearance}`, `app-dialog__content--${tone}`]"
+        :class="[
+          `app-dialog__content--${appearance}`,
+          `app-dialog__content--${tone}`,
+          contentClass,
+        ]"
         @close-auto-focus="preventCloseAutoFocus && $event.preventDefault()"
         @escape-key-down="guardDismiss"
         @interact-outside="guardDismiss"

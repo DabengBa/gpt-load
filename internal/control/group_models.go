@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
+	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/state"
@@ -213,12 +215,24 @@ func (s *Service) UpdateGroupModels(
 		}
 
 		group.Models = models.JSON(encoded)
+		cleanedOverrides, overridesChanged, cleanupErr := pruneRemovedModelReasoningOverrides(
+			group.Overrides,
+			normalized,
+		)
+		if cleanupErr != nil {
+			return fmt.Errorf("prune removed model reasoning overrides: %w", cleanupErr)
+		}
+		group.Overrides = cleanedOverrides
 		if err := validateGroupRowCandidate(ctx, tx, group, s.channelRegistry); err != nil {
 			return app_errors.ErrValidation
 		}
+		updates := map[string]any{"models": group.Models}
+		if overridesChanged {
+			updates["overrides"] = group.Overrides
+		}
 		if err := tx.Model(&models.Group{}).
 			Where("id = ?", groupID).
-			Update("models", group.Models).Error; err != nil {
+			Updates(updates).Error; err != nil {
 			return app_errors.ParseDBError(err)
 		}
 		return nil
@@ -238,6 +252,52 @@ func (s *Service) UpdateGroupModels(
 		)
 	}
 	return result, nil
+}
+
+func pruneRemovedModelReasoningOverrides(
+	raw models.JSON,
+	requested []GroupModel,
+) (models.JSON, bool, error) {
+	if len(raw) == 0 {
+		return raw, false, nil
+	}
+
+	settings := make(config.Settings)
+	if err := decodeGroupDiscoveryJSON(raw, &settings); err != nil {
+		return raw, false, err
+	}
+	rawOverrides, exists := settings[state.SettingReasoningEffortOverrides]
+	if !exists {
+		return raw, false, nil
+	}
+	overrides, ok := rawOverrides.(map[string]any)
+	if !ok {
+		return raw, false, fmt.Errorf("%s must be an object", state.SettingReasoningEffortOverrides)
+	}
+
+	available := make(map[string]struct{}, len(requested))
+	for _, model := range requested {
+		available[strings.TrimSpace(model.ID)] = struct{}{}
+	}
+	retained := make(map[string]any, len(overrides))
+	for model, effort := range overrides {
+		if _, exists := available[model]; exists {
+			retained[model] = effort
+		}
+	}
+	if len(retained) == len(overrides) {
+		return raw, false, nil
+	}
+	if len(retained) == 0 {
+		delete(settings, state.SettingReasoningEffortOverrides)
+	} else {
+		settings[state.SettingReasoningEffortOverrides] = retained
+	}
+	encoded, err := json.Marshal(settings)
+	if err != nil {
+		return raw, false, err
+	}
+	return models.JSON(encoded), true, nil
 }
 
 func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel) ([]GroupModel, error) {

@@ -186,6 +186,7 @@ export default {
     groups: '分组',
     accessKeys: '访问密钥',
     monitor: '监控',
+    schedule: '调度中心',
     logs: '请求日志',
     models: '模型',
     settings: '设置',
