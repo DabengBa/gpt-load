@@ -17,6 +17,7 @@
     "verify:health-projection": "node scripts/verify-health-projection.mjs",
     "verify:request-log-affinity": "node scripts/verify-request-log-affinity.mjs",
     "test:connection-json": "node --experimental-strip-types --test scripts/connection-json.test.ts",
+    "test:channel-contract": "node --experimental-strip-types --test scripts/channel-contract.test.ts",
     "e2e:request-log-affinity": "PLAYWRIGHT_PORT=$(node -e \"const net=require('node:net');const server=net.createServer();server.listen(0,'127.0.0.1',()=>{console.log(server.address().port);server.close()})\") playwright test --config playwright.config.ts",
     "type-check": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json"
   },

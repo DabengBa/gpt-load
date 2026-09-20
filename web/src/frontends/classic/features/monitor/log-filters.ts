@@ -1,6 +1,7 @@
 import type { LocationQueryRaw } from 'vue-router'
 
 import { enabledDataProtocols } from '@/api/control/protocols'
+import { channelOperations } from '@/app/resources/channel-contract'
 import type {
   RequestLogCostState,
   RequestLogFilters,
@@ -82,24 +83,7 @@ export const requestLogFailureCategories = [
 ] as const
 export const requestLogRetryStates = ['retried', 'not_retried'] as const
 export const requestLogModelConsistencies = ['match', 'mismatch', 'unknown'] as const
-export const requestLogOperations = [
-  'chat_completion',
-  'responses_create',
-  'responses_retrieve',
-  'responses_delete',
-  'responses_cancel',
-  'responses_input_items',
-  'responses_compact',
-  'responses_input_tokens',
-  'count_tokens',
-  'responses_passthrough',
-  'images_generate',
-  'images_edit',
-  'embeddings_create',
-  'rerank',
-  'list_models',
-  'probe',
-] as const
+export const requestLogOperations = channelOperations
 
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const channelIDPattern = /^[a-z][a-z0-9_]{0,99}$/u

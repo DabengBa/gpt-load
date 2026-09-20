@@ -15,6 +15,9 @@ import {
   projectRecord,
   projectString,
 } from './projector'
+import { channelOperations, sameStringMembers, type ChannelOperation } from './channel-contract'
+
+export type { ChannelOperation } from './channel-contract'
 
 export type ChannelFieldInputKind = 'text' | 'url' | 'secret'
 export type ChannelConnectionType = 'api_key' | 'subscription'
@@ -43,23 +46,6 @@ export interface ChannelCapabilitiesDto {
 }
 
 export type ChannelRouteMode = 'native' | 'converted'
-export type ChannelOperation =
-  | 'chat_completion'
-  | 'responses_create'
-  | 'responses_retrieve'
-  | 'responses_delete'
-  | 'responses_cancel'
-  | 'responses_input_items'
-  | 'responses_compact'
-  | 'responses_input_tokens'
-  | 'count_tokens'
-  | 'responses_passthrough'
-  | 'images_generate'
-  | 'images_edit'
-  | 'embeddings_create'
-  | 'rerank'
-  | 'list_models'
-  | 'probe'
 
 export interface ChannelRouteDto {
   client_protocol: AccessProtocol
@@ -147,24 +133,6 @@ const routeFields = [
   'possible_modes',
 ] as const
 const routeModes = ['native', 'converted'] as const
-const operations = [
-  'chat_completion',
-  'responses_create',
-  'responses_retrieve',
-  'responses_delete',
-  'responses_cancel',
-  'responses_input_items',
-  'responses_compact',
-  'responses_input_tokens',
-  'count_tokens',
-  'responses_passthrough',
-  'images_generate',
-  'images_edit',
-  'embeddings_create',
-  'rerank',
-  'list_models',
-  'probe',
-] as const
 
 function invalidResponse(): never {
   throw new InvalidResponseError()
@@ -264,7 +232,7 @@ function projectRoute(value: unknown): ChannelRouteDto {
   }
   return {
     client_protocol: projectEnum(record.client_protocol, enabledDataProtocols),
-    operation: projectEnum(record.operation, operations),
+    operation: projectEnum(record.operation, channelOperations),
     route_mode: routeMode,
     model_dependent: modelDependent,
     possible_modes: possibleModes,
@@ -296,7 +264,7 @@ function projectChannel(value: unknown): ChannelDto {
     credentialFields.some(({ sensitive }) => !sensitive) ||
     new Set(notices.map(({ id }) => id)).size !== notices.length ||
     new Set(clientProtocols).size !== clientProtocols.length ||
-    JSON.stringify(clientProtocols) !== JSON.stringify(derivedProtocols)
+    !sameStringMembers(clientProtocols, derivedProtocols)
   ) {
     invalidResponse()
   }
