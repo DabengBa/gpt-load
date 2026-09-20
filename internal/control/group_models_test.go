@@ -13,6 +13,7 @@ import (
 	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/protocol"
@@ -563,6 +564,73 @@ func TestUpdateGroupModelsAllowsEmptyList(t *testing.T) {
 		len(fixture.manager.Current().ExecutionRouteCatalog[protocol.OpenAICompletions][execution.OperationChatCompletion]) != 0 {
 		t.Fatalf("model indexes = candidates:%#v routes:%#v",
 			fixture.manager.Current().ExecutionCandidates, fixture.manager.Current().ExecutionRouteCatalog)
+	}
+}
+
+func TestUpdateGroupModelsPrunesRemovedModelReasoningOverride(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		ChannelID: channel.OpenAI,
+		Params:    json.RawMessage(`{}`),
+		Models: optionalGroupModels{Set: true, Values: []GroupModel{
+			{ID: "gpt-5.6-luna"},
+			{ID: "gpt-6-astra"},
+		}},
+		Credentials: "sk-model-reasoning-override", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.service.UpdateGroupSettings(t.Context(), created.GroupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{
+			Set: true,
+			Value: config.Settings{
+				state.SettingReasoningEffortOverrides: map[string]any{
+					"gpt-5.6-luna": "xhigh",
+					"gpt-6-astra":  "high",
+				},
+				state.SettingResponsesReasoningStatusFilterEnabled: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateGroupSettings() error = %v", err)
+	}
+
+	got, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
+		Models: optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-6-astra"}}},
+	})
+	if err != nil {
+		t.Fatalf("UpdateGroupModels() error = %v", err)
+	}
+	if len(got.Items) != 1 || got.Items[0].ID != "gpt-6-astra" {
+		t.Fatalf("updated models = %#v, want only gpt-6-astra", got.Items)
+	}
+
+	settings, err := fixture.service.GetGroupSettings(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings() error = %v", err)
+	}
+	wantReasoning := map[string]any{"gpt-6-astra": "high"}
+	if gotReasoning := settings.Overrides[state.SettingReasoningEffortOverrides]; !reflect.DeepEqual(gotReasoning, wantReasoning) {
+		t.Fatalf("reasoning effort overrides = %#v, want %#v", gotReasoning, wantReasoning)
+	}
+	if gotFilter := settings.Overrides[state.SettingResponsesReasoningStatusFilterEnabled]; gotFilter != true {
+		t.Fatalf("unrelated group override = %#v, want true", gotFilter)
+	}
+
+	if _, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
+		Models: optionalGroupModels{Set: true, Values: nil},
+	}); err != nil {
+		t.Fatalf("UpdateGroupModels() with empty list error = %v", err)
+	}
+	settings, err = fixture.service.GetGroupSettings(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupSettings() after empty list error = %v", err)
+	}
+	if _, exists := settings.Overrides[state.SettingReasoningEffortOverrides]; exists {
+		t.Fatalf("empty reasoning effort overrides remained: %#v", settings.Overrides)
 	}
 }
 
