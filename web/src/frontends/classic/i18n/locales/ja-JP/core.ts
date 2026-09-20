@@ -195,6 +195,7 @@ export default {
     groups: 'グループ',
     accessKeys: 'アクセスキー',
     monitor: 'モニター',
+    schedule: 'スケジュールセンター',
     logs: 'リクエストログ',
     models: 'モデル',
     settings: '設定',

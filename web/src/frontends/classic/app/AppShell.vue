@@ -14,6 +14,7 @@ import {
   monitorLocation,
   modelsLocation,
   pageRouteNames,
+  scheduleLocation,
   settingsLocation,
 } from '@/app/route-locations'
 import { useUnsavedChangesController } from '@/app/unsaved-changes'
@@ -53,6 +54,7 @@ const navigation = computed(() => {
       label: t('shell.accessKeys'),
     },
     shared[2]!,
+    { key: 'schedule', to: scheduleLocation(), label: t('shell.schedule') },
     shared[3]!,
     { key: 'settings', to: settingsLocation(), label: t('shell.settings') },
   ]

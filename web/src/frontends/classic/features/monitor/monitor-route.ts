@@ -20,7 +20,7 @@ import {
 } from './usage-filters'
 import { normalizeMonitorText } from './filter-validation'
 
-export type MonitorTab = 'health' | 'inspector' | 'usage' | 'schedule'
+export type MonitorTab = 'health' | 'inspector' | 'usage'
 export interface HealthMonitorState {
   groupsExpanded: boolean
 }
@@ -53,16 +53,13 @@ export interface InspectorMonitorState {
 }
 
 export function normalizeMonitorTab(raw: unknown): MonitorTab {
-  return raw === 'inspector' || raw === 'usage' || raw === 'health' || raw === 'schedule'
-    ? raw
-    : 'health'
+  return raw === 'inspector' || raw === 'usage' || raw === 'health' ? raw : 'health'
 }
 
 export function normalizeMonitorQuery(query: Record<string, unknown>): LocationQueryRaw {
   const tab = normalizeMonitorTab(query.tab)
   if (tab === 'health') return healthMonitorQuery(parseHealthMonitorState(query))
   if (tab === 'inspector') return inspectorMonitorQuery(parseInspectorMonitorState(query))
-  if (tab === 'schedule') return scheduleMonitorQuery(parseScheduleMonitorState(query))
   if (tab === 'usage') {
     return usageMonitorQuery(parseAppliedUsageFilters(query), parseUsageMonitorState(query))
   }
@@ -103,8 +100,9 @@ export function parseScheduleMonitorState(query: Record<string, unknown>): Sched
   }
 }
 
+// /schedule 页面用路径表达页面身份，query 只保留调度上下文与草稿。
 export function scheduleMonitorQuery(state: ScheduleMonitorState): LocationQueryRaw {
-  const normalized: LocationQueryRaw = { tab: 'schedule' }
+  const normalized: LocationQueryRaw = {}
   if (state.mode !== 'all') normalized.schedule_mode = state.mode
   const model = scalarText(state.externalModel)
   if (model !== undefined) normalized.schedule_model = model

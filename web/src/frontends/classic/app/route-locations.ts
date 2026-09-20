@@ -10,6 +10,7 @@ const sharedPageRouteNames = {
   groupDetail: 'group-detail',
   accessKeys: 'access-keys',
   monitor: 'monitor',
+  schedule: 'schedule',
   logs: 'logs',
   models: 'models',
   settings: 'settings',
@@ -68,6 +69,10 @@ export function accessKeysLocation(query?: LocationQueryRaw): RouteLocationRaw {
 
 export function monitorLocation(query?: LocationQueryRaw): RouteLocationRaw {
   return namedLocation(pageRouteNames.monitor, query)
+}
+
+export function scheduleLocation(query?: LocationQueryRaw): RouteLocationRaw {
+  return namedLocation(pageRouteNames.schedule, query)
 }
 
 export function logsLocation(query?: LocationQueryRaw): RouteLocationRaw {
