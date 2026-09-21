@@ -31,6 +31,27 @@ func TestWebsocketModelCapacityDoesNotApplyQuotaCooldown(t *testing.T) {
 	}
 }
 
+func TestWebsocketUsageLimitUsesUpstreamCredentialCooldownDeadline(t *testing.T) {
+	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	evidence := codexWebsocketEvidence(t.Context(), &codex.WSError{
+		Code: "upstream_error", UpstreamType: "usage_limit_reached",
+		HTTPStatus: http.StatusTooManyRequests, RetryAfter: 2 * time.Hour,
+		DispatchState: string(execution.DispatchMaybeSent),
+	})
+	if evidence.Type != "usage_limit_reached" || evidence.Hint != execution.FailureHintRateLimited ||
+		evidence.ScopeHint != execution.ErrorScopeCredential || evidence.RetryAfter != 2*time.Hour {
+		t.Fatalf("usage-limit evidence=%+v", evidence)
+	}
+	decision := health.JudgeExecution(health.ExecutionAttempt{
+		DispatchState: execution.DispatchMaybeSent, StatusCode: http.StatusTooManyRequests,
+		Evidence: evidence, Now: now,
+	}, health.DecisionContext{Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
+	if decision.Effect != health.EffectCooldownCredential || decision.Scope != execution.ErrorScopeCredential ||
+		decision.RuleID != "rate_limit.retry_after" || !decision.CooldownUntil.Equal(now.Add(2*time.Hour)) {
+		t.Fatalf("usage-limit decision=%+v", decision)
+	}
+}
+
 func TestWebsocketHTTPErrorEvidenceSurvivesCancellation(t *testing.T) {
 	for _, status := range []int{401, 429} {
 		ctx, cancel := context.WithCancel(context.Background())
