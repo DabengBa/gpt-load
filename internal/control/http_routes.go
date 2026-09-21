@@ -574,6 +574,17 @@ func (s *Server) HTTPModule() httproute.Module {
 				)),
 				s.handleApproveChangeProposal,
 			),
+			controlRoute(
+				"control.agent-change-proposals.revoke",
+				http.MethodPost,
+				"/agent-change-proposals/:proposal_id/revoke",
+				s.auditMutation(newMutationDescriptor(
+					"agent_change_proposal_revoke",
+					"agent_change_proposal",
+					changeProposalMutationLocator,
+				)),
+				s.handleRevokeChangeProposal,
+			),
 		},
 	}
 }

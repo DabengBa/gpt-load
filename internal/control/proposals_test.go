@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"gpt-load/internal/agent"
 	app_errors "gpt-load/internal/platform/errors"
@@ -92,6 +93,90 @@ func TestChangeProposalLifecycleBindsOneOperation(t *testing.T) {
 	var reused *app_errors.APIError
 	if !errors.As(err, &reused) || reused.Code != app_errors.ErrIdempotencyKeyReused.Code {
 		t.Fatalf("reused key for another proposal error = %v, want %s", err, app_errors.ErrIdempotencyKeyReused.Code)
+	}
+}
+
+func TestChangeProposalCompactionPreservesAppliedProjectionAndExpiresReplay(t *testing.T) {
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "proposal-compaction-secret")
+	groupModels := loadCreatedGroupModels(t, fixture, groupID)
+	principal := agent.Principal{
+		CredentialID: 27,
+		Scopes:       []agent.Scope{agent.ScopeChangesPropose, agent.ScopeChangesApply},
+	}
+	proposal, err := fixture.service.CreateChangeProposal(t.Context(), principal, agent.CreateChangeProposalInput{
+		Updates: []agent.ChangeProposalUpdateInput{{
+			GroupID:          groupID,
+			EntryID:          groupModels[0].EntryID,
+			Weight:           agent.ProposalInt{Set: true, Value: 2},
+			Priority:         agent.ProposalInt{Set: true, Value: 1},
+			ExpectedWeight:   agent.ProposalInt{Set: true, Value: 1},
+			ExpectedPriority: agent.ProposalInt{Set: true, Value: 1},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateChangeProposal() error = %v", err)
+	}
+	if _, err := fixture.service.ApproveChangeProposal(t.Context(), proposal.ProposalID, ApproveChangeProposalInput{ApprovedBy: "admin"}); err != nil {
+		t.Fatalf("ApproveChangeProposal() error = %v", err)
+	}
+	const firstKey = "99999999-9999-4999-8999-999999999999"
+	if _, err := fixture.service.ApplyChangeProposal(t.Context(), principal, proposal.ProposalID, firstKey); err != nil {
+		t.Fatalf("ApplyChangeProposal() error = %v", err)
+	}
+
+	compacted, err := fixture.service.CompactCompletedOperations(
+		t.Context(),
+		time.Now().UTC().Add(8*24*time.Hour),
+	)
+	if err != nil {
+		t.Fatalf("CompactCompletedOperations() error = %v", err)
+	}
+	if compacted != 1 {
+		t.Fatalf("compacted rows = %d, want 1", compacted)
+	}
+
+	view, err := fixture.service.GetChangeProposal(t.Context(), proposal.ProposalID)
+	if err != nil {
+		t.Fatalf("GetChangeProposal() after compaction error = %v", err)
+	}
+	if view.Execution.State != agent.ProposalExecutionApplied || view.Execution.CanReconcile {
+		t.Fatalf("compacted execution = %#v, want applied and non-reconcilable", view.Execution)
+	}
+
+	for _, key := range []string{
+		firstKey,
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+	} {
+		_, err = fixture.service.ApplyChangeProposal(t.Context(), principal, proposal.ProposalID, key)
+		assertAPIErrorCode(t, err, app_errors.ErrIdempotencyResultExpired.Code)
+	}
+}
+
+func TestChangeProposalRevokeAllowsPendingProposal(t *testing.T) {
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "proposal-pending-revoke-secret")
+	groupModels := loadCreatedGroupModels(t, fixture, groupID)
+	proposal, err := fixture.service.CreateChangeProposal(t.Context(), agent.Principal{
+		CredentialID: 28,
+		Scopes:       []agent.Scope{agent.ScopeChangesPropose},
+	}, agent.CreateChangeProposalInput{Updates: []agent.ChangeProposalUpdateInput{{
+		GroupID:          groupID,
+		EntryID:          groupModels[0].EntryID,
+		Weight:           agent.ProposalInt{Set: true, Value: 2},
+		Priority:         agent.ProposalInt{Set: true, Value: 1},
+		ExpectedWeight:   agent.ProposalInt{Set: true, Value: 1},
+		ExpectedPriority: agent.ProposalInt{Set: true, Value: 1},
+	}}})
+	if err != nil {
+		t.Fatalf("CreateChangeProposal() error = %v", err)
+	}
+	revoked, err := fixture.service.RevokeChangeProposal(t.Context(), proposal.ProposalID)
+	if err != nil {
+		t.Fatalf("RevokeChangeProposal() error = %v", err)
+	}
+	if revoked.State != agent.ProposalStateRevoked {
+		t.Fatalf("revoked state = %q, want %q", revoked.State, agent.ProposalStateRevoked)
 	}
 }
 

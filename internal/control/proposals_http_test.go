@@ -57,12 +57,38 @@ func TestChangeProposalApprovalIsAdminOnly(t *testing.T) {
 		t.Fatalf("approval response = %#v, want approved admin", envelope.Data)
 	}
 
+	revokePath := "/api/agent-change-proposals/" + proposal.ProposalID + "/revoke"
+	revokeRequest := httptest.NewRequest(http.MethodPost, revokePath, nil)
+	revokeRequest.Header.Set("Authorization", "Bearer proposal-admin-auth")
+	revokeRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(revokeRecorder, revokeRequest)
+	if revokeRecorder.Code != http.StatusOK {
+		t.Fatalf("admin revoke status = %d: %s", revokeRecorder.Code, revokeRecorder.Body.String())
+	}
+	var revokeEnvelope struct {
+		Data agent.ChangeProposalView `json:"data"`
+	}
+	if err := json.Unmarshal(revokeRecorder.Body.Bytes(), &revokeEnvelope); err != nil {
+		t.Fatalf("decode revoke response: %v", err)
+	}
+	if revokeEnvelope.Data.State != agent.ProposalStateRevoked {
+		t.Fatalf("revoke response = %#v, want revoked", revokeEnvelope.Data)
+	}
+
 	agentRequest := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{"approved_by":"agent"}`))
 	agentRequest.Header.Set("Authorization", "Bearer gla_not-an-admin-token")
 	agentRecorder := httptest.NewRecorder()
 	engine.ServeHTTP(agentRecorder, agentRequest)
 	if agentRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("Agent token approval status = %d, want 401: %s", agentRecorder.Code, agentRecorder.Body.String())
+	}
+
+	agentRevokeRequest := httptest.NewRequest(http.MethodPost, revokePath, nil)
+	agentRevokeRequest.Header.Set("Authorization", "Bearer gla_not-an-admin-token")
+	agentRevokeRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(agentRevokeRecorder, agentRevokeRequest)
+	if agentRevokeRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("Agent token revoke status = %d, want 401: %s", agentRevokeRecorder.Code, agentRevokeRecorder.Body.String())
 	}
 }
 
