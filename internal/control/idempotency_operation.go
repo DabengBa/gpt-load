@@ -91,6 +91,19 @@ func operationRequiredStages(kind operationKind) ([]operationStage, error) {
 			operationStageRegistryApplied,
 			operationStageCompleted,
 		}
+	case operationKindAgentCredentialCreate:
+		// Agent credentials are not part of any runtime snapshot, so only the
+		// durable commit and completion stages apply.
+		stages = []operationStage{
+			operationStageDBCommitted,
+			operationStageCompleted,
+		}
+	case operationKindModelRouteScheduleApply:
+		stages = []operationStage{
+			operationStageDBCommitted,
+			operationStageSnapshotPublished,
+			operationStageCompleted,
+		}
 	default:
 		return nil, fmt.Errorf("unsupported control operation kind %q", kind)
 	}

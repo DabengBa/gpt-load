@@ -661,6 +661,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"credential_attempt_stats",
 		"usage_attempt_aggregation_journals",
 		"usage_attempt_stats",
+		"agent_credentials",
 		"schema_migrations",
 	}
 	for _, table := range wantTables {
@@ -693,6 +694,8 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0017_remove_validation_interval",
 		"0018_usage_journal_bucket_index",
 		"0019_request_log_operation_index",
+		"0020_agent_credentials",
+		"0021_agent_change_proposals",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)
@@ -721,7 +724,7 @@ func TestAutoMigrateRemovesRetiredValidationInterval(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("create legacy validation_interval setting: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{"0017_remove_validation_interval", "0018_usage_journal_bucket_index", "0019_request_log_operation_index"}).Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{"0017_remove_validation_interval", "0018_usage_journal_bucket_index", "0019_request_log_operation_index", "0020_agent_credentials", "0021_agent_change_proposals"}).Error; err != nil {
 		t.Fatalf("simulate pre-0017 migration ledger: %v", err)
 	}
 	if err := storage.AutoMigrate(db); err != nil {

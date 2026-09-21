@@ -28,6 +28,12 @@ const (
 	operationKindGroupCreate      operationKind = "group_create"
 	operationKindGroupCopy        operationKind = "group_copy"
 	operationKindCredentialImport operationKind = "credential_import"
+	// operationKindAgentCredentialCreate covers the Agent credential ledger,
+	// which never participates in the routing snapshot.
+	operationKindAgentCredentialCreate operationKind = "agent_credential_create"
+	// operationKindModelRouteScheduleApply covers an approved Agent proposal
+	// whose route mutation is bound to one durable ControlOperation.
+	operationKindModelRouteScheduleApply operationKind = "model_route_schedule_apply"
 )
 
 type idempotencyDigestInput struct {
@@ -107,7 +113,8 @@ func buildIdempotencyDigest(
 func (kind operationKind) valid() bool {
 	switch kind {
 	case operationKindAccessKeyCreate, operationKindAccessKeyRotate, operationKindGroupCreate,
-		operationKindGroupCopy, operationKindCredentialImport:
+		operationKindGroupCopy, operationKindCredentialImport, operationKindAgentCredentialCreate,
+		operationKindModelRouteScheduleApply:
 		return true
 	default:
 		return false

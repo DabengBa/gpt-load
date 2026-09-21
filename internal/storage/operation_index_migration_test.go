@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"gorm.io/gorm"
+
+	migrationfiles "gpt-load/internal/storage/migrations"
 )
 
 func TestOperationIndexMigrationContract(t *testing.T) {
@@ -12,13 +14,24 @@ func TestOperationIndexMigrationContract(t *testing.T) {
 	testOperationIndexMigration(t, openInternalMigrationTestDatabase)
 }
 
-func testOperationIndexMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
+func migrationIndexOf(t *testing.T, id string) int {
 	t.Helper()
+	for index, entry := range migrations {
+		if entry.ID == id {
+			return index
+		}
+	}
+	t.Fatalf("migration %q is not registered", id)
+	return -1
+}
+
+func testOperationIndexMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
 	for _, scenario := range []string{"fresh", "existing", "interrupted"} {
 		t.Run(scenario, func(t *testing.T) {
 			db := open(t)
+			operationIndex := migrationIndexOf(t, migrationfiles.ID0019)
 			if scenario != "fresh" {
-				if err := applyMigrationRegistry(db, migrations[:len(migrations)-1]); err != nil {
+				if err := applyMigrationRegistry(db, migrations[:operationIndex]); err != nil {
 					t.Fatal(err)
 				}
 				if err := db.Table("request_logs").Create(map[string]any{
@@ -30,8 +43,8 @@ func testOperationIndexMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
 					t.Fatal(err)
 				}
 				if scenario == "interrupted" {
-					registry := append([]migration(nil), migrations...)
-					up := registry[len(registry)-1].Up
+					registry := append([]migration(nil), migrations[:operationIndex+1]...)
+					up := registry[operationIndex].Up
 					registry[len(registry)-1].Up = func(tx *gorm.DB) error {
 						if err := up(tx); err != nil {
 							return err
@@ -67,7 +80,8 @@ func testOperationIndexMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
 	}
 	t.Run("unexpected index definition", func(t *testing.T) {
 		db := open(t)
-		if err := applyMigrationRegistry(db, migrations[:len(migrations)-1]); err != nil {
+		operationIndex := migrationIndexOf(t, migrationfiles.ID0019)
+		if err := applyMigrationRegistry(db, migrations[:operationIndex]); err != nil {
 			t.Fatal(err)
 		}
 		if err := db.Exec(

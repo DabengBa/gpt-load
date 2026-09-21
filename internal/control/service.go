@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpt-load/internal/accessquota"
+	"gpt-load/internal/agent"
 	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
@@ -64,6 +65,7 @@ type Service struct {
 	debugCaptureHealth                DebugCaptureHealthReader
 	accessQuota                       *accessquota.Runtime
 	requestLogSink                    telemetry.RequestLogSink
+	agentCredentials                  *agent.CredentialStore
 	modelDiscoveryTimeout             time.Duration
 	random                            io.Reader
 	operationRandom                   io.Reader

@@ -1,16 +1,20 @@
 package state
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Manager struct {
-	publishMu  sync.RWMutex
-	current    atomic.Pointer[ConfigSnapshot]
-	reconciler SnapshotReconciler
-	updates    chan struct{}
+	publishMu    sync.RWMutex
+	current      atomic.Pointer[ConfigSnapshot]
+	reconciler   SnapshotReconciler
+	updates      chan struct{}
+	runtimeEpoch int64
 }
 
 // SnapshotReconciler synchronizes infrastructure resources derived from a
@@ -20,7 +24,29 @@ type SnapshotReconciler interface {
 }
 
 func NewManager() *Manager {
-	return &Manager{updates: make(chan struct{})}
+	return &Manager{updates: make(chan struct{}), runtimeEpoch: newRuntimeEpoch()}
+}
+
+// RuntimeEpoch returns the random epoch generated once for this process. It
+// binds durable approval decisions to one process lifetime: an approval
+// recorded under one epoch can never be applied by a restarted process.
+func (m *Manager) RuntimeEpoch() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.runtimeEpoch
+}
+
+func newRuntimeEpoch() int64 {
+	var raw [8]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return time.Now().UnixNano()
+	}
+	epoch := int64(binary.BigEndian.Uint64(raw[:]) & (1<<63 - 1))
+	if epoch == 0 {
+		epoch = 1
+	}
+	return epoch
 }
 
 // SetSnapshotReconciler installs the process-owned runtime reconciler during

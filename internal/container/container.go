@@ -12,6 +12,7 @@ import (
 
 	"gpt-load/internal/accessquota"
 	"gpt-load/internal/affinity"
+	"gpt-load/internal/agent"
 	"gpt-load/internal/app"
 	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
@@ -269,6 +270,12 @@ func BuildContainer() (*dig.Container, error) {
 	if err := configureDebugCapture(dependencyContainer); err != nil {
 		return nil, err
 	}
+	if err := provideAgent(dependencyContainer); err != nil {
+		return nil, err
+	}
+	if err := configureAgent(dependencyContainer); err != nil {
+		return nil, err
+	}
 	if err := registerHTTPRoutes(dependencyContainer); err != nil {
 		return nil, fmt.Errorf("register HTTP routes: %w", err)
 	}
@@ -365,11 +372,13 @@ func (reconciler runtimeSnapshotReconciler) ReconcileConfigSnapshot(snapshot *st
 func newHTTPRegistry(
 	gatewayHandler *gateway.Handler,
 	controlServer *control.Server,
+	agentServer *agent.Server,
 	webUIServer *webui.Server,
 ) (*httproute.Registry, error) {
 	return httproute.NewRegistry(
 		app.HTTPModule(),
 		controlServer.HTTPModule(),
+		agentServer.Module(),
 		gatewayHandler.HTTPModule(),
 		webUIServer.HTTPModule(),
 	)

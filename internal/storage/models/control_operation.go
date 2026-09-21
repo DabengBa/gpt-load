@@ -3,13 +3,17 @@ package models
 // ControlOperation durably identifies a create/import mutation and its
 // post-commit side-effect progress. It never stores plaintext credentials.
 type ControlOperation struct {
-	CommitSequence     uint64 `gorm:"primaryKey;autoIncrement"`
-	OperationID        string `gorm:"type:char(36);not null;uniqueIndex"`
-	IdempotencyKey     string `gorm:"type:char(36);not null;uniqueIndex"`
-	DigestVersion      uint   `gorm:"not null;check:chk_control_operation_digest_version,digest_version > 0"`
-	RequestDigest      []byte `gorm:"not null;check:chk_control_operation_digest,length(request_digest) = 32"`
-	OperationKind      string `gorm:"type:varchar(32);not null"`
-	ResourceIdentity   string `gorm:"type:varchar(64);not null"`
+	CommitSequence   uint64 `gorm:"primaryKey;autoIncrement"`
+	OperationID      string `gorm:"type:char(36);not null;uniqueIndex"`
+	IdempotencyKey   string `gorm:"type:char(36);not null;uniqueIndex"`
+	DigestVersion    uint   `gorm:"not null;check:chk_control_operation_digest_version,digest_version > 0"`
+	RequestDigest    []byte `gorm:"not null;check:chk_control_operation_digest,length(request_digest) = 32"`
+	OperationKind    string `gorm:"type:varchar(32);not null"`
+	ResourceIdentity string `gorm:"type:varchar(64);not null"`
+	// ProposalID durably binds at most one operation to one Agent change
+	// proposal. It is NULL for every other operation kind; the unique index
+	// allows any number of NULLs while forbidding a second binding.
+	ProposalID         *string `gorm:"column:proposal_id;type:char(36);uniqueIndex:idx_control_operations_proposal_id"`
 	CanonicalResult    []byte
 	RequiredStages     JSON   `gorm:"type:json"`
 	LastCompletedStage string `gorm:"type:varchar(32)"`

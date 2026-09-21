@@ -60,9 +60,31 @@ func TestLoadPreservesExplicitAllInterfacesHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-
 	if cfg.Server.Host != "0.0.0.0" {
 		t.Fatalf("Host = %q, want explicit 0.0.0.0", cfg.Server.Host)
+	}
+}
+
+func TestLoadParsesMCPTrustedProxyCIDRs(t *testing.T) {
+	clearEnvironment(t)
+	t.Setenv("AUTH_KEY", "test-auth-key")
+	t.Setenv("MCP_TRUSTED_PROXY_CIDRS", "192.0.2.0/24, 2001:db8::/32")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := strings.Join(cfg.MCPTrustedProxyCIDRs, ","); got != "192.0.2.0/24,2001:db8::/32" {
+		t.Fatalf("MCPTrustedProxyCIDRs = %q", got)
+	}
+}
+
+func TestLoadRejectsInvalidMCPTrustedProxyCIDRs(t *testing.T) {
+	clearEnvironment(t)
+	t.Setenv("AUTH_KEY", "test-auth-key")
+	t.Setenv("MCP_TRUSTED_PROXY_CIDRS", "not-a-cidr")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want invalid MCP_TRUSTED_PROXY_CIDRS error")
 	}
 }
 
@@ -464,6 +486,7 @@ func clearEnvironment(t *testing.T) {
 		"HOST", "PORT", "DATA_DIR", "DATABASE_DSN", "ENCRYPTION_KEY", "AUTH_KEY",
 		"LOG_LEVEL", "LOG_FORMAT", "GRACEFUL_SHUTDOWN_TIMEOUT",
 		"READ_TIMEOUT", "IDLE_TIMEOUT", "MODELS_DEV_AUTO_SYNC_ENABLED",
+		"MCP_TRUSTED_PROXY_CIDRS",
 	} {
 		t.Setenv(key, "")
 	}
