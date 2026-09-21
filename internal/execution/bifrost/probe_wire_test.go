@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -46,8 +47,8 @@ func TestProbeWirePromptAndTokenValues(t *testing.T) {
 				if !contains(body, "What is 2 + 2?") {
 					t.Errorf("probe prompt missing from body: %s", body)
 				}
-				if !contains(body, `"max_tokens":16`) {
-					t.Errorf("max_tokens=16 missing from body: %s", body)
+				if !contains(body, fmt.Sprintf(`"max_tokens":%d`, testProbeOutputTokens)) {
+					t.Errorf("probe max_tokens=%d missing from body: %s", testProbeOutputTokens, body)
 				}
 				if contains(body, `"max_completion_tokens"`) {
 					t.Errorf("max_completion_tokens must not appear on compatible Chat: %s", body)
@@ -66,8 +67,8 @@ func TestProbeWirePromptAndTokenValues(t *testing.T) {
 				if !contains(body, "What is 2 + 2?") {
 					t.Errorf("probe prompt missing from body: %s", body)
 				}
-				if !contains(body, `"max_tokens":16`) {
-					t.Errorf("max_tokens=16 missing from multi-protocol gateway Chat: %s", body)
+				if !contains(body, fmt.Sprintf(`"max_tokens":%d`, testProbeOutputTokens)) {
+					t.Errorf("probe max_tokens=%d missing from multi-protocol gateway Chat: %s", testProbeOutputTokens, body)
 				}
 				for _, field := range []string{`"max_completion_tokens"`, `"input"`, `"max_output_tokens"`} {
 					if contains(body, field) {
@@ -539,7 +540,7 @@ func TestProbeSingleCallPerTarget(t *testing.T) {
 
 // TestNativeOpenAIResponsesProbeSendsResponsesWire proves the native OpenAI
 // Responses probe keeps Responses semantics: /responses endpoint, input, and
-// max_output_tokens=16 without any Chat max_tokens field.
+// max_output_tokens=128 without any Chat max_tokens field.
 func TestNativeOpenAIResponsesProbeSendsResponsesWire(t *testing.T) {
 	t.Parallel()
 
@@ -569,8 +570,8 @@ func TestNativeOpenAIResponsesProbeSendsResponsesWire(t *testing.T) {
 		if _, hasMessages := payload["messages"]; hasMessages {
 			t.Errorf("Responses probe body must not carry Chat messages: %s", body)
 		}
-		if string(payload["max_output_tokens"]) != "16" {
-			t.Errorf("max_output_tokens = %s, want 16", payload["max_output_tokens"])
+		if string(payload["max_output_tokens"]) != fmt.Sprint(testProbeOutputTokens) {
+			t.Errorf("max_output_tokens = %s, want %d", payload["max_output_tokens"], testProbeOutputTokens)
 		}
 		if _, hasMaxTokens := payload["max_tokens"]; hasMaxTokens {
 			t.Errorf("Responses probe must not carry max_tokens: %s", body)
@@ -637,8 +638,8 @@ func TestConvertedBedrockProbeUsesConverseWire(t *testing.T) {
 		t.Fatalf("Bedrock probe wire = %s", raw)
 	}
 	inferenceConfig, ok := payload["inferenceConfig"].(map[string]any)
-	if !ok || inferenceConfig["maxTokens"] != float64(16) {
-		t.Fatalf("Bedrock inferenceConfig = %#v; want maxTokens=16", payload["inferenceConfig"])
+	if !ok || inferenceConfig["maxTokens"] != float64(testProbeOutputTokens) {
+		t.Fatalf("Bedrock inferenceConfig = %#v; want maxTokens=%d", payload["inferenceConfig"], testProbeOutputTokens)
 	}
 	if !bytes.Contains(raw, []byte("What is 2 + 2? Please answer briefly.")) {
 		t.Fatalf("Bedrock probe prompt missing from wire: %s", raw)
@@ -693,7 +694,7 @@ func TestConvertedProbeUsesFinalChatResponseShape(t *testing.T) {
 		if err := json.Unmarshal(body, &payload); err != nil {
 			t.Errorf("decode probe body: %v", err)
 		}
-		if payload["max_completion_tokens"] != float64(16) || payload["messages"] == nil {
+		if payload["max_completion_tokens"] != float64(testProbeOutputTokens) || payload["messages"] == nil {
 			t.Errorf("Azure Chat probe wire = %#v", payload)
 		}
 		if _, hasMaxTokens := payload["max_tokens"]; hasMaxTokens {

@@ -58,18 +58,20 @@ func TestMultiProtocolGatewayProbesUseSelectedProtocol(t *testing.T) {
 					}
 					switch selected {
 					case protocol.OpenAIResponses:
-						if payload["store"] != false || payload["max_output_tokens"] != float64(16) || payload["input"] == nil {
+						if payload["store"] != false || payload["max_output_tokens"] != float64(testProbeOutputTokens) || payload["input"] != probeQuestion {
 							t.Errorf("Responses probe = %#v", payload)
 						}
 					case protocol.Anthropic:
-						if payload["max_tokens"] != float64(1) || payload["messages"] == nil {
+						if payload["max_tokens"] != float64(testProbeOutputTokens) {
 							t.Errorf("Anthropic probe = %#v", payload)
 						}
+						assertProbeQuestion(t, payload)
 					case protocol.Gemini:
 						config, _ := payload["generationConfig"].(map[string]any)
-						if config["maxOutputTokens"] != float64(1) || payload["contents"] == nil {
+						if config["maxOutputTokens"] != float64(testProbeOutputTokens) {
 							t.Errorf("Gemini probe = %#v", payload)
 						}
+						assertProbeQuestion(t, payload)
 					}
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = io.WriteString(w, gatewayProbeResponse(selected))

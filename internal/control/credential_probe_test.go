@@ -178,8 +178,8 @@ func TestGroupCredentialProbeUsesFirstConfiguredModelAndContractBudget(t *testin
 		calls[0].ClientProtocol != protocol.OpenAIResponses {
 		t.Fatalf("probe calls = %#v", calls)
 	}
-	if calls[0].ProbeMaxOutputTokens < 3 {
-		t.Fatalf("probe budget = %d, want at least 3", calls[0].ProbeMaxOutputTokens)
+	if calls[0].ProbeMaxOutputTokens != 128 {
+		t.Fatalf("probe budget = %d, want the unified 128 generative budget", calls[0].ProbeMaxOutputTokens)
 	}
 }
 

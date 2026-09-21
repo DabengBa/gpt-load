@@ -19,8 +19,9 @@ const probeQuestion = "What is 2 + 2? Please answer briefly."
 
 // probeDefaultOutputTokens is the fallback output budget for a probe that did
 // not carry a contract value. Generation probes always carry one; the fallback
-// only protects a miswired caller from omitting the field entirely.
-const probeDefaultOutputTokens = 16
+// only protects a miswired caller from omitting the field entirely. It equals
+// the channel contract budget so every generative probe path shares one budget.
+const probeDefaultOutputTokens = 128
 
 // probeOutputTokenBudget returns the code-owned output budget selected by the
 // channel probe contract.
