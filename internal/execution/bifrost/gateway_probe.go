@@ -18,6 +18,9 @@ import (
 )
 
 // 原生网关 Probe 复用透传，避开 SDK typed request 在取消时的 Model 读写竞争。
+// 请求体与其它生成式探测共用同一份代码所有权：probeQuestion 与
+// probeOutputTokenBudget(spec)，因此 Responses/Anthropic/Gemini 三条线不可能再出现
+// 各自硬编码的提示词或输出预算。
 func prepareGatewayProtocolProbe(
 	spec execution.AttemptSpec,
 	resolved channel.ResolvedTarget,
@@ -27,21 +30,22 @@ func prepareGatewayProtocolProbe(
 ) (preparedAttempt, *execution.AttemptResult) {
 	var path string
 	var payload map[string]any
+	budget := probeOutputTokenBudget(spec)
 	switch spec.ClientProtocol {
 	case protocol.OpenAIResponses:
 		path = "/v1/responses"
-		payload = map[string]any{"model": spec.UpstreamModel, "input": "ping", "max_output_tokens": 16, "store": false, "stream": false}
+		payload = map[string]any{"model": spec.UpstreamModel, "input": probeQuestion, "max_output_tokens": budget, "store": false, "stream": false}
 	case protocol.Anthropic:
 		path = "/v1/messages"
 		payload = map[string]any{
-			"model": spec.UpstreamModel, "max_tokens": 1, "stream": false,
-			"messages": []map[string]string{{"role": "user", "content": "ping"}},
+			"model": spec.UpstreamModel, "max_tokens": budget, "stream": false,
+			"messages": []map[string]string{{"role": "user", "content": probeQuestion}},
 		}
 	case protocol.Gemini:
 		path = "/v1beta/models/" + url.PathEscape(spec.UpstreamModel) + ":generateContent"
 		payload = map[string]any{
-			"contents":         []any{map[string]any{"role": "user", "parts": []map[string]string{{"text": "ping"}}}},
-			"generationConfig": map[string]int{"maxOutputTokens": 1},
+			"contents":         []any{map[string]any{"role": "user", "parts": []map[string]string{{"text": probeQuestion}}}},
+			"generationConfig": map[string]int{"maxOutputTokens": budget},
 		}
 	default:
 		failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "unsupported multi-protocol gateway probe protocol")

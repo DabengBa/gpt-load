@@ -201,8 +201,8 @@ func TestAPIKeyChannelsDeclareAuthoritativeProbeContract(t *testing.T) {
 			if contract.Protocol != test.protocol {
 				t.Fatalf("probe protocol = %q, want %q", contract.Protocol, test.protocol)
 			}
-			if contract.MinOutputTokens < 3 {
-				t.Fatalf("probe budget = %d, want at least 3", contract.MinOutputTokens)
+			if contract.MinOutputTokens != 128 {
+				t.Fatalf("probe budget = %d, want the unified 128 generative budget", contract.MinOutputTokens)
 			}
 			if _, ok := target.Mode(contract.Protocol, execution.OperationProbe); !ok {
 				t.Fatalf("probe protocol %q has no declared probe route", contract.Protocol)

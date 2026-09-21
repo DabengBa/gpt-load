@@ -74,11 +74,11 @@ Provider 通过 `ProviderBinding.ProbeContract` 声明单一生成式探测协�
 | Gemini、Vertex Gemini | `gemini` |
 | 没有生成式协议契约的订阅渠道 | 不支持 |
 
-探测提示为 `What is 2 + 2? Please answer briefly.`，预算来自 contract（Chat/兼容网关至少为 3，原生 Responses 至少为 16）。协议请求字段由最终 wire 语义决定：
+探测提示为 `What is 2 + 2? Please answer briefly.`，所有生成式探测共用 contract 声明的 128 输出预算——思考型模型可能先把小预算全部花在内部推理上而不产出可见文本，因此预算必须明显高于各家最小输出限制。协议请求字段由最终 wire 语义决定：
 
-- Chat 使用必需的 `max_tokens=3`；
-- 原生 Responses 使用 `/responses`、`input` 和 `max_output_tokens=16`；
-- Anthropic、Gemini 使用各自适配器要求的字段；
+- Chat 使用必需的 `max_tokens=128`；
+- 原生 Responses 使用 `/responses`、`input` 和 `max_output_tokens=128`；
+- Anthropic、Gemini 使用各自适配器要求的字段，并同样携带 128 预算与同一探测提示；
 - converted 路由保留目标适配器的请求语义，不将 native 字段强行写入转换后的协议。
 
 `internal/execution/bifrost/probe.go` 按最终客户端协议检查响应并记录答案/响应形状证据：

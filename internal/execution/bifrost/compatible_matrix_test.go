@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -253,7 +254,7 @@ func TestOpenAICompatibleNonV1PrefixKeepsListModelsAndProbeFunctional(t *testing
 				var payload map[string]json.RawMessage
 				if err := json.Unmarshal(body, &payload); err != nil {
 					t.Errorf("decode probe body: %v", err)
-				} else if string(payload["max_tokens"]) != "16" || payload["max_completion_tokens"] != nil {
+				} else if string(payload["max_tokens"]) != fmt.Sprint(testProbeOutputTokens) || payload["max_completion_tokens"] != nil {
 					t.Errorf("compatible probe token limit = %s, want legacy max_tokens only", body)
 				} else {
 					var messages []map[string]any

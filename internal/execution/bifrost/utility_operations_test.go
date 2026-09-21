@@ -183,7 +183,7 @@ func utilitySpec(channelID channel.ID, clientProtocol protocol.Protocol, operati
 
 // testProbeOutputTokens mirrors the code-owned probe budget declared by the
 // channel modules so wire fixtures assert the real contract value.
-const testProbeOutputTokens = 16
+const testProbeOutputTokens = 128
 
 // assertProbeQuestion checks the wire request carries the code-owned realistic
 // question instead of the old fixed ping.
