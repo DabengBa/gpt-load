@@ -28,6 +28,9 @@ const (
 	AuthNone      AuthPolicy = "none"
 	AuthControl   AuthPolicy = "control"
 	AuthAccessKey AuthPolicy = "access-key"
+	// AuthAgent marks the control-owned Agent machine surface. It shares the
+	// control owner but never shares the control authenticator or admin AUTH_KEY.
+	AuthAgent AuthPolicy = "agent"
 
 	ginMaximumHandlerChainLength = 63
 )
@@ -693,22 +696,32 @@ func namespaceContainsPattern(prefix, pattern string) bool {
 }
 
 func validateOwnerAuth(module Module) error {
-	var required AuthPolicy
+	var required []AuthPolicy
 	switch module.Owner {
 	case OwnerSystem, OwnerWeb:
-		required = AuthNone
+		required = []AuthPolicy{AuthNone}
 	case OwnerControl:
-		required = AuthControl
+		required = []AuthPolicy{AuthControl, AuthAgent}
 	case OwnerData:
-		required = AuthAccessKey
+		required = []AuthPolicy{AuthAccessKey}
 	default:
 		return fmt.Errorf("invalid owner %q", module.Owner)
 	}
-	if module.Auth != required {
+	// AuthAgent is a control-owned policy: it must never authenticate the data
+	// plane, the SPA, or the system surface.
+	if module.Auth == AuthAgent && module.Owner != OwnerControl {
+		return fmt.Errorf(
+			"auth policy %q is only valid for owner %q, got owner %q",
+			AuthAgent,
+			OwnerControl,
+			module.Owner,
+		)
+	}
+	if !slicesContainAuthPolicy(required, module.Auth) {
 		return fmt.Errorf(
 			"owner %q requires auth policy %q, got %q",
 			module.Owner,
-			required,
+			required[0],
 			module.Auth,
 		)
 	}
@@ -719,6 +732,15 @@ func validateOwnerAuth(module Module) error {
 		return fmt.Errorf("auth policy %q requires an authenticator", module.Auth)
 	}
 	return nil
+}
+
+func slicesContainAuthPolicy(policies []AuthPolicy, candidate AuthPolicy) bool {
+	for _, policy := range policies {
+		if policy == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func validateRoute(route Route) error {

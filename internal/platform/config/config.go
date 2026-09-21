@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -98,6 +99,7 @@ type Config struct {
 	Log                       LogConfig
 	ModelsDevAutoSyncOverride *bool
 	DebugCaptureEnabled       bool
+	MCPTrustedProxyCIDRs      []string
 }
 
 // Settings is the dynamic settings shape shared by system and group layers.
@@ -211,6 +213,10 @@ func Load() (*Config, error) {
 	if debugCaptureOverride != nil {
 		debugCaptureEnabled = *debugCaptureOverride
 	}
+	trustedProxyCIDRs, err := parseCIDRs(os.Getenv("MCP_TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		return nil, err
+	}
 
 	return &Config{
 		Server: ServerConfig{
@@ -233,7 +239,28 @@ func Load() (*Config, error) {
 		},
 		ModelsDevAutoSyncOverride: modelsDevAutoSyncOverride,
 		DebugCaptureEnabled:       debugCaptureEnabled,
+		MCPTrustedProxyCIDRs:      trustedProxyCIDRs,
 	}, nil
+}
+
+func parseCIDRs(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	values := strings.Split(raw, ",")
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil, fmt.Errorf("MCP_TRUSTED_PROXY_CIDRS contains an empty entry")
+		}
+		_, network, err := net.ParseCIDR(value)
+		if err != nil {
+			return nil, fmt.Errorf("MCP_TRUSTED_PROXY_CIDRS contains invalid CIDR %q", value)
+		}
+		result = append(result, network.String())
+	}
+	return result, nil
 }
 
 // ParseDatabaseDSN parses the single DATABASE_DSN configuration format. Bare

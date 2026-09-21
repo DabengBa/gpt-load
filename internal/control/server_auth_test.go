@@ -64,6 +64,29 @@ func TestAuthenticateFailsClosedForInvalidPeerWithoutComparison(t *testing.T) {
 	}
 }
 
+func TestAuthenticateRejectsAgentCredentialNamespaceEvenWhenAuthKeyMatches(t *testing.T) {
+	initControlI18n(t)
+	const agentSecret = "gla_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	server := NewServer(&config.Config{AuthKey: agentSecret}, nil)
+	engine := gin.New()
+	api := engine.Group("/api")
+	api.Use(i18n.Middleware(), server.authenticate())
+	api.GET("/probe", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	recorder := serveAuthRequest(
+		engine,
+		"/api/probe",
+		"192.0.2.200:1234",
+		"Bearer "+agentSecret,
+		nil,
+	)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("Agent-shaped AUTH_KEY collision response = %d %s, want 401", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestAuthenticateLockedRequestsIgnoreForwardingHeaders(t *testing.T) {
 	t.Parallel()
 	initControlI18n(t)

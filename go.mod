@@ -10,6 +10,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/compress v1.20.0
+	github.com/mark3labs/mcp-go v0.43.2
 	github.com/maximhq/bifrost/core v1.9.0
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/router-for-me/CLIProxyAPI/v7/gptload-embedded v0.0.0
@@ -78,7 +79,6 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.9.1 // indirect
-	github.com/mark3labs/mcp-go v0.43.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

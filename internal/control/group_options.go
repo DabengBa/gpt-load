@@ -120,8 +120,8 @@ func mapGroupOptions(rows []groupOptionRow, registries ...*channel.Registry) ([]
 			ID: row.ID, Name: row.Name, ChannelID: channelID,
 			ConnectionType: normalizeGroupConnectionType(row.ConnectionType),
 			Params:         append(json.RawMessage(nil), params...), Enabled: row.Enabled,
-			ProviderURL:    row.ProviderURL,
-			Models:         make([]string, 0, len(models)),
+			ProviderURL: row.ProviderURL,
+			Models:      make([]string, 0, len(models)),
 		}
 		seen := make(map[string]struct{}, len(models))
 		for _, model := range models {

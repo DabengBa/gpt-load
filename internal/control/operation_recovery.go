@@ -273,6 +273,15 @@ func validateOperationResourceIdentity(kind operationKind, identity string) erro
 	case operationKindAccessKeyCreate, operationKindAccessKeyRotate:
 		_, err := parseResourceIdentity(identity, "access-key")
 		return err
+	case operationKindAgentCredentialCreate:
+		_, err := parseResourceIdentity(identity, "agent-credential")
+		return err
+	case operationKindModelRouteScheduleApply:
+		if !strings.HasPrefix(identity, "proposal:") ||
+			!validProposalID(strings.TrimPrefix(identity, "proposal:")) {
+			return fmt.Errorf("proposal resource identity is invalid")
+		}
+		return nil
 	case operationKindGroupCreate, operationKindGroupCopy, operationKindCredentialImport:
 		_, err := parseResourceIdentity(identity, "group")
 		return err

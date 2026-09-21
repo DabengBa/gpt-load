@@ -19,6 +19,8 @@ const controlPeerContextKey = "gpt-load.control.peer-ip"
 
 const controlPrincipalContextKey = "gpt-load.control.principal"
 
+const agentCredentialSecretPrefix = "gla_"
+
 type controlPrincipalType string
 
 const (
@@ -90,12 +92,17 @@ func (s *Server) authenticate() gin.HandlerFunc {
 			token = fields[1]
 		}
 		requestDigest := sha256.Sum256([]byte(token))
-		adminMatches := s.compareDigest(requestDigest[:], s.authDigest[:]) == 1
+		isAgentCredentialToken := strings.HasPrefix(token, agentCredentialSecretPrefix)
+		adminMatches := !isAgentCredentialToken &&
+			s.compareDigest(requestDigest[:], s.authDigest[:]) == 1
 		requestNow := time.Now
 		if s != nil && s.service != nil && s.service.now != nil {
 			requestNow = s.service.now
 		}
-		accessKeyMatch := s.matchAccessKey(token, requestNow(), peer)
+		accessKeyMatch := accessKeyAuthMatch{}
+		if !isAgentCredentialToken {
+			accessKeyMatch = s.matchAccessKey(token, requestNow(), peer)
+		}
 		collision := adminMatches && accessKeyMatch.HashMatched
 		credentialValid := formatValid && !collision &&
 			(adminMatches || accessKeyMatch.PolicyAllowed)

@@ -535,6 +535,45 @@ func (s *Server) HTTPModule() httproute.Module {
 				)),
 				s.handleDeleteAccessKey,
 			),
+			controlRoute(
+				"control.agent-credentials.create",
+				http.MethodPost,
+				"/agent-credentials",
+				s.auditMutation(newMutationDescriptor(
+					"agent_credential_create",
+					"agent_credential",
+					staticMutationLocator("new"),
+				)),
+				s.handleCreateAgentCredential,
+			),
+			controlRoute(
+				"control.agent-credentials.list",
+				http.MethodGet,
+				"/agent-credentials",
+				s.handleListAgentCredentials,
+			),
+			controlRoute(
+				"control.agent-credentials.disable",
+				http.MethodPost,
+				"/agent-credentials/:id/disable",
+				s.auditMutation(newMutationDescriptor(
+					"agent_credential_disable",
+					"agent_credential",
+					agentCredentialMutationLocator,
+				)),
+				s.handleDisableAgentCredential,
+			),
+			controlRoute(
+				"control.agent-change-proposals.approve",
+				http.MethodPost,
+				"/agent-change-proposals/:proposal_id/approve",
+				s.auditMutation(newMutationDescriptor(
+					"agent_change_proposal_approve",
+					"agent_change_proposal",
+					changeProposalMutationLocator,
+				)),
+				s.handleApproveChangeProposal,
+			),
 		},
 	}
 }

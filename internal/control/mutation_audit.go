@@ -96,6 +96,10 @@ func accessKeyMutationLocator(c *gin.Context) string {
 	return "access-key:" + mutationID(c.Param("id"))
 }
 
+func agentCredentialMutationLocator(c *gin.Context) string {
+	return "agent-credential:" + mutationID(c.Param("id"))
+}
+
 func modelPriceMutationLocator(c *gin.Context) string {
 	id, err := parseModelPriceRowID(c.Param("id"))
 	if err != nil {
