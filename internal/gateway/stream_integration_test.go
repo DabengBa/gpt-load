@@ -227,47 +227,61 @@ func TestHandlerTreatsSDKNormalizedCompressedStreamAsSingleAttempt(t *testing.T)
 
 func TestHandlerStreamFirstEventTimeout(t *testing.T) {
 	t.Run("request-written partial event times out without backup", func(t *testing.T) {
-		finished := make(chan struct{})
-		partial := newPartialStreamServer(finished)
+		var partialCalls atomic.Int64
+		release := make(chan struct{})
+		partial := newPartialStreamServer(&partialCalls, release)
 		defer partial.Close()
+		defer close(release)
 		backup := newRecordedStreamUpstream(t, forcedBufferedOpenAIStream(), nil)
+		defer backup.Close()
 
 		engine, _ := newStreamingGatewayEngine(t,
-			streamGatewayGroup{id: 1, name: "partial", upstreamURL: partial.URL, apiKey: "sk-partial", firstByte: 40 * time.Millisecond},
+			streamGatewayGroup{id: 1, name: "partial", upstreamURL: partial.URL, apiKey: "sk-partial", firstByte: 250 * time.Millisecond},
 			streamGatewayGroup{id: 2, name: "backup", upstreamURL: backup.URL, apiKey: "sk-backup", firstByte: 200 * time.Millisecond},
 		)
-		// The stream is replay-ineligible, so a pre-release failure is final even
-		// though the buffered heartbeat already committed HTTP 200.
-		recorder := performStreamingRequestWithBody(engine, ineligibleStreamRequestBody)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/chat/completions", strings.NewReader(ineligibleStreamRequestBody))
+		request.Header.Set("Authorization", "Bearer gl-client")
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
 
+		if ctx.Err() != nil {
+			t.Fatal("first-event timeout did not finish before the test deadline")
+		}
 		want := bufferedStreamHeartbeat + bufferedOpenAIStreamFailure
 		if recorder.Code != http.StatusOK || recorder.Body.String() != want {
 			t.Fatalf("response = %d %q, want buffered failure", recorder.Code, recorder.Body.String())
 		}
-		waitForStreamSignal(t, finished, "finite partial upstream completion")
-		if bytes.Contains(recorder.Body.Bytes(), []byte("partial")) || len(backup.Requests()) != 0 {
-			t.Fatalf("partial event leaked or backup was used: body=%q backup=%d", recorder.Body.Bytes(), len(backup.Requests()))
+		if partialCalls.Load() != 1 || bytes.Contains(recorder.Body.Bytes(), []byte("partial")) || len(backup.Requests()) != 0 {
+			t.Fatalf("partial event/retry contract: body=%q primary=%d backup=%d", recorder.Body.Bytes(), partialCalls.Load(), len(backup.Requests()))
 		}
 	})
 
 	t.Run("first partial candidate returns timeout without retry", func(t *testing.T) {
-		firstFinished := make(chan struct{})
-		first := newPartialStreamServer(firstFinished)
+		var firstCalls, secondCalls atomic.Int64
+		release := make(chan struct{})
+		first := newPartialStreamServer(&firstCalls, release)
 		defer first.Close()
-		secondFinished := make(chan struct{})
-		second := newPartialStreamServer(secondFinished)
+		second := newPartialStreamServer(&secondCalls, release)
 		defer second.Close()
+		defer close(release)
 
 		engine, _ := newStreamingGatewayEngine(t,
-			streamGatewayGroup{id: 1, name: "partial-a", upstreamURL: first.URL, apiKey: "sk-a", firstByte: 30 * time.Millisecond},
-			streamGatewayGroup{id: 2, name: "partial-b", upstreamURL: second.URL, apiKey: "sk-b", firstByte: 30 * time.Millisecond},
+			streamGatewayGroup{id: 1, name: "partial-a", upstreamURL: first.URL, apiKey: "sk-a", firstByte: 250 * time.Millisecond},
+			streamGatewayGroup{id: 2, name: "partial-b", upstreamURL: second.URL, apiKey: "sk-b", firstByte: 250 * time.Millisecond},
 		)
-		recorder := performStreamingRequestWithBody(engine, ineligibleStreamRequestBody)
-		waitForStreamSignal(t, firstFinished, "first finite partial upstream completion")
-		select {
-		case <-secondFinished:
-			t.Fatal("second partial upstream was unexpectedly attempted")
-		default:
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/chat/completions", strings.NewReader(ineligibleStreamRequestBody))
+		request.Header.Set("Authorization", "Bearer gl-client")
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+		if ctx.Err() != nil {
+			t.Fatal("first-event timeout did not finish before the test deadline")
+		}
+		if firstCalls.Load() != 1 || secondCalls.Load() != 0 {
+			t.Fatalf("partial upstream attempts = %d/%d, want 1/0", firstCalls.Load(), secondCalls.Load())
 		}
 
 		want := bufferedStreamHeartbeat + bufferedOpenAIStreamFailure
@@ -1083,19 +1097,14 @@ func (upstream *recordedStreamUpstream) Requests() []http.Header {
 	return result
 }
 
-func newPartialStreamServer(finished chan<- struct{}) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+func newPartialStreamServer(calls *atomic.Int64, release <-chan struct{}) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")
 		_, _ = writer.Write([]byte("data: partial\n"))
 		writer.(http.Flusher).Flush()
-		// Bifrost Core v1.7.7 does not guarantee physical socket closure
-		// after caller cancellation, so keep this fixture finite and assert
-		// only GPT-Load's logical timeout/commit/retry contract above.
-		select {
-		case <-request.Context().Done():
-		case <-time.After(200 * time.Millisecond):
-		}
-		close(finished)
+		calls.Add(1)
+		// 保持部分事件未结束，直到测试确认逻辑超时，再释放服务器完成清理。
+		<-release
 	}))
 }
 
