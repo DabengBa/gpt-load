@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
+
+	cpaembedded "github.com/router-for-me/CLIProxyAPI/v7/gptload-embedded/embedded"
 )
 
 func TestWSSessionIsExplicitAndHTTPExecutorIsUnchanged(t *testing.T) {
@@ -37,6 +40,18 @@ func TestWSSessionIsExplicitAndHTTPExecutorIsUnchanged(t *testing.T) {
 	closed, err := session.ExecuteTurn(context.Background(), json.RawMessage(`{"model":"gpt-5","input":"hello"}`), nil)
 	if !errors.As(err, &failure) || failure.Code != "session_closed" || closed.DispatchState != "not_sent" {
 		t.Fatalf("closed session reused: %v", err)
+	}
+}
+
+func TestWSErrorFromBridgePreservesSafeRateLimitMetadata(t *testing.T) {
+	err := wsErrorFromBridge(&cpaembedded.CodexWSError{
+		Code: "upstream_error", UpstreamType: "usage_limit_reached",
+		HTTPStatus: 429, RetryAfter: 2 * time.Hour, DispatchState: "maybe_sent",
+	})
+	var failure *WSError
+	if !errors.As(err, &failure) || failure.UpstreamType != "usage_limit_reached" ||
+		failure.HTTPStatus != 429 || failure.RetryAfter != 2*time.Hour {
+		t.Fatalf("safe WebSocket rate-limit metadata was lost: %+v", failure)
 	}
 }
 

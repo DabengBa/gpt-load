@@ -149,7 +149,11 @@ func codexWebsocketEvidence(ctx context.Context, err error) *execution.ErrorEvid
 	var failure *codex.WSError
 	if errors.As(err, &failure) {
 		e.Code = failure.Code
+		e.Type = safeScalar(failure.UpstreamType)
 		e.StatusCode = failure.HTTPStatus
+		if failure.RetryAfter > 0 {
+			e.RetryAfter = failure.RetryAfter
+		}
 		if failure.UpstreamCode != "" {
 			e.Code = failure.UpstreamCode
 			e.Kind = execution.ErrorKindProvider
@@ -161,6 +165,11 @@ func codexWebsocketEvidence(ctx context.Context, err error) *execution.ErrorEvid
 			if e.StatusCode == http.StatusUnauthorized && failure.DispatchState == string(execution.DispatchNotSent) {
 				e.Hint = execution.FailureHintRefreshRequired
 				e.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
+			}
+			if e.StatusCode == http.StatusTooManyRequests && strings.EqualFold(e.Type, "usage_limit_reached") {
+				e.Hint = execution.FailureHintRateLimited
+				// 本地没有模型级冷却运行态；Codex 额度耗尽必须冷却凭据。
+				e.ScopeHint = execution.ErrorScopeCredential
 			}
 		}
 		if failure.DispatchState == string(execution.DispatchNotSent) && e.StatusCode == 0 {
