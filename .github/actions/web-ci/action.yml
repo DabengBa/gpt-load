@@ -24,6 +24,14 @@ runs:
       shell: bash
       run: pnpm --dir web install --frozen-lockfile
 
+    - name: Check semantic documentation
+      shell: bash
+      run: pnpm --dir web run docs:check
+
+    - name: Build semantic documentation
+      shell: bash
+      run: pnpm --dir web run docs:build
+
     - name: Lint web source
       shell: bash
       run: pnpm --dir web run lint
