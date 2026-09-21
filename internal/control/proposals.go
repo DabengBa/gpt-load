@@ -246,8 +246,8 @@ func (s *Service) ApproveChangeProposal(
 	return row, nil
 }
 
-// RevokeChangeProposal revokes an approved proposal that has not yet been
-// durably bound to an operation. A committed operation is never detached.
+// RevokeChangeProposal revokes a pending or approved proposal that has not yet
+// been durably bound to an operation. A committed operation is never detached.
 func (s *Service) RevokeChangeProposal(
 	ctx context.Context,
 	proposalID string,
@@ -269,7 +269,7 @@ func (s *Service) RevokeChangeProposal(
 			}
 			return app_errors.ParseDBError(err)
 		}
-		if row.State != agent.ProposalStateApproved {
+		if row.State != agent.ProposalStatePending && row.State != agent.ProposalStateApproved {
 			return errAgentChangeProposalStateConflict
 		}
 		var operation models.ControlOperation
@@ -662,6 +662,20 @@ func (s *Service) replayBoundProposalLocked(
 	if err := s.enforceOperationRecoveryBarrierLocked(ctx, operation.CommitSequence); err != nil {
 		return agent.ChangeProposalView{}, err
 	}
+	if operation.CompactedAtMS != nil {
+		if operation.CompletedAtMS == nil || validateSafeMilliseconds(*operation.CompletedAtMS) != nil {
+			return agent.ChangeProposalView{}, app_errors.ErrInternalServer
+		}
+		return agent.ChangeProposalView{}, app_errors.NewAPIErrorWithData(
+			app_errors.ErrIdempotencyResultExpired,
+			operationExpiredData{
+				OperationID:      operation.OperationID,
+				OperationKind:    operationKind(operation.OperationKind),
+				ResourceIdentity: operation.ResourceIdentity,
+				CompletedAtMS:    *operation.CompletedAtMS,
+			},
+		)
+	}
 	if operation.LastCompletedStage != string(operationStageCompleted) {
 		if err := s.recoverOperationLocked(ctx, operation); err != nil {
 			s.wakeOperationRecovery()
@@ -718,12 +732,15 @@ func mapChangeProposalView(
 		LastCompletedStage: operation.LastCompletedStage,
 		FailedStage:        operation.FailedStage,
 		CompletedAtMS:      operation.CompletedAtMS,
-		CanReconcile:       true,
+		CanReconcile:       operation.CompletedAtMS == nil,
 	}
 	return view, nil
 }
 
 func deriveProposalExecutionState(operation models.ControlOperation) string {
+	if operation.CompletedAtMS != nil {
+		return agent.ProposalExecutionApplied
+	}
 	if operation.FailedStage != "" {
 		return agent.ProposalExecutionFailed
 	}
@@ -854,6 +871,30 @@ func (s *Server) handleApproveChangeProposal(c *gin.Context) {
 	result, err := s.service.GetChangeProposal(c.Request.Context(), proposalID)
 	if err != nil {
 		writeServiceError(c, "approve_change_proposal", err)
+		return
+	}
+	setMutationResourceLocator(c, "change-proposal:"+proposalID)
+	response.SuccessI18n(c, "common.success", result)
+}
+
+func (s *Server) handleRevokeChangeProposal(c *gin.Context) {
+	principal, ok := currentControlPrincipal(c)
+	if !ok || principal.Type != controlPrincipalAdmin {
+		writeServiceError(c, "revoke_change_proposal", app_errors.ErrForbidden)
+		return
+	}
+	proposalID := c.Param("proposal_id")
+	if !validProposalID(proposalID) {
+		writeServiceError(c, "revoke_change_proposal", app_errors.ErrBadRequest)
+		return
+	}
+	if _, err := s.service.RevokeChangeProposal(c.Request.Context(), proposalID); err != nil {
+		writeServiceError(c, "revoke_change_proposal", err)
+		return
+	}
+	result, err := s.service.GetChangeProposal(c.Request.Context(), proposalID)
+	if err != nil {
+		writeServiceError(c, "revoke_change_proposal", err)
 		return
 	}
 	setMutationResourceLocator(c, "change-proposal:"+proposalID)
