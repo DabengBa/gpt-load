@@ -29,6 +29,7 @@ const maxCredentialLines = 1000
 type GroupModel struct {
 	ID                string                     `json:"id"`
 	Alias             string                     `json:"alias"`
+	TestAlias         string                     `json:"test_alias,omitempty"`
 	EntryID           string                     `json:"entry_id,omitempty"`
 	AliasEnabled      bool                       `json:"-"`
 	Weight            *int                       `json:"weight,omitempty"`
@@ -43,6 +44,7 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	var wire struct {
 		ID             string          `json:"id"`
 		Alias          string          `json:"alias"`
+		TestAlias      string          `json:"test_alias"`
 		EntryID        string          `json:"entry_id"`
 		AliasEnabled   *bool           `json:"alias_enabled"`
 		Weight         *int            `json:"weight"`
@@ -63,6 +65,7 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	}
 	model.ID = wire.ID
 	model.Alias = wire.Alias
+	model.TestAlias = wire.TestAlias
 	model.EntryID = wire.EntryID
 	// alias_enabled 缺失按 false 处理：本类型同时用于解码存量存储行
 	// （price_reconcile 等读取路径），存量 JSON 不含该键，不得视为错误。
@@ -104,6 +107,7 @@ type optionalGroupModels struct {
 type groupModelRequestWire struct {
 	ID             string          `json:"id"`
 	Alias          string          `json:"alias"`
+	TestAlias      json.RawMessage `json:"test_alias"`
 	EntryID        string          `json:"entry_id"`
 	AliasEnabled   *bool           `json:"alias_enabled"`
 	Weight         json.RawMessage `json:"weight"`

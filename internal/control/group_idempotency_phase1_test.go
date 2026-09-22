@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"regexp"
 	"testing"
 
 	"gpt-load/internal/channel"
@@ -109,7 +110,8 @@ func TestCreateGroupIdempotentCanonicalizesDisabledAliasesAndReplaysNarrowResult
 	if got := string(group.Overrides); got != `{}` {
 		t.Fatalf("stored config = %s, want empty override", got)
 	}
-	if stored := loadCreatedGroupModels(t, fixture, first.GroupID); !reflect.DeepEqual(stored, []GroupModel{{ID: "provider-model"}}) {
-		t.Fatalf("stored models = %#v, want disabled alias omitted", stored)
+	stored := loadCreatedGroupModels(t, fixture, first.GroupID)
+	if len(stored) != 1 || stored[0].ID != "provider-model" || !regexp.MustCompile(`^[a-z0-9]{6}$`).MatchString(stored[0].TestAlias) {
+		t.Fatalf("stored models = %#v, want disabled alias omitted and generated test alias", stored)
 	}
 }

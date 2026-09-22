@@ -23,6 +23,7 @@ type GroupModelsUpdateRequest struct {
 type GroupModelResponse struct {
 	ID             string                     `json:"id"`
 	Alias          string                     `json:"alias"`
+	TestAlias      string                     `json:"test_alias"`
 	AliasEnabled   bool                       `json:"alias_enabled"`
 	ClientModel    string                     `json:"client_model"`
 	EntryID        string                     `json:"entry_id"`
@@ -55,10 +56,61 @@ type ModelNameConflictData struct {
 type groupModelEntry struct {
 	ID             string                     `json:"id"`
 	Alias          string                     `json:"alias"`
+	TestAlias      string                     `json:"test_alias,omitempty"`
 	EntryID        string                     `json:"entry_id,omitempty"`
 	Weight         *int                       `json:"weight,omitempty"`
 	Priority       *int                       `json:"priority,omitempty"`
 	CircuitBreaker *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
+}
+
+func assignMissingTestAliases(db *gorm.DB, groupModels []GroupModel) error {
+	used, err := collectUsedModelNames(db)
+	if err != nil {
+		return err
+	}
+	for index := range groupModels {
+		if groupModels[index].TestAlias != "" {
+			if err := state.ValidateTestAlias(groupModels[index].TestAlias); err != nil {
+				return err
+			}
+			used[groupModels[index].TestAlias] = struct{}{}
+			continue
+		}
+		alias, err := state.GenerateTestAlias(used)
+		if err != nil {
+			return err
+		}
+		groupModels[index].TestAlias = alias
+		used[alias] = struct{}{}
+	}
+	return nil
+}
+
+func collectUsedModelNames(db *gorm.DB) (map[string]struct{}, error) {
+	var rows []models.Group
+	if err := db.Select("models").Order("id ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	used := make(map[string]struct{})
+	for _, row := range rows {
+		var groupModels []groupModelEntry
+		if err := decodeGroupDiscoveryJSON(row.Models, &groupModels); err != nil {
+			return nil, err
+		}
+		for _, model := range groupModels {
+			upstream := strings.TrimSpace(model.ID)
+			if upstream != "" {
+				used[upstream] = struct{}{}
+			}
+			if external := state.ExternalModelName(upstream, model.Alias); external != "" {
+				used[external] = struct{}{}
+			}
+			if model.TestAlias != "" {
+				used[model.TestAlias] = struct{}{}
+			}
+		}
+	}
+	return used, nil
 }
 
 func cloneEntryCircuitBreaker(value *state.EntryCircuitBreaker) *state.EntryCircuitBreaker {
@@ -78,7 +130,7 @@ func cloneEntryCircuitBreaker(value *state.EntryCircuitBreaker) *state.EntryCirc
 }
 func (model groupModelEntry) toModelConfig() state.ModelConfig {
 	return state.ModelConfig{
-		ID: model.ID, Alias: model.Alias, EntryID: model.EntryID,
+		ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 		Weight: cloneInt(model.Weight), Priority: cloneInt(model.Priority),
 		CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 	}
@@ -91,6 +143,9 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if err := stateloader.BackfillTestAliases(ctx, s.db); err != nil {
+		return GroupModelsResponse{}, app_errors.ParseDBError(err)
+	}
 
 	group, err := loadGroupRow(s.db.WithContext(ctx), groupID)
 	if err != nil {
@@ -152,6 +207,7 @@ func mapGroupModelsResponse(
 		item := GroupModelResponse{
 			ID:             model.ID,
 			Alias:          model.Alias,
+			TestAlias:      model.TestAlias,
 			AliasEnabled:   model.Alias != "",
 			ClientModel:    model.ID,
 			EntryID:        model.EntryID,
@@ -208,6 +264,9 @@ func (s *Service) UpdateGroupModels(
 		preserved, preserveErr := preserveGroupModelFields(previous, normalized)
 		if preserveErr != nil {
 			return preserveErr
+		}
+		if err := assignMissingTestAliases(tx, preserved); err != nil {
+			return fmt.Errorf("assign group %d model test aliases: %w", groupID, err)
 		}
 		encoded, err := json.Marshal(preserved)
 		if err != nil {
@@ -356,6 +415,9 @@ func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel
 		}
 		if !model.circuitBreakerSet && exists {
 			model.CircuitBreaker = cloneEntryCircuitBreaker(preserved.CircuitBreaker)
+		}
+		if exists {
+			model.TestAlias = preserved.TestAlias
 		}
 		result = append(result, model)
 	}

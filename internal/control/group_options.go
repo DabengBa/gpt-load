@@ -129,12 +129,17 @@ func mapGroupOptions(rows []groupOptionRow, registries ...*channel.Registry) ([]
 			if name == "" {
 				continue
 			}
-			if _, exists := seen[name]; exists {
+			if _, exists := seen[name]; !exists {
 				// 同一对外名的多条目只在分组选项中出现一次（设计 §8.3）。
-				continue
+				seen[name] = struct{}{}
+				option.Models = append(option.Models, name)
 			}
-			seen[name] = struct{}{}
-			option.Models = append(option.Models, name)
+			if model.TestAlias != "" {
+				if _, exists := seen[model.TestAlias]; !exists {
+					seen[model.TestAlias] = struct{}{}
+					option.Models = append(option.Models, model.TestAlias)
+				}
+			}
 		}
 		options = append(options, option)
 	}

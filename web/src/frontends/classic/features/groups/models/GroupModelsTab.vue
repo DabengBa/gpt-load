@@ -342,7 +342,7 @@ const aliasEditorLabels = computed<ModelAliasEditorLabels>(() => ({
   tableLabel: t('group.modelEditor.tableLabel'),
   id: t('group.modelEditor.id'),
   alias: t('group.modelEditor.alias'),
-  thirdColumn: t('group.modelEditor.pricing'),
+  thirdColumn: t('group.modelEditor.testAliasAndPricing'),
   actions: t('group.modelEditor.actions'),
   search: t('group.modelEditor.searchPlaceholder'),
   searchLabel: t('group.modelEditor.searchLabel'),
@@ -771,6 +771,15 @@ onBeforeUnmount(() => {
       >
         <template #third-column="{ item }">
           <div class="group-models__pricing-cell">
+            <div class="group-models__test-alias">
+              <span class="group-models__test-alias-label">
+                {{ t('group.modelEditor.testAlias') }}
+              </span>
+              <code v-if="item.test_alias">{{ item.test_alias }}</code>
+              <span v-else class="group-models__test-alias-pending">
+                {{ t('group.modelEditor.testAliasPending') }}
+              </span>
+            </div>
             <RouterLink
               v-if="item.pricing_status === 'pending' && item.price_id !== undefined"
               class="group-models__pricing-link"
@@ -951,8 +960,24 @@ onBeforeUnmount(() => {
 <style scoped>
 .group-models__pricing-cell {
   display: grid;
+  min-width: 0;
   gap: 5px;
   justify-items: start;
+}
+.group-models__test-alias {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.group-models__test-alias-label,
+.group-models__test-alias-pending {
+  color: var(--color-text-faint);
+  font-size: var(--text-meta);
+}
+.group-models__test-alias code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-meta);
 }
 .group-models__pricing-link {
   text-decoration: none;

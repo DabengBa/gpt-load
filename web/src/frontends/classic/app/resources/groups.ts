@@ -79,6 +79,7 @@ const groupModelItemFields = [
   'alias',
   'alias_enabled',
   'client_model',
+  'test_alias',
   'entry_id',
   'weight',
   'priority',
@@ -513,6 +514,8 @@ function projectGroupModelItem(value: unknown): GroupModelItemDto {
   const aliasEnabled = projectBoolean(record.alias_enabled)
   const id = projectNonBlankString(record.id)
   const clientModel = projectNonBlankString(record.client_model)
+  const testAlias = projectString(record.test_alias)
+  if (!/^[a-z0-9]{6}$/u.test(testAlias)) throw new InvalidResponseError()
   if ((alias !== '') !== aliasEnabled || clientModel !== (aliasEnabled ? alias : id)) {
     throw new InvalidResponseError()
   }
@@ -521,6 +524,7 @@ function projectGroupModelItem(value: unknown): GroupModelItemDto {
     alias,
     alias_enabled: aliasEnabled,
     client_model: clientModel,
+    test_alias: testAlias,
     weight: projectNullableSafeInteger(record.weight),
     priority: projectNullableSafeInteger(record.priority),
     pricing_status: projectEnum(record.pricing_status, ['pending', 'configured'] as const),

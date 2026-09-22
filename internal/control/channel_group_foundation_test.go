@@ -540,7 +540,7 @@ func TestChannelGroupCollectionDetailAndOptionsUseChannelCredentialContract(t *t
 	options, err := fixture.service.ListGroupOptions(t.Context())
 	if err != nil || len(options) != 1 || options[0].ChannelID != channel.OpenAICompatible ||
 		string(options[0].Params) != `{"base_url":"https://collection.example/v1"}` ||
-		!reflect.DeepEqual(options[0].Models, []string{"public-model"}) {
+		len(options[0].Models) != 2 || options[0].Models[0] != "public-model" {
 		t.Fatalf("ListGroupOptions() = %#v, %v", options, err)
 	}
 	assertNoLegacyGroupFields(t, options[0])

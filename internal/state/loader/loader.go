@@ -83,6 +83,7 @@ type compileRows struct {
 type modelDTO struct {
 	ID             string                     `json:"id"`
 	Alias          string                     `json:"alias"`
+	TestAlias      string                     `json:"test_alias,omitempty"`
 	EntryID        string                     `json:"entry_id"`
 	Weight         *int                       `json:"weight"`
 	Priority       *int                       `json:"priority"`
@@ -146,10 +147,14 @@ func NewWithAccessQuota(
 }
 
 func (l *Loader) Load(ctx context.Context) error {
+	if err := BackfillTestAliases(ctx, l.db); err != nil {
+		return fmt.Errorf("backfill test aliases: %w", err)
+	}
 	input, entries, costLimitStates, err := l.read(ctx)
 	if err != nil {
 		return fmt.Errorf("read runtime state: %w", err)
 	}
+
 	if err := state.ValidateCredentialEntries(entries); err != nil {
 		return fmt.Errorf("validate credentials: %w", err)
 	}
@@ -177,6 +182,104 @@ func (l *Loader) Load(ctx context.Context) error {
 		"credentials": len(entries),
 	}).Info("credential registry loaded")
 	return nil
+}
+
+// BackfillTestAliases assigns and persists missing test aliases in stable
+// group/model order. Existing aliases are never changed; invalid or
+// conflicting persisted aliases fail the whole transaction.
+func BackfillTestAliases(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is required")
+	}
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var rows []models.Group
+		if err := tx.Order("id ASC").Find(&rows).Error; err != nil {
+			return fmt.Errorf("query groups: %w", err)
+		}
+		configs := make([]state.GroupConfig, 0, len(rows))
+		stored := make([][]modelDTO, len(rows))
+		rawStored := make([][]map[string]json.RawMessage, len(rows))
+		for index, row := range rows {
+			if err := decodeJSON(row.Models, &stored[index]); err != nil {
+				return fmt.Errorf("decode group %d models: %w", row.ID, err)
+			}
+			if err := decodeJSON(row.Models, &rawStored[index]); err != nil {
+				return fmt.Errorf("decode group %d model fields: %w", row.ID, err)
+			}
+			modelsForState := make([]state.ModelConfig, 0, len(stored[index]))
+			for modelIndex, model := range stored[index] {
+				fields := rawStored[index][modelIndex]
+				if rawAlias, exists := fields["test_alias"]; exists {
+					if bytes.Equal(bytes.TrimSpace(rawAlias), []byte("null")) {
+						return fmt.Errorf("group %d model %d: test alias must be a string", row.ID, modelIndex)
+					}
+					var alias string
+					if err := json.Unmarshal(rawAlias, &alias); err != nil {
+						return fmt.Errorf("group %d model %d: decode test alias: %w", row.ID, modelIndex, err)
+					}
+					if alias != "" {
+						model.TestAlias = alias
+					}
+				}
+				modelsForState = append(modelsForState, state.ModelConfig{
+					ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
+					Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+					CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+				})
+			}
+			if err := state.ValidateModelRouteEntries(fmt.Sprintf("group %d", row.ID), modelsForState); err != nil {
+				return err
+			}
+			configs = append(configs, state.GroupConfig{ID: row.ID, Models: modelsForState})
+		}
+		if err := state.ValidateTestAliases(configs); err != nil {
+			return err
+		}
+
+		used := make(map[string]struct{})
+		for _, group := range configs {
+			for _, model := range group.Models {
+				if upstream := strings.TrimSpace(model.ID); upstream != "" {
+					used[upstream] = struct{}{}
+				}
+				if external := state.ExternalModelName(model.ID, model.Alias); external != "" {
+					used[external] = struct{}{}
+				}
+				if model.TestAlias != "" {
+					used[model.TestAlias] = struct{}{}
+				}
+			}
+		}
+		changedGroups := make([]bool, len(configs))
+		for groupIndex := range configs {
+			for modelIndex := range configs[groupIndex].Models {
+				if configs[groupIndex].Models[modelIndex].TestAlias != "" {
+					continue
+				}
+				alias, err := state.GenerateTestAlias(used)
+				if err != nil {
+					return fmt.Errorf("group %d model %d: %w", configs[groupIndex].ID, modelIndex, err)
+				}
+				configs[groupIndex].Models[modelIndex].TestAlias = alias
+				rawStored[groupIndex][modelIndex]["test_alias"], _ = json.Marshal(alias)
+				used[alias] = struct{}{}
+				changedGroups[groupIndex] = true
+			}
+		}
+		for index, row := range rows {
+			if !changedGroups[index] {
+				continue
+			}
+			encoded, err := json.Marshal(rawStored[index])
+			if err != nil {
+				return fmt.Errorf("encode group %d models: %w", row.ID, err)
+			}
+			if err := tx.Model(&models.Group{}).Where("id = ?", row.ID).Update("models", models.JSON(encoded)).Error; err != nil {
+				return fmt.Errorf("persist group %d models: %w", row.ID, err)
+			}
+		}
+		return nil
+	})
 }
 
 func (l *Loader) validatePersistedCredentials(
@@ -567,7 +670,7 @@ func mapSystemAndGroups(
 		runtimeModels := make([]state.ModelConfig, 0, len(storedModels))
 		for _, model := range storedModels {
 			runtimeModels = append(runtimeModels, state.ModelConfig{
-				ID: model.ID, Alias: model.Alias, EntryID: model.EntryID,
+				ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 				Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
 				CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 			})

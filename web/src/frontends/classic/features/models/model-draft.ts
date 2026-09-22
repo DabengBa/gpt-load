@@ -7,6 +7,8 @@ export type ModelDraftKey = string | number
 export interface ModelDraftValue extends GroupModelUpdateDto {
   key: ModelDraftKey
   editable_id?: boolean
+  /** Read-only server allocation; intentionally excluded by normalizeModel. */
+  test_alias?: string
   name: string
   sources: ModelCandidateSource[]
   pricing_status: ModelPricingStatus

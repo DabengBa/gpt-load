@@ -4,12 +4,94 @@
 package state
 
 import (
+	cryptorand "crypto/rand"
 	"fmt"
 	"regexp"
 	"strings"
 )
 
 var entryIDPattern = regexp.MustCompile(`^e[0-9a-f]{12}$`)
+
+const (
+	TestAliasLength   = 6
+	testAliasAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	testAliasAttempts = 128
+)
+
+// ValidateTestAlias checks the persisted client-facing test route name.
+func ValidateTestAlias(alias string) error {
+	if len(alias) != TestAliasLength {
+		return fmt.Errorf("test alias must be exactly %d lowercase letters or digits", TestAliasLength)
+	}
+	for _, character := range alias {
+		if !strings.ContainsRune(testAliasAlphabet, character) {
+			return fmt.Errorf("test alias must be exactly %d lowercase letters or digits", TestAliasLength)
+		}
+	}
+	return nil
+}
+
+// GenerateTestAlias returns a random test alias that is absent from used.
+// The caller owns used and may add the returned value before generating again.
+func GenerateTestAlias(used map[string]struct{}) (string, error) {
+	for range testAliasAttempts {
+		aliasBytes := make([]byte, TestAliasLength)
+		for index := range aliasBytes {
+			for {
+				var randomByte [1]byte
+				if _, err := cryptorand.Read(randomByte[:]); err != nil {
+					return "", fmt.Errorf("generate test alias randomness: %w", err)
+				}
+				if randomByte[0] >= 252 {
+					continue
+				}
+				aliasBytes[index] = testAliasAlphabet[int(randomByte[0])%len(testAliasAlphabet)]
+				break
+			}
+		}
+		alias := string(aliasBytes)
+		if _, exists := used[alias]; !exists {
+			return alias, nil
+		}
+	}
+	return "", fmt.Errorf("generate test alias: exhausted collision retries")
+}
+
+// ValidateTestAliases validates the global namespace used by compiled routes.
+// Test aliases must not merge with ordinary model names or with each other.
+func ValidateTestAliases(groups []GroupConfig) error {
+	standardNames := make(map[string]struct{})
+	for _, group := range groups {
+		for _, model := range group.Models {
+			upstream := strings.TrimSpace(model.ID)
+			if upstream != "" {
+				standardNames[upstream] = struct{}{}
+			}
+			if external := ExternalModelName(upstream, model.Alias); external != "" {
+				standardNames[external] = struct{}{}
+			}
+		}
+	}
+	testAliases := make(map[string]struct{})
+	for _, group := range groups {
+		for _, model := range group.Models {
+			if model.TestAlias == "" {
+				continue
+			}
+			if err := ValidateTestAlias(model.TestAlias); err != nil {
+				return fmt.Errorf("group %d model %q: %w", group.ID, strings.TrimSpace(model.ID), err)
+			}
+			if _, duplicate := testAliases[model.TestAlias]; duplicate {
+				return fmt.Errorf("duplicate test alias %q", model.TestAlias)
+			}
+			if _, conflicts := standardNames[model.TestAlias]; conflicts {
+				return fmt.Errorf("test alias %q conflicts with standard model name", model.TestAlias)
+			}
+			testAliases[model.TestAlias] = struct{}{}
+		}
+	}
+	return nil
+}
 
 type EntryCircuitBreaker struct {
 	BlacklistThreshold *int `json:"blacklist_threshold,omitempty"`

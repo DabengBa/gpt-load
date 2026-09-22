@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 
 	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
@@ -57,9 +60,10 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 	}
 	want := GroupModelsResponse{
 		Items: []GroupModelResponse{
-			{ID: "gpt-4o", Alias: "default", AliasEnabled: true, ClientModel: "default", PricingStatus: PricingStatusConfigured},
-			{ID: "missing-price", Alias: "", AliasEnabled: false, ClientModel: "missing-price", PricingStatus: PricingStatusPending},
+			{ID: "gpt-4o", Alias: "default", AliasEnabled: true, ClientModel: "default", TestAlias: "", PricingStatus: PricingStatusConfigured},
+			{ID: "missing-price", Alias: "", AliasEnabled: false, ClientModel: "missing-price", TestAlias: "", PricingStatus: PricingStatusPending},
 		},
+
 		Total:   2,
 		Pending: 1,
 	}
@@ -73,6 +77,7 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
 		}
 		want.Items[index].EntryID = item.EntryID
+		want.Items[index].TestAlias = item.TestAlias
 	}
 	// price_id 必须是该 (渠道, 模型) 价格行的主键；价格协调会为每个被引用的模型
 	// materialize 价格行，pending 行同样带 ID（前端据此深链到价格编辑器）。
@@ -91,6 +96,129 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetGroupModels() = %#v, want %#v", got, want)
+	}
+}
+
+func TestGroupModelsGenerateAndPreserveReadOnlyTestAlias(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name: stringPointer("test-alias-control"), ChannelID: channel.OpenAICompatible,
+		Params:      json.RawMessage(`{"base_url":"https://test-alias-control.example/v1"}`),
+		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "upstream-model"}}},
+		Credentials: "sk-test-alias-control", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	first, err := fixture.service.GetGroupModels(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("first GetGroupModels() error = %v", err)
+	}
+	if len(first.Items) != 1 || !regexp.MustCompile(`^[a-z0-9]{6}$`).MatchString(first.Items[0].TestAlias) {
+		t.Fatalf("first model response = %#v, want generated six-character test alias", first.Items)
+	}
+	testAlias := first.Items[0].TestAlias
+
+	updated, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
+		Models: optionalGroupModels{Set: true, Values: []GroupModel{{
+			ID: "upstream-model", EntryID: first.Items[0].EntryID, TestAlias: "client-value",
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("UpdateGroupModels() error = %v", err)
+	}
+	if len(updated.Items) != 1 || updated.Items[0].TestAlias != testAlias {
+		t.Fatalf("updated model response = %#v, want preserved test alias %q", updated.Items, testAlias)
+	}
+	var stored []groupModelEntry
+	var group models.Group
+	if err := fixture.db.First(&group, created.GroupID).Error; err != nil {
+		t.Fatalf("load group: %v", err)
+	}
+	if err := json.Unmarshal(group.Models, &stored); err != nil {
+		t.Fatalf("decode stored models: %v", err)
+	}
+	if len(stored) != 1 || stored[0].TestAlias != testAlias {
+		t.Fatalf("stored models = %#v, want test alias %q", stored, testAlias)
+	}
+	// 无关设置更新不得改动模型测试别名（scope 证据项）。
+	if _, err := fixture.service.UpdateGroupSettings(t.Context(), created.GroupID, GroupSettingsUpdateRequest{
+		Params: optionalField[json.RawMessage]{
+			Set: true, Value: json.RawMessage(`{"base_url":"https://test-alias-control.example/v2"}`),
+		},
+	}); err != nil {
+		t.Fatalf("UpdateGroupSettings() error = %v", err)
+	}
+	afterSettings, err := fixture.service.GetGroupModels(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupModels() after settings update error = %v", err)
+	}
+	if len(afterSettings.Items) != 1 || afterSettings.Items[0].TestAlias != testAlias {
+		t.Fatalf("models after settings update = %#v, want preserved test alias %q", afterSettings.Items, testAlias)
+	}
+}
+
+func TestCreateGroupAllocatesTestAliasInsideControlTransaction(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		call func(*testing.T, *serviceFixture)
+	}{
+		{
+			name: "ordinary create",
+			call: func(t *testing.T, fixture *serviceFixture) {
+				_, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+					Name: stringPointer("transactional-test-alias"), ChannelID: channel.OpenAI,
+					Params:      json.RawMessage(`{}`),
+					Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "upstream"}}},
+					Credentials: "sk-transactional-test-alias", ConnectionType: "api_key",
+				})
+				if err != nil {
+					t.Fatalf("CreateGroup() error = %v", err)
+				}
+			},
+		},
+		{
+			name: "idempotent create",
+			call: func(t *testing.T, fixture *serviceFixture) {
+				_, err := fixture.service.CreateGroupIdempotent(t.Context(), "918f47a2-9c35-4d6e-8b1a-1234567890ab", GroupCreateRequest{
+					Name: stringPointer("transactional-idempotent-test-alias"), ChannelID: channel.OpenAI,
+					Params:      json.RawMessage(`{}`),
+					Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "upstream"}}},
+					Credentials: "sk-transactional-idempotent-test-alias", ConnectionType: "api_key",
+					ConfirmSameTarget: true,
+				})
+				if err != nil {
+					t.Fatalf("CreateGroupIdempotent() error = %v", err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newServiceFixture(t)
+			var outsideTransaction bool
+			var observedScan bool
+			err := fixture.db.Callback().Query().After("gorm:query").Register(
+				"test:model-test-alias-transaction-boundary",
+				func(db *gorm.DB) {
+					sqlText := strings.ToUpper(db.Statement.SQL.String())
+					if !strings.Contains(sqlText, "SELECT `MODELS`") || !strings.Contains(sqlText, "FROM `GROUPS`") || !strings.Contains(sqlText, "ORDER BY ID ASC") {
+						return
+					}
+					observedScan = true
+					if _, ok := db.Statement.ConnPool.(*sql.Conn); !ok {
+						outsideTransaction = true
+					}
+				},
+			)
+			if err != nil {
+				t.Fatalf("register query callback: %v", err)
+			}
+			test.call(t, &fixture)
+			if !observedScan || outsideTransaction {
+				t.Fatalf("alias occupancy scan was not inside the control transaction: observed=%t outside=%t", observedScan, outsideTransaction)
+			}
+		})
 	}
 }
 
@@ -443,6 +571,7 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
 		}
 		want.Items[index].EntryID = item.EntryID
+		want.Items[index].TestAlias = item.TestAlias
 		// price_id 必须随响应返回，前端据此深链到价格编辑器。
 		if item.PriceID == nil || *item.PriceID == 0 {
 			t.Fatalf("item %d price_id = %v, want the reconciled price row id", index, item.PriceID)
@@ -488,6 +617,7 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 			t.Fatalf("stored model %d entry_id = %q, want lazy-backfilled e+12hex", index, model.EntryID)
 		}
 		wantModels[index].EntryID = model.EntryID
+		wantModels[index].TestAlias = model.TestAlias
 	}
 	if !reflect.DeepEqual(stored, wantModels) {
 		t.Fatalf("stored models = %#v, want %#v", stored, wantModels)
@@ -514,16 +644,21 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 		t.Fatalf("effective/snapshot = %#v/%#v", settings.Effective, view)
 	}
 	targets := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]
-	if len(targets) != 2 ||
+	if len(targets) != 4 ||
 		targets["public-a"][0].UpstreamModelID != "provider-a" ||
 		targets["public-b"][0].UpstreamModelID != "provider-b" {
 		t.Fatalf("candidate mapping = %#v", targets)
+	}
+	for _, model := range view.Models {
+		if model.TestAlias == "" || targets[model.TestAlias][0].UpstreamModelID != model.ID {
+			t.Fatalf("test alias mapping for %#v = %#v", model, targets[model.TestAlias])
+		}
 	}
 	if _, exists := targets["old-public"]; exists {
 		t.Fatalf("authoritative replacement retained old model: %#v", targets)
 	}
 	routes := snapshot.ExecutionRouteCatalog[protocol.OpenAICompletions][execution.OperationChatCompletion]
-	if len(routes) != 2 ||
+	if len(routes) != 4 ||
 		routes["public-a"][0].UpstreamModelID != "provider-a" ||
 		routes["public-b"][0].UpstreamModelID != "provider-b" {
 		t.Fatalf("route catalog = %#v", routes)
