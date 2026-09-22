@@ -94,6 +94,29 @@ func TestVisibleModelIDsDeduplicateRouteEntriesByExternalName(t *testing.T) {
 	}
 }
 
+func TestVisibleModelIDsIncludesTestAliasAndRespectsGroupFilter(t *testing.T) {
+	t.Parallel()
+	snapshot, err := state.Compile(state.CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{
+			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "upstream", Alias: "public", TestAlias: "a4g233"}}, Enabled: true},
+			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []state.ModelConfig{{ID: "other"}}, Enabled: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if got := visibleModelIDs(snapshot, state.AccessKeyView{}, protocol.OpenAICompletions); !reflect.DeepEqual(got, []string{"a4g233", "other", "public"}) {
+		t.Fatalf("visibleModelIDs() = %#v, want test alias and ordinary models", got)
+	}
+	filtered := state.AccessKeyView{Filters: state.FilterSet{Groups: map[uint]struct{}{1: {}}}}
+	if got := visibleModelIDs(snapshot, filtered, protocol.OpenAICompletions); !reflect.DeepEqual(got, []string{"a4g233", "public"}) {
+		t.Fatalf("filtered visibleModelIDs() = %#v, want only group 1 models", got)
+	}
+}
+
 func TestVisibleOpenAIModelIDsUnionsChatAndResponses(t *testing.T) {
 	t.Parallel()
 

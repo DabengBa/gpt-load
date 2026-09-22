@@ -223,8 +223,8 @@ func TestModelRouteScheduleIndexAggregatesRealCandidates(t *testing.T) {
 	for _, item := range result.Items {
 		byModel[item.ExternalModel] = item
 	}
-	if len(result.Items) != 2 {
-		t.Fatalf("items = %#v, want 2 external models", result.Items)
+	if len(result.Items) != 7 {
+		t.Fatalf("items = %#v, want ordinary plus test-alias external models", result.Items)
 	}
 	pub := byModel["pub"]
 	if pub.ExternalModel != "pub" || pub.Protocol != protocol.OpenAICompletions ||

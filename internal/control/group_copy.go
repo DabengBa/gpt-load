@@ -31,6 +31,7 @@ func (s *Service) CopyGroupIdempotent(
 	if sourceGroupID == 0 {
 		return GroupCreateResult{}, app_errors.ErrValidation
 	}
+
 	canonicalBody, err := canonicalIdempotencyBody(groupCopyDigestBody{SourceGroupID: sourceGroupID})
 	if err != nil {
 		return GroupCreateResult{}, app_errors.ErrInternalServer
@@ -72,6 +73,20 @@ func (s *Service) CopyGroupIdempotent(
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
+			var copiedModels []GroupModel
+			if err := decodeGroupDiscoveryJSON(source.Models, &copiedModels); err != nil {
+				return idempotentMutationResult{}, err
+			}
+			for index := range copiedModels {
+				copiedModels[index].TestAlias = ""
+			}
+			if err := assignMissingTestAliases(tx, copiedModels); err != nil {
+				return idempotentMutationResult{}, err
+			}
+			encodedModels, err := json.Marshal(copiedModels)
+			if err != nil {
+				return idempotentMutationResult{}, app_errors.ErrInternalServer
+			}
 			clone := models.Group{
 				PriceMultiplierMicros: cloneOptionalInt64(source.PriceMultiplierMicros),
 				Name:                  name,
@@ -79,7 +94,7 @@ func (s *Service) CopyGroupIdempotent(
 				ConnectionType:        source.ConnectionType,
 				Params:                append(models.JSON(nil), source.Params...),
 				ProviderURL:           cloneString(source.ProviderURL),
-				Models:                append(models.JSON(nil), source.Models...),
+				Models:                models.JSON(encodedModels),
 				Overrides:             append(models.JSON(nil), source.Overrides...),
 				ProxyConfig:           cloneString(source.ProxyConfig),
 				Enabled:               source.Enabled,

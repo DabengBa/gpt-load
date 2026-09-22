@@ -173,3 +173,42 @@ func TestListGroupOptionsDeduplicateRouteEntriesByExternalName(t *testing.T) {
 		t.Fatalf("option models = %#v, want %v (same external name must appear once)", target.Models, want)
 	}
 }
+
+func TestListGroupOptionsIncludesTestAliasesAsVisibleModels(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	createGroupOptionGroup(t, fixture, 31, "test-alias-options", true,
+		channel.OpenAICompatible, `{"base_url":"https://test-alias-options.example/v1"}`,
+		`[{"id":"upstream","alias":"public","test_alias":"a4g233","alias_enabled":true}]`,
+	)
+	options, err := fixture.service.ListGroupOptions(t.Context())
+	if err != nil {
+		t.Fatalf("ListGroupOptions() error = %v", err)
+	}
+	if len(options) != 1 || !reflect.DeepEqual(options[0].Models, []string{"public", "a4g233"}) {
+		t.Fatalf("option models = %#v, want public and test alias", options)
+	}
+}
+
+func TestListGroupOptionsKeepsTestAliasesForSharedExternalName(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	createGroupOptionGroup(t, fixture, 32, "shared-external-test-aliases", true,
+		channel.OpenAICompatible, `{"base_url":"https://shared-external-test-aliases.example/v1"}`,
+		`[{"id":"up-a","alias":"public","test_alias":"a4g233"},{"id":"up-b","alias":"public","test_alias":"b5h244"}]`,
+	)
+
+	options, err := fixture.service.ListGroupOptions(t.Context())
+	if err != nil {
+		t.Fatalf("ListGroupOptions() error = %v", err)
+	}
+	if len(options) != 1 {
+		t.Fatalf("options = %#v, want one group", options)
+	}
+	if len(options[0].Models) != 3 || options[0].Models[1] != "a4g233" {
+		t.Fatalf("option models = %#v, want first route test alias a4g233", options[0].Models)
+	}
+	if len(options[0].Models) != 3 || options[0].Models[2] != "b5h244" {
+		t.Fatalf("option models = %#v, want second route test alias b5h244", options[0].Models)
+	}
+}

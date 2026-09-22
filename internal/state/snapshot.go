@@ -61,6 +61,7 @@ type CredentialConfig struct {
 type ModelConfig struct {
 	ID             string
 	Alias          string
+	TestAlias      string
 	EntryID        string
 	Weight         *int
 	Priority       *int
@@ -428,6 +429,15 @@ func appendExecutionTargets(
 						Priority:    normalizeRouteEntryValue(model.Priority),
 						EntryID:     routeEntryIdentity(external, model),
 					})
+					if model.TestAlias != "" {
+						appendExecutionTarget(index, clientProtocol, operation, model.TestAlias, RouteTarget{
+							GroupID: group.ID, UpstreamModelID: strings.TrimSpace(model.ID),
+							Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
+							EntryWeight: normalizeRouteEntryValue(model.Weight),
+							Priority:    normalizeRouteEntryValue(model.Priority),
+							EntryID:     routeEntryIdentity(external, model),
+						})
+					}
 				}
 			default:
 				return fmt.Errorf("compile group %d channel has unsupported routable operation %q", group.ID, operation)
@@ -480,7 +490,7 @@ func cloneModelConfigs(models []ModelConfig) []ModelConfig {
 	cloned := make([]ModelConfig, len(models))
 	for index, model := range models {
 		cloned[index] = ModelConfig{
-			ID: model.ID, Alias: model.Alias, EntryID: model.EntryID,
+			ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 			Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
 			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 		}
@@ -546,6 +556,9 @@ func validateCompileInput(input CompileInput) error {
 		if err := ValidateModelRouteEntries(fmt.Sprintf("group %d", group.ID), group.Models); err != nil {
 			return err
 		}
+	}
+	if err := ValidateTestAliases(input.Groups); err != nil {
+		return err
 	}
 
 	credentialIDs := make(map[uint]struct{}, len(input.Credentials))

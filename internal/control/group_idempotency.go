@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/sirupsen/logrus"
@@ -38,6 +39,14 @@ type credentialImportDigestBody struct {
 	Credentials []string `json:"credentials"`
 }
 
+func digestGroupModels(values []GroupModel) []GroupModel {
+	result := append([]GroupModel(nil), values...)
+	for index := range result {
+		result[index].TestAlias = ""
+	}
+	return result
+}
+
 func (s *Service) CreateGroupIdempotent(
 	ctx context.Context,
 	idempotencyKey string,
@@ -61,7 +70,7 @@ func (s *Service) CreateGroupIdempotent(
 		ConnectionType:      normalized.connectionType,
 		Params:              append(json.RawMessage(nil), normalized.params...),
 		ProviderURL:         cloneString(normalized.providerURL),
-		Models:              append([]GroupModel(nil), normalized.models...),
+		Models:              digestGroupModels(normalized.models),
 		Credentials:         credentialLines,
 		StagedCredentialIDs: append([]string(nil), normalized.stagedCredentialIDs...),
 		ConfirmSameTarget:   normalized.confirmSameTarget,
@@ -105,6 +114,9 @@ func (s *Service) CreateGroupIdempotent(
 			}
 		},
 		Mutate: func(tx *gorm.DB) (idempotentMutationResult, error) {
+			if err := assignMissingTestAliases(tx, normalized.models); err != nil {
+				return idempotentMutationResult{}, fmt.Errorf("assign new group test aliases: %w", app_errors.ErrInternalServer)
+			}
 			if normalized.connectionType == models.ConnectionTypeSubscription {
 				if err := s.validateCredentialStageCreateBatch(
 					tx, normalized.channelID, normalized.connectionType, normalized.stagedCredentialIDs,

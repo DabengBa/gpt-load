@@ -564,3 +564,58 @@ func stripResolvedTargets(targets []RouteTarget) []RouteTarget {
 	}
 	return stripped
 }
+
+func TestCompileIndexesTestAliasOnlyToItsRouteTarget(t *testing.T) {
+	t.Parallel()
+	snapshot, err := Compile(CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []GroupConfig{
+			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Models: []ModelConfig{{ID: "provider-a", Alias: "public", TestAlias: "a4g233"}}, Enabled: true},
+			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAICompatible,
+				Params: json.RawMessage(`{"base_url":"https://proxy.example/v1"}`),
+				Models: []ModelConfig{{ID: "provider-b", Alias: "public"}}, Enabled: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	for _, operation := range []execution.Operation{
+		execution.OperationChatCompletion,
+		execution.OperationResponsesCreate,
+		execution.OperationEmbeddingsCreate,
+	} {
+		for _, clientProtocol := range []protocol.Protocol{
+			protocol.OpenAICompletions, protocol.OpenAIResponses, protocol.OpenAIEmbeddings,
+		} {
+			got := snapshot.ExecutionCandidates[clientProtocol][operation]["a4g233"]
+			if len(got) == 0 {
+				continue
+			}
+			if len(got) != 1 || got[0].GroupID != 1 || got[0].UpstreamModelID != "provider-a" {
+				t.Fatalf("test alias targets for %q/%q = %#v, want only group 1/provider-a", clientProtocol, operation, got)
+			}
+		}
+	}
+	public := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]["public"]
+	if len(public) != 2 {
+		t.Fatalf("public targets = %#v, want both ordinary routes", public)
+	}
+}
+
+func TestCompileRejectsTestAliasStandardNameConflict(t *testing.T) {
+	t.Parallel()
+	_, err := Compile(CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []GroupConfig{{
+			ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			Models: []ModelConfig{
+				{ID: "provider-a", Alias: "public"},
+				{ID: "provider-b", TestAlias: "public"},
+			}, Enabled: true,
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflicts with standard model name") {
+		t.Fatalf("Compile() error = %v, want test alias namespace conflict", err)
+	}
+}

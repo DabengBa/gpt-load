@@ -163,6 +163,7 @@ export interface GroupModelItemDto {
   alias: string
   alias_enabled: boolean
   client_model: string
+  test_alias: string
   /** Present after the server lazily backfills the route-entry identity. */
   entry_id?: string
   weight: number | null

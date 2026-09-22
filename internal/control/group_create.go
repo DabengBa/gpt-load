@@ -117,6 +117,9 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 		if err != nil {
 			return err
 		}
+		if err := assignMissingTestAliases(tx, normalized.models); err != nil {
+			return fmt.Errorf("assign new group test aliases: %w", app_errors.ErrInternalServer)
+		}
 		encodedModels, err := json.Marshal(normalized.models)
 		if err != nil {
 			return fmt.Errorf("encode group models: %w", err)

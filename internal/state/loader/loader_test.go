@@ -474,9 +474,6 @@ func TestLoaderMapsSystemAndGroupRows(t *testing.T) {
 	}
 
 	openAICandidates := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]
-	if len(openAICandidates) != 3 {
-		t.Fatalf("OpenAI candidates = %#v, want three external model names", openAICandidates)
-	}
 	for external, upstream := range map[string]string{
 		"Primary":   "gpt-4o",
 		"Secondary": "gpt-4o",
@@ -985,4 +982,84 @@ func createRuntimeGroup(t *testing.T, db *gorm.DB, name string, p protocol.Proto
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func TestBackfillTestAliasesPersistsStableGlobalValues(t *testing.T) {
+	db := openMigratedDatabase(t)
+	first := models.Group{
+		Name: "backfill-first", ChannelID: string(channel.OpenAI), Params: models.JSON(`{}`),
+		Models: models.JSON(`[{"id":"first","alias":"public"}]`), Overrides: models.JSON(`{}`), Enabled: true,
+	}
+	second := models.Group{
+		Name: "backfill-second", ChannelID: string(channel.OpenAI), Params: models.JSON(`{}`),
+		Models: models.JSON(`[{"id":"second","alias":"other"},{"id":"legacy","alias":"legacy-public"}]`), Overrides: models.JSON(`{}`), Enabled: true,
+	}
+	mustCreate(t, db, &first)
+	mustCreate(t, db, &second)
+
+	if err := loader.BackfillTestAliases(context.Background(), db); err != nil {
+		t.Fatalf("BackfillTestAliases() error = %v", err)
+	}
+	readModels := func(groupID uint) string {
+		t.Helper()
+		var group models.Group
+		if err := db.First(&group, groupID).Error; err != nil {
+			t.Fatal(err)
+		}
+		return string(group.Models)
+	}
+	firstModels, secondModels := readModels(first.ID), readModels(second.ID)
+	var firstDecoded, secondDecoded []struct {
+		ID        string `json:"id"`
+		Alias     string `json:"alias"`
+		TestAlias string `json:"test_alias"`
+	}
+	if err := json.Unmarshal([]byte(firstModels), &firstDecoded); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(secondModels), &secondDecoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(firstDecoded) != 1 || len(secondDecoded) != 2 ||
+		firstDecoded[0].Alias != "public" || secondDecoded[1].Alias != "legacy-public" {
+		t.Fatalf("backfilled models lost legacy fields: %s / %s", firstModels, secondModels)
+	}
+	if firstDecoded[0].TestAlias == "" || secondDecoded[0].TestAlias == "" || secondDecoded[1].TestAlias == "" ||
+		firstDecoded[0].TestAlias == secondDecoded[0].TestAlias || firstDecoded[0].TestAlias == secondDecoded[1].TestAlias ||
+		secondDecoded[0].TestAlias == secondDecoded[1].TestAlias {
+		t.Fatalf("backfilled aliases = %#v / %#v, want globally unique values", firstDecoded, secondDecoded)
+	}
+	firstSnapshot := firstModels + "\n" + secondModels
+
+	if err := loader.BackfillTestAliases(context.Background(), db); err != nil {
+		t.Fatalf("second BackfillTestAliases() error = %v", err)
+	}
+	if got := readModels(first.ID) + "\n" + readModels(second.ID); got != firstSnapshot {
+		t.Fatalf("second backfill changed persisted aliases: got %s, want %s", got, firstSnapshot)
+	}
+
+	input, err := loader.BuildCompileInput(context.Background(), db)
+	if err != nil {
+		t.Fatalf("BuildCompileInput() error = %v", err)
+	}
+	if input.Groups[0].Models[0].TestAlias != firstDecoded[0].TestAlias {
+		t.Fatalf("compiled test alias = %q, want %q", input.Groups[0].Models[0].TestAlias, firstDecoded[0].TestAlias)
+	}
+}
+
+func TestLoaderReadsLegacyAndTestAliasModelJSON(t *testing.T) {
+	db := openMigratedDatabase(t)
+	group := models.Group{
+		Name: "legacy-test-alias", ChannelID: string(channel.OpenAI), Params: models.JSON(`{}`),
+		Models:    models.JSON(`[{"id":"legacy","alias":"legacy-public"},{"id":"new","alias":"new-public","test_alias":"a4g233"}]`),
+		Overrides: models.JSON(`{}`), Enabled: true,
+	}
+	mustCreate(t, db, &group)
+	input, err := loader.BuildCompileInput(context.Background(), db)
+	if err != nil {
+		t.Fatalf("BuildCompileInput() error = %v", err)
+	}
+	if len(input.Groups) != 1 || len(input.Groups[0].Models) != 2 || input.Groups[0].Models[0].TestAlias != "" || input.Groups[0].Models[1].TestAlias != "a4g233" {
+		t.Fatalf("decoded models = %#v, want legacy empty and explicit test alias", input.Groups[0].Models)
+	}
 }

@@ -1,9 +1,68 @@
 package state
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestGenerateTestAliasUsesSixLowercaseAlphaNumericCharacters(t *testing.T) {
+	t.Parallel()
+	used := map[string]struct{}{"a4g233": {}, "ffffff": {}}
+	for range 100 {
+		alias, err := GenerateTestAlias(used)
+		if err != nil {
+			t.Fatalf("GenerateTestAlias() error = %v", err)
+		}
+		if !regexp.MustCompile(`^[a-z0-9]{6}$`).MatchString(alias) {
+			t.Fatalf("generated alias = %q, want six lowercase alphanumeric characters", alias)
+		}
+		if _, exists := used[alias]; exists {
+			t.Fatalf("generated alias = %q is already occupied", alias)
+		}
+		used[alias] = struct{}{}
+	}
+}
+
+func TestValidateModelRouteEntriesRejectsInvalidOrConflictingTestAliases(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		groups  []GroupConfig
+		wantErr string
+	}{
+		{
+			name:    "invalid format",
+			groups:  []GroupConfig{{ID: 1, Models: []ModelConfig{{ID: "model", TestAlias: "ABC123"}}}},
+			wantErr: "test alias",
+		},
+		{
+			name: "duplicate across groups",
+			groups: []GroupConfig{
+				{ID: 1, Models: []ModelConfig{{ID: "model-a", TestAlias: "a4g233"}}},
+				{ID: 2, Models: []ModelConfig{{ID: "model-b", TestAlias: "a4g233"}}},
+			},
+			wantErr: "duplicate test alias",
+		},
+		{
+			name: "standard name conflict",
+			groups: []GroupConfig{
+				{ID: 1, Models: []ModelConfig{{ID: "model-a", Alias: "public"}}},
+				{ID: 2, Models: []ModelConfig{{ID: "model-b", TestAlias: "public"}}},
+			},
+			wantErr: "conflicts with standard model name",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidateTestAliases(test.groups)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("ValidateTestAliases() error = %v, want substring %q", err, test.wantErr)
+			}
+		})
+	}
+}
 
 func TestExternalModelNamePrefersAliasThenUpstreamID(t *testing.T) {
 	t.Parallel()

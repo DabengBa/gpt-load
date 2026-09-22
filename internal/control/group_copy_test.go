@@ -85,7 +85,6 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 		clone.ChannelID != original.ChannelID ||
 		clone.ConnectionType != original.ConnectionType ||
 		string(clone.Params) != string(original.Params) ||
-		string(clone.Models) != string(original.Models) ||
 		string(clone.Overrides) != string(original.Overrides) ||
 		clone.Enabled != false ||
 		clone.ProviderURL == nil || *clone.ProviderURL != *original.ProviderURL {
@@ -94,6 +93,26 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 	if (clone.ProxyConfig == nil) != (original.ProxyConfig == nil) ||
 		clone.ProxyConfig != nil && *clone.ProxyConfig != *original.ProxyConfig {
 		t.Fatalf("clone proxy = %v, want %v", clone.ProxyConfig, original.ProxyConfig)
+	}
+	var originalModels, cloneModels []groupModelEntry
+	if err := json.Unmarshal(original.Models, &originalModels); err != nil {
+		t.Fatalf("decode source models: %v", err)
+	}
+	if err := json.Unmarshal(clone.Models, &cloneModels); err != nil {
+		t.Fatalf("decode clone models: %v", err)
+	}
+	if len(originalModels) != len(cloneModels) {
+		t.Fatalf("model counts = source:%d clone:%d", len(originalModels), len(cloneModels))
+	}
+	for index := range originalModels {
+		if originalModels[index].TestAlias == "" || cloneModels[index].TestAlias == "" || originalModels[index].TestAlias == cloneModels[index].TestAlias {
+			t.Fatalf("model %d test aliases = %q/%q, want distinct generated values", index, originalModels[index].TestAlias, cloneModels[index].TestAlias)
+		}
+		originalModels[index].TestAlias = ""
+		cloneModels[index].TestAlias = ""
+	}
+	if !reflect.DeepEqual(originalModels, cloneModels) {
+		t.Fatalf("clone models differ beyond test aliases: source=%#v clone=%#v", originalModels, cloneModels)
 	}
 	if *clone.PriceMultiplierMicros != *original.PriceMultiplierMicros {
 		t.Fatalf("clone price multiplier = %d, want %d",
@@ -142,6 +161,30 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 	}
 	if second.GroupName != "copy-source-copy-2" {
 		t.Fatalf("second copy name = %q, want copy-source-copy-2", second.GroupName)
+	}
+}
+
+func TestCopyGroupIdempotentGeneratesDistinctTestAliases(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	source := createGroupCopySource(t, fixture, "copy-test-alias")
+	sourceModels, err := fixture.service.GetGroupModels(t.Context(), source.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupModels(source) error = %v", err)
+	}
+	if len(sourceModels.Items) != 1 || sourceModels.Items[0].TestAlias == "" {
+		t.Fatalf("source models = %#v, want test alias", sourceModels.Items)
+	}
+	copyResult, err := fixture.service.CopyGroupIdempotent(t.Context(), "818f47a2-9c35-4d6e-8b1a-1234567890ab", source.GroupID)
+	if err != nil {
+		t.Fatalf("CopyGroupIdempotent() error = %v", err)
+	}
+	copyModels, err := fixture.service.GetGroupModels(t.Context(), copyResult.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupModels(copy) error = %v", err)
+	}
+	if len(copyModels.Items) != 1 || copyModels.Items[0].TestAlias == "" || copyModels.Items[0].TestAlias == sourceModels.Items[0].TestAlias {
+		t.Fatalf("copy models = %#v, want distinct generated test alias from %q", copyModels.Items, sourceModels.Items[0].TestAlias)
 	}
 }
 

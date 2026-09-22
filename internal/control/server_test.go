@@ -1668,6 +1668,7 @@ func TestUpdateGroupModelsEndpointIDsAuthNotFoundAndSuccessDTO(t *testing.T) {
 			t.Fatalf("item %d entry_id = %q, want lazy-backfilled e+12hex", index, item.EntryID)
 		}
 		want.Items[index].EntryID = item.EntryID
+		want.Items[index].TestAlias = item.TestAlias
 		// price_id 必须随 JSON 响应返回，前端据此深链到价格编辑器。
 		if item.PriceID == nil || *item.PriceID == 0 {
 			t.Fatalf("item %d price_id = %v, want the reconciled price row id", index, item.PriceID)
