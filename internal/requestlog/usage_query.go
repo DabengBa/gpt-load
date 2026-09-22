@@ -619,9 +619,12 @@ func sortUsageBreakdownRows(scope *gorm.DB, rows []usageBreakdownCandidate, inpu
 		}
 	}
 	sort.Slice(rows, func(left, right int) bool {
-		comparison := compareUsageBreakdownPrimary(rows[left], rows[right], input.BreakdownSort)
-		if input.BreakdownSortDirection == UsageBreakdownSortDescending {
-			comparison = -comparison
+		comparison := compareUsageBreakdownSamplePresence(rows[left], rows[right], input.BreakdownSort)
+		if comparison == 0 {
+			comparison = compareUsageBreakdownPrimary(rows[left], rows[right], input.BreakdownSort)
+			if input.BreakdownSortDirection == UsageBreakdownSortDescending {
+				comparison = -comparison
+			}
 		}
 		if comparison != 0 {
 			return comparison < 0
@@ -649,6 +652,25 @@ func sortUsageBreakdownRows(scope *gorm.DB, rows []usageBreakdownCandidate, inpu
 		return leftChannel < rightChannel
 	})
 	return nil
+}
+
+// compareUsageBreakdownSamplePresence keeps rows without first-response
+// samples after rows with samples in both sort directions, matching the
+// frontend that renders a missing average first response as "—".
+func compareUsageBreakdownSamplePresence(left, right usageBreakdownCandidate, sortBy UsageBreakdownSort) int {
+	if sortBy != UsageBreakdownSortAverageFirstResponse {
+		return 0
+	}
+	leftHasSamples := left.row.UsageAggregate.FirstResponseSampleCount > 0
+	rightHasSamples := right.row.UsageAggregate.FirstResponseSampleCount > 0
+	switch {
+	case leftHasSamples == rightHasSamples:
+		return 0
+	case leftHasSamples:
+		return -1
+	default:
+		return 1
+	}
 }
 
 func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy UsageBreakdownSort) int {

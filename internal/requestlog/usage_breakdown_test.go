@@ -285,6 +285,59 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 	}
 }
 
+func TestUsageBreakdownSortsNoSampleFirstResponseRowsLast(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)
+	row := func(model string, requests, firstResponseTotal, firstResponseSamples int64) models.UsageStat {
+		value := usageStat(start, 7, model, requests)
+		value.ID = 0
+		value.ChannelID = fmt.Sprintf("channel-%s", model)
+		value.CredentialID = uint(len(model))
+		value.FirstResponseMsTotal = firstResponseTotal
+		value.FirstResponseSampleCount = firstResponseSamples
+		return value
+	}
+	createUsageStats(t, db,
+		row("alpha", 3, 300, 3),
+		row("bravo", 2, 1000, 2),
+		row("charlie", 1, 0, 0),
+		row("delta", 1, 0, 0),
+	)
+
+	tests := []struct {
+		name      string
+		direction UsageBreakdownSortDirection
+		want      []string
+	}{
+		{"ascending", UsageBreakdownSortAscending, []string{"alpha", "bravo", "charlie", "delta"}},
+		{"descending", UsageBreakdownSortDescending, []string{"bravo", "alpha", "charlie", "delta"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			report, err := newRequestLogTestService(db).QueryUsage(context.Background(), UsageQuery{
+				FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(),
+				Granularity: UsageGranularityHour, BreakdownPageSize: 100,
+				BreakdownSort: UsageBreakdownSortAverageFirstResponse, BreakdownSortDirection: test.direction,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			models := make([]string, 0, len(report.Breakdown.Rows))
+			for _, breakdownRow := range report.Breakdown.Rows {
+				models = append(models, breakdownRow.Model)
+			}
+			if len(models) != len(test.want) {
+				t.Fatalf("sorted rows = %v, want %v", models, test.want)
+			}
+			for index, want := range test.want {
+				if models[index] != want {
+					t.Fatalf("sorted rows = %v, want %v", models, test.want)
+				}
+			}
+		})
+	}
+}
+
 func TestUsageBreakdownUsesStableIdentityTieBreakers(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)
