@@ -2,62 +2,42 @@
 
 ## 基线
 
-- 更新时间：`2026-09-21T15:02:00+08:00`
-- `dev` 当前评估基线：`origin/dev@c6cb7834`（`2026-09-21T14:15:44+08:00`，Agent control 文档发布后）。
-- `origin/main`：`1c280a27`（#706，`2026-09-20T22:17:16+08:00`）。
-- 分析截止：已分析到 #706；后续只考虑 `1c280a27` 的后继提交，不重复处理本轮已分析的 #693、#694、#697、#698、#703、#704、#705、#706、#707、#708。
-- 分叉统计：`origin/dev...origin/main = 295 80`；仅用于观察长期分叉，不作为待移植数量。
-- 本轮核对范围：#693、#694、#697、#698、#703、#704、#705、#706、#707、#708；没有独立的 #692 提交。
-- 策略：不整体合并 `origin/main`，只按 `dev` 合同进行行为级移植。判定沿用一组一凭据、entry 级健康、全局重试预算、已提交流不可重放、续接/WS 身份隔离和迁移只追加。
+### refs 与分叉
 
-## 上一轮取舍（本轮更新）
+- 记录时间：`2026-09-22T14:43:20+08:00`
+- 当前 ref：
 
-| 范围 | 上轮取舍 | 当前状态 |
-|---|---|---|
-| #602、#603、#605、#620、#622、#623 子集、#624 | 确定移植 | 已通过本地适配落地：复制兜底、零输出/协议修复、Gemini 生图、WS 参数兼容、UA、测活增强和 service tier。 |
-| #630、#631、#632、#633、#634、#638、#639 | 跟进上游修复 | 已落地；#632 保留本地 WebSocket/额度接口，#634 保留 Linux/Docker 验收范围，均不再作为待办。 |
-| #635 | 部分移植 | 显式 `prompt_cache_key`、亲和及独立 provider continuity 已在 `ec862c8f`、`cc9aec32` 落地；`affinity_kind` 及上游 `0014` 不直接移植。 |
-| #587、#590、#591、#594、#596、#597、#599、#606、#608、#611、#614 | 放弃 | 保持放弃；原因是与本地凭据/调度/筛选/迁移合同冲突，或没有独立落地点。 |
-| #621、#625 | 低价值挂起 | 保持挂起；仅是监控快捷时间 UI 调整，当前不引入新的时间筛选合同。 |
-| #643、#644 | 不直接移植 | #643 的部分 4xx failover 已由 `f78ee8a0` 覆盖，继续以本地 ReplaySafety 矩阵为准；#644 仅为 CPA 测试时序修复，暂不处理。 |
-| #646 | 下一项优先移植 | 已落地：`07f96aa9` 直接拣选上游提交，`8fe19338` 为本地合同适配（一凭据一组拓扑、4xx 用例裁剪）。保留本地 entry 健康和身份边界。 |
-| #652 | 确定移植（并入 #646） | 已落地：`d8f2eca5` 拣选上游提交并解决两处冲突——`runWebsocketAttempt` 保留本地 `spec.Body` 形参；`websocket_retry_test.go` 按本地重试合同适配：bound 连接上 4xx/429 均可重试（`retryUpstreamClientStatus`），故 "explicit request rejection"（Effect none）与 "unknown replay safety"（Effect cooldown_credential）转入重连用例表，"unknown provider error"（无 status → RetryNone）转入边界用例表；`websocket_test.go` fork/cache 用例的错误事件去掉 `status` 以保持不可重放。`cooldown_model` 断言统一改 `cooldown_credential`。 |
-| #653 | 确定移植 | 已落地：`8590f49b` 直接拣选上游提交，零冲突；恢复 `OpenAICompatible` 渠道工具降级转发、`bifrost/tool_compatibility.go` 白名单适配、压缩上下文与 tool history 丢失拒绝、count-tokens 工具约束、CPA `prepareConvertedFidelity` 白名单边界。 |
-| #657 | 低价值挂起 | 仅上游 README 赞助位新增（Fluxion AI 行 + 图片）；本地 README 独立维护，如需赞助位同步再处理。 |
-| #674（`dad1f050`） | 确定移植 | 已落地（本提交手工适配）：新增 `POST /v1/alpha/search` 与 `web_search` 操作全链路——方言早退校验（POST/非流式/非空 id）、Codex native 路由、CPA 状态码透传与读体失败元数据保留（不回填 #599 通用 header 块）、embedded 独立执行器、gateway 健康/quota/定价豁免、requestlog 聚合与直读排除、前端 operation 枚举与三语标签。本地差异适配：无 `BaseURL`/`ResolveCodexAPIEndpoints`，搜索目标固定 `defaultCodexBaseURL + /alpha/search`；上游 `usage_query_minute.go` 直读排除由本地 `withoutControlPlaneObservations` 集中覆盖；前端组件体系不同，仅补枚举与标签，未移植 Globe 图标。 |
-| #673 | 确定移植 | 已落地：`c37ab19` 拣选上游网关协议 probe 实现，并按本地单一 probe contract/raw evidence 边界适配；仅多协议 gateway 使用显式声明的 OpenAI Responses/Anthropic/Gemini probe 路由，保留现有其他 provider 合同。全量 Go 测试通过。 |
-| #688 | 已分析，暂不移植 | 仅调整 CI/Release 的 race 命令为 `go test -race -vet=off`，并将 SQLite 迁移测试并行化；属于验证效率优化，不改变运行时行为。 |
-| #690 | 已分析，暂不移植 | 将 Release 的静态检查、race、CPA 和数据库合同验证迁回自托管 ARM64 runner，制品发布仍使用 GitHub-hosted runner；依赖本地 runner 基础设施，不直接改变产品行为。 |
-| #691 | 已分析，待单独决定 | 现代首页账户与健康提醒增加渠道图标、分组 tooltip 和三语文案；需要按本地现代前端的账户/分组查询合同评估适配，不直接拣选上游提交。 |
-| #656、#682 | 不适用 | 与本地架构不匹配，不移植。 |
+  | ref | commit | 时间 |
+  |---|---|---|
+  | `dev` | `59a21b7d` | `2026-09-22T14:09:20+08:00` |
+  | `origin/main` | `1f615d83` | `2026-09-21T22:34:12+08:00` |
+  | `upstream/main` | `93502ced` | `2026-09-22T12:28:55+08:00` |
 
-## 本轮新增提交（#692 之后）
+- 分叉统计使用 `git rev-list --left-right --count A...B`，左列是 `A` 独有提交数，右列是 `B` 独有提交数：
 
-| 时间（+08:00） | 提交 | 类别 / 标题 | 取舍 |
-|---|---|---|---|
-| `2026-09-19 11:22:20` | `b211e7c8`（#694） | 首页显示单窗口配额进度 | 不移植 |
-| `2026-09-20 12:48:10` | `5636bbb6`（#693） | 实验性自动模型与 Jev 路由 | 不需要，不移植 |
-| `2026-09-20 13:26:18` | `2cdf97b8`（#697） | 请求日志总数分页 | 不需要，不移植 |
-| `2026-09-20 13:36:55` | `e90c1725`（#698） | 保留 Codex WebSocket 冷却元数据 | **确定合并** |
-| `2026-09-20 16:39:24` | `01f922f4`（#704） | 按显示值变化记录配额历史 | 不需要，不移植 |
-| `2026-09-20 17:09:52` | `acae8c38`（#705） | 对齐流式速率元数据展示 | 不需要，不移植 |
-| `2026-09-20 17:33:28` | `8eceed2a`（#703） | 增加 Jev Decisions 渠道路由 | 不需要，不移植 |
-| `2026-09-20 17:53:49` | `0292da4c`（#707） | Jev 渠道资源与 OpenRouter 目录 | 不需要，不移植 |
-| `2026-09-20 21:41:32` | `69a7598d`（#708） | 使配额趋势匹配当前窗口 | 不需要，不移植 |
-| `2026-09-20 22:17:16` | `1c280a27`（#706） | 增加 Codex 模型目录 | 本轮未决定，暂不自动合并 |
+  | 比较 | 统计 |
+  |---|---:|
+  | `dev...origin/main` | `304 94` |
+  | `dev...upstream/main` | `304 96` |
+  | `origin/main...upstream/main` | `0 2` |
 
-## 当前动作
+### 工作流
 
-- 自动模型与 Jev：#693、#703、#707 均不需要，放弃移植。
-- 日志、监控和配额趋势：#694、#697、#704、#705、#708 均不需要，放弃移植；#704 与 #708 不拆分处理。
-- Codex WebSocket 错误与冷却：#698（`e90c1725`）确定合并；需要按本地错误、重试和冷却合同执行，而不是直接整体合并上游。
-- Codex 模型目录：#706（`1c280a27`）未包含在本次合并决定中，暂保留待评估。
-- 当前分析边界推进到 `origin/main@1c280a27`（#706，`2026-09-20T22:17:16+08:00`）。后续只检查该提交之后的新 commits，不再回看本轮已作出取舍的提交。
+1. **确定上次截止点**：读取本节记录的 `origin/main` 和 `upstream/main` commit；`origin/main` 是维护目标，`upstream/main` 只作额外参考。不要用本地 cherry-pick 后产生的新 SHA 替代上游截止点。
+2. **刷新 refs**：依次执行 `git fetch --prune origin` 和 `git fetch --prune upstream`，然后重新记录三个 ref 的 commit、时间和分叉统计。
+3. **发现新提交**：分别检查 `<上次 origin/main commit>..origin/main` 和 `<上次 upstream/main commit>..upstream/main`。将 canonical `origin` 新提交与 upstream 独有提交分开，避免把参考分支提交误当成待合并提交。
+4. **逐提交建立摘要**：按提交时间顺序记录 SHA、PR 编号、标题、变更文件范围，并用一到三句话说明行为变化、影响层（后端、网关、调度、执行、前端、依赖或 CI）和用户可见影响。
+5. **对照本地合同评估**：检查 `dev` 是否已有等价能力；区分“已覆盖”“可直接移植”“需要行为级适配”和“没有本地落点”。对需要适配的提交，明确冲突点、保留的本地不变量和需要补充的测试，不直接整体 cherry-pick。
+6. **形成取舍**：使用三类结论：
+   - `Port`：本地结构和语义兼容，可以按原提交顺序移植。
+   - `Adapt`：只吸收目标行为，按本地合同重写；记录不能直接移植的原因。
+   - `Do Not Port`：纯依赖、CI、品牌、未采用功能或没有独立本地落点。
+7. **执行已批准变更**：用户明确要求后，按指定顺序 cherry-pick 或实现适配；冲突时保留 `dev` 的执行、调度、重试、凭据、WebSocket 和数据迁移边界，不新增兼容层或无依据的 fallback。
+8. **验证并推进基线**：运行受影响包的定向测试，再运行必要的全量测试、前端类型检查和 `git diff --check`。确认结果后，用最新 `dev`、`origin/main`、`upstream/main` 的 commit、时间和分叉统计覆盖本节；不在本文保留已完成提交的历史清单。
+9. **保护工作树**：检查 `git status --short`，不修改与本轮分析无关的已有改动或未跟踪文件。
 
-## #698 本地适配结果
+每次运行的最小摘要格式：
 
-- 未整体合并 `origin/main`；按 `e90c1725` 的行为落点适配了嵌入 CPA、Codex provider bridge 和 CPA WebSocket evidence 三层边界。
-- `CodexWSError` 现在只向上层传递经过限制的 `UpstreamType`、HTTP 状态和正值 `RetryAfter`；事件错误、失败响应和握手 `429` 均保留 `usage_limit_reached` 的重置时长。
-- 本地没有模型级健康冷却 effect，因此 `429 + usage_limit_reached` 固定映射为凭据范围的 `rate_limit.retry_after` 冷却；模型容量错误仍维持模型范围候选不可用，不触发额度冷却。
-- 保留 WebSocket 的 `maybe_sent` 未知重放安全，不凭新增元数据扩大重试；已提交输出、续接和会话身份边界未改变。
-- 验证通过：`go test ./internal/execution/cpa ./internal/subscription/providers/codex`、`go test ./internal/gateway -run 'TestWebsocket|TestGatewayWebsocket' -count=1`、CPA embedded Codex WebSocket 定向测试，以及 `git diff --check`。
+```text
+<时间> <SHA>（#<PR>）<标题>：<行为摘要>；影响：<范围>；结论：Port / Adapt / Do Not Port。
+```
