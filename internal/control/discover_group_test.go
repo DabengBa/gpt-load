@@ -296,6 +296,32 @@ func TestDiscoverGroupModelsUsesDisabledGroupAndAnActiveCredential(t *testing.T)
 	}
 }
 
+// Regression: discovery compile dropped the persisted Models list, so any group
+// carrying reasoning_effort_overrides failed validateReasoningEffortOverrideModels
+// with "unknown group model" → INTERNAL_SERVER_ERROR on the discover endpoint.
+func TestDiscoverGroupModelsWithReasoningEffortOverrides(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	group := seedPersistedDiscoveryGroup(t, fixture, true, models.JSON(
+		`{"reasoning_effort_overrides":{"persisted-only":"max"}}`,
+	))
+	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialAuthStateReady)
+	fixture.service.executor = newRecordingDiscoveryExecutor(&recordingDiscoveryExecutorTarget{
+		value: protocol.OpenAICompletions,
+		listFn: func(context.Context, string, string, state.HeaderRules) ([]string, error) {
+			return []string{"persisted-only"}, nil
+		},
+	})
+
+	result, err := fixture.service.DiscoverGroupModels(t.Context(), group.ID)
+	if err != nil {
+		t.Fatalf("DiscoverGroupModels() error = %v", err)
+	}
+	if len(result.Models) != 1 || result.Models[0].ID != "persisted-only" {
+		t.Fatalf("models = %#v", result.Models)
+	}
+}
+
 func TestDiscoverGroupModelsReturnsNotFoundAndNoActiveUpstreamKey(t *testing.T) {
 	t.Parallel()
 	t.Run("missing Group", func(t *testing.T) {

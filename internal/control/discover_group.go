@@ -171,12 +171,21 @@ func (s *Service) mapGroupDiscoveryTarget(
 	if err != nil {
 		return discoveryTarget{}, fmt.Errorf("load persisted discovery settings: %w", app_errors.ErrInternalServer)
 	}
+	var storedModels []groupModelEntry
+	if err := decodeGroupDiscoveryJSON(rows.group.Models, &storedModels); err != nil {
+		return discoveryTarget{}, fmt.Errorf("decode persisted discovery models: %w", app_errors.ErrInternalServer)
+	}
+	runtimeModels := make([]state.ModelConfig, 0, len(storedModels))
+	for _, model := range storedModels {
+		runtimeModels = append(runtimeModels, model.toModelConfig())
+	}
 	snapshot, err := state.Compile(state.CompileInput{
 		SystemSettings: systemSettings, ChannelRegistry: s.channelRegistry,
 		Groups: []state.GroupConfig{{
 			ID: rows.group.ID, Name: rows.group.Name,
 			ChannelID: channel.ID(rows.group.ChannelID), ConnectionType: string(rows.group.ConnectionType),
 			Params:   append(json.RawMessage(nil), rows.group.Params...),
+			Models:   runtimeModels,
 			Settings: settings, Enabled: true,
 		}},
 	})
