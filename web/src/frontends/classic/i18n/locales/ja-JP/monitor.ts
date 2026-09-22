@@ -934,6 +934,7 @@ export default {
         credential: '認証情報：{name}',
         filterGroup: 'グループ {name} のログのみ表示',
         filterCredential: '認証情報 {name} のログのみ表示',
+        openGroup: 'グループ {name} の管理ページを表示',
         openProviderUrl: 'プロバイダーサイト {url} を新しいタブで開く',
       },
       filterAccessKey: 'アクセスキー {name} のログのみ表示',

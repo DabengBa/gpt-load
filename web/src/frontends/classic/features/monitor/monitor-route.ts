@@ -41,6 +41,8 @@ export interface ScheduleMonitorState {
   mode: ScheduleMode
   externalModel?: string
   selectedRow?: string
+  /** 来源分组行定位提示（分组模型页跳转）；详情加载后解析为 selectedRow。 */
+  sourceGroupId?: number
   drafts: ScheduleDrafts
 }
 
@@ -96,6 +98,7 @@ export function parseScheduleMonitorState(query: Record<string, unknown>): Sched
         : 'all',
     externalModel: scalarText(query.schedule_model),
     selectedRow: scalarScheduleRow(query.schedule_row),
+    sourceGroupId: scalarPositiveNumber(query.schedule_group),
     drafts: parseScheduleDrafts(query.schedule_draft),
   }
 }
@@ -107,6 +110,7 @@ export function scheduleMonitorQuery(state: ScheduleMonitorState): LocationQuery
   const model = scalarText(state.externalModel)
   if (model !== undefined) normalized.schedule_model = model
   if (state.selectedRow !== undefined) normalized.schedule_row = state.selectedRow
+  if (state.sourceGroupId !== undefined) normalized.schedule_group = String(state.sourceGroupId)
   const drafts = serializeScheduleDrafts(state.drafts)
   if (drafts !== undefined) normalized.schedule_draft = drafts
   return normalized
@@ -232,6 +236,12 @@ function scalarPositiveID(raw: unknown): string | undefined {
   if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return undefined
   const value = Number(raw)
   return Number.isSafeInteger(value) && value > 0 ? String(value) : undefined
+}
+
+function scalarPositiveNumber(raw: unknown): number | undefined {
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return undefined
+  const value = Number(raw)
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined
 }
 
 function scalarEnum<T extends string>(raw: unknown, values: readonly T[]): T | undefined {

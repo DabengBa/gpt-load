@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { alphaGroupId, installScheduleRowTargetingRoutes } from './fixtures/schedule-row-targeting'
+
 const adminKey = 'e2e-admin-key'
 const accessKey = 'e2e-access-key'
 
@@ -139,5 +141,85 @@ test.describe('dispatch center routing', () => {
     await page.goto('/schedule')
     await expect(page).toHaveURL(/\/$/u)
     await expect(page.locator('.schedule-panel')).toHaveCount(0)
+  })
+})
+
+test.describe('group model row targeting', () => {
+  test('the group models schedule link targets the source group entry row', async ({ page }) => {
+    await installScheduleRowTargetingRoutes(page)
+    await page.goto(`/groups/${alphaGroupId}`)
+
+    const links = page.locator('.group-models__schedule-link')
+    await expect(links).toHaveCount(2)
+    // 未启用别名的行按模型 ID、启用别名的行按对外别名生成调度目标，并携带来源分组与 entry 定位。
+    await expect(links.nth(0)).toHaveAttribute(
+      'href',
+      /schedule_model=model-a&schedule_group=1&schedule_row=1:entry-1/u,
+    )
+    await expect(links.nth(1)).toHaveAttribute(
+      'href',
+      /schedule_model=worker-b&schedule_group=1&schedule_row=1:entry-2/u,
+    )
+
+    await links.nth(1).click()
+    await expect(page).toHaveURL(
+      /\/schedule\?schedule_model=worker-b&schedule_group=1&schedule_row=1:entry-2$/u,
+    )
+    const selected = page.locator('.schedule-row--selected')
+    await expect(selected).toHaveCount(1)
+    await expect(selected).toContainText('worker-b')
+    await expect(selected).toContainText('alpha group')
+
+    // 前进/后退保留 URL 定位状态。
+    await page.goBack()
+    await expect(page).toHaveURL(new RegExp(`/groups/${alphaGroupId}`))
+    await page.goForward()
+    await expect(page).toHaveURL(/schedule_row=1:entry-2/u)
+    await expect(page.locator('.schedule-row--selected')).toContainText('worker-b')
+  })
+
+  test('schedule_group resolves the first matching entry row after the detail loads', async ({
+    page,
+  }) => {
+    await installScheduleRowTargetingRoutes(page)
+    await page.goto('/schedule?schedule_model=worker&schedule_group=2')
+
+    const selected = page.locator('.schedule-row--selected')
+    await expect(selected).toHaveCount(1)
+    await expect(selected).toContainText('worker')
+    await expect(page).toHaveURL(/schedule_row=2:entry-2/u)
+
+    // 刷新后 URL 状态继续恢复定位。
+    await page.reload()
+    await expect(selected).toHaveCount(1)
+    await expect(selected).toContainText('worker')
+  })
+
+  test('an exact schedule_row scrolls the target row into the viewport', async ({ page }) => {
+    await installScheduleRowTargetingRoutes(page)
+    await page.goto('/schedule?schedule_model=worker&schedule_group=2&schedule_row=2%3Aentry-12')
+
+    const selected = page.locator('.schedule-row--selected')
+    await expect(selected).toHaveCount(1)
+    await expect(selected).toContainText('model-l')
+    const box = await selected.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.y).toBeGreaterThanOrEqual(0)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(721)
+  })
+
+  test('a missing target row keeps the model context and clears the selection silently', async ({
+    page,
+  }) => {
+    await installScheduleRowTargetingRoutes(page)
+    await page.goto('/schedule?schedule_model=worker&schedule_group=9&schedule_row=9%3Aentry-99')
+
+    await expect(page.locator('.schedule-row:not(.schedule-row--header)')).toHaveCount(10)
+    await expect(page.locator('.schedule-row--selected')).toHaveCount(0)
+    const model = page.locator('.schedule-panel .app-select__trigger[aria-label="External model"]')
+    await expect(model).toContainText('worker')
+    const query = new URL(page.url()).searchParams
+    expect(query.get('schedule_group')).toBe('9')
+    expect(query.get('schedule_row')).toBeNull()
   })
 })

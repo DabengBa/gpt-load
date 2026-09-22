@@ -825,7 +825,9 @@ function costLabel(log: RequestLogItemDto): string {
             <LogRouteIdentity
               :group-id="log.group_id"
               :group-name="groupName(log)"
-              :provider-url="log.group_id === null ? null : (groupProviderUrls[log.group_id] ?? null)"
+              :provider-url="
+                log.group_id === null ? null : (groupProviderUrls[log.group_id] ?? null)
+              "
               :channel-id="log.channel_id"
               :channel="channelDefinition(log)"
               :credential-id="log.credential_id"
@@ -1087,6 +1089,7 @@ function costLabel(log: RequestLogItemDto): string {
       :request-id="invalidAffinityKey === undefined ? selectedRequestID : undefined"
       :self-scoped="isAccessKey"
       :group-names="groupNames"
+      :groups-loaded="groupsQuery.isSuccess.value"
       :provider-urls="groupProviderUrls"
       :channels="channelsByID"
       @update:open="setDetailOpen(undefined, $event)"

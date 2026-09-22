@@ -4,6 +4,7 @@ import {
   PROVIDER_URL,
   installRequestLogDisplayRoutes,
   openRequestLogs,
+  requestIDs,
 } from './fixtures/request-log-display.ts'
 
 function latestLogRequest(routes: { logRequests: URL[] }): URL {
@@ -26,6 +27,72 @@ test.describe('request log display', () => {
       'aria-label',
       `Open provider website ${PROVIDER_URL} in a new tab`,
     )
+  })
+
+  test('group identity keeps filtering and adds separate maintenance links', async ({ page }) => {
+    await installRequestLogDisplayRoutes(page)
+    await openRequestLogs(page)
+
+    const groupLinks = page.locator('.log-route-identity__group-link')
+    await expect(groupLinks).toHaveCount(2)
+    await expect(groupLinks.nth(0)).toHaveAttribute('href', '/groups/1')
+    await expect(groupLinks.nth(1)).toHaveAttribute('href', '/groups/2')
+    await expect(groupLinks.nth(0)).toHaveAttribute(
+      'aria-label',
+      'View group alpha maintenance page',
+    )
+    await expect(groupLinks.nth(1)).toHaveAttribute(
+      'aria-label',
+      'View group beta maintenance page',
+    )
+
+    const groupFilters = page.locator('.log-route-identity__group.filterable-value')
+    await expect(groupFilters).toHaveCount(3)
+    await expect(groupFilters.nth(0)).toHaveAttribute(
+      'aria-label',
+      'Show only logs from group alpha',
+    )
+    await expect(groupFilters.nth(1)).toHaveAttribute(
+      'aria-label',
+      'Show only logs from group beta',
+    )
+
+    await groupLinks.nth(0).click()
+    await expect(page).toHaveURL('/groups/1')
+
+    await openRequestLogs(page)
+    await page.locator('.log-route-identity__group.filterable-value').first().click()
+    await expect(page).toHaveURL(/group_id=1/u)
+  })
+
+  test('detail drawer exposes maintenance link only for an existing group', async ({ page }) => {
+    await installRequestLogDisplayRoutes(page)
+    await openRequestLogs(page, `?selected_request_id=${requestIDs.mapped}`)
+
+    const detailGroupLink = page
+      .locator('.log-detail__section')
+      .filter({ hasText: 'Upstream execution' })
+      .locator('.log-route-identity__group-link')
+    await expect(detailGroupLink).toHaveCount(1)
+    await expect(detailGroupLink).toHaveAttribute('href', '/groups/1')
+    await expect(detailGroupLink).toHaveAttribute('aria-label', 'View group alpha maintenance page')
+    await expect(page.locator('.log-attempt')).toHaveCount(2)
+    await expect(
+      page.locator('.log-attempt').first().locator('.log-route-identity__group'),
+    ).toHaveText('Deleted · #99')
+    await expect(
+      page.locator('.log-attempt').first().locator('.log-route-identity__group-link'),
+    ).toHaveCount(0)
+
+    for (const requestID of [
+      'cccccccc-3333-4333-8333-333333333333',
+      'dddddddd-4444-4444-8444-444444444444',
+    ]) {
+      await page.goto(`/logs?selected_request_id=${requestID}`)
+      await page.locator('.logs-tab').waitFor()
+      await page.waitForLoadState('networkidle')
+      await expect(page.locator('.log-detail .log-route-identity__group-link')).toHaveCount(0)
+    }
   })
 
   test('first response over 15s colors only the time number', async ({ page }) => {

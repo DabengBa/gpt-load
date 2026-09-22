@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ExternalLink } from '@lucide/vue'
+import { ArrowRight, ExternalLink } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 
 import type { ChannelDto } from '@/app/resources/channels'
+import { groupDetailLocation } from '@/app/route-locations'
 import ChannelIcon from '@/components/brand/ChannelIcon.vue'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
 
@@ -20,6 +22,8 @@ const props = withDefaults(
     credentialName?: string | null
     /** 名称来源已就绪却查不到，即该实体已被删除。 */
     groupDeleted?: boolean
+    /** 分组 options 未完成加载时保持维护入口关闭，但保留日志中的历史名称。 */
+    groupResolved?: boolean
     credentialDeleted?: boolean
     appearance?: 'compact' | 'plain'
     /** 列表里点分组、凭据就地筛选；详情抽屉没有筛选上下文，保持纯展示。 */
@@ -31,6 +35,7 @@ const props = withDefaults(
     credentialName: undefined,
     channel: undefined,
     groupDeleted: false,
+    groupResolved: true,
     credentialDeleted: false,
     appearance: 'compact',
     filterable: false,
@@ -48,15 +53,18 @@ const showsIcon = computed(() => Boolean(props.channel?.mark))
 const channelLabel = computed(() => props.channel?.name.trim() || props.channelId || '—')
 
 // 取不到名称（已删除）才退回编号，凭据与分组同一套规则。
-const groupLabel = computed(() =>
-  formatRouteEntity({
+const groupLabel = computed(() => {
+  if (props.groupDeleted && props.groupId !== null) {
+    return t('monitor.logs.deletedRef', { id: props.groupId })
+  }
+  return formatRouteEntity({
     id: props.groupId,
     name: props.groupName,
-    deleted: props.groupDeleted,
+    deleted: false,
     prefix: 'G',
     deletedText: (id) => t('monitor.logs.deletedRef', { id }),
-  }),
-)
+  })
+})
 const credentialLabel = computed(() =>
   props.credentialId === null
     ? ''
@@ -74,6 +82,13 @@ const hasCredentialName = computed(
 )
 const canFilterGroup = computed(() => props.filterable && props.groupId !== null)
 const canFilterCredential = computed(() => props.filterable && props.credentialId !== null)
+const canOpenGroup = computed(
+  () =>
+    props.groupResolved &&
+    props.groupId !== null &&
+    !props.groupDeleted &&
+    Boolean(props.groupName?.trim()),
+)
 
 // 三个字段共用一条提示：列里放不下的名称在这里给全，省得逐个悬停。
 const routeTooltip = computed(() => {
@@ -95,6 +110,9 @@ const groupAction = computed(() =>
 )
 const credentialAction = computed(() =>
   t('monitor.logs.routeIdentity.filterCredential', { name: credentialLabel.value }),
+)
+const groupLinkAction = computed(() =>
+  t('monitor.logs.routeIdentity.openGroup', { name: groupLabel.value }),
 )
 </script>
 
@@ -132,6 +150,15 @@ const credentialAction = computed(() =>
         >
           {{ groupLabel }}
         </span>
+        <RouterLink
+          v-if="canOpenGroup"
+          class="log-route-identity__group-link icon-button icon-button--ghost icon-button--compact"
+          :to="groupDetailLocation(groupId as number)"
+          :aria-label="groupLinkAction"
+          @click.stop
+        >
+          <ArrowRight :size="14" aria-hidden="true" />
+        </RouterLink>
         <a
           v-if="providerUrl"
           class="log-route-identity__provider"
@@ -177,6 +204,7 @@ const credentialAction = computed(() =>
 
 .log-route-identity__line {
   display: flex;
+  flex-wrap: wrap;
   min-width: 0;
   align-items: center;
   gap: 4px;
@@ -195,6 +223,10 @@ const credentialAction = computed(() =>
 }
 
 /* 名称可任意长，一律省略；凭据独占一行，两者不挤压彼此。 */
+.log-route-identity__group {
+  flex: 1 1 auto;
+}
+
 .log-route-identity__group,
 .log-route-identity__credential {
   display: block;
@@ -233,13 +265,22 @@ const credentialAction = computed(() =>
   font-size: var(--text-label-xs);
 }
 
+.log-route-identity__group-link,
 .log-route-identity__provider {
   display: inline-flex;
   flex: none;
   align-items: center;
+  justify-content: center;
+  width: var(--control-compact);
+  height: var(--control-compact);
+  min-width: var(--control-compact);
+  min-height: var(--control-compact);
+  border-radius: var(--radius-control);
   color: var(--color-text-faint);
 }
 
+.log-route-identity__group-link:hover,
+.log-route-identity__group-link:focus-visible,
 .log-route-identity__provider:hover {
   color: var(--color-action);
 }

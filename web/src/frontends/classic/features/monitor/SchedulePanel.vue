@@ -44,6 +44,7 @@ const props = withDefaults(
     externalModel?: string
     mode?: ScheduleMode
     selectedRow?: string
+    sourceGroupId?: number
     drafts?: ScheduleDrafts
     labels?: Partial<SchedulePanelLabels>
     locale?: string
@@ -52,6 +53,7 @@ const props = withDefaults(
     externalModel: '',
     mode: 'all',
     selectedRow: undefined,
+    sourceGroupId: undefined,
     drafts: () => ({}),
     labels: () => ({}),
     locale: 'en-US',
@@ -315,6 +317,7 @@ async function onApplyProbeEnabled(changes: Map<number, boolean>): Promise<void>
       :locale="locale"
       :mode="selectedMode"
       :selected-row="selectedRow"
+      :source-group-id="sourceGroupId"
       :drafts="drafts"
       :labels="labels?.detail"
       @refresh="refreshDetail"

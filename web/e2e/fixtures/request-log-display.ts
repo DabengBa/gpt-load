@@ -8,6 +8,46 @@ export const requestIDs = {
   plain: 'bbbbbbbb-2222-4222-8222-222222222222',
 } as const
 
+function detailAttempt(
+  sequence: number,
+  groupID: number,
+  groupName: string,
+  credentialID: number | null,
+  credentialName: string,
+  action: string,
+) {
+  return {
+    sequence,
+    group_id: groupID,
+    group_name: groupName,
+    channel_id: 'openai_compatible',
+    credential_id: credentialID,
+    credential_name: credentialName,
+    operation: 'chat_completion',
+    route_mode: 'native',
+    upstream_model: groupName === 'historical-alpha' ? 'gpt-5.5' : 'gpt-5.6-luna',
+    upstream_request_id: null,
+    dispatch_state: 'maybe_sent',
+    response_started: action === 'terminate',
+    upstream_protocol: 'openai-completions',
+    reasoning: null,
+    status_code: action === 'terminate' ? 200 : 429,
+    duration_ms: action === 'terminate' ? 800 : 120,
+    failure_category: action === 'terminate' ? 'ok' : 'rate_limited',
+    failure_origin: action === 'terminate' ? 'upstream' : 'upstream',
+    failure_scope: action === 'terminate' ? null : 'group',
+    retry_directive: action === 'terminate' ? 'none' : 'next_candidate',
+    effect: action === 'terminate' ? 'none' : 'skip_group',
+    rule_id: null,
+    action,
+    will_retry: action !== 'none',
+    error_code: action === 'terminate' ? '' : 'rate_limited',
+    error_summary: action === 'terminate' ? '' : 'historical attempt failed',
+    committed: action === 'terminate',
+    pricing_receipt: null,
+  }
+}
+
 function baseLogItem(requestID: string) {
   return {
     request_id: requestID,
@@ -70,6 +110,28 @@ const rows = [
     group_id: 2,
     credential_id: 4,
     credential_name: 'key-b',
+  },
+  {
+    ...baseLogItem('cccccccc-3333-4333-8333-333333333333'),
+    client_model: 'deleted-group-model',
+    upstream_model: 'deleted-group-model',
+    upstream_reported_model: 'deleted-group-model',
+    first_response_ms: 500,
+    duration_ms: 800,
+    group_id: 99,
+    credential_id: null,
+    credential_name: '',
+  },
+  {
+    ...baseLogItem('dddddddd-4444-4444-8444-444444444444'),
+    client_model: 'missing-group-model',
+    upstream_model: 'missing-group-model',
+    upstream_reported_model: 'missing-group-model',
+    first_response_ms: 500,
+    duration_ms: 800,
+    group_id: null,
+    credential_id: null,
+    credential_name: '',
   },
 ]
 
@@ -149,7 +211,14 @@ export async function installRequestLogDisplayRoutes(page: Page): Promise<Reques
       if (path.startsWith('/api/logs/')) {
         const requestID = path.slice('/api/logs/'.length)
         const item = rows.find((row) => row.request_id === requestID) ?? rows[0]
-        await route.fulfill(response({ ...item, attempts: [] }))
+        const attempts =
+          requestID === requestIDs.mapped
+            ? [
+                detailAttempt(1, 99, 'historical-alpha', null, '', 'skip_group'),
+                detailAttempt(2, 1, 'alpha', 3, 'key-a', 'terminate'),
+              ]
+            : []
+        await route.fulfill(response({ ...item, attempts }))
         return
       }
 

@@ -25,9 +25,7 @@ const isAdmin = computed(() => session.state.principalType === 'admin')
 const scheduleState = computed(() => parseScheduleMonitorState(route.query))
 const pendingScheduleState = ref<ScheduleMonitorState>()
 const pendingNavigationGeneration = ref(0)
-const renderedScheduleState = computed(
-  () => pendingScheduleState.value ?? scheduleState.value,
-)
+const renderedScheduleState = computed(() => pendingScheduleState.value ?? scheduleState.value)
 const canonicalQuery = computed(() => scheduleMonitorQuery(scheduleState.value))
 const isCanonicalQuery = computed(() => sameMonitorQuery(route.query, canonicalQuery.value))
 
@@ -70,7 +68,7 @@ function updateScheduleContext(next: Partial<ReturnType<typeof parseScheduleMoni
   const contextChanged =
     next.externalModel !== undefined && next.externalModel !== current.externalModel
   const nextState = contextChanged
-    ? { ...current, ...next, selectedRow: undefined, drafts: {} }
+    ? { ...current, ...next, selectedRow: undefined, sourceGroupId: undefined, drafts: {} }
     : { ...current, ...next }
   replaceScheduleState(nextState)
 }
@@ -80,7 +78,14 @@ function commitScheduleContext(context: { externalModel?: string; mode: Schedule
   const externalModel = context.externalModel?.trim() || undefined
   const contextChanged = externalModel !== current.externalModel
   const next = contextChanged
-    ? { ...current, ...context, externalModel, selectedRow: undefined, drafts: {} }
+    ? {
+        ...current,
+        ...context,
+        externalModel,
+        selectedRow: undefined,
+        sourceGroupId: undefined,
+        drafts: {},
+      }
     : { ...current, ...context, externalModel }
   if (sameMonitorQuery(route.query, scheduleMonitorQuery(next))) return
   void navigateScheduleState(next, 'push')
@@ -186,6 +191,7 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
           :external-model="renderedScheduleState.externalModel"
           :mode="renderedScheduleState.mode"
           :selected-row="renderedScheduleState.selectedRow"
+          :source-group-id="renderedScheduleState.sourceGroupId"
           :drafts="renderedScheduleState.drafts"
           :labels="scheduleLabels"
           :locale="locale"
