@@ -107,6 +107,7 @@ func TestRequestUserAgentOnWire(t *testing.T) {
 						spec.Operation = execution.OperationProbe
 						spec.Method, spec.Path = "", ""
 						spec.Body = nil
+						spec.ProbeMaxOutputTokens = testProbeOutputTokens
 					}
 					spec = freezeTestAttempt(spec)
 					original := spec.Header.Clone()
