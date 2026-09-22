@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Plus, RefreshCw } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 
 import { ApiError, RequestCancelledError } from '@shared/http/errors'
 import { useApiClient } from '@shared/http/client-context'
@@ -42,6 +42,7 @@ import ModelAliasEditor from '@/features/models/ModelAliasEditor.vue'
 import ModelDiscoveryDrawer from '@/features/models/ModelDiscoveryDrawer.vue'
 import {
   appendSelectedCandidates,
+  clientModel,
   indexesWithInvalidPriorities,
   indexesWithInvalidWeights,
   indexesWithZeroShare,
@@ -184,6 +185,18 @@ function handleProbeOpen(value: boolean): void {
 
 function viewProbeLog(logId: string): void {
   void router.push(logsLocation({ selected_request_id: logId }))
+}
+
+// 调度跳转：带上对外模型/别名、来源分组与 entry 定位，让调度页精确高亮对应行；
+// entry 标识缺失时仅带来源分组，由调度页在详情加载后按模型/别名解析首行。
+function scheduleLocationFor(item: ModelDraftItem): RouteLocationRaw {
+  const query: Record<string, string> = {
+    schedule_model: clientModel(item) || item.name || item.id,
+    schedule_group: String(props.groupId),
+  }
+  const entryID = item.entry_id?.trim()
+  if (entryID) query.schedule_row = `${props.groupId}:${entryID}`
+  return scheduleLocation(query)
 }
 
 // Persist the probe's proposed enabled changes per group and invalidate the
@@ -783,10 +796,7 @@ onBeforeUnmount(() => {
               {{ t('group.modelEditor.breaker') }}:
               {{ item.circuit_breaker.blacklist_threshold ?? '—' }}
             </span>
-            <RouterLink
-              class="group-models__schedule-link"
-              :to="scheduleLocation({ schedule_model: item.name || item.id })"
-            >
+            <RouterLink class="group-models__schedule-link" :to="scheduleLocationFor(item)">
               {{ t('group.modelEditor.schedule') }}
             </RouterLink>
             <AppButton

@@ -45,6 +45,7 @@ const props = defineProps<{
   requestId: string | undefined
   selfScoped?: boolean
   groupNames?: Record<number, string>
+  groupsLoaded?: boolean
   providerUrls?: Record<number, string>
   channels?: Record<string, ChannelDto>
 }>()
@@ -275,6 +276,18 @@ function finalGroupName(): string | null {
       ?.group_name ??
     props.groupNames?.[groupID] ??
     null
+  )
+}
+
+function groupDeleted(groupID: number | null): boolean {
+  return (
+    groupID !== null && props.groupsLoaded === true && props.groupNames?.[groupID] === undefined
+  )
+}
+
+function groupResolved(groupID: number | null): boolean {
+  return (
+    groupID !== null && props.groupsLoaded === true && props.groupNames?.[groupID] !== undefined
   )
 }
 
@@ -516,6 +529,8 @@ function toggleAttemptErrorMessage(sequence: number): void {
               <LogRouteIdentity
                 :group-id="log.group_id"
                 :group-name="finalGroupName()"
+                :group-deleted="groupDeleted(log.group_id)"
+                :group-resolved="groupResolved(log.group_id)"
                 :provider-url="
                   log.group_id === null ? null : (providerUrls?.[log.group_id] ?? null)
                 "
@@ -610,97 +625,97 @@ function toggleAttemptErrorMessage(sequence: number): void {
             <span>{{ t('monitor.logs.drawer.usage.title') }}</span>
           </summary>
           <dl class="log-detail__grid">
-          <div>
-            <dt>{{ t('monitor.logs.drawer.usage.usageStateLabel') }}</dt>
-            <dd>{{ usageStateLabel }}</dd>
-          </div>
-          <div>
-            <dt>{{ t('monitor.logs.drawer.usage.costStateLabel') }}</dt>
-            <dd>{{ costStateLabel }}</dd>
-          </div>
-          <div v-if="usageDisplayState === 'reported'">
-            <dt>{{ t('monitor.logs.tokens.input') }}</dt>
-            <dd>{{ formatLogTokenCount(log.input_tokens, locale) }}</dd>
-          </div>
-          <div v-if="usageDisplayState === 'reported'">
-            <dt>{{ t('monitor.logs.tokens.output') }}</dt>
-            <dd>{{ formatLogTokenCount(log.output_tokens, locale) }}</dd>
-          </div>
-          <div v-for="row in cacheRows" :key="row.label">
-            <dt>{{ row.label }}</dt>
-            <dd>{{ formatLogTokenCount(row.value, locale) }}</dd>
-          </div>
-          <div v-if="cacheRows.length > 0">
-            <dt>{{ t('monitor.logs.tokens.cacheHitRate') }}</dt>
-            <dd>{{ cacheRateLabel }}</dd>
-          </div>
-          <div v-if="costDisplayState !== 'unpriced'">
-            <dt>{{ t('monitor.logs.drawer.usage.estimatedCost') }}</dt>
-            <dd class="log-detail__cost">
-              <span>{{ costAmountLabel }}</span>
-              <PricingModeIndicator
-                :mode="log.pricing_mode"
-                :context-threshold-tokens="log.context_threshold_tokens"
-              />
-            </dd>
-          </div>
-          <div v-if="!selfScoped && receipt">
-            <dt>{{ t('monitor.logs.receipt.identity') }}</dt>
-            <dd>
-              <code>{{ pricingIdentity }}</code>
-            </dd>
-          </div>
-          <div v-if="!selfScoped && receipt?.price_multipliers" class="log-detail__wide">
-            <dt>{{ t('common.priceMultiplier.label') }}</dt>
-            <dd>
-              {{ t('common.priceMultiplier.group') }} ×{{ receipt.price_multipliers.group }} ·
-              {{ t('common.priceMultiplier.accessKey') }} ×{{
-                receipt.price_multipliers.access_key
-              }}
-            </dd>
-          </div>
-          <div
-            v-if="
-              !selfScoped &&
-              costDisplayState !== 'unpriced' &&
-              receipt &&
-              usageDisplayState === 'reported'
-            "
-            class="log-detail__wide"
-          >
-            <dt>{{ t('monitor.logs.receipt.formula') }}</dt>
-            <dd class="log-detail__formula">
-              <span>{{ t('monitor.logs.receipt.input') }} = {{ formula.input }}</span>
-              <span>{{ t('monitor.logs.receipt.output') }} = {{ formula.output }}</span>
-              <template
-                v-if="
-                  receipt.schema_version === 6 &&
-                  receipt.base_total_nano_usd !== undefined &&
-                  receipt.price_multipliers
-                "
-              >
-                <span>
-                  {{ t('monitor.logs.receipt.baseTotal') }} =
-                  {{ formatExactNanoUSD(receipt.base_total_nano_usd, locale) }}
-                </span>
-                <span>
-                  {{ t('monitor.logs.receipt.finalTotal') }} =
-                  {{ formatExactNanoUSD(receipt.base_total_nano_usd, locale) }} ×
-                  {{ receipt.price_multipliers.group }} ×
-                  {{ receipt.price_multipliers.access_key }} =
-                  {{ formatExactNanoUSD(receipt.total_nano_usd, locale) }}
-                </span>
-                <small>{{ t('monitor.logs.receipt.totalRounding') }}</small>
-              </template>
-              <template v-else>
-                <span>
-                  {{ t('monitor.logs.receipt.total') }} =
-                  {{ formatExactNanoUSD(receipt.total_nano_usd, locale) }}
-                </span>
-                <small>{{ t('monitor.logs.receipt.rounding') }}</small>
-              </template>
-            </dd>
-          </div>
+            <div>
+              <dt>{{ t('monitor.logs.drawer.usage.usageStateLabel') }}</dt>
+              <dd>{{ usageStateLabel }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('monitor.logs.drawer.usage.costStateLabel') }}</dt>
+              <dd>{{ costStateLabel }}</dd>
+            </div>
+            <div v-if="usageDisplayState === 'reported'">
+              <dt>{{ t('monitor.logs.tokens.input') }}</dt>
+              <dd>{{ formatLogTokenCount(log.input_tokens, locale) }}</dd>
+            </div>
+            <div v-if="usageDisplayState === 'reported'">
+              <dt>{{ t('monitor.logs.tokens.output') }}</dt>
+              <dd>{{ formatLogTokenCount(log.output_tokens, locale) }}</dd>
+            </div>
+            <div v-for="row in cacheRows" :key="row.label">
+              <dt>{{ row.label }}</dt>
+              <dd>{{ formatLogTokenCount(row.value, locale) }}</dd>
+            </div>
+            <div v-if="cacheRows.length > 0">
+              <dt>{{ t('monitor.logs.tokens.cacheHitRate') }}</dt>
+              <dd>{{ cacheRateLabel }}</dd>
+            </div>
+            <div v-if="costDisplayState !== 'unpriced'">
+              <dt>{{ t('monitor.logs.drawer.usage.estimatedCost') }}</dt>
+              <dd class="log-detail__cost">
+                <span>{{ costAmountLabel }}</span>
+                <PricingModeIndicator
+                  :mode="log.pricing_mode"
+                  :context-threshold-tokens="log.context_threshold_tokens"
+                />
+              </dd>
+            </div>
+            <div v-if="!selfScoped && receipt">
+              <dt>{{ t('monitor.logs.receipt.identity') }}</dt>
+              <dd>
+                <code>{{ pricingIdentity }}</code>
+              </dd>
+            </div>
+            <div v-if="!selfScoped && receipt?.price_multipliers" class="log-detail__wide">
+              <dt>{{ t('common.priceMultiplier.label') }}</dt>
+              <dd>
+                {{ t('common.priceMultiplier.group') }} ×{{ receipt.price_multipliers.group }} ·
+                {{ t('common.priceMultiplier.accessKey') }} ×{{
+                  receipt.price_multipliers.access_key
+                }}
+              </dd>
+            </div>
+            <div
+              v-if="
+                !selfScoped &&
+                costDisplayState !== 'unpriced' &&
+                receipt &&
+                usageDisplayState === 'reported'
+              "
+              class="log-detail__wide"
+            >
+              <dt>{{ t('monitor.logs.receipt.formula') }}</dt>
+              <dd class="log-detail__formula">
+                <span>{{ t('monitor.logs.receipt.input') }} = {{ formula.input }}</span>
+                <span>{{ t('monitor.logs.receipt.output') }} = {{ formula.output }}</span>
+                <template
+                  v-if="
+                    receipt.schema_version === 6 &&
+                    receipt.base_total_nano_usd !== undefined &&
+                    receipt.price_multipliers
+                  "
+                >
+                  <span>
+                    {{ t('monitor.logs.receipt.baseTotal') }} =
+                    {{ formatExactNanoUSD(receipt.base_total_nano_usd, locale) }}
+                  </span>
+                  <span>
+                    {{ t('monitor.logs.receipt.finalTotal') }} =
+                    {{ formatExactNanoUSD(receipt.base_total_nano_usd, locale) }} ×
+                    {{ receipt.price_multipliers.group }} ×
+                    {{ receipt.price_multipliers.access_key }} =
+                    {{ formatExactNanoUSD(receipt.total_nano_usd, locale) }}
+                  </span>
+                  <small>{{ t('monitor.logs.receipt.totalRounding') }}</small>
+                </template>
+                <template v-else>
+                  <span>
+                    {{ t('monitor.logs.receipt.total') }} =
+                    {{ formatExactNanoUSD(receipt.total_nano_usd, locale) }}
+                  </span>
+                  <small>{{ t('monitor.logs.receipt.rounding') }}</small>
+                </template>
+              </dd>
+            </div>
           </dl>
         </details>
       </section>
@@ -724,12 +739,16 @@ function toggleAttemptErrorMessage(sequence: number): void {
               <LogRouteIdentity
                 :group-id="attempt.group_id"
                 :group-name="attempt.group_name"
+                :group-deleted="groupDeleted(attempt.group_id)"
+                :group-resolved="groupResolved(attempt.group_id)"
                 :provider-url="providerUrls?.[attempt.group_id] ?? null"
                 :channel-id="attempt.channel_id"
                 :channel="channelDefinition(attempt.channel_id)"
                 :credential-id="attempt.credential_id"
                 :credential-name="attempt.credential_name"
-                :credential-deleted="attempt.credential_id !== null && attempt.credential_name === ''"
+                :credential-deleted="
+                  attempt.credential_id !== null && attempt.credential_name === ''
+                "
                 appearance="plain"
               />
               <span class="log-attempt__action">
@@ -841,7 +860,10 @@ function toggleAttemptErrorMessage(sequence: number): void {
                   </dd>
                 </div>
               </dl>
-              <div v-if="attemptErrorCodeNeedsDetails(attempt)" class="log-error-message log-error-message--attempt">
+              <div
+                v-if="attemptErrorCodeNeedsDetails(attempt)"
+                class="log-error-message log-error-message--attempt"
+              >
                 <p class="log-error-message__code">
                   <span>{{ t('monitor.logs.drawer.errorCode') }}</span>
                   <code>{{ attempt.error_code }}</code>

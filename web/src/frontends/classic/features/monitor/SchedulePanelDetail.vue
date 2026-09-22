@@ -91,6 +91,7 @@ const props = withDefaults(
     locale?: string
     mode?: ScheduleMode
     selectedRow?: string
+    sourceGroupId?: number
     drafts?: ScheduleDrafts
   }>(),
   {
@@ -102,6 +103,7 @@ const props = withDefaults(
     locale: 'en-US',
     mode: 'all',
     selectedRow: undefined,
+    sourceGroupId: undefined,
     drafts: () => ({}),
   },
 )
@@ -148,6 +150,46 @@ const rows = computed(() =>
       })
       .map((entry) => ({ group, entry })),
   ),
+)
+
+// URL 行定位：分组模型页带 sourceGroupId 进入时，在详情加载后把行选择解析到
+// 来源分组的第一个匹配 entry（alias 或 model_id 等于当前外部模型）；目标行不
+// 存在时静默清除行选择，保留模型上下文，不报错。
+const scheduleTableRef = ref<HTMLElement>()
+
+function revealScheduleRow(key: string): void {
+  void nextTick(() => {
+    const container = scheduleTableRef.value
+    if (!container) return
+    container
+      .querySelector(`[data-row-key="${CSS.escape(key)}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  })
+}
+
+watch(
+  () => [props.detail, props.sourceGroupId, props.selectedRow, props.mode] as const,
+  async ([detail, sourceGroupId, selectedRow]) => {
+    if (!detail || sourceGroupId === undefined) return
+    const keyOf = ({ group, entry }: (typeof rows.value)[number]): string =>
+      rowKey(group.group_id, entry.entry_id)
+    const rowsByKey = new Map(rows.value.map((row) => [keyOf(row), row]))
+    if (selectedRow !== undefined) {
+      if (rowsByKey.has(selectedRow)) {
+        revealScheduleRow(selectedRow)
+        return
+      }
+      emit('row-change', undefined)
+      return
+    }
+    const externalModel = detail.external_model ?? ''
+    const target = rows.value.find(
+      ({ group, entry }) =>
+        group.group_id === sourceGroupId &&
+        (entry.alias === externalModel || entry.model_id === externalModel),
+    )
+    if (target) emit('row-change', keyOf(target))
+  },
 )
 // Batch scope is exactly what is on screen: the same mode-filtered rows the
 // table renders, deduplicated to (group, model) targets. Disabled groups are
@@ -711,7 +753,7 @@ defineExpose({ applyProbeEnabled })
       <div v-if="rows.length === 0" class="schedule-detail__empty" role="status">
         {{ text('noEntries') }}
       </div>
-      <div v-else class="schedule-table-wrap">
+      <div v-else ref="scheduleTableRef" class="schedule-table-wrap">
         <div class="schedule-table" role="table" :aria-label="text('title')">
           <div class="schedule-row schedule-row--header" role="row">
             <span role="columnheader">{{ text('group') }}</span>
@@ -726,6 +768,7 @@ defineExpose({ applyProbeEnabled })
             v-for="({ group, entry }, index) in rows"
             :key="rowKey(group.group_id, entry.entry_id)"
             class="schedule-row"
+            :data-row-key="rowKey(group.group_id, entry.entry_id)"
             :class="{
               'schedule-row--selected': selectedRow === rowKey(group.group_id, entry.entry_id),
               'schedule-row--priority-start': isPriorityStart(index),

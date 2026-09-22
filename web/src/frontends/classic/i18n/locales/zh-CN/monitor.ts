@@ -913,6 +913,7 @@ export default {
         credential: '凭据：{name}',
         filterGroup: '只看分组 {name} 的日志',
         filterCredential: '只看凭据 {name} 的日志',
+        openGroup: '查看分组 {name} 的维护页',
         openProviderUrl: '在新标签页打开供应商官网 {url}',
       },
       filterAccessKey: '只看访问密钥 {name} 的日志',

@@ -933,6 +933,7 @@ export default {
         credential: 'Credential: {name}',
         filterGroup: 'Show only logs from group {name}',
         filterCredential: 'Show only logs from credential {name}',
+        openGroup: 'View group {name} maintenance page',
         openProviderUrl: 'Open provider website {url} in a new tab',
       },
       filterAccessKey: 'Show only logs from access key {name}',
