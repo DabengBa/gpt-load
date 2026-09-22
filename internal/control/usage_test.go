@@ -187,8 +187,24 @@ func TestParseUsageQueryAcceptsBreakdownSorting(t *testing.T) {
 		query.BreakdownSortDirection != requestlog.UsageBreakdownSortAscending {
 		t.Fatalf("breakdown sorting = %q/%q", query.BreakdownSort, query.BreakdownSortDirection)
 	}
+	for _, sort := range []struct {
+		value string
+		want  requestlog.UsageBreakdownSort
+	}{
+		{value: "average_duration_ms", want: requestlog.UsageBreakdownSortAverageDuration},
+		{value: "average_first_response_ms", want: requestlog.UsageBreakdownSortAverageFirstResponse},
+	} {
+		query, apiErr := parseUsageQuery(
+			"range=24h&breakdown_sort="+sort.value,
+			now.UnixMilli(),
+		)
+		if apiErr != nil || query.BreakdownSort != sort.want {
+			t.Fatalf("parseUsageQuery(%q) = %q/%v, want %q", sort.value, query.BreakdownSort, apiErr, sort.want)
+		}
+	}
 	for _, rawQuery := range []string{
 		"range=24h&breakdown_sort=invalid",
+		"range=24h&breakdown_sort=average_latency",
 		"range=24h&breakdown_sort_direction=invalid",
 	} {
 		if _, apiErr := parseUsageQuery(rawQuery, now.UnixMilli()); apiErr == nil {
@@ -1193,6 +1209,7 @@ func TestMapUsageBreakdownAccessKeyOmitsAdminAndSecretFields(t *testing.T) {
 	summary := requestlog.UsageAggregate{
 		RequestCount: 1, SuccessCount: 1, OutputTokens: 2,
 		DurationMsTotal: 25, DurationSampleCount: 1,
+		FirstResponseMsTotal: 9, FirstResponseSampleCount: 1,
 		EstimatedCostNanoUSD: 3,
 	}
 	mapped, err := mapUsageBreakdown(requestlog.UsageBreakdown{
@@ -1217,6 +1234,11 @@ func TestMapUsageBreakdownAccessKeyOmitsAdminAndSecretFields(t *testing.T) {
 	}
 	if !strings.Contains(string(payload), `"model":"model-a"`) {
 		t.Fatalf("access-key breakdown omitted model: %s", payload)
+	}
+	for _, expected := range []string{`"first_response_ms_total":9`, `"first_response_sample_count":1`} {
+		if !strings.Contains(string(payload), expected) {
+			t.Fatalf("access-key breakdown omitted %s: %s", expected, payload)
+		}
 	}
 }
 

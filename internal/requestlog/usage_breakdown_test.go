@@ -225,6 +225,8 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		value.FailureCount = requests - successes
 		value.DurationMsTotal = durationTotal
 		value.DurationSampleCount = requests
+		value.FirstResponseMsTotal = durationTotal / 2
+		value.FirstResponseSampleCount = requests
 		value.UncachedInputTokens = int64(groupID) * 10
 		value.CacheReadTokens = int64(groupID) * 20
 		value.CacheWrite5MTokens = int64(groupID) * 30
@@ -254,7 +256,8 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		{"success descending", UsageBreakdownSortSuccessCount, UsageBreakdownSortDescending, "charlie", "alpha"},
 		{"failure ascending", UsageBreakdownSortFailureCount, UsageBreakdownSortAscending, "charlie", "bravo"},
 		{"success rate ascending", UsageBreakdownSortSuccessRate, UsageBreakdownSortAscending, "alpha", "charlie"},
-		{"latency ascending", UsageBreakdownSortAverageLatency, UsageBreakdownSortAscending, "alpha", "charlie"},
+		{"duration ascending", UsageBreakdownSortAverageDuration, UsageBreakdownSortAscending, "alpha", "charlie"},
+		{"first response ascending", UsageBreakdownSortAverageFirstResponse, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"uncached input ascending", UsageBreakdownSortUncachedInputTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"cache read ascending", UsageBreakdownSortCacheReadTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"cache write 5m ascending", UsageBreakdownSortCacheWrite5MTokens, UsageBreakdownSortAscending, "alpha", "charlie"},

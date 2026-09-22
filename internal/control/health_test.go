@@ -513,7 +513,7 @@ func TestRuntimeHealthJSONOmitsScoresCredentialsAndZeroTimes(t *testing.T) {
 	for _, forbidden := range []string{
 		strings.ToLower(plaintext), strings.ToLower(ciphertext),
 		"encrypted", "hash", "header_rules",
-		"percentage", "success_rate", "score", "average_latency",
+		"percentage", "success_rate", "score", "average_duration_ms", "average_first_response_ms",
 		"0001-01-01",
 	} {
 		if strings.Contains(lower, forbidden) {

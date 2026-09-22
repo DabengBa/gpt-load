@@ -201,22 +201,23 @@ const (
 type UsageBreakdownSort string
 
 const (
-	UsageBreakdownSortModel               UsageBreakdownSort = "model"
-	UsageBreakdownSortGroup               UsageBreakdownSort = "group"
-	UsageBreakdownSortChannel             UsageBreakdownSort = "channel"
-	UsageBreakdownSortRequestCount        UsageBreakdownSort = "request_count"
-	UsageBreakdownSortSuccessCount        UsageBreakdownSort = "success_count"
-	UsageBreakdownSortFailureCount        UsageBreakdownSort = "failure_count"
-	UsageBreakdownSortSuccessRate         UsageBreakdownSort = "success_rate"
-	UsageBreakdownSortAverageLatency      UsageBreakdownSort = "average_latency"
-	UsageBreakdownSortUncachedInputTokens UsageBreakdownSort = "uncached_input_tokens"
-	UsageBreakdownSortCacheReadTokens     UsageBreakdownSort = "cache_read_tokens"
-	UsageBreakdownSortCacheWrite5MTokens  UsageBreakdownSort = "cache_write_5m_tokens"
-	UsageBreakdownSortCacheWrite1HTokens  UsageBreakdownSort = "cache_write_1h_tokens"
-	UsageBreakdownSortCacheWriteUnknown   UsageBreakdownSort = "cache_write_unknown_tokens"
-	UsageBreakdownSortOutputTokens        UsageBreakdownSort = "output_tokens"
-	UsageBreakdownSortTotalTokens         UsageBreakdownSort = "total_tokens"
-	UsageBreakdownSortEstimatedCost       UsageBreakdownSort = "estimated_cost_nano_usd"
+	UsageBreakdownSortModel                UsageBreakdownSort = "model"
+	UsageBreakdownSortGroup                UsageBreakdownSort = "group"
+	UsageBreakdownSortChannel              UsageBreakdownSort = "channel"
+	UsageBreakdownSortRequestCount         UsageBreakdownSort = "request_count"
+	UsageBreakdownSortSuccessCount         UsageBreakdownSort = "success_count"
+	UsageBreakdownSortFailureCount         UsageBreakdownSort = "failure_count"
+	UsageBreakdownSortSuccessRate          UsageBreakdownSort = "success_rate"
+	UsageBreakdownSortAverageDuration      UsageBreakdownSort = "average_duration_ms"
+	UsageBreakdownSortAverageFirstResponse UsageBreakdownSort = "average_first_response_ms"
+	UsageBreakdownSortUncachedInputTokens  UsageBreakdownSort = "uncached_input_tokens"
+	UsageBreakdownSortCacheReadTokens      UsageBreakdownSort = "cache_read_tokens"
+	UsageBreakdownSortCacheWrite5MTokens   UsageBreakdownSort = "cache_write_5m_tokens"
+	UsageBreakdownSortCacheWrite1HTokens   UsageBreakdownSort = "cache_write_1h_tokens"
+	UsageBreakdownSortCacheWriteUnknown    UsageBreakdownSort = "cache_write_unknown_tokens"
+	UsageBreakdownSortOutputTokens         UsageBreakdownSort = "output_tokens"
+	UsageBreakdownSortTotalTokens          UsageBreakdownSort = "total_tokens"
+	UsageBreakdownSortEstimatedCost        UsageBreakdownSort = "estimated_cost_nano_usd"
 )
 
 type UsageBreakdownSortDirection string
@@ -273,22 +274,24 @@ type UsageQuery struct {
 }
 
 type UsageAggregate struct {
-	RequestCount            int64
-	SuccessCount            int64
-	FailureCount            int64
-	UncachedInputTokens     int64
-	CacheReadTokens         int64
-	CacheWrite5MTokens      int64
-	CacheWrite1HTokens      int64
-	CacheWriteUnknownTokens int64
-	OutputTokens            int64
-	EstimatedCostNanoUSD    int64
-	DurationMsTotal         int64
-	DurationSampleCount     int64
-	UsageMissingCount       int64
-	PartialCount            int64
-	UnpricedRequestCount    int64
-	PricingPartialCount     int64
+	RequestCount             int64
+	SuccessCount             int64
+	FailureCount             int64
+	UncachedInputTokens      int64
+	CacheReadTokens          int64
+	CacheWrite5MTokens       int64
+	CacheWrite1HTokens       int64
+	CacheWriteUnknownTokens  int64
+	OutputTokens             int64
+	EstimatedCostNanoUSD     int64
+	DurationMsTotal          int64
+	DurationSampleCount      int64
+	FirstResponseMsTotal     int64
+	FirstResponseSampleCount int64
+	UsageMissingCount        int64
+	PartialCount             int64
+	UnpricedRequestCount     int64
+	PricingPartialCount      int64
 }
 
 type UsageSeriesPoint struct {

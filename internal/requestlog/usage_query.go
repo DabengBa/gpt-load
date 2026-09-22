@@ -181,7 +181,8 @@ func validUsageBreakdownSort(sort UsageBreakdownSort) bool {
 		UsageBreakdownSortSuccessCount,
 		UsageBreakdownSortFailureCount,
 		UsageBreakdownSortSuccessRate,
-		UsageBreakdownSortAverageLatency,
+		UsageBreakdownSortAverageDuration,
+		UsageBreakdownSortAverageFirstResponse,
 		UsageBreakdownSortUncachedInputTokens,
 		UsageBreakdownSortCacheReadTokens,
 		UsageBreakdownSortCacheWrite5MTokens,
@@ -289,13 +290,18 @@ func validateUsageStatIntegrity(scope *gorm.DB) error {
 				OR duration_sample_count > request_count
 			THEN 1 ELSE 0 END), 0) AS invalid_duration,
 		COALESCE(MAX(CASE
+			WHEN first_response_ms_total < 0 OR first_response_sample_count < 0
+				OR first_response_sample_count > request_count
+			THEN 1 ELSE 0 END), 0) AS invalid_first_response,
+		COALESCE(MAX(CASE
 			WHEN estimated_cost_nano_usd < 0
 			THEN 1 ELSE 0 END), 0) AS invalid_cost
 	`).Find(&integrity).Error; err != nil {
 		return fmt.Errorf("check usage stat integrity: %w", err)
 	}
 	if integrity.InvalidBucket != 0 || integrity.InvalidCount != 0 ||
-		integrity.InvalidToken != 0 || integrity.InvalidCost != 0 || integrity.InvalidDuration != 0 {
+		integrity.InvalidToken != 0 || integrity.InvalidCost != 0 || integrity.InvalidDuration != 0 ||
+		integrity.InvalidFirstResponse != 0 {
 		return fmt.Errorf("check usage stat integrity: corrupt row")
 	}
 	return nil
@@ -684,13 +690,28 @@ func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy Us
 			return 1
 		}
 		return 0
-	case UsageBreakdownSortAverageLatency:
+	case UsageBreakdownSortAverageDuration:
 		leftRate, rightRate := float64(leftAggregate.DurationMsTotal), float64(rightAggregate.DurationMsTotal)
 		if leftAggregate.DurationSampleCount > 0 {
 			leftRate /= float64(leftAggregate.DurationSampleCount)
 		}
 		if rightAggregate.DurationSampleCount > 0 {
 			rightRate /= float64(rightAggregate.DurationSampleCount)
+		}
+		if leftRate < rightRate {
+			return -1
+		}
+		if leftRate > rightRate {
+			return 1
+		}
+		return 0
+	case UsageBreakdownSortAverageFirstResponse:
+		leftRate, rightRate := float64(leftAggregate.FirstResponseMsTotal), float64(rightAggregate.FirstResponseMsTotal)
+		if leftAggregate.FirstResponseSampleCount > 0 {
+			leftRate /= float64(leftAggregate.FirstResponseSampleCount)
+		}
+		if rightAggregate.FirstResponseSampleCount > 0 {
+			rightRate /= float64(rightAggregate.FirstResponseSampleCount)
 		}
 		if leftRate < rightRate {
 			return -1
@@ -872,6 +893,8 @@ func addUsageAggregates(left, right UsageAggregate) (UsageAggregate, error) {
 		{"pricing partial count", left.PricingPartialCount, right.PricingPartialCount, &result.PricingPartialCount},
 		{"duration ms total", left.DurationMsTotal, right.DurationMsTotal, &result.DurationMsTotal},
 		{"duration sample count", left.DurationSampleCount, right.DurationSampleCount, &result.DurationSampleCount},
+		{"first response ms total", left.FirstResponseMsTotal, right.FirstResponseMsTotal, &result.FirstResponseMsTotal},
+		{"first response sample count", left.FirstResponseSampleCount, right.FirstResponseSampleCount, &result.FirstResponseSampleCount},
 	}
 	for _, field := range fields {
 		value, ok := usage.CheckedAdd(field.left, field.right)
@@ -957,6 +980,8 @@ func validateUsageAggregate(aggregate UsageAggregate) error {
 		{"pricing partial count", aggregate.PricingPartialCount},
 		{"duration ms total", aggregate.DurationMsTotal},
 		{"duration sample count", aggregate.DurationSampleCount},
+		{"first response ms total", aggregate.FirstResponseMsTotal},
+		{"first response sample count", aggregate.FirstResponseSampleCount},
 	}
 	for _, field := range fields {
 		if field.value < 0 {
@@ -969,6 +994,9 @@ func validateUsageAggregate(aggregate UsageAggregate) error {
 	}
 	if aggregate.DurationSampleCount > aggregate.RequestCount {
 		return fmt.Errorf("duration sample count exceeds request count")
+	}
+	if aggregate.FirstResponseSampleCount > aggregate.RequestCount {
+		return fmt.Errorf("first response sample count exceeds request count")
 	}
 	if _, err := usageAggregateTotalTokens(aggregate); err != nil {
 		return err
@@ -1012,6 +1040,8 @@ const usageAggregateSelect = "" +
 	"COALESCE(SUM(estimated_cost_nano_usd), 0) AS estimated_cost_nano_usd, " +
 	"COALESCE(SUM(duration_ms_total), 0) AS duration_ms_total, " +
 	"COALESCE(SUM(duration_sample_count), 0) AS duration_sample_count, " +
+	"COALESCE(SUM(first_response_ms_total), 0) AS first_response_ms_total, " +
+	"COALESCE(SUM(first_response_sample_count), 0) AS first_response_sample_count, " +
 	"COALESCE(SUM(usage_missing_count), 0) AS usage_missing_count, " +
 	"COALESCE(SUM(partial_count), 0) AS partial_count, " +
 	"COALESCE(SUM(unpriced_request_count), 0) AS unpriced_request_count, " +
@@ -1043,11 +1073,12 @@ type usageHourPoint struct {
 }
 
 type usageStatIntegrity struct {
-	InvalidBucket   int64
-	InvalidCount    int64
-	InvalidToken    int64
-	InvalidCost     int64
-	InvalidDuration int64
+	InvalidBucket        int64
+	InvalidCount         int64
+	InvalidToken         int64
+	InvalidCost          int64
+	InvalidDuration      int64
+	InvalidFirstResponse int64
 }
 
 type usageDistributionRow struct {
