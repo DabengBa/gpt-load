@@ -339,21 +339,25 @@ type UsageView struct {
 
 // UsageAggregateView is a token and cost aggregate with decimal-string cost.
 type UsageAggregateView struct {
-	RequestCount            int64  `json:"request_count"`
-	SuccessCount            int64  `json:"success_count"`
-	FailureCount            int64  `json:"failure_count"`
-	UncachedInputTokens     int64  `json:"uncached_input_tokens"`
-	CacheReadTokens         int64  `json:"cache_read_tokens"`
-	CacheWrite5MTokens      int64  `json:"cache_write_5m_tokens"`
-	CacheWrite1HTokens      int64  `json:"cache_write_1h_tokens"`
-	CacheWriteUnknownTokens int64  `json:"cache_write_unknown_tokens"`
-	OutputTokens            int64  `json:"output_tokens"`
-	TotalTokens             int64  `json:"total_tokens"`
-	EstimatedNanoUSD        string `json:"estimated_nano_usd"`
-	UsageMissingCount       int64  `json:"usage_missing_count"`
-	PartialCount            int64  `json:"partial_count"`
-	UnpricedRequestCount    int64  `json:"unpriced_request_count"`
-	PricingPartialCount     int64  `json:"pricing_partial_count"`
+	RequestCount             int64  `json:"request_count"`
+	SuccessCount             int64  `json:"success_count"`
+	FailureCount             int64  `json:"failure_count"`
+	UncachedInputTokens      int64  `json:"uncached_input_tokens"`
+	CacheReadTokens          int64  `json:"cache_read_tokens"`
+	CacheWrite5MTokens       int64  `json:"cache_write_5m_tokens"`
+	CacheWrite1HTokens       int64  `json:"cache_write_1h_tokens"`
+	CacheWriteUnknownTokens  int64  `json:"cache_write_unknown_tokens"`
+	OutputTokens             int64  `json:"output_tokens"`
+	TotalTokens              int64  `json:"total_tokens"`
+	EstimatedNanoUSD         string `json:"estimated_nano_usd"`
+	DurationMsTotal          int64  `json:"duration_ms_total"`
+	DurationSampleCount      int64  `json:"duration_sample_count"`
+	FirstResponseMsTotal     int64  `json:"first_response_ms_total"`
+	FirstResponseSampleCount int64  `json:"first_response_sample_count"`
+	UsageMissingCount        int64  `json:"usage_missing_count"`
+	PartialCount             int64  `json:"partial_count"`
+	UnpricedRequestCount     int64  `json:"unpriced_request_count"`
+	PricingPartialCount      int64  `json:"pricing_partial_count"`
 }
 
 // UsageSeriesPointView is one aligned usage bucket.

@@ -33,7 +33,8 @@ export type UsageBreakdownSort =
   | 'success_count'
   | 'failure_count'
   | 'success_rate'
-  | 'average_latency'
+  | 'average_duration_ms'
+  | 'average_first_response_ms'
   | 'uncached_input_tokens'
   | 'cache_read_tokens'
   | 'output_tokens'
@@ -52,7 +53,8 @@ export function normalizeUsageBreakdownSort(value: unknown): UsageBreakdownSort 
     case 'success_count':
     case 'failure_count':
     case 'success_rate':
-    case 'average_latency':
+    case 'average_duration_ms':
+    case 'average_first_response_ms':
     case 'uncached_input_tokens':
     case 'cache_read_tokens':
     case 'output_tokens':
@@ -104,6 +106,8 @@ export interface UsageAggregateDto {
   estimated_cost_nano_usd: string
   duration_ms_total: number
   duration_sample_count: number
+  first_response_ms_total: number
+  first_response_sample_count: number
   usage_missing_count: number
   partial_count: number
   unpriced_request_count: number
@@ -191,6 +195,8 @@ const aggregateKeys = [
   'total_tokens',
   'duration_ms_total',
   'duration_sample_count',
+  'first_response_ms_total',
+  'first_response_sample_count',
   'usage_missing_count',
   'partial_count',
   'unpriced_request_count',
@@ -256,6 +262,10 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
     estimated_cost_nano_usd: projectNonNegativeInt64String(record.estimated_cost_nano_usd),
     duration_ms_total: projectSafeInteger(record.duration_ms_total, { minimum: 0 }),
     duration_sample_count: projectSafeInteger(record.duration_sample_count, { minimum: 0 }),
+    first_response_ms_total: projectSafeInteger(record.first_response_ms_total, { minimum: 0 }),
+    first_response_sample_count: projectSafeInteger(record.first_response_sample_count, {
+      minimum: 0,
+    }),
     usage_missing_count: projectSafeInteger(record.usage_missing_count, { minimum: 0 }),
     partial_count: projectSafeInteger(record.partial_count, { minimum: 0 }),
     unpriced_request_count: projectSafeInteger(record.unpriced_request_count, { minimum: 0 }),
@@ -263,6 +273,7 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
   }
   if (
     result.duration_sample_count > result.request_count ||
+    result.first_response_sample_count > result.request_count ||
     result.success_count + result.failure_count !== result.request_count ||
     result.total_tokens !==
       result.uncached_input_tokens +

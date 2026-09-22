@@ -73,12 +73,23 @@ function ariaSort(key: UsageBreakdownSort): 'ascending' | 'descending' | 'none' 
   return props.sort === key ? (props.sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'
 }
 
-function averageLatency(aggregate: UsageAggregateDto): string {
-  if (aggregate.duration_sample_count === 0) return '—'
-  if (aggregate.duration_ms_total === 0) return '0 ms'
+function averageMilliseconds(totalMs: number, sampleCount: number): string {
+  if (sampleCount === 0) return '—'
+  if (totalMs === 0) return '0 ms'
   return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(
-    aggregate.duration_ms_total / aggregate.duration_sample_count,
+    totalMs / sampleCount,
   )} ms`
+}
+
+function averageDuration(aggregate: UsageAggregateDto): string {
+  return averageMilliseconds(aggregate.duration_ms_total, aggregate.duration_sample_count)
+}
+
+function averageFirstResponse(aggregate: UsageAggregateDto): string {
+  return averageMilliseconds(
+    aggregate.first_response_ms_total,
+    aggregate.first_response_sample_count,
+  )
 }
 
 function successRate(aggregate: UsageAggregateDto): string {
@@ -140,9 +151,22 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
             {{ t('monitor.usage.breakdown.columns.successRate') }}
           </button>
         </th>
-        <th scope="col" :aria-sort="ariaSort('average_latency')">
-          <button type="button" class="usage-breakdown__sort" @click="setSort('average_latency')">
-            {{ t('monitor.usage.breakdown.columns.averageLatency') }}
+        <th scope="col" :aria-sort="ariaSort('average_duration_ms')">
+          <button
+            type="button"
+            class="usage-breakdown__sort"
+            @click="setSort('average_duration_ms')"
+          >
+            {{ t('monitor.usage.breakdown.columns.averageDuration') }}
+          </button>
+        </th>
+        <th scope="col" :aria-sort="ariaSort('average_first_response_ms')">
+          <button
+            type="button"
+            class="usage-breakdown__sort"
+            @click="setSort('average_first_response_ms')"
+          >
+            {{ t('monitor.usage.breakdown.columns.averageFirstResponse') }}
           </button>
         </th>
         <th scope="col" :aria-sort="ariaSort('uncached_input_tokens')">
@@ -191,7 +215,8 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         <td>{{ formatInteger(row.attempt_count, locale) }}</td>
         <td>{{ formatInteger(row.attempt_failure_count, locale) }}</td>
         <td>{{ successRate(row) }}</td>
-        <td>{{ averageLatency(row) }}</td>
+        <td>{{ averageDuration(row) }}</td>
+        <td>{{ averageFirstResponse(row) }}</td>
         <td>{{ formatTokens(row.uncached_input_tokens, locale) }}</td>
         <td>{{ formatTokens(row.cache_read_tokens, locale) }}</td>
         <td>{{ formatTokens(row.output_tokens, locale) }}</td>
@@ -210,7 +235,8 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         <td>{{ formatInteger(breakdown.attempt_total.attempt_count, locale) }}</td>
         <td>{{ formatInteger(breakdown.attempt_total.attempt_failure_count, locale) }}</td>
         <td>{{ successRate(breakdown.total) }}</td>
-        <td>{{ averageLatency(breakdown.total) }}</td>
+        <td>{{ averageDuration(breakdown.total) }}</td>
+        <td>{{ averageFirstResponse(breakdown.total) }}</td>
         <td>{{ formatTokens(breakdown.total.uncached_input_tokens, locale) }}</td>
         <td>{{ formatTokens(breakdown.total.cache_read_tokens, locale) }}</td>
         <td>{{ formatTokens(breakdown.total.output_tokens, locale) }}</td>

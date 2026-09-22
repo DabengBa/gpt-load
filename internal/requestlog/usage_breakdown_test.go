@@ -225,6 +225,8 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		value.FailureCount = requests - successes
 		value.DurationMsTotal = durationTotal
 		value.DurationSampleCount = requests
+		value.FirstResponseMsTotal = durationTotal / 2
+		value.FirstResponseSampleCount = requests
 		value.UncachedInputTokens = int64(groupID) * 10
 		value.CacheReadTokens = int64(groupID) * 20
 		value.CacheWrite5MTokens = int64(groupID) * 30
@@ -254,7 +256,8 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		{"success descending", UsageBreakdownSortSuccessCount, UsageBreakdownSortDescending, "charlie", "alpha"},
 		{"failure ascending", UsageBreakdownSortFailureCount, UsageBreakdownSortAscending, "charlie", "bravo"},
 		{"success rate ascending", UsageBreakdownSortSuccessRate, UsageBreakdownSortAscending, "alpha", "charlie"},
-		{"latency ascending", UsageBreakdownSortAverageLatency, UsageBreakdownSortAscending, "alpha", "charlie"},
+		{"duration ascending", UsageBreakdownSortAverageDuration, UsageBreakdownSortAscending, "alpha", "charlie"},
+		{"first response ascending", UsageBreakdownSortAverageFirstResponse, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"uncached input ascending", UsageBreakdownSortUncachedInputTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"cache read ascending", UsageBreakdownSortCacheReadTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"cache write 5m ascending", UsageBreakdownSortCacheWrite5MTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
@@ -277,6 +280,59 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 			rows := report.Breakdown.Rows
 			if len(rows) != 3 || rows[0].Model != test.first || rows[len(rows)-1].Model != test.last {
 				t.Fatalf("sorted rows = %#v, want first/last %q/%q", rows, test.first, test.last)
+			}
+		})
+	}
+}
+
+func TestUsageBreakdownSortsNoSampleFirstResponseRowsLast(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)
+	row := func(model string, requests, firstResponseTotal, firstResponseSamples int64) models.UsageStat {
+		value := usageStat(start, 7, model, requests)
+		value.ID = 0
+		value.ChannelID = fmt.Sprintf("channel-%s", model)
+		value.CredentialID = uint(len(model))
+		value.FirstResponseMsTotal = firstResponseTotal
+		value.FirstResponseSampleCount = firstResponseSamples
+		return value
+	}
+	createUsageStats(t, db,
+		row("alpha", 3, 300, 3),
+		row("bravo", 2, 1000, 2),
+		row("charlie", 1, 0, 0),
+		row("delta", 1, 0, 0),
+	)
+
+	tests := []struct {
+		name      string
+		direction UsageBreakdownSortDirection
+		want      []string
+	}{
+		{"ascending", UsageBreakdownSortAscending, []string{"alpha", "bravo", "charlie", "delta"}},
+		{"descending", UsageBreakdownSortDescending, []string{"bravo", "alpha", "charlie", "delta"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			report, err := newRequestLogTestService(db).QueryUsage(context.Background(), UsageQuery{
+				FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(),
+				Granularity: UsageGranularityHour, BreakdownPageSize: 100,
+				BreakdownSort: UsageBreakdownSortAverageFirstResponse, BreakdownSortDirection: test.direction,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			models := make([]string, 0, len(report.Breakdown.Rows))
+			for _, breakdownRow := range report.Breakdown.Rows {
+				models = append(models, breakdownRow.Model)
+			}
+			if len(models) != len(test.want) {
+				t.Fatalf("sorted rows = %v, want %v", models, test.want)
+			}
+			for index, want := range test.want {
+				if models[index] != want {
+					t.Fatalf("sorted rows = %v, want %v", models, test.want)
+				}
 			}
 		})
 	}

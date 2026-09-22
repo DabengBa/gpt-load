@@ -17,6 +17,8 @@ func TestUsageLatencyCheckedAddsRejectOverflowWithoutMutation(t *testing.T) {
 	}{
 		{name: "duration total", field: "duration_ms_total"},
 		{name: "duration samples", field: "duration_sample_count"},
+		{name: "first response total", field: "first_response_ms_total"},
+		{name: "first response samples", field: "first_response_sample_count"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			value := int64(math.MaxInt64)
@@ -29,6 +31,80 @@ func TestUsageLatencyCheckedAddsRejectOverflowWithoutMutation(t *testing.T) {
 		})
 	}
 }
+
+func TestUsageFirstResponseAggregationUsesObservedSamplesOnly(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	firstResponseA := int64(125)
+	firstResponseB := int64(225)
+	rows := []models.RequestLog{
+		aggregationRow(
+			aggregationRequestID(103),
+			time.Date(2026, time.August, 8, 14, 10, 0, 0, time.UTC),
+			7,
+			"first-response-model",
+		),
+		aggregationRow(
+			aggregationRequestID(104),
+			time.Date(2026, time.August, 8, 14, 20, 0, 0, time.UTC),
+			7,
+			"first-response-model",
+		),
+		aggregationRow(
+			aggregationRequestID(105),
+			time.Date(2026, time.August, 8, 14, 30, 0, 0, time.UTC),
+			7,
+			"first-response-model",
+		),
+	}
+	rows[0].Stream = true
+	rows[0].DurationMs = 400
+	rows[0].FirstResponseMs = &firstResponseA
+	rows[1].Stream = true
+	rows[1].DurationMs = 600
+	rows[1].FirstResponseMs = &firstResponseB
+	rows[2].DurationMs = 100
+	rows[2].GroupID = 8
+
+	if err := (&gormBatchWriter{db: db}).WriteBatch(context.Background(), rows); err != nil {
+		t.Fatalf("WriteBatch() error = %v", err)
+	}
+
+	var stats []models.UsageStat
+	if err := db.Find(&stats).Error; err != nil {
+		t.Fatal(err)
+	}
+	var durationTotal, durationSamples, firstResponseTotal, firstResponseSamples int64
+	for _, stat := range stats {
+		durationTotal += stat.DurationMsTotal
+		durationSamples += stat.DurationSampleCount
+		firstResponseTotal += stat.FirstResponseMsTotal
+		firstResponseSamples += stat.FirstResponseSampleCount
+	}
+	if durationTotal != 1100 || durationSamples != 3 {
+		t.Fatalf("duration aggregate = (%d, %d), want (1100, 3)", durationTotal, durationSamples)
+	}
+	if firstResponseTotal != 350 || firstResponseSamples != 2 {
+		t.Fatalf("first response aggregate = (%d, %d), want (350, 2)", firstResponseTotal, firstResponseSamples)
+	}
+
+	report, err := newRequestLogTestService(db).QueryUsage(context.Background(), UsageQuery{
+		FromMS:      time.Date(2026, time.August, 8, 14, 0, 0, 0, time.UTC).UnixMilli(),
+		ToMS:        time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC).UnixMilli(),
+		Granularity: UsageGranularityHour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.FirstResponseMsTotal != 350 || report.Summary.FirstResponseSampleCount != 2 {
+		t.Fatalf("summary first response aggregate = (%d, %d), want (350, 2)", report.Summary.FirstResponseMsTotal, report.Summary.FirstResponseSampleCount)
+	}
+	if len(report.Breakdown.Rows) != 2 ||
+		report.Breakdown.Rows[0].FirstResponseMsTotal != 350 || report.Breakdown.Rows[0].FirstResponseSampleCount != 2 ||
+		report.Breakdown.Rows[1].FirstResponseMsTotal != 0 || report.Breakdown.Rows[1].FirstResponseSampleCount != 0 {
+		t.Fatalf("breakdown first response aggregates = %#v", report.Breakdown.Rows)
+	}
+}
+
 func TestUsageLatencyAndBreakdownContract(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	row := aggregationRow(

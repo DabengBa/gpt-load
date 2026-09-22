@@ -187,22 +187,24 @@ type usageStatKey struct {
 }
 
 type usageStatDelta struct {
-	RequestCount            int64
-	SuccessCount            int64
-	FailureCount            int64
-	UncachedInputTokens     int64
-	OutputTokens            int64
-	CacheReadTokens         int64
-	CacheWrite5MTokens      int64
-	CacheWrite1HTokens      int64
-	CacheWriteUnknownTokens int64
-	EstimatedCostNanoUSD    int64
-	DurationMsTotal         int64
-	DurationSampleCount     int64
-	UsageMissingCount       int64
-	PartialCount            int64
-	UnpricedRequestCount    int64
-	PricingPartialCount     int64
+	RequestCount             int64
+	SuccessCount             int64
+	FailureCount             int64
+	UncachedInputTokens      int64
+	OutputTokens             int64
+	CacheReadTokens          int64
+	CacheWrite5MTokens       int64
+	CacheWrite1HTokens       int64
+	CacheWriteUnknownTokens  int64
+	EstimatedCostNanoUSD     int64
+	DurationMsTotal          int64
+	DurationSampleCount      int64
+	FirstResponseMsTotal     int64
+	FirstResponseSampleCount int64
+	UsageMissingCount        int64
+	PartialCount             int64
+	UnpricedRequestCount     int64
+	PricingPartialCount      int64
 }
 
 func writeRequestLogBatch(tx *gorm.DB, rows []models.RequestLog) error {
@@ -646,6 +648,8 @@ func usageStatUpsertClause() clause.OnConflict {
 			"estimated_cost_nano_usd",
 			"duration_ms_total",
 			"duration_sample_count",
+			"first_response_ms_total",
+			"first_response_sample_count",
 			"usage_missing_count",
 			"partial_count",
 			"unpriced_request_count",
@@ -681,29 +685,31 @@ func buildUsageAggregationJournals(
 		}
 		for key, delta := range deltas {
 			journals = append(journals, models.UsageAggregationJournal{
-				RequestID:               row.ID,
-				BucketStartMS:           key.BucketStartMS,
-				AccessKeyID:             key.AccessKeyID,
-				ChannelID:               key.ChannelID,
-				GroupID:                 key.GroupID,
-				CredentialID:            key.CredentialID,
-				Model:                   key.Model,
-				RequestCount:            delta.RequestCount,
-				SuccessCount:            delta.SuccessCount,
-				FailureCount:            delta.FailureCount,
-				UncachedInputTokens:     delta.UncachedInputTokens,
-				OutputTokens:            delta.OutputTokens,
-				CacheReadTokens:         delta.CacheReadTokens,
-				CacheWrite5MTokens:      delta.CacheWrite5MTokens,
-				CacheWrite1HTokens:      delta.CacheWrite1HTokens,
-				CacheWriteUnknownTokens: delta.CacheWriteUnknownTokens,
-				EstimatedCostNanoUSD:    delta.EstimatedCostNanoUSD,
-				DurationMsTotal:         delta.DurationMsTotal,
-				DurationSampleCount:     delta.DurationSampleCount,
-				UsageMissingCount:       delta.UsageMissingCount,
-				PartialCount:            delta.PartialCount,
-				UnpricedRequestCount:    delta.UnpricedRequestCount,
-				PricingPartialCount:     delta.PricingPartialCount,
+				RequestID:                row.ID,
+				BucketStartMS:            key.BucketStartMS,
+				AccessKeyID:              key.AccessKeyID,
+				ChannelID:                key.ChannelID,
+				GroupID:                  key.GroupID,
+				CredentialID:             key.CredentialID,
+				Model:                    key.Model,
+				RequestCount:             delta.RequestCount,
+				SuccessCount:             delta.SuccessCount,
+				FailureCount:             delta.FailureCount,
+				UncachedInputTokens:      delta.UncachedInputTokens,
+				OutputTokens:             delta.OutputTokens,
+				CacheReadTokens:          delta.CacheReadTokens,
+				CacheWrite5MTokens:       delta.CacheWrite5MTokens,
+				CacheWrite1HTokens:       delta.CacheWrite1HTokens,
+				CacheWriteUnknownTokens:  delta.CacheWriteUnknownTokens,
+				EstimatedCostNanoUSD:     delta.EstimatedCostNanoUSD,
+				DurationMsTotal:          delta.DurationMsTotal,
+				DurationSampleCount:      delta.DurationSampleCount,
+				FirstResponseMsTotal:     delta.FirstResponseMsTotal,
+				FirstResponseSampleCount: delta.FirstResponseSampleCount,
+				UsageMissingCount:        delta.UsageMissingCount,
+				PartialCount:             delta.PartialCount,
+				UnpricedRequestCount:     delta.UnpricedRequestCount,
+				PricingPartialCount:      delta.PricingPartialCount,
 			})
 		}
 	}
@@ -787,6 +793,8 @@ func buildUsageJournalDeltas(
 			{name: "pricing_partial_count", target: &delta.PricingPartialCount, value: journal.PricingPartialCount},
 			{name: "duration_ms_total", target: &delta.DurationMsTotal, value: journal.DurationMsTotal},
 			{name: "duration_sample_count", target: &delta.DurationSampleCount, value: journal.DurationSampleCount},
+			{name: "first_response_ms_total", target: &delta.FirstResponseMsTotal, value: journal.FirstResponseMsTotal},
+			{name: "first_response_sample_count", target: &delta.FirstResponseSampleCount, value: journal.FirstResponseSampleCount},
 		} {
 			if err := checkedInt64Add(field.target, field.value, field.name); err != nil {
 				return nil, err
@@ -794,6 +802,9 @@ func buildUsageJournalDeltas(
 		}
 		if delta.DurationSampleCount > delta.RequestCount {
 			return nil, fmt.Errorf("aggregate usage journal duration_sample_count exceeds request_count")
+		}
+		if delta.FirstResponseSampleCount > delta.RequestCount {
+			return nil, fmt.Errorf("aggregate usage journal first_response_sample_count exceeds request_count")
 		}
 		cost, ok := pricing.CheckedAddNanoUSD(
 			pricing.NanoUSD(delta.EstimatedCostNanoUSD),
@@ -864,6 +875,14 @@ func (delta *usageStatDelta) addRow(row models.RequestLog) error {
 	}
 	if err := checkedInt64Add(&delta.DurationSampleCount, 1, "duration_sample_count"); err != nil {
 		return err
+	}
+	if row.FirstResponseMs != nil {
+		if err := checkedInt64Add(&delta.FirstResponseMsTotal, *row.FirstResponseMs, "first_response_ms_total"); err != nil {
+			return err
+		}
+		if err := checkedInt64Add(&delta.FirstResponseSampleCount, 1, "first_response_sample_count"); err != nil {
+			return err
+		}
 	}
 
 	switch row.UsageState {
@@ -1048,8 +1067,10 @@ func checkedUsageStatTotal(
 	delta usageStatDelta,
 ) (models.UsageStat, error) {
 	if existing.DurationSampleCount > existing.RequestCount ||
-		delta.DurationSampleCount > delta.RequestCount {
-		return models.UsageStat{}, fmt.Errorf("calculate absolute usage stat duration_sample_count exceeds request_count")
+		delta.DurationSampleCount > delta.RequestCount ||
+		existing.FirstResponseSampleCount > existing.RequestCount ||
+		delta.FirstResponseSampleCount > delta.RequestCount {
+		return models.UsageStat{}, fmt.Errorf("calculate absolute usage stat sample count exceeds request_count")
 	}
 	total := existing
 	for _, field := range []struct {
@@ -1060,6 +1081,8 @@ func checkedUsageStatTotal(
 	}{
 		{name: "duration_ms_total", left: existing.DurationMsTotal, right: delta.DurationMsTotal, set: func(value int64) { total.DurationMsTotal = value }},
 		{name: "duration_sample_count", left: existing.DurationSampleCount, right: delta.DurationSampleCount, set: func(value int64) { total.DurationSampleCount = value }},
+		{name: "first_response_ms_total", left: existing.FirstResponseMsTotal, right: delta.FirstResponseMsTotal, set: func(value int64) { total.FirstResponseMsTotal = value }},
+		{name: "first_response_sample_count", left: existing.FirstResponseSampleCount, right: delta.FirstResponseSampleCount, set: func(value int64) { total.FirstResponseSampleCount = value }},
 		{name: "request_count", left: existing.RequestCount, right: delta.RequestCount, set: func(value int64) { total.RequestCount = value }},
 		{name: "success_count", left: existing.SuccessCount, right: delta.SuccessCount, set: func(value int64) { total.SuccessCount = value }},
 		{name: "failure_count", left: existing.FailureCount, right: delta.FailureCount, set: func(value int64) { total.FailureCount = value }},
@@ -1095,6 +1118,9 @@ func checkedUsageStatTotal(
 	total.EstimatedCostNanoUSD = int64(cost)
 	if total.DurationSampleCount > total.RequestCount {
 		return models.UsageStat{}, fmt.Errorf("calculate absolute usage stat duration_sample_count exceeds request_count")
+	}
+	if total.FirstResponseSampleCount > total.RequestCount {
+		return models.UsageStat{}, fmt.Errorf("calculate absolute usage stat first_response_sample_count exceeds request_count")
 	}
 	return total, nil
 }

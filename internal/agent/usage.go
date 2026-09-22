@@ -215,7 +215,8 @@ func agentUsageBreakdownSort(sortValue requestlog.UsageBreakdownSort) bool {
 		requestlog.UsageBreakdownSortSuccessCount,
 		requestlog.UsageBreakdownSortFailureCount,
 		requestlog.UsageBreakdownSortSuccessRate,
-		requestlog.UsageBreakdownSortAverageLatency,
+		requestlog.UsageBreakdownSortAverageDuration,
+		requestlog.UsageBreakdownSortAverageFirstResponse,
 		requestlog.UsageBreakdownSortUncachedInputTokens,
 		requestlog.UsageBreakdownSortCacheReadTokens,
 		requestlog.UsageBreakdownSortCacheWrite5MTokens,
@@ -307,7 +308,8 @@ func mapAgentUsageAggregate(source requestlog.UsageAggregate) (UsageAggregateVie
 		source.UncachedInputTokens, source.CacheReadTokens, source.CacheWrite5MTokens,
 		source.CacheWrite1HTokens, source.CacheWriteUnknownTokens, source.OutputTokens,
 		source.UsageMissingCount, source.PartialCount, source.UnpricedRequestCount,
-		source.PricingPartialCount,
+		source.PricingPartialCount, source.DurationMsTotal, source.DurationSampleCount,
+		source.FirstResponseMsTotal, source.FirstResponseSampleCount,
 	}
 	for _, value := range values {
 		if value < 0 || value > maxSafeInteger {
@@ -328,22 +330,30 @@ func mapAgentUsageAggregate(source requestlog.UsageAggregate) (UsageAggregateVie
 	if source.EstimatedCostNanoUSD < 0 {
 		return UsageAggregateView{}, errAgentUsageTotalMismatch
 	}
+	if source.DurationSampleCount > source.RequestCount ||
+		source.FirstResponseSampleCount > source.RequestCount {
+		return UsageAggregateView{}, errAgentUsageTotalMismatch
+	}
 	return UsageAggregateView{
-		RequestCount:            source.RequestCount,
-		SuccessCount:            source.SuccessCount,
-		FailureCount:            source.FailureCount,
-		UncachedInputTokens:     source.UncachedInputTokens,
-		CacheReadTokens:         source.CacheReadTokens,
-		CacheWrite5MTokens:      source.CacheWrite5MTokens,
-		CacheWrite1HTokens:      source.CacheWrite1HTokens,
-		CacheWriteUnknownTokens: source.CacheWriteUnknownTokens,
-		OutputTokens:            source.OutputTokens,
-		TotalTokens:             totalTokens,
-		EstimatedNanoUSD:        strconv.FormatInt(source.EstimatedCostNanoUSD, 10),
-		UsageMissingCount:       source.UsageMissingCount,
-		PartialCount:            source.PartialCount,
-		UnpricedRequestCount:    source.UnpricedRequestCount,
-		PricingPartialCount:     source.PricingPartialCount,
+		RequestCount:             source.RequestCount,
+		SuccessCount:             source.SuccessCount,
+		FailureCount:             source.FailureCount,
+		UncachedInputTokens:      source.UncachedInputTokens,
+		CacheReadTokens:          source.CacheReadTokens,
+		CacheWrite5MTokens:       source.CacheWrite5MTokens,
+		CacheWrite1HTokens:       source.CacheWrite1HTokens,
+		CacheWriteUnknownTokens:  source.CacheWriteUnknownTokens,
+		OutputTokens:             source.OutputTokens,
+		TotalTokens:              totalTokens,
+		EstimatedNanoUSD:         strconv.FormatInt(source.EstimatedCostNanoUSD, 10),
+		DurationMsTotal:          source.DurationMsTotal,
+		DurationSampleCount:      source.DurationSampleCount,
+		FirstResponseMsTotal:     source.FirstResponseMsTotal,
+		FirstResponseSampleCount: source.FirstResponseSampleCount,
+		UsageMissingCount:        source.UsageMissingCount,
+		PartialCount:             source.PartialCount,
+		UnpricedRequestCount:     source.UnpricedRequestCount,
+		PricingPartialCount:      source.PricingPartialCount,
 	}, nil
 }
 
