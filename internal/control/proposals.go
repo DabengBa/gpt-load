@@ -428,7 +428,7 @@ func (s *Service) ApplyChangeProposal(
 		if err := json.Unmarshal(check.Updates, &updates); err != nil {
 			return app_errors.ErrInternalServer
 		}
-		if err := applyStoredProposalUpdates(tx, updates); err != nil {
+		if err := s.applyStoredProposalUpdates(tx, updates); err != nil {
 			return err
 		}
 		compileInput, err := stateloader.BuildCompileInputWithProxy(
@@ -549,7 +549,7 @@ func snapshotHasProposalEntry(snapshot *state.ConfigSnapshot, groupID uint, entr
 	return false
 }
 
-func applyStoredProposalUpdates(tx *gorm.DB, updates []agent.ChangeProposalUpdate) error {
+func (s *Service) applyStoredProposalUpdates(tx *gorm.DB, updates []agent.ChangeProposalUpdate) error {
 	if len(updates) == 0 {
 		return app_errors.ErrValidation
 	}
@@ -625,7 +625,7 @@ func applyStoredProposalUpdates(tx *gorm.DB, updates []agent.ChangeProposalUpdat
 	}
 	sort.Slice(groupIDs, func(left, right int) bool { return groupIDs[left] < groupIDs[right] })
 	for _, groupID := range groupIDs {
-		if err := applyModelRouteScheduleGroupPatch(tx, groupID, byGroup[groupID]); err != nil {
+		if err := s.applyModelRouteScheduleGroupPatch(tx, groupID, byGroup[groupID]); err != nil {
 			return err
 		}
 	}

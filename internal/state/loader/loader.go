@@ -81,13 +81,14 @@ type compileRows struct {
 // are optional: nil keeps the design defaults (weight 1, priority 1), which
 // keeps pre-route-entry rows backward compatible (design I2).
 type modelDTO struct {
-	ID             string                     `json:"id"`
-	Alias          string                     `json:"alias"`
-	TestAlias      string                     `json:"test_alias,omitempty"`
-	EntryID        string                     `json:"entry_id"`
-	Weight         *int                       `json:"weight"`
-	Priority       *int                       `json:"priority"`
-	CircuitBreaker *state.EntryCircuitBreaker `json:"circuit_breaker"`
+	ID              string                     `json:"id"`
+	Alias           string                     `json:"alias"`
+	TestAlias       string                     `json:"test_alias,omitempty"`
+	EntryID         string                     `json:"entry_id"`
+	ReasoningEffort string                     `json:"reasoning_effort,omitempty"`
+	Weight          *int                       `json:"weight"`
+	Priority        *int                       `json:"priority"`
+	CircuitBreaker  *state.EntryCircuitBreaker `json:"circuit_breaker"`
 }
 
 type filterDTO struct {
@@ -223,7 +224,8 @@ func BackfillTestAliases(ctx context.Context, db *gorm.DB) error {
 				}
 				modelsForState = append(modelsForState, state.ModelConfig{
 					ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
-					Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+					ReasoningEffort: model.ReasoningEffort,
+					Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
 					CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 				})
 			}
@@ -671,7 +673,8 @@ func mapSystemAndGroups(
 		for _, model := range storedModels {
 			runtimeModels = append(runtimeModels, state.ModelConfig{
 				ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
-				Weight: cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+				ReasoningEffort: model.ReasoningEffort,
+				Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
 				CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 			})
 		}

@@ -8,7 +8,6 @@ import (
 
 	"gorm.io/gorm"
 
-	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/state"
@@ -54,13 +53,14 @@ type ModelNameConflictData struct {
 // fields (design §3) and, unlike GroupModel, tolerates unknown storage keys
 // so older readers never fail on rows written with new fields.
 type groupModelEntry struct {
-	ID             string                     `json:"id"`
-	Alias          string                     `json:"alias"`
-	TestAlias      string                     `json:"test_alias,omitempty"`
-	EntryID        string                     `json:"entry_id,omitempty"`
-	Weight         *int                       `json:"weight,omitempty"`
-	Priority       *int                       `json:"priority,omitempty"`
-	CircuitBreaker *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
+	ID              string                     `json:"id"`
+	Alias           string                     `json:"alias"`
+	TestAlias       string                     `json:"test_alias,omitempty"`
+	EntryID         string                     `json:"entry_id,omitempty"`
+	ReasoningEffort string                     `json:"reasoning_effort,omitempty"`
+	Weight          *int                       `json:"weight,omitempty"`
+	Priority        *int                       `json:"priority,omitempty"`
+	CircuitBreaker  *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
 }
 
 func assignMissingTestAliases(db *gorm.DB, groupModels []GroupModel) error {
@@ -131,7 +131,8 @@ func cloneEntryCircuitBreaker(value *state.EntryCircuitBreaker) *state.EntryCirc
 func (model groupModelEntry) toModelConfig() state.ModelConfig {
 	return state.ModelConfig{
 		ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
-		Weight: cloneInt(model.Weight), Priority: cloneInt(model.Priority),
+		ReasoningEffort: model.ReasoningEffort,
+		Weight:          cloneInt(model.Weight), Priority: cloneInt(model.Priority),
 		CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 	}
 }
@@ -274,24 +275,12 @@ func (s *Service) UpdateGroupModels(
 		}
 
 		group.Models = models.JSON(encoded)
-		cleanedOverrides, overridesChanged, cleanupErr := pruneRemovedModelReasoningOverrides(
-			group.Overrides,
-			normalized,
-		)
-		if cleanupErr != nil {
-			return fmt.Errorf("prune removed model reasoning overrides: %w", cleanupErr)
-		}
-		group.Overrides = cleanedOverrides
 		if err := validateGroupRowCandidate(ctx, tx, group, s.channelRegistry); err != nil {
 			return app_errors.ErrValidation
 		}
-		updates := map[string]any{"models": group.Models}
-		if overridesChanged {
-			updates["overrides"] = group.Overrides
-		}
 		if err := tx.Model(&models.Group{}).
 			Where("id = ?", groupID).
-			Updates(updates).Error; err != nil {
+			Update("models", group.Models).Error; err != nil {
 			return app_errors.ParseDBError(err)
 		}
 		return nil
@@ -311,52 +300,6 @@ func (s *Service) UpdateGroupModels(
 		)
 	}
 	return result, nil
-}
-
-func pruneRemovedModelReasoningOverrides(
-	raw models.JSON,
-	requested []GroupModel,
-) (models.JSON, bool, error) {
-	if len(raw) == 0 {
-		return raw, false, nil
-	}
-
-	settings := make(config.Settings)
-	if err := decodeGroupDiscoveryJSON(raw, &settings); err != nil {
-		return raw, false, err
-	}
-	rawOverrides, exists := settings[state.SettingReasoningEffortOverrides]
-	if !exists {
-		return raw, false, nil
-	}
-	overrides, ok := rawOverrides.(map[string]any)
-	if !ok {
-		return raw, false, fmt.Errorf("%s must be an object", state.SettingReasoningEffortOverrides)
-	}
-
-	available := make(map[string]struct{}, len(requested))
-	for _, model := range requested {
-		available[strings.TrimSpace(model.ID)] = struct{}{}
-	}
-	retained := make(map[string]any, len(overrides))
-	for model, effort := range overrides {
-		if _, exists := available[model]; exists {
-			retained[model] = effort
-		}
-	}
-	if len(retained) == len(overrides) {
-		return raw, false, nil
-	}
-	if len(retained) == 0 {
-		delete(settings, state.SettingReasoningEffortOverrides)
-	} else {
-		settings[state.SettingReasoningEffortOverrides] = retained
-	}
-	encoded, err := json.Marshal(settings)
-	if err != nil {
-		return raw, false, err
-	}
-	return models.JSON(encoded), true, nil
 }
 
 func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel) ([]GroupModel, error) {
@@ -415,6 +358,9 @@ func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel
 		}
 		if !model.circuitBreakerSet && exists {
 			model.CircuitBreaker = cloneEntryCircuitBreaker(preserved.CircuitBreaker)
+		}
+		if exists {
+			model.ReasoningEffort = preserved.ReasoningEffort
 		}
 		if exists {
 			model.TestAlias = preserved.TestAlias

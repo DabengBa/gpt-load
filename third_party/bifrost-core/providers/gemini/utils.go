@@ -63,7 +63,6 @@ func defaultCanDisableReasoning(model string) bool {
 	return !strings.Contains(strings.ToLower(model), "gemini-2.5-pro")
 }
 
-
 // defaultEffortControl is the thinkingLevel surface for Gemini 3+, taken from
 // the per-model rung table below. nil for models that take a budget instead,
 // which is what tells callers to convert an effort into thinkingBudget.
@@ -75,6 +74,12 @@ func defaultEffortControl(model string) *schemas.EffortControl {
 	// clamps onto it, so "medium" on a low/high model lands on "high" without a
 	// second mechanism saying the same thing.
 	return &schemas.EffortControl{Levels: supportedThinkingLevels(model)}
+}
+
+// DefaultEffortControl exposes the same thinking-level fallback used by the
+// Gemini Chat and Responses wire converters. Nil means budget-only model.
+func DefaultEffortControl(model string) *schemas.EffortControl {
+	return defaultEffortControl(model)
 }
 
 // geminiBudgetRanges are the published thinking-budget limits. Longest prefix

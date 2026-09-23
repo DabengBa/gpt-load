@@ -69,6 +69,12 @@ func defaultEffortControl(model string) *schemas.EffortControl {
 	return &schemas.EffortControl{Levels: levels}
 }
 
+// DefaultEffortControl exposes the same name-derived ladder used when building
+// OpenAI Chat and Responses requests. Datasheet overrides remain in ModelCaps.
+func DefaultEffortControl(model string) *schemas.EffortControl {
+	return defaultEffortControl(model)
+}
+
 // acceptsXHighEffort reports models that natively accept "xhigh" effort. The
 // ladder is shared by every OpenAI-dialect provider, so non-OpenAI families
 // supporting the tier are recognised here too — otherwise their "xhigh" is

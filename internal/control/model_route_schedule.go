@@ -24,8 +24,10 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/protocol"
+	"gpt-load/internal/reasoning"
 	"gpt-load/internal/requestlog"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
@@ -116,6 +118,7 @@ type modelRouteScheduleEntryResponse struct {
 	Priority        int                              `json:"priority"`
 	Fallback        bool                             `json:"fallback"`
 	CircuitBreaker  scheduleBreakerView              `json:"circuit_breaker"`
+	Reasoning       scheduleReasoningView            `json:"reasoning"`
 	Runtime         scheduleEntryRuntimeView         `json:"runtime"`
 	Included        bool                             `json:"included"`
 	Routable        bool                             `json:"routable"`
@@ -126,13 +129,28 @@ type modelRouteScheduleEntryResponse struct {
 }
 
 type modelRouteScheduleGroupResponse struct {
-	GroupID      uint                              `json:"group_id"`
-	GroupName    string                            `json:"group_name"`
-	ChannelID    channel.ID                        `json:"channel_id"`
-	Enabled      bool                              `json:"enabled"`
-	RequestCount int64                             `json:"request_count"`
-	SuccessRate  float64                           `json:"success_rate"`
-	Entries      []modelRouteScheduleEntryResponse `json:"entries"`
+	GroupID                uint                              `json:"group_id"`
+	GroupName              string                            `json:"group_name"`
+	ChannelID              channel.ID                        `json:"channel_id"`
+	Enabled                bool                              `json:"enabled"`
+	ReasoningEffortDefault *string                           `json:"reasoning_effort_default"`
+	RequestCount           int64                             `json:"request_count"`
+	SuccessRate            float64                           `json:"success_rate"`
+	Entries                []modelRouteScheduleEntryResponse `json:"entries"`
+	ReasoningEntries       []scheduleGroupReasoningEntry     `json:"reasoning_entries"`
+}
+
+type scheduleGroupReasoningEntry struct {
+	EntryID   string                `json:"entry_id"`
+	ModelID   string                `json:"model_id"`
+	Reasoning scheduleReasoningView `json:"reasoning"`
+}
+
+type scheduleReasoningView struct {
+	Configured *string                    `json:"configured"`
+	Effective  *string                    `json:"effective"`
+	Source     reasoning.EffortSource     `json:"source"`
+	Capability reasoning.EffortCapability `json:"capability"`
 }
 
 type modelRouteScheduleDetailResponse struct {
@@ -456,10 +474,26 @@ func mapModelRouteScheduleDetail(
 		if usage.RequestCount > 0 {
 			successRate = float64(usage.SuccessCount) / float64(usage.RequestCount)
 		}
+		reasoningEntries := make([]scheduleGroupReasoningEntry, 0, len(catalog.Models))
+		for _, model := range catalog.Models {
+			modelID := strings.TrimSpace(model.ID)
+			entryID := model.EntryID
+			if entryID == "" {
+				entryID = "derived:" + state.ExternalModelName(modelID, model.Alias) + "#" + modelID
+			}
+			reasoningView, err := scheduleReasoningProjection(configurations[group.GroupID][entryID], modelID)
+			if err != nil {
+				return modelRouteScheduleDetailResponse{}, fmt.Errorf("map model route schedule reasoning: %w", app_errors.ErrInternalServer)
+			}
+			reasoningEntries = append(reasoningEntries, scheduleGroupReasoningEntry{
+				EntryID: entryID, ModelID: modelID, Reasoning: reasoningView,
+			})
+		}
 		result.Groups = append(result.Groups, modelRouteScheduleGroupResponse{
 			GroupID: group.GroupID, GroupName: group.GroupName, ChannelID: group.ChannelID,
-			Enabled: catalog.Enabled, RequestCount: usage.RequestCount, SuccessRate: successRate,
-			Entries: []modelRouteScheduleEntryResponse{},
+			Enabled: catalog.Enabled, ReasoningEffortDefault: optionalString(configurations[group.GroupID][group.EntryID].groupDefault),
+			RequestCount: usage.RequestCount, SuccessRate: successRate,
+			Entries: []modelRouteScheduleEntryResponse{}, ReasoningEntries: reasoningEntries,
 		})
 		groupIndex[group.GroupID] = len(result.Groups) - 1
 	}
@@ -507,6 +541,10 @@ func mapModelRouteScheduleDetail(
 			ConfiguredShare: configuredShares[index],
 			EffectiveShare:  group.EffectiveShare,
 			Credentials:     credentials,
+		}
+		entry.Reasoning, err = scheduleReasoningProjection(configuration, upstreamModel)
+		if err != nil {
+			return modelRouteScheduleDetailResponse{}, fmt.Errorf("map model route schedule reasoning: %w", app_errors.ErrInternalServer)
 		}
 		position := groupIndex[group.GroupID]
 		result.Groups[position].Entries = append(result.Groups[position].Entries, entry)
@@ -608,8 +646,11 @@ func scheduleEntryRuntime(
 }
 
 type scheduleEntryConfiguration struct {
-	alias          string
-	circuitBreaker *state.EntryCircuitBreaker
+	alias           string
+	circuitBreaker  *state.EntryCircuitBreaker
+	reasoningEffort string
+	groupDefault    string
+	provider        string
 }
 
 // scheduleEntryConfigurations indexes every snapshot catalog group's models by
@@ -624,6 +665,10 @@ func scheduleEntryConfigurations(
 		return result
 	}
 	for groupID, group := range snapshot.GroupCatalog {
+		view, exists := snapshot.Groups[groupID]
+		if !exists {
+			view = snapshot.DisabledGroups[groupID]
+		}
 		for _, model := range group.Models {
 			upstream := strings.TrimSpace(model.ID)
 			external := state.ExternalModelName(upstream, model.Alias)
@@ -635,12 +680,39 @@ func scheduleEntryConfigurations(
 				result[groupID] = make(map[string]scheduleEntryConfiguration)
 			}
 			result[groupID][identity] = scheduleEntryConfiguration{
-				alias:          model.Alias,
-				circuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+				alias:           model.Alias,
+				circuitBreaker:  cloneEntryCircuitBreaker(model.CircuitBreaker),
+				reasoningEffort: model.ReasoningEffort,
+				groupDefault:    view.ReasoningEffortDefault,
+				provider:        string(view.ResolvedTarget.ProviderKind),
 			}
 		}
 	}
 	return result
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return new(value)
+}
+
+func scheduleReasoningProjection(configuration scheduleEntryConfiguration, model string) (scheduleReasoningView, error) {
+	effective, source, err := reasoning.ResolveEffort(configuration.reasoningEffort, configuration.groupDefault, "")
+	if err != nil {
+		return scheduleReasoningView{}, err
+	}
+	capability := reasoning.ProjectEffortCapability(configuration.provider, model)
+	if capability.Levels == nil {
+		capability.Levels = []string{}
+	}
+	return scheduleReasoningView{
+		Configured: optionalString(configuration.reasoningEffort),
+		Effective:  optionalString(effective),
+		Source:     source,
+		Capability: capability,
+	}, nil
 }
 
 // scheduleBreakerViewFromConfiguration renders the §5.3 triple: no default
@@ -746,20 +818,27 @@ func decodeScheduleBreakerParameter(
 }
 
 type modelRouteSchedulePatchUpdate struct {
-	GroupID        uint                      `json:"group_id"`
-	EntryID        string                    `json:"entry_id"`
-	Weight         optionalField[int]        `json:"weight"`
-	Priority       optionalField[int]        `json:"priority"`
-	CircuitBreaker scheduleBreakerPatchField `json:"circuit_breaker"`
+	GroupID         uint                      `json:"group_id"`
+	EntryID         string                    `json:"entry_id"`
+	Weight          optionalField[int]        `json:"weight"`
+	Priority        optionalField[int]        `json:"priority"`
+	CircuitBreaker  scheduleBreakerPatchField `json:"circuit_breaker"`
+	ReasoningEffort optionalField[string]     `json:"reasoning_effort"`
+}
+
+type modelRouteScheduleGroupPatchUpdate struct {
+	GroupID                uint                  `json:"group_id"`
+	ReasoningEffortDefault optionalField[string] `json:"reasoning_effort_default"`
 }
 
 type modelRouteSchedulePatchRequest struct {
-	SnapshotRevision *uint64                         `json:"snapshot_revision"`
-	Protocol         protocol.Protocol               `json:"protocol"`
-	ExternalModel    string                          `json:"external_model"`
-	Operation        string                          `json:"operation"`
-	AccessKeyID      uint                            `json:"access_key_id"`
-	Updates          []modelRouteSchedulePatchUpdate `json:"updates"`
+	SnapshotRevision *uint64                              `json:"snapshot_revision"`
+	Protocol         protocol.Protocol                    `json:"protocol"`
+	ExternalModel    string                               `json:"external_model"`
+	Operation        string                               `json:"operation"`
+	AccessKeyID      uint                                 `json:"access_key_id"`
+	GroupUpdates     []modelRouteScheduleGroupPatchUpdate `json:"group_updates"`
+	Updates          []modelRouteSchedulePatchUpdate      `json:"updates"`
 }
 
 type modelRouteSchedulePatchResponse struct {
@@ -785,7 +864,7 @@ func (s *Service) UpdateModelRouteSchedule(
 	ctx context.Context,
 	request modelRouteSchedulePatchRequest,
 ) (modelRouteSchedulePatchResponse, error) {
-	if request.SnapshotRevision == nil || len(request.Updates) == 0 {
+	if request.SnapshotRevision == nil || len(request.Updates)+len(request.GroupUpdates) == 0 {
 		return modelRouteSchedulePatchResponse{}, app_errors.ErrValidation
 	}
 	if err := validateScheduleDetailEchoContext(request); err != nil {
@@ -798,9 +877,24 @@ func (s *Service) UpdateModelRouteSchedule(
 		}
 		updatesByGroup[update.GroupID] = append(updatesByGroup[update.GroupID], update)
 	}
+	groupUpdates := make(map[uint]modelRouteScheduleGroupPatchUpdate, len(request.GroupUpdates))
+	for _, update := range request.GroupUpdates {
+		if update.GroupID == 0 || !update.ReasoningEffortDefault.Set {
+			return modelRouteSchedulePatchResponse{}, app_errors.ErrValidation
+		}
+		if _, duplicate := groupUpdates[update.GroupID]; duplicate {
+			return modelRouteSchedulePatchResponse{}, app_errors.ErrValidation
+		}
+		groupUpdates[update.GroupID] = update
+	}
 	groupIDs := make([]uint, 0, len(updatesByGroup))
 	for groupID := range updatesByGroup {
 		groupIDs = append(groupIDs, groupID)
+	}
+	for groupID := range groupUpdates {
+		if _, exists := updatesByGroup[groupID]; !exists {
+			groupIDs = append(groupIDs, groupID)
+		}
 	}
 	sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
 
@@ -810,7 +904,8 @@ func (s *Service) UpdateModelRouteSchedule(
 			return modelRouteScheduleRevisionConflict
 		}
 		for _, groupID := range groupIDs {
-			if err := applyModelRouteScheduleGroupPatch(tx, groupID, updatesByGroup[groupID]); err != nil {
+			groupUpdate, hasGroupUpdate := groupUpdates[groupID]
+			if err := s.applyModelRouteScheduleGroupPatchWithReasoning(tx, groupID, updatesByGroup[groupID], groupUpdate, hasGroupUpdate); err != nil {
 				return err
 			}
 		}
@@ -853,10 +948,22 @@ func validateScheduleDetailEchoContext(request modelRouteSchedulePatchRequest) e
 	return nil
 }
 
-func applyModelRouteScheduleGroupPatch(
+func (s *Service) applyModelRouteScheduleGroupPatch(
 	tx *gorm.DB,
 	groupID uint,
 	updates []modelRouteSchedulePatchUpdate,
+) error {
+	return s.applyModelRouteScheduleGroupPatchWithReasoning(
+		tx, groupID, updates, modelRouteScheduleGroupPatchUpdate{}, false,
+	)
+}
+
+func (s *Service) applyModelRouteScheduleGroupPatchWithReasoning(
+	tx *gorm.DB,
+	groupID uint,
+	updates []modelRouteSchedulePatchUpdate,
+	groupUpdate modelRouteScheduleGroupPatchUpdate,
+	hasGroupUpdate bool,
 ) error {
 	group, err := loadGroupRow(tx, groupID)
 	if err != nil {
@@ -865,6 +972,21 @@ func applyModelRouteScheduleGroupPatch(
 	var entries []groupModelEntry
 	if err := decodeGroupDiscoveryJSON(group.Models, &entries); err != nil {
 		return fmt.Errorf("decode group %d models: %w", groupID, app_errors.ErrInternalServer)
+	}
+	settings := make(config.Settings)
+	if err := decodeGroupDiscoveryJSON(group.Overrides, &settings); err != nil {
+		return fmt.Errorf("decode group %d overrides: %w", groupID, app_errors.ErrInternalServer)
+	}
+	if hasGroupUpdate {
+		if groupUpdate.ReasoningEffortDefault.Null {
+			delete(settings, state.SettingReasoningEffortDefault)
+		} else {
+			value, err := canonicalScheduleReasoningEffort(groupUpdate.ReasoningEffortDefault.Value)
+			if err != nil {
+				return err
+			}
+			settings[state.SettingReasoningEffortDefault] = value
+		}
 	}
 	entryIndex := make(map[string]int, len(entries))
 	for index := range entries {
@@ -881,10 +1003,28 @@ func applyModelRouteScheduleGroupPatch(
 				scheduleEntryNotFoundData{GroupID: groupID, EntryID: entryID},
 			)
 		}
-		applyModelRouteScheduleUpdateFields(&entries[index], update)
+		if err := applyModelRouteScheduleUpdateFields(&entries[index], update); err != nil {
+			return err
+		}
+	}
+	groupDefault, _ := settings[state.SettingReasoningEffortDefault].(string)
+	provider, ok := s.channelRegistry.ProviderKind(channel.ID(group.ChannelID))
+	if !ok {
+		return app_errors.ErrValidation
 	}
 	configurations := make([]state.ModelConfig, 0, len(entries))
 	for _, entry := range entries {
+		effective, _, err := reasoning.ResolveEffort(entry.ReasoningEffort, groupDefault, "")
+		if err != nil {
+			return app_errors.ErrValidation
+		}
+		if effective != "" {
+			if err := reasoning.ValidateEffort(string(provider), entry.ID, effective); err != nil {
+				return app_errors.NewAPIErrorWithData(app_errors.ErrValidation, scheduleValidationData{
+					GroupID: groupID, Message: fmt.Sprintf("model %s (entry %s): %v", entry.ID, entry.EntryID, err),
+				})
+			}
+		}
 		configurations = append(configurations, entry.toModelConfig())
 	}
 	// Validate every merged entry (V1–V7) before any row is written so a
@@ -900,9 +1040,17 @@ func applyModelRouteScheduleGroupPatch(
 	if err != nil {
 		return fmt.Errorf("encode group %d models: %w", groupID, err)
 	}
+	databaseUpdates := map[string]any{"models": models.JSON(encoded)}
+	if hasGroupUpdate {
+		encodedSettings, err := json.Marshal(settings)
+		if err != nil {
+			return fmt.Errorf("encode group %d overrides: %w", groupID, err)
+		}
+		databaseUpdates["overrides"] = models.JSON(encodedSettings)
+	}
 	if err := tx.Model(&models.Group{}).
 		Where("id = ?", groupID).
-		Update("models", models.JSON(encoded)).Error; err != nil {
+		Updates(databaseUpdates).Error; err != nil {
 		return app_errors.ParseDBError(err)
 	}
 	return nil
@@ -911,7 +1059,18 @@ func applyModelRouteScheduleGroupPatch(
 func applyModelRouteScheduleUpdateFields(
 	entry *groupModelEntry,
 	update modelRouteSchedulePatchUpdate,
-) {
+) error {
+	if update.ReasoningEffort.Set {
+		if update.ReasoningEffort.Null {
+			entry.ReasoningEffort = ""
+		} else {
+			value, err := canonicalScheduleReasoningEffort(update.ReasoningEffort.Value)
+			if err != nil {
+				return err
+			}
+			entry.ReasoningEffort = value
+		}
+	}
 	if update.Weight.Set {
 		if update.Weight.Null {
 			entry.Weight = nil
@@ -929,11 +1088,11 @@ func applyModelRouteScheduleUpdateFields(
 		}
 	}
 	if !update.CircuitBreaker.Set {
-		return
+		return nil
 	}
 	if update.CircuitBreaker.Null {
 		entry.CircuitBreaker = nil
-		return
+		return nil
 	}
 	breaker := cloneEntryCircuitBreaker(entry.CircuitBreaker)
 	if breaker == nil {
@@ -957,9 +1116,21 @@ func applyModelRouteScheduleUpdateFields(
 	}
 	if breaker.BlacklistThreshold == nil && breaker.CooldownSeconds == nil {
 		entry.CircuitBreaker = nil
-		return
+		return nil
 	}
 	entry.CircuitBreaker = breaker
+	return nil
+}
+
+func canonicalScheduleReasoningEffort(value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", app_errors.ErrValidation
+	}
+	canonical, _, err := reasoning.ResolveEffort(value, "", "")
+	if err != nil {
+		return "", app_errors.ErrValidation
+	}
+	return canonical, nil
 }
 
 // scheduleDetailAfterPatch re-renders the §5.2 detail from the freshly

@@ -14,6 +14,23 @@ import (
 	"gpt-load/internal/protocol"
 )
 
+func TestCompileKeepsDerivedPolicyEntryIdentity(t *testing.T) {
+	t.Parallel()
+	snapshot, err := Compile(CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{
+		ID: 1, Name: "group", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true,
+		Models: []ModelConfig{{ID: "gpt-5.4", Alias: "public", ReasoningEffort: "high"}},
+	}}})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	target := snapshot.ExecutionCandidates[protocol.OpenAICompletions][execution.OperationChatCompletion]["public"][0]
+	model := snapshot.Groups[1].Models[0]
+	catalog := snapshot.GroupCatalog[1].Models[0]
+	if target.EntryID == "" || model.EntryID != target.EntryID || catalog.EntryID != target.EntryID || model.ReasoningEffort != "high" {
+		t.Fatalf("compiled derived entry identity: target=%q view=%q catalog=%q effort=%q", target.EntryID, model.EntryID, catalog.EntryID, model.ReasoningEffort)
+	}
+}
+
 func TestCompileIndexesExternalModelsAndPreservesUpstreamIDs(t *testing.T) {
 	t.Parallel()
 
@@ -256,7 +273,7 @@ func TestCompileOwnsInputData(t *testing.T) {
 	input.AccessKeys[0].CostLimitRules[0].LimitNanoUSD = 1
 
 	view := snapshot.Groups[1]
-	if !reflect.DeepEqual(view.Models, []ModelConfig{{ID: "upstream", Alias: "public"}}) {
+	if !reflect.DeepEqual(view.Models, []ModelConfig{{ID: "upstream", Alias: "public", EntryID: "derived:public#upstream"}}) {
 		t.Fatalf("group view changed with input = %#v", view)
 	}
 	gotFilters := snapshot.AccessKeysByID[1].Filters

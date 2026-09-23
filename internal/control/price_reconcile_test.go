@@ -66,6 +66,24 @@ func TestReconcileReferencedPricesUsesChannelModelIdentity(t *testing.T) {
 	}
 }
 
+func TestPriceReferenceReaderAcceptsPersistedReasoningEffort(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	createPriceTestGroup(t, fixture.db, models.Group{
+		Name: "reasoning", ChannelID: string(channel.OpenAI), Params: models.JSON(`{}`),
+		Models:    models.JSON(`[{"id":"gpt-5.4","alias":"public","reasoning_effort":"high"}]`),
+		Overrides: models.JSON(`{}`), Enabled: true,
+	})
+	result, err := loadReferencedPrices(fixture.db)
+	if err != nil {
+		t.Fatalf("loadReferencedPrices() error = %v", err)
+	}
+	identity := pricing.Identity{ChannelID: string(channel.OpenAI), ModelID: "gpt-5.4"}
+	if result[identity].referenceCount != 1 {
+		t.Fatalf("price reference = %#v, want one", result[identity])
+	}
+}
+
 func TestLoadPriceTableDoesNotMergeModelsDevModePricesIntoManualRule(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
