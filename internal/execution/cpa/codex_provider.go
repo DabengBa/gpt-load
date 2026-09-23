@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -252,7 +253,7 @@ func validateLocalTextContent(value any, allowedTypes ...string) error {
 			return errors.New("local token count content is unsupported")
 		}
 		kind, ok := partObject["type"].(string)
-		if !ok || !containsLocalTokenCountType(allowedTypes, kind) {
+		if !ok || !slices.Contains(allowedTypes, kind) {
 			return errors.New("local token count content is unsupported")
 		}
 	}
@@ -261,20 +262,11 @@ func validateLocalTextContent(value any, allowedTypes ...string) error {
 
 func onlyLocalTokenCountFields(value map[string]any, allowed ...string) bool {
 	for field := range value {
-		if !containsLocalTokenCountType(allowed, field) {
+		if !slices.Contains(allowed, field) {
 			return false
 		}
 	}
 	return true
-}
-
-func containsLocalTokenCountType(values []string, candidate string) bool {
-	for _, value := range values {
-		if value == candidate {
-			return true
-		}
-	}
-	return false
 }
 
 func isString(value any) bool {

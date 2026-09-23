@@ -223,8 +223,6 @@ export default {
     projectCommunity: 'プロジェクトとコミュニティ',
     starInvitation: 'GPT-Load に Star を',
     signOut: 'ログアウト',
-    placeholderDescription: 'この管理機能は、このステージの後続タスクで実装されます。',
-    backHome: 'ホームへ戻る',
   },
   notFound: {
     eyebrow: 'ナビゲーションエラー',
