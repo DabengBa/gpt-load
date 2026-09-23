@@ -13,6 +13,8 @@ import {
   updateGroupSettings,
 } from '@/app/resources/groups'
 import {
+  reasoningEffortValues,
+  type ModelRouteScheduleReasoningEntryDto,
   isReasoningEffort,
   isModelRouteScheduleRevisionConflict,
   recoverModelRouteScheduleEntry,
@@ -285,7 +287,11 @@ const dirty = computed(
     Object.keys(entryReasoningDrafts).length > 0 ||
     Object.keys(groupReasoningDrafts).length > 0,
 )
-const invalid = computed(() => Object.values(invalidInputs).some(Boolean))
+const invalid = computed(
+  () =>
+    Object.values(invalidInputs).some(Boolean) ||
+    reasoningPreviews.value.some(({ entries }) => entries.some(({ unsupported }) => unsupported)),
+)
 const hasDetail = computed(() => props.detail !== undefined)
 const hasScheduleDraft = computed(() => Object.keys(draftMap).length > 0)
 const previewShares = computed(() => {
@@ -441,7 +447,7 @@ function groupReasoningValue(group: ModelRouteScheduleGroupDto): ReasoningEffort
 
 function entryReasoningValue(
   groupID: number,
-  entry: ModelRouteScheduleEntryDto,
+  entry: ModelRouteScheduleReasoningEntryDto,
 ): ReasoningEffortDto | '' {
   const key = draftKey(groupID, entry.entry_id)
   return hasOwn(entryReasoningDrafts, key)
@@ -465,13 +471,46 @@ function reasoningOptions(
 }
 
 function groupReasoningLevels(group: ModelRouteScheduleGroupDto): ReasoningEffortDto[] {
-  const supported = group.entries.filter(({ reasoning }) => reasoning.capability.supported)
-  if (supported.length !== group.entries.length || supported.length === 0) return []
-  const [first, ...rest] = supported
-  return first.reasoning.capability.levels.filter((level) =>
-    rest.every(({ reasoning }) => reasoning.capability.levels.includes(level)),
+  const inherited = group.reasoning_entries.filter(
+    (entry) => entryReasoningValue(group.group_id, entry) === '',
+  )
+  return reasoningEffortValues.filter((level) =>
+    inherited.every(
+      ({ reasoning }) =>
+        reasoning.capability.supported && reasoning.capability.levels.includes(level),
+    ),
   )
 }
+
+const reasoningPreviews = computed(() =>
+  (props.detail?.groups ?? []).flatMap((group) => {
+    const groupDrafts = Object.keys(groupReasoningDrafts)
+    const entryDrafts = Object.keys(entryReasoningDrafts)
+    const fieldDrafts = Object.keys(draftMap)
+    const touched =
+      groupDrafts.includes(groupDraftKey(group.group_id)) ||
+      group.entries.some(
+        (entry) =>
+          entryDrafts.includes(draftKey(group.group_id, entry.entry_id)) ||
+          fieldDrafts.includes(draftKey(group.group_id, entry.entry_id)),
+      )
+    if (!touched) return []
+    return [
+      {
+        group,
+        entries: group.reasoning_entries.map((entry) => {
+          const override = entryReasoningValue(group.group_id, entry)
+          const effective = override || groupReasoningValue(group)
+          const unsupported =
+            effective !== '' &&
+            (!entry.reasoning.capability.supported ||
+              !entry.reasoning.capability.levels.includes(effective))
+          return { entry, effective, override, unsupported }
+        }),
+      },
+    ]
+  }),
+)
 
 function groupReasoningOptions(group: ModelRouteScheduleGroupDto) {
   const value = groupReasoningValue(group)
@@ -970,6 +1009,11 @@ defineExpose({ applyProbeEnabled })
                   @update:model-value="setGroupReasoning(group, $event)"
                 />
               </label>
+              <small v-if="isFirstGroupRow(index)">{{
+                t('monitor.schedule.detail.groupReasoningScope', {
+                  count: group.reasoning_entries.length,
+                })
+              }}</small>
               <label class="schedule-reasoning-control">
                 <span>{{ text('entryOverride') }}</span>
                 <AppSelect
@@ -1087,6 +1131,28 @@ defineExpose({ applyProbeEnabled })
             </div>
           </div>
         </div>
+      </div>
+
+      <div
+        v-for="preview in reasoningPreviews"
+        :key="preview.group.group_id"
+        class="schedule-reasoning-preview"
+        aria-live="polite"
+      >
+        <p>
+          {{
+            t('monitor.schedule.detail.groupReasoningPreview', { group: preview.group.group_name })
+          }}
+        </p>
+        <ul>
+          <li v-for="item in preview.entries" :key="item.entry.entry_id">
+            {{ item.entry.model_id }}: {{ item.effective || text('inherit') }} ·
+            {{ item.override ? text('entryOverride') : text('groupDefault') }}
+            <strong v-if="item.unsupported" class="schedule-reasoning-meta__unsupported">
+              — {{ t('monitor.schedule.detail.reasoningSaveBlocked') }}</strong
+            >
+          </li>
+        </ul>
       </div>
 
       <StickySaveBar
@@ -1248,6 +1314,14 @@ defineExpose({ applyProbeEnabled })
 }
 .schedule-reasoning-control :deep(.app-select__trigger) {
   width: 100%;
+}
+.schedule-reasoning-preview {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.schedule-reasoning-preview ul {
+  padding-inline-start: 20px;
 }
 .schedule-reasoning-meta {
   display: flex;

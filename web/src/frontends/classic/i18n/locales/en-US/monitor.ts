@@ -722,6 +722,10 @@ export default {
         successRate24h: 'Success rate',
         reasoning: 'Reasoning policy',
         groupDefault: 'Group default',
+        groupReasoningScope:
+          'Applies to all {count} entries in this group without an entry override.',
+        groupReasoningPreview: '{group}: effective reasoning policy after saving (all models)',
+        reasoningSaveBlocked: 'unsupported — change the policy before saving',
         entryOverride: 'Entry override',
         inherit: 'Not configured',
         effective: 'Effective',

@@ -109,12 +109,18 @@ export interface ModelRouteScheduleEntryDto {
   credentials: RouteInspectCredentialDto[]
 }
 
+export type ModelRouteScheduleReasoningEntryDto = Pick<
+  ModelRouteScheduleEntryDto,
+  'entry_id' | 'model_id' | 'reasoning'
+>
+
 export interface ModelRouteScheduleGroupDto {
   group_id: number
   group_name: string
   channel_id: string
   enabled: boolean
   reasoning_effort_default: ReasoningEffortDto | null
+  reasoning_entries: ModelRouteScheduleReasoningEntryDto[]
   request_count: number
   success_rate: number
   entries: ModelRouteScheduleEntryDto[]
@@ -220,6 +226,7 @@ const groupFields = [
   'channel_id',
   'enabled',
   'reasoning_effort_default',
+  'reasoning_entries',
   'request_count',
   'success_rate',
   'entries',
@@ -431,6 +438,15 @@ function projectGroup(value: unknown, observedAtMS: number): ModelRouteScheduleG
     channel_id: projectNonBlankString(record.channel_id),
     enabled: projectBoolean(record.enabled),
     reasoning_effort_default: projectNullableReasoningEffort(record.reasoning_effort_default),
+    reasoning_entries: projectArray(record.reasoning_entries, (value) => {
+      const entry = projectRecord(value)
+      assertNoSecretLikeFields(entry, ['entry_id', 'model_id', 'reasoning'])
+      return {
+        entry_id: projectNonBlankString(entry.entry_id),
+        model_id: projectNonBlankString(entry.model_id),
+        reasoning: projectReasoning(entry.reasoning),
+      }
+    }),
     request_count: requestCount,
     success_rate: successRate,
     entries: projectArray(record.entries, (entry) => projectEntry(entry, observedAtMS)),

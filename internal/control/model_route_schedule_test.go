@@ -462,8 +462,33 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 	}
 }
 
-func TestModelRouteScheduleDetailProjectsReasoningPolicyAndCapability(t *testing.T) {
+func newReasoningScheduleTestScenario(t *testing.T) *scheduleTestScenario {
+	t.Helper()
 	scenario := newScheduleTestScenario(t)
+	entries := loadCreatedGroupModels(t, scenario.fixture, 1)
+	for index := range entries {
+		entries[index].ID = fmt.Sprintf("gpt-5.%d", index+1)
+	}
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scenario.fixture.db.Model(&models.Group{}).Where("id = ?", 1).Update("models", models.JSON(encoded)).Error; err != nil {
+		t.Fatal(err)
+	}
+	input, err := stateloader.BuildCompileInputWithProxy(t.Context(), scenario.fixture.db, scenario.fixture.service.encryption, scenario.fixture.service.environmentProxy, scenario.fixture.service.channelRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scenario.fixture.manager.Publish(input); err != nil {
+		t.Fatal(err)
+	}
+	scenario.revision = scenario.fixture.manager.Current().Revision
+	return scenario
+}
+
+func TestModelRouteScheduleDetailProjectsReasoningPolicyAndCapability(t *testing.T) {
+	scenario := newReasoningScheduleTestScenario(t)
 	body := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
 	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
 	var patch modelRouteSchedulePatchResponse
@@ -477,7 +502,7 @@ func TestModelRouteScheduleDetailProjectsReasoningPolicyAndCapability(t *testing
 		t.Fatalf("group reasoning default = %v, want low", first.ReasoningEffortDefault)
 	}
 	entry := first.Entries[0]
-	wantCapability := reasoning.ProjectEffortCapability("openai", "up-a")
+	wantCapability := reasoning.ProjectEffortCapability("openai", "gpt-5.1")
 	if wantCapability.Levels == nil {
 		wantCapability.Levels = []string{}
 	}
@@ -528,8 +553,161 @@ func TestModelRouteScheduleRejectsDerivedEntryIdentityForPersistence(t *testing.
 	}
 }
 
-func TestModelRouteScheduleReasoningPatchTriStateAndAtomicValidation(t *testing.T) {
+func TestModelRouteScheduleDetailProjectsFullGroupReasoning(t *testing.T) {
 	scenario := newScheduleTestScenario(t)
+	name := "reasoning-projection-gemini"
+	created, err := scenario.fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name: &name, ChannelID: channel.Gemini, Params: json.RawMessage(`{}`),
+		Models: optionalGroupModels{Set: true, Values: []GroupModel{
+			{ID: "gemini-3.7-flash", EntryID: scheduleEntryOneA},
+			{ID: "gemini-3.1-flash-lite-image", EntryID: scheduleEntryOneB},
+		}}, Credentials: "gemini-projection-key", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":%d,"reasoning_effort_default":"low"}],"updates":[{"group_id":%d,"entry_id":"%s","reasoning_effort":"high"}]}`,
+		scenario.fixture.manager.Current().Revision, created.GroupID, created.GroupID, scheduleEntryOneB)
+	var patch modelRouteSchedulePatchResponse
+	decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey), &patch)
+
+	path := fmt.Sprintf("/api/model-route/schedule/detail?external_model=gemini-3.7-flash&protocol=gemini&access_key_id=%d", scenario.accessKeyID)
+	for _, disabled := range []bool{false, true} {
+		if disabled {
+			if _, err := scenario.fixture.service.UpdateGroupSettings(t.Context(), created.GroupID, GroupSettingsUpdateRequest{
+				Enabled: optionalField[bool]{Set: true, Value: false},
+			}); err != nil {
+				t.Fatalf("disable Gemini group: %v", err)
+			}
+		}
+		var detail struct {
+			Groups []struct {
+				GroupID          uint                              `json:"group_id"`
+				Entries          []modelRouteScheduleEntryResponse `json:"entries"`
+				ReasoningEntries []struct {
+					EntryID   string                `json:"entry_id"`
+					ModelID   string                `json:"model_id"`
+					Reasoning scheduleReasoningView `json:"reasoning"`
+				} `json:"reasoning_entries"`
+			} `json:"groups"`
+		}
+		decodeScheduleSuccess(t, scenario.perform(http.MethodGet, path, "", scenario.authKey), &detail)
+		var groupIndex = -1
+		for index, group := range detail.Groups {
+			if group.GroupID == created.GroupID {
+				groupIndex = index
+				break
+			}
+		}
+		if groupIndex < 0 {
+			t.Fatalf("Gemini group missing from detail (disabled=%v): %#v", disabled, detail.Groups)
+		}
+		group := detail.Groups[groupIndex]
+		if len(group.Entries) != 1 || group.Entries[0].ModelID != "gemini-3.7-flash" {
+			t.Fatalf("context entries (disabled=%v) = %#v, want flash only", disabled, group.Entries)
+		}
+		if len(group.ReasoningEntries) != 2 {
+			t.Fatalf("reasoning_entries (disabled=%v) = %#v, want both models", disabled, group.ReasoningEntries)
+		}
+		flash, image := group.ReasoningEntries[0], group.ReasoningEntries[1]
+		if flash.EntryID != scheduleEntryOneA || flash.ModelID != "gemini-3.7-flash" ||
+			flash.Reasoning.Configured != nil || flash.Reasoning.Effective == nil || *flash.Reasoning.Effective != "low" ||
+			flash.Reasoning.Source != reasoning.EffortSource("group") ||
+			!reflect.DeepEqual(flash.Reasoning.Capability, reasoning.ProjectEffortCapability("gemini", flash.ModelID)) {
+			t.Fatalf("flash reasoning (disabled=%v) = %#v", disabled, flash)
+		}
+		if image.EntryID != scheduleEntryOneB || image.ModelID != "gemini-3.1-flash-lite-image" ||
+			image.Reasoning.Configured == nil || *image.Reasoning.Configured != "high" ||
+			image.Reasoning.Effective == nil || *image.Reasoning.Effective != "high" ||
+			image.Reasoning.Source != reasoning.EffortSource("entry") ||
+			!reflect.DeepEqual(image.Reasoning.Capability, reasoning.ProjectEffortCapability("gemini", image.ModelID)) {
+			t.Fatalf("image reasoning (disabled=%v) = %#v", disabled, image)
+		}
+	}
+}
+
+func TestModelRouteScheduleReasoningCrossModelValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		override string
+		patch    string
+		want     int
+	}{
+		{"inherited low rejected", "", "", http.StatusBadRequest},
+		{"high override accepted", "", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":"high"}]`, http.StatusOK},
+		{"clearing override rejected", "high", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":null}]`, http.StatusBadRequest},
+		{"unsupported override rejected", "high", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":"low"}]`, http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scenario := newScheduleTestScenario(t)
+			name := "cross-model-gemini"
+			created, err := scenario.fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+				Name: &name, ChannelID: channel.Gemini, Params: json.RawMessage(`{}`),
+				Models: optionalGroupModels{Set: true, Values: []GroupModel{
+					{ID: "gemini-3.7-flash", EntryID: scheduleEntryOneA},
+					{ID: "gemini-3.1-flash-lite-image", EntryID: scheduleEntryOneB, ReasoningEffort: ""},
+				}}, Credentials: "gemini-key", ConnectionType: "api_key",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.override != "" {
+				seed := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":%d,"entry_id":"%s","reasoning_effort":"%s"}]}`, scenario.fixture.manager.Current().Revision, created.GroupID, scheduleEntryOneB, tc.override)
+				var result modelRouteSchedulePatchResponse
+				decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", seed, scenario.authKey), &result)
+			}
+			var before models.Group
+			if err := scenario.fixture.db.First(&before, created.GroupID).Error; err != nil {
+				t.Fatal(err)
+			}
+			revision := scenario.fixture.manager.Current().Revision
+			publishes := scenario.publishCalls
+			patch := ""
+			if tc.patch != "" {
+				patch = fmt.Sprintf(tc.patch, created.GroupID)
+				patch = strings.ReplaceAll(patch, "image-entry", scheduleEntryOneB)
+			}
+			body := fmt.Sprintf(`{"snapshot_revision":%d,"protocol":"gemini","external_model":"gemini-3.7-flash","access_key_id":%d,"group_updates":[{"group_id":%d,"reasoning_effort_default":"low"}]%s}`, revision, scenario.accessKeyID, created.GroupID, patch)
+			recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
+			if recorder.Code != tc.want {
+				t.Fatalf("PATCH = %d %s, want %d", recorder.Code, recorder.Body.String(), tc.want)
+			}
+			if tc.want == http.StatusBadRequest {
+				if !strings.Contains(recorder.Body.String(), "gemini-3.1-flash-lite-image") {
+					t.Fatalf("missing affected model: %s", recorder.Body.String())
+				}
+				var after models.Group
+				if err := scenario.fixture.db.First(&after, created.GroupID).Error; err != nil {
+					t.Fatal(err)
+				}
+				if string(before.Models) != string(after.Models) || string(before.Overrides) != string(after.Overrides) || scenario.fixture.manager.Current().Revision != revision || scenario.publishCalls != publishes {
+					t.Fatal("rejected patch changed storage or snapshot")
+				}
+			} else {
+				entries := loadCreatedGroupModels(t, scenario.fixture, created.GroupID)
+				if entries[1].ReasoningEffort != "high" {
+					t.Fatalf("image override = %q, want high", entries[1].ReasoningEffort)
+				}
+				group := scenario.fixture.manager.Current().Groups[created.GroupID]
+				if group.ReasoningEffortDefault != "low" {
+					t.Fatalf("group default = %q, want low", group.ReasoningEffortDefault)
+				}
+				for _, entry := range entries {
+					effort, _, err := reasoning.ResolveEffort(entry.ReasoningEffort, group.ReasoningEffortDefault, "")
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := reasoning.ValidateEffort("gemini", entry.ID, effort); err != nil {
+						t.Fatalf("saved policy breaks model %s: %v", entry.ID, err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestModelRouteScheduleReasoningPatchTriStateAndAtomicValidation(t *testing.T) {
+	scenario := newReasoningScheduleTestScenario(t)
 	set := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
 	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", set, scenario.authKey)
 	var result modelRouteSchedulePatchResponse
@@ -571,7 +749,7 @@ func TestModelRouteScheduleReasoningPatchTriStateAndAtomicValidation(t *testing.
 
 func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 	t.Parallel()
-	scenario := newScheduleTestScenario(t)
+	scenario := newReasoningScheduleTestScenario(t)
 	patch := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
 	var patchResult modelRouteSchedulePatchResponse
 	decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", patch, scenario.authKey), &patchResult)
@@ -624,14 +802,16 @@ func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 	}
 }
 
-func TestModelRouteScheduleAllowsUnsupportedReasoningWithoutNormalization(t *testing.T) {
+func TestModelRouteScheduleRejectsUnsupportedReasoningWithoutNormalization(t *testing.T) {
 	scenario := newScheduleTestScenario(t)
+	before := loadStoredGroupModelsJSON(t, scenario.fixture, 1)
 	body := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"max"}]}`, scenario.revision, scheduleEntryOneA)
 	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
-	var result modelRouteSchedulePatchResponse
-	decodeScheduleSuccess(t, recorder, &result)
-	if got := loadCreatedGroupModels(t, scenario.fixture, 1)[0].ReasoningEffort; got != "max" {
-		t.Fatalf("stored unsupported effort = %q, want exact max", got)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unsupported effort = %d %s, want 400", recorder.Code, recorder.Body.String())
+	}
+	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got != before {
+		t.Fatalf("rejected effort changed storage: %s", got)
 	}
 }
 

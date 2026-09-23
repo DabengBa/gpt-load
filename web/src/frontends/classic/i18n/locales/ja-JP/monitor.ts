@@ -722,6 +722,10 @@ export default {
         successRate24h: '成功率',
         reasoning: '推論ポリシー',
         groupDefault: 'グループ既定値',
+        groupReasoningScope:
+          'このグループの全 {count} エントリのうち、個別設定のないモデルに適用されます。',
+        groupReasoningPreview: '{group}：保存後の全モデルの推論ポリシー',
+        reasoningSaveBlocked: '未対応のポリシーです。保存前に変更してください',
         entryOverride: 'エントリ上書き',
         inherit: '未設定',
         effective: '有効値',

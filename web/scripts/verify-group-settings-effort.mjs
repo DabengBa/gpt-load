@@ -95,6 +95,14 @@ const baseSchedule = {
   ],
 }
 
+for (const group of baseSchedule.groups) {
+  group.reasoning_entries = group.entries.map(({ entry_id, model_id, reasoning }) => ({
+    entry_id,
+    model_id,
+    reasoning,
+  }))
+}
+
 async function main() {
   const server = await createServer({
     root: WEB_ROOT,
@@ -126,6 +134,10 @@ async function main() {
     )
 
     const detail = schedule.projectModelRouteScheduleDetail(baseSchedule)
+    assert.deepEqual(detail.groups[0].reasoning_entries, baseSchedule.groups[0].reasoning_entries)
+    const missingGroupModels = structuredClone(baseSchedule)
+    delete missingGroupModels.groups[0].reasoning_entries
+    assert.throws(() => schedule.projectModelRouteScheduleDetail(missingGroupModels))
     assert.equal(detail.groups[0].reasoning_effort_default, 'medium')
     assert.deepEqual(
       detail.groups[0].entries[0].reasoning,

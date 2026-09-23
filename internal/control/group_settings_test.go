@@ -160,8 +160,9 @@ func TestGroupSettingsRejectsAndHidesScheduleOwnedReasoning(t *testing.T) {
 }
 
 func TestGroupSettingsUpdatePreservesScheduleReasoningDefault(t *testing.T) {
-	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "sk-preserve-schedule-reasoning")
+	scenario := newReasoningScheduleTestScenario(t)
+	fixture := scenario.fixture
+	groupID := uint(1)
 	revision := fixture.manager.Current().Revision
 	_, err := fixture.service.UpdateModelRouteSchedule(t.Context(), modelRouteSchedulePatchRequest{
 		SnapshotRevision: &revision,

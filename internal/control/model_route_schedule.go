@@ -137,6 +137,13 @@ type modelRouteScheduleGroupResponse struct {
 	RequestCount           int64                             `json:"request_count"`
 	SuccessRate            float64                           `json:"success_rate"`
 	Entries                []modelRouteScheduleEntryResponse `json:"entries"`
+	ReasoningEntries       []scheduleGroupReasoningEntry     `json:"reasoning_entries"`
+}
+
+type scheduleGroupReasoningEntry struct {
+	EntryID   string                `json:"entry_id"`
+	ModelID   string                `json:"model_id"`
+	Reasoning scheduleReasoningView `json:"reasoning"`
 }
 
 type scheduleReasoningView struct {
@@ -467,11 +474,26 @@ func mapModelRouteScheduleDetail(
 		if usage.RequestCount > 0 {
 			successRate = float64(usage.SuccessCount) / float64(usage.RequestCount)
 		}
+		reasoningEntries := make([]scheduleGroupReasoningEntry, 0, len(catalog.Models))
+		for _, model := range catalog.Models {
+			modelID := strings.TrimSpace(model.ID)
+			entryID := model.EntryID
+			if entryID == "" {
+				entryID = "derived:" + state.ExternalModelName(modelID, model.Alias) + "#" + modelID
+			}
+			reasoningView, err := scheduleReasoningProjection(configurations[group.GroupID][entryID], modelID)
+			if err != nil {
+				return modelRouteScheduleDetailResponse{}, fmt.Errorf("map model route schedule reasoning: %w", app_errors.ErrInternalServer)
+			}
+			reasoningEntries = append(reasoningEntries, scheduleGroupReasoningEntry{
+				EntryID: entryID, ModelID: modelID, Reasoning: reasoningView,
+			})
+		}
 		result.Groups = append(result.Groups, modelRouteScheduleGroupResponse{
 			GroupID: group.GroupID, GroupName: group.GroupName, ChannelID: group.ChannelID,
 			Enabled: catalog.Enabled, ReasoningEffortDefault: optionalString(configurations[group.GroupID][group.EntryID].groupDefault),
 			RequestCount: usage.RequestCount, SuccessRate: successRate,
-			Entries: []modelRouteScheduleEntryResponse{},
+			Entries: []modelRouteScheduleEntryResponse{}, ReasoningEntries: reasoningEntries,
 		})
 		groupIndex[group.GroupID] = len(result.Groups) - 1
 	}
@@ -883,7 +905,7 @@ func (s *Service) UpdateModelRouteSchedule(
 		}
 		for _, groupID := range groupIDs {
 			groupUpdate, hasGroupUpdate := groupUpdates[groupID]
-			if err := applyModelRouteScheduleGroupPatchWithReasoning(tx, groupID, updatesByGroup[groupID], groupUpdate, hasGroupUpdate); err != nil {
+			if err := s.applyModelRouteScheduleGroupPatchWithReasoning(tx, groupID, updatesByGroup[groupID], groupUpdate, hasGroupUpdate); err != nil {
 				return err
 			}
 		}
@@ -926,17 +948,17 @@ func validateScheduleDetailEchoContext(request modelRouteSchedulePatchRequest) e
 	return nil
 }
 
-func applyModelRouteScheduleGroupPatch(
+func (s *Service) applyModelRouteScheduleGroupPatch(
 	tx *gorm.DB,
 	groupID uint,
 	updates []modelRouteSchedulePatchUpdate,
 ) error {
-	return applyModelRouteScheduleGroupPatchWithReasoning(
+	return s.applyModelRouteScheduleGroupPatchWithReasoning(
 		tx, groupID, updates, modelRouteScheduleGroupPatchUpdate{}, false,
 	)
 }
 
-func applyModelRouteScheduleGroupPatchWithReasoning(
+func (s *Service) applyModelRouteScheduleGroupPatchWithReasoning(
 	tx *gorm.DB,
 	groupID uint,
 	updates []modelRouteSchedulePatchUpdate,
@@ -986,10 +1008,22 @@ func applyModelRouteScheduleGroupPatchWithReasoning(
 		}
 	}
 	groupDefault, _ := settings[state.SettingReasoningEffortDefault].(string)
+	provider, ok := s.channelRegistry.ProviderKind(channel.ID(group.ChannelID))
+	if !ok {
+		return app_errors.ErrValidation
+	}
 	configurations := make([]state.ModelConfig, 0, len(entries))
 	for _, entry := range entries {
-		if _, _, err := reasoning.ResolveEffort(entry.ReasoningEffort, groupDefault, ""); err != nil {
+		effective, _, err := reasoning.ResolveEffort(entry.ReasoningEffort, groupDefault, "")
+		if err != nil {
 			return app_errors.ErrValidation
+		}
+		if effective != "" {
+			if err := reasoning.ValidateEffort(string(provider), entry.ID, effective); err != nil {
+				return app_errors.NewAPIErrorWithData(app_errors.ErrValidation, scheduleValidationData{
+					GroupID: groupID, Message: fmt.Sprintf("model %s (entry %s): %v", entry.ID, entry.EntryID, err),
+				})
+			}
 		}
 		configurations = append(configurations, entry.toModelConfig())
 	}
