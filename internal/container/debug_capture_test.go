@@ -3,14 +3,17 @@
 package container
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"gpt-load/internal/control"
 	"gpt-load/internal/debugcapture"
 	"gpt-load/internal/gateway"
 	"gpt-load/internal/storage"
@@ -167,11 +170,114 @@ func TestDebugCaptureSessionRetainsAdmissionAfterTerminalFailure(t *testing.T) {
 	}
 }
 
-func TestDebugCaptureFactoryPreservesRawGatewayCommunication(t *testing.T) {
+func TestDebugCaptureFactoryPreservesRawGatewayAndProbeCommunication(t *testing.T) {
 	db, err := storage.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("probe raw communication", func(t *testing.T) {
+		db, err := storage.Open(":memory:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := storage.AutoMigrate(db); err != nil {
+			t.Fatal(err)
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = sqlDB.Close() })
+		store, err := debugcapture.New(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		factory := newDebugCaptureFactory(store, nil)
+		session, err := factory.StartProbeCapture(control.ProbeCaptureSessionMetadata{
+			RequestID: "probe-request-1", Protocol: "openai", Operation: "probe",
+			Fields: map[string]string{"provider": "openai", "model": "gpt-4o"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		attempt, err := session.StartProbeAttempt(control.ProbeCaptureAttemptMetadata{
+			AttemptID: "probe-attempt-1", Sequence: 1,
+			Fields: map[string]string{"provider": "openai", "model": "gpt-4o", "route_mode": "native"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		requestHeaders := []byte("Content-Type: application/json\r\n")
+		requestBody := []byte(`{"prompt":"probe"}`)
+		responseHeaders := []byte("HTTP 502\r\nContent-Type: application/json\r\n")
+		responseBody := []byte(`{"error":"raw provider failure"}`)
+		for _, write := range []func() error{
+			func() error { return attempt.AppendRequestHeaders(requestHeaders) },
+			func() error { return attempt.AppendRequestBody(requestBody) },
+			func() error { return attempt.AppendResponseHeaders(responseHeaders) },
+			func() error { return attempt.AppendResponseBody(responseBody) },
+			func() error { return attempt.RecordResponseTermination("read_error", "unexpected EOF") },
+			attempt.Complete,
+			session.Complete,
+		} {
+			if err := write(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		records, err := store.QuerySessions(debugcapture.SessionQuery{RequestID: "probe-request-1", Operation: "probe", Limit: 1})
+		if err != nil || len(records) != 1 {
+			t.Fatalf("QuerySessions() = %d records, err = %v", len(records), err)
+		}
+		record := records[0]
+		if len(record.Attempts) != 1 || record.Attempts[0].Sequence != 1 ||
+			record.Attempts[0].Metadata.Fields["logical_attempt_id"] != "probe-attempt-1" ||
+			record.Attempts[0].Metadata.Fields["provider"] != "openai" ||
+			len(record.Attempts[0].Metadata.Events) == 0 {
+			t.Fatalf("probe capture record = %#v", record)
+		}
+		for _, test := range []struct {
+			part      debugcapture.Part
+			direction debugcapture.Direction
+			want      []byte
+		}{
+			{part: debugcapture.PartHeaders, direction: debugcapture.DirectionRequest, want: requestHeaders},
+			{part: debugcapture.PartBody, direction: debugcapture.DirectionRequest, want: requestBody},
+			{part: debugcapture.PartHeaders, direction: debugcapture.DirectionResponse, want: responseHeaders},
+			{part: debugcapture.PartBody, direction: debugcapture.DirectionResponse, want: responseBody},
+		} {
+			got, err := store.ReadPart(record.ID, record.Attempts[0].ID, test.part, test.direction)
+			if err != nil || !bytes.Equal(got, test.want) {
+				t.Fatalf("ReadPart(%s/%s) = %q, err = %v; want %q", test.direction, test.part, got, err, test.want)
+			}
+		}
+		var archive bytes.Buffer
+		if err := store.ExportZIP(record.ID, &archive); err != nil {
+			t.Fatal(err)
+		}
+		zipReader, err := zip.NewReader(bytes.NewReader(archive.Bytes()), int64(archive.Len()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var exported []byte
+		for _, file := range zipReader.File {
+			reader, err := file.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, readErr := io.ReadAll(reader)
+			closeErr := reader.Close()
+			if readErr != nil || closeErr != nil {
+				t.Fatalf("read ZIP entry %q: read=%v close=%v", file.Name, readErr, closeErr)
+			}
+			exported = append(exported, data...)
+		}
+		for _, expected := range [][]byte{requestHeaders, requestBody, responseHeaders, responseBody} {
+			if !bytes.Contains(exported, expected) {
+				t.Fatalf("debug capture ZIP did not contain %q", expected)
+			}
+		}
+	})
 	if err := storage.AutoMigrate(db); err != nil {
 		t.Fatal(err)
 	}

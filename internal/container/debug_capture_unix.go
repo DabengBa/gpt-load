@@ -46,7 +46,9 @@ func configureDebugCapture(container *dig.Container) error {
 		service.SetDebugCaptureReader(store)
 		service.SetDebugCaptureHealthReader(runtime)
 		if cfg.DebugCaptureEnabled {
-			gatewayHandler.SetCaptureFactory(newDebugCaptureFactory(store, runtime))
+			captureFactory := newDebugCaptureFactory(store, runtime)
+			service.SetProbeCaptureFactory(captureFactory)
+			gatewayHandler.SetCaptureFactory(captureFactory)
 		}
 		engine.Use(gatewayHandler.CaptureMiddleware())
 		return nil

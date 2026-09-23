@@ -63,6 +63,7 @@ type Service struct {
 	requestLogStats                   RequestLogStatsReader
 	debugCaptures                     DebugCaptureReader
 	debugCaptureHealth                DebugCaptureHealthReader
+	probeCaptures                     ProbeCaptureFactory
 	accessQuota                       *accessquota.Runtime
 	requestLogSink                    telemetry.RequestLogSink
 	agentCredentials                  *agent.CredentialStore
