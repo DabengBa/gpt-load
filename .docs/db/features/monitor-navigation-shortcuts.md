@@ -40,6 +40,9 @@ opens at the relevant place instead of requiring a second search.
 - In a request-log list, the group name remains the control for narrowing the
   log list to that group. A separate maintenance link opens the group's
   maintenance page.
+- Long route labels truncate within their text area. The group maintenance
+  arrow and configured provider website link remain on the same route line
+  and stay available independently of the truncated text.
 - The request-log detail view exposes the same maintenance link for a group
   only after the group identity has been confirmed to exist.
 - Deleted groups remain readable as historical log references, but do not
@@ -75,7 +78,9 @@ opens at the relevant place instead of requiring a second search.
   action beside a resolved group in the list or detail view.
 - **Expected result:** The group maintenance page opens for that group, while
   the existing group-name control continues to filter logs when the operator
-  chooses the filter action instead.
+  chooses the filter action instead. With a long route name, the maintenance
+  arrow and any configured provider website link remain visible and operable
+  beside the shortened label.
 - **Failure signal:** Historical, deleted, or unresolved groups remain visible
   as log data but do not offer a link to a page that cannot be opened.
 
