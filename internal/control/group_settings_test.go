@@ -144,48 +144,48 @@ func TestUpdateGroupSettingsPublishesParameterOverrides(t *testing.T) {
 	}
 }
 
-func TestUpdateGroupSettingsPublishesReasoningEffortOverrides(t *testing.T) {
+func TestGroupSettingsRejectsAndHidesScheduleOwnedReasoning(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "sk-reasoning-effort-overrides")
+	groupID := createGroupWithCredentials(t, fixture, "sk-schedule-owned-reasoning")
 
-	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+	_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
 		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
-			state.SettingReasoningEffortOverrides: map[string]any{" gpt-4o ": " HIGH "},
+			state.SettingReasoningEffortDefault: "high",
+		}},
+	})
+	if !errors.Is(err, app_errors.ErrValidation) {
+		t.Fatalf("ordinary settings reasoning write error = %v, want validation", err)
+	}
+}
+
+func TestGroupSettingsUpdatePreservesScheduleReasoningDefault(t *testing.T) {
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "sk-preserve-schedule-reasoning")
+	revision := fixture.manager.Current().Revision
+	_, err := fixture.service.UpdateModelRouteSchedule(t.Context(), modelRouteSchedulePatchRequest{
+		SnapshotRevision: &revision,
+		GroupUpdates: []modelRouteScheduleGroupPatchUpdate{{
+			GroupID:                groupID,
+			ReasoningEffortDefault: optionalField[string]{Set: true, Value: "high"},
 		}},
 	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("schedule update error = %v", err)
 	}
-	want := map[string]any{"gpt-4o": "high"}
-	if got := result.Overrides[state.SettingReasoningEffortOverrides]; !reflect.DeepEqual(got, want) {
-		t.Fatalf("stored override = %#v, want %#v", got, want)
+	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingResponsesReasoningStatusFilterEnabled: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ordinary settings update error = %v", err)
 	}
-	if got := fixture.manager.Current().Groups[groupID].ReasoningEffortOverrides; !reflect.DeepEqual(got, map[string]string{"gpt-4o": "high"}) {
-		t.Fatalf("runtime override = %#v", got)
+	if _, exposed := result.Overrides[state.SettingReasoningEffortDefault]; exposed {
+		t.Fatalf("schedule default exposed in settings DTO: %#v", result.Overrides)
 	}
-	stored, err := fixture.service.GetGroupSettings(t.Context(), groupID)
-	if err != nil || !reflect.DeepEqual(stored.Overrides[state.SettingReasoningEffortOverrides], want) {
-		t.Fatalf("GetGroupSettings() = %#v, %v", stored.Overrides, err)
-	}
-
-	before := fixture.manager.Current()
-	for _, overrides := range []map[string]any{
-		{},
-		{"gpt-4o": "high", " gpt-4o ": "low"},
-		{"unknown-model": "high"},
-	} {
-		_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-			Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
-				state.SettingReasoningEffortOverrides: overrides,
-			}},
-		})
-		if !errors.Is(err, app_errors.ErrValidation) {
-			t.Fatalf("UpdateGroupSettings(%#v) error = %v, want validation", overrides, err)
-		}
-		if fixture.manager.Current() != before {
-			t.Fatal("invalid reasoning effort overrides published a snapshot")
-		}
+	if got := fixture.manager.Current().Groups[groupID].ReasoningEffortDefault; got != "high" {
+		t.Fatalf("snapshot group default = %q, want preserved high", got)
 	}
 }
 

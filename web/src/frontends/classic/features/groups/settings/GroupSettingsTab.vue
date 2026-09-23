@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Plus, Trash2 } from '@lucide/vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -37,8 +36,7 @@ import SettingBlock from '@/components/config/SettingBlock.vue'
 import SettingRow from '@/components/config/SettingRow.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
-import IconButton from '@/components/ui/IconButton.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
+
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
 import CompactFieldError from '@/components/ui/CompactFieldError.vue'
@@ -100,32 +98,7 @@ const headerRulesEditorRevision = ref(0)
 const parameterOverridesValid = ref(true)
 const parameterOverridesInvalidEdits = ref(false)
 const parameterOverridesEditorRevision = ref(0)
-const reasoningEffortChoices = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
-const reasoningEffortOptions = reasoningEffortChoices.map((value) => ({ value, label: value }))
-const reasoningModels = computed(() =>
-  [...new Set((modelsQuery.data.value?.items ?? []).map(({ id }) => id))].sort(),
-)
-const reasoningEffortEntries = computed(() =>
-  Object.entries(draft.value?.overrides.reasoning_effort_overrides ?? {}).sort(([left], [right]) =>
-    left.localeCompare(right),
-  ),
-)
-const availableReasoningModelOptions = computed(() => {
-  const configured = draft.value?.overrides.reasoning_effort_overrides ?? {}
-  return reasoningModels.value
-    .filter((model) => configured[model] === undefined)
-    .map((model) => ({ value: model, label: model }))
-})
-const selectedReasoningModel = ref('')
-watch(
-  availableReasoningModelOptions,
-  (options) => {
-    if (!options.some(({ value }) => value === selectedReasoningModel.value)) {
-      selectedReasoningModel.value = options[0]?.value ?? ''
-    }
-  },
-  { immediate: true },
-)
+
 const proxyMode = ref<ProxyConfiguredMode>('inherit')
 const proxyEndpoint = ref('')
 const {
@@ -232,17 +205,6 @@ const policyCountsValid = computed(() =>
     return value === undefined || (Number.isSafeInteger(value) && value >= 0)
   }),
 )
-const reasoningEffortValid = computed(() => {
-  const overrides = draft.value?.overrides.reasoning_effort_overrides
-  if (!overrides) return true
-  // Keep unrelated settings writable while the model list is unavailable. The
-  // picker only creates listed keys, and the server validates persisted keys.
-  if (modelsQuery.data.value === undefined) return true
-  const models = new Set(reasoningModels.value)
-  return Object.entries(overrides).every(
-    ([model, effort]) => models.has(model) && reasoningEffortChoices.includes(effort),
-  )
-})
 const valid = computed(
   () =>
     !nameError.value &&
@@ -252,7 +214,6 @@ const valid = computed(
     policyCountsValid.value &&
     headerRulesValid.value &&
     parameterOverridesValid.value &&
-    reasoningEffortValid.value &&
     !proxyState.value.invalid,
 )
 watch(
@@ -440,34 +401,6 @@ async function toggleHeaderRulesOverride(): Promise<void> {
   headerRulesInvalidEdits.value = false
   await nextTick()
   headerRulesEditorRevision.value += 1
-}
-
-function updateReasoningEffortOverride(model: string, effort: string): void {
-  if (!draft.value) return
-  const overrides = { ...(draft.value.overrides.reasoning_effort_overrides ?? {}) }
-  overrides[model] = effort as (typeof reasoningEffortChoices)[number]
-  draft.value = {
-    ...draft.value,
-    overrides: { ...draft.value.overrides, reasoning_effort_overrides: overrides },
-  }
-}
-
-function removeReasoningEffortOverride(model: string): void {
-  if (!draft.value) return
-  const overrides = { ...(draft.value.overrides.reasoning_effort_overrides ?? {}) }
-  delete overrides[model]
-  const next = { ...draft.value.overrides }
-  if (Object.keys(overrides).length) next.reasoning_effort_overrides = overrides
-  else delete next.reasoning_effort_overrides
-  draft.value = { ...draft.value, overrides: next }
-}
-
-function addReasoningEffortOverride(): void {
-  const model = selectedReasoningModel.value
-  if (!availableReasoningModelOptions.value.some(({ value }) => value === model)) return
-  updateReasoningEffortOverride(model, 'high')
-  selectedReasoningModel.value =
-    availableReasoningModelOptions.value.find(({ value }) => value !== model)?.value ?? ''
 }
 
 function updateParameterOverrides(value: ParameterOverrideRuleDto[]): void {
@@ -944,59 +877,7 @@ onBeforeUnmount(() => {
                       @update:model-value="updateParameterOverrides"
                     />
                   </section>
-                  <section id="settings-reasoning" class="group-settings__section">
-                    <header>
-                      <h3>{{ t('group.settings.reasoningEffort.title') }}</h3>
-                      <p>{{ t('group.settings.reasoningEffort.description') }}</p>
-                    </header>
-                    <div v-if="reasoningEffortEntries.length" class="group-settings__rows">
-                      <div
-                        v-for="[model, effort] in reasoningEffortEntries"
-                        :key="model"
-                        class="group-settings__row"
-                      >
-                        <span>{{ model }}</span>
-                        <AppSelect
-                          class="group-settings__effort-select"
-                          :model-value="effort"
-                          :options="reasoningEffortOptions"
-                          :label="t('group.settings.reasoningEffort.effort', { model })"
-                          :disabled="mutationPending"
-                          @update:model-value="updateReasoningEffortOverride(model, $event)"
-                        />
-                        <IconButton
-                          variant="ghost"
-                          tone="danger"
-                          size="compact"
-                          :label="t('group.settings.reasoningEffort.remove', { model })"
-                          :disabled="mutationPending"
-                          @click="removeReasoningEffortOverride(model)"
-                          ><Trash2 :size="15" aria-hidden="true"
-                        /></IconButton>
-                      </div>
-                    </div>
-                    <p v-else>{{ t('group.settings.reasoningEffort.empty') }}</p>
-                    <div
-                      v-if="availableReasoningModelOptions.length"
-                      class="group-settings__reasoning-add"
-                    >
-                      <AppSelect
-                        v-model="selectedReasoningModel"
-                        :options="availableReasoningModelOptions"
-                        :label="t('group.settings.reasoningEffort.model')"
-                        :disabled="mutationPending"
-                        size="sm"
-                      />
-                      <AppButton
-                        size="sm"
-                        :disabled="mutationPending || !selectedReasoningModel"
-                        @click="addReasoningEffortOverride"
-                        ><Plus :size="15" aria-hidden="true" />{{
-                          t('group.settings.reasoningEffort.add')
-                        }}</AppButton
-                      >
-                    </div>
-                  </section>
+
                   <section id="settings-headers" class="group-settings__section">
                     <SettingBlock
                       :title="t('group.settings.sections.headers')"
@@ -1171,27 +1052,7 @@ small {
   color: var(--color-text-faint);
   font-size: var(--text-sm);
 }
-.group-settings__reasoning-add {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-.group-settings__rows {
-  display: grid;
-  gap: var(--space-2);
-}
-.group-settings__row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(126px, 180px) auto;
-  align-items: center;
-  gap: var(--space-2);
-}
-.group-settings__row > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+
 .group-settings__runtime {
   display: grid;
   gap: var(--space-1);
@@ -1221,19 +1082,6 @@ small {
   }
 }
 @media (max-width: 800px) {
-  .group-settings__row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .group-settings__effort-select {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: 100%;
-  }
-  .group-settings__row > :last-child {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
-  }
   .group-settings__runtime-input {
     width: min(100%, 220px);
   }

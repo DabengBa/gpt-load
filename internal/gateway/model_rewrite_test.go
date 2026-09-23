@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/maximhq/bifrost/core/schemas"
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
@@ -162,6 +163,10 @@ func TestHandlerModelRewriteSwitchesRouteEntryAfterModelFailure(t *testing.T) {
 }
 
 func TestHandlerRetriesProvider4xxWithCandidateReasoningEffortOverrides(t *testing.T) {
+	schemas.SetCapabilityResolver(func(schemas.ModelProvider, string) *schemas.ModelCapabilities {
+		return &schemas.ModelCapabilities{SupportsReasoningEffort: new(true), ReasoningEffortLevels: []string{"low", "high"}}
+	})
+	t.Cleanup(func() { schemas.SetCapabilityResolver(nil) })
 	forwarder := &scriptedForwarder{results: []UpstreamResult{
 		{
 			DispatchState:  execution.DispatchMaybeSent,
@@ -191,13 +196,9 @@ func TestHandlerRetriesProvider4xxWithCandidateReasoningEffortOverrides(t *testi
 			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{
-				{ID: "up-a", Alias: "pub"},
-				{ID: "up-b", Alias: "pub"},
+				{ID: "up-a", Alias: "pub", ReasoningEffort: "low"},
+				{ID: "up-b", Alias: "pub", ReasoningEffort: "high"},
 			},
-			Settings: config.Settings{state.SettingReasoningEffortOverrides: map[string]any{
-				"up-a": "low",
-				"up-b": "high",
-			}},
 			Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
@@ -237,6 +238,77 @@ func TestHandlerRetriesProvider4xxWithCandidateReasoningEffortOverrides(t *testi
 	}
 	if len(seen) != 2 {
 		t.Fatalf("retry models = %#v, want both candidate models", seen)
+	}
+}
+
+func TestHandlerReasoningPolicyCacheSeparatesGroupsWithSameUpstream(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{modelUnavailableScriptedResult(), successScriptedResult()}}
+	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(t, forwarder, &recordingAccessKeyRPMLimiter{}, &recordingRequestLogSink{}, "sk-one", "sk-two")
+	if _, err := manager.Publish(state.CompileInput{
+		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{
+			{ID: 1, Name: "one", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-5.4", Alias: "pub", EntryID: "e000000000001", ReasoningEffort: "low"}}},
+			{ID: 2, Name: "two", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-5.4", Alias: "pub", EntryID: "e000000000002", ReasoningEffort: "high"}}},
+		},
+		Credentials: []state.CredentialConfig{
+			{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1"},
+			{ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "credential-2"},
+		},
+		AccessKeys: []state.AccessKeyConfig{{ID: 1, Name: "client", KeyHash: handler.encryption.Hash("gl-client"), Status: state.AccessKeyStatusActive}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(`{"model":"pub","messages":[{"role":"user","content":"hi"}]}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || len(forwarder.inputs) != 2 {
+		t.Fatalf("status/attempts = %d/%d, want 200/2", response.Code, len(forwarder.inputs))
+	}
+	seen := map[uint]string{}
+	for _, input := range forwarder.inputs {
+		var body struct {
+			ReasoningEffort string `json:"reasoning_effort"`
+		}
+		if err := json.Unmarshal(input.Request.Body, &body); err != nil {
+			t.Fatal(err)
+		}
+		seen[input.Group.ID] = body.ReasoningEffort
+	}
+	if seen[1] != "low" || seen[2] != "high" {
+		t.Fatalf("group/entry cache identity efforts = %#v, want 1:low 2:high", seen)
+	}
+}
+
+func TestHandlerReasoningPolicyUsesExactDerivedEntryAcrossValidAliases(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{successScriptedResult(), successScriptedResult()}}
+	engine, _, _ := newModelRewriteTestRuntime(t, forwarder, []state.ModelConfig{
+		{ID: "gpt-5.4", Alias: "first", ReasoningEffort: "low"},
+		{ID: "gpt-5.4", Alias: "second", ReasoningEffort: "high"},
+	}, "sk-one")
+	for _, alias := range []string{"first", "second"} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(`{"model":"`+alias+`","messages":[{"role":"user","content":"hi"}]}`))
+		request.Header.Set("Authorization", "Bearer gl-client")
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("alias %s status = %d", alias, response.Code)
+		}
+	}
+	if len(forwarder.inputs) != 2 {
+		t.Fatalf("forward attempts = %d, want 2", len(forwarder.inputs))
+	}
+	for index, want := range []string{"low", "high"} {
+		var body struct {
+			ReasoningEffort string `json:"reasoning_effort"`
+		}
+		if err := json.Unmarshal(forwarder.inputs[index].Request.Body, &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.ReasoningEffort != want {
+			t.Fatalf("alias %d effort = %q, want %q", index, body.ReasoningEffort, want)
+		}
 	}
 }
 

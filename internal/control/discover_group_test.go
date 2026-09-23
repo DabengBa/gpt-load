@@ -296,10 +296,10 @@ func TestDiscoverGroupModelsUsesDisabledGroupAndAnActiveCredential(t *testing.T)
 	}
 }
 
-// Regression: discovery compile dropped the persisted Models list, so any group
-// carrying reasoning_effort_overrides failed validateReasoningEffortOverrideModels
-// with "unknown group model" → INTERNAL_SERVER_ERROR on the discover endpoint.
-func TestDiscoverGroupModelsWithReasoningEffortOverrides(t *testing.T) {
+// Retired reasoning_effort_overrides rows are intentionally not migrated or
+// interpreted by control paths. Operators must replace the stale setting via
+// the schedule API instead of receiving a hidden compatibility fallback.
+func TestDiscoverGroupModelsRejectsRetiredReasoningEffortOverrides(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	group := seedPersistedDiscoveryGroup(t, fixture, true, models.JSON(
@@ -313,12 +313,9 @@ func TestDiscoverGroupModelsWithReasoningEffortOverrides(t *testing.T) {
 		},
 	})
 
-	result, err := fixture.service.DiscoverGroupModels(t.Context(), group.ID)
-	if err != nil {
-		t.Fatalf("DiscoverGroupModels() error = %v", err)
-	}
-	if len(result.Models) != 1 || result.Models[0].ID != "persisted-only" {
-		t.Fatalf("models = %#v", result.Models)
+	_, err := fixture.service.DiscoverGroupModels(t.Context(), group.ID)
+	if !errors.Is(err, app_errors.ErrInternalServer) {
+		t.Fatalf("DiscoverGroupModels() error = %v, want no-fallback compile failure", err)
 	}
 }
 

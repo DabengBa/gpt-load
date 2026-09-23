@@ -294,15 +294,7 @@ export default {
           actionRequired: 'Add at least one parameter.',
         },
       },
-      reasoningEffort: {
-        title: 'Reasoning effort by upstream model',
-        description: 'Replace an existing reasoning effort only for this Group and upstream model.',
-        empty: 'No model-specific reasoning effort overrides.',
-        model: 'Upstream model',
-        add: 'Add model override',
-        effort: 'Reasoning effort for {model}',
-        remove: 'Remove reasoning override for {model}',
-      },
+
       dangerDescription: 'Keep irreversible actions clearly separated from routine settings.',
       saveFailed: 'Unable to update the Group settings.',
       base: {

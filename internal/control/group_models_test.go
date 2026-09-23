@@ -16,7 +16,6 @@ import (
 	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
-	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/protocol"
@@ -702,7 +701,7 @@ func TestUpdateGroupModelsAllowsEmptyList(t *testing.T) {
 	}
 }
 
-func TestUpdateGroupModelsPrunesRemovedModelReasoningOverride(t *testing.T) {
+func TestUpdateGroupModelsPreservesScheduleEntryReasoning(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
@@ -717,20 +716,19 @@ func TestUpdateGroupModelsPrunesRemovedModelReasoningOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = fixture.service.UpdateGroupSettings(t.Context(), created.GroupID, GroupSettingsUpdateRequest{
-		Overrides: optionalField[config.Settings]{
-			Set: true,
-			Value: config.Settings{
-				state.SettingReasoningEffortOverrides: map[string]any{
-					"gpt-5.6-luna": "xhigh",
-					"gpt-6-astra":  "high",
-				},
-				state.SettingResponsesReasoningStatusFilterEnabled: true,
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("UpdateGroupSettings() error = %v", err)
+	var group models.Group
+	if err := fixture.db.First(&group, created.GroupID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var persisted []map[string]any
+	if err := json.Unmarshal(group.Models, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	persisted[1]["reasoning_effort"] = "high"
+	encoded, _ := json.Marshal(persisted)
+	if err := fixture.db.Model(&models.Group{}).Where("id = ?", created.GroupID).
+		Update("models", models.JSON(encoded)).Error; err != nil {
+		t.Fatal(err)
 	}
 
 	got, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
@@ -743,29 +741,27 @@ func TestUpdateGroupModelsPrunesRemovedModelReasoningOverride(t *testing.T) {
 		t.Fatalf("updated models = %#v, want only gpt-6-astra", got.Items)
 	}
 
-	settings, err := fixture.service.GetGroupSettings(t.Context(), created.GroupID)
-	if err != nil {
-		t.Fatalf("GetGroupSettings() error = %v", err)
+	stored := loadCreatedGroupModels(t, fixture, created.GroupID)
+	if len(stored) != 1 || stored[0].ReasoningEffort != "high" {
+		t.Fatalf("stored models = %#v, want preserved high policy", stored)
 	}
-	wantReasoning := map[string]any{"gpt-6-astra": "high"}
-	if gotReasoning := settings.Overrides[state.SettingReasoningEffortOverrides]; !reflect.DeepEqual(gotReasoning, wantReasoning) {
-		t.Fatalf("reasoning effort overrides = %#v, want %#v", gotReasoning, wantReasoning)
-	}
-	if gotFilter := settings.Overrides[state.SettingResponsesReasoningStatusFilterEnabled]; gotFilter != true {
-		t.Fatalf("unrelated group override = %#v, want true", gotFilter)
-	}
+}
 
-	if _, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
-		Models: optionalGroupModels{Set: true, Values: nil},
-	}); err != nil {
-		t.Fatalf("UpdateGroupModels() with empty list error = %v", err)
+func TestGroupModelStorageRoundTripAndOrdinaryRequestRejection(t *testing.T) {
+	var stored GroupModel
+	if err := json.Unmarshal([]byte(`{"id":"gpt-5.4","alias":"public","entry_id":"e000000000001","reasoning_effort":"high"}`), &stored); err != nil {
+		t.Fatalf("storage decode error = %v", err)
 	}
-	settings, err = fixture.service.GetGroupSettings(t.Context(), created.GroupID)
+	encoded, err := json.Marshal(stored)
 	if err != nil {
-		t.Fatalf("GetGroupSettings() after empty list error = %v", err)
+		t.Fatalf("storage encode error = %v", err)
 	}
-	if _, exists := settings.Overrides[state.SettingReasoningEffortOverrides]; exists {
-		t.Fatalf("empty reasoning effort overrides remained: %#v", settings.Overrides)
+	if stored.ReasoningEffort != "high" || !strings.Contains(string(encoded), `"reasoning_effort":"high"`) {
+		t.Fatalf("storage round trip = %#v / %s", stored, encoded)
+	}
+	var request optionalGroupModels
+	if err := json.Unmarshal([]byte(`[{"id":"gpt-5.4","alias_enabled":false,"reasoning_effort":"high"}]`), &request); err == nil {
+		t.Fatal("ordinary models request accepted reasoning_effort")
 	}
 }
 
@@ -1051,7 +1047,7 @@ func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
 	}
 	if err := fixture.db.Model(&models.Group{}).
 		Where("id = ?", created.GroupID).
-		Update("models", models.JSON(`[{"id":"entry-a","alias":"public","weight":30,"priority":2},{"id":"entry-b","alias":"public","weight":0}]`)).Error; err != nil {
+		Update("models", models.JSON(`[{"id":"entry-a","alias":"public","reasoning_effort":"high","weight":30,"priority":2},{"id":"entry-b","alias":"public","weight":0}]`)).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -1100,7 +1096,7 @@ func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
 		t.Fatalf("mapGroupRowToState() error = %v", err)
 	}
 	wantModels := []state.ModelConfig{
-		{ID: "entry-a", Alias: "public", Weight: intPointer(30), Priority: intPointer(2)},
+		{ID: "entry-a", Alias: "public", ReasoningEffort: "high", Weight: intPointer(30), Priority: intPointer(2)},
 		{ID: "entry-b", Alias: "public", Weight: intPointer(0)},
 	}
 	if len(candidate.Models) != len(wantModels) {
@@ -1111,7 +1107,7 @@ func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
 			t.Fatalf("state model %d entry_id = %q, want lazy-backfilled", index, model.EntryID)
 		}
 		want := wantModels[index]
-		if model.ID != want.ID || model.Alias != want.Alias ||
+		if model.ID != want.ID || model.Alias != want.Alias || model.ReasoningEffort != want.ReasoningEffort ||
 			!reflect.DeepEqual(model.Weight, want.Weight) || !reflect.DeepEqual(model.Priority, want.Priority) {
 			t.Fatalf("state model %d = %#v, want core fields %#v", index, model, want)
 		}
@@ -1123,6 +1119,9 @@ func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
 	for index, model := range runtimeModels {
 		if model.EntryID != candidate.Models[index].EntryID {
 			t.Fatalf("loader model %d entry_id = %q, want %q", index, model.EntryID, candidate.Models[index].EntryID)
+		}
+		if model.ReasoningEffort != wantModels[index].ReasoningEffort {
+			t.Fatalf("loader model %d reasoning = %q, want %q", index, model.ReasoningEffort, wantModels[index].ReasoningEffort)
 		}
 	}
 }

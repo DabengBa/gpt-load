@@ -30,6 +30,7 @@ import (
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/ratelimit"
+	"gpt-load/internal/reasoning"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 	subscriptionproviders "gpt-load/internal/subscription/providers"
@@ -1074,18 +1075,19 @@ func (handler *Handler) executeAttempts(
 	}
 	// 缓存仅属于本次请求；切换分组时释放旧结果，避免重试累积完整请求体。
 	var preparedGroupID uint
+	var preparedEntryID string
 	var preparedUpstreamModel string
 	var cachedPrepared *preparedRequest
 	loggedOverrideFailures := make(map[uint]struct{})
 	var parameterOverrideFailure *reason
-	originalReasoningEffortPresent := dialect.HasReasoningEffort(parsed.Body, selectedDialect.Protocol())
 	prepareRequest := func(selection scheduler.Selection) preparedRequest {
 		upstreamModel := optionalModelValue(selection.UpstreamModelID)
-		if cachedPrepared != nil && preparedGroupID == selection.GroupID && preparedUpstreamModel == upstreamModel {
+		if cachedPrepared != nil && preparedGroupID == selection.GroupID && preparedEntryID == selection.EntryID && preparedUpstreamModel == upstreamModel {
 			return *cachedPrepared
 		}
 		cachedPrepared = nil
 		preparedGroupID = selection.GroupID
+		preparedEntryID = selection.EntryID
 		preparedUpstreamModel = upstreamModel
 		prepared := preparedRequest{
 			request: parsed, observations: originalMetadata, observationsAvailable: true,
@@ -1104,10 +1106,27 @@ func (handler *Handler) executeAttempts(
 			cachedPrepared = &prepared
 			return prepared
 		}
-		if effort := selection.Group.ReasoningEffortOverrides[upstreamModel]; dialect.SupportsReasoningEffortOverride(selectedDialect.Protocol(), originalMetadata.Operation) &&
-			originalReasoningEffortPresent && effort != "" {
+		entryEffort := ""
+		for _, model := range selection.Group.Models {
+			if selection.EntryID != "" && model.EntryID == selection.EntryID {
+				entryEffort = model.ReasoningEffort
+				break
+			}
+		}
+		effort, source, resolveErr := reasoning.ResolveEffort(entryEffort, selection.Group.ReasoningEffortDefault, originalMetadata.Reasoning.Effort)
+		if resolveErr != nil {
+			prepared.err = resolveErr
+			cachedPrepared = &prepared
+			return prepared
+		}
+		if dialect.SupportsReasoningEffortOverride(selectedDialect.Protocol(), originalMetadata.Operation) && effort != "" && source != reasoning.EffortSourceClient {
+			if err := reasoning.ValidateEffort(string(selection.Group.ResolvedTarget.ProviderKind), upstreamModel, effort); err != nil {
+				prepared.err = err
+				cachedPrepared = &prepared
+				return prepared
+			}
 			var effortApplied bool
-			body, effortApplied, err = dialect.OverrideReasoningEffort(body, effort, selectedDialect.Protocol())
+			body, effortApplied, err = dialect.SetReasoningEffort(body, effort, selectedDialect.Protocol())
 			if err != nil {
 				prepared.err = err
 				cachedPrepared = &prepared
@@ -1227,8 +1246,8 @@ func (handler *Handler) executeAttempts(
 			attemptNow,
 			decisionContextForSelection(selection),
 		)
-		recordedAttempt := recorder.recordAttempt(
-			selection, nil, result, decision, attemptStarted, attemptCompleted,
+		recordedAttempt := recorder.appendDecisionAttempt(
+			selection, result, decision, code, summary, attemptStarted, attemptCompleted,
 		)
 		lastAttemptIndex = recordedAttempt
 		handler.applyGroupDecisionEffectForEntry(selection.Group, selection.CredentialID, 0, selection.EntryID, decision, 0, attemptNow)
@@ -1315,18 +1334,26 @@ func (handler *Handler) executeAttempts(
 		if prepared.err != nil {
 			code := "parameter_override_failed"
 			summary := "Parameter override could not be applied."
+			if errors.Is(prepared.err, reasoning.ErrUnsupportedEffort) {
+				code = "reasoning_effort_unsupported"
+				summary = "The selected route does not support the configured reasoning effort."
+			}
 			if errors.Is(prepared.err, errRequestTooLarge) {
 				code = "parameter_override_request_too_large"
 				summary = "Parameter override produced a request that is too large."
 				if parameterOverrideFailure == nil {
 					parameterOverrideFailure = &reasonRequestTooLarge
 				}
-			} else {
+			} else if !errors.Is(prepared.err, reasoning.ErrUnsupportedEffort) {
 				if parameterOverrideFailure == nil {
 					parameterOverrideFailure = &reasonParameterOverrideUnavailable
 				}
 			}
-			recordCaptureCandidatePreparationFailure(selection.Group.Name, code, summary)
+			if errors.Is(prepared.err, reasoning.ErrUnsupportedEffort) {
+				recordCandidatePreparationFailure(selection, prepared.observations, prepared.observationsAvailable, code, summary, execution.ErrorScopeRequest)
+			} else {
+				recordCaptureCandidatePreparationFailure(selection.Group.Name, code, summary)
+			}
 			if _, logged := loggedOverrideFailures[selection.GroupID]; !logged {
 				utils.LogPlaneBestEffort(
 					handler.logger,

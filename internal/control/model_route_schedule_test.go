@@ -22,6 +22,7 @@ import (
 	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/protocol"
+	"gpt-load/internal/reasoning"
 	"gpt-load/internal/requestlog"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
@@ -461,9 +462,119 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 	}
 }
 
+func TestModelRouteScheduleDetailProjectsReasoningPolicyAndCapability(t *testing.T) {
+	scenario := newScheduleTestScenario(t)
+	body := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
+	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
+	var patch modelRouteSchedulePatchResponse
+	decodeScheduleSuccess(t, recorder, &patch)
+	path := fmt.Sprintf("/api/model-route/schedule/detail?external_model=pub&protocol=openai-completions&access_key_id=%d", scenario.accessKeyID)
+	recorder = scenario.perform(http.MethodGet, path, "", scenario.authKey)
+	var detail modelRouteScheduleDetailResponse
+	decodeScheduleSuccess(t, recorder, &detail)
+	first := detail.Groups[0]
+	if first.ReasoningEffortDefault == nil || *first.ReasoningEffortDefault != "low" {
+		t.Fatalf("group reasoning default = %v, want low", first.ReasoningEffortDefault)
+	}
+	entry := first.Entries[0]
+	wantCapability := reasoning.ProjectEffortCapability("openai", "up-a")
+	if wantCapability.Levels == nil {
+		wantCapability.Levels = []string{}
+	}
+	if entry.Reasoning.Configured == nil || *entry.Reasoning.Configured != "high" ||
+		entry.Reasoning.Effective == nil || *entry.Reasoning.Effective != "high" || entry.Reasoning.Source != "entry" ||
+		!reflect.DeepEqual(entry.Reasoning.Capability, wantCapability) ||
+		entry.Reasoning.Capability.Levels == nil || entry.Reasoning.Capability.Reason == "" {
+		t.Fatalf("entry reasoning projection = %#v", entry.Reasoning)
+	}
+
+	inherited := first.Entries[1]
+	if inherited.Reasoning.Configured != nil || inherited.Reasoning.Effective == nil ||
+		*inherited.Reasoning.Effective != "low" || inherited.Reasoning.Source != "group" {
+		t.Fatalf("inherited reasoning projection = %#v", inherited.Reasoning)
+	}
+}
+
+func TestModelRouteScheduleRejectsDerivedEntryIdentityForPersistence(t *testing.T) {
+	scenario := newScheduleTestScenario(t)
+	var group models.Group
+	if err := scenario.fixture.db.First(&group, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal(group.Models, &entries); err != nil {
+		t.Fatal(err)
+	}
+	delete(entries[0], "entry_id")
+	encoded, _ := json.Marshal(entries)
+	if err := scenario.fixture.db.Model(&models.Group{}).Where("id = ?", 1).Update("models", models.JSON(encoded)).Error; err != nil {
+		t.Fatal(err)
+	}
+	input, err := stateloader.BuildCompileInputWithProxy(t.Context(), scenario.fixture.db, scenario.fixture.service.encryption, scenario.fixture.service.environmentProxy, scenario.fixture.service.channelRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scenario.fixture.manager.Publish(input); err != nil {
+		t.Fatal(err)
+	}
+	revision := scenario.fixture.manager.Current().Revision
+	body := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"derived:pub#up-a","reasoning_effort":"high"}]}`, revision)
+	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("derived entry patch = %d %s, want 400", recorder.Code, recorder.Body.String())
+	}
+	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got != string(encoded) {
+		t.Fatalf("derived entry rejection changed storage: %s", got)
+	}
+}
+
+func TestModelRouteScheduleReasoningPatchTriStateAndAtomicValidation(t *testing.T) {
+	scenario := newScheduleTestScenario(t)
+	set := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
+	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", set, scenario.authKey)
+	var result modelRouteSchedulePatchResponse
+	decodeScheduleSuccess(t, recorder, &result)
+	if got := loadCreatedGroupModels(t, scenario.fixture, 1)[0].ReasoningEffort; got != "high" {
+		t.Fatalf("stored entry reasoning = %q, want high", got)
+	}
+	settings, err := scenario.fixture.service.GetGroupSettings(t.Context(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exposed := settings.Overrides[state.SettingReasoningEffortDefault]; exposed {
+		t.Fatalf("schedule-owned default leaked through group settings: %#v", settings.Overrides)
+	}
+	beforeModels := loadStoredGroupModelsJSON(t, scenario.fixture, 1)
+	var beforeGroup models.Group
+	if err := scenario.fixture.db.First(&beforeGroup, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	invalid := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"medium"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"invalid"}]}`, result.SnapshotRevisionNew, scheduleEntryOneA)
+	recorder = scenario.perform(http.MethodPatch, "/api/model-route/schedule", invalid, scenario.authKey)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("invalid reasoning response = %d %s, want 400", recorder.Code, recorder.Body.String())
+	}
+	var afterGroup models.Group
+	if err := scenario.fixture.db.First(&afterGroup, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got != beforeModels || string(afterGroup.Overrides) != string(beforeGroup.Overrides) {
+		t.Fatalf("invalid batch wrote models/overrides: models=%s overrides=%s", got, afterGroup.Overrides)
+	}
+	clear := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":null}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":null}]}`, result.SnapshotRevisionNew, scheduleEntryOneA)
+	recorder = scenario.perform(http.MethodPatch, "/api/model-route/schedule", clear, scenario.authKey)
+	decodeScheduleSuccess(t, recorder, &result)
+	if got := loadCreatedGroupModels(t, scenario.fixture, 1)[0].ReasoningEffort; got != "" {
+		t.Fatalf("cleared entry reasoning = %q, want empty", got)
+	}
+}
+
 func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 	t.Parallel()
 	scenario := newScheduleTestScenario(t)
+	patch := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
+	var patchResult modelRouteSchedulePatchResponse
+	decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", patch, scenario.authKey), &patchResult)
 	if err := scenario.fixture.db.Model(&models.Group{}).
 		Where("id = ?", 1).
 		Update("enabled", false).Error; err != nil {
@@ -497,6 +608,11 @@ func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 		entry.CircuitBreaker.Sources.BlacklistThreshold != scheduleBreakerSourceEntry {
 		t.Fatalf("disabled group entry configuration = %#v", entry)
 	}
+	if result.Groups[0].ReasoningEffortDefault == nil || *result.Groups[0].ReasoningEffortDefault != "low" ||
+		entry.Reasoning.Configured == nil || *entry.Reasoning.Configured != "high" ||
+		entry.Reasoning.Effective == nil || *entry.Reasoning.Effective != "high" || entry.Reasoning.Source != "entry" {
+		t.Fatalf("disabled group reasoning configuration = %#v / %#v", result.Groups[0].ReasoningEffortDefault, entry.Reasoning)
+	}
 	assertScheduleReason(t, entry.ReasonCode, scheduler.ReasonGroupDisabled)
 	for index, disabledEntry := range result.Groups[0].Entries {
 		if disabledEntry.ConfiguredShare != 0 {
@@ -505,6 +621,17 @@ func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 	}
 	if len(result.Groups[1].Entries) != 1 || result.Groups[1].Entries[0].ConfiguredShare != 1 {
 		t.Fatalf("enabled group configured shares = %#v, want 1", result.Groups[1].Entries)
+	}
+}
+
+func TestModelRouteScheduleAllowsUnsupportedReasoningWithoutNormalization(t *testing.T) {
+	scenario := newScheduleTestScenario(t)
+	body := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"max"}]}`, scenario.revision, scheduleEntryOneA)
+	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
+	var result modelRouteSchedulePatchResponse
+	decodeScheduleSuccess(t, recorder, &result)
+	if got := loadCreatedGroupModels(t, scenario.fixture, 1)[0].ReasoningEffort; got != "max" {
+		t.Fatalf("stored unsupported effort = %q, want exact max", got)
 	}
 }
 

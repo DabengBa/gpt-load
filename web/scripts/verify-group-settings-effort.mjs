@@ -14,10 +14,6 @@ const baseSettings = {
   enabled: true,
   overrides: {
     parameter_overrides: [{ match: { model: 'public-*' }, set: { temperature: 0.4 } }],
-    reasoning_effort_overrides: {
-      'upstream-b': 'high',
-      'upstream-a': 'low',
-    },
   },
   effective: {
     first_byte_timeout: 120,
@@ -37,6 +33,68 @@ const baseSettings = {
   },
 }
 
+const baseSchedule = {
+  observed_at_ms: 1_800_000_000_000,
+  snapshot_revision: 7,
+  external_model: 'reasoning-model',
+  protocol: 'openai-completions',
+  operation: 'chat_completion',
+  route_requirement: 'any',
+  access_key: { id: 1, name: 'default', status: 'active' },
+  routable: true,
+  reason_code: null,
+  groups: [
+    {
+      group_id: 4,
+      group_name: 'OpenAI primary',
+      channel_id: 'openai',
+      enabled: true,
+      reasoning_effort_default: 'medium',
+      request_count: 10,
+      success_rate: 0.9,
+      entries: [
+        {
+          entry_id: 'entry-1',
+          model_id: 'o3',
+          alias: 'reasoning-model',
+          weight: 100,
+          priority: 1,
+          fallback: false,
+          circuit_breaker: {
+            configured: { blacklist_threshold: null, cooldown_seconds: null },
+            effective: { blacklist_threshold: null, cooldown_seconds: 3600 },
+            sources: { blacklist_threshold: 'default', cooldown_seconds: 'default' },
+          },
+          reasoning: {
+            configured: 'high',
+            effective: 'high',
+            source: 'entry',
+            capability: {
+              known: true,
+              supported: true,
+              levels: ['low', 'medium', 'high'],
+              reason: 'supported by Bifrost model capabilities',
+            },
+          },
+          runtime: {
+            state: 'available',
+            cooldown_until_ms: null,
+            blacklist_release_at_ms: null,
+            failure_count: 0,
+            failure_version: 0,
+          },
+          included: true,
+          routable: true,
+          reason_code: null,
+          configured_share: 1,
+          effective_share: 1,
+          credentials: [],
+        },
+      ],
+    },
+  ],
+}
+
 async function main() {
   const server = await createServer({
     root: WEB_ROOT,
@@ -50,76 +108,80 @@ async function main() {
     const patching = await server.ssrLoadModule(
       '/src/frontends/classic/features/groups/settings/group-settings-patch.ts',
     )
+    const schedule = await server.ssrLoadModule(
+      '/src/frontends/classic/app/resources/model-route-schedule.ts',
+    )
+
     const projected = groups.projectGroupSettings(baseSettings)
-    assert.deepEqual(projected.overrides.reasoning_effort_overrides, {
-      'upstream-a': 'low',
-      'upstream-b': 'high',
+    const changed = patching.createGroupSettingsDraft(projected)
+    changed.channel_id = 'anthropic'
+    assert.deepEqual(patching.buildGroupSettingsPatch(projected, changed), {
+      channel_id: 'anthropic',
     })
     assert.throws(() =>
       groups.projectGroupSettings({
         ...baseSettings,
-        overrides: { reasoning_effort_overrides: { 'upstream-a': 'unsupported' } },
+        overrides: { reasoning_effort_overrides: { 'upstream-a': 'high' } },
       }),
     )
 
-    const changed = patching.createGroupSettingsDraft(projected)
-    changed.overrides.reasoning_effort_overrides = {
-      ...changed.overrides.reasoning_effort_overrides,
-      'upstream-a': 'xhigh',
-    }
-    const changedPatch = patching.buildGroupSettingsPatch(projected, changed)
-    assert.deepEqual(changedPatch.overrides, {
-      parameter_overrides: baseSettings.overrides.parameter_overrides,
-      reasoning_effort_overrides: {
-        'upstream-a': 'xhigh',
-        'upstream-b': 'high',
-      },
-    })
-
-    const removed = patching.createGroupSettingsDraft(projected)
-    delete removed.overrides.reasoning_effort_overrides
-    const removedPatch = patching.buildGroupSettingsPatch(projected, removed)
-    assert.deepEqual(removedPatch.overrides, {
-      parameter_overrides: baseSettings.overrides.parameter_overrides,
-    })
-    const channelChanged = patching.createGroupSettingsDraft(projected)
-    channelChanged.channel_id = 'anthropic'
-    const channelPatch = patching.buildGroupSettingsPatch(projected, channelChanged)
-    assert.equal(channelPatch.channel_id, 'anthropic')
+    const detail = schedule.projectModelRouteScheduleDetail(baseSchedule)
+    assert.equal(detail.groups[0].reasoning_effort_default, 'medium')
     assert.deepEqual(
-      patching.preserveChannelParams(
-        { base_url: 'https://old.example', stale: 'drop me', shared: 'keep me' },
-        [
+      detail.groups[0].entries[0].reasoning,
+      baseSchedule.groups[0].entries[0].reasoning,
+    )
+    assert.throws(() =>
+      schedule.projectModelRouteScheduleDetail({
+        ...baseSchedule,
+        groups: [
           {
-            key: 'base_url',
-            label: 'Base URL',
-            input_kind: 'url',
-            required: false,
-            sensitive: false,
-            default_value: 'https://new.example',
-          },
-          {
-            key: 'shared',
-            label: 'Shared',
-            input_kind: 'text',
-            required: false,
-            sensitive: false,
-            default_value: null,
-          },
-          {
-            key: 'required',
-            label: 'Required',
-            input_kind: 'text',
-            required: true,
-            sensitive: false,
-            default_value: null,
+            ...baseSchedule.groups[0],
+            entries: [
+              {
+                ...baseSchedule.groups[0].entries[0],
+                reasoning: {
+                  ...baseSchedule.groups[0].entries[0].reasoning,
+                  source: 'normalized',
+                },
+              },
+            ],
           },
         ],
-      ),
-      { base_url: 'https://old.example', shared: 'keep me', required: '' },
+      }),
     )
+    const unsupported = schedule.projectModelRouteScheduleDetail({
+      ...baseSchedule,
+      groups: [
+        {
+          ...baseSchedule.groups[0],
+          entries: [
+            {
+              ...baseSchedule.groups[0].entries[0],
+              reasoning: {
+                configured: 'max',
+                effective: 'max',
+                source: 'entry',
+                capability: {
+                  known: true,
+                  supported: false,
+                  levels: ['max'],
+                  reason: 'requested effort is not supported',
+                },
+              },
+            },
+          ],
+        },
+      ],
+    })
+    assert.deepEqual(unsupported.groups[0].entries[0].reasoning.capability, {
+      known: true,
+      supported: false,
+      levels: ['max'],
+      reason: 'requested effort is not supported',
+    })
 
-    console.log('PASS  group reasoning effort projection and patch preservation')
+    console.log('PASS  retired group effort and dispatch reasoning projection contracts')
   } finally {
     await server.close()
   }
@@ -128,6 +190,6 @@ async function main() {
 try {
   await main()
 } catch (error) {
-  console.error(`FAIL  group reasoning effort projection and patch preservation: ${error.message}`)
+  console.error(error)
   process.exitCode = 1
 }

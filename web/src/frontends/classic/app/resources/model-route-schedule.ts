@@ -3,7 +3,11 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type { ApiClient } from '@shared/http/client'
 import { enabledDataProtocols } from '@/api/control/protocols'
-import { type AccessKeyDto, type AccessProtocol } from '@/api/control/types'
+import {
+  type AccessKeyDto,
+  type AccessProtocol,
+  type ReasoningEffortDto,
+} from '@/api/control/types'
 import { ApiError, InvalidResponseError } from '@shared/http/errors'
 import { controlQueryKeys } from '@/app/query-keys'
 import {
@@ -71,6 +75,22 @@ export interface ModelRouteScheduleRuntimeDto {
   failure_version: number
 }
 
+export type ModelRouteScheduleReasoningSource = 'entry' | 'group' | 'client' | 'provider_default'
+
+export interface ModelRouteScheduleReasoningCapabilityDto {
+  known: boolean
+  supported: boolean
+  levels: ReasoningEffortDto[]
+  reason: string
+}
+
+export interface ModelRouteScheduleReasoningDto {
+  configured: ReasoningEffortDto | null
+  effective: ReasoningEffortDto | null
+  source: ModelRouteScheduleReasoningSource
+  capability: ModelRouteScheduleReasoningCapabilityDto
+}
+
 export interface ModelRouteScheduleEntryDto {
   entry_id: string
   model_id: string
@@ -79,6 +99,7 @@ export interface ModelRouteScheduleEntryDto {
   priority: number
   fallback: boolean
   circuit_breaker: ModelRouteScheduleBreakerDto
+  reasoning: ModelRouteScheduleReasoningDto
   runtime: ModelRouteScheduleRuntimeDto
   included: boolean
   routable: boolean
@@ -93,6 +114,7 @@ export interface ModelRouteScheduleGroupDto {
   group_name: string
   channel_id: string
   enabled: boolean
+  reasoning_effort_default: ReasoningEffortDto | null
   request_count: number
   success_rate: number
   entries: ModelRouteScheduleEntryDto[]
@@ -133,6 +155,12 @@ export interface ModelRouteSchedulePatchUpdate {
   weight?: number | null
   priority?: number | null
   circuit_breaker?: ModelRouteScheduleBreakerPatch | null
+  reasoning_effort?: ReasoningEffortDto | null
+}
+
+export interface ModelRouteScheduleGroupPatchUpdate {
+  group_id: number
+  reasoning_effort_default: ReasoningEffortDto | null
 }
 
 export interface ModelRouteSchedulePatchRequest {
@@ -141,6 +169,7 @@ export interface ModelRouteSchedulePatchRequest {
   external_model?: string
   access_key_id?: number
   operation?: RouteInspectOperation
+  group_updates?: ModelRouteScheduleGroupPatchUpdate[]
   updates: ModelRouteSchedulePatchUpdate[]
 }
 
@@ -190,6 +219,7 @@ const groupFields = [
   'group_name',
   'channel_id',
   'enabled',
+  'reasoning_effort_default',
   'request_count',
   'success_rate',
   'entries',
@@ -202,6 +232,7 @@ const entryFields = [
   'priority',
   'fallback',
   'circuit_breaker',
+  'reasoning',
   'runtime',
   'included',
   'routable',
@@ -225,6 +256,18 @@ const accessKeyFields = ['id', 'name', 'status'] as const
 const accessKeyStatuses = ['active', 'disabled'] as const
 const runtimeStates = ['available', 'blacklisted', 'cooldown'] as const
 const breakerSources = ['default', 'entry'] as const
+export const reasoningEffortValues = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const
+const reasoningSources = ['entry', 'group', 'client', 'provider_default'] as const
+const reasoningFields = ['configured', 'effective', 'source', 'capability'] as const
+const reasoningCapabilityFields = ['known', 'supported', 'levels', 'reason'] as const
 
 function invalidResponse(): never {
   throw new InvalidResponseError()
@@ -311,6 +354,46 @@ function projectRuntime(value: unknown, observedAtMS?: number): ModelRouteSchedu
   }
 }
 
+function projectNullableReasoningEffort(value: unknown): ReasoningEffortDto | null {
+  return value === null ? null : projectEnum(value, reasoningEffortValues)
+}
+
+export function isReasoningEffort(value: string): value is ReasoningEffortDto {
+  return reasoningEffortValues.some((effort) => effort === value)
+}
+
+function projectReasoning(value: unknown): ModelRouteScheduleReasoningDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, reasoningFields)
+  const capabilityRecord = projectRecord(record.capability)
+  assertNoSecretLikeFields(capabilityRecord, reasoningCapabilityFields)
+  const capability = {
+    known: projectBoolean(capabilityRecord.known),
+    supported: projectBoolean(capabilityRecord.supported),
+    levels: projectArray(capabilityRecord.levels, (level) =>
+      projectEnum(level, reasoningEffortValues),
+    ),
+    reason: projectNonBlankString(capabilityRecord.reason),
+  }
+  if (
+    (capability.supported && (!capability.known || capability.levels.length === 0)) ||
+    new Set(capability.levels).size !== capability.levels.length
+  ) {
+    invalidResponse()
+  }
+  const configured = projectNullableReasoningEffort(record.configured)
+  const effective = projectNullableReasoningEffort(record.effective)
+  const source = projectEnum(record.source, reasoningSources)
+  if (
+    (source === 'entry' && (configured === null || configured !== effective)) ||
+    (source === 'group' && (configured !== null || effective === null)) ||
+    ((source === 'client' || source === 'provider_default') && configured !== null)
+  ) {
+    invalidResponse()
+  }
+  return { configured, effective, source, capability }
+}
+
 function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleEntryDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, entryFields)
@@ -325,6 +408,7 @@ function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleE
     priority,
     fallback,
     circuit_breaker: projectBreaker(record.circuit_breaker),
+    reasoning: projectReasoning(record.reasoning),
     runtime: projectRuntime(record.runtime, observedAtMS),
     included: projectBoolean(record.included),
     routable: projectBoolean(record.routable),
@@ -346,6 +430,7 @@ function projectGroup(value: unknown, observedAtMS: number): ModelRouteScheduleG
     group_name: projectNonBlankString(record.group_name),
     channel_id: projectNonBlankString(record.channel_id),
     enabled: projectBoolean(record.enabled),
+    reasoning_effort_default: projectNullableReasoningEffort(record.reasoning_effort_default),
     request_count: requestCount,
     success_rate: successRate,
     entries: projectArray(record.entries, (entry) => projectEntry(entry, observedAtMS)),

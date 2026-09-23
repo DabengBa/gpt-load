@@ -13,18 +13,23 @@ import {
   updateGroupSettings,
 } from '@/app/resources/groups'
 import {
+  isReasoningEffort,
   isModelRouteScheduleRevisionConflict,
   recoverModelRouteScheduleEntry,
   updateModelRouteSchedule,
   type ModelRouteScheduleDetailDto,
   type ModelRouteScheduleEntryDto,
+  type ModelRouteScheduleGroupPatchUpdate,
   type ModelRouteScheduleGroupDto,
   type ModelRouteSchedulePatchUpdate,
+  type ModelRouteScheduleReasoningSource,
 } from '@/app/resources/model-route-schedule'
+import type { ReasoningEffortDto } from '@/api/control/types'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
@@ -75,6 +80,20 @@ export interface SchedulePanelDetailLabels {
   disabled?: string
   calls24h?: string
   successRate24h?: string
+  reasoning: string
+  groupDefault: string
+  entryOverride: string
+  inherit: string
+  effective: string
+  source: string
+  capability: string
+  supported: string
+  unsupported: string
+  capabilityUnknown: string
+  sourceEntry: string
+  sourceGroup: string
+  sourceClient: string
+  sourceProviderDefault: string
 }
 
 type EditableField = 'weight' | 'priority'
@@ -122,6 +141,8 @@ const client = useApiClient()
 const { t } = useI18n()
 const toast = useToast()
 const draftMap = reactive<Record<string, Draft>>({})
+const entryReasoningDrafts = reactive<Record<string, ReasoningEffortDto | null>>({})
+const groupReasoningDrafts = reactive<Record<string, ReasoningEffortDto | null>>({})
 const rawInputs = reactive<Record<string, string>>({})
 const invalidInputs = reactive<Record<string, boolean>>({})
 const pending = ref(false)
@@ -258,7 +279,12 @@ function confirmProbeEnabled(): void {
   emit('probe-all', enabled, [])
 }
 
-const dirty = computed(() => Object.keys(draftMap).length > 0)
+const dirty = computed(
+  () =>
+    Object.keys(draftMap).length > 0 ||
+    Object.keys(entryReasoningDrafts).length > 0 ||
+    Object.keys(groupReasoningDrafts).length > 0,
+)
 const invalid = computed(() => Object.values(invalidInputs).some(Boolean))
 const hasDetail = computed(() => props.detail !== undefined)
 const hasScheduleDraft = computed(() => Object.keys(draftMap).length > 0)
@@ -398,6 +424,100 @@ function fieldKey(groupID: number, entryID: string, field: EditableField): strin
   return `${draftKey(groupID, entryID)}\u0000${field}`
 }
 
+function hasOwn(source: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(source, key)
+}
+
+function groupDraftKey(groupID: number): string {
+  return String(groupID)
+}
+
+function groupReasoningValue(group: ModelRouteScheduleGroupDto): ReasoningEffortDto | '' {
+  const key = groupDraftKey(group.group_id)
+  return hasOwn(groupReasoningDrafts, key)
+    ? (groupReasoningDrafts[key] ?? '')
+    : (group.reasoning_effort_default ?? '')
+}
+
+function entryReasoningValue(
+  groupID: number,
+  entry: ModelRouteScheduleEntryDto,
+): ReasoningEffortDto | '' {
+  const key = draftKey(groupID, entry.entry_id)
+  return hasOwn(entryReasoningDrafts, key)
+    ? (entryReasoningDrafts[key] ?? '')
+    : (entry.reasoning.configured ?? '')
+}
+
+function reasoningOptions(
+  levels: readonly ReasoningEffortDto[],
+  current: ReasoningEffortDto | null,
+): Array<{ value: string; label: string }> {
+  const options = [{ value: '', label: text('inherit') }]
+  options.push(...levels.map((value) => ({ value, label: value })))
+  if (current !== null && !levels.includes(current)) {
+    options.push({
+      value: current,
+      label: t('monitor.schedule.detail.unsupportedEffortValue', { value: current }),
+    })
+  }
+  return options
+}
+
+function groupReasoningLevels(group: ModelRouteScheduleGroupDto): ReasoningEffortDto[] {
+  const supported = group.entries.filter(({ reasoning }) => reasoning.capability.supported)
+  if (supported.length !== group.entries.length || supported.length === 0) return []
+  const [first, ...rest] = supported
+  return first.reasoning.capability.levels.filter((level) =>
+    rest.every(({ reasoning }) => reasoning.capability.levels.includes(level)),
+  )
+}
+
+function groupReasoningOptions(group: ModelRouteScheduleGroupDto) {
+  const value = groupReasoningValue(group)
+  return reasoningOptions(groupReasoningLevels(group), value === '' ? null : value)
+}
+
+function entryReasoningOptions(groupID: number, entry: ModelRouteScheduleEntryDto) {
+  const value = entryReasoningValue(groupID, entry)
+  return reasoningOptions(
+    entry.reasoning.capability.supported ? entry.reasoning.capability.levels : [],
+    value === '' ? null : value,
+  )
+}
+
+function setGroupReasoning(group: ModelRouteScheduleGroupDto, value: string): void {
+  if (value !== '' && !isReasoningEffort(value)) return
+  const next = value === '' ? null : value
+  const key = groupDraftKey(group.group_id)
+  if (next === group.reasoning_effort_default) delete groupReasoningDrafts[key]
+  else groupReasoningDrafts[key] = next
+}
+
+function setEntryReasoning(
+  groupID: number,
+  entry: ModelRouteScheduleEntryDto,
+  value: string,
+): void {
+  if (value !== '' && !isReasoningEffort(value)) return
+  const next = value === '' ? null : value
+  const key = draftKey(groupID, entry.entry_id)
+  if (next === entry.reasoning.configured) delete entryReasoningDrafts[key]
+  else entryReasoningDrafts[key] = next
+}
+
+function reasoningSourceLabel(source: ModelRouteScheduleReasoningSource): string {
+  if (source === 'entry') return text('sourceEntry')
+  if (source === 'group') return text('sourceGroup')
+  if (source === 'client') return text('sourceClient')
+  return text('sourceProviderDefault')
+}
+
+function reasoningCapabilityLabel(entry: ModelRouteScheduleEntryDto): string {
+  if (!entry.reasoning.capability.known) return text('capabilityUnknown')
+  return entry.reasoning.capability.supported ? text('supported') : text('unsupported')
+}
+
 function configuredValue(entry: ModelRouteScheduleEntryDto, field: EditableField): number | null {
   if (field === 'weight') return null
   return entry.priority === 1 ? null : entry.priority
@@ -482,6 +602,8 @@ function clearField(
 
 function resetDrafts(): void {
   for (const key of Object.keys(draftMap)) delete draftMap[key]
+  for (const key of Object.keys(entryReasoningDrafts)) delete entryReasoningDrafts[key]
+  for (const key of Object.keys(groupReasoningDrafts)) delete groupReasoningDrafts[key]
   for (const key of Object.keys(rawInputs)) delete rawInputs[key]
   for (const key of Object.keys(invalidInputs)) delete invalidInputs[key]
   saveStatus.value = 'idle'
@@ -588,18 +710,42 @@ watch(
 
 function updates(): ModelRouteSchedulePatchUpdate[] {
   const result: ModelRouteSchedulePatchUpdate[] = []
-  for (const { group, entry } of rows.value) {
-    const draft = draftMap[draftKey(group.group_id, entry.entry_id)]
-    if (!draft || entry.entry_id.startsWith('derived:')) continue
-    const update: ModelRouteSchedulePatchUpdate = {
-      group_id: group.group_id,
-      entry_id: entry.entry_id,
+  for (const group of props.detail?.groups ?? []) {
+    for (const entry of group.entries) {
+      const draft = draftMap[draftKey(group.group_id, entry.entry_id)]
+      const reasoningKey = draftKey(group.group_id, entry.entry_id)
+      if (
+        (!draft && !hasOwn(entryReasoningDrafts, reasoningKey)) ||
+        entry.entry_id.startsWith('derived:')
+      )
+        continue
+      const update: ModelRouteSchedulePatchUpdate = {
+        group_id: group.group_id,
+        entry_id: entry.entry_id,
+      }
+      if (draft && hasOwn(draft, 'weight')) update.weight = draft.weight
+      if (draft && hasOwn(draft, 'priority')) update.priority = draft.priority
+      if (hasOwn(entryReasoningDrafts, reasoningKey)) {
+        update.reasoning_effort = entryReasoningDrafts[reasoningKey] ?? null
+      }
+      if (Object.keys(update).length > 2) result.push(update)
     }
-    if (Object.prototype.hasOwnProperty.call(draft, 'weight')) update.weight = draft.weight
-    if (Object.prototype.hasOwnProperty.call(draft, 'priority')) update.priority = draft.priority
-    if (Object.keys(update).length > 2) result.push(update)
   }
   return result
+}
+
+function groupUpdates(): ModelRouteScheduleGroupPatchUpdate[] {
+  return (props.detail?.groups ?? []).flatMap((group) => {
+    const key = groupDraftKey(group.group_id)
+    return hasOwn(groupReasoningDrafts, key)
+      ? [
+          {
+            group_id: group.group_id,
+            reasoning_effort_default: groupReasoningDrafts[key] ?? null,
+          },
+        ]
+      : []
+  })
 }
 
 async function save(): Promise<void> {
@@ -610,9 +756,10 @@ async function save(): Promise<void> {
     external_model: props.detail.external_model ?? '',
     access_key_id: props.detail.access_key.id,
     operation: props.detail.operation,
+    group_updates: groupUpdates(),
     updates: updates(),
   }
-  if (body.updates.length === 0) return
+  if (body.updates.length === 0 && body.group_updates.length === 0) return
   pending.value = true
   saveStatus.value = 'idle'
   saveError.value = ''
@@ -758,6 +905,7 @@ defineExpose({ applyProbeEnabled })
           <div class="schedule-row schedule-row--header" role="row">
             <span role="columnheader">{{ text('group') }}</span>
             <span role="columnheader">{{ text('upstreamModel') }}</span>
+            <span role="columnheader">{{ text('reasoning') }}</span>
             <span role="columnheader">{{ text('weight') }}</span>
             <span role="columnheader">{{ text('priority') }}</span>
             <span role="columnheader">{{ text('share') }}</span>
@@ -804,6 +952,63 @@ defineExpose({ applyProbeEnabled })
             <div class="schedule-cell" role="cell">
               <strong>{{ entry.alias || entry.model_id }}</strong>
               <small v-if="entry.alias">{{ entry.model_id }}</small>
+            </div>
+            <div class="schedule-cell schedule-cell--reasoning" role="cell">
+              <label v-if="isFirstGroupRow(index)" class="schedule-reasoning-control">
+                <span>{{ text('groupDefault') }}</span>
+                <AppSelect
+                  :model-value="groupReasoningValue(group)"
+                  :options="groupReasoningOptions(group)"
+                  :label="`${text('groupDefault')} ${group.group_name}`"
+                  :disabled="
+                    pending ||
+                    (groupReasoningLevels(group).length === 0 &&
+                      group.reasoning_effort_default === null)
+                  "
+                  size="compact"
+                  @click.stop
+                  @update:model-value="setGroupReasoning(group, $event)"
+                />
+              </label>
+              <label class="schedule-reasoning-control">
+                <span>{{ text('entryOverride') }}</span>
+                <AppSelect
+                  :model-value="entryReasoningValue(group.group_id, entry)"
+                  :options="entryReasoningOptions(group.group_id, entry)"
+                  :label="`${text('entryOverride')} ${entry.model_id}`"
+                  :disabled="
+                    pending ||
+                    entry.entry_id.startsWith('derived:') ||
+                    (!entry.reasoning.capability.supported && entry.reasoning.configured === null)
+                  "
+                  size="compact"
+                  @click.stop
+                  @update:model-value="setEntryReasoning(group.group_id, entry, $event)"
+                />
+              </label>
+              <dl class="schedule-reasoning-meta">
+                <div>
+                  <dt>{{ text('effective') }}</dt>
+                  <dd>{{ entry.reasoning.effective ?? text('inherit') }}</dd>
+                </div>
+                <div>
+                  <dt>{{ text('source') }}</dt>
+                  <dd>{{ reasoningSourceLabel(entry.reasoning.source) }}</dd>
+                </div>
+                <div>
+                  <dt>{{ text('capability') }}</dt>
+                  <dd
+                    :class="{
+                      'schedule-reasoning-meta__unsupported': !entry.reasoning.capability.supported,
+                    }"
+                  >
+                    {{ reasoningCapabilityLabel(entry) }}
+                  </dd>
+                </div>
+              </dl>
+              <small class="schedule-reasoning-reason">{{
+                entry.reasoning.capability.reason
+              }}</small>
             </div>
             <div class="schedule-cell schedule-cell--input" role="cell">
               <label class="sr-only" :for="`weight-${index}`">{{ text('weight') }}</label>
@@ -984,13 +1189,13 @@ defineExpose({ applyProbeEnabled })
   border: 1px solid var(--color-border-subtle);
 }
 .schedule-table {
-  min-width: 980px;
+  min-width: 1260px;
 }
 .schedule-row {
   display: grid;
   grid-template-columns:
-    minmax(150px, 1.25fr) minmax(145px, 1.15fr) 90px 85px 90px minmax(105px, 0.9fr)
-    minmax(180px, 1.35fr);
+    minmax(150px, 1.1fr) minmax(145px, 1fr) minmax(250px, 1.7fr) 90px 85px 90px
+    minmax(105px, 0.8fr) minmax(180px, 1.25fr);
   min-height: 58px;
   align-items: center;
   gap: 10px;
@@ -1028,6 +1233,50 @@ defineExpose({ applyProbeEnabled })
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.schedule-cell--reasoning {
+  display: grid;
+  gap: 6px;
+}
+.schedule-reasoning-control {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-faint);
+  font-size: 10px;
+}
+.schedule-reasoning-control :deep(.app-select__trigger) {
+  width: 100%;
+}
+.schedule-reasoning-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  margin: 0;
+}
+.schedule-reasoning-meta div {
+  display: flex;
+  min-width: 0;
+  gap: 3px;
+}
+.schedule-reasoning-meta dt {
+  color: var(--color-text-faint);
+}
+.schedule-reasoning-meta dd {
+  margin: 0;
+  color: var(--color-text);
+}
+.schedule-reasoning-meta__unsupported {
+  color: var(--color-danger) !important;
+  font-weight: 650;
+}
+.schedule-reasoning-reason {
+  overflow: visible !important;
+  color: var(--color-text-faint);
+  text-overflow: clip !important;
+  white-space: normal !important;
 }
 .schedule-cell strong {
   color: var(--color-text);

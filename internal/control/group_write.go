@@ -31,6 +31,7 @@ type GroupModel struct {
 	Alias             string                     `json:"alias"`
 	TestAlias         string                     `json:"test_alias,omitempty"`
 	EntryID           string                     `json:"entry_id,omitempty"`
+	ReasoningEffort   string                     `json:"reasoning_effort,omitempty"`
 	AliasEnabled      bool                       `json:"-"`
 	Weight            *int                       `json:"weight,omitempty"`
 	Priority          *int                       `json:"priority,omitempty"`
@@ -42,14 +43,15 @@ type GroupModel struct {
 
 func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	var wire struct {
-		ID             string          `json:"id"`
-		Alias          string          `json:"alias"`
-		TestAlias      string          `json:"test_alias"`
-		EntryID        string          `json:"entry_id"`
-		AliasEnabled   *bool           `json:"alias_enabled"`
-		Weight         *int            `json:"weight"`
-		Priority       *int            `json:"priority"`
-		CircuitBreaker json.RawMessage `json:"circuit_breaker"`
+		ID              string          `json:"id"`
+		Alias           string          `json:"alias"`
+		TestAlias       string          `json:"test_alias"`
+		EntryID         string          `json:"entry_id"`
+		ReasoningEffort string          `json:"reasoning_effort"`
+		AliasEnabled    *bool           `json:"alias_enabled"`
+		Weight          *int            `json:"weight"`
+		Priority        *int            `json:"priority"`
+		CircuitBreaker  json.RawMessage `json:"circuit_breaker"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -67,6 +69,7 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	model.Alias = wire.Alias
 	model.TestAlias = wire.TestAlias
 	model.EntryID = wire.EntryID
+	model.ReasoningEffort = wire.ReasoningEffort
 	// alias_enabled 缺失按 false 处理：本类型同时用于解码存量存储行
 	// （price_reconcile 等读取路径），存量 JSON 不含该键，不得视为错误。
 	model.AliasEnabled = wire.AliasEnabled != nil && *wire.AliasEnabled
@@ -300,6 +303,9 @@ func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 	indexesByClientModel := make(map[string]map[string][]int, len(values))
 	clientModelOrder := make([]string, 0, len(values))
 	for index, value := range values {
+		if value.ReasoningEffort != "" {
+			return nil, app_errors.ErrValidation
+		}
 		normalized := GroupModel{
 			ID:                strings.TrimSpace(value.ID),
 			EntryID:           strings.TrimSpace(value.EntryID),

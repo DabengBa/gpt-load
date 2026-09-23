@@ -3,8 +3,11 @@ package dialect
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/tidwall/sjson"
 
 	"gpt-load/internal/execution"
 	"gpt-load/internal/protocol"
@@ -39,6 +42,7 @@ func OverrideReasoningEffort(body []byte, effort string, client protocol.Protoco
 	if !exists {
 		return body, false, nil
 	}
+
 	encodedEffort, err := json.Marshal(effort)
 	if err != nil {
 		return nil, false, err
@@ -47,6 +51,23 @@ func OverrideReasoningEffort(body []byte, effort string, client protocol.Protoco
 	updated = append(updated, body[:start]...)
 	updated = append(updated, encodedEffort...)
 	updated = append(updated, body[end:]...)
+	return updated, true, nil
+}
+
+// SetReasoningEffort replaces or injects the effort field defined by the
+// client protocol. An empty effort is an explicit no-op.
+func SetReasoningEffort(body []byte, effort string, client protocol.Protocol) ([]byte, bool, error) {
+	if effort == "" {
+		return body, false, nil
+	}
+	path := reasoningEffortPath(client)
+	if len(path) == 0 {
+		return nil, false, fmt.Errorf("reasoning effort is not supported by protocol %q", client)
+	}
+	updated, err := sjson.SetBytes(body, strings.Join(path, "."), effort)
+	if err != nil {
+		return nil, false, fmt.Errorf("set %s reasoning effort: %w", client, err)
+	}
 	return updated, true, nil
 }
 

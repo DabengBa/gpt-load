@@ -370,16 +370,8 @@ func normalizeGroupSettings(settings config.Settings) (config.Settings, models.J
 		copied[key] = value
 	}
 	settings = copied
-	if value, exists := settings[state.SettingReasoningEffortOverrides]; exists {
-		overrides, err := state.ParseReasoningEffortOverrides(value)
-		if err != nil {
-			return nil, nil, app_errors.ErrValidation
-		}
-		canonical := make(map[string]any, len(overrides))
-		for model, effort := range overrides {
-			canonical[model] = effort
-		}
-		settings[state.SettingReasoningEffortOverrides] = canonical
+	if _, exists := settings[state.SettingReasoningEffortDefault]; exists {
+		return nil, nil, app_errors.ErrValidation
 	}
 	if value, exists := settings[state.SettingParameterOverrides]; exists {
 		rules, err := parameteroverride.Compile(value)
