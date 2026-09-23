@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/textproto"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -114,10 +115,10 @@ func parseCORSConfig(value any) (CORSConfig, error) {
 	if config.Enabled && len(config.AllowedHeaders) == 0 {
 		return CORSConfig{}, fmt.Errorf("cors.allowed_headers must not be empty when cors is enabled")
 	}
-	if config.AllowCredentials && containsExact(config.AllowedOrigins, "*") {
+	if config.AllowCredentials && slices.Contains(config.AllowedOrigins, "*") {
 		return CORSConfig{}, fmt.Errorf("cors.allow_credentials cannot be used with wildcard origin")
 	}
-	if config.AllowCredentials && containsExact(config.ExposedHeaders, "*") {
+	if config.AllowCredentials && slices.Contains(config.ExposedHeaders, "*") {
 		return CORSConfig{}, fmt.Errorf("cors.allow_credentials cannot be used with wildcard exposed headers")
 	}
 	return config, nil
@@ -145,7 +146,7 @@ func parseCORSOrigins(value any) ([]string, error) {
 		seen[origin] = struct{}{}
 		parsed = append(parsed, origin)
 	}
-	if len(parsed) > 1 && containsExact(parsed, "*") {
+	if len(parsed) > 1 && slices.Contains(parsed, "*") {
 		return nil, fmt.Errorf("cors.allowed_origins wildcard must be the only origin")
 	}
 	return parsed, nil
@@ -250,17 +251,8 @@ func parseCORSHeaderNames(path string, value any) ([]string, error) {
 		}
 		parsed = append(parsed, name)
 	}
-	if len(parsed) > 1 && containsExact(parsed, "*") {
+	if len(parsed) > 1 && slices.Contains(parsed, "*") {
 		return nil, fmt.Errorf("%s wildcard must be the only header", path)
 	}
 	return parsed, nil
-}
-
-func containsExact(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }

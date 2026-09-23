@@ -3,6 +3,7 @@ package gateway
 import (
 	"net/http"
 	"net/textproto"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -71,7 +72,7 @@ func downstreamCORSHeaders(
 		return nil, nil, false
 	}
 	var originVary []string
-	if !containsExactString(config.AllowedOrigins, "*") {
+	if !slices.Contains(config.AllowedOrigins, "*") {
 		originVary = []string{"Origin"}
 	}
 	origin := strings.TrimSpace(request.Header.Get("Origin"))
@@ -96,7 +97,7 @@ func downstreamCORSHeaders(
 		}
 		headers := corsActualResponseHeaders(origin, wildcard, config)
 		headers.Set("Access-Control-Allow-Methods", strings.Join(config.AllowedMethods, ", "))
-		if containsExactString(config.AllowedHeaders, "*") {
+		if slices.Contains(config.AllowedHeaders, "*") {
 			if len(requestedHeaders) > 0 {
 				headers.Set("Access-Control-Allow-Headers", strings.Join(requestedHeaders, ", "))
 			} else {
@@ -209,7 +210,7 @@ func validCORSRequestHeaderName(name string) bool {
 }
 
 func corsHeadersAllowed(requested, allowed []string) bool {
-	if containsExactString(allowed, "*") {
+	if slices.Contains(allowed, "*") {
 		return true
 	}
 	allowedSet := make(map[string]struct{}, len(allowed))
@@ -222,15 +223,6 @@ func corsHeadersAllowed(requested, allowed []string) bool {
 		}
 	}
 	return true
-}
-
-func containsExactString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 type downstreamHeaderWriter struct {

@@ -213,8 +213,6 @@ export default {
     projectCommunity: '项目与社区',
     starInvitation: '欢迎为 GPT-Load 点个 Star',
     signOut: '退出登录',
-    placeholderDescription: '该管理功能将在当前实施阶段的后续任务中完成。',
-    backHome: '返回首页',
   },
   notFound: {
     eyebrow: 'Navigation Error',

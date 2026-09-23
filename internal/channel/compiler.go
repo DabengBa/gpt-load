@@ -3,6 +3,7 @@ package channel
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"gpt-load/internal/channel/spec"
@@ -367,7 +368,7 @@ func compileRoutes(
 		case !responsesCreate && candidate.ResponsesStoreHandling != spec.ResponsesStoreHandlingNone:
 			return nil, nil, nil, nil, fmt.Errorf("channel %q has Responses store handling on an incompatible route", channelID)
 		case candidate.ResponsesStoreHandling == spec.ResponsesStoreHandlingUpstreamManaged &&
-			(candidate.Mode != execution.RouteNative || containsRouteMode(
+			(candidate.Mode != execution.RouteNative || slices.Contains(
 				candidate.PossibleModes,
 				execution.RouteConverted,
 			)):
@@ -472,15 +473,6 @@ func validateProbeContract(
 		)
 	}
 	return nil
-}
-
-func containsRouteMode(modes []execution.RouteMode, want execution.RouteMode) bool {
-	for _, mode := range modes {
-		if mode == want {
-			return true
-		}
-	}
-	return false
 }
 
 func validProtocolOperation(clientProtocol protocol.Protocol, operation execution.Operation) bool {

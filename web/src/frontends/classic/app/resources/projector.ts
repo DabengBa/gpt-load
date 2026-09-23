@@ -16,9 +16,6 @@ const nanoUSDPerUSD = 1_000_000_000n
 const canonicalInteger = /^(?:0|-?[1-9]\d*)$/u
 const canonicalNonNegativeInteger = /^(?:0|[1-9]\d*)$/u
 const canonicalNonNegativeDecimal = /^(?:0|[1-9]\d*)(?:\.\d{0,8}[1-9])?$/u
-const secretLikeField =
-  /(?:^|_)(?:authorization|credential|credentials|key|keys|mask|masked|password|plaintext|secret|token|tokens)(?:_|$)/i
-
 function invalidResponse(): never {
   throw new InvalidResponseError()
 }
@@ -146,7 +143,6 @@ export function assertNoSecretLikeFields(
   const allowed = new Set(allowedFields)
   for (const field of Object.keys(record)) {
     if (allowed.has(field)) continue
-    if (secretLikeField.test(field)) invalidResponse()
     invalidResponse()
   }
 }

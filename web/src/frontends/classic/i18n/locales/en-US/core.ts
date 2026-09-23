@@ -224,8 +224,6 @@ export default {
     projectCommunity: 'Project & community',
     starInvitation: 'Star GPT-Load on GitHub',
     signOut: 'Sign out',
-    placeholderDescription: 'This management feature will arrive in a later task in this stage.',
-    backHome: 'Back to Home',
   },
   notFound: {
     eyebrow: 'Navigation Error',
