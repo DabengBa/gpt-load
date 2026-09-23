@@ -196,6 +196,15 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 		return modelRouteScheduleIndexResponse{}, err
 	}
 	runtimeByKey := scheduleRuntimeByKey(s.registry.EntryRuntimeSnapshot())
+	// Test aliases select one provider/model for client requests; they are not dispatch-center contexts.
+	testAliases := make(map[string]struct{})
+	for _, group := range observation.snapshot.GroupCatalog {
+		for _, model := range group.Models {
+			if model.TestAlias != "" {
+				testAliases[model.TestAlias] = struct{}{}
+			}
+		}
+	}
 
 	type scheduleCandidateKey struct {
 		groupID uint
@@ -216,6 +225,9 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 	for protocolKey, byOperation := range observation.snapshot.ExecutionRouteCatalog {
 		for operationKey, byModel := range byOperation {
 			for external, targets := range byModel {
+				if _, hidden := testAliases[external]; hidden {
+					continue
+				}
 				if external == state.NoModelRouteKey || len(targets) == 0 {
 					continue
 				}

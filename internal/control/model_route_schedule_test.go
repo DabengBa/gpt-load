@@ -219,12 +219,28 @@ func TestModelRouteScheduleIndexAggregatesRealCandidates(t *testing.T) {
 	var result modelRouteScheduleIndexResponse
 	decodeScheduleSuccess(t, recorder, &result)
 
+	snapshot := scenario.fixture.manager.Current()
+	if snapshot == nil {
+		t.Fatal("manager.Current() = nil after setup")
+	}
+	testAliases := make(map[string]struct{})
+	for _, group := range snapshot.GroupCatalog {
+		for _, model := range group.Models {
+			if model.TestAlias != "" {
+				testAliases[model.TestAlias] = struct{}{}
+			}
+		}
+	}
+
 	byModel := make(map[string]modelRouteScheduleIndexItem, len(result.Items))
 	for _, item := range result.Items {
+		if _, hidden := testAliases[item.ExternalModel]; hidden {
+			t.Fatalf("test alias %q is visible in schedule index", item.ExternalModel)
+		}
 		byModel[item.ExternalModel] = item
 	}
-	if len(result.Items) != 7 {
-		t.Fatalf("items = %#v, want ordinary plus test-alias external models", result.Items)
+	if len(result.Items) != 2 {
+		t.Fatalf("items = %#v, want ordinary external models only", result.Items)
 	}
 	pub := byModel["pub"]
 	if pub.ExternalModel != "pub" || pub.Protocol != protocol.OpenAICompletions ||
