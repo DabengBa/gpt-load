@@ -852,7 +852,7 @@ export default {
         appliedCostState: 'Cost {value}',
         appliedCompleteness: 'Pricing {value}',
         appliedRequestId: 'Request ID {value}',
-        timezone: 'Local timezone',
+        timezone: 'Local timezone (local time)',
         lastRefreshed: 'Last successful refresh',
         remove: 'Remove filter {value}',
         advancedTitle: 'More filters',
@@ -939,6 +939,10 @@ export default {
       },
       filterAccessKey: 'Show only logs from access key {name}',
       filterAffinityKey: 'Show only logs for affinity scope key {value}',
+      copyAffinityKey: 'Copy full redacted affinity scope key',
+      copySuccess: 'Copied',
+      copyFailure: 'Copy failed',
+      resultSummary: '{count} logs on this page · Newest first',
       filterModel: 'Show only logs for model {name}',
       details: 'View details',
       failureCategory: {
@@ -1135,10 +1139,12 @@ export default {
       },
       columns: {
         time: 'Time',
+        timeNewestFirst: 'Time, newest first',
         modelProtocol: 'Model / protocol',
         response: 'Response',
         cost: 'Cost',
         tokens: 'Tokens',
+        tokensDetail: 'Tokens (input / output; cache hit rate explained on focus)',
         completedAt: 'Completed',
         requestId: 'Request ID',
         route: 'Route',
@@ -1146,6 +1152,7 @@ export default {
         accessKey: 'Access key',
         result: 'Final status',
         timing: 'First / total',
+        timingDetail: 'First response / total duration; hover for output rate',
         actions: 'Actions',
       },
       status: {
@@ -1158,6 +1165,7 @@ export default {
         normal: 'Normal',
         streamError: 'Stream error',
         errorWithCode: 'Error {code}',
+        httpStatus: 'HTTP {code}',
       },
       responseTooltip: {
         status: 'Final status: {status}',

@@ -25,6 +25,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
+import CopyChip from '@/components/ui/CopyChip.vue'
 import PaginationBar from '@/components/ui/PaginationBar.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
@@ -303,14 +304,13 @@ watch(
 function formatDateFilter(value: number): string {
   const date = new Date(value)
   const pad = (part: number) => String(part).padStart(2, '0')
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
     date.getMinutes(),
   )}:${pad(date.getSeconds())}`
 }
 
 function formatLogCompletedAt(value: number): string {
-  const formatted = formatLocalInstantWithSeconds(value)
-  return formatted === '—' ? formatted : formatted.slice(5)
+  return formatLocalInstantWithSeconds(value)
 }
 
 function advancedChipLabel(key: keyof RequestLogFilters, value: unknown): string {
@@ -757,15 +757,20 @@ function costLabel(log: RequestLogItemDto): string {
         mobile-row-height="176px"
         :label="t('monitor.logs.loading')"
       />
+      <p v-if="logs.length" class="logs-list__summary" data-testid="logs-result-summary">
+        {{ t('monitor.logs.resultSummary', { count: logs.length }) }}
+      </p>
       <LedgerRecordList
-        v-else-if="logs.length"
+        v-if="logs.length"
         :grid-class="isAccessKey ? 'logs-list logs-list--scoped' : 'logs-list'"
         :label="t('monitor.logs.caption')"
         :row-count="logs.length + 1"
         :scroll-hint="t('monitor.scrollHint')"
       >
         <template #header>
-          <span role="columnheader">{{ t('monitor.logs.columns.time') }}</span>
+          <span role="columnheader" :aria-label="t('monitor.logs.columns.timeNewestFirst')">{{
+            t('monitor.logs.columns.time')
+          }}</span>
           <span v-if="!isAccessKey" role="columnheader">{{
             t('monitor.logs.columns.affinityKey')
           }}</span>
@@ -773,10 +778,16 @@ function costLabel(log: RequestLogItemDto): string {
           <span role="columnheader">{{ t('monitor.logs.columns.modelProtocol') }}</span>
           <span role="columnheader">{{ t('monitor.logs.columns.response') }}</span>
           <span role="columnheader">{{ t('monitor.logs.columns.cost') }}</span>
-          <span class="logs-list__tokens-header" role="columnheader">
+          <span
+            class="logs-list__tokens-header"
+            role="columnheader"
+            :aria-label="t('monitor.logs.columns.tokensDetail')"
+          >
             {{ t('monitor.logs.columns.tokens') }}
           </span>
-          <span role="columnheader">{{ t('monitor.logs.columns.timing') }}</span>
+          <span role="columnheader" :aria-label="t('monitor.logs.columns.timingDetail')">{{
+            t('monitor.logs.columns.timing')
+          }}</span>
           <span role="columnheader">{{ t('monitor.logs.columns.actions') }}</span>
         </template>
 
@@ -802,18 +813,26 @@ function costLabel(log: RequestLogItemDto): string {
             role="cell"
             :data-label="t('monitor.logs.columns.affinityKey')"
           >
-            <OverflowTooltip
+            <AppTooltip v-if="affinityKeyFilterable(log)" :content="log.affinity_key ?? ''">
+              <button
+                type="button"
+                class="logs-list__affinity-key filterable-value"
+                :aria-label="t('monitor.logs.filterAffinityKey', { value: log.affinity_key })"
+                :title="log.affinity_key ?? ''"
+                data-testid="logs-affinity-key-filter"
+                @click="filterByAffinityKey(log.affinity_key)"
+              >
+                …{{ log.affinity_key?.slice(-6) ?? '' }}
+              </button>
+            </AppTooltip>
+            <CopyChip
               v-if="affinityKeyFilterable(log)"
-              as="button"
-              type="button"
-              class="logs-list__affinity-key filterable-value"
-              :content="log.affinity_key ?? ''"
-              :aria-label="t('monitor.logs.filterAffinityKey', { value: log.affinity_key })"
-              data-testid="logs-affinity-key-filter"
-              @click="filterByAffinityKey(log.affinity_key)"
-            >
-              …{{ log.affinity_key?.slice(-6) ?? '' }}
-            </OverflowTooltip>
+              :value="log.affinity_key ?? ''"
+              :label="t('monitor.logs.copyAffinityKey')"
+              :success-label="t('monitor.logs.copySuccess')"
+              :failure-label="t('monitor.logs.copyFailure')"
+              layout="icon"
+            />
             <code v-else class="logs-list__affinity-key">—</code>
           </div>
           <div
@@ -933,12 +952,14 @@ function costLabel(log: RequestLogItemDto): string {
                 </span>
               </AppTooltip>
             </div>
-            <OverflowTooltip
-              v-if="log.attempt_count > 1"
-              as="small"
-              :content="t('monitor.logs.attemptCount', { count: log.attempt_count })"
-            >
-              {{ t('monitor.logs.attemptCount', { count: log.attempt_count }) }}
+            <small class="logs-list__response-meta">
+              {{ t('monitor.logs.response.httpStatus', { code: log.status_code }) }}
+              <span v-if="log.attempt_count > 1">
+                · {{ t('monitor.logs.attemptCount', { count: log.attempt_count }) }}
+              </span>
+            </small>
+            <OverflowTooltip v-if="log.error_code" as="small" :content="responseTooltip(log)">
+              {{ log.error_code }}
             </OverflowTooltip>
           </div>
           <div
@@ -1052,7 +1073,7 @@ function costLabel(log: RequestLogItemDto): string {
         </article>
       </LedgerRecordList>
       <EmptyState
-        v-else
+        v-if="!logs.length"
         variant="ledger"
         :title="
           t(hasNonTimeFilters ? 'monitor.logs.empty.filteredTitle' : 'monitor.logs.empty.title')
@@ -1142,6 +1163,12 @@ function costLabel(log: RequestLogItemDto): string {
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.logs-list__summary {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
 .logs-list__time {
