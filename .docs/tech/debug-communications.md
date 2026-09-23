@@ -1,3 +1,16 @@
+---
+description: "Enable and inspect raw Gateway and provider communication captures, including model probes and credential tests, with explicit retention and evidence boundaries."
+kind: technical
+topic: debug-capture
+code:
+  paths:
+    - internal/debugcapture
+    - internal/container/debug_capture.go
+    - internal/container/debug_capture_unix.go
+    - internal/control/probe_capture.go
+    - internal/execution/http_observer.go
+    - third_party/cpaembedded/embedded/http_observer.go
+---
 # Debug Communication Capture
 
 Debug communication capture is an opt-in operational tool for investigating gateway and provider integration behavior. On Unix runtimes, set `DEBUG_CAPTURE_ENABLED=true` to enable it; it is disabled by default.
@@ -33,6 +46,38 @@ CPA integrations for Codex, Claude, Antigravity, and Grok, plus the Bifrost-back
 The feature records only data that the Gateway or a supported CPA/Bifrost HTTP observer actually observes. It does not claim to capture TLS or socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed before cancellation, timeout, process failure, or connection close.
 
 Capture persistence is isolated from the data plane. Storage, queue, callback, or cleanup failures do not change the response returned to the client. The affected capture is instead marked failed or remains non-terminal, and the runtime health section reports cleanup state and active/completed/failed counts where available.
+
+## Model probes and credential tests
+
+Model probes and credential tests use the same opt-in store and administrator
+query/download APIs. Each probe uses its execution `request_id` and attempt
+identity to associate the observed provider headers, body bytes, and termination
+events with the capture. These captures describe provider communication; they do
+not add a Gateway client request/response pair or a structured request-log row.
+A probe capture can be located directly with the debug capture `request_id`
+filter, without first finding a request-log entry.
+
+`internal/control/probe_capture.go` supplies the shared observer through the
+execution context. `internal/container/debug_capture.go` adapts it to the capture
+store. Capture metadata includes provider, channel, upstream model, route mode,
+and attempt sequence. A failed provider call and a failed capture are separate:
+a provider error may still have a complete capture, while a capture write error
+marks the attempt/session failed without replacing the probe's execution result.
+
+CPA callbacks run asynchronously. An observer registers its lifecycle when
+created and unregisters after the final queued callback completes. Probe
+finalization waits for registered observations and in-flight writes before
+completing the capture; a probe that never starts an observer does not wait for
+one. This drain has no independent deadline: if a registered response body is
+never consumed or closed, finalization can continue waiting. It does not imply
+that unobserved bytes have been captured.
+
+The evidence boundary remains the bytes and events actually observed. A
+`completed` capture with no response body cannot establish that a provider
+returned a complete response; inspect parts and termination metadata together.
+Regression evidence lives in `internal/control/probe_capture_test.go`,
+`internal/container/debug_capture_test.go`, and
+`third_party/cpaembedded/embedded/http_observer_test.go`.
 
 ## 空完成排查顺序
 
