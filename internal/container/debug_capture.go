@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 
+	"gpt-load/internal/control"
 	"gpt-load/internal/debugcapture"
 	"gpt-load/internal/gateway"
 )
@@ -20,7 +21,7 @@ type debugCaptureFactory struct {
 	runtime *debugcapture.Runtime
 }
 
-func newDebugCaptureFactory(store *debugcapture.Store, runtime *debugcapture.Runtime) gateway.CaptureFactory {
+func newDebugCaptureFactory(store *debugcapture.Store, runtime *debugcapture.Runtime) *debugCaptureFactory {
 	if store == nil {
 		return nil
 	}
@@ -58,6 +59,19 @@ func (factory *debugCaptureFactory) StartSession(metadata gateway.CaptureSession
 		inner:   session,
 		release: release,
 	}, nil
+}
+
+func (factory *debugCaptureFactory) StartProbeCapture(metadata control.ProbeCaptureSessionMetadata) (control.ProbeCaptureSession, error) {
+	session, err := factory.StartSession(gateway.CaptureSessionMetadata{
+		RequestID: metadata.RequestID,
+		Protocol:  metadata.Protocol,
+		Operation: metadata.Operation,
+		Fields:    metadata.Fields,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &probeDebugCaptureSession{session: session}, nil
 }
 
 type debugCaptureSession struct {
@@ -122,6 +136,56 @@ func (session *debugCaptureSession) releaseAdmission() {
 type debugCaptureAttempt struct {
 	inner *debugcapture.Attempt
 }
+
+type probeDebugCaptureSession struct {
+	session gateway.CaptureSession
+}
+
+func (session *probeDebugCaptureSession) StartProbeAttempt(metadata control.ProbeCaptureAttemptMetadata) (control.ProbeCaptureAttempt, error) {
+	fields := make(map[string]string, len(metadata.Fields)+2)
+	for key, value := range metadata.Fields {
+		fields[key] = value
+	}
+	attempt, err := session.session.StartAttempt(gateway.CaptureAttemptMetadata{
+		AttemptID: metadata.AttemptID,
+		Sequence:  metadata.Sequence,
+		Fields:    fields,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &probeDebugCaptureAttempt{attempt: attempt}, nil
+}
+
+func (session *probeDebugCaptureSession) Complete() error      { return session.session.Complete() }
+func (session *probeDebugCaptureSession) Fail(err error) error { return session.session.Fail(err) }
+
+type probeDebugCaptureAttempt struct {
+	attempt gateway.CaptureAttempt
+}
+
+func (attempt *probeDebugCaptureAttempt) AppendRequestHeaders(data []byte) error {
+	return attempt.attempt.AppendRequestHeaders(data)
+}
+func (attempt *probeDebugCaptureAttempt) AppendRequestBody(data []byte) error {
+	return attempt.attempt.AppendRequestBody(data)
+}
+func (attempt *probeDebugCaptureAttempt) AppendResponseHeaders(data []byte) error {
+	return attempt.attempt.AppendResponseHeaders(data)
+}
+func (attempt *probeDebugCaptureAttempt) AppendResponseBody(data []byte) error {
+	return attempt.attempt.AppendResponseBody(data)
+}
+func (attempt *probeDebugCaptureAttempt) RecordResponseTermination(kind, detail string) error {
+	if events, ok := attempt.attempt.(interface {
+		RecordResponseTermination(string, string) error
+	}); ok {
+		return events.RecordResponseTermination(kind, detail)
+	}
+	return nil
+}
+func (attempt *probeDebugCaptureAttempt) Complete() error      { return attempt.attempt.Complete() }
+func (attempt *probeDebugCaptureAttempt) Fail(err error) error { return attempt.attempt.Fail(err) }
 
 func (attempt *debugCaptureAttempt) AppendRequestHeaders(data []byte) error {
 	return attempt.inner.AppendHeaders(debugcapture.DirectionRequest, data)
@@ -226,3 +290,6 @@ var _ gateway.CaptureFactory = (*debugCaptureFactory)(nil)
 var _ gateway.CaptureSession = (*debugCaptureSession)(nil)
 var _ gateway.CaptureSessionMetadataUpdater = (*debugCaptureSession)(nil)
 var _ gateway.CaptureAttempt = (*debugCaptureAttempt)(nil)
+var _ control.ProbeCaptureFactory = (*debugCaptureFactory)(nil)
+var _ control.ProbeCaptureSession = (*probeDebugCaptureSession)(nil)
+var _ control.ProbeCaptureAttempt = (*probeDebugCaptureAttempt)(nil)

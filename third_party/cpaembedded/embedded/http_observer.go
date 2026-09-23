@@ -19,6 +19,11 @@ type HTTPObserver interface {
 	ObserveResponseComplete(string, http.Header, error)
 }
 
+type httpObservationLifecycle interface {
+	BeginHTTPObservation(string)
+	EndHTTPObservation(string)
+}
+
 const (
 	httpObserverContextKey  = "gpt-load.http-observer"
 	httpAttemptIDContextKey = "gpt-load.http-attempt-id"
@@ -42,6 +47,9 @@ func newObserverSink(observer HTTPObserver, attemptID string, _ context.Context)
 	sink := &observerSink{
 		observer: observer, attemptID: attemptID,
 		wake: make(chan struct{}, 1), accepting: true, done: make(chan struct{}),
+	}
+	if lifecycle, ok := observer.(httpObservationLifecycle); ok {
+		lifecycle.BeginHTTPObservation(attemptID)
 	}
 	go sink.run()
 	return sink
@@ -102,6 +110,9 @@ func (sink *observerSink) complete(trailers http.Header, err error) {
 		sink.accepting = false
 		sink.queue = append(sink.queue, func() {
 			defer close(sink.done)
+			if lifecycle, ok := sink.observer.(httpObservationLifecycle); ok {
+				defer lifecycle.EndHTTPObservation(sink.attemptID)
+			}
 			sink.invoke(func() {
 				sink.observer.ObserveResponseComplete(sink.attemptID, trailers, err)
 			})

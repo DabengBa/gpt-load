@@ -104,22 +104,25 @@ type credentialProbeAttempt struct {
 }
 
 type credentialProbeExecutor struct {
-	decryptor credentialDecryptor
-	channels  *channel.Registry
-	executor  execution.Executor
-	now       func() time.Time
+	decryptor      credentialDecryptor
+	channels       *channel.Registry
+	executor       execution.Executor
+	captureFactory ProbeCaptureFactory
+	now            func() time.Time
 }
 
 func newCredentialProbeExecutor(
 	decryptor credentialDecryptor,
 	channels *channel.Registry,
 	executor execution.Executor,
+	captureFactory ProbeCaptureFactory,
 ) *credentialProbeExecutor {
 	return &credentialProbeExecutor{
-		decryptor: decryptor,
-		channels:  channels,
-		executor:  executor,
-		now:       time.Now,
+		decryptor:      decryptor,
+		channels:       channels,
+		executor:       executor,
+		captureFactory: captureFactory,
+		now:            time.Now,
 	}
 }
 
@@ -218,7 +221,9 @@ func (probe *credentialProbeExecutor) Probe(
 		)
 	}
 	attemptStartedAt := probe.now()
-	result := probe.executor.Execute(ctx, spec)
+	executionContext, finishCapture := probe.startCapture(ctx, spec)
+	result := probe.executor.Execute(executionContext, spec)
+	finishCapture(result)
 	if err := ctx.Err(); err != nil {
 		return credentialProbeExecution{}, err
 	}
@@ -396,7 +401,7 @@ func (s *Service) TestGroupCredential(
 	if err != nil {
 		return CredentialProbeResponse{}, err
 	}
-	probe := newCredentialProbeExecutor(s.encryption, s.channelRegistry, s.executor)
+	probe := newCredentialProbeExecutor(s.encryption, s.channelRegistry, s.executor, s.probeCaptures)
 	executed, err := probe.Probe(ctx, group, target, credential.ref)
 	if err != nil {
 		return CredentialProbeResponse{}, err

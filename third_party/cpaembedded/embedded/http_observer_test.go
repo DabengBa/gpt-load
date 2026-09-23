@@ -161,6 +161,86 @@ func TestHTTPObserverReliablyDeliversLongStreamBehindSlowCallback(t *testing.T) 
 	}
 }
 
+type lifecycleHTTPObserver struct {
+	*blockingHTTPObserver
+	mu        sync.Mutex
+	begun     int
+	ended     chan struct{}
+	endEvents []observerEvent
+}
+
+func (observer *lifecycleHTTPObserver) BeginHTTPObservation(string) {
+	observer.mu.Lock()
+	observer.begun++
+	observer.mu.Unlock()
+}
+
+func (observer *lifecycleHTTPObserver) EndHTTPObservation(string) {
+	observer.mu.Lock()
+	observer.endEvents = observer.snapshot()
+	observer.mu.Unlock()
+	close(observer.ended)
+}
+
+func TestHTTPObserverLifecycleEndsAfterQueuedCompletion(t *testing.T) {
+	observer := &lifecycleHTTPObserver{
+		blockingHTTPObserver: &blockingHTTPObserver{recordingHTTPObserver: newRecordingHTTPObserver(), started: make(chan struct{}), release: make(chan struct{})},
+		ended:                make(chan struct{}),
+	}
+	request, err := http.NewRequest(http.MethodPost, "https://upstream.invalid", strings.NewReader("request bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := observeRoundTrip(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if _, err := io.ReadAll(req.Body); err != nil {
+			t.Error(err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("response bytes"))}, nil
+	}), request, observer, "lifecycle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer.mu.Lock()
+	begun := observer.begun
+	observer.mu.Unlock()
+	if begun != 1 {
+		t.Fatalf("synchronous registrations = %d, want 1", begun)
+	}
+	if _, err := io.ReadAll(response.Body); err != nil {
+		t.Fatal(err)
+	}
+	if err := response.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	<-observer.started
+	select {
+	case <-observer.ended:
+		t.Fatal("lifecycle ended before blocked callback finished")
+	default:
+	}
+	close(observer.release)
+	select {
+	case <-observer.ended:
+	case <-time.After(time.Second):
+		t.Fatal("lifecycle did not end after completion")
+	}
+	observer.mu.Lock()
+	events := observer.endEvents
+	observer.mu.Unlock()
+	var requestBody, responseBody []byte
+	for _, event := range events {
+		switch event.kind {
+		case "request-body":
+			requestBody = append(requestBody, event.body...)
+		case "response-body":
+			responseBody = append(responseBody, event.body...)
+		}
+	}
+	if string(requestBody) != "request bytes" || string(responseBody) != "response bytes" || events[len(events)-1].kind != "complete" {
+		t.Fatalf("events at lifecycle end = %#v", events)
+	}
+}
+
 func TestHTTPObserverCancellationPreservesBytesReadAfterCancel(t *testing.T) {
 	observer := &blockingHTTPObserver{
 		recordingHTTPObserver: newRecordingHTTPObserver(),

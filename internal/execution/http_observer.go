@@ -17,6 +17,13 @@ type HTTPObserver interface {
 	ObserveResponseComplete(string, http.Header, error)
 }
 
+// HTTPObservationLifecycle optionally brackets an asynchronous HTTP observer
+// queue. End is called after its final completion callback returns.
+type HTTPObservationLifecycle interface {
+	BeginHTTPObservation(string)
+	EndHTTPObservation(string)
+}
+
 // These string keys are shared with the nested CPA module, which cannot import
 // this root module because it is a separate Go module.
 const (

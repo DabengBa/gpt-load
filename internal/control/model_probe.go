@@ -105,7 +105,7 @@ func (service *Service) ProbeGroupModels(
 	if err != nil {
 		return ModelProbeResponse{}, err
 	}
-	probe := newCredentialProbeExecutor(service.encryption, service.channelRegistry, service.executor)
+	probe := newCredentialProbeExecutor(service.encryption, service.channelRegistry, service.executor, service.probeCaptures)
 	deduped := dedupeModelProbeTargets(request.Targets)
 	results := make([]ModelProbeResultResponse, len(deduped))
 	// Acquire before launching so the bound also caps live goroutines, and wait
