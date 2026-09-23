@@ -125,14 +125,13 @@ const groupLinkAction = computed(() =>
     align="start"
   >
     <span class="log-route-identity" :class="`log-route-identity--${appearance}`">
+      <span v-if="showsIcon" class="log-route-identity__icon">
+        <ChannelIcon :icon="channel?.icon ?? ''" :mark="channel?.mark ?? ''" />
+      </span>
+      <span v-else-if="channelId !== null" class="log-route-identity__channel">
+        {{ channelLabel }}
+      </span>
       <span class="log-route-identity__line">
-        <span v-if="showsIcon" class="log-route-identity__icon">
-          <ChannelIcon :icon="channel?.icon ?? ''" :mark="channel?.mark ?? ''" />
-        </span>
-        <span v-else-if="channelId !== null" class="log-route-identity__channel">
-          {{ channelLabel }}
-        </span>
-
         <button
           v-if="canFilterGroup"
           class="log-route-identity__group filterable-value"
@@ -204,7 +203,7 @@ const groupLinkAction = computed(() =>
 
 .log-route-identity__line {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
   align-items: center;
   gap: 4px;
@@ -297,6 +296,10 @@ const groupLinkAction = computed(() =>
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
+}
+
+.log-route-identity--plain .log-route-identity__line {
+  display: contents;
 }
 
 .log-route-identity--plain .log-route-identity__icon,
