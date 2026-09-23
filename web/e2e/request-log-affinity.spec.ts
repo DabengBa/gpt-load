@@ -336,33 +336,65 @@ test.describe('request log affinity filter', () => {
     expect(mobileLayout.dataLabels).toHaveLength(7)
   })
 
-  test('collection skeleton renders nine columns for admin in pending and transition states', async ({
-    page,
-  }) => {
-    const routes = await installRequestLogAffinityRoutes(page, 'admin', { logDelayMs: 800 })
-    await page.goto('/logs')
-    await expectCollectionSkeletonColumns(page, 9)
-    await expect(page.locator('.logs-list')).toBeVisible()
+  for (const principal of ['admin', 'access_key'] as const) {
+    for (const initiallyEmpty of [false, true]) {
+      test(`${principal} collection transition hides ${initiallyEmpty ? 'empty state' : 'previous results'}`, async ({
+        page,
+      }) => {
+        await installRequestLogAffinityRoutes(page, principal, { logDelayMs: 800 })
+        if (initiallyEmpty) {
+          await page.route(
+            '**/api/logs?**',
+            async (route) => {
+              await route.fulfill({
+                json: { code: 0, message: 'OK', data: { items: [], next_cursor: null } },
+              })
+            },
+            { times: 1 },
+          )
+        }
+        await page.goto('/logs')
+        const columns = principal === 'admin' ? 9 : 7
+        if (!initiallyEmpty) await expectCollectionSkeletonColumns(page, columns)
+        const list = page.locator('.logs-list')
+        const summary = page.getByTestId('logs-result-summary')
+        const empty = page.locator('.logs-tab .empty-state')
+        if (initiallyEmpty) {
+          await expect(empty).toBeVisible()
+        } else {
+          await expect(list).toBeVisible()
+          await expect(summary).toBeVisible()
+        }
 
-    await page.locator('.pagination-bar select').selectOption('50')
-    await expectCollectionSkeletonColumns(page, 9)
-    await expect(page.locator('.logs-list')).toBeVisible()
-    expect(routes.logRequests.length).toBeGreaterThanOrEqual(2)
-  })
-
-  test('collection skeleton renders seven columns for access-key in pending and transition states', async ({
-    page,
-  }) => {
-    const routes = await installRequestLogAffinityRoutes(page, 'access_key', { logDelayMs: 800 })
-    await page.goto('/logs')
-    await expectCollectionSkeletonColumns(page, 7)
-    await expect(page.locator('.logs-list')).toBeVisible()
-
-    await page.locator('.pagination-bar select').selectOption('50')
-    await expectCollectionSkeletonColumns(page, 7)
-    await expect(page.locator('.logs-list')).toBeVisible()
-    expect(routes.logRequests.length).toBeGreaterThanOrEqual(2)
-  })
+        let releaseResponse!: () => void
+        const responseReady = new Promise<void>((resolve) => {
+          releaseResponse = resolve
+        })
+        await page.route(
+          '**/api/logs?**',
+          async (route) => {
+            await responseReady
+            await route.fallback()
+          },
+          { times: 1 },
+        )
+        try {
+          await page.locator('.pagination-bar select').selectOption('50')
+          await expectCollectionSkeletonColumns(page, columns)
+          await expect(list).toBeHidden()
+          await expect(summary).toBeHidden()
+          await expect(empty).toBeHidden()
+        } finally {
+          releaseResponse()
+        }
+        await expect(list).toBeVisible()
+        await expect(summary).toBeVisible()
+        await expect(empty).toBeHidden()
+        await expect(page.locator('.skeleton-surface--collection')).toBeHidden()
+        await expect(list.locator('[role="columnheader"]')).toHaveCount(columns)
+      })
+    }
+  }
 
   test('reapplying unchanged filters refreshes the current log page', async ({ page }) => {
     const routes = await installRequestLogAffinityRoutes(page, 'admin')
@@ -524,7 +556,9 @@ test.describe('request log date range picker', () => {
     await firstMonthDay(page, 16).click()
 
     // The from time field renders HH:MM:SS segments; type a new hour into the first segment.
-    const fromTimeField = page.locator('.app-date-range__fields .app-date-range__time-field').first()
+    const fromTimeField = page
+      .locator('.app-date-range__fields .app-date-range__time-field')
+      .first()
     const hourSegment = fromTimeField.locator('.app-date-range__time-segment').first()
     await hourSegment.click()
     await page.keyboard.type('05')

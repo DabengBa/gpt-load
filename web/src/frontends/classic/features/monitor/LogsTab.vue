@@ -757,352 +757,355 @@ function costLabel(log: RequestLogItemDto): string {
         mobile-row-height="176px"
         :label="t('monitor.logs.loading')"
       />
-      <p v-if="logs.length" class="logs-list__summary" data-testid="logs-result-summary">
-        {{ t('monitor.logs.resultSummary', { count: logs.length }) }}
-      </p>
-      <LedgerRecordList
-        v-if="logs.length"
-        :grid-class="isAccessKey ? 'logs-list logs-list--scoped' : 'logs-list'"
-        :label="t('monitor.logs.caption')"
-        :row-count="logs.length + 1"
-        :scroll-hint="t('monitor.scrollHint')"
-      >
-        <template #header>
-          <span role="columnheader" :aria-label="t('monitor.logs.columns.timeNewestFirst')">{{
-            t('monitor.logs.columns.time')
-          }}</span>
-          <span v-if="!isAccessKey" role="columnheader">{{
-            t('monitor.logs.columns.affinityKey')
-          }}</span>
-          <span v-if="!isAccessKey" role="columnheader">{{ t('monitor.logs.columns.route') }}</span>
-          <span role="columnheader">{{ t('monitor.logs.columns.modelProtocol') }}</span>
-          <span role="columnheader">{{ t('monitor.logs.columns.response') }}</span>
-          <span role="columnheader">{{ t('monitor.logs.columns.cost') }}</span>
-          <span
-            class="logs-list__tokens-header"
-            role="columnheader"
-            :aria-label="t('monitor.logs.columns.tokensDetail')"
-          >
-            {{ t('monitor.logs.columns.tokens') }}
-          </span>
-          <span role="columnheader" :aria-label="t('monitor.logs.columns.timingDetail')">{{
-            t('monitor.logs.columns.timing')
-          }}</span>
-          <span role="columnheader">{{ t('monitor.logs.columns.actions') }}</span>
-        </template>
-
-        <article
-          v-for="(log, index) in logs"
-          :key="log.request_id"
-          class="ledger-record-list__record logs-list__record"
-          role="row"
-          :aria-rowindex="index + 2"
+      <template v-else>
+        <p v-if="logs.length" class="logs-list__summary" data-testid="logs-result-summary">
+          {{ t('monitor.logs.resultSummary', { count: logs.length }) }}
+        </p>
+        <LedgerRecordList
+          v-if="logs.length"
+          :grid-class="isAccessKey ? 'logs-list logs-list--scoped' : 'logs-list'"
+          :label="t('monitor.logs.caption')"
+          :row-count="logs.length + 1"
+          :scroll-hint="t('monitor.scrollHint')"
         >
-          <div
-            class="ledger-record-list__cell logs-list__cell logs-list__time"
-            role="cell"
-            :data-label="t('monitor.logs.columns.time')"
+          <template #header>
+            <span role="columnheader" :aria-label="t('monitor.logs.columns.timeNewestFirst')">{{
+              t('monitor.logs.columns.time')
+            }}</span>
+            <span v-if="!isAccessKey" role="columnheader">{{
+              t('monitor.logs.columns.affinityKey')
+            }}</span>
+            <span v-if="!isAccessKey" role="columnheader">{{
+              t('monitor.logs.columns.route')
+            }}</span>
+            <span role="columnheader">{{ t('monitor.logs.columns.modelProtocol') }}</span>
+            <span role="columnheader">{{ t('monitor.logs.columns.response') }}</span>
+            <span role="columnheader">{{ t('monitor.logs.columns.cost') }}</span>
+            <span
+              class="logs-list__tokens-header"
+              role="columnheader"
+              :aria-label="t('monitor.logs.columns.tokensDetail')"
+            >
+              {{ t('monitor.logs.columns.tokens') }}
+            </span>
+            <span role="columnheader" :aria-label="t('monitor.logs.columns.timingDetail')">{{
+              t('monitor.logs.columns.timing')
+            }}</span>
+            <span role="columnheader">{{ t('monitor.logs.columns.actions') }}</span>
+          </template>
+
+          <article
+            v-for="(log, index) in logs"
+            :key="log.request_id"
+            class="ledger-record-list__record logs-list__record"
+            role="row"
+            :aria-rowindex="index + 2"
           >
-            <time :datetime="formatISOInstant(log.completed_at_ms)">
-              {{ formatLogCompletedAt(log.completed_at_ms) }}
-            </time>
-          </div>
-          <div
-            v-if="!isAccessKey"
-            class="ledger-record-list__cell logs-list__cell logs-list__affinity-key-cell"
-            role="cell"
-            :data-label="t('monitor.logs.columns.affinityKey')"
-          >
-            <AppTooltip v-if="affinityKeyFilterable(log)" :content="log.affinity_key ?? ''">
-              <button
-                type="button"
-                class="logs-list__affinity-key filterable-value"
-                :aria-label="t('monitor.logs.filterAffinityKey', { value: log.affinity_key })"
-                :title="log.affinity_key ?? ''"
-                data-testid="logs-affinity-key-filter"
-                @click="filterByAffinityKey(log.affinity_key)"
-              >
-                …{{ log.affinity_key?.slice(-6) ?? '' }}
-              </button>
-            </AppTooltip>
-            <CopyChip
-              v-if="affinityKeyFilterable(log)"
-              :value="log.affinity_key ?? ''"
-              :label="t('monitor.logs.copyAffinityKey')"
-              :success-label="t('monitor.logs.copySuccess')"
-              :failure-label="t('monitor.logs.copyFailure')"
-              layout="icon"
-            />
-            <code v-else class="logs-list__affinity-key">—</code>
-          </div>
-          <div
-            v-if="!isAccessKey"
-            class="ledger-record-list__cell logs-list__cell"
-            role="cell"
-            :data-label="t('monitor.logs.columns.route')"
-          >
-            <LogRouteIdentity
-              :group-id="log.group_id"
-              :group-name="groupName(log)"
-              :provider-url="
-                log.group_id === null ? null : (groupProviderUrls[log.group_id] ?? null)
-              "
-              :channel-id="log.channel_id"
-              :channel="channelDefinition(log)"
-              :credential-id="log.credential_id"
-              :credential-name="log.credential_name"
-              :group-deleted="groupDeleted(log)"
-              :credential-deleted="log.credential_id !== null && log.credential_name === ''"
-              filterable
-              @filter-group="filterByGroup"
-              @filter-credential="filterByCredential"
-            />
-          </div>
-          <div
-            class="ledger-record-list__cell logs-list__cell"
-            role="cell"
-            :data-label="t('monitor.logs.columns.modelProtocol')"
-          >
-            <span class="logs-list__inline">
-              <OverflowTooltip
-                v-if="log.client_model"
-                as="button"
-                type="button"
-                class="logs-list__model filterable-value"
-                :content="log.client_model"
-                :aria-label="t('monitor.logs.filterModel', { name: log.client_model })"
-                @click="filterByClientModel(log.client_model)"
-              >
-                {{ log.client_model }}
-              </OverflowTooltip>
-              <code v-else class="logs-list__model">—</code>
-              <OverflowTooltip
-                v-if="log.upstream_model && log.upstream_model !== log.client_model"
-                as="span"
-                class="logs-list__model-mapping"
-                :content="log.upstream_model"
-              >
-                -&gt;{{ log.upstream_model }}
-              </OverflowTooltip>
-              <OverflowTooltip
-                v-if="reasoningLabel(log)"
-                as="small"
-                class="logs-list__reasoning"
-                :content="reasoningLabel(log)"
-              >
-                {{ reasoningLabel(log) }}
-              </OverflowTooltip>
-              <AppTooltip
-                v-if="log.model_consistency === 'unknown' || log.model_consistency === 'mismatch'"
-                :content="modelConsistencyTooltip(log)"
-              >
+            <div
+              class="ledger-record-list__cell logs-list__cell logs-list__time"
+              role="cell"
+              :data-label="t('monitor.logs.columns.time')"
+            >
+              <time :datetime="formatISOInstant(log.completed_at_ms)">
+                {{ formatLogCompletedAt(log.completed_at_ms) }}
+              </time>
+            </div>
+            <div
+              v-if="!isAccessKey"
+              class="ledger-record-list__cell logs-list__cell logs-list__affinity-key-cell"
+              role="cell"
+              :data-label="t('monitor.logs.columns.affinityKey')"
+            >
+              <AppTooltip v-if="affinityKeyFilterable(log)" :content="log.affinity_key ?? ''">
                 <button
                   type="button"
-                  class="logs-list__hint logs-list__model-consistency"
-                  :class="`logs-list__model-consistency--${log.model_consistency}`"
-                  :aria-label="modelConsistencyLabel(log)"
+                  class="logs-list__affinity-key filterable-value"
+                  :aria-label="t('monitor.logs.filterAffinityKey', { value: log.affinity_key })"
+                  :title="log.affinity_key ?? ''"
+                  data-testid="logs-affinity-key-filter"
+                  @click="filterByAffinityKey(log.affinity_key)"
                 >
-                  <TriangleAlert
-                    v-if="log.model_consistency === 'mismatch'"
-                    :size="14"
-                    aria-hidden="true"
-                  />
-                  <CircleHelp v-else :size="13" aria-hidden="true" />
+                  …{{ log.affinity_key?.slice(-6) ?? '' }}
                 </button>
               </AppTooltip>
-            </span>
-            <span class="logs-list__protocol-line">
-              <OverflowTooltip as="small" :content="log.protocol">
-                {{ log.protocol }}
-              </OverflowTooltip>
-              <LogProtocolConversion
-                :mode="log.route_mode"
-                :client-protocol="log.protocol"
-                :upstream-protocol="log.upstream_protocol"
+              <CopyChip
+                v-if="affinityKeyFilterable(log)"
+                :value="log.affinity_key ?? ''"
+                :label="t('monitor.logs.copyAffinityKey')"
+                :success-label="t('monitor.logs.copySuccess')"
+                :failure-label="t('monitor.logs.copyFailure')"
+                layout="icon"
               />
-            </span>
-          </div>
-          <div
-            class="ledger-record-list__cell logs-list__cell"
-            role="cell"
-            :data-label="t('monitor.logs.columns.response')"
-          >
-            <div class="logs-list__response-primary">
-              <AppTooltip v-if="responseTooltipVisible(log)" :content="responseTooltip(log)">
-                <span
-                  ><StatusBadge :tone="statusTone(log.status)" size="compact">{{
-                    responseLabel(log)
-                  }}</StatusBadge></span
-                >
-              </AppTooltip>
-              <OverflowTooltip v-else as="span" :content="responseLabel(log)">
-                <StatusBadge :tone="statusTone(log.status)" size="compact">
-                  {{ responseLabel(log) }}
-                </StatusBadge>
-              </OverflowTooltip>
-              <AppTooltip v-if="showAffinityObservation(log)" :content="affinityTooltip(log)">
-                <span
-                  class="logs-list__hint logs-list__affinity"
-                  tabindex="0"
-                  :aria-label="affinityTooltip(log)"
-                >
-                  <Magnet v-if="log.affinity_hit" :size="13" aria-hidden="true" />
-                  <ArrowRight v-else-if="log.continuity_hit" :size="13" aria-hidden="true" />
-                  <Info v-else :size="13" aria-hidden="true" />
-                </span>
-              </AppTooltip>
+              <code v-else class="logs-list__affinity-key">—</code>
             </div>
-            <small class="logs-list__response-meta">
-              {{ t('monitor.logs.response.httpStatus', { code: log.status_code }) }}
-              <span v-if="log.attempt_count > 1">
-                · {{ t('monitor.logs.attemptCount', { count: log.attempt_count }) }}
-              </span>
-            </small>
-            <OverflowTooltip v-if="log.error_code" as="small" :content="responseTooltip(log)">
-              {{ log.error_code }}
-            </OverflowTooltip>
-          </div>
-          <div
-            class="ledger-record-list__cell logs-list__cell"
-            role="cell"
-            :data-label="t('monitor.logs.columns.cost')"
-          >
-            <span class="logs-list__cost-line">
-              <OverflowTooltip
-                as="span"
-                :content="costLabel(log)"
-                :class="{
-                  'logs-list__state--warning': requestLogCostDisplayState(log) !== 'complete',
-                }"
-              >
-                {{ costLabel(log) }}
-              </OverflowTooltip>
-              <PricingModeIndicator
-                :mode="log.pricing_mode"
-                :context-threshold-tokens="log.context_threshold_tokens"
-              />
-            </span>
-          </div>
-          <div
-            class="ledger-record-list__cell logs-list__cell"
-            role="cell"
-            :data-label="t('monitor.logs.columns.tokens')"
-          >
-            <OverflowTooltip
-              v-if="requestLogUsageDisplayState(log) === 'reported'"
-              as="span"
-              class="logs-list__tokens"
-              :content="`${t('monitor.logs.tokens.input')}: ${formatLogTokenCount(log.input_tokens, locale)}\n${t('monitor.logs.tokens.output')}: ${formatLogTokenCount(log.output_tokens, locale)}`"
+            <div
+              v-if="!isAccessKey"
+              class="ledger-record-list__cell logs-list__cell"
+              role="cell"
+              :data-label="t('monitor.logs.columns.route')"
             >
-              <span class="logs-list__token-values">
-                <span class="logs-list__token-line">
-                  <span class="logs-list__token-direction" aria-hidden="true">in</span>
-                  {{ formatLogTokenCount(log.input_tokens, locale) }}
-                  <span class="logs-list__token-hints">
-                    <AppTooltip
-                      v-if="log.usage_state === 'partial'"
-                      :content="t('monitor.logs.tokens.partial')"
-                    >
-                      <button
-                        type="button"
-                        class="logs-list__hint"
-                        :aria-label="t('monitor.logs.tokens.partial')"
-                      >
-                        <CircleHelp :size="13" aria-hidden="true" />
-                      </button>
-                    </AppTooltip>
-                  </span>
-                </span>
-                <span class="logs-list__token-line">
-                  <span class="logs-list__token-direction" aria-hidden="true">out</span>
-                  {{ formatLogTokenCount(log.output_tokens, locale) }}
-                </span>
-                <AppTooltip v-if="hasRequestLogCache(log)" :content="cacheTooltip(log)">
+              <LogRouteIdentity
+                :group-id="log.group_id"
+                :group-name="groupName(log)"
+                :provider-url="
+                  log.group_id === null ? null : (groupProviderUrls[log.group_id] ?? null)
+                "
+                :channel-id="log.channel_id"
+                :channel="channelDefinition(log)"
+                :credential-id="log.credential_id"
+                :credential-name="log.credential_name"
+                :group-deleted="groupDeleted(log)"
+                :credential-deleted="log.credential_id !== null && log.credential_name === ''"
+                filterable
+                @filter-group="filterByGroup"
+                @filter-credential="filterByCredential"
+              />
+            </div>
+            <div
+              class="ledger-record-list__cell logs-list__cell"
+              role="cell"
+              :data-label="t('monitor.logs.columns.modelProtocol')"
+            >
+              <span class="logs-list__inline">
+                <OverflowTooltip
+                  v-if="log.client_model"
+                  as="button"
+                  type="button"
+                  class="logs-list__model filterable-value"
+                  :content="log.client_model"
+                  :aria-label="t('monitor.logs.filterModel', { name: log.client_model })"
+                  @click="filterByClientModel(log.client_model)"
+                >
+                  {{ log.client_model }}
+                </OverflowTooltip>
+                <code v-else class="logs-list__model">—</code>
+                <OverflowTooltip
+                  v-if="log.upstream_model && log.upstream_model !== log.client_model"
+                  as="span"
+                  class="logs-list__model-mapping"
+                  :content="log.upstream_model"
+                >
+                  -&gt;{{ log.upstream_model }}
+                </OverflowTooltip>
+                <OverflowTooltip
+                  v-if="reasoningLabel(log)"
+                  as="small"
+                  class="logs-list__reasoning"
+                  :content="reasoningLabel(log)"
+                >
+                  {{ reasoningLabel(log) }}
+                </OverflowTooltip>
+                <AppTooltip
+                  v-if="log.model_consistency === 'unknown' || log.model_consistency === 'mismatch'"
+                  :content="modelConsistencyTooltip(log)"
+                >
                   <button
                     type="button"
-                    class="logs-list__hint logs-list__cache-rate"
-                    :aria-label="`${t('monitor.logs.tokens.cacheHitRate')} ${formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale)} · ${t('monitor.logs.tokens.cacheDetails')}`"
+                    class="logs-list__hint logs-list__model-consistency"
+                    :class="`logs-list__model-consistency--${log.model_consistency}`"
+                    :aria-label="modelConsistencyLabel(log)"
                   >
-                    <span class="logs-list__token-direction">
-                      <Layers :size="13" aria-hidden="true" />
-                    </span>
-                    {{ formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale) }}
+                    <TriangleAlert
+                      v-if="log.model_consistency === 'mismatch'"
+                      :size="14"
+                      aria-hidden="true"
+                    />
+                    <CircleHelp v-else :size="13" aria-hidden="true" />
                   </button>
                 </AppTooltip>
               </span>
-            </OverflowTooltip>
-            <span v-else class="logs-list__state--warning">—</span>
-          </div>
-          <div
-            class="ledger-record-list__cell logs-list__cell"
-            role="cell"
-            :data-label="t('monitor.logs.columns.timing')"
-          >
-            <OverflowTooltip as="span" :content="timingPrimary(log)">
-              <template v-if="log.stream && log.first_response_ms !== null">
-                <span :class="{ 'logs-list__timing--slow': log.first_response_ms > 15_000 }">{{
-                  formatLogDuration(log.first_response_ms)
-                }}</span>
-                <span aria-hidden="true"> / </span>{{ formatLogDuration(log.duration_ms) }}
-              </template>
-              <template v-else>{{ formatLogDuration(log.duration_ms) }}</template>
-            </OverflowTooltip>
-            <OverflowTooltip
-              v-if="formatLogOutputRate(log, locale) !== '—'"
-              as="small"
-              :content="formatLogOutputRate(log, locale)"
+              <span class="logs-list__protocol-line">
+                <OverflowTooltip as="small" :content="log.protocol">
+                  {{ log.protocol }}
+                </OverflowTooltip>
+                <LogProtocolConversion
+                  :mode="log.route_mode"
+                  :client-protocol="log.protocol"
+                  :upstream-protocol="log.upstream_protocol"
+                />
+              </span>
+            </div>
+            <div
+              class="ledger-record-list__cell logs-list__cell"
+              role="cell"
+              :data-label="t('monitor.logs.columns.response')"
             >
-              {{ formatLogOutputRate(log, locale) }}
-            </OverflowTooltip>
-          </div>
-          <div
-            class="ledger-record-list__cell logs-list__action"
-            role="cell"
-            :data-label="t('monitor.logs.columns.actions')"
-          >
-            <IconButton
-              :id="`log-details-${log.request_id}`"
-              variant="ghost"
-              size="compact"
-              :label="t('monitor.logs.details')"
-              @click="setDetailOpen(log.request_id, true)"
+              <div class="logs-list__response-primary">
+                <AppTooltip v-if="responseTooltipVisible(log)" :content="responseTooltip(log)">
+                  <span
+                    ><StatusBadge :tone="statusTone(log.status)" size="compact">{{
+                      responseLabel(log)
+                    }}</StatusBadge></span
+                  >
+                </AppTooltip>
+                <OverflowTooltip v-else as="span" :content="responseLabel(log)">
+                  <StatusBadge :tone="statusTone(log.status)" size="compact">
+                    {{ responseLabel(log) }}
+                  </StatusBadge>
+                </OverflowTooltip>
+                <AppTooltip v-if="showAffinityObservation(log)" :content="affinityTooltip(log)">
+                  <span
+                    class="logs-list__hint logs-list__affinity"
+                    tabindex="0"
+                    :aria-label="affinityTooltip(log)"
+                  >
+                    <Magnet v-if="log.affinity_hit" :size="13" aria-hidden="true" />
+                    <ArrowRight v-else-if="log.continuity_hit" :size="13" aria-hidden="true" />
+                    <Info v-else :size="13" aria-hidden="true" />
+                  </span>
+                </AppTooltip>
+              </div>
+              <small class="logs-list__response-meta">
+                {{ t('monitor.logs.response.httpStatus', { code: log.status_code }) }}
+                <span v-if="log.attempt_count > 1">
+                  · {{ t('monitor.logs.attemptCount', { count: log.attempt_count }) }}
+                </span>
+              </small>
+              <OverflowTooltip v-if="log.error_code" as="small" :content="responseTooltip(log)">
+                {{ log.error_code }}
+              </OverflowTooltip>
+            </div>
+            <div
+              class="ledger-record-list__cell logs-list__cell"
+              role="cell"
+              :data-label="t('monitor.logs.columns.cost')"
             >
-              <ArrowRight :size="16" aria-hidden="true" />
-            </IconButton>
-          </div>
-        </article>
-      </LedgerRecordList>
-      <EmptyState
-        v-if="!logs.length"
-        variant="ledger"
-        :title="
-          t(hasNonTimeFilters ? 'monitor.logs.empty.filteredTitle' : 'monitor.logs.empty.title')
-        "
-        :description="
-          t(
-            hasNonTimeFilters
-              ? 'monitor.logs.empty.filteredDescription'
-              : 'monitor.logs.empty.description',
-          )
-        "
-      >
-        <template #icon><Search :size="20" /></template>
-      </EmptyState>
-      <PaginationBar
-        v-if="!collectionTransition"
-        cursor
-        :page="currentPage"
-        :page-size="appliedFilters.limit ?? 20"
-        :page-sizes="logPageSizes"
-        show-page-size
-        appearance="detail"
-        :has-previous="routeState.cursorHistory.length > 0"
-        :has-next="Boolean(logsQuery.data.value?.next_cursor)"
-        :pending="paginationBusy"
-        @previous="previousPage"
-        @next="nextPage"
-        @update:page-size="setPageSize"
-      />
+              <span class="logs-list__cost-line">
+                <OverflowTooltip
+                  as="span"
+                  :content="costLabel(log)"
+                  :class="{
+                    'logs-list__state--warning': requestLogCostDisplayState(log) !== 'complete',
+                  }"
+                >
+                  {{ costLabel(log) }}
+                </OverflowTooltip>
+                <PricingModeIndicator
+                  :mode="log.pricing_mode"
+                  :context-threshold-tokens="log.context_threshold_tokens"
+                />
+              </span>
+            </div>
+            <div
+              class="ledger-record-list__cell logs-list__cell"
+              role="cell"
+              :data-label="t('monitor.logs.columns.tokens')"
+            >
+              <OverflowTooltip
+                v-if="requestLogUsageDisplayState(log) === 'reported'"
+                as="span"
+                class="logs-list__tokens"
+                :content="`${t('monitor.logs.tokens.input')}: ${formatLogTokenCount(log.input_tokens, locale)}\n${t('monitor.logs.tokens.output')}: ${formatLogTokenCount(log.output_tokens, locale)}`"
+              >
+                <span class="logs-list__token-values">
+                  <span class="logs-list__token-line">
+                    <span class="logs-list__token-direction" aria-hidden="true">in</span>
+                    {{ formatLogTokenCount(log.input_tokens, locale) }}
+                    <span class="logs-list__token-hints">
+                      <AppTooltip
+                        v-if="log.usage_state === 'partial'"
+                        :content="t('monitor.logs.tokens.partial')"
+                      >
+                        <button
+                          type="button"
+                          class="logs-list__hint"
+                          :aria-label="t('monitor.logs.tokens.partial')"
+                        >
+                          <CircleHelp :size="13" aria-hidden="true" />
+                        </button>
+                      </AppTooltip>
+                    </span>
+                  </span>
+                  <span class="logs-list__token-line">
+                    <span class="logs-list__token-direction" aria-hidden="true">out</span>
+                    {{ formatLogTokenCount(log.output_tokens, locale) }}
+                  </span>
+                  <AppTooltip v-if="hasRequestLogCache(log)" :content="cacheTooltip(log)">
+                    <button
+                      type="button"
+                      class="logs-list__hint logs-list__cache-rate"
+                      :aria-label="`${t('monitor.logs.tokens.cacheHitRate')} ${formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale)} · ${t('monitor.logs.tokens.cacheDetails')}`"
+                    >
+                      <span class="logs-list__token-direction">
+                        <Layers :size="13" aria-hidden="true" />
+                      </span>
+                      {{ formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale) }}
+                    </button>
+                  </AppTooltip>
+                </span>
+              </OverflowTooltip>
+              <span v-else class="logs-list__state--warning">—</span>
+            </div>
+            <div
+              class="ledger-record-list__cell logs-list__cell"
+              role="cell"
+              :data-label="t('monitor.logs.columns.timing')"
+            >
+              <OverflowTooltip as="span" :content="timingPrimary(log)">
+                <template v-if="log.stream && log.first_response_ms !== null">
+                  <span :class="{ 'logs-list__timing--slow': log.first_response_ms > 15_000 }">{{
+                    formatLogDuration(log.first_response_ms)
+                  }}</span>
+                  <span aria-hidden="true"> / </span>{{ formatLogDuration(log.duration_ms) }}
+                </template>
+                <template v-else>{{ formatLogDuration(log.duration_ms) }}</template>
+              </OverflowTooltip>
+              <OverflowTooltip
+                v-if="formatLogOutputRate(log, locale) !== '—'"
+                as="small"
+                :content="formatLogOutputRate(log, locale)"
+              >
+                {{ formatLogOutputRate(log, locale) }}
+              </OverflowTooltip>
+            </div>
+            <div
+              class="ledger-record-list__cell logs-list__action"
+              role="cell"
+              :data-label="t('monitor.logs.columns.actions')"
+            >
+              <IconButton
+                :id="`log-details-${log.request_id}`"
+                variant="ghost"
+                size="compact"
+                :label="t('monitor.logs.details')"
+                @click="setDetailOpen(log.request_id, true)"
+              >
+                <ArrowRight :size="16" aria-hidden="true" />
+              </IconButton>
+            </div>
+          </article>
+        </LedgerRecordList>
+        <EmptyState
+          v-else
+          variant="ledger"
+          :title="
+            t(hasNonTimeFilters ? 'monitor.logs.empty.filteredTitle' : 'monitor.logs.empty.title')
+          "
+          :description="
+            t(
+              hasNonTimeFilters
+                ? 'monitor.logs.empty.filteredDescription'
+                : 'monitor.logs.empty.description',
+            )
+          "
+        >
+          <template #icon><Search :size="20" /></template>
+        </EmptyState>
+        <PaginationBar
+          cursor
+          :page="currentPage"
+          :page-size="appliedFilters.limit ?? 20"
+          :page-sizes="logPageSizes"
+          show-page-size
+          appearance="detail"
+          :has-previous="routeState.cursorHistory.length > 0"
+          :has-next="Boolean(logsQuery.data.value?.next_cursor)"
+          :pending="paginationBusy"
+          @previous="previousPage"
+          @next="nextPage"
+          @update:page-size="setPageSize"
+        />
+      </template>
     </template>
 
     <LogDetailDrawer
