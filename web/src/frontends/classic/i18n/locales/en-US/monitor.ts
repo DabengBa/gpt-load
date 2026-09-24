@@ -693,6 +693,8 @@ export default {
         share: 'Share',
         status: 'Status',
         breakerRecovery: 'Breaker / recovery',
+        breakerThreshold: 'Threshold',
+        breakerCooldown: 'Cooldown',
         cooldownUntil: 'Cooldown until',
         scheduledReleaseAt: 'Blacklist releases at',
         available: 'Available',

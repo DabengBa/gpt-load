@@ -670,6 +670,8 @@ export default {
         share: '当前占比',
         status: '状态',
         breakerRecovery: '熔断 / 恢复',
+        breakerThreshold: '阈值',
+        breakerCooldown: '冷却',
         cooldownUntil: '冷却到期时间',
         scheduledReleaseAt: '拉黑释放时间',
         available: '可用',

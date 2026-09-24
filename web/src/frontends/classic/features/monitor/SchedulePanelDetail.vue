@@ -52,6 +52,8 @@ export interface SchedulePanelDetailLabels {
   failures: string
   recover: string
   breakerRecovery: string
+  breakerThreshold?: string
+  breakerCooldown?: string
   cooldownUntil?: string
   scheduledReleaseAt?: string
   invalidValue: string
@@ -448,7 +450,9 @@ function inputValue(
   const key = fieldKey(groupID, entry.entry_id, field)
   if (rawInputs[key] !== undefined) return rawInputs[key]
   const value = draftMap[draftKey(groupID, entry.entry_id)]?.[field]
-  return value === null || value === undefined ? '' : String(value)
+  return value === null || value === undefined
+    ? String(effectiveValue(entry, field))
+    : String(value)
 }
 
 function placeholder(entry: ModelRouteScheduleEntryDto, field: EditableField): string {
@@ -710,20 +714,24 @@ function isDraftShare(groupID: number, entry: ModelRouteScheduleEntryDto): boole
 
 function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   const breaker = entry.circuit_breaker.effective
-  const threshold = breaker.blacklist_threshold ?? '-'
-  const cooldown = breaker.cooldown_seconds ?? '-'
-  const recovery: string[] = []
+  const parts: string[] = []
+  if (breaker.blacklist_threshold !== null) {
+    parts.push(`${text('breakerThreshold')} ${breaker.blacklist_threshold}`)
+  }
+  if (breaker.cooldown_seconds !== null) {
+    parts.push(`${text('breakerCooldown')} ${breaker.cooldown_seconds}s`)
+  }
   if (entry.runtime.cooldown_until_ms !== null) {
-    recovery.push(
+    parts.push(
       `${text('cooldownUntil')}: ${formatLocalInstant(entry.runtime.cooldown_until_ms, props.locale)}`,
     )
   }
   if (entry.runtime.blacklist_release_at_ms !== null) {
-    recovery.push(
+    parts.push(
       `${text('scheduledReleaseAt')}: ${formatLocalInstant(entry.runtime.blacklist_release_at_ms, props.locale)}`,
     )
   }
-  return `${threshold}/${cooldown}s${recovery.length > 0 ? ` · ${recovery.join(' · ')}` : ''}`
+  return parts.join(' · ')
 }
 </script>
 
@@ -731,7 +739,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   <section class="schedule-detail" aria-labelledby="schedule-detail-title">
     <header class="schedule-detail__header">
       <div>
-        <p class="schedule-detail__eyebrow">{{ detail?.external_model ?? text('title') }}</p>
         <h2 id="schedule-detail-title">{{ text('title') }}</h2>
       </div>
       <div class="schedule-detail__observed">
@@ -810,7 +817,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
           >
             <div class="schedule-cell schedule-cell--priority" role="cell">
               <span class="schedule-cell__label">{{ text('priority') }}</span>
-              <strong>{{ entry.priority }}</strong>
               <div class="schedule-cell__priority-edit">
                 <AppTextInput
                   :id="`priority-${index}`"
@@ -850,9 +856,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
               >
                 <strong>{{ group.group_name }}</strong>
               </RouterLink>
-              <small v-if="!groupEnabled(group)" class="schedule-cell__group-state">
-                {{ text('groupDisabled') }}
-              </small>
               <small class="schedule-cell__stats">
                 {{ text('calls24h') }}: {{ formatCount(group.request_count) }} ·
                 {{ text('successRate24h') }}: {{ formatRate(group.success_rate) }}
@@ -996,15 +999,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   justify-content: space-between;
   gap: var(--space-3);
 }
-.schedule-detail__eyebrow {
-  margin: 0 0 3px;
-  overflow: hidden;
-  color: var(--color-action);
-  font-family: var(--font-mono);
-  font-size: var(--text-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .schedule-detail h2 {
   margin: 0;
   color: var(--color-text);
@@ -1032,7 +1026,8 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   position: relative;
   min-width: 0;
   max-width: 100%;
-  overflow-x: auto;
+  max-height: 72vh;
+  overflow: auto;
   border: 1px solid var(--color-border-subtle);
 }
 .schedule-table {
@@ -1041,9 +1036,9 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
 .schedule-row {
   display: grid;
   grid-template-columns:
-    96px minmax(160px, 1.3fr) minmax(140px, 1fr) minmax(112px, 0.8fr)
+    80px minmax(160px, 1.3fr) minmax(140px, 1fr) minmax(112px, 0.8fr)
     76px 84px 104px minmax(160px, 1.1fr);
-  min-height: 64px;
+  min-height: 48px;
   align-items: center;
   gap: 10px;
   border-bottom: 1px solid var(--color-border-subtle);
@@ -1106,10 +1101,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   color: var(--color-text-muted);
   opacity: 1;
 }
-.schedule-cell--priority strong {
-  color: var(--color-action);
-  font-size: var(--text-lg);
-}
 .schedule-cell__label {
   display: block;
   margin-bottom: 2px;
@@ -1146,10 +1137,15 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
 .schedule-cell__group-link:hover strong {
   color: var(--color-action);
 }
-.schedule-cell__group-state {
-  color: var(--color-warning);
-  font-size: 10px;
-  font-weight: 650;
+@media (min-width: 621px) {
+  .schedule-cell__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }
 .schedule-cell__stats {
   color: var(--color-text-faint);
@@ -1228,6 +1224,7 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
     text-align: left;
   }
   .schedule-table-wrap {
+    max-height: none;
     overflow-x: visible;
   }
   .schedule-table {
@@ -1244,7 +1241,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   .schedule-cell--priority,
   .schedule-cell--model,
   .schedule-cell--group,
-  .schedule-cell--weight,
   .schedule-cell--share,
   .schedule-cell--status,
   .schedule-cell--breaker,

@@ -693,6 +693,8 @@ export default {
         share: '現在の比率',
         status: '状態',
         breakerRecovery: 'ブレーカー / 回復',
+        breakerThreshold: '閾値',
+        breakerCooldown: 'クールダウン',
         cooldownUntil: 'クールダウン期限',
         scheduledReleaseAt: 'ブラックリスト解放日時',
         available: '利用可能',

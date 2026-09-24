@@ -139,6 +139,8 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
     failures: t('monitor.schedule.detail.failures'),
     recover: t('monitor.schedule.detail.recover'),
     breakerRecovery: t('monitor.schedule.detail.breakerRecovery'),
+    breakerThreshold: t('monitor.schedule.detail.breakerThreshold'),
+    breakerCooldown: t('monitor.schedule.detail.breakerCooldown'),
     invalidValue: t('monitor.schedule.detail.invalidValue'),
     derivedReadOnly: t('monitor.schedule.detail.derivedReadOnly'),
     save: t('monitor.schedule.detail.save'),
