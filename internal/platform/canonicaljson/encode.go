@@ -1,6 +1,4 @@
-// Package canonicaljson implements the restricted JSON Canonicalization Scheme
-// subset used by GPT-Load control-plane contracts. Contract numbers are signed
-// 64-bit integers; floating-point values are rejected.
+// Package canonicaljson canonicalizes control-plane JSON with signed 64-bit numbers.
 package canonicaljson
 
 import (
