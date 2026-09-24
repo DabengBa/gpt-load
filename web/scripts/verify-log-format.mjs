@@ -60,17 +60,18 @@ function retryAttempt(sequence, error_code, error_summary) {
 }
 
 function keyReasonAfterRateLimit(format, lastAttempt) {
-  return format.requestLogKeyReason(detail({}, [
-    retryAttempt(1, 'rate_limit_exceeded', 'was rate limited'),
-    lastAttempt,
-  ]))
+  return format.requestLogKeyReason(
+    detail({}, [retryAttempt(1, 'rate_limit_exceeded', 'was rate limited'), lastAttempt]),
+  )
 }
 
 function keyReasonForCodeOnlyRetries(format, firstSummary) {
-  return format.requestLogKeyReason(detail({ error_code: 'no_available_candidate', error_summary: '' }, [
-    retryAttempt(1, 'rate_limit_exceeded', firstSummary),
-    retryAttempt(2, 'upstream_timeout', ''),
-  ]))
+  return format.requestLogKeyReason(
+    detail({ error_code: 'no_available_candidate', error_summary: '' }, [
+      retryAttempt(1, 'rate_limit_exceeded', firstSummary),
+      retryAttempt(2, 'upstream_timeout', ''),
+    ]),
+  )
 }
 
 function firstScreenForRequest(format, translate, overrides) {
@@ -94,9 +95,22 @@ const CASES = [
   {
     name: 'terminal attempt wins over an earlier retried summary',
     run: (m) => {
-      return keyReasonAfterRateLimit(m, attempt({ sequence: 2, action: 'terminate', error_code: 'upstream_host_error', error_summary: 'upstream exploded' }))
+      return keyReasonAfterRateLimit(
+        m,
+        attempt({
+          sequence: 2,
+          action: 'terminate',
+          error_code: 'upstream_host_error',
+          error_summary: 'upstream exploded',
+        }),
+      )
     },
-    expect: { sequence: 2, error_code: 'upstream_host_error', error_summary: 'upstream exploded', source: 'terminal_attempt' },
+    expect: {
+      sequence: 2,
+      error_code: 'upstream_host_error',
+      error_summary: 'upstream exploded',
+      source: 'terminal_attempt',
+    },
   },
   {
     name: 'terminal attempt identity is the last terminate action',
@@ -113,24 +127,54 @@ const CASES = [
   {
     name: 'no terminating attempt falls back to the last attempt with a reason',
     run: (m) => {
-      return keyReasonAfterRateLimit(m, attempt({ sequence: 2, action: 'retry', will_retry: false, error_code: '', error_summary: '' }))
+      return keyReasonAfterRateLimit(
+        m,
+        attempt({
+          sequence: 2,
+          action: 'retry',
+          will_retry: false,
+          error_code: '',
+          error_summary: '',
+        }),
+      )
     },
-    expect: { sequence: 1, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited', source: 'summary_attempt' },
+    expect: {
+      sequence: 1,
+      error_code: 'rate_limit_exceeded',
+      error_summary: 'was rate limited',
+      source: 'summary_attempt',
+    },
   },
   {
     name: 'terminal attempt without a reason falls back to the last summary attempt',
     run: (m) => {
-      return keyReasonAfterRateLimit(m, attempt({ sequence: 2, action: 'terminate', error_code: '', error_summary: '' }))
+      return keyReasonAfterRateLimit(
+        m,
+        attempt({ sequence: 2, action: 'terminate', error_code: '', error_summary: '' }),
+      )
     },
-    expect: { sequence: 1, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited', source: 'summary_attempt' },
+    expect: {
+      sequence: 1,
+      error_code: 'rate_limit_exceeded',
+      error_summary: 'was rate limited',
+      source: 'summary_attempt',
+    },
   },
   {
     name: 'request level reason is the fallback when there are no attempts',
     run: (m) => {
-      const log = detail({ error_code: 'no_available_candidate', error_summary: 'was rate limited' }, [])
+      const log = detail(
+        { error_code: 'no_available_candidate', error_summary: 'was rate limited' },
+        [],
+      )
       return m.requestLogKeyReason(log)
     },
-    expect: { sequence: null, error_code: 'no_available_candidate', error_summary: 'was rate limited', source: 'request' },
+    expect: {
+      sequence: null,
+      error_code: 'no_available_candidate',
+      error_summary: 'was rate limited',
+      source: 'request',
+    },
   },
   {
     name: 'request level reason is the fallback for the list projection without attempts',
@@ -138,15 +182,34 @@ const CASES = [
       const log = item({ error_code: 'invalid_key', error_summary: 'supplier rejected the key' })
       return m.requestLogKeyReason(log)
     },
-    expect: { sequence: null, error_code: 'invalid_key', error_summary: 'supplier rejected the key', source: 'request' },
+    expect: {
+      sequence: null,
+      error_code: 'invalid_key',
+      error_summary: 'supplier rejected the key',
+      source: 'request',
+    },
   },
   {
     name: 'success never reports a key reason from a retried failure',
     run: (m) => {
-      const log = detail({ status: 'success', status_code: 200, error_code: '', error_summary: '' }, [
-        attempt({ sequence: 1, action: 'retry', will_retry: true, error_summary: 'was rate limited' }),
-        attempt({ sequence: 2, action: 'terminate', failure_category: 'ok', error_code: '', error_summary: '' }),
-      ])
+      const log = detail(
+        { status: 'success', status_code: 200, error_code: '', error_summary: '' },
+        [
+          attempt({
+            sequence: 1,
+            action: 'retry',
+            will_retry: true,
+            error_summary: 'was rate limited',
+          }),
+          attempt({
+            sequence: 2,
+            action: 'terminate',
+            failure_category: 'ok',
+            error_code: '',
+            error_summary: '',
+          }),
+        ],
+      )
       return m.requestLogKeyReason(log)
     },
     expect: null,
@@ -154,10 +217,20 @@ const CASES = [
   {
     name: 'success still surfaces an explicit request level summary',
     run: (m) => {
-      const log = detail({ status: 'success', status_code: 200, error_code: 'partial', error_summary: 'usage incomplete' })
+      const log = detail({
+        status: 'success',
+        status_code: 200,
+        error_code: 'partial',
+        error_summary: 'usage incomplete',
+      })
       return m.requestLogKeyReason(log)
     },
-    expect: { sequence: null, error_code: 'partial', error_summary: 'usage incomplete', source: 'request' },
+    expect: {
+      sequence: null,
+      error_code: 'partial',
+      error_summary: 'usage incomplete',
+      source: 'request',
+    },
   },
   {
     name: 'empty reasons are never a key reason',
@@ -172,35 +245,57 @@ const CASES = [
   {
     name: 'reason identity prefers the normalized summary',
     run: (m) =>
-      m.requestLogReasonIdentity({ error_code: 'rate_limit_exceeded', error_summary: '  was\nrate limited ' }),
+      m.requestLogReasonIdentity({
+        error_code: 'rate_limit_exceeded',
+        error_summary: '  was\nrate limited ',
+      }),
     expect: 'was rate limited',
   },
   {
     name: 'reason identity falls back to the normalized error code',
-    run: (m) => m.requestLogReasonIdentity({ error_code: ' upstream_host_error ', error_summary: '  ' }),
+    run: (m) =>
+      m.requestLogReasonIdentity({ error_code: ' upstream_host_error ', error_summary: '  ' }),
     expect: 'upstream_host_error',
   },
   {
     name: 'hasRequestLogReason rejects whitespace only reasons',
-    run: (m) => [m.hasRequestLogReason({ error_code: 'x', error_summary: '' }), m.hasRequestLogReason({ error_code: ' ', error_summary: '\t' })],
+    run: (m) => [
+      m.hasRequestLogReason({ error_code: 'x', error_summary: '' }),
+      m.hasRequestLogReason({ error_code: ' ', error_summary: '\t' }),
+    ],
     expect: [true, false],
   },
   {
     name: 'key reason code is hidden when the summary already shows the same text',
     run: (m) =>
-      m.requestLogKeyReasonCode({ sequence: 1, error_code: 'rate_limit_exceeded', error_summary: 'rate_limit_exceeded', source: 'terminal_attempt' }),
+      m.requestLogKeyReasonCode({
+        sequence: 1,
+        error_code: 'rate_limit_exceeded',
+        error_summary: 'rate_limit_exceeded',
+        source: 'terminal_attempt',
+      }),
     expect: '',
   },
   {
     name: 'key reason code is shown when it adds information',
     run: (m) =>
-      m.requestLogKeyReasonCode({ sequence: 1, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited', source: 'terminal_attempt' }),
+      m.requestLogKeyReasonCode({
+        sequence: 1,
+        error_code: 'rate_limit_exceeded',
+        error_summary: 'was rate limited',
+        source: 'terminal_attempt',
+      }),
     expect: 'rate_limit_exceeded',
   },
   {
     name: 'key reason code is hidden when there is no code',
     run: (m) =>
-      m.requestLogKeyReasonCode({ sequence: null, error_code: ' ', error_summary: 'upstream exploded', source: 'request' }),
+      m.requestLogKeyReasonCode({
+        sequence: null,
+        error_code: ' ',
+        error_summary: 'upstream exploded',
+        source: 'request',
+      }),
     expect: '',
   },
   {
@@ -208,8 +303,19 @@ const CASES = [
     run: (m) => {
       const log = detail({}, [
         retryAttempt(1, 'rate_limit_exceeded', 'was rate limited'),
-        attempt({ sequence: 2, action: 'retry', will_retry: true, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited' }),
-        attempt({ sequence: 3, action: 'terminate', error_code: 'upstream_host_error', error_summary: 'upstream exploded' }),
+        attempt({
+          sequence: 2,
+          action: 'retry',
+          will_retry: true,
+          error_code: 'rate_limit_exceeded',
+          error_summary: 'was rate limited',
+        }),
+        attempt({
+          sequence: 3,
+          action: 'terminate',
+          error_code: 'upstream_host_error',
+          error_summary: 'upstream exploded',
+        }),
       ])
       return [...m.requestLogAttemptReasonSequences(log)].sort((left, right) => left - right)
     },
@@ -229,10 +335,19 @@ const CASES = [
   {
     name: 'request level reason aggregates identical attempt reasons once',
     run: (m) => {
-      const log = detail({ error_code: 'no_available_candidate', error_summary: 'was rate limited' }, [
-        retryAttempt(1, 'rate_limit_exceeded', 'was rate limited'),
-        attempt({ sequence: 2, action: 'retry', will_retry: true, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited' }),
-      ])
+      const log = detail(
+        { error_code: 'no_available_candidate', error_summary: 'was rate limited' },
+        [
+          retryAttempt(1, 'rate_limit_exceeded', 'was rate limited'),
+          attempt({
+            sequence: 2,
+            action: 'retry',
+            will_retry: true,
+            error_code: 'rate_limit_exceeded',
+            error_summary: 'was rate limited',
+          }),
+        ],
+      )
       return [...m.requestLogAttemptReasonSequences(log)].sort((left, right) => left - right)
     },
     expect: [],
@@ -241,10 +356,27 @@ const CASES = [
     name: 'repeated non key reasons are shown once per distinct reason',
     run: (m) => {
       const log = detail({}, [
-        attempt({ sequence: 1, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited' }),
-        attempt({ sequence: 2, error_code: 'upstream_timeout', error_summary: 'upstream timed out' }),
-        attempt({ sequence: 3, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited' }),
-        attempt({ sequence: 4, action: 'terminate', error_code: 'upstream_host_error', error_summary: 'upstream exploded' }),
+        attempt({
+          sequence: 1,
+          error_code: 'rate_limit_exceeded',
+          error_summary: 'was rate limited',
+        }),
+        attempt({
+          sequence: 2,
+          error_code: 'upstream_timeout',
+          error_summary: 'upstream timed out',
+        }),
+        attempt({
+          sequence: 3,
+          error_code: 'rate_limit_exceeded',
+          error_summary: 'was rate limited',
+        }),
+        attempt({
+          sequence: 4,
+          action: 'terminate',
+          error_code: 'upstream_host_error',
+          error_summary: 'upstream exploded',
+        }),
       ])
       return [...m.requestLogAttemptReasonSequences(log)].sort((left, right) => left - right)
     },
@@ -274,13 +406,19 @@ const CASES = [
         }),
         ctx.translate,
       ),
-    expect: '最终状态：错误 · 502\n尝试次数：3\n关键原因：The upstream account was rate limited.\n错误码：no_available_candidate',
+    expect:
+      '最终状态：错误 · 502\n尝试次数：3\n关键原因：The upstream account was rate limited.\n错误码：no_available_candidate',
   },
   {
     name: 'list tooltip collapses a key reason whose code is the same text',
     run: (m, ctx) =>
       m.requestLogResponseTooltip(
-        item({ status_code: 429, attempt_count: 2, error_code: 'rate_limit_exceeded', error_summary: 'rate_limit_exceeded' }),
+        item({
+          status_code: 429,
+          attempt_count: 2,
+          error_code: 'rate_limit_exceeded',
+          error_summary: 'rate_limit_exceeded',
+        }),
         ctx.translate,
       ),
     expect: '最终状态：错误 · 429\n尝试次数：2\n关键原因：rate_limit_exceeded',
@@ -289,7 +427,13 @@ const CASES = [
     name: 'list tooltip omits a zero status code',
     run: (m, ctx) =>
       m.requestLogResponseTooltip(
-        item({ status: 'canceled', status_code: 0, attempt_count: 1, error_code: 'client_canceled', error_summary: '' }),
+        item({
+          status: 'canceled',
+          status_code: 0,
+          attempt_count: 1,
+          error_code: 'client_canceled',
+          error_summary: '',
+        }),
         ctx.translate,
       ),
     expect: '最终状态：已取消\n尝试次数：1\n关键原因：client_canceled',
@@ -298,31 +442,55 @@ const CASES = [
     name: 'list tooltip is hidden for a single attempt success',
     run: (m) =>
       m.requestLogResponseTooltipVisible(
-        item({ status: 'success', status_code: 200, attempt_count: 1, error_code: '', error_summary: '' }),
+        item({
+          status: 'success',
+          status_code: 200,
+          attempt_count: 1,
+          error_code: '',
+          error_summary: '',
+        }),
       ),
     expect: false,
   },
   {
     name: 'list tooltip still explains a successful request that retried',
     run: (m, ctx) => [
-      m.requestLogResponseTooltipVisible(item({ status: 'success', status_code: 200, attempt_count: 2 })),
-      m.requestLogResponseTooltip(item({ status: 'success', status_code: 200, attempt_count: 2, error_code: '', error_summary: '' }), ctx.translate),
+      m.requestLogResponseTooltipVisible(
+        item({ status: 'success', status_code: 200, attempt_count: 2 }),
+      ),
+      m.requestLogResponseTooltip(
+        item({
+          status: 'success',
+          status_code: 200,
+          attempt_count: 2,
+          error_code: '',
+          error_summary: '',
+        }),
+        ctx.translate,
+      ),
     ],
-    expect: [
-      true,
-      '最终状态：成功 · 200\n尝试次数：2',
-    ],
+    expect: [true, '最终状态：成功 · 200\n尝试次数：2'],
   },
   {
     name: 'drawer first screen: retried failure highlights status, attempts and the terminating attempt',
     run: (m, ctx) =>
       m.requestLogFirstScreen(
         detail(
-          { status_code: 502, attempt_count: 3, error_code: 'no_available_candidate', error_summary: 'upstream exploded' },
+          {
+            status_code: 502,
+            attempt_count: 3,
+            error_code: 'no_available_candidate',
+            error_summary: 'upstream exploded',
+          },
           [
             retryAttempt(1, 'rate_limit_exceeded', 'was rate limited'),
             retryAttempt(2, 'rate_limit_exceeded', 'was rate limited'),
-            attempt({ sequence: 3, action: 'terminate', error_code: 'upstream_host_error', error_summary: 'upstream exploded' }),
+            attempt({
+              sequence: 3,
+              action: 'terminate',
+              error_code: 'upstream_host_error',
+              error_summary: 'upstream exploded',
+            }),
           ],
         ),
         ctx.translate,
@@ -339,9 +507,20 @@ const CASES = [
     run: (m, ctx) =>
       m.requestLogFirstScreen(
         detail(
-          { status_code: 429, attempt_count: 1, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited' },
+          {
+            status_code: 429,
+            attempt_count: 1,
+            error_code: 'rate_limit_exceeded',
+            error_summary: 'was rate limited',
+          },
           [
-            attempt({ sequence: 1, action: 'terminate', status_code: 429, error_code: 'rate_limit_exceeded', error_summary: 'was rate limited' }),
+            attempt({
+              sequence: 1,
+              action: 'terminate',
+              status_code: 429,
+              error_code: 'rate_limit_exceeded',
+              error_summary: 'was rate limited',
+            }),
           ],
         ),
         ctx.translate,
@@ -357,10 +536,27 @@ const CASES = [
     run: (m, ctx) =>
       m.requestLogFirstScreen(
         detail(
-          { status: 'success', status_code: 200, attempt_count: 2, error_code: '', error_summary: '' },
+          {
+            status: 'success',
+            status_code: 200,
+            attempt_count: 2,
+            error_code: '',
+            error_summary: '',
+          },
           [
-            attempt({ sequence: 1, action: 'retry', will_retry: true, error_summary: 'was rate limited' }),
-            attempt({ sequence: 2, action: 'terminate', failure_category: 'ok', error_code: '', error_summary: '' }),
+            attempt({
+              sequence: 1,
+              action: 'retry',
+              will_retry: true,
+              error_summary: 'was rate limited',
+            }),
+            attempt({
+              sequence: 2,
+              action: 'terminate',
+              failure_category: 'ok',
+              error_code: '',
+              error_summary: '',
+            }),
           ],
         ),
         ctx.translate,
@@ -370,7 +566,13 @@ const CASES = [
   {
     name: 'drawer first screen: canceled request falls back to the code alone',
     run: (m, ctx) =>
-      firstScreenForRequest(m, ctx.translate, { status: 'canceled', status_code: 0, attempt_count: 1, error_code: 'client_canceled', error_summary: '' }),
+      firstScreenForRequest(m, ctx.translate, {
+        status: 'canceled',
+        status_code: 0,
+        attempt_count: 1,
+        error_code: 'client_canceled',
+        error_summary: '',
+      }),
     expect: firstScreenExpectation('已取消', 0, 1, {
       key_reason_label: '关键原因',
       key_reason_text: 'client_canceled',
@@ -379,7 +581,12 @@ const CASES = [
   {
     name: 'drawer first screen: no attempts falls back to the request level reason',
     run: (m, ctx) =>
-      firstScreenForRequest(m, ctx.translate, { status_code: 503, attempt_count: 0, error_code: 'no_available_candidate', error_summary: 'all candidates failed' }),
+      firstScreenForRequest(m, ctx.translate, {
+        status_code: 503,
+        attempt_count: 0,
+        error_code: 'no_available_candidate',
+        error_summary: 'all candidates failed',
+      }),
     expect: firstScreenExpectation('错误', 503, 0, {
       key_reason_label: '关键原因',
       key_reason_text: 'all candidates failed',
@@ -389,7 +596,13 @@ const CASES = [
   {
     name: 'drawer first screen: incomplete without any reason stays empty',
     run: (m, ctx) =>
-      firstScreenForRequest(m, ctx.translate, { status: 'incomplete', status_code: 200, attempt_count: 0, error_code: '', error_summary: '' }),
+      firstScreenForRequest(m, ctx.translate, {
+        status: 'incomplete',
+        status_code: 200,
+        attempt_count: 0,
+        error_code: '',
+        error_summary: '',
+      }),
     expect: firstScreenExpectation('未完成', 200, 0),
   },
   {
@@ -405,7 +618,12 @@ const CASES = [
   {
     name: 'all code-only attempts fall back to the request level reason',
     run: (m) => keyReasonForCodeOnlyRetries(m, ''),
-    expect: { sequence: null, error_code: 'no_available_candidate', error_summary: '', source: 'request' },
+    expect: {
+      sequence: null,
+      error_code: 'no_available_candidate',
+      error_summary: '',
+      source: 'request',
+    },
   },
   {
     name: 'terminal code-only attempt keeps the key reason while sibling code-only attempts keep theirs',
@@ -415,7 +633,12 @@ const CASES = [
         [
           retryAttempt(1, 'rate_limit_exceeded', ''),
           retryAttempt(2, 'upstream_timeout', ''),
-          attempt({ sequence: 3, action: 'terminate', error_code: 'upstream_host_error', error_summary: '' }),
+          attempt({
+            sequence: 3,
+            action: 'terminate',
+            error_code: 'upstream_host_error',
+            error_summary: '',
+          }),
         ],
       )
       return {
@@ -445,7 +668,12 @@ const CASES = [
       const log = detail({ error_code: 'no_available_candidate', error_summary: '' }, [
         retryAttempt(1, 'rate_limit_exceeded', ''),
         retryAttempt(2, 'rate_limit_exceeded', 'rate_limit_exceeded'),
-        attempt({ sequence: 3, action: 'terminate', error_code: 'upstream_host_error', error_summary: 'upstream exploded' }),
+        attempt({
+          sequence: 3,
+          action: 'terminate',
+          error_code: 'upstream_host_error',
+          error_summary: 'upstream exploded',
+        }),
       ])
       return {
         sequences: [...m.requestLogAttemptReasonSequences(log)].sort((left, right) => left - right),
@@ -472,7 +700,12 @@ const CASES = [
       }
     },
     expect: {
-      reason: { sequence: null, error_code: 'no_available_candidate', error_summary: '', source: 'request' },
+      reason: {
+        sequence: null,
+        error_code: 'no_available_candidate',
+        error_summary: '',
+        source: 'request',
+      },
       sequences: [1],
       text: 'rate_limit_exceeded',
     },
@@ -484,7 +717,12 @@ const CASES = [
         { error_code: 'no_available_candidate', error_summary: '', attempt_count: 2 },
         [
           retryAttempt(1, 'rate_limit_exceeded', ''),
-          attempt({ sequence: 2, action: 'terminate', error_code: 'upstream_host_error', error_summary: 'upstream exploded' }),
+          attempt({
+            sequence: 2,
+            action: 'terminate',
+            error_code: 'upstream_host_error',
+            error_summary: 'upstream exploded',
+          }),
         ],
       )
       return {
@@ -507,17 +745,26 @@ const CASES = [
   {
     name: 'success never falls back to a code-only attempt reason',
     run: (m) => {
-      const log = detail({ status: 'success', status_code: 200, error_code: '', error_summary: '' }, [
-        attempt({
-          sequence: 1,
-          action: 'retry',
-          will_retry: true,
-          failure_category: 'upstream_host_error',
-          error_code: 'upstream_host_error',
-          error_summary: '',
-        }),
-        attempt({ sequence: 2, action: 'terminate', failure_category: 'ok', error_code: '', error_summary: '' }),
-      ])
+      const log = detail(
+        { status: 'success', status_code: 200, error_code: '', error_summary: '' },
+        [
+          attempt({
+            sequence: 1,
+            action: 'retry',
+            will_retry: true,
+            failure_category: 'upstream_host_error',
+            error_code: 'upstream_host_error',
+            error_summary: '',
+          }),
+          attempt({
+            sequence: 2,
+            action: 'terminate',
+            failure_category: 'ok',
+            error_code: '',
+            error_summary: '',
+          }),
+        ],
+      )
       return m.requestLogKeyReason(log)
     },
     expect: null,
@@ -584,7 +831,9 @@ async function main() {
     const localeNames = ['zh-CN', 'en-US', 'ja-JP']
     const messagesByLocale = {}
     for (const locale of localeNames) {
-      const module = await server.ssrLoadModule(`/src/frontends/classic/i18n/locales/${locale}/monitor.ts`)
+      const module = await server.ssrLoadModule(
+        `/src/frontends/classic/i18n/locales/${locale}/monitor.ts`,
+      )
       messagesByLocale[locale] = module.default
     }
     const context = { translate: createTranslator(messagesByLocale['zh-CN']) }
