@@ -1120,11 +1120,6 @@ func (handler *Handler) executeAttempts(
 			return prepared
 		}
 		if dialect.SupportsReasoningEffortOverride(selectedDialect.Protocol(), originalMetadata.Operation) && effort != "" && source != reasoning.EffortSourceClient {
-			if err := reasoning.ValidateEffort(string(selection.Group.ResolvedTarget.ProviderKind), upstreamModel, effort); err != nil {
-				prepared.err = err
-				cachedPrepared = &prepared
-				return prepared
-			}
 			var effortApplied bool
 			body, effortApplied, err = dialect.SetReasoningEffort(body, effort, selectedDialect.Protocol())
 			if err != nil {
@@ -1334,26 +1329,18 @@ func (handler *Handler) executeAttempts(
 		if prepared.err != nil {
 			code := "parameter_override_failed"
 			summary := "Parameter override could not be applied."
-			if errors.Is(prepared.err, reasoning.ErrUnsupportedEffort) {
-				code = "reasoning_effort_unsupported"
-				summary = "The selected route does not support the configured reasoning effort."
-			}
 			if errors.Is(prepared.err, errRequestTooLarge) {
 				code = "parameter_override_request_too_large"
 				summary = "Parameter override produced a request that is too large."
 				if parameterOverrideFailure == nil {
 					parameterOverrideFailure = &reasonRequestTooLarge
 				}
-			} else if !errors.Is(prepared.err, reasoning.ErrUnsupportedEffort) {
+			} else {
 				if parameterOverrideFailure == nil {
 					parameterOverrideFailure = &reasonParameterOverrideUnavailable
 				}
 			}
-			if errors.Is(prepared.err, reasoning.ErrUnsupportedEffort) {
-				recordCandidatePreparationFailure(selection, prepared.observations, prepared.observationsAvailable, code, summary, execution.ErrorScopeRequest)
-			} else {
-				recordCaptureCandidatePreparationFailure(selection.Group.Name, code, summary)
-			}
+			recordCaptureCandidatePreparationFailure(selection.Group.Name, code, summary)
 			if _, logged := loggedOverrideFailures[selection.GroupID]; !logged {
 				utils.LogPlaneBestEffort(
 					handler.logger,

@@ -19,7 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/maximhq/bifrost/core/schemas"
+
 	"github.com/sirupsen/logrus"
 
 	"gpt-load/internal/affinity"
@@ -35,6 +35,7 @@ import (
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/ratelimit"
 	"gpt-load/internal/reasoning"
+
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 	"gpt-load/internal/telemetry"
@@ -1355,7 +1356,7 @@ func TestHandlerUsesParameterOverrideAttemptObservations(t *testing.T) {
 	}
 }
 
-func TestHandlerUnsupportedReasoningPolicySendsNoProviderHTTP(t *testing.T) {
+func TestHandlerUnknownModelReasoningPolicySendsProviderHTTP(t *testing.T) {
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
@@ -1363,19 +1364,19 @@ func TestHandlerUnsupportedReasoningPolicySendsNoProviderHTTP(t *testing.T) {
 	}))
 	defer upstream.Close()
 	_, params := testChannelConfig(t, protocol.OpenAICompletions, testUpstreamBaseURL(upstream.URL, protocol.OpenAICompletions))
-	engine, _ := newDialectGatewayEngine(t, protocol.OpenAICompletions, "gpt-5.4", dialect.NewSet(dialect.NewOpenAI()), dialectGatewayGroup{
+	engine, _ := newDialectGatewayEngine(t, protocol.OpenAICompletions, "unlisted-model", dialect.NewSet(dialect.NewOpenAI()), dialectGatewayGroup{
 		id: 1, name: "openai", channelID: channel.OpenAI, params: params,
-		models: []state.ModelConfig{{ID: "gpt-5.4", ReasoningEffort: "max"}}, apiKeys: []string{"sk-test"},
+		models: []state.ModelConfig{{ID: "unlisted-model", ReasoningEffort: "high"}}, apiKeys: []string{"sk-test"},
 	})
-	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hi"}]}`))
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"unlisted-model","messages":[{"role":"user","content":"hi"}]}`))
 	request.Header.Set("Authorization", "Bearer gl-client")
 	engine.ServeHTTP(httptest.NewRecorder(), request)
-	if got := calls.Load(); got != 0 {
-		t.Fatalf("provider HTTP requests = %d, want zero", got)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("provider HTTP requests = %d, want one", got)
 	}
 }
 
-func TestHandlerUnsupportedReasoningPolicyDoesNotDispatch(t *testing.T) {
+func TestHandlerUnknownModelReasoningPolicyDispatches(t *testing.T) {
 	forwarder := &scriptedForwarder{}
 	sink := &recordingRequestLogSink{}
 	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(t, forwarder, &recordingAccessKeyRPMLimiter{}, sink, "sk-first")
@@ -1383,37 +1384,31 @@ func TestHandlerUnsupportedReasoningPolicyDoesNotDispatch(t *testing.T) {
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
 			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
-			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-5.4", ReasoningEffort: "max"}}, Enabled: true,
+			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "unlisted-model", ReasoningEffort: "high"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1"}},
 		AccessKeys:  []state.AccessKeyConfig{{ID: 1, Name: "client", KeyHash: handler.encryption.Hash("gl-client"), Status: state.AccessKeyStatusActive}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.4","messages":[{"role":"user","content":"private-prompt"}]}`))
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"unlisted-model","messages":[{"role":"user","content":"private-prompt"}]}`))
 	request.Header.Set("Authorization", "Bearer gl-client")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
-	if len(forwarder.inputs) != 0 {
-		t.Fatalf("provider dispatches = %d, want zero", len(forwarder.inputs))
+	if len(forwarder.inputs) != 1 || !bytes.Contains(forwarder.inputs[0].Request.Body, []byte(`"reasoning_effort":"high"`)) {
+		t.Fatalf("provider dispatches = %#v, want one with central high", forwarder.inputs)
 	}
 	events := sink.snapshot()
 	if len(events) != 1 || len(events[0].Attempts) != 1 {
 		t.Fatalf("request/attempt count = %d/%#v", len(events), events)
 	}
 	attempt := events[0].Attempts[0]
-	if attempt.DispatchState != execution.DispatchNotSent || attempt.ErrorCode != "reasoning_effort_unsupported" ||
-		strings.Contains(attempt.ErrorSummary, "max") || strings.Contains(attempt.ErrorSummary, "private-prompt") ||
-		strings.Contains(response.Body.String(), "private-prompt") {
-		t.Fatalf("unsafe unsupported evidence: state=%s code=%q summary=%q", attempt.DispatchState, attempt.ErrorCode, attempt.ErrorSummary)
+	if attempt.ErrorCode == "reasoning_effort_unsupported" {
+		t.Fatalf("unexpected capability rejection: state=%s code=%q", attempt.DispatchState, attempt.ErrorCode)
 	}
 }
 
 func TestHandlerUsesGroupReasoningEffortOverrideAttemptObservations(t *testing.T) {
-	schemas.SetCapabilityResolver(func(schemas.ModelProvider, string) *schemas.ModelCapabilities {
-		return &schemas.ModelCapabilities{SupportsReasoningEffort: new(true), ReasoningEffortLevels: []string{"low", "high"}}
-	})
-	t.Cleanup(func() { schemas.SetCapabilityResolver(nil) })
 	forwarder := &scriptedForwarder{results: []UpstreamResult{{
 		StatusCode: http.StatusOK, Header: make(http.Header), RequestWritten: true,
 	}}}
@@ -1464,10 +1459,6 @@ func TestHandlerUsesGroupReasoningEffortOverrideAttemptObservations(t *testing.T
 }
 
 func TestHandlerDoesNotReplaceParameterInjectedReasoningEffort(t *testing.T) {
-	schemas.SetCapabilityResolver(func(schemas.ModelProvider, string) *schemas.ModelCapabilities {
-		return &schemas.ModelCapabilities{SupportsReasoningEffort: new(true), ReasoningEffortLevels: []string{"low", "high"}}
-	})
-	t.Cleanup(func() { schemas.SetCapabilityResolver(nil) })
 	forwarder := &scriptedForwarder{results: []UpstreamResult{{
 		StatusCode: http.StatusOK, Header: make(http.Header), RequestWritten: true,
 	}}}

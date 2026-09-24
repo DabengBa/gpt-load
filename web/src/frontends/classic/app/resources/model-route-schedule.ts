@@ -77,18 +77,10 @@ export interface ModelRouteScheduleRuntimeDto {
 
 export type ModelRouteScheduleReasoningSource = 'entry' | 'group' | 'client' | 'provider_default'
 
-export interface ModelRouteScheduleReasoningCapabilityDto {
-  known: boolean
-  supported: boolean
-  levels: ReasoningEffortDto[]
-  reason: string
-}
-
 export interface ModelRouteScheduleReasoningDto {
   configured: ReasoningEffortDto | null
   effective: ReasoningEffortDto | null
   source: ModelRouteScheduleReasoningSource
-  capability: ModelRouteScheduleReasoningCapabilityDto
 }
 
 export interface ModelRouteScheduleEntryDto {
@@ -273,8 +265,7 @@ export const reasoningEffortValues = [
   'max',
 ] as const
 const reasoningSources = ['entry', 'group', 'client', 'provider_default'] as const
-const reasoningFields = ['configured', 'effective', 'source', 'capability'] as const
-const reasoningCapabilityFields = ['known', 'supported', 'levels', 'reason'] as const
+const reasoningFields = ['configured', 'effective', 'source'] as const
 
 function invalidResponse(): never {
   throw new InvalidResponseError()
@@ -372,22 +363,6 @@ export function isReasoningEffort(value: string): value is ReasoningEffortDto {
 function projectReasoning(value: unknown): ModelRouteScheduleReasoningDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, reasoningFields)
-  const capabilityRecord = projectRecord(record.capability)
-  assertNoSecretLikeFields(capabilityRecord, reasoningCapabilityFields)
-  const capability = {
-    known: projectBoolean(capabilityRecord.known),
-    supported: projectBoolean(capabilityRecord.supported),
-    levels: projectArray(capabilityRecord.levels, (level) =>
-      projectEnum(level, reasoningEffortValues),
-    ),
-    reason: projectNonBlankString(capabilityRecord.reason),
-  }
-  if (
-    (capability.supported && (!capability.known || capability.levels.length === 0)) ||
-    new Set(capability.levels).size !== capability.levels.length
-  ) {
-    invalidResponse()
-  }
   const configured = projectNullableReasoningEffort(record.configured)
   const effective = projectNullableReasoningEffort(record.effective)
   const source = projectEnum(record.source, reasoningSources)
@@ -398,7 +373,7 @@ function projectReasoning(value: unknown): ModelRouteScheduleReasoningDto {
   ) {
     invalidResponse()
   }
-  return { configured, effective, source, capability }
+  return { configured, effective, source }
 }
 
 function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleEntryDto {

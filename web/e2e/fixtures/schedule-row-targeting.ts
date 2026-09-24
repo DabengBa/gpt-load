@@ -42,7 +42,6 @@ export function scheduleEntry(
       configured: null,
       effective: null,
       source: 'provider_default',
-      capability: { known: false, supported: false, levels: [], reason: 'unknown model' },
     },
     runtime: {
       state: 'available',

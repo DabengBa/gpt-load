@@ -12,7 +12,6 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/protocol"
-	"gpt-load/internal/reasoning"
 )
 
 func TestReasoningPolicyStreamFinalProviderWire(t *testing.T) {
@@ -104,10 +103,6 @@ func TestReasoningPolicyFinalProviderWire(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			provider := map[channel.ID]string{channel.OpenAI: "openai", channel.Anthropic: "anthropic", channel.Gemini: "gemini"}[tc.channel]
-			if err := reasoning.ValidateEffort(provider, tc.model, "high"); err != nil {
-				t.Fatalf("policy validation: %v", err)
-			}
 			wire := make(chan map[string]any, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != tc.wirePath {

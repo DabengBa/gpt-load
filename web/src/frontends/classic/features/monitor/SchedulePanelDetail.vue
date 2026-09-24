@@ -88,10 +88,6 @@ export interface SchedulePanelDetailLabels {
   inherit: string
   effective: string
   source: string
-  capability: string
-  supported: string
-  unsupported: string
-  capabilityUnknown: string
   sourceEntry: string
   sourceGroup: string
   sourceClient: string
@@ -287,11 +283,7 @@ const dirty = computed(
     Object.keys(entryReasoningDrafts).length > 0 ||
     Object.keys(groupReasoningDrafts).length > 0,
 )
-const invalid = computed(
-  () =>
-    Object.values(invalidInputs).some(Boolean) ||
-    reasoningPreviews.value.some(({ entries }) => entries.some(({ unsupported }) => unsupported)),
-)
+const invalid = computed(() => Object.values(invalidInputs).some(Boolean))
 const hasDetail = computed(() => props.detail !== undefined)
 const hasScheduleDraft = computed(() => Object.keys(draftMap).length > 0)
 const previewShares = computed(() => {
@@ -455,32 +447,10 @@ function entryReasoningValue(
     : (entry.reasoning.configured ?? '')
 }
 
-function reasoningOptions(
-  levels: readonly ReasoningEffortDto[],
-  current: ReasoningEffortDto | null,
-): Array<{ value: string; label: string }> {
-  const options = [{ value: '', label: text('inherit') }]
-  options.push(...levels.map((value) => ({ value, label: value })))
-  if (current !== null && !levels.includes(current)) {
-    options.push({
-      value: current,
-      label: t('monitor.schedule.detail.unsupportedEffortValue', { value: current }),
-    })
-  }
-  return options
-}
-
-function groupReasoningLevels(group: ModelRouteScheduleGroupDto): ReasoningEffortDto[] {
-  const inherited = group.reasoning_entries.filter(
-    (entry) => entryReasoningValue(group.group_id, entry) === '',
-  )
-  return reasoningEffortValues.filter((level) =>
-    inherited.every(
-      ({ reasoning }) =>
-        reasoning.capability.supported && reasoning.capability.levels.includes(level),
-    ),
-  )
-}
+const reasoningOptions = [
+  { value: '', label: text('inherit') },
+  ...reasoningEffortValues.map((value) => ({ value, label: value })),
+]
 
 const reasoningPreviews = computed(() =>
   (props.detail?.groups ?? []).flatMap((group) => {
@@ -501,29 +471,12 @@ const reasoningPreviews = computed(() =>
         entries: group.reasoning_entries.map((entry) => {
           const override = entryReasoningValue(group.group_id, entry)
           const effective = override || groupReasoningValue(group)
-          const unsupported =
-            effective !== '' &&
-            (!entry.reasoning.capability.supported ||
-              !entry.reasoning.capability.levels.includes(effective))
-          return { entry, effective, override, unsupported }
+          return { entry, effective, override }
         }),
       },
     ]
   }),
 )
-
-function groupReasoningOptions(group: ModelRouteScheduleGroupDto) {
-  const value = groupReasoningValue(group)
-  return reasoningOptions(groupReasoningLevels(group), value === '' ? null : value)
-}
-
-function entryReasoningOptions(groupID: number, entry: ModelRouteScheduleEntryDto) {
-  const value = entryReasoningValue(groupID, entry)
-  return reasoningOptions(
-    entry.reasoning.capability.supported ? entry.reasoning.capability.levels : [],
-    value === '' ? null : value,
-  )
-}
 
 function setGroupReasoning(group: ModelRouteScheduleGroupDto, value: string): void {
   if (value !== '' && !isReasoningEffort(value)) return
@@ -550,11 +503,6 @@ function reasoningSourceLabel(source: ModelRouteScheduleReasoningSource): string
   if (source === 'group') return text('sourceGroup')
   if (source === 'client') return text('sourceClient')
   return text('sourceProviderDefault')
-}
-
-function reasoningCapabilityLabel(entry: ModelRouteScheduleEntryDto): string {
-  if (!entry.reasoning.capability.known) return text('capabilityUnknown')
-  return entry.reasoning.capability.supported ? text('supported') : text('unsupported')
 }
 
 function configuredValue(entry: ModelRouteScheduleEntryDto, field: EditableField): number | null {
@@ -997,13 +945,9 @@ defineExpose({ applyProbeEnabled })
                 <span>{{ text('groupDefault') }}</span>
                 <AppSelect
                   :model-value="groupReasoningValue(group)"
-                  :options="groupReasoningOptions(group)"
+                  :options="reasoningOptions"
                   :label="`${text('groupDefault')} ${group.group_name}`"
-                  :disabled="
-                    pending ||
-                    (groupReasoningLevels(group).length === 0 &&
-                      group.reasoning_effort_default === null)
-                  "
+                  :disabled="pending"
                   size="compact"
                   @click.stop
                   @update:model-value="setGroupReasoning(group, $event)"
@@ -1018,13 +962,9 @@ defineExpose({ applyProbeEnabled })
                 <span>{{ text('entryOverride') }}</span>
                 <AppSelect
                   :model-value="entryReasoningValue(group.group_id, entry)"
-                  :options="entryReasoningOptions(group.group_id, entry)"
+                  :options="reasoningOptions"
                   :label="`${text('entryOverride')} ${entry.model_id}`"
-                  :disabled="
-                    pending ||
-                    entry.entry_id.startsWith('derived:') ||
-                    (!entry.reasoning.capability.supported && entry.reasoning.configured === null)
-                  "
+                  :disabled="pending || entry.entry_id.startsWith('derived:')"
                   size="compact"
                   @click.stop
                   @update:model-value="setEntryReasoning(group.group_id, entry, $event)"
@@ -1039,20 +979,7 @@ defineExpose({ applyProbeEnabled })
                   <dt>{{ text('source') }}</dt>
                   <dd>{{ reasoningSourceLabel(entry.reasoning.source) }}</dd>
                 </div>
-                <div>
-                  <dt>{{ text('capability') }}</dt>
-                  <dd
-                    :class="{
-                      'schedule-reasoning-meta__unsupported': !entry.reasoning.capability.supported,
-                    }"
-                  >
-                    {{ reasoningCapabilityLabel(entry) }}
-                  </dd>
-                </div>
               </dl>
-              <small class="schedule-reasoning-reason">{{
-                entry.reasoning.capability.reason
-              }}</small>
             </div>
             <div class="schedule-cell schedule-cell--input" role="cell">
               <label class="sr-only" :for="`weight-${index}`">{{ text('weight') }}</label>
@@ -1148,9 +1075,6 @@ defineExpose({ applyProbeEnabled })
           <li v-for="item in preview.entries" :key="item.entry.entry_id">
             {{ item.entry.model_id }}: {{ item.effective || text('inherit') }} ·
             {{ item.override ? text('entryOverride') : text('groupDefault') }}
-            <strong v-if="item.unsupported" class="schedule-reasoning-meta__unsupported">
-              — {{ t('monitor.schedule.detail.reasoningSaveBlocked') }}</strong
-            >
           </li>
         </ul>
       </div>
@@ -1341,16 +1265,6 @@ defineExpose({ applyProbeEnabled })
 .schedule-reasoning-meta dd {
   margin: 0;
   color: var(--color-text);
-}
-.schedule-reasoning-meta__unsupported {
-  color: var(--color-danger) !important;
-  font-weight: 650;
-}
-.schedule-reasoning-reason {
-  overflow: visible !important;
-  color: var(--color-text-faint);
-  text-overflow: clip !important;
-  white-space: normal !important;
 }
 .schedule-cell strong {
   color: var(--color-text);
