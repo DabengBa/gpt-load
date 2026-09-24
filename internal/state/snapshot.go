@@ -580,11 +580,14 @@ func validateCompileInput(input CompileInput) error {
 			return fmt.Errorf("credential %d fingerprint is required", credential.ID)
 		}
 	}
+	return validateCompileAccessKeys(input.AccessKeys)
+}
 
-	accessKeyIDs := make(map[uint]struct{}, len(input.AccessKeys))
-	hashes := make(map[string]struct{}, len(input.AccessKeys))
+func validateCompileAccessKeys(accessKeys []AccessKeyConfig) error {
+	accessKeyIDs := make(map[uint]struct{}, len(accessKeys))
+	hashes := make(map[string]struct{}, len(accessKeys))
 	quotaDefinitions := make(map[uint][]accessquota.Rule)
-	for _, accessKey := range input.AccessKeys {
+	for _, accessKey := range accessKeys {
 		if accessKey.ID == 0 {
 			return fmt.Errorf("access key id is required")
 		}

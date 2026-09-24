@@ -76,52 +76,9 @@ func ValidateReceipt(receipt Receipt) error {
 		return fmt.Errorf("invalid pricing receipt total")
 	}
 
-	allowed := map[string]struct{}{
-		"input": {}, "cache_read": {}, "cache_write_5m": {},
-		"cache_write_1h": {}, "cache_write": {}, "output": {},
-	}
-	seen := make(map[string]struct{}, len(receipt.LineItems))
-	total := NanoUSD(0)
-	for _, line := range receipt.LineItems {
-		if _, ok := allowed[line.Code]; !ok {
-			return fmt.Errorf("invalid pricing receipt line code %q", line.Code)
-		}
-		if _, exists := seen[line.Code]; exists {
-			return fmt.Errorf("duplicate pricing receipt line code %q", line.Code)
-		}
-		seen[line.Code] = struct{}{}
-		if line.Quantity <= 0 || line.Multiplier.Numerator <= 0 ||
-			line.Multiplier.Denominator <= 0 {
-			return fmt.Errorf("invalid pricing receipt line quantity or multiplier")
-		}
-		switch line.State {
-		case ReceiptLinePriced:
-			if line.RateNanoUSDPerMillion == nil || line.AmountNanoUSD == nil ||
-				*line.RateNanoUSDPerMillion < 0 || *line.AmountNanoUSD < 0 {
-				return fmt.Errorf("invalid priced receipt line")
-			}
-			amount, ok := QuoteComponent(
-				line.Quantity,
-				NanoUSD(*line.RateNanoUSDPerMillion),
-				line.Multiplier,
-			)
-			if receipt.SchemaVersion == 5 {
-				amount, ok = quoteComponentWithPriceMultipliers(line.Quantity, NanoUSD(*line.RateNanoUSDPerMillion), line.Multiplier, priceMultipliers)
-			}
-			if !ok || int64(amount) != *line.AmountNanoUSD {
-				return fmt.Errorf("pricing receipt line amount mismatch")
-			}
-			total, ok = CheckedAddNanoUSD(total, amount)
-			if !ok {
-				return fmt.Errorf("pricing receipt total overflows")
-			}
-		case ReceiptLineUnpriced:
-			if line.RateNanoUSDPerMillion != nil || line.AmountNanoUSD != nil {
-				return fmt.Errorf("invalid unpriced receipt line")
-			}
-		default:
-			return fmt.Errorf("invalid pricing receipt line state")
-		}
+	total, err := validateReceiptLines(receipt, priceMultipliers)
+	if err != nil {
+		return err
 	}
 	if receipt.SchemaVersion == 6 {
 		if int64(total) != *receipt.BaseTotalNanoUSD {
@@ -135,4 +92,55 @@ func ValidateReceipt(receipt Receipt) error {
 		return fmt.Errorf("pricing receipt total mismatch")
 	}
 	return nil
+}
+
+func validateReceiptLines(receipt Receipt, priceMultipliers PriceMultipliers) (NanoUSD, error) {
+	allowed := map[string]struct{}{
+		"input": {}, "cache_read": {}, "cache_write_5m": {},
+		"cache_write_1h": {}, "cache_write": {}, "output": {},
+	}
+	seen := make(map[string]struct{}, len(receipt.LineItems))
+	total := NanoUSD(0)
+	for _, line := range receipt.LineItems {
+		if _, ok := allowed[line.Code]; !ok {
+			return 0, fmt.Errorf("invalid pricing receipt line code %q", line.Code)
+		}
+		if _, exists := seen[line.Code]; exists {
+			return 0, fmt.Errorf("duplicate pricing receipt line code %q", line.Code)
+		}
+		seen[line.Code] = struct{}{}
+		if line.Quantity <= 0 || line.Multiplier.Numerator <= 0 ||
+			line.Multiplier.Denominator <= 0 {
+			return 0, fmt.Errorf("invalid pricing receipt line quantity or multiplier")
+		}
+		switch line.State {
+		case ReceiptLinePriced:
+			if line.RateNanoUSDPerMillion == nil || line.AmountNanoUSD == nil ||
+				*line.RateNanoUSDPerMillion < 0 || *line.AmountNanoUSD < 0 {
+				return 0, fmt.Errorf("invalid priced receipt line")
+			}
+			amount, ok := QuoteComponent(
+				line.Quantity,
+				NanoUSD(*line.RateNanoUSDPerMillion),
+				line.Multiplier,
+			)
+			if receipt.SchemaVersion == 5 {
+				amount, ok = quoteComponentWithPriceMultipliers(line.Quantity, NanoUSD(*line.RateNanoUSDPerMillion), line.Multiplier, priceMultipliers)
+			}
+			if !ok || int64(amount) != *line.AmountNanoUSD {
+				return 0, fmt.Errorf("pricing receipt line amount mismatch")
+			}
+			total, ok = CheckedAddNanoUSD(total, amount)
+			if !ok {
+				return 0, fmt.Errorf("pricing receipt total overflows")
+			}
+		case ReceiptLineUnpriced:
+			if line.RateNanoUSDPerMillion != nil || line.AmountNanoUSD != nil {
+				return 0, fmt.Errorf("invalid unpriced receipt line")
+			}
+		default:
+			return 0, fmt.Errorf("invalid pricing receipt line state")
+		}
+	}
+	return total, nil
 }

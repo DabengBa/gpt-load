@@ -31,6 +31,41 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 		Order("completed_at_ms DESC").
 		Order("id DESC").
 		Limit(limit + 1)
+	query = applyListIdentityFilters(query, input)
+	query = applyListMetricFilters(query, input)
+
+	var rows []models.RequestLog
+	if err := query.Find(&rows).Error; err != nil {
+		return Page{}, fmt.Errorf("query request logs: %w", err)
+	}
+
+	hasNext := len(rows) > limit
+	if hasNext {
+		rows = rows[:limit]
+	}
+	records, err := decodeRequestLogRows(rows)
+	if err != nil {
+		return Page{}, err
+	}
+	if err := service.loadAccessKeyRefs(ctx, records); err != nil {
+		return Page{}, err
+	}
+	if err := service.loadFinalExecutionObservations(ctx, records); err != nil {
+		return Page{}, err
+	}
+
+	page := Page{Items: records}
+	if hasNext {
+		last := records[len(records)-1]
+		page.NextCursor = &Cursor{
+			CompletedAtMS: last.CompletedAtMS,
+			RequestID:     last.RequestID,
+		}
+	}
+	return page, nil
+}
+
+func applyListIdentityFilters(query *gorm.DB, input ListQuery) *gorm.DB {
 	if input.FromMS != nil {
 		query = query.Where("completed_at_ms >= ?", *input.FromMS)
 	}
@@ -70,6 +105,10 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 	if input.UsageState != "" {
 		query = query.Where("usage_state = ?", input.UsageState)
 	}
+	return query
+}
+
+func applyListMetricFilters(query *gorm.DB, input ListQuery) *gorm.DB {
 	if input.CostState != "" {
 		query = query.Where("cost_state = ?", input.CostState)
 	}
@@ -114,36 +153,7 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 			input.Cursor.RequestID,
 		)
 	}
-
-	var rows []models.RequestLog
-	if err := query.Find(&rows).Error; err != nil {
-		return Page{}, fmt.Errorf("query request logs: %w", err)
-	}
-
-	hasNext := len(rows) > limit
-	if hasNext {
-		rows = rows[:limit]
-	}
-	records, err := decodeRequestLogRows(rows)
-	if err != nil {
-		return Page{}, err
-	}
-	if err := service.loadAccessKeyRefs(ctx, records); err != nil {
-		return Page{}, err
-	}
-	if err := service.loadFinalExecutionObservations(ctx, records); err != nil {
-		return Page{}, err
-	}
-
-	page := Page{Items: records}
-	if hasNext {
-		last := records[len(records)-1]
-		page.NextCursor = &Cursor{
-			CompletedAtMS: last.CompletedAtMS,
-			RequestID:     last.RequestID,
-		}
-	}
-	return page, nil
+	return query
 }
 
 func applyNullableRange[T int | int64](
