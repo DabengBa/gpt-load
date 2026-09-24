@@ -4,7 +4,6 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import type { ApiClient } from '@shared/http/client'
 import { enabledDataProtocols } from '@/api/control/protocols'
 import {
-  type AccessKeyDto,
   type AccessProtocol,
   type ReasoningEffortDto,
 } from '@/api/control/types'
@@ -115,7 +114,6 @@ export interface ModelRouteScheduleGroupDto {
 export interface ModelRouteScheduleDetailRequest {
   protocol: AccessProtocol
   external_model: string
-  access_key_id: number
   operation?: RouteInspectOperation
 }
 
@@ -126,11 +124,6 @@ export interface ModelRouteScheduleDetailDto {
   protocol: AccessProtocol
   operation: RouteInspectOperation
   route_requirement: RouteInspectRequirement
-  access_key: {
-    id: number
-    name: string
-    status: AccessKeyDto['status']
-  }
   routable: boolean
   reason_code: RouteInspectReasonCode | null
   groups: ModelRouteScheduleGroupDto[]
@@ -155,7 +148,6 @@ export interface ModelRouteSchedulePatchRequest {
   snapshot_revision: number
   protocol?: AccessProtocol
   external_model?: string
-  access_key_id?: number
   operation?: RouteInspectOperation
   updates: ModelRouteSchedulePatchUpdate[]
 }
@@ -239,8 +231,6 @@ const runtimeFields = [
   'failure_count',
   'failure_version',
 ] as const
-const accessKeyFields = ['id', 'name', 'status'] as const
-const accessKeyStatuses = ['active', 'disabled'] as const
 const runtimeStates = ['available', 'blacklisted', 'cooldown'] as const
 const breakerSources = ['default', 'entry'] as const
 export const reasoningEffortValues = [
@@ -407,16 +397,6 @@ function projectGroup(value: unknown, observedAtMS: number): ModelRouteScheduleG
   }
 }
 
-function projectAccessKey(value: unknown): ModelRouteScheduleDetailDto['access_key'] {
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, accessKeyFields)
-  return {
-    id: projectSafeInteger(record.id, { minimum: 1 }),
-    name: projectNonBlankString(record.name),
-    status: projectEnum(record.status, accessKeyStatuses),
-  }
-}
-
 export function projectModelRouteScheduleIndex(value: unknown): ModelRouteScheduleIndexDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, ['items'])
@@ -483,7 +463,6 @@ export function projectModelRouteScheduleDetail(value: unknown): ModelRouteSched
     protocol: projectEnum(record.protocol, enabledDataProtocols),
     operation: projectEnum(record.operation, routeInspectOperations),
     route_requirement: projectEnum(record.route_requirement, routeInspectRequirements),
-    access_key: projectAccessKey(record.access_key),
     routable: projectBoolean(record.routable),
     reason_code: projectReason(record.reason_code),
     groups,
@@ -521,7 +500,6 @@ function detailPath(request: ModelRouteScheduleDetailRequest): `/api/${string}` 
   const params = new URLSearchParams({
     protocol: request.protocol,
     external_model: request.external_model,
-    access_key_id: String(request.access_key_id),
   })
   if (request.operation !== undefined) params.set('operation', request.operation)
   return `/api/model-route/schedule/detail?${params.toString()}`

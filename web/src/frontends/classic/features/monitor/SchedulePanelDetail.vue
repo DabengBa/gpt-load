@@ -39,6 +39,7 @@ export interface SchedulePanelDetailLabels {
   loading: string
   refresh: string
   stale: string
+  observedAt?: string
   routeUnavailable: string
   group: string
   upstreamModel: string
@@ -87,8 +88,6 @@ export interface SchedulePanelDetailLabels {
   sourceEntry: string
   sourceClient: string
   sourceProviderDefault: string
-  editDetails: string
-  hideDetails: string
   groupDisabled: string
 }
 
@@ -150,15 +149,6 @@ const preserveDraftRevisions = ref(new Set<number>())
 const preserveDraftSnapshots = ref(new Map<number, ScheduleDrafts>())
 // Ignore the one URL echo caused by a local edit; later history changes hydrate normally.
 const pendingLocalDraftFingerprint = ref<string>()
-const expandedRows = ref(new Set<string>())
-
-function toggleDetails(key: string): void {
-  const next = new Set(expandedRows.value)
-  if (next.has(key)) next.delete(key)
-  else next.add(key)
-  expandedRows.value = next
-}
-
 const text = (key: keyof SchedulePanelDetailLabels): string => {
   const value = props.labels[key]
   return typeof value === 'string' && value ? value : t(`monitor.schedule.detail.${key}`)
@@ -329,7 +319,7 @@ const observedLabel = computed(() => {
   const observed = props.detail?.observed_at_ms
   return observed === undefined
     ? ''
-    : `${text('stale')} ${formatLocalInstant(observed, props.locale)}`
+    : `${text('observedAt')} ${formatLocalInstant(observed, props.locale)}`
 })
 
 function groupEnabled(group: ModelRouteScheduleGroupDto): boolean {
@@ -360,7 +350,6 @@ async function toggleEntryEnabled(
       snapshot_revision: detail.snapshot_revision,
       protocol: detail.protocol,
       external_model: detail.external_model ?? '',
-      access_key_id: detail.access_key.id,
       operation: detail.operation,
       updates: [{ group_id: groupID, entry_id: entry.entry_id, enabled: next }],
     })
@@ -598,15 +587,14 @@ type DetailWatchKey = [
   revision: number,
   externalModel: string | null,
   protocol: string,
-  accessKeyID: number,
 ]
 
 watch(
   (): DetailWatchKey => {
     const detail = props.detail
     return detail
-      ? [detail.snapshot_revision, detail.external_model, detail.protocol, detail.access_key.id]
-      : [0, '', '', 0]
+      ? [detail.snapshot_revision, detail.external_model, detail.protocol]
+      : [0, '', '']
   },
   (value, previous) => {
     if (previous?.[0] && previous[0] !== value[0]) {
@@ -676,7 +664,6 @@ async function save(): Promise<void> {
     snapshot_revision: props.detail.snapshot_revision,
     protocol: props.detail.protocol,
     external_model: props.detail.external_model ?? '',
-    access_key_id: props.detail.access_key.id,
     operation: props.detail.operation,
     updates: updates(),
   }
@@ -847,6 +834,27 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
             <div class="schedule-cell schedule-cell--priority" role="cell">
               <span class="schedule-cell__label">{{ text('priority') }}</span>
               <strong>{{ entry.priority }}</strong>
+              <div class="schedule-cell__priority-edit">
+                <AppTextInput
+                  :id="`priority-${index}`"
+                  :model-value="inputValue(group.group_id, entry, 'priority')"
+                  type="number"
+                  :label="`${text('priority')} ${entry.model_id}`"
+                  :placeholder="placeholder(entry, 'priority')"
+                  :invalid="invalidInputs[fieldKey(group.group_id, entry.entry_id, 'priority')]"
+                  :disabled="entry.entry_id.startsWith('derived:')"
+                  size="compact"
+                  @update:model-value="setInput(group.group_id, entry, 'priority', $event)"
+                />
+                <button
+                  type="button"
+                  class="schedule-cell__clear"
+                  :disabled="entry.entry_id.startsWith('derived:')"
+                  @click.stop="clearField(group.group_id, entry, 'priority')"
+                >
+                  {{ text('clear') }}
+                </button>
+              </div>
             </div>
             <div class="schedule-cell schedule-cell--model" role="cell">
               <span class="schedule-cell__label">{{ text('upstreamModel') }}</span>
@@ -863,18 +871,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
                 @click.stop
                 @update:model-value="toggleEntryEnabled(group.group_id, entry, $event)"
               />
-              <AppButton
-                variant="secondary"
-                size="compact"
-                :aria-expanded="expandedRows.has(rowKey(group.group_id, entry.entry_id))"
-                @click.stop="toggleDetails(rowKey(group.group_id, entry.entry_id))"
-              >
-                {{
-                  expandedRows.has(rowKey(group.group_id, entry.entry_id))
-                    ? text('hideDetails')
-                    : text('editDetails')
-                }}
-              </AppButton>
             </div>
             <div class="schedule-cell schedule-cell--group" role="cell">
               <span class="schedule-cell__label">{{ text('group') }}</span>
@@ -938,32 +934,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
                 class="schedule-cell__clear"
                 :disabled="entry.entry_id.startsWith('derived:')"
                 @click.stop="clearField(group.group_id, entry, 'weight')"
-              >
-                {{ text('clear') }}
-              </button>
-            </div>
-            <div
-              v-if="expandedRows.has(rowKey(group.group_id, entry.entry_id))"
-              class="schedule-cell schedule-cell--input schedule-cell--priority-input"
-              role="cell"
-            >
-              <label :for="`priority-${index}`">{{ text('priority') }}</label>
-              <AppTextInput
-                :id="`priority-${index}`"
-                :model-value="inputValue(group.group_id, entry, 'priority')"
-                type="number"
-                :label="`${text('priority')} ${entry.model_id}`"
-                :placeholder="placeholder(entry, 'priority')"
-                :invalid="invalidInputs[fieldKey(group.group_id, entry.entry_id, 'priority')]"
-                :disabled="entry.entry_id.startsWith('derived:')"
-                size="compact"
-                @update:model-value="setInput(group.group_id, entry, 'priority', $event)"
-              />
-              <button
-                type="button"
-                class="schedule-cell__clear"
-                :disabled="entry.entry_id.startsWith('derived:')"
-                @click.stop="clearField(group.group_id, entry, 'priority')"
               >
                 {{ text('clear') }}
               </button>
@@ -1125,7 +1095,7 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
 .schedule-row {
   display: grid;
   grid-template-columns:
-    76px minmax(180px, 1.35fr) minmax(150px, 1.1fr) minmax(250px, 1.7fr)
+    112px minmax(180px, 1.35fr) minmax(150px, 1.1fr) minmax(250px, 1.7fr)
     90px 96px 120px minmax(180px, 1.25fr);
   min-height: 64px;
   align-items: center;
@@ -1158,9 +1128,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   color: var(--color-text-muted);
   font-size: var(--text-meta);
 }
-.schedule-cell--priority-input {
-  grid-column: 1 / -1;
-}
 .schedule-cell--priority {
   align-self: stretch;
   display: grid;
@@ -1168,6 +1135,30 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   justify-items: start;
   border-inline-start: 3px solid var(--color-action);
   padding-inline-start: 9px;
+}
+.schedule-cell__priority-edit {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+}
+.schedule-cell__priority-edit :deep(.app-text-input) {
+  width: 58px;
+  flex: none;
+}
+.schedule-cell :deep(input[type='number']) {
+  color: var(--color-text);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.schedule-cell :deep(input[type='number']::-webkit-inner-spin-button),
+.schedule-cell :deep(input[type='number']::-webkit-outer-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.schedule-cell :deep(input[type='number']::placeholder) {
+  color: var(--color-text-muted);
+  opacity: 1;
 }
 .schedule-cell--priority strong {
   color: var(--color-action);
@@ -1367,8 +1358,7 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   .schedule-cell--input {
     grid-column: auto;
   }
-  .schedule-cell--reasoning,
-  .schedule-cell--priority-input {
+  .schedule-cell--reasoning {
     grid-column: 1 / -1;
   }
   .schedule-cell--breaker {

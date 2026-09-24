@@ -108,7 +108,6 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
   mode: t('monitor.schedule.panel.mode'),
   selectModel: t('monitor.schedule.panel.selectModel'),
   loadingOptions: t('monitor.schedule.panel.loadingOptions'),
-  optionsFailed: t('monitor.schedule.panel.optionsFailed'),
   contextRequired: t('monitor.schedule.panel.contextRequired'),
   kicker: t('monitor.schedule.panel.kicker'),
   contextReady: t('monitor.schedule.panel.contextReady'),
@@ -126,6 +125,7 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
     loading: t('monitor.schedule.detail.loading'),
     refresh: t('monitor.schedule.detail.refresh'),
     stale: t('monitor.schedule.detail.stale'),
+    observedAt: t('monitor.schedule.detail.observedAt'),
     routeUnavailable: t('monitor.schedule.detail.routeUnavailable'),
     group: t('monitor.schedule.detail.group'),
     upstreamModel: t('monitor.schedule.detail.upstreamModel'),
@@ -184,7 +184,7 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
 </script>
 
 <template>
-  <PageFrame aria-labelledby="schedule-title">
+  <PageFrame aria-labelledby="schedule-title" wide>
     <LedgerSheet class="schedule-page">
       <PageHeader id="schedule-title" :title="t('shell.schedule')" />
       <div v-if="isAdmin && isCanonicalQuery" class="schedule-page__panel">

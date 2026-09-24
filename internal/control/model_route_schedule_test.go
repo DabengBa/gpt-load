@@ -316,6 +316,7 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 		result.RouteRequirement != execution.RouteRequirementAny ||
 		result.SnapshotRevision != scenario.revision ||
 		result.ObservedAtMS != scenario.now.UnixMilli() ||
+		result.AccessKey == nil ||
 		result.AccessKey.ID != scenario.accessKeyID ||
 		result.AccessKey.Name != "client" ||
 		result.AccessKey.Status != state.AccessKeyStatusActive ||
@@ -829,6 +830,14 @@ func TestModelRouteScheduleDetailResolvesProtocolAndOperationContext(t *testing.
 		t.Fatalf("missing access key code = %q", code)
 	}
 
+	// 调度中心不带 access_key_id：返回无过滤候选表，响应不回显密钥。
+	unscoped := responses(
+		"/api/model-route/schedule/detail?external_model=pub&protocol=openai-completions",
+	)
+	if unscoped.AccessKey != nil || len(unscoped.Groups) != 2 || !unscoped.Routable {
+		t.Fatalf("unscoped detail = %#v", unscoped)
+	}
+
 	invalid := scenario.perform(
 		http.MethodGet,
 		"/api/model-route/schedule/detail?external_model=pub&protocol=invalid&access_key_id=1",
@@ -973,7 +982,7 @@ func TestModelRouteSchedulePatchAppliesTriStateAtomically(t *testing.T) {
 	if detail.Protocol != protocol.OpenAICompletions ||
 		detail.Operation != execution.OperationChatCompletion ||
 		detail.ExternalModel == nil || *detail.ExternalModel != "pub" ||
-		detail.AccessKey.ID != scenario.accessKeyID ||
+		detail.AccessKey == nil || detail.AccessKey.ID != scenario.accessKeyID ||
 		detail.SnapshotRevision != result.SnapshotRevisionNew {
 		t.Fatalf("patch detail header = %#v", detail)
 	}

@@ -151,7 +151,7 @@ type modelRouteScheduleDetailResponse struct {
 	Protocol         protocol.Protocol                 `json:"protocol"`
 	Operation        execution.Operation               `json:"operation"`
 	RouteRequirement execution.RouteRequirement        `json:"route_requirement"`
-	AccessKey        routeInspectAccessKeyResponse     `json:"access_key"`
+	AccessKey        *routeInspectAccessKeyResponse    `json:"access_key,omitempty"`
 	Routable         bool                              `json:"routable"`
 	ReasonCode       *scheduler.ReasonCode             `json:"reason_code"`
 	Groups           []modelRouteScheduleGroupResponse `json:"groups"`
@@ -313,7 +313,6 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 
 func validateModelRouteScheduleDetailRequest(request modelRouteScheduleDetailRequest) error {
 	if !request.Protocol.DataPlaneEnabled() ||
-		request.AccessKeyID == 0 ||
 		!validUsageModel(request.ExternalModel) {
 		return app_errors.ErrValidation
 	}
@@ -327,8 +326,8 @@ func validateModelRouteScheduleDetailRequest(request modelRouteScheduleDetailReq
 }
 
 // parseModelRouteScheduleDetailQuery reads the §5.2 detail query context:
-// required protocol/external_model/access_key_id plus the optional operation
-// that defaults to the protocol's standard operation.
+// required protocol/external_model plus the optional access_key_id scope and
+// the optional operation that defaults to the protocol's standard operation.
 func parseModelRouteScheduleDetailQuery(c *gin.Context) (modelRouteScheduleDetailRequest, error) {
 	request := modelRouteScheduleDetailRequest{
 		Protocol:      protocol.Protocol(strings.TrimSpace(c.Query("protocol"))),
@@ -349,9 +348,10 @@ func parseModelRouteScheduleDetailQuery(c *gin.Context) (modelRouteScheduleDetai
 }
 
 // GetModelRouteScheduleDetail returns the real inspection candidates for one
-// external model under a protocol/operation/access-key context (§5.2), each
-// row carrying the entry identity, the §5.3 breaker triple and the entry
-// runtime state.
+// external model under a protocol/operation context (§5.2), each row carrying
+// the entry identity, the §5.3 breaker triple and the entry runtime state.
+// An optional access_key_id scopes the inspection through that key's filters;
+// when omitted the dispatch center observes the unfiltered candidate table.
 func (s *Service) GetModelRouteScheduleDetail(
 	request modelRouteScheduleDetailRequest,
 ) (modelRouteScheduleDetailResponse, error) {
@@ -366,9 +366,15 @@ func (s *Service) GetModelRouteScheduleDetail(
 	if err != nil {
 		return modelRouteScheduleDetailResponse{}, err
 	}
-	accessKey, exists := observation.snapshot.AccessKeysByID[request.AccessKeyID]
-	if !exists {
-		return modelRouteScheduleDetailResponse{}, app_errors.ErrResourceNotFound
+	// Access-key scope is optional: the dispatch center sends none, so the
+	// inspection runs against an unfiltered active key view.
+	accessKey := state.AccessKeyView{Status: state.AccessKeyStatusActive}
+	if request.AccessKeyID != 0 {
+		scoped, exists := observation.snapshot.AccessKeysByID[request.AccessKeyID]
+		if !exists {
+			return modelRouteScheduleDetailResponse{}, app_errors.ErrResourceNotFound
+		}
+		accessKey = scoped
 	}
 	operation := metadata.Operation
 	if request.Operation != "" {
@@ -441,12 +447,14 @@ func mapModelRouteScheduleDetail(
 		Protocol:         request.Protocol,
 		Operation:        explanation.Operation,
 		RouteRequirement: explanation.RouteRequirement,
-		AccessKey: routeInspectAccessKeyResponse{
+		Routable:         explanation.Routable,
+		ReasonCode:       optionalReason(explanation.Reason),
+		Groups:           []modelRouteScheduleGroupResponse{},
+	}
+	if request.AccessKeyID != 0 {
+		result.AccessKey = &routeInspectAccessKeyResponse{
 			ID: accessKey.ID, Name: accessKey.Name, Status: accessKey.Status,
-		},
-		Routable:   explanation.Routable,
-		ReasonCode: optionalReason(explanation.Reason),
-		Groups:     []modelRouteScheduleGroupResponse{},
+		}
 	}
 	groupIndex := make(map[uint]int, len(explanation.Groups))
 	for _, group := range explanation.Groups {
@@ -862,7 +870,7 @@ func (s *Service) UpdateModelRouteSchedule(
 	if current := s.manager.Current(); current != nil {
 		revision = current.Revision
 	}
-	if request.Protocol == "" || request.ExternalModel == "" || request.AccessKeyID == 0 {
+	if request.Protocol == "" || request.ExternalModel == "" {
 		return modelRouteSchedulePatchResponse{SnapshotRevisionNew: revision}, nil
 	}
 	detail, err := s.scheduleDetailAfterPatch(request)
@@ -880,13 +888,14 @@ func (s *Service) UpdateModelRouteSchedule(
 
 // validateScheduleDetailEchoContext requires a complete detail echo context
 // when the patch request carries any part of one; an incomplete context would
-// silently drop the response detail.
+// silently drop the response detail. access_key_id stays optional: the echo
+// renders the same unscoped detail the dispatch center displays.
 func validateScheduleDetailEchoContext(request modelRouteSchedulePatchRequest) error {
 	partial := request.Protocol != "" || request.ExternalModel != "" || request.AccessKeyID != 0
 	if !partial {
 		return nil
 	}
-	if request.Protocol == "" || request.ExternalModel == "" || request.AccessKeyID == 0 {
+	if request.Protocol == "" || request.ExternalModel == "" {
 		return app_errors.ErrValidation
 	}
 	return nil
@@ -1046,7 +1055,7 @@ func canonicalScheduleReasoningEffort(value string) (string, error) {
 func (s *Service) scheduleDetailAfterPatch(
 	request modelRouteSchedulePatchRequest,
 ) (modelRouteScheduleDetailResponse, error) {
-	if request.Protocol == "" || request.ExternalModel == "" || request.AccessKeyID == 0 {
+	if request.Protocol == "" || request.ExternalModel == "" {
 		return modelRouteScheduleDetailResponse{}, nil
 	}
 	detailRequest := modelRouteScheduleDetailRequest{

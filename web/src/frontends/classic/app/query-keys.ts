@@ -150,7 +150,6 @@ export const controlQueryKeys = {
     detail: (context: {
       protocol: string
       external_model: string
-      access_key_id: number
       operation?: string
     }) => ['control', 'model-route-schedule', 'detail', context] as const,
   },

@@ -4,7 +4,6 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useApiClient } from '@shared/http/client-context'
-import { accessKeyOptionsQueryOptions } from '@/app/resources/access-keys'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import { logsLocation } from '@/app/route-locations'
 import {
@@ -25,7 +24,6 @@ export interface SchedulePanelLabels {
   mode: string
   selectModel: string
   loadingOptions: string
-  optionsFailed: string
   contextRequired: string
   kicker?: string
   contextReady?: string
@@ -69,9 +67,7 @@ const emit = defineEmits<{
 const client = useApiClient()
 const selectedModel = ref(props.externalModel)
 const selectedMode = ref<ScheduleMode>(props.mode)
-const selectedAccessKeyID = ref<number>()
 const indexQuery = useQuery(modelRouteScheduleIndexQueryOptions(client))
-const accessKeyQuery = useQuery(accessKeyOptionsQueryOptions(client))
 const indexItems = computed<ModelRouteScheduleIndexItemDto[]>(
   () => indexQuery.data.value?.items ?? [],
 )
@@ -80,11 +76,10 @@ const selectedIndexItem = computed(() =>
 )
 const detailRequest = computed(() => {
   const indexItem = selectedIndexItem.value
-  if (!indexItem || selectedAccessKeyID.value === undefined) return undefined
+  if (!indexItem) return undefined
   return {
     protocol: indexItem.protocol,
     external_model: selectedModel.value,
-    access_key_id: selectedAccessKeyID.value,
     operation: indexItem.operation,
   }
 })
@@ -99,7 +94,6 @@ const modeOptions = computed(() =>
     label: props.labels.modeLabels?.[mode] ?? mode,
   })),
 )
-const optionsError = computed(() => accessKeyQuery.error.value ?? undefined)
 const indexError = computed(() =>
   indexQuery.error.value ? errorMessage(indexQuery.error.value, text('indexFailed')) : '',
 )
@@ -124,17 +118,6 @@ watch(
     selectedMode.value = value
   },
 )
-watch(
-  () => accessKeyQuery.data.value,
-  (options) => {
-    if (selectedAccessKeyID.value !== undefined || !options?.length) return
-    selectedAccessKeyID.value = (
-      options.find((option) => option.status === 'active') ?? options[0]
-    ).id
-  },
-  { immediate: true },
-)
-
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
@@ -243,18 +226,6 @@ function viewProbeLog(logID: string): void {
       </label>
     </div>
 
-    <QueryFeedback
-      v-if="accessKeyQuery.isError.value"
-      state="error"
-      :message="errorMessage(optionsError, text('optionsFailed'))"
-      :retry-label="text('retry')"
-      @retry="accessKeyQuery.refetch"
-    />
-    <QueryFeedback
-      v-else-if="accessKeyQuery.isPending.value"
-      state="loading"
-      :message="text('loadingOptions')"
-    />
     <QueryFeedback
       v-if="indexQuery.isPending.value"
       state="loading"
