@@ -167,6 +167,8 @@ Rerank uses the independent `rerank` protocol through `POST /v1/rerank` on the O
 
 Docker Compose uses application-managed SQLite by default. Data lives in the `gpt-load-data` named volume and includes the database, `auth.key`, and `encryption.key`.
 
+For request-log retention, SQLite status, offline maintenance, and recovery procedures, see the [SQLite maintenance and recovery guide](docs/sqlite-maintenance.md).
+
 > [!IMPORTANT]
 > `encryption.key` decrypts channel credentials. When backing up or migrating, the database and the key **must be kept together**. Once the key is lost or replaced, existing encrypted credentials cannot be recovered, and this version does not support master key rotation.
 
@@ -214,7 +216,7 @@ At startup, the application reads `.env` in the current directory; existing proc
 | `IDLE_TIMEOUT` | `120` | HTTP keep-alive idle connection timeout, positive integer in seconds. |
 | `DATA_DIR` | `./data` | Directory for the managed database, `auth.key`, `encryption.key`, and runtime state; official Compose uses `/app/data`. |
 | `DATABASE_DSN` | Empty, uses `${DATA_DIR}/gpt-load.db` | Empty uses application-managed SQLite; non-empty values support SQLite paths or URLs and are treated as operator-managed external databases. Container file paths must be inside a mounted directory. |
-| `SQLITE_JOURNAL_MODE` | `wal` | Journal mode for the application-managed SQLite database when `DATABASE_DSN` is empty; accepts `wal`, `delete`, `truncate`, or `persist`. External databases set it through the DSN `_pragma` parameter instead. |
+| `SQLITE_JOURNAL_MODE` | `wal` | Journal mode for the application-managed SQLite database when `DATABASE_DSN` is empty; accepts `wal`, `delete`, `truncate`, or `persist`. External SQLite databases set it through the DSN `_pragma` parameter instead. Startup validates the actual mode. |
 | `AUTH_KEY` | Empty, reads or generates `${DATA_DIR}/auth.key` | Bearer key for the management UI and `/api` management API, not a data-plane AccessKey. |
 | `ENCRYPTION_KEY` | Empty, reads or generates `${DATA_DIR}/encryption.key` | Encrypts channel credentials; changing or losing it makes existing credentials undecryptable, so back it up with the database. |
 | `HTTP_PROXY` | Empty | Environment proxy for HTTP upstream requests. |

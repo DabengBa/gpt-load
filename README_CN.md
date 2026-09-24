@@ -169,6 +169,8 @@ Rerank 使用独立的 `rerank` 协议，在 OpenAI Compatible、New API、GPT-L
 
 Docker Compose 默认使用应用管理的 SQLite，数据存放在 `gpt-load-data` 具名卷中，包含数据库、`auth.key` 和 `encryption.key`。
 
+请求日志保留、SQLite 状态、停机维护和恢复流程见 [SQLite 运维与恢复文档](docs/sqlite-maintenance.md)。
+
 > [!IMPORTANT]
 > `encryption.key` 用于解密渠道凭据。备份或迁移时，数据库和密钥**必须一起保存**；密钥丢失或被替换后，已有加密凭据无法恢复，且当前版本不支持主密钥轮换。
 
@@ -216,7 +218,7 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 | `IDLE_TIMEOUT`                  | `120`                                       | HTTP keep-alive 空闲连接超时，正整数，单位秒。                                                                                                           |
 | `DATA_DIR`                      | `./data`                                    | 托管数据库、`auth.key`、`encryption.key` 和运行状态文件的目录；官方 Compose 固定为 `/app/data`。                                                               |
 | `DATABASE_DSN`                  | 空，使用 `${DATA_DIR}/gpt-load.db`          | 空值使用应用托管的 SQLite；非空值支持 SQLite 路径或 URL，并视为运维方管理的外部数据库。容器内文件路径必须位于已挂载目录。     |
-| `SQLITE_JOURNAL_MODE`           | `wal`                                       | `DATABASE_DSN` 为空时应用托管 SQLite 的日志模式，可选 `wal`、`delete`、`truncate`、`persist`；外部数据库改用 DSN 的 `_pragma` 参数设置。          |
+| `SQLITE_JOURNAL_MODE`           | `wal`                                       | `DATABASE_DSN` 为空时应用托管 SQLite 的 journal mode，可选 `wal`、`delete`、`truncate`、`persist`；启动时会校验实际模式。外部 SQLite 改用 DSN 的 `_pragma` 参数设置。 |
 | `AUTH_KEY`                      | 空，读取或生成 `${DATA_DIR}/auth.key`       | 管理界面和 `/api` 管理接口的 Bearer 密钥，不是数据面 AccessKey。                                                                                         |
 | `ENCRYPTION_KEY`                | 空，读取或生成 `${DATA_DIR}/encryption.key` | 用于加密渠道凭据；更换或丢失后无法解密已有凭据，必须与数据库一起备份。                                                                                   |
 | `HTTP_PROXY`                    | 空                                          | HTTP 上游请求的环境代理。                                                                                                                                |

@@ -151,6 +151,7 @@ func (s *Server) HTTPModule() httproute.Module {
 				s.handleHomeStatistics,
 			),
 			controlRoute("control.health", http.MethodGet, "/health", s.handleRuntimeHealth),
+			controlRoute("control.sqlite-maintenance.status", http.MethodGet, "/sqlite-maintenance", s.handleSQLiteMaintenanceStatus),
 			controlRoute("control.debug-captures.list", http.MethodGet, "/debug-captures", s.handleListDebugCaptures),
 			controlRoute("control.debug-captures.detail", http.MethodGet, "/debug-captures/:capture_id", s.handleGetDebugCapture),
 			controlRoute("control.debug-captures.download", http.MethodGet, "/debug-captures/:capture_id/download", s.handleDownloadDebugCapture),
