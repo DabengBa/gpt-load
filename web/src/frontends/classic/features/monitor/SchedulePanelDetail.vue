@@ -17,7 +17,6 @@ import {
   type ModelRouteScheduleEntryDto,
   type ModelRouteScheduleGroupDto,
   type ModelRouteSchedulePatchUpdate,
-  type ModelRouteScheduleReasoningSource,
 } from '@/app/resources/model-route-schedule'
 import type { ReasoningEffortDto } from '@/api/control/types'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
@@ -55,7 +54,6 @@ export interface SchedulePanelDetailLabels {
   breakerRecovery: string
   cooldownUntil?: string
   scheduledReleaseAt?: string
-  clear: string
   invalidValue: string
   derivedReadOnly: string
   save: string
@@ -72,22 +70,11 @@ export interface SchedulePanelDetailLabels {
   draftPreview?: string
   toggleEnabled?: string
   toggleFailed?: string
-  enabled?: string
   disabled?: string
   calls24h?: string
   successRate24h?: string
   reasoning: string
-  entryOverride: string
   inherit: string
-  effective: string
-  source: string
-  capability: string
-  supported: string
-  unsupported: string
-  capabilityUnknown: string
-  sourceEntry: string
-  sourceClient: string
-  sourceProviderDefault: string
   groupDisabled: string
 }
 
@@ -100,7 +87,7 @@ const props = withDefaults(
     detail?: ModelRouteScheduleDetailDto
     loading?: boolean
     error?: string
-    refreshing?: boolean
+    stale?: boolean
     labels?: Partial<SchedulePanelDetailLabels>
     locale?: string
     mode?: ScheduleMode
@@ -112,7 +99,7 @@ const props = withDefaults(
     detail: undefined,
     loading: false,
     error: '',
-    refreshing: false,
+    stale: false,
     labels: () => ({}),
     locale: 'en-US',
     mode: 'all',
@@ -421,10 +408,16 @@ function entryReasoningValue(
     : (entry.reasoning.configured ?? '')
 }
 
-const reasoningOptions = [
-  { value: '', label: text('inherit') },
-  ...reasoningEffortValues.map((value) => ({ value, label: value })),
-]
+// 未配置项把有效值并入选项文案：单元格只有一行，操作者不用展开
+// 即可知道该条目当前实际生效的推理强度来自哪里。
+function reasoningOptionsFor(entry: ModelRouteScheduleEntryDto) {
+  const effective = entry.reasoning.effective
+  const inheritLabel = effective === null ? text('inherit') : `${text('inherit')} · ${effective}`
+  return [
+    { value: '', label: inheritLabel },
+    ...reasoningEffortValues.map((value) => ({ value, label: value })),
+  ]
+}
 
 function setEntryReasoning(
   groupID: number,
@@ -436,12 +429,6 @@ function setEntryReasoning(
   const key = draftKey(groupID, entry.entry_id)
   if (next === entry.reasoning.configured) delete entryReasoningDrafts[key]
   else entryReasoningDrafts[key] = next
-}
-
-function reasoningSourceLabel(source: ModelRouteScheduleReasoningSource): string {
-  if (source === 'entry') return text('sourceEntry')
-  if (source === 'client') return text('sourceClient')
-  return text('sourceProviderDefault')
 }
 
 function configuredValue(entry: ModelRouteScheduleEntryDto, field: EditableField): number | null {
@@ -514,16 +501,6 @@ function setInput(
     return
   }
   setDraftValue(groupID, entry, field, parsed)
-}
-
-function clearField(
-  groupID: number,
-  entry: ModelRouteScheduleEntryDto,
-  field: EditableField,
-): void {
-  rawInputs[fieldKey(groupID, entry.entry_id, field)] = ''
-  delete invalidInputs[fieldKey(groupID, entry.entry_id, field)]
-  setDraftValue(groupID, entry, field, null)
 }
 
 function resetDrafts(): void {
@@ -782,7 +759,7 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
     />
     <template v-else-if="hasDetail && detail">
       <QueryFeedback
-        v-if="refreshing"
+        v-if="stale"
         state="stale"
         :message="text('stale')"
         :retry-label="text('refresh')"
@@ -846,14 +823,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
                   size="compact"
                   @update:model-value="setInput(group.group_id, entry, 'priority', $event)"
                 />
-                <button
-                  type="button"
-                  class="schedule-cell__clear"
-                  :disabled="entry.entry_id.startsWith('derived:')"
-                  @click.stop="clearField(group.group_id, entry, 'priority')"
-                >
-                  {{ text('clear') }}
-                </button>
               </div>
             </div>
             <div class="schedule-cell schedule-cell--model" role="cell">
@@ -881,43 +850,28 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
               >
                 <strong>{{ group.group_name }}</strong>
               </RouterLink>
-              <div class="schedule-cell__group-controls">
-                <span class="schedule-cell__group-state">
-                  {{ groupEnabled(group) ? text('enabled') : text('disabled') }}
-                </span>
-              </div>
+              <small v-if="!groupEnabled(group)" class="schedule-cell__group-state">
+                {{ text('groupDisabled') }}
+              </small>
               <small class="schedule-cell__stats">
                 {{ text('calls24h') }}: {{ formatCount(group.request_count) }} ·
                 {{ text('successRate24h') }}: {{ formatRate(group.success_rate) }}
               </small>
             </div>
             <div class="schedule-cell schedule-cell--reasoning" role="cell">
-              <strong>{{ text('reasoning') }}</strong>
-              <label class="schedule-reasoning-control">
-                <span>{{ text('entryOverride') }}</span>
-                <AppSelect
-                  :model-value="entryReasoningValue(group.group_id, entry)"
-                  :options="reasoningOptions"
-                  :label="`${text('entryOverride')} ${entry.model_id}`"
-                  :disabled="pending || entry.entry_id.startsWith('derived:')"
-                  size="compact"
-                  @click.stop
-                  @update:model-value="setEntryReasoning(group.group_id, entry, $event)"
-                />
-              </label>
-              <dl class="schedule-reasoning-meta">
-                <div>
-                  <dt>{{ text('effective') }}</dt>
-                  <dd>{{ entry.reasoning.effective ?? text('inherit') }}</dd>
-                </div>
-                <div>
-                  <dt>{{ text('source') }}</dt>
-                  <dd>{{ reasoningSourceLabel(entry.reasoning.source) }}</dd>
-                </div>
-              </dl>
+              <span class="schedule-cell__label">{{ text('reasoning') }}</span>
+              <AppSelect
+                :model-value="entryReasoningValue(group.group_id, entry)"
+                :options="reasoningOptionsFor(entry)"
+                :label="`${text('reasoning')} ${entry.model_id}`"
+                :disabled="pending || entry.entry_id.startsWith('derived:')"
+                size="compact"
+                @click.stop
+                @update:model-value="setEntryReasoning(group.group_id, entry, $event)"
+              />
             </div>
             <div class="schedule-cell schedule-cell--input" role="cell">
-              <label :for="`weight-${index}`">{{ text('weight') }}</label>
+              <label class="schedule-cell__label" :for="`weight-${index}`">{{ text('weight') }}</label>
               <AppTextInput
                 :id="`weight-${index}`"
                 :model-value="inputValue(group.group_id, entry, 'weight')"
@@ -929,14 +883,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
                 size="compact"
                 @update:model-value="setInput(group.group_id, entry, 'weight', $event)"
               />
-              <button
-                type="button"
-                class="schedule-cell__clear"
-                :disabled="entry.entry_id.startsWith('derived:')"
-                @click.stop="clearField(group.group_id, entry, 'weight')"
-              >
-                {{ text('clear') }}
-              </button>
             </div>
             <div class="schedule-cell schedule-cell--share" role="cell">
               <span class="schedule-cell__label">{{ text('share') }}</span>
@@ -1090,13 +1036,13 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   border: 1px solid var(--color-border-subtle);
 }
 .schedule-table {
-  min-width: 1080px;
+  min-width: 1020px;
 }
 .schedule-row {
   display: grid;
   grid-template-columns:
-    112px minmax(180px, 1.35fr) minmax(150px, 1.1fr) minmax(250px, 1.7fr)
-    90px 96px 120px minmax(180px, 1.25fr);
+    96px minmax(160px, 1.3fr) minmax(140px, 1fr) minmax(112px, 0.8fr)
+    76px 84px 104px minmax(160px, 1.1fr);
   min-height: 64px;
   align-items: center;
   gap: 10px;
@@ -1182,47 +1128,11 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
 }
 .schedule-cell--reasoning {
   display: grid;
-  gap: 6px;
+  align-content: center;
+  gap: 2px;
 }
-.schedule-reasoning-control {
-  display: grid;
-  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  color: var(--color-text-faint);
-  font-size: 10px;
-}
-.schedule-reasoning-control :deep(.app-select__trigger) {
+.schedule-cell--reasoning :deep(.app-select__trigger) {
   width: 100%;
-}
-.schedule-reasoning-meta {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 3px 10px;
-  margin: 0;
-}
-.schedule-reasoning-meta div {
-  display: flex;
-  min-width: 0;
-  gap: 3px;
-}
-.schedule-reasoning-meta dt {
-  color: var(--color-text-faint);
-}
-.schedule-reasoning-meta dd {
-  margin: 0;
-  color: var(--color-text);
-}
-.schedule-reasoning-meta__unsupported {
-  color: var(--color-danger) !important;
-  font-weight: 650;
-}
-.schedule-reasoning-reason {
-  overflow: visible !important;
-  color: var(--color-text-faint);
-  text-overflow: clip !important;
-  white-space: normal !important;
 }
 .schedule-cell strong {
   color: var(--color-text);
@@ -1236,15 +1146,10 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
 .schedule-cell__group-link:hover strong {
   color: var(--color-action);
 }
-.schedule-cell__group-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-}
 .schedule-cell__group-state {
-  color: var(--color-text-faint);
+  color: var(--color-warning);
   font-size: 10px;
+  font-weight: 650;
 }
 .schedule-cell__stats {
   color: var(--color-text-faint);
@@ -1257,24 +1162,12 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
 }
 .schedule-cell--input {
   display: grid;
-  grid-template-columns: 62px auto;
-  align-items: center;
-  gap: 3px;
+  align-content: center;
+  gap: 2px;
 }
 .schedule-cell--input :deep(.app-text-input__input) {
   width: 62px;
   font-family: var(--font-mono);
-}
-.schedule-cell__clear {
-  border: 0;
-  background: transparent;
-  color: var(--color-text-faint);
-  padding: 2px;
-  font-size: 10px;
-  cursor: pointer;
-}
-.schedule-cell__clear:hover {
-  color: var(--color-action);
 }
 .schedule-cell--share {
   display: grid;
@@ -1364,9 +1257,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   .schedule-cell--breaker {
     align-items: flex-start;
     flex-direction: column;
-  }
-  .schedule-cell--input {
-    grid-template-columns: minmax(0, 1fr) auto;
   }
   .schedule-cell--input :deep(.app-text-input__input) {
     width: 100%;

@@ -319,6 +319,8 @@ export default {
         weightError: '请输入 1–100 之间的整数',
         enabled: '启用分组',
         enabledHelp: '停用后，新请求不再选择此分组。',
+        enableAll: '全部开启',
+        disableAll: '全部关闭',
       },
       runtime: {
         title: '运行时覆盖',

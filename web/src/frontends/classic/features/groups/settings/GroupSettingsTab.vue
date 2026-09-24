@@ -89,6 +89,7 @@ const queryRefreshing = computed(() => query.data.value !== undefined && query.i
 const saved = ref<GroupSettingsDto>()
 const draft = ref<GroupSettingsDraft>()
 const pending = ref(false)
+const enabledPending = ref(false)
 const deletePending = ref(false)
 const deleted = ref(false)
 const error = ref('')
@@ -507,6 +508,26 @@ function discard(): void {
   consumeCurrentQuery()
 }
 
+// 分组总闸不再走表单草稿：它是立即生效的动作，语义与调度页条目开关一致。
+// 成功后只同步 enabled 字段，保留用户在表单里尚未保存的其它改动。
+async function setGroupEnabled(next: boolean): Promise<void> {
+  const base = saved.value
+  if (!base || enabledPending.value || next === base.enabled) return
+  enabledPending.value = true
+  error.value = ''
+  try {
+    const result = await updateGroupSettings(client, props.groupId, { enabled: next })
+    saved.value = result
+    if (draft.value) draft.value.enabled = result.enabled
+    cacheGroupSettings(queryClient, props.groupId, result)
+    await invalidateGroupSettingsDependents(queryClient, props.groupId)
+  } catch {
+    error.value = t('group.settings.saveFailed')
+  } finally {
+    enabledPending.value = false
+  }
+}
+
 function onDeleted(): void {
   deleted.value = true
   error.value = ''
@@ -578,7 +599,8 @@ onBeforeUnmount(() => {
             :name="draft.name"
             :provider-url="draft.provider_url"
             :price-multiplier="draft.price_multiplier"
-            :enabled="draft.enabled"
+            :enabled="saved.enabled"
+            :enabled-pending="enabledPending"
             :pending="mutationPending"
             :params-disabled="channelParamsDisabled"
             :name-error="nameError"
@@ -589,7 +611,7 @@ onBeforeUnmount(() => {
             @update:name="draft.name = $event"
             @update:provider-url="draft.provider_url = $event"
             @update:price-multiplier="draft.price_multiplier = $event"
-            @update:enabled="draft.enabled = $event"
+            @set-enabled="setGroupEnabled"
           />
           <Teleport :disabled="!unified" defer to="#group-settings-advanced-target">
             <details class="group-settings__advanced">

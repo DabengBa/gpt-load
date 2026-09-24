@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { ChannelParamsDto } from '@/api/control/types'
 import type { ChannelDto, ChannelFieldDto } from '@/app/resources/channels'
+import AppButton from '@/components/ui/AppButton.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import ChannelPresetPicker from '@/features/import/ChannelPresetPicker.vue'
 import { isValidPriceMultiplier } from '@/lib/price-multiplier'
@@ -22,6 +23,7 @@ const props = withDefaults(
     providerUrl: string | null
     priceMultiplier: string
     enabled: boolean
+    enabledPending?: boolean
     pending: boolean
     paramsDisabled?: boolean
     nameError: string
@@ -30,7 +32,7 @@ const props = withDefaults(
     showDescription?: boolean
     unified?: boolean
   }>(),
-  { showTitle: true, showDescription: true, unified: false },
+  { showTitle: true, showDescription: true, unified: false, enabledPending: false },
 )
 const emit = defineEmits<{
   'update:param': [key: string, value: string | null]
@@ -39,7 +41,7 @@ const emit = defineEmits<{
   'update:name': [value: string]
   'update:providerUrl': [value: string]
   'update:priceMultiplier': [value: string]
-  'update:enabled': [value: boolean]
+  'set-enabled': [value: boolean]
 }>()
 const { t } = useI18n()
 const baseUrlOverrideEnabled = ref(true)
@@ -199,12 +201,24 @@ function parameterHelp(field: ChannelFieldDto): string {
             <strong>{{ t('group.settings.base.enabled') }}</strong>
             <small>{{ t('group.settings.base.enabledHelp') }}</small>
           </span>
-          <AppSwitch
-            :model-value="enabled"
-            :disabled="pending"
-            :label="t('group.settings.base.enabled')"
-            @update:model-value="emit('update:enabled', $event)"
-          />
+          <div class="group-settings__enabled-actions">
+            <AppButton
+              variant="secondary"
+              size="compact"
+              :disabled="pending || enabledPending || enabled"
+              @click="emit('set-enabled', true)"
+            >
+              {{ t('group.settings.base.enableAll') }}
+            </AppButton>
+            <AppButton
+              variant="secondary"
+              size="compact"
+              :disabled="pending || enabledPending || !enabled"
+              @click="emit('set-enabled', false)"
+            >
+              {{ t('group.settings.base.disableAll') }}
+            </AppButton>
+          </div>
         </div>
       </Teleport>
     </div>
@@ -354,6 +368,13 @@ fieldset {
 .group-settings__switch-copy small {
   color: var(--color-text-faint);
   font-size: 11px;
+}
+
+.group-settings__enabled-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
 }
 
 @media (max-width: 800px) {

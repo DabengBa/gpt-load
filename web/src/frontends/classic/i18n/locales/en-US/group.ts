@@ -328,6 +328,8 @@ export default {
         weightError: 'Enter a whole number from 1 to 100',
         enabled: 'Group enabled',
         enabledHelp: 'When disabled, new requests no longer select this Group',
+        enableAll: 'Enable all',
+        disableAll: 'Disable all',
       },
       runtime: {
         title: 'Runtime overrides',

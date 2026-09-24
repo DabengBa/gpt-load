@@ -327,6 +327,8 @@ export default {
         weightError: '1～100 の整数を入力してください',
         enabled: 'グループを有効化',
         enabledHelp: '無効にすると新しいリクエストではこのグループを選択しません',
+        enableAll: 'すべて有効化',
+        disableAll: 'すべて無効化',
       },
       runtime: {
         title: 'ランタイム上書き',

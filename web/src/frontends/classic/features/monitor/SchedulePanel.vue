@@ -246,8 +246,8 @@ function viewProbeLog(logID: string): void {
         detailQuery.data.value === undefined &&
         Boolean(detailRequest)
       "
-      :error="detailRequest ? detailError : ''"
-      :refreshing="detailQuery.isFetching.value && detailQuery.data.value !== undefined"
+      :error="detailRequest && detailQuery.data.value === undefined ? detailError : ''"
+      :stale="detailQuery.isRefetchError.value"
       :locale="locale"
       :mode="selectedMode"
       :selected-row="selectedRow"
