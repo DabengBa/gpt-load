@@ -251,7 +251,11 @@ function parseRecoveryRecord(raw: string): ImportRecoveryRecord | null {
     ) {
       return null
     }
-    return value as unknown as ImportRecoveryRecord
+    return {
+      version: value.version,
+      expires_at: value.expires_at,
+      draft: value.draft,
+    }
   } catch {
     return null
   }

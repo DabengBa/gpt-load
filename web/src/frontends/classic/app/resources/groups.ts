@@ -19,6 +19,9 @@ import type {
   EntryCircuitBreakerDto,
   GroupSettingsDto,
   GroupSummaryDto,
+  HeaderRulesDto,
+  GroupRuntimeConfigDto,
+  GroupEffectiveConfigDto,
   ParameterJSONValue,
   ParameterOverrideMatchDto,
   ParameterOverrideRuleDto,
@@ -128,35 +131,10 @@ const runtimeSettingFields = [
 ] as const
 const groupRuntimeSettingFields = [...runtimeSettingFields, 'parameter_overrides'] as const
 
-export interface HeaderRulesDto {
-  set: Record<string, string>
-  remove: string[]
-}
-
-export interface GroupRuntimeConfigDto {
-  first_byte_timeout?: number
-  request_timeout?: number
-  stream_idle_timeout?: number
-  blacklist_threshold?: number
-  header_rules?: HeaderRulesDto
-  affinity_enabled?: boolean
-  responses_websocket_enabled?: boolean
-  responses_reasoning_status_filter_enabled?: boolean
-  parameter_overrides?: ParameterOverrideRuleDto[]
-}
-
-export interface GroupEffectiveConfigDto {
-  first_byte_timeout: number
-  request_timeout: number
-  stream_idle_timeout: number
-  blacklist_threshold: number
-  header_rules: HeaderRulesDto
-  affinity_enabled: boolean
-  responses_websocket_enabled: boolean
-  responses_reasoning_status_filter_enabled: boolean
-}
-
 export type {
+  HeaderRulesDto,
+  GroupRuntimeConfigDto,
+  GroupEffectiveConfigDto,
   GroupModelItemDto,
   GroupModelsDto,
   GroupSettingsDto,

@@ -121,7 +121,7 @@ export function useCollectionLoading(
       () =>
         Boolean(toValue(input.hasData)) &&
         Boolean(toValue(input.fetching)) &&
-        !Boolean(toValue(input.placeholder)),
+        !toValue(input.placeholder),
     ),
     rows: readonly(rows),
   }

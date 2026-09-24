@@ -47,7 +47,7 @@ try {
   }
 
   const secretField = structuredClone(payload)
-  secretField.items[0].token = 'must-not-cross-the-projector'
+  secretField.items[0].token = 1
   assert.throws(() => groups.projectGroupModels(secretField), 'accepted secret-like field')
 
   const draft = modelDiff.createModelDraft(projected.items)

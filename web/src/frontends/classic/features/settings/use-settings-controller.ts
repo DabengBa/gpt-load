@@ -6,11 +6,11 @@ import { RequestCancelledError } from '@shared/http/errors'
 import { useApiClient } from '@shared/http/client-context'
 import { controlQueryKeys } from '@/app/query-keys'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
-import type { SettingsResource } from '@/app/resources/settings'
 import {
   updateSettings,
   type RuntimeSettingKey,
   type SettingsPatch,
+  type SettingsResource,
 } from '@/app/resources/settings'
 
 import {
