@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"gorm.io/gorm"
@@ -122,6 +124,44 @@ type Options struct {
 	Operation      string
 }
 
+// SQLite has one writer even in WAL mode. Queue writes per connection pool
+// before checking out a connection so lock waiters cannot starve readers.
+type sqliteWriteGate struct {
+	token   chan struct{}
+	waiters atomic.Int32
+}
+
+func newSQLiteWriteGate() *sqliteWriteGate {
+	return &sqliteWriteGate{token: make(chan struct{}, 1)}
+}
+
+func (gate *sqliteWriteGate) acquire(ctx context.Context) error {
+	select {
+	case gate.token <- struct{}{}:
+		return nil
+	default:
+	}
+	gate.waiters.Add(1)
+	defer gate.waiters.Add(-1)
+	select {
+	case gate.token <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (gate *sqliteWriteGate) release() {
+	<-gate.token
+}
+
+var sqliteWriteGates sync.Map
+
+func sqliteWriteGateFor(db *sql.DB) *sqliteWriteGate {
+	gate, _ := sqliteWriteGates.LoadOrStore(db, newSQLiteWriteGate())
+	return gate.(*sqliteWriteGate)
+}
+
 // Run executes callback inside a pinned SQL connection and a driver-aware
 // transaction. A failed callback is rolled back; a failed rollback or commit
 // causes the connection to be discarded so it cannot return to the pool in an
@@ -156,6 +196,18 @@ func Run(
 	cleanupTimeout := options.CleanupTimeout
 	if cleanupTimeout <= 0 {
 		cleanupTimeout = time.Second
+	}
+
+	if options.Mode == Write {
+		sqlDB, err := db.DB()
+		if err != nil {
+			return newError(options.Operation, PhaseConnection, err)
+		}
+		gate := sqliteWriteGateFor(sqlDB)
+		if err := gate.acquire(ctx); err != nil {
+			return err
+		}
+		defer gate.release()
 	}
 
 	return db.WithContext(ctx).Connection(func(connection *gorm.DB) error {
