@@ -58,9 +58,9 @@ func TestReasoningPolicyPersistedScheduleReachesProviderWire(t *testing.T) {
 	revision := fixture.manager.Current().Revision
 	if _, err := fixture.service.UpdateModelRouteSchedule(t.Context(), modelRouteSchedulePatchRequest{
 		SnapshotRevision: &revision,
-		GroupUpdates: []modelRouteScheduleGroupPatchUpdate{{
-			GroupID:                created.GroupID,
-			ReasoningEffortDefault: optionalField[string]{Set: true, Value: "high"},
+		Updates: []modelRouteSchedulePatchUpdate{{
+			GroupID: created.GroupID, EntryID: models.Items[0].EntryID,
+			ReasoningEffort: optionalField[string]{Set: true, Value: "high"},
 		}},
 	}); err != nil {
 		t.Fatalf("UpdateModelRouteSchedule() error = %v", err)
@@ -69,8 +69,8 @@ func TestReasoningPolicyPersistedScheduleReachesProviderWire(t *testing.T) {
 	if err != nil || row.Items[0].EntryID == "" {
 		t.Fatalf("persisted route entry = %#v, %v", row, err)
 	}
-	if got := fixture.manager.Current().Groups[created.GroupID].ReasoningEffortDefault; got != "high" {
-		t.Fatalf("snapshot reasoning default = %q, want high", got)
+	if got := fixture.manager.Current().Groups[created.GroupID].Models[0].ReasoningEffort; got != "high" {
+		t.Fatalf("snapshot item reasoning override = %q, want high", got)
 	}
 
 	runtime, err := bifrost.NewRuntime(t.Context(), fixture.channelRegistry)

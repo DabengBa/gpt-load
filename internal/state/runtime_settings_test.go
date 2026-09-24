@@ -683,17 +683,6 @@ func TestResolveGroupRuntimeSettingsRejectsPresentNullHeaderRules(t *testing.T) 
 	}
 }
 
-func TestResolveGroupRuntimeSettingsReasoningDefault(t *testing.T) {
-	resolved, err := ResolveGroupRuntimeSettings(DefaultRuntimeSettings(), config.Settings{
-		SettingReasoningEffortDefault: " HIGH ",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.ReasoningEffortDefault != "high" {
-		t.Fatalf("ReasoningEffortDefault = %q, want high", resolved.ReasoningEffortDefault)
-	}
-}
 
 func TestValidateRuntimeSettingBoundaries(t *testing.T) {
 	for _, value := range []any{json.Number("1"), json.Number("365")} {

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -489,7 +490,7 @@ func newReasoningScheduleTestScenario(t *testing.T) *scheduleTestScenario {
 
 func TestModelRouteScheduleDetailProjectsReasoningPolicy(t *testing.T) {
 	scenario := newReasoningScheduleTestScenario(t)
-	body := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
+	body := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
 	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
 	var patch modelRouteSchedulePatchResponse
 	decodeScheduleSuccess(t, recorder, &patch)
@@ -498,19 +499,37 @@ func TestModelRouteScheduleDetailProjectsReasoningPolicy(t *testing.T) {
 	var detail modelRouteScheduleDetailResponse
 	decodeScheduleSuccess(t, recorder, &detail)
 	first := detail.Groups[0]
-	if first.ReasoningEffortDefault == nil || *first.ReasoningEffortDefault != "low" {
-		t.Fatalf("group reasoning default = %v, want low", first.ReasoningEffortDefault)
-	}
 	entry := first.Entries[0]
 	if entry.Reasoning.Configured == nil || *entry.Reasoning.Configured != "high" ||
 		entry.Reasoning.Effective == nil || *entry.Reasoning.Effective != "high" || entry.Reasoning.Source != "entry" {
 		t.Fatalf("entry reasoning projection = %#v", entry.Reasoning)
 	}
 
-	inherited := first.Entries[1]
-	if inherited.Reasoning.Configured != nil || inherited.Reasoning.Effective == nil ||
-		*inherited.Reasoning.Effective != "low" || inherited.Reasoning.Source != "group" {
-		t.Fatalf("inherited reasoning projection = %#v", inherited.Reasoning)
+	providerDefault := first.Entries[1]
+	if providerDefault.Reasoning.Configured != nil || providerDefault.Reasoning.Effective != nil ||
+		providerDefault.Reasoning.Source != reasoning.EffortSourceProviderDefault {
+		t.Fatalf("unconfigured reasoning projection = %#v", providerDefault.Reasoning)
+	}
+}
+
+func TestModelRouteScheduleDeletesGroupReasoningContract(t *testing.T) {
+	scenario := newScheduleTestScenario(t)
+	path := fmt.Sprintf(
+		"/api/model-route/schedule/detail?external_model=pub&protocol=openai-completions&access_key_id=%d",
+		scenario.accessKeyID,
+	)
+	detail := scenario.perform(http.MethodGet, path, "", scenario.authKey)
+	if strings.Contains(detail.Body.String(), `"reasoning_effort_default"`) ||
+		strings.Contains(detail.Body.String(), `"reasoning_entries"`) {
+		t.Fatalf("schedule detail still exposes group reasoning fields: %s", detail.Body.String())
+	}
+	legacy := fmt.Sprintf(
+		`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}]}`,
+		scenario.revision,
+	)
+	legacyResponse := scenario.perform(http.MethodPatch, "/api/model-route/schedule", legacy, scenario.authKey)
+	if legacyResponse.Code != http.StatusBadRequest {
+		t.Fatalf("legacy group reasoning patch = %d %s, want 400", legacyResponse.Code, legacyResponse.Body.String())
 	}
 }
 
@@ -547,107 +566,29 @@ func TestModelRouteScheduleRejectsDerivedEntryIdentityForPersistence(t *testing.
 	}
 }
 
-func TestModelRouteScheduleDetailProjectsFullGroupReasoning(t *testing.T) {
-	scenario := newScheduleTestScenario(t)
-	name := "reasoning-projection-gemini"
-	created, err := scenario.fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: &name, ChannelID: channel.Gemini, Params: json.RawMessage(`{}`),
-		Models: optionalGroupModels{Set: true, Values: []GroupModel{
-			{ID: "gemini-3.7-flash", EntryID: scheduleEntryOneA},
-			{ID: "gemini-3.1-flash-lite-image", EntryID: scheduleEntryOneB},
-		}}, Credentials: "gemini-projection-key", ConnectionType: "api_key",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":%d,"reasoning_effort_default":"low"}],"updates":[{"group_id":%d,"entry_id":"%s","reasoning_effort":"high"}]}`,
-		scenario.fixture.manager.Current().Revision, created.GroupID, created.GroupID, scheduleEntryOneB)
-	var patch modelRouteSchedulePatchResponse
-	decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey), &patch)
-
-	path := fmt.Sprintf("/api/model-route/schedule/detail?external_model=gemini-3.7-flash&protocol=gemini&access_key_id=%d", scenario.accessKeyID)
-	for _, disabled := range []bool{false, true} {
-		if disabled {
-			if _, err := scenario.fixture.service.UpdateGroupSettings(t.Context(), created.GroupID, GroupSettingsUpdateRequest{
-				Enabled: optionalField[bool]{Set: true, Value: false},
-			}); err != nil {
-				t.Fatalf("disable Gemini group: %v", err)
-			}
-		}
-		var detail struct {
-			Groups []struct {
-				GroupID          uint                              `json:"group_id"`
-				Entries          []modelRouteScheduleEntryResponse `json:"entries"`
-				ReasoningEntries []struct {
-					EntryID   string                `json:"entry_id"`
-					ModelID   string                `json:"model_id"`
-					Reasoning scheduleReasoningView `json:"reasoning"`
-				} `json:"reasoning_entries"`
-			} `json:"groups"`
-		}
-		decodeScheduleSuccess(t, scenario.perform(http.MethodGet, path, "", scenario.authKey), &detail)
-		var groupIndex = -1
-		for index, group := range detail.Groups {
-			if group.GroupID == created.GroupID {
-				groupIndex = index
-				break
-			}
-		}
-		if groupIndex < 0 {
-			t.Fatalf("Gemini group missing from detail (disabled=%v): %#v", disabled, detail.Groups)
-		}
-		group := detail.Groups[groupIndex]
-		if len(group.Entries) != 1 || group.Entries[0].ModelID != "gemini-3.7-flash" {
-			t.Fatalf("context entries (disabled=%v) = %#v, want flash only", disabled, group.Entries)
-		}
-		if len(group.ReasoningEntries) != 2 {
-			t.Fatalf("reasoning_entries (disabled=%v) = %#v, want both models", disabled, group.ReasoningEntries)
-		}
-		flash, image := group.ReasoningEntries[0], group.ReasoningEntries[1]
-		if flash.EntryID != scheduleEntryOneA || flash.ModelID != "gemini-3.7-flash" ||
-			flash.Reasoning.Configured != nil || flash.Reasoning.Effective == nil || *flash.Reasoning.Effective != "low" ||
-			flash.Reasoning.Source != reasoning.EffortSource("group") {
-			t.Fatalf("flash reasoning (disabled=%v) = %#v", disabled, flash)
-		}
-		if image.EntryID != scheduleEntryOneB || image.ModelID != "gemini-3.1-flash-lite-image" ||
-			image.Reasoning.Configured == nil || *image.Reasoning.Configured != "high" ||
-			image.Reasoning.Effective == nil || *image.Reasoning.Effective != "high" ||
-			image.Reasoning.Source != reasoning.EffortSource("entry") {
-			t.Fatalf("image reasoning (disabled=%v) = %#v", disabled, image)
-		}
-	}
-}
-
-func TestModelRouteScheduleReasoningCrossModelPolicyAccepted(t *testing.T) {
+func TestModelRouteScheduleValidatesReasoningPerEntry(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		override   string
-		patch      string
-		wantEffort string
-		want       int
+		name    string
+		initial string
+		value   string
+		want    int
+		stored  string
 	}{
-		{"inherited low accepted", "", "", "", http.StatusOK},
-		{"high override accepted", "", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":"high"}]`, "high", http.StatusOK},
-		{"clearing override accepted", "high", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":null}]`, "", http.StatusOK},
-		{"low override accepted", "high", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":"low"}]`, "low", http.StatusOK},
+		{name: "supported override", value: `"high"`, want: http.StatusOK, stored: "high"},
+		{name: "canonical low override", value: `"low"`, want: http.StatusOK, stored: "low"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scenario := newScheduleTestScenario(t)
-			name := "cross-model-gemini"
+			name := "item-reasoning-gemini"
 			created, err := scenario.fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 				Name: &name, ChannelID: channel.Gemini, Params: json.RawMessage(`{}`),
 				Models: optionalGroupModels{Set: true, Values: []GroupModel{
 					{ID: "gemini-3.7-flash", EntryID: scheduleEntryOneA},
-					{ID: "gemini-3.1-flash-lite-image", EntryID: scheduleEntryOneB, ReasoningEffort: ""},
+					{ID: "gemini-3.1-flash-lite-image", EntryID: scheduleEntryOneB, ReasoningEffort: tc.initial},
 				}}, Credentials: "gemini-key", ConnectionType: "api_key",
 			})
 			if err != nil {
 				t.Fatal(err)
-			}
-			if tc.override != "" {
-				seed := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":%d,"entry_id":"%s","reasoning_effort":"%s"}]}`, scenario.fixture.manager.Current().Revision, created.GroupID, scheduleEntryOneB, tc.override)
-				var result modelRouteSchedulePatchResponse
-				decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", seed, scenario.authKey), &result)
 			}
 			var before models.Group
 			if err := scenario.fixture.db.First(&before, created.GroupID).Error; err != nil {
@@ -655,12 +596,8 @@ func TestModelRouteScheduleReasoningCrossModelPolicyAccepted(t *testing.T) {
 			}
 			revision := scenario.fixture.manager.Current().Revision
 			publishes := scenario.publishCalls
-			patch := ""
-			if tc.patch != "" {
-				patch = fmt.Sprintf(tc.patch, created.GroupID)
-				patch = strings.ReplaceAll(patch, "image-entry", scheduleEntryOneB)
-			}
-			body := fmt.Sprintf(`{"snapshot_revision":%d,"protocol":"gemini","external_model":"gemini-3.7-flash","access_key_id":%d,"group_updates":[{"group_id":%d,"reasoning_effort_default":"low"}]%s}`, revision, scenario.accessKeyID, created.GroupID, patch)
+			body := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":%d,"entry_id":"%s","reasoning_effort":%s}]}`,
+				revision, created.GroupID, scheduleEntryOneB, tc.value)
 			recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
 			if recorder.Code != tc.want {
 				t.Fatalf("PATCH = %d %s, want %d", recorder.Code, recorder.Body.String(), tc.want)
@@ -673,17 +610,13 @@ func TestModelRouteScheduleReasoningCrossModelPolicyAccepted(t *testing.T) {
 				if err := scenario.fixture.db.First(&after, created.GroupID).Error; err != nil {
 					t.Fatal(err)
 				}
-				if string(before.Models) != string(after.Models) || string(before.Overrides) != string(after.Overrides) || scenario.fixture.manager.Current().Revision != revision || scenario.publishCalls != publishes {
+				if string(before.Models) != string(after.Models) || scenario.fixture.manager.Current().Revision != revision || scenario.publishCalls != publishes {
 					t.Fatal("rejected patch changed storage or snapshot")
 				}
 			} else {
 				entries := loadCreatedGroupModels(t, scenario.fixture, created.GroupID)
-				if entries[1].ReasoningEffort != tc.wantEffort {
-					t.Fatalf("image override = %q, want %q", entries[1].ReasoningEffort, tc.wantEffort)
-				}
-				group := scenario.fixture.manager.Current().Groups[created.GroupID]
-				if group.ReasoningEffortDefault != "low" {
-					t.Fatalf("group default = %q, want low", group.ReasoningEffortDefault)
+				if entries[1].ReasoningEffort != tc.stored {
+					t.Fatalf("image override = %q, want %q", entries[1].ReasoningEffort, tc.stored)
 				}
 			}
 		})
@@ -692,38 +625,23 @@ func TestModelRouteScheduleReasoningCrossModelPolicyAccepted(t *testing.T) {
 
 func TestModelRouteScheduleReasoningPatchTriStateAndAtomicValidation(t *testing.T) {
 	scenario := newReasoningScheduleTestScenario(t)
-	set := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
+	set := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
 	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", set, scenario.authKey)
 	var result modelRouteSchedulePatchResponse
 	decodeScheduleSuccess(t, recorder, &result)
 	if got := loadCreatedGroupModels(t, scenario.fixture, 1)[0].ReasoningEffort; got != "high" {
 		t.Fatalf("stored entry reasoning = %q, want high", got)
 	}
-	settings, err := scenario.fixture.service.GetGroupSettings(t.Context(), 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, exposed := settings.Overrides[state.SettingReasoningEffortDefault]; exposed {
-		t.Fatalf("schedule-owned default leaked through group settings: %#v", settings.Overrides)
-	}
 	beforeModels := loadStoredGroupModelsJSON(t, scenario.fixture, 1)
-	var beforeGroup models.Group
-	if err := scenario.fixture.db.First(&beforeGroup, 1).Error; err != nil {
-		t.Fatal(err)
-	}
-	invalid := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"medium"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"invalid"}]}`, result.SnapshotRevisionNew, scheduleEntryOneA)
+	invalid := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"invalid"}]}`, result.SnapshotRevisionNew, scheduleEntryOneA)
 	recorder = scenario.perform(http.MethodPatch, "/api/model-route/schedule", invalid, scenario.authKey)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("invalid reasoning response = %d %s, want 400", recorder.Code, recorder.Body.String())
 	}
-	var afterGroup models.Group
-	if err := scenario.fixture.db.First(&afterGroup, 1).Error; err != nil {
-		t.Fatal(err)
+	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got != beforeModels {
+		t.Fatalf("invalid batch wrote models: %s", got)
 	}
-	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got != beforeModels || string(afterGroup.Overrides) != string(beforeGroup.Overrides) {
-		t.Fatalf("invalid batch wrote models/overrides: models=%s overrides=%s", got, afterGroup.Overrides)
-	}
-	clear := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":null}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":null}]}`, result.SnapshotRevisionNew, scheduleEntryOneA)
+	clear := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":null}]}`, result.SnapshotRevisionNew, scheduleEntryOneA)
 	recorder = scenario.perform(http.MethodPatch, "/api/model-route/schedule", clear, scenario.authKey)
 	decodeScheduleSuccess(t, recorder, &result)
 	if got := loadCreatedGroupModels(t, scenario.fixture, 1)[0].ReasoningEffort; got != "" {
@@ -734,7 +652,7 @@ func TestModelRouteScheduleReasoningPatchTriStateAndAtomicValidation(t *testing.
 func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 	t.Parallel()
 	scenario := newReasoningScheduleTestScenario(t)
-	patch := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
+	patch := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
 	var patchResult modelRouteSchedulePatchResponse
 	decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", patch, scenario.authKey), &patchResult)
 	if err := scenario.fixture.db.Model(&models.Group{}).
@@ -770,10 +688,9 @@ func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 		entry.CircuitBreaker.Sources.BlacklistThreshold != scheduleBreakerSourceEntry {
 		t.Fatalf("disabled group entry configuration = %#v", entry)
 	}
-	if result.Groups[0].ReasoningEffortDefault == nil || *result.Groups[0].ReasoningEffortDefault != "low" ||
-		entry.Reasoning.Configured == nil || *entry.Reasoning.Configured != "high" ||
+	if entry.Reasoning.Configured == nil || *entry.Reasoning.Configured != "high" ||
 		entry.Reasoning.Effective == nil || *entry.Reasoning.Effective != "high" || entry.Reasoning.Source != "entry" {
-		t.Fatalf("disabled group reasoning configuration = %#v / %#v", result.Groups[0].ReasoningEffortDefault, entry.Reasoning)
+		t.Fatalf("disabled group reasoning configuration = %#v", entry.Reasoning)
 	}
 	assertScheduleReason(t, entry.ReasonCode, scheduler.ReasonGroupDisabled)
 	for index, disabledEntry := range result.Groups[0].Entries {
@@ -786,23 +703,15 @@ func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 	}
 }
 
-func TestModelRouteScheduleAcceptsCanonicalReasoningWithoutNormalization(t *testing.T) {
+func TestModelRouteScheduleAcceptsCanonicalEffortForUnlistedModel(t *testing.T) {
 	scenario := newScheduleTestScenario(t)
-	entries := loadCreatedGroupModels(t, scenario.fixture, 1)
-	if entries[0].ID != "up-a" {
-		t.Fatalf("test model = %q, want unlisted up-a", entries[0].ID)
-	}
-	before := loadStoredGroupModelsJSON(t, scenario.fixture, 1)
 	body := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"max"}]}`, scenario.revision, scheduleEntryOneA)
 	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("canonical effort = %d %s, want 200", recorder.Code, recorder.Body.String())
 	}
-	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got == before {
-		t.Fatalf("accepted effort did not change storage: %s", got)
-	}
 	if got := loadCreatedGroupModels(t, scenario.fixture, 1)[0].ReasoningEffort; got != "max" {
-		t.Fatalf("saved unlisted model effort = %q, want max", got)
+		t.Fatalf("stored effort = %q, want max", got)
 	}
 }
 
@@ -927,6 +836,105 @@ func TestModelRouteScheduleDetailResolvesProtocolAndOperationContext(t *testing.
 	)
 	if code := decodeScheduleError(t, invalid, http.StatusBadRequest); code != app_errors.ErrValidation.Code {
 		t.Fatalf("invalid protocol code = %q", code)
+	}
+}
+
+func TestModelRouteScheduleEntryEnabledIsPersistedAndExcludesRealScheduling(t *testing.T) {
+	t.Parallel()
+	scenario := newScheduleTestScenario(t)
+	if legacy := loadCreatedGroupModels(t, scenario.fixture, 1)[0]; legacy.Enabled != nil {
+		t.Fatalf("legacy entry has explicit enabled = %v, want omitted", *legacy.Enabled)
+	}
+	path := fmt.Sprintf("/api/model-route/schedule/detail?external_model=pub&protocol=openai-completions&access_key_id=%d", scenario.accessKeyID)
+	var initial modelRouteScheduleDetailResponse
+	decodeScheduleSuccess(t, scenario.perform(http.MethodGet, path, "", scenario.authKey), &initial)
+	if !initial.Groups[0].Entries[0].Enabled {
+		t.Fatal("legacy entry without enabled must default to enabled")
+	}
+
+	body := fmt.Sprintf(`{"snapshot_revision":%d,"protocol":"openai-completions","external_model":"pub","access_key_id":%d,"updates":[{"group_id":1,"entry_id":"%s","enabled":false}]}`, scenario.revision, scenario.accessKeyID, scheduleEntryOneA)
+	var patch modelRouteSchedulePatchResponse
+	decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey), &patch)
+	if patch.Detail == nil {
+		t.Fatal("patch detail = nil, want entry state echo")
+	}
+	var disabled modelRouteScheduleEntryResponse
+	for _, entry := range patch.Detail.Groups[0].Entries {
+		if entry.EntryID == scheduleEntryOneA {
+			disabled = entry
+			break
+		}
+	}
+	if disabled.Enabled || disabled.Included || disabled.Routable || disabled.ConfiguredShare != 0 || disabled.EffectiveShare != 0 {
+		t.Fatalf("disabled entry still participates: %#v", disabled)
+	}
+	assertScheduleReason(t, disabled.ReasonCode, scheduler.ReasonEntryDisabled)
+	if !patch.Detail.Groups[0].Entries[1].Enabled || !patch.Detail.Groups[0].Enabled {
+		t.Fatalf("sibling/group disabled by entry patch: %#v", patch.Detail.Groups[0])
+	}
+	if disabled.Weight != scheduleWeightOneA || disabled.Priority != 1 {
+		t.Fatalf("disabled entry configuration changed: %#v", disabled)
+	}
+
+	for seed := int64(1); seed <= 100; seed++ {
+		iterator := scheduler.New(
+			scenario.fixture.manager.Current(), scenario.fixture.registry,
+			scheduler.Query{
+				ClientProtocol: protocol.OpenAICompletions,
+				Operation:      execution.OperationChatCompletion,
+				ExternalModel:  stringPointer("pub"),
+			}, rand.New(rand.NewSource(seed)),
+		)
+		for {
+			selected, err := iterator.Next()
+			if err == scheduler.ErrExhausted {
+				break
+			}
+			if err != nil {
+				t.Fatalf("scheduler.Next() after disabling entry = %v", err)
+			}
+			if selected.EntryID == scheduleEntryOneA {
+				t.Fatalf("scheduler selected disabled entry at seed %d: %#v", seed, selected)
+			}
+		}
+	}
+
+	// Reload from the database rather than reuse the published in-memory view.
+	stored := loadCreatedGroupModels(t, scenario.fixture, 1)
+	if stored[0].Enabled == nil || *stored[0].Enabled || stored[0].Weight == nil || *stored[0].Weight != scheduleWeightOneA {
+		t.Fatalf("persisted disabled entry = %#v", stored[0])
+	}
+	input, err := stateloader.BuildCompileInputWithProxy(t.Context(), scenario.fixture.db, scenario.fixture.service.encryption, scenario.fixture.service.environmentProxy, scenario.fixture.service.channelRegistry)
+	if err != nil {
+		t.Fatalf("reload persisted input: %v", err)
+	}
+	if _, err := scenario.fixture.manager.Publish(input); err != nil {
+		t.Fatalf("publish reloaded input: %v", err)
+	}
+	var reloaded modelRouteScheduleDetailResponse
+	decodeScheduleSuccess(t, scenario.perform(http.MethodGet, path, "", scenario.authKey), &reloaded)
+	if reloaded.Groups[0].Entries[0].Enabled || !reloaded.Groups[0].Enabled {
+		t.Fatalf("reload lost entry-only disabled state: %#v", reloaded.Groups[0])
+	}
+	body = fmt.Sprintf(`{"snapshot_revision":%d,"protocol":"openai-completions","external_model":"pub","access_key_id":%d,"updates":[{"group_id":1,"entry_id":"%s","enabled":true}]}`, reloaded.SnapshotRevision, scenario.accessKeyID, scheduleEntryOneA)
+	decodeScheduleSuccess(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey), &patch)
+	var restored modelRouteScheduleEntryResponse
+	for _, entry := range patch.Detail.Groups[0].Entries {
+		if entry.EntryID == scheduleEntryOneA {
+			restored = entry
+			break
+		}
+	}
+	if !restored.Enabled || restored.Weight != scheduleWeightOneA || restored.Priority != 1 || !restored.Included {
+		t.Fatalf("re-enabled entry configuration = %#v", restored)
+	}
+	before := loadStoredGroupModelsJSON(t, scenario.fixture, 1)
+	body = fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","enabled":null}]}`, patch.SnapshotRevisionNew, scheduleEntryOneA)
+	if code := decodeScheduleError(t, scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey), http.StatusBadRequest); code != app_errors.ErrValidation.Code {
+		t.Fatalf("null enabled code = %q, want validation error", code)
+	}
+	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got != before {
+		t.Fatalf("null enabled changed persisted models: %s", got)
 	}
 }
 

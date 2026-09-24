@@ -10,7 +10,6 @@ type EffortSource string
 
 const (
 	EffortSourceEntry           EffortSource = "entry"
-	EffortSourceGroup           EffortSource = "group"
 	EffortSourceClient          EffortSource = "client"
 	EffortSourceProviderDefault EffortSource = "provider_default"
 )
@@ -19,26 +18,17 @@ var validEfforts = map[string]struct{}{
 	"none": {}, "minimal": {}, "low": {}, "medium": {}, "high": {}, "xhigh": {}, "max": {},
 }
 
-// ResolveEffort applies the unified entry > group > client > provider priority.
-// Center-owned policy values are validated instead of silently normalized to a
-// different level. Client-owned values remain untouched so an unconfigured
-// center preserves the protocol's existing validation and wire semantics.
-func ResolveEffort(entry, group, client string) (string, EffortSource, error) {
-	for _, candidate := range []struct {
-		value  string
-		source EffortSource
-	}{
-		{entry, EffortSourceEntry},
-		{group, EffortSourceGroup},
-	} {
-		value := strings.ToLower(strings.TrimSpace(candidate.value))
-		if value == "" {
-			continue
-		}
+// ResolveEffort applies the entry > client > provider priority. Entry-owned
+// policy values are validated instead of silently normalized to a different
+// level. Client-owned values remain untouched so an unconfigured center
+// preserves the protocol's existing validation and wire semantics.
+func ResolveEffort(entry, client string) (string, EffortSource, error) {
+	value := strings.ToLower(strings.TrimSpace(entry))
+	if value != "" {
 		if _, valid := validEfforts[value]; !valid {
-			return "", "", fmt.Errorf("invalid reasoning effort from %s source", candidate.source)
+			return "", "", fmt.Errorf("invalid reasoning effort from %s source", EffortSourceEntry)
 		}
-		return value, candidate.source, nil
+		return value, EffortSourceEntry, nil
 	}
 	if client != "" {
 		return client, EffortSourceClient, nil

@@ -32,7 +32,6 @@ const (
 	SettingRequestLogRetentionDays               = "request_log_retention_days"
 	SettingModelsDevAutoSyncEnabled              = "models_dev_auto_sync_enabled"
 	SettingParameterOverrides                    = "parameter_overrides"
-	SettingReasoningEffortDefault                = "reasoning_effort_default"
 	SettingResponsesReasoningStatusFilterEnabled = "responses_reasoning_status_filter_enabled"
 )
 
@@ -82,7 +81,6 @@ type ResolvedGroupSettings struct {
 	ResponsesWebsocketEnabled             bool
 	ResponsesReasoningStatusFilterEnabled bool
 	ParameterOverrides                    parameteroverride.Rules
-	ReasoningEffortDefault                string
 }
 
 func DefaultRuntimeSettings() RuntimeSettings {
@@ -308,12 +306,6 @@ func ResolveGroupRuntimeSettings(
 				return ResolvedGroupSettings{}, err
 			}
 			resolved.ResponsesWebsocketEnabled = parsed
-		case SettingReasoningEffortDefault:
-			parsed, err := parseReasoningEffort(value)
-			if err != nil {
-				return ResolvedGroupSettings{}, err
-			}
-			resolved.ReasoningEffortDefault = parsed
 		case SettingResponsesReasoningStatusFilterEnabled:
 			parsed, err := strictBoolean(key, value)
 			if err != nil {
@@ -331,20 +323,6 @@ func ResolveGroupRuntimeSettings(
 		}
 	}
 	return resolved, nil
-}
-
-func parseReasoningEffort(value any) (string, error) {
-	effort, ok := value.(string)
-	if !ok {
-		return "", fmt.Errorf("%s must be a string", SettingReasoningEffortDefault)
-	}
-	effort = strings.ToLower(strings.TrimSpace(effort))
-	switch effort {
-	case "none", "minimal", "low", "medium", "high", "xhigh", "max":
-		return effort, nil
-	default:
-		return "", fmt.Errorf("%s has unsupported effort", SettingReasoningEffortDefault)
-	}
 }
 
 func ValidateRuntimeSetting(key string, value any) error {

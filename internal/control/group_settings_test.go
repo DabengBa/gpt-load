@@ -144,51 +144,6 @@ func TestUpdateGroupSettingsPublishesParameterOverrides(t *testing.T) {
 	}
 }
 
-func TestGroupSettingsRejectsAndHidesScheduleOwnedReasoning(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "sk-schedule-owned-reasoning")
-
-	_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
-			state.SettingReasoningEffortDefault: "high",
-		}},
-	})
-	if !errors.Is(err, app_errors.ErrValidation) {
-		t.Fatalf("ordinary settings reasoning write error = %v, want validation", err)
-	}
-}
-
-func TestGroupSettingsUpdatePreservesScheduleReasoningDefault(t *testing.T) {
-	scenario := newReasoningScheduleTestScenario(t)
-	fixture := scenario.fixture
-	groupID := uint(1)
-	revision := fixture.manager.Current().Revision
-	_, err := fixture.service.UpdateModelRouteSchedule(t.Context(), modelRouteSchedulePatchRequest{
-		SnapshotRevision: &revision,
-		GroupUpdates: []modelRouteScheduleGroupPatchUpdate{{
-			GroupID:                groupID,
-			ReasoningEffortDefault: optionalField[string]{Set: true, Value: "high"},
-		}},
-	})
-	if err != nil {
-		t.Fatalf("schedule update error = %v", err)
-	}
-	result, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
-		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
-			state.SettingResponsesReasoningStatusFilterEnabled: true,
-		}},
-	})
-	if err != nil {
-		t.Fatalf("ordinary settings update error = %v", err)
-	}
-	if _, exposed := result.Overrides[state.SettingReasoningEffortDefault]; exposed {
-		t.Fatalf("schedule default exposed in settings DTO: %#v", result.Overrides)
-	}
-	if got := fixture.manager.Current().Groups[groupID].ReasoningEffortDefault; got != "high" {
-		t.Fatalf("snapshot group default = %q, want preserved high", got)
-	}
-}
 
 func TestGroupSettingsRejectNewContinuationOverridesButKeepLegacyReadable(t *testing.T) {
 	fixture := newServiceFixture(t)

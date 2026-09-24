@@ -1,5 +1,5 @@
 ---
-description: "Persist group and route-entry reasoning policies, write the selected effort to provider requests, and leave final acceptance to the target Provider."
+description: "Persist route-entry reasoning overrides and apply the selected effort to provider requests."
 kind: technical
 topic: model-routing
 relations:
@@ -21,55 +21,52 @@ code:
 
 ## Responsibility
 
-The schedule control resource owns group defaults and route-entry reasoning
-choices. Runtime preparation resolves the selected route's effective policy
-and writes the appropriate protocol field before dispatch. Product semantics
-are defined by [Dispatch Center Reasoning Policy](../db/features/dispatch-reasoning-policy.md).
+The schedule control resource owns route-entry reasoning choices. Runtime
+preparation resolves the selected route's effective policy and writes the
+appropriate protocol field before dispatch. Product semantics are defined by
+[Dispatch Center Reasoning Policy](../db/features/dispatch-reasoning-policy.md).
 
 ## Architecture And Constraints
 
-Group defaults persist as `overrides.reasoning_effort_default`; entry overrides
-persist as `reasoning_effort` in the group's model JSON. Entry identity is
-`group_id + entry_id`, not a model-name lookup. The state loader carries both
-values into the same runtime snapshot used for routing.
+Reasoning overrides persist as `reasoning_effort` in the group's model JSON.
+Entry identity is `group_id + entry_id`, not a model-name lookup. The state
+loader carries item overrides into the same runtime snapshot used for routing.
 
-The schedule PATCH accepts `group_updates` with `group_id` and
-`reasoning_effort_default`, and entry `updates` with `group_id`, `entry_id`, and
-`reasoning_effort`. An absent field is unchanged; `null` clears a value; a
-string from the unified effort set sets it. `snapshot_revision` is required.
-Revision conflicts return 409, and all affected groups are written in one
-transaction before the new snapshot is published.
+The schedule PATCH accepts entry `updates` with `group_id`, `entry_id`, and
+`reasoning_effort`. An absent field is unchanged; `null` clears the item
+override; a supported string sets it. `snapshot_revision` is required. Revision
+conflicts return 409, and all affected groups are written in one transaction
+before the new snapshot is published. Group-level reasoning defaults and their
+PATCH fields are not part of the contract.
 
-The detail resource includes full-group `reasoning_entries` so the UI can show
-the effective policy preview for entries outside the currently selected
-external model. The resource projection strictly accepts the reasoning
-configured/effective/source contract and the unified effort set; it does not
-read model capability fields.
+Validation evaluates each changed item against its own provider/model
+capability. A failure aborts the whole transaction. The detail resource
+projects reasoning configuration and capability on each candidate entry.
 
-The center validates effort labels and tri-state update semantics locally. It
-does not infer, substitute, or map one effort to another based on a model
-catalogue. Unknown and unlisted models remain editable and saveable under the
-center contract. The target Provider is the final authority for whether a
-specific effort is accepted.
-
-The former `reasoning_effort_overrides` map is removed from parsing, runtime
-resolution, and the Advanced Settings editor. Old persisted values have no
-runtime effect; there is no migration or compatibility reader.
+The former `reasoning_effort_overrides` map and group-level
+`reasoning_effort_default` setting are not part of runtime resolution. There is
+no automatic data conversion; existing stored group defaults must be removed
+and desired values configured as item overrides.
 
 ## Core Implementation
 
-`internal/reasoning/config.go:ResolveEffort` resolves entry, group, client, then
-provider default. Entry and group values are centrally owned and validated
-against the unified effort set; client values retain their original semantics
-when no central value exists. An empty resolved value leaves the Provider
-default in control.
+`internal/reasoning/config.go:ResolveEffort` resolves entry, client, then
+provider default. Entry values are centrally owned and validated; client values
+retain their original semantics when no item override exists. An empty resolved
+value leaves the provider default in control.
+
+`internal/reasoning/capabilities.go` projects Bifrost's model capability records
+and provider capability rules into known/supported state, levels, and a reason.
+`ValidateEffort` requires the requested label exactly; `none` additionally
+requires the ability to disable reasoning. Unsupported item values fail before
+provider dispatch rather than being silently downgraded.
 
 Gateway request preparation first applies general parameter overrides, then
-applies an effective central reasoning policy. Consequently an explicit central
-policy wins when both mechanisms write the reasoning field. Without a central
-policy, reasoning resolution does not rewrite the body; independent parameter
-overrides still operate normally. The gateway sends the selected effort to the
-Provider path without a pre-dispatch model capability gate.
+applies a configured item reasoning override. Consequently an explicit item
+override wins when both mechanisms write the reasoning field. Without an item
+override, reasoning resolution does not rewrite the body; independent
+parameter-override rules still operate normally. Capability validation uses
+the actual upstream model of the selected route.
 
 For supported generation operations, the dialect layer writes the client
 protocol field before any provider conversion:
@@ -89,24 +86,18 @@ is not evidence of the final provider field.
 
 ## Failure Boundaries And Verification
 
-- A malformed or unknown center effort is rejected by the center projection or
-  PATCH validation. The UI only submits values from the unified effort set.
+- An unsupported item override cannot be saved. Clearing an override restores
+  client/provider behavior and does not modify other entries.
 - A concurrent writer invalidates the supplied revision. Failed validation or
-  a revision conflict must not publish a partially updated policy.
+a revision conflict must not publish a partially updated policy.
 - Client-owned effort is not subjected to central-policy normalization merely
   because the request passes through Gateway.
-- `internal/control/model_route_schedule_test.go` covers whole-group policy
-  persistence, hidden models, same-batch exceptions, clearing, and atomicity.
+- `internal/control/model_route_schedule_test.go` covers per-entry capability
+  validation, clearing, and atomicity.
 - `internal/control/reasoning_policy_persisted_wire_integration_test.go`
   covers persistence through the runtime snapshot to the observed provider
   request. Dialect, reasoning, and Gateway tests cover field selection and
   precedence.
-- `web/scripts/verify-group-settings-effort.mjs` verifies strict projection,
-  the unified effort set, and reasoning values without capability fields.
-- `web/e2e/schedule-editing.spec.ts` verifies all effort values are editable
-  for unknown models, full-group previews, saving/clearing, and narrow-screen
-  interaction with mocked APIs. These tests do not establish acceptance by a
-  live Provider.
-
-Provider rejection remains a Provider response boundary. GPT-Load does not
-rewrite a rejected effort into another effort.
+- `web/e2e/schedule-editing.spec.ts` verifies item capability feedback,
+  saving/clearing, and narrow-screen interaction with mocked APIs. These tests
+  do not establish acceptance by a live provider.

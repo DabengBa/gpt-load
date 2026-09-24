@@ -381,9 +381,7 @@ func normalizeGroupSettings(settings config.Settings) (config.Settings, models.J
 		copied[key] = value
 	}
 	settings = copied
-	if _, exists := settings[state.SettingReasoningEffortDefault]; exists {
-		return nil, nil, app_errors.ErrValidation
-	}
+
 	if value, exists := settings[state.SettingParameterOverrides]; exists {
 		rules, err := parameteroverride.Compile(value)
 		if err != nil || rules.ValidateResponsesContinuation() != nil {

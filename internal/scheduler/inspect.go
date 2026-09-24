@@ -26,6 +26,7 @@ const (
 	ReasonNativeRouteRequired       ReasonCode = "native_route_required"
 	ReasonNoRouteTarget             ReasonCode = "no_route_target"
 	ReasonGroupDisabled             ReasonCode = "group_disabled"
+	ReasonEntryDisabled             ReasonCode = "entry_disabled"
 	ReasonWebsocketDisabled         ReasonCode = "websocket_disabled"
 	ReasonGroupFiltered             ReasonCode = "group_filtered"
 	ReasonNoAvailableGroup          ReasonCode = "no_available_group"
@@ -183,6 +184,9 @@ func evaluateTargets(
 		case !group.Enabled:
 			decision.included = false
 			decision.reason = ReasonGroupDisabled
+		case !route.Enabled:
+			decision.included = false
+			decision.reason = ReasonEntryDisabled
 		case groupFiltered:
 			decision.included = false
 			decision.reason = ReasonGroupFiltered

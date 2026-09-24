@@ -33,6 +33,7 @@ export function scheduleEntry(
     weight,
     priority,
     fallback: priority > 1,
+    enabled: true,
     circuit_breaker: {
       configured: { blacklist_threshold: null, cooldown_seconds: null },
       effective: { blacklist_threshold: 3, cooldown_seconds: 60 },
@@ -69,12 +70,6 @@ function scheduleGroup(
     group_name: groupName,
     channel_id: `channel-${groupID}`,
     enabled: true,
-    reasoning_effort_default: null,
-    reasoning_entries: entries.map(({ entry_id, model_id, reasoning }) => ({
-      entry_id,
-      model_id,
-      reasoning,
-    })),
     request_count: 10,
     success_rate: 1,
     entries,

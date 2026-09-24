@@ -1113,7 +1113,7 @@ func (handler *Handler) executeAttempts(
 				break
 			}
 		}
-		effort, source, resolveErr := reasoning.ResolveEffort(entryEffort, selection.Group.ReasoningEffortDefault, originalMetadata.Reasoning.Effort)
+		effort, source, resolveErr := reasoning.ResolveEffort(entryEffort, originalMetadata.Reasoning.Effort)
 		if resolveErr != nil {
 			prepared.err = resolveErr
 			cachedPrepared = &prepared

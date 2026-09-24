@@ -60,6 +60,7 @@ type groupModelEntry struct {
 	ReasoningEffort string                     `json:"reasoning_effort,omitempty"`
 	Weight          *int                       `json:"weight,omitempty"`
 	Priority        *int                       `json:"priority,omitempty"`
+	Enabled         *bool                      `json:"enabled,omitempty"`
 	CircuitBreaker  *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
 }
 
@@ -133,6 +134,7 @@ func (model groupModelEntry) toModelConfig() state.ModelConfig {
 		ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 		ReasoningEffort: model.ReasoningEffort,
 		Weight:          cloneInt(model.Weight), Priority: cloneInt(model.Priority),
+		Enabled:        model.Enabled,
 		CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 	}
 }
@@ -372,6 +374,9 @@ func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel
 		}
 		if !model.prioritySet && exists {
 			model.Priority = cloneInt(preserved.Priority)
+		}
+		if exists {
+			model.Enabled = preserved.Enabled
 		}
 		if !model.circuitBreakerSet && exists {
 			model.CircuitBreaker = cloneEntryCircuitBreaker(preserved.CircuitBreaker)

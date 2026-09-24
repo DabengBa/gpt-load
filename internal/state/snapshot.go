@@ -66,6 +66,7 @@ type ModelConfig struct {
 	ReasoningEffort string
 	Weight          *int
 	Priority        *int
+	Enabled         *bool
 	CircuitBreaker  *EntryCircuitBreaker
 }
 
@@ -104,6 +105,7 @@ type RouteTarget struct {
 	ResolvedTarget  channel.ResolvedTarget
 	EntryWeight     int // 条目权重,nil 归一为 1;0 保留条目但不参与分流
 	Priority        int // 条目优先级,nil 归一为 1
+	Enabled         bool
 }
 
 // NoModelRouteKey identifies operations whose upstream resource ID, rather
@@ -155,7 +157,6 @@ type GroupView struct {
 	ResponsesReasoningStatusFilterEnabled bool
 	Proxy                                 outboundproxy.Effective
 	ParameterOverrides                    parameteroverride.Rules
-	ReasoningEffortDefault                string
 	ModelBreakerByEntry                   map[uint]map[string]*EntryCircuitBreaker
 }
 type GroupCatalogView struct {
@@ -248,7 +249,6 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			ConnectionType:                        connection.Normalize(group.ConnectionType),
 			Proxy:                                 groupProxy,
 			ParameterOverrides:                    resolved.ParameterOverrides,
-			ReasoningEffortDefault:                resolved.ReasoningEffortDefault,
 			ModelBreakerByEntry:                   make(map[uint]map[string]*EntryCircuitBreaker),
 		}
 		for _, model := range group.Models {
@@ -385,12 +385,12 @@ func appendExecutionTargets(
 				execution.OperationResponsesInputItems:
 				appendExecutionTarget(index, clientProtocol, operation, NoModelRouteKey, RouteTarget{
 					GroupID: group.ID, Mode: mode, ResolvedTarget: cloneResolvedTarget(target),
-					EntryWeight: 1, Priority: 1,
+					EntryWeight: 1, Priority: 1, Enabled: true,
 				})
 			case execution.OperationResponsesPassthrough:
 				appendExecutionTarget(index, clientProtocol, operation, NoModelRouteKey, RouteTarget{
 					GroupID: group.ID, Mode: mode, ResolvedTarget: cloneResolvedTarget(target),
-					EntryWeight: 1, Priority: 1,
+					EntryWeight: 1, Priority: 1, Enabled: true,
 				})
 				fallthrough
 			case execution.OperationChatCompletion,
@@ -415,6 +415,7 @@ func appendExecutionTargets(
 						Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
 						EntryWeight: normalizeRouteEntryValue(model.Weight),
 						Priority:    normalizeRouteEntryValue(model.Priority),
+						Enabled:     model.Enabled == nil || *model.Enabled,
 						EntryID:     routeEntryIdentity(external, model),
 					})
 					if model.TestAlias != "" {
@@ -423,6 +424,7 @@ func appendExecutionTargets(
 							Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
 							EntryWeight: normalizeRouteEntryValue(model.Weight),
 							Priority:    normalizeRouteEntryValue(model.Priority),
+							Enabled:     model.Enabled == nil || *model.Enabled,
 							EntryID:     routeEntryIdentity(external, model),
 						})
 					}
@@ -471,6 +473,14 @@ func normalizeRouteEntryValue(value *int) int {
 	return *value
 }
 
+func cloneBool(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func cloneModelConfigs(models []ModelConfig) []ModelConfig {
 	if models == nil {
 		return nil
@@ -481,6 +491,7 @@ func cloneModelConfigs(models []ModelConfig) []ModelConfig {
 			ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: routeEntryIdentity(ExternalModelName(model.ID, model.Alias), model),
 			ReasoningEffort: model.ReasoningEffort,
 			Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+			Enabled:        cloneBool(model.Enabled),
 			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 		}
 	}
