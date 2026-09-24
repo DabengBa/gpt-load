@@ -1,6 +1,6 @@
 # 自建实例部署（gptl.tanyaleoallen.cloud）
 
-本文只描述本仓库维护者自建实例的发布流程；上游通用部署（`ghcr.io/tbphp/gpt-load:2`、原生二进制）见 `README_CN.md` 的「部署与数据」。
+本文只描述本仓库维护者自建实例的发布流程；上游通用部署（`ghcr.io/tbphp/gpt-load:2`、原生二进制）见 `README_CN.md` 的「部署与数据」。SQLite retention、停机维护和恢复流程见 [`docs/sqlite-maintenance.md`](sqlite-maintenance.md)。
 
 ## 拓扑
 
@@ -95,6 +95,8 @@ REMOTE
 ```
 
 备份数据还需保管同卷的 `encryption.key`（以及恢复所需的 `auth.key`）；不要把密钥内容打印到终端或日志。备份成功不代表恢复已验证。当前实例 `/opt/gpt-load` 与数据卷同在宿主机磁盘，因此此处备份只适合临时排障；灾备必须转存到独立存储。空间不足或备份失败时停止，不要退回用 `cp` 或改放 `/tmp`。
+
+上面的 SQLite `.backup` 是服务在线时生成的**数据库文件快照**，适合在线排障或取得一致的数据库副本；它不是离线灾备的替代品。离线维护或灾备请停止所有写入者，并使用 [`scripts/sqlite-maintenance.sh`](../scripts/sqlite-maintenance.sh) 归档整个数据目录，使 `gpt-load.db`、`-wal`、`-shm`、`auth.key`、`encryption.key` 及其他运行时文件保持同一恢复集合。两种流程都不表示已经完成真实生产 Docker 或加密恢复验证；验证仍需按维护文档执行部署相关的 health 和认证配置读取。
 
 ## 回滚
 
