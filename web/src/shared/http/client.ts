@@ -197,6 +197,62 @@ function readRetryAfter(data: unknown, headers: Headers): number | undefined {
   return undefined
 }
 
+function createRequestHeaders(
+  deps: ApiClientDependencies,
+  authKey: string,
+  callerHeaders: HeadersInit | undefined,
+  json: unknown,
+): Headers {
+  const headers = new Headers(callerHeaders)
+  if (authKey) {
+    headers.set('Authorization', `Bearer ${authKey}`)
+  } else {
+    headers.delete('Authorization')
+  }
+  headers.set('Accept-Language', deps.getLocale())
+  if (json !== undefined) {
+    headers.set('Content-Type', 'application/json')
+  }
+  return headers
+}
+
+async function fetchApiResponse(
+  deps: ApiClientDependencies,
+  path: ApiPath,
+  requestInit: RequestInit,
+  headers: Headers,
+  json: unknown,
+  body: BodyInit | null | undefined,
+): Promise<Response> {
+  try {
+    return await deps.fetch(path, {
+      ...requestInit,
+      headers,
+      body: json === undefined ? body : JSON.stringify(json),
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new RequestCancelledError()
+    }
+    throw new NetworkError()
+  }
+}
+
+function throwApiResponseError(result: Response, envelope: Envelope): never {
+  if (envelope.code === 0) {
+    throw new InvalidResponseError()
+  }
+  const retryAfterSeconds =
+    result.status === 429 ? readRetryAfter(envelope.data, result.headers) : undefined
+  throw new ApiError(
+    result.status,
+    envelope.code,
+    envelope.message,
+    envelope.data,
+    retryAfterSeconds,
+  )
+}
+
 export function createApiClient(deps: ApiClientDependencies): ApiClientWithResponse {
   let unauthorizedHandled = false
   let generation = 0
@@ -240,30 +296,8 @@ export function createApiClient(deps: ApiClientDependencies): ApiClientWithRespo
     if (json !== undefined && body !== undefined && body !== null) {
       throw new TypeError('REQUEST_BODY_CONFLICT')
     }
-    const headers = new Headers(callerHeaders)
-    if (authKey) {
-      headers.set('Authorization', `Bearer ${authKey}`)
-    } else {
-      headers.delete('Authorization')
-    }
-    headers.set('Accept-Language', deps.getLocale())
-    if (json !== undefined) {
-      headers.set('Content-Type', 'application/json')
-    }
-
-    let result: Response
-    try {
-      result = await deps.fetch(path, {
-        ...requestInit,
-        headers,
-        body: json === undefined ? body : JSON.stringify(json),
-      })
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new RequestCancelledError()
-      }
-      throw new NetworkError()
-    }
+    const headers = createRequestHeaders(deps, authKey, callerHeaders, json)
+    const result = await fetchApiResponse(deps, path, requestInit, headers, json, body)
 
     let envelope: Envelope
     try {
@@ -282,19 +316,7 @@ export function createApiClient(deps: ApiClientDependencies): ApiClientWithRespo
         headers: new Headers(result.headers),
       }
     }
-    if (envelope.code === 0) {
-      throw new InvalidResponseError()
-    }
-
-    const retryAfterSeconds =
-      result.status === 429 ? readRetryAfter(envelope.data, result.headers) : undefined
-    throw new ApiError(
-      result.status,
-      envelope.code,
-      envelope.message,
-      envelope.data,
-      retryAfterSeconds,
-    )
+    return throwApiResponseError(result, envelope)
   }
 
   return {

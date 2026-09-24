@@ -21,15 +21,33 @@ import './styles/tokens.css'
 import './styles/base.css'
 import './styles/components.css'
 
+function getBrowserStorage(name: 'localStorage' | 'sessionStorage'): Storage | undefined {
+  try {
+    return window[name]
+  } catch {
+    return undefined
+  }
+}
+
+function registerPageHideCleanup(
+  themeController: ReturnType<typeof createBrowserThemeController>,
+  importRecovery: ReturnType<typeof createImportRecoveryService>,
+  toast: ReturnType<typeof createToastController>,
+): void {
+  window.addEventListener(
+    'pagehide',
+    () => {
+      themeController.dispose()
+      importRecovery.dispose()
+      toast.dispose()
+      clearEphemeralState()
+    },
+    { once: true },
+  )
+}
+
 export async function bootstrap(): Promise<void> {
   const queryClient = createAppQueryClient()
-  const getBrowserStorage = (name: 'localStorage' | 'sessionStorage') => {
-    try {
-      return window[name]
-    } catch {
-      return undefined
-    }
-  }
   const appI18n = await createAppI18n(
     getBrowserStorage('localStorage'),
     navigator.languages,
@@ -52,16 +70,7 @@ export async function bootstrap(): Promise<void> {
     document.documentElement,
     getBrowserStorage('localStorage'),
   )
-  window.addEventListener(
-    'pagehide',
-    () => {
-      themeController.dispose()
-      importRecovery.dispose()
-      toast.dispose()
-      clearEphemeralState()
-    },
-    { once: true },
-  )
+  registerPageHideCleanup(themeController, importRecovery, toast)
 
   let authSession: AuthSession | undefined = undefined
   let router: Router | undefined = undefined

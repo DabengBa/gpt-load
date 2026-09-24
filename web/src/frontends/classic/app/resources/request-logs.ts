@@ -381,6 +381,38 @@ function projectAccessKey(value: unknown): RequestLogItemDto['access_key'] {
   }
 }
 
+function projectPricingLine(lineValue: unknown): RequestLogPricingLineDto {
+  const line = projectRecord(lineValue)
+  assertNoSecretLikeFields(line, [
+    'code',
+    'quantity',
+    'rate_nano_usd_per_million',
+    'multiplier',
+    'state',
+    'amount_nano_usd',
+  ])
+  const multiplier = projectRecord(line.multiplier)
+  assertNoSecretLikeFields(multiplier, ['numerator', 'denominator'])
+  const numerator = projectNonNegativeInt64String(multiplier.numerator)
+  const denominator = projectNonNegativeInt64String(multiplier.denominator)
+  if (numerator === '0' || denominator === '0') invalidResponse()
+  return {
+    code: projectEnum(line.code, receiptCodes),
+    quantity: projectNonNegativeInt64String(line.quantity),
+    rate_nano_usd_per_million:
+      line.rate_nano_usd_per_million === null
+        ? null
+        : projectNonNegativeInt64String(line.rate_nano_usd_per_million),
+    multiplier: {
+      numerator,
+      denominator,
+    },
+    state: projectEnum(line.state, receiptLineStates),
+    amount_nano_usd:
+      line.amount_nano_usd === null ? null : projectNonNegativeInt64String(line.amount_nano_usd),
+  }
+}
+
 function projectPricingReceipt(value: unknown): RequestLogPricingReceiptDto | null {
   if (value === null) return null
   const record = projectRecord(value)
@@ -399,37 +431,7 @@ function projectPricingReceipt(value: unknown): RequestLogPricingReceiptDto | nu
   ])
   const rule = projectRecord(record.rule)
   assertNoSecretLikeFields(rule, ['scope_key', 'channel_id', 'model_id'])
-  const lines = projectArray(record.line_items, (lineValue): RequestLogPricingLineDto => {
-    const line = projectRecord(lineValue)
-    assertNoSecretLikeFields(line, [
-      'code',
-      'quantity',
-      'rate_nano_usd_per_million',
-      'multiplier',
-      'state',
-      'amount_nano_usd',
-    ])
-    const multiplier = projectRecord(line.multiplier)
-    assertNoSecretLikeFields(multiplier, ['numerator', 'denominator'])
-    const numerator = projectNonNegativeInt64String(multiplier.numerator)
-    const denominator = projectNonNegativeInt64String(multiplier.denominator)
-    if (numerator === '0' || denominator === '0') invalidResponse()
-    return {
-      code: projectEnum(line.code, receiptCodes),
-      quantity: projectNonNegativeInt64String(line.quantity),
-      rate_nano_usd_per_million:
-        line.rate_nano_usd_per_million === null
-          ? null
-          : projectNonNegativeInt64String(line.rate_nano_usd_per_million),
-      multiplier: {
-        numerator,
-        denominator,
-      },
-      state: projectEnum(line.state, receiptLineStates),
-      amount_nano_usd:
-        line.amount_nano_usd === null ? null : projectNonNegativeInt64String(line.amount_nano_usd),
-    }
-  })
+  const lines = projectArray(record.line_items, projectPricingLine)
   const schemaVersion = projectSafeInteger(record.schema_version, { minimum: 1, maximum: 6 }) as
     1 | 2 | 3 | 4 | 5 | 6
   let priceMultipliers: RequestLogPricingReceiptDto['price_multipliers']
