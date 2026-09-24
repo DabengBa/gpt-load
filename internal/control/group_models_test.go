@@ -98,6 +98,43 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 	}
 }
 
+func TestGetGroupModelsSkipsGlobalAliasBackfillWhenCurrentGroupIsComplete(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		ChannelID:   channel.OpenAI,
+		Params:      json.RawMessage(`{}`),
+		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "existing-model"}}},
+		Credentials: "sk-group-model-load", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+
+	globalGroupScan := false
+	const callbackName = "test:skip-group-model-alias-backfill"
+	if err := fixture.db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		sql := strings.ToUpper(tx.Statement.SQL.String())
+		if strings.Contains(sql, "FROM `GROUPS`") && strings.Contains(sql, "ORDER BY ID ASC") {
+			globalGroupScan = true
+		}
+	}); err != nil {
+		t.Fatalf("register query observer: %v", err)
+	}
+	defer func() {
+		if err := fixture.db.Callback().Query().Remove(callbackName); err != nil {
+			t.Errorf("remove query observer: %v", err)
+		}
+	}()
+
+	if _, err := fixture.service.GetGroupModels(t.Context(), created.GroupID); err != nil {
+		t.Fatalf("GetGroupModels() error = %v", err)
+	}
+	if globalGroupScan {
+		t.Fatal("GetGroupModels() scanned all groups despite current group having complete aliases")
+	}
+}
+
 func TestGroupModelsGenerateAndPreserveReadOnlyTestAlias(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
