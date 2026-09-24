@@ -199,7 +199,10 @@ func websocketOriginAllowed(request *http.Request, snapshot *state.ConfigSnapsho
 		return true
 	}
 	if snapshot != nil && snapshot.Settings.CORS.Enabled {
-		allowed, _ := matchCORSOrigin(origin, snapshot.Settings.CORS.AllowedOrigins)
+		allowed, wildcard := matchCORSOrigin(origin, snapshot.Settings.CORS.AllowedOrigins)
+		if wildcard {
+			return true
+		}
 		return allowed
 	}
 	parsed, err := url.Parse(origin)

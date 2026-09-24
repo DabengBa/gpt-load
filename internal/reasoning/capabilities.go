@@ -52,7 +52,10 @@ func ValidateEffort(provider string, model, effort string) error {
 	if !projection.Supported {
 		return fmt.Errorf("%w: %s", ErrUnsupportedEffort, projection.Reason)
 	}
-	providerID, _ := modelProvider(provider)
+	providerID, known := modelProvider(provider)
+	if !known {
+		return fmt.Errorf("%w: provider capability is unknown", ErrUnsupportedEffort)
+	}
 	caps := schemas.ResolveModelCaps(providerID, model)
 	valid := effort != "none" || caps.CanDisableReasoning(false)
 	if effort != "none" {

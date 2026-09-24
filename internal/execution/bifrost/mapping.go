@@ -275,8 +275,8 @@ func passthroughHTTPError(status int, headers http.Header, body []byte, secrets 
 }
 
 func failureHintFromHTTP(status int, body []byte) execution.FailureHint {
-	typeValue, codeValue, statusValue, messageValue := providerErrorEnvelope(body)
-	return neutralFailureHint(status, typeValue, codeValue, statusValue, messageValue)
+	envelope := providerErrorEnvelope(body)
+	return neutralFailureHint(status, envelope.typeValue, envelope.codeValue, envelope.statusValue, envelope.messageValue)
 }
 
 func neutralFailureHint(status int, values ...string) execution.FailureHint {
@@ -368,8 +368,15 @@ func containsAnyMarker(value string, markers ...string) bool {
 }
 
 func openAIErrorTypeCode(body []byte) (string, string) {
-	typeValue, codeValue, _, _ := providerErrorEnvelope(body)
-	return typeValue, codeValue
+	envelope := providerErrorEnvelope(body)
+	return envelope.typeValue, envelope.codeValue
+}
+
+type providerErrorValues struct {
+	typeValue    string
+	codeValue    string
+	statusValue  string
+	messageValue string
 }
 
 // providerErrorEnvelope reads the type/code/status/message fields of an upstream
@@ -377,7 +384,7 @@ func openAIErrorTypeCode(body []byte) (string, string) {
 // reseller gateways this deployment talks to answer with a top-level
 // {"code","message"} object. The nested shape keeps precedence so a wrapper can
 // never override it; both shapes carry the same failure markers.
-func providerErrorEnvelope(body []byte) (string, string, string, string) {
+func providerErrorEnvelope(body []byte) providerErrorValues {
 	type errorFields struct {
 		Type    json.RawMessage `json:"type"`
 		Code    json.RawMessage `json:"code"`
@@ -389,7 +396,7 @@ func providerErrorEnvelope(body []byte) (string, string, string, string) {
 		Error errorFields `json:"error"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", "", "", ""
+		return providerErrorValues{}
 	}
 	preferred := func(nested, top string) string {
 		if nested != "" {
@@ -397,10 +404,12 @@ func providerErrorEnvelope(body []byte) (string, string, string, string) {
 		}
 		return top
 	}
-	return preferred(evidenceScalar(payload.Error.Type), evidenceScalar(payload.errorFields.Type)),
-		preferred(evidenceScalar(payload.Error.Code), evidenceScalar(payload.errorFields.Code)),
-		preferred(evidenceScalar(payload.Error.Status), evidenceScalar(payload.errorFields.Status)),
-		preferred(payload.Error.Message, payload.errorFields.Message)
+	return providerErrorValues{
+		typeValue:    preferred(evidenceScalar(payload.Error.Type), evidenceScalar(payload.errorFields.Type)),
+		codeValue:    preferred(evidenceScalar(payload.Error.Code), evidenceScalar(payload.errorFields.Code)),
+		statusValue:  preferred(evidenceScalar(payload.Error.Status), evidenceScalar(payload.errorFields.Status)),
+		messageValue: preferred(payload.Error.Message, payload.errorFields.Message),
+	}
 }
 
 func evidenceScalar(raw json.RawMessage) string {

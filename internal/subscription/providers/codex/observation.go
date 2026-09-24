@@ -484,7 +484,10 @@ func codexWindowLabelKey(fallback, scope string) string {
 }
 
 func windowLabel(window map[string]any, fallback, scope string) string {
-	seconds, _ := integer(firstValue(window, "limit_window_seconds", "limitWindowSeconds"))
+	seconds := int64(0)
+	if parsed, ok := integer(firstValue(window, "limit_window_seconds", "limitWindowSeconds")); ok {
+		seconds = parsed
+	}
 	if scope == "account" {
 		if period := providerobservation.PeriodLabel(seconds); period != "" {
 			return period

@@ -22,13 +22,16 @@ func (d *Anthropic) ExtractUsage(body []byte) (usage.Result, error) {
 			return usage.Result{}, fmt.Errorf("normalize Anthropic usage response")
 		}
 	} else {
-		patch, _ := anthropicUsagePatch(usageObject, true, true)
+		patch := anthropicUsagePatch(usageObject, true, true)
 		patch.Diagnostics.Merge(diagnostics)
 		if err := accumulator.MergePatch(patch); err != nil {
 			return usage.Result{}, fmt.Errorf("normalize Anthropic usage response")
 		}
 	}
-	result, _ := accumulator.Finalize(true)
+	result, finalized := accumulator.Finalize(true)
+	if !finalized {
+		return usage.Result{}, fmt.Errorf("finalize Anthropic usage response")
+	}
 	return result, nil
 }
 
@@ -133,8 +136,9 @@ func (e *anthropicUsageStreamExtractor) observeStart(root map[string]json.RawMes
 		return e.mergeDiagnostics(diagnostics)
 	}
 
-	next, usageDiagnostics, validInput := anthropicCumulativeUsageFromObject(usageObject, true, false)
+	next, usageDiagnostics := anthropicCumulativeUsageFromObject(usageObject, true, false)
 	diagnostics.Merge(usageDiagnostics)
+	validInput := next.present&anthropicUsageUncachedInput != 0
 	if e.validStart {
 		diagnostics.Add(usage.DiagnosticInvalidEventSequence)
 		return e.mergeDiagnostics(diagnostics)
@@ -156,7 +160,7 @@ func (e *anthropicUsageStreamExtractor) observeDelta(root map[string]json.RawMes
 		return e.mergeDiagnostics(diagnostics)
 	}
 
-	next, usageDiagnostics, _ := anthropicCumulativeUsageFromObject(usageObject, false, false)
+	next, usageDiagnostics := anthropicCumulativeUsageFromObject(usageObject, false, false)
 	diagnostics.Merge(usageDiagnostics)
 	if !e.validStart {
 		diagnostics.Add(usage.DiagnosticInvalidEventSequence)
@@ -319,9 +323,8 @@ func (e *anthropicUsageStreamExtractor) mergeDiagnostics(diagnostics usage.Diagn
 	return e.accumulator.MergePatch(usage.Patch{Diagnostics: diagnostics})
 }
 
-func anthropicUsagePatch(usageObject map[string]json.RawMessage, includeOutput, final bool) (usage.Patch, bool) {
+func anthropicUsagePatch(usageObject map[string]json.RawMessage, includeOutput, final bool) usage.Patch {
 	input, diagnostics := usageInteger(usageObject, "input_tokens", true)
-	validInput := input != nil && !diagnostics.Has(usage.DiagnosticInvalidNumber) && !diagnostics.Has(usage.DiagnosticNegativeValue)
 
 	patch := usage.Patch{Final: final, Diagnostics: diagnostics}
 	if input != nil {
@@ -375,14 +378,14 @@ func anthropicUsagePatch(usageObject map[string]json.RawMessage, includeOutput, 
 		}
 	}
 	patch.Diagnostics.Merge(anthropicUnsupportedBillableDetailDiagnostics(usageObject))
-	return patch, validInput
+	return patch
 }
 
 func anthropicCumulativeUsageFromObject(
 	usageObject map[string]json.RawMessage,
 	requireInput bool,
 	requireOutput bool,
-) (anthropicCumulativeUsage, usage.Diagnostics, bool) {
+) (anthropicCumulativeUsage, usage.Diagnostics) {
 	var cumulative anthropicCumulativeUsage
 
 	input, diagnostics := usageInteger(usageObject, "input_tokens", requireInput)
@@ -436,7 +439,7 @@ func anthropicCumulativeUsageFromObject(
 
 	diagnostics.Merge(anthropicUnsupportedBillableDetailDiagnostics(usageObject))
 
-	return cumulative, diagnostics, validInput
+	return cumulative, diagnostics
 }
 
 func anthropicUnsupportedBillableDetailDiagnostics(

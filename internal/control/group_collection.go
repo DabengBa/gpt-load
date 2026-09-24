@@ -457,19 +457,6 @@ func addGroupCollectionCredentialCount(counts *GroupCollectionCredentialCounts, 
 	}
 }
 
-func groupCollectionStatus(
-	group state.GroupCatalogView,
-	counts GroupCollectionCredentialCounts,
-	modelCount int64,
-) GroupCollectionStatus {
-	status, _ := groupCollectionStatusAndReason(
-		group,
-		counts,
-		modelCount,
-	)
-	return status
-}
-
 func groupCollectionStatusAndReason(
 	group state.GroupCatalogView,
 	counts GroupCollectionCredentialCounts,

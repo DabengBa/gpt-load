@@ -699,7 +699,11 @@ func (forwarder *ExecutionForwarder) prepareBufferedResult(
 				return executionRepresentationFailure(result, fmt.Errorf("%w: invalid bodyless response representation", ErrUpstreamProtocol))
 			}
 			headers := sanitizeForwardResponseHeaders(result.Header, input, secrets...)
-			headers, _ = normalizeBufferedResponse(input.Request.Method, result.StatusCode, headers, nil)
+			var writeBody bool
+			headers, writeBody = normalizeBufferedResponse(input.Request.Method, result.StatusCode, headers, nil)
+			if writeBody {
+				return executionRepresentationFailure(result, fmt.Errorf("%w: bodyless response requires a body", ErrUpstreamProtocol))
+			}
 			result.Header = headers
 			result.Body = nil
 			return result

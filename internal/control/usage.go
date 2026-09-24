@@ -833,8 +833,8 @@ func usageResponseRange(query requestlog.UsageQuery, bucketWidthMS int64) (strin
 		usageRange15Days,
 		usageRange30Days,
 	} {
-		preset, _ := usageRangePreset(rangeValue)
-		if query.Granularity == preset.granularity &&
+		preset, ok := usageRangePreset(rangeValue)
+		if ok && query.Granularity == preset.granularity &&
 			bucketWidthMS == preset.bucketWidthMS &&
 			duration == int64(preset.bucketCount)*preset.bucketWidthMS {
 			return rangeValue, nil

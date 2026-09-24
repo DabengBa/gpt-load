@@ -618,10 +618,17 @@ func sortUsageBreakdownRows(scope *gorm.DB, rows []usageBreakdownCandidate, inpu
 			}
 		}
 	}
+	var sortError error
 	sort.Slice(rows, func(left, right int) bool {
+		if sortError != nil {
+			return false
+		}
 		comparison := compareUsageBreakdownSamplePresence(rows[left], rows[right], input.BreakdownSort)
 		if comparison == 0 {
-			comparison = compareUsageBreakdownPrimary(rows[left], rows[right], input.BreakdownSort)
+			comparison, sortError = compareUsageBreakdownPrimary(rows[left], rows[right], input.BreakdownSort)
+			if sortError != nil {
+				return false
+			}
 			if input.BreakdownSortDirection == UsageBreakdownSortDescending {
 				comparison = -comparison
 			}
@@ -651,6 +658,9 @@ func sortUsageBreakdownRows(scope *gorm.DB, rows []usageBreakdownCandidate, inpu
 		}
 		return leftChannel < rightChannel
 	})
+	if sortError != nil {
+		return fmt.Errorf("sort usage breakdown: %w", sortError)
+	}
 	return nil
 }
 
@@ -673,7 +683,7 @@ func compareUsageBreakdownSamplePresence(left, right usageBreakdownCandidate, so
 	}
 }
 
-func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy UsageBreakdownSort) int {
+func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy UsageBreakdownSort) (int, error) {
 	compareInt64 := func(a, b int64) int {
 		if a < b {
 			return -1
@@ -686,17 +696,17 @@ func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy Us
 	leftAggregate, rightAggregate := left.row.UsageAggregate, right.row.UsageAggregate
 	switch sortBy {
 	case UsageBreakdownSortModel:
-		return strings.Compare(left.row.Model, right.row.Model)
+		return strings.Compare(left.row.Model, right.row.Model), nil
 	case UsageBreakdownSortGroup:
-		return strings.Compare(left.groupName, right.groupName)
+		return strings.Compare(left.groupName, right.groupName), nil
 	case UsageBreakdownSortChannel:
-		return strings.Compare(left.channelName, right.channelName)
+		return strings.Compare(left.channelName, right.channelName), nil
 	case UsageBreakdownSortRequestCount:
-		return compareInt64(leftAggregate.RequestCount, rightAggregate.RequestCount)
+		return compareInt64(leftAggregate.RequestCount, rightAggregate.RequestCount), nil
 	case UsageBreakdownSortSuccessCount:
-		return compareInt64(leftAggregate.SuccessCount, rightAggregate.SuccessCount)
+		return compareInt64(leftAggregate.SuccessCount, rightAggregate.SuccessCount), nil
 	case UsageBreakdownSortFailureCount:
-		return compareInt64(leftAggregate.FailureCount, rightAggregate.FailureCount)
+		return compareInt64(leftAggregate.FailureCount, rightAggregate.FailureCount), nil
 	case UsageBreakdownSortSuccessRate:
 		leftRate, rightRate := float64(leftAggregate.SuccessCount), float64(rightAggregate.SuccessCount)
 		if leftAggregate.RequestCount > 0 {
@@ -706,12 +716,12 @@ func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy Us
 			rightRate /= float64(rightAggregate.RequestCount)
 		}
 		if leftRate < rightRate {
-			return -1
+			return -1, nil
 		}
 		if leftRate > rightRate {
-			return 1
+			return 1, nil
 		}
-		return 0
+		return 0, nil
 	case UsageBreakdownSortAverageDuration:
 		leftRate, rightRate := float64(leftAggregate.DurationMsTotal), float64(rightAggregate.DurationMsTotal)
 		if leftAggregate.DurationSampleCount > 0 {
@@ -721,12 +731,12 @@ func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy Us
 			rightRate /= float64(rightAggregate.DurationSampleCount)
 		}
 		if leftRate < rightRate {
-			return -1
+			return -1, nil
 		}
 		if leftRate > rightRate {
-			return 1
+			return 1, nil
 		}
-		return 0
+		return 0, nil
 	case UsageBreakdownSortAverageFirstResponse:
 		leftRate, rightRate := float64(leftAggregate.FirstResponseMsTotal), float64(rightAggregate.FirstResponseMsTotal)
 		if leftAggregate.FirstResponseSampleCount > 0 {
@@ -736,32 +746,38 @@ func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy Us
 			rightRate /= float64(rightAggregate.FirstResponseSampleCount)
 		}
 		if leftRate < rightRate {
-			return -1
+			return -1, nil
 		}
 		if leftRate > rightRate {
-			return 1
+			return 1, nil
 		}
-		return 0
+		return 0, nil
 	case UsageBreakdownSortUncachedInputTokens:
-		return compareInt64(leftAggregate.UncachedInputTokens, rightAggregate.UncachedInputTokens)
+		return compareInt64(leftAggregate.UncachedInputTokens, rightAggregate.UncachedInputTokens), nil
 	case UsageBreakdownSortCacheReadTokens:
-		return compareInt64(leftAggregate.CacheReadTokens, rightAggregate.CacheReadTokens)
+		return compareInt64(leftAggregate.CacheReadTokens, rightAggregate.CacheReadTokens), nil
 	case UsageBreakdownSortCacheWrite5MTokens:
-		return compareInt64(leftAggregate.CacheWrite5MTokens, rightAggregate.CacheWrite5MTokens)
+		return compareInt64(leftAggregate.CacheWrite5MTokens, rightAggregate.CacheWrite5MTokens), nil
 	case UsageBreakdownSortCacheWrite1HTokens:
-		return compareInt64(leftAggregate.CacheWrite1HTokens, rightAggregate.CacheWrite1HTokens)
+		return compareInt64(leftAggregate.CacheWrite1HTokens, rightAggregate.CacheWrite1HTokens), nil
 	case UsageBreakdownSortCacheWriteUnknown:
-		return compareInt64(leftAggregate.CacheWriteUnknownTokens, rightAggregate.CacheWriteUnknownTokens)
+		return compareInt64(leftAggregate.CacheWriteUnknownTokens, rightAggregate.CacheWriteUnknownTokens), nil
 	case UsageBreakdownSortOutputTokens:
-		return compareInt64(leftAggregate.OutputTokens, rightAggregate.OutputTokens)
+		return compareInt64(leftAggregate.OutputTokens, rightAggregate.OutputTokens), nil
 	case UsageBreakdownSortTotalTokens:
-		leftTokens, _ := usageAggregateTotalTokens(leftAggregate)
-		rightTokens, _ := usageAggregateTotalTokens(rightAggregate)
-		return compareInt64(leftTokens, rightTokens)
+		leftTokens, err := usageAggregateTotalTokens(leftAggregate)
+		if err != nil {
+			return 0, fmt.Errorf("left total tokens: %w", err)
+		}
+		rightTokens, err := usageAggregateTotalTokens(rightAggregate)
+		if err != nil {
+			return 0, fmt.Errorf("right total tokens: %w", err)
+		}
+		return compareInt64(leftTokens, rightTokens), nil
 	case UsageBreakdownSortEstimatedCost:
-		return compareInt64(leftAggregate.EstimatedCostNanoUSD, rightAggregate.EstimatedCostNanoUSD)
+		return compareInt64(leftAggregate.EstimatedCostNanoUSD, rightAggregate.EstimatedCostNanoUSD), nil
 	default:
-		return 0
+		return 0, nil
 	}
 }
 

@@ -101,11 +101,11 @@ func newStreamWriteController(writer http.ResponseWriter, timeout time.Duration)
 }
 
 func newStreamDeadlineController(writer http.ResponseWriter) *http.ResponseController {
-	target, _ := findStreamResponseWriter(writer, func(current http.ResponseWriter) bool {
+	target, safeFallback := findStreamResponseWriter(writer, func(current http.ResponseWriter) bool {
 		_, ok := current.(interface{ SetWriteDeadline(time.Time) error })
 		return ok
 	})
-	if target == nil {
+	if target == nil || !safeFallback {
 		return nil
 	}
 	return http.NewResponseController(target)

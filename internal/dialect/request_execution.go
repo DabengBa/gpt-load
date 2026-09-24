@@ -330,8 +330,7 @@ func geminiContentsReferenceProviderResource(value any) bool {
 				continue
 			}
 			fileData := objectField(part, "fileData", "file_data")
-			fileURI, _ := stringField(fileData, "fileUri", "file_uri")
-			if geminiProviderResourceURI(fileURI) {
+			if fileURI, ok := stringField(fileData, "fileUri", "file_uri"); ok && geminiProviderResourceURI(fileURI) {
 				return true
 			}
 		}

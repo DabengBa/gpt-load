@@ -25,7 +25,7 @@ func (e *anthropicUsageStreamExtractor) observeCompaction(object map[string]json
 		if json.Unmarshal(iteration["type"], &kind) != nil || kind != "compaction" {
 			continue
 		}
-		patch, _ := anthropicUsagePatch(iteration, true, false)
+		patch := anthropicUsagePatch(iteration, true, false)
 		diagnostics.Merge(patch.Diagnostics)
 		if !usageIntegerUsable(patch.Diagnostics) || patch.Diagnostics.Has(usage.DiagnosticMissingRequiredField) {
 			return diagnostics
@@ -35,7 +35,11 @@ func (e *anthropicUsageStreamExtractor) observeCompaction(object map[string]json
 			diagnostics.Add(usage.DiagnosticInvalidNumber)
 			return diagnostics
 		}
-		result, _ := accumulator.Finalize(true)
+		result, finalized := accumulator.Finalize(true)
+		if !finalized {
+			diagnostics.Add(usage.DiagnosticInvalidNumber)
+			return diagnostics
+		}
 		combined, ok := addAnthropicUsageTokens(tokens, result.Tokens)
 		if !ok {
 			diagnostics.Add(usage.DiagnosticInvalidNumber)

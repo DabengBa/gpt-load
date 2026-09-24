@@ -350,7 +350,10 @@ func validateFrozenObservation(event telemetry.RequestEvent) error {
 	matchingAttempts := 0
 	boundModel := ""
 	for _, attempt := range event.Attempts {
-		attemptCredentialID, _ := validatedAttemptObservation(attempt)
+		attemptCredentialID, err := validatedAttemptObservation(attempt)
+		if err != nil {
+			return err
+		}
 		if attempt.Sequence == event.Usage.AttemptSequence &&
 			attempt.GroupID == event.Usage.GroupID &&
 			attempt.ChannelID == event.Usage.ChannelID &&
