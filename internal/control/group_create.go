@@ -93,24 +93,8 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 	result := GroupCreateResult{}
 	requestedEntries := make([]state.CredentialEntry, 0, len(normalized.credentials.candidates)+len(normalized.stagedCredentialIDs))
 	_, err = s.writeGroupConfig(ctx, func(tx *gorm.DB) error {
-		if normalized.connectionType == models.ConnectionTypeSubscription {
-			if err := s.validateCredentialStageCreateBatch(
-				tx, normalized.channelID, normalized.connectionType, normalized.stagedCredentialIDs,
-			); err != nil {
-				return err
-			}
-		}
-		if !normalized.confirmSameTarget {
-			conflicts, err := findGroupsByTarget(tx, normalized.channelID, normalized.connectionType, normalized.params)
-			if err != nil {
-				return err
-			}
-			if len(conflicts) > 0 {
-				return app_errors.NewAPIErrorWithData(
-					app_errors.ErrChannelTargetConflict,
-					SameTargetConflictData{Groups: conflicts},
-				)
-			}
+		if err := s.validateGroupCreateTarget(tx, normalized); err != nil {
+			return err
 		}
 
 		name, err := resolveGroupCreateName(tx, normalized.explicitName, normalized.defaultName)
@@ -124,18 +108,7 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 		if err != nil {
 			return fmt.Errorf("encode group models: %w", err)
 		}
-		group := models.Group{
-			PriceMultiplierMicros: priceMultiplierStorage(normalized.priceMultiplier),
-			Name:                  name,
-			ChannelID:             string(normalized.channelID),
-			ConnectionType:        normalized.connectionType,
-			Params:                append(models.JSON(nil), normalized.params...),
-			ProviderURL:           normalized.providerURL,
-			Models:                models.JSON(encodedModels),
-			Overrides:             normalized.encodedOverrides,
-			ProxyConfig:           normalized.proxyConfig,
-			Enabled:               true,
-		}
+		group := buildCreatedGroup(normalized, name, encodedModels)
 		if err := tx.Create(&group).Error; err != nil {
 			return app_errors.ParseDBError(err)
 		}
@@ -172,6 +145,44 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 		s.catalogSync.RequestGroupSync()
 	}
 	return result, nil
+}
+
+func (s *Service) validateGroupCreateTarget(tx *gorm.DB, normalized normalizedGroupCreate) error {
+	if normalized.connectionType == models.ConnectionTypeSubscription {
+		if err := s.validateCredentialStageCreateBatch(
+			tx, normalized.channelID, normalized.connectionType, normalized.stagedCredentialIDs,
+		); err != nil {
+			return err
+		}
+	}
+	if !normalized.confirmSameTarget {
+		conflicts, err := findGroupsByTarget(tx, normalized.channelID, normalized.connectionType, normalized.params)
+		if err != nil {
+			return err
+		}
+		if len(conflicts) > 0 {
+			return app_errors.NewAPIErrorWithData(
+				app_errors.ErrChannelTargetConflict,
+				SameTargetConflictData{Groups: conflicts},
+			)
+		}
+	}
+	return nil
+}
+
+func buildCreatedGroup(normalized normalizedGroupCreate, name string, encodedModels []byte) models.Group {
+	return models.Group{
+		PriceMultiplierMicros: priceMultiplierStorage(normalized.priceMultiplier),
+		Name:                  name,
+		ChannelID:             string(normalized.channelID),
+		ConnectionType:        normalized.connectionType,
+		Params:                append(models.JSON(nil), normalized.params...),
+		ProviderURL:           normalized.providerURL,
+		Models:                models.JSON(encodedModels),
+		Overrides:             normalized.encodedOverrides,
+		ProxyConfig:           normalized.proxyConfig,
+		Enabled:               true,
+	}
 }
 
 func ensureGroupModelEntryIDs(groupModels []GroupModel) error {

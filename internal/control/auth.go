@@ -84,37 +84,8 @@ func (s *Server) authenticate() gin.HandlerFunc {
 			return
 		}
 
-		fields := strings.Fields(c.GetHeader("Authorization"))
-		formatValid := len(fields) == 2 &&
-			strings.EqualFold(fields[0], "Bearer")
-		token := ""
-		if formatValid {
-			token = fields[1]
-		}
-		requestDigest := sha256.Sum256([]byte(token))
-		isAgentCredentialToken := strings.HasPrefix(token, agentCredentialSecretPrefix)
-		adminMatches := !isAgentCredentialToken &&
-			s.compareDigest(requestDigest[:], s.authDigest[:]) == 1
-		requestNow := time.Now
-		if s != nil && s.service != nil && s.service.now != nil {
-			requestNow = s.service.now
-		}
-		accessKeyMatch := accessKeyAuthMatch{}
-		if !isAgentCredentialToken {
-			accessKeyMatch = s.matchAccessKey(token, requestNow(), peer)
-		}
-		collision := adminMatches && accessKeyMatch.HashMatched
-		credentialValid := formatValid && !collision &&
-			(adminMatches || accessKeyMatch.PolicyAllowed)
-		principal := controlPrincipal{}
-		if credentialValid {
-			if adminMatches {
-				principal.Type = controlPrincipalAdmin
-			} else {
-				principal.Type = controlPrincipalAccessKey
-				principal.AccessKeyID = accessKeyMatch.AccessKeyID
-			}
-		}
+		principal, accessKeyMatch, formatValid, credentialValid, adminMatches :=
+			s.resolveControlCredential(c.GetHeader("Authorization"), peer)
 		var decision authDecision
 		policyRejectedAccessKey := formatValid &&
 			accessKeyMatch.HashMatched &&
@@ -169,6 +140,40 @@ func (s *Server) authenticate() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+func (s *Server) resolveControlCredential(header, peer string) (controlPrincipal, accessKeyAuthMatch, bool, bool, bool) {
+	fields := strings.Fields(header)
+	formatValid := len(fields) == 2 && strings.EqualFold(fields[0], "Bearer")
+	token := ""
+	if formatValid {
+		token = fields[1]
+	}
+	requestDigest := sha256.Sum256([]byte(token))
+	isAgentCredentialToken := strings.HasPrefix(token, agentCredentialSecretPrefix)
+	adminMatches := !isAgentCredentialToken &&
+		s.compareDigest(requestDigest[:], s.authDigest[:]) == 1
+	requestNow := time.Now
+	if s != nil && s.service != nil && s.service.now != nil {
+		requestNow = s.service.now
+	}
+	accessKeyMatch := accessKeyAuthMatch{}
+	if !isAgentCredentialToken {
+		accessKeyMatch = s.matchAccessKey(token, requestNow(), peer)
+	}
+	collision := adminMatches && accessKeyMatch.HashMatched
+	credentialValid := formatValid && !collision &&
+		(adminMatches || accessKeyMatch.PolicyAllowed)
+	principal := controlPrincipal{}
+	if credentialValid {
+		if adminMatches {
+			principal.Type = controlPrincipalAdmin
+		} else {
+			principal.Type = controlPrincipalAccessKey
+			principal.AccessKeyID = accessKeyMatch.AccessKeyID
+		}
+	}
+	return principal, accessKeyMatch, formatValid, credentialValid, adminMatches
 }
 
 func (s *Server) matchAccessKey(

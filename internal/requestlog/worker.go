@@ -919,6 +919,24 @@ func (delta *usageStatDelta) addRow(row models.RequestLog) error {
 		row.UsageState != string(usage.StatePartial) {
 		return nil
 	}
+	if err := delta.addUsageTokens(row); err != nil {
+		return err
+	}
+	if row.CostState != string(pricing.CostStatePriced) {
+		return nil
+	}
+	cost, ok := pricing.CheckedAddNanoUSD(
+		pricing.NanoUSD(delta.EstimatedCostNanoUSD),
+		pricing.NanoUSD(row.EstimatedCostNanoUSD),
+	)
+	if !ok {
+		return fmt.Errorf("aggregate usage stat estimated_cost_nano_usd: checked addition failed")
+	}
+	delta.EstimatedCostNanoUSD = int64(cost)
+	return nil
+}
+
+func (delta *usageStatDelta) addUsageTokens(row models.RequestLog) error {
 	for _, field := range []struct {
 		name   string
 		target *int64
@@ -935,17 +953,6 @@ func (delta *usageStatDelta) addRow(row models.RequestLog) error {
 			return err
 		}
 	}
-	if row.CostState != string(pricing.CostStatePriced) {
-		return nil
-	}
-	cost, ok := pricing.CheckedAddNanoUSD(
-		pricing.NanoUSD(delta.EstimatedCostNanoUSD),
-		pricing.NanoUSD(row.EstimatedCostNanoUSD),
-	)
-	if !ok {
-		return fmt.Errorf("aggregate usage stat estimated_cost_nano_usd: checked addition failed")
-	}
-	delta.EstimatedCostNanoUSD = int64(cost)
 	return nil
 }
 

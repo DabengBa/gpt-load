@@ -198,40 +198,13 @@ func BackfillTestAliases(ctx context.Context, db *gorm.DB) error {
 			return fmt.Errorf("query groups: %w", err)
 		}
 		configs := make([]state.GroupConfig, 0, len(rows))
-		stored := make([][]modelDTO, len(rows))
 		rawStored := make([][]map[string]json.RawMessage, len(rows))
 		for index, row := range rows {
-			if err := decodeJSON(row.Models, &stored[index]); err != nil {
-				return fmt.Errorf("decode group %d models: %w", row.ID, err)
-			}
-			if err := decodeJSON(row.Models, &rawStored[index]); err != nil {
-				return fmt.Errorf("decode group %d model fields: %w", row.ID, err)
-			}
-			modelsForState := make([]state.ModelConfig, 0, len(stored[index]))
-			for modelIndex, model := range stored[index] {
-				fields := rawStored[index][modelIndex]
-				if rawAlias, exists := fields["test_alias"]; exists {
-					if bytes.Equal(bytes.TrimSpace(rawAlias), []byte("null")) {
-						return fmt.Errorf("group %d model %d: test alias must be a string", row.ID, modelIndex)
-					}
-					var alias string
-					if err := json.Unmarshal(rawAlias, &alias); err != nil {
-						return fmt.Errorf("group %d model %d: decode test alias: %w", row.ID, modelIndex, err)
-					}
-					if alias != "" {
-						model.TestAlias = alias
-					}
-				}
-				modelsForState = append(modelsForState, state.ModelConfig{
-					ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
-					ReasoningEffort: model.ReasoningEffort,
-					Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
-					CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
-				})
-			}
-			if err := state.ValidateModelRouteEntries(fmt.Sprintf("group %d", row.ID), modelsForState); err != nil {
+			modelsForState, rawFields, err := decodeBackfillModels(row)
+			if err != nil {
 				return err
 			}
+			rawStored[index] = rawFields
 			configs = append(configs, state.GroupConfig{ID: row.ID, Models: modelsForState})
 		}
 		if err := state.ValidateTestAliases(configs); err != nil {
@@ -282,6 +255,43 @@ func BackfillTestAliases(ctx context.Context, db *gorm.DB) error {
 		}
 		return nil
 	})
+}
+
+func decodeBackfillModels(row models.Group) ([]state.ModelConfig, []map[string]json.RawMessage, error) {
+	var stored []modelDTO
+	if err := decodeJSON(row.Models, &stored); err != nil {
+		return nil, nil, fmt.Errorf("decode group %d models: %w", row.ID, err)
+	}
+	var rawStored []map[string]json.RawMessage
+	if err := decodeJSON(row.Models, &rawStored); err != nil {
+		return nil, nil, fmt.Errorf("decode group %d model fields: %w", row.ID, err)
+	}
+	modelsForState := make([]state.ModelConfig, 0, len(stored))
+	for modelIndex, model := range stored {
+		fields := rawStored[modelIndex]
+		if rawAlias, exists := fields["test_alias"]; exists {
+			if bytes.Equal(bytes.TrimSpace(rawAlias), []byte("null")) {
+				return nil, nil, fmt.Errorf("group %d model %d: test alias must be a string", row.ID, modelIndex)
+			}
+			var alias string
+			if err := json.Unmarshal(rawAlias, &alias); err != nil {
+				return nil, nil, fmt.Errorf("group %d model %d: decode test alias: %w", row.ID, modelIndex, err)
+			}
+			if alias != "" {
+				model.TestAlias = alias
+			}
+		}
+		modelsForState = append(modelsForState, state.ModelConfig{
+			ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
+			ReasoningEffort: model.ReasoningEffort,
+			Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+		})
+	}
+	if err := state.ValidateModelRouteEntries(fmt.Sprintf("group %d", row.ID), modelsForState); err != nil {
+		return nil, nil, err
+	}
+	return modelsForState, rawStored, nil
 }
 
 func (l *Loader) validatePersistedCredentials(

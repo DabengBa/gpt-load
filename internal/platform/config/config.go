@@ -137,40 +137,9 @@ func Load() (*Config, error) {
 	if err := securefile.PrepareManagedDataDir(dataDir); err != nil {
 		return nil, fmt.Errorf("prepare DATA_DIR: %w", err)
 	}
-	rawDatabaseDSN := strings.TrimSpace(os.Getenv("DATABASE_DSN"))
-	databaseSource := DatabaseSourceExternal
-	databaseDSN := rawDatabaseDSN
-	if rawDatabaseDSN == "" {
-		databaseSource = DatabaseSourceManaged
-		databaseDSN = filepath.Join(dataDir, "gpt-load.db")
-		if journalMode := strings.TrimSpace(os.Getenv("SQLITE_JOURNAL_MODE")); journalMode != "" {
-			databaseDSN += "?_pragma=journal_mode(" + url.QueryEscape(journalMode) + ")"
-		}
-	}
-	database, err := ParseDatabaseDSN(databaseDSN)
+	databaseDSN, databaseMetadata, err := loadDatabaseConfig(dataDir)
 	if err != nil {
 		return nil, err
-	}
-	databaseDSN = database.DSN
-	databaseMetadata := DatabaseMetadata{
-		Source: databaseSource,
-		Driver: database.Driver,
-	}
-
-	if databaseSource == DatabaseSourceManaged {
-		// The empty-DATABASE_DSN path is the only application-managed database.
-		// Keep this branch explicit so future driver additions cannot silently
-		// inherit managed-file semantics.
-		if database.Driver != DatabaseDriverSQLite {
-			return nil, fmt.Errorf("managed database must use SQLite")
-		}
-	}
-	if databaseSource == DatabaseSourceExternal && database.Driver == "" {
-		return nil, fmt.Errorf("DATABASE_DSN did not select a database driver")
-	}
-
-	if databaseDSN == "" {
-		return nil, fmt.Errorf("DATABASE_DSN resolved to an empty DSN")
 	}
 
 	explicitAuthKey := os.Getenv("AUTH_KEY")
@@ -180,22 +149,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	authKeyMetadata := SecretMetadata{Source: SecretSourceEnvironment}
-	if explicitAuthKey == "" {
-		authKeyMetadata = SecretMetadata{
-			Source: SecretSourceKeyFile,
-			Path:   filepath.Join(dataDir, authkey.FileName),
-		}
-	}
-	encryptionKeyMetadata := SecretMetadata{Source: SecretSourceEnvironment}
-	if explicitEncryptionKey == "" {
-		// Keep this filename in sync with encryption.KeyFileName. Importing the
-		// encryption implementation here would violate runtime-domain boundaries.
-		encryptionKeyMetadata = SecretMetadata{
-			Source: SecretSourceKeyFile,
-			Path:   filepath.Join(dataDir, "encryption.key"),
-		}
-	}
+	authKeyMetadata, encryptionKeyMetadata := secretMetadata(explicitAuthKey, explicitEncryptionKey, dataDir)
 
 	logFormat := valueOrDefault("LOG_FORMAT", "text")
 	if logFormat != "text" && logFormat != "json" {
@@ -241,6 +195,64 @@ func Load() (*Config, error) {
 		DebugCaptureEnabled:       debugCaptureEnabled,
 		MCPTrustedProxyCIDRs:      trustedProxyCIDRs,
 	}, nil
+}
+
+func loadDatabaseConfig(dataDir string) (string, DatabaseMetadata, error) {
+	rawDatabaseDSN := strings.TrimSpace(os.Getenv("DATABASE_DSN"))
+	databaseSource := DatabaseSourceExternal
+	databaseDSN := rawDatabaseDSN
+	if rawDatabaseDSN == "" {
+		databaseSource = DatabaseSourceManaged
+		databaseDSN = filepath.Join(dataDir, "gpt-load.db")
+		if journalMode := strings.TrimSpace(os.Getenv("SQLITE_JOURNAL_MODE")); journalMode != "" {
+			databaseDSN += "?_pragma=journal_mode(" + url.QueryEscape(journalMode) + ")"
+		}
+	}
+	database, err := ParseDatabaseDSN(databaseDSN)
+	if err != nil {
+		return "", DatabaseMetadata{}, err
+	}
+	databaseDSN = database.DSN
+	databaseMetadata := DatabaseMetadata{
+		Source: databaseSource,
+		Driver: database.Driver,
+	}
+
+	if databaseSource == DatabaseSourceManaged {
+		// The empty-DATABASE_DSN path is the only application-managed database.
+		// Keep this branch explicit so future driver additions cannot silently
+		// inherit managed-file semantics.
+		if database.Driver != DatabaseDriverSQLite {
+			return "", DatabaseMetadata{}, fmt.Errorf("managed database must use SQLite")
+		}
+	}
+	if databaseSource == DatabaseSourceExternal && database.Driver == "" {
+		return "", DatabaseMetadata{}, fmt.Errorf("DATABASE_DSN did not select a database driver")
+	}
+	if databaseDSN == "" {
+		return "", DatabaseMetadata{}, fmt.Errorf("DATABASE_DSN resolved to an empty DSN")
+	}
+	return databaseDSN, databaseMetadata, nil
+}
+
+func secretMetadata(explicitAuthKey, explicitEncryptionKey, dataDir string) (SecretMetadata, SecretMetadata) {
+	authKeyMetadata := SecretMetadata{Source: SecretSourceEnvironment}
+	if explicitAuthKey == "" {
+		authKeyMetadata = SecretMetadata{
+			Source: SecretSourceKeyFile,
+			Path:   filepath.Join(dataDir, authkey.FileName),
+		}
+	}
+	encryptionKeyMetadata := SecretMetadata{Source: SecretSourceEnvironment}
+	if explicitEncryptionKey == "" {
+		// Keep this filename in sync with encryption.KeyFileName. Importing the
+		// encryption implementation here would violate runtime-domain boundaries.
+		encryptionKeyMetadata = SecretMetadata{
+			Source: SecretSourceKeyFile,
+			Path:   filepath.Join(dataDir, "encryption.key"),
+		}
+	}
+	return authKeyMetadata, encryptionKeyMetadata
 }
 
 func parseCIDRs(raw string) ([]string, error) {
