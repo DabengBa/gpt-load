@@ -67,6 +67,13 @@ func openSQLite(
 	if err != nil {
 		return nil, fmt.Errorf("get SQLite connection pool: %w", err)
 	}
+	if target.fileBacked && journalMode == "wal" {
+		// WAL allows readers to proceed alongside the single SQLite writer.
+		// Keep the pool small; non-WAL modes remain single-connection to avoid
+		// rollback-journal lock contention.
+		sqlDB.SetMaxOpenConns(4)
+		sqlDB.SetMaxIdleConns(4)
+	}
 	if err := verifySQLiteRuntime(db, target.fileBacked, journalMode); err != nil {
 		_ = sqlDB.Close()
 		return nil, err

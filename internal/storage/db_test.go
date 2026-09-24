@@ -507,6 +507,27 @@ func TestOpenRejectsUnsupportedSQLiteJournalMode(t *testing.T) {
 	}
 }
 
+func TestOpenWALUsesSmallConnectionPool(t *testing.T) {
+	t.Parallel()
+	dsn := filepath.Join(t.TempDir(), "wal-pool.db") + "?_pragma=journal_mode(WAL)"
+	db, err := storage.Open(dsn)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("DB() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("close database: %v", err)
+		}
+	})
+	if got := sqlDB.Stats().MaxOpenConnections; got != 4 {
+		t.Fatalf("MaxOpenConnections = %d, want 4 for WAL", got)
+	}
+}
+
 func TestOpenDoesNotForceWALForMemoryDatabase(t *testing.T) {
 	t.Parallel()
 	db, err := storage.Open(":memory:")
