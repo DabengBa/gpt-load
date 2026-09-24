@@ -21,7 +21,7 @@ description: "在 Hostinger 上为 GPT-Load 分组定位并修正 Provider 参�
 1. 只使用用户已授权的 SSH 目标；本项目自建实例默认是 `vps-kl`，先读取本机 SSH 配置确认，不要猜服务器。
 2. 绝不打印、写入 skill 或报告以下内容：SSH 私钥、`AUTH_KEY`、上游 API Key、`Authorization`、Cookie、完整 prompt、完整 raw request/response body。
 3. 只输出脱敏后的分组 ID、名称、channel、客户端模型名、上游模型名、Base URL、状态码、字段存在性、长度和 hash。
-4. 配置修改通过 GPT-Load 管理 API 完成；不要直接改 SQLite、Docker volume 或容器内配置文件。
+4. 读取与修改分组配置均通过 GPT-Load 管理 API 完成；不要直接改 SQLite、Docker volume 或容器内配置文件，更不要为查询分组把在线数据库复制到宿主机或容器的 `/tmp`/tmpfs。确需备份时按 `docs/deployment.md` 检查持久磁盘空间并使用 SQLite 在线备份，失败时清理半成品。
 5. 参数配置成功后不需要重启容器。除非用户另行明确要求，不要部署、重启、切换镜像或修改代码。
 6. 写入前先读取目标分组的完整 `overrides`；更新时保留无关配置。若必须替换整个 `overrides`，确认没有并发修改，并保留旧值以便回滚。
 
