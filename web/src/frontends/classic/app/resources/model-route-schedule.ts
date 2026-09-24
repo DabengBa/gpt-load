@@ -75,7 +75,7 @@ export interface ModelRouteScheduleRuntimeDto {
   failure_version: number
 }
 
-export type ModelRouteScheduleReasoningSource = 'entry' | 'group' | 'client' | 'provider_default'
+export type ModelRouteScheduleReasoningSource = 'entry' | 'client' | 'provider_default'
 
 export interface ModelRouteScheduleReasoningDto {
   configured: ReasoningEffortDto | null
@@ -90,6 +90,7 @@ export interface ModelRouteScheduleEntryDto {
   weight: number
   priority: number
   fallback: boolean
+  enabled: boolean
   circuit_breaker: ModelRouteScheduleBreakerDto
   reasoning: ModelRouteScheduleReasoningDto
   runtime: ModelRouteScheduleRuntimeDto
@@ -101,18 +102,11 @@ export interface ModelRouteScheduleEntryDto {
   credentials: RouteInspectCredentialDto[]
 }
 
-export type ModelRouteScheduleReasoningEntryDto = Pick<
-  ModelRouteScheduleEntryDto,
-  'entry_id' | 'model_id' | 'reasoning'
->
-
 export interface ModelRouteScheduleGroupDto {
   group_id: number
   group_name: string
   channel_id: string
   enabled: boolean
-  reasoning_effort_default: ReasoningEffortDto | null
-  reasoning_entries: ModelRouteScheduleReasoningEntryDto[]
   request_count: number
   success_rate: number
   entries: ModelRouteScheduleEntryDto[]
@@ -152,13 +146,9 @@ export interface ModelRouteSchedulePatchUpdate {
   entry_id: string
   weight?: number | null
   priority?: number | null
+  enabled?: boolean
   circuit_breaker?: ModelRouteScheduleBreakerPatch | null
   reasoning_effort?: ReasoningEffortDto | null
-}
-
-export interface ModelRouteScheduleGroupPatchUpdate {
-  group_id: number
-  reasoning_effort_default: ReasoningEffortDto | null
 }
 
 export interface ModelRouteSchedulePatchRequest {
@@ -167,7 +157,6 @@ export interface ModelRouteSchedulePatchRequest {
   external_model?: string
   access_key_id?: number
   operation?: RouteInspectOperation
-  group_updates?: ModelRouteScheduleGroupPatchUpdate[]
   updates: ModelRouteSchedulePatchUpdate[]
 }
 
@@ -217,8 +206,6 @@ const groupFields = [
   'group_name',
   'channel_id',
   'enabled',
-  'reasoning_effort_default',
-  'reasoning_entries',
   'request_count',
   'success_rate',
   'entries',
@@ -230,6 +217,7 @@ const entryFields = [
   'weight',
   'priority',
   'fallback',
+  'enabled',
   'circuit_breaker',
   'reasoning',
   'runtime',
@@ -264,7 +252,7 @@ export const reasoningEffortValues = [
   'xhigh',
   'max',
 ] as const
-const reasoningSources = ['entry', 'group', 'client', 'provider_default'] as const
+const reasoningSources = ['entry', 'client', 'provider_default'] as const
 const reasoningFields = ['configured', 'effective', 'source'] as const
 
 function invalidResponse(): never {
@@ -363,12 +351,12 @@ export function isReasoningEffort(value: string): value is ReasoningEffortDto {
 function projectReasoning(value: unknown): ModelRouteScheduleReasoningDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, reasoningFields)
+
   const configured = projectNullableReasoningEffort(record.configured)
   const effective = projectNullableReasoningEffort(record.effective)
   const source = projectEnum(record.source, reasoningSources)
   if (
     (source === 'entry' && (configured === null || configured !== effective)) ||
-    (source === 'group' && (configured !== null || effective === null)) ||
     ((source === 'client' || source === 'provider_default') && configured !== null)
   ) {
     invalidResponse()
@@ -389,6 +377,7 @@ function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleE
     weight: projectSafeInteger(record.weight, { minimum: 0, maximum: 100 }),
     priority,
     fallback,
+    enabled: projectBoolean(record.enabled),
     circuit_breaker: projectBreaker(record.circuit_breaker),
     reasoning: projectReasoning(record.reasoning),
     runtime: projectRuntime(record.runtime, observedAtMS),
@@ -412,16 +401,6 @@ function projectGroup(value: unknown, observedAtMS: number): ModelRouteScheduleG
     group_name: projectNonBlankString(record.group_name),
     channel_id: projectNonBlankString(record.channel_id),
     enabled: projectBoolean(record.enabled),
-    reasoning_effort_default: projectNullableReasoningEffort(record.reasoning_effort_default),
-    reasoning_entries: projectArray(record.reasoning_entries, (value) => {
-      const entry = projectRecord(value)
-      assertNoSecretLikeFields(entry, ['entry_id', 'model_id', 'reasoning'])
-      return {
-        entry_id: projectNonBlankString(entry.entry_id),
-        model_id: projectNonBlankString(entry.model_id),
-        reasoning: projectReasoning(entry.reasoning),
-      }
-    }),
     request_count: requestCount,
     success_rate: successRate,
     entries: projectArray(record.entries, (entry) => projectEntry(entry, observedAtMS)),

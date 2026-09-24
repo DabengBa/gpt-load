@@ -35,6 +35,7 @@ type GroupModel struct {
 	AliasEnabled      bool                       `json:"-"`
 	Weight            *int                       `json:"weight,omitempty"`
 	Priority          *int                       `json:"priority,omitempty"`
+	Enabled           *bool                      `json:"enabled,omitempty"`
 	CircuitBreaker    *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
 	weightSet         bool
 	prioritySet       bool
@@ -51,6 +52,7 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 		AliasEnabled    *bool           `json:"alias_enabled"`
 		Weight          *int            `json:"weight"`
 		Priority        *int            `json:"priority"`
+		Enabled         *bool           `json:"enabled"`
 		CircuitBreaker  json.RawMessage `json:"circuit_breaker"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -75,6 +77,7 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	model.AliasEnabled = wire.AliasEnabled != nil && *wire.AliasEnabled
 	model.Weight = cloneInt(wire.Weight)
 	model.Priority = cloneInt(wire.Priority)
+	model.Enabled = wire.Enabled
 	model.circuitBreakerSet = wire.CircuitBreaker != nil
 	if model.circuitBreakerSet && !bytes.Equal(bytes.TrimSpace(wire.CircuitBreaker), []byte("null")) {
 		var breaker state.EntryCircuitBreaker
@@ -115,6 +118,7 @@ type groupModelRequestWire struct {
 	AliasEnabled   *bool           `json:"alias_enabled"`
 	Weight         json.RawMessage `json:"weight"`
 	Priority       json.RawMessage `json:"priority"`
+	Enabled        json.RawMessage `json:"enabled"`
 	CircuitBreaker json.RawMessage `json:"circuit_breaker"`
 }
 

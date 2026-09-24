@@ -20,8 +20,9 @@ const props = defineProps<{
   disabledGroupIds: readonly number[]
   completed: number
   total: number
-  groupEnabledById: ReadonlyMap<number, boolean>
+  groupEnabledById?: ReadonlyMap<number, boolean>
   applying: boolean
+  hideGroupControls?: boolean
 }>()
 const emit = defineEmits<{
   'update:open': [open: boolean]
@@ -353,7 +354,7 @@ function apply(): void {
         </ul>
 
         <section
-          v-if="!pending && results.length > 0 && !failed"
+          v-if="!hideGroupControls && !pending && results.length > 0 && !failed"
           class="model-probe-dialog__toggle"
           aria-labelledby="model-probe-toggle-title"
         >

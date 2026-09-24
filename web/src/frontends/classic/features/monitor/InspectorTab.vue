@@ -65,6 +65,7 @@ const knownReasons = new Set<RouteInspectReasonCode>([
   'credential_auth_unavailable',
   'credential_not_allowed',
   'no_available_credential',
+  'entry_disabled',
   'entry_blacklisted',
   'entry_cooldown',
   'entry_weight_zero',

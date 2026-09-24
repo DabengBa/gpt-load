@@ -234,7 +234,7 @@ func mapRouteInspectResponse(
 func configuredEntryShares(groups []scheduler.GroupInspection) []float64 {
 	totals := make(map[int]int64)
 	for _, group := range groups {
-		if group.Reason == scheduler.ReasonGroupDisabled {
+		if group.Reason == scheduler.ReasonGroupDisabled || group.Reason == scheduler.ReasonEntryDisabled {
 			continue
 		}
 		if group.Priority > 0 && group.EntryWeight > 0 {
@@ -243,7 +243,7 @@ func configuredEntryShares(groups []scheduler.GroupInspection) []float64 {
 	}
 	shares := make([]float64, len(groups))
 	for index, group := range groups {
-		if group.Reason == scheduler.ReasonGroupDisabled {
+		if group.Reason == scheduler.ReasonGroupDisabled || group.Reason == scheduler.ReasonEntryDisabled {
 			continue
 		}
 		total := totals[group.Priority]

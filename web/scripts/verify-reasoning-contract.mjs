@@ -49,7 +49,6 @@ const baseSchedule = {
       group_name: 'OpenAI primary',
       channel_id: 'openai',
       enabled: true,
-      reasoning_effort_default: 'medium',
       request_count: 10,
       success_rate: 0.9,
       entries: [
@@ -60,6 +59,7 @@ const baseSchedule = {
           weight: 100,
           priority: 1,
           fallback: false,
+          enabled: true,
           circuit_breaker: {
             configured: { blacklist_threshold: null, cooldown_seconds: null },
             effective: { blacklist_threshold: null, cooldown_seconds: 3600 },
@@ -87,14 +87,6 @@ const baseSchedule = {
       ],
     },
   ],
-}
-
-for (const group of baseSchedule.groups) {
-  group.reasoning_entries = group.entries.map(({ entry_id, model_id, reasoning }) => ({
-    entry_id,
-    model_id,
-    reasoning,
-  }))
 }
 
 async function main() {
@@ -128,11 +120,8 @@ async function main() {
     )
 
     const detail = schedule.projectModelRouteScheduleDetail(baseSchedule)
-    assert.deepEqual(detail.groups[0].reasoning_entries, baseSchedule.groups[0].reasoning_entries)
-    const missingGroupModels = structuredClone(baseSchedule)
-    delete missingGroupModels.groups[0].reasoning_entries
-    assert.throws(() => schedule.projectModelRouteScheduleDetail(missingGroupModels))
-    assert.equal(detail.groups[0].reasoning_effort_default, 'medium')
+    assert.equal('reasoning_effort_default' in detail.groups[0], false)
+    assert.equal('reasoning_entries' in detail.groups[0], false)
     assert.deepEqual(
       detail.groups[0].entries[0].reasoning,
       baseSchedule.groups[0].entries[0].reasoning,
@@ -158,16 +147,13 @@ async function main() {
     )
     for (const effort of schedule.reasoningEffortValues) {
       const candidate = structuredClone(baseSchedule)
-      candidate.groups[0].reasoning_effort_default = effort
       candidate.groups[0].entries[0].reasoning = {
         configured: effort,
         effective: effort,
         source: 'entry',
       }
-      candidate.groups[0].reasoning_entries[0].reasoning = candidate.groups[0].entries[0].reasoning
       const projected = schedule.projectModelRouteScheduleDetail(candidate)
       assert.equal(projected.groups[0].entries[0].reasoning.effective, effort)
-      assert.equal(projected.groups[0].reasoning_entries[0].reasoning.effective, effort)
     }
     const legacy = structuredClone(baseSchedule)
     legacy.groups[0].entries[0].reasoning.obsolete = true

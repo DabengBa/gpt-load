@@ -8,20 +8,13 @@ import { useToast } from '@/app/toast'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
 import { groupDetailLocation } from '@/app/route-locations'
 import {
-  cacheGroupSettings,
-  invalidateGroupSettingsDependents,
-  updateGroupSettings,
-} from '@/app/resources/groups'
-import {
-  reasoningEffortValues,
-  type ModelRouteScheduleReasoningEntryDto,
   isReasoningEffort,
+  reasoningEffortValues,
   isModelRouteScheduleRevisionConflict,
   recoverModelRouteScheduleEntry,
   updateModelRouteSchedule,
   type ModelRouteScheduleDetailDto,
   type ModelRouteScheduleEntryDto,
-  type ModelRouteScheduleGroupPatchUpdate,
   type ModelRouteScheduleGroupDto,
   type ModelRouteSchedulePatchUpdate,
   type ModelRouteScheduleReasoningSource,
@@ -83,15 +76,20 @@ export interface SchedulePanelDetailLabels {
   calls24h?: string
   successRate24h?: string
   reasoning: string
-  groupDefault: string
   entryOverride: string
   inherit: string
   effective: string
   source: string
+  capability: string
+  supported: string
+  unsupported: string
+  capabilityUnknown: string
   sourceEntry: string
-  sourceGroup: string
   sourceClient: string
   sourceProviderDefault: string
+  editDetails: string
+  hideDetails: string
+  groupDisabled: string
 }
 
 type EditableField = 'weight' | 'priority'
@@ -140,19 +138,26 @@ const { t } = useI18n()
 const toast = useToast()
 const draftMap = reactive<Record<string, Draft>>({})
 const entryReasoningDrafts = reactive<Record<string, ReasoningEffortDto | null>>({})
-const groupReasoningDrafts = reactive<Record<string, ReasoningEffortDto | null>>({})
 const rawInputs = reactive<Record<string, string>>({})
 const invalidInputs = reactive<Record<string, boolean>>({})
 const pending = ref(false)
 const saveStatus = ref<'idle' | 'saved' | 'error'>('idle')
 const saveError = ref('')
 const recovering = ref<RecoverKey>('')
-const togglingGroupIDs = ref(new Set<number>())
-const optimisticEnabled = ref(new Map<number, boolean>())
+const togglingEntries = ref(new Set<string>())
+const optimisticEnabled = ref(new Map<string, boolean>())
 const preserveDraftRevisions = ref(new Set<number>())
 const preserveDraftSnapshots = ref(new Map<number, ScheduleDrafts>())
 // Ignore the one URL echo caused by a local edit; later history changes hydrate normally.
 const pendingLocalDraftFingerprint = ref<string>()
+const expandedRows = ref(new Set<string>())
+
+function toggleDetails(key: string): void {
+  const next = new Set(expandedRows.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  expandedRows.value = next
+}
 
 const text = (key: keyof SchedulePanelDetailLabels): string => {
   const value = props.labels[key]
@@ -160,15 +165,22 @@ const text = (key: keyof SchedulePanelDetailLabels): string => {
 }
 
 const rows = computed(() =>
-  (props.detail?.groups ?? []).flatMap((group) =>
-    group.entries
-      .filter((entry) => {
-        if (props.mode === 'primary') return !entry.fallback
-        if (props.mode === 'fallback') return entry.fallback
-        return true
-      })
-      .map((entry) => ({ group, entry })),
-  ),
+  (props.detail?.groups ?? [])
+    .flatMap((group) =>
+      group.entries
+        .filter((entry) => {
+          if (props.mode === 'primary') return !entry.fallback
+          if (props.mode === 'fallback') return entry.fallback
+          return true
+        })
+        .map((entry) => ({ group, entry })),
+    )
+    .sort(
+      (a, b) =>
+        a.entry.priority - b.entry.priority ||
+        a.group.group_id - b.group.group_id ||
+        (a.entry.entry_id < b.entry.entry_id ? -1 : a.entry.entry_id > b.entry.entry_id ? 1 : 0),
+    ),
 )
 
 // URL 行定位：分组模型页带 sourceGroupId 进入时，在详情加载后把行选择解析到
@@ -278,10 +290,7 @@ function confirmProbeEnabled(): void {
 }
 
 const dirty = computed(
-  () =>
-    Object.keys(draftMap).length > 0 ||
-    Object.keys(entryReasoningDrafts).length > 0 ||
-    Object.keys(groupReasoningDrafts).length > 0,
+  () => Object.keys(draftMap).length > 0 || Object.keys(entryReasoningDrafts).length > 0,
 )
 const invalid = computed(() => Object.values(invalidInputs).some(Boolean))
 const hasDetail = computed(() => props.detail !== undefined)
@@ -302,13 +311,16 @@ const previewShares = computed(() => {
   )
   const totals = new Map<number, number>()
   for (const candidate of entries) {
-    totals.set(candidate.priority, (totals.get(candidate.priority) ?? 0) + candidate.weight)
+    if (entryEnabled(candidate.group.group_id, candidate.entry))
+      totals.set(candidate.priority, (totals.get(candidate.priority) ?? 0) + candidate.weight)
   }
   for (const candidate of entries) {
     const total = totals.get(candidate.priority) ?? 0
     result.set(
       rowKey(candidate.group.group_id, candidate.entry.entry_id),
-      total > 0 ? Math.max(0, candidate.weight) / total : 0,
+      entryEnabled(candidate.group.group_id, candidate.entry) && total > 0
+        ? Math.max(0, candidate.weight) / total
+        : 0,
     )
   }
   return result
@@ -321,77 +333,61 @@ const observedLabel = computed(() => {
 })
 
 function groupEnabled(group: ModelRouteScheduleGroupDto): boolean {
-  return optimisticEnabled.value.get(group.group_id) ?? group.enabled
+  return group.enabled
 }
 
-function groupTogglePending(groupID: number): boolean {
-  return togglingGroupIDs.value.has(groupID)
+function entryEnabled(groupID: number, entry: ModelRouteScheduleEntryDto): boolean {
+  return optimisticEnabled.value.get(rowKey(groupID, entry.entry_id)) ?? entry.enabled
 }
 
-async function toggleGroupEnabled(
-  group: ModelRouteScheduleGroupDto,
+async function toggleEntryEnabled(
+  groupID: number,
+  entry: ModelRouteScheduleEntryDto,
   next: boolean,
-): Promise<boolean> {
-  // The switch is disabled while a toggle is pending, so this guard is nearly
-  // unreachable in the modal flow; report failure instead of a false success.
-  if (groupTogglePending(group.group_id)) return false
-  optimisticEnabled.value = new Map(optimisticEnabled.value).set(group.group_id, next)
-  togglingGroupIDs.value = new Set(togglingGroupIDs.value).add(group.group_id)
+): Promise<void> {
+  const detail = props.detail
+  const key = rowKey(groupID, entry.entry_id)
+  if (!detail || togglingEntries.value.has(key) || entry.entry_id.startsWith('derived:')) return
+  togglingEntries.value = new Set(togglingEntries.value).add(key)
+  optimisticEnabled.value = new Map(optimisticEnabled.value).set(key, next)
+  preserveDraftRevisions.value = new Set(preserveDraftRevisions.value).add(detail.snapshot_revision)
+  preserveDraftSnapshots.value = new Map(preserveDraftSnapshots.value).set(
+    detail.snapshot_revision,
+    cloneDrafts(draftMap),
+  )
   try {
-    if (props.detail) {
-      preserveDraftRevisions.value = new Set([
-        ...preserveDraftRevisions.value,
-        props.detail.snapshot_revision,
-      ])
-      preserveDraftSnapshots.value = new Map(preserveDraftSnapshots.value).set(
-        props.detail.snapshot_revision,
-        cloneDrafts(draftMap),
-      )
-    }
-    const settings = await updateGroupSettings(client, group.group_id, { enabled: next })
-    cacheGroupSettings(queryClient, group.group_id, settings)
-    await invalidateGroupSettingsDependents(queryClient, group.group_id)
-    return true
-  } catch {
-    const optimistic = new Map(optimisticEnabled.value)
-    optimistic.delete(group.group_id)
-    optimisticEnabled.value = optimistic
-    toast.show({ message: text('toggleFailed'), tone: 'danger' })
+    const response = await updateModelRouteSchedule(client, {
+      snapshot_revision: detail.snapshot_revision,
+      protocol: detail.protocol,
+      external_model: detail.external_model ?? '',
+      access_key_id: detail.access_key.id,
+      operation: detail.operation,
+      updates: [{ group_id: groupID, entry_id: entry.entry_id, enabled: next }],
+    })
+    await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.update)
+    emit('saved', response.snapshot_revision_new)
+  } catch (error: unknown) {
+    toast.show({
+      message: isModelRouteScheduleRevisionConflict(error)
+        ? text('conflict')
+        : text('toggleFailed'),
+      tone: 'danger',
+    })
   } finally {
     await nextTick()
-    if (props.detail) {
-      const revisions = new Set(preserveDraftRevisions.value)
-      revisions.delete(props.detail.snapshot_revision)
-      const snapshots = new Map(preserveDraftSnapshots.value)
-      snapshots.delete(props.detail.snapshot_revision)
-      preserveDraftSnapshots.value = snapshots
-      preserveDraftRevisions.value = revisions
-    }
+    const revisions = new Set(preserveDraftRevisions.value)
+    revisions.delete(detail.snapshot_revision)
+    preserveDraftRevisions.value = revisions
+    const snapshots = new Map(preserveDraftSnapshots.value)
+    snapshots.delete(detail.snapshot_revision)
+    preserveDraftSnapshots.value = snapshots
     const optimistic = new Map(optimisticEnabled.value)
-    optimistic.delete(group.group_id)
+    optimistic.delete(key)
     optimisticEnabled.value = optimistic
-    const pending = new Set(togglingGroupIDs.value)
-    pending.delete(group.group_id)
-    togglingGroupIDs.value = pending
+    const pending = new Set(togglingEntries.value)
+    pending.delete(key)
+    togglingEntries.value = pending
   }
-  return false
-}
-
-async function applyProbeEnabled(changes: Map<number, boolean>): Promise<boolean> {
-  let attempted = false
-  let allSucceeded = true
-  for (const [groupID, next] of changes) {
-    const group = props.detail?.groups.find((g) => g.group_id === groupID)
-    if (!group) continue
-    attempted = true
-    const ok = await toggleGroupEnabled(group, next)
-    if (!ok) allSucceeded = false
-  }
-  return attempted && allSucceeded
-}
-
-function isFirstGroupRow(index: number): boolean {
-  return index === 0 || rows.value[index - 1]?.group.group_id !== rows.value[index]?.group.group_id
 }
 
 function isPriorityStart(index: number): boolean {
@@ -426,20 +422,9 @@ function hasOwn(source: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(source, key)
 }
 
-function groupDraftKey(groupID: number): string {
-  return String(groupID)
-}
-
-function groupReasoningValue(group: ModelRouteScheduleGroupDto): ReasoningEffortDto | '' {
-  const key = groupDraftKey(group.group_id)
-  return hasOwn(groupReasoningDrafts, key)
-    ? (groupReasoningDrafts[key] ?? '')
-    : (group.reasoning_effort_default ?? '')
-}
-
 function entryReasoningValue(
   groupID: number,
-  entry: ModelRouteScheduleReasoningEntryDto,
+  entry: ModelRouteScheduleEntryDto,
 ): ReasoningEffortDto | '' {
   const key = draftKey(groupID, entry.entry_id)
   return hasOwn(entryReasoningDrafts, key)
@@ -451,40 +436,6 @@ const reasoningOptions = [
   { value: '', label: text('inherit') },
   ...reasoningEffortValues.map((value) => ({ value, label: value })),
 ]
-
-const reasoningPreviews = computed(() =>
-  (props.detail?.groups ?? []).flatMap((group) => {
-    const groupDrafts = Object.keys(groupReasoningDrafts)
-    const entryDrafts = Object.keys(entryReasoningDrafts)
-    const fieldDrafts = Object.keys(draftMap)
-    const touched =
-      groupDrafts.includes(groupDraftKey(group.group_id)) ||
-      group.entries.some(
-        (entry) =>
-          entryDrafts.includes(draftKey(group.group_id, entry.entry_id)) ||
-          fieldDrafts.includes(draftKey(group.group_id, entry.entry_id)),
-      )
-    if (!touched) return []
-    return [
-      {
-        group,
-        entries: group.reasoning_entries.map((entry) => {
-          const override = entryReasoningValue(group.group_id, entry)
-          const effective = override || groupReasoningValue(group)
-          return { entry, effective, override }
-        }),
-      },
-    ]
-  }),
-)
-
-function setGroupReasoning(group: ModelRouteScheduleGroupDto, value: string): void {
-  if (value !== '' && !isReasoningEffort(value)) return
-  const next = value === '' ? null : value
-  const key = groupDraftKey(group.group_id)
-  if (next === group.reasoning_effort_default) delete groupReasoningDrafts[key]
-  else groupReasoningDrafts[key] = next
-}
 
 function setEntryReasoning(
   groupID: number,
@@ -500,7 +451,6 @@ function setEntryReasoning(
 
 function reasoningSourceLabel(source: ModelRouteScheduleReasoningSource): string {
   if (source === 'entry') return text('sourceEntry')
-  if (source === 'group') return text('sourceGroup')
   if (source === 'client') return text('sourceClient')
   return text('sourceProviderDefault')
 }
@@ -590,7 +540,6 @@ function clearField(
 function resetDrafts(): void {
   for (const key of Object.keys(draftMap)) delete draftMap[key]
   for (const key of Object.keys(entryReasoningDrafts)) delete entryReasoningDrafts[key]
-  for (const key of Object.keys(groupReasoningDrafts)) delete groupReasoningDrafts[key]
   for (const key of Object.keys(rawInputs)) delete rawInputs[key]
   for (const key of Object.keys(invalidInputs)) delete invalidInputs[key]
   saveStatus.value = 'idle'
@@ -721,20 +670,6 @@ function updates(): ModelRouteSchedulePatchUpdate[] {
   return result
 }
 
-function groupUpdates(): ModelRouteScheduleGroupPatchUpdate[] {
-  return (props.detail?.groups ?? []).flatMap((group) => {
-    const key = groupDraftKey(group.group_id)
-    return hasOwn(groupReasoningDrafts, key)
-      ? [
-          {
-            group_id: group.group_id,
-            reasoning_effort_default: groupReasoningDrafts[key] ?? null,
-          },
-        ]
-      : []
-  })
-}
-
 async function save(): Promise<void> {
   if (!props.detail || !dirty.value || invalid.value) return
   const body = {
@@ -743,10 +678,9 @@ async function save(): Promise<void> {
     external_model: props.detail.external_model ?? '',
     access_key_id: props.detail.access_key.id,
     operation: props.detail.operation,
-    group_updates: groupUpdates(),
     updates: updates(),
   }
-  if (body.updates.length === 0 && body.group_updates.length === 0) return
+  if (body.updates.length === 0) return
   pending.value = true
   saveStatus.value = 'idle'
   saveError.value = ''
@@ -802,6 +736,7 @@ function runtimeTone(entry: ModelRouteScheduleEntryDto): string {
 }
 
 function shareValue(groupID: number, entry: ModelRouteScheduleEntryDto): number {
+  if (!entryEnabled(groupID, entry)) return 0
   return previewShares.value.get(rowKey(groupID, entry.entry_id)) ?? entry.configured_share
 }
 
@@ -826,8 +761,6 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
   }
   return `${threshold}/${cooldown}s${recovery.length > 0 ? ` · ${recovery.join(' · ')}` : ''}`
 }
-
-defineExpose({ applyProbeEnabled })
 </script>
 
 <template>
@@ -890,11 +823,11 @@ defineExpose({ applyProbeEnabled })
       <div v-else ref="scheduleTableRef" class="schedule-table-wrap">
         <div class="schedule-table" role="table" :aria-label="text('title')">
           <div class="schedule-row schedule-row--header" role="row">
-            <span role="columnheader">{{ text('group') }}</span>
+            <span role="columnheader">{{ text('priority') }}</span>
             <span role="columnheader">{{ text('upstreamModel') }}</span>
+            <span role="columnheader">{{ text('group') }}</span>
             <span role="columnheader">{{ text('reasoning') }}</span>
             <span role="columnheader">{{ text('weight') }}</span>
-            <span role="columnheader">{{ text('priority') }}</span>
             <span role="columnheader">{{ text('share') }}</span>
             <span role="columnheader">{{ text('status') }}</span>
             <span role="columnheader">{{ text('breakerRecovery') }}</span>
@@ -911,7 +844,40 @@ defineExpose({ applyProbeEnabled })
             role="row"
             @click="emit('row-change', rowKey(group.group_id, entry.entry_id))"
           >
+            <div class="schedule-cell schedule-cell--priority" role="cell">
+              <span class="schedule-cell__label">{{ text('priority') }}</span>
+              <strong>{{ entry.priority }}</strong>
+            </div>
+            <div class="schedule-cell schedule-cell--model" role="cell">
+              <span class="schedule-cell__label">{{ text('upstreamModel') }}</span>
+              <strong>{{ entry.alias || entry.model_id }}</strong>
+              <small v-if="entry.alias">{{ entry.model_id }}</small>
+              <AppSwitch
+                :model-value="entryEnabled(group.group_id, entry)"
+                :disabled="
+                  pending ||
+                  togglingEntries.has(rowKey(group.group_id, entry.entry_id)) ||
+                  entry.entry_id.startsWith('derived:')
+                "
+                :label="`${text('toggleEnabled')} ${entry.model_id}`"
+                @click.stop
+                @update:model-value="toggleEntryEnabled(group.group_id, entry, $event)"
+              />
+              <AppButton
+                variant="secondary"
+                size="compact"
+                :aria-expanded="expandedRows.has(rowKey(group.group_id, entry.entry_id))"
+                @click.stop="toggleDetails(rowKey(group.group_id, entry.entry_id))"
+              >
+                {{
+                  expandedRows.has(rowKey(group.group_id, entry.entry_id))
+                    ? text('hideDetails')
+                    : text('editDetails')
+                }}
+              </AppButton>
+            </div>
             <div class="schedule-cell schedule-cell--group" role="cell">
+              <span class="schedule-cell__label">{{ text('group') }}</span>
               <RouterLink
                 class="schedule-cell__group-link"
                 :to="groupDetailLocation(group.group_id)"
@@ -919,45 +885,18 @@ defineExpose({ applyProbeEnabled })
               >
                 <strong>{{ group.group_name }}</strong>
               </RouterLink>
-              <div v-if="isFirstGroupRow(index)" class="schedule-cell__group-controls">
-                <AppSwitch
-                  :model-value="groupEnabled(group)"
-                  :disabled="groupTogglePending(group.group_id)"
-                  :label="`${text('toggleEnabled')} ${group.group_name}`"
-                  @click.stop
-                  @update:model-value="toggleGroupEnabled(group, $event)"
-                />
+              <div class="schedule-cell__group-controls">
                 <span class="schedule-cell__group-state">
                   {{ groupEnabled(group) ? text('enabled') : text('disabled') }}
                 </span>
               </div>
-              <small v-if="isFirstGroupRow(index)" class="schedule-cell__stats">
+              <small class="schedule-cell__stats">
                 {{ text('calls24h') }}: {{ formatCount(group.request_count) }} ·
                 {{ text('successRate24h') }}: {{ formatRate(group.success_rate) }}
               </small>
             </div>
-            <div class="schedule-cell" role="cell">
-              <strong>{{ entry.alias || entry.model_id }}</strong>
-              <small v-if="entry.alias">{{ entry.model_id }}</small>
-            </div>
             <div class="schedule-cell schedule-cell--reasoning" role="cell">
-              <label v-if="isFirstGroupRow(index)" class="schedule-reasoning-control">
-                <span>{{ text('groupDefault') }}</span>
-                <AppSelect
-                  :model-value="groupReasoningValue(group)"
-                  :options="reasoningOptions"
-                  :label="`${text('groupDefault')} ${group.group_name}`"
-                  :disabled="pending"
-                  size="compact"
-                  @click.stop
-                  @update:model-value="setGroupReasoning(group, $event)"
-                />
-              </label>
-              <small v-if="isFirstGroupRow(index)">{{
-                t('monitor.schedule.detail.groupReasoningScope', {
-                  count: group.reasoning_entries.length,
-                })
-              }}</small>
+              <strong>{{ text('reasoning') }}</strong>
               <label class="schedule-reasoning-control">
                 <span>{{ text('entryOverride') }}</span>
                 <AppSelect
@@ -982,7 +921,7 @@ defineExpose({ applyProbeEnabled })
               </dl>
             </div>
             <div class="schedule-cell schedule-cell--input" role="cell">
-              <label class="sr-only" :for="`weight-${index}`">{{ text('weight') }}</label>
+              <label :for="`weight-${index}`">{{ text('weight') }}</label>
               <AppTextInput
                 :id="`weight-${index}`"
                 :model-value="inputValue(group.group_id, entry, 'weight')"
@@ -1003,8 +942,12 @@ defineExpose({ applyProbeEnabled })
                 {{ text('clear') }}
               </button>
             </div>
-            <div class="schedule-cell schedule-cell--input" role="cell">
-              <label class="sr-only" :for="`priority-${index}`">{{ text('priority') }}</label>
+            <div
+              v-if="expandedRows.has(rowKey(group.group_id, entry.entry_id))"
+              class="schedule-cell schedule-cell--input schedule-cell--priority-input"
+              role="cell"
+            >
+              <label :for="`priority-${index}`">{{ text('priority') }}</label>
               <AppTextInput
                 :id="`priority-${index}`"
                 :model-value="inputValue(group.group_id, entry, 'priority')"
@@ -1026,16 +969,33 @@ defineExpose({ applyProbeEnabled })
               </button>
             </div>
             <div class="schedule-cell schedule-cell--share" role="cell">
-              {{ (shareValue(group.group_id, entry) * 100).toFixed(1) }}%
+              <span class="schedule-cell__label">{{ text('share') }}</span>
+              <strong>{{ (shareValue(group.group_id, entry) * 100).toFixed(1) }}%</strong>
+              <span
+                class="schedule-share-track"
+                :aria-label="`${text('share')} ${(shareValue(group.group_id, entry) * 100).toFixed(1)}%`"
+              >
+                <span :style="{ width: `${shareValue(group.group_id, entry) * 100}%` }" />
+              </span>
               <small v-if="isDraftShare(group.group_id, entry)">{{ text('draftPreview') }}</small>
             </div>
-            <div class="schedule-cell" role="cell">
-              <strong :class="runtimeTone(entry)">{{ runtimeLabel(entry) }}</strong>
+            <div class="schedule-cell schedule-cell--status" role="cell">
+              <span class="schedule-cell__label">{{ text('status') }}</span>
+              <strong
+                v-if="!entryEnabled(group.group_id, entry)"
+                class="schedule-detail__runtime--blacklisted"
+                >{{ text('disabled') }}</strong
+              >
+              <strong v-else-if="!groupEnabled(group)" class="schedule-detail__runtime--cooldown">{{
+                text('groupDisabled')
+              }}</strong>
+              <strong v-else :class="runtimeTone(entry)">{{ runtimeLabel(entry) }}</strong>
               <small v-if="entry.runtime.failure_count"
                 >{{ entry.runtime.failure_count }} {{ text('failures') }}</small
               >
             </div>
             <div class="schedule-cell schedule-cell--breaker" role="cell">
+              <span class="schedule-cell__label">{{ text('breakerRecovery') }}</span>
               <span>{{ breakerRecoveryLabel(entry) }}</span>
               <AppButton
                 v-if="entry.runtime.state !== 'available'"
@@ -1058,25 +1018,6 @@ defineExpose({ applyProbeEnabled })
             </div>
           </div>
         </div>
-      </div>
-
-      <div
-        v-for="preview in reasoningPreviews"
-        :key="preview.group.group_id"
-        class="schedule-reasoning-preview"
-        aria-live="polite"
-      >
-        <p>
-          {{
-            t('monitor.schedule.detail.groupReasoningPreview', { group: preview.group.group_name })
-          }}
-        </p>
-        <ul>
-          <li v-for="item in preview.entries" :key="item.entry.entry_id">
-            {{ item.entry.model_id }}: {{ item.effective || text('inherit') }} ·
-            {{ item.override ? text('entryOverride') : text('groupDefault') }}
-          </li>
-        </ul>
       </div>
 
       <StickySaveBar
@@ -1179,14 +1120,14 @@ defineExpose({ applyProbeEnabled })
   border: 1px solid var(--color-border-subtle);
 }
 .schedule-table {
-  min-width: 1260px;
+  min-width: 1080px;
 }
 .schedule-row {
   display: grid;
   grid-template-columns:
-    minmax(150px, 1.1fr) minmax(145px, 1fr) minmax(250px, 1.7fr) 90px 85px 90px
-    minmax(105px, 0.8fr) minmax(180px, 1.25fr);
-  min-height: 58px;
+    76px minmax(180px, 1.35fr) minmax(150px, 1.1fr) minmax(250px, 1.7fr)
+    90px 96px 120px minmax(180px, 1.25fr);
+  min-height: 64px;
   align-items: center;
   gap: 10px;
   border-bottom: 1px solid var(--color-border-subtle);
@@ -1217,6 +1158,30 @@ defineExpose({ applyProbeEnabled })
   color: var(--color-text-muted);
   font-size: var(--text-meta);
 }
+.schedule-cell--priority-input {
+  grid-column: 1 / -1;
+}
+.schedule-cell--priority {
+  align-self: stretch;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  border-inline-start: 3px solid var(--color-action);
+  padding-inline-start: 9px;
+}
+.schedule-cell--priority strong {
+  color: var(--color-action);
+  font-size: var(--text-lg);
+}
+.schedule-cell__label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--color-text-faint);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .schedule-cell strong,
 .schedule-cell small {
   display: block;
@@ -1239,14 +1204,6 @@ defineExpose({ applyProbeEnabled })
 .schedule-reasoning-control :deep(.app-select__trigger) {
   width: 100%;
 }
-.schedule-reasoning-preview {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-}
-.schedule-reasoning-preview ul {
-  padding-inline-start: 20px;
-}
 .schedule-reasoning-meta {
   display: flex;
   min-width: 0;
@@ -1265,6 +1222,16 @@ defineExpose({ applyProbeEnabled })
 .schedule-reasoning-meta dd {
   margin: 0;
   color: var(--color-text);
+}
+.schedule-reasoning-meta__unsupported {
+  color: var(--color-danger) !important;
+  font-weight: 650;
+}
+.schedule-reasoning-reason {
+  overflow: visible !important;
+  color: var(--color-text-faint);
+  text-overflow: clip !important;
+  white-space: normal !important;
 }
 .schedule-cell strong {
   color: var(--color-text);
@@ -1319,9 +1286,25 @@ defineExpose({ applyProbeEnabled })
   color: var(--color-action);
 }
 .schedule-cell--share {
+  display: grid;
+  align-content: center;
   color: var(--color-action);
   font-family: var(--font-mono);
   font-weight: 700;
+}
+.schedule-share-track {
+  display: block;
+  height: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-border-subtle);
+}
+.schedule-share-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-action);
 }
 .schedule-cell--breaker {
   display: flex;
@@ -1359,6 +1342,44 @@ defineExpose({ applyProbeEnabled })
   .schedule-detail__observed {
     justify-content: flex-start;
     text-align: left;
+  }
+  .schedule-table-wrap {
+    overflow-x: visible;
+  }
+  .schedule-table {
+    min-width: 0;
+  }
+  .schedule-row--header {
+    display: none;
+  }
+  .schedule-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px 12px;
+    padding: 12px;
+  }
+  .schedule-cell--priority,
+  .schedule-cell--model,
+  .schedule-cell--group,
+  .schedule-cell--weight,
+  .schedule-cell--share,
+  .schedule-cell--status,
+  .schedule-cell--breaker,
+  .schedule-cell--input {
+    grid-column: auto;
+  }
+  .schedule-cell--reasoning,
+  .schedule-cell--priority-input {
+    grid-column: 1 / -1;
+  }
+  .schedule-cell--breaker {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .schedule-cell--input {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .schedule-cell--input :deep(.app-text-input__input) {
+    width: 100%;
   }
 }
 </style>

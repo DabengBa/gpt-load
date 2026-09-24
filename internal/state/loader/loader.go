@@ -88,6 +88,7 @@ type modelDTO struct {
 	ReasoningEffort string                     `json:"reasoning_effort,omitempty"`
 	Weight          *int                       `json:"weight"`
 	Priority        *int                       `json:"priority"`
+	Enabled         *bool                      `json:"enabled"`
 	CircuitBreaker  *state.EntryCircuitBreaker `json:"circuit_breaker"`
 }
 
@@ -285,6 +286,7 @@ func decodeBackfillModels(row models.Group) ([]state.ModelConfig, []map[string]j
 			ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 			ReasoningEffort: model.ReasoningEffort,
 			Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+			Enabled:        model.Enabled,
 			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 		})
 	}
@@ -685,6 +687,7 @@ func mapSystemAndGroups(
 				ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 				ReasoningEffort: model.ReasoningEffort,
 				Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
+				Enabled:        model.Enabled,
 				CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
 			})
 		}
