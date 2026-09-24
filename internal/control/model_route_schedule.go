@@ -147,10 +147,9 @@ type scheduleGroupReasoningEntry struct {
 }
 
 type scheduleReasoningView struct {
-	Configured *string                    `json:"configured"`
-	Effective  *string                    `json:"effective"`
-	Source     reasoning.EffortSource     `json:"source"`
-	Capability reasoning.EffortCapability `json:"capability"`
+	Configured *string                `json:"configured"`
+	Effective  *string                `json:"effective"`
+	Source     reasoning.EffortSource `json:"source"`
 }
 
 type modelRouteScheduleDetailResponse struct {
@@ -481,7 +480,7 @@ func mapModelRouteScheduleDetail(
 			if entryID == "" {
 				entryID = "derived:" + state.ExternalModelName(modelID, model.Alias) + "#" + modelID
 			}
-			reasoningView, err := scheduleReasoningProjection(configurations[group.GroupID][entryID], modelID)
+			reasoningView, err := scheduleReasoningProjection(configurations[group.GroupID][entryID])
 			if err != nil {
 				return modelRouteScheduleDetailResponse{}, fmt.Errorf("map model route schedule reasoning: %w", app_errors.ErrInternalServer)
 			}
@@ -542,7 +541,7 @@ func mapModelRouteScheduleDetail(
 			EffectiveShare:  group.EffectiveShare,
 			Credentials:     credentials,
 		}
-		entry.Reasoning, err = scheduleReasoningProjection(configuration, upstreamModel)
+		entry.Reasoning, err = scheduleReasoningProjection(configuration)
 		if err != nil {
 			return modelRouteScheduleDetailResponse{}, fmt.Errorf("map model route schedule reasoning: %w", app_errors.ErrInternalServer)
 		}
@@ -650,7 +649,6 @@ type scheduleEntryConfiguration struct {
 	circuitBreaker  *state.EntryCircuitBreaker
 	reasoningEffort string
 	groupDefault    string
-	provider        string
 }
 
 // scheduleEntryConfigurations indexes every snapshot catalog group's models by
@@ -684,7 +682,6 @@ func scheduleEntryConfigurations(
 				circuitBreaker:  cloneEntryCircuitBreaker(model.CircuitBreaker),
 				reasoningEffort: model.ReasoningEffort,
 				groupDefault:    view.ReasoningEffortDefault,
-				provider:        string(view.ResolvedTarget.ProviderKind),
 			}
 		}
 	}
@@ -698,20 +695,15 @@ func optionalString(value string) *string {
 	return new(value)
 }
 
-func scheduleReasoningProjection(configuration scheduleEntryConfiguration, model string) (scheduleReasoningView, error) {
+func scheduleReasoningProjection(configuration scheduleEntryConfiguration) (scheduleReasoningView, error) {
 	effective, source, err := reasoning.ResolveEffort(configuration.reasoningEffort, configuration.groupDefault, "")
 	if err != nil {
 		return scheduleReasoningView{}, err
-	}
-	capability := reasoning.ProjectEffortCapability(configuration.provider, model)
-	if capability.Levels == nil {
-		capability.Levels = []string{}
 	}
 	return scheduleReasoningView{
 		Configured: optionalString(configuration.reasoningEffort),
 		Effective:  optionalString(effective),
 		Source:     source,
-		Capability: capability,
 	}, nil
 }
 
@@ -1008,22 +1000,14 @@ func (s *Service) applyModelRouteScheduleGroupPatchWithReasoning(
 		}
 	}
 	groupDefault, _ := settings[state.SettingReasoningEffortDefault].(string)
-	provider, ok := s.channelRegistry.ProviderKind(channel.ID(group.ChannelID))
-	if !ok {
+	if _, ok := s.channelRegistry.ProviderKind(channel.ID(group.ChannelID)); !ok {
 		return app_errors.ErrValidation
 	}
 	configurations := make([]state.ModelConfig, 0, len(entries))
 	for _, entry := range entries {
-		effective, _, err := reasoning.ResolveEffort(entry.ReasoningEffort, groupDefault, "")
+		_, _, err := reasoning.ResolveEffort(entry.ReasoningEffort, groupDefault, "")
 		if err != nil {
 			return app_errors.ErrValidation
-		}
-		if effective != "" {
-			if err := reasoning.ValidateEffort(string(provider), entry.ID, effective); err != nil {
-				return app_errors.NewAPIErrorWithData(app_errors.ErrValidation, scheduleValidationData{
-					GroupID: groupID, Message: fmt.Sprintf("model %s (entry %s): %v", entry.ID, entry.EntryID, err),
-				})
-			}
 		}
 		configurations = append(configurations, entry.toModelConfig())
 	}

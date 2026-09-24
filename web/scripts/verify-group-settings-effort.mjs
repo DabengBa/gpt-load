@@ -69,12 +69,6 @@ const baseSchedule = {
             configured: 'high',
             effective: 'high',
             source: 'entry',
-            capability: {
-              known: true,
-              supported: true,
-              levels: ['low', 'medium', 'high'],
-              reason: 'supported by Bifrost model capabilities',
-            },
           },
           runtime: {
             state: 'available',
@@ -162,36 +156,25 @@ async function main() {
         ],
       }),
     )
-    const unsupported = schedule.projectModelRouteScheduleDetail({
-      ...baseSchedule,
-      groups: [
-        {
-          ...baseSchedule.groups[0],
-          entries: [
-            {
-              ...baseSchedule.groups[0].entries[0],
-              reasoning: {
-                configured: 'max',
-                effective: 'max',
-                source: 'entry',
-                capability: {
-                  known: true,
-                  supported: false,
-                  levels: ['max'],
-                  reason: 'requested effort is not supported',
-                },
-              },
-            },
-          ],
-        },
-      ],
-    })
-    assert.deepEqual(unsupported.groups[0].entries[0].reasoning.capability, {
-      known: true,
-      supported: false,
-      levels: ['max'],
-      reason: 'requested effort is not supported',
-    })
+    for (const effort of schedule.reasoningEffortValues) {
+      const candidate = structuredClone(baseSchedule)
+      candidate.groups[0].reasoning_effort_default = effort
+      candidate.groups[0].entries[0].reasoning = {
+        configured: effort,
+        effective: effort,
+        source: 'entry',
+      }
+      candidate.groups[0].reasoning_entries[0].reasoning = candidate.groups[0].entries[0].reasoning
+      const projected = schedule.projectModelRouteScheduleDetail(candidate)
+      assert.equal(projected.groups[0].entries[0].reasoning.effective, effort)
+      assert.equal(projected.groups[0].reasoning_entries[0].reasoning.effective, effort)
+    }
+    const legacy = structuredClone(baseSchedule)
+    legacy.groups[0].entries[0].reasoning.obsolete = true
+    assert.throws(() => schedule.projectModelRouteScheduleDetail(legacy))
+    const invalidEffort = structuredClone(baseSchedule)
+    invalidEffort.groups[0].entries[0].reasoning.configured = 'unknown'
+    assert.throws(() => schedule.projectModelRouteScheduleDetail(invalidEffort))
 
     console.log('PASS  retired group effort and dispatch reasoning projection contracts')
   } finally {

@@ -487,7 +487,7 @@ func newReasoningScheduleTestScenario(t *testing.T) *scheduleTestScenario {
 	return scenario
 }
 
-func TestModelRouteScheduleDetailProjectsReasoningPolicyAndCapability(t *testing.T) {
+func TestModelRouteScheduleDetailProjectsReasoningPolicy(t *testing.T) {
 	scenario := newReasoningScheduleTestScenario(t)
 	body := fmt.Sprintf(`{"snapshot_revision":%d,"group_updates":[{"group_id":1,"reasoning_effort_default":"low"}],"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"high"}]}`, scenario.revision, scheduleEntryOneA)
 	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
@@ -502,14 +502,8 @@ func TestModelRouteScheduleDetailProjectsReasoningPolicyAndCapability(t *testing
 		t.Fatalf("group reasoning default = %v, want low", first.ReasoningEffortDefault)
 	}
 	entry := first.Entries[0]
-	wantCapability := reasoning.ProjectEffortCapability("openai", "gpt-5.1")
-	if wantCapability.Levels == nil {
-		wantCapability.Levels = []string{}
-	}
 	if entry.Reasoning.Configured == nil || *entry.Reasoning.Configured != "high" ||
-		entry.Reasoning.Effective == nil || *entry.Reasoning.Effective != "high" || entry.Reasoning.Source != "entry" ||
-		!reflect.DeepEqual(entry.Reasoning.Capability, wantCapability) ||
-		entry.Reasoning.Capability.Levels == nil || entry.Reasoning.Capability.Reason == "" {
+		entry.Reasoning.Effective == nil || *entry.Reasoning.Effective != "high" || entry.Reasoning.Source != "entry" {
 		t.Fatalf("entry reasoning projection = %#v", entry.Reasoning)
 	}
 
@@ -612,31 +606,30 @@ func TestModelRouteScheduleDetailProjectsFullGroupReasoning(t *testing.T) {
 		flash, image := group.ReasoningEntries[0], group.ReasoningEntries[1]
 		if flash.EntryID != scheduleEntryOneA || flash.ModelID != "gemini-3.7-flash" ||
 			flash.Reasoning.Configured != nil || flash.Reasoning.Effective == nil || *flash.Reasoning.Effective != "low" ||
-			flash.Reasoning.Source != reasoning.EffortSource("group") ||
-			!reflect.DeepEqual(flash.Reasoning.Capability, reasoning.ProjectEffortCapability("gemini", flash.ModelID)) {
+			flash.Reasoning.Source != reasoning.EffortSource("group") {
 			t.Fatalf("flash reasoning (disabled=%v) = %#v", disabled, flash)
 		}
 		if image.EntryID != scheduleEntryOneB || image.ModelID != "gemini-3.1-flash-lite-image" ||
 			image.Reasoning.Configured == nil || *image.Reasoning.Configured != "high" ||
 			image.Reasoning.Effective == nil || *image.Reasoning.Effective != "high" ||
-			image.Reasoning.Source != reasoning.EffortSource("entry") ||
-			!reflect.DeepEqual(image.Reasoning.Capability, reasoning.ProjectEffortCapability("gemini", image.ModelID)) {
+			image.Reasoning.Source != reasoning.EffortSource("entry") {
 			t.Fatalf("image reasoning (disabled=%v) = %#v", disabled, image)
 		}
 	}
 }
 
-func TestModelRouteScheduleReasoningCrossModelValidation(t *testing.T) {
+func TestModelRouteScheduleReasoningCrossModelPolicyAccepted(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		override string
-		patch    string
-		want     int
+		name       string
+		override   string
+		patch      string
+		wantEffort string
+		want       int
 	}{
-		{"inherited low rejected", "", "", http.StatusBadRequest},
-		{"high override accepted", "", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":"high"}]`, http.StatusOK},
-		{"clearing override rejected", "high", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":null}]`, http.StatusBadRequest},
-		{"unsupported override rejected", "high", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":"low"}]`, http.StatusBadRequest},
+		{"inherited low accepted", "", "", "", http.StatusOK},
+		{"high override accepted", "", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":"high"}]`, "high", http.StatusOK},
+		{"clearing override accepted", "high", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":null}]`, "", http.StatusOK},
+		{"low override accepted", "high", `,"updates":[{"group_id":%d,"entry_id":"image-entry","reasoning_effort":"low"}]`, "low", http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scenario := newScheduleTestScenario(t)
@@ -685,21 +678,12 @@ func TestModelRouteScheduleReasoningCrossModelValidation(t *testing.T) {
 				}
 			} else {
 				entries := loadCreatedGroupModels(t, scenario.fixture, created.GroupID)
-				if entries[1].ReasoningEffort != "high" {
-					t.Fatalf("image override = %q, want high", entries[1].ReasoningEffort)
+				if entries[1].ReasoningEffort != tc.wantEffort {
+					t.Fatalf("image override = %q, want %q", entries[1].ReasoningEffort, tc.wantEffort)
 				}
 				group := scenario.fixture.manager.Current().Groups[created.GroupID]
 				if group.ReasoningEffortDefault != "low" {
 					t.Fatalf("group default = %q, want low", group.ReasoningEffortDefault)
-				}
-				for _, entry := range entries {
-					effort, _, err := reasoning.ResolveEffort(entry.ReasoningEffort, group.ReasoningEffortDefault, "")
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := reasoning.ValidateEffort("gemini", entry.ID, effort); err != nil {
-						t.Fatalf("saved policy breaks model %s: %v", entry.ID, err)
-					}
 				}
 			}
 		})
@@ -802,16 +786,23 @@ func TestModelRouteScheduleDetailKeepsDisabledGroupConfiguration(t *testing.T) {
 	}
 }
 
-func TestModelRouteScheduleRejectsUnsupportedReasoningWithoutNormalization(t *testing.T) {
+func TestModelRouteScheduleAcceptsCanonicalReasoningWithoutNormalization(t *testing.T) {
 	scenario := newScheduleTestScenario(t)
+	entries := loadCreatedGroupModels(t, scenario.fixture, 1)
+	if entries[0].ID != "up-a" {
+		t.Fatalf("test model = %q, want unlisted up-a", entries[0].ID)
+	}
 	before := loadStoredGroupModelsJSON(t, scenario.fixture, 1)
 	body := fmt.Sprintf(`{"snapshot_revision":%d,"updates":[{"group_id":1,"entry_id":"%s","reasoning_effort":"max"}]}`, scenario.revision, scheduleEntryOneA)
 	recorder := scenario.perform(http.MethodPatch, "/api/model-route/schedule", body, scenario.authKey)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("unsupported effort = %d %s, want 400", recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("canonical effort = %d %s, want 200", recorder.Code, recorder.Body.String())
 	}
-	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got != before {
-		t.Fatalf("rejected effort changed storage: %s", got)
+	if got := loadStoredGroupModelsJSON(t, scenario.fixture, 1); got == before {
+		t.Fatalf("accepted effort did not change storage: %s", got)
+	}
+	if got := loadCreatedGroupModels(t, scenario.fixture, 1)[0].ReasoningEffort; got != "max" {
+		t.Fatalf("saved unlisted model effort = %q, want max", got)
 	}
 }
 

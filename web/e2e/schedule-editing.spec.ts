@@ -45,7 +45,7 @@ function conflictResponse() {
   }
 }
 
-function entry(entryID: string, modelID: string, weight: number, priority = 1, supported = true) {
+function entry(entryID: string, modelID: string, weight: number, priority = 1, override = false) {
   return {
     entry_id: entryID,
     model_id: modelID,
@@ -58,29 +58,11 @@ function entry(entryID: string, modelID: string, weight: number, priority = 1, s
       effective: { blacklist_threshold: 3, cooldown_seconds: 60 },
       sources: { blacklist_threshold: 'default', cooldown_seconds: 'default' },
     },
-    reasoning: supported
-      ? {
-          configured: null as string | null,
-          effective: 'medium' as string | null,
-          source: 'group',
-          capability: {
-            known: true,
-            supported: true,
-            levels: ['low', 'medium', 'high'],
-            reason: 'supported by Bifrost model capabilities',
-          },
-        }
-      : {
-          configured: 'max',
-          effective: 'max',
-          source: 'entry',
-          capability: {
-            known: true,
-            supported: false,
-            levels: ['max'],
-            reason: 'requested effort is not supported',
-          },
-        },
+    reasoning: {
+      configured: override ? 'max' : (null as string | null),
+      effective: override ? 'max' : ('medium' as string | null),
+      source: override ? 'entry' : 'group',
+    },
     runtime: {
       state: 'available',
       cooldown_until_ms: null,
@@ -132,10 +114,10 @@ function detailForModel(externalModel: string) {
         reasoning_effort_default: 'medium',
         request_count: 20,
         success_rate: 1,
-        reasoning_entries: [entry(`entry-2${suffix}`, `model-b${suffix}`, 50, 1, false)].map(
+        reasoning_entries: [entry(`entry-2${suffix}`, `model-b${suffix}`, 50, 1, true)].map(
           ({ entry_id, model_id, reasoning }) => ({ entry_id, model_id, reasoning }),
         ),
-        entries: [entry(`entry-2${suffix}`, `model-b${suffix}`, 50, 1, false)],
+        entries: [entry(`entry-2${suffix}`, `model-b${suffix}`, 50, 1, true)],
       },
     ],
   }
@@ -248,9 +230,8 @@ async function openSchedule(page: Page): Promise<void> {
 test.describe('schedule editing', () => {
   function geminiDetail(imageOverride = false, showImage = false) {
     const detail = detailForModel('worker')
-    const flash = entry('flash-entry', 'gemini-3.7-flash', 50)
+    const flash = entry('flash-entry', 'unlisted-model', 50)
     const image = entry('image-entry', 'gemini-3.1-flash-lite-image', 50)
-    image.reasoning.capability.levels = ['minimal', 'high']
     for (const item of [flash, image]) {
       item.reasoning.configured = null
       item.reasoning.effective = null
@@ -277,7 +258,7 @@ test.describe('schedule editing', () => {
     return detail
   }
 
-  test('limits group defaults using hidden Gemini models and previews affected models', async ({
+  test('offers every effort for unlisted models and previews the entire group', async ({
     page,
   }) => {
     const patches = await installScheduleEditingRoutes(page, 'success', 'success', () =>
@@ -287,13 +268,14 @@ test.describe('schedule editing', () => {
     await page.goto('/schedule?schedule_model=worker')
     await expect(page.locator('.schedule-row')).toHaveCount(2)
     await page.getByRole('combobox', { name: 'Group default primary group' }).click()
-    await expect(page.locator('.app-select__item[data-value="low"]')).toHaveCount(0)
-    await expect(page.locator('.app-select__item[data-value="medium"]')).toHaveCount(0)
-    await page.locator('.app-select__item[data-value="high"]').click()
+    for (const effort of ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
+      await expect(page.locator(`.app-select__item[data-value="${effort}"]`)).toBeVisible()
+    }
+    await page.locator('.app-select__item[data-value="max"]').click()
     await expect(page.locator('.schedule-reasoning-preview')).toContainText(
       'gemini-3.1-flash-lite-image',
     )
-    await expect(page.locator('.schedule-reasoning-preview')).toContainText('gemini-3.7-flash')
+    await expect(page.locator('.schedule-reasoning-preview')).toContainText('unlisted-model')
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -301,10 +283,12 @@ test.describe('schedule editing', () => {
     ).toBeLessThanOrEqual(1)
     await page.getByRole('button', { name: 'Save' }).click()
     await expect.poll(() => patches.length).toBe(1)
-    expect(patches[0]?.group_updates).toEqual([{ group_id: 1, reasoning_effort_default: 'high' }])
+    expect(patches[0]?.group_updates).toEqual([{ group_id: 1, reasoning_effort_default: 'max' }])
   })
 
-  test('revalidates group defaults when an image override draft is cleared', async ({ page }) => {
+  test('clearing an image override keeps its group default editable and saves both', async ({
+    page,
+  }) => {
     const patches = await installScheduleEditingRoutes(page, 'success', 'success', () =>
       geminiDetail(true, true),
     )
@@ -317,18 +301,19 @@ test.describe('schedule editing', () => {
     await expect(page.locator('.schedule-reasoning-preview')).toContainText(
       'gemini-3.1-flash-lite-image',
     )
-    await expect(page.locator('.schedule-reasoning-preview')).toContainText('unsupported')
-    await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
-    expect(patches).toHaveLength(0)
-    await page.getByRole('combobox', { name: 'Entry override gemini-3.1-flash-lite-image' }).click()
-    await page.locator('.app-select__item[data-value="high"]').click()
+    await expect(page.locator('.schedule-reasoning-preview')).toContainText(
+      'gemini-3.1-flash-lite-image: low',
+    )
     await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled()
     await page.getByRole('button', { name: 'Save' }).click()
     await expect.poll(() => patches.length).toBe(1)
     expect(patches[0]?.group_updates).toEqual([{ group_id: 1, reasoning_effort_default: 'low' }])
+    expect(patches[0]?.updates).toEqual([
+      { group_id: 1, entry_id: 'image-entry', reasoning_effort: null },
+    ])
   })
 
-  test('allows low after adding a supported image override in the same draft', async ({ page }) => {
+  test('saves a group default with an image override in the same draft', async ({ page }) => {
     const patches = await installScheduleEditingRoutes(page, 'success', 'success', () =>
       geminiDetail(false, true),
     )
@@ -348,7 +333,7 @@ test.describe('schedule editing', () => {
     })
   })
 
-  test('honors a hidden image override when offering group defaults', async ({ page }) => {
+  test('previews a hidden image override when editing group defaults', async ({ page }) => {
     await installScheduleEditingRoutes(page, 'success', 'success', () => geminiDetail(true))
     await page.goto('/schedule?schedule_model=worker')
     await expect(page.locator('.schedule-row')).toHaveCount(2)
@@ -446,18 +431,20 @@ test.describe('schedule editing', () => {
     })
   })
 
-  test('shows unsupported capability without offering it as a supported choice', async ({
-    page,
-  }) => {
-    await installScheduleEditingRoutes(page)
+  test('edits an existing max entry override without model catalogue data', async ({ page }) => {
+    const patches = await installScheduleEditingRoutes(page)
     await openSchedule(page)
 
-    const unsupported = page.getByRole('combobox', { name: 'Entry override model-b' })
-    await expect(unsupported).toContainText('max (unsupported)')
-    await expect(page.getByText('requested effort is not supported')).toBeVisible()
-    await expect(page.getByText('Unsupported', { exact: true })).toBeVisible()
-    await expect(page.getByText('Disabled', { exact: true })).toBeVisible()
-    await expect(unsupported).toBeEnabled()
+    const override = page.getByRole('combobox', { name: 'Entry override model-b' })
+    await expect(override).toContainText('max')
+    await expect(override).toBeEnabled()
+    await override.click()
+    await page.locator('.app-select__item[data-value="xhigh"]').click()
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect.poll(() => patches.length).toBe(1)
+    expect(patches[0]?.updates).toEqual([
+      { group_id: 2, entry_id: 'entry-2', reasoning_effort: 'xhigh' },
+    ])
   })
 
   test('keeps derived reasoning controls read-only and contains narrow-screen overflow', async ({
