@@ -16,11 +16,6 @@ import (
 
 const sqliteBusyTimeoutMS = 5000
 
-// WAL permits readers to use separate connections while SQLite still
-// serializes writers. Keep the pool deliberately small so write contention
-// remains bounded on the single-writer database.
-const sqliteFileMaxOpenConns = 4
-
 type sqliteTarget struct {
 	fileBacked   bool
 	databasePath string
@@ -71,10 +66,6 @@ func openSQLite(
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("get SQLite connection pool: %w", err)
-	}
-	if target.fileBacked {
-		sqlDB.SetMaxOpenConns(sqliteFileMaxOpenConns)
-		sqlDB.SetMaxIdleConns(sqliteFileMaxOpenConns)
 	}
 	if err := verifySQLiteRuntime(db, target.fileBacked, journalMode); err != nil {
 		_ = sqlDB.Close()
