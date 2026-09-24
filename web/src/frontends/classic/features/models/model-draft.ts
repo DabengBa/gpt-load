@@ -16,6 +16,10 @@ export interface ModelDraftValue extends GroupModelUpdateDto {
   price_id?: number
 }
 
+export interface ModelDraftItem extends ModelDraftValue {
+  key: number
+}
+
 export interface ModelNameConflict {
   client_model: string
   indexes: number[]

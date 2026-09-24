@@ -2,11 +2,9 @@ import type { ChannelParamsDto, ProxyConfiguredMode } from '@/api/control/types'
 import type { CredentialStage } from '@/app/resources/credential-stages'
 import type { GroupModelUpdateDto } from '@/app/resources/groups'
 import type { ModelCandidate } from '@/app/resources/providers'
-import { normalizedModels, type ModelDraftValue } from '@/features/models/model-draft'
+import { normalizedModels, type ModelDraftItem } from '@/features/models/model-draft'
 
-export interface ModelDraftItem extends ModelDraftValue {
-  key: number
-}
+export type { ModelDraftItem } from '@/features/models/model-draft'
 
 export interface ImportProxyDraft {
   mode: ProxyConfiguredMode

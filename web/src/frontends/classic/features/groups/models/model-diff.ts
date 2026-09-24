@@ -4,13 +4,11 @@ import {
   findModelNameConflicts,
   normalizedModels as normalizeSharedModels,
   sameModels as sameSharedModels,
-  type ModelDraftValue,
+  type ModelDraftItem,
   type ModelNameConflict,
 } from '@/features/models/model-draft'
 
-export interface ModelDraftItem extends ModelDraftValue {
-  key: number
-}
+export type { ModelDraftItem } from '@/features/models/model-draft'
 
 export type ModelSyncMode = 'cleanup' | 'add' | 'full'
 

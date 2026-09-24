@@ -265,17 +265,7 @@ export function clientConfiguration(
     case 'nextchat':
       return JSON.stringify({ url: origin, key }, null, 2)
     case 'cherry-studio':
-      return JSON.stringify(
-        {
-          id: 'gpt-load',
-          name: 'GPT-Load',
-          type: 'openai',
-          baseUrl: openAIBaseURL(origin),
-          apiKey: key,
-        },
-        null,
-        2,
-      )
+      return JSON.stringify(cherryStudioConfig(origin, key), null, 2)
     case 'gemini-cli':
       return [
         `export GOOGLE_GEMINI_BASE_URL="${origin.replace(/\/+$/, '')}"`,
@@ -342,15 +332,7 @@ export function clientQuickImportURL(
       return `ccswitch://v1/import?${params.toString()}`
     }
     case 'cherry-studio': {
-      const payload = encodeURLSafeBase64(
-        JSON.stringify({
-          id: 'gpt-load',
-          name: 'GPT-Load',
-          type: 'openai',
-          baseUrl: openAIBaseURL(origin),
-          apiKey: key,
-        }),
-      )
+      const payload = encodeURLSafeBase64(JSON.stringify(cherryStudioConfig(origin, key)))
       return `cherrystudio://providers/api-keys?${new URLSearchParams({ v: '1', data: payload })}`
     }
     default:
@@ -387,6 +369,16 @@ export function clientFields(
 
 function ccSwitchEndpoint(origin: string, target: CCSwitchTargetID): string {
   return target === 'codex' || target === 'opencode' ? openAIBaseURL(origin) : origin
+}
+
+function cherryStudioConfig(origin: string, key: string) {
+  return {
+    id: 'gpt-load',
+    name: 'GPT-Load',
+    type: 'openai',
+    baseUrl: openAIBaseURL(origin),
+    apiKey: key,
+  }
 }
 
 function openAIBaseURL(origin: string): string {
