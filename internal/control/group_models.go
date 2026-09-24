@@ -144,9 +144,6 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	if err := stateloader.BackfillTestAliases(ctx, s.db); err != nil {
-		return GroupModelsResponse{}, app_errors.ParseDBError(err)
-	}
 
 	group, err := loadGroupRow(s.db.WithContext(ctx), groupID)
 	if err != nil {
@@ -155,6 +152,26 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 	groupModels := make([]groupModelEntry, 0)
 	if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
 		return GroupModelsResponse{}, fmt.Errorf("decode group %d models: %w", group.ID, err)
+	}
+	testAliasBackfillNeeded := false
+	for _, model := range groupModels {
+		if model.TestAlias == "" {
+			testAliasBackfillNeeded = true
+			break
+		}
+	}
+	if testAliasBackfillNeeded {
+		if err := stateloader.BackfillTestAliases(ctx, s.db); err != nil {
+			return GroupModelsResponse{}, app_errors.ParseDBError(err)
+		}
+		group, err = loadGroupRow(s.db.WithContext(ctx), groupID)
+		if err != nil {
+			return GroupModelsResponse{}, err
+		}
+		groupModels = make([]groupModelEntry, 0)
+		if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
+			return GroupModelsResponse{}, fmt.Errorf("decode group %d models: %w", group.ID, err)
+		}
 	}
 	used := make(map[string]struct{}, len(groupModels))
 	for _, model := range groupModels {
