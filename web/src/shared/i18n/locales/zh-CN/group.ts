@@ -278,7 +278,7 @@ export default {
           valueRequired: '请输入值。',
           valueNumber: '不是有效数字；如果要按文本保存，请把类型改成文本。',
           valueBoolean: '布尔值只能是 true 或 false。',
-          valueJSON: 'JSON 格式不正确，需要以 { 或 [ 开头的完整结构。',
+          valueJSON: 'JSON 格式不正确，需要以 {brace} 或 {bracket} 开头的完整结构。',
           emptyKey: '参数对象的字段名不能为空。',
           unsafeNumber: '数字必须可安全、无损地通过管理界面保存。',
           setObject: '设置参数必须是 JSON 对象。',

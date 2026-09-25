@@ -408,7 +408,10 @@ function callbackEndpoint(stage: CredentialStage): string {
 }
 
 function callbackPlaceholder(stage: CredentialStage): string {
-  if (!stage.redirect_uri) return t('import.subscription.callbackPlaceholder')
+  if (!stage.redirect_uri)
+    return t('import.subscription.callbackPlaceholder', {
+      port: t('import.subscription.callbackPortToken'),
+    })
   const separator = stage.redirect_uri.includes('?') ? '&' : '?'
   return `${stage.redirect_uri}${separator}code=...&state=...`
 }

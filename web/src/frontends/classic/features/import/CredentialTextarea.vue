@@ -57,11 +57,19 @@ const label = computed(() =>
 const placeholder = computed(() => {
   switch (props.channel?.channel_id) {
     case 'azure_openai':
-      return t('import.credentials.placeholders.azure')
+      return t('import.credentials.placeholders.azure', {
+        example: '{"api_key":"..."}',
+        exampleAlt: '{"client_id":"...","client_secret":"...","tenant_id":"..."}',
+      })
     case 'aws_bedrock':
-      return t('import.credentials.placeholders.bedrock')
+      return t('import.credentials.placeholders.bedrock', {
+        example: '{"api_key":"..."}',
+        exampleAlt: '{"access_key":"...","secret_key":"..."}',
+      })
     case 'google_vertex':
-      return t('import.credentials.placeholders.vertex')
+      return t('import.credentials.placeholders.vertex', {
+        example: '{"service_account_json":"..."}',
+      })
     default:
       return t('import.credentials.placeholder')
   }

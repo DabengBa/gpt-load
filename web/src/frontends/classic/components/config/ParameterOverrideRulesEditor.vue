@@ -252,7 +252,10 @@ function valueError(row: ParamRow): string {
       return t('group.settings.parameterOverrides.errors.valueBoolean')
     if (cause instanceof ParameterValueError && cause.message === 'empty-key')
       return t('group.settings.parameterOverrides.errors.emptyKey')
-    return t('group.settings.parameterOverrides.errors.valueJSON')
+    return t('group.settings.parameterOverrides.errors.valueJSON', {
+      brace: '{',
+      bracket: '[',
+    })
   }
 }
 

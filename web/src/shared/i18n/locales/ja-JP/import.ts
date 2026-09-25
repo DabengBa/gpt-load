@@ -152,7 +152,8 @@ export default {
       copyUserCode: 'ユーザーコードをコピー',
       callbackLabel: 'ブラウザーが最後に表示した URL',
       callbackEndpointFallback: 'ローカル OAuth コールバック',
-      callbackPlaceholder: 'http://localhost:<port>/callback?code=...&state=...',
+      callbackPlaceholder: 'http://localhost:{port}/callback?code=...&state=...',
+      callbackPortToken: '<port>',
       callbackHelp:
         'アドレスバーの URL を一部ではなく全体をコピーして貼り付けてください。そのページが開けなくても問題ありません。',
       submitCallback: '送信',
@@ -214,11 +215,10 @@ export default {
       structuredHint:
         'このチャネルで利用可能: {fields}。使用する認証方式の項目だけ入力してください',
       placeholders: {
-        azure:
-          '{\'{"api_key":"..."}\'} または {\'{"client_id":"...","client_secret":"...","tenant_id":"..."}\'}',
-        bedrock: '{\'{"api_key":"..."}\'} または {\'{"access_key":"...","secret_key":"..."}\'}',
+        azure: '{example} または {exampleAlt}',
+        bedrock: '{example} または {exampleAlt}',
         vertex:
-          'Google Cloud サービスアカウント JSON を貼り付けるか、{\'{"service_account_json":"..."}\'} を使用',
+          'Google Cloud サービスアカウント JSON を貼り付けるか、{example} を使用',
       },
       storageNotice:
         '平文は URL、ログ、通知に入りません — ログイン中断時は現在のセッションに最大 15 分だけ保持されます',

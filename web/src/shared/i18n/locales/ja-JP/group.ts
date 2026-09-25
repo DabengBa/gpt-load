@@ -284,7 +284,7 @@ export default {
           valueNumber:
             '有効な数値ではありません。テキストとして保存する場合は型をテキストに変更してください。',
           valueBoolean: '真偽値は true または false のみです。',
-          valueJSON: 'JSON の形式が正しくありません。{ または [ で始まる完全な構造が必要です。',
+          valueJSON: 'JSON の形式が正しくありません。{brace} または {bracket} で始まる完全な構造が必要です。',
           emptyKey: 'パラメータオブジェクトのフィールド名を空にはできません。',
           unsafeNumber: '数値は管理画面を通じて安全かつ無損失に保存できる必要があります。',
           setObject: '設定パラメータは JSON オブジェクトである必要があります。',

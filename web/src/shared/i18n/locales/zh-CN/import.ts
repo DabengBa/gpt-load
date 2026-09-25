@@ -144,7 +144,8 @@ export default {
       copyUserCode: '复制用户码',
       callbackLabel: '授权后浏览器停在的网址',
       callbackEndpointFallback: '本地 OAuth 回调地址',
-      callbackPlaceholder: 'http://localhost:<端口>/callback?code=...&state=...',
+      callbackPlaceholder: 'http://localhost:{port}/callback?code=...&state=...',
+      callbackPortToken: '<端口>',
       callbackHelp: '从地址栏复制完整网址粘到这里，不要只复制其中一段。页面打不开也没关系。',
       submitCallback: '提交',
       callbackFailed: '这段网址无效、已使用，或不属于当前这次授权',
@@ -202,10 +203,9 @@ export default {
       structuredLabel: '凭据内容',
       structuredHint: '当前渠道支持：{fields}。只填写一种认证方式需要的字段',
       placeholders: {
-        azure:
-          '{\'{"api_key":"..."}\'} 或 {\'{"client_id":"...","client_secret":"...","tenant_id":"..."}\'}',
-        bedrock: '{\'{"api_key":"..."}\'} 或 {\'{"access_key":"...","secret_key":"..."}\'}',
-        vertex: '直接粘贴 Google Cloud 服务账号 JSON，或使用 {\'{"service_account_json":"..."}\'}',
+        azure: '{example} 或 {exampleAlt}',
+        bedrock: '{example} 或 {exampleAlt}',
+        vertex: '直接粘贴 Google Cloud 服务账号 JSON，或使用 {example}',
       },
       storageNotice: '真实密钥不会写入 URL 或日志；登录中断时仅在当前会话临时保留，15 分钟后清理',
       analysisLabel: '密钥预检查',

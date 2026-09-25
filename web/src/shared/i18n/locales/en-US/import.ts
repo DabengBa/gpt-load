@@ -156,7 +156,8 @@ export default {
       copyUserCode: 'Copy user code',
       callbackLabel: 'URL your browser ended on',
       callbackEndpointFallback: 'the local OAuth callback',
-      callbackPlaceholder: 'http://localhost:<port>/callback?code=...&state=...',
+      callbackPlaceholder: 'http://localhost:{port}/callback?code=...&state=...',
+      callbackPortToken: '<port>',
       callbackHelp:
         'Copy the whole URL from the address bar, not just part of it. It is fine if that page does not load.',
       submitCallback: 'Submit',
@@ -218,11 +219,10 @@ export default {
       structuredLabel: 'Credential content',
       structuredHint: 'This channel supports: {fields}. Fill only one authentication method',
       placeholders: {
-        azure:
-          '{\'{"api_key":"..."}\'} or {\'{"client_id":"...","client_secret":"...","tenant_id":"..."}\'}',
-        bedrock: '{\'{"api_key":"..."}\'} or {\'{"access_key":"...","secret_key":"..."}\'}',
+        azure: '{example} or {exampleAlt}',
+        bedrock: '{example} or {exampleAlt}',
         vertex:
-          'Paste a Google Cloud service-account JSON object, or use {\'{"service_account_json":"..."}\'}',
+          'Paste a Google Cloud service-account JSON object, or use {example}',
       },
       storageNotice:
         'Plaintext is never put in URLs, logs, or notifications; a login interruption keeps it in this session for at most 15 minutes',
