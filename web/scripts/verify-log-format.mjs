@@ -639,7 +639,7 @@ async function main() {
   try {
     let format
     try {
-      format = await server.ssrLoadModule('/src/frontends/classic/features/monitor/log-format.ts')
+      format = await server.ssrLoadModule('/src/shared/domain/monitor/log-format.ts')
     } catch (err) {
       console.log(`FAIL  module load: ${err instanceof Error ? err.message : String(err)}`)
       return 1

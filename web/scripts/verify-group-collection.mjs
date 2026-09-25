@@ -13,10 +13,10 @@ const server = await createServer({
 
 try {
   const [route, queryKeys, groups, recovery] = await Promise.all([
-    server.ssrLoadModule('/src/frontends/classic/features/groups/group-collection-route.ts'),
+    server.ssrLoadModule('/src/shared/routing/group-collection-route.ts'),
     server.ssrLoadModule('/src/shared/control/query-keys.ts'),
     server.ssrLoadModule('/src/shared/control/resources/groups.ts'),
-    server.ssrLoadModule('/src/frontends/classic/features/import/import-recovery.ts'),
+    server.ssrLoadModule('/src/shared/controllers/import-recovery.ts'),
   ])
   runGroupCollectionContractTests({
     parseGroupCollectionRouteQuery: route.parseGroupCollectionRouteQuery,

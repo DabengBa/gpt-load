@@ -4,7 +4,7 @@ export type SharedRouteQueryValue = string | null | undefined
 export type SharedRouteQuery = Record<string, SharedRouteQueryValue | readonly SharedRouteQueryValue[]>
 export type SharedRouteQueryRaw = Record<
   string,
-  SharedRouteQueryValue | number | readonly (SharedRouteQueryValue | number)[]
+  SharedRouteQueryValue | number | (SharedRouteQueryValue | number)[]
 >
 
 const maxCollectionSearchCodePoints = 200

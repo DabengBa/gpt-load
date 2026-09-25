@@ -13,7 +13,7 @@ const server = await createServer({
 try {
   const groups = await server.ssrLoadModule('/src/shared/control/resources/groups.ts')
   const modelDiff = await server.ssrLoadModule(
-    '/src/frontends/classic/features/groups/models/model-diff.ts',
+    '/src/shared/domain/groups/models/model-diff.ts',
   )
   const payload = {
     items: [

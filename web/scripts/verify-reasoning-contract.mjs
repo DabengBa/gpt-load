@@ -100,7 +100,7 @@ async function main() {
   try {
     const groups = await server.ssrLoadModule('/src/shared/control/resources/groups.ts')
     const patching = await server.ssrLoadModule(
-      '/src/frontends/classic/features/groups/settings/group-settings-patch.ts',
+      '/src/shared/domain/groups/settings/group-settings-patch.ts',
     )
     const schedule = await server.ssrLoadModule(
       '/src/shared/control/resources/model-route-schedule.ts',
