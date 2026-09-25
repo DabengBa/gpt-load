@@ -1,4 +1,7 @@
 allowBuilds:
+  # postinstall is a no-op `astryx init` nudge; nothing functional to run.
+  '@astryxdesign/cli': false
+  '@astryxdesign/core': false
   vue-demi: true
 
 overrides:
