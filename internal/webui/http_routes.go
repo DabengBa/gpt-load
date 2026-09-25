@@ -16,7 +16,7 @@ func (s *Server) HTTPModule() httproute.Module {
 			Name:     "web.page." + page.Name,
 			Methods:  []string{http.MethodGet},
 			Path:     page.Path,
-			Handlers: gin.HandlersChain{s.serveIndex},
+			Handlers: gin.HandlersChain{s.servePage(page)},
 		})
 	}
 	routes = append(

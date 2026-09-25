@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const pageRouteManifestVersion = 1
+const pageRouteManifestVersion = 2
 
 var (
 	//go:embed page_routes.json
@@ -21,8 +21,9 @@ var (
 )
 
 type pageRoute struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Astryx bool   `json:"astryx"`
 }
 
 type pageRouteManifest struct {

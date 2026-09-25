@@ -31,10 +31,11 @@ var embeddedFiles embed.FS
 
 // Server serves immutable assets and the SPA index for known UI routes.
 type Server struct {
-	files fs.FS
-	root  string
-	index []byte
-	pages []pageRoute
+	files       fs.FS
+	root        string
+	index       []byte
+	astryxIndex []byte
+	pages       []pageRoute
 }
 
 // NewServer creates an embedded UI server.
@@ -60,11 +61,19 @@ func newServerWithPages(files fs.FS, root string, pages []pageRoute) *Server {
 		index = []byte(fallbackIndex)
 	}
 
+	// astryxIndex stays nil when the entry is absent: builds without the React
+	// frontend behave exactly as before.
+	astryxIndex, err := fs.ReadFile(files, path.Join(root, "astryx.html"))
+	if err != nil {
+		astryxIndex = nil
+	}
+
 	return &Server{
-		files: files,
-		root:  root,
-		index: index,
-		pages: append([]pageRoute(nil), pages...),
+		files:       files,
+		root:        root,
+		index:       index,
+		astryxIndex: astryxIndex,
+		pages:       append([]pageRoute(nil), pages...),
 	}
 }
 
@@ -85,20 +94,49 @@ func acceptsHTML(value string) bool {
 	return false
 }
 
-func (s *Server) serveIndex(c *gin.Context) {
-	s.serveIndexWithStatus(c, http.StatusOK)
+// frontendCookieName selects the frontend document; it only ever picks
+// between two embedded static files and must never influence auth, API
+// routing, or file paths.
+const frontendCookieName = "gpt-load.frontend"
+
+func frontendPreference(c *gin.Context) string {
+	value, err := c.Cookie(frontendCookieName)
+	if err != nil {
+		return "classic"
+	}
+	return value
+}
+
+func (s *Server) indexFor(c *gin.Context, page pageRoute) []byte {
+	if s.astryxIndex != nil && page.Astryx && frontendPreference(c) == "astryx" {
+		return s.astryxIndex
+	}
+	return s.index
+}
+
+func (s *Server) indexForNotFound(c *gin.Context) []byte {
+	if s.astryxIndex != nil && frontendPreference(c) == "astryx" {
+		return s.astryxIndex
+	}
+	return s.index
+}
+
+func (s *Server) servePage(page pageRoute) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		s.serveIndexWithStatus(c, http.StatusOK, s.indexFor(c, page))
+	}
 }
 
 func (s *Server) serveNotFoundIndex(c *gin.Context) {
-	s.serveIndexWithStatus(c, http.StatusNotFound)
+	s.serveIndexWithStatus(c, http.StatusNotFound, s.indexForNotFound(c))
 }
 
-func (s *Server) serveIndexWithStatus(c *gin.Context, status int) {
+func (s *Server) serveIndexWithStatus(c *gin.Context, status int, document []byte) {
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Content-Security-Policy", indexCSP)
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("X-Frame-Options", "DENY")
-	c.Data(status, "text/html; charset=utf-8", s.index)
+	c.Data(status, "text/html; charset=utf-8", document)
 }
 
 func (s *Server) serveThemeBootstrap(c *gin.Context) {

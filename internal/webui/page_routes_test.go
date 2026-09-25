@@ -7,7 +7,7 @@ import (
 
 func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 	valid := []byte(`{
-		"version": 1,
+		"version": 2,
 		"routes": [
 			{"name": "home", "path": "/"},
 			{"name": "group-detail", "path": "/groups/:id"}
@@ -32,17 +32,17 @@ func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 	}{
 		{
 			name:     "unsupported version",
-			manifest: `{"version":2,"routes":[{"name":"home","path":"/"}]}`,
+			manifest: `{"version":1,"routes":[{"name":"home","path":"/"}]}`,
 			want:     "version",
 		},
 		{
 			name:     "empty routes",
-			manifest: `{"version":1,"routes":[]}`,
+			manifest: `{"version": 2,"routes":[]}`,
 			want:     "routes",
 		},
 		{
 			name: "duplicate name",
-			manifest: `{"version":1,"routes":[
+			manifest: `{"version": 2,"routes":[
 				{"name":"home","path":"/"},
 				{"name":"home","path":"/other"}
 			]}`,
@@ -50,7 +50,7 @@ func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 		},
 		{
 			name: "duplicate path",
-			manifest: `{"version":1,"routes":[
+			manifest: `{"version": 2,"routes":[
 				{"name":"home","path":"/"},
 				{"name":"other","path":"/"}
 			]}`,
@@ -58,7 +58,7 @@ func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 		},
 		{
 			name: "duplicate parameter shape",
-			manifest: `{"version":1,"routes":[
+			manifest: `{"version": 2,"routes":[
 				{"name":"group-by-id","path":"/groups/:id"},
 				{"name":"group-by-slug","path":"/groups/:slug"}
 			]}`,
@@ -66,22 +66,22 @@ func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 		},
 		{
 			name:     "empty name",
-			manifest: `{"version":1,"routes":[{"name":"","path":"/"}]}`,
+			manifest: `{"version": 2,"routes":[{"name":"","path":"/"}]}`,
 			want:     "name",
 		},
 		{
 			name:     "relative path",
-			manifest: `{"version":1,"routes":[{"name":"home","path":"home"}]}`,
+			manifest: `{"version": 2,"routes":[{"name":"home","path":"home"}]}`,
 			want:     "path",
 		},
 		{
 			name:     "wildcard path",
-			manifest: `{"version":1,"routes":[{"name":"catch-all","path":"/*path"}]}`,
+			manifest: `{"version": 2,"routes":[{"name":"catch-all","path":"/*path"}]}`,
 			want:     "path",
 		},
 		{
 			name:     "partial parameter segment",
-			manifest: `{"version":1,"routes":[{"name":"group","path":"/groups/prefix-:id"}]}`,
+			manifest: `{"version": 2,"routes":[{"name":"group","path":"/groups/prefix-:id"}]}`,
 			want:     "path",
 		},
 	}
@@ -126,5 +126,25 @@ func TestEmbeddedPageRouteManifestContainsCurrentPages(t *testing.T) {
 		if got[name] != path {
 			t.Fatalf("embedded route %q = %q, want %q", name, got[name], path)
 		}
+	}
+}
+
+func TestParsePageRouteManifestReadsAstryxFlag(t *testing.T) {
+	manifest := []byte(`{
+		"version": 2,
+		"routes": [
+			{"name": "home", "path": "/", "astryx": true},
+			{"name": "login", "path": "/login"}
+		]
+	}`)
+	routes, err := parsePageRouteManifest(manifest)
+	if err != nil {
+		t.Fatalf("parsePageRouteManifest() error = %v", err)
+	}
+	if !routes[0].Astryx {
+		t.Fatalf("routes[0].Astryx = false, want true")
+	}
+	if routes[1].Astryx {
+		t.Fatalf("routes[1].Astryx = true, want default false")
 	}
 }

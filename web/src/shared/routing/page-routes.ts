@@ -3,6 +3,7 @@ import pageRouteManifest from '../../../../internal/webui/page_routes.json'
 export interface PageRouteEntry {
   readonly name: string
   readonly path: string
+  readonly astryx?: boolean
 }
 
 interface UnknownRecord {
@@ -12,7 +13,7 @@ interface UnknownRecord {
 const staticSegmentPattern = /^[A-Za-z0-9][A-Za-z0-9._~-]*$/
 const parameterSegmentPattern = /^:[A-Za-z][A-Za-z0-9_]*$/
 const manifestFields = new Set(['version', 'routes'])
-const routeFields = new Set(['name', 'path'])
+const routeFields = new Set(['name', 'path', 'astryx'])
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -51,8 +52,8 @@ export function parsePageRouteManifest(value: unknown): readonly PageRouteEntry[
   if (unexpectedManifestField !== undefined) {
     throw new Error(`Invalid page route manifest: unknown field "${unexpectedManifestField}"`)
   }
-  if (value.version !== 1) {
-    throw new Error('Invalid page route manifest: version must be 1')
+  if (value.version !== 2) {
+    throw new Error('Invalid page route manifest: version must be 2')
   }
   if (!Array.isArray(value.routes)) {
     throw new Error('Invalid page route manifest: routes must be an array')
@@ -93,6 +94,11 @@ export function parsePageRouteManifest(value: unknown): readonly PageRouteEntry[
         `Invalid page route manifest: route "${route.name}" uses an unsupported shared path pattern`,
       )
     }
+    if (route.astryx !== undefined && typeof route.astryx !== 'boolean') {
+      throw new Error(
+        `Invalid page route manifest: route "${route.name}" has a non-boolean astryx flag`,
+      )
+    }
     if (names.has(route.name)) {
       throw new Error(`Invalid page route manifest: duplicate route name "${route.name}"`)
     }
@@ -107,7 +113,11 @@ export function parsePageRouteManifest(value: unknown): readonly PageRouteEntry[
     names.add(route.name)
     paths.add(route.path)
     shapes.add(shape)
-    return Object.freeze({ name: route.name, path: route.path })
+    return Object.freeze(
+      route.astryx === true
+        ? { name: route.name, path: route.path, astryx: true }
+        : { name: route.name, path: route.path },
+    )
   })
 
   return Object.freeze(entries)

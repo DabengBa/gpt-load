@@ -130,10 +130,11 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **Notes:** 修复 `verify-i18n-icu.mjs` 挂起 —— `createServer` 改为 `configFile:false`(catalog 为自足 TS,不需插件;B2 新增插件使 `server.close()` 不再返回)。babel/react 插件 include 收窄至 `*.[jt]sx?`(原正则误匹配 `entry.css`)。26/32/42px 与 setting 26px 等缺口留待 B9 组件覆盖;`--radius-*` 固定阶梯无法表达 6/7/10,用显式 token。
 
 ### Task B4: Go 侧 manifest v2 + 双 index 选择(TDD:先失败 Go 测试)
-- [ ] **Done**
-- **Scope:** `internal/webui/page_routes.json`(`version:2`+可选 `"astryx":true`)、`page_routes.go`(strict parser+版本检查)、`web/src/frontends/classic/app/page-routes.ts`(`routeFields` 同步)、`server.go`/`http_routes.go`(`newServerWithPages` 读 `astryx.html` 为 `astryxIndex`,nil 时行为不变;按页绑定 handler;`indexFor` cookie+flag 选择;fallback 同规则;响应头一致)、对应 `*_test.go` 新用例。
-- **Proof:** 先加失败用例(v2 manifest、cookie 选择、缺 astryx.html 回退、头部一致)→ 实现 → `make test` 绿。
-- **PM:** `make build` 后 curl 带/不带 cookie -> 同 URL 返回不同文档;无 cookie 时与现状完全一致。
+- [x] **Done**
+- **Scope:** `internal/webui/page_routes.json`(`version:2`;真实 manifest 暂不标 `"astryx"` 旗标——选路机制在 flag 落上前对生产惰性)、`page_routes.go`(`pageRouteManifestVersion=2`、`pageRoute.Astryx`)、`shared/routing/page-routes.ts`(`version!==2`、`routeFields`+`astryx` boolean 校验、`PageRouteEntry.astryx`)、`server.go`(`astryxIndex` 缺失即 nil、`frontendPreference` 读 `gpt-load.frontend`、`indexFor`/`indexForNotFound`、`serveIndexWithStatus` 收 document 参数)、`http_routes.go`(按页绑定 `s.servePage(page)`)、新增 4 个 Go 用例。
+- **Proof(RED→GREEN):** 先加用例后失败(version gate 拒绝 v2、cookie+flag 不选 astryx、404 fallback 不选 astryx)→ 实现 → `go test ./internal/webui -run 'TestParsePageRoute|TestEmbeddedPageRoute|TestServer'` 16/16 PASS;`go vet`/`go build ./internal/webui` 净;web `type-check`/`lint`/e2e 63/63 全绿(v2 manifest 在 classic 运行时 strict parse 生效)。
+- **环境基线(先于本改动,非本次引入):** `internal/webui` 的 docker/workflow/semver 合同测试在本机全红(无 docker、fork 缺 `.github/actions/web-ci`、release 工作流形状不同——HEAD 验证同败);`go build ./internal/...` 在 Windows 失败(`platform/securefile` 仅 unix 文件);gofmt/prettier 报红为 CRLF 检出基线。
+- **PM:** 同 URL 双文档 curl 验证需 `make build` 完整二进制,Windows 无法编译 securefile——随 CI/Linux 环境执行;无 cookie 路径已被 `TestServer*` 断言与现状一致。
 
 ### Task B5: dev selector 插件 + Playwright 三项目矩阵
 - [ ] **Done**
