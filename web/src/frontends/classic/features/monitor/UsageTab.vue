@@ -5,7 +5,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { useCollectionLoading } from '@/app/loading-state'
 import { listAccessKeyOptions } from '@/app/resources/access-keys'
 import { groupOptionsQueryOptions } from '@/app/resources/groups'

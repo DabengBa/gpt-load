@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import type { AccessKeyDto, AccessKeyRotateResultDto } from '@/api/control/types'
 import { RequestCancelledError } from '@shared/http/errors'
 import { classifyMutationOutcome } from '@/app/mutation-outcome'

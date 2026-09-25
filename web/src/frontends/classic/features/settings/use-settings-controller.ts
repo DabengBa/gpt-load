@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } fro
 import { useI18n } from 'vue-i18n'
 
 import { RequestCancelledError } from '@shared/http/errors'
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { controlQueryKeys } from '@/app/query-keys'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
 import {

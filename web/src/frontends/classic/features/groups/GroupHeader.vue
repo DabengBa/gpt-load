@@ -5,7 +5,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { GroupSummaryDto } from '@/app/resources/groups'
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { channelsQueryOptions } from '@/app/resources/channels'
 import { groupsLocation } from '@/app/route-locations'
 import ChannelIcon from '@/components/brand/ChannelIcon.vue'

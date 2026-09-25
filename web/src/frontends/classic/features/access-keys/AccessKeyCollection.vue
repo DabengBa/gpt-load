@@ -3,7 +3,7 @@ import { ArrowRight, RotateCcw, Trash2 } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import type { AccessKeyCollectionItemDto, GroupOptionDto } from '@/api/control/types'
 import { revealAccessKey } from '@/app/resources/access-keys'
 import { useAbortControllerPool } from '@/app/use-abort-controller-pool'

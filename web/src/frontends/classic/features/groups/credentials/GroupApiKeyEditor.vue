@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { CredentialItemDto } from '@/api/control/types'
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import {
   cacheCredentialItem,
   revealCredential,

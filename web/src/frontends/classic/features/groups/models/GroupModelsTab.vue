@@ -6,7 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 
 import { ApiError, RequestCancelledError } from '@shared/http/errors'
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { useStableLoading } from '@/app/loading-state'
 import { channelsQueryOptions } from '@/app/resources/channels'
 import {

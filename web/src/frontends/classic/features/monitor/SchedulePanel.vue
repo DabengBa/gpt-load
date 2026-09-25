@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import { logsLocation } from '@/app/route-locations'
 import {

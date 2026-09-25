@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { AccessKeyCostLimitRuleDto, AccessKeyDto } from '@/api/control/types'
 import { RequestCancelledError } from '@shared/http/errors'
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { resetAccessKeyCostLimits } from '@/app/resources/access-keys'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'

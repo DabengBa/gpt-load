@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import type { HomeBaseDto } from '@/app/resources/home'
 import { accessKeysLocation } from '@/app/route-locations'
 import { revealAccessKey } from '@/app/resources/access-keys'

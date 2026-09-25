@@ -3,7 +3,7 @@ import { Trash2 } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { deleteAccessKey } from '@/app/resources/access-keys'
 import type { AccessKeyDto } from '@/api/control/types'
 import { RequestCancelledError } from '@shared/http/errors'

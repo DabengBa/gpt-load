@@ -4,7 +4,7 @@ import type { Router } from 'vue-router'
 
 import App from './App.vue'
 import { createApiClient } from '@shared/http/client'
-import { apiClientKey } from '@shared/http/client-context'
+import { apiClientKey } from '@/app/api-client-context'
 import type { AuthSessionPayload } from '@shared/http/types'
 import { createAppQueryClient } from './app/query'
 import { createAppRouter } from './app/router'

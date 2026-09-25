@@ -1,6 +1,6 @@
 import { inject, type InjectionKey } from 'vue'
 
-import type { ApiClient } from './client'
+import type { ApiClient } from '@shared/http/client'
 
 export const apiClientKey: InjectionKey<ApiClient> = Symbol('api-client')
 

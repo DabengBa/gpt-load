@@ -12,7 +12,7 @@ import type {
 } from '@/api/control/types'
 
 import { RequestCancelledError } from '@shared/http/errors'
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { useStableLoading } from '@/app/loading-state'
 import { proxyDraftState, proxyOverrideToggleMode } from '@/app/resources/proxy'
 import {

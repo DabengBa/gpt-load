@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/vue-query'
 import { onBeforeUnmount, ref } from 'vue'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { RequestCancelledError } from '@shared/http/errors'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
 import { syncModelPrices } from '@/app/resources/providers'

@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { useStableLoading } from '@/app/loading-state'
 import { healthQueryOptions } from '@/app/resources/health'
 import { homeBaseQueryOptions, homeSubscriptionAccountsQueryOptions } from '@/app/resources/home'

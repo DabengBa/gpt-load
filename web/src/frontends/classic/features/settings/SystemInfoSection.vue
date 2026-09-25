@@ -5,7 +5,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { RequestCancelledError } from '@shared/http/errors'
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { useStableLoading } from '@/app/loading-state'
 import { controlQueryKeys } from '@/app/query-keys'
 import {

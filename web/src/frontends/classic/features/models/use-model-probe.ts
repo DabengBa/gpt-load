@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import {
   runModelProbe,
   type ModelProbeResultDto,

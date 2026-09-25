@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { computed, ref, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { useStableLoading } from '@/app/loading-state'
 import { getUpstreamModelDetail, type UpstreamModelDetailDto } from '@/app/resources/models'
 import { controlQueryKeys } from '@/app/query-keys'

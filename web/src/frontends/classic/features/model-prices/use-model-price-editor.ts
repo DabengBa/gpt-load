@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { useApiClient } from '@shared/http/client-context'
+import { useApiClient } from '@/app/api-client-context'
 import { RequestCancelledError } from '@shared/http/errors'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
 import {
