@@ -1,5 +1,5 @@
-// Structural equivalents of vue-router's LocationQuery/LocationQueryRaw so the
-// rules stay framework-free; both routers' query shapes assign to them.
+// Structural equivalents of a framework router's LocationQuery/LocationQueryRaw
+// so the rules stay framework-free; both routers' query shapes assign to them.
 export type SharedRouteQueryValue = string | null | undefined
 export type SharedRouteQuery = Record<string, SharedRouteQueryValue | readonly SharedRouteQueryValue[]>
 export type SharedRouteQueryRaw = Record<

@@ -58,7 +58,6 @@ const baseSchedule = {
           alias: 'reasoning-model',
           weight: 100,
           priority: 1,
-          fallback: false,
           enabled: true,
           circuit_breaker: {
             configured: { blacklist_threshold: null, cooldown_seconds: null },
