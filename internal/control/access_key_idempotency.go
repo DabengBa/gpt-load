@@ -38,46 +38,21 @@ func (s *Service) CreateAccessKeyIdempotent(
 	idempotencyKey string,
 	request AccessKeyCreateRequest,
 ) (AccessKeyCreateResult, error) {
-	name, err := normalizeAccessKeyName(request.Name)
-	if err != nil {
-		return AccessKeyCreateResult{}, err
-	}
-	filters, err := normalizeAccessKeyFilters(request.Filters)
-	if err != nil {
-		return AccessKeyCreateResult{}, err
-	}
-	rpmLimit, err := normalizeRPMLimit(request.RPMLimit, 0)
-	if err != nil {
-		return AccessKeyCreateResult{}, err
-	}
-	costLimitRules, err := normalizeAccessKeyCostLimitRules(request.CostLimitRules, false)
-	if err != nil {
-		return AccessKeyCreateResult{}, err
-	}
-	status := state.AccessKeyStatusActive
-	if request.Status != nil {
-		status = *request.Status
-	}
-	if status != state.AccessKeyStatusActive && status != state.AccessKeyStatusDisabled {
-		return AccessKeyCreateResult{}, app_errors.ErrValidation
-	}
-	if err := validateOptionalExpiresAtMS(request.ExpiresAtMS); err != nil {
-		return AccessKeyCreateResult{}, err
-	}
-	priceMultiplier, err := normalizePriceMultiplier(request.PriceMultiplier)
+	normalized, err := normalizeAccessKeyCreateRequest(request)
 	if err != nil {
 		return AccessKeyCreateResult{}, err
 	}
 	var digestStatus *state.AccessKeyStatus
-	if status != state.AccessKeyStatusActive {
-		digestStatus = &status
+	if normalized.status != state.AccessKeyStatusActive {
+		digestStatus = &normalized.status
 	}
-	digestFilters := canonicalAccessKeyFilterSet(filters)
 	canonicalBody, err := canonicalIdempotencyBody(accessKeyCreateDigestBody{
-		PriceMultiplier: priceMultiplierDigest(priceMultiplier),
-		Name:            name, Status: digestStatus, Filters: digestFilters, RPMLimit: rpmLimit,
-		CostLimitRules: costLimitRuleRequestsForDigest(costLimitRules),
-		ExpiresAtMS:    request.ExpiresAtMS,
+		PriceMultiplier: priceMultiplierDigest(normalized.priceMultiplier),
+		Name:            normalized.name, Status: digestStatus,
+		Filters:        canonicalAccessKeyFilterSet(normalized.filters),
+		RPMLimit:       normalized.rpmLimit,
+		CostLimitRules: costLimitRuleRequestsForDigest(normalized.costLimitRules),
+		ExpiresAtMS:    normalized.expiresAtMS,
 	})
 	if err != nil {
 		return AccessKeyCreateResult{}, app_errors.ErrInternalServer
@@ -105,37 +80,10 @@ func (s *Service) CreateAccessKeyIdempotent(
 			operationStartedAt = s.now()
 		},
 		Mutate: func(tx *gorm.DB) (idempotentMutationResult, error) {
-			if err := validateFutureExpiresAtMS(request.ExpiresAtMS, operationStartedAt); err != nil {
-				return idempotentMutationResult{}, err
-			}
-			if err := validateFilterGroupReferences(tx, filters.Groups); err != nil {
-				return idempotentMutationResult{}, err
-			}
-			row, plaintext, err := s.newAccessKeyRow(name, filters, rpmLimit)
+			mutation, err := s.mutateCreateAccessKey(tx, normalized, operationStartedAt)
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
-			row.PriceMultiplierMicros = priceMultiplierStorage(priceMultiplier)
-			row.Status = string(status)
-			row.ExpiresAtMS = cloneOptionalInt64(request.ExpiresAtMS)
-			if err := tx.Create(&row).Error; err != nil {
-				return idempotentMutationResult{}, app_errors.ParseDBError(err)
-			}
-			persistedCostLimitRules, err := createAccessKeyCostLimitRules(tx, row.ID, costLimitRules)
-			if err != nil {
-				return idempotentMutationResult{}, err
-			}
-			metadata, err := mapAccessKeyMetadataRow(accessKeyMetadataRow{
-				ID: row.ID, Name: row.Name, KeySuffix: row.KeySuffix,
-				PriceMultiplierMicros: row.PriceMultiplierMicros,
-				Status:                row.Status, Filters: row.Filters, RPMLimit: row.RPMLimit,
-				ExpiresAtMS: row.ExpiresAtMS,
-				CreatedAtMS: row.CreatedAtMS, UpdatedAtMS: row.UpdatedAtMS,
-			})
-			if err != nil {
-				return idempotentMutationResult{}, err
-			}
-			metadata.CostLimitRules = mapAccessKeyCostLimitRules(persistedCostLimitRules)
 			input, err := stateloader.BuildCompileInputWithProxy(
 				ctx, tx, s.encryption, s.environmentProxy, s.channelRegistry,
 			)
@@ -145,7 +93,7 @@ func (s *Service) CreateAccessKeyIdempotent(
 			if _, err := state.Compile(input); err != nil {
 				return idempotentMutationResult{}, err
 			}
-			canonicalResult, err := canonicaljson.Marshal(metadata)
+			canonicalResult, err := canonicaljson.Marshal(mutation.metadata)
 			if err != nil {
 				return idempotentMutationResult{}, fmt.Errorf(
 					"encode AccessKey operation result: %w",
@@ -153,9 +101,9 @@ func (s *Service) CreateAccessKeyIdempotent(
 				)
 			}
 			return idempotentMutationResult{
-				ResourceIdentity: fmt.Sprintf("access-key:%d", row.ID),
+				ResourceIdentity: fmt.Sprintf("access-key:%d", mutation.metadata.ID),
 				CanonicalResult:  canonicalResult,
-				Ephemeral:        plaintext,
+				Ephemeral:        mutation.plaintext,
 			}, nil
 		},
 	})

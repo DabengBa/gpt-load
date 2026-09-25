@@ -77,9 +77,6 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 	if err != nil {
 		return GroupCreateResult{}, err
 	}
-	if err := ensureGroupModelEntryIDs(normalized.models); err != nil {
-		return GroupCreateResult{}, err
-	}
 	if isLiteralPrivateHost(normalized.hostname) {
 		utils.LogPlaneBestEffort(
 			logrus.StandardLogger(),
@@ -93,47 +90,13 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 	result := GroupCreateResult{}
 	requestedEntries := make([]state.CredentialEntry, 0, len(normalized.credentials.candidates)+len(normalized.stagedCredentialIDs))
 	_, err = s.writeGroupConfig(ctx, func(tx *gorm.DB) error {
-		if err := s.validateGroupCreateTarget(tx, normalized); err != nil {
-			return err
-		}
-
-		name, err := resolveGroupCreateName(tx, normalized.explicitName, normalized.defaultName)
+		mutation, err := s.mutateCreateGroup(ctx, tx, normalized)
 		if err != nil {
 			return err
 		}
-		if err := assignMissingTestAliases(tx, normalized.models); err != nil {
-			return fmt.Errorf("assign new group test aliases: %w", app_errors.ErrInternalServer)
-		}
-		encodedModels, err := json.Marshal(normalized.models)
-		if err != nil {
-			return fmt.Errorf("encode group models: %w", err)
-		}
-		group := buildCreatedGroup(normalized, name, encodedModels)
-		if err := tx.Create(&group).Error; err != nil {
-			return app_errors.ParseDBError(err)
-		}
-
-		result.GroupID = group.ID
-		result.GroupName = group.Name
-		if normalized.connectionType == models.ConnectionTypeSubscription {
-			var duplicatedStageIDs []string
-			result.CredentialsAdded, duplicatedStageIDs, err = s.consumeCredentialStages(
-				tx,
-				group.ID,
-				normalized.channelID,
-				normalized.connectionType,
-				normalized.stagedCredentialIDs,
-			)
-			result.CredentialsDuplicated = len(duplicatedStageIDs)
-		} else {
-			result.CredentialsAdded, result.CredentialsDuplicated, err =
-				s.persistCredentials(tx, group.ID, normalized.credentials)
-		}
-		if err != nil {
-			return err
-		}
-		requestedEntries, err = stateloader.BuildGroupCredentialEntries(ctx, tx, group.ID)
-		return err
+		result = mutation.result
+		requestedEntries = mutation.entries
+		return nil
 	}, func() error {
 		_, reconcileErr := s.reconcileRegistryGroup(result.GroupID, requestedEntries)
 		return reconcileErr
@@ -145,6 +108,72 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 		s.catalogSync.RequestGroupSync()
 	}
 	return result, nil
+}
+
+type groupCreateMutation struct {
+	result  GroupCreateResult
+	entries []state.CredentialEntry
+}
+
+// mutateCreateGroup is the single mutation core shared by the plain
+// writeGroupConfig entry and the idempotent Mutate seam. Entry IDs and test
+// aliases are generated inside the transaction so the idempotent digest stays
+// free of server-generated values.
+func (s *Service) mutateCreateGroup(
+	ctx context.Context,
+	tx *gorm.DB,
+	normalized normalizedGroupCreate,
+) (groupCreateMutation, error) {
+	if err := ensureGroupModelEntryIDs(normalized.models); err != nil {
+		return groupCreateMutation{}, err
+	}
+	if err := s.validateGroupCreateTarget(tx, normalized); err != nil {
+		return groupCreateMutation{}, err
+	}
+	name, err := resolveGroupCreateName(tx, normalized.explicitName, normalized.defaultName)
+	if err != nil {
+		return groupCreateMutation{}, err
+	}
+	if err := assignMissingTestAliases(tx, normalized.models); err != nil {
+		return groupCreateMutation{}, fmt.Errorf("assign new group test aliases: %w", app_errors.ErrInternalServer)
+	}
+	encodedModels, err := json.Marshal(normalized.models)
+	if err != nil {
+		return groupCreateMutation{}, fmt.Errorf("encode group models: %w", err)
+	}
+	group := buildCreatedGroup(normalized, name, encodedModels)
+	if err := tx.Create(&group).Error; err != nil {
+		return groupCreateMutation{}, app_errors.ParseDBError(err)
+	}
+
+	mutation := groupCreateMutation{}
+	mutation.result.GroupID = group.ID
+	mutation.result.GroupName = group.Name
+	if normalized.connectionType == models.ConnectionTypeSubscription {
+		var duplicatedStageIDs []string
+		mutation.result.CredentialsAdded, duplicatedStageIDs, err = s.consumeCredentialStages(
+			tx,
+			group.ID,
+			normalized.channelID,
+			normalized.connectionType,
+			normalized.stagedCredentialIDs,
+		)
+		mutation.result.CredentialsDuplicated = len(duplicatedStageIDs)
+	} else {
+		mutation.result.CredentialsAdded, mutation.result.CredentialsDuplicated, err =
+			s.persistCredentials(tx, group.ID, normalized.credentials)
+	}
+	if err != nil {
+		return groupCreateMutation{}, err
+	}
+	mutation.entries, err = stateloader.BuildGroupCredentialEntries(ctx, tx, group.ID)
+	if err != nil {
+		return groupCreateMutation{}, err
+	}
+	if err := state.ValidateCredentialEntries(mutation.entries); err != nil {
+		return groupCreateMutation{}, err
+	}
+	return mutation, nil
 }
 
 func (s *Service) validateGroupCreateTarget(tx *gorm.DB, normalized normalizedGroupCreate) error {

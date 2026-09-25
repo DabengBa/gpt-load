@@ -16,6 +16,7 @@ import (
 	"gpt-load/internal/accessquota"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/utils"
+	"gpt-load/internal/pricing"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
@@ -257,77 +258,124 @@ func (s *Service) generateAccessKeyCredential() (generatedAccessKeyCredential, e
 	}, nil
 }
 
-func (s *Service) CreateAccessKey(
-	ctx context.Context,
+type normalizedAccessKeyCreate struct {
+	name            string
+	filters         AccessKeyFilters
+	rpmLimit        int64
+	costLimitRules  []normalizedAccessKeyCostLimitRule
+	status          state.AccessKeyStatus
+	expiresAtMS     *int64
+	priceMultiplier pricing.PriceMultiplier
+}
+
+func normalizeAccessKeyCreateRequest(
 	request AccessKeyCreateRequest,
-) (AccessKeyCreateResult, error) {
+) (normalizedAccessKeyCreate, error) {
 	name, err := normalizeAccessKeyName(request.Name)
 	if err != nil {
-		return AccessKeyCreateResult{}, err
+		return normalizedAccessKeyCreate{}, err
 	}
 	filters, err := normalizeAccessKeyFilters(request.Filters)
 	if err != nil {
-		return AccessKeyCreateResult{}, err
+		return normalizedAccessKeyCreate{}, err
 	}
 	rpmLimit, err := normalizeRPMLimit(request.RPMLimit, 0)
 	if err != nil {
-		return AccessKeyCreateResult{}, err
+		return normalizedAccessKeyCreate{}, err
 	}
 	costLimitRules, err := normalizeAccessKeyCostLimitRules(request.CostLimitRules, false)
 	if err != nil {
-		return AccessKeyCreateResult{}, err
+		return normalizedAccessKeyCreate{}, err
 	}
 	status := state.AccessKeyStatusActive
 	if request.Status != nil {
 		status = *request.Status
 	}
 	if status != state.AccessKeyStatusActive && status != state.AccessKeyStatusDisabled {
-		return AccessKeyCreateResult{}, app_errors.ErrValidation
+		return normalizedAccessKeyCreate{}, app_errors.ErrValidation
 	}
 	if err := validateOptionalExpiresAtMS(request.ExpiresAtMS); err != nil {
-		return AccessKeyCreateResult{}, err
+		return normalizedAccessKeyCreate{}, err
 	}
-
 	priceMultiplier, err := normalizePriceMultiplier(request.PriceMultiplier)
+	if err != nil {
+		return normalizedAccessKeyCreate{}, err
+	}
+	return normalizedAccessKeyCreate{
+		name: name, filters: filters, rpmLimit: rpmLimit,
+		costLimitRules: costLimitRules, status: status,
+		expiresAtMS: request.ExpiresAtMS, priceMultiplier: priceMultiplier,
+	}, nil
+}
+
+type accessKeyCreateMutation struct {
+	metadata  AccessKeyMetadata
+	plaintext string
+}
+
+// mutateCreateAccessKey is the single mutation core shared by the plain
+// writeConfig entry and the idempotent Mutate seam. `now` is supplied by the
+// caller so the idempotent path can pin validation to the operation start.
+func (s *Service) mutateCreateAccessKey(
+	tx *gorm.DB,
+	normalized normalizedAccessKeyCreate,
+	now time.Time,
+) (accessKeyCreateMutation, error) {
+	if err := validateFutureExpiresAtMS(normalized.expiresAtMS, now); err != nil {
+		return accessKeyCreateMutation{}, err
+	}
+	if err := validateFilterGroupReferences(tx, normalized.filters.Groups); err != nil {
+		return accessKeyCreateMutation{}, err
+	}
+	row, plaintext, err := s.newAccessKeyRow(
+		normalized.name, normalized.filters, normalized.rpmLimit,
+	)
+	if err != nil {
+		return accessKeyCreateMutation{}, err
+	}
+	row.PriceMultiplierMicros = priceMultiplierStorage(normalized.priceMultiplier)
+	row.Status = string(normalized.status)
+	row.ExpiresAtMS = cloneOptionalInt64(normalized.expiresAtMS)
+	if err := tx.Create(&row).Error; err != nil {
+		return accessKeyCreateMutation{}, app_errors.ParseDBError(err)
+	}
+	persistedCostLimitRules, err := createAccessKeyCostLimitRules(
+		tx, row.ID, normalized.costLimitRules,
+	)
+	if err != nil {
+		return accessKeyCreateMutation{}, err
+	}
+	metadata, err := mapAccessKeyMetadataRow(accessKeyMetadataRow{
+		ID: row.ID, Name: row.Name, KeySuffix: row.KeySuffix,
+		PriceMultiplierMicros: row.PriceMultiplierMicros,
+		Status:                row.Status, Filters: row.Filters, RPMLimit: row.RPMLimit,
+		ExpiresAtMS: row.ExpiresAtMS,
+		CreatedAtMS: row.CreatedAtMS, UpdatedAtMS: row.UpdatedAtMS,
+	})
+	if err != nil {
+		return accessKeyCreateMutation{}, err
+	}
+	metadata.CostLimitRules = mapAccessKeyCostLimitRules(persistedCostLimitRules)
+	return accessKeyCreateMutation{metadata: metadata, plaintext: plaintext}, nil
+}
+
+func (s *Service) CreateAccessKey(
+	ctx context.Context,
+	request AccessKeyCreateRequest,
+) (AccessKeyCreateResult, error) {
+	normalized, err := normalizeAccessKeyCreateRequest(request)
 	if err != nil {
 		return AccessKeyCreateResult{}, err
 	}
 	var result AccessKeyCreateResult
 	_, err = s.writeConfig(ctx, func(tx *gorm.DB) error {
-		if err := validateFutureExpiresAtMS(request.ExpiresAtMS, s.now()); err != nil {
-			return err
-		}
-		if err := validateFilterGroupReferences(tx, filters.Groups); err != nil {
-			return err
-		}
-		row, plaintext, err := s.newAccessKeyRow(name, filters, rpmLimit)
+		mutation, err := s.mutateCreateAccessKey(tx, normalized, s.now())
 		if err != nil {
 			return err
 		}
-		row.PriceMultiplierMicros = priceMultiplierStorage(priceMultiplier)
-		row.Status = string(status)
-		row.ExpiresAtMS = cloneOptionalInt64(request.ExpiresAtMS)
-		if err := tx.Create(&row).Error; err != nil {
-			return app_errors.ParseDBError(err)
-		}
-		persistedCostLimitRules, err := createAccessKeyCostLimitRules(tx, row.ID, costLimitRules)
-		if err != nil {
-			return err
-		}
-		metadata, err := mapAccessKeyMetadataRow(accessKeyMetadataRow{
-			ID: row.ID, Name: row.Name, KeySuffix: row.KeySuffix,
-			PriceMultiplierMicros: row.PriceMultiplierMicros,
-			Status:                row.Status, Filters: row.Filters, RPMLimit: row.RPMLimit,
-			ExpiresAtMS: row.ExpiresAtMS,
-			CreatedAtMS: row.CreatedAtMS, UpdatedAtMS: row.UpdatedAtMS,
-		})
-		if err != nil {
-			return err
-		}
-		metadata.CostLimitRules = mapAccessKeyCostLimitRules(persistedCostLimitRules)
 		result = AccessKeyCreateResult{
-			AccessKeyMetadata: metadata,
-			Key:               plaintext,
+			AccessKeyMetadata: mutation.metadata,
+			Key:               mutation.plaintext,
 		}
 		return nil
 	}, nil)

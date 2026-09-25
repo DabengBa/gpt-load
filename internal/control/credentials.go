@@ -194,30 +194,15 @@ func (s *Service) ImportGroupCredentials(
 	result := CredentialImportResult{GroupID: groupID}
 	var entries []state.CredentialEntry
 	err := s.writeCredentialConfig(ctx, groupID, 0, func(tx *gorm.DB) error {
-		group, err := loadGroupRow(tx, groupID)
+		mutation, mutationEntries, err := s.importGroupCredentialsMutation(
+			ctx, tx, groupID, request.Credentials,
+		)
 		if err != nil {
 			return err
 		}
-		if group.ChannelID == "" {
-			return app_errors.ErrValidation
-		}
-		if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeAPIKey {
-			return app_errors.ErrValidation
-		}
-		normalized, err := s.normalizeCredentials(channel.ID(group.ChannelID), request.Credentials)
-		if err != nil {
-			return err
-		}
-		result.CredentialsAdded, result.CredentialsDuplicated, err =
-			s.persistCredentials(tx, groupID, normalized)
-		if err != nil {
-			return err
-		}
-		entries, err = stateloader.BuildGroupCredentialEntries(ctx, tx, groupID)
-		if err != nil {
-			return err
-		}
-		return state.ValidateCredentialEntries(entries)
+		result = mutation
+		entries = mutationEntries
+		return nil
 	}, func() error {
 		_, err := s.reconcileRegistryGroup(groupID, entries)
 		return err
@@ -226,6 +211,44 @@ func (s *Service) ImportGroupCredentials(
 		return CredentialImportResult{}, err
 	}
 	return result, nil
+}
+
+// importGroupCredentialsMutation is the single mutation core shared by the
+// plain writeCredentialConfig entry and the idempotent Mutate seam.
+func (s *Service) importGroupCredentialsMutation(
+	ctx context.Context,
+	tx *gorm.DB,
+	groupID uint,
+	rawCredentials string,
+) (CredentialImportResult, []state.CredentialEntry, error) {
+	group, err := loadGroupRow(tx, groupID)
+	if err != nil {
+		return CredentialImportResult{}, nil, err
+	}
+	if group.ChannelID == "" {
+		return CredentialImportResult{}, nil, app_errors.ErrValidation
+	}
+	if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeAPIKey {
+		return CredentialImportResult{}, nil, app_errors.ErrValidation
+	}
+	normalized, err := s.normalizeCredentials(channel.ID(group.ChannelID), rawCredentials)
+	if err != nil {
+		return CredentialImportResult{}, nil, err
+	}
+	added, duplicated, err := s.persistCredentials(tx, groupID, normalized)
+	if err != nil {
+		return CredentialImportResult{}, nil, err
+	}
+	entries, err := stateloader.BuildGroupCredentialEntries(ctx, tx, groupID)
+	if err != nil {
+		return CredentialImportResult{}, nil, err
+	}
+	if err := state.ValidateCredentialEntries(entries); err != nil {
+		return CredentialImportResult{}, nil, err
+	}
+	return CredentialImportResult{
+		GroupID: groupID, CredentialsAdded: added, CredentialsDuplicated: duplicated,
+	}, entries, nil
 }
 
 func (s *Service) ListGroupCredentials(

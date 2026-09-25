@@ -1,11 +1,6 @@
 package control
 
 import (
-	"net/url"
-	"strconv"
-	"strings"
-	"unicode/utf8"
-
 	"github.com/gin-gonic/gin"
 
 	app_errors "gpt-load/internal/platform/errors"
@@ -43,30 +38,18 @@ func parseAccessKeyCollectionQuery(
 		Page:     defaultAccessKeyCollectionPage,
 		PageSize: defaultAccessKeyCollectionPageSize,
 	}
-	if forceQuery && rawQuery == "" {
-		return AccessKeyCollectionQuery{}, app_errors.ErrBadRequest
-	}
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return AccessKeyCollectionQuery{}, app_errors.ErrBadRequest
-	}
-	for key, entries := range values {
-		switch key {
-		case "q", "status", "page", "page_size":
-		default:
-			return AccessKeyCollectionQuery{}, app_errors.ErrBadRequest
-		}
-		if len(entries) != 1 {
-			return AccessKeyCollectionQuery{}, app_errors.ErrBadRequest
-		}
+	values, apiErr := parseCollectionQueryValues(
+		rawQuery, forceQuery, "q", "status", "page", "page_size",
+	)
+	if apiErr != nil {
+		return AccessKeyCollectionQuery{}, apiErr
 	}
 
-	if entries, exists := values["q"]; exists {
-		query.Query = strings.TrimSpace(entries[0])
-		if utf8.RuneCountInString(query.Query) > accessKeyCollectionMaxQueryRunes {
-			return AccessKeyCollectionQuery{}, app_errors.ErrBadRequest
-		}
+	text, ok := collectionQueryText(values, "q", accessKeyCollectionMaxQueryRunes)
+	if !ok {
+		return AccessKeyCollectionQuery{}, app_errors.ErrBadRequest
 	}
+	query.Query = text
 	if entries, exists := values["status"]; exists {
 		status, ok := parseAccessKeyCollectionStatus(entries[0])
 		if !ok {
@@ -75,14 +58,14 @@ func parseAccessKeyCollectionQuery(
 		query.Status = &status
 	}
 	if entries, exists := values["page"]; exists {
-		page, ok := parseAccessKeyCollectionPositiveInt(entries[0])
+		page, ok := parseCollectionPositiveInt64(entries[0])
 		if !ok {
 			return AccessKeyCollectionQuery{}, app_errors.ErrBadRequest
 		}
 		query.Page = page
 	}
 	if entries, exists := values["page_size"]; exists {
-		pageSize, ok := parseAccessKeyCollectionPositiveInt(entries[0])
+		pageSize, ok := parseCollectionPositiveInt64(entries[0])
 		if !ok || pageSize > accessKeyCollectionMaxPageSize {
 			return AccessKeyCollectionQuery{}, app_errors.ErrBadRequest
 		}
@@ -99,20 +82,4 @@ func parseAccessKeyCollectionStatus(value string) (state.AccessKeyStatus, bool) 
 	default:
 		return "", false
 	}
-}
-
-func parseAccessKeyCollectionPositiveInt(value string) (int64, bool) {
-	if value == "" || value[0] == '0' {
-		return 0, false
-	}
-	for index := range len(value) {
-		if value[index] < '0' || value[index] > '9' {
-			return 0, false
-		}
-	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || parsed <= 0 {
-		return 0, false
-	}
-	return parsed, true
 }

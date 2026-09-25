@@ -695,8 +695,8 @@ func modelPriceRecordMatches(record modelPriceListRecord, query ModelPriceListQu
 		return false
 	}
 	return query.Search == "" ||
-		accessKeyCollectionContainsFold(record.dto.ModelID, query.Search) ||
-		accessKeyCollectionContainsFold(record.dto.ChannelID, query.Search)
+		collectionContainsFold(record.dto.ModelID, query.Search) ||
+		collectionContainsFold(record.dto.ChannelID, query.Search)
 }
 
 func sortModelPriceRecords(records []modelPriceListRecord) {

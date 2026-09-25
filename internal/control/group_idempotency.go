@@ -3,8 +3,6 @@ package control
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"strconv"
 
 	"github.com/sirupsen/logrus"
@@ -114,74 +112,8 @@ func (s *Service) CreateGroupIdempotent(
 			}
 		},
 		Mutate: func(tx *gorm.DB) (idempotentMutationResult, error) {
-			if err := assignMissingTestAliases(tx, normalized.models); err != nil {
-				return idempotentMutationResult{}, fmt.Errorf("assign new group test aliases: %w", app_errors.ErrInternalServer)
-			}
-			if normalized.connectionType == models.ConnectionTypeSubscription {
-				if err := s.validateCredentialStageCreateBatch(
-					tx, normalized.channelID, normalized.connectionType, normalized.stagedCredentialIDs,
-				); err != nil {
-					return idempotentMutationResult{}, err
-				}
-			}
-			if !normalized.confirmSameTarget {
-				conflicts, err := findGroupsByTarget(tx, normalized.channelID, normalized.connectionType, normalized.params)
-				if err != nil {
-					return idempotentMutationResult{}, err
-				}
-				if len(conflicts) > 0 {
-					return idempotentMutationResult{}, app_errors.NewAPIErrorWithData(
-						app_errors.ErrChannelTargetConflict,
-						SameTargetConflictData{Groups: conflicts},
-					)
-				}
-			}
-			name, err := resolveGroupCreateName(tx, normalized.explicitName, normalized.defaultName)
+			mutation, err := s.mutateCreateGroup(ctx, tx, normalized)
 			if err != nil {
-				return idempotentMutationResult{}, err
-			}
-			encodedModels, err := json.Marshal(normalized.models)
-			if err != nil {
-				return idempotentMutationResult{}, app_errors.ErrInternalServer
-			}
-			group := models.Group{
-				PriceMultiplierMicros: priceMultiplierStorage(normalized.priceMultiplier),
-				Name:                  name,
-				ChannelID:             string(normalized.channelID),
-				ConnectionType:        normalized.connectionType,
-				Params:                append(models.JSON(nil), normalized.params...),
-				ProviderURL:           normalized.providerURL,
-				Models:                models.JSON(encodedModels),
-				Overrides:             normalized.encodedOverrides,
-				ProxyConfig:           normalized.proxyConfig,
-				Enabled:               true,
-			}
-			if err := tx.Create(&group).Error; err != nil {
-				return idempotentMutationResult{}, app_errors.ParseDBError(err)
-			}
-			added := 0
-			duplicated := 0
-			if normalized.connectionType == models.ConnectionTypeSubscription {
-				var duplicatedStageIDs []string
-				added, duplicatedStageIDs, err = s.consumeCredentialStages(
-					tx,
-					group.ID,
-					normalized.channelID,
-					normalized.connectionType,
-					normalized.stagedCredentialIDs,
-				)
-				duplicated = len(duplicatedStageIDs)
-			} else {
-				added, duplicated, err = s.persistCredentials(tx, group.ID, normalized.credentials)
-			}
-			if err != nil {
-				return idempotentMutationResult{}, err
-			}
-			entries, err := stateloader.BuildGroupCredentialEntries(ctx, tx, group.ID)
-			if err != nil {
-				return idempotentMutationResult{}, err
-			}
-			if err := state.ValidateCredentialEntries(entries); err != nil {
 				return idempotentMutationResult{}, err
 			}
 			if err := reconcileReferencedPrices(tx, catalogSnapshot); err != nil {
@@ -197,18 +129,12 @@ func (s *Service) CreateGroupIdempotent(
 			if _, err := loadPriceTable(ctx, tx); err != nil {
 				return idempotentMutationResult{}, err
 			}
-			result := GroupCreateResult{
-				GroupID:               group.ID,
-				GroupName:             group.Name,
-				CredentialsAdded:      added,
-				CredentialsDuplicated: duplicated,
-			}
-			canonicalResult, err := canonicaljson.Marshal(result)
+			canonicalResult, err := canonicaljson.Marshal(mutation.result)
 			if err != nil {
 				return idempotentMutationResult{}, app_errors.ErrInternalServer
 			}
 			return idempotentMutationResult{
-				ResourceIdentity: "group:" + strconv.FormatUint(uint64(group.ID), 10),
+				ResourceIdentity: "group:" + strconv.FormatUint(uint64(mutation.result.GroupID), 10),
 				CanonicalResult:  canonicalResult,
 			}, nil
 		},
@@ -263,35 +189,11 @@ func (s *Service) ImportGroupCredentialsIdempotent(
 		RequestDigest:  digest.Digest,
 		Kind:           operationKindCredentialImport,
 		Mutate: func(tx *gorm.DB) (idempotentMutationResult, error) {
-			var group models.Group
-			if err := tx.Select("id", "channel_id", "connection_type").Where("id = ?", groupID).Take(&group).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return idempotentMutationResult{}, groupNotFoundError()
-				}
-				return idempotentMutationResult{}, app_errors.ParseDBError(err)
-			}
-			if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeAPIKey {
-				return idempotentMutationResult{}, app_errors.ErrValidation
-			}
-			normalized, err := s.normalizeCredentials(channel.ID(group.ChannelID), request.Credentials)
+			result, _, err := s.importGroupCredentialsMutation(
+				ctx, tx, groupID, request.Credentials,
+			)
 			if err != nil {
 				return idempotentMutationResult{}, err
-			}
-			added, duplicated, err := s.persistCredentials(tx, groupID, normalized)
-			if err != nil {
-				return idempotentMutationResult{}, err
-			}
-			entries, err := stateloader.BuildGroupCredentialEntries(ctx, tx, groupID)
-			if err != nil {
-				return idempotentMutationResult{}, err
-			}
-			if err := state.ValidateCredentialEntries(entries); err != nil {
-				return idempotentMutationResult{}, err
-			}
-			result := CredentialImportResult{
-				GroupID:               groupID,
-				CredentialsAdded:      added,
-				CredentialsDuplicated: duplicated,
 			}
 			canonicalResult, err := canonicaljson.Marshal(result)
 			if err != nil {

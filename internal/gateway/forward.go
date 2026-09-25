@@ -24,45 +24,70 @@ import (
 	"gpt-load/internal/usage"
 )
 
-// ForwardInput is the frozen logical-attempt input shared by the gateway
-// orchestrator and the provider-neutral execution adapter.
-type ForwardInput struct {
-	Dialect           dialect.Dialect
-	ObserveUsage      bool
+// attemptTarget holds the per-candidate selection context: the values that
+// change when the attempt loop moves to another credential or entry.
+type attemptTarget struct {
 	Group             state.GroupView
 	APIKey            string
 	CredentialSecrets []string
-	Request           *dialect.ParsedRequest
-	ExternalModel     string
+	Credential        execution.CredentialSnapshot
+	ChannelID         string
 	UpstreamModelID   string
-	OnStreamReady     func()
-	OnFirstResponse   func()
-	// OnResponse 在原生 Response 对象下发前登记归属，不承担上游执行。
-	OnResponse func([]byte) error
+	TargetConfig      json.RawMessage
+	Proxy             outboundproxy.Effective
+	ProxyFingerprint  string
+	// ForceCredentialRefresh preserves one explicit provider-auth retry as a
+	// globally counted Attempt on the same selected credential.
+	ForceCredentialRefresh bool
+}
 
-	// BufferedStream freezes the request-level delivery and replay contract.
-	BufferedStream bool
+// attemptIdentity stamps one logical attempt inside the request lifecycle.
+type attemptIdentity struct {
+	RequestID       string
+	AttemptID       string
+	AttemptSequence uint32
+}
 
-	RequestID                string
-	AttemptID                string
-	AttemptSequence          uint32
-	ClientProtocol           protocol.Protocol
+// preparedRoute is the prepared-request half of ForwardInput: values produced
+// by preparedRequestCache for one group/entry, frozen once applied.
+type preparedRoute struct {
+	Request                  *dialect.ParsedRequest
+	ExternalModel            string
 	Operation                execution.Operation
 	RouteRequirement         execution.RouteRequirement
 	ResponsesStorePreference execution.ResponsesStorePreference
 	ResponsesStoreDowngraded bool
-	ChannelID                string
 	RouteMode                execution.RouteMode
-	TargetConfig             json.RawMessage
-	Credential               execution.CredentialSnapshot
-	Proxy                    outboundproxy.Effective
-	ProxyFingerprint         string
-	// ForceCredentialRefresh preserves one explicit provider-auth retry as a
-	// globally counted Attempt on the same selected credential.
-	ForceCredentialRefresh bool
+}
+
+// attemptEffects carries the request-level policy flags and the side-effect
+// handles the execution adapter may call: observation hooks, stream delivery
+// contract, and the replay boundary key.
+type attemptEffects struct {
+	Dialect        dialect.Dialect
+	ClientProtocol protocol.Protocol
+	ObserveUsage   bool
+	// BufferedStream freezes the request-level delivery and replay contract.
+	BufferedStream bool
 	// ContinuityKey is an opaque per-tenant replay boundary for provider-private
 	// thinking and tool state. It never crosses the gateway DTO boundary.
-	ContinuityKey string
+	ContinuityKey   string
+	OnStreamReady   func()
+	OnFirstResponse func()
+	// OnResponse 在原生 Response 对象下发前登记归属，不承担上游执行。
+	OnResponse func([]byte) error
+}
+
+// ForwardInput is the frozen logical-attempt input shared by the gateway
+// orchestrator and the provider-neutral execution adapter. Fields are grouped
+// by lifetime: the per-candidate target, the attempt identity, the cached
+// prepared request, and the side-effect handles. Embedding keeps field access
+// promoted so consumers read input.X directly.
+type ForwardInput struct {
+	attemptTarget
+	attemptIdentity
+	preparedRoute
+	attemptEffects
 }
 
 // UpstreamResult is the gateway's stable view of one logical execution

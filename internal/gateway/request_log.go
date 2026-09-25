@@ -270,6 +270,23 @@ func requestOutcomeModelConsistency(
 	return outcome.upstreamReportedModel, telemetry.ModelConsistencyMatch
 }
 
+// observeDispatch fills every admission-observed recorder field in one place
+// so Handle stays free of per-field wiring.
+func (recorder *requestRecorder) observeDispatch(dispatch *requestDispatch) {
+	if recorder == nil || dispatch == nil {
+		return
+	}
+	recorder.setClientModel(dispatch.model)
+	recorder.setOperation(dispatch.metadata.Operation)
+	recorder.setStream(dispatch.metadata.Stream)
+	recorder.setReasoning(dispatch.metadata.Reasoning)
+	recorder.setUsageApplicable(dispatch.metadata.ObserveUsage)
+	recorder.setPricingMode(dispatch.metadata.PricingMode)
+	recorder.setUsageDiagnostics(dispatch.metadata.UsageDiagnostics)
+	recorder.setAffinityKey(dispatch.affinity.displayKey)
+	recorder.setAffinityObservations(dispatch.affinity.source, dispatch.affinity.state)
+}
+
 func (recorder *requestRecorder) setClientModel(model string) {
 	if recorder != nil {
 		recorder.clientModel = model
@@ -866,6 +883,8 @@ func upstreamErrorCode(result UpstreamResult, category health.FailureCategory) s
 		return "client_canceled"
 	case health.FailureCategoryAuthenticationRequired:
 		return "upstream_authentication_required"
+	case health.FailureCategoryBilling:
+		return "upstream_insufficient_balance"
 	default:
 		return "upstream_error"
 	}
@@ -884,6 +903,7 @@ var fixedErrorSummaries = map[string]string{
 	"upstream_model_unavailable":       "The requested upstream model is unavailable.",
 	"upstream_invalid_key":             "The upstream credential was rejected.",
 	"upstream_authentication_required": "The upstream credential requires authentication.",
+	"upstream_insufficient_balance":    "The upstream credential has insufficient balance.",
 	"upstream_host_error":              "The upstream service returned a server error.",
 	"upstream_client_error":            "The upstream service rejected the request.",
 	"upstream_connect_failed":          "Could not connect to an upstream service.",
