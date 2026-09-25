@@ -1,0 +1,54 @@
+---
+created: 2026-09-25
+source: 用户在迁移方案评审会话中的原始指令与逐项选型确认
+confirmed: 2026-09-25
+last_updated: 2026-09-25
+---
+# Brief: Astryx Frontend Migration
+
+## User Original Request
+
+> 阅读后，结合项目实际情况，结合网络迁移经验，更新并详细化这份迁移文档。
+
+随后：
+
+> 根据文档，继续完成开发工作。
+
+## Background & Motivation
+
+管理界面当前是 Vue 3 + Reka UI + scoped BEM CSS(约 17.6k 行手写样式)。用户要求把前端迁到 React 19 + Astryx(`@astryxdesign/core`)+ StyleX,同时保持现有行为、路由、鉴权、多语言、Go 内嵌部署与紧凑视觉密度不变。迁移必须先产出可行性证据(go/no-go gate),再决定是否继续全量迁移。
+
+用户在 2026-09-25 逐项确认了选型(均记录于 `.docs/tech/astryx-migration-plan.md` 的 Confirmed choices):
+
+- 浏览器基线:Chromium/Chrome 125+;Safari/Firefox 尽力兼容、不卡发布
+- 视觉密度:贴近 classic 现有紧凑尺寸
+- 路由:TanStack Router(code-based)
+- React Compiler:开启(稳定 Babel 集成)
+- 应用 i18n:react-intl
+- 主题基底:`neutral` 加 GPT-Load 覆盖
+
+## Intent Domains
+
+### 迁移执行
+
+- 用户期望:按 `.docs/tech/astryx-migration-plan.md` 推进开发;第一阶段交付 Phase 0(框架无关共享层抽取)与 Phase 1(React/Astryx 脚手架、同 URL 共存、shell 对等、7 项 spike、go/no-go 门槛证据),在 gate 处由用户决定是否进入 Phase 2+ 域迁移。
+- 当前状态:方案文档已完成并经用户逐项确认;本 slice 的 `spec.md` 待批准后进入 delivery-workflow。
+- 变更历史:
+  - 2026-09-25 方案文档扩写完成(149 → ~900 行),记录实测基线与全部技术选型。
+  - 2026-09-25 用户确认五项开放选型与 neutral 主题基底,文档内不再有待决项。
+  - 2026-09-25 用户指示"根据文档，继续完成开发工作",brainstorming 判定首个可交付切片为 Phase 0 + Phase 1(到 go/no-go gate 为止)。
+- 实现追溯:规格目录 `.docs/specs/260925-01-astryx-migration-foundation/`;代码与 PR 待交付阶段补记。
+
+### 约束(贯穿全部阶段)
+
+- 用户可见 URL、登录态、locale、主题、`gpt-load.import-reauth-draft` 等浏览器状态键在共存期冻结;新增 `gpt-load.frontend` cookie 仅用于选择静态文档,不得影响鉴权、API 路由或文件路径。
+- CSP 不变:`style-src-elem 'self'` 排除运行时样式注入,主题必须 `astryx theme build` 静态产出。
+- Go 内嵌部署与 CI 命令契约(`workflow_test.go` 钉住的命令集)不得破坏。
+- 依赖固定精确版本且遵守 7 天规则。
+
+## Non-Goals
+
+- 本 slice 不做 Phase 2-6(业务域迁移、默认前端切换、classic 删除);gate 通过并经 ADR 记录后再立项。
+- 不改产品行为、后端 API 契约、页面语义;`.docs/db` 语义文档继续作为验收清单。
+- 不做超出 Astryx 采用本身的视觉重设计。
+- 不写迁移 ADR(go/no-go gate 之后才有难以逆转的决定可记录)。
