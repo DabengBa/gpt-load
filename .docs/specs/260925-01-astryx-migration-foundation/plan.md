@@ -137,10 +137,10 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** 同 URL 双文档 curl 验证需 `make build` 完整二进制,Windows 无法编译 securefile——随 CI/Linux 环境执行;无 cookie 路径已被 `TestServer*` 断言与现状一致。
 
 ### Task B5: dev selector 插件 + Playwright 三项目矩阵
-- [ ] **Done**
-- **Scope:** `vite.config.ts` 的 `frontendSelectorDevPlugin`(`configureServer` 按 cookie+manifest flag 重写 HTML 导航到 `/astryx.html`,读同一 `page_routes.json`);`playwright.config.ts` 增 `classic`/`astryx` 项目(storageState 只差 cookie)与 Go-CSP 项目(指向 `make build` 产物二进制,监听 `securitypolicyviolation`)。
-- **Proof:** 同一 spec 在两项目下各自运行;Go-CSP 项目能起停二进制并断言零违规。
-- **PM:** `playwright test --project=astryx` 跑通至少一个 spec。
+- [x] **Done**
+- **Scope:** `vite.config.ts` 的 `frontendSelectorDevPlugin`(`configureServer` 中间件:仅 GET+`accept:text/html`;cookie `gpt-load.frontend===astryx` 才生效;已标 flag 的 manifest 路由或未知名路径重写 `req.url='/astryx.html'`,未标 flag 路由恒 classic——与 `server.go` `indexFor`/`indexForNotFound` 语义一致;路由匹配复用 shared `pageRouteEntries`+`pagePathMatches`,`page_routes.json` 给 `settings` 打 `"astryx":true` 作 demo 旗标);`tsconfig.node.json` 补 `resolveJsonModule`;`playwright.config.ts` 三项目:`classic`(无 cookie,默认行为)/`astryx`(`astryx-*.spec.ts`,storageState 预置 opt-in cookie)/`go-csp`(spawn `make build` 产物或 `GPT_LOAD_BINARY`,无二进制则 skip——Windows 无法编译 securefile,随 CI/Linux 跑);新增 `e2e/astryx-selection.spec.ts`(cookie×flag×fallback 7 用例矩阵,请求级断言文档标记 `/src/main.ts` vs `/src/frontends/astryx/main.tsx`)、`e2e/go-csp.spec.ts`(起停二进制、断言 `default-src 'self'`/`object-src 'none'`、零 `securitypolicyviolation`、零 console error,两文档分别以 `/assets/index` `/assets/astryx` 标记判别)。
+- **Proof:** `astryx-selection` 7/7 PASS;全量 e2e **70 passed + 2 skipped**(go-csp 在本机按设计 skip)= classic 58 + astryx 12;`tsc -p tsconfig.node.json` 净;`eslint . --max-warnings=0` 净;`vite build` 绿(双 HTML + `astryx-*.js`/`astryx-*.css` 产物);`go test ./internal/webui -run '…'`(page_routes/server/frontend 相关)**全绿**(flag 加入真实 manifest 后 Go 解析与选路用例不受影响;预存 docker/workflow 失败与 B4 相同基线)。
+- **PM:** dev 下 `gpt-load.frontend=astryx` cookie + `/settings` -> astryx 文档;清 cookie -> classic;未 flag 路由恒 classic。
 
 ### Task B6: 前端切换控件 + `feature.frontend-preview-switch` Doc ID
 - [ ] **Done**

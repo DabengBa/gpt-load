@@ -11,6 +11,6 @@
     { "name": "schedule", "path": "/schedule" },
     { "name": "logs", "path": "/logs" },
     { "name": "models", "path": "/models" },
-    { "name": "settings", "path": "/settings" }
+    { "name": "settings", "path": "/settings", "astryx": true }
   ]
 }

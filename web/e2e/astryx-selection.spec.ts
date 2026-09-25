@@ -1,0 +1,81 @@
+import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+
+// B5: dev-server document selection mirrors internal/webui/server.go.
+//   flagged manifest route + cookie "astryx" -> astryx.html
+//   unknown browser path + cookie "astryx"   -> astryx.html (404-fallback parity)
+//   otherwise                                 -> index.html
+// This spec runs in the `astryx` project, whose storageState seeds the
+// opt-in cookie; individual tests adjust the context cookies to cover the
+// rest of the matrix.
+
+const FLAGGED_PATH = '/settings' // page_routes.json: astryx: true
+const UNFLAGGED_PATH = '/groups'
+const UNKNOWN_PATH = '/definitely-not-a-route'
+const COOKIE = 'gpt-load.frontend'
+
+const CLASSIC_MARKER = '/src/main.ts'
+const ASTRYX_MARKER = '/src/frontends/astryx/main.tsx'
+
+async function setFrontendCookie(context: BrowserContext, value: string) {
+  await context.clearCookies()
+  await context.addCookies([{ name: COOKIE, value, domain: '127.0.0.1', path: '/' }])
+}
+
+// Request-level check: page.request sends the context cookies, and document
+// discrimination happens on the served HTML marker — no client-side router
+// redirects involved.
+async function expectDocument(page: Page, path: string, marker: string) {
+  const response = await page.request.get(path, {
+    headers: { accept: 'text/html' },
+  })
+  expect(response.ok()).toBe(true)
+  expect(await response.text()).toContain(marker)
+}
+
+test('flagged route serves the Astryx document when opted in', async ({ page }) => {
+  await expectDocument(page, FLAGGED_PATH, ASTRYX_MARKER)
+})
+
+test('flagged route serves the classic document without the cookie', async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies()
+  await expectDocument(page, FLAGGED_PATH, CLASSIC_MARKER)
+})
+
+test('flagged route serves the classic document for an explicit classic cookie', async ({
+  page,
+  context,
+}) => {
+  await setFrontendCookie(context, 'classic')
+  await expectDocument(page, FLAGGED_PATH, CLASSIC_MARKER)
+})
+
+test('flagged route ignores unrecognized cookie values', async ({
+  page,
+  context,
+}) => {
+  await setFrontendCookie(context, 'bogus')
+  await expectDocument(page, FLAGGED_PATH, CLASSIC_MARKER)
+})
+
+test('unflagged route keeps the classic document even when opted in', async ({
+  page,
+}) => {
+  await expectDocument(page, UNFLAGGED_PATH, CLASSIC_MARKER)
+})
+
+test('unknown browser path falls back to the Astryx document when opted in', async ({
+  page,
+}) => {
+  await expectDocument(page, UNKNOWN_PATH, ASTRYX_MARKER)
+})
+
+test('unknown browser path falls back to the classic document without the cookie', async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies()
+  await expectDocument(page, UNKNOWN_PATH, CLASSIC_MARKER)
+})
