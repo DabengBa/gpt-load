@@ -110,14 +110,14 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 顺序可微调;新增行为类任务按 TDD 先写失败证明(Go 测试、verify 脚本、契约测试)。
 
 ### Task B1: 依赖落地(精确版本,无代码变化)
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `web/package.json` + `web/pnpm-workspace.yaml`;`pnpm --dir web add` 精确版本:`react`/`react-dom` 19.3.0、`@astryxdesign/core` 0.6.2、`@astryxdesign/theme-neutral` 0.6.2、`@stylexjs/stylex` 0.19.1;dev:`@stylexjs/unplugin` 0.19.1、`@vitejs/plugin-react` 6.x、`@rolldown/plugin-babel`、`@babel/core`、`babel-plugin-react-compiler` 1.0.x、`@tanstack/react-router` 1.170.x、`@tanstack/react-query` 5.103.x、`react-intl` 12.1.x、`lucide-react` 1.48.x、`@astryxdesign/cli`、`@formatjs/icu-messageformat-parser`、 `@stylexjs/eslint-plugin` 0.19.1、`eslint-plugin-react-hooks` 7.x;两处 `overrides` 重推导对齐。7 天规则逐包核对发布时间。
 - **Proof:** `pnpm --dir web install --frozen-lockfile` 成功;`build`/`lint`/e2e 对 classic 仍绿。
 - **PM:** lockfile diff 只新增预期包。
 - **Notes:** `react-intl`/`intl-messageformat` 与 `@tanstack/*` 放 dependencies 还是 devDeps 按现有分区惯例(运行时包→dependencies,构建/校验工具→devDependencies)。`@astryxdesign/cli` 的 optional peers 不装。
 
 ### Task B2: Vite 双入口 + React 编译链 + ESLint 分区
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `web/astryx.html`(head 契约同 `index.html`:theme-bootstrap.js、favicon)、`src/frontends/astryx/main.tsx`(占位 shell)、`vite.config.ts`(双 input、`target:'chrome125'`、browserslist、插件顺序 stylex→vue→react(include 限定 astryx)→babel(compiler preset 排除 classic/shared)→tailwind→selector 占位)、`tsconfig.astryx.json`(`jsx:react-jsx`)、`type-check` 扩为三 tsconfig(`tsconfig.app.json` 排除 `frontends/astryx/**`)、eslint flat 按目录 scope、`@app`/`@shared` 别名。
 - **Proof:** `pnpm --dir web run build` 同时产出 `dist/index.html` 与 `dist/astryx.html` 及各自 assets;`type-check` 覆盖新 tsconfig;lint 绿。spike(d) 的编译链验证并入此任务:compiler+StyleX 双 Babel 输出正确、Fast Refresh 保状态、新代码编译器 lint 零 error。
 - **PM:** `vite dev` 直开 `/astryx.html` -> 渲染占位 shell,无 CSP/控制台错误。
