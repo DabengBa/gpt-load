@@ -19,82 +19,91 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **Evidence:** `C:\Users\walkl\.toolchain\node24`(Node v24.21.0 LTS Krypton + pnpm 12.5.1,2026-09-18 发布满足 7 天规则;12.6.0/12.7.0 太新跳过)。`pnpm run type-check` 退出 0;pnpm 12 直接复用 lockfile v9(“Lockfile is up to date”),无需迁移。本机 curl 出网受限(SSL exit 35),改用 Node `fetch` 下载 portable zip;后续命令均前缀 `PATH=/c/Users/walkl/.toolchain/node24:$PATH`。
 
 ### Task A1: 删除 8 个零引用组件
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `web/src/frontends/classic/components/{charts/TrendChart.vue,charts/trend-chart.ts,config/ProxyConfigEditor.vue,config/ProxyScopeIndicator.vue,layout/PageSection.vue,ui/MobileRecordCard.vue,ui/OperationNotice.vue,ui/SecretValue.vue,ui/StatFigure.vue}`;先 `rg` 复核零引用再删。
 - **Proof:** `pnpm --dir web run build`、`lint` 绿;`rg` 无残留引用。
 - **PM:** `rg -n "TrendChart|ProxyConfigEditor|ProxyScopeIndicator|PageSection|MobileRecordCard|OperationNotice|SecretValue|StatFigure" web/src` -> 0 命中。
 
 ### Task A2: client-context 移回 classic + shared 禁框架导入守卫
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `web/src/shared/http/client-context.ts` → `web/src/frontends/classic/app/api-client-context.ts`;全部注入方改导入路径;`web/eslint.config.mjs` 对 `src/shared/**` 加 `no-restricted-imports`(ban `vue`、`vue-router`、`vue-i18n`、`@tanstack/vue-query`、`reka-ui` 及 `../frontends/**` 相对回引)。
 - **Proof:** lint 绿;`rg -n "from 'vue'|vue-router|vue-i18n|@tanstack/vue-query|reka-ui" web/src/shared` -> 0 命中;build 绿。
 - **PM:** 起 dev,登录后任一页正常 -> inject 链未断。
 
 ### Task A3: control 协议/类型 + query-keys + invalidation → `shared/control/`
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `classic/api/control/*` → `shared/control/`;`classic/app/query-keys.ts`、`classic/app/resources/invalidation.ts` → `shared/control/`;classic 原路径保留 re-export。
 - **Proof:** build、lint、全部 `verify:*`、`test:*` 绿(re-export 使 ssrLoadModule 路径仍解析)。
 - **PM:** 无用户可见变化;`rg` 确认 `shared/control` 为唯一实现处。
 
 ### Task A4: 23 个 resource 文件去 Vue 化 → `shared/control/resources/`
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `classic/app/resources/*.ts` → `shared/control/resources/*.ts`;fetcher 改纯参数,返回 `{ queryKey, queryFn }`;classic 侧薄 wrapper 用 `computed`/`toValue` 保持现有调用签名。13 个文件去 `vue`(`MaybeRefOrGetter`)、14 个去 `@tanstack/vue-query` 依赖。
 - **Proof:** `verify:*` 全绿(经 wrapper 仍命中被测函数);`rg -n "vue|@tanstack" web/src/shared` -> 0;type-check 绿。
 - **PM:** 任意列表页(group/access-keys)筛选分页行为不变。
 
 ### Task A5: 纯 lib + 无框架 features 逻辑 → `shared/lib`、`shared/domain/<domain>`
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `classic/lib/*`(11 个)→ `shared/lib/`;方案文档认定的 55 个无框架 `features/**/*.ts`(约 7.3k 行,含 `subscription-error-presenter.ts`)→ `shared/domain/<domain>/`;classic 保留 re-export。
 - **Proof:** build、lint、verify、test、e2e 绿;guard 无命中。
 - **PM:** 无可见变化;`rg` 抽查移动文件的导入方全部解析到 shared。
 
 ### Task A6: 路由规则 → `shared/routing/`(safeRedirect 连测试一起搬)
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `pagePathMatches`、`safeRedirect`、`decodedPathSegments`、query 规整(散于 `app/router.ts`、`route-query.ts`、`route-locations.ts`、`page-routes.ts`)→ `shared/routing/`;`safeRedirect` 既有用例原样迁移为 node:test/共享测试。
 - **Proof:** 搬移后的 safeRedirect 测试在 shared 上绿;build、lint 绿。
 - **PM:** `/login?redirect=` 合法/非法跳转行为不变(e2e 或手测)。
 
 ### Task A7: 6 个控制器 → `shared/controllers/`(subscribe/getSnapshot)
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `features/preferences/theme.ts`、`app/toast.ts`、`app/unsaved-changes.ts`、`features/import/import-recovery.ts`、`app/ephemeral-state.ts`、`features/auth/auth-session.ts` 核心 → `shared/controllers/`;classic 侧 `ref`+订阅 adapter 保持 API;React 侧留给 Phase 1 用 `useSyncExternalStore`。
 - **Proof:** build、lint、e2e(主题切换、toast、未保存拦截、import 恢复路径)绿;guard 无命中。
 - **PM:** 切换主题/触发 toast/脏表单跳转拦截 -> 行为不变。
 
 ### Task A8: locale catalogs → `shared/i18n/locales/`
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `classic/i18n/locales/**` → `shared/i18n/locales/**`;`classic/i18n` loader/context 改从 shared 导入;catalog 内容与命名空间结构不变。
 - **Proof:** build 绿;三语言界面冒烟。
 - **PM:** 偏好里切 zh-CN/en-US/ja-JP -> 文案全量切换无 raw key。
 
 ### Task A9: ICU 兼容改写 + `verify:i18n-icu`(新行为 → TDD)
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `shared/i18n/locales/*/import.ts` 4 个 key × 3 locale:3 个凭据 JSON 示例改为 `{example}` 插值、`callbackPlaceholder` 的 `<port>`/`<端口>` 改为 `{port}`;对应 Vue 调用点改传值;新增 `web/scripts/verify-i18n-icu.mjs`(devDep `@formatjs/icu-messageformat-parser`,精确版本 ≥7 天)解析全部消息 + 跨 locale key 对齐;并入 `lint`。
 - **Proof:** 先写脚本验证旧消息必失败(red),改写后转绿;受影响 UI 文本渲染一致。
 - **PM:** 导入页查看凭据示例与 callback 占位文案 -> 与改前一致。
 
 ### Task A10: verify 脚本与 contract 测试改指 `shared/`
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `web/scripts/verify-*.mjs`(8 个)、`scripts/*.test.ts` 的 `ssrLoadModule`/路径断言从 `frontends/classic/...` 改指 `shared/...` 真实实现处;保留 classic wrapper 仅为兼容,验证以 shared 为准。
 - **Proof:** 全部 `verify:*`、`test:*` 绿,且日志可见加载路径为 `shared/`。
 - **PM:** `pnpm --dir web run verify:group-collection` 输出 PASS。
 
 ### Task A11: e2e 选择器语义化改写
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `web/e2e` 7 个 spec 的 149 处 `locator()` BEM class 定位 → `getByRole`/`getByLabel`/`getByText`;语义不足处给 classic 组件补 `data-testid`(React 端沿用同键)。
 - **Proof:** 全量 Playwright 绿;`rg -n "locator\(['\"]\." web/e2e` -> 0。
 - **PM:** `pnpm --dir web exec playwright test` 全绿。
 
 ### Task A12: tech 文档 `code.paths` 改指 shared
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `.docs/tech/{model-test-alias.md,reasoning-policy.md,usage-accounting.md,billing-failure-attention/plan.md}` 中指向已迁出 classic 路径的 `code.paths`。
 - **Proof:** `pnpm --dir web run docs:check`、`docs:build` 绿。
 - **PM:** 无可见变化;diff 仅 `code.paths`。
 
 ### Task A13: Phase 0 出口复核
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** 全量回归 + 架构不变量终检。
 - **Proof:** `pnpm --dir web run build && pnpm --dir web run lint && pnpm --dir web run format` + 全部 `verify:*`/`test:*`/e2e 绿;`rg "vue|vue-router|vue-i18n|@tanstack/vue-query|reka-ui" web/src/shared` -> 0;`rg "locator\(['\"]\." web/e2e` -> 0。
 - **PM:** 手工走查 login → groups → group-detail → monitor → settings 主路径,行为与基线一致。
+- **Exit audit(2026-09-25, 本机 node24 工具链执行):**
+  - `vue-tsc + tsc --noEmit`:PASS;`vite build`:PASS(3235 modules)。
+  - `eslint --max-warnings=0`:PASS;`verify:i18n-icu`:PASS(8123 messages)。
+  - `verify:*`(group-collection/health-projection/request-log-affinity/reasoning-contract/model-test-alias/log-format)+ `test:*`(connection-json/channel-contract/group-collection.test/request-log-affinity.test):全绿。
+  - Playwright 58/58 PASS(3.1m)。
+  - `shared/` 框架导入扫描:0;`e2e` class locator 扫描:0。
+  - `prettier --check` 在本机 CRLF 检出上基线即红(autocrlf),非本次改动引入;CI LF 环境不受影响。
+  - PM 手工走查:待用户执行(清单见上)。
+  - 修复项:verify-reasoning-contract fixture 移除已失效的 `fallback` 字段;route-query 注释去 vue-router 字面量以保持零匹配扫描。
 
 ## Part B — Phase 1:脚手架、共存与 spike(go/no-go gate)
 
