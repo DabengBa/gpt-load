@@ -10,7 +10,9 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm run type-check && vite build",
-    "lint": "eslint . --max-warnings=0 && node scripts/verify-i18n-icu.mjs",
+    "lint": "eslint . --max-warnings=0 && node scripts/verify-i18n-icu.mjs && node scripts/verify-theme-build.mjs",
+    "theme:build": "astryx theme build src/frontends/astryx/theme/gptload.theme.ts -o src/frontends/astryx/theme/gptload.theme.css",
+    "theme:check": "node scripts/verify-theme-build.mjs",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "verify:group-collection": "node scripts/verify-group-collection.mjs",

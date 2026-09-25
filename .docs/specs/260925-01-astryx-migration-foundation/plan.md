@@ -123,10 +123,11 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** `vite dev` 直开 `/astryx.html` -> 渲染占位 shell,无 CSP/控制台错误。
 
 ### Task B3: 静态主题 `gptload.theme.ts` + `entry.css` 层序
-- [ ] **Done**
-- **Scope:** `src/frontends/astryx/theme/gptload.theme.ts`(`defineTheme` extends neutral:accent `['#1c4f6e','#6fb2d6']`、canvas `#eeede9/#0b0d10`、status 色对、radius 7/10、字体=classic 系统栈、密度输入按方案文档对照表)→ `pnpm exec astryx theme build` 产物(css/js/d.ts)提交;`entry.css` 按 `reset→astryx-base→astryx-theme→app.*` 层序;lint 增 theme rebuild-diff 检查;`Theme mode` 由偏好 store 驱动(`data-theme` 唯一所有者)。
-- **Proof:** theme rebuild diff 干净;`astryx.html` 在 light/dark/system 无闪烁;computed-style 断言 `xstyle` 覆盖 > theme 覆盖 > 默认。
-- **PM:** dev 下切三种主题模式刷新 -> 无 flash、颜色与 classic 一致观感。
+- [x] **Done**
+- **Scope:** `src/frontends/astryx/theme/gptload.theme.ts`(`defineTheme` extends `neutralTheme`:accent `['#1c4f6e','#6fb2d6']`、canvas `#eeede9/#0b0d10`、status 色对、radius 6/7/10 显式 token、`typography.scale.base=13.5`、字体=classic 系统栈、`--size-element-*`=30/34/38)→ `pnpm run theme:build` 产物 `gptload.theme.css`/`gptload.js`/`gptload.d.ts`/`gptload.variants.d.ts` 提交;`entry.css` 声明 `@layer reset, astryx-base, astryx-theme` + 三 `@import`;vite `useCSSLayers:{before,prefix:'app'}` 输出 `app.priority*`;`theme-preference.ts` 偏好 store(只读写 `gpt-load.theme` storage,复用 shared `themeStorageKey`/`isTheme`),`<Theme mode>` 为 `data-theme` 唯一运行时所有者;lint 链并入 `verify-theme-build.mjs`(spawn `astryx theme build --check`,stdin ignore 防挂)。
+- **Proof:** `theme:check` PASS(重建零 diff);`e2e/astryx-theme.spec.ts` 5/5 PASS:light canvas rgb(238,237,233)/dark rgb(11,13,16)/system 无 `data-theme` 且随 `prefers-color-scheme` 切换;computed-style 断言 Button radius theme=7px(neutral 默认 8px)> xstyle=2px;控件高 34px±1、`main` 正文 13.5px;`build`/`lint`/`type-check` 绿,全量 e2e 63/63。
+- **PM:** dev 下切三种主题模式刷新 -> 无 flash(theme-bootstrap.js 预置 + `<Theme>` 同步同值);shell 已渲染主题色 Button 供观感对比。
+- **Notes:** 修复 `verify-i18n-icu.mjs` 挂起 —— `createServer` 改为 `configFile:false`(catalog 为自足 TS,不需插件;B2 新增插件使 `server.close()` 不再返回)。babel/react 插件 include 收窄至 `*.[jt]sx?`(原正则误匹配 `entry.css`)。26/32/42px 与 setting 26px 等缺口留待 B9 组件覆盖;`--radius-*` 固定阶梯无法表达 6/7/10,用显式 token。
 
 ### Task B4: Go 侧 manifest v2 + 双 index 选择(TDD:先失败 Go 测试)
 - [ ] **Done**

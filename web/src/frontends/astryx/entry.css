@@ -1,3 +1,12 @@
-/* Astryx entry stylesheet. B3 fills in the reset → astryx-base → theme → app
-   layer order; the file exists now so the entry owns a CSS asset for StyleX
-   injection and for the Go-embedded document. */
+/* Astryx entry stylesheet.
+ *
+ * Precedence, lowest to highest:
+ *   reset → astryx-base → astryx-theme → app.* (StyleX atomic rules)
+ * The StyleX unplugin emits the trailing `@layer` order via `useCSSLayers`
+ * in vite.config.ts; keep the `before` list in sync with this header.
+ * No unlayered rules here — unlayered CSS would outrank every layer. */
+@layer reset, astryx-base, astryx-theme;
+
+@import '@astryxdesign/core/reset.css';
+@import '@astryxdesign/core/astryx.css';
+@import './theme/gptload.theme.css';

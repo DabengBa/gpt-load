@@ -15,9 +15,9 @@ interface ThemeControllerDependencies {
 
 type BrowserThemeWindow = Pick<Window, 'localStorage'> & Partial<Pick<Window, 'matchMedia'>>
 
-const themeStorageKey = 'gpt-load.theme'
+export const themeStorageKey = 'gpt-load.theme'
 
-function isTheme(value: unknown): value is AppTheme {
+export function isTheme(value: unknown): value is AppTheme {
   return value === 'system' || value === 'light' || value === 'dark'
 }
 

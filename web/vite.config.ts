@@ -14,7 +14,7 @@ export const pageRouteManifestPath = fileURLToPath(
 export const devServerFileSystemAllow = [webRootPath, pageRouteManifestPath]
 
 const astryxRoot = fileURLToPath(new URL('./src/frontends/astryx', import.meta.url))
-const astryxInclude = /frontends[\\/]astryx/
+const astryxScriptInclude = /frontends[\\/]astryx.*\.[cm]?[jt]sx?$/
 const proxyTarget = process.env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:3001'
 
 export default defineConfig({
@@ -22,13 +22,15 @@ export default defineConfig({
   plugins: [
     stylex({
       unstable_moduleResolution: { type: 'commonJS', rootDir: webRootPath },
+      // Layer order must mirror src/frontends/astryx/entry.css.
+      useCSSLayers: { before: ['reset', 'astryx-base', 'astryx-theme'], prefix: 'app' },
       // Two entries ship CSS: keep collected StyleX atoms out of classic chunks.
       cssInjectionTarget: (fileName) => /(^|\/)astryx(-[\w-]+)?\.css$/i.test(fileName),
     }),
     vue(),
-    react({ include: astryxInclude }),
+    react({ include: astryxScriptInclude }),
     babel({
-      include: astryxInclude,
+      include: astryxScriptInclude,
       plugins: ['babel-plugin-react-compiler'],
     }),
     tailwindcss(),

@@ -50,6 +50,9 @@ function placeholderSet(message) {
 
 const server = await createServer({
   root: WEB_ROOT,
+  // Catalogs are self-contained TS; skipping vite.config keeps plugin
+  // handles (dev middleware, watchers) from holding the event loop open.
+  configFile: false,
   logLevel: 'silent',
   server: { middlewareMode: true },
 })
