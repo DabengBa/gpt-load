@@ -14,7 +14,7 @@ code:
     - internal/storage/migrations/0022_usage_first_response.go
     - internal/control/usage.go
     - internal/agent/usage.go
-    - web/src/frontends/classic/app/resources/usage.ts
+    - web/src/shared/control/resources/usage.ts
 ---
 # Usage Accounting
 

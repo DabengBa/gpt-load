@@ -8,7 +8,7 @@ code:
     - internal/channel/failure_class.go
     - internal/health/execution_judge.go
     - internal/storage/migrations/0023_billing_failure_category.go
-    - web/src/frontends/classic/features/home/attention.ts
+    - web/src/shared/domain/home/attention.ts
 ---
 
 # 余额不足失败分类与首页告警

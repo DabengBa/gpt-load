@@ -17,9 +17,9 @@ code:
     - internal/control/group_idempotency.go
     - internal/control/group_options.go
     - internal/gateway/models.go
-    - web/src/frontends/classic/app/resources/groups.ts
+    - web/src/shared/control/resources/groups.ts
     - web/src/frontends/classic/features/groups/models/GroupModelsTab.vue
-    - web/src/frontends/classic/features/models/model-draft.ts
+    - web/src/shared/domain/models/model-draft.ts
 ---
 # Model Test Alias Routing
 
@@ -77,7 +77,7 @@ while a replay returns the original durable operation result.
 - `internal/gateway/models.go` includes test-alias keys in model discovery and
   applies the caller's protocol, model, and group filters to the indexed target
   just like other model names.
-- `web/src/frontends/classic/app/resources/groups.ts` requires the read value
+- `web/src/shared/control/resources/groups.ts` requires the read value
   to match the six-character format. `model-draft.ts` and
   `GroupModelsTab.vue` carry it as read-only display state while excluding it
   from the normalized write payload.
