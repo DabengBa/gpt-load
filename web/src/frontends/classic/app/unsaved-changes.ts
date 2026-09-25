@@ -1,5 +1,9 @@
-import { inject, onBeforeUnmount, onMounted, ref, type InjectionKey, type Ref } from 'vue'
+import { inject, onBeforeUnmount, onMounted, readonly, ref, type InjectionKey, type Ref } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, type RouteLocationNormalized } from 'vue-router'
+
+import {
+  createUnsavedChangesController as createSharedUnsavedChangesController,
+} from '@shared/controllers/unsaved-changes'
 
 export interface UnsavedChangesController {
   readonly dialogOpen: Readonly<Ref<boolean>>
@@ -20,35 +24,18 @@ export interface UnsavedChangesGuard {
 }
 
 export function createUnsavedChangesController(): UnsavedChangesController {
-  let bypass = false
-  let resolvePending: ((confirmed: boolean) => void) | undefined
-  const dialogOpen = ref(false)
+  const core = createSharedUnsavedChangesController()
+  const dialogOpen = ref(core.getDialogOpen())
+  core.subscribe(() => {
+    dialogOpen.value = core.getDialogOpen()
+  })
+
   return {
-    dialogOpen,
-    bypassNext() {
-      resolvePending?.(false)
-      resolvePending = undefined
-      dialogOpen.value = false
-      bypass = true
-    },
-    consumeBypass() {
-      const result = bypass
-      bypass = false
-      return result
-    },
-    requestConfirmation() {
-      if (resolvePending) return Promise.resolve(false)
-      dialogOpen.value = true
-      return new Promise<boolean>((resolve) => {
-        resolvePending = resolve
-      })
-    },
-    resolveConfirmation(confirmed) {
-      const resolve = resolvePending
-      resolvePending = undefined
-      dialogOpen.value = false
-      resolve?.(confirmed)
-    },
+    dialogOpen: readonly(dialogOpen),
+    bypassNext: () => core.bypassNext(),
+    consumeBypass: () => core.consumeBypass(),
+    requestConfirmation: () => core.requestConfirmation(),
+    resolveConfirmation: (confirmed) => core.resolveConfirmation(confirmed),
   }
 }
 

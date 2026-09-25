@@ -1,6 +1,11 @@
 import { inject, readonly, ref, type InjectionKey, type Ref } from 'vue'
 
-export type AppTheme = 'system' | 'light' | 'dark'
+import {
+  createBrowserThemeController as createSharedBrowserThemeController,
+  type AppTheme,
+} from '@shared/controllers/theme'
+
+export type { AppTheme }
 
 export interface ThemeController {
   readonly theme: Readonly<Ref<AppTheme>>
@@ -8,86 +13,27 @@ export interface ThemeController {
   dispose(): void
 }
 
-interface ThemeControllerDependencies {
-  documentElement: HTMLElement
-  storage?: Storage
-  matchMedia(query: string): MediaQueryList
-}
-
-type BrowserThemeWindow = Pick<Window, 'localStorage'> & Partial<Pick<Window, 'matchMedia'>>
-
-const themeStorageKey = 'gpt-load.theme'
-
-function isTheme(value: unknown): value is AppTheme {
-  return value === 'system' || value === 'light' || value === 'dark'
-}
-
-function createThemeController(deps: ThemeControllerDependencies): ThemeController {
-  let initial: AppTheme = 'system'
-  try {
-    const stored = deps.storage?.getItem(themeStorageKey)
-    if (isTheme(stored)) initial = stored
-  } catch {
-    // Browser preferences remain available in memory when storage is denied.
-  }
-
-  const theme = ref<AppTheme>(initial)
-  let media: MediaQueryList | undefined
-  let mediaListener: ((event: MediaQueryListEvent) => void) | undefined
-
-  function apply(next: AppTheme): void {
-    if (next === 'system') {
-      deps.documentElement.removeAttribute('data-theme')
-    } else {
-      deps.documentElement.dataset.theme = next
-    }
-  }
-
-  try {
-    media = deps.matchMedia('(prefers-color-scheme: dark)')
-    mediaListener = () => {
-      if (theme.value === 'system') apply('system')
-    }
-    media.addEventListener('change', mediaListener)
-  } catch {
-    media = undefined
-    mediaListener = undefined
-  }
-
-  apply(initial)
+export function createBrowserThemeController(
+  browser: Pick<Window, 'localStorage'> & Partial<Pick<Window, 'matchMedia'>>,
+  documentElement: HTMLElement,
+  storage?: Storage,
+): ThemeController {
+  const core = createSharedBrowserThemeController(browser, documentElement, storage)
+  const theme = ref<AppTheme>(core.getTheme())
+  const unsubscribe = core.subscribe(() => {
+    theme.value = core.getTheme()
+  })
 
   return {
     theme: readonly(theme),
     setTheme(next) {
-      theme.value = next
-      apply(next)
-      try {
-        deps.storage?.setItem(themeStorageKey, next)
-      } catch {
-        // Persistence failure does not change the active in-memory preference.
-      }
+      core.setTheme(next)
     },
     dispose() {
-      if (media && mediaListener) media.removeEventListener('change', mediaListener)
+      unsubscribe()
+      core.dispose()
     },
   }
-}
-
-export function createBrowserThemeController(
-  browser: BrowserThemeWindow,
-  documentElement: HTMLElement,
-  storage?: Storage,
-): ThemeController {
-  return createThemeController({
-    documentElement,
-    storage,
-    matchMedia:
-      typeof browser.matchMedia === 'function'
-        ? browser.matchMedia.bind(browser)
-        : () => {
-            throw new DOMException('matchMedia unavailable')
-          },
-  })
 }
 
 export const themeControllerKey: InjectionKey<ThemeController> = Symbol('theme-controller')

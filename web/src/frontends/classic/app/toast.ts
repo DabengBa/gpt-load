@@ -1,18 +1,12 @@
 import { inject, readonly, ref, type InjectionKey, type Ref } from 'vue'
 
-export type ToastTone = 'info' | 'success' | 'warning' | 'danger'
+import {
+  createToastController as createSharedToastController,
+  type ToastInput,
+  type ToastMessage,
+} from '@shared/controllers/toast'
 
-export interface ToastMessage {
-  id: number
-  message: string
-  tone: ToastTone
-}
-
-export interface ToastInput {
-  message: string
-  tone?: ToastTone
-  duration?: number
-}
+export type { ToastInput, ToastMessage, ToastTone } from '@shared/controllers/toast'
 
 export interface ToastController {
   readonly current: Readonly<Ref<ToastMessage | null>>
@@ -21,39 +15,28 @@ export interface ToastController {
   dispose(): void
 }
 
-interface ToastControllerDependencies {
+export function createToastController(deps: {
   setTimer(callback: () => void, duration: number): number
   clearTimer(timer: number): void
-}
-
-export function createToastController(deps: ToastControllerDependencies): ToastController {
-  const current = ref<ToastMessage | null>(null)
-  let sequence = 0
-  let timer: number | undefined
-
-  function dismiss(): void {
-    if (timer !== undefined) deps.clearTimer(timer)
-    timer = undefined
-    current.value = null
-  }
+}): ToastController {
+  const core = createSharedToastController(deps)
+  const current = ref<ToastMessage | null>(core.getCurrent())
+  const unsubscribe = core.subscribe(() => {
+    current.value = core.getCurrent()
+  })
 
   return {
     current: readonly(current),
     show(input) {
-      if (timer !== undefined) deps.clearTimer(timer)
-      const id = ++sequence
-      current.value = {
-        id,
-        message: input.message,
-        tone: input.tone ?? 'success',
-      }
-      timer = deps.setTimer(() => {
-        if (current.value?.id === id) current.value = null
-        timer = undefined
-      }, input.duration ?? 2_000)
+      core.show(input)
     },
-    dismiss,
-    dispose: dismiss,
+    dismiss() {
+      core.dismiss()
+    },
+    dispose() {
+      unsubscribe()
+      core.dispose()
+    },
   }
 }
 
