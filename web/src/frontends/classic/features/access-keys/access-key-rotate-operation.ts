@@ -1,7 +1,1 @@
-import type { AccessKeyDto } from '@shared/control/types'
-
-export interface PendingAccessKeyRotateOperation {
-  base: AccessKeyDto
-  idempotencyKey: string
-  state: 'indeterminate' | 'reconciling'
-}
+export * from '@shared/domain/access-keys/access-key-rotate-operation'
