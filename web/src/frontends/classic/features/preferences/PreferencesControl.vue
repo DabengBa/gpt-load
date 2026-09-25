@@ -7,6 +7,12 @@ import AppPopover from '@/components/ui/AppPopover.vue'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import type { AppLocale } from '@/i18n'
+import {
+  frontendPreferenceCookie,
+  isFrontendPreference,
+  readFrontendPreference,
+  type FrontendPreference,
+} from '@shared/controllers/frontend-preference'
 
 import type { AppTheme } from './theme'
 
@@ -50,6 +56,11 @@ const themeOptions: Array<{
   { value: 'light', labelKey: 'shell.themeLight', icon: Sun },
   { value: 'dark', labelKey: 'shell.themeDark', icon: Moon },
 ]
+const frontendOptions: Array<{ value: FrontendPreference; labelKey: string }> = [
+  { value: 'classic', labelKey: 'shell.frontendClassic' },
+  { value: 'astryx', labelKey: 'shell.frontendPreview' },
+]
+const frontend = ref<FrontendPreference>(readFrontendPreference(document.cookie))
 
 function updateLocale(event: Event): void {
   const input = event.target as HTMLInputElement
@@ -59,6 +70,14 @@ function updateLocale(event: Event): void {
 function updateTheme(event: Event): void {
   const input = event.target as HTMLInputElement
   if (input.checked) emit('update:theme', input.value as AppTheme)
+}
+
+function updateFrontend(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const value = input.value
+  if (!input.checked || !isFrontendPreference(value) || value === frontend.value) return
+  document.cookie = frontendPreferenceCookie(value)
+  window.location.reload()
 }
 
 function signOut(): void {
@@ -125,6 +144,25 @@ function close(): void {
               @change="updateLocale"
             />
             <span>{{ t(option.compactLabelKey) }}</span>
+          </label>
+        </div>
+      </div>
+      <div class="preferences-panel__group">
+        <span class="preferences-panel__label">{{ t('shell.frontend') }}</span>
+        <div
+          class="preferences-panel__segments preferences-panel__segments--pair"
+          role="group"
+          :aria-label="t('shell.frontend')"
+        >
+          <label v-for="option in frontendOptions" :key="option.value">
+            <input
+              type="radio"
+              :name="`${identity}-frontend`"
+              :value="option.value"
+              :checked="frontend === option.value"
+              @change="updateFrontend"
+            />
+            <span>{{ t(option.labelKey) }}</span>
           </label>
         </div>
       </div>
@@ -247,6 +285,25 @@ function close(): void {
         </label>
       </div>
     </div>
+    <div class="preferences-panel__group">
+      <span class="preferences-panel__label">{{ t('shell.frontend') }}</span>
+      <div
+        class="preferences-panel__segments preferences-panel__segments--pair"
+        role="group"
+        :aria-label="t('shell.frontend')"
+      >
+        <label v-for="option in frontendOptions" :key="option.value">
+          <input
+            type="radio"
+            :name="`${identity}-frontend`"
+            :value="option.value"
+            :checked="frontend === option.value"
+            @change="updateFrontend"
+          />
+          <span>{{ t(option.labelKey) }}</span>
+        </label>
+      </div>
+    </div>
     <div v-if="showSignOut" class="preferences-panel__divider"></div>
     <button v-if="showSignOut" class="preferences-panel__action" type="button" @click="signOut">
       <LogOut :size="15" aria-hidden="true" />
@@ -286,6 +343,10 @@ function close(): void {
   overflow: hidden;
   border: 1px solid var(--color-border-control);
   border-radius: var(--radius-control);
+}
+
+.preferences-panel__segments--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .preferences-panel label {

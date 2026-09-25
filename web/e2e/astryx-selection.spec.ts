@@ -79,3 +79,28 @@ test('unknown browser path falls back to the classic document without the cookie
   await context.clearCookies()
   await expectDocument(page, UNKNOWN_PATH, CLASSIC_MARKER)
 })
+
+// B6: the classic preferences control writes the shared cookie and reloads;
+// the next flagged-route request must then serve the Astryx document.
+test('preferences switch opts in and flagged routes serve Astryx', async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies()
+  await page.goto('/login')
+
+  await page.getByRole('button', { name: 'Preferences' }).click()
+  const frontendGroup = page.getByRole('group', { name: 'Interface' })
+  await expect(frontendGroup).toBeVisible()
+  // dispatchEvent avoids the click retry loop racing the control's reload.
+  await frontendGroup.locator('label', { hasText: 'Preview' }).dispatchEvent('click')
+
+  // The control reloads the page after writing the cookie.
+  await page.waitForLoadState('load')
+  const cookies = await context.cookies()
+  expect(cookies.find((cookie) => cookie.name === COOKIE)?.value).toBe('astryx')
+
+  // /login is unflagged, so the reloaded document stays classic; a flagged
+  // route now serves the Astryx document under the production contract.
+  await expectDocument(page, FLAGGED_PATH, ASTRYX_MARKER)
+})

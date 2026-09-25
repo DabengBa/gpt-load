@@ -143,11 +143,12 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** dev 下 `gpt-load.frontend=astryx` cookie + `/settings` -> astryx 文档;清 cookie -> classic;未 flag 路由恒 classic。
 
 ### Task B6: 前端切换控件 + `feature.frontend-preview-switch` Doc ID
-- [ ] **Done**
-- **Scope:** classic 偏好面板新增切换控件(写 `gpt-load.frontend=astryx` cookie + reload);共享 cookie 常量进 `shared/` + 双端导入同一常量的契约测试;`.docs/db/features/frontend-preview-switch.md` stub(正文随控件落地);astryx 侧"返回 classic"控件随 B9 shell 一起完成。
-- **Proof:** 契约测试绿;`docs:check`/`docs:build` 绿;手测 classic→astryx→classic 往返。
-- **PM:** 偏好面板点切换 -> reload 后进入新 shell;反向同样成立。
+- [x] **Done**
+- **Scope:** `shared/controllers/frontend-preference.ts`(`frontendCookieName`/`FrontendPreference`/`isFrontendPreference`/`readFrontendPreference`/`frontendPreferenceCookie`);`PreferencesControl.vue` 两形态(compact popover + inline)新增 Interface 分段控件(`--pair` 两列),选中即写 cookie + `location.reload()`;`vite.config.ts` dev selector 改用 shared `readFrontendPreference`;`scripts/verify-frontend-cookie.mjs` 跨语言契约(server.go 字面量 == shared 常量 + vite/组件消费 shared 模块)并入 lint 链;`.docs/db/features/frontend-preview-switch.md` 落地(trigger→action→contract→boundaries);三语言 catalog `shell.frontend*` 键。
+- **Proof:** `verify-frontend-cookie` PASS;`docs:check` 5 docs 净;`verify:i18n-icu` 8,132 消息 PASS;type-check/eslint 净;e2e **71 passed + 2 skipped**(astryx-selection 8/8 含真往返:login 页 Preview 单选 → cookie=astryx → reload → flag 路由取 astryx 文档);`vite build` 绿。
+- **PM:** `/login` 偏好面板选 Preview -> 写 cookie + reload;`/settings` 等 flag 路由进新 shell,未 flag 路由保持 classic;astryx 侧反向控件随 B9。
 - **Doc IDs:** `feature.frontend-preview-switch`。
+- **Notes:** 全量跑中曾出现 vite 依赖优化重载(compiler-runtime 晚优化)导致 8 个用例瞬时失败,缓存热后复跑全绿——非代码回归。
 
 ### Task B7: TanStack Router 装配(manifest 适配 + 护栏 + 滚动/标题/播报)
 - [ ] **Done**
