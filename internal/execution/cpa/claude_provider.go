@@ -200,6 +200,9 @@ func (*claudeProviderBridge) ClassifyError(
 	case status == http.StatusUnauthorized:
 		evidence.Hint = execution.FailureHintRefreshRequired
 		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
+	case execution.InsufficientBalanceSignal(status, typeValue, codeValue, evidence.Summary):
+		evidence.Hint = execution.FailureHintInsufficientBalance
+		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
 	case requestScopedFailure(err):
 		evidence.Hint = execution.FailureHintRequestRejected
 	case status == http.StatusTooManyRequests:

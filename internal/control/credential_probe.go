@@ -38,8 +38,9 @@ const (
 type ProbeReason string
 
 const (
-	ProbeReasonInvalidCredential ProbeReason = "invalid_credential"
-	ProbeReasonModelUnavailable  ProbeReason = "model_unavailable"
+	ProbeReasonInvalidCredential    ProbeReason = "invalid_credential"
+	ProbeReasonInsufficientBalance  ProbeReason = "insufficient_balance"
+	ProbeReasonModelUnavailable     ProbeReason = "model_unavailable"
 	ProbeReasonRateLimited       ProbeReason = "rate_limited"
 	ProbeReasonTimeout           ProbeReason = "timeout"
 	ProbeReasonUpstreamError     ProbeReason = "upstream_error"
@@ -334,6 +335,12 @@ func classifyCredentialProbeEvidence(result execution.AttemptResult) credentialP
 		return credentialProbeEvidenceWith(
 			ProbeOutcomeFailed,
 			ProbeReasonInvalidCredential,
+			decision,
+		)
+	case health.FailureCategoryBilling:
+		return credentialProbeEvidenceWith(
+			ProbeOutcomeFailed,
+			ProbeReasonInsufficientBalance,
 			decision,
 		)
 	case health.FailureCategoryModelUnavailable:

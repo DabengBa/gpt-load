@@ -148,6 +148,7 @@ const problemFailureCategories = [
   'rate_limited',
   'model_unavailable',
   'invalid_key',
+  'billing',
   'upstream_host_error',
   'client_error',
   'downstream_cancel',

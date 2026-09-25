@@ -7,6 +7,7 @@ const failureMessages: Record<FailureCategory, string> = {
   rate_limited: 'group.credentials.failure.rateLimited',
   model_unavailable: 'group.credentials.failure.modelUnavailable',
   invalid_key: 'group.credentials.failure.invalidCredential',
+  billing: 'group.credentials.failure.billing',
   upstream_host_error: 'group.credentials.failure.upstreamHostError',
   client_error: 'group.credentials.failure.clientError',
   downstream_cancel: 'group.credentials.failure.downstreamCancel',

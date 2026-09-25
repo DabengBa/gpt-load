@@ -365,7 +365,6 @@ const aliasEditorLabels = computed<ModelAliasEditorLabels>(() => ({
   nameConflict: (name) => t('group.modelEditor.nameConflict', { name }),
   weight: t('group.modelEditor.weight'),
   priority: t('group.modelEditor.priority'),
-  priorityFallback: t('group.modelEditor.priorityFallback'),
   weightDisabled: t('group.modelEditor.weightDisabled'),
   invalidWeight: t('group.modelEditor.invalidWeight'),
   invalidPriority: t('group.modelEditor.invalidPriority'),

@@ -49,7 +49,6 @@ export interface ModelAliasEditorLabels {
   nameConflict: (name: string) => string
   weight: string
   priority: string
-  priorityFallback: string
   weightDisabled: string
   invalidWeight: string
   invalidPriority: string

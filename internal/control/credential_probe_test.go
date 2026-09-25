@@ -530,6 +530,11 @@ func TestClassifyCredentialProbeResultUsesStableSafeOutcomes(t *testing.T) {
 			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInvalidCredential),
 		},
 		{
+			name:        "insufficient balance",
+			result:      failedCredentialProbeResult(http.StatusPaymentRequired, execution.ErrorKindHTTP, execution.FailureHintInsufficientBalance),
+			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInsufficientBalance),
+		},
+		{
 			name:        "unauthorized",
 			result:      failedCredentialProbeResult(http.StatusUnauthorized, execution.ErrorKindHTTP, ""),
 			wantOutcome: ProbeOutcomeFailed, wantReason: credentialProbeReasonPointer(ProbeReasonInvalidCredential),

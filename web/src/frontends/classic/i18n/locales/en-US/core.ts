@@ -301,6 +301,7 @@ export default {
       attention: {
         title: 'Needs attention',
         blacklisted: '{group} has {count} blacklisted credentials that need manual action',
+        billing: '{group} has {count} credentials with insufficient balance, earliest retry',
         resetCreditExpiring:
           '{group} has {count} reset credits expiring soon; the nearest one expires',
         lowQuota: '{group} has {remaining} quota left, resets',

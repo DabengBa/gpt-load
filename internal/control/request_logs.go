@@ -544,6 +544,7 @@ func parseRequestLogQuery(rawQuery string) (requestlog.ListQuery, *app_errors.AP
 			telemetry.FailureCategoryConversionUnsupported,
 			telemetry.FailureCategoryDownstreamCancel,
 			telemetry.FailureCategoryAuthenticationRequired,
+			telemetry.FailureCategoryBilling,
 			telemetry.FailureCategoryAmbiguous:
 			query.FailureCategory = category
 		default:

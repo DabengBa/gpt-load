@@ -322,6 +322,25 @@ func TestRequestLogEndpointParsesAdvancedFilters(t *testing.T) {
 	}
 }
 
+func TestRequestLogEndpointAcceptsBillingFailureCategoryFilter(t *testing.T) {
+	t.Parallel()
+	reader := &recordingRequestLogReader{}
+	recorder := performRequestLogRequest(
+		newRequestLogTestEngine(t, reader),
+		"test-auth-key",
+		"failure_category=billing",
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("response = %d %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	if len(reader.queries) != 1 {
+		t.Fatalf("Reader calls = %d, want one", len(reader.queries))
+	}
+	if reader.queries[0].FailureCategory != telemetry.FailureCategoryBilling {
+		t.Fatalf("FailureCategory = %q, want billing", reader.queries[0].FailureCategory)
+	}
+}
+
 func TestRequestLogEndpointAcceptsModelConsistencyMismatchFilter(t *testing.T) {
 	t.Parallel()
 	reader := &recordingRequestLogReader{}

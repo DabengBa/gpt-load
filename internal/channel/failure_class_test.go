@@ -20,7 +20,11 @@ func TestClassifyFailureUsesMinimalAllowlist(t *testing.T) {
 		{name: "explicit model", statusCode: http.StatusForbidden, value: "model_not_available", want: FailureClassModel},
 		{name: "rate limited", statusCode: http.StatusTooManyRequests, want: FailureClassRateLimited},
 		{name: "generic forbidden", statusCode: http.StatusForbidden, value: "permission_denied", want: FailureClassUnknown},
-		{name: "billing forbidden", statusCode: http.StatusPaymentRequired, value: "billing disabled", want: FailureClassUnknown},
+		{name: "payment required is billing", statusCode: http.StatusPaymentRequired, value: "billing disabled", want: FailureClassBilling},
+		{name: "quota code beats 429 status", statusCode: http.StatusTooManyRequests, value: "insufficient_quota", want: FailureClassBilling},
+		{name: "insufficient balance message", statusCode: http.StatusBadRequest, value: "Your credit balance is too low", want: FailureClassBilling},
+		{name: "chinese balance message", statusCode: http.StatusForbidden, value: "当前账户余额不足，请充值", want: FailureClassBilling},
+		{name: "self-healing quota stays rate limited", statusCode: http.StatusTooManyRequests, value: "quota_exceeded", want: FailureClassRateLimited},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

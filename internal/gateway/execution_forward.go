@@ -459,7 +459,7 @@ func classifyGatewayFailureEvidence(result UpstreamResult) UpstreamResult {
 	if evidence.ScopeHint == "" {
 		if statusCode != http.StatusNotFound || hasExplicitModelFailureMarker(evidence.Type, evidence.Code, evidence.Summary) {
 			switch channel.ClassifyFailure(statusCode, evidence.Type, evidence.Code, evidence.Summary) {
-			case channel.FailureClassCredential:
+			case channel.FailureClassCredential, channel.FailureClassBilling:
 				evidence.ScopeHint = execution.ErrorScopeCredential
 			case channel.FailureClassModel:
 				evidence.ScopeHint = execution.ErrorScopeModel
@@ -607,7 +607,8 @@ func firstStreamErrorEvidence(
 	switch evidence.Hint {
 	case execution.FailureHintInvalidCredential,
 		execution.FailureHintRefreshRequired,
-		execution.FailureHintReauthorizationRequired:
+		execution.FailureHintReauthorizationRequired,
+		execution.FailureHintInsufficientBalance:
 		evidence.ScopeHint = execution.ErrorScopeCredential
 	case execution.FailureHintModelUnavailable,
 		execution.FailureHintCandidateUnavailable:

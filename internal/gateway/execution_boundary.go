@@ -129,11 +129,12 @@ func judgeUpstreamResult(
 		DownstreamErr:       downstreamErr,
 		Now:                 now,
 	}, decisionContext)
-	// 搜索错误不写入模型冷却或自动权重；明确的账号认证故障仍沿用生命周期处理。
+	// 搜索错误不写入模型冷却或自动权重；明确的账号认证/余额故障仍沿用生命周期处理。
 	if decisionContext.Operation == execution.OperationWebSearch &&
 		decision.Effect != health.EffectSkipGroup &&
 		decision.Category != health.FailureCategoryAuthenticationRequired &&
-		decision.Category != health.FailureCategoryInvalidKey {
+		decision.Category != health.FailureCategoryInvalidKey &&
+		decision.Category != health.FailureCategoryBilling {
 		decision.Effect = health.EffectNone
 		decision.CooldownUntil = time.Time{}
 	}

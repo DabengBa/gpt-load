@@ -90,7 +90,7 @@ const canOpenGroup = computed(
     Boolean(props.groupName?.trim()),
 )
 
-// 三个字段共用一条提示：列里放不下的名称在这里给全，省得逐个悬停。
+// 四个字段共用一条提示：列里放不下的名称和已折叠的供应商外链在这里给全。
 const routeTooltip = computed(() => {
   const lines: string[] = []
   if (props.channelId !== null) {
@@ -101,6 +101,9 @@ const routeTooltip = computed(() => {
   }
   if (credentialLabel.value) {
     lines.push(t('monitor.logs.routeIdentity.credential', { name: credentialLabel.value }))
+  }
+  if (props.providerUrl) {
+    lines.push(t('monitor.logs.routeIdentity.provider', { url: props.providerUrl }))
   }
   return lines.join('\n')
 })
@@ -149,29 +152,52 @@ const groupLinkAction = computed(() =>
         >
           {{ groupLabel }}
         </span>
-        <RouterLink
-          v-if="canOpenGroup"
-          class="log-route-identity__group-link icon-button icon-button--ghost icon-button--compact"
-          :to="groupDetailLocation(groupId as number)"
-          :aria-label="groupLinkAction"
-          @click.stop
-        >
-          <ArrowRight :size="14" aria-hidden="true" />
-        </RouterLink>
-        <a
-          v-if="providerUrl"
-          class="log-route-identity__provider"
-          :href="providerUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          :aria-label="t('monitor.logs.routeIdentity.openProviderUrl', { url: providerUrl })"
-          @click.stop
-        >
-          <ExternalLink :size="12" aria-hidden="true" />
-        </a>
+        <!-- compact：凭据并入分组同一行；分组维护页与供应商外链只在抽屉（plain）保留。 -->
+        <template v-if="appearance === 'compact' && credentialLabel">
+          <span class="log-route-identity__separator" aria-hidden="true">·</span>
+          <button
+            v-if="canFilterCredential"
+            class="log-route-identity__credential filterable-value"
+            :class="{ 'log-route-identity__credential--code': !hasCredentialName }"
+            type="button"
+            :aria-label="credentialAction"
+            @click="emit('filter-credential', credentialId as number)"
+          >
+            {{ credentialLabel }}
+          </button>
+          <span
+            v-else
+            class="log-route-identity__credential"
+            :class="{ 'log-route-identity__credential--code': !hasCredentialName }"
+          >
+            {{ credentialLabel }}
+          </span>
+        </template>
+        <template v-else-if="appearance !== 'compact'">
+          <RouterLink
+            v-if="canOpenGroup"
+            class="log-route-identity__group-link icon-button icon-button--ghost icon-button--compact"
+            :to="groupDetailLocation(groupId as number)"
+            :aria-label="groupLinkAction"
+            @click.stop
+          >
+            <ArrowRight :size="14" aria-hidden="true" />
+          </RouterLink>
+          <a
+            v-if="providerUrl"
+            class="log-route-identity__provider"
+            :href="providerUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            :aria-label="t('monitor.logs.routeIdentity.openProviderUrl', { url: providerUrl })"
+            @click.stop
+          >
+            <ExternalLink :size="12" aria-hidden="true" />
+          </a>
+        </template>
       </span>
 
-      <template v-if="credentialLabel">
+      <template v-if="appearance !== 'compact' && credentialLabel">
         <button
           v-if="canFilterCredential"
           class="log-route-identity__credential filterable-value"
@@ -251,6 +277,17 @@ const groupLinkAction = computed(() =>
 .log-route-identity__credential {
   color: var(--color-text-faint);
   font-size: var(--text-label-xs);
+}
+
+/* compact 模式下凭据跟在分组名后，空间不足时优先收缩它。 */
+.log-route-identity__line .log-route-identity__credential {
+  flex: 0 1 auto;
+  max-width: 45%;
+}
+
+.log-route-identity__separator {
+  flex: none;
+  color: var(--color-text-faint);
 }
 
 .log-route-identity__group--code,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"gpt-load/internal/outboundproxy"
@@ -393,6 +394,7 @@ const (
 	FailureHintCandidateUnavailable    FailureHint = "candidate_unavailable"
 	FailureHintModelUnavailable        FailureHint = "model_unavailable"
 	FailureHintHostError               FailureHint = "host_error"
+	FailureHintInsufficientBalance     FailureHint = "insufficient_balance"
 )
 
 // Valid reports whether the optional hint is recognized.
@@ -402,11 +404,44 @@ func (h FailureHint) Valid() bool {
 		FailureHintRefreshUnavailable,
 		FailureHintReauthorizationRequired, FailureHintRateLimited,
 		FailureHintRequestRejected, FailureHintCandidateUnavailable,
-		FailureHintModelUnavailable, FailureHintHostError:
+		FailureHintModelUnavailable, FailureHintHostError,
+		FailureHintInsufficientBalance:
 		return true
 	default:
 		return false
 	}
+}
+
+// insufficientBalanceMarkers 是「余额/付费不足」的保守特征表：只收录明确指向
+// 账户余额、付费配额的信号。会自愈的窗口限流（quota_exceeded、resource_exhausted、
+// usage_limit_reached）刻意不在其中，仍归限流处理。
+var insufficientBalanceMarkers = []string{
+	"insufficient_quota", "insufficient quota",
+	"insufficient balance", "insufficient_balance",
+	"insufficient credits", "insufficient_credits",
+	"credit balance", "balance is too low", "balance insufficient",
+	"exceeded your current quota",
+	"payment required", "payment_required",
+	"余额不足", "额度不足", "欠费",
+}
+
+// InsufficientBalanceSignal reports whether an upstream status or error text
+// carries an explicit account-billing signal. HTTP 402 alone is sufficient;
+// otherwise any marker match inside type/code/message qualifies. Classifiers
+// must evaluate this before status-based rate-limit and auth rules: providers
+// report quota exhaustion as 429 (OpenAI insufficient_quota) and occasionally
+// as 401/403.
+func InsufficientBalanceSignal(statusCode int, values ...string) bool {
+	if statusCode == http.StatusPaymentRequired {
+		return true
+	}
+	markers := strings.ToLower(strings.Join(values, " "))
+	for _, marker := range insufficientBalanceMarkers {
+		if strings.Contains(markers, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // ReplaySafety records whether a provider has explicitly confirmed that the

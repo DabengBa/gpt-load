@@ -131,7 +131,6 @@ export default {
       conflictSummary: '存在重复的对外模型名称，修正后才能保存',
       weight: '权重',
       priority: '优先级',
-      priorityFallback: '兜底',
       weightDisabled: '已停用分流',
       invalidWeight: '权重需为 0-100 的整数，修正后才能保存',
       invalidPriority: '优先级需为不小于 1 的整数，修正后才能保存',
@@ -472,6 +471,7 @@ export default {
         reason: {
           passed: '未发现异常',
           invalid_credential: '密钥无效',
+          insufficient_balance: '余额不足',
           model_unavailable: '测试模型不可用',
           rate_limited: '上游限流',
           timeout: '请求超时',
@@ -498,6 +498,7 @@ export default {
         rateLimited: '触发上游限流',
         modelUnavailable: '模型不可用',
         invalidCredential: '渠道凭据无效',
+        billing: '余额不足',
         upstreamHostError: '上游服务异常',
         clientError: '请求参数错误',
         downstreamCancel: '下游取消请求',

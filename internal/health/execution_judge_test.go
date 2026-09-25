@@ -216,13 +216,38 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			want: Result{Category: FailureCategoryAmbiguous, Action: ActionRetry},
 		},
 		{
-			name: "payment required is a client error",
+			name: "payment required cools the credential as billing",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusPaymentRequired,
+				Now:           now,
 				Evidence:      evidence(execution.ErrorKindHTTP, http.StatusPaymentRequired, "billing disabled"),
 			},
-			want: Result{Category: FailureCategoryClientError, Action: ActionRetry},
+			want: Result{
+				Category:      FailureCategoryBilling,
+				Action:        ActionCooldownCredential,
+				CooldownUntil: now.Add(24 * time.Hour),
+			},
+		},
+		{
+			name: "insufficient quota on 429 is billing not rate limit",
+			attempt: ExecutionAttempt{
+				DispatchState: execution.DispatchMaybeSent,
+				StatusCode:    http.StatusTooManyRequests,
+				Now:           now,
+				Evidence: &execution.ErrorEvidence{
+					Kind:       execution.ErrorKindHTTP,
+					StatusCode: http.StatusTooManyRequests,
+					Type:       "insufficient_quota",
+					Code:       "insufficient_quota",
+					Summary:    "You exceeded your current quota",
+				},
+			},
+			want: Result{
+				Category:      FailureCategoryBilling,
+				Action:        ActionCooldownCredential,
+				CooldownUntil: now.Add(24 * time.Hour),
+			},
 		},
 		{
 			name: "generic forbidden is a client error",

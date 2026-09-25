@@ -29,7 +29,7 @@ func TestModelRouteEntriesAcceptanceInspectionAndAPIRoundTrip(t *testing.T) {
 	if len(got.Groups) != 5 {
 		t.Fatalf("inspection rows=%d, want 5", len(got.Groups))
 	}
-	// effective_share follows routable entry weights: priority-2 C is a fallback,
+	// effective_share follows routable entry weights: priority-2 C is demoted,
 	// while all ready credentials keep A, B, B, and D available.
 	want := []float64{30.0 / 280.0, 50.0 / 280.0, 100.0 / 280.0, 100.0 / 280.0, 0}
 	for i, row := range got.Groups {
@@ -37,8 +37,8 @@ func TestModelRouteEntriesAcceptanceInspectionAndAPIRoundTrip(t *testing.T) {
 			t.Fatalf("row %d share=%v want %v", i, row.EffectiveShare, want[i])
 		}
 	}
-	if !got.Groups[4].Fallback {
-		t.Fatalf("C row = %#v, want fallback", got.Groups[4])
+	if got.Groups[4].Priority != 2 {
+		t.Fatalf("C row = %#v, want priority 2", got.Groups[4])
 	}
 
 	roundTripGroupID := createModelRouteTestGroup(t, fixture)

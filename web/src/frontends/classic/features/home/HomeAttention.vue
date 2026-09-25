@@ -21,6 +21,7 @@ const items = computed(() =>
         props.health.blacklisted_credentials,
         props.health.expiring_reset_credits,
         props.health.low_quota_credentials,
+        props.health.cooldown_credentials,
       ),
 )
 const overflowing = computed(() => items.value.length > attentionRowLimit)
@@ -28,12 +29,13 @@ const visibleItems = computed(() => items.value.slice(0, attentionRowLimit))
 const total = computed(() => attentionTotal(items.value))
 
 function itemLocation(groupID: number, kind: string) {
-  return groupDetailLocation(
-    groupID,
-    kind === 'blacklisted'
-      ? { tab: 'credentials', credential_status: 'blacklisted' }
-      : { tab: 'credentials' },
-  )
+  if (kind === 'blacklisted') {
+    return groupDetailLocation(groupID, { tab: 'credentials', credential_status: 'blacklisted' })
+  }
+  if (kind === 'billing') {
+    return groupDetailLocation(groupID, { tab: 'credentials', credential_status: 'cooldown' })
+  }
+  return groupDetailLocation(groupID, { tab: 'credentials' })
 }
 
 function quotaPercent(remaining: number): string {
@@ -44,7 +46,7 @@ function quotaPercent(remaining: number): string {
 }
 
 function itemTone(item: (typeof items.value)[number]): 'danger' | 'warning' {
-  if (item.kind === 'blacklisted') return 'danger'
+  if (item.kind === 'blacklisted' || item.kind === 'billing') return 'danger'
   if (
     item.kind === 'expiringResetCredit' &&
     item.expiresAtMS !== undefined &&
@@ -82,10 +84,25 @@ function itemTone(item: (typeof items.value)[number]): 'danger' | 'warning' {
         :class="`home-attention__row--${itemTone(item)}`"
         :to="itemLocation(item.groupID, item.kind)"
       >
-        <CircleAlert v-if="item.kind === 'blacklisted'" :size="14" aria-hidden="true" />
+        <CircleAlert
+          v-if="item.kind === 'blacklisted' || item.kind === 'billing'"
+          :size="14"
+          aria-hidden="true"
+        />
         <TriangleAlert v-else :size="14" aria-hidden="true" />
         <span v-if="item.kind === 'blacklisted'">
           {{ t('home.ledger.attention.blacklisted', { group: item.groupName, count: item.value }) }}
+        </span>
+        <span v-else-if="item.kind === 'billing'" class="home-attention__detail">
+          {{
+            t('home.ledger.attention.billing', { group: item.groupName, count: item.value })
+          }}
+          <AppRelativeTime
+            v-if="item.cooldownUntilMS !== undefined"
+            :instant="item.cooldownUntilMS"
+            :locale="locale"
+            :empty-label="''"
+          />
         </span>
         <span v-else-if="item.kind === 'expiringResetCredit'" class="home-attention__detail">
           {{

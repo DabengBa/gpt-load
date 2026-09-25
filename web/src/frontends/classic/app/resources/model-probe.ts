@@ -18,6 +18,7 @@ export type ModelProbeOutcome = 'passed' | 'failed' | 'inconclusive'
 
 export type ModelProbeReason =
   | 'invalid_credential'
+  | 'insufficient_balance'
   | 'model_unavailable'
   | 'rate_limited'
   | 'timeout'
@@ -54,6 +55,7 @@ export interface ModelProbeResultDto {
 const probeOutcomes = ['passed', 'failed', 'inconclusive'] as const
 const probeReasons = [
   'invalid_credential',
+  'insufficient_balance',
   'model_unavailable',
   'rate_limited',
   'timeout',

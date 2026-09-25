@@ -273,7 +273,6 @@ export default {
       nameConflict: '公開モデル名「{name}」が重複しています',
       weight: '重み',
       priority: '優先度',
-      priorityFallback: 'フォールバック',
       weightDisabled: '振り分け無効',
       invalidWeight: '重みは 0～100 の整数で入力してください',
       invalidPriority: '優先度は 1 以上の整数で入力してください',

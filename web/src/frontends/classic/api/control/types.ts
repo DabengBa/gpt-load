@@ -9,6 +9,7 @@ export type FailureCategory =
   | 'rate_limited'
   | 'model_unavailable'
   | 'invalid_key'
+  | 'billing'
   | 'upstream_host_error'
   | 'client_error'
   | 'downstream_cancel'
@@ -338,6 +339,7 @@ export type CredentialTestOutcome = 'passed' | 'failed' | 'inconclusive'
 
 export type CredentialTestReason =
   | 'invalid_credential'
+  | 'insufficient_balance'
   | 'model_unavailable'
   | 'rate_limited'
   | 'timeout'

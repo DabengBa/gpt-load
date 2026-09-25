@@ -282,6 +282,8 @@ func failureHintFromHTTP(status int, body []byte) execution.FailureHint {
 func neutralFailureHint(status int, values ...string) execution.FailureHint {
 	markers := strings.ToLower(strings.Join(values, " "))
 	switch {
+	case execution.InsufficientBalanceSignal(status, values...):
+		return execution.FailureHintInsufficientBalance
 	case status == http.StatusUnauthorized:
 		return execution.FailureHintInvalidCredential
 	case containsAnyMarker(markers,
@@ -328,7 +330,8 @@ func annotateBifrostErrorEvidence(evidence *execution.ErrorEvidence) {
 	switch evidence.Hint {
 	case execution.FailureHintInvalidCredential,
 		execution.FailureHintRefreshRequired,
-		execution.FailureHintReauthorizationRequired:
+		execution.FailureHintReauthorizationRequired,
+		execution.FailureHintInsufficientBalance:
 		evidence.ScopeHint = execution.ErrorScopeCredential
 	case execution.FailureHintRequestRejected:
 		evidence.OriginHint = execution.ErrorOriginClient

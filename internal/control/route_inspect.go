@@ -45,7 +45,6 @@ type routeInspectGroupResponse struct {
 	UpstreamModel             *string                          `json:"upstream_model"`
 	EntryWeight               int                              `json:"entry_weight"`
 	Priority                  int                              `json:"priority"`
-	Fallback                  bool                             `json:"fallback"`
 	ConfiguredShare           float64                          `json:"configured_share"`
 	EffectiveShare            float64                          `json:"effective_share"`
 	EntryCooldownUntilMS      *int64                           `json:"entry_cooldown_until_ms"`
@@ -198,7 +197,6 @@ func mapRouteInspectResponse(
 			UpstreamModel:             cloneRouteModel(group.UpstreamModelID),
 			EntryWeight:               group.EntryWeight,
 			Priority:                  group.Priority,
-			Fallback:                  group.Priority > 1,
 			ConfiguredShare:           configuredShares[index],
 			EffectiveShare:            group.EffectiveShare,
 			EntryCooldownUntilMS:      entryCooldownUntilMS,

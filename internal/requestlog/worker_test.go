@@ -528,7 +528,7 @@ func TestWriteBatchAggregatesCredentialAttemptsByOwnCompletionHour(t *testing.T)
 	db := openRequestLogQueryDB(t)
 	firstHour := time.Date(2026, time.August, 15, 14, 0, 0, 0, time.UTC)
 	row := aggregationRow(aggregationRequestID(90), firstHour.Add(2*time.Hour), 7, "attempt-model")
-	row.AttemptCount = 5
+	row.AttemptCount = 6
 	localAttempt := credentialAttemptRow(row.ID, 5, firstHour.Add(3*time.Minute), 11, telemetry.FailureCategoryOK)
 	localAttempt.DispatchState = string(execution.DispatchLocal)
 	row.AttemptRows = []models.RequestLogAttempt{
@@ -537,6 +537,7 @@ func TestWriteBatchAggregatesCredentialAttemptsByOwnCompletionHour(t *testing.T)
 		credentialAttemptRow(row.ID, 3, firstHour.Add(time.Hour+time.Minute), 22, telemetry.FailureCategoryInvalidKey),
 		credentialAttemptRow(row.ID, 4, firstHour.Add(time.Hour+2*time.Minute), 22, telemetry.FailureCategoryDownstreamCancel),
 		localAttempt,
+		credentialAttemptRow(row.ID, 6, firstHour.Add(4*time.Minute), 11, telemetry.FailureCategoryBilling),
 	}
 
 	writer := &gormBatchWriter{db: db}
@@ -549,7 +550,7 @@ func TestWriteBatchAggregatesCredentialAttemptsByOwnCompletionHour(t *testing.T)
 		t.Fatalf("query CredentialAttemptStats: %v", err)
 	}
 	want := []models.CredentialAttemptStat{
-		{CredentialID: 11, BucketStartMS: firstHour.UnixMilli(), SuccessCount: 1, FailureCount: 1},
+		{CredentialID: 11, BucketStartMS: firstHour.UnixMilli(), SuccessCount: 1, FailureCount: 2},
 		{CredentialID: 22, BucketStartMS: firstHour.Add(time.Hour).UnixMilli(), FailureCount: 1},
 	}
 	if len(stats) != len(want) {

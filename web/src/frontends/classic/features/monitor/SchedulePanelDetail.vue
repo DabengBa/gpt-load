@@ -31,7 +31,7 @@ import StickySaveBar from '@/components/ui/StickySaveBar.vue'
 import ModelProbeScopeDialog from '@/features/models/ModelProbeScopeDialog.vue'
 import { formatLocalInstant } from '@/lib/format'
 
-import type { ScheduleDrafts, ScheduleMode } from './monitor-route'
+import type { ScheduleDrafts } from './monitor-route'
 
 export interface SchedulePanelDetailLabels {
   title: string
@@ -92,7 +92,6 @@ const props = withDefaults(
     stale?: boolean
     labels?: Partial<SchedulePanelDetailLabels>
     locale?: string
-    mode?: ScheduleMode
     selectedRow?: string
     sourceGroupId?: number
     drafts?: ScheduleDrafts
@@ -104,7 +103,6 @@ const props = withDefaults(
     stale: false,
     labels: () => ({}),
     locale: 'en-US',
-    mode: 'all',
     selectedRow: undefined,
     sourceGroupId: undefined,
     drafts: () => ({}),
@@ -145,15 +143,7 @@ const text = (key: keyof SchedulePanelDetailLabels): string => {
 
 const rows = computed(() =>
   (props.detail?.groups ?? [])
-    .flatMap((group) =>
-      group.entries
-        .filter((entry) => {
-          if (props.mode === 'primary') return !entry.fallback
-          if (props.mode === 'fallback') return entry.fallback
-          return true
-        })
-        .map((entry) => ({ group, entry })),
-    )
+    .flatMap((group) => group.entries.map((entry) => ({ group, entry })))
     .sort(
       (a, b) =>
         a.entry.priority - b.entry.priority ||
@@ -178,7 +168,7 @@ function revealScheduleRow(key: string): void {
 }
 
 watch(
-  () => [props.detail, props.sourceGroupId, props.selectedRow, props.mode] as const,
+  () => [props.detail, props.sourceGroupId, props.selectedRow] as const,
   async ([detail, sourceGroupId, selectedRow]) => {
     if (!detail || sourceGroupId === undefined) return
     const keyOf = ({ group, entry }: (typeof rows.value)[number]): string =>
@@ -201,8 +191,8 @@ watch(
     if (target) emit('row-change', keyOf(target))
   },
 )
-// Batch scope is exactly what is on screen: the same mode-filtered rows the
-// table renders, deduplicated to (group, model) targets. Disabled groups are
+// Batch scope is exactly what is on screen: the same rows the table renders,
+// deduplicated to (group, model) targets. Disabled groups are
 // split out so the operator decides whether to spend an upstream call on a group
 // that is not serving traffic.
 const probeScopes = computed(() => {

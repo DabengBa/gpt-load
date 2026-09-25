@@ -10,7 +10,7 @@ import PageFrame from '@/components/layout/PageFrame.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import { useAuthSession } from '@/features/auth/auth-session'
 
-import type { ScheduleDrafts, ScheduleMode, ScheduleMonitorState } from './monitor-route'
+import type { ScheduleDrafts, ScheduleMonitorState } from './monitor-route'
 import { parseScheduleMonitorState, sameMonitorQuery, scheduleMonitorQuery } from './monitor-route'
 import type { SchedulePanelLabels } from './SchedulePanel.vue'
 
@@ -73,7 +73,7 @@ function updateScheduleContext(next: Partial<ReturnType<typeof parseScheduleMoni
   replaceScheduleState(nextState)
 }
 
-function commitScheduleContext(context: { externalModel?: string; mode: ScheduleMode }): void {
+function commitScheduleContext(context: { externalModel?: string }): void {
   const current = renderedScheduleState.value
   const externalModel = context.externalModel?.trim() || undefined
   const contextChanged = externalModel !== current.externalModel
@@ -105,7 +105,6 @@ function refreshScheduleRoute(): void {
 
 const scheduleLabels = computed<SchedulePanelLabels>(() => ({
   model: t('monitor.schedule.panel.model'),
-  mode: t('monitor.schedule.panel.mode'),
   selectModel: t('monitor.schedule.panel.selectModel'),
   loadingOptions: t('monitor.schedule.panel.loadingOptions'),
   contextRequired: t('monitor.schedule.panel.contextRequired'),
@@ -115,11 +114,6 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
   retry: t('monitor.schedule.panel.retry'),
   indexFailed: t('monitor.schedule.panel.indexFailed'),
   detailFailed: t('monitor.schedule.panel.detailFailed'),
-  modeLabels: {
-    all: t('monitor.schedule.modes.all'),
-    primary: t('monitor.schedule.modes.primary'),
-    fallback: t('monitor.schedule.modes.fallback'),
-  },
   detail: {
     title: t('monitor.schedule.detail.title'),
     loading: t('monitor.schedule.detail.loading'),
@@ -191,7 +185,6 @@ const scheduleLabels = computed<SchedulePanelLabels>(() => ({
       <div v-if="isAdmin && isCanonicalQuery" class="schedule-page__panel">
         <SchedulePanel
           :external-model="renderedScheduleState.externalModel"
-          :mode="renderedScheduleState.mode"
           :selected-row="renderedScheduleState.selectedRow"
           :source-group-id="renderedScheduleState.sourceGroupId"
           :drafts="renderedScheduleState.drafts"

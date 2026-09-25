@@ -39,7 +39,7 @@ func TestGrokProviderClassifiesOAuthAndQuotaFailures(t *testing.T) {
 	}{
 		{name: "unauthorized", err: grokProviderTestError{status: http.StatusUnauthorized}, hint: execution.FailureHintRefreshRequired, scope: execution.ErrorScopeCredential, replay: execution.ReplaySafetyRejectedBeforeProcessing},
 		{name: "forbidden", err: grokProviderTestError{status: http.StatusForbidden}, hint: execution.FailureHintCandidateUnavailable, scope: execution.ErrorScopeModel, replay: execution.ReplaySafetyRejectedBeforeProcessing},
-		{name: "payment required", err: grokProviderTestError{status: http.StatusPaymentRequired}, hint: execution.FailureHintCandidateUnavailable, scope: execution.ErrorScopeModel, replay: execution.ReplaySafetyRejectedBeforeProcessing},
+		{name: "payment required", err: grokProviderTestError{status: http.StatusPaymentRequired}, hint: execution.FailureHintInsufficientBalance, scope: execution.ErrorScopeCredential, replay: execution.ReplaySafetyRejectedBeforeProcessing},
 		{name: "invalid request", err: grokProviderTestError{status: http.StatusBadRequest}, hint: execution.FailureHintRequestRejected, scope: execution.ErrorScopeRequest},
 		{name: "free usage", err: grokProviderTestError{status: http.StatusTooManyRequests, code: "subscription:free-usage-exhausted", retry: 24 * time.Hour}, hint: execution.FailureHintRateLimited, scope: execution.ErrorScopeCredential},
 		{name: "host", err: grokProviderTestError{status: http.StatusServiceUnavailable}, hint: execution.FailureHintHostError, scope: execution.ErrorScopeGroup},

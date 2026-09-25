@@ -144,20 +144,19 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 		upstream       string
 		weight         int
 		priority       int
-		fallback       bool
 		wantShare      float64
 		wantConfigured float64
 	}{
-		{1, "up-a", 30, 1, false, 30.0 / 280.0, 30.0 / 280.0},
-		{1, "up-b", 50, 1, false, 50.0 / 280.0, 50.0 / 280.0},
-		{2, "up-b", 100, 1, false, 100.0 / 280.0, 100.0 / 280.0},
-		{3, "up-d", 100, 1, false, 100.0 / 280.0, 100.0 / 280.0},
-		{1, "up-c", 20, 2, true, 0, 1},
+		{1, "up-a", 30, 1, 30.0 / 280.0, 30.0 / 280.0},
+		{1, "up-b", 50, 1, 50.0 / 280.0, 50.0 / 280.0},
+		{2, "up-b", 100, 1, 100.0 / 280.0, 100.0 / 280.0},
+		{3, "up-d", 100, 1, 100.0 / 280.0, 100.0 / 280.0},
+		{1, "up-c", 20, 2, 0, 1},
 	}
 	for index, want := range order {
 		row := result.Groups[index]
 		if row.GroupID != want.groupID || routeModelValue(row.UpstreamModel) != want.upstream ||
-			row.EntryWeight != want.weight || row.Priority != want.priority || row.Fallback != want.fallback {
+			row.EntryWeight != want.weight || row.Priority != want.priority {
 			t.Fatalf("row %d = %#v, want %v", index, row, want)
 		}
 		if diff := row.EffectiveShare - want.wantShare; diff < -1e-9 || diff > 1e-9 {

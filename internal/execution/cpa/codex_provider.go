@@ -403,6 +403,9 @@ func (*codexProviderBridge) ClassifyError(
 	case status == http.StatusUnauthorized:
 		evidence.Hint = execution.FailureHintRefreshRequired
 		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
+	case execution.InsufficientBalanceSignal(status, typeValue, codeValue, evidence.Summary):
+		evidence.Hint = execution.FailureHintInsufficientBalance
+		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
 	case status == http.StatusTooManyRequests && typeValue == "usage_limit_reached":
 		evidence.Hint = execution.FailureHintRateLimited
 		// dev 没有模型级冷却运行态：上游把这个错误标为 ErrorScopeModel，#599 落地前

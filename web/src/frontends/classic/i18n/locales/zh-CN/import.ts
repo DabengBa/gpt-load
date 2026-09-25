@@ -257,7 +257,6 @@ export default {
       nameConflict: '对外模型名称“{name}”重复',
       weight: '权重',
       priority: '优先级',
-      priorityFallback: '兜底',
       weightDisabled: '已停用分流',
       invalidWeight: '权重需为 0-100 的整数，修正后才能保存',
       invalidPriority: '优先级需为不小于 1 的整数，修正后才能保存',

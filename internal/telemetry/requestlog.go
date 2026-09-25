@@ -41,6 +41,7 @@ const (
 	FailureCategoryConversionUnsupported  FailureCategory = "conversion_unsupported"
 	FailureCategoryDownstreamCancel       FailureCategory = "downstream_cancel"
 	FailureCategoryAuthenticationRequired FailureCategory = "authentication_required"
+	FailureCategoryBilling                FailureCategory = "billing"
 	FailureCategoryAmbiguous              FailureCategory = "ambiguous"
 )
 
@@ -67,6 +68,8 @@ func FailureCategoryFromHealth(value health.FailureCategory) FailureCategory {
 		return FailureCategoryDownstreamCancel
 	case health.FailureCategoryAuthenticationRequired:
 		return FailureCategoryAuthenticationRequired
+	case health.FailureCategoryBilling:
+		return FailureCategoryBilling
 	default:
 		return FailureCategoryAmbiguous
 	}

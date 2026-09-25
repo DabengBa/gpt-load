@@ -93,7 +93,6 @@ func buildRouteIndex(snapshot *state.ConfigSnapshot) RoutesView {
 	type accumulator struct {
 		candidates map[state.RouteEntryKey]struct{}
 		groups     map[uint]struct{}
-		fallback   bool
 	}
 	accumulators := make(map[indexKey]*accumulator)
 	for protocolKey, byOperation := range snapshot.ExecutionRouteCatalog {
@@ -118,9 +117,6 @@ func buildRouteIndex(snapshot *state.ConfigSnapshot) RoutesView {
 					}
 					entry.candidates[candidateKey] = struct{}{}
 					entry.groups[target.GroupID] = struct{}{}
-					if target.Priority > 1 {
-						entry.fallback = true
-					}
 				}
 			}
 		}
@@ -133,12 +129,11 @@ func buildRouteIndex(snapshot *state.ConfigSnapshot) RoutesView {
 		}
 		sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
 		items = append(items, RouteIndexItemView{
-			ExternalModel:   key.external,
-			Protocol:        string(key.protocol),
-			Operation:       string(key.operation),
-			CandidateCount:  len(entry.candidates),
-			GroupIDs:        groupIDs,
-			FallbackPresent: entry.fallback,
+			ExternalModel:  key.external,
+			Protocol:       string(key.protocol),
+			Operation:      string(key.operation),
+			CandidateCount: len(entry.candidates),
+			GroupIDs:       groupIDs,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {

@@ -1,7 +1,7 @@
 # 设计方案：模型测活与凭据测试
 
 状态：实现中，等待最终集成验收
-关联：`docs/design/model-route-central-scheduling.md`、`internal/control/model_probe.go`、`internal/control/credential_probe.go`
+关联：`internal/control/model_probe.go`、`internal/control/credential_probe.go`
 
 ## 1. 目标
 
@@ -25,7 +25,7 @@ POST /api/model-probe
     "group_name": "openai-main",
     "model": "gpt-4o",
     "outcome": "passed" | "failed" | "inconclusive",
-    "reason": null | "invalid_credential" | "model_unavailable" | "rate_limited"
+    "reason": null | "invalid_credential" | "insufficient_balance" | "model_unavailable" | "rate_limited"
              | "timeout" | "upstream_error" | "probe_incompatible"
              | "unknown" | "target_unavailable"
              | "no_schedulable_credential",

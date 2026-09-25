@@ -66,7 +66,8 @@ func annotateProviderErrorEvidence(evidence *execution.ErrorEvidence, err error)
 	switch evidence.Hint {
 	case execution.FailureHintInvalidCredential,
 		execution.FailureHintRefreshRequired,
-		execution.FailureHintReauthorizationRequired:
+		execution.FailureHintReauthorizationRequired,
+		execution.FailureHintInsufficientBalance:
 		evidence.ScopeHint = execution.ErrorScopeCredential
 	case execution.FailureHintRequestRejected:
 		evidence.ScopeHint = execution.ErrorScopeRequest

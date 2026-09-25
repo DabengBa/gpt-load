@@ -599,6 +599,48 @@ func TestValidationAcceptsValidContractsAndRejectsInvalidFields(t *testing.T) {
 	}).Validate(); err != nil {
 		t.Fatalf("candidate-unavailable error evidence Validate() error = %v", err)
 	}
+	if err := (ErrorEvidence{
+		Kind:       ErrorKindHTTP,
+		Hint:       FailureHintInsufficientBalance,
+		StatusCode: http.StatusPaymentRequired,
+		Summary:    "Insufficient Balance",
+	}).Validate(); err != nil {
+		t.Fatalf("insufficient-balance error evidence Validate() error = %v", err)
+	}
+}
+
+func TestInsufficientBalanceSignal(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		values     []string
+		want       bool
+	}{
+		{name: "payment required status alone", statusCode: http.StatusPaymentRequired, want: true},
+		{name: "openai insufficient quota on 429", statusCode: http.StatusTooManyRequests,
+			values: []string{"insufficient_quota", "You exceeded your current quota"}, want: true},
+		{name: "anthropic credit balance", statusCode: http.StatusBadRequest,
+			values: []string{"invalid_request_error", "Your credit balance is too low"}, want: true},
+		{name: "insufficient credits", statusCode: http.StatusForbidden,
+			values: []string{"Insufficient credits remaining"}, want: true},
+		{name: "chinese balance", statusCode: http.StatusForbidden,
+			values: []string{"当前账户余额不足"}, want: true},
+		{name: "rate limit marker is not billing", statusCode: http.StatusTooManyRequests,
+			values: []string{"rate_limit_exceeded", "quota_exceeded"}, want: false},
+		{name: "resource exhausted is not billing", statusCode: http.StatusTooManyRequests,
+			values: []string{"resource_exhausted"}, want: false},
+		{name: "plain 429 is not billing", statusCode: http.StatusTooManyRequests, want: false},
+		{name: "unauthorized is not billing", statusCode: http.StatusUnauthorized, want: false},
+		{name: "generic 400 is not billing", statusCode: http.StatusBadRequest,
+			values: []string{"invalid_request_error"}, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := InsufficientBalanceSignal(test.statusCode, test.values...); got != test.want {
+				t.Fatalf("InsufficientBalanceSignal() = %v, want %v", got, test.want)
+			}
+		})
+	}
 }
 
 func TestStreamEventValidation(t *testing.T) {

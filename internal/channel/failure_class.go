@@ -17,6 +17,7 @@ const (
 	FailureClassCredential  FailureClass = "credential"
 	FailureClassModel       FailureClass = "model"
 	FailureClassRateLimited FailureClass = "rate_limited"
+	FailureClassBilling     FailureClass = "billing"
 )
 
 // ClassifyFailure applies the bounded provider error allowlist. Status codes
@@ -24,6 +25,12 @@ const (
 // permission errors remain unknown.
 func ClassifyFailure(statusCode int, values ...string) FailureClass {
 	markers := strings.ToLower(strings.Join(values, " "))
+	// 余额信号优先于一切按状态的归类：OpenAI 用 429 报 insufficient_quota，
+	// 中转常用 401/403/500 报「余额不足」，按状态归限流或鉴权会把资损错误
+	// 埋进普通噪音里。
+	if execution.InsufficientBalanceSignal(statusCode, values...) {
+		return FailureClassBilling
+	}
 	if statusCode == http.StatusUnauthorized || containsFailureMarker(markers,
 		"invalid_api_key", "api_key_invalid", "authentication_error",
 		"authentication failed", "invalid credential", "api key not valid") {
@@ -48,6 +55,8 @@ func ClassifyFailure(statusCode int, values ...string) FailureClass {
 // existing health policy remains compatible for generic 429 responses.
 func FailureHint(statusCode int, values ...string) execution.FailureHint {
 	switch ClassifyFailure(statusCode, values...) {
+	case FailureClassBilling:
+		return execution.FailureHintInsufficientBalance
 	case FailureClassCredential:
 		return execution.FailureHintInvalidCredential
 	case FailureClassModel:

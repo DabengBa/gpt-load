@@ -449,7 +449,7 @@ function groupStatusLabel(group: RouteInspectGroupDto): string {
   if (!group.routable) return t('monitor.inspector.result.notRoutable')
   return isActiveCandidate(group)
     ? t('monitor.inspector.groups.weightedCandidate')
-    : t('monitor.inspector.groups.fallbackCandidate')
+    : t('monitor.inspector.groups.standbyCandidate')
 }
 
 function credentialTone(credential: RouteInspectCredentialDto): StatusTone {
@@ -769,9 +769,6 @@ onBeforeUnmount(() => {
                   <small>{{ groupStatusLabel(group) }}</small>
                   <small>
                     <code>P{{ group.priority }}</code>
-                    <span v-if="group.fallback">{{
-                      t('monitor.inspector.groups.fallbackTier')
-                    }}</span>
                   </small>
                   <small v-if="group.entry_cooldown_until_ms !== null">
                     {{ t('monitor.inspector.groups.entryCooldown') }}

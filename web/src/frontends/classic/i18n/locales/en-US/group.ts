@@ -132,7 +132,6 @@ export default {
       conflictSummary: 'Duplicate client model names must be resolved before saving',
       weight: 'Weight',
       priority: 'Priority',
-      priorityFallback: 'Fallback',
       weightDisabled: 'Splitting disabled',
       invalidWeight: 'Weight must be an integer between 0 and 100 before saving',
       invalidPriority: 'Priority must be an integer of at least 1 before saving',
@@ -486,6 +485,7 @@ export default {
         reason: {
           passed: 'No issue detected',
           invalid_credential: 'The API key is invalid',
+          insufficient_balance: 'Insufficient balance',
           model_unavailable: 'The test model is unavailable',
           rate_limited: 'The upstream rate limit was reached',
           timeout: 'The request timed out',
@@ -512,6 +512,7 @@ export default {
         rateLimited: 'Upstream rate limited',
         modelUnavailable: 'Model unavailable',
         invalidCredential: 'Invalid channel credential',
+        billing: 'Insufficient balance',
         upstreamHostError: 'Upstream service error',
         clientError: 'Invalid request',
         downstreamCancel: 'Downstream request cancelled',

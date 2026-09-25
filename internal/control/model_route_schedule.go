@@ -66,7 +66,6 @@ type modelRouteScheduleIndexItem struct {
 	Operation             execution.Operation `json:"operation"`
 	CandidateCount        int                 `json:"candidate_count"`
 	GroupCount            int                 `json:"group_count"`
-	HasFallback           bool                `json:"has_fallback"`
 	CooledCandidates      int                 `json:"cooled_candidates"`
 	BlacklistedCandidates int                 `json:"blacklisted_candidates"`
 }
@@ -115,7 +114,6 @@ type modelRouteScheduleEntryResponse struct {
 	Alias           string                           `json:"alias"`
 	Weight          int                              `json:"weight"`
 	Priority        int                              `json:"priority"`
-	Fallback        bool                             `json:"fallback"`
 	CircuitBreaker  scheduleBreakerView              `json:"circuit_breaker"`
 	Reasoning       scheduleReasoningView            `json:"reasoning"`
 	Runtime         scheduleEntryRuntimeView         `json:"runtime"`
@@ -224,11 +222,10 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 		operation execution.Operation
 	}
 	type scheduleIndexAccumulator struct {
-		candidates  map[scheduleCandidateKey]struct{}
-		groups      map[uint]struct{}
-		hasFallback bool
-		cooled      int
-		blacklist   int
+		candidates map[scheduleCandidateKey]struct{}
+		groups     map[uint]struct{}
+		cooled     int
+		blacklist  int
 	}
 	items := make(map[string]map[scheduleIndexContext]*scheduleIndexAccumulator)
 	for protocolKey, byOperation := range observation.snapshot.ExecutionRouteCatalog {
@@ -261,9 +258,6 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 					}
 					accumulator.candidates[key] = struct{}{}
 					accumulator.groups[target.GroupID] = struct{}{}
-					if target.Priority > 1 {
-						accumulator.hasFallback = true
-					}
 					view, hasRuntime := runtimeByKey[state.RouteEntryKey{
 						GroupID: target.GroupID, EntryID: target.EntryID,
 					}]
@@ -300,7 +294,6 @@ func (s *Service) GetModelRouteScheduleIndex() (modelRouteScheduleIndexResponse,
 			Operation:             selectedContext.operation,
 			CandidateCount:        len(selected.candidates),
 			GroupCount:            len(selected.groups),
-			HasFallback:           selected.hasFallback,
 			CooledCandidates:      selected.cooled,
 			BlacklistedCandidates: selected.blacklist,
 		})
@@ -514,7 +507,6 @@ func mapModelRouteScheduleDetail(
 			Enabled:  configuration.enabled,
 			Weight:   group.EntryWeight,
 			Priority: group.Priority,
-			Fallback: group.Priority > 1,
 			CircuitBreaker: scheduleBreakerViewFromConfiguration(
 				configuration.circuitBreaker,
 			),

@@ -96,11 +96,7 @@ function applyAdvanced(): void {
     <div v-if="appliedChips.length" class="logs-filter__chips">
       <span class="logs-filter__chips-label">{{ t('monitor.logs.filters.applied') }}</span>
       <template v-for="chip in appliedChips" :key="chip.key">
-        <span v-if="chip.key === 'time'" class="logs-filter__chip logs-filter__chip--fixed">
-          {{ chip.label }}
-        </span>
         <button
-          v-else
           type="button"
           class="logs-filter__chip"
           :aria-label="t('monitor.logs.filters.remove', { value: chip.label })"
@@ -251,15 +247,6 @@ function applyAdvanced(): void {
 .logs-filter__chip:hover {
   border-color: var(--color-text-faint);
   color: var(--color-text);
-}
-
-.logs-filter__chip--fixed {
-  cursor: default;
-}
-
-.logs-filter__chip--fixed:hover {
-  border-color: var(--color-border-control);
-  color: var(--color-text-muted);
 }
 
 .logs-filter__row {

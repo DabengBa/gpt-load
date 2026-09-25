@@ -132,7 +132,6 @@ export default {
       conflictSummary: '保存前に重複するクライアントモデル名を解消してください',
       weight: '重み',
       priority: '優先度',
-      priorityFallback: 'フォールバック',
       weightDisabled: '振り分け無効',
       invalidWeight: '重みは 0～100 の整数で入力してください',
       invalidPriority: '優先度は 1 以上の整数で入力してください',
@@ -486,6 +485,7 @@ export default {
         reason: {
           passed: '問題は検出されませんでした',
           invalid_credential: 'API キーが無効です',
+          insufficient_balance: '残高不足です',
           model_unavailable: 'テストモデルを利用できません',
           rate_limited: '上流のレート制限に達しました',
           timeout: 'リクエストがタイムアウトしました',
@@ -513,6 +513,7 @@ export default {
         rateLimited: 'アップストリームのレート制限',
         modelUnavailable: 'モデルを利用できません',
         invalidCredential: 'チャネル認証情報が無効です',
+        billing: '残高不足',
         upstreamHostError: 'アップストリームサービスエラー',
         clientError: 'リクエストが無効です',
         downstreamCancel: 'ダウンストリームがリクエストをキャンセル',

@@ -297,7 +297,7 @@ func TestAntigravityProviderClassifiesOAuthAndPaidCreditErrors(t *testing.T) {
 		},
 		{
 			name: "paid credit balance advances to another credential", err: antigravityClassifiedTestError{status: 429, typeID: "RESOURCE_EXHAUSTED", code: "INSUFFICIENT_G1_CREDITS_BALANCE"},
-			wantHint: execution.FailureHintRateLimited, wantReplay: execution.ReplaySafetyRejectedBeforeProcessing, wantScope: execution.ErrorScopeCredential,
+			wantHint: execution.FailureHintInsufficientBalance, wantReplay: execution.ReplaySafetyRejectedBeforeProcessing, wantScope: execution.ErrorScopeCredential,
 		},
 		{
 			name: "rate limit retains fractional retry delay", err: antigravityRetryAfterTestError{

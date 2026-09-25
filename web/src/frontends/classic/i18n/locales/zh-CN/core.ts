@@ -285,6 +285,7 @@ export default {
       attention: {
         title: '需要处理',
         blacklisted: '{group} 有 {count} 个凭据已拉黑，需要人工处理',
+        billing: '{group} 有 {count} 个凭据余额不足，最早重试于',
         resetCreditExpiring: '{group} 有 {count} 张重置卡即将到期，最近一张',
         lowQuota: '{group} 账号额度剩 {remaining}，重置于',
         summary: '共有 {count} 项需要你处理',

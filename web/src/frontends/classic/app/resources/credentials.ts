@@ -132,6 +132,7 @@ const credentialTestResultFields = [
 const credentialTestOutcomes = ['passed', 'failed', 'inconclusive'] as const
 const failedCredentialTestReasons = [
   'invalid_credential',
+  'insufficient_balance',
   'model_unavailable',
   'no_answer',
   'invalid_response',
@@ -150,6 +151,7 @@ const failureCategories = [
   'rate_limited',
   'model_unavailable',
   'invalid_key',
+  'billing',
   'upstream_host_error',
   'client_error',
   'downstream_cancel',

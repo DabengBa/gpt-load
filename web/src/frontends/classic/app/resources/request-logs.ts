@@ -249,6 +249,7 @@ const failureCategories = [
   'rate_limited',
   'model_unavailable',
   'invalid_key',
+  'billing',
   'upstream_host_error',
   'client_error',
   'conversion_unsupported',

@@ -33,12 +33,10 @@ export interface UsageMonitorState {
   metric: UsageTrendMetric
 }
 
-export type ScheduleMode = 'all' | 'primary' | 'fallback'
 export type ScheduleDraftField = 'weight' | 'priority'
 export type ScheduleDrafts = Record<string, Partial<Record<ScheduleDraftField, number | null>>>
 
 export interface ScheduleMonitorState {
-  mode: ScheduleMode
   externalModel?: string
   selectedRow?: string
   /** 来源分组行定位提示（分组模型页跳转）；详情加载后解析为 selectedRow。 */
@@ -92,10 +90,6 @@ const scheduleRowPattern = /^\d+:\S{1,512}$/u
 
 export function parseScheduleMonitorState(query: Record<string, unknown>): ScheduleMonitorState {
   return {
-    mode:
-      query.schedule_mode === 'primary' || query.schedule_mode === 'fallback'
-        ? query.schedule_mode
-        : 'all',
     externalModel: scalarText(query.schedule_model),
     selectedRow: scalarScheduleRow(query.schedule_row),
     sourceGroupId: scalarPositiveNumber(query.schedule_group),
@@ -106,7 +100,6 @@ export function parseScheduleMonitorState(query: Record<string, unknown>): Sched
 // /schedule 页面用路径表达页面身份，query 只保留调度上下文与草稿。
 export function scheduleMonitorQuery(state: ScheduleMonitorState): LocationQueryRaw {
   const normalized: LocationQueryRaw = {}
-  if (state.mode !== 'all') normalized.schedule_mode = state.mode
   const model = scalarText(state.externalModel)
   if (model !== undefined) normalized.schedule_model = model
   if (state.selectedRow !== undefined) normalized.schedule_row = state.selectedRow

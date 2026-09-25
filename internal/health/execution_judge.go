@@ -43,6 +43,11 @@ const contentFilterRuleID = RuleID("content_filter.no_content")
 const emptyCompletionErrorCode = "upstream_empty_completion"
 const emptyCompletionRuleID = RuleID("upstream.empty_completion")
 
+// defaultBillingCooldown 是余额类失败的冷却时长：余额错误不会分钟级自愈，
+// 但充值后会恢复——24h 后凭据自动回来探一次，充值即自愈、未充值每天最多再
+// 烧一次请求。
+const defaultBillingCooldown = 24 * time.Hour
+
 // JudgeExecution decides the complete GPT-Load retry and runtime effect for one
 // executor result.
 func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) Decision {
@@ -341,6 +346,7 @@ func (attempt ExecutionAttempt) statusCode() int {
 func classifyExecutionEvidence(attempt ExecutionAttempt) FailureCategory {
 	statusCode := attempt.statusCode()
 	markers := ""
+	var signalValues []string
 	if attempt.Evidence != nil {
 		if statusCode == http.StatusUnauthorized && attempt.Evidence.ReplaySafety == execution.ReplaySafetyUnknown &&
 			attempt.Evidence.Hint == "" {
@@ -350,6 +356,8 @@ func classifyExecutionEvidence(attempt ExecutionAttempt) FailureCategory {
 			return FailureCategoryClientError
 		}
 		switch attempt.Evidence.Hint {
+		case execution.FailureHintInsufficientBalance:
+			return FailureCategoryBilling
 		case execution.FailureHintInvalidCredential:
 			return FailureCategoryInvalidKey
 		case execution.FailureHintRefreshRequired,
@@ -366,14 +374,17 @@ func classifyExecutionEvidence(attempt ExecutionAttempt) FailureCategory {
 		case execution.FailureHintHostError:
 			return FailureCategoryUpstreamHostError
 		}
-		markers = strings.ToLower(strings.Join([]string{
+		signalValues = []string{
 			attempt.Evidence.Type,
 			attempt.Evidence.Code,
 			attempt.Evidence.Summary,
-		}, " "))
+		}
+		markers = strings.ToLower(strings.Join(signalValues, " "))
 	}
 
 	switch {
+	case execution.InsufficientBalanceSignal(statusCode, signalValues...):
+		return FailureCategoryBilling
 	case statusCode == http.StatusTooManyRequests || containsAny(markers,
 		"rate_limit", "rate limit", "too_many_requests", "quota_exceeded",
 		"resource_exhausted", "throttl"):
@@ -437,6 +448,17 @@ func decisionForExecutionCategory(
 		)
 	}
 	switch category {
+	case FailureCategoryBilling:
+		result := decision(
+			category,
+			origin,
+			scopeOrDefault(scope, execution.ErrorScopeCredential),
+			retryUnlessExplicitlyUnknown(attempt.Evidence),
+			EffectCooldownCredential,
+			"billing.insufficient_balance",
+		)
+		result.CooldownUntil = attempt.Now.Add(defaultBillingCooldown)
+		return result
 	case FailureCategoryRateLimited:
 		return rateLimitDecision(attempt, decisionContext)
 	case FailureCategoryModelUnavailable:

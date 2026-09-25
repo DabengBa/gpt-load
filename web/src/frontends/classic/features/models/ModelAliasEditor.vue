@@ -553,11 +553,6 @@ defineExpose({ addManual, focusFirstInvalid })
             </div>
             <div class="model-alias-editor__route-meta">
               <span
-                v-if="(render.item.priority ?? 1) >= 2"
-                class="model-alias-editor__route-flag"
-                >{{ labels.priorityFallback }}</span
-              >
-              <span
                 v-if="(render.item.weight ?? 1) === 0"
                 class="model-alias-editor__route-flag model-alias-editor__route-flag--muted"
                 >{{ labels.weightDisabled }}</span

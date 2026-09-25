@@ -25,12 +25,15 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
-import CopyChip from '@/components/ui/CopyChip.vue'
 import PaginationBar from '@/components/ui/PaginationBar.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { formatEstimatedCost, formatISOInstant, formatLocalInstantWithSeconds } from '@/lib/format'
+import {
+  formatEstimatedCost,
+  formatISOInstant,
+  formatLocalInstantWithSeconds,
+} from '@/lib/format'
 import { useAuthSession } from '@/features/auth/auth-session'
 
 import {
@@ -220,38 +223,11 @@ const hasNonTimeFilters = computed(() =>
     (key) => key !== 'from_ms' && key !== 'to_ms' && key !== 'limit',
   ),
 )
+// chips 只承载快速表单上不可见的筛选（高级抽屉项）；时间/分组/模型/状态已显示在
+// 可见控件里，不再重复回显。
 const appliedChips = computed(() => {
   const filters = appliedFilters.value
   const values: Array<{ key: string; label: string }> = []
-  if (filters.from_ms !== undefined && filters.to_ms !== undefined) {
-    values.push({
-      key: 'time',
-      label: `${formatDateFilter(filters.from_ms)} → ${formatDateFilter(filters.to_ms)}`,
-    })
-  }
-  if (!isAccessKey.value && filters.group_id !== undefined) {
-    const group = groupsQuery.data.value?.find(({ id }) => id === filters.group_id)
-    values.push({
-      key: 'group_id',
-      label: t('monitor.logs.filters.appliedGroup', {
-        value: group?.name ?? `#${filters.group_id}`,
-      }),
-    })
-  }
-  if (filters.status !== undefined) {
-    values.push({
-      key: 'status',
-      label: t('monitor.logs.filters.appliedStatus', {
-        value: t(`monitor.logs.status.${filters.status}`),
-      }),
-    })
-  }
-  if (filters.client_model !== undefined) {
-    values.push({
-      key: 'client_model',
-      label: advancedChipLabel('client_model', filters.client_model),
-    })
-  }
   for (const key of advancedFilterKeys.value) {
     const value = filters[key]
     if (value === undefined) continue
@@ -301,16 +277,31 @@ watch(
   },
 )
 
-function formatDateFilter(value: number): string {
+// 行内只显示时分秒；日期跨天时在该行上方补一行日期，同天行不再重复。
+function formatLogDay(value: number): string {
   const date = new Date(value)
   const pad = (part: number) => String(part).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
-    date.getMinutes(),
-  )}:${pad(date.getSeconds())}`
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-function formatLogCompletedAt(value: number): string {
-  return formatLocalInstantWithSeconds(value)
+function formatLogTime(value: number): string {
+  const date = new Date(value)
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function isNewLogDay(index: number): boolean {
+  const current = logs.value[index]?.completed_at_ms
+  if (index === 0 || current === undefined) return index === 0
+  const previous = logs.value[index - 1]?.completed_at_ms
+  if (previous === undefined) return false
+  const a = new Date(current)
+  const b = new Date(previous)
+  return (
+    a.getFullYear() !== b.getFullYear() ||
+    a.getMonth() !== b.getMonth() ||
+    a.getDate() !== b.getDate()
+  )
 }
 
 function advancedChipLabel(key: keyof RequestLogFilters, value: unknown): string {
@@ -329,7 +320,6 @@ function advancedChipLabel(key: keyof RequestLogFilters, value: unknown): string
   if (key === 'credential_id') {
     return t('monitor.logs.filters.appliedCredential', { value })
   }
-  if (key === 'client_model') return t('monitor.logs.filters.appliedClientModel', { value })
   if (key === 'upstream_model') return t('monitor.logs.filters.appliedUpstreamModel', { value })
   if (key === 'model_consistency') {
     return t('monitor.logs.filters.appliedModelConsistency', {
@@ -453,7 +443,6 @@ function setPageSize(pageSize: RequestLogPageSize): void {
 }
 
 async function removeFilter(key: string): Promise<void> {
-  if (key === 'time') return
   const filters = { ...appliedFilters.value }
   delete filters[key as keyof RequestLogFilters]
   await commitFilters(filters)
@@ -562,6 +551,22 @@ function responseLabel(log: RequestLogItemDto): string {
       : t('monitor.logs.response.errorWithCode', { code: log.status_code })
   }
   return t(`monitor.logs.status.${log.status}`)
+}
+
+// 状态行只在承载新信息时出现：HTTP 码仅当徽标未展示它（流式错误、或非 200 的
+// 非常态码）才补；尝试次数 >1 与 error_code 追加在同一行，避免与徽标重复。
+function responseMeta(log: RequestLogItemDto): string {
+  const parts: string[] = []
+  const badgeCarriesCode =
+    log.status === 'error' && !(log.stream && log.status_code === 200)
+  if (!badgeCarriesCode && (log.status === 'error' || log.status_code !== 200)) {
+    parts.push(t('monitor.logs.response.httpStatus', { code: log.status_code }))
+  }
+  if (log.attempt_count > 1) {
+    parts.push(t('monitor.logs.attemptCount', { count: log.attempt_count }))
+  }
+  if (log.error_code) parts.push(log.error_code)
+  return parts.join(' · ')
 }
 
 function statusTone(
@@ -726,8 +731,8 @@ function costLabel(log: RequestLogItemDto): string {
       variant="collection"
       :rows="appliedFilters.limit ?? 20"
       :columns="isAccessKey ? 7 : 9"
-      row-height="72px"
-      mobile-row-height="176px"
+      row-height="52px"
+      mobile-row-height="150px"
       :concealed="!initialLoading"
       :label="t('monitor.logs.loading')"
     />
@@ -753,8 +758,8 @@ function costLabel(log: RequestLogItemDto): string {
         variant="collection"
         :rows="skeletonRows"
         :columns="isAccessKey ? 7 : 9"
-        row-height="72px"
-        mobile-row-height="176px"
+        row-height="52px"
+        mobile-row-height="150px"
         :label="t('monitor.logs.loading')"
       />
       <template v-else>
@@ -806,8 +811,12 @@ function costLabel(log: RequestLogItemDto): string {
               role="cell"
               :data-label="t('monitor.logs.columns.time')"
             >
-              <time :datetime="formatISOInstant(log.completed_at_ms)">
-                {{ formatLogCompletedAt(log.completed_at_ms) }}
+              <small v-if="isNewLogDay(index)">{{ formatLogDay(log.completed_at_ms) }}</small>
+              <time
+                :datetime="formatISOInstant(log.completed_at_ms)"
+                :title="formatLocalInstantWithSeconds(log.completed_at_ms)"
+              >
+                {{ formatLogTime(log.completed_at_ms) }}
               </time>
             </div>
             <div
@@ -828,14 +837,6 @@ function costLabel(log: RequestLogItemDto): string {
                   …{{ log.affinity_key?.slice(-6) ?? '' }}
                 </button>
               </AppTooltip>
-              <CopyChip
-                v-if="affinityKeyFilterable(log)"
-                :value="log.affinity_key ?? ''"
-                :label="t('monitor.logs.copyAffinityKey')"
-                :success-label="t('monitor.logs.copySuccess')"
-                :failure-label="t('monitor.logs.copyFailure')"
-                layout="icon"
-              />
               <code v-else class="logs-list__affinity-key">—</code>
             </div>
             <div
@@ -913,9 +914,11 @@ function costLabel(log: RequestLogItemDto): string {
                     <CircleHelp v-else :size="13" aria-hidden="true" />
                   </button>
                 </AppTooltip>
-              </span>
-              <span class="logs-list__protocol-line">
-                <OverflowTooltip as="small" :content="log.protocol">
+                <OverflowTooltip
+                  as="small"
+                  class="logs-list__protocol"
+                  :content="log.protocol"
+                >
                   {{ log.protocol }}
                 </OverflowTooltip>
                 <LogProtocolConversion
@@ -955,14 +958,13 @@ function costLabel(log: RequestLogItemDto): string {
                   </span>
                 </AppTooltip>
               </div>
-              <small class="logs-list__response-meta">
-                {{ t('monitor.logs.response.httpStatus', { code: log.status_code }) }}
-                <span v-if="log.attempt_count > 1">
-                  · {{ t('monitor.logs.attemptCount', { count: log.attempt_count }) }}
-                </span>
-              </small>
-              <OverflowTooltip v-if="log.error_code" as="small" :content="responseTooltip(log)">
-                {{ log.error_code }}
+              <OverflowTooltip
+                v-if="responseMeta(log)"
+                as="small"
+                class="logs-list__response-meta"
+                :content="responseTooltip(log)"
+              >
+                {{ responseMeta(log) }}
               </OverflowTooltip>
             </div>
             <div
@@ -999,39 +1001,34 @@ function costLabel(log: RequestLogItemDto): string {
               >
                 <span class="logs-list__token-values">
                   <span class="logs-list__token-line">
-                    <span class="logs-list__token-direction" aria-hidden="true">in</span>
-                    {{ formatLogTokenCount(log.input_tokens, locale) }}
-                    <span class="logs-list__token-hints">
-                      <AppTooltip
-                        v-if="log.usage_state === 'partial'"
-                        :content="t('monitor.logs.tokens.partial')"
-                      >
-                        <button
-                          type="button"
-                          class="logs-list__hint"
-                          :aria-label="t('monitor.logs.tokens.partial')"
-                        >
-                          <CircleHelp :size="13" aria-hidden="true" />
-                        </button>
-                      </AppTooltip>
-                    </span>
+                    {{ formatLogTokenCount(log.input_tokens, locale)
+                    }}<span class="logs-list__token-separator" aria-hidden="true">/</span
+                    >{{ formatLogTokenCount(log.output_tokens, locale) }}
                   </span>
-                  <span class="logs-list__token-line">
-                    <span class="logs-list__token-direction" aria-hidden="true">out</span>
-                    {{ formatLogTokenCount(log.output_tokens, locale) }}
-                  </span>
-                  <AppTooltip v-if="hasRequestLogCache(log)" :content="cacheTooltip(log)">
-                    <button
-                      type="button"
-                      class="logs-list__hint logs-list__cache-rate"
-                      :aria-label="`${t('monitor.logs.tokens.cacheHitRate')} ${formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale)} · ${t('monitor.logs.tokens.cacheDetails')}`"
+                  <span class="logs-list__token-hints">
+                    <AppTooltip
+                      v-if="log.usage_state === 'partial'"
+                      :content="t('monitor.logs.tokens.partial')"
                     >
-                      <span class="logs-list__token-direction">
-                        <Layers :size="13" aria-hidden="true" />
-                      </span>
-                      {{ formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale) }}
-                    </button>
-                  </AppTooltip>
+                      <button
+                        type="button"
+                        class="logs-list__hint"
+                        :aria-label="t('monitor.logs.tokens.partial')"
+                      >
+                        <CircleHelp :size="13" aria-hidden="true" />
+                      </button>
+                    </AppTooltip>
+                    <AppTooltip v-if="hasRequestLogCache(log)" :content="cacheTooltip(log)">
+                      <button
+                        type="button"
+                        class="logs-list__hint logs-list__cache-rate"
+                        :aria-label="`${t('monitor.logs.tokens.cacheHitRate')} ${formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale)} · ${t('monitor.logs.tokens.cacheDetails')}`"
+                      >
+                        <Layers :size="12" aria-hidden="true" />
+                        {{ formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale) }}
+                      </button>
+                    </AppTooltip>
+                  </span>
                 </span>
               </OverflowTooltip>
               <span v-else class="logs-list__state--warning">—</span>
@@ -1129,15 +1126,15 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list {
-  --ledger-record-list-grid: 96px minmax(132px, 0.86fr) minmax(132px, 0.86fr) minmax(180px, 1.2fr)
+  --ledger-record-list-grid: 72px minmax(120px, 0.82fr) minmax(120px, 0.82fr) minmax(170px, 1.15fr)
     96px minmax(76px, 0.42fr) minmax(104px, 0.6fr) 100px 34px;
-  --ledger-record-list-column-gap: 16px;
-  --ledger-record-list-record-min-height: 72px;
-  --ledger-record-list-record-padding: 10px 0;
+  --ledger-record-list-column-gap: 14px;
+  --ledger-record-list-record-min-height: 52px;
+  --ledger-record-list-record-padding: 8px 0;
 }
 
 .logs-list--scoped {
-  --ledger-record-list-grid: 96px minmax(180px, 1.2fr) 96px minmax(76px, 0.42fr)
+  --ledger-record-list-grid: 72px minmax(170px, 1.15fr) 96px minmax(76px, 0.42fr)
     minmax(104px, 0.6fr) 100px 34px;
 }
 
@@ -1226,15 +1223,13 @@ function costLabel(log: RequestLogItemDto): string {
   gap: 0;
 }
 
-.logs-list__protocol-line {
-  display: flex;
+.logs-list__protocol {
   min-width: 0;
-  align-items: center;
-  gap: 6px;
+  margin-left: 6px;
 }
 
-.logs-list__protocol-line > :first-child {
-  min-width: 0;
+.logs-list__inline :deep(.log-protocol-conversion) {
+  margin-left: 5px;
 }
 
 .logs-list__cost-line {
@@ -1294,31 +1289,21 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list__token-values {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: 2px;
+  align-items: center;
+  gap: 5px;
 }
 
-.logs-list__token-direction {
-  width: 3ch;
+.logs-list__token-separator {
   color: var(--color-text-faint);
-  font-family: var(--font-sans);
-  font-size: var(--text-label-xs);
-  font-weight: 400;
-  line-height: 1;
-  text-align: right;
+  margin: 0 2px;
 }
 
 .logs-list__token-hints {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-}
-
-.logs-list__token-line > svg {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 12px;
 }
 
 .logs-list__hint {
@@ -1337,18 +1322,14 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list__cache-rate {
-  width: max-content;
+  width: auto;
   max-width: 100%;
+  height: 20px;
   flex-basis: auto;
   justify-content: flex-start;
-  gap: 5px;
+  gap: 3px;
   font: inherit;
   font-size: var(--text-label-xs);
-}
-
-.logs-list__cache-rate .logs-list__token-direction {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .logs-list__hint:hover {
@@ -1383,12 +1364,12 @@ function costLabel(log: RequestLogItemDto): string {
 @media (max-width: 1080px) {
   .logs-list {
     --ledger-record-list-column-gap: 10px;
-    --ledger-record-list-grid: 92px minmax(118px, 0.82fr) minmax(118px, 0.82fr)
-      minmax(160px, 1.15fr) 92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px;
+    --ledger-record-list-grid: 68px minmax(108px, 0.78fr) minmax(108px, 0.78fr)
+      minmax(150px, 1.1fr) 92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px;
   }
 
   .logs-list--scoped {
-    --ledger-record-list-grid: 92px minmax(160px, 1.15fr) 92px minmax(72px, 0.42fr)
+    --ledger-record-list-grid: 68px minmax(150px, 1.1fr) 92px minmax(72px, 0.42fr)
       minmax(96px, 0.58fr) 96px 32px;
   }
 }

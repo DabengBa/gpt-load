@@ -38,7 +38,6 @@ export interface ModelRouteScheduleIndexItemDto {
   operation: RouteInspectOperation
   candidate_count: number
   group_count: number
-  has_fallback: boolean
   cooled_candidates: number
   blacklisted_candidates: number
 }
@@ -88,7 +87,6 @@ export interface ModelRouteScheduleEntryDto {
   alias: string
   weight: number
   priority: number
-  fallback: boolean
   enabled: boolean
   circuit_breaker: ModelRouteScheduleBreakerDto
   reasoning: ModelRouteScheduleReasoningDto
@@ -177,7 +175,6 @@ const indexFields = [
   'operation',
   'candidate_count',
   'group_count',
-  'has_fallback',
   'cooled_candidates',
   'blacklisted_candidates',
 ] as const
@@ -208,7 +205,6 @@ const entryFields = [
   'alias',
   'weight',
   'priority',
-  'fallback',
   'enabled',
   'circuit_breaker',
   'reasoning',
@@ -358,15 +354,12 @@ function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleE
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, entryFields)
   const priority = projectSafeInteger(record.priority, { minimum: 1 })
-  const fallback = projectBoolean(record.fallback)
-  if (fallback !== priority > 1) invalidResponse()
   return {
     entry_id: projectNonBlankString(record.entry_id),
     model_id: projectNonBlankString(record.model_id),
     alias: projectString(record.alias, { allowEmpty: true }),
     weight: projectSafeInteger(record.weight, { minimum: 0, maximum: 100 }),
     priority,
-    fallback,
     enabled: projectBoolean(record.enabled),
     circuit_breaker: projectBreaker(record.circuit_breaker),
     reasoning: projectReasoning(record.reasoning),
@@ -409,7 +402,6 @@ export function projectModelRouteScheduleIndex(value: unknown): ModelRouteSchedu
       operation: projectEnum(itemRecord.operation, routeInspectOperations),
       candidate_count: projectSafeInteger(itemRecord.candidate_count, { minimum: 0 }),
       group_count: projectSafeInteger(itemRecord.group_count, { minimum: 0 }),
-      has_fallback: projectBoolean(itemRecord.has_fallback),
       cooled_candidates: projectSafeInteger(itemRecord.cooled_candidates, { minimum: 0 }),
       blacklisted_candidates: projectSafeInteger(itemRecord.blacklisted_candidates, { minimum: 0 }),
     }

@@ -230,7 +230,10 @@ func (*grokProviderBridge) ClassifyError(
 	case status == http.StatusUnauthorized:
 		evidence.Hint = execution.FailureHintRefreshRequired
 		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
-	case status == http.StatusForbidden || status == http.StatusPaymentRequired:
+	case execution.InsufficientBalanceSignal(status, code, evidence.Summary):
+		evidence.Hint = execution.FailureHintInsufficientBalance
+		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
+	case status == http.StatusForbidden:
 		evidence.Hint = execution.FailureHintCandidateUnavailable
 		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
 	case status == http.StatusBadRequest:

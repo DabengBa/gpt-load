@@ -288,7 +288,7 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 		wantRule  RuleID
 	}{
 		{
-			name: "generic payment required switches candidate",
+			name: "generic payment required switches candidate as billing",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusPaymentRequired,
@@ -298,7 +298,7 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 				},
 			},
 			wantRetry: RetryNextCandidate,
-			wantRule:  RuleID("upstream.http_4xx_retry"),
+			wantRule:  RuleID("billing.insufficient_balance"),
 		},
 		{
 			name: "candidate payment required retries",

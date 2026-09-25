@@ -374,11 +374,14 @@ func (*antigravityProviderBridge) ClassifyError(
 	case status == http.StatusUnauthorized:
 		evidence.Hint = execution.FailureHintRefreshRequired
 		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
+	case execution.InsufficientBalanceSignal(status, typeValue, codeValue, evidence.Summary):
+		evidence.Hint = execution.FailureHintInsufficientBalance
+		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
 	case status == http.StatusForbidden:
 		evidence.Hint = execution.FailureHintCandidateUnavailable
 		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
 	case status == http.StatusTooManyRequests && strings.EqualFold(codeValue, "INSUFFICIENT_G1_CREDITS_BALANCE"):
-		evidence.Hint = execution.FailureHintRateLimited
+		evidence.Hint = execution.FailureHintInsufficientBalance
 		evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
 	case requestScopedFailure(err):
 		evidence.Hint = execution.FailureHintRequestRejected
@@ -388,9 +391,6 @@ func (*antigravityProviderBridge) ClassifyError(
 		evidence.Hint = execution.FailureHintHostError
 	}
 	annotateProviderErrorEvidence(evidence, err)
-	if status == http.StatusTooManyRequests && strings.EqualFold(codeValue, "INSUFFICIENT_G1_CREDITS_BALANCE") {
-		evidence.ScopeHint = execution.ErrorScopeCredential
-	}
 	return status, evidence
 }
 

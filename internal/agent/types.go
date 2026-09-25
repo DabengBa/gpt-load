@@ -256,9 +256,8 @@ type RouteIndexItemView struct {
 	ExternalModel   string `json:"external_model"`
 	Protocol        string `json:"protocol"`
 	Operation       string `json:"operation"`
-	CandidateCount  int    `json:"candidate_count"`
-	GroupIDs        []uint `json:"group_ids"`
-	FallbackPresent bool   `json:"fallback_present"`
+	CandidateCount int    `json:"candidate_count"`
+	GroupIDs       []uint `json:"group_ids"`
 }
 
 // RouteDetailView lists the configured entries for one routed model.

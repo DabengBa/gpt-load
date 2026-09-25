@@ -16,12 +16,11 @@ import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import ModelProbeDialog from '@/features/models/ModelProbeDialog.vue'
 import { useModelProbe } from '@/features/models/use-model-probe'
 
-import { type ScheduleDrafts, type ScheduleMode } from './monitor-route'
+import { type ScheduleDrafts } from './monitor-route'
 import SchedulePanelDetail, { type SchedulePanelDetailLabels } from './SchedulePanelDetail.vue'
 
 export interface SchedulePanelLabels {
   model: string
-  mode: string
   selectModel: string
   loadingOptions: string
   contextRequired: string
@@ -31,14 +30,12 @@ export interface SchedulePanelLabels {
   retry?: string
   indexFailed?: string
   detailFailed?: string
-  modeLabels?: Partial<Record<ScheduleMode, string>>
   detail?: Partial<SchedulePanelDetailLabels>
 }
 
 const props = withDefaults(
   defineProps<{
     externalModel?: string
-    mode?: ScheduleMode
     selectedRow?: string
     sourceGroupId?: number
     drafts?: ScheduleDrafts
@@ -47,7 +44,6 @@ const props = withDefaults(
   }>(),
   {
     externalModel: '',
-    mode: 'all',
     selectedRow: undefined,
     sourceGroupId: undefined,
     drafts: () => ({}),
@@ -56,7 +52,7 @@ const props = withDefaults(
   },
 )
 const emit = defineEmits<{
-  'change-context': [context: { externalModel?: string; mode: ScheduleMode }]
+  'change-context': [context: { externalModel?: string }]
   'draft-change': [drafts: ScheduleDrafts]
   'row-change': [row: string | undefined]
   refresh: []
@@ -66,7 +62,6 @@ const emit = defineEmits<{
 
 const client = useApiClient()
 const selectedModel = ref(props.externalModel)
-const selectedMode = ref<ScheduleMode>(props.mode)
 const indexQuery = useQuery(modelRouteScheduleIndexQueryOptions(client))
 const indexItems = computed<ModelRouteScheduleIndexItemDto[]>(
   () => indexQuery.data.value?.items ?? [],
@@ -88,12 +83,6 @@ const modelOptions = computed(() => [
   { value: '', label: text('selectModel') },
   ...indexItems.value.map((item) => ({ value: item.external_model, label: item.external_model })),
 ])
-const modeOptions = computed(() =>
-  (['all', 'primary', 'fallback'] as const).map((mode) => ({
-    value: mode,
-    label: props.labels.modeLabels?.[mode] ?? mode,
-  })),
-)
 const indexError = computed(() =>
   indexQuery.error.value ? errorMessage(indexQuery.error.value, text('indexFailed')) : '',
 )
@@ -112,12 +101,6 @@ watch(
     selectedModel.value = value ?? ''
   },
 )
-watch(
-  () => props.mode,
-  (value) => {
-    selectedMode.value = value
-  },
-)
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
@@ -125,18 +108,11 @@ function errorMessage(error: unknown, fallback: string): string {
 function commitContext(): void {
   emit('change-context', {
     externalModel: selectedModel.value || undefined,
-    mode: selectedMode.value,
   })
 }
 
 function setModel(value: string): void {
   selectedModel.value = value
-  commitContext()
-}
-
-function setMode(value: string): void {
-  if (value !== 'all' && value !== 'primary' && value !== 'fallback') return
-  selectedMode.value = value
   commitContext()
 }
 
@@ -204,16 +180,6 @@ function viewProbeLog(logID: string): void {
   <section class="schedule-panel" :aria-label="text('model')">
     <div class="schedule-panel__filters" :aria-label="text('context')">
       <label>
-        <span>{{ text('mode') }}</span>
-        <AppSelect
-          :model-value="selectedMode"
-          :label="text('mode')"
-          :options="modeOptions"
-          size="compact"
-          @update:model-value="setMode"
-        />
-      </label>
-      <label>
         <span>{{ text('model') }}</span>
         <AppSelect
           :model-value="selectedModel"
@@ -249,7 +215,6 @@ function viewProbeLog(logID: string): void {
       :error="detailRequest && detailQuery.data.value === undefined ? detailError : ''"
       :stale="detailQuery.isRefetchError.value"
       :locale="locale"
-      :mode="selectedMode"
       :selected-row="selectedRow"
       :source-group-id="sourceGroupId"
       :drafts="drafts"

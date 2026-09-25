@@ -86,7 +86,6 @@ export interface RouteInspectGroupDto {
   upstream_model: string | null
   entry_weight: number
   priority: number
-  fallback: boolean
   configured_share: number
   effective_share: number
   entry_cooldown_until_ms: number | null
@@ -205,7 +204,6 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     'upstream_model',
     'entry_weight',
     'priority',
-    'fallback',
     'configured_share',
     'effective_share',
     'entry_cooldown_until_ms',
@@ -224,7 +222,6 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     upstream_model: projectNullableNonBlankString(record.upstream_model),
     entry_weight: projectSafeInteger(record.entry_weight, { minimum: 0 }),
     priority: projectSafeInteger(record.priority, { minimum: 1 }),
-    fallback: projectBoolean(record.fallback),
     configured_share: projectFiniteNumber(record.configured_share, { minimum: 0, maximum: 1 }),
     effective_share: projectFiniteNumber(record.effective_share, { minimum: 0, maximum: 1 }),
     entry_cooldown_until_ms: projectNullableEpochMilliseconds(record.entry_cooldown_until_ms),
@@ -233,7 +230,6 @@ function projectRouteGroup(value: unknown): RouteInspectGroupDto {
     reason_code: projectReason(record.reason_code),
     credentials: projectArray(record.credentials, projectRouteCredential),
   }
-  if (result.fallback !== result.priority > 1) invalidResponse()
   return result
 }
 

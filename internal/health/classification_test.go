@@ -20,6 +20,7 @@ func TestFailureCategoryStringIsStable(t *testing.T) {
 		FailureCategoryClientError:            "client_error",
 		FailureCategoryDownstreamCancel:       "downstream_cancel",
 		FailureCategoryAuthenticationRequired: "authentication_required",
+		FailureCategoryBilling:                "billing",
 	}
 	for category, want := range tests {
 		if got := category.String(); got != want {

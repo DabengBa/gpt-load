@@ -13,11 +13,12 @@ const (
 	FailureCategoryConversionUnsupported
 	FailureCategoryDownstreamCancel
 	FailureCategoryAuthenticationRequired
+	FailureCategoryBilling
 )
 
 func (category FailureCategory) Valid() bool {
 	return category >= FailureCategoryAmbiguous &&
-		category <= FailureCategoryAuthenticationRequired
+		category <= FailureCategoryBilling
 }
 
 func (category FailureCategory) String() string {
@@ -40,6 +41,8 @@ func (category FailureCategory) String() string {
 		return "downstream_cancel"
 	case FailureCategoryAuthenticationRequired:
 		return "authentication_required"
+	case FailureCategoryBilling:
+		return "billing"
 	default:
 		return "ambiguous"
 	}

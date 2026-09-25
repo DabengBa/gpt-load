@@ -247,11 +247,11 @@ func TestModelRouteScheduleIndexAggregatesRealCandidates(t *testing.T) {
 	pub := byModel["pub"]
 	if pub.ExternalModel != "pub" || pub.Protocol != protocol.OpenAICompletions ||
 		pub.Operation != execution.OperationChatCompletion || pub.CandidateCount != 4 || pub.GroupCount != 2 ||
-		!pub.HasFallback || pub.CooledCandidates != 0 || pub.BlacklistedCandidates != 0 {
+		pub.CooledCandidates != 0 || pub.BlacklistedCandidates != 0 {
 		t.Fatalf("pub item = %#v", pub)
 	}
 	solo := byModel["solo-model"]
-	if solo.CandidateCount != 1 || solo.GroupCount != 1 || solo.HasFallback ||
+	if solo.CandidateCount != 1 || solo.GroupCount != 1 ||
 		solo.Protocol != protocol.OpenAICompletions || solo.Operation != execution.OperationChatCompletion {
 		t.Fatalf("solo item = %#v", solo)
 	}
@@ -339,7 +339,7 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 
 	entryA := first.Entries[0]
 	if entryA.EntryID != scheduleEntryOneA || entryA.ModelID != "up-a" ||
-		entryA.Alias != "pub" || entryA.Weight != scheduleWeightOneA || entryA.Priority != 1 || entryA.Fallback {
+		entryA.Alias != "pub" || entryA.Weight != scheduleWeightOneA || entryA.Priority != 1 {
 		t.Fatalf("entry up-a = %#v", entryA)
 	}
 	// Entry configured threshold 2 only: cooldown stays on the judge default.
@@ -391,7 +391,7 @@ func TestModelRouteScheduleDetailShowsContextBreakerAndRuntime(t *testing.T) {
 	}
 
 	entryC := first.Entries[2]
-	if entryC.EntryID != scheduleEntryOneC || !entryC.Fallback ||
+	if entryC.EntryID != scheduleEntryOneC ||
 		entryC.Priority != schedulePriorityOneC ||
 		entryC.EffectiveShare != 0 {
 		t.Fatalf("entry up-c = %#v", entryC)
