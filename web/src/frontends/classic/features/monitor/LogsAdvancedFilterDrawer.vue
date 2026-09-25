@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-import type { AccessKeyOptionDto } from '@/api/control/types'
-import { enabledDataProtocols } from '@/api/control/protocols'
+import type { AccessKeyOptionDto } from '@shared/control/types'
+import { enabledDataProtocols } from '@shared/control/protocols'
 import type { ChannelDto } from '@/app/resources/channels'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppDrawer from '@/components/ui/AppDrawer.vue'

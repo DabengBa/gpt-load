@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useApiClient } from '@/app/api-client-context'
-import type { ProxyConfiguredMode, ProxyViewDto } from '@/api/control/types'
+import type { ProxyConfiguredMode, ProxyViewDto } from '@shared/control/types'
 import { useStableLoading } from '@/app/loading-state'
 import { proxyDraftState } from '@/app/resources/proxy'
 import {
@@ -13,7 +13,7 @@ import {
   settingsQueryOptions,
   type RuntimeSettingKey,
 } from '@/app/resources/settings'
-import { controlQueryKeys } from '@/app/query-keys'
+import { controlQueryKeys } from '@shared/control/query-keys'
 import { settingsLocation } from '@/app/route-locations'
 import { useTransientFlag } from '@/app/use-transient-flag'
 import { useUnsavedChanges } from '@/app/unsaved-changes'
@@ -28,7 +28,7 @@ import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import SectionNav from '@/components/ui/SectionNav.vue'
 import StickySaveBar from '@/components/ui/StickySaveBar.vue'
 import { useSectionNavigation } from '@/composables/use-section-navigation'
-import { formatLocalInstant } from '@/lib/format'
+import { formatLocalInstant } from '@shared/lib/format'
 
 import BrowserAccessSection from './BrowserAccessSection.vue'
 import ConnectionSettingsSection from './ConnectionSettingsSection.vue'

@@ -8,14 +8,14 @@ import type {
   GroupModelItemDto,
   ParameterJSONValue,
   ParameterOverrideRuleDto,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
 import CompactFieldError from '@/components/ui/CompactFieldError.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
-import { assertJSONNumbersRoundTrip, JSONNumberPrecisionError } from '@/lib/json-number'
+import { assertJSONNumbersRoundTrip, JSONNumberPrecisionError } from '@shared/lib/json-number'
 import {
   decodeParameterPath,
   expandParameterSet,
@@ -24,7 +24,7 @@ import {
   parameterPathsCross,
   toParameterPointer,
   type ParameterPathEntry,
-} from '@/lib/parameter-paths'
+} from '@shared/lib/parameter-paths'
 import {
   formatValueText,
   hasEmptyParameterKey,
@@ -35,7 +35,7 @@ import {
   valueFromText,
   valueKind,
   type ParameterValueKind,
-} from '@/lib/parameter-values'
+} from '@shared/lib/parameter-values'
 
 type ParamOp = 'set' | 'remove'
 

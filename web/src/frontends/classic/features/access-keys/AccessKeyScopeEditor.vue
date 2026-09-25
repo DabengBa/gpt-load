@@ -3,7 +3,7 @@ import { Plus } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AccessKeyFiltersDto, AccessProtocol } from '@/api/control/types'
+import type { AccessKeyFiltersDto, AccessProtocol } from '@shared/control/types'
 import AppButton from '@/components/ui/AppButton.vue'
 import SegmentedControl, { type SegmentedControlOption } from '@/components/ui/SegmentedControl.vue'
 import SearchableMultiSelect, {

@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useApiClient } from '@/app/api-client-context'
 import { deleteAccessKey } from '@/app/resources/access-keys'
-import type { AccessKeyDto } from '@/api/control/types'
+import type { AccessKeyDto } from '@shared/control/types'
 import { RequestCancelledError } from '@shared/http/errors'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'

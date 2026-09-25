@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useApiClient } from '@/app/api-client-context'
 import { useToast } from '@/app/toast'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { groupDetailLocation } from '@/app/route-locations'
 import {
   isReasoningEffort,
@@ -18,7 +18,7 @@ import {
   type ModelRouteScheduleGroupDto,
   type ModelRouteSchedulePatchUpdate,
 } from '@/app/resources/model-route-schedule'
-import type { ReasoningEffortDto } from '@/api/control/types'
+import type { ReasoningEffortDto } from '@shared/control/types'
 import type { ModelProbeTargetDto } from '@/app/resources/model-probe'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
@@ -29,7 +29,7 @@ import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import StickySaveBar from '@/components/ui/StickySaveBar.vue'
 import ModelProbeScopeDialog from '@/features/models/ModelProbeScopeDialog.vue'
-import { formatLocalInstant } from '@/lib/format'
+import { formatLocalInstant } from '@shared/lib/format'
 
 import type { ScheduleDrafts } from './monitor-route'
 

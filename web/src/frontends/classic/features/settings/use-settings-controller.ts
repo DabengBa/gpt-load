@@ -4,8 +4,8 @@ import { useI18n } from 'vue-i18n'
 
 import { RequestCancelledError } from '@shared/http/errors'
 import { useApiClient } from '@/app/api-client-context'
-import { controlQueryKeys } from '@/app/query-keys'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { controlQueryKeys } from '@shared/control/query-keys'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import {
   updateSettings,
   type RuntimeSettingKey,

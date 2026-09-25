@@ -7,7 +7,7 @@ import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
-import { formatInteger } from '@/lib/format'
+import { formatInteger } from '@shared/lib/format'
 
 import {
   modelPriceFields,

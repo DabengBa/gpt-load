@@ -3,7 +3,7 @@ import { ArrowRightLeft } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AccessProtocol } from '@/api/control/types'
+import type { AccessProtocol } from '@shared/control/types'
 import type { RequestLogRouteMode, RequestLogUpstreamProtocol } from '@/app/resources/request-logs'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
 

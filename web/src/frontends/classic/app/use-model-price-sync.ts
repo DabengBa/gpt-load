@@ -3,7 +3,7 @@ import { onBeforeUnmount, ref } from 'vue'
 
 import { useApiClient } from '@/app/api-client-context'
 import { RequestCancelledError } from '@shared/http/errors'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { syncModelPrices } from '@/app/resources/providers'
 import { useTransientFlag } from '@/app/use-transient-flag'
 

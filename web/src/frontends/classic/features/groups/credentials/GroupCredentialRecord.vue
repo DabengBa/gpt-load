@@ -3,12 +3,12 @@ import { Activity, ChevronDown, Ellipsis, RotateCcw, Trash2 } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { CredentialItemDto } from '@/api/control/types'
+import type { CredentialItemDto } from '@shared/control/types'
 import AppPopover from '@/components/ui/AppPopover.vue'
 import GroupApiKeyEditor from './GroupApiKeyEditor.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { formatLocalInstant } from '@/lib/format'
+import { formatLocalInstant } from '@shared/lib/format'
 import { presentCredentialFailureCategory } from './credential-failure-presenter'
 
 const props = defineProps<{

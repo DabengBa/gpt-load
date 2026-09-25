@@ -1,4 +1,4 @@
-import type { AccessProtocol } from '@/api/control/types'
+import type { AccessProtocol } from '@shared/control/types'
 
 export type GatewayClientID =
   | 'cc-switch'

@@ -2,13 +2,13 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { CredentialTestResultDto } from '@/api/control/types'
+import type { CredentialTestResultDto } from '@shared/control/types'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import CopyChip from '@/components/ui/CopyChip.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
-import { formatLocalInstant } from '@/lib/format'
+import { formatLocalInstant } from '@shared/lib/format'
 
 type CredentialTestDialogResult = CredentialTestResultDto
 

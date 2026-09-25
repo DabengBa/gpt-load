@@ -3,7 +3,7 @@ import { ListFilter, X } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AccessKeyOptionDto, GroupOptionDto } from '@/api/control/types'
+import type { AccessKeyOptionDto, GroupOptionDto } from '@shared/control/types'
 import type { ChannelDto } from '@/app/resources/channels'
 import AppDateTimeRangePicker from '@/components/ui/AppDateTimeRangePicker.vue'
 import AppButton from '@/components/ui/AppButton.vue'

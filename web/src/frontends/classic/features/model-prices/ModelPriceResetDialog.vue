@@ -12,7 +12,7 @@ import {
   resetModelPrice,
   type ModelPriceDto,
 } from '@/app/resources/model-prices'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'

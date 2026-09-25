@@ -3,8 +3,8 @@ import { Boxes, KeyRound, Layers3 } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { GroupOptionDto } from '@/api/control/types'
-import type { AccessKeyOptionDto } from '@/api/control/types'
+import type { GroupOptionDto } from '@shared/control/types'
+import type { AccessKeyOptionDto } from '@shared/control/types'
 import type { ChannelDto } from '@/app/resources/channels'
 import type {
   UsageAggregateDto,
@@ -14,7 +14,7 @@ import type {
 } from '@/app/resources/usage'
 import ChannelIcon from '@/components/brand/ChannelIcon.vue'
 import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
-import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from '@/lib/format'
+import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from '@shared/lib/format'
 
 type DistributionItem = UsageDistributionDto['items'][number]
 type DistributionRow = {

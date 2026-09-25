@@ -1,4 +1,4 @@
-import type { RouteStrategy } from '@/api/control/types'
+import type { RouteStrategy } from '@shared/control/types'
 import type { HeaderRulesDto } from '@/app/resources/groups'
 import type {
   RuntimeSettingKey,

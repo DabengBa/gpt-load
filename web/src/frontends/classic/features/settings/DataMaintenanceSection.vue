@@ -6,7 +6,7 @@ import type { RuntimeSettingKey, SettingsResource } from '@/app/resources/settin
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import CompactFieldError from '@/components/ui/CompactFieldError.vue'
-import { formatInteger } from '@/lib/format'
+import { formatInteger } from '@shared/lib/format'
 
 import SettingRow from '@/components/config/SettingRow.vue'
 import {

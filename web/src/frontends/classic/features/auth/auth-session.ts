@@ -8,7 +8,7 @@ import {
   RequestCancelledError,
 } from '@shared/http/errors'
 import type { AuthPrincipalType, AuthSessionPayload } from '@shared/http/types'
-import { controlQueryKeys } from '@/app/query-keys'
+import { controlQueryKeys } from '@shared/control/query-keys'
 
 export const authSessionQueryKey = ['auth', 'session'] as const
 const authStorageKey = 'gpt-load.auth-key'

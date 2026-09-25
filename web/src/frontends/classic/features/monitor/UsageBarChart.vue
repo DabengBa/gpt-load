@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 
-import { formatISOInstant, formatInteger, formatLocalTimeRange } from '@/lib/format'
+import { formatISOInstant, formatInteger, formatLocalTimeRange } from '@shared/lib/format'
 
 import {
   buildUsageBarGeometry,

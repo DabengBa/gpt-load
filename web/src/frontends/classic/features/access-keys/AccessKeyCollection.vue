@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useApiClient } from '@/app/api-client-context'
-import type { AccessKeyCollectionItemDto, GroupOptionDto } from '@/api/control/types'
+import type { AccessKeyCollectionItemDto, GroupOptionDto } from '@shared/control/types'
 import { revealAccessKey } from '@/app/resources/access-keys'
 import { useAbortControllerPool } from '@/app/use-abort-controller-pool'
 import LedgerRecordList from '@/components/collection/LedgerRecordList.vue'

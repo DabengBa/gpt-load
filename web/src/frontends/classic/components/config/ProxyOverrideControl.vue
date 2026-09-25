@@ -2,7 +2,7 @@
 import { computed, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ProxyConfiguredMode, ProxyViewDto } from '@/api/control/types'
+import type { ProxyConfiguredMode, ProxyViewDto } from '@shared/control/types'
 import { proxyDraftState, proxyPlaceholderURL } from '@/app/resources/proxy'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import CompactFieldError from '@/components/ui/CompactFieldError.vue'

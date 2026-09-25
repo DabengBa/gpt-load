@@ -10,7 +10,7 @@ import type {
   AccessKeyCollectionFilters,
   AccessKeyCollectionStatus,
   AccessKeyDto,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import { RequestCancelledError } from '@shared/http/errors'
 import { useCollectionLoading } from '@/app/loading-state'
 import {
@@ -20,7 +20,7 @@ import {
 } from '@/app/resources/access-keys'
 import { groupOptionsQueryOptions } from '@/app/resources/groups'
 import { channelsQueryOptions } from '@/app/resources/channels'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { accessKeysLocation } from '@/app/route-locations'
 import { useToast } from '@/app/toast'
 import { useDebouncedAction } from '@/app/use-debounced-action'

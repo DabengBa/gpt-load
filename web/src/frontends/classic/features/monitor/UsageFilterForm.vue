@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-import type { GroupOptionDto } from '@/api/control/types'
+import type { GroupOptionDto } from '@shared/control/types'
 import type { ChannelDto } from '@/app/resources/channels'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppDrawer from '@/components/ui/AppDrawer.vue'

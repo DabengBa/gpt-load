@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ModelPricingStatus } from '@/api/control/types'
+import type { ModelPricingStatus } from '@shared/control/types'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 
 defineProps<{

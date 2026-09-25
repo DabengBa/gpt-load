@@ -2,12 +2,12 @@
 import { ArrowRight, KeyRound } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
-import type { HealthAccessKeyCostLimitDto } from '@/api/control/types'
+import type { HealthAccessKeyCostLimitDto } from '@shared/control/types'
 import { accessKeysLocation } from '@/app/route-locations'
 import AppRelativeTime from '@/components/ui/AppRelativeTime.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import Surface from '@/components/ui/Surface.vue'
-import { formatUSD } from '@/lib/format'
+import { formatUSD } from '@shared/lib/format'
 
 import MonitorSectionHeading from './MonitorSectionHeading.vue'
 

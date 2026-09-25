@@ -3,14 +3,14 @@ import type {
   GroupSettingsDto,
   ParameterJSONValue,
   ParameterOverrideRuleDto,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import type { ChannelFieldDto } from '@/app/resources/channels'
 import type {
   GroupRuntimeConfigDto,
   GroupSettingsUpdateRequest,
   HeaderRulesDto,
 } from '@/app/resources/groups'
-import { normalizePriceMultiplier } from '@/lib/price-multiplier'
+import { normalizePriceMultiplier } from '@shared/lib/price-multiplier'
 
 export type GroupTimeoutKey = 'first_byte_timeout' | 'request_timeout' | 'stream_idle_timeout'
 export type GroupPolicyCountKey = 'blacklist_threshold'

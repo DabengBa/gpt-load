@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, ref, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 
 import type { ApiClient } from '@shared/http/client'
-import { controlQueryKeys } from '@/app/query-keys'
+import { controlQueryKeys } from '@shared/control/query-keys'
 import {
   createEmptyHomeStatistics,
   homeStatisticsQueryOptions,

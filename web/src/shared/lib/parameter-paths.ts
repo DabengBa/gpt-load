@@ -1,4 +1,4 @@
-import type { ParameterJSONValue } from '@/api/control/types'
+import type { ParameterJSONValue } from '@shared/control/types'
 
 /**
  * 参数覆盖的路径写法：设置与删除共用一套 `a/b` 分层文本，段内的 `~` 与 `/` 按

@@ -10,17 +10,17 @@ import {
   updateAccessKey,
   type CreateAccessKeyRequest,
 } from '@/app/resources/access-keys'
-import type { AccessKeyDto, AccessProtocol, GroupOptionDto } from '@/api/control/types'
+import type { AccessKeyDto, AccessProtocol, GroupOptionDto } from '@shared/control/types'
 import type { ChannelDto } from '@/app/resources/channels'
 import { RequestCancelledError } from '@shared/http/errors'
 import { classifyMutationOutcome } from '@/app/mutation-outcome'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { useUnsavedChanges } from '@/app/unsaved-changes'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import type { SearchableMultiSelectOption } from '@/components/ui/SearchableMultiSelect.vue'
-import { createUUID } from '@/lib/uuid'
-import { isValidPriceMultiplier } from '@/lib/price-multiplier'
+import { createUUID } from '@shared/lib/uuid'
+import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
 
 import {
   accessKeyProtocolOptions,

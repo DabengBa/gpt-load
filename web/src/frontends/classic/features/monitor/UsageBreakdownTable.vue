@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { GroupOptionDto } from '@/api/control/types'
+import type { GroupOptionDto } from '@shared/control/types'
 import type { ChannelDto } from '@/app/resources/channels'
 import {
   defaultUsageBreakdownSortDirectionFor,
@@ -15,7 +15,7 @@ import {
 } from '@/app/resources/usage'
 import DataTable from '@/components/ui/DataTable.vue'
 import PaginationBar from '@/components/ui/PaginationBar.vue'
-import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from '@/lib/format'
+import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from '@shared/lib/format'
 
 const props = defineProps<{
   breakdown: UsageBreakdownDto

@@ -1,4 +1,4 @@
-import type { AccessKeyDto } from '@/api/control/types'
+import type { AccessKeyDto } from '@shared/control/types'
 
 export interface PendingAccessKeyRotateOperation {
   base: AccessKeyDto

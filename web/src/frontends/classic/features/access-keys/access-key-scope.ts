@@ -1,5 +1,5 @@
-import { enabledDataProtocols } from '@/api/control/protocols'
-import type { AccessKeyFiltersDto } from '@/api/control/types'
+import { enabledDataProtocols } from '@shared/control/protocols'
+import type { AccessKeyFiltersDto } from '@shared/control/types'
 
 export type AccessKeyScopeMode = 'all' | 'restricted'
 export type AccessKeyScopeDimension = 'groups' | 'protocols' | 'models'

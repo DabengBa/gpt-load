@@ -12,7 +12,7 @@ import {
   type AccessKeyReferenceDto,
 } from '@/app/resources/groups'
 import { ApiError, RequestCancelledError } from '@shared/http/errors'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { groupsLocation } from '@/app/route-locations'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'

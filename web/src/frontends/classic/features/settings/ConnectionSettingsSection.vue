@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ProxyConfiguredMode, ProxyViewDto } from '@/api/control/types'
+import type { ProxyConfiguredMode, ProxyViewDto } from '@shared/control/types'
 import { proxyOverrideToggleMode } from '@/app/resources/proxy'
 import type {
   RuntimeSettingKey,
@@ -13,7 +13,7 @@ import ProxyOverrideControl from '@/components/config/ProxyOverrideControl.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import CompactFieldError from '@/components/ui/CompactFieldError.vue'
-import { formatInteger } from '@/lib/format'
+import { formatInteger } from '@shared/lib/format'
 
 import SettingRow from '@/components/config/SettingRow.vue'
 import {

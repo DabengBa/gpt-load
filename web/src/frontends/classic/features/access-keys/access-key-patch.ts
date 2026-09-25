@@ -3,9 +3,9 @@ import type {
   CreateAccessKeyRequest,
   UpdateAccessKeyRequest,
 } from '@/app/resources/access-keys'
-import type { AccessKeyDto, AccessKeyFiltersDto } from '@/api/control/types'
-import { createUUID } from '@/lib/uuid'
-import { isValidPriceMultiplier, normalizePriceMultiplier } from '@/lib/price-multiplier'
+import type { AccessKeyDto, AccessKeyFiltersDto } from '@shared/control/types'
+import { createUUID } from '@shared/lib/uuid'
+import { isValidPriceMultiplier, normalizePriceMultiplier } from '@shared/lib/price-multiplier'
 
 import {
   createAccessKeyScopeModes,

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { HomeBaseDto } from '@/app/resources/home'
 import type { ReleaseUpdateDto } from '@/app/resources/system-update'
-import { formatDuration, formatInteger, formatLocalInstant, formatLocalTime } from '@/lib/format'
+import { formatDuration, formatInteger, formatLocalInstant, formatLocalTime } from '@shared/lib/format'
 
 import HomeReleaseUpdateLink from './HomeReleaseUpdateLink.vue'
 

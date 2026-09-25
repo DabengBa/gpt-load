@@ -6,15 +6,15 @@ import type {
   CredentialItemDto,
   CredentialQuotaLabelKey,
   CredentialQuotaWindowDto,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import type { HomeSubscriptionAccountDto } from '@/app/resources/home'
 import ChannelIcon from '@/components/brand/ChannelIcon.vue'
 import AppRelativeTime from '@/components/ui/AppRelativeTime.vue'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
 import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { formatLocalInstant } from '@/lib/format'
-import { quotaProgressTone, type QuotaProgressTone } from '@/lib/quota-progress'
+import { formatLocalInstant } from '@shared/lib/format'
+import { quotaProgressTone, type QuotaProgressTone } from '@shared/lib/quota-progress'
 
 const props = defineProps<{ account: HomeSubscriptionAccountDto }>()
 

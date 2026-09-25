@@ -13,7 +13,7 @@ import AppButton from '@/components/ui/AppButton.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import AppTabs, { type AppTabItem } from '@/components/ui/AppTabs.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
-import { isTimeRange } from '@/lib/time'
+import { isTimeRange } from '@shared/lib/time'
 import { useAuthSession } from '@/features/auth/auth-session'
 
 import HealthTab from './HealthTab.vue'

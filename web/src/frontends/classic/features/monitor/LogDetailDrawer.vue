@@ -24,9 +24,9 @@ import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { formatEstimatedCost, formatExactNanoUSD } from '@/lib/format'
+import { formatEstimatedCost, formatExactNanoUSD } from '@shared/lib/format'
 
-import { formatCacheHitRate } from '@/lib/cache-rate'
+import { formatCacheHitRate } from '@shared/lib/cache-rate'
 import {
   formatLogDuration,
   formatLogTokenCount,

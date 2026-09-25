@@ -20,6 +20,9 @@ importers:
       '@lucide/vue':
         specifier: 1.46.0
         version: 1.46.0(vue@3.5.42(typescript@6.0.3))
+      '@tanstack/query-core':
+        specifier: 5.103.1
+        version: 5.103.1
       '@tanstack/vue-query':
         specifier: 5.103.1
         version: 5.103.1(vue@3.5.42(typescript@6.0.3))

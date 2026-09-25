@@ -5,7 +5,7 @@ import {
   type UsageBreakdownPageSize,
   type UsageFilters,
 } from '@/app/resources/usage'
-import { defaultTimeRange, isTimeRange } from '@/lib/time'
+import { defaultTimeRange, isTimeRange } from '@shared/lib/time'
 
 import { normalizeMonitorText } from './filter-validation'
 

@@ -2,7 +2,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { copyText } from '@/lib/clipboard'
+import { copyText } from '@shared/lib/clipboard'
 import AppButton from './AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import InlineFeedback from './InlineFeedback.vue'

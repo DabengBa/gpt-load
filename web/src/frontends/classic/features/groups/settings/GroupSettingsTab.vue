@@ -9,7 +9,7 @@ import type {
   HeaderRulesDto,
   ParameterOverrideRuleDto,
   ProxyConfiguredMode,
-} from '@/api/control/types'
+} from '@shared/control/types'
 
 import { RequestCancelledError } from '@shared/http/errors'
 import { useApiClient } from '@/app/api-client-context'
@@ -45,8 +45,8 @@ import PanelHeader from '@/components/ui/PanelHeader.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StickySaveBar from '@/components/ui/StickySaveBar.vue'
-import { isValidUpstreamBaseURL } from '@/lib/upstream-base-url'
-import { isValidPriceMultiplier } from '@/lib/price-multiplier'
+import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
+import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
 
 import GroupDeleteDialog from './GroupDeleteDialog.vue'
 import GroupSettingsBaseForm from './GroupSettingsBaseForm.vue'

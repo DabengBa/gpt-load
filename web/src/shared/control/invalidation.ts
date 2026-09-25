@@ -1,6 +1,6 @@
-import type { QueryClient, QueryKey } from '@tanstack/vue-query'
+import type { QueryClient, QueryKey } from '@tanstack/query-core'
 
-import { controlQueryKeys } from '@/app/query-keys'
+import { controlQueryKeys } from './query-keys'
 
 export interface MutationInvalidationPlan {
   exact: readonly QueryKey[]

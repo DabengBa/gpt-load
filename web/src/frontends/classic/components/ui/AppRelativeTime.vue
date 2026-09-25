@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { formatISOInstant, formatLocalInstant, formatRelativeInstant } from '@/lib/format'
-import { currentTimeZone } from '@/lib/time'
+import { formatISOInstant, formatLocalInstant, formatRelativeInstant } from '@shared/lib/format'
+import { currentTimeZone } from '@shared/lib/time'
 
 import AppTooltip from './AppTooltip.vue'
 

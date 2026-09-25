@@ -1,4 +1,4 @@
-import type { ModelPricingStatus } from '@/api/control/types'
+import type { ModelPricingStatus } from '@shared/control/types'
 import type { GroupModelUpdateDto } from '@/app/resources/groups'
 import type { ModelCandidate, ModelCandidateSource } from '@/app/resources/providers'
 

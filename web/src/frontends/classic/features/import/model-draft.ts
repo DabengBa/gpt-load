@@ -1,4 +1,4 @@
-import type { ChannelParamsDto, ProxyConfiguredMode } from '@/api/control/types'
+import type { ChannelParamsDto, ProxyConfiguredMode } from '@shared/control/types'
 import type { CredentialStage } from '@/app/resources/credential-stages'
 import type { GroupModelUpdateDto } from '@/app/resources/groups'
 import type { ModelCandidate } from '@/app/resources/providers'

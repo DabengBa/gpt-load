@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import AppSelect from '@/components/ui/AppSelect.vue'
 import FormField from '@/components/ui/FormField.vue'
-import { currentTimeZone } from '@/lib/time'
+import { currentTimeZone } from '@shared/lib/time'
 
 const props = defineProps<{
   expirationMode: 'never' | 'specified'

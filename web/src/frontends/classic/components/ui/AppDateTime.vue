@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { formatISOInstant, formatLocalInstant, formatLocalInstantWithSeconds } from '@/lib/format'
-import { currentTimeZone } from '@/lib/time'
+import { formatISOInstant, formatLocalInstant, formatLocalInstantWithSeconds } from '@shared/lib/format'
+import { currentTimeZone } from '@shared/lib/time'
 
 const props = withDefaults(
   defineProps<{

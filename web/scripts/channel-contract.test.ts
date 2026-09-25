@@ -4,7 +4,7 @@ import test from 'node:test'
 import {
   channelOperations,
   sameStringMembers,
-} from '../src/frontends/classic/app/resources/channel-contract.ts'
+} from '../src/shared/control/resources/channel-contract.ts'
 
 test('channel protocol membership does not depend on route declaration order', () => {
   assert.equal(

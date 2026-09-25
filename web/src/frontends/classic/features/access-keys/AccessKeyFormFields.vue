@@ -2,9 +2,9 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AccessKeyDto } from '@/api/control/types'
+import type { AccessKeyDto } from '@shared/control/types'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
-import { isValidPriceMultiplier } from '@/lib/price-multiplier'
+import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
 
 const props = defineProps<{
   name: string

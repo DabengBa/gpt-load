@@ -2,10 +2,10 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AccessKeyCostLimitRuleStatusDto } from '@/api/control/types'
+import type { AccessKeyCostLimitRuleStatusDto } from '@shared/control/types'
 import AppRelativeTime from '@/components/ui/AppRelativeTime.vue'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
-import { formatLocalInstant } from '@/lib/format'
+import { formatLocalInstant } from '@shared/lib/format'
 
 const props = defineProps<{ rule: AccessKeyCostLimitRuleStatusDto }>()
 const { locale, t } = useI18n()

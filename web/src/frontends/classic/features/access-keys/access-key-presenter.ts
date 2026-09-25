@@ -3,7 +3,7 @@ import type {
   AccessKeyDto,
   AccessProtocol,
   GroupOptionDto,
-} from '@/api/control/types'
+} from '@shared/control/types'
 
 export interface AccessKeyPresentation {
   id: number

@@ -1,6 +1,6 @@
 import type { LocationQueryRaw } from 'vue-router'
 
-import { enabledDataProtocols } from '@/api/control/protocols'
+import { enabledDataProtocols } from '@shared/control/protocols'
 import { channelOperations } from '@/app/resources/channel-contract'
 import type {
   RequestLogCostState,
@@ -14,10 +14,10 @@ import type {
   RequestLogUsageState,
 } from '@/app/resources/request-logs'
 import { requestLogFilterFields } from '@/app/resources/request-log-filters'
-import { defaultTimeRange, timeRangeMilliseconds } from '@/lib/time'
+import { defaultTimeRange, timeRangeMilliseconds } from '@shared/lib/time'
 
 import { isValidMonitorText, maxSignedInt64 } from './filter-validation'
-import { parseRequestLogAffinityKey, serializeRequestLogAffinityKey } from './request-log-affinity'
+import { parseRequestLogAffinityKey, serializeRequestLogAffinityKey } from '@shared/domain/monitor/request-log-affinity'
 
 export interface LogFilterDraft {
   from: string

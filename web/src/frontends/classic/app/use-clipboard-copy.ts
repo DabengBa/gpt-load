@@ -1,7 +1,7 @@
 import { onScopeDispose, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { copyText } from '@/lib/clipboard'
+import { copyText } from '@shared/lib/clipboard'
 
 import { registerEphemeralStateCleaner } from './ephemeral-state'
 

@@ -1,6 +1,6 @@
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 
-import type { CredentialCollectionFilters, CredentialStatus } from '@/api/control/types'
+import type { CredentialCollectionFilters, CredentialStatus } from '@shared/control/types'
 import {
   constrainCollectionSearch,
   isCanonicalRouteQuery,

@@ -15,7 +15,7 @@ import {
   readCredentialValidationData,
   type CredentialValidationData,
 } from '@/app/resources/groups'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { groupDetailLocation, importLocation } from '@/app/route-locations'
 import { useUnsavedChanges } from '@/app/unsaved-changes'
 import AppButton from '@/components/ui/AppButton.vue'

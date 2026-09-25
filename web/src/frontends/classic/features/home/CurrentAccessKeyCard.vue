@@ -6,12 +6,12 @@ import { useI18n } from 'vue-i18n'
 import type {
   AccessKeyCollectionItemDto,
   AccessKeyCostLimitRuleStatusDto,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import AppDateTime from '@/components/ui/AppDateTime.vue'
 import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { formatInteger, formatUSD } from '@/lib/format'
-import { quotaProgressTone } from '@/lib/quota-progress'
+import { formatInteger, formatUSD } from '@shared/lib/format'
+import { quotaProgressTone } from '@shared/lib/quota-progress'
 
 import AccessKeyCostLimitWindowTime from '@/features/access-keys/AccessKeyCostLimitWindowTime.vue'
 

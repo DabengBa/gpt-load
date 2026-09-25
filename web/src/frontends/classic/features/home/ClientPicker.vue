@@ -3,7 +3,7 @@ import { ChevronDown } from '@lucide/vue'
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AccessProtocol } from '@/api/control/types'
+import type { AccessProtocol } from '@shared/control/types'
 import ChannelIcon from '@/components/brand/ChannelIcon.vue'
 import AppPopover from '@/components/ui/AppPopover.vue'
 import AppSearchInput from '@/components/ui/AppSearchInput.vue'

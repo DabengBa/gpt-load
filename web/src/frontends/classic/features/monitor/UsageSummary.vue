@@ -2,9 +2,9 @@
 import { useI18n } from 'vue-i18n'
 
 import type { UsageAggregateDto } from '@/app/resources/usage'
-import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from '@/lib/format'
+import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from '@shared/lib/format'
 
-import { formatCacheHitRate } from '@/lib/cache-rate'
+import { formatCacheHitRate } from '@shared/lib/cache-rate'
 
 const props = defineProps<{
   summary: UsageAggregateDto

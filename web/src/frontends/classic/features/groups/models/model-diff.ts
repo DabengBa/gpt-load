@@ -1,4 +1,4 @@
-import type { GroupModelItemDto } from '@/api/control/types'
+import type { GroupModelItemDto } from '@shared/control/types'
 import type { ModelCandidate } from '@/app/resources/providers'
 import {
   findModelNameConflicts,

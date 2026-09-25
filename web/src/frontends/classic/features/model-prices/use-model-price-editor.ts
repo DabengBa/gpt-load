@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useApiClient } from '@/app/api-client-context'
 import { RequestCancelledError } from '@shared/http/errors'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import {
   projectModelPriceMutationIssue,
   updateModelPrice,

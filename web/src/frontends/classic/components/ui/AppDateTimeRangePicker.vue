@@ -27,7 +27,7 @@ import {
   localDateTimeInput,
   resolveDateTimePreset,
   type DateTimePreset,
-} from '@/lib/time'
+} from '@shared/lib/time'
 
 import AppButton from './AppButton.vue'
 import AppPopover from './AppPopover.vue'

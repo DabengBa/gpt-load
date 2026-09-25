@@ -1,7 +1,7 @@
 import { computed, getCurrentInstance, onBeforeUnmount, ref, shallowRef } from 'vue'
 
 import { classifyMutationOutcome, type MutationOutcome } from '@/app/mutation-outcome'
-import { createUUID } from '@/lib/uuid'
+import { createUUID } from '@shared/lib/uuid'
 
 export interface StableImportOperation<TPayload> {
   idempotencyKey: string

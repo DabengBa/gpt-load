@@ -1,6 +1,6 @@
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 
-import type { AccessKeyCollectionFilters, AccessKeyCollectionStatus } from '@/api/control/types'
+import type { AccessKeyCollectionFilters, AccessKeyCollectionStatus } from '@shared/control/types'
 import {
   constrainCollectionSearch,
   isCanonicalRouteQuery,

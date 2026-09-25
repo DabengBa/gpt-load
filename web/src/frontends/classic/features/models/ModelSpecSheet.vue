@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { ModelCatalogReferenceDto } from '@/app/resources/models'
-import { formatInteger } from '@/lib/format'
+import { formatInteger } from '@shared/lib/format'
 
 const props = defineProps<{
   reference: ModelCatalogReferenceDto

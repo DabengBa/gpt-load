@@ -9,7 +9,7 @@ import AppSwitch from '@/components/ui/AppSwitch.vue'
 import CopyChip from '@/components/ui/CopyChip.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
-import { formatLocalInstant } from '@/lib/format'
+import { formatLocalInstant } from '@shared/lib/format'
 
 const props = defineProps<{
   open: boolean

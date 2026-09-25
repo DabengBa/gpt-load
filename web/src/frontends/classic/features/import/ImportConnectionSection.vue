@@ -2,15 +2,15 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ProxyConfiguredMode } from '@/api/control/types'
+import type { ProxyConfiguredMode } from '@shared/control/types'
 import type { ChannelDto } from '@/app/resources/channels'
 import { proxyMutation } from '@/app/resources/proxy'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import FormField from '@/components/ui/FormField.vue'
-import { isValidPriceMultiplier } from '@/lib/price-multiplier'
-import { hasUpstreamBaseURLVersionMismatch, isValidUpstreamBaseURL } from '@/lib/upstream-base-url'
+import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
+import { hasUpstreamBaseURLVersionMismatch, isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
 
 import type { ImportProxyDraft } from './model-draft'
 

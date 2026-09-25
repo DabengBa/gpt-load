@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { RequestCancelledError } from '@shared/http/errors'
 import { useApiClient } from '@/app/api-client-context'
 import { useStableLoading } from '@/app/loading-state'
-import { controlQueryKeys } from '@/app/query-keys'
+import { controlQueryKeys } from '@shared/control/query-keys'
 import {
   systemInfoQueryOptions,
   type DatabaseDriver,

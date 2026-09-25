@@ -10,7 +10,7 @@ import { useCollectionLoading } from '@/app/loading-state'
 import { listAccessKeyOptions } from '@/app/resources/access-keys'
 import { groupOptionsQueryOptions } from '@/app/resources/groups'
 import { listChannels } from '@/app/resources/channels'
-import { controlQueryKeys } from '@/app/query-keys'
+import { controlQueryKeys } from '@shared/control/query-keys'
 import {
   usageQueryOptions,
   normalizeUsageBreakdownSort,
@@ -33,7 +33,7 @@ import InlineFeedback from '@/components/ui/InlineFeedback.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
-import { formatEstimatedCost, formatInteger, formatTokens } from '@/lib/format'
+import { formatEstimatedCost, formatInteger, formatTokens } from '@shared/lib/format'
 import { useAuthSession } from '@/features/auth/auth-session'
 
 import MonitorSectionHeading from './MonitorSectionHeading.vue'

@@ -9,7 +9,7 @@ import DataTable from '@/components/ui/DataTable.vue'
 import SkeletonBlock from '@/components/ui/SkeletonBlock.vue'
 
 import HomeSectionHeading from './HomeSectionHeading.vue'
-import { formatEstimatedCost, formatInteger, formatTokens } from '@/lib/format'
+import { formatEstimatedCost, formatInteger, formatTokens } from '@shared/lib/format'
 
 const props = withDefaults(
   defineProps<{

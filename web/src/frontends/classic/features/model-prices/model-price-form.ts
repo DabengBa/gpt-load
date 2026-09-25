@@ -5,7 +5,7 @@ import type {
   ModelPriceScheduleUpdateRequest,
   ModelPriceUpdateRequest,
 } from '@/app/resources/model-prices'
-import { createUUID } from '@/lib/uuid'
+import { createUUID } from '@shared/lib/uuid'
 
 export const modelPriceFields = ['input', 'output', 'cache_read', 'cache_write'] as const
 export type ModelPriceField = (typeof modelPriceFields)[number]

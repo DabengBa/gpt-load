@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { ReleaseUpdateDto } from '@/app/resources/system-update'
 import AppTooltip from '@/components/ui/AppTooltip.vue'
-import { formatLocalInstant } from '@/lib/format'
+import { formatLocalInstant } from '@shared/lib/format'
 
 const props = defineProps<{
   currentVersion: string

@@ -2,13 +2,13 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { routeStrategies } from '@/api/control/types'
+import { routeStrategies } from '@shared/control/types'
 import type { RuntimeSettingKey, SettingsResource } from '@/app/resources/settings'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import CompactFieldError from '@/components/ui/CompactFieldError.vue'
 import SegmentedControl, { type SegmentedControlOption } from '@/components/ui/SegmentedControl.vue'
-import { formatInteger } from '@/lib/format'
+import { formatInteger } from '@shared/lib/format'
 
 import SettingRow from '@/components/config/SettingRow.vue'
 import {

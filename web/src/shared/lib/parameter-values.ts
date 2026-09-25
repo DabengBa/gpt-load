@@ -1,5 +1,5 @@
-import type { ParameterJSONValue } from '@/api/control/types'
-import { assertJSONNumbersRoundTrip } from '@/lib/json-number'
+import type { ParameterJSONValue } from '@shared/control/types'
+import { assertJSONNumbersRoundTrip } from '@shared/lib/json-number'
 
 /**
  * 参数值的输入表示：类型是显式的一列，值不需要用户加引号。

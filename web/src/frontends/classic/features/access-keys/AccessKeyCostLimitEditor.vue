@@ -6,14 +6,14 @@ import { useI18n } from 'vue-i18n'
 import type {
   AccessKeyCostLimitRuleStatusDto,
   AccessKeyCostLimitStatusDto,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import AppTextInput from '@/components/ui/AppTextInput.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import QuotaProgressBar from '@/components/ui/QuotaProgressBar.vue'
-import { quotaProgressTone } from '@/lib/quota-progress'
-import { createUUID } from '@/lib/uuid'
+import { quotaProgressTone } from '@shared/lib/quota-progress'
+import { createUUID } from '@shared/lib/uuid'
 
 import AccessKeyCostLimitWindowTime from './AccessKeyCostLimitWindowTime.vue'
 import type { AccessKeyCostLimitRuleDraft } from './access-key-patch'

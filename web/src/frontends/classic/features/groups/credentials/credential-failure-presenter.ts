@@ -1,4 +1,4 @@
-import type { FailureCategory } from '@/api/control/types'
+import type { FailureCategory } from '@shared/control/types'
 
 type Translate = (key: string) => string
 

@@ -2,12 +2,12 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ChannelParamsDto } from '@/api/control/types'
+import type { ChannelParamsDto } from '@shared/control/types'
 import type { ChannelDto, ChannelFieldDto } from '@/app/resources/channels'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import ChannelPresetPicker from '@/features/import/ChannelPresetPicker.vue'
-import { isValidPriceMultiplier } from '@/lib/price-multiplier'
+import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
 
 const props = withDefaults(
   defineProps<{

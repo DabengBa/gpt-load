@@ -3,7 +3,7 @@ import { Ban, CircleCheck, CirclePause, Clock3 } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { CredentialCounts, HealthCredentialCountsDto } from '@/api/control/types'
+import type { CredentialCounts, HealthCredentialCountsDto } from '@shared/control/types'
 
 import AppTooltip from './AppTooltip.vue'
 

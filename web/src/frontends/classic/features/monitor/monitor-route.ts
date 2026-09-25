@@ -1,6 +1,6 @@
 import type { LocationQueryRaw } from 'vue-router'
 
-import { enabledDataProtocols } from '@/api/control/protocols'
+import { enabledDataProtocols } from '@shared/control/protocols'
 import {
   defaultUsageBreakdownSort,
   defaultUsageBreakdownSortDirectionFor,
@@ -8,7 +8,7 @@ import {
   normalizeUsageBreakdownSortDirection,
   type UsageFilters,
 } from '@/app/resources/usage'
-import { defaultTimeRange } from '@/lib/time'
+import { defaultTimeRange } from '@shared/lib/time'
 
 import {
   normalizeUsageGroupID,

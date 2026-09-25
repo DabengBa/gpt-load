@@ -14,7 +14,7 @@ import type {
   CredentialObservationDto,
   CredentialTestResultDto,
   CredentialStatus,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import { useCollectionLoading } from '@/app/loading-state'
 import { channelsQueryOptions, type ChannelCapabilitiesDto } from '@/app/resources/channels'
 import {
@@ -35,9 +35,9 @@ import {
   inspectGroupCredentialConnection,
   type CredentialStage,
 } from '@/app/resources/credential-stages'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { groupDetailLocation, importLocation, logsLocation } from '@/app/route-locations'
-import { controlQueryKeys } from '@/app/query-keys'
+import { controlQueryKeys } from '@shared/control/query-keys'
 import { useToast } from '@/app/toast'
 import { useDebouncedAction } from '@/app/use-debounced-action'
 import CollectionStatusSummary from '@/components/collection/CollectionStatusSummary.vue'
@@ -55,7 +55,7 @@ import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import SubscriptionCredentialStager from '@/features/import/SubscriptionCredentialStager.vue'
 import { presentSubscriptionErrorKey } from '@/features/subscription-error-presenter'
-import { createUUID } from '@/lib/uuid'
+import { createUUID } from '@shared/lib/uuid'
 
 import CredentialBatchBar from './GroupCredentialBatchBar.vue'
 import CredentialRecord from './GroupCredentialRecord.vue'

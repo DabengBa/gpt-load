@@ -17,7 +17,7 @@ import type {
   CredentialItemDto,
   CredentialQuotaLabelKey,
   CredentialQuotaWindowDto,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import type { ChannelCapabilitiesDto } from '@/app/resources/channels'
 import ChannelIcon from '@/components/brand/ChannelIcon.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -28,8 +28,8 @@ import IconButton from '@/components/ui/IconButton.vue'
 import OverflowTooltip from '@/components/ui/OverflowTooltip.vue'
 import SkeletonBlock from '@/components/ui/SkeletonBlock.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { formatEstimatedCost, formatLocalInstant, formatTokens } from '@/lib/format'
-import { quotaProgressTone } from '@/lib/quota-progress'
+import { formatEstimatedCost, formatLocalInstant, formatTokens } from '@shared/lib/format'
+import { quotaProgressTone } from '@shared/lib/quota-progress'
 
 import { presentCredentialFailureCategory } from './credential-failure-presenter'
 

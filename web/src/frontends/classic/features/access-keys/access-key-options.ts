@@ -1,5 +1,5 @@
-import type { AccessProtocol, GroupOptionDto } from '@/api/control/types'
-import { enabledDataProtocols } from '@/api/control/protocols'
+import type { AccessProtocol, GroupOptionDto } from '@shared/control/types'
+import { enabledDataProtocols } from '@shared/control/protocols'
 import type { ChannelDto } from '@/app/resources/channels'
 
 export function accessKeyProtocolOptions(): AccessProtocol[] {

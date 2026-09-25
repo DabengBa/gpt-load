@@ -5,7 +5,7 @@ import type {
   GroupCollectionFilters,
   GroupCollectionSort,
   GroupCollectionStatus,
-} from '@/api/control/types'
+} from '@shared/control/types'
 import {
   constrainCollectionSearch,
   isCanonicalRouteQuery,

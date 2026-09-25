@@ -12,7 +12,7 @@ import {
   groupSummaryQueryOptions,
 } from '@/app/resources/groups'
 import { credentialCollectionQueryOptions } from '@/app/resources/credentials'
-import type { CredentialCollectionFilters, CredentialItemDto } from '@/api/control/types'
+import type { CredentialCollectionFilters, CredentialItemDto } from '@shared/control/types'
 import { groupsLocation } from '@/app/route-locations'
 import LedgerSheet from '@/components/layout/LedgerSheet.vue'
 import PageFrame from '@/components/layout/PageFrame.vue'

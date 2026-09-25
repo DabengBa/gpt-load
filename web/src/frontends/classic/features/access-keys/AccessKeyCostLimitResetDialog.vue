@@ -2,13 +2,13 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AccessKeyCostLimitRuleDto, AccessKeyDto } from '@/api/control/types'
+import type { AccessKeyCostLimitRuleDto, AccessKeyDto } from '@shared/control/types'
 import { RequestCancelledError } from '@shared/http/errors'
 import { useApiClient } from '@/app/api-client-context'
 import { resetAccessKeyCostLimits } from '@/app/resources/access-keys'
 import AppConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import InlineFeedback from '@/components/ui/InlineFeedback.vue'
-import { formatUSD } from '@/lib/format'
+import { formatUSD } from '@shared/lib/format'
 
 const props = defineProps<{ accessKey: AccessKeyDto }>()
 const emit = defineEmits<{ reset: [name: string] }>()

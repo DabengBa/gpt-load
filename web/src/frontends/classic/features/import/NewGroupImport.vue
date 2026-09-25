@@ -27,7 +27,7 @@ import {
   type ModelDiscoveryRequest,
   type SameTargetConflictData,
 } from '@/app/resources/groups'
-import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { type ModelCandidate } from '@/app/resources/providers'
 import { proxyMutation } from '@/app/resources/proxy'
 import { useUnsavedChanges } from '@/app/unsaved-changes'
@@ -40,7 +40,7 @@ import StickySaveBar from '@/components/ui/StickySaveBar.vue'
 import ModelAliasEditor from '@/features/models/ModelAliasEditor.vue'
 import ModelDiscoveryDrawer from '@/features/models/ModelDiscoveryDrawer.vue'
 import { presentSubscriptionErrorKey } from '@/features/subscription-error-presenter'
-import { isValidUpstreamBaseURL } from '@/lib/upstream-base-url'
+import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
 import {
   appendSelectedCandidates,
   findModelNameConflicts,
@@ -57,7 +57,7 @@ import ImportConnectionSection from './ImportConnectionSection.vue'
 import ImportOperationNotice from './ImportOperationNotice.vue'
 import { useImportOperationOwner } from './import-operation-owner'
 import { useImportRecovery } from './import-recovery'
-import { isValidPriceMultiplier, normalizePriceMultiplier } from '@/lib/price-multiplier'
+import { isValidPriceMultiplier, normalizePriceMultiplier } from '@shared/lib/price-multiplier'
 
 import { analyzeCredentials } from './credential-analysis'
 import { mapConnectionToChannel, parseConnectionJSON } from './connection-json'

@@ -11,7 +11,7 @@ import { monitorLocation } from '@/app/route-locations'
 import AsyncRefreshIndicator from '@/components/ui/AsyncRefreshIndicator.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
-import { formatLocalInstant } from '@/lib/format'
+import { formatLocalInstant } from '@shared/lib/format'
 
 import GroupHealthCollection from './GroupHealthCollection.vue'
 import AccessKeyCostLimitHealth from './AccessKeyCostLimitHealth.vue'
