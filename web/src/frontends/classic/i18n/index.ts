@@ -20,45 +20,45 @@ const namespaces: MessageNamespace[] = [
   'settings',
 ]
 const coreLoaders: Record<AppLocale, MessageLoader> = {
-  'zh-CN': () => import('./locales/zh-CN/core'),
-  'en-US': () => import('./locales/en-US/core'),
-  'ja-JP': () => import('./locales/ja-JP/core'),
+  'zh-CN': () => import('@shared/i18n/locales/zh-CN/core'),
+  'en-US': () => import('@shared/i18n/locales/en-US/core'),
+  'ja-JP': () => import('@shared/i18n/locales/ja-JP/core'),
 }
 const namespaceLoaders: Record<MessageNamespace, Record<AppLocale, MessageLoader>> = {
   import: {
-    'zh-CN': () => import('./locales/zh-CN/import'),
-    'en-US': () => import('./locales/en-US/import'),
-    'ja-JP': () => import('./locales/ja-JP/import'),
+    'zh-CN': () => import('@shared/i18n/locales/zh-CN/import'),
+    'en-US': () => import('@shared/i18n/locales/en-US/import'),
+    'ja-JP': () => import('@shared/i18n/locales/ja-JP/import'),
   },
   group: {
-    'zh-CN': () => import('./locales/zh-CN/group'),
-    'en-US': () => import('./locales/en-US/group'),
-    'ja-JP': () => import('./locales/ja-JP/group'),
+    'zh-CN': () => import('@shared/i18n/locales/zh-CN/group'),
+    'en-US': () => import('@shared/i18n/locales/en-US/group'),
+    'ja-JP': () => import('@shared/i18n/locales/ja-JP/group'),
   },
   'access-keys': {
-    'zh-CN': () => import('./locales/zh-CN/access-keys'),
-    'en-US': () => import('./locales/en-US/access-keys'),
-    'ja-JP': () => import('./locales/ja-JP/access-keys'),
+    'zh-CN': () => import('@shared/i18n/locales/zh-CN/access-keys'),
+    'en-US': () => import('@shared/i18n/locales/en-US/access-keys'),
+    'ja-JP': () => import('@shared/i18n/locales/ja-JP/access-keys'),
   },
   monitor: {
-    'zh-CN': () => import('./locales/zh-CN/monitor'),
-    'en-US': () => import('./locales/en-US/monitor'),
-    'ja-JP': () => import('./locales/ja-JP/monitor'),
+    'zh-CN': () => import('@shared/i18n/locales/zh-CN/monitor'),
+    'en-US': () => import('@shared/i18n/locales/en-US/monitor'),
+    'ja-JP': () => import('@shared/i18n/locales/ja-JP/monitor'),
   },
   models: {
-    'zh-CN': () => import('./locales/zh-CN/models'),
-    'en-US': () => import('./locales/en-US/models'),
-    'ja-JP': () => import('./locales/ja-JP/models'),
+    'zh-CN': () => import('@shared/i18n/locales/zh-CN/models'),
+    'en-US': () => import('@shared/i18n/locales/en-US/models'),
+    'ja-JP': () => import('@shared/i18n/locales/ja-JP/models'),
   },
   'model-prices': {
-    'zh-CN': () => import('./locales/zh-CN/model-prices'),
-    'en-US': () => import('./locales/en-US/model-prices'),
-    'ja-JP': () => import('./locales/ja-JP/model-prices'),
+    'zh-CN': () => import('@shared/i18n/locales/zh-CN/model-prices'),
+    'en-US': () => import('@shared/i18n/locales/en-US/model-prices'),
+    'ja-JP': () => import('@shared/i18n/locales/ja-JP/model-prices'),
   },
   settings: {
-    'zh-CN': () => import('./locales/zh-CN/settings'),
-    'en-US': () => import('./locales/en-US/settings'),
-    'ja-JP': () => import('./locales/ja-JP/settings'),
+    'zh-CN': () => import('@shared/i18n/locales/zh-CN/settings'),
+    'en-US': () => import('@shared/i18n/locales/en-US/settings'),
+    'ja-JP': () => import('@shared/i18n/locales/ja-JP/settings'),
   },
 }
 

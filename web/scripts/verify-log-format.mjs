@@ -649,7 +649,7 @@ async function main() {
     const messagesByLocale = {}
     for (const locale of localeNames) {
       const module = await server.ssrLoadModule(
-        `/src/frontends/classic/i18n/locales/${locale}/monitor.ts`,
+        `/src/shared/i18n/locales/${locale}/monitor.ts`,
       )
       messagesByLocale[locale] = module.default
     }
