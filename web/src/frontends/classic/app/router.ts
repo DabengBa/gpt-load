@@ -4,7 +4,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import type { MessageNamespace } from '@/i18n'
 
-import { pagePath, pagePathMatches } from './page-routes'
+import { pagePath, pagePathMatches } from '@shared/routing/page-routes'
+import { decodedPathSegments, safeRedirectTarget } from '@shared/routing/safe-redirect'
+import { normalizedRouteQueryValue } from '@shared/routing/route-query'
 import { loginLocation, notFoundLocation, pageRouteNames } from './route-locations'
 
 function lazyView(loader: () => Promise<{ default: Component }>) {
@@ -159,8 +161,8 @@ export function createAppRouter(
 
       const pageViewChanged =
         to.path !== from.path ||
-        normalizedQueryValue(to.query.tab) !== normalizedQueryValue(from.query.tab) ||
-        normalizedQueryValue(to.query.mode) !== normalizedQueryValue(from.query.mode)
+        normalizedRouteQueryValue(to.query.tab) !== normalizedRouteQueryValue(from.query.tab) ||
+        normalizedRouteQueryValue(to.query.mode) !== normalizedRouteQueryValue(from.query.mode)
       return pageViewChanged ? { left: 0, top: 0 } : false
     },
   })
@@ -188,51 +190,9 @@ export function createAppRouter(
   return router
 }
 
-function normalizedQueryValue(value: string | null | (string | null)[] | undefined): string {
-  if (Array.isArray(value)) return value[0] ?? ''
-  return value ?? ''
-}
-
-function decodedPathSegments(path: string): string[] {
-  try {
-    const segments = decodeURIComponent(path).split('/').filter(Boolean)
-    return segments.length > 0 ? segments : ['invalid-path']
-  } catch {
-    return ['invalid-path']
-  }
-}
-
 export function safeRedirect(raw: unknown, router: Router): string {
-  const fallback = pagePath(pageRouteNames.home)
-  if (
-    typeof raw !== 'string' ||
-    !raw.startsWith('/') ||
-    raw.startsWith('//') ||
-    raw.includes('\\')
-  ) {
-    return fallback
-  }
-
-  let decodedRaw: string
-  try {
-    decodedRaw = decodeURIComponent(raw)
-  } catch {
-    return fallback
-  }
-  if (decodedRaw.startsWith('//') || decodedRaw.includes('\\')) {
-    return fallback
-  }
-
-  const resolved = router.resolve(raw)
-  if (
-    resolved.matched.length === 0 ||
-    typeof resolved.name !== 'string' ||
-    !pagePathMatches(resolved.name, resolved.path) ||
-    resolved.name === pageRouteNames.login ||
-    resolved.name === pageRouteNames.notFound ||
-    resolved.meta.requiresAuth !== true
-  ) {
-    return fallback
-  }
-  return resolved.fullPath
+  return safeRedirectTarget(raw, (value) => router.resolve(value), [
+    pageRouteNames.login,
+    pageRouteNames.notFound,
+  ])
 }
