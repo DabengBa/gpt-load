@@ -12,11 +12,11 @@
     "verbatimModuleSyntax": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
+    "jsx": "react-jsx",
     "paths": {
-      "@/*": ["./src/frontends/classic/*"],
+      "@app/*": ["./src/frontends/astryx/*"],
       "@shared/*": ["./src/shared/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
-  "exclude": ["src/frontends/astryx"]
+  "include": ["src/frontends/astryx/**/*.ts", "src/frontends/astryx/**/*.tsx", "src/shared/**/*.ts"]
 }

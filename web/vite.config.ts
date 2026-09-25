@@ -1,6 +1,9 @@
 import { fileURLToPath, URL } from 'node:url'
 
+import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
+import stylex from '@stylexjs/unplugin/vite'
+import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
@@ -10,14 +13,32 @@ export const pageRouteManifestPath = fileURLToPath(
 )
 export const devServerFileSystemAllow = [webRootPath, pageRouteManifestPath]
 
+const astryxRoot = fileURLToPath(new URL('./src/frontends/astryx', import.meta.url))
+const astryxInclude = /frontends[\\/]astryx/
 const proxyTarget = process.env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:3001'
 
 export default defineConfig({
   root: webRootPath,
-  plugins: [vue(), tailwindcss()],
+  plugins: [
+    stylex({
+      unstable_moduleResolution: { type: 'commonJS', rootDir: webRootPath },
+      // Two entries ship CSS: keep collected StyleX atoms out of classic chunks.
+      cssInjectionTarget: (fileName) => /(^|\/)astryx(-[\w-]+)?\.css$/i.test(fileName),
+    }),
+    vue(),
+    react({ include: astryxInclude }),
+    babel({
+      include: astryxInclude,
+      plugins: ['babel-plugin-react-compiler'],
+    }),
+    tailwindcss(),
+    // B5 fills this in: cookie + manifest-flag frontend selection in dev.
+    frontendSelectorDevPlugin(),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src/frontends/classic', import.meta.url)),
+      '@app': astryxRoot,
       '@shared': fileURLToPath(new URL('./src/shared', import.meta.url)),
     },
   },
@@ -36,5 +57,19 @@ export default defineConfig({
     outDir: '../internal/webui/dist',
     emptyOutDir: true,
     manifest: true,
+    target: 'chrome125',
+    rollupOptions: {
+      input: {
+        index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        astryx: fileURLToPath(new URL('./astryx.html', import.meta.url)),
+      },
+    },
   },
 })
+
+function frontendSelectorDevPlugin() {
+  return {
+    name: 'gpt-load:frontend-selector',
+    // Implemented in B5.
+  }
+}

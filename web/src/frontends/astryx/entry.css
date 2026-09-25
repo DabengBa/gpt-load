@@ -1,0 +1,3 @@
+/* Astryx entry stylesheet. B3 fills in the reset → astryx-base → theme → app
+   layer order; the file exists now so the entry owns a CSS asset for StyleX
+   injection and for the Go-embedded document. */
