@@ -47,14 +47,14 @@ onBeforeUnmount(() => {
 <template>
   <div
     ref="container"
-    class="ledger-record-list"
+    class="ledger-record-list" data-testid="ledger-record-list"
     :class="gridClass"
     role="table"
     :aria-label="accessibleLabel"
     :aria-rowcount="rowCount"
     :tabindex="overflowing ? 0 : undefined"
   >
-    <div class="ledger-record-list__header" role="row" aria-rowindex="1">
+    <div class="ledger-record-list__header" role="row" data-testid="ledger-record-list__header" aria-rowindex="1">
       <slot name="header" />
     </div>
     <slot />

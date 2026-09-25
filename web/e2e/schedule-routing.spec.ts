@@ -51,7 +51,6 @@ async function installScheduleRoutingRoutes(
                 operation: 'chat_completion',
                 candidate_count: 1,
                 group_count: 1,
-                has_fallback: false,
                 cooled_candidates: 0,
                 blacklisted_candidates: 0,
               },
@@ -82,7 +81,7 @@ async function installScheduleRoutingRoutes(
 
 async function openDispatchCenter(page: Page): Promise<void> {
   await page.goto('/schedule')
-  await page.locator('.desktop-nav').waitFor()
+  await page.getByTestId('desktop-nav').waitFor()
   await page.waitForLoadState('networkidle')
 }
 
@@ -95,11 +94,9 @@ test.describe('dispatch center routing', () => {
 
     await expect(page).toHaveURL(/\/schedule$/u)
     await expect(page.getByRole('heading', { name: 'Dispatch center' })).toBeVisible()
-    await expect(page.locator('.schedule-panel')).toBeVisible()
+    await expect(page.getByTestId('schedule-panel')).toBeVisible()
 
-    const mode = page.locator('.schedule-panel .app-select__trigger[aria-label="Mode"]')
-    await expect(mode).toContainText('All candidates')
-    const model = page.locator('.schedule-panel .app-select__trigger[aria-label="External model"]')
+    const model = page.getByTestId('schedule-panel').locator('[aria-label="External model"]')
     await expect(model).toContainText('Select a model')
     expect(scheduleIndexRequests.length).toBeGreaterThan(0)
 
@@ -113,10 +110,10 @@ test.describe('dispatch center routing', () => {
   }) => {
     await installScheduleRoutingRoutes(page, 'admin')
     await page.goto('/monitor?tab=inspector')
-    await page.locator('.app-tabs__bar').waitFor()
+    await page.getByRole('tablist').waitFor()
 
-    await expect(page.locator('.app-tabs__trigger')).toHaveCount(3)
-    await expect(page.locator('.app-tabs__trigger', { hasText: 'Dispatch center' })).toHaveCount(0)
+    await expect(page.getByRole('tab')).toHaveCount(3)
+    await expect(page.getByRole('tab', { name: 'Dispatch center' })).toHaveCount(0)
     await expect(page.getByRole('tab', { name: 'Health' })).toBeVisible()
     await expect(page.getByRole('tab', { name: 'Usage & cost' })).toBeVisible()
     await expect(page.getByRole('tab', { name: 'Route inspector' })).toBeVisible()
@@ -125,7 +122,7 @@ test.describe('dispatch center routing', () => {
     // 旧的 Tab 深链不再渲染调度内容，只按既有非法 Tab 规则回到 health。
     await page.goto('/monitor?tab=schedule')
     await expect.poll(() => new URL(page.url()).searchParams.get('tab')).toBe('health')
-    await expect(page.locator('.schedule-panel')).toHaveCount(0)
+    await expect(page.getByTestId('schedule-panel')).toHaveCount(0)
   })
 
   test('access key principal has no dispatch entry and cannot reach /schedule', async ({
@@ -133,14 +130,14 @@ test.describe('dispatch center routing', () => {
   }) => {
     await installScheduleRoutingRoutes(page, 'access_key')
     await page.goto('/monitor?tab=usage')
-    await page.locator('.desktop-nav').waitFor()
+    await page.getByTestId('desktop-nav').waitFor()
 
     await expect(page.getByRole('link', { name: 'Dispatch center' })).toHaveCount(0)
-    await expect(page.locator('.desktop-nav a[href="/schedule"]')).toHaveCount(0)
+    await expect(page.getByTestId('desktop-nav').locator('a[href="/schedule"]')).toHaveCount(0)
 
     await page.goto('/schedule')
     await expect(page).toHaveURL(/\/$/u)
-    await expect(page.locator('.schedule-panel')).toHaveCount(0)
+    await expect(page.getByTestId('schedule-panel')).toHaveCount(0)
   })
 })
 
@@ -149,7 +146,7 @@ test.describe('group model row targeting', () => {
     await installScheduleRowTargetingRoutes(page)
     await page.goto(`/groups/${alphaGroupId}`)
 
-    const links = page.locator('.group-models__schedule-link')
+    const links = page.locator('[data-testid="group-models__schedule-link"]')
     await expect(links).toHaveCount(2)
     // 未启用别名的行按模型 ID、启用别名的行按对外别名生成调度目标，并携带来源分组与 entry 定位。
     await expect(links.nth(0)).toHaveAttribute(
@@ -165,7 +162,7 @@ test.describe('group model row targeting', () => {
     await expect(page).toHaveURL(
       /\/schedule\?schedule_model=worker-b&schedule_group=1&schedule_row=1:entry-2$/u,
     )
-    const selected = page.locator('.schedule-row--selected')
+    const selected = page.locator('[data-row-key][aria-selected="true"]')
     await expect(selected).toHaveCount(1)
     await expect(selected).toContainText('worker-b')
     await expect(selected).toContainText('alpha group')
@@ -175,7 +172,7 @@ test.describe('group model row targeting', () => {
     await expect(page).toHaveURL(new RegExp(`/groups/${alphaGroupId}`))
     await page.goForward()
     await expect(page).toHaveURL(/schedule_row=1:entry-2/u)
-    await expect(page.locator('.schedule-row--selected')).toContainText('worker-b')
+    await expect(page.locator('[data-row-key][aria-selected="true"]')).toContainText('worker-b')
   })
 
   test('schedule_group resolves the first matching entry row after the detail loads', async ({
@@ -184,7 +181,7 @@ test.describe('group model row targeting', () => {
     await installScheduleRowTargetingRoutes(page)
     await page.goto('/schedule?schedule_model=worker&schedule_group=2')
 
-    const selected = page.locator('.schedule-row--selected')
+    const selected = page.locator('[data-row-key][aria-selected="true"]')
     await expect(selected).toHaveCount(1)
     await expect(selected).toContainText('worker')
     await expect(page).toHaveURL(/schedule_row=2:entry-2/u)
@@ -199,7 +196,7 @@ test.describe('group model row targeting', () => {
     await installScheduleRowTargetingRoutes(page)
     await page.goto('/schedule?schedule_model=worker&schedule_group=2&schedule_row=2%3Aentry-12')
 
-    const selected = page.locator('.schedule-row--selected')
+    const selected = page.locator('[data-row-key][aria-selected="true"]')
     await expect(selected).toHaveCount(1)
     await expect(selected).toContainText('model-l')
     const box = await selected.boundingBox()
@@ -214,9 +211,9 @@ test.describe('group model row targeting', () => {
     await installScheduleRowTargetingRoutes(page)
     await page.goto('/schedule?schedule_model=worker&schedule_group=9&schedule_row=9%3Aentry-99')
 
-    await expect(page.locator('.schedule-row:not(.schedule-row--header)')).toHaveCount(10)
-    await expect(page.locator('.schedule-row--selected')).toHaveCount(0)
-    const model = page.locator('.schedule-panel .app-select__trigger[aria-label="External model"]')
+    await expect(page.locator('[data-row-key]')).toHaveCount(10)
+    await expect(page.locator('[data-row-key][aria-selected="true"]')).toHaveCount(0)
+    const model = page.getByTestId('schedule-panel').locator('[aria-label="External model"]')
     await expect(model).toContainText('worker')
     const query = new URL(page.url()).searchParams
     expect(query.get('schedule_group')).toBe('9')

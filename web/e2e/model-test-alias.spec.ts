@@ -15,7 +15,7 @@ import {
 async function openGroupModelsEditor(page: Page): Promise<SavedModelBody[]> {
   const savedModelBodies = await installModelTestAliasRoutes(page)
   await page.goto(`/groups/${modelTestAliasGroupId}`)
-  await expect(page.locator('.model-alias-editor__record')).toHaveCount(2)
+  await expect(page.locator('[data-testid="model-alias-editor__record"]')).toHaveCount(2)
   return savedModelBodies
 }
 
@@ -34,7 +34,7 @@ test.describe('group model test alias', () => {
     await page.setViewportSize({ width: 1280, height: 720 })
     await openGroupModelsEditor(page)
 
-    const codes = page.locator('.group-models__test-alias code')
+    const codes = page.locator('[data-testid="group-models__test-alias"] code')
     await expect(codes).toHaveCount(2)
     await expect(codes.nth(0)).toHaveText(rowOneTestAlias)
     await expect(codes.nth(1)).toHaveText(rowTwoTestAlias)
@@ -57,7 +57,7 @@ test.describe('group model test alias', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await openGroupModelsEditor(page)
 
-    await expect(page.locator('.group-models__test-alias code').nth(0)).toHaveText(rowOneTestAlias)
+    await expect(page.locator('[data-testid="group-models__test-alias"] code').nth(0)).toHaveText(rowOneTestAlias)
     await assertNoHorizontalOverflow(page)
   })
 
@@ -77,7 +77,7 @@ test.describe('group model test alias', () => {
       const descriptor = await page.evaluate(() => {
         const active = document.activeElement
         if (active === null) return 'none'
-        if (active.closest('.group-models__test-alias')) return 'test-alias'
+        if (active.closest('[data-testid="group-models__test-alias"]')) return 'test-alias'
         for (const attribute of ['data-alias-toggle-index', 'data-alias-input-index']) {
           if (active.hasAttribute(attribute))
             return `${attribute}=${active.getAttribute(attribute)}`
@@ -118,7 +118,7 @@ test.describe('group model test alias', () => {
     expect(body).not.toContain(rowTwoTestAlias)
 
     // The save response restores the server-owned alias unchanged.
-    const codes = page.locator('.group-models__test-alias code')
+    const codes = page.locator('[data-testid="group-models__test-alias"] code')
     await expect(codes.nth(0)).toHaveText(rowOneTestAlias)
     await expect(codes.nth(1)).toHaveText(rowTwoTestAlias)
   })

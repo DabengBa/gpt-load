@@ -129,6 +129,7 @@ const groupLinkAction = computed(() =>
   >
     <span
       class="log-route-identity"
+      data-testid="log-route-identity"
       :class="`log-route-identity--${appearance}`"
       :tabindex="appearance === 'compact' ? 0 : undefined"
       :aria-label="appearance === 'compact' ? routeTooltip : undefined"
@@ -142,7 +143,7 @@ const groupLinkAction = computed(() =>
       <span class="log-route-identity__line">
         <button
           v-if="canFilterGroup"
-          class="log-route-identity__group filterable-value"
+          class="log-route-identity__group filterable-value" data-testid="log-route-identity__group"
           :class="{ 'log-route-identity__group--code': !hasGroupName }"
           type="button"
           :aria-label="groupAction"
@@ -153,6 +154,7 @@ const groupLinkAction = computed(() =>
         <span
           v-else
           class="log-route-identity__group"
+          data-testid="log-route-identity__group"
           :class="{ 'log-route-identity__group--code': !hasGroupName }"
         >
           {{ groupLabel }}
@@ -161,7 +163,7 @@ const groupLinkAction = computed(() =>
         <template v-if="appearance === 'plain'">
           <RouterLink
             v-if="canOpenGroup"
-            class="log-route-identity__group-link icon-button icon-button--ghost icon-button--compact"
+            data-testid="log-route-identity__group-link" class="log-route-identity__group-link icon-button icon-button--ghost icon-button--compact"
             :to="groupDetailLocation(groupId as number)"
             :aria-label="groupLinkAction"
             @click.stop
@@ -170,7 +172,7 @@ const groupLinkAction = computed(() =>
           </RouterLink>
           <a
             v-if="providerUrl"
-            class="log-route-identity__provider"
+            class="log-route-identity__provider" data-testid="log-route-identity__provider"
             :href="providerUrl"
             target="_blank"
             rel="noopener noreferrer"
@@ -185,7 +187,7 @@ const groupLinkAction = computed(() =>
       <template v-if="credentialLabel">
         <button
           v-if="canFilterCredential"
-          class="log-route-identity__credential filterable-value"
+          class="log-route-identity__credential filterable-value" data-testid="log-route-identity__credential"
           :class="{ 'log-route-identity__credential--code': !hasCredentialName }"
           type="button"
           :aria-label="credentialAction"
@@ -195,7 +197,7 @@ const groupLinkAction = computed(() =>
         </button>
         <span
           v-else
-          class="log-route-identity__credential"
+          class="log-route-identity__credential" data-testid="log-route-identity__credential"
           :class="{ 'log-route-identity__credential--code': !hasCredentialName }"
         >
           {{ credentialLabel }}

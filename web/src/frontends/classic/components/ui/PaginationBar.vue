@@ -56,7 +56,7 @@ function updatePageSize(event: Event): void {
 
 <template>
   <nav
-    class="pagination-bar"
+    class="pagination-bar" data-testid="pagination-bar"
     :class="[`pagination-bar--${appearance}`, { 'pagination-bar--cursor': cursor }]"
     :aria-label="t('common.pagination.label')"
     :aria-busy="pending ? 'true' : undefined"

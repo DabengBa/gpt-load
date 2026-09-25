@@ -30,7 +30,7 @@ withDefaults(
       </TooltipTrigger>
       <TooltipPortal>
         <TooltipContent
-          class="app-tooltip__content"
+          class="app-tooltip__content" data-testid="app-tooltip__content"
           :side="side"
           :align="align"
           :side-offset="7"

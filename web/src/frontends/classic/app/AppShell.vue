@@ -115,7 +115,7 @@ watch(
           <span>{{ t('common.appName') }}</span>
         </RouterLink>
 
-        <nav class="desktop-nav" :aria-label="t('shell.primaryNavigation')">
+        <nav class="desktop-nav" data-testid="desktop-nav" :aria-label="t('shell.primaryNavigation')">
           <RouterLink
             v-for="item in navigation"
             :key="item.key"

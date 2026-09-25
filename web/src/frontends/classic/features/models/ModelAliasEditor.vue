@@ -403,7 +403,7 @@ defineExpose({ addManual, focusFirstInvalid })
         </article>
         <article
           v-else
-          class="ledger-record-list__record model-alias-editor__record"
+          class="ledger-record-list__record model-alias-editor__record" data-testid="model-alias-editor__record"
           :class="{
             'model-alias-editor__record--invalid': visibleInvalidIndexes.has(render.index),
             'model-alias-editor__record--nested': render.nested,

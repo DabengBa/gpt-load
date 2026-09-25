@@ -401,7 +401,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
       :retry-label="t('common.retry')"
       @retry="query.refetch()"
     />
-    <div v-else class="log-detail">
+    <div v-else class="log-detail" data-testid="log-detail">
       <header class="log-detail__summary">
         <StatusBadge :tone="statusTone(log.status)" size="compact">
           {{ t(`monitor.logs.status.${log.status}`)
@@ -425,7 +425,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
         </span>
       </header>
 
-      <section class="log-detail__section">
+      <section class="log-detail__section" data-testid="log-detail__section">
         <h3>{{ t('monitor.logs.drawer.summary') }}</h3>
         <dl class="log-detail__grid">
           <div>
@@ -489,7 +489,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
         </div>
       </section>
 
-      <section class="log-detail__section">
+      <section class="log-detail__section" data-testid="log-detail__section">
         <h3>{{ t('monitor.logs.drawer.request') }}</h3>
         <dl class="log-detail__grid">
           <div v-if="!selfScoped">
@@ -518,7 +518,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
         </dl>
       </section>
 
-      <section v-if="!selfScoped" class="log-detail__section">
+      <section v-if="!selfScoped" class="log-detail__section" data-testid="log-detail__section">
         <h3>{{ t('monitor.logs.drawer.finalExecution') }}</h3>
         <dl class="log-detail__grid">
           <div class="log-detail__wide">
@@ -616,8 +616,8 @@ function toggleAttemptErrorMessage(sequence: number): void {
         </div>
       </section>
 
-      <section class="log-detail__section">
-        <details class="log-attempt-chain log-usage-chain">
+      <section class="log-detail__section" data-testid="log-detail__section">
+        <details class="log-attempt-chain log-usage-chain" data-testid="log-usage-chain">
           <summary>
             <ChevronRight class="log-attempt-chain__chevron" :size="15" aria-hidden="true" />
             <span>{{ t('monitor.logs.drawer.usage.title') }}</span>
@@ -725,7 +725,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
             <span>{{ t('monitor.logs.drawer.attempts') }}</span>
             <span class="log-attempt-chain__count">{{ log.attempts.length }}</span>
           </summary>
-          <article v-for="attempt in log.attempts" :key="attempt.sequence" class="log-attempt">
+          <article v-for="attempt in log.attempts" :key="attempt.sequence" class="log-attempt" data-testid="log-attempt">
             <header>
               <span>{{ t('monitor.logs.drawer.attempt', { sequence: attempt.sequence }) }}</span>
               <StatusBadge :tone="attemptTone(attempt)" size="compact">

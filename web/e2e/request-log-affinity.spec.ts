@@ -106,13 +106,13 @@ async function installHealthRoute(page: Page): Promise<void> {
 }
 
 async function expectCollectionSkeletonColumns(page: Page, expectedColumns: number): Promise<void> {
-  const skeleton = page.locator('.skeleton-surface--collection')
+  const skeleton = page.locator('[data-testid="skeleton-surface"][data-variant="collection"]')
   await expect(skeleton).toBeVisible()
   await expect(
-    skeleton.locator('.skeleton-surface__collection-header .skeleton-block'),
+    skeleton.locator('[data-testid="skeleton-surface__collection-header"] [data-testid="skeleton-block"]'),
   ).toHaveCount(expectedColumns)
   await expect(
-    skeleton.locator('.skeleton-surface__collection-row').first().locator('.skeleton-block'),
+    skeleton.locator('[data-testid="skeleton-surface__collection-row"]').first().locator('[data-testid="skeleton-block"]'),
   ).toHaveCount(expectedColumns)
 }
 
@@ -163,7 +163,7 @@ test.describe('request log affinity filter', () => {
         expect(normalizedURL.searchParams.has(key)).toBe(false)
       }
       await expect(page.getByRole('link', { name: 'Request logs' }).first()).toBeVisible()
-      await expect(page.locator('.logs-tab')).toHaveCount(0)
+      await expect(page.locator('[data-testid="logs-tab"]')).toHaveCount(0)
       expect(routes.logRequests).toHaveLength(0)
     }
   })
@@ -177,7 +177,7 @@ test.describe('request log affinity filter', () => {
     await expect(groupLogsLink).toBeVisible()
     await groupLogsLink.click()
     await expect(page).toHaveURL(/\/logs\?group_id=1$/u)
-    await expect(page.locator('.logs-tab')).toBeVisible()
+    await expect(page.locator('[data-testid="logs-tab"]')).toBeVisible()
     expect(latestLogRequest(routes).searchParams.get('group_id')).toBe('1')
 
     await page.goto('/monitor?tab=health')
@@ -187,7 +187,7 @@ test.describe('request log affinity filter', () => {
     await expect(credentialLogsLink).toBeVisible()
     await credentialLogsLink.click()
     await expect(page).toHaveURL(/\/logs\?group_id=1&credential_id=2$/u)
-    await expect(page.locator('.logs-tab')).toBeVisible()
+    await expect(page.locator('[data-testid="logs-tab"]')).toBeVisible()
     const credentialRequest = latestLogRequest(routes)
     expect(credentialRequest.searchParams.get('group_id')).toBe('1')
     expect(credentialRequest.searchParams.get('credential_id')).toBe('2')
@@ -201,7 +201,7 @@ test.describe('request log affinity filter', () => {
 
     const keyButtons = page.getByTestId('logs-affinity-key-filter')
     await expect(keyButtons).toHaveCount(3)
-    const columnHeaders = page.locator('.ledger-record-list__header > [role="columnheader"]')
+    const columnHeaders = page.locator('[data-testid="ledger-record-list__header"] > [role="columnheader"]')
     await expect(columnHeaders).toHaveCount(9)
     await expect(columnHeaders.filter({ hasText: 'Access key' })).toHaveCount(0)
     await expect(keyButtons.first()).toHaveText('…543210')
@@ -209,12 +209,12 @@ test.describe('request log affinity filter', () => {
       'aria-label',
       `Show only logs for affinity scope key ${AFFINITY_KEY}`,
     )
-    const emptyAffinityCell = page.locator('.logs-list__affinity-key-cell').filter({ hasText: '—' })
+    const emptyAffinityCell = page.locator('[data-testid="logs-list__affinity-key-cell"]').filter({ hasText: '—' })
     await expect(emptyAffinityCell).toHaveCount(1)
-    await expect(emptyAffinityCell.locator('.logs-list__state--warning')).toHaveCount(0)
-    await expect(page.locator('.logs-list__affinity-key-cell code')).toHaveCount(1)
+    await expect(emptyAffinityCell.locator('[data-tone="warning"]')).toHaveCount(0)
+    await expect(page.locator('[data-testid="logs-list__affinity-key-cell"] code')).toHaveCount(1)
     const timeColumnStyle = await page
-      .locator('.logs-list__time')
+      .locator('[data-testid="logs-list__time"]')
       .first()
       .evaluate((element) => {
         const style = getComputedStyle(element)
@@ -227,7 +227,7 @@ test.describe('request log affinity filter', () => {
       contentType: 'application/json',
     })
     await page.keyboard.press('Escape')
-    await expect(page.locator('.app-drawer__overlay')).toBeHidden()
+    await expect(page.locator('[data-testid="app-drawer__overlay"]')).toBeHidden()
 
     await keyButtons.first().click()
     const clickedURL = new URL(page.url())
@@ -250,7 +250,7 @@ test.describe('request log affinity filter', () => {
 
     await openRequestLogs(page, routes, preservedQuery)
     await page.keyboard.press('Escape')
-    await expect(page.locator('.app-drawer__overlay')).toBeHidden()
+    await expect(page.locator('[data-testid="app-drawer__overlay"]')).toBeHidden()
     await expect(keyButtons.first()).toBeVisible()
     await keyButtons.first().press('Enter')
     await expect(page).toHaveURL(/affinity_key=/u)
@@ -258,7 +258,7 @@ test.describe('request log affinity filter', () => {
 
     await openRequestLogs(page, routes, preservedQuery)
     await page.keyboard.press('Escape')
-    await expect(page.locator('.app-drawer__overlay')).toBeHidden()
+    await expect(page.locator('[data-testid="app-drawer__overlay"]')).toBeHidden()
     await keyButtons.first().press('Space')
     await expect(page).toHaveURL(/affinity_key=/u)
     expect(latestLogRequest(routes).searchParams.get('affinity_key')).toBe(AFFINITY_KEY)
@@ -279,12 +279,12 @@ test.describe('request log affinity filter', () => {
     for (const width of [1080, 861]) {
       await page.setViewportSize({ width, height: 900 })
       await openRequestLogs(page, routes)
-      const metrics = await page.locator('.logs-list').evaluate((list) => {
+      const metrics = await page.locator('[data-testid="logs-list"]').evaluate((list) => {
         const headers = Array.from(
-          list.querySelectorAll<HTMLElement>('.ledger-record-list__header > [role="columnheader"]'),
+          list.querySelectorAll<HTMLElement>('[data-testid="ledger-record-list__header"] > [role="columnheader"]'),
         )
         const cells = Array.from(
-          list.querySelectorAll<HTMLElement>('.logs-list__record:first-of-type [role="cell"]'),
+          list.querySelectorAll<HTMLElement>('[data-testid="logs-list__record"]:first-of-type [role="cell"]'),
         )
         const style = getComputedStyle(list)
         return {
@@ -316,9 +316,9 @@ test.describe('request log affinity filter', () => {
 
     await page.setViewportSize({ width: 860, height: 900 })
     await openRequestLogs(page, routes)
-    const mobileLayout = await page.locator('.logs-list').evaluate((list) => {
-      const header = list.querySelector<HTMLElement>('.ledger-record-list__header')
-      const record = list.querySelector<HTMLElement>('.logs-list__record')
+    const mobileLayout = await page.locator('[data-testid="logs-list"]').evaluate((list) => {
+      const header = list.querySelector<HTMLElement>('[data-testid="ledger-record-list__header"]')
+      const record = list.querySelector<HTMLElement>('[data-testid="logs-list__record"]')
       const cells = record ? Array.from(record.querySelectorAll('[role="cell"]')) : []
       return {
         headerDisplay: header ? getComputedStyle(header).display : 'missing',
@@ -356,9 +356,9 @@ test.describe('request log affinity filter', () => {
         await page.goto('/logs')
         const columns = principal === 'admin' ? 9 : 7
         if (!initiallyEmpty) await expectCollectionSkeletonColumns(page, columns)
-        const list = page.locator('.logs-list')
+        const list = page.locator('[data-testid="logs-list"]')
         const summary = page.getByTestId('logs-result-summary')
-        const empty = page.locator('.logs-tab .empty-state')
+        const empty = page.locator('[data-testid="logs-tab"] [data-testid="empty-state"]')
         if (initiallyEmpty) {
           await expect(empty).toBeVisible()
         } else {
@@ -379,7 +379,7 @@ test.describe('request log affinity filter', () => {
           { times: 1 },
         )
         try {
-          await page.locator('.pagination-bar select').selectOption('50')
+          await page.locator('[data-testid="pagination-bar"] select').selectOption('50')
           await expectCollectionSkeletonColumns(page, columns)
           await expect(list).toBeHidden()
           await expect(summary).toBeHidden()
@@ -390,7 +390,7 @@ test.describe('request log affinity filter', () => {
         await expect(list).toBeVisible()
         await expect(summary).toBeVisible()
         await expect(empty).toBeHidden()
-        await expect(page.locator('.skeleton-surface--collection')).toBeHidden()
+        await expect(page.locator('[data-testid="skeleton-surface"][data-variant="collection"]')).toBeHidden()
         await expect(list.locator('[role="columnheader"]')).toHaveCount(columns)
       })
     }
@@ -461,7 +461,7 @@ test.describe('request log affinity filter', () => {
       `&affinity_key=${encodeURIComponent(AFFINITY_KEY)}&from_ms=1700000000000&to_ms=1700003600000`,
     )
 
-    const columnHeaders = page.locator('.ledger-record-list__header > [role="columnheader"]')
+    const columnHeaders = page.locator('[data-testid="ledger-record-list__header"] > [role="columnheader"]')
     await expect(columnHeaders).toHaveCount(7)
     await expect(columnHeaders.filter({ hasText: 'Affinity scope key' })).toHaveCount(0)
     await expect(page.getByTestId('logs-affinity-key-filter')).toHaveCount(0)
@@ -486,16 +486,16 @@ test.describe('request log date range picker', () => {
     '&from_ms=1700000000000&to_ms=1700003600000&status=success&client_model=gpt-4o&limit=50'
 
   async function openPicker(page: Page): Promise<void> {
-    await page.locator('.app-date-range__trigger').click()
-    await expect(page.locator('.app-date-range__calendar')).toBeVisible()
+    await page.locator('[data-testid="app-date-range__trigger"]').click()
+    await expect(page.locator('[data-testid="app-date-range__calendar"]')).toBeVisible()
   }
 
   // The fixture range starts on 2023-11-14, so the calendar opens on that month.
   function firstMonthDay(page: Page, day: number): ReturnType<Page['locator']> {
     return page
-      .locator('.app-date-range__calendar-month')
+      .locator('[data-testid="app-date-range__calendar-month"]')
       .first()
-      .locator('.app-date-range__calendar-day')
+      .locator('[data-testid="app-date-range__calendar-day"]')
       .filter({ hasText: String(day) })
       .first()
   }
@@ -504,7 +504,7 @@ test.describe('request log date range picker', () => {
     const routes = await installRequestLogAffinityRoutes(page, 'admin')
     await openRequestLogs(page, routes, fixedRangeQuery)
 
-    const trigger = page.locator('.app-date-range__trigger')
+    const trigger = page.locator('[data-testid="app-date-range__trigger"]')
     await expect(trigger).toBeVisible()
     // The trigger mirrors the applied draft from/to (local time, "YYYY-MM-DD HH:MM:SS").
     const triggerText = (await trigger.textContent()) ?? ''
@@ -526,7 +526,7 @@ test.describe('request log date range picker', () => {
     await startCell.click()
 
     // Only start selected: the in-picker Apply must be disabled.
-    const applyButton = page.locator('.app-date-range__apply')
+    const applyButton = page.locator('[data-testid="app-date-range__apply"]')
     await expect(applyButton).toBeDisabled()
 
     // Complete the range by selecting a later day as the end.
@@ -535,7 +535,7 @@ test.describe('request log date range picker', () => {
     await expect(applyButton).toBeEnabled()
 
     await applyButton.click()
-    await expect(page.locator('.app-date-range__calendar')).toBeHidden()
+    await expect(page.locator('[data-testid="app-date-range__calendar"]')).toBeHidden()
     await expect.poll(() => routes.logRequests.length).toBe(initialRequestCount + 1)
 
     const submitted = latestLogRequest(routes).searchParams
@@ -557,13 +557,13 @@ test.describe('request log date range picker', () => {
 
     // The from time field renders HH:MM:SS segments; type a new hour into the first segment.
     const fromTimeField = page
-      .locator('.app-date-range__fields .app-date-range__time-field')
+      .locator('[data-testid="app-date-range__fields"] [data-testid="app-date-range__time-field"]')
       .first()
-    const hourSegment = fromTimeField.locator('.app-date-range__time-segment').first()
+    const hourSegment = fromTimeField.locator('[data-testid="app-date-range__time-segment"]').first()
     await hourSegment.click()
     await page.keyboard.type('05')
 
-    const applyButton = page.locator('.app-date-range__apply')
+    const applyButton = page.locator('[data-testid="app-date-range__apply"]')
     await expect(applyButton).toBeEnabled()
     await applyButton.click()
     await expect.poll(() => routes.logRequests.length).toBeGreaterThan(0)
@@ -587,7 +587,7 @@ test.describe('request log date range picker', () => {
 
     // Close the popover without applying.
     await page.keyboard.press('Escape')
-    await expect(page.locator('.app-date-range__calendar')).toBeHidden()
+    await expect(page.locator('[data-testid="app-date-range__calendar"]')).toBeHidden()
 
     expect(routes.logRequests).toHaveLength(initialRequestCount)
     const url = new URL(page.url())

@@ -39,7 +39,7 @@ watch(
       :model-value="modelValue"
       @update:model-value="(value) => typeof value === 'string' && emit('update:modelValue', value)"
     >
-      <div class="app-tabs__bar">
+      <div class="app-tabs__bar" data-testid="app-tabs__bar">
         <TabsList class="app-tabs__list" :aria-label="label">
           <TabsTrigger
             v-for="item in items"

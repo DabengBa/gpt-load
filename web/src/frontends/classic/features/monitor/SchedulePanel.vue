@@ -177,7 +177,7 @@ function viewProbeLog(logID: string): void {
 </script>
 
 <template>
-  <section class="schedule-panel" :aria-label="text('model')">
+  <section class="schedule-panel" data-testid="schedule-panel" :aria-label="text('model')">
     <div class="schedule-panel__filters" :aria-label="text('context')">
       <label>
         <span>{{ text('model') }}</span>

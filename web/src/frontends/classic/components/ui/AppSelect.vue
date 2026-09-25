@@ -69,7 +69,7 @@ const selectedLabel = computed(
   >
     <SelectTrigger
       v-bind="attrs"
-      class="app-select__trigger"
+      class="app-select__trigger" data-testid="app-select__trigger"
       :class="[`app-select__trigger--${props.variant}`, `app-select__trigger--${props.size}`]"
       :aria-label="label"
       :disabled="props.disabled"
@@ -89,7 +89,7 @@ const selectedLabel = computed(
         <SelectItem
           v-for="(option, index) in normalizedOptions"
           :key="`${props.options[index]?.value ?? option.value}:${index}`"
-          class="app-select__item"
+          class="app-select__item" data-testid="app-select__item"
           :value="option.value"
           :data-value="props.options[index]?.value ?? option.value"
         >

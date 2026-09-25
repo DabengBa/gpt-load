@@ -32,7 +32,6 @@ export function scheduleEntry(
     alias,
     weight,
     priority,
-    fallback: priority > 1,
     enabled: true,
     circuit_breaker: {
       configured: { blacklist_threshold: null, cooldown_seconds: null },
@@ -274,7 +273,6 @@ export async function installScheduleRowTargetingRoutes(page: Page): Promise<voi
                 operation: 'chat_completion',
                 candidate_count: 10,
                 group_count: 2,
-                has_fallback: false,
                 cooled_candidates: 0,
                 blacklisted_candidates: 0,
               },
@@ -284,7 +282,6 @@ export async function installScheduleRowTargetingRoutes(page: Page): Promise<voi
                 operation: 'chat_completion',
                 candidate_count: 4,
                 group_count: 2,
-                has_fallback: false,
                 cooled_candidates: 0,
                 blacklisted_candidates: 0,
               },

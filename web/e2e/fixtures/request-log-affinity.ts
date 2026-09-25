@@ -177,7 +177,7 @@ export async function openRequestLogs(
 ): Promise<void> {
   const normalizedQuery = query.startsWith('&') ? `?${query.slice(1)}` : query
   await page.goto(`/logs${normalizedQuery}`)
-  await page.locator('.logs-tab').waitFor()
+  await page.locator('[data-testid="logs-tab"]').waitFor()
   await page.waitForLoadState('networkidle')
   if (routes.logRequests.length === 0) {
     await page.waitForTimeout(50)

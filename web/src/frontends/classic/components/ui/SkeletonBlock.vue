@@ -17,7 +17,7 @@ withDefaults(
 
 <template>
   <span
-    class="skeleton-block"
+    class="skeleton-block" data-testid="skeleton-block"
     :class="{
       'skeleton-block--rounded': rounded,
       'skeleton-block--concealed': concealed,

@@ -243,7 +243,7 @@ watch(
   >
     <template #trigger>
       <AppButton
-        class="app-date-range__trigger"
+        class="app-date-range__trigger" data-testid="app-date-range__trigger"
         :class="{ 'app-date-range__trigger--custom': !appliedPreset }"
         variant="secondary"
         size="compact"
@@ -268,7 +268,7 @@ watch(
     </div>
     <RangeCalendarRoot
       v-slot="{ grid, weekDays }"
-      class="app-date-range__calendar"
+      class="app-date-range__calendar" data-testid="app-date-range__calendar"
       :model-value="calendarRange"
       :locale="locale"
       :number-of-months="2"
@@ -304,7 +304,7 @@ watch(
         <section
           v-for="month in grid"
           :key="month.value.toString()"
-          class="app-date-range__calendar-month"
+          class="app-date-range__calendar-month" data-testid="app-date-range__calendar-month"
         >
           <h3 class="app-date-range__calendar-month-heading" aria-hidden="true">
             {{ formatCalendarMonth(month.value) }}
@@ -330,7 +330,7 @@ watch(
                   :date="day"
                 >
                   <RangeCalendarCellTrigger
-                    class="app-date-range__calendar-day"
+                    class="app-date-range__calendar-day" data-testid="app-date-range__calendar-day"
                     :day="day"
                     :month="month.value"
                   >
@@ -344,7 +344,7 @@ watch(
       </div>
     </RangeCalendarRoot>
     <div
-      class="app-date-range__fields"
+      class="app-date-range__fields" data-testid="app-date-range__fields"
       :class="{ 'app-date-range__fields--with-apply': applyLabel }"
     >
       <FormField :id="`${fieldID}-from`" :label="fromLabel" size="compact" :error="fromError">
@@ -352,7 +352,7 @@ watch(
           <TimeFieldRoot
             :id="`${fieldID}-from`"
             v-slot="{ segments }"
-            class="app-date-range__input-shell app-date-range__time-field"
+            class="app-date-range__input-shell app-date-range__time-field" data-testid="app-date-range__time-field"
             :model-value="inputTimeValue(from)"
             :locale="locale"
             :hour-cycle="24"
@@ -367,7 +367,7 @@ watch(
               v-for="(segment, index) in segments"
               :key="`${segment.part}:${index}`"
               as="span"
-              class="app-date-range__time-segment"
+              class="app-date-range__time-segment" data-testid="app-date-range__time-segment"
               :part="segment.part"
             >
               {{ segment.value }}
@@ -387,7 +387,7 @@ watch(
             <TimeFieldRoot
               :id="`${fieldID}-to`"
               v-slot="{ segments }"
-              class="app-date-range__input-shell app-date-range__time-field"
+              class="app-date-range__input-shell app-date-range__time-field" data-testid="app-date-range__time-field"
               :model-value="inputTimeValue(to)"
               :locale="locale"
               :hour-cycle="24"
@@ -402,7 +402,7 @@ watch(
                 v-for="(segment, index) in segments"
                 :key="`${segment.part}:${index}`"
                 as="span"
-                class="app-date-range__time-segment"
+                class="app-date-range__time-segment" data-testid="app-date-range__time-segment"
                 :part="segment.part"
               >
                 {{ segment.value }}
@@ -410,7 +410,7 @@ watch(
             </TimeFieldRoot>
             <AppButton
               v-if="applyLabel"
-              class="app-date-range__apply"
+              class="app-date-range__apply" data-testid="app-date-range__apply"
               size="compact"
               :disabled="calendarApplyDisabled"
               @click="apply"

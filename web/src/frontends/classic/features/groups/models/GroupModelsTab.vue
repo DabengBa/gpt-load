@@ -770,7 +770,7 @@ onBeforeUnmount(() => {
       >
         <template #third-column="{ item }">
           <div class="group-models__pricing-cell">
-            <div class="group-models__test-alias">
+            <div class="group-models__test-alias" data-testid="group-models__test-alias">
               <span class="group-models__test-alias-label">
                 {{ t('group.modelEditor.testAlias') }}
               </span>
@@ -804,7 +804,7 @@ onBeforeUnmount(() => {
               {{ t('group.modelEditor.breaker') }}:
               {{ item.circuit_breaker.blacklist_threshold ?? '—' }}
             </span>
-            <RouterLink class="group-models__schedule-link" :to="scheduleLocationFor(item)">
+            <RouterLink class="group-models__schedule-link" data-testid="group-models__schedule-link" :to="scheduleLocationFor(item)">
               {{ t('group.modelEditor.schedule') }}
             </RouterLink>
             <AppButton

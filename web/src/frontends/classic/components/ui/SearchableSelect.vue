@@ -108,7 +108,7 @@ function onOpenChange(value: boolean): void {
         ref="triggerElement"
         v-bind="attrs"
         type="button"
-        class="app-select__trigger"
+        class="app-select__trigger" data-testid="app-select__trigger"
         :class="[`app-select__trigger--${props.variant}`, `app-select__trigger--${props.size}`]"
         :aria-label="label"
         aria-haspopup="listbox"
@@ -129,12 +129,12 @@ function onOpenChange(value: boolean): void {
     </ComboboxAnchor>
     <ComboboxPortal>
       <ComboboxContent
-        class="app-select__content searchable-select__content"
+        class="app-select__content searchable-select__content" data-testid="searchable-select__content"
         position="popper"
         :side-offset="6"
       >
         <ComboboxInput
-          class="searchable-select__search"
+          class="searchable-select__search" data-testid="searchable-select__search"
           :model-value="query"
           :placeholder="searchPlaceholder"
           :aria-label="searchPlaceholder"
@@ -142,11 +142,11 @@ function onOpenChange(value: boolean): void {
           @update:model-value="query = String($event)"
           @keydown.enter.prevent
         />
-        <ComboboxEmpty class="searchable-select__empty">{{ emptyLabel }}</ComboboxEmpty>
+        <ComboboxEmpty class="searchable-select__empty" data-testid="searchable-select__empty">{{ emptyLabel }}</ComboboxEmpty>
         <ComboboxItem
           v-for="(option, index) in filteredOptions"
           :key="`${option.value}:${index}`"
-          class="app-select__item"
+          class="app-select__item" data-testid="app-select__item"
           :value="option.value"
           :text-value="option.label"
           :data-value="option.raw"

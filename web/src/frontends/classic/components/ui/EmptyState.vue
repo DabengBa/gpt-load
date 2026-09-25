@@ -14,7 +14,7 @@ withDefaults(
 </script>
 
 <template>
-  <div class="empty-state" :class="`empty-state--${variant}`">
+  <div class="empty-state" data-testid="empty-state" :class="`empty-state--${variant}`">
     <div class="empty-state__inner">
       <div class="empty-state__icon" aria-hidden="true"><slot name="icon" /></div>
       <component :is="headingAs" class="empty-state__title">{{ title }}</component>

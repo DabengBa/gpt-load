@@ -6,7 +6,6 @@ type SchedulePatch = {
   snapshot_revision: number
   protocol: string
   external_model: string
-  access_key_id: number
   operation: string
   updates: Array<{
     group_id: number
@@ -49,7 +48,6 @@ function entry(entryID: string, modelID: string, weight: number, priority = 1, o
     alias: '',
     weight,
     priority,
-    fallback: priority > 1,
     enabled: true,
     circuit_breaker: {
       configured: { blacklist_threshold: null, cooldown_seconds: null },
@@ -147,7 +145,6 @@ async function installScheduleEditingRoutes(
                 operation: 'chat_completion',
                 candidate_count: 2,
                 group_count: 2,
-                has_fallback: false,
                 cooled_candidates: 0,
                 blacklisted_candidates: 0,
               },
@@ -157,7 +154,6 @@ async function installScheduleEditingRoutes(
                 operation: 'chat_completion',
                 candidate_count: 2,
                 group_count: 2,
-                has_fallback: false,
                 cooled_candidates: 0,
                 blacklisted_candidates: 0,
               },
@@ -214,7 +210,7 @@ async function installScheduleEditingRoutes(
 async function openSchedule(page: Page): Promise<void> {
   await page.goto('/schedule?schedule_model=worker')
   await page.getByRole('heading', { name: 'Schedule detail' }).waitFor()
-  await expect(page.locator('.schedule-row')).toHaveCount(3)
+  await expect(page.locator('[data-row-key]')).toHaveCount(2)
 }
 
 async function waitForScheduleDetailReady(page: Page): Promise<void> {
@@ -232,9 +228,7 @@ test.describe('schedule editing', () => {
       const first = detail.groups[0]!.entries[0]!
       const second = detail.groups[1]!.entries[0]!
       first.priority = saved ? 1 : 3
-      first.fallback = !saved
       second.priority = 2
-      second.fallback = true
       first.configured_share = 1
       second.configured_share = 0.7
       second.effective_share = 0.3
@@ -250,19 +244,15 @@ test.describe('schedule editing', () => {
     })
     await page.goto('/schedule?schedule_model=worker&schedule_group=2&schedule_row=2%3Aentry-2')
     await waitForScheduleDetailReady(page)
-    const candidateKeys = page.locator('.schedule-row[data-row-key]')
+    const candidateKeys = page.locator('[data-row-key]')
     await expect(candidateKeys).toHaveCount(3)
     const keys = async () =>
       candidateKeys.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-row-key')))
     await expect.poll(keys).toEqual(['1:entry-0', '2:entry-2', '1:entry-1'])
-    await expect(page.locator('.schedule-row--selected')).toHaveAttribute(
+    await expect(page.locator('[data-row-key][aria-selected="true"]')).toHaveAttribute(
       'data-row-key',
       '2:entry-2',
     )
-    await page
-      .locator('.schedule-row', { hasText: 'model-a' })
-      .getByRole('button', { name: 'Edit details' })
-      .click()
     await page.locator('#priority-2').fill('1')
     await expect.poll(keys).toEqual(['1:entry-0', '2:entry-2', '1:entry-1'])
     await page.getByRole('button', { name: 'Save' }).click()
@@ -280,7 +270,6 @@ test.describe('schedule editing', () => {
       detail.groups[0]!.entries[0]!.alias =
         'A very long external upstream model alias with multiple segments'
       detail.groups[0]!.entries[0]!.priority = 2
-      detail.groups[0]!.entries[0]!.fallback = true
       detail.groups[0]!.entries[0]!.configured_share = 1
       detail.groups[1]!.entries[0]!.configured_share = 1
       detail.groups[1]!.entries[0]!.priority = 1
@@ -292,17 +281,13 @@ test.describe('schedule editing', () => {
       await page.setViewportSize({ width, height: 900 })
       await page.goto('/schedule?schedule_model=worker')
       await waitForScheduleDetailReady(page)
-      await expect(page.locator('.schedule-row[data-row-key]')).toHaveCount(2)
-      await expect(page.locator('.schedule-row[data-row-key]').first()).toHaveAttribute(
+      await expect(page.locator('[data-row-key]')).toHaveCount(2)
+      await expect(page.locator('[data-row-key]').first()).toHaveAttribute(
         'data-row-key',
         '2:entry-2',
       )
       await page
-        .locator('.schedule-row[data-row-key="1:entry-1"]')
-        .getByRole('button', { name: 'Edit details' })
-        .click()
-      await page
-        .locator('.schedule-row[data-row-key="1:entry-1"]')
+        .locator('[data-row-key="1:entry-1"]')
         .locator('input[id^="priority-"]')
         .fill('3')
       await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled()
@@ -361,10 +346,10 @@ test.describe('schedule editing', () => {
       ),
     )
     await openSchedule(page)
-    await expect(page.locator('.schedule-row', { hasText: 'model-a' })).toBeVisible()
+    await expect(page.locator('[data-row-key]', { hasText: 'model-a' })).toBeVisible()
     await expect(page.getByRole('switch', { name: 'Toggle entry model-a' })).not.toBeChecked()
     await page
-      .locator('.schedule-row', { hasText: 'model-a' })
+      .locator('[data-row-key]', { hasText: 'model-a' })
       .getByRole('button', { name: 'Probe' })
       .click()
     await expect(page.getByRole('dialog', { name: 'Model liveness' })).toBeVisible()
@@ -400,8 +385,8 @@ test.describe('schedule editing', () => {
     await openSchedule(page)
 
     await expect(page.getByRole('combobox', { name: /Group default/ })).toHaveCount(0)
-    await page.getByRole('combobox', { name: 'Entry override model-a' }).click()
-    await page.locator('.app-select__item[data-value="high"]').click()
+    await page.getByRole('combobox', { name: 'Reasoning policy model-a' }).click()
+    await page.locator('[data-testid="app-select__item"][data-value="high"]').click()
     await page.getByRole('button', { name: 'Save' }).click()
 
     await expect.poll(() => patches.length).toBe(1)
@@ -418,8 +403,8 @@ test.describe('schedule editing', () => {
     await secondWeight.fill('72')
     await expect(firstWeight).toHaveValue('61')
     await expect(secondWeight).toHaveValue('72')
-    await page.getByRole('combobox', { name: 'Entry override model-b' }).click()
-    await page.locator('.app-select__item[data-value=""]').click()
+    await page.getByRole('combobox', { name: 'Reasoning policy model-b' }).click()
+    await page.locator('[data-testid="app-select__item"][data-value=""]').click()
   }
 
   test('renders loading, error, and empty schedule states', async ({ page }) => {
@@ -451,7 +436,6 @@ test.describe('schedule editing', () => {
       snapshot_revision: 11,
       protocol: 'openai-completions',
       external_model: 'worker',
-      access_key_id: 7,
       operation: 'chat_completion',
       updates: [
         { group_id: 1, entry_id: 'entry-1', weight: 61 },
@@ -464,8 +448,8 @@ test.describe('schedule editing', () => {
     const patches = await installScheduleEditingRoutes(page)
     await openSchedule(page)
 
-    await page.getByRole('combobox', { name: 'Entry override model-a' }).click()
-    await page.locator('.app-select__item[data-value="low"]').click()
+    await page.getByRole('combobox', { name: 'Reasoning policy model-a' }).click()
+    await page.locator('[data-testid="app-select__item"][data-value="low"]').click()
     await page.getByRole('button', { name: 'Save' }).click()
 
     await expect.poll(() => patches.length).toBe(1)
@@ -480,8 +464,8 @@ test.describe('schedule editing', () => {
     const patches = await installScheduleEditingRoutes(page)
     await openSchedule(page)
 
-    await page.getByRole('combobox', { name: 'Entry override model-b' }).click()
-    await page.locator('.app-select__item[data-value=""]').click()
+    await page.getByRole('combobox', { name: 'Reasoning policy model-b' }).click()
+    await page.locator('[data-testid="app-select__item"][data-value=""]').click()
     await page.getByRole('button', { name: 'Save' }).click()
 
     await expect.poll(() => patches.length).toBe(1)
@@ -495,16 +479,16 @@ test.describe('schedule editing', () => {
     await installScheduleEditingRoutes(page)
     await openSchedule(page)
 
-    const override = page.getByRole('combobox', { name: 'Entry override model-b' })
+    const override = page.getByRole('combobox', { name: 'Reasoning policy model-b' })
     await override.click()
     for (const effort of ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
-      await expect(page.locator(`.app-select__item[data-value="${effort}"]`)).toBeVisible()
+      await expect(page.locator(`[data-testid="app-select__item"][data-value="${effort}"]`)).toBeVisible()
     }
-    await page.locator('.app-select__item[data-value="xhigh"]').click()
+    await page.locator('[data-testid="app-select__item"][data-value="xhigh"]').click()
     await expect(override).toContainText('xhigh')
     await expect(page.getByText('requested effort is not supported')).toHaveCount(0)
     await expect(page.getByText('Unsupported', { exact: true })).toHaveCount(0)
-    await expect(page.getByText('Disabled', { exact: true })).toBeVisible()
+    await expect(page.getByText('Group disabled', { exact: true })).toBeVisible()
     await expect(override).toBeEnabled()
   })
 
@@ -516,10 +500,10 @@ test.describe('schedule editing', () => {
     await page.goto('/schedule?schedule_model=worker-b')
     await page.getByRole('heading', { name: 'Schedule detail' }).waitFor()
 
-    await expect(page.getByRole('combobox', { name: 'Entry override model-a-b' })).toBeDisabled()
+    await expect(page.getByRole('combobox', { name: 'Reasoning policy model-a-b' })).toBeDisabled()
     await expect(page.locator('#weight-0')).toBeDisabled()
-    await page.getByRole('combobox', { name: 'Entry override model-b-b' }).focus()
-    await expect(page.getByRole('combobox', { name: 'Entry override model-b-b' })).toBeFocused()
+    await page.getByRole('combobox', { name: 'Reasoning policy model-b-b' }).focus()
+    await expect(page.getByRole('combobox', { name: 'Reasoning policy model-b-b' })).toBeFocused()
     const pageOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
@@ -530,14 +514,14 @@ test.describe('schedule editing', () => {
     const patches = await installScheduleEditingRoutes(page, 'conflict')
     await openSchedule(page)
     await editBothGroups(page)
-    await page.getByRole('combobox', { name: 'Entry override model-a' }).click()
-    await page.locator('.app-select__item[data-value="low"]').click()
+    await page.getByRole('combobox', { name: 'Reasoning policy model-a' }).click()
+    await page.locator('[data-testid="app-select__item"][data-value="low"]').click()
 
     await page.getByRole('button', { name: 'Save' }).click()
     await expect.poll(() => patches.length).toBe(1)
     await expect(page.locator('#weight-0')).toHaveValue('61')
     await expect(page.locator('#weight-1')).toHaveValue('72')
-    await expect(page.getByRole('combobox', { name: 'Entry override model-a' })).toContainText(
+    await expect(page.getByRole('combobox', { name: 'Reasoning policy model-a' })).toContainText(
       'low',
     )
   })
@@ -559,7 +543,7 @@ test.describe('schedule editing', () => {
     await installScheduleEditingRoutes(page)
     await page.goto('/schedule?schedule_model=worker')
     await page.getByRole('heading', { name: 'Schedule detail' }).waitFor()
-    await expect(page.locator('.schedule-row')).toHaveCount(3)
+    await expect(page.locator('[data-row-key]')).toHaveCount(2)
 
     await page.evaluate(() => {
       const input = document.querySelector<HTMLInputElement>('#weight-0')
@@ -572,9 +556,9 @@ test.describe('schedule editing', () => {
 
     await expect(page).toHaveURL(/schedule\?schedule_model=worker-b(?:&|$)/u)
     await expect(
-      page.locator('.schedule-panel .app-select__trigger[aria-label="External model"]'),
+      page.getByTestId('schedule-panel').locator('[aria-label="External model"]'),
     ).toContainText('worker-b')
-    await expect(page.locator('#weight-0')).toHaveValue('')
+    await expect(page.locator('#weight-0')).toHaveValue('50')
   })
 
   test('a superseded pending model change cannot send old drafts to the new model', async ({
@@ -583,11 +567,11 @@ test.describe('schedule editing', () => {
     const patches = await installScheduleEditingRoutes(page)
     await page.goto('/schedule?schedule_model=worker')
     await page.getByRole('heading', { name: 'Schedule detail' }).waitFor()
-    await expect(page.locator('.schedule-row')).toHaveCount(3)
+    await expect(page.locator('[data-row-key]')).toHaveCount(2)
     await page.locator('#weight-0').fill('61')
 
-    await page.locator('.schedule-panel .app-select__trigger[aria-label="External model"]').click()
-    const modelSelection = page.locator('.app-select__item[data-value="worker-b"]').click()
+    await page.getByTestId('schedule-panel').locator('[aria-label="External model"]').click()
+    const modelSelection = page.locator('[data-testid="app-select__item"][data-value="worker-b"]').click()
     await page.evaluate(() => {
       window.history.pushState({}, '', '/schedule?schedule_model=worker-b&schedule_row=2:entry-2')
       window.dispatchEvent(new PopStateEvent('popstate'))
@@ -595,9 +579,9 @@ test.describe('schedule editing', () => {
     await modelSelection
     await expect(page).toHaveURL(/schedule\?schedule_model=worker-b(?:&|$)/u)
     await expect(
-      page.locator('.schedule-panel .app-select__trigger[aria-label="External model"]'),
+      page.getByTestId('schedule-panel').locator('[aria-label="External model"]'),
     ).toContainText('worker-b')
-    await expect(page.locator('#weight-0')).toHaveValue('')
+    await expect(page.locator('#weight-0')).toHaveValue('50')
     expect(patches).toHaveLength(0)
   })
 })

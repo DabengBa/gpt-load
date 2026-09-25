@@ -792,6 +792,7 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
             :key="rowKey(group.group_id, entry.entry_id)"
             class="schedule-row"
             :data-row-key="rowKey(group.group_id, entry.entry_id)"
+            :aria-selected="selectedRow === rowKey(group.group_id, entry.entry_id)"
             :class="{
               'schedule-row--selected': selectedRow === rowKey(group.group_id, entry.entry_id),
               'schedule-row--priority-start': isPriorityStart(index),

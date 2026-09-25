@@ -2,13 +2,16 @@ import { expect, test } from '@playwright/test'
 
 import {
   PROVIDER_URL,
+  envelope,
   installRequestLogDisplayRoutes,
   openRequestLogs,
+  requestIDs,
+  requestLogDetail,
 } from './fixtures/request-log-display.ts'
 
 const longGroupName = 'alpha-production-routing-group-with-a-deliberately-long-name'
 
-test('long route names truncate while maintenance and provider actions stay on one line', async ({
+test('long route names truncate in the row and stay actionable in the drawer', async ({
   page,
 }) => {
   await installRequestLogDisplayRoutes(page)
@@ -47,44 +50,58 @@ test('long route names truncate while maintenance and provider actions stay on o
 
   await openRequestLogs(page)
 
-  const identity = page.locator('.log-route-identity').first()
-  await identity.evaluate((element) => {
+  // 行内 compact 身份承载截断与悬浮提示；分组与凭据保持同一行。
+  const rowIdentity = page.locator('[data-testid="log-route-identity"]').first()
+  await rowIdentity.evaluate((element) => {
     element.style.width = '180px'
   })
+  const rowGroup = rowIdentity.locator('[data-testid="log-route-identity__group"]')
+  const rowCredential = rowIdentity.locator('[data-testid="log-route-identity__credential"]')
+  await expect(rowGroup).toHaveText(longGroupName)
+  await expect
+    .poll(() => rowGroup.evaluate((element) => element.scrollWidth > element.clientWidth))
+    .toBe(true)
+  await rowIdentity.hover()
+  await expect(page.locator('[data-testid="app-tooltip__content"]')).toContainText(longGroupName)
 
-  const groupName = identity.locator('.log-route-identity__group')
-  const maintenanceLink = identity.locator('.log-route-identity__group-link')
-  const providerLink = identity.locator('.log-route-identity__provider')
+  const [rowGroupBounds, rowCredentialBounds] = await Promise.all([
+    rowGroup.boundingBox(),
+    rowCredential.boundingBox(),
+  ])
+  if (!rowGroupBounds || !rowCredentialBounds) {
+    throw new Error('Row route entities must have measurable bounds')
+  }
+  expect(
+    Math.abs(
+      rowGroupBounds.y + rowGroupBounds.height / 2 -
+        (rowCredentialBounds.y + rowCredentialBounds.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1)
+
+  // 维护页与供应商外链只在详情抽屉（plain）呈现。抽屉里的分组名取自末次尝试
+  // 记录而非 options，因此单独覆盖详情响应给出长名称。
+  await page.route(`**/api/logs/${requestIDs.mapped}`, async (route) => {
+    const detail = requestLogDetail(requestIDs.mapped)
+    detail.attempts = detail.attempts.map((attempt) =>
+      attempt.group_id === 1 ? { ...attempt, group_name: longGroupName } : attempt,
+    )
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(envelope(detail)),
+    })
+  })
+  await openRequestLogs(page, `?selected_request_id=${requestIDs.mapped}`)
+  const identity = page
+    .locator('[data-testid="log-detail__section"]')
+    .filter({ hasText: 'Upstream execution' })
+    .locator('[data-testid="log-route-identity"]')
+
+  const groupName = identity.locator('[data-testid="log-route-identity__group"]')
+  const maintenanceLink = identity.locator('[data-testid="log-route-identity__group-link"]')
+  const providerLink = identity.locator('[data-testid="log-route-identity__provider"]')
 
   await expect(groupName).toHaveText(longGroupName)
-  await expect
-    .poll(() => groupName.evaluate((element) => element.scrollWidth > element.clientWidth))
-    .toBe(true)
-
-  const [groupBounds, maintenanceBounds, providerBounds, identityBounds] = await Promise.all([
-    groupName.boundingBox(),
-    maintenanceLink.boundingBox(),
-    providerLink.boundingBox(),
-    identity.boundingBox(),
-  ])
-  if (!groupBounds || !maintenanceBounds || !providerBounds || !identityBounds) {
-    throw new Error('Route name, actions, and identity must have measurable bounds')
-  }
-  const groupCenter = groupBounds.y + groupBounds.height / 2
-  expect(
-    Math.abs(groupCenter - (maintenanceBounds.y + maintenanceBounds.height / 2)),
-  ).toBeLessThanOrEqual(1)
-  expect(
-    Math.abs(groupCenter - (providerBounds.y + providerBounds.height / 2)),
-  ).toBeLessThanOrEqual(1)
-  expect(maintenanceBounds.x).toBeGreaterThanOrEqual(identityBounds.x)
-  expect(providerBounds.x + providerBounds.width).toBeLessThanOrEqual(
-    identityBounds.x + identityBounds.width,
-  )
-
-  await identity.hover()
-  await expect(page.locator('.app-tooltip__content')).toContainText(longGroupName)
-
   await expect(maintenanceLink).toHaveAttribute('href', '/groups/1')
   await expect(maintenanceLink).toHaveAttribute(
     'aria-label',

@@ -48,7 +48,7 @@ function cellWidth(column: number, row: number): string {
 
 <template>
   <section
-    class="skeleton-surface"
+    class="skeleton-surface" data-testid="skeleton-surface" :data-variant="variant"
     :class="[`skeleton-surface--${variant}`, { 'skeleton-surface--concealed': concealed }]"
     :style="surfaceStyle"
     :role="concealed ? undefined : 'status'"
@@ -68,7 +68,7 @@ function cellWidth(column: number, row: number): string {
         </div>
       </div>
       <div class="skeleton-surface__collection" aria-hidden="true">
-        <div class="skeleton-surface__collection-header">
+        <div class="skeleton-surface__collection-header" data-testid="skeleton-surface__collection-header">
           <SkeletonBlock
             v-for="column in safeColumns"
             :key="`header-${column}`"
@@ -76,7 +76,7 @@ function cellWidth(column: number, row: number): string {
             :width="cellWidth(column, 0)"
           />
         </div>
-        <div v-for="row in safeRows" :key="`row-${row}`" class="skeleton-surface__collection-row">
+        <div v-for="row in safeRows" :key="`row-${row}`" class="skeleton-surface__collection-row" data-testid="skeleton-surface__collection-row">
           <SkeletonBlock
             v-for="column in safeColumns"
             :key="`cell-${row}-${column}`"
