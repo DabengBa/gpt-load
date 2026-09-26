@@ -20,6 +20,7 @@ import type { SharedRouteQuery } from '@shared/routing/route-query'
 
 import { useT } from './i18n'
 import { astryxRoutePaths } from './route-adapter'
+import { parseSharedRouteSearch, stringifySharedRouteSearch } from './search-codec'
 import { RoutePageStub } from './pages'
 import { useAppServices, type AppServices } from './services'
 import { ToastHost } from './ToastHost'
@@ -27,6 +28,7 @@ import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
 import { GroupsView } from '../features/groups/GroupsView'
+import { LogsView } from '../features/logs/LogsView'
 
 interface RouterContext {
   services: AppServices
@@ -133,50 +135,6 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFoundView,
 })
 
-// TanStack's default search codec JSON-decodes each value (?page=2 → 2),
-// which the shared vue-router-shaped query contract (strings, duplicate keys
-// as arrays) would silently drop. URLSearchParams can't be used: it maps '+'
-// to space while vue-router keeps it literal — decodeURIComponent by hand.
-function parseSharedRouteSearch(searchStr: string): SharedRouteQuery {
-  const query: SharedRouteQuery = {}
-  const str = searchStr.startsWith('?') ? searchStr.slice(1) : searchStr
-  if (str === '') return query
-  for (const pair of str.split('&')) {
-    if (pair === '') continue
-    const eq = pair.indexOf('=')
-    const rawKey = eq === -1 ? pair : pair.slice(0, eq)
-    const rawValue = eq === -1 ? '' : pair.slice(eq + 1)
-    let key = rawKey
-    let value = rawValue
-    try {
-      key = decodeURIComponent(rawKey)
-      value = decodeURIComponent(rawValue)
-    } catch {
-      // Malformed escapes keep the raw pair — same as vue-router's fallback.
-    }
-    const existing = query[key]
-    query[key] =
-      existing === undefined
-        ? value
-        : Array.isArray(existing)
-          ? [...existing, value]
-          : [existing, value]
-  }
-  return query
-}
-
-function stringifySharedRouteSearch(query: Record<string, unknown>): string {
-  const pairs: string[] = []
-  for (const [key, value] of Object.entries(query)) {
-    if (value === null || value === undefined) continue
-    for (const item of Array.isArray(value) ? value : [value]) {
-      if (item === null || item === undefined) continue
-      pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(item))}`)
-    }
-  }
-  return pairs.length === 0 ? '' : `?${pairs.join('&')}`
-}
-
 function loginSearch(
   search: Record<string, unknown>,
 ): { redirect?: string; help?: 'auth' } {
@@ -195,6 +153,7 @@ function groupsSearch(search: Record<string, unknown>) {
 const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.groups]: GroupsView,
+  [sharedPageRouteNames.logs]: LogsView,
 }
 
 const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {

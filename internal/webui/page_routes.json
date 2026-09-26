@@ -9,7 +9,7 @@
     { "name": "access-keys", "path": "/access-keys" },
     { "name": "monitor", "path": "/monitor" },
     { "name": "schedule", "path": "/schedule" },
-    { "name": "logs", "path": "/logs" },
+    { "name": "logs", "path": "/logs", "astryx": true },
     { "name": "models", "path": "/models" },
     { "name": "settings", "path": "/settings", "astryx": true }
   ]

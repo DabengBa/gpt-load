@@ -175,10 +175,10 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** cookie=astryx 打开 `/groups` -> 搜索/筛选/排序/分页/键盘走查与 classic 一致,越界 deep-link 自动纠偏。
 
 ### Task B11: spike(b) 日志详情层(Dialog/BottomSheet/侧栏 swizzle 决策)
-- [ ] **Done**
-- **Scope:** 以 `logs` 域日志详情为对象试 `Dialog`/`BottomSheet`/swizzled 侧栏三种手段,选定最少 swizzle 方案;焦点陷阱、Esc、焦点归还、窄屏回退。
-- **Proof:** e2e 断言焦点行为与 Esc;swizzle 计数与原因记录(gate #5 输入)。
-- **PM:** 日志行打开详情 -> Tab 困在层内、Esc 关闭、焦点回行。
+- [x] **Done**
+- **Scope:** `/logs` manifest 标 `astryx:true`;`frontends/astryx/features/logs/LogsView.tsx`:服务端驱动日志列表(shared `requestLogsQueryOptions`,行内 `View details` 动作),`?selected_request_id=` 为唯一选中态真源(`navigate` 写参/清参),详情走 `requestLogDetailQueryOptions` 服务端拉取(不信行载荷),展示 status/请求摘要/client→upstream model/attempt count/attempt chain。**决策见 `.docs/adr/0002-astryx-detail-layer-primitive.md`:选 Astryx `Dialog`,0 swizzle**——`position={{end:0,top:0}}`+xstyle 给抽屉外壳(全高、无圆角、左缘边线、`min(92vw,520px)`、≤520px 全幅、滑入动画+reduced-motion);`BottomSheet` 否决(底部锚定手势/snap 是移动形态,抑制 handle/手势比 xstyle 重);swizzled 侧栏否决(reka AppDrawer 本身即为 swizzle,无必要复刻)。新组件 `components/DetailPanel.tsx` 为可复用 AppDrawer 对应物(`title`/`subtitle`/`dismissible`→`purpose` info|required/`footer`)。三个实现要点:① 组件必须常驻、`isOpen` 由 URL 参驱动——条件渲染卸载会跳过 Dialog 的 trigger 捕获/焦点归还生命周期;② `LayoutContent` 带 `data-autofocus`+`tabIndex=-1`——Dialog 在 `showModal` 后只认此标记做自动对焦(组件级 autofocus 在 dialog 可见前 commit 被静默丢弃);③ Chromium 原生 modal `<dialog>` 在 tab 序边界把焦点静默落到 `<body>`(无 focus 事件),`focusin` 重定向抓不到——同 reka 哨兵机制在 Dialog `onKeyDown` 拦截 Tab/Shift+Tab 做硬收容,另留 `focusin` 守卫兜事件化逃逸;cleanup 先于 Dialog isOpen→false effect 跑,不劫持关闭时的焦点归还。`search-codec.ts` 从 `router.tsx` 抽出独立模块(B10 codec 复用,断 router↔view 环)。
+- **Proof:** `astryx-log-detail.spec.ts` 6/6:行动作开面板+URL 深链(`selected_request_id` uuid 形)、详情含 attempt chain+upstream model、焦点硬困(activeElement 全程不出 dialog,Tab/Shift+Tab 边界实测)、Esc 关+清参+焦点归还触发行、scrim 点击关+清参、`?selected_request_id=` 直达开层、480px 视口全幅(实测宽 480)。swizzle 计数 0(gate #5 输入)。astryx 项目 40/40、classic 58/58 绿;vue-tsc/tsc×2/eslint(0) 绿。
+- **PM:** cookie=astryx 打开 `/logs` -> 行动作开右侧面板,Tab 困于层内、Esc/scrim 关闭、焦点回触发行,窄屏全幅。
 
 ### Task B12: spike(c) `DateRangeInput` 日志时间过滤(三语言)
 - [ ] **Done**
