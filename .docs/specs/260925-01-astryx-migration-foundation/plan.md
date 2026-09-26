@@ -151,10 +151,10 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **Notes:** 全量跑中曾出现 vite 依赖优化重载(compiler-runtime 晚优化)导致 8 个用例瞬时失败,缓存热后复跑全绿——非代码回归。
 
 ### Task B7: TanStack Router 装配(manifest 适配 + 护栏 + 滚动/标题/播报)
-- [ ] **Done**
-- **Scope:** `frontends/astryx/app/` 路由树由 `page_routes.json` 适配生成(`:id`→`$id`);`beforeLoad` 实现 `requiresAuth`/`adminOnly`/命名空间懒加载;`validateSearch` 承载 typed search;`trailingSlash:'preserve'` + 尾斜杠 404、`caseSensitive:true`;滚动恢复镜像 classic `scrollBehavior`;`useBlocker` 接 shared unsaved-changes;标题/`<html lang>`/`useAnnounce`;`safeRedirect` 用 shared 实现。react-query client(`retry:false` 对齐 `app/query.ts`)、`useSyncExternalStore` 接 shared controllers、React 侧 api-client Context。
-- **Proof:** manifest→route 适配器的 node:test 断言(全 manifest 覆盖、尾斜杠、大小写);astryx 项目 e2e:未登录访问受护路由跳 `/login?redirect=…`、`safeRedirect` 原有用例在新路由下绿。
-- **PM:** cookie=astryx 访问 `/groups` 未登录 -> 跳登录且 redirect 正确。
+- [x] **Done**
+- **Scope:** `shared/routing/route-meta.ts` 单源 meta 表(titleKey/requiresAuth/adminOnly/primaryNav/messageNamespaces,`pageRouteMetaFor` fail-fast),classic `router.ts` 改为查表(运行时 meta 不变);`shared/i18n/namespaces.ts` 承载 `MessageNamespace` 联合,classic `i18n/index.ts` re-export;`astryx/app/`:`route-adapter.ts` 纯函数(`:id`→`$id`,零运行时依赖保证 node:test 可加载)、`services.ts`(queryClient retry:false + `createApiClient` + `createAuthSession` + unsavedChanges,ref 打破 apiClient↔session 构造环,`onSessionCleared` 回接 router)、`router.tsx`(rootRoute+manifest 子路由,`staticData{pageName,meta}`,`beforeLoad` 依序:尾斜杠 `notFound()`(TSR 'preserve' 仍匹配 `/x/`,补 canonical 检查对齐 classic strict)→adminOnly→requiresAuth→`/login?redirect=…`;`trailingSlash:'preserve'`+`caseSensitive:true`+`scrollRestoration`;`HeadSync`(titleKey→document.title 占位,B8 换 t())+`RouteAnnouncer` aria-live+`<html lang>`)、`pages.tsx`(LoginPageStub 真实 login()+safeRedirect 跳转;RoutePageStub/NotFoundPageStub)、`safe-redirect.ts`(`getMatchedRoutes` 适配 shared `safeRedirectTarget`,blocklist=login+not-found)、`useUnsavedGuard` 桥接 useBlocker;`main.tsx` 重接 Theme+QueryClientProvider+Services+RouterProvider。动态路由数组放弃字面量 routeId 类型,导航一律 `href`(生成树不注册文件路由)。
+- **Proof:** `test:astryx-routes` node:test 4/4(覆盖、$param、meta 完备、auth 契约);`e2e/astryx-routing.spec.ts` 5/5(未登录 `/settings`→`/login?redirect=%2Fsettings`+表单、`/groups/42` 参数路由、尾斜杠与 `/SETTINGS` 大小写 → not-found、直连 `/login` 仍 classic);astryx 项目 18/18、classic 58/58 回归绿;type-check×3/eslint/ICU/theme/cookie 契约全绿;`vite build` 绿(astryx bundle 545.9kB 含 TSR+react-query)。
+- **PM:** cookie=astryx 访问 `/settings` 未登录 -> 同文档内跳 `/login?redirect=…`,表单可用;`/settings/`、`/SETTINGS` -> not-found stub。
 
 ### Task B8: react-intl 运行时 + Astryx 组件文案 + `verify:astryx-i18n`
 - [ ] **Done**

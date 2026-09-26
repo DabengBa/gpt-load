@@ -1,45 +1,47 @@
-import { Button } from '@astryxdesign/core/Button'
 import { Theme } from '@astryxdesign/core/theme'
-import * as stylex from '@stylexjs/stylex'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider } from '@tanstack/react-router'
 import { createRoot } from 'react-dom/client'
 
 import './entry.css'
+import { createAppRouter, type AppRouter } from './app/router'
+import {
+  AppServicesProvider,
+  createAppServices,
+  type AppServices,
+} from './app/services'
 import { gptloadTheme } from './theme/gptload'
 import { useThemePreference } from './theme/theme-preference'
 
-const styles = stylex.create({
-  shell: {
-    display: 'grid',
-    minHeight: '100vh',
-    placeItems: 'center',
-    backgroundColor: 'var(--color-background-body)',
-    color: 'var(--color-text-primary)',
-    fontFamily: 'var(--font-family-body)',
-    fontSize: 'var(--text-body-size)',
-  },
-  row: {
-    display: 'flex',
-    gap: '8px',
-  },
-  overrideProbe: {
-    borderRadius: '2px',
+// The services layer is created before the router; the ref lets the global
+// unauthorized handler navigate once the router exists.
+const routerRef: { current?: AppRouter } = {}
+
+const services: AppServices = createAppServices({
+  onSessionCleared: (currentHref) => {
+    void routerRef.current?.navigate({
+      href: `/login?redirect=${encodeURIComponent(currentHref)}`,
+      replace: true,
+    })
   },
 })
 
-function Shell() {
+const appRouter = createAppRouter(services)
+routerRef.current = appRouter
+
+function App() {
   const [mode] = useThemePreference()
   return (
     <Theme theme={gptloadTheme} mode={mode}>
-      <main {...stylex.props(styles.shell)}>
-        <div {...stylex.props(styles.row)}>
-          <Button label="GPT-Load" />
-          <Button label="Override" xstyle={styles.overrideProbe} />
-        </div>
-      </main>
+      <QueryClientProvider client={services.queryClient}>
+        <AppServicesProvider value={services}>
+          <RouterProvider router={appRouter} />
+        </AppServicesProvider>
+      </QueryClientProvider>
     </Theme>
   )
 }
 
 const host = document.getElementById('app')
 if (!host) throw new Error('missing #app mount point')
-createRoot(host).render(<Shell />)
+createRoot(host).render(<App />)

@@ -3,22 +3,14 @@ import { createI18n } from 'vue-i18n'
 import { supportedLocales, type AppLocale } from '@shared/preferences/locale'
 
 export { supportedLocales, type AppLocale } from '@shared/preferences/locale'
-export type MessageNamespace =
-  'import' | 'group' | 'access-keys' | 'monitor' | 'models' | 'model-prices' | 'settings'
+export type { MessageNamespace } from '@shared/i18n/namespaces'
+import { messageNamespaces, type MessageNamespace } from '@shared/i18n/namespaces'
 
 type MessageTree = { [key: string]: string | MessageTree }
 type MessageLoader = () => Promise<{ default: MessageTree }>
 
 const localeStorageKey = 'gpt-load.locale'
-const namespaces: MessageNamespace[] = [
-  'import',
-  'group',
-  'access-keys',
-  'monitor',
-  'models',
-  'model-prices',
-  'settings',
-]
+const namespaces: readonly MessageNamespace[] = messageNamespaces
 const coreLoaders: Record<AppLocale, MessageLoader> = {
   'zh-CN': () => import('@shared/i18n/locales/zh-CN/core'),
   'en-US': () => import('@shared/i18n/locales/en-US/core'),

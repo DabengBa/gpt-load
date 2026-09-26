@@ -5,6 +5,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import type { MessageNamespace } from '@/i18n'
 
 import { pagePath, pagePathMatches } from '@shared/routing/page-routes'
+import { pageRouteMetaFor } from '@shared/routing/route-meta'
 import { decodedPathSegments, safeRedirectTarget } from '@shared/routing/safe-redirect'
 import { normalizedRouteQueryValue } from '@shared/routing/route-query'
 import { loginLocation, notFoundLocation, pageRouteNames } from './route-locations'
@@ -27,104 +28,47 @@ function pageRoute(
 const routes: RouteRecordRaw[] = [
   pageRoute(pageRouteNames.home, {
     component: lazyView(() => import('@/features/home/HomeView.vue')),
-    meta: {
-      titleKey: 'home.ledger.title',
-      requiresAuth: true,
-      primaryNav: 'home',
-      messageNamespaces: ['access-keys', 'group'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.home),
   }),
   pageRoute(pageRouteNames.login, {
     component: lazyView(() => import('@/features/auth/LoginView.vue')),
+    meta: pageRouteMetaFor(pageRouteNames.login),
   }),
   pageRoute(pageRouteNames.import, {
     component: lazyView(() => import('@/features/import/ImportView.vue')),
-    meta: {
-      titleKey: 'shell.import',
-      requiresAuth: true,
-      adminOnly: true,
-      primaryNav: 'groups',
-      messageNamespaces: ['import'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.import),
   }),
   pageRoute(pageRouteNames.groups, {
     component: lazyView(() => import('@/features/groups/GroupsView.vue')),
-    meta: {
-      titleKey: 'groups.title',
-      requiresAuth: true,
-      adminOnly: true,
-      primaryNav: 'groups',
-      messageNamespaces: ['group'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.groups),
   }),
   pageRoute(pageRouteNames.groupDetail, {
     component: lazyView(() => import('@/features/groups/GroupDetailView.vue')),
-    meta: {
-      titleKey: 'shell.groupDetail',
-      requiresAuth: true,
-      adminOnly: true,
-      primaryNav: 'groups',
-      // 模型 Tab 的「测活」入口与 ModelProbeDialog 用的是 monitor.modelProbe.* 文案，
-      // 命名空间必须在这里声明；少一个就会在页面上渲染出原始 key。
-      messageNamespaces: ['group', 'import', 'monitor'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.groupDetail),
   }),
   pageRoute(pageRouteNames.accessKeys, {
     component: lazyView(() => import('@/features/access-keys/AccessKeysView.vue')),
-    meta: {
-      titleKey: 'shell.accessKeys',
-      requiresAuth: true,
-      adminOnly: true,
-      primaryNav: 'access-keys',
-      messageNamespaces: ['access-keys'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.accessKeys),
   }),
   pageRoute(pageRouteNames.monitor, {
     component: lazyView(() => import('@/features/monitor/MonitorView.vue')),
-    meta: {
-      titleKey: 'shell.monitor',
-      requiresAuth: true,
-      primaryNav: 'monitor',
-      messageNamespaces: ['monitor'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.monitor),
   }),
   pageRoute(pageRouteNames.schedule, {
     component: lazyView(() => import('@/features/monitor/ScheduleView.vue')),
-    meta: {
-      titleKey: 'shell.schedule',
-      requiresAuth: true,
-      adminOnly: true,
-      primaryNav: 'schedule',
-      messageNamespaces: ['monitor'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.schedule),
   }),
   pageRoute(pageRouteNames.logs, {
     component: lazyView(() => import('@/features/logs/LogsView.vue')),
-    meta: {
-      titleKey: 'shell.logs',
-      requiresAuth: true,
-      primaryNav: 'logs',
-      messageNamespaces: ['monitor'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.logs),
   }),
   pageRoute(pageRouteNames.models, {
     component: lazyView(() => import('@/features/models/ModelsView.vue')),
-    meta: {
-      titleKey: 'models.title',
-      requiresAuth: true,
-      primaryNav: 'models',
-      messageNamespaces: ['models', 'model-prices'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.models),
   }),
   pageRoute(pageRouteNames.settings, {
     component: lazyView(() => import('@/features/settings/SettingsView.vue')),
-    meta: {
-      titleKey: 'shell.settings',
-      requiresAuth: true,
-      adminOnly: true,
-      primaryNav: 'settings',
-      messageNamespaces: ['settings', 'model-prices', 'import'],
-    },
+    meta: pageRouteMetaFor(pageRouteNames.settings),
   }),
   {
     path: '/:pathMatch(.*)*',
