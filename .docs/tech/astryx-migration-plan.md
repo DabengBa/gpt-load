@@ -824,6 +824,36 @@ Go/no-go criteria (all must hold):
 If the gate fails, stop. Phase 0 still stands on its own. Record the reason
 and delete the scaffold.
 
+**Outcome (recorded 2026-09-26, commits `55add5be` `ef6b2779` `d0362813`
+`c28a1c2c` + review-fix batch):** all seven gates passed; user chose **go**.
+
+1. CSP: 15/15 — bundled Chromium, Chrome for Testing 125.0.6422.78, system
+   Chrome 153, across classic `/` and all flagged routes. The full binary
+   cannot compile on Windows (`securefile`/`catalog` are linux-only), so the
+   evidence runs through `internal/webui/cmd/webui`, a harness serving the
+   identical `webui.NewServer` handler chain and embedded dist; the real
+   binary runs the same spec on Unix CI.
+2. Theme flash: 4/4 — `data-theme` correct at DOMContentLoaded for all three
+   modes; `theme-bootstrap.js` unchanged.
+3. 1,000-row collection: green.
+4. First-screen gzip: classic 149.9 kB vs astryx 429.2 kB (Δ +279.3 kB);
+   reproducible via `scripts/measure-first-screen.mjs`. Entry-level boot
+   dynamics are counted on both sides.
+5. Swizzles: 0 — DetailPanel composes `Dialog` per ADR-0002.
+6. Density: tokens and rendered metrics verified; two drifts found and fixed
+   (table `density="balanced"` → ~47px rows; `adaptations` rule lifts narrow
+   shell controls to 44px under 861px). Three classic metrics have no astryx
+   counterpart: `--control-lg` 42px, `--setting-control-height` 26px,
+   `--text-label-xs` 10.5px.
+7. i18n: 8,132 ICU messages clean; astryx catalogs 370 keys × 3 locales with
+   English fallback for upstream lag (WARN, not MISSING/FORMAT).
+
+Final-review fixes landed alongside (route-flag navigation handoff, sparse
+`validateSearch`, vue-router-parity codec, `resetScroll` on query-only navs,
+`Vary: Cookie`, shared-util dedup, DetailPanel nested-overlay focus
+exemption). Suites at close: astryx 53/53, classic 58/58, CSP 15/15, codec
+12/12, contracts green.
+
 ### Phase 2: Low-coupling domains
 
 `settings` (3.3k), `model-prices` (1.1k, embedded in two routes), `models`

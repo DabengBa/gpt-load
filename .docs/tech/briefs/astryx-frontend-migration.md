@@ -32,12 +32,18 @@ last_updated: 2026-09-25
 ### 迁移执行
 
 - 用户期望:按 `.docs/tech/astryx-migration-plan.md` 推进开发;第一阶段交付 Phase 0(框架无关共享层抽取)与 Phase 1(React/Astryx 脚手架、同 URL 共存、shell 对等、7 项 spike、go/no-go 门槛证据),在 gate 处由用户决定是否进入 Phase 2+ 域迁移。
-- 当前状态:方案文档已完成并经用户逐项确认;本 slice 的 `spec.md` 待批准后进入 delivery-workflow。
+- 当前状态:**Phase 0 + Phase 1 已交付,go 决定已做(2026-09-26)**;Phase 2 域迁移按方案继续。
 - 变更历史:
   - 2026-09-25 方案文档扩写完成(149 → ~900 行),记录实测基线与全部技术选型。
   - 2026-09-25 用户确认五项开放选型与 neutral 主题基底,文档内不再有待决项。
   - 2026-09-25 用户指示"根据文档，继续完成开发工作",brainstorming 判定首个可交付切片为 Phase 0 + Phase 1(到 go/no-go gate 为止)。
-- 实现追溯:规格目录 `.docs/specs/260925-01-astryx-migration-foundation/`;代码与 PR 待交付阶段补记。
+  - 2026-09-26 Phase 1 全部 spike 完成,七条门槛证据齐备,用户审阅后回复 "go"。
+  - 2026-09-26 final-review 发现 17 项全部处置(路由移交、sparse validateSearch、codec parity、resetScroll、`Vary: Cookie` 等),评审关闭。
+- 实现追溯:
+  - 规格目录 `.docs/specs/260925-01-astryx-migration-foundation/`(归档时已删过程文件;gate 证据与评审记录已并入 `.docs/tech/astryx-migration-plan.md` Phase 1 小节)。
+  - 分支 `docs/astryx-migration-plan`;关键提交:`55add5be`(groups 集合)、`ef6b2779`(log detail layer + ADR-0002)、`d0362813`(日志时间范围)、`c28a1c2c`(门槛证据)、`d1570ac6`(方案文档回写)、评审修正批(`fix(astryx): resolve final-review findings`)。
+  - 代码路径:`web/src/frontends/astryx/`、`web/src/shared/`(routing/lib/control)、`internal/webui/`(manifest v2、文档选择、`cmd/webui` CSP harness)、`web/e2e/astryx-*.spec.ts`。
+  - ADR:`.docs/adr/0001-collection-read-model-scale.md`(集合读模型)、`0002-astryx-detail-layer-primitive.md`(detail overlay 原语)。
 
 ### 约束(贯穿全部阶段)
 
