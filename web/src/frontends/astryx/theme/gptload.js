@@ -521,12 +521,30 @@ export const gptloadTheme = {
   __adaptations: {
     "widthBreakpoints": {
       "sm": 640,
-      "md": 768,
+      "md": 861,
       "lg": 1024,
       "xl": 1280,
       "2xl": 1536
     },
-    "rules": []
+    "rules": [
+      {
+        "when": {
+          "width": {
+            "below": "md"
+          }
+        },
+        "value": {
+          "components": {
+            "button": {
+              "base": {
+                "minHeight": "44px",
+                "minWidth": "44px"
+              }
+            }
+          }
+        }
+      }
+    ]
   },
   __axes: {
     "typography": {

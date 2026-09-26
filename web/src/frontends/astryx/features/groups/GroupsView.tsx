@@ -1132,7 +1132,7 @@ export function GroupsView() {
                   <Table<GroupRow>
                     data={data.items as GroupRow[]}
                     columns={columns}
-                    density="compact"
+                    density="balanced"
                     dividers="rows"
                     hasHover
                     textOverflow="truncate"

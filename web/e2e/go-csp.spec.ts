@@ -1,16 +1,23 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { expect, test } from '@playwright/test'
 
+import { resolveChromium125Executable } from './browser-executables'
+
 // B5: Content-Security-Policy smoke against the real Go binary — the dev
 // server cannot reproduce the production header, so this spec only runs
 // where a compiled artifact exists (`make build`, or GPT_LOAD_BINARY).
 // The binary does not build on this project's Windows dev box, so the
 // spec skips there and runs on Unix CI runners.
+//
+// B13: the same sweep also runs under the `chromium-125` and
+// `chrome-latest` projects for the Phase 1 browser-floor gate.
+// `chromium-125` skips when no Chrome/Chromium 125 executable is
+// provisioned (see browser-executables.ts).
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 const binaryCandidates = [
@@ -23,13 +30,29 @@ const binary = binaryCandidates.find((path) => existsSync(path))
 const port = 40_000 + (process.pid % 20_000)
 const origin = `http://127.0.0.1:${port}`
 
+// Playwright's loader cannot take plain JSON imports; read the manifest
+// directly. The sweep below covers every Astryx-flagged document route.
+const astryxPagePaths = (
+  JSON.parse(
+    readFileSync(resolve(repoRoot, 'internal/webui/page_routes.json'), 'utf8'),
+  ) as { routes: Array<{ path: string; astryx?: boolean }> }
+).routes
+  .filter((entry) => entry.astryx === true)
+  .map((entry) => entry.path)
+
 let server: ChildProcess | undefined
 let dataDir: string | undefined
 
-test.beforeAll(async () => {
+test.beforeAll(async ({}, testInfo) => {
   test.skip(
     binary === undefined,
     'no gpt-load binary: run `make build` or set GPT_LOAD_BINARY',
+  )
+  test.skip(
+    testInfo.project.name === 'chromium-125' &&
+      resolveChromium125Executable() === undefined,
+    'no Chromium 125 executable: set GPT_LOAD_CHROME_125_EXE or run ' +
+      '`npx @puppeteer/browsers install chrome@125`',
   )
   dataDir = mkdtempSync(resolve(tmpdir(), 'gpt-load-csp-'))
   server = spawn(binary as string, [], {
@@ -59,9 +82,24 @@ test.beforeAll(async () => {
   }
 })
 
-test.afterAll(() => {
-  server?.kill()
-  if (dataDir) rmSync(dataDir, { recursive: true, force: true })
+test.afterAll(async () => {
+  if (server) {
+    server.kill()
+    // Windows releases the terminated child's handles asynchronously; wait
+    // for exit before removing the data dir or rmdir races EBUSY.
+    await Promise.race([
+      new Promise((resolvePromise) => server?.once('exit', resolvePromise)),
+      new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000)),
+    ])
+  }
+  if (dataDir) {
+    rmSync(dataDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 200,
+    })
+  }
 })
 
 async function expectCleanDocument(
@@ -105,12 +143,16 @@ test('Go server CSP keeps the classic document clean', async ({ page }) => {
   await expectCleanDocument(page, '/', '/assets/index')
 })
 
-test('Go server CSP keeps the Astryx document clean when opted in', async ({
-  page,
-  context,
-}) => {
-  await context.addCookies([
-    { name: 'gpt-load.frontend', value: 'astryx', url: origin },
-  ])
-  await expectCleanDocument(page, '/settings', '/assets/astryx')
-})
+// The gate requires zero CSP violations on every Astryx-served document,
+// so the sweep is driven by the manifest rather than a hardcoded route.
+for (const routePath of astryxPagePaths) {
+  test(`Go server CSP keeps the Astryx document clean: ${routePath}`, async ({
+    page,
+    context,
+  }) => {
+    await context.addCookies([
+      { name: 'gpt-load.frontend', value: 'astryx', url: origin },
+    ])
+    await expectCleanDocument(page, routePath, '/assets/astryx')
+  })
+}

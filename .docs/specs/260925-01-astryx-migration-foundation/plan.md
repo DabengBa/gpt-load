@@ -187,10 +187,37 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** 三语言下改时间范围 -> 字段/占位/日历开关/预设均为该语言;Apply 生效、Reset 回落默认窗、反向区间被拒。
 
 ### Task B13: gate 度量与记录
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** 汇总七条门槛证据:Chromium 125(独立 playwright 项目,`executablePath` 指 chrome@125)+ 最新 Chrome 的 Go-CSP 零违规报告;三模式无 flash 记录;1,000 行集合 e2e 结果;新旧 shell 首屏 JS+CSS gzip 对比实测;swizzle 清单(≤3);密度 ±1px 全表;`verify:i18n-icu`/`verify:astryx-i18n` 输出与三语言 MISSING/FORMAT 扫描。证据写入本文件 `## Review` 上方的 gate 记录小节。
-- **Proof:** 证据齐全;每条门槛有对应命令输出或测量表。
+- **Proof:** 见下方 `### Gate 记录`;每条门槛有对应命令输出或测量表。
 - **PM:** 用户据证据做 go/no-go;no-go 则停并记录原因、删脚手架。
+
+### Gate 记录(B13)
+
+1. **浏览器矩阵 CSP 零违规**:Playwright 新增两项目 `chromium-125` 与 `chrome-latest`,与 `go-csp` 同跑 `go-csp.spec.ts`;`chromium-125` 经 `e2e/browser-executables.ts` 解析(`GPT_LOAD_CHROME_125_EXE` env → `~/.cache/puppeteer` 探针,未配置则 skip 而非悄悄回落 bundled)注入 `launchOptions.executablePath`,`chrome-latest` 用 `channel:'chrome'`。spec 清扫面扩为 manifest 驱动:classic `/` + 全部 `astryx:true` 路由(`/login`、`/groups`、`/logs`、`/settings`),每文档断言 CSP 头、`securitypolicyviolation` 事件数=0、console error=0。**结果 15/15**:bundled Chromium + Chrome for Testing 125.0.6422.78 + 系统 Chrome 153.0.8010.53。**方法学注记**:完整二进制在 Windows 开发机不可编译(`internal/platform/securefile`、`internal/catalog` 仅 linux 实现,spec 原有注释即载明),证据由新增 `internal/webui/cmd/webui` harness 产出——同一 `webui.NewServer`+`httproute.Registry.Bind` 链服务同一 embed dist,页面路由/资产/CSP/cookie 选择与生产一致;真实二进制仍在 Unix CI 跑同一 spec。`GPT_LOAD_BINARY` env 兼容两者。
+2. **三模式无 flash**:`astryx-no-flash.spec.ts` 4/4 —— init-script 在 `DOMContentLoaded` 捕获 `data-theme`(light→`light`、dark→`dark`、system→attr 缺失),证明 `theme-bootstrap.js` 于初始解析期(首绘前)落值而非应用 JS 所为;另断言 bootstrap 为 head 内非 async/defer/module 阻塞脚本。`theme-bootstrap.js` 零改动。
+3. **1,000 行集合**:`astryx-groups.spec.ts` "1,000-group collection stays interactive (gate #3)" PASS(滚动/筛选交互正常,断言走服务端分页而非客户端切片)。
+4. **首屏 JS+CSS gzip**(`scripts/measure-first-screen.mjs`,`internal/webui/dist/.vite/manifest.json` 驱动:entry 静态闭包 + 入口级 `dynamicImports` 的静态闭包——classic `import('./bootstrap')` 为必经 boot split 计入;astryx 侧同规则计入其 3 个 DS 条件动态块(Tooltip/BottomSheet/MenuBottomSheet),为保守上界):
+
+   | entry | JS gzip | CSS gzip | total | files |
+   | --- | --- | --- | --- | --- |
+   | index(classic) | 138.4 kB | 11.5 kB | 149.9 kB | 49 |
+   | astryx | 390.7 kB | 38.5 kB | 429.2 kB | 38 |
+   | delta | +252.3 kB | +27.0 kB | **+279.3 kB** | |
+
+   解释:React 19+DS 运行时+react-intl 路由壳全量先于路由视图加载,较 Vue 壳重;路由视图仍 code-split。>500kB 原始体积警告与本表同源,留 Phase 3 汇总。
+5. **Swizzle 清单:0(≤3)**。`frontends/astryx/components/` 全部四件皆为公共 API 组合:`DetailPanel`(Dialog+Layout 组合 + xstyle 外壳,ADR-0002)、`ChannelIcon`/`CredentialHealthBar`(域组件 React port,shared assets)、`ChannelIcon.css`。无任何 DS 内部 fork 或 dist 路径导入。
+6. **密度 ±1px 全表**(`astryx-density.spec.ts` 4/4;token 级读 themed scope 计算值,渲染级实测):
+   - token:control sm/md/lg **30/34/38**、text body/supporting/label/large/h3/h2 **13.5/12/11.5/16/16/22**、radius inner/element/container **6/7/10**、spacing-1 **4px** — 全中。
+   - 渲染:IconButton **34px**(±1 内)、shell 正文 **13.5px**、radius **7px**、topbar 54px/padding 30px/import 30px(B9 shell 断言复跑仍绿)。
+   - **触达目标(新修)**:classic `≤860px` 时 shell 动作区升为 `--touch-target` 44px——主题 `adaptations.widthBreakpoints.md=861`+`when.width.below:'md'`→`components.button.base.min/minWidth=44px` 镜像之(IconButton 渲染为 Button,一键覆盖 preferences trigger 与 import action);差异记录:astryx 为组件级提升,classic 为选择器级,窄屏下覆盖面更宽。实测 480px 视口 trigger 44px。
+   - **集合行(新修)**:`--collection-row-height` 48px 在 classic 为声明未用 token(真实面:logs ledger 52px、组卡片 96px);astryx `Table` `density="compact"` 实测 **39px** → 按机制表换 `density="balanced"` 实测 **47px**,对 48px 声明目标 ±1 内。
+   - **无对应项(记录非断言)**:classic `--control-lg` 42px(astryx 无 element-xl 挡位,已迁移面无该控件)、`--setting-control-height` 26px(settings 行内控件不属 Phase 1 面)、`--text-label-xs` 10.5px(astryx 最小 label 挡位 11.5px)。
+7. **i18n**:`verify:i18n-icu` **PASS**(8132 条);`verify:astryx-i18n` **PASS**(370 key ×3 locale;zh-CN/ja-JP upstream lag 122/370 → en 回落,WARN 非 MISSING_TRANSLATION/FORMAT_ERROR);`astryx-i18n.spec.ts` 4/4(zh-CN/en-US/ja-JP 渲染+`html lang`+切换)。
+
+**回归尾**:`vite build` 绿(target chrome125);`theme:check` 零 diff;tsc(app/astryx/node)/eslint(0)/契约测试 21/21(astryx-routes、channel-contract、connection-json)绿;astryx **51/51**、classic **58/58**、CSP 矩阵 **15/15**。`internal/webui` Go 测试在 stash 基线上同现失败(workflow/docker YAML 契约用例对本 fork 的 CI 文件为预存漂移),与 B13 无涉;harness 包 `cmd/webui` 编译+vet 净。
+
+**go/no-go 判断**:七条门槛均有可复核证据;惟 #1 的生产二进制路径在本机以等价 handler 链 harness 代替(真实二进制走 Unix CI),#6 有三项 classic 指标无 astryx 对应面(已列明)。其余全数达标。
 
 ## Review
 

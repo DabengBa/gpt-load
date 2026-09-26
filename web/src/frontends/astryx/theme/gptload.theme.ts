@@ -120,4 +120,24 @@ export default defineTheme({
     '--text-display-2-size': '30px',
     '--text-display-3-size': '26px',
   },
+  adaptations: {
+    // Classic applies --touch-target (44px) to shell actions at
+    // max-width:860px; `below md` with md=861 matches that range.
+    widthBreakpoints: { md: 861 },
+    rules: [
+      {
+        when: { width: { below: 'md' } },
+        value: {
+          components: {
+            // IconButton renders Button — one key covers the preferences
+            // trigger and the import action. The bump is component-wide;
+            // classic scopes it to shell controls only.
+            button: {
+              base: { minHeight: '44px', minWidth: '44px' },
+            },
+          },
+        },
+      },
+    ],
+  },
 })

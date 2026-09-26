@@ -701,6 +701,17 @@
 }
 
 @layer astryx-theme {
+@media (width < 861px) {
+  @scope ([data-astryx-theme="gptload"]) to ([data-astryx-theme]) {
+    .astryx-button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+}
+}
+
+@layer astryx-theme {
 @scope ([data-astryx-theme="gptload"]) to ([data-astryx-theme]) {
   [data-astryx-media="dark"] {
     color-scheme: dark;
