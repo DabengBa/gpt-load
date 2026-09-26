@@ -21,12 +21,25 @@ Spec:`spec.md`(同目录)。方案文档:`.docs/tech/astryx-migration-plan.md`�
 - [ ] C6 unsaved-guard:`useBlocker` + Astryx Dialog(`shouldBlockFn` resolve 语义 = Phase 1 评审更正后的合同;`allowRouteUpdate` 同 route 放行)。manifest `/settings` `astryx: true`。
 - [ ] C7 域收尾:`astryx-settings.spec.ts`(section 切换 URL、draft→save→patch 提交、validation banner 聚焦、discard 对话框、unsaved 拦截、proxy 区段)、双项目回归、i18n/density 检查、WSL2 真机 CSP 复跑。
 
-## D: models 域(约 4.7k;域启动时细化)
+## D: models 域(约 4.7k classic LOC;model-prices 嵌入上游抽屉)
 
-- [ ] D1 models route 契约 + 集合主体(模型树/筛选/分组)。
-- [ ] D2 discovery / upstream drawer(走 `DetailPanel`,ADR-0002)。
-- [ ] D3 probe dialogs + alias editor + model-prices 嵌入段。
-- [ ] D4 flag + e2e + 域收尾(同 C7 门槛)。
+范围界定(域启动核查):`ModelProbeDialog`/`ModelDiscoveryDrawer`/`ModelAliasEditor` 的消费者是 `GroupModelsTab`/`SchedulePanel`(group-detail/monitor 域),不在 `/models` 页;本域 = `ModelsView` + `ModelTree` + `ModelUpstreamDrawer`(含 model-prices 编辑全套)。
+
+- [ ] D1 shared 补齐(行为中立):
+  - `shared/routing/models-route.ts`:`ModelsRouteState` + parse/serialize/canonical(`q`/`group_status`/`pricing_status`/`page`/`selected_price_id`,默认值不落 URL)。classic `models-route.ts` 改 re-export。
+  - `shared/controllers/model-price-editor.ts`:`useModelPriceEditor` 的框架无关核(draft/errors/pending/failure/changed/canSave/allNull/unpricedConfirmOpen + addTier/removeTier/requestSave/confirmUnpricedSave/cancel/confirmDiscardSwitch + row(id,updated_at_ms) watch 语义 + abort/reentrancy)。classic composable 改薄适配;astryx 走 `useSyncExternalStore`。
+  - `shared/controllers/model-price-sync.ts`:`useModelPriceSync` 的框架无关核(pending/failed/succeeded/run + abort + invalidation + transient flag)。classic 改薄适配。
+- [ ] D2 astryx 集合页 `features/models/`:
+  - `router.tsx` `modelsSearch`(sparse,parse→serialize)+ `routeViews` 注册。
+  - `ModelsView.tsx`:sync 按钮 + succeeded/failed 提示;status 行(client/upstream 计数、pending 链接跳 `pricing_status=pending`、unit、catalog badge + fetch 时间);filter bar(search 250ms debounce + group_status/pricing_status Selectors + reset);skeleton 首屏/transition(`useCollectionLoading`);error/stale feedback;empty/no-results;DS `Pagination`;access_key 只读降维(无 group_status 筛选、无 sync、无 drawer、无 open 动作)。
+  - `ModelTree.tsx`:grid+subgrid 树表(client 行 + upstream 行 + rail 伪元素),价格 4 列 + fast ⚡ tooltip、route_groups chips(≤2 +N tooltip)、status badge、open 按钮;≤860px 卡片布局。rail/hover 用 stylex variant 表达(无后代选择器)。
+  - `ModelPriceStatusBadge.tsx`(method/match_source → icon+tone+sourceDetail tooltip)。
+- [ ] D3 `ModelUpstreamDrawer`(`DetailPanel`,ADR-0002):
+  - `DetailPanel` 加可选 `titleAdornment`(DialogHeader `endContent`,放 CopyChip)。
+  - detail query(enabled=open&&priceId)+ skeleton/error;meta 条(status badge + updatedAt);identity dl(channel icon+name / model_id code);sharedImpact warning;`ModelSpecSheet`(catalog_reference 或 noCatalog);`ModelPriceMatrix` + fast schedule `ModelPriceSlotsEditor`;associations 列表(group `RouteLink` → unflagged `/groups/:id` 文档级跳转);footer:reset dialog + cancel/save。
+  - close 语义:requestClose→confirmDiscardSwitch→cancel→route nav 摘除 `selected_price_id`;editor ref 暴露 confirmDiscardSwitch/discardChanges 给 view(筛选/翻页/切 upstream 前先确认)。
+  - `ModelPriceResetDialog.tsx`(AlertDialog + trigger + failure InlineFeedback + invalidation)。
+- [ ] D4 flag + e2e + 域收尾:manifest `/models` `astryx:true`;`astryx-models.spec.ts`(canonical query、筛选/搜索/翻页、drawer 开合、price 编辑校验/保存/reset、access_key 降维);双项目回归;i18n/density 检查。
 
 ## E: home 域(约 4.7k;域启动时细化)
 

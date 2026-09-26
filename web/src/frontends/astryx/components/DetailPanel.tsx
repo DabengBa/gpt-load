@@ -63,6 +63,11 @@ export interface DetailPanelProps {
   /** Optional subtitle rendered under the title (classic drawer description). */
   subtitle?: string
   /**
+   * Optional content rendered at the trailing edge of the header, before the
+   * close button (the classic drawer's #title-adornment slot).
+   */
+  titleAdornment?: ReactNode
+  /**
    * Mirrors the classic `dismissible`: false blocks Escape, scrim clicks, and
    * the close button. Defaults to true.
    */
@@ -76,6 +81,7 @@ export function DetailPanel({
   onOpenChange,
   title,
   subtitle,
+  titleAdornment,
   dismissible = true,
   footer,
   children,
@@ -150,6 +156,7 @@ export function DetailPanel({
           <DialogHeader
             title={title}
             subtitle={subtitle}
+            endContent={titleAdornment}
             onOpenChange={dismissible ? onOpenChange : undefined}
             hasDivider
           />

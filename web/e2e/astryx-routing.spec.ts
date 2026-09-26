@@ -75,7 +75,7 @@ test('route matching is case-sensitive like the classic router', async ({
 })
 
 // In-app navigation to a classic-owned path must hand off with a document
-// navigation: /models is unflagged, so only a full reload lets the server
+// navigation: /monitor is unflagged, so only a full reload lets the server
 // select the classic document — an SPA nav would strand the user on a stub.
 test('nav to a classic-owned route leaves the Astryx document', async ({
   page,
@@ -109,8 +109,8 @@ test('nav to a classic-owned route leaves the Astryx document', async ({
   await expect(page.getByTestId('astryx-shell')).toBeVisible()
 
   await Promise.all([
-    page.waitForURL(/\/models$/, { timeout: 10_000 }),
-    page.locator('[data-testid="desktop-nav"]').getByRole('link', { name: 'Models' }).click(),
+    page.waitForURL(/\/monitor$/, { timeout: 10_000 }),
+    page.locator('[data-testid="desktop-nav"]').getByRole('link', { name: 'Monitor' }).click(),
   ])
 
   // The classic document now owns the page: its shell carries the desktop-nav
@@ -123,7 +123,7 @@ test('nav to a classic-owned route leaves the Astryx document', async ({
 // preference cookie opts into Astryx; /login is flagged, so it serves the
 // Astryx document under the same cookie.
 test('document selection follows the manifest astryx flag', async ({ page }) => {
-  const classic = await page.request.get('/models', {
+  const classic = await page.request.get('/monitor', {
     headers: { accept: 'text/html' },
   })
   expect(await classic.text()).toContain('/src/main.ts')

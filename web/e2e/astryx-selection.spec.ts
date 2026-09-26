@@ -9,7 +9,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 // rest of the matrix.
 
 const FLAGGED_PATH = '/settings' // page_routes.json: astryx: true
-const UNFLAGGED_PATH = '/models'
+const UNFLAGGED_PATH = '/monitor'
 const UNKNOWN_PATH = '/definitely-not-a-route'
 const COOKIE = 'gpt-load.frontend'
 

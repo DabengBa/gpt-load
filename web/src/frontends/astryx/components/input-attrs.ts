@@ -10,6 +10,12 @@ export const numericInputAttrs = {
   autoCorrect: 'off',
 } as const
 
+export const decimalInputAttrs = {
+  inputMode: 'decimal',
+  spellCheck: false,
+  autoCorrect: 'off',
+} as const
+
 export const plainTextInputAttrs = {
   spellCheck: false,
   autoCorrect: 'off',

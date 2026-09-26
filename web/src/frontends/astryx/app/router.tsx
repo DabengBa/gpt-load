@@ -19,6 +19,10 @@ import {
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
 import {
+  parseModelsRouteQuery,
+  serializeModelsRouteQuery,
+} from '@shared/routing/models-route'
+import {
   parseSettingsRouteSection,
   serializeSettingsRouteQuery,
 } from '@shared/routing/settings-route'
@@ -35,6 +39,7 @@ import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
 import { GroupsView } from '../features/groups/GroupsView'
 import { LogsView } from '../features/logs/LogsView'
+import { ModelsView } from '../features/models/ModelsView'
 import { SettingsView } from '../features/settings/SettingsView'
 
 interface RouterContext {
@@ -180,11 +185,18 @@ function settingsSearch(search: Record<string, unknown>) {
   return serializeSettingsRouteQuery(parseSettingsRouteSection(search as SharedRouteQuery))
 }
 
+// Sparse canonical search: defaults (enabled/all/page 1, no drawer) serialize
+// away; junk or duplicated keys normalize out on the write-back.
+function modelsSearch(search: Record<string, unknown>) {
+  return serializeModelsRouteQuery(parseModelsRouteQuery(search as SharedRouteQuery))
+}
+
 const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.groups]: GroupsView,
   [sharedPageRouteNames.logs]: LogsView,
   [sharedPageRouteNames.settings]: SettingsView,
+  [sharedPageRouteNames.models]: ModelsView,
 }
 
 const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
@@ -200,7 +212,9 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
           ? groupsSearch
           : name === sharedPageRouteNames.settings
             ? settingsSearch
-            : undefined,
+            : name === sharedPageRouteNames.models
+              ? modelsSearch
+              : undefined,
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })
