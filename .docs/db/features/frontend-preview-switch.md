@@ -29,8 +29,9 @@ rendered shell change for routes that have opted into Astryx.
 - Choosing Preview stores the `gpt-load.frontend=astryx` preference cookie
   and reloads the page.
 - After opting in, routes flagged for the new frontend render the Astryx
-  shell; unflagged routes and unknown paths continue to render the classic
-  shell until they are migrated.
+  shell; unflagged routes continue to render the classic shell until they
+  are migrated. An unknown path renders whichever shell the preference
+  selected, showing that shell's own not-found view.
 - Choosing Classic restores the classic frontend everywhere.
 - The preference is a browser cookie, so it follows the browser, not the
   account; other browsers and sessions keep their own choice.

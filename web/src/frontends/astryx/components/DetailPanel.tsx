@@ -115,6 +115,12 @@ export function DetailPanel({
       if (!dialog?.open || !(target instanceof Node) || dialog.contains(target)) {
         return
       }
+      // A focusable inside a nested top-layer overlay (a stacked Dialog or a
+      // Layer popover portaled past this dialog's subtree) is a legitimate
+      // target, not an escape — only recapture focus with no overlay ancestor.
+      if (target instanceof Element && target.closest('dialog, [popover]')) {
+        return
+      }
       const anchor =
         dialog.querySelector<HTMLElement>('[data-autofocus]') ?? dialog
       anchor.focus()

@@ -11,13 +11,10 @@ import {
   TextInput,
   proportional,
   pixel,
-  useTableFiltering,
   useTablePagination,
   useTableSortable,
   useTableStickyColumns,
   type TableColumn,
-  type TableFilterState,
-  type TableFilterValue,
   type TableSortState,
 } from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
@@ -35,7 +32,6 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useIntl } from 'react-intl'
-import { Link } from '@tanstack/react-router'
 
 import type { MessageId } from '@shared/i18n/message-ids'
 
@@ -70,6 +66,7 @@ import {
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 
 import { useT } from '../../app/i18n'
+import { RouteLink } from '../../app/route-link'
 import { useAppServices } from '../../app/services'
 import { useDebouncedAction } from '../../app/use-debounced-action'
 import { useVisibleRefetch } from '../../app/use-visible-refetch'
@@ -433,6 +430,7 @@ export function GroupsView() {
         to: groupsPath,
         search: serializeGroupCollectionRouteQuery(filters),
         replace: true,
+        resetScroll: false,
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the URL string
@@ -449,6 +447,7 @@ export function GroupsView() {
         to: groupsPath,
         search: serializeGroupCollectionRouteQuery({ ...filters, page: totalPages }),
         replace: true,
+        resetScroll: false,
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on server pagination
@@ -461,6 +460,7 @@ export function GroupsView() {
       to: groupsPath,
       search: serializeGroupCollectionRouteQuery(next),
       replace,
+      resetScroll: false,
     })
   }
 
@@ -538,88 +538,11 @@ export function GroupsView() {
     setSort(mapped)
   }
 
-  const filterState: TableFilterState = useMemo(
-    () => ({
-      status: filters.status,
-      channel: filters.connection_type,
-    }),
-    [filters.status, filters.connection_type],
-  )
-
-  function onFilterChange(columnKey: string, value: TableFilterValue | null): void {
-    const scalar = Array.isArray(value) ? value[0] : value
-    const normalized = scalar === null || scalar === undefined ? undefined : String(scalar)
-    if (columnKey === 'status') {
-      setStatus(
-        normalized === undefined
-          ? undefined
-          : (normalized as GroupCollectionStatus),
-      )
-    } else if (columnKey === 'channel') {
-      setConnectionType(normalized === undefined ? null : normalized)
-    }
-  }
-
-  const searchConfig = useMemo(
-    () => ({
-      name: 'group-collection',
-      fields: [
-        {
-          key: 'status',
-          label: t('groups.collection.columns.status'),
-          defaultOperator: 'is',
-          operators: [
-            {
-              key: 'is',
-              i18nKey: '@astryx.powersearch.operator.is',
-              value: {
-                type: 'enum' as const,
-                values: [
-                  { value: 'available', label: t('groups.collection.status.available') },
-                  { value: 'unavailable', label: t('groups.collection.status.unavailable') },
-                  { value: 'disabled', label: t('groups.collection.status.disabled') },
-                ],
-              },
-            },
-          ],
-        },
-        {
-          key: 'connectionType',
-          label: t('groups.collection.connectionType.label'),
-          defaultOperator: 'is',
-          operators: [
-            {
-              key: 'is',
-              i18nKey: '@astryx.powersearch.operator.is',
-              value: {
-                type: 'enum' as const,
-                values: [
-                  { value: 'api_key', label: t('groups.collection.connectionType.apiKey') },
-                  {
-                    value: 'subscription',
-                    label: t('groups.collection.connectionType.subscription'),
-                  },
-                ],
-              },
-            },
-          ],
-        },
-      ],
-    }),
-    [t],
-  )
-
   const sortablePlugin = useTableSortable<GroupRow>({
     sort: sortState,
     onSortChange,
     isMultiSortEnabled: false,
     allowUnsortedState: true,
-  })
-  const filterPlugin = useTableFiltering<GroupRow>({
-    filters: filterState,
-    onFilterChange,
-    variant: 'popover',
-    searchConfig,
   })
   const paginationPlugin = useTablePagination<GroupRow>({
     page: filters.page,
@@ -673,7 +596,9 @@ export function GroupsView() {
         message: t('groups.collection.copySucceeded', { name: result.group_name }),
         tone: 'success',
       })
-      await navigate({ href: groupDetailHref(result.group_id) })
+      // Document navigation: the group detail route is classic-owned, so an
+      // in-app navigate would render the stub instead of handing off.
+      window.location.assign(groupDetailHref(result.group_id))
     } catch {
       toast.show({ message: t('groups.collection.copyFailed'), tone: 'danger' })
     } finally {
@@ -771,14 +696,14 @@ export function GroupsView() {
         sortable: true,
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.nameCell)}>
-            <Link
+            <RouteLink
               to={groupDetailHref(group.id)}
               {...stylex.props(styles.nameLink)}
               aria-label={t('groups.collection.openDetail', { name: group.name })}
               title={group.name}
             >
               {group.name}
-            </Link>
+            </RouteLink>
           </span>
         ),
       },
@@ -787,7 +712,6 @@ export function GroupsView() {
         header: t('groups.collection.columns.status'),
         width: pixel(150),
         sortable: true,
-        filter: 'status',
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.statusCell)}>
             <Switch
@@ -808,7 +732,6 @@ export function GroupsView() {
         key: 'channel',
         header: t('groups.collection.columns.channel'),
         width: proportional(1.4),
-        filter: 'connectionType',
         renderCell: (group): ReactNode => {
           const channel = channelsByID[group.channel_id]
           return (
@@ -1041,7 +964,6 @@ export function GroupsView() {
                     <TextInput
                       size="sm"
                       label={t('groups.collection.filters.searchLabel')}
-                      isLabelHidden
                       placeholder={t('groups.collection.filters.searchPlaceholder')}
                       startIcon={<Search size={14} />}
                       value={searchDraft}
@@ -1141,7 +1063,6 @@ export function GroupsView() {
                     rowCount={data.pagination.total_items}
                     plugins={{
                       sortable: sortablePlugin,
-                      filter: filterPlugin,
                       pagination: paginationPlugin,
                       sticky: stickyPlugin,
                     }}

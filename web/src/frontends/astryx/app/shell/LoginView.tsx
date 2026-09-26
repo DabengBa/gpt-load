@@ -17,6 +17,7 @@ import { ApiError, NetworkError } from '@shared/http/errors'
 import { pagePath } from '@shared/routing/page-routes'
 
 import { useT } from '../i18n'
+import { isAstryxNavigable } from '../route-link'
 import { useAppServices } from '../services'
 import { safeRedirect } from '../safe-redirect'
 import { useCountdown } from './use-countdown'
@@ -305,7 +306,14 @@ export function LoginView() {
       const preserveRecovery =
         session.getPrincipalType() === 'admin' && target.startsWith(pagePath('import'))
       if (!preserveRecovery) services.importRecovery.clear()
-      void router.navigate({ href: target, replace: true })
+      // The redirect target is usually a classic-owned route — hand it to the
+      // document so the server picks the frontend; replace keeps /login out
+      // of history either way.
+      if (isAstryxNavigable(target)) {
+        void router.navigate({ href: target, replace: true })
+      } else {
+        window.location.replace(target)
+      }
     } catch (error: unknown) {
       if (error instanceof ApiError && error.code === 'UNAUTHORIZED') {
         setFeedback('invalid')

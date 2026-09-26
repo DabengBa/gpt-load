@@ -133,6 +133,7 @@ func (s *Server) serveNotFoundIndex(c *gin.Context) {
 
 func (s *Server) serveIndexWithStatus(c *gin.Context, status int, document []byte) {
 	c.Header("Cache-Control", "no-cache")
+	c.Header("Vary", "Cookie")
 	c.Header("Content-Security-Policy", indexCSP)
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("X-Frame-Options", "DENY")

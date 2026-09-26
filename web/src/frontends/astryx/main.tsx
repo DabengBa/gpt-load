@@ -1,13 +1,14 @@
 import { LinkProvider } from '@astryxdesign/core/Link'
 import { Theme } from '@astryxdesign/core/theme'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { Link, RouterProvider } from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 import { createRoot } from 'react-dom/client'
 import type { ComponentProps, ReactNode } from 'react'
 
 import './entry.css'
 import { AppI18nProviders, createAppI18n } from './app/i18n'
 import { createAppRouter, type AppRouter } from './app/router'
+import { RouteLink } from './app/route-link'
 import {
   AppServicesProvider,
   createAppServices,
@@ -38,18 +39,18 @@ const services: AppServices = createAppServices({
 const appRouter = createAppRouter(services)
 routerRef.current = appRouter
 
-// Astryx components render links through LinkProvider; route them through
-// TanStack's Link so client-side navigation keeps working. The manifest-grown
-// tree has no literal route-id types, so `to` is cast — runtime resolves it.
+// Astryx components render links through LinkProvider; RouteLink applies the
+// shared policy — in-app for manifest-flagged paths, document navigation for
+// classic-owned or external targets.
 function RouterLinkAdapter({
   href,
   children,
   ...rest
 }: { href?: string; children?: ReactNode } & Omit<ComponentProps<'a'>, 'href'>) {
   return (
-    <Link to={(href ?? '/') as never} {...rest}>
+    <RouteLink to={href ?? '/'} {...rest}>
       {children}
-    </Link>
+    </RouteLink>
   )
 }
 

@@ -1,11 +1,12 @@
 import { Button } from '@astryxdesign/core/Button'
 import * as stylex from '@stylexjs/stylex'
-import { Link, useLocation, useRouter } from '@tanstack/react-router'
+import { useLocation, useRouter } from '@tanstack/react-router'
 
 import { decodedPathSegments } from '@shared/routing/safe-redirect'
 import { pagePath } from '@shared/routing/page-routes'
 
 import { useT } from '../i18n'
+import { RouteLink } from '../route-link'
 
 const narrow = '@media (max-width: 860px)'
 const small = '@media (max-width: 760px)'
@@ -164,7 +165,9 @@ export function NotFoundView() {
       router.history.back()
       return
     }
-    void router.navigate({ href: pagePath('home') })
+    // Document navigation: the home route is classic-owned, so an in-app
+    // navigate would render the stub instead of handing off.
+    window.location.assign(pagePath('home'))
   }
 
   return (
@@ -197,9 +200,9 @@ export function NotFoundView() {
           </div>
 
           <div {...stylex.props(styles.actions)}>
-            <Link to={pagePath('home')} {...stylex.props(styles.homeLink)}>
+            <RouteLink to={pagePath('home')} {...stylex.props(styles.homeLink)}>
               {t('notFound.backHome')}
-            </Link>
+            </RouteLink>
             <Button variant="secondary" label={t('notFound.backPrevious')} onClick={goBack} />
           </div>
         </section>

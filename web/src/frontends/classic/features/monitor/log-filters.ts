@@ -14,7 +14,7 @@ import type {
   RequestLogUsageState,
 } from '@/app/resources/request-logs'
 import { requestLogFilterFields } from '@/app/resources/request-log-filters'
-import { defaultTimeRange, timeRangeMilliseconds } from '@shared/lib/time'
+import { defaultTimeRange, parseLocalDateTime, timeRangeMilliseconds } from '@shared/lib/time'
 
 import { isValidMonitorText, maxSignedInt64 } from './filter-validation'
 import { parseRequestLogAffinityKey, serializeRequestLogAffinityKey } from '@shared/domain/monitor/request-log-affinity'
@@ -406,23 +406,6 @@ export function serializeAppliedLogFilters(filters: RequestLogFilters): Location
     if (value !== undefined) query[field] = String(value)
   }
   return query
-}
-
-function parseLocalDateTime(value: string): Date | undefined {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/u)
-  if (!match) return undefined
-  const values = match.slice(1).map(Number)
-  const [year, month, day, hour, minute, second] = values
-  if ([year, month, day, hour, minute, second].some((part) => part === undefined)) return undefined
-  const date = new Date(year!, month! - 1, day!, hour!, minute!, second!)
-  return date.getFullYear() === year &&
-    date.getMonth() === month! - 1 &&
-    date.getDate() === day &&
-    date.getHours() === hour &&
-    date.getMinutes() === minute &&
-    date.getSeconds() === second
-    ? date
-    : undefined
 }
 
 function validateIntegerField(

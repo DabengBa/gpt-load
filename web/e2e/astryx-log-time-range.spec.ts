@@ -121,13 +121,14 @@ test('ja-JP renders localized strings; an inverted range blocks Apply', async ({
   await page.getByLabel('終了時刻の時刻').fill('00:00:00')
 
   await page.getByRole('button', { name: '適用', exact: true }).click()
-  // from > to is invalid: no request, params stay absent, field error shows.
-  await page.waitForTimeout(300)
-  expect(logRequests.length).toBe(requestCount)
-  await expect(page).not.toHaveURL(/from_ms=/)
   // The status message renders in the field and is mirrored to the assertive
-  // live region — assert the live-region copy to keep the locator unique.
+  // live region — assert the live-region copy to keep the locator unique. Its
+  // appearance proves the apply was handled, so the negative checks after it
+  // cannot race the request that validation rejected.
   await expect(
     page.getByRole('alert').getByText('終了時刻は開始時刻より後である必要があります。'),
   ).toBeVisible()
+  // from > to is invalid: no request, params stay absent.
+  expect(logRequests.length).toBe(requestCount)
+  await expect(page).not.toHaveURL(/from_ms=/)
 })

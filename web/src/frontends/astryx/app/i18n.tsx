@@ -4,10 +4,8 @@ import astryxZhCN from '@astryxdesign/core/locales/zh-CN.json'
 import { useCallback, useSyncExternalStore, type ReactNode } from 'react'
 import {
   IntlProvider,
-  createIntl,
   useIntl,
   type IntlConfig,
-  type IntlShape,
   type PrimitiveType,
 } from 'react-intl'
 
@@ -50,8 +48,7 @@ function persistLocale(storage: Storage | undefined, locale: AppLocale): void {
   }
 }
 
-function resolveStorage(storage?: Storage): Storage | undefined {
-  if (storage !== undefined) return storage
+function resolveStorage(): Storage | undefined {
   try {
     return window.localStorage
   } catch {
@@ -59,8 +56,8 @@ function resolveStorage(storage?: Storage): Storage | undefined {
   }
 }
 
-export async function createAppI18n(options?: { storage?: Storage }): Promise<AppI18n> {
-  const storage = resolveStorage(options?.storage)
+export async function createAppI18n(): Promise<AppI18n> {
+  const storage = resolveStorage()
   const locale = getBrowserLocale()
   persistLocale(storage, locale)
 
@@ -76,11 +73,6 @@ export async function createAppI18n(options?: { storage?: Storage }): Promise<Ap
 
   const emit = () => {
     snapshot = { locale: snapshot.locale, messages: { ...draft } }
-    imperativeIntl = createIntl({
-      locale: snapshot.locale,
-      messages: snapshot.messages,
-      onError: onIntlError,
-    })
     document.documentElement.lang = snapshot.locale
     for (const listener of listeners) listener()
   }
@@ -140,15 +132,6 @@ export async function createAppI18n(options?: { storage?: Storage }): Promise<Ap
       )
     },
   }
-}
-
-// Imperative intl for non-component callers (router guards, document title
-// outside React). Refreshed by the provider wrapper's subscription.
-let imperativeIntl: IntlShape | undefined
-
-export function getIntl(): IntlShape {
-  if (imperativeIntl === undefined) throw new Error('APP_I18N_NOT_READY')
-  return imperativeIntl
 }
 
 const astryxCatalogs = {

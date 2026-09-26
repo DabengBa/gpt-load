@@ -28,18 +28,31 @@ export function resolveDateTimePreset(
   preset: DateTimePreset,
   now = Date.now(),
 ): { from_ms: number; to_ms: number } {
+  let range: { from_ms: number; to_ms: number }
   if (preset === 'today' || preset === 'yesterday') {
     const midnight = new Date(now)
     midnight.setHours(0, 0, 0, 0)
-    if (preset === 'today') return { from_ms: midnight.getTime(), to_ms: now }
-    const to = midnight.getTime()
-    midnight.setDate(midnight.getDate() - 1)
-    return { from_ms: midnight.getTime(), to_ms: to }
+    if (preset === 'today') {
+      range = { from_ms: midnight.getTime(), to_ms: now }
+    } else {
+      const to = midnight.getTime()
+      midnight.setDate(midnight.getDate() - 1)
+      range = { from_ms: midnight.getTime(), to_ms: to }
+    }
+  } else {
+    range = {
+      from_ms: Math.max(0, now - timeRangeMilliseconds[preset]),
+      to_ms: now,
+    }
   }
-  return {
-    from_ms: Math.max(0, now - timeRangeMilliseconds[preset]),
-    to_ms: now,
-  }
+  // A zero/negative-width range (e.g. "today" hit exactly at midnight) is
+  // rejected by range validation downstream; keep a 1ms floor.
+  if (range.from_ms >= range.to_ms) range = { from_ms: range.from_ms, to_ms: range.from_ms + 1 }
+  return range
+}
+
+export function normalizeSeconds(value: number): number {
+  return Math.max(1, Math.ceil(Number.isFinite(value) ? value : 0))
 }
 
 export function localDateTimeInput(milliseconds: number): string {

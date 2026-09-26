@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
-// React port of the classic loading-state machine (app/loading-state.ts):
-// a 140ms show delay plus a 280ms minimum-visible window keep background
-// refetches from flashing skeletons. Kept per-framework because the Vue
-// version is built on watch/scope disposal; the timing contract is shared.
-export const loadingTimings = {
-  delayMs: 140,
-  minimumVisibleMs: 280,
-} as const
+import { loadingTimings } from '@shared/lib/loading-timings'
+
+export { loadingTimings }
 
 export function useStableLoading(
   active: boolean,

@@ -155,7 +155,7 @@ test('compact table row height on the groups collection', async ({
   const row = page.locator('tbody tr').first()
   await expect(row).toBeVisible()
   const height = await row.evaluate((el) => el.getBoundingClientRect().height)
-  // Classic --collection-row-height: 48px via Table density="compact".
+  // Classic --collection-row-height: 48px via Table density="balanced".
   expect(
     Math.abs(height - 48),
     `table row height ${height}px`,

@@ -506,11 +506,15 @@ export function LogsView() {
         ...rawSearch,
         [selectedRequestIdParam]: requestID,
       })}`,
+      resetScroll: false,
     })
   }
 
   function navigateSearch(next: SharedRouteQuery): void {
-    void navigate({ href: `${logsPath}${stringifySharedRouteSearch(next)}` })
+    void navigate({
+      href: `${logsPath}${stringifySharedRouteSearch(next)}`,
+      resetScroll: false,
+    })
   }
 
   const items = logsQuery.data?.items
@@ -524,13 +528,23 @@ export function LogsView() {
           </h1>
           <LogTimeRangeFilter
             appliedRange={appliedRange}
-            onApply={(range) =>
-              navigateSearch({ ...rawSearch, from_ms: range.from_ms, to_ms: range.to_ms })
-            }
+            // Classic parity: a filter commit rebuilds the query from the
+            // filter state only, which drops selected_request_id — committing
+            // a new range closes the open detail layer.
+            onApply={(range) => {
+              const next: SharedRouteQuery = {
+                ...rawSearch,
+                from_ms: range.from_ms,
+                to_ms: range.to_ms,
+              }
+              delete next[selectedRequestIdParam]
+              navigateSearch(next)
+            }}
             onReset={() => {
-              const next = { ...rawSearch }
+              const next: SharedRouteQuery = { ...rawSearch }
               delete next.from_ms
               delete next.to_ms
+              delete next[selectedRequestIdParam]
               navigateSearch(next)
             }}
           />

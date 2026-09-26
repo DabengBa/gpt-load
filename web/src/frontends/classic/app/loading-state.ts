@@ -9,10 +9,9 @@ import {
   type Ref,
 } from 'vue'
 
-export const loadingTimings = {
-  delayMs: 140,
-  minimumVisibleMs: 280,
-} as const
+import { loadingTimings } from '@shared/lib/loading-timings'
+
+export { loadingTimings }
 
 interface StableLoadingOptions {
   delayMs?: number

@@ -170,7 +170,7 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 
 ### Task B10: spike(a) `groups` 集合页(Table,1,000 行,服务端驱动)
 - [x] **Done**
-- **Scope:** `frontends/astryx/features/groups/GroupsView.tsx`:Astryx `Table` 全受控(`useTableSortable` 5 值服务端 sort 枚举映射列+方向、`useTablePagination` 纯受控无 `paginateData`、stickyColumns;filtering 插件为列头绑定形态不匹配 classic 工具栏契约故未用,筛选走 Selector/状态 chip);typed search 由 `validateSearch`+shared `parseGroupCollectionRouteQuery` 承载(search/status/channel_type/sort/page/page_size),URL 为唯一真源;搜索 300ms 去抖、筛选/排序变更重置 page=1、越界页按响应 total_pages 纠偏(服务端回声请求页+空 items,客户端导航修正);React Query 承载 collection+channels;乐观启停+`invalidateGroupCollections`、copy 导航、行动作(enable/disable/copy/detail)、通道图标、凭据健康条、空/无结果态、summary chips。基建:`use-debounced-action`/`use-visible-refetch`/`collection-loading` React port、`ToastHost`(shared toast controller→服务)、`components/ChannelIcon`+`CredentialHealthBar`(React port);channel-icons 注册表+全部 svg/webp 资产从 `frontends/classic/assets` 提升到 `shared/assets/`(classic ChannelIcon 改引,`gateway-clients.ts` 注释同步)。路由层:`/groups` manifest 标 `astryx:true`;`routeViews` 注册表替掉 login 单例判断。**TSR 边界关键修复**:默认 codec JSON 解码 query(`?page=2`→number 2)且 `search.strict` 会把已验证 search 回写——shared query 契约原只收 string 导致 `scalarRouteQuery` 丢弃 number、`page` 恒回落 1、navigate 静默无请求;修复为自定义 `parseSharedRouteSearch`/`stringifySharedRouteSearch`(手写 decodeURIComponent 保 vue-router 语义:`+` 不转空格、重复 key→数组)+`SharedRouteQueryValue` 接受有限 number(validateSearch 幂等性要求,TSR 会用已验证值复验)。`vite.config.ts` `optimizeDeps.entries` 加 `astryx.html` 且 `include` 钉全部 `@astryxdesign/core/*` 深路径+`react/compiler-runtime`/`jsx-runtime`/`jsx-dev-runtime`(babel/plugin-react 注入,crawl 不可见)→消除运行中重优化导致 `.vite/deps` 重建、in-flight 页面 404 的复发性 flake。
+- **Scope:** `frontends/astryx/features/groups/GroupsView.tsx`:Astryx `Table` 全受控(`useTableSortable` 5 值服务端 sort 枚举映射列+方向、`useTablePagination` 纯受控无 `paginateData`、stickyColumns;filtering 插件为列头绑定形态不匹配 classic 工具栏契约故未用,筛选走 Selector/状态 chip);typed search 由 `validateSearch`+shared `parseGroupCollectionRouteQuery` 承载(search/status/channel_type/sort/page/page_size),URL 为唯一真源;搜索 250ms 去抖、筛选/排序变更重置 page=1、越界页按响应 total_pages 纠偏(服务端回声请求页+空 items,客户端导航修正);React Query 承载 collection+channels;乐观启停+`invalidateGroupCollections`、copy 导航、行动作(enable/disable/copy/detail)、通道图标、凭据健康条、空/无结果态、summary chips。基建:`use-debounced-action`/`use-visible-refetch`/`collection-loading` React port、`ToastHost`(shared toast controller→服务)、`components/ChannelIcon`+`CredentialHealthBar`(React port);channel-icons 注册表+全部 svg/webp 资产从 `frontends/classic/assets` 提升到 `shared/assets/`(classic ChannelIcon 改引,`gateway-clients.ts` 注释同步)。路由层:`/groups` manifest 标 `astryx:true`;`routeViews` 注册表替掉 login 单例判断。**TSR 边界关键修复**:默认 codec JSON 解码 query(`?page=2`→number 2)且 `search.strict` 会把已验证 search 回写——shared query 契约原只收 string 导致 `scalarRouteQuery` 丢弃 number、`page` 恒回落 1、navigate 静默无请求;修复为自定义 `parseSharedRouteSearch`/`stringifySharedRouteSearch`(手写 decodeURIComponent 保 vue-router 语义:`+` 不转空格、重复 key→数组)+`SharedRouteQueryValue` 接受有限 number(validateSearch 幂等性要求,TSR 会用已验证值复验)。`vite.config.ts` `optimizeDeps.entries` 加 `astryx.html` 且 `include` 钉全部 `@astryxdesign/core/*` 深路径+`react/compiler-runtime`/`jsx-runtime`/`jsx-dev-runtime`(babel/plugin-react 注入,crawl 不可见)→消除运行中重优化导致 `.vite/deps` 重建、in-flight 页面 404 的复发性 flake。
 - **Proof:** `astryx-groups.spec.ts` 7/7:summary chip 103/22/25、search 去抖入 URL+服务端参数、status chip/channel_type Selector、受控 sort(Selector+列头双向)、服务端分页+`?page=99` 越界纠偏到末页、键盘可达搜索/行动作、1,000 行 gate(交互正常+确认服务端分页非客户端切片)、空/无结果态+reset filters 双路径。E2E fixture 修正两处:`makeGroups` 索引映射(`Array.from` 传元素非索引曾产 `id:null`/`Group 0NaN`)、disabled 组凭据全 disabled(投影不变式);mock 改为镜像 Go 契约(越界回声请求页+空 items,非钳位)。全量 e2e 92 通过+2 skipped、冷缓存零 pre-transform error;tsc×3/eslint(0)/全部 verify 脚本绿。
 - **PM:** cookie=astryx 打开 `/groups` -> 搜索/筛选/排序/分页/键盘走查与 classic 一致,越界 deep-link 自动纠偏。
 
@@ -221,4 +221,37 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 
 ## Review
 
-- [ ] Review complete
+### Review 发现与处置(final-review,协调者汇总 correctness/architecture/security/frontend 四路)
+
+修正(已验证):
+
+1. **`/groups` validateSearch 注入默认值 → 冗长 URL + canonicalization 抖动**:`router.tsx` `groupsSearch` 返回 full filters(含 `sort=recent&page=1&page_size=100` 默认值),TSR 将 validated search 写回 URL,使 `/groups` 变冗长且组件 canonicalize 每轮都见非规范键。改为 `serialize(parse(search))` 返回稀疏键;组件侧仍自解析默认值,失效/重复键仍由 canonicalize effect 收敛。
+2. **死代码 `useUnsavedGuard` 语义倒置且 promise 永不 resolve**:`shouldBlockFn` 返回 `requestConfirmation()`(true=放行语义反了),且无任何 dialog resolve。astryx 无未保存表单反(`/import` 未迁移),整段 `useBlocker` 接线删除;正确接线随 import 面迁移时携带确认 dialog 一并落地。
+3. **query-only 导航重置滚动**:`scrollRestoration:true` 下筛选/分页/canonicalize/detail 开闭都滚回顶;classic 仅特定 query 变更滚动。五处导航(groups×3、logs×2)补 `resetScroll:false`。
+4. **非 astryx 路由在 astryx 文档内渲染 stub 卡死用户**:nav/Logo/导入/组详情/登录重定向/`notFound.backHome` 等未标记路径 SPA 导航后服务端文档选择不介入 → 渲染 `RoutePageStub` 而非 classic 页。新增 `app/route-link.tsx`(`isAstryxNavigable`:`pageRouteEntryForPath` 查 manifest `astryx` 旗 + 外部 href 直通 `<a>`),`RouteLink` 统一承载 LinkProvider adapter、Shells 五处 nav、NotFoundView、GroupsView 组详情链接;程序式跳转(`window.location.assign/replace`:LoginView safeRedirect、GroupsView 复制后详情、NotFoundView goBack 兜底)同策略;`RoutePageStub` 对未标记路径自纠错 document-nav 兜底。新增 e2e `nav to a classic-owned route leaves the Astryx document` 实证。
+5. **logs 范围 Apply/Reset 保留 `selected_request_id`**:classic `commitFilters` 以裸 filters 重建 query(不带 state),面板关闭;astryx 侧两处补 `delete next[selected_request_id]`。
+6. **search codec 与 vue-router 偏差**:按 vue-router `parseQuery`/`stringifyQuery` 逐条对齐——`+`→空格(切分前)、key/value 独立解码、malformed 侧保留原始串、bare key→`null`(原为 `''`)、`null`→裸 key 序列化(原为丢弃)、重复键数组、`__proto__` 走 null-prototype 对象杜绝原型污染。新增 `scripts/search-codec.test.ts` 12 用例全绿并挂 `test:search-codec`。
+7. **`today` preset 零点边界**:`resolveDateTimePreset` 已有 `from>=to` 的 1ms 下限保护,复核保留。
+8. **DetailPanel `focusin` 强收会劫持嵌套 overlay**:目标在其它 `dialog`/`[popover]`(DS Layer 矫正 portal 越出本 dialog 子树的场景)时放行。
+9. **HeadSync 缺 not-found 标题**:notFound 匹配时 `meta` 为空导致标题停留在上一路由;补 `isNotFound` → `notFound.title`。
+10. **`useTableFiltering` 双重筛选面**:plan 已记该插件被否,但 GroupsView 仍接线渲染出平行 Filter 头按钮 → 移除整段 wiring。
+11. **e2e `waitForTimeout(300)` 负向断言竞态**:改为先断言 alert 渲染(证明 apply 已被处理)再断言无请求/URL 无参数。
+12. **vite.config.ts 告警**:extensionless 相对导入补 `.ts`;`page-routes.ts` 的 JSON 导入补 `with { type: 'json' }`。
+13. **astryx groups 搜索框隐藏 label**:与同排 Selector 可见 label 不一致 → 去 `isLabelHidden`(行内 Switch 保留隐藏 label——classic 行内 switch 亦无文字标签,审计已确认 `label[for]` 关联可达)。
+14. **`Vary: Cookie` 缺失**:前端文档按 cookie 选择,响应未带 `Vary` → 共享缓存可串文档;`serveIndexWithStatus` 补 `Vary: Cookie`。
+15. **i18n 死导出**:`getIntl`/`imperativeIntl`/`options.storage` 无消费者 → 删。
+16. **共享逻辑去重**:debounced-action、loading-timings、`normalizeSeconds`、`parseLocalDateTime` 抽至 `src/shared/lib/`,双前端 adapter 复用(classic parseLocalDateTime 换为共享超集实现——浏览器 datetime-local 只产合法形,58/58 回归绿)。
+17. **feature doc 与路由事实矛盾**:`frontend-preview-switch.md` 称未知路径回 classic,实为 cookie 命中时回 astryx → 更正。
+
+保留不改(已说明理由):
+
+- `NotFoundView.goBack` 的 `window.history.length>1`:classic NotFoundView.vue 使用同一启发式,改动即偏离 parity;backHome 兜底仍指向 home。
+- `page_size` 不出现在 URL:`defaultFilters.page_size=100` 为常量,canonical 集不含该键,`?page_size=` 键按 junk 收敛——与 classic 一致。
+- `web/e2e/astryx-visual-audit.spec.ts`:由临时评审脚本转正式保留(双前端命名/溢出/对比度/landmark DOM 审计 + 截图,32s,已抓出真实 label 探测盲区)。
+- `Shells.logout` 的 `importRecovery`/`unsavedChanges` 旁路:对应 classic App.vue 的守卫镜像,保留为后续 import 面迁移的接线点。
+
+Frontend review:Impeccable `context.mjs` 因缺 `PRODUCT.md` 阻塞 → 按 init.md 以仓库事实完成一轮用户确认后写入根 `PRODUCT.md`(register=product,设计权威=classic UI parity)。正式前端评审证据 = `astryx-visual-audit.spec.ts` 跨前端对比审计(全绿)+ 密度表 + 截图复核。
+
+回归尾:astryx **53/53**(新增路由移交用例)、classic **58/58**、codec 12/12、契约(astryx-routes 4 + channel + connection)全绿、tsc×3、eslint 0。
+
+- [x] Review complete

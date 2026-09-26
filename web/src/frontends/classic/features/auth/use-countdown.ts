@@ -10,9 +10,7 @@ import {
   type Ref,
 } from 'vue'
 
-function normalizeSeconds(value: number): number {
-  return Math.max(1, Math.ceil(Number.isFinite(value) ? value : 0))
-}
+import { normalizeSeconds } from '@shared/lib/time'
 
 export interface Countdown {
   seconds: Readonly<Ref<number>>

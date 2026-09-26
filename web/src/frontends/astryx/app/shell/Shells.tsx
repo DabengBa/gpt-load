@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import { Link, useRouter } from '@tanstack/react-router'
+import { useRouter } from '@tanstack/react-router'
 import { Check, KeyRound, LockKeyhole } from 'lucide-react'
 import { useSyncExternalStore, type ReactNode } from 'react'
 
@@ -8,6 +8,7 @@ import { pagePath } from '@shared/routing/page-routes'
 import type { PageRouteMeta } from '@shared/routing/route-meta'
 
 import { useT } from '../i18n'
+import { RouteLink } from '../route-link'
 import { useAppServices } from '../services'
 import { AuthGate } from './AuthGate'
 import { BrandMark } from './BrandMark'
@@ -219,7 +220,7 @@ function MobileNavItems({
       {items.map((item) => {
         const active = item.key === activeKey
         return (
-          <Link
+          <RouteLink
             key={item.key}
             to={item.to}
             aria-current={active ? 'page' : undefined}
@@ -228,7 +229,7 @@ function MobileNavItems({
           >
             <span>{t(item.labelKey)}</span>
             {active && <Check size={15} aria-hidden />}
-          </Link>
+          </RouteLink>
         )
       })}
     </nav>
@@ -281,14 +282,14 @@ export function AuthedShell({
       </a>
       <header {...stylex.props(styles.topbar)}>
         <div {...stylex.props(styles.topbarInner)}>
-          <Link
+          <RouteLink
             to={pagePath('home')}
             aria-label={`${t('common.appName')} · ${t('shell.home')}`}
             {...stylex.props(styles.brand)}
           >
             <BrandMark size={24} />
             <span>{t('common.appName')}</span>
-          </Link>
+          </RouteLink>
 
           <nav
             data-testid="desktop-nav"
@@ -298,14 +299,14 @@ export function AuthedShell({
             {items.map((item) => {
               const active = meta?.primaryNav === item.key
               return (
-                <Link
+                <RouteLink
                   key={item.key}
                   to={item.to}
                   aria-current={active ? 'page' : undefined}
                   {...stylex.props(styles.navLink, active && styles.navLinkActive)}
                 >
                   {t(item.labelKey)}
-                </Link>
+                </RouteLink>
               )
             })}
           </nav>
@@ -322,14 +323,14 @@ export function AuthedShell({
 
           <div {...stylex.props(styles.actions)}>
             {!isAccessKey && (
-              <Link
+              <RouteLink
                 to={pagePath('import')}
                 aria-label={t('shell.import')}
                 {...stylex.props(styles.importAction)}
               >
                 <KeyRound size={15} aria-hidden />
                 <span {...stylex.props(styles.importLabel)}>{t('shell.import')}</span>
-              </Link>
+              </RouteLink>
             )}
             <PreferencesControl
               triggerLabel={t('shell.menu')}
@@ -362,14 +363,14 @@ export function PublicShell({ children }: { children: ReactNode }) {
         {t('shell.skip')}
       </a>
       <header {...stylex.props(styles.topbar)}>
-        <Link
+        <RouteLink
           to={pagePath('home')}
           aria-label={`${t('common.appName')} · ${t('shell.home')}`}
           {...stylex.props(styles.brand)}
         >
           <BrandMark size={24} />
           <span>{t('common.appName')}</span>
-        </Link>
+        </RouteLink>
         <div {...stylex.props(styles.actions)}>
           <PreferencesControl />
         </div>

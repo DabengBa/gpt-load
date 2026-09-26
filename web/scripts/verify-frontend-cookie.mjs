@@ -39,6 +39,10 @@ const consumers = [
     `${webRoot}/src/frontends/classic/features/preferences/PreferencesControl.vue`,
     'shared/controllers/frontend-preference',
   ],
+  [
+    `${webRoot}/src/frontends/astryx/app/shell/PreferencesControl.tsx`,
+    'shared/controllers/frontend-preference',
+  ],
 ]
 for (const [path, needle] of consumers) {
   const source = readFileSync(path, 'utf8')

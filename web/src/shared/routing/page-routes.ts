@@ -1,4 +1,4 @@
-import pageRouteManifest from '../../../../internal/webui/page_routes.json'
+import pageRouteManifest from '../../../../internal/webui/page_routes.json' with { type: 'json' }
 
 export interface PageRouteEntry {
   readonly name: string
@@ -135,10 +135,7 @@ export function pagePath(name: string): string {
   return routePath
 }
 
-export function pagePathMatches(name: string, rawPath: string): boolean {
-  const routePath = pathsByName.get(name)
-  if (routePath === undefined) return false
-
+function routePathMatches(routePath: string, rawPath: string): boolean {
   let decodedPath: string
   try {
     decodedPath = decodeURIComponent(rawPath)
@@ -159,4 +156,16 @@ export function pagePathMatches(name: string, rawPath: string): boolean {
       ? pathSegment !== undefined && pathSegment !== ''
       : segment === pathSegment
   })
+}
+
+export function pagePathMatches(name: string, rawPath: string): boolean {
+  const routePath = pathsByName.get(name)
+  if (routePath === undefined) return false
+  return routePathMatches(routePath, rawPath)
+}
+
+// Resolves a concrete pathname to its manifest entry so callers can read the
+// per-route flags (e.g. `astryx`) that pagePathMatches hides behind names.
+export function pageRouteEntryForPath(rawPath: string): PageRouteEntry | undefined {
+  return pageRouteEntries.find((entry) => routePathMatches(entry.path, rawPath))
 }

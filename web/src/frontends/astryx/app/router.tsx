@@ -6,7 +6,6 @@ import {
   createRouter,
   notFound,
   redirect,
-  useBlocker,
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
@@ -15,14 +14,17 @@ import { useEffect, type ReactNode } from 'react'
 import { pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
-import { parseGroupCollectionRouteQuery } from '@shared/routing/group-collection-route'
+import {
+  parseGroupCollectionRouteQuery,
+  serializeGroupCollectionRouteQuery,
+} from '@shared/routing/group-collection-route'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 
 import { useT } from './i18n'
 import { astryxRoutePaths } from './route-adapter'
 import { parseSharedRouteSearch, stringifySharedRouteSearch } from './search-codec'
 import { RoutePageStub } from './pages'
-import { useAppServices, type AppServices } from './services'
+import type { AppServices } from './services'
 import { ToastHost } from './ToastHost'
 import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
@@ -57,15 +59,25 @@ const shellStyles = stylex.create({
 function HeadSync() {
   const router = useRouter()
   const t = useT()
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const { pathname, isNotFound } = useRouterState({
+    select: (state) => ({
+      pathname: state.location.pathname,
+      isNotFound: state.matches.some(
+        (match) =>
+          match.status === 'notFound' ||
+          (match as { _notFound?: boolean })._notFound === true,
+      ),
+    }),
+  })
   useEffect(() => {
     const [, , foundRoute] = router.getMatchedRoutes(pathname)
     const staticData = foundRoute?.options.staticData as
       | { meta?: PageRouteMeta }
       | undefined
-    const titleKey = staticData?.meta?.titleKey
+    const titleKey =
+      staticData?.meta?.titleKey ?? (isNotFound ? 'notFound.title' : undefined)
     document.title = titleKey === undefined ? 'GPT-Load' : `${t(titleKey)} · GPT-Load`
-  }, [pathname, router, t])
+  }, [pathname, isNotFound, router, t])
   return null
 }
 
@@ -144,10 +156,16 @@ function loginSearch(
   }
 }
 
-// Typed route search: the shared parser owns the groups collection contract;
-// validateSearch makes match.search carry GroupCollectionFilters.
+// Typed route search: the shared parser owns the groups collection contract.
+// validateSearch must return a SPARSE object — TanStack writes the validated
+// search back to the URL, so injecting defaults here would turn '/groups' into
+// a verbose '?sort=recent&page=1&page_size=100' URL and make the component's
+// canonicalization effect fire on every clean load. Sparse keys keep the URL
+// untouched; GroupsView still parses defaults from location.search itself.
 function groupsSearch(search: Record<string, unknown>) {
-  return parseGroupCollectionRouteQuery(search as SharedRouteQuery)
+  return serializeGroupCollectionRouteQuery(
+    parseGroupCollectionRouteQuery(search as SharedRouteQuery),
+  )
 }
 
 const routeViews: Partial<Record<string, () => ReactNode>> = {
@@ -206,17 +224,4 @@ declare module '@tanstack/react-router' {
   interface Register {
     router: AppRouter
   }
-}
-
-// Bridges the shared unsaved-changes controller onto TanStack's blocker;
-// the confirmation dialog itself lands with the B9 shell.
-export function useUnsavedGuard(active: boolean): void {
-  const { unsavedChanges } = useAppServices()
-  useBlocker({
-    shouldBlockFn: () => {
-      if (!active || unsavedChanges.consumeBypass()) return false
-      return unsavedChanges.requestConfirmation()
-    },
-    enableBeforeUnload: active,
-  })
 }

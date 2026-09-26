@@ -2,25 +2,21 @@ import type { SharedRouteQuery } from '@shared/routing/route-query'
 
 // TanStack's default search codec JSON-decodes each value (?page=2 → 2),
 // which the shared vue-router-shaped query contract (strings, duplicate keys
-// as arrays) would silently drop. URLSearchParams can't be used: it maps '+'
-// to space while vue-router keeps it literal — decodeURIComponent by hand.
+// as arrays) would silently drop. This mirrors vue-router's parseQuery: '+'
+// maps to space before the '=' split, key and value decode independently,
+// malformed escapes keep the raw side, and bare keys read as null. The
+// null-prototype result keeps '__proto__'-style keys as plain own properties
+// instead of mutating the object's prototype.
 export function parseSharedRouteSearch(searchStr: string): SharedRouteQuery {
-  const query: SharedRouteQuery = {}
+  const query: Record<string, unknown> = Object.create(null)
   const str = searchStr.startsWith('?') ? searchStr.slice(1) : searchStr
-  if (str === '') return query
+  if (str === '') return query as SharedRouteQuery
   for (const pair of str.split('&')) {
     if (pair === '') continue
-    const eq = pair.indexOf('=')
-    const rawKey = eq === -1 ? pair : pair.slice(0, eq)
-    const rawValue = eq === -1 ? '' : pair.slice(eq + 1)
-    let key = rawKey
-    let value = rawValue
-    try {
-      key = decodeURIComponent(rawKey)
-      value = decodeURIComponent(rawValue)
-    } catch {
-      // Malformed escapes keep the raw pair — same as vue-router's fallback.
-    }
+    const decoded = pair.replace(/\+/g, ' ')
+    const eq = decoded.indexOf('=')
+    const key = safeDecode(eq === -1 ? decoded : decoded.slice(0, eq))
+    const value = eq === -1 ? null : safeDecode(decoded.slice(eq + 1))
     const existing = query[key]
     query[key] =
       existing === undefined
@@ -29,16 +25,28 @@ export function parseSharedRouteSearch(searchStr: string): SharedRouteQuery {
           ? [...existing, value]
           : [existing, value]
   }
-  return query
+  return query as SharedRouteQuery
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
 }
 
 export function stringifySharedRouteSearch(query: Record<string, unknown>): string {
   const pairs: string[] = []
   for (const [key, value] of Object.entries(query)) {
-    if (value === null || value === undefined) continue
+    // vue-router's stringifyQuery: undefined drops the key, null emits it bare.
+    if (value === undefined) continue
+    const encodedKey = encodeURIComponent(key)
     for (const item of Array.isArray(value) ? value : [value]) {
-      if (item === null || item === undefined) continue
-      pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(item))}`)
+      if (item === undefined) continue
+      pairs.push(
+        item === null ? encodedKey : `${encodedKey}=${encodeURIComponent(String(item))}`,
+      )
     }
   }
   return pairs.length === 0 ? '' : `?${pairs.join('&')}`

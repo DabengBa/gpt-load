@@ -28,7 +28,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("route registry: %v", err)
 	}
+	// Mirror the production engine's behavioral knobs (internal/app/app.go):
+	// release mode, no trusted proxies, and no trailing-slash redirect — a
+	// default gin engine would 301 "/settings/" where production 404s.
+	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
+	engine.RedirectTrailingSlash = false
+	if err := engine.SetTrustedProxies(nil); err != nil {
+		log.Fatalf("disable trusted proxies: %v", err)
+	}
 	if err := registry.Bind(engine); err != nil {
 		log.Fatalf("bind routes: %v", err)
 	}
