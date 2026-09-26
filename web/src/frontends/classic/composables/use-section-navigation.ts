@@ -1,5 +1,7 @@
 import { onBeforeUnmount, onMounted, onUpdated, ref, type Ref } from 'vue'
 
+import { createSectionNavigationController } from '@shared/controllers/section-navigation'
+
 export interface SectionNavigationOptions {
   ids: Readonly<Ref<readonly string[]>>
   initialId?: string
@@ -13,58 +15,33 @@ export interface SectionNavigationController {
 
 export function useSectionNavigation({
   ids,
-  initialId = ids.value[0] ?? '',
+  initialId,
   topOffset = 88,
 }: SectionNavigationOptions): SectionNavigationController {
-  const activeSection = ref(initialId)
-  let sectionFrame = 0
-
-  function synchronizeSection(): void {
-    sectionFrame = 0
-    const sectionIDs = ids.value
-    const elements = sectionIDs
-      .map((id) => document.getElementById(id))
-      .filter((element): element is HTMLElement => element !== null)
-    if (!sectionIDs.length || elements.length !== sectionIDs.length) return
-
-    let current = elements[0]
-    for (const element of elements) {
-      if (element.getBoundingClientRect().top <= topOffset) current = element
-      else break
-    }
-    const pageHeight = document.documentElement.scrollHeight
-    const pageBottom = window.scrollY + window.innerHeight
-    if (pageHeight > window.innerHeight + 2 && pageBottom >= pageHeight - 2)
-      current = elements.at(-1) ?? current
-    activeSection.value = current.id
-  }
-
-  function scheduleSynchronization(): void {
-    if (sectionFrame) return
-    sectionFrame = window.requestAnimationFrame(synchronizeSection)
-  }
-
-  function selectSection(id: string, behavior?: ScrollBehavior): void {
-    activeSection.value = id
-    const resolved =
-      behavior ??
-      (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth')
-    document.getElementById(id)?.scrollIntoView({ behavior: resolved, block: 'start' })
-  }
+  const controller = createSectionNavigationController({
+    ids: ids.value,
+    initialId,
+    topOffset,
+  })
+  const activeSection = ref(controller.getActiveSection())
+  const unsubscribe = controller.subscribe(() => {
+    activeSection.value = controller.getActiveSection()
+  })
+  let unmount: (() => void) | undefined
 
   onMounted(() => {
-    window.addEventListener('scroll', scheduleSynchronization, { passive: true })
-    window.addEventListener('resize', scheduleSynchronization, { passive: true })
-    scheduleSynchronization()
+    unmount = controller.mount()
   })
 
-  onUpdated(scheduleSynchronization)
+  onUpdated(() => {
+    controller.updateIds(ids.value)
+    controller.notifyUpdated()
+  })
 
   onBeforeUnmount(() => {
-    window.removeEventListener('scroll', scheduleSynchronization)
-    window.removeEventListener('resize', scheduleSynchronization)
-    if (sectionFrame) window.cancelAnimationFrame(sectionFrame)
+    unmount?.()
+    unsubscribe()
   })
 
-  return { activeSection, selectSection }
+  return { activeSection, selectSection: controller.selectSection }
 }

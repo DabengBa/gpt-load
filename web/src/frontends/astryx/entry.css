@@ -11,9 +11,19 @@
  * same var() names the Vue frontend uses — including its [data-theme='dark']
  * and prefers-color-scheme branches, which line up with what the Astryx
  * <Theme> component writes on <html>. */
-@layer reset, astryx-base, astryx-theme, classic-tokens;
+@layer reset, astryx-base, astryx-theme, classic-tokens, app.base;
 
 @import '@astryxdesign/core/reset.css';
 @import '@astryxdesign/core/astryx.css';
 @import './theme/gptload.theme.css';
 @import '../classic/styles/tokens.css' layer(classic-tokens);
+
+/* app.base sits after classic-tokens but before the StyleX `app.*` atomic
+   layers, so these rules only ever fill gaps atomic styles don't cover.
+   Used for descendant-targeted parity rules StyleX cannot express — keep it
+   tiny and attribute-keyed. */
+@layer app.base {
+  [data-gptload-mono] input {
+    font-family: var(--font-mono);
+  }
+}

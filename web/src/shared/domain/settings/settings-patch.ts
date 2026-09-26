@@ -68,6 +68,14 @@ export function createSettingsDraft(settings: SettingsDto): SettingsDraft {
   }
 }
 
+export function cloneSettingsDraft(draft: SettingsDraft): SettingsDraft {
+  return createSettingsDraft({
+    values: draft.values,
+    overrides: [...draft.overrides],
+    read_only: [...draft.readOnly],
+  })
+}
+
 export function setSettingsOverride(
   base: SettingsDto,
   draft: SettingsDraft,

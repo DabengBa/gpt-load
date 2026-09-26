@@ -18,6 +18,10 @@ import {
   parseGroupCollectionRouteQuery,
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
+import {
+  parseSettingsRouteSection,
+  serializeSettingsRouteQuery,
+} from '@shared/routing/settings-route'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 
 import { useT } from './i18n'
@@ -31,6 +35,7 @@ import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
 import { GroupsView } from '../features/groups/GroupsView'
 import { LogsView } from '../features/logs/LogsView'
+import { SettingsView } from '../features/settings/SettingsView'
 
 interface RouterContext {
   services: AppServices
@@ -168,10 +173,18 @@ function groupsSearch(search: Record<string, unknown>) {
   )
 }
 
+// Sparse like groupsSearch: routing → {}, everything else → { section }.
+// Invalid/repeated values canonicalize to the bare '/settings' URL via the
+// same mechanism, matching the classic router.replace behavior.
+function settingsSearch(search: Record<string, unknown>) {
+  return serializeSettingsRouteQuery(parseSettingsRouteSection(search as SharedRouteQuery))
+}
+
 const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.groups]: GroupsView,
   [sharedPageRouteNames.logs]: LogsView,
+  [sharedPageRouteNames.settings]: SettingsView,
 }
 
 const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
@@ -185,7 +198,9 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
         ? loginSearch
         : name === sharedPageRouteNames.groups
           ? groupsSearch
-          : undefined,
+          : name === sharedPageRouteNames.settings
+            ? settingsSearch
+            : undefined,
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })

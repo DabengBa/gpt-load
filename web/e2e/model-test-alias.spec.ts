@@ -15,7 +15,11 @@ import {
 async function openGroupModelsEditor(page: Page): Promise<SavedModelBody[]> {
   const savedModelBodies = await installModelTestAliasRoutes(page)
   await page.goto(`/groups/${modelTestAliasGroupId}`)
-  await expect(page.locator('[data-testid="model-alias-editor__record"]')).toHaveCount(2)
+  // The first classic spec in a fresh run pays vite's cold on-demand compile;
+  // the record rows land late, so this fixture wait needs headroom.
+  await expect(page.locator('[data-testid="model-alias-editor__record"]')).toHaveCount(2, {
+    timeout: 15_000,
+  })
   return savedModelBodies
 }
 

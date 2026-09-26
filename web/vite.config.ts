@@ -7,8 +7,8 @@ import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Connect, type Plugin } from 'vite'
 
-import { readFrontendPreference } from './src/shared/controllers/frontend-preference.ts'
-import { pagePathMatches, pageRouteEntries } from './src/shared/routing/page-routes.ts'
+import { readFrontendPreference } from './src/shared/controllers/frontend-preference'
+import { pagePathMatches, pageRouteEntries } from './src/shared/routing/page-routes'
 
 export const webRootPath = fileURLToPath(new URL('.', import.meta.url))
 export const pageRouteManifestPath = fileURLToPath(

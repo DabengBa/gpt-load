@@ -1,5 +1,7 @@
 import { computed, onScopeDispose, ref, type ComputedRef } from 'vue'
 
+import { createTransientFlag } from '@shared/controllers/transient-flag'
+
 export interface TransientFlag {
   value: ComputedRef<boolean>
   show(): void
@@ -7,24 +9,16 @@ export interface TransientFlag {
 }
 
 export function useTransientFlag(durationMs: number): TransientFlag {
-  const value = ref(false)
-  let timer: ReturnType<typeof setTimeout> | undefined
+  const controller = createTransientFlag(durationMs)
+  const value = ref(controller.getValue())
+  const unsubscribe = controller.subscribe(() => {
+    value.value = controller.getValue()
+  })
 
-  function clear(): void {
-    if (timer !== undefined) clearTimeout(timer)
-    timer = undefined
-    value.value = false
-  }
+  onScopeDispose(() => {
+    unsubscribe()
+    controller.clear()
+  })
 
-  function show(): void {
-    clear()
-    value.value = true
-    timer = setTimeout(() => {
-      timer = undefined
-      value.value = false
-    }, durationMs)
-  }
-
-  onScopeDispose(clear)
-  return { value: computed(() => value.value), show, clear }
+  return { value: computed(() => value.value), show: controller.show, clear: controller.clear }
 }
