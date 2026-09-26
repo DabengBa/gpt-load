@@ -1,7 +1,9 @@
+import { LinkProvider } from '@astryxdesign/core/Link'
 import { Theme } from '@astryxdesign/core/theme'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { RouterProvider } from '@tanstack/react-router'
+import { Link, RouterProvider } from '@tanstack/react-router'
 import { createRoot } from 'react-dom/client'
+import type { ComponentProps, ReactNode } from 'react'
 
 import './entry.css'
 import { AppI18nProviders, createAppI18n } from './app/i18n'
@@ -36,6 +38,21 @@ const services: AppServices = createAppServices({
 const appRouter = createAppRouter(services)
 routerRef.current = appRouter
 
+// Astryx components render links through LinkProvider; route them through
+// TanStack's Link so client-side navigation keeps working. The manifest-grown
+// tree has no literal route-id types, so `to` is cast — runtime resolves it.
+function RouterLinkAdapter({
+  href,
+  children,
+  ...rest
+}: { href?: string; children?: ReactNode } & Omit<ComponentProps<'a'>, 'href'>) {
+  return (
+    <Link to={(href ?? '/') as never} {...rest}>
+      {children}
+    </Link>
+  )
+}
+
 function App() {
   const [mode] = useThemePreference()
   return (
@@ -43,7 +60,9 @@ function App() {
       <AppI18nProviders i18n={i18n}>
         <QueryClientProvider client={services.queryClient}>
           <AppServicesProvider value={services}>
-            <RouterProvider router={appRouter} />
+            <LinkProvider component={RouterLinkAdapter}>
+              <RouterProvider router={appRouter} />
+            </LinkProvider>
           </AppServicesProvider>
         </QueryClientProvider>
       </AppI18nProviders>

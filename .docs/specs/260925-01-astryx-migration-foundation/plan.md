@@ -163,10 +163,10 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** cookie=astryx 访问 `/settings`,三语言下 h1/标题/`html lang` 随 `gpt-load.locale` 切换,无 MISSING/FORMAT。
 
 ### Task B9: shell 对等(AppShell/AuthGate/login/not-found/偏好/密度)
-- [ ] **Done**
-- **Scope:** `AppShell` 导航(含 admin-only 项、principal type)、`AuthGate`、`login`、`not-found`、偏好面板(主题、locale、返回-classic 控件)、路由播报接入;根级 `SizeContext`/`Table` density + theme 覆盖达成方案文档「Theme and tokens」全部密度指标;`login`/`not-found` 路由首批 `astryx:true`。
-- **Proof:** astryx 项目 e2e:login→shell→logout、导航 admin 项可见性、404 页;密度实测表逐项 ≤±1px(gate #6 输入)。
-- **PM:** cookie=astryx 登录后四页走查 -> 布局/密度与 classic 一致。
+- [x] **Done**
+- **Scope:** `astryx/app/shell/`:`Shells.tsx`(`PublicShell`/`AuthedShell`:AuthGate 包顶栏,桌面 nav 按 principal_type 过滤 adminOnly 项,access_key 附加 `Access key · Read-only` 徽章并隐藏 import 动作;skip-link、移动 nav 走偏好弹层;logout 对 import 页走 `bypassNext`+先跳后清)、`AuthGate.tsx`(validating/locked/network/invalid-response 四态卡,access_key 命中 adminOnly 回 home,invalid-response 聚焦 retry)、`LoginView.tsx`(全对等:intro rail、reveal、required/whitespace 校验、invalid/locked(含 countdown)/network/invalid-response 反馈、`?redirect=`+`?help=auth` 规范化、import 草稿恢复)、`NotFoundView.tsx`(404 面板+请求路径+回首页/上一页)、`PreferencesControl.tsx`(Popover+三段式 theme/locale/frontend,frontend 写 `gpt-load.frontend` cookie+reload;`dialogLabel` 消 a11y 警告)、`BrandMark`/`use-countdown`。路由层:`login` 在 manifest 标 `astryx:true`;尾斜杠 canonical 检查上移至 root `beforeLoad`,not-found 渲染经 `ShellOutlet` 的 `matches[].status==='notFound'||_notFound` 判定落到 PublicShell(否则 AuthGate 匿名卡会吞掉 404);`LinkProvider` 把 astryx 组件内链接接到 TSR;`services.ts` 补 `importRecovery`;`entry.css` 引入 classic `tokens.css` 作 `classic-tokens` 层(5 个语义色重名属有意对齐),`useCSSLayers.before` 同步。`useT` 的 `formatMessage` 收 PrimitiveType values 保 `string` 返回;`FlatKeys` 补数字键(`capabilities.1.*`)。
+- **Proof:** `astryx-shell.spec.ts` 5/5:login→shell→sign-out 往返(auth-key 清除回 `/login`)、access_key 在 `/settings` 被 adminOnly 弹回 `/` 且仅见 Home/Models/Monitor/Request logs(无 import、带只读徽章)、404 显示请求路径并回首页、偏好面板 theme→`data-theme=dark`/locale→zh-CN+`html lang`/frontend→`classic` cookie+classic 文档、密度实测 topbar 54px/padding 30px/import 动作 30px/shell 13.5px 全部 ≤±1px;`astryx-routing.spec.ts` 断言换成真实视图锚点(标题文本/表单 label,`data-route` stub 标记随 stub 移除),文档选择断言改为 `/groups` classic vs `/login` astryx;`astryx-theme.spec.ts` 迁到 `/login`,precedence 断言改为运行时 `document.styleSheets` 层序(`reset→astryx-base→astryx-theme→classic-tokens→app.priority*`,IconButton 半径 7px vs neutral 8px)加 `--size-element-md` 34px/正文 13.5px。astryx 项目 27/27、classic 58/58 绿;tsc×2/eslint(0)/ICU 8132/astryx-i18n(370 key,upstream lag WARN)/theme-build/cookie 契约全绿;`vite build` 绿(astryx bundle 734kB/216kB gzip,>500kB 警告留待 B13 gate 汇总)。修 Mock:`/api/auth/session` 需要 `{code:0,message,data}` 信封而非裸 payload(此前 AuthGate 未启用故未暴露)。
+- **PM:** cookie=astryx 登录后 `/settings`/`/login`/404 走查 -> 布局/密度与 classic 一致;偏好面板可切主题/语言/返回经典。
 
 ### Task B10: spike(a) `groups` 集合页(Table,1,000 行,服务端驱动)
 - [ ] **Done**

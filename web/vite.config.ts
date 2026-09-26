@@ -26,7 +26,10 @@ export default defineConfig({
     stylex({
       unstable_moduleResolution: { type: 'commonJS', rootDir: webRootPath },
       // Layer order must mirror src/frontends/astryx/entry.css.
-      useCSSLayers: { before: ['reset', 'astryx-base', 'astryx-theme'], prefix: 'app' },
+      useCSSLayers: {
+        before: ['reset', 'astryx-base', 'astryx-theme', 'classic-tokens'],
+        prefix: 'app',
+      },
       // Two entries ship CSS: keep collected StyleX atoms out of classic chunks.
       cssInjectionTarget: (fileName) => /(^|\/)astryx(-[\w-]+)?\.css$/i.test(fileName),
     }),

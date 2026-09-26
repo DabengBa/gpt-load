@@ -13,12 +13,12 @@ import type enMonitor from './locales/en-US/monitor'
 import type enSettings from './locales/en-US/settings'
 
 type FlatKeys<T> = {
-  [K in keyof T & string]: T[K] extends string
-    ? K
+  [K in keyof T & (string | number)]: T[K] extends string
+    ? `${K}`
     : T[K] extends object
       ? `${K}.${FlatKeys<T[K]>}`
       : never
-}[keyof T & string]
+}[keyof T & (string | number)]
 
 export type MessageId =
   | FlatKeys<typeof enCore>

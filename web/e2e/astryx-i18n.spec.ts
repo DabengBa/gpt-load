@@ -22,14 +22,18 @@ async function seedAuth(page: Page): Promise<void> {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ authenticated: true, principal_type: 'admin' }),
+        body: JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data: { authenticated: true, principal_type: 'admin' },
+        }),
       })
       return
     }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({}),
+      body: JSON.stringify({ code: 0, message: 'ok', data: {} }),
     })
   })
 }

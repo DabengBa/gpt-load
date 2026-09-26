@@ -7,6 +7,10 @@ import type { AuthSessionPayload } from '@shared/http/types'
 import { createAuthSession, type AuthSession } from '@shared/controllers/auth-session'
 import { clearEphemeralState } from '@shared/controllers/ephemeral-state'
 import {
+  createImportRecoveryService,
+  type ImportRecoveryService,
+} from '@shared/controllers/import-recovery'
+import {
   createUnsavedChangesController,
   type UnsavedChangesController,
 } from '@shared/controllers/unsaved-changes'
@@ -17,6 +21,7 @@ export interface AppServices {
   readonly apiClient: ApiClientWithResponse
   readonly authSession: AuthSession
   readonly unsavedChanges: UnsavedChangesController
+  readonly importRecovery: ImportRecoveryService
   readonly i18n: AppI18n
 }
 
@@ -74,7 +79,21 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   })
   authRef.current = authSession
 
-  return { queryClient, apiClient, authSession, unsavedChanges, i18n: options.i18n }
+  const importRecovery = createImportRecoveryService({
+    storage: getBrowserStorage('localStorage'),
+    now: () => Date.now(),
+    setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+    clearTimer: (timer) => clearTimeout(timer),
+  })
+
+  return {
+    queryClient,
+    apiClient,
+    authSession,
+    unsavedChanges,
+    importRecovery,
+    i18n: options.i18n,
+  }
 }
 
 const AppServicesContext = createContext<AppServices | null>(null)

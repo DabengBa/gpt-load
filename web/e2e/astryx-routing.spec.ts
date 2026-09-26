@@ -21,8 +21,10 @@ test('unauthenticated access to a guarded route redirects to login with redirect
   const url = new URL(page.url())
   expect(url.pathname).toBe('/login')
   expect(url.searchParams.get('redirect')).toBe(FLAGGED_PATH)
-  await expect(page.locator('[data-route="login"]')).toBeVisible()
-  await expect(page.getByLabel('Sign-in key')).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Sign in to GPT-Load' }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Sign-in key', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
 })
 
@@ -53,7 +55,9 @@ test('a trailing slash misses the manifest route and renders not-found', async (
   // '/settings/' is not a manifest path, so the server still serves the
   // Astryx document (cookie-only fallback) and the client router 404s it.
   await page.goto('/settings/', { waitUntil: 'load' })
-  await expect(page.locator('[data-route="not-found"]')).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'This page does not exist' }),
+  ).toBeVisible()
 })
 
 test('route matching is case-sensitive like the classic router', async ({
@@ -65,14 +69,22 @@ test('route matching is case-sensitive like the classic router', async ({
     { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
   ])
   await page.goto('/SETTINGS', { waitUntil: 'load' })
-  await expect(page.locator('[data-route="not-found"]')).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'This page does not exist' }),
+  ).toBeVisible()
 })
 
-// Direct /login navigation is unflagged, so it must keep serving the classic
-// document even when the preference cookie opts into Astryx.
-test('direct /login navigation stays on the classic document', async ({ page }) => {
-  const response = await page.request.get('/login', {
+// Unflagged paths keep serving the classic document even when the
+// preference cookie opts into Astryx; /login is flagged, so it serves the
+// Astryx document under the same cookie.
+test('document selection follows the manifest astryx flag', async ({ page }) => {
+  const classic = await page.request.get('/groups', {
     headers: { accept: 'text/html' },
   })
-  expect(await response.text()).toContain('/src/main.ts')
+  expect(await classic.text()).toContain('/src/main.ts')
+
+  const astryx = await page.request.get('/login', {
+    headers: { accept: 'text/html' },
+  })
+  expect(await astryx.text()).toContain('/src/frontends/astryx/main.tsx')
 })

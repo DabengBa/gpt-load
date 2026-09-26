@@ -1,4 +1,3 @@
-import { Button } from '@astryxdesign/core/Button'
 import * as stylex from '@stylexjs/stylex'
 import {
   Outlet,
@@ -19,8 +18,11 @@ import { sharedPageRouteNames } from '@shared/routing/route-names'
 
 import { useT } from './i18n'
 import { astryxRoutePaths } from './route-adapter'
-import { LoginPageStub, NotFoundPageStub, RoutePageStub } from './pages'
+import { RoutePageStub } from './pages'
 import { useAppServices, type AppServices } from './services'
+import { AuthedShell, PublicShell } from './shell/Shells'
+import { LoginView } from './shell/LoginView'
+import { NotFoundView } from './shell/NotFoundView'
 
 interface RouterContext {
   services: AppServices
@@ -28,25 +30,11 @@ interface RouterContext {
 
 const shellStyles = stylex.create({
   shell: {
-    display: 'grid',
     minHeight: '100vh',
-    gridTemplateRows: 'auto 1fr',
     backgroundColor: 'var(--color-background-body)',
     color: 'var(--color-text-primary)',
     fontFamily: 'var(--font-family-body)',
     fontSize: 'var(--text-body-size)',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '8px 16px',
-    borderBottomWidth: '1px',
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-subtle, rgba(0,0,0,0.08))',
-  },
-  outlet: {
-    padding: '16px',
   },
   srOnly: {
     position: 'absolute',
@@ -84,31 +72,69 @@ function RouteAnnouncer() {
   )
 }
 
+// Picks the frame from the deepest matched route's manifest meta, mirroring
+// classic App.vue: requiresAuth -> AuthGate > AppShell, else PublicShell.
+// The not-found render carries no staticData, so it lands in PublicShell.
+function ShellOutlet() {
+  const { meta, isNotFound } = useRouterState({
+    select: (state) => ({
+      meta: state.matches.at(-1)?.staticData as
+        | { pageName?: string; meta?: PageRouteMeta }
+        | undefined,
+      // Match-level notFound covers throws from any beforeLoad; _notFound
+      // marks the boundary match for paths that never matched a route.
+      isNotFound: state.matches.some(
+        (match) =>
+          match.status === 'notFound' ||
+          (match as { _notFound?: boolean })._notFound === true,
+      ),
+    }),
+  })
+  const routeMeta = meta?.meta
+  // A not-found render (thrown in root beforeLoad or an unmatched path) must
+  // land in the public frame even when the matched route was guarded —
+  // otherwise AuthedShell's AuthGate swallows the 404 view.
+  if (!isNotFound && routeMeta?.requiresAuth === true) {
+    return (
+      <AuthedShell pageName={meta?.pageName} meta={routeMeta}>
+        <Outlet />
+      </AuthedShell>
+    )
+  }
+  return (
+    <PublicShell>
+      <Outlet />
+    </PublicShell>
+  )
+}
+
 const rootRoute = createRootRouteWithContext<RouterContext>()({
+  beforeLoad: ({ location }) => {
+    // TanStack's 'preserve' still matches '/x/' to '/x'; the classic router
+    // (strict:true) rejects trailing slashes — keep parity via an explicit
+    // canonical-path check. ShellOutlet swaps in the public frame whenever a
+    // not-found is active, so this can live on the root.
+    if (location.pathname.length > 1 && location.pathname.endsWith('/')) {
+      throw notFound()
+    }
+  },
   component: () => (
     <div {...stylex.props(shellStyles.shell)} data-testid="astryx-shell">
       <HeadSync />
       <RouteAnnouncer />
-      <header {...stylex.props(shellStyles.header)}>
-        <Button label="GPT-Load" />
-        <Button label="Override" xstyle={probeStyles.overrideProbe} />
-      </header>
-      <div {...stylex.props(shellStyles.outlet)}>
-        <Outlet />
-      </div>
+      <ShellOutlet />
     </div>
   ),
-  notFoundComponent: NotFoundPageStub,
+  notFoundComponent: NotFoundView,
 })
 
-const probeStyles = stylex.create({
-  overrideProbe: {
-    borderRadius: '2px',
-  },
-})
-
-function loginSearch(search: Record<string, unknown>): { redirect?: string } {
-  return { redirect: typeof search.redirect === 'string' ? search.redirect : undefined }
+function loginSearch(
+  search: Record<string, unknown>,
+): { redirect?: string; help?: 'auth' } {
+  return {
+    redirect: typeof search.redirect === 'string' ? search.redirect : undefined,
+    help: search.help === 'auth' ? 'auth' : undefined,
+  }
 }
 
 const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
@@ -119,12 +145,6 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
     staticData: { pageName: name, meta },
     validateSearch: name === sharedPageRouteNames.login ? loginSearch : undefined,
     beforeLoad: async ({ context, location }) => {
-      // TanStack's 'preserve' still matches '/x/' to '/x'; the classic router
-      // (strict:true) rejects trailing slashes — keep parity via an explicit
-      // canonical-path check before the auth guards.
-      if (location.pathname.length > 1 && location.pathname.endsWith('/')) {
-        throw notFound()
-      }
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })
       }
@@ -137,9 +157,7 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
       await context.services.i18n.ensureNamespaces(meta.messageNamespaces ?? [])
     },
     component:
-      name === sharedPageRouteNames.login
-        ? LoginPageStub
-        : () => <RoutePageStub name={name} />,
+      name === sharedPageRouteNames.login ? LoginView : () => <RoutePageStub name={name} />,
   })
 })
 
@@ -152,7 +170,7 @@ export function createAppRouter(services: AppServices) {
     trailingSlash: 'preserve',
     caseSensitive: true,
     scrollRestoration: true,
-    defaultNotFoundComponent: NotFoundPageStub,
+    defaultNotFoundComponent: NotFoundView,
   })
 }
 
