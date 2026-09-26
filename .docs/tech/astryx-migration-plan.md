@@ -828,11 +828,13 @@ and delete the scaffold.
 `c28a1c2c` + review-fix batch):** all seven gates passed; user chose **go**.
 
 1. CSP: 15/15 — bundled Chromium, Chrome for Testing 125.0.6422.78, system
-   Chrome 153, across classic `/` and all flagged routes. The full binary
-   cannot compile on Windows (`securefile`/`catalog` are linux-only), so the
-   evidence runs through `internal/webui/cmd/webui`, a harness serving the
-   identical `webui.NewServer` handler chain and embedded dist; the real
-   binary runs the same spec on Unix CI.
+   Chrome 153, across classic `/` and all flagged routes. First run through
+   `internal/webui/cmd/webui` (the full binary cannot compile on Windows —
+   `securefile`/`catalog` are linux-only); **re-verified against the real
+   linux binary built and served from WSL2** (`go build` in WSL,
+   `GPT_LOAD_ORIGIN=http://localhost:<port>` connects the spec to the running
+   server — 15/15 identical). The `cmd/webui` harness remains for quick local
+   iteration; Unix CI continues to exercise the production binary path.
 2. Theme flash: 4/4 — `data-theme` correct at DOMContentLoaded for all three
    modes; `theme-bootstrap.js` unchanged.
 3. 1,000-row collection: green.

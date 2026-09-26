@@ -20,6 +20,10 @@ import { resolveChromium125Executable } from './browser-executables'
 // provisioned (see browser-executables.ts).
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
+// GPT_LOAD_ORIGIN connects to an already-running server instead of spawning
+// one — used when the binary was built for another platform (e.g. the real
+// linux binary served from WSL2 while Playwright runs on Windows).
+const externalOrigin = process.env.GPT_LOAD_ORIGIN
 const binaryCandidates = [
   process.env.GPT_LOAD_BINARY,
   resolve(repoRoot, 'gpt-load.exe'),
@@ -28,7 +32,7 @@ const binaryCandidates = [
 const binary = binaryCandidates.find((path) => existsSync(path))
 
 const port = 40_000 + (process.pid % 20_000)
-const origin = `http://127.0.0.1:${port}`
+const origin = externalOrigin ?? `http://127.0.0.1:${port}`
 
 // Playwright's loader cannot take plain JSON imports; read the manifest
 // directly. The sweep below covers every Astryx-flagged document route.
@@ -45,8 +49,9 @@ let dataDir: string | undefined
 
 test.beforeAll(async ({}, testInfo) => {
   test.skip(
-    binary === undefined,
-    'no gpt-load binary: run `make build` or set GPT_LOAD_BINARY',
+    binary === undefined && externalOrigin === undefined,
+    'no gpt-load binary: run `make build`, set GPT_LOAD_BINARY, ' +
+      'or point GPT_LOAD_ORIGIN at a running server',
   )
   test.skip(
     testInfo.project.name === 'chromium-125' &&
@@ -54,17 +59,19 @@ test.beforeAll(async ({}, testInfo) => {
     'no Chromium 125 executable: set GPT_LOAD_CHROME_125_EXE or run ' +
       '`npx @puppeteer/browsers install chrome@125`',
   )
-  dataDir = mkdtempSync(resolve(tmpdir(), 'gpt-load-csp-'))
-  server = spawn(binary as string, [], {
-    cwd: dataDir,
-    env: {
-      ...process.env,
-      HOST: '127.0.0.1',
-      PORT: String(port),
-      AUTH_KEY: 'csp-smoke-key',
-    },
-    stdio: 'ignore',
-  })
+  if (externalOrigin === undefined) {
+    dataDir = mkdtempSync(resolve(tmpdir(), 'gpt-load-csp-'))
+    server = spawn(binary as string, [], {
+      cwd: dataDir,
+      env: {
+        ...process.env,
+        HOST: '127.0.0.1',
+        PORT: String(port),
+        AUTH_KEY: 'csp-smoke-key',
+      },
+      stdio: 'ignore',
+    })
+  }
   const deadline = Date.now() + 15_000
   for (;;) {
     try {
