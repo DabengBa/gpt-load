@@ -1,3 +1,4 @@
+import type { MessageId } from '../i18n/message-ids'
 import type { MessageNamespace } from '../i18n/namespaces'
 
 // Per-route behavior shared by both routers. The classic router spreads this
@@ -8,7 +9,7 @@ import type { MessageNamespace } from '../i18n/namespaces'
 // `type` (not `interface`) so the value keeps an implicit index signature and
 // stays assignable to vue-router's RouteMeta Record.
 export type PageRouteMeta = {
-  readonly titleKey?: string
+  readonly titleKey?: MessageId
   readonly requiresAuth?: boolean
   readonly adminOnly?: boolean
   readonly primaryNav?: string

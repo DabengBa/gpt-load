@@ -22,7 +22,7 @@ test('unauthenticated access to a guarded route redirects to login with redirect
   expect(url.pathname).toBe('/login')
   expect(url.searchParams.get('redirect')).toBe(FLAGGED_PATH)
   await expect(page.locator('[data-route="login"]')).toBeVisible()
-  await expect(page.getByLabel('Auth key')).toBeVisible()
+  await expect(page.getByLabel('Sign-in key')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
 })
 

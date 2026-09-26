@@ -13,11 +13,11 @@ import {
 } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
-import { getBrowserLocale } from '@shared/preferences/locale'
 import { pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
 
+import { useT } from './i18n'
 import { astryxRoutePaths } from './route-adapter'
 import { LoginPageStub, NotFoundPageStub, RoutePageStub } from './pages'
 import { useAppServices, type AppServices } from './services'
@@ -58,10 +58,11 @@ const shellStyles = stylex.create({
   },
 })
 
-// Reads the matched route's staticData meta and keeps document.title plus
-// <html lang> in sync; react-intl lands in B8 and will translate titleKey.
+// Reads the matched route's staticData meta and keeps document.title in sync;
+// <html lang> is owned by the i18n controller (app/i18n.tsx emit/setLocale).
 function HeadSync() {
   const router = useRouter()
+  const t = useT()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   useEffect(() => {
     const [, , foundRoute] = router.getMatchedRoutes(pathname)
@@ -69,9 +70,8 @@ function HeadSync() {
       | { meta?: PageRouteMeta }
       | undefined
     const titleKey = staticData?.meta?.titleKey
-    document.title = titleKey === undefined ? 'GPT-Load' : `${titleKey} · GPT-Load`
-    document.documentElement.lang = getBrowserLocale()
-  }, [pathname, router])
+    document.title = titleKey === undefined ? 'GPT-Load' : `${t(titleKey)} · GPT-Load`
+  }, [pathname, router, t])
   return null
 }
 
@@ -118,7 +118,7 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
     path,
     staticData: { pageName: name, meta },
     validateSearch: name === sharedPageRouteNames.login ? loginSearch : undefined,
-    beforeLoad: ({ context, location }) => {
+    beforeLoad: async ({ context, location }) => {
       // TanStack's 'preserve' still matches '/x/' to '/x'; the classic router
       // (strict:true) rejects trailing slashes — keep parity via an explicit
       // canonical-path check before the auth guards.
@@ -134,6 +134,7 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
           replace: true,
         })
       }
+      await context.services.i18n.ensureNamespaces(meta.messageNamespaces ?? [])
     },
     component:
       name === sharedPageRouteNames.login

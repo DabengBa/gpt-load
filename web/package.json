@@ -25,7 +25,8 @@
     "test:astryx-routes": "node --experimental-strip-types --test scripts/astryx-routes.test.ts",
     "e2e:request-log-affinity": "PLAYWRIGHT_PORT=$(node -e \"const net=require('node:net');const server=net.createServer();server.listen(0,'127.0.0.1',()=>{console.log(server.address().port);server.close()})\") playwright test --config playwright.config.ts",
     "type-check": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.astryx.json && tsc --noEmit -p tsconfig.node.json",
-    "verify:i18n-icu": "node scripts/verify-i18n-icu.mjs"
+    "verify:i18n-icu": "node scripts/verify-i18n-icu.mjs",
+    "verify:astryx-i18n": "node scripts/verify-astryx-i18n.mjs"
   },
   "dependencies": {
     "@astryxdesign/core": "0.6.2",

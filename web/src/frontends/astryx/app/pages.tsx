@@ -9,9 +9,11 @@ import {
 } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 
+import { pageRouteMetaFor } from '@shared/routing/route-meta'
 import { decodedPathSegments } from '@shared/routing/safe-redirect'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
 
+import { useT } from './i18n'
 import { useAppServices } from './services'
 import { safeRedirect } from './safe-redirect'
 
@@ -44,6 +46,7 @@ const styles = stylex.create({
 export function LoginPageStub() {
   const services = useAppServices()
   const router = useRouter()
+  const t = useT()
   const search = useSearch({ strict: false }) as { redirect?: unknown }
   const redirect = typeof search.redirect === 'string' ? search.redirect : undefined
   const [key, setKey] = useState('')
@@ -59,7 +62,7 @@ export function LoginPageStub() {
       await services.authSession.login(key)
       router.navigate({ href: safeRedirect(router, redirect) })
     } catch {
-      setError('Authentication failed')
+      setError(t('auth.invalid'))
     } finally {
       setPending(false)
     }
@@ -67,16 +70,16 @@ export function LoginPageStub() {
 
   return (
     <main {...stylex.props(styles.page)} data-route={sharedPageRouteNames.login}>
-      <h1 {...stylex.props(styles.title)}>Sign in</h1>
+      <h1 {...stylex.props(styles.title)}>{t('auth.loginTitle')}</h1>
       <form {...stylex.props(styles.form)} onSubmit={submit}>
         <TextInput
-          label="Auth key"
+          label={t('auth.keyLabel')}
           value={key}
           onChange={(value) => setKey(value)}
           type="password"
           autoComplete="current-password"
         />
-        <Button type="submit" label={pending ? 'Signing in…' : 'Sign in'} />
+        <Button type="submit" label={pending ? t('auth.submitting') : t('auth.submit')} />
         {error !== '' && <p {...stylex.props(styles.error)}>{error}</p>}
       </form>
     </main>
@@ -84,26 +87,31 @@ export function LoginPageStub() {
 }
 
 export function RoutePageStub({ name }: { name: string }) {
+  const t = useT()
+  const titleKey = pageRouteMetaFor(name).titleKey
   return (
     <main {...stylex.props(styles.page)} data-route={name}>
-      <h1 {...stylex.props(styles.title)}>{name}</h1>
+      <h1 {...stylex.props(styles.title)}>{titleKey === undefined ? name : t(titleKey)}</h1>
       <p {...stylex.props(styles.meta)}>React/Astryx preview shell — this page is a stub.</p>
       <p {...stylex.props(styles.meta)}>
-        <Link to="/">Back to home</Link>
+        <Link to="/">{t('notFound.backHome')}</Link>
       </p>
     </main>
   )
 }
 
 export function NotFoundPageStub() {
+  const t = useT()
   const pathname = useLocation({ select: (location) => location.pathname })
   const segments = decodedPathSegments(pathname).join('/')
   return (
     <main {...stylex.props(styles.page)} data-route="not-found">
-      <h1 {...stylex.props(styles.title)}>This page does not exist</h1>
-      <p {...stylex.props(styles.meta)}>Requested path: /{segments}</p>
+      <h1 {...stylex.props(styles.title)}>{t('notFound.title')}</h1>
       <p {...stylex.props(styles.meta)}>
-        <Link to="/">Back to home</Link>
+        {t('notFound.requestedPath')}: /{segments}
+      </p>
+      <p {...stylex.props(styles.meta)}>
+        <Link to="/">{t('notFound.backHome')}</Link>
       </p>
     </main>
   )

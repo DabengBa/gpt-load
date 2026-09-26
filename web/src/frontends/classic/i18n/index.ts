@@ -1,58 +1,13 @@
 import { createI18n } from 'vue-i18n'
 
-import { supportedLocales, type AppLocale } from '@shared/preferences/locale'
+import { catalogLoader, type MessageTree } from '@shared/i18n/catalogs'
+import { localeStorageKey, supportedLocales, type AppLocale } from '@shared/preferences/locale'
 
 export { supportedLocales, type AppLocale } from '@shared/preferences/locale'
 export type { MessageNamespace } from '@shared/i18n/namespaces'
 import { messageNamespaces, type MessageNamespace } from '@shared/i18n/namespaces'
 
-type MessageTree = { [key: string]: string | MessageTree }
-type MessageLoader = () => Promise<{ default: MessageTree }>
-
-const localeStorageKey = 'gpt-load.locale'
 const namespaces: readonly MessageNamespace[] = messageNamespaces
-const coreLoaders: Record<AppLocale, MessageLoader> = {
-  'zh-CN': () => import('@shared/i18n/locales/zh-CN/core'),
-  'en-US': () => import('@shared/i18n/locales/en-US/core'),
-  'ja-JP': () => import('@shared/i18n/locales/ja-JP/core'),
-}
-const namespaceLoaders: Record<MessageNamespace, Record<AppLocale, MessageLoader>> = {
-  import: {
-    'zh-CN': () => import('@shared/i18n/locales/zh-CN/import'),
-    'en-US': () => import('@shared/i18n/locales/en-US/import'),
-    'ja-JP': () => import('@shared/i18n/locales/ja-JP/import'),
-  },
-  group: {
-    'zh-CN': () => import('@shared/i18n/locales/zh-CN/group'),
-    'en-US': () => import('@shared/i18n/locales/en-US/group'),
-    'ja-JP': () => import('@shared/i18n/locales/ja-JP/group'),
-  },
-  'access-keys': {
-    'zh-CN': () => import('@shared/i18n/locales/zh-CN/access-keys'),
-    'en-US': () => import('@shared/i18n/locales/en-US/access-keys'),
-    'ja-JP': () => import('@shared/i18n/locales/ja-JP/access-keys'),
-  },
-  monitor: {
-    'zh-CN': () => import('@shared/i18n/locales/zh-CN/monitor'),
-    'en-US': () => import('@shared/i18n/locales/en-US/monitor'),
-    'ja-JP': () => import('@shared/i18n/locales/ja-JP/monitor'),
-  },
-  models: {
-    'zh-CN': () => import('@shared/i18n/locales/zh-CN/models'),
-    'en-US': () => import('@shared/i18n/locales/en-US/models'),
-    'ja-JP': () => import('@shared/i18n/locales/ja-JP/models'),
-  },
-  'model-prices': {
-    'zh-CN': () => import('@shared/i18n/locales/zh-CN/model-prices'),
-    'en-US': () => import('@shared/i18n/locales/en-US/model-prices'),
-    'ja-JP': () => import('@shared/i18n/locales/ja-JP/model-prices'),
-  },
-  settings: {
-    'zh-CN': () => import('@shared/i18n/locales/zh-CN/settings'),
-    'en-US': () => import('@shared/i18n/locales/en-US/settings'),
-    'ja-JP': () => import('@shared/i18n/locales/ja-JP/settings'),
-  },
-}
 
 function createI18nPlugin(
   initialLocale: AppLocale,
@@ -162,9 +117,7 @@ function createController(
     const existing = pending.get(identity)
     if (existing) return existing
     const request = (async () => {
-      const loader =
-        namespace === 'core' ? coreLoaders[targetLocale] : namespaceLoaders[namespace][targetLocale]
-      const module = await loader()
+      const module = await catalogLoader(targetLocale, namespace)()
       plugin.global.mergeLocaleMessage(targetLocale, module.default)
       loaded.add(identity)
     })().finally(() => pending.delete(identity))
@@ -231,7 +184,7 @@ export async function createAppI18n(
   const localesToLoad = locale === 'en-US' ? (['en-US'] as const) : ([locale, 'en-US'] as const)
   const entries = await Promise.all(
     localesToLoad.map(
-      async (candidate) => [candidate, (await coreLoaders[candidate]()).default] as const,
+      async (candidate) => [candidate, (await catalogLoader(candidate, 'core')()).default] as const,
     ),
   )
   const messages = Object.fromEntries(entries) as Partial<Record<AppLocale, MessageTree>>

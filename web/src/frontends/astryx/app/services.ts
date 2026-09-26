@@ -10,13 +10,14 @@ import {
   createUnsavedChangesController,
   type UnsavedChangesController,
 } from '@shared/controllers/unsaved-changes'
-import { getBrowserLocale } from '@shared/preferences/locale'
+import type { AppI18n } from './i18n'
 
 export interface AppServices {
   readonly queryClient: QueryClient
   readonly apiClient: ApiClientWithResponse
   readonly authSession: AuthSession
   readonly unsavedChanges: UnsavedChangesController
+  readonly i18n: AppI18n
 }
 
 function getBrowserStorage(name: 'localStorage' | 'sessionStorage'): Storage | undefined {
@@ -31,6 +32,9 @@ export interface AppServicesOptions {
   // Called when the API client sees a global 401; the composition root wires
   // this to router navigation because services are created before the router.
   onSessionCleared(currentHref: string): void
+  // The resolved locale controller — created before services in main.tsx so
+  // the api client's locale header follows locale switches.
+  i18n: AppI18n
 }
 
 export function createAppServices(options: AppServicesOptions): AppServices {
@@ -48,7 +52,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const apiClient = createApiClient({
     fetch: window.fetch.bind(window),
     getAuthKey: () => authRef.current?.getAuthKey() ?? '',
-    getLocale: () => getBrowserLocale(),
+    getLocale: () => options.i18n.getLocale(),
     onUnauthorized: () => {
       const session = authRef.current
       if (session === undefined) return
@@ -70,7 +74,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   })
   authRef.current = authSession
 
-  return { queryClient, apiClient, authSession, unsavedChanges }
+  return { queryClient, apiClient, authSession, unsavedChanges, i18n: options.i18n }
 }
 
 const AppServicesContext = createContext<AppServices | null>(null)

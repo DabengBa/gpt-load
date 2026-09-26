@@ -157,10 +157,10 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** cookie=astryx 访问 `/settings` 未登录 -> 同文档内跳 `/login?redirect=…`,表单可用;`/settings/`、`/SETTINGS` -> not-found stub。
 
 ### Task B8: react-intl 运行时 + Astryx 组件文案 + `verify:astryx-i18n`
-- [ ] **Done**
-- **Scope:** `shared/i18n` loader:嵌套 catalog 拍平点路径 key(与 classic key 一致)、按路由 `beforeLoad` 懒加载命名空间、每命名空间先合 en-US 再叠当前语言、`IntlProvider`+命令式 `createIntl` 实例、`useT()` helper、`onError` dev/test 抛 `MISSING_TRANSLATION`/`FORMAT_ERROR`、生产记日志;`MessageId` 类型由 en-US 拍平 catalog 派生并测 tsc 成本(不行则退回 string+parity 脚本,记入 gate);`InternationalizationProvider` 接同 locale;`astryx/locales/{zh-CN,ja-JP}.json` 对齐 `@astryxdesign/core/locales/en.json`;`verify:astryx-i18n` key 对齐脚本。
-- **Proof:** `verify:i18n-icu`+`verify:astryx-i18n` 绿;astryx 项目在三语言渲染 shell 无 MISSING/FORMAT 错误(spike f 证据并入)。
-- **PM:** 新 shell 切三语言 -> 界面与 Astryx 组件文案同切。
+- [x] **Done**
+- **Scope:** `shared/i18n/catalogs.ts` 承载 core/namespace loader 表 + `flattenMessages` + `catalogLoader`,classic `i18n/index.ts` 去重引用;`shared/i18n/message-ids.ts` 由 8 个 en-US catalog `import type` 递归出 `MessageId` 联合(tsc 无可见增量:3.6s→3.6s,保留严格类型不回退 string);`PageRouteMeta.titleKey` 收窄为 `MessageId`(双端 router 同受益);`shared/preferences/locale.ts` 导出 `localeStorageKey`。`astryx/app/i18n.tsx`:`createAppI18n`(getBrowserLocale→core+en-US 合并→`subscribe`/`getSnapshot`/`setLocale`/`ensureNamespaces`,pending 去重 + requestedLocale 防乱序,镜像 classic 语义)、`emit()` 同步 `<html lang>` 与命令式 `getIntl()`、`onError` dev/test throw/生产 console、`AppI18nProviders`(IntlProvider+`InternationalizationProvider` 同 locale,`messages={'zh-CN','ja-JP'}` 用上游 shipped catalog)、`useT()`(MessageId+PrimitiveType values→string)。router `beforeLoad` 在 auth 守卫后 `ensureNamespaces(meta.messageNamespaces)`;`HeadSync` 用 t() 翻译 titleKey;stub 页面(login/route/not-found)全部走真实 catalog key。`services.i18n` 注入 services(apiClient getLocale 接 controller);main.tsx 启动序对齐 classic:先 `await createAppI18n()` 再建 services/router。
+- **Proof:** `verify:i18n-icu` 8132 条 PASS;`verify:astryx-i18n` PASS(en/zh-CN/ja-JP 370 key,0 extra;zh-CN/ja-JP 各缺 122 条属上游翻译滞后,per-key en 回退,WARN 不 fail);`astryx-i18n.spec.ts` 4/4(三语言 `/settings` 标题/h1/`html lang` 断言 + reload 切语言);astryx 项目 22/22、classic 58/58 回归;TSC×3/eslint/build 全绿;lazy catalog 在生产构建中仍按 locale×namespace 分 chunk。
+- **PM:** cookie=astryx 访问 `/settings`,三语言下 h1/标题/`html lang` 随 `gpt-load.locale` 切换,无 MISSING/FORMAT。
 
 ### Task B9: shell 对等(AppShell/AuthGate/login/not-found/偏好/密度)
 - [ ] **Done**
