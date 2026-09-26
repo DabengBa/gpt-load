@@ -1,6 +1,9 @@
 // Structural equivalents of a framework router's LocationQuery/LocationQueryRaw
 // so the rules stay framework-free; both routers' query shapes assign to them.
-export type SharedRouteQueryValue = string | null | undefined
+// Numbers appear when a router hands back already-typed values (e.g. TanStack
+// Router re-validates the validated match.search, which carries numbers), so
+// parsers must accept them to stay idempotent.
+export type SharedRouteQueryValue = string | number | null | undefined
 export type SharedRouteQuery = Record<string, SharedRouteQueryValue | readonly SharedRouteQueryValue[]>
 export type SharedRouteQueryRaw = Record<
   string,
@@ -10,7 +13,9 @@ export type SharedRouteQueryRaw = Record<
 const maxCollectionSearchCodePoints = 200
 
 export function scalarRouteQuery(value: SharedRouteQueryValue | readonly SharedRouteQueryValue[]): string | undefined {
-  return typeof value === 'string' ? value : undefined
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return undefined
 }
 
 export function parsePositiveRouteInteger(value: SharedRouteQueryValue | readonly SharedRouteQueryValue[]): number | undefined {
@@ -78,5 +83,6 @@ export function normalizedRouteQueryValue(
   value: SharedRouteQueryValue | readonly SharedRouteQueryValue[],
 ): string {
   if (value === null || value === undefined) return ''
-  return typeof value === 'string' ? value : (value[0] ?? '')
+  if (typeof value === 'number') return String(value)
+  return typeof value === 'string' ? value : String(value[0] ?? '')
 }

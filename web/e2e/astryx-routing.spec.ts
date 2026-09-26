@@ -78,7 +78,7 @@ test('route matching is case-sensitive like the classic router', async ({
 // preference cookie opts into Astryx; /login is flagged, so it serves the
 // Astryx document under the same cookie.
 test('document selection follows the manifest astryx flag', async ({ page }) => {
-  const classic = await page.request.get('/groups', {
+  const classic = await page.request.get('/models', {
     headers: { accept: 'text/html' },
   })
   expect(await classic.text()).toContain('/src/main.ts')

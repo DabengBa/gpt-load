@@ -169,10 +169,10 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** cookie=astryx 登录后 `/settings`/`/login`/404 走查 -> 布局/密度与 classic 一致;偏好面板可切主题/语言/返回经典。
 
 ### Task B10: spike(a) `groups` 集合页(Table,1,000 行,服务端驱动)
-- [ ] **Done**
-- **Scope:** `frontends/astryx/features/groups/` 集合页:`Table` + `sortable`/`filtering`/`pagination`/`stickyColumns` 等插件的受控 `*State`(ADR-0001 服务端分页,禁 `paginateData`);typed search 承载筛选参数;键盘导航;路由标 `astryx:true`。同步产出 spike(e) typed-search 对 `logs`/`group-detail` 的 parity 验证记录。
-- **Proof:** 改写后的 collection e2e 在 astryx 项目绿;1,000 行下交互正常(gate #3)。
-- **PM:** astryx 前端打开 `/groups` -> 排序/筛选/分页/键盘走查与 classic 一致。
+- [x] **Done**
+- **Scope:** `frontends/astryx/features/groups/GroupsView.tsx`:Astryx `Table` 全受控(`useTableSortable` 5 值服务端 sort 枚举映射列+方向、`useTablePagination` 纯受控无 `paginateData`、stickyColumns;filtering 插件为列头绑定形态不匹配 classic 工具栏契约故未用,筛选走 Selector/状态 chip);typed search 由 `validateSearch`+shared `parseGroupCollectionRouteQuery` 承载(search/status/channel_type/sort/page/page_size),URL 为唯一真源;搜索 300ms 去抖、筛选/排序变更重置 page=1、越界页按响应 total_pages 纠偏(服务端回声请求页+空 items,客户端导航修正);React Query 承载 collection+channels;乐观启停+`invalidateGroupCollections`、copy 导航、行动作(enable/disable/copy/detail)、通道图标、凭据健康条、空/无结果态、summary chips。基建:`use-debounced-action`/`use-visible-refetch`/`collection-loading` React port、`ToastHost`(shared toast controller→服务)、`components/ChannelIcon`+`CredentialHealthBar`(React port);channel-icons 注册表+全部 svg/webp 资产从 `frontends/classic/assets` 提升到 `shared/assets/`(classic ChannelIcon 改引,`gateway-clients.ts` 注释同步)。路由层:`/groups` manifest 标 `astryx:true`;`routeViews` 注册表替掉 login 单例判断。**TSR 边界关键修复**:默认 codec JSON 解码 query(`?page=2`→number 2)且 `search.strict` 会把已验证 search 回写——shared query 契约原只收 string 导致 `scalarRouteQuery` 丢弃 number、`page` 恒回落 1、navigate 静默无请求;修复为自定义 `parseSharedRouteSearch`/`stringifySharedRouteSearch`(手写 decodeURIComponent 保 vue-router 语义:`+` 不转空格、重复 key→数组)+`SharedRouteQueryValue` 接受有限 number(validateSearch 幂等性要求,TSR 会用已验证值复验)。`vite.config.ts` `optimizeDeps.entries` 加 `astryx.html` 且 `include` 钉全部 `@astryxdesign/core/*` 深路径+`react/compiler-runtime`/`jsx-runtime`/`jsx-dev-runtime`(babel/plugin-react 注入,crawl 不可见)→消除运行中重优化导致 `.vite/deps` 重建、in-flight 页面 404 的复发性 flake。
+- **Proof:** `astryx-groups.spec.ts` 7/7:summary chip 103/22/25、search 去抖入 URL+服务端参数、status chip/channel_type Selector、受控 sort(Selector+列头双向)、服务端分页+`?page=99` 越界纠偏到末页、键盘可达搜索/行动作、1,000 行 gate(交互正常+确认服务端分页非客户端切片)、空/无结果态+reset filters 双路径。E2E fixture 修正两处:`makeGroups` 索引映射(`Array.from` 传元素非索引曾产 `id:null`/`Group 0NaN`)、disabled 组凭据全 disabled(投影不变式);mock 改为镜像 Go 契约(越界回声请求页+空 items,非钳位)。全量 e2e 92 通过+2 skipped、冷缓存零 pre-transform error;tsc×3/eslint(0)/全部 verify 脚本绿。
+- **PM:** cookie=astryx 打开 `/groups` -> 搜索/筛选/排序/分页/键盘走查与 classic 一致,越界 deep-link 自动纠偏。
 
 ### Task B11: spike(b) 日志详情层(Dialog/BottomSheet/侧栏 swizzle 决策)
 - [ ] **Done**

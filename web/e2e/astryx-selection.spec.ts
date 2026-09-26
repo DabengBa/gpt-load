@@ -9,7 +9,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 // rest of the matrix.
 
 const FLAGGED_PATH = '/settings' // page_routes.json: astryx: true
-const UNFLAGGED_PATH = '/groups'
+const UNFLAGGED_PATH = '/models'
 const UNKNOWN_PATH = '/definitely-not-a-route'
 const COOKIE = 'gpt-load.frontend'
 
@@ -100,7 +100,8 @@ test('preferences switch opts in and flagged routes serve Astryx', async ({
   const cookies = await context.cookies()
   expect(cookies.find((cookie) => cookie.name === COOKIE)?.value).toBe('astryx')
 
-  // /login is unflagged, so the reloaded document stays classic; a flagged
-  // route now serves the Astryx document under the production contract.
+  // The control reloads onto /login — itself a flagged route, so the
+  // reloaded document is already Astryx; a flagged route keeps serving the
+  // Astryx document under the production contract.
   await expectDocument(page, FLAGGED_PATH, ASTRYX_MARKER)
 })

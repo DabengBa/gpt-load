@@ -14,6 +14,10 @@ import {
   createUnsavedChangesController,
   type UnsavedChangesController,
 } from '@shared/controllers/unsaved-changes'
+import {
+  createToastController,
+  type ToastController,
+} from '@shared/controllers/toast'
 import type { AppI18n } from './i18n'
 
 export interface AppServices {
@@ -22,6 +26,7 @@ export interface AppServices {
   readonly authSession: AuthSession
   readonly unsavedChanges: UnsavedChangesController
   readonly importRecovery: ImportRecoveryService
+  readonly toast: ToastController
   readonly i18n: AppI18n
 }
 
@@ -86,12 +91,18 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     clearTimer: (timer) => clearTimeout(timer),
   })
 
+  const toast = createToastController({
+    setTimer: (callback, duration) => window.setTimeout(callback, duration),
+    clearTimer: (timer) => window.clearTimeout(timer),
+  })
+
   return {
     queryClient,
     apiClient,
     authSession,
     unsavedChanges,
     importRecovery,
+    toast,
     i18n: options.i18n,
   }
 }

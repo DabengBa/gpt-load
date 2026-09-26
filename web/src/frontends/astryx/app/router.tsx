@@ -10,19 +10,23 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
 import { pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
+import { parseGroupCollectionRouteQuery } from '@shared/routing/group-collection-route'
+import type { SharedRouteQuery } from '@shared/routing/route-query'
 
 import { useT } from './i18n'
 import { astryxRoutePaths } from './route-adapter'
 import { RoutePageStub } from './pages'
 import { useAppServices, type AppServices } from './services'
+import { ToastHost } from './ToastHost'
 import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
+import { GroupsView } from '../features/groups/GroupsView'
 
 interface RouterContext {
   services: AppServices
@@ -123,10 +127,55 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
       <HeadSync />
       <RouteAnnouncer />
       <ShellOutlet />
+      <ToastHost />
     </div>
   ),
   notFoundComponent: NotFoundView,
 })
+
+// TanStack's default search codec JSON-decodes each value (?page=2 → 2),
+// which the shared vue-router-shaped query contract (strings, duplicate keys
+// as arrays) would silently drop. URLSearchParams can't be used: it maps '+'
+// to space while vue-router keeps it literal — decodeURIComponent by hand.
+function parseSharedRouteSearch(searchStr: string): SharedRouteQuery {
+  const query: SharedRouteQuery = {}
+  const str = searchStr.startsWith('?') ? searchStr.slice(1) : searchStr
+  if (str === '') return query
+  for (const pair of str.split('&')) {
+    if (pair === '') continue
+    const eq = pair.indexOf('=')
+    const rawKey = eq === -1 ? pair : pair.slice(0, eq)
+    const rawValue = eq === -1 ? '' : pair.slice(eq + 1)
+    let key = rawKey
+    let value = rawValue
+    try {
+      key = decodeURIComponent(rawKey)
+      value = decodeURIComponent(rawValue)
+    } catch {
+      // Malformed escapes keep the raw pair — same as vue-router's fallback.
+    }
+    const existing = query[key]
+    query[key] =
+      existing === undefined
+        ? value
+        : Array.isArray(existing)
+          ? [...existing, value]
+          : [existing, value]
+  }
+  return query
+}
+
+function stringifySharedRouteSearch(query: Record<string, unknown>): string {
+  const pairs: string[] = []
+  for (const [key, value] of Object.entries(query)) {
+    if (value === null || value === undefined) continue
+    for (const item of Array.isArray(value) ? value : [value]) {
+      if (item === null || item === undefined) continue
+      pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(item))}`)
+    }
+  }
+  return pairs.length === 0 ? '' : `?${pairs.join('&')}`
+}
 
 function loginSearch(
   search: Record<string, unknown>,
@@ -137,13 +186,29 @@ function loginSearch(
   }
 }
 
+// Typed route search: the shared parser owns the groups collection contract;
+// validateSearch makes match.search carry GroupCollectionFilters.
+function groupsSearch(search: Record<string, unknown>) {
+  return parseGroupCollectionRouteQuery(search as SharedRouteQuery)
+}
+
+const routeViews: Partial<Record<string, () => ReactNode>> = {
+  [sharedPageRouteNames.login]: LoginView,
+  [sharedPageRouteNames.groups]: GroupsView,
+}
+
 const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
   const meta = pageRouteMetaFor(name)
   return createRoute({
     getParentRoute: () => rootRoute,
     path,
     staticData: { pageName: name, meta },
-    validateSearch: name === sharedPageRouteNames.login ? loginSearch : undefined,
+    validateSearch:
+      name === sharedPageRouteNames.login
+        ? loginSearch
+        : name === sharedPageRouteNames.groups
+          ? groupsSearch
+          : undefined,
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })
@@ -157,7 +222,7 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
       await context.services.i18n.ensureNamespaces(meta.messageNamespaces ?? [])
     },
     component:
-      name === sharedPageRouteNames.login ? LoginView : () => <RoutePageStub name={name} />,
+      routeViews[name] ?? (() => <RoutePageStub name={name} />),
   })
 })
 
@@ -170,6 +235,8 @@ export function createAppRouter(services: AppServices) {
     trailingSlash: 'preserve',
     caseSensitive: true,
     scrollRestoration: true,
+    parseSearch: parseSharedRouteSearch,
+    stringifySearch: stringifySharedRouteSearch,
     defaultNotFoundComponent: NotFoundView,
   })
 }

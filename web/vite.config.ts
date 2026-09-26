@@ -49,6 +49,45 @@ export default defineConfig({
       '@shared': fileURLToPath(new URL('./src/shared', import.meta.url)),
     },
   },
+  optimizeDeps: {
+    // Both html entries must be crawled up front; otherwise astryx-only deps
+    // are discovered on first page load and a mid-run re-optimization reloads
+    // in-flight pages (observed flake: .vite/deps pre-transform errors).
+    entries: ['./index.html', './astryx.html'],
+    // Astryx is consumed via deep subpath imports (@astryxdesign/core/Button,
+    // ...) which the crawl can miss behind lazy chunks; pin every one used so
+    // they are bundled in the initial optimization pass.
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      // Injected by babel-plugin-react-compiler / plugin-react transforms, so
+      // the dependency crawl can never see them — pin or they trigger a
+      // mid-run re-optimization on first transformed module.
+      'react/compiler-runtime',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'react-intl',
+      'lucide-react',
+      '@tanstack/react-router',
+      '@tanstack/react-query',
+      '@tanstack/query-core',
+      '@internationalized/date',
+      '@stylexjs/stylex',
+      '@astryxdesign/core',
+      '@astryxdesign/core/Banner',
+      '@astryxdesign/core/Button',
+      '@astryxdesign/core/Card',
+      '@astryxdesign/core/Collapsible',
+      '@astryxdesign/core/IconButton',
+      '@astryxdesign/core/Link',
+      '@astryxdesign/core/Popover',
+      '@astryxdesign/core/TextInput',
+      '@astryxdesign/core/i18n',
+      '@astryxdesign/core/theme',
+      '@astryxdesign/theme-neutral',
+    ],
+  },
   server: {
     fs: {
       allow: devServerFileSystemAllow,

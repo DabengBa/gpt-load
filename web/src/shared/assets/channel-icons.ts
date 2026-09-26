@@ -2,19 +2,19 @@
 // 只是分目录存放，所以合并成一张注册表。两边不得出现同名文件：
 // 需要复用同一个品牌时（Claude Code 用 claude），直接引用渠道那份。
 const rawIcons = {
-  ...import.meta.glob('../../assets/channels/*.svg', {
+  ...import.meta.glob('./channels/*.svg', {
     eager: true,
     query: '?raw',
     import: 'default',
   }),
-  ...import.meta.glob('../../assets/clients/*.svg', {
+  ...import.meta.glob('./clients/*.svg', {
     eager: true,
     query: '?raw',
     import: 'default',
   }),
 }
 
-const rasterIcons = import.meta.glob<string>('../../assets/channels/*.webp', {
+const rasterIcons = import.meta.glob<string>('./channels/*.webp', {
   eager: true,
   query: '?url',
   import: 'default',

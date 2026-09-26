@@ -5,7 +5,7 @@ import {
   channelIconRasterURL,
   namespacedChannelIconMarkup,
   nextChannelIconInstanceId,
-} from './channel-icons'
+} from '@shared/assets/channel-icons'
 
 const props = defineProps<{
   // Always pass channel-definition metadata. Mapping a ChannelID to an asset

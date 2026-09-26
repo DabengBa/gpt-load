@@ -45,7 +45,7 @@ export interface GatewayClient {
   /** 接入步骤条数，文案键为 steps.<id>.s1 … sN。 */
   steps: number
   /**
-   * web/src/assets/clients 或 channels 下的图标名。缺文件时 ChannelIcon
+   * web/src/shared/assets/clients 或 channels 下的图标名。缺文件时 ChannelIcon
    * 自动回退到 mark 字母标，与渠道图标同一套机制。
    */
   icon: string
