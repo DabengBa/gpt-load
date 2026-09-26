@@ -249,3 +249,79 @@ export async function openRequestLogs(page: Page, query = ''): Promise<void> {
   await page.locator('.logs-tab').waitFor()
   await page.waitForLoadState('networkidle')
 }
+
+// B12 variant: rows are timestamped relative to install time and the /api/logs
+// mock honors from_ms/to_ms like the real server, so time-range e2e proves the
+// query params drive the rendered result set.
+export const rangeRowIDs = {
+  recent: requestIDs.mapped,
+  twoDays: requestIDs.plain,
+  old: 'cccccccc-3333-4333-8333-333333333333',
+} as const
+
+const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
+
+export async function installRequestLogRangeRoutes(
+  page: Page,
+): Promise<RequestLogDisplayRoutes> {
+  await page.addInitScript((authKey) => {
+    window.localStorage.setItem('gpt-load.auth-key', authKey)
+  }, ADMIN_KEY)
+
+  const now = Date.now()
+  const rangeRow = (requestID: string, model: string, ageMs: number) => ({
+    ...baseLogItem(requestID),
+    client_model: model,
+    upstream_model: model,
+    upstream_reported_model: model,
+    first_response_ms: 500,
+    duration_ms: 800,
+    completed_at_ms: now - ageMs,
+    group_id: null,
+    credential_id: null,
+    credential_name: '',
+  })
+  const rangeRows = [
+    rangeRow(rangeRowIDs.recent, 'recent-model', 30 * 60 * 1000),
+    rangeRow(rangeRowIDs.twoDays, 'two-days-model', 2 * DAY_MS),
+    rangeRow(rangeRowIDs.old, 'old-model', 10 * DAY_MS),
+  ]
+
+  const logRequests: URL[] = []
+  await page.route(
+    (url) => url.pathname === '/api' || url.pathname.startsWith('/api/'),
+    async (route) => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const path = url.pathname
+
+      if (path === '/api/auth/session') {
+        await route.fulfill(response({ authenticated: true, principal_type: 'admin' }))
+        return
+      }
+      if (path === '/api/logs') {
+        logRequests.push(url)
+        const from = Number(url.searchParams.get('from_ms') ?? NaN)
+        const to = Number(url.searchParams.get('to_ms') ?? NaN)
+        const items =
+          Number.isSafeInteger(from) && Number.isSafeInteger(to)
+            ? rangeRows.filter(
+                (row) => row.completed_at_ms >= from && row.completed_at_ms <= to,
+              )
+            : rangeRows
+        await route.fulfill(response({ items, next_cursor: null }))
+        return
+      }
+      if (path.startsWith('/api/logs/')) {
+        const requestID = path.slice('/api/logs/'.length)
+        await route.fulfill(response(requestLogDetail(requestID)))
+        return
+      }
+
+      await route.fulfill(response({}, 404))
+    },
+  )
+
+  return { logRequests }
+}

@@ -1,8 +1,15 @@
 import * as stylex from '@stylexjs/stylex'
-import { Badge, Skeleton } from '@astryxdesign/core'
+import {
+  Badge,
+  Button,
+  DateTimeInput,
+  Skeleton,
+  type ISODateTimeString,
+} from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { ArrowRight, TriangleAlert } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useIntl } from 'react-intl'
 
 import type { MessageId } from '@shared/i18n/message-ids'
@@ -15,12 +22,21 @@ import {
   requestLogQueryOptions,
 } from '@shared/control/resources/request-logs'
 import { requestLogFirstScreen } from '@shared/domain/monitor/log-format'
+import {
+  dateTimePresets,
+  localDateTimeInput,
+  parseLocalDateTime,
+  resolveDateTimePreset,
+  type DateTimePreset,
+} from '@shared/lib/time'
 import { pagePath } from '@shared/routing/page-routes'
 import {
+  defaultLogRange,
+  parseLogRangeMs,
   parseSelectedRequestId,
   selectedRequestIdParam,
 } from '@shared/routing/request-log-route'
-import type { SharedRouteQuery } from '@shared/routing/route-query'
+import { scalarRouteQuery, type SharedRouteQuery } from '@shared/routing/route-query'
 
 import { useT } from '../../app/i18n'
 import { stringifySharedRouteSearch } from '../../app/search-codec'
@@ -66,6 +82,32 @@ const styles = stylex.create({
     margin: 0,
     fontSize: 'var(--text-heading-2-size, 20px)',
     fontWeight: 650,
+  },
+  filters: {
+    display: 'grid',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    paddingBottom: 4,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: 'var(--color-border-subtle)',
+  },
+  filterRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  filterActions: {
+    display: 'flex',
+    gap: 6,
+    paddingBottom: 2,
+  },
+  chips: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 4,
   },
   list: {
     listStyle: 'none',
@@ -154,6 +196,130 @@ const styles = stylex.create({
 function logTranslator(t: (id: MessageId, values?: Record<string, string | number>) => string) {
   return (key: string, named?: Record<string, string | number>) =>
     t(key as MessageId, named)
+}
+
+interface RangeDraft {
+  /** Applied range the draft was synced from — render-adjust resyncs on change. */
+  key: string
+  from: string
+  to: string
+}
+
+// Time-range filter on a DateTimeInput pair — the classic picker's from/to
+// fields mapped onto the DS component (draft values are the same local
+// YYYY-MM-DDTHH:mm:ss strings classic edits). Draft edits never request;
+// Apply validates and writes from_ms/to_ms, presets apply directly, Reset
+// drops the params so the caller falls back to the default window.
+function LogTimeRangeFilter({
+  appliedRange,
+  onApply,
+  onReset,
+}: {
+  appliedRange: { from_ms: number; to_ms: number }
+  onApply: (range: { from_ms: number; to_ms: number }) => void
+  onReset: () => void
+}) {
+  const t = useT()
+  const rangeKey = `${appliedRange.from_ms}:${appliedRange.to_ms}`
+  const [draft, setDraft] = useState<RangeDraft>(() => ({
+    key: rangeKey,
+    from: localDateTimeInput(appliedRange.from_ms),
+    to: localDateTimeInput(appliedRange.to_ms),
+  }))
+  const [errors, setErrors] = useState<{ from?: MessageId; to?: MessageId }>({})
+  if (draft.key !== rangeKey) {
+    setDraft({
+      key: rangeKey,
+      from: localDateTimeInput(appliedRange.from_ms),
+      to: localDateTimeInput(appliedRange.to_ms),
+    })
+    setErrors({})
+  }
+
+  const setField = (field: 'from' | 'to', value: string | undefined) => {
+    setDraft({ ...draft, [field]: value ?? '' })
+    setErrors({ ...errors, [field]: undefined })
+  }
+
+  const submit = () => {
+    const from = parseLocalDateTime(draft.from)
+    const to = parseLocalDateTime(draft.to)
+    const next: { from?: MessageId; to?: MessageId } = {}
+    if (from === undefined) next.from = 'monitor.logs.errors.dateTime'
+    if (to === undefined) next.to = 'monitor.logs.errors.dateTime'
+    if (from !== undefined && to !== undefined && from.getTime() >= to.getTime()) {
+      next.to = 'monitor.logs.errors.range'
+    }
+    setErrors(next)
+    if (from === undefined || to === undefined || from.getTime() >= to.getTime()) return
+    onApply({ from_ms: from.getTime(), to_ms: to.getTime() })
+  }
+
+  const inputProps = {
+    hasSeconds: true,
+    hourFormat: '24h' as const,
+    hasClear: true,
+    size: 'sm' as const,
+    width: 236,
+  }
+
+  return (
+    <form
+      aria-label={t('monitor.logs.filters.label')}
+      {...stylex.props(styles.filters)}
+      onSubmit={(event) => {
+        event.preventDefault()
+        submit()
+      }}
+    >
+      <div {...stylex.props(styles.filterRow)}>
+        <DateTimeInput
+          {...inputProps}
+          label={t('monitor.logs.filters.from')}
+          value={(draft.from || undefined) as ISODateTimeString | undefined}
+          onChange={(value) => setField('from', value)}
+          status={
+            errors.from !== undefined
+              ? { type: 'error', message: t(errors.from) }
+              : undefined
+          }
+        />
+        <DateTimeInput
+          {...inputProps}
+          label={t('monitor.logs.filters.to')}
+          value={(draft.to || undefined) as ISODateTimeString | undefined}
+          onChange={(value) => setField('to', value)}
+          status={
+            errors.to !== undefined
+              ? { type: 'error', message: t(errors.to) }
+              : undefined
+          }
+        />
+        <span {...stylex.props(styles.filterActions)}>
+          <Button type="submit" size="sm" label={t('monitor.logs.filters.apply')} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            label={t('monitor.logs.filters.reset')}
+            onClick={onReset}
+          />
+        </span>
+      </div>
+      <div role="group" aria-label={t('monitor.logs.filters.quickRanges')} {...stylex.props(styles.chips)}>
+        {dateTimePresets.map((preset) => (
+          <Button
+            key={preset}
+            type="button"
+            variant="ghost"
+            size="sm"
+            label={t(`monitor.logs.filters.quick.${preset}` as MessageId)}
+            onClick={() => onApply(resolveDateTimePreset(preset as DateTimePreset))}
+          />
+        ))}
+      </div>
+    </form>
+  )
 }
 
 function LogRow({ log, onOpen }: { log: RequestLogItemDto; onOpen: () => void }) {
@@ -316,7 +482,21 @@ export function LogsView() {
   const selectedRequestID = parseSelectedRequestId(rawSearch)
   const logsPath = pagePath('logs')
 
-  const logsQuery = useQuery(requestLogQueryOptions(apiClient, {}, undefined))
+  // Classic parity: absent/invalid range params fall back to the default
+  // window, so the list request always carries from_ms/to_ms.
+  const fromMsRaw = scalarRouteQuery(rawSearch.from_ms)
+  const toMsRaw = scalarRouteQuery(rawSearch.to_ms)
+  const appliedRange = useMemo(
+    // Keyed on the raw param strings — the parser only reads those two keys,
+    // and an unchanged URL must not re-seed the default window each render.
+    () =>
+      parseLogRangeMs({ from_ms: fromMsRaw, to_ms: toMsRaw }) ?? defaultLogRange(),
+    [fromMsRaw, toMsRaw],
+  )
+
+  const logsQuery = useQuery(
+    requestLogQueryOptions(apiClient, { ...appliedRange, limit: 20 }, undefined),
+  )
 
   function setSelected(requestID: string | undefined): void {
     // href navigation: the dynamic route tree keeps `search` loosely typed,
@@ -329,6 +509,10 @@ export function LogsView() {
     })
   }
 
+  function navigateSearch(next: SharedRouteQuery): void {
+    void navigate({ href: `${logsPath}${stringifySharedRouteSearch(next)}` })
+  }
+
   const items = logsQuery.data?.items
 
   return (
@@ -338,6 +522,18 @@ export function LogsView() {
           <h1 id="logs-title" {...stylex.props(styles.title)}>
             {t('shell.logs')}
           </h1>
+          <LogTimeRangeFilter
+            appliedRange={appliedRange}
+            onApply={(range) =>
+              navigateSearch({ ...rawSearch, from_ms: range.from_ms, to_ms: range.to_ms })
+            }
+            onReset={() => {
+              const next = { ...rawSearch }
+              delete next.from_ms
+              delete next.to_ms
+              navigateSearch(next)
+            }}
+          />
           {logsQuery.isPending ? (
             <div
               role="status"

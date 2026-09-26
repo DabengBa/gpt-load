@@ -181,10 +181,10 @@ Doc IDs: `feature.frontend-preview-switch`(新增,Task B6)
 - **PM:** cookie=astryx 打开 `/logs` -> 行动作开右侧面板,Tab 困于层内、Esc/scrim 关闭、焦点回触发行,窄屏全幅。
 
 ### Task B12: spike(c) `DateRangeInput` 日志时间过滤(三语言)
-- [ ] **Done**
-- **Scope:** `logs` 时间范围过滤用 Astryx `DateRangeInput`/`DateTimeInput`,接 shared 查询规整;zh-CN/ja-JP 组件文案来自 B8 本地 catalog。
-- **Proof:** astryx 项目 e2e 在三语言下设置/清除时间范围,结果集正确。
-- **PM:** ja-JP 下打开时间过滤 -> Astryx 文案为日语,过滤生效。
+- [x] **Done**
+- **Scope:** `/logs` 加 `LogTimeRangeFilter`(LogsView 内):`DateTimeInput`×2(from/to,`hasSeconds`+`hourFormat=24h`+`hasClear`+`size=sm`)对应 classic picker 的 from/to 字段,草稿值为同一 `YYYY-MM-DDTHH:mm:ss` 本地串;8 个 `dateTimePresets` 快捷 chip(`resolveDateTimePreset` 直写 URL,同 classic shortcut 净效果);`<form>` 承载 Enter-to-apply。`DateRangeInput` 否决:仅日粒度,无法表达 classic 的时分秒精度与 `now` 端点预设。**语义镜像 classic `log-filters.ts`**:draft 编辑不发请求,Apply 校验(`errors.dateTime`/`errors.range` 逐字段 status,from≥to 阻断)后写 `from_ms`/`to_ms`,Reset 删参回落 `defaultLogRange()`;URL 无参/非法时 `parseLogRangeMs` 返 undefined → 始终带默认窗(now−24h..now+24h)请求,与 classic `parseAppliedLogFilterState` 一致。shared `request-log-route.ts` 增 `parseLogRangeMs`(双参规范化整数+from<to)+`defaultLogRange`;draft 经 render-adjust 从 appliedRange 重同步(useMemo 键 raw 参数字串防每渲染重播种默认窗)。`optimizeDeps.include` 钉 `@astryxdesign/core/DateTimeInput`。
+- **Proof:** `astryx-log-time-range.spec.ts` 3/3(fixture 加 `installRequestLogRangeRoutes`:行 `completed_at_ms` 按安装时刻 now−30m/−2d/−10d,mock 按 from_ms/to_ms 真过滤):en-US 首载默认窗(实测 span≈48h)仅 recent 行→键入 ISO 日期+HH:mm:ss 无请求→Apply 后 `from_ms`/`to_ms` 等于键入本地毫秒、2 行(old-model 隐藏)→Reset 删参回默认;zh-CN 断言 `开始时间`/`结束时间`/`选择日期`/`打开日历`/`应用`/`快捷时间范围` 均中文,'7d' chip 直写 ≈7d 窗→2 行;ja-JP 断言 `開始時刻`/`終了時刻`/`日付を選択`/`カレンダーを開く`,from>to 时 Apply 阻断零请求+`終了時刻は開始時刻より後である必要があります。` 入 assertive live region。astryx 43/43、classic 58/58、tsc×3/eslint(0) 绿。
+- **PM:** 三语言下改时间范围 -> 字段/占位/日历开关/预设均为该语言;Apply 生效、Reset 回落默认窗、反向区间被拒。
 
 ### Task B13: gate 度量与记录
 - [ ] **Done**

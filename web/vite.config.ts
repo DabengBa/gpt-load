@@ -79,6 +79,7 @@ export default defineConfig({
       '@astryxdesign/core/Button',
       '@astryxdesign/core/Card',
       '@astryxdesign/core/Collapsible',
+      '@astryxdesign/core/DateTimeInput',
       '@astryxdesign/core/Dialog',
       '@astryxdesign/core/IconButton',
       '@astryxdesign/core/Layout',
