@@ -20,9 +20,9 @@ code:
 ---
 # Astryx + StyleX Migration Plan
 
-**Status:** proposed, not approved. Execution starts only after the go/no-go
-gate in [Phase 1](#phase-1-scaffold-coexistence-and-spikes-gono-go-gate)
-passes and the decision is recorded as an ADR in `.docs/adr/`.
+**Status:** Phase 1 complete (go decision taken on the seven-gate evidence
+recorded in the B13 gate record). Phase 2 domain migrations proceed under the
+rules below.
 
 **Baseline:** all counts below were measured on commit `dcabee7a`
 (2026-09-25). Package facts come from the npm registry and official Astryx,
@@ -444,8 +444,9 @@ keep working, and switching frontends means setting a cookie and reloading.
    `frontendPreference` reads the cookie `gpt-load.frontend` (values
    `classic|astryx`; anything else means classic). The SPA not-found fallback
    uses the same preference once the new entry implements its not-found page
-   in Phase 1. `Cache-Control: no-cache`, CSP, `nosniff`, and `DENY` headers
-   stay identical for both documents.
+   in Phase 1. `Cache-Control: no-cache`, `Vary: Cookie` (the cookie selects
+   the document, so caches must not serve one document for the other), CSP,
+   `nosniff`, and `DENY` headers stay identical for both documents.
 4. **Assets.** Both entries emit into `dist/assets/` with content hashes, so
    the existing `/assets/*filepath` handler (`immutable`) serves both
    unchanged. `favicon.svg` and `theme-bootstrap.js` are shared.
@@ -464,9 +465,14 @@ trailing-slash behavior of both frontends must match it (see
 - **Toggle.** Classic's preferences panel sets `gpt-load.frontend=astryx`
   (`Path=/; SameSite=Strict`) and reloads. The new shell has a matching
   "return to classic" control.
-- **New → unmigrated route.** The new router registers only migrated routes.
-  Links to route names without `astryx: true` render as plain `<a href>` and
-  trigger a full document load, so Go serves classic.
+- **New → unmigrated route.** The new router registers every manifest route
+  (guards, titles, and meta need the match), but an `astryx: false` path must
+  never render inside the astryx document: `app/route-link.tsx` resolves the
+  manifest flag per href and renders a plain `<a>` (document load) for
+  unflagged targets. All navigation entry points use it — the `LinkProvider`
+  adapter, shell nav, not-found links — and programmatic navigations use
+  `window.location.assign/replace`. `RoutePageStub` self-heals with a document
+  navigation if an unflagged path is ever reached anyway.
 - **Classic → migrated route.** Classic stays complete until cutover. In-app
   navigation remains in classic, and the next reload picks up the new
   frontend. Optionally, a classic `beforeEach` can hard-navigate when the
@@ -618,8 +624,19 @@ Parity rules:
   client, while Go (`RedirectTrailingSlash = false`) answers such paths with
   the 404 fallback document. Classic's `strict: true` treats them as not
   found, so the new router must too.
-- Scroll: reset to top only when path, `tab`, or `mode` changes; otherwise
-  restore the saved position (mirrors `scrollBehavior` in `app/router.ts`).
+- Scroll: `scrollRestoration: true` restores positions on history nav; every
+  query-only `navigate` (filters, pagination, canonicalization, detail
+  open/close) passes `resetScroll: false` — matching classic's "same-path
+  query changes keep scroll" behavior.
+- Search codec: `app/search-codec.ts` mirrors vue-router `parseQuery`/
+  `stringifyQuery` exactly (`+`→space pre-split, independent key/value decode,
+  bare key→`null`, duplicate keys→arrays, null-prototype result so `__proto__`
+  stays an own property); `scripts/search-codec.test.ts` pins the contract.
+- `validateSearch` must return a **sparse** object: TanStack writes the
+  validated search back to the URL, so injecting defaults turns clean URLs
+  verbose and makes component canonicalization fire on every load. Views parse
+  defaults from `location.search` themselves; `validateSearch` only emits the
+  canonical serialization of what was present.
 - Titles and `<html lang>` update on navigation; announce route changes with
   `useAnnounce`.
 - Port the existing `safeRedirect` cases verbatim as shared tests before
@@ -639,12 +656,10 @@ providers are kept on the same locale.
 ### Runtime shape
 
 - **Provider.** `IntlProvider` with `locale`, `defaultLocale="en-US"`, and
-  the merged message map. There is also one imperative instance
-  (`createIntl` + `createIntlCache`) for code outside components: route
-  titles in `beforeLoad`, and presenters such as
-  `features/subscription-error-presenter.ts`. It is rebuilt whenever the
-  locale or loaded namespaces change and passed to the provider, so both
-  paths render identical strings.
+  the merged message map. Callers outside components resolve messages
+  through the controller's sync API (`t()` is render-path only); a separate
+  imperative `createIntl` instance was removed as dead weight in final
+  review — do not reintroduce one without a real consumer.
 - **Keys.** Catalogs stay as the nested TypeScript `MessageTree` modules in
   `shared/i18n/locales`. The loader flattens them to dot paths such as
   `home.ledger.title`, which are the key strings classic already uses, so no
