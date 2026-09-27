@@ -23,6 +23,13 @@ import {
   parseGroupCollectionRouteQuery,
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
+import {
+  normalizeGroupQuery as normalizeGroupDetailQuery,
+} from '@shared/routing/group-detail-route'
+import {
+  parseImportRouteQuery,
+  serializeImportRouteQuery,
+} from '@shared/routing/import-route'
 import { parseHomeRouteQuery, serializeHomeRouteQuery } from '@shared/routing/home-route'
 import { parseModelsRouteQuery, serializeModelsRouteQuery } from '@shared/routing/models-route'
 import {
@@ -226,6 +233,33 @@ function scheduleSearch(search: Record<string, unknown>) {
   return scheduleMonitorQuery(parseScheduleMonitorState(search as SharedRouteQuery))
 }
 
+// Sparse canonical search: the shared group-detail codec owns tab +
+// credential/discovery sub-queries; defaults serialize away.
+function groupDetailSearch(search: Record<string, unknown>) {
+  return normalizeGroupDetailQuery(search as SharedRouteQuery)
+}
+
+// Sparse canonical search: mode=existing forces off the new-mode params and
+// vice versa; a bare `group_id` implies existing (classic parity).
+function importSearch(search: Record<string, unknown>) {
+  return serializeImportRouteQuery(parseImportRouteQuery(search as SharedRouteQuery))
+}
+
+const searchValidators: Partial<
+  Record<string, (search: Record<string, unknown>) => Record<string, unknown>>
+> = {
+  [sharedPageRouteNames.login]: loginSearch,
+  [sharedPageRouteNames.home]: homeSearch,
+  [sharedPageRouteNames.accessKeys]: accessKeysSearch,
+  [sharedPageRouteNames.groups]: groupsSearch,
+  [sharedPageRouteNames.groupDetail]: groupDetailSearch,
+  [sharedPageRouteNames.import]: importSearch,
+  [sharedPageRouteNames.settings]: settingsSearch,
+  [sharedPageRouteNames.models]: modelsSearch,
+  [sharedPageRouteNames.monitor]: monitorSearch,
+  [sharedPageRouteNames.schedule]: scheduleSearch,
+}
+
 const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.home]: HomeView,
@@ -244,24 +278,7 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
     getParentRoute: () => rootRoute,
     path,
     staticData: { pageName: name, meta },
-    validateSearch:
-      name === sharedPageRouteNames.login
-        ? loginSearch
-        : name === sharedPageRouteNames.home
-          ? homeSearch
-          : name === sharedPageRouteNames.accessKeys
-            ? accessKeysSearch
-            : name === sharedPageRouteNames.groups
-              ? groupsSearch
-              : name === sharedPageRouteNames.settings
-                ? settingsSearch
-                : name === sharedPageRouteNames.models
-                  ? modelsSearch
-                  : name === sharedPageRouteNames.monitor
-                    ? monitorSearch
-                    : name === sharedPageRouteNames.schedule
-                      ? scheduleSearch
-                      : undefined,
+    validateSearch: searchValidators[name],
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })

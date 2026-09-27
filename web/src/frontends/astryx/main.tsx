@@ -28,12 +28,11 @@ const routerRef: { current?: AppRouter } = {}
 
 const services: AppServices = createAppServices({
   i18n,
-  onSessionCleared: (currentHref) => {
-    void routerRef.current?.navigate({
+  onSessionCleared: (currentHref) =>
+    routerRef.current?.navigate({
       href: `/login?redirect=${encodeURIComponent(currentHref)}`,
       replace: true,
-    })
-  },
+    }),
 })
 
 const appRouter = createAppRouter(services)

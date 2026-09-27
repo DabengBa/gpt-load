@@ -41,7 +41,9 @@ function getBrowserStorage(name: 'localStorage' | 'sessionStorage'): Storage | u
 export interface AppServicesOptions {
   // Called when the API client sees a global 401; the composition root wires
   // this to router navigation because services are created before the router.
-  onSessionCleared(currentHref: string): void
+  // Returning the navigation promise lets the caller keep the unsaved-changes
+  // bypass armed until the blocker has evaluated the redirect.
+  onSessionCleared(currentHref: string): unknown
   // The resolved locale controller — created before services in main.tsx so
   // the api client's locale header follows locale switches.
   i18n: AppI18n
@@ -55,6 +57,15 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     },
   })
   const unsavedChanges = createUnsavedChangesController()
+  // Recovery drafts live in sessionStorage to match the classic bootstrap —
+  // the draft is per-tab flow state and must not leak across sessions.
+  const importRecovery = createImportRecoveryService({
+    storage: getBrowserStorage('sessionStorage'),
+    now: () => Date.now(),
+    setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+    clearTimer: (timer) => clearTimeout(timer),
+  })
+  importRecovery.sweep()
   // The api client needs the session's key getter, the session needs the
   // client for validation — the ref breaks the construction cycle.
   const authRef: { current?: AuthSession } = {}
@@ -66,8 +77,14 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     onUnauthorized: () => {
       const session = authRef.current
       if (session === undefined) return
+      // Classic order: capture the in-flight import draft, arm the blocker
+      // bypass, clear the session, then redirect to login.
+      importRecovery.captureForUnauthorized()
+      unsavedChanges.bypassNext()
       session.clear()
-      options.onSessionCleared(`${window.location.pathname}${window.location.search}`)
+      void Promise.resolve(
+        options.onSessionCleared(`${window.location.pathname}${window.location.search}`),
+      ).finally(() => unsavedChanges.consumeBypass())
     },
   })
 
@@ -83,13 +100,6 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       }),
   })
   authRef.current = authSession
-
-  const importRecovery = createImportRecoveryService({
-    storage: getBrowserStorage('localStorage'),
-    now: () => Date.now(),
-    setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
-    clearTimer: (timer) => clearTimeout(timer),
-  })
 
   const toast = createToastController({
     setTimer: (callback, duration) => window.setTimeout(callback, duration),
