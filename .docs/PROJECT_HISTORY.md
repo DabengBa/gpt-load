@@ -6,6 +6,43 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-09-27 — Astryx migration: Phase 3 (operational domains)
+
+The third slice migrated `access-keys`, the `monitor` host (health, usage,
+and inspector tabs), `/logs` at full parity (replacing the Phase 1 spike
+subset), and the `/schedule` dispatch center onto the Astryx frontend on
+branch `docs/astryx-migration-plan`:
+
+- **Shared codec extraction:** every route codec both frontends consume now
+  lives in `shared/routing/` (`monitor-route`, `logs-route`,
+  `access-key-collection-route`) plus `shared/domain/monitor/log-filters` and
+  `shared/control/mutation-outcome`; the classic files are one-line
+  re-exports, so query semantics cannot drift between frontends.
+- **Logs parity:** full filter surface + advanced drawer, cursor pagination
+  with rollback-on-failure, applied-filter chips, detail drawer with deep
+  links, route identity affordances, access-key scoping, and responsive card
+  layout — all asserted by a 16-test parity suite.
+- **Schedule state machine:** draft serialization/hydration
+  (`schedule_draft`), revision-aware PATCH with conflict preservation,
+  optimistic toggles, probe-one/probe-all flows, and recovery actions ported
+  faithfully; `SchedulePanelDetail` keeps classic's `#priority-N` input ids
+  via a native-input primitive because Astryx `TextInput` overwrites caller
+  ids.
+- **New binding precedents:** TanStack navigation helpers need explicit
+  `null` clear sentinels — passing `undefined` re-triggers
+  `param = currentRoute` defaults and silently no-ops (the access-keys drawer
+  bug); watch→effect conversions express guarded draft sync as render-phase
+  adjustment plus queued post-commit emits.
+- **Evidence:** astryx e2e 126/126, codec unit tests 25/25 (`logs-route` 13 +
+  `monitor-route` 12, added in final review to close a proof gap), real
+  linux-binary CSP 30/30 across bundled Chromium, Chrome 125, and system
+  Chrome covering all newly flagged routes, tsc×3 + eslint clean, Go
+  frontend-selection tests green. Commits: `3a019b90`, `781ef55b`,
+  `ef97aaa7`, `ac540c16`, `2fdd51c6`.
+
+Owner doc: `.docs/tech/astryx-migration-plan.md` (Phase 3 outcome). Phase 4
+(`groups` + `import`, the highest-coupling domains) follows the same plan.
+
 ## 2026-09-27 — Astryx migration: Phase 2 (low-coupling domains)
 
 The second slice migrated `settings`, `models` (with the model-prices editor

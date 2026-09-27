@@ -891,6 +891,34 @@ files. Parity checklists: `db/features/monitor-navigation-shortcuts.md`,
 `db/features/dispatch-reasoning-policy.md`, plus the
 `request-log-*`/`schedule-*` e2e specs.
 
+**Phase 3 outcome (shipped on `docs/astryx-migration-plan`):** `access-keys`,
+the `monitor` host with all three tabs (health, usage, inspector), `/logs`
+full parity (replacing the Phase 1 spike subset), and `/schedule` dispatch
+center are migrated; `page_routes.json` carries `astryx: true` on
+`/access-keys`, `/monitor`, `/logs`, and `/schedule`. The classic route
+codecs moved to shared modules (`routing/monitor-route`, `routing/logs-route`,
+`routing/access-key-collection-route`, `domain/monitor/log-filters`,
+`control/mutation-outcome`) and classic now re-exports them, so the two
+frontends cannot drift on query semantics. Evidence: astryx e2e 126/126
+(schedule 7/7, request-log parity 16/16, monitor 14/14, access-keys 10/10),
+codec unit tests 25/25 (`test:logs-route` 13 + `test:monitor-route` 12, the
+latter added by final review to close a proof gap), real-device CSP 30/30 on
+a WSL2 linux binary across bundled Chromium, real Chrome 125, and system
+Chrome — including every newly flagged route — tsc×3 + eslint clean, Go
+page_routes/frontend-selection tests green. Commits: `3a019b90`
+(access-keys), `781ef55b` (monitor host + health + usage), `ef97aaa7`
+(inspector), `ac540c16` (logs parity), `2fdd51c6` (schedule). Two precedents
+added:
+
+- **TanStack default-parameter trap:** passing `undefined` through a
+  navigation helper re-triggers `param = currentRoute` defaults and produces
+  a same-URL navigation that silently no-ops (the access-keys drawer bug).
+  Explicit "clear" sentinels (`null`) are required at those seams.
+- **Watch→effect conversion for guarded mutations:** classic's watch-based
+  draft/revision sync ports to React as render-phase adjustment plus
+  queued post-commit emits (`queuedDraftEmit`/`pendingRestore`), never
+  `setState` in effect bodies — the lint rule enforces the boundary.
+
 ### Phase 4: Highest-coupling domains
 
 `groups` (9.6k; the credentials and subscription account flows are the
