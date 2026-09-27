@@ -862,6 +862,26 @@ exemption). Suites at close: astryx 53/53, classic 58/58, CSP 15/15, codec
 (4.7k), `home` (4.7k). Parity checklists: `db/features/model-test-alias.md`,
 `db/features/usage-timing-metrics.md`.
 
+**Phase 2 outcome (shipped on `docs/astryx-migration-plan`):** `settings`,
+`models` (model-prices embedded), and `home` are migrated; `page_routes.json`
+carries `astryx: true` on `/login`, `/`, `/groups`, `/logs`, `/models`, and
+`/settings`. Classic `model dialogs` bound to group-detail/monitor stay out of
+the `/models` slice per the domain boundary. Evidence: astryx e2e 79/79,
+classic e2e 58/58, go-csp 14/14 against a real WSL2 linux binary, ICU 8132
+messages, tsc×3 + eslint clean. Three conventions landed here become binding
+precedent for Phases 3–4:
+
+- **React Compiler + mutable controllers:** shared controllers must publish a
+  memoized snapshot consumed via `useSyncExternalStore`; render code reads
+  `snapshot.*` and never calls `controller.get*()` — the compiler can freeze
+  stable-reference method calls (root-caused in the models drawer).
+- **Vue watch → render-phase adjustment:** cross-effect state mirrors
+  (selection loss, config edits, route changes) use React render-phase
+  reconciliation plus post-commit effects, not `setState` inside `useEffect`.
+- **Sensitive-operation state machines live in shared controllers:** reveal/
+  copy/quick-import identity guards, aborts, and feedback timers are
+  framework-free (`gateway-actions`), with DOM-bound work injected as ops.
+
 ### Phase 3: Operational domains
 
 `access-keys` (4.9k), then `monitor` together with its three routes
