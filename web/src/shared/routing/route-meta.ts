@@ -54,11 +54,13 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
     primaryNav: 'access-keys',
     messageNamespaces: ['access-keys'],
   },
+  // InspectorTab 的 route strategy 文案来自 settings.runtime.routeStrategies.*
+  // （与 classic InspectorTab.vue 同一跨域引用），必须随 monitor 一起装载。
   monitor: {
     titleKey: 'shell.monitor',
     requiresAuth: true,
     primaryNav: 'monitor',
-    messageNamespaces: ['monitor'],
+    messageNamespaces: ['monitor', 'settings'],
   },
   schedule: {
     titleKey: 'shell.schedule',

@@ -24,6 +24,7 @@ import type { MessageId } from '@shared/i18n/message-ids'
 import { useAppServices } from '../../app/services'
 import { useT } from '../../app/i18n'
 import { HealthTab, type HealthTabHandle } from './HealthTab'
+import { InspectorTab } from './InspectorTab'
 import { UsageTab, type UsageTabHandle } from './UsageTab'
 
 const styles = stylex.create({
@@ -86,11 +87,6 @@ const styles = stylex.create({
       default: 'var(--detail-panel-padding-top, var(--space-5))',
       '@media (max-width: 800px)': 'var(--detail-panel-padding-top-compact, var(--space-4))',
     },
-  },
-  stub: {
-    paddingBlock: 'var(--space-6)',
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-sm)',
   },
 })
 
@@ -271,10 +267,7 @@ export function MonitorView() {
               />
             )}
             {activeTab === 'usage' && <UsageTab handleRef={usageTabRef} />}
-            {activeTab === 'inspector' && (
-              // InspectorTab lands in Task D.
-              <div {...stylex.props(styles.stub)}>{t('monitor.tabs.inspector')}</div>
-            )}
+            {activeTab === 'inspector' && <InspectorTab />}
           </div>
         )}
       </div>

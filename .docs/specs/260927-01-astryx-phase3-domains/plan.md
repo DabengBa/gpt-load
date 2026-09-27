@@ -31,11 +31,11 @@ Doc IDs: none(`.docs/db` parity 清单只被消费、不改内容)
 - **Evidence:** `astryx-monitor.spec.ts` usage 段 4/4(render 全区块含 quality/distribution/breakdown、range Selector+metric radio 写 canonical query 并重发、filter panel 经 `panel=filters` apply 落 `upstream_model`/`group_id`、access_key 隐藏 group/credential 字段);astryx 全套 99/99;tsc×3+eslint 净。
 
 ### Task D: InspectorTab —— 巡检 tab
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `InspectorTab.tsx`(1586,本域最大文件)+ `InspectorForm`;巡检资源 queryOptions/mutation 缺口补抽。
 - **Proof:** `astryx-monitor.spec.ts` inspector 段 —— `?tab=inspector` 渲染、表单校验、运行/结果呈现、错误态。
 - **PM:** `/monitor?tab=inspector` 可发起巡检并看到结果与错误提示,与 classic 一致。
-- **Evidence:** (待填)
+- **Evidence:** `astryx-monitor.spec.ts` inspector 段 4/4(表单提交落 canonical query 并发 `POST /api/route/inspect`、`run=1` 深链挂载即巡检、空表单校验拦截、500 → 错误态+retry);双 watch 语义以 render-adjustment + liveRef 镜像保留(owner/abort/同请求去重/not-routable 聚焦);route-meta monitor 补 `settings` 命名空间(`routeStrategies` 跨域键,与 group-detail 先例一致);InspectorLedger 复用 ledger overflow 模式;tsc×3+eslint 净,monitor spec 14/14。
 
 ### Task E: logs 全量 parity —— LogsTab + 筛选/详情抽屉,替换 spike 子集
 - [ ] **Done**

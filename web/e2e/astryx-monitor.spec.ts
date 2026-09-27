@@ -5,8 +5,8 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 // principals are pinned to usage and must not issue the admin-only /api/health
 // call.
 //
-// This file currently covers Task B (host + health tab); the usage and
-// inspector sections land with Tasks C and D.
+// This file covers Task B (host + health tab), Task C (usage tab), and Task D
+// (inspector tab).
 
 const now = 1730000000000
 
@@ -591,4 +591,213 @@ test('access_key usage hides cross-principal filter fields', async ({ page }) =>
   // selfScoped: group/channel/credential fields are absent.
   await expect(panel.getByRole('combobox', { name: 'Group' })).not.toBeVisible()
   await expect(panel.getByLabel(/^Credential/)).not.toBeVisible()
+})
+
+// --- Inspector tab (Task D) --------------------------------------------------
+
+// Strict projector contract: configured_share per priority tier must total ~1
+// (or 0) and entry_cooldown_until_ms must be strictly after observed_at_ms.
+function inspectPayload(): Record<string, unknown> {
+  return {
+    observed_at_ms: now,
+    snapshot_revision: 7,
+    route_strategy: 'native_first',
+    protocol: 'openai-completions',
+    operation: 'chat_completion',
+    route_requirement: 'any',
+    external_model: 'gpt-4o',
+    access_key: { id: 1, name: 'prod key', status: 'active' },
+    routable: true,
+    reason_code: null,
+    groups: [
+      {
+        group_id: 1,
+        group_name: 'prod',
+        channel_id: 'openai',
+        route_mode: 'native',
+        route_requirement_satisfied: true,
+        entry_id: 'entry-1',
+        upstream_model: 'gpt-4o',
+        entry_weight: 50,
+        priority: 1,
+        configured_share: 1,
+        effective_share: 1,
+        entry_cooldown_until_ms: null,
+        included: true,
+        routable: true,
+        reason_code: null,
+        credentials: [
+          { credential_id: 11, available: true, reason_code: null, cooldown_until_ms: null },
+          {
+            credential_id: 12,
+            available: false,
+            reason_code: 'credential_cooldown',
+            cooldown_until_ms: now + 600_000,
+          },
+        ],
+      },
+      {
+        group_id: 2,
+        group_name: 'staging',
+        channel_id: 'openai',
+        route_mode: 'converted',
+        route_requirement_satisfied: true,
+        entry_id: 'entry-2',
+        upstream_model: 'gpt-4o',
+        entry_weight: 10,
+        priority: 2,
+        configured_share: 0,
+        effective_share: 0,
+        entry_cooldown_until_ms: null,
+        included: false,
+        routable: false,
+        reason_code: 'entry_weight_zero',
+        credentials: [],
+      },
+    ],
+  }
+}
+
+interface InspectorRequests {
+  inspectBodies: Record<string, unknown>[]
+}
+
+async function mockInspector(
+  page: Page,
+  options: { inspectStatus?: number } = {},
+): Promise<InspectorRequests> {
+  const requests: InspectorRequests = { inspectBodies: [] }
+  await page.addInitScript((key) => {
+    window.localStorage.setItem('gpt-load.auth-key', key)
+  }, 'e2e-auth-key')
+
+  await page.route('**/api/**', async (route: Route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+    const fulfill = (data: unknown, status = 200) =>
+      route.fulfill({
+        status,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 0, message: 'ok', data }),
+      })
+
+    if (path === '/api/auth/session') {
+      await fulfill({ authenticated: true, principal_type: 'admin' })
+      return
+    }
+    if (path === '/api/health') {
+      await fulfill(healthPayload())
+      return
+    }
+    if (path === '/api/route/inspect') {
+      requests.inspectBodies.push(request.postDataJSON() as Record<string, unknown>)
+      const status = options.inspectStatus ?? 200
+      if (status === 200) {
+        await fulfill(inspectPayload())
+      } else {
+        await route.fulfill({
+          status,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 1, message: 'inspect failed' }),
+        })
+      }
+      return
+    }
+    if (path === '/api/groups/options') {
+      await fulfill([prodGroupOption])
+      return
+    }
+    if (path === '/api/channels') {
+      await fulfill({ items: [openaiChannel], total: 1 })
+      return
+    }
+    if (path === '/api/access-keys/options') {
+      await fulfill([{ id: 1, name: 'prod key', status: 'active' }])
+      return
+    }
+    await fulfill({})
+  })
+  return requests
+}
+
+test('inspector form submits through the canonical query and renders the result', async ({
+  page,
+}) => {
+  const requests = await mockInspector(page)
+  await page.goto('/monitor?tab=inspector', { waitUntil: 'load' })
+  await expectAstryxDocument(page)
+  await expect(page).toHaveURL(/tab=inspector/)
+
+  await expect(
+    page.getByRole('heading', { name: 'Enter conditions to inspect the route' }),
+  ).toBeVisible()
+
+  await page.getByRole('combobox', { name: 'Access key' }).click()
+  await page.getByRole('option', { name: /prod key/ }).click()
+  await page.getByRole('combobox', { name: 'Protocol' }).click()
+  await page.getByRole('option', { name: 'openai-completions' }).click()
+  await page.getByRole('combobox', { name: 'Client model' }).click()
+  await page.getByRole('option', { name: 'gpt-4o', exact: true }).click()
+
+  await page.getByRole('button', { name: 'Inspect current route' }).click()
+
+  // The submit rewrites the canonical query; the auto-run watch then inspects.
+  await expect(page).toHaveURL(/tab=inspector/)
+  await expect(page).toHaveURL(/protocol=openai-completions/)
+  await expect(page).toHaveURL(/external_model=gpt-4o/)
+  await expect(page).toHaveURL(/access_key_id=1/)
+  await expect(page).toHaveURL(/run=1/)
+  await expect.poll(() => requests.inspectBodies.length).toBe(1)
+  expect(requests.inspectBodies[0]).toEqual({
+    protocol: 'openai-completions',
+    external_model: 'gpt-4o',
+    access_key_id: 1,
+  })
+
+  await expect(
+    page.getByRole('heading', { name: 'The current request can be routed' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Candidate Groups' }),
+  ).toBeVisible()
+  const excluded = page.locator('section[aria-labelledby="route-exclusions-title"]')
+  await expect(excluded.getByText('staging', { exact: true }).first()).toBeVisible()
+})
+
+test('inspector deep link with run=1 inspects on mount', async ({ page }) => {
+  const requests = await mockInspector(page)
+  await page.goto(
+    '/monitor?tab=inspector&protocol=openai-completions&external_model=gpt-4o&access_key_id=1&run=1',
+    { waitUntil: 'load' },
+  )
+  await expectAstryxDocument(page)
+  await expect.poll(() => requests.inspectBodies.length).toBe(1)
+  await expect(
+    page.getByRole('heading', { name: 'The current request can be routed' }),
+  ).toBeVisible()
+})
+
+test('inspector validation blocks submission and reports field errors', async ({ page }) => {
+  const requests = await mockInspector(page)
+  await page.goto('/monitor?tab=inspector', { waitUntil: 'load' })
+  await expectAstryxDocument(page)
+
+  await page.getByRole('button', { name: 'Inspect current route' }).click()
+  await expect(page.getByText('Select a valid protocol.')).toBeVisible()
+  await expect(page.getByText('Reselect an existing access key.')).toBeVisible()
+  expect(requests.inspectBodies.length).toBe(0)
+  await expect(page).not.toHaveURL(/run=1/)
+})
+
+test('inspector failure shows the error state and retries', async ({ page }) => {
+  const requests = await mockInspector(page, { inspectStatus: 500 })
+  await page.goto(
+    '/monitor?tab=inspector&protocol=openai-completions&external_model=gpt-4o&access_key_id=1&run=1',
+    { waitUntil: 'load' },
+  )
+  await expectAstryxDocument(page)
+  await expect.poll(() => requests.inspectBodies.length).toBe(1)
+  await expect(
+    page.getByRole('heading', { name: 'Unable to inspect the current route.' }),
+  ).toBeVisible()
 })
