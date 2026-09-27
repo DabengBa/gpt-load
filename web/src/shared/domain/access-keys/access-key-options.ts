@@ -7,8 +7,8 @@ export function accessKeyProtocolOptions(): AccessProtocol[] {
 }
 
 export function buildAccessKeyProtocolCandidates(
-  groups: GroupOptionDto[],
-  channels: ChannelDto[],
+  groups: readonly GroupOptionDto[],
+  channels: readonly ChannelDto[],
   selectedGroupIDs: readonly number[] = [],
 ): AccessProtocol[] {
   const selected = selectAccessKeyGroups(groups, selectedGroupIDs)
@@ -23,8 +23,8 @@ export function buildAccessKeyProtocolCandidates(
 }
 
 export function buildAccessKeyModelOptions(
-  groups: GroupOptionDto[],
-  preserved: string[] = [],
+  groups: readonly GroupOptionDto[],
+  preserved: readonly string[] = [],
   selectedGroupIDs: readonly number[] = [],
 ): string[] {
   const values: string[] = []
@@ -36,9 +36,9 @@ export function buildAccessKeyModelOptions(
 }
 
 function selectAccessKeyGroups(
-  groups: GroupOptionDto[],
+  groups: readonly GroupOptionDto[],
   selectedGroupIDs: readonly number[],
-): GroupOptionDto[] {
+): readonly GroupOptionDto[] {
   if (selectedGroupIDs.length === 0) return groups
   const selected = new Set(selectedGroupIDs)
   return groups.filter(({ id }) => selected.has(id))

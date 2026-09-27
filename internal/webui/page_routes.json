@@ -6,7 +6,7 @@
     { "name": "import", "path": "/import" },
     { "name": "groups", "path": "/groups", "astryx": true },
     { "name": "group-detail", "path": "/groups/:id" },
-    { "name": "access-keys", "path": "/access-keys" },
+    { "name": "access-keys", "path": "/access-keys", "astryx": true },
     { "name": "monitor", "path": "/monitor" },
     { "name": "schedule", "path": "/schedule" },
     { "name": "logs", "path": "/logs", "astryx": true },

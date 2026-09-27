@@ -15,6 +15,11 @@ import { pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
 import {
+  parseAccessKeyCollectionRouteQuery,
+  parseAccessKeyDrawerRoute,
+  serializeAccessKeyCollectionRouteQuery,
+} from '@shared/routing/access-key-collection-route'
+import {
   parseGroupCollectionRouteQuery,
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
@@ -41,6 +46,7 @@ import { ToastHost } from './ToastHost'
 import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
+import { AccessKeysView } from '../features/access-keys/AccessKeysView'
 import { GroupsView } from '../features/groups/GroupsView'
 import { HomeView } from '../features/home/HomeView'
 import { LogsView } from '../features/logs/LogsView'
@@ -203,9 +209,20 @@ function homeSearch(search: Record<string, unknown>) {
   return serializeHomeRouteQuery(parseHomeRouteQuery(search as SharedRouteQuery))
 }
 
+// Sparse canonical search: q/status/page serialize away at defaults; the
+// drawer pair (action, access_key_id) only survives a well-formed parse.
+function accessKeysSearch(search: Record<string, unknown>) {
+  const query = search as SharedRouteQuery
+  return serializeAccessKeyCollectionRouteQuery(
+    parseAccessKeyCollectionRouteQuery(query),
+    parseAccessKeyDrawerRoute(query),
+  )
+}
+
 const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.home]: HomeView,
+  [sharedPageRouteNames.accessKeys]: AccessKeysView,
   [sharedPageRouteNames.groups]: GroupsView,
   [sharedPageRouteNames.logs]: LogsView,
   [sharedPageRouteNames.settings]: SettingsView,
@@ -223,8 +240,10 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
         ? loginSearch
         : name === sharedPageRouteNames.home
           ? homeSearch
-          : name === sharedPageRouteNames.groups
-            ? groupsSearch
+          : name === sharedPageRouteNames.accessKeys
+            ? accessKeysSearch
+            : name === sharedPageRouteNames.groups
+              ? groupsSearch
             : name === sharedPageRouteNames.settings
               ? settingsSearch
               : name === sharedPageRouteNames.models
