@@ -152,6 +152,9 @@ export function AppI18nProviders({
       locale={snap.locale}
       messages={snap.messages}
       onError={onIntlError}
+      // An authored empty string is a real translation (vue-i18n returns ''
+      // for it), not a missing one — e.g. en-US quotaResetSuffix.
+      fallbackOnEmptyString={false}
     >
       <InternationalizationProvider locale={snap.locale} messages={astryxCatalogs}>
         {children}

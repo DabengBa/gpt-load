@@ -1,7 +1,7 @@
 {
   "version": 2,
   "routes": [
-    { "name": "home", "path": "/" },
+    { "name": "home", "path": "/", "astryx": true },
     { "name": "login", "path": "/login", "astryx": true },
     { "name": "import", "path": "/import" },
     { "name": "groups", "path": "/groups", "astryx": true },

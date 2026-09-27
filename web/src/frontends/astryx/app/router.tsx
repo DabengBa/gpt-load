@@ -19,6 +19,10 @@ import {
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
 import {
+  parseHomeRouteQuery,
+  serializeHomeRouteQuery,
+} from '@shared/routing/home-route'
+import {
   parseModelsRouteQuery,
   serializeModelsRouteQuery,
 } from '@shared/routing/models-route'
@@ -38,6 +42,7 @@ import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
 import { GroupsView } from '../features/groups/GroupsView'
+import { HomeView } from '../features/home/HomeView'
 import { LogsView } from '../features/logs/LogsView'
 import { ModelsView } from '../features/models/ModelsView'
 import { SettingsView } from '../features/settings/SettingsView'
@@ -191,8 +196,16 @@ function modelsSearch(search: Record<string, unknown>) {
   return serializeModelsRouteQuery(parseModelsRouteQuery(search as SharedRouteQuery))
 }
 
+// Sparse canonical search: access_key_id only survives when it resolves to a
+// number, client only when it's a known gateway client (default 'cc-switch'
+// serializes away).
+function homeSearch(search: Record<string, unknown>) {
+  return serializeHomeRouteQuery(parseHomeRouteQuery(search as SharedRouteQuery))
+}
+
 const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.login]: LoginView,
+  [sharedPageRouteNames.home]: HomeView,
   [sharedPageRouteNames.groups]: GroupsView,
   [sharedPageRouteNames.logs]: LogsView,
   [sharedPageRouteNames.settings]: SettingsView,
@@ -208,13 +221,15 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
     validateSearch:
       name === sharedPageRouteNames.login
         ? loginSearch
-        : name === sharedPageRouteNames.groups
-          ? groupsSearch
-          : name === sharedPageRouteNames.settings
-            ? settingsSearch
-            : name === sharedPageRouteNames.models
-              ? modelsSearch
-              : undefined,
+        : name === sharedPageRouteNames.home
+          ? homeSearch
+          : name === sharedPageRouteNames.groups
+            ? groupsSearch
+            : name === sharedPageRouteNames.settings
+              ? settingsSearch
+              : name === sharedPageRouteNames.models
+                ? modelsSearch
+                : undefined,
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })

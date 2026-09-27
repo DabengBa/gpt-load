@@ -75,7 +75,7 @@ interface PutCapture {
 // like the real handler.
 async function mockSettings(page: Page, dto: MockSettingsDto) {
   const puts: PutCapture[] = []
-  let current = structuredClone(dto)
+  const current = structuredClone(dto)
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
   }, 'e2e-auth-key')

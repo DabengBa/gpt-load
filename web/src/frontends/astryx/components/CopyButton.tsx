@@ -64,7 +64,7 @@ const styles = stylex.create({
 })
 
 /** Manual-copy fallback when the clipboard API can't write (insecure context). */
-function CopyFallbackDialog({
+export function CopyFallbackDialog({
   value,
   onClose,
 }: {
