@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { HomeRange } from '@shared/control/resources/home'
 import {
   createHomeStatisticsController,
-  type HomeStatisticsController,
   type HomeStatisticsSnapshot,
 } from '@shared/controllers/home-statistics'
 import { homeStatisticsQueryOptions } from '@shared/control/resources/home'
@@ -13,13 +12,10 @@ import { useAppServices } from './services'
 import { useVisibleRefetch } from './use-visible-refetch'
 
 export interface HomeStatisticsHandle {
-  controller: HomeStatisticsController
   // Memoized controller state — read render-time values only from here (React
   // Compiler can freeze stable-reference `controller.*()` calls).
   snapshot: HomeStatisticsSnapshot
   refreshing: boolean
-  selectRange(range: HomeRange): void
-  retry(): Promise<void>
 }
 
 export function useHomeStatistics(options: {
@@ -69,13 +65,10 @@ export function useHomeStatistics(options: {
   useEffect(() => () => controller.dispose(), [controller])
 
   return {
-    controller,
     snapshot,
     refreshing:
       statisticsQuery.isFetching &&
       snapshot.state.kind !== 'initial' &&
       snapshot.state.kind !== 'switching',
-    selectRange: useCallback((range: HomeRange) => controller.selectRange(range), [controller]),
-    retry,
   }
 }

@@ -83,6 +83,18 @@ React Compiler 教训(D 域):**所有 mutable external controller 必须暴露 m
 
 **review-fix**:react-intl 对空串消息按缺失处理(导致 en-US `quotaResetSuffix` 渲染成缺失告警)——在 provider 加 `fallbackOnEmptyString={false}` 与 vue-i18n 空串语义对齐(provider 级修复,不做调用点补丁)。aria-hidden 分隔符不进 accessible name,断言正则从 `·` 放宽为任意分隔。
 
+### 切片终审(F1,三评审面)
+
+- **Architecture**:C/D/E 三域共享接缝一致——route codec 走 `shared/routing`(classic 文件全改 re-export),有状态控制器走 `shared/controllers` + memoized snapshot,uSES 订阅,渲染期不碰 `controller.*()`;domain 纯函数走 `shared/domain`。manifest 5 条 astryx flag(/login / /groups /logs /models /settings),classic 回退由 Go 侧 flag 路由测试锚定。无超范围抽象。
+- **Correctness**:canonical query 三域均 sparse+replace;access_key 会话在 home/settings/models 上降维一致(admin 查询前端 gate + 模板二次 gate);敏感操作(reveal/copy/quick-import)身份守卫 + abort + route/unmount 失效链完整;stale-data 语义保留。行为变化均有自动化 proof 锚定。
+- **Frontend**:密度沿用 theme token + ≤560px touch-target;a11y(labelledby/role=status/progressbar/aria-pressed/AlertDialog)逐组件核过;reduced-motion 在 quota segFill 上生效。
+- [x] Review: `useHomeStatistics` 返回面含死字段(`controller`/`selectRange`/`retry` 无消费方,home spend 固定 30d 无 range UI)(severity: low; scope: E2; evidence: `use-home-statistics.ts` return; proof: 收敛为 `{snapshot,refreshing}` 后 tsc+eslint 复验通过)
+- 第二评审来源:Claude Code CLI 不可用(包装脚本缺共享依赖;直接调用 401 proxy auth),记录为证据缺口——本评审由主 agent 独立完成。
+
+**Review 结论**:无未解决高风险发现;C/D/E 的行为变化均有 e2e/单测/真机 CSP 证据。
+
+- [x] Review complete
+
 ## Notes
 
 - settings-patch 已是 shared(`shared/domain/settings/settings-patch.ts`);`shared/control/resources/settings.ts` 的 queryOptions/mutation 就绪。
