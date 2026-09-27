@@ -7,7 +7,7 @@
     { "name": "groups", "path": "/groups", "astryx": true },
     { "name": "group-detail", "path": "/groups/:id" },
     { "name": "access-keys", "path": "/access-keys", "astryx": true },
-    { "name": "monitor", "path": "/monitor" },
+    { "name": "monitor", "path": "/monitor", "astryx": true },
     { "name": "schedule", "path": "/schedule" },
     { "name": "logs", "path": "/logs", "astryx": true },
     { "name": "models", "path": "/models", "astryx": true },

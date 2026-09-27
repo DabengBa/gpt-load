@@ -23,19 +23,14 @@ import {
   parseGroupCollectionRouteQuery,
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
-import {
-  parseHomeRouteQuery,
-  serializeHomeRouteQuery,
-} from '@shared/routing/home-route'
-import {
-  parseModelsRouteQuery,
-  serializeModelsRouteQuery,
-} from '@shared/routing/models-route'
+import { parseHomeRouteQuery, serializeHomeRouteQuery } from '@shared/routing/home-route'
+import { parseModelsRouteQuery, serializeModelsRouteQuery } from '@shared/routing/models-route'
 import {
   parseSettingsRouteSection,
   serializeSettingsRouteQuery,
 } from '@shared/routing/settings-route'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
+import { normalizeMonitorQuery } from '@shared/routing/monitor-route'
 
 import { useT } from './i18n'
 import { astryxRoutePaths } from './route-adapter'
@@ -51,6 +46,7 @@ import { GroupsView } from '../features/groups/GroupsView'
 import { HomeView } from '../features/home/HomeView'
 import { LogsView } from '../features/logs/LogsView'
 import { ModelsView } from '../features/models/ModelsView'
+import { MonitorView } from '../features/monitor/MonitorView'
 import { SettingsView } from '../features/settings/SettingsView'
 
 interface RouterContext {
@@ -85,18 +81,14 @@ function HeadSync() {
       pathname: state.location.pathname,
       isNotFound: state.matches.some(
         (match) =>
-          match.status === 'notFound' ||
-          (match as { _notFound?: boolean })._notFound === true,
+          match.status === 'notFound' || (match as { _notFound?: boolean })._notFound === true,
       ),
     }),
   })
   useEffect(() => {
     const [, , foundRoute] = router.getMatchedRoutes(pathname)
-    const staticData = foundRoute?.options.staticData as
-      | { meta?: PageRouteMeta }
-      | undefined
-    const titleKey =
-      staticData?.meta?.titleKey ?? (isNotFound ? 'notFound.title' : undefined)
+    const staticData = foundRoute?.options.staticData as { meta?: PageRouteMeta } | undefined
+    const titleKey = staticData?.meta?.titleKey ?? (isNotFound ? 'notFound.title' : undefined)
     document.title = titleKey === undefined ? 'GPT-Load' : `${t(titleKey)} · GPT-Load`
   }, [pathname, isNotFound, router, t])
   return null
@@ -118,14 +110,12 @@ function ShellOutlet() {
   const { meta, isNotFound } = useRouterState({
     select: (state) => ({
       meta: state.matches.at(-1)?.staticData as
-        | { pageName?: string; meta?: PageRouteMeta }
-        | undefined,
+        { pageName?: string; meta?: PageRouteMeta } | undefined,
       // Match-level notFound covers throws from any beforeLoad; _notFound
       // marks the boundary match for paths that never matched a route.
       isNotFound: state.matches.some(
         (match) =>
-          match.status === 'notFound' ||
-          (match as { _notFound?: boolean })._notFound === true,
+          match.status === 'notFound' || (match as { _notFound?: boolean })._notFound === true,
       ),
     }),
   })
@@ -168,9 +158,7 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFoundView,
 })
 
-function loginSearch(
-  search: Record<string, unknown>,
-): { redirect?: string; help?: 'auth' } {
+function loginSearch(search: Record<string, unknown>): { redirect?: string; help?: 'auth' } {
   return {
     redirect: typeof search.redirect === 'string' ? search.redirect : undefined,
     help: search.help === 'auth' ? 'auth' : undefined,
@@ -219,6 +207,14 @@ function accessKeysSearch(search: Record<string, unknown>) {
   )
 }
 
+// Sparse canonical search: the shared monitor codec owns the three-tab query
+// contract (health/usage/inspector + schedule surface). The admin shape is the
+// default; the access_key divergence is canonicalized by MonitorView (same as
+// the classic deep watch).
+function monitorSearch(search: Record<string, unknown>) {
+  return normalizeMonitorQuery(search as SharedRouteQuery)
+}
+
 const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.home]: HomeView,
@@ -227,6 +223,7 @@ const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.logs]: LogsView,
   [sharedPageRouteNames.settings]: SettingsView,
   [sharedPageRouteNames.models]: ModelsView,
+  [sharedPageRouteNames.monitor]: MonitorView,
 }
 
 const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
@@ -244,11 +241,13 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
             ? accessKeysSearch
             : name === sharedPageRouteNames.groups
               ? groupsSearch
-            : name === sharedPageRouteNames.settings
-              ? settingsSearch
-              : name === sharedPageRouteNames.models
-                ? modelsSearch
-                : undefined,
+              : name === sharedPageRouteNames.settings
+                ? settingsSearch
+                : name === sharedPageRouteNames.models
+                  ? modelsSearch
+                  : name === sharedPageRouteNames.monitor
+                    ? monitorSearch
+                    : undefined,
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })
@@ -261,8 +260,7 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
       }
       await context.services.i18n.ensureNamespaces(meta.messageNamespaces ?? [])
     },
-    component:
-      routeViews[name] ?? (() => <RoutePageStub name={name} />),
+    component: routeViews[name] ?? (() => <RoutePageStub name={name} />),
   })
 })
 

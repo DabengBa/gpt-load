@@ -17,18 +17,18 @@ Doc IDs: none(`.docs/db` parity 清单只被消费、不改内容)
 - **Evidence:** (待填)
 
 ### Task B: monitor 宿主 —— route codec + MonitorView + HealthTab
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `shared/routing/monitor-route.ts`(classic 311 行:health/usage/inspector 三 tab 的 canonical query + groups expanded 等);`MonitorView.tsx`(tab chrome + lazy surface + refresh 委托);`MonitorSectionHeading`;`HealthTab` + `HealthSummaryStrip` + `GroupHealthCollection` + `HealthProblemCollection` + `AccessKeyCostLimitHealth`;`router.tsx` 接线。
 - **Proof:** `astryx-monitor.spec.ts` 第一批 —— `?tab=` canonical(默认 health 不落 URL)、health tab 渲染、groups 展开、tab 切换导航契约;双项目回归。
 - **PM:** `/monitor` 默认 health tab;`?tab=health&groups=expanded` 直达展开态;tab 切换走 query 不刷新文档。
-- **Evidence:** (待填)
+- **Evidence:** `astryx-monitor.spec.ts` 6/6(canonical→`?tab=health`、health 六区块渲染、problem/blocked/折叠组、`groups=expanded` 深链+折叠回写、tab 切换 SPA 导航、refresh 重发、access_key 降维至 usage 且不发 `/api/health`);`monitor` flag 已开;canonical 实际语义为 `tab=health` 显式落 URL(忠于 classic codec,plan 注记"不落 URL"不准确)。tsc/astryx eslint 净。
 
 ### Task C: UsageTab —— 用量统计 tab
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `UsageTab.tsx`(810)+ `UsageFilterForm` + `UsageSummary` + `UsageBarChart`(SVG 手写,不引图表库)+ `UsageDistribution` + `UsageBreakdownTable` + `PricingModeIndicator`;`usage-filters`/`usage-bar-chart` 已 shared 直接消费;用量资源 queryOptions 缺口补抽。
 - **Proof:** `astryx-monitor.spec.ts` usage 段 —— `?tab=usage` 渲染、筛选表单、汇总/分布/明细表、柱状图交互等价;时间范围 query 契约。
 - **PM:** `/monitor?tab=usage` 展示 summary/bar/distribution/breakdown;筛选变更走 canonical query。
-- **Evidence:** (待填)
+- **Evidence:** `astryx-monitor.spec.ts` usage 段 4/4(render 全区块含 quality/distribution/breakdown、range Selector+metric radio 写 canonical query 并重发、filter panel 经 `panel=filters` apply 落 `upstream_model`/`group_id`、access_key 隐藏 group/credential 字段);astryx 全套 99/99;tsc×3+eslint 净。
 
 ### Task D: InspectorTab —— 巡检 tab
 - [ ] **Done**
