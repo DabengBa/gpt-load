@@ -30,7 +30,11 @@ import {
   serializeSettingsRouteQuery,
 } from '@shared/routing/settings-route'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
-import { normalizeMonitorQuery } from '@shared/routing/monitor-route'
+import {
+  normalizeMonitorQuery,
+  parseScheduleMonitorState,
+  scheduleMonitorQuery,
+} from '@shared/routing/monitor-route'
 
 import { useT } from './i18n'
 import { astryxRoutePaths } from './route-adapter'
@@ -47,6 +51,7 @@ import { HomeView } from '../features/home/HomeView'
 import { LogsView } from '../features/logs/LogsView'
 import { ModelsView } from '../features/models/ModelsView'
 import { MonitorView } from '../features/monitor/MonitorView'
+import { ScheduleView } from '../features/monitor/ScheduleView'
 import { SettingsView } from '../features/settings/SettingsView'
 
 interface RouterContext {
@@ -215,6 +220,12 @@ function monitorSearch(search: Record<string, unknown>) {
   return normalizeMonitorQuery(search as SharedRouteQuery)
 }
 
+// Sparse canonical search: parse → serialize drops unknown params and
+// malformed schedule state, matching the classic view-level replace.
+function scheduleSearch(search: Record<string, unknown>) {
+  return scheduleMonitorQuery(parseScheduleMonitorState(search as SharedRouteQuery))
+}
+
 const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.home]: HomeView,
@@ -224,6 +235,7 @@ const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.settings]: SettingsView,
   [sharedPageRouteNames.models]: ModelsView,
   [sharedPageRouteNames.monitor]: MonitorView,
+  [sharedPageRouteNames.schedule]: ScheduleView,
 }
 
 const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
@@ -247,7 +259,9 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
                   ? modelsSearch
                   : name === sharedPageRouteNames.monitor
                     ? monitorSearch
-                    : undefined,
+                    : name === sharedPageRouteNames.schedule
+                      ? scheduleSearch
+                      : undefined,
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })

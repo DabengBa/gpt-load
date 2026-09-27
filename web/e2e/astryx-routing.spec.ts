@@ -8,6 +8,10 @@ import { expect, test } from '@playwright/test'
 
 const FLAGGED_PATH = '/settings'
 
+// `commit` waits only for response headers — the first navigation in a cold
+// run eats the vite transform of the astryx graph, which can exceed 30s.
+test.setTimeout(90_000)
+
 test('unauthenticated access to a guarded route redirects to login with redirect', async ({
   page,
   context,
@@ -16,8 +20,8 @@ test('unauthenticated access to a guarded route redirects to login with redirect
   await context.addCookies([
     { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
   ])
-  await page.goto(FLAGGED_PATH, { waitUntil: 'load' })
-  await page.waitForURL(/\/login\?.*redirect=/, { timeout: 10_000 })
+  await page.goto(FLAGGED_PATH, { waitUntil: 'commit' })
+  await page.waitForURL(/\/login\?.*redirect=/, { timeout: 60_000 })
   const url = new URL(page.url())
   expect(url.pathname).toBe('/login')
   expect(url.searchParams.get('redirect')).toBe(FLAGGED_PATH)
@@ -38,7 +42,7 @@ test('group detail param routes match and render the stub', async ({
   await context.addCookies([
     { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
   ])
-  await page.goto('/groups/42', { waitUntil: 'load' })
+  await page.goto('/groups/42', { waitUntil: 'commit' })
   await page.waitForURL(/\/login/, { timeout: 10_000 })
   const url = new URL(page.url())
   expect(url.searchParams.get('redirect')).toBe('/groups/42')
@@ -54,7 +58,7 @@ test('a trailing slash misses the manifest route and renders not-found', async (
   ])
   // '/settings/' is not a manifest path, so the server still serves the
   // Astryx document (cookie-only fallback) and the client router 404s it.
-  await page.goto('/settings/', { waitUntil: 'load' })
+  await page.goto('/settings/', { waitUntil: 'commit' })
   await expect(
     page.getByRole('heading', { name: 'This page does not exist' }),
   ).toBeVisible()
@@ -68,14 +72,14 @@ test('route matching is case-sensitive like the classic router', async ({
   await context.addCookies([
     { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
   ])
-  await page.goto('/SETTINGS', { waitUntil: 'load' })
+  await page.goto('/SETTINGS', { waitUntil: 'commit' })
   await expect(
     page.getByRole('heading', { name: 'This page does not exist' }),
   ).toBeVisible()
 })
 
 // In-app navigation to a classic-owned path must hand off with a document
-// navigation: /schedule is unflagged, so only a full reload lets the server
+// navigation: /import is unflagged, so only a full reload lets the server
 // select the classic document — an SPA nav would strand the user on a stub.
 test('nav to a classic-owned route leaves the Astryx document', async ({
   page,
@@ -105,15 +109,12 @@ test('nav to a classic-owned route leaves the Astryx document', async ({
     })
   })
 
-  await page.goto('/groups', { waitUntil: 'load' })
-  await expect(page.getByTestId('astryx-shell')).toBeVisible()
+  await page.goto('/groups', { waitUntil: 'commit' })
+  await expect(page.getByTestId('astryx-shell')).toBeVisible({ timeout: 60_000 })
 
   await Promise.all([
-    page.waitForURL(/\/schedule$/, { timeout: 10_000 }),
-    page
-      .locator('[data-testid="desktop-nav"]')
-      .getByRole('link', { name: 'Dispatch center' })
-      .click(),
+    page.waitForURL(/\/import$/, { timeout: 10_000 }),
+    page.getByRole('link', { name: 'Import credentials' }).click(),
   ])
 
   // The classic document now owns the page: its shell carries the desktop-nav

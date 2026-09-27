@@ -45,11 +45,11 @@ Doc IDs: none(`.docs/db` parity 清单只被消费、不改内容)
 - **Evidence:** `astryx-request-log.spec.ts` 16/16(全行渲染与列头/路由身份行内筛选+维护与 provider 链接/data-tone 慢响应与模型映射/组与模型 selector 搜索/applied chips+高级抽屉/cursor next/prev/limit 提交/失败 transition 回滚 URL 且保留旧行/首载错误态+retry/同签名 apply 直 refetch/非法 affinity_key URL 全面拦截/access_key 七列降维/transition 骨架/legacy `tab=logs` 归一化/卡片布局 cell 标签);既有 `astryx-log-detail`+`astryx-log-time-range` 9/9;`logs-route.test.ts` 13/13 codec 单测(node --test + `@shared` 别名 loader,`test:logs-route` 脚本);astryx 全量 118/119(唯一失败为 access-keys spec 首个导航 vite 冷编译超时,已改用 `waitUntil: 'commit'`+90s 时限修复);tsc/astryx eslint 净。经典语义修正:日期 preset 只写草稿不自动提交、transition 失败 banner 为瞬态(URL 回滚后 isError 回落)、reset 显式序列化 `from_ms`/`to_ms`。
 
 ### Task F: schedule 域 —— `/schedule` 整页
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `ScheduleView` + `SchedulePanel` + `SchedulePanelDetail`(1252);schedule 资源缺口补抽。
 - **Proof:** `astryx-schedule.spec.ts` —— 面板列表、detail 抽屉、启用/禁用与执行操作、错误态;双项目回归。
 - **PM:** `/schedule` 展示调度面板;详情抽屉与启停操作与 classic 一致。
-- **Evidence:** (待填)
+- **Evidence:** `astryx-schedule.spec.ts` 7/7(index 加载+junk 参数 canonical 剥离、model selector 落 `schedule_model`、draft 编辑序列化 `schedule_draft`+PATCH revisioned save、409 冲突保留草稿+conflict 文案、detail 500 错误态、access_key 重定向、`schedule_row` 深链 `aria-selected`);依赖面同步交付:`useModelProbe` hook + `ModelProbeDialog`(936 行,chunked 探针状态机)+ `ModelProbeScopeDialog`;`schedule` flag 已开;`scheduleSearch` validateSearch 承担 canonical(视图内 effect 双重保险);`astryx-routing` 的 classic-owned 样例改 `/import`;classic schedule 22/22 不回归;tsc/astryx eslint 净。
 
 ### Task G: flag + 切片收尾
 - [ ] **Done**
