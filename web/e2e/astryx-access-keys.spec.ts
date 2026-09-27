@@ -220,8 +220,15 @@ async function mockAccessKeys(
   return requests
 }
 
+test.setTimeout(90_000)
+
 async function expectAstryxDocument(page: Page): Promise<void> {
-  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible()
+  // The first astryx navigation in a run eats the cold vite transform of the
+  // whole module graph; give the shell assertion room while `goto` uses
+  // `commit` so the response itself never blocks on it.
+  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({
+    timeout: 60_000,
+  })
   await expect(page.locator('[data-testid="desktop-nav"]')).toBeVisible()
 }
 
@@ -238,7 +245,7 @@ test('renders the collection and canonicalizes invalid route query params', asyn
   page,
 }) => {
   await mockAccessKeys(page)
-  await page.goto('/access-keys?status=junk&page=0&action=bogus', { waitUntil: 'load' })
+  await page.goto('/access-keys?status=junk&page=0&action=bogus', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/\/access-keys$/)
 
@@ -255,7 +262,7 @@ test('renders the collection and canonicalizes invalid route query params', asyn
 
 test('applies search and status filters through the route query', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
   await expect(page.getByRole('table', { name: 'Access key list' })).toBeVisible()
 
@@ -273,7 +280,7 @@ test('applies search and status filters through the route query', async ({ page 
 
 test('creates an access key through the drawer', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   await page.getByRole('button', { name: 'Create access key' }).first().click()
@@ -293,7 +300,7 @@ test('creates an access key through the drawer', async ({ page }) => {
 
 test('blocks route navigation while the drawer has unsaved edits', async ({ page }) => {
   await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const drawer = await openEditDrawer(page, 'prod key')
@@ -316,7 +323,7 @@ test('blocks route navigation while the drawer has unsaved edits', async ({ page
 
 test('edits an access key and toggles its status', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const drawer = await openEditDrawer(page, 'dev key')
@@ -336,7 +343,7 @@ test('edits an access key and toggles its status', async ({ page }) => {
 
 test('deletes an access key with typed confirmation', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const table = page.getByRole('table', { name: 'Access key list' })
@@ -359,7 +366,7 @@ test('deletes an access key with typed confirmation', async ({ page }) => {
 
 test('resets cost-limit rules from the row action', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const table = page.getByRole('table', { name: 'Access key list' })
@@ -376,7 +383,7 @@ test('resets cost-limit rules from the row action', async ({ page }) => {
 
 test('rotates an access key inside the edit drawer', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const drawer = await openEditDrawer(page, 'prod key')
@@ -394,7 +401,7 @@ test('rotates an access key inside the edit drawer', async ({ page }) => {
 test('reveals the access key on copy only', async ({ page }) => {
   const requests = await mockAccessKeys(page)
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const table = page.getByRole('table', { name: 'Access key list' })
@@ -412,6 +419,6 @@ test('access_key principals are redirected away from the admin-only page', async
   page,
 }) => {
   await mockAccessKeys(page, { principalType: 'access_key' })
-  await page.goto('/access-keys', { waitUntil: 'load' })
+  await page.goto('/access-keys', { waitUntil: 'commit' })
   await expect(page).not.toHaveURL(/\/access-keys/)
 })

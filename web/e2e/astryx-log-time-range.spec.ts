@@ -8,7 +8,8 @@ import { installRequestLogRangeRoutes } from './fixtures/request-log-display'
 //     the default window (now-24h .. now+24h) — the request always sends both
 //   - editing the fields updates a draft only; Apply writes the URL params
 //   - invalid range (from >= to) blocks Apply with a field error
-//   - Reset drops the params back to the default window
+//   - Reset commits the default filter set — classic serializes the default
+//     window explicitly, so the URL keeps concrete from_ms/to_ms
 // The mock honors from_ms/to_ms, so the rendered rows prove the params drive
 // the result set — not just that a request fired.
 
@@ -21,6 +22,10 @@ const localDate = (ms: number) => {
 }
 const localMs = (date: string, time: string) => new Date(`${date}T${time}`).getTime()
 
+// First navigation to /logs pays the cold vite transform for the whole
+// astryx module graph; give this spec the same budget as the detail spec.
+test.setTimeout(90_000)
+
 async function openLogs(page: Page, locale?: string) {
   const routes = await installRequestLogRangeRoutes(page)
   if (locale !== undefined) {
@@ -28,8 +33,10 @@ async function openLogs(page: Page, locale?: string) {
       window.localStorage.setItem('gpt-load.locale', l)
     }, locale)
   }
-  await page.goto('/logs')
-  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible()
+  await page.goto('/logs', { waitUntil: 'commit' })
+  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({
+    timeout: 60_000,
+  })
   await expect(page.getByRole('heading', { name: /.+/ })).toBeVisible()
   return routes
 }
@@ -77,7 +84,15 @@ test('typed range applies to the request, reset restores the default window (en-
   await expect(page.getByText('old-model')).toBeHidden()
 
   await page.getByRole('button', { name: 'Reset' }).click()
-  await expect(page).not.toHaveURL(/from_ms=/)
+  // Classic parity: Reset commits the default filter set, which serializes
+  // explicit from_ms/to_ms/limit — the URL carries the default window rather
+  // than dropping the params.
+  await expect(page).toHaveURL(/from_ms=/)
+  await expect
+    .poll(() => logRequests.length, { message: 'reset should issue a request' })
+    .toBeGreaterThan(requestCount + 1)
+  const reset = logRequests.at(-1)!
+  expect(Number(reset.searchParams.get('to_ms')) - Number(reset.searchParams.get('from_ms'))).toBeGreaterThan(47 * 60 * 60 * 1000)
   await expect(detailButtons(page)).toHaveCount(1)
 })
 
@@ -96,8 +111,15 @@ test('zh-CN renders localized field and DS strings; a preset chip applies the ra
   const requestCount = logRequests.length
   await page.getByRole('group', { name: '快捷时间范围' }).getByRole('button', { name: '7d' }).click()
 
+  // Classic parity: a preset writes the from/to draft only — the request
+  // waits for Apply.
+  await page.waitForTimeout(300)
+  expect(logRequests.length).toBe(requestCount)
+
+  await page.getByRole('button', { name: '应用', exact: true }).click()
+
   await expect
-    .poll(() => logRequests.length, { message: 'preset should apply a request' })
+    .poll(() => logRequests.length, { message: 'apply should issue a request' })
     .toBe(requestCount + 1)
   const applied = logRequests.at(-1)!
   const span = Number(applied.searchParams.get('to_ms')) - Number(applied.searchParams.get('from_ms'))
@@ -126,7 +148,9 @@ test('ja-JP renders localized strings; an inverted range blocks Apply', async ({
   // appearance proves the apply was handled, so the negative checks after it
   // cannot race the request that validation rejected.
   await expect(
-    page.getByRole('alert').getByText('終了時刻は開始時刻より後である必要があります。'),
+    page
+      .locator('[data-astryx-live-region="assertive"]')
+      .getByText('終了時刻は開始時刻より後である必要があります。'),
   ).toBeVisible()
   // from > to is invalid: no request, params stay absent.
   expect(logRequests.length).toBe(requestCount)

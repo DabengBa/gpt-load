@@ -172,11 +172,13 @@ export function CopyButton({
   label,
   successLabel,
   failureLabel,
+  xstyle,
 }: {
   value: string
   label: string
   successLabel: string
   failureLabel: string
+  xstyle?: stylex.StyleXStyles
 }) {
   const [state, setState] = useState<'idle' | 'success' | 'failure'>('idle')
   const [pending, setPending] = useState(false)
@@ -228,6 +230,7 @@ export function CopyButton({
         icon={state === 'success' ? <Check size={16} /> : <Copy size={16} />}
         isLoading={pending}
         onClick={() => void copy()}
+        xstyle={xstyle}
       />
       {state !== 'idle' && (
         <span

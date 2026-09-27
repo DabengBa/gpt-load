@@ -243,6 +243,94 @@ export async function installRequestLogDisplayRoutes(
   return { logRequests }
 }
 
+// Task E variant: cursor-paginated log list used by the full-parity spec.
+// `?cursor=p2` returns the second page; `?limit` trims the first page so the
+// page-size control is observable through request params and row count.
+export interface RequestLogTableRoutes extends RequestLogDisplayRoutes {
+  readonly failNextList: () => void
+  readonly delayNextList: (ms: number) => void
+}
+
+export async function installRequestLogTableRoutes(
+  page: Page,
+  principal: 'admin' | 'access_key' = 'admin',
+): Promise<RequestLogTableRoutes> {
+  await page.addInitScript((authKey) => {
+    window.localStorage.setItem('gpt-load.auth-key', authKey)
+  }, ADMIN_KEY)
+
+  const pageTwoRows = rows.map((row, index) => ({
+    ...row,
+    request_id: `eeeeeeee-5555-4555-8555-55555555555${index}`,
+    client_model: `page-two-${index}`,
+    upstream_model: `page-two-${index}`,
+    upstream_reported_model: `page-two-${index}`,
+  }))
+
+  let failList = false
+  let delayListMs = 0
+  const logRequests: URL[] = []
+  await page.route(
+    (url) => url.pathname === '/api' || url.pathname.startsWith('/api/'),
+    async (route) => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const path = url.pathname
+
+      if (path === '/api/auth/session') {
+        await route.fulfill(response({ authenticated: true, principal_type: principal }))
+        return
+      }
+      if (path === '/api/groups/options') {
+        await route.fulfill(response(groupOptions))
+        return
+      }
+      if (path === '/api/channels') {
+        await route.fulfill(response({ items: [], total: 0 }))
+        return
+      }
+      if (path === '/api/access-keys/options') {
+        await route.fulfill(response([{ id: 7, name: 'e2e access key', status: 'active' }]))
+        return
+      }
+      if (path === '/api/logs') {
+        logRequests.push(url)
+        if (delayListMs > 0) {
+          const delay = delayListMs
+          delayListMs = 0
+          await new Promise((resolve) => setTimeout(resolve, delay))
+        }
+        if (failList) {
+          failList = false
+          await route.fulfill(response({ message: 'boom' }, 500))
+          return
+        }
+        const limit = Number(url.searchParams.get('limit') ?? '20')
+        const cursor = url.searchParams.get('cursor')
+        if (cursor === 'p2') {
+          await route.fulfill(response({ items: pageTwoRows, next_cursor: null }))
+          return
+        }
+        await route.fulfill(response({ items: rows.slice(0, limit), next_cursor: 'p2' }))
+        return
+      }
+      if (path.startsWith('/api/logs/')) {
+        const requestID = path.slice('/api/logs/'.length)
+        await route.fulfill(response(requestLogDetail(requestID)))
+        return
+      }
+
+      await route.fulfill(response({}, 404))
+    },
+  )
+
+  return {
+    logRequests,
+    failNextList: () => (failList = true),
+    delayNextList: (ms: number) => (delayListMs = ms),
+  }
+}
+
 export async function openRequestLogs(page: Page, query = ''): Promise<void> {
   const normalizedQuery = query.startsWith('&') ? `?${query.slice(1)}` : query
   await page.goto(`/logs${normalizedQuery}`)

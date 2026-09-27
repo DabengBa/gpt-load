@@ -26,4 +26,15 @@
   [data-gptload-mono] input {
     font-family: var(--font-mono);
   }
+
+  /* <details>/<summary> parity rules the StyleX per-element model cannot
+     express: hide WebKit's native disclosure marker (Firefox/Chromium already
+     honor list-style-type: none on the summary) and rotate the chevron while
+     the scope is open — same zero-JS behavior as the classic scoped styles. */
+  [data-details-chevron-scope] > summary::-webkit-details-marker {
+    display: none;
+  }
+  [data-details-chevron-scope][open] > summary [data-details-chevron] {
+    transform: rotate(90deg);
+  }
 }

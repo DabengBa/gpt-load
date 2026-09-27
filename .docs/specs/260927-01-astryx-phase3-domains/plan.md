@@ -38,11 +38,11 @@ Doc IDs: none(`.docs/db` parity 清单只被消费、不改内容)
 - **Evidence:** `astryx-monitor.spec.ts` inspector 段 4/4(表单提交落 canonical query 并发 `POST /api/route/inspect`、`run=1` 深链挂载即巡检、空表单校验拦截、500 → 错误态+retry);双 watch 语义以 render-adjustment + liveRef 镜像保留(owner/abort/同请求去重/not-routable 聚焦);route-meta monitor 补 `settings` 命名空间(`routeStrategies` 跨域键,与 group-detail 先例一致);InspectorLedger 复用 ledger overflow 模式;tsc×3+eslint 净,monitor spec 14/14。
 
 ### Task E: logs 全量 parity —— LogsTab + 筛选/详情抽屉,替换 spike 子集
-- [ ] **Done**
+- [x] **Done**
 - **Scope:** `shared/domain/monitor/log-filters.ts` 化(classic 496 行);`logs-route.ts` codec 复核(现有 spike 契约扩展为全量:筛选/cursor/选中日志);`LogsTab.tsx`(1420)全量 + `LogsFilterForm` + `LogsAdvancedFilterDrawer`(590)+ `LogDetailDrawer`(1222,DetailPanel)+ `LogRouteIdentity` + `LogProtocolConversion` + `RequestLogHealthCard`;替换 spike `LogsView` 为全量 host。cursor 分页语义不变。
 - **Proof:** `astryx-logs.spec.ts`(扩或替换 spike spec)—— 筛选/高级抽屉/cursor 翻页/列密度/详情抽屉/时间范围;既有 spike 用例不回归。
 - **PM:** `/logs` 展示完整日志表;筛选、翻页、行详情与 classic 一致;`?tab=`/时间范围 canonical。
-- **Evidence:** (待填)
+- **Evidence:** `astryx-request-log.spec.ts` 16/16(全行渲染与列头/路由身份行内筛选+维护与 provider 链接/data-tone 慢响应与模型映射/组与模型 selector 搜索/applied chips+高级抽屉/cursor next/prev/limit 提交/失败 transition 回滚 URL 且保留旧行/首载错误态+retry/同签名 apply 直 refetch/非法 affinity_key URL 全面拦截/access_key 七列降维/transition 骨架/legacy `tab=logs` 归一化/卡片布局 cell 标签);既有 `astryx-log-detail`+`astryx-log-time-range` 9/9;`logs-route.test.ts` 13/13 codec 单测(node --test + `@shared` 别名 loader,`test:logs-route` 脚本);astryx 全量 118/119(唯一失败为 access-keys spec 首个导航 vite 冷编译超时,已改用 `waitUntil: 'commit'`+90s 时限修复);tsc/astryx eslint 净。经典语义修正:日期 preset 只写草稿不自动提交、transition 失败 banner 为瞬态(URL 回滚后 isError 回落)、reset 显式序列化 `from_ms`/`to_ms`。
 
 ### Task F: schedule 域 —— `/schedule` 整页
 - [ ] **Done**

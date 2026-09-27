@@ -17,9 +17,15 @@ import {
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Request log details' })
 
+// First navigation to /logs on a cold vite dev server transforms the whole
+// astryx module graph — past the default 30s test budget on this checkout.
+test.setTimeout(90_000)
+
 async function openLogs(page: Page, query = ''): Promise<void> {
-  await page.goto(`/logs${query}`)
-  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible()
+  await page.goto(`/logs${query}`, { waitUntil: 'commit' })
+  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({
+    timeout: 60_000,
+  })
   await expect(page.getByRole('heading', { name: 'Request logs' })).toBeVisible()
 }
 
