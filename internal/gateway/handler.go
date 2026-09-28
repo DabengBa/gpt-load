@@ -54,6 +54,11 @@ var debugHeaderNames = []string{
 
 var errRequestTooLarge = errors.New("request body is too large")
 
+// errRequestBodyReadTimeout is the stable internal signal for a server-side
+// request-body read timeout (for example http.Server.ReadTimeout) that fired
+// before the body was fully read.
+var errRequestBodyReadTimeout = errors.New("request body read timed out")
+
 type AttemptForwarder interface {
 	Forward(context.Context, ForwardInput) UpstreamResult
 	ForwardStream(context.Context, ForwardInput, http.ResponseWriter) UpstreamResult
@@ -798,6 +803,12 @@ func (handler *Handler) completeReason(
 ) {
 	recorder.completeReason(value)
 	if err := handler.writeReason(ginContext, value); err != nil {
+		if value == reasonRequestBodyReadTimeout {
+			// The server-side read timeout already canceled the request
+			// context, so a failed write must keep the read-timeout
+			// classification instead of being relabeled as a client cancel.
+			return
+		}
 		handler.completeWriteTerminal(ginContext, recorder, value.Status)
 	}
 }
@@ -843,6 +854,9 @@ func readDecodedRequestBody(
 	}
 	encoded, err := io.ReadAll(reader)
 	if err != nil {
+		if isTimeoutError(err) {
+			return nil, fmt.Errorf("read request body: %w: %w", errRequestBodyReadTimeout, err)
+		}
 		return nil, fmt.Errorf("read request body: %w", err)
 	}
 	if int64(len(encoded)) > encodedLimit {
@@ -864,7 +878,6 @@ func headerFieldValues(headers http.Header, name string) []string {
 	}
 	return values
 }
-
 
 // executeAttempts runs the candidate loop. All admission-derived inputs come
 // from the frozen dispatch; orchestration state lives on attemptLoop.
