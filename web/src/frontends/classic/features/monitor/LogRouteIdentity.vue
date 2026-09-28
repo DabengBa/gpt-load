@@ -127,7 +127,12 @@ const groupLinkAction = computed(() =>
     side="top"
     align="start"
   >
-    <span class="log-route-identity" :class="`log-route-identity--${appearance}`">
+    <span
+      class="log-route-identity"
+      :class="`log-route-identity--${appearance}`"
+      :tabindex="appearance === 'compact' ? 0 : undefined"
+      :aria-label="appearance === 'compact' ? routeTooltip : undefined"
+    >
       <span v-if="showsIcon" class="log-route-identity__icon">
         <ChannelIcon :icon="channel?.icon ?? ''" :mark="channel?.mark ?? ''" />
       </span>
@@ -152,28 +157,8 @@ const groupLinkAction = computed(() =>
         >
           {{ groupLabel }}
         </span>
-        <!-- compact：凭据并入分组同一行；分组维护页与供应商外链只在抽屉（plain）保留。 -->
-        <template v-if="appearance === 'compact' && credentialLabel">
-          <span class="log-route-identity__separator" aria-hidden="true">·</span>
-          <button
-            v-if="canFilterCredential"
-            class="log-route-identity__credential filterable-value"
-            :class="{ 'log-route-identity__credential--code': !hasCredentialName }"
-            type="button"
-            :aria-label="credentialAction"
-            @click="emit('filter-credential', credentialId as number)"
-          >
-            {{ credentialLabel }}
-          </button>
-          <span
-            v-else
-            class="log-route-identity__credential"
-            :class="{ 'log-route-identity__credential--code': !hasCredentialName }"
-          >
-            {{ credentialLabel }}
-          </span>
-        </template>
-        <template v-else-if="appearance !== 'compact'">
+        <!-- 维护页与供应商外链保留在详情中；列表的分组、凭据各占一行。 -->
+        <template v-if="appearance === 'plain'">
           <RouterLink
             v-if="canOpenGroup"
             class="log-route-identity__group-link icon-button icon-button--ghost icon-button--compact"
@@ -197,7 +182,7 @@ const groupLinkAction = computed(() =>
         </template>
       </span>
 
-      <template v-if="appearance !== 'compact' && credentialLabel">
+      <template v-if="credentialLabel">
         <button
           v-if="canFilterCredential"
           class="log-route-identity__credential filterable-value"
@@ -235,6 +220,40 @@ const groupLinkAction = computed(() =>
   gap: 4px;
 }
 
+.log-route-identity--compact {
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 5px;
+  align-items: center;
+}
+
+.log-route-identity--compact .log-route-identity__icon,
+.log-route-identity--compact .log-route-identity__channel {
+  grid-column: 1;
+  grid-row: 1;
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-route-identity--compact .log-route-identity__line {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.log-route-identity--compact > .log-route-identity__credential {
+  grid-column: 2;
+}
+
+.log-route-identity--compact:not(:has(.log-route-identity__icon, .log-route-identity__channel)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.log-route-identity--compact:not(:has(.log-route-identity__icon, .log-route-identity__channel))
+  > * {
+  grid-column: 1;
+}
+
 .log-route-identity__icon {
   display: inline-flex;
   flex: none;
@@ -243,7 +262,7 @@ const groupLinkAction = computed(() =>
 
 .log-route-identity__channel {
   flex: none;
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
   font-size: var(--text-label-xs);
 }
 
@@ -275,19 +294,8 @@ const groupLinkAction = computed(() =>
 }
 
 .log-route-identity__credential {
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
   font-size: var(--text-label-xs);
-}
-
-/* compact 模式下凭据跟在分组名后，空间不足时优先收缩它。 */
-.log-route-identity__line .log-route-identity__credential {
-  flex: 0 1 auto;
-  max-width: 45%;
-}
-
-.log-route-identity__separator {
-  flex: none;
-  color: var(--color-text-faint);
 }
 
 .log-route-identity__group--code,

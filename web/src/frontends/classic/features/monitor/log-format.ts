@@ -22,19 +22,7 @@ export function requestLogCostDisplayState(log: RequestLogItemDto): RequestLogCo
 
 export function formatLogDuration(milliseconds: number): string {
   if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) return '—'
-  if (milliseconds < 1_000) return `${milliseconds}ms`
-  if (milliseconds < 60_000) {
-    const seconds = milliseconds / 1_000
-    return `${seconds.toFixed(seconds < 10 ? 2 : 1).replace(/\.0+$/u, '')}s`
-  }
-  const totalSeconds = Math.round(milliseconds / 1_000)
-  const hours = Math.floor(totalSeconds / 3_600)
-  const minutes = Math.floor((totalSeconds % 3_600) / 60)
-  const seconds = totalSeconds % 60
-  if (hours > 0) {
-    return `${hours}h${String(minutes).padStart(2, '0')}m${String(seconds).padStart(2, '0')}s`
-  }
-  return `${minutes}m${String(seconds).padStart(2, '0')}s`
+  return `${milliseconds / 1_000}s`
 }
 
 export function formatLogTokenCount(value: string, locale: string): string {

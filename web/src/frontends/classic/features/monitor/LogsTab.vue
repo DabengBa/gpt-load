@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
-import { ArrowRight, CircleHelp, Info, Layers, Magnet, Search, TriangleAlert } from '@lucide/vue'
+import { ArrowRight, CircleHelp, Info, Magnet, Search, TriangleAlert } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -29,12 +29,9 @@ import PaginationBar from '@/components/ui/PaginationBar.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import {
-  formatEstimatedCost,
-  formatISOInstant,
-  formatLocalInstantWithSeconds,
-} from '@/lib/format'
+import { formatEstimatedCost, formatISOInstant, formatLocalInstantWithSeconds } from '@/lib/format'
 import { useAuthSession } from '@/features/auth/auth-session'
+import type { AccessProtocol } from '@/api/control/types'
 
 import {
   applyLogFilterDraft,
@@ -46,7 +43,8 @@ import {
   type LogFilterDraft,
   type LogFilterErrors,
 } from './log-filters'
-import { formatCacheHitRate } from '@/lib/cache-rate'
+import { cacheHitRate } from '@/lib/cache-rate'
+import { currentTimeZone } from '@/lib/time'
 import {
   formatLogDuration,
   formatLogOutputRate,
@@ -78,6 +76,15 @@ const route = useRoute()
 const router = useRouter()
 const { locale, t } = useI18n()
 const logPageSizes = [20, 50, 100] as const
+const protocolLabels: Record<AccessProtocol, string> = {
+  'openai-completions': 'Completions',
+  'openai-responses': 'Responses',
+  'openai-images': 'Images',
+  'openai-embeddings': 'Embeddings',
+  rerank: 'Rerank',
+  anthropic: 'Anthropic',
+  gemini: 'Gemini',
+}
 const isAccessKey = computed(() => session.state.principalType === 'access_key')
 const appliedFilterState = computed(() => parseAppliedLogFilterState(route.query))
 const invalidAffinityKey = computed(() =>
@@ -277,31 +284,19 @@ watch(
   },
 )
 
-// 行内只显示时分秒；日期跨天时在该行上方补一行日期，同天行不再重复。
-function formatLogDay(value: number): string {
-  const date = new Date(value)
-  const pad = (part: number) => String(part).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+function timestampLabel(value: number): string {
+  return `${formatLocalInstantWithSeconds(value)} · ${currentTimeZone()}`
 }
 
-function formatLogTime(value: number): string {
-  const date = new Date(value)
-  const pad = (part: number) => String(part).padStart(2, '0')
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
-
-function isNewLogDay(index: number): boolean {
-  const current = logs.value[index]?.completed_at_ms
-  if (index === 0 || current === undefined) return index === 0
-  const previous = logs.value[index - 1]?.completed_at_ms
-  if (previous === undefined) return false
-  const a = new Date(current)
-  const b = new Date(previous)
-  return (
-    a.getFullYear() !== b.getFullYear() ||
-    a.getMonth() !== b.getMonth() ||
-    a.getDate() !== b.getDate()
-  )
+function cacheRateLabel(log: RequestLogItemDto): string {
+  const rate = cacheHitRate(log.cache_read_tokens, log.input_tokens)
+  return rate === null
+    ? '—'
+    : new Intl.NumberFormat(locale.value, {
+        style: 'percent',
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }).format(rate)
 }
 
 function advancedChipLabel(key: keyof RequestLogFilters, value: unknown): string {
@@ -557,8 +552,7 @@ function responseLabel(log: RequestLogItemDto): string {
 // 非常态码）才补；尝试次数 >1 与 error_code 追加在同一行，避免与徽标重复。
 function responseMeta(log: RequestLogItemDto): string {
   const parts: string[] = []
-  const badgeCarriesCode =
-    log.status === 'error' && !(log.stream && log.status_code === 200)
+  const badgeCarriesCode = log.status === 'error' && !(log.stream && log.status_code === 200)
   if (!badgeCarriesCode && (log.status === 'error' || log.status_code !== 200)) {
     parts.push(t('monitor.logs.response.httpStatus', { code: log.status_code }))
   }
@@ -666,13 +660,8 @@ function cacheTooltip(log: RequestLogItemDto): string {
   ]
     .filter(([, value]) => value !== '0')
     .map(([label, value]) => `${label} ${formatLogTokenCount(value, locale.value)}`)
-  details.push(
-    `${t('monitor.logs.tokens.cacheHitRate')} ${formatCacheHitRate(
-      log.cache_read_tokens,
-      log.input_tokens,
-      locale.value,
-    )}`,
-  )
+  details.push(`${t('monitor.logs.tokens.cacheHitRate')} ${cacheRateLabel(log)}`)
+  details.push(t('monitor.logs.tokens.cacheRecordedHint'))
   return details.join('\n')
 }
 
@@ -811,13 +800,17 @@ function costLabel(log: RequestLogItemDto): string {
               role="cell"
               :data-label="t('monitor.logs.columns.time')"
             >
-              <small v-if="isNewLogDay(index)">{{ formatLogDay(log.completed_at_ms) }}</small>
-              <time
-                :datetime="formatISOInstant(log.completed_at_ms)"
-                :title="formatLocalInstantWithSeconds(log.completed_at_ms)"
-              >
-                {{ formatLogTime(log.completed_at_ms) }}
-              </time>
+              <small>{{ formatLocalInstantWithSeconds(log.completed_at_ms).slice(0, 10) }}</small>
+              <AppTooltip :content="timestampLabel(log.completed_at_ms)">
+                <time
+                  :datetime="formatISOInstant(log.completed_at_ms)"
+                  :title="timestampLabel(log.completed_at_ms)"
+                  :aria-label="timestampLabel(log.completed_at_ms)"
+                  tabindex="0"
+                >
+                  {{ formatLocalInstantWithSeconds(log.completed_at_ms).slice(11) }}
+                </time>
+              </AppTooltip>
             </div>
             <div
               v-if="!isAccessKey"
@@ -888,14 +881,7 @@ function costLabel(log: RequestLogItemDto): string {
                 >
                   -&gt;{{ log.upstream_model }}
                 </OverflowTooltip>
-                <OverflowTooltip
-                  v-if="reasoningLabel(log)"
-                  as="small"
-                  class="logs-list__reasoning"
-                  :content="reasoningLabel(log)"
-                >
-                  {{ reasoningLabel(log) }}
-                </OverflowTooltip>
+
                 <AppTooltip
                   v-if="log.model_consistency === 'unknown' || log.model_consistency === 'mismatch'"
                   :content="modelConsistencyTooltip(log)"
@@ -914,12 +900,20 @@ function costLabel(log: RequestLogItemDto): string {
                     <CircleHelp v-else :size="13" aria-hidden="true" />
                   </button>
                 </AppTooltip>
+              </span>
+              <span class="logs-list__protocol-line">
+                <AppTooltip :content="log.protocol">
+                  <small class="logs-list__protocol" tabindex="0">{{
+                    protocolLabels[log.protocol]
+                  }}</small>
+                </AppTooltip>
                 <OverflowTooltip
+                  v-if="reasoningLabel(log)"
                   as="small"
-                  class="logs-list__protocol"
-                  :content="log.protocol"
+                  class="logs-list__reasoning"
+                  :content="reasoningLabel(log)"
                 >
-                  {{ log.protocol }}
+                  {{ reasoningLabel(log) }}
                 </OverflowTooltip>
                 <LogProtocolConversion
                   :mode="log.route_mode"
@@ -993,45 +987,62 @@ function costLabel(log: RequestLogItemDto): string {
               role="cell"
               :data-label="t('monitor.logs.columns.tokens')"
             >
-              <OverflowTooltip
-                v-if="requestLogUsageDisplayState(log) === 'reported'"
-                as="span"
-                class="logs-list__tokens"
-                :content="`${t('monitor.logs.tokens.input')}: ${formatLogTokenCount(log.input_tokens, locale)}\n${t('monitor.logs.tokens.output')}: ${formatLogTokenCount(log.output_tokens, locale)}`"
-              >
+              <div v-if="requestLogUsageDisplayState(log) === 'reported'" class="logs-list__tokens">
                 <span class="logs-list__token-values">
-                  <span class="logs-list__token-line">
-                    {{ formatLogTokenCount(log.input_tokens, locale)
-                    }}<span class="logs-list__token-separator" aria-hidden="true">/</span
-                    >{{ formatLogTokenCount(log.output_tokens, locale) }}
-                  </span>
-                  <span class="logs-list__token-hints">
-                    <AppTooltip
-                      v-if="log.usage_state === 'partial'"
-                      :content="t('monitor.logs.tokens.partial')"
+                  <OverflowTooltip
+                    as="span"
+                    class="logs-list__token-line"
+                    :content="`${t('monitor.logs.tokens.input')}: ${formatLogTokenCount(log.input_tokens, locale)}\n${t('monitor.logs.tokens.output')}: ${formatLogTokenCount(log.output_tokens, locale)}`"
+                  >
+                    <span
+                      >{{ formatLogTokenCount(log.input_tokens, locale) }}
+                      <small>{{ t('monitor.logs.tokens.input') }}</small></span
                     >
-                      <button
-                        type="button"
-                        class="logs-list__hint"
-                        :aria-label="t('monitor.logs.tokens.partial')"
-                      >
-                        <CircleHelp :size="13" aria-hidden="true" />
-                      </button>
-                    </AppTooltip>
-                    <AppTooltip v-if="hasRequestLogCache(log)" :content="cacheTooltip(log)">
-                      <button
-                        type="button"
-                        class="logs-list__hint logs-list__cache-rate"
-                        :aria-label="`${t('monitor.logs.tokens.cacheHitRate')} ${formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale)} · ${t('monitor.logs.tokens.cacheDetails')}`"
-                      >
-                        <Layers :size="12" aria-hidden="true" />
-                        {{ formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale) }}
-                      </button>
-                    </AppTooltip>
-                  </span>
+                    <span class="logs-list__token-separator" aria-hidden="true">·</span>
+                    <span
+                      >{{ formatLogTokenCount(log.output_tokens, locale) }}
+                      <small>{{ t('monitor.logs.tokens.output') }}</small></span
+                    >
+                  </OverflowTooltip>
+                  <AppTooltip
+                    v-if="log.usage_state === 'partial'"
+                    :content="t('monitor.logs.tokens.partial')"
+                  >
+                    <button
+                      type="button"
+                      class="logs-list__hint"
+                      :aria-label="t('monitor.logs.tokens.partial')"
+                    >
+                      <CircleHelp :size="13" aria-hidden="true" />
+                    </button>
+                  </AppTooltip>
                 </span>
-              </OverflowTooltip>
-              <span v-else class="logs-list__state--warning">—</span>
+                <AppTooltip
+                  v-if="log.usage_state === 'complete' || hasRequestLogCache(log)"
+                  :content="cacheTooltip(log)"
+                >
+                  <button
+                    type="button"
+                    class="logs-list__hint logs-list__cache-rate"
+                    :aria-label="`${t('monitor.logs.tokens.cacheHitRate')} ${cacheRateLabel(log)} · ${t('monitor.logs.tokens.cacheDetails')}`"
+                  >
+                    {{ t('monitor.logs.tokens.cacheHitRate') }} {{ cacheRateLabel(log) }}
+                  </button>
+                </AppTooltip>
+                <small v-else class="logs-list__cache-state">{{
+                  t('monitor.logs.tokens.cacheUnavailable')
+                }}</small>
+              </div>
+              <template v-else>
+                <span class="logs-list__state--warning">—</span>
+                <small class="logs-list__cache-state">{{
+                  t(
+                    log.usage_state === 'not_applicable'
+                      ? 'monitor.logs.filters.usageState.not_applicable'
+                      : 'monitor.logs.tokens.cacheUnavailable',
+                  )
+                }}</small>
+              </template>
             </div>
             <div
               class="ledger-record-list__cell logs-list__cell"
@@ -1060,15 +1071,17 @@ function costLabel(log: RequestLogItemDto): string {
               role="cell"
               :data-label="t('monitor.logs.columns.actions')"
             >
-              <IconButton
-                :id="`log-details-${log.request_id}`"
-                variant="ghost"
-                size="compact"
-                :label="t('monitor.logs.details')"
-                @click="setDetailOpen(log.request_id, true)"
-              >
-                <ArrowRight :size="16" aria-hidden="true" />
-              </IconButton>
+              <AppTooltip :content="t('monitor.logs.details')">
+                <IconButton
+                  :id="`log-details-${log.request_id}`"
+                  variant="ghost"
+                  size="compact"
+                  :label="t('monitor.logs.details')"
+                  @click="setDetailOpen(log.request_id, true)"
+                >
+                  <ArrowRight :size="16" aria-hidden="true" />
+                </IconButton>
+              </AppTooltip>
             </div>
           </article>
         </LedgerRecordList>
@@ -1126,16 +1139,16 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list {
-  --ledger-record-list-grid: 72px minmax(120px, 0.82fr) minmax(120px, 0.82fr) minmax(170px, 1.15fr)
-    96px minmax(76px, 0.42fr) minmax(104px, 0.6fr) 100px 34px;
-  --ledger-record-list-column-gap: 14px;
+  --ledger-record-list-grid: 80px 80px minmax(160px, 1fr) minmax(190px, 1.2fr) 88px
+    minmax(76px, 0.42fr) minmax(150px, 0.7fr) 100px 48px;
+  --ledger-record-list-column-gap: 12px;
   --ledger-record-list-record-min-height: 52px;
   --ledger-record-list-record-padding: 8px 0;
 }
 
 .logs-list--scoped {
-  --ledger-record-list-grid: 72px minmax(170px, 1.15fr) 96px minmax(76px, 0.42fr)
-    minmax(104px, 0.6fr) 100px 34px;
+  --ledger-record-list-grid: 80px minmax(210px, 1.2fr) 96px minmax(76px, 0.42fr)
+    minmax(150px, 0.7fr) 100px 48px;
 }
 
 .logs-list__cell {
@@ -1158,7 +1171,7 @@ function costLabel(log: RequestLogItemDto): string {
 
 .logs-list__cell small {
   overflow: hidden;
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
   font-size: var(--text-label-xs);
   font-weight: 400;
   text-overflow: ellipsis;
@@ -1225,11 +1238,12 @@ function costLabel(log: RequestLogItemDto): string {
 
 .logs-list__protocol {
   min-width: 0;
-  margin-left: 6px;
 }
 
-.logs-list__inline :deep(.log-protocol-conversion) {
-  margin-left: 5px;
+.logs-list__protocol-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .logs-list__cost-line {
@@ -1248,21 +1262,22 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list__tokens {
-  display: flex;
-  justify-content: flex-start;
+  display: grid;
+  gap: 4px;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .logs-list__model {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   font-family: var(--font-mono);
 }
 
 .logs-list__model-mapping {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
   font-family: var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1281,7 +1296,9 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list__token-line {
-  display: flex;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
   min-width: 0;
   align-items: center;
   gap: 5px;
@@ -1296,27 +1313,21 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list__token-separator {
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
   margin: 0 2px;
-}
-
-.logs-list__token-hints {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
 }
 
 .logs-list__hint {
   display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   align-items: center;
   justify-content: center;
   border: 0;
   border-radius: var(--radius-tag);
   background: transparent;
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
   padding: 0;
   cursor: help;
 }
@@ -1324,7 +1335,7 @@ function costLabel(log: RequestLogItemDto): string {
 .logs-list__cache-rate {
   width: auto;
   max-width: 100%;
-  height: 20px;
+  min-height: 24px;
   flex-basis: auto;
   justify-content: flex-start;
   gap: 3px;
@@ -1337,12 +1348,6 @@ function costLabel(log: RequestLogItemDto): string {
   color: var(--color-text);
 }
 
-.logs-list__affinity {
-  width: 18px;
-  height: 18px;
-  flex-basis: 18px;
-}
-
 .logs-list__model-consistency--mismatch,
 .logs-list__model-consistency--mismatch:hover {
   color: var(--color-warning);
@@ -1353,7 +1358,24 @@ function costLabel(log: RequestLogItemDto): string {
 }
 
 .logs-list__action {
-  justify-self: end;
+  display: flex;
+  justify-self: stretch;
+  justify-content: flex-end;
+}
+
+.logs-list__action :deep(.icon-button) {
+  color: var(--color-text-muted);
+}
+
+.logs-list__hint:focus-visible,
+.logs-list__protocol:focus-visible,
+.logs-list__time time:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.logs-list :deep(.ledger-record-list__header) {
+  color: var(--color-text-muted);
 }
 
 .logs-tab :deep(.status-badge) {
@@ -1364,13 +1386,12 @@ function costLabel(log: RequestLogItemDto): string {
 @media (max-width: 1080px) {
   .logs-list {
     --ledger-record-list-column-gap: 10px;
-    --ledger-record-list-grid: 68px minmax(108px, 0.78fr) minmax(108px, 0.78fr)
-      minmax(150px, 1.1fr) 92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px;
+    --ledger-record-list-grid: 80px 80px minmax(160px, 1fr) minmax(190px, 1.2fr) 92px 76px
+      minmax(150px, 0.7fr) 96px 48px;
   }
 
   .logs-list--scoped {
-    --ledger-record-list-grid: 68px minmax(150px, 1.1fr) 92px minmax(72px, 0.42fr)
-      minmax(96px, 0.58fr) 96px 32px;
+    --ledger-record-list-grid: 80px minmax(190px, 1.2fr) 92px 76px minmax(150px, 0.7fr) 96px 48px;
   }
 }
 
@@ -1394,7 +1415,7 @@ function costLabel(log: RequestLogItemDto): string {
   .logs-list__cell::before,
   .logs-list__action::before {
     content: attr(data-label);
-    color: var(--color-text-faint);
+    color: var(--color-text-muted);
     font-size: var(--text-label-xs);
   }
 

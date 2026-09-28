@@ -146,6 +146,23 @@ function firstScreenExpectation(status, status_code, attempt_count, reason = {})
 }
 
 const CASES = [
+  ...[
+    [0, '0s'],
+    [1, '0.001s'],
+    [500, '0.5s'],
+    [999, '0.999s'],
+    [1000, '1s'],
+    [6360, '6.36s'],
+    [17500, '17.5s'],
+    [60000, '60s'],
+    [3600123, '3600.123s'],
+    [-1, '—'],
+    [NaN, '—'],
+  ].map(([milliseconds, expected]) => ({
+    name: `duration ${milliseconds} uses seconds`,
+    run: (m) => m.formatLogDuration(milliseconds),
+    expect: expected,
+  })),
   reasonCase(
     'terminal attempt wins over an earlier retried summary',
     rateLimitThen(terminalAttempt(2, 'upstream_host_error', 'upstream exploded')),
