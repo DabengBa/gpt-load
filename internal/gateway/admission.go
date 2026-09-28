@@ -167,6 +167,9 @@ func (handler *Handler) admitRequest(
 		maxRequestBodyBytes,
 	)
 	if err != nil {
+		if errors.Is(err, errRequestBodyReadTimeout) {
+			return rejectAdmission(reasonRequestBodyReadTimeout)
+		}
 		if ctx.Err() != nil {
 			recorder.completeCanceled(ctx, 0, -1)
 			return admissionOutcome{cancelled: true}

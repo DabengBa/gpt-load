@@ -42,7 +42,12 @@ var (
 		Code:    "streaming_protocol_unsupported",
 		Message: "Streaming is not supported for this protocol.",
 	}
-	reasonRequestTooLarge            = reason{Status: http.StatusRequestEntityTooLarge, Code: "request_too_large", Message: "Request body is too large."}
+	reasonRequestTooLarge        = reason{Status: http.StatusRequestEntityTooLarge, Code: "request_too_large", Message: "Request body is too large."}
+	reasonRequestBodyReadTimeout = reason{
+		Status:  http.StatusRequestTimeout,
+		Code:    "request_body_read_timeout",
+		Message: "Request body read timed out before it completed.",
+	}
 	reasonUnsupportedContentEncoding = reason{
 		Status:  http.StatusUnsupportedMediaType,
 		Code:    "unsupported_content_encoding",

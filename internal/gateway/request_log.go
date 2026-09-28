@@ -917,6 +917,7 @@ var fixedErrorSummaries = map[string]string{
 	"upstream_response_incomplete":     defaultErrorSummary,
 	"downstream_write_failed":          "The downstream response could not be completed.",
 	"internal_error":                   "The request failed due to an internal error.",
+	"request_body_read_timeout":        "Request body read timed out before it completed.",
 	"client_canceled":                  "The client canceled the request.",
 	"server_shutdown":                  "The server canceled the request during shutdown.",
 }

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -2360,6 +2362,33 @@ func (reader cancelingErrorReadCloser) Read([]byte) (int, error) {
 }
 
 func (cancelingErrorReadCloser) Close() error { return nil }
+
+type requestBodyTimeoutReadCloser struct {
+	cancel      context.CancelFunc
+	partial     []byte
+	partialRead bool
+}
+
+func (reader *requestBodyTimeoutReadCloser) Read(destination []byte) (int, error) {
+	if !reader.partialRead {
+		reader.partialRead = true
+		return copy(destination, reader.partial), nil
+	}
+	reader.cancel()
+	return 0, &net.OpError{
+		Op:  "read",
+		Net: "tcp",
+		Err: requestBodyTimeoutError{},
+	}
+}
+
+func (*requestBodyTimeoutReadCloser) Close() error { return nil }
+
+type requestBodyTimeoutError struct{}
+
+func (requestBodyTimeoutError) Error() string   { return "i/o timeout" }
+func (requestBodyTimeoutError) Timeout() bool   { return true }
+func (requestBodyTimeoutError) Temporary() bool { return true }
 
 type cancelingExtractDialect struct {
 	dialect.Dialect
@@ -4773,4 +4802,115 @@ func TestStreamRequestLogContentFilterEndToEnd(t *testing.T) {
 		!attempt.PayloadReleased {
 		t.Fatalf("attempt = %#v, want upstream client_error with no retry, no effect and released payload", attempt)
 	}
+}
+
+func TestHandlerClassifiesServerRequestBodyReadTimeout(t *testing.T) {
+	t.Run("writable connection", func(t *testing.T) {
+		requestContext, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		forwarder := &scriptedForwarder{}
+		limiter := &recordingAccessKeyRPMLimiter{}
+		sink := &recordingRequestLogSink{}
+		engine, _, _, _ := newRequestLogHandlerTestRuntime(t, forwarder, limiter, sink)
+
+		request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).
+			WithContext(requestContext)
+		partialBody := []byte(`{"model":"gpt-4o"`)
+		request.Body = &requestBodyTimeoutReadCloser{
+			cancel:  cancel,
+			partial: partialBody,
+		}
+		request.ContentLength = int64(len(partialBody) + 1)
+		request.Header.Set("Authorization", "Bearer gl-client")
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, request)
+
+		if response.Code != http.StatusRequestTimeout {
+			t.Fatalf("HTTP status = %d, want %d", response.Code, http.StatusRequestTimeout)
+		}
+		if response.Body.Len() == 0 {
+			t.Fatal("response body is empty, want a JSON timeout error")
+		}
+		var clientError struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		}
+		if err := jsonv2.Unmarshal(response.Body.Bytes(), &clientError); err != nil {
+			t.Fatalf("decode response JSON: %v; body=%q", err, response.Body.String())
+		}
+		if clientError.Code != "request_body_read_timeout" || strings.TrimSpace(clientError.Message) == "" {
+			t.Fatalf("response error = %#v, want non-empty message and code request_body_read_timeout", clientError)
+		}
+		if !strings.HasPrefix(response.Header().Get("Content-Type"), "application/json") {
+			t.Fatalf("Content-Type = %q, want application/json", response.Header().Get("Content-Type"))
+		}
+		if len(forwarder.inputs) != 0 || len(forwarder.streamInputs) != 0 {
+			t.Fatalf("upstream calls = buffered:%d stream:%d, want zero", len(forwarder.inputs), len(forwarder.streamInputs))
+		}
+		events := sink.snapshot()
+		if len(events) != 1 ||
+			events[0].Status != telemetry.RequestStatusError ||
+			events[0].StatusCode != http.StatusRequestTimeout ||
+			events[0].ErrorCode != "request_body_read_timeout" ||
+			events[0].ErrorSummary != fixedErrorSummary("request_body_read_timeout") ||
+			len(events[0].Attempts) != 0 {
+			t.Fatalf(
+				"events = %#v, want one zero-attempt error/408 request_body_read_timeout event",
+				events,
+			)
+		}
+	})
+
+	t.Run("unwritable connection keeps the read timeout classification", func(t *testing.T) {
+		requestContext, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		forwarder := &scriptedForwarder{}
+		limiter := &recordingAccessKeyRPMLimiter{}
+		sink := &recordingRequestLogSink{}
+		_, handler, _, _ := newRequestLogHandlerTestRuntime(t, forwarder, limiter, sink)
+
+		base := httptest.NewRecorder()
+		ginContext, _ := gin.CreateTestContext(base)
+		ginContext.Writer = &deadlineGinWriter{
+			ResponseWriter: ginContext.Writer,
+			write: func([]byte) (int, error) {
+				return 0, errors.New("downstream disconnected")
+			},
+		}
+		request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).
+			WithContext(requestContext)
+		partialBody := []byte(`{"model":"gpt-4o"`)
+		request.Body = &requestBodyTimeoutReadCloser{
+			cancel:  cancel,
+			partial: partialBody,
+		}
+		request.ContentLength = int64(len(partialBody) + 1)
+		request.Header.Set("Authorization", "Bearer gl-client")
+		ginContext.Request = request
+
+		prepareAndAuthenticateGatewayContextForTest(
+			t,
+			handler,
+			ginContext,
+			"data.openai.completions",
+		)
+		handler.Handle(ginContext)
+
+		events := sink.snapshot()
+		if len(events) != 1 ||
+			events[0].Status != telemetry.RequestStatusError ||
+			events[0].StatusCode != http.StatusRequestTimeout ||
+			events[0].ErrorCode != "request_body_read_timeout" ||
+			len(events[0].Attempts) != 0 {
+			t.Fatalf(
+				"events = %#v, want one zero-attempt request_body_read_timeout event instead of a cancellation",
+				events,
+			)
+		}
+		if len(forwarder.inputs) != 0 || len(forwarder.streamInputs) != 0 {
+			t.Fatalf("upstream calls = buffered:%d stream:%d, want zero", len(forwarder.inputs), len(forwarder.streamInputs))
+		}
+	})
 }
