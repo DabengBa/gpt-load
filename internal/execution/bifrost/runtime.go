@@ -202,6 +202,9 @@ func providerConfig(baseURL string, custom bool, baseProvider schemas.ModelProvi
 		SendBackRawResponse:     false,
 		StoreRawRequestResponse: false,
 	}
+	if baseProvider == schemas.Anthropic {
+		config.PromptCache = &schemas.PromptCacheConfig{AutoInject: true}
+	}
 	if custom {
 		customConfig := &schemas.CustomProviderConfig{
 			BaseProviderType: baseProvider,

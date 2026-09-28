@@ -58,12 +58,9 @@ func countMarkers(msgs []schemas.ResponsesMessage) int {
 	return n
 }
 
-// TestInjectResponses_FirstCacheableBlock pins the default strategy. The FIRST
-// cacheable block is the prefix an agent loop replays verbatim every turn, so marking
-// it keeps the cached region stable and makes turn 2 onward a read. Marking the last
-// block instead would move the boundary each turn and bill a cache write every time,
-// which is the failure #6180 reported.
-func TestInjectResponses_FirstCacheableBlock(t *testing.T) {
+// TestInjectResponses_CacheableBlockTypes keeps the automatic strategy limited to
+// content blocks that can carry an Anthropic cache breakpoint.
+func TestInjectResponses_CacheableBlockTypes(t *testing.T) {
 	cases := []struct {
 		name       string
 		blockType  schemas.ResponsesMessageContentBlockType
@@ -93,15 +90,35 @@ func TestInjectResponses_FirstCacheableBlock(t *testing.T) {
 	}
 }
 
-func TestInjectResponses_MarksFirstNotLast(t *testing.T) {
+func TestInjectResponses_MarksLatestCacheableItem(t *testing.T) {
 	in := []schemas.ResponsesMessage{
 		blockMsg(schemas.ResponsesInputMessageRoleSystem, textBlock("stable prefix")),
 		blockMsg(schemas.ResponsesInputMessageRoleUser, textBlock("turn 1")),
 	}
-	out := InjectResponsesCacheBreakpoints(autoInject(), in)
+	out := InjectLastResponsesCacheBreakpoint(autoInject(), in)
 
-	require.Equal(t, map[int][]int{0: {0}}, markers(out),
-		"only the first cacheable block may be marked; a later marker slides with the conversation")
+	require.Equal(t, map[int][]int{1: {0}}, markers(out),
+		"automatic placement moves to the latest cacheable message as the conversation grows")
+
+	callID, output := "call_1", "complete tool output"
+	toolOutputType := schemas.ResponsesMessageTypeFunctionCallOutput
+	toolTurn := []schemas.ResponsesMessage{
+		blockMsg(schemas.ResponsesInputMessageRoleSystem, textBlock("stable prefix")),
+		{
+			Type: &toolOutputType,
+			ResponsesToolMessage: &schemas.ResponsesToolMessage{
+				CallID: &callID,
+				Output: &schemas.ResponsesToolMessageOutputStruct{ResponsesToolCallOutputStr: &output},
+			},
+		},
+	}
+	markedToolTurn := InjectLastResponsesCacheBreakpoint(autoInject(), toolTurn)
+	require.NotNil(t, markedToolTurn[1].CacheControl,
+		"the latest function_call_output must carry a message-level marker for the full tool_result")
+	assert.Equal(t, schemas.CacheControlTypeEphemeral, markedToolTurn[1].CacheControl.Type)
+	assert.Nil(t, markedToolTurn[0].Content.ContentBlocks[0].CacheControl,
+		"automatic placement must not pin the breakpoint to system when a tool result is present")
+	assert.Nil(t, toolTurn[1].CacheControl, "the shared tool history must stay unchanged")
 }
 
 // TestInjectResponses_PromotesContentStr covers the bare-string case. A string has
@@ -323,6 +340,31 @@ func TestInjectResponses_InjectionPoints(t *testing.T) {
 	}
 }
 
+func TestInjectResponses_InjectionPointMarksCompleteToolResult(t *testing.T) {
+	callID, output := "call_1", "tool output"
+	toolOutputType := schemas.ResponsesMessageTypeFunctionCallOutput
+	in := []schemas.ResponsesMessage{
+		blockMsg(schemas.ResponsesInputMessageRoleSystem, textBlock("prefix")),
+		{
+			Type: &toolOutputType,
+			ResponsesToolMessage: &schemas.ResponsesToolMessage{
+				CallID: &callID,
+				Output: &schemas.ResponsesToolMessageOutputStruct{ResponsesToolCallOutputStr: &output},
+			},
+		},
+	}
+	cfg := &schemas.PromptCacheConfig{InjectionPoints: []schemas.CacheControlInjectionPoint{{
+		Location: schemas.CacheControlInjectionLocationMessage,
+		Index:    schemas.Ptr(-1),
+	}}}
+
+	out := InjectResponsesCacheBreakpoints(cfg, in)
+
+	require.NotNil(t, out[1].CacheControl, "an explicit message point on function_call_output must mark tool_result")
+	assert.Nil(t, out[0].Content.ContentBlocks[0].CacheControl)
+	assert.Nil(t, in[1].CacheControl, "explicit injection must retain copy-on-write isolation")
+}
+
 func TestInjectResponses_PointsReplaceAutoInject(t *testing.T) {
 	cfg := &schemas.PromptCacheConfig{
 		AutoInject: true,
@@ -486,4 +528,26 @@ func TestResolvePromptCacheConfig(t *testing.T) {
 		require.NotNil(t, got)
 		assert.Len(t, got.InjectionPoints, 1, "the header only flips auto_inject; points remain config-level")
 	})
+}
+
+func TestInjectResponses_MarksFirstNotLast(t *testing.T) {
+	in := []schemas.ResponsesMessage{
+		blockMsg(schemas.ResponsesInputMessageRoleSystem, textBlock("stable prefix")),
+		blockMsg(schemas.ResponsesInputMessageRoleUser, textBlock("turn 1")),
+	}
+	out := InjectResponsesCacheBreakpoints(autoInject(), in)
+
+	require.Equal(t, map[int][]int{0: {0}}, markers(out),
+		"only the first cacheable block may be marked; a later marker slides with the conversation")
+}
+
+func TestInjectLastResponsesCacheBreakpoint_SkipsTrailingReasoning(t *testing.T) {
+	input := []schemas.ResponsesMessage{
+		strMsg(schemas.ResponsesInputMessageRoleUser, "latest user"),
+		{Type: schemas.Ptr(schemas.ResponsesMessageTypeReasoning)},
+	}
+	out := InjectLastResponsesCacheBreakpoint(autoInject(), input)
+	require.NotNil(t, out[0].Content.ContentBlocks[0].CacheControl)
+	assert.Nil(t, out[1].CacheControl)
+	assert.Nil(t, input[0].Content.ContentBlocks)
 }

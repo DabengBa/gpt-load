@@ -66,8 +66,10 @@ func ResolvePromptCacheConfig(ctx *schemas.BifrostContext, cfg *schemas.PromptCa
 // where the config asks for them, or input unchanged when it does not apply.
 //
 // The returned slice is safe to hand to a provider: messages that are marked are
-// deep-copied first. The caller's slice, its ResponsesMessageContent pointers and the
-// block arrays beneath them are never written to. That matters because
+// deep-copied first. A function_call_output carries its marker at message level so
+// Anthropic can place it on the complete tool_result block. The caller's slice, its
+// ResponsesMessageContent pointers and the block arrays beneath them are never written
+// to. That matters because
 // bifrostReq.Input is shared with the plugin pipeline and the fallback chain — the
 // in-place mutation in the closed PR #6181 is what leaked provider-specific cache
 // settings into reused requests.
@@ -94,6 +96,10 @@ func InjectResponsesCacheBreakpoints(cfg *schemas.PromptCacheConfig, input []sch
 			copied[t.msg] = true
 		}
 		msg := &out[t.msg]
+		if t.messageLevel {
+			msg.CacheControl = marker
+			continue
+		}
 		if t.promoteStr {
 			// A bare string has nowhere to hang a marker, so it becomes a single
 			// text block. Deterministic: the same message always renders the same
@@ -153,9 +159,10 @@ func InjectChatCacheBreakpoints(cfg *schemas.PromptCacheConfig, input []schemas.
 // carries a bare ContentStr that must become a block first, in which case block is
 // meaningless.
 type injectionTarget struct {
-	msg        int
-	block      int
-	promoteStr bool
+	msg          int
+	block        int
+	promoteStr   bool
+	messageLevel bool
 }
 
 // responsesHasCacheMarker reports whether the caller already expressed caching
@@ -194,6 +201,25 @@ func chatHasCacheMarker(input []schemas.ChatMessage) bool {
 	return false
 }
 
+// InjectLastResponsesCacheBreakpoint uses the existing explicit-point injector to
+// cache through the latest cacheable item on Anthropic. Other providers retain the
+// default first-block strategy. An explicit caller/configured policy always wins.
+func InjectLastResponsesCacheBreakpoint(cfg *schemas.PromptCacheConfig, input []schemas.ResponsesMessage) []schemas.ResponsesMessage {
+	if cfg == nil || !cfg.AutoInject || len(cfg.InjectionPoints) > 0 {
+		return InjectResponsesCacheBreakpoints(cfg, input)
+	}
+	for i := len(input) - 1; i >= 0; i-- {
+		point := schemas.CacheControlInjectionPoint{Location: schemas.CacheControlInjectionLocationMessage, Index: schemas.Ptr(i)}
+		if len(responsesPointTargets([]schemas.CacheControlInjectionPoint{point}, input)) == 0 {
+			continue
+		}
+		local := *cfg
+		local.InjectionPoints = []schemas.CacheControlInjectionPoint{point}
+		return InjectResponsesCacheBreakpoints(&local, input)
+	}
+	return input
+}
+
 // responsesInjectionTargets resolves the configured strategy into concrete positions.
 // InjectionPoints replaces AutoInject rather than adding to it, so an operator who
 // configures explicit points gets exactly those and no surprise extra marker.
@@ -222,6 +248,12 @@ func responsesInjectionTargets(cfg *schemas.PromptCacheConfig, input []schemas.R
 		}
 	}
 	return nil
+}
+
+func isCacheableResponsesToolResult(msg *schemas.ResponsesMessage) bool {
+	return msg != nil && msg.Type != nil &&
+		*msg.Type == schemas.ResponsesMessageTypeFunctionCallOutput &&
+		msg.ResponsesToolMessage != nil && msg.ResponsesToolMessage.Output != nil
 }
 
 func chatInjectionTargets(cfg *schemas.PromptCacheConfig, input []schemas.ChatMessage) []injectionTarget {
@@ -265,6 +297,11 @@ func responsesPointTargets(points []schemas.CacheControlInjectionPoint, input []
 				continue
 			}
 			msg := input[idx]
+			if isCacheableResponsesToolResult(&msg) {
+				out = append(out, injectionTarget{msg: idx, messageLevel: true})
+				seen[idx] = true
+				continue
+			}
 			if msg.Content == nil {
 				continue
 			}

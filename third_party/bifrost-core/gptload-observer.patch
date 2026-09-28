@@ -1,6 +1,200 @@
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/anthropic/anthropic.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/anthropic/anthropic.go
---- bifrost-pristine-check/providers/anthropic/anthropic.go	2026-09-18 12:03:53.136568745 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/anthropic/anthropic.go	2026-09-18 11:47:36.493144876 +0800
+diff -ruN pristine/bifrost.go modified/bifrost.go
+--- pristine/bifrost.go	2026-09-18 11:44:48.338913687 +0800
++++ modified/bifrost.go	2026-09-28 11:40:21.230265957 +0800
+@@ -7561,18 +7561,51 @@
+ 	if r == nil || config == nil {
+ 		return r
+ 	}
++	if responsesRequestHasCacheIntent(r) {
++		return r
++	}
+ 	promptCache := providerUtils.ResolvePromptCacheConfig(ctx, config.PromptCache)
+ 	if !providerUtils.PromptCacheInjectionEnabled(promptCache, schemas.ResolveBaseProvider(ctx, provider), r.Model) {
+ 		return r
+ 	}
+ 	cp := *r
+-	cp.Input = providerUtils.InjectResponsesCacheBreakpoints(promptCache, r.Input)
++	if schemas.ResolveBaseProvider(ctx, provider) == schemas.Anthropic {
++		cp.Input = providerUtils.InjectLastResponsesCacheBreakpoint(promptCache, r.Input)
++	} else {
++		cp.Input = providerUtils.InjectResponsesCacheBreakpoints(promptCache, r.Input)
++	}
+ 	return &cp
+ }
+ 
++func responsesRequestHasCacheIntent(r *schemas.BifrostResponsesRequest) bool {
++	if r == nil || r.Params == nil {
++		return false
++	}
++	params := r.Params
++	if responsesToolsHaveCacheControl(params.Tools) {
++		return true
++	}
++	if marker, exists := params.ExtraParams["cache_control"]; exists && marker != nil {
++		return true
++	}
++	return false
++}
++
++// OpenAI cache keys/retention are not Anthropic cache breakpoints. Only actual
++// caller-supplied markers suppress the provider's automatic placement.
++func responsesToolsHaveCacheControl(tools []schemas.ResponsesTool) bool {
++	for _, tool := range tools {
++		if tool.CacheControl != nil || (tool.ResponsesToolNamespace != nil && responsesToolsHaveCacheControl(tool.ResponsesToolNamespace.Tools)) {
++			return true
++		}
++	}
++	return false
++}
++
+ // prepareResponsesRequest returns the Responses request to dispatch for one attempt:
+-// prompt-cache breakpoints first, then embedded client tools promoted and namespace
+-// tools flattened when the target wire does not understand them. All steps are copy-on-write, so the shared
++// embedded client tools promoted and namespace
++// tools flattened when the target wire does not understand them, then cache breakpoints
++// injected after all explicit tool markers are visible. All steps are copy-on-write, so the shared
+ // req.BifrostRequest keeps the caller's namespaces for a later fallback attempt against
+ // a wire that does.
+ //
+@@ -7581,7 +7614,6 @@
+ // the per-provider default in providerUtils applies, keyed on the BASE provider so a
+ // custom provider wrapping OpenAI is treated like OpenAI.
+ func prepareResponsesRequest(ctx *schemas.BifrostContext, config *schemas.ProviderConfig, provider schemas.Provider, key schemas.Key, r *schemas.BifrostResponsesRequest) (*schemas.BifrostResponsesRequest, *schemas.BifrostError) {
+-	r = promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r)
+ 	if r == nil {
+ 		return nil, nil
+ 	}
+@@ -7607,9 +7639,13 @@
+ 	}
+ 	if supported {
+ 		// Pass-through: the request carries no alias map, so nothing is restored.
+-		return r, nil
++		return promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r), nil
+ 	}
+-	return providerUtils.FlattenResponsesNamespaceTools(ctx, r)
++	r, bifrostErr = providerUtils.FlattenResponsesNamespaceTools(ctx, r)
++	if bifrostErr != nil {
++		return nil, bifrostErr
++	}
++	return promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r), nil
+ }
+ 
+ // promptCacheChatRequest is the Chat Completions parallel of
+@@ -7618,6 +7654,16 @@
+ 	if r == nil || config == nil {
+ 		return r
+ 	}
++	if r.Params != nil {
++		if r.Params.CacheControl != nil {
++			return r
++		}
++		for _, tool := range r.Params.Tools {
++			if tool.CacheControl != nil {
++				return r
++			}
++		}
++	}
+ 	promptCache := providerUtils.ResolvePromptCacheConfig(ctx, config.PromptCache)
+ 	if !providerUtils.PromptCacheInjectionEnabled(promptCache, schemas.ResolveBaseProvider(ctx, provider), r.Model) {
+ 		return r
+diff -ruN pristine/promptcachedispatch_test.go modified/promptcachedispatch_test.go
+--- pristine/promptcachedispatch_test.go	2026-09-18 11:44:48.376054903 +0800
++++ modified/promptcachedispatch_test.go	2026-09-28 11:40:21.237265619 +0800
+@@ -227,6 +227,57 @@
+ 	assert.Equal(t, schemas.CacheControlTypeEphemeral, out.Input[0].Content.ContentBlocks[0].CacheControl.Type)
+ }
+ 
++func TestPromptCacheResponsesRequest_MarksLatestToolResultWithoutMutatingHistory(t *testing.T) {
++	callID, output := "call_1", "tool output"
++	toolOutputType := schemas.ResponsesMessageTypeFunctionCallOutput
++	req := responsesReqWithText("stable prefix")
++	req.Input = append(req.Input, schemas.ResponsesMessage{
++		Type: &toolOutputType,
++		ResponsesToolMessage: &schemas.ResponsesToolMessage{
++			CallID: &callID,
++			Output: &schemas.ResponsesToolMessageOutputStruct{ResponsesToolCallOutputStr: &output},
++		},
++	})
++
++	out := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.Anthropic, req)
++
++	require.NotSame(t, req, out)
++	assert.Nil(t, out.Input[0].Content.ContentBlocks[0].CacheControl,
++		"the moving cache boundary must not remain pinned to the system/prefix message")
++	require.NotNil(t, out.Input[1].CacheControl,
++		"the function_call_output must carry the message-level marker forwarded to tool_result")
++	assert.Nil(t, req.Input[1].CacheControl, "the shared request must remain clean for another attempt")
++}
++
++func TestPromptCacheResponsesRequest_ToolAndRequestWideMarkersSuppressInjection(t *testing.T) {
++	cases := []struct {
++		name   string
++		params *schemas.ResponsesParameters
++	}{
++		{
++			name: "tool marker",
++			params: &schemas.ResponsesParameters{Tools: []schemas.ResponsesTool{{
++				CacheControl: &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral},
++			}}},
++		},
++		{
++			name:   "request-wide cache control",
++			params: &schemas.ResponsesParameters{ExtraParams: map[string]interface{}{"cache_control": map[string]interface{}{"type": "ephemeral"}}},
++		},
++	}
++	for _, testCase := range cases {
++		t.Run(testCase.name, func(t *testing.T) {
++			req := responsesReqWithText("stable prefix")
++			req.Params = testCase.params
++
++			out := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.Anthropic, req)
++
++			assert.Same(t, req, out, "existing tool or request-wide cache intent must not receive a second marker")
++			assert.Nil(t, req.Input[0].Content.ContentBlocks[0].CacheControl)
++		})
++	}
++}
++
+ // TestPromptCacheResponsesRequest_DoesNotMutateSharedRequest is the fallback-isolation
+ // guarantee. req.BifrostRequest survives across retries and fallbacks, so writing an
+ // injected marker back onto it would let a later attempt against a provider with
+@@ -554,3 +605,33 @@
+ 		assert.Equal(t, "namespace_a__js", *out.Params.Tools[1].Name)
+ 	})
+ }
++
++func TestPromptCacheResponsesRequest_AnthropicLatestAndFallbackIsolation(t *testing.T) {
++	req := responsesReqWithText("prefix")
++	next := responsesReqWithText("new turn")
++	req.Input = append(req.Input, next.Input...)
++	req.Params = &schemas.ResponsesParameters{PromptCacheKey: schemas.Ptr("session"), PromptCacheRetention: schemas.Ptr("24h")}
++	first := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.Anthropic, req)
++	require.NotNil(t, first.Input[1].Content.ContentBlocks[0].CacheControl)
++	assert.Nil(t, req.Input[1].Content.ContentBlocks[0].CacheControl)
++	second := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.OpenAI, req)
++	assert.Same(t, req, second)
++	assert.Nil(t, second.Input[0].Content.ContentBlocks[0].CacheControl)
++	assert.Equal(t, "session", *req.Params.PromptCacheKey)
++	other := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.Bedrock, req)
++	require.NotNil(t, other.Input[0].Content.ContentBlocks[0].CacheControl)
++	assert.Nil(t, other.Input[1].Content.ContentBlocks[0].CacheControl)
++}
++
++func TestPromptCacheChatRequest_PreservesExplicitToolsAndRequestCacheControl(t *testing.T) {
++	for _, params := range []*schemas.ChatParameters{
++		{Tools: []schemas.ChatTool{{CacheControl: &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral}}}},
++		{CacheControl: &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral}},
++	} {
++		req := chatReqWithText("prefix")
++		req.Params = params
++		out := promptCacheChatRequest(nil, promptCacheOn(), schemas.Anthropic, req)
++		assert.Same(t, req, out)
++		assert.Nil(t, out.Input[0].Content.ContentBlocks[0].CacheControl)
++	}
++}
+diff -ruN pristine/providers/anthropic/anthropic.go modified/providers/anthropic/anthropic.go
+--- pristine/providers/anthropic/anthropic.go	2026-09-18 11:44:48.376913412 +0800
++++ modified/providers/anthropic/anthropic.go	2026-09-28 09:44:45.554269713 +0800
 @@ -925,7 +925,7 @@
  		}
  
@@ -19,9 +213,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/azure/azure.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/azure/azure.go
---- bifrost-pristine-check/providers/azure/azure.go	2026-09-18 12:03:53.141888444 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/azure/azure.go	2026-09-18 11:47:36.494469575 +0800
+diff -ruN pristine/providers/azure/azure.go modified/providers/azure/azure.go
+--- pristine/providers/azure/azure.go	2026-09-18 11:44:48.390458693 +0800
++++ modified/providers/azure/azure.go	2026-09-28 09:44:45.557729324 +0800
 @@ -858,7 +858,7 @@
  		// Always release response on exit; bodyStream close should prevent indefinite blocking.
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
@@ -31,9 +225,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams (e.g., Azure TPM throttling
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/cohere/cohere.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/cohere/cohere.go
---- bifrost-pristine-check/providers/cohere/cohere.go	2026-09-18 12:03:53.146173982 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/cohere/cohere.go	2026-09-18 11:47:36.494748905 +0800
+diff -ruN pristine/providers/cohere/cohere.go modified/providers/cohere/cohere.go
+--- pristine/providers/cohere/cohere.go	2026-09-18 11:44:48.410514728 +0800
++++ modified/providers/cohere/cohere.go	2026-09-28 09:44:45.561902057 +0800
 @@ -521,7 +521,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
@@ -52,9 +246,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/elevenlabs/elevenlabs.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/elevenlabs/elevenlabs.go
---- bifrost-pristine-check/providers/elevenlabs/elevenlabs.go	2026-09-18 12:03:53.148352177 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/elevenlabs/elevenlabs.go	2026-09-18 11:47:36.494920054 +0800
+diff -ruN pristine/providers/elevenlabs/elevenlabs.go modified/providers/elevenlabs/elevenlabs.go
+--- pristine/providers/elevenlabs/elevenlabs.go	2026-09-18 11:44:48.415006907 +0800
++++ modified/providers/elevenlabs/elevenlabs.go	2026-09-28 09:44:45.563432361 +0800
 @@ -423,7 +423,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
@@ -64,9 +258,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/gemini/gemini.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/gemini/gemini.go
---- bifrost-pristine-check/providers/gemini/gemini.go	2026-09-18 12:03:53.149317086 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/gemini/gemini.go	2026-09-18 11:47:36.495159810 +0800
+diff -ruN pristine/providers/gemini/gemini.go modified/providers/gemini/gemini.go
+--- pristine/providers/gemini/gemini.go	2026-09-18 11:44:48.421913086 +0800
++++ modified/providers/gemini/gemini.go	2026-09-28 09:44:45.564063050 +0800
 @@ -468,6 +468,11 @@
  	// Check for HTTP errors — use parseGeminiError to preserve upstream error details
  	if resp.StatusCode() != fasthttp.StatusOK {
@@ -115,9 +309,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/gemini/http_observer_stream_error_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/gemini/http_observer_stream_error_test.go
---- bifrost-pristine-check/providers/gemini/http_observer_stream_error_test.go	1970-01-01 08:00:00.000000000 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/gemini/http_observer_stream_error_test.go	2026-09-18 11:47:36.495411499 +0800
+diff -ruN pristine/providers/gemini/http_observer_stream_error_test.go modified/providers/gemini/http_observer_stream_error_test.go
+--- pristine/providers/gemini/http_observer_stream_error_test.go	1970-01-01 08:00:00.000000000 +0800
++++ modified/providers/gemini/http_observer_stream_error_test.go	2026-09-28 09:44:45.564063050 +0800
 @@ -0,0 +1,171 @@
 +package gemini
 +
@@ -290,9 +484,33 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +	req.Header.SetMethod(fasthttp.MethodGet)
 +	return client.DoTimeout(req, resp, time.Second)
 +}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/huggingface/huggingface.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/huggingface/huggingface.go
---- bifrost-pristine-check/providers/huggingface/huggingface.go	2026-09-18 12:03:53.152150254 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/huggingface/huggingface.go	2026-09-18 11:47:36.495542352 +0800
+diff -ruN pristine/providers/gemini/utils.go modified/providers/gemini/utils.go
+--- pristine/providers/gemini/utils.go	2026-09-18 11:44:48.428913035 +0800
++++ modified/providers/gemini/utils.go	2026-09-28 09:44:45.565063004 +0800
+@@ -63,7 +63,6 @@
+ 	return !strings.Contains(strings.ToLower(model), "gemini-2.5-pro")
+ }
+ 
+-
+ // defaultEffortControl is the thinkingLevel surface for Gemini 3+, taken from
+ // the per-model rung table below. nil for models that take a budget instead,
+ // which is what tells callers to convert an effort into thinkingBudget.
+@@ -77,6 +76,12 @@
+ 	return &schemas.EffortControl{Levels: supportedThinkingLevels(model)}
+ }
+ 
++// DefaultEffortControl exposes the same thinking-level fallback used by the
++// Gemini Chat and Responses wire converters. Nil means budget-only model.
++func DefaultEffortControl(model string) *schemas.EffortControl {
++	return defaultEffortControl(model)
++}
++
+ // geminiBudgetRanges are the published thinking-budget limits. Longest prefix
+ // first, since "gemini-2.5-flash" also prefixes "gemini-2.5-flash-lite".
+ var geminiBudgetRanges = []struct {
+diff -ruN pristine/providers/huggingface/huggingface.go modified/providers/huggingface/huggingface.go
+--- pristine/providers/huggingface/huggingface.go	2026-09-18 11:44:48.431464181 +0800
++++ modified/providers/huggingface/huggingface.go	2026-09-28 09:44:45.566810192 +0800
 @@ -1134,7 +1134,7 @@
  		}
  
@@ -311,9 +529,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/mistral/mistral.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/mistral/mistral.go
---- bifrost-pristine-check/providers/mistral/mistral.go	2026-09-18 12:03:53.152685984 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/mistral/mistral.go	2026-09-18 11:47:36.495723800 +0800
+diff -ruN pristine/providers/mistral/mistral.go modified/providers/mistral/mistral.go
+--- pristine/providers/mistral/mistral.go	2026-09-18 11:44:48.432913007 +0800
++++ modified/providers/mistral/mistral.go	2026-09-28 09:44:45.567442705 +0800
 @@ -498,7 +498,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
@@ -323,9 +541,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/openai/openai.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/openai/openai.go
---- bifrost-pristine-check/providers/openai/openai.go	2026-09-18 12:03:53.153675472 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/openai/openai.go	2026-09-18 11:47:36.496162436 +0800
+diff -ruN pristine/providers/openai/openai.go modified/providers/openai/openai.go
+--- pristine/providers/openai/openai.go	2026-09-18 11:44:48.436912978 +0800
++++ modified/providers/openai/openai.go	2026-09-28 09:44:45.568087661 +0800
 @@ -572,7 +572,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
@@ -389,9 +607,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/openai/responseslifecycle.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/openai/responseslifecycle.go
---- bifrost-pristine-check/providers/openai/responseslifecycle.go	2026-09-18 12:03:53.154316951 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/openai/responseslifecycle.go	2026-09-18 11:47:36.496634174 +0800
+diff -ruN pristine/providers/openai/responseslifecycle.go modified/providers/openai/responseslifecycle.go
+--- pristine/providers/openai/responseslifecycle.go	2026-09-18 11:44:48.440912949 +0800
++++ modified/providers/openai/responseslifecycle.go	2026-09-28 09:44:45.568087661 +0800
 @@ -264,7 +264,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
@@ -401,9 +619,25 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/replicate/replicate.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/replicate/replicate.go
---- bifrost-pristine-check/providers/replicate/replicate.go	2026-09-18 12:03:53.156328164 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/replicate/replicate.go	2026-09-18 11:47:36.496923533 +0800
+diff -ruN pristine/providers/openai/utils.go modified/providers/openai/utils.go
+--- pristine/providers/openai/utils.go	2026-09-18 11:44:48.443240774 +0800
++++ modified/providers/openai/utils.go	2026-09-28 09:44:45.569062819 +0800
+@@ -69,6 +69,12 @@
+ 	return &schemas.EffortControl{Levels: levels}
+ }
+ 
++// DefaultEffortControl exposes the same name-derived ladder used when building
++// OpenAI Chat and Responses requests. Datasheet overrides remain in ModelCaps.
++func DefaultEffortControl(model string) *schemas.EffortControl {
++	return defaultEffortControl(model)
++}
++
+ // acceptsXHighEffort reports models that natively accept "xhigh" effort. The
+ // ladder is shared by every OpenAI-dialect provider, so non-OpenAI families
+ // supporting the tier are recognised here too — otherwise their "xhigh" is
+diff -ruN pristine/providers/replicate/replicate.go modified/providers/replicate/replicate.go
+--- pristine/providers/replicate/replicate.go	2026-09-18 11:44:48.446912905 +0800
++++ modified/providers/replicate/replicate.go	2026-09-28 09:44:45.570967225 +0800
 @@ -622,7 +622,7 @@
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
  
@@ -449,9 +683,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		// Wrap reader with idle timeout to detect stalled streams.
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/sarvam/sarvam.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/sarvam/sarvam.go
---- bifrost-pristine-check/providers/sarvam/sarvam.go	2026-09-18 12:03:53.158263149 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/sarvam/sarvam.go	2026-09-18 11:47:36.497179479 +0800
+diff -ruN pristine/providers/sarvam/sarvam.go modified/providers/sarvam/sarvam.go
+--- pristine/providers/sarvam/sarvam.go	2026-09-18 11:44:48.449631409 +0800
++++ modified/providers/sarvam/sarvam.go	2026-09-28 09:44:45.572370816 +0800
 @@ -357,7 +357,7 @@
  		}()
  		defer providerUtils.ReleaseStreamingResponse(ctx, resp)
@@ -461,9 +695,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		defer releaseGzip()
  
  		reader, stopIdleTimeout := providerUtils.NewIdleTimeoutReader(reader, resp.BodyStream(), providerUtils.GetStreamIdleTimeout(ctx), ctx)
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/fasthttpreplace_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/fasthttpreplace_test.go
---- bifrost-pristine-check/providers/utils/fasthttpreplace_test.go	2026-09-18 12:03:53.158657177 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/fasthttpreplace_test.go	2026-09-18 12:03:44.654547355 +0800
+diff -ruN pristine/providers/utils/fasthttpreplace_test.go modified/providers/utils/fasthttpreplace_test.go
+--- pristine/providers/utils/fasthttpreplace_test.go	2026-09-18 11:44:48.450661222 +0800
++++ modified/providers/utils/fasthttpreplace_test.go	2026-09-28 09:44:45.572730457 +0800
 @@ -164,7 +164,12 @@
  // TestFasthttpVersionIsConsistentAcrossModules prevents a module from keeping
  // an older version or reintroducing a replacement hidden by the local workspace.
@@ -513,9 +747,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		}
  		dir = parent
  	}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/http_observer.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/http_observer.go
---- bifrost-pristine-check/providers/utils/http_observer.go	1970-01-01 08:00:00.000000000 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/http_observer.go	2026-09-18 11:47:36.497359595 +0800
+diff -ruN pristine/providers/utils/http_observer.go modified/providers/utils/http_observer.go
+--- pristine/providers/utils/http_observer.go	1970-01-01 08:00:00.000000000 +0800
++++ modified/providers/utils/http_observer.go	2026-09-28 09:44:45.572730457 +0800
 @@ -0,0 +1,621 @@
 +package utils
 +
@@ -1138,9 +1372,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +func (r *observedRequestBodyReadCloser) Close() error {
 +	return r.inner.Close()
 +}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/http_observer_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/http_observer_test.go
---- bifrost-pristine-check/providers/utils/http_observer_test.go	1970-01-01 08:00:00.000000000 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/http_observer_test.go	2026-09-18 11:47:36.497422452 +0800
+diff -ruN pristine/providers/utils/http_observer_test.go modified/providers/utils/http_observer_test.go
+--- pristine/providers/utils/http_observer_test.go	1970-01-01 08:00:00.000000000 +0800
++++ modified/providers/utils/http_observer_test.go	2026-09-28 09:44:45.572730457 +0800
 @@ -0,0 +1,1419 @@
 +package utils
 +
@@ -2561,9 +2795,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
 +		t.Fatal("read-error termination must be marked incomplete (non-nil error)")
 +	}
 +}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/largeresponse.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/largeresponse.go
---- bifrost-pristine-check/providers/utils/largeresponse.go	2026-09-18 12:03:53.158657177 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/largeresponse.go	2026-09-18 11:55:26.810200566 +0800
+diff -ruN pristine/providers/utils/largeresponse.go modified/providers/utils/largeresponse.go
+--- pristine/providers/utils/largeresponse.go	2026-09-18 11:44:48.451203896 +0800
++++ modified/providers/utils/largeresponse.go	2026-09-28 09:44:45.572730457 +0800
 @@ -56,12 +56,21 @@
  	}
  	if r.ctx != nil {
@@ -2694,9 +2928,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  
  	// Wrap reader with idle timeout to detect stalled streams.
  	reader, stopIdleTimeout := NewIdleTimeoutReader(reader, resp.BodyStream(), GetStreamIdleTimeout(ctx), ctx)
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/passthrough_stream.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/passthrough_stream.go
---- bifrost-pristine-check/providers/utils/passthrough_stream.go	2026-09-18 12:03:53.158657177 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/passthrough_stream.go	2026-09-18 11:47:36.497867049 +0800
+diff -ruN pristine/providers/utils/passthrough_stream.go modified/providers/utils/passthrough_stream.go
+--- pristine/providers/utils/passthrough_stream.go	2026-09-18 11:44:48.452093036 +0800
++++ modified/providers/utils/passthrough_stream.go	2026-09-28 09:44:45.573062635 +0800
 @@ -54,8 +54,11 @@
  	rawBodyStream io.Reader,
  	params PassthroughStreamParams,
@@ -2711,9 +2945,218 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  	// Cancellation must close the raw stream to unblock reads.
  	stopCancellation := SetupStreamCancellation(ctx, rawBodyStream, params.Logger)
  
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/streampoison_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/streampoison_test.go
---- bifrost-pristine-check/providers/utils/streampoison_test.go	2026-09-18 12:03:53.158657177 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/streampoison_test.go	2026-09-18 11:55:46.793736295 +0800
+diff -ruN pristine/providers/utils/promptcache.go modified/providers/utils/promptcache.go
+--- pristine/providers/utils/promptcache.go	2026-09-18 11:44:48.452172865 +0800
++++ modified/providers/utils/promptcache.go	2026-09-28 11:34:38.878033708 +0800
+@@ -66,8 +66,10 @@
+ // where the config asks for them, or input unchanged when it does not apply.
+ //
+ // The returned slice is safe to hand to a provider: messages that are marked are
+-// deep-copied first. The caller's slice, its ResponsesMessageContent pointers and the
+-// block arrays beneath them are never written to. That matters because
++// deep-copied first. A function_call_output carries its marker at message level so
++// Anthropic can place it on the complete tool_result block. The caller's slice, its
++// ResponsesMessageContent pointers and the block arrays beneath them are never written
++// to. That matters because
+ // bifrostReq.Input is shared with the plugin pipeline and the fallback chain — the
+ // in-place mutation in the closed PR #6181 is what leaked provider-specific cache
+ // settings into reused requests.
+@@ -94,6 +96,10 @@
+ 			copied[t.msg] = true
+ 		}
+ 		msg := &out[t.msg]
++		if t.messageLevel {
++			msg.CacheControl = marker
++			continue
++		}
+ 		if t.promoteStr {
+ 			// A bare string has nowhere to hang a marker, so it becomes a single
+ 			// text block. Deterministic: the same message always renders the same
+@@ -153,9 +159,10 @@
+ // carries a bare ContentStr that must become a block first, in which case block is
+ // meaningless.
+ type injectionTarget struct {
+-	msg        int
+-	block      int
+-	promoteStr bool
++	msg          int
++	block        int
++	promoteStr   bool
++	messageLevel bool
+ }
+ 
+ // responsesHasCacheMarker reports whether the caller already expressed caching
+@@ -194,6 +201,25 @@
+ 	return false
+ }
+ 
++// InjectLastResponsesCacheBreakpoint uses the existing explicit-point injector to
++// cache through the latest cacheable item on Anthropic. Other providers retain the
++// default first-block strategy. An explicit caller/configured policy always wins.
++func InjectLastResponsesCacheBreakpoint(cfg *schemas.PromptCacheConfig, input []schemas.ResponsesMessage) []schemas.ResponsesMessage {
++	if cfg == nil || !cfg.AutoInject || len(cfg.InjectionPoints) > 0 {
++		return InjectResponsesCacheBreakpoints(cfg, input)
++	}
++	for i := len(input) - 1; i >= 0; i-- {
++		point := schemas.CacheControlInjectionPoint{Location: schemas.CacheControlInjectionLocationMessage, Index: schemas.Ptr(i)}
++		if len(responsesPointTargets([]schemas.CacheControlInjectionPoint{point}, input)) == 0 {
++			continue
++		}
++		local := *cfg
++		local.InjectionPoints = []schemas.CacheControlInjectionPoint{point}
++		return InjectResponsesCacheBreakpoints(&local, input)
++	}
++	return input
++}
++
+ // responsesInjectionTargets resolves the configured strategy into concrete positions.
+ // InjectionPoints replaces AutoInject rather than adding to it, so an operator who
+ // configures explicit points gets exactly those and no surprise extra marker.
+@@ -224,6 +250,12 @@
+ 	return nil
+ }
+ 
++func isCacheableResponsesToolResult(msg *schemas.ResponsesMessage) bool {
++	return msg != nil && msg.Type != nil &&
++		*msg.Type == schemas.ResponsesMessageTypeFunctionCallOutput &&
++		msg.ResponsesToolMessage != nil && msg.ResponsesToolMessage.Output != nil
++}
++
+ func chatInjectionTargets(cfg *schemas.PromptCacheConfig, input []schemas.ChatMessage) []injectionTarget {
+ 	if len(cfg.InjectionPoints) > 0 {
+ 		return chatPointTargets(cfg.InjectionPoints, input)
+@@ -265,6 +297,11 @@
+ 				continue
+ 			}
+ 			msg := input[idx]
++			if isCacheableResponsesToolResult(&msg) {
++				out = append(out, injectionTarget{msg: idx, messageLevel: true})
++				seen[idx] = true
++				continue
++			}
+ 			if msg.Content == nil {
+ 				continue
+ 			}
+diff -ruN pristine/providers/utils/promptcache_test.go modified/providers/utils/promptcache_test.go
+--- pristine/providers/utils/promptcache_test.go	2026-09-18 11:44:48.452266310 +0800
++++ modified/providers/utils/promptcache_test.go	2026-09-28 11:39:30.101749095 +0800
+@@ -58,12 +58,9 @@
+ 	return n
+ }
+ 
+-// TestInjectResponses_FirstCacheableBlock pins the default strategy. The FIRST
+-// cacheable block is the prefix an agent loop replays verbatim every turn, so marking
+-// it keeps the cached region stable and makes turn 2 onward a read. Marking the last
+-// block instead would move the boundary each turn and bill a cache write every time,
+-// which is the failure #6180 reported.
+-func TestInjectResponses_FirstCacheableBlock(t *testing.T) {
++// TestInjectResponses_CacheableBlockTypes keeps the automatic strategy limited to
++// content blocks that can carry an Anthropic cache breakpoint.
++func TestInjectResponses_CacheableBlockTypes(t *testing.T) {
+ 	cases := []struct {
+ 		name       string
+ 		blockType  schemas.ResponsesMessageContentBlockType
+@@ -93,15 +90,35 @@
+ 	}
+ }
+ 
+-func TestInjectResponses_MarksFirstNotLast(t *testing.T) {
++func TestInjectResponses_MarksLatestCacheableItem(t *testing.T) {
+ 	in := []schemas.ResponsesMessage{
+ 		blockMsg(schemas.ResponsesInputMessageRoleSystem, textBlock("stable prefix")),
+ 		blockMsg(schemas.ResponsesInputMessageRoleUser, textBlock("turn 1")),
+ 	}
+-	out := InjectResponsesCacheBreakpoints(autoInject(), in)
++	out := InjectLastResponsesCacheBreakpoint(autoInject(), in)
+ 
+-	require.Equal(t, map[int][]int{0: {0}}, markers(out),
+-		"only the first cacheable block may be marked; a later marker slides with the conversation")
++	require.Equal(t, map[int][]int{1: {0}}, markers(out),
++		"automatic placement moves to the latest cacheable message as the conversation grows")
++
++	callID, output := "call_1", "complete tool output"
++	toolOutputType := schemas.ResponsesMessageTypeFunctionCallOutput
++	toolTurn := []schemas.ResponsesMessage{
++		blockMsg(schemas.ResponsesInputMessageRoleSystem, textBlock("stable prefix")),
++		{
++			Type: &toolOutputType,
++			ResponsesToolMessage: &schemas.ResponsesToolMessage{
++				CallID: &callID,
++				Output: &schemas.ResponsesToolMessageOutputStruct{ResponsesToolCallOutputStr: &output},
++			},
++		},
++	}
++	markedToolTurn := InjectLastResponsesCacheBreakpoint(autoInject(), toolTurn)
++	require.NotNil(t, markedToolTurn[1].CacheControl,
++		"the latest function_call_output must carry a message-level marker for the full tool_result")
++	assert.Equal(t, schemas.CacheControlTypeEphemeral, markedToolTurn[1].CacheControl.Type)
++	assert.Nil(t, markedToolTurn[0].Content.ContentBlocks[0].CacheControl,
++		"automatic placement must not pin the breakpoint to system when a tool result is present")
++	assert.Nil(t, toolTurn[1].CacheControl, "the shared tool history must stay unchanged")
+ }
+ 
+ // TestInjectResponses_PromotesContentStr covers the bare-string case. A string has
+@@ -323,6 +340,31 @@
+ 	}
+ }
+ 
++func TestInjectResponses_InjectionPointMarksCompleteToolResult(t *testing.T) {
++	callID, output := "call_1", "tool output"
++	toolOutputType := schemas.ResponsesMessageTypeFunctionCallOutput
++	in := []schemas.ResponsesMessage{
++		blockMsg(schemas.ResponsesInputMessageRoleSystem, textBlock("prefix")),
++		{
++			Type: &toolOutputType,
++			ResponsesToolMessage: &schemas.ResponsesToolMessage{
++				CallID: &callID,
++				Output: &schemas.ResponsesToolMessageOutputStruct{ResponsesToolCallOutputStr: &output},
++			},
++		},
++	}
++	cfg := &schemas.PromptCacheConfig{InjectionPoints: []schemas.CacheControlInjectionPoint{{
++		Location: schemas.CacheControlInjectionLocationMessage,
++		Index:    schemas.Ptr(-1),
++	}}}
++
++	out := InjectResponsesCacheBreakpoints(cfg, in)
++
++	require.NotNil(t, out[1].CacheControl, "an explicit message point on function_call_output must mark tool_result")
++	assert.Nil(t, out[0].Content.ContentBlocks[0].CacheControl)
++	assert.Nil(t, in[1].CacheControl, "explicit injection must retain copy-on-write isolation")
++}
++
+ func TestInjectResponses_PointsReplaceAutoInject(t *testing.T) {
+ 	cfg := &schemas.PromptCacheConfig{
+ 		AutoInject: true,
+@@ -487,3 +529,25 @@
+ 		assert.Len(t, got.InjectionPoints, 1, "the header only flips auto_inject; points remain config-level")
+ 	})
+ }
++
++func TestInjectResponses_MarksFirstNotLast(t *testing.T) {
++	in := []schemas.ResponsesMessage{
++		blockMsg(schemas.ResponsesInputMessageRoleSystem, textBlock("stable prefix")),
++		blockMsg(schemas.ResponsesInputMessageRoleUser, textBlock("turn 1")),
++	}
++	out := InjectResponsesCacheBreakpoints(autoInject(), in)
++
++	require.Equal(t, map[int][]int{0: {0}}, markers(out),
++		"only the first cacheable block may be marked; a later marker slides with the conversation")
++}
++
++func TestInjectLastResponsesCacheBreakpoint_SkipsTrailingReasoning(t *testing.T) {
++	input := []schemas.ResponsesMessage{
++		strMsg(schemas.ResponsesInputMessageRoleUser, "latest user"),
++		{Type: schemas.Ptr(schemas.ResponsesMessageTypeReasoning)},
++	}
++	out := InjectLastResponsesCacheBreakpoint(autoInject(), input)
++	require.NotNil(t, out[0].Content.ContentBlocks[0].CacheControl)
++	assert.Nil(t, out[1].CacheControl)
++	assert.Nil(t, input[0].Content.ContentBlocks)
++}
+diff -ruN pristine/providers/utils/streampoison_test.go modified/providers/utils/streampoison_test.go
+--- pristine/providers/utils/streampoison_test.go	2026-09-18 11:44:48.453343000 +0800
++++ modified/providers/utils/streampoison_test.go	2026-09-28 09:44:45.573062635 +0800
 @@ -150,7 +150,7 @@
  	}
  
@@ -2723,9 +3166,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  	defer releaseGzip()
  	reader, stopIdleTimeout := NewIdleTimeoutReader(reader, resp.BodyStream(), GetStreamIdleTimeout(ctx), ctx)
  	defer stopIdleTimeout()
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/utils.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/utils.go
---- bifrost-pristine-check/providers/utils/utils.go	2026-09-18 12:03:53.158657177 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/utils.go	2026-09-18 11:54:19.759720709 +0800
+diff -ruN pristine/providers/utils/utils.go modified/providers/utils/utils.go
+--- pristine/providers/utils/utils.go	2026-09-18 11:44:48.453912854 +0800
++++ modified/providers/utils/utils.go	2026-09-28 09:44:45.573062635 +0800
 @@ -462,20 +462,54 @@
  	// ctx-cancelled return of makeRequestWithDoFunc and be gone before the
  	// caller's wait() returns, since req is pooled.
@@ -2973,9 +3416,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  		if _, err := io.Copy(io.Discard, bodyStream); err != nil {
  			getLogger().Warn("failed to drain streaming response body before release (may cause stale connection reuse): %v", err)
  		}
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/utils/utils_test.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/utils_test.go
---- bifrost-pristine-check/providers/utils/utils_test.go	2026-09-18 12:03:53.158657177 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/utils/utils_test.go	2026-09-18 11:47:36.498707624 +0800
+diff -ruN pristine/providers/utils/utils_test.go modified/providers/utils/utils_test.go
+--- pristine/providers/utils/utils_test.go	2026-09-18 11:44:48.454912847 +0800
++++ modified/providers/utils/utils_test.go	2026-09-28 09:44:45.573062635 +0800
 @@ -851,7 +851,7 @@
  	resp.Header.Set("Content-Encoding", "gzip")
  	resp.SetBodyStream(bytes.NewReader(compressed), len(compressed))
@@ -2994,9 +3437,9 @@ diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/provid
  	defer releaseGzip()
  
  	reader, nonSSE := DrainNonSSEStreamReader(resp, reader)
-diff -ruN -x UPSTREAM.md -x gptload-observer.patch bifrost-pristine-check/providers/vllm/vllm.go /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/vllm/vllm.go
---- bifrost-pristine-check/providers/vllm/vllm.go	2026-09-18 12:03:53.160425003 +0800
-+++ /home/allen/.windsurf/worktrees/gpt-load/gpt-load-brass-crank/third_party/bifrost-core/providers/vllm/vllm.go	2026-09-18 11:47:36.498952209 +0800
+diff -ruN pristine/providers/vllm/vllm.go modified/providers/vllm/vllm.go
+--- pristine/providers/vllm/vllm.go	2026-09-18 11:44:48.457912826 +0800
++++ modified/providers/vllm/vllm.go	2026-09-28 09:44:45.575263195 +0800
 @@ -682,7 +682,7 @@
  			}()
  			defer providerUtils.ReleaseStreamingResponse(ctx, resp)

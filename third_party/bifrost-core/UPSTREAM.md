@@ -105,3 +105,18 @@ either call site reachable, either the plan must narrow the matrix or a pinned
 
 Because the fork changes no dependency requirements, rollback is a single revert
 of the `replace` line plus the directory removal.
+
+## Anthropic prompt-cache integration
+
+GPT-Load opts Anthropic API runtimes into Bifrost prompt-cache injection. The fork
+selects the latest cacheable Responses item only for Anthropic, including a
+message-level marker on complete function-call outputs. Other providers retain
+Bifrost's default first-block strategy. Explicit tool, input, and request markers
+suppress injection; tool normalization precedes detection so embedded and
+namespace tools participate. OpenAI prompt-cache keys are routing hints, not
+Anthropic breakpoints. Injection copies the selected item per attempt.
+
+Regression coverage: `promptcachedispatch_test.go`,
+`providers/utils/promptcache_test.go`, and GPT-Load's
+`internal/execution/bifrost/anthropic_cache_egress_test.go` exercise isolation,
+explicit markers, and two complete tool turns through unary/stream HTTP egress.

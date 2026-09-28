@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	providerUtils "github.com/maximhq/bifrost/core/providers/utils"
+	"github.com/maximhq/bifrost/core/schemas"
 	"gpt-load/internal/channel"
 )
 
@@ -14,6 +16,46 @@ func TestSDKProviderTimeoutDoesNotPreemptAcceptedRequestTimeouts(t *testing.T) {
 	want := int64((1<<63)-1) / int64(time.Second)
 	if int64(got) != want {
 		t.Fatalf("SDK provider timeout = %d seconds, want backstop %d", got, want)
+	}
+}
+
+func TestProviderConfigEnablesAnthropicPromptCaching(t *testing.T) {
+	config := providerConfig("https://api.anthropic.com", false, schemas.Anthropic, false)
+
+	if config.PromptCache == nil {
+		t.Fatal("Anthropic provider config must enable prompt-cache injection")
+	}
+	if !config.PromptCache.AutoInject {
+		t.Fatal("Anthropic provider config must auto-inject a stable cache breakpoint")
+	}
+}
+
+func TestAnthropicPromptCachingMarksLatestToolResultWithoutMutatingInput(t *testing.T) {
+	config := providerConfig("https://api.anthropic.com", false, schemas.Anthropic, false)
+	text := "stable instructions"
+	role := schemas.ResponsesInputMessageRoleDeveloper
+	toolOutputType := schemas.ResponsesMessageTypeFunctionCallOutput
+	callID, result := "call_1", "complete tool output"
+	input := []schemas.ResponsesMessage{
+		{Role: &role, Content: &schemas.ResponsesMessageContent{ContentStr: &text}},
+		{
+			Type: &toolOutputType,
+			ResponsesToolMessage: &schemas.ResponsesToolMessage{
+				CallID: &callID,
+				Output: &schemas.ResponsesToolMessageOutputStruct{ResponsesToolCallOutputStr: &result},
+			},
+		},
+	}
+
+	marked := providerUtils.InjectLastResponsesCacheBreakpoint(config.PromptCache, input)
+	if marked[1].CacheControl == nil {
+		t.Fatal("the complete tool result must carry the automatic cache marker")
+	}
+	if marked[0].Content.ContentBlocks != nil {
+		t.Fatal("the breakpoint must move from the stable prefix to the latest tool result")
+	}
+	if input[1].CacheControl != nil {
+		t.Fatal("cache injection must not mutate the shared request")
 	}
 }
 

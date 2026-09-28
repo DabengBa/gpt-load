@@ -227,6 +227,57 @@ func TestPromptCacheResponsesRequest_InjectsWhenEnabled(t *testing.T) {
 	assert.Equal(t, schemas.CacheControlTypeEphemeral, out.Input[0].Content.ContentBlocks[0].CacheControl.Type)
 }
 
+func TestPromptCacheResponsesRequest_MarksLatestToolResultWithoutMutatingHistory(t *testing.T) {
+	callID, output := "call_1", "tool output"
+	toolOutputType := schemas.ResponsesMessageTypeFunctionCallOutput
+	req := responsesReqWithText("stable prefix")
+	req.Input = append(req.Input, schemas.ResponsesMessage{
+		Type: &toolOutputType,
+		ResponsesToolMessage: &schemas.ResponsesToolMessage{
+			CallID: &callID,
+			Output: &schemas.ResponsesToolMessageOutputStruct{ResponsesToolCallOutputStr: &output},
+		},
+	})
+
+	out := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.Anthropic, req)
+
+	require.NotSame(t, req, out)
+	assert.Nil(t, out.Input[0].Content.ContentBlocks[0].CacheControl,
+		"the moving cache boundary must not remain pinned to the system/prefix message")
+	require.NotNil(t, out.Input[1].CacheControl,
+		"the function_call_output must carry the message-level marker forwarded to tool_result")
+	assert.Nil(t, req.Input[1].CacheControl, "the shared request must remain clean for another attempt")
+}
+
+func TestPromptCacheResponsesRequest_ToolAndRequestWideMarkersSuppressInjection(t *testing.T) {
+	cases := []struct {
+		name   string
+		params *schemas.ResponsesParameters
+	}{
+		{
+			name: "tool marker",
+			params: &schemas.ResponsesParameters{Tools: []schemas.ResponsesTool{{
+				CacheControl: &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral},
+			}}},
+		},
+		{
+			name:   "request-wide cache control",
+			params: &schemas.ResponsesParameters{ExtraParams: map[string]interface{}{"cache_control": map[string]interface{}{"type": "ephemeral"}}},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			req := responsesReqWithText("stable prefix")
+			req.Params = testCase.params
+
+			out := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.Anthropic, req)
+
+			assert.Same(t, req, out, "existing tool or request-wide cache intent must not receive a second marker")
+			assert.Nil(t, req.Input[0].Content.ContentBlocks[0].CacheControl)
+		})
+	}
+}
+
 // TestPromptCacheResponsesRequest_DoesNotMutateSharedRequest is the fallback-isolation
 // guarantee. req.BifrostRequest survives across retries and fallbacks, so writing an
 // injected marker back onto it would let a later attempt against a provider with
@@ -553,4 +604,34 @@ func TestPrepareResponsesRequest_UnwrapsFunctionsNamespaceForEveryWire(t *testin
 		assert.Equal(t, "wait", *out.Params.Tools[0].Name)
 		assert.Equal(t, "namespace_a__js", *out.Params.Tools[1].Name)
 	})
+}
+
+func TestPromptCacheResponsesRequest_AnthropicLatestAndFallbackIsolation(t *testing.T) {
+	req := responsesReqWithText("prefix")
+	next := responsesReqWithText("new turn")
+	req.Input = append(req.Input, next.Input...)
+	req.Params = &schemas.ResponsesParameters{PromptCacheKey: schemas.Ptr("session"), PromptCacheRetention: schemas.Ptr("24h")}
+	first := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.Anthropic, req)
+	require.NotNil(t, first.Input[1].Content.ContentBlocks[0].CacheControl)
+	assert.Nil(t, req.Input[1].Content.ContentBlocks[0].CacheControl)
+	second := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.OpenAI, req)
+	assert.Same(t, req, second)
+	assert.Nil(t, second.Input[0].Content.ContentBlocks[0].CacheControl)
+	assert.Equal(t, "session", *req.Params.PromptCacheKey)
+	other := promptCacheResponsesRequest(nil, promptCacheOn(), schemas.Bedrock, req)
+	require.NotNil(t, other.Input[0].Content.ContentBlocks[0].CacheControl)
+	assert.Nil(t, other.Input[1].Content.ContentBlocks[0].CacheControl)
+}
+
+func TestPromptCacheChatRequest_PreservesExplicitToolsAndRequestCacheControl(t *testing.T) {
+	for _, params := range []*schemas.ChatParameters{
+		{Tools: []schemas.ChatTool{{CacheControl: &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral}}}},
+		{CacheControl: &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral}},
+	} {
+		req := chatReqWithText("prefix")
+		req.Params = params
+		out := promptCacheChatRequest(nil, promptCacheOn(), schemas.Anthropic, req)
+		assert.Same(t, req, out)
+		assert.Nil(t, out.Input[0].Content.ContentBlocks[0].CacheControl)
+	}
 }
