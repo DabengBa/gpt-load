@@ -1204,6 +1204,9 @@ export default {
         cacheWrite1h: 'Cache write 1h',
         cacheWrite: 'Cache write',
         cacheHitRate: 'Cache hit rate',
+        cacheUnavailable: 'Cache data unavailable',
+        cacheRecordedHint:
+          'Rate is based on recorded tokens; zero does not indicate whether the provider reported cache fields.',
         cacheDetails: 'View cache token details',
         partial: 'Token usage is partial',
       },

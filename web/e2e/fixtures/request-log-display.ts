@@ -174,7 +174,12 @@ export interface RequestLogDisplayRoutes {
   readonly logRequests: URL[]
 }
 
-export async function installRequestLogDisplayRoutes(page: Page): Promise<RequestLogDisplayRoutes> {
+export async function installRequestLogDisplayRoutes(
+  page: Page,
+  transformRows: (
+    items: readonly Record<string, unknown>[],
+  ) => readonly Record<string, unknown>[] = (items) => items,
+): Promise<RequestLogDisplayRoutes> {
   await page.addInitScript((authKey) => {
     window.localStorage.setItem('gpt-load.auth-key', authKey)
   }, ADMIN_KEY)
@@ -205,7 +210,7 @@ export async function installRequestLogDisplayRoutes(page: Page): Promise<Reques
       }
       if (path === '/api/logs') {
         logRequests.push(url)
-        await route.fulfill(response({ items: rows, next_cursor: null }))
+        await route.fulfill(response({ items: transformRows(rows), next_cursor: null }))
         return
       }
       if (path.startsWith('/api/logs/')) {

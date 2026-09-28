@@ -1197,6 +1197,9 @@ export default {
         cacheWrite1h: 'キャッシュ書き込み 1h',
         cacheWrite: 'キャッシュ書き込み',
         cacheHitRate: 'キャッシュ率',
+        cacheUnavailable: 'キャッシュデータなし',
+        cacheRecordedHint:
+          '記録されたトークンから計算した比率です。ゼロ値はプロバイダーがキャッシュ項目を報告したことを意味しません。',
         cacheDetails: 'キャッシュ Token の詳細を表示',
         partial: 'Token 使用量が部分的です',
       },

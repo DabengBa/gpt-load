@@ -50,8 +50,8 @@ const label = computed(() =>
 <style scoped>
 .log-protocol-conversion {
   display: inline-flex;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;

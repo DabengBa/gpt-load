@@ -1180,6 +1180,8 @@ export default {
         cacheWrite1h: '缓存写入 1h',
         cacheWrite: '缓存写入',
         cacheHitRate: '缓存率',
+        cacheUnavailable: '缓存数据不可用',
+        cacheRecordedHint: '比例按已记录的 Token 计算；零值不代表供应商明确上报了缓存字段。',
         cacheDetails: '查看缓存 Token 明细',
         partial: '当前 Token 用量不完整',
       },
