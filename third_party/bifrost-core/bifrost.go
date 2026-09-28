@@ -7561,18 +7561,51 @@ func promptCacheResponsesRequest(ctx *schemas.BifrostContext, config *schemas.Pr
 	if r == nil || config == nil {
 		return r
 	}
+	if responsesRequestHasCacheIntent(r) {
+		return r
+	}
 	promptCache := providerUtils.ResolvePromptCacheConfig(ctx, config.PromptCache)
 	if !providerUtils.PromptCacheInjectionEnabled(promptCache, schemas.ResolveBaseProvider(ctx, provider), r.Model) {
 		return r
 	}
 	cp := *r
-	cp.Input = providerUtils.InjectResponsesCacheBreakpoints(promptCache, r.Input)
+	if schemas.ResolveBaseProvider(ctx, provider) == schemas.Anthropic {
+		cp.Input = providerUtils.InjectLastResponsesCacheBreakpoint(promptCache, r.Input)
+	} else {
+		cp.Input = providerUtils.InjectResponsesCacheBreakpoints(promptCache, r.Input)
+	}
 	return &cp
 }
 
+func responsesRequestHasCacheIntent(r *schemas.BifrostResponsesRequest) bool {
+	if r == nil || r.Params == nil {
+		return false
+	}
+	params := r.Params
+	if responsesToolsHaveCacheControl(params.Tools) {
+		return true
+	}
+	if marker, exists := params.ExtraParams["cache_control"]; exists && marker != nil {
+		return true
+	}
+	return false
+}
+
+// OpenAI cache keys/retention are not Anthropic cache breakpoints. Only actual
+// caller-supplied markers suppress the provider's automatic placement.
+func responsesToolsHaveCacheControl(tools []schemas.ResponsesTool) bool {
+	for _, tool := range tools {
+		if tool.CacheControl != nil || (tool.ResponsesToolNamespace != nil && responsesToolsHaveCacheControl(tool.ResponsesToolNamespace.Tools)) {
+			return true
+		}
+	}
+	return false
+}
+
 // prepareResponsesRequest returns the Responses request to dispatch for one attempt:
-// prompt-cache breakpoints first, then embedded client tools promoted and namespace
-// tools flattened when the target wire does not understand them. All steps are copy-on-write, so the shared
+// embedded client tools promoted and namespace
+// tools flattened when the target wire does not understand them, then cache breakpoints
+// injected after all explicit tool markers are visible. All steps are copy-on-write, so the shared
 // req.BifrostRequest keeps the caller's namespaces for a later fallback attempt against
 // a wire that does.
 //
@@ -7581,7 +7614,6 @@ func promptCacheResponsesRequest(ctx *schemas.BifrostContext, config *schemas.Pr
 // the per-provider default in providerUtils applies, keyed on the BASE provider so a
 // custom provider wrapping OpenAI is treated like OpenAI.
 func prepareResponsesRequest(ctx *schemas.BifrostContext, config *schemas.ProviderConfig, provider schemas.Provider, key schemas.Key, r *schemas.BifrostResponsesRequest) (*schemas.BifrostResponsesRequest, *schemas.BifrostError) {
-	r = promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r)
 	if r == nil {
 		return nil, nil
 	}
@@ -7607,9 +7639,13 @@ func prepareResponsesRequest(ctx *schemas.BifrostContext, config *schemas.Provid
 	}
 	if supported {
 		// Pass-through: the request carries no alias map, so nothing is restored.
-		return r, nil
+		return promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r), nil
 	}
-	return providerUtils.FlattenResponsesNamespaceTools(ctx, r)
+	r, bifrostErr = providerUtils.FlattenResponsesNamespaceTools(ctx, r)
+	if bifrostErr != nil {
+		return nil, bifrostErr
+	}
+	return promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r), nil
 }
 
 // promptCacheChatRequest is the Chat Completions parallel of
@@ -7617,6 +7653,16 @@ func prepareResponsesRequest(ctx *schemas.BifrostContext, config *schemas.Provid
 func promptCacheChatRequest(ctx *schemas.BifrostContext, config *schemas.ProviderConfig, provider schemas.ModelProvider, r *schemas.BifrostChatRequest) *schemas.BifrostChatRequest {
 	if r == nil || config == nil {
 		return r
+	}
+	if r.Params != nil {
+		if r.Params.CacheControl != nil {
+			return r
+		}
+		for _, tool := range r.Params.Tools {
+			if tool.CacheControl != nil {
+				return r
+			}
+		}
 	}
 	promptCache := providerUtils.ResolvePromptCacheConfig(ctx, config.PromptCache)
 	if !providerUtils.PromptCacheInjectionEnabled(promptCache, schemas.ResolveBaseProvider(ctx, provider), r.Model) {
