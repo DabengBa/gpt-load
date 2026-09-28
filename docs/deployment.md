@@ -6,7 +6,7 @@
 
 - 反代：Caddy 容器 `gptl-proxy`（配置 `/opt/gptl-proxy/Caddyfile`），`https://gptl.tanyaleoallen.cloud:1443` → `127.0.0.1:3001`。
 - 应用：Compose 项目 `/opt/gpt-load`，容器 `gpt-load`，镜像为自建 `gpt-load:<分支>-<短sha>`，数据在具名卷 `gpt-load_gpt-load-data`（含 `gpt-load.db`、`auth.key`、`encryption.key`）。
-- 源码与构建：`/opt/gpt-load-src`，是 `origin` 的克隆，只作为构建源；每次发布由脚本 `git reset --hard origin/<分支>`。
+- 源码与构建：在本地仓库执行发布脚本，本机 Docker/BuildKit 完成构建。服务器只加载镜像和运行容器，`/opt/gpt-load-src` 不再参与发布。
 - 该容器已用 `com.centurylinklabs.watchtower.enable: "false"` 关闭自动更新，镜像只通过下面的脚本切换。
 - 公网 443：`https://gptl.tanyaleoallen.cloud` 由 GoDoxy `godoxy-app` 按 SNI 原样 TCP 转发（`config/vhosts.yml` 的 `scheme: tcp, port: 443:1443`）到本机 1443，再由上面的 Caddy 终止 TLS；443 与 1443 返回同一张证书与 `via: 1.1 Caddy`，`http://` 请求在 80 端口得到 404。
 - ingress 目标（GoDoxy 直接终止本域名 TLS、Caddy 退出）**尚未切换**，方案、切换/回滚与验收见 [`docs/godoxy-ingress.md`](godoxy-ingress.md)。切换后发布健康 URL 用 `https://gptl.tanyaleoallen.cloud/health`（不带 `:1443`）；切换前两种写法都可用。
@@ -14,13 +14,19 @@
 ## 发布
 
 ```bash
-ssh vps-kl /opt/gpt-load-src/scripts/deploy.sh            # 默认发布 dev
-ssh vps-kl /opt/gpt-load-src/scripts/deploy.sh <分支>      # 发布其它分支，用于上线前验证
+scripts/deploy.sh            # 在本地执行，默认发布 dev
+scripts/deploy.sh <分支>      # 发布其它已推送分支
 ```
 
-入口就是仓库里的 `scripts/deploy.sh`，服务器直接执行构建源中的这一份，所以发布逻辑只有一个版本，不存在需要同步的服务器副本。脚本按顺序执行：`git fetch` 目标分支 → `git reset --hard origin/<分支>` → `docker build --build-arg VERSION=<分支>-<短sha> -t gpt-load:<分支>-<短sha>` → 备份当前 `docker-compose.yml` → 改 `image` 标签与来源注释 → `docker compose up -d` → 轮询容器健康并打印 `/health`。健康未通过时脚本以非零退出；先按下文「健康检查异常排障」区分应用故障与宿主机执行环境故障，确认需要回退镜像后再回滚。
+入口是本地仓库里的 `scripts/deploy.sh`。本机需要 Git、Docker Buildx、gzip、curl 和可连接 `vps-kl` 的 SSH；Docker 必须使用本机 Unix socket。BuildKit 和构建缓存留在本机，服务器不执行 Git 拉取、源码编译或镜像构建。
 
-脚本会把 `/opt/gpt-load-src` reset 到目标提交，因此开跑前先把自己复制到 `/tmp` 再重新执行，避免 bash 边读边执行一个刚被覆盖的脚本。分支名里的 `/` 在镜像标签中写成 `-`。
+1. 发布前检查本地改动，完成相关测试，将本次提交推送到 `DabengBa/gpt-load` 的目标分支（默认 `dev`）。
+2. 脚本 fetch 目标分支，固定本次提交，以 `git archive` 导出源码作为构建上下文；本地未提交文件不会进入镜像。根据服务器架构选择 `linux/amd64` 或 `linux/arm64`，通过本机默认 builder 构建并加载 `gpt-load:<分支>-<短sha>`。
+3. `docker save | gzip -1 | ssh vps-kl 'docker load'` 流式上传镜像，不在服务器落地镜像压缩包。服务器仍需镜像解压、存储所需的 CPU 和磁盘空间，但不再承担 BuildKit 构建负载。
+4. 镜像加载成功后，脚本通过 SSH 发送部署命令：备份当前 Compose、更新镜像标签，以 `--no-build --pull never` 启动，再检查容器、本机与公网 `/health`。构建或传输失败不会进入 Compose 切换步骤。
+5. 发布后核对目标提交、运行镜像与 health 版本，检查近期错误及本次改动相关的业务请求，报告发布版本与验证结果。
+
+分支名里的 `/` 在镜像标签中写成 `-`。现有数据卷保持不动，Compose 备份不是数据库备份。脚本不自动清理旧镜像、服务器历史源码或 BuildKit 缓存；历史缓存清理属于单独的运维操作。健康未通过时脚本以非零退出；先按下文排障，确认需要回退镜像后再回滚。
 
 ## Raw 通信证据
 
@@ -56,7 +62,7 @@ scripts/fetch-hostinger-request-log.sh <request-id>
 ## 验证
 
 ```bash
-curl -s https://gptl.tanyaleoallen.cloud/health          # 期望 {"status":"ok","version":"dev-<短sha>"}
+curl -fsS https://gptl.tanyaleoallen.cloud:1443/health    # 期望 {"status":"ok","version":"dev-<短sha>"}
 docker inspect gpt-load --format '{{.Config.Image}} {{.State.Health.Status}} {{.RestartCount}}'
 docker logs --since 5m gpt-load 2>&1 | grep -icE 'error|fatal|panic'
 ```
