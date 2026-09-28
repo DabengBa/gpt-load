@@ -8,6 +8,8 @@
 - 应用：Compose 项目 `/opt/gpt-load`，容器 `gpt-load`，镜像为自建 `gpt-load:<分支>-<短sha>`，数据在具名卷 `gpt-load_gpt-load-data`（含 `gpt-load.db`、`auth.key`、`encryption.key`）。
 - 源码与构建：`/opt/gpt-load-src`，是 `origin` 的克隆，只作为构建源；每次发布由脚本 `git reset --hard origin/<分支>`。
 - 该容器已用 `com.centurylinklabs.watchtower.enable: "false"` 关闭自动更新，镜像只通过下面的脚本切换。
+- 公网 443：`https://gptl.tanyaleoallen.cloud` 由 GoDoxy `godoxy-app` 按 SNI 原样 TCP 转发（`config/vhosts.yml` 的 `scheme: tcp, port: 443:1443`）到本机 1443，再由上面的 Caddy 终止 TLS；443 与 1443 返回同一张证书与 `via: 1.1 Caddy`，`http://` 请求在 80 端口得到 404。
+- ingress 目标（GoDoxy 直接终止本域名 TLS、Caddy 退出）**尚未切换**，方案、切换/回滚与验收见 [`docs/godoxy-ingress.md`](godoxy-ingress.md)。切换后发布健康 URL 用 `https://gptl.tanyaleoallen.cloud/health`（不带 `:1443`）；切换前两种写法都可用。
 
 ## 发布
 

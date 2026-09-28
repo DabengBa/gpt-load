@@ -1,0 +1,6 @@
+autocert:
+  extra:
+    - domains:
+        - gptl.tanyaleoallen.cloud
+      cert_path: /app/certs/gptl.tanyaleoallen.cloud.crt
+      key_path: /app/certs/gptl.tanyaleoallen.cloud.key
