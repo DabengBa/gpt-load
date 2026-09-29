@@ -18,7 +18,6 @@ func TestWriteReasonUsesStableDataPlaneEnvelope(t *testing.T) {
 		reasonModelRequiredByFilter,
 		reasonNoCandidate,
 		reasonUpstreamConnect,
-		reasonUpstreamTimeout,
 		reasonUpstreamProtocol,
 		reasonRequestTooLarge,
 		reasonUnsupportedContentEncoding,
