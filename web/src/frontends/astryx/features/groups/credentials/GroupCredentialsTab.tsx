@@ -1437,7 +1437,7 @@ export function GroupCredentialsTab({
             size="sm"
             icon={<Plus size={16} aria-hidden="true" />}
             label={t('group.credentials.add')}
-            onClick={() => window.location.assign(importHref)}
+            onClick={() => void navigate({ to: importHref })}
           />
         )}
       </div>
@@ -1656,7 +1656,7 @@ export function GroupCredentialsTab({
                     size="sm"
                     icon={<Plus size={15} aria-hidden="true" />}
                     label={t('group.credentials.add')}
-                    onClick={() => window.location.assign(importHref)}
+                    onClick={() => void navigate({ to: importHref })}
                   />
                 )
               }

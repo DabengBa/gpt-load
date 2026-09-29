@@ -306,9 +306,9 @@ export function LoginView() {
       const preserveRecovery =
         session.getPrincipalType() === 'admin' && target.startsWith(pagePath('import'))
       if (!preserveRecovery) services.importRecovery.clear()
-      // The redirect target is usually a classic-owned route — hand it to the
-      // document so the server picks the frontend; replace keeps /login out
-      // of history either way.
+      // Flagged targets stay in the SPA; anything unmapped (manifest drift or
+      // a non-route path) still needs a document navigation so the server
+      // picks the frontend. Replace keeps /login out of history either way.
       if (isAstryxNavigable(target)) {
         void router.navigate({ href: target, replace: true })
       } else {

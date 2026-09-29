@@ -27,7 +27,7 @@ test('unauthenticated access to a guarded route redirects to login with redirect
   expect(url.searchParams.get('redirect')).toBe(FLAGGED_PATH)
   await expect(
     page.getByRole('heading', { name: 'Sign in to GPT-Load' }),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 60_000 })
   await expect(page.getByLabel('Sign-in key', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
 })
@@ -61,7 +61,7 @@ test('a trailing slash misses the manifest route and renders not-found', async (
   await page.goto('/settings/', { waitUntil: 'commit' })
   await expect(
     page.getByRole('heading', { name: 'This page does not exist' }),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 60_000 })
 })
 
 test('route matching is case-sensitive like the classic router', async ({
@@ -75,7 +75,7 @@ test('route matching is case-sensitive like the classic router', async ({
   await page.goto('/SETTINGS', { waitUntil: 'commit' })
   await expect(
     page.getByRole('heading', { name: 'This page does not exist' }),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 60_000 })
 })
 
 // In-app navigation to an Astryx-owned path stays inside the document:

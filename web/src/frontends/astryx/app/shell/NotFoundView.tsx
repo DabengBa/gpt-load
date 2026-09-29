@@ -165,9 +165,8 @@ export function NotFoundView() {
       router.history.back()
       return
     }
-    // Document navigation: the home route is classic-owned, so an in-app
-    // navigate would render the stub instead of handing off.
-    window.location.assign(pagePath('home'))
+    // Home is astryx-owned — stay in the SPA.
+    void router.navigate({ to: pagePath('home') })
   }
 
   return (

@@ -10,6 +10,10 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 // Companion to the classic parity: same query params, same summary chips,
 // same debounce/reset/page-correction behavior.
 
+// First navigation cold-compiles the whole astryx module graph (the router
+// statically imports every view) — over 30 s on a cold vite cache.
+test.setTimeout(90_000)
+
 interface FixtureGroup {
   id: number
   name: string

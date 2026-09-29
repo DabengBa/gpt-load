@@ -601,9 +601,8 @@ export function GroupsView() {
         message: t('groups.collection.copySucceeded', { name: result.group_name }),
         tone: 'success',
       })
-      // Document navigation: the group detail route is classic-owned, so an
-      // in-app navigate would render the stub instead of handing off.
-      window.location.assign(groupDetailHref(result.group_id))
+      // Group detail is astryx-owned — stay in the SPA.
+      void navigate({ to: groupDetailHref(result.group_id) })
     } catch {
       toast.show({ message: t('groups.collection.copyFailed'), tone: 'danger' })
     } finally {
