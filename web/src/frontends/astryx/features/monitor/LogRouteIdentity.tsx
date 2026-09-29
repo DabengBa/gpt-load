@@ -16,6 +16,30 @@ const styles = stylex.create({
     minWidth: 0,
     gap: 2,
   },
+  // compact：图标/渠道名在左列,分组行与凭据行在右列,长名互不挤压。
+  identityCompact: {
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    columnGap: 5,
+    alignItems: 'center',
+  },
+  identityCompactSolo: {
+    gridTemplateColumns: 'minmax(0, 1fr)',
+  },
+  asideCompact: {
+    gridColumn: 1,
+    gridRow: 1,
+    maxWidth: 64,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  lineCompact: {
+    gridColumn: 2,
+    gridRow: 1,
+  },
+  credentialRow: {
+    gridColumn: 2,
+  },
   // 抽屉空间充裕，排成一行并跟随所在字段字号。
   identityPlain: {
     display: 'flex',
@@ -69,17 +93,8 @@ const styles = stylex.create({
     color: 'var(--color-text-faint)',
     fontSize: 'var(--text-label-xs)',
   },
-  // compact 模式下凭据跟在分组名后，空间不足时优先收缩它。
-  credentialInline: {
-    flex: '0 1 auto',
-    maxWidth: '45%',
-  },
   credentialPlain: {
     color: 'var(--color-text-muted)',
-  },
-  separator: {
-    flex: 'none',
-    color: 'var(--color-text-faint)',
   },
   code: {
     fontFamily: 'var(--font-mono)',
@@ -224,27 +239,32 @@ export function LogRouteIdentity({
   const groupLinkAction = t('monitor.logs.routeIdentity.openGroup', { name: groupLabel })
 
   const isCompact = appearance === 'compact'
+  const hasAside = showsIcon || channelId !== null
   const groupChipStyle = [
     styles.value,
     styles.group,
     !hasGroupName && styles.groupCode,
     !isCompact && styles.inheritSize,
   ] as const
-  const credentialChipStyle = (inline: boolean) =>
-    [
-      styles.value,
-      styles.credential,
-      !hasCredentialName && styles.code,
-      inline ? styles.credentialInline : styles.credentialPlain,
-      !isCompact && styles.inheritSize,
-    ] as const
+  // 分组、凭据各占一行——compact 下凭据落在分组行下方的同一网格列。
+  const credentialChipStyle = [
+    styles.value,
+    styles.credential,
+    !hasCredentialName && styles.code,
+    isCompact
+      ? hasAside
+        ? styles.credentialRow
+        : undefined
+      : styles.credentialPlain,
+    !isCompact && styles.inheritSize,
+  ] as const
 
-  const credentialChip = (inline: boolean) =>
+  const credentialChip = () =>
     canFilterCredential ? (
       <button
         type="button"
         data-testid="log-route-identity__credential"
-        {...stylex.props(...credentialChipStyle(inline), styles.filterable)}
+        {...stylex.props(...credentialChipStyle, styles.filterable)}
         aria-label={credentialAction}
         onClick={() => {
           if (credentialId !== null) onFilterCredential?.(credentialId)
@@ -255,7 +275,7 @@ export function LogRouteIdentity({
     ) : (
       <span
         data-testid="log-route-identity__credential"
-        {...stylex.props(...credentialChipStyle(inline))}
+        {...stylex.props(...credentialChipStyle)}
       >
         {credentialLabel}
       </span>
@@ -271,18 +291,45 @@ export function LogRouteIdentity({
     >
       <span
         data-testid="log-route-identity"
-        {...stylex.props(styles.identity, !isCompact && styles.identityPlain)}
+        tabIndex={isCompact ? 0 : undefined}
+        aria-label={isCompact ? routeTooltip : undefined}
+        {...stylex.props(
+          styles.identity,
+          isCompact
+            ? hasAside
+              ? styles.identityCompact
+              : styles.identityCompactSolo
+            : styles.identityPlain,
+        )}
       >
         {showsIcon ? (
-          <span {...stylex.props(styles.icon, !isCompact && styles.inheritSize)}>
+          <span
+            {...stylex.props(
+              styles.icon,
+              isCompact && hasAside && styles.asideCompact,
+              !isCompact && styles.inheritSize,
+            )}
+          >
             <ChannelIcon icon={channel?.icon ?? ''} mark={channel?.mark ?? ''} />
           </span>
         ) : channelId !== null ? (
-          <span {...stylex.props(styles.channel, !isCompact && styles.inheritSize)}>
+          <span
+            {...stylex.props(
+              styles.channel,
+              isCompact && hasAside && styles.asideCompact,
+              !isCompact && styles.inheritSize,
+            )}
+          >
             {channelLabel}
           </span>
         ) : null}
-        <span {...stylex.props(styles.line, !isCompact && styles.linePlain)}>
+        <span
+          {...stylex.props(
+            styles.line,
+            isCompact && hasAside && styles.lineCompact,
+            !isCompact && styles.linePlain,
+          )}
+        >
           {canFilterGroup ? (
             <button
               type="button"
@@ -300,15 +347,7 @@ export function LogRouteIdentity({
               {groupLabel}
             </span>
           )}
-          {/* compact：凭据并入分组同一行；分组维护页与供应商外链只在抽屉（plain）保留。 */}
-          {isCompact && credentialLabel !== '' && (
-            <>
-              <span {...stylex.props(styles.separator)} aria-hidden="true">
-                ·
-              </span>
-              {credentialChip(true)}
-            </>
-          )}
+          {/* 分组维护页与供应商外链只在抽屉（plain）保留。 */}
           {!isCompact && (
             <>
               {canOpenGroup && (
@@ -340,7 +379,7 @@ export function LogRouteIdentity({
             </>
           )}
         </span>
-        {!isCompact && credentialLabel !== '' && credentialChip(false)}
+        {credentialLabel !== '' && credentialChip()}
       </span>
     </Tooltip>
   )

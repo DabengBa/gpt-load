@@ -25,16 +25,18 @@ import {
   hasRequestLogCache,
   reasoningBudgetSemantic,
   requestLogCostDisplayState,
+  requestLogProtocolLabel,
   requestLogResponseTooltip,
   requestLogResponseTooltipVisible,
   requestLogUsageDisplayState,
 } from '@shared/domain/monitor/log-format'
-import { formatCacheHitRate } from '@shared/lib/cache-rate'
+import { cacheHitRate } from '@shared/lib/cache-rate'
 import {
   formatEstimatedCost,
   formatISOInstant,
   formatLocalInstantWithSeconds,
 } from '@shared/lib/format'
+import { currentTimeZone } from '@shared/lib/time'
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useT } from '../../app/i18n'
@@ -251,9 +253,14 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  protocolLine: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
   protocol: {
     minWidth: 0,
-    marginLeft: 6,
     color: 'var(--color-text-faint)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -344,6 +351,12 @@ const styles = stylex.create({
     gap: 3,
     fontSize: 'var(--text-label-xs)',
     marginLeft: 0,
+    whiteSpace: 'nowrap',
+  },
+  cacheState: {
+    color: 'var(--color-text-faint)',
+    fontSize: 'var(--text-label-xs)',
+    whiteSpace: 'nowrap',
   },
   timingSlow: {
     color: 'var(--color-warning)',
@@ -533,6 +546,19 @@ const LogRow = memo(function LogRow({
     })
   })()
 
+  // 列表行比例固定一位小数（classic cacheRateLabel）；抽屉与汇总仍用 shared
+  // formatCacheHitRate 的零位裁剪格式。
+  const cacheRateLabel = (): string => {
+    const rate = cacheHitRate(log.cache_read_tokens, log.input_tokens)
+    return rate === null
+      ? '—'
+      : new Intl.NumberFormat(locale, {
+          style: 'percent',
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        }).format(rate)
+  }
+
   const cacheTooltip = () => {
     const details = (
       [
@@ -544,13 +570,8 @@ const LogRow = memo(function LogRow({
     )
       .filter(([, value]) => value !== '0')
       .map(([key, value]) => `${t(key)} ${formatLogTokenCount(value, locale)}`)
-    details.push(
-      `${t('monitor.logs.tokens.cacheHitRate')} ${formatCacheHitRate(
-        log.cache_read_tokens,
-        log.input_tokens,
-        locale,
-      )}`,
-    )
+    details.push(`${t('monitor.logs.tokens.cacheHitRate')} ${cacheRateLabel()}`)
+    details.push(t('monitor.logs.tokens.cacheRecordedHint'))
     return details.join('\n')
   }
 
@@ -597,7 +618,9 @@ const LogRow = memo(function LogRow({
           )}
           <time
             dateTime={formatISOInstant(log.completed_at_ms)}
-            title={formatLocalInstantWithSeconds(log.completed_at_ms)}
+            title={`${formatLocalInstantWithSeconds(log.completed_at_ms)} · ${currentTimeZone()}`}
+            aria-label={`${formatLocalInstantWithSeconds(log.completed_at_ms)} · ${currentTimeZone()}`}
+            tabIndex={0}
           >
             {formatLogTime(log.completed_at_ms)}
           </time>
@@ -691,11 +714,6 @@ const LogRow = memo(function LogRow({
               </span>
             </Tooltip>
           )}
-          {reasoningLabel !== '' && (
-            <Tooltip content={reasoningLabel}>
-              <small {...stylex.props(styles.reasoning)}>{reasoningLabel}</small>
-            </Tooltip>
-          )}
           {(log.model_consistency === 'unknown' || log.model_consistency === 'mismatch') && (
             <Tooltip content={modelConsistencyTooltip}>
               <button
@@ -714,11 +732,22 @@ const LogRow = memo(function LogRow({
               </button>
             </Tooltip>
           )}
+        </span>
+        <span {...stylex.props(styles.protocolLine)}>
           <Tooltip content={log.protocol}>
-            <span {...stylex.props(styles.protocol)} data-testid="logs-list__protocol">
-              {log.protocol}
+            <span
+              {...stylex.props(styles.protocol)}
+              data-testid="logs-list__protocol"
+              tabIndex={0}
+            >
+              {requestLogProtocolLabel(log.protocol)}
             </span>
           </Tooltip>
+          {reasoningLabel !== '' && (
+            <Tooltip content={reasoningLabel}>
+              <small {...stylex.props(styles.reasoning)}>{reasoningLabel}</small>
+            </Tooltip>
+          )}
           <LogProtocolConversion
             mode={log.route_mode}
             clientProtocol={log.protocol}
@@ -817,29 +846,49 @@ const LogRow = memo(function LogRow({
                       </button>
                     </Tooltip>
                   )}
-                  {hasRequestLogCache(log) && (
+                  {log.usage_state === 'complete' || hasRequestLogCache(log) ? (
                     <Tooltip content={cacheTooltip()}>
                       <button
                         type="button"
                         {...stylex.props(styles.hint, styles.cacheRate)}
-                        aria-label={`${t('monitor.logs.tokens.cacheHitRate')} ${formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale)} · ${t('monitor.logs.tokens.cacheDetails')}`}
+                        data-testid="logs-list__cache-rate"
+                        aria-label={`${t('monitor.logs.tokens.cacheHitRate')} ${cacheRateLabel()} · ${t('monitor.logs.tokens.cacheDetails')}`}
                       >
                         <Layers size={12} aria-hidden />
-                        {formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale)}
+                        {t('monitor.logs.tokens.cacheHitRate')} {cacheRateLabel()}
                       </button>
                     </Tooltip>
+                  ) : (
+                    <small
+                      {...stylex.props(styles.cacheState)}
+                      data-testid="logs-list__cache-state"
+                    >
+                      {t('monitor.logs.tokens.cacheUnavailable')}
+                    </small>
                   )}
                 </span>
               </span>
             </Tooltip>
           ) : (
-            <span
-              {...stylex.props(styles.stateWarning)}
-              data-testid="logs-list__state"
-              data-tone="warning"
-            >
-              —
-            </span>
+            <>
+              <span
+                {...stylex.props(styles.stateWarning)}
+                data-testid="logs-list__state"
+                data-tone="warning"
+              >
+                —
+              </span>
+              <small
+                {...stylex.props(styles.cacheState)}
+                data-testid="logs-list__cache-state"
+              >
+                {t(
+                  log.usage_state === 'not_applicable'
+                    ? 'monitor.logs.filters.usageState.not_applicable'
+                    : 'monitor.logs.tokens.cacheUnavailable',
+                )}
+              </small>
+            </>
           )}
         </span>
       </div>

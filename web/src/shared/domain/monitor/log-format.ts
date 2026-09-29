@@ -1,3 +1,4 @@
+import type { ProtocolValue } from '@shared/control/protocols'
 import type {
   RequestLogAttemptDto,
   RequestLogDetailDto,
@@ -7,6 +8,21 @@ import type {
 
 export type RequestLogUsageDisplayState = 'reported' | 'missing' | 'not_applicable'
 export type RequestLogCostDisplayState = 'complete' | 'unpriced' | 'not_applicable'
+
+// 产品品牌名不是翻译文本——协议在列表中显示短名,原始值保留在提示里。
+const REQUEST_LOG_PROTOCOL_LABELS: Record<string, string> = {
+  'openai-completions': 'Completions',
+  'openai-responses': 'Responses',
+  'openai-images': 'Images',
+  'openai-embeddings': 'Embeddings',
+  rerank: 'Rerank',
+  anthropic: 'Anthropic',
+  gemini: 'Gemini',
+}
+
+export function requestLogProtocolLabel(protocol: ProtocolValue): string {
+  return REQUEST_LOG_PROTOCOL_LABELS[protocol] ?? protocol
+}
 
 export function requestLogUsageDisplayState(log: RequestLogItemDto): RequestLogUsageDisplayState {
   if (log.usage_state === 'missing') return 'missing'

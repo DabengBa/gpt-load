@@ -55,6 +55,34 @@ test('list renders full rows with headers, summary, and local timestamps', async
   await expect(records(page).first().getByTestId('logs-list__time')).toContainText(/\d{4}/)
 })
 
+// Upstream f78071f8 readability semantics: protocol shows the product label
+// (raw value stays in the tooltip), the credential sits on its own row under
+// the group line, the cache badge spells out "Cache hit rate 98.0%", and the
+// timestamp tooltip carries the local timezone.
+test('display parity: layered route/protocol rows and labeled cache rate', async ({ page }) => {
+  await installRequestLogDisplayRoutes(page, (items) => [
+    { ...items[0], input_tokens: '1000', cache_read_tokens: '980' },
+    ...items.slice(1),
+  ])
+  await openLogs(page)
+
+  const row = records(page).first()
+  await expect(row.getByTestId('logs-list__protocol')).toHaveText('Completions')
+  await expect(row.getByTestId('logs-list__protocol')).toHaveAttribute('tabindex', '0')
+
+  const group = row.getByTestId('log-route-identity__group')
+  const credential = row.getByTestId('log-route-identity__credential')
+  const groupBox = (await group.boundingBox())!
+  const credentialBox = (await credential.boundingBox())!
+  expect(credentialBox.y).toBeGreaterThanOrEqual(groupBox.y + groupBox.height)
+
+  const time = row.getByTestId('logs-list__time').locator('time')
+  await expect(time).toHaveAttribute('title', /·\s*\S+/u)
+  await expect(time).toHaveAttribute('tabindex', '0')
+
+  await expect(row.getByTestId('logs-list__cache-rate')).toContainText('Cache hit rate 98.0%')
+})
+
 test('route identity: in-place filters plus drawer maintenance and provider links', async ({
   page,
 }) => {
