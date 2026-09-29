@@ -213,7 +213,6 @@ function projectProblemCredential(value: unknown): HealthProblemCredentialDto {
     if (!recovery.automatic || cooldownUntilMS !== null) {
       invalidResponse()
     }
-
   } else if (recovery.automatic || cooldownUntilMS !== null || recovery.at_ms !== null) {
     invalidResponse()
   }

@@ -30,18 +30,19 @@ func prepareGatewayProtocolProbe(
 ) (preparedAttempt, *execution.AttemptResult) {
 	var path string
 	var payload map[string]any
-	budget := probeOutputTokenBudget(spec)
 	switch spec.ClientProtocol {
 	case protocol.OpenAIResponses:
 		path = "/v1/responses"
-		payload = map[string]any{"model": spec.UpstreamModel, "input": probeQuestion, "max_output_tokens": budget, "store": false, "stream": false}
+		payload = responsesProbePayload(spec)
 	case protocol.Anthropic:
+		budget := probeOutputTokenBudget(spec)
 		path = "/v1/messages"
 		payload = map[string]any{
 			"model": spec.UpstreamModel, "max_tokens": budget, "stream": false,
 			"messages": []map[string]string{{"role": "user", "content": probeQuestion}},
 		}
 	case protocol.Gemini:
+		budget := probeOutputTokenBudget(spec)
 		path = "/v1beta/models/" + url.PathEscape(spec.UpstreamModel) + ":generateContent"
 		payload = map[string]any{
 			"contents":         []any{map[string]any{"role": "user", "parts": []map[string]string{{"text": probeQuestion}}}},
@@ -71,6 +72,13 @@ func prepareGatewayProtocolProbe(
 			Path: path, UpstreamURL: baseURL, Body: body, SafeHeaders: headers,
 		},
 	}, nil
+}
+
+func responsesProbePayload(spec execution.AttemptSpec) map[string]any {
+	return map[string]any{
+		"model": spec.UpstreamModel, "input": probeQuestion,
+		"max_output_tokens": probeOutputTokenBudget(spec), "store": false, "stream": false,
+	}
 }
 
 func normalizeGatewayProtocolProbeResult(spec execution.AttemptSpec, result *execution.AttemptResult) {

@@ -94,9 +94,7 @@ function itemTone(item: (typeof items.value)[number]): 'danger' | 'warning' {
           {{ t('home.ledger.attention.blacklisted', { group: item.groupName, count: item.value }) }}
         </span>
         <span v-else-if="item.kind === 'billing'" class="home-attention__detail">
-          {{
-            t('home.ledger.attention.billing', { group: item.groupName, count: item.value })
-          }}
+          {{ t('home.ledger.attention.billing', { group: item.groupName, count: item.value }) }}
           <AppRelativeTime
             v-if="item.cooldownUntilMS !== undefined"
             :instant="item.cooldownUntilMS"

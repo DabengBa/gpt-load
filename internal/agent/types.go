@@ -253,9 +253,9 @@ type RoutesView struct {
 
 // RouteIndexItemView summarizes one external model route candidate set.
 type RouteIndexItemView struct {
-	ExternalModel   string `json:"external_model"`
-	Protocol        string `json:"protocol"`
-	Operation       string `json:"operation"`
+	ExternalModel  string `json:"external_model"`
+	Protocol       string `json:"protocol"`
+	Operation      string `json:"operation"`
 	CandidateCount int    `json:"candidate_count"`
 	GroupIDs       []uint `json:"group_ids"`
 }

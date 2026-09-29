@@ -1,7 +1,12 @@
 import type { QueryClient } from '@tanstack/vue-query'
 import { inject, reactive, readonly, type DeepReadonly, type InjectionKey } from 'vue'
 
-import { ApiError, InvalidResponseError, NetworkError, RequestCancelledError } from '@shared/http/errors'
+import {
+  ApiError,
+  InvalidResponseError,
+  NetworkError,
+  RequestCancelledError,
+} from '@shared/http/errors'
 import type { AuthPrincipalType, AuthSessionPayload } from '@shared/http/types'
 import { controlQueryKeys } from '@/app/query-keys'
 

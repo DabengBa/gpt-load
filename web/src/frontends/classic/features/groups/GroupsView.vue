@@ -32,10 +32,7 @@ import {
   invalidateGroupSettingsDependents,
   updateGroupSettings,
 } from '@/app/resources/groups'
-import {
-  applyInvalidationPlan,
-  mutationInvalidationPlans,
-} from '@/app/resources/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@/app/resources/invalidation'
 import { groupDetailLocation, groupsLocation, importLocation } from '@/app/route-locations'
 import { useCollectionLoading } from '@/app/loading-state'
 import { useDebouncedAction } from '@/app/use-debounced-action'

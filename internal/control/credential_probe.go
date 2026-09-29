@@ -38,16 +38,16 @@ const (
 type ProbeReason string
 
 const (
-	ProbeReasonInvalidCredential    ProbeReason = "invalid_credential"
-	ProbeReasonInsufficientBalance  ProbeReason = "insufficient_balance"
-	ProbeReasonModelUnavailable     ProbeReason = "model_unavailable"
-	ProbeReasonRateLimited       ProbeReason = "rate_limited"
-	ProbeReasonTimeout           ProbeReason = "timeout"
-	ProbeReasonUpstreamError     ProbeReason = "upstream_error"
-	ProbeReasonIncompatible      ProbeReason = "probe_incompatible"
-	ProbeReasonNoAnswer          ProbeReason = "no_answer"
-	ProbeReasonInvalidResponse   ProbeReason = "invalid_response"
-	ProbeReasonUnknown           ProbeReason = "unknown"
+	ProbeReasonInvalidCredential   ProbeReason = "invalid_credential"
+	ProbeReasonInsufficientBalance ProbeReason = "insufficient_balance"
+	ProbeReasonModelUnavailable    ProbeReason = "model_unavailable"
+	ProbeReasonRateLimited         ProbeReason = "rate_limited"
+	ProbeReasonTimeout             ProbeReason = "timeout"
+	ProbeReasonUpstreamError       ProbeReason = "upstream_error"
+	ProbeReasonIncompatible        ProbeReason = "probe_incompatible"
+	ProbeReasonNoAnswer            ProbeReason = "no_answer"
+	ProbeReasonInvalidResponse     ProbeReason = "invalid_response"
+	ProbeReasonUnknown             ProbeReason = "unknown"
 
 	ProbeReasonTargetUnavailable       ProbeReason = "target_unavailable"
 	ProbeReasonNoSchedulableCredential ProbeReason = "no_schedulable_credential"

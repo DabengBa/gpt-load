@@ -1991,6 +1991,7 @@ func TestStreamErrorFailureHintDoesNotTreatGenericForbiddenAsInvalidCredential(t
 			name:   "payment required",
 			status: http.StatusPaymentRequired,
 			values: []string{"billing disabled"},
+			want:   execution.FailureHintInsufficientBalance,
 		},
 		{
 			name:   "explicit invalid key",

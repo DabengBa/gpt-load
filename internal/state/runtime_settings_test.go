@@ -683,7 +683,6 @@ func TestResolveGroupRuntimeSettingsRejectsPresentNullHeaderRules(t *testing.T) 
 	}
 }
 
-
 func TestValidateRuntimeSettingBoundaries(t *testing.T) {
 	for _, value := range []any{json.Number("1"), json.Number("365")} {
 		if err := ValidateRuntimeSetting(SettingRequestLogRetentionDays, value); err != nil {

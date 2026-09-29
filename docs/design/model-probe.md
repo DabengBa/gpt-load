@@ -90,6 +90,7 @@ Provider 通过 `ProviderBinding.ProbeContract` 声明单一生成式探测协�
 
 - Gemini 的 `thought: true` part 是内部思考，不算用户可见答案；因此 thought-only 响应是合法的 `no_answer`，不能误判为协议损坏。
 - Native passthrough 的响应先按 `Content-Encoding` 解码并受统一响应体上限约束，再进行协议提取；压缩响应不能绕过证据检查。
+- 原生 OpenAI 和多协议网关的 Responses 测活在同一次请求内识别 JSON 或 `text/event-stream` 响应。SSE 必须具有完整事件边界、合法的 `response.completed` 终态及非空可见回答；缺少终态、畸形事件、错误终态、`response.incomplete` 和终态后追加的数据不能通过。执行层从完成事件提取响应对象供测活判定，原始通信捕获仍保存未经改写的 SSE 字节。此处理不增加重试，也不改变普通请求的响应处理。
 
 严格的 wire carrier 检查仍拒绝跨协议响应；空数组、`null`、空白文本、错误 carrier、错误协议响应、畸形 JSON 和仅有 2xx 状态都不能通过。生成文本只作为执行层证据，不回传原文，也不写入日志；失败日志保留经过脱敏的上游错误摘要。
 
