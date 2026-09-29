@@ -46,7 +46,10 @@ export function collectAttentionItems(
     if (existing) {
       existing.value += 1
       const until = credential.cooldown_until_ms
-      if (until !== null && (existing.cooldownUntilMS === undefined || until < existing.cooldownUntilMS)) {
+      if (
+        until !== null &&
+        (existing.cooldownUntilMS === undefined || until < existing.cooldownUntilMS)
+      ) {
         existing.cooldownUntilMS = until
       }
       continue

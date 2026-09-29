@@ -72,8 +72,8 @@ func TestPassthroughHTTPErrorProducesNeutralFailureHints(t *testing.T) {
 		},
 		{
 			name: "payment required", status: http.StatusPaymentRequired,
-			body:  `{"error":{"message":"billing disabled"}}`,
-			scope: execution.ErrorScopeRequest,
+			body: `{"error":{"message":"billing disabled"}}`,
+			want: execution.FailureHintInsufficientBalance, scope: execution.ErrorScopeCredential,
 		},
 		{
 			name: "explicit invalid key under forbidden", status: http.StatusForbidden,

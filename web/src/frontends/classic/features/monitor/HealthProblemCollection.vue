@@ -235,7 +235,6 @@ function credentialMeta(credential: HealthProblemCredentialDto): string {
                 }}
               </OverflowTooltip>
             </template>
-
           </div>
 
           <div class="ledger-record-list__cell problem-health-record__actions" role="cell">

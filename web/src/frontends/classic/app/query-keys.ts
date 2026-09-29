@@ -147,11 +147,8 @@ export const controlQueryKeys = {
     all: ['control', 'model-route-schedule'] as const,
     index: () => ['control', 'model-route-schedule', 'index'] as const,
     details: () => ['control', 'model-route-schedule', 'detail'] as const,
-    detail: (context: {
-      protocol: string
-      external_model: string
-      operation?: string
-    }) => ['control', 'model-route-schedule', 'detail', context] as const,
+    detail: (context: { protocol: string; external_model: string; operation?: string }) =>
+      ['control', 'model-route-schedule', 'detail', context] as const,
   },
   modelPrices: () => ['control', 'model-prices'] as const,
   modelPriceCollection: (filters: ModelPriceFilters) =>

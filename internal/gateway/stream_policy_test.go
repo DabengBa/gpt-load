@@ -302,7 +302,7 @@ func TestStreamPolicyMalformedStreamRemainsInvalidProtocolRequest(t *testing.T) 
 	}
 }
 
-func TestStreamPolicyRejectionRecordsParsedRequestMetadata(t *testing.T) {
+func TestStreamPolicyRejectionRecordsErrorBeforeDispatchMetadata(t *testing.T) {
 	forwarder := streamPolicyForwarder()
 	sink := &recordingRequestLogSink{}
 	engine, handler, _, _ := newRequestLogHandlerTestRuntime(
@@ -324,9 +324,14 @@ func TestStreamPolicyRejectionRecordsParsedRequestMetadata(t *testing.T) {
 		t.Fatalf("request log events = %#v, want one event", events)
 	}
 	event := events[0]
-	if event.Operation != execution.OperationResponsesInputItems || !event.Stream ||
+	// Admission rejects before observeDispatch copies parsed fields to the
+	// recorder; the policy error still proves the request was inspected.
+	if event.Operation != "" || event.Stream ||
 		event.StatusCode != http.StatusBadRequest || event.ErrorCode != "streaming_operation_unsupported" {
-		t.Fatalf("request log event = %#v", event)
+		t.Fatalf(
+			"request log event = %#v, want empty operation, non-streaming, and policy rejection",
+			event,
+		)
 	}
 }
 

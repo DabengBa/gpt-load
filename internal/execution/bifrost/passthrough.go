@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/execution/geminiimage"
+	"gpt-load/internal/platform/contentcoding"
 	"gpt-load/internal/platform/httpheader"
 	"gpt-load/internal/protocol"
 )
@@ -390,7 +392,31 @@ complete:
 	if spec.ClientProtocol != protocol.OpenAIImages {
 		bodyBytes = bytes.Clone(bodyBytes)
 	}
-	if headers.Get("Content-Encoding") == "" && looksLikeEncodedResponse(bodyBytes) {
+	if spec.Operation == execution.OperationProbe && spec.ClientProtocol == protocol.OpenAIResponses &&
+		prepared.upstreamProtocol == protocol.OpenAIResponses && status >= http.StatusOK &&
+		status < http.StatusMultipleChoices {
+		encoding, err := contentcoding.ParseContentEncoding(headers.Values("Content-Encoding"))
+		var decoded []byte
+		if err == nil {
+			decoded, err = contentcoding.DecodeLimited(encoding, bodyBytes, r.unaryResponseBodyLimit(spec))
+		}
+		if err == nil && isEventStreamContentType(headers.Get("Content-Type")) {
+			decoded, err = normalizeOpenAIResponsesProbeSSE(decoded)
+		}
+		if err != nil {
+			failure := startedUnaryFailure(status, headers, execution.ErrorKindProvider, "upstream returned an invalid protocol probe response")
+			failure.Error.OriginHint = execution.ErrorOriginUpstream
+			failure.UpstreamProtocol = protocol.OpenAIResponses
+			return failure
+		}
+		bodyBytes = decoded
+		httpheader.StripRepresentationMetadata(headers)
+		headers.Set("Content-Type", "application/json")
+		if usageEvidence == nil {
+			usageEvidence = responsesProbeUsage(bodyBytes)
+		}
+	}
+	if looksLikeEncodedResponse(bodyBytes) {
 		return startedUnaryFailure(status, headers, execution.ErrorKindInternal, "encoded upstream response cannot be safely forwarded")
 	}
 	model := openAIResponseModel(bodyBytes, spec.UpstreamModel)
@@ -439,6 +465,109 @@ complete:
 		UpstreamRequestID: requestID,
 		Error:             evidence,
 	}
+}
+
+func isEventStreamContentType(value string) bool {
+	mediaType, _, err := mime.ParseMediaType(value)
+	return err == nil && strings.EqualFold(mediaType, "text/event-stream")
+}
+
+func normalizeOpenAIResponsesProbeSSE(body []byte) ([]byte, error) {
+	classifier := dialect.NewOpenAIResponses()
+	var terminal []byte
+	for offset := 0; offset < len(body); {
+		end, complete := firstCompleteNativeSSEEvent(body, offset)
+		if !complete {
+			return nil, fmt.Errorf("unterminated SSE frame")
+		}
+		frame := body[offset:end]
+		offset = end
+
+		var eventName string
+		var dataLines [][]byte
+		for _, line := range splitNativeSSELines(frame) {
+			if len(line.content) == 0 || line.content[0] == ':' {
+				continue
+			}
+			separator := bytes.IndexByte(line.content, ':')
+			field := line.content
+			value := []byte(nil)
+			if separator >= 0 {
+				field = line.content[:separator]
+				value = line.content[separator+1:]
+				if len(value) > 0 && value[0] == ' ' {
+					value = value[1:]
+				}
+			}
+			switch string(field) {
+			case "event":
+				eventName = string(value)
+			case "data":
+				dataLines = append(dataLines, value)
+			}
+		}
+		if len(dataLines) == 0 {
+			continue
+		}
+		if terminal != nil {
+			return nil, fmt.Errorf("SSE data followed terminal response")
+		}
+		payload := bytes.Join(dataLines, []byte("\n"))
+		classification, err := classifier.ClassifyStreamEvent(dialect.StreamEvent{
+			Name: eventName, Payload: payload,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("classify Responses SSE event")
+		}
+		switch classification.Disposition {
+		case dialect.StreamEventContinue:
+		case dialect.StreamEventCompleted:
+			var event struct {
+				Response json.RawMessage `json:"response"`
+				Error    json.RawMessage `json:"error"`
+			}
+			if json.Unmarshal(payload, &event) != nil ||
+				(len(event.Error) > 0 && !bytes.Equal(bytes.TrimSpace(event.Error), []byte("null"))) ||
+				!validGatewayProtocolProbeResponse(protocol.OpenAIResponses, event.Response) {
+				return nil, fmt.Errorf("decode terminal Responses event")
+			}
+			var response struct {
+				Object string `json:"object"`
+				Status string `json:"status"`
+			}
+			if json.Unmarshal(event.Response, &response) != nil ||
+				response.Object != "response" || response.Status != "completed" {
+				return nil, fmt.Errorf("invalid terminal Responses object")
+			}
+			terminal = bytes.Clone(event.Response)
+		case dialect.StreamEventIncomplete, dialect.StreamEventFailed:
+			return nil, fmt.Errorf("Responses stream did not complete")
+		default:
+			return nil, fmt.Errorf("unknown Responses stream disposition")
+		}
+	}
+	if terminal == nil {
+		return nil, fmt.Errorf("Responses stream ended before terminal event")
+	}
+	extraction := probeAnswerPresent(protocol.OpenAIResponses, terminal, true)
+	if !extraction.valid {
+		return nil, fmt.Errorf("terminal Responses object is invalid")
+	}
+	return terminal, nil
+}
+
+func responsesProbeUsage(responseBody []byte) *execution.UsageEvidence {
+	var response struct {
+		Usage *schemas.ResponsesResponseUsage `json:"usage"`
+	}
+	if json.Unmarshal(responseBody, &response) != nil || response.Usage == nil {
+		return nil
+	}
+	usage, err := usageEvidenceFromResponses(response.Usage)
+	if err != nil {
+		return nil
+	}
+	return usage
 }
 
 func (r *Runtime) executeNativeHead(
@@ -627,6 +756,9 @@ func (r *Runtime) executeNativeStream(
 				responseObserved = true
 				status = response.StatusCode
 				headers = responseHeaders(response.Headers, bifrostContext, true)
+				// This path validates and emits SSE frames, not an encoded body.
+				// Encoding metadata is only retained by the unary collector.
+				headers.Del("Content-Encoding")
 				requestID = upstreamRequestID(headers)
 				if status < http.StatusOK || status >= http.StatusMultipleChoices {
 					if err := emitReady(); err != nil {

@@ -611,6 +611,23 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 				directKey: directKey, secrets: secrets,
 			}, nil
 		}
+		if mode == channel.RouteNative && providerKind == channel.ProviderOpenAI &&
+			spec.ClientProtocol == protocol.OpenAIResponses {
+			probeBody, marshalErr := json.Marshal(responsesProbePayload(spec))
+			if marshalErr != nil {
+				failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode native Responses probe body")
+				return preparedAttempt{}, &failure
+			}
+			return preparedAttempt{
+				provider: provider, mode: mode, upstreamProtocol: protocol.OpenAIResponses,
+				clientProtocol: protocol.OpenAIResponses, directKey: directKey, secrets: secrets,
+				passthrough: &schemas.BifrostPassthroughRequest{
+					Provider: provider, Model: spec.UpstreamModel, Method: http.MethodPost,
+					Path: "/v1/responses", Body: probeBody,
+					SafeHeaders: map[string]string{"Content-Type": "application/json"},
+				},
+			}, nil
+		}
 		responses := spec.ClientProtocol == protocol.OpenAIResponses ||
 			(mode == channel.RouteConverted &&
 				(spec.ClientProtocol == protocol.Anthropic || spec.ClientProtocol == protocol.Gemini))

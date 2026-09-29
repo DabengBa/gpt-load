@@ -554,18 +554,12 @@ function hydrateDraftState(source: ScheduleDrafts): void {
   }
 }
 
-type DetailWatchKey = [
-  revision: number,
-  externalModel: string | null,
-  protocol: string,
-]
+type DetailWatchKey = [revision: number, externalModel: string | null, protocol: string]
 
 watch(
   (): DetailWatchKey => {
     const detail = props.detail
-    return detail
-      ? [detail.snapshot_revision, detail.external_model, detail.protocol]
-      : [0, '', '']
+    return detail ? [detail.snapshot_revision, detail.external_model, detail.protocol] : [0, '', '']
   },
   (value, previous) => {
     if (previous?.[0] && previous[0] !== value[0]) {
@@ -864,7 +858,9 @@ function breakerRecoveryLabel(entry: ModelRouteScheduleEntryDto): string {
               />
             </div>
             <div class="schedule-cell schedule-cell--input" role="cell">
-              <label class="schedule-cell__label" :for="`weight-${index}`">{{ text('weight') }}</label>
+              <label class="schedule-cell__label" :for="`weight-${index}`">{{
+                text('weight')
+              }}</label>
               <AppTextInput
                 :id="`weight-${index}`"
                 :model-value="inputValue(group.group_id, entry, 'weight')"

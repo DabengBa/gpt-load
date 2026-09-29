@@ -12,7 +12,9 @@ const server = await createServer({
 })
 
 try {
-  const affinity = await server.ssrLoadModule('/src/frontends/classic/features/monitor/request-log-affinity.ts')
+  const affinity = await server.ssrLoadModule(
+    '/src/frontends/classic/features/monitor/request-log-affinity.ts',
+  )
   runRequestLogAffinityContractTests(affinity)
   console.log('request-log-affinity contract: PASS')
 } finally {

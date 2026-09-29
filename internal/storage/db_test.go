@@ -718,6 +718,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0020_agent_credentials",
 		"0021_agent_change_proposals",
 		"0022_usage_first_response",
+		"0023_billing_failure_category",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)
@@ -746,7 +747,7 @@ func TestAutoMigrateRemovesRetiredValidationInterval(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("create legacy validation_interval setting: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{"0017_remove_validation_interval", "0018_usage_journal_bucket_index", "0019_request_log_operation_index", "0020_agent_credentials", "0021_agent_change_proposals", "0022_usage_first_response"}).Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{"0017_remove_validation_interval", "0018_usage_journal_bucket_index", "0019_request_log_operation_index", "0020_agent_credentials", "0021_agent_change_proposals", "0022_usage_first_response", "0023_billing_failure_category"}).Error; err != nil {
 		t.Fatalf("simulate pre-0017 migration ledger: %v", err)
 	}
 	if err := storage.AutoMigrate(db); err != nil {

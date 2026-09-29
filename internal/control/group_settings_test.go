@@ -144,7 +144,6 @@ func TestUpdateGroupSettingsPublishesParameterOverrides(t *testing.T) {
 	}
 }
 
-
 func TestGroupSettingsRejectNewContinuationOverridesButKeepLegacyReadable(t *testing.T) {
 	fixture := newServiceFixture(t)
 	group := validControlGroup("legacy-continuation")

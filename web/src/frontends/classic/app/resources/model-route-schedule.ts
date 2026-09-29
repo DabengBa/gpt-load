@@ -3,10 +3,7 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type { ApiClient } from '@shared/http/client'
 import { enabledDataProtocols } from '@/api/control/protocols'
-import {
-  type AccessProtocol,
-  type ReasoningEffortDto,
-} from '@/api/control/types'
+import { type AccessProtocol, type ReasoningEffortDto } from '@/api/control/types'
 import { ApiError, InvalidResponseError } from '@shared/http/errors'
 import { controlQueryKeys } from '@/app/query-keys'
 import {

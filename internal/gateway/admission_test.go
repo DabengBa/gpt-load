@@ -10,6 +10,7 @@ import (
 
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/ratelimit"
 	"gpt-load/internal/state"
@@ -93,7 +94,7 @@ func TestAdmitRequestModelsEndpointRejectsNonIdentityEncoding(t *testing.T) {
 		dialects: dialect.NewSet(dialect.NewOpenAI()),
 	}
 	request := newAdmissionRequest(http.MethodGet, "/v1/models", "")
-	request.Header.Set("Accept-Encoding", "gzip")
+	request.Header.Set("Accept-Encoding", "identity;q=0")
 	input := forwardAdmissionInput(request)
 	input.route = route{Protocol: protocol.OpenAICompletions, Kind: endpointModels}
 	outcome := handler.admitRequest(context.Background(), input)
@@ -105,8 +106,9 @@ func TestAdmitRequestModelsEndpointRejectsNonIdentityEncoding(t *testing.T) {
 func TestAdmitRequestRejectsUnknownDialect(t *testing.T) {
 	t.Parallel()
 	handler := &Handler{
-		limiter:  unlimitedAccessKeyRPMLimiter{},
-		dialects: dialect.Set{},
+		limiter:             unlimitedAccessKeyRPMLimiter{},
+		dialects:            dialect.Set{},
+		routeNotFoundEvents: utils.NewRateLimitedEventCounter(time.Minute, time.Now),
 	}
 	outcome := handler.admitRequest(context.Background(), forwardAdmissionInput(
 		newAdmissionRequest(http.MethodPost, "/v1/chat/completions", `{"model":"gpt-4"}`),
