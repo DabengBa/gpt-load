@@ -926,6 +926,40 @@ largest files in the repo) and `import` (6.2k, which owns the import
 re-authentication recovery through sessionStorage). These two share
 credential staging logic, so migrate them in adjacent releases.
 
+**Phase 4 outcome (shipped on `docs/astryx-migration-plan`):** the
+group-detail host (`/groups/:id` unified settings+models editor plus the
+credentials management tab) and the import flow (`/import` dual-mode:
+new-group create and existing-group append) are migrated; every route in
+`page_routes.json` now carries `astryx: true`. The classic route codecs
+moved to shared modules (`routing/group-detail-route`, `routing/import-route`)
+and classic re-exports them; the import recovery draft lives in
+`sessionStorage` on both frontends and the astryx unauthorized handler now
+runs the same capture→bypass→clear→redirect sequence as classic. Evidence:
+astryx e2e 134/134 (import 6/6 — mode canonicalization, `group_id` deep
+link, idempotent create/append, subscription staging poll, and the 401
+re-auth recovery chain; request-log display parity 1/1), classic
+readability 7/7, codec unit tests 15/15, log-format 49 cases, tsc + eslint
+clean. Commits: `641f3950` (codecs + recovery plumbing), `057a7833` (detail
+host, tabs, staging, import operation + flag flips), `cff1b699` (upstream
+f78071f8 readability sync). Three precedents added:
+
+- **Pending-transition guard on URL effects:** while a navigation is
+  committing, the outgoing route still renders with the incoming location —
+  canonicalization/correction effects must bail when `pathname` no longer
+  matches their own route, or they resurrect the old page and cancel the
+  in-flight navigation (the import→detail bounce bug). All astryx views now
+  guard on `pathname`.
+- **Post-success navigation through the unsaved-changes bypass:** React's
+  dirty flag has not flushed when the success handler fires, so the blocker
+  sees `dirty === true` where classic's synchronous guard saw the already-
+  converged state — programmatic success navigations go through
+  `runWithoutPrompt`, never raw `navigate`.
+- **Dead-code normalization is not a validator:** `normalizeGroupQuery`
+  came from the unmounted `GroupTabs.vue`; wiring it into `validateSearch`
+  would rewrite bare `/groups/:id` to the management tab. Sparse
+  `validateSearch` preserves the classic default (unified editor on a bare
+  detail URL).
+
 ### Phase 5: Cutover
 
 The default flips to astryx, with classic still reachable through the cookie

@@ -42,6 +42,7 @@ last_updated: 2026-09-25
   - 2026-09-27 Phase 2 三域交付:settings(e9a8b0bf)、models 含 model-prices 嵌入(7f6e2b1c)、home(805b0f95);切片终审收敛死字段并关闭(1b8d0a18),方案文档回写 Phase 2 outcome(3dffa83b)。
   - 2026-09-27 Phase 3 交付:access-keys(3a019b90)、monitor 宿主 + health/usage(781ef55b)、inspector(ef97aaa7)、logs 全量 parity(ac540c16)、schedule 调度中心(2fdd51c6);终审补 monitor-route codec 单测 12 条,真机 CSP 30/30 三浏览器矩阵全绿;方案文档回写 Phase 3 outcome,过程文件删除,wrap-up 提交 8cbd2125。
   - 2026-09-27 Phase 4 立项摸底:group-detail(9,219 行)+ import(5,670 行)为最后两条 classic 路由;发现 astryx `importRecovery` 误接 localStorage(classic 用 sessionStorage)且 `onUnauthorized` 未接 `captureForUnauthorized`——列为 flag 前置修复项。
+  - 2026-09-30 Phase 4 交付:codec 抽取 + recovery 修复(641f3950);detail 宿主 + settings/models/credentials 三 tab + import 双模式 + staging 层(057a7833)——rebase fork/dev 后同步上游 f78071f8 可读性语义(eefa9bc3、cff1b699);终审修掉 flag 翻转遗留的四处 document 导航;astryx e2e 134/134 + classic readability 7/7 + codec 15/15;manifest 终态 11/11 astryx flag,仅剩 Phase 5 默认切换与 Phase 6 删除。
 - 实现追溯:
   - 规格目录 `.docs/specs/260925-01-astryx-migration-foundation/`(归档时已删过程文件;gate 证据与评审记录已并入 `.docs/tech/astryx-migration-plan.md` Phase 1 小节)。
   - Phase 2 规格目录 `.docs/specs/260926-01-astryx-phase2-domains/`(归档时已删过程文件;域分解、三评审面记录与真机证据并入 `.docs/tech/astryx-migration-plan.md` Phase 2 outcome 与本条追溯)。

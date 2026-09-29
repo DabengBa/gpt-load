@@ -6,6 +6,44 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-09-30 — Astryx migration: Phase 4 (group detail + import)
+
+The fourth slice migrated `/groups/:id` (unified settings+models editor,
+credentials management tab, header portals) and `/import` (dual-mode
+new-group/existing-group flows, subscription credential staging, and the
+sessionStorage re-auth recovery chain) onto the Astryx frontend on branch
+`docs/astryx-migration-plan`. Every manifest route now carries
+`astryx: true`; only the Phase 5 default flip and Phase 6 classic deletion
+remain.
+
+- **Shared codecs:** `shared/routing/group-detail-route` (tab +
+  credential/model query segments) and `shared/routing/import-route`
+  (mode, `group_id` deep link, discovery params) extracted with classic
+  re-exports; bare `/groups/:id` deliberately keeps the unified-editor
+  default — the dead `GroupTabs.vue` normalizer would have hijacked it to
+  the management tab.
+- **Import operation owner:** `useStableImportOperation` ported as a
+  module-scoped store with idempotency keys, a generation guard, and
+  ephemeral-cleaner registration; `captureForUnauthorized` +
+  `sessionStorage` draft restore give the 401 → login → draft-recovery
+  chain exact classic parity.
+- **Pending-transition guard (new precedent):** while TanStack commits a
+  navigation the outgoing route still renders with the incoming location —
+  every canonicalization/correction effect across all astryx views now
+  bails when `pathname` leaves its own route, fixing the
+  import→detail bounce. Programmatic success navigations go through the
+  unsaved-changes bypass because the React dirty flag has not flushed yet
+  where classic's synchronous guard already saw converged state.
+- **Evidence:** astryx e2e 134/134 (import 6/6 incl. recovery chain +
+  request-log display parity), classic readability 7/7, codec tests 15/15,
+  log-format 49 cases, tsc + eslint clean. Upstream `f78071f8` readability
+  semantics (protocol labels, layered route/protocol rows, zoned
+  timestamps, labeled cache rates) were synced into the astryx table.
+  Commits: `641f3950`, `057a7833`, `eefa9bc3`, `cff1b699`.
+
+Owner doc: `.docs/tech/astryx-migration-plan.md` (Phase 4 outcome). Phase 5
+cutover (default flip) follows the same plan.
+
 ## 2026-09-27 — Astryx migration: Phase 3 (operational domains)
 
 The third slice migrated `access-keys`, the `monitor` host (health, usage,
