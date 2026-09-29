@@ -4,12 +4,45 @@
 
 ## 拓扑
 
-- 反代：Caddy 容器 `gptl-proxy`（配置 `/opt/gptl-proxy/Caddyfile`），`https://gptl.tanyaleoallen.cloud:1443` → `127.0.0.1:3001`。
+- 公网 443（主入口）：`https://gptl.tanyaleoallen.cloud` 由 GoDoxy `godoxy-app` 终止 TLS，再按 `config/vhosts.yml` 以 HTTP 反代到 `127.0.0.1:3001`：
+
+  ```yaml
+  gptl.tanyaleoallen.cloud:
+    scheme: http
+    host: 127.0.0.1
+    port: 3001
+    response_header_timeout: 2h
+  ```
+
+  443 的证书由 GoDoxy autocert（provider `hostinger`）签发，落在具名卷 `godoxy_godoxy-certs`（`/app/certs/gptl.tanyaleoallen.cloud.crt`）。`config.yml` 的 entrypoint 中间件对本域名生效：响应带 `Referrer-Policy`、`Strict-Transport-Security`、`X-Content-Type-Options`、`X-Frame-Options` 四个安全头，`http://` 请求在 80 端口得到 **308** 跳转到 https（切换前是 404）。443 响应**没有** `via: 1.1 Caddy`，并广告 `alt-svc: h3=":443"; ma=2592000`。
+- 公网 1443（保留的回滚入口）：Caddy 容器 `gptl-proxy`（配置 `/opt/gptl-proxy/Caddyfile`），`https://gptl.tanyaleoallen.cloud:1443` → `127.0.0.1:3001`，`protocols h1 h2` + `header >Alt-Svc clear`，证书仍来自 `/acme` 的 Caddy 侧 ACME 目录。1443 只服务 HTTP/1.1 与 HTTP/2，**不在 443 路径上**。
 - 应用：Compose 项目 `/opt/gpt-load`，容器 `gpt-load`，镜像为自建 `gpt-load:<分支>-<短sha>`，数据在具名卷 `gpt-load_gpt-load-data`（含 `gpt-load.db`、`auth.key`、`encryption.key`）。
 - 源码与构建：在本地仓库执行发布脚本，本机 Docker/BuildKit 完成构建。服务器只加载镜像和运行容器，`/opt/gpt-load-src` 不再参与发布。
 - 该容器已用 `com.centurylinklabs.watchtower.enable: "false"` 关闭自动更新，镜像只通过下面的脚本切换。
-- 公网 443：`https://gptl.tanyaleoallen.cloud` 由 GoDoxy `godoxy-app` 按 SNI 原样 TCP 转发（`config/vhosts.yml` 的 `scheme: tcp, port: 443:1443`）到本机 1443，再由上面的 Caddy 终止 TLS；443 与 1443 返回同一张证书与 `via: 1.1 Caddy`，`http://` 请求在 80 端口得到 404。
-- ingress 目标（GoDoxy 直接终止本域名 TLS、Caddy 退出）**尚未切换**，方案、切换/回滚与验收见 [`docs/godoxy-ingress.md`](godoxy-ingress.md)。切换后发布健康 URL 用 `https://gptl.tanyaleoallen.cloud/health`（不带 `:1443`）；切换前两种写法都可用。
+- Caddy **暂不删除**：Alt-Svc 排空与移除条件见 [`docs/godoxy-ingress.md`](godoxy-ingress.md) 的 6.4/6.6，本文不重复。发布健康 URL 用 `https://gptl.tanyaleoallen.cloud/health`（不带端口）。
+
+## ingress 观测（443 路径看 GoDoxy，不是 Caddy）
+
+443 路径现在完全在 GoDoxy 内部，**Caddy 的 JSON access log 里看不到任何 443 流量**，用它判断 443 问题会得到空结论。观测入口有两个：
+
+```bash
+# 1) GoDoxy 容器 stdout：TLS 握手错误、代理错误、404、http2 preface 错误、日志轮转提示
+ssh vps-kl 'docker logs --since 1h godoxy-app 2>&1 | tail -50'
+#    典型行：http: TLS handshake error from <ip>:<port>: local error: tls: bad record MAC
+#            http proxy error error="..." url=gptl.tanyaleoallen.cloud/v1/responses
+#            not found: <host>  /  http2: server: error reading preface from client
+
+# 2) 访问日志文件（combined 格式，保留 30 天）
+#    config.yml 里 access_log.stdout: false，因此这些行不在 docker logs 中
+#    /app/logs 是 bind mount，宿主机上直接读即可
+ssh vps-kl 'tail -n 50 /www/server/panel/data/compose/godoxy/logs/entrypoint.log'
+ssh vps-kl 'ls -t /www/server/panel/data/compose/godoxy/logs/ | head'   # 轮转后的历史文件
+```
+
+- GoDoxy 按小时轮转 `entrypoint.log` 为 `entrypoint.log.<时间戳>`；刚发生轮转时当前文件可能为空，此时读最新的轮转文件。
+- 镜像内没有 shell（`docker exec godoxy-app sh ...` 会报 `executable file not found in $PATH`）。需要把文件取回本机时用 `docker cp` 或直接读宿主机 bind 目录，不要假设容器内可执行命令。
+- 该访问日志含路径、query 与客户端 IP，按现有日志权限约定处理，不要贴进工单或日志检索。
+- 业务成败仍以 `GET /api/logs` 与 request log 为准（见下文「Raw 通信证据」）；ingress 日志只能回答「请求有没有到达 GoDoxy、状态码和耗时是多少」。
 
 ## 发布
 
@@ -62,10 +95,12 @@ scripts/fetch-hostinger-request-log.sh <request-id>
 ## 验证
 
 ```bash
-curl -fsS https://gptl.tanyaleoallen.cloud:1443/health    # 期望 {"status":"ok","version":"dev-<短sha>"}
+curl -fsS https://gptl.tanyaleoallen.cloud/health    # 期望 {"status":"ok","version":"dev-<短sha>"}
 docker inspect gpt-load --format '{{.Config.Image}} {{.State.Health.Status}} {{.RestartCount}}'
 docker logs --since 5m gpt-load 2>&1 | grep -icE 'error|fatal|panic'
 ```
+
+对外健康检查走 443（无端口）。`https://gptl.tanyaleoallen.cloud:1443/health` 只在需要单独确认保留的回滚入口 Caddy 时才用。
 
 ## 健康检查异常排障
 
@@ -74,7 +109,7 @@ docker logs --since 5m gpt-load 2>&1 | grep -icE 'error|fatal|panic'
 ```bash
 ssh vps-kl 'docker inspect gpt-load --format "image={{.Config.Image}} started={{.State.StartedAt}} restarts={{.RestartCount}} health={{.State.Health.Status}} check={{json .Config.Healthcheck}}"'
 ssh vps-kl 'curl -fsS --max-time 10 http://127.0.0.1:3001/health'
-curl -fsS --max-time 10 https://gptl.tanyaleoallen.cloud:1443/health
+curl -fsS --max-time 10 https://gptl.tanyaleoallen.cloud/health
 ssh vps-kl 'df -h /tmp; findmnt /tmp; journalctl -u docker --since "15 minutes ago" --no-pager | grep -E "Health check|no space left on device" | tail -20'
 ```
 

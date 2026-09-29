@@ -67,5 +67,5 @@ echo
 REMOTE
 
 echo '公网健康检查:'
-curl -fsS --max-time 10 https://gptl.tanyaleoallen.cloud:1443/health
+curl -fsS --max-time 10 https://gptl.tanyaleoallen.cloud/health
 echo
