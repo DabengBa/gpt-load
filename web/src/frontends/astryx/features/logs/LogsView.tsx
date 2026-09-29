@@ -239,6 +239,7 @@ export function LogsView() {
   const rawSearch = useRouterState({
     select: (state) => state.location.search as Record<string, unknown>,
   })
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   const logsPath = pagePath('logs')
 
   const appliedFilterState = useMemo(() => parseAppliedLogFilterState(rawSearch), [rawSearch])
@@ -335,6 +336,9 @@ export function LogsView() {
     setPageTransitionOrigin(null)
   }
   useEffect(() => {
+    // Pending transition: the outgoing route still renders while location has
+    // moved — a late restore must not resurrect this page.
+    if (pathname !== logsPath) return
     if (pendingRestore === null) return
     const origin = pendingRestore
     void navigateLogs(logsMonitorQuery(appliedFilters, origin), true).finally(() =>

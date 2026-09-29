@@ -212,10 +212,11 @@ export function ModelsView() {
   const sessionState = useSyncExternalStore(authSession.subscribe, authSession.getState)
   const isAccessKey = sessionState.principalType === 'access_key'
 
-  const { rawSearch, searchStr } = useRouterState({
+  const { rawSearch, searchStr, pathname } = useRouterState({
     select: (state) => ({
       rawSearch: state.location.search as SharedRouteQuery,
       searchStr: state.location.searchStr,
+      pathname: state.location.pathname,
     }),
   })
   const routeState = useMemo<ModelsRouteState>(() => {
@@ -272,6 +273,9 @@ export function ModelsView() {
 
   // Canonicalize non-canonical query params — drops junk/duplicated keys.
   useEffect(() => {
+    // Pending transition: the outgoing route still renders while location has
+    // moved — a late canonicalization must not resurrect this page.
+    if (pathname !== modelsPath) return
     if (!isCanonicalModelsRouteQuery(rawSearch, routeState)) {
       void navigate({
         to: modelsPath,
@@ -288,6 +292,7 @@ export function ModelsView() {
   const requestedPage = filters.page
   const isPlaceholder = modelsQuery.isPlaceholderData
   useEffect(() => {
+    if (pathname !== modelsPath) return
     if (isPlaceholder || totalPages === undefined) return
     const lastPage = Math.max(1, totalPages)
     if (requestedPage > lastPage) {

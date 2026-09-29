@@ -378,10 +378,11 @@ export function GroupsView() {
   const intl = useIntl()
   const { apiClient, queryClient, toast } = useAppServices()
   const navigate = useNavigate()
-  const { rawSearch, searchStr } = useRouterState({
+  const { rawSearch, searchStr, pathname } = useRouterState({
     select: (state) => ({
       rawSearch: state.location.search as SharedRouteQuery,
       searchStr: state.location.searchStr,
+      pathname: state.location.pathname,
     }),
   })
   const filters = useMemo(() => parseGroupCollectionRouteQuery(rawSearch), [rawSearch])
@@ -425,6 +426,9 @@ export function GroupsView() {
   // Canonicalize non-canonical query params — mirrors the classic router
   // watch: junk/duplicated keys are dropped via a history replace.
   useEffect(() => {
+    // During a pending transition the outgoing route keeps rendering while
+    // location already moved — a late canonicalization must not resurrect it.
+    if (pathname !== groupsPath) return
     if (!isCanonicalGroupCollectionRouteQuery(rawSearch, filters)) {
       void navigate({
         to: groupsPath,
@@ -442,6 +446,7 @@ export function GroupsView() {
   const requestedPage = filters.page
   const isPlaceholder = groupsQuery.isPlaceholderData
   useEffect(() => {
+    if (pathname !== groupsPath) return
     if (!isPlaceholder && totalPages !== undefined && totalPages > 0 && requestedPage > totalPages) {
       void navigate({
         to: groupsPath,

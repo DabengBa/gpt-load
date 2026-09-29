@@ -7,10 +7,21 @@ import type { UnsavedChangesController } from '@shared/controllers/unsaved-chang
 import { useT } from './i18n'
 import { useAppServices } from './services'
 
+export interface BlockerRouteLocation {
+  routeId: string
+  fullPath: string
+  pathname: string
+  params: Record<string, unknown>
+  search: Record<string, unknown>
+}
+
 export interface UnsavedChangesOptions {
   dirty: boolean
   blocked?: boolean
-  allowRouteUpdate?: (current: { routeId: string }, next: { routeId: string }) => boolean
+  allowRouteUpdate?: (
+    current: BlockerRouteLocation,
+    next: BlockerRouteLocation,
+  ) => boolean
 }
 
 export interface UnsavedChangesGuard {
@@ -56,7 +67,8 @@ export function useUnsavedChanges(options: UnsavedChangesOptions): UnsavedChange
     shouldBlockFn: ({ current, next }) => {
       const { dirty, blocked, allowRouteUpdate } = optionsRef.current
       if (controller.consumeBypass()) return false
-      if (allowRouteUpdate?.(current, next)) return false
+      if (allowRouteUpdate?.(current as BlockerRouteLocation, next as BlockerRouteLocation))
+        return false
       if (blocked) return true
       if (!dirty) return false
       return controller.requestConfirmation().then((confirmed) => !confirmed)

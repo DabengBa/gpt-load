@@ -121,10 +121,11 @@ export function HomeView() {
   const isAccessKey = sessionState.principalType === 'access_key'
   const isAdmin = sessionState.principalType === 'admin'
 
-  const { rawSearch, searchStr } = useRouterState({
+  const { rawSearch, searchStr, pathname } = useRouterState({
     select: (state) => ({
       rawSearch: state.location.search as SharedRouteQuery,
       searchStr: state.location.searchStr,
+      pathname: state.location.pathname,
     }),
   })
   const routeState = useMemo<HomeRouteState>(() => {
@@ -181,6 +182,9 @@ export function HomeView() {
 
   // Canonicalize non-canonical query params (junk, duplicated keys, raw ints).
   useEffect(() => {
+    // Pending transition: the outgoing route still renders while location has
+    // moved — a late canonicalization must not resurrect this page.
+    if (pathname !== homePath) return
     if (!isCanonicalHomeRouteQuery(rawSearch, routeState)) {
       void navigate({
         to: homePath,
@@ -196,6 +200,7 @@ export function HomeView() {
   // the selector falls back to the first available key.
   const requestedAccessKeyID = routeState.accessKeyID
   useEffect(() => {
+    if (pathname !== homePath) return
     if (!base || requestedAccessKeyID === undefined) return
     if (accessKeys.some(({ id }) => id === requestedAccessKeyID)) return
     void navigate({

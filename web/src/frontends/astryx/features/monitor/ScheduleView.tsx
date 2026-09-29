@@ -80,10 +80,11 @@ export function ScheduleView() {
   const sessionState = useSyncExternalStore(authSession.subscribe, authSession.getState)
   const isAdmin = sessionState.principalType === 'admin'
 
-  const { rawSearch, searchStr } = useRouterState({
+  const { rawSearch, searchStr, pathname } = useRouterState({
     select: (state) => ({
       rawSearch: state.location.search as SharedRouteQuery,
       searchStr: state.location.searchStr,
+      pathname: state.location.pathname,
     }),
   })
   const schedulePath = pagePath('schedule')
@@ -97,6 +98,9 @@ export function ScheduleView() {
 
   // Classic deep watch on route.query (immediate): canonicalize by replace.
   useEffect(() => {
+    // Pending transition: the outgoing route still renders while location has
+    // moved — a late canonicalization must not resurrect this page.
+    if (pathname !== schedulePath) return
     if (!isCanonicalQuery) {
       void navigate({
         to: schedulePath,

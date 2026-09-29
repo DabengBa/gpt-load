@@ -4,12 +4,15 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 //   flagged manifest route + cookie "astryx" -> astryx.html
 //   unknown browser path + cookie "astryx"   -> astryx.html (404-fallback parity)
 //   otherwise                                 -> index.html
+// Phase 4 note: every manifest route is flagged now, so the cookie-off side
+// of the matrix is exercised on the flagged paths themselves.
 // This spec runs in the `astryx` project, whose storageState seeds the
 // opt-in cookie; individual tests adjust the context cookies to cover the
 // rest of the matrix.
 
 const FLAGGED_PATH = '/settings' // page_routes.json: astryx: true
-const UNFLAGGED_PATH = '/import'
+const DETAIL_PATH = '/groups/7' // page_routes.json: /groups/:id astryx: true
+const IMPORT_PATH = '/import' // page_routes.json: astryx: true (Phase 4)
 const UNKNOWN_PATH = '/definitely-not-a-route'
 const COOKIE = 'gpt-load.frontend'
 
@@ -60,10 +63,19 @@ test('flagged route ignores unrecognized cookie values', async ({
   await expectDocument(page, FLAGGED_PATH, CLASSIC_MARKER)
 })
 
-test('unflagged route keeps the classic document even when opted in', async ({
+// Phase 4: every manifest route is now Astryx-flagged — the former
+// "/import unflagged" fixture covers flag + cookie selection on the newly
+// migrated routes instead (param route + import).
+test('flagged param route serves the Astryx document when opted in', async ({
   page,
 }) => {
-  await expectDocument(page, UNFLAGGED_PATH, CLASSIC_MARKER)
+  await expectDocument(page, DETAIL_PATH, ASTRYX_MARKER)
+})
+
+test('flagged /import serves the Astryx document when opted in', async ({
+  page,
+}) => {
+  await expectDocument(page, IMPORT_PATH, ASTRYX_MARKER)
 })
 
 test('unknown browser path falls back to the Astryx document when opted in', async ({

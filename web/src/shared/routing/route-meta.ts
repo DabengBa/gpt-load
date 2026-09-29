@@ -29,7 +29,9 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
     requiresAuth: true,
     adminOnly: true,
     primaryNav: 'groups',
-    messageNamespaces: ['import'],
+    // `group.*` — ImportConnectionSection shares the provider-website field
+    // copy with the group settings form (classic does the same cross-ref).
+    messageNamespaces: ['import', 'group'],
   },
   groups: {
     titleKey: 'groups.title',

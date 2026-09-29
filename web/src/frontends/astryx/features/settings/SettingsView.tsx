@@ -233,6 +233,7 @@ export function SettingsView() {
     select: (state) => state.location.search as SharedRouteQuery,
   })
   const searchStr = useRouterState({ select: (state) => state.location.searchStr })
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   // Dynamic route tree → `to` only accepts a plain `string` (GroupsView idiom).
   const settingsPath = pagePath('settings')
 
@@ -343,6 +344,9 @@ export function SettingsView() {
   // Canonicalize non-canonical query (invalid/repeated section), else scrollspy
   // follows URL changes (back/forward, shared links).
   useEffect(() => {
+    // Pending transition: the outgoing route still renders while location has
+    // moved — a late canonicalization must not resurrect this page.
+    if (pathname !== settingsPath) return
     const section = parseSettingsRouteSection(rawSearch)
     if (!isCanonicalSettingsRouteQuery(rawSearch, section)) {
       void navigate({

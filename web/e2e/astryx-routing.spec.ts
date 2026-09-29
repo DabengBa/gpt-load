@@ -78,10 +78,10 @@ test('route matching is case-sensitive like the classic router', async ({
   ).toBeVisible()
 })
 
-// In-app navigation to a classic-owned path must hand off with a document
-// navigation: /import is unflagged, so only a full reload lets the server
-// select the classic document — an SPA nav would strand the user on a stub.
-test('nav to a classic-owned route leaves the Astryx document', async ({
+// In-app navigation to an Astryx-owned path stays inside the document:
+// /import is flagged since Phase 4, so the shell link performs an SPA
+// navigation (canonicalizing to ?mode=new) without a document handoff.
+test('nav to a flagged route stays inside the Astryx document', async ({
   page,
   context,
 }) => {
@@ -112,28 +112,32 @@ test('nav to a classic-owned route leaves the Astryx document', async ({
   await page.goto('/groups', { waitUntil: 'commit' })
   await expect(page.getByTestId('astryx-shell')).toBeVisible({ timeout: 60_000 })
 
-  await Promise.all([
-    page.waitForURL(/\/import$/, { timeout: 10_000 }),
-    page.getByRole('link', { name: 'Import credentials' }).click(),
-  ])
+  await page.getByRole('link', { name: 'Import credentials' }).click()
+  await expect(page).toHaveURL(/\/import\?.*mode=new/, { timeout: 10_000 })
 
-  // The classic document now owns the page: its shell carries the desktop-nav
-  // class, and the astryx shell marker is gone.
-  await expect(page.locator('nav.desktop-nav')).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByTestId('astryx-shell')).toHaveCount(0)
+  // Still the Astryx document: the shell marker survives and the import view
+  // rendered in place.
+  await expect(page.getByTestId('astryx-shell')).toBeVisible({ timeout: 10_000 })
+  await expect(
+    page.getByRole('heading', { name: 'Import channel credentials' }),
+  ).toBeVisible({ timeout: 10_000 })
 })
 
-// Unflagged paths keep serving the classic document even when the
-// preference cookie opts into Astryx; /login is flagged, so it serves the
-// Astryx document under the same cookie.
-test('document selection follows the manifest astryx flag', async ({ page }) => {
+// Flagged paths serve the Astryx document when the preference cookie opts
+// in (the project's storageState seeds it); clearing the cookie drops the
+// same flagged path back to the classic document.
+test('document selection follows the manifest astryx flag', async ({
+  page,
+  context,
+}) => {
+  const astryx = await page.request.get('/import', {
+    headers: { accept: 'text/html' },
+  })
+  expect(await astryx.text()).toContain('/src/frontends/astryx/main.tsx')
+
+  await context.clearCookies()
   const classic = await page.request.get('/import', {
     headers: { accept: 'text/html' },
   })
   expect(await classic.text()).toContain('/src/main.ts')
-
-  const astryx = await page.request.get('/login', {
-    headers: { accept: 'text/html' },
-  })
-  expect(await astryx.text()).toContain('/src/frontends/astryx/main.tsx')
 })

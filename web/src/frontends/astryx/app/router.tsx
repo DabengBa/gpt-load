@@ -24,8 +24,13 @@ import {
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
 import {
-  normalizeGroupQuery as normalizeGroupDetailQuery,
+  parseCredentialRouteQuery,
+  parseCredentialRouteState,
+  parseGroupModelsRouteQuery,
+  serializeCredentialRouteQuery,
+  serializeGroupModelsRouteQuery,
 } from '@shared/routing/group-detail-route'
+import { scalarRouteQuery } from '@shared/routing/route-query'
 import {
   parseImportRouteQuery,
   serializeImportRouteQuery,
@@ -53,7 +58,9 @@ import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
 import { AccessKeysView } from '../features/access-keys/AccessKeysView'
+import { GroupDetailView } from '../features/groups/GroupDetailView'
 import { GroupsView } from '../features/groups/GroupsView'
+import { ImportView } from '../features/import/ImportView'
 import { HomeView } from '../features/home/HomeView'
 import { LogsView } from '../features/logs/LogsView'
 import { ModelsView } from '../features/models/ModelsView'
@@ -233,10 +240,27 @@ function scheduleSearch(search: Record<string, unknown>) {
   return scheduleMonitorQuery(parseScheduleMonitorState(search as SharedRouteQuery))
 }
 
-// Sparse canonical search: the shared group-detail codec owns tab +
-// credential/discovery sub-queries; defaults serialize away.
+// Sparse canonical search, scoped per tab — this must NOT call the codec's
+// normalizeGroupQuery: that helper came from classic GroupTabs.vue (dead code
+// never mounted), so feeding it to validateSearch would rewrite the bare
+// '/groups/:id' URL to '?tab=credentials' and land users on the management
+// tab, while classic renders the unified settings+models view. Classic only
+// canonicalizes live for the credentials sub-query (and the models discovery
+// params); an absent/unknown tab keeps the raw query and renders unified.
 function groupDetailSearch(search: Record<string, unknown>) {
-  return normalizeGroupDetailQuery(search as SharedRouteQuery)
+  const query = search as SharedRouteQuery
+  const tab = scalarRouteQuery(query.tab)
+  if (tab === 'credentials') {
+    return serializeCredentialRouteQuery(
+      parseCredentialRouteQuery(query),
+      parseCredentialRouteState(query),
+    )
+  }
+  if (tab === 'models') {
+    return serializeGroupModelsRouteQuery(parseGroupModelsRouteQuery(query))
+  }
+  if (tab === 'settings') return { tab: 'settings' }
+  return {}
 }
 
 // Sparse canonical search: mode=existing forces off the new-mode params and
@@ -265,6 +289,8 @@ const routeViews: Partial<Record<string, () => ReactNode>> = {
   [sharedPageRouteNames.home]: HomeView,
   [sharedPageRouteNames.accessKeys]: AccessKeysView,
   [sharedPageRouteNames.groups]: GroupsView,
+  [sharedPageRouteNames.groupDetail]: GroupDetailView,
+  [sharedPageRouteNames.import]: ImportView,
   [sharedPageRouteNames.logs]: LogsView,
   [sharedPageRouteNames.settings]: SettingsView,
   [sharedPageRouteNames.models]: ModelsView,

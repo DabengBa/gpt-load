@@ -144,10 +144,11 @@ export function AccessKeysView() {
   const queryClient = useQueryClient()
   const { apiClient, toast, unsavedChanges } = useAppServices()
 
-  const { rawSearch, searchStr } = useRouterState({
+  const { rawSearch, searchStr, pathname } = useRouterState({
     select: (state) => ({
       rawSearch: state.location.search as SharedRouteQuery,
       searchStr: state.location.searchStr,
+      pathname: state.location.pathname,
     }),
   })
   const filters = useMemo(() => parseAccessKeyCollectionRouteQuery(rawSearch), [rawSearch])
@@ -223,6 +224,9 @@ export function AccessKeysView() {
   }
 
   useEffect(() => {
+    // Pending transition: the outgoing route still renders while location has
+    // moved — a late canonicalization must not resurrect this page.
+    if (pathname !== accessKeysPath) return
     if (!isCanonicalAccessKeyCollectionRouteQuery(rawSearch, filters, drawerRoute)) {
       void navigate({
         to: accessKeysPath,
@@ -250,6 +254,7 @@ export function AccessKeysView() {
 
   const isPlaceholder = accessKeysQuery.isPlaceholderData
   useEffect(() => {
+    if (pathname !== accessKeysPath) return
     if (drawerRoute === undefined || drawerRoute.mode !== 'edit') return
     if (selected !== null || !data || isPlaceholder) return
     void navigate({
@@ -265,6 +270,7 @@ export function AccessKeysView() {
   const totalPages = data?.pagination.total_pages
   const requestedPage = filters.page
   useEffect(() => {
+    if (pathname !== accessKeysPath) return
     if (isPlaceholder || totalPages === undefined) return
     const lastPage = Math.max(1, totalPages)
     if (requestedPage > lastPage) {
