@@ -50,7 +50,8 @@ test('long route names truncate in the row and stay actionable in the drawer', a
 
   await openRequestLogs(page)
 
-  // 行内 compact 身份承载截断与悬浮提示；分组与凭据保持同一行。
+  // 行内 compact 身份承载截断与悬浮提示；分组与凭据各占一行（上游 f78071f8
+  // 起凭据从分组行拆出，长名互不挤压）。
   const rowIdentity = page.locator('[data-testid="log-route-identity"]').first()
   await rowIdentity.evaluate((element) => {
     element.style.width = '180px'
@@ -71,12 +72,9 @@ test('long route names truncate in the row and stay actionable in the drawer', a
   if (!rowGroupBounds || !rowCredentialBounds) {
     throw new Error('Row route entities must have measurable bounds')
   }
-  expect(
-    Math.abs(
-      rowGroupBounds.y + rowGroupBounds.height / 2 -
-        (rowCredentialBounds.y + rowCredentialBounds.height / 2),
-    ),
-  ).toBeLessThanOrEqual(1)
+  expect(rowCredentialBounds.y).toBeGreaterThanOrEqual(
+    rowGroupBounds.y + rowGroupBounds.height,
+  )
 
   // 维护页与供应商外链只在详情抽屉（plain）呈现。抽屉里的分组名取自末次尝试
   // 记录而非 options，因此单独覆盖详情响应给出长名称。
