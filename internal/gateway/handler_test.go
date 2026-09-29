@@ -2927,7 +2927,7 @@ func TestHandlerTerminatesRequestWrittenStreamFailuresBeforeCommit(t *testing.T)
 				{Err: context.DeadlineExceeded, RequestWritten: true},
 				{StatusCode: http.StatusOK, RequestWritten: true, Committed: true},
 			},
-			wantStatus: http.StatusGatewayTimeout, wantCode: reasonUpstreamTimeout.Code, wantAttempts: 1,
+			wantStatus: http.StatusRequestTimeout, wantCode: reasonUpstreamTimeout.Code, wantAttempts: 1,
 		},
 		{
 			name: "protocol errors exhausted",
@@ -2943,7 +2943,7 @@ func TestHandlerTerminatesRequestWrittenStreamFailuresBeforeCommit(t *testing.T)
 				{Err: context.DeadlineExceeded, RequestWritten: true},
 				{Err: context.DeadlineExceeded, RequestWritten: true},
 			},
-			wantStatus: http.StatusGatewayTimeout, wantCode: reasonUpstreamTimeout.Code, wantAttempts: 1,
+			wantStatus: http.StatusRequestTimeout, wantCode: reasonUpstreamTimeout.Code, wantAttempts: 1,
 		},
 		{
 			name: "transport failures exhausted",
@@ -2969,9 +2969,17 @@ func TestHandlerTerminatesRequestWrittenStreamFailuresBeforeCommit(t *testing.T)
 			}
 			if tt.wantCode != "" {
 				var body struct {
-					Code string `json:"code"`
+					Code  string `json:"code"`
+					Error struct {
+						Code string `json:"code"`
+					} `json:"error"`
 				}
-				if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil || body.Code != tt.wantCode {
+				err := json.Unmarshal(recorder.Body.Bytes(), &body)
+				code := body.Code
+				if tt.wantStatus == http.StatusRequestTimeout {
+					code = body.Error.Code
+				}
+				if err != nil || code != tt.wantCode {
 					t.Fatalf("response = %s, error=%v, want code %q", recorder.Body.String(), err, tt.wantCode)
 				}
 			}
@@ -4378,7 +4386,7 @@ func TestHandlerReturnsStableTerminalReasons(t *testing.T) {
 			path: "/v1/chat/completions", accessKey: "gl-client", body: `{"model":"gpt-4o"}`,
 			upstreamKeys: []string{"sk-one"},
 			results:      []UpstreamResult{{Err: context.DeadlineExceeded, RequestWritten: true}},
-			wantStatus:   http.StatusGatewayTimeout, wantCode: "upstream_timeout",
+			wantStatus:   http.StatusRequestTimeout, wantCode: "upstream_timeout",
 		},
 		{
 			name: "connection failure skips only group",
@@ -4405,10 +4413,16 @@ func TestHandlerReturnsStableTerminalReasons(t *testing.T) {
 				t.Fatalf("attempts = %d, want %d", len(forwarder.inputs), tt.wantAttempts)
 			}
 			var body struct {
-				Code string `json:"code"`
+				Code  string `json:"code"`
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
 			}
 			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 				t.Fatalf("decode reason body: %v", err)
+			}
+			if tt.wantStatus == http.StatusRequestTimeout {
+				body.Code = body.Error.Code
 			}
 			if body.Code != tt.wantCode {
 				t.Fatalf("code = %q, want %q", body.Code, tt.wantCode)

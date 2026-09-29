@@ -154,6 +154,8 @@ Gemini 和 OpenAI Images 是明确的实时例外：它们按原有实时流透�
 
 每个渠道会明确声明自己可执行的协议与能力。GPT-Load 在受支持的能力之间做转换，但不是任意协议、任意 JSON 的通用转换器。
 
+如果上游请求在 HTTP 响应提交前超时，网关返回 HTTP `408` 和 OpenAI 兼容的 JSON 错误：`error.message` 为 `Gateway timeout: upstream request timed out`，`error.type` 为 `timeout_error`，`error.code` 为 `upstream_timeout`。Chat Completions 和 Responses 客户端可通过该消息识别超时，并按自身配置的重试策略处理。响应一旦开始发送，就无法更改 HTTP 状态码。
+
 Embeddings 首期只在 OpenAI、OpenRouter 和 OpenAI Compatible API Key 渠道提供原生 OpenAI-compatible Wire，不支持订阅渠道或协议互转。未设置协议过滤器的 AccessKey 会按既有语义允许全部已启用协议，升级后也会获得 Embeddings 访问能力；最小权限部署请显式配置协议过滤器。
 
 Rerank 使用独立的 `rerank` 协议，在 OpenAI Compatible、New API、GPT-Load API Key 渠道支持 `POST /v1/rerank`。请求使用 `model`、`query` 和纯文本 `documents` 数组，可传 `top_n`、`return_documents` 等上游参数；不支持流式、订阅渠道或协议互转。OpenAI Compatible 的 Base URL 是完整 API 前缀（如 `https://host/v1`），New API / GPT-Load 使用网关根地址；上游必须提供兼容 Rerank 接口。未设置协议过滤器的 AccessKey 也会获得 Rerank 访问能力。仅有 `search_units` 等非 Token 计量时保持未计价，不将其视为 Token 或免费请求。

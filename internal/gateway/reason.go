@@ -29,7 +29,7 @@ var (
 	reasonModelRequiredByFilter         = reason{Status: http.StatusBadRequest, Code: "model_required_by_filter", Message: "A model is required by the access key filter."}
 	reasonNoCandidate                   = reason{Status: http.StatusServiceUnavailable, Code: "no_available_candidate", Message: "No available upstream candidate."}
 	reasonUpstreamConnect               = reason{Status: http.StatusBadGateway, Code: "upstream_connect_failed", Message: "Could not connect to an upstream service."}
-	reasonUpstreamTimeout               = reason{Status: http.StatusGatewayTimeout, Code: "upstream_timeout", Message: "Upstream request timed out."}
+	reasonUpstreamTimeout               = reason{Status: http.StatusRequestTimeout, Code: "upstream_timeout", Message: "Gateway timeout: upstream request timed out"}
 	reasonUpstreamProtocol              = reason{Status: http.StatusBadGateway, Code: "upstream_protocol_error", Message: "Upstream returned an unsupported response."}
 	reasonProtocolConversionUnsupported = reason{Status: http.StatusUnprocessableEntity, Code: "protocol_conversion_unsupported", Message: "No upstream target could preserve or convert the request."}
 	reasonStreamingOperationUnsupported = reason{
@@ -234,10 +234,18 @@ func (handler *Handler) completeConfigurationChanged(
 }
 
 func (handler *Handler) writeReason(context *gin.Context, value reason) error {
-	body, err := json.Marshal(struct {
+	var payload any = struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
-	}{Code: value.Code, Message: value.Message})
+	}{Code: value.Code, Message: value.Message}
+	if value == reasonUpstreamTimeout {
+		payload = gin.H{"error": gin.H{
+			"message": value.Message,
+			"type":    "timeout_error",
+			"code":    value.Code,
+		}}
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
