@@ -1,24 +1,23 @@
 /* Astryx entry stylesheet.
  *
  * Precedence, lowest to highest:
- *   reset → astryx-base → astryx-theme → classic-tokens → app.* (StyleX atomic rules)
+ *   reset → astryx-base → astryx-theme → tokens → app.* (StyleX atomic rules)
  * The StyleX unplugin emits the trailing `@layer` order via `useCSSLayers`
  * in vite.config.ts; keep the `before` list in sync with this header.
  * No unlayered rules here — unlayered CSS would outrank every layer.
  *
- * classic-tokens re-exports the classic variable namespace (layout metrics,
- * legacy color/space aliases) so shell chrome written in StyleX can read the
- * same var() names the Vue frontend uses — including its [data-theme='dark']
- * and prefers-color-scheme branches, which line up with what the Astryx
- * <Theme> component writes on <html>. */
-@layer reset, astryx-base, astryx-theme, classic-tokens, app.base;
+ * tokens holds the app variable namespace (layout metrics, color/space
+ * aliases) so shell chrome written in StyleX can read the same var() names —
+ * including its [data-theme='dark'] and prefers-color-scheme branches, which
+ * line up with what the Astryx <Theme> component writes on <html>. */
+@layer reset, astryx-base, astryx-theme, tokens, app.base;
 
 @import '@astryxdesign/core/reset.css';
 @import '@astryxdesign/core/astryx.css';
 @import './theme/gptload.theme.css';
-@import '../classic/styles/tokens.css' layer(classic-tokens);
+@import './theme/tokens.css' layer(tokens);
 
-/* app.base sits after classic-tokens but before the StyleX `app.*` atomic
+/* app.base sits after tokens but before the StyleX `app.*` atomic
    layers, so these rules only ever fill gaps atomic styles don't cover.
    Used for descendant-targeted parity rules StyleX cannot express — keep it
    tiny and attribute-keyed. */

@@ -6,6 +6,10 @@ import { expect, test, type Page } from '@playwright/test'
 // panel (theme/locale/frontend switch), and compact-density measurements
 // against the classic token values (gate #6 input: ±1px).
 
+// Cold Vite transforms of the full route graph exceed the default test
+// timeout; keep the same headroom as astryx-groups.spec.ts.
+test.setTimeout(90_000)
+
 type Principal = 'admin' | 'access_key'
 
 async function seedSession(page: Page, principal: Principal): Promise<void> {
@@ -178,8 +182,8 @@ test('preferences panel switches theme, locale, and frontend', async ({
 })
 
 // Density parity measurements (gate #6 input). Values come from
-// classic/styles/tokens.css, which the Astryx entry imports at the
-// classic-tokens layer; each rendered metric must land within ±1px.
+// astryx/theme/tokens.css, which the Astryx entry imports at the
+// tokens layer; each rendered metric must land within ±1px.
 const densityExpectations = [
   { metric: 'topbar height', expected: 54 },
   { metric: 'topbar padding-inline', expected: 30 },

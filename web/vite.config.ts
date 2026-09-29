@@ -27,7 +27,7 @@ export default defineConfig({
       unstable_moduleResolution: { type: 'commonJS', rootDir: webRootPath },
       // Layer order must mirror src/frontends/astryx/entry.css.
       useCSSLayers: {
-        before: ['reset', 'astryx-base', 'astryx-theme', 'classic-tokens'],
+        before: ['reset', 'astryx-base', 'astryx-theme', 'tokens'],
         prefix: 'app',
       },
       // Two entries ship CSS: keep collected StyleX atoms out of classic chunks.

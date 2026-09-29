@@ -4,8 +4,8 @@ import { neutralTheme } from '@astryxdesign/theme-neutral'
 /**
  * GPT-Load theme — neutral base with classic density and colors.
  *
- * Token values mirror `src/frontends/classic/styles/tokens.css`; light/dark
- * tuples follow the classic `:root` / `:root[data-theme='dark']` pairs.
+ * Token values mirror `src/frontends/astryx/theme/tokens.css`; light/dark
+ * tuples follow its `:root` / `:root[data-theme='dark']` pairs.
  * Rebuild artifacts with `pnpm run theme:build` (verified by `theme:check`).
  */
 export default defineTheme({
