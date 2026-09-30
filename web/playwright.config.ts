@@ -11,38 +11,16 @@ if (!Number.isInteger(port) || port < 1024 || port > 65_535) {
 const webRoot = fileURLToPath(new URL('.', import.meta.url)).replace(/\\/g, '/').replace(/\/$/, '')
 const baseURL = `http://127.0.0.1:${port}`
 
-// StorageState that pre-seeds the frontend preference cookie, mirroring
-// internal/webui/server.go frontendCookieName.
-const astryxFrontend = {
-  cookies: [
-    {
-      name: 'gpt-load.frontend',
-      value: 'astryx',
-      url: baseURL,
-      sameSite: 'Strict' as const,
-    },
-  ],
-  origins: [],
-}
-
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
   reporter: 'line',
   projects: [
-    // Classic frontend specs run without the preference cookie — the default
-    // production behavior — and must never see Astryx-owned specs.
-    {
-      name: 'classic',
-      testIgnore: [/astryx-.*\.spec\.ts/, /go-csp\.spec\.ts/],
-    },
-    // astryx-*.spec.ts exercise the Astryx entry; the project seeds the
-    // selection cookie so document selection matches production opt-in.
+    // Every UI spec exercises the single Astryx document.
     {
       name: 'astryx',
       testMatch: /astryx-.*\.spec\.ts/,
-      use: { storageState: astryxFrontend },
     },
     // go-csp spawns the compiled Go binary itself; it skips when no binary
     // artifact exists for this platform.

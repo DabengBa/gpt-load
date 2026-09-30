@@ -10,9 +10,9 @@ import type { QuotaProgressTone } from '@shared/lib/quota-progress'
 import { formatLocalInstant } from '@shared/lib/format'
 import { quotaProgressTone } from '@shared/lib/quota-progress'
 
-// Framework-free ports of the classic HomeSubscriptionAccountMiniCard helpers.
-// The translator is parameterized so vue-i18n and react-intl consumers share
-// the exact label/tooltip/status semantics.
+// Framework-free ports of the home subscription mini-card helpers.
+// The translator is parameterized so the react-intl adapter shares the exact
+// label/tooltip/status semantics.
 
 export interface SubscriptionQuotaTranslator {
   t(key: string, values?: Record<string, string | number>): string

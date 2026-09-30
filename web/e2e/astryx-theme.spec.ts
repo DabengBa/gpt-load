@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 // against the real shell (PublicShell topbar + LoginView).
 //
 // Precedence is proven two ways: the registered CSS layer order in
-// document.styleSheets (reset → astryx-base → astryx-theme → classic-tokens
+// document.styleSheets (reset → astryx-base → astryx-theme → tokens
 // → app.*), and the theme token override landing on a real component
 // (the preferences IconButton radius: theme 7px, neutral default 8px).
 
@@ -91,16 +91,16 @@ test('precedence: app layers register after the theme layer', async ({
     'reset',
     'astryx-base',
     'astryx-theme',
-    'classic-tokens',
+    'tokens',
   ]) {
     expect(layers).toContain(required)
   }
   const themeIndex = layers.indexOf('astryx-theme')
-  const classicIndex = layers.indexOf('classic-tokens')
+  const tokensIndex = layers.indexOf('tokens')
   const firstAppIndex = layers.findIndex((name) => name.startsWith('app'))
-  expect(themeIndex).toBeLessThan(classicIndex)
+  expect(themeIndex).toBeLessThan(tokensIndex)
   expect(firstAppIndex).toBeGreaterThanOrEqual(0)
-  expect(firstAppIndex).toBeGreaterThan(classicIndex)
+  expect(firstAppIndex).toBeGreaterThan(tokensIndex)
 
   // Theme override reaching a component: the preferences IconButton gets
   // --radius-element 7px from gptload theme (neutral default is 8px).

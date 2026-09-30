@@ -35,14 +35,12 @@ const port = 40_000 + (process.pid % 20_000)
 const origin = externalOrigin ?? `http://127.0.0.1:${port}`
 
 // Playwright's loader cannot take plain JSON imports; read the manifest
-// directly. The sweep below covers every Astryx-flagged document route.
-const astryxPagePaths = (
+// directly. The sweep below covers every document route.
+const pagePaths = (
   JSON.parse(
     readFileSync(resolve(repoRoot, 'internal/webui/page_routes.json'), 'utf8'),
-  ) as { routes: Array<{ path: string; astryx?: boolean }> }
-).routes
-  .filter((entry) => entry.astryx === true)
-  .map((entry) => entry.path)
+  ) as { routes: Array<{ path: string }> }
+).routes.map((entry) => entry.path)
 
 let server: ChildProcess | undefined
 let dataDir: string | undefined
@@ -146,20 +144,20 @@ async function expectCleanDocument(
   expect(consoleErrors).toEqual([])
 }
 
-test('Go server CSP keeps the classic document clean', async ({ page }) => {
-  await expectCleanDocument(page, '/', '/assets/index')
-})
-
-// The gate requires zero CSP violations on every Astryx-served document,
+// The gate requires zero CSP violations on the single embedded document,
 // so the sweep is driven by the manifest rather than a hardcoded route.
-for (const routePath of astryxPagePaths) {
-  test(`Go server CSP keeps the Astryx document clean: ${routePath}`, async ({
+for (const routePath of pagePaths) {
+  test(`Go server CSP keeps the document clean: ${routePath}`, async ({
     page,
-    context,
   }) => {
-    await context.addCookies([
-      { name: 'gpt-load.frontend', value: 'astryx', url: origin },
-    ])
-    await expectCleanDocument(page, routePath, '/assets/astryx')
+    await expectCleanDocument(page, routePath, '/assets/index')
   })
 }
+
+// A leftover gpt-load.frontend cookie must not change the served document.
+test('Go server ignores the retired frontend cookie', async ({ page, context }) => {
+  await context.addCookies([
+    { name: 'gpt-load.frontend', value: 'classic', url: origin },
+  ])
+  await expectCleanDocument(page, '/settings', '/assets/index')
+})

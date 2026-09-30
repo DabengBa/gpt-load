@@ -4,10 +4,9 @@ import type { MessageNamespace } from '../i18n/namespaces'
 // Per-route behavior shared by both routers. The classic router spreads this
 // table into route meta; the Astryx TanStack adapter reads it for beforeLoad
 // guards and staticData. Keys are manifest route names (page_routes.json);
-// coverage is asserted by scripts/astryx-routes.test.ts and by the classic
-// router's pageRouteMetaFor lookups at boot.
-// `type` (not `interface`) so the value keeps an implicit index signature and
-// stays assignable to vue-router's RouteMeta Record.
+// coverage is asserted by scripts/astryx-routes.test.ts.
+// `type` (not `interface`) so the value keeps an implicit index signature for
+// the TanStack adapter's staticData record.
 export type PageRouteMeta = {
   readonly titleKey?: MessageId
   readonly requiresAuth?: boolean
@@ -57,7 +56,7 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
     messageNamespaces: ['access-keys'],
   },
   // InspectorTab 的 route strategy 文案来自 settings.runtime.routeStrategies.*
-  // （与 classic InspectorTab.vue 同一跨域引用），必须随 monitor 一起装载。
+  // （跨域引用 settings 命名空间），必须随 monitor 一起装载。
   monitor: {
     titleKey: 'shell.monitor',
     requiresAuth: true,

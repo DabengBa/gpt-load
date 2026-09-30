@@ -143,10 +143,7 @@ test('not-found shows the requested path and routes back home', async ({
   await page.waitForURL(/\/$/, { timeout: 10_000 })
 })
 
-test('preferences panel switches theme, locale, and frontend', async ({
-  page,
-  context,
-}) => {
+test('preferences panel switches theme and locale', async ({ page }) => {
   await seedSession(page, 'admin')
   await page.goto('/settings', { waitUntil: 'load' })
   await expect(page.locator('[data-testid="desktop-nav"]')).toBeVisible()
@@ -167,18 +164,6 @@ test('preferences panel switches theme, locale, and frontend', async ({
   await expect(
     page.getByRole('button', { name: '菜单与偏好设置' }),
   ).toBeVisible()
-
-  // Frontend segment: Classic sets the shared cookie and reloads into the
-  // classic document. The panel is already localized to zh-CN at this point,
-  // so the option reads 经典版.
-  await page.getByRole('radio', { name: '经典版' }).click()
-  await page.waitForLoadState('load')
-  const cookie = (await context.cookies()).find(
-    (entry) => entry.name === 'gpt-load.frontend',
-  )
-  expect(cookie?.value).toBe('classic')
-  // The reloaded document is classic: its entry script is main.ts.
-  await expect(page.locator('script[src*="/src/main.ts"]')).toHaveCount(1)
 })
 
 // Density parity measurements (gate #6 input). Values come from

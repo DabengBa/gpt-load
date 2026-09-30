@@ -379,13 +379,14 @@ func testEngine(server *Server) *gin.Engine {
 	return engine
 }
 
-func TestServerSelectsAstryxIndexByCookieAndRouteFlag(t *testing.T) {
+func TestServerServesSameIndexRegardlessOfFrontendCookie(t *testing.T) {
+	// The legacy gpt-load.frontend cookie is ignored: every request gets the
+	// single embedded document, and the response no longer varies on Cookie.
 	server := newServerWithPages(fstest.MapFS{
-		"dist/index.html":  &fstest.MapFile{Data: []byte("<!doctype html><title>classic index</title>")},
-		"dist/astryx.html": &fstest.MapFile{Data: []byte("<!doctype html><title>astryx index</title>")},
+		"dist/index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>app index</title>")},
 	}, "dist", []pageRoute{
 		{Name: "home", Path: "/"},
-		{Name: "settings", Path: "/settings", Astryx: true},
+		{Name: "settings", Path: "/settings"},
 	})
 	engine := testEngine(server)
 
@@ -393,13 +394,12 @@ func TestServerSelectsAstryxIndexByCookieAndRouteFlag(t *testing.T) {
 		name   string
 		target string
 		cookie string
-		want   string
 	}{
-		{name: "flagged route with astryx cookie", target: "/settings", cookie: "astryx", want: "astryx index"},
-		{name: "flagged route without cookie", target: "/settings", want: "classic index"},
-		{name: "flagged route with classic cookie", target: "/settings", cookie: "classic", want: "classic index"},
-		{name: "flagged route with unknown cookie value", target: "/settings", cookie: "other", want: "classic index"},
-		{name: "unflagged route with astryx cookie", target: "/", cookie: "astryx", want: "classic index"},
+		{name: "page route without cookie", target: "/settings"},
+		{name: "page route with astryx cookie", target: "/settings", cookie: "astryx"},
+		{name: "page route with classic cookie", target: "/settings", cookie: "classic"},
+		{name: "page route with unknown cookie value", target: "/settings", cookie: "other"},
+		{name: "another page route without cookie", target: "/"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
@@ -408,8 +408,8 @@ func TestServerSelectsAstryxIndexByCookieAndRouteFlag(t *testing.T) {
 				request.AddCookie(&http.Cookie{Name: "gpt-load.frontend", Value: testCase.cookie})
 			}
 			engine.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), testCase.want) {
-				t.Fatalf("GET %s = %d %q, want %q document", testCase.target, recorder.Code, recorder.Body.String(), testCase.want)
+			if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "app index") {
+				t.Fatalf("GET %s = %d %q, want app index document", testCase.target, recorder.Code, recorder.Body.String())
 			}
 			for header, want := range map[string]string{
 				"Cache-Control":           "no-cache",
@@ -421,58 +421,34 @@ func TestServerSelectsAstryxIndexByCookieAndRouteFlag(t *testing.T) {
 					t.Fatalf("GET %s %s = %q, want %q", testCase.target, header, got, want)
 				}
 			}
+			if got := recorder.Header().Get("Vary"); got != "" {
+				t.Fatalf("GET %s Vary = %q, want empty (response no longer varies on Cookie)", testCase.target, got)
+			}
 		})
 	}
 }
 
-func TestServerFallsBackToClassicWhenAstryxIndexIsMissing(t *testing.T) {
+func TestServerNotFoundServesIndexRegardlessOfCookie(t *testing.T) {
 	server := newServerWithPages(fstest.MapFS{
-		"dist/index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>classic index</title>")},
-	}, "dist", []pageRoute{
-		{Name: "settings", Path: "/settings", Astryx: true},
-	})
-	engine := testEngine(server)
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/settings", nil)
-	request.AddCookie(&http.Cookie{Name: "gpt-load.frontend", Value: "astryx"})
-	engine.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "classic index") {
-		t.Fatalf("GET /settings = %d %q, want classic index", recorder.Code, recorder.Body.String())
-	}
-}
-
-func TestServerNotFoundIndexHonorsFrontendPreference(t *testing.T) {
-	server := newServerWithPages(fstest.MapFS{
-		"dist/index.html":  &fstest.MapFile{Data: []byte("<!doctype html><title>classic index</title>")},
-		"dist/astryx.html": &fstest.MapFile{Data: []byte("<!doctype html><title>astryx index</title>")},
+		"dist/index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>app index</title>")},
 	}, "dist", []pageRoute{
 		{Name: "home", Path: "/"},
 	})
 	engine := testEngine(server)
 
-	for _, testCase := range []struct {
-		name   string
-		cookie string
-		want   string
-	}{
-		{name: "astryx cookie gets astryx shell", cookie: "astryx", want: "astryx index"},
-		{name: "no cookie gets classic shell", want: "classic index"},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodGet, "/unknown-page", nil)
-			request.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9")
-			if testCase.cookie != "" {
-				request.AddCookie(&http.Cookie{Name: "gpt-load.frontend", Value: testCase.cookie})
-			}
-			engine.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), testCase.want) {
-				t.Fatalf("GET /unknown-page = %d %q, want 404 %q", recorder.Code, recorder.Body.String(), testCase.want)
-			}
-			if got := recorder.Header().Get("Content-Security-Policy"); got != indexCSP {
-				t.Fatalf("not-found CSP = %q, want index CSP", got)
-			}
-		})
+	for _, cookie := range []string{"", "astryx", "classic"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/unknown-page", nil)
+		request.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9")
+		if cookie != "" {
+			request.AddCookie(&http.Cookie{Name: "gpt-load.frontend", Value: cookie})
+		}
+		engine.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), "app index") {
+			t.Fatalf("GET /unknown-page (cookie %q) = %d %q, want 404 app index", cookie, recorder.Code, recorder.Body.String())
+		}
+		if got := recorder.Header().Get("Content-Security-Policy"); got != indexCSP {
+			t.Fatalf("not-found CSP = %q, want index CSP", got)
+		}
 	}
 }

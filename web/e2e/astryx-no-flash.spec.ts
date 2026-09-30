@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 // B13 gate #2: no theme flash on reload in light, dark, and system modes
 // with theme-bootstrap.js unchanged.
 //
-// Mechanism under test: astryx.html loads /theme-bootstrap.js as a
+// Mechanism under test: the document entry loads /theme-bootstrap.js as a
 // synchronous script in <head>. It stamps (or removes) data-theme on
 // <html> during initial document parse — before <body> exists and
 // therefore before first paint. If theme initialization ever moved into

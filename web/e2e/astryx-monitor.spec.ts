@@ -204,7 +204,7 @@ test('renders problem credentials, blocked access keys, and collapsed groups', a
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/\/monitor\?tab=health$/)
 
-  // Problem rows render as links into the classic-owned group credentials
+  // Problem rows render as links into the group credentials
   // view; the tooltip description duplicates the name, so assert the link.
   await expect(page.getByRole('link', { name: 'sk-cred-8', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'sk-cred-9', exact: true })).toBeVisible()

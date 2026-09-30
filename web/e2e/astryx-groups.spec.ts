@@ -7,7 +7,7 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 // server's in-memory filter/sort/page contract so assertions prove the
 // request pipeline end to end.
 //
-// Companion to the classic parity: same query params, same summary chips,
+// Parity companion: same query params, same summary chips,
 // same debounce/reset/page-correction behavior.
 
 // First navigation cold-compiles the whole astryx module graph (the router

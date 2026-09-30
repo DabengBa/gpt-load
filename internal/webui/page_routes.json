@@ -1,16 +1,16 @@
 {
-  "version": 2,
+  "version": 3,
   "routes": [
-    { "name": "home", "path": "/", "astryx": true },
-    { "name": "login", "path": "/login", "astryx": true },
-    { "name": "import", "path": "/import", "astryx": true },
-    { "name": "groups", "path": "/groups", "astryx": true },
-    { "name": "group-detail", "path": "/groups/:id", "astryx": true },
-    { "name": "access-keys", "path": "/access-keys", "astryx": true },
-    { "name": "monitor", "path": "/monitor", "astryx": true },
-    { "name": "schedule", "path": "/schedule", "astryx": true },
-    { "name": "logs", "path": "/logs", "astryx": true },
-    { "name": "models", "path": "/models", "astryx": true },
-    { "name": "settings", "path": "/settings", "astryx": true }
+    { "name": "home", "path": "/" },
+    { "name": "login", "path": "/login" },
+    { "name": "import", "path": "/import" },
+    { "name": "groups", "path": "/groups" },
+    { "name": "group-detail", "path": "/groups/:id" },
+    { "name": "access-keys", "path": "/access-keys" },
+    { "name": "monitor", "path": "/monitor" },
+    { "name": "schedule", "path": "/schedule" },
+    { "name": "logs", "path": "/logs" },
+    { "name": "models", "path": "/models" },
+    { "name": "settings", "path": "/settings" }
   ]
 }

@@ -1,9 +1,8 @@
 import type { AppLocale } from '../preferences/locale'
 import type { MessageNamespace } from './namespaces'
 
-// Nested catalog trees as authored; both frontends flatten or merge them for
-// their own i18n runtime (vue-i18n resolves dotted keys on the tree, react-intl
-// consumes a flat dict — the key paths stay identical either way).
+// Nested catalog trees as authored; the Astryx runtime flattens them into the
+// react-intl flat dict — the key paths stay identical either way.
 export type MessageTree = { [key: string]: string | MessageTree }
 export type MessageLoader = () => Promise<{ default: MessageTree }>
 

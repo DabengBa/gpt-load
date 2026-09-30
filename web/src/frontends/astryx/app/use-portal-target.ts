@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 export function usePortalTarget(id: string): HTMLElement | null {
   const [target, setTarget] = useState<HTMLElement | null>(null)
   useEffect(() => {
-    setTarget(document.getElementById(id))
+    queueMicrotask(() => setTarget(document.getElementById(id)))
   }, [id])
   return target
 }

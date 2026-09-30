@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// B8: react-intl runtime on the Astryx entry. The `astryx` project seeds the
-// frontend-preference cookie; each test pins gpt-load.locale and asserts the
+// B8: react-intl runtime on the Astryx entry. Each test pins
+// gpt-load.locale and asserts the
 // shell renders that locale's catalog with <html lang> in sync and no
 // react-intl error escaping (dev onError throws, so a missing key would
 // surface as a pageerror).

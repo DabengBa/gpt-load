@@ -413,7 +413,7 @@ test('renders the admin ledger and canonicalizes the home query', async ({
   await expect(page.getByText('v1.2.3')).toBeVisible()
 
   // Attention rows: billing cooldown first, then blacklisted — both link into
-  // the classic-owned group credentials view with the right status filter.
+  // the group credentials view with the right status filter.
   const billing = page.getByRole('link', {
     name: /prod has 1 credentials with insufficient balance/,
   })

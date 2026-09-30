@@ -17,7 +17,6 @@ import { ApiError, NetworkError } from '@shared/http/errors'
 import { pagePath } from '@shared/routing/page-routes'
 
 import { useT } from '../i18n'
-import { isAstryxNavigable } from '../route-link'
 import { useAppServices } from '../services'
 import { safeRedirect } from '../safe-redirect'
 import { useCountdown } from './use-countdown'
@@ -306,14 +305,9 @@ export function LoginView() {
       const preserveRecovery =
         session.getPrincipalType() === 'admin' && target.startsWith(pagePath('import'))
       if (!preserveRecovery) services.importRecovery.clear()
-      // Flagged targets stay in the SPA; anything unmapped (manifest drift or
-      // a non-route path) still needs a document navigation so the server
-      // picks the frontend. Replace keeps /login out of history either way.
-      if (isAstryxNavigable(target)) {
-        void router.navigate({ href: target, replace: true })
-      } else {
-        window.location.replace(target)
-      }
+      // safeRedirect only returns manifest route paths, which the SPA owns —
+      // replace keeps /login out of history.
+      void router.navigate({ href: target, replace: true })
     } catch (error: unknown) {
       if (error instanceof ApiError && error.code === 'UNAUTHORIZED') {
         setFeedback('invalid')

@@ -51,7 +51,7 @@ import {
 import { useT } from './i18n'
 import { astryxRoutePaths } from './route-adapter'
 import { parseSharedRouteSearch, stringifySharedRouteSearch } from './search-codec'
-import { RoutePageStub } from './pages'
+
 import type { AppServices } from './services'
 import { ToastHost } from './ToastHost'
 import { AuthedShell, PublicShell } from './shell/Shells'
@@ -284,7 +284,11 @@ const searchValidators: Partial<
   [sharedPageRouteNames.schedule]: scheduleSearch,
 }
 
-const routeViews: Partial<Record<string, () => ReactNode>> = {
+type RouteName = (typeof sharedPageRouteNames)[keyof typeof sharedPageRouteNames]
+
+// Every manifest route must map to a real view — the type fails to compile if
+// a sharedPageRouteNames entry is missing here (there is no stub fallback).
+const routeViews: Record<RouteName, () => ReactNode> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.home]: HomeView,
   [sharedPageRouteNames.accessKeys]: AccessKeysView,
@@ -317,7 +321,7 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
       }
       await context.services.i18n.ensureNamespaces(meta.messageNamespaces ?? [])
     },
-    component: routeViews[name] ?? (() => <RoutePageStub name={name} />),
+    component: routeViews[name as RouteName],
   })
 })
 

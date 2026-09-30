@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
-// B7: TanStack Router assembly on the Astryx entry. Runs in the `astryx`
-// project (preference cookie seeded). Guard behavior mirrors classic:
+// B7: TanStack Router assembly on the single document entry. Guard behavior
+// mirrors the retired classic frontend:
 // requiresAuth redirects to /login?redirect=..., adminOnly routes send
 // access_key principals home, trailing-slash and case mismatches hit
 // not-found.
@@ -14,12 +14,7 @@ test.setTimeout(90_000)
 
 test('unauthenticated access to a guarded route redirects to login with redirect', async ({
   page,
-  context,
 }) => {
-  await context.clearCookies()
-  await context.addCookies([
-    { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
-  ])
   await page.goto(FLAGGED_PATH, { waitUntil: 'commit' })
   await page.waitForURL(/\/login\?.*redirect=/, { timeout: 60_000 })
   const url = new URL(page.url())
@@ -34,14 +29,9 @@ test('unauthenticated access to a guarded route redirects to login with redirect
 
 test('group detail param routes match and render the stub', async ({
   page,
-  context,
 }) => {
   // An anonymous user gets bounced to login before the group stub renders —
   // but only after the route matched, so /login carries the full redirect.
-  await context.clearCookies()
-  await context.addCookies([
-    { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
-  ])
   await page.goto('/groups/42', { waitUntil: 'commit' })
   await page.waitForURL(/\/login/, { timeout: 10_000 })
   const url = new URL(page.url())
@@ -50,14 +40,9 @@ test('group detail param routes match and render the stub', async ({
 
 test('a trailing slash misses the manifest route and renders not-found', async ({
   page,
-  context,
 }) => {
-  await context.clearCookies()
-  await context.addCookies([
-    { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
-  ])
-  // '/settings/' is not a manifest path, so the server still serves the
-  // Astryx document (cookie-only fallback) and the client router 404s it.
+  // '/settings/' is not a manifest path: the server falls back to the
+  // single document and the client router 404s it.
   await page.goto('/settings/', { waitUntil: 'commit' })
   await expect(
     page.getByRole('heading', { name: 'This page does not exist' }),
@@ -66,12 +51,7 @@ test('a trailing slash misses the manifest route and renders not-found', async (
 
 test('route matching is case-sensitive like the classic router', async ({
   page,
-  context,
 }) => {
-  await context.clearCookies()
-  await context.addCookies([
-    { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
-  ])
   await page.goto('/SETTINGS', { waitUntil: 'commit' })
   await expect(
     page.getByRole('heading', { name: 'This page does not exist' }),
@@ -83,12 +63,7 @@ test('route matching is case-sensitive like the classic router', async ({
 // navigation (canonicalizing to ?mode=new) without a document handoff.
 test('nav to a flagged route stays inside the Astryx document', async ({
   page,
-  context,
 }) => {
-  await context.clearCookies()
-  await context.addCookies([
-    { name: 'gpt-load.frontend', value: 'astryx', domain: '127.0.0.1', path: '/' },
-  ])
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
   }, 'e2e-auth-key')
@@ -123,21 +98,23 @@ test('nav to a flagged route stays inside the Astryx document', async ({
   ).toBeVisible({ timeout: 10_000 })
 })
 
-// Flagged paths serve the Astryx document when the preference cookie opts
-// in (the project's storageState seeds it); clearing the cookie drops the
-// same flagged path back to the classic document.
-test('document selection follows the manifest astryx flag', async ({
+// Every page route is served by the single Astryx document; a leftover
+// gpt-load.frontend cookie no longer influences document selection.
+test('document selection ignores the retired frontend cookie', async ({
   page,
   context,
 }) => {
-  const astryx = await page.request.get('/import', {
+  const document = await page.request.get('/import', {
     headers: { accept: 'text/html' },
   })
-  expect(await astryx.text()).toContain('/src/frontends/astryx/main.tsx')
+  expect(await document.text()).toContain('/src/frontends/astryx/main.tsx')
 
   await context.clearCookies()
-  const classic = await page.request.get('/import', {
+  await context.addCookies([
+    { name: 'gpt-load.frontend', value: 'classic', domain: '127.0.0.1', path: '/' },
+  ])
+  const withClassicCookie = await page.request.get('/import', {
     headers: { accept: 'text/html' },
   })
-  expect(await classic.text()).toContain('/src/main.ts')
+  expect(await withClassicCookie.text()).toContain('/src/frontends/astryx/main.tsx')
 })

@@ -4,12 +4,6 @@ import * as stylex from '@stylexjs/stylex'
 import { LogOut, Menu, Monitor, Moon, Sun } from 'lucide-react'
 import { useId, useState, useSyncExternalStore, type ReactNode } from 'react'
 
-import {
-  frontendPreferenceCookie,
-  isFrontendPreference,
-  readFrontendPreference,
-  type FrontendPreference,
-} from '@shared/controllers/frontend-preference'
 import { supportedLocales, type AppLocale } from '@shared/preferences/locale'
 import type { AppTheme } from '@shared/controllers/theme'
 import type { MessageId } from '@shared/i18n/message-ids'
@@ -51,9 +45,6 @@ const styles = stylex.create({
   },
   segmentsThree: {
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-  },
-  segmentsPair: {
-    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
   },
   segment: {
     position: 'relative',
@@ -124,21 +115,19 @@ function Segments<T extends string>({
   options,
   value,
   onChange,
-  pair,
 }: {
   name: string
   label: string
   options: readonly SegmentOption<T>[]
   value: T
   onChange(value: T): void
-  pair?: boolean
 }) {
   const t = useT()
   return (
     <div {...stylex.props(styles.group)}>
       <span {...stylex.props(styles.label)}>{label}</span>
       <div
-        {...stylex.props(styles.segments, pair ? styles.segmentsPair : styles.segmentsThree)}
+        {...stylex.props(styles.segments, styles.segmentsThree)}
         role="group"
         aria-label={label}
       >
@@ -183,11 +172,6 @@ const localeOptions: readonly SegmentOption<AppLocale>[] = [
   { value: 'ja-JP', labelKey: 'shell.localeJaShort' },
 ]
 
-const frontendOptions: readonly SegmentOption<FrontendPreference>[] = [
-  { value: 'classic', labelKey: 'shell.frontendClassic' },
-  { value: 'astryx', labelKey: 'shell.frontendPreview' },
-]
-
 export function PreferencesPanel({
   showSignOut = false,
   mobileNav,
@@ -201,20 +185,10 @@ export function PreferencesPanel({
   const services = useAppServices()
   const identity = useId()
   const [theme, setTheme] = useThemePreference()
-  const [frontend, setFrontend] = useState<FrontendPreference>(() =>
-    readFrontendPreference(document.cookie),
-  )
   const locale = useSyncExternalStore(
     services.i18n.subscribe,
     services.i18n.getSnapshot,
   ).locale
-
-  function updateFrontend(value: FrontendPreference): void {
-    if (!isFrontendPreference(value) || value === frontend) return
-    setFrontend(value)
-    document.cookie = frontendPreferenceCookie(value)
-    window.location.reload()
-  }
 
   return (
     <div {...stylex.props(styles.panel)}>
@@ -241,14 +215,6 @@ export function PreferencesPanel({
         onChange={(next) => {
           if (supportedLocales.includes(next)) void services.i18n.setLocale(next)
         }}
-      />
-      <Segments
-        name={`${identity}-frontend`}
-        label={t('shell.frontend')}
-        options={frontendOptions}
-        value={frontend}
-        onChange={updateFrontend}
-        pair
       />
       {showSignOut && <div {...stylex.props(styles.divider)} />}
       {showSignOut && (
