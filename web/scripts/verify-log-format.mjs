@@ -698,3 +698,7 @@ if (failed > 0) {
 } else {
   console.log(`\nall ${CASES.length} log-format cases and the label parity check passed`)
 }
+
+// The stylex unplugin keeps worker handles alive after server.close();
+// exit explicitly so the contract verdict does not hang the gate.
+process.exit(process.exitCode ?? 0)

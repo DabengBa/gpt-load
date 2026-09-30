@@ -173,3 +173,7 @@ try {
   console.error(error)
   process.exitCode = 1
 }
+
+// The stylex unplugin keeps worker handles alive after server.close();
+// exit explicitly so the contract verdict does not hang the gate.
+process.exit(process.exitCode ?? 0)

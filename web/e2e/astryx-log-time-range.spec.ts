@@ -41,7 +41,8 @@ async function openLogs(page: Page, locale?: string) {
   return routes
 }
 
-const detailButtons = (page: Page) => page.getByRole('button', { name: /details|详情|詳細/ })
+const detailButtons = (page: Page) =>
+  page.getByRole('button', { name: /^(View details|查看详情|詳細を表示)$/u })
 
 test('typed range applies to the request, reset restores the default window (en-US)', async ({
   page,

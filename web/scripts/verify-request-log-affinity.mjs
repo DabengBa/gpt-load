@@ -18,3 +18,7 @@ try {
 } finally {
   await server.close()
 }
+
+// The stylex unplugin keeps worker handles alive after server.close();
+// exit explicitly so the contract verdict does not hang the gate.
+process.exit(process.exitCode ?? 0)

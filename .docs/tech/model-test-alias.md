@@ -18,7 +18,7 @@ code:
     - internal/control/group_options.go
     - internal/gateway/models.go
     - web/src/shared/control/resources/groups.ts
-    - web/src/frontends/classic/features/groups/models/GroupModelsTab.vue
+    - web/src/frontends/astryx/features/groups/models/GroupModelsTab.tsx
     - web/src/shared/domain/models/model-draft.ts
 ---
 # Model Test Alias Routing
@@ -27,7 +27,7 @@ code:
 
 - **Owner:** persisted group model entries, test-alias allocation and
   validation, compiled route indexes, group model control resources, and the
-  classic model editor projection.
+  Astryx model editor projection.
 - **Authoritative for:** alias namespace rules, lifecycle behavior, single-entry
   route resolution, and the separation between client and upstream model
   attribution.
@@ -107,7 +107,7 @@ while a replay returns the original durable operation result.
   value before publishing a snapshot. A failed transaction or failed snapshot
   compilation does not publish a partially allocated route.
 - **Validation:** malformed, duplicate, or standard-name-conflicting persisted
-  aliases prevent startup/config compilation. The classic client also rejects
+  aliases prevent startup/config compilation. The web client also rejects
   malformed read responses rather than displaying an untrusted route name.
 - **Lifecycle:** retaining the same model entry preserves its value; deleting
   or copying an entry allocates independently. The alias is not a client-set

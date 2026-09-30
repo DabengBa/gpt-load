@@ -420,5 +420,7 @@ test('access_key principals are redirected away from the admin-only page', async
 }) => {
   await mockAccessKeys(page, { principalType: 'access_key' })
   await page.goto('/access-keys', { waitUntil: 'commit' })
-  await expect(page).not.toHaveURL(/\/access-keys/)
+  // Boot → session validation → AuthGate redirect outruns the default expect
+  // window under cold module transforms; give the URL assertion headroom.
+  await expect(page).not.toHaveURL(/\/access-keys/, { timeout: 60_000 })
 })

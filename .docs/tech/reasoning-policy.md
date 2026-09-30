@@ -15,7 +15,7 @@ code:
     - internal/state/loader/loader.go
     - internal/gateway/handler.go
     - internal/dialect/request_reasoning.go
-    - web/src/frontends/classic/features/monitor/SchedulePanelDetail.vue
+    - web/src/frontends/astryx/features/monitor/SchedulePanelDetail.tsx
 ---
 # Dispatch Reasoning Policy
 

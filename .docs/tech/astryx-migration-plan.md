@@ -176,9 +176,9 @@ Do not port them.
   `.schedule-row--selected` and `.logs-list__record`, alongside 77
   `getByRole`, 13 `getByText`, and 6 `getByTestId`. StyleX emits hashed atomic
   classes, so every class selector breaks.
-- **Verify scripts** (`web/scripts/verify-*.mjs`, 8 files) read classic
-  source by path, for example `frontends/classic/app/resources/groups.ts` and
-  `frontends/classic/features/monitor/log-format.ts`.
+- **Verify scripts** (`web/scripts/verify-*.mjs`) read `src/shared` and
+  Astryx source by path; they read classic source before the migration, for
+  example `frontends/classic/app/resources/groups.ts`.
 - **Contract tests** run under `node:test`: `connection-json.test.ts` and
   `channel-contract.test.ts`.
 - **Go contract tests** in `internal/webui/workflow_test.go` pin these
@@ -187,10 +187,11 @@ Do not port them.
   lint → format → build`; no separate `type-check` step; and pnpm in the
   Dockerfile. The migration must preserve all of them. It keeps pnpm, not bun,
   because these tests and the Dockerfile require pnpm.
-- **Tech docs whose `code.paths` point into classic:** `model-test-alias.md`,
+- **Tech docs whose `code.paths` pointed into classic** — `model-test-alias.md`,
   `reasoning-policy.md`, `usage-accounting.md`, and
-  `billing-failure-attention/plan.md`. `.docs/db` semantic docs carry no code
-  bindings, so the only Doc ID drift is in these tech docs.
+  `billing-failure-attention/plan.md` — now reference Astryx/shared paths.
+  `.docs/db` semantic docs carry no code bindings; the only retired Doc ID is
+  `feature.frontend-preview-switch`.
 
 ### Browser state contract (shared by both frontends)
 
@@ -973,6 +974,27 @@ ESLint configs, `vue-demi` in `allowBuilds`, the Go selection code, the
 manifest flag, the dev selector plugin, and the classic Playwright project.
 Update the tech docs' `code.paths` and this document's status.
 
+**Phases 5+6 outcome (shipped together on `docs/astryx-migration-plan`,
+spec `260930-01-astryx-cutover-removal`, ADR-0003):** the user approved
+combining cutover and deletion into one delivery, so the planned one-release
+cookie fallback window was skipped — rollback is version rollback, recorded
+in `.docs/adr/0003-astryx-cutover-without-fallback-window.md`. The Go server
+now returns the same embedded `index.html` for every page route and every
+unknown browser path regardless of the retired `gpt-load.frontend` cookie
+(`Vary: Cookie` removed); the manifest moved to v3 and rejects the `astryx`
+field. Vite builds a single `index.html` entry into `internal/webui/dist`;
+`astryx.html`, the dev selector plugin, `frontend-preference.ts`,
+`verify-frontend-cookie.mjs`, the Interface preference segment, and
+`isAstryxNavigable` are gone. `web/src/frontends/classic`, the Vue/Tailwind
+toolchain (plugin-vue, vue-tsc, eslint-plugin-vue,
+@vue/eslint-config-typescript — `typescript-eslint` replaces its parser
+role), and the Vue runtime dependencies are deleted; `vue-demi` left
+`allowBuilds`. Density tokens now live in `astryx/theme/tokens.css` under
+the `tokens` cascade layer (compact values unchanged). The classic
+Playwright project and its eight specs are removed; the remaining projects
+are `astryx`, `go-csp`, `chromium-125`, and `chrome-latest`. Doc ID
+`feature.frontend-preview-switch` is retired.
+
 ### Per-domain definition of done
 
 - Route flagged `astryx: true`, and the e2e specs for the domain pass in both
@@ -982,10 +1004,8 @@ Update the tech docs' `code.paths` and this document's status.
 - No classic-only logic left: whatever both frontends need lives in `shared`.
 - Tech docs whose `code.paths` point at the domain now reference the new
   files.
-- **Feature-freeze rule during coexistence:** before a domain migrates, new
-  features land only in classic. After it migrates, they land only in the new
-  frontend. Bug fixes land in both while the domain is still reachable in
-  classic.
+- ~~Feature-freeze rule during coexistence~~ — coexistence ended at the
+  Phase 5/6 cutover; all feature work lands in the Astryx frontend.
 
 ## Verification
 
@@ -994,7 +1014,7 @@ Update the tech docs' `code.paths` and this document's status.
 | Type, build | `pnpm --dir web run build` (runs `type-check`) | every change |
 | Lint, format | `pnpm --dir web run lint`, `pnpm --dir web run format` | every change |
 | Shared logic | `pnpm --dir web run verify:group-collection`, `verify:health-projection`, `verify:request-log-affinity`, and the other `verify-*.mjs` scripts; `test:connection-json`, `test:channel-contract` | every change touching `shared` |
-| E2E (dev) | `pnpm --dir web run e2e:request-log-affinity` and the full Playwright suite, both projects | per domain |
+| E2E (dev) | `pnpm --dir web run e2e` (single Astryx project plus the CSP browser matrix) | per domain |
 | E2E (Go, CSP) | `make build`, start the binary, run the CSP Playwright project | per phase, and before cutover |
 | Theme artifacts | rebuild `gptload.theme.ts` and diff | every change touching the theme |
 | App catalog ICU syntax and key parity | `verify:i18n-icu` (folded into `lint`) | every change touching `shared/i18n` |
