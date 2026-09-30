@@ -95,23 +95,22 @@ test.describe('request log display', () => {
     }
   })
 
-  test('first response over 15s colors only the time number', async ({ page }) => {
+  test('request timing stays neutral while provider feedback has its own status', async ({
+    page,
+  }) => {
     await installRequestLogDisplayRoutes(page)
     await openRequestLogs(page)
 
-    const slowNumber = page.locator('.logs-list__timing--slow')
-    await expect(slowNumber).toHaveCount(1)
-    await expect(slowNumber).toHaveText('16s')
-    // 慢速标记只包首响数字，同一单元格里的总耗时保持常规颜色。
     const timingCell = page
       .locator('.logs-list__record')
       .first()
-      .locator('[data-label="First / total"]')
+      .locator('[data-label="Request first / total"]')
     await expect(timingCell).toContainText('16s / 24s')
-    await expect(timingCell.locator('.logs-list__timing--slow')).toHaveCount(1)
-    await expect(
-      page.locator('.logs-list__record').nth(1).locator('.logs-list__timing--slow'),
-    ).toHaveCount(0)
+    await expect(timingCell.locator('.logs-list__timing--slow')).toHaveCount(0)
+    await expect(page.getByTestId('request-feedback').first()).toHaveAttribute(
+      'data-feedback-status',
+      'normal',
+    )
   })
 
   test('client to upstream model mapping renders inline without the hint icon', async ({

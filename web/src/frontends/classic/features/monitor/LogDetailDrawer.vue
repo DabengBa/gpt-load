@@ -24,12 +24,13 @@ import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { formatEstimatedCost, formatExactNanoUSD } from '@/lib/format'
+import RequestFeedbackBadge from './RequestFeedbackBadge.vue'
 
 import { formatCacheHitRate } from '@/lib/cache-rate'
 import {
   formatLogDuration,
-  formatLogOutputRate,
   formatLogTokenCount,
+  formatProviderOutputRate,
   formatRequestLogReasoning,
   requestLogAttemptReasonSequences,
   requestLogAttemptReasonText,
@@ -436,23 +437,28 @@ function toggleAttemptErrorMessage(sequence: number): void {
             <dd>{{ log.attempt_count }}</dd>
           </div>
           <div v-if="log.stream">
-            <dt>{{ t('monitor.logs.drawer.firstResponse') }}</dt>
-            <dd
-              :class="{
-                'log-detail__slow-first':
-                  log.first_response_ms !== null && log.first_response_ms > 15_000,
-              }"
-            >
+            <dt>{{ t('monitor.logs.drawer.requestFirstResponse') }}</dt>
+            <dd>
               {{ log.first_response_ms === null ? '—' : formatLogDuration(log.first_response_ms) }}
             </dd>
           </div>
           <div>
-            <dt>{{ t('monitor.logs.drawer.duration') }}</dt>
+            <dt>{{ t('monitor.logs.feedback.providerFirstResponse') }}</dt>
+            <dd>
+              {{
+                log.provider_first_response_ms === null
+                  ? '—'
+                  : formatLogDuration(log.provider_first_response_ms)
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t('monitor.logs.drawer.requestDuration') }}</dt>
             <dd>{{ formatLogDuration(log.duration_ms) }}</dd>
           </div>
           <div>
-            <dt>{{ t('monitor.logs.drawer.outputRate') }}</dt>
-            <dd>{{ formatLogOutputRate(log, locale) }}</dd>
+            <dt>{{ t('monitor.logs.drawer.providerOutputRate') }}</dt>
+            <dd>{{ formatProviderOutputRate(log.provider_tokens_per_second, locale) }}</dd>
           </div>
         </dl>
         <div v-if="keyReasonText" class="log-error-message log-key-reason">
@@ -734,6 +740,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
                 {{ t(`monitor.logs.failureCategory.${attempt.failure_category}`)
                 }}<template v-if="attempt.status_code"> · {{ attempt.status_code }}</template>
               </StatusBadge>
+              <RequestFeedbackBadge :feedback="attempt" test-id="attempt-feedback" />
             </header>
             <div class="log-attempt__primary">
               <LogRouteIdentity
@@ -756,6 +763,37 @@ function toggleAttemptErrorMessage(sequence: number): void {
                   {{ t('monitor.logs.drawer.gatewayAction') }}
                 </span>
                 {{ t(`monitor.logs.action.${attempt.action}`) }}
+              </span>
+            </div>
+            <div
+              v-if="
+                attempt.provider_first_response_ms !== null ||
+                attempt.provider_tokens_per_second !== null
+              "
+              class="log-attempt__feedback-metrics"
+            >
+              <span v-if="attempt.provider_first_response_ms !== null">
+                {{
+                  t('monitor.logs.feedback.providerFirstResponseValue', {
+                    value: formatLogDuration(attempt.provider_first_response_ms),
+                  })
+                }}
+              </span>
+              <span
+                v-if="
+                  attempt.provider_first_response_ms !== null &&
+                  attempt.provider_tokens_per_second !== null
+                "
+                aria-hidden="true"
+              >
+                ·
+              </span>
+              <span v-if="attempt.provider_tokens_per_second !== null">
+                {{
+                  t('monitor.logs.feedback.outputRateValue', {
+                    value: formatProviderOutputRate(attempt.provider_tokens_per_second, locale),
+                  })
+                }}
               </span>
             </div>
             <div v-if="attemptReasonText(attempt)" class="log-attempt__reason">
@@ -824,8 +862,18 @@ function toggleAttemptErrorMessage(sequence: number): void {
                   </dd>
                 </div>
                 <div>
-                  <dt>{{ t('monitor.logs.drawer.duration') }}</dt>
+                  <dt>{{ t('monitor.logs.drawer.attemptDuration') }}</dt>
                   <dd>{{ formatLogDuration(attempt.duration_ms) }}</dd>
+                </div>
+                <div v-if="attempt.provider_first_response_ms !== null">
+                  <dt>{{ t('monitor.logs.feedback.providerFirstResponse') }}</dt>
+                  <dd>{{ formatLogDuration(attempt.provider_first_response_ms) }}</dd>
+                </div>
+                <div v-if="attempt.provider_tokens_per_second !== null">
+                  <dt>{{ t('monitor.logs.drawer.providerOutputRate') }}</dt>
+                  <dd>
+                    {{ formatProviderOutputRate(attempt.provider_tokens_per_second, locale) }}
+                  </dd>
                 </div>
                 <div v-if="attempt.failure_origin">
                   <dt>{{ t('monitor.logs.drawer.failureOrigin') }}</dt>
@@ -1049,10 +1097,6 @@ function toggleAttemptErrorMessage(sequence: number): void {
   gap: 6px;
 }
 
-.log-detail__slow-first {
-  color: var(--color-warning);
-}
-
 .log-model-observation {
   display: grid;
   gap: 10px;
@@ -1132,6 +1176,15 @@ function toggleAttemptErrorMessage(sequence: number): void {
   gap: 4px;
 }
 
+.log-attempt__feedback-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: var(--text-label-xs);
+}
+
 .log-attempt__action {
   display: flex;
   min-width: 0;
@@ -1192,6 +1245,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
 
 .log-attempt > header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;

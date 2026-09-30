@@ -157,6 +157,7 @@ type Attempt struct {
 	Operation               execution.Operation
 	RouteMode               channel.RouteMode
 	UpstreamModel           string
+	Feedback                health.Feedback
 	UpstreamRequestID       string
 	DispatchState           execution.DispatchState
 	ResponseStarted         bool

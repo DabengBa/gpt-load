@@ -70,10 +70,14 @@ test.describe('request log page polish', () => {
     await expect(page.locator('.logs-list__token-values').first()).toContainText('42')
     await expect(
       page.getByRole('columnheader', {
-        name: 'First response / total duration; hover for output rate',
+        name: 'Request-level first response / total duration; feedback uses per-attempt provider metrics',
       }),
     ).toBeVisible()
-    await expect(page.locator('.logs-list__timing--slow')).toHaveText('16s')
+    await expect(page.locator('.logs-list__timing--slow')).toHaveCount(0)
+    await expect(page.getByTestId('request-feedback').first()).toHaveAttribute(
+      'data-feedback-status',
+      'normal',
+    )
     await expect(page.locator('.logs-list__record').first()).toContainText('16s / 24s')
     await expect(page.getByRole('button', { name: 'View details' }).first()).toBeVisible()
   })

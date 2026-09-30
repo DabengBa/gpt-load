@@ -36,7 +36,9 @@ func TestBillingFailureCategoryMigrationPreservesAttemptsAndAcceptsBilling(t *te
 		RuleID: "upstream.rate_limited",
 		Action: "cooldown_credential", ErrorSummary: "limited",
 	}
-	if err := db.Create(&attempt).Error; err != nil {
+	if err := db.Omit(
+		"FeedbackStatus", "FeedbackReason", "ProviderFirstResponseMs", "ProviderTokensPerSecond",
+	).Create(&attempt).Error; err != nil {
 		t.Fatalf("create pre-migration attempt: %v", err)
 	}
 
@@ -65,13 +67,17 @@ func TestBillingFailureCategoryMigrationPreservesAttemptsAndAcceptsBilling(t *te
 		RuleID: "billing.insufficient_balance",
 		Action: "cooldown_credential", ErrorSummary: "insufficient balance",
 	}
-	if err := db.Create(&billing).Error; err != nil {
+	if err := db.Omit(
+		"FeedbackStatus", "FeedbackReason", "ProviderFirstResponseMs", "ProviderTokensPerSecond",
+	).Create(&billing).Error; err != nil {
 		t.Fatalf("create billing attempt: %v", err)
 	}
 	invalid := billing
 	invalid.Sequence = 3
 	invalid.FailureCategory = "made_up_category"
-	if err := db.Create(&invalid).Error; err == nil {
+	if err := db.Omit(
+		"FeedbackStatus", "FeedbackReason", "ProviderFirstResponseMs", "ProviderTokensPerSecond",
+	).Create(&invalid).Error; err == nil {
 		t.Fatal("migration accepted an invalid failure category")
 	}
 

@@ -148,6 +148,9 @@ export type UsageBreakdownScope = 'admin' | 'access_key'
 export interface UsageAttemptAggregateDto {
   attempt_count: number
   attempt_failure_count: number
+  normal_attempt_count: number
+  slow_attempt_count: number
+  faulty_attempt_count: number
 }
 
 export interface UsageBreakdownRowDto extends UsageAggregateDto, UsageAttemptAggregateDto {
@@ -293,7 +296,13 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
 }
 
 const breakdownAggregateFields = [...aggregateFields] as const
-const attemptAggregateFields = ['attempt_count', 'attempt_failure_count'] as const
+const attemptAggregateFields = [
+  'attempt_count',
+  'attempt_failure_count',
+  'normal_attempt_count',
+  'slow_attempt_count',
+  'faulty_attempt_count',
+] as const
 
 function sameUsageAggregate(left: UsageAggregateDto, right: UsageAggregateDto): boolean {
   return breakdownAggregateFields.every((field) => left[field] === right[field])
@@ -392,8 +401,23 @@ function projectUsageAttemptAggregate(value: unknown): UsageAttemptAggregateDto 
   assertNoSecretLikeFields(record, attemptAggregateFields)
   const attemptCount = projectSafeInteger(record.attempt_count, { minimum: 0 })
   const attemptFailureCount = projectSafeInteger(record.attempt_failure_count, { minimum: 0 })
-  if (attemptFailureCount > attemptCount) invalidResponse()
-  return { attempt_count: attemptCount, attempt_failure_count: attemptFailureCount }
+  const normalAttemptCount = projectSafeInteger(record.normal_attempt_count, { minimum: 0 })
+  const slowAttemptCount = projectSafeInteger(record.slow_attempt_count, { minimum: 0 })
+  const faultyAttemptCount = projectSafeInteger(record.faulty_attempt_count, { minimum: 0 })
+  if (
+    attemptFailureCount > attemptCount ||
+    BigInt(normalAttemptCount) + BigInt(slowAttemptCount) + BigInt(faultyAttemptCount) >
+      BigInt(attemptCount)
+  ) {
+    invalidResponse()
+  }
+  return {
+    attempt_count: attemptCount,
+    attempt_failure_count: attemptFailureCount,
+    normal_attempt_count: normalAttemptCount,
+    slow_attempt_count: slowAttemptCount,
+    faulty_attempt_count: faultyAttemptCount,
+  }
 }
 
 function projectUsageDistributionAggregate(value: unknown): UsageDistributionAggregateDto {

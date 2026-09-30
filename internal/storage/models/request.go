@@ -51,38 +51,42 @@ type RequestLog struct {
 // request. Identity fields are snapshots and intentionally do not reference
 // mutable Group or Credential catalog rows.
 type RequestLogAttempt struct {
-	RequestID             string      `gorm:"type:varchar(36);primaryKey;not null;index:idx_request_log_attempts_group_completed_request,priority:3;index:idx_request_log_attempts_channel_completed_request,priority:3;index:idx_request_log_attempts_credential_completed_request,priority:3;index:idx_request_log_attempts_model_completed_request,priority:3;index:idx_request_log_attempts_status_completed_request,priority:3;index:idx_request_log_attempts_failure_completed_request,priority:3;index:idx_request_log_attempts_error_completed_request,priority:3"`
-	Sequence              int         `gorm:"primaryKey;not null;check:chk_request_log_attempt_sequence,sequence > 0"`
-	CompletedAtMS         int64       `gorm:"column:completed_at_ms;not null;check:chk_request_log_attempt_completed_at,completed_at_ms >= 0;index:idx_request_log_attempts_group_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_credential_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_channel_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_model_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_status_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_failure_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_error_completed_request,priority:2,sort:desc"`
-	GroupID               uint        `gorm:"not null;check:chk_request_log_attempt_group,group_id > 0;index:idx_request_log_attempts_group_completed_request,priority:1"`
-	GroupName             string      `gorm:"type:varchar(255);not null"`
-	ChannelID             string      `gorm:"type:varchar(64);not null;default:'';index:idx_request_log_attempts_channel_completed_request,priority:1"`
-	CredentialID          uint        `gorm:"not null;check:chk_request_log_attempt_credential,credential_id > 0;index:idx_request_log_attempts_credential_completed_request,priority:1"`
-	Operation             string      `gorm:"type:varchar(64);not null;default:''"`
-	RouteMode             string      `gorm:"type:varchar(32);not null;default:''"`
-	UpstreamModel         string      `gorm:"type:varchar(255);not null;default:''"`
-	UpstreamRequestID     string      `gorm:"type:varchar(255);not null;default:''"`
-	DispatchState         string      `gorm:"type:varchar(32);not null;default:''"`
-	ResponseStarted       bool        `gorm:"not null;default:false"`
-	UpstreamProtocol      string      `gorm:"type:varchar(32);not null;default:''"`
-	ReasoningMode         string      `gorm:"type:varchar(64);not null;default:''"`
-	ReasoningEffort       string      `gorm:"type:varchar(64);not null;default:''"`
-	ReasoningBudgetTokens *int64      `gorm:"column:reasoning_budget_tokens"`
-	StatusCode            int         `gorm:"not null;index:idx_request_log_attempts_status_completed_request,priority:1"`
-	DurationMs            int64       `gorm:"not null;check:chk_request_log_attempt_duration,duration_ms >= 0"`
-	FailureCategory       string      `gorm:"type:varchar(32);not null;check:chk_request_log_attempt_failure_category,failure_category IN ('ok','rate_limited','model_unavailable','invalid_key','billing','upstream_host_error','client_error','conversion_unsupported','downstream_cancel','authentication_required','ambiguous');index:idx_request_log_attempts_failure_completed_request,priority:1"`
-	FailureOrigin         string      `gorm:"type:varchar(16);not null;default:'';check:chk_request_log_attempt_failure_origin,failure_origin IN ('','client','upstream','downstream','internal')"`
-	FailureScope          string      `gorm:"type:varchar(16);not null;default:'';check:chk_request_log_attempt_failure_scope,failure_scope IN ('','request','model','credential','group')"`
-	RetryDirective        string      `gorm:"type:varchar(32);not null;default:'';check:chk_request_log_attempt_retry_directive,retry_directive IN ('','none','refresh_credential','next_candidate')"`
-	Effect                string      `gorm:"type:varchar(32);not null;default:'';check:chk_request_log_attempt_effect,effect IN ('','none','cooldown_credential','record_credential_failure','skip_group')"`
-	RuleID                string      `gorm:"type:varchar(128);not null;default:''"`
-	Action                string      `gorm:"type:varchar(32);not null;check:chk_request_log_attempt_action,action IN ('terminate','retry','cooldown_credential','fail_credential','skip_group')"`
-	WillRetry             bool        `gorm:"not null;default:false"`
-	ErrorCode             string      `gorm:"type:varchar(64);not null;default:'';index:idx_request_log_attempts_error_completed_request,priority:1"`
-	ErrorSummary          string      `gorm:"type:text;not null"`
-	Committed             bool        `gorm:"not null;default:false"`
-	PricingReceipt        JSON        `gorm:"type:json"`
-	RequestLog            *RequestLog `gorm:"foreignKey:RequestID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	RequestID               string      `gorm:"type:varchar(36);primaryKey;not null;index:idx_request_log_attempts_group_completed_request,priority:3;index:idx_request_log_attempts_channel_completed_request,priority:3;index:idx_request_log_attempts_credential_completed_request,priority:3;index:idx_request_log_attempts_model_completed_request,priority:3;index:idx_request_log_attempts_status_completed_request,priority:3;index:idx_request_log_attempts_failure_completed_request,priority:3;index:idx_request_log_attempts_error_completed_request,priority:3"`
+	Sequence                int         `gorm:"primaryKey;not null;check:chk_request_log_attempt_sequence,sequence > 0"`
+	CompletedAtMS           int64       `gorm:"column:completed_at_ms;not null;check:chk_request_log_attempt_completed_at,completed_at_ms >= 0;index:idx_request_log_attempts_group_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_credential_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_channel_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_model_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_status_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_failure_completed_request,priority:2,sort:desc;index:idx_request_log_attempts_error_completed_request,priority:2,sort:desc"`
+	GroupID                 uint        `gorm:"not null;check:chk_request_log_attempt_group,group_id > 0;index:idx_request_log_attempts_group_completed_request,priority:1"`
+	GroupName               string      `gorm:"type:varchar(255);not null"`
+	ChannelID               string      `gorm:"type:varchar(64);not null;default:'';index:idx_request_log_attempts_channel_completed_request,priority:1"`
+	CredentialID            uint        `gorm:"not null;check:chk_request_log_attempt_credential,credential_id > 0;index:idx_request_log_attempts_credential_completed_request,priority:1"`
+	Operation               string      `gorm:"type:varchar(64);not null;default:''"`
+	RouteMode               string      `gorm:"type:varchar(32);not null;default:''"`
+	UpstreamModel           string      `gorm:"type:varchar(255);not null;default:''"`
+	UpstreamRequestID       string      `gorm:"type:varchar(255);not null;default:''"`
+	DispatchState           string      `gorm:"type:varchar(32);not null;default:''"`
+	ResponseStarted         bool        `gorm:"not null;default:false"`
+	UpstreamProtocol        string      `gorm:"type:varchar(32);not null;default:''"`
+	ReasoningMode           string      `gorm:"type:varchar(64);not null;default:''"`
+	ReasoningEffort         string      `gorm:"type:varchar(64);not null;default:''"`
+	ReasoningBudgetTokens   *int64      `gorm:"column:reasoning_budget_tokens"`
+	StatusCode              int         `gorm:"not null;index:idx_request_log_attempts_status_completed_request,priority:1"`
+	DurationMs              int64       `gorm:"not null;check:chk_request_log_attempt_duration,duration_ms >= 0"`
+	FailureCategory         string      `gorm:"type:varchar(32);not null;check:chk_request_log_attempt_failure_category,failure_category IN ('ok','rate_limited','model_unavailable','invalid_key','billing','upstream_host_error','client_error','conversion_unsupported','downstream_cancel','authentication_required','ambiguous');index:idx_request_log_attempts_failure_completed_request,priority:1"`
+	FeedbackStatus          string      `gorm:"type:varchar(16);not null;default:'';check:chk_request_log_attempt_feedback_status,feedback_status IN ('','normal','slow','faulty') AND ((feedback_status IN ('','normal') AND feedback_reason = '') OR (feedback_status = 'slow' AND feedback_reason = 'output_rate_slow') OR (feedback_status = 'faulty' AND feedback_reason IN ('upstream_failure','first_response_slow','output_rate_faulty')))"`
+	FeedbackReason          string      `gorm:"column:feedback_reason;type:varchar(32);not null;default:'';check:chk_request_log_attempt_feedback_reason,feedback_reason IN ('','upstream_failure','first_response_slow','output_rate_faulty','output_rate_slow')"`
+	ProviderFirstResponseMs *int64      `gorm:"column:provider_first_response_ms;check:chk_request_log_attempt_provider_first_response,provider_first_response_ms IS NULL OR provider_first_response_ms >= 0"`
+	ProviderTokensPerSecond *float64    `gorm:"column:provider_tokens_per_second;check:chk_request_log_attempt_provider_tokens_per_second,provider_tokens_per_second IS NULL OR (provider_tokens_per_second >= 0 AND provider_tokens_per_second < 1e308)"`
+	FailureOrigin           string      `gorm:"type:varchar(16);not null;default:'';check:chk_request_log_attempt_failure_origin,failure_origin IN ('','client','upstream','downstream','internal')"`
+	FailureScope            string      `gorm:"type:varchar(16);not null;default:'';check:chk_request_log_attempt_failure_scope,failure_scope IN ('','request','model','credential','group')"`
+	RetryDirective          string      `gorm:"type:varchar(32);not null;default:'';check:chk_request_log_attempt_retry_directive,retry_directive IN ('','none','refresh_credential','next_candidate')"`
+	Effect                  string      `gorm:"type:varchar(32);not null;default:'';check:chk_request_log_attempt_effect,effect IN ('','none','cooldown_credential','record_credential_failure','skip_group')"`
+	RuleID                  string      `gorm:"type:varchar(128);not null;default:''"`
+	Action                  string      `gorm:"type:varchar(32);not null;check:chk_request_log_attempt_action,action IN ('terminate','retry','cooldown_credential','fail_credential','skip_group')"`
+	WillRetry               bool        `gorm:"not null;default:false"`
+	ErrorCode               string      `gorm:"type:varchar(64);not null;default:'';index:idx_request_log_attempts_error_completed_request,priority:1"`
+	ErrorSummary            string      `gorm:"type:text;not null"`
+	Committed               bool        `gorm:"not null;default:false"`
+	PricingReceipt          JSON        `gorm:"type:json"`
+	RequestLog              *RequestLog `gorm:"foreignKey:RequestID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 // CredentialAttemptStat is the hourly account-level outcome aggregate used by
@@ -136,32 +140,38 @@ func (UsageAggregationJournal) TableName() string {
 // route-attempt aggregates. Its composite identity permits one row per
 // upstream attempt in a retried request.
 type UsageAttemptAggregationJournal struct {
-	RequestID     string `gorm:"column:request_id;type:varchar(36);primaryKey;not null"`
-	Sequence      int    `gorm:"primaryKey;not null;check:chk_usage_attempt_journal_sequence,sequence > 0"`
-	BucketStartMS int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_attempt_journal_bucket,bucket_start_ms >= 0;index:idx_usage_attempt_journal_pending_bucket,priority:2"`
-	AccessKeyID   uint   `gorm:"not null"`
-	GroupID       uint   `gorm:"not null;check:chk_usage_attempt_journal_group,group_id > 0"`
-	ChannelID     string `gorm:"type:varchar(64);not null;default:''"`
-	CredentialID  uint   `gorm:"not null;check:chk_usage_attempt_journal_credential,credential_id > 0"`
-	Model         string `gorm:"type:varchar(255);not null"`
-	AttemptCount  int64  `gorm:"not null;check:chk_usage_attempt_journal_attempt_count,attempt_count = 1"`
-	FailureCount  int64  `gorm:"not null;check:chk_usage_attempt_journal_failure_count,failure_count >= 0 AND failure_count <= attempt_count"`
-	Applied       bool   `gorm:"not null;default:false;check:chk_usage_attempt_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_attempt_journal_pending_bucket,priority:1"`
+	RequestID          string `gorm:"column:request_id;type:varchar(36);primaryKey;not null"`
+	Sequence           int    `gorm:"primaryKey;not null;check:chk_usage_attempt_journal_sequence,sequence > 0"`
+	BucketStartMS      int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_attempt_journal_bucket,bucket_start_ms >= 0;index:idx_usage_attempt_journal_pending_bucket,priority:2"`
+	AccessKeyID        uint   `gorm:"not null"`
+	GroupID            uint   `gorm:"not null;check:chk_usage_attempt_journal_group,group_id > 0"`
+	ChannelID          string `gorm:"type:varchar(64);not null;default:''"`
+	CredentialID       uint   `gorm:"not null;check:chk_usage_attempt_journal_credential,credential_id > 0"`
+	Model              string `gorm:"type:varchar(255);not null"`
+	AttemptCount       int64  `gorm:"not null;check:chk_usage_attempt_journal_attempt_count,attempt_count = 1"`
+	FailureCount       int64  `gorm:"not null;check:chk_usage_attempt_journal_failure_count,failure_count >= 0 AND failure_count <= attempt_count"`
+	NormalAttemptCount int64  `gorm:"column:normal_attempt_count;not null;default:0;check:chk_usage_attempt_journal_normal_count,normal_attempt_count >= 0 AND normal_attempt_count <= attempt_count"`
+	SlowAttemptCount   int64  `gorm:"column:slow_attempt_count;not null;default:0;check:chk_usage_attempt_journal_slow_count,slow_attempt_count >= 0 AND slow_attempt_count <= attempt_count"`
+	FaultyAttemptCount int64  `gorm:"column:faulty_attempt_count;not null;default:0;check:chk_usage_attempt_journal_feedback_count,faulty_attempt_count >= 0 AND normal_attempt_count + slow_attempt_count + faulty_attempt_count <= attempt_count"`
+	Applied            bool   `gorm:"not null;default:false;check:chk_usage_attempt_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_attempt_journal_pending_bucket,priority:1"`
 }
 
 // UsageAttemptStat is an hourly route-attempt aggregate. Unlike UsageStat,
 // it records every upstream route tried, including routes that only failed
 // before a later candidate completed the client request.
 type UsageAttemptStat struct {
-	ID            uint   `gorm:"primaryKey;autoIncrement"`
-	BucketStartMS int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_attempt_stat_bucket,bucket_start_ms >= 0;uniqueIndex:idx_usage_attempt_stats_identity,priority:1"`
-	AccessKeyID   uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:2"`
-	ChannelID     string `gorm:"type:varchar(64);not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:3"`
-	GroupID       uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:4"`
-	CredentialID  uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:5"`
-	Model         string `gorm:"type:varchar(255);not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:6"`
-	AttemptCount  int64  `gorm:"not null;default:0;check:chk_usage_attempt_stat_attempt_count,attempt_count >= 0"`
-	FailureCount  int64  `gorm:"not null;default:0;check:chk_usage_attempt_stat_failure_count,failure_count >= 0;check:chk_usage_attempt_stat_failure_le_attempt, failure_count <= attempt_count"`
+	ID                 uint   `gorm:"primaryKey;autoIncrement"`
+	BucketStartMS      int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_attempt_stat_bucket,bucket_start_ms >= 0;uniqueIndex:idx_usage_attempt_stats_identity,priority:1"`
+	AccessKeyID        uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:2"`
+	ChannelID          string `gorm:"type:varchar(64);not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:3"`
+	GroupID            uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:4"`
+	CredentialID       uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:5"`
+	Model              string `gorm:"type:varchar(255);not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:6"`
+	AttemptCount       int64  `gorm:"not null;default:0;check:chk_usage_attempt_stat_attempt_count,attempt_count >= 0"`
+	FailureCount       int64  `gorm:"not null;default:0;check:chk_usage_attempt_stat_failure_count,failure_count >= 0;check:chk_usage_attempt_stat_failure_le_attempt, failure_count <= attempt_count"`
+	NormalAttemptCount int64  `gorm:"column:normal_attempt_count;not null;default:0;check:chk_usage_attempt_stat_normal_count,normal_attempt_count >= 0 AND normal_attempt_count <= attempt_count"`
+	SlowAttemptCount   int64  `gorm:"column:slow_attempt_count;not null;default:0;check:chk_usage_attempt_stat_slow_count,slow_attempt_count >= 0 AND slow_attempt_count <= attempt_count"`
+	FaultyAttemptCount int64  `gorm:"column:faulty_attempt_count;not null;default:0;check:chk_usage_attempt_stat_feedback_count,faulty_attempt_count >= 0 AND normal_attempt_count + slow_attempt_count + faulty_attempt_count <= attempt_count"`
 }
 
 // UsageStat is an hourly aggregate by access key, channel, upstream group,

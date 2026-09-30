@@ -435,6 +435,12 @@ func cloneEvent(event telemetry.RequestEvent) telemetry.RequestEvent {
 		cloned.Attempts = append([]telemetry.Attempt(nil), event.Attempts...)
 		for index := range cloned.Attempts {
 			cloned.Attempts[index].Reasoning = event.Attempts[index].Reasoning.Clone()
+			if value := event.Attempts[index].Feedback.FirstResponseMs; value != nil {
+				cloned.Attempts[index].Feedback.FirstResponseMs = new(*value)
+			}
+			if value := event.Attempts[index].Feedback.TokensPerSecond; value != nil {
+				cloned.Attempts[index].Feedback.TokensPerSecond = new(*value)
+			}
 		}
 	}
 	return cloned

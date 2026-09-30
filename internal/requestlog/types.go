@@ -7,6 +7,7 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/health"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/reasoning"
@@ -44,6 +45,7 @@ type Attempt struct {
 	Reasoning         reasoning.Config          `json:"reasoning"`
 	StatusCode        int                       `json:"status_code"`
 	DurationMs        int64                     `json:"duration_ms"`
+	Feedback          health.Feedback           `json:"feedback"`
 	FailureCategory   telemetry.FailureCategory `json:"failure_category"`
 	FailureOrigin     execution.ErrorOrigin     `json:"failure_origin"`
 	FailureScope      execution.ErrorScope      `json:"failure_scope"`
@@ -143,6 +145,7 @@ type Record struct {
 	AffinityState           string
 	Reasoning               reasoning.Config
 	Attempts                []Attempt
+	FinalAttemptFeedback    health.Feedback
 	GroupID                 uint
 	ChannelID               channel.ID
 	CredentialID            uint
@@ -338,6 +341,9 @@ type UsageBreakdown struct {
 type UsageAttemptAggregate struct {
 	AttemptCount        int64
 	AttemptFailureCount int64
+	NormalAttemptCount  int64
+	SlowAttemptCount    int64
+	FaultyAttemptCount  int64
 }
 
 type UsagePagination struct {

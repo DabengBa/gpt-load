@@ -165,6 +165,7 @@ func (forwarder *ExecutionForwarder) forwardStream(
 		event dialect.StreamEvent,
 		genericProviderError bool,
 	) (bool, error) {
+		input.providerFeedback.observeProviderPayload()
 		if input.ClientProtocol == protocol.OpenAIImages &&
 			imagesCredentialLiteralsRemain(event.Payload, credentialSecrets) {
 			return false, fmt.Errorf("%w: credential remains in response event", ErrUpstreamProtocol)
@@ -309,7 +310,10 @@ func (forwarder *ExecutionForwarder) forwardStream(
 					return nil
 				}
 				committed = true
-				if err := commitStream(controller, ready.StatusCode, ready.Header, forwardData); err != nil {
+				writeStarted := input.providerFeedback.beginDownstreamWrite(input.BufferedStream)
+				err := commitStream(controller, ready.StatusCode, ready.Header, forwardData)
+				input.providerFeedback.endDownstreamWrite(writeStarted)
+				if err != nil {
 					downstreamErr = err
 					return err
 				}
@@ -321,8 +325,10 @@ func (forwarder *ExecutionForwarder) forwardStream(
 				}
 				return nil
 			}
+			writeStarted := input.providerFeedback.beginDownstreamWrite(input.BufferedStream)
 			written, err := controller.write(forwardData)
 			if err != nil {
+				input.providerFeedback.endDownstreamWrite(writeStarted)
 				downstreamErr = &streamFailure{
 					kind: streamFailureDownstreamWrite,
 					err:  fmt.Errorf("write execution stream: %w", err),
@@ -330,13 +336,16 @@ func (forwarder *ExecutionForwarder) forwardStream(
 				return downstreamErr
 			}
 			if written != len(forwardData) {
+				input.providerFeedback.endDownstreamWrite(writeStarted)
 				downstreamErr = &streamFailure{
 					kind: streamFailureDownstreamWrite,
 					err:  fmt.Errorf("write execution stream: %w", io.ErrShortWrite),
 				}
 				return downstreamErr
 			}
-			if err := controller.flush(); err != nil {
+			err = controller.flush()
+			input.providerFeedback.endDownstreamWrite(writeStarted)
+			if err != nil {
 				downstreamErr = &streamFailure{
 					kind: streamFailureDownstreamWrite,
 					err:  fmt.Errorf("flush execution stream: %w", err),
@@ -365,9 +374,14 @@ func (forwarder *ExecutionForwarder) forwardStream(
 			if framingErr != nil {
 				downstreamErr = executionStreamProtocolFailure(framingErr)
 			} else {
+				if len(remaining) > 0 && input.providerFeedback != nil {
+					input.providerFeedback.observeProviderPayload()
+				}
+				writeStarted := input.providerFeedback.beginDownstreamWrite(input.BufferedStream)
 				committed, downstreamErr = writeResponsesFramingRemainder(
 					controller, ready, remaining, committed, input.OnStreamReady,
 				)
+				input.providerFeedback.endDownstreamWrite(writeStarted)
 			}
 		}
 		if downstreamErr == nil {
@@ -385,6 +399,7 @@ func (forwarder *ExecutionForwarder) forwardStream(
 			}
 		}
 	}
+	input.providerFeedback.complete()
 	capturedUsage := streamEvents.finalizeUsage()
 	result := upstreamFromExecutionStreamResult(ctx, input, terminal, streamUsage)
 	result = classifyGatewayFailureEvidence(result)
