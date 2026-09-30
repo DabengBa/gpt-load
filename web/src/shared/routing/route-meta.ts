@@ -1,9 +1,8 @@
 import type { MessageId } from '../i18n/message-ids'
 import type { MessageNamespace } from '../i18n/namespaces'
 
-// Per-route behavior shared by both routers. The classic router spreads this
-// table into route meta; the Astryx TanStack adapter reads it for beforeLoad
-// guards and staticData. Keys are manifest route names (page_routes.json);
+// Per-route behavior table. The Astryx TanStack adapter reads it for
+// beforeLoad guards and staticData. Keys are manifest route names (page_routes.json);
 // coverage is asserted by scripts/astryx-routes.test.ts.
 // `type` (not `interface`) so the value keeps an implicit index signature for
 // the TanStack adapter's staticData record.

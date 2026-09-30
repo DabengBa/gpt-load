@@ -85,22 +85,20 @@ func acceptsHTML(value string) bool {
 	return false
 }
 
-func (s *Server) servePage() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		s.serveIndexWithStatus(c, http.StatusOK, s.index)
-	}
+func (s *Server) serveIndex(c *gin.Context) {
+	s.serveIndexWithStatus(c, http.StatusOK)
 }
 
 func (s *Server) serveNotFoundIndex(c *gin.Context) {
-	s.serveIndexWithStatus(c, http.StatusNotFound, s.index)
+	s.serveIndexWithStatus(c, http.StatusNotFound)
 }
 
-func (s *Server) serveIndexWithStatus(c *gin.Context, status int, document []byte) {
+func (s *Server) serveIndexWithStatus(c *gin.Context, status int) {
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Content-Security-Policy", indexCSP)
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("X-Frame-Options", "DENY")
-	c.Data(status, "text/html; charset=utf-8", document)
+	c.Data(status, "text/html; charset=utf-8", s.index)
 }
 
 func (s *Server) serveThemeBootstrap(c *gin.Context) {

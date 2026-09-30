@@ -1,6 +1,5 @@
 // Command webui serves the embedded management UI exactly as the production
-// binary does — same page routes, assets, CSP, and frontend cookie selection —
-// without the data/control planes. The full gpt-load binary only compiles on
+// binary does — same page routes, assets, and CSP — without the data/control planes. The full gpt-load binary only compiles on
 // Linux (internal/platform/securefile is linux-only), so this harness exists
 // for local CSP/browser verification on any platform:
 //

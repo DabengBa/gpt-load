@@ -17,7 +17,7 @@ Compact, professional, utilitarian. The interface is a tool, not a showcase — 
 - Marketing-style landing page patterns (hero sections, oversized type, decorative whitespace) — this is a console.
 - Consumer-app visual noise: gradients-as-decoration, playful illustrations, oversized cards that sacrifice row density.
 - Heavy Material-Design-style elevation and padding that cut data density.
-- The visual target is explicitly the existing classic Vue UI: deviations from its density, spacing rhythm, and information hierarchy are defects, not improvements.
+- The visual target is the density, spacing rhythm, and information hierarchy inherited from the retired classic Vue UI and now encoded in the Astryx density tokens: deviations are defects, not improvements.
 
 ## Design Principles
 - Parity over novelty: a migrated surface is correct when it matches the classic behavior and density, not when it looks newer.

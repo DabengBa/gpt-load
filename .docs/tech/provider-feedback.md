@@ -13,7 +13,7 @@ code:
     - internal/requestlog/worker.go
     - internal/requestlog/query.go
     - internal/storage/migrations/0024_provider_feedback.go
-    - web/src/frontends/classic/features/monitor/RequestFeedbackBadge.vue
+    - web/src/frontends/astryx/features/logs/LogsTable.tsx
 ---
 # Provider Feedback
 
