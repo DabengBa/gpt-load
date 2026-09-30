@@ -1,5 +1,13 @@
 import * as stylex from '@stylexjs/stylex'
-import { Badge, Button, IconButton, Table, pixel, proportional, type TableColumn } from '@astryxdesign/core'
+import {
+  Badge,
+  Button,
+  IconButton,
+  Table,
+  pixel,
+  proportional,
+  type TableColumn,
+} from '@astryxdesign/core'
 import { ArrowRight, RotateCcw, Trash2 } from 'lucide-react'
 import {
   useCallback,
@@ -207,113 +215,111 @@ export function AccessKeyCollection({
 
   // Rebuilt per render so cell callbacks never close over stale props.
   const columns: TableColumn<AccessKeyRow>[] = [
-      {
-        key: 'name',
-        header: t('accessKeys.columns.name'),
-        width: proportional(1.05),
-        renderCell: (record): ReactNode => (
-          <span {...stylex.props(styles.nameCell)}>{record.name}</span>
-        ),
-      },
-      {
-        key: 'key',
-        header: t('accessKeys.columns.key'),
-        width: proportional(1.3),
-        renderCell: (record): ReactNode => (
-          <CopyChip
-            key={`${copyGeneration}:${source(record.id).updated_at_ms}`}
-            value={record.maskedKey}
-            label={t('accessKeys.copy')}
-            successLabel={t('common.copied')}
-            failureLabel={t('common.copyFailed')}
-            resolveValue={() => resolveCopyValue(record.id)}
+    {
+      key: 'name',
+      header: t('accessKeys.columns.name'),
+      width: proportional(1.05),
+      renderCell: (record): ReactNode => (
+        <span {...stylex.props(styles.nameCell)}>{record.name}</span>
+      ),
+    },
+    {
+      key: 'key',
+      header: t('accessKeys.columns.key'),
+      width: proportional(1.3),
+      renderCell: (record): ReactNode => (
+        <CopyChip
+          key={`${copyGeneration}:${source(record.id).updated_at_ms}`}
+          value={record.maskedKey}
+          label={t('accessKeys.copy')}
+          successLabel={t('common.copied')}
+          failureLabel={t('common.copyFailed')}
+          resolveValue={() => resolveCopyValue(record.id)}
+        />
+      ),
+    },
+    {
+      key: 'status',
+      header: t('accessKeys.columns.status'),
+      width: pixel(120),
+      renderCell: (record): ReactNode => (
+        <span {...stylex.props(styles.statusCell)}>
+          <Badge
+            variant={record.status === 'active' ? 'success' : 'neutral'}
+            label={t(`accessKeys.status.${record.status}` as MessageId)}
           />
-        ),
-      },
-      {
-        key: 'status',
-        header: t('accessKeys.columns.status'),
-        width: pixel(120),
-        renderCell: (record): ReactNode => (
-          <span {...stylex.props(styles.statusCell)}>
-            <Badge
-              variant={record.status === 'active' ? 'success' : 'neutral'}
-              label={t(`accessKeys.status.${record.status}` as MessageId)}
-            />
-            {record.expired && (
-              <Badge variant="error" label={t('accessKeys.status.expired')} />
-            )}
-            {record.ipRestricted && (
-              <Badge variant="neutral" label={t('accessKeys.status.ipRestricted')} />
-            )}
-            {record.quotaExhausted && (
-              <Badge variant="error" label={t('accessKeys.costLimits.exhausted')} />
-            )}
-          </span>
-        ),
-      },
-      {
-        key: 'scope',
-        header: t('accessKeys.columns.scope'),
-        width: proportional(1.35),
-        renderCell: (record): ReactNode => (
-          <dl {...stylex.props(styles.scopeCell)}>
-            {record.scopeRows.map((scope) => (
-              <div key={scope.label} {...stylex.props(styles.scopeRow)}>
-                <dt {...stylex.props(styles.scopeTerm)}>{scope.label}</dt>
-                <dd {...stylex.props(styles.scopeValue)} title={scope.value}>
-                  {scope.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        ),
-      },
-      {
-        key: 'limits',
-        header: t('accessKeys.columns.limits'),
-        width: pixel(110),
-        renderCell: (record): ReactNode => (
-          <span {...stylex.props(styles.limitsCell)}>
-            {record.limits.map((limit) => (
-              <span key={limit}>{limit}</span>
-            ))}
-          </span>
-        ),
-      },
-      {
-        key: 'lastRequest',
-        header: t('accessKeys.columns.lastRequest'),
-        width: pixel(120),
-        renderCell: (record): ReactNode => (
-          <span {...stylex.props(styles.timeCell)}>
-            <RelativeInstant
-              instant={record.lastRequestAt}
-              emptyLabel={t('accessKeys.collection.neverRequested')}
-            />
-          </span>
-        ),
-      },
-      {
-        key: 'actions',
-        header: t('accessKeys.columns.actions'),
-        width: pixel(170),
-        renderCell: (record): ReactNode => (
-          <AccessKeyRowActions
-            item={source(record.id)}
-            status={record.status}
-            name={record.name}
-            costLimitRuleCount={record.costLimitRuleCount}
-            total={total}
-            busy={busyIds.has(record.id)}
-            locked={lockedIds.has(record.id)}
-            onToggle={onToggle}
-            onReset={onReset}
-            onDeleted={onDeleted}
-            onOpen={onOpen}
+          {record.expired && <Badge variant="error" label={t('accessKeys.status.expired')} />}
+          {record.ipRestricted && (
+            <Badge variant="neutral" label={t('accessKeys.status.ipRestricted')} />
+          )}
+          {record.quotaExhausted && (
+            <Badge variant="error" label={t('accessKeys.costLimits.exhausted')} />
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'scope',
+      header: t('accessKeys.columns.scope'),
+      width: proportional(1.35),
+      renderCell: (record): ReactNode => (
+        <dl {...stylex.props(styles.scopeCell)}>
+          {record.scopeRows.map((scope) => (
+            <div key={scope.label} {...stylex.props(styles.scopeRow)}>
+              <dt {...stylex.props(styles.scopeTerm)}>{scope.label}</dt>
+              <dd {...stylex.props(styles.scopeValue)} title={scope.value}>
+                {scope.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ),
+    },
+    {
+      key: 'limits',
+      header: t('accessKeys.columns.limits'),
+      width: pixel(110),
+      renderCell: (record): ReactNode => (
+        <span {...stylex.props(styles.limitsCell)}>
+          {record.limits.map((limit) => (
+            <span key={limit}>{limit}</span>
+          ))}
+        </span>
+      ),
+    },
+    {
+      key: 'lastRequest',
+      header: t('accessKeys.columns.lastRequest'),
+      width: pixel(120),
+      renderCell: (record): ReactNode => (
+        <span {...stylex.props(styles.timeCell)}>
+          <RelativeInstant
+            instant={record.lastRequestAt}
+            emptyLabel={t('accessKeys.collection.neverRequested')}
           />
-        ),
-      },
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: t('accessKeys.columns.actions'),
+      width: pixel(170),
+      renderCell: (record): ReactNode => (
+        <AccessKeyRowActions
+          item={source(record.id)}
+          status={record.status}
+          name={record.name}
+          costLimitRuleCount={record.costLimitRuleCount}
+          total={total}
+          busy={busyIds.has(record.id)}
+          locked={lockedIds.has(record.id)}
+          onToggle={onToggle}
+          onReset={onReset}
+          onDeleted={onDeleted}
+          onOpen={onOpen}
+        />
+      ),
+    },
   ]
 
   return (
@@ -368,7 +374,9 @@ function AccessKeyRowActions({
         size="sm"
         isLoading={busy}
         isDisabled={locked}
-        label={status === 'active' ? t('accessKeys.actions.disable') : t('accessKeys.actions.enable')}
+        label={
+          status === 'active' ? t('accessKeys.actions.disable') : t('accessKeys.actions.enable')
+        }
         onClick={() => onToggle(item)}
       />
       {costLimitRuleCount > 0 && (

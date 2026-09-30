@@ -15,7 +15,5 @@ export function ModelPricingStatus({
   status: ModelPricingStatusValue
   labels: Record<ModelPricingStatusValue, string>
 }) {
-  return (
-    <Badge variant={status === 'configured' ? 'success' : 'warning'} label={labels[status]} />
-  )
+  return <Badge variant={status === 'configured' ? 'success' : 'warning'} label={labels[status]} />
 }

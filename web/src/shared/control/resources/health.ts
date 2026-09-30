@@ -1,5 +1,3 @@
-
-
 import type { QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
@@ -214,7 +212,6 @@ function projectProblemCredential(value: unknown): HealthProblemCredentialDto {
     if (!recovery.automatic || cooldownUntilMS !== null) {
       invalidResponse()
     }
-
   } else if (recovery.automatic || cooldownUntilMS !== null || recovery.at_ms !== null) {
     invalidResponse()
   }
@@ -377,11 +374,7 @@ export async function getRuntimeHealth(
   return projectRuntimeHealth(await client.request('/api/health', { method: 'GET', signal }))
 }
 
-export function healthQueryOptions(
-  client: ApiClient,
-  intervalMs?: number,
-  enabled?: boolean,
-) {
+export function healthQueryOptions(client: ApiClient, intervalMs?: number, enabled?: boolean) {
   return {
     queryKey: controlQueryKeys.health(),
     queryFn: ({ signal }: QueryFunctionContext) => getRuntimeHealth(client, signal),

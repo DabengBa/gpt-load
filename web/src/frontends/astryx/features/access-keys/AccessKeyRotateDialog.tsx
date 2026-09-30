@@ -268,69 +268,70 @@ export function AccessKeyRotateDialog({
 
   return (
     <Dialog isOpen={open} onOpenChange={setDialogOpen} width={440}>
-        <Layout
-          header={
-            <DialogHeader
-              title={t('accessKeys.rotate.title')}
-              subtitle={t('accessKeys.rotate.description', { name: accessKey.name })}
-              onOpenChange={setDialogOpen}
-              hasDivider
-            />
-          }
-          content={
-            <LayoutContent isScrollable>
-              <div {...stylex.props(styles.body)}>
-                <Banner status="warning" title={t('accessKeys.rotate.impact')} />
-                {feedbackKey !== '' && (
-                  <Banner status="warning" title={t(feedbackKey as MessageId)} />
-                )}
-                {failed && <Banner status="error" title={t('accessKeys.rotate.failed')} />}
-                {refreshFailed && (
-                  <Banner status="warning" title={t('accessKeys.rotate.refreshFailed')} />
-                )}
-                {result && (
-                  <div
-                    {...stylex.props(styles.result)}
-                    aria-live="polite"
-                  >
-                    <strong {...stylex.props(styles.resultLabel)}>
-                      {t(result.key ? 'accessKeys.rotate.newKey' : 'accessKeys.rotate.currentKey')}
-                    </strong>
-                    {open && (
-                      <CopyChip
-                        key={`${accessKey.id}:${result.updated_at_ms}`}
-                        value={displayKey}
-                        label={t('accessKeys.copy')}
-                        successLabel={t('common.copied')}
-                        failureLabel={t('common.copyFailed')}
-                        resolveValue={result.key ? undefined : resolveCurrentKey}
-                      />
+      <Layout
+        header={
+          <DialogHeader
+            title={t('accessKeys.rotate.title')}
+            subtitle={t('accessKeys.rotate.description', { name: accessKey.name })}
+            onOpenChange={setDialogOpen}
+            hasDivider
+          />
+        }
+        content={
+          <LayoutContent isScrollable>
+            <div {...stylex.props(styles.body)}>
+              <Banner status="warning" title={t('accessKeys.rotate.impact')} />
+              {feedbackKey !== '' && (
+                <Banner status="warning" title={t(feedbackKey as MessageId)} />
+              )}
+              {failed && <Banner status="error" title={t('accessKeys.rotate.failed')} />}
+              {refreshFailed && (
+                <Banner status="warning" title={t('accessKeys.rotate.refreshFailed')} />
+              )}
+              {result && (
+                <div {...stylex.props(styles.result)} aria-live="polite">
+                  <strong {...stylex.props(styles.resultLabel)}>
+                    {t(result.key ? 'accessKeys.rotate.newKey' : 'accessKeys.rotate.currentKey')}
+                  </strong>
+                  {open && (
+                    <CopyChip
+                      key={`${accessKey.id}:${result.updated_at_ms}`}
+                      value={displayKey}
+                      label={t('accessKeys.copy')}
+                      successLabel={t('common.copied')}
+                      failureLabel={t('common.copyFailed')}
+                      resolveValue={result.key ? undefined : resolveCurrentKey}
+                    />
+                  )}
+                  <small {...stylex.props(styles.resultHint)}>
+                    {t(
+                      result.key
+                        ? 'accessKeys.rotate.newKeyHint'
+                        : 'accessKeys.rotate.replayedHint',
                     )}
-                    <small {...stylex.props(styles.resultHint)}>
-                      {t(result.key ? 'accessKeys.rotate.newKeyHint' : 'accessKeys.rotate.replayedHint')}
-                    </small>
-                  </div>
-                )}
-              </div>
-            </LayoutContent>
-          }
-          footer={
-            <LayoutFooter hasDivider>
-              <Button
-                variant="secondary"
-                label={result ? t('common.close') : t('common.cancel')}
-                isDisabled={pending}
-                onClick={() => setDialogOpen(false)}
-              />
-              <Button
-                variant="destructive"
-                label={confirmLabel}
-                isLoading={pending}
-                onClick={() => void confirmRotate()}
-              />
-            </LayoutFooter>
-          }
-        />
+                  </small>
+                </div>
+              )}
+            </div>
+          </LayoutContent>
+        }
+        footer={
+          <LayoutFooter hasDivider>
+            <Button
+              variant="secondary"
+              label={result ? t('common.close') : t('common.cancel')}
+              isDisabled={pending}
+              onClick={() => setDialogOpen(false)}
+            />
+            <Button
+              variant="destructive"
+              label={confirmLabel}
+              isLoading={pending}
+              onClick={() => void confirmRotate()}
+            />
+          </LayoutFooter>
+        }
+      />
     </Dialog>
   )
 }

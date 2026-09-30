@@ -50,8 +50,7 @@ const styles = stylex.create({
   },
   rowWarning: {
     borderColor: {
-      default:
-        'color-mix(in srgb, var(--color-warning) 30%, var(--color-border-subtle))',
+      default: 'color-mix(in srgb, var(--color-warning) 30%, var(--color-border-subtle))',
       ':hover': 'var(--color-warning)',
     },
     backgroundColor: 'var(--color-warning-bg)',
@@ -59,8 +58,7 @@ const styles = stylex.create({
   },
   rowDanger: {
     borderColor: {
-      default:
-        'color-mix(in srgb, var(--color-danger) 30%, var(--color-border-subtle))',
+      default: 'color-mix(in srgb, var(--color-danger) 30%, var(--color-border-subtle))',
       ':hover': 'var(--color-danger)',
     },
     backgroundColor: 'var(--color-danger-bg)',
@@ -93,10 +91,7 @@ function itemHref(item: AttentionItem): string {
   return `${pagePath('groups')}/${item.groupID}?tab=credentials`
 }
 
-function itemTone(
-  item: AttentionItem,
-  health: RuntimeHealthDto | null,
-): 'danger' | 'warning' {
+function itemTone(item: AttentionItem, health: RuntimeHealthDto | null): 'danger' | 'warning' {
   if (item.kind === 'blacklisted' || item.kind === 'billing') return 'danger'
   if (
     item.kind === 'expiringResetCredit' &&

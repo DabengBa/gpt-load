@@ -286,22 +286,17 @@ export function SettingsView() {
   const [responseRulesInvalidEdits, setResponseRulesInvalidEdits] = useState(false)
   const [browserAccessEditorRevision, setBrowserAccessEditorRevision] = useState(0)
 
-  const hasLocalEdits =
-    headerRulesInvalidEdits || responseRulesInvalidEdits || proxyState.dirty
+  const hasLocalEdits = headerRulesInvalidEdits || responseRulesInvalidEdits || proxyState.dirty
   useEffect(() => controller.setLocalEdits(hasLocalEdits), [controller, hasLocalEdits])
 
   const dirty =
-    controller.isDirty() ||
-    headerRulesInvalidEdits ||
-    responseRulesInvalidEdits ||
-    proxyState.dirty
+    controller.isDirty() || headerRulesInvalidEdits || responseRulesInvalidEdits || proxyState.dirty
   const valid = controller.isValid() && browserAccessValid && !proxyState.invalid
 
   // Leaving a header-rules override clears its local invalid-edit flag
   // (render-time adjustment — the same transition guard as Vue's watch).
   const headerRulesOverridden = draft?.overrides.has('header_rules')
-  const [prevHeaderRulesOverridden, setPrevHeaderRulesOverridden] =
-    useState(headerRulesOverridden)
+  const [prevHeaderRulesOverridden, setPrevHeaderRulesOverridden] = useState(headerRulesOverridden)
   if (prevHeaderRulesOverridden !== headerRulesOverridden) {
     setPrevHeaderRulesOverridden(headerRulesOverridden)
     if (!headerRulesOverridden) setHeaderRulesInvalidEdits(false)
@@ -395,8 +390,7 @@ export function SettingsView() {
     const changed = runtimeSettingKeys.filter((key) =>
       Object.prototype.hasOwnProperty.call(patch, key),
     ) as RuntimeSettingKey[]
-    if (headerRulesInvalidEdits && !changed.includes('header_rules'))
-      changed.push('header_rules')
+    if (headerRulesInvalidEdits && !changed.includes('header_rules')) changed.push('header_rules')
     if (responseRulesInvalidEdits && !changed.includes('response_header_rules'))
       changed.push('response_header_rules')
     return changed
@@ -408,8 +402,7 @@ export function SettingsView() {
     if (key === 'request_log_retention_days') return t('settings.logs.retention')
     if (key === 'header_rules') return t('settings.headers.blockTitle')
     if (key === 'cors') return t('settings.browserAccess.cors.title')
-    if (key === 'response_header_rules')
-      return t('settings.browserAccess.responseHeaders.title')
+    if (key === 'response_header_rules') return t('settings.browserAccess.responseHeaders.title')
     return t(`settings.runtime.${key}`)
   }
   const changedLabels = [
@@ -436,9 +429,7 @@ export function SettingsView() {
     })
   })()
 
-  const savedAtLabel = savedAt
-    ? formatLocalInstant(savedAt.getTime(), intl.locale)
-    : ''
+  const savedAtLabel = savedAt ? formatLocalInstant(savedAt.getTime(), intl.locale) : ''
   const saveBarError = failed ? t('settings.saveFailed') : ''
 
   const unsaved = useUnsavedChanges({
@@ -512,9 +503,7 @@ export function SettingsView() {
 
   const handleSaveAll = async (): Promise<void> => {
     const extra: SettingsPatch =
-      proxyState.dirty && proxyState.value !== undefined
-        ? { proxy_config: proxyState.value }
-        : {}
+      proxyState.dirty && proxyState.value !== undefined ? { proxy_config: proxyState.value } : {}
     await controller.saveAll(extra)
   }
 
@@ -591,11 +580,7 @@ export function SettingsView() {
                   )}
 
                   {invalidKeys.length > 0 && (
-                    <section
-                      {...stylex.props(styles.validation)}
-                      role="alert"
-                      tabIndex={-1}
-                    >
+                    <section {...stylex.props(styles.validation)} role="alert" tabIndex={-1}>
                       <strong {...stylex.props(styles.validationTitle)}>
                         {t('settings.validation.title')}
                       </strong>
@@ -669,11 +654,7 @@ export function SettingsView() {
             </div>
           </div>
 
-          <Dialog
-            isOpen={discardDialogOpen}
-            onOpenChange={setDiscardDialogOpen}
-            width={440}
-          >
+          <Dialog isOpen={discardDialogOpen} onOpenChange={setDiscardDialogOpen} width={440}>
             <Layout
               header={
                 <DialogHeader

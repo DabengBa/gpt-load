@@ -7,15 +7,8 @@ import { numericInputAttrs } from '../../components/input-attrs'
 import { SettingBlock } from '../../components/setting-chrome'
 import { useT } from '../../app/i18n'
 import type { HeaderRulesDto } from '@shared/control/types'
-import {
-  isValidCORSConfig,
-  setSettingsOverride,
-} from '@shared/domain/settings/settings-patch'
-import {
-  SettingsSectionFrame,
-  useSettingTools,
-  type SettingsSectionProps,
-} from './section-tools'
+import { isValidCORSConfig, setSettingsOverride } from '@shared/domain/settings/settings-patch'
+import { SettingsSectionFrame, useSettingTools, type SettingsSectionProps } from './section-tools'
 
 type CORSListKey = 'allowed_origins' | 'allowed_methods' | 'allowed_headers' | 'exposed_headers'
 type ToggleableKey = 'header_rules' | 'cors' | 'response_header_rules'
@@ -170,15 +163,13 @@ export function BrowserAccessSection({
     headerRulesOverridden || headerRulesPendingRestore
       ? draft.values.header_rules
       : base.settings.values.header_rules
-  const headerRuleCount =
-    Object.keys(headerRules.set).length + headerRules.remove.length
+  const headerRuleCount = Object.keys(headerRules.set).length + headerRules.remove.length
   const cors = corsOverridden ? draft.values.cors : base.settings.values.cors
   const responseRules =
     responseRulesOverridden || responseRulesPendingRestore
       ? draft.values.response_header_rules
       : base.settings.values.response_header_rules
-  const responseRuleCount =
-    Object.keys(responseRules.set).length + responseRules.remove.length
+  const responseRuleCount = Object.keys(responseRules.set).length + responseRules.remove.length
 
   const effectiveHeaderRulesValid = !headerRulesOverridden || headerRulesRawValid
   const corsValid = !corsOverridden || isValidCORSConfig(draft.values.cors)
@@ -187,23 +178,23 @@ export function BrowserAccessSection({
 
   // Mirrors the classic `update:*` watchers — fire on mount and on change.
   useEffect(() => onValidChange(valid), [onValidChange, valid])
-  useEffect(() => onHeaderRulesValidChange(headerRulesRawValid), [
-    onHeaderRulesValidChange,
-    headerRulesRawValid,
-  ])
+  useEffect(
+    () => onHeaderRulesValidChange(headerRulesRawValid),
+    [onHeaderRulesValidChange, headerRulesRawValid],
+  )
   useEffect(() => onCorsValidChange(corsValid), [onCorsValidChange, corsValid])
-  useEffect(() => onResponseRulesValidChange(effectiveResponseRulesValid), [
-    onResponseRulesValidChange,
-    effectiveResponseRulesValid,
-  ])
-  useEffect(() => onHeaderRulesInvalidEditsChange(headerRulesInvalidEdits), [
-    onHeaderRulesInvalidEditsChange,
-    headerRulesInvalidEdits,
-  ])
-  useEffect(() => onResponseRulesInvalidEditsChange(responseRulesInvalidEdits), [
-    onResponseRulesInvalidEditsChange,
-    responseRulesInvalidEdits,
-  ])
+  useEffect(
+    () => onResponseRulesValidChange(effectiveResponseRulesValid),
+    [onResponseRulesValidChange, effectiveResponseRulesValid],
+  )
+  useEffect(
+    () => onHeaderRulesInvalidEditsChange(headerRulesInvalidEdits),
+    [onHeaderRulesInvalidEditsChange, headerRulesInvalidEdits],
+  )
+  useEffect(
+    () => onResponseRulesInvalidEditsChange(responseRulesInvalidEdits),
+    [onResponseRulesInvalidEditsChange, responseRulesInvalidEdits],
+  )
 
   // Classic resetKey watch: restore flags and force the editors to rebuild.
   const [seenResetKey, setSeenResetKey] = useState(resetKey)
@@ -226,9 +217,7 @@ export function BrowserAccessSection({
       setHeaderRulesInvalidEdits(false)
     }
   }
-  const [seenResponseOverridden, setSeenResponseOverridden] = useState(
-    responseRulesOverridden,
-  )
+  const [seenResponseOverridden, setSeenResponseOverridden] = useState(responseRulesOverridden)
   if (seenResponseOverridden !== responseRulesOverridden) {
     setSeenResponseOverridden(responseRulesOverridden)
     if (!responseRulesOverridden) {
@@ -238,10 +227,7 @@ export function BrowserAccessSection({
   }
 
   const toggleOverride = (key: ToggleableKey): void => {
-    props.publish(
-      key,
-      setSettingsOverride(base.settings, draft, key, !draft.overrides.has(key)),
-    )
+    props.publish(key, setSettingsOverride(base.settings, draft, key, !draft.overrides.has(key)))
     if (key === 'header_rules') {
       setHeaderRulesRawValid(true)
       setHeaderRulesInvalidEdits(false)
@@ -336,9 +322,7 @@ export function BrowserAccessSection({
           help={t('settings.browserAccess.cors.description')}
           sourceLabel={sourceLabel(corsOverridden, corsPendingRestore)}
           actionLabel={
-            corsOverridden
-              ? t('settings.runtime.restoreDefault')
-              : t('settings.runtime.override')
+            corsOverridden ? t('settings.runtime.restoreDefault') : t('settings.runtime.override')
           }
           overridden={corsOverridden}
           pendingRestore={corsPendingRestore}
@@ -413,15 +397,12 @@ export function BrowserAccessSection({
                   size="sm"
                   isDisabled={disabled}
                   status={
-                    maxAgeError === undefined
-                      ? undefined
-                      : { type: 'error', message: maxAgeError }
+                    maxAgeError === undefined ? undefined : { type: 'error', message: maxAgeError }
                   }
                   statusVariant="tooltip"
                   onChange={(value) =>
                     tools.update('cors', (next) => {
-                      next.values.cors.max_age =
-                        value.trim() === '' ? Number.NaN : Number(value)
+                      next.values.cors.max_age = value.trim() === '' ? Number.NaN : Number(value)
                     })
                   }
                 />

@@ -124,17 +124,12 @@ export function CredentialTextarea({
   const structured =
     channel !== null &&
     channel !== undefined &&
-    (channel.credential_fields.length !== 1 ||
-      channel.credential_fields[0]?.key !== 'api_key')
-  const title = structured
-    ? t('import.credentials.structuredTitle')
-    : t('import.credentials.title')
+    (channel.credential_fields.length !== 1 || channel.credential_fields[0]?.key !== 'api_key')
+  const title = structured ? t('import.credentials.structuredTitle') : t('import.credentials.title')
   const description = structured
     ? t('import.credentials.structuredDescription')
     : t('import.credentials.description')
-  const label = structured
-    ? t('import.credentials.structuredLabel')
-    : t('import.credentials.label')
+  const label = structured ? t('import.credentials.structuredLabel') : t('import.credentials.label')
   const placeholder = (() => {
     switch (channel?.channel_id) {
       case 'azure_openai':
@@ -224,9 +219,7 @@ export function CredentialTextarea({
         aria-live="polite"
       >
         {!hasInput && (
-          <span {...stylex.props(styles.countersEmpty)}>
-            {t('import.credentials.noInput')}
-          </span>
+          <span {...stylex.props(styles.countersEmpty)}>{t('import.credentials.noInput')}</span>
         )}
         {counters.map((counter) => (
           <span key={counter.label} {...stylex.props(styles.pill)}>

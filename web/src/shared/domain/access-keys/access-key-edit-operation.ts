@@ -1,6 +1,9 @@
 import type { ApiClient } from '@shared/http/client'
 import type { AccessKeyDto } from '@shared/control/types'
-import { listAccessKeyCollection, type UpdateAccessKeyRequest } from '@shared/control/resources/access-keys'
+import {
+  listAccessKeyCollection,
+  type UpdateAccessKeyRequest,
+} from '@shared/control/resources/access-keys'
 
 export interface PendingAccessKeyEditOperation {
   base: AccessKeyDto

@@ -177,14 +177,10 @@ export function SystemInfoSection() {
   const { apiClient } = useAppServices()
   const queryClient = useQueryClient()
   const infoQuery = useQuery(systemInfoQueryOptions(apiClient))
-  const initialLoading = useStableLoading(
-    infoQuery.isPending && infoQuery.data === undefined,
-  )
+  const initialLoading = useStableLoading(infoQuery.isPending && infoQuery.data === undefined)
   const infoRefreshing = infoQuery.data !== undefined && infoQuery.isFetching
   const updateQuery = useQuery(systemUpdateQueryOptions(apiClient))
-  const isDevelopmentBuild = /^v?\d+\.\d+\.\d+-dev(?:\.|$)/.test(
-    infoQuery.data?.version ?? '',
-  )
+  const isDevelopmentBuild = /^v?\d+\.\d+\.\d+-dev(?:\.|$)/.test(infoQuery.data?.version ?? '')
 
   const [manualUpdateCheck, setManualUpdateCheck] = useState<UpdateCheckState | null>(null)
   const [updateCheckPending, setUpdateCheckPending] = useState(false)
@@ -234,7 +230,16 @@ export function SystemInfoSection() {
       title={t('settings.system.title')}
       description={t('settings.system.description')}
     >
-      <span aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}>
+      <span
+        aria-live="polite"
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+          clipPath: 'inset(50%)',
+        }}
+      >
         {infoRefreshing ? t('settings.system.loading') : ''}
       </span>
 
@@ -287,9 +292,7 @@ export function SystemInfoSection() {
                                 <RefreshCw
                                   size={14}
                                   aria-hidden
-                                  {...(updateCheckPending
-                                    ? stylex.props(styles.refreshIcon)
-                                    : {})}
+                                  {...(updateCheckPending ? stylex.props(styles.refreshIcon) : {})}
                                 />
                               }
                               onClick={() => void checkForUpdate()}
@@ -304,9 +307,7 @@ export function SystemInfoSection() {
                                   updateCheckTone === 'info' && styles.updateInfo,
                                 )}
                                 role={updateCheck.kind === 'failed' ? 'alert' : 'status'}
-                                aria-live={
-                                  updateCheck.kind === 'failed' ? 'assertive' : 'polite'
-                                }
+                                aria-live={updateCheck.kind === 'failed' ? 'assertive' : 'polite'}
                                 aria-atomic="true"
                               >
                                 {updateCheck.kind === 'checking' &&
@@ -355,9 +356,7 @@ export function SystemInfoSection() {
                         <Badge label={sourceLabel(info.auth_key.source)} />
                         {info.auth_key.path && (
                           <span {...stylex.props(styles.path, styles.mono)}>
-                            <span {...stylex.props(styles.pathText)}>
-                              {info.auth_key.path}
-                            </span>
+                            <span {...stylex.props(styles.pathText)}>{info.auth_key.path}</span>
                             <CopyButton
                               value={info.auth_key.path}
                               label={t('settings.system.copyPath')}
@@ -377,9 +376,7 @@ export function SystemInfoSection() {
                         <Badge label={sourceLabel(info.encryption.source)} />
                         {info.encryption.path && (
                           <span {...stylex.props(styles.path, styles.mono)}>
-                            <span {...stylex.props(styles.pathText)}>
-                              {info.encryption.path}
-                            </span>
+                            <span {...stylex.props(styles.pathText)}>{info.encryption.path}</span>
                             <CopyButton
                               value={info.encryption.path}
                               label={t('settings.system.copyPath')}
@@ -398,10 +395,7 @@ export function SystemInfoSection() {
                     {row.term}
                   </dt>
                   <dd
-                    {...stylex.props(
-                      styles.detail,
-                      index === list.length - 1 && styles.detailLast,
-                    )}
+                    {...stylex.props(styles.detail, index === list.length - 1 && styles.detailLast)}
                   >
                     {'mono' in row && row.mono ? (
                       <span {...stylex.props(styles.mono)}>{row.detail as string}</span>

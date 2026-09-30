@@ -230,17 +230,11 @@ export function createModelPriceEditorController(
       if (!isCurrent(controller)) return
       baseline = updated
       draft = createModelPriceDraft(updated)
-      await applyInvalidationPlan(
-        options.queryClient,
-        mutationInvalidationPlans.modelPrice.update,
-      )
+      await applyInvalidationPlan(options.queryClient, mutationInvalidationPlans.modelPrice.update)
       if (!isCurrent(controller)) return
       unpricedConfirmOpen = false
     } catch (error: unknown) {
-      if (
-        isCurrent(controller) &&
-        !(error instanceof RequestCancelledError)
-      ) {
+      if (isCurrent(controller) && !(error instanceof RequestCancelledError)) {
         failure = failureMessage(error)
       }
     } finally {

@@ -115,7 +115,10 @@ const styles = stylex.create({
     },
   },
   rowUpstreamHovered: {
-    backgroundColor: { default: 'var(--color-interactive-hover)', [NARROW]: 'var(--color-surface)' },
+    backgroundColor: {
+      default: 'var(--color-interactive-hover)',
+      [NARROW]: 'var(--color-surface)',
+    },
   },
   rowUpstreamSibling: {
     borderTopWidth: 1,
@@ -477,19 +480,15 @@ function UpstreamRow({
         <span {...stylex.props(styles.ident)}>
           {!readOnly ? (
             <Tooltip content={pricingIdentity} alignment="start">
-              <span
-                {...stylex.props(styles.channelIcon)}
-                tabIndex={0}
-                aria-label={pricingIdentity}
-              >
-                <ChannelIcon icon={upstream.price.channel_icon} mark={upstream.price.channel_mark} />
+              <span {...stylex.props(styles.channelIcon)} tabIndex={0} aria-label={pricingIdentity}>
+                <ChannelIcon
+                  icon={upstream.price.channel_icon}
+                  mark={upstream.price.channel_mark}
+                />
               </span>
             </Tooltip>
           ) : (
-            <span
-              {...stylex.props(styles.channelIcon, styles.channelIconDecorative)}
-              aria-hidden
-            >
+            <span {...stylex.props(styles.channelIcon, styles.channelIconDecorative)} aria-hidden>
               <ChannelIcon icon={upstream.price.channel_icon} mark={upstream.price.channel_mark} />
             </span>
           )}
@@ -517,9 +516,7 @@ function UpstreamRow({
             {t('models.tree.tierCount', { count: row.tierCount })}
           </span>
         )}
-        {!readOnly && upstream.route_groups.length > 0 && (
-          <RouteGroupsChips upstream={upstream} />
-        )}
+        {!readOnly && upstream.route_groups.length > 0 && <RouteGroupsChips upstream={upstream} />}
       </div>
 
       {modelPriceFields.map((field, fieldIndex) => (
@@ -536,9 +533,7 @@ function UpstreamRow({
             {t(`modelPrices.fields.${field}`)}
           </span>
           <span {...stylex.props(styles.priceValues)}>
-            <span
-              {...stylex.props(styles.price, row.prices[field] === null && styles.priceEmpty)}
-            >
+            <span {...stylex.props(styles.price, row.prices[field] === null && styles.priceEmpty)}>
               {row.prices[field] ?? t('models.tree.noPrice')}
             </span>
             {row.fastPrices && (
@@ -552,11 +547,7 @@ function UpstreamRow({
                   })}
                 >
                   <Zap size={11} aria-hidden />
-                  <span
-                    {...stylex.props(
-                      row.fastPrices[field] === null ? styles.priceEmpty : {},
-                    )}
-                  >
+                  <span {...stylex.props(row.fastPrices[field] === null ? styles.priceEmpty : {})}>
                     {row.fastPrices[field] ?? t('models.tree.noPrice')}
                   </span>
                 </span>
@@ -616,7 +607,10 @@ export function ModelTree({
           aria-label={t('models.tree.label')}
         >
           <div role="row" {...stylex.props(styles.row, styles.rowHead)}>
-            <span role="columnheader" {...stylex.props(styles.cell, styles.cellFirst, styles.headCell)}>
+            <span
+              role="columnheader"
+              {...stylex.props(styles.cell, styles.cellFirst, styles.headCell)}
+            >
               {t('models.tree.modelColumn')}
             </span>
             {modelPriceFields.map((field) => (
@@ -637,7 +631,10 @@ export function ModelTree({
               </span>
             )}
             {!readOnly && (
-              <span role="columnheader" {...stylex.props(styles.cell, styles.cellLast, styles.headCell)}>
+              <span
+                role="columnheader"
+                {...stylex.props(styles.cell, styles.cellLast, styles.headCell)}
+              >
                 <span {...stylex.props(styles.srOnly)}>{t('models.tree.actionColumn')}</span>
               </span>
             )}

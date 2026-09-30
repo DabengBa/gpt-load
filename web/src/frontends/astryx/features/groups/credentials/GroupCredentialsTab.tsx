@@ -25,7 +25,10 @@ import type {
   CredentialTestResultDto,
 } from '@shared/control/types'
 import type { MessageId } from '@shared/i18n/message-ids'
-import { channelsQueryOptions, type ChannelCapabilitiesDto } from '@shared/control/resources/channels'
+import {
+  channelsQueryOptions,
+  type ChannelCapabilitiesDto,
+} from '@shared/control/resources/channels'
 import {
   batchCredentials,
   cacheCredentialBatch,
@@ -44,10 +47,7 @@ import {
   inspectGroupCredentialConnection,
   type CredentialStage,
 } from '@shared/control/resources/credential-stages'
-import {
-  applyInvalidationPlan,
-  mutationInvalidationPlans,
-} from '@shared/control/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { controlQueryKeys } from '@shared/control/query-keys'
 import { presentSubscriptionErrorKey } from '@shared/domain/import/subscription-error-presenter'
 import { createUUID } from '@shared/lib/uuid'
@@ -68,10 +68,7 @@ import { useAppServices } from '../../../app/services'
 import { useDebouncedAction } from '../../../app/use-debounced-action'
 import { DetailPanel } from '../../../components/DetailPanel'
 import { InlineNotice } from '../../../components/InlineNotice'
-import {
-  LedgerRecordList,
-  ledgerRecordStyles,
-} from '../../../components/LedgerRecordList'
+import { LedgerRecordList, ledgerRecordStyles } from '../../../components/LedgerRecordList'
 import { SubscriptionCredentialStager } from '../../import/SubscriptionCredentialStager'
 import { CredentialTestDialog } from './CredentialTestDialog'
 import { GroupCredentialBatchBar } from './GroupCredentialBatchBar'
@@ -228,9 +225,7 @@ export function GroupCredentialsTab({
 
   const filters = parseCredentialRouteQuery(rawSearch)
   const routeState = parseCredentialRouteState(rawSearch)
-  const credentialsQuery = useQuery(
-    credentialCollectionQueryOptions(apiClient, groupId, filters),
-  )
+  const credentialsQuery = useQuery(credentialCollectionQueryOptions(apiClient, groupId, filters))
   const channelsQuery = useQuery(channelsQueryOptions(apiClient, ''))
   const channelDescriptor = channelsQuery.data?.items.find(
     ({ channel_id }) => channel_id === channelId,
@@ -252,9 +247,7 @@ export function GroupCredentialsTab({
     new Map(),
   )
   const [detailErrors, setDetailErrors] = useState<ReadonlyMap<number, string>>(new Map())
-  const [observationErrors, setObservationErrors] = useState<ReadonlyMap<number, string>>(
-    new Map(),
-  )
+  const [observationErrors, setObservationErrors] = useState<ReadonlyMap<number, string>>(new Map())
   const [batchObservationPending, setBatchObservationPending] = useState<ReadonlySet<number>>(
     new Set(),
   )
@@ -311,8 +304,7 @@ export function GroupCredentialsTab({
   // 抽屉只关心自己那一次写入——页面级 singleBusy 会把抽屉锁死连关闭都点不动。
   const connectBusy = [...pendingOperations].some((key) => key.endsWith(':connect'))
   const observationBatchBusy = pendingOperations.has('batch:observation')
-  const bulkActionsBusy =
-    batchBusy || singleBusy || connectBusy || credentialsQuery.isFetching
+  const bulkActionsBusy = batchBusy || singleBusy || connectBusy || credentialsQuery.isFetching
   const dialogBusy =
     deleteTarget === undefined
       ? false
@@ -533,9 +525,7 @@ export function GroupCredentialsTab({
 
   function restoreVisibleFailedSelection(context: string, failedIDs: ReadonlySet<number>): void {
     if (context !== currentSelectionContext()) return
-    const visibleIDs = new Set(
-      (collection?.items ?? []).map(({ credential_id }) => credential_id),
-    )
+    const visibleIDs = new Set((collection?.items ?? []).map(({ credential_id }) => credential_id))
     setSelectedIds(new Set([...failedIDs].filter((id) => visibleIDs.has(id))))
   }
 
@@ -548,9 +538,7 @@ export function GroupCredentialsTab({
   }
 
   function observationRefreshing(id: number): boolean {
-    return (
-      batchObservationPending.has(id) || pendingOperations.has(operation(id, 'observation'))
-    )
+    return batchObservationPending.has(id) || pendingOperations.has(operation(id, 'observation'))
   }
 
   function observationError(id: number): string {
@@ -617,9 +605,7 @@ export function GroupCredentialsTab({
 
   function cachedCurrentCredential(id: number): CredentialItemDto | undefined {
     return queryClient
-      .getQueryData<CredentialCollectionDto>(
-        controlQueryKeys.groups.credentials(groupId, filters),
-      )
+      .getQueryData<CredentialCollectionDto>(controlQueryKeys.groups.credentials(groupId, filters))
       ?.items.find(({ credential_id }) => credential_id === id)
   }
 
@@ -631,9 +617,7 @@ export function GroupCredentialsTab({
 
     const preservedItem: CredentialItemDto = {
       ...item,
-      ...(source.last_used_at_ms === undefined
-        ? {}
-        : { last_used_at_ms: source.last_used_at_ms }),
+      ...(source.last_used_at_ms === undefined ? {} : { last_used_at_ms: source.last_used_at_ms }),
       ...(source.daily_usage === undefined ? {} : { daily_usage: source.daily_usage }),
     }
     const sourceObservation = source.observation
@@ -649,9 +633,7 @@ export function GroupCredentialsTab({
 
     const observedUsageByWindow = new Map(
       sourceObservation.snapshot.quota_windows.flatMap((window) =>
-        window.observed_usage === undefined
-          ? []
-          : [[window.id, window.observed_usage] as const],
+        window.observed_usage === undefined ? [] : [[window.id, window.observed_usage] as const],
       ),
     )
     if (observedUsageByWindow.size === 0) return preservedItem
@@ -719,10 +701,7 @@ export function GroupCredentialsTab({
     await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.update)
   }
 
-  async function reconcileItem(
-    result: CredentialItemDto,
-    refetchActive: boolean,
-  ): Promise<void> {
+  async function reconcileItem(result: CredentialItemDto, refetchActive: boolean): Promise<void> {
     try {
       const current = cachedCurrentCredential(result.credential_id)
       if (current !== undefined && current.secret_version !== result.secret_version) {
@@ -765,17 +744,18 @@ export function GroupCredentialsTab({
     clearObservationError(item.credential_id)
     setPending(item.credential_id, 'observation', true)
     try {
-      const observation = await refreshCredentialObservation(
-        apiClient,
-        groupId,
-        item.credential_id,
-      )
+      const observation = await refreshCredentialObservation(apiClient, groupId, item.credential_id)
       clearDetailState(item.credential_id)
       await reconcileItem({ ...item, observation }, true)
     } catch (cause) {
       setObservationError(
         item.credential_id,
-        t(presentSubscriptionErrorKey(cause, 'group.credentials.subscription.syncFailed') as MessageId),
+        t(
+          presentSubscriptionErrorKey(
+            cause,
+            'group.credentials.subscription.syncFailed',
+          ) as MessageId,
+        ),
       )
     } finally {
       setPending(item.credential_id, 'observation', false)
@@ -905,9 +885,7 @@ export function GroupCredentialsTab({
     }
     try {
       await Promise.all(
-        Array.from({ length: Math.min(batchCredentialConcurrency, items.length) }, () =>
-          worker(),
-        ),
+        Array.from({ length: Math.min(batchCredentialConcurrency, items.length) }, () => worker()),
       )
       restoreVisibleFailedSelection(selectionContext, failedIDs)
       toast.show({
@@ -954,9 +932,7 @@ export function GroupCredentialsTab({
     }
     try {
       await Promise.all(
-        Array.from({ length: Math.min(batchCredentialConcurrency, items.length) }, () =>
-          worker(),
-        ),
+        Array.from({ length: Math.min(batchCredentialConcurrency, items.length) }, () => worker()),
       )
       restoreVisibleFailedSelection(selectionContext, failedIDs)
       toast.show({
@@ -995,8 +971,7 @@ export function GroupCredentialsTab({
 
   function openResetCreditDialog(item: CredentialItemDto): void {
     if (pending(item.credential_id)) return
-    const idempotencyKey =
-      resetOperationKeysRef.current.get(item.credential_id) ?? createUUID()
+    const idempotencyKey = resetOperationKeysRef.current.get(item.credential_id) ?? createUUID()
     resetOperationKeysRef.current.set(item.credential_id, idempotencyKey)
     setResetTarget({ item, idempotencyKey })
   }
@@ -1013,8 +988,7 @@ export function GroupCredentialsTab({
         target.item.credential_id,
         target.idempotencyKey,
       )
-      const observationPending =
-        result.observation_pending || result.observation?.state !== 'fresh'
+      const observationPending = result.observation_pending || result.observation?.state !== 'fresh'
       if (result.observation) {
         await reconcileItem({ ...target.item, observation: result.observation }, false)
       } else {
@@ -1167,10 +1141,7 @@ export function GroupCredentialsTab({
         connectOperationKeyRef.current,
       )
       await refetchActiveCredentialPage()
-      await applyInvalidationPlan(
-        queryClient,
-        mutationInvalidationPlans.modelRouteSchedule.update,
-      )
+      await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.update)
       void queryClient.invalidateQueries({
         queryKey: controlQueryKeys.groups.summary(groupId),
         exact: true,
@@ -1385,10 +1356,7 @@ export function GroupCredentialsTab({
     if (await runBatch('delete', target.ids)) setDeleteTarget(undefined)
   }
 
-  async function runBatch(
-    action: 'delete',
-    ids = [...selectedIds],
-  ): Promise<boolean> {
+  async function runBatch(action: 'delete', ids = [...selectedIds]): Promise<boolean> {
     if (ids.length === 0 || batchBusy || singleBusy) return false
     setFeedback('')
     setPending('batch', action, true)
@@ -1461,9 +1429,7 @@ export function GroupCredentialsTab({
               <Button
                 size="sm"
                 isLoading={connectBusy || connectionInspectionPending}
-                isDisabled={
-                  readyConnectionStages.length === 0 || connectionInspectionPending
-                }
+                isDisabled={readyConnectionStages.length === 0 || connectionInspectionPending}
                 label={
                   readyConnectionStages.length > 1
                     ? t('group.credentials.subscription.confirmConnectCount', {
@@ -1691,9 +1657,7 @@ export function GroupCredentialsTab({
                   channelIcon={channelDescriptor?.icon}
                   channelMark={channelDescriptor?.mark}
                   capabilities={channelCapabilities}
-                  onSelectedChange={(selected) =>
-                    setSelected(item.credential_id, selected)
-                  }
+                  onSelectedChange={(selected) => setSelected(item.credential_id, selected)}
                   onRestore={(target) => void mutateItem(target, 'restore')}
                   onRefresh={(target) => void refreshObservation(target)}
                   onLoadDetails={(target) => void loadCredentialUsage(target)}
@@ -1746,19 +1710,13 @@ export function GroupCredentialsTab({
                   item={item}
                   groupId={groupId}
                   rowIndex={
-                    (collection.pagination.page - 1) * collection.pagination.page_size +
-                    index +
-                    2
+                    (collection.pagination.page - 1) * collection.pagination.page_size + index + 2
                   }
                   selected={selectedIds.has(item.credential_id)}
                   busy={rowBusy(item.credential_id)}
                   expanded={credentialExpanded(item.credential_id)}
-                  onSelectedChange={(selected) =>
-                    setSelected(item.credential_id, selected)
-                  }
-                  onExpandedChange={(expanded) =>
-                    setExpanded(item.credential_id, expanded)
-                  }
+                  onSelectedChange={(selected) => setSelected(item.credential_id, selected)}
+                  onExpandedChange={(expanded) => setExpanded(item.credential_id, expanded)}
                   onTest={(target) => void openCredentialTest(target)}
                   onRestore={(target) => void mutateItem(target, 'restore')}
                   onRemove={(target) =>

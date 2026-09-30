@@ -214,9 +214,7 @@ async function mockImportApi(
       return fulfill({ credentials_added: 2, credentials_duplicated: 0 })
     }
     if (path === '/api/credential-stages/authorizations' && request.method() === 'POST') {
-      requests.stageAuthorizations.push(
-        (request.postDataJSON() ?? {}) as Record<string, unknown>,
-      )
+      requests.stageAuthorizations.push((request.postDataJSON() ?? {}) as Record<string, unknown>)
       return fulfill({
         stage_id: 'stage_abc',
         status: 'pending_authorization',
@@ -256,30 +254,29 @@ test('mode switch swaps views and canonicalizes the URL', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
     timeout: FIRST_PAINT,
   })
-  await expect(
-    page.getByRole('radio', { name: 'New Group' }),
-  ).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByRole('radio', { name: 'New Group' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  )
 
   await page.getByRole('radio', { name: 'Existing Group' }).click()
   await expect(page).toHaveURL(/\/import\?.*mode=existing/)
   await expect(page.getByRole('combobox', { name: 'Group' })).toBeVisible()
 })
 
-test('group_id deep link lands in existing mode with the group preselected', async ({
-  page,
-}) => {
+test('group_id deep link lands in existing mode with the group preselected', async ({ page }) => {
   await mockImportApi(page)
   await page.goto('/import?group_id=7', { waitUntil: 'commit' })
 
-  await expect(
-    page.getByRole('radio', { name: 'Existing Group' }),
-  ).toHaveAttribute('aria-checked', 'true', { timeout: FIRST_PAINT })
+  await expect(page.getByRole('radio', { name: 'Existing Group' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+    { timeout: FIRST_PAINT },
+  )
   await expect(page.getByRole('combobox', { name: 'Group' })).toContainText('Alpha Group')
 })
 
-test('existing-group import posts credentials with a stable idempotency key', async ({
-  page,
-}) => {
+test('existing-group import posts credentials with a stable idempotency key', async ({ page }) => {
   const requests = await mockImportApi(page)
   await page.goto('/import?group_id=7', { waitUntil: 'commit' })
 
@@ -301,9 +298,9 @@ test('new-group create posts once with an idempotency key and navigates to the g
   const requests = await mockImportApi(page)
   await page.goto('/import', { waitUntil: 'commit' })
 
-  await expect(
-    page.getByRole('heading', { name: 'Import channel credentials' }),
-  ).toBeVisible({ timeout: FIRST_PAINT })
+  await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
+    timeout: FIRST_PAINT,
+  })
   // First channel is auto-adopted; credentials make the form submittable.
   await page.locator('#channel-credentials').fill('sk-live-1\nsk-live-2')
   await page.getByRole('button', { name: 'Create Group' }).click()
@@ -324,9 +321,9 @@ test('a 401 captures the draft to sessionStorage and re-login restores it', asyn
   await mockImportApi(page, { createStatus: 401 })
   await page.goto('/import', { waitUntil: 'commit' })
 
-  await expect(
-    page.getByRole('heading', { name: 'Import channel credentials' }),
-  ).toBeVisible({ timeout: FIRST_PAINT })
+  await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
+    timeout: FIRST_PAINT,
+  })
   await page.locator('#channel-credentials').fill('sk-rescue-1\nsk-rescue-2')
   await page.getByRole('button', { name: 'Create Group' }).click()
 
@@ -353,16 +350,12 @@ test('a 401 captures the draft to sessionStorage and re-login restores it', asyn
   })
   // The draft is single-consumption: sessionStorage no longer holds it.
   await expect
-    .poll(() =>
-      page.evaluate(() => window.sessionStorage.getItem('gpt-load.import-reauth-draft')),
-    )
+    .poll(() => page.evaluate(() => window.sessionStorage.getItem('gpt-load.import-reauth-draft')))
     .toBeNull()
   void context
 })
 
-test('subscription channel stages an account through authorization polling', async ({
-  page,
-}) => {
+test('subscription channel stages an account through authorization polling', async ({ page }) => {
   const requests = await mockImportApi(page, {
     pollSequence: [
       {
@@ -378,13 +371,11 @@ test('subscription channel stages an account through authorization polling', asy
   })
   await page.goto('/import', { waitUntil: 'commit' })
 
-  await expect(
-    page.getByRole('heading', { name: 'Import channel credentials' }),
-  ).toBeVisible({ timeout: FIRST_PAINT })
+  await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
+    timeout: FIRST_PAINT,
+  })
   await page.getByRole('radio', { name: 'Subscription account' }).click()
-  await page
-    .getByRole('button', { name: 'Sign in with Claude Subscription' })
-    .click()
+  await page.getByRole('button', { name: 'Sign in with Claude Subscription' }).click()
 
   await expect.poll(() => requests.stageAuthorizations.length).toBe(1)
   expect(requests.stageAuthorizations[0]!.channel_id).toBe('claude_sub')

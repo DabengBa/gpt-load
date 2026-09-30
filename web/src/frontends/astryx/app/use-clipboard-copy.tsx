@@ -33,9 +33,7 @@ export function useClipboardCopy(): ClipboardCopy {
   }, [])
 
   const copy = useCallback(
-    async (
-      source: string | (() => string | Promise<string>),
-    ): Promise<ClipboardCopyResult> => {
+    async (source: string | (() => string | Promise<string>)): Promise<ClipboardCopyResult> => {
       if (disposedRef.current) return 'cancelled'
       reset()
       const operation = ++sequenceRef.current

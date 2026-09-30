@@ -142,8 +142,7 @@ export function HomeSpend({
       ? '—'
       : formatEstimatedCost(snapshot.summary.estimated_cost_nano_usd, intl.locale)
 
-  const modelName = (model: string): string =>
-    model || t('home.ledger.spend.unknownModel')
+  const modelName = (model: string): string => model || t('home.ledger.spend.unknownModel')
 
   return (
     <section {...stylex.props(styles.section)} aria-labelledby="home-spend-title">
@@ -169,10 +168,7 @@ export function HomeSpend({
       )}
 
       <div {...stylex.props(styles.tableWrap)}>
-        <table
-          {...stylex.props(styles.table)}
-          aria-busy={loading ? 'true' : undefined}
-        >
+        <table {...stylex.props(styles.table)} aria-busy={loading ? 'true' : undefined}>
           <caption {...stylex.props(styles.caption)}>{t('home.ledger.spend.caption')}</caption>
           <thead>
             <tr>

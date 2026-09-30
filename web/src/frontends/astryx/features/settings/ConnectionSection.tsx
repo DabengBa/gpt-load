@@ -5,9 +5,7 @@ import { ProxyOverrideControl } from '../../components/ProxyOverrideControl'
 import { SettingRow } from '../../components/setting-chrome'
 import { useT } from '../../app/i18n'
 import type { ProxyConfiguredMode, ProxyViewDto } from '@shared/control/types'
-import {
-  proxyOverrideToggleMode,
-} from '@shared/control/resources/proxy'
+import { proxyOverrideToggleMode } from '@shared/control/resources/proxy'
 import type { TimeoutSettingKey } from '@shared/control/resources/settings'
 import { formatInteger } from '@shared/lib/format'
 import { isValidTimeout } from '@shared/domain/settings/settings-patch'
@@ -54,8 +52,7 @@ export function ConnectionSection({
   // direct/custom = explicit override.
   const proxyOverridden = proxyMode !== 'inherit'
   const proxyPendingRestore = proxy.configured_mode !== 'inherit' && proxyMode === 'inherit'
-  const proxyEffectiveLabel =
-    proxy.display_url ?? t(`common.proxy.mode.${proxy.effective_mode}`)
+  const proxyEffectiveLabel = proxy.display_url ?? t(`common.proxy.mode.${proxy.effective_mode}`)
   const proxyValue = proxyOverridden
     ? t('settings.runtime.overrideValue')
     : proxyPendingRestore

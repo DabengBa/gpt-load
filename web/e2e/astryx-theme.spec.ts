@@ -25,9 +25,7 @@ async function openAstryx(
   }
   await page.goto(ASTRYX_URL)
   await expect(page.getByTestId('astryx-shell')).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: 'Sign in to GPT-Load' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sign in to GPT-Load' })).toBeVisible()
 }
 
 test('light mode applies the classic canvas without a flash', async ({ page }) => {
@@ -48,9 +46,7 @@ test('dark mode applies the dark canvas', async ({ page }) => {
     .toBe('rgb(11, 13, 16)') // --color-canvas dark #0b0d10
 })
 
-test('system mode removes data-theme and follows prefers-color-scheme', async ({
-  page,
-}) => {
+test('system mode removes data-theme and follows prefers-color-scheme', async ({ page }) => {
   await openAstryx(page, { theme: 'system', colorScheme: 'dark' })
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/)
   const main = page.getByTestId('astryx-shell')
@@ -64,9 +60,7 @@ test('system mode removes data-theme and follows prefers-color-scheme', async ({
     .toBe('rgb(238, 237, 233)')
 })
 
-test('precedence: app layers register after the theme layer', async ({
-  page,
-}) => {
+test('precedence: app layers register after the theme layer', async ({ page }) => {
   await openAstryx(page, { theme: 'light' })
 
   // The emitted stylesheet declares the layer order; app.* (StyleX) must
@@ -87,12 +81,7 @@ test('precedence: app layers register after the theme layer', async ({
     }
     return names
   })
-  for (const required of [
-    'reset',
-    'astryx-base',
-    'astryx-theme',
-    'tokens',
-  ]) {
+  for (const required of ['reset', 'astryx-base', 'astryx-theme', 'tokens']) {
     expect(layers).toContain(required)
   }
   const themeIndex = layers.indexOf('astryx-theme')
@@ -106,9 +95,7 @@ test('precedence: app layers register after the theme layer', async ({
   // --radius-element 7px from gptload theme (neutral default is 8px).
   const trigger = page.locator('.preferences-trigger')
   await expect
-    .poll(async () =>
-      trigger.evaluate((el) => getComputedStyle(el).borderRadius),
-    )
+    .poll(async () => trigger.evaluate((el) => getComputedStyle(el).borderRadius))
     .toBe('7px')
 })
 

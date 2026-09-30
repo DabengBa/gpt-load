@@ -36,8 +36,7 @@ export function DataMaintenanceSection(props: SettingsSectionProps) {
   }, [draftRetention])
 
   const retentionOwned = draft.overrides.has(retentionKey)
-  const retentionPendingRestore =
-    !retentionOwned && base.settings.overrides.includes(retentionKey)
+  const retentionPendingRestore = !retentionOwned && base.settings.overrides.includes(retentionKey)
   const retentionError =
     retentionOwned && !isValidRetention(draft.values.request_log_retention_days)
       ? t('settings.logs.retentionError')

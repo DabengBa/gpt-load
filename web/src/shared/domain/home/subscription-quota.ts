@@ -77,9 +77,7 @@ export function remainingQuotaPercent(window: CredentialQuotaWindowDto): number 
   return undefined
 }
 
-export function quotaWindowTone(
-  window: CredentialQuotaWindowDto,
-): QuotaProgressTone | undefined {
+export function quotaWindowTone(window: CredentialQuotaWindowDto): QuotaProgressTone | undefined {
   const value = remainingQuotaPercent(window)
   return value === undefined ? undefined : quotaProgressTone(value, window.state === 'exhausted')
 }
@@ -176,9 +174,7 @@ export interface QuotaWindowPeriod {
   endMS: number
 }
 
-export function quotaWindowPeriod(
-  window: CredentialQuotaWindowDto,
-): QuotaWindowPeriod | undefined {
+export function quotaWindowPeriod(window: CredentialQuotaWindowDto): QuotaWindowPeriod | undefined {
   const endMS = window.reset_at_ms
   const seconds = window.window_seconds
   if (
@@ -196,10 +192,7 @@ export function quotaWindowPeriod(
   return { startMS: endMS - durationMS, endMS }
 }
 
-export function quotaWindowNeedsRefresh(
-  window: CredentialQuotaWindowDto,
-  nowMs: number,
-): boolean {
+export function quotaWindowNeedsRefresh(window: CredentialQuotaWindowDto, nowMs: number): boolean {
   return window.reset_at_ms !== undefined && window.reset_at_ms <= nowMs
 }
 
@@ -228,7 +221,11 @@ export function quotaTooltip(
   tr: SubscriptionQuotaTranslator,
   nowMs: number,
 ): string {
-  return [quotaWindowLabel(window, tr), quotaValueLabel(window, tr), quotaPeriodTooltip(window, tr, nowMs)]
+  return [
+    quotaWindowLabel(window, tr),
+    quotaValueLabel(window, tr),
+    quotaPeriodTooltip(window, tr, nowMs),
+  ]
     .filter((line): line is string => Boolean(line))
     .join('\n')
 }

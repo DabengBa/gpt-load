@@ -424,11 +424,7 @@ type StatusTone = keyof typeof badgeVariants
 function StatusBadge({ tone, label }: { tone: StatusTone; label: string }) {
   const ToneIcon: LucideIcon = badgeIcons[tone]
   return (
-    <Badge
-      variant={badgeVariants[tone]}
-      icon={<ToneIcon size={12} aria-hidden />}
-      label={label}
-    />
+    <Badge variant={badgeVariants[tone]} icon={<ToneIcon size={12} aria-hidden />} label={label} />
   )
 }
 
@@ -485,8 +481,7 @@ const LogRow = memo(function LogRow({
   // The meta line only carries information the badge does not already show.
   const responseMeta = (() => {
     const parts: string[] = []
-    const badgeCarriesCode =
-      log.status === 'error' && !(log.stream && log.status_code === 200)
+    const badgeCarriesCode = log.status === 'error' && !(log.stream && log.status_code === 200)
     if (!badgeCarriesCode && (log.status === 'error' || log.status_code !== 200)) {
       parts.push(t('monitor.logs.response.httpStatus', { code: log.status_code }))
     }
@@ -503,8 +498,7 @@ const LogRow = memo(function LogRow({
       : 'monitor.logs.modelConsistency.unknownTooltip',
     {
       upstream: log.upstream_model ?? '—',
-      reported:
-        log.upstream_reported_model ?? t('monitor.logs.modelConsistency.notObserved'),
+      reported: log.upstream_reported_model ?? t('monitor.logs.modelConsistency.notObserved'),
     },
   )
   const modelConsistencyLabel = t(
@@ -607,17 +601,11 @@ const LogRow = memo(function LogRow({
       role="row"
       aria-rowindex={rowIndex}
     >
-      <div
-        role="cell"
-        {...stylex.props(styles.cell, styles.time)}
-        data-testid="logs-list__time"
-      >
+      <div role="cell" {...stylex.props(styles.cell, styles.time)} data-testid="logs-list__time">
         <CellLabel>{t('monitor.logs.columns.time')}</CellLabel>
         <span {...stylex.props(styles.cellValue)}>
           {newDay && (
-            <small {...stylex.props(styles.dayLabel)}>
-              {formatLogDay(log.completed_at_ms)}
-            </small>
+            <small {...stylex.props(styles.dayLabel)}>{formatLogDay(log.completed_at_ms)}</small>
           )}
           <time
             dateTime={formatISOInstant(log.completed_at_ms)}
@@ -709,10 +697,7 @@ const LogRow = memo(function LogRow({
           )}
           {log.upstream_model !== null && log.upstream_model !== log.client_model && (
             <Tooltip content={log.upstream_model}>
-              <span
-                {...stylex.props(styles.modelMapping)}
-                data-testid="logs-list__model-mapping"
-              >
+              <span {...stylex.props(styles.modelMapping)} data-testid="logs-list__model-mapping">
                 -&gt;{log.upstream_model}
               </span>
             </Tooltip>
@@ -738,11 +723,7 @@ const LogRow = memo(function LogRow({
         </span>
         <span {...stylex.props(styles.protocolLine)}>
           <Tooltip content={log.protocol}>
-            <span
-              {...stylex.props(styles.protocol)}
-              data-testid="logs-list__protocol"
-              tabIndex={0}
-            >
+            <span {...stylex.props(styles.protocol)} data-testid="logs-list__protocol" tabIndex={0}>
               {requestLogProtocolLabel(log.protocol)}
             </span>
           </Tooltip>
@@ -806,10 +787,7 @@ const LogRow = memo(function LogRow({
           <Tooltip content={costLabel}>
             <span
               data-tone={costState !== 'complete' ? 'warning' : undefined}
-              {...stylex.props(
-                styles.ellipsis,
-                costState !== 'complete' && styles.stateWarning,
-              )}
+              {...stylex.props(styles.ellipsis, costState !== 'complete' && styles.stateWarning)}
             >
               {costLabel}
             </span>
@@ -829,7 +807,10 @@ const LogRow = memo(function LogRow({
             <Tooltip
               content={`${t('monitor.logs.tokens.input')}: ${formatLogTokenCount(log.input_tokens, locale)}\n${t('monitor.logs.tokens.output')}: ${formatLogTokenCount(log.output_tokens, locale)}`}
             >
-              <span {...stylex.props(styles.tokens, styles.tokenValues)} data-testid="logs-list__token-values">
+              <span
+                {...stylex.props(styles.tokens, styles.tokenValues)}
+                data-testid="logs-list__token-values"
+              >
                 <span {...stylex.props(styles.tokenLine)}>
                   {formatLogTokenCount(log.input_tokens, locale)}
                   <span {...stylex.props(styles.tokenSeparator)} aria-hidden>
@@ -881,10 +862,7 @@ const LogRow = memo(function LogRow({
               >
                 —
               </span>
-              <small
-                {...stylex.props(styles.cacheState)}
-                data-testid="logs-list__cache-state"
-              >
+              <small {...stylex.props(styles.cacheState)} data-testid="logs-list__cache-state">
                 {t(
                   log.usage_state === 'not_applicable'
                     ? 'monitor.logs.filters.usageState.not_applicable'

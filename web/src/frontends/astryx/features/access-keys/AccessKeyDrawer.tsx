@@ -243,8 +243,7 @@ export function AccessKeyDrawer({
 
   // Draft field mutation helper — every edit path replaces the draft object so
   // the snapshot diff stays trivially detectable.
-  const patchDraft = (patch: Partial<typeof draft>) =>
-    controller.setDraft({ ...draft, ...patch })
+  const patchDraft = (patch: Partial<typeof draft>) => controller.setDraft({ ...draft, ...patch })
   const patchFilters = (patch: Partial<AccessKeyFiltersDto>) =>
     controller.setDraft({ ...draft, filters: { ...draft.filters, ...patch } })
   const patchScopeModes = (dimension: AccessKeyScopeDimension, mode: AccessKeyScopeMode) =>
@@ -269,9 +268,7 @@ export function AccessKeyDrawer({
       (model) => ({
         value: model,
         label: model,
-        description: catalog.has(model)
-          ? undefined
-          : t('accessKeys.drawer.modelCustomUnavailable'),
+        description: catalog.has(model) ? undefined : t('accessKeys.drawer.modelCustomUnavailable'),
       }),
     )
   }, [catalogModelOptions, groups, draft.filters.models, selectedGroupIDs, t])
@@ -285,8 +282,7 @@ export function AccessKeyDrawer({
   const modelMismatch =
     draft.scopeModes.models === 'restricted' &&
     draft.filters.models.some((model) => !catalogModelOptions.includes(model))
-  const valid =
-    isAccessKeyDraftValid(draft, base, groupCatalog) && !groupProtocolMismatch
+  const valid = isAccessKeyDraftValid(draft, base, groupCatalog) && !groupProtocolMismatch
 
   const scopeValid = validateAccessKeyScope({
     base: base?.filters ?? null,
@@ -521,9 +517,7 @@ export function AccessKeyDrawer({
                 isDisabled={rotateActionDisabled}
                 icon={<RotateCcw size={15} />}
                 label={
-                  rotateOperation
-                    ? t('accessKeys.rotate.checkResult')
-                    : t('accessKeys.rotate.open')
+                  rotateOperation ? t('accessKeys.rotate.checkResult') : t('accessKeys.rotate.open')
                 }
                 onClick={() => setRotateOpen(true)}
               />
@@ -597,9 +591,7 @@ export function AccessKeyDrawer({
         />
 
         <section>
-          <h3 {...stylex.props(styles.sectionTitle)}>
-            {t('accessKeys.drawer.basicInformation')}
-          </h3>
+          <h3 {...stylex.props(styles.sectionTitle)}>{t('accessKeys.drawer.basicInformation')}</h3>
           <p {...stylex.props(styles.sectionDescription)}>
             {t('accessKeys.drawer.basicInformationDescription')}
           </p>
@@ -646,16 +638,11 @@ export function AccessKeyDrawer({
         </section>
 
         <section {...stylex.props(styles.section)}>
-          <h3 {...stylex.props(styles.sectionTitle)}>
-            {t('accessKeys.drawer.permissionScope')}
-          </h3>
+          <h3 {...stylex.props(styles.sectionTitle)}>{t('accessKeys.drawer.permissionScope')}</h3>
           <p {...stylex.props(styles.sectionDescription)}>
             {t('accessKeys.drawer.permissionScopeDescription')}
           </p>
-          <div
-            {...stylex.props(styles.scopeLogic)}
-            aria-label={t('accessKeys.drawer.scopeLogic')}
-          >
+          <div {...stylex.props(styles.scopeLogic)} aria-label={t('accessKeys.drawer.scopeLogic')}>
             <span {...stylex.props(styles.scopeLogicTerm)}>
               {t('accessKeys.drawer.scopeLogicGroups')}
             </span>

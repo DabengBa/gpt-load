@@ -46,14 +46,11 @@ test('credential query keeps valid page_size/status/q and drops the rest', () =>
     q: 'sk-live',
   })
   // Invalid enum/page-size values normalize away.
-  assert.deepEqual(
-    parseCredentialRouteQuery({ credential_status: 'bogus', page_size: '37' }),
-    { page: 1, page_size: 20 },
-  )
-  assert.equal(
-    parseCredentialRouteQuery({ credential_status: 'disabled' }).status,
-    'disabled',
-  )
+  assert.deepEqual(parseCredentialRouteQuery({ credential_status: 'bogus', page_size: '37' }), {
+    page: 1,
+    page_size: 20,
+  })
+  assert.equal(parseCredentialRouteQuery({ credential_status: 'disabled' }).status, 'disabled')
 })
 
 test('expanded_credential_ids dedupe-sort; duplicates or junk drop entirely', () => {
@@ -93,14 +90,8 @@ test('credential serialization omits defaults and re-emits expanded ids', () => 
 
 test('canonical check matches the serialized form exactly', () => {
   const filters = { page: 1, page_size: 20 }
-  assert.equal(
-    isCanonicalCredentialRouteQuery({ tab: 'credentials' }, filters),
-    true,
-  )
-  assert.equal(
-    isCanonicalCredentialRouteQuery({ tab: 'credentials', junk: 'x' }, filters),
-    false,
-  )
+  assert.equal(isCanonicalCredentialRouteQuery({ tab: 'credentials' }, filters), true)
+  assert.equal(isCanonicalCredentialRouteQuery({ tab: 'credentials', junk: 'x' }, filters), false)
   assert.equal(isCanonicalCredentialRouteQuery({}, filters), false)
 })
 
@@ -141,10 +132,10 @@ test('normalizeGroupQuery canonicalizes per tab and drops foreign params', () =>
   assert.deepEqual(normalizeGroupQuery({ tab: 'settings', junk: 'x' }), {
     tab: 'settings',
   })
-  assert.deepEqual(
-    normalizeGroupQuery({ tab: 'models', panel: 'discovery', q: 'leftover' }),
-    { tab: 'models', panel: 'discovery' },
-  )
+  assert.deepEqual(normalizeGroupQuery({ tab: 'models', panel: 'discovery', q: 'leftover' }), {
+    tab: 'models',
+    panel: 'discovery',
+  })
   // Unknown tab → credentials canonical query.
   assert.deepEqual(normalizeGroupQuery({ tab: 'bogus', page: '2' }), {
     tab: 'credentials',

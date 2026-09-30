@@ -4,10 +4,7 @@ import type { FormEvent } from 'react'
 
 import type { GroupOptionDto } from '@shared/control/types'
 import type { ChannelDto } from '@shared/control/resources/channels'
-import type {
-  UsageFilterDraft,
-  UsageFilterErrors,
-} from '@shared/domain/monitor/usage-filters'
+import type { UsageFilterDraft, UsageFilterErrors } from '@shared/domain/monitor/usage-filters'
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useT } from '../../app/i18n'
@@ -142,7 +139,12 @@ export function UsageFilterForm({
       subtitle={t('monitor.usage.filters.description')}
       footer={
         <div {...stylex.props(styles.footer)}>
-          <Button variant="secondary" size="sm" label={t('monitor.usage.filters.reset')} onClick={onReset} />
+          <Button
+            variant="secondary"
+            size="sm"
+            label={t('monitor.usage.filters.reset')}
+            onClick={onReset}
+          />
           <span {...stylex.props(styles.footerActions)}>
             <Button
               variant="secondary"
@@ -150,15 +152,20 @@ export function UsageFilterForm({
               label={t('common.cancel')}
               onClick={() => onOpenChange(false)}
             />
-            <Button variant="primary" size="sm" label={t('monitor.usage.filters.apply')} onClick={onApply} />
+            <Button
+              variant="primary"
+              size="sm"
+              label={t('monitor.usage.filters.apply')}
+              onClick={onApply}
+            />
           </span>
         </div>
       }
     >
       <form {...stylex.props(styles.form)} onSubmit={submit}>
         <div {...stylex.props(styles.grid)}>
-          {selfScoped !== true && (
-            groupsFailed ? (
+          {selfScoped !== true &&
+            (groupsFailed ? (
               <TextInput
                 id="usage-group"
                 label={groupLabel}
@@ -179,10 +186,9 @@ export function UsageFilterForm({
                 onChange={(value) => onFieldChange('group_id', value)}
                 status={error('group_id')}
               />
-            )
-          )}
-          {selfScoped !== true && (
-            channelsFailed ? (
+            ))}
+          {selfScoped !== true &&
+            (channelsFailed ? (
               <TextInput
                 id="usage-channel"
                 label={channelLabel}
@@ -203,8 +209,7 @@ export function UsageFilterForm({
                 onChange={(value) => onFieldChange('channel_id', value)}
                 status={error('channel_id')}
               />
-            )
-          )}
+            ))}
           {selfScoped !== true && (
             <TextInput
               id="usage-credential"

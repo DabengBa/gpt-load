@@ -3,13 +3,8 @@ import { useIntl } from 'react-intl'
 import { SettingRow } from '../../components/setting-chrome'
 import { useT } from '../../app/i18n'
 import { formatInteger } from '@shared/lib/format'
-import {
-  isValidNonNegativeInteger,
-  isValidTimeout,
-} from '@shared/domain/settings/settings-patch'
-import type {
-  PolicyCountSettingKey,
-} from '@shared/control/resources/settings'
+import { isValidNonNegativeInteger, isValidTimeout } from '@shared/domain/settings/settings-patch'
+import type { PolicyCountSettingKey } from '@shared/control/resources/settings'
 import {
   numberText,
   SettingNumberInput,
@@ -90,10 +85,7 @@ export function ReliabilitySection(props: SettingsSectionProps) {
           tools.isPendingRestore('blacklist_release_seconds')
             ? t('settings.runtime.resetPending')
             : t('settings.runtime.effectiveValue', {
-                value: formatInteger(
-                  base.settings.values.blacklist_release_seconds,
-                  locale,
-                ),
+                value: formatInteger(base.settings.values.blacklist_release_seconds, locale),
               })
         }
         help={t('settings.runtime.blacklistReleaseHelp')}

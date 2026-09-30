@@ -1,6 +1,11 @@
 import type { QueryClient } from '@tanstack/query-core'
 
-import { ApiError, InvalidResponseError, NetworkError, RequestCancelledError } from '@shared/http/errors'
+import {
+  ApiError,
+  InvalidResponseError,
+  NetworkError,
+  RequestCancelledError,
+} from '@shared/http/errors'
 import type { AuthPrincipalType, AuthSessionPayload } from '@shared/http/types'
 import { controlQueryKeys } from '@shared/control/query-keys'
 
@@ -151,7 +156,11 @@ export function createAuthSession(deps: AuthSessionDependencies): AuthSession {
           throw new InvalidResponseError()
         }
         if (revision === credentialRevision && key === credential) {
-          setState({ phase: 'validated', retryAfterSeconds: 0, principalType: payload.principal_type })
+          setState({
+            phase: 'validated',
+            retryAfterSeconds: 0,
+            principalType: payload.principal_type,
+          })
         }
       })
       .catch((error: unknown) => {

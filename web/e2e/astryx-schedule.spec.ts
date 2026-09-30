@@ -259,9 +259,9 @@ test('model selector commits schedule_model through the canonical query', async 
   await installScheduleRoutes(page)
   await openSchedule(page)
 
-  const selector = page.getByRole('button', { name: 'External model' }).or(
-    page.getByRole('combobox', { name: 'External model' }),
-  )
+  const selector = page
+    .getByRole('button', { name: 'External model' })
+    .or(page.getByRole('combobox', { name: 'External model' }))
   await selector.first().click()
   await page.getByRole('option', { name: 'worker', exact: true }).click()
 
@@ -288,9 +288,7 @@ test('draft edits serialize to schedule_draft and Save issues the PATCH', async 
   )
 })
 
-test('revision conflict keeps drafts visible and surfaces the conflict state', async ({
-  page,
-}) => {
+test('revision conflict keeps drafts visible and surfaces the conflict state', async ({ page }) => {
   await installScheduleRoutes(page, { patchOutcome: 'conflict' })
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
@@ -305,9 +303,7 @@ test('revision conflict keeps drafts visible and surfaces the conflict state', a
   await expect(page.locator('#priority-0')).toHaveValue('3')
 })
 
-test('detail error state renders and empty detail shows the no-entries state', async ({
-  page,
-}) => {
+test('detail error state renders and empty detail shows the no-entries state', async ({ page }) => {
   await installScheduleRoutes(page, { detailOutcome: 'error' })
   await openSchedule(page, '?schedule_model=worker')
   const detail = page.getByRole('region', { name: 'Schedule details' })

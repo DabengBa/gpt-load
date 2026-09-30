@@ -262,9 +262,7 @@ function QuotaBar({
   compact?: boolean
 }) {
   const normalized =
-    value === undefined || !Number.isFinite(value)
-      ? undefined
-      : Math.max(0, Math.min(100, value))
+    value === undefined || !Number.isFinite(value) ? undefined : Math.max(0, Math.min(100, value))
   const toneStyle =
     tone === 'warning'
       ? quotaStyles.quotaWarning
@@ -281,7 +279,11 @@ function QuotaBar({
   if (normalized === undefined) {
     return (
       <span
-        {...stylex.props(quotaStyles.quota, quotaStyles.quotaUnknown, compact && quotaStyles.quotaCompact)}
+        {...stylex.props(
+          quotaStyles.quota,
+          quotaStyles.quotaUnknown,
+          compact && quotaStyles.quotaCompact,
+        )}
         role="img"
         aria-label={`${label}: ${valueText}`}
       />
@@ -435,10 +437,7 @@ export function AccessKeyCostLimitEditor({
     label: t(`accessKeys.drawer.costLimits.units.${unit.value}` as MessageId),
   }))
 
-  const updateRule = (
-    clientKey: string,
-    patch: Partial<AccessKeyCostLimitRuleDraft>,
-  ): void => {
+  const updateRule = (clientKey: string, patch: Partial<AccessKeyCostLimitRuleDraft>): void => {
     onChange(value.map((rule) => (rule.clientKey === clientKey ? { ...rule, ...patch } : rule)))
   }
 
@@ -681,11 +680,7 @@ export function AccessKeyCostLimitEditor({
                       <RuleRuntime
                         runtime={runtime}
                         label={periodicLabel}
-                        tail={
-                          <AccessKeyCostLimitWindowTime
-                            rule={runtime}
-                          />
-                        }
+                        tail={<AccessKeyCostLimitWindowTime rule={runtime} />}
                       />
                     )}
                   </article>

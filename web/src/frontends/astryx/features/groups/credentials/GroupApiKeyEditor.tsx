@@ -218,9 +218,7 @@ export function GroupApiKeyEditor({
           isDisabled={disabled || pending}
           aria-expanded={editing}
           label={
-            editing
-              ? t('group.credentials.update.cancel')
-              : t('group.credentials.update.action')
+            editing ? t('group.credentials.update.cancel') : t('group.credentials.update.action')
           }
           onClick={editing ? stopEditing : startEditing}
         />
@@ -255,9 +253,7 @@ export function GroupApiKeyEditor({
             isLoading={pending}
             isDisabled={!nextCredential.trim()}
             label={
-              pending
-                ? t('group.credentials.update.saving')
-                : t('group.credentials.update.submit')
+              pending ? t('group.credentials.update.saving') : t('group.credentials.update.submit')
             }
           />
         </form>

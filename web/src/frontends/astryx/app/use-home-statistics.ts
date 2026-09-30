@@ -18,9 +18,7 @@ export interface HomeStatisticsHandle {
   refreshing: boolean
 }
 
-export function useHomeStatistics(options: {
-  initialRange?: HomeRange
-}): HomeStatisticsHandle {
+export function useHomeStatistics(options: { initialRange?: HomeRange }): HomeStatisticsHandle {
   const { apiClient, queryClient } = useAppServices()
 
   const [controller] = useState(() =>
@@ -35,9 +33,7 @@ export function useHomeStatistics(options: {
     () => controller.getSnapshot(),
   )
 
-  const statisticsQuery = useQuery(
-    homeStatisticsQueryOptions(apiClient, snapshot.requestedRange),
-  )
+  const statisticsQuery = useQuery(homeStatisticsQueryOptions(apiClient, snapshot.requestedRange))
   const statisticsRefetch = statisticsQuery.refetch
 
   useEffect(() => {

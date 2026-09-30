@@ -299,9 +299,7 @@ export function ChannelPresetPicker({
       .sort((a, b) => b.match.rank - a.match.rank || a.index - b.index)
       .map((row) => row.match)
     if (matches.length > 0) return matches
-    const compatible = activeChannels.find(
-      (channel) => channel.channel_id === 'openai_compatible',
-    )
+    const compatible = activeChannels.find((channel) => channel.channel_id === 'openai_compatible')
     return compatible ? [{ channel: compatible, rank: 0, reason: '' }] : []
   })()
 
@@ -445,10 +443,7 @@ export function ChannelPresetPicker({
                 <button
                   key={channel.channel_id}
                   type="button"
-                  {...stylex.props(
-                    styles.chip,
-                    channelSelected(channel) && styles.chipSelected,
-                  )}
+                  {...stylex.props(styles.chip, channelSelected(channel) && styles.chipSelected)}
                   disabled={disabled}
                   aria-pressed={channelSelected(channel)}
                   onClick={() => choose(channel)}
@@ -507,10 +502,7 @@ export function ChannelPresetPicker({
                                 onClick={() => choose(match.channel)}
                                 onMouseEnter={() => setActiveIndex(index)}
                               >
-                                <ChannelIcon
-                                  icon={match.channel.icon}
-                                  mark={match.channel.mark}
-                                />
+                                <ChannelIcon icon={match.channel.icon} mark={match.channel.mark} />
                                 <span {...stylex.props(styles.optionName)}>
                                   {highlightSegments(match.channel.name, query).map(
                                     (segment, segIndex) =>
@@ -544,10 +536,7 @@ export function ChannelPresetPicker({
                       <button
                         {...triggerProps}
                         type="button"
-                        {...stylex.props(
-                          styles.chip,
-                          extraChannel !== null && styles.chipSelected,
-                        )}
+                        {...stylex.props(styles.chip, extraChannel !== null && styles.chipSelected)}
                         disabled={disabled}
                         aria-pressed={extraChannel !== null}
                       >
@@ -558,10 +547,7 @@ export function ChannelPresetPicker({
                         <ChevronDown
                           size={13}
                           aria-hidden="true"
-                          {...stylex.props(
-                            styles.caret,
-                            popoverOpen && styles.caretOpen,
-                          )}
+                          {...stylex.props(styles.caret, popoverOpen && styles.caretOpen)}
                         />
                       </button>
                     )}

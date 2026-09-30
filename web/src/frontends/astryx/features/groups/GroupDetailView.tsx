@@ -5,10 +5,7 @@ import { useRouterState } from '@tanstack/react-router'
 import { RefreshCw, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import type {
-  CredentialCollectionFilters,
-  CredentialItemDto,
-} from '@shared/control/types'
+import type { CredentialCollectionFilters, CredentialItemDto } from '@shared/control/types'
 import { credentialCollectionQueryOptions } from '@shared/control/resources/credentials'
 import {
   groupModelsQueryOptions,
@@ -16,10 +13,7 @@ import {
   groupSummaryQueryOptions,
 } from '@shared/control/resources/groups'
 import { pagePath } from '@shared/routing/page-routes'
-import {
-  parseCredentialRouteQuery,
-  parsePositiveId,
-} from '@shared/routing/group-detail-route'
+import { parseCredentialRouteQuery, parsePositiveId } from '@shared/routing/group-detail-route'
 import { scalarRouteQuery, type SharedRouteQuery } from '@shared/routing/route-query'
 
 import { useStableLoading } from '../../app/collection-loading'
@@ -33,15 +27,8 @@ import { GroupDeleteDialog } from './settings/GroupDeleteDialog'
 import { GroupSettingsTab } from './settings/GroupSettingsTab'
 import { GroupModelsTab } from './models/GroupModelsTab'
 import { GroupHeader } from './GroupHeader'
-import type {
-  GroupEditorHandle,
-  GroupEditorState,
-  GroupModelsEditorHandle,
-} from './editor-handles'
-import {
-  credentialStatusBadgeVariant,
-  type OperationalStatus,
-} from './credential-status'
+import type { GroupEditorHandle, GroupEditorState, GroupModelsEditorHandle } from './editor-handles'
+import { credentialStatusBadgeVariant, type OperationalStatus } from './credential-status'
 
 const idleEditorState: GroupEditorState = {
   dirty: false,
@@ -151,8 +138,6 @@ const styles = stylex.create({
   },
 })
 
-
-
 function unifiedCredentialSummary(
   credential: CredentialItemDto,
   t: ReturnType<typeof useT>,
@@ -196,9 +181,7 @@ export function GroupDetailView() {
   // managementOpen reads the RAW query — an absent/unknown tab renders the
   // unified settings+models view, matching classic.
   const managementOpen = scalarRouteQuery(rawSearch.tab) === 'credentials'
-  const initialLoading = useStableLoading(
-    summaryQuery.isPending && summaryQuery.data === undefined,
-  )
+  const initialLoading = useStableLoading(summaryQuery.isPending && summaryQuery.data === undefined)
   const summaryRefreshing = summaryQuery.data !== undefined && summaryQuery.isFetching
 
   const [settingsState, setSettingsState] = useState<GroupEditorState>(idleEditorState)
@@ -209,8 +192,7 @@ export function GroupDetailView() {
 
   const unifiedDirty = settingsState.dirty || modelsState.dirty
   const unifiedPending = settingsState.pending || modelsState.pending || deletePending
-  const unifiedInvalid =
-    settingsState.invalid === true || (modelsState.invalidRowCount ?? 0) > 0
+  const unifiedInvalid = settingsState.invalid === true || (modelsState.invalidRowCount ?? 0) > 0
   const unifiedError = settingsState.error || modelsState.error
   const unifiedSaved = !unifiedDirty && (settingsState.saved || modelsState.saved)
   const unifiedSaveStatus: 'idle' | 'saved' | 'error' = unifiedError
@@ -238,11 +220,7 @@ export function GroupDetailView() {
     if (groupId === undefined) return
     void Promise.allSettled([
       queryClient.prefetchQuery(
-        credentialCollectionQueryOptions(
-          apiClient,
-          groupId,
-          parseCredentialRouteQuery(rawSearch),
-        ),
+        credentialCollectionQueryOptions(apiClient, groupId, parseCredentialRouteQuery(rawSearch)),
       ),
       queryClient.prefetchQuery(groupModelsQueryOptions(apiClient, groupId)),
       queryClient.prefetchQuery(groupSettingsQueryOptions(apiClient, groupId)),
@@ -327,10 +305,7 @@ export function GroupDetailView() {
                         {credentialsQuery.data.items.map((credential) => {
                           const summary = unifiedCredentialSummary(credential, t)
                           return (
-                            <div
-                              key={credential.mask}
-                              {...stylex.props(styles.credentialRow)}
-                            >
+                            <div key={credential.mask} {...stylex.props(styles.credentialRow)}>
                               {credential.connection_type === 'subscription' ? (
                                 <label {...stylex.props(styles.credentialField)}>
                                   <span {...stylex.props(styles.credentialFieldLabel)}>

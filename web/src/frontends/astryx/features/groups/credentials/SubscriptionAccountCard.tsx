@@ -1,11 +1,4 @@
-import {
-  Badge,
-  Button,
-  IconButton,
-  Popover,
-  Skeleton,
-  Tooltip,
-} from '@astryxdesign/core'
+import { Badge, Button, IconButton, Popover, Skeleton, Tooltip } from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
 import {
   Check,
@@ -251,23 +244,20 @@ export function SubscriptionAccountCard({
   const resetCredits = snapshot?.reset_credits ?? []
   const availableResetCreditDetails = resetCredits.slice(0, resetCreditsAvailable)
   const hasResetCredits = supportsResetCredit && resetCreditsAvailable > 0
-  const resetCreditDots = Array.from(
-    { length: Math.min(resetCreditsAvailable, 5) },
-    (_, index) => {
-      const expiresAtMS = availableResetCreditDetails[index]?.expires_at_ms
-      let tone: ResetCreditDotTone = 'default'
-      if (expiresAtMS !== undefined) {
-        const remainingMS = expiresAtMS - nowMs
-        tone =
-          remainingMS <= 24 * 60 * 60 * 1_000
-            ? 'danger'
-            : remainingMS <= 48 * 60 * 60 * 1_000
-              ? 'warning'
-              : 'default'
-      }
-      return { index, tone }
-    },
-  )
+  const resetCreditDots = Array.from({ length: Math.min(resetCreditsAvailable, 5) }, (_, index) => {
+    const expiresAtMS = availableResetCreditDetails[index]?.expires_at_ms
+    let tone: ResetCreditDotTone = 'default'
+    if (expiresAtMS !== undefined) {
+      const remainingMS = expiresAtMS - nowMs
+      tone =
+        remainingMS <= 24 * 60 * 60 * 1_000
+          ? 'danger'
+          : remainingMS <= 48 * 60 * 60 * 1_000
+            ? 'warning'
+            : 'default'
+    }
+    return { index, tone }
+  })
   const nearestResetCredit = availableResetCreditDetails.reduce<
     (typeof resetCredits)[number] | undefined
   >((nearest, credit) => {
@@ -306,8 +296,7 @@ export function SubscriptionAccountCard({
     }
     return [t('group.credentials.subscription.resetCreditsTooltipTitle'), ...lines].join('\n')
   })()
-  const isProblem =
-    item.effective_status === 'cooldown' || item.effective_status === 'blacklisted'
+  const isProblem = item.effective_status === 'cooldown' || item.effective_status === 'blacklisted'
 
   interface QuotaWindowPeriod {
     startMS: number
@@ -462,9 +451,7 @@ export function SubscriptionAccountCard({
     return estimateTitles(
       'group.credentials.subscription.estimate.priceMultiplierBasis',
       observed.data_complete ? '' : 'group.credentials.subscription.estimate.dataIncomplete',
-      observed.pricing_complete
-        ? ''
-        : 'group.credentials.subscription.estimate.pricingIncomplete',
+      observed.pricing_complete ? '' : 'group.credentials.subscription.estimate.pricingIncomplete',
     )
   }
 
@@ -616,11 +603,7 @@ export function SubscriptionAccountCard({
               <Skeleton width="52px" height="14px" />
               <Skeleton width="72px" height="14px" />
               {nearestResetCredit && nearestResetCredit.expires_at_ms !== undefined && (
-                <Skeleton
-                  width="68px"
-                  height="14px"
-                  xstyle={styles.refreshSkeletonCreditsExpiry}
-                />
+                <Skeleton width="68px" height="14px" xstyle={styles.refreshSkeletonCreditsExpiry} />
               )}
               <Skeleton width="26px" height="26px" xstyle={styles.refreshSkeletonCreditsLast} />
             </div>
@@ -852,9 +835,7 @@ export function SubscriptionAccountCard({
                     ) : window.reset_at_ms ? (
                       <span {...stylex.props(styles.quotaResetTime)}>
                         {quotaResetPrefix !== '' && (
-                          <span {...stylex.props(styles.quotaResetPrefix)}>
-                            {quotaResetPrefix}
-                          </span>
+                          <span {...stylex.props(styles.quotaResetPrefix)}>{quotaResetPrefix}</span>
                         )}
                         <RelativeInstant
                           instant={window.reset_at_ms}
@@ -892,9 +873,7 @@ export function SubscriptionAccountCard({
             />
           </div>
         ) : supportsQuotaObservation ? (
-          <p {...stylex.props(styles.faint)}>
-            {t('group.credentials.subscription.noQuota')}
-          </p>
+          <p {...stylex.props(styles.faint)}>{t('group.credentials.subscription.noQuota')}</p>
         ) : null}
 
         {unifiedStatus === 'quota_exhausted' && (
@@ -1005,10 +984,7 @@ export function SubscriptionAccountCard({
       {detailsExpanded && (
         <section
           id={detailRegionId}
-          {...stylex.props(
-            styles.detail,
-            refreshingObservation && styles.hiddenDuringRefresh,
-          )}
+          {...stylex.props(styles.detail, refreshingObservation && styles.hiddenDuringRefresh)}
           aria-live="polite"
         >
           {!detailLoaded && !detailError ? (
@@ -1073,10 +1049,7 @@ export function SubscriptionAccountCard({
                         >
                           {quotaWindowLabel(window)}
                         </span>
-                        <span
-                          {...stylex.props(styles.windowValue, styles.windowUsed)}
-                          role="cell"
-                        >
+                        <span {...stylex.props(styles.windowValue, styles.windowUsed)} role="cell">
                           {usedPercentValue(window)}
                         </span>
                         <span
@@ -1135,10 +1108,7 @@ export function SubscriptionAccountCard({
                       {t('group.credentials.subscription.dailySuccessSummary')}
                     </dt>
                     <dd
-                      {...stylex.props(
-                        styles.diagnosticValue,
-                        dailyUsage && styles.dailySuccess,
-                      )}
+                      {...stylex.props(styles.diagnosticValue, dailyUsage && styles.dailySuccess)}
                       title={dailyIncompleteHint}
                     >
                       {dailyUsage
@@ -1151,10 +1121,7 @@ export function SubscriptionAccountCard({
                       {t('group.credentials.subscription.dailyFailureSummary')}
                     </dt>
                     <dd
-                      {...stylex.props(
-                        styles.diagnosticValue,
-                        dailyUsage && styles.dailyFailure,
-                      )}
+                      {...stylex.props(styles.diagnosticValue, dailyUsage && styles.dailyFailure)}
                       title={dailyIncompleteHint}
                     >
                       {dailyUsage

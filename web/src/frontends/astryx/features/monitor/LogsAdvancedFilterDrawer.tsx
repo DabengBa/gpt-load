@@ -254,10 +254,7 @@ export function LogsAdvancedFilterDrawer({
     ) {
       options.push(option(draft.channel_id, draft.channel_id))
     }
-    return [
-      ...options,
-      ...channels.map((channel) => option(channel.channel_id, channel.name)),
-    ]
+    return [...options, ...channels.map((channel) => option(channel.channel_id, channel.name))]
   }
 
   function error(field: keyof LogFilterDraft): { type: 'error'; message: string } | undefined {

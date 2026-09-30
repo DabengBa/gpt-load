@@ -106,8 +106,7 @@ const styles = stylex.create({
     fontSize: 'var(--text-sm)',
   },
   bannerWarning: {
-    borderColor:
-      'color-mix(in srgb, var(--color-warning) 36%, var(--color-border-subtle))',
+    borderColor: 'color-mix(in srgb, var(--color-warning) 36%, var(--color-border-subtle))',
     backgroundColor: 'var(--color-warning-bg)',
     color: 'var(--color-warning)',
   },
@@ -176,9 +175,7 @@ export function HomeView() {
     base.inventory.credential_count === 0
   const accessKeys = base?.access_keys ?? []
   const selectedAccessKeyID =
-    accessKeys.find(({ id }) => id === routeState.accessKeyID)?.id ??
-    accessKeys[0]?.id ??
-    null
+    accessKeys.find(({ id }) => id === routeState.accessKeyID)?.id ?? accessKeys[0]?.id ?? null
 
   // Canonicalize non-canonical query params (junk, duplicated keys, raw ints).
   useEffect(() => {
@@ -271,10 +268,7 @@ export function HomeView() {
           ) : base ? (
             <>
               {baseQuery.isError && (
-                <div
-                  {...stylex.props(styles.banner, styles.bannerWarning)}
-                  role="status"
-                >
+                <div {...stylex.props(styles.banner, styles.bannerWarning)} role="status">
                   <TriangleAlert size={13} aria-hidden />
                   <span>{t('home.ledger.baseError')}</span>
                   <Button

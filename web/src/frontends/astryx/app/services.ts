@@ -14,10 +14,7 @@ import {
   createUnsavedChangesController,
   type UnsavedChangesController,
 } from '@shared/controllers/unsaved-changes'
-import {
-  createToastController,
-  type ToastController,
-} from '@shared/controllers/toast'
+import { createToastController, type ToastController } from '@shared/controllers/toast'
 import type { AppI18n } from './i18n'
 
 export interface AppServices {

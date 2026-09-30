@@ -251,11 +251,7 @@ export function LogRouteIdentity({
     styles.value,
     styles.credential,
     !hasCredentialName && styles.code,
-    isCompact
-      ? hasAside
-        ? styles.credentialRow
-        : undefined
-      : styles.credentialPlain,
+    isCompact ? (hasAside ? styles.credentialRow : undefined) : styles.credentialPlain,
     !isCompact && styles.inheritSize,
   ] as const
 
@@ -273,10 +269,7 @@ export function LogRouteIdentity({
         {credentialLabel}
       </button>
     ) : (
-      <span
-        data-testid="log-route-identity__credential"
-        {...stylex.props(...credentialChipStyle)}
-      >
+      <span data-testid="log-route-identity__credential" {...stylex.props(...credentialChipStyle)}>
         {credentialLabel}
       </span>
     )

@@ -39,9 +39,7 @@ async function openAstryxWithProbe(
   return page.evaluate(() => (window as ProbeWindow).__themeAtParse)
 }
 
-test('light theme is applied during initial document parse', async ({
-  page,
-}) => {
+test('light theme is applied during initial document parse', async ({ page }) => {
   const atParse = await openAstryxWithProbe(page, { theme: 'light' })
   expect(atParse).toBe('light')
   const main = page.getByTestId('astryx-shell')
@@ -50,9 +48,7 @@ test('light theme is applied during initial document parse', async ({
     .toBe('rgb(238, 237, 233)')
 })
 
-test('dark theme is applied during initial document parse', async ({
-  page,
-}) => {
+test('dark theme is applied during initial document parse', async ({ page }) => {
   const atParse = await openAstryxWithProbe(page, { theme: 'dark' })
   expect(atParse).toBe('dark')
   const main = page.getByTestId('astryx-shell')
@@ -61,9 +57,7 @@ test('dark theme is applied during initial document parse', async ({
     .toBe('rgb(11, 13, 16)')
 })
 
-test('system mode leaves data-theme unset during initial parse', async ({
-  page,
-}) => {
+test('system mode leaves data-theme unset during initial parse', async ({ page }) => {
   const atParse = await openAstryxWithProbe(page, {
     theme: 'system',
     colorScheme: 'dark',

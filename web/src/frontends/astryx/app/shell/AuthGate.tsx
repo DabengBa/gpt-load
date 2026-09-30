@@ -3,12 +3,7 @@ import { Button } from '@astryxdesign/core/Button'
 import { Card } from '@astryxdesign/core/Card'
 import * as stylex from '@stylexjs/stylex'
 import { useRouter } from '@tanstack/react-router'
-import {
-  useEffect,
-  useRef,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react'
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react'
 
 import { useT } from '../i18n'
 import { useAppServices } from '../services'
@@ -58,8 +53,7 @@ export function AuthGate({
   const gateRef = useRef<HTMLElement | null>(null)
 
   const canRenderRoute =
-    state.phase === 'validated' &&
-    !(state.principalType === 'access_key' && adminOnly)
+    state.phase === 'validated' && !(state.principalType === 'access_key' && adminOnly)
 
   useEffect(() => {
     if (state.phase !== 'validated') {
@@ -106,10 +100,7 @@ export function AuthGate({
 
         {state.phase === 'locked' && (
           <>
-            <Banner
-              status="warning"
-              title={t('auth.locked', { seconds: countdown.seconds })}
-            />
+            <Banner status="warning" title={t('auth.locked', { seconds: countdown.seconds })} />
             <div {...stylex.props(styles.actions)}>
               <Button
                 variant="secondary"

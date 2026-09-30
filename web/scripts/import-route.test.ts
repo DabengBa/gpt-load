@@ -23,10 +23,7 @@ test('bare /import parses as new mode with defaults', () => {
 
 test('group_id presence forces existing mode even when mode=new', () => {
   assert.equal(parseImportRouteQuery({ group_id: '7' }).mode, 'existing')
-  assert.equal(
-    parseImportRouteQuery({ mode: 'new', group_id: '7' }).mode,
-    'existing',
-  )
+  assert.equal(parseImportRouteQuery({ mode: 'new', group_id: '7' }).mode, 'existing')
   assert.equal(parseImportRouteQuery({ group_id: '7' }).groupID, 7)
   assert.equal(parseImportRouteQuery({ mode: 'existing' }).mode, 'existing')
 })
@@ -73,16 +70,13 @@ test('new mode round-trips model_q and the discovery panel state', () => {
 })
 
 test('discovery params only survive while panel=discovery', () => {
-  assert.deepEqual(
-    parseImportRouteQuery({ discovery_q: 'x', discovery_filter: 'all' }),
-    {
-      mode: 'new',
-      panel: undefined,
-      modelSearch: undefined,
-      discoverySearch: undefined,
-      discoveryFilter: 'unadded',
-    },
-  )
+  assert.deepEqual(parseImportRouteQuery({ discovery_q: 'x', discovery_filter: 'all' }), {
+    mode: 'new',
+    panel: undefined,
+    modelSearch: undefined,
+    discoverySearch: undefined,
+    discoveryFilter: 'unadded',
+  })
   // A non-discovery panel value is dropped entirely.
   assert.equal(parseImportRouteQuery({ panel: 'bogus' }).panel, undefined)
 })

@@ -17,7 +17,10 @@ import { requestLogFilterFields } from '@shared/control/resources/request-log-fi
 import { defaultTimeRange, parseLocalDateTime, timeRangeMilliseconds } from '@shared/lib/time'
 
 import { isValidMonitorText, maxSignedInt64 } from './filter-validation'
-import { parseRequestLogAffinityKey, serializeRequestLogAffinityKey } from '@shared/domain/monitor/request-log-affinity'
+import {
+  parseRequestLogAffinityKey,
+  serializeRequestLogAffinityKey,
+} from '@shared/domain/monitor/request-log-affinity'
 
 export interface LogFilterDraft {
   from: string

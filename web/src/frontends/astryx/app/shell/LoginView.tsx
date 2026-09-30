@@ -6,12 +6,7 @@ import { TextInput } from '@astryxdesign/core/TextInput'
 import * as stylex from '@stylexjs/stylex'
 import { useRouter, useSearch } from '@tanstack/react-router'
 import { Eye, EyeOff } from 'lucide-react'
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { ApiError, NetworkError } from '@shared/http/errors'
 import { pagePath } from '@shared/routing/page-routes'
@@ -32,8 +27,7 @@ const styles = stylex.create({
     minHeight: 'calc(100vh - var(--topbar-height))',
     placeItems: 'center',
     padding: {
-      default:
-        'var(--stage-padding-top) var(--stage-padding-inline) var(--stage-padding-bottom)',
+      default: 'var(--stage-padding-top) var(--stage-padding-inline) var(--stage-padding-bottom)',
       [compact]:
         'var(--stage-padding-top-compact) var(--stage-padding-inline-compact) var(--stage-padding-bottom-compact)',
     },
@@ -396,10 +390,7 @@ export function LoginView() {
 
               {feedbackMessage !== '' && (
                 <div id="auth-feedback">
-                  <Banner
-                    status={feedbackTone}
-                    title={feedbackMessage}
-                  />
+                  <Banner status={feedbackTone} title={feedbackMessage} />
                 </div>
               )}
 

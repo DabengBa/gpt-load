@@ -1,13 +1,8 @@
-
-
 import type { QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import { enabledDataProtocols } from '@shared/control/protocols'
-import {
-  type AccessProtocol,
-  type ReasoningEffortDto,
-} from '@shared/control/types'
+import { type AccessProtocol, type ReasoningEffortDto } from '@shared/control/types'
 import { ApiError, InvalidResponseError } from '@shared/http/errors'
 import { controlQueryKeys } from '@shared/control/query-keys'
 import {

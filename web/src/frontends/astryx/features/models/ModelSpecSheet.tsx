@@ -88,9 +88,10 @@ export function ModelSpecSheet({ reference }: { reference: ModelCatalogReference
     .concat(model.open_weights === true ? [t('models.detail.openWeights')] : [])
 
   /** 已知 Models.dev 枚举本地化;新值保留原文,避免目录扩展导致信息丢失。 */
-  const catalogStatus = !model.status || !knownStatuses.has(model.status)
-    ? model.status
-    : t(`models.detail.status.${model.status as 'alpha' | 'beta' | 'deprecated'}`)
+  const catalogStatus =
+    !model.status || !knownStatuses.has(model.status)
+      ? model.status
+      : t(`models.detail.status.${model.status as 'alpha' | 'beta' | 'deprecated'}`)
 
   const modalityLabel = (modality: string): string =>
     knownModalities.has(modality)
@@ -109,14 +110,17 @@ export function ModelSpecSheet({ reference }: { reference: ModelCatalogReference
   }
 
   const specs: { key: string; label: string; value: string }[] = []
-  const push = (
-    key: 'context' | 'maxInput' | 'maxOutput' | 'modalities',
-    value: string,
-  ): void => {
+  const push = (key: 'context' | 'maxInput' | 'maxOutput' | 'modalities', value: string): void => {
     if (value) specs.push({ key, label: t(`models.detail.specs.${key}`), value })
   }
-  push('context', model.limits.context === null ? '' : formatInteger(model.limits.context, intl.locale))
-  push('maxInput', model.limits.input === null ? '' : formatInteger(model.limits.input, intl.locale))
+  push(
+    'context',
+    model.limits.context === null ? '' : formatInteger(model.limits.context, intl.locale),
+  )
+  push(
+    'maxInput',
+    model.limits.input === null ? '' : formatInteger(model.limits.input, intl.locale),
+  )
   push(
     'maxOutput',
     model.limits.output === null ? '' : formatInteger(model.limits.output, intl.locale),

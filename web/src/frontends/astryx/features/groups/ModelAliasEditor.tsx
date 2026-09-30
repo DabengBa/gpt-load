@@ -21,10 +21,7 @@ import {
   type ModelNameConflict,
 } from '@shared/domain/models/model-draft'
 
-import {
-  LedgerRecordList,
-  ledgerRecordStyles,
-} from '../../components/LedgerRecordList'
+import { LedgerRecordList, ledgerRecordStyles } from '../../components/LedgerRecordList'
 
 const narrow = '@media (max-width: 860px)'
 const small = '@media (max-width: 640px)'
@@ -314,7 +311,12 @@ function FieldError({ id, error }: { id: string; error: string }) {
   return (
     <>
       <Tooltip content={error}>
-        <button type="button" tabIndex={-1} aria-label={error} {...stylex.props(styles.errorIndicator)}>
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={error}
+          {...stylex.props(styles.errorIndicator)}
+        >
           <CircleAlert size={15} aria-hidden />
         </button>
       </Tooltip>
@@ -525,11 +527,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
   function visibleModelAliasError(item: ModelDraftValue, index: number): string {
     const error = modelAliasError(item, index)
     if (!error) return ''
-    if (
-      validationMode === 'immediate' ||
-      showAllErrors ||
-      touchedAliases.has(item.key)
-    ) {
+    if (validationMode === 'immediate' || showAllErrors || touchedAliases.has(item.key)) {
       return error
     }
     return ''
@@ -586,14 +584,9 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
     if (disabled || !createRow) return
     setSearchValue('')
     const index = value.length
-    onChange([
-      ...value.map((item) => ({ ...item, sources: [...item.sources] }) as T),
-      createRow(),
-    ])
+    onChange([...value.map((item) => ({ ...item, sources: [...item.sources] }) as T), createRow()])
     requestAnimationFrame(() => {
-      rootRef.current
-        ?.querySelector<HTMLInputElement>(`[data-model-id-index="${index}"]`)
-        ?.focus()
+      rootRef.current?.querySelector<HTMLInputElement>(`[data-model-id-index="${index}"]`)?.focus()
     })
   }
 
@@ -689,10 +682,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
               role="row"
               aria-rowindex={renderIndex + 2}
             >
-              <div
-                {...stylex.props(ledgerRecordStyles.cell, styles.groupCell)}
-                role="cell"
-              >
+              <div {...stylex.props(ledgerRecordStyles.cell, styles.groupCell)} role="cell">
                 <button
                   type="button"
                   {...stylex.props(styles.groupToggle)}
@@ -751,10 +741,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
                       {render.item.editable_id ? (
                         <input
                           id={idFieldId}
-                          {...stylex.props(
-                            styles.input,
-                            idError !== '' && styles.inputInvalid,
-                          )}
+                          {...stylex.props(styles.input, idError !== '' && styles.inputInvalid)}
                           value={render.item.id}
                           aria-label={labels.id}
                           placeholder={labels.manualId}
@@ -763,9 +750,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
                           data-model-id-index={render.index}
                           spellCheck={false}
                           disabled={disabled}
-                          onChange={(event) =>
-                            updateRow(render.index, { id: event.target.value })
-                          }
+                          onChange={(event) => updateRow(render.index, { id: event.target.value })}
                           onBlur={() => touchModelID(render.item.key)}
                         />
                       ) : (
@@ -802,9 +787,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
                       type="checkbox"
                       checked={render.item.alias_enabled}
                       disabled={disabled}
-                      onChange={(event) =>
-                        void setAliasEnabled(render.index, event.target.checked)
-                      }
+                      onChange={(event) => void setAliasEnabled(render.index, event.target.checked)}
                     />
                   </label>
                   {render.item.alias_enabled &&
@@ -834,9 +817,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
                             }
                             onBlur={() => touchAlias(render.item.key)}
                           />
-                          {aliasError !== '' && (
-                            <FieldError id={aliasFieldId} error={aliasError} />
-                          )}
+                          {aliasError !== '' && <FieldError id={aliasFieldId} error={aliasError} />}
                         </span>
                       )
                     })()}
@@ -884,9 +865,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
                                 updateRouteCount(render.index, 'weight', event.target.value)
                               }
                             />
-                            {weightError !== '' && (
-                              <FieldError id={weightId} error={weightError} />
-                            )}
+                            {weightError !== '' && <FieldError id={weightId} error={weightError} />}
                           </span>
                         )
                       })()}

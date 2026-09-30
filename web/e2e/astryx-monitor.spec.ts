@@ -324,7 +324,11 @@ function usagePayload(options: { scope?: 'admin' | 'access_key' } = {}) {
   })
   const series = Array.from({ length: 24 }, (_, index) =>
     index === 20
-      ? { ...summary, bucket_start_ms: from + index * hourMs, bucket_end_ms: from + (index + 1) * hourMs }
+      ? {
+          ...summary,
+          bucket_start_ms: from + index * hourMs,
+          bucket_end_ms: from + (index + 1) * hourMs,
+        }
       : {
           ...usageAggregate(),
           bucket_start_ms: from + index * hourMs,
@@ -516,24 +520,16 @@ async function mockUsage(
   return requests
 }
 
-test('usage tab renders summary, trend, quality, distribution, and breakdown', async ({
-  page,
-}) => {
+test('usage tab renders summary, trend, quality, distribution, and breakdown', async ({ page }) => {
   const requests = await mockUsage(page)
   await page.goto('/monitor?tab=usage', { waitUntil: 'load' })
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/tab=usage/)
 
-  await expect(
-    page.getByRole('heading', { name: 'Token and cache trend' }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: 'Usage and persistence quality' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Token and cache trend' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Usage and persistence quality' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Consumption distribution' })).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: 'Model and route breakdown' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
   await expect(page.getByText('gpt-4o-mini')).toBeVisible()
   // The request carried the canonical filter params.
   expect(requests.usageQueries.at(-1)?.get('range')).toBe('24h')
@@ -543,9 +539,7 @@ test('usage range selector and trend metric write the canonical query', async ({
   const requests = await mockUsage(page)
   await page.goto('/monitor?tab=usage&range=24h&metric=tokens', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(
-    page.getByRole('heading', { name: 'Token and cache trend' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Token and cache trend' })).toBeVisible()
 
   // Range Selector is a combobox; choosing 7 days rewrites the query.
   await page.getByRole('combobox', { name: 'Range' }).click()
@@ -566,9 +560,7 @@ test('usage filter panel applies filters through the canonical query', async ({ 
   await mockUsage(page)
   await page.goto('/monitor?tab=usage', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(
-    page.getByRole('heading', { name: 'Token and cache trend' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Token and cache trend' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Filter' }).click()
   await expect(page).toHaveURL(/panel=filters/)
@@ -589,9 +581,7 @@ test('access_key usage hides cross-principal filter fields', async ({ page }) =>
   await mockUsage(page, { principalType: 'access_key' })
   await page.goto('/monitor?tab=usage', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(
-    page.getByRole('heading', { name: 'Token and cache trend' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Token and cache trend' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Filter' }).click()
   const panel = page.getByRole('dialog', { name: 'Filter usage and cost' })
@@ -766,9 +756,7 @@ test('inspector form submits through the canonical query and renders the result'
   await expect(
     page.getByRole('heading', { name: 'The current request can be routed' }),
   ).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: 'Candidate Groups' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Candidate Groups' })).toBeVisible()
   const excluded = page.locator('section[aria-labelledby="route-exclusions-title"]')
   await expect(excluded.getByText('staging', { exact: true }).first()).toBeVisible()
 })

@@ -289,11 +289,7 @@ const creditDotStyles = {
   danger: styles.creditDotDanger,
 } as const
 
-export function SubscriptionAccountMiniCard({
-  account,
-}: {
-  account: HomeSubscriptionAccountDto
-}) {
+export function SubscriptionAccountMiniCard({ account }: { account: HomeSubscriptionAccountDto }) {
   const intl = useIntl()
   const t = useT()
   // Real-clock ticking (30s): reset-credit dot tones and quota pending state
@@ -339,8 +335,7 @@ export function SubscriptionAccountMiniCard({
   const resetCreditsAvailable = snapshot?.reset_credits_available ?? 0
   const resetCredits = snapshot?.reset_credits ?? []
   const hasResetCredits =
-    account.capabilities.credential_actions.includes('reset_credit') &&
-    resetCreditsAvailable > 0
+    account.capabilities.credential_actions.includes('reset_credit') && resetCreditsAvailable > 0
   const dots = resetCreditDots(resetCredits, resetCreditsAvailable, nowMs)
   const creditsTooltip = resetCreditsTooltip(resetCredits, resetCreditsAvailable, tr, nowMs)
 
@@ -371,11 +366,7 @@ export function SubscriptionAccountMiniCard({
 
       <div {...stylex.props(styles.lead)}>
         {showStatus ? (
-          <Badge
-            variant={badgeVariants[cardTone]}
-            label={statusLabel}
-            xstyle={styles.status}
-          />
+          <Badge variant={badgeVariants[cardTone]} label={statusLabel} xstyle={styles.status} />
         ) : lead !== undefined && lead.percent !== undefined ? (
           <span {...stylex.props(styles.num, numToneStyle)}>
             <strong {...stylex.props(styles.numStrong)}>{intl.formatNumber(lead.percent)}</strong>
@@ -399,9 +390,7 @@ export function SubscriptionAccountMiniCard({
                 <>
                   {' · '}
                   {quotaWindowNeedsRefresh(lead.window, nowMs) ? (
-                    <Tooltip
-                      content={quotaPeriodTooltip(lead.window, tr, nowMs) ?? ''}
-                    >
+                    <Tooltip content={quotaPeriodTooltip(lead.window, tr, nowMs) ?? ''}>
                       <span {...stylex.props(styles.pending)} tabIndex={0}>
                         {t('group.credentials.subscription.quotaPendingRefresh')}
                       </span>

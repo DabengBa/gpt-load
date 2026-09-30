@@ -43,9 +43,11 @@ export function RelativeInstant({
   if (instant === null) return <>{emptyLabel}</>
   const dateTime = formatISOInstant(instant)
   const label = formatRelativeInstant(instant, now, intl.locale)
-  const content = tooltipContent ?? formatLocalInstant(instant, intl.locale, {
-    timeZone: currentTimeZone(),
-  })
+  const content =
+    tooltipContent ??
+    formatLocalInstant(instant, intl.locale, {
+      timeZone: currentTimeZone(),
+    })
 
   if (!hint) {
     return (

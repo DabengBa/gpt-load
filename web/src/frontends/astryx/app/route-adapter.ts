@@ -17,8 +17,6 @@ export function toTanStackPath(path: string): string {
     .join('/')
 }
 
-export function astryxRoutePaths(
-  entries: readonly PageRouteEntry[],
-): readonly AstryxRoutePath[] {
+export function astryxRoutePaths(entries: readonly PageRouteEntry[]): readonly AstryxRoutePath[] {
   return entries.map((entry) => ({ name: entry.name, path: toTanStackPath(entry.path) }))
 }

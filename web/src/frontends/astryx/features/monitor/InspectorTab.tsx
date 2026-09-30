@@ -3,14 +3,7 @@ import { Badge, Banner, Button, EmptyState, Skeleton, Tooltip } from '@astryxdes
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { ArrowRight, ChevronRight, Route as RouteIcon } from 'lucide-react'
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useIntl } from 'react-intl'
 
 import { controlQueryKeys } from '@shared/control/query-keys'
@@ -33,10 +26,7 @@ import { formatInteger, formatISOInstant, formatLocalInstant } from '@shared/lib
 import { pagePath } from '@shared/routing/page-routes'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 import type { MessageId } from '@shared/i18n/message-ids'
-import {
-  inspectorMonitorQuery,
-  parseInspectorMonitorState,
-} from '@shared/routing/monitor-route'
+import { inspectorMonitorQuery, parseInspectorMonitorState } from '@shared/routing/monitor-route'
 
 import { useAppServices } from '../../app/services'
 import { useStableLoading } from '../../app/collection-loading'
@@ -453,8 +443,7 @@ const styles = stylex.create({
     borderTopWidth: '1px',
     borderTopStyle: 'solid',
     borderTopColor: 'var(--color-border-subtle)',
-    backgroundColor:
-      'color-mix(in srgb, var(--color-surface-sunken) 62%, var(--color-surface))',
+    backgroundColor: 'color-mix(in srgb, var(--color-surface-sunken) 62%, var(--color-surface))',
     paddingTop: '14px',
     paddingBottom: '16px',
     paddingInline: { default: '16px', '@media (max-width: 560px)': '13px' },
@@ -721,9 +710,7 @@ export function InspectorTab() {
     [groupOptionsQuery.data],
   )
   const missingModelOption =
-    groupOptionsQuery.isSuccess &&
-    draft.model !== '' &&
-    !configuredModels.includes(draft.model)
+    groupOptionsQuery.isSuccess && draft.model !== '' && !configuredModels.includes(draft.model)
   const modelOptions = useMemo<InspectorFormOption[]>(
     () => [
       { value: '', label: t('monitor.inspector.form.selectModel') },
@@ -909,9 +896,7 @@ export function InspectorTab() {
 
   function reasonLabel(reason: string | null): string {
     if (reason === null) return t('monitor.inspector.reasons.none')
-    return isKnownReason(reason)
-      ? t(`monitor.inspector.reasons.${reason}` as MessageId)
-      : ''
+    return isKnownReason(reason) ? t(`monitor.inspector.reasons.${reason}` as MessageId) : ''
   }
 
   function modelLabel(value: string | null): string {
@@ -1093,9 +1078,7 @@ export function InspectorTab() {
             setDraft((prev) => ({ ...prev, protocol: value as AccessProtocol | '' }))
           }
           onModelChange={(value) => setDraft((prev) => ({ ...prev, model: value }))}
-          onAccessKeyIdChange={(value) =>
-            setDraft((prev) => ({ ...prev, accessKeyID: value }))
-          }
+          onAccessKeyIdChange={(value) => setDraft((prev) => ({ ...prev, accessKeyID: value }))}
           onSubmit={inspect}
           onRetryOptions={retryOptions}
         />
@@ -1108,7 +1091,10 @@ export function InspectorTab() {
           </div>
         )}
         {resultLoadingActive || resultLoading ? (
-          <div {...stylex.props(styles.skeleton)} aria-label={t('monitor.inspector.request.loading')}>
+          <div
+            {...stylex.props(styles.skeleton)}
+            aria-label={t('monitor.inspector.request.loading')}
+          >
             <Skeleton height={74} radius={2} />
             <Skeleton height={180} radius={2} />
           </div>
@@ -1117,12 +1103,7 @@ export function InspectorTab() {
             title={t('monitor.inspector.request.failed')}
             icon={<RouteIcon size={20} aria-hidden />}
             actions={
-              <Button
-                variant="secondary"
-                size="sm"
-                label={t('common.retry')}
-                onClick={inspect}
-              />
+              <Button variant="secondary" size="sm" label={t('common.retry')} onClick={inspect} />
             }
           />
         ) : observation === undefined ? (
@@ -1134,9 +1115,7 @@ export function InspectorTab() {
           />
         ) : (
           <>
-            {pending && (
-              <Banner status="info" title={t('monitor.inspector.request.loading')} />
-            )}
+            {pending && <Banner status="info" title={t('monitor.inspector.request.loading')} />}
             {inputChanged && !pending && (
               <Banner status="warning" title={t('monitor.inspector.result.inputChanged')} />
             )}
@@ -1296,24 +1275,14 @@ export function InspectorTab() {
                   aria-rowcount={orderedIncludedGroups.length + 1}
                 >
                   <div {...stylex.props(styles.ledgerHeader)} role="row" aria-rowindex={1}>
-                    <span role="columnheader">
-                      {t('monitor.inspector.groups.columns.group')}
-                    </span>
-                    <span role="columnheader">
-                      {t('monitor.inspector.groups.columns.status')}
-                    </span>
+                    <span role="columnheader">{t('monitor.inspector.groups.columns.group')}</span>
+                    <span role="columnheader">{t('monitor.inspector.groups.columns.status')}</span>
                     <span role="columnheader">
                       {t('monitor.inspector.groups.columns.credentials')}
                     </span>
-                    <span role="columnheader">
-                      {t('monitor.inspector.groups.columns.weight')}
-                    </span>
-                    <span role="columnheader">
-                      {t('monitor.inspector.groups.columns.share')}
-                    </span>
-                    <span role="columnheader">
-                      {t('monitor.inspector.groups.columns.actions')}
-                    </span>
+                    <span role="columnheader">{t('monitor.inspector.groups.columns.weight')}</span>
+                    <span role="columnheader">{t('monitor.inspector.groups.columns.share')}</span>
+                    <span role="columnheader">{t('monitor.inspector.groups.columns.actions')}</span>
                   </div>
 
                   {orderedIncludedGroups.map((group, index) => (
@@ -1380,10 +1349,7 @@ export function InspectorTab() {
                           </small>
                         </div>
                         <div
-                          {...stylex.props(
-                            styles.candidateMeasure,
-                            styles.candidateMeasureWeight,
-                          )}
+                          {...stylex.props(styles.candidateMeasure, styles.candidateMeasureWeight)}
                           role="cell"
                         >
                           <span {...stylex.props(styles.cellLabel)}>
@@ -1590,10 +1556,7 @@ export function InspectorTab() {
                         <span {...stylex.props(styles.cellLabel)}>
                           {t('monitor.inspector.groups.columns.status')}
                         </span>
-                        <Badge
-                          variant="neutral"
-                          label={t('monitor.inspector.groups.excluded')}
-                        />
+                        <Badge variant="neutral" label={t('monitor.inspector.groups.excluded')} />
                       </div>
                       {isKnownReason(group.reason_code) && (
                         <div role="cell" {...stylex.props(styles.exclusionReason)}>

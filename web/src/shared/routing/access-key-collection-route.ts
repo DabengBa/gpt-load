@@ -81,8 +81,5 @@ export function isCanonicalAccessKeyCollectionRouteQuery(
   filters: AccessKeyCollectionFilters,
   drawer?: AccessKeyDrawerRoute,
 ): boolean {
-  return isCanonicalRouteQuery(
-    query,
-    serializeAccessKeyCollectionRouteQuery(filters, drawer),
-  )
+  return isCanonicalRouteQuery(query, serializeAccessKeyCollectionRouteQuery(filters, drawer))
 }

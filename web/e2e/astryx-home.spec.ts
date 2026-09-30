@@ -29,10 +29,7 @@ function routeKey(id: number, name: string, maskedKey: string, protocols: string
 
 const prodKey = routeKey(1, 'prod-key', 'sk-p•••xyz', allProtocols)
 const devKey = routeKey(2, 'dev-key', 'sk-d•••abc', ['openai-completions'])
-const scopedKey = routeKey(1, 'my-key', 'sk-m•••key', [
-  'openai-completions',
-  'openai-responses',
-])
+const scopedKey = routeKey(1, 'my-key', 'sk-m•••key', ['openai-completions', 'openai-responses'])
 
 function currentAccessKey() {
   return {
@@ -317,10 +314,7 @@ interface MockHomeOptions {
   baseStatus?: number
 }
 
-async function mockHome(
-  page: Page,
-  options: MockHomeOptions = {},
-): Promise<HomeRequests> {
+async function mockHome(page: Page, options: MockHomeOptions = {}): Promise<HomeRequests> {
   const principalType = options.principalType ?? 'admin'
   const requests: HomeRequests = { paths: [], reveals: [] }
   const baseStatus = options.baseStatus ?? 200
@@ -353,9 +347,7 @@ async function mockHome(
         await fail()
         return
       }
-      await fulfill(
-        baseHome({ nowMS, empty: options.empty === true, principalType }),
-      )
+      await fulfill(baseHome({ nowMS, empty: options.empty === true, principalType }))
       return
     }
     if (path === '/api/home/statistics') {
@@ -395,9 +387,7 @@ async function expectAstryxDocument(page: Page): Promise<void> {
   await expect(page.locator('[data-testid="desktop-nav"]')).toBeVisible()
 }
 
-test('renders the admin ledger and canonicalizes the home query', async ({
-  page,
-}) => {
+test('renders the admin ledger and canonicalizes the home query', async ({ page }) => {
   await mockHome(page, { attention: true })
   await page.goto('/?access_key_id=abc&client=bogus&junk=1', {
     waitUntil: 'load',
@@ -431,39 +421,26 @@ test('renders the admin ledger and canonicalizes the home query', async ({
   )
 
   // Subscription accounts card.
-  await expect(
-    page.getByRole('heading', { name: 'Recently used' }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('article', { name: 'sub@example.com · Available' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Recently used' })).toBeVisible()
+  await expect(page.getByRole('article', { name: 'sub@example.com · Available' })).toBeVisible()
 
   // Gateway connection + spend.
-  await expect(
-    page.getByRole('heading', { name: 'Connect to the gateway' }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: 'Estimated over 30 days' }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('link', { name: 'View usage details for gpt-4o' }),
-  ).toHaveAttribute('href', '/monitor?tab=usage&range=30d&upstream_model=gpt-4o')
+  await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Estimated over 30 days' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'View usage details for gpt-4o' })).toHaveAttribute(
+    'href',
+    '/monitor?tab=usage&range=30d&upstream_model=gpt-4o',
+  )
 })
 
 test('shows the welcome state for an empty admin home', async ({ page }) => {
   await mockHome(page, { empty: true })
   await page.goto('/', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(
-    page.getByRole('heading', { name: 'Welcome to GPT-Load' }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('button', { name: 'Import channel credentials' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Welcome to GPT-Load' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Import channel credentials' })).toBeVisible()
   // The empty ledger never mounts gateway or spend sections.
-  await expect(
-    page.getByRole('heading', { name: 'Connect to the gateway' }),
-  ).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toHaveCount(0)
 })
 
 test('shows the error state and recovers through retry', async ({ page }) => {
@@ -471,9 +448,7 @@ test('shows the error state and recovers through retry', async ({ page }) => {
   await page.goto('/', { waitUntil: 'load' })
   await expectAstryxDocument(page)
   await expect(
-    page.getByText(
-      'Unable to load the Home inventory, so the configuration state is unknown.',
-    ),
+    page.getByText('Unable to load the Home inventory, so the configuration state is unknown.'),
   ).toBeVisible()
 
   // Recovering the endpoint lets Retry rebuild the page.
@@ -498,9 +473,7 @@ test('shows the error state and recovers through retry', async ({ page }) => {
   ).toBeVisible()
 })
 
-test('keeps stale content with a warning banner when a refresh fails', async ({
-  page,
-}) => {
+test('keeps stale content with a warning banner when a refresh fails', async ({ page }) => {
   await mockHome(page)
   await page.goto('/', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -526,12 +499,9 @@ test('keeps stale content with a warning banner when a refresh fails', async ({
 
   await expect(facts).toBeVisible()
   await expect(
-    page
-      .getByRole('status')
-      .filter({
-        hasText:
-          'Unable to load the Home inventory, so the configuration state is unknown.',
-      }),
+    page.getByRole('status').filter({
+      hasText: 'Unable to load the Home inventory, so the configuration state is unknown.',
+    }),
   ).toBeVisible()
 })
 
@@ -546,69 +516,41 @@ test('scopes home to the access-key session', async ({ page }) => {
   await expect(page).toHaveURL(/\/\?client=codex$/)
 
   // Identity card + read-only boundary copy.
-  await expect(
-    page.getByRole('heading', { name: 'my-key' }),
-  ).toBeVisible()
-  await expect(
-    page.getByText('Current sign-in identity'),
-  ).toBeVisible()
-  await expect(
-    page.getByText(/access key read-only view/),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'my-key' })).toBeVisible()
+  await expect(page.getByText('Current sign-in identity')).toBeVisible()
+  await expect(page.getByText(/access key read-only view/)).toBeVisible()
 
   // The access-key selector is disabled and the admin-only queries never run.
-  await expect(
-    page.getByRole('combobox', { name: 'Access key' }),
-  ).toBeDisabled()
+  await expect(page.getByRole('combobox', { name: 'Access key' })).toBeDisabled()
   const requested = requests.paths
   expect(requested.some((path) => path.includes('/api/health'))).toBe(false)
-  expect(
-    requested.some((path) => path.includes('subscription-accounts')),
-  ).toBe(false)
-  expect(requested.some((path) => path.includes('/api/system/update'))).toBe(
-    false,
-  )
+  expect(requested.some((path) => path.includes('subscription-accounts'))).toBe(false)
+  expect(requested.some((path) => path.includes('/api/system/update'))).toBe(false)
 
   // Copying uses the session credential directly — no reveal request.
-  await page
-    .getByRole('button', { name: 'Copy access key' })
-    .click()
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Access key copied' }),
-  ).toBeVisible()
+  await page.getByRole('button', { name: 'Copy access key' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Access key copied' })).toBeVisible()
   expect(requests.reveals).toHaveLength(0)
   await expect
-    .poll(async () =>
-      page.evaluate(() => navigator.clipboard.readText()),
-    )
+    .poll(async () => page.evaluate(() => navigator.clipboard.readText()))
     .toBe('e2e-auth-key')
 })
 
-test('copies the access key through the admin reveal flow', async ({
-  page,
-}) => {
+test('copies the access key through the admin reveal flow', async ({ page }) => {
   const requests = await mockHome(page)
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.goto('/', { waitUntil: 'load' })
   await expectAstryxDocument(page)
 
-  await page
-    .getByRole('button', { name: 'Copy access key' })
-    .click()
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Access key copied' }),
-  ).toBeVisible()
+  await page.getByRole('button', { name: 'Copy access key' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Access key copied' })).toBeVisible()
   expect(requests.reveals).toEqual([1])
   await expect
-    .poll(async () =>
-      page.evaluate(() => navigator.clipboard.readText()),
-    )
+    .poll(async () => page.evaluate(() => navigator.clipboard.readText()))
     .toBe('sk-e2e-revealed-1')
 })
 
-test('shows the manual copy dialog when the clipboard is unavailable', async ({
-  page,
-}) => {
+test('shows the manual copy dialog when the clipboard is unavailable', async ({ page }) => {
   const requests = await mockHome(page)
   await page.addInitScript(() => {
     Object.defineProperty(window.navigator, 'clipboard', {
@@ -621,9 +563,7 @@ test('shows the manual copy dialog when the clipboard is unavailable', async ({
   await page.goto('/', { waitUntil: 'load' })
   await expectAstryxDocument(page)
 
-  await page
-    .getByRole('button', { name: 'Copy access key' })
-    .click()
+  await page.getByRole('button', { name: 'Copy access key' }).click()
   const dialog = page.getByRole('dialog', { name: 'Copy content' })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('input')).toHaveValue('sk-e2e-revealed-1')
@@ -643,30 +583,22 @@ test('selects gateway clients through the canonical query and flags incompatible
   await expect(picker).toBeVisible()
   await picker.getByRole('button', { name: 'Codex', exact: true }).click()
   await expect(page).toHaveURL(/[?&]client=codex/)
-  await expect(
-    page.getByRole('heading', { name: 'Connect to the gateway' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toBeVisible()
   await expect(page.getByText('wire_api = "responses"')).toBeVisible()
 
   // Switch to the completions-only key: codex lands in the unsupported group
   // and the panel reports the missing protocol.
   await page.getByRole('combobox', { name: 'Access key' }).click()
-  await page
-    .getByRole('option', { name: /dev-key/ })
-    .click()
+  await page.getByRole('option', { name: /dev-key/ }).click()
   await expect(page).toHaveURL(/access_key_id=2/)
   await expect(
-    page
-      .getByRole('status')
-      .filter({
-        hasText: 'Codex requires openai-responses for this access key',
-      }),
+    page.getByRole('status').filter({
+      hasText: 'Codex requires openai-responses for this access key',
+    }),
   ).toBeVisible()
 })
 
-test('confirms quick import before requesting the custom scheme', async ({
-  page,
-}) => {
+test('confirms quick import before requesting the custom scheme', async ({ page }) => {
   const requests = await mockHome(page)
   await page.goto('/', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -683,19 +615,14 @@ test('confirms quick import before requesting the custom scheme', async ({
     name: 'Open CC Switch · Claude Code',
   })
   await expect(confirm).toBeVisible()
-  await confirm
-    .getByRole('button', { name: 'Import and enable' })
-    .click()
+  await confirm.getByRole('button', { name: 'Import and enable' }).click()
 
   // The reveal ran and the popup was asked to navigate to ccswitch:// — the
   // page reports success even though no real handler exists in the browser.
   await expect.poll(() => requests.reveals.length).toBe(1)
   await expect(
-    page
-      .getByRole('status')
-      .filter({
-        hasText:
-          'Requested CC Switch · Claude Code to open. Confirm the import in the app',
-      }),
+    page.getByRole('status').filter({
+      hasText: 'Requested CC Switch · Claude Code to open. Confirm the import in the app',
+    }),
   ).toBeVisible()
 })

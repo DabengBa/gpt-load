@@ -88,9 +88,7 @@ function createSnapshot(): AccessKeyDrawerSnapshot {
   }
 }
 
-export function isAccessKeyDrawerCreateOperationActive(
-  snapshot: AccessKeyDrawerSnapshot,
-): boolean {
+export function isAccessKeyDrawerCreateOperationActive(snapshot: AccessKeyDrawerSnapshot): boolean {
   return (
     snapshot.base === null &&
     snapshot.createPayload !== null &&
@@ -186,10 +184,7 @@ export function createAccessKeyDrawerController(deps: AccessKeyDrawerDeps) {
       return
     }
     const createOperationActive = isAccessKeyDrawerCreateOperationActive(state)
-    if (
-      !createOperationActive &&
-      !(valid && isAccessKeyDraftDirty(state.draft, state.base))
-    ) {
+    if (!createOperationActive && !(valid && isAccessKeyDraftDirty(state.draft, state.base))) {
       return
     }
     const currentBase = state.base
@@ -210,9 +205,7 @@ export function createAccessKeyDrawerController(deps: AccessKeyDrawerDeps) {
     let savedKind: 'created' | 'updated' | null = null
     let createdAccessKey: AccessKeyDto | null = null
     const stale = () =>
-      controller !== activeController ||
-      !ops.isOpen() ||
-      state.operationID !== activeOperationID
+      controller !== activeController || !ops.isOpen() || state.operationID !== activeOperationID
     try {
       if (currentBase) {
         const saved = await updateAccessKey(

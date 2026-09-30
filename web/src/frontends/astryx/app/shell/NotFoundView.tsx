@@ -14,8 +14,7 @@ const small = '@media (max-width: 760px)'
 const styles = stylex.create({
   frame: {
     padding: {
-      default:
-        'var(--stage-padding-top) var(--stage-padding-inline) var(--stage-padding-bottom)',
+      default: 'var(--stage-padding-top) var(--stage-padding-inline) var(--stage-padding-bottom)',
       [narrow]:
         'var(--stage-padding-top-compact) var(--stage-padding-inline-compact) var(--stage-padding-bottom-compact)',
     },

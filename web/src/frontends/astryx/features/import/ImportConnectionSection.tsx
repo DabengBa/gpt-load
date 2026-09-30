@@ -132,9 +132,7 @@ export function ImportConnectionSection({
       ? t('common.proxy.invalid')
       : undefined
   const proxyDescription =
-    !proxySupported || proxy.mode === 'custom'
-      ? undefined
-      : t(`common.proxy.help.${proxy.mode}`)
+    !proxySupported || proxy.mode === 'custom' ? undefined : t(`common.proxy.help.${proxy.mode}`)
   const proxyDisabledReason = !proxySupported
     ? t('common.proxy.unsupportedHelp')
     : proxyDisabled
@@ -191,11 +189,7 @@ export function ImportConnectionSection({
     <div {...stylex.props(styles.root)}>
       <div {...stylex.props(styles.fields)}>
         <div {...stylex.props(styles.minWidth)}>
-          <Field
-            label={t('import.connection.name')}
-            inputID="import-group-name"
-            isOptional
-          >
+          <Field label={t('import.connection.name')} inputID="import-group-name" isOptional>
             <TextInput
               value={name}
               isDisabled={disabled}
@@ -284,9 +278,7 @@ export function ImportConnectionSection({
                 <div key={param.key} {...stylex.props(styles.minWidth)}>
                   <Field
                     label={param.key === 'base_url' ? t('import.connection.url') : param.label}
-                    description={
-                      param.key === 'base_url' ? baseURLDescription() : undefined
-                    }
+                    description={param.key === 'base_url' ? baseURLDescription() : undefined}
                     inputID={`import-channel-param-${param.key}`}
                     isRequired={param.required}
                     status={
@@ -299,7 +291,9 @@ export function ImportConnectionSection({
                   >
                     <input
                       id={`import-channel-param-${param.key}`}
-                      {...stylex.props(param.input_kind === 'url' ? styles.urlInput : styles.minWidth)}
+                      {...stylex.props(
+                        param.input_kind === 'url' ? styles.urlInput : styles.minWidth,
+                      )}
                       value={params[param.key] ?? ''}
                       type={param.input_kind === 'url' ? 'url' : 'text'}
                       disabled={disabled}

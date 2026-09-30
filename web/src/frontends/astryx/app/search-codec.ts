@@ -44,9 +44,7 @@ export function stringifySharedRouteSearch(query: Record<string, unknown>): stri
     const encodedKey = encodeURIComponent(key)
     for (const item of Array.isArray(value) ? value : [value]) {
       if (item === undefined) continue
-      pairs.push(
-        item === null ? encodedKey : `${encodedKey}=${encodeURIComponent(String(item))}`,
-      )
+      pairs.push(item === null ? encodedKey : `${encodedKey}=${encodeURIComponent(String(item))}`)
     }
   }
   return pairs.length === 0 ? '' : `?${pairs.join('&')}`

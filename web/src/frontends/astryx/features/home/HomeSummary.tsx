@@ -103,8 +103,7 @@ export function HomeSummary({
 }) {
   const intl = useIntl()
   const t = useT()
-  const updated =
-    observedAtMs === null ? '—' : formatLocalTime(observedAtMs, intl.locale)
+  const updated = observedAtMs === null ? '—' : formatLocalTime(observedAtMs, intl.locale)
   const updatedTitle =
     observedAtMs === null ? undefined : formatLocalInstant(observedAtMs, intl.locale)
 

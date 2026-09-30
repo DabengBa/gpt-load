@@ -167,9 +167,7 @@ export function GroupDeleteDialog({
                 {references.length > 0 ? (
                   <GroupInUseFeedback references={references} />
                 ) : genericError ? (
-                  <InlineNotice tone="danger">
-                    {t('group.settings.delete.failed')}
-                  </InlineNotice>
+                  <InlineNotice tone="danger">{t('group.settings.delete.failed')}</InlineNotice>
                 ) : null}
               </div>
             </LayoutContent>

@@ -14,8 +14,7 @@ const styles = stylex.create({
     gap: 'var(--space-3)',
     borderWidth: '1px',
     borderStyle: 'solid',
-    borderColor:
-      'color-mix(in srgb, var(--color-warning) 38%, var(--color-border-subtle))',
+    borderColor: 'color-mix(in srgb, var(--color-warning) 38%, var(--color-border-subtle))',
     borderRadius: 'var(--radius-control)',
     backgroundColor: 'var(--color-warning-bg)',
     color: 'var(--color-warning)',
@@ -57,12 +56,8 @@ export function GroupInUseFeedback({ references }: { references: AccessKeyRefere
     <div {...stylex.props(styles.root)} role="alert">
       <TriangleAlert size={18} aria-hidden="true" />
       <div>
-        <strong {...stylex.props(styles.strong)}>
-          {t('group.settings.delete.inUseTitle')}
-        </strong>
-        <p {...stylex.props(styles.paragraph)}>
-          {t('group.settings.delete.inUseDescription')}
-        </p>
+        <strong {...stylex.props(styles.strong)}>{t('group.settings.delete.inUseTitle')}</strong>
+        <p {...stylex.props(styles.paragraph)}>{t('group.settings.delete.inUseDescription')}</p>
         <ul {...stylex.props(styles.list)}>
           {references.map((reference) => (
             <li key={reference.id} {...stylex.props(styles.item)}>

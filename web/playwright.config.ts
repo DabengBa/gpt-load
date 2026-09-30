@@ -8,7 +8,9 @@ const port = Number(process.env.PLAYWRIGHT_PORT ?? 41737)
 if (!Number.isInteger(port) || port < 1024 || port > 65_535) {
   throw new Error('PLAYWRIGHT_PORT must be a valid loopback port')
 }
-const webRoot = fileURLToPath(new URL('.', import.meta.url)).replace(/\\/g, '/').replace(/\/$/, '')
+const webRoot = fileURLToPath(new URL('.', import.meta.url))
+  .replace(/\\/g, '/')
+  .replace(/\/$/, '')
 const baseURL = `http://127.0.0.1:${port}`
 
 export default defineConfig({

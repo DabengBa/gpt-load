@@ -98,10 +98,7 @@ test('schedule draft drops malformed rows and out-of-range fields', () => {
 
 test('schedule draft ignores non-object and oversized payloads', () => {
   assert.deepEqual(parseScheduleMonitorState({ schedule_draft: '[1,2]' }).drafts, {})
-  assert.deepEqual(
-    parseScheduleMonitorState({ schedule_draft: 'x'.repeat(20_001) }).drafts,
-    {},
-  )
+  assert.deepEqual(parseScheduleMonitorState({ schedule_draft: 'x'.repeat(20_001) }).drafts, {})
   // An empty draft map serializes to nothing so the param disappears.
   assert.deepEqual(scheduleMonitorQuery({ drafts: {} }), {})
 })
@@ -127,17 +124,11 @@ test('inspector run=1 serializes only with the full protocol/model/key triple', 
   }
   // Parse side: run=1 without the triple also resolves to false.
   assert.equal(parseInspectorMonitorState({ run: '1' }).run, false)
-  assert.equal(
-    parseInspectorMonitorState({ run: '1', protocol: 'bogus' }).protocol,
-    undefined,
-  )
+  assert.equal(parseInspectorMonitorState({ run: '1', protocol: 'bogus' }).protocol, undefined)
 })
 
 test('inspector expanded_groups dedupes, sorts, and rejects duplicates', () => {
-  assert.deepEqual(
-    parseInspectorMonitorState({ expanded_groups: '9,3,3,1' }).expandedGroupIDs,
-    [],
-  )
+  assert.deepEqual(parseInspectorMonitorState({ expanded_groups: '9,3,3,1' }).expandedGroupIDs, [])
   assert.deepEqual(
     parseInspectorMonitorState({ expanded_groups: '9,3,1' }).expandedGroupIDs,
     [1, 3, 9],
@@ -180,13 +171,7 @@ test('health canonical query only carries the groups-expanded flag', () => {
 test('sameMonitorQuery requires identical string key sets', () => {
   assert.equal(sameMonitorQuery({ tab: 'health' }, { tab: 'health' }), true)
   assert.equal(sameMonitorQuery({ tab: 'health' }, { tab: 'usage' }), false)
-  assert.equal(
-    sameMonitorQuery({ tab: 'health', groups: 'expanded' }, { tab: 'health' }),
-    false,
-  )
+  assert.equal(sameMonitorQuery({ tab: 'health', groups: 'expanded' }, { tab: 'health' }), false)
   // Non-string leftovers (e.g. vue-router array values) never match.
-  assert.equal(
-    sameMonitorQuery({ tab: 'health', extra: ['a', 'b'] }, { tab: 'health' }),
-    false,
-  )
+  assert.equal(sameMonitorQuery({ tab: 'health', extra: ['a', 'b'] }, { tab: 'health' }), false)
 })

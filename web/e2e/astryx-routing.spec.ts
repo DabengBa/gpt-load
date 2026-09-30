@@ -20,16 +20,14 @@ test('unauthenticated access to a guarded route redirects to login with redirect
   const url = new URL(page.url())
   expect(url.pathname).toBe('/login')
   expect(url.searchParams.get('redirect')).toBe(FLAGGED_PATH)
-  await expect(
-    page.getByRole('heading', { name: 'Sign in to GPT-Load' }),
-  ).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Sign in to GPT-Load' })).toBeVisible({
+    timeout: 60_000,
+  })
   await expect(page.getByLabel('Sign-in key', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
 })
 
-test('group detail param routes match and render the stub', async ({
-  page,
-}) => {
+test('group detail param routes match and render the stub', async ({ page }) => {
   // An anonymous user gets bounced to login before the group stub renders —
   // but only after the route matched, so /login carries the full redirect.
   await page.goto('/groups/42', { waitUntil: 'commit' })
@@ -38,32 +36,26 @@ test('group detail param routes match and render the stub', async ({
   expect(url.searchParams.get('redirect')).toBe('/groups/42')
 })
 
-test('a trailing slash misses the manifest route and renders not-found', async ({
-  page,
-}) => {
+test('a trailing slash misses the manifest route and renders not-found', async ({ page }) => {
   // '/settings/' is not a manifest path: the server falls back to the
   // single document and the client router 404s it.
   await page.goto('/settings/', { waitUntil: 'commit' })
-  await expect(
-    page.getByRole('heading', { name: 'This page does not exist' }),
-  ).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'This page does not exist' })).toBeVisible({
+    timeout: 60_000,
+  })
 })
 
-test('route matching is case-sensitive like the classic router', async ({
-  page,
-}) => {
+test('route matching is case-sensitive like the classic router', async ({ page }) => {
   await page.goto('/SETTINGS', { waitUntil: 'commit' })
-  await expect(
-    page.getByRole('heading', { name: 'This page does not exist' }),
-  ).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'This page does not exist' })).toBeVisible({
+    timeout: 60_000,
+  })
 })
 
 // In-app navigation to an Astryx-owned path stays inside the document:
 // /import is flagged since Phase 4, so the shell link performs an SPA
 // navigation (canonicalizing to ?mode=new) without a document handoff.
-test('nav to a flagged route stays inside the Astryx document', async ({
-  page,
-}) => {
+test('nav to a flagged route stays inside the Astryx document', async ({ page }) => {
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
   }, 'e2e-auth-key')
@@ -93,17 +85,14 @@ test('nav to a flagged route stays inside the Astryx document', async ({
   // Still the Astryx document: the shell marker survives and the import view
   // rendered in place.
   await expect(page.getByTestId('astryx-shell')).toBeVisible({ timeout: 10_000 })
-  await expect(
-    page.getByRole('heading', { name: 'Import channel credentials' }),
-  ).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
+    timeout: 10_000,
+  })
 })
 
 // Every page route is served by the single Astryx document; a leftover
 // gpt-load.frontend cookie no longer influences document selection.
-test('document selection ignores the retired frontend cookie', async ({
-  page,
-  context,
-}) => {
+test('document selection ignores the retired frontend cookie', async ({ page, context }) => {
   const document = await page.request.get('/import', {
     headers: { accept: 'text/html' },
   })

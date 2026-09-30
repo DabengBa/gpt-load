@@ -14,10 +14,7 @@ import {
   type CredentialValidationData,
 } from '@shared/control/resources/groups'
 import { parsePositiveRouteInteger } from '@shared/routing/route-query'
-import {
-  parseImportRouteQuery,
-  serializeImportRouteQuery,
-} from '@shared/routing/import-route'
+import { parseImportRouteQuery, serializeImportRouteQuery } from '@shared/routing/import-route'
 import { pagePath } from '@shared/routing/page-routes'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 import type { ExistingGroupImportDraft } from '@shared/domain/import/model-draft'
@@ -64,8 +61,9 @@ export function ExistingGroupImport({
 
   const [completed, setCompleted] = useState(false)
   const [errorKey, setErrorKey] = useState('')
-  const [credentialValidation, setCredentialValidation] =
-    useState<CredentialValidationData | null>(null)
+  const [credentialValidation, setCredentialValidation] = useState<CredentialValidationData | null>(
+    null,
+  )
   const submissionErrorRef = useRef<HTMLElement>(null)
   const [errorFocusToken, setErrorFocusToken] = useState(0)
   useEffect(() => {
@@ -118,9 +116,7 @@ export function ExistingGroupImport({
 
   const groupsQuery = useQuery(groupOptionsQueryOptions(apiClient))
   const channelsQuery = useQuery(channelsQueryOptions(apiClient, ''))
-  const groupsLoading = useStableLoading(
-    groupsQuery.isPending && groupsQuery.data === undefined,
-  )
+  const groupsLoading = useStableLoading(groupsQuery.isPending && groupsQuery.data === undefined)
   const groupsRefreshing = groupsQuery.data !== undefined && groupsQuery.isFetching
 
   const selectedGroup =
@@ -133,19 +129,13 @@ export function ExistingGroupImport({
   const selectedChannel: ChannelDto | null = (() => {
     const channelID = selectedGroup?.channel_id
     return channelID
-      ? (channelsQuery.data?.items.find((channel) => channel.channel_id === channelID) ??
-          null)
+      ? (channelsQuery.data?.items.find((channel) => channel.channel_id === channelID) ?? null)
       : null
   })()
   const selectedGroupMissing =
-    targetGroupID !== undefined &&
-    groupsQuery.data !== undefined &&
-    selectedGroup === null
+    targetGroupID !== undefined && groupsQuery.data !== undefined && selectedGroup === null
 
-  const credentialAnalysis = analyzeCredentials(
-    credentials,
-    selectedGroup?.channel_id,
-  )
+  const credentialAnalysis = analyzeCredentials(credentials, selectedGroup?.channel_id)
   const canSubmit =
     !payloadLocked &&
     !pending &&
@@ -294,11 +284,11 @@ export function ExistingGroupImport({
     const groupID = targetGroupID
     if (groupID === undefined || !selectedGroup || !canSubmit) return
     if (
-      !owner.beginImportCredentials(
-        { groupID, credentials },
-        'existing',
-        { mode: 'existing', group_id: groupID, credentials },
-      )
+      !owner.beginImportCredentials({ groupID, credentials }, 'existing', {
+        mode: 'existing',
+        group_id: groupID,
+        credentials,
+      })
     ) {
       return
     }

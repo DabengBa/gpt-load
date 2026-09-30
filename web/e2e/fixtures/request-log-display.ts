@@ -355,9 +355,7 @@ export const rangeRowIDs = {
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 
-export async function installRequestLogRangeRoutes(
-  page: Page,
-): Promise<RequestLogDisplayRoutes> {
+export async function installRequestLogRangeRoutes(page: Page): Promise<RequestLogDisplayRoutes> {
   await page.addInitScript((authKey) => {
     window.localStorage.setItem('gpt-load.auth-key', authKey)
   }, ADMIN_KEY)
@@ -399,9 +397,7 @@ export async function installRequestLogRangeRoutes(
         const to = Number(url.searchParams.get('to_ms') ?? NaN)
         const items =
           Number.isSafeInteger(from) && Number.isSafeInteger(to)
-            ? rangeRows.filter(
-                (row) => row.completed_at_ms >= from && row.completed_at_ms <= to,
-              )
+            ? rangeRows.filter((row) => row.completed_at_ms >= from && row.completed_at_ms <= to)
             : rangeRows
         await route.fulfill(response({ items, next_cursor: null }))
         return

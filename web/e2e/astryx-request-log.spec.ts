@@ -199,9 +199,7 @@ test('client model selector searches the union of group models', async ({ page }
   expect(latestLogRequest(routes).searchParams.get('client_model')).toBe('worker')
 })
 
-test('applied chips mirror advanced filters and removal issues a fresh query', async ({
-  page,
-}) => {
+test('applied chips mirror advanced filters and removal issues a fresh query', async ({ page }) => {
   const routes = await installRequestLogDisplayRoutes(page)
   await openLogs(page, '?upstream_model=gpt-5.6-luna')
 
@@ -258,9 +256,7 @@ test('cursor pagination: next pushes log_cursors, previous pops, page size commi
 
   await page.getByRole('button', { name: 'Previous' }).click()
   await expect(page).not.toHaveURL(/log_cursors=/u)
-  await expect
-    .poll(() => latestLogRequest(routes).searchParams.get('cursor'))
-    .toBeNull()
+  await expect.poll(() => latestLogRequest(routes).searchParams.get('cursor')).toBeNull()
 
   const requestCount = routes.logRequests.length
   await page.getByRole('combobox', { name: 'Items per page' }).click()
@@ -338,7 +334,10 @@ test('access-key principal: scoped filters, seven tracks, no admin-only affordan
   page,
 }) => {
   const routes = await installRequestLogTableRoutes(page, 'access_key')
-  await openLogs(page, `?affinity_key=${encodeURIComponent('0123456789abcdef****fedcba9876543210')}`)
+  await openLogs(
+    page,
+    `?affinity_key=${encodeURIComponent('0123456789abcdef****fedcba9876543210')}`,
+  )
 
   await expect(records(page)).toHaveCount(4)
   await expect(page.getByTestId('logs-list').getByRole('columnheader')).toHaveCount(7)
@@ -354,9 +353,7 @@ test('access-key principal: scoped filters, seven tracks, no admin-only affordan
   const drawer = page.getByRole('dialog', { name: 'More filters' })
   await expect(drawer).toBeVisible()
   await expect(drawer.getByRole('combobox', { name: 'Access key' })).toHaveCount(0)
-  await expect(
-    drawer.getByRole('textbox', { name: 'Affinity scope key' }),
-  ).toHaveCount(0)
+  await expect(drawer.getByRole('textbox', { name: 'Affinity scope key' })).toHaveCount(0)
   await expect(drawer.getByText('Retry attempts', { exact: true })).toHaveCount(0)
 })
 
@@ -373,9 +370,7 @@ test('filter transitions swap rows for the skeleton instead of stale data', asyn
   await expect(page.getByText('page-two-0').first()).toBeVisible({ timeout: 10_000 })
 })
 
-test('legacy /monitor?tab=logs query normalizes to the principal default tab', async ({
-  page,
-}) => {
+test('legacy /monitor?tab=logs query normalizes to the principal default tab', async ({ page }) => {
   const routes = await installRequestLogTableRoutes(page)
   await page.goto(
     '/monitor?tab=logs&from_ms=1700000000000&selected_request_id=11111111-1111-4111-8111-111111111111&status=success',
@@ -402,7 +397,5 @@ test('narrow viewports keep results usable in the card layout', async ({ page })
   await expect(
     records(page).first().getByText('Request first / total', { exact: true }),
   ).toBeVisible()
-  await expect(
-    records(page).first().getByText('Model / protocol', { exact: true }),
-  ).toBeVisible()
+  await expect(records(page).first().getByText('Model / protocol', { exact: true })).toBeVisible()
 })

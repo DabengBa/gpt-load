@@ -25,10 +25,7 @@ function codes(errors: ReturnType<typeof validateHeaderRuleRows>): string[] {
 
 test('valid set/remove rows produce no errors', () => {
   assert.deepEqual(
-    validateHeaderRuleRows([
-      row(1, 'set', 'x-custom', 'value'),
-      row(2, 'remove', 'x-legacy'),
-    ]),
+    validateHeaderRuleRows([row(1, 'set', 'x-custom', 'value'), row(2, 'remove', 'x-legacy')]),
     [],
   )
 })
@@ -52,10 +49,7 @@ test('duplicate names match case-insensitively and flag both rows', () => {
     row(3, 'set', 'x-other', 'b'),
   ])
   assert.deepEqual(codes(errors), ['duplicate_name', 'duplicate_name'])
-  assert.deepEqual(
-    errors.map((error) => error.rowKey).sort(),
-    [1, 2],
-  )
+  assert.deepEqual(errors.map((error) => error.rowKey).sort(), [1, 2])
 })
 
 test('credential and hop-by-hop names are forbidden for request rules', () => {
@@ -64,10 +58,9 @@ test('credential and hop-by-hop names are forbidden for request rules', () => {
       'forbidden_set_name',
     ])
   }
-  assert.deepEqual(
-    codes(validateHeaderRuleRows([row(1, 'set', 'proxy-whatever', 'v')])),
-    ['forbidden_set_name'],
-  )
+  assert.deepEqual(codes(validateHeaderRuleRows([row(1, 'set', 'proxy-whatever', 'v')])), [
+    'forbidden_set_name',
+  ])
 })
 
 test('the response policy additionally forbids protocol-managed headers', () => {

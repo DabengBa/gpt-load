@@ -155,7 +155,12 @@ async function mockAccessKeys(
           disabled: items.filter((item) => item.status === 'disabled').length,
         },
         items: items.slice((page_ - 1) * 20, page_ * 20),
-        pagination: { page: page_, page_size: 20, total_items: totalItems, total_pages: totalPages },
+        pagination: {
+          page: page_,
+          page_size: 20,
+          total_items: totalItems,
+          total_pages: totalPages,
+        },
       })
       return
     }
@@ -170,7 +175,9 @@ async function mockAccessKeys(
       await fulfill({ ...metadataOnly(created), key: `sk-e2e-new-${created.id}`, replayed: false })
       return
     }
-    const itemMatch = /^\/api\/access-keys\/(\d+)(?:\/(reveal|rotate|cost-limits\/reset))?$/.exec(path)
+    const itemMatch = /^\/api\/access-keys\/(\d+)(?:\/(reveal|rotate|cost-limits\/reset))?$/.exec(
+      path,
+    )
     if (itemMatch) {
       const id = Number(itemMatch[1])
       const action = itemMatch[2]
@@ -183,7 +190,12 @@ async function mockAccessKeys(
       if (action === 'rotate' && request.method() === 'POST') {
         requests.rotates.push(id)
         if (target) Object.assign(target, { updated_at_ms: now })
-        await fulfill({ ...metadataOnly(target), key: `sk-e2e-rotated-${id}`, replayed: false, updated_at_ms: now })
+        await fulfill({
+          ...metadataOnly(target),
+          key: `sk-e2e-rotated-${id}`,
+          replayed: false,
+          updated_at_ms: now,
+        })
         return
       }
       if (action === 'cost-limits/reset' && request.method() === 'POST') {
@@ -233,25 +245,19 @@ async function expectAstryxDocument(page: Page): Promise<void> {
 }
 
 async function openEditDrawer(page: Page, name: string) {
-  await page
-    .getByRole('button', { name: `Open details for access key “${name}”` })
-    .click()
+  await page.getByRole('button', { name: `Open details for access key “${name}”` }).click()
   const dialog = page.getByRole('dialog', { name: 'Edit access key' })
   await expect(dialog).toBeVisible()
   return dialog
 }
 
-test('renders the collection and canonicalizes invalid route query params', async ({
-  page,
-}) => {
+test('renders the collection and canonicalizes invalid route query params', async ({ page }) => {
   await mockAccessKeys(page)
   await page.goto('/access-keys?status=junk&page=0&action=bogus', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/\/access-keys$/)
 
-  await expect(
-    page.getByRole('heading', { name: 'Access keys', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Access keys', exact: true })).toBeVisible()
   const table = page.getByRole('table', { name: 'Access key list' })
   await expect(table).toBeVisible()
   await expect(table.getByText('prod key', { exact: true }).first()).toBeVisible()
@@ -415,9 +421,7 @@ test('reveals the access key on copy only', async ({ page }) => {
     .toBe('sk-e2e-revealed-1')
 })
 
-test('access_key principals are redirected away from the admin-only page', async ({
-  page,
-}) => {
+test('access_key principals are redirected away from the admin-only page', async ({ page }) => {
   await mockAccessKeys(page, { principalType: 'access_key' })
   await page.goto('/access-keys', { waitUntil: 'commit' })
   // Boot → session validation → AuthGate redirect outruns the default expect

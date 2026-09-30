@@ -359,9 +359,7 @@ export function LogsFilterForm({
       >
         {appliedChips.length > 0 && (
           <div {...stylex.props(styles.chips)}>
-            <span {...stylex.props(styles.chipsLabel)}>
-              {t('monitor.logs.filters.applied')}
-            </span>
+            <span {...stylex.props(styles.chipsLabel)}>{t('monitor.logs.filters.applied')}</span>
             {appliedChips.map((chip) => (
               <button
                 key={chip.key}

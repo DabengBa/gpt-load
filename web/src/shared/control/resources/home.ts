@@ -1,5 +1,3 @@
-
-
 import type { QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
@@ -659,10 +657,7 @@ export function homeBaseQueryOptions(client: ApiClient) {
   }
 }
 
-export function homeSubscriptionAccountsQueryOptions(
-  client: ApiClient,
-  enabled: boolean,
-) {
+export function homeSubscriptionAccountsQueryOptions(client: ApiClient, enabled: boolean) {
   return {
     queryKey: controlQueryKeys.home.subscriptionAccounts(),
     queryFn: ({ signal }: QueryFunctionContext) => getHomeSubscriptionAccounts(client, signal),

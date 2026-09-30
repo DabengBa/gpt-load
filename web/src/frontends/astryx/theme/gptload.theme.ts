@@ -78,10 +78,7 @@ export default defineTheme({
     '--focus-outline-color': ['#1c4f6e', '#6fb2d6'],
 
     // Shadows — classic card / sheet / overlay pairs
-    '--shadow-low': [
-      '0 1px 2px rgba(28, 26, 20, 0.05)',
-      '0 1px 2px rgba(0, 0, 0, 0.45)',
-    ],
+    '--shadow-low': ['0 1px 2px rgba(28, 26, 20, 0.05)', '0 1px 2px rgba(0, 0, 0, 0.45)'],
     '--shadow-med': [
       '0 1px 2px rgba(28, 26, 20, 0.05), 0 12px 32px rgba(28, 26, 20, 0.06)',
       '0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.3)',

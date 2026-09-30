@@ -1,4 +1,11 @@
-import { Button, Dialog, DialogHeader, Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core'
+import {
+  Button,
+  Dialog,
+  DialogHeader,
+  Layout,
+  LayoutContent,
+  LayoutFooter,
+} from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -150,11 +157,7 @@ export function CopyFallbackDialog({
         footer={
           <LayoutFooter hasDivider>
             <Button variant="secondary" label={t('common.close')} onClick={close} />
-            <Button
-              label={t('common.copy')}
-              isLoading={pending}
-              onClick={() => void retry()}
-            />
+            <Button label={t('common.copy')} isLoading={pending} onClick={() => void retry()} />
           </LayoutFooter>
         }
       />

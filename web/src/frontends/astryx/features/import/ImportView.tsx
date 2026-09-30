@@ -15,10 +15,7 @@ import type { ExistingGroupImportDraft, ImportDraft } from '@shared/domain/impor
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
 import { ExistingGroupImport } from './ExistingGroupImport'
-import {
-  useImportOperationMode,
-  type ImportOperationMode,
-} from './import-operation'
+import { useImportOperationMode, type ImportOperationMode } from './import-operation'
 import { NewGroupImport } from './NewGroupImport'
 
 /**
@@ -51,8 +48,7 @@ export function ImportView() {
     operationMode ??
     (hasGroupContext
       ? 'existing'
-      : recoveredDraft?.mode ??
-        (routeState.mode === 'existing' ? 'existing' : 'new'))
+      : (recoveredDraft?.mode ?? (routeState.mode === 'existing' ? 'existing' : 'new')))
 
   // Classic setup-time + watch(operationMode, immediate) canonicalization that
   // validateSearch cannot cover: a recovered draft overrides the URL mode.

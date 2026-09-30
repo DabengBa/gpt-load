@@ -1,9 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import {
-  installRequestLogDisplayRoutes,
-  requestIDs,
-} from './fixtures/request-log-display'
+import { installRequestLogDisplayRoutes, requestIDs } from './fixtures/request-log-display'
 
 // B11 spike(b): the log detail surface on the Astryx entry — the overlay
 // primitive decision. Classic AppDrawer is a reka-ui Dialog styled as a
@@ -58,9 +55,7 @@ test('focus stays trapped inside the panel', async ({ page }) => {
   const focusInside = () =>
     // Astryx Dialog renders a native <dialog>; its dialog role is implicit, so
     // [role="dialog"] won't match — walk up to the open dialog element instead.
-    page.evaluate(
-      () => document.activeElement?.closest('dialog[open]') !== null
-    )
+    page.evaluate(() => document.activeElement?.closest('dialog[open]') !== null)
   // showModal autofocus lands a beat after visibility; wait for it.
   await expect.poll(focusInside).toBe(true)
 

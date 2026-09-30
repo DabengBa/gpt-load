@@ -90,10 +90,7 @@ export function ScheduleView() {
   const schedulePath = pagePath('schedule')
 
   const scheduleState = useMemo(() => parseScheduleMonitorState(rawSearch), [rawSearch])
-  const canonicalQuery = useMemo(
-    () => scheduleMonitorQuery(scheduleState),
-    [scheduleState],
-  )
+  const canonicalQuery = useMemo(() => scheduleMonitorQuery(scheduleState), [scheduleState])
   const isCanonicalQuery = sameMonitorQuery(rawSearch, canonicalQuery)
 
   // Classic deep watch on route.query (immediate): canonicalize by replace.

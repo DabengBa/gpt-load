@@ -2,12 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 
 export type InlineNoticeTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
-export type InlineNoticeAppearance =
-  | 'default'
-  | 'hint'
-  | 'ledger'
-  | 'ledger-hint'
-  | 'auth'
+export type InlineNoticeAppearance = 'default' | 'hint' | 'ledger' | 'ledger-hint' | 'auth'
 
 export interface InlineNoticeProps {
   tone?: InlineNoticeTone
@@ -111,18 +106,15 @@ const styles = stylex.create({
     fontWeight: 700,
   },
   ledgerInfo: {
-    borderColor:
-      'color-mix(in srgb, var(--color-action) 33%, var(--color-border-subtle))',
+    borderColor: 'color-mix(in srgb, var(--color-action) 33%, var(--color-border-subtle))',
     backgroundColor: 'var(--color-action-soft)',
     color: 'var(--color-action)',
   },
   ledgerWarning: {
-    borderColor:
-      'color-mix(in srgb, var(--color-warning) 36%, var(--color-border-subtle))',
+    borderColor: 'color-mix(in srgb, var(--color-warning) 36%, var(--color-border-subtle))',
   },
   ledgerDanger: {
-    borderColor:
-      'color-mix(in srgb, var(--color-danger) 32%, var(--color-border-subtle))',
+    borderColor: 'color-mix(in srgb, var(--color-danger) 32%, var(--color-border-subtle))',
   },
   appearanceLedgerHint: {
     gap: 'var(--space-2)',
@@ -135,8 +127,7 @@ const styles = stylex.create({
   },
   appearanceAuth: {
     gap: 0,
-    borderColor:
-      'color-mix(in srgb, var(--color-danger) 34%, var(--color-border-subtle))',
+    borderColor: 'color-mix(in srgb, var(--color-danger) 34%, var(--color-border-subtle))',
     backgroundColor: 'var(--color-danger-bg)',
     color: 'var(--color-danger)',
     paddingBlock: '8px',
@@ -177,8 +168,7 @@ export function InlineNotice({
   children,
 }: InlineNoticeProps) {
   const soft = tone === 'neutral' || tone === 'info' || tone === 'success'
-  const ledgerGlyph =
-    appearance === 'ledger' || appearance === 'ledger-hint'
+  const ledgerGlyph = appearance === 'ledger' || appearance === 'ledger-hint'
   const hintGlyph = appearance === 'hint'
 
   return (
@@ -212,9 +202,7 @@ export function InlineNotice({
         {glyph ?? defaultGlyph(tone)}
       </span>
       <span {...stylex.props(styles.message)}>{children}</span>
-      {action !== undefined && (
-        <span {...stylex.props(styles.action)}>{action}</span>
-      )}
+      {action !== undefined && <span {...stylex.props(styles.action)}>{action}</span>}
     </div>
   )
 }

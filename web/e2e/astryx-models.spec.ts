@@ -127,9 +127,7 @@ function baseDetail() {
     model_id: 'gpt-4o-upstream',
     price: basePrice(),
     catalog_reference: catalogReference('gpt-4o-upstream'),
-    associations: [
-      { client_model: 'gpt-4o', alias_applied: true, group: prodGroup },
-    ],
+    associations: [{ client_model: 'gpt-4o', alias_applied: true, group: prodGroup }],
     client_model_count: 1,
     group_count: 1,
   }
@@ -185,7 +183,11 @@ async function mockModels(
         const body = route.request().postDataJSON() as Record<string, unknown>
         requests.puts.push(body)
         const prices = body as { input?: string | null }
-        price = basePrice(prices.input !== undefined ? { prices: { ...basePrice().prices, input: prices.input } } : {})
+        price = basePrice(
+          prices.input !== undefined
+            ? { prices: { ...basePrice().prices, input: prices.input } }
+            : {},
+        )
         await fulfill(price)
         return
       }
@@ -219,9 +221,7 @@ async function openDrawer(page: Page) {
   return dialog
 }
 
-test('renders the collection and canonicalizes invalid route query params', async ({
-  page,
-}) => {
+test('renders the collection and canonicalizes invalid route query params', async ({ page }) => {
   await mockModels(page)
   await page.goto('/models?group_status=junk&pricing_status=nope&page=0&selected_price_id=abc', {
     waitUntil: 'load',
@@ -229,9 +229,7 @@ test('renders the collection and canonicalizes invalid route query params', asyn
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/\/models$/)
 
-  await expect(
-    page.getByRole('heading', { name: 'Models', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Models', exact: true })).toBeVisible()
   const tree = page.getByRole('table', { name: 'Client models and upstream prices' })
   await expect(tree).toBeVisible()
   await expect(tree.getByText('gpt-4o', { exact: true })).toBeVisible()
@@ -239,19 +237,13 @@ test('renders the collection and canonicalizes invalid route query params', asyn
   await expect(tree.getByText('prod')).toBeVisible()
 })
 
-test('applies search and status filters through the route query', async ({
-  page,
-}) => {
+test('applies search and status filters through the route query', async ({ page }) => {
   const requests = await mockModels(page)
   await page.goto('/models', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(
-    page.getByRole('table', { name: 'Client models and upstream prices' }),
-  ).toBeVisible()
+  await expect(page.getByRole('table', { name: 'Client models and upstream prices' })).toBeVisible()
 
-  await page
-    .getByRole('textbox', { name: 'Search' })
-    .fill('claude')
+  await page.getByRole('textbox', { name: 'Search' }).fill('claude')
   await expect(page).toHaveURL(/[?&]q=claude/)
 
   await page.getByRole('combobox', { name: 'Pricing status' }).click()
@@ -313,9 +305,7 @@ test('asks for confirmation before marking a price unpriced', async ({ page }) =
   expect(requests.puts[0]?.confirm_unpriced).toBe(true)
 })
 
-test('blocks route navigation while the drawer has unsaved price edits', async ({
-  page,
-}) => {
+test('blocks route navigation while the drawer has unsaved price edits', async ({ page }) => {
   await mockModels(page)
   await page.goto('/models', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -365,9 +355,9 @@ test('access-key sessions get a read-only collection', async ({ page }) => {
   await expect(tree).toBeVisible()
   await expect(tree.getByText('gpt-4o-upstream', { exact: true }).first()).toBeVisible()
 
-  await expect(
-    page.getByRole('button', { name: 'Sync catalog and automatic prices' }),
-  ).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Sync catalog and automatic prices' })).toHaveCount(
+    0,
+  )
   await expect(
     page.getByRole('button', {
       name: 'View details and pricing for upstream model gpt-4o-upstream',

@@ -15,10 +15,9 @@ export function useSectionNavigation({
   ids,
   initialId,
   topOffset = 88,
-}: SectionNavigationOptions): Pick<
-  SectionNavigationController,
-  'selectSection'
-> & { activeSection: string } {
+}: SectionNavigationOptions): Pick<SectionNavigationController, 'selectSection'> & {
+  activeSection: string
+} {
   const [controller] = useState(() =>
     createSectionNavigationController({ ids, initialId, topOffset }),
   )
@@ -27,9 +26,10 @@ export function useSectionNavigation({
   useEffect(() => controller.updateIds(ids), [controller, ids])
   const [activeSection, setActiveSection] = useState(controller.getActiveSection())
 
-  useEffect(() => controller.subscribe(() => setActiveSection(controller.getActiveSection())), [
-    controller,
-  ])
+  useEffect(
+    () => controller.subscribe(() => setActiveSection(controller.getActiveSection())),
+    [controller],
+  )
   useEffect(() => controller.mount(), [controller])
   // Vue's onUpdated equivalent — re-sync the scrollspy after every render.
   useEffect(() => controller.notifyUpdated())

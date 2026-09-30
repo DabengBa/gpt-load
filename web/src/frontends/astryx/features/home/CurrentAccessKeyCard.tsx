@@ -8,11 +8,7 @@ import type {
   AccessKeyCostLimitRuleStatusDto,
 } from '@shared/control/types'
 import type { MessageId } from '@shared/i18n/message-ids'
-import {
-  formatInteger,
-  formatLocalInstant,
-  formatUSD,
-} from '@shared/lib/format'
+import { formatInteger, formatLocalInstant, formatUSD } from '@shared/lib/format'
 import { quotaProgressTone } from '@shared/lib/quota-progress'
 
 import { useT } from '../../app/i18n'
@@ -300,11 +296,7 @@ const ruleStateVariants = {
   exhausted: 'error',
 } as const
 
-export function CurrentAccessKeyCard({
-  accessKey,
-}: {
-  accessKey: AccessKeyCollectionItemDto
-}) {
+export function CurrentAccessKeyCard({ accessKey }: { accessKey: AccessKeyCollectionItemDto }) {
   const intl = useIntl()
   const t = useT()
 
@@ -373,9 +365,7 @@ export function CurrentAccessKeyCard({
         <div {...stylex.props(styles.title)}>
           <KeyRound {...stylex.props(styles.titleIcon)} size={16} aria-hidden="true" />
           <div>
-            <p {...stylex.props(styles.eyebrow)}>
-              {t('home.ledger.currentAccessKey.eyebrow')}
-            </p>
+            <p {...stylex.props(styles.eyebrow)}>{t('home.ledger.currentAccessKey.eyebrow')}</p>
             <h2 id="current-access-key-title" {...stylex.props(styles.name)}>
               {accessKey.name}
             </h2>
@@ -406,9 +396,7 @@ export function CurrentAccessKeyCard({
           <dd {...stylex.props(styles.factValue)}>{rpm}</dd>
         </div>
         <div {...stylex.props(styles.fact)}>
-          <dt {...stylex.props(styles.factTerm)}>
-            {t('home.ledger.currentAccessKey.protocols')}
-          </dt>
+          <dt {...stylex.props(styles.factTerm)}>{t('home.ledger.currentAccessKey.protocols')}</dt>
           <dd {...stylex.props(styles.factValue)}>
             <Tooltip content={protocols}>
               <span>{protocols}</span>
@@ -490,9 +478,7 @@ export function CurrentAccessKeyCard({
                   <div
                     {...stylex.props(
                       styles.limitProgress,
-                      tone === 'success'
-                        ? styles.limitProgressSuccess
-                        : limitProgressStyles[tone],
+                      tone === 'success' ? styles.limitProgressSuccess : limitProgressStyles[tone],
                     )}
                   >
                     <span

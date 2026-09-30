@@ -1,11 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import {
-  AlertDialog,
-  Button,
-  CodeBlock,
-  Selector,
-  TextInput,
-} from '@astryxdesign/core'
+import { AlertDialog, Button, CodeBlock, Selector, TextInput } from '@astryxdesign/core'
 import { Check, Copy, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
@@ -132,8 +126,7 @@ const styles = stylex.create({
     gap: 'var(--space-3)',
     flexWrap: 'wrap',
     borderRadius: 'var(--radius-tag)',
-    backgroundColor:
-      'color-mix(in srgb, var(--color-surface-sunken) 52%, var(--color-surface))',
+    backgroundColor: 'color-mix(in srgb, var(--color-surface-sunken) 52%, var(--color-surface))',
     paddingTop: 6,
     paddingBottom: 6,
     paddingInline: 10,
@@ -285,8 +278,7 @@ const styles = stylex.create({
   },
   guideCode: {
     flex: '1',
-    backgroundColor:
-      'color-mix(in srgb, var(--color-surface-sunken) 52%, var(--color-surface))',
+    backgroundColor: 'color-mix(in srgb, var(--color-surface-sunken) 52%, var(--color-surface))',
   },
   fields: {
     display: 'grid',
@@ -337,8 +329,7 @@ const styles = stylex.create({
     alignContent: 'start',
     margin: 0,
     borderRadius: 'var(--radius-tag)',
-    backgroundColor:
-      'color-mix(in srgb, var(--color-surface-sunken) 52%, var(--color-surface))',
+    backgroundColor: 'color-mix(in srgb, var(--color-surface-sunken) 52%, var(--color-surface))',
     paddingTop: 11,
     paddingBottom: 11,
     paddingInline: 13,
@@ -420,8 +411,7 @@ export function GatewayConnection({
   const tightViewport = useMediaQuery('(max-width: 560px)')
 
   const origin = useState(() => window.location.origin)[0]
-  const selectedKey =
-    accessKeys.find((accessKey) => accessKey.id === selectedAccessKeyID) ?? null
+  const selectedKey = accessKeys.find((accessKey) => accessKey.id === selectedAccessKeyID) ?? null
   const selectOptions = accessKeys.map((accessKey) => ({
     value: String(accessKey.id),
     label: `${accessKey.name} · ${accessKey.masked_key}`,
@@ -429,18 +419,13 @@ export function GatewayConnection({
   const currentClient =
     gatewayClients.find((candidate) => candidate.id === clientID) ?? gatewayClients[0]!
   const currentCCSwitchTarget =
-    ccSwitchTargets.find((candidate) => candidate.id === ccSwitchTargetID) ??
-    ccSwitchTargets[0]!
-  const currentRequiredProtocol = clientRequiredProtocol(
-    currentClient,
-    currentCCSwitchTarget,
-  )
+    ccSwitchTargets.find((candidate) => candidate.id === ccSwitchTargetID) ?? ccSwitchTargets[0]!
+  const currentRequiredProtocol = clientRequiredProtocol(currentClient, currentCCSwitchTarget)
   const selectedKeySupportsClient = Boolean(
     !currentRequiredProtocol || selectedKey?.protocols.includes(currentRequiredProtocol),
   )
   const quickImportAvailable = Boolean(currentClient.quickImport)
-  const quickImportRequiresModel =
-    clientID === 'cc-switch' && currentCCSwitchTarget.requiresModel
+  const quickImportRequiresModel = clientID === 'cc-switch' && currentCCSwitchTarget.requiresModel
   const quickImportReady =
     quickImportAvailable &&
     selectedKeySupportsClient &&
@@ -584,9 +569,7 @@ export function GatewayConnection({
   if (lastProtocols !== selectedProtocols) {
     setLastProtocols(selectedProtocols)
     const protocols = selectedProtocols ?? []
-    const currentTarget = ccSwitchTargets.find(
-      (candidate) => candidate.id === ccSwitchTargetID,
-    )
+    const currentTarget = ccSwitchTargets.find((candidate) => candidate.id === ccSwitchTargetID)
     if (!currentTarget || !protocols.includes(currentTarget.requiredProtocol)) {
       const supported = ccSwitchTargets.find((candidate) =>
         protocols.includes(candidate.requiredProtocol),
@@ -651,8 +634,7 @@ export function GatewayConnection({
     if (clientID === 'codex') {
       try {
         const result = await copy(maskedSnippet)
-        if (result === 'success')
-          controller.reportImmediate('configuration', 'success')
+        if (result === 'success') controller.reportImmediate('configuration', 'success')
       } catch {
         controller.reportImmediate('configuration', 'failure')
       }
@@ -679,10 +661,7 @@ export function GatewayConnection({
     })
   }
 
-  async function copyField(field: {
-    id: 'baseUrl' | 'apiKey'
-    secret?: boolean
-  }): Promise<void> {
+  async function copyField(field: { id: 'baseUrl' | 'apiKey'; secret?: boolean }): Promise<void> {
     if (!selectedKeySupportsClient) return
     if (!field.secret) {
       // Non-secret fields copy their displayed value directly — no reveal.
@@ -741,16 +720,11 @@ export function GatewayConnection({
 
   return (
     <section {...stylex.props(styles.section)} aria-labelledby="gateway-connection-title">
-      <HomeSectionHeading
-        id="gateway-connection-title"
-        title={t('home.ledger.connection.title')}
-      />
+      <HomeSectionHeading id="gateway-connection-title" title={t('home.ledger.connection.title')} />
 
       {selectedKey === null ? (
         <div {...stylex.props(styles.empty)}>
-          <p {...stylex.props(styles.emptyText)}>
-            {t('home.ledger.connection.noAccessKey')}
-          </p>
+          <p {...stylex.props(styles.emptyText)}>{t('home.ledger.connection.noAccessKey')}</p>
           {!selfScoped && (
             <RouteLink to={pagePath('accessKeys')} {...stylex.props(styles.createLink)}>
               {t('home.ledger.connection.createAccessKey')}
@@ -814,12 +788,8 @@ export function GatewayConnection({
           <div {...stylex.props(styles.panel)}>
             <header {...stylex.props(styles.panelHeader)}>
               <span {...stylex.props(styles.panelTitle)}>
-                <strong {...stylex.props(styles.panelTitleStrong)}>
-                  {clientLabel(clientID)}
-                </strong>
-                <span {...stylex.props(styles.panelTitleKind)}>
-                  {selectedClientKind(clientID)}
-                </span>
+                <strong {...stylex.props(styles.panelTitleStrong)}>{clientLabel(clientID)}</strong>
+                <span {...stylex.props(styles.panelTitleKind)}>{selectedClientKind(clientID)}</span>
               </span>
               {quickImportAvailable && (
                 <Button
@@ -858,8 +828,7 @@ export function GatewayConnection({
                           )}
                           type="button"
                           disabled={
-                            actionBusy ||
-                            !selectedKey.protocols.includes(target.requiredProtocol)
+                            actionBusy || !selectedKey.protocols.includes(target.requiredProtocol)
                           }
                           aria-pressed={target.id === ccSwitchTargetID}
                           onClick={() => selectCCSwitchTarget(target.id)}
@@ -868,9 +837,7 @@ export function GatewayConnection({
                             <ChannelIcon icon={target.icon} mark={target.mark} />
                           </span>
                           <span>
-                            {t(
-                              `home.ledger.connection.ccSwitchTargets.${target.id}` as MessageId,
-                            )}
+                            {t(`home.ledger.connection.ccSwitchTargets.${target.id}` as MessageId)}
                           </span>
                         </button>
                       ))}
@@ -880,8 +847,7 @@ export function GatewayConnection({
                   <div {...stylex.props(styles.ccSwitchModel)}>
                     <span {...stylex.props(styles.label)}>
                       {t('home.ledger.connection.primaryModel')}
-                      {quickImportRequiresModel &&
-                        ` · ${t('home.ledger.connection.required')}`}
+                      {quickImportRequiresModel && ` · ${t('home.ledger.connection.required')}`}
                     </span>
                     <TextInput
                       id="cc-switch-primary-model"
@@ -891,12 +857,9 @@ export function GatewayConnection({
                       value={ccSwitchModel}
                       onChange={setCcSwitchModel}
                       isDisabled={actionBusy}
-                      {...{ maxLength: 200, spellCheck: false } as const}
+                      {...({ maxLength: 200, spellCheck: false } as const)}
                       size="sm"
-                      xstyle={[
-                        styles.modelInput,
-                        tightViewport && styles.modelInputTight,
-                      ]}
+                      xstyle={[styles.modelInput, tightViewport && styles.modelInputTight]}
                     />
                   </div>
                 </div>
@@ -978,9 +941,7 @@ export function GatewayConnection({
                               size="sm"
                               isIconOnly
                               label={t('home.ledger.connection.copyField', {
-                                field: t(
-                                  `home.ledger.connection.fields.${field.id}` as MessageId,
-                                ),
+                                field: t(`home.ledger.connection.fields.${field.id}` as MessageId),
                               })}
                               icon={
                                 copySucceeded(field.id) ? (
@@ -1012,9 +973,7 @@ export function GatewayConnection({
                             {String(step).padStart(2, '0')}
                           </span>
                           <p {...stylex.props(styles.stepText)}>
-                            {t(
-                              `home.ledger.connection.steps.${clientID}.s${step}` as MessageId,
-                            )}
+                            {t(`home.ledger.connection.steps.${clientID}.s${step}` as MessageId)}
                           </p>
                         </li>
                       ),

@@ -59,17 +59,11 @@ test('empty pairs are skipped', () => {
 })
 
 test('stringify: null emits a bare key, undefined drops it', () => {
-  assert.equal(
-    stringifySharedRouteSearch({ a: null, b: undefined, c: 'x' }),
-    '?a&c=x',
-  )
+  assert.equal(stringifySharedRouteSearch({ a: null, b: undefined, c: 'x' }), '?a&c=x')
 })
 
 test('stringify: arrays repeat the key; numbers serialize', () => {
-  assert.equal(
-    stringifySharedRouteSearch({ page: 2, tag: ['a', 'b'] }),
-    '?page=2&tag=a&tag=b',
-  )
+  assert.equal(stringifySharedRouteSearch({ page: 2, tag: ['a', 'b'] }), '?page=2&tag=a&tag=b')
 })
 
 test('stringify encodes both key and value', () => {
@@ -77,8 +71,5 @@ test('stringify encodes both key and value', () => {
 })
 
 test('parse → stringify round-trip preserves the query', () => {
-  assert.equal(
-    stringifySharedRouteSearch(parseSharedRouteSearch('?q=a+b&x&x=2')),
-    '?q=a%20b&x&x=2',
-  )
+  assert.equal(stringifySharedRouteSearch(parseSharedRouteSearch('?q=a+b&x&x=2')), '?q=a%20b&x&x=2')
 })

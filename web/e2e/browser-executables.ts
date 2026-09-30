@@ -13,10 +13,7 @@ import { join } from 'node:path'
 // instead of silently running the bundled Chromium.
 
 const EXECUTABLE_CANDIDATES: Record<string, string[]> = {
-  win32: [
-    join('chrome-win64', 'chrome.exe'),
-    join('chrome-win', 'chrome.exe'),
-  ],
+  win32: [join('chrome-win64', 'chrome.exe'), join('chrome-win', 'chrome.exe')],
   linux: [join('chrome-linux64', 'chrome'), join('chrome-linux', 'chrome')],
   darwin: [
     join(

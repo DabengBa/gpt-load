@@ -3,11 +3,7 @@ import type { GatewayClientID } from '@shared/domain/home/gateway-clients'
 
 import { gatewayClients } from '@shared/domain/home/gateway-clients'
 
-import {
-  isCanonicalRouteQuery,
-  parsePositiveRouteInteger,
-  scalarRouteQuery,
-} from './route-query'
+import { isCanonicalRouteQuery, parsePositiveRouteInteger, scalarRouteQuery } from './route-query'
 
 export interface HomeRouteState {
   accessKeyID?: number
@@ -31,9 +27,6 @@ export function serializeHomeRouteQuery(state: HomeRouteState): SharedRouteQuery
   return query
 }
 
-export function isCanonicalHomeRouteQuery(
-  query: SharedRouteQuery,
-  state: HomeRouteState,
-): boolean {
+export function isCanonicalHomeRouteQuery(query: SharedRouteQuery, state: HomeRouteState): boolean {
   return isCanonicalRouteQuery(query, serializeHomeRouteQuery(state))
 }

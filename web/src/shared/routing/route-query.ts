@@ -4,7 +4,10 @@
 // Router re-validates the validated match.search, which carries numbers), so
 // parsers must accept them to stay idempotent.
 export type SharedRouteQueryValue = string | number | null | undefined
-export type SharedRouteQuery = Record<string, SharedRouteQueryValue | readonly SharedRouteQueryValue[]>
+export type SharedRouteQuery = Record<
+  string,
+  SharedRouteQueryValue | readonly SharedRouteQueryValue[]
+>
 export type SharedRouteQueryRaw = Record<
   string,
   SharedRouteQueryValue | number | (SharedRouteQueryValue | number)[]
@@ -12,13 +15,17 @@ export type SharedRouteQueryRaw = Record<
 
 const maxCollectionSearchCodePoints = 200
 
-export function scalarRouteQuery(value: SharedRouteQueryValue | readonly SharedRouteQueryValue[]): string | undefined {
+export function scalarRouteQuery(
+  value: SharedRouteQueryValue | readonly SharedRouteQueryValue[],
+): string | undefined {
   if (typeof value === 'string') return value
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   return undefined
 }
 
-export function parsePositiveRouteInteger(value: SharedRouteQueryValue | readonly SharedRouteQueryValue[]): number | undefined {
+export function parsePositiveRouteInteger(
+  value: SharedRouteQueryValue | readonly SharedRouteQueryValue[],
+): number | undefined {
   const candidate = scalarRouteQuery(value)
   if (candidate === undefined || !/^[1-9]\d*$/u.test(candidate)) return undefined
   const parsed = Number(candidate)
@@ -37,7 +44,10 @@ export function constrainCollectionSearch(value: string | undefined): string | u
   return Array.from(trimmed).slice(0, maxCollectionSearchCodePoints).join('')
 }
 
-export function isCanonicalRouteQuery(query: SharedRouteQuery, canonical: SharedRouteQueryRaw): boolean {
+export function isCanonicalRouteQuery(
+  query: SharedRouteQuery,
+  canonical: SharedRouteQueryRaw,
+): boolean {
   const actualKeys = Object.keys(query)
   const canonicalKeys = Object.keys(canonical)
   if (actualKeys.length !== canonicalKeys.length) return false
@@ -58,7 +68,9 @@ function sameRouteQueryValue(
   return actual === canonical
 }
 
-export function parsePositiveRouteIntegerList(value: SharedRouteQueryValue | readonly SharedRouteQueryValue[]): number[] {
+export function parsePositiveRouteIntegerList(
+  value: SharedRouteQueryValue | readonly SharedRouteQueryValue[],
+): number[] {
   const candidate = scalarRouteQuery(value)
   if (candidate === undefined || candidate === '') return []
 

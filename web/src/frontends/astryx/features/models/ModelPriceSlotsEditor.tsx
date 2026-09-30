@@ -53,7 +53,9 @@ export function ModelPriceSlotsEditor({
   const errorMessages = [
     ...new Set(
       modelPriceFields
-        .map((field) => (errors[field] ? t(`modelPrices.matrix.errors.${errors[field]}`) : undefined))
+        .map((field) =>
+          errors[field] ? t(`modelPrices.matrix.errors.${errors[field]}`) : undefined,
+        )
         .filter((message): message is string => Boolean(message)),
     ),
   ]

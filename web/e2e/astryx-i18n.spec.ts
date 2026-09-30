@@ -57,17 +57,13 @@ for (const { tag, settingsTitle } of locales) {
     const shell = page.locator('[data-testid="astryx-shell"]')
     await expect(shell).toBeVisible()
     await expect(page.locator('h1')).toHaveText(settingsTitle)
-    await expect.poll(() => page.evaluate(() => document.title)).toBe(
-      `${settingsTitle} · GPT-Load`,
-    )
+    await expect.poll(() => page.evaluate(() => document.title)).toBe(`${settingsTitle} · GPT-Load`)
     expect(await page.evaluate(() => document.documentElement.lang)).toBe(tag)
     expect(intlErrors).toEqual([])
   })
 }
 
-test('switching locale re-renders shell text and updates <html lang>', async ({
-  page,
-}) => {
+test('switching locale re-renders shell text and updates <html lang>', async ({ page }) => {
   await seedAuth(page)
   await page.goto('/settings', { waitUntil: 'load' })
   await expect(page.locator('h1')).toHaveText('Settings')

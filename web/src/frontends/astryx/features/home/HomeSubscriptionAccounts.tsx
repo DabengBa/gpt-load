@@ -25,18 +25,11 @@ const styles = stylex.create({
   },
 })
 
-export function HomeSubscriptionAccounts({
-  accounts,
-}: {
-  accounts: HomeSubscriptionAccountsDto
-}) {
+export function HomeSubscriptionAccounts({ accounts }: { accounts: HomeSubscriptionAccountsDto }) {
   const t = useT()
   if (accounts.items.length === 0) return null
   return (
-    <section
-      {...stylex.props(styles.section)}
-      aria-labelledby="home-subscription-accounts-title"
-    >
+    <section {...stylex.props(styles.section)} aria-labelledby="home-subscription-accounts-title">
       <HomeSectionHeading
         id="home-subscription-accounts-title"
         title={t('home.ledger.subscriptionAccounts.title')}

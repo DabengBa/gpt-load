@@ -1,12 +1,23 @@
 import * as stylex from '@stylexjs/stylex'
-import { Banner, Button, EmptyState, Pagination, Selector, Skeleton, TextInput } from '@astryxdesign/core'
+import {
+  Banner,
+  Button,
+  EmptyState,
+  Pagination,
+  Selector,
+  Skeleton,
+  TextInput,
+} from '@astryxdesign/core'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { KeyRound, Plus, Search, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 
-import { accessKeyCollectionQueryOptions, updateAccessKey } from '@shared/control/resources/access-keys'
+import {
+  accessKeyCollectionQueryOptions,
+  updateAccessKey,
+} from '@shared/control/resources/access-keys'
 import { channelsQueryOptions } from '@shared/control/resources/channels'
 import { groupOptionsQueryOptions } from '@shared/control/resources/groups'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
@@ -163,9 +174,13 @@ export function AccessKeysView() {
   }, [searchDraft])
   const debounce = useDebouncedAction(300)
 
-  const [createOperation, setCreateOperation] = useState<PendingAccessKeyCreateOperation | null>(null)
+  const [createOperation, setCreateOperation] = useState<PendingAccessKeyCreateOperation | null>(
+    null,
+  )
   const [editOperation, setEditOperation] = useState<PendingAccessKeyEditOperation | null>(null)
-  const [rotateOperation, setRotateOperation] = useState<PendingAccessKeyRotateOperation | null>(null)
+  const [rotateOperation, setRotateOperation] = useState<PendingAccessKeyRotateOperation | null>(
+    null,
+  )
   const [pendingStatusIDs, setPendingStatusIDs] = useState<ReadonlySet<number>>(new Set())
   const [deletionAnnouncement, setDeletionAnnouncement] = useState('')
   const statusControllersRef = useRef(new Map<number, AbortController>())
@@ -276,10 +291,7 @@ export function AccessKeysView() {
     if (requestedPage > lastPage) {
       void navigate({
         to: accessKeysPath,
-        search: serializeAccessKeyCollectionRouteQuery(
-          { ...filters, page: lastPage },
-          drawerRoute,
-        ),
+        search: serializeAccessKeyCollectionRouteQuery({ ...filters, page: lastPage }, drawerRoute),
         replace: true,
         resetScroll: false,
       })
@@ -484,10 +496,9 @@ export function AccessKeysView() {
       }
       if (!mountedRef.current) return
       toast.show({
-        message: t(
-          status === 'active' ? 'accessKeys.toast.enabled' : 'accessKeys.toast.disabled',
-          { name: accessKey.name },
-        ),
+        message: t(status === 'active' ? 'accessKeys.toast.enabled' : 'accessKeys.toast.disabled', {
+          name: accessKey.name,
+        }),
       })
     } finally {
       if (statusControllers.get(accessKey.id) === controller) {
@@ -515,11 +526,7 @@ export function AccessKeysView() {
         ] as const)
 
   return (
-    <section
-      ref={viewRootRef}
-      {...stylex.props(styles.page)}
-      aria-labelledby="access-keys-title"
-    >
+    <section ref={viewRootRef} {...stylex.props(styles.page)} aria-labelledby="access-keys-title">
       <div {...stylex.props(styles.sheet)} aria-busy={collectionBusy || undefined}>
         <div {...stylex.props(styles.headerRow)}>
           <h1 id="access-keys-title" {...stylex.props(styles.title)}>
@@ -556,14 +563,10 @@ export function AccessKeysView() {
             groupCatalogState={groupCatalogState}
             createOperation={createOperation}
             editOperation={
-              selected !== null && selected.id === editOperation?.base.id
-                ? editOperation
-                : null
+              selected !== null && selected.id === editOperation?.base.id ? editOperation : null
             }
             rotateOperation={
-              selected !== null && selected.id === rotateOperation?.base.id
-                ? rotateOperation
-                : null
+              selected !== null && selected.id === rotateOperation?.base.id ? rotateOperation : null
             }
             onCreateOperation={setCreateOperation}
             onEditOperation={setEditOperation}

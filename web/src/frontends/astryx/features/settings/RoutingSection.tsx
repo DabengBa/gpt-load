@@ -5,10 +5,7 @@ import { SettingRow } from '../../components/setting-chrome'
 import { useT } from '../../app/i18n'
 import { routeStrategies } from '@shared/control/types'
 import { formatInteger } from '@shared/lib/format'
-import {
-  isValidAffinityCapacity,
-  isValidTimeout,
-} from '@shared/domain/settings/settings-patch'
+import { isValidAffinityCapacity, isValidTimeout } from '@shared/domain/settings/settings-patch'
 import {
   numberText,
   SettingNumberInput,
@@ -140,7 +137,11 @@ export function RoutingSection(props: SettingsSectionProps) {
               value={numberText(draft.values[key])}
               label={t('settings.runtime.valueFor', { field: t(`settings.affinity.${key}`) })}
               error={numberFieldError(key)}
-              unit={key === 'affinity_ttl' ? t('settings.runtime.seconds') : t('settings.affinity.entries')}
+              unit={
+                key === 'affinity_ttl'
+                  ? t('settings.runtime.seconds')
+                  : t('settings.affinity.entries')
+              }
               max={key === 'affinity_ttl' ? '9223372036' : '1000000'}
               disabled={disabled}
               onChange={(value) =>

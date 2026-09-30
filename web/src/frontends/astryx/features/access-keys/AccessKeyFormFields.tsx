@@ -48,11 +48,7 @@ export function AccessKeyFormFields({
   const t = useT()
   const nameInputRef = useRef<HTMLInputElement | null>(null)
 
-  useImperativeHandle(
-    ref,
-    () => ({ focusName: () => nameInputRef.current?.focus() }),
-    [],
-  )
+  useImperativeHandle(ref, () => ({ focusName: () => nameInputRef.current?.focus() }), [])
 
   const priceMultiplierValid = isValidPriceMultiplier(priceMultiplier)
 
@@ -77,9 +73,7 @@ export function AccessKeyFormFields({
         onChange={onPriceMultiplierChange}
         autoComplete="off"
         {...decimalInputAttrs}
-        description={
-          priceMultiplierValid ? t('common.priceMultiplier.accessKeyHelp') : undefined
-        }
+        description={priceMultiplierValid ? t('common.priceMultiplier.accessKeyHelp') : undefined}
         status={
           priceMultiplierValid
             ? undefined

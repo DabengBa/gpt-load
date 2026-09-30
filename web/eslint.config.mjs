@@ -19,9 +19,7 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
-          patterns: [
-            { regex: '(^|/)frontends/' },
-          ],
+          patterns: [{ regex: '(^|/)frontends/' }],
         },
       ],
     },

@@ -1,4 +1,4 @@
-import { keepPreviousData , type QueryFunctionContext } from '@tanstack/query-core'
+import { keepPreviousData, type QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import { enabledDataProtocols, type ProtocolValue } from '@shared/control/protocols'
@@ -511,9 +511,7 @@ function projectRequestLogFeedback(record: Record<string, unknown>): RequestLogF
         ? null
         : projectEnum(record.feedback_status, feedbackStatuses),
     feedback_reason:
-      record.feedback_reason === null
-        ? null
-        : projectEnum(record.feedback_reason, feedbackReasons),
+      record.feedback_reason === null ? null : projectEnum(record.feedback_reason, feedbackReasons),
     provider_first_response_ms:
       record.provider_first_response_ms === null
         ? null
@@ -807,10 +805,7 @@ export function requestLogQueryOptions(
   }
 }
 
-export function requestLogDetailQueryOptions(
-  client: ApiClient,
-  requestID: string | undefined,
-) {
+export function requestLogDetailQueryOptions(client: ApiClient, requestID: string | undefined) {
   return {
     queryKey:
       requestID === undefined

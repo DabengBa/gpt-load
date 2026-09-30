@@ -243,9 +243,7 @@ export function LogsView() {
   const logsPath = pagePath('logs')
 
   const appliedFilterState = useMemo(() => parseAppliedLogFilterState(rawSearch), [rawSearch])
-  const invalidAffinityKey = isAccessKey
-    ? undefined
-    : appliedFilterState.invalidAffinityKey
+  const invalidAffinityKey = isAccessKey ? undefined : appliedFilterState.invalidAffinityKey
   const appliedFilters = useMemo(
     () =>
       isAccessKey
@@ -261,13 +259,10 @@ export function LogsView() {
 
   const [detailClosing, setDetailClosing] = useState(false)
   const [paginationPending, setPaginationPending] = useState(false)
-  const [pageTransitionOrigin, setPageTransitionOrigin] =
-    useState<LogsMonitorState | null>(null)
+  const [pageTransitionOrigin, setPageTransitionOrigin] = useState<LogsMonitorState | null>(null)
   const [draft, setDraft] = useState<LogFilterDraft>(() => createLogFilterDraft(appliedFilters))
   const [filterErrors, setFilterErrors] = useState<LogFilterErrors>(() =>
-    invalidAffinityKey !== undefined
-      ? { affinity_key: 'monitor.logs.errors.affinityKey' }
-      : {},
+    invalidAffinityKey !== undefined ? { affinity_key: 'monitor.logs.errors.affinityKey' } : {},
   )
   const detailFocusTimerRef = useRef<number | undefined>(undefined)
   const pendingDetailNavRef = useRef<Promise<unknown> | undefined>(undefined)
@@ -283,9 +278,7 @@ export function LogsView() {
     setAppliedSync(filterSignature)
     setDraft(createLogFilterDraft(appliedFilters))
     setFilterErrors(
-      invalidAffinityKey !== undefined
-        ? { affinity_key: 'monitor.logs.errors.affinityKey' }
-        : {},
+      invalidAffinityKey !== undefined ? { affinity_key: 'monitor.logs.errors.affinityKey' } : {},
     )
     setPaginationPending(false)
     setPageTransitionOrigin(null)
@@ -306,9 +299,7 @@ export function LogsView() {
     enabled: !isAccessKey,
     staleTime: 5 * 60 * 1_000,
   })
-  const accessKeyOptionsQuery = useQuery(
-    accessKeyOptionsQueryOptions(apiClient, !isAccessKey),
-  )
+  const accessKeyOptionsQuery = useQuery(accessKeyOptionsQueryOptions(apiClient, !isAccessKey))
   const logsQuery = useQuery({
     ...requestLogQueryOptions(apiClient, appliedFilters, currentCursor),
     enabled: invalidAffinityKey === undefined,
@@ -361,9 +352,7 @@ export function LogsView() {
     loading.refreshing ||
     (!isAccessKey && groupsQuery.data !== undefined && groupsQuery.isFetching) ||
     (!isAccessKey && channelsQuery.data !== undefined && channelsQuery.isFetching) ||
-    (!isAccessKey &&
-      accessKeyOptionsQuery.data !== undefined &&
-      accessKeyOptionsQuery.isFetching)
+    (!isAccessKey && accessKeyOptionsQuery.data !== undefined && accessKeyOptionsQuery.isFetching)
   const paginationBusy = paginationPending || logsQuery.isFetching
 
   const groupNames = useMemo<Record<number, string>>(
@@ -390,9 +379,7 @@ export function LogsView() {
   const advancedFilterKeys = isAccessKey
     ? allAdvancedFilterKeys.filter((key) => !accessKeyForbiddenFilterKeys.has(key))
     : allAdvancedFilterKeys
-  const advancedCount = advancedFilterKeys.filter(
-    (key) => appliedFilters[key] !== undefined,
-  ).length
+  const advancedCount = advancedFilterKeys.filter((key) => appliedFilters[key] !== undefined).length
   const hasNonTimeFilters = Object.keys(appliedFilters).some(
     (key) => key !== 'from_ms' && key !== 'to_ms' && key !== 'limit',
   )
@@ -407,7 +394,14 @@ export function LogsView() {
     }
     return values
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chipLabel reads t + option data
-  }, [appliedFilters, isAccessKey, groupsQuery.data, channelsQuery.data, accessKeyOptionsQuery.data, t])
+  }, [
+    appliedFilters,
+    isAccessKey,
+    groupsQuery.data,
+    channelsQuery.data,
+    accessKeyOptionsQuery.data,
+    t,
+  ])
 
   function chipLabel(key: keyof RequestLogFilters, value: unknown): string {
     if (key === 'access_key_id') {
@@ -417,9 +411,7 @@ export function LogsView() {
       })
     }
     if (key === 'channel_id') {
-      const channel = channelsQuery.data?.items.find(
-        ({ channel_id }) => channel_id === value,
-      )
+      const channel = channelsQuery.data?.items.find(({ channel_id }) => channel_id === value)
       return t('monitor.logs.filters.appliedChannel', {
         value: channel?.name ?? String(value),
       })
@@ -515,10 +507,7 @@ export function LogsView() {
     const liveFilters = isAccessKey
       ? scopeAccessKeyLogFilters(liveParsed.filters)
       : liveParsed.filters
-    const liveSignature = JSON.stringify([
-      serializeAppliedLogFilters(liveFilters),
-      liveInvalid,
-    ])
+    const liveSignature = JSON.stringify([serializeAppliedLogFilters(liveFilters), liveInvalid])
 
     const scoped = isAccessKey ? scopeAccessKeyLogFilters(filters) : filters
     const serialized = serializeAppliedLogFilters(scoped)
@@ -650,8 +639,7 @@ export function LogsView() {
   }
 
   const optionsPartiallyFailed =
-    !isAccessKey &&
-    (groupsQuery.isError || channelsQuery.isError || accessKeyOptionsQuery.isError)
+    !isAccessKey && (groupsQuery.isError || channelsQuery.isError || accessKeyOptionsQuery.isError)
   const listBlocked = invalidAffinityKey !== undefined
   const skeletonRows = loading.rows
 
@@ -663,67 +651,51 @@ export function LogsView() {
         </h1>
 
         <LogsFilterForm
-        draft={draft}
-        errors={filterErrors}
-        groups={groupsQuery.data ?? []}
-        channels={channelsQuery.data?.items ?? []}
-        accessKeys={accessKeyOptionsQuery.data ?? []}
-        groupsFailed={groupsQuery.isError}
-        channelsFailed={channelsQuery.isError}
-        accessKeysFailed={accessKeyOptionsQuery.isError}
-        appliedChips={appliedChips}
-        advancedCount={advancedCount}
-        advancedOpen={advancedOpen}
-        selfScoped={isAccessKey}
-        onAdvancedOpenChange={setAdvancedOpen}
-        onUpdateField={updateDraftField}
-        onRemoveFilter={removeFilter}
-        onApply={() => void applyFilters()}
-        onReset={() => void resetFilters()}
-      />
+          draft={draft}
+          errors={filterErrors}
+          groups={groupsQuery.data ?? []}
+          channels={channelsQuery.data?.items ?? []}
+          accessKeys={accessKeyOptionsQuery.data ?? []}
+          groupsFailed={groupsQuery.isError}
+          channelsFailed={channelsQuery.isError}
+          accessKeysFailed={accessKeyOptionsQuery.isError}
+          appliedChips={appliedChips}
+          advancedCount={advancedCount}
+          advancedOpen={advancedOpen}
+          selfScoped={isAccessKey}
+          onAdvancedOpenChange={setAdvancedOpen}
+          onUpdateField={updateDraftField}
+          onRemoveFilter={removeFilter}
+          onApply={() => void applyFilters()}
+          onReset={() => void resetFilters()}
+        />
 
-      {optionsPartiallyFailed && (
-        <Banner status="warning" title={t('monitor.logs.options.partialFailed')} />
-      )}
+        {optionsPartiallyFailed && (
+          <Banner status="warning" title={t('monitor.logs.options.partialFailed')} />
+        )}
 
-      <span aria-live="polite" {...stylex.props(styles.refreshing)}>
-        {logsRefreshing ? t('monitor.logs.loading') : ''}
-      </span>
+        <span aria-live="polite" {...stylex.props(styles.refreshing)}>
+          {logsRefreshing ? t('monitor.logs.loading') : ''}
+        </span>
 
-      {listBlocked || logsQuery.isPending || loading.initial ? (
-        !listBlocked && (
-          <div
-            role="status"
-            aria-label={t('monitor.logs.loading')}
-            {...stylex.props(styles.skeleton)}
-          >
-            {Array.from({ length: appliedFilters.limit ?? 20 }, (_, index) => (
-              <Skeleton key={index} height={52} radius={2} />
-            ))}
-          </div>
-        )
-      ) : logsQuery.isError && !logsQuery.data ? (
-        <div role="alert" {...stylex.props(styles.state)}>
-          <EmptyState
-            title={t('monitor.logs.loadFailed')}
-            icon={<TriangleAlert size={20} aria-hidden />}
-            actions={
-              <Button
-                variant="secondary"
-                size="sm"
-                label={t('common.retry')}
-                onClick={() => void logsQuery.refetch()}
-              />
-            }
-          />
-        </div>
-      ) : logsQuery.data ? (
-        <>
-          {logsQuery.isError && (
-            <Banner
-              status="warning"
-              title={t('monitor.logs.stale')}
-              endContent={
+        {listBlocked || logsQuery.isPending || loading.initial ? (
+          !listBlocked && (
+            <div
+              role="status"
+              aria-label={t('monitor.logs.loading')}
+              {...stylex.props(styles.skeleton)}
+            >
+              {Array.from({ length: appliedFilters.limit ?? 20 }, (_, index) => (
+                <Skeleton key={index} height={52} radius={2} />
+              ))}
+            </div>
+          )
+        ) : logsQuery.isError && !logsQuery.data ? (
+          <div role="alert" {...stylex.props(styles.state)}>
+            <EmptyState
+              title={t('monitor.logs.loadFailed')}
+              icon={<TriangleAlert size={20} aria-hidden />}
+              actions={
                 <Button
                   variant="secondary"
                   size="sm"
@@ -732,72 +704,86 @@ export function LogsView() {
                 />
               }
             />
-          )}
-          {loading.transition ? (
-            <div
-              role="status"
-              aria-label={t('monitor.logs.loading')}
-              {...stylex.props(styles.skeleton)}
-            >
-              {Array.from({ length: skeletonRows }, (_, index) => (
-                <Skeleton key={index} height={52} radius={2} />
-              ))}
-            </div>
-          ) : (
-            <>
-              {logs.length > 0 && (
-                <p {...stylex.props(styles.summary)} data-testid="logs-result-summary">
-                  {t('monitor.logs.resultSummary', { count: logs.length })}
-                </p>
-              )}
-              {logs.length > 0 ? (
-                <LogsTable
-                  logs={logs}
-                  isAccessKey={isAccessKey}
-                  groupNames={groupNames}
-                  groupProviderUrls={groupProviderUrls}
-                  groupsLoaded={groupsQuery.isSuccess}
-                  channelsByID={channelsByID}
-                  onFilterGroup={filterByGroup}
-                  onFilterCredential={filterByCredential}
-                  onFilterClientModel={filterByClientModel}
-                  onFilterAffinityKey={filterByAffinityKey}
-                  onOpenDetail={(id) => void setDetailOpen(id, true)}
-                />
-              ) : (
-                <EmptyState
-                  title={t(
-                    hasNonTimeFilters
-                      ? 'monitor.logs.empty.filteredTitle'
-                      : 'monitor.logs.empty.title',
-                  )}
-                  description={t(
-                    hasNonTimeFilters
-                      ? 'monitor.logs.empty.filteredDescription'
-                      : 'monitor.logs.empty.description',
-                  )}
-                  icon={<Search size={20} aria-hidden />}
-                />
-              )}
-              <LogsPagination
-                page={currentPage}
-                pageSize={appliedFilters.limit ?? 20}
-                hasPrevious={routeState.cursorHistory.length > 0}
-                hasNext={Boolean(logsQuery.data.next_cursor)}
-                busy={paginationBusy}
-                onPrevious={previousPage}
-                onNext={nextPage}
-                onPageSize={setPageSize}
+          </div>
+        ) : logsQuery.data ? (
+          <>
+            {logsQuery.isError && (
+              <Banner
+                status="warning"
+                title={t('monitor.logs.stale')}
+                endContent={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    label={t('common.retry')}
+                    onClick={() => void logsQuery.refetch()}
+                  />
+                }
               />
-            </>
-          )}
-        </>
-      ) : null}
+            )}
+            {loading.transition ? (
+              <div
+                role="status"
+                aria-label={t('monitor.logs.loading')}
+                {...stylex.props(styles.skeleton)}
+              >
+                {Array.from({ length: skeletonRows }, (_, index) => (
+                  <Skeleton key={index} height={52} radius={2} />
+                ))}
+              </div>
+            ) : (
+              <>
+                {logs.length > 0 && (
+                  <p {...stylex.props(styles.summary)} data-testid="logs-result-summary">
+                    {t('monitor.logs.resultSummary', { count: logs.length })}
+                  </p>
+                )}
+                {logs.length > 0 ? (
+                  <LogsTable
+                    logs={logs}
+                    isAccessKey={isAccessKey}
+                    groupNames={groupNames}
+                    groupProviderUrls={groupProviderUrls}
+                    groupsLoaded={groupsQuery.isSuccess}
+                    channelsByID={channelsByID}
+                    onFilterGroup={filterByGroup}
+                    onFilterCredential={filterByCredential}
+                    onFilterClientModel={filterByClientModel}
+                    onFilterAffinityKey={filterByAffinityKey}
+                    onOpenDetail={(id) => void setDetailOpen(id, true)}
+                  />
+                ) : (
+                  <EmptyState
+                    title={t(
+                      hasNonTimeFilters
+                        ? 'monitor.logs.empty.filteredTitle'
+                        : 'monitor.logs.empty.title',
+                    )}
+                    description={t(
+                      hasNonTimeFilters
+                        ? 'monitor.logs.empty.filteredDescription'
+                        : 'monitor.logs.empty.description',
+                    )}
+                    icon={<Search size={20} aria-hidden />}
+                  />
+                )}
+                <LogsPagination
+                  page={currentPage}
+                  pageSize={appliedFilters.limit ?? 20}
+                  hasPrevious={routeState.cursorHistory.length > 0}
+                  hasNext={Boolean(logsQuery.data.next_cursor)}
+                  busy={paginationBusy}
+                  onPrevious={previousPage}
+                  onNext={nextPage}
+                  onPageSize={setPageSize}
+                />
+              </>
+            )}
+          </>
+        ) : null}
 
         <LogDetailDrawer
-          open={
-            Boolean(selectedRequestID) && !detailClosing && invalidAffinityKey === undefined
-          }
+          open={Boolean(selectedRequestID) && !detailClosing && invalidAffinityKey === undefined}
           requestId={invalidAffinityKey === undefined ? selectedRequestID : undefined}
           selfScoped={isAccessKey}
           groupNames={groupNames}

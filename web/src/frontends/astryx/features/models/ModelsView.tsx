@@ -37,10 +37,7 @@ import { useDebouncedAction } from '../../app/use-debounced-action'
 import { useModelPriceSync } from '../../app/use-model-price-sync'
 import { useVisibleRefetch } from '../../app/use-visible-refetch'
 import { ModelTree } from './ModelTree'
-import {
-  ModelUpstreamDrawer,
-  type ModelUpstreamDrawerHandle,
-} from './ModelUpstreamDrawer'
+import { ModelUpstreamDrawer, type ModelUpstreamDrawerHandle } from './ModelUpstreamDrawer'
 
 const FILTER_MID = '@media (max-width: 980px)'
 const FILTER_NARROW = '@media (max-width: 680px)'
@@ -408,8 +405,7 @@ export function ModelsView() {
   async function openUpstream(upstream: ModelUpstreamDto): Promise<void> {
     if (isAccessKey) return
     if (upstream.price.id === activePriceID && drawerOpen) return
-    if (drawerOpen && drawerRef.current && !(await drawerRef.current.confirmDiscardSwitch()))
-      return
+    if (drawerOpen && drawerRef.current && !(await drawerRef.current.confirmDiscardSwitch())) return
     drawerRef.current?.discardChanges()
     navigateState({ selectedPriceID: upstream.price.id })
   }
@@ -645,9 +641,7 @@ export function ModelsView() {
                 </div>
               ) : data.pagination.total_items === 0 ? (
                 <EmptyState
-                  title={
-                    hasConditions ? t('models.empty.noResultsTitle') : t('models.empty.title')
-                  }
+                  title={hasConditions ? t('models.empty.noResultsTitle') : t('models.empty.title')}
                   description={
                     hasConditions
                       ? t('models.empty.noResultsDescription')

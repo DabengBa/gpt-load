@@ -2,21 +2,12 @@ import { InternationalizationProvider } from '@astryxdesign/core/i18n'
 import astryxJaJP from '@astryxdesign/core/locales/ja-JP.json'
 import astryxZhCN from '@astryxdesign/core/locales/zh-CN.json'
 import { useCallback, useSyncExternalStore, type ReactNode } from 'react'
-import {
-  IntlProvider,
-  useIntl,
-  type IntlConfig,
-  type PrimitiveType,
-} from 'react-intl'
+import { IntlProvider, useIntl, type IntlConfig, type PrimitiveType } from 'react-intl'
 
 import { catalogLoader, flattenMessages } from '@shared/i18n/catalogs'
 import type { MessageId } from '@shared/i18n/message-ids'
 import type { MessageNamespace } from '@shared/i18n/namespaces'
-import {
-  getBrowserLocale,
-  localeStorageKey,
-  type AppLocale,
-} from '@shared/preferences/locale'
+import { getBrowserLocale, localeStorageKey, type AppLocale } from '@shared/preferences/locale'
 
 export interface I18nSnapshot {
   readonly locale: AppLocale
@@ -127,9 +118,7 @@ export async function createAppI18n(): Promise<AppI18n> {
     },
     async ensureNamespaces(namespaces) {
       for (const namespace of namespaces) namespacesToLoad.add(namespace)
-      await Promise.all(
-        namespaces.map((namespace) => ensureMerged(snapshot.locale, namespace)),
-      )
+      await Promise.all(namespaces.map((namespace) => ensureMerged(snapshot.locale, namespace)))
     },
   }
 }
@@ -139,13 +128,7 @@ const astryxCatalogs = {
   'ja-JP': astryxJaJP,
 }
 
-export function AppI18nProviders({
-  i18n,
-  children,
-}: {
-  i18n: AppI18n
-  children: ReactNode
-}) {
+export function AppI18nProviders({ i18n, children }: { i18n: AppI18n; children: ReactNode }) {
   const snap = useSyncExternalStore(i18n.subscribe, i18n.getSnapshot)
   return (
     <IntlProvider
@@ -170,8 +153,7 @@ export type TValues = Record<string, PrimitiveType>
 export function useT() {
   const intl = useIntl()
   return useCallback(
-    (id: MessageId, values?: TValues): string =>
-      intl.formatMessage({ id }, values) as string,
+    (id: MessageId, values?: TValues): string => intl.formatMessage({ id }, values) as string,
     [intl],
   )
 }

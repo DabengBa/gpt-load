@@ -1,4 +1,9 @@
-import { keepPreviousData, type QueryClient, type QueryKey , type QueryFunctionContext } from '@tanstack/query-core'
+import {
+  keepPreviousData,
+  type QueryClient,
+  type QueryKey,
+  type QueryFunctionContext,
+} from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import { enabledDataProtocols } from '@shared/control/protocols'

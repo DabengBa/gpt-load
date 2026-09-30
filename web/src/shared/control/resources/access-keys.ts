@@ -1,4 +1,4 @@
-import { keepPreviousData , type QueryFunctionContext } from '@tanstack/query-core'
+import { keepPreviousData, type QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import type {
@@ -403,17 +403,15 @@ export function accessKeyCollectionQueryOptions(
   const key = controlQueryKeys.accessKeys.collection(filters)
   return {
     queryKey: key,
-    queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) => listAccessKeyCollection(client, queryKey[3], signal),
+    queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) =>
+      listAccessKeyCollection(client, queryKey[3], signal),
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   }
 }
 
-export function accessKeyOptionsQueryOptions(
-  client: ApiClient,
-  enabled: boolean = true,
-) {
+export function accessKeyOptionsQueryOptions(client: ApiClient, enabled: boolean = true) {
   return {
     queryKey: controlQueryKeys.accessKeys.options(),
     queryFn: ({ signal }: QueryFunctionContext) => listAccessKeyOptions(client, signal),

@@ -177,8 +177,7 @@ export function createSettingsDraftController(
   return {
     getBase: () => base,
     getDraft: () => draft,
-    getPatch: () =>
-      base && draft ? buildSettingsPatch(base.settings, draft, 'all') : {},
+    getPatch: () => (base && draft ? buildSettingsPatch(base.settings, draft, 'all') : {}),
     isDirty,
     isValid,
     isPending: () => pending,

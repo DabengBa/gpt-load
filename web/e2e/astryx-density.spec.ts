@@ -24,9 +24,10 @@ async function openLogin(page: Page) {
 async function computedVar(page: Page, name: string) {
   return page.evaluate(
     ([scopeSelector, varName]) => {
-      const scope =
-        document.querySelector(scopeSelector) ?? document.documentElement
-      return getComputedStyle(scope).getPropertyValue(varName as string).trim()
+      const scope = document.querySelector(scopeSelector) ?? document.documentElement
+      return getComputedStyle(scope)
+        .getPropertyValue(varName as string)
+        .trim()
     },
     [THEMED_SCOPE, name],
   )
@@ -56,9 +57,7 @@ test('theme emits the classic density tokens', async ({ page }) => {
   }
   // Spacing base: the Astryx spacing unit must stay the classic 4px grid.
   const spacing = await page.evaluate(() =>
-    getComputedStyle(document.documentElement)
-      .getPropertyValue('--spacing-1')
-      .trim(),
+    getComputedStyle(document.documentElement).getPropertyValue('--spacing-1').trim(),
   )
   expect(spacing).toBe('4px')
 })
@@ -67,20 +66,14 @@ test('rendered shell controls hold compact metrics', async ({ page }) => {
   await openLogin(page)
   // Preferences IconButton is a size-md control: classic --control-sm 34px.
   const trigger = page.locator('.preferences-trigger')
-  const height = await trigger.evaluate(
-    (el) => el.getBoundingClientRect().height,
-  )
+  const height = await trigger.evaluate((el) => el.getBoundingClientRect().height)
   expect(Math.abs(height - 34)).toBeLessThanOrEqual(1)
   // Body text on the shell.
   const main = page.getByTestId('astryx-shell')
-  const fontSize = await main.evaluate(
-    (el) => getComputedStyle(el).fontSize,
-  )
+  const fontSize = await main.evaluate((el) => getComputedStyle(el).fontSize)
   expect(fontSize).toBe('13.5px')
   // Radius reaching a component: classic --radius-control 7px.
-  const radius = await trigger.evaluate(
-    (el) => getComputedStyle(el).borderRadius,
-  )
+  const radius = await trigger.evaluate((el) => getComputedStyle(el).borderRadius)
   expect(radius).toBe('7px')
 })
 
@@ -98,9 +91,7 @@ test('narrow viewport keeps 44px touch targets', async ({ page }) => {
   ).toBeGreaterThanOrEqual(43)
 })
 
-test('compact table row height on the groups collection', async ({
-  page,
-}) => {
+test('compact table row height on the groups collection', async ({ page }) => {
   // Minimal groups fixture — the row-height measurement only needs the
   // collection to render real rows.
   await page.addInitScript((key) => {
@@ -156,8 +147,5 @@ test('compact table row height on the groups collection', async ({
   await expect(row).toBeVisible()
   const height = await row.evaluate((el) => el.getBoundingClientRect().height)
   // Classic --collection-row-height: 48px via Table density="balanced".
-  expect(
-    Math.abs(height - 48),
-    `table row height ${height}px`,
-  ).toBeLessThanOrEqual(1)
+  expect(Math.abs(height - 48), `table row height ${height}px`).toBeLessThanOrEqual(1)
 })

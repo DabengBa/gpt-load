@@ -378,7 +378,11 @@ export function ModelUpstreamDrawer({
       }
     >
       {(isOpen && detailQuery.isPending) || initialLoading ? (
-        <div {...stylex.props(styles.skeletonStack)} role="status" aria-label={t('models.drawer.loading')}>
+        <div
+          {...stylex.props(styles.skeletonStack)}
+          role="status"
+          aria-label={t('models.drawer.loading')}
+        >
           <Skeleton height={28} radius={2} />
           <Skeleton height={64} radius={2} />
           <Skeleton height={120} radius={2} />

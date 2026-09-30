@@ -1,4 +1,4 @@
-import { keepPreviousData , type QueryFunctionContext } from '@tanstack/query-core'
+import { keepPreviousData, type QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import { ApiError, InvalidResponseError } from '@shared/http/errors'
@@ -346,14 +346,12 @@ export async function listModelPrices(
   return result
 }
 
-export function modelPriceCollectionQueryOptions(
-  client: ApiClient,
-  filters: ModelPriceFilters,
-) {
+export function modelPriceCollectionQueryOptions(client: ApiClient, filters: ModelPriceFilters) {
   const key = controlQueryKeys.modelPriceCollection(normalizeModelPriceFilters(filters))
   return {
     queryKey: key,
-    queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) => listModelPrices(client, queryKey[3], signal),
+    queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) =>
+      listModelPrices(client, queryKey[3], signal),
     placeholderData: keepPreviousData,
   }
 }

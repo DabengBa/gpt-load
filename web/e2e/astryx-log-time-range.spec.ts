@@ -93,7 +93,9 @@ test('typed range applies to the request, reset restores the default window (en-
     .poll(() => logRequests.length, { message: 'reset should issue a request' })
     .toBeGreaterThan(requestCount + 1)
   const reset = logRequests.at(-1)!
-  expect(Number(reset.searchParams.get('to_ms')) - Number(reset.searchParams.get('from_ms'))).toBeGreaterThan(47 * 60 * 60 * 1000)
+  expect(
+    Number(reset.searchParams.get('to_ms')) - Number(reset.searchParams.get('from_ms')),
+  ).toBeGreaterThan(47 * 60 * 60 * 1000)
   await expect(detailButtons(page)).toHaveCount(1)
 })
 
@@ -110,7 +112,10 @@ test('zh-CN renders localized field and DS strings; a preset chip applies the ra
   await expect(page.getByRole('group', { name: '快捷时间范围' })).toBeVisible()
 
   const requestCount = logRequests.length
-  await page.getByRole('group', { name: '快捷时间范围' }).getByRole('button', { name: '7d' }).click()
+  await page
+    .getByRole('group', { name: '快捷时间范围' })
+    .getByRole('button', { name: '7d' })
+    .click()
 
   // Classic parity: a preset writes the from/to draft only — the request
   // waits for Apply.
@@ -123,7 +128,8 @@ test('zh-CN renders localized field and DS strings; a preset chip applies the ra
     .poll(() => logRequests.length, { message: 'apply should issue a request' })
     .toBe(requestCount + 1)
   const applied = logRequests.at(-1)!
-  const span = Number(applied.searchParams.get('to_ms')) - Number(applied.searchParams.get('from_ms'))
+  const span =
+    Number(applied.searchParams.get('to_ms')) - Number(applied.searchParams.get('from_ms'))
   expect(span).toBeGreaterThan(6.9 * DAY_MS)
   expect(span).toBeLessThan(7.1 * DAY_MS)
   await expect(detailButtons(page)).toHaveCount(2)

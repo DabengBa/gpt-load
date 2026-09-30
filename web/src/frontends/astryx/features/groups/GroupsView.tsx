@@ -43,10 +43,7 @@ import type {
   GroupCollectionSort,
   GroupCollectionStatus,
 } from '@shared/control/types'
-import {
-  applyInvalidationPlan,
-  mutationInvalidationPlans,
-} from '@shared/control/invalidation'
+import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import {
   cacheGroupSettings,
   copyGroup,
@@ -269,7 +266,8 @@ const styles = stylex.create({
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: 'var(--color-warning)',
-    backgroundColor: 'var(--color-warning-bg, color-mix(in srgb, var(--color-warning) 12%, transparent))',
+    backgroundColor:
+      'var(--color-warning-bg, color-mix(in srgb, var(--color-warning) 12%, transparent))',
     color: 'var(--color-text)',
     padding: '9px 12px',
     display: 'flex',
@@ -367,9 +365,7 @@ function groupEnabled(
   return optimistic.get(group.id) ?? group.status !== 'disabled'
 }
 
-function statusBadgeVariant(
-  status: GroupCollectionStatus,
-): 'success' | 'error' | 'neutral' {
+function statusBadgeVariant(status: GroupCollectionStatus): 'success' | 'error' | 'neutral' {
   return status === 'available' ? 'success' : status === 'unavailable' ? 'error' : 'neutral'
 }
 
@@ -447,7 +443,12 @@ export function GroupsView() {
   const isPlaceholder = groupsQuery.isPlaceholderData
   useEffect(() => {
     if (pathname !== groupsPath) return
-    if (!isPlaceholder && totalPages !== undefined && totalPages > 0 && requestedPage > totalPages) {
+    if (
+      !isPlaceholder &&
+      totalPages !== undefined &&
+      totalPages > 0 &&
+      requestedPage > totalPages
+    ) {
       void navigate({
         to: groupsPath,
         search: serializeGroupCollectionRouteQuery({ ...filters, page: totalPages }),
@@ -615,9 +616,7 @@ export function GroupsView() {
   }
 
   const hasFilterCriteria =
-    filters.q !== undefined ||
-    filters.status !== undefined ||
-    filters.connection_type !== undefined
+    filters.q !== undefined || filters.status !== undefined || filters.connection_type !== undefined
   const hasChangedConditions = hasFilterCriteria || filters.sort !== 'recent'
   const collectionBusy = data !== undefined && groupsQuery.isFetching
   const {
@@ -741,9 +740,7 @@ export function GroupsView() {
           return (
             <span {...stylex.props(styles.channelCell)}>
               <span {...stylex.props(styles.channelHeading)}>
-                {channel !== undefined && (
-                  <ChannelIcon icon={channel.icon} mark={channel.mark} />
-                )}
+                {channel !== undefined && <ChannelIcon icon={channel.icon} mark={channel.mark} />}
                 <span {...stylex.props(styles.channelName)} title={channelName(group.channel_id)}>
                   {channelName(group.channel_id)}
                 </span>

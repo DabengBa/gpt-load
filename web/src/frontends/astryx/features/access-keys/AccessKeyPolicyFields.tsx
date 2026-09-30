@@ -1,10 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import {
-  DateTimeInput,
-  Selector,
-  TextArea,
-  type ISODateTimeString,
-} from '@astryxdesign/core'
+import { DateTimeInput, Selector, TextArea, type ISODateTimeString } from '@astryxdesign/core'
 
 import { useState } from 'react'
 
@@ -123,9 +118,8 @@ export function AccessKeyPolicyFields({
     return undefined
   })()
   const cidrInput = allowedCidrs.join('\n')
-  const normalizedCIDRCount = new Set(
-    allowedCidrs.map((value) => value.trim()).filter(Boolean),
-  ).size
+  const normalizedCIDRCount = new Set(allowedCidrs.map((value) => value.trim()).filter(Boolean))
+    .size
   const cidrError = (() => {
     if (sourceMode !== 'restricted') return undefined
     if (normalizedCIDRCount === 0) return t('accessKeys.drawer.sourceRequired')
@@ -187,35 +181,21 @@ export function AccessKeyPolicyFields({
             timezone: currentTimeZone(),
           })}
           status={
-            expirationError !== undefined
-              ? { type: 'error', message: expirationError }
-              : undefined
+            expirationError !== undefined ? { type: 'error', message: expirationError } : undefined
           }
           size="sm"
           hasSeconds
           isDisabled={disabled}
-          value={
-            expirationInput === ''
-              ? undefined
-              : (expirationInput as ISODateTimeString)
-          }
-          min={
-            minimumExpiration === ''
-              ? undefined
-              : (minimumExpiration as ISODateTimeString)
-          }
+          value={expirationInput === '' ? undefined : (expirationInput as ISODateTimeString)}
+          min={minimumExpiration === '' ? undefined : (minimumExpiration as ISODateTimeString)}
           onChange={setExpiration}
         />
       )}
 
       <div {...stylex.props(styles.row)}>
         <div>
-          <strong {...stylex.props(styles.rowLabelTitle)}>
-            {t('accessKeys.drawer.sourceIP')}
-          </strong>
-          <p {...stylex.props(styles.rowLabelText)}>
-            {t('accessKeys.drawer.sourceIPDescription')}
-          </p>
+          <strong {...stylex.props(styles.rowLabelTitle)}>{t('accessKeys.drawer.sourceIP')}</strong>
+          <p {...stylex.props(styles.rowLabelText)}>{t('accessKeys.drawer.sourceIPDescription')}</p>
         </div>
         <Selector
           label={t('accessKeys.drawer.sourceIP')}
@@ -233,11 +213,7 @@ export function AccessKeyPolicyFields({
           <TextArea
             label={t('accessKeys.drawer.allowedCIDRs')}
             description={t('accessKeys.drawer.allowedCIDRsDescription')}
-            status={
-              cidrError !== undefined
-                ? { type: 'error', message: cidrError }
-                : undefined
-            }
+            status={cidrError !== undefined ? { type: 'error', message: cidrError } : undefined}
             value={cidrInput}
             rows={4}
             placeholder={t('accessKeys.drawer.allowedCIDRsPlaceholder')}
@@ -247,9 +223,7 @@ export function AccessKeyPolicyFields({
             xstyle={styles.cidrField}
             onChange={setCIDRs}
           />
-          <p {...stylex.props(styles.cidrWarning)}>
-            {t('accessKeys.drawer.proxyIPWarning')}
-          </p>
+          <p {...stylex.props(styles.cidrWarning)}>{t('accessKeys.drawer.proxyIPWarning')}</p>
         </div>
       )}
     </div>

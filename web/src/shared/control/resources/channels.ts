@@ -1,4 +1,4 @@
-import { keepPreviousData , type QueryFunctionContext } from '@tanstack/query-core'
+import { keepPreviousData, type QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import { enabledDataProtocols } from '@shared/control/protocols'
@@ -323,7 +323,8 @@ export function channelsQueryOptions(client: ApiClient, search: string) {
   const key = controlQueryKeys.channels.list(normalizeChannelSearch(search))
   return {
     queryKey: key,
-    queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) => listChannels(client, queryKey[3], signal),
+    queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) =>
+      listChannels(client, queryKey[3], signal),
     staleTime: 5 * 60 * 1_000,
     placeholderData: keepPreviousData,
   }

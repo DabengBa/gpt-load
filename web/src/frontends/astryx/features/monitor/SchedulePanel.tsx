@@ -16,10 +16,7 @@ import type { ScheduleDrafts } from '@shared/routing/monitor-route'
 import { useAppServices } from '../../app/services'
 import { ModelProbeDialog } from '../models/ModelProbeDialog'
 import { useModelProbe } from '../models/use-model-probe'
-import {
-  SchedulePanelDetail,
-  type SchedulePanelDetailLabels,
-} from './SchedulePanelDetail'
+import { SchedulePanelDetail, type SchedulePanelDetailLabels } from './SchedulePanelDetail'
 
 export interface SchedulePanelLabels {
   model: string
@@ -103,9 +100,7 @@ export function SchedulePanel({
 
   const indexQuery = useQuery(modelRouteScheduleIndexQueryOptions(apiClient))
   const indexItems: ModelRouteScheduleIndexItemDto[] = indexQuery.data?.items ?? []
-  const selectedIndexItem = indexItems.find(
-    (item) => item.external_model === selectedModel,
-  )
+  const selectedIndexItem = indexItems.find((item) => item.external_model === selectedModel)
   const detailRequest = selectedIndexItem
     ? {
         protocol: selectedIndexItem.protocol,
@@ -113,9 +108,7 @@ export function SchedulePanel({
         operation: selectedIndexItem.operation,
       }
     : undefined
-  const detailQuery = useQuery(
-    modelRouteScheduleDetailQueryOptions(apiClient, detailRequest),
-  )
+  const detailQuery = useQuery(modelRouteScheduleDetailQueryOptions(apiClient, detailRequest))
 
   const modelOptions = [
     { value: '', label: labels.selectModel ?? '' },
@@ -171,10 +164,7 @@ export function SchedulePanel({
     })
   }
 
-  function probeRows(
-    targets: ModelProbeTargetDto[],
-    disabledGroupIds: number[],
-  ): void {
+  function probeRows(targets: ModelProbeTargetDto[], disabledGroupIds: number[]): void {
     void probe.start(targets, { disabledGroupIds })
   }
 
@@ -227,11 +217,7 @@ export function SchedulePanel({
 
       <SchedulePanelDetail
         detail={detailQuery.data}
-        loading={
-          detailQuery.isPending &&
-          detailQuery.data === undefined &&
-          Boolean(detailRequest)
-        }
+        loading={detailQuery.isPending && detailQuery.data === undefined && Boolean(detailRequest)}
         error={detailRequest && detailQuery.data === undefined ? detailError : ''}
         stale={detailQuery.isRefetchError}
         locale={locale}

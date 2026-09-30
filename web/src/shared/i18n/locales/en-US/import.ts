@@ -221,8 +221,7 @@ export default {
       placeholders: {
         azure: '{example} or {exampleAlt}',
         bedrock: '{example} or {exampleAlt}',
-        vertex:
-          'Paste a Google Cloud service-account JSON object, or use {example}',
+        vertex: 'Paste a Google Cloud service-account JSON object, or use {example}',
       },
       storageNotice:
         'Plaintext is never put in URLs, logs, or notifications; a login interruption keeps it in this session for at most 15 minutes',

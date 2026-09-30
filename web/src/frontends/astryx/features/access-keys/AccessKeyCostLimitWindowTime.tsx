@@ -9,10 +9,6 @@ import { CostLimitWindowTime } from '../home/CostLimitWindowTime'
  * and prop surface (`rule`) identical to the Vue component without duplicating
  * the implementation.
  */
-export function AccessKeyCostLimitWindowTime({
-  rule,
-}: {
-  rule: AccessKeyCostLimitRuleStatusDto
-}) {
+export function AccessKeyCostLimitWindowTime({ rule }: { rule: AccessKeyCostLimitRuleStatusDto }) {
   return <CostLimitWindowTime rule={rule} />
 }

@@ -7,12 +7,7 @@ import type { GatewayClientID } from '@shared/domain/home/gateway-clients'
 // only `getSnapshot()` — React Compiler can freeze stable-reference method
 // calls, so plain field getters are intentionally absent.
 
-export type GatewayActionTarget =
-  | 'key'
-  | 'configuration'
-  | 'quick-import'
-  | 'baseUrl'
-  | 'apiKey'
+export type GatewayActionTarget = 'key' | 'configuration' | 'quick-import' | 'baseUrl' | 'apiKey'
 
 export type GatewayActionKind = 'success' | 'failure' | 'popup-blocked'
 
@@ -71,10 +66,7 @@ export interface GatewayActionsController {
    */
   withRevealedKey(
     target: GatewayActionTarget,
-    operation: (
-      key: string,
-      isCurrent: () => boolean,
-    ) => Promise<GatewayCopyOutcome | void> | void,
+    operation: (key: string, isCurrent: () => boolean) => Promise<GatewayCopyOutcome | void> | void,
   ): Promise<boolean>
   dispose(): void
 }
@@ -125,9 +117,7 @@ export function createGatewayActionsController(
     controller: AbortController,
   ): boolean {
     return (
-      identityMatches(identity) &&
-      actionController === controller &&
-      !controller.signal.aborted
+      identityMatches(identity) && actionController === controller && !controller.signal.aborted
     )
   }
 
@@ -164,10 +154,7 @@ export function createGatewayActionsController(
 
   async function withRevealedKey(
     target: GatewayActionTarget,
-    operation: (
-      key: string,
-      isCurrent: () => boolean,
-    ) => Promise<GatewayCopyOutcome | void> | void,
+    operation: (key: string, isCurrent: () => boolean) => Promise<GatewayCopyOutcome | void> | void,
   ): Promise<boolean> {
     if (
       input.selectedAccessKeyID === null ||

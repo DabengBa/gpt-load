@@ -18,15 +18,12 @@ export function useVisibleRefetch(
       const hidden = document.hidden
       if (wasHidden && !hidden) {
         void Promise.allSettled(
-          refetchersRef.current.map((refetch) =>
-            Promise.resolve().then(() => refetch()),
-          ),
+          refetchersRef.current.map((refetch) => Promise.resolve().then(() => refetch())),
         )
       }
       wasHidden = hidden
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () =>
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 }

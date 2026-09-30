@@ -239,9 +239,7 @@ export function GroupSettingsBaseForm({
                   </span>
                   <TextInput
                     label={
-                      field.key === 'base_url'
-                        ? t('group.settings.base.upstreamUrl')
-                        : field.label
+                      field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label
                     }
                     isLabelHidden
                     type="text"
@@ -277,9 +275,7 @@ export function GroupSettingsBaseForm({
             xstyle={styles.mono}
           />
         </label>
-        {unified && headerActionsTarget
-          ? createPortal(switchRow, headerActionsTarget)
-          : switchRow}
+        {unified && headerActionsTarget ? createPortal(switchRow, headerActionsTarget) : switchRow}
       </div>
     </section>
   )

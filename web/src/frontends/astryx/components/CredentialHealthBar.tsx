@@ -79,10 +79,30 @@ export function CredentialHealthBar({
   const n = (value: number) => intl.formatNumber(value)
 
   const segments = [
-    { key: 'available', value: normalized.available, style: styles.available, icon: <CircleCheck size={12} /> },
-    { key: 'cooldown', value: normalized.cooldown, style: styles.cooldown, icon: <Clock3 size={12} /> },
-    { key: 'blacklisted', value: normalized.blacklisted, style: styles.blacklisted, icon: <Ban size={12} /> },
-    { key: 'disabled', value: normalized.disabled, style: styles.disabled, icon: <CirclePause size={12} /> },
+    {
+      key: 'available',
+      value: normalized.available,
+      style: styles.available,
+      icon: <CircleCheck size={12} />,
+    },
+    {
+      key: 'cooldown',
+      value: normalized.cooldown,
+      style: styles.cooldown,
+      icon: <Clock3 size={12} />,
+    },
+    {
+      key: 'blacklisted',
+      value: normalized.blacklisted,
+      style: styles.blacklisted,
+      icon: <Ban size={12} />,
+    },
+    {
+      key: 'disabled',
+      value: normalized.disabled,
+      style: styles.disabled,
+      icon: <CirclePause size={12} />,
+    },
   ] as const
 
   return (

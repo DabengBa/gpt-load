@@ -202,10 +202,7 @@ export function SectionNav({
   }
 
   return (
-    <nav
-      {...stylex.props(styles.nav, ledger && styles.navLedger)}
-      aria-label={label}
-    >
+    <nav {...stylex.props(styles.nav, ledger && styles.navLedger)} aria-label={label}>
       <div {...stylex.props(styles.mobile, ledger && styles.mobileLedger)}>
         <button
           {...stylex.props(styles.toggle)}

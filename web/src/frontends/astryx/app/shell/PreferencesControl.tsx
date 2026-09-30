@@ -126,11 +126,7 @@ function Segments<T extends string>({
   return (
     <div {...stylex.props(styles.group)}>
       <span {...stylex.props(styles.label)}>{label}</span>
-      <div
-        {...stylex.props(styles.segments, styles.segmentsThree)}
-        role="group"
-        aria-label={label}
-      >
+      <div {...stylex.props(styles.segments, styles.segmentsThree)} role="group" aria-label={label}>
         {options.map((option, index) => {
           const checked = option.value === value
           return (
@@ -185,10 +181,7 @@ export function PreferencesPanel({
   const services = useAppServices()
   const identity = useId()
   const [theme, setTheme] = useThemePreference()
-  const locale = useSyncExternalStore(
-    services.i18n.subscribe,
-    services.i18n.getSnapshot,
-  ).locale
+  const locale = useSyncExternalStore(services.i18n.subscribe, services.i18n.getSnapshot).locale
 
   return (
     <div {...stylex.props(styles.panel)}>

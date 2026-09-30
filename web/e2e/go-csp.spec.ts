@@ -37,9 +37,9 @@ const origin = externalOrigin ?? `http://127.0.0.1:${port}`
 // Playwright's loader cannot take plain JSON imports; read the manifest
 // directly. The sweep below covers every document route.
 const pagePaths = (
-  JSON.parse(
-    readFileSync(resolve(repoRoot, 'internal/webui/page_routes.json'), 'utf8'),
-  ) as { routes: Array<{ path: string }> }
+  JSON.parse(readFileSync(resolve(repoRoot, 'internal/webui/page_routes.json'), 'utf8')) as {
+    routes: Array<{ path: string }>
+  }
 ).routes.map((entry) => entry.path)
 
 let server: ChildProcess | undefined
@@ -52,8 +52,7 @@ test.beforeAll(async ({}, testInfo) => {
       'or point GPT_LOAD_ORIGIN at a running server',
   )
   test.skip(
-    testInfo.project.name === 'chromium-125' &&
-      resolveChromium125Executable() === undefined,
+    testInfo.project.name === 'chromium-125' && resolveChromium125Executable() === undefined,
     'no Chromium 125 executable: set GPT_LOAD_CHROME_125_EXE or run ' +
       '`npx @puppeteer/browsers install chrome@125`',
   )
@@ -135,9 +134,7 @@ async function expectCleanDocument(
   await expect
     .poll(async () =>
       page.evaluate(
-        () =>
-          (window as unknown as { __cspViolations?: string[] }).__cspViolations
-            ?.length ?? 0,
+        () => (window as unknown as { __cspViolations?: string[] }).__cspViolations?.length ?? 0,
       ),
     )
     .toBe(0)
@@ -147,17 +144,13 @@ async function expectCleanDocument(
 // The gate requires zero CSP violations on the single embedded document,
 // so the sweep is driven by the manifest rather than a hardcoded route.
 for (const routePath of pagePaths) {
-  test(`Go server CSP keeps the document clean: ${routePath}`, async ({
-    page,
-  }) => {
+  test(`Go server CSP keeps the document clean: ${routePath}`, async ({ page }) => {
     await expectCleanDocument(page, routePath, '/assets/index')
   })
 }
 
 // A leftover gpt-load.frontend cookie must not change the served document.
 test('Go server ignores the retired frontend cookie', async ({ page, context }) => {
-  await context.addCookies([
-    { name: 'gpt-load.frontend', value: 'classic', url: origin },
-  ])
+  await context.addCookies([{ name: 'gpt-load.frontend', value: 'classic', url: origin }])
   await expectCleanDocument(page, '/settings', '/assets/index')
 })

@@ -309,8 +309,7 @@ export function HeaderRulesEditor({
     return map
   }, [validationErrors])
   const valid = validationErrors.length === 0
-  const invalidEdits =
-    validationErrors.length > 0 && !rowsMatchRules(rows, published)
+  const invalidEdits = validationErrors.length > 0 && !rowsMatchRules(rows, published)
 
   useEffect(() => onValidChange?.(valid), [onValidChange, valid])
   useEffect(() => onInvalidEditsChange?.(invalidEdits), [onInvalidEditsChange, invalidEdits])
@@ -370,10 +369,7 @@ export function HeaderRulesEditor({
   }
 
   const addRow = (): void => {
-    applyRows([
-      ...rows,
-      { key: nextRowKey++, action: 'set' as const, name: '', value: '' },
-    ])
+    applyRows([...rows, { key: nextRowKey++, action: 'set' as const, name: '', value: '' }])
   }
 
   const removeRow = (key: number): void => {
@@ -481,9 +477,7 @@ export function HeaderRulesEditor({
                       spellCheck={false}
                       disabled={disabled}
                       aria-invalid={valueError !== undefined || undefined}
-                      aria-describedby={
-                        valueError !== undefined ? `${valueId}-error` : undefined
-                      }
+                      aria-describedby={valueError !== undefined ? `${valueId}-error` : undefined}
                       onChange={(event) =>
                         mutateRow(row.key, (next) => {
                           next.value = event.target.value
@@ -513,12 +507,7 @@ export function HeaderRulesEditor({
         </div>
       )}
       {showAdd && (
-        <button
-          type="button"
-          {...stylex.props(styles.add)}
-          disabled={disabled}
-          onClick={addRow}
-        >
+        <button type="button" {...stylex.props(styles.add)} disabled={disabled} onClick={addRow}>
           <Plus size={16} aria-hidden />
           {t('common.headerRules.add')}
         </button>

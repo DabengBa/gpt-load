@@ -6,8 +6,7 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const webRoot = fileURLToPath(new URL('..', import.meta.url))
-const coreLocales = (locale) =>
-  `${webRoot}node_modules/@astryxdesign/core/locales/${locale}.json`
+const coreLocales = (locale) => `${webRoot}node_modules/@astryxdesign/core/locales/${locale}.json`
 
 const astryxLocales = ['en', 'zh-CN', 'ja-JP']
 
@@ -48,10 +47,7 @@ for (const locale of astryxLocales) {
 
 // The provider wiring must pass a catalog for every AppLocale except en-US
 // (whose strings ship inside the components themselves).
-const i18nSource = await readFile(
-  `${webRoot}src/frontends/astryx/app/i18n.tsx`,
-  'utf8',
-)
+const i18nSource = await readFile(`${webRoot}src/frontends/astryx/app/i18n.tsx`, 'utf8')
 for (const tag of ['zh-CN', 'ja-JP']) {
   if (!i18nSource.includes(`'${tag}'`)) {
     failures += 1

@@ -149,8 +149,7 @@ export function GroupCredentialRecord({
   const [menuOpen, setMenuOpen] = useState(false)
 
   const detailId = `group-credential-details-${item.credential_id}`
-  const isProblem =
-    item.effective_status === 'cooldown' || item.effective_status === 'blacklisted'
+  const isProblem = item.effective_status === 'cooldown' || item.effective_status === 'blacklisted'
   const recentLabel =
     item.recent_failure_count === 0
       ? t('group.credentials.recentSuccessOnly', {
@@ -169,11 +168,7 @@ export function GroupCredentialRecord({
   }
 
   return (
-    <article
-      {...stylex.props(styles.record)}
-      role="row"
-      aria-rowindex={rowIndex}
-    >
+    <article {...stylex.props(styles.record)} role="row" aria-rowindex={rowIndex}>
       <div {...stylex.props(styles.summary)} role="presentation">
         <div {...stylex.props(styles.select)} role="cell">
           <label>
@@ -196,18 +191,14 @@ export function GroupCredentialRecord({
           <GroupApiKeyEditor groupId={groupId} credential={item} disabled={busy} />
         </div>
         <div {...stylex.props(styles.statusCell)} role="cell">
-          <span {...stylex.props(styles.mobileLabel)}>
-            {t('group.credentials.columns.status')}
-          </span>
+          <span {...stylex.props(styles.mobileLabel)}>{t('group.credentials.columns.status')}</span>
           <Badge
             variant={credentialStatusBadgeVariant(item.effective_status)}
             label={t(`group.credentials.effective.${item.effective_status}` as MessageId)}
           />
         </div>
         <div {...stylex.props(styles.recentCell)} role="cell">
-          <span {...stylex.props(styles.mobileLabel)}>
-            {t('group.credentials.columns.recent')}
-          </span>
+          <span {...stylex.props(styles.mobileLabel)}>{t('group.credentials.columns.recent')}</span>
           {recentLabel}
         </div>
         <div {...stylex.props(styles.actions)} role="cell">
@@ -261,9 +252,7 @@ export function GroupCredentialRecord({
           <IconButton
             variant="ghost"
             size="sm"
-            label={
-              expanded ? t('group.credentials.collapse') : t('group.credentials.expand')
-            }
+            label={expanded ? t('group.credentials.collapse') : t('group.credentials.expand')}
             aria-expanded={expanded}
             aria-controls={detailId}
             icon={<ChevronDown size={16} aria-hidden="true" />}
@@ -275,9 +264,7 @@ export function GroupCredentialRecord({
         <div id={detailId} {...stylex.props(styles.details)} role="cell">
           <dl {...stylex.props(styles.detailsList)}>
             <div>
-              <dt {...stylex.props(styles.detailsTerm)}>
-                {t('group.credentials.detailsFailure')}
-              </dt>
+              <dt {...stylex.props(styles.detailsTerm)}>{t('group.credentials.detailsFailure')}</dt>
               <dd {...stylex.props(styles.detailsValue)}>
                 {presentCredentialFailureCategory(
                   (key) => t(key as MessageId),

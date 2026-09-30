@@ -1,9 +1,6 @@
 import { useEffect, useMemo } from 'react'
 
-import {
-  createDebouncedAction,
-  type DebouncedAction,
-} from '@shared/lib/debounced-action'
+import { createDebouncedAction, type DebouncedAction } from '@shared/lib/debounced-action'
 
 export type { DebouncedAction }
 

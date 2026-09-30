@@ -98,7 +98,7 @@ export function DetailPanel({
     const dialog = event.currentTarget
     if (!dialog.open) return
     const tabbables = dialog.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
     )
     if (tabbables.length === 0) return
     const first = tabbables[0]
@@ -127,8 +127,7 @@ export function DetailPanel({
       if (target instanceof Element && target.closest('dialog, [popover]')) {
         return
       }
-      const anchor =
-        dialog.querySelector<HTMLElement>('[data-autofocus]') ?? dialog
+      const anchor = dialog.querySelector<HTMLElement>('[data-autofocus]') ?? dialog
       anchor.focus()
     }
     document.addEventListener('focusin', contain)
@@ -166,18 +165,11 @@ export function DetailPanel({
         // silently dropped). The scrollable content region is the right target
         // — same shape as reka-ui focusing the drawer content element.
         content={
-          <LayoutContent
-            isScrollable
-            xstyle={styles.content}
-            tabIndex={-1}
-            data-autofocus
-          >
+          <LayoutContent isScrollable xstyle={styles.content} tabIndex={-1} data-autofocus>
             {children}
           </LayoutContent>
         }
-        footer={
-          footer !== undefined ? <LayoutFooter hasDivider>{footer}</LayoutFooter> : undefined
-        }
+        footer={footer !== undefined ? <LayoutFooter hasDivider>{footer}</LayoutFooter> : undefined}
       />
     </Dialog>
   )

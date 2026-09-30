@@ -32,9 +32,7 @@ export function resolve(specifier, context, nextResolve) {
   if (
     (specifier.startsWith('./') || specifier.startsWith('../')) &&
     parent.startsWith('file://') &&
-    fileURLToPath(parent).replaceAll('\\', '/').startsWith(
-      srcRoot.replaceAll('\\', '/'),
-    ) &&
+    fileURLToPath(parent).replaceAll('\\', '/').startsWith(srcRoot.replaceAll('\\', '/')) &&
     !/\.[a-z0-9]+$/u.test(specifier)
   ) {
     const base = fileURLToPath(new URL(specifier, parent))

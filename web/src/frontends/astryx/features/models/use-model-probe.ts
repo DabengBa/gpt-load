@@ -83,19 +83,14 @@ export function useModelProbe() {
     try {
       for (let index = 0; index < targets.length; index += chunkSize) {
         if (stoppedRef.current || generationRef.current !== current) return
-        const chunkResults = await runModelProbe(
-          apiClient,
-          targets.slice(index, index + chunkSize),
-        )
+        const chunkResults = await runModelProbe(apiClient, targets.slice(index, index + chunkSize))
         if (generationRef.current !== current) return
         setRun((prev) => ({ ...prev, results: [...prev.results, ...chunkResults] }))
       }
     } catch {
-      if (generationRef.current === current)
-        setRun((prev) => ({ ...prev, failed: true }))
+      if (generationRef.current === current) setRun((prev) => ({ ...prev, failed: true }))
     } finally {
-      if (generationRef.current === current)
-        setRun((prev) => ({ ...prev, pending: false }))
+      if (generationRef.current === current) setRun((prev) => ({ ...prev, pending: false }))
     }
   }
 

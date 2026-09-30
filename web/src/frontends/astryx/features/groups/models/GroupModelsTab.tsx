@@ -48,10 +48,7 @@ import {
   serializeGroupModelsRouteQuery,
   type GroupModelsRouteState,
 } from '@shared/routing/group-detail-route'
-import {
-  constrainCollectionSearch,
-  type SharedRouteQuery,
-} from '@shared/routing/route-query'
+import { constrainCollectionSearch, type SharedRouteQuery } from '@shared/routing/route-query'
 import { pagePath } from '@shared/routing/page-routes'
 
 import { useStableLoading } from '../../../app/collection-loading'
@@ -68,10 +65,7 @@ import { ModelPricingStatus } from '../../models/ModelPricingStatus'
 import { ModelProbeDialog } from '../../models/ModelProbeDialog'
 import { useModelProbe } from '../../models/use-model-probe'
 import type { GroupEditorState, GroupModelsEditorHandle } from '../editor-handles'
-import {
-  ModelAliasEditor,
-  type ModelAliasEditorHandle,
-} from '../ModelAliasEditor'
+import { ModelAliasEditor, type ModelAliasEditorHandle } from '../ModelAliasEditor'
 import { GroupModelSyncDialog } from './GroupModelSyncDialog'
 
 function groupDetailHref(groupId: number): string {
@@ -162,8 +156,7 @@ export function GroupModelsTab({
   function confirmProbe(): void {
     const target = pendingProbe
     setPendingProbe(null)
-    if (target !== null)
-      void probe.start([target], { disabledGroupIds: [target.group_id] })
+    if (target !== null) void probe.start([target], { disabledGroupIds: [target.group_id] })
   }
 
   function viewProbeLog(logId: string): void {
@@ -199,7 +192,10 @@ export function GroupModelsTab({
     const ok = results.every((result) => result.status === 'fulfilled')
     setProbeApplying(false)
     if (ok) {
-      toast.show({ message: t('monitor.modelProbe.toggle.applied', { count: changes.size }), tone: 'success' })
+      toast.show({
+        message: t('monitor.modelProbe.toggle.applied', { count: changes.size }),
+        tone: 'success',
+      })
       probe.close()
     } else {
       toast.show({ message: t('monitor.modelProbe.toggle.applyFailed'), tone: 'danger' })
@@ -212,8 +208,11 @@ export function GroupModelsTab({
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncMode, setSyncMode] = useState<ModelSyncMode>('full')
   const [syncError, setSyncError] = useState('')
-  const { value: savedFeedback, clear: clearSavedFeedback, show: showSavedFeedback } =
-    useTransientFlag(1_600)
+  const {
+    value: savedFeedback,
+    clear: clearSavedFeedback,
+    show: showSavedFeedback,
+  } = useTransientFlag(1_600)
   const nextKeyRef = useRef(1)
   const controllerRef = useRef<AbortController | undefined>(undefined)
 
@@ -223,9 +222,7 @@ export function GroupModelsTab({
   const emptyAliasIndexes = new Set(
     draft.flatMap((item, index) => (item.alias_enabled && !item.alias.trim() ? [index] : [])),
   )
-  const emptyIDIndexes = new Set(
-    draft.flatMap((item, index) => (!item.id.trim() ? [index] : [])),
-  )
+  const emptyIDIndexes = new Set(draft.flatMap((item, index) => (!item.id.trim() ? [index] : [])))
   const invalidWeightIndexes = indexesWithInvalidWeights(draft)
   const invalidPriorityIndexes = indexesWithInvalidPriorities(draft)
   const zeroShareIndexes = indexesWithZeroShare(draft)
@@ -263,9 +260,7 @@ export function GroupModelsTab({
     invalidWeightIndexes.size === 0 &&
     invalidPriorityIndexes.size === 0 &&
     zeroShareIndexes.size === 0
-  const pendingPricingCount = draft.filter(
-    (item) => item.pricing_status === 'pending',
-  ).length
+  const pendingPricingCount = draft.filter((item) => item.pricing_status === 'pending').length
   const currentModelIDs = draft.map((item) => item.id.trim()).filter(Boolean)
   const knownPricingStatusByID = new Map(
     saved.map((item) => [item.id, item.pricing_status] as const),
@@ -335,8 +330,7 @@ export function GroupModelsTab({
       pending: t('group.modelEditor.pricingStatus.pending'),
       configured: t('group.modelEditor.pricingStatus.configured'),
     },
-    pricingDiscovered: (source) =>
-      t('group.modelEditor.pricingStatus.discovered', { source }),
+    pricingDiscovered: (source) => t('group.modelEditor.pricingStatus.discovered', { source }),
     sources: {
       catalog: t('group.modelEditor.sources.catalog'),
       live: t('group.modelEditor.sources.live'),
@@ -348,12 +342,10 @@ export function GroupModelsTab({
     blocked: operationBlocked,
     allowRouteUpdate: (current, next) => {
       const sameGroup =
-        current.routeId === next.routeId &&
-        String(current.params.id) === String(next.params.id)
+        current.routeId === next.routeId && String(current.params.id) === String(next.params.id)
       if (!sameGroup) return false
       const nextTab = typeof next.search.tab === 'string' ? next.search.tab : undefined
-      const currentTab =
-        typeof current.search.tab === 'string' ? current.search.tab : undefined
+      const currentTab = typeof current.search.tab === 'string' ? current.search.tab : undefined
       if (unified) return nextTab !== 'credentials'
       return nextTab === 'models' && currentTab === 'models'
     },
@@ -515,9 +507,7 @@ export function GroupModelsTab({
         return {
           ...item,
           pricing_status:
-            previous && previous.id === item.id
-              ? item.pricing_status
-              : pricingStatusForID(item.id),
+            previous && previous.id === item.id ? item.pricing_status : pricingStatusForID(item.id),
           name: previous && previous.id === item.id ? item.name : item.id,
           sources: previous && previous.id === item.id ? [...item.sources] : [],
         }
@@ -607,8 +597,7 @@ export function GroupModelsTab({
   }
 
   async function confirmSync(): Promise<void> {
-    if (stateRef.current.operationBlocked || syncChangeCount === 0 || syncConflicts.length)
-      return
+    if (stateRef.current.operationBlocked || syncChangeCount === 0 || syncConflicts.length) return
     const active = new AbortController()
     const models = syncRequestModels
     controllerRef.current = active
@@ -616,12 +605,7 @@ export function GroupModelsTab({
     clearSavedFeedback()
     setSyncError('')
     try {
-      const result = await replaceGroupModelsResource(
-        apiClient,
-        groupId,
-        { models },
-        active.signal,
-      )
+      const result = await replaceGroupModelsResource(apiClient, groupId, { models }, active.signal)
       if (controllerRef.current !== active || stateRef.current.blocked) return
       acceptSavedModels(result)
       setDiscoveryReady(false)
@@ -806,10 +790,7 @@ export function GroupModelsTab({
             onChange={updateModels}
             renderThirdColumn={(item) => (
               <div {...stylex.props(styles.pricingCell)}>
-                <div
-                  {...stylex.props(styles.testAlias)}
-                  data-testid="group-models__test-alias"
-                >
+                <div {...stylex.props(styles.testAlias)} data-testid="group-models__test-alias">
                   <span {...stylex.props(styles.testAliasLabel)}>
                     {t('group.modelEditor.testAlias')}
                   </span>
@@ -857,9 +838,7 @@ export function GroupModelsTab({
                   {t('group.modelEditor.schedule')}
                 </RouteLink>
                 <Tooltip
-                  content={
-                    probeRowTarget(item) === null ? t('monitor.modelProbe.draftHint') : ''
-                  }
+                  content={probeRowTarget(item) === null ? t('monitor.modelProbe.draftHint') : ''}
                 >
                   <Button
                     variant="ghost"
@@ -967,9 +946,7 @@ export function GroupModelsTab({
               pending={savePending}
               status={saveBarError ? 'error' : savedFeedback ? 'saved' : 'idle'}
               error={saveBarError}
-              errorActionLabel={
-                invalidRowCount ? t('group.modelEditor.locateFirstInvalid') : ''
-              }
+              errorActionLabel={invalidRowCount ? t('group.modelEditor.locateFirstInvalid') : ''}
               onErrorAction={() => void modelEditorRef.current?.focusFirstInvalid()}
               statusContent={
                 <div>

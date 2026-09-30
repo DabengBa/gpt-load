@@ -217,8 +217,7 @@ export default {
       placeholders: {
         azure: '{example} または {exampleAlt}',
         bedrock: '{example} または {exampleAlt}',
-        vertex:
-          'Google Cloud サービスアカウント JSON を貼り付けるか、{example} を使用',
+        vertex: 'Google Cloud サービスアカウント JSON を貼り付けるか、{example} を使用',
       },
       storageNotice:
         '平文は URL、ログ、通知に入りません — ログイン中断時は現在のセッションに最大 15 分だけ保持されます',

@@ -100,9 +100,7 @@ export function ModelDiscoveryDrawer({
     setLastCandidates(candidates)
     setLastCurrentIdList(currentIdList)
     const valid = new Set(candidates.map(({ id }) => id))
-    setSelectedIds((current) =>
-      current.filter((id) => valid.has(id) && !currentIds.has(id)),
-    )
+    setSelectedIds((current) => current.filter((id) => valid.has(id) && !currentIds.has(id)))
   }
 
   const selected = new Set(selectedIds)
@@ -115,9 +113,7 @@ export function ModelDiscoveryDrawer({
           .toLocaleLowerCase()
           .includes(query)),
   )
-  const selectableVisible = visibleCandidates.filter(
-    (candidate) => !currentIds.has(candidate.id),
-  )
+  const selectableVisible = visibleCandidates.filter((candidate) => !currentIds.has(candidate.id))
   const allVisibleSelected =
     selectableVisible.length > 0 &&
     selectableVisible.every((candidate) => selected.has(candidate.id))
@@ -258,9 +254,7 @@ export function ModelDiscoveryDrawer({
                   <CheckboxInput
                     value={added || selected.has(candidate.id)}
                     isDisabled={blocked || added}
-                    label={
-                      added ? `${labels.alreadyAdded} · ${candidate.name}` : candidate.name
-                    }
+                    label={added ? `${labels.alreadyAdded} · ${candidate.name}` : candidate.name}
                     isLabelHidden
                     disabledMessage={added ? labels.alreadyAdded : undefined}
                     onChange={(checked) => setCandidate(candidate, checked)}

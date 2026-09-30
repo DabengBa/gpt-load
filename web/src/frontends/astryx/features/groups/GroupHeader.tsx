@@ -165,12 +165,7 @@ export function GroupHeader({ group }: { group: GroupSummaryDto }) {
             </span>
           )}
           <span {...stylex.props(styles.metaTag)}>
-            {channel && (
-              <ChannelIcon
-                icon={channel.icon}
-                mark={channel.mark}
-              />
-            )}
+            {channel && <ChannelIcon icon={channel.icon} mark={channel.mark} />}
             <span>{channelName}</span>
           </span>
           {/* Unified-mode portal target: GroupSettingsBaseForm teleports its

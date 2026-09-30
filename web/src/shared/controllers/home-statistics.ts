@@ -1,9 +1,6 @@
 import type { QueryClient } from '@tanstack/query-core'
 
-import type {
-  HomeRange,
-  HomeStatisticsDto,
-} from '@shared/control/resources/home'
+import type { HomeRange, HomeStatisticsDto } from '@shared/control/resources/home'
 import { createEmptyHomeStatistics } from '@shared/control/resources/home'
 import { controlQueryKeys } from '@shared/control/query-keys'
 

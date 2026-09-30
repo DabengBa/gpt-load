@@ -63,12 +63,7 @@ function makeGroups(count: number): FixtureGroup[] {
 }
 
 function makeGroup(index: number): FixtureGroup {
-  const status =
-    index % 7 === 0
-      ? 'unavailable'
-      : index % 5 === 0
-        ? 'disabled'
-        : 'available'
+  const status = index % 7 === 0 ? 'unavailable' : index % 5 === 0 ? 'disabled' : 'available'
   return {
     id: index + 1,
     name: `Group ${String(index + 1).padStart(4, '0')}`,
@@ -137,9 +132,7 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
         rows = rows.filter((group) => group.status === query.status)
       }
       if (query.connection_type !== undefined) {
-        rows = rows.filter(
-          (group) => group.connection_type === query.connection_type,
-        )
+        rows = rows.filter((group) => group.connection_type === query.connection_type)
       }
       const sorted = [...rows]
       switch (query.sort) {
@@ -184,8 +177,7 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
             summary: {
               total: groups.length,
               available: groups.filter((g) => g.status === 'available').length,
-              unavailable: groups.filter((g) => g.status === 'unavailable')
-                .length,
+              unavailable: groups.filter((g) => g.status === 'unavailable').length,
               disabled: groups.filter((g) => g.status === 'disabled').length,
             },
             items,
@@ -230,26 +222,18 @@ function collectionTable(page: Page) {
   return page.getByRole('table', { name: 'Group list' })
 }
 
-test('renders summary chips, toolbar, and server-paginated rows', async ({
-  page,
-}) => {
+test('renders summary chips, toolbar, and server-paginated rows', async ({ page }) => {
   const seen = await mockCollection(page, makeGroups(150))
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
 
-  await expect(
-    page.getByRole('heading', { name: 'Groups', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible()
 
   // Summary chips reflect the mocked totals (150 = 103/22/25 split).
   const summary = page.getByRole('region', { name: 'Group status overview' })
   await expect(summary).toBeVisible()
-  await expect(
-    summary.getByRole('button', { name: /All/ }),
-  ).toBeVisible()
-  await expect(
-    summary.getByRole('button', { name: /Unavailable/ }),
-  ).toBeVisible()
+  await expect(summary.getByRole('button', { name: /All/ })).toBeVisible()
+  await expect(summary.getByRole('button', { name: /Unavailable/ })).toBeVisible()
 
   // The table renders exactly one server page (100 rows), not the full set.
   const table = collectionTable(page)
@@ -258,9 +242,7 @@ test('renders summary chips, toolbar, and server-paginated rows', async ({
   await expect(seen.at(-1)).toMatchObject({ page: 1, page_size: 100 })
 })
 
-test('search, status chip, and connection-type select hit the server', async ({
-  page,
-}) => {
+test('search, status chip, and connection-type select hit the server', async ({ page }) => {
   const seen = await mockCollection(page, makeGroups(20))
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -290,16 +272,11 @@ test('search, status chip, and connection-type select hit the server', async ({
 
   // Reset clears criteria back to canonical defaults. Two resets render at
   // this point (toolbar + no-results state); exercise the toolbar one.
-  await page
-    .getByLabel('Filter Groups')
-    .getByRole('button', { name: 'Reset filters' })
-    .click()
+  await page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }).click()
   await expect(page).not.toHaveURL(/q=|status=|connection_type=/)
 })
 
-test('sort select and column-header sorting stay controlled', async ({
-  page,
-}) => {
+test('sort select and column-header sorting stay controlled', async ({ page }) => {
   const seen = await mockCollection(page, makeGroups(20))
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -321,9 +298,7 @@ test('sort select and column-header sorting stay controlled', async ({
   await expect.poll(() => seen.at(-1)?.sort).toBe('status')
 })
 
-test('pagination stays server-driven and corrects out-of-range pages', async ({
-  page,
-}) => {
+test('pagination stays server-driven and corrects out-of-range pages', async ({ page }) => {
   const seen = await mockCollection(page, makeGroups(250))
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -346,9 +321,7 @@ test('pagination stays server-driven and corrects out-of-range pages', async ({
   await expect(table.getByRole('row')).toHaveCount(51) // header + 50 rows
 })
 
-test('keyboard walkthrough reaches filters and row actions', async ({
-  page,
-}) => {
+test('keyboard walkthrough reaches filters and row actions', async ({ page }) => {
   await mockCollection(page, makeGroups(5))
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -363,16 +336,12 @@ test('keyboard walkthrough reaches filters and row actions', async ({
   // Row link activates with Enter and lands on the group detail route.
   // (.first(): the row's name link and the trailing action IconButton share
   // the same aria-label; the name link precedes it in DOM order.)
-  const detailLink = table
-    .getByRole('link', { name: 'View details for Group 0002' })
-    .first()
+  const detailLink = table.getByRole('link', { name: 'View details for Group 0002' }).first()
   await detailLink.focus()
   await expect(detailLink).toBeFocused()
 })
 
-test('1,000-group collection stays interactive (gate #3)', async ({
-  page,
-}) => {
+test('1,000-group collection stays interactive (gate #3)', async ({ page }) => {
   const seen = await mockCollection(page, makeGroups(1_000))
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -398,9 +367,7 @@ test('1,000-group collection stays interactive (gate #3)', async ({
   await expect(page.getByLabel('Search')).toBeEditable()
 })
 
-test('empty and no-results states mirror the classic contract', async ({
-  page,
-}) => {
+test('empty and no-results states mirror the classic contract', async ({ page }) => {
   await mockCollection(page, [])
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -409,9 +376,7 @@ test('empty and no-results states mirror the classic contract', async ({
   await expect(
     page.getByRole('heading', { name: 'Start with your first channel Group' }),
   ).toBeVisible()
-  await expect(
-    page.getByRole('link', { name: /Import channel credentials/ }),
-  ).toBeVisible()
+  await expect(page.getByRole('link', { name: /Import channel credentials/ })).toBeVisible()
 
   // Repopulate, then filter to zero matches: no-results + reset.
   await page.unrouteAll()
@@ -423,9 +388,7 @@ test('empty and no-results states mirror the classic contract', async ({
   await page.getByLabel('Search').fill('nothing-matches-this')
   await expect(page).toHaveURL(/q=nothing-matches-this/, { timeout: 3_000 })
   await expect.poll(() => seen2.at(-1)?.q).toBe('nothing-matches-this')
-  await expect(
-    page.getByRole('heading', { name: 'No Groups match these filters' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No Groups match these filters' })).toBeVisible()
 
   // Two resets are on screen (toolbar + empty-state action); activate the
   // empty-state one — it is the primary recovery affordance in this state.

@@ -1,4 +1,4 @@
-import { keepPreviousData , type QueryFunctionContext } from '@tanstack/query-core'
+import { keepPreviousData, type QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import { InvalidResponseError } from '@shared/http/errors'
@@ -707,11 +707,7 @@ export async function getUsageReport(
   return report
 }
 
-export function usageQueryOptions(
-  client: ApiClient,
-  filters: UsageFilters,
-  intervalMs?: number,
-) {
+export function usageQueryOptions(client: ApiClient, filters: UsageFilters, intervalMs?: number) {
   return {
     queryKey: usageQueryIdentity(filters),
     queryFn: ({ signal }: QueryFunctionContext) => getUsageReport(client, filters, signal),

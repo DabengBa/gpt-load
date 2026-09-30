@@ -2,17 +2,11 @@ import type { AnyRouter } from '@tanstack/react-router'
 
 import { sharedPageRouteNames } from '@shared/routing/route-names'
 import type { PageRouteMeta } from '@shared/routing/route-meta'
-import {
-  safeRedirectTarget,
-  type SafeRedirectResolution,
-} from '@shared/routing/safe-redirect'
+import { safeRedirectTarget, type SafeRedirectResolution } from '@shared/routing/safe-redirect'
 
 // Adapts the shared safeRedirect contract to TanStack matching; blocklist
 // mirrors the classic wrapper (login + the not-found catch-all).
-export function safeRedirect(
-  router: Pick<AnyRouter, 'getMatchedRoutes'>,
-  raw: unknown,
-): string {
+export function safeRedirect(router: Pick<AnyRouter, 'getMatchedRoutes'>, raw: unknown): string {
   return safeRedirectTarget(
     raw,
     (value): SafeRedirectResolution => {

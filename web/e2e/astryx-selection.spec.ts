@@ -20,12 +20,7 @@ async function setFrontendCookie(context: BrowserContext, value: string) {
 // Request-level check: page.request sends the context cookies, and the
 // document is discriminated on the served HTML marker — no client-side router
 // involved.
-async function expectDocument(
-  page: Page,
-  path: string,
-  marker: string,
-  status = 200,
-) {
+async function expectDocument(page: Page, path: string, marker: string, status = 200) {
   const response = await page.request.get(path, {
     headers: { accept: 'text/html' },
   })
@@ -33,10 +28,7 @@ async function expectDocument(
   expect(await response.text()).toContain(marker)
 }
 
-test('page route serves the Astryx document without any cookie', async ({
-  page,
-  context,
-}) => {
+test('page route serves the Astryx document without any cookie', async ({ page, context }) => {
   await context.clearCookies()
   await expectDocument(page, PAGE_PATH, ASTRYX_MARKER)
 })
@@ -56,10 +48,7 @@ test('an unrecognized cookie value is ignored', async ({ page, context }) => {
   await expectDocument(page, PAGE_PATH, ASTRYX_MARKER)
 })
 
-test('unknown browser path serves the Astryx document', async ({
-  page,
-  context,
-}) => {
+test('unknown browser path serves the Astryx document', async ({ page, context }) => {
   // Dev-server SPA fallback returns 200; the Go binary's 404 contract for
   // unknown paths is covered by go-csp.spec.ts.
   await context.clearCookies()

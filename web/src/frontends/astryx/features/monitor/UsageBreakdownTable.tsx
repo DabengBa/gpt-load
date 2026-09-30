@@ -14,12 +14,7 @@ import {
   type UsageBreakdownSort,
   type UsageBreakdownSortDirection,
 } from '@shared/control/resources/usage'
-import {
-  formatEstimatedCost,
-  formatInteger,
-  formatPercent,
-  formatTokens,
-} from '@shared/lib/format'
+import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from '@shared/lib/format'
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useT } from '../../app/i18n'
@@ -395,13 +390,11 @@ export function UsageBreakdownTable({
     const update = (): void => {
       setOverflowing(container.scrollWidth > container.clientWidth + 1)
     }
-    const observer =
-      typeof ResizeObserver === 'function' ? new ResizeObserver(update) : undefined
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : undefined
     observer?.observe(container)
     const table = tableRef.current
     if (table !== null) observer?.observe(table)
-    const fallbackFrame =
-      observer === undefined ? requestAnimationFrame(update) : undefined
+    const fallbackFrame = observer === undefined ? requestAnimationFrame(update) : undefined
     window.addEventListener('resize', update)
     return () => {
       observer?.disconnect()
@@ -460,10 +453,7 @@ export function UsageBreakdownTable({
           </thead>
           <tbody>
             {breakdown.rows.map((row, rowIndex) => (
-              <tr
-                key={rowKey(row)}
-                {...stylex.props(styles.bodyRow)}
-              >
+              <tr key={rowKey(row)} {...stylex.props(styles.bodyRow)}>
                 {visibleColumns.map((column, columnIndex) => (
                   <td
                     key={column.key}

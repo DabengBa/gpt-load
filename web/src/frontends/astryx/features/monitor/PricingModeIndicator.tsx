@@ -10,9 +10,7 @@ import { useT } from '../../app/i18n'
 // stylex.props consumes CompiledStyles (the create() output), not the
 // authored StyleXStyles — conditional values (`:focus-visible` etc.) only
 // typecheck as the compiled shape.
-type StyleProp = stylex.StyleXArray<
-  null | undefined | false | stylex.CompiledStyles
->
+type StyleProp = stylex.StyleXArray<null | undefined | false | stylex.CompiledStyles>
 
 /**
  * Classic PricingModeIndicator.vue — tier-threshold or fast-mode hint icon

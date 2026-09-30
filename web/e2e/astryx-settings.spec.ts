@@ -153,9 +153,7 @@ function saveButton(page: Page) {
   return page.getByRole('button', { name: 'Save changes' })
 }
 
-test('renders all sections and canonicalizes the section route query', async ({
-  page,
-}) => {
+test('renders all sections and canonicalizes the section route query', async ({ page }) => {
   await mockSettings(page, baseSettingsDto())
   await page.goto('/settings', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -171,9 +169,7 @@ test('renders all sections and canonicalizes the section route query', async ({
     'System information',
   ]) {
     await expect(nav.getByRole('link', { name })).toBeVisible()
-    await expect(
-      page.getByRole('heading', { name, exact: true }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
   }
 
   // Nav link writes the sparse `?section=` query; the canonical section stays
@@ -186,9 +182,7 @@ test('renders all sections and canonicalizes the section route query', async ({
   // A bogus section deep-link canonicalizes back to bare /settings.
   await page.goto('/settings?section=bogus', { waitUntil: 'load' })
   await expect(page).not.toHaveURL(/section=/)
-  await expect(
-    page.getByRole('heading', { name: 'Settings', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
 })
 
 test('override → save publishes only the changed keys', async ({ page }) => {
@@ -198,9 +192,7 @@ test('override → save publishes only the changed keys', async ({ page }) => {
 
   // Baseline: request_timeout is overridden (fixture) — the row shows the
   // override affordance; stream_idle_timeout shows "Override".
-  await page
-    .getByRole('button', { name: 'Override · Stream idle timeout' })
-    .click()
+  await page.getByRole('button', { name: 'Override · Stream idle timeout' }).click()
   const input = page.getByLabel('Value for Stream idle timeout')
   await input.fill('90')
   await expect(page.getByText('1 unsaved runtime settings')).toBeVisible()
@@ -215,9 +207,7 @@ test('restore default sends a null patch entry', async ({ page }) => {
   const puts = await mockSettings(page, baseSettingsDto())
   await page.goto('/settings?section=connection', { waitUntil: 'load' })
 
-  await page
-    .getByRole('button', { name: 'Restore default · Total request timeout' })
-    .click()
+  await page.getByRole('button', { name: 'Restore default · Total request timeout' }).click()
   await expect(page.getByText('Pending restore')).toBeVisible()
 
   await saveButton(page).click()
@@ -225,25 +215,17 @@ test('restore default sends a null patch entry', async ({ page }) => {
   expect(puts.at(-1)?.patch).toEqual({ request_timeout: null })
 })
 
-test('invalid intermediate input blocks save with a validation summary', async ({
-  page,
-}) => {
+test('invalid intermediate input blocks save with a validation summary', async ({ page }) => {
   await mockSettings(page, baseSettingsDto())
   await page.goto('/settings?section=connection', { waitUntil: 'load' })
 
-  await page
-    .getByRole('button', { name: 'Override · Stream idle timeout' })
-    .click()
+  await page.getByRole('button', { name: 'Override · Stream idle timeout' }).click()
   const input = page.getByLabel('Value for Stream idle timeout')
   await input.fill('0')
 
+  await expect(page.getByText('Fix these settings before saving:')).toBeVisible()
   await expect(
-    page.getByText('Fix these settings before saving:'),
-  ).toBeVisible()
-  await expect(
-    page.getByText(
-      'Enter a positive safe integer no greater than 9,223,372,036.',
-    ),
+    page.getByText('Enter a positive safe integer no greater than 9,223,372,036.'),
   ).toBeVisible()
   await expect(saveButton(page)).toBeDisabled()
 
@@ -252,9 +234,7 @@ test('invalid intermediate input blocks save with a validation summary', async (
   await expect(saveButton(page)).toBeEnabled()
 })
 
-test('read-only settings are locked and cannot enter the draft', async ({
-  page,
-}) => {
+test('read-only settings are locked and cannot enter the draft', async ({ page }) => {
   const puts = await mockSettings(page, baseSettingsDto())
   await page.goto('/settings?section=reliability', { waitUntil: 'load' })
 
@@ -276,9 +256,7 @@ test('discard dialog restores the published baseline', async ({ page }) => {
   await mockSettings(page, baseSettingsDto())
   await page.goto('/settings?section=connection', { waitUntil: 'load' })
 
-  await page
-    .getByRole('button', { name: 'Override · Stream idle timeout' })
-    .click()
+  await page.getByRole('button', { name: 'Override · Stream idle timeout' }).click()
   const input = page.getByLabel('Value for Stream idle timeout')
   await input.fill('90')
   await expect(page.getByText('1 unsaved runtime settings')).toBeVisible()
@@ -292,24 +270,17 @@ test('discard dialog restores the published baseline', async ({ page }) => {
 
   // Baseline restored: dirty badge gone and the override button is back.
   await expect(page.getByText('unsaved runtime settings')).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: 'Override · Stream idle timeout' }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Override · Stream idle timeout' })).toBeVisible()
 })
 
 test('unsaved-change interception blocks leaving the page', async ({ page }) => {
   await mockSettings(page, baseSettingsDto())
   await page.goto('/settings?section=connection', { waitUntil: 'load' })
 
-  await page
-    .getByRole('button', { name: 'Override · Stream idle timeout' })
-    .click()
+  await page.getByRole('button', { name: 'Override · Stream idle timeout' }).click()
   await page.getByLabel('Value for Stream idle timeout').fill('90')
 
-  await page
-    .locator('[data-testid="desktop-nav"]')
-    .getByRole('link', { name: 'Groups' })
-    .click()
+  await page.locator('[data-testid="desktop-nav"]').getByRole('link', { name: 'Groups' }).click()
   const dialog = page.getByRole('alertdialog', {
     name: 'Discard unsaved changes?',
   })
@@ -318,15 +289,10 @@ test('unsaved-change interception blocks leaving the page', async ({ page }) => 
   // Continue editing stays on /settings with the draft intact.
   await dialog.getByRole('button', { name: 'Continue editing' }).click()
   await expect(page).toHaveURL(/settings/)
-  await expect(page.getByLabel('Value for Stream idle timeout')).toHaveValue(
-    '90',
-  )
+  await expect(page.getByLabel('Value for Stream idle timeout')).toHaveValue('90')
 
   // Confirming discards and navigates away.
-  await page
-    .locator('[data-testid="desktop-nav"]')
-    .getByRole('link', { name: 'Groups' })
-    .click()
+  await page.locator('[data-testid="desktop-nav"]').getByRole('link', { name: 'Groups' }).click()
   await page
     .getByRole('alertdialog', { name: 'Discard unsaved changes?' })
     .getByRole('button', { name: 'Discard changes' })
@@ -334,9 +300,7 @@ test('unsaved-change interception blocks leaving the page', async ({ page }) => 
   await expect(page).toHaveURL(/\/groups/)
 })
 
-test('header-rule rows edit, validate, and publish to the save patch', async ({
-  page,
-}) => {
+test('header-rule rows edit, validate, and publish to the save patch', async ({ page }) => {
   const puts = await mockSettings(page, baseSettingsDto())
   await page.goto('/settings?section=browser-access', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -349,9 +313,7 @@ test('header-rule rows edit, validate, and publish to the save patch', async ({
     .filter({ hasNot: page.getByRole('article') })
   await expect(block.getByText('0 rules')).toBeVisible()
 
-  await page
-    .getByRole('button', { name: 'Override · Upstream request header rules' })
-    .click()
+  await page.getByRole('button', { name: 'Override · Upstream request header rules' }).click()
   const editor = block.getByRole('region', { name: 'Header rules' })
 
   await editor.getByRole('button', { name: 'Add rule' }).click()
@@ -365,12 +327,10 @@ test('header-rule rows edit, validate, and publish to the save patch', async ({
   // Per-row error is surfaced via the describedby span (tooltip variant keeps
   // the visible copy hidden until focus); the global summary + disabled save
   // are the user-visible contract.
-  await expect(
-    page.locator('span[id$="-header-name-2-error"]'),
-  ).toContainText('Duplicate header names')
-  await expect(
-    page.getByText('Fix these settings before saving:'),
-  ).toBeVisible()
+  await expect(page.locator('span[id$="-header-name-2-error"]')).toContainText(
+    'Duplicate header names',
+  )
+  await expect(page.getByText('Fix these settings before saving:')).toBeVisible()
   await expect(saveButton(page)).toBeDisabled()
 
   await editor.getByRole('button', { name: 'Delete rule' }).nth(1).click()
@@ -393,9 +353,7 @@ test('CORS enablement round-trips through the save patch', async ({ page }) => {
   await page.getByLabel('Allowed origins').fill('https://app.example')
   await page.getByLabel('Allowed methods').fill('GET, POST')
   // Enabled CORS requires a non-empty allowed-headers list.
-  await page
-    .getByLabel('Allowed request headers')
-    .fill('Content-Type, Authorization')
+  await page.getByLabel('Allowed request headers').fill('Content-Type, Authorization')
 
   await saveButton(page).click()
   await expect(page.getByText('Settings saved at')).toBeVisible()
@@ -407,9 +365,7 @@ test('CORS enablement round-trips through the save patch', async ({ page }) => {
   })
 })
 
-test('system section renders deployment facts and the latest-version state', async ({
-  page,
-}) => {
+test('system section renders deployment facts and the latest-version state', async ({ page }) => {
   await mockSettings(page, baseSettingsDto())
   await page.goto('/settings?section=system', { waitUntil: 'load' })
 
@@ -418,9 +374,7 @@ test('system section renders deployment facts and the latest-version state', asy
   await expect(page.getByText('/srv/gpt-load', { exact: true })).toBeVisible()
   // Update checks are manual — the button drives a force=true fetch.
   await page.getByRole('button', { name: 'Check for updates' }).click()
-  await expect(
-    page.getByText('You are already on the latest version'),
-  ).toBeVisible()
+  await expect(page.getByText('You are already on the latest version')).toBeVisible()
 
   // Secret sources render labels; key-file path exposes the copy affordance.
   await expect(page.getByText('Environment variable', { exact: true })).toBeVisible()

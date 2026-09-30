@@ -18,7 +18,11 @@ const styles = stylex.create({
   },
 })
 
-type Presentation = { icon: ReactNode; label: string; variant: 'success' | 'info' | 'warning' | 'neutral' }
+type Presentation = {
+  icon: ReactNode
+  label: string
+  variant: 'success' | 'info' | 'warning' | 'neutral'
+}
 
 export function ModelPriceStatusBadge({
   price,
@@ -80,10 +84,7 @@ export function ModelPriceStatusBadge({
 
   return (
     <Tooltip content={sourceDetail ?? ''} isEnabled={sourceDetail !== null}>
-      <span
-        {...stylex.props(styles.wrap)}
-        tabIndex={sourceDetail === null ? undefined : 0}
-      >
+      <span {...stylex.props(styles.wrap)} tabIndex={sourceDetail === null ? undefined : 0}>
         <Badge variant={presentation.variant} label={presentation.label} icon={presentation.icon} />
       </span>
     </Tooltip>

@@ -166,11 +166,7 @@ const styles = stylex.create({
 function HintButton({ label, help }: { label: string; help: string }) {
   return (
     <Tooltip content={help}>
-      <button
-        type="button"
-        {...stylex.props(styles.hint)}
-        aria-label={`${label} · ${help}`}
-      >
+      <button type="button" {...stylex.props(styles.hint)} aria-label={`${label} · ${help}`}>
         <CircleHelp size={13} aria-hidden />
       </button>
     </Tooltip>
@@ -206,11 +202,7 @@ function ActionButton({
         disabled={disabled}
         onClick={onToggle}
       >
-        {overridden ? (
-          <RotateCcw size={14} aria-hidden />
-        ) : (
-          <PencilLine size={14} aria-hidden />
-        )}
+        {overridden ? <RotateCcw size={14} aria-hidden /> : <PencilLine size={14} aria-hidden />}
       </button>
     </Tooltip>
   )
@@ -271,11 +263,7 @@ export function SettingRow({
             variant={locked ? 'neutral' : 'warning'}
             label={sourceLabel}
             icon={
-              locked ? (
-                <CircleOff size={12} aria-hidden />
-              ) : (
-                <CircleAlert size={12} aria-hidden />
-              )
+              locked ? <CircleOff size={12} aria-hidden /> : <CircleAlert size={12} aria-hidden />
             }
           />
         )}

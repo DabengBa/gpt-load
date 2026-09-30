@@ -35,10 +35,7 @@ import type { ModelCandidate } from '@shared/control/resources/providers'
 import { proxyMutation } from '@shared/control/resources/proxy'
 import type { MessageId } from '@shared/i18n/message-ids'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
-import {
-  isValidPriceMultiplier,
-  normalizePriceMultiplier,
-} from '@shared/lib/price-multiplier'
+import { isValidPriceMultiplier, normalizePriceMultiplier } from '@shared/lib/price-multiplier'
 import { constrainCollectionSearch } from '@shared/routing/route-query'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 import {
@@ -50,10 +47,7 @@ import {
 } from '@shared/routing/import-route'
 import { pagePath } from '@shared/routing/page-routes'
 import { analyzeCredentials } from '@shared/domain/import/credential-analysis'
-import {
-  mapConnectionToChannel,
-  parseConnectionJSON,
-} from '@shared/domain/import/connection-json'
+import { mapConnectionToChannel, parseConnectionJSON } from '@shared/domain/import/connection-json'
 import {
   appendSelectedCandidates,
   findModelNameConflicts,
@@ -238,8 +232,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const discoveryDrawerOpen = routeState.panel === 'discovery'
   const modelEditorRef = useRef<ModelAliasEditorHandle>(null)
   const [errorKey, setErrorKey] = useState('')
-  const [credentialValidation, setCredentialValidation] =
-    useState<CredentialValidationData | null>(null)
+  const [credentialValidation, setCredentialValidation] = useState<CredentialValidationData | null>(
+    null,
+  )
   const [connectionParsedSuccess, setConnectionParsedSuccess] = useState(false)
   // 识别到连接 JSON 但当前渠道无法完整映射 URL/API key 时，阻断 discover/create 提交原始 JSON。
   const [connectionUnsupported, setConnectionUnsupported] = useState(false)
@@ -248,18 +243,15 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   useEffect(() => {
     if (errorFocusToken > 0) submissionErrorRef.current?.focus()
   }, [errorFocusToken])
-  const [conflict, setConflict] = useState<SameTargetConflictData | null>(
-    () => sameTargetConflict(createOperation.getSnapshot().lastError),
+  const [conflict, setConflict] = useState<SameTargetConflictData | null>(() =>
+    sameTargetConflict(createOperation.getSnapshot().lastError),
   )
   const [serverModelConflicts, setServerModelConflicts] = useState<ModelNameConflict[]>([])
   const [completed, setCompleted] = useState(false)
 
-  const mutationPending =
-    createSnap.pending || appendSnap.pending || connectSnap.pending
+  const mutationPending = createSnap.pending || appendSnap.pending || connectSnap.pending
   const payloadLocked =
-    createSnap.operation !== null ||
-    appendSnap.operation !== null ||
-    connectSnap.operation !== null
+    createSnap.operation !== null || appendSnap.operation !== null || connectSnap.operation !== null
   const activeSnap = connectSnap.operation
     ? connectSnap
     : appendSnap.operation
@@ -274,11 +266,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       ? 'import.operation.reconciling'
       : mutationOutcome.kind === 'indeterminate'
         ? 'import.operation.indeterminate'
-        : mutationOutcome.kind === 'failed' &&
-            mutationOutcome.reason === 'retryable-precondition'
+        : mutationOutcome.kind === 'failed' && mutationOutcome.reason === 'retryable-precondition'
           ? 'import.operation.waiting'
-          : mutationOutcome.kind === 'failed' &&
-              mutationOutcome.reason === 'expired-known'
+          : mutationOutcome.kind === 'failed' && mutationOutcome.reason === 'expired-known'
             ? 'import.operation.expired'
             : ''
   const operationResourceIdentity =
@@ -308,8 +298,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                 item.stage_id === stage.stage_id
                   ? {
                       ...stage,
-                      authorization_url:
-                        stage.authorization_url ?? item.authorization_url,
+                      authorization_url: stage.authorization_url ?? item.authorization_url,
                       redirect_uri: stage.redirect_uri ?? item.redirect_uri,
                     }
                   : item,
@@ -319,15 +308,15 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       )
     } catch (cause) {
       if (mountedRef.current && discoveryRequestIdentityRef.current === identity) {
-        setDiscoveryErrorKey(presentSubscriptionErrorKey(cause, 'common.modelDiscoveryFailed') as MessageId)
+        setDiscoveryErrorKey(
+          presentSubscriptionErrorKey(cause, 'common.modelDiscoveryFailed') as MessageId,
+        )
       }
     }
   }
 
   const credentialCount =
-    draft.connection_type === 'subscription'
-      ? readyStages.length
-      : credentialAnalysis.nonEmptyCount
+    draft.connection_type === 'subscription' ? readyStages.length : credentialAnalysis.nonEmptyCount
   const connectionChannel = selectedChannel
   const isSubscription = draft.connection_type === 'subscription'
   const proxyLocked = isSubscription && draft.staged_credentials.length > 0
@@ -365,10 +354,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (!channel) return errors
     for (const field of channel.param_fields) {
       const value = draft.params[field.key]?.trim() ?? ''
-      if (
-        (field.required || (field.key === 'base_url' && baseUrlOverrideEnabled)) &&
-        !value
-      ) {
+      if ((field.required || (field.key === 'base_url' && baseUrlOverrideEnabled)) && !value) {
         errors[field.key] = t('import.connection.paramRequired', { name: field.label })
         continue
       }
@@ -738,7 +724,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   function setBaseURLOverride(enabled: boolean): void {
     cancelDefaultChannel()
     setParamTouched((current) => {
-      if (!(field => field in current)('base_url')) return current
+      if (!((field) => field in current)('base_url')) return current
       const next = { ...current }
       delete next.base_url
       return next
@@ -915,7 +901,11 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       price_multiplier: normalizePriceMultiplier(draft.price_multiplier),
       models: toGroupModels(draft.models),
       ...(draft.connection_type === 'subscription'
-        ? { staged_credential_ids: currentReadyStages(draft.staged_credentials).map(({ stage_id }) => stage_id) }
+        ? {
+            staged_credential_ids: currentReadyStages(draft.staged_credentials).map(
+              ({ stage_id }) => stage_id,
+            ),
+          }
         : { credentials: draft.credentials }),
       confirm_same_target: confirmSameTarget,
     }
@@ -1009,8 +999,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       )
       return
     }
-    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected')
-      return
+    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
     const cause = createOperation.getSnapshot().lastError
     const targetConflict = sameTargetConflict(cause)
     if (targetConflict) {
@@ -1079,9 +1068,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       return
     }
     const credentials = current.payload.request.credentials ?? ''
-    if (
-      !owner.beginImportCredentials({ groupID, credentials }, 'new', stableDraft)
-    ) {
+    if (!owner.beginImportCredentials({ groupID, credentials }, 'new', stableDraft)) {
       return
     }
     await executeAppendOperation()
@@ -1110,8 +1097,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       )
       return
     }
-    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected')
-      return
+    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
     const cause = connectOperation.getSnapshot().lastError
     connectOperation.reset()
     await reportSubmissionError(presentSubscriptionErrorKey(cause, 'import.appendFailed'))
@@ -1142,8 +1128,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       )
       return
     }
-    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected')
-      return
+    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
     const cause = appendOperation.getSnapshot().lastError
     if (cause instanceof ApiError && cause.code === 'VALIDATION_FAILED') {
       const validation = readCredentialValidationData(cause.data)
@@ -1331,9 +1316,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     draft.credentials,
     JSON.stringify(draft.proxy),
   ].join('')
-  const [lastValidationSignature, setLastValidationSignature] = useState(
-    validationClearSignature,
-  )
+  const [lastValidationSignature, setLastValidationSignature] = useState(validationClearSignature)
   if (validationClearSignature !== lastValidationSignature) {
     setLastValidationSignature(validationClearSignature)
     setCredentialValidation(null)
@@ -1363,7 +1346,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     queueMicrotask(startDiscovery)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mirrors the classic pair watch
   }, [discoveryDrawerOpen, canDiscover, discoveryLoading])
-
 
   // Unmount cleanup: abort the in-flight request; state cleanup is moot once
   // the component is gone.
@@ -1416,10 +1398,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                     )}
                   >
                     {selectedChannel && !visibleParamError && (
-                      <ChannelIcon
-                        icon={selectedChannel.icon}
-                        mark={selectedChannel.mark}
-                      />
+                      <ChannelIcon icon={selectedChannel.icon} mark={selectedChannel.mark} />
                     )}
                     <span>{channelStepSummary}</span>
                   </span>
@@ -1453,9 +1432,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               paramErrors={paramErrors}
               baseUrlOverrideEnabled={baseUrlOverrideEnabled}
               disabled={payloadLocked}
-              onNameChange={(value) =>
-                setDraft((current) => ({ ...current, name: value }))
-              }
+              onNameChange={(value) => setDraft((current) => ({ ...current, name: value }))}
               onProviderUrlChange={(value) =>
                 setDraft((current) => ({ ...current, provider_url: value }))
               }
@@ -1463,9 +1440,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                 setDraft((current) => ({ ...current, price_multiplier: value }))
               }
               onParamChange={setChannelParam}
-              onProxyChange={(proxy) =>
-                setDraft((current) => ({ ...current, proxy }))
-              }
+              onProxyChange={(proxy) => setDraft((current) => ({ ...current, proxy }))}
               onBaseUrlOverrideChange={setBaseURLOverride}
               onParamBlur={touchChannelParam}
             />
@@ -1513,9 +1488,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                 }
                 channelId={draft.channel_id}
                 channelName={subscriptionChannelName}
-                authorizationMethods={
-                  selectedChannel?.connection.authorization_methods ?? []
-                }
+                authorizationMethods={selectedChannel?.connection.authorization_methods ?? []}
                 proxy={draftProxyOverride}
                 notices={selectedChannel?.notices ?? []}
                 context="create"
@@ -1532,9 +1505,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                 hideHeader
                 compact
                 rows={4}
-                onChange={(credentials) =>
-                  setDraft((current) => ({ ...current, credentials }))
-                }
+                onChange={(credentials) => setDraft((current) => ({ ...current, credentials }))}
               />
             )}
             {connectionParsedSuccess && (
@@ -1575,10 +1546,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
             />
           </div>
 
-          <div
-            id="import-models-content"
-            {...stylex.props(styles.stepBody, styles.modelsBody)}
-          >
+          <div id="import-models-content" {...stylex.props(styles.stepBody, styles.modelsBody)}>
             {draft.models.length === 0 && (
               <div {...stylex.props(styles.modelsEmpty)}>
                 <span>{t('import.models.empty')}</span>
@@ -1692,9 +1660,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
         alwaysVisible
         dirty={!canCreate && !mutationPending}
         pending={mutationPending}
-        status={
-          canCreate ? 'saved' : operationNoticeKey ? 'indeterminate' : 'idle'
-        }
+        status={canCreate ? 'saved' : operationNoticeKey ? 'indeterminate' : 'idle'}
         statusContent={
           <div>
             <strong>{createStatusTitle}</strong>
@@ -1742,9 +1708,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
           header={
             <DialogHeader
               title={t(
-                isSubscription
-                  ? 'import.conflict.titleSubscription'
-                  : 'import.conflict.title',
+                isSubscription ? 'import.conflict.titleSubscription' : 'import.conflict.title',
               )}
               subtitle={t(
                 isSubscription

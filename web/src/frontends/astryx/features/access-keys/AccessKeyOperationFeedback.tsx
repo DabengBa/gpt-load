@@ -28,9 +28,7 @@ export function AccessKeyOperationFeedback({
         <Banner
           status="error"
           title={t(
-            editNotApplied
-              ? 'accessKeys.drawer.editNotApplied'
-              : 'accessKeys.drawer.saveFailed',
+            editNotApplied ? 'accessKeys.drawer.editNotApplied' : 'accessKeys.drawer.saveFailed',
           )}
         />
       )}

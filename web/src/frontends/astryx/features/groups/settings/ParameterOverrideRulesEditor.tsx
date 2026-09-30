@@ -127,9 +127,8 @@ export function ParameterOverrideRulesEditor({
 
   function createRows(source: ParameterOverrideRuleDto[]): RuleRow[] {
     return source.map((rule, ruleIndex) => {
-      const setEntries = (rule.set ? flattenParameterSet(rule.set) : []).map(
-        (entry, paramIndex) =>
-          createSetParam(entry, -(ruleIndex * 1_000_000 + paramIndex + 1)),
+      const setEntries = (rule.set ? flattenParameterSet(rule.set) : []).map((entry, paramIndex) =>
+        createSetParam(entry, -(ruleIndex * 1_000_000 + paramIndex + 1)),
       )
       const removeEntries = (rule.remove ?? []).map((pointer, paramIndex) => ({
         key: -(ruleIndex * 1_000_000 + setEntries.length + paramIndex + 1),
@@ -488,7 +487,9 @@ export function ParameterOverrideRulesEditor({
       next.splice(target, 0, row)
       return next
     })
-    setMoveAnnouncement(t('group.settings.parameterOverrides.moved', { position: index + offset + 1 }))
+    setMoveAnnouncement(
+      t('group.settings.parameterOverrides.moved', { position: index + offset + 1 }),
+    )
   }
 
   function removeRule(index: number): void {
@@ -665,10 +666,7 @@ export function ParameterOverrideRulesEditor({
                         {summary?.chips.map((chip) => (
                           <span
                             key={chip.key}
-                            {...stylex.props(
-                              styles.chip,
-                              chip.op === 'remove' && styles.chipDrop,
-                            )}
+                            {...stylex.props(styles.chip, chip.op === 'remove' && styles.chipDrop)}
                           >
                             {chip.op === 'remove' && (
                               <span {...stylex.props(styles.chipMark)} aria-hidden="true">
@@ -756,9 +754,7 @@ export function ParameterOverrideRulesEditor({
                             aria-invalid={errors?.model !== undefined ? true : undefined}
                             disabled={disabled}
                             autoComplete="off"
-                            onChange={(event) =>
-                              updateRule(row.key, { model: event.target.value })
-                            }
+                            onChange={(event) => updateRule(row.key, { model: event.target.value })}
                           />
                           {errors?.model !== undefined && (
                             <small {...stylex.props(styles.errorText)} role="alert">
@@ -767,9 +763,7 @@ export function ParameterOverrideRulesEditor({
                           )}
                         </span>
                         {matches !== undefined && (
-                          <span
-                            {...stylex.props(styles.count, matches === 0 && styles.countZero)}
-                          >
+                          <span {...stylex.props(styles.count, matches === 0 && styles.countZero)}>
                             {matches === 0
                               ? t('group.settings.parameterOverrides.modelNoMatch')
                               : t('group.settings.parameterOverrides.modelMatch', {
@@ -839,9 +833,7 @@ export function ParameterOverrideRulesEditor({
                                           value={param.op}
                                           size="sm"
                                           isDisabled={disabled}
-                                          onChange={(value) =>
-                                            setParamOp(row, param, value)
-                                          }
+                                          onChange={(value) => setParamOp(row, param, value)}
                                         />
                                       </span>
                                     )}
@@ -881,9 +873,7 @@ export function ParameterOverrideRulesEditor({
                                       <>
                                         <span {...stylex.props(styles.kind)}>
                                           <Selector
-                                            label={t(
-                                              'group.settings.parameterOverrides.paramKind',
-                                            )}
+                                            label={t('group.settings.parameterOverrides.paramKind')}
                                             isLabelHidden
                                             options={kindOptions}
                                             value={param.kind}
@@ -920,7 +910,7 @@ export function ParameterOverrideRulesEditor({
                                             />
                                           </span>
                                         ) : (
-                                            <input
+                                          <input
                                             {...stylex.props(styles.input, styles.valueInput)}
                                             value={param.valueText}
                                             placeholder={

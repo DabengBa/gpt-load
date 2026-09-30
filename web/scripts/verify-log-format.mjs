@@ -648,9 +648,7 @@ async function main() {
     const localeNames = ['zh-CN', 'en-US', 'ja-JP']
     const messagesByLocale = {}
     for (const locale of localeNames) {
-      const module = await server.ssrLoadModule(
-        `/src/shared/i18n/locales/${locale}/monitor.ts`,
-      )
+      const module = await server.ssrLoadModule(`/src/shared/i18n/locales/${locale}/monitor.ts`)
       messagesByLocale[locale] = module.default
     }
     const context = { translate: createTranslator(messagesByLocale['zh-CN']) }

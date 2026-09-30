@@ -312,10 +312,7 @@ export function AuthedShell({
           </nav>
 
           {isAccessKey && (
-            <span
-              {...stylex.props(styles.badge)}
-              title={t('shell.accessKeyReadOnlyDescription')}
-            >
+            <span {...stylex.props(styles.badge)} title={t('shell.accessKeyReadOnlyDescription')}>
               <LockKeyhole size={13} aria-hidden />
               <span>{t('shell.accessKeyReadOnly')}</span>
             </span>
@@ -335,12 +332,7 @@ export function AuthedShell({
             <PreferencesControl
               triggerLabel={t('shell.menu')}
               showSignOut
-              mobileNav={
-                <MobileNavItems
-                  items={items}
-                  activeKey={meta?.primaryNav}
-                />
-              }
+              mobileNav={<MobileNavItems items={items} activeKey={meta?.primaryNav} />}
               onSignOut={() => void logout()}
             />
           </div>

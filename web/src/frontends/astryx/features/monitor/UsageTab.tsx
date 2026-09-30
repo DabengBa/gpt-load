@@ -11,13 +11,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Database, TriangleAlert } from 'lucide-react'
-import {
-  useImperativeHandle,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type Ref,
-} from 'react'
+import { useImperativeHandle, useMemo, useState, useSyncExternalStore, type Ref } from 'react'
 import { useIntl } from 'react-intl'
 
 import { controlQueryKeys } from '@shared/control/query-keys'
@@ -297,8 +291,7 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
 
   const [distributionDimension, setDistributionDimension] =
     useState<UsageDistributionDimension>('model')
-  const [distributionMetric, setDistributionMetric] =
-    useState<UsageDistributionMetric>('cost')
+  const [distributionMetric, setDistributionMetric] = useState<UsageDistributionMetric>('cost')
 
   const distribution = useMemo(() => {
     const distributions = report?.distributions
@@ -308,14 +301,10 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
     }
     if (distributionDimension === 'access_key') {
       return (
-        distributions.access_key?.[distributionMetric] ??
-        distributions.model[distributionMetric]
+        distributions.access_key?.[distributionMetric] ?? distributions.model[distributionMetric]
       )
     }
-    return (
-      distributions.group?.[distributionMetric] ??
-      distributions.model[distributionMetric]
-    )
+    return distributions.group?.[distributionMetric] ?? distributions.model[distributionMetric]
   }, [report, isAccessKey, distributionDimension, distributionMetric])
 
   const loading = useCollectionLoading(
@@ -324,8 +313,7 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
       placeholder: usageQuery.isPlaceholderData,
       fetching: usageQuery.isFetching,
       hasData: report !== undefined,
-      itemCount:
-        (distribution?.items.length ?? 0) + (distribution?.other == null ? 0 : 1),
+      itemCount: (distribution?.items.length ?? 0) + (distribution?.other == null ? 0 : 1),
     },
     { fallbackRows: 5 },
   )
@@ -377,19 +365,13 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
       }))
     }
     const costs = buckets.map((bucket) => BigInt(bucket.estimated_cost_nano_usd))
-    const maximum = costs.reduce(
-      (current, value) => (value > current ? value : current),
-      0n,
-    )
+    const maximum = costs.reduce((current, value) => (value > current ? value : current), 0n)
     return buckets.map((bucket, index) => ({
       bucket_start_ms: bucket.bucket_start_ms,
       bucket_end_ms: bucket.bucket_end_ms,
       primary_value: normalizeTrendCost(costs[index]!, maximum),
       secondary_value: 0,
-      primary_display: formatEstimatedCost(
-        bucket.estimated_cost_nano_usd,
-        intl.locale,
-      ),
+      primary_display: formatEstimatedCost(bucket.estimated_cost_nano_usd, intl.locale),
     }))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t is stable per locale
   }, [report, routeState.metric, intl.locale])
@@ -612,9 +594,7 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
           )}
 
           {!isAccessKey &&
-            (groupsQuery.isError ||
-              channelsQuery.isError ||
-              accessKeysQuery.isError) && (
+            (groupsQuery.isError || channelsQuery.isError || accessKeysQuery.isError) && (
               <Banner status="warning" title={t('monitor.usage.options.partialFailed')} />
             )}
 
@@ -626,10 +606,7 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
               <Banner
                 status="error"
                 title={t('monitor.usage.process.warning', {
-                  dropped: formatInteger(
-                    report.collection_health.dropped_total,
-                    intl.locale,
-                  ),
+                  dropped: formatInteger(report.collection_health.dropped_total, intl.locale),
                   failures: formatInteger(
                     report.collection_health.write_failure_total,
                     intl.locale,
@@ -646,10 +623,7 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
             />
           ) : (
             <>
-              <section
-                {...stylex.props(styles.trendPanel)}
-                aria-labelledby="usage-trend-title"
-              >
+              <section {...stylex.props(styles.trendPanel)} aria-labelledby="usage-trend-title">
                 <MonitorSectionHeading
                   id="usage-trend-title"
                   title={trendPresentation.title}
@@ -722,10 +696,7 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
                 </dl>
               </section>
 
-              <section
-                {...stylex.props(styles.section)}
-                aria-labelledby="usage-distribution-title"
-              >
+              <section {...stylex.props(styles.section)} aria-labelledby="usage-distribution-title">
                 <MonitorSectionHeading
                   id="usage-distribution-title"
                   title={t('monitor.usage.distribution.title')}
@@ -790,10 +761,7 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
                 )}
               </section>
 
-              <section
-                {...stylex.props(styles.section)}
-                aria-labelledby="usage-breakdown-title"
-              >
+              <section {...stylex.props(styles.section)} aria-labelledby="usage-breakdown-title">
                 <MonitorSectionHeading
                   id="usage-breakdown-title"
                   title={t('monitor.usage.breakdown.title')}
@@ -878,22 +846,13 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
                             {formatTokens(bucket.total_tokens, intl.locale)}
                           </td>
                           <td {...stylex.props(styles.bucketsTd)}>
-                            {formatEstimatedCost(
-                              bucket.estimated_cost_nano_usd,
-                              intl.locale,
-                            )}
+                            {formatEstimatedCost(bucket.estimated_cost_nano_usd, intl.locale)}
                           </td>
                           <td {...stylex.props(styles.bucketsTd)}>
                             {t('monitor.usage.columns.qualityCompact', {
-                              missing: formatInteger(
-                                bucket.usage_missing_count,
-                                intl.locale,
-                              ),
+                              missing: formatInteger(bucket.usage_missing_count, intl.locale),
                               partial: formatInteger(bucket.partial_count, intl.locale),
-                              unpriced: formatInteger(
-                                bucket.unpriced_request_count,
-                                intl.locale,
-                              ),
+                              unpriced: formatInteger(bucket.unpriced_request_count, intl.locale),
                               pricingPartial: formatInteger(
                                 bucket.pricing_partial_count,
                                 intl.locale,

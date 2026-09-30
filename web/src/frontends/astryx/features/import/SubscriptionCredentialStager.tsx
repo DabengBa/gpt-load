@@ -22,7 +22,10 @@ import {
   type CredentialStageNetworkInput,
   type CredentialStage,
 } from '@shared/control/resources/credential-stages'
-import type { ChannelAuthorizationMethod, ChannelNoticeDto } from '@shared/control/resources/channels'
+import type {
+  ChannelAuthorizationMethod,
+  ChannelNoticeDto,
+} from '@shared/control/resources/channels'
 import type { ProxyConfigInput } from '@shared/control/types'
 import { presentSubscriptionErrorKey } from '@shared/domain/import/subscription-error-presenter'
 import type { MessageId } from '@shared/i18n/message-ids'
@@ -208,8 +211,7 @@ export function SubscriptionCredentialStager({
       state.controller = controller
       let polledStage: CredentialStage | undefined
       try {
-        const current =
-          stagesRef.current.find((item) => item.stage_id === stage.stage_id) ?? stage
+        const current = stagesRef.current.find((item) => item.stage_id === stage.stage_id) ?? stage
         const next =
           current.authorization_method === 'device_oauth' &&
           current.status === 'pending_authorization'

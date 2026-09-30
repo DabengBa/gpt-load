@@ -1,4 +1,4 @@
-import { keepPreviousData, type QueryClient , type QueryFunctionContext } from '@tanstack/query-core'
+import { keepPreviousData, type QueryClient, type QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import type {
@@ -757,23 +757,18 @@ export const manualGroupQueryOptions = {
   refetchOnReconnect: false,
 } as const
 
-export function groupCollectionQueryOptions(
-  client: ApiClient,
-  filters: GroupCollectionFilters,
-) {
+export function groupCollectionQueryOptions(client: ApiClient, filters: GroupCollectionFilters) {
   const key = controlQueryKeys.groups.collection(filters)
   return {
     ...manualGroupQueryOptions,
     queryKey: key,
-    queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) => listGroupCollection(client, queryKey[3], signal),
+    queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) =>
+      listGroupCollection(client, queryKey[3], signal),
     placeholderData: keepPreviousData,
   }
 }
 
-export function groupOptionsQueryOptions(
-  client: ApiClient,
-  enabled: boolean = true,
-) {
+export function groupOptionsQueryOptions(client: ApiClient, enabled: boolean = true) {
   return {
     ...manualGroupQueryOptions,
     queryKey: controlQueryKeys.groups.options(),
@@ -784,10 +779,7 @@ export function groupOptionsQueryOptions(
   }
 }
 
-export function groupSummaryQueryOptions(
-  client: ApiClient,
-  groupID: number | undefined,
-) {
+export function groupSummaryQueryOptions(client: ApiClient, groupID: number | undefined) {
   return {
     ...manualGroupQueryOptions,
     queryKey:
@@ -803,10 +795,7 @@ export function groupSummaryQueryOptions(
   }
 }
 
-export function groupSettingsQueryOptions(
-  client: ApiClient,
-  groupID: number | undefined,
-) {
+export function groupSettingsQueryOptions(client: ApiClient, groupID: number | undefined) {
   return {
     ...manualGroupQueryOptions,
     queryKey:
@@ -822,10 +811,7 @@ export function groupSettingsQueryOptions(
   }
 }
 
-export function groupModelsQueryOptions(
-  client: ApiClient,
-  groupID: number | undefined,
-) {
+export function groupModelsQueryOptions(client: ApiClient, groupID: number | undefined) {
   return {
     ...manualGroupQueryOptions,
     queryKey:

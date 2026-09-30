@@ -2,14 +2,7 @@ import { Button, EmptyState, Skeleton, Switch, TextInput } from '@astryxdesign/c
 import * as stylex from '@stylexjs/stylex'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, TriangleAlert } from 'lucide-react'
-import {
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-  type ReactNode,
-  type Ref,
-} from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 
 import type {
@@ -136,9 +129,7 @@ export function GroupSettingsTab({
     ({ channel_id }) => channel_id === draft?.channel_id,
   )
   const channelParamFields: ChannelFieldDto[] =
-    selectedChannel?.connection.type === 'subscription'
-      ? []
-      : (selectedChannel?.param_fields ?? [])
+    selectedChannel?.connection.type === 'subscription' ? [] : (selectedChannel?.param_fields ?? [])
   const channelParamsDisabled = selectedChannel === undefined
   const parameterOverrideProtocols: AccessProtocol[] = [
     ...new Set(
@@ -154,8 +145,7 @@ export function GroupSettingsTab({
     : { dirty: false, invalid: false, value: undefined }
   // 代理沿用其它设置项的覆盖语义：inherit 即“继承全局”，direct/custom 即“本分组覆盖”。
   const proxyOverridden = proxyMode !== 'inherit'
-  const proxyPendingRestore =
-    saved?.proxy.configured_mode !== 'inherit' && proxyMode === 'inherit'
+  const proxyPendingRestore = saved?.proxy.configured_mode !== 'inherit' && proxyMode === 'inherit'
   const proxyEffectiveLabel = (() => {
     const view = saved?.proxy
     if (!view) return ''
@@ -281,12 +271,10 @@ export function GroupSettingsTab({
     blocked: mutationPending,
     allowRouteUpdate: (current, next) => {
       const sameGroup =
-        current.routeId === next.routeId &&
-        String(current.params.id) === String(next.params.id)
+        current.routeId === next.routeId && String(current.params.id) === String(next.params.id)
       if (!sameGroup) return false
       const nextTab = typeof next.search.tab === 'string' ? next.search.tab : undefined
-      const currentTab =
-        typeof current.search.tab === 'string' ? current.search.tab : undefined
+      const currentTab = typeof current.search.tab === 'string' ? current.search.tab : undefined
       if (unified) return nextTab !== 'credentials'
       return nextTab === 'settings' && currentTab === 'settings'
     },
@@ -308,8 +296,7 @@ export function GroupSettingsTab({
   useEffect(() => {
     const latest = query.data
     if (!latest) return
-    const { dirty: isDirty, mutationPending: isPending, deleted: isDeleted } =
-      stateRef.current
+    const { dirty: isDirty, mutationPending: isPending, deleted: isDeleted } = stateRef.current
     if (latest === savedRef.current || isDirty || isPending || isDeleted) return
     resetSavedDraftRef.current(latest)
   }, [query.data])
@@ -367,9 +354,7 @@ export function GroupSettingsTab({
 
   function setTimeoutValue(key: GroupTimeoutKey, value: string): void {
     setDraft((current) =>
-      current
-        ? { ...current, overrides: { ...current.overrides, [key]: Number(value) } }
-        : current,
+      current ? { ...current, overrides: { ...current.overrides, [key]: Number(value) } } : current,
     )
   }
 
@@ -383,9 +368,7 @@ export function GroupSettingsTab({
 
   function setPolicyCountValue(key: GroupPolicyCountKey, value: string): void {
     setDraft((current) =>
-      current
-        ? { ...current, overrides: { ...current.overrides, [key]: Number(value) } }
-        : current,
+      current ? { ...current, overrides: { ...current.overrides, [key]: Number(value) } } : current,
     )
   }
 
@@ -465,8 +448,7 @@ export function GroupSettingsTab({
       if (!current) return current
       const overrides = { ...current.overrides }
       if (websocketOverridden) delete overrides.responses_websocket_enabled
-      else
-        overrides.responses_websocket_enabled = saved.effective.responses_websocket_enabled
+      else overrides.responses_websocket_enabled = saved.effective.responses_websocket_enabled
       return { ...current, overrides }
     })
   }
@@ -526,9 +508,7 @@ export function GroupSettingsTab({
     try {
       const body = {
         ...patch,
-        ...(proxyState.dirty && proxyState.value !== undefined
-          ? { proxy: proxyState.value }
-          : {}),
+        ...(proxyState.dirty && proxyState.value !== undefined ? { proxy: proxyState.value } : {}),
       }
       const result = await updateGroupSettings(apiClient, groupId, body, active.signal)
       if (controllerRef.current !== active) return
@@ -615,9 +595,7 @@ export function GroupSettingsTab({
         <div {...stylex.props(styles.advancedSections)}>
           <section id="settings-runtime" {...stylex.props(styles.section)}>
             <header>
-              <h3 {...stylex.props(styles.sectionTitle)}>
-                {t('group.settings.sections.runtime')}
-              </h3>
+              <h3 {...stylex.props(styles.sectionTitle)}>{t('group.settings.sections.runtime')}</h3>
               <p {...stylex.props(styles.sectionDescription)}>
                 {t('group.settings.runtime.description')}
               </p>
@@ -678,13 +656,9 @@ export function GroupSettingsTab({
                 control={
                   <Switch
                     size="sm"
-                    value={
-                      draft.overrides.responses_reasoning_status_filter_enabled ?? false
-                    }
+                    value={draft.overrides.responses_reasoning_status_filter_enabled ?? false}
                     isDisabled={mutationPending}
-                    label={t(
-                      'group.settings.runtime.responses_reasoning_status_filter_enabled',
-                    )}
+                    label={t('group.settings.runtime.responses_reasoning_status_filter_enabled')}
                     isLabelHidden
                     onChange={setReasoningStatusFilterValue}
                   />
@@ -750,9 +724,7 @@ export function GroupSettingsTab({
                   overridden={draft.overrides[key] !== undefined}
                   pendingRestore={isPendingRestore(key)}
                   disabled={mutationPending}
-                  onToggle={() =>
-                    setTimeoutOverride(key, draft.overrides[key] === undefined)
-                  }
+                  onToggle={() => setTimeoutOverride(key, draft.overrides[key] === undefined)}
                   control={
                     <div {...stylex.props(styles.runtimeInput)}>
                       <TextInput
@@ -802,10 +774,7 @@ export function GroupSettingsTab({
                   pendingRestore={isPendingRestore(policy.key)}
                   disabled={mutationPending}
                   onToggle={() =>
-                    setPolicyCountOverride(
-                      policy.key,
-                      draft.overrides[policy.key] === undefined,
-                    )
+                    setPolicyCountOverride(policy.key, draft.overrides[policy.key] === undefined)
                   }
                   control={
                     <div {...stylex.props(styles.runtimeInput)}>
@@ -1032,9 +1001,7 @@ export function GroupSettingsTab({
                   setDraft((current) => (current ? { ...current, name: value } : current))
                 }
                 onProviderUrlChange={(value) =>
-                  setDraft((current) =>
-                    current ? { ...current, provider_url: value } : current,
-                  )
+                  setDraft((current) => (current ? { ...current, provider_url: value } : current))
                 }
                 onPriceMultiplierChange={(value) =>
                   setDraft((current) =>

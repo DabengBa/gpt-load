@@ -3,10 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import {
-  astryxRoutePaths,
-  toTanStackPath,
-} from '../src/frontends/astryx/app/route-adapter.ts'
+import { astryxRoutePaths, toTanStackPath } from '../src/frontends/astryx/app/route-adapter.ts'
 import { pageRouteMeta } from '../src/shared/routing/route-meta.ts'
 
 const manifestPath = fileURLToPath(

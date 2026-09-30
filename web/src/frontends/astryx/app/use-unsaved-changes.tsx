@@ -18,10 +18,7 @@ export interface BlockerRouteLocation {
 export interface UnsavedChangesOptions {
   dirty: boolean
   blocked?: boolean
-  allowRouteUpdate?: (
-    current: BlockerRouteLocation,
-    next: BlockerRouteLocation,
-  ) => boolean
+  allowRouteUpdate?: (current: BlockerRouteLocation, next: BlockerRouteLocation) => boolean
 }
 
 export interface UnsavedChangesGuard {
@@ -73,8 +70,7 @@ export function useUnsavedChanges(options: UnsavedChangesOptions): UnsavedChange
       if (!dirty) return false
       return controller.requestConfirmation().then((confirmed) => !confirmed)
     },
-    enableBeforeUnload: () =>
-      optionsRef.current.dirty || optionsRef.current.blocked === true,
+    enableBeforeUnload: () => optionsRef.current.dirty || optionsRef.current.blocked === true,
   })
 
   async function confirmDiscard(): Promise<boolean> {
@@ -91,5 +87,9 @@ export function useUnsavedChanges(options: UnsavedChangesOptions): UnsavedChange
     }
   }
 
-  return { confirmDiscard, runWithoutPrompt, dialog: <UnsavedChangesAlert controller={controller} /> }
+  return {
+    confirmDiscard,
+    runWithoutPrompt,
+    dialog: <UnsavedChangesAlert controller={controller} />,
+  }
 }

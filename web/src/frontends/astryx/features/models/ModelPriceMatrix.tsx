@@ -291,7 +291,10 @@ export function ModelPriceMatrix({
 
       <div {...stylex.props(styles.grid)}>
         {/* 纯视觉列标签;每个输入的可访问名称由输入自身的 label 承担。 */}
-        <div {...stylex.props(styles.row, tiered && styles.rowTiered, styles.headerRow)} aria-hidden>
+        <div
+          {...stylex.props(styles.row, tiered && styles.rowTiered, styles.headerRow)}
+          aria-hidden
+        >
           {tiered && <span>{t('modelPrices.matrix.thresholdColumn')}</span>}
           <div {...stylex.props(styles.headerCells)}>
             {modelPriceFields.map((field) => (
@@ -470,11 +473,7 @@ export function ModelPriceMatrix({
         )}
       </div>
 
-      <Dialog
-        isOpen={unpricedConfirmOpen}
-        onOpenChange={onUnpricedConfirmOpenChange}
-        width={440}
-      >
+      <Dialog isOpen={unpricedConfirmOpen} onOpenChange={onUnpricedConfirmOpenChange} width={440}>
         <Layout
           header={
             <DialogHeader

@@ -1,5 +1,3 @@
-
-
 import type { QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'

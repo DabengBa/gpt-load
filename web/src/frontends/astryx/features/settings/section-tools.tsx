@@ -8,10 +8,7 @@ import {
   setSettingsOverride,
   type SettingsDraft,
 } from '@shared/domain/settings/settings-patch'
-import type {
-  RuntimeSettingKey,
-  SettingsResource,
-} from '@shared/control/resources/settings'
+import type { RuntimeSettingKey, SettingsResource } from '@shared/control/resources/settings'
 
 const sectionStyles = stylex.create({
   section: {

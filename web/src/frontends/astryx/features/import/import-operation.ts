@@ -41,8 +41,10 @@ const idleSnapshot: OperationSnapshot<never, never> = {
  */
 export class StableOperationStore<TPayload, TResult> {
   private listeners = new Set<() => void>()
-  private snapshot: OperationSnapshot<TPayload, TResult> =
-    idleSnapshot as OperationSnapshot<TPayload, TResult>
+  private snapshot: OperationSnapshot<TPayload, TResult> = idleSnapshot as OperationSnapshot<
+    TPayload,
+    TResult
+  >
   private controller: AbortController | undefined
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private clock = 0
@@ -62,8 +64,7 @@ export class StableOperationStore<TPayload, TResult> {
 
   private commit(patch: Partial<OperationSnapshot<TPayload, TResult>>): void {
     const next = { ...this.snapshot, ...patch }
-    next.canRetry =
-      !next.pending && next.operation !== null && this.clock >= next.retryReadyAt
+    next.canRetry = !next.pending && next.operation !== null && this.clock >= next.retryReadyAt
     this.snapshot = next
     for (const listener of this.listeners) listener()
   }
@@ -276,10 +277,7 @@ export class ImportOperationOwnerStore {
     draft: ImportRecoveryDraft,
   ): StableImportOperation<ImportCredentialsOperationPayload> | null {
     if (this.createGroup.getSnapshot().operation) return null
-    if (
-      this.importCredentials.getSnapshot().operation &&
-      this.snapshot.operationMode !== mode
-    ) {
+    if (this.importCredentials.getSnapshot().operation && this.snapshot.operationMode !== mode) {
       return null
     }
     const operation = this.importCredentials.begin({ ...payload, draft })

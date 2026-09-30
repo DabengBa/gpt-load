@@ -540,9 +540,7 @@ const styles = stylex.create({
 function LogInstant({ instant }: { instant: number }) {
   const dateTime = formatISOInstant(instant)
   if (dateTime === undefined) {
-    return (
-      <span {...stylex.props(styles.invalidInstant)}>{String(instant)}</span>
-    )
+    return <span {...stylex.props(styles.invalidInstant)}>{String(instant)}</span>
   }
   return <time dateTime={dateTime}>{formatLocalInstantWithSeconds(instant)}</time>
 }
@@ -587,11 +585,7 @@ function OverflowTip({
 
   return (
     <Tooltip content={content} isEnabled={overflowing} placement="above">
-      <code
-        ref={setElement}
-        tabIndex={overflowing ? 0 : undefined}
-        {...stylex.props(xstyle)}
-      >
+      <code ref={setElement} tabIndex={overflowing ? 0 : undefined} {...stylex.props(xstyle)}>
         {children}
       </code>
     </Tooltip>
@@ -763,9 +757,7 @@ export function LogDetailDrawer({
   const [seenLogRequestId, setSeenLogRequestId] = useState(logRequestId)
   if (logRequestId !== seenLogRequestId) {
     setSeenLogRequestId(logRequestId)
-    setExpandedAttemptErrorMessages(
-      new Set(log?.attempts.map(({ sequence }) => sequence) ?? []),
-    )
+    setExpandedAttemptErrorMessages(new Set(log?.attempts.map(({ sequence }) => sequence) ?? []))
   }
 
   const [seenRequestId, setSeenRequestId] = useState(requestId)
@@ -780,9 +772,7 @@ export function LogDetailDrawer({
     setWasOpen(open)
     if (open) {
       setErrorMessageExpanded(true)
-      setExpandedAttemptErrorMessages(
-        new Set(log?.attempts.map(({ sequence }) => sequence) ?? []),
-      )
+      setExpandedAttemptErrorMessages(new Set(log?.attempts.map(({ sequence }) => sequence) ?? []))
     }
   }
 
@@ -853,9 +843,7 @@ export function LogDetailDrawer({
   function formatFormulaLine(line: RequestLogPricingLineDto): string {
     const quantity = formatLogTokenCount(line.quantity, locale)
     const multipliers = receipt?.schema_version === 5 ? receipt.price_multipliers : null
-    const priceMultiplier = multipliers
-      ? ` × ${multipliers.group} × ${multipliers.access_key}`
-      : ''
+    const priceMultiplier = multipliers ? ` × ${multipliers.group} × ${multipliers.access_key}` : ''
     if (line.state === 'unpriced' || line.rate_nano_usd_per_million === null) {
       return `${quantity} × —${priceMultiplier}`
     }
@@ -1240,9 +1228,7 @@ export function LogDetailDrawer({
                       channel={finalChannel()}
                       credentialId={log.credential_id}
                       credentialName={log.credential_name}
-                      credentialDeleted={
-                        log.credential_id !== null && log.credential_name === ''
-                      }
+                      credentialDeleted={log.credential_id !== null && log.credential_name === ''}
                       appearance="plain"
                     />
                     {open && log.credential_name !== '' && (
@@ -1252,9 +1238,7 @@ export function LogDetailDrawer({
                         label={t('monitor.logs.drawer.copyCredential')}
                         successLabel={t('common.copied')}
                         failureLabel={t('common.copyFailed')}
-                        resolveValue={
-                          revealsCredential ? resolveCredentialCopyValue : undefined
-                        }
+                        resolveValue={revealsCredential ? resolveCredentialCopyValue : undefined}
                         xstyle={styles.routeCopyChip}
                       />
                     )}
@@ -1721,9 +1705,7 @@ export function LogDetailDrawer({
                             </div>
                           </dl>
                           {attemptErrorCodeNeedsDetails(attempt) && (
-                            <div
-                              {...stylex.props(styles.errorMessage, styles.errorMessageAttempt)}
-                            >
+                            <div {...stylex.props(styles.errorMessage, styles.errorMessageAttempt)}>
                               <p {...stylex.props(styles.errorMessageCode)}>
                                 <span>{t('monitor.logs.drawer.errorCode')}</span>
                                 <code {...stylex.props(styles.errorMessageCodeValue)}>

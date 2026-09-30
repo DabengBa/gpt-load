@@ -140,10 +140,7 @@ test('selected_request_id accepts only UUIDv4', () => {
     undefined,
   )
   assert.equal(parseSelectedRequestID({ selected_request_id: 'zzz' }), undefined)
-  assert.equal(
-    parseSelectedRequestID({ selected_request_id: [VALID_ID, VALID_ID] }),
-    undefined,
-  )
+  assert.equal(parseSelectedRequestID({ selected_request_id: [VALID_ID, VALID_ID] }), undefined)
 })
 
 test('cursor history parses bounded unique valid cursors', () => {

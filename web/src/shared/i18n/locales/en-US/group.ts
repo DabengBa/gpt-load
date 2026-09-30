@@ -285,7 +285,8 @@ export default {
           valueRequired: 'Enter a value.',
           valueNumber: 'Not a valid number. Switch the type to Text to store it as text.',
           valueBoolean: 'A boolean must be true or false.',
-          valueJSON: 'Invalid JSON. Provide a complete structure starting with {brace} or {bracket}.',
+          valueJSON:
+            'Invalid JSON. Provide a complete structure starting with {brace} or {bracket}.',
           emptyKey: 'Parameter object field names cannot be empty.',
           unsafeNumber: 'Numbers must round-trip safely and losslessly through the management UI.',
           setObject: 'Set parameters must be a JSON object.',

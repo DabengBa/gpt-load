@@ -42,11 +42,7 @@ function relativePeriod(seconds: number): { value: number; unit: PeriodUnit } | 
 // Port of classic AccessKeyCostLimitWindowTime: a live window shows the real
 // reset instant; an inactive one previews "when the window would end" from the
 // hover/focus moment.
-export function CostLimitWindowTime({
-  rule,
-}: {
-  rule: AccessKeyCostLimitRuleStatusDto
-}) {
+export function CostLimitWindowTime({ rule }: { rule: AccessKeyCostLimitRuleStatusDto }) {
   const intl = useIntl()
   const t = useT()
   const [previewStartedAtMS, setPreviewStartedAtMS] = useState(() => Date.now())

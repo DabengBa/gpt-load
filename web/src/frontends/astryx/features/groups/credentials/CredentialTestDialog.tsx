@@ -166,9 +166,7 @@ export function CredentialTestDialog({
                     <dd {...stylex.props(styles.definition)}>
                       {formatLocalInstant(result.tested_at_ms, intl.locale)}
                     </dd>
-                    <dt {...stylex.props(styles.term)}>
-                      {t('monitor.modelProbe.fields.logId')}
-                    </dt>
+                    <dt {...stylex.props(styles.term)}>{t('monitor.modelProbe.fields.logId')}</dt>
                     <dd {...stylex.props(styles.definition)}>
                       {result.log_id ? (
                         <span {...stylex.props(styles.logActions)}>

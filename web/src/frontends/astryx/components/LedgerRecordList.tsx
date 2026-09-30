@@ -1,12 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 /**
  * Astryx counterpart of classic `components/collection/LedgerRecordList.vue` —
@@ -70,8 +63,7 @@ export const ledgerRecordStyles = stylex.create({
     gridColumn: { default: '1 / -1', [narrow]: '1' },
     gridTemplateColumns: {
       default: 'subgrid',
-      [narrow]:
-        'var(--ledger-record-list-card-grid, minmax(0, 0.48fr) minmax(0, 1.52fr))',
+      [narrow]: 'var(--ledger-record-list-card-grid, minmax(0, 0.48fr) minmax(0, 1.52fr))',
     },
     alignItems: { default: 'center', [narrow]: 'start' },
     gap: { [narrow]: '14px 16px' },

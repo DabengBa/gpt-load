@@ -165,8 +165,7 @@ export function ClientPicker({
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
 
-  const selected =
-    gatewayClients.find((entry) => entry.id === value) ?? gatewayClients[0]!
+  const selected = gatewayClients.find((entry) => entry.id === value) ?? gatewayClients[0]!
 
   const label = (entry: GatewayClient): string =>
     t(`home.ledger.connection.clients.${entry.id}` as MessageId)
@@ -229,7 +228,12 @@ export function ClientPicker({
       setQuery('')
       return
     }
-    setActiveIndex(Math.max(flat.findIndex((entry) => entry.id === value), 0))
+    setActiveIndex(
+      Math.max(
+        flat.findIndex((entry) => entry.id === value),
+        0,
+      ),
+    )
   }
 
   function choose(entry: GatewayClient): void {
@@ -306,9 +310,7 @@ export function ClientPicker({
               </div>
             ))}
             {sections.length === 0 && (
-              <p {...stylex.props(styles.empty)}>
-                {t('home.ledger.connection.noClientMatches')}
-              </p>
+              <p {...stylex.props(styles.empty)}>{t('home.ledger.connection.noClientMatches')}</p>
             )}
           </div>
         </div>
