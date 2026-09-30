@@ -361,6 +361,9 @@ const styles = stylex.create({
   timingSlow: {
     color: 'var(--color-warning)',
   },
+  timingFaulty: {
+    color: 'var(--color-danger)',
+  },
   timingMeta: {
     display: 'block',
     color: 'var(--color-text-faint)',
@@ -897,16 +900,24 @@ const LogRow = memo(function LogRow({
         <CellLabel>{t('monitor.logs.columns.timing')}</CellLabel>
         <span {...stylex.props(styles.cellValue)}>
           <Tooltip content={timingPrimary}>
-            <span>
+            <span
+              data-testid="logs-list__timing"
+              data-tone={
+                log.feedback_status === 'slow' || log.feedback_status === 'faulty'
+                  ? log.feedback_status
+                  : undefined
+              }
+              {...stylex.props(
+                log.feedback_status === 'slow'
+                  ? styles.timingSlow
+                  : log.feedback_status === 'faulty'
+                    ? styles.timingFaulty
+                    : null,
+              )}
+            >
               {log.stream && log.first_response_ms !== null ? (
                 <>
-                  <span
-                    data-testid="logs-list__timing"
-                    data-tone={log.first_response_ms > 15_000 ? 'slow' : undefined}
-                    {...stylex.props(log.first_response_ms > 15_000 && styles.timingSlow)}
-                  >
-                    {formatLogDuration(log.first_response_ms)}
-                  </span>
+                  {formatLogDuration(log.first_response_ms)}
                   <span aria-hidden> / </span>
                   {formatLogDuration(log.duration_ms)}
                 </>

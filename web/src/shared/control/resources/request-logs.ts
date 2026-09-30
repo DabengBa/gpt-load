@@ -17,6 +17,7 @@ import {
   projectBoolean,
   projectEpochMilliseconds,
   projectEnum,
+  projectFiniteNumber,
   projectInt64String,
   projectNonNegativeInt64String,
   projectPriceMultiplier,
@@ -39,6 +40,9 @@ export type RequestLogEffect =
   'none' | 'cooldown_credential' | 'record_credential_failure' | 'skip_group'
 export type RequestLogUsageState = 'complete' | 'partial' | 'missing' | 'not_applicable'
 export type RequestLogCostState = 'priced' | 'unpriced' | 'not_applicable'
+export type RequestLogFeedbackStatus = 'normal' | 'slow' | 'faulty'
+export type RequestLogFeedbackReason =
+  'upstream_failure' | 'first_response_slow' | 'output_rate_faulty' | 'output_rate_slow'
 export type RequestLogPricingCompleteness =
   'complete' | 'partial' | 'unavailable' | 'not_applicable'
 export type RequestLogRetryState = 'retried' | 'not_retried'
@@ -132,7 +136,14 @@ export interface RequestLogPricingReceiptDto {
   total_nano_usd: string
 }
 
-export interface RequestLogAttemptDto {
+export interface RequestLogFeedbackDto {
+  feedback_status: RequestLogFeedbackStatus | null
+  feedback_reason: RequestLogFeedbackReason | null
+  provider_first_response_ms: number | null
+  provider_tokens_per_second: number | null
+}
+
+export interface RequestLogAttemptDto extends RequestLogFeedbackDto {
   sequence: number
   group_id: number
   group_name: string
@@ -170,7 +181,7 @@ export interface RequestLogReasoningDto {
   budget_tokens: string | null
 }
 
-export interface RequestLogItemDto {
+export interface RequestLogItemDto extends RequestLogFeedbackDto {
   request_id: string
   completed_at_ms: number
   access_key: { id: number; name: string | null; deleted: boolean }
@@ -226,6 +237,13 @@ export interface RequestLogPageDto {
 
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const statuses = ['success', 'error', 'incomplete', 'canceled'] as const
+const feedbackStatuses = ['normal', 'slow', 'faulty'] as const
+const feedbackReasons = [
+  'upstream_failure',
+  'first_response_slow',
+  'output_rate_faulty',
+  'output_rate_slow',
+] as const
 const modelConsistencyValues = ['not_applicable', 'match', 'unknown', 'mismatch'] as const
 // bounded 亲和观测。API 不携带原始 prompt_cache_key、前缀输入或完整 HMAC；
 // affinity_key 仅允许掩码投影，以下枚举值保持既有协议。
@@ -313,6 +331,10 @@ const itemFields = [
   'stream',
   'first_response_ms',
   'duration_ms',
+  'feedback_status',
+  'feedback_reason',
+  'provider_first_response_ms',
+  'provider_tokens_per_second',
   'attempt_count',
   'error_code',
   'error_summary',
@@ -482,6 +504,27 @@ function projectPricingReceipt(value: unknown): RequestLogPricingReceiptDto | nu
   }
 }
 
+function projectRequestLogFeedback(record: Record<string, unknown>): RequestLogFeedbackDto {
+  return {
+    feedback_status:
+      record.feedback_status === null
+        ? null
+        : projectEnum(record.feedback_status, feedbackStatuses),
+    feedback_reason:
+      record.feedback_reason === null
+        ? null
+        : projectEnum(record.feedback_reason, feedbackReasons),
+    provider_first_response_ms:
+      record.provider_first_response_ms === null
+        ? null
+        : projectSafeInteger(record.provider_first_response_ms, { minimum: 0 }),
+    provider_tokens_per_second:
+      record.provider_tokens_per_second === null
+        ? null
+        : projectFiniteNumber(record.provider_tokens_per_second, { minimum: 0 }),
+  }
+}
+
 function projectAttempt(value: unknown): RequestLogAttemptDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, [
@@ -513,6 +556,10 @@ function projectAttempt(value: unknown): RequestLogAttemptDto {
     'error_summary',
     'committed',
     'pricing_receipt',
+    'feedback_status',
+    'feedback_reason',
+    'provider_first_response_ms',
+    'provider_tokens_per_second',
   ])
   return {
     sequence: projectSafeInteger(record.sequence, { minimum: 1 }),
@@ -567,6 +614,7 @@ function projectAttempt(value: unknown): RequestLogAttemptDto {
     error_summary: projectString(record.error_summary, { allowEmpty: true }),
     committed: projectBoolean(record.committed),
     pricing_receipt: projectPricingReceipt(record.pricing_receipt),
+    ...projectRequestLogFeedback(record),
   }
 }
 
@@ -683,6 +731,7 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
         ? null
         : projectNonNegativeInt64String(record.context_threshold_tokens),
     ...projectUsageCost(record),
+    ...projectRequestLogFeedback(record),
   }
 }
 

@@ -22,12 +22,12 @@ import {
   type RequestLogAttemptDto,
   type RequestLogPricingLineDto,
   type RequestLogReasoningDto,
+  type RequestLogFeedbackStatus,
   type RequestLogRouteMode,
   type RequestLogStatus,
 } from '@shared/control/resources/request-logs'
 import {
   formatLogDuration,
-  formatLogOutputRate,
   formatLogTokenCount,
   formatRequestLogReasoning,
   requestLogAttemptReasonSequences,
@@ -247,8 +247,11 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 6,
   },
-  slowFirst: {
+  timingSlow: {
     color: 'var(--color-warning)',
+  },
+  timingFaulty: {
+    color: 'var(--color-danger)',
   },
   modelObservation: {
     display: 'grid',
@@ -695,6 +698,12 @@ function attemptTone(attempt: RequestLogAttemptDto): 'success' | 'danger' | 'war
   return attempt.will_retry ? 'warning' : 'danger'
 }
 
+function timingTone(status: RequestLogFeedbackStatus | null) {
+  if (status === 'slow') return styles.timingSlow
+  if (status === 'faulty') return styles.timingFaulty
+  return null
+}
+
 function errorMessageNeedsDisclosure(message: string): boolean {
   return message.length > 240
 }
@@ -1122,14 +1131,7 @@ export function LogDetailDrawer({
                   <dt {...stylex.props(styles.term)}>
                     {t('monitor.logs.drawer.requestFirstResponse')}
                   </dt>
-                  <dd
-                    {...stylex.props(
-                      styles.description,
-                      log.first_response_ms !== null &&
-                        log.first_response_ms > 15_000 &&
-                        styles.slowFirst,
-                    )}
-                  >
+                  <dd {...stylex.props(styles.description, timingTone(log.feedback_status))}>
                     {log.first_response_ms === null
                       ? '—'
                       : formatLogDuration(log.first_response_ms)}
@@ -1138,11 +1140,9 @@ export function LogDetailDrawer({
               )}
               <div {...stylex.props(styles.gridCell)}>
                 <dt {...stylex.props(styles.term)}>{t('monitor.logs.drawer.requestDuration')}</dt>
-                <dd {...stylex.props(styles.description)}>{formatLogDuration(log.duration_ms)}</dd>
-              </div>
-              <div {...stylex.props(styles.gridCell)}>
-                <dt {...stylex.props(styles.term)}>{t('monitor.logs.drawer.providerOutputRate')}</dt>
-                <dd {...stylex.props(styles.description)}>{formatLogOutputRate(log, locale)}</dd>
+                <dd {...stylex.props(styles.description, timingTone(log.feedback_status))}>
+                  {formatLogDuration(log.duration_ms)}
+                </dd>
               </div>
             </dl>
             {keyReasonText !== '' && (
@@ -1644,7 +1644,12 @@ export function LogDetailDrawer({
                               <dt {...stylex.props(styles.term)}>
                                 {t('monitor.logs.drawer.attemptDuration')}
                               </dt>
-                              <dd {...stylex.props(styles.description)}>
+                              <dd
+                                {...stylex.props(
+                                  styles.description,
+                                  timingTone(attempt.feedback_status),
+                                )}
+                              >
                                 {formatLogDuration(attempt.duration_ms)}
                               </dd>
                             </div>

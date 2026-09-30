@@ -357,6 +357,9 @@ function usagePayload(options: { scope?: 'admin' | 'access_key' } = {}) {
     }),
     attempt_count: 2,
     attempt_failure_count: 0,
+    normal_attempt_count: 2,
+    slow_attempt_count: 0,
+    faulty_attempt_count: 0,
   })
   return {
     range: '24h',
@@ -400,7 +403,13 @@ function usagePayload(options: { scope?: 'admin' | 'access_key' } = {}) {
       scope,
       rows: [breakdownRow('gpt-4o'), breakdownRow('gpt-4o-mini')],
       total: summary,
-      attempt_total: { attempt_count: 4, attempt_failure_count: 0 },
+      attempt_total: {
+        attempt_count: 4,
+        attempt_failure_count: 0,
+        normal_attempt_count: 4,
+        slow_attempt_count: 0,
+        faulty_attempt_count: 0,
+      },
       pagination: { page: 1, page_size: 20, total_items: 2, total_pages: 1 },
     },
   }

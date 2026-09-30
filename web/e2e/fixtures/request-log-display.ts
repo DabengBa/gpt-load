@@ -170,6 +170,18 @@ function envelope(data: unknown) {
   return { code: 0, message: 'OK', data }
 }
 
+function requestLogDetail(requestID: string) {
+  const item = rows.find((row) => row.request_id === requestID) ?? rows[0]
+  const attempts =
+    requestID === requestIDs.mapped
+      ? [
+          detailAttempt(1, 99, 'historical-alpha', null, '', 'skip_group'),
+          detailAttempt(2, 1, 'alpha', 3, 'key-a', 'terminate'),
+        ]
+      : []
+  return { ...item, attempts }
+}
+
 function response(data: unknown, status = 200) {
   return {
     status,
@@ -329,13 +341,6 @@ export async function installRequestLogTableRoutes(
     failNextList: () => (failList = true),
     delayNextList: (ms: number) => (delayListMs = ms),
   }
-}
-
-export async function openRequestLogs(page: Page, query = ''): Promise<void> {
-  const normalizedQuery = query.startsWith('&') ? `?${query.slice(1)}` : query
-  await page.goto(`/logs${normalizedQuery}`)
-  await page.locator('.logs-tab').waitFor()
-  await page.waitForLoadState('networkidle')
 }
 
 // B12 variant: rows are timestamped relative to install time and the /api/logs

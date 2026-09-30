@@ -133,13 +133,15 @@ test('route identity: in-place filters plus drawer maintenance and provider link
   ).toHaveCount(0)
 })
 
-test('slow first response tones only the number; model mapping stays inline', async ({ page }) => {
-  await installRequestLogDisplayRoutes(page)
+test('request timing tones by provider feedback status, not raw threshold', async ({ page }) => {
+  await installRequestLogDisplayRoutes(page, (items) =>
+    items.map((item, index) => (index === 0 ? { ...item, feedback_status: 'slow' } : item)),
+  )
   await openLogs(page)
 
   const slow = page.locator('[data-testid="logs-list__timing"][data-tone="slow"]')
   await expect(slow).toHaveCount(1)
-  await expect(slow).toHaveText('16s')
+  await expect(slow).toHaveText('16s / 24s')
   const timingCell = records(page).first().locator('[role="cell"]').nth(-2)
   await expect(timingCell).toContainText('16s / 24s')
   await expect(records(page).nth(1).locator('[data-tone="slow"]')).toHaveCount(0)
@@ -398,7 +400,7 @@ test('narrow viewports keep results usable in the card layout', async ({ page })
   await expect(records(page)).toHaveCount(4)
   // Card mode exposes per-cell labels that desktop columns hide.
   await expect(
-    records(page).first().getByText('First / total', { exact: true }),
+    records(page).first().getByText('Request first / total', { exact: true }),
   ).toBeVisible()
   await expect(
     records(page).first().getByText('Model / protocol', { exact: true }),

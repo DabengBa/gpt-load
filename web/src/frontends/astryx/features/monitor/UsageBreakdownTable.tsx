@@ -283,6 +283,24 @@ export function UsageBreakdownTable({
       total: (data) => formatInteger(data.attempt_total.attempt_failure_count, locale),
     },
     {
+      key: 'normalAttempts',
+      labelId: 'monitor.usage.breakdown.columns.normalAttempts',
+      cell: (row) => formatInteger(row.normal_attempt_count, locale),
+      total: (data) => formatInteger(data.attempt_total.normal_attempt_count, locale),
+    },
+    {
+      key: 'slowAttempts',
+      labelId: 'monitor.usage.breakdown.columns.slowAttempts',
+      cell: (row) => formatInteger(row.slow_attempt_count, locale),
+      total: (data) => formatInteger(data.attempt_total.slow_attempt_count, locale),
+    },
+    {
+      key: 'faultyAttempts',
+      labelId: 'monitor.usage.breakdown.columns.faultyAttempts',
+      cell: (row) => formatInteger(row.faulty_attempt_count, locale),
+      total: (data) => formatInteger(data.attempt_total.faulty_attempt_count, locale),
+    },
+    {
       key: 'success_rate',
       labelId: 'monitor.usage.breakdown.columns.successRate',
       sortKey: 'success_rate',
