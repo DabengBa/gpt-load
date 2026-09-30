@@ -20,9 +20,11 @@ code:
 ---
 # Astryx + StyleX Migration Plan
 
-**Status:** Phase 1 complete (go decision taken on the seven-gate evidence
-recorded in the B13 gate record). Phase 2 domain migrations proceed under the
-rules below.
+**Status:** Migration complete (2026-09-30). Phases 0–4 migrated all eleven
+routes; Phases 5+6 shipped together (ADR-0003) — Astryx is the only frontend
+and all classic/Vue coexistence infrastructure is deleted. The document is
+retained as the historical record and reference for the translation rules and
+risk register.
 
 **Baseline:** all counts below were measured on commit `dcabee7a`
 (2026-09-25). Package facts come from the npm registry and official Astryx,

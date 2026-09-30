@@ -6,6 +6,43 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-09-30 — Astryx migration: Phases 5+6 cutover and classic deletion
+
+The migration closed out on branch `docs/astryx-migration-plan` by
+combining the Phase 5 default flip and Phase 6 deletion into a single
+delivery (user-approved; ADR-0003) — Astryx is now the only management
+frontend and the one-release cookie fallback window was deliberately
+skipped. Rollback is version rollback.
+
+- **Single document:** the Go server returns the same embedded
+  `index.html` for every page route and every unknown browser path,
+  ignoring leftover `gpt-load.frontend` cookies; `Vary: Cookie` is gone.
+  `page_routes.json` v3 drops the `astryx` field and the shared/Go parsers
+  now reject it as an unknown field.
+- **Classic and coexistence infra deleted:** `web/src/frontends/classic`
+  (2.4MB, 164 .vue), `web/main.ts`, `astryx.html`, the Vite dev selector
+  plugin, `frontend-preference.ts`, `verify-frontend-cookie.mjs`, the
+  Interface preference segment, `isAstryxNavigable`, and the Vue/Tailwind
+  toolchain (vue, vue-i18n, vue-router, vue-demi, @tanstack/vue-query,
+  reka-ui, @lucide/vue, plugin-vue, vue-tsc, eslint-plugin-vue,
+  @vue/eslint-config-typescript — `typescript-eslint` now supplies the TS
+  parser). Density tokens moved to `astryx/theme/tokens.css` first.
+- **Playwright consolidation:** the classic project and its eight specs are
+  removed; remaining projects are `astryx`, `go-csp`, `chromium-125`,
+  `chrome-latest`. Doc ID `feature.frontend-preview-switch` retired.
+- **Evidence:** astryx e2e 129/129, real Linux binary CSP matrix 36/36
+  (go-csp + chromium-125 + chrome-latest across all 11 routes and the
+  retired-cookie case), `internal/webui` server/manifest tests green,
+  health contract test repointed to `shared/control/resources/health.ts`,
+  all `verify:*`/`test:*` scripts green, tsc + eslint clean.
+  `verify-*.mjs` scripts got an explicit `process.exit` — the StyleX
+  unplugin leaves worker handles after `server.close()`.
+  Commits: `f2b41446`, `81f45345`, `b97aff51`.
+
+Owner doc: `.docs/tech/astryx-migration-plan.md` (Phases 5+6 outcome).
+ADR: `0003-astryx-cutover-without-fallback-window`. The Vue→React
+migration is complete; no classic frontend or coexistence code remains.
+
 ## 2026-09-30 — Astryx migration: Phase 4 (group detail + import)
 
 The fourth slice migrated `/groups/:id` (unified settings+models editor,
