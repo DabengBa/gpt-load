@@ -95,7 +95,7 @@ test.describe('request log display', () => {
     }
   })
 
-  test('request timing stays neutral while provider feedback has its own status', async ({
+  test('request timing uses provider feedback status colors without extra feedback text', async ({
     page,
   }) => {
     await installRequestLogDisplayRoutes(page)
@@ -107,10 +107,7 @@ test.describe('request log display', () => {
       .locator('[data-label="Request first / total"]')
     await expect(timingCell).toContainText('16s / 24s')
     await expect(timingCell.locator('.logs-list__timing--slow')).toHaveCount(0)
-    await expect(page.getByTestId('request-feedback').first()).toHaveAttribute(
-      'data-feedback-status',
-      'normal',
-    )
+    await expect(page.getByTestId('request-feedback')).toHaveCount(0)
   })
 
   test('client to upstream model mapping renders inline without the hint icon', async ({

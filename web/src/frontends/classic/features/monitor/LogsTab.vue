@@ -29,7 +29,7 @@ import PaginationBar from '@/components/ui/PaginationBar.vue'
 import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import RequestFeedbackBadge from './RequestFeedbackBadge.vue'
+
 import { formatEstimatedCost, formatISOInstant, formatLocalInstantWithSeconds } from '@/lib/format'
 import { useAuthSession } from '@/features/auth/auth-session'
 import type { AccessProtocol } from '@/api/control/types'
@@ -50,7 +50,6 @@ import {
   formatLogDuration,
   formatLogReasoning,
   formatLogTokenCount,
-  formatProviderOutputRate,
   hasRequestLogCache,
   reasoningBudgetSemantic,
   requestLogCostDisplayState,
@@ -671,6 +670,12 @@ function timingPrimary(log: RequestLogItemDto): string {
   return `${formatLogDuration(log.first_response_ms)} / ${formatLogDuration(log.duration_ms)}`
 }
 
+function timingClass(log: RequestLogItemDto): string {
+  return log.feedback_status === 'slow' || log.feedback_status === 'faulty'
+    ? `logs-list__timing--${log.feedback_status}`
+    : ''
+}
+
 function costLabel(log: RequestLogItemDto): string {
   const state = requestLogCostDisplayState(log)
   if (state === 'complete') {
@@ -946,7 +951,7 @@ function costLabel(log: RequestLogItemDto): string {
                     {{ responseLabel(log) }}
                   </StatusBadge>
                 </OverflowTooltip>
-                <RequestFeedbackBadge :feedback="log" test-id="request-feedback" />
+
                 <AppTooltip v-if="showAffinityObservation(log)" :content="affinityTooltip(log)">
                   <span
                     class="logs-list__hint logs-list__affinity"
@@ -967,36 +972,6 @@ function costLabel(log: RequestLogItemDto): string {
               >
                 {{ responseMeta(log) }}
               </OverflowTooltip>
-              <small
-                v-if="
-                  log.provider_first_response_ms !== null || log.provider_tokens_per_second !== null
-                "
-                class="logs-list__feedback-metrics"
-              >
-                <span v-if="log.provider_first_response_ms !== null">
-                  {{
-                    t('monitor.logs.feedback.providerFirstResponseValue', {
-                      value: formatLogDuration(log.provider_first_response_ms),
-                    })
-                  }}
-                </span>
-                <span
-                  v-if="
-                    log.provider_first_response_ms !== null &&
-                    log.provider_tokens_per_second !== null
-                  "
-                  aria-hidden="true"
-                >
-                  ·
-                </span>
-                <span v-if="log.provider_tokens_per_second !== null">
-                  {{
-                    t('monitor.logs.feedback.outputRateValue', {
-                      value: formatProviderOutputRate(log.provider_tokens_per_second, locale),
-                    })
-                  }}
-                </span>
-              </small>
             </div>
             <div
               class="ledger-record-list__cell logs-list__cell"
@@ -1087,11 +1062,13 @@ function costLabel(log: RequestLogItemDto): string {
               :data-label="t('monitor.logs.columns.timing')"
             >
               <OverflowTooltip as="span" :content="timingPrimary(log)">
-                <template v-if="log.stream && log.first_response_ms !== null">
-                  {{ formatLogDuration(log.first_response_ms) }}
-                  <span aria-hidden="true"> / </span>{{ formatLogDuration(log.duration_ms) }}
-                </template>
-                <template v-else>{{ formatLogDuration(log.duration_ms) }}</template>
+                <span :class="timingClass(log)">
+                  <template v-if="log.stream && log.first_response_ms !== null">
+                    {{ formatLogDuration(log.first_response_ms) }}
+                    <span aria-hidden="true"> / </span>{{ formatLogDuration(log.duration_ms) }}
+                  </template>
+                  <template v-else>{{ formatLogDuration(log.duration_ms) }}</template>
+                </span>
               </OverflowTooltip>
             </div>
             <div
@@ -1259,20 +1236,20 @@ function costLabel(log: RequestLogItemDto): string {
   gap: 4px;
 }
 
-.logs-list__cell .logs-list__feedback-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 4px;
-  overflow: visible;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-  white-space: normal;
-}
-
 .logs-list__inline {
   display: flex;
   align-items: center;
   gap: 0;
+}
+
+.logs-list__timing--slow,
+.log-detail__timing--slow {
+  color: var(--color-warning);
+}
+
+.logs-list__timing--faulty,
+.log-detail__timing--faulty {
+  color: var(--color-danger);
 }
 
 .logs-list__protocol {

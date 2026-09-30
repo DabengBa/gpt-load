@@ -12,6 +12,7 @@ import { revealCredential } from '@/app/resources/credentials'
 import {
   requestLogDetailQueryOptions,
   type RequestLogAttemptDto,
+  type RequestLogFeedbackStatus,
   type RequestLogPricingLineDto,
 } from '@/app/resources/request-logs'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -24,13 +25,11 @@ import QueryFeedback from '@/components/ui/QueryFeedback.vue'
 import SkeletonSurface from '@/components/ui/SkeletonSurface.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { formatEstimatedCost, formatExactNanoUSD } from '@/lib/format'
-import RequestFeedbackBadge from './RequestFeedbackBadge.vue'
 
 import { formatCacheHitRate } from '@/lib/cache-rate'
 import {
   formatLogDuration,
   formatLogTokenCount,
-  formatProviderOutputRate,
   formatRequestLogReasoning,
   requestLogAttemptReasonSequences,
   requestLogAttemptReasonText,
@@ -53,6 +52,10 @@ const props = defineProps<{
 defineEmits<{ 'update:open': [open: boolean] }>()
 const client = useApiClient()
 const { locale, t } = useI18n()
+
+function timingClass(status: RequestLogFeedbackStatus | null): string {
+  return status === 'slow' || status === 'faulty' ? `log-detail__timing--${status}` : ''
+}
 const query = useQuery(requestLogDetailQueryOptions(client, () => props.requestId))
 const initialLoading = useStableLoading(() => props.open && query.isPending.value)
 const log = computed(() => query.data.value)
@@ -438,27 +441,16 @@ function toggleAttemptErrorMessage(sequence: number): void {
           </div>
           <div v-if="log.stream">
             <dt>{{ t('monitor.logs.drawer.requestFirstResponse') }}</dt>
-            <dd>
+            <dd :class="timingClass(log.feedback_status)">
               {{ log.first_response_ms === null ? '—' : formatLogDuration(log.first_response_ms) }}
             </dd>
           </div>
-          <div>
-            <dt>{{ t('monitor.logs.feedback.providerFirstResponse') }}</dt>
-            <dd>
-              {{
-                log.provider_first_response_ms === null
-                  ? '—'
-                  : formatLogDuration(log.provider_first_response_ms)
-              }}
-            </dd>
-          </div>
+
           <div>
             <dt>{{ t('monitor.logs.drawer.requestDuration') }}</dt>
-            <dd>{{ formatLogDuration(log.duration_ms) }}</dd>
-          </div>
-          <div>
-            <dt>{{ t('monitor.logs.drawer.providerOutputRate') }}</dt>
-            <dd>{{ formatProviderOutputRate(log.provider_tokens_per_second, locale) }}</dd>
+            <dd :class="timingClass(log.feedback_status)">
+              {{ formatLogDuration(log.duration_ms) }}
+            </dd>
           </div>
         </dl>
         <div v-if="keyReasonText" class="log-error-message log-key-reason">
@@ -740,7 +732,6 @@ function toggleAttemptErrorMessage(sequence: number): void {
                 {{ t(`monitor.logs.failureCategory.${attempt.failure_category}`)
                 }}<template v-if="attempt.status_code"> · {{ attempt.status_code }}</template>
               </StatusBadge>
-              <RequestFeedbackBadge :feedback="attempt" test-id="attempt-feedback" />
             </header>
             <div class="log-attempt__primary">
               <LogRouteIdentity
@@ -765,37 +756,7 @@ function toggleAttemptErrorMessage(sequence: number): void {
                 {{ t(`monitor.logs.action.${attempt.action}`) }}
               </span>
             </div>
-            <div
-              v-if="
-                attempt.provider_first_response_ms !== null ||
-                attempt.provider_tokens_per_second !== null
-              "
-              class="log-attempt__feedback-metrics"
-            >
-              <span v-if="attempt.provider_first_response_ms !== null">
-                {{
-                  t('monitor.logs.feedback.providerFirstResponseValue', {
-                    value: formatLogDuration(attempt.provider_first_response_ms),
-                  })
-                }}
-              </span>
-              <span
-                v-if="
-                  attempt.provider_first_response_ms !== null &&
-                  attempt.provider_tokens_per_second !== null
-                "
-                aria-hidden="true"
-              >
-                ·
-              </span>
-              <span v-if="attempt.provider_tokens_per_second !== null">
-                {{
-                  t('monitor.logs.feedback.outputRateValue', {
-                    value: formatProviderOutputRate(attempt.provider_tokens_per_second, locale),
-                  })
-                }}
-              </span>
-            </div>
+
             <div v-if="attemptReasonText(attempt)" class="log-attempt__reason">
               <p class="log-error-message__label">
                 {{ attemptReasonLabel(attempt) }}
@@ -863,18 +824,11 @@ function toggleAttemptErrorMessage(sequence: number): void {
                 </div>
                 <div>
                   <dt>{{ t('monitor.logs.drawer.attemptDuration') }}</dt>
-                  <dd>{{ formatLogDuration(attempt.duration_ms) }}</dd>
-                </div>
-                <div v-if="attempt.provider_first_response_ms !== null">
-                  <dt>{{ t('monitor.logs.feedback.providerFirstResponse') }}</dt>
-                  <dd>{{ formatLogDuration(attempt.provider_first_response_ms) }}</dd>
-                </div>
-                <div v-if="attempt.provider_tokens_per_second !== null">
-                  <dt>{{ t('monitor.logs.drawer.providerOutputRate') }}</dt>
-                  <dd>
-                    {{ formatProviderOutputRate(attempt.provider_tokens_per_second, locale) }}
+                  <dd :class="timingClass(attempt.feedback_status)">
+                    {{ formatLogDuration(attempt.duration_ms) }}
                   </dd>
                 </div>
+
                 <div v-if="attempt.failure_origin">
                   <dt>{{ t('monitor.logs.drawer.failureOrigin') }}</dt>
                   <dd>{{ t(`monitor.logs.failureOrigin.${attempt.failure_origin}`) }}</dd>
@@ -1021,6 +975,14 @@ function toggleAttemptErrorMessage(sequence: number): void {
   color: var(--color-text);
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
+}
+
+.log-detail__timing--slow {
+  color: var(--color-warning);
+}
+
+.log-detail__timing--faulty {
+  color: var(--color-danger);
 }
 
 .log-detail__reasoning {
@@ -1174,15 +1136,6 @@ function toggleAttemptErrorMessage(sequence: number): void {
   display: grid;
   min-width: 0;
   gap: 4px;
-}
-
-.log-attempt__feedback-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-  color: var(--color-text-muted);
-  font-size: var(--text-label-xs);
 }
 
 .log-attempt__action {

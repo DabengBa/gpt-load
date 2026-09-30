@@ -74,10 +74,7 @@ test.describe('request log page polish', () => {
       }),
     ).toBeVisible()
     await expect(page.locator('.logs-list__timing--slow')).toHaveCount(0)
-    await expect(page.getByTestId('request-feedback').first()).toHaveAttribute(
-      'data-feedback-status',
-      'normal',
-    )
+    await expect(page.getByTestId('request-feedback')).toHaveCount(0)
     await expect(page.locator('.logs-list__record').first()).toContainText('16s / 24s')
     await expect(page.getByRole('button', { name: 'View details' }).first()).toBeVisible()
   })

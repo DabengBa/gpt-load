@@ -159,51 +159,21 @@ test.describe('provider feedback', () => {
     })
     await openRequestLogs(page)
 
-    const feedbackBadges = page.getByTestId('request-feedback')
-    await expect(feedbackBadges).toHaveCount(4)
-    await expect(feedbackBadges.nth(0)).toHaveAttribute('data-feedback-status', 'normal')
-    await expect(feedbackBadges.nth(1)).toHaveAttribute('data-feedback-status', 'slow')
-    await expect(feedbackBadges.nth(2)).toHaveAttribute('data-feedback-status', 'faulty')
-    await expect(feedbackBadges.nth(3)).toHaveAttribute('data-feedback-status', 'unassessed')
-    await expect(feedbackBadges.nth(0)).toContainText('Provider normal')
-    await expect(feedbackBadges.nth(1)).toContainText('Provider slow')
-    await expect(feedbackBadges.nth(2)).toContainText('Provider faulty')
-    await expect(feedbackBadges.nth(3)).toContainText('Unassessed')
-    await expect(feedbackBadges.nth(2)).toHaveAttribute(
-      'aria-label',
-      /Feedback reason: Provider first response exceeded 30 seconds/u,
+    await expect(page.getByTestId('request-feedback')).toHaveCount(0)
+    await expect(page.locator('.logs-list__feedback-metrics')).toHaveCount(0)
+    await expect(page.locator('[data-label="Request first / total"]').first()).toContainText(
+      '16s / 24s',
     )
-    await expect(feedbackBadges.nth(0).locator('.status-badge')).toHaveClass(
-      /status-badge--success/u,
+    await expect(page.locator('.logs-list__timing--slow, .logs-list__timing--faulty')).toHaveCount(
+      2,
     )
-    await expect(feedbackBadges.nth(1).locator('.status-badge')).toHaveClass(
-      /status-badge--warning/u,
-    )
-    await expect(feedbackBadges.nth(2).locator('.status-badge')).toHaveClass(
-      /status-badge--danger/u,
-    )
-    await expect(feedbackBadges.nth(3).locator('.status-badge')).toHaveClass(
-      /status-badge--neutral/u,
-    )
-    await expect(page.locator('.logs-list__feedback-metrics').first()).toContainText('16s')
-    await expect(page.locator('.logs-list__feedback-metrics').first()).toContainText('25 t/s')
-    await expect(page.locator('.logs-list__timing--slow')).toHaveCount(0)
-    await expect(page.locator('.logs-list__record').first()).toContainText('16s / 24s')
     await expect(page.getByTestId('request-outcome').first()).toContainText('Normal')
 
     await page.getByRole('button', { name: 'View details' }).first().click()
     await expect(page.locator('.log-detail__summary .status-badge')).toHaveText('Success')
-    const attemptFeedback = page.getByTestId('attempt-feedback')
-    await expect(attemptFeedback).toHaveCount(2)
-    await expect(attemptFeedback.nth(0)).toHaveAttribute('data-feedback-status', 'faulty')
-    await expect(attemptFeedback.nth(1)).toHaveAttribute('data-feedback-status', 'normal')
-    await expect(attemptFeedback.nth(0)).toContainText('Provider faulty')
-    await expect(attemptFeedback.nth(1)).toContainText('Provider normal')
-    await expect(page.locator('.log-detail__slow-first')).toHaveCount(0)
-    await expect(page.locator('.log-attempt__feedback-metrics').nth(0)).toContainText('30s')
-    await expect(page.locator('.log-attempt__feedback-metrics').nth(0)).toContainText('8 t/s')
-    await expect(page.locator('.log-attempt__feedback-metrics').nth(1)).toContainText('16s')
-    await expect(page.locator('.log-attempt__feedback-metrics').nth(1)).toContainText('25 t/s')
+    await expect(page.getByTestId('attempt-feedback')).toHaveCount(0)
+    await expect(page.locator('.log-attempt__feedback-metrics')).toHaveCount(0)
+    await expect(page.locator('.log-detail__timing--faulty')).toHaveCount(1)
     await page.screenshot({
       path: testInfo.outputPath('provider-feedback-desktop.png'),
       fullPage: true,
@@ -212,14 +182,14 @@ test.describe('provider feedback', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await openRequestLogs(page)
     await expect(page.locator('.ledger-record-list__header')).toBeHidden()
-    await expect(page.getByTestId('request-feedback')).toHaveCount(4)
+    await expect(page.getByTestId('request-feedback')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
     await page.screenshot({
       path: testInfo.outputPath('provider-feedback-mobile.png'),
       fullPage: true,
     })
     await page.getByRole('button', { name: 'View details' }).first().click()
-    await expect(page.getByTestId('attempt-feedback')).toHaveCount(2)
+    await expect(page.getByTestId('attempt-feedback')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
     const drawer = page.locator('.app-drawer__content')
     await expect(drawer).toBeVisible()
@@ -232,11 +202,11 @@ test.describe('provider feedback', () => {
         scroll: element.scrollWidth,
       }))
       expect(headerWidth.scroll).toBeLessThanOrEqual(headerWidth.client + 1)
-      const feedbackRight = await page
-        .getByTestId('attempt-feedback')
-        .nth(index)
-        .evaluate((element) => element.getBoundingClientRect().right)
-      expect(feedbackRight).toBeLessThanOrEqual(drawerRight + 1)
+      expect(
+        await attemptHeaders
+          .nth(index)
+          .evaluate((element) => element.getBoundingClientRect().right),
+      ).toBeLessThanOrEqual(drawerRight + 1)
     }
     await page.locator('.app-drawer__body').evaluate((element) => {
       element.scrollTop = element.scrollHeight
