@@ -25,10 +25,19 @@ export function formatLogDuration(milliseconds: number): string {
   return `${milliseconds / 1_000}s`
 }
 
+export function formatLogDurationWholeSeconds(milliseconds: number): string {
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) return '—'
+  return `${Math.round(milliseconds / 1_000)}s`
+}
+
 export function formatLogTokenCount(value: string, locale: string): string {
   if (!/^(?:0|[1-9]\d*)$/u.test(value)) return '—'
   try {
-    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(BigInt(value))
+    const count = BigInt(value)
+    if (count > 1_000n) {
+      return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(Number(count) / 1_000)}k`
+    }
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(count)
   } catch {
     return value
   }

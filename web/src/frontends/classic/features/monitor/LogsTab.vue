@@ -48,8 +48,10 @@ import { cacheHitRate } from '@/lib/cache-rate'
 import { currentTimeZone } from '@/lib/time'
 import {
   formatLogDuration,
+  formatLogDurationWholeSeconds,
   formatLogReasoning,
   formatLogTokenCount,
+  formatProviderOutputRate,
   hasRequestLogCache,
   reasoningBudgetSemantic,
   requestLogCostDisplayState,
@@ -666,8 +668,10 @@ function cacheTooltip(log: RequestLogItemDto): string {
 }
 
 function timingPrimary(log: RequestLogItemDto): string {
-  if (!log.stream || log.first_response_ms === null) return formatLogDuration(log.duration_ms)
-  return `${formatLogDuration(log.first_response_ms)} / ${formatLogDuration(log.duration_ms)}`
+  if (!log.stream || log.first_response_ms === null) {
+    return formatLogDurationWholeSeconds(log.duration_ms)
+  }
+  return `${formatLogDurationWholeSeconds(log.first_response_ms)} / ${formatLogDurationWholeSeconds(log.duration_ms)}`
 }
 
 function timingClass(log: RequestLogItemDto): string {
@@ -1061,15 +1065,22 @@ function costLabel(log: RequestLogItemDto): string {
               role="cell"
               :data-label="t('monitor.logs.columns.timing')"
             >
-              <OverflowTooltip as="span" :content="timingPrimary(log)">
+              <div class="logs-list__timing-stack">
                 <span :class="timingClass(log)">
                   <template v-if="log.stream && log.first_response_ms !== null">
-                    {{ formatLogDuration(log.first_response_ms) }}
-                    <span aria-hidden="true"> / </span>{{ formatLogDuration(log.duration_ms) }}
+                    {{ formatLogDurationWholeSeconds(log.first_response_ms) }}
+                    <span aria-hidden="true"> / </span
+                    >{{ formatLogDurationWholeSeconds(log.duration_ms) }}
                   </template>
-                  <template v-else>{{ formatLogDuration(log.duration_ms) }}</template>
+                  <template v-else>{{ formatLogDurationWholeSeconds(log.duration_ms) }}</template>
                 </span>
-              </OverflowTooltip>
+                <small
+                  v-if="log.provider_tokens_per_second !== null"
+                  class="logs-list__output-rate"
+                >
+                  {{ formatProviderOutputRate(log.provider_tokens_per_second, locale) }}
+                </small>
+              </div>
             </div>
             <div
               class="ledger-record-list__cell logs-list__action"
@@ -1250,6 +1261,16 @@ function costLabel(log: RequestLogItemDto): string {
 .logs-list__timing--faulty,
 .log-detail__timing--faulty {
   color: var(--color-danger);
+}
+
+.logs-list__timing-stack {
+  display: grid;
+  gap: 2px;
+}
+
+.logs-list__output-rate {
+  color: var(--color-text-muted);
+  font-size: var(--text-label-xs);
 }
 
 .logs-list__protocol {
