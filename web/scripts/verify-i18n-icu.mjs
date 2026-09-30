@@ -95,7 +95,6 @@ try {
     'ja-JP/monitor:monitor.logs.resultSummary',
     'ja-JP/monitor:monitor.logs.columns.timeNewestFirst',
     'ja-JP/monitor:monitor.logs.columns.tokensDetail',
-    'ja-JP/monitor:monitor.logs.columns.timingDetail',
     'ja-JP/monitor:monitor.logs.response.httpStatus',
   ])
   const seenMissing = new Set()

@@ -1119,7 +1119,9 @@ export function LogDetailDrawer({
               )}
               {log.stream && (
                 <div {...stylex.props(styles.gridCell)}>
-                  <dt {...stylex.props(styles.term)}>{t('monitor.logs.drawer.firstResponse')}</dt>
+                  <dt {...stylex.props(styles.term)}>
+                    {t('monitor.logs.drawer.requestFirstResponse')}
+                  </dt>
                   <dd
                     {...stylex.props(
                       styles.description,
@@ -1135,11 +1137,11 @@ export function LogDetailDrawer({
                 </div>
               )}
               <div {...stylex.props(styles.gridCell)}>
-                <dt {...stylex.props(styles.term)}>{t('monitor.logs.drawer.duration')}</dt>
+                <dt {...stylex.props(styles.term)}>{t('monitor.logs.drawer.requestDuration')}</dt>
                 <dd {...stylex.props(styles.description)}>{formatLogDuration(log.duration_ms)}</dd>
               </div>
               <div {...stylex.props(styles.gridCell)}>
-                <dt {...stylex.props(styles.term)}>{t('monitor.logs.drawer.outputRate')}</dt>
+                <dt {...stylex.props(styles.term)}>{t('monitor.logs.drawer.providerOutputRate')}</dt>
                 <dd {...stylex.props(styles.description)}>{formatLogOutputRate(log, locale)}</dd>
               </div>
             </dl>
@@ -1640,7 +1642,7 @@ export function LogDetailDrawer({
                             )}
                             <div {...stylex.props(styles.gridCell)}>
                               <dt {...stylex.props(styles.term)}>
-                                {t('monitor.logs.drawer.duration')}
+                                {t('monitor.logs.drawer.attemptDuration')}
                               </dt>
                               <dd {...stylex.props(styles.description)}>
                                 {formatLogDuration(attempt.duration_ms)}
