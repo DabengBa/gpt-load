@@ -3,11 +3,13 @@ package requestlog
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"gpt-load/internal/affinity"
+	"gpt-load/internal/health"
 	"gpt-load/internal/platform/epochms"
 	"gpt-load/internal/platform/redact"
 	"gpt-load/internal/pricing"
@@ -44,6 +46,9 @@ func mapEvent(
 	}
 	attempts := make([]models.RequestLogAttempt, 0, len(event.Attempts))
 	for _, attempt := range event.Attempts {
+		if err := validateAttemptFeedback(attempt.Feedback); err != nil {
+			return models.RequestLog{}, fmt.Errorf("map request event attempt %d feedback: %w", attempt.Sequence, err)
+		}
 		attemptCompletedAtMS := completedAtMS
 		if !attempt.CompletedAt.IsZero() {
 			attemptCompletedAtMS, err = epochms.FromTime(attempt.CompletedAt)
@@ -60,37 +65,41 @@ func mapEvent(
 			attemptReceipt = receipt
 		}
 		attempts = append(attempts, models.RequestLogAttempt{
-			RequestID:             event.RequestID,
-			Sequence:              attempt.Sequence,
-			CompletedAtMS:         attemptCompletedAtMS,
-			GroupID:               attempt.GroupID,
-			GroupName:             redactIdentityValue(redactor, attempt.GroupName),
-			ChannelID:             string(attempt.ChannelID),
-			CredentialID:          attempt.CredentialID,
-			Operation:             string(attempt.Operation),
-			RouteMode:             string(attempt.RouteMode),
-			UpstreamModel:         redactIdentityValue(redactor, projectModel(attempt.UpstreamModel)),
-			UpstreamRequestID:     redactIdentityValue(redactor, projectModel(attempt.UpstreamRequestID)),
-			DispatchState:         string(attempt.DispatchState),
-			ResponseStarted:       attempt.ResponseStarted,
-			UpstreamProtocol:      string(attempt.UpstreamProtocol),
-			ReasoningMode:         attempt.Reasoning.Mode,
-			ReasoningEffort:       attempt.Reasoning.Effort,
-			ReasoningBudgetTokens: attempt.Reasoning.BudgetTokens,
-			StatusCode:            attempt.StatusCode,
-			DurationMs:            attempt.DurationMs,
-			FailureCategory:       string(attempt.FailureCategory),
-			FailureOrigin:         string(attempt.FailureOrigin),
-			FailureScope:          string(attempt.FailureScope),
-			RetryDirective:        string(attempt.RetryDirective),
-			Effect:                string(attempt.Effect),
-			RuleID:                attempt.RuleID,
-			Action:                string(attempt.Action),
-			WillRetry:             attempt.WillRetry,
-			ErrorCode:             attempt.ErrorCode,
-			ErrorSummary:          sanitizeSummary(redactor, attempt.ErrorSummary),
-			Committed:             attempt.Committed,
-			PricingReceipt:        attemptReceipt,
+			RequestID:               event.RequestID,
+			Sequence:                attempt.Sequence,
+			CompletedAtMS:           attemptCompletedAtMS,
+			GroupID:                 attempt.GroupID,
+			GroupName:               redactIdentityValue(redactor, attempt.GroupName),
+			ChannelID:               string(attempt.ChannelID),
+			CredentialID:            attempt.CredentialID,
+			Operation:               string(attempt.Operation),
+			RouteMode:               string(attempt.RouteMode),
+			UpstreamModel:           redactIdentityValue(redactor, projectModel(attempt.UpstreamModel)),
+			UpstreamRequestID:       redactIdentityValue(redactor, projectModel(attempt.UpstreamRequestID)),
+			DispatchState:           string(attempt.DispatchState),
+			ResponseStarted:         attempt.ResponseStarted,
+			UpstreamProtocol:        string(attempt.UpstreamProtocol),
+			ReasoningMode:           attempt.Reasoning.Mode,
+			ReasoningEffort:         attempt.Reasoning.Effort,
+			ReasoningBudgetTokens:   attempt.Reasoning.BudgetTokens,
+			StatusCode:              attempt.StatusCode,
+			DurationMs:              attempt.DurationMs,
+			FeedbackStatus:          string(attempt.Feedback.Status),
+			FeedbackReason:          attempt.Feedback.Reason,
+			ProviderFirstResponseMs: attempt.Feedback.FirstResponseMs,
+			ProviderTokensPerSecond: attempt.Feedback.TokensPerSecond,
+			FailureCategory:         string(attempt.FailureCategory),
+			FailureOrigin:           string(attempt.FailureOrigin),
+			FailureScope:            string(attempt.FailureScope),
+			RetryDirective:          string(attempt.RetryDirective),
+			Effect:                  string(attempt.Effect),
+			RuleID:                  attempt.RuleID,
+			Action:                  string(attempt.Action),
+			WillRetry:               attempt.WillRetry,
+			ErrorCode:               attempt.ErrorCode,
+			ErrorSummary:            sanitizeSummary(redactor, attempt.ErrorSummary),
+			Committed:               attempt.Committed,
+			PricingReceipt:          attemptReceipt,
 		})
 	}
 
@@ -138,6 +147,31 @@ func mapEvent(
 		PricingCompleteness:     pricingObservation.PricingCompleteness,
 		AttemptRows:             attempts,
 	}, nil
+}
+
+func validateAttemptFeedback(feedback health.Feedback) error {
+	if !feedback.Status.Valid() {
+		return fmt.Errorf("invalid feedback status %q", feedback.Status)
+	}
+	if feedback.FirstResponseMs != nil && *feedback.FirstResponseMs < 0 {
+		return fmt.Errorf("negative provider first response")
+	}
+	if feedback.TokensPerSecond != nil &&
+		(math.IsNaN(*feedback.TokensPerSecond) || math.IsInf(*feedback.TokensPerSecond, 0) || *feedback.TokensPerSecond < 0) {
+		return fmt.Errorf("invalid provider token rate")
+	}
+	switch feedback.Reason {
+	case "", "upstream_failure", "first_response_slow", "output_rate_faulty", "output_rate_slow":
+	default:
+		return fmt.Errorf("invalid feedback reason %q", feedback.Reason)
+	}
+	if (feedback.Status == health.FeedbackStatusUnassessed && feedback.Reason != "") ||
+		(feedback.Status == health.FeedbackStatusNormal && feedback.Reason != "") ||
+		(feedback.Status == health.FeedbackStatusSlow && feedback.Reason != "output_rate_slow") ||
+		(feedback.Status == health.FeedbackStatusFaulty && feedback.Reason == "output_rate_slow") {
+		return fmt.Errorf("feedback status and reason do not match")
+	}
+	return nil
 }
 
 func normalizeModelObservation(event telemetry.RequestEvent) telemetry.RequestEvent {

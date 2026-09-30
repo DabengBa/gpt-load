@@ -102,6 +102,9 @@ type usageCollectionHealthResponse struct {
 type usageAttemptAggregateResponse struct {
 	AttemptCount        int64 `json:"attempt_count"`
 	AttemptFailureCount int64 `json:"attempt_failure_count"`
+	NormalAttemptCount  int64 `json:"normal_attempt_count"`
+	SlowAttemptCount    int64 `json:"slow_attempt_count"`
+	FaultyAttemptCount  int64 `json:"faulty_attempt_count"`
 }
 
 type usageBreakdownRowResponse struct {
@@ -896,13 +899,27 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 
 func mapUsageAttemptAggregate(source requestlog.UsageAttemptAggregate) (usageAttemptAggregateResponse, error) {
 	if source.AttemptCount < 0 || source.AttemptFailureCount < 0 ||
+		source.NormalAttemptCount < 0 || source.SlowAttemptCount < 0 || source.FaultyAttemptCount < 0 ||
 		source.AttemptCount > maxSafeInteger || source.AttemptFailureCount > maxSafeInteger ||
+		source.NormalAttemptCount > maxSafeInteger || source.SlowAttemptCount > maxSafeInteger ||
+		source.FaultyAttemptCount > maxSafeInteger ||
 		source.AttemptFailureCount > source.AttemptCount {
 		return usageAttemptAggregateResponse{}, fmt.Errorf("map usage attempt aggregate: unsafe integer")
+	}
+	feedbackCount, ok := usage.CheckedAdd(source.NormalAttemptCount, source.SlowAttemptCount)
+	if !ok {
+		return usageAttemptAggregateResponse{}, fmt.Errorf("map usage attempt aggregate: feedback count overflow")
+	}
+	feedbackCount, ok = usage.CheckedAdd(feedbackCount, source.FaultyAttemptCount)
+	if !ok || feedbackCount > source.AttemptCount {
+		return usageAttemptAggregateResponse{}, fmt.Errorf("map usage attempt aggregate: invalid feedback counts")
 	}
 	return usageAttemptAggregateResponse{
 		AttemptCount:        source.AttemptCount,
 		AttemptFailureCount: source.AttemptFailureCount,
+		NormalAttemptCount:  source.NormalAttemptCount,
+		SlowAttemptCount:    source.SlowAttemptCount,
+		FaultyAttemptCount:  source.FaultyAttemptCount,
 	}, nil
 }
 

@@ -18,6 +18,7 @@ import {
   projectBoolean,
   projectEpochMilliseconds,
   projectEnum,
+  projectFiniteNumber,
   projectInt64String,
   projectNonNegativeInt64String,
   projectPriceMultiplier,
@@ -67,6 +68,9 @@ export type RequestLogRouteMode = 'native' | 'converted'
 export type RequestLogDispatchState = 'not_sent' | 'maybe_sent'
 export type RequestLogUpstreamProtocol = ProtocolValue
 export type RequestLogFailureCategory = FailureCategory | 'conversion_unsupported'
+export type RequestLogFeedbackStatus = 'normal' | 'slow' | 'faulty'
+export type RequestLogFeedbackReason =
+  'upstream_failure' | 'first_response_slow' | 'output_rate_faulty' | 'output_rate_slow'
 
 export type { FailureCategory } from '@/api/control/types'
 
@@ -133,7 +137,14 @@ export interface RequestLogPricingReceiptDto {
   total_nano_usd: string
 }
 
-export interface RequestLogAttemptDto {
+export interface RequestLogFeedbackDto {
+  feedback_status: RequestLogFeedbackStatus | null
+  feedback_reason: RequestLogFeedbackReason | null
+  provider_first_response_ms: number | null
+  provider_tokens_per_second: number | null
+}
+
+export interface RequestLogAttemptDto extends RequestLogFeedbackDto {
   sequence: number
   group_id: number
   group_name: string
@@ -171,7 +182,7 @@ export interface RequestLogReasoningDto {
   budget_tokens: string | null
 }
 
-export interface RequestLogItemDto {
+export interface RequestLogItemDto extends RequestLogFeedbackDto {
   request_id: string
   completed_at_ms: number
   access_key: { id: number; name: string | null; deleted: boolean }
@@ -227,6 +238,13 @@ export interface RequestLogPageDto {
 
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const statuses = ['success', 'error', 'incomplete', 'canceled'] as const
+const feedbackStatuses = ['normal', 'slow', 'faulty'] as const
+const feedbackReasons = [
+  'upstream_failure',
+  'first_response_slow',
+  'output_rate_faulty',
+  'output_rate_slow',
+] as const
 const modelConsistencyValues = ['not_applicable', 'match', 'unknown', 'mismatch'] as const
 // bounded 亲和观测。API 不携带原始 prompt_cache_key、前缀输入或完整 HMAC；
 // affinity_key 仅允许掩码投影，以下枚举值保持既有协议。
@@ -314,6 +332,10 @@ const itemFields = [
   'stream',
   'first_response_ms',
   'duration_ms',
+  'feedback_status',
+  'feedback_reason',
+  'provider_first_response_ms',
+  'provider_tokens_per_second',
   'attempt_count',
   'error_code',
   'error_summary',
@@ -369,6 +391,23 @@ function projectRequestID(value: unknown): string {
 
 function projectStatusCode(value: unknown): number {
   return projectSafeInteger(value, { minimum: 0, maximum: 999 })
+}
+
+function projectRequestLogFeedback(value: Record<string, unknown>): RequestLogFeedbackDto {
+  return {
+    feedback_status:
+      value.feedback_status === null ? null : projectEnum(value.feedback_status, feedbackStatuses),
+    feedback_reason:
+      value.feedback_reason === null ? null : projectEnum(value.feedback_reason, feedbackReasons),
+    provider_first_response_ms:
+      value.provider_first_response_ms === null
+        ? null
+        : projectSafeInteger(value.provider_first_response_ms, { minimum: 0 }),
+    provider_tokens_per_second:
+      value.provider_tokens_per_second === null
+        ? null
+        : projectFiniteNumber(value.provider_tokens_per_second, { minimum: 0 }),
+  }
 }
 
 function projectAccessKey(value: unknown): RequestLogItemDto['access_key'] {
@@ -502,6 +541,10 @@ function projectAttempt(value: unknown): RequestLogAttemptDto {
     'reasoning',
     'status_code',
     'duration_ms',
+    'feedback_status',
+    'feedback_reason',
+    'provider_first_response_ms',
+    'provider_tokens_per_second',
     'failure_category',
     'failure_origin',
     'failure_scope',
@@ -539,6 +582,7 @@ function projectAttempt(value: unknown): RequestLogAttemptDto {
     reasoning: projectReasoning(record.reasoning),
     status_code: projectStatusCode(record.status_code),
     duration_ms: projectSafeInteger(record.duration_ms, { minimum: 0 }),
+    ...projectRequestLogFeedback(record),
     failure_category: projectEnum(record.failure_category, failureCategories),
     failure_origin:
       record.failure_origin === null
@@ -662,6 +706,7 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
         ? null
         : projectSafeInteger(record.first_response_ms, { minimum: 0 }),
     duration_ms: projectSafeInteger(record.duration_ms, { minimum: 0 }),
+    ...projectRequestLogFeedback(record),
     attempt_count: projectSafeInteger(record.attempt_count, { minimum: 0 }),
     error_code: projectString(record.error_code, { allowEmpty: true }),
     error_summary: projectString(record.error_summary, { allowEmpty: true }),

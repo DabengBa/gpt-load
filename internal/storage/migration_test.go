@@ -37,6 +37,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0021,
 		migrationfiles.ID0022,
 		migrationfiles.ID0023,
+		migrationfiles.ID0024,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -44,6 +45,113 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 	for index, entry := range migrations {
 		if entry.ID != wantIDs[index] || entry.Up == nil || entry.Validate == nil {
 			t.Fatalf("migration registry entry %d = %#v", index, entry)
+		}
+	}
+}
+
+func TestFeedbackMigrationUpgrades0023FreshDatabaseAndRepeatStart(t *testing.T) {
+	upgrade := openInternalMigrationTestDatabase(t)
+	if err := applyMigrationRegistry(upgrade, migrations[:len(migrations)-1]); err != nil {
+		t.Fatalf("apply migrations through 0023: %v", err)
+	}
+	request := models.RequestLog{
+		ID: "11111111-1111-4111-8111-111111111111", CompletedAtMS: 1_000,
+		AccessKeyID: 1, Protocol: "openai-completions", ClientModel: "model",
+		UpstreamModel: "model", ModelConsistency: "not_applicable",
+		Status: "success", StatusCode: 200, DurationMs: 10,
+		UsageState: "not_applicable", CostState: "not_applicable",
+		PricingCompleteness: "not_applicable",
+	}
+	if err := upgrade.Create(&request).Error; err != nil {
+		t.Fatalf("create pre-feedback request: %v", err)
+	}
+	attempt := models.RequestLogAttempt{
+		RequestID: request.ID, Sequence: 1, CompletedAtMS: 1_000,
+		GroupID: 1, GroupName: "group", ChannelID: "openai", CredentialID: 1,
+		StatusCode: 502, DurationMs: 5, FailureCategory: "upstream_host_error",
+		Action: "retry", ErrorSummary: "provider failed",
+	}
+	if err := upgrade.Omit(
+		"FeedbackStatus", "FeedbackReason", "ProviderFirstResponseMs", "ProviderTokensPerSecond",
+	).Create(&attempt).Error; err != nil {
+		t.Fatalf("create pre-feedback attempt: %v", err)
+	}
+	if err := upgrade.Exec(`INSERT INTO usage_attempt_stats (
+		bucket_start_ms, access_key_id, channel_id, group_id, credential_id, model,
+		attempt_count, failure_count
+	) VALUES (0, 1, 'openai', 1, 1, 'model', 1, 1)`).Error; err != nil {
+		t.Fatalf("create pre-feedback usage attempt stat: %v", err)
+	}
+	if err := applyMigrations(upgrade); err != nil {
+		t.Fatalf("upgrade database through 0024: %v", err)
+	}
+	assertFeedbackSchema0024(t, upgrade)
+	var preserved models.RequestLogAttempt
+	if err := upgrade.First(&preserved, "request_id = ? AND sequence = 1", request.ID).Error; err != nil {
+		t.Fatalf("read upgraded attempt: %v", err)
+	}
+	if preserved.FailureCategory != "upstream_host_error" || preserved.FeedbackStatus != "" ||
+		preserved.FeedbackReason != "" || preserved.ProviderFirstResponseMs != nil ||
+		preserved.ProviderTokensPerSecond != nil {
+		t.Fatalf("upgraded historical attempt = %+v, want unchanged failure and unassessed feedback", preserved)
+	}
+	var preservedStat models.UsageAttemptStat
+	if err := upgrade.Where("model = ?", "model").Take(&preservedStat).Error; err != nil {
+		t.Fatalf("read upgraded attempt stat: %v", err)
+	}
+	if preservedStat.AttemptCount != 1 || preservedStat.FailureCount != 1 ||
+		preservedStat.NormalAttemptCount != 0 || preservedStat.SlowAttemptCount != 0 ||
+		preservedStat.FaultyAttemptCount != 0 {
+		t.Fatalf("upgraded historical attempt stat = %+v, want existing failure and zero feedback counts", preservedStat)
+	}
+	if err := applyMigrations(upgrade); err != nil {
+		t.Fatalf("repeat upgraded migrations: %v", err)
+	}
+
+	fresh := openInternalMigrationTestDatabase(t)
+	if err := AutoMigrate(fresh); err != nil {
+		t.Fatalf("migrate fresh database: %v", err)
+	}
+	assertFeedbackSchema0024(t, fresh)
+	if err := AutoMigrate(fresh); err != nil {
+		t.Fatalf("repeat fresh migrations: %v", err)
+	}
+	validStat := models.UsageAttemptStat{
+		BucketStartMS: 0, AccessKeyID: 1, ChannelID: "openai", GroupID: 1,
+		CredentialID: 1, Model: "feedback-model", AttemptCount: 2,
+		NormalAttemptCount: 1, FaultyAttemptCount: 1,
+	}
+	if err := fresh.Create(&validStat).Error; err != nil {
+		t.Fatalf("create feedback usage attempt stat: %v", err)
+	}
+	invalidStat := validStat
+	invalidStat.ID = 0
+	invalidStat.Model = "invalid-feedback-model"
+	invalidStat.AttemptCount = 2
+	invalidStat.NormalAttemptCount = 1
+	invalidStat.SlowAttemptCount = 1
+	invalidStat.FaultyAttemptCount = 1
+	if err := fresh.Create(&invalidStat).Error; err == nil {
+		t.Fatal("usage attempt stat accepted feedback counts greater than attempt_count")
+	}
+}
+
+func assertFeedbackSchema0024(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	for _, column := range []string{
+		"feedback_status", "feedback_reason", "provider_first_response_ms", "provider_tokens_per_second",
+	} {
+		if !db.Migrator().HasColumn("request_log_attempts", column) {
+			t.Fatalf("request_log_attempts.%s is missing", column)
+		}
+	}
+	for _, table := range []string{"usage_attempt_aggregation_journals", "usage_attempt_stats"} {
+		for _, column := range []string{
+			"normal_attempt_count", "slow_attempt_count", "faulty_attempt_count",
+		} {
+			if !db.Migrator().HasColumn(table, column) {
+				t.Fatalf("%s.%s is missing", table, column)
+			}
 		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"gpt-load/internal/execution"
+	"gpt-load/internal/health"
 	"gpt-load/internal/platform/epochms"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/storage/dbtx"
@@ -457,8 +458,11 @@ type usageAttemptStatKey struct {
 }
 
 type usageAttemptStatDelta struct {
-	AttemptCount int64
-	FailureCount int64
+	AttemptCount       int64
+	FailureCount       int64
+	NormalAttemptCount int64
+	SlowAttemptCount   int64
+	FaultyAttemptCount int64
 }
 
 func buildUsageAttemptJournalDeltas(
@@ -481,8 +485,21 @@ func buildUsageAttemptJournalDeltas(
 		if err := checkedInt64Add(&delta.FailureCount, journal.FailureCount, "attempt_failure_count"); err != nil {
 			return nil, err
 		}
-		if delta.FailureCount > delta.AttemptCount {
-			return nil, fmt.Errorf("aggregate usage attempt failure count exceeds attempt count")
+		if err := checkedInt64Add(&delta.NormalAttemptCount, journal.NormalAttemptCount, "normal_attempt_count"); err != nil {
+			return nil, err
+		}
+		if err := checkedInt64Add(&delta.SlowAttemptCount, journal.SlowAttemptCount, "slow_attempt_count"); err != nil {
+			return nil, err
+		}
+		if err := checkedInt64Add(&delta.FaultyAttemptCount, journal.FaultyAttemptCount, "faulty_attempt_count"); err != nil {
+			return nil, err
+		}
+		if err := validateUsageAttemptAggregate(UsageAttemptAggregate{
+			AttemptCount: delta.AttemptCount, AttemptFailureCount: delta.FailureCount,
+			NormalAttemptCount: delta.NormalAttemptCount, SlowAttemptCount: delta.SlowAttemptCount,
+			FaultyAttemptCount: delta.FaultyAttemptCount,
+		}); err != nil {
+			return nil, fmt.Errorf("aggregate usage attempt journal: %w", err)
 		}
 		deltas[key] = delta
 	}
@@ -523,8 +540,21 @@ func applyUsageAttemptJournalBatch(
 		if !ok {
 			return fmt.Errorf("aggregate usage attempt failure count: checked addition failed")
 		}
-		if stat.FailureCount > stat.AttemptCount {
-			return fmt.Errorf("aggregate usage attempt failure count exceeds attempt count")
+		if err := checkedInt64Add(&stat.NormalAttemptCount, deltas[key].NormalAttemptCount, "normal_attempt_count"); err != nil {
+			return err
+		}
+		if err := checkedInt64Add(&stat.SlowAttemptCount, deltas[key].SlowAttemptCount, "slow_attempt_count"); err != nil {
+			return err
+		}
+		if err := checkedInt64Add(&stat.FaultyAttemptCount, deltas[key].FaultyAttemptCount, "faulty_attempt_count"); err != nil {
+			return err
+		}
+		if err := validateUsageAttemptAggregate(UsageAttemptAggregate{
+			AttemptCount: stat.AttemptCount, AttemptFailureCount: stat.FailureCount,
+			NormalAttemptCount: stat.NormalAttemptCount, SlowAttemptCount: stat.SlowAttemptCount,
+			FaultyAttemptCount: stat.FaultyAttemptCount,
+		}); err != nil {
+			return fmt.Errorf("aggregate usage attempt stat: %w", err)
 		}
 		absolute = append(absolute, stat)
 	}
@@ -564,7 +594,9 @@ func usageAttemptStatUpsertClause() clause.OnConflict {
 			{Name: "credential_id"},
 			{Name: "model"},
 		},
-		DoUpdates: clause.AssignmentColumns([]string{"attempt_count", "failure_count"}),
+		DoUpdates: clause.AssignmentColumns([]string{
+			"attempt_count", "failure_count", "normal_attempt_count", "slow_attempt_count", "faulty_attempt_count",
+		}),
 	}
 }
 
@@ -743,17 +775,37 @@ func buildUsageAttemptAggregationJournals(
 			if attempt.FailureCategory != string(telemetry.FailureCategoryOK) {
 				failureCount = 1
 			}
+			feedbackCounts := UsageAttemptAggregate{AttemptCount: 1}
+			switch health.FeedbackStatus(attempt.FeedbackStatus) {
+			case health.FeedbackStatusUnassessed:
+			case health.FeedbackStatusNormal:
+				feedbackCounts.NormalAttemptCount = 1
+			case health.FeedbackStatusSlow:
+				feedbackCounts.SlowAttemptCount = 1
+			case health.FeedbackStatusFaulty:
+				feedbackCounts.FaultyAttemptCount = 1
+			default:
+				return nil, fmt.Errorf(
+					"aggregate request attempt %q sequence %d: invalid feedback status %q",
+					row.ID,
+					attempt.Sequence,
+					attempt.FeedbackStatus,
+				)
+			}
 			journals = append(journals, models.UsageAttemptAggregationJournal{
-				RequestID:     row.ID,
-				Sequence:      attempt.Sequence,
-				BucketStartMS: bucketStartMS,
-				AccessKeyID:   row.AccessKeyID,
-				GroupID:       attempt.GroupID,
-				ChannelID:     attempt.ChannelID,
-				CredentialID:  attempt.CredentialID,
-				Model:         attempt.UpstreamModel,
-				AttemptCount:  1,
-				FailureCount:  failureCount,
+				RequestID:          row.ID,
+				Sequence:           attempt.Sequence,
+				BucketStartMS:      bucketStartMS,
+				AccessKeyID:        row.AccessKeyID,
+				GroupID:            attempt.GroupID,
+				ChannelID:          attempt.ChannelID,
+				CredentialID:       attempt.CredentialID,
+				Model:              attempt.UpstreamModel,
+				AttemptCount:       1,
+				FailureCount:       failureCount,
+				NormalAttemptCount: feedbackCounts.NormalAttemptCount,
+				SlowAttemptCount:   feedbackCounts.SlowAttemptCount,
+				FaultyAttemptCount: feedbackCounts.FaultyAttemptCount,
 			})
 		}
 	}

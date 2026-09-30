@@ -414,6 +414,9 @@ type usageAttemptBreakdownRow struct {
 	ChannelID           *string
 	AttemptCount        int64
 	AttemptFailureCount int64 `gorm:"column:attempt_failure_count"`
+	NormalAttemptCount  int64 `gorm:"column:normal_attempt_count"`
+	SlowAttemptCount    int64 `gorm:"column:slow_attempt_count"`
+	FaultyAttemptCount  int64 `gorm:"column:faulty_attempt_count"`
 }
 
 type usageBreakdownKey struct {
@@ -472,15 +475,33 @@ func queryUsageAttemptBreakdown(
 ) ([]usageAttemptBreakdownRow, UsageAttemptAggregate, error) {
 	attemptScope := usageAttemptStatScope(scope, input)
 	var total UsageAttemptAggregate
-	if err := attemptScope.Select("COALESCE(SUM(attempt_count), 0) AS attempt_count, COALESCE(SUM(failure_count), 0) AS attempt_failure_count").Find(&total).Error; err != nil {
+	if err := attemptScope.Select(
+		"COALESCE(SUM(attempt_count), 0) AS attempt_count, " +
+			"COALESCE(SUM(failure_count), 0) AS attempt_failure_count, " +
+			"COALESCE(SUM(normal_attempt_count), 0) AS normal_attempt_count, " +
+			"COALESCE(SUM(slow_attempt_count), 0) AS slow_attempt_count, " +
+			"COALESCE(SUM(faulty_attempt_count), 0) AS faulty_attempt_count",
+	).Find(&total).Error; err != nil {
 		return nil, UsageAttemptAggregate{}, fmt.Errorf("query usage attempt total: %w", err)
 	}
 	if err := validateUsageAttemptAggregate(total); err != nil {
 		return nil, UsageAttemptAggregate{}, err
 	}
-	query := attemptScope.Select("model, NULL AS group_id, NULL AS channel_id, SUM(attempt_count) AS attempt_count, SUM(failure_count) AS attempt_failure_count")
+	query := attemptScope.Select(
+		"model, NULL AS group_id, NULL AS channel_id, SUM(attempt_count) AS attempt_count, " +
+			"SUM(failure_count) AS attempt_failure_count, " +
+			"SUM(normal_attempt_count) AS normal_attempt_count, " +
+			"SUM(slow_attempt_count) AS slow_attempt_count, " +
+			"SUM(faulty_attempt_count) AS faulty_attempt_count",
+	)
 	if !accessKeyScoped {
-		query = attemptScope.Select("model, group_id, channel_id, SUM(attempt_count) AS attempt_count, SUM(failure_count) AS attempt_failure_count").
+		query = attemptScope.Select(
+			"model, group_id, channel_id, SUM(attempt_count) AS attempt_count, " +
+				"SUM(failure_count) AS attempt_failure_count, " +
+				"SUM(normal_attempt_count) AS normal_attempt_count, " +
+				"SUM(slow_attempt_count) AS slow_attempt_count, " +
+				"SUM(faulty_attempt_count) AS faulty_attempt_count",
+		).
 			Group("model, group_id, channel_id")
 	} else {
 		query = query.Group("model")
@@ -490,7 +511,11 @@ func queryUsageAttemptBreakdown(
 		return nil, UsageAttemptAggregate{}, fmt.Errorf("query usage attempt breakdown: %w", err)
 	}
 	for _, row := range rows {
-		if err := validateUsageAttemptAggregate(UsageAttemptAggregate{AttemptCount: row.AttemptCount, AttemptFailureCount: row.AttemptFailureCount}); err != nil {
+		if err := validateUsageAttemptAggregate(UsageAttemptAggregate{
+			AttemptCount: row.AttemptCount, AttemptFailureCount: row.AttemptFailureCount,
+			NormalAttemptCount: row.NormalAttemptCount, SlowAttemptCount: row.SlowAttemptCount,
+			FaultyAttemptCount: row.FaultyAttemptCount,
+		}); err != nil {
 			return nil, UsageAttemptAggregate{}, err
 		}
 	}
@@ -498,8 +523,18 @@ func queryUsageAttemptBreakdown(
 }
 
 func validateUsageAttemptAggregate(value UsageAttemptAggregate) error {
-	if value.AttemptCount < 0 || value.AttemptFailureCount < 0 || value.AttemptFailureCount > value.AttemptCount {
+	if value.AttemptCount < 0 || value.AttemptFailureCount < 0 ||
+		value.AttemptFailureCount > value.AttemptCount || value.NormalAttemptCount < 0 ||
+		value.SlowAttemptCount < 0 || value.FaultyAttemptCount < 0 {
 		return fmt.Errorf("invalid usage attempt aggregate")
+	}
+	feedbackCount, ok := usage.CheckedAdd(value.NormalAttemptCount, value.SlowAttemptCount)
+	if !ok {
+		return fmt.Errorf("invalid usage attempt feedback aggregate")
+	}
+	feedbackCount, ok = usage.CheckedAdd(feedbackCount, value.FaultyAttemptCount)
+	if !ok || feedbackCount > value.AttemptCount {
+		return fmt.Errorf("invalid usage attempt feedback aggregate")
 	}
 	return nil
 }
@@ -527,7 +562,11 @@ func mergeUsageBreakdownRows(
 		}}
 	}
 	for _, row := range attemptRows {
-		attempts := UsageAttemptAggregate{AttemptCount: row.AttemptCount, AttemptFailureCount: row.AttemptFailureCount}
+		attempts := UsageAttemptAggregate{
+			AttemptCount: row.AttemptCount, AttemptFailureCount: row.AttemptFailureCount,
+			NormalAttemptCount: row.NormalAttemptCount, SlowAttemptCount: row.SlowAttemptCount,
+			FaultyAttemptCount: row.FaultyAttemptCount,
+		}
 		key := usageBreakdownKey{Model: row.Model}
 		if row.GroupID != nil {
 			key.GroupID = *row.GroupID
@@ -544,11 +583,23 @@ func mergeUsageBreakdownRows(
 			}
 		}
 		if ok {
-			candidate.row.AttemptCount += attempts.AttemptCount
-			candidate.row.AttemptFailureCount += attempts.AttemptFailureCount
+			if err := checkedInt64Add(&candidate.row.AttemptCount, attempts.AttemptCount, "attempt_count"); err != nil {
+				return nil, err
+			}
+			if err := checkedInt64Add(&candidate.row.AttemptFailureCount, attempts.AttemptFailureCount, "attempt_failure_count"); err != nil {
+				return nil, err
+			}
+			if err := checkedInt64Add(&candidate.row.NormalAttemptCount, attempts.NormalAttemptCount, "normal_attempt_count"); err != nil {
+				return nil, err
+			}
+			if err := checkedInt64Add(&candidate.row.SlowAttemptCount, attempts.SlowAttemptCount, "slow_attempt_count"); err != nil {
+				return nil, err
+			}
+			if err := checkedInt64Add(&candidate.row.FaultyAttemptCount, attempts.FaultyAttemptCount, "faulty_attempt_count"); err != nil {
+				return nil, err
+			}
 		} else {
-			candidate.row.AttemptCount = attempts.AttemptCount
-			candidate.row.AttemptFailureCount = attempts.AttemptFailureCount
+			candidate.row.UsageAttemptAggregate = attempts
 		}
 		if err := validateUsageAttemptAggregate(candidate.row.UsageAttemptAggregate); err != nil {
 			return nil, err

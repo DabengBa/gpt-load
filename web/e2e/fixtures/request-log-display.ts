@@ -31,6 +31,10 @@ function detailAttempt(
     response_started: action === 'terminate',
     upstream_protocol: 'openai-completions',
     reasoning: null,
+    feedback_status: action === 'terminate' ? 'normal' : 'faulty',
+    feedback_reason: action === 'terminate' ? null : 'upstream_failure',
+    provider_first_response_ms: action === 'terminate' ? 16_000 : 30_000,
+    provider_tokens_per_second: action === 'terminate' ? 25 : 8,
     status_code: action === 'terminate' ? 200 : 429,
     duration_ms: action === 'terminate' ? 800 : 120,
     failure_category: action === 'terminate' ? 'ok' : 'rate_limited',
@@ -62,6 +66,10 @@ function baseLogItem(requestID: string) {
     status_code: 200,
     stream: true,
     attempt_count: 1,
+    feedback_status: 'normal',
+    feedback_reason: null,
+    provider_first_response_ms: 500,
+    provider_tokens_per_second: 30,
     error_code: '',
     error_summary: '',
     affinity_hit: false,
@@ -216,6 +224,7 @@ export async function installRequestLogDisplayRoutes(
       if (path.startsWith('/api/logs/')) {
         const requestID = path.slice('/api/logs/'.length)
         const item = rows.find((row) => row.request_id === requestID) ?? rows[0]
+        const [detailItem] = transformRows([item])
         const attempts =
           requestID === requestIDs.mapped
             ? [
@@ -223,7 +232,7 @@ export async function installRequestLogDisplayRoutes(
                 detailAttempt(2, 1, 'alpha', 3, 'key-a', 'terminate'),
               ]
             : []
-        await route.fulfill(response({ ...item, attempts }))
+        await route.fulfill(response({ ...detailItem, attempts }))
         return
       }
 

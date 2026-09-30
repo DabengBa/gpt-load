@@ -491,6 +491,7 @@ func (recorder *requestRecorder) appendDecisionAttempt(
 		BufferedSpilled:    result.BufferedSpilled,
 		BufferedStream:     result.BufferedStream,
 		Usage:              result.Usage,
+		Feedback:           result.Feedback,
 	}
 	if attempt.ErrorCode != "" && attempt.ErrorSummary == "" {
 		attempt.ErrorSummary = fixedErrorSummary(attempt.ErrorCode)

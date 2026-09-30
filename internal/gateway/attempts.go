@@ -632,6 +632,8 @@ func (loop *attemptLoop) run() {
 			)
 		}
 		attemptStarted := recorder.beforeForward()
+		providerFeedback := newProviderFeedbackMeasurement(recorder.now, attemptStarted)
+		input.providerFeedback = providerFeedback
 		var result UpstreamResult
 		capture := captureFromContext(ginContext)
 		captureAttempt, captureObserver, attemptContext, captureStarted := capture.beginForward(
@@ -647,6 +649,7 @@ func (loop *attemptLoop) run() {
 			}
 		}()
 		result = capture.normalizeAndFinishForwardOwned(captureAttempt, captureObserver, result, captureStarted)
+		providerFeedback.complete()
 		if !loop.stream && result.HasResponse() && !result.ProviderErrorBeforeCommit &&
 			result.DispatchState != execution.DispatchLocal &&
 			result.StatusCode >= http.StatusOK && result.StatusCode < http.StatusMultipleChoices {
@@ -696,6 +699,17 @@ func (loop *attemptLoop) run() {
 			attemptNow,
 			loop.decisionContextForSelection(selection),
 		)
+		result.Feedback = providerFeedbackForAttempt(result, decision, providerFeedback, loop.stream)
+		performanceFault := isSuccessfulPerformanceFault(result, decision)
+		if performanceFault {
+			handler.applyPerformanceFeedbackFailure(
+				selection.Group,
+				selection.CredentialID,
+				selection.EntryID,
+				result.StatusCode,
+				attemptNow,
+			)
+		}
 		dispatch.affinity.markBoundProviderFailure(selection, ref, resultForDecision.DispatchState, decision)
 		if loop.stream && result.BufferedStream && result.HTTPCommitted && !result.PayloadReleased {
 			// A heartbeat has committed HTTP, but no provider payload is visible;
@@ -749,7 +763,9 @@ func (loop *attemptLoop) run() {
 				attemptNow,
 			)
 			if loop.stream && result.Stream.EndReason == StreamEndCleanEOF {
-				handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
+				if !performanceFault {
+					handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
+				}
 				handler.recordEntrySuccess(selection.GroupID, selection.EntryID, selection.CredentialID)
 				if dispatch.metadata.PreviousResponseID == "" {
 					handler.recordAffinitySuccess(ginContext.Request.Context(), dispatch.affinity, selection, ref)
@@ -776,7 +792,9 @@ func (loop *attemptLoop) run() {
 			result.StatusCode >= http.StatusOK &&
 			result.StatusCode < http.StatusMultipleChoices &&
 			!(result.ExecutionError != nil && isUpstreamDiagnosticErrorCode(result.ExecutionError.Code)) {
-			handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
+			if !performanceFault {
+				handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
+			}
 			handler.recordEntrySuccess(selection.GroupID, selection.EntryID, selection.CredentialID)
 		}
 		recordedAttempt := recorder.recordAttempt(

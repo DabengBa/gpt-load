@@ -15,6 +15,7 @@ import (
 
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/health"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/contentcoding"
 	platformheader "gpt-load/internal/platform/httpheader"
@@ -64,9 +65,10 @@ type preparedRoute struct {
 // handles the execution adapter may call: observation hooks, stream delivery
 // contract, and the replay boundary key.
 type attemptEffects struct {
-	Dialect        dialect.Dialect
-	ClientProtocol protocol.Protocol
-	ObserveUsage   bool
+	Dialect          dialect.Dialect
+	ClientProtocol   protocol.Protocol
+	ObserveUsage     bool
+	providerFeedback *providerFeedbackMeasurement
 	// BufferedStream freezes the request-level delivery and replay contract.
 	BufferedStream bool
 	// ContinuityKey is an opaque per-tenant replay boundary for provider-private
@@ -93,6 +95,7 @@ type ForwardInput struct {
 // UpstreamResult is the gateway's stable view of one logical execution
 // attempt. SDK-internal transport recovery remains inside this result.
 type UpstreamResult struct {
+	Feedback              health.Feedback
 	StatusCode            int
 	Header                http.Header
 	Body                  []byte

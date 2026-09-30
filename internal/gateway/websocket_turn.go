@@ -419,6 +419,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 		}
 		started := recorder.beforeForward()
+		input.providerFeedback = newProviderFeedbackMeasurement(recorder.now, started)
 		ctx, cancel := context.WithTimeout(s.ctx, selection.Group.Timeouts.Request)
 		var firstByteDeadline time.Time
 		if selection.Group.Timeouts.FirstByte > 0 {
@@ -487,6 +488,17 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 		}
 		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{DefaultRateLimitCooldown: fixedCooldown, CredentialRefreshable: selection.Group.ConnectionType == "subscription", Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
+		result.Feedback = providerFeedbackForAttempt(result, decision, input.providerFeedback, true)
+		performanceFault := isSuccessfulPerformanceFault(result, decision)
+		if performanceFault {
+			h.applyPerformanceFeedbackFailure(
+				selection.Group,
+				selection.CredentialID,
+				selection.EntryID,
+				result.StatusCode,
+				h.now(),
+			)
+		}
 		affinity.markBoundProviderFailure(selection, ref, result.DispatchState, decision)
 		index := recorder.recordStreamAttempt(selection, credential.secrets, result, decision, started, recorder.now())
 		h.applyGroupDecisionEffectForEntry(selection.Group, ref.ID, 0, selection.EntryID, decision, result.StatusCode, h.now())
@@ -504,7 +516,9 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 		}
 		if result.Stream.EndReason == StreamEndCleanEOF {
-			h.recordCredentialSuccess(ref.ID, h.now())
+			if !performanceFault {
+				h.recordCredentialSuccess(ref.ID, h.now())
+			}
 			h.recordEntrySuccess(selection.GroupID, selection.EntryID, ref.ID)
 			if original.previous == "" {
 				h.recordAffinitySuccess(s.ctx, affinity, selection, ref)
@@ -656,6 +670,9 @@ func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel co
 		if eventLane != lane {
 			return ErrUpstreamProtocol
 		}
+		if input.providerFeedback != nil {
+			input.providerFeedback.observeProviderPayload()
+		}
 		var response struct {
 			ID     string `json:"id"`
 			Object string `json:"object"`
@@ -774,7 +791,10 @@ func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel co
 			recorder.recordFirstResponse()
 		}
 		unlock()
-		if err = s.emit(ctx, body); err != nil {
+		writeStarted := input.providerFeedback.beginDownstreamWrite(false)
+		err = s.emit(ctx, body)
+		input.providerFeedback.endDownstreamWrite(writeStarted)
+		if err != nil {
 			return err
 		}
 		result.Committed = true
@@ -782,6 +802,7 @@ func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel co
 		observer.markTerminalForwarded()
 		return nil
 	})
+	input.providerFeedback.complete()
 	first.stop()
 	if idle != nil {
 		idle.stop()

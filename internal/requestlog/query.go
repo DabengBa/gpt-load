@@ -10,6 +10,7 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/health"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/reasoning"
@@ -240,6 +241,7 @@ func (service *Service) Get(ctx context.Context, requestID string) (Record, erro
 			return err
 		}
 		records[0].Attempts = attempts
+		records[0].FinalAttemptFeedback = finalAttemptFeedback(attempts)
 		records[0].RouteMode = finalRouteMode(records[0], attempts)
 		records[0].UpstreamProtocol = finalUpstreamProtocol(records[0], attempts)
 		receipt := finalPricingReceipt(records[0], attempts)
@@ -265,6 +267,10 @@ func decodeAttemptRows(rows []models.RequestLogAttempt) ([]Attempt, error) {
 		if err != nil {
 			return nil, err
 		}
+		feedback, err := decodeAttemptFeedback(row)
+		if err != nil {
+			return nil, err
+		}
 		attempts = append(attempts, Attempt{
 			Sequence:          row.Sequence,
 			GroupID:           row.GroupID,
@@ -285,6 +291,7 @@ func decodeAttemptRows(rows []models.RequestLogAttempt) ([]Attempt, error) {
 			},
 			StatusCode:      row.StatusCode,
 			DurationMs:      row.DurationMs,
+			Feedback:        feedback,
 			FailureCategory: telemetry.FailureCategory(row.FailureCategory),
 			FailureOrigin:   execution.ErrorOrigin(row.FailureOrigin),
 			FailureScope:    execution.ErrorScope(row.FailureScope),
@@ -300,6 +307,19 @@ func decodeAttemptRows(rows []models.RequestLogAttempt) ([]Attempt, error) {
 		})
 	}
 	return attempts, nil
+}
+
+func decodeAttemptFeedback(row models.RequestLogAttempt) (health.Feedback, error) {
+	feedback := health.Feedback{
+		Status:          health.FeedbackStatus(row.FeedbackStatus),
+		Reason:          row.FeedbackReason,
+		FirstResponseMs: row.ProviderFirstResponseMs,
+		TokensPerSecond: row.ProviderTokensPerSecond,
+	}
+	if err := validateAttemptFeedback(feedback); err != nil {
+		return health.Feedback{}, fmt.Errorf("decode request log attempt %d feedback: %w", row.Sequence, err)
+	}
+	return feedback, nil
 }
 
 func decodeAttemptPricingReceipt(row models.RequestLogAttempt) (*pricing.Receipt, error) {
@@ -470,7 +490,11 @@ func (service *Service) loadFinalExecutionObservations(
 
 	var attempts []models.RequestLogAttempt
 	if err := service.db.WithContext(ctx).
-		Select("request_id", "sequence", "group_id", "channel_id", "credential_id", "route_mode", "upstream_protocol", "upstream_model", "pricing_receipt").
+		Select(
+			"request_id", "sequence", "group_id", "channel_id", "credential_id", "route_mode",
+			"upstream_protocol", "upstream_model", "pricing_receipt", "feedback_status", "feedback_reason",
+			"provider_first_response_ms", "provider_tokens_per_second",
+		).
 		Where("request_id IN ?", requestIDs).
 		Order("request_id ASC").
 		Order("sequence DESC").
@@ -478,11 +502,20 @@ func (service *Service) loadFinalExecutionObservations(
 		return fmt.Errorf("query request log final execution observations: %w", err)
 	}
 	executionResolved := make(map[string]struct{}, len(records))
+	feedbackResolved := make(map[string]struct{}, len(records))
 	pricingResolved := make(map[string]struct{}, len(records))
 	for _, attempt := range attempts {
 		index, ok := recordIndexes[attempt.RequestID]
 		if !ok {
 			continue
+		}
+		if _, ok := feedbackResolved[attempt.RequestID]; !ok {
+			feedbackResolved[attempt.RequestID] = struct{}{}
+			feedback, err := decodeAttemptFeedback(attempt)
+			if err != nil {
+				return fmt.Errorf("query request log final execution observations: %w", err)
+			}
+			records[index].FinalAttemptFeedback = feedback
 		}
 		record := records[index]
 		if record.GroupID != attempt.GroupID ||
@@ -527,8 +560,16 @@ func finalRouteMode(record Record, attempts []Attempt) channel.RouteMode {
 			attempt.CredentialID == record.CredentialID {
 			return attempt.RouteMode
 		}
+
 	}
 	return ""
+}
+
+func finalAttemptFeedback(attempts []Attempt) health.Feedback {
+	if len(attempts) == 0 {
+		return health.Feedback{}
+	}
+	return attempts[len(attempts)-1].Feedback
 }
 
 func finalUpstreamProtocol(record Record, attempts []Attempt) protocol.Protocol {

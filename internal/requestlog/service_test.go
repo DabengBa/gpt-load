@@ -13,6 +13,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"gpt-load/internal/health"
 	"gpt-load/internal/platform/redact"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/storage/models"
@@ -188,12 +189,18 @@ func TestServiceEmitLifecycleAndDeepCopy(t *testing.T) {
 
 	event := testEvent("deep-copy")
 	firstResponseMs := int64(7)
+	providerFirstResponseMs := int64(14)
+	providerTokensPerSecond := 22.0
 	requestReasoningBudget := int64(2048)
 	attemptReasoningBudget := int64(4096)
 	event.Stream = true
 	event.FirstResponseMs = &firstResponseMs
 	event.Reasoning.BudgetTokens = &requestReasoningBudget
 	event.Attempts[0].Reasoning.BudgetTokens = &attemptReasoningBudget
+	event.Attempts[0].Feedback = health.Feedback{
+		Status: health.FeedbackStatusSlow, Reason: "output_rate_slow",
+		FirstResponseMs: &providerFirstResponseMs, TokensPerSecond: &providerTokensPerSecond,
+	}
 	service.Emit(event)
 	timer := receiveValue(t, timers.created)
 	event.RequestID = "mutated-request"
@@ -201,6 +208,8 @@ func TestServiceEmitLifecycleAndDeepCopy(t *testing.T) {
 	firstResponseMs = 8
 	requestReasoningBudget = 1024
 	attemptReasoningBudget = 512
+	providerFirstResponseMs = 15
+	providerTokensPerSecond = 21
 	timer.Fire()
 
 	rows := receiveValue(t, writes)
@@ -213,7 +222,11 @@ func TestServiceEmitLifecycleAndDeepCopy(t *testing.T) {
 	if rows[0].FirstResponseMs == nil || *rows[0].FirstResponseMs != 7 ||
 		rows[0].ReasoningBudgetTokens == nil || *rows[0].ReasoningBudgetTokens != 2048 ||
 		rows[0].AttemptRows[0].ReasoningBudgetTokens == nil ||
-		*rows[0].AttemptRows[0].ReasoningBudgetTokens != 4096 {
+		*rows[0].AttemptRows[0].ReasoningBudgetTokens != 4096 ||
+		rows[0].AttemptRows[0].ProviderFirstResponseMs == nil ||
+		*rows[0].AttemptRows[0].ProviderFirstResponseMs != 14 ||
+		rows[0].AttemptRows[0].ProviderTokensPerSecond == nil ||
+		*rows[0].AttemptRows[0].ProviderTokensPerSecond != 22 {
 		t.Fatalf("written pointer observations = %+v, want original values", rows[0])
 	}
 

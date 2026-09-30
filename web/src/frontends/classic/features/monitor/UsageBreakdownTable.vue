@@ -146,6 +146,9 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         </th>
         <th scope="col">{{ t('monitor.usage.breakdown.columns.attempts') }}</th>
         <th scope="col">{{ t('monitor.usage.breakdown.columns.attemptFailures') }}</th>
+        <th scope="col">{{ t('monitor.usage.breakdown.columns.normalAttempts') }}</th>
+        <th scope="col">{{ t('monitor.usage.breakdown.columns.slowAttempts') }}</th>
+        <th scope="col">{{ t('monitor.usage.breakdown.columns.faultyAttempts') }}</th>
         <th scope="col" :aria-sort="ariaSort('success_rate')">
           <button type="button" class="usage-breakdown__sort" @click="setSort('success_rate')">
             {{ t('monitor.usage.breakdown.columns.successRate') }}
@@ -214,6 +217,9 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         <td>{{ formatInteger(row.failure_count, locale) }}</td>
         <td>{{ formatInteger(row.attempt_count, locale) }}</td>
         <td>{{ formatInteger(row.attempt_failure_count, locale) }}</td>
+        <td>{{ formatInteger(row.normal_attempt_count, locale) }}</td>
+        <td>{{ formatInteger(row.slow_attempt_count, locale) }}</td>
+        <td>{{ formatInteger(row.faulty_attempt_count, locale) }}</td>
         <td>{{ successRate(row) }}</td>
         <td>{{ averageDuration(row) }}</td>
         <td>{{ averageFirstResponse(row) }}</td>
@@ -234,6 +240,9 @@ function setPageSize(pageSize: 20 | 50 | 100): void {
         <td>{{ formatInteger(breakdown.total.failure_count, locale) }}</td>
         <td>{{ formatInteger(breakdown.attempt_total.attempt_count, locale) }}</td>
         <td>{{ formatInteger(breakdown.attempt_total.attempt_failure_count, locale) }}</td>
+        <td>{{ formatInteger(breakdown.attempt_total.normal_attempt_count, locale) }}</td>
+        <td>{{ formatInteger(breakdown.attempt_total.slow_attempt_count, locale) }}</td>
+        <td>{{ formatInteger(breakdown.attempt_total.faulty_attempt_count, locale) }}</td>
         <td>{{ successRate(breakdown.total) }}</td>
         <td>{{ averageDuration(breakdown.total) }}</td>
         <td>{{ averageFirstResponse(breakdown.total) }}</td>

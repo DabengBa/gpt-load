@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/health"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/response"
 	"gpt-load/internal/pricing"
@@ -62,35 +64,43 @@ type requestLogReasoningResponse struct {
 	BudgetTokens *string `json:"budget_tokens"`
 }
 
+type requestLogFeedbackResponse struct {
+	FeedbackStatus          *health.FeedbackStatus `json:"feedback_status"`
+	FeedbackReason          *string                `json:"feedback_reason"`
+	ProviderFirstResponseMs *int64                 `json:"provider_first_response_ms"`
+	ProviderTokensPerSecond *float64               `json:"provider_tokens_per_second"`
+}
+
 type requestLogAttemptResponse struct {
-	Sequence          int                               `json:"sequence"`
-	GroupID           uint                              `json:"group_id"`
-	GroupName         string                            `json:"group_name"`
-	ChannelID         *channel.ID                       `json:"channel_id"`
-	CredentialID      *uint                             `json:"credential_id"`
-	CredentialName    string                            `json:"credential_name"`
-	Operation         *execution.Operation              `json:"operation"`
-	RouteMode         *channel.RouteMode                `json:"route_mode"`
-	UpstreamModel     *string                           `json:"upstream_model"`
-	UpstreamRequestID *string                           `json:"upstream_request_id"`
-	DispatchState     *execution.DispatchState          `json:"dispatch_state"`
-	ResponseStarted   bool                              `json:"response_started"`
-	UpstreamProtocol  *protocol.Protocol                `json:"upstream_protocol"`
-	Reasoning         *requestLogReasoningResponse      `json:"reasoning"`
-	StatusCode        int                               `json:"status_code"`
-	DurationMs        int64                             `json:"duration_ms"`
-	FailureCategory   telemetry.FailureCategory         `json:"failure_category"`
-	FailureOrigin     *execution.ErrorOrigin            `json:"failure_origin"`
-	FailureScope      *execution.ErrorScope             `json:"failure_scope"`
-	RetryDirective    *telemetry.RetryDirective         `json:"retry_directive"`
-	Effect            *telemetry.Effect                 `json:"effect"`
-	RuleID            *string                           `json:"rule_id"`
-	Action            string                            `json:"action"`
-	WillRetry         bool                              `json:"will_retry"`
-	ErrorCode         string                            `json:"error_code"`
-	ErrorSummary      string                            `json:"error_summary"`
-	Committed         bool                              `json:"committed"`
-	PricingReceipt    *requestLogPricingReceiptResponse `json:"pricing_receipt"`
+	Sequence          int                          `json:"sequence"`
+	GroupID           uint                         `json:"group_id"`
+	GroupName         string                       `json:"group_name"`
+	ChannelID         *channel.ID                  `json:"channel_id"`
+	CredentialID      *uint                        `json:"credential_id"`
+	CredentialName    string                       `json:"credential_name"`
+	Operation         *execution.Operation         `json:"operation"`
+	RouteMode         *channel.RouteMode           `json:"route_mode"`
+	UpstreamModel     *string                      `json:"upstream_model"`
+	UpstreamRequestID *string                      `json:"upstream_request_id"`
+	DispatchState     *execution.DispatchState     `json:"dispatch_state"`
+	ResponseStarted   bool                         `json:"response_started"`
+	UpstreamProtocol  *protocol.Protocol           `json:"upstream_protocol"`
+	Reasoning         *requestLogReasoningResponse `json:"reasoning"`
+	StatusCode        int                          `json:"status_code"`
+	DurationMs        int64                        `json:"duration_ms"`
+	requestLogFeedbackResponse
+	FailureCategory telemetry.FailureCategory         `json:"failure_category"`
+	FailureOrigin   *execution.ErrorOrigin            `json:"failure_origin"`
+	FailureScope    *execution.ErrorScope             `json:"failure_scope"`
+	RetryDirective  *telemetry.RetryDirective         `json:"retry_directive"`
+	Effect          *telemetry.Effect                 `json:"effect"`
+	RuleID          *string                           `json:"rule_id"`
+	Action          string                            `json:"action"`
+	WillRetry       bool                              `json:"will_retry"`
+	ErrorCode       string                            `json:"error_code"`
+	ErrorSummary    string                            `json:"error_summary"`
+	Committed       bool                              `json:"committed"`
+	PricingReceipt  *requestLogPricingReceiptResponse `json:"pricing_receipt"`
 }
 
 type requestLogPricingIdentityResponse struct {
@@ -128,47 +138,48 @@ type requestLogPricingReceiptResponse struct {
 }
 
 type requestLogItemResponse struct {
-	RequestID               string                       `json:"request_id"`
-	CompletedAtMS           int64                        `json:"completed_at_ms"`
-	AccessKey               requestLogAccessKeyResponse  `json:"access_key"`
-	Protocol                string                       `json:"protocol"`
-	Operation               *execution.Operation         `json:"operation"`
-	UpstreamProtocol        *protocol.Protocol           `json:"upstream_protocol"`
-	ClientModel             *string                      `json:"client_model"`
-	UpstreamModel           *string                      `json:"upstream_model"`
-	UpstreamReportedModel   *string                      `json:"upstream_reported_model"`
-	ModelConsistency        telemetry.ModelConsistency   `json:"model_consistency"`
-	Reasoning               *requestLogReasoningResponse `json:"reasoning"`
-	Status                  telemetry.RequestStatus      `json:"status"`
-	StatusCode              int                          `json:"status_code"`
-	Stream                  bool                         `json:"stream"`
-	FirstResponseMs         *int64                       `json:"first_response_ms"`
-	DurationMs              int64                        `json:"duration_ms"`
-	AttemptCount            int                          `json:"attempt_count"`
-	ErrorCode               string                       `json:"error_code"`
-	ErrorSummary            string                       `json:"error_summary"`
-	AffinityHit             bool                         `json:"affinity_hit"`
-	ContinuityHit           bool                         `json:"continuity_hit"`
-	AffinityKey             *string                      `json:"affinity_key"`
-	AffinitySource          string                       `json:"affinity_source"`
-	AffinityState           string                       `json:"affinity_state"`
-	GroupID                 *uint                        `json:"group_id"`
-	ChannelID               *channel.ID                  `json:"channel_id"`
-	CredentialID            *uint                        `json:"credential_id"`
-	CredentialName          string                       `json:"credential_name"`
-	RouteMode               *channel.RouteMode           `json:"route_mode"`
-	UsageState              usage.State                  `json:"usage_state"`
-	CostState               pricing.CostState            `json:"cost_state"`
-	PricingCompleteness     pricing.Completeness         `json:"pricing_completeness"`
-	PricingMode             *pricing.Mode                `json:"pricing_mode"`
-	ContextThresholdTokens  *string                      `json:"context_threshold_tokens"`
-	InputTokens             string                       `json:"input_tokens"`
-	CacheReadTokens         string                       `json:"cache_read_tokens"`
-	CacheWrite5MTokens      string                       `json:"cache_write_5m_tokens"`
-	CacheWrite1HTokens      string                       `json:"cache_write_1h_tokens"`
-	CacheWriteUnknownTokens string                       `json:"cache_write_unknown_tokens"`
-	OutputTokens            string                       `json:"output_tokens"`
-	EstimatedCostNanoUSD    string                       `json:"estimated_cost_nano_usd"`
+	RequestID             string                       `json:"request_id"`
+	CompletedAtMS         int64                        `json:"completed_at_ms"`
+	AccessKey             requestLogAccessKeyResponse  `json:"access_key"`
+	Protocol              string                       `json:"protocol"`
+	Operation             *execution.Operation         `json:"operation"`
+	UpstreamProtocol      *protocol.Protocol           `json:"upstream_protocol"`
+	ClientModel           *string                      `json:"client_model"`
+	UpstreamModel         *string                      `json:"upstream_model"`
+	UpstreamReportedModel *string                      `json:"upstream_reported_model"`
+	ModelConsistency      telemetry.ModelConsistency   `json:"model_consistency"`
+	Reasoning             *requestLogReasoningResponse `json:"reasoning"`
+	Status                telemetry.RequestStatus      `json:"status"`
+	StatusCode            int                          `json:"status_code"`
+	Stream                bool                         `json:"stream"`
+	FirstResponseMs       *int64                       `json:"first_response_ms"`
+	DurationMs            int64                        `json:"duration_ms"`
+	AttemptCount          int                          `json:"attempt_count"`
+	requestLogFeedbackResponse
+	ErrorCode               string               `json:"error_code"`
+	ErrorSummary            string               `json:"error_summary"`
+	AffinityHit             bool                 `json:"affinity_hit"`
+	ContinuityHit           bool                 `json:"continuity_hit"`
+	AffinityKey             *string              `json:"affinity_key"`
+	AffinitySource          string               `json:"affinity_source"`
+	AffinityState           string               `json:"affinity_state"`
+	GroupID                 *uint                `json:"group_id"`
+	ChannelID               *channel.ID          `json:"channel_id"`
+	CredentialID            *uint                `json:"credential_id"`
+	CredentialName          string               `json:"credential_name"`
+	RouteMode               *channel.RouteMode   `json:"route_mode"`
+	UsageState              usage.State          `json:"usage_state"`
+	CostState               pricing.CostState    `json:"cost_state"`
+	PricingCompleteness     pricing.Completeness `json:"pricing_completeness"`
+	PricingMode             *pricing.Mode        `json:"pricing_mode"`
+	ContextThresholdTokens  *string              `json:"context_threshold_tokens"`
+	InputTokens             string               `json:"input_tokens"`
+	CacheReadTokens         string               `json:"cache_read_tokens"`
+	CacheWrite5MTokens      string               `json:"cache_write_5m_tokens"`
+	CacheWrite1HTokens      string               `json:"cache_write_1h_tokens"`
+	CacheWriteUnknownTokens string               `json:"cache_write_unknown_tokens"`
+	OutputTokens            string               `json:"output_tokens"`
+	EstimatedCostNanoUSD    string               `json:"estimated_cost_nano_usd"`
 }
 
 type requestLogDetailResponse struct {
@@ -938,6 +949,10 @@ func mapRequestLogItemResponse(
 	if err != nil {
 		return requestLogItemResponse{}, fmt.Errorf("map request log pricing mode: %w", err)
 	}
+	feedback, err := mapRequestLogFeedback(record.FinalAttemptFeedback)
+	if err != nil {
+		return requestLogItemResponse{}, err
+	}
 	var contextThresholdTokens *string
 	if record.ContextThresholdTokens != nil {
 		value := strconv.FormatInt(*record.ContextThresholdTokens, 10)
@@ -971,6 +986,10 @@ func mapRequestLogItemResponse(
 		FirstResponseMs:         record.FirstResponseMs,
 		DurationMs:              record.DurationMs,
 		AttemptCount:            record.AttemptCount,
+		FeedbackStatus:          feedback.FeedbackStatus,
+		FeedbackReason:          feedback.FeedbackReason,
+		ProviderFirstResponseMs: feedback.ProviderFirstResponseMs,
+		ProviderTokensPerSecond: feedback.ProviderTokensPerSecond,
 		ErrorCode:               record.ErrorCode,
 		ErrorSummary:            record.ErrorSummary,
 		AffinityHit:             record.AffinityHit,
@@ -996,6 +1015,41 @@ func mapRequestLogItemResponse(
 		OutputTokens:            strconv.FormatInt(record.OutputTokens, 10),
 		EstimatedCostNanoUSD:    usageCost.estimatedCostNanoUSD,
 	}, nil
+}
+
+func mapRequestLogFeedback(feedback health.Feedback) (requestLogFeedbackResponse, error) {
+	if !feedback.Status.Valid() {
+		return requestLogFeedbackResponse{}, fmt.Errorf("map request log feedback: invalid status")
+	}
+	if feedback.FirstResponseMs != nil && (*feedback.FirstResponseMs < 0 || *feedback.FirstResponseMs > maxSafeInteger) {
+		return requestLogFeedbackResponse{}, fmt.Errorf("map request log feedback: unsafe provider first response")
+	}
+	if feedback.TokensPerSecond != nil &&
+		(math.IsNaN(*feedback.TokensPerSecond) || math.IsInf(*feedback.TokensPerSecond, 0) || *feedback.TokensPerSecond < 0) {
+		return requestLogFeedbackResponse{}, fmt.Errorf("map request log feedback: invalid provider token rate")
+	}
+	switch feedback.Reason {
+	case "", "upstream_failure", "first_response_slow", "output_rate_faulty", "output_rate_slow":
+	default:
+		return requestLogFeedbackResponse{}, fmt.Errorf("map request log feedback: invalid reason")
+	}
+	if (feedback.Status == health.FeedbackStatusUnassessed && feedback.Reason != "") ||
+		(feedback.Status == health.FeedbackStatusNormal && feedback.Reason != "") ||
+		(feedback.Status == health.FeedbackStatusSlow && feedback.Reason != "output_rate_slow") ||
+		(feedback.Status == health.FeedbackStatusFaulty && feedback.Reason == "output_rate_slow") {
+		return requestLogFeedbackResponse{}, fmt.Errorf("map request log feedback: status and reason do not match")
+	}
+	result := requestLogFeedbackResponse{
+		ProviderFirstResponseMs: feedback.FirstResponseMs,
+		ProviderTokensPerSecond: feedback.TokensPerSecond,
+	}
+	if feedback.Status != health.FeedbackStatusUnassessed {
+		result.FeedbackStatus = new(feedback.Status)
+	}
+	if feedback.Reason != "" {
+		result.FeedbackReason = new(feedback.Reason)
+	}
+	return result, nil
 }
 
 func nullableRequestLogPricingMode(record requestlog.Record) (*pricing.Mode, error) {
@@ -1142,35 +1196,43 @@ func mapRequestLogAttempt(
 	if err != nil {
 		return requestLogAttemptResponse{}, err
 	}
+	feedback, err := mapRequestLogFeedback(attempt.Feedback)
+	if err != nil {
+		return requestLogAttemptResponse{}, err
+	}
 	return requestLogAttemptResponse{
-		Sequence:          attempt.Sequence,
-		GroupID:           attempt.GroupID,
-		GroupName:         attempt.GroupName,
-		ChannelID:         channelID,
-		CredentialID:      credentialID,
-		CredentialName:    credentialLabelFor(credentialLabels, credentialID),
-		Operation:         operation,
-		RouteMode:         routeMode,
-		UpstreamModel:     nullableRequestLogModel(attempt.UpstreamModel),
-		UpstreamRequestID: nullableRequestLogModel(attempt.UpstreamRequestID),
-		DispatchState:     dispatchState,
-		ResponseStarted:   attempt.ResponseStarted,
-		UpstreamProtocol:  upstreamProtocol,
-		Reasoning:         mapRequestLogReasoningConfig(attempt.Reasoning),
-		StatusCode:        attempt.StatusCode,
-		DurationMs:        attempt.DurationMs,
-		FailureCategory:   attempt.FailureCategory,
-		FailureOrigin:     failureOrigin,
-		FailureScope:      failureScope,
-		RetryDirective:    retryDirective,
-		Effect:            effect,
-		RuleID:            nullableRequestLogModel(attempt.RuleID),
-		Action:            requestLogAttemptAction(attempt.Action),
-		WillRetry:         attempt.WillRetry,
-		ErrorCode:         attempt.ErrorCode,
-		ErrorSummary:      attempt.ErrorSummary,
-		Committed:         attempt.Committed,
-		PricingReceipt:    receipt,
+		Sequence:                attempt.Sequence,
+		GroupID:                 attempt.GroupID,
+		GroupName:               attempt.GroupName,
+		ChannelID:               channelID,
+		CredentialID:            credentialID,
+		CredentialName:          credentialLabelFor(credentialLabels, credentialID),
+		Operation:               operation,
+		RouteMode:               routeMode,
+		UpstreamModel:           nullableRequestLogModel(attempt.UpstreamModel),
+		UpstreamRequestID:       nullableRequestLogModel(attempt.UpstreamRequestID),
+		DispatchState:           dispatchState,
+		ResponseStarted:         attempt.ResponseStarted,
+		UpstreamProtocol:        upstreamProtocol,
+		Reasoning:               mapRequestLogReasoningConfig(attempt.Reasoning),
+		StatusCode:              attempt.StatusCode,
+		DurationMs:              attempt.DurationMs,
+		FeedbackStatus:          feedback.FeedbackStatus,
+		FeedbackReason:          feedback.FeedbackReason,
+		ProviderFirstResponseMs: feedback.ProviderFirstResponseMs,
+		ProviderTokensPerSecond: feedback.ProviderTokensPerSecond,
+		FailureCategory:         attempt.FailureCategory,
+		FailureOrigin:           failureOrigin,
+		FailureScope:            failureScope,
+		RetryDirective:          retryDirective,
+		Effect:                  effect,
+		RuleID:                  nullableRequestLogModel(attempt.RuleID),
+		Action:                  requestLogAttemptAction(attempt.Action),
+		WillRetry:               attempt.WillRetry,
+		ErrorCode:               attempt.ErrorCode,
+		ErrorSummary:            attempt.ErrorSummary,
+		Committed:               attempt.Committed,
+		PricingReceipt:          receipt,
 	}, nil
 }
 
