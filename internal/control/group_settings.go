@@ -22,42 +22,39 @@ import (
 )
 
 type GroupSettingsResponse struct {
-	PriceMultiplier string                       `json:"price_multiplier"`
-	ChannelID       channel.ID                   `json:"channel_id"`
-	ConnectionType  models.ConnectionType        `json:"connection_type"`
-	Params          json.RawMessage              `json:"params"`
-	Name            string                       `json:"name"`
-	ProviderURL     *string                      `json:"provider_url"`
-	Enabled         bool                         `json:"enabled"`
-	Overrides       config.Settings              `json:"overrides"`
-	Effective       GroupEffectiveConfigResponse `json:"effective"`
-	Proxy           outboundproxy.View           `json:"proxy"`
+	ChannelID      channel.ID                   `json:"channel_id"`
+	ConnectionType models.ConnectionType        `json:"connection_type"`
+	Params         json.RawMessage              `json:"params"`
+	Name           string                       `json:"name"`
+	ProviderURL    *string                      `json:"provider_url"`
+	Enabled        bool                         `json:"enabled"`
+	Overrides      config.Settings              `json:"overrides"`
+	Effective      GroupEffectiveConfigResponse `json:"effective"`
+	Proxy          outboundproxy.View           `json:"proxy"`
 }
 
 type GroupSettingsUpdateRequest struct {
-	PriceMultiplier optionalField[string]               `json:"price_multiplier"`
-	Name            optionalField[string]               `json:"name"`
-	ChannelID       optionalField[channel.ID]           `json:"channel_id"`
-	Params          optionalField[json.RawMessage]      `json:"params"`
-	ProviderURL     optionalField[string]               `json:"provider_url"`
-	Enabled         optionalField[bool]                 `json:"enabled"`
-	Overrides       optionalField[config.Settings]      `json:"overrides"`
-	Proxy           optionalField[outboundproxy.Config] `json:"proxy"`
+	Name        optionalField[string]               `json:"name"`
+	ChannelID   optionalField[channel.ID]           `json:"channel_id"`
+	Params      optionalField[json.RawMessage]      `json:"params"`
+	ProviderURL optionalField[string]               `json:"provider_url"`
+	Enabled     optionalField[bool]                 `json:"enabled"`
+	Overrides   optionalField[config.Settings]      `json:"overrides"`
+	Proxy       optionalField[outboundproxy.Config] `json:"proxy"`
 }
 
 type normalizedGroupSettingsUpdate struct {
-	priceMultiplierMicros *int64
-	name                  *string
-	channelID             *channel.ID
-	params                json.RawMessage
-	paramsSet             bool
-	providerURL           *string
-	providerURLSet        bool
-	enabled               *bool
-	encodedOverrides      models.JSON
-	overridesSet          bool
-	proxyConfig           *string
-	proxySet              bool
+	name             *string
+	channelID        *channel.ID
+	params           json.RawMessage
+	paramsSet        bool
+	providerURL      *string
+	providerURLSet   bool
+	enabled          *bool
+	encodedOverrides models.JSON
+	overridesSet     bool
+	proxyConfig      *string
+	proxySet         bool
 }
 
 func (s *Service) GetGroupSettings(ctx context.Context, groupID uint) (GroupSettingsResponse, error) {
@@ -148,15 +145,15 @@ func groupSettingsResponse(
 		)
 	}
 	return GroupSettingsResponse{
-		PriceMultiplier: priceMultiplierResponse(group.PriceMultiplierMicros),
-		ChannelID:       channelID,
-		ConnectionType:  normalizeGroupConnectionType(group.ConnectionType),
-		Params:          validated.CanonicalJSON(),
-		Name:            group.Name,
-		ProviderURL:     cloneString(group.ProviderURL),
-		Enabled:         group.Enabled,
-		Overrides:       overrides,
-		Effective:       effective,
+
+		ChannelID:      channelID,
+		ConnectionType: normalizeGroupConnectionType(group.ConnectionType),
+		Params:         validated.CanonicalJSON(),
+		Name:           group.Name,
+		ProviderURL:    cloneString(group.ProviderURL),
+		Enabled:        group.Enabled,
+		Overrides:      overrides,
+		Effective:      effective,
 	}, nil
 }
 
@@ -185,18 +182,12 @@ func normalizeGroupSettingsUpdate(
 	}
 	if !request.Name.Set && !request.ChannelID.Set && !request.Params.Set &&
 		!request.ProviderURL.Set && !request.Enabled.Set && !request.Overrides.Set &&
-		!request.Proxy.Set && !request.PriceMultiplier.Set {
+		!request.Proxy.Set {
 		return normalizedGroupSettingsUpdate{}, app_errors.ErrBadRequest
 	}
 
 	result := normalizedGroupSettingsUpdate{}
-	if request.PriceMultiplier.Set {
-		value, err := normalizePriceMultiplier(request.PriceMultiplier)
-		if err != nil {
-			return normalizedGroupSettingsUpdate{}, err
-		}
-		result.priceMultiplierMicros = priceMultiplierStorage(value)
-	}
+
 	if request.Name.Set {
 		value, err := normalizeGroupName(&request.Name.Value)
 		if err != nil {
@@ -309,10 +300,7 @@ func (s *Service) UpdateGroupSettings(
 			updates["connection_type"] = group.ConnectionType
 			targetChanged = true
 		}
-		if normalized.priceMultiplierMicros != nil {
-			group.PriceMultiplierMicros = normalized.priceMultiplierMicros
-			updates["price_multiplier_micros"] = *normalized.priceMultiplierMicros
-		}
+
 		if normalized.name != nil {
 			group.Name = *normalized.name
 			updates["name"] = group.Name

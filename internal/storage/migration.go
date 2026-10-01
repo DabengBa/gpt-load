@@ -77,11 +77,7 @@ var migrations = []migration{
 		Up:       migrationfiles.Up0008,
 		Validate: migrationfiles.Validate0008,
 	},
-	{
-		ID:       migrationfiles.ID0009,
-		Up:       migrationfiles.Up0009,
-		Validate: migrationfiles.Validate0009,
-	},
+
 	{
 		ID:       migrationfiles.ID0010,
 		Up:       migrationfiles.Up0010,
@@ -186,6 +182,7 @@ func applyMigrationRegistry(db *gorm.DB, entries []migration) error {
 }
 
 func validateMigrationRegistry(entries []migration) error {
+	previousNumber := 0
 	for index, entry := range entries {
 		position := index + 1
 		matches := migrationIDPattern.FindStringSubmatch(entry.ID)
@@ -193,13 +190,14 @@ func validateMigrationRegistry(entries []migration) error {
 			return fmt.Errorf("migration registry entry %d has invalid ID %q", position, entry.ID)
 		}
 		number, err := strconv.Atoi(matches[1])
-		if err != nil || number != position {
+		if err != nil || number <= previousNumber || (index == 0 && number != 1) {
 			return fmt.Errorf(
-				"migration registry entry %d has non-contiguous ID %q",
+				"migration registry entry %d has non-increasing ID %q",
 				position,
 				entry.ID,
 			)
 		}
+		previousNumber = number
 		if entry.Up == nil || entry.Validate == nil {
 			return fmt.Errorf("migration registry entry %d (%s) is incomplete", position, entry.ID)
 		}

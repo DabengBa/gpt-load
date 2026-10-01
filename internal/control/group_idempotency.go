@@ -20,7 +20,6 @@ import (
 )
 
 type groupCreateDigestBody struct {
-	PriceMultiplier     string                `json:"price_multiplier,omitempty"`
 	Name                *string               `json:"name"`
 	ChannelID           channel.ID            `json:"channel_id"`
 	ConnectionType      models.ConnectionType `json:"connection_type"`
@@ -62,7 +61,7 @@ func (s *Service) CreateGroupIdempotent(
 		}
 	}
 	digestBody := groupCreateDigestBody{
-		PriceMultiplier:     priceMultiplierDigest(normalized.priceMultiplier),
+
 		Name:                normalized.explicitName,
 		ChannelID:           normalized.channelID,
 		ConnectionType:      normalized.connectionType,

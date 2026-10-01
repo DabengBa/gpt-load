@@ -144,7 +144,6 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		s.cancel()
 		return
 	}
-	recorder.accessKeyMultiplier = key.PriceMultiplier
 	if h.accessQuota != nil {
 		decision, current := h.checkAccessQuotaForSnapshot(snapshot, key.ID, h.quotaNow())
 		if !current {
@@ -409,7 +408,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		recorder.setUsageApplicable(effective.metadata.ObserveUsage)
 		recorder.setPricingMode(effective.metadata.PricingMode)
 		recorder.setUsageDiagnostics(effective.metadata.UsageDiagnostics)
-		recorder.freezeNextAttemptPricing(h.freezeAttemptPricing(selection, effective.metadata, true, key.PriceMultiplier))
+		recorder.freezeNextAttemptPricing(h.freezeAttemptPricing(selection, effective.metadata, true))
 		if sequence == 1 {
 			if requiredRef != nil || binding != nil {
 				recorder.setContinuityHit(true)

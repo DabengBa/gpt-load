@@ -35,7 +35,7 @@ import {
 import type { PendingAccessKeyCreateOperation } from '@shared/domain/access-keys/access-key-create-operation'
 import type { PendingAccessKeyEditOperation } from '@shared/domain/access-keys/access-key-edit-operation'
 import type { PendingAccessKeyRotateOperation } from '@shared/domain/access-keys/access-key-rotate-operation'
-import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
+
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useT } from '../../app/i18n'
@@ -331,9 +331,7 @@ export function AccessKeyDrawer({
     if (!Number.isSafeInteger(draft.rpm_limit) || draft.rpm_limit < 0) {
       return 'accessKeys.drawer.saveBlockedRPM'
     }
-    if (!isValidPriceMultiplier(draft.price_multiplier)) {
-      return 'common.priceMultiplier.invalid'
-    }
+
     if (!areAccessKeyCostLimitRulesValid(draft.costLimitRules)) {
       return 'accessKeys.drawer.saveBlockedCostLimits'
     }
@@ -600,12 +598,11 @@ export function AccessKeyDrawer({
             name={draft.name}
             status={draft.status}
             rpmLimit={draft.rpm_limit}
-            priceMultiplier={draft.price_multiplier}
+
             disabled={formLocked}
             onNameChange={(value) => patchDraft({ name: value })}
             onStatusChange={(value) => patchDraft({ status: value })}
             onRpmLimitChange={(value) => patchDraft({ rpm_limit: value })}
-            onPriceMultiplierChange={(value) => patchDraft({ price_multiplier: value })}
           />
         </section>
 

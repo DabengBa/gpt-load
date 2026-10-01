@@ -333,7 +333,7 @@ func decodeAttemptPricingReceipt(row models.RequestLogAttempt) (*pricing.Receipt
 	if err := pricing.ValidateReceipt(decoded); err != nil {
 		return nil, fmt.Errorf("decode request log pricing receipt: %w", err)
 	}
-	if decoded.SchemaVersion >= 3 && decoded.Rule != (pricing.ReceiptRule{
+	if decoded.Rule != (pricing.ReceiptRule{
 		ChannelID: row.ChannelID,
 		ModelID:   row.UpstreamModel,
 	}) {
@@ -601,9 +601,7 @@ func pricingModeForReceipt(receipt *pricing.Receipt) pricing.Mode {
 	if receipt == nil {
 		return ""
 	}
-	if receipt.SchemaVersion < 4 {
-		return pricing.ModeStandard
-	}
+
 	return receipt.PricingMode
 }
 

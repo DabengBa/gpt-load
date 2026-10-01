@@ -114,10 +114,6 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 	if !reflect.DeepEqual(originalModels, cloneModels) {
 		t.Fatalf("clone models differ beyond test aliases: source=%#v clone=%#v", originalModels, cloneModels)
 	}
-	if *clone.PriceMultiplierMicros != *original.PriceMultiplierMicros {
-		t.Fatalf("clone price multiplier = %d, want %d",
-			*clone.PriceMultiplierMicros, *original.PriceMultiplierMicros)
-	}
 
 	sourceCredentials := loadGroupCredentials(t, fixture, source.GroupID)
 	cloneCredentials := loadGroupCredentials(t, fixture, clone.ID)

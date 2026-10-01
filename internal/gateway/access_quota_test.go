@@ -182,7 +182,6 @@ func TestHandlerAccountsFinalEstimateWhenRequestIDGenerationFails(t *testing.T) 
 		t.Fatal(err)
 	}
 	input := gatewayAccessQuotaCompileInput(handler, nil)
-	setGatewayPriceMultipliers(t, &input, "0.8", "1.5")
 	if _, err := manager.Publish(input); err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +199,7 @@ func TestHandlerAccountsFinalEstimateWhenRequestIDGenerationFails(t *testing.T) 
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 	view := runtime.Snapshot(1, time.Unix(3_001, 0))
-	if len(view.Rules) != 1 || view.Rules[0].UsedNanoUSD != 2_400_000_000 {
+	if len(view.Rules) != 1 || view.Rules[0].UsedNanoUSD != 2_000_000_000 {
 		t.Fatalf("quota view = %#v", view)
 	}
 	if events := sink.snapshot(); len(events) != 0 {

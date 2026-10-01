@@ -28,7 +28,7 @@ function collectionItem(group: FixtureGroup) {
   return {
     id: group.id,
     name: group.name,
-    price_multiplier: '1',
+
     channel_id: group.channel_id,
     connection_type: group.connection_type,
     params: {},

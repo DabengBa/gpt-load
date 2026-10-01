@@ -15,7 +15,7 @@ import (
 	"gpt-load/internal/usage"
 )
 
-func TestHandlerFreezesPriceMultipliersAndAccountsTheSameEstimate(t *testing.T) {
+func TestHandlerFreezesBasePricesAndAccountsTheSameEstimate(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		name := "ordinary"
 		if stream {
@@ -25,7 +25,7 @@ func TestHandlerFreezesPriceMultipliersAndAccountsTheSameEstimate(t *testing.T) 
 			forwarder := &scriptedForwarder{results: []UpstreamResult{{
 				StatusCode: http.StatusOK, Header: make(http.Header), RequestWritten: true,
 				Body:  []byte(`{"ok":true}`),
-				Usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{UncachedInput: 1, Output: 1}},
+				Usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{UncachedInput: 1, CacheWrite1H: 1_000_000, Output: 1}},
 			}}}
 			if stream {
 				forwarder.results[0].Committed = true
@@ -45,21 +45,22 @@ func TestHandlerFreezesPriceMultipliersAndAccountsTheSameEstimate(t *testing.T) 
 			table, err := pricing.NewTable([]pricing.Rule{{
 				Identity: pricing.Identity{ChannelID: "openai", ModelID: "gpt-4o"},
 				Prices: pricing.Prices{
-					Input:  pricing.Price{NanoUSDPerMillion: 600_000, Set: true},
-					Output: pricing.Price{NanoUSDPerMillion: 600_000, Set: true},
+					Input:      pricing.Price{NanoUSDPerMillion: 600_000, Set: true},
+					Output:     pricing.Price{NanoUSDPerMillion: 600_000, Set: true},
+					CacheWrite: pricing.Price{NanoUSDPerMillion: 5, Set: true},
 				},
 			}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			handler.priceTables = &mutableGatewayPriceTableProvider{table: table}
+			provider := &mutableGatewayPriceTableProvider{table: table}
+			handler.priceTables = provider
 			input := gatewayAccessQuotaCompileInput(handler, rules)
-			setGatewayPriceMultipliers(t, &input, "2", "1")
 			if _, err := manager.Publish(input); err != nil {
 				t.Fatal(err)
 			}
 			forwarder.onCall = func(int) {
-				setGatewayPriceMultipliers(t, &input, "7", "9")
+				provider.table = mustGatewayPriceTable(t, 9_000_000_000, true)
 				if _, err := manager.Publish(input); err != nil {
 					t.Fatal(err)
 				}
@@ -77,46 +78,33 @@ func TestHandlerFreezesPriceMultipliersAndAccountsTheSameEstimate(t *testing.T) 
 				t.Fatalf("response = %d %s", response.Code, response.Body.String())
 			}
 			events := sink.snapshot()
-			if len(events) != 1 || events[0].Usage.Pricing.EstimatedCostNanoUSD != 4 {
-				t.Fatalf("frozen multiplier estimate = %#v, want original base 2 adjusted to 4", events)
+			if len(events) != 1 || events[0].Usage.Pricing.EstimatedCostNanoUSD != 10 {
+				t.Fatalf("frozen base estimate = %#v, want rounded components 1+8+1", events)
 			}
 			var receipt struct {
-				SchemaVersion    int    `json:"schema_version"`
-				BaseTotalNanoUSD *int64 `json:"base_total_nano_usd"`
-				PriceMultipliers struct {
-					Group     string `json:"group"`
-					AccessKey string `json:"access_key"`
-				} `json:"price_multipliers"`
+				SchemaVersion    int                   `json:"schema_version"`
+				BaseTotalNanoUSD *int64                `json:"base_total_nano_usd"`
+				PriceMultipliers json.RawMessage       `json:"price_multipliers"`
+				TotalNanoUSD     int64                 `json:"total_nano_usd"`
+				LineItems        []pricing.ReceiptLine `json:"line_items"`
 			}
 			if err := json.Unmarshal([]byte(events[0].Usage.Pricing.ReceiptJSON), &receipt); err != nil {
 				t.Fatal(err)
 			}
-			if receipt.SchemaVersion != 6 || receipt.PriceMultipliers.Group != "2" || receipt.PriceMultipliers.AccessKey != "1" || receipt.BaseTotalNanoUSD == nil || *receipt.BaseTotalNanoUSD != 2 {
+			if receipt.SchemaVersion != 7 || len(receipt.PriceMultipliers) != 0 || receipt.BaseTotalNanoUSD != nil || receipt.TotalNanoUSD != 10 ||
+				len(receipt.LineItems) != 3 || receipt.LineItems[1].Code != "cache_write_1h" ||
+				receipt.LineItems[1].Multiplier != (pricing.Multiplier{Numerator: 8, Denominator: 5}) {
 				t.Fatalf("frozen receipt = %#v", receipt)
 			}
 			view := runtime.Snapshot(1, time.Now())
-			if len(view.Rules) != 1 || view.Rules[0].UsedNanoUSD != 4 {
-				t.Fatalf("quota = %#v, want the same adjusted estimate", view)
+			if len(view.Rules) != 1 || view.Rules[0].UsedNanoUSD != 10 {
+				t.Fatalf("quota = %#v, want the same base estimate", view)
 			}
 		})
 	}
 }
 
-func setGatewayPriceMultipliers(t *testing.T, input *state.CompileInput, group, accessKey string) {
-	t.Helper()
-	groupMultiplier, err := pricing.ParsePriceMultiplier(group)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyMultiplier, err := pricing.ParsePriceMultiplier(accessKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	input.Groups[0].PriceMultiplier = &groupMultiplier
-	input.AccessKeys[0].PriceMultiplier = &keyMultiplier
-}
-
-func TestHandlerCrossGroupRetryUsesFinalUsageGroupMultiplier(t *testing.T) {
+func TestHandlerCrossGroupRetryUsesFinalUsageBasePrice(t *testing.T) {
 	forwarder := &scriptedForwarder{results: []UpstreamResult{
 		{
 			StatusCode: http.StatusTooManyRequests, Header: make(http.Header), RequestWritten: true,
@@ -134,11 +122,8 @@ func TestHandlerCrossGroupRetryUsesFinalUsageGroupMultiplier(t *testing.T) {
 		t, forwarder, &recordingAccessKeyRPMLimiter{}, sink, "sk-first", "sk-second",
 	)
 	input := gatewayAccessQuotaCompileInput(handler, nil)
-	setGatewayPriceMultipliers(t, &input, "7", "1.5")
 	second := input.Groups[0]
 	second.ID, second.Name = 2, "second"
-	secondMultiplier := pricing.PriceMultiplier(800_000)
-	second.PriceMultiplier = &secondMultiplier
 	input.Groups = append(input.Groups, second)
 	input.Credentials = append(input.Credentials, state.CredentialConfig{
 		ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "credential-2",
@@ -154,7 +139,7 @@ func TestHandlerCrossGroupRetryUsesFinalUsageGroupMultiplier(t *testing.T) {
 	engine.ServeHTTP(response, request)
 	events := sink.snapshot()
 	if response.Code != http.StatusOK || len(events) != 1 || len(events[0].Attempts) != 2 ||
-		events[0].Usage.GroupID != 2 || events[0].Usage.AttemptSequence != 2 || events[0].Usage.Pricing.EstimatedCostNanoUSD != 2_400_000 {
+		events[0].Usage.GroupID != 2 || events[0].Usage.AttemptSequence != 2 || events[0].Usage.Pricing.EstimatedCostNanoUSD != 2_000_000 {
 		t.Fatalf("retry response = %d; events = %#v", response.Code, events)
 	}
 }

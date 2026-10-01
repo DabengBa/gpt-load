@@ -1,5 +1,4 @@
 import { InvalidResponseError } from '@shared/http/errors'
-import { isValidPriceMultiplier, normalizePriceMultiplier } from '@shared/lib/price-multiplier'
 
 interface NumberBounds {
   minimum?: number
@@ -33,14 +32,6 @@ export function projectArray<T>(value: unknown, projectItem: (item: unknown) => 
 export function projectString(value: unknown, options: StringOptions = {}): string {
   if (typeof value !== 'string' || (!options.allowEmpty && value.length === 0)) invalidResponse()
   return value
-}
-
-export function projectPriceMultiplier(value: unknown): string {
-  const result = projectString(value)
-  if (!isValidPriceMultiplier(result) || result !== normalizePriceMultiplier(result)) {
-    invalidResponse()
-  }
-  return result
 }
 
 export function projectBoolean(value: unknown): boolean {

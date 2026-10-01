@@ -4,7 +4,7 @@ import { Field, Selector, Switch, TextInput } from '@astryxdesign/core'
 import type { ChannelDto } from '@shared/control/resources/channels'
 import { proxyMutation } from '@shared/control/resources/proxy'
 import type { ProxyConfiguredMode } from '@shared/control/types'
-import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
+
 import {
   hasUpstreamBaseURLVersionMismatch,
   isValidUpstreamBaseURL,
@@ -12,7 +12,7 @@ import {
 import type { ImportProxyDraft } from '@shared/domain/import/model-draft'
 
 import { useT } from '../../app/i18n'
-import { decimalInputAttrs, plainTextInputAttrs } from '../../components/input-attrs'
+import { plainTextInputAttrs } from '../../components/input-attrs'
 
 const styles = stylex.create({
   root: {
@@ -41,10 +41,7 @@ const styles = stylex.create({
   minWidth: {
     minWidth: 0,
   },
-  multiplierInput: {
-    maxWidth: '260px',
-    fontFamily: 'var(--font-mono)',
-  },
+
   proxyControls: {
     display: 'flex',
     minWidth: 0,
@@ -85,7 +82,7 @@ export interface ImportConnectionSectionProps {
   channel: ChannelDto | null
   name: string
   providerUrl: string
-  priceMultiplier: string
+
   params: Record<string, string>
   proxy: ImportProxyDraft
   paramErrors: Readonly<Record<string, string>>
@@ -94,7 +91,7 @@ export interface ImportConnectionSectionProps {
   proxyDisabled?: boolean
   onNameChange(value: string): void
   onProviderUrlChange(value: string): void
-  onPriceMultiplierChange(value: string): void
+
   onParamChange(key: string, value: string): void
   onProxyChange(value: ImportProxyDraft): void
   onBaseUrlOverrideChange(enabled: boolean): void
@@ -105,7 +102,7 @@ export function ImportConnectionSection({
   channel,
   name,
   providerUrl,
-  priceMultiplier,
+
   params,
   proxy,
   paramErrors,
@@ -114,7 +111,7 @@ export function ImportConnectionSection({
   proxyDisabled = false,
   onNameChange,
   onProviderUrlChange,
-  onPriceMultiplierChange,
+
   onParamChange,
   onProxyChange,
   onBaseUrlOverrideChange,
@@ -200,24 +197,6 @@ export function ImportConnectionSection({
               onChange={onNameChange}
             />
           </Field>
-        </div>
-
-        <div {...stylex.props(styles.minWidth)}>
-          <TextInput
-            label={t('common.priceMultiplier.label')}
-            description={t('common.priceMultiplier.groupHelp')}
-            xstyle={styles.multiplierInput}
-            data-gptload-mono
-            value={priceMultiplier}
-            {...decimalInputAttrs}
-            isDisabled={disabled}
-            onChange={onPriceMultiplierChange}
-            status={
-              isValidPriceMultiplier(priceMultiplier)
-                ? undefined
-                : { type: 'error', message: t('common.priceMultiplier.invalid') }
-            }
-          />
         </div>
 
         {channel !== null && channel.param_fields.length > 0 && (

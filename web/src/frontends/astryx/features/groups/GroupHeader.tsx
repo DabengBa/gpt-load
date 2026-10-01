@@ -159,11 +159,6 @@ export function GroupHeader({ group }: { group: GroupSummaryDto }) {
           </div>
         </div>
         <div {...stylex.props(styles.details)}>
-          {group.price_multiplier !== '1' && (
-            <span {...stylex.props(styles.metaTag)}>
-              {t('common.priceMultiplier.value', { value: group.price_multiplier })}
-            </span>
-          )}
           <span {...stylex.props(styles.metaTag)}>
             {channel && <ChannelIcon icon={channel.icon} mark={channel.mark} />}
             <span>{channelName}</span>

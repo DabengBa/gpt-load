@@ -37,6 +37,7 @@ import {
   requestLogUsageDisplayState,
 } from '@shared/domain/monitor/log-format'
 import type { MessageId } from '@shared/i18n/message-ids'
+import { formatReceiptFormulaLine } from '@shared/domain/monitor/receipt-formula'
 import { formatCacheHitRate } from '@shared/lib/cache-rate'
 import {
   formatEstimatedCost,
@@ -819,10 +820,7 @@ export function LogDetailDrawer({
 
   const pricingIdentity = (() => {
     if (!receipt) return '—'
-    if (receipt.schema_version >= 3) {
-      return `${channelName(receipt.rule.channel_id)} · ${receipt.rule.model_id}`
-    }
-    return `${t(`monitor.logs.receipt.historicalSchema${receipt.schema_version}` as MessageId)} · ${receipt.rule.model_id}`
+    return `${channelName(receipt.rule.channel_id)} · ${receipt.rule.model_id}`
   })()
 
   const cacheRows =
@@ -841,17 +839,7 @@ export function LogDetailDrawer({
       : formatCacheHitRate(log.cache_read_tokens, log.input_tokens, locale)
 
   function formatFormulaLine(line: RequestLogPricingLineDto): string {
-    const quantity = formatLogTokenCount(line.quantity, locale)
-    const multipliers = receipt?.schema_version === 5 ? receipt.price_multipliers : null
-    const priceMultiplier = multipliers ? ` × ${multipliers.group} × ${multipliers.access_key}` : ''
-    if (line.state === 'unpriced' || line.rate_nano_usd_per_million === null) {
-      return `${quantity} × —${priceMultiplier}`
-    }
-    const multiplier =
-      line.multiplier.numerator === line.multiplier.denominator
-        ? ''
-        : ` × ${line.multiplier.numerator}/${line.multiplier.denominator}`
-    return `${quantity} × ${formatExactNanoUSD(line.rate_nano_usd_per_million, locale)}/1M${multiplier}${priceMultiplier}`
+    return formatReceiptFormulaLine(line, locale)
   }
 
   const formula = (() => {
@@ -1403,16 +1391,7 @@ export function LogDetailDrawer({
                     </dd>
                   </div>
                 )}
-                {!selfScoped && receipt?.price_multipliers !== undefined && (
-                  <div {...stylex.props(styles.gridCell, styles.wide)}>
-                    <dt {...stylex.props(styles.term)}>{t('common.priceMultiplier.label')}</dt>
-                    <dd {...stylex.props(styles.description)}>
-                      {t('common.priceMultiplier.group')} ×{receipt.price_multipliers.group} ·{' '}
-                      {t('common.priceMultiplier.accessKey')} ×
-                      {receipt.price_multipliers.access_key}
-                    </dd>
-                  </div>
-                )}
+
                 {!selfScoped &&
                   costDisplayState !== 'unpriced' &&
                   receipt !== undefined &&
@@ -1426,32 +1405,13 @@ export function LogDetailDrawer({
                         <span>
                           {t('monitor.logs.receipt.output')} = {formula.output}
                         </span>
-                        {receipt.schema_version === 6 &&
-                        receipt.base_total_nano_usd !== undefined &&
-                        receipt.price_multipliers !== undefined ? (
-                          <>
-                            <span>
-                              {t('monitor.logs.receipt.baseTotal')} ={' '}
-                              {formatExactNanoUSD(receipt.base_total_nano_usd, locale)}
-                            </span>
-                            <span>
-                              {t('monitor.logs.receipt.finalTotal')} ={' '}
-                              {formatExactNanoUSD(receipt.base_total_nano_usd, locale)} ×{' '}
-                              {receipt.price_multipliers.group} ×{' '}
-                              {receipt.price_multipliers.access_key} ={' '}
-                              {formatExactNanoUSD(receipt.total_nano_usd, locale)}
-                            </span>
-                            <small>{t('monitor.logs.receipt.totalRounding')}</small>
-                          </>
-                        ) : (
-                          <>
-                            <span>
-                              {t('monitor.logs.receipt.total')} ={' '}
-                              {formatExactNanoUSD(receipt.total_nano_usd, locale)}
-                            </span>
-                            <small>{t('monitor.logs.receipt.rounding')}</small>
-                          </>
-                        )}
+                        <>
+                          <span>
+                            {t('monitor.logs.receipt.total')} ={' '}
+                            {formatExactNanoUSD(receipt.total_nano_usd, locale)}
+                          </span>
+                          <small>{t('monitor.logs.receipt.rounding')}</small>
+                        </>
                       </dd>
                     </div>
                   )}

@@ -282,7 +282,6 @@ func (loop *attemptLoop) recordCandidatePreparationFailure(
 				selection,
 				attemptObservations,
 				attemptObservationsAvailable,
-				recorder.accessKeyMultiplier,
 			),
 		)
 	}
@@ -627,7 +626,6 @@ func (loop *attemptLoop) run() {
 					selection,
 					attemptObservations,
 					attemptObservationsAvailable,
-					recorder.accessKeyMultiplier,
 				),
 			)
 		}

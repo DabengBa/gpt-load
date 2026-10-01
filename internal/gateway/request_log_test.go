@@ -1027,9 +1027,7 @@ func TestRequestRecorderPreservesKnownCostWhenUsedOutputPriceIsUnavailable(t *te
 	model := "gpt-4o"
 	recorder.freezeNextAttemptPricing(frozenAttemptPricing{
 		channelID: string(channel.OpenAI), groupID: 1,
-		upstreamModel: model, table: table, applicable: true,
-		priceMultipliers: pricing.PriceMultipliers{Group: pricing.DefaultPriceMultiplier, AccessKey: pricing.DefaultPriceMultiplier},
-	})
+		upstreamModel: model, table: table, applicable: true})
 	selection := requestLogSelection(1, 2, "group")
 	selection.UpstreamModelID = &model
 	index := recorder.appendAttempt(
@@ -1067,9 +1065,7 @@ func TestRequestRecorderMergesRequestPricingDiagnosticsIntoKnownCost(t *testing.
 	model := "gpt-4o"
 	recorder.freezeNextAttemptPricing(frozenAttemptPricing{
 		channelID: string(channel.OpenAI), groupID: 1,
-		upstreamModel: model, table: table, applicable: true,
-		priceMultipliers: pricing.PriceMultipliers{Group: pricing.DefaultPriceMultiplier, AccessKey: pricing.DefaultPriceMultiplier},
-	})
+		upstreamModel: model, table: table, applicable: true})
 	selection := requestLogSelection(1, 2, "group")
 	selection.UpstreamModelID = &model
 	index := recorder.appendAttempt(
@@ -1111,13 +1107,12 @@ func TestRequestRecorderUsesFrozenAttemptMetadata(t *testing.T) {
 	model := "gpt-4o"
 	recorder.freezeNextAttemptPricing(frozenAttemptPricing{
 		channelID: string(channel.OpenAI), groupID: 1,
-		upstreamModel:    model,
-		table:            mustGatewayPriceTableWithFast(t, 2_000_000_000, 5_000_000_000),
-		priceMultipliers: pricing.PriceMultipliers{Group: pricing.DefaultPriceMultiplier, AccessKey: pricing.DefaultPriceMultiplier},
-		applicable:       true,
-		metadataSet:      true,
-		pricingMode:      pricing.ModeFast,
-		reasoning:        reasoning.Config{Effort: "high"},
+		upstreamModel: model,
+		table:         mustGatewayPriceTableWithFast(t, 2_000_000_000, 5_000_000_000),
+		applicable:    true,
+		metadataSet:   true,
+		pricingMode:   pricing.ModeFast,
+		reasoning:     reasoning.Config{Effort: "high"},
 	})
 	selection := requestLogSelection(1, 2, "group")
 	selection.UpstreamModelID = &model
@@ -1163,9 +1158,7 @@ func TestRequestRecorderDoesNotReuseClientMetadataWhenAttemptObservationIsUnavai
 	recorder.freezeNextAttemptPricing(handler.freezeAttemptPricing(
 		selection,
 		dialect.RequestMetadata{ObserveUsage: true},
-		false,
-		pricing.DefaultPriceMultiplier,
-	))
+		false))
 	index := recorder.appendAttempt(
 		selection,
 		UpstreamResult{StatusCode: http.StatusOK},

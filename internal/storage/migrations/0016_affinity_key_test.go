@@ -108,7 +108,7 @@ func applyMigrationsThrough0015(t *testing.T, db *gorm.DB) {
 		migrations.Up0006,
 		migrations.Up0007,
 		migrations.Up0008,
-		migrations.Up0009,
+
 		migrations.Up0010,
 		migrations.Up0011,
 		migrations.Up0012,

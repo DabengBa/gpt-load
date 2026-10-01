@@ -2,8 +2,6 @@ package requestlog
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -12,23 +10,19 @@ import (
 	"gpt-load/internal/usage"
 )
 
-func TestPriceMultipliersSurvivePersistenceAndAllCostQueries(t *testing.T) {
+func TestBasePriceReceiptSurvivesPersistenceAndAllCostQueries(t *testing.T) {
 	for _, test := range []struct {
-		name       string
-		schema     int
-		group      string
-		accessKey  string
+		name   string
+		schema int
+
 		tokens     usage.Tokens
 		rate       int64
 		lineAmount int64
-		baseTotal  int64
+
 		finalTotal int64
 	}{
-		{"v6 frozen original and adjusted totals", 6, "0.8", "1.5", usage.Tokens{UncachedInput: 1000}, 2_000_000_000, 2_000_000, 2_000_000, 2_400_000},
-		// 原始两项各 0.6 nano，分别舍入为 1，合计 2 后乘 2，最终为 4。
-		{"v6 rounds original lines before adjusting total", 6, "0.8", "2.5", usage.Tokens{UncachedInput: 1, Output: 1}, 600_000, 1, 2, 4},
-		// v5 各项 0.6 × 2 后舍入为 1，总计 2；读取时不得套用 v6 的总费公式。
-		{"v5 preserves historical line rounding", 5, "0.8", "2.5", usage.Tokens{UncachedInput: 1, Output: 1}, 600_000, 1, 0, 2},
+		{"v7 frozen base total", 7, usage.Tokens{UncachedInput: 1000}, 2_000_000_000, 2_000_000, 2_000_000},
+		{"v7 rounds each component", 7, usage.Tokens{UncachedInput: 1, Output: 1}, 600_000, 1, 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			event := channelScopedEvent(t, "00000000-0000-4000-8000-000000009001")
@@ -49,14 +43,11 @@ func TestPriceMultipliersSurvivePersistenceAndAllCostQueries(t *testing.T) {
 			receipt := map[string]any{
 				"schema_version": test.schema, "method": "unit_rate_sum", "method_version": 1,
 				"currency": "USD", "pricing_mode": "standard",
-				"rule":              map[string]any{"channel_id": "openai", "model_id": event.UpstreamModel},
-				"price_multipliers": map[string]any{"group": test.group, "access_key": test.accessKey},
-				"line_items":        lines,
-				"total_nano_usd":    test.finalTotal,
+				"rule":           map[string]any{"channel_id": "openai", "model_id": event.UpstreamModel},
+				"line_items":     lines,
+				"total_nano_usd": test.finalTotal,
 			}
-			if test.schema == 6 {
-				receipt["base_total_nano_usd"] = test.baseTotal
-			}
+
 			encoded, err := json.Marshal(receipt)
 			if err != nil {
 				t.Fatal(err)
@@ -64,14 +55,14 @@ func TestPriceMultipliersSurvivePersistenceAndAllCostQueries(t *testing.T) {
 			event.Usage.Pricing.ReceiptJSON = string(encoded)
 			row, err := mapEvent(redact.New(), event)
 			if err != nil {
-				t.Fatalf("map adjusted estimate: %v", err)
+				t.Fatalf("map base estimate: %v", err)
 			}
 			db := openRequestLogQueryDB(t)
 			service := newRequestLogTestService(db)
 			if err := service.writer.WriteBatch(t.Context(), []models.RequestLog{row}); err != nil {
 				t.Fatal(err)
 			}
-			// 重放同一请求不能重复累计已应用倍率的金额。
+			// Replaying a request must not count its frozen cost twice.
 			if err := service.writer.WriteBatch(t.Context(), []models.RequestLog{row}); err != nil {
 				t.Fatal(err)
 			}
@@ -85,16 +76,17 @@ func TestPriceMultipliersSurvivePersistenceAndAllCostQueries(t *testing.T) {
 				t.Fatalf("detail = %#v, %v", detail, err)
 			}
 			frozen, err := json.Marshal(detail.Attempts[0].PricingReceipt)
-			if err != nil || !strings.Contains(string(frozen), fmt.Sprintf(`"price_multipliers":{"group":%q,"access_key":%q}`, test.group, test.accessKey)) {
+			if err != nil {
 				t.Fatalf("frozen receipt = %s, %v", frozen, err)
 			}
 			var frozenFields map[string]json.RawMessage
 			if err := json.Unmarshal(frozen, &frozenFields); err != nil {
 				t.Fatal(err)
 			}
-			base, hasBase := frozenFields["base_total_nano_usd"]
-			if hasBase != (test.schema == 6) || (hasBase && string(base) != fmt.Sprint(test.baseTotal)) {
-				t.Fatalf("frozen base total = %s, want schema v%d base %d", frozen, test.schema, test.baseTotal)
+			_, hasBase := frozenFields["base_total_nano_usd"]
+			_, hasFactors := frozenFields["price_multipliers"]
+			if hasBase || hasFactors || string(frozenFields["schema_version"]) != "7" {
+				t.Fatalf("frozen receipt = %s, want v7 without retired fields", frozen)
 			}
 			for _, line := range detail.Attempts[0].PricingReceipt.LineItems {
 				if line.AmountNanoUSD == nil || *line.AmountNanoUSD != test.lineAmount {
@@ -140,11 +132,9 @@ func TestPriceMultipliersSurvivePersistenceAndAllCostQueries(t *testing.T) {
 			if _, err := decodeAttemptPricingReceipt(row.AttemptRows[0]); err == nil {
 				t.Fatalf("v%d receipt accepted a mismatching channel", test.schema)
 			}
-			if test.schema == 6 {
-				event.Usage.Pricing.EstimatedCostNanoUSD = test.baseTotal
-				if _, err := mapEvent(redact.New(), event); err == nil {
-					t.Fatal("accepted original total as final estimated cost")
-				}
+			event.Usage.Pricing.EstimatedCostNanoUSD = test.finalTotal + 1
+			if _, err := mapEvent(redact.New(), event); err == nil {
+				t.Fatal("accepted a cost inconsistent with the frozen receipt")
 			}
 		})
 	}

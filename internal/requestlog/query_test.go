@@ -590,7 +590,7 @@ func TestServiceListAndDetailExposeFinalPricingMode(t *testing.T) {
 	row.ChannelID = string(channel.OpenAI)
 	row.CredentialID = 1
 	receipt, err := json.Marshal(pricing.Receipt{
-		SchemaVersion: 4,
+		SchemaVersion: 7,
 		Method:        pricing.ReceiptMethodUnitRateSum,
 		MethodVersion: 1,
 		Currency:      "USD",
@@ -641,7 +641,7 @@ func TestServiceListAndDetailExposeFinalContextThreshold(t *testing.T) {
 	row.CredentialID = 1
 	threshold := int64(272_000)
 	receipt, err := json.Marshal(pricing.Receipt{
-		SchemaVersion:          4,
+		SchemaVersion:          7,
 		Method:                 pricing.ReceiptMethodUnitRateSum,
 		MethodVersion:          1,
 		Currency:               "USD",

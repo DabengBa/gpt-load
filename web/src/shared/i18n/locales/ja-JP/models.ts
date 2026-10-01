@@ -4,8 +4,7 @@ export default {
     loading: 'モデルを読み込み中…',
     loadFailed: 'モデルを読み込めません',
     stale: 'バックグラウンド更新に失敗したため、現在のモデル情報は古い可能性があります',
-    context:
-      'プリセット価格を Models.dev より優先 · 基準単価 USD / 1M Tokens、グループ・アクセスキー倍率適用前',
+    context: 'プリセット価格を Models.dev より優先 · モデル参考単価 USD / 1M Tokens',
     result: '{total} 件中 {shown} 件のクライアントモデルを表示',
     actions: {
       sync: 'カタログと自動価格を同期',
@@ -19,7 +18,7 @@ export default {
       models: 'クライアントモデル {count} 件',
       upstreams: '上流モデル {count} 件',
       pending: '価格待ち {count} 件',
-      unit: '基準単価 USD / 1M Tokens · 倍率適用前',
+      unit: 'モデル参考単価 · USD / 1M Tokens',
     },
     catalog: {
       available: 'プリセット価格カタログ利用可能',

@@ -193,7 +193,6 @@ export function AccessKeyCollection({
           allModels: t('accessKeys.allModels'),
           unlimited: t('accessKeys.unlimited'),
           costRules: (count) => t('accessKeys.costLimits.ruleCount', { count }),
-          priceMultiplier: (value) => t('common.priceMultiplier.value', { value }),
         },
         protocolLabel: (protocol) => protocol,
       }),

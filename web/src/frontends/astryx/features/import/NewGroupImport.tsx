@@ -33,7 +33,7 @@ import type { ModelCandidate } from '@shared/control/resources/providers'
 import { proxyMutation } from '@shared/control/resources/proxy'
 import type { MessageId } from '@shared/i18n/message-ids'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
-import { isValidPriceMultiplier, normalizePriceMultiplier } from '@shared/lib/price-multiplier'
+
 import { constrainCollectionSearch } from '@shared/routing/route-query'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 import {
@@ -105,7 +105,7 @@ function freshDraft(): ImportDraft {
     proxy: { mode: 'inherit', url: '' },
     name: '',
     provider_url: '',
-    price_multiplier: '1',
+
     credentials: '',
     staged_credentials: [],
     models: [],
@@ -387,7 +387,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
         : '')
   const submitBlockedReason = (() => {
     if (payloadLocked || mutationPending) return ''
-    if (!isValidPriceMultiplier(draft.price_multiplier)) return t('common.priceMultiplier.invalid')
+
     if (paramsError) {
       if (selectedChannel === null) return t('import.presets.channelRequired')
       return visibleParamError || t('import.steps.channel.incomplete')
@@ -408,7 +408,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const canCreate =
     !payloadLocked &&
     !mutationPending &&
-    isValidPriceMultiplier(draft.price_multiplier) &&
     !paramsError &&
     !connectionMappingBlocked &&
     credentialCount > 0 &&
@@ -881,7 +880,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       ...(draftProxyOverride === undefined ? {} : { proxy: draftProxyOverride }),
       ...(name ? { name } : {}),
       provider_url: draft.provider_url.trim() || null,
-      price_multiplier: normalizePriceMultiplier(draft.price_multiplier),
+
       models: toGroupModels(draft.models),
       ...(draft.connection_type === 'subscription'
         ? {
@@ -1311,7 +1310,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               channel={connectionChannel}
               name={draft.name}
               providerUrl={draft.provider_url}
-              priceMultiplier={draft.price_multiplier}
+
               params={draft.params}
               proxy={draft.proxy}
               proxyDisabled={proxyLocked}
@@ -1322,9 +1321,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               onProviderUrlChange={(value) =>
                 setDraft((current) => ({ ...current, provider_url: value }))
               }
-              onPriceMultiplierChange={(value) =>
-                setDraft((current) => ({ ...current, price_multiplier: value }))
-              }
+
               onParamChange={setChannelParam}
               onProxyChange={(proxy) => setDraft((current) => ({ ...current, proxy }))}
               onBaseUrlOverrideChange={setBaseURLOverride}

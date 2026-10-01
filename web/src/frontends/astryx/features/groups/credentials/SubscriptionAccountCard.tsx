@@ -449,7 +449,7 @@ export function SubscriptionAccountCard({
     const observed = window.observed_usage
     if (!observed) return undefined
     return estimateTitles(
-      'group.credentials.subscription.estimate.priceMultiplierBasis',
+      'group.credentials.subscription.estimate.referencePriceBasis',
       observed.data_complete ? '' : 'group.credentials.subscription.estimate.dataIncomplete',
       observed.pricing_complete ? '' : 'group.credentials.subscription.estimate.pricingIncomplete',
     )

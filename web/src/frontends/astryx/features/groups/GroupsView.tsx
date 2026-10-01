@@ -738,14 +738,7 @@ export function GroupsView() {
                 <span {...stylex.props(styles.channelName)} title={channelName(group.channel_id)}>
                   {channelName(group.channel_id)}
                 </span>
-                {group.price_multiplier !== '1' && (
-                  <span
-                    {...stylex.props(styles.typeBadge)}
-                    title={t('common.priceMultiplier.groupHelp')}
-                  >
-                    {t('common.priceMultiplier.value', { value: group.price_multiplier })}
-                  </span>
-                )}
+
                 <span {...stylex.props(styles.typeBadge)}>
                   {group.connection_type === 'api_key' ? (
                     <KeyRound size={10} aria-hidden />

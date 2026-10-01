@@ -45,7 +45,7 @@ function currentAccessKey() {
     },
     expires_at_ms: null,
     rpm_limit: 60,
-    price_multiplier: '1',
+
     cost_limit_rules: [],
     created_at_ms: 1_730_000_000_000,
     updated_at_ms: 1_730_000_000_000,

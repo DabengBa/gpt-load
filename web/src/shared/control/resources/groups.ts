@@ -42,7 +42,7 @@ import {
   projectEnum,
   projectFiniteNumber,
   projectHTTPURL,
-  projectPriceMultiplier,
+
   projectRecord,
   projectSafeInteger,
   projectString,
@@ -52,7 +52,7 @@ import { projectProxyView } from './proxy'
 const groupSummaryFields = [
   'id',
   'name',
-  'price_multiplier',
+
   'channel_id',
   'connection_type',
   'params',
@@ -64,7 +64,7 @@ const groupSummaryFields = [
 ] as const
 const groupSettingsFields = [
   'name',
-  'price_multiplier',
+
   'channel_id',
   'connection_type',
   'params',
@@ -93,7 +93,7 @@ const groupCollectionSummaryFields = ['total', 'available', 'unavailable', 'disa
 const groupCollectionItemFields = [
   'id',
   'name',
-  'price_multiplier',
+
   'channel_id',
   'connection_type',
   'params',
@@ -142,7 +142,6 @@ export type {
 
 export type GroupSettingsUpdateRequest = Partial<{
   name: string
-  price_multiplier: string
   channel_id: string
   params: ChannelParamsDto
   provider_url: string | null
@@ -189,7 +188,6 @@ export interface GroupModelsReplaceRequest {
 
 export interface GroupCreateRequest {
   name?: string
-  price_multiplier: string
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
@@ -402,7 +400,7 @@ export function projectGroupSummary(value: unknown): GroupSummaryDto {
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
-    price_multiplier: projectPriceMultiplier(record.price_multiplier),
+
     service_status: serviceStatus,
     service_status_reason: serviceStatusReason,
     credential_count: projectSafeInteger(record.credential_count, { minimum: 0 }),
@@ -419,7 +417,7 @@ export function projectGroupSettings(value: unknown): GroupSettingsDto {
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
-    price_multiplier: projectPriceMultiplier(record.price_multiplier),
+
     enabled: projectBoolean(record.enabled),
     overrides: projectRuntimeConfig(record.overrides, false),
     effective: projectRuntimeConfig(record.effective, true),
@@ -550,7 +548,7 @@ function projectGroupCollectionItem(value: unknown): GroupCollectionItemDto {
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
     status,
-    price_multiplier: projectPriceMultiplier(record.price_multiplier),
+
     model_count: modelCount,
     client_model_count: projectSafeInteger(record.client_model_count, { minimum: 0 }),
     credential_counts: credentialCounts,
