@@ -52,32 +52,36 @@ export async function createAppI18n(): Promise<AppI18n> {
   const locale = getBrowserLocale()
   persistLocale(storage, locale)
 
-  // Draft accumulates flattened catalogs; each emit() snapshots it so
-  // useSyncExternalStore sees a fresh object identity.
-  const draft: Record<string, string> = {}
-  const loaded = new Set<string>()
+  const catalogs = new Map<string, Record<string, string>>()
   const pending = new Map<string, Promise<void>>()
   const listeners = new Set<() => void>()
   const namespacesToLoad = new Set<MessageNamespace>()
   let requestedLocale = locale
-  let snapshot: I18nSnapshot = { locale, messages: { ...draft } }
+  let snapshot: I18nSnapshot = { locale, messages: {} }
 
-  const emit = () => {
-    snapshot = { locale: snapshot.locale, messages: { ...draft } }
-    document.documentElement.lang = snapshot.locale
+  // Publish only complete locale catalogs, including already cached fallbacks.
+  const emit = (targetLocale: AppLocale) => {
+    const messages: Record<string, string> = {}
+    for (const namespace of ['core' as const, ...namespacesToLoad]) {
+      Object.assign(
+        messages,
+        catalogs.get(`en-US:${namespace}`),
+        catalogs.get(`${targetLocale}:${namespace}`),
+      )
+    }
+    snapshot = { locale: targetLocale, messages }
+    document.documentElement.lang = targetLocale
     for (const listener of listeners) listener()
   }
 
   async function ensure(targetLocale: AppLocale, namespace: 'core' | MessageNamespace) {
     const identity = `${targetLocale}:${namespace}`
-    if (loaded.has(identity)) return
+    if (catalogs.has(identity)) return
     const existing = pending.get(identity)
     if (existing) return existing
     const request = (async () => {
       const module = await catalogLoader(targetLocale, namespace)()
-      Object.assign(draft, flattenMessages(module.default))
-      loaded.add(identity)
-      emit()
+      catalogs.set(identity, flattenMessages(module.default))
     })().finally(() => pending.delete(identity))
     pending.set(identity, request)
     return request
@@ -89,8 +93,20 @@ export async function createAppI18n(): Promise<AppI18n> {
     await ensure(targetLocale, namespace)
   }
 
+  async function ensureRegistered(targetLocale: AppLocale) {
+    let count: number
+    do {
+      count = namespacesToLoad.size
+      await Promise.all(
+        ['core' as const, ...namespacesToLoad].map((namespace) =>
+          ensureMerged(targetLocale, namespace),
+        ),
+      )
+    } while (count !== namespacesToLoad.size)
+  }
+
   await ensureMerged(locale, 'core')
-  document.documentElement.lang = locale
+  emit(locale)
 
   return {
     subscribe(listener) {
@@ -106,19 +122,20 @@ export async function createAppI18n(): Promise<AppI18n> {
     async setLocale(nextLocale) {
       requestedLocale = nextLocale
       persistLocale(storage, nextLocale)
-      await Promise.all(
-        ['core' as const, ...namespacesToLoad].map((namespace) =>
-          ensureMerged(nextLocale, namespace),
-        ),
-      )
+      await ensureRegistered(nextLocale)
       if (requestedLocale !== nextLocale) return
-      snapshot = { locale: nextLocale, messages: { ...draft } }
-      document.documentElement.lang = nextLocale
-      for (const listener of listeners) listener()
+      emit(nextLocale)
     },
     async ensureNamespaces(namespaces) {
       for (const namespace of namespaces) namespacesToLoad.add(namespace)
-      await Promise.all(namespaces.map((namespace) => ensureMerged(snapshot.locale, namespace)))
+      // Navigation can finish while a locale change is pending. Its consumers
+      // still need catalogs for the committed locale until that change publishes.
+      let targetLocale: AppLocale
+      do {
+        targetLocale = snapshot.locale
+        await ensureRegistered(targetLocale)
+      } while (targetLocale !== snapshot.locale)
+      emit(targetLocale)
     },
   }
 }

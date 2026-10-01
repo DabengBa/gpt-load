@@ -427,6 +427,64 @@ func TestCreateChannelGroupIdempotencyReplaysCredentialCounts(t *testing.T) {
 	}
 }
 
+func TestAPIKeyCredentialImportRejectsMultipleCredentialsAndCountsDuplicates(t *testing.T) {
+	t.Parallel()
+
+	fixture := newServiceFixture(t)
+	_, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name:           stringPointer("api-key-multiple-credentials"),
+		ChannelID:      channel.OpenAI,
+		ConnectionType: models.ConnectionTypeAPIKey,
+		Models:         optionalGroupModels{Set: true},
+		Credentials:    "sk-first\nsk-second",
+	})
+	if !errors.Is(err, app_errors.ErrSingleCredentialRequired) {
+		t.Fatalf("CreateGroup() error = %v, want single credential required", err)
+	}
+	if errors.Is(err, app_errors.ErrDuplicateCredentialIdentity) {
+		t.Fatalf("CreateGroup() error = %v, must not report subscription identity conflict", err)
+	}
+
+	groupID := createGroupForCredentialImport(t, fixture, "sk-only")
+	imported, err := fixture.service.ImportGroupCredentials(t.Context(), groupID, CredentialImportRequest{
+		Credentials: "sk-only\nsk-only",
+	})
+	if err != nil {
+		t.Fatalf("ImportGroupCredentials() error = %v", err)
+	}
+	if imported.CredentialsAdded != 0 || imported.CredentialsDuplicated != 2 {
+		t.Fatalf("ImportGroupCredentials() result = %#v, want 0 added and 2 duplicates", imported)
+	}
+	assertImportedCredentialState(t, fixture, groupID, 1)
+}
+
+func TestAPIKeyCredentialImportRejectsDistinctCredentialWithoutChangingExistingRow(t *testing.T) {
+	t.Parallel()
+
+	fixture := newServiceFixture(t)
+	groupID := createGroupForCredentialImport(t, fixture, "sk-original")
+	var before models.Credential
+	if err := fixture.db.Where("group_id = ?", groupID).Take(&before).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := fixture.service.ImportGroupCredentials(t.Context(), groupID, CredentialImportRequest{
+		Credentials: "sk-different",
+	})
+	var apiErr *app_errors.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != "SINGLE_CREDENTIAL_REQUIRED" {
+		t.Fatalf("ImportGroupCredentials() error = %v, want SINGLE_CREDENTIAL_REQUIRED", err)
+	}
+
+	var after []models.Credential
+	if err := fixture.db.Where("group_id = ?", groupID).Find(&after).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].ID != before.ID || after[0].Fingerprint != before.Fingerprint || after[0].Data != before.Data {
+		t.Fatalf("existing credential changed after rejected import: before=%#v after=%#v", before, after)
+	}
+}
+
 func TestChannelGroupSettingsExposeImmutableChannelAndEditableParams(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)

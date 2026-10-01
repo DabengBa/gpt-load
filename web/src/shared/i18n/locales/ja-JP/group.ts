@@ -67,8 +67,7 @@ export default {
       enabledOn: '{name} を有効にしました',
       enabledOff: '{name} を停止しました。新しいリクエストは受け付けません。',
       toggleFailed: '切り替えに失敗しました。再試行してください。',
-      appendCredential: '認証情報を追加',
-      appendCredentialFor: '{name} に認証情報を追加',
+      manageCredentialFor: '{name} の認証情報を管理',
     },
   },
   group: {

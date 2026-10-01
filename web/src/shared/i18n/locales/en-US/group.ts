@@ -67,8 +67,7 @@ export default {
       enabledOn: 'Enabled {name}',
       enabledOff: 'Disabled {name}. It no longer takes new requests.',
       toggleFailed: 'Could not change the switch. Try again.',
-      appendCredential: 'Add credential',
-      appendCredentialFor: 'Add a credential to {name}',
+      manageCredentialFor: 'Manage credential for {name}',
     },
   },
   group: {

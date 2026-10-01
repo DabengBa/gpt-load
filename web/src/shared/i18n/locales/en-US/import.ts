@@ -31,9 +31,9 @@ export default {
         },
       },
       credentials: {
-        apiKeyTitle: 'Add API keys',
+        apiKeyTitle: 'Enter one API key',
         structuredTitle: 'Enter channel credentials',
-        subscriptionTitle: 'Connect {channel} accounts',
+        subscriptionTitle: 'Connect one {channel} account',
         keyCount: '{count} key(s) entered',
         credentialCount: '{count} credential(s) entered',
         needsAttention: 'Credentials need attention',
@@ -68,9 +68,12 @@ export default {
       abandon: 'Abandon operation',
     },
     existing: {
+      populated:
+        'This Group already has a credential. Manage or update it in Group details; importing another credential is not allowed.',
+      manage: 'Manage credential',
       title: 'Target Group',
       description:
-        'This flow adds credentials only to API-key Groups without changing models or settings. Connect subscription accounts from the corresponding Group credential page.',
+        'Import the first credential into an empty API-key Group. Manage existing credentials in Group details.',
       groupsLoading: 'Loading Groups…',
       groupsFailed: 'Unable to load Groups',
       groupsStale: 'Group refresh failed; showing cached results',
@@ -82,13 +85,13 @@ export default {
       groupMeta: '#{id} · {models} published models',
       groupUnchanged: 'Other configuration remains unchanged',
       groupNotFound: 'Group #{id} was not found',
-      actionSummary: 'Add credentials to {name}',
+      actionSummary: 'Import the first credential into {name}',
       actionSelectTarget: 'Select a destination Group first',
-      actionHelp: 'Only adds channel credentials without changing models or settings',
+      actionHelp: 'One Group contains one credential; models and settings remain unchanged',
       credentialStorageNotice:
         'The server reports the actual number of added and already-existing credentials after submission',
-      batchDuplicates: 'Batch duplicates',
-      submit: 'Add credentials',
+
+      submit: 'Import credential',
       importFailed: 'Unable to import credentials into the selected Group',
     },
     connection: {
@@ -210,12 +213,11 @@ export default {
     },
     credentials: {
       title: 'API keys',
-      description: 'One per line, up to 1,000; duplicates are not imported twice',
+      description: 'One Group contains one credential. Repeated identical lines count as one.',
       label: 'Key content',
-      placeholder: 'One key per line',
+      placeholder: 'Paste one API key',
       structuredTitle: 'Channel credentials',
-      structuredDescription:
-        'Paste one formatted JSON object directly; for batches, use one JSON object per line',
+      structuredDescription: 'Paste one formatted JSON object for one credential',
       structuredLabel: 'Credential content',
       structuredHint: 'This channel supports: {fields}. Fill only one authentication method',
       placeholders: {
@@ -228,12 +230,12 @@ export default {
       analysisLabel: 'Key preflight',
       noInput: 'No credentials yet',
       counters: {
-        nonEmpty: 'Non-empty lines',
-        empty: 'Empty lines',
+        nonEmpty: 'Distinct credentials',
         duplicates: 'Duplicates',
       },
       accessKeyWarning: '{count} lines look like GPT-Load access keys; verify before continuing',
-      tooMany: 'At most 1,000 non-empty keys can be submitted',
+      tooMany:
+        'A Group allows only one distinct credential. Keep one credential and remove the others.',
       required: 'Enter at least one credential first',
       channelCredentialNotice:
         'These are channel API keys; create client credentials on the Access Keys page',
@@ -322,19 +324,19 @@ export default {
     summaryAccounts: '{accounts} accounts · {models} models',
     summaryAccountsOptional: '{accounts} accounts · models optional',
     createFailed: 'Unable to create the Group',
-    appendFailed: 'Unable to import credentials into the selected Group',
+
     conflict: {
       title: 'This channel target already exists',
       titleSubscription: 'A subscription Group already exists',
-      description: 'Add credentials to an existing Group or create a separate Group',
-      descriptionSubscription: 'Add the account to an existing Group, or create a separate Group',
+      description: 'Manage an existing Group or create a separate Group with this credential',
+      descriptionSubscription:
+        'Manage an existing Group or create a separate Group with this account',
       close: 'Close URL conflict',
-      append: 'Import credentials here',
-      appendSubscription: 'Add the account here',
-      appendHelp:
-        'Recommended · Adds only the current credentials without changing existing configuration',
-      appendHelpSubscription:
-        'Recommended · Adds only the current account without changing existing configuration',
+      manage: 'Manage Group',
+      manageSubscription: 'Manage Group',
+      manageHelp: 'Open Group details to manage its credential; this draft is not imported',
+      manageHelpSubscription:
+        'Open Group details to manage its account; this draft is not imported',
       separate: 'Create a separate Group',
       edit: 'Return to edit',
     },

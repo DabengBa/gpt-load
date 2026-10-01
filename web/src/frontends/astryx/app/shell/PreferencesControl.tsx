@@ -1,8 +1,9 @@
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { Popover } from '@astryxdesign/core/Popover'
 import * as stylex from '@stylexjs/stylex'
+import { useRouter } from '@tanstack/react-router'
 import { LogOut, Menu, Monitor, Moon, Sun } from 'lucide-react'
-import { useId, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from 'react'
 
 import { supportedLocales, type AppLocale } from '@shared/preferences/locale'
 import type { AppTheme } from '@shared/controllers/theme'
@@ -233,6 +234,11 @@ export function PreferencesControl({
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
+  const router = useRouter()
+  useEffect(() => {
+    if (!open || mobileNav === undefined) return
+    return router.subscribe('onResolved', () => setOpen(false))
+  }, [open, mobileNav, router])
   return (
     <Popover
       isOpen={open}

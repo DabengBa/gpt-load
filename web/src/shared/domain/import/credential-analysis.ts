@@ -7,13 +7,10 @@ export interface CredentialAnalysis {
   tooManyCredentials: boolean
 }
 
-const structuredCredentialChannels = new Set(['azure_openai', 'aws_bedrock', 'google_vertex'])
-
-export function analyzeCredentials(raw: string, channelID = ''): CredentialAnalysis {
+export function analyzeCredentials(raw: string): CredentialAnalysis {
   const normalizedRaw = raw.replace(/\r/g, '')
   const trimmedRaw = normalizedRaw.trim()
   const wholeObject =
-    structuredCredentialChannels.has(channelID) &&
     trimmedRaw.startsWith('{') &&
     (() => {
       try {
@@ -38,6 +35,6 @@ export function analyzeCredentials(raw: string, channelID = ''): CredentialAnaly
     emptyLineCount: raw ? lines.length - nonEmpty.length : 0,
     duplicateCount,
     likelyAccessKeyCount: nonEmpty.filter((line) => /^sk-gl-/i.test(line)).length,
-    tooManyCredentials: nonEmpty.length > 1_000,
+    tooManyCredentials: seen.size > 1,
   }
 }

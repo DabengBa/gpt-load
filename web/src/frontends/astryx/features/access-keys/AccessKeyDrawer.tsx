@@ -630,7 +630,12 @@ export function AccessKeyDrawer({
             sourceMode={draft.sourceMode}
             allowedCidrs={draft.filters.allowed_cidrs}
             disabled={formLocked}
-            onExpirationModeChange={(value) => patchDraft({ expirationMode: value })}
+            onExpirationModeChange={(value) =>
+              patchDraft({
+                expirationMode: value,
+                ...(value === 'never' ? { expires_at_ms: null } : {}),
+              })
+            }
             onExpiresAtChange={(value) => patchDraft({ expires_at_ms: value })}
             onSourceModeChange={(value) => patchDraft({ sourceMode: value })}
             onAllowedCidrsChange={(value) => patchFilters({ allowed_cidrs: value })}

@@ -125,7 +125,7 @@ const GROUP_42 = {
     provider_url: null,
     service_status: 'available',
     service_status_reason: null,
-    credential_count: 2,
+    credential_count: 1,
     model_count: 0,
   },
   settings: {
@@ -158,7 +158,11 @@ interface ImportRequests {
 
 async function mockImportApi(
   page: Page,
-  options: { createStatus?: number; pollSequence?: Record<string, unknown>[] } = {},
+  options: {
+    createStatus?: number
+    credentialCount?: number
+    pollSequence?: Record<string, unknown>[]
+  } = {},
 ): Promise<ImportRequests> {
   const requests: ImportRequests = {
     createBodies: [],
@@ -187,6 +191,13 @@ async function mockImportApi(
     if (path === '/api/auth/session') return fulfill(AUTH_SESSION)
     if (path === '/api/channels') return fulfill({ items: CHANNELS, total: CHANNELS.length })
     if (path === '/api/groups/options') return fulfill(GROUP_OPTIONS)
+    if (path === '/api/groups/7')
+      return fulfill({
+        ...GROUP_42.summary,
+        id: 7,
+        name: 'Alpha Group',
+        credential_count: options.credentialCount ?? 0,
+      })
     if (path === '/api/groups' && request.method() === 'POST') {
       requests.createBodies.push((request.postDataJSON() ?? {}) as Record<string, unknown>)
       requests.createIdempotencyKeys.push(request.headers()['idempotency-key'] ?? '')
@@ -200,7 +211,7 @@ async function mockImportApi(
       return fulfill({
         group_id: 42,
         group_name: 'Imported Group',
-        credentials_added: 2,
+        credentials_added: 1,
         credentials_duplicated: 0,
       })
     }
@@ -211,7 +222,11 @@ async function mockImportApi(
         body: (request.postDataJSON() ?? {}) as Record<string, unknown>,
         key: request.headers()['idempotency-key'] ?? '',
       })
-      return fulfill({ credentials_added: 2, credentials_duplicated: 0 })
+      return fulfill({
+        group_id: Number(credentialImport[1]),
+        credentials_added: 1,
+        credentials_duplicated: 0,
+      })
     }
     if (path === '/api/credential-stages/authorizations' && request.method() === 'POST') {
       requests.stageAuthorizations.push((request.postDataJSON() ?? {}) as Record<string, unknown>)
@@ -247,6 +262,167 @@ async function mockImportApi(
   return requests
 }
 
+test('adds the first manual model from the empty import form', async ({ page }) => {
+  await mockImportApi(page)
+  await page.goto('/import', { waitUntil: 'commit' })
+  await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
+    timeout: FIRST_PAINT,
+  })
+  await page.getByRole('button', { name: 'Add model', exact: true }).click()
+  await expect(page.locator('[data-model-id-index="0"]')).toBeVisible()
+  await page.locator('[data-model-id-index="0"]').fill('ux-first-model')
+  await page.getByRole('button', { name: 'Add model', exact: true }).click()
+  await expect(page.locator('[data-model-id-index="1"]')).toBeVisible()
+})
+
+test('single credential rejects distinct keys immediately and accepts duplicate lines', async ({
+  page,
+}) => {
+  const requests = await mockImportApi(page)
+  await page.goto('/import', { waitUntil: 'commit' })
+  const input = page.locator('#channel-credentials')
+  await expect(input).toBeVisible({ timeout: FIRST_PAINT })
+  await input.fill('sk-first\nsk-second')
+  await expect(input).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByRole('button', { name: 'Create Group' })).toBeDisabled()
+  expect(requests.createBodies).toHaveLength(0)
+  await input.fill('sk-first\nsk-first')
+  await expect(page.getByRole('button', { name: 'Create Group' })).toBeEnabled()
+})
+
+test('one formatted OpenAI JSON credential can be submitted unchanged', async ({ page }) => {
+  const requests = await mockImportApi(page)
+  await page.goto('/import', { waitUntil: 'commit' })
+  const input = page.locator('#channel-credentials')
+  await expect(input).toBeVisible({ timeout: FIRST_PAINT })
+  const credential = '{\n  "api_key": "test-json-placeholder"\n}'
+  await input.fill(credential)
+  await expect(input).not.toHaveAttribute('aria-invalid', 'true')
+  await page.getByRole('button', { name: 'Create Group', exact: true }).click()
+  await expect.poll(() => requests.createBodies.length).toBe(1)
+  expect(requests.createBodies[0]!.credentials).toBe(credential)
+})
+
+for (const status of ['pending_authorization', 'expired', 'failed']) {
+  test(`subscription ${status} can retry without connecting a second account`, async ({ page }) => {
+    const requests = await mockImportApi(page)
+    let authorizations = 0
+    const stage = () => ({
+      stage_id: authorizations === 1 ? 'stage_old' : 'stage_retried',
+      status: authorizations === 1 ? status : 'ready',
+      authorization_method: 'browser_oauth',
+      authorization_url: 'https://auth.example.com/oauth',
+      redirect_uri: 'http://127.0.0.1/oauth/callback',
+      expires_at_ms: Date.now() + 600_000,
+      account: {},
+    })
+    await page.route('**/api/credential-stages/**', async (route) => {
+      if (route.request().url().endsWith('/authorizations')) authorizations += 1
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 0, message: 'ok', data: stage() }),
+      })
+    })
+    await page.goto('/import', { waitUntil: 'commit' })
+    await expect(page.locator('#channel-credentials')).toBeVisible({ timeout: FIRST_PAINT })
+    await page.getByRole('radio', { name: 'Subscription account' }).click()
+    await page.getByRole('button', { name: 'Sign in with Claude Subscription' }).click()
+    const add = page.getByRole('button', { name: 'Connect another account', exact: true })
+    await expect(add).toBeDisabled()
+    const retry = page.getByRole('button', { name: 'Start a new authorization', exact: true })
+    await expect(retry).toBeEnabled()
+    await retry.click()
+    await expect.poll(() => authorizations).toBe(2)
+    await expect(add).toBeDisabled()
+    await page.getByRole('button', { name: 'Create Group', exact: true }).click()
+    await expect.poll(() => requests.createBodies.length).toBe(1)
+    expect(requests.createBodies[0]!.staged_credential_ids).toEqual(['stage_retried'])
+  })
+}
+
+test('existing Group summary failure is visible and retry recovers the first import', async ({
+  page,
+}) => {
+  await mockImportApi(page)
+  let fail = true
+  await page.route('**/api/groups/7', async (route) => {
+    await route.fulfill({
+      status: fail ? 500 : 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        fail
+          ? { code: 'INTERNAL_SERVER_ERROR', message: 'failed', data: null }
+          : {
+              code: 0,
+              message: 'ok',
+              data: { ...GROUP_42.summary, id: 7, name: 'Alpha Group', credential_count: 0 },
+            },
+      ),
+    })
+  })
+  await page.goto('/import?group_id=7', { waitUntil: 'commit' })
+  await expect(page.getByText('Unable to load Group details.', { exact: true })).toBeVisible({
+    timeout: FIRST_PAINT,
+  })
+  await expect(page.locator('#channel-credentials')).toBeDisabled()
+  fail = false
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(page.locator('#channel-credentials')).toBeEnabled()
+  await page.locator('#channel-credentials').fill('sk-first\nsk-second')
+  await expect(page.getByRole('button', { name: 'Import credential', exact: true })).toBeDisabled()
+  await page.locator('#channel-credentials').fill('sk-first')
+  await expect(page.getByRole('button', { name: 'Import credential', exact: true })).toBeEnabled()
+})
+
+test('same-target conflict offers management, never append', async ({ page }) => {
+  const requests = await mockImportApi(page)
+  await page.route('**/api/groups', async (route) => {
+    await route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 'CHANNEL_TARGET_CONFLICT',
+        message: 'conflict',
+        data: { groups: [{ id: 7, name: 'Alpha Group' }] },
+      }),
+    })
+  })
+  await page.goto('/import', { waitUntil: 'commit' })
+  await expect(page.locator('#channel-credentials')).toBeVisible({ timeout: FIRST_PAINT })
+  await page.locator('#channel-credentials').fill('sk-first')
+  await page.getByRole('button', { name: 'Create Group', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Manage Group', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Import credentials here', exact: true }),
+  ).toHaveCount(0)
+  await page.getByRole('button', { name: 'Manage Group', exact: true }).click()
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await expect(page).toHaveURL(/\/groups\/7$/)
+  expect(requests.credentialImports).toHaveLength(0)
+})
+
+test('single-credential server rejection explains how to correct the draft', async ({ page }) => {
+  await mockImportApi(page)
+  await page.route('**/api/groups', async (route) => {
+    await route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'SINGLE_CREDENTIAL_REQUIRED', message: 'only one', data: null }),
+    })
+  })
+  await page.goto('/import', { waitUntil: 'commit' })
+  await expect(page.locator('#channel-credentials')).toBeVisible({ timeout: FIRST_PAINT })
+  await page.locator('#channel-credentials').fill('sk-first')
+  await page.getByRole('button', { name: 'Create Group', exact: true }).click()
+  await expect(
+    page.getByText(
+      'A Group allows only one distinct credential. Keep one credential and remove the others.',
+      { exact: true },
+    ),
+  ).toBeVisible()
+  await expect(page.getByText('Unable to create the Group', { exact: true })).toHaveCount(0)
+})
+
 test('mode switch swaps views and canonicalizes the URL', async ({ page }) => {
   await mockImportApi(page)
   await page.goto('/import', { waitUntil: 'commit' })
@@ -276,13 +452,15 @@ test('group_id deep link lands in existing mode with the group preselected', asy
   await expect(page.getByRole('combobox', { name: 'Group' })).toContainText('Alpha Group')
 })
 
-test('existing-group import posts credentials with a stable idempotency key', async ({ page }) => {
+test('empty existing-group import posts one credential with a stable idempotency key', async ({
+  page,
+}) => {
   const requests = await mockImportApi(page)
   await page.goto('/import?group_id=7', { waitUntil: 'commit' })
 
-  const submit = page.getByRole('button', { name: 'Add credentials' })
+  const submit = page.getByRole('button', { name: 'Import credential', exact: true })
   await expect(submit).toBeVisible({ timeout: FIRST_PAINT })
-  await page.locator('#channel-credentials').fill('sk-alpha-1\nsk-alpha-2')
+  await page.locator('#channel-credentials').fill('sk-alpha-1')
   await expect(submit).toBeEnabled()
   await submit.click()
 
@@ -292,7 +470,22 @@ test('existing-group import posts credentials with a stable idempotency key', as
   expect(String(requests.credentialImports[0]!.body.credentials)).toContain('sk-alpha-1')
 })
 
-test('new-group create posts once with an idempotency key and navigates to the group', async ({
+test('populated existing Group guides management instead of importing or replacing', async ({
+  page,
+}) => {
+  const requests = await mockImportApi(page, { credentialCount: 1 })
+  await page.goto('/import?group_id=7', { waitUntil: 'commit' })
+  const manage = page.getByRole('link', { name: 'Manage credential', exact: true })
+  await expect(manage).toBeVisible({ timeout: FIRST_PAINT })
+  await expect(manage).toHaveAttribute('href', '/groups/7')
+  await expect(page.locator('#channel-credentials')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Import credential', exact: true })).toHaveCount(0)
+  await manage.click()
+  await expect(page).toHaveURL(/\/groups\/7$/)
+  expect(requests.credentialImports).toHaveLength(0)
+})
+
+test('new-group create posts one credential with an idempotency key and navigates to the group', async ({
   page,
 }) => {
   const requests = await mockImportApi(page)
@@ -302,7 +495,7 @@ test('new-group create posts once with an idempotency key and navigates to the g
     timeout: FIRST_PAINT,
   })
   // First channel is auto-adopted; credentials make the form submittable.
-  await page.locator('#channel-credentials').fill('sk-live-1\nsk-live-2')
+  await page.locator('#channel-credentials').fill('sk-live-1')
   await page.getByRole('button', { name: 'Create Group' }).click()
 
   await expect.poll(() => requests.createBodies.length).toBe(1)
@@ -324,7 +517,7 @@ test('a 401 captures the draft to sessionStorage and re-login restores it', asyn
   await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
     timeout: FIRST_PAINT,
   })
-  await page.locator('#channel-credentials').fill('sk-rescue-1\nsk-rescue-2')
+  await page.locator('#channel-credentials').fill('sk-rescue-1')
   await page.getByRole('button', { name: 'Create Group' }).click()
 
   // The unauthorized handler captures the draft, clears the session, and

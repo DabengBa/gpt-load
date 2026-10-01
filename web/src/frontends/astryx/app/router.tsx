@@ -6,7 +6,6 @@ import {
   createRouter,
   notFound,
   redirect,
-  useRouter,
   useRouterState,
 } from '@tanstack/react-router'
 import { useEffect, type ReactNode } from 'react'
@@ -90,11 +89,12 @@ const shellStyles = stylex.create({
 // Reads the matched route's staticData meta and keeps document.title in sync;
 // <html lang> is owned by the i18n controller (app/i18n.tsx emit/setLocale).
 function HeadSync() {
-  const router = useRouter()
   const t = useT()
-  const { pathname, isNotFound } = useRouterState({
+  const { meta, isNotFound } = useRouterState({
     select: (state) => ({
-      pathname: state.location.pathname,
+      // location advances before beforeLoad finishes loading catalogs. Only
+      // committed matches are safe to translate without remounting the shell.
+      meta: (state.matches.at(-1)?.staticData as { meta?: PageRouteMeta } | undefined)?.meta,
       isNotFound: state.matches.some(
         (match) =>
           match.status === 'notFound' || (match as { _notFound?: boolean })._notFound === true,
@@ -102,11 +102,9 @@ function HeadSync() {
     }),
   })
   useEffect(() => {
-    const [, , foundRoute] = router.getMatchedRoutes(pathname)
-    const staticData = foundRoute?.options.staticData as { meta?: PageRouteMeta } | undefined
-    const titleKey = staticData?.meta?.titleKey ?? (isNotFound ? 'notFound.title' : undefined)
+    const titleKey = meta?.titleKey ?? (isNotFound ? 'notFound.title' : undefined)
     document.title = titleKey === undefined ? 'GPT-Load' : `${t(titleKey)} · GPT-Load`
-  }, [pathname, isNotFound, router, t])
+  }, [meta, isNotFound, t])
   return null
 }
 

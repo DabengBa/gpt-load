@@ -25,7 +25,6 @@ import {
   ExternalLink,
   KeyRound,
   Layers3,
-  Plus,
   Search,
   TriangleAlert,
   UserRound,
@@ -123,11 +122,6 @@ type GroupRow = GroupCollectionItemDto & Record<string, unknown>
 // typed, so plain `string` paths are the contract here.
 function groupDetailHref(id: number): string {
   return `${pagePath('groups')}/${id}`
-}
-
-function importForGroupHref(id: number): string {
-  const params = new URLSearchParams({ mode: 'existing', group_id: String(id) })
-  return `${pagePath('import')}?${params.toString()}`
 }
 
 const styles = stylex.create({
@@ -810,9 +804,9 @@ export function GroupsView() {
             <IconButton
               variant="ghost"
               size="sm"
-              label={t('groups.collection.appendCredentialFor', { name: group.name })}
-              icon={<Plus size={15} />}
-              href={importForGroupHref(group.id)}
+              label={t('groups.collection.manageCredentialFor', { name: group.name })}
+              icon={<KeyRound size={15} />}
+              href={groupDetailHref(group.id)}
             />
             <IconButton
               variant="ghost"

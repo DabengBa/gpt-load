@@ -67,8 +67,7 @@ export default {
       enabledOn: '已启用 {name}',
       enabledOff: '已停用 {name}，该分组不再接受新请求',
       toggleFailed: '切换失败，请重试',
-      appendCredential: '追加凭据',
-      appendCredentialFor: '向 {name} 追加凭据',
+      manageCredentialFor: '管理 {name} 的凭据',
     },
   },
   group: {

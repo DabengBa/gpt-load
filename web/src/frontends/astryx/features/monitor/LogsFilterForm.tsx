@@ -29,11 +29,10 @@ import { useT } from '../../app/i18n'
 import { plainTextInputAttrs } from '../../components/input-attrs'
 import { LogsAdvancedFilterDrawer } from './LogsAdvancedFilterDrawer'
 
-// Classic breakpoints: the control row stays single-line until 1120px, wraps
-// below it, and drops to a two-column grid (controls span full width) at
-// 560px. The <=860px touch-target bump on buttons is covered theme-wide by
+// The control row wraps when needed and drops to a two-column grid
+// (controls span full width) at 560px. The <=860px touch-target bump on buttons is covered theme-wide by
 // the gptload theme adaptation (width below md=861).
-const WRAP = '@media (max-width: 1120px)'
+
 const NARROW = '@media (max-width: 560px)'
 
 const styles = stylex.create({
@@ -100,10 +99,7 @@ const styles = stylex.create({
       default: 'center',
       [NARROW]: 'stretch',
     },
-    flexWrap: {
-      default: 'nowrap',
-      [WRAP]: 'wrap',
-    },
+    flexWrap: 'wrap',
     gap: 'var(--space-2)',
     padding: 'var(--space-2-5)',
   },
@@ -124,9 +120,13 @@ const styles = stylex.create({
     display: 'block',
     minWidth: 0,
     width: {
-      default: 236,
+      default: 280,
       [NARROW]: '100%',
     },
+  },
+  dateTimeLayout: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
   },
   // Field wrappers carry the classic fixed/flex widths; controls fill them
   // via width="100%". At <=560px each spans the full two-column grid row.
@@ -184,22 +184,21 @@ const styles = stylex.create({
     color: 'var(--color-action)',
     fontSize: 11,
   },
-  // The classic picker's shortcut strip: one horizontally scrolling row of
-  // ghost chips under the control row, with the timezone note pinned at the
-  // trailing edge like the classic popover footer.
+  // Presets keep their intrinsic labels and wrap instead of shrinking.
   presets: {
     display: 'flex',
     minWidth: 0,
     alignItems: 'center',
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     gap: 2,
-    overflowX: 'auto',
-    scrollbarWidth: 'thin',
     borderTopWidth: 1,
     borderTopStyle: 'solid',
     borderTopColor: 'var(--color-border-subtle)',
     paddingBlock: 'var(--space-1-75)',
     paddingInline: 'var(--space-2-5)',
+  },
+  preset: {
+    flexShrink: 0,
   },
   timezone: {
     marginInlineStart: 'auto',
@@ -348,6 +347,7 @@ export function LogsFilterForm({
     isLabelHidden: true,
     size: 'sm' as const,
     width: '100%' as const,
+    xstyle: styles.dateTimeLayout,
   }
 
   return (
@@ -522,6 +522,7 @@ export function LogsFilterForm({
               variant="ghost"
               size="sm"
               label={t(`monitor.logs.filters.quick.${preset}` as MessageId)}
+              xstyle={styles.preset}
               onClick={() => selectPreset(preset, onUpdateField)}
             />
           ))}

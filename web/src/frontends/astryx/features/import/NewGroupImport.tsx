@@ -12,18 +12,16 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { ArrowRight, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { ApiError, InvalidResponseError, RequestCancelledError } from '@shared/http/errors'
+import { ApiError, RequestCancelledError } from '@shared/http/errors'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { channelsQueryOptions, type ChannelDto } from '@shared/control/resources/channels'
 import {
-  connectGroupCredentials,
   getCredentialStage,
   type CredentialStage,
 } from '@shared/control/resources/credential-stages'
 import {
   createGroup,
   discoverModels,
-  importGroupCredentials,
   isSameTargetConflictData,
   readCredentialValidationData,
   type CredentialValidationData,
@@ -172,20 +170,14 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
   const owner = useImportOperationOwner()
   const createOperation = owner.createGroup
-  const appendOperation = owner.importCredentials
-  const connectOperation = owner.connectCredentials
   const createSnap = useOperationSnapshot(createOperation)
-  const appendSnap = useOperationSnapshot(appendOperation)
-  const connectSnap = useOperationSnapshot(connectOperation)
 
   // Classic setup: a confirmed outcome clears before first paint — confirmed
   // never maps to a notice key, so a mount-effect reset is invisible.
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
-    for (const op of [createOperation, appendOperation, connectOperation]) {
-      if (op.getSnapshot().outcome?.kind === 'confirmed') op.reset()
-    }
+    if (createOperation.getSnapshot().outcome?.kind === 'confirmed') createOperation.reset()
     return () => {
       mountedRef.current = false
     }
@@ -193,12 +185,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   }, [])
 
   const [initialOperationDraft] = useState(
-    () =>
-      createOperation.getSnapshot().operation?.payload.draft ??
-      connectOperation.getSnapshot().operation?.payload.draft ??
-      (appendOperation.getSnapshot().operation?.payload.draft.mode === 'new'
-        ? (appendOperation.getSnapshot().operation?.payload.draft as ImportDraft)
-        : null),
+    () => createOperation.getSnapshot().operation?.payload.draft ?? null,
   )
   const isFreshNewGroup = initialOperationDraft === null && initialDraft == null
   const [draft, setDraft] = useState<ImportDraft>(() =>
@@ -249,16 +236,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const [serverModelConflicts, setServerModelConflicts] = useState<ModelNameConflict[]>([])
   const [completed, setCompleted] = useState(false)
 
-  const mutationPending = createSnap.pending || appendSnap.pending || connectSnap.pending
-  const payloadLocked =
-    createSnap.operation !== null || appendSnap.operation !== null || connectSnap.operation !== null
-  const activeSnap = connectSnap.operation
-    ? connectSnap
-    : appendSnap.operation
-      ? appendSnap
-      : createSnap.operation
-        ? createSnap
-        : null
+  const mutationPending = createSnap.pending
+  const payloadLocked = createSnap.operation !== null
+  const activeSnap = createSnap.operation ? createSnap : null
   const mutationOutcome = activeSnap?.outcome ?? null
   const operationNoticeKey: MessageId | '' = !mutationOutcome
     ? ''
@@ -282,7 +262,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const discoveryPanelRunRef = useRef(false)
   const [autoFilledSkip, setAutoFilledSkip] = useState(false)
 
-  const credentialAnalysis = analyzeCredentials(draft.credentials, draft.channel_id)
+  const credentialAnalysis = analyzeCredentials(draft.credentials)
   const readyStages = draft.staged_credentials.filter(({ status }) => status === 'ready')
 
   async function syncDiscoveryStage(stageID: string, identity: number): Promise<void> {
@@ -316,7 +296,13 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   }
 
   const credentialCount =
-    draft.connection_type === 'subscription' ? readyStages.length : credentialAnalysis.nonEmptyCount
+    draft.connection_type === 'subscription'
+      ? readyStages.length
+      : credentialAnalysis.nonEmptyCount - credentialAnalysis.duplicateCount
+  const tooManyCredentials =
+    draft.connection_type === 'subscription'
+      ? readyStages.length > 1
+      : credentialAnalysis.tooManyCredentials
   const connectionChannel = selectedChannel
   const isSubscription = draft.connection_type === 'subscription'
   const proxyLocked = isSubscription && draft.staged_credentials.length > 0
@@ -408,8 +394,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     }
     if (credentialCount === 0)
       return t(isSubscription ? 'import.subscription.required' : 'import.credentials.required')
-    if (!isSubscription && credentialAnalysis.tooManyCredentials)
-      return t('import.credentials.tooMany')
+    if (tooManyCredentials) return t('import.credentials.tooMany')
     if (modelValidity.invalidIndexes.size) return t('import.models.resolveErrors')
     return ''
   })()
@@ -419,7 +404,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     !paramsError &&
     !connectionMappingBlocked &&
     credentialCount > 0 &&
-    (draft.connection_type === 'subscription' || !credentialAnalysis.tooManyCredentials)
+    !tooManyCredentials
   const canCreate =
     !payloadLocked &&
     !mutationPending &&
@@ -427,7 +412,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     !paramsError &&
     !connectionMappingBlocked &&
     credentialCount > 0 &&
-    (draft.connection_type === 'subscription' || !credentialAnalysis.tooManyCredentials) &&
+    !tooManyCredentials &&
     modelValidity.invalidIndexes.size === 0
   const currentModelIDs = draft.models.map(({ id }) => id.trim()).filter(Boolean)
   const dirty = !completed && JSON.stringify(draft) !== baselineJson
@@ -473,9 +458,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     ({ status }) => status === 'pending_authorization' || status === 'exchanging',
   )
   const credentialStepState: ImportStepState =
-    (!isSubscription && credentialAnalysis.tooManyCredentials) ||
-    credentialValidation !== null ||
-    subscriptionStageError
+    tooManyCredentials || credentialValidation !== null || subscriptionStageError
       ? 'error'
       : credentialCount > 0
         ? 'ready'
@@ -499,8 +482,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
           : 'import.credentials.description',
       )
   const credentialStepSummary = (() => {
-    if (!isSubscription && credentialAnalysis.tooManyCredentials)
-      return t('import.credentials.tooMany')
+    if (tooManyCredentials) return t('import.credentials.tooMany')
     if (credentialValidation || subscriptionStageError)
       return t('import.steps.credentials.needsAttention')
     if (isSubscription && credentialCount > 0)
@@ -621,10 +603,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   useEffect(() => {
     recoveryDraftRef.current = () => {
       if (completed) return null
-      const stableDraft =
-        createOperation.getSnapshot().operation?.payload.draft ??
-        connectOperation.getSnapshot().operation?.payload.draft ??
-        appendOperation.getSnapshot().operation?.payload.draft
+      const stableDraft = createOperation.getSnapshot().operation?.payload.draft
       return stableDraft?.mode === 'new'
         ? cloneDraft(stableDraft as ImportDraft)
         : cloneDraft(draft)
@@ -879,6 +858,10 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
   async function addManualModel(): Promise<void> {
     if (payloadLocked) return
+    if (draft.models.length === 0) {
+      updateModels([createManualRow()])
+      return
+    }
     await modelEditorRef.current?.addManual()
   }
 
@@ -911,27 +894,13 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     }
   }
 
-  async function finishSuccess(
-    groupID: number,
-    kind: 'create' | 'append',
-    added: number,
-    duplicated: number,
-  ): Promise<void> {
+  async function finishSuccess(groupID: number, added: number, duplicated: number): Promise<void> {
     setCompleted(true)
     setDraft((current) => ({ ...current, credentials: '', staged_credentials: [] }))
     services.importRecovery.clear()
-    if (kind === 'create') createOperation.reset()
-    else {
-      appendOperation.reset()
-      connectOperation.reset()
-    }
+    createOperation.reset()
 
-    await applyInvalidationPlan(
-      queryClient,
-      kind === 'create'
-        ? mutationInvalidationPlans.group.create
-        : mutationInvalidationPlans.group.importCredentials(groupID),
-    )
+    await applyInvalidationPlan(queryClient, mutationInvalidationPlans.group.create)
     if (!mountedRef.current) return
     toast.show({
       message: t(
@@ -993,7 +962,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (outcome.kind === 'confirmed') {
       await finishSuccess(
         outcome.value.group_id,
-        'create',
         outcome.value.credentials_added,
         outcome.value.credentials_duplicated,
       )
@@ -1027,9 +995,11 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     }
     createOperation.reset()
     await reportSubmissionError(
-      draft.connection_type === 'subscription'
-        ? presentSubscriptionErrorKey(cause, 'import.createFailed')
-        : 'import.createFailed',
+      cause instanceof ApiError && cause.code === 'SINGLE_CREDENTIAL_REQUIRED'
+        ? 'import.credentials.tooMany'
+        : draft.connection_type === 'subscription'
+          ? presentSubscriptionErrorKey(cause, 'import.createFailed')
+          : 'import.createFailed',
     )
   }
 
@@ -1054,107 +1024,24 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     setConflict((current) => (current === displayedConflict ? null : current))
   }
 
-  async function appendToGroup(groupID: number): Promise<void> {
-    const current = createOperation.getSnapshot().operation
-    if (!current || !conflict || mutationPending) return
-    const displayedConflict = conflict
-    const stableDraft = current.payload.draft
-    createOperation.reset()
-    if (stableDraft.connection_type === 'subscription') {
-      const stageIDs = current.payload.request.staged_credential_ids ?? []
-      if (!owner.beginConnectCredentials({ groupID, stageIDs }, stableDraft)) return
-      await executeConnectOperation()
-      setConflict((current) => (current === displayedConflict ? null : current))
-      return
-    }
-    const credentials = current.payload.request.credentials ?? ''
-    if (!owner.beginImportCredentials({ groupID, credentials }, 'new', stableDraft)) {
-      return
-    }
-    await executeAppendOperation()
-    setConflict((current) => (current === displayedConflict ? null : current))
-  }
-
-  async function executeConnectOperation(): Promise<void> {
-    if (!connectOperation.getSnapshot().operation) return
-    setErrorKey('')
-    const outcome = await connectOperation.execute((operation, signal) =>
-      connectGroupCredentials(
-        apiClient,
-        operation.payload.groupID,
-        operation.payload.stageIDs,
-        operation.idempotencyKey,
-        signal,
-      ),
+  async function manageGroup(groupID: number): Promise<void> {
+    if (mutationPending || !(await unsavedChanges.confirmDiscard())) return
+    returnToEdit()
+    services.importRecovery.clear()
+    setCompleted(true)
+    await unsavedChanges.runWithoutPrompt(() =>
+      navigate({ to: `${pagePath('groups')}/${groupID}` }),
     )
-    if (!outcome) return
-    if (outcome.kind === 'confirmed') {
-      await finishSuccess(
-        outcome.value.group_id,
-        'append',
-        outcome.value.credentials_added,
-        outcome.value.credentials_duplicated,
-      )
-      return
-    }
-    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
-    const cause = connectOperation.getSnapshot().lastError
-    connectOperation.reset()
-    await reportSubmissionError(presentSubscriptionErrorKey(cause, 'import.appendFailed'))
-  }
-
-  async function executeAppendOperation(): Promise<void> {
-    if (!appendOperation.getSnapshot().operation) return
-    setErrorKey('')
-    const outcome = await appendOperation.execute(async (operation, signal) => {
-      const imported = await importGroupCredentials(
-        apiClient,
-        operation.payload.groupID,
-        { credentials: operation.payload.credentials },
-        operation.idempotencyKey,
-        signal,
-      )
-      if (imported.group_id !== operation.payload.groupID) throw new InvalidResponseError()
-      return imported
-    })
-    if (!outcome) return
-    if (outcome.kind === 'confirmed') {
-      const targetID = outcome.value.group_id
-      await finishSuccess(
-        targetID,
-        'append',
-        outcome.value.credentials_added,
-        outcome.value.credentials_duplicated,
-      )
-      return
-    }
-    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
-    const cause = appendOperation.getSnapshot().lastError
-    if (cause instanceof ApiError && cause.code === 'VALIDATION_FAILED') {
-      const validation = readCredentialValidationData(cause.data)
-      if (validation) {
-        setCredentialValidation(validation)
-        appendOperation.reset()
-        setErrorFocusToken((token) => token + 1)
-        return
-      }
-    }
-    appendOperation.reset()
-    await reportSubmissionError('import.appendFailed')
   }
 
   async function retryOperation(): Promise<void> {
-    if (connectOperation.getSnapshot().operation) await executeConnectOperation()
-    else if (appendOperation.getSnapshot().operation) await executeAppendOperation()
-    else if (createOperation.getSnapshot().operation) await executeCreateOperation()
+    if (createOperation.getSnapshot().operation) await executeCreateOperation()
   }
 
   async function abandonOperation(): Promise<void> {
     if (mutationPending || !payloadLocked) return
     if (!(await unsavedChanges.confirmDiscard()) || mutationPending) return
     createOperation.reset()
-    appendOperation.reset()
-    connectOperation.reset()
     setConflict(null)
     setServerModelConflicts([])
     setCredentialValidation(null)
@@ -1164,8 +1051,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   function returnToEdit(): void {
     if (mutationPending) return
     createOperation.reset()
-    appendOperation.reset()
-    connectOperation.reset()
+
     setConflict(null)
     setCredentialValidation(null)
     setErrorKey('')
@@ -1493,7 +1379,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                 notices={selectedChannel?.notices ?? []}
                 context="create"
                 disabled={payloadLocked}
-                entryDisabled={draftProxyMutation === undefined}
+                entryDisabled={
+                  draftProxyMutation === undefined || draft.staged_credentials.length > 0
+                }
                 hideHeader
                 compact
               />
@@ -1731,8 +1619,8 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                       <span {...stylex.props(styles.conflictHelp)}>
                         {t(
                           isSubscription
-                            ? 'import.conflict.appendHelpSubscription'
-                            : 'import.conflict.appendHelp',
+                            ? 'import.conflict.manageHelpSubscription'
+                            : 'import.conflict.manageHelp',
                         )}
                       </span>
                     </div>
@@ -1742,10 +1630,10 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                       isDisabled={mutationPending}
                       label={t(
                         isSubscription
-                          ? 'import.conflict.appendSubscription'
-                          : 'import.conflict.append',
+                          ? 'import.conflict.manageSubscription'
+                          : 'import.conflict.manage',
                       )}
-                      onClick={() => void appendToGroup(group.id)}
+                      onClick={() => void manageGroup(group.id)}
                     />
                   </div>
                 ))}

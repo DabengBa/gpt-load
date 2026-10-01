@@ -551,7 +551,7 @@ func (s *Service) persistCredentials(
 	normalized normalizedCredentials,
 ) (int, int, error) {
 	if len(normalized.candidates) > 1 {
-		return 0, 0, app_errors.ErrDuplicateCredentialIdentity
+		return 0, 0, app_errors.ErrSingleCredentialRequired
 	}
 	var existingRows []models.Credential
 	if err := tx.Where("group_id = ?", groupID).
@@ -565,7 +565,7 @@ func (s *Service) persistCredentials(
 	if len(existingRows) > 0 {
 		for _, candidate := range normalized.candidates {
 			if _, duplicate := existingByFingerprint[candidate.fingerprint]; !duplicate {
-				return 0, 0, app_errors.ErrDuplicateCredentialIdentity
+				return 0, 0, app_errors.ErrSingleCredentialRequired
 			}
 		}
 	}

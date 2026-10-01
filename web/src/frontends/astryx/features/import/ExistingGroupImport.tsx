@@ -9,6 +9,7 @@ import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/contro
 import { channelsQueryOptions, type ChannelDto } from '@shared/control/resources/channels'
 import {
   groupOptionsQueryOptions,
+  groupSummaryQueryOptions,
   importGroupCredentials,
   readCredentialValidationData,
   type CredentialValidationData,
@@ -36,8 +37,7 @@ const narrow = '@media (max-width: 860px)'
 const tiny = '@media (max-width: 640px)'
 
 /**
- * Classic features/import/ExistingGroupImport.vue — append credentials to an
- * existing api_key group. The stable operation survives mode switches and page
+ * Import the first credential into an empty API-key group. The stable operation survives mode switches and page
  * remounts; the URL carries `mode=existing&group_id=N`.
  */
 export function ExistingGroupImport({
@@ -113,6 +113,8 @@ export function ExistingGroupImport({
     : undefined
   const operationGroupID = snapshot.operation?.payload.groupID
   const targetGroupID = operationGroupID ?? routeGroupID
+  const summaryQuery = useQuery(groupSummaryQueryOptions(apiClient, targetGroupID))
+  const hasCredential = (summaryQuery.data?.credential_count ?? 0) > 0
 
   const groupsQuery = useQuery(groupOptionsQueryOptions(apiClient))
   const channelsQuery = useQuery(channelsQueryOptions(apiClient, ''))
@@ -135,12 +137,15 @@ export function ExistingGroupImport({
   const selectedGroupMissing =
     targetGroupID !== undefined && groupsQuery.data !== undefined && selectedGroup === null
 
-  const credentialAnalysis = analyzeCredentials(credentials, selectedGroup?.channel_id)
+  const credentialAnalysis = analyzeCredentials(credentials)
   const canSubmit =
     !payloadLocked &&
     !pending &&
     selectedGroup !== null &&
     selectedChannel !== null &&
+    summaryQuery.data?.credential_count === 0 &&
+    !summaryQuery.isError &&
+    !summaryQuery.isFetching &&
     credentialAnalysis.nonEmptyCount > 0 &&
     !credentialAnalysis.tooManyCredentials
   const dirty = !completed && credentials !== ''
@@ -274,7 +279,11 @@ export function ExistingGroupImport({
       if (validation) {
         setCredentialValidation(validation)
       } else {
-        setErrorKey('import.existing.importFailed')
+        setErrorKey(
+          cause instanceof ApiError && cause.code === 'SINGLE_CREDENTIAL_REQUIRED'
+            ? 'import.existing.populated'
+            : 'import.existing.importFailed',
+        )
       }
       setErrorFocusToken((token) => token + 1)
     }
@@ -414,19 +423,48 @@ export function ExistingGroupImport({
         )}
       </section>
 
-      <div {...stylex.props(styles.credentials)}>
-        <CredentialTextarea
-          value={credentials}
-          channel={selectedChannel}
-          disabled={payloadLocked}
-          showHeaderDescription={false}
-          storageDescription={t('import.existing.credentialStorageNotice')}
-          duplicateLabel={t('import.existing.batchDuplicates')}
-          showCredentialNotice={false}
-          rows={8}
-          onChange={setCredentials}
-        />
-      </div>
+      {hasCredential && selectedGroup && (
+        <div {...stylex.props(styles.credentials)}>
+          <InlineNotice tone="info">{t('import.existing.populated')}</InlineNotice>
+          <Button
+            variant="secondary"
+            size="sm"
+            label={t('import.existing.manage')}
+            href={`${pagePath('groups')}/${selectedGroup.id}`}
+          />
+        </div>
+      )}
+      {selectedGroup && summaryQuery.isPending && <div role="status">{t('group.loading')}</div>}
+      {selectedGroup && summaryQuery.isError && (
+        <div {...stylex.props(styles.queryError)}>
+          <InlineNotice tone="danger">{t('group.loadFailed')}</InlineNotice>
+          <Button
+            variant="secondary"
+            size="sm"
+            label={t('common.retry')}
+            onClick={() => void summaryQuery.refetch()}
+          />
+        </div>
+      )}
+      {!hasCredential && (
+        <div {...stylex.props(styles.credentials)}>
+          <CredentialTextarea
+            value={credentials}
+            channel={selectedChannel}
+            disabled={
+              payloadLocked ||
+              summaryQuery.data === undefined ||
+              summaryQuery.isError ||
+              summaryQuery.isFetching
+            }
+            showHeaderDescription={false}
+            storageDescription={t('import.existing.credentialStorageNotice')}
+            showCredentialNotice={false}
+            rows={8}
+            onChange={setCredentials}
+          />
+        </div>
+      )}
 
       {selectedGroup && channelsQuery.isError && channelsQuery.data === undefined && (
         <div {...stylex.props(styles.queryError)}>
@@ -450,21 +488,23 @@ export function ExistingGroupImport({
         </div>
       )}
 
-      <footer {...stylex.props(styles.actions)}>
-        <div aria-live="polite" {...stylex.props(styles.actionsSummary)}>
-          <strong {...stylex.props(styles.actionsSummaryTitle)}>{actionSummary}</strong>
-          <span {...stylex.props(styles.actionsSummaryHelp)}>
-            {t('import.existing.actionHelp')}
-          </span>
-        </div>
-        <Button
-          size="sm"
-          isLoading={pending}
-          isDisabled={!canSubmit}
-          label={t('import.existing.submit')}
-          onClick={() => void submit()}
-        />
-      </footer>
+      {!hasCredential && (
+        <footer {...stylex.props(styles.actions)}>
+          <div aria-live="polite" {...stylex.props(styles.actionsSummary)}>
+            <strong {...stylex.props(styles.actionsSummaryTitle)}>{actionSummary}</strong>
+            <span {...stylex.props(styles.actionsSummaryHelp)}>
+              {t('import.existing.actionHelp')}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            isLoading={pending}
+            isDisabled={!canSubmit}
+            label={t('import.existing.submit')}
+            onClick={() => void submit()}
+          />
+        </footer>
+      )}
       {unsavedChanges.dialog}
     </div>
   )

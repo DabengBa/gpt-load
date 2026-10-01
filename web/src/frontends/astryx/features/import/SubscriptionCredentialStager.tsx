@@ -288,8 +288,16 @@ export function SubscriptionCredentialStager({
     )
   }
 
-  async function beginAuthorization(existingPopup?: Window | null): Promise<void> {
-    if (!supportsInteractiveOAuth || disabled || entryDisabled || busyActionRef.current) {
+  async function beginAuthorization(
+    existingPopup?: Window | null,
+    replacingExistingStage = false,
+  ): Promise<void> {
+    if (
+      !supportsInteractiveOAuth ||
+      disabled ||
+      (entryDisabled && !replacingExistingStage) ||
+      busyActionRef.current
+    ) {
       existingPopup?.close()
       return
     }
@@ -421,10 +429,10 @@ export function SubscriptionCredentialStager({
   }
 
   async function restartAuthorization(stage: CredentialStage): Promise<void> {
-    if (!supportsInteractiveOAuth || disabled || entryDisabled || busyActionRef.current) return
+    if (!supportsInteractiveOAuth || disabled || busyActionRef.current) return
     const popup = openAuthorizationPopup()
     await removeStage(stage)
-    await beginAuthorization(popup)
+    await beginAuthorization(popup, true)
   }
 
   async function removeStage(stage: CredentialStage): Promise<void> {

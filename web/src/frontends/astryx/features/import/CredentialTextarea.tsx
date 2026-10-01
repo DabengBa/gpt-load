@@ -98,7 +98,7 @@ export interface CredentialTextareaProps {
   disabled?: boolean
   showHeaderDescription?: boolean
   storageDescription?: string
-  duplicateLabel?: string
+
   showCredentialNotice?: boolean
   hideHeader?: boolean
   compact?: boolean
@@ -112,7 +112,7 @@ export function CredentialTextarea({
   disabled = false,
   showHeaderDescription = true,
   storageDescription,
-  duplicateLabel,
+
   showCredentialNotice = true,
   hideHeader = false,
   compact = false,
@@ -120,7 +120,7 @@ export function CredentialTextarea({
   onChange,
 }: CredentialTextareaProps) {
   const t = useT()
-  const analysis = analyzeCredentials(value, channel?.channel_id)
+  const analysis = analyzeCredentials(value)
   const structured =
     channel !== null &&
     channel !== undefined &&
@@ -157,11 +157,13 @@ export function CredentialTextarea({
   // count already gets its own warning banner below, so it is not repeated
   // here.
   const counters = [
-    { value: analysis.nonEmptyCount, label: t('import.credentials.counters.nonEmpty') },
-    { value: analysis.emptyLineCount, label: t('import.credentials.counters.empty') },
+    {
+      value: analysis.nonEmptyCount - analysis.duplicateCount,
+      label: t('import.credentials.counters.nonEmpty'),
+    },
     {
       value: analysis.duplicateCount,
-      label: duplicateLabel ?? t('import.credentials.counters.duplicates'),
+      label: t('import.credentials.counters.duplicates'),
     },
   ].filter(({ value: count }) => count > 0)
   const hasInput = value.trim().length > 0

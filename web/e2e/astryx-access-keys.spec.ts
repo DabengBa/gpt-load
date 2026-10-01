@@ -284,6 +284,26 @@ test('applies search and status filters through the route query', async ({ page 
   expect(last?.get('status')).toBe('disabled')
 })
 
+test('clearing a specified expiration selects never expires', async ({ page }) => {
+  await mockAccessKeys(page)
+  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+
+  const drawer = await openEditDrawer(page, 'prod key')
+  const expiration = drawer.getByRole('combobox', { name: 'Expiration', exact: true })
+  await expiration.click()
+  await page.getByRole('option', { name: 'Specific time' }).click()
+  await expect(drawer.getByRole('combobox', { name: 'Expiration time', exact: true })).toBeVisible()
+
+  await expiration.click()
+  await page.getByRole('option', { name: 'Never expires' }).click()
+  await expect(
+    drawer.getByRole('combobox', { name: 'Expiration time', exact: true }),
+  ).not.toBeVisible()
+  await drawer.getByRole('textbox', { name: 'Name Required', exact: true }).fill('changed')
+  await expect(drawer.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+})
+
 test('creates an access key through the drawer', async ({ page }) => {
   const requests = await mockAccessKeys(page)
   await page.goto('/access-keys', { waitUntil: 'commit' })
