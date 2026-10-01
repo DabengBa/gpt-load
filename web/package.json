@@ -25,6 +25,7 @@
     "test:logs-route": "node --import ./scripts/register-shared-alias.mjs --experimental-strip-types --test scripts/logs-route.test.ts",
     "test:monitor-route": "node --import ./scripts/register-shared-alias.mjs --experimental-transform-types --test scripts/monitor-route.test.ts",
     "test:search-codec": "node --experimental-strip-types --test scripts/search-codec.test.ts",
+    "test:settings-route": "node --import ./scripts/register-shared-alias.mjs --experimental-strip-types --test scripts/settings-route.test.ts",
     "theme:build": "astryx theme build src/frontends/astryx/theme/gptload.theme.ts -o src/frontends/astryx/theme/gptload.theme.css",
     "theme:check": "node scripts/verify-theme-build.mjs",
     "type-check": "tsc --noEmit -p tsconfig.astryx.json && tsc --noEmit -p tsconfig.node.json",
