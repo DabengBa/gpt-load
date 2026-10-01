@@ -24,7 +24,7 @@ export interface ImportRecoveryService {
 }
 
 interface ImportRecoveryRecord {
-  version: 9
+  version: 10
   expires_at: number
   draft: ImportRecoveryDraft
 }
@@ -129,7 +129,7 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
       'params',
       'proxy',
       'name',
-      'price_multiplier',
+
       'provider_url',
       'credentials',
       'staged_credentials',
@@ -141,7 +141,6 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
     isChannelParams(value.params) &&
     isImportProxyDraft(value.proxy) &&
     typeof value.name === 'string' &&
-    typeof value.price_multiplier === 'string' &&
     typeof value.provider_url === 'string' &&
     typeof value.credentials === 'string' &&
     Array.isArray(value.staged_credentials) &&
@@ -218,35 +217,11 @@ function isImportDraft(value: unknown): value is ImportRecoveryDraft {
 
 function parseRecoveryRecord(raw: string): ImportRecoveryRecord | null {
   try {
-    let value: unknown = JSON.parse(raw)
-    if (isRecord(value) && value.version === 6 && isRecord(value.draft)) {
-      value = {
-        ...value,
-        version: 7,
-        draft:
-          value.draft.mode === 'new'
-            ? { ...value.draft, proxy: { mode: 'inherit', url: '' } }
-            : value.draft,
-      }
-    }
-    if (isRecord(value) && value.version === 7 && isRecord(value.draft)) {
-      value = {
-        ...value,
-        version: 8,
-        draft: value.draft.mode === 'new' ? { ...value.draft, price_multiplier: '1' } : value.draft,
-      }
-    }
-    if (isRecord(value) && value.version === 8 && isRecord(value.draft)) {
-      value = {
-        ...value,
-        version: 9,
-        draft: value.draft.mode === 'new' ? { ...value.draft, provider_url: '' } : value.draft,
-      }
-    }
+    const value: unknown = JSON.parse(raw)
     if (
       !isRecord(value) ||
       !hasOnlyFields(value, ['version', 'expires_at', 'draft']) ||
-      value.version !== 9 ||
+      value.version !== 10 ||
       typeof value.expires_at !== 'number' ||
       !Number.isFinite(value.expires_at) ||
       !isImportDraft(value.draft)
@@ -328,7 +303,7 @@ export function createImportRecoveryService(
     if (!deps.storage) return 'storage-unavailable'
 
     const record: ImportRecoveryRecord = {
-      version: 9,
+      version: 10,
       expires_at: deps.now() + importRecoveryTtlMs,
       draft,
     }

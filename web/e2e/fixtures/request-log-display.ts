@@ -199,6 +199,8 @@ export async function installRequestLogDisplayRoutes(
   transformRows: (
     items: readonly Record<string, unknown>[],
   ) => readonly Record<string, unknown>[] = (items) => items,
+  receipt: Record<string, unknown> | null = null,
+  principal: 'admin' | 'access_key' = 'admin',
 ): Promise<RequestLogDisplayRoutes> {
   await page.addInitScript((authKey) => {
     window.localStorage.setItem('gpt-load.auth-key', authKey)
@@ -213,7 +215,7 @@ export async function installRequestLogDisplayRoutes(
       const path = url.pathname
 
       if (path === '/api/auth/session') {
-        await route.fulfill(response({ authenticated: true, principal_type: 'admin' }))
+        await route.fulfill(response({ authenticated: true, principal_type: principal }))
         return
       }
       if (path === '/api/groups/options') {
@@ -244,7 +246,15 @@ export async function installRequestLogDisplayRoutes(
                 detailAttempt(2, 1, 'alpha', 3, 'key-a', 'terminate'),
               ]
             : []
-        await route.fulfill(response({ ...detailItem, attempts }))
+        await route.fulfill(
+          response({
+            ...detailItem,
+            attempts: attempts.map((attempt) => ({
+              ...attempt,
+              pricing_receipt: attempt.committed ? receipt : null,
+            })),
+          }),
+        )
         return
       }
 

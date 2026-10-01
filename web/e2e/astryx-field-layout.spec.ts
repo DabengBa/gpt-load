@@ -63,7 +63,7 @@ async function installFields(page: Page, theme: string) {
     const path = new URL(route.request().url()).pathname
     const base = {
       name: 'Geometry group',
-      price_multiplier: '1',
+
       channel_id: 'openai',
       connection_type: 'api_key',
       params: {},
@@ -104,6 +104,23 @@ async function installFields(page: Page, theme: string) {
   })
 }
 
+test('U004 group basic settings submit without multiplier', async ({ page }) => {
+  await installFields(page, 'light')
+  const puts: Record<string, unknown>[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && new URL(request.url()).pathname === '/api/groups/1/settings')
+      puts.push(request.postDataJSON())
+  })
+  await page.goto('/groups/1', { waitUntil: 'commit' })
+  await expect(page.getByRole('textbox', { name: '分组名称' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('textbox', { name: '价格倍率' })).toHaveCount(0)
+  await page.getByRole('textbox', { name: '分组名称' }).fill('Updated group')
+  await page.getByRole('button', { name: '保存设置', exact: true }).click()
+  await expect.poll(() => puts.length).toBe(1)
+  expect(puts[0]).toMatchObject({ name: 'Updated group' })
+  expect(puts[0]).not.toHaveProperty('price_multiplier')
+})
+
 async function expectUnclipped(locator: Locator) {
   const clipped = await locator.evaluate((root) =>
     Array.from(root.querySelectorAll('*')).some((el) => {
@@ -120,12 +137,11 @@ for (const width of [375, 1440]) {
       await page.setViewportSize({ width, height: 900 })
       await installFields(page, theme)
       await page.goto('/import', { waitUntil: 'commit' })
-      const multiplier = page.getByRole('textbox', { name: '价格倍率', exact: true })
-      await expect(multiplier).toBeVisible({ timeout: 60_000 })
+      await expect(page.getByRole('textbox', { name: '价格倍率', exact: true })).toHaveCount(0)
       const customURL = page.getByRole('switch').first()
       if (!(await customURL.isChecked())) await customURL.click()
       await page.screenshot({ path: testInfo.outputPath('import.png'), fullPage: true })
-      for (const name of ['价格倍率', '自定义上游地址', '供应商官网']) {
+      for (const name of ['自定义上游地址', '供应商官网']) {
         const input = page.getByRole('textbox', { name: new RegExp(`^${name}`) })
         await expect(input).toBeVisible()
         const geometry = await input.evaluate((input) => {

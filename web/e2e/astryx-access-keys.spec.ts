@@ -24,7 +24,7 @@ function accessKey(
     filters: { groups: [], protocols: [], models: [], allowed_cidrs: [] },
     expires_at_ms: null,
     rpm_limit: 0,
-    price_multiplier: '1',
+
     cost_limit_rules: [],
     created_at_ms: now - 86_400_000,
     updated_at_ms: now - 3_600_000,
@@ -312,6 +312,7 @@ test('creates an access key through the drawer', async ({ page }) => {
   await page.getByRole('button', { name: 'Create access key' }).first().click()
   const drawer = page.getByRole('dialog', { name: 'Create access key' })
   await expect(drawer).toBeVisible()
+  await expect(drawer.getByRole('textbox', { name: /price multiplier/i })).toHaveCount(0)
   await expect(page).toHaveURL(/[?&]action=create/)
 
   await drawer.getByRole('textbox', { name: 'Name' }).fill('e2e created')
@@ -319,6 +320,7 @@ test('creates an access key through the drawer', async ({ page }) => {
 
   await expect.poll(() => requests.posts.length).toBe(1)
   expect(requests.posts[0]?.name).toBe('e2e created')
+  expect(requests.posts[0]).not.toHaveProperty('price_multiplier')
   // Drawer closes and the collection refetches.
   await expect(drawer).not.toBeVisible()
   await expect.poll(() => requests.collectionQueries.length).toBeGreaterThan(1)

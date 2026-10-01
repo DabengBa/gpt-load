@@ -5,7 +5,7 @@ import "gpt-load/internal/usage"
 const tokensPerMillion = 1_000_000
 
 var (
-	directPriceMultiplier       = Multiplier{Numerator: 1, Denominator: 1}
+	directComponentCoefficient  = Multiplier{Numerator: 1, Denominator: 1}
 	cacheWriteOneHourMultiplier = Multiplier{Numerator: 8, Denominator: 5}
 )
 
@@ -30,30 +30,6 @@ func (table *Table) QuoteWithReceipt(
 func (table *Table) QuoteForMode(identity Identity, result usage.Result, mode Mode) Quote {
 	quote, _ := table.QuoteForModeWithReceipt(identity, result, mode)
 	return quote
-}
-
-// QuoteForModeWithMultipliers 在原计价完成后统一调整请求总费用。
-func (table *Table) QuoteForModeWithMultipliers(identity Identity, result usage.Result, mode Mode, multipliers PriceMultipliers) (Quote, *Receipt) {
-	if !multipliers.Group.Valid() || !multipliers.AccessKey.Valid() {
-		return unavailableQuote(), nil
-	}
-	quote, receipt := table.QuoteForModeWithReceipt(identity, result, mode)
-	if receipt == nil {
-		return quote, nil
-	}
-	baseTotal := receipt.TotalNanoUSD
-	if quote.State == CostStatePriced {
-		adjusted, ok := applyPriceMultipliers(quote.EstimatedCostNanoUSD, multipliers)
-		if !ok {
-			return unavailableQuote(), nil
-		}
-		quote.EstimatedCostNanoUSD = adjusted
-		receipt.TotalNanoUSD = int64(adjusted)
-	}
-	receipt.SchemaVersion = 6
-	receipt.BaseTotalNanoUSD = &baseTotal
-	receipt.PriceMultipliers = &multipliers
-	return quote, receipt
 }
 
 // QuoteForModeWithReceipt freezes the exact tier or mode schedule used. A mode
@@ -105,14 +81,14 @@ func (table *Table) QuoteForModeWithReceipt(
 		price      Price
 		multiplier Multiplier
 	}{
-		{code: "input", tokens: result.Tokens.UncachedInput, price: prices.Input, multiplier: directPriceMultiplier},
-		{code: "cache_read", tokens: result.Tokens.CacheRead, price: prices.CacheRead, multiplier: directPriceMultiplier},
-		{code: "cache_write_5m", tokens: result.Tokens.CacheWrite5M, price: prices.CacheWrite, multiplier: directPriceMultiplier},
+		{code: "input", tokens: result.Tokens.UncachedInput, price: prices.Input, multiplier: directComponentCoefficient},
+		{code: "cache_read", tokens: result.Tokens.CacheRead, price: prices.CacheRead, multiplier: directComponentCoefficient},
+		{code: "cache_write_5m", tokens: result.Tokens.CacheWrite5M, price: prices.CacheWrite, multiplier: directComponentCoefficient},
 		{code: "cache_write_1h", tokens: result.Tokens.CacheWrite1H, price: prices.CacheWrite, multiplier: cacheWriteOneHourMultiplier},
-		{code: "output", tokens: result.Tokens.Output, price: prices.Output, multiplier: directPriceMultiplier},
+		{code: "output", tokens: result.Tokens.Output, price: prices.Output, multiplier: directComponentCoefficient},
 	}
 	receipt := &Receipt{
-		SchemaVersion: 4,
+		SchemaVersion: 7,
 		Method:        ReceiptMethodUnitRateSum,
 		MethodVersion: 1,
 		Currency:      "USD",
@@ -170,7 +146,7 @@ func (table *Table) QuoteForModeWithReceipt(
 		receipt.LineItems = append(receipt.LineItems, ReceiptLine{
 			Code:       "cache_write",
 			Quantity:   result.Tokens.CacheWriteUnknown,
-			Multiplier: directPriceMultiplier,
+			Multiplier: directComponentCoefficient,
 			State:      ReceiptLineUnpriced,
 		})
 	}

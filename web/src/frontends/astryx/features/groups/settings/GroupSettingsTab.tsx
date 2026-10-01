@@ -24,7 +24,7 @@ import {
 } from '@shared/control/resources/groups'
 import { RequestCancelledError } from '@shared/http/errors'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
-import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
+
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useStableLoading } from '../../../app/collection-loading'
@@ -193,7 +193,6 @@ export function GroupSettingsTab({
   const valid =
     !nameError &&
     Object.keys(paramErrors).length === 0 &&
-    isValidPriceMultiplier(draft?.price_multiplier ?? '') &&
     timeoutValid &&
     policyCountsValid &&
     headerRulesValid &&
@@ -986,7 +985,7 @@ export function GroupSettingsTab({
                 params={draft.params}
                 name={draft.name}
                 providerUrl={draft.provider_url}
-                priceMultiplier={draft.price_multiplier}
+
                 enabled={saved.enabled}
                 enabledPending={enabledPending}
                 pending={mutationPending}
@@ -1003,11 +1002,7 @@ export function GroupSettingsTab({
                 onProviderUrlChange={(value) =>
                   setDraft((current) => (current ? { ...current, provider_url: value } : current))
                 }
-                onPriceMultiplierChange={(value) =>
-                  setDraft((current) =>
-                    current ? { ...current, price_multiplier: value } : current,
-                  )
-                }
+
                 onSetEnabled={(value) => void setGroupEnabled(value)}
               />
               {unified && advancedTarget

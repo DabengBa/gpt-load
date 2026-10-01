@@ -24,13 +24,12 @@ type accessKeyFilterDigestBody struct {
 }
 
 type accessKeyCreateDigestBody struct {
-	PriceMultiplier string                          `json:"price_multiplier,omitempty"`
-	Name            string                          `json:"name"`
-	Status          *state.AccessKeyStatus          `json:"status,omitempty"`
-	Filters         accessKeyFilterDigestBody       `json:"filters"`
-	RPMLimit        int64                           `json:"rpm_limit"`
-	CostLimitRules  []AccessKeyCostLimitRuleRequest `json:"cost_limit_rules,omitempty"`
-	ExpiresAtMS     *int64                          `json:"expires_at_ms,omitempty"`
+	Name           string                          `json:"name"`
+	Status         *state.AccessKeyStatus          `json:"status,omitempty"`
+	Filters        accessKeyFilterDigestBody       `json:"filters"`
+	RPMLimit       int64                           `json:"rpm_limit"`
+	CostLimitRules []AccessKeyCostLimitRuleRequest `json:"cost_limit_rules,omitempty"`
+	ExpiresAtMS    *int64                          `json:"expires_at_ms,omitempty"`
 }
 
 func (s *Service) CreateAccessKeyIdempotent(
@@ -47,8 +46,8 @@ func (s *Service) CreateAccessKeyIdempotent(
 		digestStatus = &normalized.status
 	}
 	canonicalBody, err := canonicalIdempotencyBody(accessKeyCreateDigestBody{
-		PriceMultiplier: priceMultiplierDigest(normalized.priceMultiplier),
-		Name:            normalized.name, Status: digestStatus,
+
+		Name: normalized.name, Status: digestStatus,
 		Filters:        canonicalAccessKeyFilterSet(normalized.filters),
 		RPMLimit:       normalized.rpmLimit,
 		CostLimitRules: costLimitRuleRequestsForDigest(normalized.costLimitRules),
@@ -114,9 +113,7 @@ func (s *Service) CreateAccessKeyIdempotent(
 	if err := json.Unmarshal(operationResult.CanonicalResult, &metadata); err != nil {
 		return AccessKeyCreateResult{}, app_errors.ErrInternalServer
 	}
-	if metadata.PriceMultiplier == "" {
-		metadata.PriceMultiplier = "1"
-	}
+
 	if metadata.CostLimitRules == nil {
 		// Pre-0002 idempotency results did not carry this additive field. Preserve
 		// replay compatibility while keeping the current wire contract array-shaped.

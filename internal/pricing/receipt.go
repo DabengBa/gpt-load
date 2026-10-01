@@ -6,28 +6,18 @@ import (
 	"fmt"
 )
 
-// UnmarshalJSON 区分缺省字段与显式 null，并保持历史版本的字段边界。
+// UnmarshalJSON accepts only the current schema and rejects unknown fields.
 func (receipt *Receipt) UnmarshalJSON(data []byte) error {
-	var header struct {
-		SchemaVersion    int             `json:"schema_version"`
-		PriceMultipliers json.RawMessage `json:"price_multipliers"`
-		BaseTotalNanoUSD json.RawMessage `json:"base_total_nano_usd"`
-	}
-	if err := json.Unmarshal(data, &header); err != nil {
-		return err
-	}
-	if len(header.PriceMultipliers) > 0 && (header.SchemaVersion < 5 || bytes.Equal(bytes.TrimSpace(header.PriceMultipliers), []byte("null"))) {
-		return fmt.Errorf("price multipliers require a non-null receipt field from v5 onward")
-	}
-	if len(header.BaseTotalNanoUSD) > 0 && (header.SchemaVersion < 6 || bytes.Equal(bytes.TrimSpace(header.BaseTotalNanoUSD), []byte("null"))) {
-		return fmt.Errorf("base total requires a non-null receipt field from v6 onward")
-	}
+
 	type receiptJSON Receipt
 	var decoded receiptJSON
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&decoded); err != nil {
 		return err
+	}
+	if decoded.SchemaVersion != 7 {
+		return fmt.Errorf("unsupported pricing receipt schema version")
 	}
 	*receipt = Receipt(decoded)
 	return nil
@@ -36,37 +26,14 @@ func (receipt *Receipt) UnmarshalJSON(data []byte) error {
 // ValidateReceipt verifies a persisted request-time receipt without consulting
 // the mutable current pricing table.
 func ValidateReceipt(receipt Receipt) error {
-	if (receipt.SchemaVersion != 1 && receipt.SchemaVersion != 2 &&
-		receipt.SchemaVersion != 3 && receipt.SchemaVersion != 4 && receipt.SchemaVersion != 5 && receipt.SchemaVersion != 6) ||
+	if receipt.SchemaVersion != 7 ||
 		receipt.Method != ReceiptMethodUnitRateSum || receipt.MethodVersion != 1 || receipt.Currency != "USD" {
 		return fmt.Errorf("unsupported pricing receipt contract")
 	}
-	priceMultipliers := PriceMultipliers{Group: DefaultPriceMultiplier, AccessKey: DefaultPriceMultiplier}
-	if receipt.SchemaVersion < 5 {
-		if receipt.PriceMultipliers != nil {
-			return fmt.Errorf("historical pricing receipt must not contain price multipliers")
-		}
-	} else {
-		if receipt.PriceMultipliers == nil || !receipt.PriceMultipliers.Group.Valid() || !receipt.PriceMultipliers.AccessKey.Valid() {
-			return fmt.Errorf("invalid pricing receipt price multipliers")
-		}
-		priceMultipliers = *receipt.PriceMultipliers
-	}
-	if receipt.SchemaVersion < 6 {
-		if receipt.BaseTotalNanoUSD != nil {
-			return fmt.Errorf("historical pricing receipt must not contain a base total")
-		}
-	} else if receipt.BaseTotalNanoUSD == nil || *receipt.BaseTotalNanoUSD < 0 {
-		return fmt.Errorf("invalid pricing receipt base total")
-	}
-	if receipt.SchemaVersion < 4 {
-		if receipt.PricingMode != "" {
-			return fmt.Errorf("historical pricing receipt must not contain a pricing mode")
-		}
-	} else if !receipt.PricingMode.Valid() {
+	if !receipt.PricingMode.Valid() {
 		return fmt.Errorf("invalid pricing receipt mode")
 	}
-	if err := validateReceiptRule(receipt.Rule, receipt.SchemaVersion); err != nil {
+	if err := validateIdentity(Identity{ChannelID: receipt.Rule.ChannelID, ModelID: receipt.Rule.ModelID}); err != nil {
 		return fmt.Errorf("invalid pricing receipt rule: %w", err)
 	}
 	if receipt.ContextThresholdTokens != nil && *receipt.ContextThresholdTokens < 0 {
@@ -76,25 +43,17 @@ func ValidateReceipt(receipt Receipt) error {
 		return fmt.Errorf("invalid pricing receipt total")
 	}
 
-	total, err := validateReceiptLines(receipt, priceMultipliers)
+	total, err := validateReceiptLines(receipt)
 	if err != nil {
 		return err
 	}
-	if receipt.SchemaVersion == 6 {
-		if int64(total) != *receipt.BaseTotalNanoUSD {
-			return fmt.Errorf("pricing receipt base total mismatch")
-		}
-		adjusted, ok := applyPriceMultipliers(total, priceMultipliers)
-		if !ok || int64(adjusted) != receipt.TotalNanoUSD {
-			return fmt.Errorf("pricing receipt adjusted total mismatch")
-		}
-	} else if int64(total) != receipt.TotalNanoUSD {
+	if int64(total) != receipt.TotalNanoUSD {
 		return fmt.Errorf("pricing receipt total mismatch")
 	}
 	return nil
 }
 
-func validateReceiptLines(receipt Receipt, priceMultipliers PriceMultipliers) (NanoUSD, error) {
+func validateReceiptLines(receipt Receipt) (NanoUSD, error) {
 	allowed := map[string]struct{}{
 		"input": {}, "cache_read": {}, "cache_write_5m": {},
 		"cache_write_1h": {}, "cache_write": {}, "output": {},
@@ -124,9 +83,7 @@ func validateReceiptLines(receipt Receipt, priceMultipliers PriceMultipliers) (N
 				NanoUSD(*line.RateNanoUSDPerMillion),
 				line.Multiplier,
 			)
-			if receipt.SchemaVersion == 5 {
-				amount, ok = quoteComponentWithPriceMultipliers(line.Quantity, NanoUSD(*line.RateNanoUSDPerMillion), line.Multiplier, priceMultipliers)
-			}
+
 			if !ok || int64(amount) != *line.AmountNanoUSD {
 				return 0, fmt.Errorf("pricing receipt line amount mismatch")
 			}

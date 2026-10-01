@@ -6,7 +6,7 @@ const WEB_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
 const baseSettings = {
   name: 'Reasoning group',
-  price_multiplier: '1',
+
   channel_id: 'openai',
   connection_type: 'api_key',
   params: {},

@@ -70,7 +70,7 @@ func TestQuoteForModePrioritizesContextTierThenFastThenStandard(t *testing.T) {
 
 	tierQuote, tierReceipt := table.QuoteForModeWithReceipt(identity, longContextResult, ModeFast)
 	if tierQuote.EstimatedCostNanoUSD != 6 || tierReceipt == nil ||
-		tierReceipt.SchemaVersion != 4 || tierReceipt.PricingMode != ModeStandard ||
+		tierReceipt.SchemaVersion != 7 || tierReceipt.PricingMode != ModeStandard ||
 		tierReceipt.ContextThresholdTokens == nil ||
 		*tierReceipt.ContextThresholdTokens != 2_000_000 {
 		t.Fatalf("tier quote/receipt = %#v / %#v", tierQuote, tierReceipt)
@@ -317,7 +317,7 @@ func TestQuoteWithReceiptFreezesExactTieredCalculation(t *testing.T) {
 	}) {
 		t.Fatalf("QuoteWithReceipt() quote = %#v", quote)
 	}
-	if receipt == nil || receipt.SchemaVersion != 4 || receipt.Method != "unit_rate_sum" ||
+	if receipt == nil || receipt.SchemaVersion != 7 || receipt.Method != "unit_rate_sum" ||
 		receipt.MethodVersion != 1 || receipt.Currency != "USD" ||
 		receipt.PricingMode != ModeStandard ||
 		receipt.Rule != (ReceiptRule{ChannelID: identity.ChannelID, ModelID: identity.ModelID}) || receipt.ContextThresholdTokens == nil ||

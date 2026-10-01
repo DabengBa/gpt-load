@@ -704,7 +704,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0006_error_decision",
 		"0007_access_key_lifecycle",
 		"0008_remove_inject_usage_options",
-		"0009_price_multipliers",
+
 		"0010_single_credential_per_group",
 		"0011_usage_latency",
 		"0012_debug_captures",

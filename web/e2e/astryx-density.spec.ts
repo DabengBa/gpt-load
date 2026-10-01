@@ -118,7 +118,7 @@ test('compact table row height on the groups collection', async ({ page }) => {
         items: [1, 2, 3].map((id) => ({
           id,
           name: `Group ${id}`,
-          price_multiplier: '1',
+
           channel_id: 'openai',
           connection_type: 'api_key',
           params: {},

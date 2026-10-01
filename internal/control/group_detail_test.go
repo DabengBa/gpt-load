@@ -79,7 +79,7 @@ func TestGetGroupSummaryUsesCollectionServiceStatusAndOnlyReturnsHeaderCounts(t 
 			}
 			wantFields := map[string]struct{}{
 				"id": {}, "name": {}, "channel_id": {}, "params": {}, "service_status": {}, "service_status_reason": {},
-				"connection_type": {}, "credential_count": {}, "model_count": {}, "price_multiplier": {}, "provider_url": {},
+				"connection_type": {}, "credential_count": {}, "model_count": {}, "provider_url": {},
 			}
 			for name := range fields {
 				if _, exists := wantFields[name]; !exists {
@@ -91,9 +91,7 @@ func TestGetGroupSummaryUsesCollectionServiceStatusAndOnlyReturnsHeaderCounts(t 
 					t.Fatalf("summary is missing expected field %q: %s", name, encoded)
 				}
 			}
-			if string(fields["price_multiplier"]) != `"1"` {
-				t.Fatalf("default price multiplier = %s, want string 1", fields["price_multiplier"])
-			}
+
 			for _, forbidden := range []string{
 				"models", "config", "effective_config", "enabled", "weight_manual",
 			} {

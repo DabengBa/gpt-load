@@ -18,14 +18,13 @@ import (
 	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/utils"
-	"gpt-load/internal/pricing"
+
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage/models"
 )
 
 type GroupCreateRequest struct {
-	PriceMultiplier     optionalField[string]               `json:"price_multiplier"`
 	Name                *string                             `json:"name"`
 	ChannelID           channel.ID                          `json:"channel_id"`
 	ConnectionType      models.ConnectionType               `json:"connection_type"`
@@ -55,7 +54,6 @@ type SameTargetConflictData struct {
 }
 
 type normalizedGroupCreate struct {
-	priceMultiplier     pricing.PriceMultiplier
 	channelID           channel.ID
 	connectionType      models.ConnectionType
 	params              models.JSON
@@ -201,16 +199,16 @@ func (s *Service) validateGroupCreateTarget(tx *gorm.DB, normalized normalizedGr
 
 func buildCreatedGroup(normalized normalizedGroupCreate, name string, encodedModels []byte) models.Group {
 	return models.Group{
-		PriceMultiplierMicros: priceMultiplierStorage(normalized.priceMultiplier),
-		Name:                  name,
-		ChannelID:             string(normalized.channelID),
-		ConnectionType:        normalized.connectionType,
-		Params:                append(models.JSON(nil), normalized.params...),
-		ProviderURL:           normalized.providerURL,
-		Models:                models.JSON(encodedModels),
-		Overrides:             normalized.encodedOverrides,
-		ProxyConfig:           normalized.proxyConfig,
-		Enabled:               true,
+
+		Name:           name,
+		ChannelID:      string(normalized.channelID),
+		ConnectionType: normalized.connectionType,
+		Params:         append(models.JSON(nil), normalized.params...),
+		ProviderURL:    normalized.providerURL,
+		Models:         models.JSON(encodedModels),
+		Overrides:      normalized.encodedOverrides,
+		ProxyConfig:    normalized.proxyConfig,
+		Enabled:        true,
 	}
 }
 
@@ -241,10 +239,7 @@ func (s *Service) normalizeGroupCreate(
 	if s == nil || s.channelRegistry == nil || request.ChannelID == "" {
 		return normalizedGroupCreate{}, app_errors.ErrValidation
 	}
-	priceMultiplier, err := normalizePriceMultiplier(request.PriceMultiplier)
-	if err != nil {
-		return normalizedGroupCreate{}, err
-	}
+
 	connectionType, err := s.resolveChannelConnectionType(request.ChannelID, request.ConnectionType)
 	if err != nil {
 		return normalizedGroupCreate{}, app_errors.ErrValidation
@@ -345,7 +340,7 @@ func (s *Service) normalizeGroupCreate(
 		GlobalProxy:      globalProxy,
 		EnvironmentProxy: s.environmentProxy,
 		Groups: []state.GroupConfig{{
-			ID: 1, Name: "candidate", ChannelID: request.ChannelID, PriceMultiplier: &priceMultiplier,
+			ID: 1, Name: "candidate", ChannelID: request.ChannelID,
 			ConnectionType: string(connectionType), Params: canonicalParams,
 			Models: runtimeModels, Settings: config.Settings{}, Proxy: proxy, Enabled: true,
 		}},
@@ -364,7 +359,7 @@ func (s *Service) normalizeGroupCreate(
 		defaultName = hostname
 	}
 	return normalizedGroupCreate{
-		priceMultiplier:     priceMultiplier,
+
 		channelID:           request.ChannelID,
 		connectionType:      connectionType,
 		params:              models.JSON(canonicalParams),

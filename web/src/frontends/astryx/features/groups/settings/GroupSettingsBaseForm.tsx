@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 
 import type { ChannelParamsDto } from '@shared/control/types'
 import type { ChannelDto, ChannelFieldDto } from '@shared/control/resources/channels'
-import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
+
 import { useT } from '../../../app/i18n'
 import { ChannelPresetPicker } from '../../import/ChannelPresetPicker'
 
@@ -20,7 +20,7 @@ export function GroupSettingsBaseForm({
   params,
   name,
   providerUrl,
-  priceMultiplier,
+
   enabled,
   enabledPending = false,
   pending,
@@ -36,7 +36,7 @@ export function GroupSettingsBaseForm({
   onChannelsRetry,
   onNameChange,
   onProviderUrlChange,
-  onPriceMultiplierChange,
+
   onSetEnabled,
 }: {
   section: 'general' | 'routing'
@@ -49,7 +49,7 @@ export function GroupSettingsBaseForm({
   params: ChannelParamsDto
   name: string
   providerUrl: string | null
-  priceMultiplier: string
+
   enabled: boolean
   enabledPending?: boolean
   pending: boolean
@@ -65,7 +65,7 @@ export function GroupSettingsBaseForm({
   onChannelsRetry(): void
   onNameChange(value: string): void
   onProviderUrlChange(value: string): void
-  onPriceMultiplierChange(value: string): void
+
   onSetEnabled(value: boolean): void
 }) {
   const t = useT()
@@ -182,27 +182,7 @@ export function GroupSettingsBaseForm({
             onChange={onNameChange}
           />
         </label>
-        <label {...stylex.props(styles.field)}>
-          <span {...stylex.props(styles.fieldLabel)}>{t('common.priceMultiplier.label')}</span>
-          <TextInput
-            label={t('common.priceMultiplier.label')}
-            isLabelHidden
-            value={priceMultiplier}
-            isDisabled={pending}
-            status={
-              !isValidPriceMultiplier(priceMultiplier)
-                ? { type: 'error', message: t('common.priceMultiplier.invalid') }
-                : undefined
-            }
-            description={
-              isValidPriceMultiplier(priceMultiplier)
-                ? t('common.priceMultiplier.groupHelp')
-                : undefined
-            }
-            onChange={onPriceMultiplierChange}
-            xstyle={styles.mono}
-          />
-        </label>
+
         {paramFields.map((field) => {
           const optionalBaseURL = isOptionalBaseURL(field)
           const error = paramErrors[field.key]

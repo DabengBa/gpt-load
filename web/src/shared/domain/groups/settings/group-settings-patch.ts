@@ -10,7 +10,6 @@ import type {
   GroupSettingsUpdateRequest,
   HeaderRulesDto,
 } from '@shared/control/resources/groups'
-import { normalizePriceMultiplier } from '@shared/lib/price-multiplier'
 
 export type GroupTimeoutKey = 'first_byte_timeout' | 'request_timeout' | 'stream_idle_timeout'
 export type GroupPolicyCountKey = 'blacklist_threshold'
@@ -22,7 +21,7 @@ export interface GroupSettingsDraft {
   name: string
   provider_url: string | null
   enabled: boolean
-  price_multiplier: string
+
   overrides: GroupRuntimeConfigDto
 }
 
@@ -201,8 +200,7 @@ export function buildGroupSettingsPatch(
   const providerURL = draft.provider_url?.trim() || null
   if (providerURL !== base.provider_url) patch.provider_url = providerURL
   if (draft.enabled !== base.enabled) patch.enabled = draft.enabled
-  const priceMultiplier = normalizePriceMultiplier(draft.price_multiplier)
-  if (priceMultiplier !== base.price_multiplier) patch.price_multiplier = priceMultiplier
+
   if (JSON.stringify(overrides) !== JSON.stringify(normalizeOverrides(base.overrides))) {
     patch.overrides = overrides
   }

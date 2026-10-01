@@ -46,6 +46,13 @@ ssh vps-kl 'ls -t /www/server/panel/data/compose/godoxy/logs/ | head'   # 轮转
 
 ## 发布
 
+**移除可配置价格倍率的版本不能直接按原库升级处理。** 发布前必须单独决定并完成
+schema / migration ledger（含已退役的 `0009_price_multipliers`）、旧 receipt 与
+idempotency 历史三项准备，详见
+[冻结模型计价与部署边界](../.docs/tech/frozen-model-pricing.md)。应用只接受 v7 receipt，
+不提供旧数据迁移、兼容层或自动清理；下面的通用发布流程不替代这些准备，也不授权
+删除历史数据。累计费用与已配置限额默认保留，不默认重置限额或重算历史费用。
+
 ```bash
 scripts/deploy.sh            # 在本地执行，默认发布 dev
 scripts/deploy.sh <分支>      # 发布其它已推送分支

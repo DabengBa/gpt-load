@@ -16,7 +16,7 @@ import (
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/parameteroverride"
 	"gpt-load/internal/platform/config"
-	"gpt-load/internal/pricing"
+
 	"gpt-load/internal/protocol"
 )
 
@@ -33,16 +33,15 @@ type CompileInput struct {
 }
 
 type GroupConfig struct {
-	PriceMultiplier *pricing.PriceMultiplier
-	ID              uint
-	Name            string
-	ChannelID       channel.ID
-	ConnectionType  string
-	Params          json.RawMessage
-	Models          []ModelConfig
-	Settings        config.Settings
-	Enabled         bool
-	Proxy           *outboundproxy.Config
+	ID             uint
+	Name           string
+	ChannelID      channel.ID
+	ConnectionType string
+	Params         json.RawMessage
+	Models         []ModelConfig
+	Settings       config.Settings
+	Enabled        bool
+	Proxy          *outboundproxy.Config
 }
 
 // CredentialConfig contains only non-secret credential metadata required to
@@ -71,7 +70,6 @@ type ModelConfig struct {
 }
 
 type AccessKeyConfig struct {
-	PriceMultiplier  *pricing.PriceMultiplier
 	ID               uint
 	Name             string
 	KeyHash          string
@@ -140,7 +138,6 @@ func (rules HeaderRules) ConfiguredNames() []string {
 }
 
 type GroupView struct {
-	PriceMultiplier                       pricing.PriceMultiplier
 	ID                                    uint
 	Name                                  string
 	ChannelID                             channel.ID
@@ -167,7 +164,6 @@ type GroupCatalogView struct {
 }
 
 type AccessKeyView struct {
-	PriceMultiplier  pricing.PriceMultiplier
 	ID               uint
 	Name             string
 	KeySuffix        string
@@ -236,7 +232,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			return nil, fmt.Errorf("compile group %d proxy: %w", group.ID, err)
 		}
 		view := GroupView{
-			PriceMultiplier:                       resolvePriceMultiplier(group.PriceMultiplier),
+
 			ID:                                    group.ID,
 			Name:                                  group.Name,
 			Models:                                cloneModelConfigs(group.Models),
@@ -312,8 +308,8 @@ func newAccessKeyView(input AccessKeyConfig) AccessKeyView {
 		return rules[i].ID < rules[j].ID
 	})
 	return AccessKeyView{
-		PriceMultiplier: resolvePriceMultiplier(input.PriceMultiplier),
-		ID:              input.ID, Name: input.Name, Status: input.Status,
+
+		ID: input.ID, Name: input.Name, Status: input.Status,
 		KeySuffix:        input.KeySuffix,
 		Filters:          cloneFilterSet(input.Filters),
 		ExpiresAtMS:      cloneAccessKeyExpiry(input.ExpiresAtMS),
@@ -533,9 +529,7 @@ func validateCompileInput(input CompileInput) error {
 			return fmt.Errorf("duplicate group id %d", group.ID)
 		}
 		groupIDs[group.ID] = struct{}{}
-		if group.PriceMultiplier != nil && !group.PriceMultiplier.Valid() {
-			return fmt.Errorf("group %d price multiplier is invalid", group.ID)
-		}
+
 		if input.ChannelRegistry == nil {
 			return fmt.Errorf("group %d channel registry is required", group.ID)
 		}
@@ -606,9 +600,7 @@ func validateCompileAccessKeys(accessKeys []AccessKeyConfig) error {
 			return fmt.Errorf("duplicate access key id %d", accessKey.ID)
 		}
 		accessKeyIDs[accessKey.ID] = struct{}{}
-		if accessKey.PriceMultiplier != nil && !accessKey.PriceMultiplier.Valid() {
-			return fmt.Errorf("access key %d price multiplier is invalid", accessKey.ID)
-		}
+
 		if accessKey.RPMLimit < 0 {
 			return fmt.Errorf("access key %d rpm limit must not be negative", accessKey.ID)
 		}
@@ -711,11 +703,4 @@ func cloneAllowedPeerCIDRs(source []netip.Prefix) []netip.Prefix {
 		return nil
 	}
 	return append(make([]netip.Prefix, 0, len(source)), source...)
-}
-
-func resolvePriceMultiplier(value *pricing.PriceMultiplier) pricing.PriceMultiplier {
-	if value == nil {
-		return pricing.DefaultPriceMultiplier
-	}
-	return *value
 }

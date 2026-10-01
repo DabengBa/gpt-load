@@ -118,7 +118,7 @@ const GROUP_42 = {
   summary: {
     id: 42,
     name: 'Imported Group',
-    price_multiplier: '1',
+
     channel_id: 'openai',
     connection_type: 'api_key',
     params: {},
@@ -130,7 +130,7 @@ const GROUP_42 = {
   },
   settings: {
     name: 'Imported Group',
-    price_multiplier: '1',
+
     channel_id: 'openai',
     connection_type: 'api_key',
     params: {},

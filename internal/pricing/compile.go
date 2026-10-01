@@ -162,62 +162,6 @@ func validateModelID(modelID string) error {
 	return nil
 }
 
-func validateReceiptRule(rule ReceiptRule, schemaVersion int) error {
-	switch schemaVersion {
-	case 1:
-		if err := validateModelID(rule.ModelID); err != nil {
-			return err
-		}
-		if rule.ChannelID != "" {
-			return fmt.Errorf("legacy v1 receipt must not contain a channel ID")
-		}
-		if rule.ScopeKey == "" {
-			return fmt.Errorf("legacy receipt scope key is required")
-		}
-		return validateScopeKey(rule.ScopeKey)
-	case 2:
-		if err := validateModelID(rule.ModelID); err != nil {
-			return err
-		}
-		if rule.ScopeKey != "" {
-			return fmt.Errorf("global receipt must not contain a scope key")
-		}
-		if rule.ChannelID != "" {
-			return fmt.Errorf("global receipt must not contain a channel ID")
-		}
-		return nil
-	case 3, 4, 5, 6:
-		if rule.ScopeKey != "" {
-			return fmt.Errorf("channel receipt must not contain a scope key")
-		}
-		return validateIdentity(Identity{ChannelID: rule.ChannelID, ModelID: rule.ModelID})
-	default:
-		return fmt.Errorf("unsupported receipt rule schema version")
-	}
-}
-
-func validateScopeKey(scopeKey string) error {
-	if providerID, ok := strings.CutPrefix(scopeKey, "provider:"); ok {
-		canonical, err := ProviderScopeKey(providerID)
-		if err != nil || canonical != scopeKey {
-			return fmt.Errorf("invalid provider scope key %q", scopeKey)
-		}
-		return nil
-	}
-	if groupText, ok := strings.CutPrefix(scopeKey, "group:"); ok {
-		parsed, err := strconv.ParseUint(groupText, 10, strconv.IntSize)
-		if err != nil {
-			return fmt.Errorf("invalid group scope key %q", scopeKey)
-		}
-		canonical, err := GroupScopeKey(uint(parsed))
-		if err != nil || canonical != scopeKey {
-			return fmt.Errorf("invalid group scope key %q", scopeKey)
-		}
-		return nil
-	}
-	return fmt.Errorf("invalid pricing scope key %q", scopeKey)
-}
-
 func validatePrices(prices Prices) error {
 	for _, price := range [...]Price{prices.Input, prices.Output, prices.CacheRead, prices.CacheWrite} {
 		if price.NanoUSDPerMillion < 0 {
