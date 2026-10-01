@@ -198,7 +198,7 @@ const styles = stylex.create({
   },
   segmentSuccess: { backgroundColor: 'var(--color-success)' },
   segmentDanger: { backgroundColor: 'var(--color-danger)' },
-  segmentNeutral: { backgroundColor: 'var(--color-neutral)' },
+  segmentNeutral: { backgroundColor: 'var(--color-neutral-fg)' },
   summaryFilters: {
     display: 'flex',
     gap: 'var(--space-4)',
@@ -224,7 +224,7 @@ const styles = stylex.create({
     width: 8,
     height: 8,
     borderRadius: 999,
-    backgroundColor: 'var(--color-neutral)',
+    backgroundColor: 'var(--color-neutral-fg)',
   },
   dotSuccess: { backgroundColor: 'var(--color-success)' },
   dotDanger: { backgroundColor: 'var(--color-danger)' },

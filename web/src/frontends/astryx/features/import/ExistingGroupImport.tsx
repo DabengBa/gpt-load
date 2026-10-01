@@ -562,7 +562,7 @@ const styles = stylex.create({
     gap: '6px',
     borderRadius: '999px',
     backgroundColor: 'var(--color-neutral-bg)',
-    color: 'var(--color-neutral)',
+    color: 'var(--color-neutral-fg)',
     paddingBlock: '2px',
     paddingInline: 'var(--space-2)',
     fontSize: 'var(--text-label-xs)',

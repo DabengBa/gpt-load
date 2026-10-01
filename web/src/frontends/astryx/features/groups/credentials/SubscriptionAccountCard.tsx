@@ -1393,7 +1393,7 @@ const styles = stylex.create({
     gap: '5px',
     borderRadius: 'var(--radius-tag)',
     backgroundColor: 'var(--color-neutral-bg)',
-    color: 'var(--color-neutral)',
+    color: 'var(--color-neutral-fg)',
     paddingTop: '3px',
     paddingBottom: '3px',
     paddingLeft: '8px',
@@ -1881,7 +1881,7 @@ const quotaToneStyles: Record<'success' | 'warning' | 'danger' | 'unknown', CSSP
 const planLevelStyles = stylex.create({
   free: {
     backgroundColor: 'var(--color-neutral-bg)',
-    color: 'var(--color-neutral)',
+    color: 'var(--color-neutral-fg)',
   },
   standard: {
     backgroundColor: 'var(--color-success-bg)',

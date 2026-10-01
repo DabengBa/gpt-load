@@ -82,7 +82,7 @@ const styles = stylex.create({
       height: '7px',
       flex: 'none',
       borderRadius: '50%',
-      backgroundColor: 'var(--color-neutral)',
+      backgroundColor: 'var(--color-neutral-fg)',
       content: '""',
     },
   },

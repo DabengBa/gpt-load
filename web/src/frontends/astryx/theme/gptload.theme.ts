@@ -59,18 +59,20 @@ export default defineTheme({
     '--color-on-success': ['#ffffff', '#0d1f14'],
     '--color-warning': ['#8f6212', '#d5a341'],
     '--color-warning-muted': ['#f8f0dd', '#241d10'],
-    '--color-on-warning': ['#ffffff', '#241d10'],
+    '--color-on-warning': '#241d10',
     '--color-error': ['#d03b3b', '#e66767'],
     '--color-error-muted': ['#fbebe9', '#2a1613'],
     '--color-on-error': ['#ffffff', '#2a1613'],
-    '--color-neutral': ['#5a5f66', '#9aa0a8'],
+    // Astryx interaction wash (segmented track, secondary button, nav hover,
+    // scrollbar) — NOT classic's opaque neutral status color; that lives in
+    // tokens.css as --color-neutral-fg/--color-neutral-bg.
+    '--color-neutral': ['#161c2212', '#ffffff1a'],
 
     // Feedback — classic overlay / interactive hover / skeleton mix / tag track
     '--color-overlay': ['rgba(20, 22, 24, 0.34)', 'rgba(0, 0, 0, 0.68)'],
-    '--color-tint-hover': [
-      'color-mix(in srgb, #f5f4f1 58%, transparent)',
-      'color-mix(in srgb, #12151a 58%, transparent)',
-    ],
+    // Solid tint mixed via color-mix() into hover borders/fills (checkbox,
+    // radio, switch) — must be opaque; a translucent value fades the result.
+    '--color-tint-hover': ['#161c22', '#ffffff'],
     '--color-skeleton': ['#f2f1ee', '#15181e'],
     '--color-track': ['#eceded', '#1c1e21'],
 

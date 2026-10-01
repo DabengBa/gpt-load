@@ -232,7 +232,7 @@
     --color-background-muted: light-dark(#f5f4f1, #12151a);
     --color-accent: light-dark(#006598, #72D1FF);
     --color-accent-muted: light-dark(#e8eff4, #142633);
-    --color-neutral: light-dark(#5a5f66, #9aa0a8);
+    --color-neutral: light-dark(#161c2212, #ffffff1a);
     --color-overlay: light-dark(rgba(20, 22, 24, 0.34), rgba(0, 0, 0, 0.68));
     --color-overlay-hover: light-dark(#161C220D, #FFFFFF0D);
     --color-overlay-pressed: light-dark(#161C221A, #FFFFFF1A);
@@ -245,7 +245,7 @@
     --color-on-accent: light-dark(#ffffff, #0c1a22);
     --color-on-success: light-dark(#ffffff, #0d1f14);
     --color-on-error: light-dark(#ffffff, #2a1613);
-    --color-on-warning: light-dark(#ffffff, #241d10);
+    --color-on-warning: #241d10;
     --color-icon-accent: var(--color-accent);
     --color-icon-primary: light-dark(#161C22, #DAE4EB);
     --color-icon-secondary: light-dark(#3C4853, #9DADB8);
@@ -260,7 +260,7 @@
     --color-border-emphasized: light-dark(#cfcfc9, #333a43);
     --color-skeleton: light-dark(#f2f1ee, #15181e);
     --color-shadow: light-dark(#0000001A, #0000004D);
-    --color-tint-hover: light-dark(color-mix(in srgb, #f5f4f1 58%, transparent), color-mix(in srgb, #12151a 58%, transparent));
+    --color-tint-hover: light-dark(#161c22, #ffffff);
     --color-background-red: light-dark(#ffc4be, #5b2b28);
     --color-border-red: light-dark(#ffaea7, #fa6762);
     --color-icon-red: light-dark(#76000c, #ff9890);

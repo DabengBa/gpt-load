@@ -41,7 +41,7 @@ const styles = stylex.create({
   available: { color: 'var(--color-success)' },
   cooldown: { color: 'var(--color-warning)' },
   blacklisted: { color: 'var(--color-danger)' },
-  disabled: { color: 'var(--color-neutral)' },
+  disabled: { color: 'var(--color-neutral-fg)' },
   bar: {
     display: 'flex',
     width: '100%',
