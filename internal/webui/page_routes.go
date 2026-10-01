@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const pageRouteManifestVersion = 1
+const pageRouteManifestVersion = 3
 
 var (
 	//go:embed page_routes.json

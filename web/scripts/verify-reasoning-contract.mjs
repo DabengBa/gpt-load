@@ -58,7 +58,6 @@ const baseSchedule = {
           alias: 'reasoning-model',
           weight: 100,
           priority: 1,
-          fallback: false,
           enabled: true,
           circuit_breaker: {
             configured: { blacklist_threshold: null, cooldown_seconds: null },
@@ -98,12 +97,12 @@ async function main() {
   })
 
   try {
-    const groups = await server.ssrLoadModule('/src/frontends/classic/app/resources/groups.ts')
+    const groups = await server.ssrLoadModule('/src/shared/control/resources/groups.ts')
     const patching = await server.ssrLoadModule(
-      '/src/frontends/classic/features/groups/settings/group-settings-patch.ts',
+      '/src/shared/domain/groups/settings/group-settings-patch.ts',
     )
     const schedule = await server.ssrLoadModule(
-      '/src/frontends/classic/app/resources/model-route-schedule.ts',
+      '/src/shared/control/resources/model-route-schedule.ts',
     )
 
     const projected = groups.projectGroupSettings(baseSettings)
@@ -174,3 +173,7 @@ try {
   console.error(error)
   process.exitCode = 1
 }
+
+// The stylex unplugin keeps worker handles alive after server.close();
+// exit explicitly so the contract verdict does not hang the gate.
+process.exit(process.exitCode ?? 0)

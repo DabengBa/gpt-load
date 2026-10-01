@@ -1,5 +1,5 @@
 name: Validate and build web UI
-description: Install, validate, and build the embedded Vue application
+description: Install, validate, and build the embedded web application
 
 runs:
   using: composite

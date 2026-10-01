@@ -12,11 +12,13 @@ const server = await createServer({
 })
 
 try {
-  const affinity = await server.ssrLoadModule(
-    '/src/frontends/classic/features/monitor/request-log-affinity.ts',
-  )
+  const affinity = await server.ssrLoadModule('/src/shared/domain/monitor/request-log-affinity.ts')
   runRequestLogAffinityContractTests(affinity)
   console.log('request-log-affinity contract: PASS')
 } finally {
   await server.close()
 }
+
+// The stylex unplugin keeps worker handles alive after server.close();
+// exit explicitly so the contract verdict does not hang the gate.
+process.exit(process.exitCode ?? 0)

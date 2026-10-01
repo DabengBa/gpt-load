@@ -170,6 +170,18 @@ function envelope(data: unknown) {
   return { code: 0, message: 'OK', data }
 }
 
+function requestLogDetail(requestID: string) {
+  const item = rows.find((row) => row.request_id === requestID) ?? rows[0]
+  const attempts =
+    requestID === requestIDs.mapped
+      ? [
+          detailAttempt(1, 99, 'historical-alpha', null, '', 'skip_group'),
+          detailAttempt(2, 1, 'alpha', 3, 'key-a', 'terminate'),
+        ]
+      : []
+  return { ...item, attempts }
+}
+
 function response(data: unknown, status = 200) {
   return {
     status,
@@ -243,9 +255,162 @@ export async function installRequestLogDisplayRoutes(
   return { logRequests }
 }
 
-export async function openRequestLogs(page: Page, query = ''): Promise<void> {
-  const normalizedQuery = query.startsWith('&') ? `?${query.slice(1)}` : query
-  await page.goto(`/logs${normalizedQuery}`)
-  await page.locator('.logs-tab').waitFor()
-  await page.waitForLoadState('networkidle')
+// Task E variant: cursor-paginated log list used by the full-parity spec.
+// `?cursor=p2` returns the second page; `?limit` trims the first page so the
+// page-size control is observable through request params and row count.
+export interface RequestLogTableRoutes extends RequestLogDisplayRoutes {
+  readonly failNextList: () => void
+  readonly delayNextList: (ms: number) => void
+}
+
+export async function installRequestLogTableRoutes(
+  page: Page,
+  principal: 'admin' | 'access_key' = 'admin',
+): Promise<RequestLogTableRoutes> {
+  await page.addInitScript((authKey) => {
+    window.localStorage.setItem('gpt-load.auth-key', authKey)
+  }, ADMIN_KEY)
+
+  const pageTwoRows = rows.map((row, index) => ({
+    ...row,
+    request_id: `eeeeeeee-5555-4555-8555-55555555555${index}`,
+    client_model: `page-two-${index}`,
+    upstream_model: `page-two-${index}`,
+    upstream_reported_model: `page-two-${index}`,
+  }))
+
+  let failList = false
+  let delayListMs = 0
+  const logRequests: URL[] = []
+  await page.route(
+    (url) => url.pathname === '/api' || url.pathname.startsWith('/api/'),
+    async (route) => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const path = url.pathname
+
+      if (path === '/api/auth/session') {
+        await route.fulfill(response({ authenticated: true, principal_type: principal }))
+        return
+      }
+      if (path === '/api/groups/options') {
+        await route.fulfill(response(groupOptions))
+        return
+      }
+      if (path === '/api/channels') {
+        await route.fulfill(response({ items: [], total: 0 }))
+        return
+      }
+      if (path === '/api/access-keys/options') {
+        await route.fulfill(response([{ id: 7, name: 'e2e access key', status: 'active' }]))
+        return
+      }
+      if (path === '/api/logs') {
+        logRequests.push(url)
+        if (delayListMs > 0) {
+          const delay = delayListMs
+          delayListMs = 0
+          await new Promise((resolve) => setTimeout(resolve, delay))
+        }
+        if (failList) {
+          failList = false
+          await route.fulfill(response({ message: 'boom' }, 500))
+          return
+        }
+        const limit = Number(url.searchParams.get('limit') ?? '20')
+        const cursor = url.searchParams.get('cursor')
+        if (cursor === 'p2') {
+          await route.fulfill(response({ items: pageTwoRows, next_cursor: null }))
+          return
+        }
+        await route.fulfill(response({ items: rows.slice(0, limit), next_cursor: 'p2' }))
+        return
+      }
+      if (path.startsWith('/api/logs/')) {
+        const requestID = path.slice('/api/logs/'.length)
+        await route.fulfill(response(requestLogDetail(requestID)))
+        return
+      }
+
+      await route.fulfill(response({}, 404))
+    },
+  )
+
+  return {
+    logRequests,
+    failNextList: () => (failList = true),
+    delayNextList: (ms: number) => (delayListMs = ms),
+  }
+}
+
+// B12 variant: rows are timestamped relative to install time and the /api/logs
+// mock honors from_ms/to_ms like the real server, so time-range e2e proves the
+// query params drive the rendered result set.
+export const rangeRowIDs = {
+  recent: requestIDs.mapped,
+  twoDays: requestIDs.plain,
+  old: 'cccccccc-3333-4333-8333-333333333333',
+} as const
+
+const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
+
+export async function installRequestLogRangeRoutes(page: Page): Promise<RequestLogDisplayRoutes> {
+  await page.addInitScript((authKey) => {
+    window.localStorage.setItem('gpt-load.auth-key', authKey)
+  }, ADMIN_KEY)
+
+  const now = Date.now()
+  const rangeRow = (requestID: string, model: string, ageMs: number) => ({
+    ...baseLogItem(requestID),
+    client_model: model,
+    upstream_model: model,
+    upstream_reported_model: model,
+    first_response_ms: 500,
+    duration_ms: 800,
+    completed_at_ms: now - ageMs,
+    group_id: null,
+    credential_id: null,
+    credential_name: '',
+  })
+  const rangeRows = [
+    rangeRow(rangeRowIDs.recent, 'recent-model', 30 * 60 * 1000),
+    rangeRow(rangeRowIDs.twoDays, 'two-days-model', 2 * DAY_MS),
+    rangeRow(rangeRowIDs.old, 'old-model', 10 * DAY_MS),
+  ]
+
+  const logRequests: URL[] = []
+  await page.route(
+    (url) => url.pathname === '/api' || url.pathname.startsWith('/api/'),
+    async (route) => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const path = url.pathname
+
+      if (path === '/api/auth/session') {
+        await route.fulfill(response({ authenticated: true, principal_type: 'admin' }))
+        return
+      }
+      if (path === '/api/logs') {
+        logRequests.push(url)
+        const from = Number(url.searchParams.get('from_ms') ?? NaN)
+        const to = Number(url.searchParams.get('to_ms') ?? NaN)
+        const items =
+          Number.isSafeInteger(from) && Number.isSafeInteger(to)
+            ? rangeRows.filter((row) => row.completed_at_ms >= from && row.completed_at_ms <= to)
+            : rangeRows
+        await route.fulfill(response({ items, next_cursor: null }))
+        return
+      }
+      if (path.startsWith('/api/logs/')) {
+        const requestID = path.slice('/api/logs/'.length)
+        await route.fulfill(response(requestLogDetail(requestID)))
+        return
+      }
+
+      await route.fulfill(response({}, 404))
+    },
+  )
+
+  return { logRequests }
 }

@@ -7,7 +7,7 @@ import (
 
 func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 	valid := []byte(`{
-		"version": 1,
+		"version": 3,
 		"routes": [
 			{"name": "home", "path": "/"},
 			{"name": "group-detail", "path": "/groups/:id"}
@@ -32,17 +32,17 @@ func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 	}{
 		{
 			name:     "unsupported version",
-			manifest: `{"version":2,"routes":[{"name":"home","path":"/"}]}`,
+			manifest: `{"version":1,"routes":[{"name":"home","path":"/"}]}`,
 			want:     "version",
 		},
 		{
 			name:     "empty routes",
-			manifest: `{"version":1,"routes":[]}`,
+			manifest: `{"version": 3,"routes":[]}`,
 			want:     "routes",
 		},
 		{
 			name: "duplicate name",
-			manifest: `{"version":1,"routes":[
+			manifest: `{"version": 3,"routes":[
 				{"name":"home","path":"/"},
 				{"name":"home","path":"/other"}
 			]}`,
@@ -50,7 +50,7 @@ func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 		},
 		{
 			name: "duplicate path",
-			manifest: `{"version":1,"routes":[
+			manifest: `{"version": 3,"routes":[
 				{"name":"home","path":"/"},
 				{"name":"other","path":"/"}
 			]}`,
@@ -58,7 +58,7 @@ func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 		},
 		{
 			name: "duplicate parameter shape",
-			manifest: `{"version":1,"routes":[
+			manifest: `{"version": 3,"routes":[
 				{"name":"group-by-id","path":"/groups/:id"},
 				{"name":"group-by-slug","path":"/groups/:slug"}
 			]}`,
@@ -66,23 +66,28 @@ func TestParsePageRouteManifestValidatesSharedRouteContract(t *testing.T) {
 		},
 		{
 			name:     "empty name",
-			manifest: `{"version":1,"routes":[{"name":"","path":"/"}]}`,
+			manifest: `{"version": 3,"routes":[{"name":"","path":"/"}]}`,
 			want:     "name",
 		},
 		{
 			name:     "relative path",
-			manifest: `{"version":1,"routes":[{"name":"home","path":"home"}]}`,
+			manifest: `{"version": 3,"routes":[{"name":"home","path":"home"}]}`,
 			want:     "path",
 		},
 		{
 			name:     "wildcard path",
-			manifest: `{"version":1,"routes":[{"name":"catch-all","path":"/*path"}]}`,
+			manifest: `{"version": 3,"routes":[{"name":"catch-all","path":"/*path"}]}`,
 			want:     "path",
 		},
 		{
 			name:     "partial parameter segment",
-			manifest: `{"version":1,"routes":[{"name":"group","path":"/groups/prefix-:id"}]}`,
+			manifest: `{"version": 3,"routes":[{"name":"group","path":"/groups/prefix-:id"}]}`,
 			want:     "path",
+		},
+		{
+			name:     "retired astryx flag rejected",
+			manifest: `{"version": 3,"routes":[{"name":"home","path":"/","astryx":true}]}`,
+			want:     "unknown field",
 		},
 	}
 

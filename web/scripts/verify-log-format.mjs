@@ -639,7 +639,7 @@ async function main() {
   try {
     let format
     try {
-      format = await server.ssrLoadModule('/src/frontends/classic/features/monitor/log-format.ts')
+      format = await server.ssrLoadModule('/src/shared/domain/monitor/log-format.ts')
     } catch (err) {
       console.log(`FAIL  module load: ${err instanceof Error ? err.message : String(err)}`)
       return 1
@@ -648,9 +648,7 @@ async function main() {
     const localeNames = ['zh-CN', 'en-US', 'ja-JP']
     const messagesByLocale = {}
     for (const locale of localeNames) {
-      const module = await server.ssrLoadModule(
-        `/src/frontends/classic/i18n/locales/${locale}/monitor.ts`,
-      )
+      const module = await server.ssrLoadModule(`/src/shared/i18n/locales/${locale}/monitor.ts`)
       messagesByLocale[locale] = module.default
     }
     const context = { translate: createTranslator(messagesByLocale['zh-CN']) }
@@ -698,3 +696,7 @@ if (failed > 0) {
 } else {
   console.log(`\nall ${CASES.length} log-format cases and the label parity check passed`)
 }
+
+// The stylex unplugin keeps worker handles alive after server.close();
+// exit explicitly so the contract verdict does not hang the gate.
+process.exit(process.exitCode ?? 0)

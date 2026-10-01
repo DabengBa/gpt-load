@@ -1,0 +1,157 @@
+import type { QueryClient, QueryKey } from '@tanstack/query-core'
+
+import { controlQueryKeys } from './query-keys'
+
+export interface MutationInvalidationPlan {
+  exact: readonly QueryKey[]
+  prefixes: readonly QueryKey[]
+}
+
+function plan(
+  exact: readonly QueryKey[] = [],
+  prefixes: readonly QueryKey[] = [],
+): MutationInvalidationPlan {
+  return { exact, prefixes }
+}
+
+const importedCredentialResourcePlan = (groupID: number) =>
+  plan(
+    [controlQueryKeys.groups.summary(groupID), controlQueryKeys.health()],
+    [
+      controlQueryKeys.groups.credentialsAll(groupID),
+      controlQueryKeys.groups.collectionAll,
+      controlQueryKeys.home.all,
+      controlQueryKeys.modelRouteSchedule.all,
+    ],
+  )
+
+const modelRouteSchedulePlan = plan(
+  [],
+  [controlQueryKeys.modelRouteSchedule.all, controlQueryKeys.groups.modelsAll()],
+)
+
+export const mutationInvalidationPlans = {
+  settings: {
+    update: () =>
+      plan([], [controlQueryKeys.groups.settingsAll(), controlQueryKeys.modelRouteSchedule.all]),
+  },
+  group: {
+    create: plan(
+      [controlQueryKeys.groups.options(), controlQueryKeys.health()],
+      [
+        controlQueryKeys.groups.collectionAll,
+        controlQueryKeys.home.all,
+        controlQueryKeys.models.all,
+        controlQueryKeys.modelPrices(),
+        controlQueryKeys.modelRouteSchedule.all,
+      ],
+    ),
+    delete: plan(
+      [controlQueryKeys.groups.options(), controlQueryKeys.health()],
+      [
+        controlQueryKeys.groups.collectionAll,
+        controlQueryKeys.home.all,
+        controlQueryKeys.models.all,
+        controlQueryKeys.modelPrices(),
+        controlQueryKeys.modelRouteSchedule.all,
+      ],
+    ),
+    importCredentials: importedCredentialResourcePlan,
+    modelsUpdate: modelRouteSchedulePlan,
+    settingsUpdate: modelRouteSchedulePlan,
+  },
+  accessKey: {
+    create: plan(
+      [controlQueryKeys.accessKeys.options(), controlQueryKeys.home.base()],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
+    ),
+    update: plan(
+      [controlQueryKeys.accessKeys.options(), controlQueryKeys.home.base()],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
+    ),
+    rotate: plan(
+      [controlQueryKeys.accessKeys.options(), controlQueryKeys.home.base()],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
+    ),
+    reset: plan(
+      [controlQueryKeys.home.base(), controlQueryKeys.health()],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
+    ),
+    delete: plan(
+      [controlQueryKeys.accessKeys.options(), controlQueryKeys.home.base()],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
+    ),
+    reconcile: plan(
+      [controlQueryKeys.accessKeys.options()],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
+    ),
+    reconcileConfirmed: plan(
+      [controlQueryKeys.home.base()],
+      [controlQueryKeys.accessKeys.collectionAll, controlQueryKeys.modelRouteSchedule.all],
+    ),
+    reveal: plan(),
+  },
+  modelRouteSchedule: {
+    update: modelRouteSchedulePlan,
+    recover: modelRouteSchedulePlan,
+  },
+  modelPrice: {
+    update: plan(
+      [],
+      [
+        controlQueryKeys.modelPrices(),
+        controlQueryKeys.models.all,
+        controlQueryKeys.groups.modelsAll(),
+      ],
+    ),
+    reset: plan(
+      [],
+      [
+        controlQueryKeys.modelPrices(),
+        controlQueryKeys.models.all,
+        controlQueryKeys.groups.modelsAll(),
+      ],
+    ),
+    delete: plan(
+      [],
+      [
+        controlQueryKeys.modelPrices(),
+        controlQueryKeys.models.all,
+        controlQueryKeys.groups.modelsAll(),
+      ],
+    ),
+    sync: plan(
+      [],
+      [
+        controlQueryKeys.modelPrices(),
+        controlQueryKeys.models.all,
+        controlQueryKeys.groups.modelsAll(),
+      ],
+    ),
+  },
+} as const
+
+function uniqueQueryKeys(keys: readonly QueryKey[]): QueryKey[] {
+  const seen = new Set<string>()
+  return keys.filter((queryKey) => {
+    const identity = JSON.stringify(queryKey)
+    if (seen.has(identity)) return false
+    seen.add(identity)
+    return true
+  })
+}
+
+export async function applyInvalidationPlan(
+  queryClient: QueryClient,
+  invalidationPlan: MutationInvalidationPlan,
+  shouldContinue: () => boolean = () => true,
+): Promise<void> {
+  for (const queryKey of uniqueQueryKeys(invalidationPlan.exact)) {
+    if (!shouldContinue()) return
+    await queryClient.invalidateQueries({ queryKey, exact: true })
+  }
+  for (const queryKey of uniqueQueryKeys(invalidationPlan.prefixes)) {
+    if (!shouldContinue()) return
+    await queryClient.invalidateQueries({ queryKey })
+  }
+}

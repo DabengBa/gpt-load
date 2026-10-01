@@ -7,7 +7,7 @@ const WEB_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const FIXTURES_DIR = fileURLToPath(new URL('./fixtures/', import.meta.url))
 
 // Each fixture carries its expected verdict. The real projector in
-// src/frontends/classic/app/resources/health.ts is the single source of truth; this script only
+// src/shared/control/resources/health.ts is the single source of truth; this script only
 // loads it and asserts the verdict per fixture.
 const CASES = [
   { name: 'default', file: 'default.json', expect: 'success' },
@@ -79,7 +79,7 @@ async function main() {
 
   let failed = 0
   try {
-    const health = await server.ssrLoadModule('/src/frontends/classic/app/resources/health.ts')
+    const health = await server.ssrLoadModule('/src/shared/control/resources/health.ts')
     // Same module instance health.ts imports (the '@/api/errors' alias).
     const errors = await server.ssrLoadModule('/src/shared/http/errors.ts')
     const { InvalidResponseError } = errors
@@ -159,3 +159,7 @@ const failed = await main()
 if (failed > 0) {
   process.exitCode = 1
 }
+
+// The stylex unplugin keeps worker handles alive after server.close();
+// exit explicitly so the contract verdict does not hang the gate.
+process.exit(process.exitCode ?? 0)

@@ -1,5 +1,7 @@
 allowBuilds:
-  vue-demi: true
+  # postinstall is a no-op `astryx init` nudge; nothing functional to run.
+  '@astryxdesign/cli': false
+  '@astryxdesign/core': false
 
 overrides:
   brace-expansion@5.0.8: 5.0.9

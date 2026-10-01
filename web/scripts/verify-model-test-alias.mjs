@@ -11,10 +11,8 @@ const server = await createServer({
 })
 
 try {
-  const groups = await server.ssrLoadModule('/src/frontends/classic/app/resources/groups.ts')
-  const modelDiff = await server.ssrLoadModule(
-    '/src/frontends/classic/features/groups/models/model-diff.ts',
-  )
+  const groups = await server.ssrLoadModule('/src/shared/control/resources/groups.ts')
+  const modelDiff = await server.ssrLoadModule('/src/shared/domain/groups/models/model-diff.ts')
   const payload = {
     items: [
       {
@@ -64,3 +62,7 @@ try {
 } finally {
   await server.close()
 }
+
+// The stylex unplugin keeps worker handles alive after server.close();
+// exit explicitly so the contract verdict does not hang the gate.
+process.exit(process.exitCode ?? 0)

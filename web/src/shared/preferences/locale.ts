@@ -1,9 +1,13 @@
 export const supportedLocales = ['zh-CN', 'en-US', 'ja-JP'] as const
 export type AppLocale = (typeof supportedLocales)[number]
 
+// Storage key shared by both frontends' locale controllers and the classic
+// preferences panel.
+export const localeStorageKey = 'gpt-load.locale'
+
 export function getBrowserLocale(): AppLocale {
   try {
-    const stored = window.localStorage.getItem('gpt-load.locale')
+    const stored = window.localStorage.getItem(localeStorageKey)
     if (supportedLocales.includes(stored as AppLocale)) return stored as AppLocale
   } catch {
     // 无法读取偏好时继续使用浏览器语言。

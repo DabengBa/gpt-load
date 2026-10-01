@@ -1,0 +1,32 @@
+.channel-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.channel-icon svg,
+.channel-icon img {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
+
+.channel-icon img {
+  border-radius: 0.2em;
+  object-fit: contain;
+}
+
+.channel-icon--fallback {
+  min-width: 1.7em;
+  height: 1.3em;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-tag);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  padding: 0 3px;
+  font-family: var(--font-mono);
+  font-size: 0.7em;
+  font-weight: 700;
+}
