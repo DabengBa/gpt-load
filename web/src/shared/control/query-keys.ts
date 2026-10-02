@@ -4,11 +4,7 @@ import type { UsageFilters } from '@shared/control/resources/usage'
 import type { ModelPriceFilters } from '@shared/control/resources/model-prices'
 import type { ModelCollectionFilters } from '@shared/control/resources/models'
 import { normalizeRequestLogFilters } from '@shared/control/resources/request-log-filters'
-import type {
-  AccessKeyCollectionFilters,
-  CredentialCollectionFilters,
-  GroupCollectionFilters,
-} from './types'
+import type { AccessKeyCollectionFilters, GroupCollectionFilters } from './types'
 
 export function normalizeGroupCollectionFilters(
   filters: GroupCollectionFilters,
@@ -22,19 +18,6 @@ export function normalizeGroupCollectionFilters(
   if (query) normalized.q = query
   if (filters.status !== undefined) normalized.status = filters.status
   if (filters.connection_type !== undefined) normalized.connection_type = filters.connection_type
-  return normalized
-}
-
-export function normalizeCredentialCollectionFilters(
-  filters: CredentialCollectionFilters,
-): CredentialCollectionFilters {
-  const normalized: CredentialCollectionFilters = {
-    page: filters.page,
-    page_size: filters.page_size,
-  }
-  const query = filters.q?.trim()
-  if (query) normalized.q = query
-  if (filters.status !== undefined) normalized.status = filters.status
   return normalized
 }
 
@@ -87,15 +70,6 @@ export const controlQueryKeys = {
     modelsAll: () => ['control', 'groups', 'models'] as const,
     models: (id: number) => ['control', 'groups', 'models', id] as const,
     credentialsAll: (id: number) => ['control', 'groups', 'credentials', id] as const,
-    credentials: (id: number, filters: CredentialCollectionFilters) =>
-      [
-        'control',
-        'groups',
-        'credentials',
-        id,
-        'collection',
-        normalizeCredentialCollectionFilters(filters),
-      ] as const,
   },
   channels: {
     all: ['control', 'channels'] as const,

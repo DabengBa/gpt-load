@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"time"
 
@@ -135,7 +134,7 @@ func (s *Service) UpdateGroupCredential(
 			return err
 		}
 		normalized, err := s.normalizeCredentials(channel.ID(group.ChannelID), credentials)
-		if err != nil || len(normalized.candidates) != 1 {
+		if err != nil || len(normalized.candidates) != 1 || normalized.duplicateLines != 0 {
 			return app_errors.ErrValidation
 		}
 		candidate := normalized.candidates[0]
@@ -356,101 +355,4 @@ func (s *Service) mapCredentialItem(
 		item.Observation = presentCredentialObservation(observation, row.IdentityFingerprint)
 	}
 	return item, nil
-}
-
-func normalizeCredentialBatchRequest(request CredentialBatchRequest) ([]uint, error) {
-	if request.Action != CredentialBatchDelete ||
-		len(request.CredentialIDs) < 1 || len(request.CredentialIDs) > 100 {
-		return nil, app_errors.ErrValidation
-	}
-	ids := append([]uint(nil), request.CredentialIDs...)
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	for index, id := range ids {
-		if id == 0 || index > 0 && id == ids[index-1] {
-			return nil, app_errors.ErrValidation
-		}
-	}
-	return ids, nil
-}
-
-func (s *Service) BatchGroupCredentials(
-	ctx context.Context,
-	groupID uint,
-	request CredentialBatchRequest,
-) (CredentialBatchResponse, error) {
-	if groupID == 0 {
-		return CredentialBatchResponse{}, app_errors.ErrBadRequest
-	}
-	ids, err := normalizeCredentialBatchRequest(request)
-	if err != nil {
-		return CredentialBatchResponse{}, err
-	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	group, err := loadGroupRow(s.db.WithContext(ctx), groupID)
-	if err != nil {
-		return CredentialBatchResponse{}, err
-	}
-	var rows []models.Credential
-	if err := s.db.WithContext(ctx).Where("group_id = ? AND id IN ?", groupID, ids).Find(&rows).Error; err != nil {
-		return CredentialBatchResponse{}, app_errors.ParseDBError(err)
-	}
-	if len(rows) != len(ids) {
-		return CredentialBatchResponse{}, credentialNotFoundError()
-	}
-	for _, row := range rows {
-		view, exists := findRuntimeCredential(s.registry.Snapshot(), row.ID)
-		if err := validateCredentialRuntimeRow(group, row, view, exists); err != nil {
-			return CredentialBatchResponse{}, err
-		}
-	}
-	if err := s.withControlTransaction(ctx, func(tx *gorm.DB) error {
-		result := tx.Where("group_id = ? AND id IN ?", groupID, ids).Delete(&models.Credential{})
-		if result.Error != nil {
-			return app_errors.ParseDBError(result.Error)
-		}
-		if result.RowsAffected != int64(len(ids)) {
-			return fmt.Errorf("batch credential rows affected = %d, want %d: %w", result.RowsAffected, len(ids), app_errors.ErrDatabase)
-		}
-		return nil
-	}); err != nil {
-		return CredentialBatchResponse{}, err
-	}
-	if err := s.registry.RemoveGroupCredentials(groupID, ids); err != nil {
-		return CredentialBatchResponse{}, err
-	}
-	for _, id := range ids {
-		s.stats.Reset(id)
-		s.retireCredentialRuntime(id)
-	}
-	return CredentialBatchResponse{
-		AffectedCredentialIDs: ids,
-		Summary:               summarizeGroupRuntimeCredentials(group, s.registry.Snapshot(), s.now().UTC()),
-	}, nil
-}
-
-func summarizeGroupRuntimeCredentials(
-	group models.Group,
-	views []state.CredentialRuntimeView,
-	observedAt time.Time,
-) CredentialSummaryResponse {
-	summary := CredentialSummaryResponse{}
-	groupView := state.GroupCatalogView{ID: group.ID, Name: group.Name, Enabled: group.Enabled}
-	for _, view := range views {
-		if view.GroupID != group.ID {
-			continue
-		}
-		summary.Total++
-		switch classifyHealthKey(groupView, view, observedAt) {
-		case healthBucketAvailable:
-			summary.Available++
-		case healthBucketCooldown:
-			summary.Cooldown++
-		case healthBucketBlacklisted:
-			summary.Blacklisted++
-		case healthBucketDisabled:
-			summary.Disabled++
-		}
-	}
-	return summary
 }

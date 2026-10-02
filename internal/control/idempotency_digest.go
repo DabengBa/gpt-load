@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"sort"
+
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -127,27 +127,4 @@ func canonicalIdempotencyBody(value any) ([]byte, error) {
 		return nil, fmt.Errorf("encode idempotency body: %w", err)
 	}
 	return body, nil
-}
-
-func normalizeIdempotencyKeyLines(raw string) ([]string, error) {
-	normalizedNewlines := strings.ReplaceAll(raw, "\r\n", "\n")
-	normalizedNewlines = strings.ReplaceAll(normalizedNewlines, "\r", "\n")
-	lines := make([]string, 0)
-	for _, line := range strings.Split(normalizedNewlines, "\n") {
-		normalized := strings.TrimSpace(line)
-		if normalized == "" {
-			continue
-		}
-		lines = append(lines, normalized)
-		if len(lines) > maxCredentialLines {
-			return nil, app_errors.ErrValidation
-		}
-	}
-	if len(lines) == 0 {
-		return nil, app_errors.ErrValidation
-	}
-	sort.Slice(lines, func(left, right int) bool {
-		return bytes.Compare([]byte(lines[left]), []byte(lines[right])) < 0
-	})
-	return lines, nil
 }

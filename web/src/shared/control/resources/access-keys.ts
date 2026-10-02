@@ -29,7 +29,6 @@ import {
   projectEpochMilliseconds,
   projectEnum,
   projectNullableEpochMilliseconds,
-
   projectRecord,
   projectSafeInteger,
   projectString,

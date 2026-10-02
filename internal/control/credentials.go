@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -20,46 +19,59 @@ import (
 )
 
 type CredentialImportRequest struct {
-	Credentials string `json:"credentials"`
+	Credentials string `json:"credential"`
 }
 
 type CredentialImportResult struct {
-	GroupID               uint `json:"group_id"`
-	CredentialsAdded      int  `json:"credentials_added"`
-	CredentialsDuplicated int  `json:"credentials_duplicated"`
+	GroupID      uint `json:"group_id"`
+	CredentialID uint `json:"credential_id"`
 }
 
 type CredentialUpdateRequest struct {
-	Credentials optionalField[string] `json:"credentials"`
+	Credentials optionalField[string] `json:"credential"`
+}
+
+type GroupCredentialResponse struct {
+	Credential  *CredentialItemResponse        `json:"credential"`
+	Observation *CredentialObservationResponse `json:"observation"`
+}
+
+func (s *Service) currentGroupCredentialID(ctx context.Context, groupID uint) (uint, error) {
+	capture, err := s.captureCredentials(ctx, groupID)
+	if err != nil {
+		return 0, err
+	}
+	if len(capture.rows) > 1 {
+		return 0, app_errors.ErrSingleCredentialRequired
+	}
+	if _, err := validateCredentialCapture(capture); err != nil {
+		return 0, err
+	}
+	if len(capture.rows) == 0 {
+		return 0, nil
+	}
+	return capture.rows[0].ID, nil
+}
+
+func (s *Service) GetGroupCredential(ctx context.Context, groupID uint) (GroupCredentialResponse, error) {
+	if groupID == 0 {
+		return GroupCredentialResponse{}, app_errors.ErrBadRequest
+	}
+	id, err := s.currentGroupCredentialID(ctx, groupID)
+	if err != nil || id == 0 {
+		return GroupCredentialResponse{}, err
+	}
+	detail, err := s.GetCredentialDetail(ctx, groupID, id)
+	if err != nil {
+		return GroupCredentialResponse{}, err
+	}
+	return GroupCredentialResponse{Credential: &detail.Credential, Observation: detail.Credential.Observation}, nil
 }
 
 type CredentialRevealResult struct {
 	CredentialID uint            `json:"credential_id"`
 	Credential   json.RawMessage `json:"credential"`
 	RevealedAtMS int64           `json:"revealed_at_ms"`
-}
-
-type CredentialCollectionQuery struct {
-	Query    string
-	Status   *string
-	Page     int
-	PageSize int
-}
-
-type CredentialCollectionResponse struct {
-	ObservedAtMS       int64                        `json:"observed_at_ms"`
-	StatsWindowSeconds int64                        `json:"stats_window_seconds"`
-	Summary            CredentialSummaryResponse    `json:"summary"`
-	Items              []CredentialItemResponse     `json:"items"`
-	Pagination         CredentialPaginationResponse `json:"pagination"`
-}
-
-type CredentialSummaryResponse struct {
-	Total       int `json:"total"`
-	Available   int `json:"available"`
-	Cooldown    int `json:"cooldown"`
-	Blacklisted int `json:"blacklisted"`
-	Disabled    int `json:"disabled"`
 }
 
 type CredentialAccountResponse struct {
@@ -107,27 +119,6 @@ type CredentialRecoveryResponse struct {
 	AtMS      *int64 `json:"at_ms"`
 }
 
-type CredentialBatchAction string
-
-const CredentialBatchDelete CredentialBatchAction = "delete"
-
-type CredentialBatchRequest struct {
-	Action        CredentialBatchAction `json:"action"`
-	CredentialIDs []uint                `json:"credential_ids"`
-}
-
-type CredentialBatchResponse struct {
-	AffectedCredentialIDs []uint                    `json:"affected_credential_ids"`
-	Summary               CredentialSummaryResponse `json:"summary"`
-}
-
-type CredentialPaginationResponse struct {
-	Page       int `json:"page"`
-	PageSize   int `json:"page_size"`
-	TotalItems int `json:"total_items"`
-	TotalPages int `json:"total_pages"`
-}
-
 type credentialCapture struct {
 	group        models.Group
 	rows         []models.Credential
@@ -142,11 +133,6 @@ type credentialObservation struct {
 	subscription map[uint]models.CredentialObservation
 	runtime      map[uint]state.CredentialRuntimeView
 	observedAt   time.Time
-}
-
-type credentialCollectionRecord struct {
-	item   CredentialItemResponse
-	bucket healthBucket
 }
 
 func normalizeGroupConnectionType(value models.ConnectionType) models.ConnectionType {
@@ -231,9 +217,19 @@ func (s *Service) importGroupCredentialsMutation(
 	if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeAPIKey {
 		return CredentialImportResult{}, nil, app_errors.ErrValidation
 	}
+	var count int64
+	if err := tx.Model(&models.Credential{}).Where("group_id = ?", groupID).Count(&count).Error; err != nil {
+		return CredentialImportResult{}, nil, app_errors.ParseDBError(err)
+	}
+	if count != 0 {
+		return CredentialImportResult{}, nil, app_errors.ErrSingleCredentialRequired
+	}
 	normalized, err := s.normalizeCredentials(channel.ID(group.ChannelID), rawCredentials)
 	if err != nil {
 		return CredentialImportResult{}, nil, err
+	}
+	if len(normalized.candidates) != 1 || normalized.duplicateLines != 0 {
+		return CredentialImportResult{}, nil, app_errors.ErrSingleCredentialRequired
 	}
 	added, duplicated, err := s.persistCredentials(tx, groupID, normalized)
 	if err != nil {
@@ -246,31 +242,10 @@ func (s *Service) importGroupCredentialsMutation(
 	if err := state.ValidateCredentialEntries(entries); err != nil {
 		return CredentialImportResult{}, nil, err
 	}
-	return CredentialImportResult{
-		GroupID: groupID, CredentialsAdded: added, CredentialsDuplicated: duplicated,
-	}, entries, nil
-}
-
-func (s *Service) ListGroupCredentials(
-	ctx context.Context,
-	groupID uint,
-	query CredentialCollectionQuery,
-) (CredentialCollectionResponse, error) {
-	if groupID == 0 {
-		return CredentialCollectionResponse{}, app_errors.ErrBadRequest
+	if added != 1 || duplicated != 0 || len(entries) != 1 {
+		return CredentialImportResult{}, nil, app_errors.ErrSingleCredentialRequired
 	}
-	if query.Page < 1 || (query.PageSize != 20 && query.PageSize != 50 && query.PageSize != 100) {
-		return CredentialCollectionResponse{}, app_errors.ErrBadRequest
-	}
-	capture, err := s.captureCredentials(ctx, groupID)
-	if err != nil {
-		return CredentialCollectionResponse{}, err
-	}
-	observation, err := validateCredentialCapture(capture)
-	if err != nil {
-		return CredentialCollectionResponse{}, err
-	}
-	return s.mapCredentialCollection(ctx, observation, query)
+	return CredentialImportResult{GroupID: groupID, CredentialID: entries[0].ID}, entries, nil
 }
 
 func (s *Service) captureCredentials(ctx context.Context, groupID uint) (credentialCapture, error) {
@@ -391,118 +366,4 @@ func (s *Service) decodeCredential(group models.Group, row models.Credential) (j
 	}
 	apiKey, _ := validated.Value("api_key")
 	return validated.CanonicalJSON(), apiKey, nil
-}
-
-func (s *Service) mapCredentialCollection(
-	ctx context.Context,
-	observation credentialObservation,
-	query CredentialCollectionQuery,
-) (CredentialCollectionResponse, error) {
-	if s == nil || s.encryption == nil || s.stats == nil || s.channelRegistry == nil {
-		return CredentialCollectionResponse{}, fmt.Errorf("credential collection dependencies unavailable: %w", app_errors.ErrInternalServer)
-	}
-	observedAtMS, err := safeEpochMilliseconds(observation.observedAt)
-	if err != nil {
-		return CredentialCollectionResponse{}, err
-	}
-	group := state.GroupCatalogView{ID: observation.group.ID, Name: observation.group.Name,
-		Enabled: observation.group.Enabled}
-	records := make([]credentialCollectionRecord, 0, len(observation.rows))
-	for _, row := range observation.rows {
-		canonical, identity, err := s.decodeCredential(observation.group, row)
-		if err != nil {
-			return CredentialCollectionResponse{}, err
-		}
-		mask, account, err := s.credentialPresentation(observation.group, row, canonical, identity)
-		if err != nil {
-			return CredentialCollectionResponse{}, err
-		}
-		view := observation.runtime[row.ID]
-		bucket := classifyHealthKey(group, view, observation.observedAt)
-		item, err := mapCredentialRuntimeItem(
-			mask, row.ID, view, bucket, s.stats.Snapshot(row.ID, observation.observedAt), observation.observedAt,
-		)
-		if err != nil {
-			return CredentialCollectionResponse{}, err
-		}
-		item.ConnectionType = string(normalizeGroupConnectionType(observation.group.ConnectionType))
-		item.SecretVersion = row.SecretVersion
-		item.AuthState = string(row.AuthState)
-		item.AuthErrorCode = safeInternalErrorCode(row.AuthErrorCode)
-		item.Account = account
-		if item.ConnectionType == string(models.ConnectionTypeSubscription) {
-			item.Observation = presentCredentialObservation(observation.subscription[row.ID], row.IdentityFingerprint)
-		}
-		records = append(records, credentialCollectionRecord{item: item, bucket: bucket})
-	}
-	summary := summarizeCredentialCollection(records)
-	filtered := make([]credentialCollectionRecord, 0, len(records))
-	for _, record := range records {
-		if credentialCollectionMatches(record, query) {
-			filtered = append(filtered, record)
-		}
-	}
-	sort.Slice(filtered, func(i, j int) bool {
-		left, right := filtered[i], filtered[j]
-		if credentialCollectionBucketOrder(left.bucket) != credentialCollectionBucketOrder(right.bucket) {
-			return credentialCollectionBucketOrder(left.bucket) < credentialCollectionBucketOrder(right.bucket)
-		}
-		return left.item.CredentialID < right.item.CredentialID
-	})
-	total := len(filtered)
-	items := credentialCollectionPage(filtered, query.Page, query.PageSize)
-	return CredentialCollectionResponse{
-		ObservedAtMS: observedAtMS, StatsWindowSeconds: credentialCollectionStatsWindow,
-		Summary: summary, Items: items,
-		Pagination: CredentialPaginationResponse{Page: query.Page, PageSize: query.PageSize,
-			TotalItems: total, TotalPages: credentialCollectionTotalPages(total, query.PageSize)},
-	}, nil
-}
-
-func summarizeCredentialCollection(records []credentialCollectionRecord) CredentialSummaryResponse {
-	summary := CredentialSummaryResponse{Total: len(records)}
-	for _, record := range records {
-		switch record.bucket {
-		case healthBucketAvailable:
-			summary.Available++
-		case healthBucketCooldown:
-			summary.Cooldown++
-		case healthBucketBlacklisted:
-			summary.Blacklisted++
-		case healthBucketDisabled:
-			summary.Disabled++
-		}
-	}
-	return summary
-}
-
-func credentialCollectionMatches(record credentialCollectionRecord, query CredentialCollectionQuery) bool {
-	if query.Status != nil && record.item.EffectiveStatus != *query.Status {
-		return false
-	}
-	if query.Query == "" {
-		return true
-	}
-	queryValue := strings.ToLower(query.Query)
-	return strings.Contains(strings.ToLower(record.item.Mask), queryValue) ||
-		strings.Contains(strings.ToLower(record.item.Account.Email), queryValue)
-}
-
-func credentialCollectionPage(records []credentialCollectionRecord, page, pageSize int) []CredentialItemResponse {
-	if page < 1 || pageSize < 1 || page-1 > len(records)/pageSize {
-		return []CredentialItemResponse{}
-	}
-	offset := (page - 1) * pageSize
-	if offset < 0 || offset >= len(records) {
-		return []CredentialItemResponse{}
-	}
-	end := offset + pageSize
-	if end < offset || end > len(records) {
-		end = len(records)
-	}
-	items := make([]CredentialItemResponse, end-offset)
-	for index, record := range records[offset:end] {
-		items[index] = record.item
-	}
-	return items
 }

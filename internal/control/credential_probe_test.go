@@ -107,12 +107,12 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	const auth = "credential-probe-auth"
 	engine := gin.New()
 	NewServer(&config.Config{AuthKey: auth}, fixture.service).RegisterRoutes(engine)
-	path := fmt.Sprintf("/api/groups/%d/credentials/%d/test", secondGroupID, credentials[0].ID)
+	path := fmt.Sprintf("/api/groups/%d/credential/test", secondGroupID)
 	unauthorized := serveCredentialRequest(t, engine, http.MethodPost, path, "{}", "", "")
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthorized response = %d %s", unauthorized.Code, unauthorized.Body.String())
 	}
-	response := serveCredentialRequest(t, engine, http.MethodPost, path, "{}", auth, "")
+	response := serveCredentialRequest(t, engine, http.MethodPost, path, "{}", auth, "", secondResult.CredentialID)
 	if response.Code != http.StatusOK {
 		t.Fatalf("probe response = %d %s", response.Code, response.Body.String())
 	}
@@ -241,10 +241,11 @@ func TestGroupCredentialProbeHTTPReturnsCompletedUpstreamFailureAsData(t *testin
 		t,
 		engine,
 		http.MethodPost,
-		fmt.Sprintf("/api/groups/%d/credentials/%d/test", groupID, credential.ID),
+		fmt.Sprintf("/api/groups/%d/credential/test", groupID),
 		"{}",
 		auth,
 		"",
+		credential.ID,
 	)
 	if response.Code != http.StatusOK ||
 		!strings.Contains(response.Body.String(), `"code":0`) ||
@@ -479,10 +480,11 @@ func TestGroupCredentialProbeRejectsSubscriptionGroup(t *testing.T) {
 		t,
 		engine,
 		http.MethodPost,
-		fmt.Sprintf("/api/groups/%d/credentials/%d/test", groupID, credentialID),
+		fmt.Sprintf("/api/groups/%d/credential/test", groupID),
 		"{}",
 		auth,
 		"",
+		credentialID,
 	)
 	if response.Code != http.StatusForbidden ||
 		!strings.Contains(response.Body.String(), `"code":"FORBIDDEN"`) {
@@ -639,7 +641,7 @@ func TestGroupCredentialProbeRouteContract(t *testing.T) {
 			continue
 		}
 		if !reflect.DeepEqual(route.Methods, []string{http.MethodPost}) ||
-			route.Path != "/groups/:group_id/credentials/:credential_id/test" {
+			route.Path != "/groups/:group_id/credential/test" {
 			t.Fatalf("credential probe route = %#v", route)
 		}
 		return

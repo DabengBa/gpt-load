@@ -126,13 +126,8 @@ test('compact table row height on the groups collection', async ({ page }) => {
           status: 'available',
           model_count: 4,
           client_model_count: 2,
-          credential_counts: {
-            total: 2,
-            available: 2,
-            cooldown: 0,
-            blacklisted: 0,
-            disabled: 0,
-          },
+          credential_configured: true,
+          credential_status: 'available',
         })),
         pagination: { page: 1, page_size: 100, total_items: 3, total_pages: 1 },
       })

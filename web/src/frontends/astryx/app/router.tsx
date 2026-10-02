@@ -23,10 +23,7 @@ import {
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
 import {
-  parseCredentialRouteQuery,
-  parseCredentialRouteState,
   parseGroupModelsRouteQuery,
-  serializeCredentialRouteQuery,
   serializeGroupModelsRouteQuery,
 } from '@shared/routing/group-detail-route'
 import { scalarRouteQuery } from '@shared/routing/route-query'
@@ -253,22 +250,13 @@ function scheduleSearch(search: Record<string, unknown>) {
   return scheduleMonitorQuery(parseScheduleMonitorState(search as SharedRouteQuery))
 }
 
-// Sparse canonical search, scoped per tab — this must NOT call the codec's
-// normalizeGroupQuery: that helper came from classic GroupTabs.vue (dead code
-// never mounted), so feeding it to validateSearch would rewrite the bare
-// '/groups/:id' URL to '?tab=credentials' and land users on the management
-// tab, while classic renders the unified settings+models view. Classic only
-// canonicalizes live for the credentials sub-query (and the models discovery
-// params); an absent/unknown tab keeps the raw query and renders unified.
+// Keep the bare detail URL on the unified view; explicit tabs use sparse search.
 function groupDetailSearch(search: Record<string, unknown>) {
   const query = search as SharedRouteQuery
   const tab = scalarRouteQuery(query.tab)
-  if (tab === 'credentials') {
-    return serializeCredentialRouteQuery(
-      parseCredentialRouteQuery(query),
-      parseCredentialRouteState(query),
-    )
-  }
+  // The credentials tab is a single record now: search, page, status filters
+  // and expanded IDs are retired and are canonicalized away.
+  if (tab === 'credentials') return { tab: 'credentials' }
   if (tab === 'models') {
     return serializeGroupModelsRouteQuery(parseGroupModelsRouteQuery(query))
   }

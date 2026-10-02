@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"sort"
+
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -17,66 +17,7 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
-func TestCreateSubscriptionGroupRejectsDuplicateStagesAtomically(t *testing.T) {
-	t.Parallel()
-	for _, idempotent := range []bool{false, true} {
-		t.Run(fmt.Sprintf("idempotent=%t", idempotent), func(t *testing.T) {
-			t.Parallel()
-			fixture := newServiceFixture(t)
-			first := mustImportSubscriptionStage(t, fixture, "create-duplicate", "first@example.com")
-			second := mustImportSubscriptionStage(t, fixture, "create-duplicate", "second@example.com")
-			stageIDs := []string{first.StageID, second.StageID}
-			beforeSnapshot := fixture.manager.Current()
-			beforeRegistry := fixture.registry.Snapshot()
-			var beforeStages []models.CredentialStage
-			if err := fixture.db.Where("id IN ?", stageIDs).Order("id ASC").Find(&beforeStages).Error; err != nil {
-				t.Fatal(err)
-			}
-
-			request := GroupCreateRequest{
-				Name: stringPointer("subscription duplicate create"), ChannelID: channel.Codex,
-				ConnectionType:      models.ConnectionTypeSubscription,
-				Models:              optionalGroupModels{Set: true},
-				StagedCredentialIDs: stageIDs,
-			}
-			var err error
-			if idempotent {
-				_, err = fixture.service.CreateGroupIdempotent(
-					t.Context(), "00000000-0000-4000-8000-00000000d101", request,
-				)
-			} else {
-				_, err = fixture.service.CreateGroup(t.Context(), request)
-			}
-			if !errors.Is(err, app_errors.ErrDuplicateCredentialIdentity) {
-				t.Fatalf("create error = %v, want duplicate credential identity", err)
-			}
-
-			var groupCount, credentialCount int64
-			if err := fixture.db.Model(&models.Group{}).Count(&groupCount).Error; err != nil {
-				t.Fatal(err)
-			}
-			if err := fixture.db.Model(&models.Credential{}).Count(&credentialCount).Error; err != nil {
-				t.Fatal(err)
-			}
-			if groupCount != 0 || credentialCount != 0 {
-				t.Fatalf("created rows = group:%d credential:%d, want 0/0", groupCount, credentialCount)
-			}
-			var afterStages []models.CredentialStage
-			if err := fixture.db.Where("id IN ?", stageIDs).Order("id ASC").Find(&afterStages).Error; err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(afterStages, beforeStages) {
-				t.Fatalf("stages changed after rejection: before=%#v after=%#v", beforeStages, afterStages)
-			}
-			if fixture.manager.Current() != beforeSnapshot ||
-				!reflect.DeepEqual(fixture.registry.Snapshot(), beforeRegistry) {
-				t.Fatal("rejected create mutated snapshot or registry")
-			}
-		})
-	}
-}
-
-func TestConnectSubscriptionGroupRejectsExistingCredentialBatchAtomically(t *testing.T) {
+func TestConnectSubscriptionGroupRejectsExistingCredentialAtomically(t *testing.T) {
 	t.Parallel()
 	for _, idempotent := range []bool{false, true} {
 		t.Run(fmt.Sprintf("idempotent=%t", idempotent), func(t *testing.T) {
@@ -103,10 +44,11 @@ func TestConnectSubscriptionGroupRejectsExistingCredentialBatchAtomically(t *tes
 					t.Context(),
 					"00000000-0000-4000-8000-00000000d102",
 					groupID,
-					stageIDs,
+					beforeCredential.ID,
+					newFirst.StageID,
 				)
 			} else {
-				_, err = fixture.service.ConnectGroupCredentials(t.Context(), groupID, stageIDs)
+				_, err = fixture.service.ConnectGroupCredentials(t.Context(), groupID, beforeCredential.ID, newFirst.StageID)
 			}
 			if !errors.Is(err, app_errors.ErrDuplicateCredentialIdentity) {
 				t.Fatalf("connect error = %v, want duplicate credential identity", err)
@@ -191,23 +133,13 @@ func TestConnectSubscriptionGroupReplacesCredentialThatNeedsReauthorization(t *t
 				t.Fatal(err)
 			}
 
-			inspection, err := fixture.service.InspectGroupCredentialConnection(
-				t.Context(), groupID, []string{stage.StageID},
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(inspection.DuplicatedStageIDs) != 0 {
-				t.Errorf("inspection duplicates = %v, want none", inspection.DuplicatedStageIDs)
-			}
-
 			result, err := fixture.service.ConnectGroupCredentialsIdempotent(
-				t.Context(), test.idempotencyKey, groupID, []string{stage.StageID},
+				t.Context(), test.idempotencyKey, groupID, credentialID, stage.StageID,
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if result.CredentialsAdded != 1 || result.CredentialsDuplicated != 0 {
+			if result.CredentialID == 0 {
 				t.Errorf("result = %#v", result)
 			}
 			var after models.Credential
@@ -247,19 +179,17 @@ func TestConnectSubscriptionGroupReplacesCredentialThatNeedsReauthorization(t *t
 	}
 }
 
-func TestInspectSubscriptionConnectionIdentifiesExactDuplicateStages(t *testing.T) {
+func TestLegacySubscriptionConnectionInspectionRouteRemoved(t *testing.T) {
 	t.Parallel()
 	initControlI18n(t)
 	fixture, groupID, _ := newSubscriptionCredentialFixture(t)
 	existing := mustImportSubscriptionStage(t, fixture, "account-observation", "existing@example.com")
-	newFirst := mustImportSubscriptionStage(t, fixture, "inspect-new", "new-first@example.com")
-	newSecond := mustImportSubscriptionStage(t, fixture, "inspect-new", "new-second@example.com")
-	stageIDs := []string{existing.StageID, newFirst.StageID, newSecond.StageID}
+	mustImportSubscriptionStage(t, fixture, "inspect-new", "new-first@example.com")
 
 	engine := gin.New()
 	const auth = "credential-duplicate-inspection-auth"
 	NewServer(&config.Config{AuthKey: auth}, fixture.service).RegisterRoutes(engine)
-	encoded, err := json.Marshal(CredentialConnectRequest{StagedCredentialIDs: stageIDs})
+	encoded, err := json.Marshal(CredentialConnectRequest{StagedCredentialID: existing.StageID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,32 +197,12 @@ func TestInspectSubscriptionConnectionIdentifiesExactDuplicateStages(t *testing.
 		t,
 		engine,
 		http.MethodPost,
-		fmt.Sprintf("/api/groups/%d/credentials/connect/inspect", groupID),
+		fmt.Sprintf("/api/groups/%d/credential/connect-inspect", groupID),
 		string(encoded),
 		auth,
 		"",
 	)
-	if response.Code != http.StatusOK {
-		t.Fatalf("inspection = %d %s", response.Code, response.Body.String())
-	}
-	var envelope struct {
-		Code int `json:"code"`
-		Data struct {
-			DuplicatedStageIDs []string `json:"duplicated_stage_ids"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{existing.StageID}
-	if newFirst.StageID < newSecond.StageID {
-		want = append(want, newSecond.StageID)
-	} else {
-		want = append(want, newFirst.StageID)
-	}
-	sort.Strings(want)
-	sort.Strings(envelope.Data.DuplicatedStageIDs)
-	if envelope.Code != 0 || !reflect.DeepEqual(envelope.Data.DuplicatedStageIDs, want) {
-		t.Fatalf("inspection = %#v, want duplicate stages %#v", envelope, want)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("inspection = %d %s, want 404", response.Code, response.Body.String())
 	}
 }

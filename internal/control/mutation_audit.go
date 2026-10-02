@@ -120,8 +120,10 @@ func (s *Server) auditMutation(
 	descriptor mutationAuditDescriptor,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		initialLocator := descriptor.locator(c)
 		defer func() {
+			// Evaluate after the chain so singular credential routes can pin
+			// the resolved credential ID before the audit event is written.
+			initialLocator := descriptor.locator(c)
 			if recovered := recover(); recovered != nil {
 				s.logControlMutation(
 					c,

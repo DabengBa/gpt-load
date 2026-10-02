@@ -176,8 +176,9 @@ export interface ImportCredentialsOperationPayload {
 
 export interface ConnectCredentialsOperationPayload {
   groupID: number
-  stageIDs: string[]
-  draft: ImportDraft
+  stageID: string
+  expectedCredentialID: number
+  draft: ImportRecoveryDraft
 }
 
 export type ImportOperationMode = 'new' | 'existing'
@@ -257,8 +258,8 @@ export class ImportOperationOwnerStore {
   }
 
   beginConnectCredentials(
-    payload: { groupID: number; stageIDs: string[] },
-    draft: ImportDraft,
+    payload: { groupID: number; stageID: string; expectedCredentialID: number },
+    draft: ImportRecoveryDraft,
   ): StableImportOperation<ConnectCredentialsOperationPayload> | null {
     if (
       this.createGroup.getSnapshot().operation ||
@@ -267,7 +268,7 @@ export class ImportOperationOwnerStore {
       return null
     }
     const operation = this.connectCredentials.begin({ ...payload, draft })
-    this.setMode('new')
+    this.setMode(draft.mode)
     return operation
   }
 
@@ -276,7 +277,8 @@ export class ImportOperationOwnerStore {
     mode: ImportOperationMode,
     draft: ImportRecoveryDraft,
   ): StableImportOperation<ImportCredentialsOperationPayload> | null {
-    if (this.createGroup.getSnapshot().operation) return null
+    if (this.createGroup.getSnapshot().operation || this.connectCredentials.getSnapshot().operation)
+      return null
     if (this.importCredentials.getSnapshot().operation && this.snapshot.operationMode !== mode) {
       return null
     }

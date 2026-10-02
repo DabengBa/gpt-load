@@ -21,7 +21,7 @@ export interface ImportDraft {
 
   provider_url: string
   credentials: string
-  staged_credentials: CredentialStage[]
+  staged_credential: CredentialStage | null
   models: ModelDraftItem[]
 }
 

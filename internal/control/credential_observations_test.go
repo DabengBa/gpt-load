@@ -750,9 +750,9 @@ func TestRefreshClaudeCredentialObservationPublishesAccountAndQuota(t *testing.T
 	}
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("Claude observation"), ChannelID: channel.Claude,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "claude-sonnet-4-6"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "claude-sonnet-4-6"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1319,13 +1319,13 @@ func TestSubscriptionCredentialCollectionAndDetailIncludeCachedObservation(t *te
 		t.Fatal(err)
 	}
 
-	collection, err := fixture.service.ListGroupCredentials(t.Context(), groupID, CredentialCollectionQuery{Page: 1, PageSize: 20})
+	collection, err := fixture.service.GetGroupCredential(t.Context(), groupID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(collection.Items) != 1 || collection.Items[0].SecretVersion != 1 ||
-		collection.Items[0].Observation == nil || collection.Items[0].Observation.State != string(models.CredentialObservationFresh) ||
-		collection.Items[0].Observation.Snapshot == nil {
+	if collection.Credential == nil || collection.Credential.SecretVersion != 1 ||
+		collection.Observation == nil || collection.Observation.State != string(models.CredentialObservationFresh) ||
+		collection.Observation.Snapshot == nil {
 		t.Fatalf("collection = %#v", collection)
 	}
 
@@ -1354,20 +1354,17 @@ func TestSubscriptionCredentialCollectionDefersActivityUntilDetailAndExposesEmai
 	}}
 	fixture.service.credentialActivity = reader
 
-	collection, err := fixture.service.ListGroupCredentials(
-		t.Context(), groupID, CredentialCollectionQuery{Page: 1, PageSize: 20},
-	)
+	collection, err := fixture.service.GetGroupCredential(t.Context(), groupID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(collection.Items) != 1 {
-		t.Fatalf("collection items = %#v", collection.Items)
+	if collection.Credential == nil {
+		t.Fatalf("credential = %#v", collection)
 	}
-	if len(reader.queries) != 0 || collection.Items[0].LastUsedAtMS != nil ||
-		collection.Items[0].DailyUsage != nil {
-		t.Fatalf("collection queried or exposed lazy activity = %#v / %#v", reader.queries, collection.Items[0])
+	if len(reader.queries) != 1 || collection.Credential.LastUsedAtMS == nil || collection.Credential.DailyUsage == nil {
+		t.Fatalf("singular detail activity = %#v / %#v", reader.queries, collection.Credential)
 	}
-	encodedAccount, err := json.Marshal(collection.Items[0].Account)
+	encodedAccount, err := json.Marshal(collection.Credential.Account)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1383,7 +1380,7 @@ func TestSubscriptionCredentialCollectionDefersActivityUntilDetailAndExposesEmai
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reader.queries) != 1 || detail.Credential.LastUsedAtMS == nil ||
+	if len(reader.queries) != 2 || detail.Credential.LastUsedAtMS == nil ||
 		*detail.Credential.LastUsedAtMS != lastUsedAtMS || detail.Credential.DailyUsage == nil ||
 		detail.Credential.DailyUsage.SuccessCount != 12 || detail.Credential.DailyUsage.FailureCount != 3 {
 		t.Fatalf("detail activity = %#v / %#v", reader.queries, detail.Credential)
@@ -1396,9 +1393,9 @@ func newSubscriptionCredentialFixture(t *testing.T) (serviceFixture, uint, uint)
 	stage := mustImportSubscriptionStage(t, fixture, "account-observation", "observation@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("subscription observation"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -14,7 +14,8 @@ test('group DTO rejects retired price_multiplier', () => {
     provider_url: null,
     service_status: 'available',
     service_status_reason: null,
-    credential_count: 1,
+    credential_configured: true,
+    credential_status: 'available',
     model_count: 1,
   }
   assert.equal(projectGroupSummary(group).name, 'group')

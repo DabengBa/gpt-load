@@ -79,7 +79,8 @@ async function installFields(page: Page, theme: string) {
         id: 1,
         service_status: 'available',
         service_status_reason: null,
-        credential_count: 0,
+        credential_configured: false,
+        credential_status: null,
         model_count: 0,
       }
     if (path === '/api/groups/1/settings')
@@ -96,7 +97,7 @@ async function installFields(page: Page, theme: string) {
         },
       }
     if (path === '/api/groups/1/models') data = { items: [], total: 0, pending: 0 }
-    if (path === '/api/groups/1/credentials') data = { items: [], total: 0 }
+    if (path === '/api/groups/1/credential') data = { credential: null, observation: null }
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({ code: 0, message: 'ok', data }),

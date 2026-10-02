@@ -237,10 +237,10 @@ func createHomeSubscriptionCredential(
 	name := fmt.Sprintf("home-subscription-%s", groupSuffix)
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer(name), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.3-codex"}}},
-		StagedCredentialIDs: []string{stage.StageID},
-		ConfirmSameTarget:   true,
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.3-codex"}}},
+		StagedCredentialID: stage.StageID,
+		ConfirmSameTarget:  true,
 	})
 	if err != nil {
 		t.Fatalf("create subscription group %q: %v", name, err)

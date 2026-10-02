@@ -1712,7 +1712,7 @@ func TestHistoricalSubscriptionLabelsSurviveDisableUntilActualDeletion(t *testin
 			created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 				Name: stringPointer("history subscription"), ChannelID: channel.Codex,
 				ConnectionType: models.ConnectionTypeSubscription,
-				Models:         optionalGroupModels{Set: true}, StagedCredentialIDs: []string{stage.StageID},
+				Models:         optionalGroupModels{Set: true}, StagedCredentialID: stage.StageID,
 			})
 			if err != nil {
 				t.Fatal(err)

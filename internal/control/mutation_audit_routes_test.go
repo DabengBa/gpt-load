@@ -25,10 +25,11 @@ import (
 )
 
 type mutationAuditRequest struct {
-	method         string
-	path           string
-	body           string
-	idempotencyKey string
+	method               string
+	path                 string
+	body                 string
+	idempotencyKey       string
+	expectedCredentialID string
 }
 
 type groupMutationAuditCase struct {
@@ -1165,23 +1166,24 @@ func groupMutationAuditCases() []groupMutationAuditCase {
 			operation: "group_credential_update",
 			success: groupCredentialAuditSeedRequest(
 				http.MethodPut,
-				`{"credentials":"sk-group-key-audit-rotated"}`,
+				`{"credential":"sk-group-key-audit-rotated"}`,
 			),
 			rejected: func(
 				_ *testing.T,
 				_ serviceFixture,
 			) (mutationAuditRequest, string, string) {
 				return mutationAuditRequest{
-						method: http.MethodPut,
-						path:   "/api/groups/raw-secret/credentials/1",
-						body:   `{"credentials":"sk-group-key-audit-rotated"}`,
+						method:               http.MethodPut,
+						path:                 "/api/groups/raw-secret/credential",
+						expectedCredentialID: "1",
+						body:                 `{"credential":"sk-group-key-audit-rotated"}`,
 					},
-					"group:unknown/credential:1",
+					"group:unknown/credential:unknown",
 					app_errors.ErrBadRequest.Code
 			},
-			database: groupCredentialAuditSeedRequest(
+			database: groupCredentialAuditDatabaseSeedRequest(
 				http.MethodPut,
-				`{"credentials":"sk-group-key-audit-rotated"}`,
+				`{"credential":"sk-group-key-audit-rotated"}`,
 			),
 		},
 		{
@@ -1195,13 +1197,14 @@ func groupMutationAuditCases() []groupMutationAuditCase {
 				_ serviceFixture,
 			) (mutationAuditRequest, string, string) {
 				return mutationAuditRequest{
-						method: http.MethodDelete,
-						path:   "/api/groups/1/credentials/raw-secret",
+						method:               http.MethodDelete,
+						path:                 "/api/groups/1/credential",
+						expectedCredentialID: "1",
 					},
 					"group:1/credential:unknown",
-					app_errors.ErrBadRequest.Code
+					app_errors.ErrResourceNotFound.Code
 			},
-			database: groupCredentialAuditSeedRequest(
+			database: groupCredentialAuditDatabaseSeedRequest(
 				http.MethodDelete,
 				"",
 			),
@@ -1224,8 +1227,8 @@ func groupMutationAuditCases() []groupMutationAuditCase {
 						method: http.MethodPost,
 						path: "/api/groups/" +
 							strconv.FormatUint(uint64(groupID), 10) +
-							"/credentials/import",
-						body: `{"credentials":"sk-new-audit-key"}`,
+							"/credential",
+						body: `{"credential":"sk-new-audit-key"}`,
 					},
 					fmt.Sprintf("group:%d/credentials", groupID),
 					app_errors.ErrIdempotencyKeyRequired.Code
@@ -1237,11 +1240,30 @@ func groupMutationAuditCases() []groupMutationAuditCase {
 	}
 }
 
+func groupCredentialAuditDatabaseSeedRequest(
+	method string,
+	body string,
+) func(*testing.T, serviceFixture) (mutationAuditRequest, string) {
+	return func(
+		t *testing.T,
+		fixture serviceFixture,
+	) (mutationAuditRequest, string) {
+		request, _ := groupCredentialAuditSeedRequest(method, body)(t, fixture)
+		id := strings.TrimPrefix(strings.Split(request.path, "/")[2], "")
+		_ = id
+		groupID, err := strconv.ParseUint(strings.Split(request.path, "/")[3], 10, 64)
+		if err != nil {
+			t.Fatalf("parse group path: %v", err)
+		}
+		return request, fmt.Sprintf("group:%d/credential:unknown", groupID)
+	}
+}
+
 func groupCreateAuditBody(name string, upstreamURL string) string {
 	return fmt.Sprintf(
 		`{"name":%q,"channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":%q},`+
 			`"models":[{"id":"gpt-4o","alias_enabled":false}],`+
-			`"credentials":"sk-audit-upstream"}`,
+			`"credential":"sk-audit-upstream"}`,
 		name,
 		upstreamURL,
 	)
@@ -1298,11 +1320,11 @@ func groupCredentialAuditSeedRequest(
 		return mutationAuditRequest{
 			method: method,
 			path: fmt.Sprintf(
-				"/api/groups/%d/credentials/%d",
+				"/api/groups/%d/credential",
 				groupID,
-				credential.ID,
 			),
-			body: body,
+			body:                 body,
+			expectedCredentialID: fmt.Sprintf("%d", credential.ID),
 		}, locator
 	}
 }
@@ -1319,13 +1341,20 @@ func groupCredentialImportAuditSeedRequest(
 			fixture,
 			"sk-import-audit",
 		)
+		var existing models.Credential
+		if err := fixture.db.Where("group_id = ?", groupID).Take(&existing).Error; err != nil {
+			t.Fatalf("query seeded credential: %v", err)
+		}
+		if err := fixture.service.DeleteGroupCredential(t.Context(), groupID, existing.ID); err != nil {
+			t.Fatalf("clear group for configuration audit: %v", err)
+		}
 		return mutationAuditRequest{
 			method: http.MethodPost,
 			path: fmt.Sprintf(
-				"/api/groups/%d/credentials/import",
+				"/api/groups/%d/credential",
 				groupID,
 			),
-			body:           `{"credentials":"sk-import-audit"}`,
+			body:           `{"credential":"sk-import-audit"}`,
 			idempotencyKey: idempotencyKey,
 		}, fmt.Sprintf("group:%d/credentials", groupID)
 	}
@@ -1380,6 +1409,9 @@ func newMutationAuditHTTPRequest(
 	)
 	httpRequest.Header.Set("Authorization", "Bearer "+authTestKey)
 	httpRequest.Header.Set("Content-Type", "application/json")
+	if request.expectedCredentialID != "" {
+		httpRequest.Header.Set("X-Credential-ID", request.expectedCredentialID)
+	}
 	if request.idempotencyKey != "" {
 		httpRequest.Header.Set(
 			"Idempotency-Key",

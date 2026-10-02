@@ -5,6 +5,12 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
 import { ApiError, InvalidResponseError } from '@shared/http/errors'
+import { credentialQueryOptions } from '@shared/control/resources/credentials'
+import {
+  connectGroupCredential,
+  projectCredentialStage,
+  type CredentialStage,
+} from '@shared/control/resources/credential-stages'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { channelsQueryOptions, type ChannelDto } from '@shared/control/resources/channels'
 import {
@@ -26,18 +32,20 @@ import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
 import { useUnsavedChanges } from '../../app/use-unsaved-changes'
 import { InlineNotice } from '../../components/InlineNotice'
-import { analyzeCredentials } from '@shared/domain/import/credential-analysis'
+import { readSingleCredential } from './single-credential-input'
 import { CredentialTextarea } from './CredentialTextarea'
+import { SubscriptionCredentialStager } from './SubscriptionCredentialStager'
 import { ImportOperationNotice } from './ImportOperationNotice'
 import { useImportOperationOwner, useOperationSnapshot } from './import-operation'
 
 const selectorPlaceholder = '__select_group__'
+type ExistingStageDraft = ExistingGroupImportDraft & { staged_credential?: CredentialStage | null }
 
 const narrow = '@media (max-width: 860px)'
 const tiny = '@media (max-width: 640px)'
 
 /**
- * Import the first credential into an empty API-key group. The stable operation survives mode switches and page
+ * Configure an empty group or reconnect its subscription account. The stable operation survives mode switches and page
  * remounts; the URL carries `mode=existing&group_id=N`.
  */
 export function ExistingGroupImport({
@@ -56,8 +64,10 @@ export function ExistingGroupImport({
   })
 
   const owner = useImportOperationOwner()
-  const operation = owner.importCredentials
-  const snapshot = useOperationSnapshot(operation)
+  const importSnapshot = useOperationSnapshot(owner.importCredentials)
+  const connectSnapshot = useOperationSnapshot(owner.connectCredentials)
+  const operation = connectSnapshot.operation ? owner.connectCredentials : owner.importCredentials
+  const snapshot = connectSnapshot.operation ? connectSnapshot : importSnapshot
 
   const [completed, setCompleted] = useState(false)
   const [errorKey, setErrorKey] = useState('')
@@ -88,6 +98,13 @@ export function ExistingGroupImport({
       ? stableDraft.credentials
       : (initialDraft?.credentials ?? '')
   })
+  const [stage, setStage] = useState<CredentialStage | null>(() => {
+    const stableDraft = owner.connectCredentials.getSnapshot().operation?.payload.draft
+    const recovered = stableDraft?.mode === 'existing' ? stableDraft : initialDraft
+    return recovered && 'staged_credential' in recovered && recovered.staged_credential
+      ? projectCredentialStage(recovered.staged_credential)
+      : null
+  })
 
   const pending = snapshot.pending
   const payloadLocked = snapshot.operation !== null
@@ -114,7 +131,7 @@ export function ExistingGroupImport({
   const operationGroupID = snapshot.operation?.payload.groupID
   const targetGroupID = operationGroupID ?? routeGroupID
   const summaryQuery = useQuery(groupSummaryQueryOptions(apiClient, targetGroupID))
-  const hasCredential = (summaryQuery.data?.credential_count ?? 0) > 0
+  const hasCredential = summaryQuery.data?.credential_configured === true
 
   const groupsQuery = useQuery(groupOptionsQueryOptions(apiClient))
   const channelsQuery = useQuery(channelsQueryOptions(apiClient, ''))
@@ -125,9 +142,19 @@ export function ExistingGroupImport({
     targetGroupID === undefined
       ? null
       : (groupsQuery.data?.find((group) => group.id === targetGroupID) ?? null)
-  const apiKeyGroups = (groupsQuery.data ?? []).filter(
-    ({ connection_type }) => connection_type === 'api_key',
-  )
+  const targetGroups = groupsQuery.data ?? []
+  const subscription = selectedGroup?.connection_type === 'subscription'
+  const detailQuery = useQuery({
+    ...credentialQueryOptions(apiClient, targetGroupID ?? 0),
+    enabled: subscription && hasCredential && targetGroupID !== undefined,
+  })
+  const authState = detailQuery.data?.credential?.auth_state
+  const reconnect =
+    subscription &&
+    !detailQuery.isError &&
+    !detailQuery.isFetching &&
+    (authState === 'reauthorization_required' || authState === 'outcome_unknown')
+  const occupied = hasCredential && !reconnect
   const selectedChannel: ChannelDto | null = (() => {
     const channelID = selectedGroup?.channel_id
     return channelID
@@ -137,18 +164,17 @@ export function ExistingGroupImport({
   const selectedGroupMissing =
     targetGroupID !== undefined && groupsQuery.data !== undefined && selectedGroup === null
 
-  const credentialAnalysis = analyzeCredentials(credentials)
+  const credential = readSingleCredential(credentials)
   const canSubmit =
     !payloadLocked &&
     !pending &&
     selectedGroup !== null &&
     selectedChannel !== null &&
-    summaryQuery.data?.credential_count === 0 &&
+    (summaryQuery.data?.credential_configured === false || reconnect) &&
     !summaryQuery.isError &&
     !summaryQuery.isFetching &&
-    credentialAnalysis.nonEmptyCount > 0 &&
-    !credentialAnalysis.tooManyCredentials
-  const dirty = !completed && credentials !== ''
+    (subscription ? stage?.status === 'ready' : credential !== null)
+  const dirty = !completed && (credentials !== '' || stage !== null)
   const actionSummary = selectedGroup
     ? t('import.existing.actionSummary', { name: selectedGroup.name })
     : t('import.existing.actionSelectTarget')
@@ -174,7 +200,7 @@ export function ExistingGroupImport({
   })
 
   // Classic recovery.register: snapshot the operation draft or the live form.
-  const recoveryDraftRef = useRef(() => null as ExistingGroupImportDraft | null)
+  const recoveryDraftRef = useRef(() => null as ExistingStageDraft | null)
   useEffect(() => {
     recoveryDraftRef.current = () =>
       completed
@@ -185,6 +211,7 @@ export function ExistingGroupImport({
               mode: 'existing',
               group_id: targetGroupID ?? null,
               credentials,
+              staged_credential: stage,
             }
   })
   useEffect(
@@ -201,6 +228,7 @@ export function ExistingGroupImport({
 
   async function selectGroup(value: string): Promise<void> {
     if (payloadLocked) return
+    setStage(null)
     setErrorKey('')
     if (value === selectorPlaceholder) {
       await unsavedChanges.runWithoutPrompt(() =>
@@ -226,28 +254,45 @@ export function ExistingGroupImport({
   }
 
   async function executeImportOperation(): Promise<void> {
+    const operation = owner.connectCredentials.getSnapshot().operation
+      ? owner.connectCredentials
+      : owner.importCredentials
     const current = operation.getSnapshot().operation
     if (!current) return
     setErrorKey('')
     setCredentialValidation(null)
-    const outcome = await operation.execute(async (stableOperation, signal) => {
-      const imported = await importGroupCredentials(
-        apiClient,
-        stableOperation.payload.groupID,
-        { credentials: stableOperation.payload.credentials },
-        stableOperation.idempotencyKey,
-        signal,
-      )
-      if (imported.group_id !== stableOperation.payload.groupID) {
-        throw new InvalidResponseError()
-      }
-      return imported
-    })
+    const outcome = owner.connectCredentials.getSnapshot().operation
+      ? await owner.connectCredentials.execute(async (stableOperation, signal) => {
+          const result = await connectGroupCredential(
+            apiClient,
+            stableOperation.payload.groupID,
+            stableOperation.payload.stageID,
+            stableOperation.idempotencyKey,
+            stableOperation.payload.expectedCredentialID,
+            signal,
+          )
+          if (result.group_id !== stableOperation.payload.groupID) throw new InvalidResponseError()
+          return result
+        })
+      : await owner.importCredentials.execute(async (stableOperation, signal) => {
+          const imported = await importGroupCredentials(
+            apiClient,
+            stableOperation.payload.groupID,
+            { credential: stableOperation.payload.credentials },
+            stableOperation.idempotencyKey,
+            signal,
+          )
+          if (imported.group_id !== stableOperation.payload.groupID) {
+            throw new InvalidResponseError()
+          }
+          return imported
+        })
     if (!outcome) return
     if (outcome.kind === 'confirmed') {
       const targetID = current.payload.groupID
       setCompleted(true)
       setCredentials('')
+      setStage(null)
       services.importRecovery.clear()
       operation.reset()
       await applyInvalidationPlan(
@@ -256,11 +301,8 @@ export function ExistingGroupImport({
       )
       if (!mountedRef.current) return
       toast.show({
-        message: t('import.credentials.result', {
-          added: outcome.value.credentials_added,
-          duplicated: outcome.value.credentials_duplicated,
-        }),
-        tone: outcome.value.credentials_added === 0 ? 'warning' : 'success',
+        message: t('group.settings.savedFeedback'),
+        tone: 'success',
         duration: 4_000,
       })
       await unsavedChanges.runWithoutPrompt(() =>
@@ -292,6 +334,26 @@ export function ExistingGroupImport({
   async function submit(): Promise<void> {
     const groupID = targetGroupID
     if (groupID === undefined || !selectedGroup || !canSubmit) return
+    if (subscription) {
+      if (!stage || stage.expires_at_ms <= Date.now()) return
+      const expectedCredentialID = reconnect ? detailQuery.data?.credential?.credential_id : 0
+      if (expectedCredentialID === undefined) return
+      const draft: ExistingStageDraft = {
+        mode: 'existing',
+        group_id: groupID,
+        credentials: '',
+        staged_credential: stage,
+      }
+      if (
+        !owner.beginConnectCredentials(
+          { groupID, stageID: stage.stage_id, expectedCredentialID },
+          draft,
+        )
+      )
+        return
+      await executeImportOperation()
+      return
+    }
     if (
       !owner.beginImportCredentials({ groupID, credentials }, 'existing', {
         mode: 'existing',
@@ -340,7 +402,7 @@ export function ExistingGroupImport({
           <div {...stylex.props(styles.sectionActions)}>
             {groupsQuery.data !== undefined && (
               <span {...stylex.props(styles.groupCount)}>
-                {t('import.existing.groupCount', { count: apiKeyGroups.length })}
+                {t('import.existing.groupCount', { count: targetGroups.length })}
               </span>
             )}
           </div>
@@ -377,7 +439,7 @@ export function ExistingGroupImport({
             {groupsQuery.isError && (
               <InlineNotice tone="warning">{t('import.existing.groupsStale')}</InlineNotice>
             )}
-            {apiKeyGroups.length === 0 && (
+            {targetGroups.length === 0 && (
               <InlineNotice tone="info">{t('import.existing.groupsEmpty')}</InlineNotice>
             )}
             <div {...stylex.props(styles.targetBody)}>
@@ -385,7 +447,7 @@ export function ExistingGroupImport({
                 label={t('import.existing.groupLabel')}
                 options={[
                   { value: selectorPlaceholder, label: t('import.existing.groupPlaceholder') },
-                  ...apiKeyGroups.map((group) => ({
+                  ...targetGroups.map((group) => ({
                     value: String(group.id),
                     label: t('import.existing.groupOption', {
                       id: group.id,
@@ -395,7 +457,7 @@ export function ExistingGroupImport({
                 ]}
                 value={selectedGroup ? String(selectedGroup.id) : selectorPlaceholder}
                 size="sm"
-                isDisabled={payloadLocked || apiKeyGroups.length === 0}
+                isDisabled={payloadLocked || targetGroups.length === 0}
                 onChange={(value) => void selectGroup(value)}
               />
               {selectedGroup && (
@@ -423,7 +485,7 @@ export function ExistingGroupImport({
         )}
       </section>
 
-      {hasCredential && selectedGroup && (
+      {occupied && selectedGroup && (
         <div {...stylex.props(styles.credentials)}>
           <InlineNotice tone="info">{t('import.existing.populated')}</InlineNotice>
           <Button
@@ -446,7 +508,36 @@ export function ExistingGroupImport({
           />
         </div>
       )}
-      {!hasCredential && (
+      {subscription && hasCredential && detailQuery.isError && (
+        <div {...stylex.props(styles.queryError)}>
+          <InlineNotice tone="danger">{t('group.loadFailed')}</InlineNotice>
+          <Button
+            variant="secondary"
+            size="sm"
+            label={t('common.retry')}
+            onClick={() => void detailQuery.refetch()}
+          />
+        </div>
+      )}
+      {!occupied && subscription && selectedChannel && (
+        <SubscriptionCredentialStager
+          stage={stage}
+          onStageChange={setStage}
+          channelId={selectedChannel.channel_id}
+          channelName={selectedChannel.name}
+          authorizationMethods={selectedChannel.connection.authorization_methods}
+          groupId={targetGroupID}
+          context="connect"
+          disabled={
+            payloadLocked ||
+            pending ||
+            summaryQuery.data === undefined ||
+            summaryQuery.isFetching ||
+            summaryQuery.isError
+          }
+        />
+      )}
+      {!occupied && !subscription && (
         <div {...stylex.props(styles.credentials)}>
           <CredentialTextarea
             value={credentials}
@@ -488,7 +579,7 @@ export function ExistingGroupImport({
         </div>
       )}
 
-      {!hasCredential && (
+      {!occupied && (
         <footer {...stylex.props(styles.actions)}>
           <div aria-live="polite" {...stylex.props(styles.actionsSummary)}>
             <strong {...stylex.props(styles.actionsSummaryTitle)}>{actionSummary}</strong>

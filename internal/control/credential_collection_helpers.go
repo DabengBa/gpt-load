@@ -3,8 +3,7 @@ package control
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
-	"strconv"
+
 	"strings"
 	"time"
 
@@ -30,73 +29,6 @@ func normalizeStoredCredential(
 		return channel.Credential{}, fmt.Errorf("credential is empty")
 	}
 	return registry.ValidateCredential(channelID, json.RawMessage(trimmed))
-}
-
-const (
-	credentialCollectionDefaultPage     = 1
-	credentialCollectionDefaultPageSize = 50
-	credentialCollectionStatsWindow     = int64(health.StatsWindow / time.Second)
-)
-
-func parseCredentialCollectionQuery(rawQuery string) (CredentialCollectionQuery, *app_errors.APIError) {
-	query := CredentialCollectionQuery{
-		Page: credentialCollectionDefaultPage, PageSize: credentialCollectionDefaultPageSize,
-	}
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return CredentialCollectionQuery{}, app_errors.ErrBadRequest
-	}
-	for key, entries := range values {
-		switch key {
-		case "q", "status", "page", "page_size":
-		default:
-			return CredentialCollectionQuery{}, app_errors.ErrBadRequest
-		}
-		if len(entries) != 1 {
-			return CredentialCollectionQuery{}, app_errors.ErrBadRequest
-		}
-	}
-	if entries, exists := values["q"]; exists {
-		query.Query = strings.TrimSpace(entries[0])
-	}
-	if entries, exists := values["status"]; exists {
-		status := entries[0]
-		switch status {
-		case string(healthBucketAvailable), string(healthBucketCooldown),
-			string(healthBucketBlacklisted), string(healthBucketDisabled):
-			query.Status = &status
-		default:
-			return CredentialCollectionQuery{}, app_errors.ErrBadRequest
-		}
-	}
-	if entries, exists := values["page"]; exists {
-		page, ok := parseCredentialCollectionPositiveInt(entries[0])
-		if !ok {
-			return CredentialCollectionQuery{}, app_errors.ErrBadRequest
-		}
-		query.Page = page
-	}
-	if entries, exists := values["page_size"]; exists {
-		pageSize, ok := parseCredentialCollectionPositiveInt(entries[0])
-		if !ok || pageSize != 20 && pageSize != 50 && pageSize != 100 {
-			return CredentialCollectionQuery{}, app_errors.ErrBadRequest
-		}
-		query.PageSize = pageSize
-	}
-	return query, nil
-}
-
-func parseCredentialCollectionPositiveInt(value string) (int, bool) {
-	if value == "" {
-		return 0, false
-	}
-	for index := range len(value) {
-		if value[index] < '0' || value[index] > '9' {
-			return 0, false
-		}
-	}
-	parsed, err := strconv.Atoi(value)
-	return parsed, err == nil && parsed > 0
 }
 
 func maskCredential(plaintext string) (string, error) {
@@ -190,26 +122,4 @@ func normalizeCredentialFailureCategory(category health.FailureCategory) health.
 		return health.FailureCategoryAmbiguous
 	}
 	return category
-}
-
-func credentialCollectionBucketOrder(bucket healthBucket) int {
-	switch bucket {
-	case healthBucketBlacklisted:
-		return 0
-	case healthBucketCooldown:
-		return 1
-	case healthBucketAvailable:
-		return 2
-	case healthBucketDisabled:
-		return 3
-	default:
-		return 4
-	}
-}
-
-func credentialCollectionTotalPages(totalItems, pageSize int) int {
-	if totalItems == 0 {
-		return 0
-	}
-	return (totalItems + pageSize - 1) / pageSize
 }

@@ -20,20 +20,20 @@ import (
 )
 
 type groupCreateDigestBody struct {
-	Name                *string               `json:"name"`
-	ChannelID           channel.ID            `json:"channel_id"`
-	ConnectionType      models.ConnectionType `json:"connection_type"`
-	Params              json.RawMessage       `json:"params"`
-	ProviderURL         *string               `json:"provider_url,omitempty"`
-	Models              []GroupModel          `json:"models"`
-	Credentials         []string              `json:"credentials"`
-	StagedCredentialIDs []string              `json:"staged_credential_ids,omitempty"`
-	ConfirmSameTarget   bool                  `json:"confirm_same_target,omitempty"`
-	Proxy               *outboundproxy.Config `json:"proxy,omitempty"`
+	Name               *string               `json:"name"`
+	ChannelID          channel.ID            `json:"channel_id"`
+	ConnectionType     models.ConnectionType `json:"connection_type"`
+	Params             json.RawMessage       `json:"params"`
+	ProviderURL        *string               `json:"provider_url,omitempty"`
+	Models             []GroupModel          `json:"models"`
+	Credential         json.RawMessage       `json:"credential,omitempty"`
+	StagedCredentialID string                `json:"staged_credential_id,omitempty"`
+	ConfirmSameTarget  bool                  `json:"confirm_same_target,omitempty"`
+	Proxy              *outboundproxy.Config `json:"proxy,omitempty"`
 }
 
 type credentialImportDigestBody struct {
-	Credentials []string `json:"credentials"`
+	Credential string `json:"credential"`
 }
 
 func digestGroupModels(values []GroupModel) []GroupModel {
@@ -53,25 +53,24 @@ func (s *Service) CreateGroupIdempotent(
 	if err != nil {
 		return GroupCreateResult{}, err
 	}
-	credentialLines := []string(nil)
+	var credential json.RawMessage
+	stageID := ""
 	if normalized.connectionType == models.ConnectionTypeAPIKey {
-		credentialLines, err = normalizeIdempotencyKeyLines(request.Credentials)
-		if err != nil {
-			return GroupCreateResult{}, err
-		}
+		credential = append(json.RawMessage(nil), normalized.credentials.candidates[0].canonical...)
+	} else {
+		stageID = normalized.stagedCredentialID
 	}
 	digestBody := groupCreateDigestBody{
-
-		Name:                normalized.explicitName,
-		ChannelID:           normalized.channelID,
-		ConnectionType:      normalized.connectionType,
-		Params:              append(json.RawMessage(nil), normalized.params...),
-		ProviderURL:         cloneString(normalized.providerURL),
-		Models:              digestGroupModels(normalized.models),
-		Credentials:         credentialLines,
-		StagedCredentialIDs: append([]string(nil), normalized.stagedCredentialIDs...),
-		ConfirmSameTarget:   normalized.confirmSameTarget,
-		Proxy:               normalized.proxy,
+		Name:               normalized.explicitName,
+		ChannelID:          normalized.channelID,
+		ConnectionType:     normalized.connectionType,
+		Params:             append(json.RawMessage(nil), normalized.params...),
+		ProviderURL:        cloneString(normalized.providerURL),
+		Models:             digestGroupModels(normalized.models),
+		Credential:         credential,
+		StagedCredentialID: stageID,
+		ConfirmSameTarget:  normalized.confirmSameTarget,
+		Proxy:              normalized.proxy,
 	}
 	canonicalBody, err := canonicalIdempotencyBody(digestBody)
 	if err != nil {
@@ -160,11 +159,7 @@ func (s *Service) ImportGroupCredentialsIdempotent(
 	if groupID == 0 {
 		return CredentialImportResult{}, app_errors.ErrValidation
 	}
-	credentialLines, err := normalizeIdempotencyKeyLines(request.Credentials)
-	if err != nil {
-		return CredentialImportResult{}, err
-	}
-	canonicalBody, err := canonicalIdempotencyBody(credentialImportDigestBody{Credentials: credentialLines})
+	canonicalBody, err := canonicalIdempotencyBody(credentialImportDigestBody{Credential: request.Credentials})
 	if err != nil {
 		return CredentialImportResult{}, app_errors.ErrInternalServer
 	}
@@ -173,7 +168,7 @@ func (s *Service) ImportGroupCredentialsIdempotent(
 		Version:         1,
 		Method:          "POST",
 		OperationKind:   operationKindCredentialImport,
-		PathTemplate:    "/api/groups/:group_id/credentials/import",
+		PathTemplate:    "/api/groups/:group_id/credential",
 		ResourceLocator: resourceIdentity,
 		AuthScopeID:     idempotencyAuthScopeID,
 		CanonicalBody:   canonicalBody,

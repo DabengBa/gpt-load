@@ -58,7 +58,7 @@ func TestGetGroupSummaryUsesCollectionServiceStatusAndOnlyReturnsHeaderCounts(t 
 			if err != nil {
 				t.Fatalf("GetGroupSummary() error = %v", err)
 			}
-			if got.ID != test.groupID || got.ServiceStatus != test.wantStatus || got.CredentialCount != test.wantKeys {
+			if got.ID != test.groupID || got.ServiceStatus != test.wantStatus || got.CredentialConfigured != (test.wantKeys > 0) {
 				t.Fatalf("GetGroupSummary() = %#v", got)
 			}
 			if test.wantReason == "" {
@@ -79,7 +79,7 @@ func TestGetGroupSummaryUsesCollectionServiceStatusAndOnlyReturnsHeaderCounts(t 
 			}
 			wantFields := map[string]struct{}{
 				"id": {}, "name": {}, "channel_id": {}, "params": {}, "service_status": {}, "service_status_reason": {},
-				"connection_type": {}, "credential_count": {}, "model_count": {}, "provider_url": {},
+				"connection_type": {}, "credential_configured": {}, "credential_status": {}, "model_count": {}, "provider_url": {},
 			}
 			for name := range fields {
 				if _, exists := wantFields[name]; !exists {
@@ -117,7 +117,7 @@ func TestGroupDetailStatusRequiresAHealthyKeyAndRouteCapability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetGroupSummary() error = %v", err)
 	}
-	if got.ServiceStatus != GroupCollectionStatusUnavailable || got.CredentialCount != 1 || got.ModelCount != 0 {
+	if got.ServiceStatus != GroupCollectionStatusUnavailable || !got.CredentialConfigured || got.ModelCount != 0 {
 		t.Fatalf("GetGroupSummary() = %#v, want unavailable with one key and zero models", got)
 	}
 }

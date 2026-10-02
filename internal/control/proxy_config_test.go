@@ -25,14 +25,14 @@ func TestGroupProxyIsSharedByCredentialNetworkContext(t *testing.T) {
 	if group.Proxy.EffectiveSource != outboundproxy.SourceGroup {
 		t.Fatalf("group proxy = %#v", group.Proxy)
 	}
-	credentials, err := fixture.service.ListGroupCredentials(t.Context(), groupID, CredentialCollectionQuery{Page: 1, PageSize: 20})
+	credentials, err := fixture.service.GetGroupCredential(t.Context(), groupID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(credentials.Items) != 1 {
-		t.Fatalf("credentials = %#v", credentials.Items)
+	if credentials.Credential == nil {
+		t.Fatalf("credential = %#v", credentials)
 	}
-	if _, err := fixture.service.UpdateGroupCredential(t.Context(), groupID, credentials.Items[0].CredentialID, CredentialUpdateRequest{
+	if _, err := fixture.service.UpdateGroupCredential(t.Context(), groupID, credentials.Credential.CredentialID, CredentialUpdateRequest{
 		Credentials: optionalField[string]{Set: true, Value: "replacement"},
 	}); err != nil {
 		t.Fatalf("replace credential = %v", err)

@@ -271,7 +271,7 @@ func TestGroupCollectionQueryUsesFixedSortsWithIDTieBreak(t *testing.T) {
 	}{
 		{sort: GroupCollectionSortStatus, want: []uint{2, 3, 5, 4, 1}},
 		{sort: GroupCollectionSortName, want: []uint{2, 5, 4, 1, 3}},
-		{sort: GroupCollectionSortCredentials, want: []uint{2, 3, 5, 4, 1}},
+		{sort: GroupCollectionSortCredentials, want: []uint{2, 5, 4, 1, 3}},
 		{sort: GroupCollectionSortCreated, want: []uint{5, 4, 3, 2, 1}},
 	}
 	for _, test := range tests {
@@ -474,7 +474,7 @@ func groupCollectionQueryRecord(
 			ID: id, Name: name, Status: status, ChannelID: channelID,
 			ConnectionType: models.ConnectionTypeAPIKey,
 			Params:         params, ModelCount: 7,
-			CredentialCounts: GroupCollectionCredentialCounts{Total: keys},
+			CredentialConfigured: keys > 0,
 		},
 		CreatedAtMS: createdAtMS,
 	}

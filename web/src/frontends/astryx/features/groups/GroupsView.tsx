@@ -36,7 +36,6 @@ import type { MessageId } from '@shared/i18n/message-ids'
 
 import type {
   ConnectionType,
-  CredentialCounts,
   GroupCollectionFilters,
   GroupCollectionItemDto,
   GroupCollectionSort,
@@ -68,7 +67,6 @@ import { useDebouncedAction } from '../../app/use-debounced-action'
 import { useVisibleRefetch } from '../../app/use-visible-refetch'
 import { useCollectionLoading } from '../../app/collection-loading'
 import { ChannelIcon } from '../../components/ChannelIcon'
-import { CredentialHealthBar } from '../../components/CredentialHealthBar'
 
 // The server sort enum is directionless (see ADR-0001 read model): each named
 // sort implies its own direction. Column sort keys map onto that enum; a
@@ -76,34 +74,26 @@ import { CredentialHealthBar } from '../../components/CredentialHealthBar'
 const columnForSort: Partial<Record<GroupCollectionSort, string>> = {
   name: 'group',
   status: 'status',
-  credentials: 'credentialHealth',
 }
 const sortForColumn: Record<string, GroupCollectionSort> = {
   group: 'name',
   status: 'status',
-  credentialHealth: 'credentials',
 }
 const directionForSort: Record<GroupCollectionSort, 'ascending' | 'descending'> = {
   recent: 'descending',
   created: 'descending',
-  credentials: 'descending',
+
   name: 'ascending',
   status: 'ascending',
 }
 
-const sortOptions: readonly GroupCollectionSort[] = [
-  'recent',
-  'status',
-  'name',
-  'credentials',
-  'created',
-]
+const sortOptions: readonly GroupCollectionSort[] = ['recent', 'status', 'name', 'created']
 
 const sortLabelIds: Record<GroupCollectionSort, MessageId> = {
   recent: 'groups.collection.sort.recent',
   status: 'groups.collection.sort.status',
   name: 'groups.collection.sort.name',
-  credentials: 'groups.collection.sort.credentials',
+
   created: 'groups.collection.sort.created',
 }
 const statusLabelIds: Record<GroupCollectionStatus, MessageId> = {
@@ -643,16 +633,6 @@ export function GroupsView() {
     return channelsByID[channelID]?.name ?? channelID
   }
 
-  function credentialHealthLabel(counts: CredentialCounts): string {
-    return t('groups.collection.credentialHealthLabel', {
-      total: intl.formatNumber(counts.total),
-      available: intl.formatNumber(counts.available),
-      cooldown: intl.formatNumber(counts.cooldown),
-      blacklisted: intl.formatNumber(counts.blacklisted),
-      disabled: intl.formatNumber(counts.disabled),
-    })
-  }
-
   const summaryItems = useMemo(() => {
     const summary = data?.summary
     if (!summary) return []
@@ -779,12 +759,12 @@ export function GroupsView() {
         key: 'credentialHealth',
         header: t('groups.collection.columns.credentialHealth'),
         width: proportional(1.2),
-        sortable: true,
         renderCell: (group): ReactNode => (
-          <CredentialHealthBar
-            counts={group.credential_counts}
-            label={credentialHealthLabel(group.credential_counts)}
-          />
+          <span>
+            {group.credential_configured && group.credential_status !== null
+              ? t(`group.credentials.effective.${group.credential_status}`)
+              : t('group.unified.noCredentials')}
+          </span>
         ),
       },
       {
