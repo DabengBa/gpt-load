@@ -43,6 +43,7 @@ import {
 } from '@shared/domain/settings/settings-patch'
 import {
   isCanonicalSettingsRouteQuery,
+  parseSettingsCredentialsRoute,
   parseSettingsRouteSection,
   serializeSettingsRouteQuery,
   type SettingsRouteSection,
@@ -52,6 +53,7 @@ import { formatLocalInstant } from '@shared/lib/format'
 
 import { BrowserAccessSection } from './BrowserAccessSection'
 import { ConnectionSection } from './ConnectionSection'
+import { CredentialsSection } from './CredentialsSection'
 import { DataMaintenanceSection } from './DataMaintenanceSection'
 import { ReliabilitySection } from './ReliabilitySection'
 import { RoutingSection } from './RoutingSection'
@@ -217,6 +219,7 @@ function sectionFromID(id: string): SettingsRouteSection | undefined {
     section === 'connection' ||
     section === 'reliability' ||
     section === 'browser-access' ||
+    section === 'credentials' ||
     section === 'data-maintenance' ||
     section === 'system'
     ? section
@@ -327,6 +330,7 @@ export function SettingsView() {
     { id: 'settings-reliability', label: t('settings.navigation.reliability') },
     { id: 'settings-browser-access', label: t('settings.navigation.browserAccess') },
     { id: 'settings-data-maintenance', label: t('settings.navigation.dataMaintenance') },
+    { id: 'settings-credentials', label: t('settings.navigation.credentials') },
     { id: 'settings-system', label: t('settings.navigation.system') },
   ]
   const routeSection = parseSettingsRouteSection(rawSearch)
@@ -343,10 +347,12 @@ export function SettingsView() {
     // moved — a late canonicalization must not resurrect this page.
     if (pathname !== settingsPath) return
     const section = parseSettingsRouteSection(rawSearch)
-    if (!isCanonicalSettingsRouteQuery(rawSearch, section)) {
+    const credentials =
+      section === 'credentials' ? parseSettingsCredentialsRoute(rawSearch) : undefined
+    if (!isCanonicalSettingsRouteQuery(rawSearch, section, credentials)) {
       void navigate({
         to: settingsPath,
-        search: serializeSettingsRouteQuery(section),
+        search: serializeSettingsRouteQuery(section, credentials),
         replace: true,
         resetScroll: false,
       })
@@ -648,6 +654,9 @@ export function SettingsView() {
                 </>
               ) : null}
 
+              <div {...stylex.props(styles.contentSection)}>
+                <CredentialsSection />
+              </div>
               <div {...stylex.props(styles.contentSection)}>
                 <SystemInfoSection />
               </div>

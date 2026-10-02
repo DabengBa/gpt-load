@@ -192,6 +192,7 @@ export function AccessKeyDrawer({
   onSaved,
   onRotated,
   onDeleted,
+  renderUnsavedDialog,
 }: {
   open: boolean
   accessKey: AccessKeyDto | null
@@ -209,6 +210,10 @@ export function AccessKeyDrawer({
   onSaved(kind: 'created' | 'updated', name: string): void
   onRotated(name: string): void
   onDeleted(name: string): void
+  // The unsaved-changes dialog reads a shared controller store; hosts that
+  // already mount a useUnsavedChanges dialog (e.g. SettingsView) set this to
+  // false so only one AlertDialog instance renders.
+  renderUnsavedDialog?: boolean
 }) {
   const t = useT()
   const formFieldsRef = useRef<AccessKeyFormFieldsHandle | null>(null)
@@ -236,6 +241,7 @@ export function AccessKeyDrawer({
 
   const [rotateOpen, setRotateOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [nameTouched, setNameTouched] = useState(false)
 
   const { draft, base } = snapshot
   const derived = drawerDerived(snapshot)
@@ -327,7 +333,12 @@ export function AccessKeyDrawer({
   const saveBlockerKey = ((): MessageId | '' => {
     if (snapshot.pending) return 'accessKeys.drawer.saveBlockedPending'
     if (snapshot.editReconciliation || createOperationActive) return ''
-    if (draft.name.trim().length === 0) return 'accessKeys.drawer.saveBlockedName'
+    // Show the name blocker only after the user has interacted — an untouched
+    // create drawer rendering it in error red reads as a pre-existing failure
+    // rather than guidance. (dirty alone misses type-then-clear.)
+    if (draft.name.trim().length === 0) {
+      return dirty || nameTouched ? 'accessKeys.drawer.saveBlockedName' : ''
+    }
     if (!Number.isSafeInteger(draft.rpm_limit) || draft.rpm_limit < 0) {
       return 'accessKeys.drawer.saveBlockedRPM'
     }
@@ -383,6 +394,7 @@ export function AccessKeyDrawer({
   const unsaved = useUnsavedChanges({
     dirty: derived.unsavedDirty,
     blocked: closeBlocked,
+    renderDialog: renderUnsavedDialog !== false,
   })
 
   // Classic watch(open/accessKey, immediate): open → resetForOpen; close →
@@ -600,7 +612,10 @@ export function AccessKeyDrawer({
             rpmLimit={draft.rpm_limit}
 
             disabled={formLocked}
-            onNameChange={(value) => patchDraft({ name: value })}
+            onNameChange={(value) => {
+              setNameTouched(true)
+              patchDraft({ name: value })
+            }}
             onStatusChange={(value) => patchDraft({ status: value })}
             onRpmLimitChange={(value) => patchDraft({ rpm_limit: value })}
           />

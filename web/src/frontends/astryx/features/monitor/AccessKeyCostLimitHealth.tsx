@@ -6,8 +6,11 @@ import { useIntl } from 'react-intl'
 import type { HealthAccessKeyCostLimitDto } from '@shared/control/types'
 import { formatUSD } from '@shared/lib/format'
 import { pagePath } from '@shared/routing/page-routes'
+import { defaultAccessKeyCollectionFilters } from '@shared/routing/access-key-collection-route'
+import { serializeSettingsRouteQuery } from '@shared/routing/settings-route'
 
 import { useT } from '../../app/i18n'
+import { stringifySharedRouteSearch } from '../../app/search-codec'
 import { RouteLink } from '../../app/route-link'
 import { RelativeInstant } from '../../components/RelativeInstant'
 import { MonitorSectionHeading } from './MonitorSectionHeading'
@@ -107,7 +110,11 @@ const styles = stylex.create({
 })
 
 function editHref(accessKeyID: number): string {
-  return `${pagePath('access-keys')}?action=edit&access_key_id=${accessKeyID}`
+  const query = serializeSettingsRouteQuery('credentials', {
+    collection: defaultAccessKeyCollectionFilters,
+    drawer: { mode: 'edit', accessKeyID },
+  })
+  return `${pagePath('settings')}${stringifySharedRouteSearch(query)}`
 }
 
 /**

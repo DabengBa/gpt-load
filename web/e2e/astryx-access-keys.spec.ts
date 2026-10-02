@@ -1,15 +1,19 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
-// Phase 3 access-keys-domain coverage for the Astryx entry: collection with
-// status summary + canonical route query, the create/edit drawer (unsaved
-// guard), row actions (status toggle, delete with typed confirmation,
-// cost-limit reset), the rotate flow, and reveal-on-copy.
+// Access-key + agent-credential coverage on the Astryx entry. The standalone
+// /access-keys page now redirects into Settings → credentials
+// (/settings?section=credentials), which hosts the collection, the create/edit
+// drawer (unsaved guard), row actions (status toggle, delete with typed
+// confirmation, cost-limit reset), the rotate flow, reveal-on-copy, and the
+// agent-credential list/create/disable surfaces.
 //
 // The mock mirrors `projectAccessKeyCollection` invariants: summary totals
 // must equal active+disabled, pagination must match total_pages derivation,
-// and no collection field may look secret-like (masked_key only).
+// and no collection field may look secret-like (masked_key only). Agent
+// credentials follow the same rule — `secret` only exists on a fresh create.
 
 const now = 1730000000000
+const credentialsPath = '/settings?section=credentials'
 
 function accessKey(
   id: number,
@@ -93,6 +97,8 @@ interface AccessKeysRequests {
   reveals: number[]
   rotates: number[]
   resets: { id: number; body: Record<string, unknown> }[]
+  agentCredentialPosts: Record<string, unknown>[]
+  agentCredentialDisables: number[]
 }
 
 async function mockAccessKeys(
@@ -108,6 +114,8 @@ async function mockAccessKeys(
     reveals: [],
     rotates: [],
     resets: [],
+    agentCredentialPosts: [],
+    agentCredentialDisables: [],
   }
   let items: Record<string, unknown>[] = options.empty
     ? []
@@ -123,6 +131,8 @@ async function mockAccessKeys(
         }),
       ]
   let nextID = 3
+  let agentCredentials: Record<string, unknown>[] = []
+  let nextAgentID = 1
 
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
@@ -219,6 +229,55 @@ async function mockAccessKeys(
       await fulfill(target ? metadataOnly(target) : {}, target ? 200 : 404)
       return
     }
+    if (path === '/api/agent-credentials' && request.method() === 'GET') {
+      await fulfill({ items: agentCredentials })
+      return
+    }
+    if (path === '/api/agent-credentials' && request.method() === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>
+      requests.agentCredentialPosts.push(body)
+      const created = {
+        id: nextAgentID++,
+        name: String(body.name ?? 'agent'),
+        scopes: body.scopes ?? ['diagnostics:read'],
+        status: 'active',
+        expires_at_ms: body.expires_at_ms ?? null,
+        disabled_at_ms: null,
+        created_at_ms: now,
+        updated_at_ms: now,
+      }
+      agentCredentials = [created, ...agentCredentials]
+      await fulfill({
+        ...created,
+        secret: `gla_e2e_secret_${created.id}`,
+        replayed: false,
+        operation_id: `op-${created.id}`,
+      })
+      return
+    }
+    const agentMatch = /^\/api\/agent-credentials\/(\d+)\/disable$/.exec(path)
+    if (agentMatch && request.method() === 'POST') {
+      const id = Number(agentMatch[1])
+      requests.agentCredentialDisables.push(id)
+      const target = agentCredentials.find((item) => item.id === id)
+      if (target) {
+        target.status = 'disabled'
+        target.disabled_at_ms = now
+        target.updated_at_ms = now
+      }
+      await fulfill(target ?? {})
+      return
+    }
+    if (path === '/api/system/info') {
+      await fulfill({
+        version: 'e2e',
+        deployment: { instance_mode: 'single', database: 'sqlite', distribution: 'single_binary' },
+        data_dir: '/data',
+        auth_key: { source: 'environment', path: null },
+        encryption: { enabled: true, source: 'key_file', path: '/data/encryption.key' },
+      })
+      return
+    }
     if (path === '/api/groups/options') {
       await fulfill([prodGroupOption])
       return
@@ -251,13 +310,38 @@ async function openEditDrawer(page: Page, name: string) {
   return dialog
 }
 
+test('redirects the legacy /access-keys page into Settings → credentials', async ({ page }) => {
+  await mockAccessKeys(page)
+  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+  await expect(page).toHaveURL(/\/settings\?section=credentials$/, { timeout: 60_000 })
+  await expect(
+    page.getByRole('heading', { name: 'Keys and access', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByRole('table', { name: 'Access key list' })).toBeVisible()
+})
+
+test('legacy drawer deep links open the editor inside settings', async ({ page }) => {
+  await mockAccessKeys(page)
+  await page.goto('/access-keys?action=edit&access_key_id=1', { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+  await expect(page).toHaveURL(/\/settings\?section=credentials&action=edit&access_key_id=1$/, {
+    timeout: 60_000,
+  })
+  await expect(page.getByRole('dialog', { name: 'Edit access key' })).toBeVisible()
+})
+
 test('renders the collection and canonicalizes invalid route query params', async ({ page }) => {
   await mockAccessKeys(page)
-  await page.goto('/access-keys?status=junk&page=0&action=bogus', { waitUntil: 'commit' })
+  await page.goto('/settings?section=credentials&status=junk&page=0&action=bogus', {
+    waitUntil: 'commit',
+  })
   await expectAstryxDocument(page)
-  await expect(page).toHaveURL(/\/access-keys$/)
+  await expect(page).toHaveURL(/\/settings\?section=credentials$/)
 
-  await expect(page.getByRole('heading', { name: 'Access keys', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Client access keys', exact: true }),
+  ).toBeVisible()
   const table = page.getByRole('table', { name: 'Access key list' })
   await expect(table).toBeVisible()
   await expect(table.getByText('prod key', { exact: true }).first()).toBeVisible()
@@ -268,7 +352,7 @@ test('renders the collection and canonicalizes invalid route query params', asyn
 
 test('applies search and status filters through the route query', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
   await expect(page.getByRole('table', { name: 'Access key list' })).toBeVisible()
 
@@ -286,7 +370,7 @@ test('applies search and status filters through the route query', async ({ page 
 
 test('clearing a specified expiration selects never expires', async ({ page }) => {
   await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const drawer = await openEditDrawer(page, 'prod key')
@@ -306,7 +390,7 @@ test('clearing a specified expiration selects never expires', async ({ page }) =
 
 test('creates an access key through the drawer', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   await page.getByRole('button', { name: 'Create access key' }).first().click()
@@ -328,7 +412,7 @@ test('creates an access key through the drawer', async ({ page }) => {
 
 test('blocks route navigation while the drawer has unsaved edits', async ({ page }) => {
   await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const drawer = await openEditDrawer(page, 'prod key')
@@ -351,7 +435,7 @@ test('blocks route navigation while the drawer has unsaved edits', async ({ page
 
 test('edits an access key and toggles its status', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const drawer = await openEditDrawer(page, 'dev key')
@@ -371,7 +455,7 @@ test('edits an access key and toggles its status', async ({ page }) => {
 
 test('deletes an access key with typed confirmation', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const table = page.getByRole('table', { name: 'Access key list' })
@@ -394,7 +478,7 @@ test('deletes an access key with typed confirmation', async ({ page }) => {
 
 test('resets cost-limit rules from the row action', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const table = page.getByRole('table', { name: 'Access key list' })
@@ -411,7 +495,7 @@ test('resets cost-limit rules from the row action', async ({ page }) => {
 
 test('rotates an access key inside the edit drawer', async ({ page }) => {
   const requests = await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const drawer = await openEditDrawer(page, 'prod key')
@@ -429,7 +513,7 @@ test('rotates an access key inside the edit drawer', async ({ page }) => {
 test('reveals the access key on copy only', async ({ page }) => {
   const requests = await mockAccessKeys(page)
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
-  await page.goto('/access-keys', { waitUntil: 'commit' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
   const table = page.getByRole('table', { name: 'Access key list' })
@@ -443,10 +527,83 @@ test('reveals the access key on copy only', async ({ page }) => {
     .toBe('sk-e2e-revealed-1')
 })
 
+test('shows the administrator key source without exposing the secret', async ({ page }) => {
+  await mockAccessKeys(page)
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+
+  await expect(
+    page.getByRole('heading', { name: 'Administrator sign-in key' }),
+  ).toBeVisible()
+  await expect(page.getByText('Environment variable').first()).toBeVisible()
+})
+
+test('creates an agent credential and shows the secret once', async ({ page }) => {
+  const requests = await mockAccessKeys(page)
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+
+  await expect(
+    page.getByRole('heading', { name: 'Agent credentials', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Create agent credential' }).first().click()
+
+  const dialog = page.getByRole('dialog', { name: 'Create agent credential' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox', { name: 'Name' }).fill('ops-agent')
+  await dialog.getByRole('button', { name: 'Create credential' }).click()
+
+  await expect.poll(() => requests.agentCredentialPosts.length).toBe(1)
+  expect(requests.agentCredentialPosts[0]?.name).toBe('ops-agent')
+  expect(requests.agentCredentialPosts[0]?.scopes).toEqual(['diagnostics:read'])
+
+  // One-time secret surface stays inside the result dialog until dismissed.
+  const secretDialog = page.getByRole('dialog', { name: 'Save this secret now' })
+  await expect(secretDialog).toBeVisible()
+  await expect(secretDialog.getByText('gla_e2e_secret_1')).toBeVisible()
+  await secretDialog.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByText('gla_e2e_secret_1')).not.toBeVisible()
+
+  const table = page.getByRole('table', { name: 'Agent credential list' })
+  await expect(table.getByText('ops-agent', { exact: true }).first()).toBeVisible()
+})
+
+test('disables an agent credential after confirmation', async ({ page }) => {
+  const requests = await mockAccessKeys(page)
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+
+  // Seed one credential via the create flow so the row exists.
+  await page.getByRole('button', { name: 'Create agent credential' }).first().click()
+  const createDialog = page.getByRole('dialog', { name: 'Create agent credential' })
+  await createDialog.getByRole('textbox', { name: 'Name' }).fill('ops-agent')
+  await createDialog.getByRole('button', { name: 'Create credential' }).click()
+  const secretDialog = page.getByRole('dialog', { name: 'Save this secret now' })
+  await expect(secretDialog.getByText('gla_e2e_secret_1')).toBeVisible()
+  await secretDialog.getByRole('button', { name: 'Done' }).click()
+
+  const table = page.getByRole('table', { name: 'Agent credential list' })
+  const row = table.getByRole('row').filter({ hasText: 'ops-agent' })
+  await row.getByRole('button', { name: 'Disable' }).click()
+
+  const confirm = page.getByRole('alertdialog', { name: 'Disable this agent credential?' })
+  await expect(confirm).toBeVisible()
+  await confirm.getByRole('button', { name: 'Disable' }).click()
+
+  await expect.poll(() => requests.agentCredentialDisables).toEqual([1])
+  await expect(row.getByText('Disabled', { exact: true })).toBeVisible()
+})
+
 test('access_key principals are redirected away from the admin-only page', async ({ page }) => {
   await mockAccessKeys(page, { principalType: 'access_key' })
   await page.goto('/access-keys', { waitUntil: 'commit' })
   // Boot → session validation → AuthGate redirect outruns the default expect
   // window under cold module transforms; give the URL assertion headroom.
   await expect(page).not.toHaveURL(/\/access-keys/, { timeout: 60_000 })
+})
+
+test('access_key principals cannot reach the credentials section', async ({ page }) => {
+  await mockAccessKeys(page, { principalType: 'access_key' })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expect(page).not.toHaveURL(/\/settings/, { timeout: 60_000 })
 })

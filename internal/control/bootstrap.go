@@ -44,39 +44,6 @@ func (s *Service) EnsureInitialState(ctx context.Context) error {
 			}).Error; err != nil {
 			return app_errors.ParseDBError(err)
 		}
-		var marker models.SystemSetting
-		query := tx.Where(&models.SystemSetting{Key: defaultAccessKeyMarker}).
-			Limit(1).Find(&marker)
-		if query.Error != nil {
-			return app_errors.ParseDBError(query.Error)
-		}
-		if query.RowsAffected == 0 {
-			var count int64
-			if err := tx.Model(&models.AccessKey{}).Count(&count).Error; err != nil {
-				return app_errors.ParseDBError(err)
-			}
-			if count == 0 {
-				filters, err := normalizeAccessKeyFilters(nil)
-				if err != nil {
-					return fmt.Errorf("build default access key filters: %w", err)
-				}
-				row, _, err := s.newAccessKeyRow("Default", filters, 0)
-				if err != nil {
-					return err
-				}
-				if err := tx.Create(&row).Error; err != nil {
-					return app_errors.ParseDBError(err)
-				}
-			}
-
-			marker = models.SystemSetting{
-				Key:   defaultAccessKeyMarker,
-				Value: "true",
-			}
-			if err := tx.Create(&marker).Error; err != nil {
-				return app_errors.ParseDBError(err)
-			}
-		}
 
 		if catalogSnapshot != nil {
 			if err := reconcileCatalogAutomaticPrices(tx, catalogSnapshot); err != nil {

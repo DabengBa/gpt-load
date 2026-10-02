@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, type ReactNode } from 'react'
 
-import { pageRouteEntries } from '@shared/routing/page-routes'
+import { pagePath, pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
 import {
@@ -34,6 +34,7 @@ import { parseImportRouteQuery, serializeImportRouteQuery } from '@shared/routin
 import { parseHomeRouteQuery, serializeHomeRouteQuery } from '@shared/routing/home-route'
 import { parseModelsRouteQuery, serializeModelsRouteQuery } from '@shared/routing/models-route'
 import {
+  parseSettingsCredentialsRoute,
   parseSettingsRouteSection,
   serializeSettingsRouteQuery,
 } from '@shared/routing/settings-route'
@@ -53,7 +54,6 @@ import { ToastHost } from './ToastHost'
 import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
-import { AccessKeysView } from '../features/access-keys/AccessKeysView'
 import { GroupDetailView } from '../features/groups/GroupDetailView'
 import { GroupsView } from '../features/groups/GroupsView'
 import { ImportView } from '../features/import/ImportView'
@@ -193,9 +193,16 @@ function groupsSearch(search: Record<string, unknown>) {
 
 // Sparse like groupsSearch: routing → {}, everything else → { section }.
 // Invalid/repeated values canonicalize to the bare '/settings' URL via the
-// same mechanism, matching the classic router.replace behavior.
+// same mechanism, matching the classic router.replace behavior. The
+// credentials section keeps the access-key collection + drawer params
+// (q/status/page/action/access_key_id) that migrated from /access-keys.
 function settingsSearch(search: Record<string, unknown>) {
-  return serializeSettingsRouteQuery(parseSettingsRouteSection(search as SharedRouteQuery))
+  const query = search as SharedRouteQuery
+  const section = parseSettingsRouteSection(query)
+  return serializeSettingsRouteQuery(
+    section,
+    section === 'credentials' ? parseSettingsCredentialsRoute(query) : undefined,
+  )
 }
 
 // Sparse canonical search: defaults (enabled/all/page 1, no drawer) serialize
@@ -209,6 +216,17 @@ function modelsSearch(search: Record<string, unknown>) {
 // serializes away).
 function homeSearch(search: Record<string, unknown>) {
   return serializeHomeRouteQuery(parseHomeRouteQuery(search as SharedRouteQuery))
+}
+
+// /access-keys is a legacy alias: the management UI lives in
+// Settings → credentials, so every visit forwards there while preserving the
+// collection filters and drawer deep links it carried.
+function accessKeysRedirectTarget(search: SharedRouteQuery): string {
+  const query = serializeSettingsRouteQuery(
+    'credentials',
+    parseSettingsCredentialsRoute(search),
+  )
+  return `${pagePath('settings')}${stringifySharedRouteSearch(query)}`
 }
 
 // Sparse canonical search: q/status/page serialize away at defaults; the
@@ -286,7 +304,9 @@ type RouteName = (typeof sharedPageRouteNames)[keyof typeof sharedPageRouteNames
 const routeViews: Record<RouteName, () => ReactNode> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.home]: HomeView,
-  [sharedPageRouteNames.accessKeys]: AccessKeysView,
+  // Never rendered — beforeLoad always redirects /access-keys to the
+  // credentials section on /settings.
+  [sharedPageRouteNames.accessKeys]: () => null,
   [sharedPageRouteNames.groups]: GroupsView,
   [sharedPageRouteNames.groupDetail]: GroupDetailView,
   [sharedPageRouteNames.import]: ImportView,
@@ -307,6 +327,16 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })
+      }
+      if (name === sharedPageRouteNames.accessKeys) {
+        const target = accessKeysRedirectTarget(location.search as SharedRouteQuery)
+        if (!context.services.authSession.hasCredential()) {
+          throw redirect({
+            href: `/login?redirect=${encodeURIComponent(target)}`,
+            replace: true,
+          })
+        }
+        throw redirect({ href: target, replace: true })
       }
       if (meta.requiresAuth && !context.services.authSession.hasCredential()) {
         throw redirect({

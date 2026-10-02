@@ -19,6 +19,10 @@ export interface UnsavedChangesOptions {
   dirty: boolean
   blocked?: boolean
   allowRouteUpdate?: (current: BlockerRouteLocation, next: BlockerRouteLocation) => boolean
+  // The confirmation dialog reads the shared controller store, so every
+  // mounted consumer would render a duplicate dialog. Consumers nested inside
+  // a view that already renders its own `dialog` pass false here.
+  renderDialog?: boolean
 }
 
 export interface UnsavedChangesGuard {
@@ -90,6 +94,7 @@ export function useUnsavedChanges(options: UnsavedChangesOptions): UnsavedChange
   return {
     confirmDiscard,
     runWithoutPrompt,
-    dialog: <UnsavedChangesAlert controller={controller} />,
+    dialog:
+      options.renderDialog === false ? null : <UnsavedChangesAlert controller={controller} />,
   }
 }

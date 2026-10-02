@@ -91,6 +91,10 @@ export const mutationInvalidationPlans = {
     ),
     reveal: plan(),
   },
+  agentCredential: {
+    create: plan([], [controlQueryKeys.agentCredentials.all]),
+    disable: plan([], [controlQueryKeys.agentCredentials.all]),
+  },
   modelRouteSchedule: {
     update: modelRouteSchedulePlan,
     recover: modelRouteSchedulePlan,

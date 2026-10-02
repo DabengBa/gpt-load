@@ -133,6 +133,10 @@ export const controlQueryKeys = {
       ] as const,
     options: () => ['control', 'access-keys', 'options'] as const,
   },
+  agentCredentials: {
+    all: ['control', 'agent-credentials'] as const,
+    list: () => ['control', 'agent-credentials', 'list'] as const,
+  },
   settingsAll: ['control', 'settings'] as const,
   settings: (locale: string) => ['control', 'settings', locale] as const,
   systemInfo: () => ['control', 'system-info'] as const,

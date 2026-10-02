@@ -629,3 +629,26 @@ export interface AccessKeyRevealDto {
   key: string
   revealed_at_ms: number
 }
+
+export type AgentCredentialScope = 'diagnostics:read' | 'changes:propose' | 'changes:apply'
+
+export interface AgentCredentialDto {
+  id: number
+  name: string
+  scopes: AgentCredentialScope[]
+  status: 'active' | 'disabled'
+  expires_at_ms: number | null
+  disabled_at_ms: number | null
+  created_at_ms: number
+  updated_at_ms: number
+}
+
+export interface AgentCredentialListDto {
+  items: AgentCredentialDto[]
+}
+
+export interface AgentCredentialCreateResultDto extends AgentCredentialDto {
+  secret?: string
+  replayed: boolean
+  operation_id: string
+}
