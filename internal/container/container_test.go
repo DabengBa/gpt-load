@@ -601,20 +601,19 @@ func TestBuildContainerResolvesRuntimeDependencies(t *testing.T) {
 		if err := runtimeState.Load(context.Background()); err != nil {
 			t.Fatalf("runtimeState.Load() error = %v", err)
 		}
-		var row models.AccessKey
-		if err := db.First(&row).Error; err != nil {
-			t.Fatalf("read default AccessKey: %v", err)
+		var accessKeyCount int64
+		if err := db.Model(&models.AccessKey{}).Count(&accessKeyCount).Error; err != nil {
+			t.Fatalf("count startup AccessKeys: %v", err)
 		}
-		plaintext, err := keyService.Decrypt(row.KeyValue)
-		if err != nil {
-			t.Fatalf("decrypt default AccessKey: %v", err)
+		if accessKeyCount != 0 {
+			t.Fatalf("startup created %d AccessKeys, want none", accessKeyCount)
 		}
 		snapshot := manager.Current()
-		if snapshot == nil || len(snapshot.AccessKeysByHash) != 1 {
+		if snapshot == nil || len(snapshot.AccessKeysByHash) != 0 {
 			t.Fatalf("current snapshot = %#v", snapshot)
 		}
-		if _, ok := snapshot.AccessKeysByHash[keyService.Hash(plaintext)]; !ok {
-			t.Fatal("first snapshot cannot authenticate default AccessKey")
+		if keyService == nil {
+			t.Fatal("encryption service was not resolved")
 		}
 		if got := registry.CollectCredentialCandidates(nil, nil, time.Time{}); len(got) != 0 {
 			t.Fatalf("empty registry candidates = %#v", got)

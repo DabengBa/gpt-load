@@ -10,7 +10,6 @@ export const sharedPageRouteNames = {
   monitor: 'monitor',
   schedule: 'schedule',
   logs: 'logs',
-  models: 'models',
   settings: 'settings',
 } as const
 

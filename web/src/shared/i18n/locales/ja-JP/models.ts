@@ -75,14 +75,12 @@ export default {
       copySucceeded: 'コピーしました',
       copyFailed: 'コピーできません',
     },
-    inspector: {
-      noCatalog: 'カタログメタデータなし',
-    },
     drawer: {
       title: '上流モデルの詳細',
       description: '関連情報を確認し、価格を編集します',
       impact: 'クライアントモデル {clients} 件 · グループ {groups} 件',
-      specs: '仕様',
+      syncScope:
+        'グローバル操作:すべてのモデルの共有カタログと自動価格を更新します(このモデルのみではありません)。',
       loading: '読み込み中…',
       loadFailed: '上流モデルの詳細を読み込めません',
       sharedImpact:

@@ -10,7 +10,6 @@
     { "name": "monitor", "path": "/monitor" },
     { "name": "schedule", "path": "/schedule" },
     { "name": "logs", "path": "/logs" },
-    { "name": "models", "path": "/models" },
     { "name": "settings", "path": "/settings" }
   ]
 }

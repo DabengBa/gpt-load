@@ -75,14 +75,12 @@ export default {
       copySucceeded: 'Copied',
       copyFailed: 'Copy failed',
     },
-    inspector: {
-      noCatalog: 'No catalog metadata',
-    },
     drawer: {
       title: 'Upstream model details',
       description: 'Review relationships and edit pricing',
       impact: '{clients} client models · {groups} Groups',
-      specs: 'Specifications',
+      syncScope:
+        'Global action: refreshes the shared model catalog and automatic prices for every model, not only this one.',
       loading: 'Loading…',
       loadFailed: 'Unable to load upstream model details',
       sharedImpact:

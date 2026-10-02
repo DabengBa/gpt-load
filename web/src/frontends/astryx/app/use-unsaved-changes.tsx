@@ -94,7 +94,6 @@ export function useUnsavedChanges(options: UnsavedChangesOptions): UnsavedChange
   return {
     confirmDiscard,
     runWithoutPrompt,
-    dialog:
-      options.renderDialog === false ? null : <UnsavedChangesAlert controller={controller} />,
+    dialog: options.renderDialog === false ? null : <UnsavedChangesAlert controller={controller} />,
   }
 }

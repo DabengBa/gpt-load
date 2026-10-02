@@ -41,14 +41,12 @@ async function seedSession(page: Page, principal: Principal): Promise<void> {
 const adminNav = [
   'Home',
   'Groups',
-  'Models',
-  'Access keys',
-  'Monitor',
   'Dispatch center',
+  'Monitor',
   'Request logs',
   'Settings',
 ] as const
-const accessKeyNav = ['Home', 'Models', 'Monitor', 'Request logs'] as const
+const accessKeyNav = ['Home', 'Dispatch center', 'Monitor', 'Request logs'] as const
 
 test('login → authed shell → sign out round trip', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
@@ -113,7 +111,7 @@ test('access_key principal sees reduced nav, read-only badge, no import', async 
   for (const label of accessKeyNav) {
     await expect(nav.getByRole('link', { name: label })).toBeVisible()
   }
-  for (const label of ['Groups', 'Access keys', 'Dispatch center', 'Settings']) {
+  for (const label of ['Groups', 'Access keys', 'Settings']) {
     await expect(nav.getByRole('link', { name: label })).toHaveCount(0)
   }
   await expect(page.getByRole('link', { name: 'Import credentials' })).toHaveCount(0)

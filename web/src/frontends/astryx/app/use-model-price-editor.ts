@@ -21,6 +21,7 @@ export interface ModelPriceEditorHandle {
    */
   snapshot: ModelPriceEditorSnapshot
   confirmDiscardSwitch: UnsavedChangesGuard['confirmDiscard']
+  runWithoutPrompt: UnsavedChangesGuard['runWithoutPrompt']
   dialog: UnsavedChangesGuard['dialog']
 }
 
@@ -70,6 +71,7 @@ export function useModelPriceEditor(row: ModelPriceDto): ModelPriceEditorHandle 
     controller,
     snapshot,
     confirmDiscardSwitch: unsaved.confirmDiscard,
+    runWithoutPrompt: unsaved.runWithoutPrompt,
     dialog: unsaved.dialog,
   }
 }

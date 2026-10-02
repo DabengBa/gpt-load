@@ -6,6 +6,7 @@ import { useIntl } from 'react-intl'
 import { pagePath } from '@shared/routing/page-routes'
 import {
   parseScheduleMonitorState,
+  scopeAccessKeyScheduleMonitorState,
   sameMonitorQuery,
   scheduleMonitorQuery,
   type ScheduleDrafts,
@@ -16,15 +17,22 @@ import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useAppServices } from '../../app/services'
 import { useT } from '../../app/i18n'
+
 import { SchedulePanel, type SchedulePanelLabels } from './SchedulePanel'
+import { ScheduleAccessReadOnly } from './ScheduleAccessReadOnly'
+import { ModelUpstreamDrawer, type ModelUpstreamDrawerHandle } from '../models/ModelUpstreamDrawer'
 
 const styles = stylex.create({
   page: {
     display: 'grid',
     minWidth: 0,
+    padding:
+      'var(--stage-padding-top, 28px) var(--stage-padding-inline, 24px) var(--stage-padding-bottom, 32px)',
   },
   sheet: {
     display: 'grid',
+    width: 'min(100%, 1440px)',
+    marginInline: 'auto',
     minWidth: 0,
     alignContent: 'start',
     gap: 0,
@@ -35,14 +43,14 @@ const styles = stylex.create({
   },
   title: {
     margin: 0,
-    fontSize: 'var(--text-title)',
+    fontSize: '24px',
     fontWeight: 650,
   },
   panel: {
     minWidth: 0,
     paddingTop: {
-      default: 'var(--detail-panel-padding-top)',
-      '@media (max-width: 800px)': 'var(--detail-panel-padding-top-compact)',
+      default: '24px',
+      '@media (max-width: 800px)': '16px',
     },
   },
 })
@@ -89,7 +97,10 @@ export function ScheduleView() {
   })
   const schedulePath = pagePath('schedule')
 
-  const scheduleState = useMemo(() => parseScheduleMonitorState(rawSearch), [rawSearch])
+  const scheduleState = useMemo(() => {
+    const state = parseScheduleMonitorState(rawSearch)
+    return isAdmin ? state : scopeAccessKeyScheduleMonitorState(state)
+  }, [rawSearch, isAdmin])
   const canonicalQuery = useMemo(() => scheduleMonitorQuery(scheduleState), [scheduleState])
   const isCanonicalQuery = sameMonitorQuery(rawSearch, canonicalQuery)
 
@@ -114,6 +125,28 @@ export function ScheduleView() {
   // rendering always follows the committed location.
   const pendingStateRef = useRef<ScheduleMonitorState | null>(null)
   const pendingGenerationRef = useRef(0)
+  const drawerRef = useRef<ModelUpstreamDrawerHandle>(null)
+  const latestStateRef = useRef(scheduleState)
+  latestStateRef.current = scheduleState
+  const latestPathRef = useRef(pathname)
+  latestPathRef.current = pathname
+
+  function withDrawerBypass(navigateState: () => Promise<void>): Promise<void> {
+    return drawerRef.current?.runWithoutPrompt(navigateState) ?? navigateState()
+  }
+
+  async function openPrice(priceID: number): Promise<void> {
+    const initial = pendingStateRef.current ?? latestStateRef.current
+    if (priceID === initial.selectedPriceID) return
+    if (drawerRef.current && !(await drawerRef.current.confirmDiscardSwitch())) return
+    const current = pendingStateRef.current ?? latestStateRef.current
+    if (latestPathRef.current !== schedulePath || current.externalModel !== initial.externalModel)
+      return
+    drawerRef.current?.discardChanges()
+    await withDrawerBypass(() =>
+      navigateScheduleState({ ...current, selectedPriceID: priceID }, 'push'),
+    )
+  }
 
   async function navigateScheduleState(
     next: ScheduleMonitorState,
@@ -136,7 +169,7 @@ export function ScheduleView() {
     next: Partial<ScheduleMonitorState>,
     method: 'push' | 'replace',
   ): void {
-    const current = pendingStateRef.current ?? scheduleState
+    const current = pendingStateRef.current ?? latestStateRef.current
     const contextChanged =
       next.externalModel !== undefined && next.externalModel !== current.externalModel
     const nextState: ScheduleMonitorState = contextChanged
@@ -147,10 +180,19 @@ export function ScheduleView() {
 
   // Classic commitScheduleContext: context commits push; draft/row churn stays
   // replace-only so it never pollutes history.
-  function commitScheduleContext(context: { externalModel?: string }): void {
+  async function commitScheduleContext(context: { externalModel?: string }): Promise<void> {
     const current = pendingStateRef.current ?? scheduleState
     const externalModel = context.externalModel?.trim() || undefined
     const contextChanged = externalModel !== current.externalModel
+    if (
+      contextChanged &&
+      Object.keys(current.drafts).length > 0 &&
+      !window.confirm(t('monitor.schedule.detail.unsaved'))
+    )
+      return
+    if (contextChanged && drawerRef.current && !(await drawerRef.current.confirmDiscardSwitch()))
+      return
+    if (contextChanged) drawerRef.current?.discardChanges()
     const next: ScheduleMonitorState = contextChanged
       ? {
           ...current,
@@ -158,6 +200,7 @@ export function ScheduleView() {
           selectedRow: undefined,
           sourceGroupId: undefined,
           drafts: {},
+          selectedPriceID: undefined,
         }
       : { ...current, externalModel }
     if (sameMonitorQuery(rawSearch, scheduleMonitorQuery(next))) return
@@ -168,6 +211,9 @@ export function ScheduleView() {
     () => ({
       model: t('monitor.schedule.panel.model'),
       selectModel: t('monitor.schedule.panel.selectModel'),
+      noMatchingModels: t('monitor.schedule.panel.noMatchingModels'),
+      noModels: t('monitor.schedule.panel.noModels'),
+      importModels: t('shell.import'),
       loadingOptions: t('monitor.schedule.panel.loadingOptions'),
       contextRequired: t('monitor.schedule.panel.contextRequired'),
       kicker: t('monitor.schedule.panel.kicker'),
@@ -241,11 +287,33 @@ export function ScheduleView() {
                 updateScheduleContext({ drafts }, 'replace')
               }
               onRowChange={(row) => updateScheduleContext({ selectedRow: row }, 'replace')}
-              onSaved={() => updateScheduleContext({}, 'replace')}
+              onSaved={(_, clearDrafts) =>
+                updateScheduleContext(clearDrafts ? { drafts: {} } : {}, 'replace')
+              }
               onRecovered={() => updateScheduleContext({}, 'replace')}
               onRefresh={() => updateScheduleContext({}, 'replace')}
+              onOpenPrice={(priceID) => void openPrice(priceID)}
             />
           </div>
+        )}
+        {!isAdmin && isCanonicalQuery && (
+          <ScheduleAccessReadOnly
+            key={scheduleState.externalModel}
+            externalModel={scheduleState.externalModel}
+          />
+        )}
+        {isAdmin && isCanonicalQuery && (
+          <ModelUpstreamDrawer
+            ref={drawerRef}
+            isOpen={scheduleState.selectedPriceID !== undefined}
+            priceId={scheduleState.selectedPriceID ?? null}
+            onClose={() => {
+              drawerRef.current?.discardChanges()
+              void withDrawerBypass(() =>
+                navigateScheduleState({ ...scheduleState, selectedPriceID: undefined }, 'replace'),
+              )
+            }}
+          />
         )}
       </div>
     </section>

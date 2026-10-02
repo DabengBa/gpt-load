@@ -121,7 +121,6 @@ func TestEmbeddedPageRouteManifestContainsCurrentPages(t *testing.T) {
 		"monitor":      "/monitor",
 		"schedule":     "/schedule",
 		"logs":         "/logs",
-		"models":       "/models",
 		"settings":     "/settings",
 	}
 	if len(got) != len(want) {
@@ -130,6 +129,14 @@ func TestEmbeddedPageRouteManifestContainsCurrentPages(t *testing.T) {
 	for name, path := range want {
 		if got[name] != path {
 			t.Fatalf("embedded route %q = %q, want %q", name, got[name], path)
+		}
+	}
+	if name, exists := got["models"]; exists {
+		t.Fatalf("embedded routes still declare the models page %q = %q", name, got[name])
+	}
+	for name, path := range got {
+		if path == "/models" {
+			t.Fatalf("embedded routes still declare the models path %q = %q", name, path)
 		}
 	}
 }

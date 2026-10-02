@@ -315,9 +315,7 @@ test('redirects the legacy /access-keys page into Settings → credentials', asy
   await page.goto('/access-keys', { waitUntil: 'commit' })
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/\/settings\?section=credentials$/, { timeout: 60_000 })
-  await expect(
-    page.getByRole('heading', { name: 'Keys and access', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Keys and access', exact: true })).toBeVisible()
   await expect(page.getByRole('table', { name: 'Access key list' })).toBeVisible()
 })
 
@@ -339,9 +337,7 @@ test('renders the collection and canonicalizes invalid route query params', asyn
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/\/settings\?section=credentials$/)
 
-  await expect(
-    page.getByRole('heading', { name: 'Client access keys', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Client access keys', exact: true })).toBeVisible()
   const table = page.getByRole('table', { name: 'Access key list' })
   await expect(table).toBeVisible()
   await expect(table.getByText('prod key', { exact: true }).first()).toBeVisible()
@@ -532,9 +528,7 @@ test('shows the administrator key source without exposing the secret', async ({ 
   await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
-  await expect(
-    page.getByRole('heading', { name: 'Administrator sign-in key' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Administrator sign-in key' })).toBeVisible()
   await expect(page.getByText('Environment variable').first()).toBeVisible()
 })
 
@@ -543,9 +537,7 @@ test('creates an agent credential and shows the secret once', async ({ page }) =
   await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
 
-  await expect(
-    page.getByRole('heading', { name: 'Agent credentials', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Agent credentials', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Create agent credential' }).first().click()
 
   const dialog = page.getByRole('dialog', { name: 'Create agent credential' })

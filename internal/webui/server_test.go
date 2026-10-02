@@ -27,7 +27,7 @@ func TestServerServesSameIndexForExplicitPageRoutes(t *testing.T) {
 
 	var firstBody string
 	for _, target := range []string{
-		"/", "/login", "/import", "/groups/42", "/access-keys", "/monitor?tab=logs", "/schedule", "/models", "/settings",
+		"/", "/login", "/import", "/groups/42", "/access-keys", "/monitor?tab=logs", "/schedule", "/settings",
 	} {
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
@@ -62,15 +62,28 @@ func TestServerServesSameIndexForExplicitPageRoutes(t *testing.T) {
 	}
 }
 
-func TestServerServesModelsDeepLinkWithoutCatchingUnknownNestedPaths(t *testing.T) {
+func TestServerRetiresModelsPageRoute(t *testing.T) {
 	engine := testEngine(newServer(fstest.MapFS{
 		"dist/index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>models</title>")},
 	}, "dist"))
 
+	// /models is a retired page: it must not resolve to the document, and no
+	// compatibility redirect may mask the removal.
 	models := httptest.NewRecorder()
 	engine.ServeHTTP(models, httptest.NewRequest(http.MethodGet, "/models", nil))
-	if models.Code != http.StatusOK || !strings.Contains(models.Body.String(), "<title>models</title>") {
-		t.Fatalf("GET /models = %d %q, want embedded index", models.Code, models.Body.String())
+	if models.Code != http.StatusNotFound {
+		t.Fatalf("GET /models = %d, want 404 (no page route, no redirect)", models.Code)
+	}
+	if location := models.Header().Get("Location"); location != "" {
+		t.Fatalf("GET /models Location = %q, want no redirect", location)
+	}
+
+	browserModels := httptest.NewRecorder()
+	browserModelsRequest := httptest.NewRequest(http.MethodGet, "/models", nil)
+	browserModelsRequest.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9")
+	engine.ServeHTTP(browserModels, browserModelsRequest)
+	if browserModels.Code != http.StatusNotFound {
+		t.Fatalf("GET /models (browser) = %d, want 404 SPA fallback", browserModels.Code)
 	}
 
 	unknown := httptest.NewRecorder()

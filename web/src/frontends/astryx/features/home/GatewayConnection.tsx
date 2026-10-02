@@ -726,7 +726,10 @@ export function GatewayConnection({
         <div {...stylex.props(styles.empty)}>
           <p {...stylex.props(styles.emptyText)}>{t('home.ledger.connection.noAccessKey')}</p>
           {!selfScoped && (
-            <RouteLink to={pagePath('accessKeys')} {...stylex.props(styles.createLink)}>
+            <RouteLink
+              to={`${pagePath('settings')}?section=credentials`}
+              {...stylex.props(styles.createLink)}
+            >
               {t('home.ledger.connection.createAccessKey')}
             </RouteLink>
           )}

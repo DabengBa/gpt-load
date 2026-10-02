@@ -36,12 +36,14 @@ export default {
     },
     credentials: {
       title: '密钥与访问',
-      description: '面向客户端与自动化 Agent 开放本服务的凭证。此处的变更立即生效，不属于运行时设置草稿。',
+      description:
+        '面向客户端与自动化 Agent 开放本服务的凭证。此处的变更立即生效，不属于运行时设置草稿。',
       adminTitle: '管理员登录密钥',
       adminDescription: '用于登录本控制台的密钥。由部署配置管理，这里仅显示其来源。',
       adminSource: '来源',
       adminLoadFailed: '无法加载登录密钥状态。',
-      adminNote: '如需更换，请修改 AUTH_KEY 环境变量（或自动生成的密钥文件）并重启服务。密钥内容不会在此处显示。',
+      adminNote:
+        '如需更换，请修改 AUTH_KEY 环境变量（或自动生成的密钥文件）并重启服务。密钥内容不会在此处显示。',
       accessTitle: '客户端访问密钥',
       accessDescription:
         '为 API 客户端签发 sk-gl- 密钥。基础密钥只需名称；分组、协议、模型、限流与额度等限制在编辑时可用。',
@@ -87,7 +89,8 @@ export default {
         expiresNever: '永不',
         disable: '停用',
         disableTitle: '停用此 Agent 凭证？',
-        disableDescription: '使用「{name}」的 Agent 将立即失去访问权限。此操作不可撤销；如需恢复请创建新凭证。',
+        disableDescription:
+          '使用「{name}」的 Agent 将立即失去访问权限。此操作不可撤销；如需恢复请创建新凭证。',
         disableFailed: '停用 Agent 凭证失败，请重试。',
         disabledToast: 'Agent 凭证「{name}」已停用。',
         loading: '正在加载 Agent 凭证…',
