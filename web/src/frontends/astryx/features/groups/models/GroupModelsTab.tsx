@@ -804,7 +804,7 @@ export function GroupModelsTab({
                 </div>
                 {item.pricing_status === 'pending' && item.price_id !== undefined ? (
                   <RouteLink
-                    to={`${pagePath('models')}${stringifySharedRouteSearch({ selected_price_id: item.price_id })}`}
+                    to={`${pagePath('schedule')}${stringifySharedRouteSearch({ selected_price_id: item.price_id })}`}
                     {...stylex.props(styles.pricingLink)}
                   >
                     <ModelPricingStatus

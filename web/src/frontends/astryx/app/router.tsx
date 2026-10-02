@@ -29,7 +29,6 @@ import {
 import { scalarRouteQuery } from '@shared/routing/route-query'
 import { parseImportRouteQuery, serializeImportRouteQuery } from '@shared/routing/import-route'
 import { parseHomeRouteQuery, serializeHomeRouteQuery } from '@shared/routing/home-route'
-import { parseModelsRouteQuery, serializeModelsRouteQuery } from '@shared/routing/models-route'
 import {
   parseSettingsCredentialsRoute,
   parseSettingsRouteSection,
@@ -56,7 +55,6 @@ import { GroupsView } from '../features/groups/GroupsView'
 import { ImportView } from '../features/import/ImportView'
 import { HomeView } from '../features/home/HomeView'
 import { LogsView } from '../features/logs/LogsView'
-import { ModelsView } from '../features/models/ModelsView'
 import { MonitorView } from '../features/monitor/MonitorView'
 import { ScheduleView } from '../features/monitor/ScheduleView'
 import { SettingsView } from '../features/settings/SettingsView'
@@ -202,12 +200,6 @@ function settingsSearch(search: Record<string, unknown>) {
   )
 }
 
-// Sparse canonical search: defaults (enabled/all/page 1, no drawer) serialize
-// away; junk or duplicated keys normalize out on the write-back.
-function modelsSearch(search: Record<string, unknown>) {
-  return serializeModelsRouteQuery(parseModelsRouteQuery(search as SharedRouteQuery))
-}
-
 // Sparse canonical search: access_key_id only survives when it resolves to a
 // number, client only when it's a known gateway client (default 'cc-switch'
 // serializes away).
@@ -219,10 +211,7 @@ function homeSearch(search: Record<string, unknown>) {
 // Settings → credentials, so every visit forwards there while preserving the
 // collection filters and drawer deep links it carried.
 function accessKeysRedirectTarget(search: SharedRouteQuery): string {
-  const query = serializeSettingsRouteQuery(
-    'credentials',
-    parseSettingsCredentialsRoute(search),
-  )
+  const query = serializeSettingsRouteQuery('credentials', parseSettingsCredentialsRoute(search))
   return `${pagePath('settings')}${stringifySharedRouteSearch(query)}`
 }
 
@@ -280,7 +269,6 @@ const searchValidators: Partial<
   [sharedPageRouteNames.groupDetail]: groupDetailSearch,
   [sharedPageRouteNames.import]: importSearch,
   [sharedPageRouteNames.settings]: settingsSearch,
-  [sharedPageRouteNames.models]: modelsSearch,
   [sharedPageRouteNames.monitor]: monitorSearch,
   [sharedPageRouteNames.schedule]: scheduleSearch,
 }
@@ -300,7 +288,6 @@ const routeViews: Record<RouteName, () => ReactNode> = {
   [sharedPageRouteNames.import]: ImportView,
   [sharedPageRouteNames.logs]: LogsView,
   [sharedPageRouteNames.settings]: SettingsView,
-  [sharedPageRouteNames.models]: ModelsView,
   [sharedPageRouteNames.monitor]: MonitorView,
   [sharedPageRouteNames.schedule]: ScheduleView,
 }

@@ -666,6 +666,8 @@ export default {
     },
     schedule: {
       panel: {
+        noMatchingModels: '一致するモデルがありません',
+        noModels: 'モデルがありません',
         model: '外部モデル',
         selectModel: 'モデルを選択',
         loadingOptions: 'モデル候補を読み込み中…',

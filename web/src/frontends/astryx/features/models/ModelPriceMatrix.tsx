@@ -109,6 +109,16 @@ const styles = stylex.create({
     borderRadius: 0,
     backgroundColor: 'transparent',
   },
+  field: {
+    display: 'grid',
+    minWidth: 0,
+  },
+  fieldLabel: {
+    display: { default: 'none', [MATRIX_NARROW]: 'block' },
+    padding: 'var(--space-1) var(--space-2) 0',
+    color: 'var(--color-text-faint)',
+    fontSize: 'var(--text-label-xs)',
+  },
   cellInputInvalid: {
     backgroundColor: 'var(--color-danger-bg)',
   },
@@ -327,25 +337,31 @@ export function ModelPriceMatrix({
             xstyles={[tiered && styles.groupCell]}
           >
             {modelPriceFields.map((field, index) => (
-              <TextInput
+              <label
                 key={field}
-                id={`model-price-base-${field}`}
-                label={t(`modelPrices.fields.${field}`)}
-                isLabelHidden
-                size="sm"
-                value={draft.base[field]}
-                isDisabled={pending}
-                status={baseFieldError(field) ? { type: 'error' } : undefined}
-                xstyle={[
-                  styles.cellInput,
-                  index > 0 && styles.cellInputDivider,
-                  !!baseFieldError(field) && styles.cellInputInvalid,
-                ]}
-                {...decimalInputAttrs}
-                onChange={(value) =>
-                  onDraftChange({ ...draft, base: { ...draft.base, [field]: value } })
-                }
-              />
+                {...stylex.props(styles.field)}
+                htmlFor={`model-price-base-${field}`}
+              >
+                <span {...stylex.props(styles.fieldLabel)}>{t(`modelPrices.fields.${field}`)}</span>
+                <TextInput
+                  id={`model-price-base-${field}`}
+                  label={t(`modelPrices.fields.${field}`)}
+                  isLabelHidden
+                  size="sm"
+                  value={draft.base[field]}
+                  isDisabled={pending}
+                  status={baseFieldError(field) ? { type: 'error' } : undefined}
+                  xstyle={[
+                    styles.cellInput,
+                    index > 0 && styles.cellInputDivider,
+                    !!baseFieldError(field) && styles.cellInputInvalid,
+                  ]}
+                  {...decimalInputAttrs}
+                  onChange={(value) =>
+                    onDraftChange({ ...draft, base: { ...draft.base, [field]: value } })
+                  }
+                />
+              </label>
             ))}
           </PriceInputGroup>
           {/* 增删都落在同一列:无档位时基础行就是最后一行,由它承载加号。 */}
@@ -404,32 +420,40 @@ export function ModelPriceMatrix({
                 xstyles={[styles.groupCell]}
               >
                 {modelPriceFields.map((field, fieldIndex) => (
-                  <TextInput
+                  <label
                     key={field}
-                    id={`model-price-tier-${tier.key}-${field}`}
-                    label={t(`modelPrices.fields.${field}`)}
-                    isLabelHidden
-                    size="sm"
-                    value={tier.slots[field]}
-                    isDisabled={pending}
-                    status={tierSlotError(tier.key, field) ? { type: 'error' } : undefined}
-                    xstyle={[
-                      styles.cellInput,
-                      fieldIndex > 0 && styles.cellInputDivider,
-                      !!tierSlotError(tier.key, field) && styles.cellInputInvalid,
-                    ]}
-                    {...decimalInputAttrs}
-                    onChange={(value) =>
-                      onDraftChange({
-                        ...draft,
-                        tiers: draft.tiers.map((item) =>
-                          item.key === tier.key
-                            ? { ...item, slots: { ...item.slots, [field]: value } }
-                            : item,
-                        ),
-                      })
-                    }
-                  />
+                    {...stylex.props(styles.field)}
+                    htmlFor={`model-price-tier-${tier.key}-${field}`}
+                  >
+                    <span {...stylex.props(styles.fieldLabel)}>
+                      {t(`modelPrices.fields.${field}`)}
+                    </span>
+                    <TextInput
+                      id={`model-price-tier-${tier.key}-${field}`}
+                      label={t(`modelPrices.fields.${field}`)}
+                      isLabelHidden
+                      size="sm"
+                      value={tier.slots[field]}
+                      isDisabled={pending}
+                      status={tierSlotError(tier.key, field) ? { type: 'error' } : undefined}
+                      xstyle={[
+                        styles.cellInput,
+                        fieldIndex > 0 && styles.cellInputDivider,
+                        !!tierSlotError(tier.key, field) && styles.cellInputInvalid,
+                      ]}
+                      {...decimalInputAttrs}
+                      onChange={(value) =>
+                        onDraftChange({
+                          ...draft,
+                          tiers: draft.tiers.map((item) =>
+                            item.key === tier.key
+                              ? { ...item, slots: { ...item.slots, [field]: value } }
+                              : item,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
                 ))}
               </PriceInputGroup>
               <div {...stylex.props(styles.actions, styles.actionsCell)}>

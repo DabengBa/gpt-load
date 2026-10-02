@@ -642,6 +642,8 @@ export default {
     },
     schedule: {
       panel: {
+        noMatchingModels: '未找到匹配模型',
+        noModels: '暂无模型',
         model: '对外模型',
         selectModel: '请选择模型',
         loadingOptions: '正在加载模型选项…',

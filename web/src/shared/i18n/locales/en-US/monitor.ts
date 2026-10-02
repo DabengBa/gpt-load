@@ -665,6 +665,8 @@ export default {
     },
     schedule: {
       panel: {
+        noMatchingModels: 'No matching models',
+        noModels: 'No models available',
         model: 'External model',
         selectModel: 'Select a model',
         loadingOptions: 'Loading model options…',

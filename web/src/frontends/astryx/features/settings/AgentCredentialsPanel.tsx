@@ -540,10 +540,7 @@ function AgentCredentialCreateDialog({
           <LayoutContent isScrollable>
             {created !== null ? (
               <div {...stylex.props(styles.dialogBody)}>
-                <Banner
-                  status="warning"
-                  title={t('settings.credentials.agent.secretWarning')}
-                />
+                <Banner status="warning" title={t('settings.credentials.agent.secretWarning')} />
                 <code {...stylex.props(styles.secretValue)}>{created.secret}</code>
                 <div>
                   <CopyChip

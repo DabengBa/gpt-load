@@ -66,9 +66,7 @@ function projectNonBlankTrimmedString(value: unknown): string {
 export function projectAgentCredentialMetadata(value: unknown): AgentCredentialDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, metadataFields)
-  const scopes = projectArray(record.scopes, (scope) =>
-    projectEnum(scope, agentCredentialScopes),
-  )
+  const scopes = projectArray(record.scopes, (scope) => projectEnum(scope, agentCredentialScopes))
   if (scopes.length === 0 || new Set(scopes).size !== scopes.length) invalidResponse()
   return {
     id: projectSafeInteger(record.id, { minimum: 1 }),
@@ -129,10 +127,7 @@ export async function createAgentCredential(
   )
   assertNoSecretLikeFields(record, createFields)
   const secret = record.secret === undefined ? undefined : projectString(record.secret)
-  if (
-    typeof record.replayed !== 'boolean' ||
-    record.replayed === (secret !== undefined)
-  ) {
+  if (typeof record.replayed !== 'boolean' || record.replayed === (secret !== undefined)) {
     invalidResponse()
   }
   const metadata = Object.fromEntries(metadataFields.map((field) => [field, record[field]]))

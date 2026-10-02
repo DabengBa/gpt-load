@@ -37,17 +37,14 @@ test('credentials state round-trips collection filters and the drawer', () => {
   assert.deepEqual(parsed.collection, { q: 'prod', status: 'disabled', page: 3, page_size: 20 })
   assert.deepEqual(parsed.drawer, { mode: 'edit', accessKeyID: 7 })
 
-  assert.deepEqual(
-    serializeSettingsRouteQuery('credentials', parsed),
-    {
-      section: 'credentials',
-      q: 'prod',
-      status: 'disabled',
-      page: '3',
-      action: 'edit',
-      access_key_id: '7',
-    },
-  )
+  assert.deepEqual(serializeSettingsRouteQuery('credentials', parsed), {
+    section: 'credentials',
+    q: 'prod',
+    status: 'disabled',
+    page: '3',
+    action: 'edit',
+    access_key_id: '7',
+  })
 })
 
 test('create-mode drawer and defaults serialize sparsely', () => {
@@ -75,7 +72,11 @@ test('credentials params are dropped for other sections', () => {
 test('canonicalization keeps credentials params only in that section', () => {
   const credentials = parseSettingsCredentialsRoute({ action: 'create' })
   assert.equal(
-    isCanonicalSettingsRouteQuery({ section: 'credentials', action: 'create' }, 'credentials', credentials),
+    isCanonicalSettingsRouteQuery(
+      { section: 'credentials', action: 'create' },
+      'credentials',
+      credentials,
+    ),
     true,
   )
   // Stray params on another section are non-canonical.

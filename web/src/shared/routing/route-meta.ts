@@ -66,21 +66,16 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
   schedule: {
     titleKey: 'shell.schedule',
     requiresAuth: true,
-    adminOnly: true,
     primaryNav: 'schedule',
-    messageNamespaces: ['monitor'],
+    // Both principals reach the schedule page; the price deep link inside the
+    // detail surfaces needs the model and price catalogs loaded up front.
+    messageNamespaces: ['monitor', 'models', 'model-prices'],
   },
   logs: {
     titleKey: 'shell.logs',
     requiresAuth: true,
     primaryNav: 'logs',
     messageNamespaces: ['monitor'],
-  },
-  models: {
-    titleKey: 'models.title',
-    requiresAuth: true,
-    primaryNav: 'models',
-    messageNamespaces: ['models', 'model-prices'],
   },
   settings: {
     titleKey: 'shell.settings',

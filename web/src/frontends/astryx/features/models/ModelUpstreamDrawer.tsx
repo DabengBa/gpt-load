@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { Button, EmptyState, Skeleton } from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
-import { TriangleAlert, Zap } from 'lucide-react'
+import { RefreshCw, TriangleAlert, Zap } from 'lucide-react'
 import { useImperativeHandle, type Ref } from 'react'
 import { useIntl } from 'react-intl'
 
@@ -18,6 +18,7 @@ import { RouteLink } from '../../app/route-link'
 import { useAppServices } from '../../app/services'
 import { useStableLoading } from '../../app/collection-loading'
 import { useModelPriceEditor } from '../../app/use-model-price-editor'
+import { useModelPriceSync } from '../../app/use-model-price-sync'
 import { ChannelIcon } from '../../components/ChannelIcon'
 import { CopyButton } from '../../components/CopyButton'
 import { DetailPanel } from '../../components/DetailPanel'
@@ -25,7 +26,6 @@ import { ModelPriceMatrix } from './ModelPriceMatrix'
 import { ModelPriceResetDialog } from './ModelPriceResetDialog'
 import { ModelPriceSlotsEditor } from './ModelPriceSlotsEditor'
 import { ModelPriceStatusBadge } from './ModelPriceStatusBadge'
-import { ModelSpecSheet } from './ModelSpecSheet'
 
 const DRAWER_NARROW = '@media (max-width: 620px)'
 
@@ -110,6 +110,36 @@ const styles = stylex.create({
       'var(--color-warning-bg, color-mix(in srgb, var(--color-warning) 12%, transparent))',
     padding: '9px 12px',
     fontSize: 'var(--text-meta)',
+  },
+  syncRow: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 'var(--space-2)',
+  },
+  syncScope: {
+    color: 'var(--color-text-faint)',
+    fontSize: 'var(--text-label-xs)',
+  },
+  banner: {
+    borderRadius: 'var(--radius-control, 6px)',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    padding: '9px 12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    fontSize: 'var(--text-meta)',
+  },
+  bannerSuccess: {
+    borderColor: 'var(--color-success)',
+    backgroundColor:
+      'var(--color-success-bg, color-mix(in srgb, var(--color-success) 12%, transparent))',
+  },
+  bannerDanger: {
+    borderColor: 'var(--color-danger)',
+    backgroundColor:
+      'var(--color-danger-bg, color-mix(in srgb, var(--color-danger) 10%, transparent))',
   },
   section: {
     display: 'grid',
@@ -231,6 +261,7 @@ const styles = stylex.create({
 export interface ModelUpstreamDrawerHandle {
   requestClose(): Promise<void>
   confirmDiscardSwitch(): Promise<boolean>
+  runWithoutPrompt<T>(navigate: () => Promise<T>): Promise<T>
   discardChanges(): void
   hasUnsavedChanges(): boolean
 }
@@ -286,8 +317,10 @@ export function ModelUpstreamDrawer({
    */
   const price = detail?.price ?? placeholderPrice
   const editor = useModelPriceEditor(price)
+  const priceSync = useModelPriceSync()
   const controller = editor.controller
   const snapshot = editor.snapshot
+  const syncSnapshot = priceSync.snapshot
   const draft = snapshot.draft
   const errors = snapshot.errors
   const pending = snapshot.pending
@@ -314,6 +347,7 @@ export function ModelUpstreamDrawer({
   useImperativeHandle(ref, () => ({
     requestClose,
     confirmDiscardSwitch: editor.confirmDiscardSwitch,
+    runWithoutPrompt: editor.runWithoutPrompt,
     discardChanges: () => controller.cancel(),
     hasUnsavedChanges: () => controller.hasChanged(),
   }))
@@ -419,6 +453,36 @@ export function ModelUpstreamDrawer({
             )}
           </div>
 
+          <div {...stylex.props(styles.syncRow)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              isLoading={syncSnapshot.pending}
+              isDisabled={pending || changed}
+              icon={<RefreshCw size={15} aria-hidden />}
+              label={t('models.actions.sync')}
+              onClick={() => void priceSync.controller.run()}
+            />
+            <span {...stylex.props(styles.syncScope)}>{t('models.drawer.syncScope')}</span>
+          </div>
+          {syncSnapshot.succeeded && (
+            <div {...stylex.props(styles.banner, styles.bannerSuccess)} role="status">
+              {t('models.sync.succeeded')}
+            </div>
+          )}
+          {syncSnapshot.failed && (
+            <div {...stylex.props(styles.banner, styles.bannerDanger)} role="alert">
+              <span>{t('models.sync.failed')}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                isDisabled={pending || changed}
+                label={t('common.retry')}
+                onClick={() => void priceSync.controller.run()}
+              />
+            </div>
+          )}
+
           <dl {...stylex.props(styles.identity)}>
             <div {...stylex.props(styles.identityItem)}>
               <dt {...stylex.props(styles.identityTerm)}>{t('models.drawer.pricingChannel')}</dt>
@@ -448,15 +512,6 @@ export function ModelUpstreamDrawer({
               })}
             </div>
           )}
-
-          <section {...stylex.props(styles.section)}>
-            <h3 {...stylex.props(styles.sectionTitle)}>{t('models.drawer.specs')}</h3>
-            {detail.catalog_reference ? (
-              <ModelSpecSheet reference={detail.catalog_reference} />
-            ) : (
-              <p {...stylex.props(styles.faint)}>{t('models.inspector.noCatalog')}</p>
-            )}
-          </section>
 
           <section {...stylex.props(styles.section)}>
             <h3 {...stylex.props(styles.sectionTitle)}>

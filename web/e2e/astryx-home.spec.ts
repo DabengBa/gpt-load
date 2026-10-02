@@ -437,6 +437,35 @@ test('shows the welcome state for an empty admin home', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toHaveCount(0)
 })
 
+test('renders grouped home without access keys and links to settings credentials', async ({
+  page,
+}) => {
+  await mockHome(page)
+  await page.route('**/api/home', async (route: Route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { ...baseHome({ nowMS: Date.now(), principalType: 'admin' }), access_keys: [] },
+      }),
+    })
+  })
+  await page.goto('/', { waitUntil: 'load' })
+  await expectAstryxDocument(page)
+  await expect(
+    page.getByRole('heading', { name: /2 Groups.*4\/5 credentials available.*3 models/ }),
+  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toBeVisible()
+  await expect(page.getByText('Create an access key before connecting a client')).toBeVisible()
+  const createAccessKey = page.getByRole('link', { name: 'Create access key', exact: true })
+  await expect(createAccessKey).toHaveAttribute('href', '/settings?section=credentials')
+  await createAccessKey.click()
+  await expect(page).toHaveURL(/\/settings\?section=credentials$/)
+  await expect(page.getByRole('heading', { name: 'Keys and access', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Client access keys', exact: true })).toBeVisible()
+})
+
 test('shows the error state and recovers through retry', async ({ page }) => {
   const requests = await mockHome(page, { baseStatus: 500 })
   await page.goto('/', { waitUntil: 'load' })
@@ -486,8 +515,8 @@ test('keeps stale content with a warning banner when a refresh fails', async ({ 
       body: JSON.stringify({ code: 500, message: 'boom', data: null }),
     })
   })
-  await page.getByRole('link', { name: 'Models', exact: true }).click()
-  await expect(page).toHaveURL(/\/models/)
+  await page.getByRole('link', { name: 'Dispatch center', exact: true }).click()
+  await expect(page).toHaveURL(/\/schedule/)
   await page.getByRole('link', { name: 'Home', exact: true }).click()
   await expect(page).toHaveURL(/\/$/)
 
