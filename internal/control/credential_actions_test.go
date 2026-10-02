@@ -61,10 +61,11 @@ func TestDownloadGroupCredentialHTTPReturnsJSONObjectAndNoStoreHeaders(t *testin
 		t,
 		engine,
 		http.MethodPost,
-		fmt.Sprintf("/api/groups/%d/credentials/%d/download", groupID, credentialID),
+		fmt.Sprintf("/api/groups/%d/credential/download", groupID),
 		"{}",
 		"credential-download-auth",
 		"",
+		credentialID,
 	)
 	if response.Code != http.StatusOK {
 		t.Fatalf("download response = %d %s", response.Code, response.Body.String())
@@ -84,74 +85,6 @@ func TestDownloadGroupCredentialHTTPReturnsJSONObjectAndNoStoreHeaders(t *testin
 	}
 	if envelope.Code != 0 || envelope.Data.Filename == "" || envelope.Data.Credential["access_token"] == nil {
 		t.Fatalf("download envelope = %#v", envelope)
-	}
-}
-
-func TestDownloadAllGroupCredentialsReturnsAccountAndNoStoreHeaders(t *testing.T) {
-	t.Parallel()
-	initControlI18n(t)
-	fixture, groupID, _ := newSubscriptionCredentialFixture(t)
-
-	result, err := fixture.service.DownloadAllGroupCredentials(t.Context(), groupID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Files) != 1 {
-		t.Fatalf("downloaded file count = %d, want 1", len(result.Files))
-	}
-	var credential struct {
-		AccountID string `json:"account_id"`
-	}
-	if err := json.Unmarshal(result.Files[0].Credential, &credential); err != nil {
-		t.Fatal(err)
-	}
-	if credential.AccountID != "account-observation" {
-		t.Fatalf("downloaded account_id = %q, want account-observation", credential.AccountID)
-	}
-
-	server := NewServer(&config.Config{AuthKey: "credential-download-all-auth"}, fixture.service)
-	engine := gin.New()
-	server.RegisterRoutes(engine)
-	response := serveCredentialRequest(
-		t,
-		engine,
-		http.MethodPost,
-		fmt.Sprintf("/api/groups/%d/credentials/download-all", groupID),
-		"{}",
-		"credential-download-all-auth",
-		"",
-	)
-	if response.Code != http.StatusOK {
-		t.Fatalf("download-all response = %d %s", response.Code, response.Body.String())
-	}
-	if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Pragma") != "no-cache" {
-		t.Fatalf("download-all response headers = %#v", response.Header())
-	}
-	var envelope struct {
-		Code int                         `json:"code"`
-		Data CredentialDownloadAllResult `json:"data"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	if envelope.Code != 0 || len(envelope.Data.Files) != 1 {
-		t.Fatalf("download-all envelope = %#v", envelope)
-	}
-	if err := json.Unmarshal(envelope.Data.Files[0].Credential, &credential); err != nil {
-		t.Fatal(err)
-	}
-	if credential.AccountID != "account-observation" {
-		t.Fatalf("HTTP downloaded account_id = %q, want account-observation", credential.AccountID)
-	}
-}
-
-func TestDownloadAllGroupCredentialsRejectsAPIKeyGroup(t *testing.T) {
-	t.Parallel()
-
-	fixture := newServiceFixture(t)
-	groupID := createGroupForCredentialImport(t, fixture, "sk-download-all-forbidden")
-	if _, err := fixture.service.DownloadAllGroupCredentials(t.Context(), groupID); !errors.Is(err, app_errors.ErrForbidden) {
-		t.Fatalf("DownloadAllGroupCredentials() error = %v, want forbidden", err)
 	}
 }
 

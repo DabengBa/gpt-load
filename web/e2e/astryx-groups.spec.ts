@@ -36,23 +36,8 @@ function collectionItem(group: FixtureGroup) {
     status: group.status,
     model_count: 4,
     client_model_count: 2,
-    // Contract: a disabled group carries all credentials in `disabled`.
-    credential_counts:
-      group.status === 'disabled'
-        ? {
-            total: group.credential_total,
-            available: 0,
-            cooldown: 0,
-            blacklisted: 0,
-            disabled: group.credential_total,
-          }
-        : {
-            total: group.credential_total,
-            available: group.credential_total,
-            cooldown: 0,
-            blacklisted: 0,
-            disabled: 0,
-          },
+    credential_configured: group.credential_total > 0,
+    credential_status: group.credential_total > 0 ? 'available' : null,
   }
 }
 
@@ -70,7 +55,7 @@ function makeGroup(index: number): FixtureGroup {
     status,
     connection_type: index % 3 === 0 ? 'subscription' : 'api_key',
     channel_id: 'openai',
-    credential_total: (index * 13) % 40,
+    credential_total: index % 2,
     created_ms: 1_700_000_000_000 + index * 60_000,
   }
 }
@@ -139,9 +124,7 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
         case 'name':
           sorted.sort((a, b) => a.name.localeCompare(b.name))
           break
-        case 'credentials':
-          sorted.sort((a, b) => b.credential_total - a.credential_total)
-          break
+
         case 'created':
           sorted.sort((a, b) => b.created_ms - a.created_ms)
           break

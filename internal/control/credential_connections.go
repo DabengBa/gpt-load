@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -16,65 +17,27 @@ import (
 )
 
 type CredentialConnectRequest struct {
-	StagedCredentialIDs []string `json:"staged_credential_ids"`
+	StagedCredentialID string `json:"staged_credential_id"`
 }
 
-type CredentialConnectInspection struct {
-	DuplicatedStageIDs []string `json:"duplicated_stage_ids"`
-}
-
-type credentialConnectDigestBody struct {
-	StagedCredentialIDs []string `json:"staged_credential_ids"`
-}
-
-// InspectGroupCredentialConnection identifies ready stages that the final
-// connection will skip because their subscription identity is already present.
-func (s *Service) InspectGroupCredentialConnection(
-	ctx context.Context,
-	groupID uint,
-	stageIDs []string,
-) (CredentialConnectInspection, error) {
-	normalized, err := normalizeCredentialStageIDs(stageIDs)
-	if groupID == 0 || err != nil {
-		return CredentialConnectInspection{}, app_errors.ErrValidation
-	}
-	db := s.db.WithContext(ctx)
-	group, err := loadGroupRow(db, groupID)
-	if err != nil {
-		return CredentialConnectInspection{}, err
-	}
-	if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeSubscription {
-		return CredentialConnectInspection{}, app_errors.ErrValidation
-	}
-	stages, err := s.loadConsumableCredentialStages(
-		db, channel.ID(group.ChannelID), group.ConnectionType, normalized, false,
-	)
-	if err != nil {
-		return CredentialConnectInspection{}, err
-	}
-	duplicatedStageIDs, _, err := classifyCredentialStages(
-		db, groupID, stages, credentialStageClassificationInspection,
-	)
-	if err != nil {
-		return CredentialConnectInspection{}, err
-	}
-	return CredentialConnectInspection{DuplicatedStageIDs: duplicatedStageIDs}, nil
-}
-
-// ConnectGroupCredentialsIdempotent consumes subscription stages exactly once
+// ConnectGroupCredentialsIdempotent consumes a subscription stage exactly once
 // while allowing the same HTTP operation to recover after a lost response.
 func (s *Service) ConnectGroupCredentialsIdempotent(
 	ctx context.Context,
 	idempotencyKey string,
 	groupID uint,
-	stageIDs []string,
+	expectedID uint,
+	stageID string,
 ) (CredentialImportResult, error) {
-	normalized, err := normalizeCredentialStageIDs(stageIDs)
-	if groupID == 0 || err != nil {
+	normalized := strings.TrimSpace(stageID)
+	if groupID == 0 || normalized == "" {
 		return CredentialImportResult{}, app_errors.ErrValidation
 	}
-	canonicalBody, err := canonicalIdempotencyBody(credentialConnectDigestBody{
-		StagedCredentialIDs: normalized,
+	canonicalBody, err := canonicalIdempotencyBody(struct {
+		StagedCredentialID   string `json:"staged_credential_id"`
+		ExpectedCredentialID uint   `json:"expected_credential_id"`
+	}{
+		StagedCredentialID: normalized, ExpectedCredentialID: expectedID,
 	})
 	if err != nil {
 		return CredentialImportResult{}, app_errors.ErrInternalServer
@@ -82,7 +45,7 @@ func (s *Service) ConnectGroupCredentialsIdempotent(
 	resourceIdentity := "group:" + strconv.FormatUint(uint64(groupID), 10)
 	digest, err := buildIdempotencyDigest(idempotencyDigestInput{
 		Version: 1, Method: "POST", OperationKind: operationKindCredentialImport,
-		PathTemplate:    "/api/groups/:group_id/credentials/connect",
+		PathTemplate:    "/api/groups/:group_id/credential/connect",
 		ResourceLocator: resourceIdentity, AuthScopeID: idempotencyAuthScopeID,
 		CanonicalBody: canonicalBody,
 	})
@@ -93,7 +56,7 @@ func (s *Service) ConnectGroupCredentialsIdempotent(
 		IdempotencyKey: idempotencyKey, DigestVersion: 1, RequestDigest: digest.Digest,
 		Kind: operationKindCredentialImport,
 		Mutate: func(tx *gorm.DB) (idempotentMutationResult, error) {
-			result, entries, err := s.connectGroupCredentialsMutation(ctx, tx, groupID, normalized)
+			result, entries, err := s.connectGroupCredentialsMutation(ctx, tx, groupID, expectedID, normalized)
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
@@ -120,21 +83,23 @@ func (s *Service) ConnectGroupCredentialsIdempotent(
 	return result, nil
 }
 
-// ConnectGroupCredentials promotes ready subscription stages into an existing
+// ConnectGroupCredentials promotes a ready subscription stage into an existing
 // subscription Group without changing the API-key text import contract.
 func (s *Service) ConnectGroupCredentials(
 	ctx context.Context,
 	groupID uint,
-	stageIDs []string,
+	expectedID uint,
+	stageID string,
 ) (CredentialImportResult, error) {
-	normalized, err := normalizeCredentialStageIDs(stageIDs)
-	if groupID == 0 || err != nil {
+	normalized := strings.TrimSpace(stageID)
+	if groupID == 0 || normalized == "" {
 		return CredentialImportResult{}, app_errors.ErrValidation
 	}
 	result := CredentialImportResult{GroupID: groupID}
 	var entries []state.CredentialEntry
-	err = s.writeCredentialConfig(ctx, groupID, 0, func(tx *gorm.DB) error {
-		result, entries, err = s.connectGroupCredentialsMutation(ctx, tx, groupID, normalized)
+	var err error
+	err = s.writeCredentialConfig(ctx, groupID, expectedID, func(tx *gorm.DB) error {
+		result, entries, err = s.connectGroupCredentialsMutation(ctx, tx, groupID, expectedID, normalized)
 		if err != nil {
 			return err
 		}
@@ -153,7 +118,8 @@ func (s *Service) connectGroupCredentialsMutation(
 	ctx context.Context,
 	tx *gorm.DB,
 	groupID uint,
-	stageIDs []string,
+	expectedID uint,
+	stageID string,
 ) (CredentialImportResult, []state.CredentialEntry, error) {
 	group, err := loadGroupRow(tx, groupID)
 	if err != nil {
@@ -162,13 +128,20 @@ func (s *Service) connectGroupCredentialsMutation(
 	if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeSubscription {
 		return CredentialImportResult{}, nil, app_errors.ErrValidation
 	}
-	if err := s.validateCredentialConnectionBatch(
-		tx, group.ID, channel.ID(group.ChannelID), group.ConnectionType, stageIDs,
+	var current []models.Credential
+	if err := tx.Where("group_id = ?", groupID).Find(&current).Error; err != nil {
+		return CredentialImportResult{}, nil, app_errors.ParseDBError(err)
+	}
+	if len(current) > 1 || (len(current) == 0 && expectedID != 0) || (len(current) == 1 && current[0].ID != expectedID) {
+		return CredentialImportResult{}, nil, app_errors.ErrCredentialVersionConflict
+	}
+	if err := s.validateCredentialConnection(
+		tx, group.ID, channel.ID(group.ChannelID), group.ConnectionType, stageID,
 	); err != nil {
 		return CredentialImportResult{}, nil, err
 	}
-	added, duplicatedStageIDs, err := s.consumeCredentialStages(
-		tx, group.ID, channel.ID(group.ChannelID), group.ConnectionType, stageIDs,
+	err = s.consumeCredentialStage(
+		tx, group.ID, channel.ID(group.ChannelID), group.ConnectionType, stageID,
 	)
 	if err != nil {
 		return CredentialImportResult{}, nil, err
@@ -177,25 +150,22 @@ func (s *Service) connectGroupCredentialsMutation(
 	if err != nil {
 		return CredentialImportResult{}, nil, err
 	}
-	return CredentialImportResult{
-		GroupID: groupID, CredentialsAdded: added,
-		CredentialsDuplicated: len(duplicatedStageIDs),
-	}, entries, nil
+	if len(entries) != 1 {
+		return CredentialImportResult{}, nil, app_errors.ErrDuplicateCredentialIdentity
+	}
+	return CredentialImportResult{GroupID: groupID, CredentialID: entries[0].ID}, entries, nil
 }
 
-func (s *Service) validateCredentialConnectionBatch(
+func (s *Service) validateCredentialConnection(
 	tx *gorm.DB,
 	groupID uint,
 	channelID channel.ID,
 	connectionType models.ConnectionType,
-	stageIDs []string,
+	stageID string,
 ) error {
-	stages, err := s.loadConsumableCredentialStages(tx, channelID, connectionType, stageIDs, true)
+	stage, err := s.loadConsumableCredentialStage(tx, channelID, connectionType, stageID, true)
 	if err != nil {
 		return err
-	}
-	if len(stages) != 1 {
-		return app_errors.ErrDuplicateCredentialIdentity
 	}
 
 	var existingRows []models.Credential
@@ -209,7 +179,7 @@ func (s *Service) validateCredentialConnectionBatch(
 		return app_errors.ErrDuplicateCredentialIdentity
 	}
 	existing := existingRows[0]
-	if existing.IdentityFingerprint != stages[0].IdentityFingerprint {
+	if existing.IdentityFingerprint != stage.IdentityFingerprint {
 		return app_errors.ErrDuplicateCredentialIdentity
 	}
 	switch existing.AuthState {

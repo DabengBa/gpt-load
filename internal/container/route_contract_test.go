@@ -113,7 +113,7 @@ func TestBuildContainerExposesUnifiedRouteCatalog(t *testing.T) {
 			Owner:      httproute.OwnerControl,
 			Auth:       httproute.AuthControl,
 			Methods:    []string{http.MethodPost},
-			Path:       "/api/groups/:group_id/credentials/:credential_id/reveal",
+			Path:       "/api/groups/:group_id/credential/reveal",
 		},
 		{
 			ModuleName: "control",
@@ -121,7 +121,7 @@ func TestBuildContainerExposesUnifiedRouteCatalog(t *testing.T) {
 			Owner:      httproute.OwnerControl,
 			Auth:       httproute.AuthControl,
 			Methods:    []string{http.MethodPost},
-			Path:       "/api/groups/:group_id/credentials/:credential_id/refresh",
+			Path:       "/api/groups/:group_id/credential/refresh",
 		},
 		{
 			ModuleName: "control",
@@ -129,15 +129,15 @@ func TestBuildContainerExposesUnifiedRouteCatalog(t *testing.T) {
 			Owner:      httproute.OwnerControl,
 			Auth:       httproute.AuthControl,
 			Methods:    []string{http.MethodPost},
-			Path:       "/api/groups/:group_id/credentials/:credential_id/download",
+			Path:       "/api/groups/:group_id/credential/download",
 		},
 		{
 			ModuleName: "control",
-			RouteName:  "control.group-credentials.download-all",
+			RouteName:  "control.group-credentials.detail",
 			Owner:      httproute.OwnerControl,
 			Auth:       httproute.AuthControl,
-			Methods:    []string{http.MethodPost},
-			Path:       "/api/groups/:group_id/credentials/download-all",
+			Methods:    []string{http.MethodGet},
+			Path:       "/api/groups/:group_id/credential",
 		},
 		{
 			ModuleName: "control",

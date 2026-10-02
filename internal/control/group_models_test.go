@@ -625,7 +625,7 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 	if err != nil {
 		t.Fatalf("GetGroupSummary() error = %v", err)
 	}
-	if summary.CredentialCount != 1 {
+	if !summary.CredentialConfigured {
 		t.Fatalf("settings/summary = %#v/%#v", settings, summary)
 	}
 	streamIdle, ok := settings.Overrides[state.SettingStreamIdleTimeout].(json.Number)

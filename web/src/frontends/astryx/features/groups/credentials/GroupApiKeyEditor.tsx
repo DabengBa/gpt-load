@@ -140,7 +140,7 @@ export function GroupApiKeyEditor({
         apiClient,
         groupId,
         credential.credential_id,
-        { credentials: value },
+        { credential: value },
         controller.signal,
       )
       if (updateControllerRef.current !== controller) return

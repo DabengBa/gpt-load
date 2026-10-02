@@ -75,7 +75,7 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 		t.Fatalf("CopyGroupIdempotent() error = %v", err)
 	}
 	if first.GroupID == source.GroupID || first.GroupName != "copy-source-copy" ||
-		first.CredentialsAdded != 1 || first.CredentialsDuplicated != 0 {
+		first.CredentialID == nil || *first.CredentialID == 0 {
 		t.Fatalf("copy result = %#v, want new group copy-source-copy with one credential", first)
 	}
 

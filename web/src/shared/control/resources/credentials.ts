@@ -1,19 +1,10 @@
-import {
-  keepPreviousData,
-  type QueryClient,
-  type QueryKey,
-  type QueryFunctionContext,
-} from '@tanstack/query-core'
+import { type QueryClient, type QueryFunctionContext } from '@tanstack/query-core'
 
 import type { ApiClient } from '@shared/http/client'
 import { enabledDataProtocols } from '@shared/control/protocols'
 import type {
-  CredentialBatchResultDto,
-  CredentialCollectionDto,
-  CredentialCollectionFilters,
   CredentialDailyUsageDto,
   CredentialDetailDto,
-  CredentialDownloadAllDto,
   CredentialDownloadDto,
   CredentialItemDto,
   CredentialObservationDto,
@@ -23,12 +14,10 @@ import type {
   CredentialResetCreditConsumeDto,
   CredentialRecoveryDto,
   CredentialRevealDto,
-  CredentialStatus,
-  CredentialSummaryDto,
   CredentialTestResultDto,
 } from '@shared/control/types'
 import { InvalidResponseError } from '@shared/http/errors'
-import { controlQueryKeys, normalizeCredentialCollectionFilters } from '@shared/control/query-keys'
+import { controlQueryKeys } from '@shared/control/query-keys'
 
 import {
   assertNoSecretLikeFields,
@@ -46,46 +35,21 @@ import {
 } from './projector'
 
 export type {
-  CredentialBatchResultDto,
-  CredentialCollectionDto,
-  CredentialCollectionFilters,
   CredentialDailyUsageDto,
   CredentialDetailDto,
-  CredentialDownloadAllDto,
   CredentialDownloadDto,
   CredentialItemDto,
   CredentialRecoveryDto,
   CredentialRevealDto,
   CredentialStatus,
-  CredentialSummaryDto,
   CredentialTestOutcome,
   CredentialTestReason,
   CredentialTestResultDto,
 } from '@shared/control/types'
 
 export interface CredentialPatch {
-  credentials?: string
+  credential?: string
 }
-
-export interface CredentialBatchRequest {
-  action: 'delete'
-  credential_ids: number[]
-}
-
-const credentialCollectionFields = [
-  'observed_at_ms',
-  'stats_window_seconds',
-  'summary',
-  'items',
-  'pagination',
-] as const
-const credentialSummaryFields = [
-  'total',
-  'available',
-  'cooldown',
-  'blacklisted',
-  'disabled',
-] as const
 const credentialItemFields = [
   'credential_id',
   'connection_type',
@@ -108,7 +72,6 @@ const credentialItemFields = [
 ] as const
 const credentialDetailFields = ['credential', 'observation'] as const
 const credentialDownloadFields = ['filename', 'credential'] as const
-const credentialDownloadAllFields = ['files'] as const
 const credentialDailyUsageFields = [
   'window_seconds',
   'success_count',
@@ -116,8 +79,6 @@ const credentialDailyUsageFields = [
   'data_complete',
 ] as const
 const credentialRecoveryFields = ['mode', 'automatic', 'at_ms'] as const
-const credentialPaginationFields = ['page', 'page_size', 'total_items', 'total_pages'] as const
-const credentialBatchFields = ['affected_credential_ids', 'summary'] as const
 const credentialTestResultFields = [
   'outcome',
   'model',
@@ -495,22 +456,6 @@ function projectObservation(value: unknown): CredentialObservationDto {
   }
 }
 
-export function projectCredentialSummary(value: unknown): CredentialSummaryDto {
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, credentialSummaryFields)
-  const result = {
-    total: projectSafeInteger(record.total, { minimum: 0 }),
-    available: projectSafeInteger(record.available, { minimum: 0 }),
-    cooldown: projectSafeInteger(record.cooldown, { minimum: 0 }),
-    blacklisted: projectSafeInteger(record.blacklisted, { minimum: 0 }),
-    disabled: projectSafeInteger(record.disabled, { minimum: 0 }),
-  }
-  if (result.total !== result.available + result.cooldown + result.blacklisted + result.disabled) {
-    invalidResponse()
-  }
-  return result
-}
-
 function projectRecovery(value: unknown): CredentialRecoveryDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, credentialRecoveryFields)
@@ -530,9 +475,11 @@ function projectRecovery(value: unknown): CredentialRecoveryDto {
   return result
 }
 
-export function projectCredentialItem(value: unknown): CredentialItemDto {
+export function projectCredentialItem(value: unknown, expectedId?: number): CredentialItemDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, credentialItemFields)
+  const credentialId = projectSafeInteger(record.credential_id, { minimum: 1 })
+  if (expectedId !== undefined && credentialId !== expectedId) invalidResponse()
   const connectionType = projectEnum(record.connection_type, connectionTypes)
   const effectiveStatus = projectEnum(record.effective_status, effectiveStatuses)
   const cooldownUntil = projectNullableEpochMilliseconds(record.cooldown_until_ms)
@@ -545,7 +492,7 @@ export function projectCredentialItem(value: unknown): CredentialItemDto {
     invalidResponse()
   }
   return {
-    credential_id: projectSafeInteger(record.credential_id, { minimum: 1 }),
+    credential_id: credentialId,
     connection_type: connectionType,
     secret_version: projectSafeInteger(record.secret_version, { minimum: 1 }),
     mask: projectMask(record.mask),
@@ -592,115 +539,33 @@ export function projectCredentialDetail(value: unknown): CredentialDetailDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, credentialDetailFields)
   return {
-    credential: projectCredentialItem(record.credential),
-    observation: projectObservation(record.observation),
-  }
-}
-
-function projectPagination(value: unknown): CredentialCollectionDto['pagination'] {
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, credentialPaginationFields)
-  const pageSize = projectSafeInteger(record.page_size, { minimum: 20, maximum: 100 })
-  if (pageSize !== 20 && pageSize !== 50 && pageSize !== 100) invalidResponse()
-  return {
-    page: projectSafeInteger(record.page, { minimum: 1 }),
-    page_size: pageSize,
-    total_items: projectSafeInteger(record.total_items, { minimum: 0 }),
-    total_pages: projectSafeInteger(record.total_pages, { minimum: 0 }),
-  }
-}
-
-function expectedPageCount(totalItems: number, pageSize: number): number {
-  return totalItems === 0 ? 0 : Math.ceil(totalItems / pageSize)
-}
-
-function expectedPageItems(pagination: CredentialCollectionDto['pagination']): number {
-  if (pagination.total_items === 0 || pagination.page > pagination.total_pages) return 0
-  if (pagination.page < pagination.total_pages) return pagination.page_size
-  const finalPageItems = pagination.total_items % pagination.page_size
-  return finalPageItems === 0 ? pagination.page_size : finalPageItems
-}
-
-export function projectCredentialCollection(value: unknown): CredentialCollectionDto {
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, credentialCollectionFields)
-  const items = projectArray(record.items, projectCredentialItem)
-  const summary = projectCredentialSummary(record.summary)
-  const pagination = projectPagination(record.pagination)
-  if (
-    pagination.total_items > summary.total ||
-    pagination.total_pages !== expectedPageCount(pagination.total_items, pagination.page_size) ||
-    items.length !== expectedPageItems(pagination) ||
-    new Set(items.map(({ credential_id }) => credential_id)).size !== items.length
-  ) {
-    invalidResponse()
-  }
-  return {
-    observed_at_ms: projectEpochMilliseconds(record.observed_at_ms),
-    stats_window_seconds: projectSafeInteger(record.stats_window_seconds, { minimum: 1 }),
-    summary,
-    items,
-    pagination,
+    credential: record.credential === null ? null : projectCredentialItem(record.credential),
+    observation: record.observation === null ? null : projectObservation(record.observation),
   }
 }
 
 function normalizePatch(patch: CredentialPatch): CredentialPatch {
   if (
     Object.keys(patch).length !== 1 ||
-    typeof patch.credentials !== 'string' ||
-    patch.credentials.trim() === ''
+    typeof patch.credential !== 'string' ||
+    patch.credential.trim() === ''
   ) {
     throw new Error('INVALID_CREDENTIAL_PATCH')
   }
-  return { credentials: patch.credentials }
-}
-
-function credentialCollectionURL(
-  groupId: number,
-  filters: CredentialCollectionFilters,
-): `/api/${string}` {
-  const normalized = normalizeCredentialCollectionFilters(filters)
-  const params = new URLSearchParams({
-    page: String(normalized.page),
-    page_size: String(normalized.page_size),
-  })
-  if (normalized.q !== undefined) params.set('q', normalized.q)
-  if (normalized.status !== undefined) params.set('status', normalized.status)
-  return `/api/groups/${groupId}/credentials?${params.toString()}`
-}
-
-export async function getCredentialCollection(
-  client: ApiClient,
-  groupId: number,
-  filters: CredentialCollectionFilters,
-  signal?: AbortSignal,
-): Promise<CredentialCollectionDto> {
-  const normalized = normalizeCredentialCollectionFilters(filters)
-  const result = projectCredentialCollection(
-    await client.request(credentialCollectionURL(groupId, normalized), { method: 'GET', signal }),
-  )
-  if (
-    result.pagination.page !== normalized.page ||
-    result.pagination.page_size !== normalized.page_size
-  ) {
-    invalidResponse()
-  }
-  return result
+  return { credential: patch.credential }
 }
 
 export async function getCredentialDetail(
   client: ApiClient,
   groupId: number,
-  credentialId: number,
   signal?: AbortSignal,
 ): Promise<CredentialDetailDto> {
   const result = projectCredentialDetail(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}`, {
+    await client.request(`/api/groups/${groupId}/credential`, {
       method: 'GET',
       signal,
     }),
   )
-  if (result.credential.credential_id !== credentialId) invalidResponse()
   return result
 }
 
@@ -709,18 +574,13 @@ export const manualGroupQueryOptions = {
   refetchOnReconnect: false,
 } as const
 
-export function credentialCollectionQueryOptions(
-  client: ApiClient,
-  groupID: number,
-  filters: CredentialCollectionFilters,
-) {
-  const key = controlQueryKeys.groups.credentials(groupID, filters)
+export function credentialQueryOptions(client: ApiClient, groupID: number) {
+  const key = controlQueryKeys.groups.credentialsAll(groupID)
   return {
     ...manualGroupQueryOptions,
     queryKey: key,
     queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) =>
-      getCredentialCollection(client, queryKey[3], queryKey[5], signal),
-    placeholderData: keepPreviousData,
+      getCredentialDetail(client, queryKey[3], signal),
   }
 }
 
@@ -732,12 +592,38 @@ export async function updateCredential(
   signal?: AbortSignal,
 ): Promise<CredentialItemDto> {
   return projectCredentialItem(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}`, {
+    await client.request(`/api/groups/${groupId}/credential`, {
       method: 'PUT',
+      headers: { 'X-Credential-ID': String(credentialId) },
       json: normalizePatch(patch),
       signal,
     }),
+    credentialId,
   )
+}
+
+export async function cacheCredentialItem(
+  queryClient: QueryClient,
+  groupId: number,
+  item: CredentialItemDto,
+): Promise<void> {
+  queryClient.setQueryData<CredentialDetailDto>(controlQueryKeys.groups.credentialsAll(groupId), {
+    credential: item,
+    observation: item.observation ?? null,
+  })
+}
+
+export async function deleteCredential(
+  client: ApiClient,
+  groupId: number,
+  credentialId: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  await client.request(`/api/groups/${groupId}/credential`, {
+    method: 'DELETE',
+    headers: { 'X-Credential-ID': String(credentialId) },
+    signal,
+  })
 }
 
 export async function revealCredential(
@@ -747,8 +633,9 @@ export async function revealCredential(
   signal?: AbortSignal,
 ): Promise<CredentialRevealDto> {
   const record = projectRecord(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}/reveal`, {
+    await client.request(`/api/groups/${groupId}/credential/reveal`, {
       method: 'POST',
+      headers: { 'X-Credential-ID': String(credentialId) },
       signal,
     }),
   )
@@ -779,14 +666,6 @@ function projectCredentialDownload(value: unknown): CredentialDownloadDto {
   }
 }
 
-function projectCredentialDownloadAll(value: unknown): CredentialDownloadAllDto {
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, credentialDownloadAllFields)
-  return {
-    files: projectArray(record.files, projectCredentialDownload),
-  }
-}
-
 export async function downloadCredential(
   client: ApiClient,
   groupId: number,
@@ -794,22 +673,9 @@ export async function downloadCredential(
   signal?: AbortSignal,
 ): Promise<CredentialDownloadDto> {
   return projectCredentialDownload(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}/download`, {
+    await client.request(`/api/groups/${groupId}/credential/download`, {
       method: 'POST',
-      json: {},
-      signal,
-    }),
-  )
-}
-
-export async function downloadAllCredentials(
-  client: ApiClient,
-  groupId: number,
-  signal?: AbortSignal,
-): Promise<CredentialDownloadAllDto> {
-  return projectCredentialDownloadAll(
-    await client.request(`/api/groups/${groupId}/credentials/download-all`, {
-      method: 'POST',
+      headers: { 'X-Credential-ID': String(credentialId) },
       json: {},
       signal,
     }),
@@ -823,11 +689,13 @@ export async function restoreCredential(
   signal?: AbortSignal,
 ): Promise<CredentialItemDto> {
   return projectCredentialItem(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}/restore`, {
+    await client.request(`/api/groups/${groupId}/credential/restore`, {
       method: 'POST',
+      headers: { 'X-Credential-ID': String(credentialId) },
       json: {},
       signal,
     }),
+    credentialId,
   )
 }
 
@@ -866,8 +734,9 @@ export async function testCredentialConnection(
   signal?: AbortSignal,
 ): Promise<CredentialTestResultDto> {
   return projectCredentialTestResult(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}/test`, {
+    await client.request(`/api/groups/${groupId}/credential/test`, {
       method: 'POST',
+      headers: { 'X-Credential-ID': String(credentialId) },
       json: {},
       signal,
     }),
@@ -881,8 +750,9 @@ export async function refreshCredentialObservation(
   signal?: AbortSignal,
 ): Promise<CredentialObservationDto> {
   return projectObservation(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}/observation-refresh`, {
+    await client.request(`/api/groups/${groupId}/credential/observation-refresh`, {
       method: 'POST',
+      headers: { 'X-Credential-ID': String(credentialId) },
       json: {},
       signal,
     }),
@@ -896,11 +766,13 @@ export async function refreshCredential(
   signal?: AbortSignal,
 ): Promise<CredentialItemDto> {
   return projectCredentialItem(
-    await client.request(`/api/groups/${groupId}/credentials/${credentialId}/refresh`, {
+    await client.request(`/api/groups/${groupId}/credential/refresh`, {
       method: 'POST',
+      headers: { 'X-Credential-ID': String(credentialId) },
       json: {},
       signal,
     }),
+    credentialId,
   )
 }
 
@@ -912,15 +784,12 @@ export async function consumeCredentialResetCredit(
   signal?: AbortSignal,
 ): Promise<CredentialResetCreditConsumeDto> {
   const record = projectRecord(
-    await client.request(
-      `/api/groups/${groupId}/credentials/${credentialId}/reset-credits/consume`,
-      {
-        method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey },
-        json: {},
-        signal,
-      },
-    ),
+    await client.request(`/api/groups/${groupId}/credential/reset-credits/consume`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey, 'X-Credential-ID': String(credentialId) },
+      json: {},
+      signal,
+    }),
   )
   assertNoSecretLikeFields(record, resetCreditConsumeFields)
   const status = projectEnum(record.status, ['succeeded'] as const)
@@ -937,244 +806,5 @@ export async function consumeCredentialResetCredit(
       ? {}
       : { observation_pending: projectBoolean(record.observation_pending) }),
     replayed: projectBoolean(record.replayed),
-  }
-}
-
-export async function batchCredentials(
-  client: ApiClient,
-  groupId: number,
-  body: CredentialBatchRequest,
-  signal?: AbortSignal,
-): Promise<CredentialBatchResultDto> {
-  const ids = body.credential_ids
-  if (
-    body.action !== 'delete' ||
-    !Array.isArray(ids) ||
-    ids.length < 1 ||
-    ids.length > 100 ||
-    ids.some((id) => !Number.isSafeInteger(id) || id < 1) ||
-    new Set(ids).size !== ids.length
-  ) {
-    throw new Error('INVALID_CREDENTIAL_BATCH')
-  }
-  const record = projectRecord(
-    await client.request(`/api/groups/${groupId}/credentials/batch`, {
-      method: 'POST',
-      json: body,
-      signal,
-    }),
-  )
-  assertNoSecretLikeFields(record, credentialBatchFields)
-  const affectedCredentialIDs = projectArray(record.affected_credential_ids, (id) =>
-    projectSafeInteger(id, { minimum: 1 }),
-  )
-  if (
-    new Set(affectedCredentialIDs).size !== affectedCredentialIDs.length ||
-    affectedCredentialIDs.length !== ids.length
-  )
-    invalidResponse()
-  return {
-    affected_credential_ids: affectedCredentialIDs,
-    summary: projectCredentialSummary(record.summary),
-  }
-}
-
-function queryFilters(queryKey: QueryKey): CredentialCollectionFilters | undefined {
-  const filters = queryKey[5]
-  if (typeof filters !== 'object' || filters === null || Array.isArray(filters)) return undefined
-  const record = filters as Record<string, unknown>
-  if (
-    !Number.isSafeInteger(record.page) ||
-    (record.page_size !== 20 && record.page_size !== 50 && record.page_size !== 100) ||
-    (record.q !== undefined && typeof record.q !== 'string') ||
-    (record.status !== undefined && !effectiveStatuses.includes(record.status as CredentialStatus))
-  ) {
-    return undefined
-  }
-  return {
-    page: record.page as number,
-    page_size: record.page_size as 20 | 50 | 100,
-    ...(record.q === undefined ? {} : { q: record.q }),
-    ...(record.status === undefined ? {} : { status: record.status as CredentialStatus }),
-  }
-}
-
-function matchesFilters(item: CredentialItemDto, filters: CredentialCollectionFilters): boolean {
-  if (filters.status !== undefined && item.effective_status !== filters.status) return false
-  if (filters.q === undefined) return true
-  const query = filters.q.toLowerCase()
-  return (
-    item.mask.toLowerCase().includes(query) ||
-    item.account.email?.toLowerCase().includes(query) === true
-  )
-}
-
-function withSummaryDelta(
-  summary: CredentialSummaryDto,
-  previous: CredentialItemDto,
-  next: CredentialItemDto | undefined,
-): CredentialSummaryDto {
-  const result = { ...summary }
-  result[previous.effective_status]--
-  if (next !== undefined) result[next.effective_status]++
-  return result
-}
-
-function withRemovedItem(
-  collection: CredentialCollectionDto,
-  id: number,
-  summary: CredentialSummaryDto,
-): CredentialCollectionDto {
-  const items = collection.items.filter((item) => item.credential_id !== id)
-  const totalItems = collection.pagination.total_items - 1
-  return {
-    ...collection,
-    summary,
-    items,
-    pagination: {
-      ...collection.pagination,
-      total_items: totalItems,
-      total_pages: expectedPageCount(totalItems, collection.pagination.page_size),
-    },
-  }
-}
-
-async function invalidateExactCredentialPage(
-  queryClient: QueryClient,
-  queryKey: QueryKey,
-): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey, exact: true, refetchType: 'none' })
-}
-
-interface MaterializedCredentialPage {
-  queryKey: QueryKey
-  collection: CredentialCollectionDto
-  filters: CredentialCollectionFilters
-}
-
-function credentialFilterSetID(filters: CredentialCollectionFilters): string {
-  return JSON.stringify({
-    q: filters.q ?? null,
-    status: filters.status ?? null,
-    page_size: filters.page_size,
-  })
-}
-
-function totalItemsAfterBatchDelete(
-  pages: MaterializedCredentialPage[],
-  knownDeletedIDs: Set<number>,
-  summary: CredentialSummaryDto,
-): number {
-  const { q, status } = pages[0].filters
-  if (q === undefined) return status === undefined ? summary.total : summary[status]
-  return Math.max(
-    0,
-    Math.max(...pages.map(({ collection }) => collection.pagination.total_items)) -
-      knownDeletedIDs.size,
-  )
-}
-
-/**
- * Reconciles only a cached page containing the previous item. Pages whose
- * membership or sort position cannot be known are explicitly marked stale.
- */
-export async function cacheCredentialItem(
-  queryClient: QueryClient,
-  groupId: number,
-  item: CredentialItemDto,
-): Promise<void> {
-  const queries = queryClient
-    .getQueryCache()
-    .findAll({ queryKey: controlQueryKeys.groups.credentialsAll(groupId) })
-  const previous = queries
-    .map((query) => (query.state.data as CredentialCollectionDto | undefined)?.items)
-    .flatMap((items) => items ?? [])
-    .find(({ credential_id }) => credential_id === item.credential_id)
-  for (const query of queries) {
-    const filters = queryFilters(query.queryKey)
-    const collection = query.state.data as CredentialCollectionDto | undefined
-    const current = collection?.items.find(
-      ({ credential_id }) => credential_id === item.credential_id,
-    )
-    if (collection === undefined || previous === undefined) {
-      await invalidateExactCredentialPage(queryClient, query.queryKey)
-      continue
-    }
-    const summary = withSummaryDelta(collection.summary, previous, item)
-    if (filters === undefined || current === undefined) {
-      queryClient.setQueryData<CredentialCollectionDto>(query.queryKey, { ...collection, summary })
-      await invalidateExactCredentialPage(queryClient, query.queryKey)
-      continue
-    }
-    const nextMatches = matchesFilters(item, filters)
-    if (!nextMatches) {
-      queryClient.setQueryData(
-        query.queryKey,
-        withRemovedItem(collection, item.credential_id, summary),
-      )
-      await invalidateExactCredentialPage(queryClient, query.queryKey)
-      continue
-    }
-    if (current.effective_status !== item.effective_status) {
-      queryClient.setQueryData<CredentialCollectionDto>(query.queryKey, { ...collection, summary })
-      await invalidateExactCredentialPage(queryClient, query.queryKey)
-      continue
-    }
-    queryClient.setQueryData<CredentialCollectionDto>(query.queryKey, {
-      ...collection,
-      summary,
-      items: collection.items.map((current) =>
-        current.credential_id === item.credential_id ? item : current,
-      ),
-    })
-  }
-}
-
-/** A batch result carries the authoritative aggregate, so cached pages can be reconciled deterministically. */
-export async function cacheCredentialBatch(
-  queryClient: QueryClient,
-  groupId: number,
-  result: CredentialBatchResultDto,
-): Promise<void> {
-  const affected = new Set(result.affected_credential_ids)
-  const queries = queryClient
-    .getQueryCache()
-    .findAll({ queryKey: controlQueryKeys.groups.credentialsAll(groupId) })
-  const pages = queries.flatMap((query): MaterializedCredentialPage[] => {
-    const collection = query.state.data as CredentialCollectionDto | undefined
-    const filters = queryFilters(query.queryKey)
-    return collection === undefined || filters === undefined
-      ? []
-      : [{ queryKey: query.queryKey, collection, filters }]
-  })
-  const pageSets = new Map<string, MaterializedCredentialPage[]>()
-  for (const page of pages) {
-    const id = credentialFilterSetID(page.filters)
-    const set = pageSets.get(id)
-    if (set === undefined) pageSets.set(id, [page])
-    else set.push(page)
-  }
-  for (const pageSet of pageSets.values()) {
-    const knownDeletedIDs = new Set(
-      pageSet
-        .flatMap(({ collection }) => collection.items)
-        .filter(({ credential_id }) => affected.has(credential_id))
-        .map(({ credential_id }) => credential_id),
-    )
-    const totalItems = totalItemsAfterBatchDelete(pageSet, knownDeletedIDs, result.summary)
-    const totalPages = expectedPageCount(totalItems, pageSet[0].filters.page_size)
-    for (const { queryKey, collection } of pageSet) {
-      queryClient.setQueryData<CredentialCollectionDto>(queryKey, {
-        ...collection,
-        summary: result.summary,
-        items: collection.items.filter(({ credential_id }) => !affected.has(credential_id)),
-        pagination: {
-          ...collection.pagination,
-          total_items: totalItems,
-          total_pages: totalPages,
-        },
-      })
-      await invalidateExactCredentialPage(queryClient, queryKey)
-    }
   }
 }

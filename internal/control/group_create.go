@@ -25,23 +25,22 @@ import (
 )
 
 type GroupCreateRequest struct {
-	Name                *string                             `json:"name"`
-	ChannelID           channel.ID                          `json:"channel_id"`
-	ConnectionType      models.ConnectionType               `json:"connection_type"`
-	Params              json.RawMessage                     `json:"params"`
-	ProviderURL         optionalField[string]               `json:"provider_url"`
-	Models              optionalGroupModels                 `json:"models"`
-	Credentials         string                              `json:"credentials"`
-	StagedCredentialIDs []string                            `json:"staged_credential_ids"`
-	ConfirmSameTarget   bool                                `json:"confirm_same_target"`
-	Proxy               optionalField[outboundproxy.Config] `json:"proxy"`
+	Name               *string                             `json:"name"`
+	ChannelID          channel.ID                          `json:"channel_id"`
+	ConnectionType     models.ConnectionType               `json:"connection_type"`
+	Params             json.RawMessage                     `json:"params"`
+	ProviderURL        optionalField[string]               `json:"provider_url"`
+	Models             optionalGroupModels                 `json:"models"`
+	Credentials        string                              `json:"credential"`
+	StagedCredentialID string                              `json:"staged_credential_id"`
+	ConfirmSameTarget  bool                                `json:"confirm_same_target"`
+	Proxy              optionalField[outboundproxy.Config] `json:"proxy"`
 }
 
 type GroupCreateResult struct {
-	GroupID               uint   `json:"group_id"`
-	GroupName             string `json:"group_name"`
-	CredentialsAdded      int    `json:"credentials_added"`
-	CredentialsDuplicated int    `json:"credentials_duplicated"`
+	GroupID      uint   `json:"group_id"`
+	GroupName    string `json:"group_name"`
+	CredentialID uint   `json:"credential_id"`
 }
 
 type ExistingGroupSummary struct {
@@ -54,20 +53,20 @@ type SameTargetConflictData struct {
 }
 
 type normalizedGroupCreate struct {
-	channelID           channel.ID
-	connectionType      models.ConnectionType
-	params              models.JSON
-	providerURL         *string
-	defaultName         string
-	hostname            string
-	explicitName        *string
-	models              []GroupModel
-	encodedOverrides    models.JSON
-	credentials         normalizedCredentials
-	stagedCredentialIDs []string
-	confirmSameTarget   bool
-	proxy               *outboundproxy.Config
-	proxyConfig         *string
+	channelID          channel.ID
+	connectionType     models.ConnectionType
+	params             models.JSON
+	providerURL        *string
+	defaultName        string
+	hostname           string
+	explicitName       *string
+	models             []GroupModel
+	encodedOverrides   models.JSON
+	credentials        normalizedCredentials
+	stagedCredentialID string
+	confirmSameTarget  bool
+	proxy              *outboundproxy.Config
+	proxyConfig        *string
 }
 
 func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (GroupCreateResult, error) {
@@ -86,7 +85,7 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 	}
 
 	result := GroupCreateResult{}
-	requestedEntries := make([]state.CredentialEntry, 0, len(normalized.credentials.candidates)+len(normalized.stagedCredentialIDs))
+	requestedEntries := make([]state.CredentialEntry, 0, 1)
 	_, err = s.writeGroupConfig(ctx, func(tx *gorm.DB) error {
 		mutation, err := s.mutateCreateGroup(ctx, tx, normalized)
 		if err != nil {
@@ -148,18 +147,27 @@ func (s *Service) mutateCreateGroup(
 	mutation.result.GroupID = group.ID
 	mutation.result.GroupName = group.Name
 	if normalized.connectionType == models.ConnectionTypeSubscription {
-		var duplicatedStageIDs []string
-		mutation.result.CredentialsAdded, duplicatedStageIDs, err = s.consumeCredentialStages(
+		err = s.consumeCredentialStage(
 			tx,
 			group.ID,
 			normalized.channelID,
 			normalized.connectionType,
-			normalized.stagedCredentialIDs,
+			normalized.stagedCredentialID,
 		)
-		mutation.result.CredentialsDuplicated = len(duplicatedStageIDs)
+		if err != nil {
+			return groupCreateMutation{}, err
+		}
+
 	} else {
-		mutation.result.CredentialsAdded, mutation.result.CredentialsDuplicated, err =
+		var added, duplicated int
+		added, duplicated, err =
 			s.persistCredentials(tx, group.ID, normalized.credentials)
+		if err != nil {
+			return groupCreateMutation{}, err
+		}
+		if added != 1 || duplicated != 0 {
+			return groupCreateMutation{}, app_errors.ErrSingleCredentialRequired
+		}
 	}
 	if err != nil {
 		return groupCreateMutation{}, err
@@ -171,13 +179,16 @@ func (s *Service) mutateCreateGroup(
 	if err := state.ValidateCredentialEntries(mutation.entries); err != nil {
 		return groupCreateMutation{}, err
 	}
+	if len(mutation.entries) == 1 {
+		mutation.result.CredentialID = mutation.entries[0].ID
+	}
 	return mutation, nil
 }
 
 func (s *Service) validateGroupCreateTarget(tx *gorm.DB, normalized normalizedGroupCreate) error {
 	if normalized.connectionType == models.ConnectionTypeSubscription {
-		if err := s.validateCredentialStageCreateBatch(
-			tx, normalized.channelID, normalized.connectionType, normalized.stagedCredentialIDs,
+		if err := s.validateCredentialStageCreate(
+			tx, normalized.channelID, normalized.connectionType, normalized.stagedCredentialID,
 		); err != nil {
 			return err
 		}
@@ -245,10 +256,10 @@ func (s *Service) normalizeGroupCreate(
 		return normalizedGroupCreate{}, app_errors.ErrValidation
 	}
 	if connectionType == models.ConnectionTypeAPIKey {
-		if len(request.StagedCredentialIDs) != 0 {
+		if request.StagedCredentialID != "" {
 			return normalizedGroupCreate{}, app_errors.ErrValidation
 		}
-	} else if strings.TrimSpace(request.Credentials) != "" || len(request.StagedCredentialIDs) == 0 {
+	} else if strings.TrimSpace(request.Credentials) != "" || request.StagedCredentialID == "" {
 		return normalizedGroupCreate{}, app_errors.ErrValidation
 	}
 	params, err := s.channelRegistry.ValidateParams(request.ChannelID, request.Params)
@@ -288,16 +299,19 @@ func (s *Service) normalizeGroupCreate(
 		return normalizedGroupCreate{}, err
 	}
 	credentials := normalizedCredentials{}
-	stagedCredentialIDs := []string(nil)
+	stagedCredentialID := ""
 	if connectionType == models.ConnectionTypeAPIKey {
 		credentials, err = s.normalizeCredentials(request.ChannelID, request.Credentials)
 		if err != nil {
 			return normalizedGroupCreate{}, err
 		}
+		if len(credentials.candidates) != 1 || credentials.duplicateLines != 0 {
+			return normalizedGroupCreate{}, app_errors.ErrSingleCredentialRequired
+		}
 	} else {
-		stagedCredentialIDs, err = normalizeCredentialStageIDs(request.StagedCredentialIDs)
-		if err != nil {
-			return normalizedGroupCreate{}, err
+		stagedCredentialID = strings.TrimSpace(request.StagedCredentialID)
+		if stagedCredentialID == "" {
+			return normalizedGroupCreate{}, app_errors.ErrValidation
 		}
 	}
 
@@ -359,21 +373,20 @@ func (s *Service) normalizeGroupCreate(
 		defaultName = hostname
 	}
 	return normalizedGroupCreate{
-
-		channelID:           request.ChannelID,
-		connectionType:      connectionType,
-		params:              models.JSON(canonicalParams),
-		providerURL:         providerURL,
-		defaultName:         defaultName,
-		hostname:            hostname,
-		explicitName:        explicitName,
-		models:              groupModels,
-		encodedOverrides:    models.JSON(`{}`),
-		credentials:         credentials,
-		stagedCredentialIDs: stagedCredentialIDs,
-		confirmSameTarget:   request.ConfirmSameTarget,
-		proxy:               proxy,
-		proxyConfig:         proxyConfig,
+		channelID:          request.ChannelID,
+		connectionType:     connectionType,
+		params:             models.JSON(canonicalParams),
+		providerURL:        providerURL,
+		defaultName:        defaultName,
+		hostname:           hostname,
+		explicitName:       explicitName,
+		models:             groupModels,
+		encodedOverrides:   models.JSON(`{}`),
+		credentials:        credentials,
+		stagedCredentialID: stagedCredentialID,
+		confirmSameTarget:  request.ConfirmSameTarget,
+		proxy:              proxy,
+		proxyConfig:        proxyConfig,
 	}, nil
 }
 

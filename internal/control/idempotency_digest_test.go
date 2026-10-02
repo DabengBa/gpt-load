@@ -117,52 +117,6 @@ func TestIdempotencyDigestV1MatchesAccessKeyCreateFixture(t *testing.T) {
 	}
 }
 
-func TestNormalizeIdempotencyKeyLinesPreservesSortedMultiplicity(t *testing.T) {
-	t.Parallel()
-	one, err := normalizeIdempotencyKeyLines(" K \r\n")
-	if err != nil {
-		t.Fatalf("normalizeIdempotencyKeyLines(K) error = %v", err)
-	}
-	two, err := normalizeIdempotencyKeyLines("K\r\n K\n")
-	if err != nil {
-		t.Fatalf("normalizeIdempotencyKeyLines(K twice) error = %v", err)
-	}
-	if len(one) != 1 || one[0] != "K" {
-		t.Fatalf("one = %#v, want [K]", one)
-	}
-	if len(two) != 2 || two[0] != "K" || two[1] != "K" {
-		t.Fatalf("two = %#v, want [K K]", two)
-	}
-
-	oneBody, err := canonicalIdempotencyBody(map[string]any{"credentials": one})
-	if err != nil {
-		t.Fatalf("canonicalIdempotencyBody(one) error = %v", err)
-	}
-	twoBody, err := canonicalIdempotencyBody(map[string]any{"credentials": two})
-	if err != nil {
-		t.Fatalf("canonicalIdempotencyBody(two) error = %v", err)
-	}
-	oneDigest, err := buildIdempotencyDigest(idempotencyDigestInput{
-		Version: 1, Method: "POST", OperationKind: operationKindCredentialImport,
-		PathTemplate: "/api/groups/:group_id/credentials/import", ResourceLocator: "group:7",
-		AuthScopeID: "control-admin-v1", CanonicalBody: oneBody,
-	})
-	if err != nil {
-		t.Fatalf("buildIdempotencyDigest(one) error = %v", err)
-	}
-	twoDigest, err := buildIdempotencyDigest(idempotencyDigestInput{
-		Version: 1, Method: "POST", OperationKind: operationKindCredentialImport,
-		PathTemplate: "/api/groups/:group_id/credentials/import", ResourceLocator: "group:7",
-		AuthScopeID: "control-admin-v1", CanonicalBody: twoBody,
-	})
-	if err != nil {
-		t.Fatalf("buildIdempotencyDigest(two) error = %v", err)
-	}
-	if oneDigest.Digest == twoDigest.Digest {
-		t.Fatal("K and K\\nK produced the same digest")
-	}
-}
-
 func TestIdempotencyDigestRejectsUnsupportedVersionAndInvalidFields(t *testing.T) {
 	t.Parallel()
 	valid := idempotencyDigestInput{

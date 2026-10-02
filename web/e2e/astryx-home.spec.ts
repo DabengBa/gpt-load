@@ -408,17 +408,11 @@ test('renders the admin ledger and canonicalizes the home query', async ({ page 
     name: /prod has 1 credentials with insufficient balance/,
   })
   await expect(billing).toBeVisible()
-  await expect(billing).toHaveAttribute(
-    'href',
-    '/groups/1?tab=credentials&credential_status=cooldown',
-  )
+  await expect(billing).toHaveAttribute('href', '/groups/1?tab=credentials')
   const blacklisted = page.getByRole('link', {
     name: /prod has 1 blacklisted credentials/,
   })
-  await expect(blacklisted).toHaveAttribute(
-    'href',
-    '/groups/1?tab=credentials&credential_status=blacklisted',
-  )
+  await expect(blacklisted).toHaveAttribute('href', '/groups/1?tab=credentials')
 
   // Subscription accounts card.
   await expect(page.getByRole('heading', { name: 'Recently used' })).toBeVisible()

@@ -31,29 +31,33 @@ const (
 	GroupUnavailableReasonNoModels               GroupUnavailableReason = "no_models"
 )
 
-type GroupCollectionCredentialCounts struct {
-	Total       int64 `json:"total"`
-	Available   int64 `json:"available"`
-	Cooldown    int64 `json:"cooldown"`
-	Blacklisted int64 `json:"blacklisted"`
-	Disabled    int64 `json:"disabled"`
+// groupCollectionCredentialCounts keeps the internal availability buckets used
+// for group status projection; the HTTP contract only exposes configured/state.
+type groupCollectionCredentialCounts struct {
+	Total       int64
+	Available   int64
+	Cooldown    int64
+	Blacklisted int64
+	Disabled    int64
 }
 
 type GroupCollectionItem struct {
-	ID               uint                            `json:"id"`
-	Name             string                          `json:"name"`
-	ChannelID        channel.ID                      `json:"channel_id"`
-	ConnectionType   models.ConnectionType           `json:"connection_type"`
-	Params           json.RawMessage                 `json:"params"`
-	ProviderURL      *string                         `json:"provider_url"`
-	Status           GroupCollectionStatus           `json:"status"`
-	ModelCount       int64                           `json:"model_count"`
-	ClientModelCount int64                           `json:"client_model_count"`
-	CredentialCounts GroupCollectionCredentialCounts `json:"credential_counts"`
+	ID                   uint                  `json:"id"`
+	Name                 string                `json:"name"`
+	ChannelID            channel.ID            `json:"channel_id"`
+	ConnectionType       models.ConnectionType `json:"connection_type"`
+	Params               json.RawMessage       `json:"params"`
+	ProviderURL          *string               `json:"provider_url"`
+	Status               GroupCollectionStatus `json:"status"`
+	ModelCount           int64                 `json:"model_count"`
+	ClientModelCount     int64                 `json:"client_model_count"`
+	CredentialConfigured bool                  `json:"credential_configured"`
+	CredentialStatus     *string               `json:"credential_status"`
 }
 
 type groupCollectionRecord struct {
 	GroupCollectionItem
+	credentialCounts           groupCollectionCredentialCounts
 	CreatedAtMS                int64
 	LastActiveAtMS             *int64
 	LastActiveHourRequestCount int64
@@ -79,8 +83,7 @@ func cloneGroupRows(rows []models.Group) []models.Group {
 		cloned[index].Params = append(models.JSON(nil), rows[index].Params...)
 		cloned[index].Models = append(models.JSON(nil), rows[index].Models...)
 		cloned[index].Overrides = append(models.JSON(nil), rows[index].Overrides...)
-
-		cloned[index].Credentials = nil
+		cloned[index].Credential = nil
 	}
 	return cloned
 }
@@ -371,11 +374,14 @@ func mapGroupCollectionRecords(
 		}
 		for _, persistedCredential := range credentialsByGroup[group.ID] {
 			bucket := classifyHealthKey(catalog, runtimeByID[persistedCredential.ID], observedAt)
-			addGroupCollectionCredentialCount(&record.CredentialCounts, bucket)
+			addGroupCollectionCredentialCount(&record.credentialCounts, bucket)
+			record.CredentialConfigured = true
+			status := string(bucket)
+			record.CredentialStatus = &status
 		}
 		record.Status, record.UnavailableReason = groupCollectionStatusAndReason(
 			catalog,
-			record.CredentialCounts,
+			record.credentialCounts,
 			record.ModelCount,
 		)
 		records = append(records, record)
@@ -442,7 +448,7 @@ func validateGroupCollectionModels(values []GroupModel) error {
 	return nil
 }
 
-func addGroupCollectionCredentialCount(counts *GroupCollectionCredentialCounts, bucket healthBucket) {
+func addGroupCollectionCredentialCount(counts *groupCollectionCredentialCounts, bucket healthBucket) {
 	counts.Total++
 	switch bucket {
 	case healthBucketAvailable:
@@ -458,7 +464,7 @@ func addGroupCollectionCredentialCount(counts *GroupCollectionCredentialCounts, 
 
 func groupCollectionStatusAndReason(
 	group state.GroupCatalogView,
-	counts GroupCollectionCredentialCounts,
+	counts groupCollectionCredentialCounts,
 	modelCount int64,
 ) (GroupCollectionStatus, *GroupUnavailableReason) {
 	if !group.Enabled {

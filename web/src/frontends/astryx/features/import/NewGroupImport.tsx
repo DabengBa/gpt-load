@@ -44,7 +44,7 @@ import {
   type ImportRouteState,
 } from '@shared/routing/import-route'
 import { pagePath } from '@shared/routing/page-routes'
-import { analyzeCredentials } from '@shared/domain/import/credential-analysis'
+import { readSingleCredential } from './single-credential-input'
 import { mapConnectionToChannel, parseConnectionJSON } from '@shared/domain/import/connection-json'
 import {
   appendSelectedCandidates,
@@ -82,18 +82,14 @@ import { SubscriptionCredentialStager } from './SubscriptionCredentialStager'
 import { useImportOperationOwner, useOperationSnapshot } from './import-operation'
 
 // Module scope keeps `Date.now()` reads out of render scope (react-hooks/purity).
-function currentReadyStages(stages: readonly CredentialStage[]): CredentialStage[] {
-  const now = Date.now()
-  return stages.filter(({ status, expires_at_ms }) => status === 'ready' && expires_at_ms > now)
+function currentReadyStage(stage: CredentialStage | null): CredentialStage | null {
+  return stage?.status === 'ready' && stage.expires_at_ms > Date.now() ? stage : null
 }
 
-function expireStaleReadyStages(stages: readonly CredentialStage[]): CredentialStage[] {
-  const now = Date.now()
-  return stages.map((stage) =>
-    stage.status === 'ready' && stage.expires_at_ms <= now
-      ? { ...stage, status: 'expired' }
-      : stage,
-  )
+function expireStaleReadyStage(stage: CredentialStage | null): CredentialStage | null {
+  return stage?.status === 'ready' && stage.expires_at_ms <= Date.now()
+    ? { ...stage, status: 'expired' }
+    : stage
 }
 
 function freshDraft(): ImportDraft {
@@ -107,7 +103,7 @@ function freshDraft(): ImportDraft {
     provider_url: '',
 
     credentials: '',
-    staged_credentials: [],
+    staged_credential: null,
     models: [],
   }
 }
@@ -117,17 +113,8 @@ function cloneDraft(source: ImportDraft): ImportDraft {
     ...source,
     params: { ...source.params },
     proxy: { ...source.proxy },
-    staged_credentials: source.staged_credentials.map((stage) => ({
-      stage_id: stage.stage_id,
-      status: stage.status,
-      ...(stage.authorization_url === undefined
-        ? {}
-        : { authorization_url: stage.authorization_url }),
-      ...(stage.redirect_uri === undefined ? {} : { redirect_uri: stage.redirect_uri }),
-      account: { ...stage.account },
-      expires_at_ms: stage.expires_at_ms,
-      ...(stage.error_code === undefined ? {} : { error_code: stage.error_code }),
-    })),
+    staged_credential:
+      source.staged_credential === null ? null : structuredClone(source.staged_credential),
     models: source.models.map((model) => ({ ...model, sources: [...model.sources] })),
   }
 }
@@ -262,8 +249,8 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const discoveryPanelRunRef = useRef(false)
   const [autoFilledSkip, setAutoFilledSkip] = useState(false)
 
-  const credentialAnalysis = analyzeCredentials(draft.credentials)
-  const readyStages = draft.staged_credentials.filter(({ status }) => status === 'ready')
+  const credential = readSingleCredential(draft.credentials)
+  const readyStage = draft.staged_credential?.status === 'ready' ? draft.staged_credential : null
 
   async function syncDiscoveryStage(stageID: string, identity: number): Promise<void> {
     if (!mountedRef.current) return
@@ -271,18 +258,15 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       const stage = await getCredentialStage(apiClient, stageID)
       if (!mountedRef.current) return
       setDraft((current) =>
-        current.staged_credentials.some((item) => item.stage_id === stageID)
+        current.staged_credential?.stage_id === stageID
           ? {
               ...current,
-              staged_credentials: current.staged_credentials.map((item) =>
-                item.stage_id === stage.stage_id
-                  ? {
-                      ...stage,
-                      authorization_url: stage.authorization_url ?? item.authorization_url,
-                      redirect_uri: stage.redirect_uri ?? item.redirect_uri,
-                    }
-                  : item,
-              ),
+              staged_credential: {
+                ...stage,
+                authorization_url:
+                  stage.authorization_url ?? current.staged_credential.authorization_url,
+                redirect_uri: stage.redirect_uri ?? current.staged_credential.redirect_uri,
+              },
             }
           : current,
       )
@@ -297,15 +281,19 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
   const credentialCount =
     draft.connection_type === 'subscription'
-      ? readyStages.length
-      : credentialAnalysis.nonEmptyCount - credentialAnalysis.duplicateCount
+      ? readyStage === null
+        ? 0
+        : 1
+      : credential === null
+        ? 0
+        : 1
   const tooManyCredentials =
     draft.connection_type === 'subscription'
-      ? readyStages.length > 1
-      : credentialAnalysis.tooManyCredentials
+      ? false
+      : draft.credentials.trim() !== '' && credential === null
   const connectionChannel = selectedChannel
   const isSubscription = draft.connection_type === 'subscription'
-  const proxyLocked = isSubscription && draft.staged_credentials.length > 0
+  const proxyLocked = isSubscription && draft.staged_credential !== null
   const draftProxyMutation = proxyMutation(draft.proxy.mode, draft.proxy.url)
   const draftProxyOverride =
     selectedChannel?.capabilities.outbound_proxy === true &&
@@ -449,13 +437,14 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   })()
   const subscriptionStageError =
     isSubscription &&
-    readyStages.length === 0 &&
-    draft.staged_credentials.some(({ status }) =>
-      ['failed', 'cancelled', 'expired', 'outcome_unknown'].includes(status),
-    )
-  const activeSubscriptionStage = draft.staged_credentials.find(
-    ({ status }) => status === 'pending_authorization' || status === 'exchanging',
-  )
+    readyStage === null &&
+    draft.staged_credential !== null &&
+    ['failed', 'cancelled', 'expired', 'outcome_unknown'].includes(draft.staged_credential.status)
+  const activeSubscriptionStage =
+    draft.staged_credential !== null &&
+    ['pending_authorization', 'exchanging'].includes(draft.staged_credential.status)
+      ? draft.staged_credential
+      : null
   const credentialStepState: ImportStepState =
     tooManyCredentials || credentialValidation !== null || subscriptionStageError
       ? 'error'
@@ -766,12 +755,12 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (!ensureConnectionMapping() || !canDiscover || discoveryLoading) return
     const subscriptionStage =
       draft.connection_type === 'subscription'
-        ? currentReadyStages(draft.staged_credentials)[0]
+        ? currentReadyStage(draft.staged_credential)
         : undefined
     if (draft.connection_type === 'subscription' && !subscriptionStage) {
       setDraft((current) => ({
         ...current,
-        staged_credentials: expireStaleReadyStages(current.staged_credentials),
+        staged_credential: expireStaleReadyStage(current.staged_credential),
       }))
       // 让位给 draft 变更触发的 invalidateDiscovery，否则这条提示会被它清掉。
       queueMicrotask(() => {
@@ -884,33 +873,24 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       models: toGroupModels(draft.models),
       ...(draft.connection_type === 'subscription'
         ? {
-            staged_credential_ids: currentReadyStages(draft.staged_credentials).map(
-              ({ stage_id }) => stage_id,
-            ),
+            staged_credential_id: currentReadyStage(draft.staged_credential)?.stage_id,
           }
-        : { credentials: draft.credentials }),
+        : { credential: draft.credentials }),
       confirm_same_target: confirmSameTarget,
     }
   }
 
-  async function finishSuccess(groupID: number, added: number, duplicated: number): Promise<void> {
+  async function finishSuccess(groupID: number): Promise<void> {
     setCompleted(true)
-    setDraft((current) => ({ ...current, credentials: '', staged_credentials: [] }))
+    setDraft((current) => ({ ...current, credentials: '', staged_credential: null }))
     services.importRecovery.clear()
     createOperation.reset()
 
     await applyInvalidationPlan(queryClient, mutationInvalidationPlans.group.create)
     if (!mountedRef.current) return
     toast.show({
-      message: t(
-        isSubscription
-          ? duplicated > 0
-            ? 'import.subscription.resultDuplicated'
-            : 'import.subscription.result'
-          : 'import.credentials.result',
-        { added, duplicated },
-      ),
-      tone: added === 0 ? 'warning' : 'success',
+      message: t('group.settings.savedFeedback'),
+      tone: 'success',
       duration: 4_000,
     })
     await unsavedChanges.runWithoutPrompt(() =>
@@ -928,12 +908,12 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (!ensureConnectionMapping()) return
     if (
       draft.connection_type === 'subscription' &&
-      readyStages.length > 0 &&
-      currentReadyStages(draft.staged_credentials).length === 0
+      readyStage !== null &&
+      currentReadyStage(draft.staged_credential) === null
     ) {
       setDraft((current) => ({
         ...current,
-        staged_credentials: expireStaleReadyStages(current.staged_credentials),
+        staged_credential: expireStaleReadyStage(current.staged_credential),
       }))
       // 同上：draft 变更会触发清空 errorKey 的 watcher，先让它跑完。
       queueMicrotask(() => {
@@ -959,11 +939,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     )
     if (!outcome) return
     if (outcome.kind === 'confirmed') {
-      await finishSuccess(
-        outcome.value.group_id,
-        outcome.value.credentials_added,
-        outcome.value.credentials_duplicated,
-      )
+      await finishSuccess(outcome.value.group_id)
       return
     }
     if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
@@ -1116,7 +1092,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     draft.connection_type,
     JSON.stringify(draft.params),
     draft.credentials,
-    readyStages.map(({ stage_id }) => stage_id).join(','),
+    readyStage?.stage_id ?? '',
     JSON.stringify(draft.proxy),
   ].join('')
   const lastInvalidationSignatureRef = useRef(discoveryInvalidationSignature)
@@ -1365,9 +1341,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
           <div {...stylex.props(styles.stepBody)}>
             {isSubscription ? (
               <SubscriptionCredentialStager
-                stages={draft.staged_credentials}
-                onStagesChange={(staged_credentials) =>
-                  setDraft((current) => ({ ...current, staged_credentials }))
+                stage={draft.staged_credential}
+                onStageChange={(stage) =>
+                  setDraft((current) => ({ ...current, staged_credential: stage }))
                 }
                 channelId={draft.channel_id}
                 channelName={subscriptionChannelName}
@@ -1376,9 +1352,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                 notices={selectedChannel?.notices ?? []}
                 context="create"
                 disabled={payloadLocked}
-                entryDisabled={
-                  draftProxyMutation === undefined || draft.staged_credentials.length > 0
-                }
+                entryDisabled={draftProxyMutation === undefined || draft.staged_credential !== null}
                 hideHeader
                 compact
               />

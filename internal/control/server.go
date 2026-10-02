@@ -441,39 +441,46 @@ func (s *Server) handleDeleteGroup(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", nil)
 }
 
-func (s *Server) handleListGroupCredentials(c *gin.Context) {
-	id, ok := groupID(c, "list_group_credentials")
-	if !ok {
-		return
-	}
-	query, apiErr := parseCredentialCollectionQuery(c.Request.URL.RawQuery)
-	if apiErr != nil {
-		writeServiceError(c, "list_group_credentials", apiErr)
-		return
-	}
-	result, err := s.service.ListGroupCredentials(c.Request.Context(), id, query)
-	if err != nil {
-		writeServiceError(c, "list_group_credentials", err)
-		return
-	}
-	response.SuccessI18n(c, "common.success", result)
-}
-
 func (s *Server) handleGetGroupCredential(c *gin.Context) {
 	groupID, ok := groupID(c, "get_group_credential")
 	if !ok {
 		return
 	}
-	credentialID, ok := credentialID(c, "get_group_credential")
-	if !ok {
-		return
-	}
-	result, err := s.service.GetCredentialDetail(c.Request.Context(), groupID, credentialID)
+	result, err := s.service.GetGroupCredential(c.Request.Context(), groupID)
 	if err != nil {
 		writeServiceError(c, "get_group_credential", err)
 		return
 	}
 	response.SuccessI18n(c, "common.success", result)
+}
+
+func (s *Server) resolveGroupCredential(c *gin.Context) {
+	expectedID, err := strconv.ParseUint(c.GetHeader("X-Credential-ID"), 10, strconv.IntSize)
+	if err != nil || expectedID == 0 {
+		writeServiceError(c, "resolve_group_credential", app_errors.ErrValidation)
+		c.Abort()
+		return
+	}
+	id, ok := groupID(c, "resolve_group_credential")
+	if !ok {
+		c.Abort()
+		return
+	}
+	credentialID, err := s.service.currentGroupCredentialID(c.Request.Context(), id)
+	if err == nil && uint(expectedID) != credentialID {
+		err = app_errors.ErrCredentialVersionConflict
+	}
+	if err == nil && credentialID == 0 {
+		err = credentialNotFoundError()
+	}
+	if err != nil {
+		writeServiceError(c, "resolve_group_credential", err)
+		c.Abort()
+		return
+	}
+	// Pin the ID before auditing and mutation so a concurrent replacement is
+	// rejected by the existing group-and-ID checks, never silently retargeted.
+	c.Params = append(c.Params, gin.Param{Key: "credential_id", Value: strconv.FormatUint(uint64(credentialID), 10)})
 }
 
 func (s *Server) handleRefreshGroupCredentialObservation(c *gin.Context) {
@@ -593,24 +600,6 @@ func (s *Server) handleDownloadGroupCredential(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", result)
 }
 
-func (s *Server) handleDownloadAllGroupCredentials(c *gin.Context) {
-	groupID, ok := groupID(c, "download_all_group_credentials")
-	if !ok {
-		return
-	}
-	if err := bindOptionalEmptyJSONObject(c); err != nil {
-		writeServiceError(c, "download_all_group_credentials", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.DownloadAllGroupCredentials(c.Request.Context(), groupID)
-	if err != nil {
-		writeServiceError(c, "download_all_group_credentials", err)
-		return
-	}
-	setSecretResponseHeaders(c)
-	response.SuccessI18n(c, "common.success", result)
-}
-
 func (s *Server) handleUpdateGroupCredential(c *gin.Context) {
 	groupID, ok := groupID(c, "update_group_credential")
 	if !ok {
@@ -695,24 +684,6 @@ func (s *Server) handleTestGroupCredential(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", result)
 }
 
-func (s *Server) handleBatchGroupCredentials(c *gin.Context) {
-	groupID, ok := groupID(c, "batch_group_credentials")
-	if !ok {
-		return
-	}
-	var request CredentialBatchRequest
-	if err := bindStrictJSON(c, &request); err != nil {
-		writeServiceError(c, "batch_group_credentials", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.BatchGroupCredentials(c.Request.Context(), groupID, request)
-	if err != nil {
-		writeServiceError(c, "batch_group_credentials", err)
-		return
-	}
-	response.SuccessI18n(c, "common.success", result)
-}
-
 func (s *Server) handleImportGroupCredentials(c *gin.Context) {
 	id, ok := groupID(c, "import_group_credentials")
 	if !ok {
@@ -738,6 +709,11 @@ func (s *Server) handleImportGroupCredentials(c *gin.Context) {
 }
 
 func (s *Server) handleConnectGroupCredentials(c *gin.Context) {
+	expectedID, err := strconv.ParseUint(c.GetHeader("X-Credential-ID"), 10, strconv.IntSize)
+	if err != nil {
+		writeServiceError(c, "connect_group_credentials", app_errors.ErrValidation)
+		return
+	}
 	id, ok := groupID(c, "connect_group_credentials")
 	if !ok {
 		return
@@ -751,31 +727,9 @@ func (s *Server) handleConnectGroupCredentials(c *gin.Context) {
 		writeServiceError(c, "connect_group_credentials", mapControlJSONError(err))
 		return
 	}
-	result, err := s.service.ConnectGroupCredentialsIdempotent(
-		c.Request.Context(), idempotencyKey, id, request.StagedCredentialIDs,
-	)
+	result, err := s.service.ConnectGroupCredentialsIdempotent(c.Request.Context(), idempotencyKey, id, uint(expectedID), request.StagedCredentialID)
 	if err != nil {
 		writeServiceError(c, "connect_group_credentials", err)
-		return
-	}
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handleInspectGroupCredentialConnection(c *gin.Context) {
-	id, ok := groupID(c, "inspect_group_credential_connection")
-	if !ok {
-		return
-	}
-	var request CredentialConnectRequest
-	if err := bindStrictJSON(c, &request); err != nil {
-		writeServiceError(c, "inspect_group_credential_connection", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.InspectGroupCredentialConnection(
-		c.Request.Context(), id, request.StagedCredentialIDs,
-	)
-	if err != nil {
-		writeServiceError(c, "inspect_group_credential_connection", err)
 		return
 	}
 	response.SuccessI18n(c, "common.success", result)

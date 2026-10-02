@@ -1,10 +1,8 @@
 import { Badge, Button, Collapsible, Field, TextInput } from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
-import { ExternalLink, FileJson, Plus, Send } from 'lucide-react'
+import { ExternalLink, FileJson, Send } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
-
-import { useIntl } from 'react-intl'
 
 import { useAppServices } from '../../app/services'
 import { useT } from '../../app/i18n'
@@ -38,8 +36,8 @@ const POLL_FAILURE_LIMIT = 5
 type StageTone = 'success' | 'warning' | 'danger' | 'neutral'
 
 export function SubscriptionCredentialStager({
-  stages,
-  onStagesChange,
+  stage,
+  onStageChange,
   channelId,
   channelName = '',
   authorizationMethods,
@@ -53,8 +51,8 @@ export function SubscriptionCredentialStager({
   step,
   context = 'create',
 }: {
-  stages: CredentialStage[]
-  onStagesChange(stages: CredentialStage[]): void
+  stage: CredentialStage | null
+  onStageChange(stage: CredentialStage | null): void
   channelId: string
   channelName?: string
   authorizationMethods: ChannelAuthorizationMethod[]
@@ -74,7 +72,7 @@ export function SubscriptionCredentialStager({
 }) {
   const { apiClient, toast } = useAppServices()
   const t = useT()
-  const intl = useIntl()
+
   const [busyAction, setBusyAction] = useState<'authorize' | 'import' | `callback:${string}` | ''>(
     '',
   )
@@ -90,14 +88,13 @@ export function SubscriptionCredentialStager({
     new Map<string, { timer?: number; controller?: AbortController; failures: number }>(),
   )
   const expiryTimersRef = useRef(new Map<string, number>())
-  const stagesRef = useRef(stages)
+  const stageRef = useRef(stage)
   const disabledRef = useRef(disabled)
   const entryDisabledRef = useRef(entryDisabled)
   const busyActionRef = useRef(busyAction)
 
-  const readyCount = stages.filter(({ status }) => status === 'ready').length
-  const hasAccounts = stages.length > 0
-  const entryBusy = disabled || entryDisabled || busyAction !== ''
+  const hasAccounts = stage !== null
+  const entryBusy = disabled || entryDisabled || hasAccounts || busyAction !== ''
   const stageNetwork: CredentialStageNetworkInput | undefined =
     groupId !== undefined ? { group_id: groupId } : proxy !== undefined ? { proxy } : undefined
   const supportsBrowserOAuth = authorizationMethods.includes('browser_oauth')
@@ -153,8 +150,7 @@ export function SubscriptionCredentialStager({
   }
 
   function replaceStage(stage: CredentialStage): void {
-    const current = stagesRef.current
-    const existing = current.find((item) => item.stage_id === stage.stage_id)
+    const existing = stageRef.current?.stage_id === stage.stage_id ? stageRef.current : null
     const merged = existing
       ? {
           ...stage,
@@ -163,15 +159,10 @@ export function SubscriptionCredentialStager({
           authorization_method: stage.authorization_method ?? existing.authorization_method,
           user_code: stage.user_code ?? existing.user_code,
           next_poll_at_ms: stage.next_poll_at_ms ?? existing.next_poll_at_ms,
-          duplicate: stage.duplicate ?? existing.duplicate,
         }
       : stage
-    const index = current.findIndex((item) => item.stage_id === stage.stage_id)
-    onStagesChange(
-      index === -1
-        ? [...current, merged]
-        : current.map((item, itemIndex) => (itemIndex === index ? merged : item)),
-    )
+    onStageChange(merged)
+    stageRef.current = merged
     if (!shouldPoll(stage)) {
       clearCallbackURL(stage.stage_id)
       clearCallbackError(stage.stage_id)
@@ -181,7 +172,7 @@ export function SubscriptionCredentialStager({
 
   function expireReadyStage(stageID: string): void {
     stopExpiryTimer(stageID)
-    const stage = stagesRef.current.find((item) => item.stage_id === stageID)
+    const stage = stageRef.current?.stage_id === stageID ? stageRef.current : null
     if (!stage || stage.status !== 'ready') return
     if (stage.expires_at_ms > Date.now()) {
       scheduleExpiry(stage)
@@ -211,7 +202,7 @@ export function SubscriptionCredentialStager({
       state.controller = controller
       let polledStage: CredentialStage | undefined
       try {
-        const current = stagesRef.current.find((item) => item.stage_id === stage.stage_id) ?? stage
+        const current = stageRef.current?.stage_id === stage.stage_id ? stageRef.current : stage
         const next =
           current.authorization_method === 'device_oauth' &&
           current.status === 'pending_authorization'
@@ -243,7 +234,7 @@ export function SubscriptionCredentialStager({
       }
       if (pollingRef.current.has(stage.stage_id)) {
         const latest =
-          polledStage ?? stagesRef.current.find((item) => item.stage_id === stage.stage_id)
+          polledStage ?? (stageRef.current?.stage_id === stage.stage_id ? stageRef.current : null)
         const providerDelay =
           latest?.authorization_method === 'device_oauth' && latest.next_poll_at_ms
             ? Math.max(250, latest.next_poll_at_ms - Date.now())
@@ -262,20 +253,20 @@ export function SubscriptionCredentialStager({
   }
 
   useEffect(() => {
-    stagesRef.current = stages
+    stageRef.current = stage
     disabledRef.current = disabled
     entryDisabledRef.current = entryDisabled
     busyActionRef.current = busyAction
-    for (const stage of stages) {
+    if (stage !== null) {
       schedulePoll(stage)
       scheduleExpiry(stage)
     }
-    const live = new Set(stages.map(({ stage_id }) => stage_id))
+
     for (const stageID of pollingRef.current.keys()) {
-      if (!live.has(stageID)) stopPolling(stageID)
+      if (stage?.stage_id !== stageID) stopPolling(stageID)
     }
     for (const stageID of expiryTimersRef.current.keys()) {
-      if (!live.has(stageID)) stopExpiryTimer(stageID)
+      if (stage?.stage_id !== stageID) stopExpiryTimer(stageID)
     }
   })
 
@@ -295,7 +286,7 @@ export function SubscriptionCredentialStager({
     if (
       !supportsInteractiveOAuth ||
       disabled ||
-      (entryDisabled && !replacingExistingStage) ||
+      ((entryDisabled || stageRef.current !== null) && !replacingExistingStage) ||
       busyActionRef.current
     ) {
       existingPopup?.close()
@@ -323,43 +314,30 @@ export function SubscriptionCredentialStager({
     const files = Array.from(input.files ?? [])
     input.value = ''
     if (
-      files.length === 0 ||
+      files.length !== 1 ||
       !supportsOAuthFile ||
       disabled ||
       entryDisabled ||
+      stageRef.current !== null ||
       busyActionRef.current
     ) {
       return
     }
     setFeedbackKey('')
     setBusyAction('import')
-    const imported: CredentialStage[] = []
-    let failed = 0
     try {
-      for (const file of files) {
-        try {
-          imported.push(await importCredentialStage(apiClient, channelId, file, stageNetwork))
-        } catch {
-          failed += 1
-        }
-      }
-      if (imported.length > 0) {
-        const knownStageIDs = new Set(stagesRef.current.map(({ stage_id }) => stage_id))
-        onStagesChange([
-          ...stagesRef.current,
-          ...imported.filter(({ stage_id }) => !knownStageIDs.has(stage_id)),
-        ])
-        setOauthJSON('')
-        setJsonImportOpen(false)
-      }
+      const file = files[0]
+      if (!file) return
+      replaceStage(await importCredentialStage(apiClient, channelId, file, stageNetwork))
+      setOauthJSON('')
+      setJsonImportOpen(false)
       toast.show({
-        message: t('import.subscription.importResult', {
-          succeeded: intl.formatNumber(imported.length),
-          failed: intl.formatNumber(failed),
-        }),
-        tone: failed === 0 ? 'success' : imported.length === 0 ? 'danger' : 'warning',
+        message: t('import.subscription.status.ready'),
+        tone: 'success',
         duration: 4_000,
       })
+    } catch (cause) {
+      setFeedbackKey(presentSubscriptionErrorKey(cause, 'import.subscription.importFailed'))
     } finally {
       setBusyAction('')
     }
@@ -374,7 +352,14 @@ export function SubscriptionCredentialStager({
   }
 
   async function importOAuthJSON(file: File): Promise<void> {
-    if (!supportsOAuthFile || disabled || entryDisabled || busyActionRef.current) return
+    if (
+      !supportsOAuthFile ||
+      disabled ||
+      entryDisabled ||
+      stageRef.current !== null ||
+      busyActionRef.current
+    )
+      return
     setFeedbackKey('')
     setBusyAction('import')
     try {
@@ -452,11 +437,11 @@ export function SubscriptionCredentialStager({
     clearCallbackURL(stage.stage_id)
     clearCallbackError(stage.stage_id)
     clearStageFlags(stage.stage_id)
-    onStagesChange(stagesRef.current.filter(({ stage_id }) => stage_id !== stage.stage_id))
+    onStageChange(null)
+    stageRef.current = null
   }
 
   function statusTone(stage: CredentialStage): StageTone {
-    if (stage.status === 'ready' && stage.duplicate) return 'warning'
     if (stage.status === 'ready') return 'success'
     if (stage.status === 'pending_authorization' || stage.status === 'exchanging') return 'warning'
     if (stage.status === 'consumed') return 'neutral'
@@ -526,10 +511,8 @@ export function SubscriptionCredentialStager({
           step={step}
           title={t('import.subscription.title')}
           actions={
-            readyCount > 0 ? (
-              <span {...stylex.props(styles.count)}>
-                {t('import.subscription.readyCount', { count: intl.formatNumber(readyCount) })}
-              </span>
+            stage?.status === 'ready' ? (
+              <span {...stylex.props(styles.count)}>{t('import.subscription.status.ready')}</span>
             ) : undefined
           }
         />
@@ -544,7 +527,7 @@ export function SubscriptionCredentialStager({
 
       {hasAccounts && (
         <div {...stylex.props(styles.accounts)}>
-          {stages.map((stage) => (
+          {stage !== null && (
             <article
               key={stage.stage_id}
               {...stylex.props(styles.account, toneStyles[statusTone(stage)])}
@@ -590,9 +573,7 @@ export function SubscriptionCredentialStager({
                     </strong>
                     {stage.status === 'ready' && (
                       <span {...stylex.props(styles.identityDetail)}>
-                        {stage.duplicate ? (
-                          t('import.subscription.duplicateNotice')
-                        ) : (
+                        {
                           <>
                             {t(`import.subscription.readyNotice.${context}` as MessageId)}
                             {' · '}
@@ -603,7 +584,7 @@ export function SubscriptionCredentialStager({
                               hint
                             />
                           </>
-                        )}
+                        }
                       </span>
                     )}
                   </div>
@@ -617,11 +598,7 @@ export function SubscriptionCredentialStager({
                             ? 'error'
                             : 'neutral'
                     }
-                    label={
-                      stage.status === 'ready' && stage.duplicate
-                        ? t('import.subscription.duplicateStatus')
-                        : t(`import.subscription.status.${stage.status}` as MessageId)
-                    }
+                    label={t(`import.subscription.status.${stage.status}` as MessageId)}
                   />
                   <Button
                     variant="ghost"
@@ -740,9 +717,10 @@ export function SubscriptionCredentialStager({
                         xstyle={styles.monoInput}
                         onPaste={() => {
                           window.setTimeout(() => {
-                            const latest = stagesRef.current.find(
-                              (item) => item.stage_id === stage.stage_id,
-                            )
+                            const latest =
+                              stageRef.current?.stage_id === stage.stage_id
+                                ? stageRef.current
+                                : null
                             const pasted = callbackURLs[stage.stage_id]?.trim()
                             if (latest && pasted) void submitCallback(latest)
                           })
@@ -776,26 +754,21 @@ export function SubscriptionCredentialStager({
                 </div>
               )}
             </article>
-          ))}
+          )}
         </div>
       )}
 
-      {hasEntryMethod && (
+      {hasEntryMethod && !hasAccounts && (
         <div {...stylex.props(styles.entry)}>
           <div {...stylex.props(styles.entryActions)}>
             {supportsInteractiveOAuth && (
               <Button
-                variant={hasAccounts ? 'secondary' : 'primary'}
-                size={hasAccounts ? 'sm' : 'lg'}
+                variant="primary"
+                size="lg"
                 isLoading={busyAction === 'authorize'}
                 isDisabled={entryBusy}
                 onClick={() => void beginAuthorization()}
-                icon={hasAccounts ? <Plus size={15} aria-hidden="true" /> : undefined}
-                label={
-                  hasAccounts
-                    ? t('import.subscription.addAnother')
-                    : t('import.subscription.authorize', { channel: channelLabel })
-                }
+                label={t('import.subscription.authorize', { channel: channelLabel })}
               />
             )}
             {supportsOAuthFile && (
@@ -816,7 +789,7 @@ export function SubscriptionCredentialStager({
                   {...stylex.props(styles.fileInput)}
                   type="file"
                   accept="application/json,.json"
-                  multiple
+
                   disabled={entryBusy}
                   onChange={(event) => void importFile(event)}
                 />

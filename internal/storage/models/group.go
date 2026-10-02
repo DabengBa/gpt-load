@@ -21,7 +21,7 @@ type Group struct {
 	ProxyConfig    *string        `gorm:"column:proxy_config;type:text"`
 	ProviderURL    *string        `gorm:"column:provider_url;type:text"`
 	Enabled        bool           `gorm:"not null;default:true"`
-	Credentials    []Credential   `gorm:"foreignKey:GroupID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Credential     *Credential    `gorm:"foreignKey:GroupID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	CreatedAtMS    int64          `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_group_created_at,created_at_ms >= 0"`
 	UpdatedAtMS    int64          `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_group_updated_at,updated_at_ms >= 0"`
 }

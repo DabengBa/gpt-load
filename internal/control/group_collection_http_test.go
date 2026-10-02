@@ -334,7 +334,7 @@ func TestGroupCollectionHTTPReturnsExactCollectionAndOptionsContracts(t *testing
 		item.ChannelID != channel.OpenAICompatible ||
 		string(item.Params) != `{"base_url":"https://alpha.example/v1"}` ||
 		item.ModelCount != 2 ||
-		item.CredentialCounts != (GroupCollectionCredentialCounts{Total: 1, Available: 1}) {
+		!item.CredentialConfigured || item.CredentialStatus == nil || *item.CredentialStatus != "available" {
 		t.Fatalf("collection item = %#v, want exact public fields", item)
 	}
 
@@ -459,7 +459,7 @@ func TestGroupCollectionHTTPAllowsAvailableKeysInAnUnavailableStatus(t *testing.
 		len(data.Items) != 1 ||
 		data.Items[0].Status != GroupCollectionStatusUnavailable ||
 		data.Items[0].ModelCount != 0 ||
-		data.Items[0].CredentialCounts != (GroupCollectionCredentialCounts{Total: 1, Available: 1}) {
+		!data.Items[0].CredentialConfigured || data.Items[0].CredentialStatus == nil || *data.Items[0].CredentialStatus != "available" {
 		t.Fatalf("collection data = %#v, want unavailable route with available key bucket", data)
 	}
 }

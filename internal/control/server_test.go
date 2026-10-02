@@ -104,8 +104,8 @@ func TestGroupCollectionHTTPRoutesDeclareStaticOptionsBeforeDynamicDetail(t *tes
 		{name: "control.groups.get", path: "/groups/:group_id"},
 		{name: "control.groups.settings.get", path: "/groups/:group_id/settings"},
 		{name: "control.groups.models.get", path: "/groups/:group_id/models"},
-		{name: "control.group-credentials.list", path: "/groups/:group_id/credentials"},
-		{name: "control.group-credentials.detail", path: "/groups/:group_id/credentials/:credential_id"},
+
+		{name: "control.group-credentials.detail", path: "/groups/:group_id/credential"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GET group routes = %#v, want %#v", got, want)
@@ -497,9 +497,9 @@ func TestControlJSONBodyLimitAppliesToEveryJSONEndpoint(t *testing.T) {
 		{
 			name: "import group credentials", method: http.MethodPost,
 			path: func(groupID, _, _ uint) string {
-				return "/api/groups/" + strconv.FormatUint(uint64(groupID), 10) + "/credentials/import"
+				return "/api/groups/" + strconv.FormatUint(uint64(groupID), 10) + "/credential"
 			},
-			jsonPrefix: `{"credentials":"sk-body-limit-import"}`,
+			jsonPrefix: `{"credential":"sk-body-limit-import"}`,
 		},
 		{
 			name: "update group settings", method: http.MethodPut,
@@ -525,7 +525,7 @@ func TestControlJSONBodyLimitAppliesToEveryJSONEndpoint(t *testing.T) {
 		{
 			name: "update credential", method: http.MethodPut,
 			path: func(groupID, upstreamKeyID, _ uint) string {
-				return fmt.Sprintf("/api/groups/%d/credentials/%d", groupID, upstreamKeyID)
+				return fmt.Sprintf("/api/groups/%d/credential", groupID)
 			},
 			jsonPrefix: `{"status":"disabled"}`,
 		},
@@ -533,7 +533,7 @@ func TestControlJSONBodyLimitAppliesToEveryJSONEndpoint(t *testing.T) {
 			name: "discover draft models", method: http.MethodPost,
 			path: func(uint, uint, uint) string { return "/api/models/discover" },
 			jsonPrefix: `{"channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":"https://body-limit-discover.example.com/v1"},` +
-				`"credentials":"sk-body-limit-discover"}`,
+				`"credential":"sk-body-limit-discover"}`,
 		},
 		{
 			name: "create access key", method: http.MethodPost,
@@ -581,6 +581,7 @@ func TestControlJSONBodyLimitAppliesToEveryJSONEndpoint(t *testing.T) {
 
 			path := endpoint.path(groupID, before.credential.ID, accessKey.ID)
 			request := httptest.NewRequest(endpoint.method, path, oversizedControlJSONBody(endpoint.jsonPrefix))
+			request.Header.Set("X-Credential-ID", fmt.Sprintf("%d", before.credential.ID))
 			request.ContentLength = -1
 			request.Header.Set("Authorization", "Bearer test-auth-key")
 			request.Header.Set("Content-Type", "application/json")
@@ -804,7 +805,7 @@ func TestGroupCreateHTTPReturnsNarrowSuccessAndConflictEnvelopes(t *testing.T) {
 	NewServer(&config.Config{AuthKey: "test-auth-key"}, fixture.service).RegisterRoutes(engine)
 
 	request := httptest.NewRequest(http.MethodPost, "/api/groups", strings.NewReader(
-		`{"name":"primary","channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":"https://api.example.com/v1/"},"models":[{"id":"gpt-4o","alias":"public-gpt","alias_enabled":true}],"credentials":"sk-first"}`,
+		`{"name":"primary","channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":"https://api.example.com/v1/"},"models":[{"id":"gpt-4o","alias":"public-gpt","alias_enabled":true}],"credential":"sk-first"}`,
 	))
 	request.Header.Set("Authorization", "Bearer test-auth-key")
 	request.Header.Set("Content-Type", "application/json")
@@ -821,10 +822,10 @@ func TestGroupCreateHTTPReturnsNarrowSuccessAndConflictEnvelopes(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &success); err != nil {
 		t.Fatalf("decode success response: %v", err)
 	}
-	if success.Code != 0 || len(success.Data) != 4 {
+	if success.Code != 0 || len(success.Data) != 3 {
 		t.Fatalf("success response = %#v", success)
 	}
-	for _, field := range []string{"group_id", "group_name", "credentials_added", "credentials_duplicated"} {
+	for _, field := range []string{"group_id", "group_name", "credential_id"} {
 		if success.Data[field] == nil {
 			t.Fatalf("success data lacks %q: %#v", field, success.Data)
 		}
@@ -844,7 +845,7 @@ func TestGroupCreateHTTPReturnsNarrowSuccessAndConflictEnvelopes(t *testing.T) {
 	}
 
 	request = httptest.NewRequest(http.MethodPost, "/api/groups", strings.NewReader(
-		`{"channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":" HTTPS://API.example.com/v1 "},"models":[],"credentials":"sk-second"}`,
+		`{"channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":" HTTPS://API.example.com/v1 "},"models":[],"credential":"sk-second"}`,
 	))
 	request.Header.Set("Authorization", "Bearer test-auth-key")
 	request.Header.Set("Content-Type", "application/json")
@@ -888,25 +889,25 @@ func TestGroupCreateHTTPRejectsLegacyMissingAndMalformedContractsWithoutMutation
 		{
 			name: "omitted models",
 			body: `{"channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":"https://api.example.com"},` +
-				`"credentials":"sk-secret"}`,
+				`"credential":"sk-secret"}`,
 			code: app_errors.ErrValidation.Code,
 		},
 		{
 			name: "null models",
 			body: `{"channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":"https://api.example.com"},` +
-				`"models":null,"credentials":"sk-secret"}`,
+				`"models":null,"credential":"sk-secret"}`,
 			code: app_errors.ErrValidation.Code,
 		},
 		{
 			name: "unknown model field",
 			body: `{"channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":"https://api.example.com"},` +
-				`"models":[{"id":"gpt-4o","unknown":true}],"credentials":"sk-secret"}`,
+				`"models":[{"id":"gpt-4o","unknown":true}],"credential":"sk-secret"}`,
 			code: app_errors.ErrInvalidJSON.Code,
 		},
 		{
 			name: "malformed JSON",
 			body: `{"channel_id":"openai_compatible","connection_type":"api_key","params":{"base_url":"https://api.example.com"},` +
-				`"models":[],"credentials":"sk-secret"`,
+				`"models":[],"credential":"sk-secret"`,
 			code: app_errors.ErrInvalidJSON.Code,
 		},
 	}
@@ -941,13 +942,20 @@ func TestImportGroupCredentialsEndpointReturnsSuccessEnvelope(t *testing.T) {
 	initControlI18n(t)
 	fixture := newServiceFixture(t)
 	groupID := createGroupForCredentialImport(t, fixture, "sk-existing")
+	var existing models.Credential
+	if err := fixture.db.Where("group_id = ?", groupID).Take(&existing).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.DeleteGroupCredential(t.Context(), groupID, existing.ID); err != nil {
+		t.Fatal(err)
+	}
 	beforeSnapshot := fixture.manager.Current()
 	engine := gin.New()
 	NewServer(&config.Config{AuthKey: "test-auth-key"}, fixture.service).RegisterRoutes(engine)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/groups/"+strconv.FormatUint(uint64(groupID), 10)+"/credentials/import", strings.NewReader(
-		`{"credentials":"sk-existing\nsk-existing"}`,
+	request := httptest.NewRequest(http.MethodPost, "/api/groups/"+strconv.FormatUint(uint64(groupID), 10)+"/credential", strings.NewReader(
+		`{"credential":"sk-existing"}`,
 	))
 	request.Header.Set("Authorization", "Bearer test-auth-key")
 	request.Header.Set("Content-Type", "application/json")
@@ -964,10 +972,10 @@ func TestImportGroupCredentialsEndpointReturnsSuccessEnvelope(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode import response: %v", err)
 	}
-	if envelope.Code != 0 || len(envelope.Data) != 3 {
+	if envelope.Code != 0 || len(envelope.Data) != 2 {
 		t.Fatalf("success envelope = %#v", envelope)
 	}
-	for _, field := range []string{"group_id", "credentials_added", "credentials_duplicated"} {
+	for _, field := range []string{"group_id", "credential_id"} {
 		if _, ok := envelope.Data[field]; !ok {
 			t.Fatalf("success data lacks %q: %#v", field, envelope.Data)
 		}
@@ -980,7 +988,7 @@ func TestImportGroupCredentialsEndpointReturnsSuccessEnvelope(t *testing.T) {
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.GroupID != groupID || result.CredentialsAdded != 0 || result.CredentialsDuplicated != 2 {
+	if result.GroupID != groupID || result.CredentialID == 0 {
 		t.Fatalf("result = %#v", result)
 	}
 	if fixture.manager.Current() != beforeSnapshot {
@@ -1001,17 +1009,17 @@ func TestImportGroupCredentialsEndpointRejectsUnknownFieldsAndInvalidGroupID(t *
 		groupID string
 		body    string
 	}{
-		{name: "unknown field", groupID: strconv.FormatUint(uint64(groupID), 10), body: `{"credentials":"sk-new","name":"must-not-change"}`},
-		{name: "multiple JSON values", groupID: strconv.FormatUint(uint64(groupID), 10), body: `{"credentials":"sk-new"} {"credentials":"sk-other"}`},
-		{name: "zero group ID", groupID: "0", body: `{"credentials":"sk-new"}`},
-		{name: "non-numeric group ID", groupID: "not-a-number", body: `{"credentials":"sk-new"}`},
-		{name: "overflowing group ID", groupID: "18446744073709551616", body: `{"credentials":"sk-new"}`},
+		{name: "unknown field", groupID: strconv.FormatUint(uint64(groupID), 10), body: `{"credential":"sk-new","name":"must-not-change"}`},
+		{name: "multiple JSON values", groupID: strconv.FormatUint(uint64(groupID), 10), body: `{"credential":"sk-new"} {"credential":"sk-other"}`},
+		{name: "zero group ID", groupID: "0", body: `{"credential":"sk-new"}`},
+		{name: "non-numeric group ID", groupID: "not-a-number", body: `{"credential":"sk-new"}`},
+		{name: "overflowing group ID", groupID: "18446744073709551616", body: `{"credential":"sk-new"}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			beforeSnapshot := fixture.manager.Current()
 			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPost, "/api/groups/"+test.groupID+"/credentials/import", strings.NewReader(test.body))
+			request := httptest.NewRequest(http.MethodPost, "/api/groups/"+test.groupID+"/credential", strings.NewReader(test.body))
 			request.Header.Set("Authorization", "Bearer test-auth-key")
 			request.Header.Set("Content-Type", "application/json")
 			setRequiredTestIdempotencyHeader(request)
@@ -1036,7 +1044,7 @@ func TestImportGroupCredentialsEndpointReturnsGroupNotFound(t *testing.T) {
 	NewServer(&config.Config{AuthKey: "test-auth-key"}, fixture.service).RegisterRoutes(engine)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/groups/999/credentials/import", strings.NewReader(`{"credentials":"sk-new"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/groups/999/credential", strings.NewReader(`{"credential":"sk-new"}`))
 	request.Header.Set("Authorization", "Bearer test-auth-key")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept-Language", "zh-CN")

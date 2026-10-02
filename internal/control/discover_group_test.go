@@ -346,9 +346,9 @@ func TestDiscoverGroupModelsUsesSubscriptionCredential(t *testing.T) {
 	stage := mustImportSubscriptionStage(t, fixture, "account-saved-models", "saved@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("saved subscription discovery"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -376,9 +376,9 @@ func TestClaudeGroupDiscoversModelsAndBecomesAvailableAfterSelection(t *testing.
 	}
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("Claude subscription discovery"), ChannelID: channel.Claude,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -415,7 +415,7 @@ func TestClaudeGroupDiscoversModelsAndBecomesAvailableAfterSelection(t *testing.
 		t.Fatalf("updated models = %#v, %v", updated, err)
 	}
 	after, err := fixture.service.GetGroupSummary(t.Context(), created.GroupID)
-	if err != nil || after.ServiceStatus != GroupCollectionStatusAvailable || after.ModelCount != 2 || after.CredentialCount != 1 {
+	if err != nil || after.ServiceStatus != GroupCollectionStatusAvailable || after.ModelCount != 2 || !after.CredentialConfigured {
 		t.Fatalf("summary after selection = %#v, %v", after, err)
 	}
 }
@@ -426,9 +426,9 @@ func TestDiscoverGroupModelsPreparesSubscriptionCredential(t *testing.T) {
 	stage := mustImportSubscriptionStage(t, fixture, "account-prepared-models", "prepared@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("prepared subscription discovery"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -461,9 +461,9 @@ func TestDiscoverGroupModelsRefreshesSameCredentialOnceAfterUnauthorized(t *test
 	stage := mustImportSubscriptionStage(t, fixture, "account-model-refresh", "model-refresh@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("subscription discovery auth refresh"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -509,9 +509,9 @@ func TestDiscoverGroupModelsSkipsSubscriptionCredentialRequiringAuthorization(t 
 	stage := mustImportSubscriptionStage(t, fixture, "account-reauthorize-models", "reauthorize@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("unauthorized subscription discovery"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -538,9 +538,9 @@ func TestMapGroupDiscoveryTargetRejectsUnreadySubscriptionCredential(t *testing.
 	stage := mustImportSubscriptionStage(t, fixture, "account-route-owned", "route-owned@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("route-owned subscription discovery"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -566,9 +566,9 @@ func TestMapGroupDiscoveryTargetPreparesSubscriptionCredential(t *testing.T) {
 	stage := mustImportSubscriptionStage(t, fixture, "account-route-refresh", "route-refresh@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("route-owned subscription refresh"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -604,9 +604,9 @@ func TestDiscoverGroupModelsDoesNotMaskAttemptedSubscriptionFailure(t *testing.T
 	stage := mustImportSubscriptionStage(t, fixture, "account-upstream-failure", "second@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("subscription discovery failure"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)

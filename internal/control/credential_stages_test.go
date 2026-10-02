@@ -755,15 +755,15 @@ func TestCreateSubscriptionGroupConsumesReadyStageAtomically(t *testing.T) {
 	}
 	request := GroupCreateRequest{
 		Name: stringPointer("subscription group"), ChannelID: channel.Codex,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID}, ConnectionType: "subscription",
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID, ConnectionType: "subscription",
 	}
 	key := "00000000-0000-4000-8000-000000000777"
 	created, err := fixture.service.CreateGroupIdempotent(t.Context(), key, request)
 	if err != nil {
 		t.Fatalf("CreateGroupIdempotent() error = %v", err)
 	}
-	if created.CredentialsAdded != 1 || created.CredentialsDuplicated != 0 {
+	if created.CredentialID == 0 {
 		t.Fatalf("created = %#v", created)
 	}
 	var group models.Group
@@ -807,9 +807,9 @@ func TestCreateSubscriptionGroupRollsBackStageOnFailure(t *testing.T) {
 	}
 	_, err = fixture.service.CreateGroupIdempotent(t.Context(), "00000000-0000-4000-8000-000000000778", GroupCreateRequest{
 		Name: stringPointer("invalid subscription group"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "", Alias: "invalid"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "", Alias: "invalid"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err == nil {
 		t.Fatal("invalid group creation error = nil")
@@ -830,9 +830,9 @@ func TestConnectSubscriptionGroupConsumesReadyStage(t *testing.T) {
 	first := mustImportSubscriptionStage(t, fixture, "account-one", "one@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("subscription connect replacement"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{first.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: first.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -847,11 +847,11 @@ func TestConnectSubscriptionGroupConsumesReadyStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	replacement := mustImportSubscriptionStage(t, fixture, "account-one", "replacement@example.com")
-	result, err := fixture.service.ConnectGroupCredentials(t.Context(), created.GroupID, []string{replacement.StageID})
+	result, err := fixture.service.ConnectGroupCredentials(t.Context(), created.GroupID, before.ID, replacement.StageID)
 	if err != nil {
 		t.Fatalf("ConnectGroupCredentials() error = %v", err)
 	}
-	if result.CredentialsAdded != 1 || result.CredentialsDuplicated != 0 || result.GroupID != created.GroupID {
+	if result.CredentialID == 0 || result.GroupID != created.GroupID {
 		t.Fatalf("result = %#v", result)
 	}
 	var after models.Credential
@@ -887,9 +887,9 @@ func TestConnectSubscriptionGroupIdempotentReplaysConsumedStage(t *testing.T) {
 	first := mustImportSubscriptionStage(t, fixture, "account-one", "one@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("subscription connect replacement replay"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{first.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: first.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -906,18 +906,18 @@ func TestConnectSubscriptionGroupIdempotentReplaysConsumedStage(t *testing.T) {
 	replacement := mustImportSubscriptionStage(t, fixture, "account-one", "replacement@example.com")
 	key := "123e4567-e89b-42d3-a456-426614174000"
 	firstResult, err := fixture.service.ConnectGroupCredentialsIdempotent(
-		t.Context(), key, created.GroupID, []string{replacement.StageID},
+		t.Context(), key, created.GroupID, existing.ID, replacement.StageID,
 	)
 	if err != nil {
 		t.Fatalf("first connect error = %v", err)
 	}
 	replayed, err := fixture.service.ConnectGroupCredentialsIdempotent(
-		t.Context(), key, created.GroupID, []string{replacement.StageID},
+		t.Context(), key, created.GroupID, existing.ID, replacement.StageID,
 	)
 	if err != nil {
 		t.Fatalf("replayed connect error = %v", err)
 	}
-	if firstResult != replayed || replayed.CredentialsAdded != 1 || replayed.CredentialsDuplicated != 0 ||
+	if firstResult != replayed || replayed.CredentialID == 0 ||
 		replayed.GroupID != created.GroupID {
 		t.Fatalf("first = %#v, replayed = %#v", firstResult, replayed)
 	}
@@ -944,9 +944,9 @@ func TestSubscriptionCredentialCannotBeRevealedOrImportedAsText(t *testing.T) {
 	stage := mustImportSubscriptionStage(t, fixture, "account-one", "one@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("subscription secret boundary"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)

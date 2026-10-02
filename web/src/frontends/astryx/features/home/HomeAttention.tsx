@@ -82,12 +82,6 @@ const styles = stylex.create({
 })
 
 function itemHref(item: AttentionItem): string {
-  if (item.kind === 'blacklisted') {
-    return `${pagePath('groups')}/${item.groupID}?tab=credentials&credential_status=blacklisted`
-  }
-  if (item.kind === 'billing') {
-    return `${pagePath('groups')}/${item.groupID}?tab=credentials&credential_status=cooldown`
-  }
   return `${pagePath('groups')}/${item.groupID}?tab=credentials`
 }
 

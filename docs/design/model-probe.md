@@ -51,7 +51,7 @@ POST /api/model-probe
 ### 2.2 凭据测试
 
 ```text
-POST /api/groups/:group_id/credentials/:credential_id/test
+POST /api/groups/:group_id/credential/test
 → { outcome, model, protocol, latency_ms, reason, recovered, log_id, tested_at_ms }
 ```
 

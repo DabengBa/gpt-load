@@ -40,7 +40,7 @@ func TestSubscriptionGroupSettingsAndModelsRemainUpdatable(t *testing.T) {
 		Models: optionalGroupModels{Set: true, Values: []GroupModel{
 			{ID: "gpt-before"},
 		}},
-		StagedCredentialIDs: []string{stage.StageID},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatal(err)
