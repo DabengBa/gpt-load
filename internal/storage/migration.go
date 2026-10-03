@@ -20,6 +20,11 @@ const (
 
 var migrationIDPattern = regexp.MustCompile(`^(\d{4})_[a-z0-9]+(?:_[a-z0-9]+)*$`)
 
+// Retired migration IDs remain in the ledger but are not part of the active chain.
+var removedMigrationIDs = map[string]struct{}{
+	"0009_price_multipliers": {},
+}
+
 type schemaMigration struct {
 	ID string `gorm:"column:id;type:varchar(255);primaryKey;not null"`
 }
@@ -223,6 +228,13 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration) error {
 	if err := db.Table(migrationLedgerTable).Order("id ASC").Pluck("id", &applied).Error; err != nil {
 		return fmt.Errorf("read schema_migrations: %w", err)
 	}
+	activeApplied := applied[:0]
+	for _, id := range applied {
+		if _, removed := removedMigrationIDs[id]; !removed {
+			activeApplied = append(activeApplied, id)
+		}
+	}
+	applied = activeApplied
 	for index, id := range applied {
 		if index >= len(entries) || entries[index].ID != id {
 			return fmt.Errorf("schema_migrations contains unknown or non-contiguous migration %q", id)

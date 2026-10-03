@@ -54,12 +54,53 @@ func TestMultiplierFreshSchemaAndGapContinuation(t *testing.T) {
 	}
 }
 
+func TestMultiplierRetiredLedgerUpgradeAndRepeatStart(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		applied int
+	}{
+		{"pending migrations", 8},
+		{"fully applied", len(migrations)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openInternalMigrationTestDatabase(t)
+			if err := applyMigrationRegistry(db, migrations[:test.applied]); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&schemaMigration{ID: "0009_price_multipliers"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			for start := 0; start < 2; start++ {
+				if err := AutoMigrate(db); err != nil {
+					t.Fatalf("start %d with retired ledger entry: %v", start, err)
+				}
+			}
+			var ids []string
+			if err := db.Table(migrationLedgerTable).Order("id").Pluck("id", &ids).Error; err != nil {
+				t.Fatal(err)
+			}
+			var want []string
+			for index, entry := range migrations {
+				if index == 8 {
+					want = append(want, "0009_price_multipliers")
+				}
+				want = append(want, entry.ID)
+			}
+			if !reflect.DeepEqual(ids, want) {
+				t.Fatalf("ledger = %v, want %v", ids, want)
+			}
+			assertFeedbackSchema0024(t, db)
+		})
+	}
+}
+
 func TestMultiplierLedgerRejectionDoesNotMutate(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		ids  []string
 	}{
-		{"retired", []string{"0001_initial", "0009_price_multipliers"}},
+		{"retired with missing active migrations", []string{"0001_initial", "0009_price_multipliers", "0010_single_credential_per_group"}},
+		{"unknown at retired number", []string{"0001_initial", "0009_unknown"}},
 		{"unknown", []string{"0001_initial", "0002_unknown"}},
 		{"missing", []string{"0001_initial", "0003_remove_observation_fresh_until"}},
 	} {

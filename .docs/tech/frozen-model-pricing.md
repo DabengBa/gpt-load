@@ -39,9 +39,11 @@ An existing database must not be assumed usable with this revision. Before any
 deployment, the operator must separately approve and complete all three items:
 
 1. **Schema and migration ledger:** independently prepare and verify a schema
-   matching the current registry and an applied ledger that is its exact prefix.
-   Retired `0009_price_multipliers` ledger entries are incompatible and rejected
-   before mutation. Remaining migration IDs keep their identity; the gap from
+   matching the current registry and an active applied ledger that is its exact prefix.
+   Explicitly retired IDs in `removedMigrationIDs`, including
+   `0009_price_multipliers`, remain in the ledger but are excluded from the active
+   chain. Unknown IDs and missing active migrations are rejected before mutation.
+   Remaining migration IDs keep their identity; the gap from
    0008 to 0010 does not authorize rewriting historical ledger entries. External
    archival, retention scope, and schema preparation require a separate decision.
 2. **Old receipts:** decide how incompatible historical receipts are archived,
@@ -53,7 +55,7 @@ deployment, the operator must separately approve and complete all three items:
    under the new contract.
 
 These prerequisites are not authorization to delete data. This document provides
-no cleanup commands, automatic migration, compatibility layer, or tombstone.
+no cleanup commands, old-receipt migration, or runtime compatibility layer.
 Development changes do not modify a live database, commit, push, or deploy.
 Existing cumulative cost amounts and configured limits are preserved by default;
 there is no default limit reset, historical counter reset, or historical

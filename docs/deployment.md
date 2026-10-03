@@ -2,6 +2,14 @@
 
 本文只描述本仓库维护者自建实例的发布流程；上游通用部署（`ghcr.io/tbphp/gpt-load:2`、原生二进制）见 `README_CN.md` 的「部署与数据」。SQLite retention、停机维护和恢复流程见 [`docs/sqlite-maintenance.md`](sqlite-maintenance.md)。
 
+## SSH 目标
+
+**本文及发布脚本中的 `ssh vps-kl` 连接的是 Hostinger 服务器，不是本地构建机或其他 VPS。**
+当前 SSH 别名解析为 `root@72.62.76.115:22`，主机名为 `srv1138005`，使用本机
+`~/.ssh/hostinger_root_ed25519`。部署前用 `ssh -G vps-kl` 核对解析，再用
+`ssh -o BatchMode=yes vps-kl 'hostname'` 确认主机身份。连接信息变化时同步更新本文与 SSH
+配置；不要把私钥复制进仓库、提交、打印或上传为发布产物。
+
 ## 拓扑
 
 - 公网 443（主入口）：`https://gptl.tanyaleoallen.cloud` 由 GoDoxy `godoxy-app` 终止 TLS，再按 `config/vhosts.yml` 以 HTTP 反代到 `127.0.0.1:3001`：
@@ -46,27 +54,65 @@ ssh vps-kl 'ls -t /www/server/panel/data/compose/godoxy/logs/ | head'   # 轮转
 
 ## 发布
 
-**移除可配置价格倍率的版本不能直接按原库升级处理。** 发布前必须单独决定并完成
-schema / migration ledger（含已退役的 `0009_price_multipliers`）、旧 receipt 与
+**移除可配置价格倍率的版本仍需检查数据格式边界。** 发布前必须单独决定并完成
+schema / migration ledger、旧 receipt 与
 idempotency 历史三项准备，详见
 [冻结模型计价与部署边界](../.docs/tech/frozen-model-pricing.md)。应用只接受 v7 receipt，
 不提供旧数据迁移、兼容层或自动清理；下面的通用发布流程不替代这些准备，也不授权
 删除历史数据。累计费用与已配置限额默认保留，不默认重置限额或重算历史费用。
+已明确退役的 `0009_price_multipliers` 由 `removedMigrationIDs` 排除出有效迁移链，
+不需要删除或重写历史台账行；其他未知 ID 或缺失有效迁移仍拒绝启动。
 
 ```bash
-scripts/deploy.sh            # 在本地执行，默认发布 dev
-scripts/deploy.sh <分支>      # 发布其它已推送分支
+scripts/deploy.sh dev --prepare-only               # 在线构建、上传，不切换生产容器
+scripts/deploy.sh dev --activate-only <完整提交SHA> # 演练、最终备份后，只切换已准备镜像
 ```
 
 入口是本地仓库里的 `scripts/deploy.sh`。本机需要 Git、Docker Buildx、gzip、curl 和可连接 `vps-kl` 的 SSH；Docker 必须使用本机 Unix socket。BuildKit 和构建缓存留在本机，服务器不执行 Git 拉取、源码编译或镜像构建。
 
-1. 发布前检查本地改动，完成相关测试，将本次提交推送到 `DabengBa/gpt-load` 的目标分支（默认 `dev`）。
-2. 脚本 fetch 目标分支，固定本次提交，以 `git archive` 导出源码作为构建上下文；本地未提交文件不会进入镜像。根据服务器架构选择 `linux/amd64` 或 `linux/arm64`，通过本机默认 builder 构建并加载 `gpt-load:<分支>-<短sha>`。
-3. `docker save | gzip -1 | ssh vps-kl 'docker load'` 流式上传镜像，不在服务器落地镜像压缩包。服务器仍需镜像解压、存储所需的 CPU 和磁盘空间，但不再承担 BuildKit 构建负载。
-4. 镜像加载成功后，脚本通过 SSH 发送部署命令：备份当前 Compose、更新镜像标签，以 `--no-build --pull never` 启动，再检查容器、本机与公网 `/health`。构建或传输失败不会进入 Compose 切换步骤。
-5. 发布后核对目标提交、运行镜像与 health 版本，检查近期错误及本次改动相关的业务请求，报告发布版本与验证结果。
+1. **固定版本与授权范围。** 核对 Hostinger SSH 目标、现有镜像、health、数据卷和持久磁盘空间。完成相关测试，只提交本次文件并推送到 `DabengBa/gpt-load` 的目标分支（默认 `dev`），不要夹带其他工作区改动。记录完整提交 SHA、目标标签、旧镜像和需要的修复 SQL；没有格式问题就不修数据。
+2. **在线准备镜像。** 在本机运行 `--prepare-only`。脚本 fetch 目标分支，以 `git archive` 导出已推送提交，按服务器架构本地构建，再通过 `docker save | gzip -1 | ssh vps-kl 'docker load'` 上传。生产容器保持运行。记录脚本输出的提交与镜像标签；Hostinger 只加载镜像，不构建。
+3. **在线快照演练。** 按下节取得一致 SQLite 快照和原密钥，在独立目录、隔离网络、无生产数据卷的目标镜像中演练启动、迁移和再次启动。检查台账、数据格式、认证管理 API 和真实加密凭据读取。演练失败就停止发布，保留生产服务；禁止把演练库覆盖回生产，快照后的新写入不能丢失。
+4. **一次停写窗口与最终备份。** 演练成功后核对远端分支仍指向已演练提交、目标镜像已加载、数据源未变化。当前单实例没有代理排空机制，停机会取消在途 HTTP/流式请求，不能承诺零停机。执行 `docker compose -p gpt-load -f /opt/gpt-load/docker-compose.yml stop -t 30 gpt-load`，确认容器和所有其他写入者已停止，在持久磁盘受限目录完整归档数据卷及密钥，检查归档可读。备份失败时不要执行 SQL 或启动新版；源库未修改时可恢复旧容器。发布不执行 `VACUUM`，不要把压缩维护混入升级。
+5. **必要时执行已审阅 SQL。** 只处理预先批准的具体格式问题，先在副本验证，再对最终停止写入的源库重查前置条件，在事务内执行并验证结果。台账不是修复 schema 的替代品，不能仅删除行让检查通过。未知格式、意外行数或验证失败时停止；未批准的数据删除、重算费用和旧 receipt 转换不执行。通常由应用在启动事务中执行待应用迁移，无需手工 SQL。
+6. **切换与验证。** 本机执行 `--activate-only <完整提交SHA>`，脚本拒绝远端分支变化，并确认目标镜像存在后备份 Compose、切换标签、以 `--no-build --pull never` 启动，不再构建或上传。核对运行镜像与版本、容器健康和重启次数、本机与公网 health、认证管理 API、真实加密凭据读取以及相关业务行为。任何失败均不能报告发布成功；按下文区分镜像回滚与整库恢复。
 
-分支名里的 `/` 在镜像标签中写成 `-`。现有数据卷保持不动，Compose 备份不是数据库备份。脚本不自动清理旧镜像、服务器历史源码或 BuildKit 缓存；历史缓存清理属于单独的运维操作。健康未通过时脚本以非零退出；先按下文排障，确认需要回退镜像后再回滚。
+`scripts/deploy.sh [分支]` 仍可一次完成构建、上传和切换，但它不执行快照演练或数据备份，不能替代上面的发布流程。`--activate-only` 也不代替人工确认停止写入、备份或数据检查。分支名里的 `/` 在镜像标签中写成 `-`。现有数据卷保持不动，Compose 备份不是数据库备份。脚本不自动清理旧镜像、服务器历史源码或 BuildKit 缓存；历史缓存清理属于单独的运维操作。
+
+### 快照演练约束
+
+- SQLite `.backup` 方法见「健康检查异常排障」。目录必须位于持久磁盘，权限为 `0700`，文件为 `0600`，空间还要覆盖工作副本和最终备份；不要使用宿主机 `/tmp` 的 tmpfs。
+- 原快照保持不变，另建工作副本，复制原 `auth.key`、`encryption.key`。若原容器通过环境变量提供密钥，安全复用相同变量，不能生成新密钥；环境文件同样受限访问且不进入 Git 或日志。
+- 演练容器使用独立名称、`--network none`、独立数据目录，不绑定生产端口，不挂载生产卷；保持目标镜像的运行 UID/GID 与副本权限匹配。禁用 Models.dev 自动同步，不允许探测、刷新或请求真实 Provider。通过 `docker exec` 访问容器内 health 和认证只读管理 API，完整响应与令牌不打印。
+- 记录目标版本、有效台账、前后关键业务计数，以及两次启动与加密凭据读取结果。health 成功不等于数据兼容；retention 启动清理只影响副本，检查计数时按已配置保留期解释。
+- `0009` 曾被人工删除的库，可以仅在**工作副本**重新插入该历史 ID，验证目标版本允许它保留并重复启动；这不是生产数据修复步骤。
+- 演练结束停止并移除演练容器，清理含密钥的临时环境文件。原快照与最终备份按受限权限保留；切换前仍须确认磁盘空间。演练只是旧状态验证，不能替代停写后的最终备份和前置条件复查。
+
+### 最终备份示例
+
+先完成在线准备和演练，再在已确认的 Hostinger 主机执行。下面只备份，不修改数据库、不运行 `VACUUM`、不启动服务；必须确认没有其他写入者，实际数据卷与示例一致。
+
+```bash
+ssh vps-kl 'bash -se' <<'REMOTE'
+set -euo pipefail
+umask 077
+root=/opt/gpt-load
+data=$(docker volume inspect gpt-load_gpt-load-data --format '{{.Mountpoint}}')
+[ "$(findmnt -n -o FSTYPE -T "$root")" != tmpfs ]
+size=$(du -sb "$data" | cut -f1)
+avail=$(df -B1 --output=avail "$root" | tail -n 1)
+[ "$avail" -gt "$((size * 2))" ]
+docker compose -p gpt-load -f "$root/docker-compose.yml" stop -t 30 gpt-load
+[ "$(docker inspect gpt-load --format '{{.State.Running}}')" = false ]
+dir=$(mktemp -d "$root/pre-upgrade.XXXXXXXX")
+cp "$root/docker-compose.yml" "$dir/docker-compose.yml"
+tar -C "$data" -cf "$dir/data.tar" .
+tar -tf "$dir/data.tar" >/dev/null
+printf '最终备份: %s\n' "$dir"
+REMOTE
+```
+
+备份失败时不要继续切换。只有确认原数据没有被修改，才可以用 `docker start gpt-load` 恢复旧进程，并重新核对 health。该备份与源库同盘，只是此次发布的本地恢复点，不能代替独立存储上的灾备。
 
 ## Raw 通信证据
 
@@ -150,15 +196,21 @@ REMOTE
 
 ## 回滚
 
+先判断数据库是否已变化。只有旧版本可以读取当前 schema 和数据时，才可只回滚镜像。
+迁移事务失败时检查其已回滚；迁移成功而新应用失败时不能默认旧镜像兼容。
+如需恢复数据库，先停止所有写入者，将当前状态单独归档，再恢复最终备份的整个数据目录及原密钥，
+不要混用新旧 WAL/SHM；同时恢复匹配的旧 Compose。恢复备份会丢弃备份后写入，须明确批准该数据损失后执行。
+下列命令仅适用于已确认可以只回滚镜像的情况：
+
 ```bash
 ssh vps-kl
 cd /opt/gpt-load
 ls docker-compose.yml.bak-*                              # 每次发布都会留一份
 cp docker-compose.yml.bak-<时间戳>-<旧分支>-<旧短sha> docker-compose.yml
-docker compose up -d                                      # 必须在 /opt/gpt-load 下执行，保持项目名 gpt-load
+docker compose -p gpt-load up -d --no-build --pull never   # 保持项目名与原数据卷
 ```
 
-旧镜像不会自动清理，`docker images | grep gpt-load` 可直接看到待回滚的版本。回滚只切镜像标签，`gpt-load_gpt-load-data` 卷保持不动。
+旧镜像不会自动清理，`docker images | grep gpt-load` 可直接看到待回滚的版本。上述镜像回滚不恢复 `gpt-load_gpt-load-data` 卷；恢复后仍须验证版本、内外 health 和真实加密配置读取。
 
 ## 注意
 
