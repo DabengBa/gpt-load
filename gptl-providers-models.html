@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gptl 供应商模型一览</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --ink: #191d23;
+    --muted: #5c6570;
+    --faint: #8a919b;
+    --border: #e4e7ec;
+    --border-soft: #eef0f3;
+    --accent: #2f6fed;
+    --accent-soft: #eaf1fe;
+    --ok: #157347;
+    --off: #6b7280;
+    --off-bg: #f1f2f4;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.55 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 64px; }
+
+  header.page { margin-bottom: 20px; }
+  h1 { font-size: 22px; font-weight: 650; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .sub b { color: var(--ink); font-weight: 600; }
+
+  .toolbar {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    margin: 20px 0 14px;
+  }
+  .search { flex: 1 1 260px; position: relative; }
+  .search input {
+    width: 100%; height: 36px; padding: 0 12px 0 34px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--ink); font-size: 13px;
+    outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search svg {
+    position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+    width: 15px; height: 15px; color: var(--faint); pointer-events: none;
+  }
+  .pills { display: flex; gap: 6px; }
+  .pill {
+    height: 30px; padding: 0 13px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); font-size: 13px; cursor: pointer;
+    transition: all .15s;
+  }
+  .pill:hover { border-color: #c9ced6; color: var(--ink); }
+  .pill.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+  .meta { font-size: 12px; color: var(--faint); margin-bottom: 8px; }
+
+  .table-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    position: sticky; top: 0; z-index: 1;
+    background: #fafbfc; color: var(--muted);
+    font-size: 12px; font-weight: 600; text-align: left;
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #f7f9fc; }
+  td.supplier, td.channel, td.status { border-right: 1px solid var(--border-soft); }
+  .group-end td { border-bottom: 1px solid var(--border); }
+
+  .supplier .name { font-weight: 600; }
+  .supplier .url {
+    display: block; margin-top: 2px;
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+    max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chan {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    background: var(--off-bg); color: var(--off);
+    font-family: var(--mono); font-size: 11px;
+  }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+  .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+  .badge.available { color: var(--ok); }
+  .badge.available::before { background: var(--ok); }
+  .badge.disabled { color: var(--faint); }
+  .badge.disabled::before { background: #b7bdc6; }
+
+  .model { font-family: var(--mono); font-size: 12.5px; }
+  .model .up { color: var(--muted); }
+  td.num { text-align: right; color: var(--muted); }
+  .effort {
+    display: inline-block; padding: 1px 7px; border-radius: 5px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 11px; font-weight: 600;
+  }
+  .none { color: var(--faint); font-style: italic; }
+
+  tr.disabled-row td { opacity: .62; }
+  tr.disabled-row:hover td { opacity: 1; }
+
+  tr.band td {
+    background: #f2f4f7; color: var(--muted);
+    font-size: 11.5px; font-weight: 700; letter-spacing: .4px;
+    padding: 7px 14px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 37px; z-index: 1;
+  }
+  .prio {
+    display: inline-block; min-width: 20px; text-align: center;
+    padding: 1px 6px; border-radius: 6px; font-weight: 600; font-size: 12px;
+    font-family: var(--mono);
+  }
+  .prio.b1 { background: #dcfae6; color: #067647; }
+  .prio.b2 { background: #e0eaff; color: #2e5cd8; }
+  .prio.b3 { background: #fef0e0; color: #b54708; }
+  .prio.b4 { background: #fee2e2; color: #b42318; }
+  .prio.b5 { background: #eceff3; color: #667085; }
+
+  footer { margin-top: 14px; font-size: 12px; color: var(--faint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>gptl 供应商模型一览</h1>
+    <div class="sub" id="summary"></div>
+  </header>
+
+  <div class="toolbar">
+    <div class="search">
+      <svg viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="m11 11 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input id="q" type="search" placeholder="搜索供应商 / 模型名 / 上游模型…" autocomplete="off">
+    </div>
+    <div class="pills" id="pills"></div>
+  </div>
+
+  <div class="meta" id="meta"></div>
+
+  <div class="table-card"><div class="scroll">
+    <table>
+      <thead>
+        <tr><th style="min-width:200px">供应商</th><th>渠道</th><th>状态</th><th>对外模型名</th><th>上游模型</th><th style="width:64px;text-align:right">优先级</th><th style="width:64px;text-align:right">权重</th><th style="width:78px">effort</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div></div>
+
+  <footer>数据来源：gptl.tanyaleoallen.cloud 管理 API</footer>
+</div>
+
+<script>
+const DATA = [{"id": 29, "name": "DeepSeek_1_官渠", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "rpg", "upstream": "deepseek-flash", "priority": 10, "weight": 1, "effort": "high"}]}, {"id": 76, "name": "吉吉jiji_0.4_Gemini", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "gemini-3.8-flash", "priority": 5, "weight": 1, "effort": "medium"}, {"name": "rpg", "upstream": "gemini-3.7-flash", "priority": 2, "weight": 1, "effort": "high"}]}, {"id": 1, "name": "Ekan__", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "rpg", "upstream": "[满血D]gemini-3.1-pro-preview", "priority": 2, "weight": 1, "effort": "high"}]}, {"id": 3, "name": "嘀嘀嘀_0.15_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 8, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 8, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 5, "weight": 1, "effort": "medium"}]}, {"id": 42, "name": "OOIOO_0.25_gpt", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-luna", "priority": 3, "weight": 1, "effort": "max"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 7, "weight": 1, "effort": "medium"}]}, {"id": 19, "name": "吉吉jiji_0.19_限时特惠", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 3, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 8, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 3, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 8, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 6, "weight": 1, "effort": "medium"}]}, {"id": 61, "name": "HongShiAPI_公益_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "translator", "upstream": "gemini-3.6-flash", "priority": 2, "weight": 1, "effort": ""}, {"name": "chat", "upstream": "gemini-3.6-flash", "priority": 2, "weight": 1, "effort": ""}]}, {"id": 62, "name": "translate.gzcrtw_公益_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "translator", "upstream": "gpt-oss-120b", "priority": 2, "weight": 1, "effort": ""}]}, {"id": 49, "name": "智枢_0.15-0.3_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 3, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "grok-4.7", "priority": 10, "weight": 1, "effort": "high"}, {"name": "smarter", "upstream": "grok-4.7", "priority": 10, "weight": 1, "effort": ""}, {"name": "worker", "upstream": "gpt-6-luna", "priority": 2, "weight": 1, "effort": "max"}, {"name": "leader", "upstream": "grok-4.7", "priority": 10, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 3, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 6, "weight": 1, "effort": "medium"}]}, {"id": 68, "name": "relayforge__local", "channel": "openai_compatible", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "swe-2-max", "priority": 2, "weight": 1, "effort": "max"}, {"name": "pilot", "upstream": "swe-2-max", "priority": 2, "weight": 1, "effort": "max"}, {"name": "worker", "upstream": "codebuddy/hy3", "priority": 10, "weight": 1, "effort": "max"}, {"name": "worker", "upstream": "cline/cline-free/deepseek-v4.1-flash", "priority": 8, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "zen/muse-spark-1.3-contributor-free", "priority": 8, "weight": 1, "effort": "max"}, {"name": "worker", "upstream": "codebuddy/glm-5.3-flash", "priority": 2, "weight": null, "effort": "high"}]}, {"id": 57, "name": "ACSGW_0.2_Luna", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "gpt-5.6-luna", "priority": 2, "weight": 1, "effort": "max"}, {"name": "worker", "upstream": "gpt-6-luna", "priority": 2, "weight": 1, "effort": "max"}]}, {"id": 71, "name": "FoxCode_2_兜底", "channel": "anthropic", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "claude-sonnet-5", "priority": 10, "weight": 1, "effort": "high"}]}, {"id": 55, "name": "帅Hool_0.12_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "reviewer", "upstream": "gpt-5.6-terra", "priority": 10, "weight": 1, "effort": ""}]}, {"id": 23, "name": "NexaVlinks_0.28_订阅", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 8, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 8, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 5, "weight": 1, "effort": "medium"}]}, {"id": 47, "name": "luckyg_公益_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "grok-4.7", "priority": 10, "weight": 1, "effort": "high"}]}, {"id": 72, "name": "PackyAPI_0.5_GLM", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "glm-5.3-flash", "priority": 5, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "glm-5.3-flash", "priority": 7, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 9, "weight": 1, "effort": "high"}]}, {"id": 13, "name": "艺の_公益_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "glm-5.3-flash", "priority": 5, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 8, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "gpt-5.6-terra", "priority": 10, "weight": 1, "effort": "high"}]}, {"id": 52, "name": "黑与白_公益_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "deepseek-v4.1-flash", "priority": 8, "weight": 1, "effort": "high"}]}, {"id": 53, "name": "OOIOO_0.1_gpt", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 8, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 8, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 5, "weight": 1, "effort": "medium"}]}, {"id": 56, "name": "qoder__local_free", "channel": "openai_compatible", "status": "available", "base_url": "", "models": [{"name": "chat", "upstream": "qwen3.8-flash", "priority": 2, "weight": 1, "effort": ""}]}, {"id": 44, "name": "Lucky_公益_translate", "channel": "openai_compatible", "status": "disabled", "base_url": "", "models": [{"name": "translator", "upstream": "agnes-2.5-flash", "priority": 2, "weight": 1, "effort": ""}, {"name": "translator", "upstream": "gemini-3.5-flash-lite", "priority": 2, "weight": 1, "effort": ""}]}, {"id": 25, "name": "CcodeUX_0.3_luna", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "gpt-5.6-luna", "priority": 3, "weight": 1, "effort": "max"}, {"name": "worker", "upstream": "gpt-6-luna", "priority": 4, "weight": 1, "effort": "max"}]}, {"id": 69, "name": "小鸡毛_公益_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "deepseek-v4.1-flash", "priority": 8, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "glm-5.3-flash", "priority": 5, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 8, "weight": 1, "effort": "high"}]}, {"id": 50, "name": "Fengwind_公益_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "deepseek-v4.1-flash", "priority": 8, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "glm-5.3-flash", "priority": 5, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 8, "weight": 1, "effort": "high"}]}, {"id": 70, "name": "MIMO_1_官渠", "channel": "openai_compatible", "status": "disabled", "base_url": "", "models": []}, {"id": 54, "name": "帅Hool_0.3_国模", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "deepseek-v4.1-flash-0910", "priority": 8, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "glm-5.3-flash", "priority": 6, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 9, "weight": 1, "effort": "high"}]}, {"id": 65, "name": "Ccode_0.12-0.25_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 8, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 8, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 5, "weight": 1, "effort": "medium"}]}, {"id": 16, "name": "帅_0.4_luna", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "gpt-5.6-luna", "priority": 3, "weight": 1, "effort": "max"}]}, {"id": 8, "name": "Ccode_0.3_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-5.6-luna", "priority": 3, "weight": 1, "effort": "max"}, {"name": "worker", "upstream": "gpt-6-luna", "priority": 4, "weight": 1, "effort": "max"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 7, "weight": 1, "effort": "medium"}]}, {"id": 48, "name": "吉吉JIJI_0.14_国模", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "deepseek-v4.1-flash", "priority": 8, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3", "priority": 5, "weight": null, "effort": "high"}, {"name": "worker", "upstream": "glm-5.3-flash", "priority": 5, "weight": null, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 8, "weight": null, "effort": "high"}]}, {"id": 63, "name": "42API_公益_", "channel": "openai", "status": "disabled", "base_url": "", "models": [{"name": "worker", "upstream": "glm-5.3-flash", "priority": 5, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 8, "weight": 1, "effort": "high"}]}, {"id": 59, "name": "zcode-bigmodel_free_", "channel": "openai_compatible", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "glm-5.3-flash", "priority": 1, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "glm-5.3-flash", "priority": 5, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 1, "weight": 1, "effort": "high"}]}, {"id": 33, "name": "ZeroCat_0.35_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "deepseek-v4-flash", "priority": 10, "weight": 1, "effort": "high"}]}, {"id": 41, "name": "随想_0.35_worker", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "qwen3.8-flash", "priority": 10, "weight": 1, "effort": "high"}]}, {"id": 46, "name": "贾维斯_0.25_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 7, "weight": 1, "effort": "medium"}]}, {"id": 24, "name": "Ccode_0.22_", "channel": "openai", "status": "disabled", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 3, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 8, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 3, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 8, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 6, "weight": 1, "effort": "medium"}]}, {"id": 51, "name": "GN_公益_", "channel": "openai", "status": "disabled", "base_url": "", "models": [{"name": "chat", "upstream": "grok-4.6", "priority": 2, "weight": 1, "effort": ""}]}, {"id": 2, "name": "Cun.ai_0.7_", "channel": "openai", "status": "disabled", "base_url": "", "models": [{"name": "worker", "upstream": "gpt-5.6-luna", "priority": 4, "weight": 1, "effort": "max"}]}, {"id": 7, "name": "codego_0.3_", "channel": "openai", "status": "disabled", "base_url": "", "models": [{"name": "worker", "upstream": "gpt-5.6-luna", "priority": 3, "weight": 1, "effort": "max"}, {"name": "leader", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 7, "weight": 1, "effort": "medium"}]}, {"id": 32, "name": "PQH_0.4_Luna", "channel": "openai", "status": "disabled", "base_url": "", "models": [{"name": "worker", "upstream": "gpt-5.6-luna", "priority": 3, "weight": 1, "effort": "max"}]}, {"id": 21, "name": "rsiai_0.45_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 7, "weight": 1, "effort": "medium"}]}, {"id": 80, "name": "aiapi_0.25", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "gpt-5.6-luna", "priority": 2, "weight": null, "effort": "max"}, {"name": "leader", "upstream": "gpt-6-astra", "priority": 4, "weight": null, "effort": "low"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": null, "effort": "medium"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 4, "weight": null, "effort": "high"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 7, "weight": null, "effort": "medium"}]}, {"id": 73, "name": "AnyRouter_公益_", "channel": "anthropic", "status": "disabled", "base_url": "", "models": [{"name": "claude-opus-5-5[1m]", "upstream": "claude-opus-5-5[1m]", "priority": 10, "weight": 1, "effort": ""}]}, {"id": 79, "name": "OOIOO_0.5_国模", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "glm-5.3-flash", "priority": 5, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "glm-5.3-flash", "priority": 7, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 9, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3", "priority": 6, "weight": 1, "effort": "high"}]}, {"id": 78, "name": "OOIOO_1.3_claude", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "claude-opus-5-5", "priority": 3, "weight": 1, "effort": "medium"}, {"name": "pilot", "upstream": "claude-opus-5-5", "priority": 6, "weight": 1, "effort": "medium"}]}, {"id": 31, "name": "PQH_0.12_astra", "channel": "openai", "status": "disabled", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 8, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 2, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 8, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 5, "weight": 1, "effort": "medium"}]}, {"id": 67, "name": "ZeroCat_0.28_", "channel": "openai", "status": "disabled", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 7, "weight": 1, "effort": "medium"}]}, {"id": 66, "name": "ZeroCat_0.2_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "deepseek-v4.1-flash", "priority": 9, "weight": 1, "effort": "high"}, {"name": "worker", "upstream": "glm-5.3-flash", "priority": 6, "weight": 1, "effort": "high"}, {"name": "pilot", "upstream": "glm-5.3-flash", "priority": 8, "weight": 1, "effort": "high"}]}, {"id": 77, "name": "吉吉jiji_0.19_grok", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "pilot", "upstream": "grok-4.7", "priority": 8, "weight": 1, "effort": "high"}]}, {"id": 75, "name": "吉吉jiji_0.24_限时特惠", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 3, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 3, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 6, "weight": 1, "effort": "medium"}]}, {"id": 74, "name": "吉吉jiji_0.2_luna", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "gpt-6-luna", "priority": 2, "weight": 1, "effort": "max"}]}, {"id": 43, "name": "帅_0.3_", "channel": "openai", "status": "available", "base_url": "", "models": [{"name": "leader", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "low"}, {"name": "worker", "upstream": "gpt-6-astra", "priority": 9, "weight": 1, "effort": "low"}, {"name": "pilot", "upstream": "gpt-6-astra", "priority": 4, "weight": 1, "effort": "high"}, {"name": "leader", "upstream": "gpt-6-sol", "priority": 9, "weight": 1, "effort": "medium"}, {"name": "worker", "upstream": "gpt-6-sol", "priority": 7, "weight": 1, "effort": "medium"}]}, {"id": 64, "name": "智枢_1.02_Claude", "channel": "anthropic", "status": "available", "base_url": "", "models": [{"name": "worker", "upstream": "claude-opus-5-5", "priority": null, "weight": null, "effort": "low"}, {"name": "pilot", "upstream": "claude-opus-5-5", "priority": 5, "weight": null, "effort": "medium"}, {"name": "leader", "upstream": "claude-opus-5-5", "priority": 2, "weight": null, "effort": "medium"}]}, {"id": 60, "name": "硅基流动_1_官渠", "channel": "siliconflow", "status": "available", "base_url": "", "models": [{"name": "translator", "upstream": "tencent/Hunyuan-MT-7B", "priority": 2, "weight": 1, "effort": ""}]}];
+
+const STATUS_LABEL = { available: "可用", disabled: "禁用", unavailable: "不可用" };
+const tbody = document.getElementById("tbody");
+const q = document.getElementById("q");
+const pillsBox = document.getElementById("pills");
+const meta = document.getElementById("meta");
+
+const statuses = [...new Set(DATA.map(d => d.status))];
+let activeStatus = "all";
+let kw = "";
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renderPills() {
+  const all = [{ key: "all", label: "全部" }, ...statuses.map(s => ({ key: s, label: STATUS_LABEL[s] || s }))];
+  pillsBox.innerHTML = all.map(p =>
+    `<button class="pill${p.key === activeStatus ? " on" : ""}" data-s="${p.key}">${p.label}</button>`).join("");
+}
+
+const BANDS = [
+  { key: 0, label: "优先级 1 · 冲量 / 快速消耗" },
+  { key: 1, label: "优先级 2–4 · 首选档" },
+  { key: 2, label: "优先级 5–7 · 次选档" },
+  { key: 3, label: "优先级 8–9 · 三选档" },
+  { key: 4, label: "优先级 10 · 待定" },
+  { key: 5, label: "无模型" },
+];
+function bandKey(p) {
+  if (p == null) return 4;
+  if (p === 1) return 0;
+  if (p <= 4) return 1;
+  if (p <= 7) return 2;
+  if (p <= 9) return 3;
+  return 4;
+}
+const PRIO_CLASS = ["b1", "b2", "b2", "b2", "b3", "b3", "b3", "b4", "b4", "b5"];
+
+function render() {
+  const k = kw.trim().toLowerCase();
+  const rows = [];
+  let shownGroups = 0;
+
+  for (const g of DATA) {
+    if (activeStatus !== "all" && g.status !== activeStatus) continue;
+    const groupHit = !k || g.name.toLowerCase().includes(k) || g.channel.toLowerCase().includes(k);
+    const matchModels = k && !groupHit
+      ? g.models.filter(m => m.name.toLowerCase().includes(k) || m.upstream.toLowerCase().includes(k))
+      : g.models;
+    if (k && !groupHit && matchModels.length === 0) continue;
+    shownGroups++;
+    if (matchModels.length === 0) { rows.push({ g, m: null }); continue; }
+    for (const m of matchModels) rows.push({ g, m });
+  }
+
+  rows.sort((a, b) => {
+    const ka = a.m ? bandKey(a.m.priority) : 5, kb = b.m ? bandKey(b.m.priority) : 5;
+    if (ka !== kb) return ka - kb;
+    const pa = a.m?.priority ?? 99, pb = b.m?.priority ?? 99;
+    if (pa !== pb) return pa - pb;
+    if (a.g.name !== b.g.name) return a.g.name.localeCompare(b.g.name, "zh");
+    return (a.m?.name || "").localeCompare(b.m?.name || "");
+  });
+
+  const bandCount = {};
+  for (const r of rows) bandCount[r.m ? bandKey(r.m.priority) : 5] = (bandCount[r.m ? bandKey(r.m.priority) : 5] || 0) + 1;
+
+  const html = [];
+  let lastBand = -1;
+  for (const { g, m } of rows) {
+    const bk = m ? bandKey(m.priority) : 5;
+    if (bk !== lastBand) {
+      lastBand = bk;
+      html.push(`<tr class="band"><td colspan="8">${BANDS[bk].label} · ${bandCount[bk]} 条</td></tr>`);
+    }
+    const dis = g.status !== "available" ? " disabled-row" : "";
+    const head =
+      `<td class="supplier"><span class="name">${esc(g.name)}</span>` +
+      (g.base_url ? `<span class="url" title="${esc(g.base_url)}">${esc(g.base_url)}</span>` : "") + `</td>` +
+      `<td class="channel"><span class="chan">${esc(g.channel)}</span></td>` +
+      `<td class="status"><span class="badge ${g.status}">${STATUS_LABEL[g.status] || esc(g.status)}</span></td>`;
+    if (!m) {
+      html.push(`<tr class="${dis}">${head}<td colspan="5"><span class="none">无模型</span></td></tr>`);
+      continue;
+    }
+    const cls = m.priority != null ? (PRIO_CLASS[m.priority - 1] || "b5") : "";
+    const cells = `<td class="model">${esc(m.name)}</td><td class="model"><span class="up">${esc(m.upstream)}</span></td>` +
+      `<td class="model num">${m.priority != null ? `<span class="prio ${cls}">${m.priority}</span>` : "—"}</td><td class="model num">${m.weight ?? "—"}</td>` +
+      `<td class="model">${m.effort ? `<span class="effort">${esc(m.effort)}</span>` : `<span class="none">默认</span>`}</td>`;
+    html.push(`<tr class="${dis}">${head}${cells}</tr>`);
+  }
+
+  tbody.innerHTML = html.join("") ||
+    `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--faint)">没有匹配的供应商或模型</td></tr>`;
+  meta.textContent = `显示 ${shownGroups} / ${DATA.length} 个供应商 · ${rows.length} 条模型映射`;
+}
+
+const avail = DATA.filter(d => d.status === "available").length;
+const disab = DATA.filter(d => d.status === "disabled").length;
+const totalModels = DATA.reduce((s, d) => s + d.models.length, 0);
+document.getElementById("summary").innerHTML =
+  `共 <b>${DATA.length}</b> 个供应商（<b>${avail}</b> 可用 / <b>${disab}</b> 禁用），` +
+  `<b>${totalModels}</b> 条模型映射`;
+
+q.addEventListener("input", e => { kw = e.target.value; render(); });
+pillsBox.addEventListener("click", e => {
+  const b = e.target.closest(".pill");
+  if (!b) return;
+  activeStatus = b.dataset.s;
+  renderPills(); render();
+});
+
+renderPills();
+render();
+</script>
+</body>
+</html>
