@@ -1516,6 +1516,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
       <StickySaveBar
         appearance="ledger"
+        xstyle={styles.saveBar}
         alwaysVisible
         dirty={!canCreate && !mutationPending}
         pending={mutationPending}
@@ -1644,13 +1645,14 @@ const styles = stylex.create({
     marginTop: { default: 'var(--space-5)', ':empty': 0 },
   },
   steps: {
+    display: 'grid',
     minWidth: 0,
+    gap: 'var(--space-2)',
   },
   step: {
     minWidth: 0,
-    paddingTop: '14px',
-    paddingBottom: '18px',
-    selectors: {},
+    paddingTop: 'var(--space-5)',
+    paddingBottom: 'var(--space-4)',
   },
   stepHeader: {
     minWidth: 0,
@@ -1658,7 +1660,7 @@ const styles = stylex.create({
   stepBody: {
     minWidth: 0,
     marginTop: '12px',
-    marginLeft: '34px',
+    marginLeft: { default: '28px', '@media (max-width: 680px)': 0 },
   },
   credentialsStep: {},
   modelsBody: {},
@@ -1670,7 +1672,7 @@ const styles = stylex.create({
     paddingInline: '8px',
     fontSize: 'var(--text-label-xs)',
     fontWeight: 600,
-    letterSpacing: '0.01em',
+    letterSpacing: 0,
   },
   requirementRequired: {
     backgroundColor: 'var(--color-action-soft)',
@@ -1687,6 +1689,7 @@ const styles = stylex.create({
     color: 'var(--color-text-faint)',
     fontSize: 'var(--text-sm)',
     minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   stepSummaryError: {
     color: 'var(--color-danger)',
@@ -1701,15 +1704,23 @@ const styles = stylex.create({
   },
   modelsActions: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: 'var(--space-2)',
   },
   modelsToolbar: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: 'var(--space-2)',
     marginBottom: 'var(--space-3)',
   },
   modelEditor: {
     minWidth: 0,
+  },
+  saveBar: {
+    borderRadius: 'var(--radius-control)',
+    backgroundColor: 'var(--color-surface-raised)',
+    backdropFilter: 'none',
+    boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
   },
   error: {
     marginTop: 'var(--space-5)',

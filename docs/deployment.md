@@ -101,6 +101,28 @@ scripts/deploy.sh dev --activate-only <完整提交SHA> # 演练后，一次完�
 不再提供独立停止服务的最终备份发布示例，避免照抄后把服务留在停止状态。
 已发布的 `405f271f` 包含退役迁移跳过逻辑和回归测试，不删除历史台账行。
 
+### 2026-10-03 升级完成记录
+
+按修正后的连续流程升级成功，用户已确认服务可用。目标提交为
+`fb0ba58716d3ed0b6e7641603dd355dd76234d60`，Hostinger 运行镜像为
+`gpt-load:dev-fb0ba587`。镜像在本地构建并经 `ssh vps-kl` 上传，服务器没有构建镜像。
+
+1. 在线取得当前生产 SQLite 一致快照，在无网络、无生产卷的隔离容器中两次启动目标镜像，
+   验证真实凭据解密读取、业务计数、完整性和外键。仅在副本插入 `0009_price_multipliers`，
+   验证退役台账行保留且不阻断启动。
+2. 连续脚本自动完成停机、最终备份、Compose 切换与启动，退出码为 0。
+   Docker 记录旧容器于 05:05:17 UTC 停止、新容器于 05:05:21 UTC 启动；
+   应用于 05:05:23 UTC 报告 `startup.ready`。这些时间不表示停机前在途请求全部完成，
+   也不表示具备零停机能力。
+3. 容器 `running / healthy`、重启次数为 0；本机和公网 `/health` 均返回 `dev-fb0ba587`。
+   认证管理 API 和全部 54 个分组的真实凭据解密读取通过，数据库外键检查通过；
+   分组、凭据、访问密钥、有效台账计数为 `54 / 54 / 2 / 23`。
+
+最终备份位于 Hostinger `/opt/gpt-load/pre-upgrade.2epxDMQd`，包括完整数据归档和旧 Compose。
+当前快照演练目录为 `/opt/gpt-load/rehearsal-fb0ba587`；旧备份和旧镜像保留。
+本次没有执行生产修复 SQL、删除台账、重算费用、压缩数据库或恢复旧备份。
+发布后的代码提交不自动进入此镜像；核对线上版本时以实际容器标签及 health 为准。
+
 ## Raw 通信证据
 
 在 Unix 运行时，debug capture 是可选的，默认关闭；设置 `DEBUG_CAPTURE_ENABLED=true` 后，capture store 才记录 Gateway 及支持的 Provider observer 实际观察到的请求/响应。raw capture 与 `request_logs` 分离，固定保留 4 小时，只能通过管理面管理员身份访问：

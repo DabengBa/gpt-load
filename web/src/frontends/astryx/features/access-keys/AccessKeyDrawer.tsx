@@ -247,8 +247,6 @@ export function AccessKeyDrawer({
   const derived = drawerDerived(snapshot)
   const { createOperationActive, formLocked, closeBlocked, dirty } = derived
 
-  // Draft field mutation helper — every edit path replaces the draft object so
-  // the snapshot diff stays trivially detectable.
   const patchDraft = (patch: Partial<typeof draft>) => controller.setDraft({ ...draft, ...patch })
   const patchFilters = (patch: Partial<AccessKeyFiltersDto>) =>
     controller.setDraft({ ...draft, filters: { ...draft.filters, ...patch } })

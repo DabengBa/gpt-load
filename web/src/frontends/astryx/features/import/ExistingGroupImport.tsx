@@ -615,7 +615,7 @@ const styles = stylex.create({
     borderBottomColor: 'var(--color-border-subtle)',
     color: 'var(--color-text-muted)',
     paddingBottom: '18px',
-    fontSize: '11px',
+    fontSize: 'var(--text-sm)',
     lineHeight: 1.55,
   },
   target: {
@@ -639,7 +639,7 @@ const styles = stylex.create({
     margin: 0,
     fontSize: 'var(--title-section)',
     fontWeight: 650,
-    letterSpacing: '-0.01em',
+    letterSpacing: 0,
   },
   sectionActions: {
     display: 'flex',
@@ -699,6 +699,7 @@ const styles = stylex.create({
     display: 'flex',
     minHeight: 'var(--control-xs)',
     minWidth: 0,
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 'var(--space-4)',
@@ -707,7 +708,7 @@ const styles = stylex.create({
     borderLeftColor: 'var(--color-border-subtle)',
     color: 'var(--color-text-faint)',
     paddingLeft: { default: '18px', [narrow]: 0 },
-    fontSize: '10.8px',
+    fontSize: 'var(--text-meta)',
   },
   groupMetaTitle: {
     fontWeight: 560,
@@ -729,6 +730,10 @@ const styles = stylex.create({
     justifyContent: 'space-between',
     gap: 'var(--space-4)',
     minHeight: '64px',
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: 'var(--color-border-subtle)',
+    marginTop: 'var(--space-5)',
     paddingTop: 'var(--space-4)',
   },
   actionsSummary: {

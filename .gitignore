@@ -21,6 +21,7 @@ keys.txt
 *.p12
 *.pfx
 secrets/
+hostinger_root_ed25519
 
 # Runtime data
 data/
@@ -36,6 +37,8 @@ temp/
 *.pid
 *.prof
 *.pprof
+__pycache__/
+*.pyc
 
 # IDE files
 .idea/

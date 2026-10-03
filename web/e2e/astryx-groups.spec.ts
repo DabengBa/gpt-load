@@ -205,6 +205,103 @@ function collectionTable(page: Page) {
   return page.getByRole('table', { name: 'Group list' })
 }
 
+test('populated collection exposes import, result count, and credential deep links', async ({
+  page,
+}) => {
+  await mockCollection(page, makeGroups(5))
+  await page.goto('/groups', { waitUntil: 'load' })
+  await expect(collectionTable(page)).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('groups-desktop.png'), fullPage: true })
+
+  await expect(page.getByRole('link', { name: 'Import channel credentials' })).toHaveAttribute(
+    'href',
+    '/import',
+  )
+  await expect(page.getByLabel('Filter Groups')).toContainText('Showing 5 / 5 Groups')
+  await expect(
+    collectionTable(page).getByRole('link', { name: 'Manage credential for Group 0005' }),
+  ).toHaveAttribute('href', '/groups/5?tab=credentials')
+})
+
+test('narrow layout keeps filters visible without page overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 })
+  await mockCollection(page, makeGroups(5))
+  await page.goto('/groups', { waitUntil: 'load' })
+  await expect(collectionTable(page)).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('groups-mobile.png'), fullPage: true })
+
+  const bounds = await page.getByLabel('Filter Groups').boundingBox()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.width).toBeGreaterThan(280)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(360)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
+  const status = collectionTable(page)
+    .getByRole('row')
+    .nth(1)
+    .getByText('Available', { exact: true })
+  expect(
+    await status.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      const topElement = document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      )
+      return topElement !== null && (node === topElement || node.contains(topElement))
+    }),
+  ).toBe(true)
+  const credentialAction = collectionTable(page).getByRole('link', {
+    name: 'Manage credential for Group 0005',
+  })
+  await credentialAction.focus()
+  await expect(credentialAction).toBeFocused()
+
+  expect(
+    await credentialAction.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      return node.contains(
+        document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+      )
+    }),
+  ).toBe(true)
+  await page.getByRole('combobox', { name: 'Connection type' }).click()
+  await page.getByRole('option', { name: 'Subscription account' }).click()
+  await expect(page).toHaveURL(/connection_type=subscription/)
+  await page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }).click()
+  await expect(page).not.toHaveURL(/connection_type=/)
+})
+
+for (const width of [320, 768, 1440]) {
+  test(`collection remains legible at ${width}px in dark mode with long names`, async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.setViewportSize({ width, height: 900 })
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+    const groups = makeGroups(6)
+    groups[5]!.name = 'Production gateway / primary subscription / long upstream group name'
+    await mockCollection(page, groups)
+    await page.goto('/groups', { waitUntil: 'load' })
+    const table = collectionTable(page)
+    await expect(table).toBeVisible()
+    await expect(table.getByRole('row')).toHaveCount(7)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    const summary = page.getByRole('region', { name: 'Group status overview' })
+    const available = summary.getByRole('button', { name: /Available/ })
+    await available.focus()
+    await page.keyboard.press('Space')
+    await expect(available).toHaveAttribute('aria-pressed', 'true')
+    await expect(page).toHaveURL(/status=available/)
+    await page.screenshot({
+      path: test.info().outputPath(`groups-dark-${width}.png`),
+      fullPage: true,
+    })
+    expect(errors).toEqual([])
+  })
+}
+
 test('renders summary chips, toolbar, and server-paginated rows', async ({ page }) => {
   const seen = await mockCollection(page, makeGroups(150))
   await page.goto('/groups', { waitUntil: 'load' })

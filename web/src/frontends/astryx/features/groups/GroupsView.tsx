@@ -25,6 +25,7 @@ import {
   ExternalLink,
   KeyRound,
   Layers3,
+  RefreshCw,
   Search,
   TriangleAlert,
   UserRound,
@@ -64,6 +65,7 @@ import { useT } from '../../app/i18n'
 import { RouteLink } from '../../app/route-link'
 import { useAppServices } from '../../app/services'
 import { useDebouncedAction } from '../../app/use-debounced-action'
+import { useMediaQuery } from '../../app/use-media-query'
 import { useVisibleRefetch } from '../../app/use-visible-refetch'
 import { useCollectionLoading } from '../../app/collection-loading'
 import { ChannelIcon } from '../../components/ChannelIcon'
@@ -119,24 +121,36 @@ const styles = stylex.create({
     width: '100%',
     paddingTop: 'var(--stage-padding-top)',
     paddingBottom: 'var(--stage-padding-bottom)',
-    paddingInline: 'var(--stage-padding-inline)',
+    paddingInline: {
+      default: 'var(--stage-padding-inline)',
+      '@media (max-width: 680px)': 'var(--stage-padding-inline-compact)',
+    },
   },
   pageInner: {
     width: 'min(100%, 1240px)',
     marginInline: 'auto',
   },
-  sheet: {
+  collection: {
     position: 'relative',
     minWidth: 0,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: 'var(--radius-sheet)',
-    backgroundColor: 'var(--color-surface)',
-    boxShadow: 'var(--shadow-sheet)',
-    paddingTop: 'var(--sheet-padding-top)',
-    paddingBottom: 'var(--sheet-padding-bottom)',
-    paddingInline: 'var(--sheet-padding-inline)',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 'var(--space-3)',
+    paddingBottom: 'var(--space-4)',
+  },
+  heading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
   },
   title: {
     margin: 0,
@@ -153,61 +167,45 @@ const styles = stylex.create({
   },
   summary: {
     display: 'grid',
-    gridTemplateColumns: 'var(--status-overview-total-width) minmax(0, 1fr)',
-    gap: 'var(--space-7)',
+    gridTemplateColumns: {
+      default: 'repeat(4, minmax(0, 1fr))',
+      '@media (max-width: 480px)': 'repeat(2, minmax(0, 1fr))',
+    },
+    gap: 'var(--space-1)',
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-subtle)',
-    paddingBlock: 18,
-  },
-  summaryLabel: {
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-label-xs)',
-  },
-  summaryTotal: {
-    fontSize: 24,
-    fontWeight: 650,
-    fontVariantNumeric: 'tabular-nums',
-  },
-  summaryDetail: {
-    display: 'grid',
-    gap: 10,
-    minWidth: 0,
-    alignContent: 'center',
-  },
-  summaryBar: {
-    display: 'flex',
-    height: 'var(--status-overview-bar-height, 6px)',
-    overflow: 'hidden',
-    borderRadius: 999,
-    backgroundColor: 'var(--color-neutral-bg)',
-  },
-  summarySegment: {
-    minWidth: 0,
-    flexBasis: 0,
-  },
-  segmentSuccess: { backgroundColor: 'var(--color-success)' },
-  segmentDanger: { backgroundColor: 'var(--color-danger)' },
-  segmentNeutral: { backgroundColor: 'var(--color-neutral-fg)' },
-  summaryFilters: {
-    display: 'flex',
-    gap: 'var(--space-4)',
-    flexWrap: 'wrap',
+    borderBottomColor: 'var(--color-border-control)',
+    paddingBottom: 'var(--space-2)',
   },
   summaryFilter: {
-    display: 'inline-flex',
+    display: 'flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 'var(--space-2)',
+    minWidth: 0,
+    minHeight: 'var(--touch-target)',
     borderWidth: 0,
-    padding: 0,
-    backgroundColor: 'transparent',
+    padding: 'var(--space-2) var(--space-3)',
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': 'var(--color-interactive-hover)',
+    },
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-meta)',
+    fontFamily: 'inherit',
     cursor: 'pointer',
-    borderRadius: 'var(--radius-inner, 4px)',
+    borderRadius: 'var(--radius-control)',
+    outline: {
+      default: 'none',
+      ':focus-visible': '2px solid var(--color-focus)',
+    },
+    outlineOffset: 2,
   },
   summaryFilterActive: {
-    color: 'var(--color-text)',
+    backgroundColor: {
+      default: 'var(--color-action-soft)',
+      ':hover': 'var(--color-action-soft)',
+    },
+    color: 'var(--color-action)',
     fontWeight: 600,
   },
   summaryDot: {
@@ -215,34 +213,48 @@ const styles = stylex.create({
     height: 8,
     borderRadius: 999,
     backgroundColor: 'var(--color-neutral-fg)',
+    flexShrink: 0,
   },
   dotSuccess: { backgroundColor: 'var(--color-success)' },
   dotDanger: { backgroundColor: 'var(--color-danger)' },
   summaryCount: {
-    fontFamily: 'var(--font-mono)',
+    marginLeft: 'auto',
     fontVariantNumeric: 'tabular-nums',
+    fontSize: 'var(--text-body)',
+    fontWeight: 600,
   },
   toolbar: {
-    display: 'flex',
-    alignItems: 'flex-end',
-    gap: 'var(--space-4)',
-    flexWrap: 'wrap',
-    paddingTop: 14,
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'minmax(220px, 1fr) repeat(2, minmax(180px, 0.5fr))',
+      '@media (max-width: 880px)': 'repeat(2, minmax(0, 1fr))',
+      '@media (max-width: 480px)': 'minmax(0, 1fr)',
+    },
+    alignItems: 'end',
+    gap: 'var(--space-3)',
+    paddingTop: 'var(--space-4)',
   },
   toolbarField: {
-    minWidth: 180,
+    minWidth: 0,
   },
   toolbarSearch: {
-    minWidth: 220,
-    flex: '0 1 260px',
+    minWidth: 0,
+    gridColumn: {
+      default: 'auto',
+      '@media (max-width: 880px)': '1 / -1',
+    },
   },
   toolbarResult: {
-    marginLeft: 'auto',
-    display: 'inline-flex',
+    gridColumn: '1 / -1',
+    display: 'flex',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 'var(--space-2)',
+    minHeight: 34,
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-meta)',
+    fontVariantNumeric: 'tabular-nums',
   },
   staleBanner: {
     marginTop: 14,
@@ -265,21 +277,27 @@ const styles = stylex.create({
     paddingTop: 14,
   },
   tableWrap: {
-    paddingTop: 14,
+    backgroundColor: 'var(--color-surface)',
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: 'var(--color-border-control)',
+    marginTop: 'var(--space-2)',
+    minWidth: 0,
   },
   nameCell: {
     minWidth: 0,
   },
   nameLink: {
-    color: 'var(--color-accent, var(--color-text))',
+    color: 'var(--color-action)',
     fontWeight: 600,
-    textDecoration: 'none',
+    textDecoration: { default: 'none', ':hover': 'underline' },
     display: 'inline-block',
     maxWidth: '100%',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     verticalAlign: 'bottom',
+    textUnderlineOffset: 3,
   },
   statusCell: {
     display: 'flex',
@@ -297,6 +315,7 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 6,
     minWidth: 0,
+    flexWrap: 'wrap',
   },
   channelName: {
     fontWeight: 600,
@@ -331,6 +350,18 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 600,
   },
+  modelTotal: {
+    color: 'var(--color-text-muted)',
+    fontWeight: 400,
+  },
+  credentialCell: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--text-meta)',
+  },
+  dotWarning: { backgroundColor: 'var(--color-warning)' },
   actionsCell: {
     display: 'flex',
     alignItems: 'center',
@@ -375,6 +406,7 @@ export function GroupsView() {
   }, [searchDraft])
   const debounce = useDebouncedAction(250)
   const groupsPath = pagePath('groups')
+  const narrowViewport = useMediaQuery('(max-width: 680px)')
 
   const groupsQuery = useQuery(groupCollectionQueryOptions(apiClient, filters))
   const channelsQuery = useQuery(channelsQueryOptions(apiClient, ''))
@@ -542,8 +574,8 @@ export function GroupsView() {
     pageSize: filters.page_size,
   })
   const stickyPlugin = useTableStickyColumns<GroupRow>({
-    startKeys: ['group'],
-    endKeys: ['actions'],
+    startKeys: narrowViewport ? [] : ['group'],
+    endKeys: narrowViewport ? [] : ['actions'],
   })
 
   async function toggleGroupEnabled(group: GroupCollectionItemDto, next: boolean): Promise<void> {
@@ -687,7 +719,7 @@ export function GroupsView() {
       {
         key: 'status',
         header: t('groups.collection.columns.status'),
-        width: pixel(150),
+        width: pixel(180),
         sortable: true,
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.statusCell)}>
@@ -747,11 +779,15 @@ export function GroupsView() {
       {
         key: 'models',
         header: t('groups.collection.columns.models'),
-        width: pixel(96),
+        width: pixel(130),
         align: 'end',
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.modelCount)}>
-            {intl.formatNumber(group.client_model_count)} / {intl.formatNumber(group.model_count)}
+            {intl.formatNumber(group.client_model_count)}
+            <span {...stylex.props(styles.modelTotal)}>
+              {' / '}
+              {intl.formatNumber(group.model_count)}
+            </span>
           </span>
         ),
       },
@@ -760,7 +796,20 @@ export function GroupsView() {
         header: t('groups.collection.columns.credentialHealth'),
         width: proportional(1.2),
         renderCell: (group): ReactNode => (
-          <span>
+          <span {...stylex.props(styles.credentialCell)}>
+            <span
+              {...stylex.props(
+                styles.summaryDot,
+                group.credential_configured && group.credential_status === 'available'
+                  ? styles.dotSuccess
+                  : group.credential_status === 'blacklisted'
+                    ? styles.dotDanger
+                    : group.credential_status === 'cooldown'
+                      ? styles.dotWarning
+                      : undefined,
+              )}
+              aria-hidden="true"
+            />
             {group.credential_configured && group.credential_status !== null
               ? t(`group.credentials.effective.${group.credential_status}`)
               : t('group.unified.noCredentials')}
@@ -770,7 +819,7 @@ export function GroupsView() {
       {
         key: 'actions',
         header: t('groups.collection.columns.actions'),
-        width: pixel(96),
+        width: pixel(narrowViewport ? 156 : 108),
         align: 'end',
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.actionsCell)}>
@@ -779,7 +828,7 @@ export function GroupsView() {
               size="sm"
               label={t('groups.collection.manageCredentialFor', { name: group.name })}
               icon={<KeyRound size={15} />}
-              href={groupDetailHref(group.id)}
+              href={`${groupDetailHref(group.id)}?tab=credentials`}
             />
             <IconButton
               variant="ghost"
@@ -801,16 +850,42 @@ export function GroupsView() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stable callbacks close over current state
-    [t, intl, channelsByID, optimisticEnabled, togglingGroupIDs, copyingGroupIDs],
+    [t, intl, channelsByID, optimisticEnabled, togglingGroupIDs, copyingGroupIDs, narrowViewport],
   )
 
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="groups-title">
       <div {...stylex.props(styles.pageInner)}>
-        <div {...stylex.props(styles.sheet)} aria-busy={collectionBusy || undefined}>
-          <h1 id="groups-title" {...stylex.props(styles.title)}>
-            {t('groups.title')}
-          </h1>
+        <div {...stylex.props(styles.collection)} aria-busy={collectionBusy || undefined}>
+          <header {...stylex.props(styles.header)}>
+            <div {...stylex.props(styles.heading)}>
+              <h1 id="groups-title" {...stylex.props(styles.title)}>
+                {t('groups.title')}
+              </h1>
+              {data !== undefined && (
+                <Badge variant="neutral" label={intl.formatNumber(data.summary.total)} />
+              )}
+            </div>
+            <div {...stylex.props(styles.headerActions)}>
+              <IconButton
+                variant="ghost"
+                size="sm"
+                label={t('groups.collection.retry')}
+                icon={<RefreshCw size={15} />}
+                isLoading={groupsQuery.isFetching}
+                onClick={() => void groupsQuery.refetch()}
+              />
+              {data !== undefined && data.summary.total > 0 && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  label={t('groups.collection.importCredentials')}
+                  icon={<KeyRound size={15} />}
+                  href={pagePath('import')}
+                />
+              )}
+            </div>
+          </header>
           <span aria-live="polite" {...stylex.props(styles.refreshing)}>
             {collectionRefreshing ? t('groups.collection.loading') : ''}
           </span>
@@ -848,64 +923,34 @@ export function GroupsView() {
                   {...stylex.props(styles.summary)}
                   aria-label={t('groups.collection.summary.region')}
                 >
-                  <div>
-                    <div {...stylex.props(styles.summaryLabel)}>
-                      {t('groups.collection.summary.current')}
-                    </div>
-                    <div {...stylex.props(styles.summaryTotal)}>
-                      {intl.formatNumber(data.summary.total)}
-                    </div>
-                  </div>
-                  <div {...stylex.props(styles.summaryDetail)}>
-                    <div {...stylex.props(styles.summaryBar)} aria-hidden="true">
-                      {summaryItems
-                        .filter((item) => item.value !== undefined && item.count > 0)
-                        .map((item) => (
-                          <span
-                            key={item.value}
-                            {...stylex.props(
-                              styles.summarySegment,
-                              item.tone === 'success'
-                                ? styles.segmentSuccess
-                                : item.tone === 'danger'
-                                  ? styles.segmentDanger
-                                  : styles.segmentNeutral,
-                            )}
-                            style={{ flexGrow: item.count }}
-                          />
-                        ))}
-                    </div>
-                    <div {...stylex.props(styles.summaryFilters)}>
-                      {summaryItems.map((item) => (
-                        <button
-                          key={item.value ?? 'all'}
-                          type="button"
-                          aria-pressed={filters.status === item.value}
-                          {...stylex.props(
-                            styles.summaryFilter,
-                            filters.status === item.value && styles.summaryFilterActive,
-                          )}
-                          onClick={() => setStatus(item.value)}
-                        >
-                          <span
-                            {...stylex.props(
-                              styles.summaryDot,
-                              item.tone === 'success'
-                                ? styles.dotSuccess
-                                : item.tone === 'danger'
-                                  ? styles.dotDanger
-                                  : undefined,
-                            )}
-                            aria-hidden="true"
-                          />
-                          <span>{item.label}</span>
-                          <span {...stylex.props(styles.summaryCount)}>
-                            {intl.formatNumber(item.count)}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {summaryItems.map((item) => (
+                    <button
+                      key={item.value ?? 'all'}
+                      type="button"
+                      aria-pressed={filters.status === item.value}
+                      {...stylex.props(
+                        styles.summaryFilter,
+                        filters.status === item.value && styles.summaryFilterActive,
+                      )}
+                      onClick={() => setStatus(item.value)}
+                    >
+                      <span
+                        {...stylex.props(
+                          styles.summaryDot,
+                          item.tone === 'success'
+                            ? styles.dotSuccess
+                            : item.tone === 'danger'
+                              ? styles.dotDanger
+                              : undefined,
+                        )}
+                        aria-hidden="true"
+                      />
+                      <span>{item.label}</span>
+                      <span {...stylex.props(styles.summaryCount)}>
+                        {intl.formatNumber(item.count)}
+                      </span>
+                    </button>
+                  ))}
                 </section>
               )}
 
@@ -959,22 +1004,22 @@ export function GroupsView() {
                       onChange={setSort}
                     />
                   </div>
-                  {hasChangedConditions && (
-                    <span {...stylex.props(styles.toolbarResult)}>
-                      <span aria-live="polite">
-                        {t('groups.collection.result', {
-                          shown: intl.formatNumber(data.items.length),
-                          total: intl.formatNumber(data.pagination.total_items),
-                        })}
-                      </span>
+                  <div {...stylex.props(styles.toolbarResult)}>
+                    <span aria-live="polite">
+                      {t('groups.collection.result', {
+                        shown: intl.formatNumber(data.items.length),
+                        total: intl.formatNumber(data.pagination.total_items),
+                      })}
+                    </span>
+                    {hasChangedConditions && (
                       <Button
                         variant="ghost"
                         size="sm"
                         label={t('groups.collection.filters.reset')}
                         onClick={resetConditions}
                       />
-                    </span>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
 

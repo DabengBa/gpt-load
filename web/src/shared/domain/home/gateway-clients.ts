@@ -240,18 +240,14 @@ export function clientConfiguration(
         enabled: true,
       }
       if (model.trim()) parameters.model = model.trim()
-      return JSON.stringify(parameters, null, 2)
+      return prettyJSON(parameters)
     }
     case 'new-api':
-      return JSON.stringify(
-        {
-          _type: 'newapi_channel_conn',
-          key,
-          url: origin,
-        },
-        null,
-        2,
-      )
+      return prettyJSON({
+        _type: 'newapi_channel_conn',
+        key,
+        url: origin,
+      })
     case 'codex':
       return [
         'model_provider = "gpt-load"',
@@ -263,9 +259,9 @@ export function clientConfiguration(
         'wire_api = "responses"',
       ].join('\n')
     case 'nextchat':
-      return JSON.stringify({ url: origin, key }, null, 2)
+      return prettyJSON({ url: origin, key })
     case 'cherry-studio':
-      return JSON.stringify(cherryStudioConfig(origin, key), null, 2)
+      return prettyJSON(cherryStudioConfig(origin, key))
     case 'gemini-cli':
       return [
         `export GOOGLE_GEMINI_BASE_URL="${origin.replace(/\/+$/, '')}"`,
@@ -280,25 +276,17 @@ export function clientConfiguration(
         'export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="1"',
       ].join('\n')
     case 'open-webui':
-      return JSON.stringify(
-        {
-          url: openAIBaseURL(origin),
-          apiKey: key,
-        },
-        null,
-        2,
-      )
+      return prettyJSON({
+        url: openAIBaseURL(origin),
+        apiKey: key,
+      })
     case 'cline':
-      return JSON.stringify(
-        {
-          provider: 'OpenAI Compatible',
-          baseUrl: openAIBaseURL(origin),
-          apiKey: key,
-          modelId: 'YOUR_MODEL',
-        },
-        null,
-        2,
-      )
+      return prettyJSON({
+        provider: 'OpenAI Compatible',
+        baseUrl: openAIBaseURL(origin),
+        apiKey: key,
+        modelId: 'YOUR_MODEL',
+      })
     case 'curl':
       return [
         `curl "${openAIBaseURL(origin)}/chat/completions" \\`,
@@ -379,6 +367,10 @@ function cherryStudioConfig(origin: string, key: string) {
     baseUrl: openAIBaseURL(origin),
     apiKey: key,
   }
+}
+
+function prettyJSON(value: unknown): string {
+  return JSON.stringify(value, null, 2)
 }
 
 function openAIBaseURL(origin: string): string {

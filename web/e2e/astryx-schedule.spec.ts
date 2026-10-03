@@ -384,6 +384,66 @@ test('model selector commits schedule_model through the canonical query', async 
   await expect(rows(page)).toHaveCount(2)
 })
 
+test('explains how to begin before a scheduling model is selected', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page)
+  const selectModelPrompt = page.getByRole('status').filter({
+    has: page.getByRole('heading', { name: 'Select a model', exact: true }),
+  })
+  await expect(selectModelPrompt).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Schedule details' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'worker', exact: true }).click()
+  await waitForScheduleDetailReady(page)
+  await expect(selectModelPrompt).toHaveCount(0)
+})
+
+test('keeps the schedule readable on mobile and contains table overflow on narrow desktop', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+
+  await expect(
+    page.locator('[data-row-key]').first().getByText('Priority', { exact: true }),
+  ).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('schedule-mobile.png'), fullPage: true })
+
+  await page.setViewportSize({ width: 800, height: 900 })
+  const table = page.getByRole('table', { name: 'Schedule detail' })
+  const tableWrap = table.locator('xpath=..')
+  await expect
+    .poll(() => tableWrap.evaluate((element) => element.scrollWidth > element.clientWidth))
+    .toBe(true)
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
+  await page.screenshot({
+    path: testInfo.outputPath('schedule-narrow-desktop.png'),
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const reasoning = await page
+    .getByRole('combobox', { name: 'Reasoning policy model-a' })
+    .boundingBox()
+  const weight = await page.locator('#weight-0').boundingBox()
+  expect(reasoning).not.toBeNull()
+  expect(weight).not.toBeNull()
+  expect(reasoning!.x + reasoning!.width).toBeLessThanOrEqual(weight!.x)
+  await page.screenshot({ path: testInfo.outputPath('schedule-desktop.png'), fullPage: true })
+
+  await page.evaluate(() => window.localStorage.setItem('gpt-load.theme', 'dark'))
+  await page.reload()
+  await waitForScheduleDetailReady(page)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.screenshot({ path: testInfo.outputPath('schedule-dark.png'), fullPage: true })
+})
+
 test('draft edits serialize to schedule_draft and Save issues the PATCH', async ({ page }) => {
   const { patches } = await installScheduleRoutes(page)
   await openSchedule(page, '?schedule_model=worker')

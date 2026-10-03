@@ -132,6 +132,40 @@ async function expectUnclipped(locator: Locator) {
   expect(clipped, 'visible control text must not be ellipsized').toBe(false)
 }
 
+for (const width of [320, 768, 1440]) {
+  for (const theme of ['light', 'dark']) {
+    for (const path of ['/import', '/groups/1']) {
+      test(`task surface ${path} ${width} ${theme}`, async ({ page }, testInfo) => {
+        const errors: string[] = []
+        page.on('pageerror', (error) => errors.push(error.message))
+        await page.setViewportSize({ width, height: 900 })
+        await installFields(page, theme)
+        await page.goto(path, { waitUntil: 'load' })
+        const title = page.locator(
+          path === '/import' ? '#import-page-title' : '#group-detail-title',
+        )
+        await expect(title).toBeVisible()
+        const name = page.getByRole('textbox', { name: /^分组名称/ })
+        await expect(name).toBeVisible()
+        const titleSize = await title.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))
+        expect(titleSize).toBeLessThanOrEqual(24)
+        const box = await name.boundingBox()
+        expect(box).not.toBeNull()
+        expect(box!.x).toBeGreaterThanOrEqual(12)
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width - 12)
+        if (width === 320) expect(box!.width).toBeGreaterThanOrEqual(270)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width,
+        )
+        await name.focus()
+        await expect(name).toBeFocused()
+        await page.screenshot({ path: testInfo.outputPath('task-surface.png'), fullPage: true })
+        expect(errors).toEqual([])
+      })
+    }
+  }
+}
+
 for (const width of [375, 1440]) {
   for (const theme of ['light', 'dark']) {
     test(`import field geometry ${width} ${theme}`, async ({ page }, testInfo) => {

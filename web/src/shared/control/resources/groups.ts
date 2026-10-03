@@ -919,38 +919,38 @@ export async function invalidateGroupModelDependents(
   queryClient: QueryClient,
   groupID: number,
 ): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({
+  await invalidateGroupDependents(queryClient, [
+    {
       queryKey: controlQueryKeys.groups.summary(groupID),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.collectionAll,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.options(),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.home.base(),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.modelPrices(),
       refetchType: 'none',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.models.all,
       refetchType: 'none',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.modelRouteSchedule.all,
       refetchType: 'active',
-    }),
+    },
   ])
 }
 
@@ -959,43 +959,50 @@ export async function invalidateGroupSettingsDependents(
   queryClient: QueryClient,
   groupID: number,
 ): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({
+  await invalidateGroupDependents(queryClient, [
+    {
       queryKey: controlQueryKeys.groups.summary(groupID),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.models(groupID),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.credentialsAll(groupID),
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.collectionAll,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.options(),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.modelPrices(),
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.models.all,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.modelRouteSchedule.all,
       refetchType: 'active',
-    }),
+    },
   ])
+}
+
+async function invalidateGroupDependents(
+  queryClient: QueryClient,
+  queries: readonly Parameters<QueryClient['invalidateQueries']>[0][],
+): Promise<void> {
+  await Promise.all(queries.map((filters) => queryClient.invalidateQueries(filters)))
 }
 
 export function cacheGroupModels(

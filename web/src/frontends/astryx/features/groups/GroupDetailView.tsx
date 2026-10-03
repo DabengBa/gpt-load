@@ -44,9 +44,17 @@ const spin = stylex.keyframes({
 const styles = stylex.create({
   page: {
     display: 'grid',
+    width: 'min(100%, 1288px)',
+    minWidth: 0,
+    marginInline: 'auto',
     alignContent: 'start',
-    gap: 'var(--space-3)',
-    paddingBottom: 'var(--space-3)',
+    gap: 'var(--space-4)',
+    paddingTop: 'var(--stage-padding-top)',
+    paddingBottom: 'var(--stage-padding-bottom)',
+    paddingInline: {
+      default: 'var(--stage-padding-inline)',
+      '@media (max-width: 680px)': 'var(--stage-padding-inline-compact)',
+    },
   },
   invalid: {
     display: 'grid',
@@ -81,6 +89,7 @@ const styles = stylex.create({
     minWidth: 0,
     alignItems: 'flex-end',
     gap: 'var(--space-3)',
+    flexWrap: { default: 'nowrap', '@media (max-width: 520px)': 'wrap' },
   },
   credentialField: {
     display: 'grid',
@@ -110,6 +119,18 @@ const styles = stylex.create({
   credentialRowEnd: {
     flexShrink: 0,
     marginBottom: '1px',
+  },
+  credentialHeading: {
+    margin: 0,
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--title-section)',
+    fontWeight: 650,
+  },
+  saveBar: {
+    borderRadius: 'var(--radius-control)',
+    backgroundColor: 'var(--color-surface-raised)',
+    backdropFilter: 'none',
+    boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
   },
   empty: {
     gridColumn: '1',
@@ -289,9 +310,12 @@ export function GroupDetailView() {
                     onStateChange={setSettingsState}
                   />
                   <section
-                    aria-label={t('group.credentials.title')}
+                    aria-labelledby="group-credential-heading"
                     {...stylex.props(styles.credentials)}
                   >
+                    <h2 id="group-credential-heading" {...stylex.props(styles.credentialHeading)}>
+                      {t('group.credentials.title')}
+                    </h2>
                     {credentialsQuery.data?.credential ? (
                       <div {...stylex.props(styles.credentialList)}>
                         {[credentialsQuery.data.credential].map((credential) => {
@@ -347,6 +371,7 @@ export function GroupDetailView() {
                   <div id="group-settings-advanced-target" />
                   <StickySaveBar
                     appearance="ledger"
+                    xstyle={styles.saveBar}
                     alwaysVisible
                     dirty={unifiedDirty}
                     pending={unifiedPending}

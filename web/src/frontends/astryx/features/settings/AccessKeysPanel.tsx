@@ -16,12 +16,12 @@ import { useIntl } from 'react-intl'
 
 import {
   accessKeyCollectionQueryOptions,
+  accessKeyResources,
   updateAccessKey,
 } from '@shared/control/resources/access-keys'
 import { channelsQueryOptions } from '@shared/control/resources/channels'
 import { groupOptionsQueryOptions } from '@shared/control/resources/groups'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
-import { accessKeyResources } from '@shared/control/resources/access-keys'
 import type {
   AccessKeyCollectionFilters,
   AccessKeyCollectionStatus,

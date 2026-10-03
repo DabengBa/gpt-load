@@ -493,8 +493,8 @@ export function SubscriptionCredentialStager({
     const polling = pollingRef.current
     const expiryTimers = expiryTimersRef.current
     return () => {
-      for (const stageID of [...polling.keys()]) stopPolling(stageID)
-      for (const stageID of [...expiryTimers.keys()]) stopExpiryTimer(stageID)
+      for (const stageID of polling.keys()) stopPolling(stageID)
+      for (const stageID of expiryTimers.keys()) stopExpiryTimer(stageID)
       window.clearInterval(countdownTimer)
     }
   }, [])
