@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"net/url"
 	"strings"
 	"time"
 
@@ -137,21 +136,14 @@ func parseDebugCaptureID(value string) (string, *app_errors.APIError) {
 }
 
 func parseDebugCaptureQuery(rawQuery string, forceQuery bool) (debugcapture.SessionQuery, *app_errors.APIError) {
-	if forceQuery && rawQuery == "" {
-		return debugcapture.SessionQuery{}, app_errors.ErrBadRequest
-	}
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return debugcapture.SessionQuery{}, app_errors.ErrBadRequest
-	}
-	allowed := map[string]struct{}{
-		"request_id": {}, "access_key_id": {}, "protocol": {}, "operation": {}, "state": {},
-		"created_after_ms": {}, "created_before_ms": {}, "offset": {}, "limit": {},
-	}
-	for key, value := range values {
-		if _, ok := allowed[key]; !ok || len(value) != 1 {
-			return debugcapture.SessionQuery{}, app_errors.ErrBadRequest
-		}
+	values, apiErr := parseCollectionQueryValues(
+		rawQuery,
+		forceQuery,
+		"request_id", "access_key_id", "protocol", "operation", "state",
+		"created_after_ms", "created_before_ms", "offset", "limit",
+	)
+	if apiErr != nil {
+		return debugcapture.SessionQuery{}, apiErr
 	}
 	query := debugcapture.SessionQuery{Limit: defaultDebugCaptureLimit}
 	if value, ok := singleQueryValue(values, "request_id"); ok {

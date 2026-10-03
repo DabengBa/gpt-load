@@ -139,13 +139,17 @@ func (model groupModelEntry) toModelConfig() state.ModelConfig {
 	}
 }
 
+// GetGroupModels lazily backfills persisted route-entry identities and republishes
+// the runtime catalog whenever the persisted models disagree with what was last
+// published. Routing the write through writeGroupConfig keeps the barrier,
+// transaction, publication and post-commit recovery identical to every other
+// config write; detecting runtime staleness (not just a dirty database write)
+// guarantees a retry republishes after a failed publication instead of
+// short-circuiting on changed==false.
 func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModelsResponse, error) {
 	if groupID == 0 {
 		return GroupModelsResponse{}, app_errors.ErrBadRequest
 	}
-
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
 
 	group, err := loadGroupRow(s.db.WithContext(ctx), groupID)
 	if err != nil {
@@ -155,59 +159,77 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 	if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
 		return GroupModelsResponse{}, fmt.Errorf("decode group %d models: %w", group.ID, err)
 	}
-	testAliasBackfillNeeded := false
-	for _, model := range groupModels {
-		if model.TestAlias == "" {
-			testAliasBackfillNeeded = true
-			break
-		}
-	}
-	if testAliasBackfillNeeded {
-		if err := stateloader.BackfillTestAliases(ctx, s.db); err != nil {
-			return GroupModelsResponse{}, app_errors.ParseDBError(err)
-		}
-		group, err = loadGroupRow(s.db.WithContext(ctx), groupID)
+
+	if s.groupModelsRuntimeStale(groupID, groupModels) {
+		var committed []groupModelEntry
+		var committedGroup models.Group
+		_, err = s.writeGroupConfig(ctx, func(tx *gorm.DB) error {
+			row, loadErr := loadGroupRow(tx, groupID)
+			if loadErr != nil {
+				return loadErr
+			}
+			stored := make([]groupModelEntry, 0)
+			if err := decodeGroupDiscoveryJSON(row.Models, &stored); err != nil {
+				return fmt.Errorf("decode group %d models: %w", groupID, err)
+			}
+			testAliasBackfillNeeded := false
+			for _, model := range stored {
+				if model.TestAlias == "" {
+					testAliasBackfillNeeded = true
+					break
+				}
+			}
+			if testAliasBackfillNeeded {
+				if err := stateloader.BackfillTestAliases(ctx, tx); err != nil {
+					return err
+				}
+				row, loadErr = loadGroupRow(tx, groupID)
+				if loadErr != nil {
+					return loadErr
+				}
+				stored = make([]groupModelEntry, 0)
+				if err := decodeGroupDiscoveryJSON(row.Models, &stored); err != nil {
+					return fmt.Errorf("decode group %d models: %w", groupID, err)
+				}
+			}
+			used := make(map[string]struct{}, len(stored))
+			for _, model := range stored {
+				if model.EntryID != "" {
+					used[model.EntryID] = struct{}{}
+				}
+			}
+			changed := false
+			for index := range stored {
+				if stored[index].EntryID != "" {
+					continue
+				}
+				entryID, genErr := newEntryID(used)
+				if genErr != nil {
+					return app_errors.ErrInternalServer
+				}
+				stored[index].EntryID = entryID
+				changed = true
+			}
+			if changed {
+				encoded, encodeErr := json.Marshal(stored)
+				if encodeErr != nil {
+					return app_errors.ErrInternalServer
+				}
+				if err := tx.Model(&models.Group{}).
+					Where("id = ?", groupID).
+					Update("models", models.JSON(encoded)).Error; err != nil {
+					return app_errors.ParseDBError(err)
+				}
+			}
+			committed = stored
+			committedGroup = row
+			return nil
+		}, nil)
 		if err != nil {
-			return GroupModelsResponse{}, err
+			return GroupModelsResponse{}, withControlOperationContext(err, groupID, 0)
 		}
-		groupModels = make([]groupModelEntry, 0)
-		if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
-			return GroupModelsResponse{}, fmt.Errorf("decode group %d models: %w", group.ID, err)
-		}
-	}
-	used := make(map[string]struct{}, len(groupModels))
-	for _, model := range groupModels {
-		if model.EntryID != "" {
-			used[model.EntryID] = struct{}{}
-		}
-	}
-	changed := false
-	for index := range groupModels {
-		if groupModels[index].EntryID != "" {
-			continue
-		}
-		entryID, genErr := newEntryID(used)
-		if genErr != nil {
-			return GroupModelsResponse{}, app_errors.ErrInternalServer
-		}
-		groupModels[index].EntryID = entryID
-		changed = true
-	}
-	if changed {
-		encoded, encodeErr := json.Marshal(groupModels)
-		if encodeErr != nil {
-			return GroupModelsResponse{}, app_errors.ErrInternalServer
-		}
-		if err := s.db.WithContext(ctx).Model(&models.Group{}).Where("id = ?", groupID).Update("models", models.JSON(encoded)).Error; err != nil {
-			return GroupModelsResponse{}, app_errors.ParseDBError(err)
-		}
-		input, buildErr := stateloader.BuildCompileInputWithProxy(ctx, s.db, s.encryption, s.environmentProxy, s.channelRegistry)
-		if buildErr != nil {
-			return GroupModelsResponse{}, app_errors.ErrInternalServer
-		}
-		if _, publishErr := s.publishSnapshot(input); publishErr != nil {
-			return GroupModelsResponse{}, app_errors.ErrInternalServer
-		}
+		group = committedGroup
+		groupModels = committed
 	}
 	rows, err := loadModelPriceRows(ctx, s.db)
 	if err != nil {
@@ -215,6 +237,36 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 	}
 
 	return mapGroupModelsResponse(group.ChannelID, groupModels, rows)
+}
+
+// groupModelsRuntimeStale reports whether the published runtime catalog
+// disagrees with the persisted route-entry identities. A model still missing
+// its stored EntryID counts as needing a write; a model whose persisted
+// identity is not what the runtime catalog last published counts as stale
+// (e.g. the previous publication failed after the database commit).
+func (s *Service) groupModelsRuntimeStale(groupID uint, groupModels []groupModelEntry) bool {
+	if s.manager == nil {
+		return false
+	}
+	snapshot := s.manager.Current()
+	if snapshot == nil {
+		return true
+	}
+	catalog, exists := snapshot.GroupCatalog[groupID]
+	if !exists || len(catalog.Models) != len(groupModels) {
+		return true
+	}
+	for index, model := range groupModels {
+		runtimeModel := catalog.Models[index]
+		if model.TestAlias == "" || model.EntryID == "" {
+			return true
+		}
+		if runtimeModel.ID != model.ID || runtimeModel.Alias != model.Alias ||
+			runtimeModel.TestAlias != model.TestAlias || runtimeModel.EntryID != model.EntryID {
+			return true
+		}
+	}
+	return false
 }
 
 func mapGroupModelsResponse(

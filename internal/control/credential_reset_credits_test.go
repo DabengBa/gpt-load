@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/health"
 	app_errors "gpt-load/internal/platform/errors"
+	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 	"gpt-load/internal/subscription/providers/codex"
 	subscriptionruntime "gpt-load/internal/subscription/runtime"
@@ -569,5 +571,192 @@ func TestConsumeCredentialResetCreditReplaysSuccessWithoutPreparingCredential(t 
 	replayed, err := fixture.service.ConsumeCredentialResetCredit(t.Context(), groupID, credentialID, resetCreditTestKey)
 	if err != nil || !replayed.Replayed || replayed.Status != "succeeded" {
 		t.Fatalf("replayed/error = %#v / %v", replayed, err)
+	}
+}
+
+func TestConsumeCredentialResetCreditAdmissionBlockedBehindPendingRecovery(t *testing.T) {
+	t.Parallel()
+	fixture, groupID, credentialID := newSubscriptionCredentialFixture(t)
+	fixture.service.operationRandom = bytes.NewReader(bytes.Repeat([]byte{0x33}, 32))
+	fixture.service.reconcileRegistryGroup = func(uint, []state.CredentialEntry) (bool, error) {
+		return false, errors.New("registry remains unavailable")
+	}
+	mutations := 0
+	_, err := fixture.service.executeIdempotentOperation(
+		t.Context(),
+		newDurableGroupOperationInput(
+			t,
+			fixture,
+			"058f47a2-9c35-4d6e-8b1a-1234567890ab",
+			&mutations,
+		),
+	)
+	assertAPIErrorCode(t, err, app_errors.ErrControlOperationIncomplete.Code)
+
+	consumeCalls := 0
+	setCodexResetCreditConsume(t, fixture.service, func(context.Context, codex.Credential, string) (codex.AccountObservation, error) {
+		consumeCalls++
+		return codex.AccountObservation{Payload: []byte(`{"code":"reset","windows_reset":1}`)}, nil
+	})
+	setCodexAccountObservation(fixture.service, func(context.Context, codex.Credential) (codex.AccountObservation, error) {
+		return codex.AccountObservation{Payload: []byte(`{}`)}, nil
+	})
+
+	_, err = fixture.service.ConsumeCredentialResetCredit(t.Context(), groupID, credentialID, resetCreditTestKey)
+	assertAPIErrorCode(t, err, app_errors.ErrControlRecoveryPending.Code)
+	if consumeCalls != 0 {
+		t.Fatalf("upstream consume ran %d times behind recovery barrier", consumeCalls)
+	}
+	var operationCount int64
+	if err := fixture.db.Model(&models.CredentialResetOperation{}).Count(&operationCount).Error; err != nil {
+		t.Fatalf("count reset operations: %v", err)
+	}
+	if operationCount != 0 {
+		t.Fatalf("reset operation ledger rows = %d, want none admitted", operationCount)
+	}
+
+	fixture.service.reconcileRegistryGroup = func(uint, []state.CredentialEntry) (bool, error) {
+		return true, nil
+	}
+	result, err := fixture.service.ConsumeCredentialResetCredit(t.Context(), groupID, credentialID, resetCreditTestKey)
+	if err != nil || result.Status != "succeeded" || consumeCalls != 1 {
+		t.Fatalf("post-recovery consume result/error/calls = %#v / %v / %d", result, err, consumeCalls)
+	}
+}
+
+func TestBeginResetCreditOperationRechecksCredentialIdentity(t *testing.T) {
+	t.Parallel()
+	fixture, groupID, credentialID := newSubscriptionCredentialFixture(t)
+
+	_, _, err := fixture.service.beginResetCreditOperation(
+		t.Context(), groupID, credentialID, "stale-identity-fingerprint", resetCreditTestKey,
+	)
+	if !errors.Is(err, app_errors.ErrResourceNotFound) {
+		t.Fatalf("begin error = %v, want credential not found", err)
+	}
+	var operationCount int64
+	if err := fixture.db.Model(&models.CredentialResetOperation{}).Count(&operationCount).Error; err != nil {
+		t.Fatalf("count reset operations: %v", err)
+	}
+	if operationCount != 0 {
+		t.Fatalf("reset operation ledger rows = %d, want none for stale identity", operationCount)
+	}
+
+	now := time.Date(2026, time.August, 14, 14, 0, 0, 0, time.UTC)
+	fixture.service.now = func() time.Time { return now }
+	staleMS := now.Add(-defaultSubscriptionControlTimeout - time.Second).UnixMilli()
+	staleDigest := resetCreditRequestDigest(groupID, credentialID, "stale-identity-fingerprint")
+	prepared := models.CredentialResetOperation{
+		IdempotencyKey:  resetCreditTestKey,
+		RequestDigest:   staleDigest[:],
+		GroupID:         groupID,
+		CredentialID:    credentialID,
+		RedeemRequestID: resetCreditTestKey,
+		State:           models.CredentialResetOperationPrepared,
+		CreatedAtMS:     staleMS,
+		UpdatedAtMS:     staleMS,
+	}
+	if err := fixture.db.Create(&prepared).Error; err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = fixture.service.beginResetCreditOperation(
+		t.Context(), groupID, credentialID, "stale-identity-fingerprint", resetCreditTestKey,
+	)
+	if !errors.Is(err, app_errors.ErrResourceNotFound) {
+		t.Fatalf("stale-prepared begin error = %v, want credential not found", err)
+	}
+	var row models.CredentialResetOperation
+	if err := fixture.db.Where("idempotency_key = ?", resetCreditTestKey).Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.State != models.CredentialResetOperationPrepared || row.UpdatedAtMS != staleMS {
+		t.Fatalf("ledger row mutated for stale identity: %#v", row)
+	}
+}
+
+func TestFinishResetCreditOperationSettlesBehindPendingRecovery(t *testing.T) {
+	t.Parallel()
+	fixture, groupID, credentialID := newSubscriptionCredentialFixture(t)
+	fixture.service.operationRandom = bytes.NewReader(bytes.Repeat([]byte{0x33}, 32))
+	fixture.service.reconcileRegistryGroup = func(uint, []state.CredentialEntry) (bool, error) {
+		return false, errors.New("registry remains unavailable")
+	}
+	mutations := 0
+	_, err := fixture.service.executeIdempotentOperation(
+		t.Context(),
+		newDurableGroupOperationInput(
+			t,
+			fixture,
+			"058f47a2-9c35-4d6e-8b1a-1234567890ab",
+			&mutations,
+		),
+	)
+	assertAPIErrorCode(t, err, app_errors.ErrControlOperationIncomplete.Code)
+
+	var credential models.Credential
+	if err := fixture.db.Take(&credential, credentialID).Error; err != nil {
+		t.Fatal(err)
+	}
+	digest := resetCreditRequestDigest(groupID, credentialID, credential.IdentityFingerprint)
+	nowMS := time.Now().UnixMilli()
+	operation := models.CredentialResetOperation{
+		IdempotencyKey:  resetCreditTestKey,
+		RequestDigest:   digest[:],
+		GroupID:         groupID,
+		CredentialID:    credentialID,
+		RedeemRequestID: resetCreditTestKey,
+		State:           models.CredentialResetOperationPrepared,
+		CreatedAtMS:     nowMS - 1000,
+		UpdatedAtMS:     nowMS - 1000,
+	}
+	if err := fixture.db.Create(&operation).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	result := []byte(`{"status":"succeeded","windows_reset":1,"redeemed_at_ms":1755000000000}`)
+	if err := fixture.service.finishResetCreditOperation(
+		operation, models.CredentialResetOperationSucceeded, result, "",
+	); err != nil {
+		t.Fatalf("finish behind pending recovery: %v", err)
+	}
+	var stored models.CredentialResetOperation
+	if err := fixture.db.Where("idempotency_key = ?", resetCreditTestKey).Take(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.State != models.CredentialResetOperationSucceeded || stored.CompletedAtMS == nil ||
+		len(stored.ResultJSON) == 0 {
+		t.Fatalf("settled ledger row = %#v", stored)
+	}
+
+	var other models.Credential
+	if err := fixture.db.Where("group_id != ?", groupID).Take(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+	foreignOperation := models.CredentialResetOperation{
+		IdempotencyKey:  "9f0f4c32-89d2-4bcb-9e19-052940dc2f30",
+		RequestDigest:   digest[:],
+		GroupID:         other.GroupID,
+		CredentialID:    other.ID,
+		RedeemRequestID: "9f0f4c32-89d2-4bcb-9e19-052940dc2f30",
+		State:           models.CredentialResetOperationPrepared,
+		CreatedAtMS:     nowMS - 1000,
+		UpdatedAtMS:     nowMS - 1000,
+	}
+	if err := fixture.db.Create(&foreignOperation).Error; err != nil {
+		t.Fatal(err)
+	}
+	wrongOwner := foreignOperation
+	wrongOwner.GroupID = groupID
+	if err := fixture.service.finishResetCreditOperation(
+		wrongOwner, models.CredentialResetOperationSucceeded, result, "",
+	); !errors.Is(err, app_errors.ErrInternalServer) {
+		t.Fatalf("finish with mismatched group ownership error = %v, want internal", err)
+	}
+	var untouched models.CredentialResetOperation
+	if err := fixture.db.Where("idempotency_key = ?", foreignOperation.IdempotencyKey).Take(&untouched).Error; err != nil {
+		t.Fatal(err)
+	}
+	if untouched.State != models.CredentialResetOperationPrepared {
+		t.Fatalf("ledger row settled under wrong ownership: %#v", untouched)
 	}
 }

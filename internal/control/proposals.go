@@ -107,6 +107,10 @@ type proposalApplyDigestBody struct {
 // CreateChangeProposal creates an immutable proposal and captures the
 // published snapshot revision. It validates the target entries but performs
 // no route or runtime mutation.
+// Exempt from the recovery barrier: the proposal row is durable metadata
+// pinned to a snapshot revision; Approve and Apply revalidate revision,
+// runtime epoch and expected values before any committed mutation, so a
+// proposal built on an unrecovered snapshot self-corrects downstream.
 func (s *Service) CreateChangeProposal(
 	ctx context.Context,
 	principal agent.Principal,
@@ -192,6 +196,9 @@ func (s *Service) GetChangeProposal(
 
 // ApproveChangeProposal stores an administrator approval, runtime epoch and
 // approval timestamp. The proposal base revision must still be current.
+// Exempt from the recovery barrier for the same reason as create: approval
+// only updates proposal metadata; Apply enforces the barrier and revalidates
+// revision and runtime epoch before applying.
 func (s *Service) ApproveChangeProposal(
 	ctx context.Context,
 	proposalID string,
@@ -248,6 +255,9 @@ func (s *Service) ApproveChangeProposal(
 
 // RevokeChangeProposal revokes a pending or approved proposal that has not yet
 // been durably bound to an operation. A committed operation is never detached.
+// Exempt from the recovery barrier: it mutates only proposal metadata and
+// refuses proposals already bound to an operation, so it cannot interleave
+// with a committed mutation.
 func (s *Service) RevokeChangeProposal(
 	ctx context.Context,
 	proposalID string,

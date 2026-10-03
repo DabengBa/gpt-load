@@ -292,24 +292,13 @@ func mapGroupCollectionRecords(
 	}
 	for credentialID, persistedCredential := range persistedCredentialByID {
 		runtimeCredential, exists := runtimeByID[credentialID]
-		if !exists {
-			return nil, groupCollectionDataError(
-				"persisted credential %d is missing from runtime registry",
-				credentialID,
-			)
-		}
-		if runtimeCredential.ID != persistedCredential.ID ||
-			runtimeCredential.GroupID != persistedCredential.GroupID ||
-			runtimeCredential.AuthState != normalizeRuntimeCredentialAuthState(persistedCredential.AuthState) ||
-			runtimeCredential.Version != groupCollectionCredentialVersion(persistedCredential.SecretVersion) ||
-			runtimeCredential.IdentityGeneration != groupCollectionCredentialIdentity(
-				persistedCredential.IdentityFingerprint,
-				persistedGroups[persistedCredential.GroupID],
-			) {
-			return nil, groupCollectionDataError(
-				"persisted credential %d differs from runtime registry",
-				credentialID,
-			)
+		if err := validateCredentialRuntimeRow(
+			persistedGroups[persistedCredential.GroupID],
+			persistedCredential,
+			runtimeCredential,
+			exists,
+		); err != nil {
+			return nil, err
 		}
 	}
 	records := make([]groupCollectionRecord, 0, len(rows.groups))

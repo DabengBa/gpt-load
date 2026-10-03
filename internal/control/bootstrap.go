@@ -16,6 +16,11 @@ import (
 
 const defaultAccessKeyMarker = models.InternalSystemSettingPrefix + "bootstrap.default_access_key.v1"
 
+// EnsureInitialState seeds startup state. It runs before
+// DrainCommittedOperations during app.Start, so it must not sit behind the
+// operation recovery barrier — a pending operation would deadlock startup.
+// Its writes are idempotent metadata/credential-state repairs that the
+// subsequent drain reconciles if they raced an unfinished operation.
 func (s *Service) EnsureInitialState(ctx context.Context) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()

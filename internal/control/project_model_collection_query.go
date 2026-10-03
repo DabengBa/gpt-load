@@ -1,8 +1,6 @@
 package control
 
 import (
-	"net/url"
-	"strings"
 	"unicode/utf8"
 
 	"gpt-load/internal/platform/errors"
@@ -46,22 +44,11 @@ func parseProjectModelListQuery(rawQuery string, forceQuery bool) (ProjectModelL
 		Page:          defaultProjectModelPage,
 		PageSize:      defaultProjectModelPageSize,
 	}
-	if forceQuery && rawQuery == "" {
-		return ProjectModelListQuery{}, errors.ErrBadRequest
-	}
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return ProjectModelListQuery{}, errors.ErrBadRequest
-	}
-	for key, entries := range values {
-		switch key {
-		case "group_status", "pricing_status", "q", "page", "page_size":
-		default:
-			return ProjectModelListQuery{}, errors.ErrBadRequest
-		}
-		if len(entries) != 1 {
-			return ProjectModelListQuery{}, errors.ErrBadRequest
-		}
+	values, apiErr := parseCollectionQueryValues(
+		rawQuery, forceQuery, "group_status", "pricing_status", "q", "page", "page_size",
+	)
+	if apiErr != nil {
+		return ProjectModelListQuery{}, apiErr
 	}
 	if entries, ok := values["group_status"]; ok {
 		query.GroupStatus = ProjectModelGroupStatus(entries[0])
@@ -79,12 +66,11 @@ func parseProjectModelListQuery(rawQuery string, forceQuery bool) (ProjectModelL
 	default:
 		return ProjectModelListQuery{}, errors.ErrBadRequest
 	}
-	if entries, ok := values["q"]; ok {
-		query.Search = strings.TrimSpace(entries[0])
-		if utf8.RuneCountInString(query.Search) > maxProjectModelSearchRunes {
-			return ProjectModelListQuery{}, errors.ErrBadRequest
-		}
+	text, ok := collectionQueryText(values, "q", maxProjectModelSearchRunes)
+	if !ok {
+		return ProjectModelListQuery{}, errors.ErrBadRequest
 	}
+	query.Search = text
 	if entries, ok := values["page"]; ok {
 		page, parseErr := parseCanonicalSafeUint(entries[0])
 		if parseErr != nil || page == 0 {

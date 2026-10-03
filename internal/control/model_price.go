@@ -84,6 +84,43 @@ type ModelPriceReferenceData struct {
 	ReferenceGroupCount int  `json:"reference_group_count"`
 }
 
+// writePriceConfig runs one model-price write under the ordinary write path:
+// serialized lock → operation-recovery barrier → catalog snapshot load →
+// transaction → price-table publication. Unlike writeGroupConfig there is no
+// inline runtime recovery: a failed publish leaves no persisted divergence
+// (the table is rebuilt from DB by the next price/config write or reconcile).
+func (s *Service) writePriceConfig(
+	ctx context.Context,
+	mutate func(tx *gorm.DB, catalogSnapshot *catalog.Snapshot) (*pricing.Table, error),
+) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if err := s.enforceOperationRecoveryBarrierLocked(ctx, 0); err != nil {
+		return err
+	}
+	var catalogSnapshot *catalog.Snapshot
+	if s.catalogRuntime != nil {
+		catalogSnapshot = s.catalogRuntime.Load()
+	}
+	var table *pricing.Table
+	err := s.withControlTransaction(ctx, func(tx *gorm.DB) error {
+		loaded, err := mutate(tx, catalogSnapshot)
+		if err != nil {
+			return err
+		}
+		table = loaded
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	s.priceRuntime.Publish(table)
+	return nil
+}
+
 func (s *Service) UpdateModelPrice(
 	ctx context.Context,
 	id uint,
@@ -103,36 +140,21 @@ func (s *Service) UpdateModelPrice(
 	if err != nil {
 		return ModelPriceDTO{}, err
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if err := s.enforceOperationRecoveryBarrierLocked(ctx, 0); err != nil {
-		return ModelPriceDTO{}, err
-	}
-	var catalogSnapshot *catalog.Snapshot
-	if s.catalogRuntime != nil {
-		catalogSnapshot = s.catalogRuntime.Load()
-	}
-
-	var table *pricing.Table
 	var result ModelPriceDTO
-	err = s.withControlTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.writePriceConfig(ctx, func(tx *gorm.DB, catalogSnapshot *catalog.Snapshot) (*pricing.Table, error) {
 		var row models.ModelPrice
 		if err := tx.First(&row, id).Error; err != nil {
-			return fmt.Errorf("load model price: %w", app_errors.ParseDBError(err))
+			return nil, fmt.Errorf("load model price: %w", app_errors.ParseDBError(err))
 		}
 		if err := validateModeScheduleUpdate(row, request.ModeSchedules.schedules); err != nil {
-			return err
+			return nil, err
 		}
 		references, err := loadPriceReferenceSnapshot(tx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if modelPriceUpdateAllNull(request) && !request.ConfirmUnpriced {
-			return app_errors.NewAPIErrorWithData(
+			return nil, app_errors.NewAPIErrorWithData(
 				app_errors.ErrModelPriceUnpricedConfirmationRequired,
 				ModelPriceIDData{ID: id},
 			)
@@ -149,7 +171,7 @@ func (s *Service) UpdateModelPrice(
 		if !modelPriceMutableValuesEqual(row, desired) {
 			updatedAtMS, err := safeEpochMilliseconds(s.now())
 			if err != nil {
-				return fmt.Errorf("timestamp model price update: %w", app_errors.ErrInternalServer)
+				return nil, fmt.Errorf("timestamp model price update: %w", app_errors.ErrInternalServer)
 			}
 			if err := tx.Model(&models.ModelPrice{}).
 				Where("id = ?", id).
@@ -163,27 +185,26 @@ func (s *Service) UpdateModelPrice(
 					"is_manual":                                     true,
 					"updated_at_ms":                                 updatedAtMS,
 				}).Error; err != nil {
-				return fmt.Errorf("update model price: %w", app_errors.ParseDBError(err))
+				return nil, fmt.Errorf("update model price: %w", app_errors.ParseDBError(err))
 			}
 			desired.UpdatedAtMS = updatedAtMS
 			row = desired
 		}
 
-		table, err = loadPriceTable(ctx, tx)
+		table, err := loadPriceTable(ctx, tx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		record, err := projectModelPriceRow(row, references, catalogSnapshot)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		result = record.dto
-		return nil
+		return table, nil
 	})
 	if err != nil {
 		return ModelPriceDTO{}, err
 	}
-	s.priceRuntime.Publish(table)
 	return result, nil
 }
 
@@ -194,43 +215,29 @@ func (s *Service) ResetModelPrice(
 	if id == 0 || uint64(id) > uint64(maxSafeInteger) {
 		return ModelPriceDTO{}, app_errors.ErrBadRequest
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if err := s.enforceOperationRecoveryBarrierLocked(ctx, 0); err != nil {
-		return ModelPriceDTO{}, err
-	}
-	var catalogSnapshot *catalog.Snapshot
-	if s.catalogRuntime != nil {
-		catalogSnapshot = s.catalogRuntime.Load()
-	}
-
-	var table *pricing.Table
 	var result ModelPriceDTO
-	err := s.withControlTransaction(ctx, func(tx *gorm.DB) error {
+	err := s.writePriceConfig(ctx, func(tx *gorm.DB, catalogSnapshot *catalog.Snapshot) (*pricing.Table, error) {
 		var row models.ModelPrice
 		if err := tx.First(&row, id).Error; err != nil {
-			return fmt.Errorf("load model price: %w", app_errors.ParseDBError(err))
+			return nil, fmt.Errorf("load model price: %w", app_errors.ParseDBError(err))
 		}
 		references, err := loadPriceReferenceSnapshot(tx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		identity, err := PriceIdentityForChannelModel(row.ChannelID, row.ModelID)
 		if err != nil {
-			return fmt.Errorf("validate model price identity: %w", app_errors.ErrInternalServer)
+			return nil, fmt.Errorf("validate model price identity: %w", app_errors.ErrInternalServer)
 		}
 		desired, err := resetModelPriceValues(identity, catalogSnapshot)
 		if err != nil {
-			return fmt.Errorf("normalize catalog model price: %w", app_errors.ErrInternalServer)
+			return nil, fmt.Errorf("normalize catalog model price: %w", app_errors.ErrInternalServer)
 		}
 		if !modelPriceMutableValuesEqual(row, desired) {
 			updatedAtMS, err := safeEpochMilliseconds(s.now())
 			if err != nil {
-				return fmt.Errorf("timestamp model price reset: %w", app_errors.ErrInternalServer)
+				return nil, fmt.Errorf("timestamp model price reset: %w", app_errors.ErrInternalServer)
 			}
 			if err := tx.Model(&models.ModelPrice{}).
 				Where("id = ?", id).
@@ -244,7 +251,7 @@ func (s *Service) ResetModelPrice(
 					"is_manual":                                     false,
 					"updated_at_ms":                                 updatedAtMS,
 				}).Error; err != nil {
-				return fmt.Errorf("reset model price: %w", app_errors.ParseDBError(err))
+				return nil, fmt.Errorf("reset model price: %w", app_errors.ParseDBError(err))
 			}
 			row.InputPriceNanoUSDPerMillionTokens = desired.InputPriceNanoUSDPerMillionTokens
 			row.OutputPriceNanoUSDPerMillionTokens = desired.OutputPriceNanoUSDPerMillionTokens
@@ -256,21 +263,20 @@ func (s *Service) ResetModelPrice(
 			row.UpdatedAtMS = updatedAtMS
 		}
 
-		table, err = loadPriceTable(ctx, tx)
+		table, err := loadPriceTable(ctx, tx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		record, err := projectModelPriceRow(row, references, catalogSnapshot)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		result = record.dto
-		return nil
+		return table, nil
 	})
 	if err != nil {
 		return ModelPriceDTO{}, err
 	}
-	s.priceRuntime.Publish(table)
 	return result, nil
 }
 
@@ -286,33 +292,22 @@ func (s *Service) DeleteModelPrice(ctx context.Context, id uint) error {
 	if id == 0 || uint64(id) > uint64(maxSafeInteger) {
 		return app_errors.ErrBadRequest
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if err := s.enforceOperationRecoveryBarrierLocked(ctx, 0); err != nil {
-		return err
-	}
-
-	var table *pricing.Table
-	err := s.withControlTransaction(ctx, func(tx *gorm.DB) error {
+	return s.writePriceConfig(ctx, func(tx *gorm.DB, _ *catalog.Snapshot) (*pricing.Table, error) {
 		var row models.ModelPrice
 		if err := tx.First(&row, id).Error; err != nil {
-			return fmt.Errorf("load model price: %w", app_errors.ParseDBError(err))
+			return nil, fmt.Errorf("load model price: %w", app_errors.ParseDBError(err))
 		}
 		identity, err := PriceIdentityForChannelModel(row.ChannelID, row.ModelID)
 		if err != nil {
-			return fmt.Errorf("validate model price identity: %w", app_errors.ErrInternalServer)
+			return nil, fmt.Errorf("validate model price identity: %w", app_errors.ErrInternalServer)
 		}
 		references, err := loadPriceReferenceSnapshot(tx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		reference := references.references[identity]
 		if reference.referenceCount > 0 {
-			return app_errors.NewAPIErrorWithData(
+			return nil, app_errors.NewAPIErrorWithData(
 				app_errors.ErrModelPriceReferenced,
 				ModelPriceReferenceData{
 					ID: id, ReferenceCount: reference.referenceCount,
@@ -321,22 +316,16 @@ func (s *Service) DeleteModelPrice(ctx context.Context, id uint) error {
 			)
 		}
 		if !row.IsManual {
-			return app_errors.NewAPIErrorWithData(
+			return nil, app_errors.NewAPIErrorWithData(
 				app_errors.ErrModelPriceAutomaticDeleteForbidden,
 				ModelPriceIDData{ID: id},
 			)
 		}
 		if err := tx.Where("id = ?", id).Delete(&models.ModelPrice{}).Error; err != nil {
-			return fmt.Errorf("delete model price: %w", app_errors.ParseDBError(err))
+			return nil, fmt.Errorf("delete model price: %w", app_errors.ParseDBError(err))
 		}
-		table, err = loadPriceTable(ctx, tx)
-		return err
+		return loadPriceTable(ctx, tx)
 	})
-	if err != nil {
-		return err
-	}
-	s.priceRuntime.Publish(table)
-	return nil
 }
 
 func modelPriceUpdateAllNull(request ModelPriceUpdateRequest) bool {

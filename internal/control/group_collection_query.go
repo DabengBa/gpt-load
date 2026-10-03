@@ -3,8 +3,6 @@ package control
 import (
 	"context"
 	"sort"
-	"strings"
-	"unicode"
 
 	"gpt-load/internal/storage/models"
 )
@@ -99,9 +97,12 @@ func queryGroupCollectionRecords(
 	totalItems := int64(len(filtered))
 	pagination := GroupCollectionPagination{
 		Page: query.Page, PageSize: query.PageSize, TotalItems: totalItems,
-		TotalPages: groupCollectionTotalPages(totalItems, query.PageSize),
+		TotalPages: collectionTotalPages(totalItems, query.PageSize),
 	}
-	items := groupCollectionPageItems(filtered, query.Page, query.PageSize)
+	items := collectionPageItems(filtered, query.Page, query.PageSize,
+		func(record groupCollectionRecord) GroupCollectionItem {
+			return cloneGroupCollectionItem(record.GroupCollectionItem)
+		})
 	return GroupCollectionResponse{
 		ObservedAtMS: observedAtMS,
 		Summary:      summary,
@@ -140,35 +141,12 @@ func matchesGroupCollectionQuery(
 	if query.Query == "" {
 		return true
 	}
-	if groupCollectionContainsFold(record.Name, query.Query) ||
-		groupCollectionContainsFold(string(record.ChannelID), query.Query) ||
-		groupCollectionContainsFold(string(record.Params), query.Query) {
+	if collectionContainsFold(record.Name, query.Query) ||
+		collectionContainsFold(string(record.ChannelID), query.Query) ||
+		collectionContainsFold(string(record.Params), query.Query) {
 		return true
 	}
 	return false
-}
-
-func groupCollectionContainsFold(value, query string) bool {
-	return strings.Contains(groupCollectionFold(value), groupCollectionFold(query))
-}
-
-func groupCollectionFold(value string) string {
-	var folded strings.Builder
-	folded.Grow(len(value))
-	for _, runeValue := range value {
-		folded.WriteRune(groupCollectionFoldRune(runeValue))
-	}
-	return folded.String()
-}
-
-func groupCollectionFoldRune(value rune) rune {
-	folded := value
-	for candidate := unicode.SimpleFold(value); candidate != value; candidate = unicode.SimpleFold(candidate) {
-		if candidate < folded {
-			folded = candidate
-		}
-	}
-	return folded
 }
 
 func sortGroupCollectionRecords(
@@ -241,7 +219,7 @@ func groupCollectionStatusOrder(value GroupCollectionStatus) int {
 }
 
 func compareGroupCollectionNames(left, right groupCollectionRecord) bool {
-	leftFolded, rightFolded := groupCollectionFold(left.Name), groupCollectionFold(right.Name)
+	leftFolded, rightFolded := collectionFold(left.Name), collectionFold(right.Name)
 	if leftFolded != rightFolded {
 		return leftFolded < rightFolded
 	}
@@ -249,43 +227,6 @@ func compareGroupCollectionNames(left, right groupCollectionRecord) bool {
 		return left.Name < right.Name
 	}
 	return left.ID < right.ID
-}
-
-func groupCollectionTotalPages(totalItems, pageSize int64) int64 {
-	if totalItems == 0 || pageSize <= 0 {
-		return 0
-	}
-	pages := totalItems / pageSize
-	if totalItems%pageSize != 0 {
-		pages++
-	}
-	return pages
-}
-
-func groupCollectionPageItems(
-	records []groupCollectionRecord,
-	page, pageSize int64,
-) []GroupCollectionItem {
-	if page <= 0 || pageSize <= 0 {
-		return []GroupCollectionItem{}
-	}
-	itemCount := int64(len(records))
-	if page-1 > (itemCount / pageSize) {
-		return []GroupCollectionItem{}
-	}
-	offset := (page - 1) * pageSize
-	if offset >= itemCount {
-		return []GroupCollectionItem{}
-	}
-	end := offset + pageSize
-	if end < offset || end > itemCount {
-		end = itemCount
-	}
-	items := make([]GroupCollectionItem, end-offset)
-	for index, record := range records[offset:end] {
-		items[index] = cloneGroupCollectionItem(record.GroupCollectionItem)
-	}
-	return items
 }
 
 func cloneGroupCollectionItem(value GroupCollectionItem) GroupCollectionItem {

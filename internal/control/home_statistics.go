@@ -3,7 +3,6 @@ package control
 import (
 	"context"
 	"fmt"
-	"net/url"
 
 	"github.com/gin-gonic/gin"
 
@@ -147,14 +146,9 @@ func parseHomeStatisticsQuery(
 	if err := validateSafeMilliseconds(observedAtMS); err != nil {
 		return requestlog.HomeStatisticsQuery{}, app_errors.ErrInternalServer
 	}
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return requestlog.HomeStatisticsQuery{}, app_errors.ErrBadRequest
-	}
-	for key, entries := range values {
-		if key != "range" || len(entries) != 1 {
-			return requestlog.HomeStatisticsQuery{}, app_errors.ErrBadRequest
-		}
+	values, apiErr := parseCollectionQueryValues(rawQuery, false, "range")
+	if apiErr != nil {
+		return requestlog.HomeStatisticsQuery{}, apiErr
 	}
 	rangeValue := requestlog.HomeStatistics24H
 	if entries, exists := values["range"]; exists {

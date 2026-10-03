@@ -202,8 +202,7 @@ func (s *Service) readHomeBase(
 }
 
 func (s *Server) handleHome(c *gin.Context) {
-	if c.Request.URL.RawQuery != "" || c.Request.URL.ForceQuery {
-		writeServiceError(c, "home", app_errors.ErrBadRequest)
+	if !requireEmptyQuery(c, "home") {
 		return
 	}
 	serverNowMS, err := safeEpochMilliseconds(s.now())
@@ -420,28 +419,26 @@ func countAvailableHomeCredentialsInGroups(
 		seen[row.ID] = struct{}{}
 		group, groupExists := snapshot.GroupCatalog[row.GroupID]
 		credential, credentialExists := runtimeByID[row.ID]
-		if !groupExists || !credentialExists || credential.GroupID != row.GroupID {
+		if !groupExists {
 			return 0, fmt.Errorf(
 				"count available home credential %d: runtime configuration mismatch: %w",
 				row.ID,
 				app_errors.ErrInternalServer,
 			)
 		}
-
-		if credential.AuthState != normalizeRuntimeCredentialAuthState(row.AuthState) ||
-			credential.Version != groupCollectionCredentialVersion(row.SecretVersion) ||
-			credential.IdentityGeneration != groupCollectionCredentialIdentity(
-				row.IdentityFingerprint,
-				models.Group{
-					ID: row.GroupID, ChannelID: row.ChannelID,
-					ConnectionType: row.ConnectionType, Params: row.Params,
-				},
-			) {
-			return 0, fmt.Errorf(
-				"count available home credential %d: runtime identity mismatch: %w",
-				row.ID,
-				app_errors.ErrInternalServer,
-			)
+		if err := validateCredentialRuntimeRow(
+			models.Group{
+				ID: row.GroupID, ChannelID: row.ChannelID,
+				ConnectionType: row.ConnectionType, Params: row.Params,
+			},
+			models.Credential{
+				ID: row.ID, GroupID: row.GroupID, AuthState: row.AuthState,
+				SecretVersion: row.SecretVersion, IdentityFingerprint: row.IdentityFingerprint,
+			},
+			credential,
+			credentialExists,
+		); err != nil {
+			return 0, err
 		}
 		_, groupAllowed := allowedGroups[row.GroupID]
 		// 与健康页共用 classifyHealthKey：只看 status/拉黑/冷却会把「待重新授权」

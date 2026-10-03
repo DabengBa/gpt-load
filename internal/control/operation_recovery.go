@@ -34,6 +34,7 @@ type recoveryPendingData struct {
 
 // DrainCommittedOperations restores all known post-commit side effects in
 // commit order. It is called during startup before the process listens.
+// Recovery mechanism itself: it must never run the barrier it implements.
 func (s *Service) DrainCommittedOperations(ctx context.Context) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -96,6 +97,8 @@ func (s *Service) recoveryPendingError(
 
 // CompactCompletedOperations removes replay payloads after the guaranteed
 // retention period while preserving the permanent request comparator.
+// Exempt from the recovery barrier: it only mutates completed_at_ms IS NOT
+// NULL rows, which pending-operation recovery never reads.
 func (s *Service) CompactCompletedOperations(
 	ctx context.Context,
 	now time.Time,

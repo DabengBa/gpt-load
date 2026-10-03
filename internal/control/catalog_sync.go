@@ -620,31 +620,21 @@ func (s *Service) applyCatalogSnapshot(ctx context.Context, snapshot *catalog.Sn
 	if snapshot == nil {
 		return fmt.Errorf("catalog snapshot is required: %w", app_errors.ErrInternalServer)
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if err := s.enforceOperationRecoveryBarrierLocked(ctx, 0); err != nil {
-		return err
-	}
-
-	var table *pricing.Table
-	err := s.withControlTransaction(ctx, func(tx *gorm.DB) error {
+	err := s.writePriceConfig(ctx, func(tx *gorm.DB, _ *catalog.Snapshot) (*pricing.Table, error) {
 		if err := reconcileCatalogAutomaticPrices(tx, snapshot); err != nil {
-			return err
+			return nil, err
 		}
 		if err := reconcileReferencedPrices(tx, snapshot); err != nil {
-			return err
+			return nil, err
 		}
 		if err := cleanupUnreferencedAutomaticPrices(tx); err != nil {
-			return err
+			return nil, err
 		}
-		var err error
-		table, err = loadPriceTable(ctx, tx)
-		return err
+		return loadPriceTable(ctx, tx)
 	})
 	if err != nil {
 		return err
 	}
-	s.priceRuntime.Publish(table)
 	s.catalogRuntime.Publish(snapshot)
 	logMissingAutomaticPricePriorityProviders(snapshot)
 	return nil
