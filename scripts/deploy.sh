@@ -66,14 +66,52 @@ fi
 ssh vps-kl bash -s -- "$tag" <<'REMOTE'
 set -euo pipefail
 tag=$1
+trap '' HUP
+umask 077
 cd /opt/gpt-load
 compose=docker-compose.yml
 docker image inspect "$tag" >/dev/null
+[ "$(docker inspect gpt-load --format '{{.State.Running}}')" = true ] || {
+  echo '发布必须从运行中的旧容器开始，禁止预先手工停机' >&2; exit 1;
+}
 old=$(sed -n 's/^    image: gpt-load:\(.*\)$/\1/p' "$compose" | head -1)
 [ -n "$old" ] || { echo '未找到现有 gpt-load 镜像配置' >&2; exit 1; }
+data=$(docker volume inspect gpt-load_gpt-load-data --format '{{.Mountpoint}}')
+[ "$(docker inspect gpt-load --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Source}}{{end}}{{end}}')" = "$data" ] || {
+  echo '生产数据挂载与预期卷不一致' >&2; exit 1;
+}
+[ "$(findmnt -n -o FSTYPE -T "$PWD")" != tmpfs ]
+size=$(du -sb "$data" | cut -f1)
+avail=$(df -B1 --output=avail "$PWD" | tail -n 1)
+[ "$avail" -gt "$((size * 2))" ] || { echo '最终备份空间不足' >&2; exit 1; }
+backup=$(mktemp -d "$PWD/pre-upgrade.XXXXXXXX")
+cp -- "$compose" "$backup/docker-compose.yml"
+stopped=false
+switched=false
+recover_before_switch() {
+  result=$?
+  if [ "$stopped" = true ] && [ "$switched" = false ]; then
+    echo '切换前失败，源库未修改，立即恢复旧容器' >&2
+    cp -- "$backup/docker-compose.yml" "$compose" || true
+    docker start gpt-load || true
+  fi
+  exit "$result"
+}
+trap recover_before_switch EXIT
+echo "停写并备份: $backup"
+stopped=true
+docker compose -p gpt-load -f "$compose" stop -t 30 gpt-load
+[ "$(docker inspect gpt-load --format '{{.State.Running}}')" = false ]
+[ -z "$(docker ps -q --filter volume=gpt-load_gpt-load-data)" ] || {
+  echo '数据卷仍有运行中的容器写入者' >&2; exit 1;
+}
+tar -C "$data" -cf "$backup/data.tar" .
+tar -tf "$backup/data.tar" >/dev/null
+echo '最终备份完成，立即切换镜像'
 cp -- "$compose" "$compose.bak-$(date +%Y%m%d%H%M%S)-$old"
 sed -i "s|^    image: gpt-load:.*|    image: $tag|" "$compose"
 sed -i "s|^    # 自建镜像:.*|    # 自建镜像:$tag，由本地 scripts/deploy.sh 构建并上传。|" "$compose"
+switched=true
 docker compose -p gpt-load -f "$compose" up -d --no-build --pull never
 
 status=unknown
@@ -85,7 +123,7 @@ done
 echo "容器健康: $status"
 curl -fsS --max-time 10 http://127.0.0.1:3001/health
 echo
-[ "$status" = healthy ] || { echo '健康检查未通过，排障与回滚见 docs/deployment.md' >&2; exit 1; }
+[ "$status" = healthy ] || { echo "健康检查未通过，最终备份: $backup；数据库可能已变化，按 docs/deployment.md 排障与回滚" >&2; exit 1; }
 REMOTE
 
 echo '公网健康检查:'
