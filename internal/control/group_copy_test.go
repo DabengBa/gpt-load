@@ -75,7 +75,7 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 		t.Fatalf("CopyGroupIdempotent() error = %v", err)
 	}
 	if first.GroupID == source.GroupID || first.GroupName != "copy-source-copy" ||
-		first.CredentialsAdded != 1 || first.CredentialsDuplicated != 0 {
+		first.CredentialID == nil || *first.CredentialID == 0 {
 		t.Fatalf("copy result = %#v, want new group copy-source-copy with one credential", first)
 	}
 
@@ -113,10 +113,6 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 	}
 	if !reflect.DeepEqual(originalModels, cloneModels) {
 		t.Fatalf("clone models differ beyond test aliases: source=%#v clone=%#v", originalModels, cloneModels)
-	}
-	if *clone.PriceMultiplierMicros != *original.PriceMultiplierMicros {
-		t.Fatalf("clone price multiplier = %d, want %d",
-			*clone.PriceMultiplierMicros, *original.PriceMultiplierMicros)
 	}
 
 	sourceCredentials := loadGroupCredentials(t, fixture, source.GroupID)

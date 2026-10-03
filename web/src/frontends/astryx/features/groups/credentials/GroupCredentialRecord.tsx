@@ -24,8 +24,8 @@ const styles = stylex.create({
   summary: {
     display: 'grid',
     gridTemplateColumns: {
-      default: '34px minmax(150px, 1.4fr) minmax(110px, 0.8fr) minmax(130px, 1fr) 90px',
-      [narrow]: '28px minmax(0, 1fr) 86px',
+      default: 'minmax(150px, 1.4fr) minmax(110px, 0.8fr) minmax(130px, 1fr) 90px',
+      [narrow]: 'minmax(0, 1fr) 86px',
     },
     alignItems: 'center',
     minHeight: '56px',
@@ -122,24 +122,19 @@ const styles = stylex.create({
 export function GroupCredentialRecord({
   item,
   groupId,
-  rowIndex,
-  selected,
+
   busy,
   expanded,
-  onSelectedChange,
-  onExpandedChange,
+
   onTest,
   onRestore,
   onRemove,
 }: {
   item: CredentialItemDto
   groupId: number
-  rowIndex: number
-  selected: boolean
+
   busy: boolean
-  expanded: boolean
-  onSelectedChange(selected: boolean): void
-  onExpandedChange(expanded: boolean): void
+  expanded?: boolean
   onTest(item: CredentialItemDto): void
   onRestore(item: CredentialItemDto): void
   onRemove(item: CredentialItemDto): void
@@ -147,6 +142,7 @@ export function GroupCredentialRecord({
   const t = useT()
   const intl = useIntl()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(expanded ?? true)
 
   const detailId = `group-credential-details-${item.credential_id}`
   const isProblem = item.effective_status === 'cooldown' || item.effective_status === 'blacklisted'
@@ -168,22 +164,8 @@ export function GroupCredentialRecord({
   }
 
   return (
-    <article {...stylex.props(styles.record)} role="row" aria-rowindex={rowIndex}>
+    <article {...stylex.props(styles.record)}>
       <div {...stylex.props(styles.summary)} role="presentation">
-        <div {...stylex.props(styles.select)} role="cell">
-          <label>
-            <span {...stylex.props(styles.srOnly)}>
-              {t('group.credentials.selectCredential', { mask: item.mask })}
-            </span>
-            <input
-              {...stylex.props(styles.selectInput)}
-              type="checkbox"
-              checked={selected}
-              disabled={busy}
-              onChange={(event) => onSelectedChange(event.target.checked)}
-            />
-          </label>
-        </div>
         <div {...stylex.props(styles.maskCell)} role="cell">
           <span {...stylex.props(styles.mobileLabel)}>
             {t('group.credentials.columns.credential')}
@@ -252,15 +234,15 @@ export function GroupCredentialRecord({
           <IconButton
             variant="ghost"
             size="sm"
-            label={expanded ? t('group.credentials.collapse') : t('group.credentials.expand')}
-            aria-expanded={expanded}
+            label={detailsOpen ? t('group.credentials.collapse') : t('group.credentials.expand')}
+            aria-expanded={detailsOpen}
             aria-controls={detailId}
             icon={<ChevronDown size={16} aria-hidden="true" />}
-            onClick={() => onExpandedChange(!expanded)}
+            onClick={() => setDetailsOpen(!detailsOpen)}
           />
         </div>
       </div>
-      {expanded && (
+      {detailsOpen && (
         <div id={detailId} {...stylex.props(styles.details)} role="cell">
           <dl {...stylex.props(styles.detailsList)}>
             <div>

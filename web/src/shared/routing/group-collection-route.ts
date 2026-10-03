@@ -21,7 +21,7 @@ const defaultFilters: GroupCollectionFilters = {
 }
 const statuses = new Set<GroupCollectionStatus>(['available', 'unavailable', 'disabled'])
 const connectionTypes = new Set<ConnectionType>(['api_key', 'subscription'])
-const sorts = new Set<GroupCollectionSort>(['recent', 'status', 'name', 'credentials', 'created'])
+const sorts = new Set<GroupCollectionSort>(['recent', 'status', 'name', 'created'])
 
 export function normalizeGroupCollectionSearchQuery(value: string | undefined): string | undefined {
   return normalizeCollectionSearch(value)

@@ -152,7 +152,7 @@ func TestGroupCreateWireAcceptsOnlyChannelContract(t *testing.T) {
 		"params":{"base_url":"https://proxy.example/v1"},
 		"provider_url":"https://provider.example",
 		"models":[],
-		"credentials":"sk-one",
+		"credential":"sk-one",
 		"confirm_same_target":true
 	}`)
 	if err := decodeStrictControlJSONObject(valid, &request); err != nil {
@@ -164,7 +164,7 @@ func TestGroupCreateWireAcceptsOnlyChannelContract(t *testing.T) {
 		t.Fatalf("GroupCreateRequest = %#v", request)
 	}
 	for _, legacy := range []string{"keys", "provider_id", "upstream_url", "protocols", "confirm_same_upstream_url"} {
-		body := []byte(`{"channel_id":"openai","models":[],"credentials":"sk-one","` + legacy + `":null}`)
+		body := []byte(`{"channel_id":"openai","models":[],"credential":"sk-one","` + legacy + `":null}`)
 		if err := decodeStrictControlJSONObject(body, &GroupCreateRequest{ConnectionType: "api_key"}); err == nil {
 			t.Fatalf("legacy field %q was accepted", legacy)
 		}
@@ -201,7 +201,7 @@ func TestGroupCreateRequiresConnectionTypeAndValidatesSubscriptionContract(t *te
 	_, err = fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("invalid subscription channel"), ChannelID: channel.Anthropic,
 		ConnectionType: models.ConnectionTypeSubscription,
-		Models:         optionalGroupModels{Set: true}, StagedCredentialIDs: []string{"stage-one"},
+		Models:         optionalGroupModels{Set: true}, StagedCredentialID: "stage-one",
 	})
 	if !errors.Is(err, app_errors.ErrValidation) {
 		t.Fatalf("unsupported subscription error = %v", err)
@@ -210,7 +210,7 @@ func TestGroupCreateRequiresConnectionTypeAndValidatesSubscriptionContract(t *te
 		Name: stringPointer("mixed input"), ChannelID: channel.Codex,
 		ConnectionType: models.ConnectionTypeSubscription,
 		Models:         optionalGroupModels{Set: true}, Credentials: "sk-mixed",
-		StagedCredentialIDs: []string{"stage-one"},
+		StagedCredentialID: "stage-one",
 	})
 	if !errors.Is(err, app_errors.ErrValidation) {
 		t.Fatalf("mixed credential input error = %v", err)
@@ -219,7 +219,7 @@ func TestGroupCreateRequiresConnectionTypeAndValidatesSubscriptionContract(t *te
 		Name: stringPointer("subscription custom target"), ChannelID: channel.Codex,
 		ConnectionType: models.ConnectionTypeSubscription,
 		Params:         json.RawMessage(`{"base_url":"https://example.com/v1"}`),
-		Models:         optionalGroupModels{Set: true}, StagedCredentialIDs: []string{"stage-one"},
+		Models:         optionalGroupModels{Set: true}, StagedCredentialID: "stage-one",
 	})
 	if !errors.Is(err, app_errors.ErrValidation) {
 		t.Fatalf("subscription custom target error = %v", err)
@@ -268,12 +268,12 @@ func TestCreateChannelGroupPersistsCanonicalCredentialsAndPublishes(t *testing.T
 		Models: optionalGroupModels{Set: true, Values: []GroupModel{
 			{ID: " provider-model ", Alias: " public ", AliasEnabled: true},
 		}},
-		Credentials: " sk-one \n sk-one\n", ConnectionType: "api_key",
+		Credentials: " sk-one ", ConnectionType: "api_key",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
 	}
-	if result.CredentialsAdded != 1 || result.CredentialsDuplicated != 1 {
+	if result.CredentialID == 0 {
 		t.Fatalf("CreateGroup() result = %#v", result)
 	}
 	second, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
@@ -285,7 +285,7 @@ func TestCreateChannelGroupPersistsCanonicalCredentialsAndPublishes(t *testing.T
 	if err != nil {
 		t.Fatalf("CreateGroup(second) error = %v", err)
 	}
-	if second.CredentialsAdded != 1 || second.CredentialsDuplicated != 0 {
+	if second.CredentialID == 0 {
 		t.Fatalf("CreateGroup(second) result = %#v", second)
 	}
 	encodedResult, err := json.Marshal(result)
@@ -296,8 +296,7 @@ func TestCreateChannelGroupPersistsCanonicalCredentialsAndPublishes(t *testing.T
 	if err := json.Unmarshal(encodedResult, &resultFields); err != nil {
 		t.Fatalf("json.Unmarshal(result) error = %v", err)
 	}
-	if len(resultFields) != 4 || resultFields["credentials_added"] == nil ||
-		resultFields["credentials_duplicated"] == nil || resultFields["keys_added"] != nil {
+	if len(resultFields) != 3 || resultFields["credential_id"] == nil || resultFields["keys_added"] != nil {
 		t.Fatalf("result fields = %s", encodedResult)
 	}
 
@@ -404,7 +403,7 @@ func TestCreateChannelGroupIdempotencyReplaysCredentialCounts(t *testing.T) {
 		ChannelID:   channel.OpenAI,
 		Params:      json.RawMessage(`{}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{}},
-		Credentials: " repeated \nrepeated\n", ConnectionType: "api_key",
+		Credentials: " repeated ", ConnectionType: "api_key",
 	}
 	const idempotencyKey = "328f47a2-9c35-4d6e-8b1a-1234567890ab"
 	first, err := fixture.service.CreateGroupIdempotent(t.Context(), idempotencyKey, request)
@@ -415,7 +414,7 @@ func TestCreateChannelGroupIdempotencyReplaysCredentialCounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay CreateGroupIdempotent() error = %v", err)
 	}
-	if !reflect.DeepEqual(replayed, first) || first.CredentialsAdded != 1 || first.CredentialsDuplicated != 1 {
+	if !reflect.DeepEqual(replayed, first) || first.CredentialID == 0 {
 		t.Fatalf("first/replayed = %#v / %#v", first, replayed)
 	}
 	var credentials int64
@@ -424,6 +423,61 @@ func TestCreateChannelGroupIdempotencyReplaysCredentialCounts(t *testing.T) {
 	}
 	if credentials != 1 || len(fixture.registry.CaptureActiveCredentialRefs([]uint{first.GroupID})) != 1 {
 		t.Fatalf("credential state = db %d registry %#v", credentials, fixture.registry.Snapshot())
+	}
+}
+
+func TestAPIKeyCredentialImportRejectsMultipleCredentialsAndCountsDuplicates(t *testing.T) {
+	t.Parallel()
+
+	fixture := newServiceFixture(t)
+	_, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name:           stringPointer("api-key-multiple-credentials"),
+		ChannelID:      channel.OpenAI,
+		ConnectionType: models.ConnectionTypeAPIKey,
+		Models:         optionalGroupModels{Set: true},
+		Credentials:    "sk-first\nsk-second",
+	})
+	if !errors.Is(err, app_errors.ErrSingleCredentialRequired) {
+		t.Fatalf("CreateGroup() error = %v, want single credential required", err)
+	}
+	if errors.Is(err, app_errors.ErrDuplicateCredentialIdentity) {
+		t.Fatalf("CreateGroup() error = %v, must not report subscription identity conflict", err)
+	}
+
+	groupID := createGroupForCredentialImport(t, fixture, "sk-only")
+	_, err = fixture.service.ImportGroupCredentials(t.Context(), groupID, CredentialImportRequest{
+		Credentials: "sk-only\nsk-only",
+	})
+	if !errors.Is(err, app_errors.ErrSingleCredentialRequired) {
+		t.Fatalf("occupied group configuration error = %v, want single credential required", err)
+	}
+	assertImportedCredentialState(t, fixture, groupID, 1)
+}
+
+func TestAPIKeyCredentialImportRejectsDistinctCredentialWithoutChangingExistingRow(t *testing.T) {
+	t.Parallel()
+
+	fixture := newServiceFixture(t)
+	groupID := createGroupForCredentialImport(t, fixture, "sk-original")
+	var before models.Credential
+	if err := fixture.db.Where("group_id = ?", groupID).Take(&before).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := fixture.service.ImportGroupCredentials(t.Context(), groupID, CredentialImportRequest{
+		Credentials: "sk-different",
+	})
+	var apiErr *app_errors.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != "SINGLE_CREDENTIAL_REQUIRED" {
+		t.Fatalf("ImportGroupCredentials() error = %v, want SINGLE_CREDENTIAL_REQUIRED", err)
+	}
+
+	var after []models.Credential
+	if err := fixture.db.Where("group_id = ?", groupID).Find(&after).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].ID != before.ID || after[0].Fingerprint != before.Fingerprint || after[0].Data != before.Data {
+		t.Fatalf("existing credential changed after rejected import: before=%#v after=%#v", before, after)
 	}
 }
 
@@ -525,14 +579,14 @@ func TestChannelGroupCollectionDetailAndOptionsUseChannelCredentialContract(t *t
 	}
 	item := collection.Items[0]
 	if item.ChannelID != channel.OpenAICompatible || string(item.Params) != `{"base_url":"https://collection.example/v1"}` ||
-		item.CredentialCounts.Total != 1 || item.CredentialCounts.Available != 1 {
+		!item.CredentialConfigured || item.CredentialStatus == nil || *item.CredentialStatus != "available" {
 		t.Fatalf("collection item = %#v", item)
 	}
 	assertNoLegacyGroupFields(t, item)
 
 	summary, err := fixture.service.GetGroupSummary(t.Context(), created.GroupID)
 	if err != nil || summary.ChannelID != channel.OpenAICompatible ||
-		string(summary.Params) != `{"base_url":"https://collection.example/v1"}` || summary.CredentialCount != 1 {
+		string(summary.Params) != `{"base_url":"https://collection.example/v1"}` || !summary.CredentialConfigured {
 		t.Fatalf("GetGroupSummary() = %#v, %v", summary, err)
 	}
 	assertNoLegacyGroupFields(t, summary)

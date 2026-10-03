@@ -507,9 +507,9 @@ func TestConsumeCredentialResetCreditRejectsReusedKeyForAnotherCredential(t *tes
 	stage := mustImportSubscriptionStage(t, fixture, "reset-credit-other", "other-reset@example.com")
 	otherGroup, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("reset credit other group"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID}, ConfirmSameTarget: true,
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID, ConfirmSameTarget: true,
 	})
 	if err != nil {
 		t.Fatal(err)

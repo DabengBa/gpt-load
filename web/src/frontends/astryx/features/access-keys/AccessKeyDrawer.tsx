@@ -35,7 +35,7 @@ import {
 import type { PendingAccessKeyCreateOperation } from '@shared/domain/access-keys/access-key-create-operation'
 import type { PendingAccessKeyEditOperation } from '@shared/domain/access-keys/access-key-edit-operation'
 import type { PendingAccessKeyRotateOperation } from '@shared/domain/access-keys/access-key-rotate-operation'
-import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
+
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useT } from '../../app/i18n'
@@ -192,6 +192,7 @@ export function AccessKeyDrawer({
   onSaved,
   onRotated,
   onDeleted,
+  renderUnsavedDialog,
 }: {
   open: boolean
   accessKey: AccessKeyDto | null
@@ -209,6 +210,10 @@ export function AccessKeyDrawer({
   onSaved(kind: 'created' | 'updated', name: string): void
   onRotated(name: string): void
   onDeleted(name: string): void
+  // The unsaved-changes dialog reads a shared controller store; hosts that
+  // already mount a useUnsavedChanges dialog (e.g. SettingsView) set this to
+  // false so only one AlertDialog instance renders.
+  renderUnsavedDialog?: boolean
 }) {
   const t = useT()
   const formFieldsRef = useRef<AccessKeyFormFieldsHandle | null>(null)
@@ -236,13 +241,12 @@ export function AccessKeyDrawer({
 
   const [rotateOpen, setRotateOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [nameTouched, setNameTouched] = useState(false)
 
   const { draft, base } = snapshot
   const derived = drawerDerived(snapshot)
   const { createOperationActive, formLocked, closeBlocked, dirty } = derived
 
-  // Draft field mutation helper — every edit path replaces the draft object so
-  // the snapshot diff stays trivially detectable.
   const patchDraft = (patch: Partial<typeof draft>) => controller.setDraft({ ...draft, ...patch })
   const patchFilters = (patch: Partial<AccessKeyFiltersDto>) =>
     controller.setDraft({ ...draft, filters: { ...draft.filters, ...patch } })
@@ -327,13 +331,16 @@ export function AccessKeyDrawer({
   const saveBlockerKey = ((): MessageId | '' => {
     if (snapshot.pending) return 'accessKeys.drawer.saveBlockedPending'
     if (snapshot.editReconciliation || createOperationActive) return ''
-    if (draft.name.trim().length === 0) return 'accessKeys.drawer.saveBlockedName'
+    // Show the name blocker only after the user has interacted — an untouched
+    // create drawer rendering it in error red reads as a pre-existing failure
+    // rather than guidance. (dirty alone misses type-then-clear.)
+    if (draft.name.trim().length === 0) {
+      return dirty || nameTouched ? 'accessKeys.drawer.saveBlockedName' : ''
+    }
     if (!Number.isSafeInteger(draft.rpm_limit) || draft.rpm_limit < 0) {
       return 'accessKeys.drawer.saveBlockedRPM'
     }
-    if (!isValidPriceMultiplier(draft.price_multiplier)) {
-      return 'common.priceMultiplier.invalid'
-    }
+
     if (!areAccessKeyCostLimitRulesValid(draft.costLimitRules)) {
       return 'accessKeys.drawer.saveBlockedCostLimits'
     }
@@ -385,6 +392,7 @@ export function AccessKeyDrawer({
   const unsaved = useUnsavedChanges({
     dirty: derived.unsavedDirty,
     blocked: closeBlocked,
+    renderDialog: renderUnsavedDialog !== false,
   })
 
   // Classic watch(open/accessKey, immediate): open → resetForOpen; close →
@@ -600,12 +608,14 @@ export function AccessKeyDrawer({
             name={draft.name}
             status={draft.status}
             rpmLimit={draft.rpm_limit}
-            priceMultiplier={draft.price_multiplier}
+
             disabled={formLocked}
-            onNameChange={(value) => patchDraft({ name: value })}
+            onNameChange={(value) => {
+              setNameTouched(true)
+              patchDraft({ name: value })
+            }}
             onStatusChange={(value) => patchDraft({ status: value })}
             onRpmLimitChange={(value) => patchDraft({ rpm_limit: value })}
-            onPriceMultiplierChange={(value) => patchDraft({ price_multiplier: value })}
           />
         </section>
 
@@ -630,7 +640,12 @@ export function AccessKeyDrawer({
             sourceMode={draft.sourceMode}
             allowedCidrs={draft.filters.allowed_cidrs}
             disabled={formLocked}
-            onExpirationModeChange={(value) => patchDraft({ expirationMode: value })}
+            onExpirationModeChange={(value) =>
+              patchDraft({
+                expirationMode: value,
+                ...(value === 'never' ? { expires_at_ms: null } : {}),
+              })
+            }
             onExpiresAtChange={(value) => patchDraft({ expires_at_ms: value })}
             onSourceModeChange={(value) => patchDraft({ sourceMode: value })}
             onAllowedCidrsChange={(value) => patchFilters({ allowed_cidrs: value })}

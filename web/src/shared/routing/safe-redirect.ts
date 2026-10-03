@@ -18,6 +18,15 @@ export function decodedPathSegments(path: string): string[] {
   }
 }
 
+function decodeTarget(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    // Malformed percent-encoding is invalid input, not an unexpected failure.
+    return null
+  }
+}
+
 export function safeRedirectTarget(
   raw: unknown,
   resolve: (raw: string) => SafeRedirectResolution,
@@ -33,13 +42,8 @@ export function safeRedirectTarget(
     return fallback
   }
 
-  let decodedRaw: string
-  try {
-    decodedRaw = decodeURIComponent(raw)
-  } catch {
-    return fallback
-  }
-  if (decodedRaw.startsWith('//') || decodedRaw.includes('\\')) {
+  const decodedRaw = decodeTarget(raw)
+  if (decodedRaw === null || decodedRaw.startsWith('//') || decodedRaw.includes('\\')) {
     return fallback
   }
 

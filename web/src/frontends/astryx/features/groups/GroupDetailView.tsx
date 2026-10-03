@@ -5,15 +5,15 @@ import { useRouterState } from '@tanstack/react-router'
 import { RefreshCw, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import type { CredentialCollectionFilters, CredentialItemDto } from '@shared/control/types'
-import { credentialCollectionQueryOptions } from '@shared/control/resources/credentials'
+import type { CredentialItemDto } from '@shared/control/types'
+import { credentialQueryOptions } from '@shared/control/resources/credentials'
 import {
   groupModelsQueryOptions,
   groupSettingsQueryOptions,
   groupSummaryQueryOptions,
 } from '@shared/control/resources/groups'
 import { pagePath } from '@shared/routing/page-routes'
-import { parseCredentialRouteQuery, parsePositiveId } from '@shared/routing/group-detail-route'
+import { parsePositiveId } from '@shared/routing/group-detail-route'
 import { scalarRouteQuery, type SharedRouteQuery } from '@shared/routing/route-query'
 
 import { useStableLoading } from '../../app/collection-loading'
@@ -37,8 +37,6 @@ const idleEditorState: GroupEditorState = {
   saved: false,
 }
 
-const unifiedCredentialFilters: CredentialCollectionFilters = { page: 1, page_size: 20 }
-
 const spin = stylex.keyframes({
   to: { transform: 'rotate(360deg)' },
 })
@@ -46,9 +44,17 @@ const spin = stylex.keyframes({
 const styles = stylex.create({
   page: {
     display: 'grid',
+    width: 'min(100%, 1288px)',
+    minWidth: 0,
+    marginInline: 'auto',
     alignContent: 'start',
-    gap: 'var(--space-3)',
-    paddingBottom: 'var(--space-3)',
+    gap: 'var(--space-4)',
+    paddingTop: 'var(--stage-padding-top)',
+    paddingBottom: 'var(--stage-padding-bottom)',
+    paddingInline: {
+      default: 'var(--stage-padding-inline)',
+      '@media (max-width: 680px)': 'var(--stage-padding-inline-compact)',
+    },
   },
   invalid: {
     display: 'grid',
@@ -83,6 +89,7 @@ const styles = stylex.create({
     minWidth: 0,
     alignItems: 'flex-end',
     gap: 'var(--space-3)',
+    flexWrap: { default: 'nowrap', '@media (max-width: 520px)': 'wrap' },
   },
   credentialField: {
     display: 'grid',
@@ -112,6 +119,18 @@ const styles = stylex.create({
   credentialRowEnd: {
     flexShrink: 0,
     marginBottom: '1px',
+  },
+  credentialHeading: {
+    margin: 0,
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--title-section)',
+    fontWeight: 650,
+  },
+  saveBar: {
+    borderRadius: 'var(--radius-control)',
+    backgroundColor: 'var(--color-surface-raised)',
+    backdropFilter: 'none',
+    boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
   },
   empty: {
     gridColumn: '1',
@@ -174,10 +193,7 @@ export function GroupDetailView() {
   // The summary omits the enabled flag, so the models tab reads it from the
   // settings query (same cache entry the settings tab prefetches).
   const settingsQuery = useQuery(groupSettingsQueryOptions(apiClient, groupId))
-  const credentialsQuery = useQuery({
-    ...credentialCollectionQueryOptions(apiClient, groupId ?? 0, unifiedCredentialFilters),
-    enabled: groupId !== undefined,
-  })
+  const credentialsQuery = useQuery(credentialQueryOptions(apiClient, groupId ?? 0))
   // managementOpen reads the RAW query — an absent/unknown tab renders the
   // unified settings+models view, matching classic.
   const managementOpen = scalarRouteQuery(rawSearch.tab) === 'credentials'
@@ -219,13 +235,10 @@ export function GroupDetailView() {
   useEffect(() => {
     if (groupId === undefined) return
     void Promise.allSettled([
-      queryClient.prefetchQuery(
-        credentialCollectionQueryOptions(apiClient, groupId, parseCredentialRouteQuery(rawSearch)),
-      ),
+      queryClient.prefetchQuery(credentialQueryOptions(apiClient, groupId)),
       queryClient.prefetchQuery(groupModelsQueryOptions(apiClient, groupId)),
       queryClient.prefetchQuery(groupSettingsQueryOptions(apiClient, groupId)),
     ])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, apiClient, queryClient])
 
   return (
@@ -297,12 +310,15 @@ export function GroupDetailView() {
                     onStateChange={setSettingsState}
                   />
                   <section
-                    aria-label={t('group.credentials.title')}
+                    aria-labelledby="group-credential-heading"
                     {...stylex.props(styles.credentials)}
                   >
-                    {credentialsQuery.data?.items.length ? (
+                    <h2 id="group-credential-heading" {...stylex.props(styles.credentialHeading)}>
+                      {t('group.credentials.title')}
+                    </h2>
+                    {credentialsQuery.data?.credential ? (
                       <div {...stylex.props(styles.credentialList)}>
-                        {credentialsQuery.data.items.map((credential) => {
+                        {[credentialsQuery.data.credential].map((credential) => {
                           const summary = unifiedCredentialSummary(credential, t)
                           return (
                             <div key={credential.mask} {...stylex.props(styles.credentialRow)}>
@@ -355,6 +371,7 @@ export function GroupDetailView() {
                   <div id="group-settings-advanced-target" />
                   <StickySaveBar
                     appearance="ledger"
+                    xstyle={styles.saveBar}
                     alwaysVisible
                     dirty={unifiedDirty}
                     pending={unifiedPending}

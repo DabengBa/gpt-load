@@ -145,11 +145,7 @@ const styles = stylex.create({
   },
 })
 
-// The classic borders come from :nth-child(-n+2)/:nth-child(odd) plus the
-// 761–1099px band overrides (:nth-child(n) / :first-child). Positional
-// pseudo-classes are not in the stylex allowlist, so each cell gets its own
-// deterministic border style; stylex merges per-property, so a flat value
-// here replaces the base value under every condition.
+// Per-cell borders replace positional selectors unsupported by Stylex.
 const metricBorders = stylex.create({
   // First cell: never a top border (first row) and never a left border
   // (odd column in the 2-up layout, :first-child in the 4-up band).

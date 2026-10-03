@@ -67,8 +67,7 @@ export default {
       enabledOn: 'Enabled {name}',
       enabledOff: 'Disabled {name}. It no longer takes new requests.',
       toggleFailed: 'Could not change the switch. Try again.',
-      appendCredential: 'Add credential',
-      appendCredentialFor: 'Add a credential to {name}',
+      manageCredentialFor: 'Manage credential for {name}',
     },
   },
   group: {
@@ -655,8 +654,8 @@ export default {
           usedPercent: '{value}% used',
           requests: 'Requests',
           tokens: 'Tokens',
-          priceMultiplierBasis:
-            'Estimated using model reference prices and Group/access key multipliers at request time; not an actual bill',
+          referencePriceBasis:
+            'Estimated using model reference prices frozen at request time; not an actual bill',
           referenceCost: 'API reference cost',
           unavailable: 'Local statistics are not currently available',
           dataIncomplete: 'Statistics do not cover the full window, so the value may be low',

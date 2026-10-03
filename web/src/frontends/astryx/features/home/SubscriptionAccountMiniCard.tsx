@@ -94,7 +94,7 @@ const styles = stylex.create({
   },
   planFree: {
     backgroundColor: 'var(--color-neutral-bg)',
-    color: 'var(--color-neutral)',
+    color: 'var(--color-neutral-fg)',
   },
   planStandard: {
     backgroundColor: 'var(--color-success-bg)',

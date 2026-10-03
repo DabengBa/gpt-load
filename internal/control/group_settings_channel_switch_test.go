@@ -755,11 +755,11 @@ func TestUpdateGroupSettingsSwitchChannelConnectionTypeRejected_SubscriptionToAP
 	fixture := newServiceFixture(t)
 	stage := mustImportSubscriptionStage(t, fixture, "switch-reverse", "switch-reverse@example.com")
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name:                stringPointer("sub-to-apikey-reject"),
-		ChannelID:           channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		Name:               stringPointer("sub-to-apikey-reject"),
+		ChannelID:          channel.Codex,
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup(subscription) error = %v", err)

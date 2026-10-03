@@ -14,6 +14,67 @@ import { installRequestLogDisplayRoutes, requestIDs } from './fixtures/request-l
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Request log details' })
 
+for (const width of [390, 1280]) {
+  for (const principal of ['admin', 'access_key'] as const) {
+    test(`v7 receipt formula ${principal} at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      const receipt = {
+        schema_version: 7,
+        method: 'unit_rate_sum',
+        method_version: 1,
+        currency: 'USD',
+        pricing_mode: 'standard',
+        rule: { channel_id: 'openai_compatible', model_id: 'gpt-5.6-luna' },
+        context_threshold_tokens: null,
+        total_nano_usd: '16000',
+        line_items: [
+          {
+            code: 'cache_write_1h',
+            quantity: '10',
+            rate_nano_usd_per_million: '1000000000',
+            multiplier: { numerator: '8', denominator: '5' },
+            state: 'priced',
+            amount_nano_usd: '16000',
+          },
+        ],
+      }
+      await installRequestLogDisplayRoutes(
+        page,
+        (items) =>
+          items.map((item) => ({
+            ...item,
+            usage_state: 'complete',
+            cost_state: 'priced',
+            pricing_completeness: 'complete',
+            pricing_mode: 'standard',
+            estimated_cost_nano_usd: '16000',
+          })),
+        receipt,
+        principal,
+      )
+      await openLogs(page, `?selected_request_id=${requestIDs.mapped}`)
+      const panel = dialog(page)
+      await expect(panel).toBeVisible()
+      if (principal === 'admin') {
+        await panel
+          .locator('details')
+          .filter({ has: page.getByText('Cost calculation', { exact: true }) })
+          .locator('summary')
+          .click()
+        await expect(panel.getByText('Cost calculation', { exact: true })).toBeVisible()
+        await expect(panel).toContainText('10 × $1.00/1M × 8/5')
+        await expect(panel).toContainText('$0.000016')
+        await expect(panel.getByText(/base total|final total|price multiplier/i)).toHaveCount(0)
+        await panel.getByText('Cost calculation', { exact: true }).scrollIntoViewIfNeeded()
+      } else {
+        await expect(panel.getByText('Cost calculation', { exact: true })).toHaveCount(0)
+        await expect(panel.getByText('Attempt chain', { exact: true })).toHaveCount(0)
+      }
+      await panel.screenshot({ path: testInfo.outputPath('log-v7.png') })
+    })
+  }
+}
+
 // First navigation to /logs on a cold vite dev server transforms the whole
 // astryx module graph — past the default 30s test budget on this checkout.
 test.setTimeout(90_000)

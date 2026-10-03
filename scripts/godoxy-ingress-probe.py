@@ -7,6 +7,7 @@ import argparse
 from collections import OrderedDict
 import ipaddress
 import json
+import logging
 import signal
 import socket
 import ssl
@@ -22,7 +23,9 @@ DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024
 
 
 class ProbeError(Exception):
-    def __init__(self, error_type: str, message: str, response: dict | None = None) -> None:
+    def __init__(
+        self, error_type: str, message: str, response: dict | None = None
+    ) -> None:
         super().__init__(message)
         self.error_type = error_type
         self.response = response
@@ -95,6 +98,13 @@ class FixtureState:
 
 class FixtureHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    routes = {
+        "/delay-headers": "_delay_headers",
+        "/sse": "_sse",
+        "/status": "_status",
+        "/json-error": "_json_error",
+        "/health": "_health",
+    }
 
     @property
     def state(self) -> FixtureState:
@@ -106,21 +116,17 @@ class FixtureHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         parsed = urlsplit(self.path)
         query = parse_qs(parsed.query, keep_blank_values=True)
+        route = self.routes.get(parsed.path)
         try:
-            if parsed.path == "/delay-headers":
-                self._delay_headers(query)
-            elif parsed.path == "/sse":
-                self._sse(query)
-            elif parsed.path == "/status":
-                self._status(query)
-            elif parsed.path == "/json-error":
-                self._json_error(query)
-            elif parsed.path == "/health":
-                self._send_json(200, {"status": "ok"})
-            else:
+            if route is None:
                 self._send_text(404, "not found")
+            else:
+                getattr(self, route)(query)
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, OSError):
             self.close_connection = True
+
+    def _health(self, _query: dict[str, list[str]]) -> None:
+        self._send_json(200, {"status": "ok"})
 
     def _value(self, query: dict[str, list[str]], name: str, default: str) -> str:
         value = query.get(name, [default])[0]
@@ -128,13 +134,22 @@ class FixtureHandler(BaseHTTPRequestHandler):
             raise ValueError(f"invalid {name}")
         return value
 
-    def _float_value(self, query: dict[str, list[str]], name: str, default: float, maximum: float) -> float:
+    def _float_value(
+        self, query: dict[str, list[str]], name: str, default: float, maximum: float
+    ) -> float:
         value = float(self._value(query, name, str(default)))
         if value < 0 or value > maximum:
             raise ValueError(f"{name} must be between 0 and {maximum}")
         return value
 
-    def _int_value(self, query: dict[str, list[str]], name: str, default: int, minimum: int, maximum: int) -> int:
+    def _int_value(
+        self,
+        query: dict[str, list[str]],
+        name: str,
+        default: int,
+        minimum: int,
+        maximum: int,
+    ) -> int:
         value = int(self._value(query, name, str(default)))
         if value < minimum or value > maximum:
             raise ValueError(f"{name} must be between {minimum} and {maximum}")
@@ -166,9 +181,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 if index > 1:
                     time.sleep(interval)
                 payload = (
-                    f"id: {index}\n"
-                    "event: fixture\n"
-                    f'data: {{"event": {index}}}\n\n'
+                    f'id: {index}\nevent: fixture\ndata: {{"event": {index}}}\n\n'
                 ).encode("utf-8")
                 self.wfile.write(payload)
                 self.wfile.flush()
@@ -195,9 +208,13 @@ class FixtureHandler(BaseHTTPRequestHandler):
         status = self._int_value(query, "status", 429, 400, 599)
         case = self._value(query, "case", "json-error")
         body = {"error": "synthetic", "case": case}
-        self._send_json(status, body, {"X-Fixture-Error": "synthetic", "X-Fixture-Case": case})
+        self._send_json(
+            status, body, {"X-Fixture-Error": "synthetic", "X-Fixture-Case": case}
+        )
 
-    def _send_text(self, status: int, body: str, extra_headers: dict[str, str] | None = None) -> None:
+    def _send_text(
+        self, status: int, body: str, extra_headers: dict[str, str] | None = None
+    ) -> None:
         encoded = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -210,7 +227,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
         self.wfile.flush()
         self.close_connection = True
 
-    def _send_json(self, status: int, body: dict, extra_headers: dict[str, str] | None = None) -> None:
+    def _send_json(
+        self, status: int, body: dict, extra_headers: dict[str, str] | None = None
+    ) -> None:
         encoded = json.dumps(body, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -228,7 +247,9 @@ class FixtureServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], tls_context: ssl.SSLContext | None) -> None:
+    def __init__(
+        self, address: tuple[str, int], tls_context: ssl.SSLContext | None
+    ) -> None:
         super().__init__(address, FixtureHandler)
         self.state = FixtureState()
         if tls_context is not None:
@@ -239,7 +260,9 @@ def require_loopback(bind: str) -> None:
     try:
         address = ipaddress.ip_address(bind)
     except ValueError as exc:
-        raise ProbeError("invalid_bind", "fixture bind must be a literal loopback address") from exc
+        raise ProbeError(
+            "invalid_bind", "fixture bind must be a literal loopback address"
+        ) from exc
     if not address.is_loopback:
         raise ProbeError("invalid_bind", "fixture bind must be loopback")
 
@@ -247,7 +270,9 @@ def require_loopback(bind: str) -> None:
 def run_server(args: argparse.Namespace) -> int:
     require_loopback(args.bind)
     if bool(args.tls_cert) != bool(args.tls_key):
-        raise ProbeError("invalid_tls_config", "--tls-cert and --tls-key must be supplied together")
+        raise ProbeError(
+            "invalid_tls_config", "--tls-cert and --tls-key must be supplied together"
+        )
     tls_context = None
     if args.tls_cert:
         tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -281,7 +306,9 @@ class SocketReader:
         self.sock = sock
         self.buffer = bytearray()
 
-    def _receive(self, deadline: float, error_type: str, allow_eof: bool = False) -> bool:
+    def _receive(
+        self, deadline: float, error_type: str, allow_eof: bool = False
+    ) -> bool:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -302,7 +329,10 @@ class SocketReader:
             if not data:
                 if allow_eof:
                     return False
-                raise ProbeError("connection_closed", "connection closed before response was complete")
+                raise ProbeError(
+                    "connection_closed",
+                    "connection closed before response was complete",
+                )
             self.buffer.extend(data)
             return True
 
@@ -315,7 +345,9 @@ class SocketReader:
                 del self.buffer[:end]
                 return result
             if len(self.buffer) > MAX_HEADER_BYTES:
-                raise ProbeError("header_too_large", "response headers exceed the probe limit")
+                raise ProbeError(
+                    "header_too_large", "response headers exceed the probe limit"
+                )
             self._receive(deadline, error_type)
 
     def read_exact(self, size: int, deadline: float, error_type: str) -> bytes:
@@ -438,7 +470,9 @@ def response_headers(block: bytes) -> tuple[int, str, dict[str, str]]:
         try:
             raw_name, raw_value = line.split(b":", 1)
         except ValueError as exc:
-            raise ProbeError("invalid_response", "invalid HTTP response header") from exc
+            raise ProbeError(
+                "invalid_response", "invalid HTTP response header"
+            ) from exc
         name = raw_name.decode("latin-1").strip().lower()
         value = raw_value.decode("latin-1").strip()
         headers.setdefault(name, []).append(value)
@@ -478,7 +512,9 @@ def iter_body(reader: SocketReader, headers: dict[str, str], read_timeout: float
         if remaining < 0:
             raise ProbeError("invalid_body", "negative Content-Length")
         while remaining:
-            chunk = reader.read_exact(min(65536, remaining), body_deadline, "read_timeout")
+            chunk = reader.read_exact(
+                min(65536, remaining), body_deadline, "read_timeout"
+            )
             remaining -= len(chunk)
             yield chunk
         return
@@ -494,7 +530,9 @@ def make_tls_context(ca_file: str | None) -> ssl.SSLContext:
     try:
         context = ssl.create_default_context(cafile=ca_file)
     except (OSError, ssl.SSLError) as exc:
-        raise ProbeError("tls_configuration_error", "unable to load the explicit CA file") from exc
+        raise ProbeError(
+            "tls_configuration_error", "unable to load the explicit CA file"
+        ) from exc
     context.check_hostname = True
     context.verify_mode = ssl.CERT_REQUIRED
     return context
@@ -505,7 +543,9 @@ def run_request(args: argparse.Namespace) -> dict:
     if args.ca_file and scheme != "https":
         raise ProbeError("invalid_tls_config", "--ca-file is only valid for https URLs")
     if args.server_name and scheme != "https":
-        raise ProbeError("invalid_tls_config", "--server-name is only valid for https URLs")
+        raise ProbeError(
+            "invalid_tls_config", "--server-name is only valid for https URLs"
+        )
     if args.header_timeout <= 0 or args.read_timeout <= 0 or args.connect_timeout <= 0:
         raise ProbeError("invalid_timeout", "timeouts must be positive")
 
@@ -517,7 +557,9 @@ def run_request(args: argparse.Namespace) -> dict:
     response: dict | None = None
     try:
         try:
-            sock = socket.create_connection((hostname, port), timeout=args.connect_timeout)
+            sock = socket.create_connection(
+                (hostname, port), timeout=args.connect_timeout
+            )
         except (OSError, socket.timeout) as exc:
             raise ProbeError("connect_error", "unable to connect to target") from exc
         if scheme == "https":
@@ -526,7 +568,10 @@ def run_request(args: argparse.Namespace) -> dict:
             try:
                 sock = context.wrap_socket(sock, server_hostname=server_name)
             except (ssl.SSLError, OSError) as exc:
-                raise ProbeError("tls_verification_error", "TLS certificate or hostname verification failed") from exc
+                raise ProbeError(
+                    "tls_verification_error",
+                    "TLS certificate or hostname verification failed",
+                ) from exc
         request_headers = [
             f"GET {path} HTTP/1.1",
             f"Host: {host_header}",
@@ -566,12 +611,16 @@ def run_request(args: argparse.Namespace) -> dict:
         for expected in args.expect_header:
             name, expected_value = parse_expected_header(expected)
             if headers.get(name) != expected_value:
-                raise ProbeError("assertion_failed", f"expected response header {name}", response)
+                raise ProbeError(
+                    "assertion_failed", f"expected response header {name}", response
+                )
 
         if args.sse:
             content_type = headers.get("content-type", "").lower()
             if "text/event-stream" not in content_type:
-                raise ProbeError("assertion_failed", "response is not text/event-stream", response)
+                raise ProbeError(
+                    "assertion_failed", "response is not text/event-stream", response
+                )
             parser = SseParser()
             events: list[dict] = []
             event_receive_times: list[float] = []
@@ -582,10 +631,15 @@ def run_request(args: argparse.Namespace) -> dict:
                 for event in parser.feed(chunk):
                     receive_time = time.time()
                     event["received_at"] = receive_time
-                    event["elapsed_ms"] = round((receive_time - header_received_at) * 1000, 3)
+                    event["elapsed_ms"] = round(
+                        (receive_time - header_received_at) * 1000, 3
+                    )
                     events.append(event)
                     event_receive_times.append(receive_time)
-                    if args.cancel_after_events and len(events) >= args.cancel_after_events:
+                    if (
+                        args.cancel_after_events
+                        and len(events) >= args.cancel_after_events
+                    ):
                         cancelled_after_events = len(events)
                         break
                 if cancelled_after_events is not None:
@@ -606,13 +660,20 @@ def run_request(args: argparse.Namespace) -> dict:
                     {**response, "events": events, "eof_observed": eof_observed},
                 )
             events_before_eof = (
-                eof_observed and eof_at is not None and all(received < eof_at for received in event_receive_times)
+                eof_observed
+                and eof_at is not None
+                and all(received < eof_at for received in event_receive_times)
             )
             if eof_observed and not events_before_eof:
                 raise ProbeError(
                     "assertion_failed",
                     "SSE event was not observed before EOF",
-                    {**response, "events": events, "eof_observed": eof_observed, "eof_at": eof_at},
+                    {
+                        **response,
+                        "events": events,
+                        "eof_observed": eof_observed,
+                        "eof_at": eof_at,
+                    },
                 )
             response.update(
                 {
@@ -629,19 +690,34 @@ def run_request(args: argparse.Namespace) -> dict:
             for chunk in iter_body(reader, headers, args.read_timeout):
                 body.extend(chunk)
                 if len(body) > args.max_body_bytes:
-                    raise ProbeError("body_too_large", "response body exceeds the probe limit", response)
+                    raise ProbeError(
+                        "body_too_large",
+                        "response body exceeds the probe limit",
+                        response,
+                    )
             eof_at = time.time()
             body_text = bytes(body).decode("utf-8", errors="replace")
-            response.update({"body": body_text, "body_bytes": len(body), "eof_observed": True, "eof_at": eof_at})
+            response.update(
+                {
+                    "body": body_text,
+                    "body_bytes": len(body),
+                    "eof_observed": True,
+                    "eof_at": eof_at,
+                }
+            )
             if args.expect_body_contains and args.expect_body_contains not in body_text:
-                raise ProbeError("assertion_failed", "expected response body text was not found", response)
+                raise ProbeError(
+                    "assertion_failed",
+                    "expected response body text was not found",
+                    response,
+                )
         return response
     finally:
         if sock is not None:
             try:
                 sock.close()
-            except OSError:
-                pass
+            except OSError as exc:
+                logging.warning("probe: failed to close socket: %s", exc)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -684,7 +760,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.expect_events is not None and args.expect_events < 1:
             raise ProbeError("invalid_expectation", "--expect-events must be positive")
         if args.cancel_after_events is not None and args.cancel_after_events < 1:
-            raise ProbeError("invalid_expectation", "--cancel-after-events must be positive")
+            raise ProbeError(
+                "invalid_expectation", "--cancel-after-events must be positive"
+            )
         response = run_request(args)
         print(json.dumps({"ok": True, "response": response}, separators=(",", ":")))
         return 0
@@ -697,7 +775,10 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, ssl.SSLError) as exc:
         print(
             json.dumps(
-                {"ok": False, "error": {"type": "configuration_error", "message": str(exc)}},
+                {
+                    "ok": False,
+                    "error": {"type": "configuration_error", "message": str(exc)},
+                },
                 separators=(",", ":"),
             )
         )

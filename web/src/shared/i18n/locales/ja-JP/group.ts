@@ -67,8 +67,7 @@ export default {
       enabledOn: '{name} を有効にしました',
       enabledOff: '{name} を停止しました。新しいリクエストは受け付けません。',
       toggleFailed: '切り替えに失敗しました。再試行してください。',
-      appendCredential: '認証情報を追加',
-      appendCredentialFor: '{name} に認証情報を追加',
+      manageCredentialFor: '{name} の認証情報を管理',
     },
   },
   group: {
@@ -660,8 +659,8 @@ export default {
           usedPercent: '使用済み {value}%',
           requests: 'リクエスト',
           tokens: 'トークン',
-          priceMultiplierBasis:
-            'リクエスト時のモデル参考価格とグループ・アクセスキー倍率に基づく推定で、実際の請求額ではありません',
+          referencePriceBasis:
+            'リクエスト時に固定されたモデル参考価格による推定で、実際の請求額ではありません',
           referenceCost: 'API 参考コスト',
           unavailable: '利用可能なローカル統計は現在ありません',
           dataIncomplete: '統計データが期間全体をカバーしていないため、値が少ない場合があります',

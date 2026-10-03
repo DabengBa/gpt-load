@@ -28,7 +28,7 @@ function collectionItem(group: FixtureGroup) {
   return {
     id: group.id,
     name: group.name,
-    price_multiplier: '1',
+
     channel_id: group.channel_id,
     connection_type: group.connection_type,
     params: {},
@@ -36,23 +36,8 @@ function collectionItem(group: FixtureGroup) {
     status: group.status,
     model_count: 4,
     client_model_count: 2,
-    // Contract: a disabled group carries all credentials in `disabled`.
-    credential_counts:
-      group.status === 'disabled'
-        ? {
-            total: group.credential_total,
-            available: 0,
-            cooldown: 0,
-            blacklisted: 0,
-            disabled: group.credential_total,
-          }
-        : {
-            total: group.credential_total,
-            available: group.credential_total,
-            cooldown: 0,
-            blacklisted: 0,
-            disabled: 0,
-          },
+    credential_configured: group.credential_total > 0,
+    credential_status: group.credential_total > 0 ? 'available' : null,
   }
 }
 
@@ -70,7 +55,7 @@ function makeGroup(index: number): FixtureGroup {
     status,
     connection_type: index % 3 === 0 ? 'subscription' : 'api_key',
     channel_id: 'openai',
-    credential_total: (index * 13) % 40,
+    credential_total: index % 2,
     created_ms: 1_700_000_000_000 + index * 60_000,
   }
 }
@@ -139,9 +124,7 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
         case 'name':
           sorted.sort((a, b) => a.name.localeCompare(b.name))
           break
-        case 'credentials':
-          sorted.sort((a, b) => b.credential_total - a.credential_total)
-          break
+
         case 'created':
           sorted.sort((a, b) => b.created_ms - a.created_ms)
           break
@@ -220,6 +203,103 @@ async function expectAstryxDocument(page: Page): Promise<void> {
 
 function collectionTable(page: Page) {
   return page.getByRole('table', { name: 'Group list' })
+}
+
+test('populated collection exposes import, result count, and credential deep links', async ({
+  page,
+}) => {
+  await mockCollection(page, makeGroups(5))
+  await page.goto('/groups', { waitUntil: 'load' })
+  await expect(collectionTable(page)).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('groups-desktop.png'), fullPage: true })
+
+  await expect(page.getByRole('link', { name: 'Import channel credentials' })).toHaveAttribute(
+    'href',
+    '/import',
+  )
+  await expect(page.getByLabel('Filter Groups')).toContainText('Showing 5 / 5 Groups')
+  await expect(
+    collectionTable(page).getByRole('link', { name: 'Manage credential for Group 0005' }),
+  ).toHaveAttribute('href', '/groups/5?tab=credentials')
+})
+
+test('narrow layout keeps filters visible without page overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 })
+  await mockCollection(page, makeGroups(5))
+  await page.goto('/groups', { waitUntil: 'load' })
+  await expect(collectionTable(page)).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('groups-mobile.png'), fullPage: true })
+
+  const bounds = await page.getByLabel('Filter Groups').boundingBox()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.width).toBeGreaterThan(280)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(360)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
+  const status = collectionTable(page)
+    .getByRole('row')
+    .nth(1)
+    .getByText('Available', { exact: true })
+  expect(
+    await status.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      const topElement = document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      )
+      return topElement !== null && (node === topElement || node.contains(topElement))
+    }),
+  ).toBe(true)
+  const credentialAction = collectionTable(page).getByRole('link', {
+    name: 'Manage credential for Group 0005',
+  })
+  await credentialAction.focus()
+  await expect(credentialAction).toBeFocused()
+
+  expect(
+    await credentialAction.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      return node.contains(
+        document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+      )
+    }),
+  ).toBe(true)
+  await page.getByRole('combobox', { name: 'Connection type' }).click()
+  await page.getByRole('option', { name: 'Subscription account' }).click()
+  await expect(page).toHaveURL(/connection_type=subscription/)
+  await page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }).click()
+  await expect(page).not.toHaveURL(/connection_type=/)
+})
+
+for (const width of [320, 768, 1440]) {
+  test(`collection remains legible at ${width}px in dark mode with long names`, async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.setViewportSize({ width, height: 900 })
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+    const groups = makeGroups(6)
+    groups[5]!.name = 'Production gateway / primary subscription / long upstream group name'
+    await mockCollection(page, groups)
+    await page.goto('/groups', { waitUntil: 'load' })
+    const table = collectionTable(page)
+    await expect(table).toBeVisible()
+    await expect(table.getByRole('row')).toHaveCount(7)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    const summary = page.getByRole('region', { name: 'Group status overview' })
+    const available = summary.getByRole('button', { name: /Available/ })
+    await available.focus()
+    await page.keyboard.press('Space')
+    await expect(available).toHaveAttribute('aria-pressed', 'true')
+    await expect(page).toHaveURL(/status=available/)
+    await page.screenshot({
+      path: test.info().outputPath(`groups-dark-${width}.png`),
+      fullPage: true,
+    })
+    expect(errors).toEqual([])
+  })
 }
 
 test('renders summary chips, toolbar, and server-paginated rows', async ({ page }) => {

@@ -18,7 +18,7 @@ func TestProviderURLMigrationAddsNullableTextColumnAndPreservesRows(t *testing.T
 		func() error { return migrations.Up0006(db) },
 		func() error { return migrations.Up0007(db) },
 		func() error { return migrations.Up0008(db) },
-		func() error { return migrations.Up0009(db) },
+
 		func() error { return migrations.Up0010(db) },
 		func() error { return migrations.Up0011(db) },
 		func() error { return migrations.Up0012(db) },

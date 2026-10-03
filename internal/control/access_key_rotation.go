@@ -127,9 +127,7 @@ func (s *Service) RotateAccessKeyIdempotent(
 	if err := json.Unmarshal(operationResult.CanonicalResult, &metadata); err != nil {
 		return AccessKeyRotateResult{}, app_errors.ErrInternalServer
 	}
-	if metadata.PriceMultiplier == "" {
-		metadata.PriceMultiplier = "1"
-	}
+
 	if metadata.CostLimitRules == nil {
 		metadata.CostLimitRules = []AccessKeyCostLimitRule{}
 	}
@@ -151,7 +149,7 @@ func loadAccessKeyMetadataRow(tx *gorm.DB, id uint) (accessKeyMetadataRow, error
 	if err := tx.Model(&models.AccessKey{}).
 		Select(
 			"id", "name", "key_suffix", "status", "filters", "rpm_limit",
-			"expires_at_ms", "created_at_ms", "updated_at_ms", "price_multiplier_micros",
+			"expires_at_ms", "created_at_ms", "updated_at_ms",
 		).
 		Where("id = ?", id).
 		Take(&row).Error; err != nil {

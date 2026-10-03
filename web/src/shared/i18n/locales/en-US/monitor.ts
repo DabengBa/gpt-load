@@ -360,7 +360,7 @@ export default {
         totalTokens: 'Total reported tokens',
         persistedWindow: 'Current reporting window',
         estimatedCost: 'Estimated cost',
-        estimatedCostBasis: 'Reported tokens and multipliers at request time',
+        estimatedCostBasis: 'Reported tokens and frozen model reference prices; not an actual bill',
       },
       tokens: {
         cacheRead: 'Cache read',
@@ -665,6 +665,8 @@ export default {
     },
     schedule: {
       panel: {
+        noMatchingModels: 'No matching models',
+        noModels: 'No models available',
         model: 'External model',
         selectModel: 'Select a model',
         loadingOptions: 'Loading model options…',
@@ -1235,18 +1237,12 @@ export default {
       },
       receipt: {
         total: 'Priced total',
-        baseTotal: 'Base priced total',
-        finalTotal: 'Final priced total',
-        totalRounding:
-          'Components are rounded using the original pricing rules and summed. The total is then multiplied by both group and access key multipliers and rounded once to the nearest 0.000000001 USD. Unpriced portions are excluded.',
         rounding:
-          'Each priced component is rounded to the nearest 0.000000001 USD after all multipliers, then summed. Unpriced portions are excluded.',
+          'Each priced component uses frozen model prices and its component coefficient (such as 8/5 for cache writes), is rounded to the nearest 0.000000001 USD, then summed. Unpriced portions are excluded.',
         formula: 'Cost calculation',
         input: 'Input',
         output: 'Output',
         identity: 'Pricing identity',
-        historicalSchema1: 'Historical scope',
-        historicalSchema2: 'Historical global price',
       },
       pricingMode: {
         fastLabel: 'Fast mode pricing',

@@ -6,16 +6,27 @@
   line-height: 1;
 }
 
-.channel-icon svg,
 .channel-icon img {
   display: block;
   width: 1em;
   height: 1em;
 }
 
-.channel-icon img {
+.channel-icon--raster img {
   border-radius: 0.2em;
+}
+
+.channel-icon img {
   object-fit: contain;
+}
+
+.channel-icon--mask {
+  width: 1em;
+  height: 1em;
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
 }
 
 .channel-icon--fallback {

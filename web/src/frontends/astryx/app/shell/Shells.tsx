@@ -185,9 +185,11 @@ interface NavItem {
 }
 
 function navItems(isAccessKey: boolean): readonly NavItem[] {
+  // Schedule is the single model entry for both principals; the retired
+  // models page no longer gets a nav slot.
   const shared: NavItem[] = [
     { key: 'home', to: pagePath('home'), labelKey: 'shell.home' },
-    { key: 'models', to: pagePath('models'), labelKey: 'shell.models' },
+    { key: 'schedule', to: pagePath('schedule'), labelKey: 'shell.schedule' },
     { key: 'monitor', to: pagePath('monitor'), labelKey: 'shell.monitor' },
     { key: 'logs', to: pagePath('logs'), labelKey: 'shell.logs' },
   ]
@@ -196,9 +198,7 @@ function navItems(isAccessKey: boolean): readonly NavItem[] {
     shared[0]!,
     { key: 'groups', to: pagePath('groups'), labelKey: 'shell.groups' },
     shared[1]!,
-    { key: 'access-keys', to: pagePath('access-keys'), labelKey: 'shell.accessKeys' },
     shared[2]!,
-    { key: 'schedule', to: pagePath('schedule'), labelKey: 'shell.schedule' },
     shared[3]!,
     { key: 'settings', to: pagePath('settings'), labelKey: 'shell.settings' },
   ]

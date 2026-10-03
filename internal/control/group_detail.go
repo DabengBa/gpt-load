@@ -29,17 +29,17 @@ type GroupEffectiveConfigResponse struct {
 // It deliberately excludes models and configuration that are loaded through focused
 // resources.
 type GroupSummaryResponse struct {
-	PriceMultiplier     string                  `json:"price_multiplier"`
-	ID                  uint                    `json:"id"`
-	Name                string                  `json:"name"`
-	ChannelID           channel.ID              `json:"channel_id"`
-	ConnectionType      models.ConnectionType   `json:"connection_type"`
-	Params              json.RawMessage         `json:"params"`
-	ProviderURL         *string                 `json:"provider_url"`
-	ServiceStatus       GroupCollectionStatus   `json:"service_status"`
-	ServiceStatusReason *GroupUnavailableReason `json:"service_status_reason"`
-	CredentialCount     int64                   `json:"credential_count"`
-	ModelCount          int                     `json:"model_count"`
+	ID                   uint                    `json:"id"`
+	Name                 string                  `json:"name"`
+	ChannelID            channel.ID              `json:"channel_id"`
+	ConnectionType       models.ConnectionType   `json:"connection_type"`
+	Params               json.RawMessage         `json:"params"`
+	ProviderURL          *string                 `json:"provider_url"`
+	ServiceStatus        GroupCollectionStatus   `json:"service_status"`
+	ServiceStatusReason  *GroupUnavailableReason `json:"service_status_reason"`
+	CredentialConfigured bool                    `json:"credential_configured"`
+	CredentialStatus     *string                 `json:"credential_status"`
+	ModelCount           int                     `json:"model_count"`
 }
 
 func (s *Service) GetGroupSummary(ctx context.Context, groupID uint) (GroupSummaryResponse, error) {
@@ -55,15 +55,16 @@ func (s *Service) GetGroupSummary(ctx context.Context, groupID uint) (GroupSumma
 			continue
 		}
 		return GroupSummaryResponse{
-			PriceMultiplier: record.PriceMultiplier,
-			ID:              record.ID, Name: record.Name,
+
+			ID: record.ID, Name: record.Name,
 			ChannelID: record.ChannelID, Params: append(json.RawMessage(nil), record.Params...),
-			ConnectionType:      record.ConnectionType,
-			ProviderURL:         record.ProviderURL,
-			ServiceStatus:       record.Status,
-			ServiceStatusReason: record.UnavailableReason,
-			CredentialCount:     record.CredentialCounts.Total,
-			ModelCount:          int(record.ModelCount),
+			ConnectionType:       record.ConnectionType,
+			ProviderURL:          record.ProviderURL,
+			ServiceStatus:        record.Status,
+			ServiceStatusReason:  record.UnavailableReason,
+			CredentialConfigured: record.CredentialConfigured,
+			CredentialStatus:     record.CredentialStatus,
+			ModelCount:           int(record.ModelCount),
 		}, nil
 	}
 	return GroupSummaryResponse{}, app_errors.ErrResourceNotFound

@@ -573,7 +573,7 @@ func TestRequestLogDetailEndpointReturnsAttemptsAndFrozenPricingReceipt(t *testi
 	amount := int64(1_000_000)
 	contextThreshold := int64(272_000)
 	receipt := &pricing.Receipt{
-		SchemaVersion:          4,
+		SchemaVersion:          7,
 		Method:                 pricing.ReceiptMethodUnitRateSum,
 		MethodVersion:          1,
 		Currency:               "USD",
@@ -738,13 +738,11 @@ func TestRequestLogDetailEndpointReturnsAttemptsAndFrozenPricingReceipt(t *testi
 	}
 }
 
-func TestRequestLogPricingReceiptKeepsHistoricalSchemasReadable(t *testing.T) {
+func TestRequestLogPricingReceiptRejectsHistoricalSchemas(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name          string
-		receipt       pricing.Receipt
-		wantScopeKey  string
-		wantChannelID string
+		name    string
+		receipt pricing.Receipt
 	}{
 		{
 			name: "v1 scoped identity",
@@ -754,11 +752,9 @@ func TestRequestLogPricingReceiptKeepsHistoricalSchemasReadable(t *testing.T) {
 				MethodVersion: 1,
 				Currency:      "USD",
 				Rule: pricing.ReceiptRule{
-					ScopeKey: "provider:openai",
-					ModelID:  "gpt-4.1",
+					ModelID: "gpt-4.1",
 				},
 			},
-			wantScopeKey: "provider:openai",
 		},
 		{
 			name: "v2 global identity",
@@ -782,28 +778,12 @@ func TestRequestLogPricingReceiptKeepsHistoricalSchemasReadable(t *testing.T) {
 					ModelID:   "gpt-4.1",
 				},
 			},
-			wantChannelID: string(channel.OpenAI),
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			mapped, err := mapRequestLogPricingReceipt(&test.receipt)
-			if err != nil {
-				t.Fatalf("mapRequestLogPricingReceipt() error = %v", err)
-			}
-			gotScopeKey := ""
-			if mapped.Rule.ScopeKey != nil {
-				gotScopeKey = *mapped.Rule.ScopeKey
-			}
-			gotChannelID := ""
-			if mapped.Rule.ChannelID != nil {
-				gotChannelID = *mapped.Rule.ChannelID
-			}
-			if mapped.SchemaVersion != test.receipt.SchemaVersion ||
-				mapped.PricingMode != pricing.ModeStandard ||
-				mapped.Rule.ModelID != test.receipt.Rule.ModelID ||
-				gotScopeKey != test.wantScopeKey || gotChannelID != test.wantChannelID {
-				t.Fatalf("mapped receipt = %#v", mapped)
+			if mapped, err := mapRequestLogPricingReceipt(&test.receipt); err == nil || mapped != nil {
+				t.Fatalf("mapRequestLogPricingReceipt(v%d) = %#v, %v; want rejection", test.receipt.SchemaVersion, mapped, err)
 			}
 		})
 	}
@@ -1732,7 +1712,7 @@ func TestHistoricalSubscriptionLabelsSurviveDisableUntilActualDeletion(t *testin
 			created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 				Name: stringPointer("history subscription"), ChannelID: channel.Codex,
 				ConnectionType: models.ConnectionTypeSubscription,
-				Models:         optionalGroupModels{Set: true}, StagedCredentialIDs: []string{stage.StageID},
+				Models:         optionalGroupModels{Set: true}, StagedCredentialID: stage.StageID,
 			})
 			if err != nil {
 				t.Fatal(err)

@@ -67,7 +67,10 @@ export function GroupInUseFeedback({ references }: { references: AccessKeyRefere
             </li>
           ))}
         </ul>
-        <RouteLink to={pagePath('access-keys')} {...stylex.props(styles.manageLink)}>
+        <RouteLink
+          to={`${pagePath('settings')}?section=credentials`}
+          {...stylex.props(styles.manageLink)}
+        >
           {t('group.settings.delete.manageAccessKeys')}
         </RouteLink>
       </div>

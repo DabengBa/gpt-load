@@ -9,6 +9,7 @@ import {
   parseInspectorMonitorState,
   parseScheduleMonitorState,
   parseUsageMonitorState,
+  scopeAccessKeyScheduleMonitorState,
   sameMonitorQuery,
   scheduleMonitorQuery,
   scopeAccessKeyUsageFilters,
@@ -76,11 +77,48 @@ test('schedule draft round-trips with sorted rows and explicit null clears', () 
     externalModel: 'gpt-5',
     selectedRow: '2:entry-b',
     sourceGroupId: 7,
+    selectedPriceID: undefined,
     drafts: {
       '1:entry-a': { weight: 50, priority: 3 },
       '2:entry-b': { priority: null },
     },
   })
+})
+
+test('schedule price selection round-trips as a positive integer id', () => {
+  const query = scheduleMonitorQuery({ externalModel: 'gpt-5', selectedPriceID: 42, drafts: {} })
+  assert.equal(query.selected_price_id, '42')
+  assert.deepEqual(parseScheduleMonitorState(query), {
+    externalModel: 'gpt-5',
+    selectedRow: undefined,
+    sourceGroupId: undefined,
+    selectedPriceID: 42,
+    drafts: {},
+  })
+  // A price deep link must survive parsing without any schedule_model — the
+  // drawer can open standalone and be closed by the browser back button.
+  assert.equal(parseScheduleMonitorState({ selected_price_id: '7' }).selectedPriceID, 7)
+  assert.equal(scheduleMonitorQuery({ selectedPriceID: 7, drafts: {} }).selected_price_id, '7')
+})
+
+test('schedule price selection drops invalid ids', () => {
+  for (const raw of ['0', '-1', 'abc', '1.5', ' 7', '', ['3'], 7]) {
+    assert.equal(parseScheduleMonitorState({ selected_price_id: raw }).selectedPriceID, undefined)
+  }
+  assert.equal(scheduleMonitorQuery({ drafts: {} }).selected_price_id, undefined)
+})
+
+test('access-key scoping strips price and schedule context but keeps the model', () => {
+  const scoped = scopeAccessKeyScheduleMonitorState({
+    externalModel: 'gpt-5',
+    selectedRow: '2:entry-b',
+    sourceGroupId: 7,
+    selectedPriceID: 42,
+    drafts: { '2:entry-b': { weight: 50 } },
+  })
+  assert.deepEqual(scoped, { externalModel: 'gpt-5', drafts: {} })
+  // Canonical serialization must drop the malicious deep-link params too.
+  assert.deepEqual(scheduleMonitorQuery(scoped), { schedule_model: 'gpt-5' })
 })
 
 test('schedule draft drops malformed rows and out-of-range fields', () => {

@@ -4,7 +4,7 @@ export default {
     loading: '正在加载模型…',
     loadFailed: '无法加载模型',
     stale: '后台刷新失败，当前模型信息可能已过期',
-    context: '预设价格优先于 Models.dev；基础单价 USD / 1M Tokens，未含分组及访问密钥倍率',
+    context: '预设价格优先于 Models.dev；模型参考单价 USD / 1M Tokens',
     result: '显示 {shown} / {total} 个客户端模型',
     actions: {
       sync: '同步目录与自动价格',
@@ -18,7 +18,7 @@ export default {
       models: '{count} 个客户端模型',
       upstreams: '{count} 个上游模型',
       pending: '{count} 个待定价',
-      unit: '基础单价 USD / 1M Tokens · 未含倍率',
+      unit: '模型参考单价 · USD / 1M Tokens',
     },
     catalog: {
       available: '预设价格目录可用',
@@ -74,14 +74,11 @@ export default {
       copySucceeded: '已复制',
       copyFailed: '复制失败',
     },
-    inspector: {
-      noCatalog: '暂无目录元数据',
-    },
     drawer: {
       title: '上游模型详情',
       description: '查看关联关系并编辑价格',
       impact: '{clients} 个客户端模型 · {groups} 个分组',
-      specs: '规格',
+      syncScope: '全局操作：同步所有模型的共享目录与自动价格，不仅限当前模型。',
       loading: '正在加载…',
       loadFailed: '无法加载上游模型详情',
       sharedImpact:

@@ -4,7 +4,6 @@ import type { ApiClient } from '@shared/http/client'
 import type {
   ChannelParamsDto,
   ConnectionType,
-  CredentialCounts,
   GroupCollectionFilters,
   GroupCollectionItemDto,
   GroupCollectionPaginationDto,
@@ -42,7 +41,6 @@ import {
   projectEnum,
   projectFiniteNumber,
   projectHTTPURL,
-  projectPriceMultiplier,
   projectRecord,
   projectSafeInteger,
   projectString,
@@ -52,19 +50,20 @@ import { projectProxyView } from './proxy'
 const groupSummaryFields = [
   'id',
   'name',
-  'price_multiplier',
+
   'channel_id',
   'connection_type',
   'params',
   'provider_url',
   'service_status',
   'service_status_reason',
-  'credential_count',
+  'credential_configured',
+  'credential_status',
   'model_count',
 ] as const
 const groupSettingsFields = [
   'name',
-  'price_multiplier',
+
   'channel_id',
   'connection_type',
   'params',
@@ -93,7 +92,7 @@ const groupCollectionSummaryFields = ['total', 'available', 'unavailable', 'disa
 const groupCollectionItemFields = [
   'id',
   'name',
-  'price_multiplier',
+
   'channel_id',
   'connection_type',
   'params',
@@ -101,7 +100,8 @@ const groupCollectionItemFields = [
   'status',
   'model_count',
   'client_model_count',
-  'credential_counts',
+  'credential_configured',
+  'credential_status',
 ] as const
 const groupCollectionPaginationFields = ['page', 'page_size', 'total_items', 'total_pages'] as const
 const groupOptionFields = [
@@ -114,7 +114,7 @@ const groupOptionFields = [
   'enabled',
   'models',
 ] as const
-const credentialCountFields = ['total', 'available', 'cooldown', 'blacklisted', 'disabled'] as const
+
 const groupCollectionStatuses = ['available', 'unavailable', 'disabled'] as const
 const groupUnavailableReasons = ['no_available_credentials', 'no_models'] as const
 const connectionTypes = ['api_key', 'subscription'] as const
@@ -142,7 +142,6 @@ export type {
 
 export type GroupSettingsUpdateRequest = Partial<{
   name: string
-  price_multiplier: string
   channel_id: string
   params: ChannelParamsDto
   provider_url: string | null
@@ -189,14 +188,13 @@ export interface GroupModelsReplaceRequest {
 
 export interface GroupCreateRequest {
   name?: string
-  price_multiplier: string
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
   provider_url?: string | null
   models: GroupModelUpdateDto[]
-  credentials?: string
-  staged_credential_ids?: string[]
+  credential?: string
+  staged_credential_id?: string
   proxy?: ProxyConfigInput
   confirm_same_target: boolean
 }
@@ -204,18 +202,22 @@ export interface GroupCreateRequest {
 export interface GroupCreateResult {
   group_id: number
   group_name: string
-  credentials_added: number
-  credentials_duplicated: number
+  credential_id: number
+}
+
+export interface GroupCopyResult {
+  group_id: number
+  group_name: string
+  credential_id: number | null
 }
 
 export interface CredentialImportRequest {
-  credentials: string
+  credential: string
 }
 
 export interface CredentialImportResult {
   group_id: number
-  credentials_added: number
-  credentials_duplicated: number
+  credential_id: number
 }
 
 const credentialValidationReasonCodes = [
@@ -395,6 +397,9 @@ export function projectGroupSummary(value: unknown): GroupSummaryDto {
   if ((serviceStatus === 'unavailable') !== (serviceStatusReason !== null)) {
     throw new InvalidResponseError()
   }
+  if (projectBoolean(record.credential_configured) !== (record.credential_status !== null)) {
+    throw new InvalidResponseError()
+  }
   return {
     id: projectSafeInteger(record.id, { minimum: 1 }),
     name: projectNonBlankString(record.name),
@@ -402,10 +407,19 @@ export function projectGroupSummary(value: unknown): GroupSummaryDto {
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
-    price_multiplier: projectPriceMultiplier(record.price_multiplier),
+
     service_status: serviceStatus,
     service_status_reason: serviceStatusReason,
-    credential_count: projectSafeInteger(record.credential_count, { minimum: 0 }),
+    credential_configured: projectBoolean(record.credential_configured),
+    credential_status:
+      record.credential_status === null
+        ? null
+        : projectEnum(record.credential_status, [
+            'available',
+            'cooldown',
+            'blacklisted',
+            'disabled',
+          ] as const),
     model_count: projectSafeInteger(record.model_count, { minimum: 0 }),
   }
 }
@@ -419,7 +433,7 @@ export function projectGroupSettings(value: unknown): GroupSettingsDto {
     connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
-    price_multiplier: projectPriceMultiplier(record.price_multiplier),
+
     enabled: projectBoolean(record.enabled),
     overrides: projectRuntimeConfig(record.overrides, false),
     effective: projectRuntimeConfig(record.effective, true),
@@ -502,22 +516,6 @@ export function projectGroupModels(value: unknown): GroupModelsDto {
   return { items, total, pending }
 }
 
-function projectCredentialCounts(value: unknown): CredentialCounts {
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, credentialCountFields)
-  const result = {
-    total: projectSafeInteger(record.total, { minimum: 0 }),
-    available: projectSafeInteger(record.available, { minimum: 0 }),
-    cooldown: projectSafeInteger(record.cooldown, { minimum: 0 }),
-    blacklisted: projectSafeInteger(record.blacklisted, { minimum: 0 }),
-    disabled: projectSafeInteger(record.disabled, { minimum: 0 }),
-  }
-  if (result.total !== result.available + result.cooldown + result.blacklisted + result.disabled) {
-    throw new InvalidResponseError()
-  }
-  return result
-}
-
 function projectGroupCollectionSummary(value: unknown): GroupCollectionSummaryDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, groupCollectionSummaryFields)
@@ -537,11 +535,19 @@ function projectGroupCollectionItem(value: unknown): GroupCollectionItemDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, groupCollectionItemFields)
   const status = projectEnum(record.status, groupCollectionStatuses) as GroupCollectionStatus
-  const credentialCounts = projectCredentialCounts(record.credential_counts)
+  const credentialConfigured = projectBoolean(record.credential_configured)
+  const credentialStatus =
+    record.credential_status === null
+      ? null
+      : projectEnum(record.credential_status, [
+          'available',
+          'cooldown',
+          'blacklisted',
+          'disabled',
+        ] as const)
+  if (credentialConfigured !== (credentialStatus !== null)) throw new InvalidResponseError()
   const modelCount = projectSafeInteger(record.model_count, { minimum: 0 })
-  if (status === 'disabled' && credentialCounts.disabled !== credentialCounts.total) {
-    throw new InvalidResponseError()
-  }
+
   return {
     id: projectSafeInteger(record.id, { minimum: 1 }),
     name: projectNonBlankString(record.name),
@@ -550,10 +556,11 @@ function projectGroupCollectionItem(value: unknown): GroupCollectionItemDto {
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
     status,
-    price_multiplier: projectPriceMultiplier(record.price_multiplier),
+
     model_count: modelCount,
     client_model_count: projectSafeInteger(record.client_model_count, { minimum: 0 }),
-    credential_counts: credentialCounts,
+    credential_configured: credentialConfigured,
+    credential_status: credentialStatus,
   }
 }
 
@@ -639,27 +646,33 @@ function projectDiscoveryResult(value: unknown): ModelDiscoveryResult {
 
 function projectGroupCreateResult(value: unknown): GroupCreateResult {
   const record = projectRecord(value)
-  assertNoSecretLikeFields(record, [
-    'group_id',
-    'group_name',
-    'credentials_added',
-    'credentials_duplicated',
-  ])
+  assertNoSecretLikeFields(record, ['group_id', 'group_name', 'credential_id'])
   return {
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
     group_name: projectNonBlankString(record.group_name),
-    credentials_added: projectSafeInteger(record.credentials_added, { minimum: 0 }),
-    credentials_duplicated: projectSafeInteger(record.credentials_duplicated, { minimum: 0 }),
+    credential_id: projectSafeInteger(record.credential_id, { minimum: 1 }),
+  }
+}
+
+function projectGroupCopyResult(value: unknown): GroupCopyResult {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, ['group_id', 'group_name', 'credential_id'])
+  return {
+    group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
+    group_name: projectNonBlankString(record.group_name),
+    credential_id:
+      record.credential_id === null
+        ? null
+        : projectSafeInteger(record.credential_id, { minimum: 1 }),
   }
 }
 
 function projectCredentialImportResult(value: unknown): CredentialImportResult {
   const record = projectRecord(value)
-  assertNoSecretLikeFields(record, ['group_id', 'credentials_added', 'credentials_duplicated'])
+  assertNoSecretLikeFields(record, ['group_id', 'credential_id'])
   return {
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
-    credentials_added: projectSafeInteger(record.credentials_added, { minimum: 0 }),
-    credentials_duplicated: projectSafeInteger(record.credentials_duplicated, { minimum: 0 }),
+    credential_id: projectSafeInteger(record.credential_id, { minimum: 1 }),
   }
 }
 
@@ -906,38 +919,38 @@ export async function invalidateGroupModelDependents(
   queryClient: QueryClient,
   groupID: number,
 ): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({
+  await invalidateGroupDependents(queryClient, [
+    {
       queryKey: controlQueryKeys.groups.summary(groupID),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.collectionAll,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.options(),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.home.base(),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.modelPrices(),
       refetchType: 'none',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.models.all,
       refetchType: 'none',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.modelRouteSchedule.all,
       refetchType: 'active',
-    }),
+    },
   ])
 }
 
@@ -946,43 +959,50 @@ export async function invalidateGroupSettingsDependents(
   queryClient: QueryClient,
   groupID: number,
 ): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({
+  await invalidateGroupDependents(queryClient, [
+    {
       queryKey: controlQueryKeys.groups.summary(groupID),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.models(groupID),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.credentialsAll(groupID),
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.collectionAll,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.groups.options(),
       exact: true,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.modelPrices(),
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.models.all,
       refetchType: 'active',
-    }),
-    queryClient.invalidateQueries({
+    },
+    {
       queryKey: controlQueryKeys.modelRouteSchedule.all,
       refetchType: 'active',
-    }),
+    },
   ])
+}
+
+async function invalidateGroupDependents(
+  queryClient: QueryClient,
+  queries: readonly Parameters<QueryClient['invalidateQueries']>[0][],
+): Promise<void> {
+  await Promise.all(queries.map((filters) => queryClient.invalidateQueries(filters)))
 }
 
 export function cacheGroupModels(
@@ -1034,8 +1054,8 @@ export async function copyGroup(
   groupID: number,
   idempotencyKey: string,
   signal?: AbortSignal,
-): Promise<GroupCreateResult> {
-  return projectGroupCreateResult(
+): Promise<GroupCopyResult> {
+  return projectGroupCopyResult(
     await client.request(`/api/groups/${groupID}/copy`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
@@ -1053,7 +1073,7 @@ export async function importGroupCredentials(
   signal?: AbortSignal,
 ): Promise<CredentialImportResult> {
   return projectCredentialImportResult(
-    await client.request(`/api/groups/${groupID}/credentials/import`, {
+    await client.request(`/api/groups/${groupID}/credential`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
       json: body,

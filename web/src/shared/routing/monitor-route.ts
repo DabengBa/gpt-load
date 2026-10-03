@@ -44,6 +44,8 @@ export interface ScheduleMonitorState {
   selectedRow?: string
   /** 来源分组行定位提示（分组模型页跳转）；详情加载后解析为 selectedRow。 */
   sourceGroupId?: number
+  /** 价格抽屉深链接（正整数 price id）；access-key 分支清除。 */
+  selectedPriceID?: number
   drafts: ScheduleDrafts
 }
 
@@ -96,7 +98,18 @@ export function parseScheduleMonitorState(query: SharedRouteQuery): ScheduleMoni
     externalModel: scalarText(query.schedule_model),
     selectedRow: scalarScheduleRow(query.schedule_row),
     sourceGroupId: scalarPositiveNumber(query.schedule_group),
+    selectedPriceID: scalarPositiveNumber(query.selected_price_id),
     drafts: parseScheduleDrafts(query.schedule_draft),
+  }
+}
+
+// access-key 只读分支：清除价格与调度上下文，保留只读模型选择与草稿容器。
+export function scopeAccessKeyScheduleMonitorState(
+  state: ScheduleMonitorState,
+): ScheduleMonitorState {
+  return {
+    externalModel: state.externalModel,
+    drafts: {},
   }
 }
 
@@ -107,6 +120,9 @@ export function scheduleMonitorQuery(state: ScheduleMonitorState): SharedRouteQu
   if (model !== undefined) normalized.schedule_model = model
   if (state.selectedRow !== undefined) normalized.schedule_row = state.selectedRow
   if (state.sourceGroupId !== undefined) normalized.schedule_group = String(state.sourceGroupId)
+  if (state.selectedPriceID !== undefined) {
+    normalized.selected_price_id = String(state.selectedPriceID)
+  }
   const drafts = serializeScheduleDrafts(state.drafts)
   if (drafts !== undefined) normalized.schedule_draft = drafts
   return normalized

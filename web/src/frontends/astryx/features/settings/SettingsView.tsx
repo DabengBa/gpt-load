@@ -43,6 +43,7 @@ import {
 } from '@shared/domain/settings/settings-patch'
 import {
   isCanonicalSettingsRouteQuery,
+  parseSettingsCredentialsRoute,
   parseSettingsRouteSection,
   serializeSettingsRouteQuery,
   type SettingsRouteSection,
@@ -52,6 +53,7 @@ import { formatLocalInstant } from '@shared/lib/format'
 
 import { BrowserAccessSection } from './BrowserAccessSection'
 import { ConnectionSection } from './ConnectionSection'
+import { CredentialsSection } from './CredentialsSection'
 import { DataMaintenanceSection } from './DataMaintenanceSection'
 import { ReliabilitySection } from './ReliabilitySection'
 import { RoutingSection } from './RoutingSection'
@@ -217,6 +219,7 @@ function sectionFromID(id: string): SettingsRouteSection | undefined {
     section === 'connection' ||
     section === 'reliability' ||
     section === 'browser-access' ||
+    section === 'credentials' ||
     section === 'data-maintenance' ||
     section === 'system'
     ? section
@@ -257,7 +260,6 @@ export function SettingsView() {
   const operationLocked = controller.isOperationLocked()
   const savedAt = controller.getSavedAt()
 
-  // --- proxy override (local draft state, published into saveAll's `extra`) ---
   const [proxyMode, setProxyMode] = useState<ProxyConfiguredMode>('inherit')
   const [proxyEndpoint, setProxyEndpoint] = useState('')
   const [proxyBaseView, setProxyBaseView] = useState<ProxyViewDto>()
@@ -277,7 +279,6 @@ export function SettingsView() {
     ? proxyDraftState(proxyBaseView, proxyMode, proxyEndpoint)
     : { dirty: false, invalid: false, value: undefined }
 
-  // --- browser-access reported state ---
   const [browserAccessValid, setBrowserAccessValid] = useState(true)
   const [headerRulesValid, setHeaderRulesValid] = useState(true)
   const [corsValid, setCorsValid] = useState(true)
@@ -309,7 +310,6 @@ export function SettingsView() {
     if (!responseRulesOverridden) setResponseRulesInvalidEdits(false)
   }
 
-  // --- saved feedback flag ---
   const savedFeedback = useTransientFlag(1_600)
   useEffect(() => {
     if (savedAt !== null) savedFeedback.show()
@@ -320,13 +320,13 @@ export function SettingsView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- clear() is controller-stable
   }, [dirty])
 
-  // --- section navigation + route sync ---
   const navItems = [
     { id: 'settings-routing', label: t('settings.navigation.routing') },
     { id: 'settings-connection', label: t('settings.navigation.connection') },
     { id: 'settings-reliability', label: t('settings.navigation.reliability') },
     { id: 'settings-browser-access', label: t('settings.navigation.browserAccess') },
     { id: 'settings-data-maintenance', label: t('settings.navigation.dataMaintenance') },
+    { id: 'settings-credentials', label: t('settings.navigation.credentials') },
     { id: 'settings-system', label: t('settings.navigation.system') },
   ]
   const routeSection = parseSettingsRouteSection(rawSearch)
@@ -343,10 +343,12 @@ export function SettingsView() {
     // moved — a late canonicalization must not resurrect this page.
     if (pathname !== settingsPath) return
     const section = parseSettingsRouteSection(rawSearch)
-    if (!isCanonicalSettingsRouteQuery(rawSearch, section)) {
+    const credentials =
+      section === 'credentials' ? parseSettingsCredentialsRoute(rawSearch) : undefined
+    if (!isCanonicalSettingsRouteQuery(rawSearch, section, credentials)) {
       void navigate({
         to: settingsPath,
-        search: serializeSettingsRouteQuery(section),
+        search: serializeSettingsRouteQuery(section, credentials),
         replace: true,
         resetScroll: false,
       })
@@ -385,7 +387,6 @@ export function SettingsView() {
     })
   }
 
-  // --- dirty/valid bookkeeping ---
   const changedKeys = (() => {
     const changed = runtimeSettingKeys.filter((key) =>
       Object.prototype.hasOwnProperty.call(patch, key),
@@ -438,7 +439,6 @@ export function SettingsView() {
     allowRouteUpdate: (to, from) => to.routeId === from.routeId,
   })
 
-  // --- discard flow ---
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false)
   const discard = (): void => {
     controller.discard()
@@ -459,7 +459,6 @@ export function SettingsView() {
     setDiscardDialogOpen(false)
   }
 
-  // --- validation link focus ---
   const settingTarget = (key: RuntimeSettingKey): string =>
     browserAccessKeys.has(key) ? 'settings-browser-access' : `settings-value-${key}`
   const sectionForKey = (key: RuntimeSettingKey): SettingsRouteSection => {
@@ -648,6 +647,9 @@ export function SettingsView() {
                 </>
               ) : null}
 
+              <div {...stylex.props(styles.contentSection)}>
+                <CredentialsSection />
+              </div>
               <div {...stylex.props(styles.contentSection)}>
                 <SystemInfoSection />
               </div>

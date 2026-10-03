@@ -47,12 +47,13 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
     primaryNav: 'groups',
     messageNamespaces: ['group', 'import', 'monitor'],
   },
+  // Legacy route kept only as a redirect target into Settings → credentials;
+  // the beforeLoad guard navigates away before any view or catalog loads.
   'access-keys': {
-    titleKey: 'shell.accessKeys',
+    titleKey: 'shell.settings',
     requiresAuth: true,
     adminOnly: true,
-    primaryNav: 'access-keys',
-    messageNamespaces: ['access-keys'],
+    primaryNav: 'settings',
   },
   // InspectorTab 的 route strategy 文案来自 settings.runtime.routeStrategies.*
   // （跨域引用 settings 命名空间），必须随 monitor 一起装载。
@@ -65,9 +66,10 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
   schedule: {
     titleKey: 'shell.schedule',
     requiresAuth: true,
-    adminOnly: true,
     primaryNav: 'schedule',
-    messageNamespaces: ['monitor'],
+    // Both principals reach the schedule page; the price deep link inside the
+    // detail surfaces needs the model and price catalogs loaded up front.
+    messageNamespaces: ['monitor', 'models', 'model-prices'],
   },
   logs: {
     titleKey: 'shell.logs',
@@ -75,18 +77,14 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
     primaryNav: 'logs',
     messageNamespaces: ['monitor'],
   },
-  models: {
-    titleKey: 'models.title',
-    requiresAuth: true,
-    primaryNav: 'models',
-    messageNamespaces: ['models', 'model-prices'],
-  },
   settings: {
     titleKey: 'shell.settings',
     requiresAuth: true,
     adminOnly: true,
     primaryNav: 'settings',
-    messageNamespaces: ['settings', 'model-prices', 'import'],
+    // 'access-keys' — the credentials section reuses the access-key drawer and
+    // collection strings.
+    messageNamespaces: ['settings', 'model-prices', 'import', 'access-keys'],
   },
 })
 

@@ -18,7 +18,7 @@ export type FailureCategory =
 
 export type GroupCollectionStatus = 'available' | 'unavailable' | 'disabled'
 export type GroupUnavailableReason = 'no_available_credentials' | 'no_models'
-export type GroupCollectionSort = 'recent' | 'status' | 'name' | 'credentials' | 'created'
+export type GroupCollectionSort = 'recent' | 'status' | 'name' | 'created'
 export type ModelPricingStatus = 'pending' | 'configured'
 export type ChannelParamsDto = Record<string, string>
 export type ConnectionType = 'api_key' | 'subscription'
@@ -56,7 +56,7 @@ export interface GroupCollectionSummaryDto {
 export interface GroupCollectionItemDto {
   id: number
   name: string
-  price_multiplier: string
+
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
@@ -64,7 +64,8 @@ export interface GroupCollectionItemDto {
   status: GroupCollectionStatus
   model_count: number
   client_model_count: number
-  credential_counts: CredentialCounts
+  credential_configured: boolean
+  credential_status: CredentialStatus | null
 }
 
 export interface GroupCollectionPaginationDto {
@@ -84,14 +85,15 @@ export interface GroupCollectionResponseDto {
 export interface GroupSummaryDto {
   id: number
   name: string
-  price_multiplier: string
+
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
   provider_url: string | null
   service_status: GroupCollectionStatus
   service_status_reason: GroupUnavailableReason | null
-  credential_count: number
+  credential_configured: boolean
+  credential_status: CredentialStatus | null
   model_count: number
 }
 
@@ -141,7 +143,7 @@ export interface GroupEffectiveConfigDto {
 
 export interface GroupSettingsDto {
   name: string
-  price_multiplier: string
+
   channel_id: string
   connection_type: ConnectionType
   params: ChannelParamsDto
@@ -316,8 +318,8 @@ export interface CredentialDailyUsageDto {
 }
 
 export interface CredentialDetailDto {
-  credential: CredentialItemDto
-  observation: CredentialObservationDto
+  credential: CredentialItemDto | null
+  observation: CredentialObservationDto | null
 }
 
 export interface CredentialRevealDto {
@@ -329,10 +331,6 @@ export interface CredentialRevealDto {
 export interface CredentialDownloadDto {
   filename: string
   credential: Record<string, unknown>
-}
-
-export interface CredentialDownloadAllDto {
-  files: CredentialDownloadDto[]
 }
 
 export type CredentialTestOutcome = 'passed' | 'failed' | 'inconclusive'
@@ -358,41 +356,6 @@ export interface CredentialTestResultDto {
   recovered: boolean
   log_id: string | null
   tested_at_ms: number
-}
-
-export interface CredentialSummaryDto {
-  total: number
-  available: number
-  cooldown: number
-  blacklisted: number
-  disabled: number
-}
-
-export interface CredentialPaginationDto {
-  page: number
-  page_size: 20 | 50 | 100
-  total_items: number
-  total_pages: number
-}
-
-export interface CredentialCollectionDto {
-  observed_at_ms: number
-  stats_window_seconds: number
-  summary: CredentialSummaryDto
-  items: CredentialItemDto[]
-  pagination: CredentialPaginationDto
-}
-
-export interface CredentialCollectionFilters {
-  q?: string
-  status?: CredentialStatus
-  page: number
-  page_size: 20 | 50 | 100
-}
-
-export interface CredentialBatchResultDto {
-  affected_credential_ids: number[]
-  summary: CredentialSummaryDto
 }
 
 export interface GroupOptionDto {
@@ -564,7 +527,6 @@ export interface HealthAccessKeyCostLimitDto {
 export interface AccessKeyDto {
   id: number
   name: string
-  price_multiplier: string
   masked_key: string
   status: 'active' | 'disabled'
   filters: AccessKeyFiltersDto
@@ -629,4 +591,27 @@ export interface AccessKeyRevealDto {
   id: number
   key: string
   revealed_at_ms: number
+}
+
+export type AgentCredentialScope = 'diagnostics:read' | 'changes:propose' | 'changes:apply'
+
+export interface AgentCredentialDto {
+  id: number
+  name: string
+  scopes: AgentCredentialScope[]
+  status: 'active' | 'disabled'
+  expires_at_ms: number | null
+  disabled_at_ms: number | null
+  created_at_ms: number
+  updated_at_ms: number
+}
+
+export interface AgentCredentialListDto {
+  items: AgentCredentialDto[]
+}
+
+export interface AgentCredentialCreateResultDto extends AgentCredentialDto {
+  secret?: string
+  replayed: boolean
+  operation_id: string
 }

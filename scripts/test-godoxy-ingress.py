@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -11,16 +12,83 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "scripts" / "godoxy-ingress-probe.py"
 
 
+def load_probe():
+    spec = importlib.util.spec_from_file_location("godoxy_ingress_probe", PROBE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class ClosingSocket:
+    """Fake connected socket: serves one canned response, close() fails."""
+
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
+
+    def settimeout(self, _timeout: float) -> None:
+        return
+
+    def sendall(self, _data: bytes) -> None:
+        return
+
+    def recv(self, _size: int) -> bytes:
+        payload, self.payload = self.payload, b""
+        return payload
+
+    def close(self) -> None:
+        raise OSError("simulated close failure")
+
+
+class FailingSendSocket(ClosingSocket):
+    def sendall(self, _data: bytes) -> None:
+        raise OSError("simulated send failure")
+
+
+class ProbeCleanupTests(unittest.TestCase):
+    def test_close_failure_logs_warning_with_cleanup_context(self) -> None:
+        probe = load_probe()
+        args = probe.build_parser().parse_args(["request", "http://127.0.0.1:9/health"])
+        fake = ClosingSocket(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+        with mock.patch.object(probe.socket, "create_connection", return_value=fake):
+            with self.assertLogs(level="WARNING") as captured:
+                result = probe.run_request(args)
+        self.assertEqual(result["status"], 200)
+        warning = "\n".join(captured.output)
+        self.assertIn("close", warning)
+        self.assertIn("simulated close failure", warning)
+
+    def test_probe_error_survives_close_failure_and_still_logs_warning(self) -> None:
+        probe = load_probe()
+        args = probe.build_parser().parse_args(["request", "http://127.0.0.1:9/health"])
+        fake = FailingSendSocket(b"")
+        with mock.patch.object(probe.socket, "create_connection", return_value=fake):
+            with self.assertLogs(level="WARNING") as captured:
+                with self.assertRaises(probe.ProbeError) as caught:
+                    probe.run_request(args)
+        self.assertEqual(caught.exception.error_type, "write_error")
+        warning = "\n".join(captured.output)
+        self.assertIn("close", warning)
+        self.assertIn("simulated close failure", warning)
+
+
 class FixtureProcess:
     def __init__(self, *extra: str) -> None:
         self.proc = subprocess.Popen(
-            [os.fspath(Path(os.sys.executable)), os.fspath(PROBE), "serve", "--port", "0", *extra],
+            [
+                os.fspath(Path(os.sys.executable)),
+                os.fspath(PROBE),
+                "serve",
+                "--port",
+                "0",
+                *extra,
+            ],
             cwd=ROOT,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -57,7 +125,9 @@ class GoDoxyIngressProbeIntegrationTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.fixture.close()
 
-    def run_client(self, *args: str, timeout: float = 5) -> tuple[subprocess.CompletedProcess[str], dict]:
+    def run_client(
+        self, *args: str, timeout: float = 5
+    ) -> tuple[subprocess.CompletedProcess[str], dict]:
         result = subprocess.run(
             [os.fspath(Path(os.sys.executable)), os.fspath(PROBE), "request", *args],
             cwd=ROOT,
@@ -68,7 +138,9 @@ class GoDoxyIngressProbeIntegrationTests(unittest.TestCase):
         try:
             payload = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
-            self.fail(f"client did not emit JSON: stdout={result.stdout!r} stderr={result.stderr!r}: {exc}")
+            self.fail(
+                f"client did not emit JSON: stdout={result.stdout!r} stderr={result.stderr!r}: {exc}"
+            )
         return result, payload
 
     def test_header_timeout_is_separate_from_successful_response(self) -> None:
@@ -107,7 +179,9 @@ class GoDoxyIngressProbeIntegrationTests(unittest.TestCase):
         self.assertTrue(response["eof_observed"])
         self.assertTrue(response["events_before_eof"])
         self.assertEqual(len(response["events"]), 2)
-        self.assertLess(response["header_received_at"], response["events"][0]["received_at"])
+        self.assertLess(
+            response["header_received_at"], response["events"][0]["received_at"]
+        )
         self.assertLess(response["events"][-1]["received_at"], response["eof_at"])
 
     def test_cancel_after_first_event_is_observed_by_backend(self) -> None:
@@ -129,7 +203,9 @@ class GoDoxyIngressProbeIntegrationTests(unittest.TestCase):
         deadline = time.monotonic() + 2
         status = None
         while time.monotonic() < deadline:
-            status_result, status_payload = self.run_client(f"{self.fixture.base_url}/status?case=cancel")
+            status_result, status_payload = self.run_client(
+                f"{self.fixture.base_url}/status?case=cancel"
+            )
             self.assertEqual(status_result.returncode, 0, status_result.stderr)
             status = json.loads(status_payload["response"]["body"])
             if status.get("disconnect_observed"):
@@ -183,12 +259,16 @@ class GoDoxyIngressProbeIntegrationTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            fixture = FixtureProcess("--tls-cert", os.fspath(cert), "--tls-key", os.fspath(key))
+            fixture = FixtureProcess(
+                "--tls-cert", os.fspath(cert), "--tls-key", os.fspath(key)
+            )
             try:
                 url = fixture.base_url.replace("http://", "https://", 1) + "/health"
                 untrusted, untrusted_payload = self.run_client(url)
                 self.assertNotEqual(untrusted.returncode, 0)
-                self.assertEqual(untrusted_payload["error"]["type"], "tls_verification_error")
+                self.assertEqual(
+                    untrusted_payload["error"]["type"], "tls_verification_error"
+                )
 
                 trusted, trusted_payload = self.run_client(
                     url,
@@ -210,7 +290,9 @@ class GoDoxyIngressProbeIntegrationTests(unittest.TestCase):
                     "wrong.localhost",
                 )
                 self.assertNotEqual(wrong_name.returncode, 0)
-                self.assertEqual(wrong_payload["error"]["type"], "tls_verification_error")
+                self.assertEqual(
+                    wrong_payload["error"]["type"], "tls_verification_error"
+                )
             finally:
                 fixture.close()
 

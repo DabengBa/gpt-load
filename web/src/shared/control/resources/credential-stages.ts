@@ -4,7 +4,6 @@ import { InvalidResponseError } from '@shared/http/errors'
 
 import {
   assertNoSecretLikeFields,
-  projectArray,
   projectEpochMilliseconds,
   projectEnum,
   projectHTTPURL,
@@ -43,14 +42,9 @@ export interface CredentialStage {
   duplicate?: boolean
 }
 
-export interface CredentialConnectInspection {
-  duplicated_stage_ids: string[]
-}
-
 export interface CredentialConnectResult {
   group_id: number
-  credentials_added: number
-  credentials_duplicated: number
+  credential_id: number
 }
 
 export type CredentialStageNetworkInput =
@@ -150,20 +144,11 @@ export function projectCredentialStage(value: unknown): CredentialStage {
 
 function projectConnectResult(value: unknown): CredentialConnectResult {
   const record = projectRecord(value)
-  assertNoSecretLikeFields(record, ['group_id', 'credentials_added', 'credentials_duplicated'])
+  assertNoSecretLikeFields(record, ['group_id', 'credential_id'])
   return {
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
-    credentials_added: projectSafeInteger(record.credentials_added, { minimum: 0 }),
-    credentials_duplicated: projectSafeInteger(record.credentials_duplicated, { minimum: 0 }),
+    credential_id: projectSafeInteger(record.credential_id, { minimum: 1 }),
   }
-}
-
-function projectConnectInspection(value: unknown): CredentialConnectInspection {
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, ['duplicated_stage_ids'])
-  const duplicatedStageIDs = projectArray(record.duplicated_stage_ids, projectStageID)
-  if (new Set(duplicatedStageIDs).size !== duplicatedStageIDs.length) invalidResponse()
-  return { duplicated_stage_ids: duplicatedStageIDs }
 }
 
 export async function beginCredentialAuthorization(
@@ -248,40 +233,25 @@ export async function cancelCredentialStage(
   await client.request(`/api/credential-stages/${id}`, { method: 'DELETE', signal })
 }
 
-export async function connectGroupCredentials(
+export async function connectGroupCredential(
   client: ApiClient,
   groupID: number,
-  stageIDs: string[],
+  stageID: string,
   idempotencyKey: string,
+  expectedCredentialID: number,
   signal?: AbortSignal,
 ): Promise<CredentialConnectResult> {
   const result = projectConnectResult(
-    await client.request(`/api/groups/${groupID}/credentials/connect`, {
+    await client.request(`/api/groups/${groupID}/credential/connect`, {
       method: 'POST',
-      headers: { 'Idempotency-Key': idempotencyKey },
-      json: { staged_credential_ids: stageIDs.map(projectStageID) },
+      headers: {
+        'Idempotency-Key': idempotencyKey,
+        'X-Credential-ID': String(projectSafeInteger(expectedCredentialID, { minimum: 0 })),
+      },
+      json: { staged_credential_id: projectStageID(stageID) },
       signal,
     }),
   )
   if (result.group_id !== groupID) invalidResponse()
-  return result
-}
-
-export async function inspectGroupCredentialConnection(
-  client: ApiClient,
-  groupID: number,
-  stageIDs: string[],
-  signal?: AbortSignal,
-): Promise<CredentialConnectInspection> {
-  const requestedStageIDs = stageIDs.map(projectStageID)
-  const requested = new Set(requestedStageIDs)
-  const result = projectConnectInspection(
-    await client.request(`/api/groups/${groupID}/credentials/connect/inspect`, {
-      method: 'POST',
-      json: { staged_credential_ids: requestedStageIDs },
-      signal,
-    }),
-  )
-  if (result.duplicated_stage_ids.some((stageID) => !requested.has(stageID))) invalidResponse()
   return result
 }

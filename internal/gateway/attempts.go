@@ -159,8 +159,7 @@ func (cache *preparedRequestCache) get(selection scheduler.Selection) preparedRe
 }
 
 // attemptLoop carries the mutable orchestration state for one request's
-// candidate iteration. Frozen inputs come from the admission dispatch; the
-// mutable fields replace what used to be free-floating closure variables.
+// candidate iteration. Frozen inputs come from the admission dispatch.
 type attemptLoop struct {
 	handler    *Handler
 	ginContext *gin.Context
@@ -282,7 +281,6 @@ func (loop *attemptLoop) recordCandidatePreparationFailure(
 				selection,
 				attemptObservations,
 				attemptObservationsAvailable,
-				recorder.accessKeyMultiplier,
 			),
 		)
 	}
@@ -370,8 +368,7 @@ func (loop *attemptLoop) recordCaptureCandidatePreparationFailure(groupName stri
 }
 
 // candidateStep is the outcome of pulling the next candidate: yield a
-// selection, skip this iteration (mimicking the original `continue`), or stop
-// the loop entirely (mimicking `break`).
+// selection, skip this iteration, or stop the loop entirely.
 type candidateStep uint8
 
 const (
@@ -627,7 +624,6 @@ func (loop *attemptLoop) run() {
 					selection,
 					attemptObservations,
 					attemptObservationsAvailable,
-					recorder.accessKeyMultiplier,
 				),
 			)
 		}

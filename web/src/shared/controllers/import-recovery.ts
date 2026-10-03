@@ -3,6 +3,7 @@ import type {
   ImportRecoveryDraft,
   ModelDraftItem,
 } from '@shared/domain/import/model-draft'
+import { projectCredentialStage } from '@shared/control/resources/credential-stages'
 
 export const importRecoveryStorageKey = 'gpt-load.import-reauth-draft'
 export const importRecoveryTtlMs = 15 * 60 * 1_000
@@ -24,7 +25,7 @@ export interface ImportRecoveryService {
 }
 
 interface ImportRecoveryRecord {
-  version: 9
+  version: 10
   expires_at: number
   draft: ImportRecoveryDraft
 }
@@ -129,10 +130,10 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
       'params',
       'proxy',
       'name',
-      'price_multiplier',
+
       'provider_url',
       'credentials',
-      'staged_credentials',
+      'staged_credential',
       'models',
     ]) &&
     value.mode === 'new' &&
@@ -141,11 +142,9 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
     isChannelParams(value.params) &&
     isImportProxyDraft(value.proxy) &&
     typeof value.name === 'string' &&
-    typeof value.price_multiplier === 'string' &&
     typeof value.provider_url === 'string' &&
     typeof value.credentials === 'string' &&
-    Array.isArray(value.staged_credentials) &&
-    value.staged_credentials.every(isRecoveredStage) &&
+    (value.staged_credential === null || isRecoveredStage(value.staged_credential)) &&
     Array.isArray(value.models) &&
     value.models.every(isModel)
   )) {
@@ -157,58 +156,45 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
 
 function isRecoveredStage(value: unknown): boolean {
   if (!isRecord(value)) return false
-  return (
-    hasOnlyFields(value, [
+  if (
+    !hasOnlyFields(value, [
       'stage_id',
       'status',
+      'authorization_method',
       'authorization_url',
       'redirect_uri',
+      'user_code',
+      'next_poll_at_ms',
       'account',
       'expires_at_ms',
       'error_code',
-    ]) &&
-    typeof value.stage_id === 'string' &&
-    /^[a-zA-Z0-9_-]{1,100}$/u.test(value.stage_id) &&
-    [
-      'pending_authorization',
-      'exchanging',
-      'ready',
-      'consumed',
-      'failed',
-      'cancelled',
-      'expired',
-      'outcome_unknown',
-    ].includes(String(value.status)) &&
-    (value.authorization_url === undefined || typeof value.authorization_url === 'string') &&
-    (value.redirect_uri === undefined || typeof value.redirect_uri === 'string') &&
-    (value.error_code === undefined ||
-      (typeof value.error_code === 'string' && /^[a-z0-9_]{1,64}$/u.test(value.error_code))) &&
-    isRecord(value.account) &&
-    hasOnlyFields(value.account, ['email_mask', 'expires_at_ms', 'last_refresh_at_ms']) &&
-    (value.account.email_mask === undefined || typeof value.account.email_mask === 'string') &&
-    (value.account.expires_at_ms === undefined ||
-      (typeof value.account.expires_at_ms === 'number' &&
-        Number.isSafeInteger(value.account.expires_at_ms) &&
-        value.account.expires_at_ms >= 0)) &&
-    (value.account.last_refresh_at_ms === undefined ||
-      (typeof value.account.last_refresh_at_ms === 'number' &&
-        Number.isSafeInteger(value.account.last_refresh_at_ms) &&
-        value.account.last_refresh_at_ms >= 0)) &&
-    typeof value.expires_at_ms === 'number' &&
-    Number.isSafeInteger(value.expires_at_ms) &&
-    value.expires_at_ms >= 0
+      'duplicate',
+    ]) ||
+    !isRecord(value.account) ||
+    !hasOnlyFields(value.account, ['email_mask', 'expires_at_ms', 'last_refresh_at_ms']) ||
+    (value.duplicate !== undefined && typeof value.duplicate !== 'boolean')
   )
+    return false
+  try {
+    projectCredentialStage(value)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function isExistingImportDraft(value: Record<string, unknown>): boolean {
   return (
-    hasOnlyFields(value, ['mode', 'group_id', 'credentials']) &&
+    hasOnlyFields(value, ['mode', 'group_id', 'credentials', 'staged_credential']) &&
     value.mode === 'existing' &&
     (value.group_id === null ||
       (typeof value.group_id === 'number' &&
         Number.isSafeInteger(value.group_id) &&
         value.group_id > 0)) &&
-    typeof value.credentials === 'string'
+    typeof value.credentials === 'string' &&
+    (value.staged_credential === undefined ||
+      value.staged_credential === null ||
+      isRecoveredStage(value.staged_credential))
   )
 }
 
@@ -218,35 +204,11 @@ function isImportDraft(value: unknown): value is ImportRecoveryDraft {
 
 function parseRecoveryRecord(raw: string): ImportRecoveryRecord | null {
   try {
-    let value: unknown = JSON.parse(raw)
-    if (isRecord(value) && value.version === 6 && isRecord(value.draft)) {
-      value = {
-        ...value,
-        version: 7,
-        draft:
-          value.draft.mode === 'new'
-            ? { ...value.draft, proxy: { mode: 'inherit', url: '' } }
-            : value.draft,
-      }
-    }
-    if (isRecord(value) && value.version === 7 && isRecord(value.draft)) {
-      value = {
-        ...value,
-        version: 8,
-        draft: value.draft.mode === 'new' ? { ...value.draft, price_multiplier: '1' } : value.draft,
-      }
-    }
-    if (isRecord(value) && value.version === 8 && isRecord(value.draft)) {
-      value = {
-        ...value,
-        version: 9,
-        draft: value.draft.mode === 'new' ? { ...value.draft, provider_url: '' } : value.draft,
-      }
-    }
+    const value: unknown = JSON.parse(raw)
     if (
       !isRecord(value) ||
       !hasOnlyFields(value, ['version', 'expires_at', 'draft']) ||
-      value.version !== 9 ||
+      value.version !== 10 ||
       typeof value.expires_at !== 'number' ||
       !Number.isFinite(value.expires_at) ||
       !isImportDraft(value.draft)
@@ -328,7 +290,7 @@ export function createImportRecoveryService(
     if (!deps.storage) return 'storage-unavailable'
 
     const record: ImportRecoveryRecord = {
-      version: 9,
+      version: 10,
       expires_at: deps.now() + importRecoveryTtlMs,
       draft,
     }

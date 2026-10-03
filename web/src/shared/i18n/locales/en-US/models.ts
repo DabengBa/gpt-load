@@ -5,7 +5,7 @@ export default {
     loadFailed: 'Unable to load models',
     stale: 'The current model information may be stale because the background refresh failed',
     context:
-      'Preset prices take priority over Models.dev · Base rates in USD / 1M tokens, before Group and access key multipliers',
+      'Preset prices take priority over Models.dev · Model reference rates in USD / 1M tokens',
     result: 'Showing {shown} of {total} client models',
     actions: {
       sync: 'Sync catalog and automatic prices',
@@ -19,7 +19,7 @@ export default {
       models: '{count} client models',
       upstreams: '{count} upstream models',
       pending: '{count} pending',
-      unit: 'Base USD / 1M tokens · Before multipliers',
+      unit: 'Model reference rates · USD / 1M tokens',
     },
     catalog: {
       available: 'Preset price catalog available',
@@ -75,14 +75,12 @@ export default {
       copySucceeded: 'Copied',
       copyFailed: 'Copy failed',
     },
-    inspector: {
-      noCatalog: 'No catalog metadata',
-    },
     drawer: {
       title: 'Upstream model details',
       description: 'Review relationships and edit pricing',
       impact: '{clients} client models · {groups} Groups',
-      specs: 'Specifications',
+      syncScope:
+        'Global action: refreshes the shared model catalog and automatic prices for every model, not only this one.',
       loading: 'Loading…',
       loadFailed: 'Unable to load upstream model details',
       sharedImpact:

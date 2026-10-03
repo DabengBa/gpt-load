@@ -39,6 +39,7 @@ var (
 	ErrChannelTargetConflict                  = &APIError{HTTPStatus: http.StatusConflict, Code: "CHANNEL_TARGET_CONFLICT", Message: "Channel target conflicts with an existing group"}
 	ErrModelNameConflict                      = &APIError{HTTPStatus: http.StatusConflict, Code: "MODEL_NAME_CONFLICT", Message: "Client model names conflict within the group"}
 	ErrNoActiveCredential                     = &APIError{HTTPStatus: http.StatusConflict, Code: "NO_ACTIVE_CREDENTIAL", Message: "No active credential is available for this group"}
+	ErrSingleCredentialRequired               = &APIError{HTTPStatus: http.StatusConflict, Code: "SINGLE_CREDENTIAL_REQUIRED", Message: "A group can contain only one credential"}
 	ErrBadGateway                             = &APIError{HTTPStatus: http.StatusBadGateway, Code: "BAD_GATEWAY", Message: "Upstream service error"}
 	ErrIdempotencyKeyRequired                 = &APIError{HTTPStatus: http.StatusPreconditionRequired, Code: "IDEMPOTENCY_KEY_REQUIRED", Message: "Idempotency-Key is required"}
 	ErrInvalidIdempotencyKey                  = &APIError{HTTPStatus: http.StatusBadRequest, Code: "INVALID_IDEMPOTENCY_KEY", Message: "Idempotency-Key must be a canonical UUID v4"}

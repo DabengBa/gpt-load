@@ -350,7 +350,7 @@ export default {
         totalTokens: '已报告 Token 总数',
         persistedWindow: '当前统计窗口',
         estimatedCost: '预估成本',
-        estimatedCostBasis: '基于已报告 Token 与请求当时的倍率',
+        estimatedCostBasis: '基于已报告 Token 与冻结的模型参考价格估算，不代表实际账单',
       },
       tokens: {
         cacheRead: '缓存读取',
@@ -642,6 +642,8 @@ export default {
     },
     schedule: {
       panel: {
+        noMatchingModels: '未找到匹配模型',
+        noModels: '暂无模型',
         model: '对外模型',
         selectModel: '请选择模型',
         loadingOptions: '正在加载模型选项…',
@@ -1209,18 +1211,12 @@ export default {
       },
       receipt: {
         total: '已计价合计',
-        baseTotal: '原始已计价合计',
-        finalTotal: '最终已计价合计',
-        totalRounding:
-          '各计价项按原规则四舍五入后合计，再同时乘以分组和访问密钥倍率，最后四舍五入到 0.000000001 USD；未定价部分不计入合计。',
         rounding:
-          '各计价项应用全部倍率后四舍五入到 0.000000001 USD，再相加；未定价部分不计入合计。',
+          '各计价项使用冻结的模型价格与分项系数（如缓存写入的 8/5），分别四舍五入到 0.000000001 USD 后相加；未定价部分不计入合计。',
         formula: '成本计算',
         input: '输入',
         output: '输出',
         identity: '计价身份',
-        historicalSchema1: '历史作用域',
-        historicalSchema2: '历史全局价格',
       },
       pricingMode: {
         fastLabel: 'Fast 模式计价',

@@ -20,6 +20,11 @@ const (
 
 var migrationIDPattern = regexp.MustCompile(`^(\d{4})_[a-z0-9]+(?:_[a-z0-9]+)*$`)
 
+// Retired migration IDs remain in the ledger but are not part of the active chain.
+var removedMigrationIDs = map[string]struct{}{
+	"0009_price_multipliers": {},
+}
+
 type schemaMigration struct {
 	ID string `gorm:"column:id;type:varchar(255);primaryKey;not null"`
 }
@@ -77,11 +82,7 @@ var migrations = []migration{
 		Up:       migrationfiles.Up0008,
 		Validate: migrationfiles.Validate0008,
 	},
-	{
-		ID:       migrationfiles.ID0009,
-		Up:       migrationfiles.Up0009,
-		Validate: migrationfiles.Validate0009,
-	},
+
 	{
 		ID:       migrationfiles.ID0010,
 		Up:       migrationfiles.Up0010,
@@ -186,6 +187,7 @@ func applyMigrationRegistry(db *gorm.DB, entries []migration) error {
 }
 
 func validateMigrationRegistry(entries []migration) error {
+	previousNumber := 0
 	for index, entry := range entries {
 		position := index + 1
 		matches := migrationIDPattern.FindStringSubmatch(entry.ID)
@@ -193,13 +195,14 @@ func validateMigrationRegistry(entries []migration) error {
 			return fmt.Errorf("migration registry entry %d has invalid ID %q", position, entry.ID)
 		}
 		number, err := strconv.Atoi(matches[1])
-		if err != nil || number != position {
+		if err != nil || number <= previousNumber || (index == 0 && number != 1) {
 			return fmt.Errorf(
-				"migration registry entry %d has non-contiguous ID %q",
+				"migration registry entry %d has non-increasing ID %q",
 				position,
 				entry.ID,
 			)
 		}
+		previousNumber = number
 		if entry.Up == nil || entry.Validate == nil {
 			return fmt.Errorf("migration registry entry %d (%s) is incomplete", position, entry.ID)
 		}
@@ -225,6 +228,13 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration) error {
 	if err := db.Table(migrationLedgerTable).Order("id ASC").Pluck("id", &applied).Error; err != nil {
 		return fmt.Errorf("read schema_migrations: %w", err)
 	}
+	activeApplied := applied[:0]
+	for _, id := range applied {
+		if _, removed := removedMigrationIDs[id]; !removed {
+			activeApplied = append(activeApplied, id)
+		}
+	}
+	applied = activeApplied
 	for index, id := range applied {
 		if index >= len(entries) || entries[index].ID != id {
 			return fmt.Errorf("schema_migrations contains unknown or non-contiguous migration %q", id)

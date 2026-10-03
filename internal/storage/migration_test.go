@@ -22,7 +22,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0006,
 		migrationfiles.ID0007,
 		migrationfiles.ID0008,
-		migrationfiles.ID0009,
+
 		migrationfiles.ID0010,
 		migrationfiles.ID0011,
 		migrationfiles.ID0012,

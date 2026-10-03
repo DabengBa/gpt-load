@@ -23,18 +23,24 @@ type groupCopyDigestBody struct {
 	SourceGroupID uint `json:"source_group_id"`
 }
 
+type GroupCopyResult struct {
+	GroupID      uint   `json:"group_id"`
+	GroupName    string `json:"group_name"`
+	CredentialID *uint  `json:"credential_id"`
+}
+
 func (s *Service) CopyGroupIdempotent(
 	ctx context.Context,
 	idempotencyKey string,
 	sourceGroupID uint,
-) (GroupCreateResult, error) {
+) (GroupCopyResult, error) {
 	if sourceGroupID == 0 {
-		return GroupCreateResult{}, app_errors.ErrValidation
+		return GroupCopyResult{}, app_errors.ErrValidation
 	}
 
 	canonicalBody, err := canonicalIdempotencyBody(groupCopyDigestBody{SourceGroupID: sourceGroupID})
 	if err != nil {
-		return GroupCreateResult{}, app_errors.ErrInternalServer
+		return GroupCopyResult{}, app_errors.ErrInternalServer
 	}
 	sourceIdentity := "group:" + strconv.FormatUint(uint64(sourceGroupID), 10)
 	digest, err := buildIdempotencyDigest(idempotencyDigestInput{
@@ -47,7 +53,7 @@ func (s *Service) CopyGroupIdempotent(
 		CanonicalBody:   canonicalBody,
 	})
 	if err != nil {
-		return GroupCreateResult{}, app_errors.ErrInternalServer
+		return GroupCopyResult{}, app_errors.ErrInternalServer
 	}
 	var catalogSnapshot *catalog.Snapshot
 
@@ -88,16 +94,16 @@ func (s *Service) CopyGroupIdempotent(
 				return idempotentMutationResult{}, app_errors.ErrInternalServer
 			}
 			clone := models.Group{
-				PriceMultiplierMicros: cloneOptionalInt64(source.PriceMultiplierMicros),
-				Name:                  name,
-				ChannelID:             source.ChannelID,
-				ConnectionType:        source.ConnectionType,
-				Params:                append(models.JSON(nil), source.Params...),
-				ProviderURL:           cloneString(source.ProviderURL),
-				Models:                models.JSON(encodedModels),
-				Overrides:             append(models.JSON(nil), source.Overrides...),
-				ProxyConfig:           cloneString(source.ProxyConfig),
-				Enabled:               source.Enabled,
+
+				Name:           name,
+				ChannelID:      source.ChannelID,
+				ConnectionType: source.ConnectionType,
+				Params:         append(models.JSON(nil), source.Params...),
+				ProviderURL:    cloneString(source.ProviderURL),
+				Models:         models.JSON(encodedModels),
+				Overrides:      append(models.JSON(nil), source.Overrides...),
+				ProxyConfig:    cloneString(source.ProxyConfig),
+				Enabled:        source.Enabled,
 			}
 			if err := tx.Create(&clone).Error; err != nil {
 				return idempotentMutationResult{}, app_errors.ParseDBError(err)
@@ -127,6 +133,7 @@ func (s *Service) CopyGroupIdempotent(
 				if err := tx.Create(&credential).Error; err != nil {
 					return idempotentMutationResult{}, app_errors.ParseDBError(err)
 				}
+				credentials[index] = credential
 			}
 			entries, err := stateloader.BuildGroupCredentialEntries(ctx, tx, clone.ID)
 			if err != nil {
@@ -150,10 +157,12 @@ func (s *Service) CopyGroupIdempotent(
 			if _, err := loadPriceTable(ctx, tx); err != nil {
 				return idempotentMutationResult{}, err
 			}
-			result := GroupCreateResult{
-				GroupID:          clone.ID,
-				GroupName:        clone.Name,
-				CredentialsAdded: len(credentials),
+			result := GroupCopyResult{
+				GroupID:   clone.ID,
+				GroupName: clone.Name,
+			}
+			if len(credentials) == 1 {
+				result.CredentialID = new(credentials[0].ID)
 			}
 			canonicalResult, err := canonicaljson.Marshal(result)
 			if err != nil {
@@ -166,11 +175,11 @@ func (s *Service) CopyGroupIdempotent(
 		},
 	})
 	if err != nil {
-		return GroupCreateResult{}, err
+		return GroupCopyResult{}, err
 	}
-	var result GroupCreateResult
+	var result GroupCopyResult
 	if err := json.Unmarshal(operationResult.CanonicalResult, &result); err != nil {
-		return GroupCreateResult{}, app_errors.ErrInternalServer
+		return GroupCopyResult{}, app_errors.ErrInternalServer
 	}
 	if !operationResult.Replayed && s.catalogSync != nil {
 		s.catalogSync.RequestGroupSync()

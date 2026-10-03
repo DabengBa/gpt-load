@@ -247,9 +247,9 @@ func TestDiscoverModelsRefreshesReadySubscriptionStageBeforeUse(t *testing.T) {
 	}
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("refreshed-stage"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -469,9 +469,9 @@ func TestReadyStageRefreshExcludesConcurrentConsume(t *testing.T) {
 
 	_, consumeErr := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("concurrent-stage-consume"), ChannelID: channel.Codex,
-		ConnectionType:      models.ConnectionTypeSubscription,
-		Models:              optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialIDs: []string{stage.StageID},
+		ConnectionType:     models.ConnectionTypeSubscription,
+		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
+		StagedCredentialID: stage.StageID,
 	})
 	close(releaseRefresh)
 	discoverErr := <-discoveryDone

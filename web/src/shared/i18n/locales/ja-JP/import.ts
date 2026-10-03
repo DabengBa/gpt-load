@@ -67,9 +67,12 @@ export default {
       abandon: 'この操作を放棄',
     },
     existing: {
+      populated:
+        'このグループには認証情報があります。グループ詳細で管理または更新してください。別の認証情報はインポートできません。',
+      manage: '認証情報を管理',
       title: '対象グループ',
       description:
-        'この入口は API キーグループへの認証情報追加専用です。モデルや設定は変更しません。サブスクリプションは対応するグループの認証情報ページから接続してください。',
+        '認証情報がない API キーグループに最初の認証情報をインポートします。既存の認証情報はグループ詳細で管理してください。',
       groupsLoading: 'グループを読み込み中…',
       groupsFailed: 'グループを読み込めません',
       groupsStale: 'グループの更新に失敗したため、キャッシュ結果を表示しています',
@@ -81,12 +84,12 @@ export default {
       groupMeta: '#{id} · 公開モデル {models} 件',
       groupUnchanged: 'その他の設定は変更しません',
       groupNotFound: 'グループ #{id} が見つかりません',
-      actionSummary: '{name} に認証情報を追加',
+      actionSummary: '{name} に最初の認証情報をインポート',
       actionSelectTarget: '先に追加先グループを選択してください',
-      actionHelp: 'モデルや設定を変更せず、チャネル認証情報のみを追加します',
+      actionHelp: '1 グループにつき認証情報は 1 つです。モデルと設定は変更しません',
       credentialStorageNotice: '送信後、サーバーが実際の追加数と既存の重複数を返します',
-      batchDuplicates: 'このバッチ内の重複',
-      submit: '認証情報を追加',
+
+      submit: '認証情報をインポート',
       importFailed: '選択したグループに認証情報をインポートできません',
     },
     connection: {
@@ -205,12 +208,11 @@ export default {
     },
     credentials: {
       title: 'API キー',
-      description: '1 行に 1 つ、最大 1,000 件 — 重複は二重に追加されません',
+      description: '1 グループにつき認証情報は 1 つです。同じキーの重複行は 1 件として扱います',
       label: 'キー内容',
-      placeholder: '1 行に 1 つのキー',
+      placeholder: 'API キーを 1 つ貼り付け',
       structuredTitle: 'チャネル認証情報',
-      structuredDescription:
-        '整形済み JSON をそのまま貼り付けられます — 一括登録は 1 行に 1 JSON オブジェクトです',
+      structuredDescription: '1 件の認証情報として整形済み JSON オブジェクトを 1 つ貼り付けます',
       structuredLabel: '認証情報の内容',
       structuredHint:
         'このチャネルで利用可能: {fields}。使用する認証方式の項目だけ入力してください',
@@ -224,12 +226,11 @@ export default {
       analysisLabel: 'キーの事前確認',
       noInput: 'まだ認証情報が入力されていません',
       counters: {
-        nonEmpty: '空でない行',
-        empty: '空行',
+        nonEmpty: '異なる認証情報',
         duplicates: '重複',
       },
       accessKeyWarning: '{count} 行が GPT-Load アクセスキーのようです — 続行前に確認してください',
-      tooMany: '空でないキーは最大 1,000 件です',
+      tooMany: '1 グループには異なる認証情報を 1 件だけ設定できます。他を削除してください',
       required: '先に認証情報を 1 件以上入力してください',
       channelCredentialNotice:
         'ここにはチャネルの API キーを入力します — クライアント認証情報はアクセスキーページで作成してください',
@@ -317,18 +318,19 @@ export default {
     summaryAccounts: 'アカウント {accounts} 件 · モデル {models} 件',
     summaryAccountsOptional: 'アカウント {accounts} 件 · モデルは任意',
     createFailed: 'グループを作成できません',
-    appendFailed: '選択したグループに認証情報をインポートできません',
+
     conflict: {
       title: 'このチャネル接続先は既に存在します',
       titleSubscription: 'サブスクリプショングループは既に存在します',
-      description: '既存グループに認証情報を追加するか、別のグループを作成してください',
+      description: '既存グループを管理するか、この認証情報で別のグループを作成してください',
       descriptionSubscription:
-        '既存グループにアカウントを追加するか、別のグループを作成してください',
+        '既存グループを管理するか、このアカウントで別のグループを作成してください',
       close: 'URL 競合を閉じる',
-      append: 'ここに認証情報をインポート',
-      appendSubscription: 'ここにアカウントを追加',
-      appendHelp: '推奨 · 現在の認証情報だけを追加し、既存の設定は変更しません',
-      appendHelpSubscription: '推奨 · 現在のアカウントだけを追加し、既存の設定は変更しません',
+      manage: 'グループを管理',
+      manageSubscription: 'グループを管理',
+      manageHelp: 'グループ詳細で認証情報を管理します。この入力内容はインポートしません',
+      manageHelpSubscription:
+        'グループ詳細でアカウントを管理します。この入力内容はインポートしません',
       separate: '別のグループを作成',
       edit: '編集に戻る',
     },

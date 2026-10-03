@@ -61,7 +61,7 @@ const styles = stylex.create({
   scopeRow: {
     display: 'grid',
     minWidth: 0,
-    gridTemplateColumns: '46px minmax(0, 1fr)',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
     alignItems: 'baseline',
     gap: 6,
   },
@@ -69,6 +69,7 @@ const styles = stylex.create({
     color: 'var(--color-text-faint)',
     fontSize: 'var(--text-label-xs)',
     textAlign: 'right',
+    whiteSpace: 'nowrap',
   },
   scopeValue: {
     minWidth: 0,
@@ -193,7 +194,6 @@ export function AccessKeyCollection({
           allModels: t('accessKeys.allModels'),
           unlimited: t('accessKeys.unlimited'),
           costRules: (count) => t('accessKeys.costLimits.ruleCount', { count }),
-          priceMultiplier: (value) => t('common.priceMultiplier.value', { value }),
         },
         protocolLabel: (protocol) => protocol,
       }),

@@ -172,6 +172,14 @@ func TestWebsocketQuotaCountsConcurrentTurnsOnceWithoutReservation(t *testing.T)
 		if event.Status != telemetry.RequestStatusSuccess || event.Usage.Pricing.EstimatedCostNanoUSD != 3 || len(event.Attempts) != 1 {
 			t.Fatalf("wrong per-turn record: %+v", event)
 		}
+		var receipt pricing.Receipt
+		if err := json.Unmarshal([]byte(event.Usage.Pricing.ReceiptJSON), &receipt); err != nil {
+			t.Fatal(err)
+		}
+		if receipt.SchemaVersion != 7 || receipt.TotalNanoUSD != 3 || receipt.PricingMode != pricing.ModeStandard ||
+			receipt.Rule != (pricing.ReceiptRule{ChannelID: "openai", ModelID: "upstream"}) {
+			t.Fatalf("wrong per-turn frozen receipt: %+v", receipt)
+		}
 	}
 	if got := runtime.Snapshot(1, time.Now()).Rules[0].UsedNanoUSD; got != 6 {
 		t.Fatalf("used=%d want 6 (existing in-flight overspend)", got)

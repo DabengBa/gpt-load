@@ -384,14 +384,6 @@ export function CurrentAccessKeyCard({ accessKey }: { accessKey: AccessKeyCollec
 
       <dl {...stylex.props(styles.facts)}>
         <div {...stylex.props(styles.fact)}>
-          <dt {...stylex.props(styles.factTerm)}>{t('common.priceMultiplier.label')}</dt>
-          <dd {...stylex.props(styles.factValue)}>
-            <Tooltip content={t('common.priceMultiplier.accessKeyHelp')}>
-              <span>×{accessKey.price_multiplier}</span>
-            </Tooltip>
-          </dd>
-        </div>
-        <div {...stylex.props(styles.fact)}>
           <dt {...stylex.props(styles.factTerm)}>{t('home.ledger.currentAccessKey.rpm')}</dt>
           <dd {...stylex.props(styles.factValue)}>{rpm}</dd>
         </div>

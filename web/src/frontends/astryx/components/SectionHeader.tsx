@@ -19,7 +19,7 @@ export function SectionHeader({
   actions?: ReactNode
 }) {
   return (
-    <header {...stylex.props(styles.header)}>
+    <header {...stylex.props(styles.header, step !== undefined && styles.stepHeader)}>
       <div {...stylex.props(styles.copy)}>
         <h2 id={headingId} {...stylex.props(styles.heading)}>
           {step !== undefined && (
@@ -31,7 +31,11 @@ export function SectionHeader({
         </h2>
         {description !== undefined && <p {...stylex.props(styles.description)}>{description}</p>}
       </div>
-      {actions !== undefined && <div {...stylex.props(styles.actions)}>{actions}</div>}
+      {actions !== undefined && (
+        <div {...stylex.props(styles.actions, step !== undefined && styles.stepActions)}>
+          {actions}
+        </div>
+      )}
     </header>
   )
 }
@@ -52,6 +56,20 @@ const styles = stylex.create({
   copy: {
     minWidth: 0,
   },
+  stepHeader: {
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 'var(--space-2) var(--space-4)',
+    minHeight: 0,
+    marginBottom: 0,
+    paddingBottom: 'var(--space-3)',
+  },
+  stepActions: {
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '100%',
+    paddingTop: '2px',
+  },
   heading: {
     display: 'flex',
     alignItems: 'center',
@@ -59,9 +77,13 @@ const styles = stylex.create({
     margin: 0,
     fontSize: 'var(--title-section)',
     fontWeight: 650,
-    letterSpacing: '-0.01em',
+    letterSpacing: 0,
   },
   title: {
+    display: 'inline-flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
     minWidth: 0,
   },
   step: {

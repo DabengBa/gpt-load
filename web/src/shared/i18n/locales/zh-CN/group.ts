@@ -67,8 +67,7 @@ export default {
       enabledOn: '已启用 {name}',
       enabledOff: '已停用 {name}，该分组不再接受新请求',
       toggleFailed: '切换失败，请重试',
-      appendCredential: '追加凭据',
-      appendCredentialFor: '向 {name} 追加凭据',
+      manageCredentialFor: '管理 {name} 的凭据',
     },
   },
   group: {
@@ -636,7 +635,7 @@ export default {
           usedPercent: '已用 {value}%',
           requests: '请求',
           tokens: 'Token',
-          priceMultiplierBasis: '按请求当时的模型参考价格及分组、访问密钥倍率估算，不代表实际账单',
+          referencePriceBasis: '按请求当时冻结的模型参考价格估算，不代表实际账单',
           referenceCost: 'API 参考成本',
           unavailable: '暂时没有可用的本地统计',
           dataIncomplete: '统计数据未覆盖完整窗口，数值可能偏低',

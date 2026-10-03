@@ -12,14 +12,15 @@ function fakeStorage() {
 const baseCollectionItem = {
   id: 7,
   name: 'alpha',
-  price_multiplier: '1',
+
   channel_id: 'openai_compatible',
   connection_type: 'api_key',
   params: { base_url: 'https://alpha.example/v1' },
   status: 'available',
   model_count: 1,
   client_model_count: 1,
-  credential_counts: { total: 1, available: 1, cooldown: 0, blacklisted: 0, disabled: 0 },
+  credential_configured: true,
+  credential_status: 'available',
 }
 
 function collectionResponse(pageSize, items, totalItems) {
@@ -44,10 +45,10 @@ function newImportDraft() {
     params: { base_url: 'https://alpha.example/v1' },
     proxy: { mode: 'inherit', url: '' },
     name: 'alpha',
-    price_multiplier: '1',
+
     provider_url: 'https://provider.example',
     credentials: 'sk-one',
-    staged_credentials: [],
+    staged_credential: null,
     models: [
       {
         id: 'gpt-4o',
@@ -120,5 +121,5 @@ export function runGroupCollectionContractTests({
     importRecoveryStorageKey,
     JSON.stringify({ version: 8, expires_at: 1_000 + importRecoveryTtlMs, draft: legacyDraft }),
   )
-  assert.deepEqual(service.consume(), { ...legacyDraft, provider_url: '' })
+  assert.equal(service.consume(), null)
 }

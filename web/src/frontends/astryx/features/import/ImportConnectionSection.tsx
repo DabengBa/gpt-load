@@ -4,7 +4,7 @@ import { Field, Selector, Switch, TextInput } from '@astryxdesign/core'
 import type { ChannelDto } from '@shared/control/resources/channels'
 import { proxyMutation } from '@shared/control/resources/proxy'
 import type { ProxyConfiguredMode } from '@shared/control/types'
-import { isValidPriceMultiplier } from '@shared/lib/price-multiplier'
+
 import {
   hasUpstreamBaseURLVersionMismatch,
   isValidUpstreamBaseURL,
@@ -41,10 +41,7 @@ const styles = stylex.create({
   minWidth: {
     minWidth: 0,
   },
-  multiplierInput: {
-    maxWidth: '260px',
-    fontFamily: 'var(--font-mono)',
-  },
+
   proxyControls: {
     display: 'flex',
     minWidth: 0,
@@ -85,7 +82,7 @@ export interface ImportConnectionSectionProps {
   channel: ChannelDto | null
   name: string
   providerUrl: string
-  priceMultiplier: string
+
   params: Record<string, string>
   proxy: ImportProxyDraft
   paramErrors: Readonly<Record<string, string>>
@@ -94,7 +91,7 @@ export interface ImportConnectionSectionProps {
   proxyDisabled?: boolean
   onNameChange(value: string): void
   onProviderUrlChange(value: string): void
-  onPriceMultiplierChange(value: string): void
+
   onParamChange(key: string, value: string): void
   onProxyChange(value: ImportProxyDraft): void
   onBaseUrlOverrideChange(enabled: boolean): void
@@ -105,7 +102,7 @@ export function ImportConnectionSection({
   channel,
   name,
   providerUrl,
-  priceMultiplier,
+
   params,
   proxy,
   paramErrors,
@@ -114,7 +111,7 @@ export function ImportConnectionSection({
   proxyDisabled = false,
   onNameChange,
   onProviderUrlChange,
-  onPriceMultiplierChange,
+
   onParamChange,
   onProxyChange,
   onBaseUrlOverrideChange,
@@ -202,29 +199,6 @@ export function ImportConnectionSection({
           </Field>
         </div>
 
-        <div {...stylex.props(styles.minWidth)}>
-          <Field
-            label={t('common.priceMultiplier.label')}
-            description={t('common.priceMultiplier.groupHelp')}
-            inputID="import-price-multiplier"
-            status={
-              isValidPriceMultiplier(priceMultiplier)
-                ? undefined
-                : { type: 'error', message: t('common.priceMultiplier.invalid') }
-            }
-          >
-            <input
-              id="import-price-multiplier"
-              {...stylex.props(styles.multiplierInput)}
-              value={priceMultiplier}
-              inputMode="decimal"
-              disabled={disabled}
-              aria-invalid={!isValidPriceMultiplier(priceMultiplier) || undefined}
-              onChange={(event) => onPriceMultiplierChange(event.target.value)}
-            />
-          </Field>
-        </div>
-
         {channel !== null && channel.param_fields.length > 0 && (
           <div {...stylex.props(styles.params)}>
             {channel.param_fields.map((param) =>
@@ -253,20 +227,20 @@ export function ImportConnectionSection({
                       />
                       {baseUrlOverrideEnabled && (
                         <div {...stylex.props(styles.urlInputWrap)}>
-                          <input
-                            id={`import-channel-param-${param.key}`}
-                            {...stylex.props(styles.urlInput)}
+                          <TextInput
+                            xstyle={styles.urlInput}
+                            data-gptload-mono
+                            label={t('import.connection.customUrl')}
+                            isLabelHidden
                             value={params[param.key] ?? ''}
-                            type="url"
-                            required
-                            disabled={disabled}
-                            aria-label={t('import.connection.customUrl')}
-                            aria-invalid={fieldError(param.key) ? true : undefined}
+                            {...{ inputMode: 'url' as const, autoCapitalize: 'none' }}
+                            isRequired
+                            isDisabled={disabled}
+                            status={fieldError(param.key) ? { type: 'error' } : undefined}
                             autoComplete="off"
-                            autoCapitalize="none"
-                            spellCheck={false}
+                            {...plainTextInputAttrs}
                             placeholder="https://"
-                            onChange={(event) => onParamChange(param.key, event.target.value)}
+                            onChange={(value) => onParamChange(param.key, value)}
                             onBlur={() => onParamBlur(param.key)}
                           />
                         </div>
@@ -276,10 +250,21 @@ export function ImportConnectionSection({
                 </div>
               ) : (
                 <div key={param.key} {...stylex.props(styles.minWidth)}>
-                  <Field
+                  <TextInput
                     label={param.key === 'base_url' ? t('import.connection.url') : param.label}
                     description={param.key === 'base_url' ? baseURLDescription() : undefined}
-                    inputID={`import-channel-param-${param.key}`}
+                    data-gptload-mono={param.input_kind === 'url' || undefined}
+                    value={params[param.key] ?? ''}
+                    {...{
+                      inputMode: param.input_kind === 'url' ? ('url' as const) : ('text' as const),
+                      autoCapitalize: 'none',
+                    }}
+                    isDisabled={disabled}
+                    autoComplete="off"
+                    {...plainTextInputAttrs}
+                    placeholder={param.input_kind === 'url' ? 'https://' : undefined}
+                    onChange={(value) => onParamChange(param.key, value)}
+                    onBlur={() => onParamBlur(param.key)}
                     isRequired={param.required}
                     status={
                       fieldError(param.key)
@@ -288,24 +273,7 @@ export function ImportConnectionSection({
                           ? { type: 'warning', message: baseURLVersionWarning(param.key) }
                           : undefined
                     }
-                  >
-                    <input
-                      id={`import-channel-param-${param.key}`}
-                      {...stylex.props(
-                        param.input_kind === 'url' ? styles.urlInput : styles.minWidth,
-                      )}
-                      value={params[param.key] ?? ''}
-                      type={param.input_kind === 'url' ? 'url' : 'text'}
-                      disabled={disabled}
-                      aria-invalid={fieldError(param.key) ? true : undefined}
-                      autoComplete="off"
-                      autoCapitalize="none"
-                      spellCheck={false}
-                      placeholder={param.input_kind === 'url' ? 'https://' : undefined}
-                      onChange={(event) => onParamChange(param.key, event.target.value)}
-                      onBlur={() => onParamBlur(param.key)}
-                    />
-                  </Field>
+                  />
                 </div>
               ),
             )}
@@ -313,25 +281,19 @@ export function ImportConnectionSection({
         )}
 
         <div {...stylex.props(styles.fullWidth)}>
-          <Field
+          <TextInput
             label={t('group.settings.base.providerUrl')}
             isOptional
             description={t('group.settings.base.providerUrlHelp')}
-            inputID="import-provider-url"
-          >
-            <input
-              id="import-provider-url"
-              {...stylex.props(styles.urlInput)}
-              value={providerUrl}
-              type="url"
-              disabled={disabled}
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              placeholder="https://"
-              onChange={(event) => onProviderUrlChange(event.target.value)}
-            />
-          </Field>
+            data-gptload-mono
+            value={providerUrl}
+            {...{ inputMode: 'url' as const, autoCapitalize: 'none' }}
+            isDisabled={disabled}
+            autoComplete="off"
+            {...plainTextInputAttrs}
+            placeholder="https://"
+            onChange={onProviderUrlChange}
+          />
         </div>
 
         {channel && (

@@ -199,9 +199,9 @@ export default {
         enableTotal: 'Enable total limit',
         enablePeriodic: 'Enable periodic limits',
         totalDescription:
-          'Limit cumulative estimated cost after Group and access key multipliers. The total limit does not reset automatically.',
+          'Limit cumulative estimated cost using frozen model reference prices. The total limit does not reset automatically.',
         periodicDescription:
-          'Limit adjusted estimated cost in fixed periods triggered by the first request. Up to 10 rules.',
+          'Limit estimated cost in fixed periods triggered by the first request. Up to 10 rules.',
         addPeriodic: 'Add periodic limit',
         total: 'Total limit',
         periodic: 'Periodic limit',

@@ -29,7 +29,7 @@
   --color-warning-bg: #f8f0dd;
   --color-danger: #d03b3b;
   --color-danger-bg: #fbebe9;
-  --color-neutral: #5a5f66;
+  --color-neutral-fg: #5a5f66;
   --color-neutral-bg: #eceded;
   --color-skeleton-base: color-mix(
     in srgb,
@@ -196,7 +196,7 @@
   --color-warning-bg: #241d10;
   --color-danger: #e66767;
   --color-danger-bg: #2a1613;
-  --color-neutral: #9aa0a8;
+  --color-neutral-fg: #9aa0a8;
   --color-neutral-bg: #1c1e21;
   --shadow-sheet: 0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.3);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45);
@@ -236,7 +236,7 @@
     --color-warning-bg: #241d10;
     --color-danger: #e66767;
     --color-danger-bg: #2a1613;
-    --color-neutral: #9aa0a8;
+    --color-neutral-fg: #9aa0a8;
     --color-neutral-bg: #1c1e21;
     --shadow-sheet: 0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.3);
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45);

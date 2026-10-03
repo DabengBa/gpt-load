@@ -157,7 +157,7 @@ export function ImportView() {
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="import-page-title">
       <div {...stylex.props(styles.pageInner)}>
-        <div {...stylex.props(styles.sheet)}>
+        <div {...stylex.props(styles.content)}>
           <div {...stylex.props(styles.header)}>
             <h1 id="import-page-title" {...stylex.props(styles.title)}>
               {t('import.title')}
@@ -200,26 +200,20 @@ const styles = stylex.create({
     width: '100%',
     paddingTop: 'var(--stage-padding-top)',
     paddingBottom: 'var(--stage-padding-bottom)',
-    paddingInline: 'var(--stage-padding-inline)',
+    paddingInline: {
+      default: 'var(--stage-padding-inline)',
+      [narrow]: 'var(--stage-padding-inline-compact)',
+    },
   },
   pageInner: {
     // Classic PageFrame wide.
     width: 'min(100%, 1240px)',
     marginInline: 'auto',
   },
-  sheet: {
+  content: {
     position: 'relative',
     minWidth: 0,
     minHeight: 0,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: 'var(--radius-sheet)',
-    backgroundColor: 'var(--color-surface)',
-    boxShadow: 'var(--shadow-sheet)',
-    paddingTop: 'var(--sheet-padding-top)',
-    paddingBottom: 'var(--sheet-padding-bottom)',
-    paddingInline: 'var(--sheet-padding-inline)',
   },
   header: {
     display: 'flex',
@@ -227,11 +221,16 @@ const styles = stylex.create({
     flexDirection: { default: 'row', [narrow]: 'column' },
     justifyContent: 'space-between',
     gap: 'var(--space-3)',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'var(--color-border-control)',
+    paddingBottom: 'var(--space-4)',
   },
   title: {
     margin: 0,
     fontSize: 'var(--text-heading-2-size, 20px)',
     fontWeight: 650,
+    lineHeight: 1.4,
   },
   modeControl: {
     minWidth: 0,

@@ -12,18 +12,16 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { ArrowRight, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { ApiError, InvalidResponseError, RequestCancelledError } from '@shared/http/errors'
+import { ApiError, RequestCancelledError } from '@shared/http/errors'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import { channelsQueryOptions, type ChannelDto } from '@shared/control/resources/channels'
 import {
-  connectGroupCredentials,
   getCredentialStage,
   type CredentialStage,
 } from '@shared/control/resources/credential-stages'
 import {
   createGroup,
   discoverModels,
-  importGroupCredentials,
   isSameTargetConflictData,
   readCredentialValidationData,
   type CredentialValidationData,
@@ -35,7 +33,7 @@ import type { ModelCandidate } from '@shared/control/resources/providers'
 import { proxyMutation } from '@shared/control/resources/proxy'
 import type { MessageId } from '@shared/i18n/message-ids'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
-import { isValidPriceMultiplier, normalizePriceMultiplier } from '@shared/lib/price-multiplier'
+
 import { constrainCollectionSearch } from '@shared/routing/route-query'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 import {
@@ -46,7 +44,7 @@ import {
   type ImportRouteState,
 } from '@shared/routing/import-route'
 import { pagePath } from '@shared/routing/page-routes'
-import { analyzeCredentials } from '@shared/domain/import/credential-analysis'
+import { readSingleCredential } from './single-credential-input'
 import { mapConnectionToChannel, parseConnectionJSON } from '@shared/domain/import/connection-json'
 import {
   appendSelectedCandidates,
@@ -84,18 +82,14 @@ import { SubscriptionCredentialStager } from './SubscriptionCredentialStager'
 import { useImportOperationOwner, useOperationSnapshot } from './import-operation'
 
 // Module scope keeps `Date.now()` reads out of render scope (react-hooks/purity).
-function currentReadyStages(stages: readonly CredentialStage[]): CredentialStage[] {
-  const now = Date.now()
-  return stages.filter(({ status, expires_at_ms }) => status === 'ready' && expires_at_ms > now)
+function currentReadyStage(stage: CredentialStage | null): CredentialStage | null {
+  return stage?.status === 'ready' && stage.expires_at_ms > Date.now() ? stage : null
 }
 
-function expireStaleReadyStages(stages: readonly CredentialStage[]): CredentialStage[] {
-  const now = Date.now()
-  return stages.map((stage) =>
-    stage.status === 'ready' && stage.expires_at_ms <= now
-      ? { ...stage, status: 'expired' }
-      : stage,
-  )
+function expireStaleReadyStage(stage: CredentialStage | null): CredentialStage | null {
+  return stage?.status === 'ready' && stage.expires_at_ms <= Date.now()
+    ? { ...stage, status: 'expired' }
+    : stage
 }
 
 function freshDraft(): ImportDraft {
@@ -107,9 +101,9 @@ function freshDraft(): ImportDraft {
     proxy: { mode: 'inherit', url: '' },
     name: '',
     provider_url: '',
-    price_multiplier: '1',
+
     credentials: '',
-    staged_credentials: [],
+    staged_credential: null,
     models: [],
   }
 }
@@ -119,17 +113,8 @@ function cloneDraft(source: ImportDraft): ImportDraft {
     ...source,
     params: { ...source.params },
     proxy: { ...source.proxy },
-    staged_credentials: source.staged_credentials.map((stage) => ({
-      stage_id: stage.stage_id,
-      status: stage.status,
-      ...(stage.authorization_url === undefined
-        ? {}
-        : { authorization_url: stage.authorization_url }),
-      ...(stage.redirect_uri === undefined ? {} : { redirect_uri: stage.redirect_uri }),
-      account: { ...stage.account },
-      expires_at_ms: stage.expires_at_ms,
-      ...(stage.error_code === undefined ? {} : { error_code: stage.error_code }),
-    })),
+    staged_credential:
+      source.staged_credential === null ? null : structuredClone(source.staged_credential),
     models: source.models.map((model) => ({ ...model, sources: [...model.sources] })),
   }
 }
@@ -172,20 +157,14 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
   const owner = useImportOperationOwner()
   const createOperation = owner.createGroup
-  const appendOperation = owner.importCredentials
-  const connectOperation = owner.connectCredentials
   const createSnap = useOperationSnapshot(createOperation)
-  const appendSnap = useOperationSnapshot(appendOperation)
-  const connectSnap = useOperationSnapshot(connectOperation)
 
   // Classic setup: a confirmed outcome clears before first paint — confirmed
   // never maps to a notice key, so a mount-effect reset is invisible.
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
-    for (const op of [createOperation, appendOperation, connectOperation]) {
-      if (op.getSnapshot().outcome?.kind === 'confirmed') op.reset()
-    }
+    if (createOperation.getSnapshot().outcome?.kind === 'confirmed') createOperation.reset()
     return () => {
       mountedRef.current = false
     }
@@ -193,12 +172,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   }, [])
 
   const [initialOperationDraft] = useState(
-    () =>
-      createOperation.getSnapshot().operation?.payload.draft ??
-      connectOperation.getSnapshot().operation?.payload.draft ??
-      (appendOperation.getSnapshot().operation?.payload.draft.mode === 'new'
-        ? (appendOperation.getSnapshot().operation?.payload.draft as ImportDraft)
-        : null),
+    () => createOperation.getSnapshot().operation?.payload.draft ?? null,
   )
   const isFreshNewGroup = initialOperationDraft === null && initialDraft == null
   const [draft, setDraft] = useState<ImportDraft>(() =>
@@ -249,16 +223,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const [serverModelConflicts, setServerModelConflicts] = useState<ModelNameConflict[]>([])
   const [completed, setCompleted] = useState(false)
 
-  const mutationPending = createSnap.pending || appendSnap.pending || connectSnap.pending
-  const payloadLocked =
-    createSnap.operation !== null || appendSnap.operation !== null || connectSnap.operation !== null
-  const activeSnap = connectSnap.operation
-    ? connectSnap
-    : appendSnap.operation
-      ? appendSnap
-      : createSnap.operation
-        ? createSnap
-        : null
+  const mutationPending = createSnap.pending
+  const payloadLocked = createSnap.operation !== null
+  const activeSnap = createSnap.operation ? createSnap : null
   const mutationOutcome = activeSnap?.outcome ?? null
   const operationNoticeKey: MessageId | '' = !mutationOutcome
     ? ''
@@ -282,8 +249,8 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const discoveryPanelRunRef = useRef(false)
   const [autoFilledSkip, setAutoFilledSkip] = useState(false)
 
-  const credentialAnalysis = analyzeCredentials(draft.credentials, draft.channel_id)
-  const readyStages = draft.staged_credentials.filter(({ status }) => status === 'ready')
+  const credential = readSingleCredential(draft.credentials)
+  const readyStage = draft.staged_credential?.status === 'ready' ? draft.staged_credential : null
 
   async function syncDiscoveryStage(stageID: string, identity: number): Promise<void> {
     if (!mountedRef.current) return
@@ -291,18 +258,15 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       const stage = await getCredentialStage(apiClient, stageID)
       if (!mountedRef.current) return
       setDraft((current) =>
-        current.staged_credentials.some((item) => item.stage_id === stageID)
+        current.staged_credential?.stage_id === stageID
           ? {
               ...current,
-              staged_credentials: current.staged_credentials.map((item) =>
-                item.stage_id === stage.stage_id
-                  ? {
-                      ...stage,
-                      authorization_url: stage.authorization_url ?? item.authorization_url,
-                      redirect_uri: stage.redirect_uri ?? item.redirect_uri,
-                    }
-                  : item,
-              ),
+              staged_credential: {
+                ...stage,
+                authorization_url:
+                  stage.authorization_url ?? current.staged_credential.authorization_url,
+                redirect_uri: stage.redirect_uri ?? current.staged_credential.redirect_uri,
+              },
             }
           : current,
       )
@@ -316,10 +280,20 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   }
 
   const credentialCount =
-    draft.connection_type === 'subscription' ? readyStages.length : credentialAnalysis.nonEmptyCount
+    draft.connection_type === 'subscription'
+      ? readyStage === null
+        ? 0
+        : 1
+      : credential === null
+        ? 0
+        : 1
+  const tooManyCredentials =
+    draft.connection_type === 'subscription'
+      ? false
+      : draft.credentials.trim() !== '' && credential === null
   const connectionChannel = selectedChannel
   const isSubscription = draft.connection_type === 'subscription'
-  const proxyLocked = isSubscription && draft.staged_credentials.length > 0
+  const proxyLocked = isSubscription && draft.staged_credential !== null
   const draftProxyMutation = proxyMutation(draft.proxy.mode, draft.proxy.url)
   const draftProxyOverride =
     selectedChannel?.capabilities.outbound_proxy === true &&
@@ -401,15 +375,14 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
         : '')
   const submitBlockedReason = (() => {
     if (payloadLocked || mutationPending) return ''
-    if (!isValidPriceMultiplier(draft.price_multiplier)) return t('common.priceMultiplier.invalid')
+
     if (paramsError) {
       if (selectedChannel === null) return t('import.presets.channelRequired')
       return visibleParamError || t('import.steps.channel.incomplete')
     }
     if (credentialCount === 0)
       return t(isSubscription ? 'import.subscription.required' : 'import.credentials.required')
-    if (!isSubscription && credentialAnalysis.tooManyCredentials)
-      return t('import.credentials.tooMany')
+    if (tooManyCredentials) return t('import.credentials.tooMany')
     if (modelValidity.invalidIndexes.size) return t('import.models.resolveErrors')
     return ''
   })()
@@ -419,15 +392,14 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     !paramsError &&
     !connectionMappingBlocked &&
     credentialCount > 0 &&
-    (draft.connection_type === 'subscription' || !credentialAnalysis.tooManyCredentials)
+    !tooManyCredentials
   const canCreate =
     !payloadLocked &&
     !mutationPending &&
-    isValidPriceMultiplier(draft.price_multiplier) &&
     !paramsError &&
     !connectionMappingBlocked &&
     credentialCount > 0 &&
-    (draft.connection_type === 'subscription' || !credentialAnalysis.tooManyCredentials) &&
+    !tooManyCredentials &&
     modelValidity.invalidIndexes.size === 0
   const currentModelIDs = draft.models.map(({ id }) => id.trim()).filter(Boolean)
   const dirty = !completed && JSON.stringify(draft) !== baselineJson
@@ -465,17 +437,16 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   })()
   const subscriptionStageError =
     isSubscription &&
-    readyStages.length === 0 &&
-    draft.staged_credentials.some(({ status }) =>
-      ['failed', 'cancelled', 'expired', 'outcome_unknown'].includes(status),
-    )
-  const activeSubscriptionStage = draft.staged_credentials.find(
-    ({ status }) => status === 'pending_authorization' || status === 'exchanging',
-  )
+    readyStage === null &&
+    draft.staged_credential !== null &&
+    ['failed', 'cancelled', 'expired', 'outcome_unknown'].includes(draft.staged_credential.status)
+  const activeSubscriptionStage =
+    draft.staged_credential !== null &&
+    ['pending_authorization', 'exchanging'].includes(draft.staged_credential.status)
+      ? draft.staged_credential
+      : null
   const credentialStepState: ImportStepState =
-    (!isSubscription && credentialAnalysis.tooManyCredentials) ||
-    credentialValidation !== null ||
-    subscriptionStageError
+    tooManyCredentials || credentialValidation !== null || subscriptionStageError
       ? 'error'
       : credentialCount > 0
         ? 'ready'
@@ -499,8 +470,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
           : 'import.credentials.description',
       )
   const credentialStepSummary = (() => {
-    if (!isSubscription && credentialAnalysis.tooManyCredentials)
-      return t('import.credentials.tooMany')
+    if (tooManyCredentials) return t('import.credentials.tooMany')
     if (credentialValidation || subscriptionStageError)
       return t('import.steps.credentials.needsAttention')
     if (isSubscription && credentialCount > 0)
@@ -621,10 +591,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   useEffect(() => {
     recoveryDraftRef.current = () => {
       if (completed) return null
-      const stableDraft =
-        createOperation.getSnapshot().operation?.payload.draft ??
-        connectOperation.getSnapshot().operation?.payload.draft ??
-        appendOperation.getSnapshot().operation?.payload.draft
+      const stableDraft = createOperation.getSnapshot().operation?.payload.draft
       return stableDraft?.mode === 'new'
         ? cloneDraft(stableDraft as ImportDraft)
         : cloneDraft(draft)
@@ -788,12 +755,12 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (!ensureConnectionMapping() || !canDiscover || discoveryLoading) return
     const subscriptionStage =
       draft.connection_type === 'subscription'
-        ? currentReadyStages(draft.staged_credentials)[0]
+        ? currentReadyStage(draft.staged_credential)
         : undefined
     if (draft.connection_type === 'subscription' && !subscriptionStage) {
       setDraft((current) => ({
         ...current,
-        staged_credentials: expireStaleReadyStages(current.staged_credentials),
+        staged_credential: expireStaleReadyStage(current.staged_credential),
       }))
       // 让位给 draft 变更触发的 invalidateDiscovery，否则这条提示会被它清掉。
       queueMicrotask(() => {
@@ -879,6 +846,10 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
   async function addManualModel(): Promise<void> {
     if (payloadLocked) return
+    if (draft.models.length === 0) {
+      updateModels([createManualRow()])
+      return
+    }
     await modelEditorRef.current?.addManual()
   }
 
@@ -898,51 +869,28 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       ...(draftProxyOverride === undefined ? {} : { proxy: draftProxyOverride }),
       ...(name ? { name } : {}),
       provider_url: draft.provider_url.trim() || null,
-      price_multiplier: normalizePriceMultiplier(draft.price_multiplier),
+
       models: toGroupModels(draft.models),
       ...(draft.connection_type === 'subscription'
         ? {
-            staged_credential_ids: currentReadyStages(draft.staged_credentials).map(
-              ({ stage_id }) => stage_id,
-            ),
+            staged_credential_id: currentReadyStage(draft.staged_credential)?.stage_id,
           }
-        : { credentials: draft.credentials }),
+        : { credential: draft.credentials }),
       confirm_same_target: confirmSameTarget,
     }
   }
 
-  async function finishSuccess(
-    groupID: number,
-    kind: 'create' | 'append',
-    added: number,
-    duplicated: number,
-  ): Promise<void> {
+  async function finishSuccess(groupID: number): Promise<void> {
     setCompleted(true)
-    setDraft((current) => ({ ...current, credentials: '', staged_credentials: [] }))
+    setDraft((current) => ({ ...current, credentials: '', staged_credential: null }))
     services.importRecovery.clear()
-    if (kind === 'create') createOperation.reset()
-    else {
-      appendOperation.reset()
-      connectOperation.reset()
-    }
+    createOperation.reset()
 
-    await applyInvalidationPlan(
-      queryClient,
-      kind === 'create'
-        ? mutationInvalidationPlans.group.create
-        : mutationInvalidationPlans.group.importCredentials(groupID),
-    )
+    await applyInvalidationPlan(queryClient, mutationInvalidationPlans.group.create)
     if (!mountedRef.current) return
     toast.show({
-      message: t(
-        isSubscription
-          ? duplicated > 0
-            ? 'import.subscription.resultDuplicated'
-            : 'import.subscription.result'
-          : 'import.credentials.result',
-        { added, duplicated },
-      ),
-      tone: added === 0 ? 'warning' : 'success',
+      message: t('group.settings.savedFeedback'),
+      tone: 'success',
       duration: 4_000,
     })
     await unsavedChanges.runWithoutPrompt(() =>
@@ -960,12 +908,12 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (!ensureConnectionMapping()) return
     if (
       draft.connection_type === 'subscription' &&
-      readyStages.length > 0 &&
-      currentReadyStages(draft.staged_credentials).length === 0
+      readyStage !== null &&
+      currentReadyStage(draft.staged_credential) === null
     ) {
       setDraft((current) => ({
         ...current,
-        staged_credentials: expireStaleReadyStages(current.staged_credentials),
+        staged_credential: expireStaleReadyStage(current.staged_credential),
       }))
       // 同上：draft 变更会触发清空 errorKey 的 watcher，先让它跑完。
       queueMicrotask(() => {
@@ -991,12 +939,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     )
     if (!outcome) return
     if (outcome.kind === 'confirmed') {
-      await finishSuccess(
-        outcome.value.group_id,
-        'create',
-        outcome.value.credentials_added,
-        outcome.value.credentials_duplicated,
-      )
+      await finishSuccess(outcome.value.group_id)
       return
     }
     if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
@@ -1027,9 +970,11 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     }
     createOperation.reset()
     await reportSubmissionError(
-      draft.connection_type === 'subscription'
-        ? presentSubscriptionErrorKey(cause, 'import.createFailed')
-        : 'import.createFailed',
+      cause instanceof ApiError && cause.code === 'SINGLE_CREDENTIAL_REQUIRED'
+        ? 'import.credentials.tooMany'
+        : draft.connection_type === 'subscription'
+          ? presentSubscriptionErrorKey(cause, 'import.createFailed')
+          : 'import.createFailed',
     )
   }
 
@@ -1054,107 +999,24 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     setConflict((current) => (current === displayedConflict ? null : current))
   }
 
-  async function appendToGroup(groupID: number): Promise<void> {
-    const current = createOperation.getSnapshot().operation
-    if (!current || !conflict || mutationPending) return
-    const displayedConflict = conflict
-    const stableDraft = current.payload.draft
-    createOperation.reset()
-    if (stableDraft.connection_type === 'subscription') {
-      const stageIDs = current.payload.request.staged_credential_ids ?? []
-      if (!owner.beginConnectCredentials({ groupID, stageIDs }, stableDraft)) return
-      await executeConnectOperation()
-      setConflict((current) => (current === displayedConflict ? null : current))
-      return
-    }
-    const credentials = current.payload.request.credentials ?? ''
-    if (!owner.beginImportCredentials({ groupID, credentials }, 'new', stableDraft)) {
-      return
-    }
-    await executeAppendOperation()
-    setConflict((current) => (current === displayedConflict ? null : current))
-  }
-
-  async function executeConnectOperation(): Promise<void> {
-    if (!connectOperation.getSnapshot().operation) return
-    setErrorKey('')
-    const outcome = await connectOperation.execute((operation, signal) =>
-      connectGroupCredentials(
-        apiClient,
-        operation.payload.groupID,
-        operation.payload.stageIDs,
-        operation.idempotencyKey,
-        signal,
-      ),
+  async function manageGroup(groupID: number): Promise<void> {
+    if (mutationPending || !(await unsavedChanges.confirmDiscard())) return
+    returnToEdit()
+    services.importRecovery.clear()
+    setCompleted(true)
+    await unsavedChanges.runWithoutPrompt(() =>
+      navigate({ to: `${pagePath('groups')}/${groupID}` }),
     )
-    if (!outcome) return
-    if (outcome.kind === 'confirmed') {
-      await finishSuccess(
-        outcome.value.group_id,
-        'append',
-        outcome.value.credentials_added,
-        outcome.value.credentials_duplicated,
-      )
-      return
-    }
-    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
-    const cause = connectOperation.getSnapshot().lastError
-    connectOperation.reset()
-    await reportSubmissionError(presentSubscriptionErrorKey(cause, 'import.appendFailed'))
-  }
-
-  async function executeAppendOperation(): Promise<void> {
-    if (!appendOperation.getSnapshot().operation) return
-    setErrorKey('')
-    const outcome = await appendOperation.execute(async (operation, signal) => {
-      const imported = await importGroupCredentials(
-        apiClient,
-        operation.payload.groupID,
-        { credentials: operation.payload.credentials },
-        operation.idempotencyKey,
-        signal,
-      )
-      if (imported.group_id !== operation.payload.groupID) throw new InvalidResponseError()
-      return imported
-    })
-    if (!outcome) return
-    if (outcome.kind === 'confirmed') {
-      const targetID = outcome.value.group_id
-      await finishSuccess(
-        targetID,
-        'append',
-        outcome.value.credentials_added,
-        outcome.value.credentials_duplicated,
-      )
-      return
-    }
-    if (!mountedRef.current || outcome.kind !== 'failed' || outcome.reason !== 'rejected') return
-    const cause = appendOperation.getSnapshot().lastError
-    if (cause instanceof ApiError && cause.code === 'VALIDATION_FAILED') {
-      const validation = readCredentialValidationData(cause.data)
-      if (validation) {
-        setCredentialValidation(validation)
-        appendOperation.reset()
-        setErrorFocusToken((token) => token + 1)
-        return
-      }
-    }
-    appendOperation.reset()
-    await reportSubmissionError('import.appendFailed')
   }
 
   async function retryOperation(): Promise<void> {
-    if (connectOperation.getSnapshot().operation) await executeConnectOperation()
-    else if (appendOperation.getSnapshot().operation) await executeAppendOperation()
-    else if (createOperation.getSnapshot().operation) await executeCreateOperation()
+    if (createOperation.getSnapshot().operation) await executeCreateOperation()
   }
 
   async function abandonOperation(): Promise<void> {
     if (mutationPending || !payloadLocked) return
     if (!(await unsavedChanges.confirmDiscard()) || mutationPending) return
     createOperation.reset()
-    appendOperation.reset()
-    connectOperation.reset()
     setConflict(null)
     setServerModelConflicts([])
     setCredentialValidation(null)
@@ -1164,8 +1026,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   function returnToEdit(): void {
     if (mutationPending) return
     createOperation.reset()
-    appendOperation.reset()
-    connectOperation.reset()
+
     setConflict(null)
     setCredentialValidation(null)
     setErrorKey('')
@@ -1231,7 +1092,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     draft.connection_type,
     JSON.stringify(draft.params),
     draft.credentials,
-    readyStages.map(({ stage_id }) => stage_id).join(','),
+    readyStage?.stage_id ?? '',
     JSON.stringify(draft.proxy),
   ].join('')
   const lastInvalidationSignatureRef = useRef(discoveryInvalidationSignature)
@@ -1425,7 +1286,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               channel={connectionChannel}
               name={draft.name}
               providerUrl={draft.provider_url}
-              priceMultiplier={draft.price_multiplier}
+
               params={draft.params}
               proxy={draft.proxy}
               proxyDisabled={proxyLocked}
@@ -1436,9 +1297,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               onProviderUrlChange={(value) =>
                 setDraft((current) => ({ ...current, provider_url: value }))
               }
-              onPriceMultiplierChange={(value) =>
-                setDraft((current) => ({ ...current, price_multiplier: value }))
-              }
+
               onParamChange={setChannelParam}
               onProxyChange={(proxy) => setDraft((current) => ({ ...current, proxy }))}
               onBaseUrlOverrideChange={setBaseURLOverride}
@@ -1482,9 +1341,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
           <div {...stylex.props(styles.stepBody)}>
             {isSubscription ? (
               <SubscriptionCredentialStager
-                stages={draft.staged_credentials}
-                onStagesChange={(staged_credentials) =>
-                  setDraft((current) => ({ ...current, staged_credentials }))
+                stage={draft.staged_credential}
+                onStageChange={(stage) =>
+                  setDraft((current) => ({ ...current, staged_credential: stage }))
                 }
                 channelId={draft.channel_id}
                 channelName={subscriptionChannelName}
@@ -1493,7 +1352,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                 notices={selectedChannel?.notices ?? []}
                 context="create"
                 disabled={payloadLocked}
-                entryDisabled={draftProxyMutation === undefined}
+                entryDisabled={draftProxyMutation === undefined || draft.staged_credential !== null}
                 hideHeader
                 compact
               />
@@ -1657,6 +1516,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
       <StickySaveBar
         appearance="ledger"
+        xstyle={styles.saveBar}
         alwaysVisible
         dirty={!canCreate && !mutationPending}
         pending={mutationPending}
@@ -1731,8 +1591,8 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                       <span {...stylex.props(styles.conflictHelp)}>
                         {t(
                           isSubscription
-                            ? 'import.conflict.appendHelpSubscription'
-                            : 'import.conflict.appendHelp',
+                            ? 'import.conflict.manageHelpSubscription'
+                            : 'import.conflict.manageHelp',
                         )}
                       </span>
                     </div>
@@ -1742,10 +1602,10 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                       isDisabled={mutationPending}
                       label={t(
                         isSubscription
-                          ? 'import.conflict.appendSubscription'
-                          : 'import.conflict.append',
+                          ? 'import.conflict.manageSubscription'
+                          : 'import.conflict.manage',
                       )}
-                      onClick={() => void appendToGroup(group.id)}
+                      onClick={() => void manageGroup(group.id)}
                     />
                   </div>
                 ))}
@@ -1785,13 +1645,14 @@ const styles = stylex.create({
     marginTop: { default: 'var(--space-5)', ':empty': 0 },
   },
   steps: {
+    display: 'grid',
     minWidth: 0,
+    gap: 'var(--space-2)',
   },
   step: {
     minWidth: 0,
-    paddingTop: '14px',
-    paddingBottom: '18px',
-    selectors: {},
+    paddingTop: 'var(--space-5)',
+    paddingBottom: 'var(--space-4)',
   },
   stepHeader: {
     minWidth: 0,
@@ -1799,7 +1660,7 @@ const styles = stylex.create({
   stepBody: {
     minWidth: 0,
     marginTop: '12px',
-    marginLeft: '34px',
+    marginLeft: { default: '28px', '@media (max-width: 680px)': 0 },
   },
   credentialsStep: {},
   modelsBody: {},
@@ -1811,7 +1672,7 @@ const styles = stylex.create({
     paddingInline: '8px',
     fontSize: 'var(--text-label-xs)',
     fontWeight: 600,
-    letterSpacing: '0.01em',
+    letterSpacing: 0,
   },
   requirementRequired: {
     backgroundColor: 'var(--color-action-soft)',
@@ -1828,6 +1689,7 @@ const styles = stylex.create({
     color: 'var(--color-text-faint)',
     fontSize: 'var(--text-sm)',
     minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   stepSummaryError: {
     color: 'var(--color-danger)',
@@ -1842,15 +1704,23 @@ const styles = stylex.create({
   },
   modelsActions: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: 'var(--space-2)',
   },
   modelsToolbar: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: 'var(--space-2)',
     marginBottom: 'var(--space-3)',
   },
   modelEditor: {
     minWidth: 0,
+  },
+  saveBar: {
+    borderRadius: 'var(--radius-control)',
+    backgroundColor: 'var(--color-surface-raised)',
+    backdropFilter: 'none',
+    boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
   },
   error: {
     marginTop: 'var(--space-5)',

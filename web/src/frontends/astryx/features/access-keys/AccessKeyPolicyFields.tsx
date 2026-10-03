@@ -131,7 +131,6 @@ export function AccessKeyPolicyFields({
     if (value !== 'never' && value !== 'specified') return
     setNow(Date.now())
     onExpirationModeChange(value)
-    if (value === 'never') onExpiresAtChange(null)
   }
 
   function setExpiration(value: string | undefined): void {

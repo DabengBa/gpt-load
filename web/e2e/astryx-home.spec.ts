@@ -45,7 +45,7 @@ function currentAccessKey() {
     },
     expires_at_ms: null,
     rpm_limit: 60,
-    price_multiplier: '1',
+
     cost_limit_rules: [],
     created_at_ms: 1_730_000_000_000,
     updated_at_ms: 1_730_000_000_000,
@@ -408,17 +408,11 @@ test('renders the admin ledger and canonicalizes the home query', async ({ page 
     name: /prod has 1 credentials with insufficient balance/,
   })
   await expect(billing).toBeVisible()
-  await expect(billing).toHaveAttribute(
-    'href',
-    '/groups/1?tab=credentials&credential_status=cooldown',
-  )
+  await expect(billing).toHaveAttribute('href', '/groups/1?tab=credentials')
   const blacklisted = page.getByRole('link', {
     name: /prod has 1 blacklisted credentials/,
   })
-  await expect(blacklisted).toHaveAttribute(
-    'href',
-    '/groups/1?tab=credentials&credential_status=blacklisted',
-  )
+  await expect(blacklisted).toHaveAttribute('href', '/groups/1?tab=credentials')
 
   // Subscription accounts card.
   await expect(page.getByRole('heading', { name: 'Recently used' })).toBeVisible()
@@ -441,6 +435,35 @@ test('shows the welcome state for an empty admin home', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Import channel credentials' })).toBeVisible()
   // The empty ledger never mounts gateway or spend sections.
   await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toHaveCount(0)
+})
+
+test('renders grouped home without access keys and links to settings credentials', async ({
+  page,
+}) => {
+  await mockHome(page)
+  await page.route('**/api/home', async (route: Route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: { ...baseHome({ nowMS: Date.now(), principalType: 'admin' }), access_keys: [] },
+      }),
+    })
+  })
+  await page.goto('/', { waitUntil: 'load' })
+  await expectAstryxDocument(page)
+  await expect(
+    page.getByRole('heading', { name: /2 Groups.*4\/5 credentials available.*3 models/ }),
+  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toBeVisible()
+  await expect(page.getByText('Create an access key before connecting a client')).toBeVisible()
+  const createAccessKey = page.getByRole('link', { name: 'Create access key', exact: true })
+  await expect(createAccessKey).toHaveAttribute('href', '/settings?section=credentials')
+  await createAccessKey.click()
+  await expect(page).toHaveURL(/\/settings\?section=credentials$/)
+  await expect(page.getByRole('heading', { name: 'Keys and access', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Client access keys', exact: true })).toBeVisible()
 })
 
 test('shows the error state and recovers through retry', async ({ page }) => {
@@ -492,8 +515,8 @@ test('keeps stale content with a warning banner when a refresh fails', async ({ 
       body: JSON.stringify({ code: 500, message: 'boom', data: null }),
     })
   })
-  await page.getByRole('link', { name: 'Models', exact: true }).click()
-  await expect(page).toHaveURL(/\/models/)
+  await page.getByRole('link', { name: 'Dispatch center', exact: true }).click()
+  await expect(page).toHaveURL(/\/schedule/)
   await page.getByRole('link', { name: 'Home', exact: true }).click()
   await expect(page).toHaveURL(/\/$/)
 

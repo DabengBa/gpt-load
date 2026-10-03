@@ -46,7 +46,6 @@ type frozenAttemptPricing struct {
 	applicable       bool
 	metadataSet      bool
 	pricingMode      pricing.Mode
-	priceMultipliers pricing.PriceMultipliers
 	usageDiagnostics usage.Diagnostics
 	reasoning        reasoning.Config
 }
@@ -56,7 +55,6 @@ type requestRecorder struct {
 	requestID            string
 	startedAt            time.Time
 	accessKeyID          uint
-	accessKeyMultiplier  pricing.PriceMultiplier
 	protocol             protocol.Protocol
 	operation            execution.Operation
 	clientModel          string
@@ -103,11 +101,10 @@ func newRequestRecorder(
 	return &requestRecorder{
 		sink: sink, requestID: requestID, startedAt: startedAt,
 		accessKeyID: accessKeyID, protocol: value, now: now,
-		accessKeyMultiplier: pricing.DefaultPriceMultiplier,
-		pendingRetry:        -1,
-		redactor:            redact.New(),
-		usageApplicable:     true,
-		usage:               notApplicableUsageObservation(),
+		pendingRetry:    -1,
+		redactor:        redact.New(),
+		usageApplicable: true,
+		usage:           notApplicableUsageObservation(),
 	}
 }
 
@@ -730,7 +727,7 @@ func quoteFrozenAttempt(
 		ChannelID: frozen.channelID,
 		ModelID:   frozen.upstreamModel,
 	}
-	quote, receipt := frozen.table.QuoteForModeWithMultipliers(identity, result, pricingMode, frozen.priceMultipliers)
+	quote, receipt := frozen.table.QuoteForModeWithReceipt(identity, result, pricingMode)
 	observation.CostState = string(quote.State)
 	observation.PricingCompleteness = string(quote.Completeness)
 	observation.EstimatedCostNanoUSD = int64(quote.EstimatedCostNanoUSD)

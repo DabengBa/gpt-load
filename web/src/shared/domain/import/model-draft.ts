@@ -18,10 +18,10 @@ export interface ImportDraft {
   params: ChannelParamsDto
   proxy: ImportProxyDraft
   name: string
-  price_multiplier: string
+
   provider_url: string
   credentials: string
-  staged_credentials: CredentialStage[]
+  staged_credential: CredentialStage | null
   models: ModelDraftItem[]
 }
 

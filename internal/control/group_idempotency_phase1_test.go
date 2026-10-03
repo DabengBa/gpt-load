@@ -21,7 +21,7 @@ func TestCreateGroupIdempotentReplaysOriginalCountsAndPreservesCredentialMultipl
 		ChannelID:   channel.OpenAICompatible,
 		Params:      json.RawMessage(`{"base_url":"https://idempotent.example.com/v1"}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{}},
-		Credentials: " K \r\nK\n", ConnectionType: "api_key",
+		Credentials: " K ", ConnectionType: "api_key",
 	}
 	const key = "218f47a2-9c35-4d6e-8b1a-1234567890ab"
 
@@ -29,7 +29,7 @@ func TestCreateGroupIdempotentReplaysOriginalCountsAndPreservesCredentialMultipl
 	if err != nil {
 		t.Fatalf("first CreateGroupIdempotent() error = %v", err)
 	}
-	if first.CredentialsAdded != 1 || first.CredentialsDuplicated != 1 {
+	if first.CredentialID == 0 {
 		t.Fatalf("first result = %#v", first)
 	}
 	replayed, err := fixture.service.CreateGroupIdempotent(t.Context(), key, request)
@@ -51,7 +51,7 @@ func TestCreateGroupIdempotentReplaysOriginalCountsAndPreservesCredentialMultipl
 	}
 
 	different := request
-	different.Credentials = "K"
+	different.Credentials = "different"
 	_, err = fixture.service.CreateGroupIdempotent(t.Context(), key, different)
 	assertAPIErrorCode(t, err, app_errors.ErrIdempotencyKeyReused.Code)
 }
@@ -99,7 +99,7 @@ func TestCreateGroupIdempotentCanonicalizesDisabledAliasesAndReplaysNarrowResult
 	if err := json.Unmarshal(encoded, &fields); err != nil {
 		t.Fatalf("decode create result fields: %v", err)
 	}
-	if len(fields) != 4 || fields["models"] != nil {
+	if len(fields) != 3 || fields["models"] != nil {
 		t.Fatalf("create result fields = %#v, want narrow result", fields)
 	}
 

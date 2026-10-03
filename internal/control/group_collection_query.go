@@ -221,7 +221,10 @@ func compareGroupCollectionRecentActivity(left, right groupCollectionRecord) boo
 }
 
 func groupCollectionCredentialTotal(record groupCollectionRecord) int64 {
-	return record.CredentialCounts.Total
+	if !record.CredentialConfigured {
+		return 0
+	}
+	return 1
 }
 
 func groupCollectionStatusOrder(value GroupCollectionStatus) int {

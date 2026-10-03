@@ -56,10 +56,9 @@ func TestGroupDetailLedgerRoutesReplaceLegacyContracts(t *testing.T) {
 		{name: "models put", method: http.MethodPut, path: fmt.Sprintf("/api/groups/%d/models", groupID), body: `{}`},
 		{name: "settings get", method: http.MethodGet, path: fmt.Sprintf("/api/groups/%d/settings", groupID)},
 		{name: "settings put", method: http.MethodPut, path: fmt.Sprintf("/api/groups/%d/settings", groupID), body: `{}`},
-		{name: "credentials collection", method: http.MethodGet, path: fmt.Sprintf("/api/groups/%d/credentials", groupID)},
-		{name: "credential update", method: http.MethodPut, path: fmt.Sprintf("/api/groups/%d/credentials/%d", groupID, credential.ID), body: `{}`},
-		{name: "credential restore", method: http.MethodPost, path: fmt.Sprintf("/api/groups/%d/credentials/%d/restore", groupID, credential.ID), body: `{}`},
-		{name: "credential batch", method: http.MethodPost, path: fmt.Sprintf("/api/groups/%d/credentials/batch", groupID), body: `{}`},
+		{name: "credential detail", method: http.MethodGet, path: fmt.Sprintf("/api/groups/%d/credential", groupID)},
+		{name: "credential update", method: http.MethodPut, path: fmt.Sprintf("/api/groups/%d/credential", groupID), body: `{}`},
+		{name: "credential restore", method: http.MethodPost, path: fmt.Sprintf("/api/groups/%d/credential/restore", groupID), body: `{}`},
 	}
 	for _, route := range canonical {
 		t.Run(route.name+" requires authentication", func(t *testing.T) {
@@ -86,9 +85,10 @@ func TestGroupDetailLedgerRoutesReplaceLegacyContracts(t *testing.T) {
 		t,
 		engine,
 		http.MethodPut,
-		fmt.Sprintf("/api/groups/%d/credentials/%d", groupID, credential.ID),
-		`{"credentials":"sk-ledger-route-updated"}`,
+		fmt.Sprintf("/api/groups/%d/credential", groupID),
+		`{"credential":"sk-ledger-route-updated"}`,
 		"Bearer test-auth-key",
+		credential.ID,
 	)
 	assertGroupDetailLedgerEnvelope(t, updated, http.StatusOK, "")
 	var envelope struct {
@@ -118,9 +118,10 @@ func TestGroupDetailLedgerRoutesReplaceLegacyContracts(t *testing.T) {
 		t,
 		engine,
 		http.MethodPut,
-		fmt.Sprintf("/api/groups/%d/credentials/%d", groupID, credential.ID),
+		fmt.Sprintf("/api/groups/%d/credential", groupID),
 		`{"weight_manual":0}`,
 		"Bearer test-auth-key",
+		credential.ID,
 	)
 	assertGroupDetailLedgerEnvelope(t, zeroWeight, http.StatusBadRequest, "INVALID_JSON")
 }
@@ -132,10 +133,14 @@ func serveGroupDetailLedgerRoute(
 	path string,
 	body string,
 	auth string,
+	expectedIDs ...uint,
 ) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
+	if len(expectedIDs) != 0 {
+		request.Header.Set("X-Credential-ID", fmt.Sprintf("%d", expectedIDs[0]))
+	}
 	if auth != "" {
 		request.Header.Set("Authorization", auth)
 	}

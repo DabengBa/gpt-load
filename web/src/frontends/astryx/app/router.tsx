@@ -6,12 +6,11 @@ import {
   createRouter,
   notFound,
   redirect,
-  useRouter,
   useRouterState,
 } from '@tanstack/react-router'
 import { useEffect, type ReactNode } from 'react'
 
-import { pageRouteEntries } from '@shared/routing/page-routes'
+import { pagePath, pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
 import {
@@ -24,17 +23,14 @@ import {
   serializeGroupCollectionRouteQuery,
 } from '@shared/routing/group-collection-route'
 import {
-  parseCredentialRouteQuery,
-  parseCredentialRouteState,
   parseGroupModelsRouteQuery,
-  serializeCredentialRouteQuery,
   serializeGroupModelsRouteQuery,
 } from '@shared/routing/group-detail-route'
 import { scalarRouteQuery } from '@shared/routing/route-query'
 import { parseImportRouteQuery, serializeImportRouteQuery } from '@shared/routing/import-route'
 import { parseHomeRouteQuery, serializeHomeRouteQuery } from '@shared/routing/home-route'
-import { parseModelsRouteQuery, serializeModelsRouteQuery } from '@shared/routing/models-route'
 import {
+  parseSettingsCredentialsRoute,
   parseSettingsRouteSection,
   serializeSettingsRouteQuery,
 } from '@shared/routing/settings-route'
@@ -54,13 +50,11 @@ import { ToastHost } from './ToastHost'
 import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
-import { AccessKeysView } from '../features/access-keys/AccessKeysView'
 import { GroupDetailView } from '../features/groups/GroupDetailView'
 import { GroupsView } from '../features/groups/GroupsView'
 import { ImportView } from '../features/import/ImportView'
 import { HomeView } from '../features/home/HomeView'
 import { LogsView } from '../features/logs/LogsView'
-import { ModelsView } from '../features/models/ModelsView'
 import { MonitorView } from '../features/monitor/MonitorView'
 import { ScheduleView } from '../features/monitor/ScheduleView'
 import { SettingsView } from '../features/settings/SettingsView'
@@ -90,11 +84,12 @@ const shellStyles = stylex.create({
 // Reads the matched route's staticData meta and keeps document.title in sync;
 // <html lang> is owned by the i18n controller (app/i18n.tsx emit/setLocale).
 function HeadSync() {
-  const router = useRouter()
   const t = useT()
-  const { pathname, isNotFound } = useRouterState({
+  const { meta, isNotFound } = useRouterState({
     select: (state) => ({
-      pathname: state.location.pathname,
+      // location advances before beforeLoad finishes loading catalogs. Only
+      // committed matches are safe to translate without remounting the shell.
+      meta: (state.matches.at(-1)?.staticData as { meta?: PageRouteMeta } | undefined)?.meta,
       isNotFound: state.matches.some(
         (match) =>
           match.status === 'notFound' || (match as { _notFound?: boolean })._notFound === true,
@@ -102,11 +97,9 @@ function HeadSync() {
     }),
   })
   useEffect(() => {
-    const [, , foundRoute] = router.getMatchedRoutes(pathname)
-    const staticData = foundRoute?.options.staticData as { meta?: PageRouteMeta } | undefined
-    const titleKey = staticData?.meta?.titleKey ?? (isNotFound ? 'notFound.title' : undefined)
+    const titleKey = meta?.titleKey ?? (isNotFound ? 'notFound.title' : undefined)
     document.title = titleKey === undefined ? 'GPT-Load' : `${t(titleKey)} · GPT-Load`
-  }, [pathname, isNotFound, router, t])
+  }, [meta, isNotFound, t])
   return null
 }
 
@@ -195,15 +188,16 @@ function groupsSearch(search: Record<string, unknown>) {
 
 // Sparse like groupsSearch: routing → {}, everything else → { section }.
 // Invalid/repeated values canonicalize to the bare '/settings' URL via the
-// same mechanism, matching the classic router.replace behavior.
+// same mechanism, matching the classic router.replace behavior. The
+// credentials section keeps the access-key collection + drawer params
+// (q/status/page/action/access_key_id) that migrated from /access-keys.
 function settingsSearch(search: Record<string, unknown>) {
-  return serializeSettingsRouteQuery(parseSettingsRouteSection(search as SharedRouteQuery))
-}
-
-// Sparse canonical search: defaults (enabled/all/page 1, no drawer) serialize
-// away; junk or duplicated keys normalize out on the write-back.
-function modelsSearch(search: Record<string, unknown>) {
-  return serializeModelsRouteQuery(parseModelsRouteQuery(search as SharedRouteQuery))
+  const query = search as SharedRouteQuery
+  const section = parseSettingsRouteSection(query)
+  return serializeSettingsRouteQuery(
+    section,
+    section === 'credentials' ? parseSettingsCredentialsRoute(query) : undefined,
+  )
 }
 
 // Sparse canonical search: access_key_id only survives when it resolves to a
@@ -211,6 +205,14 @@ function modelsSearch(search: Record<string, unknown>) {
 // serializes away).
 function homeSearch(search: Record<string, unknown>) {
   return serializeHomeRouteQuery(parseHomeRouteQuery(search as SharedRouteQuery))
+}
+
+// /access-keys is a legacy alias: the management UI lives in
+// Settings → credentials, so every visit forwards there while preserving the
+// collection filters and drawer deep links it carried.
+function accessKeysRedirectTarget(search: SharedRouteQuery): string {
+  const query = serializeSettingsRouteQuery('credentials', parseSettingsCredentialsRoute(search))
+  return `${pagePath('settings')}${stringifySharedRouteSearch(query)}`
 }
 
 // Sparse canonical search: q/status/page serialize away at defaults; the
@@ -237,22 +239,13 @@ function scheduleSearch(search: Record<string, unknown>) {
   return scheduleMonitorQuery(parseScheduleMonitorState(search as SharedRouteQuery))
 }
 
-// Sparse canonical search, scoped per tab — this must NOT call the codec's
-// normalizeGroupQuery: that helper came from classic GroupTabs.vue (dead code
-// never mounted), so feeding it to validateSearch would rewrite the bare
-// '/groups/:id' URL to '?tab=credentials' and land users on the management
-// tab, while classic renders the unified settings+models view. Classic only
-// canonicalizes live for the credentials sub-query (and the models discovery
-// params); an absent/unknown tab keeps the raw query and renders unified.
+// Keep the bare detail URL on the unified view; explicit tabs use sparse search.
 function groupDetailSearch(search: Record<string, unknown>) {
   const query = search as SharedRouteQuery
   const tab = scalarRouteQuery(query.tab)
-  if (tab === 'credentials') {
-    return serializeCredentialRouteQuery(
-      parseCredentialRouteQuery(query),
-      parseCredentialRouteState(query),
-    )
-  }
+  // The credentials tab is a single record now: search, page, status filters
+  // and expanded IDs are retired and are canonicalized away.
+  if (tab === 'credentials') return { tab: 'credentials' }
   if (tab === 'models') {
     return serializeGroupModelsRouteQuery(parseGroupModelsRouteQuery(query))
   }
@@ -276,7 +269,6 @@ const searchValidators: Partial<
   [sharedPageRouteNames.groupDetail]: groupDetailSearch,
   [sharedPageRouteNames.import]: importSearch,
   [sharedPageRouteNames.settings]: settingsSearch,
-  [sharedPageRouteNames.models]: modelsSearch,
   [sharedPageRouteNames.monitor]: monitorSearch,
   [sharedPageRouteNames.schedule]: scheduleSearch,
 }
@@ -288,13 +280,14 @@ type RouteName = (typeof sharedPageRouteNames)[keyof typeof sharedPageRouteNames
 const routeViews: Record<RouteName, () => ReactNode> = {
   [sharedPageRouteNames.login]: LoginView,
   [sharedPageRouteNames.home]: HomeView,
-  [sharedPageRouteNames.accessKeys]: AccessKeysView,
+  // Never rendered — beforeLoad always redirects /access-keys to the
+  // credentials section on /settings.
+  [sharedPageRouteNames.accessKeys]: () => null,
   [sharedPageRouteNames.groups]: GroupsView,
   [sharedPageRouteNames.groupDetail]: GroupDetailView,
   [sharedPageRouteNames.import]: ImportView,
   [sharedPageRouteNames.logs]: LogsView,
   [sharedPageRouteNames.settings]: SettingsView,
-  [sharedPageRouteNames.models]: ModelsView,
   [sharedPageRouteNames.monitor]: MonitorView,
   [sharedPageRouteNames.schedule]: ScheduleView,
 }
@@ -309,6 +302,16 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })
+      }
+      if (name === sharedPageRouteNames.accessKeys) {
+        const target = accessKeysRedirectTarget(location.search as SharedRouteQuery)
+        if (!context.services.authSession.hasCredential()) {
+          throw redirect({
+            href: `/login?redirect=${encodeURIComponent(target)}`,
+            replace: true,
+          })
+        }
+        throw redirect({ href: target, replace: true })
       }
       if (meta.requiresAuth && !context.services.authSession.hasCredential()) {
         throw redirect({

@@ -1,0 +1,5 @@
+[data-testid='schedule-panel'] .schedule-model-search input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}

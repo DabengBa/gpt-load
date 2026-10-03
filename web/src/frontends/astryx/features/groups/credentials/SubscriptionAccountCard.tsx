@@ -1,7 +1,6 @@
 import { Badge, Button, IconButton, Popover, Skeleton, Tooltip } from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
 import {
-  Check,
   Download,
   Ellipsis,
   Gauge,
@@ -72,7 +71,7 @@ type ResetCreditDotTone = 'default' | 'warning' | 'danger'
 
 export function SubscriptionAccountCard({
   item,
-  selected,
+
   busy,
   refreshingObservation,
   observationError,
@@ -82,7 +81,7 @@ export function SubscriptionAccountCard({
   channelIcon,
   channelMark,
   capabilities,
-  onSelectedChange,
+
   onRestore,
   onRefresh,
   onLoadDetails,
@@ -92,7 +91,7 @@ export function SubscriptionAccountCard({
   onRemove,
 }: {
   item: CredentialItemDto
-  selected: boolean
+
   busy: boolean
   refreshingObservation: boolean
   observationError: string
@@ -102,7 +101,7 @@ export function SubscriptionAccountCard({
   channelIcon?: string
   channelMark?: string
   capabilities: ChannelCapabilitiesDto
-  onSelectedChange(selected: boolean): void
+
   onRestore(item: CredentialItemDto): void
   onRefresh(item: CredentialItemDto): void
   onLoadDetails(item: CredentialItemDto): void
@@ -449,7 +448,7 @@ export function SubscriptionAccountCard({
     const observed = window.observed_usage
     if (!observed) return undefined
     return estimateTitles(
-      'group.credentials.subscription.estimate.priceMultiplierBasis',
+      'group.credentials.subscription.estimate.referencePriceBasis',
       observed.data_complete ? '' : 'group.credentials.subscription.estimate.dataIncomplete',
       observed.pricing_complete ? '' : 'group.credentials.subscription.estimate.pricingIncomplete',
     )
@@ -636,21 +635,6 @@ export function SubscriptionAccountCard({
       <div {...stylex.props(styles.main, refreshingObservation && styles.hiddenDuringRefresh)}>
         <header {...stylex.props(styles.top)}>
           <div {...stylex.props(styles.topRow)}>
-            <label {...stylex.props(styles.select)}>
-              <span {...stylex.props(styles.srOnly)}>
-                {t('group.credentials.subscription.selectAccount', { account: accountName })}
-              </span>
-              <input
-                {...stylex.props(styles.selectInput)}
-                type="checkbox"
-                checked={selected}
-                disabled={busy}
-                onChange={(event) => onSelectedChange(event.target.checked)}
-              />
-              <span {...stylex.props(styles.selectBox)} aria-hidden="true">
-                {selected && <Check size={16} strokeWidth={2.5} />}
-              </span>
-            </label>
             <div {...stylex.props(styles.badges)}>
               {planLabel !== '' && (
                 <span
@@ -1393,7 +1377,7 @@ const styles = stylex.create({
     gap: '5px',
     borderRadius: 'var(--radius-tag)',
     backgroundColor: 'var(--color-neutral-bg)',
-    color: 'var(--color-neutral)',
+    color: 'var(--color-neutral-fg)',
     paddingTop: '3px',
     paddingBottom: '3px',
     paddingLeft: '8px',
@@ -1881,7 +1865,7 @@ const quotaToneStyles: Record<'success' | 'warning' | 'danger' | 'unknown', CSSP
 const planLevelStyles = stylex.create({
   free: {
     backgroundColor: 'var(--color-neutral-bg)',
-    color: 'var(--color-neutral)',
+    color: 'var(--color-neutral-fg)',
   },
   standard: {
     backgroundColor: 'var(--color-success-bg)',

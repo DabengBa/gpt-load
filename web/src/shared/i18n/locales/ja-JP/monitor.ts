@@ -361,7 +361,8 @@ export default {
         totalTokens: '報告済みトークン合計',
         persistedWindow: '現在の集計期間',
         estimatedCost: '推定コスト',
-        estimatedCostBasis: '報告済みトークンとリクエスト時の倍率に基づく推定',
+        estimatedCostBasis:
+          '報告済みトークンと固定されたモデル参考価格による推定で、実際の請求額ではありません',
       },
       tokens: {
         cacheRead: 'キャッシュ読み取り',
@@ -665,6 +666,8 @@ export default {
     },
     schedule: {
       panel: {
+        noMatchingModels: '一致するモデルがありません',
+        noModels: 'モデルがありません',
         model: '外部モデル',
         selectModel: 'モデルを選択',
         loadingOptions: 'モデル候補を読み込み中…',
@@ -1229,18 +1232,12 @@ export default {
       },
       receipt: {
         total: '計算済み合計',
-        baseTotal: '倍率適用前の計算済み合計',
-        finalTotal: '最終計算済み合計',
-        totalRounding:
-          '各項目を従来のルールで四捨五入して合算し、合計にグループとアクセスキーの両倍率を掛け、最後に 0.000000001 USD 単位で一度四捨五入します。未価格設定の部分は含みません。',
         rounding:
-          '各項目に全倍率を適用後、0.000000001 USD 単位で四捨五入して合算します。未価格設定の部分は含みません。',
+          '各項目に固定されたモデル価格と項目係数（キャッシュ書き込みの 8/5 など）を適用し、0.000000001 USD 単位で個別に四捨五入して合算します。未価格設定の部分は含みません。',
         formula: 'コスト計算',
         input: '入力',
         output: '出力',
         identity: '価格識別情報',
-        historicalSchema1: '履歴スコープ',
-        historicalSchema2: '履歴グローバル価格',
       },
       pricingMode: {
         fastLabel: 'Fast モード料金',

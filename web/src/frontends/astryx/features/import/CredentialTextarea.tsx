@@ -2,7 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Field } from '@astryxdesign/core'
 
 import type { ChannelDto } from '@shared/control/resources/channels'
-import { analyzeCredentials } from '@shared/domain/import/credential-analysis'
+import { readSingleCredential } from './single-credential-input'
 
 import { useT } from '../../app/i18n'
 import { InlineNotice } from '../../components/InlineNotice'
@@ -98,7 +98,7 @@ export interface CredentialTextareaProps {
   disabled?: boolean
   showHeaderDescription?: boolean
   storageDescription?: string
-  duplicateLabel?: string
+
   showCredentialNotice?: boolean
   hideHeader?: boolean
   compact?: boolean
@@ -112,7 +112,7 @@ export function CredentialTextarea({
   disabled = false,
   showHeaderDescription = true,
   storageDescription,
-  duplicateLabel,
+
   showCredentialNotice = true,
   hideHeader = false,
   compact = false,
@@ -120,7 +120,7 @@ export function CredentialTextarea({
   onChange,
 }: CredentialTextareaProps) {
   const t = useT()
-  const analysis = analyzeCredentials(value, channel?.channel_id)
+  const credential = readSingleCredential(value)
   const structured =
     channel !== null &&
     channel !== undefined &&
@@ -152,19 +152,10 @@ export function CredentialTextarea({
   })()
   const fieldSummary =
     channel?.credential_fields.map(({ label: fieldLabel }) => fieldLabel).join(' · ') ?? ''
-  const error = analysis.tooManyCredentials ? t('import.credentials.tooMany') : ''
+  const error = value.trim() !== '' && credential === null ? t('import.credentials.tooMany') : ''
   // Only the metrics worth a second look become pills; a likely-AccessKey
   // count already gets its own warning banner below, so it is not repeated
   // here.
-  const counters = [
-    { value: analysis.nonEmptyCount, label: t('import.credentials.counters.nonEmpty') },
-    { value: analysis.emptyLineCount, label: t('import.credentials.counters.empty') },
-    {
-      value: analysis.duplicateCount,
-      label: duplicateLabel ?? t('import.credentials.counters.duplicates'),
-    },
-  ].filter(({ value: count }) => count > 0)
-  const hasInput = value.trim().length > 0
 
   return (
     <section
@@ -213,26 +204,10 @@ export function CredentialTextarea({
         </div>
       )}
 
-      <div
-        {...stylex.props(styles.counters)}
-        aria-label={t('import.credentials.analysisLabel')}
-        aria-live="polite"
-      >
-        {!hasInput && (
-          <span {...stylex.props(styles.countersEmpty)}>{t('import.credentials.noInput')}</span>
-        )}
-        {counters.map((counter) => (
-          <span key={counter.label} {...stylex.props(styles.pill)}>
-            <strong {...stylex.props(styles.pillValue)}>{counter.value}</strong>
-            {counter.label}
-          </span>
-        ))}
-      </div>
-
-      {analysis.likelyAccessKeyCount > 0 && (
+      {credential !== null && /^sk-gl-/iu.test(credential) && (
         <div {...stylex.props(styles.warning)}>
           <InlineNotice tone="warning" appearance="hint">
-            {t('import.credentials.accessKeyWarning', { count: analysis.likelyAccessKeyCount })}
+            {t('import.credentials.accessKeyWarning', { count: 1 })}
           </InlineNotice>
         </div>
       )}
