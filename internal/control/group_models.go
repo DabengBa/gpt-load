@@ -180,7 +180,7 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 				}
 			}
 			if testAliasBackfillNeeded {
-				if err := stateloader.BackfillTestAliases(ctx, tx); err != nil {
+				if err := stateloader.BackfillTestAliasesInTransaction(tx); err != nil {
 					return err
 				}
 				row, loadErr = loadGroupRow(tx, groupID)

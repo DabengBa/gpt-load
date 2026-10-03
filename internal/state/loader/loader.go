@@ -194,68 +194,74 @@ func BackfillTestAliases(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("database is required")
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var rows []models.Group
-		if err := tx.Order("id ASC").Find(&rows).Error; err != nil {
-			return fmt.Errorf("query groups: %w", err)
-		}
-		configs := make([]state.GroupConfig, 0, len(rows))
-		rawStored := make([][]map[string]json.RawMessage, len(rows))
-		for index, row := range rows {
-			modelsForState, rawFields, err := decodeBackfillModels(row)
-			if err != nil {
-				return err
-			}
-			rawStored[index] = rawFields
-			configs = append(configs, state.GroupConfig{ID: row.ID, Models: modelsForState})
-		}
-		if err := state.ValidateTestAliases(configs); err != nil {
+		return BackfillTestAliasesInTransaction(tx)
+	})
+}
+
+// BackfillTestAliasesInTransaction uses the caller's transaction so alias
+// allocation and the surrounding config mutation commit or roll back together.
+func BackfillTestAliasesInTransaction(tx *gorm.DB) error {
+	var rows []models.Group
+	if err := tx.Order("id ASC").Find(&rows).Error; err != nil {
+		return fmt.Errorf("query groups: %w", err)
+	}
+	configs := make([]state.GroupConfig, 0, len(rows))
+	rawStored := make([][]map[string]json.RawMessage, len(rows))
+	for index, row := range rows {
+		modelsForState, rawFields, err := decodeBackfillModels(row)
+		if err != nil {
 			return err
 		}
+		rawStored[index] = rawFields
+		configs = append(configs, state.GroupConfig{ID: row.ID, Models: modelsForState})
+	}
+	if err := state.ValidateTestAliases(configs); err != nil {
+		return err
+	}
 
-		used := make(map[string]struct{})
-		for _, group := range configs {
-			for _, model := range group.Models {
-				if upstream := strings.TrimSpace(model.ID); upstream != "" {
-					used[upstream] = struct{}{}
-				}
-				if external := state.ExternalModelName(model.ID, model.Alias); external != "" {
-					used[external] = struct{}{}
-				}
-				if model.TestAlias != "" {
-					used[model.TestAlias] = struct{}{}
-				}
+	used := make(map[string]struct{})
+	for _, group := range configs {
+		for _, model := range group.Models {
+			if upstream := strings.TrimSpace(model.ID); upstream != "" {
+				used[upstream] = struct{}{}
+			}
+			if external := state.ExternalModelName(model.ID, model.Alias); external != "" {
+				used[external] = struct{}{}
+			}
+			if model.TestAlias != "" {
+				used[model.TestAlias] = struct{}{}
 			}
 		}
-		changedGroups := make([]bool, len(configs))
-		for groupIndex := range configs {
-			for modelIndex := range configs[groupIndex].Models {
-				if configs[groupIndex].Models[modelIndex].TestAlias != "" {
-					continue
-				}
-				alias, err := state.GenerateTestAlias(used)
-				if err != nil {
-					return fmt.Errorf("group %d model %d: %w", configs[groupIndex].ID, modelIndex, err)
-				}
-				configs[groupIndex].Models[modelIndex].TestAlias = alias
-				rawStored[groupIndex][modelIndex]["test_alias"], _ = json.Marshal(alias)
-				used[alias] = struct{}{}
-				changedGroups[groupIndex] = true
-			}
-		}
-		for index, row := range rows {
-			if !changedGroups[index] {
+	}
+	changedGroups := make([]bool, len(configs))
+	for groupIndex := range configs {
+		for modelIndex := range configs[groupIndex].Models {
+			if configs[groupIndex].Models[modelIndex].TestAlias != "" {
 				continue
 			}
-			encoded, err := json.Marshal(rawStored[index])
+			alias, err := state.GenerateTestAlias(used)
 			if err != nil {
-				return fmt.Errorf("encode group %d models: %w", row.ID, err)
+				return fmt.Errorf("group %d model %d: %w", configs[groupIndex].ID, modelIndex, err)
 			}
-			if err := tx.Model(&models.Group{}).Where("id = ?", row.ID).Update("models", models.JSON(encoded)).Error; err != nil {
-				return fmt.Errorf("persist group %d models: %w", row.ID, err)
-			}
+			configs[groupIndex].Models[modelIndex].TestAlias = alias
+			rawStored[groupIndex][modelIndex]["test_alias"], _ = json.Marshal(alias)
+			used[alias] = struct{}{}
+			changedGroups[groupIndex] = true
 		}
-		return nil
-	})
+	}
+	for index, row := range rows {
+		if !changedGroups[index] {
+			continue
+		}
+		encoded, err := json.Marshal(rawStored[index])
+		if err != nil {
+			return fmt.Errorf("encode group %d models: %w", row.ID, err)
+		}
+		if err := tx.Model(&models.Group{}).Where("id = ?", row.ID).Update("models", models.JSON(encoded)).Error; err != nil {
+			return fmt.Errorf("persist group %d models: %w", row.ID, err)
+		}
+	}
+	return nil
 }
 
 func decodeBackfillModels(row models.Group) ([]state.ModelConfig, []map[string]json.RawMessage, error) {
