@@ -190,7 +190,7 @@ func (s *Service) refreshCredentialObservationOnce(
 	if err != nil {
 		return CredentialObservationResponse{}, err
 	}
-	network, err := s.credentialNetworkContext(ctx, s.db, group, credential)
+	network, err := s.groupNetworkContext(ctx, s.db, group)
 	if err != nil {
 		return CredentialObservationResponse{}, err
 	}

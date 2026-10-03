@@ -11,8 +11,7 @@ import (
 )
 
 func (s *Server) handleSyncModelPrices(c *gin.Context) {
-	if c.Request.URL.ForceQuery || c.Request.URL.RawQuery != "" {
-		writeServiceError(c, "sync_model_prices", app_errors.ErrBadRequest)
+	if !requireEmptyQuery(c, "sync_model_prices") {
 		return
 	}
 	result, err := s.service.SyncModelPrices(c.Request.Context())

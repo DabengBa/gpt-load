@@ -97,7 +97,7 @@ func (s *Service) discoverSubscriptionGroupModels(
 	var preparationErr error
 	attempted := false
 	for _, row := range rows.credentials {
-		network, networkErr := s.credentialNetworkContext(ctx, s.db, rows.group, row)
+		network, networkErr := s.groupNetworkContext(ctx, s.db, rows.group)
 		if networkErr != nil {
 			preparationErr = networkErr
 			continue
@@ -170,7 +170,7 @@ func (s *Service) prepareStoredSubscriptionCredentialInternal(
 	allowRecovery bool,
 ) (subscriptionruntime.Credential, error) {
 	if _, frozen := subscriptionruntime.NetworkFromContext(ctx); !frozen {
-		network, err := s.credentialNetworkContext(ctx, s.db, group, row)
+		network, err := s.groupNetworkContext(ctx, s.db, group)
 		if err != nil {
 			return subscriptionruntime.Credential{}, err
 		}

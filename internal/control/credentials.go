@@ -305,18 +305,8 @@ func validateCredentialCapture(capture credentialCapture) (credentialObservation
 	persisted := make(map[uint]struct{}, len(capture.rows))
 	for _, row := range capture.rows {
 		view, exists := byID[row.ID]
-		if !exists {
-			return credentialObservation{}, dbRegistryMismatch(mismatchMissingRegistry, groupID, row.ID)
-		}
-		if view.GroupID != groupID {
-			return credentialObservation{}, dbRegistryMismatch(mismatchGroupID, groupID, row.ID)
-		}
-		if view.AuthState != normalizeRuntimeCredentialAuthState(row.AuthState) {
-			return credentialObservation{}, dbRegistryMismatch(mismatchStatus, groupID, row.ID)
-		}
-		if view.Version != groupCollectionCredentialVersion(row.SecretVersion) ||
-			view.IdentityGeneration != groupCollectionCredentialIdentity(row.IdentityFingerprint, capture.group) {
-			return credentialObservation{}, dbRegistryMismatch(mismatchIdentity, groupID, row.ID)
+		if err := validateCredentialRuntimeRow(capture.group, row, view, exists); err != nil {
+			return credentialObservation{}, err
 		}
 		persisted[row.ID] = struct{}{}
 	}

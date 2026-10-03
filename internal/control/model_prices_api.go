@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -277,22 +274,11 @@ func parseModelPriceListQuery(
 		Usage: ModelPriceUsageInUse, Status: ModelPriceStatusAll,
 		Page: defaultModelPriceListPage, PageSize: defaultModelPriceListPageSize,
 	}
-	if forceQuery && rawQuery == "" {
-		return ModelPriceListQuery{}, app_errors.ErrBadRequest
-	}
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return ModelPriceListQuery{}, app_errors.ErrBadRequest
-	}
-	for key, entries := range values {
-		switch key {
-		case "usage", "status", "search", "page", "page_size":
-		default:
-			return ModelPriceListQuery{}, app_errors.ErrBadRequest
-		}
-		if len(entries) != 1 {
-			return ModelPriceListQuery{}, app_errors.ErrBadRequest
-		}
+	values, apiErr := parseCollectionQueryValues(
+		rawQuery, forceQuery, "usage", "status", "search", "page", "page_size",
+	)
+	if apiErr != nil {
+		return ModelPriceListQuery{}, apiErr
 	}
 
 	if entries, exists := values["usage"]; exists {
@@ -311,12 +297,11 @@ func parseModelPriceListQuery(
 			return ModelPriceListQuery{}, app_errors.ErrBadRequest
 		}
 	}
-	if entries, exists := values["search"]; exists {
-		query.Search = strings.TrimSpace(entries[0])
-		if utf8.RuneCountInString(query.Search) > maxModelPriceSearchRunes {
-			return ModelPriceListQuery{}, app_errors.ErrBadRequest
-		}
+	text, ok := collectionQueryText(values, "search", maxModelPriceSearchRunes)
+	if !ok {
+		return ModelPriceListQuery{}, app_errors.ErrBadRequest
 	}
+	query.Search = text
 	if entries, exists := values["page"]; exists {
 		page, err := parseCanonicalSafeUint(entries[0])
 		if err != nil || page == 0 {
@@ -360,8 +345,7 @@ func (s *Server) handleListModelPrices(c *gin.Context) {
 }
 
 func (s *Server) handleGetUpstreamModelDetail(c *gin.Context) {
-	if c.Request.URL.RawQuery != "" || c.Request.URL.ForceQuery {
-		writeServiceError(c, "get_upstream_model_detail", app_errors.ErrBadRequest)
+	if !requireEmptyQuery(c, "get_upstream_model_detail") {
 		return
 	}
 	id, err := parseModelPriceRowID(c.Param("id"))
@@ -379,7 +363,7 @@ func (s *Server) handleGetUpstreamModelDetail(c *gin.Context) {
 
 func (s *Server) handleUpdateModelPrice(c *gin.Context) {
 	id, ok := modelPriceID(c, "update_model_price")
-	if !ok || !modelPriceMutationQueryIsEmpty(c, "update_model_price") {
+	if !ok || !requireEmptyQuery(c, "update_model_price") {
 		return
 	}
 	var request ModelPriceUpdateRequest
@@ -401,7 +385,7 @@ func (s *Server) handleUpdateModelPrice(c *gin.Context) {
 
 func (s *Server) handleResetModelPrice(c *gin.Context) {
 	id, ok := modelPriceID(c, "reset_model_price")
-	if !ok || !modelPriceMutationQueryIsEmpty(c, "reset_model_price") {
+	if !ok || !requireEmptyQuery(c, "reset_model_price") {
 		return
 	}
 	if err := bindOptionalEmptyJSONObject(c); err != nil {
@@ -418,7 +402,7 @@ func (s *Server) handleResetModelPrice(c *gin.Context) {
 
 func (s *Server) handleDeleteModelPrice(c *gin.Context) {
 	id, ok := modelPriceID(c, "delete_model_price")
-	if !ok || !modelPriceMutationQueryIsEmpty(c, "delete_model_price") {
+	if !ok || !requireEmptyQuery(c, "delete_model_price") {
 		return
 	}
 	if err := s.service.DeleteModelPrice(c.Request.Context(), id); err != nil {
@@ -438,7 +422,7 @@ func modelPriceID(c *gin.Context, operation string) (uint, bool) {
 	return id, true
 }
 
-func modelPriceMutationQueryIsEmpty(c *gin.Context, operation string) bool {
+func requireEmptyQuery(c *gin.Context, operation string) bool {
 	if c.Request.URL.RawQuery == "" && !c.Request.URL.ForceQuery {
 		return true
 	}

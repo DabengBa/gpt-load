@@ -228,6 +228,12 @@ func (s *Service) DeleteGroupCredential(ctx context.Context, groupID, credential
 	})
 }
 
+// RestoreGroupCredential repairs live runtime health state (cooldown,
+// blacklist) without committing config. It is exempt from the operation
+// recovery barrier by design — it writes no committed state and may be needed
+// exactly while recovery is pending — but the registry/stats mutation runs
+// inside the credential mutation coordinator so data-plane failure recording
+// cannot interleave with the restore.
 func (s *Service) RestoreGroupCredential(
 	ctx context.Context,
 	groupID uint,
@@ -254,30 +260,44 @@ func (s *Service) RestoreGroupCredential(
 		}
 		return CredentialItemResponse{}, app_errors.ParseDBError(err)
 	}
-	view, exists := findRuntimeCredential(s.registry.Snapshot(), credentialID)
-	if err := validateCredentialRuntimeRow(group, row, view, exists); err != nil {
+	observedAt := s.now().UTC()
+	var restored state.CredentialRuntimeView
+	var applyErr error
+	if err := s.doCredentialMutations([]uint{credentialID}, func() {
+		view, exists := findRuntimeCredential(s.registry.Snapshot(), credentialID)
+		if err := validateCredentialRuntimeRow(group, row, view, exists); err != nil {
+			applyErr = err
+			return
+		}
+		bucket := classifyHealthKey(
+			state.GroupCatalogView{ID: group.ID, Name: group.Name, Enabled: group.Enabled},
+			view,
+			observedAt,
+		)
+		if bucket != healthBucketCooldown && bucket != healthBucketBlacklisted {
+			applyErr = app_errors.ErrInvalidCredentialState
+			return
+		}
+		if !s.registry.RestoreRuntimeState(credentialID) {
+			applyErr = dbRegistryMismatch(mismatchMissingRegistry, groupID, credentialID)
+			return
+		}
+		if s.stats != nil {
+			s.stats.ClearProblemState(credentialID)
+		}
+		view, exists = findRuntimeCredential(s.registry.Snapshot(), credentialID)
+		if !exists {
+			applyErr = dbRegistryMismatch(mismatchMissingRegistry, groupID, credentialID)
+			return
+		}
+		restored = view
+	}); err != nil {
 		return CredentialItemResponse{}, err
 	}
-	observedAt := s.now().UTC()
-	bucket := classifyHealthKey(
-		state.GroupCatalogView{ID: group.ID, Name: group.Name, Enabled: group.Enabled},
-		view,
-		observedAt,
-	)
-	if bucket != healthBucketCooldown && bucket != healthBucketBlacklisted {
-		return CredentialItemResponse{}, app_errors.ErrInvalidCredentialState
+	if applyErr != nil {
+		return CredentialItemResponse{}, applyErr
 	}
-	if !s.registry.RestoreRuntimeState(credentialID) {
-		return CredentialItemResponse{}, dbRegistryMismatch(mismatchMissingRegistry, groupID, credentialID)
-	}
-	if s.stats != nil {
-		s.stats.ClearProblemState(credentialID)
-	}
-	view, exists = findRuntimeCredential(s.registry.Snapshot(), credentialID)
-	if !exists {
-		return CredentialItemResponse{}, dbRegistryMismatch(mismatchMissingRegistry, groupID, credentialID)
-	}
-	return s.mapCredentialItem(ctx, row, view, group, s.stats.Snapshot(credentialID, observedAt), observedAt)
+	return s.mapCredentialItem(ctx, row, restored, group, s.stats.Snapshot(credentialID, observedAt), observedAt)
 }
 
 func validateCredentialRuntimeRow(

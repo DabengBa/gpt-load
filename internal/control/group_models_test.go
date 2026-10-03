@@ -1163,6 +1163,70 @@ func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
 	}
 }
 
+func TestGetGroupModelsRepublishesBackfillAfterPublishFailure(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	mustEnsureInitialPrices(t, fixture)
+	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		ChannelID: channel.OpenAICompatible,
+		Params:    json.RawMessage(`{"base_url":"https://republish.example.com/v1"}`),
+		Models: optionalGroupModels{
+			Set:    true,
+			Values: []GroupModel{{ID: "provider-old", Alias: "public", AliasEnabled: true}},
+		},
+		Credentials: "sk-republish", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.Model(&models.Group{}).
+		Where("id = ?", created.GroupID).
+		Update("models", models.JSON(`[{"id":"entry-a","alias":"public","weight":30,"priority":2}]`)).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	realPublish := fixture.service.publishSnapshot
+	fixture.service.publishSnapshot = func(state.CompileInput) (*state.ConfigSnapshot, error) {
+		return nil, errors.New("injected publish failure")
+	}
+	if _, err := fixture.service.GetGroupModels(t.Context(), created.GroupID); err == nil {
+		t.Fatal("GetGroupModels() error = nil, want injected publish failure")
+	}
+	fixture.service.publishSnapshot = realPublish
+
+	var row models.Group
+	if err := fixture.db.First(&row, created.GroupID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var stored []groupModelEntry
+	if err := decodeGroupDiscoveryJSON(row.Models, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored[0].EntryID == "" || stored[0].TestAlias == "" {
+		t.Fatalf("persisted model after failed publish = %#v, want backfilled identity", stored[0])
+	}
+
+	got, err := fixture.service.GetGroupModels(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupModels() retry error = %v", err)
+	}
+	if got.Items[0].EntryID != stored[0].EntryID || got.Items[0].TestAlias != stored[0].TestAlias {
+		t.Fatalf("retry response = %#v, want persisted identity %#v", got.Items[0], stored[0])
+	}
+	catalog, exists := fixture.manager.Current().GroupCatalog[created.GroupID]
+	if !exists || len(catalog.Models) != len(stored) {
+		t.Fatalf("runtime catalog for group %d = %#v", created.GroupID, catalog)
+	}
+	for index, model := range catalog.Models {
+		if model.EntryID != stored[index].EntryID || model.TestAlias != stored[index].TestAlias {
+			t.Fatalf(
+				"runtime catalog model %d = %#v, want persisted identity %#v",
+				index, model, stored[index],
+			)
+		}
+	}
+}
+
 func TestValidateGroupRowCandidateEnforcesRouteEntryRules(t *testing.T) {
 	fixture := newServiceFixture(t)
 	tests := []struct {
@@ -1279,3 +1343,48 @@ func TestUpdateGroupModelsRejectsUnroutableStoredEntries(t *testing.T) {
 }
 
 func intPointer(value int) *int { return &value }
+
+func TestGetGroupModelsRepublishesWhenRuntimeDivergesFromPersisted(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	mustEnsureInitialPrices(t, fixture)
+	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		ChannelID: channel.OpenAICompatible,
+		Params:    json.RawMessage(`{"base_url":"https://diverged.example.com/v1"}`),
+		Models: optionalGroupModels{
+			Set:    true,
+			Values: []GroupModel{{ID: "provider-old", Alias: "public", AliasEnabled: true}},
+		},
+		Credentials: "sk-diverged", ConnectionType: "api_key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Persist a fully identified model shape that the runtime catalog has never
+	// published — the divergence a failed post-commit publication leaves behind.
+	stamped := `[{"id":"entry-a","alias":"public","test_alias":"zz9xqa","entry_id":"e1122334455aa","weight":30,"priority":2}]`
+	if err := fixture.db.Model(&models.Group{}).
+		Where("id = ?", created.GroupID).
+		Update("models", models.JSON(stamped)).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := fixture.service.GetGroupModels(t.Context(), created.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroupModels() error = %v", err)
+	}
+	if len(got.Items) != 1 || got.Items[0].EntryID != "e1122334455aa" ||
+		got.Items[0].TestAlias != "zz9xqa" {
+		t.Fatalf("GetGroupModels() items = %#v", got.Items)
+	}
+	catalog, exists := fixture.manager.Current().GroupCatalog[created.GroupID]
+	if !exists || len(catalog.Models) != 1 {
+		t.Fatalf("runtime catalog for group %d = %#v", created.GroupID, catalog)
+	}
+	if catalog.Models[0].EntryID != "e1122334455aa" || catalog.Models[0].TestAlias != "zz9xqa" {
+		t.Fatalf(
+			"runtime catalog model = %#v, want persisted identity republished despite unchanged DB",
+			catalog.Models[0],
+		)
+	}
+}

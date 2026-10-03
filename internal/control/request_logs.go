@@ -356,28 +356,24 @@ func sanitizeAccessKeyRequestLog(record requestlog.Record) requestlog.Record {
 }
 
 func parseRequestLogQuery(rawQuery string) (requestlog.ListQuery, *app_errors.APIError) {
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return requestlog.ListQuery{}, app_errors.ErrBadRequest
-	}
-	allowed := map[string]struct{}{
-		"from_ms": {}, "to_ms": {}, "group_id": {}, "channel_id": {}, "credential_id": {},
-		"client_model": {}, "upstream_model": {}, "model_consistency": {}, "access_key_id": {}, "affinity_key": {},
-		"status": {}, "request_id": {}, "protocol": {}, "operation": {}, "stream": {}, "final_status_code": {},
-		"usage_state": {}, "cost_state": {}, "pricing_completeness": {}, "cache_present": {},
-		"attempt_status_code": {}, "failure_category": {}, "error_code": {},
-		"retry_state": {}, "retry_count_min": {}, "retry_count_max": {},
-		"first_response_min_ms": {}, "first_response_max_ms": {},
-		"duration_min_ms": {}, "duration_max_ms": {},
-		"input_tokens_min": {}, "input_tokens_max": {},
-		"output_tokens_min": {}, "output_tokens_max": {},
-		"cost_min_nano_usd": {}, "cost_max_nano_usd": {},
-		"limit": {}, "cursor": {},
-	}
-	for key, value := range values {
-		if _, ok := allowed[key]; !ok || len(value) != 1 {
-			return requestlog.ListQuery{}, app_errors.ErrBadRequest
-		}
+	values, apiErr := parseCollectionQueryValues(
+		rawQuery,
+		false,
+		"from_ms", "to_ms", "group_id", "channel_id", "credential_id",
+		"client_model", "upstream_model", "model_consistency", "access_key_id", "affinity_key",
+		"status", "request_id", "protocol", "operation", "stream", "final_status_code",
+		"usage_state", "cost_state", "pricing_completeness", "cache_present",
+		"attempt_status_code", "failure_category", "error_code",
+		"retry_state", "retry_count_min", "retry_count_max",
+		"first_response_min_ms", "first_response_max_ms",
+		"duration_min_ms", "duration_max_ms",
+		"input_tokens_min", "input_tokens_max",
+		"output_tokens_min", "output_tokens_max",
+		"cost_min_nano_usd", "cost_max_nano_usd",
+		"limit", "cursor",
+	)
+	if apiErr != nil {
+		return requestlog.ListQuery{}, apiErr
 	}
 
 	query := requestlog.ListQuery{Limit: defaultRequestLogLimit}

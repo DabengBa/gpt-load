@@ -2,9 +2,6 @@ package control
 
 import (
 	"context"
-	"net/url"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -58,20 +55,12 @@ func (s *Service) ListChannels(ctx context.Context, query string) (ChannelListRe
 }
 
 func parseChannelQuery(rawQuery string, forceQuery bool) (string, *app_errors.APIError) {
-	if forceQuery && rawQuery == "" {
-		return "", app_errors.ErrBadRequest
+	values, apiErr := parseCollectionQueryValues(rawQuery, forceQuery, "q")
+	if apiErr != nil {
+		return "", apiErr
 	}
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return "", app_errors.ErrBadRequest
-	}
-	for key, entries := range values {
-		if key != "q" || len(entries) != 1 {
-			return "", app_errors.ErrBadRequest
-		}
-	}
-	query := strings.TrimSpace(values.Get("q"))
-	if utf8.RuneCountInString(query) > channelMaxQueryRunes {
+	query, ok := collectionQueryText(values, "q", channelMaxQueryRunes)
+	if !ok {
 		return "", app_errors.ErrBadRequest
 	}
 	return query, nil

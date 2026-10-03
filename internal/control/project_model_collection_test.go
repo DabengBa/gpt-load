@@ -261,3 +261,175 @@ func TestProjectModelCatalogReferenceUsesTheRecordedPriceProviderAndSource(t *te
 		})
 	}
 }
+
+func TestParseProjectModelListQueryAcceptsStrictContract(t *testing.T) {
+	t.Parallel()
+	q200 := strings.Repeat("猫", 200)
+
+	tests := []struct {
+		name       string
+		rawQuery   string
+		forceQuery bool
+		want       ProjectModelListQuery
+	}{
+		{
+			name: "no query uses defaults",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusEnabled,
+				PricingStatus: ProjectModelPricingStatusAll,
+				Page:          1,
+				PageSize:      20,
+			},
+		},
+		{
+			name:     "group status all",
+			rawQuery: "group_status=all",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusAll,
+				PricingStatus: ProjectModelPricingStatusAll,
+				Page:          1,
+				PageSize:      20,
+			},
+		},
+		{
+			name:     "pricing status pending",
+			rawQuery: "pricing_status=pending",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusEnabled,
+				PricingStatus: ProjectModelPricingStatusPending,
+				Page:          1,
+				PageSize:      20,
+			},
+		},
+		{
+			name:     "pricing status configured",
+			rawQuery: "pricing_status=configured",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusEnabled,
+				PricingStatus: ProjectModelPricingStatusConfigured,
+				Page:          1,
+				PageSize:      20,
+			},
+		},
+		{
+			name:     "q is trimmed",
+			rawQuery: "q=++needle++",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusEnabled,
+				PricingStatus: ProjectModelPricingStatusAll,
+				Search:        "needle",
+				Page:          1,
+				PageSize:      20,
+			},
+		},
+		{
+			name:     "q may trim to empty",
+			rawQuery: "q=+++",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusEnabled,
+				PricingStatus: ProjectModelPricingStatusAll,
+				Page:          1,
+				PageSize:      20,
+			},
+		},
+		{
+			name:     "q accepts 200 Unicode code points",
+			rawQuery: "q=" + q200,
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusEnabled,
+				PricingStatus: ProjectModelPricingStatusAll,
+				Search:        q200,
+				Page:          1,
+				PageSize:      20,
+			},
+		},
+		{
+			name:     "page accepts max safe integer",
+			rawQuery: "page=9007199254740991",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusEnabled,
+				PricingStatus: ProjectModelPricingStatusAll,
+				Page:          9007199254740991,
+				PageSize:      20,
+			},
+		},
+		{
+			name:     "page size accepts boundaries",
+			rawQuery: "page_size=100",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusEnabled,
+				PricingStatus: ProjectModelPricingStatusAll,
+				Page:          1,
+				PageSize:      100,
+			},
+		},
+		{
+			name:     "all fields combine",
+			rawQuery: "group_status=all&pricing_status=configured&q=+x+&page=3&page_size=50",
+			want: ProjectModelListQuery{
+				GroupStatus:   ProjectModelGroupStatusAll,
+				PricingStatus: ProjectModelPricingStatusConfigured,
+				Search:        "x",
+				Page:          3,
+				PageSize:      50,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, apiErr := parseProjectModelListQuery(test.rawQuery, test.forceQuery)
+			if apiErr != nil {
+				t.Fatalf("parseProjectModelListQuery() error = %v", apiErr)
+			}
+			if got != test.want {
+				t.Fatalf("parseProjectModelListQuery() = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestParseProjectModelListQueryRejectsEveryInvalidForm(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		rawQuery   string
+		forceQuery bool
+	}{
+		{name: "bare question mark", forceQuery: true},
+		{name: "malformed escape", rawQuery: "q=%zz"},
+		{name: "unknown key", rawQuery: "unknown=1"},
+		{name: "group status repeated", rawQuery: "group_status=all&group_status=enabled"},
+		{name: "pricing status repeated", rawQuery: "pricing_status=all&pricing_status=pending"},
+		{name: "q repeated", rawQuery: "q=one&q=two"},
+		{name: "page repeated", rawQuery: "page=1&page=2"},
+		{name: "page size repeated", rawQuery: "page_size=20&page_size=50"},
+		{name: "q exceeds 200 Unicode code points", rawQuery: "q=" + strings.Repeat("猫", 201)},
+		{name: "group status empty", rawQuery: "group_status="},
+		{name: "group status unknown", rawQuery: "group_status=disabled"},
+		{name: "pricing status empty", rawQuery: "pricing_status="},
+		{name: "pricing status unknown", rawQuery: "pricing_status=free"},
+		{name: "page signed", rawQuery: "page=%2B1"},
+		{name: "page leading zero", rawQuery: "page=01"},
+		{name: "page empty", rawQuery: "page="},
+		{name: "page negative", rawQuery: "page=-1"},
+		{name: "page zero", rawQuery: "page=0"},
+		{name: "page above max safe integer", rawQuery: "page=9007199254740992"},
+		{name: "page overflow", rawQuery: "page=18446744073709551616"},
+		{name: "page size signed", rawQuery: "page_size=%2B1"},
+		{name: "page size leading zero", rawQuery: "page_size=01"},
+		{name: "page size empty", rawQuery: "page_size="},
+		{name: "page size negative", rawQuery: "page_size=-1"},
+		{name: "page size zero", rawQuery: "page_size=0"},
+		{name: "page size above maximum", rawQuery: "page_size=101"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, apiErr := parseProjectModelListQuery(test.rawQuery, test.forceQuery)
+			if apiErr == nil || apiErr.Code != "BAD_REQUEST" {
+				t.Fatalf("parseProjectModelListQuery() = %#v, %v; want BAD_REQUEST", got, apiErr)
+			}
+		})
+	}
+}

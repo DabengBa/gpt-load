@@ -229,7 +229,7 @@ func (s *Service) mapGroupDiscoveryTarget(
 			),
 			apiKey: apiKey,
 		})
-		network, networkErr := s.credentialNetworkContext(ctx, s.db, rows.group, credentialRow)
+		network, networkErr := s.groupNetworkContext(ctx, s.db, rows.group)
 		if networkErr != nil {
 			clear(canonical)
 			return discoveryTarget{}, networkErr

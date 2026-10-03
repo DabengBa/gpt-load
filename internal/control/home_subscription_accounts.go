@@ -74,8 +74,7 @@ func (s *Service) ReadHomeSubscriptionAccounts(
 }
 
 func (s *Server) handleHomeSubscriptionAccounts(c *gin.Context) {
-	if c.Request.URL.RawQuery != "" || c.Request.URL.ForceQuery {
-		writeServiceError(c, "home_subscription_accounts", app_errors.ErrBadRequest)
+	if !requireEmptyQuery(c, "home_subscription_accounts") {
 		return
 	}
 	result, err := s.service.ReadHomeSubscriptionAccounts(c.Request.Context())
@@ -130,14 +129,8 @@ func (s *Service) readHomeSubscriptionAccounts(
 			return HomeSubscriptionAccountsResponse{}, app_errors.ErrInternalServer
 		}
 		view, exists := runtimeByID[credential.ID]
-		if !exists || view.GroupID != credential.GroupID ||
-			view.AuthState != normalizeRuntimeCredentialAuthState(credential.AuthState) ||
-			view.Version != groupCollectionCredentialVersion(credential.SecretVersion) ||
-			view.IdentityGeneration != groupCollectionCredentialIdentity(
-				credential.IdentityFingerprint,
-				*credential.Group,
-			) {
-			return HomeSubscriptionAccountsResponse{}, app_errors.ErrInternalServer
+		if err := validateCredentialRuntimeRow(*credential.Group, credential, view, exists); err != nil {
+			return HomeSubscriptionAccountsResponse{}, err
 		}
 		catalog := state.GroupCatalogView{
 			ID: credential.Group.ID, Name: credential.Group.Name,

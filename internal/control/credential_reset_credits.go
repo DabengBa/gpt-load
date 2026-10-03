@@ -56,7 +56,7 @@ func (s *Service) ConsumeCredentialResetCredit(
 	if err != nil {
 		return ResetCreditConsumeResponse{}, err
 	}
-	network, err := s.credentialNetworkContext(ctx, s.db, group, credential)
+	network, err := s.groupNetworkContext(ctx, s.db, group)
 	if err != nil {
 		return ResetCreditConsumeResponse{}, err
 	}
@@ -94,7 +94,7 @@ func (s *Service) ConsumeCredentialResetCredit(
 	}
 
 	if s.consumeSubscriptionResetCredit == nil {
-		_ = s.finishResetCreditOperation(operation.IdempotencyKey, models.CredentialResetOperationOutcomeUnknown, nil, app_errors.ErrResetCreditOutcomeUnknown.Code)
+		_ = s.finishResetCreditOperation(operation, models.CredentialResetOperationOutcomeUnknown, nil, app_errors.ErrResetCreditOutcomeUnknown.Code)
 		return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
 	}
 	callContext, cancel := context.WithTimeout(ctx, defaultSubscriptionControlTimeout)
@@ -102,13 +102,13 @@ func (s *Service) ConsumeCredentialResetCredit(
 	cancel()
 	if consumeErr != nil {
 		state, apiErr := classifyResetCreditConsumeError(consumeErr)
-		if persistErr := s.finishResetCreditOperation(operation.IdempotencyKey, state, nil, apiErr.Code); persistErr != nil {
+		if persistErr := s.finishResetCreditOperation(operation, state, nil, apiErr.Code); persistErr != nil {
 			return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
 		}
 		return ResetCreditConsumeResponse{}, apiErr
 	}
 	if upstream.Status != "succeeded" || upstream.WindowsReset < 0 {
-		_ = s.finishResetCreditOperation(operation.IdempotencyKey, models.CredentialResetOperationOutcomeUnknown, nil, app_errors.ErrResetCreditOutcomeUnknown.Code)
+		_ = s.finishResetCreditOperation(operation, models.CredentialResetOperationOutcomeUnknown, nil, app_errors.ErrResetCreditOutcomeUnknown.Code)
 		return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
 	}
 	result := storedResetCreditResult{
@@ -117,7 +117,7 @@ func (s *Service) ConsumeCredentialResetCredit(
 	runtimeRestored := s.restoreCredentialRuntimeAfterReset(credentialID)
 	canonicalResult, err := canonicaljson.Marshal(result)
 	if err != nil || s.finishResetCreditOperation(
-		operation.IdempotencyKey,
+		operation,
 		models.CredentialResetOperationSucceeded,
 		canonicalResult,
 		"",
@@ -217,6 +217,11 @@ func (s *Service) restoreCredentialRuntimeAfterReset(credentialID uint) bool {
 	return restored
 }
 
+// beginResetCreditOperation admits ledger writes under the same recovery
+// barrier as every other control mutation: a new upstream side effect must
+// never commit ahead of unfinished operation recovery. Replay decisions for
+// finished rows stay readable; succeeded rows are already served lock-free by
+// replayResetCreditOperationIfExists before this is reached.
 func (s *Service) beginResetCreditOperation(
 	ctx context.Context,
 	groupID uint,
@@ -227,6 +232,9 @@ func (s *Service) beginResetCreditOperation(
 	digest := resetCreditRequestDigest(groupID, credentialID, identityFingerprint)
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if err := s.enforceOperationRecoveryBarrierLocked(ctx, 0); err != nil {
+		return models.CredentialResetOperation{}, false, err
+	}
 	nowMS := s.now().UTC().UnixMilli()
 
 	var existing models.CredentialResetOperation
@@ -237,6 +245,11 @@ func (s *Service) beginResetCreditOperation(
 			return models.CredentialResetOperation{}, false, app_errors.ErrIdempotencyKeyReused
 		}
 		if resetCreditOperationCanRetry(existing, nowMS) {
+			if err := s.checkResetCreditCredentialIdentityLocked(
+				ctx, groupID, credentialID, identityFingerprint,
+			); err != nil {
+				return models.CredentialResetOperation{}, false, err
+			}
 			result := s.db.WithContext(ctx).Model(&models.CredentialResetOperation{}).
 				Where("idempotency_key = ? AND state = ? AND updated_at_ms = ?", existing.IdempotencyKey, existing.State, existing.UpdatedAtMS).
 				Updates(map[string]any{
@@ -268,6 +281,11 @@ func (s *Service) beginResetCreditOperation(
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return models.CredentialResetOperation{}, false, app_errors.ParseDBError(err)
 	}
+	if err := s.checkResetCreditCredentialIdentityLocked(
+		ctx, groupID, credentialID, identityFingerprint,
+	); err != nil {
+		return models.CredentialResetOperation{}, false, err
+	}
 	if !s.resetCreditOperationAllowsNewKey(ctx, credentialID) {
 		return models.CredentialResetOperation{}, false, app_errors.ErrResetCreditOutcomeUnknown
 	}
@@ -280,6 +298,32 @@ func (s *Service) beginResetCreditOperation(
 		return models.CredentialResetOperation{}, false, app_errors.ParseDBError(err)
 	}
 	return operation, false, nil
+}
+
+// checkResetCreditCredentialIdentityLocked closes the window between the
+// lock-free target load and ledger admission: the credential row must still
+// exist for this group with the identity fingerprint the request digest was
+// computed over. A rotation or delete landing in between makes the prepared
+// credential stale, so the caller must re-resolve and retry.
+func (s *Service) checkResetCreditCredentialIdentityLocked(
+	ctx context.Context,
+	groupID uint,
+	credentialID uint,
+	identityFingerprint string,
+) error {
+	var row models.Credential
+	if err := s.db.WithContext(ctx).Select("id", "identity_fingerprint").
+		Where("id = ? AND group_id = ?", credentialID, groupID).
+		Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return credentialNotFoundError()
+		}
+		return app_errors.ParseDBError(err)
+	}
+	if row.IdentityFingerprint != identityFingerprint {
+		return credentialNotFoundError()
+	}
+	return nil
 }
 
 func (s *Service) replayResetCreditOperationIfExists(
@@ -399,8 +443,13 @@ func (s *Service) resetCreditOperationAllowsNewKey(
 	return err == nil && latest.State == models.CredentialResetOperationSucceeded
 }
 
+// finishResetCreditOperation settles a prepared ledger row after the upstream
+// call. It deliberately skips the recovery barrier: an upstream side effect
+// that already happened must be recordable even while recovery is pending.
+// The CAS rechecks operation ownership so only the admitted (group,
+// credential) pair can settle the row.
 func (s *Service) finishResetCreditOperation(
-	idempotencyKey string,
+	operation models.CredentialResetOperation,
 	state models.CredentialResetOperationState,
 	result []byte,
 	errorCode string,
@@ -415,13 +464,19 @@ func (s *Service) finishResetCreditOperation(
 		"updated_at_ms": nowMS, "completed_at_ms": nowMS,
 	}
 	resultUpdate := s.db.WithContext(cleanupContext).Model(&models.CredentialResetOperation{}).
-		Where("idempotency_key = ? AND state = ?", idempotencyKey, models.CredentialResetOperationPrepared).
+		Where(
+			"idempotency_key = ? AND group_id = ? AND credential_id = ? AND state = ?",
+			operation.IdempotencyKey,
+			operation.GroupID,
+			operation.CredentialID,
+			models.CredentialResetOperationPrepared,
+		).
 		Updates(updates)
 	if resultUpdate.Error != nil {
 		return resultUpdate.Error
 	}
 	if resultUpdate.RowsAffected != 1 {
-		return fmt.Errorf("credential reset operation state changed")
+		return fmt.Errorf("credential reset operation state changed: %w", app_errors.ErrInternalServer)
 	}
 	return nil
 }

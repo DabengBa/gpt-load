@@ -106,15 +106,6 @@ func (s *Service) groupCredentialStageNetworkContext(
 	return s.groupNetworkContext(ctx, db, group)
 }
 
-func (s *Service) credentialNetworkContext(
-	ctx context.Context,
-	db *gorm.DB,
-	group models.Group,
-	_credential models.Credential,
-) (subscriptionruntime.NetworkContext, error) {
-	return s.groupNetworkContext(ctx, db, group)
-}
-
 func (s *Service) proxyNetworkContext(
 	effective outboundproxy.Effective,
 ) (subscriptionruntime.NetworkContext, error) {

@@ -1,11 +1,6 @@
 package control
 
 import (
-	"net/url"
-	"strconv"
-	"strings"
-	"unicode/utf8"
-
 	"github.com/gin-gonic/gin"
 
 	app_errors "gpt-load/internal/platform/errors"
@@ -38,8 +33,7 @@ func (s *Server) handleListGroupCollection(c *gin.Context) {
 }
 
 func (s *Server) handleListGroupOptions(c *gin.Context) {
-	if c.Request.URL.ForceQuery || c.Request.URL.RawQuery != "" {
-		writeServiceError(c, "list_group_options", app_errors.ErrBadRequest)
+	if !requireEmptyQuery(c, "list_group_options") {
 		return
 	}
 	result, err := s.service.ListGroupOptions(c.Request.Context())
@@ -59,30 +53,18 @@ func parseGroupCollectionQuery(
 		Page:     groupCollectionDefaultPage,
 		PageSize: groupCollectionDefaultPageSize,
 	}
-	if forceQuery && rawQuery == "" {
-		return GroupCollectionQuery{}, app_errors.ErrBadRequest
-	}
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return GroupCollectionQuery{}, app_errors.ErrBadRequest
-	}
-	for key, entries := range values {
-		switch key {
-		case "q", "status", "connection_type", "sort", "page", "page_size":
-		default:
-			return GroupCollectionQuery{}, app_errors.ErrBadRequest
-		}
-		if len(entries) != 1 {
-			return GroupCollectionQuery{}, app_errors.ErrBadRequest
-		}
+	values, apiErr := parseCollectionQueryValues(
+		rawQuery, forceQuery, "q", "status", "connection_type", "sort", "page", "page_size",
+	)
+	if apiErr != nil {
+		return GroupCollectionQuery{}, apiErr
 	}
 
-	if entries, exists := values["q"]; exists {
-		query.Query = strings.TrimSpace(entries[0])
-		if utf8.RuneCountInString(query.Query) > groupCollectionMaxQueryRunes {
-			return GroupCollectionQuery{}, app_errors.ErrBadRequest
-		}
+	text, ok := collectionQueryText(values, "q", groupCollectionMaxQueryRunes)
+	if !ok {
+		return GroupCollectionQuery{}, app_errors.ErrBadRequest
 	}
+	query.Query = text
 	if entries, exists := values["status"]; exists {
 		status, ok := parseGroupCollectionStatus(entries[0])
 		if !ok {
@@ -111,14 +93,14 @@ func parseGroupCollectionQuery(
 		}
 	}
 	if entries, exists := values["page"]; exists {
-		page, ok := parseGroupCollectionPositiveInt(entries[0])
+		page, ok := parseCollectionPositiveInt64(entries[0])
 		if !ok {
 			return GroupCollectionQuery{}, app_errors.ErrBadRequest
 		}
 		query.Page = page
 	}
 	if entries, exists := values["page_size"]; exists {
-		pageSize, ok := parseGroupCollectionPositiveInt(entries[0])
+		pageSize, ok := parseCollectionPositiveInt64(entries[0])
 		if !ok || pageSize > groupCollectionMaxPageSize {
 			return GroupCollectionQuery{}, app_errors.ErrBadRequest
 		}
@@ -151,20 +133,4 @@ func parseGroupCollectionConnectionType(
 	default:
 		return nil, false
 	}
-}
-
-func parseGroupCollectionPositiveInt(value string) (int64, bool) {
-	if value == "" || value[0] == '0' {
-		return 0, false
-	}
-	for index := range len(value) {
-		if value[index] < '0' || value[index] > '9' {
-			return 0, false
-		}
-	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || parsed <= 0 {
-		return 0, false
-	}
-	return parsed, true
 }

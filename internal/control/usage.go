@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
@@ -192,27 +191,23 @@ func (server *Server) handleUsage(c *gin.Context) {
 }
 
 func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery, *app_errors.APIError) {
-	values, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return requestlog.UsageQuery{}, app_errors.ErrBadRequest
-	}
-	allowed := map[string]struct{}{
-		"range":                    {},
-		"from_ms":                  {},
-		"to_ms":                    {},
-		"group_id":                 {},
-		"channel_id":               {},
-		"credential_id":            {},
-		"upstream_model":           {},
-		"breakdown_page":           {},
-		"breakdown_page_size":      {},
-		"breakdown_sort":           {},
-		"breakdown_sort_direction": {},
-	}
-	for key, value := range values {
-		if _, ok := allowed[key]; !ok || len(value) != 1 {
-			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
-		}
+	values, apiErr := parseCollectionQueryValues(
+		rawQuery,
+		false,
+		"range",
+		"from_ms",
+		"to_ms",
+		"group_id",
+		"channel_id",
+		"credential_id",
+		"upstream_model",
+		"breakdown_page",
+		"breakdown_page_size",
+		"breakdown_sort",
+		"breakdown_sort_direction",
+	)
+	if apiErr != nil {
+		return requestlog.UsageQuery{}, apiErr
 	}
 
 	if err := validateSafeMilliseconds(observedAtMS); err != nil {
