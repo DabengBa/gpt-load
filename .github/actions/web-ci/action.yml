@@ -36,6 +36,21 @@ runs:
       shell: bash
       run: pnpm --dir web run lint
 
+    - name: Run web unit tests
+      shell: bash
+      run: pnpm --dir web run test
+
+    - name: Run web contract verifications
+      shell: bash
+      run: |
+        pnpm --dir web run verify:astryx-i18n
+        pnpm --dir web run verify:group-collection
+        pnpm --dir web run verify:health-projection
+        pnpm --dir web run verify:log-format
+        pnpm --dir web run verify:model-test-alias
+        pnpm --dir web run verify:reasoning-contract
+        pnpm --dir web run verify:request-log-affinity
+
     - name: Check web formatting
       shell: bash
       run: pnpm --dir web run format

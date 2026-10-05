@@ -16,6 +16,7 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "eslint . --max-warnings=0 && node scripts/verify-i18n-icu.mjs && node scripts/verify-theme-build.mjs",
+    "test": "node --experimental-transform-types --import ./scripts/register-shared-alias.mjs --test \"scripts/*.test.ts\"",
     "test:astryx-routes": "node --experimental-strip-types --test scripts/astryx-routes.test.ts",
     "test:channel-contract": "node --experimental-strip-types --test scripts/channel-contract.test.ts",
     "test:channel-icon": "node --experimental-strip-types --test scripts/channel-icon.test.ts",
@@ -35,6 +36,9 @@
     "verify:group-collection": "node scripts/verify-group-collection.mjs",
     "verify:health-projection": "node scripts/verify-health-projection.mjs",
     "verify:i18n-icu": "node scripts/verify-i18n-icu.mjs",
+    "verify:log-format": "node scripts/verify-log-format.mjs",
+    "verify:model-test-alias": "node scripts/verify-model-test-alias.mjs",
+    "verify:reasoning-contract": "node scripts/verify-reasoning-contract.mjs",
     "verify:request-log-affinity": "node scripts/verify-request-log-affinity.mjs"
   },
   "dependencies": {
