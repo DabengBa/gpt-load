@@ -31,6 +31,12 @@ func prepareGatewayProtocolProbe(
 	var path string
 	var payload map[string]any
 	switch spec.ClientProtocol {
+	case protocol.GeminiEmbeddings:
+		path = "/v1beta/models/" + url.PathEscape(spec.UpstreamModel) + ":embedContent"
+		_ = json.Unmarshal([]byte(geminiEmbeddingsProbeBody), &payload)
+	case protocol.OpenAIEmbeddings:
+		path = "/v1/embeddings"
+		payload = map[string]any{"model": spec.UpstreamModel, "input": "hello"}
 	case protocol.OpenAIResponses:
 		path = "/v1/responses"
 		payload = responsesProbePayload(spec)
@@ -104,6 +110,9 @@ func normalizeGatewayProtocolProbeResult(spec execution.AttemptSpec, result *exe
 }
 
 func validGatewayProtocolProbeResponse(selected protocol.Protocol, body []byte) bool {
+	if selected == protocol.GeminiEmbeddings || selected == protocol.OpenAIEmbeddings || selected == protocol.Rerank {
+		return validDataProbeResponse(selected, body)
+	}
 	var response struct {
 		Object     string            `json:"object"`
 		Status     string            `json:"status"`

@@ -18,6 +18,9 @@ func TestProbeRoutesExcludeNonGenerativeProtocols(t *testing.T) {
 			t.Fatalf("lookup(%q) missing", descriptor.ID)
 		}
 		for _, clientProtocol := range []protocol.Protocol{protocol.OpenAIEmbeddings, protocol.Rerank} {
+			if descriptor.ID == Cohere && clientProtocol == protocol.Rerank {
+				continue // Explicit zero-budget contract is proved by TestCohereRerankOnlyPreset.
+			}
 			if _, ok := definition.modes[clientProtocol][execution.OperationProbe]; ok {
 				t.Errorf("%q advertises non-generative %s probe route", descriptor.ID, clientProtocol)
 			}

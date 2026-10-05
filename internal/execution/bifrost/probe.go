@@ -17,6 +17,8 @@ import (
 // accepting the request.
 const probeQuestion = "What is 2 + 2? Please answer briefly."
 
+const geminiEmbeddingsProbeBody = `{"content":{"parts":[{"text":"ping"}]}}`
+
 // probeDefaultOutputTokens is the fallback output budget for a probe that did
 // not carry a contract value. Generation probes always carry one; the fallback
 // only protects a miswired caller from omitting the field entirely. It equals
@@ -62,6 +64,13 @@ func normalizeProbeAttemptResult(
 	extraction := probeAnswerPresent(spec.ClientProtocol, body, rawPassthrough)
 	result.ProbeAnswerPresent = extraction.present
 	result.ProbeResponseInvalid = !extraction.valid
+	if !extraction.valid && !spec.ClientProtocol.SupportsGeneratedText() {
+		failure := startedUnaryFailure(result.StatusCode, result.Header, execution.ErrorKindProvider, "upstream returned an invalid data probe response")
+		failure.UpstreamProtocol = spec.ClientProtocol
+		failure.ProbeResponseInvalid = true
+		failure.Error.OriginHint = execution.ErrorOriginUpstream
+		*result = failure
+	}
 }
 
 // decodeProbeResponseBody materializes the probe response bytes. Native
@@ -99,6 +108,10 @@ type probeExtraction struct {
 // while raw passthrough responses must match the selected protocol only. A body
 // matching neither shape is invalid, not merely empty.
 func probeAnswerPresent(clientProtocol protocol.Protocol, body []byte, rawPassthrough bool) probeExtraction {
+	if clientProtocol == protocol.GeminiEmbeddings || clientProtocol == protocol.OpenAIEmbeddings || clientProtocol == protocol.Rerank {
+		valid := validDataProbeResponse(clientProtocol, body)
+		return probeExtraction{present: valid, valid: valid}
+	}
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 {
 		return probeExtraction{}

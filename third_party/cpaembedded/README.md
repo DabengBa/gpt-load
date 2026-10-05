@@ -41,7 +41,7 @@ the existing HTTP executor remains separate.
 
 Codex HTTP inference (including streaming and images) and WebSocket handshakes
 use the pinned CPA default User-Agent. `Version` is fixed to the matching
-`codexClientVersion` constant, currently `0.154.0`. Downstream and GPT-Load group
+`codexClientVersion` constant, currently `0.159.2`. Downstream and GPT-Load group
 header rules cannot override, clear, or remove these two identity headers.
 This restriction applies only to Codex; other providers retain their header rules.
 HTTP continues to honor explicit `Originator` rules, including empty values and
@@ -69,8 +69,8 @@ generation-stage proof, the existing conservative replay policy remains in effec
 
 ## Pinned upstream
 
-- Module: `github.com/router-for-me/CLIProxyAPI/v7`
-- Version: `v7.3.6`
+- Module: `github.com/router-for-me/CLIProxyAPI/v8`
+- Version: `v8.0.8`
 
 The bridge keeps Codex's fixed Version and observation identity aligned with
 CPA's default User-Agent. CPA now includes Antigravity reasoning tokens in unary

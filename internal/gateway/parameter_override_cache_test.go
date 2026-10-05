@@ -61,6 +61,13 @@ func TestHandlerParameterOverrideCacheKeepsOnlyLastGroup(t *testing.T) {
 		if input.Group.ID != groupID {
 			t.Fatalf("attempt %d group = %d, want %d", index, input.Group.ID, groupID)
 		}
+		wantField := "first"
+		if bytes.Contains(input.Request.Body, []byte(`"second"`)) {
+			wantField = "second"
+		}
+		if len(input.ConfiguredParameters) != 1 || input.ConfiguredParameters[0] != wantField {
+			t.Fatalf("attempt %d configured parameters = %v, want %s", index, input.ConfiguredParameters, wantField)
+		}
 		if groupID == 1 && bytes.Contains(input.Request.Body, []byte(`"second"`)) {
 			t.Fatalf("attempt %d inherited another group's override", index)
 		}
@@ -70,5 +77,9 @@ func TestHandlerParameterOverrideCacheKeepsOnlyLastGroup(t *testing.T) {
 	}
 	if forwarder.inputs[3].Request == forwarder.inputs[4].Request && forwarder.inputs[3].Group.ID != forwarder.inputs[4].Group.ID {
 		t.Fatal("previous group's prepared request remained cached after switching groups")
+	}
+	forwarder.inputs[0].ConfiguredParameters[0] = "mutated"
+	if forwarder.inputs[4].ConfiguredParameters[0] != "first" {
+		t.Fatal("configured parameters shared between attempts")
 	}
 }

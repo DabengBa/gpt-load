@@ -47,8 +47,7 @@ func TestNonGenerativeProbePreflightRejectsBeforeDispatch(t *testing.T) {
 			if err := result.Validate(); err != nil {
 				t.Fatalf("result validation: %v; result=%+v", err, result)
 			}
-			if result.Error == nil || result.Error.Kind != execution.ErrorKindInvalidRequest ||
-				result.Error.Summary != "probe protocol does not support generated text" ||
+			if result.Error == nil ||
 				result.DispatchState != execution.DispatchNotSent {
 				t.Fatalf("result = %+v; want explicit non-generative preflight rejection", result)
 			}

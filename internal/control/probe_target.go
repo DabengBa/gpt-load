@@ -48,7 +48,7 @@ func validationAttemptProxy(
 }
 
 func buildGroupValidationTarget(group state.GroupView) (groupValidationTarget, bool) {
-	return buildGroupProbeTarget(group, "")
+	return buildGroupProbeTarget(group, "", "")
 }
 
 // buildGroupProbeTarget builds a probe target from the channel's code-owned
@@ -56,7 +56,7 @@ func buildGroupValidationTarget(group state.GroupView) (groupValidationTarget, b
 // the legacy ValidationModel fallback is gone. The channel resolves the route
 // mode for the contract protocol and model, so native and converted routes keep
 // their declared semantics.
-func buildGroupProbeTarget(group state.GroupView, model string) (groupValidationTarget, bool) {
+func buildGroupProbeTarget(group state.GroupView, model string, requested protocol.Protocol) (groupValidationTarget, bool) {
 	if strings.TrimSpace(group.ConnectionType) == string(models.ConnectionTypeSubscription) {
 		return groupValidationTarget{}, false
 	}
@@ -75,23 +75,46 @@ func buildGroupProbeTarget(group state.GroupView, model string) (groupValidation
 	if probeModel == "" {
 		return groupValidationTarget{}, false
 	}
+	selectedProtocol := contract.Protocol
+	if requested != "" {
+		if !isSupportedDataProbeProtocol(requested) {
+			return groupValidationTarget{}, false
+		}
+		selectedProtocol = requested
+	}
 	routeMode, supported := group.ResolvedTarget.ModeForModel(
-		contract.Protocol,
+		selectedProtocol,
 		execution.OperationProbe,
 		probeModel,
 	)
 	if !supported {
 		return groupValidationTarget{}, false
 	}
+	if requested != "" && requested != contract.Protocol && routeMode != channel.RouteNative {
+		return groupValidationTarget{}, false
+	}
+	maxOutputTokens := contract.MinOutputTokens
+	if selectedProtocol != contract.Protocol {
+		maxOutputTokens = 0
+	}
 	return groupValidationTarget{
-		protocol:        contract.Protocol,
+		protocol:        selectedProtocol,
 		routeMode:       routeMode,
 		model:           probeModel,
-		maxOutputTokens: contract.MinOutputTokens,
+		maxOutputTokens: maxOutputTokens,
 		signature: computeGroupValidationSignature(
-			group, contract.Protocol, probeModel, routeMode, contract.MinOutputTokens,
+			group, selectedProtocol, probeModel, routeMode, maxOutputTokens,
 		),
 	}, true
+}
+
+func isSupportedDataProbeProtocol(value protocol.Protocol) bool {
+	switch value {
+	case protocol.OpenAIEmbeddings, protocol.GeminiEmbeddings, protocol.Rerank:
+		return true
+	default:
+		return false
+	}
 }
 
 func computeGroupValidationSignature(

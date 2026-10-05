@@ -33,6 +33,7 @@ export type ModelProbeReason =
 export interface ModelProbeTargetDto {
   group_id: number
   model: string
+  protocol?: ProtocolValue
 }
 
 export interface ModelProbeResultDto {

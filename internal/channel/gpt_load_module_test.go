@@ -60,6 +60,7 @@ func TestGPTLoadChannelContract(t *testing.T) {
 	}
 
 	wantRoutes := map[protocol.Protocol]map[execution.Operation]RouteMode{
+		protocol.GeminiEmbeddings: {execution.OperationEmbeddingsCreate: RouteNative, execution.OperationProbe: RouteNative},
 		protocol.OpenAICompletions: {
 			execution.OperationChatCompletion: RouteNative,
 			execution.OperationListModels:     RouteNative,

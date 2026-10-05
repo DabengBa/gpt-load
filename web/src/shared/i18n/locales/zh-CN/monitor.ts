@@ -16,6 +16,13 @@ export default {
       title: '模型测活',
       description: '对每个目标发起一次低成本的真实上游问题请求，并将结果写入请求日志。',
       button: '测活',
+      protocolLabel: '测活协议',
+      defaultProtocol: '默认测活协议',
+      protocols: {
+        openaiEmbeddings: 'OpenAI 嵌入',
+        geminiEmbeddings: 'Gemini 嵌入',
+        rerank: '重排序',
+      },
       batch: '测活当前 {count} 行',
       draftHint: '先保存该模型行后再测活',
       loading: '正在测活…',

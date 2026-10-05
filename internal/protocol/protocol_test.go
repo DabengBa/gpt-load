@@ -114,6 +114,7 @@ func TestDataPlaneProtocolsReturnsCanonicalOrderAndIndependentCopies(t *testing.
 		Rerank,
 		Anthropic,
 		Gemini,
+		GeminiEmbeddings,
 	}
 	if len(first) != len(want) {
 		t.Fatalf("DataPlaneProtocols() = %#v, want %#v", first, want)

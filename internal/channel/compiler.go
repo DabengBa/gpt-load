@@ -438,6 +438,17 @@ func validateProbeContract(
 ) error {
 	id := source.ID
 	contract := source.Provider.ProbeContract
+	for value, operations := range modes {
+		if _, declared := operations[execution.OperationProbe]; !declared || value.SupportsGeneratedText() {
+			continue
+		}
+		if value == protocol.GeminiEmbeddings {
+			continue
+		}
+		if contract.Protocol != value || contract.MinOutputTokens != 0 {
+			return fmt.Errorf("channel %q has a data probe route without an explicit data contract", id)
+		}
+	}
 	if source.Connection.Type == spec.ConnectionSubscription {
 		if contract.Protocol != "" || contract.MinOutputTokens != 0 {
 			return fmt.Errorf("channel %q declares a probe contract for a subscription connection", id)
@@ -457,7 +468,7 @@ func validateProbeContract(
 			contract.Protocol,
 		)
 	}
-	if contract.MinOutputTokens < minProbeOutputTokens {
+	if contract.Protocol.SupportsGeneratedText() && contract.MinOutputTokens < minProbeOutputTokens {
 		return fmt.Errorf(
 			"channel %q probe contract budget %d is below the minimum %d",
 			id,
@@ -479,7 +490,7 @@ func validProtocolOperation(clientProtocol protocol.Protocol, operation executio
 	switch operation {
 	case execution.OperationChatCompletion:
 		return clientProtocol != protocol.OpenAIResponses && clientProtocol != protocol.OpenAIImages &&
-			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.Rerank
+			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.GeminiEmbeddings && clientProtocol != protocol.Rerank
 	case execution.OperationCountTokens:
 		return clientProtocol == protocol.Anthropic || clientProtocol == protocol.Gemini
 	case execution.OperationResponsesCreate,
@@ -498,15 +509,12 @@ func validProtocolOperation(clientProtocol protocol.Protocol, operation executio
 	case execution.OperationRerank:
 		return clientProtocol == protocol.Rerank
 	case execution.OperationEmbeddingsCreate:
-		return clientProtocol == protocol.OpenAIEmbeddings
+		return clientProtocol == protocol.OpenAIEmbeddings || clientProtocol == protocol.GeminiEmbeddings
 	case execution.OperationListModels:
 		return clientProtocol != protocol.OpenAIResponses && clientProtocol != protocol.OpenAIImages &&
-			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.Rerank
+			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.GeminiEmbeddings && clientProtocol != protocol.Rerank
 	case execution.OperationProbe:
-		// Probes are generative-only: Embeddings, Rerank, and Images must never
-		// be probed; their normal business operations stay data-plane routes.
-		return clientProtocol != protocol.OpenAIImages &&
-			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.Rerank
+		return clientProtocol.Valid() && clientProtocol != protocol.OpenAIImages
 	default:
 		return false
 	}

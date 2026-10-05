@@ -36,7 +36,7 @@ func TestBuildGroupProbeTargetSkipsSubscriptionGroups(t *testing.T) {
 
 	group := probeTestGroup(channel.Anthropic, json.RawMessage(`{}`), "claude-test")
 	group.ConnectionType = "subscription"
-	if _, ok := buildGroupProbeTarget(group, "claude-test"); ok {
+	if _, ok := buildGroupProbeTarget(group, "claude-test", ""); ok {
 		t.Fatal("subscription group must not have a credential probe target")
 	}
 }
@@ -68,7 +68,7 @@ func TestBuildGroupProbeTargetUsesAuthoritativeContractProtocol(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			group := probeTestGroup(test.channelID, test.params, test.model)
-			target, ok := buildGroupProbeTarget(group, test.model)
+			target, ok := buildGroupProbeTarget(group, test.model, "")
 			if !ok {
 				t.Fatal("buildGroupProbeTarget() ok = false")
 			}
@@ -89,7 +89,7 @@ func TestBuildGroupProbeTargetUsesFirstConfiguredModel(t *testing.T) {
 	t.Parallel()
 
 	group := probeTestGroup(channel.OpenAI, json.RawMessage(`{}`), "first-model", "second-model")
-	target, ok := buildGroupProbeTarget(group, "")
+	target, ok := buildGroupProbeTarget(group, "", "")
 	if !ok {
 		t.Fatal("buildGroupProbeTarget() ok = false")
 	}
@@ -104,12 +104,12 @@ func TestBuildGroupProbeTargetRejectsModelWithoutDeclaredProbeRoute(t *testing.T
 	// GoogleVertex resolves a Gemini model with the native route resolver but a
 	// non-Gemini model keeps the converted route; both must remain supported.
 	group := probeTestGroup(channel.GoogleVertex, json.RawMessage(`{}`), "custom-endpoint")
-	if target, ok := buildGroupProbeTarget(group, "custom-endpoint"); !ok || target.routeMode != channel.RouteConverted {
+	if target, ok := buildGroupProbeTarget(group, "custom-endpoint", ""); !ok || target.routeMode != channel.RouteConverted {
 		t.Fatalf("custom-endpoint target = %#v/%t, want converted", target, ok)
 	}
 
 	empty := probeTestGroup(channel.OpenAI, json.RawMessage(`{}`))
-	if _, ok := buildGroupProbeTarget(empty, ""); ok {
+	if _, ok := buildGroupProbeTarget(empty, "", ""); ok {
 		t.Fatal("group without models must not produce a probe target")
 	}
 }

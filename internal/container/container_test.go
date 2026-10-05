@@ -522,6 +522,7 @@ func TestBuildContainerResolvesAllDialects(t *testing.T) {
 		rerank *dialect.Rerank,
 		anthropic *dialect.Anthropic,
 		gemini *dialect.Gemini,
+		geminiEmbeddings *dialect.GeminiEmbeddings,
 		values dialect.Set,
 		db *gorm.DB,
 	) {
@@ -537,7 +538,7 @@ func TestBuildContainerResolvesAllDialects(t *testing.T) {
 			values[protocol.OpenAIEmbeddings] != openAIEmbeddings ||
 			values[protocol.Rerank] != rerank ||
 			values[protocol.Anthropic] != anthropic ||
-			values[protocol.Gemini] != gemini || len(values) != 7 {
+			values[protocol.Gemini] != gemini || values[protocol.GeminiEmbeddings] != geminiEmbeddings || len(values) != 8 {
 			t.Fatalf("dialect Set = %#v", values)
 		}
 	})
