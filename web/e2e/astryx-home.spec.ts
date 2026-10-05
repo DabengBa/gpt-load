@@ -423,7 +423,7 @@ test('renders the admin ledger and canonicalizes the home query', async ({ page 
   await expect(page.getByRole('heading', { name: 'Estimated over 30 days' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'View usage details for gpt-4o' })).toHaveAttribute(
     'href',
-    '/monitor?tab=usage&range=30d&upstream_model=gpt-4o',
+    '/monitor?range=30d&upstream_model=gpt-4o',
   )
 })
 

@@ -1,279 +1,10 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
-// Phase 3 monitor-domain coverage for the Astryx entry. The /monitor route
-// hosts health | usage | inspector behind a canonical `tab` query; access_key
-// principals are pinned to usage and must not issue the admin-only /api/health
-// call.
-//
-// This file covers Task B (host + health tab), Task C (usage tab), and Task D
-// (inspector tab).
+// Monitor-domain coverage for the Astryx entry. /monitor is the usage & cost
+// surface behind a canonical filter query; access_key principals get the
+// scoped usage view and must not issue the admin-only /api/health call.
 
 const now = 1730000000000
-
-function problemCredential(
-  credentialId: number,
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    credential_id: credentialId,
-    group_id: 1,
-    group_name: 'prod',
-    cooldown_until_ms: now + 3_600_000,
-    failure_count: 4,
-    recent_success_count: 0,
-    recent_problem_count: 4,
-    consecutive_problem_count: 4,
-    recovery: {
-      automatic: true,
-      mode: 'cooldown_expiry',
-      at_ms: now + 3_600_000,
-    },
-    identity: `sk-cred-${credentialId}`,
-    last_failure_category: 'rate_limited',
-    last_status_code: 429,
-    ...overrides,
-  }
-}
-
-function healthGroup(id: number, name: string): Record<string, unknown> {
-  return {
-    id,
-    name,
-    enabled: true,
-    counts: { credentials: 2, available: 2, cooldown: 0, blacklisted: 0 },
-  }
-}
-
-function requestLogHealth(): Record<string, unknown> {
-  return {
-    enqueued_total: 12,
-    persisted_total: 10,
-    dropped_not_running_total: 0,
-    dropped_queue_full_total: 1,
-    dropped_stopping_total: 0,
-    dropped_persist_failed_total: 1,
-    dropped_shutdown_total: 0,
-    dropped_total: 2,
-    write_failure_total: 1,
-    access_quota_checkpoint_write_failure_total: 0,
-    access_quota_checkpoint_degraded: false,
-    retention_delete_failure_total: 0,
-    queue_depth: 0,
-    queue_capacity: 4096,
-    last_write_failure_at_ms: now - 30_000,
-    last_access_quota_checkpoint_write_failure_at_ms: null,
-    last_retention_failure_at_ms: null,
-  }
-}
-
-// Six groups so the collapsed collection truncates at the classic limit of 5
-// and the show-all toggle is exercisable.
-function healthPayload(): Record<string, unknown> {
-  return {
-    observed_at_ms: now,
-    version: 'v1.2.3',
-    uptime_seconds: 7200,
-    snapshot_revision: 3,
-    stats_window_seconds: 300,
-    counts: { credentials: 12, available: 10, cooldown: 1, blacklisted: 1 },
-    groups: [
-      healthGroup(1, 'prod'),
-      healthGroup(2, 'staging'),
-      healthGroup(3, 'edge'),
-      healthGroup(4, 'backup'),
-      healthGroup(5, 'sandbox'),
-      healthGroup(6, 'archive'),
-    ],
-    cooldown_credentials: [problemCredential(8)],
-    blacklisted_credentials: [
-      problemCredential(9, {
-        cooldown_until_ms: null,
-        recovery: {
-          automatic: true,
-          mode: 'scheduled_release',
-          at_ms: now + 86_400_000,
-        },
-        last_failure_category: 'invalid_key',
-        last_status_code: 401,
-      }),
-    ],
-    low_quota_credentials: [],
-    expiring_reset_credits: [],
-    blocked_access_keys: [
-      {
-        access_key_id: 2,
-        name: 'dev key',
-        masked_key: 'sk-00000000****0002',
-        recoverable: true,
-        next_available_at_ms: now + 86_400_000,
-        blocking_rules: [
-          {
-            id: 12,
-            kind: 'periodic',
-            limit_usd: '1.5',
-            period_seconds: 86_400,
-            used_usd: '1.5',
-            remaining_usd: '0',
-            status: 'exhausted',
-            window_started_at_ms: now - 3_600_000,
-            window_ends_at_ms: now + 82_800_000,
-          },
-        ],
-      },
-    ],
-    request_log: requestLogHealth(),
-    debug_capture: {
-      enabled: false,
-      running: false,
-      retention_seconds: 0,
-      active: 0,
-      completed: 0,
-      failed: 0,
-      sweep_total: 0,
-      removed_total: 0,
-      sweep_failure_total: 0,
-      error: '',
-      last_sweep_at_ms: null,
-      last_failure_at_ms: null,
-    },
-  }
-}
-
-interface MonitorRequests {
-  healthCalls: number
-}
-
-async function mockMonitor(
-  page: Page,
-  options: { principalType?: 'admin' | 'access_key' } = {},
-): Promise<MonitorRequests> {
-  const principalType = options.principalType ?? 'admin'
-  const requests: MonitorRequests = { healthCalls: 0 }
-
-  await page.addInitScript((key) => {
-    window.localStorage.setItem('gpt-load.auth-key', key)
-  }, 'e2e-auth-key')
-
-  await page.route('**/api/**', async (route: Route) => {
-    const request = route.request()
-    const path = new URL(request.url()).pathname
-    const fulfill = (data: unknown, status = 200) =>
-      route.fulfill({
-        status,
-        contentType: 'application/json',
-        body: JSON.stringify({ code: 0, message: 'ok', data }),
-      })
-
-    if (path === '/api/auth/session') {
-      await fulfill({ authenticated: true, principal_type: principalType })
-      return
-    }
-    if (path === '/api/health') {
-      requests.healthCalls += 1
-      await fulfill(healthPayload())
-      return
-    }
-    await fulfill({})
-  })
-  return requests
-}
-
-async function expectAstryxDocument(page: Page): Promise<void> {
-  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible()
-}
-
-test('canonicalizes the bare query to tab=health and renders health sections', async ({ page }) => {
-  await mockMonitor(page)
-  await page.goto('/monitor?tab=bogus&junk=1', { waitUntil: 'load' })
-  await expectAstryxDocument(page)
-  await expect(page).toHaveURL(/\/monitor\?tab=health$/)
-
-  await expect(page.getByRole('heading', { name: 'Monitor', exact: true })).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'Health' })).toHaveAttribute('aria-selected', 'true')
-
-  await expect(page.getByRole('region', { name: 'Health overview' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Credentials that need attention' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Request-log collection' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Access key cost limits' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Group health' })).toBeVisible()
-})
-
-test('renders problem credentials, blocked access keys, and collapsed groups', async ({ page }) => {
-  await mockMonitor(page)
-  await page.goto('/monitor', { waitUntil: 'load' })
-  await expectAstryxDocument(page)
-  await expect(page).toHaveURL(/\/monitor\?tab=health$/)
-
-  // Problem rows render as links into the group credentials
-  // view; the tooltip description duplicates the name, so assert the link.
-  await expect(page.getByRole('link', { name: 'sk-cred-8', exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'sk-cred-9', exact: true })).toBeVisible()
-
-  // Blocked access key card.
-  await expect(page.getByText('sk-00000000****0002')).toBeVisible()
-
-  // Collapsed group collection shows 5 of 6 rows with a show-all toggle.
-  const groupsTable = page.getByRole('table', { name: 'Group health list' })
-  await expect(groupsTable.getByRole('link', { name: 'prod', exact: true })).toBeVisible()
-  await expect(groupsTable.getByRole('link', { name: 'staging', exact: true })).not.toBeVisible()
-  await expect(page.getByRole('button', { name: 'View all 6 Groups' })).toBeVisible()
-})
-
-test('groups=expanded deep link shows every group and collapses via toggle', async ({ page }) => {
-  await mockMonitor(page)
-  await page.goto('/monitor?tab=health&groups=expanded', { waitUntil: 'load' })
-  await expectAstryxDocument(page)
-  await expect(page).toHaveURL(/groups=expanded/)
-
-  const groupsTable = page.getByRole('table', { name: 'Group health list' })
-  await expect(groupsTable.getByRole('link', { name: 'staging', exact: true })).toBeVisible()
-
-  await page.getByRole('button', { name: 'Collapse Groups' }).click()
-  await expect(page).toHaveURL(/\/monitor\?tab=health$/)
-  await expect(groupsTable.getByRole('link', { name: 'staging', exact: true })).not.toBeVisible()
-})
-
-test('tab switch pushes the canonical tab query without a document reload', async ({ page }) => {
-  await mockMonitor(page)
-  await page.goto('/monitor?tab=health', { waitUntil: 'load' })
-  await expectAstryxDocument(page)
-
-  await page.getByRole('tab', { name: 'Usage & cost' }).click()
-  await expect(page).toHaveURL(/\/monitor\?tab=usage&range=\w+&metric=tokens$/)
-  await expect(page.getByRole('tab', { name: 'Usage & cost' })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
-
-  // SPA navigation: the astryx shell never reloaded.
-  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible()
-})
-
-test('refresh re-issues the health query', async ({ page }) => {
-  const requests = await mockMonitor(page)
-  await page.goto('/monitor?tab=health', { waitUntil: 'load' })
-  await expectAstryxDocument(page)
-  await expect(page.getByRole('region', { name: 'Health overview' })).toBeVisible()
-  const before = requests.healthCalls
-  expect(before).toBeGreaterThan(0)
-
-  await page.getByRole('button', { name: 'Refresh' }).click()
-  await expect.poll(() => requests.healthCalls).toBeGreaterThan(before)
-})
-
-test('access_key principal is pinned to usage and never calls /api/health', async ({ page }) => {
-  const requests = await mockMonitor(page, { principalType: 'access_key' })
-  await page.goto('/monitor?tab=health', { waitUntil: 'load' })
-  await expectAstryxDocument(page)
-  await expect(page).toHaveURL(/\/monitor\?tab=usage&range=\w+&metric=tokens$/)
-  expect(requests.healthCalls).toBe(0)
-  await expect(page.getByRole('tab', { name: 'Health' })).not.toBeVisible()
-})
-
-// ---------------------------------------------------------------------------
-// Task C: usage tab
-// ---------------------------------------------------------------------------
-
 const hourMs = 3_600_000
 
 function usageAggregate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -460,17 +191,18 @@ const openaiChannel = {
   client_protocols: ['openai-completions'],
 }
 
-interface UsageRequests {
+interface MonitorRequests {
   usageQueries: URLSearchParams[]
   healthCalls: number
+  inspectCalls: number
 }
 
-async function mockUsage(
+async function mockMonitor(
   page: Page,
   options: { principalType?: 'admin' | 'access_key' } = {},
-): Promise<UsageRequests> {
+): Promise<MonitorRequests> {
   const principalType = options.principalType ?? 'admin'
-  const requests: UsageRequests = { usageQueries: [], healthCalls: 0 }
+  const requests: MonitorRequests = { usageQueries: [], healthCalls: 0, inspectCalls: 0 }
 
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
@@ -493,7 +225,12 @@ async function mockUsage(
     }
     if (path === '/api/health') {
       requests.healthCalls += 1
-      await fulfill(healthPayload())
+      await fulfill({})
+      return
+    }
+    if (path === '/api/route/inspect') {
+      requests.inspectCalls += 1
+      await fulfill({})
       return
     }
     if (path === '/api/usage') {
@@ -520,281 +257,87 @@ async function mockUsage(
   return requests
 }
 
-test('usage tab renders summary, trend, quality, distribution, and breakdown', async ({ page }) => {
-  const requests = await mockUsage(page)
-  await page.goto('/monitor?tab=usage', { waitUntil: 'load' })
-  await expectAstryxDocument(page)
-  await expect(page).toHaveURL(/tab=usage/)
+async function expectAstryxDocument(page: Page): Promise<void> {
+  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible()
+}
 
-  await expect(page.getByRole('heading', { name: 'Token and cache trend' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Usage and persistence quality' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Consumption distribution' })).toBeVisible()
+test('canonicalizes the bare query to the usage filters and renders the page', async ({ page }) => {
+  await mockMonitor(page)
+  await page.goto('/monitor?tab=bogus&junk=1', { waitUntil: 'load' })
+  await expectAstryxDocument(page)
+  await expect(page).toHaveURL(/\/monitor\?range=\w+$/)
+
+  await expect(page.getByRole('heading', { name: 'Monitor', exact: true })).toBeVisible()
+  // The retired tabs are gone: no tablist renders on the page.
+  await expect(page.getByRole('tablist')).not.toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
+})
+
+test('usage renders the model and route breakdown', async ({ page }) => {
+  const requests = await mockMonitor(page)
+  await page.goto('/monitor', { waitUntil: 'load' })
+  await expectAstryxDocument(page)
+  await expect(page).toHaveURL(/\/monitor\?range=24h$/)
+
   await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
   await expect(page.getByText('gpt-4o-mini')).toBeVisible()
   // The request carried the canonical filter params.
   expect(requests.usageQueries.at(-1)?.get('range')).toBe('24h')
 })
 
-test('usage range selector and trend metric write the canonical query', async ({ page }) => {
-  const requests = await mockUsage(page)
-  await page.goto('/monitor?tab=usage&range=24h&metric=tokens', { waitUntil: 'load' })
+test('usage range selector applies through the filter bar', async ({ page }) => {
+  const requests = await mockMonitor(page)
+  await page.goto('/monitor?range=24h', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(page.getByRole('heading', { name: 'Token and cache trend' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
 
-  // Range Selector is a combobox; choosing 7 days rewrites the query.
+  // The bar holds the Range Selector as a draft; Apply commits the query.
   await page.getByRole('combobox', { name: 'Range' }).click()
   await page.getByRole('option', { name: '7 days' }).click()
-  await expect(page).toHaveURL(/tab=usage&range=7d&metric=tokens/)
+  await page.getByRole('button', { name: 'Apply' }).click()
+  await expect(page).toHaveURL(/\/monitor\?range=7d$/)
   await expect.poll(() => requests.usageQueries.at(-1)?.get('range')).toBe('7d')
-
-  // Trend metric radio: tokens → cost.
-  await page
-    .getByRole('radiogroup', { name: 'Trend metric' })
-    .getByRole('radio', { name: 'Cost' })
-    .click()
-  await expect(page).toHaveURL(/metric=cost/)
-  await expect(page.getByRole('heading', { name: 'Estimated cost trend' })).toBeVisible()
 })
 
-test('usage filter panel applies filters through the canonical query', async ({ page }) => {
-  await mockUsage(page)
-  await page.goto('/monitor?tab=usage', { waitUntil: 'load' })
+test('usage filter bar applies filters through the canonical query', async ({ page }) => {
+  await mockMonitor(page)
+  await page.goto('/monitor', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(page.getByRole('heading', { name: 'Token and cache trend' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Filter' }).click()
-  await expect(page).toHaveURL(/panel=filters/)
-  const panel = page.getByRole('dialog', { name: 'Filter usage and cost' })
-  await expect(panel).toBeVisible()
+  const bar = page.getByRole('form', { name: 'Usage report filters' })
+  await expect(bar).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Filter' })).not.toBeVisible()
 
-  await panel.getByLabel('Upstream model').fill('gpt-4o')
-  await panel.getByRole('combobox', { name: 'Group' }).click()
+  await bar.getByRole('combobox', { name: 'Group' }).click()
   await page.getByRole('option', { name: 'prod' }).click()
-  await panel.getByRole('button', { name: 'Apply' }).click()
+  await bar.getByRole('combobox', { name: 'Upstream model' }).click()
+  await page.getByRole('option', { name: 'gpt-4o' }).click()
+  await bar.getByRole('button', { name: 'Apply' }).click()
 
   await expect(page).toHaveURL(/upstream_model=gpt-4o/)
   await expect(page).toHaveURL(/group_id=1/)
-  await expect(page).not.toHaveURL(/panel=filters/)
+  await expect(page).not.toHaveURL(/channel_id=|credential_id=|panel=/)
 })
 
 test('access_key usage hides cross-principal filter fields', async ({ page }) => {
-  await mockUsage(page, { principalType: 'access_key' })
-  await page.goto('/monitor?tab=usage', { waitUntil: 'load' })
+  await mockMonitor(page, { principalType: 'access_key' })
+  await page.goto('/monitor', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(page.getByRole('heading', { name: 'Token and cache trend' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Filter' }).click()
-  const panel = page.getByRole('dialog', { name: 'Filter usage and cost' })
-  await expect(panel).toBeVisible()
-  await expect(panel.getByLabel('Upstream model')).toBeVisible()
-  // selfScoped: group/channel/credential fields are absent.
-  await expect(panel.getByRole('combobox', { name: 'Group' })).not.toBeVisible()
-  await expect(panel.getByLabel(/^Credential/)).not.toBeVisible()
+  const bar = page.getByRole('form', { name: 'Usage report filters' })
+  await expect(bar).toBeVisible()
+  // selfScoped: the model filter is a free-text input; the Group selector is absent.
+  await expect(bar.getByLabel('Upstream model')).toBeVisible()
+  await expect(bar.getByRole('combobox', { name: 'Group' })).not.toBeVisible()
 })
 
-// --- Inspector tab (Task D) --------------------------------------------------
-
-// Strict projector contract: configured_share per priority tier must total ~1
-// (or 0) and entry_cooldown_until_ms must be strictly after observed_at_ms.
-function inspectPayload(): Record<string, unknown> {
-  return {
-    observed_at_ms: now,
-    snapshot_revision: 7,
-    route_strategy: 'native_first',
-    protocol: 'openai-completions',
-    operation: 'chat_completion',
-    route_requirement: 'any',
-    external_model: 'gpt-4o',
-    access_key: { id: 1, name: 'prod key', status: 'active' },
-    routable: true,
-    reason_code: null,
-    groups: [
-      {
-        group_id: 1,
-        group_name: 'prod',
-        channel_id: 'openai',
-        route_mode: 'native',
-        route_requirement_satisfied: true,
-        entry_id: 'entry-1',
-        upstream_model: 'gpt-4o',
-        entry_weight: 50,
-        priority: 1,
-        configured_share: 1,
-        effective_share: 1,
-        entry_cooldown_until_ms: null,
-        included: true,
-        routable: true,
-        reason_code: null,
-        credentials: [
-          { credential_id: 11, available: true, reason_code: null, cooldown_until_ms: null },
-          {
-            credential_id: 12,
-            available: false,
-            reason_code: 'credential_cooldown',
-            cooldown_until_ms: now + 600_000,
-          },
-        ],
-      },
-      {
-        group_id: 2,
-        group_name: 'staging',
-        channel_id: 'openai',
-        route_mode: 'converted',
-        route_requirement_satisfied: true,
-        entry_id: 'entry-2',
-        upstream_model: 'gpt-4o',
-        entry_weight: 10,
-        priority: 2,
-        configured_share: 0,
-        effective_share: 0,
-        entry_cooldown_until_ms: null,
-        included: false,
-        routable: false,
-        reason_code: 'entry_weight_zero',
-        credentials: [],
-      },
-    ],
-  }
-}
-
-interface InspectorRequests {
-  inspectBodies: Record<string, unknown>[]
-}
-
-async function mockInspector(
-  page: Page,
-  options: { inspectStatus?: number } = {},
-): Promise<InspectorRequests> {
-  const requests: InspectorRequests = { inspectBodies: [] }
-  await page.addInitScript((key) => {
-    window.localStorage.setItem('gpt-load.auth-key', key)
-  }, 'e2e-auth-key')
-
-  await page.route('**/api/**', async (route: Route) => {
-    const request = route.request()
-    const path = new URL(request.url()).pathname
-    const fulfill = (data: unknown, status = 200) =>
-      route.fulfill({
-        status,
-        contentType: 'application/json',
-        body: JSON.stringify({ code: 0, message: 'ok', data }),
-      })
-
-    if (path === '/api/auth/session') {
-      await fulfill({ authenticated: true, principal_type: 'admin' })
-      return
-    }
-    if (path === '/api/health') {
-      await fulfill(healthPayload())
-      return
-    }
-    if (path === '/api/route/inspect') {
-      requests.inspectBodies.push(request.postDataJSON() as Record<string, unknown>)
-      const status = options.inspectStatus ?? 200
-      if (status === 200) {
-        await fulfill(inspectPayload())
-      } else {
-        await route.fulfill({
-          status,
-          contentType: 'application/json',
-          body: JSON.stringify({ code: 1, message: 'inspect failed' }),
-        })
-      }
-      return
-    }
-    if (path === '/api/groups/options') {
-      await fulfill([prodGroupOption])
-      return
-    }
-    if (path === '/api/channels') {
-      await fulfill({ items: [openaiChannel], total: 1 })
-      return
-    }
-    if (path === '/api/access-keys/options') {
-      await fulfill([{ id: 1, name: 'prod key', status: 'active' }])
-      return
-    }
-    await fulfill({})
-  })
-  return requests
-}
-
-test('inspector form submits through the canonical query and renders the result', async ({
-  page,
-}) => {
-  const requests = await mockInspector(page)
-  await page.goto('/monitor?tab=inspector', { waitUntil: 'load' })
+test('access_key principal never calls /api/health or /api/route/inspect', async ({ page }) => {
+  const requests = await mockMonitor(page, { principalType: 'access_key' })
+  await page.goto('/monitor?tab=health&groups=expanded', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(page).toHaveURL(/tab=inspector/)
-
-  await expect(
-    page.getByRole('heading', { name: 'Enter conditions to inspect the route' }),
-  ).toBeVisible()
-
-  await page.getByRole('combobox', { name: 'Access key' }).click()
-  await page.getByRole('option', { name: /prod key/ }).click()
-  await page.getByRole('combobox', { name: 'Protocol' }).click()
-  await page.getByRole('option', { name: 'openai-completions' }).click()
-  await page.getByRole('combobox', { name: 'Client model' }).click()
-  await page.getByRole('option', { name: 'gpt-4o', exact: true }).click()
-
-  await page.getByRole('button', { name: 'Inspect current route' }).click()
-
-  // The submit rewrites the canonical query; the auto-run watch then inspects.
-  await expect(page).toHaveURL(/tab=inspector/)
-  await expect(page).toHaveURL(/protocol=openai-completions/)
-  await expect(page).toHaveURL(/external_model=gpt-4o/)
-  await expect(page).toHaveURL(/access_key_id=1/)
-  await expect(page).toHaveURL(/run=1/)
-  await expect.poll(() => requests.inspectBodies.length).toBe(1)
-  expect(requests.inspectBodies[0]).toEqual({
-    protocol: 'openai-completions',
-    external_model: 'gpt-4o',
-    access_key_id: 1,
-  })
-
-  await expect(
-    page.getByRole('heading', { name: 'The current request can be routed' }),
-  ).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Candidate Groups' })).toBeVisible()
-  const excluded = page.locator('section[aria-labelledby="route-exclusions-title"]')
-  await expect(excluded.getByText('staging', { exact: true }).first()).toBeVisible()
-})
-
-test('inspector deep link with run=1 inspects on mount', async ({ page }) => {
-  const requests = await mockInspector(page)
-  await page.goto(
-    '/monitor?tab=inspector&protocol=openai-completions&external_model=gpt-4o&access_key_id=1&run=1',
-    { waitUntil: 'load' },
-  )
-  await expectAstryxDocument(page)
-  await expect.poll(() => requests.inspectBodies.length).toBe(1)
-  await expect(
-    page.getByRole('heading', { name: 'The current request can be routed' }),
-  ).toBeVisible()
-})
-
-test('inspector validation blocks submission and reports field errors', async ({ page }) => {
-  const requests = await mockInspector(page)
-  await page.goto('/monitor?tab=inspector', { waitUntil: 'load' })
-  await expectAstryxDocument(page)
-
-  await page.getByRole('button', { name: 'Inspect current route' }).click()
-  await expect(page.getByText('Select a valid protocol.')).toBeVisible()
-  await expect(page.getByText('Reselect an existing access key.')).toBeVisible()
-  expect(requests.inspectBodies.length).toBe(0)
-  await expect(page).not.toHaveURL(/run=1/)
-})
-
-test('inspector failure shows the error state and retries', async ({ page }) => {
-  const requests = await mockInspector(page, { inspectStatus: 500 })
-  await page.goto(
-    '/monitor?tab=inspector&protocol=openai-completions&external_model=gpt-4o&access_key_id=1&run=1',
-    { waitUntil: 'load' },
-  )
-  await expectAstryxDocument(page)
-  await expect.poll(() => requests.inspectBodies.length).toBe(1)
-  await expect(
-    page.getByRole('heading', { name: 'Unable to inspect the current route.' }),
-  ).toBeVisible()
+  await expect(page).toHaveURL(/\/monitor\?range=\w+$/)
+  expect(requests.healthCalls).toBe(0)
+  expect(requests.inspectCalls).toBe(0)
 })

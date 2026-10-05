@@ -198,21 +198,20 @@ export function UsageBreakdownTable({
     )
   }
 
-  function averageMilliseconds(totalMs: number, sampleCount: number): string {
+  function averageSeconds(totalMs: number, sampleCount: number): string {
     if (sampleCount === 0) return '—'
-    if (totalMs === 0) return '0 ms'
-    return `${intl.formatNumber(totalMs / sampleCount, { maximumFractionDigits: 1 })} ms`
+    return `${intl.formatNumber(totalMs / (sampleCount * 1000), {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })} s`
   }
 
   function averageDuration(aggregate: UsageAggregateDto): string {
-    return averageMilliseconds(aggregate.duration_ms_total, aggregate.duration_sample_count)
+    return averageSeconds(aggregate.duration_ms_total, aggregate.duration_sample_count)
   }
 
   function averageFirstResponse(aggregate: UsageAggregateDto): string {
-    return averageMilliseconds(
-      aggregate.first_response_ms_total,
-      aggregate.first_response_sample_count,
-    )
+    return averageSeconds(aggregate.first_response_ms_total, aggregate.first_response_sample_count)
   }
 
   function successRate(aggregate: UsageAggregateDto): string {

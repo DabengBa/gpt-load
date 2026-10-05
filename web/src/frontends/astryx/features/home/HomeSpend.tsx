@@ -119,7 +119,7 @@ const styles = stylex.create({
 })
 
 function modelUsageHref(model: string): string {
-  const base = `${pagePath('monitor')}?tab=usage&range=30d`
+  const base = `${pagePath('monitor')}?range=30d`
   return model === '' ? base : `${base}&upstream_model=${encodeURIComponent(model)}`
 }
 
@@ -150,10 +150,7 @@ export function HomeSpend({
         id="home-spend-title"
         title={t('home.ledger.spend.title')}
         actions={
-          <RouteLink
-            to={`${pagePath('monitor')}?tab=usage&range=30d`}
-            {...stylex.props(styles.link)}
-          >
+          <RouteLink to={`${pagePath('monitor')}?range=30d`} {...stylex.props(styles.link)}>
             {t('home.ledger.spend.viewDetail')}
           </RouteLink>
         }

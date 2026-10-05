@@ -225,10 +225,9 @@ function accessKeysSearch(search: Record<string, unknown>) {
   )
 }
 
-// Sparse canonical search: the shared monitor codec owns the three-tab query
-// contract (health/usage/inspector + schedule surface). The admin shape is the
-// default; the access_key divergence is canonicalized by MonitorView (same as
-// the classic deep watch).
+// Sparse canonical search: the shared monitor codec owns the usage query
+// contract. The admin shape is the default; the access_key divergence is
+// canonicalized by MonitorView (same as the classic deep watch).
 function monitorSearch(search: Record<string, unknown>) {
   return normalizeMonitorQuery(search as SharedRouteQuery)
 }
