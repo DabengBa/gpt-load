@@ -37,6 +37,15 @@ const (
 	OpenRouter       ID = "openrouter"
 	Groq             ID = "groq"
 	XAI              ID = "xai"
+	Cerebras         ID = "cerebras"
+	Mistral          ID = "mistral"
+	Nebius           ID = "nebius"
+	Parasail         ID = "parasail"
+	Wafer            ID = "wafer"
+	HuggingFace      ID = "huggingface"
+	Cohere           ID = "cohere"
+	OpenCodeGo       ID = "opencode_go"
+	OpenCodeZen      ID = "opencode_zen"
 )
 
 // ProviderKind is the single dispatch key used to resolve a ProviderAdapter.
@@ -217,7 +226,10 @@ type ProbeContract struct {
 
 // Valid reports whether the probe contract is well-formed for an API-key channel.
 func (c ProbeContract) Valid() bool {
-	return c.Protocol.Valid() && c.MinOutputTokens > 0
+	if c.Protocol == protocol.OpenAIEmbeddings || c.Protocol == protocol.GeminiEmbeddings || c.Protocol == protocol.Rerank {
+		return c.MinOutputTokens == 0
+	}
+	return c.Protocol.SupportsGeneratedText() && c.MinOutputTokens > 0
 }
 
 // ProviderBinding identifies the adapter and its non-secret target policy.

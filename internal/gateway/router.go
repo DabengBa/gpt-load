@@ -66,7 +66,7 @@ func dataPlaneEndpointCatalog() []dataPlaneEndpoint {
 			methods:       []string{http.MethodPost},
 			path:          geminiGenerationPattern,
 			pathValidator: validateGeminiRequest,
-			resolve:       staticRoute(protocol.Gemini, endpointForward),
+			resolve:       resolveGeminiModelActionRoute,
 		},
 		{
 			name:    "data.gemini.models",
@@ -186,6 +186,21 @@ func locallyRejectedForwardMethod(method string) bool {
 }
 
 func geminiRequestPath(path string) bool {
+	return geminiModelActionPath(path, ":generateContent", ":streamGenerateContent", ":countTokens") || geminiEmbeddingsRequestPath(path)
+}
+
+func resolveGeminiModelActionRoute(request *http.Request) route {
+	if request != nil && request.URL != nil && geminiEmbeddingsRequestPath(request.URL.Path) {
+		return route{Protocol: protocol.GeminiEmbeddings, Kind: endpointForward}
+	}
+	return route{Protocol: protocol.Gemini, Kind: endpointForward}
+}
+
+func geminiEmbeddingsRequestPath(path string) bool {
+	return geminiModelActionPath(path, ":embedContent", ":batchEmbedContents")
+}
+
+func geminiModelActionPath(path string, suffixes ...string) bool {
 	const prefix = geminiModelsPath + "/"
 	if !strings.HasPrefix(path, prefix) {
 		return false
@@ -194,7 +209,7 @@ func geminiRequestPath(path string) bool {
 	if strings.Contains(modelAndAction, "/") {
 		return false
 	}
-	for _, suffix := range []string{":generateContent", ":streamGenerateContent", ":countTokens"} {
+	for _, suffix := range suffixes {
 		if model := strings.TrimSuffix(modelAndAction, suffix); model != modelAndAction {
 			return model != ""
 		}

@@ -18,6 +18,9 @@ func prepareRerank(
 	directKey schemas.Key,
 	secrets []string,
 ) (preparedAttempt, *execution.AttemptResult) {
+	if spec.Operation == execution.OperationProbe {
+		spec.Body = []byte(`{"model":"probe","query":"hello","documents":["hello"],"top_n":1}`)
+	}
 	request := &dialect.ParsedRequest{Method: http.MethodPost, Path: "/v1/rerank", Header: spec.Header.Clone(), Body: spec.Body}
 	request, err := dialect.NewRerank().RewriteRequestModel(request, spec.UpstreamModel)
 	if err != nil {

@@ -145,7 +145,6 @@ func TestOpenAIEmbeddingsRequestShapeAndCapabilityAreExact(t *testing.T) {
 		func(spec *execution.AttemptSpec) { spec.Method = http.MethodGet },
 		func(spec *execution.AttemptSpec) { spec.Path = "/v1/embedding" },
 		func(spec *execution.AttemptSpec) { spec.Operation = execution.OperationChatCompletion },
-		func(spec *execution.AttemptSpec) { spec.RouteMode = execution.RouteConverted },
 	} {
 		invalid := valid.Clone()
 		mutate(&invalid)
@@ -159,8 +158,8 @@ func TestOpenAIEmbeddingsRequestShapeAndCapabilityAreExact(t *testing.T) {
 	probe.Method = ""
 	probe.Path = ""
 	probe.Body = nil
-	if supportedRequestShape(probe, false) || supportedRequestShape(probe, true) {
-		t.Fatal("Embeddings probe shape must be rejected at the generative probe boundary")
+	if !supportedRequestShape(probe, false) || supportedRequestShape(probe, true) {
+		t.Fatal("Embeddings probe shape must be unary; channel contract controls dispatch")
 	}
 }
 

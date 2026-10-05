@@ -17,6 +17,13 @@ export default {
       description:
         '各ターゲットに低コストの実際の上流質問を 1 回送信し、結果をリクエストログに記録します。',
       button: '疎通確認',
+      protocolLabel: '疎通確認プロトコル',
+      defaultProtocol: 'デフォルトの疎通確認プロトコル',
+      protocols: {
+        openaiEmbeddings: 'OpenAI 埋め込み',
+        geminiEmbeddings: 'Gemini 埋め込み',
+        rerank: '再ランキング',
+      },
       batch: '表示中の {count} 行を疎通確認',
       draftHint: 'このモデル行を保存してから疎通確認してください',
       loading: '疎通確認中…',

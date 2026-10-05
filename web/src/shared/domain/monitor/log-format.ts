@@ -18,6 +18,7 @@ const REQUEST_LOG_PROTOCOL_LABELS: Record<string, string> = {
   rerank: 'Rerank',
   anthropic: 'Anthropic',
   gemini: 'Gemini',
+  'gemini-embeddings': 'Gemini Embeddings',
 }
 
 export function requestLogProtocolLabel(protocol: ProtocolValue): string {

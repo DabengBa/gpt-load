@@ -51,6 +51,7 @@ type credentialRefreshRetry struct {
 // preparedRequest is the per-candidate rewrite result: an applied override
 // body plus refreshed attempt-local observations.
 type preparedRequest struct {
+	configuredParameters  []string
 	request               *dialect.ParsedRequest
 	observations          dialect.RequestMetadata
 	observationsAvailable bool
@@ -102,6 +103,7 @@ func (cache *preparedRequestCache) get(selection scheduler.Selection) preparedRe
 		cache.cached = &prepared
 		return prepared
 	}
+	prepared.configuredParameters = selection.Group.ParameterOverrides.ConfiguredFields(cache.dialect.Protocol(), cache.metadata.Operation, cache.externalModel)
 	entryEffort := ""
 	for _, model := range selection.Group.Models {
 		if selection.EntryID != "" && model.EntryID == selection.EntryID {
@@ -598,6 +600,7 @@ func (loop *attemptLoop) run() {
 				AttemptSequence: uint32(loop.attemptSequence),
 			},
 			preparedRoute: preparedRoute{
+				ConfiguredParameters:     append([]string(nil), prepared.configuredParameters...),
 				Request:                  prepared.request,
 				ExternalModel:            dispatch.model,
 				Operation:                dispatch.metadata.Operation,

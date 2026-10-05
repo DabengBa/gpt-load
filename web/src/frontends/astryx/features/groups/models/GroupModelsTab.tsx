@@ -1,4 +1,4 @@
-import { AlertDialog, Button, EmptyState, Skeleton, Tooltip } from '@astryxdesign/core'
+import { AlertDialog, Button, EmptyState, Selector, Skeleton, Tooltip } from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
@@ -18,6 +18,7 @@ import {
   type GroupModelsDto,
 } from '@shared/control/resources/groups'
 import type { ModelCandidate } from '@shared/control/resources/providers'
+import { enabledDataProtocols, type ProtocolValue } from '@shared/control/protocols'
 import type { ModelProbeTargetDto } from '@shared/control/resources/model-probe'
 import type {
   ModelAliasEditorLabels,
@@ -67,6 +68,12 @@ import { useModelProbe } from '../../models/use-model-probe'
 import type { GroupEditorState, GroupModelsEditorHandle } from '../editor-handles'
 import { ModelAliasEditor, type ModelAliasEditorHandle } from '../ModelAliasEditor'
 import { GroupModelSyncDialog } from './GroupModelSyncDialog'
+
+const nativeDataProbeProtocols = new Set<ProtocolValue>([
+  'openai-embeddings',
+  'gemini-embeddings',
+  'rerank',
+])
 
 function groupDetailHref(groupId: number): string {
   return `${pagePath('groups')}/${groupId}`
@@ -130,13 +137,40 @@ export function GroupModelsTab({
   // The enabled state for the only group this tab controls. `enabled` is the
   // single source of truth for the enabled initial value (default true).
   const groupEnabledById = new Map<number, boolean>([[groupId, enabled]])
+  const [probeProtocol, setProbeProtocol] = useState<ProtocolValue | ''>('')
+  const nativeProbeProtocols = new Set(
+    (channelsQuery.data?.items.find(({ channel_id }) => channel_id === channelId)?.routes ?? [])
+      .filter((route) => route.operation === 'probe' && route.route_mode === 'native')
+      .map((route) => route.client_protocol)
+      .filter(
+        (value): value is ProtocolValue =>
+          enabledDataProtocols.includes(value) && nativeDataProbeProtocols.has(value),
+      ),
+  )
+  const probeProtocolOptions = [
+    { value: '', label: t('monitor.modelProbe.defaultProtocol') },
+    ...[...nativeProbeProtocols].map((value) => ({
+      value,
+      label: t(
+        value === 'gemini-embeddings'
+          ? 'monitor.modelProbe.protocols.geminiEmbeddings'
+          : value === 'openai-embeddings'
+            ? 'monitor.modelProbe.protocols.openaiEmbeddings'
+            : 'monitor.modelProbe.protocols.rerank',
+      ),
+    })),
+  ]
 
   // Only a saved, unrenamed row identifies a model that is compiled into the route
   // targets; probing a draft would return a meaningless target_unavailable.
   function probeRowTarget(item: ModelDraftItem): ModelProbeTargetDto | null {
     const id = item.id.trim()
     if (id === '' || savedModelIDByKey.get(item.key) !== id) return null
-    return { group_id: groupId, model: id }
+    return {
+      group_id: groupId,
+      model: id,
+      ...(probeProtocol ? { protocol: probeProtocol } : {}),
+    }
   }
 
   const [pendingProbe, setPendingProbe] = useState<ModelProbeTargetDto | null>(null)
@@ -837,6 +871,17 @@ export function GroupModelsTab({
                 >
                   {t('group.modelEditor.schedule')}
                 </RouteLink>
+                {nativeProbeProtocols.size > 0 && (
+                  <Selector
+                    size="sm"
+                    variant="input"
+                    label={t('monitor.modelProbe.protocolLabel')}
+                    options={probeProtocolOptions}
+                    value={probeProtocol}
+                    onChange={(value) => setProbeProtocol(value as ProtocolValue | '')}
+                    isDisabled={probe.pending}
+                  />
+                )}
                 <Tooltip
                   content={probeRowTarget(item) === null ? t('monitor.modelProbe.draftHint') : ''}
                 >

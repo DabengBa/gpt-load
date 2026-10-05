@@ -304,3 +304,22 @@ func decodeJSONForTest(t *testing.T, body []byte, target any) {
 		t.Fatal(err)
 	}
 }
+
+func TestParameterOverrideConfiguredFieldsMatchAndOwnNames(t *testing.T) {
+	rules := compileRulesForTest(t, []any{
+		map[string]any{"match": map[string]any{"protocol": string(protocol.OpenAIResponses), "model": "public-*"}, "set": map[string]any{"z": true, "a": nil}},
+		map[string]any{"remove": []any{"/z"}, "set": map[string]any{"a": false}},
+		map[string]any{"match": map[string]any{"protocol": string(protocol.Anthropic)}, "set": map[string]any{"other": true}},
+	})
+	got := rules.ConfiguredFields(protocol.OpenAIResponses, execution.OperationResponsesCreate, "public-model")
+	if !reflect.DeepEqual(got, []string{"a", "z"}) {
+		t.Fatalf("configured fields = %v, want [a z]", got)
+	}
+	got[0] = "mutated"
+	if names := rules.ConfiguredFields(protocol.OpenAIResponses, execution.OperationResponsesCreate, "public-model"); !reflect.DeepEqual(names, []string{"a", "z"}) {
+		t.Fatalf("configured fields alias prior result: %v", names)
+	}
+	if names := rules.ConfiguredFields(protocol.OpenAIResponses, execution.OperationWebSearch, "public-model"); len(names) != 0 {
+		t.Fatalf("unsupported operation configured fields = %v", names)
+	}
+}

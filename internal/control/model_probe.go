@@ -27,8 +27,9 @@ const (
 
 // ModelProbeTargetRequest is one (group, model) probe target.
 type ModelProbeTargetRequest struct {
-	GroupID uint   `json:"group_id"`
-	Model   string `json:"model"`
+	GroupID  uint              `json:"group_id"`
+	Model    string            `json:"model"`
+	Protocol protocol.Protocol `json:"protocol,omitempty"`
 }
 
 // ModelProbeRequest probes 1..modelProbeMaxTargets targets through one endpoint:
@@ -76,15 +77,16 @@ func validateModelProbeRequest(request ModelProbeRequest) error {
 }
 
 type modelProbeKey struct {
-	groupID uint
-	model   string
+	groupID  uint
+	model    string
+	protocol protocol.Protocol
 }
 
 func dedupeModelProbeTargets(targets []ModelProbeTargetRequest) []ModelProbeTargetRequest {
 	seen := make(map[modelProbeKey]struct{}, len(targets))
 	deduped := make([]ModelProbeTargetRequest, 0, len(targets))
 	for _, target := range targets {
-		key := modelProbeKey{groupID: target.GroupID, model: target.Model}
+		key := modelProbeKey{groupID: target.GroupID, model: target.Model, protocol: target.Protocol}
 		if _, exists := seen[key]; exists {
 			continue
 		}
@@ -146,7 +148,7 @@ func (service *Service) probeModelTarget(
 	if !groupHasModel(group, target.Model) {
 		return probeWithoutExecution(result, ProbeReasonTargetUnavailable)
 	}
-	probeTarget, supported := buildGroupProbeTarget(group, target.Model)
+	probeTarget, supported := buildGroupProbeTarget(group, target.Model, target.Protocol)
 	if !supported {
 		return probeWithoutExecution(result, ProbeReasonIncompatible)
 	}
@@ -181,7 +183,7 @@ func (service *Service) probeModelTarget(
 	if evidence.outcome == ProbeOutcomePassed && wasUnhealthy {
 		testedCredential := credentialProbeCredentialFromEntry(entry)
 		result.Recovered = service.recoverTestedModelRoute(
-			group.ID, target.Model, probeTarget.signature, testedCredential,
+			group.ID, target.Model, probeTarget.protocol, probeTarget.signature, testedCredential,
 			entryID, expectedFailureVersion,
 		)
 	}
@@ -229,6 +231,7 @@ func probeModelEntryID(group state.GroupView, model string) string {
 func (service *Service) recoverTestedModelRoute(
 	groupID uint,
 	model string,
+	selectedProtocol protocol.Protocol,
 	testedSignature groupValidationSignature,
 	tested credentialProbeCredential,
 	entryID string,
@@ -247,8 +250,11 @@ func (service *Service) recoverTestedModelRoute(
 		if !exists {
 			return false
 		}
-		currentTarget, valid := buildGroupProbeTarget(group, model)
-		if !valid || currentTarget.signature != testedSignature ||
+		currentTarget, valid := buildGroupProbeTarget(group, model, "")
+		if valid && currentTarget.protocol != selectedProtocol {
+			currentTarget, valid = buildGroupProbeTarget(group, model, selectedProtocol)
+		}
+		if !valid || currentTarget.protocol != selectedProtocol || currentTarget.signature != testedSignature ||
 			probeModelEntryID(group, model) != entryID {
 			return false
 		}

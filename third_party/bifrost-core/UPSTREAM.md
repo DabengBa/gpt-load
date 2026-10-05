@@ -5,11 +5,11 @@ Pinned local fork of the Bifrost Go SDK used by gpt-load.
 | fact | value |
 |---|---|
 | module path | `github.com/maximhq/bifrost/core` |
-| baseline version | `v1.9.0` (`version` file contains `1.9.0`) |
-| upstream source of truth | `/home/allen/go/pkg/mod/github.com/maximhq/bifrost/core@v1.9.0` (module cache, mode `555`, never written) |
-| baseline tree digest | sha256 of `sha256sum` over every `*.go` file, sorted by path: `9f628c93a262767aef22ac07a6b984f159a4a95373880c450b6fc3a7d45efb0f` |
-| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.9.0` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
-| nested go.mod / go.sum | byte-identical to upstream v1.9.0 (the dependency graph is unchanged; only the root module's MVS selection applies) |
+| baseline version | `v1.11.0` (`version` file contains `1.11.0`) |
+| upstream source of truth | `/home/allen/go/pkg/mod/github.com/maximhq/bifrost/core@v1.11.0` (module cache, mode `555`, never written) |
+| baseline tree digest | sha256 of `sha256sum` over every `*.go` file, sorted by path: `922a4bfbaa61b48ea0fccd5555901a1d4d57090574e5312469b5b41177f65c2f` |
+| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.11.0` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
+| nested go.mod / go.sum | byte-identical to upstream v1.11.0 (the dependency graph is unchanged; only the root module's MVS selection applies) |
 
 ## Why the fork exists
 
@@ -23,7 +23,7 @@ way to add a request-scoped observer without a global registry.
 
 ## Fork delta
 
-`gptload-observer.patch` is the complete diff against the pristine v1.9.0 tree.
+`gptload-observer.patch` is the complete diff against the pristine v1.11.0 tree.
 It was generated with `diff -ruN` and verified to reproduce this directory
 exactly when applied to a fresh copy of the module cache.
 
@@ -120,3 +120,12 @@ Regression coverage: `promptcachedispatch_test.go`,
 `providers/utils/promptcache_test.go`, and GPT-Load's
 `internal/execution/bifrost/anthropic_cache_egress_test.go` exercise isolation,
 explicit markers, and two complete tool turns through unary/stream HTTP egress.
+
+U001 upgrade: three-way merge of pristine v1.9.0, the actual local fork delta (85 files), and pristine v1.11.0. Local observer/cache/mux/tools/system/WS changes are retained; billing-header restoration is incorporated before local tool/cache processing. Conflicting OpenAI and Vertex tests use upstream equivalents; prompt-cache tests retain both branches. The patch includes the full remaining source delta, excluding this provenance document and the patch itself. Apply with `patch -p1` from the pristine core root.
+
+Integration stream boundary: Azure keeps its preamble check. OpenAI checks the
+preamble only when the existing request has SDK fallbacks or the current attempt
+has SDK retry budget remaining. GPTLoad clears both, so created/in_progress is
+delivered immediately and cancellation and HTTP 200 response.failed retain their
+established response metadata. Explicit SDK fallback mocks still recover before
+exposing failed-attempt startup events. No new recovery policy or flag is added.

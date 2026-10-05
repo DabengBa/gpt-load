@@ -509,7 +509,7 @@ func (s *Service) captureCredentialProbe(
 			credentialID,
 		)
 	}
-	target, valid := buildGroupProbeTarget(group, "")
+	target, valid := buildGroupProbeTarget(group, "", "")
 	if !valid {
 		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, app_errors.ErrValidation
 	}
@@ -549,7 +549,7 @@ func (s *Service) recoverTestedCredential(
 		if !exists || !groupHasModel(group, model) {
 			return false
 		}
-		currentTarget, valid := buildGroupProbeTarget(group, model)
+		currentTarget, valid := buildGroupProbeTarget(group, model, "")
 		if !valid || currentTarget.signature != testedSignature {
 			return false
 		}

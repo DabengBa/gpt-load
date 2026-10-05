@@ -36,14 +36,14 @@ func (manager *RuntimeManager) ValidateRouteCapability(
 
 func convertedRouteImplemented(providerKind channel.ProviderKind, clientProtocol protocol.Protocol, operation execution.Operation) bool {
 	switch operation {
+	case execution.OperationEmbeddingsCreate:
+		return providerKind == channel.ProviderGemini && clientProtocol == protocol.OpenAIEmbeddings
 	case execution.OperationImagesGenerate:
 		return providerKind == channel.ProviderGemini && clientProtocol == protocol.OpenAIImages
 	case execution.OperationListModels:
 		return clientProtocol != protocol.OpenAIResponses && clientProtocol != protocol.Rerank && clientProtocol.Valid()
 	case execution.OperationProbe:
-		// Probes are generative-only at the converted boundary too.
-		return clientProtocol != protocol.Rerank && clientProtocol != protocol.OpenAIEmbeddings &&
-			clientProtocol.Valid()
+		return clientProtocol.SupportsGeneratedText()
 	case execution.OperationChatCompletion:
 		return clientProtocol == protocol.OpenAICompletions ||
 			clientProtocol == protocol.Anthropic ||
@@ -65,7 +65,8 @@ func nativeRouteImplemented(
 	operation execution.Operation,
 ) bool {
 	if clientProtocol == protocol.Rerank {
-		return (providerKind == channel.ProviderOpenAICompatible || providerKind == channel.ProviderMultiProtocolGateway) && operation == execution.OperationRerank
+		return (providerKind == channel.ProviderOpenAICompatible || providerKind == channel.ProviderMultiProtocolGateway) &&
+			(operation == execution.OperationRerank || operation == execution.OperationProbe)
 	}
 	switch providerKind {
 	case channel.ProviderOpenAI:
@@ -79,6 +80,9 @@ func nativeRouteImplemented(
 	case channel.ProviderAnthropic:
 		return clientProtocol == protocol.Anthropic && standardProtocolOperation(clientProtocol, operation)
 	case channel.ProviderGemini:
+		if clientProtocol == protocol.GeminiEmbeddings {
+			return operation == execution.OperationEmbeddingsCreate || operation == execution.OperationProbe
+		}
 		return clientProtocol == protocol.Gemini && standardProtocolOperation(clientProtocol, operation)
 	case channel.ProviderMultiProtocolGateway:
 		switch clientProtocol {
@@ -95,6 +99,8 @@ func nativeRouteImplemented(
 				operation == execution.OperationImagesEdit
 		case protocol.OpenAIEmbeddings:
 			return operation == execution.OperationEmbeddingsCreate
+		case protocol.GeminiEmbeddings:
+			return operation == execution.OperationEmbeddingsCreate || operation == execution.OperationProbe
 		case protocol.Anthropic, protocol.Gemini:
 			return operation == execution.OperationChatCompletion ||
 				operation == execution.OperationProbe ||

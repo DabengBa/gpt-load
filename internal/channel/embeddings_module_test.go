@@ -12,7 +12,7 @@ func TestOpenAIEmbeddingsNativeRouteIsLimitedToSupportedAPIKeyChannels(t *testin
 
 	registry := NewRegistry()
 	supported := map[ID]struct{}{
-		OpenAI: {}, OpenRouter: {}, GPTLoad: {}, NewAPI: {}, OpenAICompatible: {},
+		OpenAI: {}, OpenRouter: {}, GPTLoad: {}, NewAPI: {}, OpenAICompatible: {}, Mistral: {}, Nebius: {},
 	}
 	for _, descriptor := range registry.List() {
 		definition, ok := registry.lookup(descriptor.ID)
@@ -20,6 +20,12 @@ func TestOpenAIEmbeddingsNativeRouteIsLimitedToSupportedAPIKeyChannels(t *testin
 			t.Fatalf("lookup(%q) missing", descriptor.ID)
 		}
 		_, want := supported[descriptor.ID]
+		if descriptor.ID == Gemini {
+			if mode, ok := definition.modes[protocol.OpenAIEmbeddings][execution.OperationEmbeddingsCreate]; !ok || mode != RouteConverted {
+				t.Fatal("Gemini converted embeddings route missing")
+			}
+			continue
+		}
 		for _, operation := range []execution.Operation{execution.OperationEmbeddingsCreate} {
 			mode, ok := definition.modes[protocol.OpenAIEmbeddings][operation]
 			if want {
@@ -45,8 +51,8 @@ func TestValidProtocolOperationOpenAIEmbeddingsMatrix(t *testing.T) {
 	if !validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationEmbeddingsCreate) {
 		t.Fatal("openai-embeddings/embeddings_create must be valid")
 	}
-	if validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationProbe) {
-		t.Fatal("openai-embeddings/probe must be invalid: probes are generative-only")
+	if !validProtocolOperation(protocol.OpenAIEmbeddings, execution.OperationProbe) {
+		t.Fatal("explicit embedding probe contract must be representable")
 	}
 	for _, operation := range []execution.Operation{
 		execution.OperationChatCompletion,

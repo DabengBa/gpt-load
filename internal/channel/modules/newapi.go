@@ -32,6 +32,8 @@ func NewAPI() spec.Module {
 				EndpointPolicy: spec.EndpointRequiredBaseURL,
 			},
 			Routes: []spec.Route{
+				spec.NewRoute(protocol.GeminiEmbeddings, execution.OperationEmbeddingsCreate, execution.RouteNative),
+				spec.NewRoute(protocol.GeminiEmbeddings, execution.OperationProbe, execution.RouteNative),
 				spec.NewRoute(protocol.Rerank, execution.OperationRerank, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAICompletions, execution.OperationChatCompletion, execution.RouteNative),
 				spec.NewRoute(protocol.OpenAICompletions, execution.OperationListModels, execution.RouteNative),

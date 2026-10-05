@@ -17,6 +17,13 @@ export default {
       description:
         'Sends one low-cost real upstream question per target and records the result in the request log.',
       button: 'Probe',
+      protocolLabel: 'Probe protocol',
+      defaultProtocol: 'Default probe protocol',
+      protocols: {
+        openaiEmbeddings: 'OpenAI embeddings',
+        geminiEmbeddings: 'Gemini embeddings',
+        rerank: 'Rerank',
+      },
       batch: 'Probe {count} visible rows',
       draftHint: 'Save this model row before probing it',
       loading: 'Probing…',

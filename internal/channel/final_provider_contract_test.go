@@ -32,6 +32,15 @@ func TestFinalRegistryContainsOnlyApprovedChannels(t *testing.T) {
 		OpenRouter,
 		Groq,
 		XAI,
+		Cerebras,
+		Mistral,
+		Nebius,
+		Parasail,
+		Wafer,
+		HuggingFace,
+		Cohere,
+		OpenCodeGo,
+		OpenCodeZen,
 		GPTLoad,
 		NewAPI,
 		CLIProxyAPI,
@@ -226,9 +235,6 @@ func TestAPIKeyChannelsDeclareAuthoritativeProbeContract(t *testing.T) {
 func TestCompilerRejectsInvalidProbeContracts(t *testing.T) {
 	probeRoute := map[protocol.Protocol]map[execution.Operation]RouteMode{
 		protocol.OpenAICompletions: {execution.OperationProbe: execution.RouteNative},
-		// Declared routes make the non-generative rejection the failing check.
-		protocol.OpenAIEmbeddings: {execution.OperationProbe: execution.RouteNative},
-		protocol.Rerank:           {execution.OperationProbe: execution.RouteNative},
 	}
 	tests := []struct {
 		name       string

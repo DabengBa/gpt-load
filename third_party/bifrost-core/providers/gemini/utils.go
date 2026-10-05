@@ -221,6 +221,7 @@ var geminiThinkingLevelSupport = []struct {
 	levels []string
 }{
 	{"gemini-3.1-flash-lite-image", []string{"minimal", "high"}},
+	{"gemini-3.1-flash-lite", []string{"minimal", "low", "medium", "high"}},
 	{"gemini-3.7-flash", []string{"low", "medium", "high"}},
 	{"gemini-3.6-flash", []string{"minimal", "low", "medium", "high"}},
 	{"gemini-3.5-flash-lite", []string{"minimal", "low", "medium", "high"}},
@@ -873,6 +874,18 @@ func ConvertGeminiFinishReasonToBifrost(providerReason FinishReason) string {
 		return bifrostReason
 	}
 	return string(providerReason)
+}
+
+// geminiResponsesStatus derives the Responses status and incomplete_details from a
+// stop reason already converted by ConvertGeminiFinishReasonToBifrost. Error finish
+// reasons are handled by the callers (status "failed") before this is consulted.
+func geminiResponsesStatus(stopReason string) (*string, *schemas.ResponsesResponseIncompleteDetails) {
+	status, details, mapped := schemas.ResponsesStatusFromFinishReason(stopReason)
+	if !mapped {
+		// A finish reason with no Responses equivalent is not a confirmed clean finish.
+		return schemas.Ptr(schemas.ResponsesResponseStatusIncomplete), nil
+	}
+	return &status, details
 }
 
 // ConvertBifrostFinishReasonToGemini converts Bifrost canonical finish reasons back to Gemini format.

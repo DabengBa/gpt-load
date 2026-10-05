@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	cpaembedded "github.com/router-for-me/CLIProxyAPI/v7/gptload-embedded/embedded"
+	cpaembedded "github.com/router-for-me/CLIProxyAPI/v8/gptload-embedded/embedded"
 )
 
 // WSSessionOptions 固定调用者已选择的凭据和出站代理。

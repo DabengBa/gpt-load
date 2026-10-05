@@ -14,7 +14,7 @@ func TestRerankNativeCapabilitiesAreExplicit(t *testing.T) {
 		if !ok {
 			t.Fatal("missing definition")
 		}
-		want := descriptor.ID == OpenAICompatible || descriptor.ID == NewAPI || descriptor.ID == GPTLoad
+		want := descriptor.ID == OpenAICompatible || descriptor.ID == NewAPI || descriptor.ID == GPTLoad || descriptor.ID == Cohere
 		for _, operation := range []execution.Operation{execution.OperationRerank} {
 			mode, present := definition.modes[protocol.Rerank][operation]
 			if present != want || present && mode != RouteNative {
@@ -22,11 +22,11 @@ func TestRerankNativeCapabilitiesAreExplicit(t *testing.T) {
 			}
 		}
 		// Rerank must never be probed; the probe boundary is generative-only.
-		if _, ok := definition.modes[protocol.Rerank][execution.OperationProbe]; ok {
+		if _, ok := definition.modes[protocol.Rerank][execution.OperationProbe]; ok && descriptor.ID != Cohere {
 			t.Errorf("%s unexpectedly advertises a rerank probe route", descriptor.ID)
 		}
 	}
-	for _, operation := range []execution.Operation{execution.OperationChatCompletion, execution.OperationEmbeddingsCreate, execution.OperationListModels, execution.OperationProbe} {
+	for _, operation := range []execution.Operation{execution.OperationChatCompletion, execution.OperationEmbeddingsCreate, execution.OperationListModels} {
 		if validProtocolOperation(protocol.Rerank, operation) {
 			t.Errorf("invalid rerank operation %s", operation)
 		}

@@ -264,7 +264,7 @@ func TestWebsocketSubscriptionRefreshRespectsDispatchAndBudget(t *testing.T) {
 	}{
 		{"refresh once", execution.DispatchNotSent, 2, false, 2, "response.completed"},
 		{"refresh failed", execution.DispatchNotSent, 2, true, 2, "error"},
-		{"no budget", execution.DispatchNotSent, 0, false, 1, "error"},
+		{"unsent preserves budget", execution.DispatchNotSent, 0, false, 2, "response.completed"},
 		{"maybe sent", execution.DispatchMaybeSent, 2, false, 1, "error"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

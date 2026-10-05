@@ -14,6 +14,7 @@ func TestProbeContractDeclaresSingleGenerativeProtocol(t *testing.T) {
 
 	registry := NewRegistry()
 	expected := map[ID]protocol.Protocol{
+		Cohere:           protocol.Rerank,
 		OpenAI:           protocol.OpenAIResponses,
 		AzureOpenAI:      protocol.OpenAICompletions,
 		AWSBedrock:       protocol.OpenAICompletions,
@@ -29,6 +30,14 @@ func TestProbeContractDeclaresSingleGenerativeProtocol(t *testing.T) {
 		OpenRouter:       protocol.OpenAIResponses,
 		Groq:             protocol.OpenAICompletions,
 		XAI:              protocol.OpenAIResponses,
+		Cerebras:         protocol.OpenAICompletions,
+		Mistral:          protocol.OpenAICompletions,
+		Nebius:           protocol.OpenAICompletions,
+		Parasail:         protocol.OpenAICompletions,
+		Wafer:            protocol.OpenAICompletions,
+		HuggingFace:      protocol.OpenAICompletions,
+		OpenCodeGo:       protocol.OpenAICompletions,
+		OpenCodeZen:      protocol.OpenAICompletions,
 		GPTLoad:          protocol.OpenAICompletions,
 		NewAPI:           protocol.OpenAICompletions,
 		CLIProxyAPI:      protocol.OpenAICompletions,
@@ -64,7 +73,7 @@ func TestProbeContractDeclaresSingleGenerativeProtocol(t *testing.T) {
 		if probeProtocol != want {
 			t.Errorf("%q probe protocol = %q, want %q", descriptor.ID, probeProtocol, want)
 		}
-		if !probeProtocol.SupportsGeneratedText() {
+		if !probeProtocol.SupportsGeneratedText() && descriptor.ID != Cohere {
 			t.Errorf("%q probe protocol %q does not carry generated text", descriptor.ID, probeProtocol)
 		}
 		routeProtocol, mode, routeOK := target.ProbeRoute("probe-upstream")
