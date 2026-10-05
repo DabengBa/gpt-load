@@ -130,10 +130,7 @@ export function HomeAttention({ health }: { health: RuntimeHealthDto | null }) {
         <h2 id="home-attention-title" {...stylex.props(styles.srOnly)}>
           {t('home.ledger.attention.title')}
         </h2>
-        <RouteLink
-          to={`${pagePath('monitor')}?tab=health`}
-          {...stylex.props(styles.row, styles.rowDanger)}
-        >
+        <RouteLink to={pagePath('groups')} {...stylex.props(styles.row, styles.rowDanger)}>
           <CircleAlert {...stylex.props(styles.icon)} size={14} aria-hidden="true" />
           <span>{t('home.ledger.attention.summary', { count: total })}</span>
           <span {...stylex.props(styles.go)} aria-hidden="true">

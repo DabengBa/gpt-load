@@ -55,13 +55,11 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
     adminOnly: true,
     primaryNav: 'settings',
   },
-  // InspectorTab 的 route strategy 文案来自 settings.runtime.routeStrategies.*
-  // （跨域引用 settings 命名空间），必须随 monitor 一起装载。
   monitor: {
     titleKey: 'shell.monitor',
     requiresAuth: true,
     primaryNav: 'monitor',
-    messageNamespaces: ['monitor', 'settings'],
+    messageNamespaces: ['monitor'],
   },
   schedule: {
     titleKey: 'shell.schedule',

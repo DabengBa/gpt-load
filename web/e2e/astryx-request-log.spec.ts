@@ -370,7 +370,7 @@ test('filter transitions swap rows for the skeleton instead of stale data', asyn
   await expect(page.getByText('page-two-0').first()).toBeVisible({ timeout: 10_000 })
 })
 
-test('legacy /monitor?tab=logs query normalizes to the principal default tab', async ({ page }) => {
+test('legacy /monitor?tab=logs query normalizes to the usage surface', async ({ page }) => {
   const routes = await installRequestLogTableRoutes(page)
   await page.goto(
     '/monitor?tab=logs&from_ms=1700000000000&selected_request_id=11111111-1111-4111-8111-111111111111&status=success',
@@ -378,8 +378,9 @@ test('legacy /monitor?tab=logs query normalizes to the principal default tab', a
   )
   await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({ timeout: 60_000 })
 
-  await expect.poll(() => new URL(page.url()).searchParams.get('tab')).toBe('health')
   const url = new URL(page.url())
+  expect(url.searchParams.get('tab')).toBe(null)
+  expect(url.searchParams.get('range')).toBe('24h')
   for (const key of ['from_ms', 'selected_request_id', 'status']) {
     expect(url.searchParams.has(key)).toBe(false)
   }

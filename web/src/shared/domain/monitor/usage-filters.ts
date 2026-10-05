@@ -12,8 +12,6 @@ import { normalizeMonitorText } from './filter-validation'
 export interface UsageFilterDraft {
   range: UsageFilters['range']
   group_id: string
-  channel_id: string
-  credential_id: string
   upstream_model: string
 }
 
@@ -22,8 +20,6 @@ export type UsageFilterErrors = Partial<Record<Exclude<keyof UsageFilterDraft, '
 const emptyDraft = (): UsageFilterDraft => ({
   range: defaultTimeRange,
   group_id: '',
-  channel_id: '',
-  credential_id: '',
   upstream_model: '',
 })
 
@@ -56,20 +52,11 @@ export function normalizeUsagePageSize(raw: unknown): UsageBreakdownPageSize {
   return raw === 50 || raw === '50' ? 50 : raw === 100 || raw === '100' ? 100 : 20
 }
 
-export function normalizeUsageChannelID(raw: unknown): string | undefined {
-  if (typeof raw !== 'string' || !/^[a-z][a-z0-9_]{0,99}$/u.test(raw)) return undefined
-  return raw
-}
-
 export function parseAppliedUsageFilters(query: Record<string, unknown>): UsageFilters {
   const filters: UsageFilters = { range: normalizeUsageRange(query.range) }
   const groupID = normalizeUsageGroupID(query.group_id)
-  const channelID = normalizeUsageChannelID(query.channel_id)
-  const credentialID = normalizeUsageGroupID(query.credential_id)
   const upstreamModel = normalizeUsageModel(query.upstream_model ?? query.model)
   if (groupID !== undefined) filters.group_id = groupID
-  if (channelID !== undefined) filters.channel_id = channelID
-  if (credentialID !== undefined) filters.credential_id = credentialID
   if (upstreamModel !== undefined) filters.upstream_model = upstreamModel
   const page = normalizeUsagePage(query.breakdown_page)
   const pageSize = normalizeUsagePageSize(query.breakdown_page_size)
@@ -91,8 +78,6 @@ export function createUsageFilterDraft(filters: UsageFilters): UsageFilterDraft 
     ...emptyDraft(),
     range: filters.range,
     group_id: filters.group_id === undefined ? '' : String(filters.group_id),
-    channel_id: filters.channel_id ?? '',
-    credential_id: filters.credential_id === undefined ? '' : String(filters.credential_id),
     upstream_model: filters.upstream_model ?? '',
   }
 }
@@ -102,12 +87,8 @@ export function applyUsageFilterDraft(draft: UsageFilterDraft): UsageFilters {
     range: normalizeUsageRange(draft.range),
   }
   const groupID = normalizeUsageGroupID(draft.group_id)
-  const channelID = normalizeUsageChannelID(draft.channel_id)
-  const credentialID = normalizeUsageGroupID(draft.credential_id)
   const upstreamModel = normalizeUsageModel(draft.upstream_model)
   if (groupID !== undefined) filters.group_id = groupID
-  if (channelID !== undefined) filters.channel_id = channelID
-  if (credentialID !== undefined) filters.credential_id = credentialID
   if (upstreamModel !== undefined) filters.upstream_model = upstreamModel
   return filters
 }
@@ -116,12 +97,6 @@ export function validateUsageFilterDraft(draft: UsageFilterDraft): UsageFilterEr
   const errors: UsageFilterErrors = {}
   if (draft.group_id && normalizeUsageGroupID(draft.group_id) === undefined) {
     errors.group_id = 'monitor.usage.errors.positiveId'
-  }
-  if (draft.channel_id && normalizeUsageChannelID(draft.channel_id) === undefined) {
-    errors.channel_id = 'monitor.usage.errors.channelId'
-  }
-  if (draft.credential_id && normalizeUsageGroupID(draft.credential_id) === undefined) {
-    errors.credential_id = 'monitor.usage.errors.credentialId'
   }
   if (draft.upstream_model && normalizeUsageModel(draft.upstream_model) === undefined) {
     errors.upstream_model = 'monitor.usage.errors.model'

@@ -1,4 +1,3 @@
-import { enabledDataProtocols } from '@shared/control/protocols'
 import {
   defaultUsageBreakdownSort,
   defaultUsageBreakdownSortDirectionFor,
@@ -8,7 +7,6 @@ import {
 } from '@shared/control/resources/usage'
 import { defaultTimeRange } from '@shared/lib/time'
 import {
-  normalizeUsageChannelID,
   normalizeUsageGroupID,
   normalizeUsageModel,
   normalizeUsagePage,
@@ -19,22 +17,9 @@ import { normalizeMonitorText } from '@shared/domain/monitor/filter-validation'
 
 import type { SharedRouteQuery, SharedRouteQueryRaw } from './route-query'
 
-// Framework-free port of the classic monitor route codec. /monitor hosts three
-// tabs (health | usage | inspector); /schedule reuses the schedule draft
-// surface of the same query space.
-
-export type MonitorTab = 'health' | 'inspector' | 'usage'
-export interface HealthMonitorState {
-  groupsExpanded: boolean
-}
-
-export type UsageTrendMetric = 'tokens' | 'cost'
-
-export interface UsageMonitorState {
-  filtersOpen: boolean
-  seriesExpanded: boolean
-  metric: UsageTrendMetric
-}
+// Framework-free port of the classic monitor route codec. /monitor is the
+// usage & cost surface; /schedule reuses the schedule draft surface of the
+// same query space.
 
 export type ScheduleDraftField = 'weight' | 'priority'
 export type ScheduleDrafts = Record<string, Partial<Record<ScheduleDraftField, number | null>>>
@@ -49,33 +34,13 @@ export interface ScheduleMonitorState {
   drafts: ScheduleDrafts
 }
 
-export interface InspectorMonitorState {
-  protocol?: string
-  externalModel?: string
-  accessKeyID?: string
-  run: boolean
-  expandedGroupIDs: number[]
-}
-
-export function normalizeMonitorTab(raw: unknown): MonitorTab {
-  return raw === 'inspector' || raw === 'usage' || raw === 'health' ? raw : 'health'
-}
-
 export function normalizeMonitorQuery(query: SharedRouteQuery): SharedRouteQueryRaw {
-  const tab = normalizeMonitorTab(query.tab)
-  if (tab === 'health') return healthMonitorQuery(parseHealthMonitorState(query))
-  if (tab === 'inspector') return inspectorMonitorQuery(parseInspectorMonitorState(query))
-  if (tab === 'usage') {
-    return usageMonitorQuery(parseAppliedUsageFilters(query), parseUsageMonitorState(query))
-  }
-  return healthMonitorQuery(parseHealthMonitorState(query))
+  return usageMonitorQuery(parseAppliedUsageFilters(query))
 }
 
 export function scopeAccessKeyUsageFilters(filters: UsageFilters): UsageFilters {
   const scoped = { ...filters }
   delete scoped.group_id
-  delete scoped.channel_id
-  delete scoped.credential_id
   if (scoped.breakdown_sort === 'group' || scoped.breakdown_sort === 'channel') {
     scoped.breakdown_sort = 'model'
     scoped.breakdown_sort_direction = 'asc'
@@ -84,11 +49,7 @@ export function scopeAccessKeyUsageFilters(filters: UsageFilters): UsageFilters 
 }
 
 export function normalizeAccessKeyMonitorQuery(query: SharedRouteQuery): SharedRouteQueryRaw {
-  if (query.tab === 'logs') return usageMonitorQuery()
-  return usageMonitorQuery(
-    scopeAccessKeyUsageFilters(parseAppliedUsageFilters(query)),
-    parseUsageMonitorState(query),
-  )
+  return usageMonitorQuery(scopeAccessKeyUsageFilters(parseAppliedUsageFilters(query)))
 }
 
 const scheduleRowPattern = /^\d+:\S{1,512}$/u
@@ -128,34 +89,15 @@ export function scheduleMonitorQuery(state: ScheduleMonitorState): SharedRouteQu
   return normalized
 }
 
-export function parseHealthMonitorState(query: SharedRouteQuery): HealthMonitorState {
-  return { groupsExpanded: query.groups === 'expanded' }
-}
-
-export function healthMonitorQuery(state: HealthMonitorState): SharedRouteQueryRaw {
-  return state.groupsExpanded ? { tab: 'health', groups: 'expanded' } : { tab: 'health' }
-}
-
 export function usageMonitorQuery(
   filters: UsageFilters = { range: defaultTimeRange },
-  state: UsageMonitorState = {
-    filtersOpen: false,
-    seriesExpanded: false,
-    metric: 'tokens',
-  },
 ): SharedRouteQueryRaw {
   const normalized: SharedRouteQueryRaw = {
-    tab: 'usage',
     range: filters.range,
-    metric: normalizeUsageTrendMetric(state.metric),
   }
   const groupID = normalizeUsageGroupID(filters.group_id)
-  const channelID = normalizeUsageChannelID(filters.channel_id)
-  const credentialID = normalizeUsageGroupID(filters.credential_id)
   const upstreamModel = normalizeUsageModel(filters.upstream_model)
   if (groupID !== undefined) normalized.group_id = String(groupID)
-  if (channelID !== undefined) normalized.channel_id = channelID
-  if (credentialID !== undefined) normalized.credential_id = String(credentialID)
   if (upstreamModel !== undefined) normalized.upstream_model = upstreamModel
   const breakdownPage = normalizeUsagePage(filters.breakdown_page)
   const breakdownPageSize = normalizeUsagePageSize(filters.breakdown_page_size)
@@ -173,21 +115,7 @@ export function usageMonitorQuery(
   if (breakdownSortDirection !== defaultUsageBreakdownSortDirectionFor(breakdownSort)) {
     normalized.breakdown_sort_direction = breakdownSortDirection
   }
-  if (state.filtersOpen) normalized.panel = 'filters'
-  if (state.seriesExpanded) normalized.series = 'expanded'
   return normalized
-}
-
-export function parseUsageMonitorState(query: SharedRouteQuery): UsageMonitorState {
-  return {
-    filtersOpen: query.panel === 'filters',
-    seriesExpanded: query.series === 'expanded',
-    metric: normalizeUsageTrendMetric(query.metric),
-  }
-}
-
-function normalizeUsageTrendMetric(raw: unknown): UsageTrendMetric {
-  return raw === 'tokens' || raw === 'cost' ? raw : 'tokens'
 }
 
 export function sameMonitorQuery(left: SharedRouteQuery, right: SharedRouteQueryRaw): boolean {
@@ -203,61 +131,14 @@ export function sameMonitorQuery(left: SharedRouteQuery, right: SharedRouteQuery
   )
 }
 
-export function parseInspectorMonitorState(query: SharedRouteQuery): InspectorMonitorState {
-  const protocol = scalarEnum(query.protocol, enabledDataProtocols)
-  const externalModel = scalarText(query.external_model)
-  const accessKeyID = scalarPositiveID(query.access_key_id)
-
-  return {
-    protocol,
-    externalModel,
-    accessKeyID,
-    run:
-      query.run === '1' &&
-      protocol !== undefined &&
-      externalModel !== undefined &&
-      accessKeyID !== undefined,
-    expandedGroupIDs: parsePositiveIDList(query.expanded_groups),
-  }
-}
-
-export function inspectorMonitorQuery(state: InspectorMonitorState): SharedRouteQueryRaw {
-  const normalized: SharedRouteQueryRaw = { tab: 'inspector' }
-
-  if (state.protocol !== undefined) normalized.protocol = state.protocol
-  if (state.externalModel !== undefined) normalized.external_model = state.externalModel
-  if (state.accessKeyID !== undefined) normalized.access_key_id = state.accessKeyID
-  if (
-    state.run &&
-    state.protocol !== undefined &&
-    state.externalModel !== undefined &&
-    state.accessKeyID !== undefined
-  ) {
-    normalized.run = '1'
-  }
-  const expandedGroups = serializePositiveIDList(state.expandedGroupIDs)
-  if (expandedGroups !== undefined) normalized.expanded_groups = expandedGroups
-  return normalized
-}
-
 function scalarText(raw: unknown): string | undefined {
   return normalizeMonitorText(raw)
-}
-
-function scalarPositiveID(raw: unknown): string | undefined {
-  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return undefined
-  const value = Number(raw)
-  return Number.isSafeInteger(value) && value > 0 ? String(value) : undefined
 }
 
 function scalarPositiveNumber(raw: unknown): number | undefined {
   if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return undefined
   const value = Number(raw)
   return Number.isSafeInteger(value) && value > 0 ? value : undefined
-}
-
-function scalarEnum<T extends string>(raw: unknown, values: readonly T[]): T | undefined {
-  return typeof raw === 'string' && values.includes(raw as T) ? (raw as T) : undefined
 }
 
 function scalarScheduleRow(raw: unknown): string | undefined {
@@ -308,23 +189,4 @@ function serializeScheduleDrafts(drafts: ScheduleDrafts): string | undefined {
     if (Object.keys(next).length > 0) normalized[row] = next
   }
   return Object.keys(normalized).length > 0 ? JSON.stringify(normalized) : undefined
-}
-
-function parsePositiveIDList(raw: unknown): number[] {
-  if (typeof raw !== 'string' || raw === '') return []
-  const values = raw.split(',').map(Number)
-  if (
-    values.some((value) => !Number.isSafeInteger(value) || value <= 0) ||
-    new Set(values).size !== values.length
-  ) {
-    return []
-  }
-  return [...values].sort((left, right) => left - right)
-}
-
-function serializePositiveIDList(values: readonly number[]): string | undefined {
-  const normalized = [...new Set(values)]
-    .filter((value) => Number.isSafeInteger(value) && value > 0)
-    .sort((left, right) => left - right)
-  return normalized.length > 0 ? normalized.join(',') : undefined
 }
