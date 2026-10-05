@@ -309,9 +309,9 @@ test('usage filter bar applies filters through the canonical query', async ({ pa
   await expect(bar).toBeVisible()
   await expect(page.getByRole('button', { name: 'Filter' })).not.toBeVisible()
 
-  await bar.getByRole('combobox', { name: 'Group' }).click()
+  await bar.getByRole('button', { name: 'Group', exact: true }).click()
   await page.getByRole('option', { name: 'prod' }).click()
-  await bar.getByRole('combobox', { name: 'Upstream model' }).click()
+  await bar.getByRole('button', { name: 'Upstream model', exact: true }).click()
   await page.getByRole('option', { name: 'gpt-4o' }).click()
   await bar.getByRole('button', { name: 'Apply' }).click()
 
@@ -330,7 +330,7 @@ test('access_key usage hides cross-principal filter fields', async ({ page }) =>
   await expect(bar).toBeVisible()
   // selfScoped: the model filter is a free-text input; the Group selector is absent.
   await expect(bar.getByLabel('Upstream model')).toBeVisible()
-  await expect(bar.getByRole('combobox', { name: 'Group' })).not.toBeVisible()
+  await expect(bar.getByRole('button', { name: 'Group', exact: true })).not.toBeVisible()
 })
 
 test('access_key principal never calls /api/health or /api/route/inspect', async ({ page }) => {
