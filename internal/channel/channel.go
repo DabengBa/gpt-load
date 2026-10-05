@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 
 	"gpt-load/internal/channel/modules"
@@ -355,7 +355,7 @@ func (t ResolvedTarget) Operations(clientProtocol protocol.Protocol) []execution
 	for operation := range byOperation {
 		operations = append(operations, operation)
 	}
-	sort.Slice(operations, func(i, j int) bool { return operations[i] < operations[j] })
+	slices.Sort(operations)
 	return operations
 }
 

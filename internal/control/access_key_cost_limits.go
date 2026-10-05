@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 
 	"gorm.io/gorm"
@@ -336,7 +337,7 @@ func planAccessKeyCostLimitPeriodMoves(
 		}
 		changedIDs = append(changedIDs, definition.ID)
 	}
-	sort.Slice(changedIDs, func(i, j int) bool { return changedIDs[i] < changedIDs[j] })
+	slices.Sort(changedIDs)
 	moves := make([]accessKeyCostLimitPeriodMove, 0, len(changedIDs))
 	candidate := accessquota.MaxPeriodSeconds
 	for _, ruleID := range changedIDs {

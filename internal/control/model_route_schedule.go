@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -841,7 +842,7 @@ func (s *Service) UpdateModelRouteSchedule(
 	for groupID := range updatesByGroup {
 		groupIDs = append(groupIDs, groupID)
 	}
-	sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
+	slices.Sort(groupIDs)
 
 	if _, err := s.writeGroupConfig(ctx, func(tx *gorm.DB) error {
 		current := s.manager.Current()

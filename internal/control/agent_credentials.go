@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -217,10 +216,5 @@ func (s *Server) handleDisableAgentCredential(c *gin.Context) {
 }
 
 func agentCredentialID(c *gin.Context) (uint, bool) {
-	parsed, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
-	if err != nil || parsed == 0 {
-		writeServiceError(c, "agent_credential_id", app_errors.ErrBadRequest)
-		return 0, false
-	}
-	return uint(parsed), true
+	return positiveIDParam(c, "id", "agent_credential_id")
 }

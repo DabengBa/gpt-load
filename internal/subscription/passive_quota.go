@@ -1,7 +1,7 @@
 package subscription
 
 import (
-	"sort"
+	"slices"
 	"sync"
 
 	providerobservation "gpt-load/internal/subscription/providers/observation"
@@ -163,7 +163,7 @@ func (pending *passiveQuotaPending) dirtyObservations(limit int) []PassiveQuotaO
 	for credentialID := range pending.entries {
 		ids = append(ids, credentialID)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	result := make([]PassiveQuotaObservation, 0, limit)
 	for _, credentialID := range ids {
 		entry := pending.entries[credentialID]

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -572,6 +572,6 @@ func (runtime *Runtime) ChannelIDs() []channel.ID {
 	for id := range runtime.byChannel {
 		result = append(result, id)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	slices.Sort(result)
 	return result
 }

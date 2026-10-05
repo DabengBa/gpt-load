@@ -2,6 +2,7 @@ package agent
 
 import (
 	"net/url"
+	"slices"
 	"sort"
 
 	"github.com/gin-gonic/gin"
@@ -127,7 +128,7 @@ func buildRouteIndex(snapshot *state.ConfigSnapshot) RoutesView {
 		for groupID := range entry.groups {
 			groupIDs = append(groupIDs, groupID)
 		}
-		sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
+		slices.Sort(groupIDs)
 		items = append(items, RouteIndexItemView{
 			ExternalModel:  key.external,
 			Protocol:       string(key.protocol),

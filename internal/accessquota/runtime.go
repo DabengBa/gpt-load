@@ -4,6 +4,7 @@ package accessquota
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -358,7 +359,7 @@ func (runtime *Runtime) DirtySnapshots(limit int) []RestoredState {
 	for id := range runtime.entries {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	runtime.mu.RUnlock()
 
 	result := make([]RestoredState, 0)
@@ -528,7 +529,7 @@ func entriesFromRestore(
 		for id := range remaining {
 			ids = append(ids, id)
 		}
-		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		slices.Sort(ids)
 		return nil, fmt.Errorf("restore access quota runtime: orphan state for rule %d", ids[0])
 	}
 	return entries, nil

@@ -1030,31 +1030,25 @@ func setSecretResponseHeaders(c *gin.Context) {
 	c.Header("Pragma", "no-cache")
 }
 
-func accessKeyID(c *gin.Context) (uint, bool) {
-	parsed, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
+func positiveIDParam(c *gin.Context, param, operation string) (uint, bool) {
+	parsed, err := strconv.ParseUint(c.Param(param), 10, strconv.IntSize)
 	if err != nil || parsed == 0 {
-		writeServiceError(c, "access_key_id", app_errors.ErrBadRequest)
+		writeServiceError(c, operation, app_errors.ErrBadRequest)
 		return 0, false
 	}
 	return uint(parsed), true
+}
+
+func accessKeyID(c *gin.Context) (uint, bool) {
+	return positiveIDParam(c, "id", "access_key_id")
 }
 
 func groupID(c *gin.Context, operation string) (uint, bool) {
-	parsed, err := strconv.ParseUint(c.Param("group_id"), 10, strconv.IntSize)
-	if err != nil || parsed == 0 {
-		writeServiceError(c, operation, app_errors.ErrBadRequest)
-		return 0, false
-	}
-	return uint(parsed), true
+	return positiveIDParam(c, "group_id", operation)
 }
 
 func credentialID(c *gin.Context, operation string) (uint, bool) {
-	parsed, err := strconv.ParseUint(c.Param("credential_id"), 10, strconv.IntSize)
-	if err != nil || parsed == 0 {
-		writeServiceError(c, operation, app_errors.ErrBadRequest)
-		return 0, false
-	}
-	return uint(parsed), true
+	return positiveIDParam(c, "credential_id", operation)
 }
 
 func writeServiceError(c *gin.Context, operation string, err error) {

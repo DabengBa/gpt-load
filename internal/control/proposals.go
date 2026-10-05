@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -633,7 +633,7 @@ func (s *Service) applyStoredProposalUpdates(tx *gorm.DB, updates []agent.Change
 	for groupID := range byGroup {
 		groupIDs = append(groupIDs, groupID)
 	}
-	sort.Slice(groupIDs, func(left, right int) bool { return groupIDs[left] < groupIDs[right] })
+	slices.Sort(groupIDs)
 	for _, groupID := range groupIDs {
 		if err := s.applyModelRouteScheduleGroupPatch(tx, groupID, byGroup[groupID]); err != nil {
 			return err

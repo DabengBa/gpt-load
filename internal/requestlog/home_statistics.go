@@ -3,7 +3,7 @@ package requestlog
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 
 	"gorm.io/gorm"
 
@@ -357,7 +357,7 @@ func loadHomeRefs[T any](
 			ids = append(ids, id)
 		}
 	}
-	sort.Slice(ids, func(left, right int) bool { return ids[left] < ids[right] })
+	slices.Sort(ids)
 
 	refs := make(map[uint]HomeStatisticsRef, len(idSet))
 	for id := range idSet {

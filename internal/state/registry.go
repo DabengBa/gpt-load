@@ -3,6 +3,7 @@ package state
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -617,7 +618,7 @@ func (r *CredentialRegistry) ActiveCredentialIDs() []uint {
 		}
 	}
 	r.mu.RUnlock()
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	return ids
 }
 

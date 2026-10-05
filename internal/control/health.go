@@ -2,7 +2,7 @@ package control
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -302,7 +302,7 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 	for groupID := range observation.snapshot.GroupCatalog {
 		groupIDs = append(groupIDs, groupID)
 	}
-	sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
+	slices.Sort(groupIDs)
 	groupIndexes := make(map[uint]int, len(groupIDs))
 	for _, groupID := range groupIDs {
 		group := observation.snapshot.GroupCatalog[groupID]
@@ -424,7 +424,7 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 		for accessKeyID := range observation.snapshot.AccessKeysByID {
 			accessKeyIDs = append(accessKeyIDs, accessKeyID)
 		}
-		sort.Slice(accessKeyIDs, func(i, j int) bool { return accessKeyIDs[i] < accessKeyIDs[j] })
+		slices.Sort(accessKeyIDs)
 		for _, accessKeyID := range accessKeyIDs {
 			accessKey := observation.snapshot.AccessKeysByID[accessKeyID]
 			if accessKey.Status != state.AccessKeyStatusActive {
