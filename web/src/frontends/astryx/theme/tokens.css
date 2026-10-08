@@ -166,6 +166,14 @@
   --z-skip-link: 90;
 }
 
+@media (max-width: 680px) {
+  :root {
+    --stage-padding-top: var(--stage-padding-top-compact);
+    --stage-padding-inline: var(--stage-padding-inline-compact);
+    --stage-padding-bottom: var(--stage-padding-bottom-compact);
+  }
+}
+
 :root[data-theme='dark'] {
   color-scheme: dark;
   --color-canvas: #0b0d10;

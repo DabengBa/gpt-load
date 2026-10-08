@@ -381,3 +381,26 @@ test('system section renders deployment facts and the latest-version state', asy
   await expect(page.getByText('Key file', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Copy path' })).toBeVisible()
 })
+
+test('settings populated content stays within responsive page bounds', async ({
+  page,
+}, testInfo) => {
+  await mockSettings(page, baseSettingsDto())
+  await page.goto('/settings')
+  await expect(saveButton(page)).toBeVisible({
+    timeout: 30_000,
+  })
+  for (const width of [390, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(saveButton(page)).toBeVisible()
+    expect(
+      await page.evaluate(() =>
+        Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+      ),
+    ).toBeLessThanOrEqual(width)
+    await page.screenshot({
+      path: testInfo.outputPath('settings-' + width + '.png'),
+      fullPage: true,
+    })
+  }
+})

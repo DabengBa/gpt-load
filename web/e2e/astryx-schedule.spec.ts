@@ -246,7 +246,7 @@ test('schedule stays within desktop and mobile viewport bounds', async ({ page }
   await installScheduleRoutes(page)
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 390, 1920]) {
     await page.setViewportSize({ width, height: 900 })
     await expect(page.getByRole('button', { name: 'worker', exact: true })).toBeVisible()
     await expect(rows(page).first()).toBeVisible()

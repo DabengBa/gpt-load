@@ -49,6 +49,11 @@ const styles = stylex.create({
   page: {
     display: 'grid',
     minWidth: 0,
+    width: 'min(100%, 1288px)',
+    marginInline: 'auto',
+    paddingTop: 'var(--stage-padding-top)',
+    paddingBottom: 'var(--stage-padding-bottom)',
+    paddingInline: 'var(--stage-padding-inline)',
   },
   sheet: {
     display: 'grid',
