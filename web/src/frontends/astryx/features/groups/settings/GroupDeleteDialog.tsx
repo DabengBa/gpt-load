@@ -99,13 +99,19 @@ export function GroupDeleteDialog({
     setReferences([])
     const controller = new AbortController()
     controllerRef.current = controller
-    let completed = false
     try {
       await deleteGroup(apiClient, groupId, controller.signal)
       onDeleted?.()
+      setOpen(false)
+      setTypedName('')
+      // Leave the deleted detail before cache removal or refetch can delay navigation.
+      try {
+        await navigate({ to: pagePath('groups'), replace: true, ignoreBlocker: true })
+      } catch {
+        window.location.replace(pagePath('groups'))
+      }
       clearGroupResourceCaches(queryClient, groupId)
       await applyInvalidationPlan(queryClient, mutationInvalidationPlans.group.delete)
-      completed = true
     } catch (error: unknown) {
       if (error instanceof RequestCancelledError) return
       if (
@@ -120,15 +126,6 @@ export function GroupDeleteDialog({
     } finally {
       if (controllerRef.current === controller) controllerRef.current = undefined
       setPending(false)
-    }
-    if (!completed) return
-    setOpen(false)
-    setTypedName('')
-    // Classic router.replace(groupsLocation()) with a full-navigation fallback.
-    try {
-      await navigate({ to: pagePath('groups'), replace: true })
-    } catch {
-      window.location.assign(pagePath('groups'))
     }
   }
 

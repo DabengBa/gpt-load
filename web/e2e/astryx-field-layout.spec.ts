@@ -132,6 +132,98 @@ async function expectUnclipped(locator: Locator) {
   expect(clipped, 'visible control text must not be ellipsized').toBe(false)
 }
 
+test('successful group delete navigates before stalled options refetch and survives reload', async ({
+  page,
+}) => {
+  await installFields(page, 'light')
+  let deleted = false
+  // Keep options active: the detail page itself does not observe this query.
+  await page.route('**/src/frontends/astryx/app/services.ts', async (route) => {
+    const response = await route.fetch()
+    const source = await response.text()
+    expect(source).toContain('authRef.current = authSession;')
+    await route.fulfill({
+      response,
+      body:
+        `import { QueryObserver as DeleteTestObserver } from '/node_modules/.vite/deps/@tanstack_react-query.js';\n` +
+        `import { groupOptionsQueryOptions as deleteTestOptions } from '/src/shared/control/resources/groups.ts';\n` +
+        source.replace(
+          'authRef.current = authSession;',
+          'authRef.current = authSession; new DeleteTestObserver(queryClient, deleteTestOptions(apiClient)).subscribe(() => {});',
+        ),
+    })
+  })
+  let optionsBlocked = false
+  await page.route('**/api/groups?*', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          observed_at_ms: 1_700_000_000_000,
+          summary: { total: 0, available: 0, unavailable: 0, disabled: 0 },
+          items: [],
+          pagination: { page: 1, page_size: 100, total_items: 0, total_pages: 0 },
+        },
+      }),
+    })
+  })
+  const stalledOptions = Promise.withResolvers<void>()
+  await page.route('**/api/groups/1', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    deleted = true
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: null }),
+    })
+  })
+  await page.route('**/api/groups/options', async (route) => {
+    if (!deleted || route.request().method() !== 'GET') return route.fallback()
+    optionsBlocked = true
+    await stalledOptions.promise
+    await route.fallback()
+  })
+  try {
+    await page.goto('/groups/1', { waitUntil: 'commit' })
+    await expect(page.locator('footer[data-status]')).toBeVisible({ timeout: 60_000 })
+    await page.getByRole('button', { name: '删除分组', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox').fill('Geometry group')
+    await dialog.getByRole('button', { name: /删除/ }).click()
+    await expect.poll(() => optionsBlocked).toBe(true)
+    await expect(page).toHaveURL(/\/groups$/)
+    stalledOptions.resolve()
+    await page.reload()
+    await expect(page).toHaveURL(/\/groups$/)
+    await expect(page.locator('#groups-title')).toBeVisible()
+    await expect(page.locator('#group-detail-title')).toHaveCount(0)
+  } finally {
+    stalledOptions.resolve()
+  }
+})
+
+test('failed group delete keeps detail URL and confirmation dialog', async ({ page }) => {
+  await installFields(page, 'light')
+  await page.route('**/api/groups/1', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'INTERNAL_ERROR', message: 'delete failed', data: null }),
+    })
+  })
+  await page.goto('/groups/1', { waitUntil: 'commit' })
+  await expect(page.locator('footer[data-status]')).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: '删除分组', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('textbox').fill('Geometry group')
+  await dialog.getByRole('button', { name: /删除/ }).click()
+  await expect(dialog.getByRole('alert')).toContainText('无法删除分组。')
+  await expect(page).toHaveURL(/\/groups\/1$/)
+  await expect(dialog.getByRole('textbox')).toHaveValue('Geometry group')
+})
+
 for (const width of [320, 768, 1440]) {
   for (const theme of ['light', 'dark']) {
     for (const path of ['/import', '/groups/1']) {
