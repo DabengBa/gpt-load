@@ -1,5 +1,13 @@
 # 架构评审最终方案 — gpt-load（含评审反馈复查）
 
+> **状态：历史评审快照（2026-09-25），不是当前架构说明或待执行任务清单。**
+> 下文保留当时的技术栈、路径、行号、估算和建议，不代表它们仍适用于当前代码。
+> 当前文档归属见 [文档导航](../../.docs/AGENTS.md)，已交付变更见
+> [项目历史](../../.docs/PROJECT_HISTORY.md)。前端已于 2026-09-30 完成
+> React/Astryx 切换，见 [迁移完成状态](../../.docs/tech/astryx-migration-plan.md)；
+> 管理面写入规则以 [写入串行化文档](../../.docs/tech/control-write-serialization.md)为准，
+> 部署操作以 [部署文档](../deployment.md)为准。执行下文建议前须核对当前代码与对应 owner 文档。
+
 > 第一版：`docs/analysis/architecture-review-briefing.md`（本文件已合并评审意见并定稿）。
 > 可视化报告：`%TEMP%\architecture-review-20260925-1630.html`。
 > 复查日期：2026-09-25。所有论断均附文件/行号或提交号证据。
