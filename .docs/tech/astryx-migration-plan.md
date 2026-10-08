@@ -412,6 +412,23 @@ defaults) → `astryx-theme` (theme component overrides) → `app.*` (our
   collection row height, and status-bar height, go into one app `defineVars`
   group. There should be no hex or px literals in feature code.
 
+#### Current responsive page spacing
+
+`web/src/frontends/astryx/theme/tokens.css` owns the shared stage padding:
+26px top, 24px inline, and 60px bottom. At viewport widths of 680px or less,
+the same tokens resolve to the compact values: 16px top, 12px inline, and
+40px bottom. `LogsView.tsx` and `MonitorView.tsx` apply these tokens around
+their centered 1240px content; `ScheduleView.tsx` retains its 1440px content
+width. The shell does not add a second layer of page padding.
+
+In `features/logs/LogsTable.tsx`, the input/output token pair stays on one
+line with `flexShrink: 0`, while its containing flex row uses
+`flexWrap: 'wrap'` so the cache-rate hint can move to another line when
+space is limited. This constrains presentation only; token accounting is
+unchanged. `web/e2e/astryx-page-spacing.spec.ts` verifies page geometry at
+390px, 1440px, and 1920px and checks that token values and cache hints do not
+overlap.
+
 ## Coexistence Architecture
 
 ### Why same-URL selection instead of a prefix
@@ -955,8 +972,16 @@ f78071f8 readability sync). Three precedents added:
 - **Post-success navigation through the unsaved-changes bypass:** React's
   dirty flag has not flushed when the success handler fires, so the blocker
   sees `dirty === true` where classic's synchronous guard saw the already-
-  converged state — programmatic success navigations go through
-  `runWithoutPrompt`, never raw `navigate`.
+  converged state — programmatic success navigations bypass the blocker.
+  In `features/groups/settings/GroupDeleteDialog.tsx`, successful DELETE
+  closes and resets the confirmation dialog, then navigates to `/groups`
+  with `replace: true` and `ignoreBlocker: true` before removing cached group
+  resources or awaiting query invalidation. If router navigation fails,
+  `window.location.replace` performs the same history replacement. A failed
+  DELETE retains the detail URL and confirmation input and displays failure
+  feedback. `web/e2e/astryx-field-layout.spec.ts` covers both deletion failure
+  and navigation before a stalled options refetch, including reload on the
+  list URL.
 - **Dead-code normalization is not a validator:** `normalizeGroupQuery`
   came from the unmounted `GroupTabs.vue`; wiring it into `validateSearch`
   would rewrite bare `/groups/:id` to the management tab. Sparse
