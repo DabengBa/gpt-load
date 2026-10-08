@@ -438,27 +438,27 @@ const styles = stylex.create({
     borderColor: 'var(--color-border-subtle)',
   },
   table: {
-    minWidth: { default: 980, [narrow]: 0 },
+    minWidth: { default: 1120, [narrow]: 0 },
   },
   row: {
     display: 'grid',
     gridTemplateColumns: {
       default:
-        '72px minmax(130px, 1.2fr) minmax(120px, 1fr) minmax(104px, 0.8fr) 72px 76px 96px minmax(140px, 1.1fr)',
+        '96px minmax(154px, 1.2fr) minmax(144px, 1fr) minmax(128px, 0.8fr) 96px 100px 120px minmax(164px, 1.1fr)',
       [narrow]: 'minmax(0, 1fr) minmax(0, 1fr)',
     },
     minHeight: 48,
     alignItems: 'center',
-    gap: { default: 10, [narrow]: '10px 12px' },
+    gap: { default: 0, [narrow]: '10px 12px' },
     borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-subtle)',
-    paddingTop: { default: 7, [narrow]: 12 },
-    paddingBottom: { default: 7, [narrow]: 12 },
-    paddingInline: 12,
+    borderBottomColor: 'var(--color-border)',
+    paddingTop: { default: 0, [narrow]: 12 },
+    paddingBottom: { default: 0, [narrow]: 12 },
+    paddingInline: { default: 0, [narrow]: 12 },
   },
   rowBody: {
-    backgroundColor: { ':hover': 'var(--color-action-soft)' },
+    backgroundColor: { ':hover': { '@media (hover: hover)': 'var(--color-overlay-hover)' } },
   },
   rowHeader: {
     display: { default: 'grid', [narrow]: 'none' },
@@ -467,9 +467,15 @@ const styles = stylex.create({
     top: 0,
     minHeight: 34,
     backgroundColor: 'var(--color-surface-sunken)',
-    color: 'var(--color-text-muted)',
-    fontSize: 10,
-    fontWeight: 700,
+    color: 'var(--color-text-secondary)',
+    fontSize: 'var(--text-label-size)',
+    fontWeight: 'var(--font-weight-semibold)',
+  },
+  headerCell: {
+    paddingBlock: 'var(--spacing-2)',
+    paddingInline: 'var(--spacing-3)',
+    minWidth: 0,
+    boxSizing: 'border-box',
   },
   rowPriorityStart: {
     borderTopWidth: 2,
@@ -481,8 +487,11 @@ const styles = stylex.create({
   },
   cell: {
     minWidth: 0,
-    color: 'var(--color-text-muted)',
-    fontSize: 'var(--text-meta)',
+    color: 'var(--color-text-primary)',
+    fontSize: 'var(--text-body-size)',
+    paddingBlock: { default: 'var(--spacing-2)', [narrow]: 0 },
+    paddingInline: { default: 'var(--spacing-3)', [narrow]: 0 },
+    boxSizing: 'border-box',
   },
   cellPriority: {
     alignSelf: 'stretch',
@@ -501,7 +510,7 @@ const styles = stylex.create({
     display: 'block',
     marginBottom: 2,
     color: 'var(--color-text-faint)',
-    fontSize: 10,
+    fontSize: 'var(--text-label-size)',
     fontWeight: 650,
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
@@ -527,7 +536,7 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     marginTop: 2,
     color: 'var(--color-text-faint)',
-    fontSize: 10,
+    fontSize: 'var(--text-meta)',
   },
   cellStats: {
     fontFamily: 'var(--font-mono)',
@@ -1415,14 +1424,30 @@ export function SchedulePanelDetail({
             <div ref={scheduleTableRef} {...stylex.props(styles.tableWrap)}>
               <div {...stylex.props(styles.table)} role="table" aria-label={text('title')}>
                 <div {...stylex.props(styles.row, styles.rowHeader)} role="row">
-                  <span role="columnheader">{text('priority')}</span>
-                  <span role="columnheader">{text('upstreamModel')}</span>
-                  <span role="columnheader">{text('group')}</span>
-                  <span role="columnheader">{text('reasoning')}</span>
-                  <span role="columnheader">{text('weight')}</span>
-                  <span role="columnheader">{text('share')}</span>
-                  <span role="columnheader">{text('status')}</span>
-                  <span role="columnheader">{text('breakerRecovery')}</span>
+                  <span {...stylex.props(styles.headerCell)} role="columnheader">
+                    {text('priority')}
+                  </span>
+                  <span {...stylex.props(styles.headerCell)} role="columnheader">
+                    {text('upstreamModel')}
+                  </span>
+                  <span {...stylex.props(styles.headerCell)} role="columnheader">
+                    {text('group')}
+                  </span>
+                  <span {...stylex.props(styles.headerCell)} role="columnheader">
+                    {text('reasoning')}
+                  </span>
+                  <span {...stylex.props(styles.headerCell)} role="columnheader">
+                    {text('weight')}
+                  </span>
+                  <span {...stylex.props(styles.headerCell)} role="columnheader">
+                    {text('share')}
+                  </span>
+                  <span {...stylex.props(styles.headerCell)} role="columnheader">
+                    {text('status')}
+                  </span>
+                  <span {...stylex.props(styles.headerCell)} role="columnheader">
+                    {text('breakerRecovery')}
+                  </span>
                 </div>
                 {rows.map(({ group, entry }, index) => {
                   const key = rowKey(group.group_id, entry.entry_id)

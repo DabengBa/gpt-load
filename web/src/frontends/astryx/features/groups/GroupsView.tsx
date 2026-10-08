@@ -69,6 +69,7 @@ import { useMediaQuery } from '../../app/use-media-query'
 import { useVisibleRefetch } from '../../app/use-visible-refetch'
 import { useCollectionLoading } from '../../app/collection-loading'
 import { ChannelIcon } from '../../components/ChannelIcon'
+import { GroupDeleteDialog } from './settings/GroupDeleteDialog'
 
 // The server sort enum is directionless (see ADR-0001 read model): each named
 // sort implies its own direction. Column sort keys map onto that enum; a
@@ -127,7 +128,7 @@ const styles = stylex.create({
     },
   },
   pageInner: {
-    width: 'min(100%, 1240px)',
+    width: '100%',
     marginInline: 'auto',
   },
   collection: {
@@ -819,7 +820,7 @@ export function GroupsView() {
       {
         key: 'actions',
         header: t('groups.collection.columns.actions'),
-        width: pixel(narrowViewport ? 156 : 108),
+        width: pixel(narrowViewport ? 260 : 212),
         align: 'end',
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.actionsCell)}>
@@ -845,6 +846,7 @@ export function GroupsView() {
               icon={<ArrowRight size={15} />}
               href={groupDetailHref(group.id)}
             />
+            <GroupDeleteDialog groupId={group.id} groupName={group.name} context="list" />
           </span>
         ),
       },

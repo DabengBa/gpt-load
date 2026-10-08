@@ -10,7 +10,7 @@ import {
 } from '@astryxdesign/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import {
@@ -44,12 +44,14 @@ export function GroupDeleteDialog({
   groupId,
   groupName,
   disabled = false,
+  context = 'detail',
   onDeleted,
   onPendingChange,
 }: {
   groupId: number
   groupName: string
   disabled?: boolean
+  context?: 'detail' | 'list'
   onDeleted?(): void
   onPendingChange?(pending: boolean): void
 }) {
@@ -57,6 +59,7 @@ export function GroupDeleteDialog({
   const { apiClient } = useAppServices()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const nameInputId = useId()
   const [open, setOpen] = useState(false)
   const [typedName, setTypedName] = useState('')
   const nameInputRef = useRef<HTMLInputElement | null>(null)
@@ -104,11 +107,13 @@ export function GroupDeleteDialog({
       onDeleted?.()
       setOpen(false)
       setTypedName('')
-      // Leave the deleted detail before cache removal or refetch can delay navigation.
-      try {
-        await navigate({ to: pagePath('groups'), replace: true, ignoreBlocker: true })
-      } catch {
-        window.location.replace(pagePath('groups'))
+      if (context === 'detail') {
+        // Leave the deleted detail before cache removal or refetch can delay navigation.
+        try {
+          await navigate({ to: pagePath('groups'), replace: true, ignoreBlocker: true })
+        } catch {
+          window.location.replace(pagePath('groups'))
+        }
       }
       clearGroupResourceCaches(queryClient, groupId)
       await applyInvalidationPlan(queryClient, mutationInvalidationPlans.group.delete)
@@ -153,7 +158,7 @@ export function GroupDeleteDialog({
               <div {...stylex.props(styles.body)}>
                 <TextInput
                   ref={nameInputRef}
-                  id="group-delete-name"
+                  id={nameInputId}
                   label={t('group.settings.delete.typeName', { name: groupName })}
                   value={typedName}
                   onChange={setTypedName}

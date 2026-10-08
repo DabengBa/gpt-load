@@ -205,6 +205,106 @@ function collectionTable(page: Page) {
   return page.getByRole('table', { name: 'Group list' })
 }
 
+for (const width of [390, 1440]) {
+  test(`list deletion confirms exact name and preserves collection URL at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const groups = makeGroups(300)
+    const seen = await mockCollection(page, groups)
+    let deletes = 0
+    await page.route('**/api/groups/*', async (route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback()
+      deletes++
+      const id = Number(new URL(route.request().url()).pathname.split('/').at(-1))
+      groups.splice(
+        groups.findIndex((group) => group.id === id),
+        1,
+      )
+      await route.fulfill({ json: { code: 0, message: 'ok', data: null } })
+    })
+    await page.goto('/groups?q=Group&status=available&connection_type=api_key&sort=name&page=2', {
+      waitUntil: 'load',
+    })
+    const row = collectionTable(page).getByRole('row').nth(1)
+    const name = await row
+      .getByRole('link', { name: /View details/ })
+      .first()
+      .innerText()
+    const url = page.url()
+    await expect(row.getByRole('button', { name: 'Delete Group', exact: true })).toBeVisible()
+    await row.getByRole('button', { name: 'Delete Group', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    const confirm = dialog.getByRole('button', { name: 'Delete Group permanently' })
+    await expect(confirm).toBeDisabled()
+    await dialog.getByRole('textbox').fill(`${name} wrong`)
+    await expect(confirm).toBeDisabled()
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    expect(deletes).toBe(0)
+    await row.getByRole('button', { name: 'Delete Group', exact: true }).click()
+    await expect(dialog.getByRole('textbox')).toHaveValue('')
+    await dialog.getByRole('textbox').fill(name)
+    const requestCount = seen.length
+    await confirm.click()
+    await expect(dialog).toHaveCount(0)
+    await expect.poll(() => deletes).toBe(1)
+    await expect.poll(() => seen.length).toBeGreaterThan(requestCount)
+    await expect(
+      collectionTable(page).getByRole('link', { name: `View details for ${name}`, exact: true }),
+    ).toHaveCount(0)
+    await expect(page).toHaveURL(url)
+    expect(seen.at(-1)).toMatchObject({
+      q: 'Group',
+      status: 'available',
+      connection_type: 'api_key',
+      sort: 'name',
+      page: 2,
+    })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+  })
+}
+
+for (const failure of ['server', 'reference'] as const) {
+  test(`list deletion ${failure} failure keeps row, URL and confirmation`, async ({ page }) => {
+    await mockCollection(page, makeGroups(5))
+    let deletes = 0
+    await page.route('**/api/groups/5', async (route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback()
+      deletes++
+      await route.fulfill({
+        status: failure === 'reference' ? 409 : 500,
+        json: {
+          code: failure === 'reference' ? 'GROUP_IN_USE' : 'INTERNAL_ERROR',
+          message: 'delete failed',
+          data:
+            failure === 'reference'
+              ? { access_keys: [{ id: 7, name: 'Production access' }] }
+              : null,
+        },
+      })
+    })
+    await page.goto('/groups?sort=name', { waitUntil: 'load' })
+    const url = page.url()
+    const row = collectionTable(page).getByRole('row').filter({ hasText: 'Group 0005' })
+    await row.getByRole('button', { name: 'Delete Group', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox').fill('Group 0005')
+    await dialog.getByRole('button', { name: 'Delete Group permanently' }).click()
+    await expect(dialog.getByRole('alert')).toContainText(
+      failure === 'reference' ? 'Production access' : 'Unable to delete the Group.',
+    )
+    await expect(dialog.getByRole('textbox')).toHaveValue('Group 0005')
+    await expect(page).toHaveURL(url)
+    await expect(row).toBeVisible()
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    expect(deletes).toBe(1)
+  })
+}
+
 test('populated collection exposes import, result count, and credential deep links', async ({
   page,
 }) => {

@@ -417,17 +417,53 @@ defaults) → `astryx-theme` (theme component overrides) → `app.*` (our
 `web/src/frontends/astryx/theme/tokens.css` owns the shared stage padding:
 26px top, 24px inline, and 60px bottom. At viewport widths of 680px or less,
 the same tokens resolve to the compact values: 16px top, 12px inline, and
-40px bottom. `LogsView.tsx` and `MonitorView.tsx` apply these tokens around
-their centered 1240px content; `ScheduleView.tsx` retains its 1440px content
-width. The shell does not add a second layer of page padding.
+40px bottom. `GroupsView.tsx`, `LogsView.tsx`, and `ScheduleView.tsx` use
+the available main-content width without a maximum page width, retaining
+these inline gutters. `MonitorView.tsx` keeps its centered 1240px desktop
+content cap (1288px outer frame including the two 24px gutters). The shell
+does not add a second layer of page padding.
+
+#### Current table presentation
+
+The Groups list's Astryx Table with balanced density is the presentation
+reference. `features/logs/LogsTable.tsx` and
+`features/monitor/SchedulePanelDetail.tsx` retain their existing ARIA
+table/row/cell structures and CSS grids. Their desktop cells use 8px block
+and 12px inline padding, 13.5px body text, and 11.5px semibold headers with
+secondary foreground; domain-specific metadata and controls keep their
+own typography. Headers and rows use the theme border token, with no bottom
+divider on the final body row. Desktop column gaps are zero because cell
+padding supplies the spacing; row hover uses `--color-overlay-hover`.
+
+Logs retain domain-specific columns, status badges, details actions, and
+the 860px card breakpoint. Desktop track widths accommodate the cell
+padding, with horizontal overflow confined to the table region. Cards keep
+their label/value layout, spacing, and surface-sunken hover. Schedule keeps
+editable controls, selected-row highlighting, priority boundaries, and
+domain status colors. Its desktop grid has a 1120px minimum width and
+scrolls inside the table wrapper; at 620px or less, it uses the existing
+two-column mobile layout with the header hidden and no table minimum width.
+
+The Groups list exposes deletion through the existing typed-name confirmation
+dialog. List-context deletion refreshes the collection while retaining its
+query parameters; detail-context deletion retains the immediate navigation
+to the list described below. Failed deletion keeps the confirmation context.
+Logs expose only the six relative time shortcuts (`1h`, `24h`, `3d`, `7d`,
+`15d`, `30d`), without manual date inputs. Selection updates the draft;
+Apply commits the time bounds and Reset restores the default window. Existing
+URL time bounds remain supported. Schedule primary text uses the shared
+13.5px body size, table labels use 11.5px, and secondary metadata uses 12px.
 
 In `features/logs/LogsTable.tsx`, the input/output token pair stays on one
 line with `flexShrink: 0`, while its containing flex row uses
 `flexWrap: 'wrap'` so the cache-rate hint can move to another line when
 space is limited. This constrains presentation only; token accounting is
-unchanged. `web/e2e/astryx-page-spacing.spec.ts` verifies page geometry at
-390px, 1440px, and 1920px and checks that token values and cache hints do not
-overlap.
+unchanged. `web/e2e/astryx-page-spacing.spec.ts` verifies page geometry
+relative to `#main-content` at 390px, 900px, 1440px, and 1920px, including
+page overflow and token/cache-hint separation. `astryx-request-log.spec.ts`
+and `astryx-schedule.spec.ts` compare populated desktop tables with actual
+Groups Table computed styles and hover, check internal scrolling at 900px,
+and exercise mobile layouts and existing domain interactions.
 
 ## Coexistence Architecture
 
