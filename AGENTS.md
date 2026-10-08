@@ -13,6 +13,10 @@
 - Keep links to `tbphp/gpt-load` only when they intentionally refer to upstream release/container artifacts, and label that relationship explicitly.
 - Before merging, verify the target repository and base branch with `gh pr view -R DabengBa/gpt-load`.
 
+## Documentation Navigation
+
+- For product behavior, implementation, or architecture work, read `.docs/AGENTS.md` first to locate the current document owner; use `.docs/PROJECT_HISTORY.md` for shipped changes. Treat `docs/analysis/` as dated analysis, not current implementation or an active task list; verify its claims against current owner documents and code before acting.
+
 ## Hostinger Deployment
 
 - Follow `docs/deployment.md` for requests to push and update the Hostinger GPT-Load service.

@@ -29,8 +29,12 @@ build: _web-build ## Build the Web UI and application binary
 test: ## Run Go unit tests
 	$(GO) test -count=1 . ./internal/...
 
+.PHONY: test-deploy
+test-deploy: ## Run deployment regression tests without Docker or SSH
+	python3 -m unittest -v scripts/test-deploy.py scripts/test-deploy-phases.py scripts/test-deploy-activation.py
+
 .PHONY: check
-check: _web-deps ## Run source checks and build
+check: test-deploy _web-deps ## Run source checks and build
 	@go_root="$$($(GO) env GOROOT)"; formatted_files="$$("$${go_root}/bin/gofmt" -l .)"; test -z "$${formatted_files}"
 	$(GO) mod tidy -diff
 	$(GO) vet ./...
