@@ -323,12 +323,14 @@ const styles = stylex.create({
   tokenValues: {
     display: 'flex',
     minWidth: 0,
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 5,
   },
   tokenLine: {
     display: 'flex',
     minWidth: 0,
+    flexShrink: 0,
     alignItems: 'center',
     gap: 5,
     whiteSpace: 'nowrap',

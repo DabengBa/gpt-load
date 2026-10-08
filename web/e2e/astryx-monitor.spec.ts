@@ -341,3 +341,26 @@ test('access_key principal never calls /api/health or /api/route/inspect', async
   expect(requests.healthCalls).toBe(0)
   expect(requests.inspectCalls).toBe(0)
 })
+
+test('monitor populated content stays within responsive page bounds', async ({
+  page,
+}, testInfo) => {
+  await mockMonitor(page)
+  await page.goto('/monitor')
+  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible({
+    timeout: 30_000,
+  })
+  for (const width of [390, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
+    expect(
+      await page.evaluate(() =>
+        Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+      ),
+    ).toBeLessThanOrEqual(width)
+    await page.screenshot({
+      path: testInfo.outputPath('monitor-' + width + '.png'),
+      fullPage: true,
+    })
+  }
+})
