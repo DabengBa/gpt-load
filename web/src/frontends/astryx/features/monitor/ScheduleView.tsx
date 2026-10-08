@@ -31,7 +31,7 @@ const styles = stylex.create({
   },
   sheet: {
     display: 'grid',
-    width: 'min(100%, 1440px)',
+    width: '100%',
     marginInline: 'auto',
     minWidth: 0,
     alignContent: 'start',

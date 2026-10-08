@@ -2,25 +2,17 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { installRequestLogRangeRoutes } from './fixtures/request-log-display'
 
-// B12 spike(c): log time-range filter on Astryx DateTimeInput.
-// Contract pins the classic semantics (log-filters.ts):
+// Presets update the draft; Apply commits epoch-ms URL/API filters.
+// Contract pins the log-filters semantics:
 //   - URL carries from_ms/to_ms epoch-ms; absent/invalid params fall back to
 //     the default window (now-24h .. now+24h) — the request always sends both
-//   - editing the fields updates a draft only; Apply writes the URL params
-//   - invalid range (from >= to) blocks Apply with a field error
-//   - Reset commits the default filter set — classic serializes the default
+//   - selecting a preset updates a draft only; Apply writes the URL params
+//   - Reset commits the default filter set and serializes the default
 //     window explicitly, so the URL keeps concrete from_ms/to_ms
 // The mock honors from_ms/to_ms, so the rendered rows prove the params drive
 // the result set — not just that a request fired.
 
 const DAY_MS = 24 * 60 * 60 * 1000
-
-const localDate = (ms: number) => {
-  const d = new Date(ms)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
-const localMs = (date: string, time: string) => new Date(`${date}T${time}`).getTime()
 
 // First navigation to /logs pays the cold vite transform for the whole
 // astryx module graph; give this spec the same budget as the detail spec.
@@ -44,12 +36,12 @@ async function openLogs(page: Page, locale?: string) {
 const detailButtons = (page: Page) =>
   page.getByRole('button', { name: /^(View details|查看详情|詳細を表示)$/u })
 
-test('typed range applies to the request, reset restores the default window (en-US)', async ({
+test('preset applies to the request, reset restores the default window (en-US)', async ({
   page,
 }) => {
   const { logRequests } = await openLogs(page)
 
-  // Default load sends the classic default window (from now-24h to now+24h),
+  // Default load sends the default window (from now-24h to now+24h),
   // so the range-honoring mock returns only the 30-min-old row.
   await expect(detailButtons(page)).toHaveCount(1)
   const initial = logRequests.at(-1)!
@@ -61,14 +53,16 @@ test('typed range applies to the request, reset restores the default window (en-
   expect(to0 - from0).toBeLessThan(49 * 60 * 60 * 1000)
 
   const requestCount = logRequests.length
-  const fromDate = localDate(Date.now() - 8 * DAY_MS)
-  const toDate = localDate(Date.now())
-
-  // Typing edits the draft only — no request until Apply.
-  await page.getByRole('combobox', { name: 'From' }).fill(fromDate)
-  await page.getByLabel('From time').fill('00:00:00')
-  await page.getByRole('combobox', { name: 'To' }).fill(toDate)
-  await page.getByLabel('To time').fill('23:59:59')
+  await expect(page.getByRole('group', { name: 'Quick time ranges' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'From', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('combobox', { name: 'To', exact: true })).toHaveCount(0)
+  await expect(
+    page.getByRole('group', { name: 'Quick time ranges' }).getByRole('button'),
+  ).toHaveText(['1h', '24h', '3d', '7d', '15d', '30d'])
+  await page
+    .getByRole('group', { name: 'Quick time ranges' })
+    .getByRole('button', { name: '7d' })
+    .click()
   expect(logRequests.length).toBe(requestCount)
 
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
@@ -77,15 +71,23 @@ test('typed range applies to the request, reset restores the default window (en-
     .poll(() => logRequests.length, { message: 'apply should issue a request' })
     .toBe(requestCount + 1)
   const applied = logRequests.at(-1)!
-  expect(Number(applied.searchParams.get('from_ms'))).toBe(localMs(fromDate, '00:00:00'))
-  expect(Number(applied.searchParams.get('to_ms'))).toBe(localMs(toDate, '23:59:59'))
+  expect(
+    Number(applied.searchParams.get('to_ms')) - Number(applied.searchParams.get('from_ms')),
+  ).toBeGreaterThan(6.9 * DAY_MS)
   await expect(page).toHaveURL(/from_ms=/)
-  // now-8d .. end of today covers recent + two-days, not the 10-day-old row.
+  // The 7d window covers recent rows, not the 10-day-old row.
   await expect(detailButtons(page)).toHaveCount(2)
   await expect(page.getByText('old-model')).toBeHidden()
 
+  const appliedUrl = page.url()
+  await page.reload()
+  await expect(detailButtons(page)).toHaveCount(2)
+  expect(page.url()).toBe(appliedUrl)
+  expect(logRequests.at(-1)?.searchParams.get('from_ms')).toBe(applied.searchParams.get('from_ms'))
+  expect(logRequests.at(-1)?.searchParams.get('to_ms')).toBe(applied.searchParams.get('to_ms'))
+
   await page.getByRole('button', { name: 'Reset' }).click()
-  // Classic parity: Reset commits the default filter set, which serializes
+  // Reset commits the default filter set, which serializes
   // explicit from_ms/to_ms/limit — the URL carries the default window rather
   // than dropping the params.
   await expect(page).toHaveURL(/from_ms=/)
@@ -99,15 +101,9 @@ test('typed range applies to the request, reset restores the default window (en-
   await expect(detailButtons(page)).toHaveCount(1)
 })
 
-test('zh-CN renders localized field and DS strings; a preset chip applies the range', async ({
-  page,
-}) => {
+test('zh-CN renders localized filter strings; a preset applies the range', async ({ page }) => {
   const { logRequests } = await openLogs(page, 'zh-CN')
 
-  await expect(page.getByRole('combobox', { name: '开始时间' })).toBeVisible()
-  await expect(page.getByRole('combobox', { name: '结束时间' })).toBeVisible()
-  await expect(page.getByPlaceholder('选择日期').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: '打开日历' }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: '应用', exact: true })).toBeVisible()
   await expect(page.getByRole('group', { name: '快捷时间范围' })).toBeVisible()
 
@@ -117,8 +113,7 @@ test('zh-CN renders localized field and DS strings; a preset chip applies the ra
     .getByRole('button', { name: '7d' })
     .click()
 
-  // Classic parity: a preset writes the from/to draft only — the request
-  // waits for Apply.
+  // A preset writes the draft only; the request waits for Apply.
   await page.waitForTimeout(300)
   expect(logRequests.length).toBe(requestCount)
 
@@ -135,31 +130,43 @@ test('zh-CN renders localized field and DS strings; a preset chip applies the ra
   await expect(detailButtons(page)).toHaveCount(2)
 })
 
-test('ja-JP renders localized strings; an inverted range blocks Apply', async ({ page }) => {
-  const { logRequests } = await openLogs(page, 'ja-JP')
+test('ja-JP renders localized preset filter strings', async ({ page }) => {
+  await openLogs(page, 'ja-JP')
 
-  await expect(page.getByRole('combobox', { name: '開始時刻' })).toBeVisible()
-  await expect(page.getByRole('combobox', { name: '終了時刻' })).toBeVisible()
-  await expect(page.getByPlaceholder('日付を選択').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'カレンダーを開く' }).first()).toBeVisible()
-
-  const requestCount = logRequests.length
-  await page.getByRole('combobox', { name: '開始時刻' }).fill(localDate(Date.now()))
-  await page.getByLabel('開始時刻の時刻').fill('23:59:59')
-  await page.getByRole('combobox', { name: '終了時刻' }).fill(localDate(Date.now() - DAY_MS))
-  await page.getByLabel('終了時刻の時刻').fill('00:00:00')
-
-  await page.getByRole('button', { name: '適用', exact: true }).click()
-  // The status message renders in the field and is mirrored to the assertive
-  // live region — assert the live-region copy to keep the locator unique. Its
-  // appearance proves the apply was handled, so the negative checks after it
-  // cannot race the request that validation rejected.
+  await expect(page.getByRole('group', { name: 'クイック時間範囲' })).toBeVisible()
   await expect(
-    page
-      .locator('[data-astryx-live-region="assertive"]')
-      .getByText('終了時刻は開始時刻より後である必要があります。'),
+    page.getByRole('group', { name: 'クイック時間範囲' }).getByRole('button', { name: '7d' }),
   ).toBeVisible()
-  // from > to is invalid: no request, params stay absent.
-  expect(logRequests.length).toBe(requestCount)
-  await expect(page).not.toHaveURL(/from_ms=/)
+})
+
+test('all six shortcuts preserve draft-only selection and commit exact durations', async ({
+  page,
+}) => {
+  const { logRequests } = await openLogs(page)
+  await expect(detailButtons(page)).toHaveCount(1)
+  const quickRanges = page.getByRole('group', { name: 'Quick time ranges' })
+  for (const [label, duration] of [
+    ['1h', DAY_MS / 24],
+    ['24h', DAY_MS],
+    ['3d', 3 * DAY_MS],
+    ['7d', 7 * DAY_MS],
+    ['15d', 15 * DAY_MS],
+    ['30d', 30 * DAY_MS],
+  ] as const) {
+    const previousUrl = page.url()
+    const requestCount = logRequests.length
+    await quickRanges.getByRole('button', { name: label, exact: true }).click()
+    await page.waitForTimeout(100)
+    expect(page.url()).toBe(previousUrl)
+    expect(logRequests.length).toBe(requestCount)
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await expect.poll(() => logRequests.length).toBe(requestCount + 1)
+    const request = logRequests.at(-1)!
+    expect(
+      Number(request.searchParams.get('to_ms')) - Number(request.searchParams.get('from_ms')),
+    ).toBe(duration)
+    const url = new URL(page.url())
+    expect(url.searchParams.get('from_ms')).toBe(request.searchParams.get('from_ms'))
+    expect(url.searchParams.get('to_ms')).toBe(request.searchParams.get('to_ms'))
+  }
 })

@@ -1,4 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
+
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import {
   PROVIDER_URL,
@@ -29,6 +31,169 @@ async function openLogs(page: Page, query = ''): Promise<void> {
 
 const records = (page: Page) => page.getByTestId('logs-list__record')
 const applyButton = (page: Page) => page.getByRole('button', { name: 'Apply', exact: true }).first()
+
+async function tableCellPresentation(cell: Locator) {
+  return cell.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      paddingBlock: style.paddingBlock,
+      paddingInline: style.paddingInline,
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      color: style.color,
+      borderBottomWidth: style.borderBottomWidth,
+      borderBottomColor: style.borderBottomColor,
+    }
+  })
+}
+
+for (const width of [1440, 900, 1920]) {
+  test(`logs balanced presentation matches populated groups at ${width}px`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width, height: 1100 })
+    await installRequestLogDisplayRoutes(page)
+    // Reuse the log fixture's auth/options; supply only the collection boundary
+    // it does not expose so the reference is the real Groups Table renderer.
+    await page.route('**/api/groups?*', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'OK',
+          data: {
+            observed_at_ms: 1_700_000_000_000,
+            summary: { total: 2, available: 2, unavailable: 0, disabled: 0 },
+            items: [1, 2].map((id) => ({
+              id,
+              name: id === 1 ? 'alpha' : 'beta',
+              channel_id: 'openai_compatible',
+              connection_type: 'api_key',
+              params: {},
+              provider_url: null,
+              status: 'available',
+              model_count: 2,
+              client_model_count: 2,
+              credential_configured: true,
+              credential_status: 'available',
+            })),
+            pagination: { page: 1, page_size: 100, total_items: 2, total_pages: 1 },
+          },
+        }),
+      })
+    })
+    await page.goto('/groups', { waitUntil: 'commit' })
+    await expect(page.getByTestId('astryx-shell')).toBeVisible({ timeout: 60_000 })
+    const groupTable = page.locator('table')
+    await expect(groupTable.locator('tbody tr')).toHaveCount(2)
+    const groupHeader = await tableCellPresentation(groupTable.locator('th').nth(1))
+    const groupCell = await tableCellPresentation(groupTable.locator('tbody td').nth(1))
+    const groupRow = groupTable.locator('tbody tr').first()
+    await groupRow.hover()
+    await expect
+      .poll(() => groupRow.evaluate((row) => getComputedStyle(row).backgroundColor))
+      .not.toBe('rgba(0, 0, 0, 0)')
+    // Wait for the existing hover transition to settle before comparing pages.
+    await groupRow.evaluate((row) =>
+      Promise.all(row.getAnimations().map((animation) => animation.finished)),
+    )
+    const groupHover = await groupRow.evaluate((row) => getComputedStyle(row).backgroundColor)
+    await openLogs(page)
+    await expect(records(page)).toHaveCount(4)
+    const list = page.getByTestId('logs-list')
+    const logHeader = await tableCellPresentation(list.getByRole('columnheader').nth(1))
+    const logCell = await tableCellPresentation(records(page).first().getByRole('cell').nth(3))
+    await info.attach('computed-presentation', {
+      body: JSON.stringify(
+        { width, groupHeader, groupCell, groupHover, logHeader, logCell },
+        null,
+        2,
+      ),
+      contentType: 'application/json',
+    })
+    await page.screenshot({ path: info.outputPath(`logs-${width}.png`), fullPage: true })
+    await writeFile(
+      info.outputPath('computed-presentation.json'),
+      JSON.stringify({ width, groupHeader, groupCell, groupHover, logHeader, logCell }, null, 2),
+    )
+    const headerGeometry = await list.getByRole('columnheader').evaluateAll((headers) =>
+      headers.map((header) => {
+        const box = header.getBoundingClientRect()
+        const range = document.createRange()
+        range.selectNodeContents(header)
+        const text = range.getBoundingClientRect()
+        const style = getComputedStyle(header)
+        const contentTop = box.top + parseFloat(style.paddingTop)
+        const contentBottom =
+          box.bottom - parseFloat(style.paddingBottom) - parseFloat(style.borderBottomWidth)
+        return {
+          label: header.textContent,
+          bottom: box.bottom,
+          textHeight: text.height,
+          centerOffset: (text.top + text.bottom - contentTop - contentBottom) / 2,
+        }
+      }),
+    )
+    await writeFile(
+      info.outputPath('header-geometry.json'),
+      JSON.stringify(headerGeometry, null, 2),
+    )
+    expect(
+      Math.max(...headerGeometry.map((header) => header.bottom)) -
+        Math.min(...headerGeometry.map((header) => header.bottom)),
+      'all header dividers share one bottom edge',
+    ).toBeLessThanOrEqual(1)
+    for (const header of headerGeometry) {
+      expect(
+        Math.abs(header.centerOffset),
+        `${header.label} text remains vertically centered`,
+      ).toBeLessThanOrEqual(1)
+    }
+    if (width === 1440 || width === 1920) {
+      const timing = headerGeometry.at(-2)
+      expect(timing?.textHeight, 'timing header exercises multiline wrapping').toBeGreaterThan(
+        headerGeometry[0].textHeight,
+      )
+    }
+    expect(logHeader).toEqual(groupHeader)
+    expect(logCell).toEqual(groupCell)
+    const row = records(page).first()
+    await row.hover()
+    await expect
+      .poll(() => row.evaluate((element) => getComputedStyle(element).backgroundColor))
+      .toBe(groupHover)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    expect(await list.evaluate((element) => getComputedStyle(element).overflowX)).toBe('auto')
+    if (width === 900) {
+      const scrolling = await list.evaluate((element) => {
+        element.scrollLeft = element.scrollWidth
+        return {
+          left: element.scrollLeft,
+          width: element.clientWidth,
+          content: element.scrollWidth,
+        }
+      })
+      expect(scrolling.content).toBeGreaterThan(scrolling.width)
+      expect(scrolling.left).toBeGreaterThan(0)
+    }
+    await row.getByRole('button', { name: 'View details' }).click()
+    await expect(page.getByRole('dialog', { name: 'Request log details' })).toBeVisible()
+  })
+}
+
+for (const width of [390, 800]) {
+  test(`logs populated cards preserve usability at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1100 })
+    await installRequestLogDisplayRoutes(page)
+    await openLogs(page)
+    await expect(records(page)).toHaveCount(4)
+    await expect(records(page).first().getByText('Model / protocol', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: info.outputPath(`logs-${width}.png`), fullPage: true })
+    await records(page).first().getByRole('button', { name: 'View details' }).click()
+    await expect(page.getByRole('dialog', { name: 'Request log details' })).toBeVisible()
+  })
+}
 
 function latestLogRequest(routes: RequestLogDisplayRoutes | RequestLogTableRoutes): URL {
   const request = routes.logRequests.at(-1)

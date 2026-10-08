@@ -15,7 +15,7 @@ const pages = [
   '/schedule',
 ]
 
-for (const width of [390, 1440, 1920]) {
+for (const width of [390, 900, 1440, 1920]) {
   test(`management page frames keep responsive gutters at ${width}px`, async ({
     page,
   }, testInfo) => {
@@ -32,9 +32,23 @@ for (const width of [390, 1440, 1920]) {
       if (path === '/api/groups') {
         data = {
           observed_at_ms: 1_730_000_000_000,
-          summary: { total: 0, available: 0, unavailable: 0, disabled: 0 },
-          items: [],
-          pagination: { page: 1, page_size: 100, total_items: 0, total_pages: 0 },
+          summary: { total: 1, available: 1, unavailable: 0, disabled: 0 },
+          items: [
+            {
+              id: 1,
+              name: 'Spacing group',
+              channel_id: 'openai',
+              connection_type: 'api_key',
+              params: {},
+              provider_url: null,
+              status: 'available',
+              model_count: 4,
+              client_model_count: 2,
+              credential_configured: false,
+              credential_status: null,
+            },
+          ],
+          pagination: { page: 1, page_size: 100, total_items: 1, total_pages: 1 },
         }
       }
       if (path === '/api/groups/1') {
@@ -54,6 +68,71 @@ for (const width of [390, 1440, 1920]) {
       }
       if (path === '/api/groups/1/credential') data = { credential: null, observation: null }
       if (path === '/api/groups/1/models') data = { items: [], total: 0, pending: 0 }
+      if (path === '/api/model-route/schedule')
+        data = {
+          items: [
+            {
+              external_model: 'worker',
+              protocol: 'openai-completions',
+              operation: 'chat_completion',
+              candidate_count: 1,
+              group_count: 1,
+              cooled_candidates: 0,
+              blacklisted_candidates: 0,
+            },
+          ],
+        }
+      if (path === '/api/model-route/schedule/detail')
+        data = {
+          observed_at_ms: 1_700_000_000_000,
+          snapshot_revision: 11,
+          external_model: 'worker',
+          protocol: 'openai-completions',
+          operation: 'chat_completion',
+          route_requirement: 'any',
+          access_key: { id: 7, name: 'e2e access key', status: 'active' },
+          routable: true,
+          reason_code: null,
+          groups: [
+            {
+              group_id: 1,
+              group_name: 'Spacing group',
+              channel_id: 'openai',
+              enabled: true,
+              request_count: 10,
+              success_rate: 1,
+              entries: [
+                {
+                  entry_id: 'entry-1',
+                  model_id: 'model-a',
+                  alias: '',
+                  weight: 50,
+                  priority: 1,
+                  enabled: true,
+                  circuit_breaker: {
+                    configured: { blacklist_threshold: null, cooldown_seconds: null },
+                    effective: { blacklist_threshold: 3, cooldown_seconds: 60 },
+                    sources: { blacklist_threshold: 'default', cooldown_seconds: 'default' },
+                  },
+                  reasoning: { configured: null, effective: null, source: 'provider_default' },
+                  runtime: {
+                    state: 'available',
+                    cooldown_until_ms: null,
+                    blacklist_release_at_ms: null,
+                    failure_count: 0,
+                    failure_version: 0,
+                  },
+                  included: true,
+                  routable: true,
+                  reason_code: null,
+                  configured_share: 1,
+                  effective_share: 1,
+                  credentials: [],
+                },
+              ],
+            },
+          ],
+        }
       // Error states retain the same page frame; full content is exercised by domain specs.
       const unavailable = [
         '/api/home',
@@ -69,7 +148,15 @@ for (const width of [390, 1440, 1920]) {
     })
 
     for (const path of pages) {
-      await page.goto(path)
+      await page.goto(path === '/schedule' ? '/schedule?schedule_model=worker' : path)
+      if (path === '/groups')
+        await expect(
+          page
+            .getByRole('table', { name: 'Group list' })
+            .getByText('Spacing group', { exact: true }),
+        ).toBeVisible()
+      if (path === '/schedule')
+        await expect(page.getByRole('table', { name: 'Schedule detail' })).toBeVisible()
       const root = page.locator('#main-content > :first-child')
       await expect(root, `page root for ${path} at ${width}px`).toBeVisible({ timeout: 60_000 })
       const geometry = await root.evaluate((element) => {
@@ -84,6 +171,8 @@ for (const width of [390, 1440, 1920]) {
           innerWidth: rect.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
           innerLeft: rect.left + parseFloat(style.paddingLeft),
           mainPadding: mainStyle.padding,
+          mainLeft: main.getBoundingClientRect().left,
+          mainWidth: main.getBoundingClientRect().width,
           overflow: Math.max(
             document.documentElement.scrollWidth,
             document.body.scrollWidth,
@@ -96,19 +185,27 @@ for (const width of [390, 1440, 1920]) {
       expect.soft(geometry.inline, `${path} gutter`).toBe(width === 390 ? 12 : 24)
       expect.soft(geometry.mainPadding, `${path} shell padding`).toBe('0px')
       expect.soft(geometry.overflow, `${path} horizontal overflow`).toBeLessThanOrEqual(width)
-      if (path === '/monitor' || path === '/logs' || path === '/groups/1') {
+      if (path === '/logs') {
+        const gutter = width === 390 ? 12 : 24
+        expect
+          .soft(geometry.innerWidth, `${path} fluid width`)
+          .toBe(geometry.mainWidth - gutter * 2)
+        expect.soft(geometry.innerLeft, `${path} fluid alignment`).toBe(geometry.mainLeft + gutter)
+      } else if (path === '/monitor' || path === '/groups/1') {
         const expectedWidth = Math.min(width - (width === 390 ? 24 : 48), 1240)
         expect.soft(geometry.innerWidth, `${path} content width`).toBe(expectedWidth)
         expect.soft(geometry.innerLeft, `${path} alignment`).toBe((width - expectedWidth) / 2)
       } else {
         const content = await root.locator(':scope > :first-child').boundingBox()
         expect(content, `${path} content frame`).not.toBeNull()
-        const expectedWidth = Math.min(
-          width - (width === 390 ? 24 : 48),
-          path === '/schedule' ? 1440 : 1240,
-        )
+        const fluid = path === '/groups' || path === '/schedule'
+        const expectedWidth = fluid
+          ? geometry.mainWidth - (width === 390 ? 24 : 48)
+          : Math.min(width - (width === 390 ? 24 : 48), 1240)
         expect.soft(content!.width, `${path} content width`).toBe(expectedWidth)
-        expect.soft(content!.x, `${path} alignment`).toBe((width - expectedWidth) / 2)
+        expect
+          .soft(content!.x, `${path} alignment`)
+          .toBe(fluid ? geometry.mainLeft + (width === 390 ? 12 : 24) : (width - expectedWidth) / 2)
       }
       await page.screenshot({
         path: testInfo.outputPath(`${path.replaceAll('/', '_') || 'home'}.png`),

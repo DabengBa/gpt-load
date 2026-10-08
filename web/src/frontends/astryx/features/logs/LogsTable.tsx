@@ -47,29 +47,27 @@ import { PricingModeIndicator } from '../monitor/PricingModeIndicator'
 const TABLET = '@media (max-width: 1080px)'
 const CARD = '@media (max-width: 860px)'
 
-// Desktop grids — classic `--ledger-record-list-grid` values verbatim; TABLET
-// is the classic 1080px tighten, CARD is the 860px card layout.
+// Keep domain-specific track widths with room for balanced Table cell padding.
+// CARD retains the existing 860px card layout and label/value subgrid.
 const ADMIN_GRID =
-  '72px minmax(120px, 0.82fr) minmax(120px, 0.82fr) minmax(170px, 1.15fr) 96px minmax(76px, 0.42fr) minmax(104px, 0.6fr) 100px 34px'
+  '96px minmax(144px, 0.82fr) minmax(144px, 0.82fr) minmax(194px, 1.15fr) 120px minmax(100px, 0.42fr) minmax(128px, 0.6fr) 124px 58px'
 const ADMIN_GRID_TABLET =
-  '68px minmax(108px, 0.78fr) minmax(108px, 0.78fr) minmax(150px, 1.1fr) 92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px'
+  '92px minmax(132px, 0.78fr) minmax(132px, 0.78fr) minmax(174px, 1.1fr) 116px minmax(96px, 0.42fr) minmax(120px, 0.58fr) 120px 56px'
 const SCOPED_GRID =
-  '72px minmax(170px, 1.15fr) 96px minmax(76px, 0.42fr) minmax(104px, 0.6fr) 100px 34px'
+  '96px minmax(194px, 1.15fr) 120px minmax(100px, 0.42fr) minmax(128px, 0.6fr) 124px 58px'
 const SCOPED_GRID_TABLET =
-  '68px minmax(150px, 1.1fr) 92px minmax(72px, 0.42fr) minmax(96px, 0.58fr) 96px 32px'
+  '92px minmax(174px, 1.1fr) 116px minmax(96px, 0.42fr) minmax(120px, 0.58fr) 120px 56px'
 
 const styles = stylex.create({
   // LedgerRecordList port: the container is the grid.
   list: {
     display: 'grid',
     minWidth: 0,
-    columnGap: { default: 14, [CARD]: 14 },
+    columnGap: { default: 0, [CARD]: 14 },
     rowGap: { [CARD]: 10 },
     overflowX: { default: 'auto', [CARD]: 'visible' },
     overflowY: { default: 'hidden', [CARD]: 'visible' },
-    borderBottomWidth: { default: 1, [CARD]: 0 },
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-control)',
+
     paddingTop: { [CARD]: 10 },
   },
   listAdmin: {
@@ -90,16 +88,21 @@ const styles = stylex.create({
     display: { default: 'grid', [CARD]: 'none' },
     gridColumn: '1 / -1',
     gridTemplateColumns: 'subgrid',
-    alignItems: 'center',
-    minHeight: 38,
-    color: 'var(--color-text-faint)',
+    alignItems: 'stretch',
+    color: 'var(--color-text-secondary)',
     fontSize: 'var(--text-sm)',
-    fontWeight: 500,
-    letterSpacing: '0.04em',
+    fontWeight: 600,
   },
   headCell: {
+    display: 'grid',
+    alignContent: 'center',
     justifySelf: 'stretch',
     textAlign: 'left',
+    paddingBlock: 8,
+    paddingInline: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'var(--color-border)',
   },
   record: {
     position: 'relative',
@@ -116,7 +119,7 @@ const styles = stylex.create({
     rowGap: { [CARD]: 10 },
     columnGap: { [CARD]: 14 },
     borderStyle: 'solid',
-    borderTopWidth: 1,
+    borderTopWidth: { default: 0, [CARD]: 1 },
     borderRightWidth: { default: 0, [CARD]: 1 },
     borderBottomWidth: { default: 0, [CARD]: 1 },
     borderLeftWidth: { default: 0, [CARD]: 1 },
@@ -124,13 +127,17 @@ const styles = stylex.create({
     borderRadius: { [CARD]: 'var(--radius-control)' },
     backgroundColor: {
       default: 'transparent',
-      ':hover': 'var(--color-surface-sunken)',
+      ':hover': {
+        default: 'var(--color-overlay-hover)',
+        [CARD]: 'var(--color-surface-sunken)',
+      },
     },
-    paddingBlock: { default: 8, [CARD]: 14 },
+    paddingBlock: { default: 0, [CARD]: 14 },
     paddingInline: { [CARD]: 14 },
     transitionProperty: 'background-color',
     transitionDuration: 'var(--duration-fast)',
     transitionTimingFunction: 'var(--easing-standard)',
+    '--logs-row-divider': { default: '1px', ':last-child': '0px' },
   },
   recordFirst: {
     borderTopColor: {
@@ -142,9 +149,16 @@ const styles = stylex.create({
     display: 'grid',
     minWidth: 0,
     gap: 4,
-    color: 'var(--color-text)',
-    fontSize: 'var(--text-sm)',
+    color: 'var(--color-text-primary)',
+    fontSize: { default: 'var(--text-body)', [CARD]: 'var(--text-sm)' },
     fontWeight: 400,
+    paddingBlock: { default: 8, [CARD]: 0 },
+    paddingInline: { default: 12, [CARD]: 0 },
+    borderBottomWidth: { default: 'var(--logs-row-divider)', [CARD]: 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'var(--color-border)',
+    alignSelf: 'stretch',
+    alignContent: 'center',
     gridColumn: { [CARD]: '1 / -1' },
     gridTemplateColumns: { [CARD]: 'subgrid' },
     alignItems: { [CARD]: 'start' },
@@ -914,7 +928,7 @@ const LogRow = memo(function LogRow({
         </span>
       </div>
 
-      <div role="cell" {...stylex.props(styles.action)}>
+      <div role="cell" {...stylex.props(styles.cell, styles.action)}>
         <CellLabel>{t('monitor.logs.columns.actions')}</CellLabel>
         <span {...stylex.props(styles.cellValue, styles.actionValue)}>
           <IconButton

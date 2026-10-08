@@ -242,6 +242,191 @@ async function waitForScheduleDetailReady(page: Page): Promise<void> {
 
 const rows = (page: Page) => page.locator('[data-row-key]')
 
+test('sticky schedule header has opaque background over scrolled rows', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const table = page.getByRole('table', { name: 'Schedule detail' })
+  const header = table.getByRole('row').first()
+  const wrap = table.locator('xpath=..')
+  await wrap.evaluate((element) => {
+    element.style.height = '120px'
+    element.style.maxHeight = '120px'
+  })
+  expect(await wrap.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
+  await wrap.evaluate((element) => {
+    element.scrollTop = 60
+  })
+  await expect.poll(() => wrap.evaluate((element) => element.scrollTop)).toBe(60)
+  const coverage = await header.evaluate((element) => {
+    const css = getComputedStyle(element)
+    const rect = element.getBoundingClientRect()
+    const wrapper = element.parentElement!.parentElement!
+    const top = wrapper.getBoundingClientRect().top + wrapper.clientTop
+    const probe = document.createElement('span')
+    probe.style.backgroundColor = 'var(--color-surface-sunken)'
+    element.append(probe)
+    const expectedBackground = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    const x = rect.left + 110
+    const y = rect.top + rect.height / 2
+    const underlyingRow = Array.from(
+      element.parentElement!.querySelectorAll('[data-row-key]'),
+    ).some((row) => {
+      const bounds = row.getBoundingClientRect()
+      return bounds.top < y && bounds.bottom > y
+    })
+    return {
+      position: css.position,
+      background: css.backgroundColor,
+      expectedBackground,
+      pinned: Math.abs(rect.top - top) < 1,
+      headerOnTop: element.contains(document.elementFromPoint(x, y)),
+      underlyingRow,
+    }
+  })
+  await testInfo.attach('sticky-header-coverage', {
+    body: JSON.stringify(coverage, null, 2),
+    contentType: 'application/json',
+  })
+  expect(coverage.position).toBe('sticky')
+  expect(coverage.pinned).toBe(true)
+  expect(coverage.underlyingRow).toBe(true)
+  expect(coverage.headerOnTop).toBe(true)
+  expect(coverage.background).toBe(coverage.expectedBackground)
+  expect(coverage.background).toMatch(/^rgb\(/)
+  await page.screenshot({
+    path: testInfo.outputPath('schedule-sticky-scrolled.png'),
+    fullPage: true,
+  })
+})
+
+test('schedule table matches populated groups density and hover', async ({ page }, testInfo) => {
+  await installScheduleRoutes(page)
+  await page.route('**/api/groups?*', async (route) => {
+    await route.fulfill(
+      response({
+        observed_at_ms: 1_700_000_000_000,
+        summary: { total: 2, available: 2, unavailable: 0, disabled: 0 },
+        items: [1, 2].map((id) => ({
+          id,
+          name: `Group ${id}`,
+          channel_id: 'openai',
+          connection_type: 'api_key',
+          params: {},
+          provider_url: null,
+          status: 'available',
+          model_count: 4,
+          client_model_count: 2,
+          credential_configured: true,
+          credential_status: 'available',
+        })),
+        pagination: { page: 1, page_size: 100, total_items: 2, total_pages: 1 },
+      }),
+    )
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/groups', { waitUntil: 'commit' })
+  const groups = page.getByRole('table', { name: 'Group list' })
+  await expect(groups).toBeVisible({ timeout: 60_000 })
+  const readCell = (element: Element) => {
+    const css = getComputedStyle(element)
+    return { paddingTop: css.paddingTop, paddingLeft: css.paddingLeft, fontSize: css.fontSize }
+  }
+  const body = await groups.locator('tbody tr').first().locator('td').nth(1).evaluate(readCell)
+  const header = await groups.locator('th').nth(1).evaluate(readCell)
+  const border = await groups
+    .locator('tbody tr')
+    .first()
+    .locator('td')
+    .nth(1)
+    .evaluate((element) => getComputedStyle(element).borderBottomColor)
+  await groups.locator('tbody tr').first().hover()
+  await expect
+    .poll(() =>
+      groups
+        .locator('tbody tr')
+        .first()
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+    )
+    .toBe(
+      await groups.evaluate((element) => {
+        const probe = document.createElement('span')
+        probe.style.backgroundColor = 'var(--color-overlay-hover)'
+        element.append(probe)
+        const color = getComputedStyle(probe).backgroundColor
+        probe.remove()
+        return color
+      }),
+    )
+  const hover = await groups
+    .locator('tbody tr')
+    .first()
+    .evaluate((element) => getComputedStyle(element).backgroundColor)
+  await testInfo.attach('groups-computed-styles', {
+    body: JSON.stringify({ body, header, border, hover }, null, 2),
+    contentType: 'application/json',
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const table = page.getByRole('table', { name: 'Schedule detail' })
+  for (const width of [1440, 900, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    if (width === 900) {
+      expect(
+        await table
+          .locator('xpath=..')
+          .evaluate((element) => element.scrollWidth > element.clientWidth),
+      ).toBe(true)
+    }
+    expect(await rows(page).first().getByRole('cell').nth(1).evaluate(readCell)).toEqual(body)
+    expect(await table.getByRole('columnheader').nth(1).evaluate(readCell)).toEqual(header)
+    expect(
+      await rows(page)
+        .first()
+        .evaluate((element) => getComputedStyle(element).borderBottomColor),
+    ).toBe(border)
+    await rows(page).first().hover()
+    await expect
+      .poll(() =>
+        rows(page)
+          .first()
+          .evaluate((element) => getComputedStyle(element).backgroundColor),
+      )
+      .toBe(hover)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.screenshot({
+      path: testInfo.outputPath(`schedule-balanced-${width}.png`),
+      fullPage: true,
+    })
+  }
+  await page.setViewportSize({ width: 390, height: 900 })
+  await expect(rows(page).first().getByText('Priority', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await page.screenshot({ path: testInfo.outputPath('schedule-balanced-390.png'), fullPage: true })
+})
+
+test('schedule visible typography keeps metadata and controls readable', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await page.setViewportSize({ width: 390, height: 900 })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const row = rows(page).first()
+  const sizes = await row.evaluate((element) => ({
+    cell: getComputedStyle(element.querySelector('[role="cell"]')!).fontSize,
+    metadata: getComputedStyle(element.querySelector('small')!).fontSize,
+    priority: getComputedStyle(element.querySelector('input')!).fontSize,
+  }))
+  expect(sizes.cell).toBe('13.5px')
+  expect(sizes.metadata).toBe('12px')
+  expect(sizes.priority).toBe('12px')
+})
+
 test('schedule stays within desktop and mobile viewport bounds', async ({ page }, testInfo) => {
   await installScheduleRoutes(page)
   await openSchedule(page, '?schedule_model=worker')

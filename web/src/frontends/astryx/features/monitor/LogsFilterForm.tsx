@@ -1,11 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import {
-  Button,
-  DateTimeInput,
-  Selector,
-  TextInput,
-  type ISODateTimeString,
-} from '@astryxdesign/core'
+import { Button, Selector, TextInput } from '@astryxdesign/core'
 import { ListFilter, X } from 'lucide-react'
 import { useMemo, type FormEvent, type JSX } from 'react'
 
@@ -19,10 +13,10 @@ import {
 import type { MessageId } from '@shared/i18n/message-ids'
 import {
   currentTimeZone,
-  dateTimePresets,
+  timeRanges,
   localDateTimeInput,
   resolveDateTimePreset,
-  type DateTimePreset,
+  type TimeRange,
 } from '@shared/lib/time'
 
 import { useT } from '../../app/i18n'
@@ -103,31 +97,7 @@ const styles = stylex.create({
     gap: 'var(--space-2)',
     padding: 'var(--space-2-5)',
   },
-  // The classic AppDateTimeRangePicker trigger becomes a from/to DateTimeInput
-  // pair (the spike LogsView mapping) wrapped in a labelled group.
-  timeRange: {
-    display: 'flex',
-    minWidth: 0,
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
-    gap: 'var(--space-2)',
-    gridColumn: {
-      default: 'auto',
-      [NARROW]: '1 / -1',
-    },
-  },
-  timeField: {
-    display: 'block',
-    minWidth: 0,
-    width: {
-      default: 280,
-      [NARROW]: '100%',
-    },
-  },
-  dateTimeLayout: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr)',
-  },
+
   // Field wrappers carry the classic fixed/flex widths; controls fill them
   // via width="100%". At <=560px each spans the full two-column grid row.
   fieldGroup: {
@@ -222,7 +192,7 @@ const styles = stylex.create({
 // functional state updates). Module scope keeps the `Date.now()` read out of
 // render scope (react-hooks/purity).
 function selectPreset(
-  preset: DateTimePreset,
+  preset: TimeRange,
   updateField: (field: keyof LogFilterDraft, value: string) => void,
 ): void {
   const range = resolveDateTimePreset(preset, Math.floor(Date.now() / 1000) * 1000)
@@ -263,9 +233,7 @@ export interface LogsFilterFormProps {
 
 /**
  * Quick request-log filter bar — classic LogsFilterForm.vue. The
- * AppDateTimeRangePicker popover (calendar + time fields + preset shortcuts +
- * timezone note) maps onto a from/to DateTimeInput pair plus a preset chip
- * row, the same substitution the spike LogsView made. SearchableSelect maps
+ * Time presets update the draft and Apply commits the range. SearchableSelect maps
  * to Selector hasSearch; AppSelect to Selector; compact size to `sm`. DS
  * field labels stay hidden (`isLabelHidden`) to keep the classic single-bar
  * density — each `label` still supplies the accessible name. Failure flags
@@ -340,16 +308,6 @@ export function LogsFilterForm({
     onApply()
   }
 
-  const dateTimeInputProps = {
-    hasSeconds: true,
-    hourFormat: '24h' as const,
-    hasClear: true,
-    isLabelHidden: true,
-    size: 'sm' as const,
-    width: '100%' as const,
-    xstyle: styles.dateTimeLayout,
-  }
-
   return (
     <>
       <form
@@ -376,39 +334,6 @@ export function LogsFilterForm({
         )}
 
         <div {...stylex.props(styles.row)}>
-          <div
-            {...stylex.props(styles.timeRange)}
-            role="group"
-            aria-label={t('monitor.logs.filters.timeRange')}
-          >
-            <span {...stylex.props(styles.timeField)}>
-              <DateTimeInput
-                {...dateTimeInputProps}
-                label={t('monitor.logs.filters.from')}
-                value={(draft.from || undefined) as ISODateTimeString | undefined}
-                onChange={(value) => onUpdateField('from', value ?? '')}
-                status={
-                  errors.from !== undefined && errors.from !== ''
-                    ? { type: 'error', message: t(errors.from as MessageId) }
-                    : undefined
-                }
-              />
-            </span>
-            <span {...stylex.props(styles.timeField)}>
-              <DateTimeInput
-                {...dateTimeInputProps}
-                label={t('monitor.logs.filters.to')}
-                value={(draft.to || undefined) as ISODateTimeString | undefined}
-                onChange={(value) => onUpdateField('to', value ?? '')}
-                status={
-                  errors.to !== undefined && errors.to !== ''
-                    ? { type: 'error', message: t(errors.to as MessageId) }
-                    : undefined
-                }
-              />
-            </span>
-          </div>
-
           {selfScoped !== true && (
             <span {...stylex.props(styles.fieldGroup)}>
               <Selector
@@ -515,7 +440,7 @@ export function LogsFilterForm({
           role="group"
           aria-label={t('monitor.logs.filters.quickRanges')}
         >
-          {dateTimePresets.map((preset) => (
+          {timeRanges.map((preset) => (
             <Button
               key={preset}
               type="button"
