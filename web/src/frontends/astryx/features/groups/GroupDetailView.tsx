@@ -44,11 +44,11 @@ const spin = stylex.keyframes({
 const styles = stylex.create({
   page: {
     display: 'grid',
-    width: 'min(100%, 1288px)',
+    width: '100%',
     minWidth: 0,
     marginInline: 'auto',
     alignContent: 'start',
-    gap: 'var(--space-4)',
+    gap: 'var(--space-2)',
     paddingTop: 'var(--stage-padding-top)',
     paddingBottom: 'var(--stage-padding-bottom)',
     paddingInline: {
@@ -70,18 +70,23 @@ const styles = stylex.create({
   },
   credentials: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr)',
+    gridTemplateColumns: {
+      default: 'auto minmax(0, 1fr)',
+      '@media (max-width: 640px)': 'minmax(0, 1fr)',
+    },
+    alignItems: 'center',
+    columnGap: 'var(--space-3)',
     rowGap: '8px',
     borderTopWidth: '1px',
     borderTopStyle: 'solid',
     borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: { default: '12px', '@media (max-width: 640px)': '10px' },
-    paddingBottom: { default: '12px', '@media (max-width: 640px)': '10px' },
+    paddingTop: 'var(--space-2)',
+    paddingBottom: 'var(--space-2)',
   },
   credentialList: {
     display: 'grid',
     minWidth: 0,
-    gridColumn: '1',
+    gridColumn: { default: '2', '@media (max-width: 640px)': '1' },
     gap: 6,
   },
   credentialRow: {
@@ -133,7 +138,7 @@ const styles = stylex.create({
     boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
   },
   empty: {
-    gridColumn: '1',
+    gridColumn: { default: '2', '@media (max-width: 640px)': '1' },
     margin: 0,
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-sm)',

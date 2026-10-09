@@ -18,7 +18,7 @@ import { useIntl } from 'react-intl'
 import type { ChannelDto } from '@shared/control/resources/channels'
 import type { RequestLogItemDto } from '@shared/control/resources/request-logs'
 import {
-  formatLogDuration,
+  formatLogProviderTiming,
   formatLogOutputRate,
   formatLogReasoning,
   formatLogTokenCount,
@@ -47,7 +47,7 @@ import { PricingModeIndicator } from '../monitor/PricingModeIndicator'
 const TABLET = '@media (max-width: 1080px)'
 const CARD = '@media (max-width: 860px)'
 
-// Keep domain-specific track widths with room for balanced Table cell padding.
+// Keep domain-specific track widths with room for compact Table cell padding.
 // CARD retains the existing 860px card layout and label/value subgrid.
 const ADMIN_GRID =
   '96px minmax(144px, 0.82fr) minmax(144px, 0.82fr) minmax(194px, 1.15fr) 120px minmax(100px, 0.42fr) minmax(128px, 0.6fr) 124px 58px'
@@ -89,17 +89,15 @@ const styles = stylex.create({
     gridColumn: '1 / -1',
     gridTemplateColumns: 'subgrid',
     alignItems: 'stretch',
-    color: 'var(--color-text-secondary)',
-    fontSize: 'var(--text-sm)',
-    fontWeight: 600,
+
   },
   headCell: {
     display: 'grid',
     alignContent: 'center',
     justifySelf: 'stretch',
     textAlign: 'left',
-    paddingBlock: 8,
-    paddingInline: 12,
+    paddingBlock: 4,
+    paddingInline: 8,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: 'var(--color-border)',
@@ -115,7 +113,7 @@ const styles = stylex.create({
       [CARD]: 'minmax(104px, 0.42fr) minmax(0, 1.58fr)',
     },
     alignItems: { default: 'center', [CARD]: 'start' },
-    minHeight: { default: 52, [CARD]: 0 },
+    minHeight: { default: 44, [CARD]: 0 },
     rowGap: { [CARD]: 10 },
     columnGap: { [CARD]: 14 },
     borderStyle: 'solid',
@@ -125,13 +123,7 @@ const styles = stylex.create({
     borderLeftWidth: { default: 0, [CARD]: 1 },
     borderColor: 'var(--color-border-subtle)',
     borderRadius: { [CARD]: 'var(--radius-control)' },
-    backgroundColor: {
-      default: 'transparent',
-      ':hover': {
-        default: 'var(--color-overlay-hover)',
-        [CARD]: 'var(--color-surface-sunken)',
-      },
-    },
+
     paddingBlock: { default: 0, [CARD]: 14 },
     paddingInline: { [CARD]: 14 },
     transitionProperty: 'background-color',
@@ -152,8 +144,8 @@ const styles = stylex.create({
     color: 'var(--color-text-primary)',
     fontSize: { default: 'var(--text-body)', [CARD]: 'var(--text-sm)' },
     fontWeight: 400,
-    paddingBlock: { default: 8, [CARD]: 0 },
-    paddingInline: { default: 12, [CARD]: 0 },
+    paddingBlock: { default: 4, [CARD]: 0 },
+    paddingInline: { default: 8, [CARD]: 0 },
     borderBottomWidth: { default: 'var(--logs-row-divider)', [CARD]: 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: 'var(--color-border)',
@@ -588,10 +580,7 @@ const LogRow = memo(function LogRow({
     return details.join('\n')
   }
 
-  const timingPrimary =
-    log.stream && log.first_response_ms !== null
-      ? `${formatLogDuration(log.first_response_ms)} / ${formatLogDuration(log.duration_ms)}`
-      : formatLogDuration(log.duration_ms)
+  const timingPrimary = formatLogProviderTiming(log)
 
   const costState = requestLogCostDisplayState(log)
   const costLabel =
@@ -909,15 +898,7 @@ const LogRow = memo(function LogRow({
                     : null,
               )}
             >
-              {log.stream && log.first_response_ms !== null ? (
-                <>
-                  {formatLogDuration(log.first_response_ms)}
-                  <span aria-hidden> / </span>
-                  {formatLogDuration(log.duration_ms)}
-                </>
-              ) : (
-                formatLogDuration(log.duration_ms)
-              )}
+              {timingPrimary}
             </span>
           </Tooltip>
           {outputRate !== '—' && (

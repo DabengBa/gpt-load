@@ -140,8 +140,8 @@ const styles = stylex.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    gap: 'var(--space-3)',
-    paddingBottom: 'var(--space-4)',
+    gap: 'var(--space-2)',
+    paddingBottom: 'var(--space-2)',
   },
   heading: {
     display: 'flex',
@@ -173,10 +173,6 @@ const styles = stylex.create({
       '@media (max-width: 480px)': 'repeat(2, minmax(0, 1fr))',
     },
     gap: 'var(--space-1)',
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-control)',
-    paddingBottom: 'var(--space-2)',
   },
   summaryFilter: {
     display: 'flex',
@@ -232,8 +228,8 @@ const styles = stylex.create({
       '@media (max-width: 480px)': 'minmax(0, 1fr)',
     },
     alignItems: 'end',
-    gap: 'var(--space-3)',
-    paddingTop: 'var(--space-4)',
+    gap: 'var(--space-2)',
+    paddingTop: 'var(--space-2)',
   },
   toolbarField: {
     minWidth: 0,
@@ -252,13 +248,13 @@ const styles = stylex.create({
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 'var(--space-2)',
-    minHeight: 34,
+    minHeight: 30,
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-meta)',
     fontVariantNumeric: 'tabular-nums',
   },
   staleBanner: {
-    marginTop: 14,
+    marginTop: 'var(--space-2)',
     borderRadius: 'var(--radius-control, 6px)',
     borderWidth: 1,
     borderStyle: 'solid',
@@ -274,15 +270,11 @@ const styles = stylex.create({
   },
   skeletonGrid: {
     display: 'grid',
-    gap: 10,
-    paddingTop: 14,
+    gap: 'var(--space-2)',
+    paddingTop: 'var(--space-2)',
   },
   tableWrap: {
-    backgroundColor: 'var(--color-surface)',
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-control)',
-    marginTop: 'var(--space-2)',
+    marginTop: 'var(--space-1)',
     minWidth: 0,
   },
   nameCell: {
@@ -1069,7 +1061,7 @@ export function GroupsView() {
                   <Table<GroupRow>
                     data={data.items as GroupRow[]}
                     columns={columns}
-                    density="balanced"
+                    density="compact"
                     dividers="rows"
                     hasHover
                     textOverflow="truncate"

@@ -53,6 +53,7 @@ function detail(receipt: Record<string, unknown>) {
     stream: false,
     first_response_ms: null,
     duration_ms: 1,
+    final_attempt_duration_ms: 1,
     attempt_count: 1,
     error_code: '',
     error_summary: '',

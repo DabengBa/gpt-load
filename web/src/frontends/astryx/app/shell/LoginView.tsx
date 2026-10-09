@@ -1,7 +1,9 @@
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
 import { Collapsible } from '@astryxdesign/core/Collapsible'
+
 import { IconButton } from '@astryxdesign/core/IconButton'
+import { InputGroup } from '@astryxdesign/core/InputGroup'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import * as stylex from '@stylexjs/stylex'
 import { useRouter, useSearch } from '@tanstack/react-router'
@@ -130,14 +132,27 @@ const styles = stylex.create({
     gap: '14px',
     marginTop: '22px',
   },
-  inputWrap: {
-    position: 'relative',
+  inputGroup: {
+    width: '100%',
+    boxSizing: 'border-box',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: {
+      default: 'var(--color-border-emphasized)',
+      ':focus-within': 'var(--color-accent)',
+    },
+    borderRadius: 'var(--radius-element)',
+    backgroundColor: 'var(--color-background-surface)',
+    height: { default: '34px', '@media (max-width: 860px)': '44px' },
+  },
+  groupedInput: {
+    borderWidth: 0,
+    boxShadow: { default: 'none', ':focus-within': 'none', ':hover': 'none' },
   },
   reveal: {
-    position: 'absolute',
-    top: '50%',
-    right: '6px',
-    transform: 'translateY(-50%)',
+    alignSelf: 'center',
+    flexShrink: 0,
+    marginRight: '2px',
   },
   sessionNote: {
     margin: 0,
@@ -360,9 +375,14 @@ export function LoginView() {
             <p {...stylex.props(styles.authDescription)}>{t('auth.loginDescription')}</p>
 
             <form {...stylex.props(styles.form)} noValidate onSubmit={onSubmit}>
-              <div {...stylex.props(styles.inputWrap)}>
+              <InputGroup
+                label={t('auth.keyLabel')}
+                isDisabled={controlsDisabled}
+                xstyle={styles.inputGroup}
+              >
                 <TextInput
-                  label={t('auth.keyLabel')}
+                  label=""
+                  xstyle={styles.groupedInput}
                   htmlName="auth-key"
                   type={visible ? 'text' : 'password'}
                   autoComplete="current-password"
@@ -378,7 +398,7 @@ export function LoginView() {
                   ref={inputRef}
                 />
                 <IconButton
-                  {...stylex.props(styles.reveal)}
+                  xstyle={styles.reveal}
                   label={visible ? t('auth.conceal') : t('auth.reveal')}
                   icon={visible ? <EyeOff size={15} aria-hidden /> : <Eye size={15} aria-hidden />}
                   variant="ghost"
@@ -386,7 +406,7 @@ export function LoginView() {
                   isDisabled={controlsDisabled}
                   onClick={() => setVisible((current) => !current)}
                 />
-              </div>
+              </InputGroup>
 
               {feedbackMessage !== '' && (
                 <div id="auth-feedback">

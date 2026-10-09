@@ -154,16 +154,36 @@ function firstScreenExpectation(status, status_code, attempt_count, reason = {})
 }
 
 const CASES = [
+  {
+    name: 'list timing excludes the failed provider wait',
+    run: (m) => m.formatLogProviderTiming(item({stream: true, first_response_ms: 13000, duration_ms: 18000, provider_first_response_ms: 3000, final_attempt_duration_ms: 8000})),
+    expect: '3.0s / 8.0s',
+  },
+  {
+    name: 'list timing without attempts does not substitute request duration',
+    run: (m) => m.formatLogProviderTiming(item({stream: true, duration_ms: 18000, final_attempt_duration_ms: null})),
+    expect: '—',
+  },
+  {
+    name: 'output rate uses final provider measurement, not the whole retry chain',
+    run: (m) => m.formatLogOutputRate(item({stream: true, first_response_ms: 13000, duration_ms: 18000, output_tokens: '100', provider_tokens_per_second: 25}), 'en-US'),
+    expect: '25 t/s',
+  },
+  {
+    name: 'missing provider output rate stays unavailable',
+    run: (m) => m.formatLogOutputRate(item({stream: true, first_response_ms: 13000, duration_ms: 18000, output_tokens: '100'}), 'en-US'),
+    expect: '—',
+  },
   ...[
-    [0, '0s'],
-    [1, '0.001s'],
+    [0, '0.0s'],
+    [1, '0.0s'],
     [500, '0.5s'],
-    [999, '0.999s'],
-    [1000, '1s'],
-    [6360, '6.36s'],
+    [999, '1.0s'],
+    [1000, '1.0s'],
+    [6360, '6.4s'],
     [17500, '17.5s'],
-    [60000, '60s'],
-    [3600123, '3600.123s'],
+    [60000, '60.0s'],
+    [3600123, '3600.1s'],
     [-1, '—'],
     [NaN, '—'],
   ].map(([milliseconds, expected]) => ({

@@ -16,7 +16,7 @@ const pages = [
 ]
 
 for (const width of [390, 900, 1440, 1920]) {
-  test(`management page frames keep responsive gutters at ${width}px`, async ({
+  test(`management pages use compact gutters and available content width at ${width}px`, async ({
     page,
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })
@@ -164,15 +164,26 @@ for (const width of [390, 900, 1440, 1920]) {
         const rect = element.getBoundingClientRect()
         const main = document.querySelector('#main-content')!
         const mainStyle = getComputedStyle(main)
+        const content = Array.from(element.children)
+          .filter((child) => {
+            const childStyle = getComputedStyle(child)
+            return childStyle.position !== 'absolute' && childStyle.position !== 'fixed'
+          })
+          .map((child) => child.getBoundingClientRect())
+          .filter((child) => child.width > 0 && child.height > 0)
         return {
           top: parseFloat(style.paddingTop),
           bottom: parseFloat(style.paddingBottom),
-          inline: parseFloat(style.paddingLeft),
+          leftPadding: parseFloat(style.paddingLeft),
+          rightPadding: parseFloat(style.paddingRight),
           innerWidth: rect.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
           innerLeft: rect.left + parseFloat(style.paddingLeft),
           mainPadding: mainStyle.padding,
           mainLeft: main.getBoundingClientRect().left,
           mainWidth: main.getBoundingClientRect().width,
+          content: content.map((child) => ({ left: child.left, width: child.width })),
+          leadingSpace: Math.min(...content.map((child) => child.top)) - rect.top,
+          trailingSpace: rect.bottom - Math.max(...content.map((child) => child.bottom)),
           overflow: Math.max(
             document.documentElement.scrollWidth,
             document.body.scrollWidth,
@@ -180,32 +191,45 @@ for (const width of [390, 900, 1440, 1920]) {
           ),
         }
       })
-      expect.soft(geometry.top, `${path} top`).toBe(width === 390 ? 16 : 26)
-      expect.soft(geometry.bottom, `${path} bottom`).toBe(width === 390 ? 40 : 60)
-      expect.soft(geometry.inline, `${path} gutter`).toBe(width === 390 ? 12 : 24)
+      // Dense table/report pages use 16px; the remaining forms retain 24px.
+      // Bound vertical whitespace too: full-width wrappers must not hide an
+      // obsolete minimum height or a large empty area before/after content.
+      const gutter = width === 390 ? 12 : ['/', '/monitor', '/schedule'].includes(path) ? 16 : 24
+      expect.soft(geometry.leftPadding, `${path} left gutter`).toBe(gutter)
+      expect.soft(geometry.rightPadding, `${path} right gutter`).toBe(gutter)
+      for (const [name, value, max] of [
+        ['top', geometry.top, 26],
+        ['bottom', geometry.bottom, 60],
+      ] as const) {
+        expect.soft(value, `${path} ${name}: sufficient spacing`).toBeGreaterThanOrEqual(12)
+        expect.soft(value, `${path} ${name}: no excessive whitespace`).toBeLessThanOrEqual(max)
+      }
+      // Empty portal targets may leave one grid gap. Keep this separate from
+      // page padding so a large minimum-height spacer still fails.
+      for (const [name, extra] of [
+        ['leading', geometry.leadingSpace - geometry.top],
+        ['trailing', geometry.trailingSpace - geometry.bottom],
+      ] as const) {
+        expect
+          .soft(extra, `${path} ${name} content stays inside padding`)
+          .toBeGreaterThanOrEqual(-1)
+        expect.soft(extra, `${path} ${name} extra whitespace`).toBeLessThanOrEqual(16)
+      }
       expect.soft(geometry.mainPadding, `${path} shell padding`).toBe('0px')
       expect.soft(geometry.overflow, `${path} horizontal overflow`).toBeLessThanOrEqual(width)
-      if (path === '/logs') {
-        const gutter = width === 390 ? 12 : 24
+      const expectedWidth = geometry.mainWidth - gutter * 2
+      expect.soft(geometry.innerWidth, `${path} available width`).toBeCloseTo(expectedWidth, 0)
+      expect
+        .soft(geometry.innerLeft, `${path} alignment`)
+        .toBeCloseTo(geometry.mainLeft + gutter, 0)
+      expect(geometry.content.length, `${path} visible content`).toBeGreaterThan(0)
+      for (const [index, content] of geometry.content.entries()) {
         expect
-          .soft(geometry.innerWidth, `${path} fluid width`)
-          .toBe(geometry.mainWidth - gutter * 2)
-        expect.soft(geometry.innerLeft, `${path} fluid alignment`).toBe(geometry.mainLeft + gutter)
-      } else if (path === '/monitor' || path === '/groups/1') {
-        const expectedWidth = Math.min(width - (width === 390 ? 24 : 48), 1240)
-        expect.soft(geometry.innerWidth, `${path} content width`).toBe(expectedWidth)
-        expect.soft(geometry.innerLeft, `${path} alignment`).toBe((width - expectedWidth) / 2)
-      } else {
-        const content = await root.locator(':scope > :first-child').boundingBox()
-        expect(content, `${path} content frame`).not.toBeNull()
-        const fluid = path === '/groups' || path === '/schedule'
-        const expectedWidth = fluid
-          ? geometry.mainWidth - (width === 390 ? 24 : 48)
-          : Math.min(width - (width === 390 ? 24 : 48), 1240)
-        expect.soft(content!.width, `${path} content width`).toBe(expectedWidth)
+          .soft(content.width, `${path} content ${index} occupies available width`)
+          .toBeCloseTo(expectedWidth, 0)
         expect
-          .soft(content!.x, `${path} alignment`)
-          .toBe(fluid ? geometry.mainLeft + (width === 390 ? 12 : 24) : (width - expectedWidth) / 2)
+          .soft(content.left, `${path} content ${index} alignment`)
+          .toBeCloseTo(geometry.mainLeft + gutter, 0)
       }
       await page.screenshot({
         path: testInfo.outputPath(`${path.replaceAll('/', '_') || 'home'}.png`),

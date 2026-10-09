@@ -48,6 +48,51 @@ const adminNav = [
 ] as const
 const accessKeyNav = ['Home', 'Dispatch center', 'Monitor', 'Request logs'] as const
 
+for (const width of [1280, 390]) {
+  test(`login reveal stays inside the input and toggles safely at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route('**/api/auth/session', async (route) => {
+      await pending
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'UNAUTHORIZED', message: 'invalid' }),
+      })
+    })
+    await page.goto('/login')
+    const input = page.getByLabel('Sign-in key', { exact: true }).and(page.locator('input'))
+    const reveal = page.getByRole('button', { name: 'Show sign-in key', exact: true })
+    await input.fill('regression-key')
+    const field = await input.locator('..').locator('..').boundingBox()
+    const button = await reveal.boundingBox()
+    expect(field).not.toBeNull()
+    expect(button).not.toBeNull()
+    if (!field || !button) throw new Error('LOGIN_CONTROL_GEOMETRY_MISSING')
+    console.log(JSON.stringify({ width, field, button }))
+    expect(button.y).toBeGreaterThanOrEqual(field.y)
+    expect(button.y + button.height).toBeLessThanOrEqual(field.y + field.height)
+    expect(button.x + button.width).toBeLessThanOrEqual(field.x + field.width)
+    expect(button.x).toBeGreaterThanOrEqual(
+      await input.evaluate((el) => el.getBoundingClientRect().right),
+    )
+    await expect(input).toHaveAttribute('type', 'password')
+    await reveal.click()
+    await expect(input).toHaveAttribute('type', 'text')
+    await expect(input).toHaveValue('regression-key')
+    await expect(page).toHaveURL(/\/login$/)
+    await page.getByRole('button', { name: 'Hide sign-in key', exact: true }).click()
+    await expect(input).toHaveAttribute('type', 'password')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(input).toBeDisabled()
+    await expect(reveal).toBeDisabled()
+    release()
+  })
+}
+
 test('login → authed shell → sign out round trip', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname
@@ -71,7 +116,7 @@ test('login → authed shell → sign out round trip', async ({ page }) => {
   })
 
   await page.goto('/login', { waitUntil: 'load' })
-  const input = page.getByLabel('Sign-in key', { exact: true })
+  const input = page.getByLabel('Sign-in key', { exact: true }).and(page.locator('input'))
   await expect(input).toBeVisible()
   await expect(input).toBeFocused()
 
@@ -95,7 +140,9 @@ test('login → authed shell → sign out round trip', async ({ page }) => {
   await page.getByRole('button', { name: 'Sign out' }).click()
   await page.waitForURL(/\/login/, { timeout: 10_000 })
   expect(await page.evaluate(() => window.localStorage.getItem('gpt-load.auth-key'))).toBeNull()
-  await expect(page.getByLabel('Sign-in key', { exact: true })).toBeVisible()
+  await expect(
+    page.getByLabel('Sign-in key', { exact: true }).and(page.locator('input')),
+  ).toBeVisible()
 })
 
 // Entry goes through /settings: it is the flagged document path, and for an

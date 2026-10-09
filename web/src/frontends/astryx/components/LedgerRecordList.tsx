@@ -46,10 +46,7 @@ export const ledgerListStyles = stylex.create({
     gridTemplateColumns: 'subgrid',
     alignItems: 'center',
     minHeight: '38px',
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-sm)',
-    fontWeight: 500,
-    letterSpacing: '0.04em',
+
   },
   headerCell: {
     justifySelf: 'stretch',
@@ -86,11 +83,7 @@ export const ledgerRecordStyles = stylex.create({
     borderStyle: { [narrow]: 'solid' },
     borderColor: { [narrow]: 'var(--color-border-subtle)' },
     borderRadius: { [narrow]: 'var(--radius-control)' },
-    backgroundColor: {
-      default: 'transparent',
-      ':hover': 'var(--color-surface-sunken)',
-      [narrow]: 'var(--color-surface)',
-    },
+
     padding: {
       default: 'var(--ledger-record-list-record-padding, 14px 0)',
       [narrow]: '16px',

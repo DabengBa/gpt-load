@@ -264,12 +264,12 @@ export function GroupSettingsBaseForm({
 const styles = stylex.create({
   section: {
     display: 'grid',
-    gap: '15px',
+    gap: 'var(--space-2)',
     scrollMarginTop: '76px',
     borderTopWidth: '1px',
     borderTopStyle: 'solid',
     borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: '17px',
+    paddingTop: 'var(--space-2)',
   },
   sectionHeading: {
     margin: 0,
@@ -291,13 +291,10 @@ const styles = stylex.create({
       default: 'repeat(2, minmax(0, 1fr))',
       '@media (max-width: 800px)': '1fr',
     },
-    gap: '15px 18px',
+    gap: 'var(--space-2) var(--space-3)',
   },
   wide: {
-    gridColumn: {
-      default: '1 / -1',
-      '@media (max-width: 800px)': 'auto',
-    },
+    gridColumn: 'auto',
   },
   baseUrlInput: {
     gridColumn: 'auto',
@@ -305,7 +302,7 @@ const styles = stylex.create({
   field: {
     display: 'grid',
     alignContent: 'start',
-    gap: '6px',
+    gap: 'var(--space-1)',
   },
   fieldLabel: {
     color: 'var(--color-text-muted)',
@@ -324,7 +321,7 @@ const styles = stylex.create({
     borderBottomWidth: '1px',
     borderBottomStyle: 'solid',
     borderBottomColor: 'var(--color-border-subtle)',
-    paddingBottom: 'var(--space-3)',
+    paddingBottom: 'var(--space-2)',
   },
   channelPicker: {
     marginTop: '3px',
@@ -342,12 +339,12 @@ const styles = stylex.create({
   },
   switchRow: {
     display: 'flex',
-    minHeight: '48px',
+    minHeight: 'var(--control-sm)',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: '18px',
-    paddingTop: '8px',
-    paddingBottom: '8px',
+    gap: 'var(--space-2)',
+    paddingTop: 0,
+    paddingBottom: 0,
     paddingLeft: '2px',
     paddingRight: '2px',
   },

@@ -649,11 +649,11 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
       <LedgerRecordList
         label={labels.tableLabel}
         rowCount={visibleRowCount + groupHeaderCount + 1}
-        grid="minmax(170px, 22fr) minmax(230px, 36fr) minmax(200px, 22fr) minmax(110px, 15fr) 40px"
+        grid="minmax(160px, 22fr) minmax(180px, 26fr) minmax(110px, 14fr) minmax(280px, 38fr) 40px"
         cardGrid="minmax(0, 0.7fr) minmax(0, 1.3fr)"
         recordMinHeight="58px"
-        recordPadding="9px 0"
-        columnGap="16px"
+        recordPadding="5px 0"
+        columnGap="12px"
         header={
           <>
             <span role="columnheader" {...stylex.props(ledgerRecordStyles.cell)}>

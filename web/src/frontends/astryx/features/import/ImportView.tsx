@@ -156,39 +156,35 @@ export function ImportView() {
 
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="import-page-title">
-      <div {...stylex.props(styles.pageInner)}>
-        <div {...stylex.props(styles.content)}>
-          <div {...stylex.props(styles.header)}>
-            <h1 id="import-page-title" {...stylex.props(styles.title)}>
-              {t('import.title')}
-            </h1>
-            <div {...stylex.props(styles.modeControl)}>
-              <SegmentedControl
-                value={activeMode}
-                label={t('import.mode.label')}
-                size="sm"
-                onChange={selectMode}
-              >
-                <SegmentedControlItem
-                  value="new"
-                  label={t('import.mode.new')}
-                  isDisabled={operationMode !== null && operationMode !== 'new'}
-                />
-                <SegmentedControlItem
-                  value="existing"
-                  label={t('import.mode.existing')}
-                  isDisabled={operationMode !== null && operationMode !== 'existing'}
-                />
-              </SegmentedControl>
-            </div>
-          </div>
-          {activeMode === 'new' ? (
-            <NewGroupImport initialDraft={recoveredNewDraft} />
-          ) : (
-            <ExistingGroupImport initialDraft={recoveredExistingDraft} />
-          )}
+      <div {...stylex.props(styles.header)}>
+        <h1 id="import-page-title" {...stylex.props(styles.title)}>
+          {t('import.title')}
+        </h1>
+        <div {...stylex.props(styles.modeControl)}>
+          <SegmentedControl
+            value={activeMode}
+            label={t('import.mode.label')}
+            size="sm"
+            onChange={selectMode}
+          >
+            <SegmentedControlItem
+              value="new"
+              label={t('import.mode.new')}
+              isDisabled={operationMode !== null && operationMode !== 'new'}
+            />
+            <SegmentedControlItem
+              value="existing"
+              label={t('import.mode.existing')}
+              isDisabled={operationMode !== null && operationMode !== 'existing'}
+            />
+          </SegmentedControl>
         </div>
       </div>
+      {activeMode === 'new' ? (
+        <NewGroupImport initialDraft={recoveredNewDraft} />
+      ) : (
+        <ExistingGroupImport initialDraft={recoveredExistingDraft} />
+      )}
     </section>
   )
 }
@@ -198,33 +194,21 @@ const narrow = '@media (max-width: 680px)'
 const styles = stylex.create({
   page: {
     width: '100%',
-    paddingTop: 'var(--stage-padding-top)',
-    paddingBottom: 'var(--stage-padding-bottom)',
+    minWidth: 0,
+    paddingTop: 'var(--space-3)',
+    paddingBottom: 'var(--space-4)',
     paddingInline: {
       default: 'var(--stage-padding-inline)',
       [narrow]: 'var(--stage-padding-inline-compact)',
     },
   },
-  pageInner: {
-    // Classic PageFrame wide.
-    width: 'min(100%, 1240px)',
-    marginInline: 'auto',
-  },
-  content: {
-    position: 'relative',
-    minWidth: 0,
-    minHeight: 0,
-  },
   header: {
     display: 'flex',
-    alignItems: { default: 'center', [narrow]: 'stretch' },
-    flexDirection: { default: 'row', [narrow]: 'column' },
+    alignItems: 'center',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 'var(--space-3)',
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-control)',
-    paddingBottom: 'var(--space-4)',
+    gap: 'var(--space-2)',
+    paddingBottom: 'var(--space-2)',
   },
   title: {
     margin: 0,
@@ -234,6 +218,5 @@ const styles = stylex.create({
   },
   modeControl: {
     minWidth: 0,
-    width: { default: 'auto', [narrow]: '100%' },
   },
 })

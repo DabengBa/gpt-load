@@ -1007,7 +1007,7 @@ export function SubscriptionAccountCard({
                     {t('group.credentials.subscription.estimate.title')}
                   </h3>
                   <div {...stylex.props(styles.windowTable)} role="table">
-                    <div {...stylex.props(styles.windowRow, styles.windowHead)} role="row">
+                    <div {...stylex.props(styles.windowRow)} role="row">
                       <span role="columnheader">
                         {t('group.credentials.subscription.estimate.window')}
                       </span>
@@ -1707,10 +1707,7 @@ const styles = stylex.create({
     paddingRight: '10px',
     fontSize: 'var(--text-label-xs)',
   },
-  windowHead: {
-    color: 'var(--color-text-faint)',
-    fontWeight: 600,
-  },
+
   windowName: {
     minWidth: 0,
     overflow: 'hidden',

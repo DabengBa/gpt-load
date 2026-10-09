@@ -20,20 +20,13 @@ const styles = stylex.create({
   page: {
     display: 'grid',
     minWidth: 0,
-    width: 'min(100%, 1288px)',
-    marginInline: 'auto',
-    paddingTop: 'var(--stage-padding-top)',
-    paddingBottom: 'var(--stage-padding-bottom)',
-    paddingInline: 'var(--stage-padding-inline)',
-  },
-  sheet: {
-    display: 'grid',
-    minWidth: 0,
+    width: '100%',
     alignContent: 'start',
-    gap: 0,
-    minHeight: {
-      default: '760px',
-      '@media (max-width: 800px)': '0',
+    gap: 'var(--space-2)',
+    paddingBlock: 'var(--space-3)',
+    paddingInline: {
+      default: 'var(--space-4)',
+      '@media (max-width: 800px)': 'var(--space-3)',
     },
   },
   headerRow: {
@@ -41,24 +34,12 @@ const styles = stylex.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 'var(--space-3)',
+    gap: 'var(--space-2)',
   },
   title: {
     margin: 0,
     fontSize: 'var(--text-title)',
     fontWeight: 650,
-  },
-  usageActions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--space-2)',
-  },
-  panel: {
-    minWidth: 0,
-    paddingTop: {
-      default: 'var(--detail-panel-padding-top, var(--space-5))',
-      '@media (max-width: 800px)': 'var(--detail-panel-padding-top-compact, var(--space-4))',
-    },
   },
 })
 
@@ -116,30 +97,22 @@ export function MonitorView() {
 
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="monitor-title">
-      <div {...stylex.props(styles.sheet)}>
-        <div {...stylex.props(styles.headerRow)}>
-          <h1 id="monitor-title" {...stylex.props(styles.title)}>
-            {t('monitor.title')}
-          </h1>
+      <div {...stylex.props(styles.headerRow)}>
+        <h1 id="monitor-title" {...stylex.props(styles.title)}>
+          {t('monitor.title')}
+        </h1>
 
-          <div {...stylex.props(styles.usageActions)}>
-            <Button
-              variant="secondary"
-              size="sm"
-              isLoading={usageRefreshPending}
-              icon={<RefreshCw size={14} aria-hidden />}
-              label={t('monitor.usage.filters.refresh')}
-              onClick={() => void refreshUsage()}
-            />
-          </div>
-        </div>
-
-        {isCanonicalQuery && (
-          <div {...stylex.props(styles.panel)}>
-            <UsageTab handleRef={usageTabRef} />
-          </div>
-        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          isLoading={usageRefreshPending}
+          icon={<RefreshCw size={14} aria-hidden />}
+          label={t('monitor.usage.filters.refresh')}
+          onClick={() => void refreshUsage()}
+        />
       </div>
+
+      {isCanonicalQuery && <UsageTab handleRef={usageTabRef} />}
     </section>
   )
 }

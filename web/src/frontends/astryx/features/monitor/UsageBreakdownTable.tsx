@@ -48,15 +48,10 @@ const styles = stylex.create({
     paddingInlineEnd: 12,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-subtle)',
-    backgroundColor: 'transparent',
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-label-xs)',
-    fontWeight: 500,
-    letterSpacing: '0.07em',
+
     lineHeight: 1.3,
     textAlign: 'left',
-    textTransform: 'uppercase',
+
     whiteSpace: 'nowrap',
   },
   cell: {
@@ -80,12 +75,7 @@ const styles = stylex.create({
   cellLast: {
     paddingInlineEnd: 0,
   },
-  bodyRow: {
-    backgroundColor: {
-      default: 'transparent',
-      ':hover': 'var(--color-surface-sunken)',
-    },
-  },
+
   cellNoBorder: {
     borderBottomWidth: 0,
   },
@@ -452,7 +442,7 @@ export function UsageBreakdownTable({
           </thead>
           <tbody>
             {breakdown.rows.map((row, rowIndex) => (
-              <tr key={rowKey(row)} {...stylex.props(styles.bodyRow)}>
+              <tr key={rowKey(row)}>
                 {visibleColumns.map((column, columnIndex) => (
                   <td
                     key={column.key}

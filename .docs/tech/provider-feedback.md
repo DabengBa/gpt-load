@@ -83,6 +83,12 @@ paired with `upstream_failure`, `first_response_slow`, or
 - `internal/control/request_logs.go` and the monitor frontend expose feedback
   status, reason, first-response measurement, and output rate. The UI renders
   feedback separately from request status and failure category.
+  The list displays the final attempt's Provider first-response time and attempt
+  duration (`final_attempt_duration_ms`), excluding earlier failed attempts.
+  Output rate uses that attempt's measured `provider_tokens_per_second` rather
+  than recomputing from request-level timing. Displayed durations use seconds
+  with one decimal place. Request-level timing and all attempts remain recorded
+  and available in the detail view; missing final-attempt timing displays `—`.
 
 ## Related Product Semantics And Binding Points
 

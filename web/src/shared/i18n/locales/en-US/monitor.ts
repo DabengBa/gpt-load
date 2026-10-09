@@ -676,9 +676,9 @@ export default {
         affinityKey: 'Affinity scope key',
         accessKey: 'Access key',
         result: 'Final status',
-        timing: 'Request first / total',
+        timing: 'Provider first / duration',
         timingDetail:
-          'Request-level first response / total duration; feedback uses per-attempt provider metrics',
+          'Final provider attempt first response / duration, excluding earlier failed attempts',
         actions: 'Actions',
       },
       status: {

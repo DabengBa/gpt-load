@@ -22,6 +22,34 @@
    Used for descendant-targeted parity rules StyleX cannot express — keep it
    tiny and attribute-keyed. */
 @layer app.base {
+  /* One painting contract for native/kit tables and semantic grid tables.
+     Cells inherit an opaque row so pinned columns never reveal the canvas. */
+  :is(table, [role='table']) {
+    background-color: var(--color-surface);
+  }
+  :is(table tbody > tr, [role='table'] > [role='row']) {
+    background-color: var(--color-surface);
+  }
+  :is(table tbody > tr, [role='table'] > [role='row']):hover {
+    background-color: var(--color-surface-sunken);
+  }
+  :is(table thead > tr, [role='table'] > [role='row']:has(> [role='columnheader'])) {
+    background-color: var(--color-surface-sunken);
+  }
+  :is(table th, table td, [role='table'] > [role='row'] > [role='cell']) {
+    background-color: inherit;
+  }
+  :is(table th, [role='table'] > [role='row'] > [role='columnheader']) {
+    background-color: var(--color-surface-sunken);
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-body);
+    font-size: var(--text-label-size);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: normal;
+    text-transform: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
   [data-gptload-mono] input {
     font-family: var(--font-mono);
   }

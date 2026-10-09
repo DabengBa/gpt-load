@@ -197,6 +197,7 @@ export interface RequestLogItemDto extends RequestLogFeedbackDto {
   stream: boolean
   first_response_ms: number | null
   duration_ms: number
+  final_attempt_duration_ms: number | null
   attempt_count: number
   error_code: string
   error_summary: string
@@ -330,6 +331,7 @@ const itemFields = [
   'stream',
   'first_response_ms',
   'duration_ms',
+  'final_attempt_duration_ms',
   'feedback_status',
   'feedback_reason',
   'provider_first_response_ms',
@@ -682,6 +684,10 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
         : projectSafeInteger(record.first_response_ms, { minimum: 0 }),
     duration_ms: projectSafeInteger(record.duration_ms, { minimum: 0 }),
     attempt_count: projectSafeInteger(record.attempt_count, { minimum: 0 }),
+    final_attempt_duration_ms:
+      record.final_attempt_duration_ms === null
+        ? null
+        : projectSafeInteger(record.final_attempt_duration_ms, { minimum: 0 }),
     error_code: projectString(record.error_code, { allowEmpty: true }),
     error_summary: projectString(record.error_summary, { allowEmpty: true }),
     affinity_hit: projectBoolean(record.affinity_hit),

@@ -63,10 +63,7 @@ const styles = stylex.create({
     paddingInline: 0,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-subtle)',
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-label-xs)',
-    fontWeight: 600,
+
     textAlign: 'left',
     whiteSpace: 'nowrap',
   },

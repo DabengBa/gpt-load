@@ -376,10 +376,12 @@ test('system section renders deployment facts and the latest-version state', asy
   await page.getByRole('button', { name: 'Check for updates' }).click()
   await expect(page.getByText('You are already on the latest version')).toBeVisible()
 
-  // Secret sources render labels; key-file path exposes the copy affordance.
-  await expect(page.getByText('Environment variable', { exact: true })).toBeVisible()
-  await expect(page.getByText('Key file', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Copy path' })).toBeVisible()
+  // Credentials and system information both legitimately render secret-source
+  // badges. Scope these assertions to the system section's deployment facts.
+  const systemSection = page.locator('#settings-system')
+  await expect(systemSection.getByText('Environment variable', { exact: true })).toBeVisible()
+  await expect(systemSection.getByText('Key file', { exact: true })).toBeVisible()
+  await expect(systemSection.getByRole('button', { name: 'Copy path' })).toBeVisible()
 })
 
 test('settings populated content stays within responsive page bounds', async ({

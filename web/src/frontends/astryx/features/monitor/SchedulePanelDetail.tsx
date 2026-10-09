@@ -447,7 +447,7 @@ const styles = stylex.create({
         '96px minmax(154px, 1.2fr) minmax(144px, 1fr) minmax(128px, 0.8fr) 96px 100px 120px minmax(164px, 1.1fr)',
       [narrow]: 'minmax(0, 1fr) minmax(0, 1fr)',
     },
-    minHeight: 48,
+    minHeight: 44,
     alignItems: 'center',
     gap: { default: 0, [narrow]: '10px 12px' },
     borderBottomWidth: { default: 1, ':last-child': 0 },
@@ -457,23 +457,18 @@ const styles = stylex.create({
     paddingBottom: { default: 0, [narrow]: 12 },
     paddingInline: { default: 0, [narrow]: 12 },
   },
-  rowBody: {
-    backgroundColor: { ':hover': { '@media (hover: hover)': 'var(--color-overlay-hover)' } },
-  },
+
   rowHeader: {
     display: { default: 'grid', [narrow]: 'none' },
     position: 'sticky',
     zIndex: 1,
     top: 0,
     minHeight: 34,
-    backgroundColor: 'var(--color-surface-sunken)',
-    color: 'var(--color-text-secondary)',
-    fontSize: 'var(--text-label-size)',
-    fontWeight: 'var(--font-weight-semibold)',
+
   },
   headerCell: {
-    paddingBlock: 'var(--spacing-2)',
-    paddingInline: 'var(--spacing-3)',
+    paddingBlock: 'var(--spacing-1)',
+    paddingInline: 'var(--spacing-2)',
     minWidth: 0,
     boxSizing: 'border-box',
   },
@@ -489,8 +484,8 @@ const styles = stylex.create({
     minWidth: 0,
     color: 'var(--color-text-primary)',
     fontSize: 'var(--text-body-size)',
-    paddingBlock: { default: 'var(--spacing-2)', [narrow]: 0 },
-    paddingInline: { default: 'var(--spacing-3)', [narrow]: 0 },
+    paddingBlock: { default: 'var(--spacing-1)', [narrow]: 0 },
+    paddingInline: { default: 'var(--spacing-2)', [narrow]: 0 },
     boxSizing: 'border-box',
   },
   cellPriority: {
@@ -1464,7 +1459,7 @@ export function SchedulePanelDetail({
                       aria-selected={selectedRow === key}
                       {...stylex.props(
                         styles.row,
-                        styles.rowBody,
+
                         selectedRow === key && styles.rowSelected,
                         isPriorityStart(index) && styles.rowPriorityStart,
                       )}

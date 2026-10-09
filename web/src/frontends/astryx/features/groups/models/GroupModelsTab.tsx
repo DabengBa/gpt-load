@@ -1048,10 +1048,7 @@ const styles = stylex.create({
     display: 'grid',
     gap: 0,
     minWidth: 0,
-    paddingTop: {
-      default: 'var(--detail-panel-padding-top)',
-      '@media (max-width: 800px)': 'var(--detail-panel-padding-top-compact)',
-    },
+    paddingTop: 'var(--space-2)',
   },
   refreshing: {
     display: 'flex',
@@ -1064,15 +1061,18 @@ const styles = stylex.create({
     gap: '2px',
   },
   pricingCell: {
-    display: 'grid',
+    display: 'flex',
     minWidth: 0,
-    gap: '5px',
-    justifyItems: 'start',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '4px 8px',
   },
   testAlias: {
-    display: 'grid',
+    display: 'inline-flex',
     minWidth: 0,
-    gap: '2px',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '4px',
   },
   testAliasLabel: {
     color: 'var(--color-text-faint)',

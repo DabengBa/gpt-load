@@ -60,32 +60,24 @@ import { RoutingSection } from './RoutingSection'
 import { SystemInfoSection } from './SystemInfoSection'
 
 const narrow = '@media (max-width: 860px)'
+const singleColumn = '@media (max-width: 1199px)'
 
 const styles = stylex.create({
   page: {
     width: '100%',
-    paddingTop: 'var(--stage-padding-top)',
-    paddingBottom: 'var(--stage-padding-bottom)',
+    paddingTop: '12px',
+    paddingBottom: '12px',
     paddingInline: 'var(--stage-padding-inline)',
   },
   pageInner: {
-    width: 'min(100%, 1240px)',
+    width: '100%',
     marginInline: 'auto',
   },
   sheet: {
     position: 'relative',
     display: 'grid',
     minWidth: 0,
-    gap: 'var(--space-5)',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: 'var(--radius-sheet)',
-    backgroundColor: 'var(--color-surface)',
-    boxShadow: 'var(--shadow-sheet)',
-    paddingTop: 'var(--sheet-padding-top)',
-    paddingBottom: 'var(--sheet-padding-bottom)',
-    paddingInline: 'var(--sheet-padding-inline)',
+    gap: '12px',
   },
   title: {
     margin: 0,
@@ -103,22 +95,31 @@ const styles = stylex.create({
   layout: {
     display: 'grid',
     gridTemplateColumns: {
-      default: '176px minmax(0, 1fr)',
+      default: '144px minmax(0, 1fr)',
       [narrow]: '1fr',
     },
     alignItems: 'start',
-    gap: '34px',
+    gap: '16px',
   },
   content: {
     display: 'grid',
     minWidth: 0,
-    gap: '28px',
+    gridTemplateColumns: {
+      default: 'repeat(2, minmax(0, 1fr))',
+      [singleColumn]: 'minmax(0, 1fr)',
+    },
+    alignItems: 'start',
+    gap: '16px',
+  },
+  fullWidth: {
+    gridColumn: '1 / -1',
   },
   contentSection: {
     borderTopWidth: '1px',
     borderTopStyle: 'solid',
     borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: '17px',
+    minWidth: 0,
+    paddingTop: '10px',
   },
   validation: {
     display: 'grid',
@@ -172,7 +173,14 @@ const styles = stylex.create({
     gap: 'var(--space-3)',
   },
   saveBar: {
-    marginInlineStart: { default: '210px', [narrow]: 0 },
+    marginInlineStart: { default: '160px', [narrow]: 0 },
+    marginTop: 0,
+    marginBottom: 0,
+    minHeight: '44px',
+    borderRadius: 0,
+    boxShadow: 'none',
+    paddingTop: '6px',
+    paddingBottom: 'calc(6px + env(safe-area-inset-bottom))',
   },
   statusStack: {
     display: 'grid',
@@ -536,7 +544,7 @@ export function SettingsView() {
               value={activeSection}
               items={navItems}
               label={t('settings.navigation.label')}
-              caption={t('settings.navigation.caption')}
+
               appearance="ledger"
               onSelect={navigateSection}
             />
@@ -544,7 +552,7 @@ export function SettingsView() {
             <div {...stylex.props(styles.content)}>
               {(settingsQuery.isPending && resource === null) || initialLoading ? (
                 <div
-                  {...stylex.props(styles.skeleton)}
+                  {...stylex.props(styles.skeleton, styles.fullWidth)}
                   role="status"
                   aria-label={t('settings.loading')}
                 >
@@ -553,7 +561,7 @@ export function SettingsView() {
                   ))}
                 </div>
               ) : settingsQuery.isError && resource === null ? (
-                <div {...stylex.props(styles.errorBox)} role="alert">
+                <div {...stylex.props(styles.errorBox, styles.fullWidth)} role="alert">
                   <TriangleAlert size={16} aria-hidden />
                   <span>{t('settings.loadFailed')}</span>
                   <Button
@@ -566,7 +574,7 @@ export function SettingsView() {
               ) : base !== null && draft !== null ? (
                 <>
                   {settingsQuery.isError && (
-                    <div {...stylex.props(styles.staleBanner)} role="status">
+                    <div {...stylex.props(styles.staleBanner, styles.fullWidth)} role="status">
                       <TriangleAlert size={13} aria-hidden />
                       <span>{t('settings.stale')}</span>
                       <Button
@@ -579,7 +587,11 @@ export function SettingsView() {
                   )}
 
                   {invalidKeys.length > 0 && (
-                    <section {...stylex.props(styles.validation)} role="alert" tabIndex={-1}>
+                    <section
+                      {...stylex.props(styles.validation, styles.fullWidth)}
+                      role="alert"
+                      tabIndex={-1}
+                    >
                       <strong {...stylex.props(styles.validationTitle)}>
                         {t('settings.validation.title')}
                       </strong>
@@ -602,7 +614,7 @@ export function SettingsView() {
                     </section>
                   )}
 
-                  <div>
+                  <div {...stylex.props(styles.fullWidth)}>
                     <RoutingSection
                       {...sectionProps(base, draft)}
                       publish={(key, next) => controller.updateDraft({ key, draft: next })}
@@ -625,7 +637,7 @@ export function SettingsView() {
                       publish={(key, next) => controller.updateDraft({ key, draft: next })}
                     />
                   </div>
-                  <div {...stylex.props(styles.contentSection)}>
+                  <div {...stylex.props(styles.contentSection, styles.fullWidth)}>
                     <BrowserAccessSection
                       {...sectionProps(base, draft)}
                       publish={(key, next) => controller.updateDraft({ key, draft: next })}
@@ -638,7 +650,7 @@ export function SettingsView() {
                       onResponseRulesInvalidEditsChange={setResponseRulesInvalidEdits}
                     />
                   </div>
-                  <div {...stylex.props(styles.contentSection)}>
+                  <div {...stylex.props(styles.contentSection, styles.fullWidth)}>
                     <DataMaintenanceSection
                       {...sectionProps(base, draft)}
                       publish={(key, next) => controller.updateDraft({ key, draft: next })}
@@ -647,10 +659,10 @@ export function SettingsView() {
                 </>
               ) : null}
 
-              <div {...stylex.props(styles.contentSection)}>
+              <div {...stylex.props(styles.contentSection, styles.fullWidth)}>
                 <CredentialsSection />
               </div>
-              <div {...stylex.props(styles.contentSection)}>
+              <div {...stylex.props(styles.contentSection, styles.fullWidth)}>
                 <SystemInfoSection />
               </div>
             </div>

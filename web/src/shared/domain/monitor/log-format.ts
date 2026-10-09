@@ -39,7 +39,15 @@ export function requestLogCostDisplayState(log: RequestLogItemDto): RequestLogCo
 
 export function formatLogDuration(milliseconds: number): string {
   if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) return '—'
-  return `${milliseconds / 1_000}s`
+  return `${(milliseconds / 1_000).toFixed(1)}s`
+}
+
+export function formatLogProviderTiming(log: RequestLogItemDto): string {
+  if (log.final_attempt_duration_ms === null) return '—'
+  const duration = formatLogDuration(log.final_attempt_duration_ms)
+  return log.stream && log.provider_first_response_ms !== null
+    ? `${formatLogDuration(log.provider_first_response_ms)} / ${duration}`
+    : duration
 }
 
 export function formatLogTokenCount(value: string, locale: string): string {
@@ -111,13 +119,11 @@ function formatSignedInteger(value: string, locale: string): string {
 }
 
 export function formatLogOutputRate(log: RequestLogItemDto, locale: string): string {
-  if (!log.stream || log.first_response_ms === null || log.duration_ms <= log.first_response_ms) {
+  const rate = log.provider_tokens_per_second
+  if (!log.stream || rate === null || !Number.isFinite(rate) || rate <= 0) {
     return '—'
   }
-  const output = Number(log.output_tokens)
-  if (!Number.isSafeInteger(output) || output <= 0) return '—'
-  const rate = output / ((log.duration_ms - log.first_response_ms) / 1_000)
-  if (!Number.isFinite(rate)) return '—'
+
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(rate)} t/s`
 }
 

@@ -26,8 +26,10 @@ const styles = stylex.create({
   page: {
     display: 'grid',
     minWidth: 0,
-    padding:
-      'var(--stage-padding-top, 28px) var(--stage-padding-inline, 24px) var(--stage-padding-bottom, 32px)',
+    padding: {
+      default: '12px 16px 16px',
+      '@media (max-width: 800px)': '12px',
+    },
   },
   sheet: {
     display: 'grid',
@@ -36,22 +38,16 @@ const styles = stylex.create({
     minWidth: 0,
     alignContent: 'start',
     gap: 0,
-    minHeight: {
-      default: '760px',
-      '@media (max-width: 800px)': '0',
-    },
   },
   title: {
     margin: 0,
-    fontSize: '24px',
+    fontSize: '20px',
     fontWeight: 650,
+    lineHeight: '28px',
   },
   panel: {
     minWidth: 0,
-    paddingTop: {
-      default: '24px',
-      '@media (max-width: 800px)': '16px',
-    },
+    paddingTop: '8px',
   },
 })
 

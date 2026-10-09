@@ -34,41 +34,35 @@ import { HomeSummary } from './HomeSummary'
 import { HomeWelcome } from './HomeWelcome'
 
 const narrow = '@media (max-width: 860px)'
+const stacked = '@media (max-width: 1200px)'
 
 const styles = stylex.create({
   page: {
     width: '100%',
-    paddingTop: 'var(--stage-padding-top)',
-    paddingBottom: 'var(--stage-padding-bottom)',
-    paddingInline: 'var(--stage-padding-inline)',
+    paddingBlock: 12,
+    paddingInline: { default: 16, [narrow]: 12 },
   },
   pageInner: {
-    width: 'min(100%, 1240px)',
-    marginInline: 'auto',
+    width: '100%',
   },
   sheet: {
     position: 'relative',
     display: 'grid',
     minWidth: 0,
-    gap: 'var(--space-5)',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: {
-      default: 'var(--radius-sheet)',
-      [narrow]: '9px',
-    },
-    backgroundColor: 'var(--color-surface)',
-    boxShadow: 'var(--shadow-sheet)',
-    paddingTop: 'var(--sheet-padding-top)',
-    paddingBottom: 'var(--sheet-padding-bottom)',
-    paddingInline: 'var(--sheet-padding-inline)',
+    gap: 12,
   },
-  sheetWelcome: {
-    minHeight: {
-      default: 560,
-      [narrow]: 0,
+  workspace: {
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1.7fr) minmax(360px, 1fr)',
+      [stacked]: 'minmax(0, 1fr)',
     },
+    alignItems: 'start',
+    gap: { default: 20, [stacked]: 0 },
+    minWidth: 0,
+  },
+  workspaceColumn: {
+    minWidth: 0,
   },
   refreshing: {
     position: 'absolute',
@@ -80,8 +74,7 @@ const styles = stylex.create({
   },
   error: {
     display: 'grid',
-    minHeight: 420,
-    gap: 'var(--space-5)',
+    gap: 12,
   },
   title: {
     margin: 0,
@@ -224,10 +217,7 @@ export function HomeView() {
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="home-title">
       <div {...stylex.props(styles.pageInner)}>
-        <div
-          {...stylex.props(styles.sheet, welcomeMode && styles.sheetWelcome)}
-          aria-busy={baseRefreshing || undefined}
-        >
+        <div {...stylex.props(styles.sheet)} aria-busy={baseRefreshing || undefined}>
           <span aria-live="polite" {...stylex.props(styles.refreshing)}>
             {homeRefreshing ? t('home.ledger.loading') : ''}
           </span>
@@ -299,23 +289,29 @@ export function HomeView() {
                 <CurrentAccessKeyCard accessKey={base.current_access_key} />
               )}
 
-              <GatewayConnection
-                accessKeys={base.access_keys}
-                selectedAccessKeyID={selectedAccessKeyID}
-                clientID={routeState.client}
-                credential={isAccessKey ? authSession.getAuthKey() : undefined}
-                selfScoped={isAccessKey}
-                onAccessKeyChange={(id) => {
-                  if (isAccessKey) return
-                  navigateHome({ accessKeyID: id })
-                }}
-                onClientChange={(id: GatewayClientID) => navigateHome({ client: id })}
-              />
+              <div {...stylex.props(styles.workspace)}>
+                <div {...stylex.props(styles.workspaceColumn)}>
+                  <GatewayConnection
+                    accessKeys={base.access_keys}
+                    selectedAccessKeyID={selectedAccessKeyID}
+                    clientID={routeState.client}
+                    credential={isAccessKey ? authSession.getAuthKey() : undefined}
+                    selfScoped={isAccessKey}
+                    onAccessKeyChange={(id) => {
+                      if (isAccessKey) return
+                      navigateHome({ accessKeyID: id })
+                    }}
+                    onClientChange={(id: GatewayClientID) => navigateHome({ client: id })}
+                  />
+                </div>
 
-              <HomeSpend
-                snapshot={statisticsSnapshot}
-                loading={statisticsLoading || statisticsInitialLoading}
-              />
+                <div {...stylex.props(styles.workspaceColumn)}>
+                  <HomeSpend
+                    snapshot={statisticsSnapshot}
+                    loading={statisticsLoading || statisticsInitialLoading}
+                  />
+                </div>
+              </div>
             </>
           ) : null}
         </div>

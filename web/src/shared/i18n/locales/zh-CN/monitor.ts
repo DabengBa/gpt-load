@@ -674,8 +674,8 @@ export default {
         affinityKey: '亲和作用域 Key',
         accessKey: '访问密钥',
         result: '最终状态',
-        timing: '请求首响/总耗时',
-        timingDetail: '请求级首响/总耗时；反馈状态使用各次尝试的 Provider 指标',
+        timing: '供应商首响/耗时',
+        timingDetail: '最终供应商尝试的首响/耗时，不包含之前失败尝试的等待',
         actions: '操作',
       },
       status: {

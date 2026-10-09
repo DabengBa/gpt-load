@@ -59,11 +59,15 @@ const styles = stylex.create({
     display: 'grid',
     minWidth: 0,
     alignContent: 'start',
-    gap: 'var(--space-4)',
-    minHeight: {
-      default: '760px',
-      '@media (max-width: 800px)': '0',
-    },
+    gap: 'var(--space-3)',
+  },
+  heading: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 'var(--space-3)',
+    flexWrap: 'wrap',
   },
   title: {
     margin: 0,
@@ -74,6 +78,8 @@ const styles = stylex.create({
     margin: 0,
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-sm)',
+    width: { default: 'auto', '@media (max-width: 560px)': '100%' },
+    textAlign: { default: 'end', '@media (max-width: 560px)': 'start' },
   },
   skeleton: {
     display: 'grid',
@@ -651,9 +657,21 @@ export function LogsView() {
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="logs-title">
       <div {...stylex.props(styles.sheet)} data-testid="logs-tab">
-        <h1 id="logs-title" {...stylex.props(styles.title)}>
-          {t('shell.logs')}
-        </h1>
+        <div {...stylex.props(styles.heading)}>
+          <h1 id="logs-title" {...stylex.props(styles.title)}>
+            {t('shell.logs')}
+          </h1>
+          {!listBlocked &&
+            !logsQuery.isPending &&
+            !loading.initial &&
+            !loading.transition &&
+            logsQuery.data &&
+            logs.length > 0 && (
+              <p {...stylex.props(styles.summary)} data-testid="logs-result-summary">
+                {t('monitor.logs.resultSummary', { count: logs.length })}
+              </p>
+            )}
+        </div>
 
         <LogsFilterForm
           draft={draft}
@@ -738,11 +756,6 @@ export function LogsView() {
               </div>
             ) : (
               <>
-                {logs.length > 0 && (
-                  <p {...stylex.props(styles.summary)} data-testid="logs-result-summary">
-                    {t('monitor.logs.resultSummary', { count: logs.length })}
-                  </p>
-                )}
                 {logs.length > 0 ? (
                   <LogsTable
                     logs={logs}

@@ -15,7 +15,9 @@ import { CopyChip } from '../access-keys/AccessKeyCopyChip'
 
 const styles = stylex.create({
   header: {
-    display: 'grid',
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 'var(--space-2)',
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
@@ -24,7 +26,7 @@ const styles = stylex.create({
   back: {
     display: 'inline-flex',
     width: 'fit-content',
-    minHeight: { default: '38px', '@media (max-width: 520px)': 'var(--touch-target)' },
+    minHeight: { default: 'var(--control-sm)', '@media (max-width: 520px)': 'var(--touch-target)' },
     alignItems: 'center',
     gap: 6,
     color: {
@@ -34,21 +36,21 @@ const styles = stylex.create({
     fontSize: 'var(--text-meta)',
   },
   body: {
-    display: 'grid',
+    display: 'flex',
+    flex: '1 1 640px',
+    flexWrap: 'wrap',
     minWidth: 0,
-    gridTemplateColumns: {
-      default: 'minmax(0, 1fr) minmax(0, auto)',
-      '@media (max-width: 1000px)': 'minmax(0, 1fr)',
-    },
+
     alignItems: 'center',
-    columnGap: 'var(--space-5)',
-    paddingTop: 'var(--space-2)',
-    paddingBottom: { default: '16px', '@media (max-width: 520px)': '18px' },
+    gap: 'var(--space-2) var(--space-3)',
+    paddingTop: 0,
+    paddingBottom: 'var(--space-2)',
   },
   topline: {
     display: 'flex',
+    flexGrow: 1,
     minWidth: 0,
-    gridColumn: '1',
+
     alignItems: 'center',
   },
   title: {
@@ -75,14 +77,13 @@ const styles = stylex.create({
   details: {
     display: 'flex',
     minWidth: 0,
-    gridColumn: { default: '2', '@media (max-width: 1000px)': '1' },
-    gridRow: { default: '1', '@media (max-width: 1000px)': 'auto' },
+
     flexWrap: 'wrap',
-    flexDirection: { default: 'row', '@media (max-width: 520px)': 'row' },
+
     alignItems: 'center',
     justifyContent: { default: 'flex-end', '@media (max-width: 1000px)': 'flex-start' },
     gap: { default: '7px 12px', '@media (max-width: 520px)': '8px 12px' },
-    marginTop: { default: 0, '@media (max-width: 1000px)': 'var(--space-3)' },
+    marginTop: 0,
   },
   metaTag: {
     display: 'inline-flex',
@@ -91,9 +92,8 @@ const styles = stylex.create({
     gap: 'var(--space-1)',
     maxWidth: '100%',
     overflowWrap: 'anywhere',
-    backgroundColor: 'var(--color-surface-sunken)',
-    paddingBlock: '3px',
-    paddingInline: '7px',
+    paddingBlock: 0,
+    paddingInline: 0,
     fontSize: 'var(--text-label-xs)',
   },
   channelIcon: {

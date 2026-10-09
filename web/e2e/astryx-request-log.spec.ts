@@ -48,7 +48,7 @@ async function tableCellPresentation(cell: Locator) {
 }
 
 for (const width of [1440, 900, 1920]) {
-  test(`logs balanced presentation matches populated groups at ${width}px`, async ({
+  test(`logs compact presentation matches populated groups at ${width}px`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width, height: 1100 })
@@ -130,6 +130,7 @@ for (const width of [1440, 900, 1920]) {
           label: header.textContent,
           bottom: box.bottom,
           textHeight: text.height,
+          contentHeight: contentBottom - contentTop,
           centerOffset: (text.top + text.bottom - contentTop - contentBottom) / 2,
         }
       }),
@@ -148,11 +149,8 @@ for (const width of [1440, 900, 1920]) {
         Math.abs(header.centerOffset),
         `${header.label} text remains vertically centered`,
       ).toBeLessThanOrEqual(1)
-    }
-    if (width === 1440 || width === 1920) {
-      const timing = headerGeometry.at(-2)
-      expect(timing?.textHeight, 'timing header exercises multiline wrapping').toBeGreaterThan(
-        headerGeometry[0].textHeight,
+      expect(header.textHeight, `${header.label} text fits without clipping`).toBeLessThanOrEqual(
+        header.contentHeight + 1,
       )
     }
     expect(logHeader).toEqual(groupHeader)
