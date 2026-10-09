@@ -304,9 +304,9 @@ test('request timing tones by provider feedback status, not raw threshold', asyn
 
   const slow = page.locator('[data-testid="logs-list__timing"][data-tone="slow"]')
   await expect(slow).toHaveCount(1)
-  await expect(slow).toHaveText('16s / 24s')
+  await expect(slow).toHaveText('16.0s / 24.0s')
   const timingCell = records(page).first().locator('[role="cell"]').nth(-2)
-  await expect(timingCell).toContainText('16s / 24s')
+  await expect(timingCell).toContainText('16.0s / 24.0s')
   await expect(records(page).nth(1).locator('[data-tone="slow"]')).toHaveCount(0)
 
   const mapping = page.getByTestId('logs-list__model-mapping')
@@ -559,7 +559,7 @@ test('narrow viewports keep results usable in the card layout', async ({ page })
   await expect(records(page)).toHaveCount(4)
   // Card mode exposes per-cell labels that desktop columns hide.
   await expect(
-    records(page).first().getByText('Request first / total', { exact: true }),
+    records(page).first().getByText('Provider first / duration', { exact: true }),
   ).toBeVisible()
   await expect(records(page).first().getByText('Model / protocol', { exact: true })).toBeVisible()
 })

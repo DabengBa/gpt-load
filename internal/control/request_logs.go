@@ -135,23 +135,24 @@ type requestLogPricingReceiptResponse struct {
 }
 
 type requestLogItemResponse struct {
-	RequestID             string                       `json:"request_id"`
-	CompletedAtMS         int64                        `json:"completed_at_ms"`
-	AccessKey             requestLogAccessKeyResponse  `json:"access_key"`
-	Protocol              string                       `json:"protocol"`
-	Operation             *execution.Operation         `json:"operation"`
-	UpstreamProtocol      *protocol.Protocol           `json:"upstream_protocol"`
-	ClientModel           *string                      `json:"client_model"`
-	UpstreamModel         *string                      `json:"upstream_model"`
-	UpstreamReportedModel *string                      `json:"upstream_reported_model"`
-	ModelConsistency      telemetry.ModelConsistency   `json:"model_consistency"`
-	Reasoning             *requestLogReasoningResponse `json:"reasoning"`
-	Status                telemetry.RequestStatus      `json:"status"`
-	StatusCode            int                          `json:"status_code"`
-	Stream                bool                         `json:"stream"`
-	FirstResponseMs       *int64                       `json:"first_response_ms"`
-	DurationMs            int64                        `json:"duration_ms"`
-	AttemptCount          int                          `json:"attempt_count"`
+	RequestID              string                       `json:"request_id"`
+	CompletedAtMS          int64                        `json:"completed_at_ms"`
+	AccessKey              requestLogAccessKeyResponse  `json:"access_key"`
+	Protocol               string                       `json:"protocol"`
+	Operation              *execution.Operation         `json:"operation"`
+	UpstreamProtocol       *protocol.Protocol           `json:"upstream_protocol"`
+	ClientModel            *string                      `json:"client_model"`
+	UpstreamModel          *string                      `json:"upstream_model"`
+	UpstreamReportedModel  *string                      `json:"upstream_reported_model"`
+	ModelConsistency       telemetry.ModelConsistency   `json:"model_consistency"`
+	Reasoning              *requestLogReasoningResponse `json:"reasoning"`
+	Status                 telemetry.RequestStatus      `json:"status"`
+	StatusCode             int                          `json:"status_code"`
+	Stream                 bool                         `json:"stream"`
+	FirstResponseMs        *int64                       `json:"first_response_ms"`
+	DurationMs             int64                        `json:"duration_ms"`
+	FinalAttemptDurationMs *int64                       `json:"final_attempt_duration_ms"`
+	AttemptCount           int                          `json:"attempt_count"`
 	requestLogFeedbackResponse
 	ErrorCode               string               `json:"error_code"`
 	ErrorSummary            string               `json:"error_summary"`
@@ -978,6 +979,7 @@ func mapRequestLogItemResponse(
 		Stream:                  record.Stream,
 		FirstResponseMs:         record.FirstResponseMs,
 		DurationMs:              record.DurationMs,
+		FinalAttemptDurationMs:  record.FinalAttemptDurationMs,
 		AttemptCount:            record.AttemptCount,
 		FeedbackStatus:          feedback.FeedbackStatus,
 		FeedbackReason:          feedback.FeedbackReason,

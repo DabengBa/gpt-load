@@ -241,6 +241,9 @@ func (service *Service) Get(ctx context.Context, requestID string) (Record, erro
 			return err
 		}
 		records[0].Attempts = attempts
+		if len(attempts) > 0 {
+			records[0].FinalAttemptDurationMs = new(attempts[len(attempts)-1].DurationMs)
+		}
 		records[0].FinalAttemptFeedback = finalAttemptFeedback(attempts)
 		records[0].RouteMode = finalRouteMode(records[0], attempts)
 		records[0].UpstreamProtocol = finalUpstreamProtocol(records[0], attempts)
@@ -493,7 +496,7 @@ func (service *Service) loadFinalExecutionObservations(
 		Select(
 			"request_id", "sequence", "group_id", "channel_id", "credential_id", "route_mode",
 			"upstream_protocol", "upstream_model", "pricing_receipt", "feedback_status", "feedback_reason",
-			"provider_first_response_ms", "provider_tokens_per_second",
+			"provider_first_response_ms", "provider_tokens_per_second", "duration_ms",
 		).
 		Where("request_id IN ?", requestIDs).
 		Order("request_id ASC").
@@ -516,6 +519,7 @@ func (service *Service) loadFinalExecutionObservations(
 				return fmt.Errorf("query request log final execution observations: %w", err)
 			}
 			records[index].FinalAttemptFeedback = feedback
+			records[index].FinalAttemptDurationMs = new(attempt.DurationMs)
 		}
 		record := records[index]
 		if record.GroupID != attempt.GroupID ||

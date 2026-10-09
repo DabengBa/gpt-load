@@ -135,6 +135,7 @@ type Record struct {
 	Stream                  bool
 	FirstResponseMs         *int64
 	DurationMs              int64
+	FinalAttemptDurationMs  *int64
 	AttemptCount            int
 	ErrorCode               string
 	ErrorSummary            string
