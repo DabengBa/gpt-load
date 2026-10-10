@@ -538,7 +538,7 @@ func TestCompleteBrowserAuthorizationConsumesStateOnce(t *testing.T) {
 	}
 }
 
-func TestCompleteBrowserAuthorizationAcceptsVersionOnePendingStage(t *testing.T) {
+func TestCompleteBrowserAuthorizationRejectsVersionOnePendingStage(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	now := time.UnixMilli(1_800_000_000_000)
@@ -574,29 +574,50 @@ func TestCompleteBrowserAuthorizationAcceptsVersionOnePendingStage(t *testing.T)
 	if err := fixture.db.Create(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	setCodexAuthorizationCompletion(t, fixture.service, func(_ context.Context, completion codex.BrowserAuthorizationCompletion) (codex.Credential, error) {
-		if completion.ExpectedState != state || completion.ReturnedState != state ||
-			completion.Code != "authorization-code" || completion.CodeVerifier != verifier {
-			t.Fatalf("completion = %#v", completion)
-		}
-		return codex.Credential{
-			Type: codex.Provider, AccessToken: "new-access", RefreshToken: "new-refresh",
-			AccountID: "account-123", Email: "admin@example.com",
-		}, nil
+	var completionCalls atomic.Int32
+	setCodexAuthorizationCompletion(t, fixture.service, func(context.Context, codex.BrowserAuthorizationCompletion) (codex.Credential, error) {
+		completionCalls.Add(1)
+		return codex.Credential{}, errors.New("unexpected completion")
 	})
 
-	result, err := fixture.service.CompleteCredentialAuthorization(t.Context(), state, "authorization-code")
-	if err != nil {
-		t.Fatalf("CompleteCredentialAuthorization() error = %v", err)
+	if _, err := fixture.service.CompleteCredentialAuthorization(t.Context(), state, "authorization-code"); !errors.Is(err, app_errors.ErrAuthorizationExchangeFailed) {
+		t.Fatalf("CompleteCredentialAuthorization() error = %v, want authorization exchange rejected", err)
 	}
-	if result.StageID != row.ID || result.Status != string(models.CredentialStageReady) {
-		t.Fatalf("completed result = %#v", result)
+	if got := completionCalls.Load(); got != 0 {
+		t.Fatalf("provider completion calls = %d, want 0", got)
 	}
 	if err := fixture.db.Take(&row, "id = ?", row.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if row.PayloadSchemaVersion != 2 {
-		t.Fatalf("PayloadSchemaVersion = %d, want 2", row.PayloadSchemaVersion)
+	if row.Status != models.CredentialStageOutcomeUnknown {
+		t.Fatalf("stage status = %q, want outcome_unknown", row.Status)
+	}
+}
+
+func TestCredentialStageModelDefaultOmitsToSchemaV2(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	row := models.CredentialStage{
+		ID:                  "default-schema-version-stage",
+		ChannelID:           string(channel.Codex),
+		ConnectionType:      models.ConnectionTypeSubscription,
+		AuthorizationMethod: "oauth_file",
+		Status:              models.CredentialStagePendingAuthorization,
+		EncryptedPayload:    "encrypted-placeholder",
+		SafeSummaryJSON:     models.JSON(`{}`),
+		ExpiresAtMS:         fixture.service.now().Add(time.Minute).UnixMilli(),
+		CreatedAtMS:         fixture.service.now().UnixMilli(),
+		UpdatedAtMS:         fixture.service.now().UnixMilli(),
+	}
+	if err := fixture.db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	var stored models.CredentialStage
+	if err := fixture.db.Take(&stored, "id = ?", row.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.PayloadSchemaVersion != stagedSubscriptionSchemaV2 {
+		t.Fatalf("PayloadSchemaVersion default = %d, want %d", stored.PayloadSchemaVersion, stagedSubscriptionSchemaV2)
 	}
 }
 

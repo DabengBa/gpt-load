@@ -55,7 +55,7 @@ func TestReleaseWorkflowRunsPostPublishGatesInParallel(t *testing.T) {
 	content := readRepositoryFile(t, ".github/workflows/release.yml")
 	smokeJob := workflowJobBlock(t, content, "post-publish-image-smoke")
 	for _, required := range []string{
-		"ghcr.io/tbphp/gpt-load",
+		"ghcr.io/dabengba/gpt-load",
 		"RELEASE_SMOKE_SOURCE_IMAGE",
 		".github/scripts/release-docker-smoke.sh",
 	} {

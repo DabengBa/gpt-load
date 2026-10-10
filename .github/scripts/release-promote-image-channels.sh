@@ -29,7 +29,7 @@ if [[ "${promote_beta}" == "true" ]]; then
   test -n "${image_beta}"
 fi
 
-repositories=(ghcr.io/tbphp/gpt-load tbphp/gpt-load)
+repositories=(ghcr.io/dabengba/gpt-load dabengba/gpt-load)
 exact_digest=
 for repository in "${repositories[@]}"; do
   exact="${repository}:${image_exact}"
@@ -118,9 +118,9 @@ beta_current="${channel_is_current}"
 promote_channel "${image_major}" "${promote_major}"
 major_current="${channel_is_current}"
 
-test "$(.github/scripts/release-image-digest.sh ghcr.io/tbphp/gpt-load:latest)" = \
+test "$(.github/scripts/release-image-digest.sh ghcr.io/dabengba/gpt-load:latest)" = \
   "${expected_ghcr_latest}"
-test "$(.github/scripts/release-image-digest.sh tbphp/gpt-load:latest)" = \
+test "$(.github/scripts/release-image-digest.sh dabengba/gpt-load:latest)" = \
   "${expected_dockerhub_latest}"
 
 {

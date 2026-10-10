@@ -687,21 +687,21 @@ jobs:
           # 而不是让 read 静默读到空状态。
           ghcr_inventory="$(
             inventory_image \
-              "ghcr.io/tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}"
+              "ghcr.io/dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}"
           )"
           dockerhub_inventory="$(
             inventory_image \
-              "tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}"
+              "dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}"
           )"
           IFS='|' read -r ghcr_state ghcr_digest ghcr_revision \
             <<<"${ghcr_inventory}"
           IFS='|' read -r dockerhub_state dockerhub_digest dockerhub_revision \
             <<<"${dockerhub_inventory}"
           ghcr_latest_digest="$(
-            .github/scripts/release-image-digest.sh ghcr.io/tbphp/gpt-load:latest
+            .github/scripts/release-image-digest.sh ghcr.io/dabengba/gpt-load:latest
           )"
           dockerhub_latest_digest="$(
-            .github/scripts/release-image-digest.sh tbphp/gpt-load:latest
+            .github/scripts/release-image-digest.sh dabengba/gpt-load:latest
           )"
           {
             printf 'github_state=%s\n' "${github_state}"
@@ -826,8 +826,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: |
-            ghcr.io/tbphp/gpt-load
-            tbphp/gpt-load
+            ghcr.io/dabengba/gpt-load
+            dabengba/gpt-load
           tags: |
             type=raw,value=${{ needs.validate-tag.outputs.image_exact }}
           labels: |
@@ -864,11 +864,11 @@ jobs:
 
           ghcr_exact_digest="$(
             verify_exact_image \
-              "ghcr.io/tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}"
+              "ghcr.io/dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}"
           )"
           dockerhub_exact_digest="$(
             verify_exact_image \
-              "tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}"
+              "dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}"
           )"
           test -n "${ghcr_exact_digest}"
           test "${ghcr_exact_digest}" = "${dockerhub_exact_digest}"
@@ -989,7 +989,7 @@ jobs:
         shell: bash
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
-          RELEASE_SMOKE_SOURCE_IMAGE: ghcr.io/tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}
+          RELEASE_SMOKE_SOURCE_IMAGE: ghcr.io/dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}
           RELEASE_SMOKE_SUFFIX: ${{ github.run_id }}-ghcr
           # 同一 commit 的镜像已在 docker-smoke 扫描过，这里不重复扫描。
           RELEASE_SMOKE_SKIP_SCAN: "true"
@@ -1084,7 +1084,7 @@ jobs:
           set -euo pipefail
           ghcr_exact_digest=
           dockerhub_exact_digest=
-          for repository in ghcr.io/tbphp/gpt-load tbphp/gpt-load; do
+          for repository in ghcr.io/dabengba/gpt-load dabengba/gpt-load; do
             exact="${repository}:${{ needs.validate-tag.outputs.image_exact }}"
             .github/scripts/release-verify-image-revision.sh \
               "${exact}" "${GITHUB_SHA}" >/dev/null
@@ -1094,11 +1094,11 @@ jobs:
             test -n "${exact_digest}"
             if [[ "${repository}" == ghcr.io/* ]]; then
               ghcr_exact_digest="${exact_digest}"
-              latest_image="ghcr.io/tbphp/gpt-load:latest"
+              latest_image="ghcr.io/dabengba/gpt-load:latest"
               expected_latest_digest="${{ needs.publication-preflight.outputs.ghcr_latest_digest }}"
             else
               dockerhub_exact_digest="${exact_digest}"
-              latest_image="tbphp/gpt-load:latest"
+              latest_image="dabengba/gpt-load:latest"
               expected_latest_digest="${{ needs.publication-preflight.outputs.dockerhub_latest_digest }}"
             fi
             latest_digest="$(.github/scripts/release-image-digest.sh "${latest_image}")"
@@ -1111,7 +1111,7 @@ jobs:
       - name: Verify Docker Hub exact image is pullable
         shell: bash
         env:
-          DOCKERHUB_EXACT_IMAGE: tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}
+          DOCKERHUB_EXACT_IMAGE: dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}
         run: |
           set -euo pipefail
           # 完整运行时 smoke 只在 GHCR 侧跑一遍。manifest 校验只读取 config blob，
@@ -1210,7 +1210,7 @@ jobs:
       RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
       RENDER_SERVICE_URL: ${{ vars.RENDER_SERVICE_URL }}
       RELEASE_VERSION: ${{ needs.validate-tag.outputs.version }}
-      IMAGE: ghcr.io/tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}
+      IMAGE: ghcr.io/dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}
       RENDER_CLI_VERSION: "2.25.0"
       RENDER_CLI_SHA256: "3b3f1f839ef36b81f12d84ac7288f1c96f9f7519b39c53fe6f866612f704e7cd"
     steps:
@@ -1221,7 +1221,7 @@ jobs:
           [[ "${RENDER_SERVICE_ID}" =~ ^srv-[a-z0-9]+$ ]]
           [[ "${RENDER_SERVICE_URL}" =~ ^https://[^/?#]+/?$ ]]
           [[ "${RELEASE_VERSION}" =~ ^v2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]
-          [[ "${IMAGE}" == "ghcr.io/tbphp/gpt-load:${RELEASE_VERSION#v}" ]]
+          [[ "${IMAGE}" == "ghcr.io/dabengba/gpt-load:${RELEASE_VERSION#v}" ]]
 
       - name: Install pinned Render CLI
         shell: bash
@@ -1413,27 +1413,27 @@ jobs:
 
           ghcr_inventory="$(
             read_image_inventory \
-              "ghcr.io/tbphp/gpt-load:${IMAGE_EXACT}"
+              "ghcr.io/dabengba/gpt-load:${IMAGE_EXACT}"
           )"
           dockerhub_inventory="$(
             read_image_inventory \
-              "tbphp/gpt-load:${IMAGE_EXACT}"
+              "dabengba/gpt-load:${IMAGE_EXACT}"
           )"
           ghcr_beta_inventory=not-applicable
           dockerhub_beta_inventory=not-applicable
           if [[ -n "${IMAGE_BETA}" ]]; then
             ghcr_beta_inventory="$(
-              read_image_inventory "ghcr.io/tbphp/gpt-load:${IMAGE_BETA}"
+              read_image_inventory "ghcr.io/dabengba/gpt-load:${IMAGE_BETA}"
             )"
             dockerhub_beta_inventory="$(
-              read_image_inventory "tbphp/gpt-load:${IMAGE_BETA}"
+              read_image_inventory "dabengba/gpt-load:${IMAGE_BETA}"
             )"
           fi
           ghcr_major_inventory="$(
-            read_image_inventory "ghcr.io/tbphp/gpt-load:${IMAGE_MAJOR}"
+            read_image_inventory "ghcr.io/dabengba/gpt-load:${IMAGE_MAJOR}"
           )"
           dockerhub_major_inventory="$(
-            read_image_inventory "tbphp/gpt-load:${IMAGE_MAJOR}"
+            read_image_inventory "dabengba/gpt-load:${IMAGE_MAJOR}"
           )"
 
           {
