@@ -5,11 +5,10 @@ Pinned local fork of the Bifrost Go SDK used by gpt-load.
 | fact | value |
 |---|---|
 | module path | `github.com/maximhq/bifrost/core` |
-| baseline version | `v1.11.0` (`version` file contains `1.11.0`) |
-| upstream source of truth | `/home/allen/go/pkg/mod/github.com/maximhq/bifrost/core@v1.11.0` (module cache, mode `555`, never written) |
-| baseline tree digest | sha256 of `sha256sum` over every `*.go` file, sorted by path: `922a4bfbaa61b48ea0fccd5555901a1d4d57090574e5312469b5b41177f65c2f` |
-| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.11.0` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
-| nested go.mod / go.sum | byte-identical to upstream v1.11.0 (the dependency graph is unchanged; only the root module's MVS selection applies) |
+| upstream version | `v1.11.3` (`version` file contains `1.11.3`) |
+| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.11.3`, commit `40d588d6b371d18d426dca935601e99723e9b0db` |
+| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.11.3` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
+| nested go.mod / go.sum | byte-identical to upstream v1.11.3 (unchanged from v1.11.0; the root module's MVS selection applies) |
 
 ## Why the fork exists
 
@@ -23,9 +22,10 @@ way to add a request-scoped observer without a global registry.
 
 ## Fork delta
 
-`gptload-observer.patch` is the complete diff against the pristine v1.11.0 tree.
-It was generated with `diff -ruN` and verified to reproduce this directory
-exactly when applied to a fresh copy of the module cache.
+`gptload-observer.patch` is the complete source diff against pristine v1.11.3,
+excluding this document and the patch itself. Apply it with `patch -p1` in a
+fresh copy of the upstream module. Its historical name also covers the remaining
+cache, tool, stream, and schema changes; Git is the history of those changes.
 
 Modified/added files:
 
@@ -86,13 +86,24 @@ either call site reachable, either the plan must narrow the matrix or a pinned
 
 1. `go mod download github.com/maximhq/bifrost/core@<new version>` (module cache
    stays read-only).
-2. Copy the new pristine tree over this directory (or start from a clean export).
-3. Re-apply `gptload-observer.patch`; resolve conflicts in the six files above.
-4. Update this file (version, digest), then run from the repository root:
+2. Compare the currently documented upstream version with the actual local tree,
+   excluding `UPSTREAM.md` and the patch. Do not use an old patch as the only
+   record of local changes.
+3. Three-way merge the old pristine version, the actual local tree, and the new
+   pristine version. Review both conflicting and automatically merged overlaps.
+   Retain required local behavior, adopt equivalent upstream fixes, and remove
+   superseded local implementations. Do not overwrite the fork with a new tree.
+4. Update the root require, this document, and the source version; run from the
+   repository root so tests use the same module selection as production:
    - `go test -race github.com/maximhq/bifrost/core/providers/utils`
    - `go test -race ./internal/execution/bifrost/`
    - `go build ./...`
-5. Regenerate `gptload-observer.patch` and confirm it reproduces the tree.
+   Also run affected provider/schema tests and core dispatch regressions by
+   their full `github.com/maximhq/bifrost/core/...` package paths. Root `./...`
+   does not include tests in the nested module.
+5. Regenerate `gptload-observer.patch` from the new pristine version and confirm
+   it reproduces the source tree, excluding this document and the patch. If a
+   later fix changes the fork, regenerate it again for the final source.
 
 ## Rollback
 
@@ -121,7 +132,43 @@ Regression coverage: `promptcachedispatch_test.go`,
 `internal/execution/bifrost/anthropic_cache_egress_test.go` exercise isolation,
 explicit markers, and two complete tool turns through unary/stream HTTP egress.
 
-U001 upgrade: three-way merge of pristine v1.9.0, the actual local fork delta (85 files), and pristine v1.11.0. Local observer/cache/mux/tools/system/WS changes are retained; billing-header restoration is incorporated before local tool/cache processing. Conflicting OpenAI and Vertex tests use upstream equivalents; prompt-cache tests retain both branches. The patch includes the full remaining source delta, excluding this provenance document and the patch itself. Apply with `patch -p1` from the pristine core root.
+## Chat-to-Responses reasoning replay
+
+The Chat converter emits reasoning items without `role` and always includes a
+`summary` array, including `[]` when the source only provides raw reasoning.
+The original text stays in `content` as `reasoning_text`; actual summaries and
+encrypted content are preserved. Streaming added/done and terminal output,
+including incomplete responses, use the same item shape as unary conversion.
+
+This prevents clients that replay the item verbatim from sending invalid input
+after GPT-Load changes from a Chat-compatible route to native Responses.
+It does not rewrite previously stored client history or claim encrypted
+reasoning is portable between providers. Native passthrough remains unchanged.
+
+Regression coverage: `schemas/reasoningreplay_test.go` checks the serialized
+items and Chat replay tool pairing; GPT-Load's
+`internal/execution/bifrost/reasoning_replay_test.go` echoes real converted unary
+and stream-done output to a strict local native Responses endpoint without
+repairing or dropping the item.
+
+The reverse Responses-to-Chat OpenAI-compatible route has a different boundary:
+raw `reasoning_text` becomes assistant `reasoning_content`, but Responses
+summary/encrypted details are not serialized by the OpenAI Chat message builder.
+Tool calls/results remain paired. A destination that rejects `reasoning_content`
+can still return HTTP 400; the adapter propagates that error rather than silently
+dropping reasoning. This does not promise lossless reasoning-state transfer or
+universal support across compatible vendors. GPT-Load's
+`internal/execution/bifrost/responses_to_chat_replay_test.go` checks the actual
+Chat HTTP payload and a strict destination's rejection. Target-specific changes
+require evidence about that destination; global stripping would break targets
+that require reasoning on tool-call turns.
+
+The v1.11.3 upgrade uses a three-way merge from pristine v1.11.0 and the actual
+local fork. Observer and stream recovery changes remain. Upstream's tool-output
+cache injection replaces the equivalent local target/helper; GPT-Load's
+Anthropic latest-item selection remains. The MCP test plugin adopts upstream's
+tool-name modifier while retaining the local Go syntax adjustments. Automatic
+overlaps in observer utilities, Anthropic usage, and cache tests were reviewed.
 
 Integration stream boundary: Azure keeps its preamble check. OpenAI checks the
 preamble only when the existing request has SDK fallbacks or the current attempt

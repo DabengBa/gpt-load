@@ -46,7 +46,6 @@ export const ledgerListStyles = stylex.create({
     gridTemplateColumns: 'subgrid',
     alignItems: 'center',
     minHeight: '38px',
-
   },
   headerCell: {
     justifySelf: 'stretch',
