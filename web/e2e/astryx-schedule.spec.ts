@@ -304,6 +304,39 @@ test('sticky schedule header has opaque background over scrolled rows', async ({
   })
 })
 
+test('schedule rows support keyboard selection without hijacking input keys', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const first = rows(page).first()
+  await expect(first).toHaveAttribute('tabindex', '0')
+  await first.focus()
+  await first.press('Enter')
+  await expect(first).toHaveAttribute('aria-selected', 'true')
+  const second = rows(page).nth(1)
+  await second.focus()
+  await second.press('Space')
+  await expect(second).toHaveAttribute('aria-selected', 'true')
+  await first.getByRole('spinbutton').first().press('Enter')
+  await expect(second).toHaveAttribute('aria-selected', 'true')
+})
+
+test('invalid schedule numbers explain their accepted range', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const priority = rows(page).first().getByRole('spinbutton', { name: 'Priority model-a' })
+  await priority.fill('0')
+  await expect(priority).toHaveAttribute('aria-invalid', 'true')
+  await expect(priority).toHaveAccessibleDescription(/1/)
+  await expect(page.locator('#priority-0-error')).toBeVisible()
+  await priority.fill('2')
+  await expect(priority).not.toHaveAttribute('aria-describedby')
+  const weight = rows(page).first().getByRole('spinbutton', { name: 'Weight model-a' })
+  await weight.fill('101')
+  await expect(weight).toHaveAccessibleDescription(/0.*100/)
+})
+
 test('schedule table matches populated groups density and hover', async ({ page }, testInfo) => {
   await installScheduleRoutes(page)
   await page.route('**/api/groups?*', async (route) => {
@@ -355,7 +388,7 @@ test('schedule table matches populated groups density and hover', async ({ page 
     .toBe(
       await groups.evaluate((element) => {
         const probe = document.createElement('span')
-        probe.style.backgroundColor = 'var(--color-overlay-hover)'
+        probe.style.backgroundColor = 'var(--color-surface-sunken)'
         element.append(probe)
         const color = getComputedStyle(probe).backgroundColor
         probe.remove()
@@ -735,6 +768,57 @@ test('access_key principal sees the read-only surface without scheduling control
   await openSchedule(page)
   await expect(page.getByTestId('schedule-read-only')).toBeVisible()
   await expect(page.getByTestId('schedule-panel')).toHaveCount(0)
+})
+
+test('read-only model search updates immediately but debounces the query and page together', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page, { principalType: 'access_key' })
+  const requests: string[] = []
+  await page.route('**/api/models?**', async (route) => {
+    requests.push(route.request().url())
+    await route.fulfill(
+      response({
+        items: [],
+        pagination: { page: 1, page_size: 10, total_items: 0, total_pages: 1 },
+      }),
+    )
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  const input = page.getByRole('textbox', { name: 'Model' })
+  await expect(input).toHaveValue('worker')
+  const initialRequestCount = requests.length
+  await input.fill('worker-b')
+  await expect(input).toHaveValue('worker-b')
+  await page.waitForTimeout(100)
+  expect(requests.length).toBe(initialRequestCount)
+  await expect.poll(() => requests.length).toBe(initialRequestCount + 1)
+  expect(new URL(requests.at(-1)!).searchParams.get('q')).toBe('worker-b')
+  expect(new URL(requests.at(-1)!).searchParams.get('page')).toBe('1')
+})
+
+test('read-only model collection errors use a banner and can retry', async ({ page }) => {
+  await installScheduleRoutes(page, { principalType: 'access_key' })
+  let attempts = 0
+  await page.route('**/api/models?**', async (route) => {
+    attempts += 1
+    await route.fulfill(
+      attempts === 1
+        ? response({}, 500)
+        : response({
+            items: [],
+            pagination: { page: 1, page_size: 10, total_items: 0, total_pages: 1 },
+          }),
+    )
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(
+    page.getByText('Unable to load the model schedule index.', { exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(attempts).toBe(2)
 })
 
 test('schedule_row deep link selects the target row', async ({ page }) => {
