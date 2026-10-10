@@ -262,8 +262,8 @@ func TestModelProbeBatch(t *testing.T) {
 	groupID := createGroupWithCredentials(t, fixture, "model-probe-batch-secret")
 	emptyGroupID := createProbeGroup(t, fixture, []string{probeTestModel})
 	credential := takeGroupCredential(t, fixture, emptyGroupID)
-	if !fixture.registry.SetCooldown(credential.ID, time.Now().Add(time.Hour)) {
-		t.Fatal("SetCooldown() = false")
+	if err := fixture.service.DeleteGroupCredential(t.Context(), emptyGroupID, credential.ID); err != nil {
+		t.Fatalf("DeleteGroupCredential() error = %v", err)
 	}
 	fixture.service.executor = &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
 

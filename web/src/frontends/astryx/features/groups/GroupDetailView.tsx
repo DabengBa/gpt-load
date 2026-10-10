@@ -5,30 +5,29 @@ import { useRouterState } from '@tanstack/react-router'
 import { RefreshCw, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import type { CredentialItemDto } from '@shared/control/types'
-import { credentialQueryOptions } from '@shared/control/resources/credentials'
+
 import {
   groupModelsQueryOptions,
   groupSettingsQueryOptions,
   groupSummaryQueryOptions,
 } from '@shared/control/resources/groups'
+import { credentialQueryOptions } from '@shared/control/resources/credentials'
 import { pagePath } from '@shared/routing/page-routes'
 import { parsePositiveId } from '@shared/routing/group-detail-route'
-import { scalarRouteQuery, type SharedRouteQuery } from '@shared/routing/route-query'
+
 
 import { useStableLoading } from '../../app/collection-loading'
 import { useT } from '../../app/i18n'
 import { RouteLink } from '../../app/route-link'
 import { useAppServices } from '../../app/services'
 import { StickySaveBar } from '../../components/StickySaveBar'
-import { GroupApiKeyEditor } from './credentials/GroupApiKeyEditor'
 import { GroupCredentialsTab } from './credentials/GroupCredentialsTab'
 import { GroupDeleteDialog } from './settings/GroupDeleteDialog'
 import { GroupSettingsTab } from './settings/GroupSettingsTab'
 import { GroupModelsTab } from './models/GroupModelsTab'
 import { GroupHeader } from './GroupHeader'
 import type { GroupEditorHandle, GroupEditorState, GroupModelsEditorHandle } from './editor-handles'
-import { credentialStatusBadgeVariant, type OperationalStatus } from './credential-status'
+
 
 const idleEditorState: GroupEditorState = {
   dirty: false,
@@ -162,35 +161,13 @@ const styles = stylex.create({
   },
 })
 
-function unifiedCredentialSummary(
-  credential: CredentialItemDto,
-  t: ReturnType<typeof useT>,
-): { status: OperationalStatus; label: string } {
-  if (credential.auth_state === 'refreshing') {
-    return { status: 'unknown', label: t('group.credentials.subscription.status.refreshing') }
-  }
-  if (credential.auth_state === 'reauthorization_required') {
-    return {
-      status: 'unavailable',
-      label: t('group.credentials.subscription.status.needs_reauth'),
-    }
-  }
-  if (credential.auth_state === 'outcome_unknown') {
-    return { status: 'unknown', label: t('group.credentials.subscription.status.outcome_unknown') }
-  }
-  return {
-    status: credential.effective_status,
-    label: t(`group.credentials.effective.${credential.effective_status}`),
-  }
-}
-
 export function GroupDetailView() {
   const t = useT()
   const { apiClient, queryClient } = useAppServices()
-  const { id, rawSearch } = useRouterState({
+  const { id } = useRouterState({
     select: (state) => ({
       id: (state.matches.at(-1)?.params as { id?: string } | undefined)?.id,
-      rawSearch: state.location.search as SharedRouteQuery,
+
     }),
   })
   const groupId = parsePositiveId(id)
@@ -198,10 +175,7 @@ export function GroupDetailView() {
   // The summary omits the enabled flag, so the models tab reads it from the
   // settings query (same cache entry the settings tab prefetches).
   const settingsQuery = useQuery(groupSettingsQueryOptions(apiClient, groupId))
-  const credentialsQuery = useQuery(credentialQueryOptions(apiClient, groupId ?? 0))
-  // managementOpen reads the RAW query — an absent/unknown tab renders the
-  // unified settings+models view, matching classic.
-  const managementOpen = scalarRouteQuery(rawSearch.tab) === 'credentials'
+
   const initialLoading = useStableLoading(summaryQuery.isPending && summaryQuery.data === undefined)
   const summaryRefreshing = summaryQuery.data !== undefined && summaryQuery.isFetching
 
@@ -297,15 +271,7 @@ export function GroupDetailView() {
                 </div>
               )}
               <GroupHeader group={summaryQuery.data} />
-              {managementOpen ? (
-                <GroupCredentialsTab
-                  key={`management-${groupId}`}
-                  groupId={groupId}
-                  channelId={summaryQuery.data.channel_id}
-                  connectionType={summaryQuery.data.connection_type}
-                />
-              ) : (
-                <>
+              <>
                   <GroupSettingsTab
                     ref={settingsEditorRef}
                     key={`settings-${groupId}`}
@@ -314,52 +280,12 @@ export function GroupDetailView() {
                     blocked={deletePending}
                     onStateChange={setSettingsState}
                   />
-                  <section
-                    aria-labelledby="group-credential-heading"
-                    {...stylex.props(styles.credentials)}
-                  >
-                    <h2 id="group-credential-heading" {...stylex.props(styles.credentialHeading)}>
-                      {t('group.credentials.title')}
-                    </h2>
-                    {credentialsQuery.data?.credential ? (
-                      <div {...stylex.props(styles.credentialList)}>
-                        {[credentialsQuery.data.credential].map((credential) => {
-                          const summary = unifiedCredentialSummary(credential, t)
-                          return (
-                            <div key={credential.mask} {...stylex.props(styles.credentialRow)}>
-                              {credential.connection_type === 'subscription' ? (
-                                <label {...stylex.props(styles.credentialField)}>
-                                  <span {...stylex.props(styles.credentialFieldLabel)}>
-                                    {t('group.credentials.full.kind.account')}
-                                  </span>
-                                  <input
-                                    {...stylex.props(styles.credentialFieldInput)}
-                                    value={credential.mask}
-                                    readOnly
-                                    autoComplete="off"
-                                  />
-                                </label>
-                              ) : (
-                                <GroupApiKeyEditor
-                                  groupId={groupId}
-                                  credential={credential}
-                                  disabled={unifiedPending}
-                                />
-                              )}
-                              <span {...stylex.props(styles.credentialRowEnd)}>
-                                <Badge
-                                  variant={credentialStatusBadgeVariant(summary.status)}
-                                  label={summary.label}
-                                />
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <p {...stylex.props(styles.empty)}>{t('group.unified.noCredentials')}</p>
-                    )}
-                  </section>
+                  <GroupCredentialsTab
+                    key={`credentials-${groupId}`}
+                    groupId={groupId}
+                    channelId={summaryQuery.data.channel_id}
+                    connectionType={summaryQuery.data.connection_type}
+                  />
                   <GroupModelsTab
                     ref={modelsEditorRef}
                     key={`models-${groupId}`}
@@ -422,8 +348,7 @@ export function GroupDetailView() {
                       </>
                     }
                   />
-                </>
-              )}
+              </>
             </>
           ) : null}
         </>

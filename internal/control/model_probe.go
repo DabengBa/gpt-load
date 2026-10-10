@@ -305,7 +305,7 @@ func (service *Service) schedulableProbeCredential(
 	if service == nil || service.registry == nil {
 		return state.CredentialEntry{}, false
 	}
-	candidates := service.registry.CollectCredentialCandidates([]uint{groupID}, nil, observedAt)
+	candidates := service.registry.CollectCredentialProbeCandidates([]uint{groupID}, nil)
 	if len(candidates) == 0 {
 		return state.CredentialEntry{}, false
 	}

@@ -648,6 +648,7 @@ func (r *CredentialRegistry) CollectCredentialCandidates(groupIDs []uint, exclud
 			if view.RuntimeState(now) != CredentialRuntimeAvailable || entry.AuthState.normalize() != CredentialAuthStateReady {
 				continue
 			}
+
 			meta := CredentialMeta{
 				ID: view.ID, GroupID: view.GroupID,
 				Version: view.Version, IdentityGeneration: view.IdentityGeneration,
@@ -663,6 +664,35 @@ func (r *CredentialRegistry) CollectCredentialCandidates(groupIDs []uint, exclud
 			continue
 		}
 		filtered = append(filtered, meta)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].GroupID != filtered[j].GroupID {
+			return filtered[i].GroupID < filtered[j].GroupID
+		}
+		return filtered[i].ID < filtered[j].ID
+	})
+	return filtered
+}
+
+// CollectCredentialProbeCandidates returns credentials that can be explicitly
+// tested, including credentials unavailable to normal request scheduling.
+func (r *CredentialRegistry) CollectCredentialProbeCandidates(groupIDs []uint, excluded func(uint) bool) []CredentialMeta {
+	r.mu.RLock()
+	metas := make([]CredentialMeta, 0)
+	for _, groupID := range groupIDs {
+		for _, entry := range r.buckets[groupID] {
+			if entry.AuthState.normalize() != CredentialAuthStateReady {
+				continue
+			}
+			metas = append(metas, CredentialMeta{ID: entry.ID, GroupID: entry.GroupID, Version: entry.Version, IdentityGeneration: entry.IdentityGeneration})
+		}
+	}
+	r.mu.RUnlock()
+	filtered := metas[:0]
+	for _, meta := range metas {
+		if excluded == nil || !excluded(meta.ID) {
+			filtered = append(filtered, meta)
+		}
 	}
 	sort.Slice(filtered, func(i, j int) bool {
 		if filtered[i].GroupID != filtered[j].GroupID {
