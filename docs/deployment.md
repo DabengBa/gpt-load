@@ -23,15 +23,15 @@
   ```
 
   443 的证书由 GoDoxy autocert（provider `hostinger`）签发，落在具名卷 `godoxy_godoxy-certs`（`/app/certs/gptl.tanyaleoallen.cloud.crt`）。`config.yml` 的 entrypoint 中间件对本域名生效：响应带 `Referrer-Policy`、`Strict-Transport-Security`、`X-Content-Type-Options`、`X-Frame-Options` 四个安全头，`http://` 请求在 80 端口得到 **308** 跳转到 https（切换前是 404）。443 响应**没有** `via: 1.1 Caddy`，并广告 `alt-svc: h3=":443"; ma=2592000`。
-- 公网 1443（保留的回滚入口）：Caddy 容器 `gptl-proxy`（配置 `/opt/gptl-proxy/Caddyfile`），`https://gptl.tanyaleoallen.cloud:1443` → `127.0.0.1:3001`，`protocols h1 h2` + `header >Alt-Svc clear`，证书仍来自 `/acme` 的 Caddy 侧 ACME 目录。1443 只服务 HTTP/1.1 与 HTTP/2，**不在 443 路径上**。
+- Caddy 已于 2026-10-10 停用并删除：`gptl-proxy` 容器和 `/opt/gptl-proxy` 启动配置已移除，TCP/UDP 1443 均无监听，旧 `:1443` 地址不可用。配置备份保留在 `/opt/gptl-proxy-retired-20261010T065651Z`，`/acme` 旧证书未删除；恢复条件见 [`docs/godoxy-ingress.md`](godoxy-ingress.md) 的 6.5/6.6。
 - 应用：Compose 项目 `/opt/gpt-load`，容器 `gpt-load`，镜像为自建 `gpt-load:<分支>-<短sha>`，数据在具名卷 `gpt-load_gpt-load-data`（含 `gpt-load.db`、`auth.key`、`encryption.key`）。
 - 源码与构建：在本地仓库执行发布脚本，本机 Docker/BuildKit 完成构建。服务器只加载镜像和运行容器，`/opt/gpt-load-src` 不再参与发布。
 - 该容器已用 `com.centurylinklabs.watchtower.enable: "false"` 关闭自动更新，镜像只通过下面的脚本切换。
-- Caddy **暂不删除**：Alt-Svc 排空与移除条件见 [`docs/godoxy-ingress.md`](godoxy-ingress.md) 的 6.4/6.6，本文不重复。发布健康 URL 用 `https://gptl.tanyaleoallen.cloud/health`（不带端口）。
+- 发布健康 URL 用 `https://gptl.tanyaleoallen.cloud/health`（不带端口），不再有常驻的 Caddy 回滚入口。
 
 ## ingress 观测（443 路径看 GoDoxy，不是 Caddy）
 
-443 路径现在完全在 GoDoxy 内部，**Caddy 的 JSON access log 里看不到任何 443 流量**，用它判断 443 问题会得到空结论。观测入口有两个：
+443 路径完全在 GoDoxy 内部，Caddy 已移除；排查公网问题应使用以下两个 GoDoxy 观测入口，而非历史 Caddy 日志：
 
 ```bash
 # 1) GoDoxy 容器 stdout：TLS 握手错误、代理错误、404、http2 preface 错误、日志轮转提示
@@ -162,7 +162,7 @@ docker inspect gpt-load --format '{{.Config.Image}} {{.State.Health.Status}} {{.
 docker logs --since 5m gpt-load 2>&1 | grep -icE 'error|fatal|panic'
 ```
 
-对外健康检查走 443（无端口）。`https://gptl.tanyaleoallen.cloud:1443/health` 只在需要单独确认保留的回滚入口 Caddy 时才用。
+对外健康检查只走 443（无端口）；1443 已关闭，不再作为健康检查或回滚入口。
 
 ## 健康检查异常排障
 

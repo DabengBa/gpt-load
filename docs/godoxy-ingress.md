@@ -2,7 +2,7 @@
 
 本文描述把 `gptl.tanyaleoallen.cloud` 从「GoDoxy TCP → Caddy → GPT-Load」改为「GoDoxy 直接终止 TLS 并反代 GPT-Load」的**架构、配置片段、切换与回滚步骤**。
 
-**状态：生产已切换。** 公网 443 流量现在由 GoDoxy 终止 TLS 并直接反代 GPT-Load，Caddy 保留在 1443 作为回滚入口。仓库里保留了配置片段（[`deploy/godoxy/`](../deploy/godoxy/)）与隔离验证探针（[`scripts/godoxy-ingress-probe.py`](../scripts/godoxy-ingress-probe.py)）。发布流程与 ingress 观测入口见 [`docs/deployment.md`](deployment.md)。
+**状态：生产已直连，Caddy 已于 2026-10-10 移除。** 公网 443 由 GoDoxy 终止 TLS 并直接反代 GPT-Load；`gptl-proxy` 容器及 `/opt/gptl-proxy` 启动配置已删除，TCP/UDP 1443 均无监听。配置与旧证书备份仍保留，详见 6.5/6.6。仓库保留配置片段（[`deploy/godoxy/`](../deploy/godoxy/)）与隔离验证探针（[`scripts/godoxy-ingress-probe.py`](../scripts/godoxy-ingress-probe.py)）。发布流程与 ingress 观测入口见 [`docs/deployment.md`](deployment.md)。
 
 **切换执行时间线（UTC，服务器时区即 UTC）**：
 
@@ -14,7 +14,7 @@
 | 00:07:28–00:07:38 | §6.4 Alt-Svc 排空：`gptl-proxy` 重启套用 `protocols h1 h2` + `Alt-Svc: clear` | `gptl-proxy` `started=2026-09-29T00:07:38Z`；Caddy 日志 `serving initial configuration` 后出现 `gptl-ingress-cutover-probe/1.0` 的 `/health` |
 | 00:08:25 | 首条真实业务请求经新路径成功 | `entrypoint.log`：`POST /v1/responses` 200（客户端 IP 不入库） |
 
-切换前最后一个 404 出现在 2026-09-28 14:28:06 +0800（`GET /health` → 404，路由当时仍是 TCP 透传），与此时间线一致。**Caddy 未被移除**，见 6.6。
+切换前最后一个 404 出现在 2026-09-28 14:28:06 +0800（`GET /health` → 404，路由当时仍是 TCP 透传），与此时间线一致。上述为 9 月切换历史；10 月 10 日 Caddy 移除记录见 6.6。
 
 ## 1. 切换前拓扑（历史）
 
@@ -42,7 +42,7 @@
 | `http://gptl.tanyaleoallen.cloud/health`（80） | **404**（GoDoxy 未匹配到 HTTP 路由，未重定向） |
 | 443 与 1443 的证书 | 同一张 `CN=gptl.tanyaleoallen.cloud`，`issuer Let's Encrypt YE1`，`notAfter Dec 2 2026`（证据（本地 `../.tmp/godoxy-ingress_20260928/units/U004/evidence/tls-cert-probe.txt`）） |
 
-证书所有权：切换前证书由 Caddy 侧的外部 ACME 流程管理（`/acme/gptl.tanyaleoallen.cloud_ecc/`，只读挂载），GoDoxy 的 autocert 里**没有**这个域名。切换后证书已改由 GoDoxy autocert（provider `hostinger`，DNS-01）签发与续期；`/acme` 与 Caddy 容器已不在 443 路径上，但因 6.6 的排空条件未满足而仍然保留。
+证书所有权：切换前证书由 Caddy 侧的外部 ACME 流程管理（`/acme/gptl.tanyaleoallen.cloud_ecc/`，只读挂载），GoDoxy 的 autocert 里没有这个域名。切换后由 GoDoxy autocert（provider `hostinger`，DNS-01）管理；Caddy 容器已删除，`/acme` 旧证书仅保留用于恢复，不参与当前入口。
 
 ## 2. 切换后拓扑（当前实际）
 
@@ -54,7 +54,7 @@
 公网 :80  ── GoDoxy HTTP entrypoint ── 同一 HTTP route ── RedirectHTTP 中间件 → 308 https
 ```
 
-Caddy 与 `:1443` 不再参与 443 路径；容器 `gptl-proxy` 按 6.6 的条件保留，作为回滚入口。切换后实测（2026-09-29）：
+Caddy 与 `:1443` 已退出运行态。以下为切换当日实测（2026-09-29），其中 1443 的可用性和证书仅是历史结果，不代表当前端点可用：
 
 | 请求 | 结果 |
 |---|---|
@@ -164,14 +164,14 @@ GoDoxy HTTP transport 默认 `ResponseHeaderTimeout` 为 60s，路由上正数�
 4. 每条请求写入 `/app/logs/entrypoint.log`（combined 格式，保留 30 天，按小时轮转）—— **已确认**。该文件经 bind mount 落在宿主机 `/www/server/panel/data/compose/godoxy/logs/`；`stdout: false` 意味着**这些行不在 `docker logs godoxy-app` 里**。日志含路径、query 与客户端 IP，按现有访问日志的权限约定处理，不要随手贴到工单/日志检索里。观测入口见 [`docs/deployment.md`](deployment.md) 的「ingress 观测」一节。
 5. 中间件链对流式响应的正文改写受 `canBufferAndModifyResponseBody` 限制（`internal/net/gphttp/middleware/middleware.go`）。已观察到 HTTP 200 与 `request_logs` 中 `stream=true` 的成功记录，但状态码、响应大小和请求完成记录**不足以证明客户端在 EOF 前收到增量事件、SSE 未被整体缓冲或取消传播**。这些项目仍待按 6.4 清单完成真实生产验收。
 
-## 6. 切换、验证与回滚（切换与验证已执行；Caddy 移除未执行）
+## 6. 切换、验证与回滚（Caddy 已移除）
 
 ### 6.1 前置条件
 
-- 生产域名 cutover 已获明确授权并于 2026-09-29 00:05–00:08 UTC 执行（时间线见本文开头）。**Caddy 移除仍未授权、未执行**，见 6.6。
+- 生产域名 cutover 已于 2026-09-29 执行；用户于 2026-10-10 明确授权提前停用，在确认调用无影响后授权删除 Caddy，见 6.6。
 - 按 3.2 在服务器上备份整个 GoDoxy `config/` 目录；确认备份路径可读、权限仍受保护，并准备好按 6.5 原地恢复全部改动文件。单个文件备份不足以代表共享入口的已知良好配置。
 - 确认 `/app/certs` 对应的持久卷 `godoxy_godoxy-certs` 可写，Hostinger DNS 凭据仍有效。证书检查从宿主机通过 Docker named-volume 的实际 mountpoint 读取，不假定应用镜像含 shell 或 OpenSSL。
-- GoDoxy 是多个 HTTPS vhost 共用的入口。ACME 准备阶段也可能影响其他 GoDoxy TLS 服务；Caddy 保留只提供 GPT-Load 的旁路，不等于其他生产 HTTPS 服务不受影响。
+- GoDoxy 是多个 HTTPS vhost 共用的入口。ACME 准备阶段也可能影响其他 GoDoxy TLS 服务；恢复 Caddy 只能提供 GPT-Load 旁路，不能替代其他域名的检查。
 
 ### 6.2 第一步：先出证书，再动路由（已执行）
 
@@ -220,9 +220,9 @@ ssh vps-kl 'curl -fsS --max-time 10 http://127.0.0.1:3001/health'
 ssh vps-kl 'docker inspect gpt-load --format "{{.Config.Image}} {{.State.Health.Status}} {{.RestartCount}}"'
 ```
 
-**主入口健康检查已统一为 443**：`docs/deployment.md` 中「验证」「健康检查异常排障」与 `scripts/deploy.sh` 的公网健康检查均使用无端口的 `https://gptl.tanyaleoallen.cloud/health`；脚本的回环探测 `http://127.0.0.1:3001/health` 保持不变。`:1443` 仅用于单独确认回滚入口。URL 已修正，仍需在后续实际发布中验证完整发布流程。
+**主入口健康检查已统一为 443**：部署文档与发布脚本使用无端口的 `https://gptl.tanyaleoallen.cloud/health`，回环探测保持 `http://127.0.0.1:3001/health`。1443 已关闭，以下排空配置与探测命令仅记录历史，不应作为当前验证步骤执行。
 
-**Alt-Svc / 1443 排空（已执行，30 天排空期进行中）**：切换前 Caddy 经 443 和 1443 返回 `alt-svc: h3=":1443"; ma=2592000`。已阻止 Caddy 继续发布正向广告，并在仍由 Caddy 处理的 HTTP/1.1、HTTP/2 响应中返回明确清除头。2026-09-29 00:07:28–00:07:38 UTC 已修改 Caddyfile 并重启 `gptl-proxy` 生效（`started=2026-09-29T00:07:38Z`）。已部署配置（`/opt/gptl-proxy/Caddyfile` 现网内容）：
+**Alt-Svc / 1443 排空（历史方案，已提前结束保留）**：切换前 Caddy 发布 `h3=":1443"; ma=2592000`。2026-09-29 已禁用 H3 并返回 `Alt-Svc: clear`；原定 30 天保留窗口未等满，用户于 2026-10-10 授权提前停用和删除。以下是当时的配置，并非现网运行配置：
 
 ```caddyfile
 {
@@ -251,7 +251,7 @@ done
 
 切换后，1443 的 HTTP/1.1、HTTP/2 响应须返回 `Alt-Svc: clear`；443 可广告 `h3=":443"`，两处均不得再广告 `h3=":1443"`，确认后记录 UTC 时刻。**30 天排空期从 443 与 1443 最后一次可能发出正向 `h3=":1443"` 广告的时刻起算**，若之后再次观察到该广告则从最后一次重新计时。保持 Caddy 的 TCP 1443（HTTP/1.1、HTTP/2）可用，作为过渡与回滚入口；此时 UDP/HTTP/3 1443 已停用，不能把保留 TCP 服务表述为旧 H3 alternative 仍可用。
 
-**排空期起算（2026-09-29）**：Caddy 于 2026-09-29 00:07:38 UTC 重启后即套用上述配置，**30 天排空期从这一刻起算，到期日为 2026-10-29 00:07:38 UTC**。当前状态：
+**原排空计划（历史）**：停止正向广告已于 2026-09-29 00:07:40 UTC 确认，原最早评估时间为 2026-10-29 00:07:40 UTC。以下是保留期的判断条件，不代表这些条件在提前删除前已全部满足：
 
 - 1443 只返回 `alt-svc: clear`（2026-09-29 实测），不再有 `h3=":1443"`；
 - 443 由 GoDoxy 应答，`alt-svc: h3=":443"; ma=2592000`，**没有**任何 `:1443` 正向广告；
@@ -259,9 +259,13 @@ done
 - 排空期间使用能区分真实客户端与运维探测的 1443 请求/连接遥测。Caddyfile 已配置 JSON access log（`output stdout`），但**切换后 443 流量不再进入 Caddy**，该日志只剩 1443 与运维探测，不能单独用来证明客户端缺席。没有可信遥测时不得宣称已排空，继续保留 Caddy。
 - 移除前要求完整 30 天无正向广告、无未结束的 1443 连接且观测窗口内无真实客户端请求；手工 `curl ...:1443/health` 只证明端点可用，**不能**证明没有其他客户端访问。
 
-**真实 AI 流式/非流式验收（未按清单正式执行）**：新路径已有 HTTP 200 与 `request_logs` 中 `stream=true` 的成功记录，安全头已核实；这些日志不足以证明 SSE 增量接收、未缓冲或取消传播。仍须至少各跑一次真实认证的流式与非流式请求，核对客户端在 EOF 前收到增量事件、取消后后端断连，以及 request log、attempt 与 raw capture。本次未为此专门发起计费请求，移除 Caddy 前应补做这一项。
+**真实 AI 流式/非流式验收边界**：新路径已有成功流式记录，用户在停用 Caddy 后确认调用无影响；这不替代 SSE 增量接收、未缓冲、取消传播及逐 attempt raw capture 的完整验收。此次移除没有新增这些项目的验证证据，不宣称全部通过。
 
-### 6.5 回滚（未执行，仍可用）
+### 6.5 恢复旧入口（需先重建 Caddy）
+
+Caddy 已不存在，不能直接运行 `docker start gptl-proxy` 或只恢复 GoDoxy 的旧 TCP 路由。必须先取得新的恢复授权，将 `/opt/gptl-proxy-retired-20261010T065651Z` 中的配置恢复到原路径，核对 Compose、镜像及 `/acme` 证书仍有效，启动 Caddy 并验证 1443。保持 H1/H2 与 `Alt-Svc: clear`，不要重新广告旧 H3 端口。若证书过期，必须先解决证书问题。
+
+只有 Caddy 旁路通过后才能考虑恢复旧 GoDoxy 路由。9 月整目录快照早于后续项目更新，不能盲目覆盖当前共享入口配置；先备份现网并审核其他域名的差异。以下为原切换的恢复方法，不是可直接照抄的当前回滚指令：
 
 回滚要恢复此次改动过的**全部 GoDoxy 配置文件**，而非只删除 autocert extra。暂停其他配置编辑后，使用 3.2 记录的整目录快照 `/www/server/panel/data/compose/godoxy/config.pre-gptl-20260929T000508Z`；先用 `diff -qr "$backup" "$config"` 列出快照与当前目录的差异（只列路径，不打印配置内容），据此恢复所有被改动的旧文件，并仅删除此次新增且快照中没有的文件。本流程至少原地恢复 `vhosts.yml` 与 `config.yml`；若使用过 include 备选，也删除本次新增 route 文件。先恢复 route/provider 文件，最后恢复 `config.yml` 以触发完整 reload；不要 rename/delete `config.yml` 或替换整个配置目录：
 
@@ -269,19 +273,26 @@ done
 ssh vps-kl 'backup=/www/server/panel/data/compose/godoxy/config.pre-gptl-<UTC时间戳>; config=/www/server/panel/data/compose/godoxy/config; cp -p "$backup/vhosts.yml" "$config/vhosts.yml" && cp -p "$backup/config.yml" "$config/config.yml"'
 ```
 
-恢复配置文件只会触发一个新的候选 reload，不会自动恢复旧 runtime。等待并核实结果为 `config committed: healthy`，确认全部现有 HTTPS vhost、证书和 GPT-Load 旧 TCP→Caddy 路径恢复后，才把回滚视为完成；如果 reload 仍为 degraded/failed 或 TLS 服务未恢复，维持 Caddy、停止进一步配置切换并按生产事故流程处理。Caddy 容器和 `/acme` 证书应持续保留；6.4 的排空步骤会有意修改 Caddy 的协议/响应头配置并重启，故不能称整个切换期间保持不动。GoDoxy 回滚可继续使用这个提供 HTTP/1.1、HTTP/2 与 `Alt-Svc: clear` 的 Caddy；不要为回滚重新启用 H3 正向广告，否则必须重新计算排空窗口。已签发的新证书可以留在 GoDoxy volume 中，不要为了回滚删除证书文件。
+恢复配置文件只会触发新的候选 reload，不会自动恢复旧 runtime。核实 `config committed: healthy`，确认全部现有 HTTPS vhost、证书及已重建的 Caddy 路径正常后，才把恢复视为完成；若仍 degraded/failed，停止进一步切换并按生产事故流程处理。不要删除 GoDoxy 证书或重新启用旧 H3 正向广告。当前仅保留 Caddy 配置备份和 `/acme` 旧证书，并无运行中的 Caddy 容器。
 
-### 6.6 什么时候可以移除 Caddy（当前不满足）
+### 6.6 Caddy 移除记录（2026-10-10）
 
-同时满足才动手：
+原计划要求以下条件全部满足后再移除；本次用户明确授权提前结束保留，不能据此宣称原排空与验收已全部完成：
 
 1. 6.4 的 1–5 全部通过；
 2. 真实流式/非流式 AI 请求验收通过（6.4 末尾，含取消传播）；
-3. Caddy 已停止发出 `h3=":1443"` 正向广告，并在保留的 HTTP/1.1、HTTP/2 响应上返回 `Alt-Svc: clear`（不保证缓存 H3 客户端均已收到）；自最后一次可能的正向广告起至少 30 天 —— **2026-09-29 00:07:38 UTC 起算，2026-10-29 00:07:38 UTC 到期**；
+3. Caddy 停止旧 H3 广告并返回 `Alt-Svc: clear` 后至少保留 30 天（不保证全部客户端收到 clear）：原确认时刻为 **2026-09-29 00:07:40 UTC**，最早评估时间为 **2026-10-29 00:07:40 UTC**；
 4. 可信流量/连接遥测显示排空期内无真实客户端请求且无存续的 1443 连接。手工健康检查不计作客户端缺席证据；没有可信遥测时不得移除；
 5. 主入口健康 URL（`docs/deployment.md` 与 `scripts/deploy.sh`）已改为无端口 443 形式，回环探测不受影响，并验证过一次发布。—— **URL 已修正；完整发布验证待执行**。
 
-截至 2026-09-29：第 3 条的「已停止正向广告 + 返回 clear」与 30 天起算点已达成，但**第 3 条的 30 天尚未到期**；第 2 条的 SSE 增量、未缓冲与取消传播尚未验证；第 4 条缺少可信的 1443 客户端遥测；第 5 条仍待完整发布验证。移除动作本身是停用并删除 `gptl-proxy` 容器与 `/opt/gptl-proxy`（保留备份），随后确认 1443 不再监听、443 仍正常。**该动作未执行，也不在任何当前交付范围内；最早不要早于 2026-10-29 00:07:38 UTC 动手。**
+实际执行：
+
+1. 2026-10-10 检查时，GoDoxy 直连 443 正常，1443 无已建立连接。Caddy 容器于 10 月 6 日重新创建，其保留日志中无访问记录；该证据不覆盖完整 30 天窗口。
+2. 按用户授权停止 `gptl-proxy`，确认 TCP/UDP 1443 无监听、443 health 为 200、HTTP 为 308；用户随后确认调用无影响并授权删除。
+3. 06:56:51 UTC 备份到 `/opt/gptl-proxy-retired-20261010T065651Z` 后删除容器及 `/opt/gptl-proxy` 启动配置。`/acme` 旧证书、GoDoxy 配置及 GPT-Load 数据未动。
+4. 删除后 GPT-Load `dev-b6f03372` 为 `healthy`、重启次数 0，443 health 正常、HTTP 308，1443 无监听。
+
+旧 `:1443` 地址不再可用；正常 443 调用不依赖 Caddy。提前移除不证明所有客户端的旧 Alt-Svc 缓存已清除，后续若出现旧端口依赖需按 6.5 单独评估恢复。
 
 ## 7. 隔离验证结论与不成立的结论
 
@@ -301,9 +312,9 @@ U003 在 Hostinger 上用**同一个生产镜像**（`sha256:3edf8b84…`，revi
 ```bash
 # 整目录备份
 ssh vps-kl 'ls -ld /www/server/panel/data/compose/godoxy/config.pre-gptl-*'
-# 容器未重启：godoxy-app 保持 2026-09-19 启动；gptl-proxy 于 00:07:38 重启
-ssh vps-kl 'docker inspect godoxy-app gptl-proxy --format "{{.Name}} started={{.State.StartedAt}} restarts={{.RestartCount}}"'
-# 443 证书由 GoDoxy autocert 签发，1443 仍为 Caddy 旧证书
+# 当前容器状态；Caddy 已删除，不能再 inspect gptl-proxy
+ssh vps-kl 'docker inspect godoxy-app --format "{{.Name}} started={{.State.StartedAt}} restarts={{.RestartCount}}"'
+# 443 证书由 GoDoxy autocert 管理；1443 已关闭
 echo | openssl s_client -servername gptl.tanyaleoallen.cloud -connect gptl.tanyaleoallen.cloud:443 2>/dev/null \
   | openssl x509 -noout -subject -issuer -dates
 # 切换前最后一个 404 与切换后首个 200
