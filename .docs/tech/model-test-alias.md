@@ -78,9 +78,12 @@ while a replay returns the original durable operation result.
   applies the caller's protocol, model, and group filters to the indexed target
   just like other model names.
 - `web/src/shared/control/resources/groups.ts` requires the read value
-  to match the six-character format. `model-draft.ts` and
-  `GroupModelsTab.vue` carry it as read-only display state while excluding it
-  from the normalized write payload.
+  to match the six-character format.
+  `web/src/shared/domain/models/model-draft.ts` carries it as read-only draft
+  state and excludes it from the write payload through `normalizeModel`.
+  The React editor
+  `web/src/frontends/astryx/features/groups/models/GroupModelsTab.tsx` renders
+  the server-allocated alias as display-only code.
 - Gateway request attribution keeps the requested name as the client model and
   the selected route's model as the upstream model; durable request-log and
   usage tests verify that the short alias does not replace the upstream pricing

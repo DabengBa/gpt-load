@@ -19,9 +19,17 @@ The supported boundary is what Gateway, CPA, and Bifrost HTTP integrations actua
 
 ## Reporting a vulnerability
 
-Report suspected vulnerabilities through [GitHub Private Vulnerability Reporting](https://github.com/tbphp/gpt-load/security/advisories/new).
+The reporting status for this repository is documented in its own
+[Security policy](https://github.com/DabengBa/gpt-load/security/policy).
 
-Please do not open a public issue for an undisclosed vulnerability. Use the private report so the maintainers can investigate and coordinate a fix before public disclosure.
+GitHub Private Vulnerability Reporting is currently **disabled** for
+`DabengBa/gpt-load` (the repository API returned `enabled: false` during the
+2026-10-10 governance check). No private reporting channel has been verified.
+The policy link is informational, not an available private submission channel.
+
+Please do not open a public issue or post undisclosed vulnerability details in
+public discussions or community chat. This policy does not offer a public-issue
+fallback or claim that a private report can currently be submitted.
 
 ## Channel credential exposure boundary
 

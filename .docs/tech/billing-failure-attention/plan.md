@@ -9,11 +9,32 @@ code:
     - internal/health/execution_judge.go
     - internal/storage/migrations/0023_billing_failure_category.go
     - web/src/shared/domain/home/attention.ts
+    - web/src/frontends/astryx/features/home/HomeAttention.tsx
 ---
 
 # 余额不足失败分类与首页告警
 
-## Review
+## 当前实现与验证表面
+
+本节按当前源码定位实现与可复用验证入口，不声明本次已执行这些测试。
+下方旧评审中的通过记录、Windows 限制及 Vue 工具链均只属于当时环境，
+不能作为当前 React/shared 实现的验证结论。
+
+| 边界 | 当前实现 | 当前验证入口与状态 |
+|---|---|---|
+| 余额信号分类 | `internal/execution/contracts.go`、`internal/channel/failure_class.go` | `internal/execution/contracts_test.go`、`internal/channel/failure_class_test.go`；本次仅核对路径，未运行 |
+| 24h 凭据冷却及 committed 约束 | `internal/health/execution_judge.go` | `internal/health/execution_judge_billing_test.go`；本次仅核对路径，未运行 |
+| billing 持久化约束 | `internal/storage/migrations/0023_billing_failure_category.go` | `internal/storage/migrations/0023_billing_failure_category_test.go`；本次仅核对路径，未运行 |
+| 首页聚合与显示 | `web/src/shared/domain/home/attention.ts`、`web/src/frontends/astryx/features/home/HomeAttention.tsx` | 当前 `web/package.json` 的 `type-check`（`tsc`）及 `lint`（ESLint 等）脚本；本次未运行，不等同于 UI 行为证明 |
+
+共享聚合按分组统计 billing 冷却凭据数量并取最早冷却结束时刻，React
+`HomeAttention.tsx` 显示该聚合结果；当前实现不以 `vue-tsc` 为验证入口。
+
+## 历史 Review（原始评审记录）
+
+以下保留既有评审原文，包括其 proof、环境限制与完成勾选；它们是历史记录，
+不是本次复验结果或当前待办。原文未注明评审日期，不补造时间或历史成功证据。
+原文中的文件行号及工具链名称也只用于定位当时证据。
 
 第二评审来源：Claude Code CLI 不可用（proxy auth 401）且共享脚本 `invoke-claude-readonly-review.ps1` 缺失，本次仅主评审。
 

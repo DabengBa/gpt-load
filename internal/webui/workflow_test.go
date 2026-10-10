@@ -852,8 +852,8 @@ func TestReleaseWorkflowUsesOneSharedPublicationPreflight(t *testing.T) {
 		"git merge-base --is-ancestor",
 		"DOCKERHUB_READ_TOKEN: ${{ secrets.DOCKERHUB_READ_TOKEN || secrets.DOCKERHUB_TOKEN }}",
 		"DOCKERHUB_TOKEN",
-		"ghcr.io/tbphp/gpt-load:latest",
-		"tbphp/gpt-load:latest",
+		"ghcr.io/dabengba/gpt-load:latest",
+		"dabengba/gpt-load:latest",
 		".github/scripts/release-publication-state.sh",
 		"publication_state:",
 		"write_mode:",
@@ -1274,8 +1274,8 @@ func TestReleaseWorkflowPromotesVerifiedImageChannelsMonotonically(t *testing.T)
 		`source="${repository}@${expected_digest}"`,
 		"docker buildx imagetools create",
 		`test "${promoted_digest}" = "${expected_digest}"`,
-		"ghcr.io/tbphp/gpt-load:latest",
-		"tbphp/gpt-load:latest",
+		"ghcr.io/dabengba/gpt-load:latest",
+		"dabengba/gpt-load:latest",
 		"ghcr_latest_digest",
 		"dockerhub_latest_digest",
 	} {
@@ -1298,7 +1298,7 @@ func TestReleaseWorkflowPromotesVerifiedImageChannelsMonotonically(t *testing.T)
 		"- promote-image-channels",
 		"needs.promote-image-channels.outputs.major_current == 'true'",
 		"RELEASE_VERSION: ${{ needs.validate-tag.outputs.version }}",
-		"IMAGE: ghcr.io/tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}",
+		"IMAGE: ghcr.io/dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}",
 	} {
 		if !strings.Contains(render, required) {
 			t.Fatalf("Render deployment does not follow the verified major channel via %q:\n%s", required, render)
@@ -1370,8 +1370,8 @@ func TestReleaseWorkflowMaintainsVersionedBetaChannelAlias(t *testing.T) {
 	for _, required := range []string{
 		"IMAGE_BETA: ${{ needs.validate-tag.outputs.image_beta }}",
 		"IMAGE_MAJOR: ${{ needs.validate-tag.outputs.image_major }}",
-		`"ghcr.io/tbphp/gpt-load:${IMAGE_BETA}"`,
-		`"tbphp/gpt-load:${IMAGE_MAJOR}"`,
+		`"ghcr.io/dabengba/gpt-load:${IMAGE_BETA}"`,
+		`"dabengba/gpt-load:${IMAGE_MAJOR}"`,
 	} {
 		if !strings.Contains(reconciliation, required) {
 			t.Fatalf("publication reconciliation does not contain %q:\n%s", required, reconciliation)
@@ -1394,7 +1394,7 @@ func TestReleaseWorkflowDeploysCurrentMajorChannelToRender(t *testing.T) {
 		"RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}",
 		"RENDER_SERVICE_URL: ${{ vars.RENDER_SERVICE_URL }}",
 		"RELEASE_VERSION: ${{ needs.validate-tag.outputs.version }}",
-		"IMAGE: ghcr.io/tbphp/gpt-load:${{ needs.validate-tag.outputs.image_exact }}",
+		"IMAGE: ghcr.io/dabengba/gpt-load:${{ needs.validate-tag.outputs.image_exact }}",
 		`RENDER_CLI_VERSION: "2.25.0"`,
 		`RENDER_CLI_SHA256: "3b3f1f839ef36b81f12d84ac7288f1c96f9f7519b39c53fe6f866612f704e7cd"`,
 	} {
@@ -2052,8 +2052,8 @@ func TestReleaseWorkflowPostPublishVerifiesExactDigestsBeforePromotion(t *testin
 		dockerLoginActionRef,
 		"registry: ghcr.io",
 		"exact_digest",
-		"ghcr.io/tbphp/gpt-load",
-		"tbphp/gpt-load",
+		"ghcr.io/dabengba/gpt-load",
+		"dabengba/gpt-load",
 	} {
 		if !strings.Contains(job, required) {
 			t.Fatalf("post-publish verification does not contain %q:\n%s", required, job)
@@ -2109,8 +2109,8 @@ func TestReleaseWorkflowRunsBothPublishedImagesAndPreservesLatest(t *testing.T) 
 	for _, required := range []string{
 		"ghcr_latest_digest",
 		"dockerhub_latest_digest",
-		"ghcr.io/tbphp/gpt-load:latest",
-		"tbphp/gpt-load:latest",
+		"ghcr.io/dabengba/gpt-load:latest",
+		"dabengba/gpt-load:latest",
 		".github/scripts/release-image-digest.sh",
 	} {
 		if !strings.Contains(snapshotJob, required) {
@@ -2137,7 +2137,7 @@ func TestReleaseWorkflowRunsBothPublishedImagesAndPreservesLatest(t *testing.T) 
 	runtimeSmoke := workflowJobBlock(t, content, "post-publish-image-smoke")
 	for _, required := range []string{
 		"RELEASE_SMOKE_SOURCE_IMAGE",
-		"ghcr.io/tbphp/gpt-load",
+		"ghcr.io/dabengba/gpt-load",
 		"needs.validate-tag.outputs.image_exact",
 		".github/scripts/release-docker-smoke.sh",
 	} {
@@ -2363,7 +2363,7 @@ else:
 	candidateRevision := strings.Repeat("1", 40)
 	previousRevision := strings.Repeat("2", 40)
 	state := map[string]imageRecord{}
-	for _, repository := range []string{"ghcr.io/tbphp/gpt-load", "tbphp/gpt-load"} {
+	for _, repository := range []string{"ghcr.io/dabengba/gpt-load", "dabengba/gpt-load"} {
 		state[repository+":2.0.0-beta.25"] = imageRecord{
 			Digest: candidateDigest, Revision: candidateRevision, Version: "v2.0.0-beta.25",
 		}
@@ -2420,7 +2420,7 @@ else:
 		t.Fatalf("promotion outputs = %#v, want both channels current", outputs)
 	}
 	state = readState()
-	for _, repository := range []string{"ghcr.io/tbphp/gpt-load", "tbphp/gpt-load"} {
+	for _, repository := range []string{"ghcr.io/dabengba/gpt-load", "dabengba/gpt-load"} {
 		for _, alias := range []string{"2.0-beta", "2"} {
 			if got := state[repository+":"+alias].Digest; got != candidateDigest {
 				t.Fatalf("%s:%s digest = %q, want %q", repository, alias, got, candidateDigest)
@@ -2431,20 +2431,20 @@ else:
 		}
 	}
 
-	delete(state, "tbphp/gpt-load:2")
+	delete(state, "dabengba/gpt-load:2")
 	writeState(state)
 	outputs = runPromotion("v2.0.0-beta.25", "2.0.0-beta.25", candidateRevision)
 	if outputs["major_current"] != "true" {
 		t.Fatalf("repair outputs = %#v, want major channel current", outputs)
 	}
 	state = readState()
-	if got := state["tbphp/gpt-load:2"].Digest; got != candidateDigest {
+	if got := state["dabengba/gpt-load:2"].Digest; got != candidateDigest {
 		t.Fatalf("partial Docker Hub channel repair digest = %q, want %q", got, candidateDigest)
 	}
 
 	olderDigest := "sha256:" + strings.Repeat("d", 64)
 	olderRevision := strings.Repeat("3", 40)
-	for _, repository := range []string{"ghcr.io/tbphp/gpt-load", "tbphp/gpt-load"} {
+	for _, repository := range []string{"ghcr.io/dabengba/gpt-load", "dabengba/gpt-load"} {
 		state[repository+":2.0.0-beta.24"] = imageRecord{
 			Digest: olderDigest, Revision: olderRevision, Version: "v2.0.0-beta.24",
 		}
@@ -2455,7 +2455,7 @@ else:
 		t.Fatalf("older promotion outputs = %#v, want both channels skipped", outputs)
 	}
 	state = readState()
-	for _, repository := range []string{"ghcr.io/tbphp/gpt-load", "tbphp/gpt-load"} {
+	for _, repository := range []string{"ghcr.io/dabengba/gpt-load", "dabengba/gpt-load"} {
 		for _, alias := range []string{"2.0-beta", "2"} {
 			if got := state[repository+":"+alias].Digest; got != candidateDigest {
 				t.Fatalf("older run rolled back %s:%s to %q", repository, alias, got)

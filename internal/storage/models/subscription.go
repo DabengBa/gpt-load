@@ -20,7 +20,7 @@ type CredentialStage struct {
 	AuthorizationMethod  string                `gorm:"type:varchar(32);not null"`
 	Status               CredentialStageStatus `gorm:"type:varchar(32);not null"`
 	EncryptedPayload     string                `gorm:"type:text;not null"`
-	PayloadSchemaVersion uint                  `gorm:"not null;default:1"`
+	PayloadSchemaVersion uint                  `gorm:"not null;default:2"`
 	SafeSummaryJSON      JSON                  `gorm:"column:safe_summary_json;type:json;not null"`
 	IdentityFingerprint  string                `gorm:"type:varchar(128);not null;default:''"`
 	OAuthStateHash       *string               `gorm:"column:oauth_state_hash;type:varchar(128)"`

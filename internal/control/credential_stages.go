@@ -129,28 +129,8 @@ func (s *Service) credentialStageNetworkContext(
 	return s.stagedNetworkContext(ctx, payload)
 }
 
-// Version 1 was the Codex-only envelope used before subscription drivers were
-// generalized. It remains readable only for short-lived stages created before
-// an in-place upgrade.
-type stagedSubscriptionPayloadV1 struct {
-	State    string `json:"state,omitempty"`
-	Verifier string `json:"verifier,omitempty"`
-}
-
 func decodeStagedAuthorizationPayload(schemaVersion uint, plaintext []byte) (stagedSubscriptionPayload, error) {
 	switch schemaVersion {
-	case 1:
-		var legacy stagedSubscriptionPayloadV1
-		if err := json.Unmarshal(plaintext, &legacy); err != nil {
-			return stagedSubscriptionPayload{}, err
-		}
-		driverState, err := json.Marshal(struct {
-			Verifier string `json:"verifier"`
-		}{Verifier: legacy.Verifier})
-		if err != nil {
-			return stagedSubscriptionPayload{}, err
-		}
-		return stagedSubscriptionPayload{State: legacy.State, DriverState: driverState}, nil
 	case stagedSubscriptionSchemaV2:
 		var payload stagedSubscriptionPayload
 		if err := json.Unmarshal(plaintext, &payload); err != nil {
