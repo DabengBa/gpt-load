@@ -456,6 +456,8 @@ const styles = stylex.create({
     paddingTop: { default: 0, [narrow]: 12 },
     paddingBottom: { default: 0, [narrow]: 12 },
     paddingInline: { default: 0, [narrow]: 12 },
+    contentVisibility: 'auto',
+    containIntrinsicSize: '0 64px',
   },
 
   rowHeader: {
@@ -464,7 +466,6 @@ const styles = stylex.create({
     zIndex: 1,
     top: 0,
     minHeight: 34,
-
   },
   headerCell: {
     paddingBlock: 'var(--spacing-1)',
@@ -617,6 +618,14 @@ const styles = stylex.create({
   inputShellInvalid: {
     borderColor: 'var(--color-danger)',
   },
+  inputError: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+  },
   inputShellDisabled: {
     cursor: 'not-allowed',
     opacity: 0.55,
@@ -709,6 +718,9 @@ function ScheduleNumberInput({
   value,
   placeholder,
   invalid,
+  invalidMessage,
+  min,
+  max,
   disabled,
   mono,
   shellStyle,
@@ -720,6 +732,9 @@ function ScheduleNumberInput({
   value: string
   placeholder?: string
   invalid?: boolean
+  invalidMessage?: string
+  min?: number
+  max?: number
   disabled?: boolean
   mono?: boolean
   shellStyle?: stylex.StyleXStyles
@@ -749,11 +764,18 @@ function ScheduleNumberInput({
         placeholder={placeholder}
         disabled={disabled}
         aria-invalid={invalid === true || undefined}
+        aria-describedby={invalid === true ? `${id}-error` : undefined}
         autoComplete="off"
         spellCheck={false}
         inputMode="numeric"
         onChange={(event) => onChange(event.currentTarget.value)}
       />
+      {invalid === true && (
+        <span id={`${id}-error`} {...stylex.props(styles.inputError)} role="alert">
+          {invalidMessage} (
+          {min !== undefined ? `${min}${max !== undefined ? `–${max}` : '+'}` : ''})
+        </span>
+      )}
     </div>
   )
 }
@@ -788,6 +810,16 @@ export function SchedulePanelDetail({
   }
 
   const rows = useMemo(() => scheduleRows(detail), [detail])
+  const countFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale])
+  const rateFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        style: 'percent',
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
+    [locale],
+  )
 
   const [draftMap, setDraftMap] = useState<Record<string, Draft>>(
     () => buildHydration(scheduleRows(detail), drafts).draftMap,
@@ -1064,15 +1096,11 @@ export function SchedulePanelDetail({
   }
 
   function formatCount(value: number): string {
-    return new Intl.NumberFormat(locale).format(value)
+    return countFormatter.format(value)
   }
 
   function formatRate(value: number): string {
-    return new Intl.NumberFormat(locale, {
-      style: 'percent',
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }).format(value)
+    return rateFormatter.format(value)
   }
 
   function entryReasoningValue(
@@ -1464,7 +1492,15 @@ export function SchedulePanelDetail({
                         isPriorityStart(index) && styles.rowPriorityStart,
                       )}
                       role="row"
+                      tabIndex={0}
                       onClick={() => onRowChange(key)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onRowChange(key)
+                        }
+                      }}
                     >
                       <div {...stylex.props(styles.cell, styles.cellPriority)} role="cell">
                         <span {...stylex.props(styles.cellLabel)}>{text('priority')}</span>
@@ -1475,6 +1511,8 @@ export function SchedulePanelDetail({
                             value={inputValue(group.group_id, entry, 'priority')}
                             placeholder={placeholder(entry, 'priority')}
                             invalid={invalidInputs[priorityFieldKey] === true}
+                            invalidMessage={text('invalidValue')}
+                            min={1}
                             disabled={derived}
                             shellStyle={styles.priorityInputShell}
                             onChange={(value) => setInput(group.group_id, entry, 'priority', value)}
@@ -1549,6 +1587,9 @@ export function SchedulePanelDetail({
                           value={inputValue(group.group_id, entry, 'weight')}
                           placeholder={placeholder(entry, 'weight')}
                           invalid={invalidInputs[weightFieldKey] === true}
+                          invalidMessage={text('invalidValue')}
+                          min={0}
+                          max={100}
                           disabled={derived}
                           mono
                           innerStyle={styles.weightInputInner}

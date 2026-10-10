@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { TextInput, Pagination, EmptyState, Skeleton, Button } from '@astryxdesign/core'
+import { TextInput, Pagination, EmptyState, Skeleton, Button, Banner } from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
 import { modelCollectionQueryOptions } from '@shared/control/resources/models'
 import { useAppServices } from '../../app/services'
 import { useT } from '../../app/i18n'
+import { useDebouncedAction } from '../../app/use-debounced-action'
 
 const styles = stylex.create({
   panel: { display: 'grid', gap: '16px', minWidth: 0, paddingTop: '16px' },
@@ -23,16 +24,32 @@ export function ScheduleAccessReadOnly({ externalModel }: { externalModel?: stri
   const { apiClient } = useAppServices()
   const t = useT()
   const [q, setQ] = useState(externalModel ?? '')
+  const qRef = useRef(q)
+  useEffect(() => {
+    qRef.current = q
+  }, [q])
+  const [committedQ, setCommittedQ] = useState(externalModel ?? '')
   const [page, setPage] = useState(1)
+  const [committedPage, setCommittedPage] = useState(1)
+  const debounce = useDebouncedAction(300)
+  const [lastExternalModel, setLastExternalModel] = useState(externalModel)
+  if (lastExternalModel !== externalModel) {
+    setLastExternalModel(externalModel)
+    debounce.cancel()
+    setQ(externalModel ?? '')
+    setCommittedQ(externalModel ?? '')
+    setPage(1)
+    setCommittedPage(1)
+  }
   const query = useQuery(
     modelCollectionQueryOptions(
       apiClient,
       {
         group_status: 'enabled',
         pricing_status: 'all',
-        page,
+        page: committedPage,
         page_size: 10,
-        q,
+        q: committedQ,
       },
       true,
     ),
@@ -44,12 +61,26 @@ export function ScheduleAccessReadOnly({ externalModel }: { externalModel?: stri
         value={q}
         onChange={(value) => {
           setQ(value)
-          setPage(1)
+          qRef.current = value
+          debounce.schedule(() => {
+            setCommittedQ(qRef.current)
+            setCommittedPage(1)
+            setPage(1)
+          })
         }}
       />
       {query.isPending && <Skeleton height={44} radius={2} />}
       {query.isError && (
-        <Button label={t('monitor.schedule.panel.retry')} onClick={() => void query.refetch()} />
+        <Banner
+          status="error"
+          title={t('monitor.schedule.panel.indexFailed')}
+          endContent={
+            <Button
+              label={t('monitor.schedule.panel.retry')}
+              onClick={() => void query.refetch()}
+            />
+          }
+        />
       )}
       {query.data?.items.length === 0 && (
         <EmptyState title={t('monitor.schedule.detail.noEntries')} />
@@ -82,7 +113,13 @@ export function ScheduleAccessReadOnly({ externalModel }: { externalModel?: stri
           totalItems={query.data.pagination.total_items}
           totalPages={query.data.pagination.total_pages}
           pageSize={10}
-          onChange={setPage}
+          onChange={(nextPage) => {
+            debounce.schedule(() => {
+              setCommittedQ(qRef.current)
+              setCommittedPage(nextPage)
+              setPage(nextPage)
+            })
+          }}
           size="sm"
         />
       )}
