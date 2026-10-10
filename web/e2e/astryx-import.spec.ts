@@ -454,7 +454,7 @@ for (const authState of [
       expect(stored.draft.group_id).toBe(9)
       expect(stored.draft.staged_credential.stage_id).toBe('stage_abc')
       expect(stored.draft.staged_credential.authorization_method).toBe('browser_oauth')
-      await page.getByLabel('Sign-in key', { exact: true }).fill('e2e-auth-key')
+      await page.getByRole('textbox', { name: 'Sign-in key', exact: true }).fill('e2e-auth-key')
       await page.getByRole('button', { name: 'Sign in', exact: true }).click()
       await page.waitForURL(/\/import/)
       await expect(page.getByText('t***@example.com', { exact: true })).toBeVisible()
@@ -742,7 +742,7 @@ test('a 401 captures the draft to sessionStorage and re-login restores it', asyn
   // Re-auth: the session endpoint still answers admin, so signing in lands
   // back on /import and the consumed draft repopulates the form.
   await page.evaluate(() => window.localStorage.setItem('gpt-load.auth-key', 'e2e-auth-key'))
-  await page.getByLabel('Sign-in key', { exact: true }).fill('e2e-auth-key')
+  await page.getByRole('textbox', { name: 'Sign-in key', exact: true }).fill('e2e-auth-key')
   await page.getByRole('button', { name: 'Sign in' }).click()
 
   await page.waitForURL(/\/import/, { timeout: 15_000 })

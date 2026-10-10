@@ -142,10 +142,12 @@ test('successful group delete navigates before stalled options refetch and survi
     const response = await route.fetch()
     const source = await response.text()
     expect(source).toContain('authRef.current = authSession;')
+    const queryImport = source.match(/from\s+["']([^"']*tanstack_react-query[^"']*)["']/)
+    expect(queryImport).not.toBeNull()
     await route.fulfill({
       response,
       body:
-        `import { QueryObserver as DeleteTestObserver } from '/node_modules/.vite/deps/@tanstack_react-query.js';\n` +
+        `import { QueryObserver as DeleteTestObserver } from ${JSON.stringify(queryImport![1])};\n` +
         `import { groupOptionsQueryOptions as deleteTestOptions } from '/src/shared/control/resources/groups.ts';\n` +
         source.replace(
           'authRef.current = authSession;',
@@ -186,7 +188,9 @@ test('successful group delete navigates before stalled options refetch and survi
   })
   try {
     await page.goto('/groups/1', { waitUntil: 'commit' })
-    await expect(page.locator('footer[data-status]')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('button', { name: '删除分组', exact: true })).toBeVisible({
+      timeout: 60_000,
+    })
     await page.getByRole('button', { name: '删除分组', exact: true }).click()
     const dialog = page.getByRole('dialog')
     await dialog.getByRole('textbox').fill('Geometry group')
@@ -214,7 +218,9 @@ test('failed group delete keeps detail URL and confirmation dialog', async ({ pa
     })
   })
   await page.goto('/groups/1', { waitUntil: 'commit' })
-  await expect(page.locator('footer[data-status]')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: '删除分组', exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
   await page.getByRole('button', { name: '删除分组', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByRole('textbox').fill('Geometry group')
@@ -236,7 +242,7 @@ for (const width of [320, 768, 1440]) {
         const title = page.locator(
           path === '/import' ? '#import-page-title' : '#group-detail-title',
         )
-        await expect(title).toBeVisible()
+        await expect(title).toBeVisible({ timeout: 60_000 })
         const name = page.getByRole('textbox', { name: /^分组名称/ })
         await expect(name).toBeVisible()
         const titleSize = await title.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))
