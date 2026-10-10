@@ -770,10 +770,17 @@ export const manualGroupQueryOptions = {
   refetchOnReconnect: false,
 } as const
 
+/** Read-only group projections may lag briefly, but must not become a manual snapshot. */
+export const readOnlyGroupQueryOptions = {
+  staleTime: 30_000,
+  refetchOnWindowFocus: true,
+  refetchOnReconnect: true,
+} as const
+
 export function groupCollectionQueryOptions(client: ApiClient, filters: GroupCollectionFilters) {
   const key = controlQueryKeys.groups.collection(filters)
   return {
-    ...manualGroupQueryOptions,
+    ...readOnlyGroupQueryOptions,
     queryKey: key,
     queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) =>
       listGroupCollection(client, queryKey[3], signal),
@@ -783,7 +790,7 @@ export function groupCollectionQueryOptions(client: ApiClient, filters: GroupCol
 
 export function groupOptionsQueryOptions(client: ApiClient, enabled: boolean = true) {
   return {
-    ...manualGroupQueryOptions,
+    ...readOnlyGroupQueryOptions,
     queryKey: controlQueryKeys.groups.options(),
     queryFn: ({ signal }: QueryFunctionContext) => listGroupOptions(client, signal),
     enabled: enabled,
@@ -794,7 +801,7 @@ export function groupOptionsQueryOptions(client: ApiClient, enabled: boolean = t
 
 export function groupSummaryQueryOptions(client: ApiClient, groupID: number | undefined) {
   return {
-    ...manualGroupQueryOptions,
+    ...readOnlyGroupQueryOptions,
     queryKey:
       groupID === undefined
         ? controlQueryKeys.groups.summaries()
@@ -980,6 +987,11 @@ export async function invalidateGroupSettingsDependents(
     },
     {
       queryKey: controlQueryKeys.groups.options(),
+      exact: true,
+      refetchType: 'active',
+    },
+    {
+      queryKey: controlQueryKeys.home.base(),
       exact: true,
       refetchType: 'active',
     },
