@@ -6,6 +6,7 @@ relations:
   related:
     - db/features/dispatch-reasoning-policy.md
     - tech/model-test-alias.md
+    - tech/reasoning-replay.md
 code:
   paths:
     - internal/control/model_route_schedule.go
@@ -25,6 +26,8 @@ The schedule control resource owns route-entry reasoning choices. Runtime
 preparation resolves the selected route's effective policy and writes the
 appropriate protocol field before dispatch. Product semantics are defined by
 [Dispatch Center Reasoning Policy](../db/features/dispatch-reasoning-policy.md).
+Conversation-history conversion is owned by
+[Reasoning History Replay](reasoning-replay.md).
 
 ## Architecture And Constraints
 
