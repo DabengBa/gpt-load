@@ -56,14 +56,7 @@ const styles = stylex.create({
     borderRightColor: 'var(--color-border-subtle)',
     padding: '50px 56px 44px',
   },
-  eyebrow: {
-    margin: '0 0 var(--space-3)',
-    color: 'var(--color-text-faint)',
-    fontFamily: 'var(--font-mono)',
-    fontSize: 'var(--text-label-xs)',
-    letterSpacing: '0.075em',
-    textTransform: 'uppercase',
-  },
+
   headline: {
     margin: 0,
     maxWidth: '20ch',
@@ -95,7 +88,7 @@ const styles = stylex.create({
   capabilityIndex: {
     color: 'var(--color-text-faint)',
     fontFamily: 'var(--font-mono)',
-    fontSize: 'var(--text-label-xs)',
+    fontSize: 'var(--text-meta)',
   },
   capabilityTitle: {
     fontSize: 'var(--text-body-size)',
@@ -157,7 +150,7 @@ const styles = stylex.create({
   sessionNote: {
     margin: 0,
     color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-label-xs)',
+    fontSize: 'var(--text-meta)',
     lineHeight: 'var(--line-normal)',
   },
   code: {
@@ -184,7 +177,7 @@ const styles = stylex.create({
   recovery: {
     margin: '4px 0 0',
     color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-label-xs)',
+    fontSize: 'var(--text-meta)',
     lineHeight: 'var(--line-normal)',
   },
   recoveryAction: {
@@ -203,7 +196,7 @@ const styles = stylex.create({
   instance: {
     margin: '18px 0 0',
     color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-label-xs)',
+    fontSize: 'var(--text-meta)',
     lineHeight: 'var(--line-normal)',
   },
 })
@@ -342,7 +335,6 @@ export function LoginView() {
     <main {...stylex.props(styles.frame)} aria-labelledby="login-intro-title">
       <div {...stylex.props(styles.sheet)}>
         <section {...stylex.props(styles.intro)} aria-labelledby="login-intro-title">
-          <p {...stylex.props(styles.eyebrow)}>{t('auth.eyebrow')}</p>
           <h1 id="login-intro-title" {...stylex.props(styles.headline)}>
             {t('auth.headline')}
           </h1>

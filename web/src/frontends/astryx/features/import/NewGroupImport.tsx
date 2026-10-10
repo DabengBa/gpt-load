@@ -1670,7 +1670,7 @@ const styles = stylex.create({
     borderRadius: 'var(--radius-tag)',
     paddingBlock: '2px',
     paddingInline: '8px',
-    fontSize: 'var(--text-label-xs)',
+    fontSize: 'var(--text-meta)',
     fontWeight: 600,
     letterSpacing: 0,
   },

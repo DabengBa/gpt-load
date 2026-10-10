@@ -95,7 +95,7 @@ const styles = stylex.create({
     borderRadius: '50%',
     backgroundColor: 'var(--color-action-soft)',
     color: 'var(--color-action)',
-    fontSize: 'var(--text-label-xs)',
+    fontSize: 'var(--text-meta)',
     fontWeight: 700,
     fontVariantNumeric: 'tabular-nums',
   },

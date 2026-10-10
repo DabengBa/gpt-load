@@ -122,7 +122,7 @@ const styles = stylex.create({
     backgroundColor: 'transparent',
     color: 'var(--color-text-faint)',
     padding: 0,
-    fontSize: '10.8px',
+    fontSize: 'var(--text-meta)',
     lineHeight: 1.6,
   },
   appearanceAuth: {
