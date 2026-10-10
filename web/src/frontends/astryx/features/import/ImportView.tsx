@@ -168,11 +168,13 @@ export function ImportView() {
             onChange={selectMode}
           >
             <SegmentedControlItem
+              xstyle={styles.mobileSegment}
               value="new"
               label={t('import.mode.new')}
               isDisabled={operationMode !== null && operationMode !== 'new'}
             />
             <SegmentedControlItem
+              xstyle={styles.mobileSegment}
               value="existing"
               label={t('import.mode.existing')}
               isDisabled={operationMode !== null && operationMode !== 'existing'}
@@ -218,5 +220,8 @@ const styles = stylex.create({
   },
   modeControl: {
     minWidth: 0,
+  },
+  mobileSegment: {
+    minHeight: { default: null, [narrow]: 'var(--touch-target)' },
   },
 })

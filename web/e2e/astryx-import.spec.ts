@@ -262,6 +262,57 @@ async function mockImportApi(
   return requests
 }
 
+test('visible group name label focuses its input', async ({ page }) => {
+  await mockImportApi(page)
+  await page.goto('/import?mode=new', { waitUntil: 'commit' })
+  const label = page
+    .locator('label')
+    .filter({ hasText: /^Group name/ })
+    .filter({ visible: true })
+  await expect(label).toBeVisible({ timeout: FIRST_PAINT })
+  await label.click()
+  await expect(page.locator(`input[id="${await label.getAttribute('for')}"]`)).toBeFocused()
+})
+
+test('channel search exposes its list and selects an option with the keyboard', async ({
+  page,
+}) => {
+  await mockImportApi(page)
+  await page.route('**/api/channels', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          items: [
+            ...CHANNELS,
+            ...['anthropic', 'gemini', 'openai_compatible', 'extra'].map((channel_id) => ({
+              ...CHANNELS[0],
+              channel_id,
+              name: channel_id,
+            })),
+          ],
+          total: 6,
+        },
+      },
+    }),
+  )
+  await page.goto('/import?mode=new', { waitUntil: 'commit' })
+  await page
+    .getByRole('button', { name: 'Other channels', exact: true })
+    .click({ timeout: FIRST_PAINT })
+  const search = page.getByRole('combobox', { name: /Search channels/ })
+  await expect(search).toHaveAttribute('aria-expanded', 'true')
+  const list = page.getByRole('listbox', { name: 'Other channels' })
+  await expect(list).toBeVisible()
+  await expect(search).toHaveAttribute('aria-controls', (await list.getAttribute('id')) as string)
+  await search.fill('extra')
+  await expect(search).toHaveAttribute('aria-activedescendant', /channel-extra$/)
+  await search.press('Enter')
+  await expect(page.getByRole('button', { name: 'extra', exact: true })).toBeVisible()
+  await expect(list).not.toBeVisible()
+})
+
 test('adds the first manual model from the empty import form', async ({ page }) => {
   await mockImportApi(page)
   await page.goto('/import', { waitUntil: 'commit' })
@@ -454,7 +505,7 @@ for (const authState of [
       expect(stored.draft.group_id).toBe(9)
       expect(stored.draft.staged_credential.stage_id).toBe('stage_abc')
       expect(stored.draft.staged_credential.authorization_method).toBe('browser_oauth')
-      await page.getByLabel('Sign-in key', { exact: true }).fill('e2e-auth-key')
+      await page.getByRole('textbox', { name: 'Sign-in key', exact: true }).fill('e2e-auth-key')
       await page.getByRole('button', { name: 'Sign in', exact: true }).click()
       await page.waitForURL(/\/import/)
       await expect(page.getByText('t***@example.com', { exact: true })).toBeVisible()
@@ -742,7 +793,7 @@ test('a 401 captures the draft to sessionStorage and re-login restores it', asyn
   // Re-auth: the session endpoint still answers admin, so signing in lands
   // back on /import and the consumed draft repopulates the form.
   await page.evaluate(() => window.localStorage.setItem('gpt-load.auth-key', 'e2e-auth-key'))
-  await page.getByLabel('Sign-in key', { exact: true }).fill('e2e-auth-key')
+  await page.getByRole('textbox', { name: 'Sign-in key', exact: true }).fill('e2e-auth-key')
   await page.getByRole('button', { name: 'Sign in' }).click()
 
   await page.waitForURL(/\/import/, { timeout: 15_000 })

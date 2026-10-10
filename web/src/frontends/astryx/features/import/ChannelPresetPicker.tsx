@@ -90,7 +90,10 @@ const styles = stylex.create({
   },
   chip: {
     display: 'inline-flex',
-    minHeight: 'var(--control-sm)',
+    minHeight: {
+      default: 'var(--control-sm)',
+      '@media (max-width: 680px)': 'var(--touch-target)',
+    },
     alignItems: 'center',
     gap: 6,
     borderWidth: '1px',
@@ -116,6 +119,9 @@ const styles = stylex.create({
     backgroundColor: 'var(--color-action-soft)',
     color: 'var(--color-action)',
     fontWeight: 560,
+  },
+  mobileSegment: {
+    minHeight: { default: null, '@media (max-width: 680px)': 'var(--touch-target)' },
   },
   caret: {
     transitionProperty: 'transform',
@@ -425,11 +431,13 @@ export function ChannelPresetPicker({
               onChange={(next) => chooseConnectionType(next)}
             >
               <SegmentedControlItem
+                xstyle={styles.mobileSegment}
                 value="api_key"
                 label={t('import.steps.channel.connectionTypes.apiKey')}
                 isDisabled={disabled || channelsForType('api_key').length === 0}
               />
               <SegmentedControlItem
+                xstyle={styles.mobileSegment}
                 value="subscription"
                 label={t('import.steps.channel.connectionTypes.subscription')}
                 isDisabled={disabled || channelsForType('subscription').length === 0}
@@ -438,7 +446,7 @@ export function ChannelPresetPicker({
 
             <span {...stylex.props(styles.divider)} aria-hidden="true" />
 
-            <div id={channelListId} {...stylex.props(styles.chips)}>
+            <div {...stylex.props(styles.chips)}>
               {featuredChannels.map((channel) => (
                 <button
                   key={channel.channel_id}
@@ -476,6 +484,10 @@ export function ChannelPresetPicker({
                           hasClear
                           startIcon={<Search size={14} aria-hidden="true" />}
                           size="sm"
+                          role="combobox"
+                          aria-autocomplete="list"
+                          aria-expanded={popoverOpen}
+                          aria-controls={rankedMatches.length ? channelListId : undefined}
                           aria-activedescendant={activeOptionId}
                         />
                         {rankedMatches.length === 0 ? (
@@ -484,6 +496,7 @@ export function ChannelPresetPicker({
                           </InlineNotice>
                         ) : (
                           <div
+                            id={channelListId}
                             {...stylex.props(styles.options)}
                             role="listbox"
                             aria-label={t('import.presets.more')}
