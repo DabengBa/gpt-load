@@ -53,7 +53,7 @@ export default {
         group: 'グループ',
         status: 'ステータス',
         channel: 'チャネル',
-        models: 'クライアント / エントリ',
+        models: 'モデル',
         credentialHealth: '認証情報の状態',
         actions: '操作',
       },
@@ -68,6 +68,8 @@ export default {
       enabledOff: '{name} を停止しました。新しいリクエストは受け付けません。',
       toggleFailed: '切り替えに失敗しました。再試行してください。',
       manageCredentialFor: '{name} の認証情報を管理',
+      modelsHelp: 'クライアントモデル数 / 設定済みモデル総数',
+      modelsHelpValue: '{client} クライアントモデル / {total} 設定済みモデル',
     },
   },
   group: {

@@ -53,7 +53,7 @@ export default {
         group: 'Group',
         status: 'Status',
         channel: 'Channel',
-        models: 'Client / entries',
+        models: 'Models',
         credentialHealth: 'Credential health',
         actions: 'Actions',
       },
@@ -68,6 +68,8 @@ export default {
       enabledOff: 'Disabled {name}. It no longer takes new requests.',
       toggleFailed: 'Could not change the switch. Try again.',
       manageCredentialFor: 'Manage credential for {name}',
+      modelsHelp: 'Client models / all configured models',
+      modelsHelpValue: '{client} client models / {total} configured models',
     },
   },
   group: {

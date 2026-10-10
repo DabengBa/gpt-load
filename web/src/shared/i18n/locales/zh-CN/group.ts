@@ -53,7 +53,7 @@ export default {
         group: '分组',
         status: '状态',
         channel: '渠道',
-        models: '对外模型 / 条目',
+        models: '模型',
         credentialHealth: '凭据状态',
         actions: '操作',
       },
@@ -68,6 +68,8 @@ export default {
       enabledOff: '已停用 {name}，该分组不再接受新请求',
       toggleFailed: '切换失败，请重试',
       manageCredentialFor: '管理 {name} 的凭据',
+      modelsHelp: '客户端模型数 / 已配置模型总数',
+      modelsHelpValue: '{client} 个客户端模型 / {total} 个已配置模型',
     },
   },
   group: {

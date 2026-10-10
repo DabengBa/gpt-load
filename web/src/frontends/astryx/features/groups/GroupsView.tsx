@@ -9,13 +9,12 @@ import {
   Switch,
   Table,
   TextInput,
+  Tooltip,
   proportional,
   pixel,
   useTablePagination,
-  useTableSortable,
   useTableStickyColumns,
   type TableColumn,
-  type TableSortState,
 } from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
@@ -74,21 +73,6 @@ import { GroupDeleteDialog } from './settings/GroupDeleteDialog'
 // The server sort enum is directionless (see ADR-0001 read model): each named
 // sort implies its own direction. Column sort keys map onto that enum; a
 // direction change on an already-active column snaps back to the default.
-const columnForSort: Partial<Record<GroupCollectionSort, string>> = {
-  name: 'group',
-  status: 'status',
-}
-const sortForColumn: Record<string, GroupCollectionSort> = {
-  group: 'name',
-  status: 'status',
-}
-const directionForSort: Record<GroupCollectionSort, 'ascending' | 'descending'> = {
-  recent: 'descending',
-  created: 'descending',
-
-  name: 'ascending',
-  status: 'ascending',
-}
 
 const sortOptions: readonly GroupCollectionSort[] = ['recent', 'status', 'name', 'created']
 
@@ -527,38 +511,9 @@ export function GroupsView() {
     routeWithFilters({ ...filters, page })
   }
 
-  // Controlled plugin states — all bound to the typed route filters so the
-  // server stays the single source of truth (ADR-0001: no client-side paging).
-  const sortState: TableSortState = useMemo(() => {
-    const column = columnForSort[filters.sort]
-    return column === undefined
-      ? []
-      : [{ sortKey: column, direction: directionForSort[filters.sort] }]
-  }, [filters.sort])
-
-  function onSortChange(next: TableSortState): void {
-    const entry = next[0]
-    if (entry === undefined) {
-      setSort('recent')
-      return
-    }
-    const mapped = sortForColumn[entry.sortKey]
-    if (mapped === undefined) return
-    // Second click on the active column cycles direction; the directionless
-    // enum has nowhere to go, so it releases back to the default sort.
-    if (mapped === filters.sort && directionForSort[mapped] !== entry.direction) {
-      setSort('recent')
-      return
-    }
-    setSort(mapped)
-  }
-
-  const sortablePlugin = useTableSortable<GroupRow>({
-    sort: sortState,
-    onSortChange,
-    isMultiSortEnabled: false,
-    allowUnsortedState: true,
-  })
+  // Sorting is intentionally controlled by the single directionless server
+  // sort selector. The table must not advertise a second click direction that
+  // the API cannot represent.
   const paginationPlugin = useTablePagination<GroupRow>({
     page: filters.page,
     onPageChange: setPage,
@@ -695,7 +650,7 @@ export function GroupsView() {
         key: 'group',
         header: t('groups.collection.columns.group'),
         width: proportional(1),
-        sortable: true,
+
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.nameCell)}>
             <RouteLink
@@ -713,7 +668,7 @@ export function GroupsView() {
         key: 'status',
         header: t('groups.collection.columns.status'),
         width: pixel(180),
-        sortable: true,
+
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.statusCell)}>
             <Switch
@@ -771,12 +726,23 @@ export function GroupsView() {
       },
       {
         key: 'models',
-        header: t('groups.collection.columns.models'),
+        header: (
+          <Tooltip content={t('groups.collection.modelsHelp')}>
+            <span tabIndex={0}>{t('groups.collection.columns.models')}</span>
+          </Tooltip>
+        ),
         width: pixel(130),
         align: 'end',
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.modelCount)}>
-            {intl.formatNumber(group.client_model_count)}
+            <Tooltip
+              content={t('groups.collection.modelsHelpValue', {
+                client: intl.formatNumber(group.client_model_count),
+                total: intl.formatNumber(group.model_count),
+              })}
+            >
+              <span tabIndex={0}>{intl.formatNumber(group.client_model_count)}</span>
+            </Tooltip>
             <span {...stylex.props(styles.modelTotal)}>
               {' / '}
               {intl.formatNumber(group.model_count)}
@@ -816,14 +782,14 @@ export function GroupsView() {
         align: 'end',
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.actionsCell)}>
-            <IconButton
+            <Button
               variant="ghost"
               size="sm"
               label={t('groups.collection.manageCredentialFor', { name: group.name })}
               icon={<KeyRound size={15} />}
               href={`${groupDetailHref(group.id)}?tab=credentials`}
             />
-            <IconButton
+            <Button
               variant="ghost"
               size="sm"
               label={t('groups.collection.copyFor', { name: group.name })}
@@ -831,7 +797,7 @@ export function GroupsView() {
               isLoading={copyingGroupIDs.has(group.id)}
               onClick={() => void copyGroupRecord(group)}
             />
-            <IconButton
+            <Button
               variant="ghost"
               size="sm"
               label={t('groups.collection.openDetail', { name: group.name })}
@@ -1069,7 +1035,6 @@ export function GroupsView() {
                     rowIndexStart={(data.pagination.page - 1) * data.pagination.page_size + 1}
                     rowCount={data.pagination.total_items}
                     plugins={{
-                      sortable: sortablePlugin,
                       pagination: paginationPlugin,
                       sticky: stickyPlugin,
                     }}

@@ -456,7 +456,7 @@ test('search, status chip, and connection-type select hit the server', async ({ 
   await expect(page).not.toHaveURL(/q=|status=|connection_type=/)
 })
 
-test('sort select and column-header sorting stay controlled', async ({ page }) => {
+test('sort select stays controlled', async ({ page }) => {
   const seen = await mockCollection(page, makeGroups(20))
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -468,14 +468,8 @@ test('sort select and column-header sorting stay controlled', async ({ page }) =
   await expect(page).toHaveURL(/sort=name/)
   await expect.poll(() => seen.at(-1)?.sort).toBe('name')
 
-  const table = collectionTable(page)
-  await expect(table.getByRole('row').nth(1)).toContainText('Group 0001')
-
-  // Column-header sortable: the sortable plugin renders 'Sort by <col>'
-  // buttons inside columnheaders; the click maps to the directionless enum.
-  await table.getByRole('button', { name: 'Sort by Status' }).click()
-  await expect(page).toHaveURL(/sort=status/)
-  await expect.poll(() => seen.at(-1)?.sort).toBe('status')
+  await expect(collectionTable(page).getByRole('row').nth(1)).toContainText('Group 0001')
+  await expect(collectionTable(page).getByRole('button', { name: /Sort by/ })).toHaveCount(0)
 })
 
 test('pagination stays server-driven and corrects out-of-range pages', async ({ page }) => {
