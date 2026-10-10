@@ -134,34 +134,8 @@ explicit markers, and two complete tool turns through unary/stream HTTP egress.
 
 ## Chat-to-Responses reasoning replay
 
-The Chat converter emits reasoning items without `role` and always includes a
-`summary` array, including `[]` when the source only provides raw reasoning.
-The original text stays in `content` as `reasoning_text`; actual summaries and
-encrypted content are preserved. Streaming added/done and terminal output,
-including incomplete responses, use the same item shape as unary conversion.
-
-This prevents clients that replay the item verbatim from sending invalid input
-after GPT-Load changes from a Chat-compatible route to native Responses.
-It does not rewrite previously stored client history or claim encrypted
-reasoning is portable between providers. Native passthrough remains unchanged.
-
-Regression coverage: `schemas/reasoningreplay_test.go` checks the serialized
-items and Chat replay tool pairing; GPT-Load's
-`internal/execution/bifrost/reasoning_replay_test.go` echoes real converted unary
-and stream-done output to a strict local native Responses endpoint without
-repairing or dropping the item.
-
-The reverse Responses-to-Chat OpenAI-compatible route has a different boundary:
-raw `reasoning_text` becomes assistant `reasoning_content`, but Responses
-summary/encrypted details are not serialized by the OpenAI Chat message builder.
-Tool calls/results remain paired. A destination that rejects `reasoning_content`
-can still return HTTP 400; the adapter propagates that error rather than silently
-dropping reasoning. This does not promise lossless reasoning-state transfer or
-universal support across compatible vendors. GPT-Load's
-`internal/execution/bifrost/responses_to_chat_replay_test.go` checks the actual
-Chat HTTP payload and a strict destination's rejection. Target-specific changes
-require evidence about that destination; global stripping would break targets
-that require reasoning on tool-call turns.
+The current conversion behavior, failure boundaries, and regression coverage
+are owned by [Reasoning History Replay](../../.docs/tech/reasoning-replay.md).
 
 The v1.11.3 upgrade uses a three-way merge from pristine v1.11.0 and the actual
 local fork. Observer and stream recovery changes remain. Upstream's tool-output
