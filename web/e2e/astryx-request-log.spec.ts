@@ -186,6 +186,11 @@ for (const width of [390, 800]) {
     await openLogs(page)
     await expect(records(page)).toHaveCount(4)
     await expect(records(page).first().getByText('Model / protocol', { exact: true })).toBeVisible()
+    const row = records(page).first()
+    const modelBox = (await row.getByTestId('logs-list__model').boundingBox())!
+    const protocolBox = (await row.getByTestId('logs-list__protocol').boundingBox())!
+    expect(Math.abs(protocolBox.x - modelBox.x)).toBeLessThanOrEqual(1)
+    expect(protocolBox.y).toBeGreaterThanOrEqual(modelBox.y + modelBox.height)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: info.outputPath(`logs-${width}.png`), fullPage: true })
     await records(page).first().getByRole('button', { name: 'View details' }).click()
@@ -198,6 +203,47 @@ function latestLogRequest(routes: RequestLogDisplayRoutes | RequestLogTableRoute
   expect(request).toBeDefined()
   return request as URL
 }
+
+test.describe('mobile log diagnostics', () => {
+  test.use({ viewport: { width: 390, height: 1100 }, hasTouch: true })
+
+  test('card fields remain readable to assistive technology', async ({ page }) => {
+    await installRequestLogDisplayRoutes(page)
+    await openLogs(page)
+    const row = records(page).first()
+    const snapshot = await row.ariaSnapshot()
+    for (const label of [
+      'Time',
+      'Route',
+      'Model / protocol',
+      'Response',
+      'Cost',
+      'Tokens (in/out)',
+    ]) {
+      expect(snapshot).toContain(label)
+    }
+  })
+
+  test('information buttons reveal diagnostics on touch', async ({ page }) => {
+    await installRequestLogDisplayRoutes(page, (items) => [
+      { ...items[0], model_consistency: 'mismatch', upstream_reported_model: 'unexpected-model' },
+    ])
+    await openLogs(page)
+    const row = records(page).first()
+    const modelHint = row.getByRole('cell').nth(3).getByRole('button').last()
+    const hintBox = (await modelHint.boundingBox())!
+    expect(hintBox.width).toBeGreaterThanOrEqual(44)
+    expect(hintBox.height).toBeGreaterThanOrEqual(44)
+    await modelHint.tap()
+    await expect(page.getByRole('tooltip')).toContainText('unexpected-model')
+    await page.getByRole('heading', { name: 'Request logs' }).tap()
+    await expect(page.getByRole('tooltip')).toHaveCount(0)
+    const cacheHint = row.getByTestId('logs-list__cache-rate')
+    expect((await cacheHint.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    await cacheHint.tap()
+    await expect(page.getByRole('tooltip')).toContainText('Cache hit rate')
+  })
+})
 
 test('list renders full rows with headers, summary, and local timestamps', async ({ page }) => {
   await installRequestLogDisplayRoutes(page)
