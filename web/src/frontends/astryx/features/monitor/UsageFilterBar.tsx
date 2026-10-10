@@ -172,7 +172,7 @@ export function UsageFilterBar({
         <span {...stylex.props(styles.field)}>
           <Selector
             label={t('monitor.usage.filters.range')}
-            isLabelHidden
+            isLabelHidden={false}
             size="sm"
             width="100%"
             options={rangeOptions}
@@ -185,7 +185,7 @@ export function UsageFilterBar({
             {groupsFailed ? (
               <TextInput
                 label={groupLabel}
-                isLabelHidden
+                isLabelHidden={false}
                 size="sm"
                 width="100%"
                 value={draft.group_id}
@@ -193,14 +193,14 @@ export function UsageFilterBar({
                 placeholder={t('monitor.usage.filters.groupPlaceholder')}
                 status={fieldError('group_id')}
                 aria-describedby={
-                  fieldError('group_id') !== undefined ? 'usage-filter-error' : undefined
+                  fieldError('group_id') !== undefined ? 'usage-filter-error-group' : undefined
                 }
                 {...numericInputAttrs}
               />
             ) : (
               <Selector
                 label={groupLabel}
-                isLabelHidden
+                isLabelHidden={false}
                 size="sm"
                 width="100%"
                 hasSearch
@@ -219,7 +219,7 @@ export function UsageFilterBar({
           {selfScoped === true ? (
             <TextInput
               label={modelLabel}
-              isLabelHidden
+              isLabelHidden={false}
               size="sm"
               width="100%"
               value={draft.upstream_model}
@@ -227,14 +227,14 @@ export function UsageFilterBar({
               placeholder={t('monitor.usage.filters.modelPlaceholder')}
               status={fieldError('upstream_model')}
               aria-describedby={
-                fieldError('upstream_model') !== undefined ? 'usage-filter-error' : undefined
+                fieldError('upstream_model') !== undefined ? 'usage-filter-error-model' : undefined
               }
               {...plainTextInputAttrs}
             />
           ) : (
             <Selector
               label={modelLabel}
-              isLabelHidden
+              isLabelHidden={false}
               size="sm"
               width="100%"
               hasSearch
@@ -263,7 +263,15 @@ export function UsageFilterBar({
         />
       </div>
       {firstError !== undefined && (
-        <p id="usage-filter-error" {...stylex.props(styles.error)} role="alert">
+        <p
+          id={
+            errors.group_id !== undefined && errors.group_id !== ''
+              ? 'usage-filter-error-group'
+              : 'usage-filter-error-model'
+          }
+          {...stylex.props(styles.error)}
+          role="alert"
+        >
           {t(firstError as MessageId)}
         </p>
       )}

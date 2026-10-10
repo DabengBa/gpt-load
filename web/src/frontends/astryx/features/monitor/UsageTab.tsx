@@ -42,7 +42,6 @@ const styles = stylex.create({
     gap: '22px',
   },
   refreshing: {
-    minHeight: 'var(--space-4)',
     color: 'var(--color-text-faint)',
     fontSize: 'var(--text-label-xs)',
   },
@@ -211,9 +210,11 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
 
   return (
     <div {...stylex.props(styles.root)}>
-      <span aria-live="polite" {...stylex.props(styles.refreshing)}>
-        {usageRefreshing ? t('monitor.usage.loading') : ''}
-      </span>
+      {usageRefreshing && (
+        <span aria-live="polite" {...stylex.props(styles.refreshing)}>
+          {t('monitor.usage.loading')}
+        </span>
+      )}
 
       <UsageFilterBar
         draft={draft}
@@ -286,7 +287,6 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
               <UsageBreakdownTable
                 breakdown={report.breakdown}
                 groups={groupsQuery.data ?? []}
-                channels={channelsQuery.data?.items ?? []}
                 sort={breakdownSort}
                 sortDirection={breakdownSortDirection}
                 onPage={(page) => void setBreakdownPage(page)}
