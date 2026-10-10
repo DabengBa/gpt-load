@@ -13,8 +13,8 @@ import { useT } from '../../app/i18n'
 const styles = stylex.create({
   marker: {
     display: 'inline-flex',
-    width: 20,
-    height: 20,
+    width: { default: 20, '@media (max-width: 860px)': 44 },
+    height: { default: 20, '@media (max-width: 860px)': 44 },
     flex: '0 0 auto',
     alignItems: 'center',
     justifyContent: 'center',

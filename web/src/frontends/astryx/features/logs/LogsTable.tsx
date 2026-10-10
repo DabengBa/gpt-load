@@ -89,7 +89,6 @@ const styles = stylex.create({
     gridColumn: '1 / -1',
     gridTemplateColumns: 'subgrid',
     alignItems: 'stretch',
-
   },
   headCell: {
     display: 'grid',
@@ -261,6 +260,7 @@ const styles = stylex.create({
   },
   protocolLine: {
     display: 'flex',
+    gridColumn: { [CARD]: 2 },
     minWidth: 0,
     alignItems: 'center',
     gap: 8,
@@ -288,10 +288,10 @@ const styles = stylex.create({
   },
   hint: {
     display: 'inline-flex',
-    width: 20,
-    height: 20,
+    width: { default: 20, [CARD]: 44 },
+    height: { default: 20, [CARD]: 44 },
     flexShrink: 0,
-    flexBasis: 20,
+    flexBasis: { default: 20, [CARD]: 44 },
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 0,
@@ -303,9 +303,9 @@ const styles = stylex.create({
     color: { default: 'var(--color-text-faint)', ':hover': 'var(--color-text)' },
   },
   hintCompact: {
-    width: 18,
-    height: 18,
-    flexBasis: 18,
+    width: { default: 18, [CARD]: 44 },
+    height: { default: 18, [CARD]: 44 },
+    flexBasis: { default: 18, [CARD]: 44 },
     marginLeft: 0,
   },
   hintMismatch: {
@@ -353,7 +353,7 @@ const styles = stylex.create({
   cacheRate: {
     width: 'auto',
     maxWidth: '100%',
-    height: 20,
+    height: { default: 20, [CARD]: 44 },
     flexBasis: 'auto',
     justifyContent: 'flex-start',
     gap: 3,
@@ -406,11 +406,7 @@ function formatLogTime(value: number): string {
 }
 
 function CellLabel({ children }: { children: ReactNode }) {
-  return (
-    <span aria-hidden {...stylex.props(styles.cellLabel)}>
-      {children}
-    </span>
-  )
+  return <span {...stylex.props(styles.cellLabel)}>{children}</span>
 }
 
 // Classic StatusBadge tones map onto DS Badge variants; classic compact badges
@@ -708,7 +704,7 @@ const LogRow = memo(function LogRow({
             </Tooltip>
           )}
           {(log.model_consistency === 'unknown' || log.model_consistency === 'mismatch') && (
-            <Tooltip content={modelConsistencyTooltip}>
+            <Tooltip content={modelConsistencyTooltip} touchTrigger="tap">
               <button
                 type="button"
                 {...stylex.props(
@@ -809,12 +805,12 @@ const LogRow = memo(function LogRow({
         <CellLabel>{t('monitor.logs.columns.tokens')}</CellLabel>
         <span {...stylex.props(styles.cellValue)}>
           {usageState === 'reported' ? (
-            <Tooltip
-              content={`${t('monitor.logs.tokens.input')}: ${formatLogTokenCount(log.input_tokens, locale)}\n${t('monitor.logs.tokens.output')}: ${formatLogTokenCount(log.output_tokens, locale)}`}
+            <span
+              {...stylex.props(styles.tokens, styles.tokenValues)}
+              data-testid="logs-list__token-values"
             >
-              <span
-                {...stylex.props(styles.tokens, styles.tokenValues)}
-                data-testid="logs-list__token-values"
+              <Tooltip
+                content={`${t('monitor.logs.tokens.input')}: ${formatLogTokenCount(log.input_tokens, locale)}\n${t('monitor.logs.tokens.output')}: ${formatLogTokenCount(log.output_tokens, locale)}`}
               >
                 <span {...stylex.props(styles.tokenLine)}>
                   {formatLogTokenCount(log.input_tokens, locale)}
@@ -823,41 +819,38 @@ const LogRow = memo(function LogRow({
                   </span>
                   {formatLogTokenCount(log.output_tokens, locale)}
                 </span>
-                <span {...stylex.props(styles.tokenHints)}>
-                  {log.usage_state === 'partial' && (
-                    <Tooltip content={t('monitor.logs.tokens.partial')}>
-                      <button
-                        type="button"
-                        {...stylex.props(styles.hint, styles.hintCompact)}
-                        aria-label={t('monitor.logs.tokens.partial')}
-                      >
-                        <CircleHelp size={13} aria-hidden />
-                      </button>
-                    </Tooltip>
-                  )}
-                  {log.usage_state === 'complete' || hasRequestLogCache(log) ? (
-                    <Tooltip content={cacheTooltip()}>
-                      <button
-                        type="button"
-                        {...stylex.props(styles.hint, styles.cacheRate)}
-                        data-testid="logs-list__cache-rate"
-                        aria-label={`${t('monitor.logs.tokens.cacheHitRate')} ${cacheRateLabel()} · ${t('monitor.logs.tokens.cacheDetails')}`}
-                      >
-                        <Layers size={12} aria-hidden />
-                        {t('monitor.logs.tokens.cacheHitRate')} {cacheRateLabel()}
-                      </button>
-                    </Tooltip>
-                  ) : (
-                    <small
-                      {...stylex.props(styles.cacheState)}
-                      data-testid="logs-list__cache-state"
+              </Tooltip>
+              <span {...stylex.props(styles.tokenHints)}>
+                {log.usage_state === 'partial' && (
+                  <Tooltip content={t('monitor.logs.tokens.partial')} touchTrigger="tap">
+                    <button
+                      type="button"
+                      {...stylex.props(styles.hint, styles.hintCompact)}
+                      aria-label={t('monitor.logs.tokens.partial')}
                     >
-                      {t('monitor.logs.tokens.cacheUnavailable')}
-                    </small>
-                  )}
-                </span>
+                      <CircleHelp size={13} aria-hidden />
+                    </button>
+                  </Tooltip>
+                )}
+                {log.usage_state === 'complete' || hasRequestLogCache(log) ? (
+                  <Tooltip content={cacheTooltip()} touchTrigger="tap">
+                    <button
+                      type="button"
+                      {...stylex.props(styles.hint, styles.cacheRate)}
+                      data-testid="logs-list__cache-rate"
+                      aria-label={`${t('monitor.logs.tokens.cacheHitRate')} ${cacheRateLabel()} · ${t('monitor.logs.tokens.cacheDetails')}`}
+                    >
+                      <Layers size={12} aria-hidden />
+                      {t('monitor.logs.tokens.cacheHitRate')} {cacheRateLabel()}
+                    </button>
+                  </Tooltip>
+                ) : (
+                  <small {...stylex.props(styles.cacheState)} data-testid="logs-list__cache-state">
+                    {t('monitor.logs.tokens.cacheUnavailable')}
+                  </small>
+                )}
               </span>
-            </Tooltip>
+            </span>
           ) : (
             <>
               <span
