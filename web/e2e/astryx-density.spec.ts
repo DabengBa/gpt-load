@@ -144,9 +144,12 @@ test('compact table row height on the groups collection', async ({ page }) => {
   // Compact rows fit their 30px controls without the old balanced-density whitespace.
   expect(height, 'row keeps room for its controls').toBeGreaterThanOrEqual(30)
   expect(height, 'compact collection row').toBeLessThanOrEqual(44)
-  const padding = await row.locator('td').nth(1).evaluate((cell) => {
-    const style = getComputedStyle(cell)
-    return { block: style.paddingBlock, inline: style.paddingInline }
-  })
+  const padding = await row
+    .locator('td')
+    .nth(1)
+    .evaluate((cell) => {
+      const style = getComputedStyle(cell)
+      return { block: style.paddingBlock, inline: style.paddingInline }
+    })
   expect(padding).toEqual({ block: '4px', inline: '8px' })
 })

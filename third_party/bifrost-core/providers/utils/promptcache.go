@@ -98,7 +98,7 @@ func InjectResponsesCacheBreakpoints(cfg *schemas.PromptCacheConfig, input []sch
 			copied[t.msg] = true
 		}
 		msg := &out[t.msg]
-		if t.messageLevel {
+		if t.toolOutput {
 			msg.CacheControl = marker
 			continue
 		}
@@ -207,10 +207,33 @@ func hasChatCachePoint(block schemas.ChatContentBlock) bool {
 // carries a bare ContentStr that must become a block first, in which case block is
 // meaningless.
 type injectionTarget struct {
-	msg          int
-	block        int
-	promoteStr   bool
-	messageLevel bool
+	msg        int
+	block      int
+	promoteStr bool
+	toolOutput bool // mark the function_call_output item itself (message-level marker)
+}
+
+// isResponsesToolOutput reports whether a message is a function_call_output item
+// with a body. Such an item has no role and no Content of its own; its marker lives
+// on the message, which every converter reads (Anthropic as tool_result.cache_control,
+// OpenAI gpt-5.6+ as a prompt_cache_breakpoint on the output's last part).
+func isResponsesToolOutput(msg *schemas.ResponsesMessage) bool {
+	return msg.Type != nil && *msg.Type == schemas.ResponsesMessageTypeFunctionCallOutput &&
+		msg.ResponsesToolMessage != nil && msg.ResponsesToolMessage.Output != nil
+}
+
+// responsesRoleAt is the role an injection point sees for a Responses item. A
+// function_call_output carries none on the wire, but it is the client-supplied turn
+// that follows a tool call - Anthropic places the same content inside a user message -
+// so a point on role "user" reaches it, as does any index that lands on it.
+func responsesRoleAt(msg *schemas.ResponsesMessage) string {
+	if isResponsesToolOutput(msg) {
+		return string(schemas.ResponsesInputMessageRoleUser)
+	}
+	if msg.Role == nil {
+		return ""
+	}
+	return string(*msg.Role)
 }
 
 // responsesHasCacheMarker reports whether the caller already expressed caching
@@ -298,12 +321,6 @@ func responsesInjectionTargets(cfg *schemas.PromptCacheConfig, input []schemas.R
 	return nil
 }
 
-func isCacheableResponsesToolResult(msg *schemas.ResponsesMessage) bool {
-	return msg != nil && msg.Type != nil &&
-		*msg.Type == schemas.ResponsesMessageTypeFunctionCallOutput &&
-		msg.ResponsesToolMessage != nil && msg.ResponsesToolMessage.Output != nil
-}
-
 func chatInjectionTargets(cfg *schemas.PromptCacheConfig, input []schemas.ChatMessage) []injectionTarget {
 	if len(cfg.InjectionPoints) > 0 {
 		return chatPointTargets(cfg.InjectionPoints, input)
@@ -336,17 +353,14 @@ func responsesPointTargets(points []schemas.CacheControlInjectionPoint, input []
 	seen := make(map[int]bool)
 	for _, p := range points {
 		for _, idx := range matchMessageIndices(p, len(input), func(i int) string {
-			if input[i].Role == nil {
-				return ""
-			}
-			return string(*input[i].Role)
+			return responsesRoleAt(&input[i])
 		}) {
 			if seen[idx] || len(out) >= MaxInjectedCacheBreakpoints {
 				continue
 			}
 			msg := input[idx]
-			if isCacheableResponsesToolResult(&msg) {
-				out = append(out, injectionTarget{msg: idx, messageLevel: true})
+			if isResponsesToolOutput(&msg) {
+				out = append(out, injectionTarget{msg: idx, toolOutput: true})
 				seen[idx] = true
 				continue
 			}
@@ -372,6 +386,11 @@ func chatPointTargets(points []schemas.CacheControlInjectionPoint, input []schem
 	seen := make(map[int]bool)
 	for _, p := range points {
 		for _, idx := range matchMessageIndices(p, len(input), func(i int) string {
+			// A tool message is the same client-supplied turn as a Responses
+			// function_call_output, so role "user" reaches it here too.
+			if input[i].Role == schemas.ChatMessageRoleTool {
+				return string(schemas.ChatMessageRoleUser)
+			}
 			return string(input[i].Role)
 		}) {
 			if seen[idx] || len(out) >= MaxInjectedCacheBreakpoints {

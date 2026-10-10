@@ -431,32 +431,28 @@ func (cm *ChatMessage) ToResponsesMessages() []ResponsesMessage {
 			}
 			if len(contentBlocks) > 0 || len(summaries) > 0 || encryptedContent != nil {
 				reasoningType := ResponsesMessageTypeReasoning
-				reasoningRole := ResponsesInputMessageRoleAssistant
 				rm := ResponsesMessage{
 					ID:   new("rs_" + GetRandomString(50)),
 					Type: &reasoningType,
-					Role: &reasoningRole,
+					ResponsesReasoning: &ResponsesReasoning{
+						Summary:          summaries,
+						EncryptedContent: encryptedContent,
+					},
 				}
 				if len(contentBlocks) > 0 {
 					rm.Content = &ResponsesMessageContent{ContentBlocks: contentBlocks}
 				}
-				if len(summaries) > 0 || encryptedContent != nil {
-					rm.ResponsesReasoning = &ResponsesReasoning{
-						Summary:          summaries,
-						EncryptedContent: encryptedContent,
-					}
-				}
+
 				messages = append(messages, rm)
 			}
 		} else if am.Reasoning != nil && *am.Reasoning != "" {
 			// Fallback for providers that surface plain reasoning text only (e.g. DeepSeek).
 			reasoningType := ResponsesMessageTypeReasoning
-			reasoningRole := ResponsesInputMessageRoleAssistant
 			reasoningText := *am.Reasoning
 			messages = append(messages, ResponsesMessage{
-				ID:   new("rs_" + GetRandomString(50)),
-				Type: &reasoningType,
-				Role: &reasoningRole,
+				ID:                 new("rs_" + GetRandomString(50)),
+				Type:               &reasoningType,
+				ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
 				Content: &ResponsesMessageContent{
 					ContentBlocks: []ResponsesMessageContentBlock{
 						{
@@ -1808,10 +1804,9 @@ func (cr *BifrostChatResponse) ToBifrostResponsesStreamResponse(state *ChatToRes
 		itemID := state.ItemIDs["reasoning"]
 		reasoningText := state.ReasoningBuffer.String()
 		reasoningType := ResponsesMessageTypeReasoning
-		role := ResponsesInputMessageRoleAssistant
 		doneItem := &ResponsesMessage{
-			Type: &reasoningType,
-			Role: &role,
+			Type:               &reasoningType,
+			ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
 			Content: &ResponsesMessageContent{
 				ContentBlocks: []ResponsesMessageContentBlock{
 					{Type: ResponsesOutputMessageContentTypeReasoning, Text: &reasoningText},
@@ -1850,11 +1845,10 @@ func (cr *BifrostChatResponse) ToBifrostResponsesStreamResponse(state *ChatToRes
 			state.ReasoningOutputIndex = outputIndex
 
 			reasoningType := ResponsesMessageTypeReasoning
-			role := ResponsesInputMessageRoleAssistant
 			item := &ResponsesMessage{
-				ID:   &itemID,
-				Type: &reasoningType,
-				Role: &role,
+				ID:                 &itemID,
+				Type:               &reasoningType,
+				ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
 				Content: &ResponsesMessageContent{
 					ContentBlocks: []ResponsesMessageContentBlock{},
 				},
@@ -2311,12 +2305,11 @@ func (cr *BifrostChatResponse) ToBifrostResponsesStreamResponse(state *ChatToRes
 		// Reasoning first (output index 0), mirroring the non-streaming converter's ordering.
 		if state.ReasoningItemAdded {
 			reasoningType := ResponsesMessageTypeReasoning
-			role := ResponsesInputMessageRoleAssistant
 			reasoningText := state.ReasoningBuffer.String()
 			itemID := state.ItemIDs["reasoning"]
 			rMsg := ResponsesMessage{
-				Type: &reasoningType,
-				Role: &role,
+				Type:               &reasoningType,
+				ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
 				Content: &ResponsesMessageContent{
 					ContentBlocks: []ResponsesMessageContentBlock{
 						{Type: ResponsesOutputMessageContentTypeReasoning, Text: &reasoningText},
