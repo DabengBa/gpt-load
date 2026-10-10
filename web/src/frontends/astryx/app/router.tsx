@@ -7,8 +7,11 @@ import {
   notFound,
   redirect,
   useRouterState,
+  lazyRouteComponent,
+  type ErrorComponentProps,
+  type RouteComponent,
 } from '@tanstack/react-router'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect } from 'react'
 
 import { pagePath, pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
@@ -50,14 +53,6 @@ import { ToastHost } from './ToastHost'
 import { AuthedShell, PublicShell } from './shell/Shells'
 import { LoginView } from './shell/LoginView'
 import { NotFoundView } from './shell/NotFoundView'
-import { GroupDetailView } from '../features/groups/GroupDetailView'
-import { GroupsView } from '../features/groups/GroupsView'
-import { ImportView } from '../features/import/ImportView'
-import { HomeView } from '../features/home/HomeView'
-import { LogsView } from '../features/logs/LogsView'
-import { MonitorView } from '../features/monitor/MonitorView'
-import { ScheduleView } from '../features/monitor/ScheduleView'
-import { SettingsView } from '../features/settings/SettingsView'
 
 interface RouterContext {
   services: AppServices
@@ -276,19 +271,61 @@ type RouteName = (typeof sharedPageRouteNames)[keyof typeof sharedPageRouteNames
 
 // Every manifest route must map to a real view — the type fails to compile if
 // a sharedPageRouteNames entry is missing here (there is no stub fallback).
-const routeViews: Record<RouteName, () => ReactNode> = {
+const routeViews: Record<RouteName, RouteComponent> = {
   [sharedPageRouteNames.login]: LoginView,
-  [sharedPageRouteNames.home]: HomeView,
+  [sharedPageRouteNames.home]: lazyRouteComponent(
+    () => import('../features/home/HomeView'),
+    'HomeView',
+  ),
   // Never rendered — beforeLoad always redirects /access-keys to the
   // credentials section on /settings.
   [sharedPageRouteNames.accessKeys]: () => null,
-  [sharedPageRouteNames.groups]: GroupsView,
-  [sharedPageRouteNames.groupDetail]: GroupDetailView,
-  [sharedPageRouteNames.import]: ImportView,
-  [sharedPageRouteNames.logs]: LogsView,
-  [sharedPageRouteNames.settings]: SettingsView,
-  [sharedPageRouteNames.monitor]: MonitorView,
-  [sharedPageRouteNames.schedule]: ScheduleView,
+  [sharedPageRouteNames.groups]: lazyRouteComponent(
+    () => import('../features/groups/GroupsView'),
+    'GroupsView',
+  ),
+  [sharedPageRouteNames.groupDetail]: lazyRouteComponent(
+    () => import('../features/groups/GroupDetailView'),
+    'GroupDetailView',
+  ),
+  [sharedPageRouteNames.import]: lazyRouteComponent(
+    () => import('../features/import/ImportView'),
+    'ImportView',
+  ),
+  [sharedPageRouteNames.logs]: lazyRouteComponent(
+    () => import('../features/logs/LogsView'),
+    'LogsView',
+  ),
+  [sharedPageRouteNames.settings]: lazyRouteComponent(
+    () => import('../features/settings/SettingsView'),
+    'SettingsView',
+  ),
+  [sharedPageRouteNames.monitor]: lazyRouteComponent(
+    () => import('../features/monitor/MonitorView'),
+    'MonitorView',
+  ),
+  [sharedPageRouteNames.schedule]: lazyRouteComponent(
+    () => import('../features/monitor/ScheduleView'),
+    'ScheduleView',
+  ),
+}
+
+function RouteLoadError({ reset }: ErrorComponentProps) {
+  const t = useT()
+  return (
+    <div role="alert">
+      <p>{t('common.asyncLoadFailed')}</p>
+      <button
+        type="button"
+        onClick={() => {
+          reset()
+          window.location.reload()
+        }}
+      >
+        {t('common.retry')}
+      </button>
+    </div>
+  )
 }
 
 const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
@@ -330,6 +367,8 @@ export function createAppRouter(services: AppServices) {
   return createRouter({
     routeTree,
     context: { services },
+    defaultPreload: 'intent',
+    defaultErrorComponent: RouteLoadError,
     trailingSlash: 'preserve',
     caseSensitive: true,
     scrollRestoration: true,

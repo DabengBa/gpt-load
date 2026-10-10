@@ -29,7 +29,7 @@ import {
   TriangleAlert,
   UserRound,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useIntl } from 'react-intl'
 
 import type { MessageId } from '@shared/i18n/message-ids'
@@ -46,6 +46,7 @@ import {
   cacheGroupSettings,
   copyGroup,
   groupCollectionQueryOptions,
+  groupSummaryQueryOptions,
   invalidateGroupSettingsDependents,
   updateGroupSettings,
 } from '@shared/control/resources/groups'
@@ -364,7 +365,7 @@ function statusBadgeVariant(status: GroupCollectionStatus): 'success' | 'error' 
 export function GroupsView() {
   const t = useT()
   const intl = useIntl()
-  const { apiClient, queryClient, toast } = useAppServices()
+  const { apiClient, queryClient, authSession, toast } = useAppServices()
   const navigate = useNavigate()
   const { rawSearch, searchStr, pathname } = useRouterState({
     select: (state) => ({
@@ -644,6 +645,16 @@ export function GroupsView() {
     ]
   }, [data?.summary, t])
 
+  const prefetchGroupSummary = useCallback(
+    (groupID: number): void => {
+      const session = authSession.getState()
+      if (groupID > 0 && session.phase === 'validated' && session.principalType === 'admin') {
+        void queryClient.prefetchQuery(groupSummaryQueryOptions(apiClient, groupID))
+      }
+    },
+    [apiClient, authSession, queryClient],
+  )
+
   const columns: TableColumn<GroupRow>[] = useMemo(
     () => [
       {
@@ -658,6 +669,8 @@ export function GroupsView() {
               {...stylex.props(styles.nameLink)}
               aria-label={t('groups.collection.openDetail', { name: group.name })}
               title={group.name}
+              onPointerEnter={() => prefetchGroupSummary(group.id)}
+              onFocus={() => prefetchGroupSummary(group.id)}
             >
               {group.name}
             </RouteLink>
@@ -810,7 +823,16 @@ export function GroupsView() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stable callbacks close over current state
-    [t, intl, channelsByID, optimisticEnabled, togglingGroupIDs, copyingGroupIDs, narrowViewport],
+    [
+      t,
+      intl,
+      channelsByID,
+      optimisticEnabled,
+      togglingGroupIDs,
+      copyingGroupIDs,
+      narrowViewport,
+      prefetchGroupSummary,
+    ],
   )
 
   return (
