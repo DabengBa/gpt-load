@@ -1522,7 +1522,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
         pending={mutationPending}
         status={canCreate ? 'saved' : operationNoticeKey ? 'indeterminate' : 'idle'}
         statusContent={
-          <div>
+          <div {...stylex.props(styles.createStatus)}>
             <strong>{createStatusTitle}</strong>
             {createStatusDescription && <span>{createStatusDescription}</span>}
           </div>
@@ -1721,6 +1721,14 @@ const styles = stylex.create({
     backgroundColor: 'var(--color-surface-raised)',
     backdropFilter: 'none',
     boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
+  },
+  createStatus: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    gap: 'var(--space-1) var(--space-2)',
+    minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   error: {
     marginTop: 'var(--space-5)',

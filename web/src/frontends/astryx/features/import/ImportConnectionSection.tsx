@@ -186,17 +186,15 @@ export function ImportConnectionSection({
     <div {...stylex.props(styles.root)}>
       <div {...stylex.props(styles.fields)}>
         <div {...stylex.props(styles.minWidth)}>
-          <Field label={t('import.connection.name')} inputID="import-group-name" isOptional>
-            <TextInput
-              value={name}
-              isDisabled={disabled}
-              autoComplete="off"
-              placeholder={t('import.connection.namePlaceholder')}
-              label={t('import.connection.name')}
-              isLabelHidden
-              onChange={onNameChange}
-            />
-          </Field>
+          <TextInput
+            value={name}
+            isDisabled={disabled}
+            autoComplete="off"
+            placeholder={t('import.connection.namePlaceholder')}
+            label={t('import.connection.name')}
+            isOptional
+            onChange={onNameChange}
+          />
         </div>
 
         {channel !== null && channel.param_fields.length > 0 && (
@@ -307,6 +305,7 @@ export function ImportConnectionSection({
               <div>
                 <div {...stylex.props(styles.proxyControls)}>
                   <Selector
+                    id="import-group-proxy-mode"
                     label={t('common.proxy.modeLabel')}
                     isLabelHidden
                     options={proxyModeOptions}
