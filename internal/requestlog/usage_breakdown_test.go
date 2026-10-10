@@ -216,7 +216,7 @@ func TestUsageBreakdownSortsByDisplayedIdentity(t *testing.T) {
 func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)
-	row := func(groupID uint, model string, requests, successes, durationTotal int64) models.UsageStat {
+	row := func(groupID uint, model string, requests, successes, durationTotal int64) []any {
 		value := usageStat(start, groupID, model, requests)
 		value.ID = 0
 		value.ChannelID = fmt.Sprintf("channel-%s", model)
@@ -234,13 +234,31 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		value.CacheWriteUnknownTokens = int64(groupID) * 50
 		value.OutputTokens = int64(groupID) * 60
 		value.EstimatedCostNanoUSD = int64(groupID) * 100
-		return value
+		attemptValue := models.UsageAttemptStat{
+			BucketStartMS: start.UnixMilli(), AccessKeyID: 41, GroupID: groupID,
+			ChannelID: fmt.Sprintf("channel-%s", model), CredentialID: groupID, Model: model,
+			AttemptCount: int64(groupID) * 10, FailureCount: int64(groupID),
+			NormalAttemptCount: int64(groupID) * 2, SlowAttemptCount: int64(groupID) * 3,
+			FaultyAttemptCount: int64(groupID),
+		}
+		return []any{value, attemptValue}
 	}
-	createUsageStats(t, db,
-		row(1, "alpha", 10, 5, 100),
-		row(2, "bravo", 20, 14, 400),
-		row(3, "charlie", 30, 27, 900),
-	)
+	for _, fixture := range []struct {
+		groupID                            uint
+		model                              string
+		requests, successes, durationTotal int64
+	}{
+		{1, "alpha", 10, 5, 100},
+		{2, "bravo", 20, 14, 400},
+		{3, "charlie", 30, 27, 900},
+	} {
+		pair := row(fixture.groupID, fixture.model, fixture.requests, fixture.successes, fixture.durationTotal)
+		createUsageStats(t, db, pair[0].(models.UsageStat))
+		attempt := pair[1].(models.UsageAttemptStat)
+		if err := db.Create(&attempt).Error; err != nil {
+			t.Fatalf("create usage attempt stat: %v", err)
+		}
+	}
 
 	tests := []struct {
 		name      string
@@ -266,6 +284,11 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		{"output ascending", UsageBreakdownSortOutputTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"total tokens ascending", UsageBreakdownSortTotalTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"cost descending", UsageBreakdownSortEstimatedCost, UsageBreakdownSortDescending, "charlie", "alpha"},
+		{"attempts descending", UsageBreakdownSortAttemptCount, UsageBreakdownSortDescending, "charlie", "alpha"},
+		{"attempt failures descending", UsageBreakdownSortAttemptFailureCount, UsageBreakdownSortDescending, "charlie", "alpha"},
+		{"normal attempts descending", UsageBreakdownSortNormalAttemptCount, UsageBreakdownSortDescending, "charlie", "alpha"},
+		{"slow attempts descending", UsageBreakdownSortSlowAttemptCount, UsageBreakdownSortDescending, "charlie", "alpha"},
+		{"faulty attempts descending", UsageBreakdownSortFaultyAttemptCount, UsageBreakdownSortDescending, "charlie", "alpha"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

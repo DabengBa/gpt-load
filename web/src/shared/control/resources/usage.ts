@@ -31,6 +31,11 @@ export type UsageBreakdownSort =
   | 'request_count'
   | 'success_count'
   | 'failure_count'
+  | 'attempt_count'
+  | 'attempt_failure_count'
+  | 'normal_attempt_count'
+  | 'slow_attempt_count'
+  | 'faulty_attempt_count'
   | 'success_rate'
   | 'average_duration_ms'
   | 'average_first_response_ms'
@@ -51,6 +56,11 @@ export function normalizeUsageBreakdownSort(value: unknown): UsageBreakdownSort 
     case 'request_count':
     case 'success_count':
     case 'failure_count':
+    case 'attempt_count':
+    case 'attempt_failure_count':
+    case 'normal_attempt_count':
+    case 'slow_attempt_count':
+    case 'faulty_attempt_count':
     case 'success_rate':
     case 'average_duration_ms':
     case 'average_first_response_ms':

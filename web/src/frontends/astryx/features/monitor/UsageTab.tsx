@@ -31,7 +31,6 @@ import type { SharedRouteQuery } from '@shared/routing/route-query'
 import { useAppServices } from '../../app/services'
 import { useCollectionLoading } from '../../app/collection-loading'
 import { useT } from '../../app/i18n'
-import { MonitorSectionHeading } from './MonitorSectionHeading'
 import { UsageBreakdownTable } from './UsageBreakdownTable'
 import { UsageFilterBar } from './UsageFilterBar'
 
@@ -275,15 +274,10 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
               icon={<Database size={20} aria-hidden />}
             />
           ) : (
-            <section {...stylex.props(styles.section)} aria-labelledby="usage-breakdown-title">
-              <MonitorSectionHeading
-                id="usage-breakdown-title"
-                title={t('monitor.usage.breakdown.title')}
-                description={t('monitor.usage.breakdown.description')}
-                meta={t('monitor.usage.breakdown.rowCount', {
-                  count: report.breakdown.pagination.total_items,
-                })}
-              />
+            <section
+              {...stylex.props(styles.section)}
+              aria-label={t('monitor.usage.breakdown.caption')}
+            >
               <UsageBreakdownTable
                 breakdown={report.breakdown}
                 groups={groupsQuery.data ?? []}

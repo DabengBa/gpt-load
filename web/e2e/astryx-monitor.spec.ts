@@ -270,26 +270,65 @@ test('canonicalizes the bare query to the usage filters and renders the page', a
   await expect(page.getByRole('heading', { name: 'Monitor', exact: true })).toBeVisible()
   // The retired tabs are gone: no tablist renders on the page.
   await expect(page.getByRole('tablist')).not.toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
+  await expect(page.getByRole('table')).toBeVisible()
 })
 
-test('usage renders the model and route breakdown', async ({ page }) => {
+test('usage renders the breakdown without a redundant heading', async ({ page }) => {
   const requests = await mockMonitor(page)
   await page.goto('/monitor', { waitUntil: 'load' })
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/\/monitor\?range=24h$/)
 
-  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toHaveCount(0)
   await expect(page.getByText('gpt-4o-mini')).toBeVisible()
   // The request carried the canonical filter params.
   expect(requests.usageQueries.at(-1)?.get('range')).toBe('24h')
+})
+
+test('breakdown headers sort descending first and toggle ascending', async ({ page }) => {
+  const requests = await mockMonitor(page)
+  await page.goto('/monitor?range=24h&breakdown_page=2')
+  const table = page.getByRole('table')
+  await expect(table).toBeVisible()
+  for (const [name, key] of [
+    ['Model', 'model'],
+    ['Group', 'group'],
+    ['Attempts', 'attempt_count'],
+    ['Attempt failures', 'attempt_failure_count'],
+    ['Normal attempts', 'normal_attempt_count'],
+    ['Slow attempts', 'slow_attempt_count'],
+    ['Faulty attempts', 'faulty_attempt_count'],
+    ['Success rate', 'success_rate'],
+    ['Average request duration', 'average_duration_ms'],
+    ['Average request first response', 'average_first_response_ms'],
+    ['Uncached input', 'uncached_input_tokens'],
+    ['Cache read', 'cache_read_tokens'],
+    ['Output', 'output_tokens'],
+    ['Total tokens', 'total_tokens'],
+  ]) {
+    const header = table.getByRole('columnheader', { name, exact: true })
+    await header.getByRole('button').click()
+    const firstDirection = 'desc'
+    await expect(header).toHaveAttribute('aria-sort', 'descending')
+    await expect.poll(() => requests.usageQueries.at(-1)?.get('breakdown_sort')).toBe(key)
+    await expect
+      .poll(() => requests.usageQueries.at(-1)?.get('breakdown_sort_direction'))
+      .toBe(firstDirection)
+    expect(requests.usageQueries.at(-1)?.get('breakdown_page') ?? '1').toBe('1')
+    await header.getByRole('button').click()
+    const secondDirection = 'asc'
+    await expect(header).toHaveAttribute('aria-sort', 'ascending')
+    await expect
+      .poll(() => requests.usageQueries.at(-1)?.get('breakdown_sort_direction'))
+      .toBe(secondDirection)
+  }
 })
 
 test('usage range selector applies through the filter bar', async ({ page }) => {
   const requests = await mockMonitor(page)
   await page.goto('/monitor?range=24h', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
+  await expect(page.getByRole('table')).toBeVisible()
 
   // The bar holds the Range Selector as a draft; Apply commits the query.
   await page.getByRole('combobox', { name: 'Range' }).click()
@@ -303,7 +342,7 @@ test('usage filter bar applies filters through the canonical query', async ({ pa
   await mockMonitor(page)
   await page.goto('/monitor', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
+  await expect(page.getByRole('table')).toBeVisible()
 
   const bar = page.getByRole('form', { name: 'Usage report filters' })
   await expect(bar).toBeVisible()
@@ -324,7 +363,7 @@ test('access_key usage hides cross-principal filter fields', async ({ page }) =>
   await mockMonitor(page, { principalType: 'access_key' })
   await page.goto('/monitor', { waitUntil: 'load' })
   await expectAstryxDocument(page)
-  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
+  await expect(page.getByRole('table')).toBeVisible()
 
   const bar = page.getByRole('form', { name: 'Usage report filters' })
   await expect(bar).toBeVisible()
@@ -347,12 +386,12 @@ test('monitor populated content stays within responsive page bounds', async ({
 }, testInfo) => {
   await mockMonitor(page)
   await page.goto('/monitor')
-  await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible({
+  await expect(page.getByRole('table')).toBeVisible({
     timeout: 30_000,
   })
   for (const width of [390, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 })
-    await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toBeVisible()
+    await expect(page.getByRole('table')).toBeVisible()
     expect(
       await page.evaluate(() =>
         Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),

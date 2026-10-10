@@ -86,6 +86,11 @@ without that value remain valid usage rows with zero first-response samples.
   `FirstResponseSampleCount` once. Otherwise add neither value nor sample.
 - **Average:** return `total / sample_count` only when `sample_count > 0`;
   consumers render no first-response sample as undefined rather than zero.
+- **Breakdown sorting:** the monitor table sorts all displayed columns through
+  the usage query before pagination, including total, failed, normal, slow,
+  and faulty upstream attempt counts. Clicking a different column starts in
+  descending order; clicking the active column reverses the direction and
+  resets pagination to page one. The URL preserves the selected sort.
 - **Integrity:** checked integer addition rejects overflow; aggregate mapping
   rejects negative values, unsafe JavaScript integers, and sample counts above
   request counts. Query integrity checks reject corrupt persisted timing rows.

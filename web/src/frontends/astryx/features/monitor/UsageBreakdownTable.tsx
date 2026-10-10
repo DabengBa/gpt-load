@@ -1,11 +1,10 @@
 import * as stylex from '@stylexjs/stylex'
 import { Pagination } from '@astryxdesign/core'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 
 import type { GroupOptionDto } from '@shared/control/types'
 import {
-  defaultUsageBreakdownSortDirectionFor,
   type UsageAggregateDto,
   type UsageBreakdownDto,
   type UsageBreakdownPageSize,
@@ -208,9 +207,8 @@ export function UsageBreakdownTable({
     return formatPercent(aggregate.success_count, aggregate.request_count, locale)
   }
 
-  const columns = useMemo<BreakdownColumn[]>(
-    () => [
-      {
+  const columns: BreakdownColumn[] = [
+    {
       key: 'model',
       labelId: 'monitor.usage.breakdown.columns.model',
       sortKey: 'model',
@@ -218,7 +216,7 @@ export function UsageBreakdownTable({
       cell: (row) => row.model,
       total: () => t('monitor.usage.breakdown.total'),
     },
-      {
+    {
       key: 'group',
       labelId: 'monitor.usage.breakdown.columns.group',
       sortKey: 'group',
@@ -227,37 +225,42 @@ export function UsageBreakdownTable({
       total: () => '—',
     },
 
-      {
+    {
       key: 'attempts',
+      sortKey: 'attempt_count',
       labelId: 'monitor.usage.breakdown.columns.attempts',
       cell: (row) => formatInteger(row.attempt_count, locale),
       total: (data) => formatInteger(data.attempt_total.attempt_count, locale),
     },
-      {
+    {
       key: 'attemptFailures',
+      sortKey: 'attempt_failure_count',
       labelId: 'monitor.usage.breakdown.columns.attemptFailures',
       cell: (row) => formatInteger(row.attempt_failure_count, locale),
       total: (data) => formatInteger(data.attempt_total.attempt_failure_count, locale),
     },
-      {
+    {
       key: 'normalAttempts',
+      sortKey: 'normal_attempt_count',
       labelId: 'monitor.usage.breakdown.columns.normalAttempts',
       cell: (row) => formatInteger(row.normal_attempt_count, locale),
       total: (data) => formatInteger(data.attempt_total.normal_attempt_count, locale),
     },
-      {
+    {
       key: 'slowAttempts',
+      sortKey: 'slow_attempt_count',
       labelId: 'monitor.usage.breakdown.columns.slowAttempts',
       cell: (row) => formatInteger(row.slow_attempt_count, locale),
       total: (data) => formatInteger(data.attempt_total.slow_attempt_count, locale),
     },
-      {
+    {
       key: 'faultyAttempts',
+      sortKey: 'faulty_attempt_count',
       labelId: 'monitor.usage.breakdown.columns.faultyAttempts',
       cell: (row) => formatInteger(row.faulty_attempt_count, locale),
       total: (data) => formatInteger(data.attempt_total.faulty_attempt_count, locale),
     },
-      {
+    {
       key: 'success_rate',
       labelId: 'monitor.usage.breakdown.columns.successRate',
       sortKey: 'success_rate',
@@ -265,42 +268,42 @@ export function UsageBreakdownTable({
       total: (data) => successRate(data.total),
       primary: true,
     },
-      {
+    {
       key: 'average_duration_ms',
       labelId: 'monitor.usage.breakdown.columns.averageDuration',
       sortKey: 'average_duration_ms',
       cell: (row) => averageDuration(row),
       total: (data) => averageDuration(data.total),
     },
-      {
+    {
       key: 'average_first_response_ms',
       labelId: 'monitor.usage.breakdown.columns.averageFirstResponse',
       sortKey: 'average_first_response_ms',
       cell: (row) => averageFirstResponse(row),
       total: (data) => averageFirstResponse(data.total),
     },
-      {
+    {
       key: 'uncached_input_tokens',
       labelId: 'monitor.usage.breakdown.columns.uncachedInput',
       sortKey: 'uncached_input_tokens',
       cell: (row) => formatTokens(row.uncached_input_tokens, locale),
       total: (data) => formatTokens(data.total.uncached_input_tokens, locale),
     },
-      {
+    {
       key: 'cache_read_tokens',
       labelId: 'monitor.usage.breakdown.columns.cacheRead',
       sortKey: 'cache_read_tokens',
       cell: (row) => formatTokens(row.cache_read_tokens, locale),
       total: (data) => formatTokens(data.total.cache_read_tokens, locale),
     },
-      {
+    {
       key: 'output_tokens',
       labelId: 'monitor.usage.breakdown.columns.output',
       sortKey: 'output_tokens',
       cell: (row) => formatTokens(row.output_tokens, locale),
       total: (data) => formatTokens(data.total.output_tokens, locale),
     },
-      {
+    {
       key: 'total_tokens',
       labelId: 'monitor.usage.columns.totalTokens',
       sortKey: 'total_tokens',
@@ -308,7 +311,7 @@ export function UsageBreakdownTable({
       total: (data) => formatTokens(data.total.total_tokens, locale),
       primary: true,
     },
-      {
+    {
       key: 'estimated_cost_nano_usd',
       labelId: 'monitor.usage.columns.estimatedCost',
       sortKey: 'estimated_cost_nano_usd',
@@ -316,19 +319,12 @@ export function UsageBreakdownTable({
       total: (data) => formatEstimatedCost(data.total.estimated_cost_nano_usd, locale),
       primary: true,
     },
-    ],
-    [groups, isAdmin, locale, t],
-  )
+  ]
   const visibleColumns = columns.filter((column) => !column.adminOnly || isAdmin)
   const lastColumnIndex = visibleColumns.length - 1
 
   function setSort(key: UsageBreakdownSort): void {
-    const direction =
-      sort === key
-        ? sortDirection === 'asc'
-          ? 'desc'
-          : 'asc'
-        : defaultUsageBreakdownSortDirectionFor(key)
+    const direction = sort === key ? (sortDirection === 'asc' ? 'desc' : 'asc') : 'desc'
     onSort(key, direction)
   }
 
@@ -379,7 +375,7 @@ export function UsageBreakdownTable({
     <>
       <div
         ref={containerRef}
-          {...stylex.props(styles.container)}
+        {...stylex.props(styles.container)}
         data-table-scroll
         tabIndex={overflowing ? 0 : undefined}
         aria-label={overflowing ? caption : undefined}
@@ -389,7 +385,7 @@ export function UsageBreakdownTable({
           <caption {...stylex.props(styles.srOnly)}>{caption}</caption>
           <thead>
             <tr>
-                {visibleColumns.map((column, columnIndex) => {
+              {visibleColumns.map((column, columnIndex) => {
                 const sortKey = column.sortKey
                 const isNumeric =
                   column.numeric ?? (column.key !== 'model' && column.key !== 'group')
@@ -398,20 +394,23 @@ export function UsageBreakdownTable({
                     key={column.key}
                     scope="col"
                     aria-sort={sortKey !== undefined ? ariaSort(sortKey) : undefined}
-                      {...stylex.props(
+                    {...stylex.props(
                       styles.headCell,
                       isNumeric && styles.numericHeadCell,
                       columnIndex === 0 && styles.cellFirst,
                       columnIndex === lastColumnIndex && styles.cellLast,
                     )}
                   >
-                      {sortKey !== undefined ? (
+                    {sortKey !== undefined ? (
                       <button
                         type="button"
-                          {...stylex.props(styles.sort)}
+                        {...stylex.props(styles.sort)}
                         onClick={() => setSort(sortKey)}
                       >
-                          {t(column.labelId)}
+                        {t(column.labelId)}
+                        {sort === sortKey && (
+                          <span aria-hidden="true">{sortDirection === 'desc' ? ' ↓' : ' ↑'}</span>
+                        )}
                       </button>
                     ) : (
                       t(column.labelId)

@@ -193,6 +193,11 @@ func TestParseUsageQueryAcceptsBreakdownSorting(t *testing.T) {
 	}{
 		{value: "average_duration_ms", want: requestlog.UsageBreakdownSortAverageDuration},
 		{value: "average_first_response_ms", want: requestlog.UsageBreakdownSortAverageFirstResponse},
+		{value: "attempt_count", want: requestlog.UsageBreakdownSortAttemptCount},
+		{value: "attempt_failure_count", want: requestlog.UsageBreakdownSortAttemptFailureCount},
+		{value: "normal_attempt_count", want: requestlog.UsageBreakdownSortNormalAttemptCount},
+		{value: "slow_attempt_count", want: requestlog.UsageBreakdownSortSlowAttemptCount},
+		{value: "faulty_attempt_count", want: requestlog.UsageBreakdownSortFaultyAttemptCount},
 	} {
 		query, apiErr := parseUsageQuery(
 			"range=24h&breakdown_sort="+sort.value,

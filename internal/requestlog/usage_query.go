@@ -180,6 +180,11 @@ func validUsageBreakdownSort(sort UsageBreakdownSort) bool {
 		UsageBreakdownSortRequestCount,
 		UsageBreakdownSortSuccessCount,
 		UsageBreakdownSortFailureCount,
+		UsageBreakdownSortAttemptCount,
+		UsageBreakdownSortAttemptFailureCount,
+		UsageBreakdownSortNormalAttemptCount,
+		UsageBreakdownSortSlowAttemptCount,
+		UsageBreakdownSortFaultyAttemptCount,
 		UsageBreakdownSortSuccessRate,
 		UsageBreakdownSortAverageDuration,
 		UsageBreakdownSortAverageFirstResponse,
@@ -758,6 +763,16 @@ func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy Us
 		return compareInt64(leftAggregate.SuccessCount, rightAggregate.SuccessCount), nil
 	case UsageBreakdownSortFailureCount:
 		return compareInt64(leftAggregate.FailureCount, rightAggregate.FailureCount), nil
+	case UsageBreakdownSortAttemptCount:
+		return compareInt64(left.row.AttemptCount, right.row.AttemptCount), nil
+	case UsageBreakdownSortAttemptFailureCount:
+		return compareInt64(left.row.AttemptFailureCount, right.row.AttemptFailureCount), nil
+	case UsageBreakdownSortNormalAttemptCount:
+		return compareInt64(left.row.NormalAttemptCount, right.row.NormalAttemptCount), nil
+	case UsageBreakdownSortSlowAttemptCount:
+		return compareInt64(left.row.SlowAttemptCount, right.row.SlowAttemptCount), nil
+	case UsageBreakdownSortFaultyAttemptCount:
+		return compareInt64(left.row.FaultyAttemptCount, right.row.FaultyAttemptCount), nil
 	case UsageBreakdownSortSuccessRate:
 		leftRate, rightRate := float64(leftAggregate.SuccessCount), float64(rightAggregate.SuccessCount)
 		if leftAggregate.RequestCount > 0 {
