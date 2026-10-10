@@ -64,7 +64,7 @@ for (const width of [1280, 390]) {
       })
     })
     await page.goto('/login')
-    const input = page.getByLabel('Sign-in key', { exact: true }).and(page.locator('input'))
+    const input = page.getByRole('textbox', { name: 'Sign-in key', exact: true }).and(page.locator('input'))
     const reveal = page.getByRole('button', { name: 'Show sign-in key', exact: true })
     await input.fill('regression-key')
     const field = await input.locator('..').locator('..').boundingBox()
@@ -116,7 +116,7 @@ test('login → authed shell → sign out round trip', async ({ page }) => {
   })
 
   await page.goto('/login', { waitUntil: 'load' })
-  const input = page.getByLabel('Sign-in key', { exact: true }).and(page.locator('input'))
+  const input = page.getByRole('textbox', { name: 'Sign-in key', exact: true }).and(page.locator('input'))
   await expect(input).toBeVisible()
   await expect(input).toBeFocused()
 
@@ -141,7 +141,7 @@ test('login → authed shell → sign out round trip', async ({ page }) => {
   await page.waitForURL(/\/login/, { timeout: 10_000 })
   expect(await page.evaluate(() => window.localStorage.getItem('gpt-load.auth-key'))).toBeNull()
   await expect(
-    page.getByLabel('Sign-in key', { exact: true }).and(page.locator('input')),
+    page.getByRole('textbox', { name: 'Sign-in key', exact: true }).and(page.locator('input')),
   ).toBeVisible()
 })
 

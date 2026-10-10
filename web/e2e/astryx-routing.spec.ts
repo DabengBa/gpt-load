@@ -23,7 +23,7 @@ test('unauthenticated access to a guarded route redirects to login with redirect
   await expect(page.getByRole('heading', { name: 'Sign in to GPT-Load' })).toBeVisible({
     timeout: 60_000,
   })
-  await expect(page.getByLabel('Sign-in key', { exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Sign-in key', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
 })
 
