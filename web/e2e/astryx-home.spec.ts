@@ -521,12 +521,13 @@ test('keeps stale content with a warning banner when a refresh fails', async ({ 
   // view so Home actually unmounts before navigating back.
   await expect(page.getByRole('heading', { name: 'Dispatch center', exact: true })).toBeVisible()
   await expect(facts).toHaveCount(0)
-  const failedRefresh = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/api/home' && response.status() === 500,
-  )
-  await page.getByRole('link', { name: 'Home', exact: true }).click()
+  await Promise.all([
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/home' && response.status() === 500,
+    ),
+    page.getByRole('link', { name: 'Home', exact: true }).click(),
+  ])
   await expect(page).toHaveURL(/\/$/)
-  await failedRefresh
 
   await expect(facts).toBeVisible()
   await expect(
