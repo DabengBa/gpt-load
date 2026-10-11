@@ -11,9 +11,9 @@ import { useEffect, useId, useState, type KeyboardEvent } from 'react'
 
 import type { ChannelConnectionType, ChannelDto } from '@shared/control/resources/channels'
 
-import { useT } from '../../app/i18n'
-import { ChannelIcon } from '../../components/ChannelIcon'
-import { InlineNotice } from '../../components/InlineNotice'
+import { useT } from '@app/app/i18n'
+import { ChannelIcon } from './ChannelIcon'
+import { InlineNotice } from './InlineNotice'
 
 const MAX_FEATURED_CHANNELS = 4
 const FEATURED_CHANNEL_IDS: Record<ChannelConnectionType, readonly string[]> = {

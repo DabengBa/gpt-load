@@ -39,7 +39,7 @@ import type { PendingAccessKeyRotateOperation } from '@shared/domain/access-keys
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useT } from '../../app/i18n'
-import { useAccessKeyDrawerController } from '../../app/use-access-key-drawer'
+import { useAccessKeyDrawerController } from './use-access-key-drawer'
 import { useUnsavedChanges } from '../../app/use-unsaved-changes'
 import { DetailPanel } from '../../components/DetailPanel'
 import { AccessKeyCostLimitEditor } from './AccessKeyCostLimitEditor'

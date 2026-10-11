@@ -8,8 +8,8 @@ import {
 } from '@shared/controllers/home-statistics'
 import { homeStatisticsQueryOptions } from '@shared/control/resources/home'
 
-import { useAppServices } from './services'
-import { useVisibleRefetch } from './use-visible-refetch'
+import { useAppServices } from '@app/app/services'
+import { useVisibleRefetch } from '@app/app/use-visible-refetch'
 
 export interface HomeStatisticsHandle {
   // Memoized controller state — read render-time values only from here (React

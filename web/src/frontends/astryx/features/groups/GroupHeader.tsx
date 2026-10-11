@@ -11,7 +11,7 @@ import { useT } from '../../app/i18n'
 import { RouteLink } from '../../app/route-link'
 import { useAppServices } from '../../app/services'
 import { ChannelIcon } from '../../components/ChannelIcon'
-import { CopyChip } from '../access-keys/AccessKeyCopyChip'
+import { CopyChip } from '@app/components/CopyChip'
 
 const styles = stylex.create({
   header: {

@@ -7,9 +7,9 @@ import {
   type ModelPriceEditorSnapshot,
 } from '@shared/controllers/model-price-editor'
 
-import { useT } from './i18n'
-import { useAppServices } from './services'
-import { useUnsavedChanges, type UnsavedChangesGuard } from './use-unsaved-changes'
+import { useT } from '@app/app/i18n'
+import { useAppServices } from '@app/app/services'
+import { useUnsavedChanges, type UnsavedChangesGuard } from '@app/app/use-unsaved-changes'
 
 export interface ModelPriceEditorHandle {
   controller: ModelPriceEditorController

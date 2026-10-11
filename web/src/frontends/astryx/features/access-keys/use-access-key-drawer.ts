@@ -8,7 +8,7 @@ import {
 import type { PendingAccessKeyCreateOperation } from '@shared/domain/access-keys/access-key-create-operation'
 import type { PendingAccessKeyEditOperation } from '@shared/domain/access-keys/access-key-edit-operation'
 
-import { useAppServices } from './services'
+import { useAppServices } from '@app/app/services'
 
 export interface AccessKeyDrawerControllerOptions {
   isOpen(): boolean

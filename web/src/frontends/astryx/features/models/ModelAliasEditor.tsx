@@ -21,7 +21,7 @@ import {
   type ModelNameConflict,
 } from '@shared/domain/models/model-draft'
 
-import { LedgerRecordList, ledgerRecordStyles } from '../../components/LedgerRecordList'
+import { LedgerRecordList, ledgerRecordStyles } from '@app/components/LedgerRecordList'
 
 const narrow = '@media (max-width: 860px)'
 const small = '@media (max-width: 640px)'

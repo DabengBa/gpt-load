@@ -71,10 +71,13 @@ import { ChannelIcon } from '../../components/ChannelIcon'
 import { InlineNotice } from '../../components/InlineNotice'
 import { SectionHeader } from '../../components/SectionHeader'
 import { StickySaveBar } from '../../components/StickySaveBar'
-import { ModelAliasEditor, type ModelAliasEditorHandle } from '../groups/ModelAliasEditor'
+import {
+  ModelAliasEditor,
+  type ModelAliasEditorHandle,
+} from '@app/features/models/ModelAliasEditor'
 import { ModelDiscoveryDrawer } from '../models/ModelDiscoveryDrawer'
 import { ModelPricingStatus } from '../models/ModelPricingStatus'
-import { ChannelPresetPicker } from './ChannelPresetPicker'
+import { ChannelPresetPicker } from '@app/components/ChannelPresetPicker'
 import { CredentialTextarea } from './CredentialTextarea'
 import { ImportConnectionSection } from './ImportConnectionSection'
 import { ImportOperationNotice } from './ImportOperationNotice'

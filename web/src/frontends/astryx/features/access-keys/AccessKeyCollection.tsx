@@ -36,7 +36,7 @@ import type { MessageId } from '@shared/i18n/message-ids'
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
 import { RelativeInstant } from '../../components/RelativeInstant'
-import { CopyChip } from './AccessKeyCopyChip'
+import { CopyChip } from '@app/components/CopyChip'
 import { AccessKeyCostLimitResetDialog } from './AccessKeyCostLimitResetDialog'
 import { AccessKeyDeleteDialog } from './AccessKeyDeleteDialog'
 

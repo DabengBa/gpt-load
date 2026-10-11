@@ -7,7 +7,7 @@ import type { ChannelParamsDto } from '@shared/control/types'
 import type { ChannelDto, ChannelFieldDto } from '@shared/control/resources/channels'
 
 import { useT } from '../../../app/i18n'
-import { ChannelPresetPicker } from '../../import/ChannelPresetPicker'
+import { ChannelPresetPicker } from '@app/components/ChannelPresetPicker'
 
 export function GroupSettingsBaseForm({
   section,

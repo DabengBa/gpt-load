@@ -12,7 +12,7 @@ import { formatInteger, formatLocalInstant, formatUSD } from '@shared/lib/format
 import { quotaProgressTone } from '@shared/lib/quota-progress'
 
 import { useT } from '../../app/i18n'
-import { CostLimitWindowTime } from './CostLimitWindowTime'
+import { CostLimitWindowTime } from '@app/features/access-keys/CostLimitWindowTime'
 
 const NARROW = '@media (max-width: 860px)'
 const TIGHT = '@media (max-width: 560px)'

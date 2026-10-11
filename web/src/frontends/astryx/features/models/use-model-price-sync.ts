@@ -6,7 +6,7 @@ import {
   type ModelPriceSyncSnapshot,
 } from '@shared/controllers/model-price-sync'
 
-import { useAppServices } from './services'
+import { useAppServices } from '@app/app/services'
 
 export interface ModelPriceSyncHandle {
   controller: ModelPriceSyncController
