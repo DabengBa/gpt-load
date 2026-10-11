@@ -6,6 +6,17 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-10-11 — Astryx frontend module ownership
+
+[PR #177](https://github.com/DabengBa/gpt-load/pull/177) consolidated reused
+components, log presentation, and business hooks into their owning modules,
+and removed unused implementations and a redundant quota-window wrapper.
+Product behavior, backend APIs, dependencies, and lazy route loading are
+unchanged. [Astryx Frontend Structure](tech/frontend-structure.md) owns the
+current module layout and intentional cross-feature dependencies;
+[Navigation loading and cache policy](tech/navigation-performance.md) owns
+loading and query freshness.
+
 ## 2026-09-30 — Astryx migration: Phases 5+6 cutover and classic deletion
 
 The migration closed out on branch `docs/astryx-migration-plan` by

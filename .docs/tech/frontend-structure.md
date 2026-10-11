@@ -2,6 +2,9 @@
 description: "Current Astryx frontend layout: app shell, feature modules, shared layers, and the intentional cross-feature consumption rules."
 kind: technical
 topic: frontend-structure
+relations:
+  related:
+    - tech/navigation-performance.md
 code:
   paths:
     - web/src/frontends/astryx/app/router.tsx
@@ -50,7 +53,9 @@ logs. Keep these dependencies explicit through specific module imports;
 do not add broad barrels or move business widgets into generic UI solely to
 eliminate cross-feature imports. `shared/` may never import from the frontend.
 
-Historical migration inventories live in `.docs/tech/astryx-migration-plan.md`
-and are records of past phases, not a map of current paths. For current
-behavior details of a domain, read the feature directory; for routing and
-preloading, read `app/router.tsx`.
+Historical migration inventories live in
+[the migration plan](astryx-migration-plan.md) and are records of past phases,
+not a map of current paths. For current behavior details of a domain, read the
+feature directory. [Navigation loading and cache policy](navigation-performance.md)
+owns route loading, intent preloading, and query freshness; its implementation
+starts in `app/router.tsx`.
