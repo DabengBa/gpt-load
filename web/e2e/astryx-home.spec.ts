@@ -517,7 +517,16 @@ test('keeps stale content with a warning banner when a refresh fails', async ({ 
   })
   await page.getByRole('link', { name: 'Dispatch center', exact: true }).click()
   await expect(page).toHaveURL(/\/schedule/)
-  await page.getByRole('link', { name: 'Home', exact: true }).click()
+  // The URL advances before the lazy route commits. Wait for the destination
+  // view so Home actually unmounts before navigating back.
+  await expect(page.getByRole('heading', { name: 'Dispatch center', exact: true })).toBeVisible()
+  await expect(facts).toHaveCount(0)
+  await Promise.all([
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/home' && response.status() === 500,
+    ),
+    page.getByRole('link', { name: 'Home', exact: true }).click(),
+  ])
   await expect(page).toHaveURL(/\/$/)
 
   await expect(facts).toBeVisible()
