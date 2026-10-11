@@ -2,6 +2,9 @@
 description: On-demand management pages, intent preloading, and group query freshness without replacing editor drafts.
 kind: technical
 topic: navigation-performance
+relations:
+  related:
+    - tech/frontend-structure.md
 code:
   paths:
     - web/src/frontends/astryx/app/router.tsx
@@ -12,6 +15,9 @@ code:
 ---
 
 # Navigation loading and cache policy
+
+For module ownership and intentional cross-feature imports, see
+[Astryx Frontend Structure](frontend-structure.md).
 
 ## Page loading and navigation intent
 
