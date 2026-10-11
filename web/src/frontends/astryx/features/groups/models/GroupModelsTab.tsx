@@ -66,7 +66,10 @@ import { ModelPricingStatus } from '../../models/ModelPricingStatus'
 import { ModelProbeDialog } from '../../models/ModelProbeDialog'
 import { useModelProbe } from '../../models/use-model-probe'
 import type { GroupEditorState, GroupModelsEditorHandle } from '../editor-handles'
-import { ModelAliasEditor, type ModelAliasEditorHandle } from '../ModelAliasEditor'
+import {
+  ModelAliasEditor,
+  type ModelAliasEditorHandle,
+} from '@app/features/models/ModelAliasEditor'
 import { GroupModelSyncDialog } from './GroupModelSyncDialog'
 
 const nativeDataProbeProtocols = new Set<ProtocolValue>([

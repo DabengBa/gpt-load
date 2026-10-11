@@ -15,7 +15,7 @@ import { formatLocalInstant } from '@shared/lib/format'
 
 import { useT } from '../../../app/i18n'
 import { InlineNotice } from '../../../components/InlineNotice'
-import { CopyChip } from '../../access-keys/AccessKeyCopyChip'
+import { CopyChip } from '@app/components/CopyChip'
 
 const small = '@media (max-width: 480px)'
 

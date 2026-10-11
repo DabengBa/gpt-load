@@ -2,7 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Copy } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { useClipboardCopy } from '../../app/use-clipboard-copy'
+import { useClipboardCopy } from '@app/app/use-clipboard-copy'
 
 const styles = stylex.create({
   wrap: {

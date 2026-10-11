@@ -40,9 +40,9 @@ import { currentTimeZone } from '@shared/lib/time'
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useT } from '../../app/i18n'
-import { LogProtocolConversion } from '../monitor/LogProtocolConversion'
-import { LogRouteIdentity } from '../monitor/LogRouteIdentity'
-import { PricingModeIndicator } from '../monitor/PricingModeIndicator'
+import { LogProtocolConversion } from './LogProtocolConversion'
+import { LogRouteIdentity } from './LogRouteIdentity'
+import { PricingModeIndicator } from './PricingModeIndicator'
 
 const TABLET = '@media (max-width: 1080px)'
 const CARD = '@media (max-width: 860px)'

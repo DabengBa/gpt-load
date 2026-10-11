@@ -27,7 +27,7 @@ import type { PendingAccessKeyRotateOperation } from '@shared/domain/access-keys
 
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
-import { CopyChip } from './AccessKeyCopyChip'
+import { CopyChip } from '@app/components/CopyChip'
 
 const styles = stylex.create({
   body: {

@@ -15,7 +15,7 @@ import { createUUID } from '@shared/lib/uuid'
 
 import { useT } from '../../app/i18n'
 import { decimalInputAttrs, numericInputAttrs } from '../../components/input-attrs'
-import { AccessKeyCostLimitWindowTime } from './AccessKeyCostLimitWindowTime'
+import { CostLimitWindowTime } from './CostLimitWindowTime'
 
 const COMPACT = '@media (max-width: 560px)'
 const NARROW = '@media (max-width: 860px)'
@@ -680,7 +680,7 @@ export function AccessKeyCostLimitEditor({
                       <RuleRuntime
                         runtime={runtime}
                         label={periodicLabel}
-                        tail={<AccessKeyCostLimitWindowTime rule={runtime} />}
+                        tail={<CostLimitWindowTime rule={runtime} />}
                       />
                     )}
                   </article>

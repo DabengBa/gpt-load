@@ -1,10 +1,9 @@
 import * as stylex from '@stylexjs/stylex'
-import { Badge, Button, EmptyState, Skeleton } from '@astryxdesign/core'
+import { Button, EmptyState, Skeleton } from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
 import { useRouterState } from '@tanstack/react-router'
 import { RefreshCw, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-
 
 import {
   groupModelsQueryOptions,
@@ -14,7 +13,6 @@ import {
 import { credentialQueryOptions } from '@shared/control/resources/credentials'
 import { pagePath } from '@shared/routing/page-routes'
 import { parsePositiveId } from '@shared/routing/group-detail-route'
-
 
 import { useStableLoading } from '../../app/collection-loading'
 import { useT } from '../../app/i18n'
@@ -27,7 +25,6 @@ import { GroupSettingsTab } from './settings/GroupSettingsTab'
 import { GroupModelsTab } from './models/GroupModelsTab'
 import { GroupHeader } from './GroupHeader'
 import type { GroupEditorHandle, GroupEditorState, GroupModelsEditorHandle } from './editor-handles'
-
 
 const idleEditorState: GroupEditorState = {
   dirty: false,
@@ -167,7 +164,6 @@ export function GroupDetailView() {
   const { id } = useRouterState({
     select: (state) => ({
       id: (state.matches.at(-1)?.params as { id?: string } | undefined)?.id,
-
     }),
   })
   const groupId = parsePositiveId(id)
@@ -272,82 +268,82 @@ export function GroupDetailView() {
               )}
               <GroupHeader group={summaryQuery.data} />
               <>
-                  <GroupSettingsTab
-                    ref={settingsEditorRef}
-                    key={`settings-${groupId}`}
-                    groupId={groupId}
-                    unified
-                    blocked={deletePending}
-                    onStateChange={setSettingsState}
-                  />
-                  <GroupCredentialsTab
-                    key={`credentials-${groupId}`}
-                    groupId={groupId}
-                    channelId={summaryQuery.data.channel_id}
-                    connectionType={summaryQuery.data.connection_type}
-                  />
-                  <GroupModelsTab
-                    ref={modelsEditorRef}
-                    key={`models-${groupId}`}
-                    groupId={groupId}
-                    channelId={summaryQuery.data.channel_id}
-                    enabled={settingsQuery.data?.enabled ?? true}
-                    unified
-                    blocked={deletePending}
-                    readonlyRouteFields
-                    onStateChange={setModelsState}
-                  />
-                  {/* Unified-mode portal target: GroupSettingsTab portals its
+                <GroupSettingsTab
+                  ref={settingsEditorRef}
+                  key={`settings-${groupId}`}
+                  groupId={groupId}
+                  unified
+                  blocked={deletePending}
+                  onStateChange={setSettingsState}
+                />
+                <GroupCredentialsTab
+                  key={`credentials-${groupId}`}
+                  groupId={groupId}
+                  channelId={summaryQuery.data.channel_id}
+                  connectionType={summaryQuery.data.connection_type}
+                />
+                <GroupModelsTab
+                  ref={modelsEditorRef}
+                  key={`models-${groupId}`}
+                  groupId={groupId}
+                  channelId={summaryQuery.data.channel_id}
+                  enabled={settingsQuery.data?.enabled ?? true}
+                  unified
+                  blocked={deletePending}
+                  readonlyRouteFields
+                  onStateChange={setModelsState}
+                />
+                {/* Unified-mode portal target: GroupSettingsTab portals its
                       advanced section here via createPortal. Contractual id. */}
-                  <div id="group-settings-advanced-target" />
-                  <StickySaveBar
-                    appearance="ledger"
-                    xstyle={styles.saveBar}
-                    alwaysVisible
-                    dirty={unifiedDirty}
-                    pending={unifiedPending}
-                    status={unifiedSaveStatus}
-                    error={unifiedError}
-                    errorActionLabel={unifiedErrorActionLabel}
-                    onErrorAction={() => void modelsEditorRef.current?.focusFirstInvalid()}
-                    statusContent={
-                      <div>
-                        <strong>
-                          {unifiedPending
-                            ? t('group.settings.saving')
-                            : unifiedSaved
-                              ? t('group.settings.savedFeedback')
-                              : unifiedDirty
-                                ? t('group.settings.unsaved')
-                                : t('group.settings.saved')}
-                        </strong>
-                        <span>{unifiedError || t('group.settings.saveNote')}</span>
-                      </div>
-                    }
-                    actions={
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          label={t('common.discard')}
-                          isDisabled={unifiedPending || !unifiedDirty}
-                          onClick={discardUnified}
-                        />
-                        <GroupDeleteDialog
-                          groupId={groupId}
-                          groupName={summaryQuery.data.name}
-                          disabled={unifiedPending || unifiedDirty}
-                          onPendingChange={setDeletePending}
-                        />
-                        <Button
-                          size="sm"
-                          label={t('group.settings.save')}
-                          isDisabled={unifiedPending || !unifiedDirty || unifiedInvalid}
-                          onClick={saveUnified}
-                        />
-                      </>
-                    }
-                  />
+                <div id="group-settings-advanced-target" />
+                <StickySaveBar
+                  appearance="ledger"
+                  xstyle={styles.saveBar}
+                  alwaysVisible
+                  dirty={unifiedDirty}
+                  pending={unifiedPending}
+                  status={unifiedSaveStatus}
+                  error={unifiedError}
+                  errorActionLabel={unifiedErrorActionLabel}
+                  onErrorAction={() => void modelsEditorRef.current?.focusFirstInvalid()}
+                  statusContent={
+                    <div>
+                      <strong>
+                        {unifiedPending
+                          ? t('group.settings.saving')
+                          : unifiedSaved
+                            ? t('group.settings.savedFeedback')
+                            : unifiedDirty
+                              ? t('group.settings.unsaved')
+                              : t('group.settings.saved')}
+                      </strong>
+                      <span>{unifiedError || t('group.settings.saveNote')}</span>
+                    </div>
+                  }
+                  actions={
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        label={t('common.discard')}
+                        isDisabled={unifiedPending || !unifiedDirty}
+                        onClick={discardUnified}
+                      />
+                      <GroupDeleteDialog
+                        groupId={groupId}
+                        groupName={summaryQuery.data.name}
+                        disabled={unifiedPending || unifiedDirty}
+                        onPendingChange={setDeletePending}
+                      />
+                      <Button
+                        size="sm"
+                        label={t('group.settings.save')}
+                        isDisabled={unifiedPending || !unifiedDirty || unifiedInvalid}
+                        onClick={saveUnified}
+                      />
+                    </>
+                  }
+                />
               </>
             </>
           ) : null}

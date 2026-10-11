@@ -6,8 +6,8 @@ import { useIntl } from 'react-intl'
 import type { AccessKeyCostLimitRuleStatusDto } from '@shared/control/types'
 import { formatLocalInstant } from '@shared/lib/format'
 
-import { useT } from '../../app/i18n'
-import { RelativeInstant } from '../../components/RelativeInstant'
+import { useT } from '@app/app/i18n'
+import { RelativeInstant } from '@app/components/RelativeInstant'
 
 const styles = stylex.create({
   preview: {
