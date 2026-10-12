@@ -29,6 +29,10 @@ type Query struct {
 	AccessKey                state.AccessKeyView
 	AllowedCredentialIDs     map[uint]struct{}
 	PreferredCredentialID    uint
+	// PreferredIdentityGeneration freezes the bound credential identity so a
+	// same-ID replacement cannot lend its health state to the old binding.
+	PreferredIdentityGeneration uint64
+	PreferredGroupID            uint
 
 	// ResponsesWebsocket 非 nil 时按原生 WS 合同准入，不要求 HTTP 资源接口。
 	ResponsesWebsocket *execution.WebsocketCapabilities
@@ -85,14 +89,17 @@ type Iterator struct {
 	tiers           []int
 	// routeModeTiers 来自上游 v2.0.0-rc.7(#570):默认 native 严格先于
 	// converted;RouteStrategy=weighted_mix 时两种模式在同一权重层内竞争。
-	routeModeTiers        [][]channel.RouteMode
-	allowedCredentialIDs  map[uint]struct{}
-	preferredCredentialID uint
-	tried                 map[candidateKey]struct{}
-	skippedGroups         map[uint]struct{}
-	staticReason          ReasonCode
-	runtimeReason         ReasonCode
-	now                   func() time.Time
+	routeModeTiers              [][]channel.RouteMode
+	allowedCredentialIDs        map[uint]struct{}
+	preferredCredentialID       uint
+	preferredIdentityGeneration uint64
+	preferredGroupID            uint
+	preferredHealthBypassed     bool
+	tried                       map[candidateKey]struct{}
+	skippedGroups               map[uint]struct{}
+	staticReason                ReasonCode
+	runtimeReason               ReasonCode
+	now                         func() time.Time
 }
 
 type normalizedQuery struct {
@@ -148,16 +155,18 @@ func newWithClock(
 	now func() time.Time,
 ) *Iterator {
 	iterator := &Iterator{
-		credentials:           credentials,
-		random:                random,
-		regular:               newCandidatePool(),
-		storeDowngraded:       newCandidatePool(),
-		routeModeTiers:        [][]channel.RouteMode{{channel.RouteNative}, {channel.RouteConverted}},
-		allowedCredentialIDs:  cloneAllowedCredentialIDs(query),
-		preferredCredentialID: query.PreferredCredentialID,
-		tried:                 make(map[candidateKey]struct{}),
-		skippedGroups:         make(map[uint]struct{}),
-		now:                   now,
+		credentials:                 credentials,
+		random:                      random,
+		regular:                     newCandidatePool(),
+		storeDowngraded:             newCandidatePool(),
+		routeModeTiers:              [][]channel.RouteMode{{channel.RouteNative}, {channel.RouteConverted}},
+		allowedCredentialIDs:        cloneAllowedCredentialIDs(query),
+		preferredCredentialID:       query.PreferredCredentialID,
+		preferredIdentityGeneration: query.PreferredIdentityGeneration,
+		preferredGroupID:            query.PreferredGroupID,
+		tried:                       make(map[candidateKey]struct{}),
+		skippedGroups:               make(map[uint]struct{}),
+		now:                         now,
 	}
 	if snapshot != nil && snapshot.Settings.RouteStrategy == state.RouteStrategyWeightedMix {
 		iterator.routeModeTiers = [][]channel.RouteMode{{channel.RouteNative, channel.RouteConverted}}
@@ -361,6 +370,9 @@ func (iterator *Iterator) weightedTierPool(
 }
 
 func (iterator *Iterator) Next() (Selection, error) {
+	if iterator != nil {
+		iterator.preferredHealthBypassed = false
+	}
 	if iterator == nil || iterator.random == nil || iterator.now == nil {
 		return Selection{}, ErrExhausted
 	}
@@ -398,12 +410,79 @@ func (iterator *Iterator) Next() (Selection, error) {
 						ticket -= candidate.weight
 					}
 				}
+				iterator.preferredHealthBypassed = selected.credential.ID != iterator.preferredCredentialID && iterator.preferredHealthExcluded(now)
 				iterator.markTried(selected)
 				return newSelection(selected.credential, selected.target), nil
 			}
 		}
 	}
 	return Selection{}, ErrExhausted
+}
+
+// PreferredHealthBypassed reports whether the last Next selected a different
+// credential because runtime health excluded an otherwise eligible preferred
+// target. The observation belongs to this request's iterator only.
+func (iterator *Iterator) PreferredHealthBypassed() bool {
+	return iterator != nil && iterator.preferredHealthBypassed
+}
+
+func (iterator *Iterator) preferredHealthExcluded(now time.Time) bool {
+	if iterator.preferredCredentialID == 0 || iterator.credentials == nil {
+		return false
+	}
+	var preferred state.CredentialRuntimeView
+	found := false
+	if source, ok := iterator.credentials.(interface {
+		Snapshot() []state.CredentialRuntimeView
+	}); ok {
+		for _, view := range source.Snapshot() {
+			if view.ID == iterator.preferredCredentialID &&
+				(iterator.preferredGroupID == 0 || view.GroupID == iterator.preferredGroupID) &&
+				(iterator.preferredIdentityGeneration == 0 || view.IdentityGeneration == iterator.preferredIdentityGeneration) {
+				preferred, found = view, true
+				break
+			}
+		}
+	}
+	if !found || !preferred.AuthReady() {
+		return false
+	}
+	if iterator.allowedCredentialIDs != nil {
+		if _, allowed := iterator.allowedCredentialIDs[preferred.ID]; !allowed {
+			return false
+		}
+	}
+	if _, skipped := iterator.skippedGroups[preferred.GroupID]; skipped {
+		return false
+	}
+	if iterator.credentials.CredentialCountsByGroup([]uint{preferred.GroupID})[preferred.GroupID] != 1 {
+		return false
+	}
+	blocked := false
+	for _, pool := range []*candidatePool{&iterator.regular, &iterator.storeDowngraded} {
+		for _, byTier := range pool.tierTargetsByMode {
+			for _, targets := range byTier {
+				for _, target := range targets {
+					if target.target.GroupID != preferred.GroupID || target.target.EntryWeight <= 0 {
+						continue
+					}
+					if _, tried := iterator.tried[candidateKey{credentialID: preferred.ID, upstreamModel: target.target.UpstreamModelID}]; tried {
+						continue
+					}
+					unhealthy := preferred.RuntimeState(now) != state.CredentialRuntimeAvailable
+					if source, ok := iterator.credentials.(state.EntryRuntimeSource); ok {
+						entry, _ := source.EntryRuntime(state.RouteEntryKey{GroupID: preferred.GroupID, EntryID: target.target.EntryID}, now)
+						unhealthy = unhealthy || entry.RuntimeState(now) != state.EntryRuntimeAvailable
+					}
+					if !unhealthy {
+						return false
+					}
+					blocked = true
+				}
+			}
+		}
+	}
+	return blocked
 }
 
 // preferredSelection scans every eligible bucket in the same deterministic

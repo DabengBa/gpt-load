@@ -5,6 +5,7 @@ topic: provider-feedback
 relations:
   related:
     - tech/usage-accounting.md
+    - tech/affinity-binding.md
     - db/features/usage-timing-metrics.md
 code:
   paths:
@@ -94,6 +95,9 @@ paired with `upstream_failure`, `first_response_slow`, or
 
 - The monitor UI is the product-facing consumer; this document owns the
   implementation contract behind its status badge and attempt details.
+- Whether a request result learns a credential affinity binding is owned by
+  [Affinity Binding](affinity-binding.md); this document owns the feedback
+  status that its final-success gate consumes.
 - Product-facing usage timing semantics remain owned by [Usage Duration And
   First-Response Metrics](../db/features/usage-timing-metrics.md).
 - Code binding: `internal/health/feedback.go:ClassifyFeedback`

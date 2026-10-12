@@ -95,6 +95,46 @@ func TestCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	}
 }
 
+func TestCacheStaleFoundObservationDoesNotReinsert(t *testing.T) {
+	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
+	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	next := Target{GroupID: 1, CredentialID: 12, IdentityGeneration: 102}
+
+	t.Run("evicted entry", func(t *testing.T) {
+		cache := newCache(2, time.Hour, func() time.Time { return now })
+		cache.RecordSuccess("one", Observation{}, target)
+		cache.RecordSuccess("two", Observation{}, target)
+		observed := cache.Lookup("one")
+		if !observed.Found() {
+			t.Fatal("Lookup(one) = miss, want hit")
+		}
+		cache.Lookup("two")
+		cache.RecordSuccess("three", Observation{}, target)
+		if cache.RecordSuccess("one", observed, next) {
+			t.Fatal("RecordSuccess() with stale found observation = true, want false")
+		}
+		if cache.Lookup("one").Found() || cache.entryCount() != 2 {
+			t.Fatalf("stale found observation reinserted evicted key; entries=%d", cache.entryCount())
+		}
+	})
+
+	t.Run("expired entry", func(t *testing.T) {
+		cache := newCache(2, time.Hour, func() time.Time { return now })
+		cache.RecordSuccess("one", Observation{}, target)
+		observed := cache.Lookup("one")
+		if !observed.Found() {
+			t.Fatal("Lookup(one) = miss, want hit")
+		}
+		now = now.Add(2 * time.Hour)
+		if cache.RecordSuccess("one", observed, next) {
+			t.Fatal("RecordSuccess() with stale found observation = true, want false")
+		}
+		if cache.Lookup("one").Found() || cache.entryCount() != 0 {
+			t.Fatalf("stale found observation reinserted expired key; entries=%d", cache.entryCount())
+		}
+	})
+}
+
 func TestCacheRejectsInvalidInputs(t *testing.T) {
 	cache := newCache(2, time.Hour, time.Now)
 	validTarget := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}

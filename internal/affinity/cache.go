@@ -164,7 +164,9 @@ func (cache *Cache) RecordSuccess(key Key, observed Observation, target Target) 
 				return false
 			}
 		} else {
-			return cache.insertLocked(key, target, now)
+			// The observed binding was evicted or expired after Lookup; a
+			// newer binding may exist outside this snapshot, so never insert.
+			return false
 		}
 	} else if element != nil {
 		return false
