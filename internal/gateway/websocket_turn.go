@@ -268,6 +268,8 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			execution.OperationResponsesCreate, original.metadata, allowedCredentialRefs,
 		)
 		query.PreferredCredentialID = affinity.preferredCredentialID
+		query.PreferredIdentityGeneration = affinity.preferredIdentityGeneration
+		query.PreferredGroupID = affinity.boundTarget.GroupID
 	}
 	recorder.setAffinityKey(affinity.displayKey)
 	recorder.resolvedAffinityCredentialID = affinity.preferredCredentialID
@@ -348,6 +350,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 				return
 			}
 			candidateRef, allowed := allowedCredentialRefs[selection.CredentialID]
+			affinity.preferredHealthBypassed = affinity.preferredHealthBypassed || iterator.PreferredHealthBypassed()
 			if !allowed || candidateRef.GroupID != selection.GroupID {
 				reject(reasonConfigurationChanged)
 				return
@@ -548,11 +551,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			result.ExecutionError = &execution.ErrorEvidence{Kind: execution.ErrorKindCanceled, OriginHint: execution.ErrorOriginDownstream, Code: "websocket_canceled"}
 		} else if binding != nil {
 			bufferFirstError := startedBound || (newBinding && requiredRef == nil && !binding.capabilities.Multiplex)
-			result = s.runWebsocketAttempt(ctx, cancel, binding, turn.lane, selection, ref, input, spec.Body, recorder, unlock, firstByteDeadline, bufferFirstError, func() {
-				if original.previous == "" {
-					h.recordAffinitySuccess(s.ctx, affinity, selection, ref)
-				}
-			})
+			result = s.runWebsocketAttempt(ctx, cancel, binding, turn.lane, selection, ref, input, spec.Body, recorder, unlock, firstByteDeadline, bufferFirstError)
 		} else {
 			result.Err = executionFailureError(ctx, wsResult.Error)
 			result.StatusCode = wsResult.Error.StatusCode
@@ -618,7 +617,9 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 				h.recordCredentialSuccess(ref.ID, h.now())
 			}
 			h.recordEntrySuccess(selection.GroupID, selection.EntryID, ref.ID)
-
+			if original.previous == "" && result.Committed && affinityResultSuccessful(result, decision) {
+				h.recordAffinitySuccess(s.ctx, affinity, selection, ref)
+			}
 		}
 		// 未绑定的串行首轮允许重试未发送失败或尚未交付的上游错误事件。
 		// 是否可重放仍由错误规则决定；续接和共享连接不能随某一轮切换身份。
@@ -724,7 +725,7 @@ type websocketCancelCloser struct {
 
 func (c websocketCancelCloser) Close() error { c.timedOut.Store(true); c.cancel(); return nil }
 
-func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel context.CancelFunc, binding *websocketBinding, lane string, selection scheduler.Selection, ref state.CredentialRef, input ForwardInput, body []byte, recorder *requestRecorder, unlock func(), firstByteDeadline time.Time, bufferFirstError bool, recordSuccess func()) UpstreamResult {
+func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel context.CancelFunc, binding *websocketBinding, lane string, selection scheduler.Selection, ref state.CredentialRef, input ForwardInput, body []byte, recorder *requestRecorder, unlock func(), firstByteDeadline time.Time, bufferFirstError bool) UpstreamResult {
 	observer := newStreamEventObserver(input.Dialect, newUsageCaptureBoundary().newStreamForRequest(input.Dialect, input.ObserveUsage))
 	result := UpstreamResult{UpstreamProtocol: protocol.OpenAIResponses}
 	var responseID string
@@ -824,9 +825,7 @@ func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel co
 		if err != nil {
 			return err
 		}
-		if observer.sawTerminal && !providerError && observer.terminalDisposition == dialect.StreamEventCompleted {
-			recordSuccess()
-		}
+
 		observer.observeUsageEvent(observation)
 		if providerError {
 			observer.observeError(body, "Upstream WebSocket request failed.")

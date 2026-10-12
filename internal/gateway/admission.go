@@ -261,6 +261,8 @@ func (handler *Handler) admitRequest(
 			metadata, allowedCredentialRefs,
 		)
 		query.PreferredCredentialID = requestAff.preferredCredentialID
+		query.PreferredIdentityGeneration = requestAff.preferredIdentityGeneration
+		query.PreferredGroupID = requestAff.boundTarget.GroupID
 	}
 	if requestAff.err != nil {
 		outcome := rejectAdmissionRetryAfter(reasonConfigurationChanged, 1).withInspected(inspected)

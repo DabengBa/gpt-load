@@ -399,6 +399,7 @@ func (loop *attemptLoop) nextCandidate() (scheduler.Selection, state.CredentialR
 	if err != nil {
 		return scheduler.Selection{}, state.CredentialRef{}, false, candidateExhausted
 	}
+	loop.dispatch.affinity.preferredHealthBypassed = loop.dispatch.affinity.preferredHealthBypassed || loop.iterator.PreferredHealthBypassed()
 	candidateRef, allowed := loop.dispatch.allowedCredentialRefs[selection.CredentialID]
 	if !allowed || candidateRef.GroupID != selection.GroupID {
 		return scheduler.Selection{}, state.CredentialRef{}, false, candidateSkip
@@ -764,7 +765,7 @@ func (loop *attemptLoop) run() {
 					handler.recordCredentialSuccess(selection.CredentialID, attemptNow)
 				}
 				handler.recordEntrySuccess(selection.GroupID, selection.EntryID, selection.CredentialID)
-				if dispatch.metadata.PreviousResponseID == "" {
+				if dispatch.metadata.PreviousResponseID == "" && affinityResultSuccessful(result, decision) {
 					handler.recordAffinitySuccess(ginContext.Request.Context(), dispatch.affinity, selection, ref)
 				}
 			}
@@ -859,10 +860,7 @@ func (loop *attemptLoop) run() {
 				handler.completeWriteTerminal(ginContext, recorder, result.StatusCode)
 				return
 			}
-			if result.DispatchState != execution.DispatchLocal &&
-				result.StatusCode >= http.StatusOK && result.StatusCode < http.StatusMultipleChoices &&
-				dispatch.metadata.PreviousResponseID == "" &&
-				!(result.ExecutionError != nil && isUpstreamDiagnosticErrorCode(result.ExecutionError.Code)) {
+			if dispatch.metadata.PreviousResponseID == "" && affinityResultSuccessful(result, decision) {
 				handler.recordAffinitySuccess(ginContext.Request.Context(), dispatch.affinity, selection, ref)
 			}
 			return

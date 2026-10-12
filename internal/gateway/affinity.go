@@ -25,18 +25,20 @@ const (
 )
 
 type requestAffinity struct {
-	key                   affinity.Key
-	displayKey            string
-	policy                affinity.DurablePolicy
-	observation           affinity.Observation
-	boundTarget           affinity.Target
-	boundAttempted        bool
-	boundProviderFailed   bool
-	preferredCredentialID uint
-	continuityKey         string
-	source                telemetry.AffinitySource
-	state                 telemetry.AffinityState
-	err                   error
+	key                         affinity.Key
+	displayKey                  string
+	policy                      affinity.DurablePolicy
+	observation                 affinity.Observation
+	boundTarget                 affinity.Target
+	boundAttempted              bool
+	boundProviderFailed         bool
+	preferredHealthBypassed     bool
+	preferredCredentialID       uint
+	preferredIdentityGeneration uint64
+	continuityKey               string
+	source                      telemetry.AffinitySource
+	state                       telemetry.AffinityState
+	err                         error
 }
 
 func affinityTargetForSelection(selection scheduler.Selection, ref state.CredentialRef) affinity.Target {
@@ -75,13 +77,56 @@ func (request *requestAffinity) markBoundProviderFailure(
 }
 
 func (request requestAffinity) mayRecordSuccess(selection scheduler.Selection, ref state.CredentialRef) bool {
+	if request.boundTarget.Valid() && !request.observation.Found() {
+		return false
+	}
 	if !request.boundTarget.Valid() {
 		return true
 	}
 	if affinityTargetForSelection(selection, ref) == request.boundTarget {
 		return true
 	}
-	return request.boundAttempted && request.boundProviderFailed
+	return request.preferredHealthBypassed || (request.boundAttempted && request.boundProviderFailed)
+}
+
+func affinityResultSuccessful(result UpstreamResult, decision health.Decision) bool {
+	return result.Err == nil && result.ExecutionError == nil && !result.ProviderErrorBeforeCommit &&
+		result.DispatchState != execution.DispatchLocal && result.DispatchState != execution.DispatchNotSent &&
+		result.StatusCode >= 200 && result.StatusCode < 300 &&
+		decision.Category == health.FailureCategoryOK && decision.Origin == execution.ErrorOriginUpstream &&
+		result.Feedback.Status != health.FeedbackStatusFaulty
+}
+
+func (handler *Handler) affinitySelectionAvailable(
+	selection scheduler.Selection,
+	ref state.CredentialRef,
+) bool {
+	current, exists := handler.registry.CredentialRef(selection.CredentialID)
+	if !exists || current.ID != ref.ID || current.GroupID != selection.GroupID ||
+		current.IdentityGeneration != ref.IdentityGeneration {
+		return false
+	}
+
+	if _, ready := handler.registry.ActiveEncryptedCredentialDataIfMatch(current); !ready {
+		return false
+	}
+	now := handler.now()
+	candidates := handler.registry.CollectCredentialCandidates([]uint{selection.GroupID}, nil, now)
+	available := false
+	for _, candidate := range candidates {
+		if candidate.ID == ref.ID && candidate.IdentityGeneration == ref.IdentityGeneration {
+			available = true
+			break
+		}
+	}
+	if !available {
+		return false
+	}
+	if runtime, ok := handler.registry.(state.EntryRuntimeSource); ok {
+		entry, _ := runtime.EntryRuntime(state.RouteEntryKey{GroupID: selection.GroupID, EntryID: selection.EntryID}, now)
+		return entry.RuntimeState(now) == state.EntryRuntimeAvailable
+	}
+	return false
 }
 
 func affinityBindingLockStripe(key affinity.Key) int {
@@ -249,6 +294,9 @@ func (handler *Handler) resolveRequestAffinity(
 		return result
 	}
 	result.preferredCredentialID = target.CredentialID
+	// The bypass permission belongs to the observed binding identity, not the
+	// credential ID: a same-ID replacement must re-earn it with fresh health.
+	result.preferredIdentityGeneration = target.IdentityGeneration
 	result.state = telemetry.AffinityStateHit
 	return result
 }
@@ -271,6 +319,9 @@ func (handler *Handler) recordAffinitySuccess(
 	lock := handler.affinityBindingLock(request.key)
 	lock.Lock()
 	defer lock.Unlock()
+	if !handler.affinitySelectionAvailable(selection, ref) {
+		return
+	}
 	updated := handler.affinityCache.RecordSuccess(request.key, request.observation, target)
 	if handler.affinityStore == nil || !updated {
 		return

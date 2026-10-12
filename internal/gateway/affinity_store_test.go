@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -372,7 +373,7 @@ func TestWebsocketMigratesDurableBindingAfterBoundProviderFailure(t *testing.T) 
 			}
 			session := &websocketScriptSession{done: make(chan struct{})}
 			session.turn = func(ctx context.Context, _ []byte, emit func(context.Context, []byte) error) execution.WebsocketResult {
-				if err := emit(ctx, websocketCompleted("ws-affinity", "")); err != nil {
+				if err := emit(ctx, websocketCompleted(fmt.Sprintf("ws-affinity-%d", openNumber), "")); err != nil {
 					return execution.WebsocketResult{DispatchState: execution.DispatchMaybeSent, Error: &execution.ErrorEvidence{
 						Kind: execution.ErrorKindCanceled, OriginHint: execution.ErrorOriginDownstream,
 						ScopeHint: execution.ErrorScopeRequest,
@@ -394,6 +395,7 @@ func TestWebsocketMigratesDurableBindingAfterBoundProviderFailure(t *testing.T) 
 	if _, _, err := first.ReadMessage(); err != nil {
 		t.Fatal(err)
 	}
+	waitWebsocketLogs(t, sink, 1)
 	_ = first.Close()
 
 	second := dialGatewayWebsocket(t, server.URL)
@@ -406,6 +408,7 @@ func TestWebsocketMigratesDurableBindingAfterBoundProviderFailure(t *testing.T) 
 	if opens.Load() != 3 {
 		t.Fatalf("websocket opens = %d, want bound attempt plus fallback", opens.Load())
 	}
+	waitWebsocketLogs(t, sink, 2)
 	bindings := store.targets()
 	if len(bindings) != 1 {
 		t.Fatalf("durable bindings = %#v, want one binding", bindings)
@@ -623,8 +626,12 @@ func TestHandlerPreservesDurableBindingWhenBoundTargetWasNotDispatchable(t *test
 				t.Fatalf("durable bindings = %#v, want one preserved binding", bindings)
 			}
 			for _, target := range bindings {
-				if target.CredentialID != 1 || target.GroupID != 1 {
-					t.Fatalf("durable target after non-dispatchable bound request = %#v, want credential 1/group 1", target)
+				want := uint(2)
+				if test.name == "identity generation changed" {
+					want = 1
+				}
+				if target.CredentialID != want || target.GroupID != want {
+					t.Fatalf("durable target after non-dispatchable bound request = %#v, want credential/group %d", target, want)
 				}
 			}
 			assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two"})
