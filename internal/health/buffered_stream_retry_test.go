@@ -24,6 +24,7 @@ func TestBufferedStreamRetryUsesPayloadReleaseGate(t *testing.T) {
 			Code:       "upstream_stream_idle_timeout",
 			Summary:    "upstream stream idle timeout",
 		},
+
 		Now: now,
 	}
 
@@ -45,6 +46,18 @@ func TestBufferedStreamRetryUsesPayloadReleaseGate(t *testing.T) {
 	})
 	if decision.Retry != RetryNone {
 		t.Fatalf("released buffered attempt decision = %#v, must not retry", decision)
+	}
+}
+
+func TestBufferedStreamRetriesProviderIncompleteBeforePayloadRelease(t *testing.T) {
+	attempt := ExecutionAttempt{
+		DispatchState: execution.DispatchMaybeSent, StatusCode: http.StatusOK,
+		HTTPCommitted: true, ClientVisibleBytes: 16, BufferedStream: true,
+		Evidence: &execution.ErrorEvidence{Kind: execution.ErrorKindProvider, OriginHint: execution.ErrorOriginUpstream, ScopeHint: execution.ErrorScopeRequest, Code: "upstream_response_incomplete"},
+	}
+	decision := JudgeExecution(attempt, DecisionContext{Method: http.MethodPost, Operation: execution.OperationResponsesCreate, BufferedReplayEligible: true})
+	if decision.Retry != RetryNextCandidate || decision.Effect != EffectSkipGroup {
+		t.Fatalf("provider-incomplete buffered decision = %#v, want controlled retry", decision)
 	}
 }
 

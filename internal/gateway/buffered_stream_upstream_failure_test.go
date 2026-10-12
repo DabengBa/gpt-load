@@ -143,8 +143,8 @@ func TestHandlerNativeResponsesBufferedFailureRetriesCandidate(t *testing.T) {
 		})
 	}
 
-	// A valid provider-incomplete terminal is a semantic result, not a transport
-	// failure, and therefore must not use the buffered candidate retry gate.
+	// A provider-incomplete terminal before buffered payload release must use the
+	// same candidate retry gate as other buffered upstream failures.
 	calls := 0
 	executor := fakeExecutionExecutor{stream: func(
 		_ context.Context,
@@ -175,8 +175,8 @@ func TestHandlerNativeResponsesBufferedFailureRetriesCandidate(t *testing.T) {
 	))
 	request.Header.Set("Authorization", "Bearer gl-client")
 	engine.ServeHTTP(httptest.NewRecorder(), request)
-	if calls != 1 {
-		t.Fatalf("incomplete attempts = %d, want one", calls)
+	if calls != 2 {
+		t.Fatalf("incomplete attempts = %d, want two", calls)
 	}
 }
 

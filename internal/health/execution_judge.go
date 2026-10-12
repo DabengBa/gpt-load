@@ -632,6 +632,15 @@ func bufferedStreamRetryDecision(
 			EffectSkipGroup,
 			"buffered_stream.retry_before_release",
 		)
+	case "upstream_response_incomplete":
+		return decision(
+			FailureCategoryAmbiguous,
+			execution.ErrorOriginUpstream,
+			execution.ErrorScopeGroup,
+			RetryNextCandidate,
+			EffectSkipGroup,
+			"buffered_stream.retry_before_release",
+		)
 	}
 	if retryableUpstreamStatus(attempt.statusCode()) {
 		// The upstream answered with a status the gateway treats as transient and
