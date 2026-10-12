@@ -271,9 +271,8 @@ func (loop *attemptLoop) recordCandidatePreparationFailure(
 	if loop.attemptSequence == 1 {
 		if loop.dispatch.metadata.PreviousResponseID != "" {
 			recorder.setContinuityHit(true)
-		} else if loop.dispatch.affinity.preferredCredentialID != 0 &&
-			selection.CredentialID == loop.dispatch.affinity.preferredCredentialID {
-			recorder.setAffinityHit(true)
+		} else {
+			recorder.observeAffinityHitComparison(selection.CredentialID, loop.dispatch.affinity.preferredCredentialID)
 		}
 	}
 	updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, loop.attemptSequence)
@@ -558,9 +557,8 @@ func (loop *attemptLoop) run() {
 		if loop.attemptSequence == 1 {
 			if dispatch.metadata.PreviousResponseID != "" {
 				recorder.setContinuityHit(true)
-			} else if dispatch.affinity.preferredCredentialID != 0 &&
-				selection.CredentialID == dispatch.affinity.preferredCredentialID {
-				recorder.setAffinityHit(true)
+			} else {
+				recorder.observeAffinityHitComparison(selection.CredentialID, dispatch.affinity.preferredCredentialID)
 			}
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, loop.attemptSequence)

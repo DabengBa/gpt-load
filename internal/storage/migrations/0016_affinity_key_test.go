@@ -13,7 +13,7 @@ func Test0016AffinityKeyAddsSafeDefaultAndOrderedNonUniqueIndex(t *testing.T) {
 	db := openInitialTestDatabase(t)
 	applyMigrationsThrough0015(t, db)
 	legacy := legacyAffinityRequestLog("00000000-0000-4000-8000-000000000016")
-	if err := db.Omit("AffinityKey").Create(&legacy).Error; err != nil {
+	if err := db.Omit("ResolvedAffinityCredentialID", "FirstAttemptCredentialID", "AffinityHitAssignmentReached", "AffinityKey").Create(&legacy).Error; err != nil {
 		t.Fatalf("create legacy request log: %v", err)
 	}
 

@@ -206,33 +206,36 @@ type UsageObservation struct {
 }
 
 type RequestEvent struct {
-	RequestID             string
-	CompletedAt           time.Time
-	AccessKeyID           uint
-	Protocol              protocol.Protocol
-	Operation             execution.Operation
-	ClientModel           string
-	UpstreamModel         string
-	UpstreamReportedModel string
-	ModelConsistency      ModelConsistency
-	Status                RequestStatus
-	StatusCode            int
-	ErrorCode             string
-	ErrorSummary          string
-	Stream                bool
-	FirstResponseMs       *int64
-	DurationMs            int64
-	AffinityHit           bool
-	ContinuityHit         bool
-	AffinityKey           string
-	AffinitySource        AffinitySource
-	AffinityState         AffinityState
-	Reasoning             reasoning.Config
-	Attempts              []Attempt
-	Usage                 UsageObservation
-	BufferedStream        bool
-	BufferedPeakBytes     int64
-	ReleaseStartedMs      *int64
+	RequestID                    string
+	CompletedAt                  time.Time
+	AccessKeyID                  uint
+	Protocol                     protocol.Protocol
+	Operation                    execution.Operation
+	ClientModel                  string
+	UpstreamModel                string
+	UpstreamReportedModel        string
+	ModelConsistency             ModelConsistency
+	Status                       RequestStatus
+	StatusCode                   int
+	ErrorCode                    string
+	ErrorSummary                 string
+	Stream                       bool
+	FirstResponseMs              *int64
+	DurationMs                   int64
+	AffinityHit                  bool
+	ResolvedAffinityCredentialID uint
+	FirstAttemptCredentialID     uint
+	AffinityHitAssignmentReached bool
+	ContinuityHit                bool
+	AffinityKey                  string
+	AffinitySource               AffinitySource
+	AffinityState                AffinityState
+	Reasoning                    reasoning.Config
+	Attempts                     []Attempt
+	Usage                        UsageObservation
+	BufferedStream               bool
+	BufferedPeakBytes            int64
+	ReleaseStartedMs             *int64
 }
 
 type RequestLogSink interface {

@@ -38,6 +38,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0022,
 		migrationfiles.ID0023,
 		migrationfiles.ID0024,
+		migrationfiles.ID0025,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -51,7 +52,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 
 func TestFeedbackMigrationUpgrades0023FreshDatabaseAndRepeatStart(t *testing.T) {
 	upgrade := openInternalMigrationTestDatabase(t)
-	if err := applyMigrationRegistry(upgrade, migrations[:len(migrations)-1]); err != nil {
+	if err := applyMigrationRegistry(upgrade, migrations[:len(migrations)-2]); err != nil {
 		t.Fatalf("apply migrations through 0023: %v", err)
 	}
 	request := models.RequestLog{
@@ -62,7 +63,7 @@ func TestFeedbackMigrationUpgrades0023FreshDatabaseAndRepeatStart(t *testing.T) 
 		UsageState: "not_applicable", CostState: "not_applicable",
 		PricingCompleteness: "not_applicable",
 	}
-	if err := upgrade.Create(&request).Error; err != nil {
+	if err := upgrade.Omit("ResolvedAffinityCredentialID", "FirstAttemptCredentialID", "AffinityHitAssignmentReached").Create(&request).Error; err != nil {
 		t.Fatalf("create pre-feedback request: %v", err)
 	}
 	attempt := models.RequestLogAttempt{

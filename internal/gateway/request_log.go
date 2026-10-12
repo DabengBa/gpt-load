@@ -51,33 +51,36 @@ type frozenAttemptPricing struct {
 }
 
 type requestRecorder struct {
-	sink                 telemetry.RequestLogSink
-	requestID            string
-	startedAt            time.Time
-	accessKeyID          uint
-	protocol             protocol.Protocol
-	operation            execution.Operation
-	clientModel          string
-	stream               bool
-	firstResponseMs      *int64
-	reasoning            reasoning.Config
-	usageApplicable      bool
-	requestedPricingMode pricing.Mode
-	usageDiagnostics     usage.Diagnostics
-	affinityHit          bool
-	continuityHit        bool
-	affinityKey          string
-	affinitySource       telemetry.AffinitySource
-	affinityState        telemetry.AffinityState
-	attempts             []telemetry.Attempt
-	attemptPricing       []frozenAttemptPricing
-	pendingPricing       frozenAttemptPricing
-	pricingPending       bool
-	outcome              requestOutcome
-	usage                telemetry.UsageObservation
-	now                  func() time.Time
-	redactor             *redact.Redactor
-	emitted              bool
+	sink                         telemetry.RequestLogSink
+	requestID                    string
+	startedAt                    time.Time
+	accessKeyID                  uint
+	protocol                     protocol.Protocol
+	operation                    execution.Operation
+	clientModel                  string
+	stream                       bool
+	firstResponseMs              *int64
+	reasoning                    reasoning.Config
+	usageApplicable              bool
+	requestedPricingMode         pricing.Mode
+	usageDiagnostics             usage.Diagnostics
+	affinityHit                  bool
+	resolvedAffinityCredentialID uint
+	firstAttemptCredentialID     uint
+	affinityHitAssignmentReached bool
+	continuityHit                bool
+	affinityKey                  string
+	affinitySource               telemetry.AffinitySource
+	affinityState                telemetry.AffinityState
+	attempts                     []telemetry.Attempt
+	attemptPricing               []frozenAttemptPricing
+	pendingPricing               frozenAttemptPricing
+	pricingPending               bool
+	outcome                      requestOutcome
+	usage                        telemetry.UsageObservation
+	now                          func() time.Time
+	redactor                     *redact.Redactor
+	emitted                      bool
 
 	pendingRetry int
 }
@@ -132,33 +135,36 @@ func (recorder *requestRecorder) emit() {
 	}
 	reportedModel, modelConsistency := requestOutcomeModelConsistency(recorder.outcome)
 	recorder.sink.Emit(telemetry.RequestEvent{
-		RequestID:             recorder.requestID,
-		CompletedAt:           completedAt.UTC(),
-		AccessKeyID:           recorder.accessKeyID,
-		Protocol:              recorder.protocol,
-		ClientModel:           recorder.clientModel,
-		UpstreamModel:         recorder.outcome.upstreamModel,
-		UpstreamReportedModel: reportedModel,
-		ModelConsistency:      modelConsistency,
-		Status:                recorder.outcome.status,
-		StatusCode:            recorder.outcome.statusCode,
-		ErrorCode:             recorder.outcome.errorCode,
-		ErrorSummary:          recorder.outcome.errorSummary,
-		Stream:                recorder.stream,
-		FirstResponseMs:       recorder.firstResponseMs,
-		DurationMs:            duration.Milliseconds(),
-		AffinityHit:           recorder.affinityHit,
-		ContinuityHit:         recorder.continuityHit,
-		AffinityKey:           recorder.affinityKey,
-		AffinitySource:        recorder.affinitySource,
-		AffinityState:         recorder.affinityState,
-		Reasoning:             recorder.reasoning,
-		Operation:             recorder.operation,
-		Attempts:              append([]telemetry.Attempt(nil), recorder.attempts...),
-		Usage:                 recorder.usage,
-		BufferedStream:        recorder.stream && hasBufferedAttempts(recorder.attempts),
-		BufferedPeakBytes:     maxBufferedAttemptBytes(recorder.attempts),
-		ReleaseStartedMs:      firstReleaseStarted(recorder.attempts),
+		RequestID:                    recorder.requestID,
+		CompletedAt:                  completedAt.UTC(),
+		AccessKeyID:                  recorder.accessKeyID,
+		Protocol:                     recorder.protocol,
+		ClientModel:                  recorder.clientModel,
+		UpstreamModel:                recorder.outcome.upstreamModel,
+		UpstreamReportedModel:        reportedModel,
+		ModelConsistency:             modelConsistency,
+		Status:                       recorder.outcome.status,
+		StatusCode:                   recorder.outcome.statusCode,
+		ErrorCode:                    recorder.outcome.errorCode,
+		ErrorSummary:                 recorder.outcome.errorSummary,
+		Stream:                       recorder.stream,
+		FirstResponseMs:              recorder.firstResponseMs,
+		DurationMs:                   duration.Milliseconds(),
+		AffinityHit:                  recorder.affinityHit,
+		ResolvedAffinityCredentialID: recorder.resolvedAffinityCredentialID,
+		FirstAttemptCredentialID:     recorder.firstAttemptCredentialID,
+		AffinityHitAssignmentReached: recorder.affinityHitAssignmentReached,
+		ContinuityHit:                recorder.continuityHit,
+		AffinityKey:                  recorder.affinityKey,
+		AffinitySource:               recorder.affinitySource,
+		AffinityState:                recorder.affinityState,
+		Reasoning:                    recorder.reasoning,
+		Operation:                    recorder.operation,
+		Attempts:                     append([]telemetry.Attempt(nil), recorder.attempts...),
+		Usage:                        recorder.usage,
+		BufferedStream:               recorder.stream && hasBufferedAttempts(recorder.attempts),
+		BufferedPeakBytes:            maxBufferedAttemptBytes(recorder.attempts),
+		ReleaseStartedMs:             firstReleaseStarted(recorder.attempts),
 	})
 }
 
@@ -229,6 +235,14 @@ func (recorder *requestRecorder) setAffinityHit(hit bool) {
 	}
 }
 
+func (recorder *requestRecorder) observeAffinityHitComparison(credentialID, preferredCredentialID uint) {
+	if recorder == nil {
+		return
+	}
+	recorder.affinityHitAssignmentReached = true
+	recorder.setAffinityHit(preferredCredentialID != 0 && credentialID == preferredCredentialID)
+}
+
 func (recorder *requestRecorder) setContinuityHit(hit bool) {
 	if recorder != nil && hit {
 		recorder.continuityHit = true
@@ -281,6 +295,7 @@ func (recorder *requestRecorder) observeDispatch(dispatch *requestDispatch) {
 	recorder.setPricingMode(dispatch.metadata.PricingMode)
 	recorder.setUsageDiagnostics(dispatch.metadata.UsageDiagnostics)
 	recorder.setAffinityKey(dispatch.affinity.displayKey)
+	recorder.resolvedAffinityCredentialID = dispatch.affinity.preferredCredentialID
 	recorder.setAffinityObservations(dispatch.affinity.source, dispatch.affinity.state)
 }
 
@@ -497,6 +512,9 @@ func (recorder *requestRecorder) appendDecisionAttempt(
 		attempt.PayloadReleaseStartedMs = maxInt64(0, result.PayloadReleaseStartedAt.Sub(recorder.startedAt).Milliseconds())
 	}
 
+	if len(recorder.attempts) == 0 {
+		recorder.firstAttemptCredentialID = attempt.CredentialID
+	}
 	recorder.attempts = append(recorder.attempts, attempt)
 	frozen := frozenAttemptPricing{}
 	if recorder.pricingPending {

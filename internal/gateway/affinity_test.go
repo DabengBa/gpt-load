@@ -727,6 +727,12 @@ func assertAffinityHits(t *testing.T, events []telemetry.RequestEvent, want []bo
 	got := make([]bool, 0, len(events))
 	for _, event := range events {
 		got = append(got, event.AffinityHit)
+		if len(event.Attempts) > 0 && event.FirstAttemptCredentialID != event.Attempts[0].CredentialID {
+			t.Fatalf("first attempt credential = %d, want %d", event.FirstAttemptCredentialID, event.Attempts[0].CredentialID)
+		}
+		if event.AffinityHit && (!event.AffinityHitAssignmentReached || event.ResolvedAffinityCredentialID == 0 || event.ResolvedAffinityCredentialID != event.FirstAttemptCredentialID) {
+			t.Fatalf("affinity hit diagnostics are inconsistent: %+v", event)
+		}
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("affinity hits = %#v, want %#v", got, want)

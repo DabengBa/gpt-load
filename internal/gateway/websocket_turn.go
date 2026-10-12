@@ -270,6 +270,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		query.PreferredCredentialID = affinity.preferredCredentialID
 	}
 	recorder.setAffinityKey(affinity.displayKey)
+	recorder.resolvedAffinityCredentialID = affinity.preferredCredentialID
 	recorder.setAffinityObservations(affinity.source, affinity.state)
 	if affinity.err != nil {
 		reject(reasonConfigurationChanged)
@@ -487,9 +488,8 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		if sequence == 1 {
 			if requiredRef != nil || binding != nil {
 				recorder.setContinuityHit(true)
-			} else if affinity.preferredCredentialID != 0 &&
-				selection.CredentialID == affinity.preferredCredentialID {
-				recorder.setAffinityHit(true)
+			} else {
+				recorder.observeAffinityHitComparison(selection.CredentialID, affinity.preferredCredentialID)
 			}
 		}
 		started := recorder.beforeForward()

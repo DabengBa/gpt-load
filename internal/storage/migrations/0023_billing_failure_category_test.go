@@ -24,7 +24,7 @@ func TestBillingFailureCategoryMigrationPreservesAttemptsAndAcceptsBilling(t *te
 		UsageState: "not_applicable", CostState: "not_applicable",
 		PricingCompleteness: "not_applicable",
 	}
-	if err := db.Omit("AffinityKey", "ContinuityHit", "AffinitySource", "AffinityState").Create(&request).Error; err != nil {
+	if err := db.Omit("ResolvedAffinityCredentialID", "FirstAttemptCredentialID", "AffinityHitAssignmentReached", "AffinityKey", "ContinuityHit", "AffinitySource", "AffinityState").Create(&request).Error; err != nil {
 		t.Fatalf("create request log: %v", err)
 	}
 	attempt := models.RequestLogAttempt{
