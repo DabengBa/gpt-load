@@ -134,11 +134,28 @@ the monitor provider-feedback Playwright spec.
 
 ## Same-provider retry budget
 
-The system setting `first_provider_attempts` controls how many actual attempts
-may reuse the first HTTP Selection (same group, credential, and upstream model),
-including its first execution. It defaults to 1 and cannot be set below 1.
-Those replays consume the same request-wide `retry_count` budget as candidate
-switches. Before a replay, current credential and route-entry health plus group
-skip state are checked; cooldown, blacklist, breaker, and replay-safety effects
-remain authoritative. WebSocket turns retain their separate unbound/unsent
-replay boundary.
+The gateway receives the resolved `first_provider_attempts` setting and uses it
+to limit actual attempts that reuse the first executed Selection (same group,
+credential, and upstream model), including that first execution. The setting
+defaults to 1 and values below 1 are rejected. Every same-provider replay and
+candidate switch consumes the same request-wide `retry_count` budget, so the
+configured same-provider limit never creates additional attempts beyond the
+global budget.
+
+Before a same-provider replay, current credential and route-entry health plus
+group skip state are checked. Cooldown, blacklist, breaker, and replay-safety
+effects remain authoritative; a changed credential reference ends the replay
+phase. A credential-refresh retry also uses the global budget and ends the
+same-provider replay phase. Buffered streaming follows the same accounting:
+when a buffered authentication failure requires credential refresh, the refresh
+retry is reserved before the next replay decision, so the rejected credential
+cannot consume the remaining budget through an ordinary first-provider replay.
+WebSocket turns retain their separate unbound/unsent replay boundary.
+
+Independent proof is provided by `internal/gateway/retry_budget_test.go`,
+`internal/gateway/buffered_stream_auth_test.go`,
+`internal/state/runtime_settings_test.go`, and
+`internal/control/settings_http_test.go`. The first set covers replay order,
+rotation, and the shared budget; the buffered-stream cases cover refresh,
+fallback, and one/two-attempt exhaustion; the settings tests cover the default,
+positive values, lower-bound rejection, persistence, and HTTP round trip.
