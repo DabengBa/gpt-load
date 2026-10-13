@@ -31,6 +31,8 @@ attempts for that request.
   budget. Increasing this setting cannot make a request exceed that total;
   switching providers and repeating the first provider draw from the same
   budget.
+- This setting applies to HTTP requests. It does not configure or change
+  WebSocket turns.
 - After an administrator saves a valid value, the settings view reports that
   the settings were saved and shows the effective value. When saving fails, the
   entered value remains available for correction and the view reports that the
@@ -60,6 +62,8 @@ attempts for that request.
 - The count includes the first attempt and shares the request-wide total
   attempt budget; it does not promise that every permitted attempt will run if
   health or availability rules stop the provider earlier.
+- The user-visible capability is limited to HTTP requests; WebSocket replay
+  behavior is outside this feature.
 - HTTP failures, credential refresh, buffered streaming, and provider rotation
   remain implementation behavior documented by
   [Provider feedback](../../tech/provider-feedback.md).
