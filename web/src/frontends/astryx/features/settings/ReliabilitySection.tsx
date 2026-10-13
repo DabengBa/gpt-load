@@ -3,7 +3,11 @@ import { useIntl } from 'react-intl'
 import { SettingRow } from '../../components/setting-chrome'
 import { useT } from '../../app/i18n'
 import { formatInteger } from '@shared/lib/format'
-import { isValidNonNegativeInteger, isValidTimeout } from '@shared/domain/settings/settings-patch'
+import {
+  isValidNonNegativeInteger,
+  isValidPositiveCount,
+  isValidTimeout,
+} from '@shared/domain/settings/settings-patch'
 import type { PolicyCountSettingKey } from '@shared/control/resources/settings'
 import {
   numberText,
@@ -15,6 +19,7 @@ import {
 
 const policyRows = [
   { key: 'retry_count', helpKey: 'retryCountHelp' },
+  { key: 'first_provider_attempts', helpKey: 'firstProviderAttemptsHelp' },
   { key: 'blacklist_threshold', helpKey: 'blacklistThresholdHelp' },
 ] as const
 
@@ -31,8 +36,11 @@ export function ReliabilitySection(props: SettingsSectionProps) {
     })
   }
   const policyCountError = (key: PolicyCountSettingKey): string | undefined =>
-    tools.hasOverride(key) && !isValidNonNegativeInteger(draft.values[key])
-      ? t('settings.runtime.nonNegativeIntegerError')
+    tools.hasOverride(key) &&
+    !(key === 'first_provider_attempts' ? isValidPositiveCount(draft.values[key]) : isValidNonNegativeInteger(draft.values[key]))
+      ? key === 'first_provider_attempts'
+        ? t('settings.runtime.positiveCountError')
+        : t('settings.runtime.nonNegativeIntegerError')
       : undefined
   const blacklistReleaseError = (): string | undefined =>
     tools.hasOverride('blacklist_release_seconds') &&
@@ -67,7 +75,7 @@ export function ReliabilitySection(props: SettingsSectionProps) {
               })}
               error={policyCountError(policy.key)}
               unit={t('settings.runtime.countUnit')}
-              min="0"
+              min={policy.key === 'first_provider_attempts' ? '1' : '0'}
               disabled={disabled}
               onChange={(value) =>
                 tools.update(policy.key, (next) => {

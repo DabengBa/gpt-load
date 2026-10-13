@@ -127,6 +127,9 @@ export default {
       retry_count: '最大尝试次数',
       retryCountHelp:
         '单次请求允许的上游尝试总次数；跨分组共享，切换分组不会重置；0 或 1 表示只尝试一次（不重试），2 表示首次失败后可换一次候选。',
+      first_provider_attempts: '同供应商最大尝试次数',
+      firstProviderAttemptsHelp:
+        '首次失败后允许重复同一供应商（同分组、凭据、上游模型）的最大尝试次数，包含首次执行；最小为 1 表示不重复首候选，仍受最大尝试次数总预算约束。',
       blacklist_threshold: '连续失败拉黑阈值',
       blacklistThresholdHelp: '凭据达到该连续失败次数后自动拉黑；0 表示关闭自动拉黑。',
       blacklist_release_seconds: '拉黑释放延迟',
@@ -139,6 +142,7 @@ export default {
       countUnit: '次',
       timeoutError: '请输入不超过 9,223,372,036 的正安全整数。',
       nonNegativeIntegerError: '请输入 0 或正整数。',
+      positiveCountError: '请输入不小于 1 的整数。',
       valueFor: '{field}的值',
       effectiveValue: '{value} 秒',
       effectiveCount: '{value} 次',

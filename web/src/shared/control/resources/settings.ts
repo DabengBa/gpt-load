@@ -28,6 +28,7 @@ export const runtimeSettingKeys = [
   'request_timeout',
   'stream_idle_timeout',
   'retry_count',
+  'first_provider_attempts',
   'blacklist_threshold',
   'blacklist_release_seconds',
   'header_rules',
@@ -46,6 +47,7 @@ export type TimeoutSettingKey = Exclude<
   RuntimeSettingKey,
   | 'route_strategy'
   | 'retry_count'
+  | 'first_provider_attempts'
   | 'blacklist_threshold'
   | 'header_rules'
   | 'cors'
@@ -56,7 +58,7 @@ export type TimeoutSettingKey = Exclude<
   | 'request_log_retention_days'
   | 'models_dev_auto_sync_enabled'
 >
-export type PolicyCountSettingKey = 'retry_count' | 'blacklist_threshold'
+export type PolicyCountSettingKey = 'retry_count' | 'first_provider_attempts' | 'blacklist_threshold'
 
 export interface CORSConfigDto {
   enabled: boolean
@@ -74,6 +76,7 @@ export interface SettingsValues {
   request_timeout: number
   stream_idle_timeout: number
   retry_count: number
+  first_provider_attempts: number
   blacklist_threshold: number
   blacklist_release_seconds: number
   header_rules: HeaderRulesDto
@@ -100,6 +103,7 @@ export type SettingsPatch = Partial<{
   request_timeout: number | null
   stream_idle_timeout: number | null
   retry_count: number | null
+  first_provider_attempts: number | null
   blacklist_threshold: number | null
   blacklist_release_seconds: number | null
   header_rules: HeaderRulesDto | null
@@ -200,6 +204,7 @@ export function projectSettings(value: unknown): SettingsDto {
       request_timeout: projectSafeInteger(values.request_timeout, { minimum: 1 }),
       stream_idle_timeout: projectSafeInteger(values.stream_idle_timeout, { minimum: 1 }),
       retry_count: projectSafeInteger(values.retry_count, { minimum: 0 }),
+      first_provider_attempts: projectSafeInteger(values.first_provider_attempts, { minimum: 1 }),
       blacklist_threshold: projectSafeInteger(values.blacklist_threshold, { minimum: 0 }),
       blacklist_release_seconds: projectSafeInteger(values.blacklist_release_seconds, {
         minimum: 1,

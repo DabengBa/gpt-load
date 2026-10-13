@@ -24,6 +24,7 @@ async function seedSession(page: Page) {
                   request_timeout: 600,
                   stream_idle_timeout: 60,
                   retry_count: 2,
+                  first_provider_attempts: 1,
                   blacklist_threshold: 3,
                   blacklist_release_seconds: 30,
                   header_rules: { set: {}, remove: [] },

@@ -37,6 +37,7 @@ import { pagePath } from '@shared/routing/page-routes'
 import {
   isValidAffinityCapacity,
   isValidNonNegativeInteger,
+  isValidPositiveCount,
   isValidRetention,
   isValidTimeout,
   type SettingsDraft,
@@ -432,6 +433,7 @@ export function SettingsView() {
         return !isValidRetention(draft.values.request_log_retention_days)
       if (key === 'affinity_capacity')
         return !isValidAffinityCapacity(draft.values.affinity_capacity)
+      if (key === 'first_provider_attempts') return !isValidPositiveCount(draft.values[key])
       if (key === 'retry_count' || key === 'blacklist_threshold')
         return !isValidNonNegativeInteger(draft.values[key])
       return false
@@ -487,6 +489,7 @@ export function SettingsView() {
       return 'connection'
     if (
       key === 'retry_count' ||
+      key === 'first_provider_attempts' ||
       key === 'blacklist_threshold' ||
       key === 'blacklist_release_seconds'
     )

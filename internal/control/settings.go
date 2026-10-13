@@ -44,6 +44,7 @@ type SettingsValuesResponse struct {
 	CORS                      CORSConfigResponse  `json:"cors"`
 	ResponseHeaderRules       HeaderRulesResponse `json:"response_header_rules"`
 	RetryCount                int                 `json:"retry_count"`
+	FirstProviderAttempts     int                 `json:"first_provider_attempts"`
 	RouteStrategy             state.RouteStrategy `json:"route_strategy"`
 	BlacklistThreshold        int                 `json:"blacklist_threshold"`
 	BlacklistReleaseSeconds   int                 `json:"blacklist_release_seconds"`
@@ -354,6 +355,7 @@ func mapSettingsResponse(
 				Remove: responseRemove,
 			},
 			RetryCount:                settings.RetryCount,
+			FirstProviderAttempts:     settings.FirstProviderAttempts,
 			RouteStrategy:             settings.RouteStrategy,
 			BlacklistThreshold:        settings.BlacklistThreshold,
 			BlacklistReleaseSeconds:   settings.BlacklistReleaseSeconds,

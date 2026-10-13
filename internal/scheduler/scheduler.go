@@ -267,6 +267,17 @@ func (iterator *Iterator) SkipGroup(groupID uint) {
 	iterator.skippedGroups[groupID] = struct{}{}
 }
 
+// GroupSkipped reports whether SkipGroup already excluded this group. The
+// first-provider replay uses the same group-level skip contract as ordinary
+// scheduling so a health skip can never be bypassed by repeating a candidate.
+func (iterator *Iterator) GroupSkipped(groupID uint) bool {
+	if iterator == nil || groupID == 0 {
+		return false
+	}
+	_, skipped := iterator.skippedGroups[groupID]
+	return skipped
+}
+
 // weightedTierPool builds the weighted (group, entry, credential) triples of
 // one priority tier inside a pool across the given route-mode set. Credentials
 // are collected live so registry changes between Next calls are honored; tried

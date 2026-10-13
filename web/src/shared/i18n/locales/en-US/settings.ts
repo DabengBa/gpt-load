@@ -131,6 +131,9 @@ export default {
       retry_count: 'Maximum attempts',
       retryCountHelp:
         'Total upstream attempts allowed for one request; shared across groups and not reset when switching group; 0 or 1 means a single attempt without retry, 2 allows switching candidate once.',
+      first_provider_attempts: 'Max attempts per provider',
+      firstProviderAttemptsHelp:
+        'Maximum attempts allowed on the same provider (same group, credential, and upstream model) after the first failure, including the first execution; the minimum of 1 never replays the first candidate and the total attempt budget still applies.',
       blacklist_threshold: 'Consecutive-failure blacklist threshold',
       blacklistThresholdHelp:
         'A credential is blacklisted after this many consecutive failures; 0 disables automatic blacklisting.',
@@ -147,6 +150,7 @@ export default {
       countUnit: 'times',
       timeoutError: 'Enter a positive safe integer no greater than 9,223,372,036.',
       nonNegativeIntegerError: 'Enter 0 or a positive whole number.',
+      positiveCountError: 'Enter a whole number of at least 1.',
       valueFor: 'Value for {field}',
       effectiveValue: '{value} seconds',
       effectiveCount: '{value} times',
