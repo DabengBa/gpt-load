@@ -2,6 +2,7 @@ package bifrost
 
 import (
 	"context"
+	"strings"
 
 	"github.com/maximhq/bifrost/core/providers/anthropic"
 	"github.com/maximhq/bifrost/core/schemas"
@@ -30,6 +31,7 @@ func finishConvertedPreparation(spec execution.AttemptSpec, providerKind channel
 	}
 	chatFallback := providerKind == channel.ProviderOpenAICompatible || providerKind == channel.ProviderGroq ||
 		providerKind == channel.ProviderDeepSeek || vertexChat
+	var toolOutputFailure *execution.AttemptResult
 	if chatFallback {
 		dropsTools, newlyAllowed := chatFallbackToolCompatibility(prepared.responsesRequest)
 		needsToolHistoryCheck = needsToolHistoryCheck || newlyAllowed
@@ -44,11 +46,17 @@ func finishConvertedPreparation(spec execution.AttemptSpec, providerKind channel
 		// 小输出上限模型会直接 400。兼容目标不转发这个字段。
 		if providerKind == channel.ProviderOpenAICompatible {
 			dropCompatibleResponsesReasoning(prepared.responsesRequest)
+			if failure := flattenCompatibleToolOutputs(prepared.responsesRequest); failure != nil {
+				toolOutputFailure = failure
+			}
 		}
 		if providerKind == channel.ProviderDeepSeek && deepSeekConversionDisablesThinking(prepared.responsesRequest) {
 			failure := notSentConversionFailure(execution.ErrorCodeCriticalSemanticLoss, "DeepSeek conversion cannot preserve explicit thinking with this tool choice or history")
 			return preparedAttempt{}, &failure
 		}
+	}
+	if toolOutputFailure != nil {
+		return preparedAttempt{}, toolOutputFailure
 	}
 	if needsToolHistoryCheck && !convertedTargetPreservesToolHistory(providerKind, spec.UpstreamModel, prepared.responsesRequest) {
 		failure := notSentConversionFailure(execution.ErrorCodeCriticalSemanticLoss, "conversion cannot preserve requested tool history")
@@ -120,6 +128,73 @@ func dropCompatibleResponsesReasoning(request *schemas.BifrostResponsesRequest) 
 		return
 	}
 	request.Params.Reasoning = nil
+}
+
+// flattenCompatibleToolOutputs folds array-shaped function_call_output content
+// into a single string, or rejects the converted candidate when folding would
+// lose content.
+//
+// The Responses surface allows a tool result to be a list of content blocks,
+// and the Responses→Chat conversion carries that list into the chat tool
+// message's `content`. Chat Completions types tool content as a string, so
+// strict upstreams reject the array with "Input should be a valid string".
+// Ordinary input_text/output_text blocks fold into that string joined by
+// newline, and an empty array becomes an empty string. Image, file, audio,
+// summary, reasoning and unknown blocks have no lossless string spelling, so
+// the request is rejected before dispatch instead of degrading the content.
+func flattenCompatibleToolOutputs(request *schemas.BifrostResponsesRequest) *execution.AttemptResult {
+	if request == nil {
+		return nil
+	}
+	for i := range request.Input {
+		item := &request.Input[i]
+		if item.Type == nil || *item.Type != schemas.ResponsesMessageTypeFunctionCallOutput {
+			continue
+		}
+		toolMessage := item.ResponsesToolMessage
+		if toolMessage == nil || toolMessage.Output == nil {
+			continue
+		}
+		blocks := toolMessage.Output.ResponsesFunctionToolCallOutputBlocks
+		if blocks == nil {
+			continue
+		}
+		flattened, ok := flattenToolOutputBlocks(blocks)
+		if !ok {
+			failure := notSentConversionFailure(
+				execution.ErrorCodeCriticalSemanticLoss,
+				"Chat conversion cannot preserve tool output content blocks as a string",
+			)
+			return &failure
+		}
+		toolMessage.Output.ResponsesToolCallOutputStr = &flattened
+		toolMessage.Output.ResponsesFunctionToolCallOutputBlocks = nil
+		// The SDK mirrors `output` into Content when it converts, so keep the
+		// already-populated mirror from resurrecting the block array.
+		if item.Content != nil && len(item.Content.ContentBlocks) > 0 {
+			item.Content.ContentBlocks = nil
+			if item.Content.ContentStr == nil {
+				item.Content.ContentStr = &flattened
+			}
+		}
+	}
+	return nil
+}
+
+// flattenToolOutputBlocks joins ordinary text blocks with newline and reports
+// whether every block survived losslessly.
+func flattenToolOutputBlocks(blocks []schemas.ResponsesMessageContentBlock) (string, bool) {
+	parts := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		isText := (block.Type == schemas.ResponsesInputMessageContentBlockTypeText ||
+			block.Type == schemas.ResponsesOutputMessageContentTypeText) && block.Text != nil
+		if isText {
+			parts = append(parts, *block.Text)
+			continue
+		}
+		return "", false
+	}
+	return strings.Join(parts, "\n"), true
 }
 
 func deepSeekConversionDisablesThinking(request *schemas.BifrostResponsesRequest) bool {

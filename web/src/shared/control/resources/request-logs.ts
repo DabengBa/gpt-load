@@ -697,8 +697,12 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
     error_code: projectString(record.error_code, { allowEmpty: true }),
     error_summary: projectString(record.error_summary, { allowEmpty: true }),
     affinity_hit: projectBoolean(record.affinity_hit),
-    resolved_affinity_credential_id: projectSafeInteger(record.resolved_affinity_credential_id, { minimum: 0 }),
-    first_attempt_credential_id: projectSafeInteger(record.first_attempt_credential_id, { minimum: 0 }),
+    resolved_affinity_credential_id: projectSafeInteger(record.resolved_affinity_credential_id, {
+      minimum: 0,
+    }),
+    first_attempt_credential_id: projectSafeInteger(record.first_attempt_credential_id, {
+      minimum: 0,
+    }),
     affinity_hit_assignment_reached: projectBoolean(record.affinity_hit_assignment_reached),
     continuity_hit: projectBoolean(record.continuity_hit),
     affinity_source: projectEnum(record.affinity_source, affinitySources),

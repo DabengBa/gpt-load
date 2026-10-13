@@ -102,7 +102,7 @@ func (executor *grokHTTPExecutor) ExecuteCanonical(
 	if err := validateGrokCredential(credential); err != nil {
 		return ExecuteResponse{}, err
 	}
-	request = prepareGrokExecutionRequest(request)
+	request = applyGrokPromptCacheKey(prepareGrokExecutionRequest(request))
 	format := sdktranslator.FromString(request.Format)
 	auth := NewGrokAuth(credentialID, credential, executor.baseURL)
 	auth.ProxyURL = request.ProxyURL
@@ -159,7 +159,7 @@ func (executor *grokHTTPExecutor) ExecuteStreamCanonical(
 	if err := validateGrokCredential(credential); err != nil {
 		return nil, err
 	}
-	request = prepareGrokExecutionRequest(request)
+	request = applyGrokPromptCacheKey(prepareGrokExecutionRequest(request))
 	format := sdktranslator.FromString(request.Format)
 	auth := NewGrokAuth(credentialID, credential, executor.baseURL)
 	auth.ProxyURL = request.ProxyURL
@@ -199,11 +199,47 @@ func grokExecutorOptions(request ExecuteRequest, format sdktranslator.Format, st
 		SourceFormat:    format, ResponseFormat: format,
 	}
 	if scope := strings.TrimSpace(request.ContinuityKey); scope != "" {
+		if grokCarriesPromptCacheKey(string(format)) {
+			return options
+		}
 		options.Metadata = map[string]any{
 			cliproxyexecutor.ExecutionSessionMetadataKey: grokConversationID(scope),
 		}
 	}
 	return options
+}
+
+// applyGrokPromptCacheKey keeps the gateway's cache identity in the request
+// body for OpenAI-compatible formats. CPA uses execution session metadata for
+// reasoning replay, which is intentionally separate from prompt caching.
+func applyGrokPromptCacheKey(request ExecuteRequest) ExecuteRequest {
+	if !grokCarriesPromptCacheKey(request.Format) {
+		return request
+	}
+	cacheKey := grokConversationID(request.ContinuityKey)
+	if cacheKey == "" {
+		return request
+	}
+	request.Payload = writeGrokPromptCacheKey(request.Payload, cacheKey)
+	request.OriginalRequest = writeGrokPromptCacheKey(request.OriginalRequest, cacheKey)
+	return request
+}
+
+func grokCarriesPromptCacheKey(format string) bool {
+	switch sdktranslator.FromString(format) {
+	case sdktranslator.FormatOpenAI, sdktranslator.FormatOpenAIResponse:
+		return true
+	default:
+		return false
+	}
+}
+
+func writeGrokPromptCacheKey(raw []byte, cacheKey string) []byte {
+	updated, err := sjson.SetBytes(raw, "prompt_cache_key", cacheKey)
+	if err != nil {
+		return raw
+	}
+	return updated
 }
 
 func grokConversationID(scope string) string {
