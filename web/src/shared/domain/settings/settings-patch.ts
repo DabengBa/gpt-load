@@ -28,6 +28,7 @@ const requestForwardingKeys: RuntimeSettingKey[] = [
   'request_timeout',
   'stream_idle_timeout',
   'retry_count',
+  'first_provider_attempts',
   'blacklist_threshold',
   'blacklist_release_seconds',
   'header_rules',
@@ -239,6 +240,10 @@ export function isValidNonNegativeInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0
 }
 
+export function isValidPositiveCount(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 1
+}
+
 export function isValidCORSConfig(value: CORSConfigDto): boolean {
   const allowedOrigins = value.allowed_origins.map(normalizeCORSOrigin)
   if (!isValidNonNegativeInteger(value.max_age)) return false
@@ -339,11 +344,16 @@ export function validateSettingsSection(draft: SettingsDraft, section: SettingsS
     'stream_idle_timeout',
     'blacklist_release_seconds',
   ]
-  const policyCounts: PolicyCountSettingKey[] = ['retry_count', 'blacklist_threshold']
+  const policyCounts: PolicyCountSettingKey[] = [
+    'retry_count',
+    'first_provider_attempts',
+    'blacklist_threshold',
+  ]
   return (
     timeouts.every((key) => !draft.overrides.has(key) || isValidTimeout(draft.values[key])) &&
     policyCounts.every(
-      (key) => !draft.overrides.has(key) || isValidNonNegativeInteger(draft.values[key]),
+      (key) => !draft.overrides.has(key) || (key === 'first_provider_attempts'
+        ? isValidPositiveCount(draft.values[key]) : isValidNonNegativeInteger(draft.values[key])),
     )
   )
 }

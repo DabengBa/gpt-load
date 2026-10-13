@@ -131,6 +131,9 @@ export default {
       retry_count: '最大試行回数',
       retryCountHelp:
         '1 リクエストで許容する上流試行の総回数です。グループ間で共有され、グループを切り替えてもリセットされません。0 または 1 は 1 回のみ（再試行なし）、2 で初回失敗後に候補を 1 回切り替えられます。',
+      first_provider_attempts: '同一プロバイダーの最大試行回数',
+      firstProviderAttemptsHelp:
+        '初回失敗後に同じプロバイダー（同一グループ・認証情報・上流モデル）を繰り返せる最大試行回数です。初回実行を含み、最小値 1 は最初の候補を再試行しません。最大試行回数の総予算も適用されます。',
       blacklist_threshold: '連続失敗のブラックリストしきい値',
       blacklistThresholdHelp:
         'この連続失敗回数に達すると認証情報をブラックリストへ登録します。0 で自動登録を無効化します。',
@@ -146,6 +149,7 @@ export default {
       countUnit: '回',
       timeoutError: '9,223,372,036 以下の正の安全な整数を入力してください。',
       nonNegativeIntegerError: '0 または正の整数を入力してください。',
+      positiveCountError: '1 以上の整数を入力してください。',
       valueFor: '{field} の値',
       effectiveValue: '{value} 秒',
       effectiveCount: '{value} 回',

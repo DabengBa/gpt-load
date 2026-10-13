@@ -22,6 +22,7 @@ const (
 	SettingCORS                                  = "cors"
 	SettingResponseHeaderRules                   = "response_header_rules"
 	SettingRetryCount                            = "retry_count"
+	SettingFirstProviderAttempts                 = "first_provider_attempts"
 	SettingRouteStrategy                         = "route_strategy"
 	SettingBlacklistThreshold                    = "blacklist_threshold"
 	SettingBlacklistReleaseSeconds               = "blacklist_release_seconds"
@@ -52,6 +53,9 @@ const (
 	// defaultBlacklistReleaseSeconds is the local-only release delay applied when
 	// a credential or route entry reaches its blacklist threshold.
 	defaultBlacklistReleaseSeconds = 3600
+	// maxFirstProviderAttempts keeps the same-provider retry cap inside the
+	// JSON-safe integer range shared with the other count settings.
+	maxFirstProviderAttempts = int(maxJSONSafeInteger)
 )
 
 type RuntimeSettings struct {
@@ -62,6 +66,7 @@ type RuntimeSettings struct {
 	CORS                      CORSConfig
 	ResponseHeaderRules       HeaderRules
 	RetryCount                int
+	FirstProviderAttempts     int
 	RouteStrategy             RouteStrategy
 	BlacklistThreshold        int
 	BlacklistReleaseSeconds   int
@@ -94,7 +99,10 @@ func DefaultRuntimeSettings() RuntimeSettings {
 		// retry_count is the total attempt budget of one request and comes from
 		// the system settings only. The shipped default allows four candidate
 		// switches inside a five attempt budget.
-		RetryCount:                5,
+		RetryCount: 5,
+		// first_provider_attempts includes the first execution itself; the
+		// default of 1 means the first candidate is never replayed.
+		FirstProviderAttempts:     1,
 		RouteStrategy:             RouteStrategyNativeFirst,
 		BlacklistThreshold:        3,
 		BlacklistReleaseSeconds:   defaultBlacklistReleaseSeconds,
@@ -116,6 +124,7 @@ func IsRuntimeSettingKey(key string) bool {
 		SettingCORS,
 		SettingResponseHeaderRules,
 		SettingRetryCount,
+		SettingFirstProviderAttempts,
 		SettingRouteStrategy,
 		SettingBlacklistThreshold,
 		SettingBlacklistReleaseSeconds,
@@ -177,6 +186,12 @@ func ResolveRuntimeSettings(settings config.Settings) (RuntimeSettings, error) {
 				return RuntimeSettings{}, err
 			}
 			resolved.RetryCount = count
+		case SettingFirstProviderAttempts:
+			attempts, err := wholeNumberInRange(key, value, 1, maxFirstProviderAttempts)
+			if err != nil {
+				return RuntimeSettings{}, err
+			}
+			resolved.FirstProviderAttempts = attempts
 		case SettingRouteStrategy:
 			strategy, err := parseRouteStrategy(value)
 			if err != nil {
@@ -343,6 +358,9 @@ func ValidateRuntimeSetting(key string, value any) error {
 		return err
 	case SettingRetryCount, SettingBlacklistThreshold:
 		_, err := nonNegativeWholeNumber(key, value)
+		return err
+	case SettingFirstProviderAttempts:
+		_, err := wholeNumberInRange(key, value, 1, maxFirstProviderAttempts)
 		return err
 	case SettingBlacklistReleaseSeconds:
 		_, err := positiveWholeSeconds(key, value)

@@ -675,6 +675,7 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		ginContext,
 		iterator,
 		retryAttemptLimit(snapshot.Settings.RetryCount),
+		snapshot.Settings.FirstProviderAttempts,
 		dispatch,
 		recorder,
 	)
@@ -879,10 +880,13 @@ func (handler *Handler) executeAttempts(
 	ginContext *gin.Context,
 	iterator *scheduler.Iterator,
 	forwardAttemptLimit int,
+	firstProviderAttempts int,
 	dispatch *requestDispatch,
 	recorder *requestRecorder,
 ) {
-	newAttemptLoop(handler, ginContext, iterator, forwardAttemptLimit, dispatch, recorder).run()
+	newAttemptLoop(
+		handler, ginContext, iterator, forwardAttemptLimit, firstProviderAttempts, dispatch, recorder,
+	).run()
 }
 
 func initializeDebugHeaders(headers http.Header) {

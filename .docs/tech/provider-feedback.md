@@ -131,3 +131,14 @@ unassessed. This keeps missing observations distinct from normal performance.
 Regression coverage is provided by the health classification tests, gateway
 provider-feedback tests, request-log mapping/query tests, migration tests, and
 the monitor provider-feedback Playwright spec.
+
+## Same-provider retry budget
+
+The system setting `first_provider_attempts` controls how many actual attempts
+may reuse the first HTTP Selection (same group, credential, and upstream model),
+including its first execution. It defaults to 1 and cannot be set below 1.
+Those replays consume the same request-wide `retry_count` budget as candidate
+switches. Before a replay, current credential and route-entry health plus group
+skip state are checked; cooldown, blacklist, breaker, and replay-safety effects
+remain authoritative. WebSocket turns retain their separate unbound/unsent
+replay boundary.

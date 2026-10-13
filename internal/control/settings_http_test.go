@@ -208,3 +208,66 @@ func serveLocalizedSettingsRequest(
 	engine.ServeHTTP(recorder, request)
 	return recorder
 }
+
+// first_provider_attempts 暴露在系统设置 DTO 上：读取回显默认 1、显式写入持久
+// 化并在响应中回显；0、负数、非整数按既有验证契约整体拒绝且不发布新快照。
+func TestSettingsHTTPFirstProviderAttemptsRoundTripAndRejectsInvalidValues(t *testing.T) {
+	t.Parallel()
+	initControlI18n(t)
+	fixture := newServiceFixture(t)
+	engine := gin.New()
+	NewServer(&config.Config{AuthKey: "test-auth-key"}, fixture.service).RegisterRoutes(engine)
+
+	initial := serveLocalizedSettingsRequest(
+		t, engine, http.MethodGet, "test-auth-key", "en-US", "",
+	)
+	if initial.Code != http.StatusOK {
+		t.Fatalf("GET settings = %d %s", initial.Code, initial.Body.String())
+	}
+	var initialEnvelope struct {
+		Data SettingsResponse `json:"data"`
+	}
+	if err := json.Unmarshal(initial.Body.Bytes(), &initialEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if initialEnvelope.Data.Values.FirstProviderAttempts != 1 {
+		t.Fatalf("default first_provider_attempts = %d, want 1",
+			initialEnvelope.Data.Values.FirstProviderAttempts)
+	}
+
+	updated := serveLocalizedSettingsRequest(t, engine, http.MethodPut, "test-auth-key", "en-US",
+		`{"settings":{"first_provider_attempts":3}}`)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("PUT first_provider_attempts = %d %s", updated.Code, updated.Body.String())
+	}
+	var envelope struct {
+		Data SettingsResponse `json:"data"`
+	}
+	if err := json.Unmarshal(updated.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Data.Values.FirstProviderAttempts != 3 {
+		t.Fatalf("first_provider_attempts after update = %d, want 3",
+			envelope.Data.Values.FirstProviderAttempts)
+	}
+
+	before := fixture.manager.Current()
+	for _, raw := range []string{`0`, `-1`, `1.5`, `9007199254740992`} {
+		rejected := serveLocalizedSettingsRequest(t, engine, http.MethodPut, "test-auth-key", "en-US",
+			`{"settings":{"first_provider_attempts":`+raw+`}}`)
+		if rejected.Code != http.StatusBadRequest ||
+			!strings.Contains(rejected.Body.String(), `"code":"VALIDATION_FAILED"`) {
+			t.Fatalf("PUT first_provider_attempts=%s = %d %s", raw, rejected.Code, rejected.Body.String())
+		}
+	}
+	if fixture.manager.Current() != before {
+		t.Fatal("invalid first_provider_attempts published a new Snapshot")
+	}
+	var rows []models.SystemSetting
+	if err := fixture.db.Where("key = ?", state.SettingFirstProviderAttempts).Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Value != `3` {
+		t.Fatalf("persisted first_provider_attempts rows = %#v, want single `3`", rows)
+	}
+}

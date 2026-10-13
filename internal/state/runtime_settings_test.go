@@ -55,6 +55,7 @@ func TestCompilePublishesDefaultRuntimeSettingsWithoutGroups(t *testing.T) {
 		},
 		ResponseHeaderRules:       HeaderRules{Set: map[string]string{}},
 		RetryCount:                5,
+		FirstProviderAttempts:     1,
 		RouteStrategy:             RouteStrategyNativeFirst,
 		BlacklistThreshold:        3,
 		BlacklistReleaseSeconds:   3600,
@@ -288,6 +289,49 @@ func TestRetryCountDefaultsToFiveAttemptsAndPreservesExplicitOverrides(t *testin
 		}
 	}
 
+}
+
+// first_provider_attempts 是同一供应商（同一分组、凭据、上游模型 Selection）
+// 允许的最大实际尝试次数，包含首次执行；默认 1 表示不复用首候选。
+func TestFirstProviderAttemptsDefaultsToOneAndAcceptsPositiveOverrides(t *testing.T) {
+	defaults, err := ResolveRuntimeSettings(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.FirstProviderAttempts != 1 {
+		t.Fatalf("default FirstProviderAttempts = %d, want 1", defaults.FirstProviderAttempts)
+	}
+
+	for _, value := range []json.Number{"1", "3"} {
+		global, err := ResolveRuntimeSettings(config.Settings{SettingFirstProviderAttempts: value})
+		if err != nil {
+			t.Fatalf("ResolveRuntimeSettings(%s) error = %v", value, err)
+		}
+		want := int(value[0] - '0')
+		if global.FirstProviderAttempts != want {
+			t.Fatalf("global FirstProviderAttempts = %d, want %d for %s", global.FirstProviderAttempts, want, value)
+		}
+	}
+}
+
+// first_provider_attempts 最小为 1：0、负数与非整数必须被拒绝，因为首次执行
+// 本身就是一次尝试，无法关闭。
+func TestFirstProviderAttemptsRejectsValuesBelowOne(t *testing.T) {
+	for _, value := range []any{
+		nil,
+		json.Number("0"),
+		json.Number("-1"),
+		json.Number("1.5"),
+		json.Number("9007199254740992"),
+		"3",
+	} {
+		if err := ValidateRuntimeSetting(SettingFirstProviderAttempts, value); err == nil {
+			t.Errorf("ValidateRuntimeSetting(%#v) accepted invalid value", value)
+		}
+		if _, err := ResolveRuntimeSettings(config.Settings{SettingFirstProviderAttempts: value}); err == nil {
+			t.Errorf("ResolveRuntimeSettings(%#v) accepted invalid value", value)
+		}
+	}
 }
 
 // 历史分组配置里的 retry_count 必须被静默忽略：重试预算只来自系统设置，存量行不能阻止分组加载。
