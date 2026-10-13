@@ -770,6 +770,12 @@ func (loop *attemptLoop) run() {
 			)
 		}
 		dispatch.affinity.markBoundProviderFailure(selection, ref, resultForDecision.DispatchState, decision)
+		if decision.Retry == health.RetryRefreshCredential {
+			loop.firstProviderDisallowed = true
+			if !loop.authRefreshReplayUsed && loop.forwardAttempts < loop.limit {
+				loop.refreshRetry = &credentialRefreshRetry{selection: selection, ref: ref}
+			}
+		}
 		if loop.stream && result.BufferedStream && result.HTTPCommitted && !result.PayloadReleased {
 			// A heartbeat has committed HTTP, but no provider payload is visible;
 			// this is the only committed state in which an explicit buffered retry
@@ -869,13 +875,6 @@ func (loop *attemptLoop) run() {
 			result.StatusCode,
 			attemptNow,
 		)
-		if decision.Retry == health.RetryRefreshCredential &&
-			!loop.authRefreshReplayUsed && loop.forwardAttempts < loop.limit {
-			loop.refreshRetry = &credentialRefreshRetry{selection: selection, ref: ref}
-		}
-		if decision.Retry == health.RetryRefreshCredential {
-			loop.firstProviderDisallowed = true
-		}
 		if decision.Effect == health.EffectSkipGroup {
 			loop.iterator.SkipGroup(selection.GroupID)
 		}
