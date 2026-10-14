@@ -564,6 +564,10 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     noMatches: t('import.models.drawer.noMatches'),
     empty: t('import.models.drawer.empty'),
     selected: (count) => t('import.models.drawer.selected', { count }),
+    selectedDetail: (selected, available) =>
+      t('import.models.drawer.selectedDetail', { selected, available }),
+    legendLabel: t('import.models.drawer.legendLabel'),
+    pricingLegend: t('import.models.drawer.pricingLegend'),
     selectAll: t('import.models.drawer.selectAll'),
     deselectAll: t('import.models.drawer.deselectAll'),
     retry: t('common.retry'),

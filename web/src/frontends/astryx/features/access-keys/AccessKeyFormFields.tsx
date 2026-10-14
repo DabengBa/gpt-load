@@ -53,6 +53,7 @@ export function AccessKeyFormFields({
     <div {...stylex.props(styles.stack)}>
       <TextInput
         ref={nameInputRef}
+        htmlName="access-key-name-input"
         label={t('accessKeys.drawer.name')}
         isRequired
         size="sm"
@@ -75,6 +76,7 @@ export function AccessKeyFormFields({
       />
 
       <TextInput
+        htmlName="access-key-rpm-input"
         label={t('accessKeys.drawer.rpm')}
         isOptional
         size="sm"

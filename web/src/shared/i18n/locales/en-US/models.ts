@@ -78,6 +78,9 @@ export default {
     drawer: {
       title: 'Upstream model details',
       description: 'Review relationships and edit pricing',
+      contextImpact:
+        'Shared pricing identity: {clients} client models · {groups} Groups. Edits here affect all of them.',
+      saveScope: 'Save and Reset apply to every client model and Group using this pricing identity.',
       impact: '{clients} client models · {groups} Groups',
       syncScope:
         'Global action: refreshes the shared model catalog and automatic prices for every model, not only this one.',

@@ -359,6 +359,7 @@ export function ModelUpstreamDrawer({
         if (!open) void requestClose()
       }}
       title={detail?.model_id ?? t('models.drawer.title')}
+      width="wide"
       subtitle={
         detail
           ? t('models.drawer.impact', {
@@ -376,6 +377,18 @@ export function ModelUpstreamDrawer({
             successLabel={t('models.drawer.copySucceeded')}
             failureLabel={t('models.drawer.copyFailed')}
           />
+        ) : undefined
+      }
+      contextNotice={
+        detail ? (
+          <>
+            {t('models.drawer.contextImpact', {
+              clients: detail.client_model_count,
+              groups: detail.group_count,
+            })}
+            {' '}
+            {t('models.drawer.saveScope')}
+          </>
         ) : undefined
       }
       footer={

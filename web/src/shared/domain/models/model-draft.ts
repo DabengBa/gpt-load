@@ -70,6 +70,12 @@ export interface ModelDiscoveryDrawerLabels {
   noMatches: string
   empty: string
   selected: (count: number) => string
+  /** Scoped batch summary: how many of the pickable candidates are selected. */
+  selectedDetail: (selected: number, available: number) => string
+  /** Accessible name for the always-visible evidence legend. */
+  legendLabel: string
+  /** Always-readable description of the pricing-discovered marker. */
+  pricingLegend: string
   selectAll: string
   deselectAll: string
   retry: string

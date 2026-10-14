@@ -120,6 +120,11 @@ export default {
       editDescription: '名前、状態、有効期限、接続元、レート制限、権限範囲を調整できます。',
       description:
         'ルーティングフィルターと RPM 上限を編集します。平文は明示的に表示するまでマスクされます。',
+      impactSummary: '影響の概要',
+      createImpactSummary: 'このキーはクライアント認証と利用可能なルートを制御します。',
+      editImpactSummary: '変更はこのキーを使う今後の認証とルーティング要求に影響します。',
+      dangerZone: '危険な操作',
+      fixThisField: 'このフィールドを修正',
       close: 'アクセスキーエディターを閉じる',
       basicInformation: '基本情報',
       basicInformationDescription: '名前は呼び出し元の識別用で、認証には使用されません。',

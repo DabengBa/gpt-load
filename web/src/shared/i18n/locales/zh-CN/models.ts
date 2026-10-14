@@ -77,6 +77,9 @@ export default {
     drawer: {
       title: '上游模型详情',
       description: '查看关联关系并编辑价格',
+      contextImpact:
+        '共享计价身份：{clients} 个客户端模型 · {groups} 个分组。此处的编辑会影响全部对象。',
+      saveScope: '保存与重置会作用于使用该计价身份的所有客户端模型和分组。',
       impact: '{clients} 个客户端模型 · {groups} 个分组',
       syncScope: '全局操作：同步所有模型的共享目录与自动价格，不仅限当前模型。',
       loading: '正在加载…',
