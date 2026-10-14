@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { Switch, TextInput } from '@astryxdesign/core'
-import { useImperativeHandle, useId, useRef, type Ref } from 'react'
+import { useImperativeHandle, useRef, type Ref } from 'react'
 
 import type { AccessKeyDto } from '@shared/control/types'
 
@@ -45,8 +45,6 @@ export function AccessKeyFormFields({
   ref?: Ref<AccessKeyFormFieldsHandle>
 }) {
   const t = useT()
-  const nameInputID = useId()
-  const rpmInputID = useId()
   const nameInputRef = useRef<HTMLInputElement | null>(null)
 
   useImperativeHandle(ref, () => ({ focusName: () => nameInputRef.current?.focus() }), [])

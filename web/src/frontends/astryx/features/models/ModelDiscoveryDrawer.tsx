@@ -172,7 +172,7 @@ export function ModelDiscoveryDrawer({
             <span aria-live="polite">{labels.selected(selectedIds.length)}</span>
             <span {...stylex.props(styles.selectionDetail)} aria-live="polite">
               {labels.selectedDetail(
-                selectedIds.filter((id) => !currentIds.has(id)).length,
+                selectableVisible.filter(({ id }) => selected.has(id)).length,
                 selectableVisible.length,
               )}
             </span>

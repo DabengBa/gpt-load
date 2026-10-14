@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 import { mockGroupModels } from './fixtures/group-models-mock'
 
@@ -29,6 +29,17 @@ test('discovery drawer shows an evidence legend and a scoped selection summary',
   // so select by the model name prefix instead of an exact match.
   await dialog.getByRole('checkbox', { name: /^GPT-5\.2 GPT-5\.2 gpt-5\.2/ }).click()
   await dialog.getByRole('checkbox', { name: /^GPT-5\.2 Mini GPT-5\.2 Mini gpt-5\.2-mini/ }).click()
+  await expect(dialog.getByText('2 of 2 available models selected')).toBeVisible()
+
+  // The scoped summary counts only visible, pickable models. Searching must
+  // not discard the hidden selection or include it in the visible numerator.
+  const search = dialog.getByRole('textbox')
+  await search.fill('mini')
+  await expect(dialog.getByText('1 of 1 available models selected')).toBeVisible()
+  await expect(dialog.getByText('2 selected', { exact: true })).toBeVisible()
+  await search.fill('no-matching-model')
+  await expect(dialog.getByText('0 of 0 available models selected')).toBeVisible()
+  await search.fill('')
   await expect(dialog.getByText('2 of 2 available models selected')).toBeVisible()
 
   await dialog.getByRole('button', { name: 'Add to current list' }).click()

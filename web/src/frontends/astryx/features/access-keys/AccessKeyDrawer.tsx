@@ -164,7 +164,7 @@ const styles = stylex.create({
   },
   blockerAction: {
     display: 'inline',
-    border: 0,
+    borderWidth: 0,
     background: 'none',
     padding: 0,
     color: 'inherit',
