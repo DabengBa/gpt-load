@@ -26,6 +26,9 @@ test('standard sync dialog keeps native header geometry and its own width', asyn
   }).toPass({ timeout: 90_000 })
   const dialog = page.getByRole('dialog', { name: 'Sync models' })
   await expect(dialog).toBeVisible()
+  await dialog.evaluate(async (node) => {
+    await Promise.all(node.getAnimations().map((animation) => animation.finished))
+  })
 
   const geo = await dialog.evaluate((node) => {
     const header = node.querySelector('.astryx-dialog-header') as HTMLElement
@@ -40,8 +43,8 @@ test('standard sync dialog keeps native header geometry and its own width', asyn
     }
   })
   expect(geo.isDetailPanel).toBe(false)
-  // Dialog width prop 520 minus its own inline padding = 494 content box.
-  expect(geo.width).toBe(494)
+  // Measure the border box after the entry transform finishes.
+  expect(geo.width).toBe(520)
   // Native header: the DetailPanel clipping rules do not leak in (core
   // already ships min-width:0 on the title block; only overflow differs).
   expect(geo.titleBlockOverflow).not.toBe('hidden')

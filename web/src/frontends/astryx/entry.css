@@ -68,27 +68,46 @@
   /* DetailPanel drawer geometry: one inline gutter for header / content /
      footer assigned at the drawer root (the Layout slots resolve their
      padding from these variables), 18px on the <=520px full-bleed drawer.
+     Vertical padding comes from the same variables: the zero-padding dialog
+     surface pins --layout-padding-outer-y/inner-y to 0, but DialogHeader's
+     negative title/close margins need outer-y breathing room, and
+     LayoutContent's default inner-y keeps the body off the divider.
      Scoped to [data-detail-panel] so standard Dialogs keep Astryx defaults. */
   [data-detail-panel] .astryx-layout {
     --layout-padding-outer-x: var(--spacing-6);
     --layout-padding-inner-x: var(--spacing-6);
+    --layout-padding-outer-y: var(--spacing-6);
+    --layout-padding-inner-y: var(--spacing-6);
   }
   @media (width < 521px) {
     [data-detail-panel] .astryx-layout {
       --layout-padding-outer-x: var(--space-4-5, 18px);
       --layout-padding-inner-x: var(--space-4-5, 18px);
+      --layout-padding-outer-y: var(--space-4-5, 18px);
+      --layout-padding-inner-y: var(--space-4-5, 18px);
     }
   }
 
   /* Long drawer titles truncate at the title block instead of pushing the
-     close button out of the header band; the band's overflow:hidden absorbs
-     the close button's -8px bleed so it never counts as overflow. Scoped to
+     close button out of the header band. Horizontal truncation is owned by
+     the title block's own min-width/overflow pair; the inner
+     .astryx-dialog-header must stay unclipped — DialogHeader's negative
+     title margins make its border box end before the subtitle, so any
+     overflow rule here would amputate the subtitle's lower half. The outer
+     header band (DetailPanel's headerBand xstyle) already carries the
+     vertical padding that absorbs the close button's -8px bleed. Scoped to
      [data-detail-panel] — standard Dialog headers keep native wrapping. */
-  [data-detail-panel] .astryx-dialog-header {
-    overflow: hidden;
-  }
   [data-detail-panel] .astryx-dialog-header-title-block {
     min-width: 0;
     overflow: hidden;
+  }
+
+  /* Dialog's programmatic focus lands on the scrollable content anchor
+     ([data-autofocus]); the UA default outline would paint a box around the
+     whole scrollport. Suppress it here only — interactive controls inside
+     keep their focus-visible indicators. Same pattern as the library's own
+     DialogHeader title focus reset. */
+  [data-detail-panel] .astryx-layout-content:focus {
+    outline: none;
   }
 }

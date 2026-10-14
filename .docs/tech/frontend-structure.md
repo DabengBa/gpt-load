@@ -79,6 +79,15 @@ and an 18px narrow-screen gutter. The overrides in `entry.css` are scoped to
 `[data-detail-panel]`; standard dialogs retain Astryx's own layout rules.
 The slide-in animation is disabled when reduced motion is requested.
 
+The layout must explicitly establish its own vertical padding because the
+zero-padding dialog surface otherwise passes zero outer padding to its slots.
+`DialogHeader` uses negative title and close-button margins for visual
+alignment; the header must leave enough space above and below these elements
+to keep the title, subtitle, and close button fully inside the panel. Content
+scrolling must not move or obscure the header or footer. The programmatic
+content focus anchor does not draw an outline around the whole scrollport;
+interactive controls retain their keyboard focus indicators.
+
 `contextNotice` renders a sticky, opaque context band at the top of the
 scrollable content, directly below the header. Upstream-price editing uses
 this slot for affected client-model/group counts and the save scope, so that

@@ -108,7 +108,11 @@ test.describe(() => {
     expect(geo.content.padR).toBe(18)
     expect(geo.footer === null || geo.footer!.overflowX === 0).toBe(true)
     expect(geo.header.overflowX).toBe(0)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    ).toBe(0)
   })
 
   test('mobile 320px: long title truncates instead of clipping the header', async () => {
@@ -145,5 +149,154 @@ test.describe(() => {
     expect(geometry.titleClips).toBe(true)
     expect(geometry.closeRight).not.toBeNull()
     expect(geometry.closeRight!).toBeLessThanOrEqual(geometry.drawerRight)
+  })
+
+  test('short viewport: title and subtitle keep vertical breathing room inside the header band', async () => {
+    // Defect regression (log drawer, 584px viewport): the zero-padding
+    // dialog surface collapsed --layout-padding-outer-y/inner-y to 0, and
+    // DialogHeader's negative title margin (≈ -7px) pushed the title above
+    // the drawer's top edge while the subtitle sat flush against it.
+    await page.setViewportSize({ width: 1280, height: 584 })
+    await expect(dialog(page)).toBeVisible()
+    const geometry = await dialog(page).evaluate((node) => {
+      const layoutEl = node.querySelector('.astryx-layout') as HTMLElement
+      const cs = getComputedStyle(layoutEl)
+      const headerEl = node.querySelector('.astryx-layout-header') as HTMLElement
+      const headerInner = headerEl.firstElementChild as HTMLElement
+      const titleBlock = node.querySelector('.astryx-dialog-header-title-block') as HTMLElement
+      const heading = titleBlock.querySelector('.astryx-heading') as HTMLElement
+      const subtitle = titleBlock.querySelector(
+        'p, [data-theme~="text"], span, div:not(:has(*))',
+      ) as HTMLElement | null
+      const subtitleEl =
+        subtitle && subtitle !== heading
+          ? subtitle
+          : (titleBlock.children[1] as HTMLElement | undefined)
+      const contentEl = node.querySelector('.astryx-layout-content') as HTMLElement
+      const headerRect = headerEl.getBoundingClientRect()
+      const titleRect = heading.getBoundingClientRect()
+      const subtitleRect = subtitleEl?.getBoundingClientRect()
+      return {
+        outerY: cs.getPropertyValue('--layout-padding-outer-y').trim(),
+        headerPadTop: parseFloat(getComputedStyle(headerInner).paddingTop),
+        headerTop: headerRect.top,
+        titleTop: titleRect.top,
+        subtitleTop: subtitleRect?.top ?? null,
+        subtitleBottom: subtitleRect ? subtitleRect.bottom : null,
+        headerBottom: headerRect.bottom,
+        contentOutline: getComputedStyle(contentEl).outlineStyle,
+      }
+    })
+
+    // The Layout must carry its own vertical padding inside the drawer so the
+    // header's negative-margin alignment contract has room to breathe.
+    expect(geometry.outerY).not.toBe('0px')
+    expect(geometry.headerPadTop).toBeGreaterThan(0)
+    // Title fully inside the drawer (was y = -7.2 before the fix).
+    expect(geometry.titleTop).toBeGreaterThanOrEqual(geometry.headerTop)
+    // Subtitle below the title and fully above the header divider.
+    expect(geometry.subtitleTop).not.toBeNull()
+    expect(geometry.subtitleTop!).toBeGreaterThanOrEqual(geometry.titleTop)
+    expect(geometry.subtitleBottom!).toBeLessThanOrEqual(geometry.headerBottom)
+    // The programmatic content focus anchor must not paint the UA outline
+    // around the whole scrollport (interactive controls keep their own
+    // focus-visible indicators).
+    expect(geometry.contentOutline).toBe('none')
+  })
+
+  test('subtitle is not clipped by any overflow ancestor (no inner header clip)', async () => {
+    // Defect regression: a previous fix added `overflow: hidden` on the
+    // inner .astryx-dialog-header. DialogHeader's title block carries a
+    // negative margin-block, so the inner container's border box ends
+    // before the subtitle's second half and the inner clip amputated it.
+    // The outer header band already has the vertical padding that absorbs
+    // the close button bleed; horizontal truncation is owned by the title
+    // block itself.
+    await page.setViewportSize({ width: 1280, height: 584 })
+    await expect(dialog(page)).toBeVisible()
+    const clipped = await dialog(page).evaluate((node) => {
+      const titleBlock = node.querySelector('.astryx-dialog-header-title-block') as HTMLElement
+      const heading = titleBlock.querySelector('.astryx-heading') as HTMLElement
+      const subtitle = titleBlock.lastElementChild as HTMLElement
+      if (subtitle === heading) throw new Error('no subtitle element found')
+      const sub = subtitle.getBoundingClientRect()
+      const clips: Array<{
+        label: string
+        clipTop: number
+        clipBottom: number
+        subTop: number
+        subBottom: number
+      }> = []
+      let ancestor = subtitle.parentElement
+      while (ancestor && ancestor !== node.parentElement) {
+        const cs = getComputedStyle(ancestor)
+        if (/(hidden|clip|auto|scroll)/.test(cs.overflowY) || /(hidden|clip)/.test(cs.overflowX)) {
+          const r = ancestor.getBoundingClientRect()
+          if (sub.top < r.top - 0.5 || sub.bottom > r.bottom + 0.5) {
+            clips.push({
+              label: `${ancestor.tagName}.${(ancestor.className as string).split(' ')[0] ?? ''}`,
+              clipTop: r.top,
+              clipBottom: r.bottom,
+              subTop: sub.top,
+              subBottom: sub.bottom,
+            })
+          }
+        }
+        ancestor = ancestor.parentElement
+      }
+      return clips
+    })
+    expect(clipped).toEqual([])
+  })
+
+  test('zh-CN: subtitle renders fully inside the header on a short viewport', async () => {
+    // Independent Chinese-locale coverage: the default spec page runs
+    // en-US; this journey drives the real zh-CN route (请求日志详情) so the
+    // subtitle line's legibility is proven in the shipped locale, not just
+    // geometry-neutral English copy.
+    const zhPage = await page.context().browser()!.newPage({ locale: 'zh-CN' })
+    try {
+      await installRequestLogDisplayRoutes(zhPage, undefined, undefined, 'admin')
+      await zhPage.goto(`/logs?selected_request_id=${requestIDs.mapped}`, { waitUntil: 'commit' })
+      await expect(zhPage.locator('[data-testid="astryx-shell"]')).toBeVisible({ timeout: 60_000 })
+      await zhPage.setViewportSize({ width: 1280, height: 584 })
+      const zhDialog = zhPage.getByRole('dialog', { name: '请求日志详情' })
+      await expect(zhDialog).toBeVisible()
+      const result = await zhDialog.evaluate((node) => {
+        const titleBlock = node.querySelector('.astryx-dialog-header-title-block') as HTMLElement
+        const heading = titleBlock.querySelector('.astryx-heading') as HTMLElement
+        const subtitle = titleBlock.lastElementChild as HTMLElement
+        const sub = subtitle.getBoundingClientRect()
+        const head = heading.getBoundingClientRect()
+        const drawer = node.getBoundingClientRect()
+        const clippingAncestors: string[] = []
+        for (let ancestor = subtitle.parentElement; ancestor; ancestor = ancestor.parentElement) {
+          const cs = getComputedStyle(ancestor)
+          if (/(hidden|clip|auto|scroll)/.test(cs.overflowY)) {
+            const rect = ancestor.getBoundingClientRect()
+            if (sub.top < rect.top - 0.5 || sub.bottom > rect.bottom + 0.5) {
+              clippingAncestors.push(ancestor.className)
+            }
+          }
+        }
+        return {
+          clippingAncestors,
+          titleText: heading.textContent,
+          subtitleText: subtitle.textContent,
+          titleTop: head.top,
+          subTop: sub.top,
+          subBottom: sub.bottom,
+          drawerTop: drawer.top,
+        }
+      })
+      expect(result.titleText).toBe('请求日志详情')
+      expect(result.clippingAncestors).toEqual([])
+      expect(result.subtitleText!.length).toBeGreaterThan(0)
+      expect(result.titleTop).toBeGreaterThanOrEqual(result.drawerTop)
+      expect(result.subTop).toBeGreaterThanOrEqual(result.titleTop)
+      expect(result.subBottom).toBeLessThanOrEqual(result.drawerTop + 584)
+    } finally {
+      await zhPage.close()
+    }
   })
 })
