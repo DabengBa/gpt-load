@@ -358,6 +358,10 @@ export function GroupModelsTab({
     noMatches: t('group.modelEditor.drawer.noMatches'),
     empty: t('group.modelEditor.drawer.empty'),
     selected: (count) => t('group.modelEditor.drawer.selected', { count }),
+    selectedDetail: (selected, available) =>
+      t('group.modelEditor.drawer.selectedDetail', { selected, available }),
+    legendLabel: t('group.modelEditor.drawer.legendLabel'),
+    pricingLegend: t('group.modelEditor.drawer.pricingLegend'),
     selectAll: t('group.modelEditor.drawer.selectAll'),
     deselectAll: t('group.modelEditor.drawer.deselectAll'),
     retry: t('common.retry'),

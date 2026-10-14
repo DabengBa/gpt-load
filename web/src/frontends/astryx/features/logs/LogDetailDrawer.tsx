@@ -1021,6 +1021,7 @@ export function LogDetailDrawer({
       onOpenChange={onOpenChange}
       title={t('monitor.logs.drawer.title')}
       subtitle={drawerDescription}
+      width="wide"
     >
       {(open && detailQuery.isPending) || initialLoading ? (
         <section

@@ -159,6 +159,27 @@ export function LogsAdvancedFilterDrawer({
 }: LogsAdvancedFilterDrawerProps): JSX.Element {
   const t = useT()
 
+  const activeAttemptFilterCount = [
+    draft.channel_id,
+    draft.credential_id,
+    draft.upstream_model,
+    draft.model_consistency,
+    draft.retry_state,
+    draft.retry_count_min,
+    draft.retry_count_max,
+    draft.attempt_status_code,
+    draft.failure_category,
+    draft.error_code,
+  ].filter((value) => value !== '').length
+  const activeResultFilterCount = [
+    draft.final_status_code,
+    draft.usage_state,
+    draft.cost_state,
+    draft.pricing_completeness,
+    draft.cache_present,
+  ].filter((value) => value !== '').length
+  const activeRangeFilterCount = rangeFields.filter((field) => draft[field] !== '').length
+
   const option = (value: string, label: string): SelectorOption => ({ value, label })
 
   function booleanOptions(): SelectorOption[] {
@@ -372,10 +393,11 @@ export function LogsAdvancedFilterDrawer({
         </section>
 
         {selfScoped !== true && (
-          <section {...stylex.props(styles.section)}>
-            <h3 {...stylex.props(styles.sectionTitle)}>
+          <details {...stylex.props(styles.section)} open={activeAttemptFilterCount > 0}>
+            <summary {...stylex.props(styles.sectionTitle)}>
               {t('monitor.logs.filters.sections.attempt')}
-            </h3>
+              {activeAttemptFilterCount > 0 ? ` · ${activeAttemptFilterCount}` : ''}
+            </summary>
             <div {...stylex.props(styles.grid)}>
               {channelsFailed ? (
                 <TextInput
@@ -484,13 +506,14 @@ export function LogsAdvancedFilterDrawer({
                 {...plainTextInputAttrs}
               />
             </div>
-          </section>
+          </details>
         )}
 
-        <section {...stylex.props(styles.section)}>
-          <h3 {...stylex.props(styles.sectionTitle)}>
+        <details {...stylex.props(styles.section)} open={activeResultFilterCount > 0}>
+          <summary {...stylex.props(styles.sectionTitle)}>
             {t('monitor.logs.filters.sections.result')}
-          </h3>
+            {activeResultFilterCount > 0 ? ` · ${activeResultFilterCount}` : ''}
+          </summary>
           <div {...stylex.props(styles.grid)}>
             <TextInput
               id="logs-final-code"
@@ -535,12 +558,16 @@ export function LogsAdvancedFilterDrawer({
               onChange={(value) => onUpdateField('cache_present', value)}
             />
           </div>
-        </section>
+        </details>
 
-        <section {...stylex.props(styles.section, styles.sectionFlush)}>
-          <h3 {...stylex.props(styles.sectionTitle)}>
+        <details
+          {...stylex.props(styles.section, styles.sectionFlush)}
+          open={activeRangeFilterCount > 0}
+        >
+          <summary {...stylex.props(styles.sectionTitle)}>
             {t('monitor.logs.filters.sections.ranges')}
-          </h3>
+            {activeRangeFilterCount > 0 ? ` · ${activeRangeFilterCount}` : ''}
+          </summary>
           <div {...stylex.props(styles.grid)}>
             {rangeFields.map((field) => (
               <TextInput
@@ -556,7 +583,7 @@ export function LogsAdvancedFilterDrawer({
               />
             ))}
           </div>
-        </section>
+        </details>
       </form>
     </DetailPanel>
   )

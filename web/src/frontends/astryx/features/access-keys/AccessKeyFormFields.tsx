@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { Switch, TextInput } from '@astryxdesign/core'
-import { useImperativeHandle, useRef, type Ref } from 'react'
+import { useImperativeHandle, useId, useRef, type Ref } from 'react'
 
 import type { AccessKeyDto } from '@shared/control/types'
 
@@ -45,6 +45,8 @@ export function AccessKeyFormFields({
   ref?: Ref<AccessKeyFormFieldsHandle>
 }) {
   const t = useT()
+  const nameInputID = useId()
+  const rpmInputID = useId()
   const nameInputRef = useRef<HTMLInputElement | null>(null)
 
   useImperativeHandle(ref, () => ({ focusName: () => nameInputRef.current?.focus() }), [])
@@ -53,6 +55,7 @@ export function AccessKeyFormFields({
     <div {...stylex.props(styles.stack)}>
       <TextInput
         ref={nameInputRef}
+        htmlName="access-key-name-input"
         label={t('accessKeys.drawer.name')}
         isRequired
         size="sm"
@@ -75,6 +78,7 @@ export function AccessKeyFormFields({
       />
 
       <TextInput
+        htmlName="access-key-rpm-input"
         label={t('accessKeys.drawer.rpm')}
         isOptional
         size="sm"

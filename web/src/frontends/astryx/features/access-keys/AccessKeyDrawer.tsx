@@ -141,21 +141,36 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 'var(--space-2)',
     width: '100%',
+    flexWrap: 'wrap',
   },
   management: {
     display: 'flex',
     flexShrink: 0,
     gap: 'var(--space-2)',
+    borderRightWidth: 1,
+    borderRightStyle: 'solid',
+    borderRightColor: 'var(--color-border-subtle)',
+    paddingRight: 'var(--space-2)',
   },
   saveBlocker: {
     minWidth: 0,
     flexGrow: 1,
-    overflow: 'hidden',
+    overflow: 'visible',
     margin: 0,
     color: 'var(--color-danger)',
     fontSize: 'var(--text-label-xs)',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    lineHeight: 1.35,
+    overflowWrap: 'anywhere',
+  },
+  blockerAction: {
+    display: 'inline',
+    border: 0,
+    background: 'none',
+    padding: 0,
+    color: 'inherit',
+    font: 'inherit',
+    textDecoration: 'underline',
+    cursor: 'pointer',
   },
 })
 
@@ -369,6 +384,47 @@ export function AccessKeyDrawer({
     snapshot.editReconciliation !== null ||
     dirty
 
+  // Map each save blocker to the control or section the user can act on, so
+  // the footer message can navigate instead of only announcing.
+  const blockerAnchor = ((): 'name' | 'rpm' | 'costLimits' | 'scope' | null => {
+    if (!saveBlockerKey) return null
+    switch (saveBlockerKey) {
+      case 'accessKeys.drawer.saveBlockedName':
+        return 'name'
+      case 'accessKeys.drawer.saveBlockedRPM':
+        return 'rpm'
+      case 'accessKeys.drawer.saveBlockedCostLimits':
+        return 'costLimits'
+      case 'accessKeys.drawer.saveBlockedGroupProtocol':
+      case 'accessKeys.drawer.saveBlockedGroupUnavailable':
+      case 'accessKeys.drawer.saveBlockedStaleScope':
+      case 'accessKeys.drawer.saveBlockedScope':
+      case 'accessKeys.drawer.saveBlockedInvalid':
+        return 'scope'
+      default:
+        return null
+    }
+  })()
+
+  const focusBlocker = () => {
+    if (!blockerAnchor) return
+    const selector =
+      blockerAnchor === 'name'
+        ? 'input[name="access-key-name-input"]'
+        : blockerAnchor === 'rpm'
+          ? 'input[name="access-key-rpm-input"]'
+          : blockerAnchor === 'costLimits'
+            ? '#access-key-cost-limits'
+            : 'access-key-scope'
+    const target = document.querySelector<HTMLElement>(selector)
+    target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    if (target instanceof HTMLElement && target.matches('input, button, [tabindex]')) {
+      target.focus()
+    } else {
+      target?.querySelector<HTMLElement>('input, button, [tabindex]')?.focus()
+    }
+  }
+
   const groupOptions = useMemo<AccessKeyScopeOption[]>(() => {
     const baseGroupIDs = new Set(base?.filters.groups ?? [])
     const options: AccessKeyScopeOption[] = groups.map((group) => ({
@@ -509,6 +565,7 @@ export function AccessKeyDrawer({
       isOpen={open}
       onOpenChange={(value) => void setOpen(value)}
       title={t(derived.editing ? 'accessKeys.drawer.editTitle' : 'accessKeys.drawer.createTitle')}
+      width="wide"
       subtitle={t(
         derived.editing
           ? 'accessKeys.drawer.editDescription'
@@ -519,6 +576,7 @@ export function AccessKeyDrawer({
         <div {...stylex.props(styles.footer)}>
           {derived.editing && base && (
             <div {...stylex.props(styles.management)}>
+              <span>{t('accessKeys.drawer.dangerZone')}</span>
               <Button
                 variant="secondary"
                 size="sm"
@@ -562,7 +620,20 @@ export function AccessKeyDrawer({
             aria-live="polite"
             title={saveBlockerKey ? t(saveBlockerKey) : undefined}
           >
-            {saveBlockerKey ? t(saveBlockerKey) : ''}
+            {saveBlockerKey && blockerAnchor ? (
+              <>
+                {t(saveBlockerKey)}{' '}
+                <button
+                  type="button"
+                  {...stylex.props(styles.blockerAction)}
+                  onClick={focusBlocker}
+                >
+                  {t('accessKeys.drawer.fixThisField')}
+                </button>
+              </>
+            ) : (
+              (saveBlockerKey ? t(saveBlockerKey) : '')
+            )}
           </p>
           <Button
             variant="secondary"
@@ -575,6 +646,7 @@ export function AccessKeyDrawer({
             size="sm"
             icon={<Save size={15} aria-hidden />}
             label={saveLabel}
+            aria-describedby="access-key-save-blocker"
             isLoading={snapshot.pending}
             isDisabled={
               !snapshot.editReconciliation && !createOperationActive && (!valid || !dirty)
@@ -592,6 +664,18 @@ export function AccessKeyDrawer({
           void controller.save(valid)
         }}
       >
+        <section aria-labelledby="access-key-impact-summary">
+          <h3 id="access-key-impact-summary" {...stylex.props(styles.sectionTitle)}>
+            {t('accessKeys.drawer.impactSummary')}
+          </h3>
+          <p {...stylex.props(styles.sectionDescription)}>
+            {t(
+              derived.editing
+                ? 'accessKeys.drawer.editImpactSummary'
+                : 'accessKeys.drawer.createImpactSummary',
+            )}
+          </p>
+        </section>
         <AccessKeyOperationFeedback
           failed={snapshot.failed}
           editNotApplied={snapshot.editNotApplied}
@@ -599,7 +683,9 @@ export function AccessKeyDrawer({
         />
 
         <section>
-          <h3 {...stylex.props(styles.sectionTitle)}>{t('accessKeys.drawer.basicInformation')}</h3>
+          <h3 id="access-key-basic-information" {...stylex.props(styles.sectionTitle)}>
+            {t('accessKeys.drawer.basicInformation')}
+          </h3>
           <p {...stylex.props(styles.sectionDescription)}>
             {t('accessKeys.drawer.basicInformationDescription')}
           </p>
@@ -620,6 +706,7 @@ export function AccessKeyDrawer({
         </section>
 
         <section {...stylex.props(styles.section)}>
+          <div id="access-key-cost-limits" />
           <AccessKeyCostLimitEditor
             value={draft.costLimitRules}
             runtimeStatus={base?.cost_limit_status ?? null}
@@ -653,7 +740,9 @@ export function AccessKeyDrawer({
         </section>
 
         <section {...stylex.props(styles.section)}>
-          <h3 {...stylex.props(styles.sectionTitle)}>{t('accessKeys.drawer.permissionScope')}</h3>
+          <h3 id="access-key-scope" {...stylex.props(styles.sectionTitle)}>
+            {t('accessKeys.drawer.permissionScope')}
+          </h3>
           <p {...stylex.props(styles.sectionDescription)}>
             {t('accessKeys.drawer.permissionScopeDescription')}
           </p>

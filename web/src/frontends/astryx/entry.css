@@ -64,4 +64,31 @@
   [data-details-chevron-scope][open] > summary [data-details-chevron] {
     transform: rotate(90deg);
   }
+
+  /* DetailPanel drawer geometry: one inline gutter for header / content /
+     footer assigned at the drawer root (the Layout slots resolve their
+     padding from these variables), 18px on the <=520px full-bleed drawer.
+     Scoped to [data-detail-panel] so standard Dialogs keep Astryx defaults. */
+  [data-detail-panel] .astryx-layout {
+    --layout-padding-outer-x: var(--spacing-6);
+    --layout-padding-inner-x: var(--spacing-6);
+  }
+  @media (width < 521px) {
+    [data-detail-panel] .astryx-layout {
+      --layout-padding-outer-x: var(--space-4-5, 18px);
+      --layout-padding-inner-x: var(--space-4-5, 18px);
+    }
+  }
+
+  /* Long drawer titles truncate at the title block instead of pushing the
+     close button out of the header band; the band's overflow:hidden absorbs
+     the close button's -8px bleed so it never counts as overflow. Scoped to
+     [data-detail-panel] — standard Dialog headers keep native wrapping. */
+  [data-detail-panel] .astryx-dialog-header {
+    overflow: hidden;
+  }
+  [data-detail-panel] .astryx-dialog-header-title-block {
+    min-width: 0;
+    overflow: hidden;
+  }
 }

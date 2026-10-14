@@ -834,3 +834,93 @@ test('subscription channel stages an account through authorization polling', asy
   await expect.poll(() => requests.stagePolls.length, { timeout: 10_000 }).toBeGreaterThan(0)
   await expect(page.getByText('t***@example.com')).toBeVisible({ timeout: 15_000 })
 })
+
+test('import discovery runs against the entered connection and appends candidates', async ({
+  page,
+}) => {
+  const requests = await mockImportApi(page)
+  const discoveries: unknown[] = []
+  // The default OpenAI fixture advertises no discovery capability; enable it
+  // so the publish step exposes the discovery entry point.
+  await page.route('**/api/channels', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          items: [
+            {
+              ...CHANNELS[0]!,
+              capabilities: { ...CHANNELS[0]!.capabilities, model_discovery: true },
+            },
+            ...CHANNELS.slice(1),
+          ],
+          total: CHANNELS.length,
+        },
+      },
+    }),
+  )
+  await page.route('**/api/models/discover', async (route) => {
+    discoveries.push(route.request().postDataJSON())
+    return route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          models: [
+            {
+              id: 'gpt-discovered',
+              name: 'GPT Discovered',
+              sources: ['live'],
+              pricing_status: 'pending',
+              pricing_source: null,
+            },
+            {
+              id: 'gpt-priced',
+              name: 'GPT Priced',
+              sources: ['catalog'],
+              pricing_status: 'configured',
+              pricing_source: 'OpenAI',
+            },
+          ],
+        },
+      },
+    })
+  })
+  await page.goto('/import?mode=new', { waitUntil: 'commit' })
+  await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
+    timeout: FIRST_PAINT,
+  })
+  await page.locator('#channel-credentials').fill('sk-discover')
+
+  const discover = page.getByRole('button', { name: 'Get upstream models' })
+  await expect(discover).toBeEnabled()
+  await discover.click()
+
+  const dialog = page.getByRole('dialog', { name: 'Get upstream models' })
+  await expect(dialog).toBeVisible()
+
+  // Runtime evidence: the discovery request carries the entered credential.
+  await expect.poll(() => discoveries.length).toBe(1)
+  expect(discoveries[0]).toMatchObject({
+    channel_id: 'openai',
+    connection_type: 'api_key',
+    credentials: 'sk-discover',
+  })
+
+  // Evidence legend stays readable without tooltips.
+  const legend = dialog.getByLabel('Evidence legend')
+  await expect(legend).toBeVisible()
+  await expect(legend.getByText('Live discovery', { exact: true })).toBeVisible()
+
+  await expect(dialog.getByText('0 of 2 available models selected')).toBeVisible()
+  await dialog.getByRole('checkbox', { name: /^GPT Discovered GPT Discovered gpt-discovered/ }).click()
+  await dialog.getByRole('checkbox', { name: /^GPT Priced GPT Priced gpt-priced/ }).click()
+  await expect(dialog.getByText('2 of 2 available models selected')).toBeVisible()
+
+  await dialog.getByRole('button', { name: 'Add to current list' }).click()
+  await expect(dialog).not.toBeVisible()
+  const modelTable = page.getByRole('table', { name: 'Models to publish' })
+  await expect(modelTable.getByRole('code')).toHaveText(['gpt-discovered', 'gpt-priced'])
+  expect(requests.createBodies).toHaveLength(0)
+})

@@ -435,6 +435,8 @@ test('advanced drawer opens via panel=filters and validates like classic', async
   const drawer = page.getByRole('dialog', { name: 'More filters' })
   await expect(drawer).toBeVisible()
   await expect(drawer.getByText('Retry attempts', { exact: true })).toBeVisible()
+  await drawer.getByText('Retry attempts', { exact: true }).click()
+  await expect(drawer.getByRole('combobox', { name: 'Channel' })).toBeVisible()
   await expect(drawer.getByRole('combobox', { name: 'Access key' })).toBeVisible()
 
   // Invalid affinity input blocks the apply path — no request leaves.

@@ -392,6 +392,9 @@ test('creates an access key through the drawer', async ({ page }) => {
   await page.getByRole('button', { name: 'Create access key' }).first().click()
   const drawer = page.getByRole('dialog', { name: 'Create access key' })
   await expect(drawer).toBeVisible()
+  await expect(drawer.getByText('Impact summary', { exact: true })).toBeVisible()
+  await expect(drawer.getByRole('button', { name: 'Create key' })).toBeVisible()
+  await expect(drawer.getByText('Danger zone', { exact: true })).toHaveCount(0)
   await expect(drawer.getByRole('textbox', { name: /price multiplier/i })).toHaveCount(0)
   await expect(page).toHaveURL(/[?&]action=create/)
 
@@ -401,9 +404,72 @@ test('creates an access key through the drawer', async ({ page }) => {
   await expect.poll(() => requests.posts.length).toBe(1)
   expect(requests.posts[0]?.name).toBe('e2e created')
   expect(requests.posts[0]).not.toHaveProperty('price_multiplier')
-  // Drawer closes and the collection refetches.
   await expect(drawer).not.toBeVisible()
   await expect.poll(() => requests.collectionQueries.length).toBeGreaterThan(1)
+})
+
+test('keeps edit impact, readable blocker, and destructive actions separated on narrow screens', async ({ page }) => {
+  await mockAccessKeys(page)
+  await page.setViewportSize({ width: 320, height: 900 })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({ timeout: 60_000 })
+
+  const drawer = await openEditDrawer(page, 'prod key')
+  await expect(drawer.getByText('Impact summary', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('Danger zone', { exact: true })).toBeVisible()
+  await drawer.getByRole('textbox', { name: 'Name Required', exact: true }).fill('')
+  const blocker = drawer.locator('#access-key-save-blocker')
+  await expect(blocker).toContainText('Enter a name')
+  await expect(blocker).toHaveAttribute('aria-live', 'polite')
+  await expect(blocker).not.toHaveCSS('white-space', 'nowrap')
+  await page.setViewportSize({ width: 375, height: 900 })
+  await expect(drawer.getByText('Impact summary', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('Danger zone', { exact: true })).toBeVisible()
+})
+
+test('save blocker offers an actionable link that focuses the offending control', async ({ page }) => {
+  await mockAccessKeys(page)
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+
+  const drawer = await openEditDrawer(page, 'prod key')
+
+  // Name blocker → focuses the name input.
+  await drawer.getByRole('textbox', { name: 'Name Required', exact: true }).fill('')
+  const blocker = drawer.locator('#access-key-save-blocker')
+  const fix = blocker.getByRole('button', { name: 'Fix this field' })
+  await expect(fix).toBeVisible()
+  await fix.click()
+  await expect(drawer.getByRole('textbox', { name: 'Name Required', exact: true })).toBeFocused()
+
+  // RPM blocker → focuses the RPM input.
+  await drawer.getByRole('textbox', { name: 'Name Required', exact: true }).fill('back')
+  await drawer.getByRole('textbox', { name: 'Requests per minute' }).fill('-2')
+  await expect(blocker).toContainText('RPM must be a non-negative integer')
+  await blocker.getByRole('button', { name: 'Fix this field' }).click()
+  await expect(drawer.getByRole('textbox', { name: 'Requests per minute' })).toBeFocused()
+
+  // Scope blocker → scrolls the permission scope section into view.
+  const scopeHeading = drawer.getByRole('heading', { name: 'Permission scope' })
+  await drawer.evaluate(() => {
+    const scope = document.getElementById('access-key-scope')
+    scope?.scrollIntoView({ block: 'start' })
+    document.querySelector<HTMLInputElement>('input[name="access-key-name-input"]')?.focus()
+  })
+  await drawer.getByRole('textbox', { name: 'Name Required', exact: true }).fill('')
+  await drawer
+    .locator('#access-key-save-blocker')
+    .getByRole('button', { name: 'Fix this field' })
+    .click()
+  // The anchor scrolls the section into view and moves focus to its first
+  // control; assert focus moved away from the name input toward the scope
+  // section's scope-mode control.
+  await expect(
+    drawer.locator('#access-key-scope').evaluate((el) => {
+      const rect = el.getBoundingClientRect()
+      return rect.top < window.innerHeight && rect.bottom > 0
+    }),
+  ).resolves.toBe(true)
 })
 
 test('blocks route navigation while the drawer has unsaved edits', async ({ page }) => {

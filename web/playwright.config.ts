@@ -52,6 +52,9 @@ export default defineConfig({
     },
   ],
   use: {
+    // Local environments without the bundled Playwright browser can point
+    // E2E_CHANNEL at a system Chrome channel; undefined keeps the default.
+    channel: process.env.E2E_CHANNEL || undefined,
     baseURL,
     locale: 'en-US',
     trace: 'retain-on-failure',

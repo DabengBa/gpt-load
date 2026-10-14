@@ -170,6 +170,12 @@ export function ModelDiscoveryDrawer({
               label={allVisibleSelected ? labels.deselectAll : labels.selectAll}
             />
             <span aria-live="polite">{labels.selected(selectedIds.length)}</span>
+            <span {...stylex.props(styles.selectionDetail)} aria-live="polite">
+              {labels.selectedDetail(
+                selectedIds.filter((id) => !currentIds.has(id)).length,
+                selectableVisible.length,
+              )}
+            </span>
           </div>
           <div {...stylex.props(styles.actions)}>
             {footerActions}
@@ -244,6 +250,24 @@ export function ModelDiscoveryDrawer({
         ) : (
           <fieldset {...stylex.props(styles.candidateList)}>
             <legend {...stylex.props(styles.srOnly)}>{labels.filterLabel}</legend>
+            <div
+              {...stylex.props(styles.legend)}
+              role="group"
+              aria-label={labels.legendLabel}
+            >
+              <span {...stylex.props(styles.legendItem)}>
+                <span {...stylex.props(styles.statusIcon, styles.statusIconLive)} aria-hidden>
+                  <Radar size={15} strokeWidth={1.9} aria-hidden />
+                </span>
+                {labels.sources.live}
+              </span>
+              <span {...stylex.props(styles.legendItem)}>
+                <span {...stylex.props(styles.statusIcon, styles.statusIconPricing)} aria-hidden>
+                  <CircleDollarSign size={15} strokeWidth={1.9} aria-hidden />
+                </span>
+                {labels.pricingLegend}
+              </span>
+            </div>
             {visibleCandidates.map((candidate) => {
               const added = currentIds.has(candidate.id)
               return (
@@ -419,6 +443,27 @@ const styles = stylex.create({
     alignItems: 'center',
     justifyContent: { '@media (max-width: 520px)': 'space-between' },
     gap: 'var(--space-2)',
+  },
+  selectionDetail: {
+    color: 'var(--color-text-faint)',
+    fontSize: 'var(--text-label-xs)',
+  },
+  legend: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 'var(--space-2) var(--space-3)',
+    borderBottomWidth: '1px',
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'var(--color-border-subtle)',
+    paddingBlockEnd: 'var(--space-2)',
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--text-label-xs)',
+  },
+  legendItem: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 'var(--space-1)',
   },
   actions: {
     display: 'flex',

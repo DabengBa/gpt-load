@@ -385,6 +385,59 @@ test('drawer exposes the global catalog sync as a secondary action', async ({ pa
   ).toBeVisible()
 })
 
+test('drawer keeps the shared-impact and save scope notice visible while editing', async ({
+  page,
+}) => {
+  await mockPriceJourney(page)
+  const dialog = await openPriceDrawer(page)
+
+  // The scope notice is sticky context below the header, not a dismissed banner.
+  const notice = dialog.locator('[data-detail-panel-context-notice]')
+  await expect(notice).toContainText('2 client models')
+  await expect(notice).toContainText('2 Groups')
+  await expect(notice).toContainText('Save and Reset apply to every client model and Group')
+  // The sticky notice paints an explicit opaque surface so scrolling body
+  // content never shows through it.
+  const bg = await notice.evaluate((el) => getComputedStyle(el).backgroundColor)
+  expect(bg).not.toBe('rgba(0, 0, 0, 0)')
+
+  // Editing must not hide the impact scope.
+  await dialog.getByRole('textbox', { name: 'Input' }).first().fill('0.006')
+  await expect(notice).toBeVisible()
+
+  // Sticky geometry: scrolling the drawer body must pin the notice to the top
+  // of the scroll container instead of letting it scroll away. The journey
+  // fixture only renders a short body, so add filler content first.
+  await dialog.evaluate((node) => {
+    const filler = document.createElement('div')
+    filler.style.height = '2000px'
+    filler.setAttribute('aria-hidden', 'true')
+    node
+      .querySelector('[data-detail-panel-context-notice]')
+      ?.after(filler)
+  })
+  const geometry = await notice.evaluate((node) => {
+    let parent = node.parentElement as HTMLElement | null
+    while (parent && !(parent.scrollHeight > parent.clientHeight + 1)) {
+      parent = parent.parentElement
+    }
+    if (!parent) throw new Error('no scrollable ancestor')
+    const scrollerBox = parent.getBoundingClientRect()
+    const before = node.getBoundingClientRect()
+    parent.scrollTop = 400
+    const after = node.getBoundingClientRect()
+    return {
+      scrolled: parent.scrollTop,
+      beforeY: before.top - scrollerBox.top,
+      afterY: after.top - scrollerBox.top,
+    }
+  })
+  expect(geometry.scrolled).toBeGreaterThan(0)
+  // The notice stays pinned within the visible top band of the scroller.
+  expect(geometry.afterY).toBeGreaterThanOrEqual(-1)
+  expect(geometry.afterY).toBeLessThan(40)
+})
+
 test('drawer saves actual tier and Fast prices', async ({ page }) => {
   const requests = await mockPriceJourney(page)
   const dialog = await openPriceDrawer(page)
