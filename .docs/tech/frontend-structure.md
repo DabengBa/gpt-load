@@ -8,6 +8,8 @@ relations:
 code:
   paths:
     - web/src/frontends/astryx/app/router.tsx
+    - web/src/frontends/astryx/components/DetailPanel.tsx
+    - web/src/frontends/astryx/entry.css
     - web/src/frontends/astryx/features
     - web/src/shared/domain
     - web/src/shared/controllers
@@ -59,3 +61,32 @@ not a map of current paths. For current behavior details of a domain, read the
 feature directory. [Navigation loading and cache policy](navigation-performance.md)
 owns route loading, intent preloading, and query freshness; its implementation
 starts in `app/router.tsx`.
+
+## Detail panels
+
+`components/DetailPanel.tsx` owns the shared right-side modal shell. It uses
+the Astryx `Dialog` primitive selected in
+[ADR-0002](../adr/0002-astryx-detail-layer-primitive.md), with a full-height
+layout, a scrollable content region, and an optional footer. Keep the panel
+mounted and drive its `isOpen` prop so the dialog can restore invoker focus.
+`dismissible={false}` blocks Escape, backdrop dismissal, and the close button.
+
+The default `compact` width is `min(92vw, 520px)`. Log details, access-key
+editing, and upstream-price editing select `width="wide"`, which uses
+`min(92vw, 640px)`. At viewport widths of 520px or less, both sizes become
+full-width. Header, content, and footer share a 24px desktop horizontal gutter
+and an 18px narrow-screen gutter. The overrides in `entry.css` are scoped to
+`[data-detail-panel]`; standard dialogs retain Astryx's own layout rules.
+The slide-in animation is disabled when reduced motion is requested.
+
+`contextNotice` renders a sticky, opaque context band at the top of the
+scrollable content, directly below the header. Upstream-price editing uses
+this slot for affected client-model/group counts and the save scope, so that
+context stays visible while the form scrolls. Access-key editing keeps its
+impact summary in the form and its save-blocker feedback in the footer.
+
+The panel's geometry and standard-dialog style isolation are covered by
+`web/e2e/astryx-detail-panel-geometry.spec.ts` and
+`web/e2e/astryx-standard-dialog-scope.spec.ts`. Feature interaction coverage
+lives in the access-key, import, group-model-discovery, request-log, and
+unified-schedule-price E2E suites.
