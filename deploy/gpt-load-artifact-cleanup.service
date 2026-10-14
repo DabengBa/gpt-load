@@ -1,0 +1,9 @@
+[Unit]
+Description=Retain bounded GPT-Load deployment recovery artifacts
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/gpt-load-cleanup-artifacts --apply
+Nice=10
+IOSchedulingClass=idle
