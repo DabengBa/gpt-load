@@ -448,28 +448,43 @@ test('save blocker offers an actionable link that focuses the offending control'
   await expect(blocker).toContainText('RPM must be a non-negative integer')
   await blocker.getByRole('button', { name: 'Fix this field' }).click()
   await expect(drawer.getByRole('textbox', { name: 'Requests per minute' })).toBeFocused()
+})
 
-  // Scope blocker → scrolls the permission scope section into view.
-  const scopeHeading = drawer.getByRole('heading', { name: 'Permission scope' })
-  await drawer.evaluate(() => {
-    const scope = document.getElementById('access-key-scope')
-    scope?.scrollIntoView({ block: 'start' })
-    document.querySelector<HTMLInputElement>('input[name="access-key-name-input"]')?.focus()
-  })
-  await drawer.getByRole('textbox', { name: 'Name Required', exact: true }).fill('')
-  await drawer
-    .locator('#access-key-save-blocker')
-    .getByRole('button', { name: 'Fix this field' })
-    .click()
-  // The anchor scrolls the section into view and moves focus to its first
-  // control; assert focus moved away from the name input toward the scope
-  // section's scope-mode control.
-  await expect(
-    drawer.locator('#access-key-scope').evaluate((el) => {
-      const rect = el.getBoundingClientRect()
-      return rect.top < window.innerHeight && rect.bottom > 0
-    }),
-  ).resolves.toBe(true)
+test('save blocker focuses a permission scope control for an incomplete scope', async ({ page }) => {
+  await mockAccessKeys(page)
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+
+  const drawer = await openEditDrawer(page, 'prod key')
+  const groups = drawer.getByRole('radiogroup', { name: 'Groups', exact: true })
+  await groups.getByRole('radio', { name: 'Specified', exact: true }).click()
+  const blocker = drawer.locator('#access-key-save-blocker')
+  await expect(blocker).toContainText('Complete the permission scope')
+  await expect(drawer.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+
+  // Start away from the scope so the link must perform the navigation itself.
+  await drawer.getByRole('textbox', { name: 'Name Required', exact: true }).focus()
+  await blocker.getByRole('button', { name: 'Fix this field' }).click()
+  await expect(groups.getByRole('radio', { name: 'All', exact: true })).toBeFocused()
+  await expect(groups).toBeInViewport()
+})
+
+test('save blocker focuses a cost limit control for an invalid amount', async ({ page }) => {
+  await mockAccessKeys(page)
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expectAstryxDocument(page)
+
+  const drawer = await openEditDrawer(page, 'dev key')
+  await drawer.getByRole('textbox', { name: 'Limit (USD)', exact: true }).first().fill('0')
+  const blocker = drawer.locator('#access-key-save-blocker')
+  await expect(blocker).toContainText('Check cost amounts or periods')
+  await expect(drawer.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+
+  await drawer.getByRole('textbox', { name: 'Name Required', exact: true }).focus()
+  await blocker.getByRole('button', { name: 'Fix this field' }).click()
+  const totalLimit = drawer.getByRole('switch', { name: 'Enable total limit', exact: true })
+  await expect(totalLimit).toBeFocused()
+  await expect(totalLimit).toBeInViewport()
 })
 
 test('blocks route navigation while the drawer has unsaved edits', async ({ page }) => {

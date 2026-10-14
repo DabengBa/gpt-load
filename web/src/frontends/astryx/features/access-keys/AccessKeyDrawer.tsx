@@ -415,7 +415,7 @@ export function AccessKeyDrawer({
           ? 'input[name="access-key-rpm-input"]'
           : blockerAnchor === 'costLimits'
             ? '#access-key-cost-limits'
-            : 'access-key-scope'
+            : '#access-key-scope'
     const target = document.querySelector<HTMLElement>(selector)
     target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     if (target instanceof HTMLElement && target.matches('input, button, [tabindex]')) {
@@ -705,8 +705,7 @@ export function AccessKeyDrawer({
           />
         </section>
 
-        <section {...stylex.props(styles.section)}>
-          <div id="access-key-cost-limits" />
+        <section id="access-key-cost-limits" {...stylex.props(styles.section)}>
           <AccessKeyCostLimitEditor
             value={draft.costLimitRules}
             runtimeStatus={base?.cost_limit_status ?? null}
@@ -739,8 +738,8 @@ export function AccessKeyDrawer({
           />
         </section>
 
-        <section {...stylex.props(styles.section)}>
-          <h3 id="access-key-scope" {...stylex.props(styles.sectionTitle)}>
+        <section id="access-key-scope" {...stylex.props(styles.section)}>
+          <h3 {...stylex.props(styles.sectionTitle)}>
             {t('accessKeys.drawer.permissionScope')}
           </h3>
           <p {...stylex.props(styles.sectionDescription)}>
