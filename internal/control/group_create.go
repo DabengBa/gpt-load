@@ -273,7 +273,7 @@ func (s *Service) normalizeGroupCreate(
 	if request.ProviderURL.Set && !request.ProviderURL.Null {
 		value := strings.TrimSpace(request.ProviderURL.Value)
 		if value != "" {
-			normalized, normalizeErr := spec.NormalizeBaseURL(value)
+			normalized, normalizeErr := spec.NormalizeProviderURL(value)
 			if normalizeErr != nil {
 				return normalizedGroupCreate{}, app_errors.ErrValidation
 			}

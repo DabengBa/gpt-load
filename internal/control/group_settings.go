@@ -213,7 +213,7 @@ func normalizeGroupSettingsUpdate(
 			if value == "" {
 				result.providerURL = nil
 			} else {
-				normalized, err := spec.NormalizeBaseURL(value)
+				normalized, err := spec.NormalizeProviderURL(value)
 				if err != nil {
 					return normalizedGroupSettingsUpdate{}, app_errors.ErrValidation
 				}

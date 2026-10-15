@@ -48,6 +48,35 @@ func NormalizeBaseURL(value string) (string, error) {
 	return parsed.String(), nil
 }
 
+// NormalizeProviderURL canonicalizes a public provider website URL.
+// Unlike an upstream endpoint, a website may use query parameters for navigation.
+func NormalizeProviderURL(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("must not be empty")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed == nil || parsed.Opaque != "" || parsed.User != nil || parsed.Host == "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("must be an absolute HTTP(S) URL without credentials or fragment")
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("must be an absolute HTTP(S) URL without credentials or fragment")
+	}
+	parsed.Host = strings.ToLower(parsed.Host)
+	if (parsed.Scheme == "https" && parsed.Port() == "443") || (parsed.Scheme == "http" && parsed.Port() == "80") {
+		hostname := parsed.Hostname()
+		if strings.Contains(hostname, ":") {
+			hostname = "[" + hostname + "]"
+		}
+		parsed.Host = hostname
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	parsed.RawPath = strings.TrimRight(parsed.RawPath, "/")
+	parsed.ForceQuery = false
+	return parsed.String(), nil
+}
+
 // NormalizeCloudIdentifier rejects whitespace and control characters in a
 // provider-owned cloud configuration value.
 func NormalizeCloudIdentifier(value string) (string, error) {

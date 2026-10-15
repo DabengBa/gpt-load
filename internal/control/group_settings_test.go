@@ -723,7 +723,6 @@ func TestGroupSettingsProviderURLRejectsInvalidURL(t *testing.T) {
 		"//provider.example.com",
 		"/relative/path",
 		"https://user:pass@provider.example.com",
-		"https://provider.example.com?query=1",
 		"https://provider.example.com#fragment",
 		"not-a-url",
 		":invalid",
@@ -739,13 +738,23 @@ func TestGroupSettingsProviderURLRejectsInvalidURL(t *testing.T) {
 		}
 	}
 
-	// Verify original value unchanged
+	// Verify invalid updates leave the original value unchanged.
 	after, err := fixture.service.GetGroupSettings(t.Context(), groupID)
 	if err != nil {
 		t.Fatalf("GetGroupSettings after error = %v", err)
 	}
 	if after.ProviderURL != before.ProviderURL {
 		t.Fatalf("provider_url changed after failed updates: before=%v after=%v", before.ProviderURL, after.ProviderURL)
+	}
+
+	got, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		ProviderURL: optionalField[string]{Set: true, Value: "https://liuguang.ai/account/api?tab=keys"},
+	})
+	if err != nil {
+		t.Fatalf("provider_url with query error = %v", err)
+	}
+	if got.ProviderURL == nil || *got.ProviderURL != "https://liuguang.ai/account/api?tab=keys" {
+		t.Fatalf("provider_url with query = %v, want preserved URL", got.ProviderURL)
 	}
 }
 
