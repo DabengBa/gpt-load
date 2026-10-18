@@ -21,7 +21,7 @@ import type { SharedRouteQuery, SharedRouteQueryRaw } from './route-query'
 // usage & cost surface; /schedule reuses the schedule draft surface of the
 // same query space.
 
-export type ScheduleDraftField = 'weight' | 'priority'
+export type ScheduleDraftField = 'weight' | 'priority' | 'concurrency_limit'
 export type ScheduleDrafts = Record<string, Partial<Record<ScheduleDraftField, number | null>>>
 
 export interface ScheduleMonitorState {
@@ -154,14 +154,18 @@ function parseScheduleDrafts(raw: unknown): ScheduleDrafts {
     for (const [row, draft] of Object.entries(value)) {
       if (!scheduleRowPattern.test(row) || typeof draft !== 'object' || draft === null) continue
       const next: Partial<Record<ScheduleDraftField, number | null>> = {}
-      for (const field of ['weight', 'priority'] as const) {
+      for (const field of ['weight', 'priority', 'concurrency_limit'] as const) {
         const candidate = (draft as Record<string, unknown>)[field]
         if (candidate === null) {
           next[field] = null
         } else if (
           typeof candidate === 'number' &&
           Number.isSafeInteger(candidate) &&
-          (field === 'weight' ? candidate >= 0 && candidate <= 100 : candidate >= 1)
+          (field === 'weight'
+            ? candidate >= 0 && candidate <= 100
+            : field === 'concurrency_limit'
+              ? candidate >= 0 && candidate <= 2147483647
+              : candidate >= 1)
         ) {
           next[field] = candidate
         }
@@ -180,7 +184,7 @@ function serializeScheduleDrafts(drafts: ScheduleDrafts): string | undefined {
     const draft = drafts[row]
     if (!scheduleRowPattern.test(row) || draft === undefined) continue
     const next: Partial<Record<ScheduleDraftField, number | null>> = {}
-    for (const field of ['weight', 'priority'] as const) {
+    for (const field of ['weight', 'priority', 'concurrency_limit'] as const) {
       const value = draft[field]
       if (value === null || (typeof value === 'number' && Number.isSafeInteger(value))) {
         next[field] = value

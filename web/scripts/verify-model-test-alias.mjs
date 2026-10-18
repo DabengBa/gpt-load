@@ -21,6 +21,7 @@ try {
         alias_enabled: false,
         client_model: 'provider-model',
         test_alias: 'a4g233',
+        concurrency_limit: 3,
         entry_id: 'entry-1',
         weight: null,
         priority: null,
@@ -52,6 +53,7 @@ try {
   assert.equal(draft[0].test_alias, 'a4g233')
   const normalized = modelDiff.normalizedModels(draft)
   assert.equal(normalized[0].entry_id, 'entry-1')
+  assert.equal(normalized[0].concurrency_limit, 3)
   assert.equal(Object.hasOwn(normalized[0], 'test_alias'), false)
 
   const changedServerAlias = modelDiff.createModelDraft([

@@ -101,7 +101,7 @@ func TestHandlerBufferedCredentialRefreshRespectsFirstProviderAndGlobalBudgets(t
 				input.Groups = append(input.Groups, state.GroupConfig{
 					ID: id, Name: fmt.Sprintf("subscription-%d", id), ChannelID: channel.Codex,
 					ConnectionType: "subscription", Params: json.RawMessage(`{}`),
-					Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+					Models: []state.ModelConfig{{ID: "gpt-4o", ConcurrencyLimit: 1}}, Enabled: true,
 				})
 				fingerprint := fmt.Sprintf("account-%d", id)
 				input.Credentials = append(input.Credentials, state.CredentialConfig{

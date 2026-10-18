@@ -96,7 +96,7 @@ export interface SchedulePanelDetailProps {
   onRowChange(row: string | undefined): void
 }
 
-type EditableField = 'weight' | 'priority'
+type EditableField = 'weight' | 'priority' | 'concurrency_limit'
 type Draft = Partial<Record<EditableField, number | null>>
 
 interface ScheduleRow {
@@ -136,16 +136,18 @@ function hasOwn(source: object, key: string): boolean {
 }
 
 function configuredValue(entry: ModelRouteScheduleEntryDto, field: EditableField): number | null {
+  if (field === 'concurrency_limit') return entry.concurrency_limit
   if (field === 'weight') return null
   return entry.priority === 1 ? null : entry.priority
 }
 
 function effectiveValue(entry: ModelRouteScheduleEntryDto, field: EditableField): number {
-  return field === 'weight' ? entry.weight : entry.priority
+  return entry[field]
 }
 
 function isValidValue(field: EditableField, value: number): boolean {
   if (!Number.isSafeInteger(value)) return false
+  if (field === 'concurrency_limit') return value >= 0 && value <= 2147483647
   return field === 'weight' ? value >= 0 && value <= 100 : value >= 1
 }
 
@@ -180,7 +182,7 @@ function buildHydration(
     if (row === undefined) continue
     const next = { ...draft }
     nextDraftMap[key] = next
-    for (const field of ['weight', 'priority'] as const) {
+    for (const field of ['weight', 'priority', 'concurrency_limit'] as const) {
       if (!hasOwn(next, field)) continue
       const value = next[field]
       nextRawInputs[fieldKey(row.group.group_id, row.entry.entry_id, field)] =
@@ -212,6 +214,9 @@ function buildPatchUpdates(
       }
       if (draft !== undefined && hasOwn(draft, 'weight')) update.weight = draft.weight
       if (draft !== undefined && hasOwn(draft, 'priority')) update.priority = draft.priority
+      if (draft?.concurrency_limit !== undefined && draft.concurrency_limit !== null) {
+        update.concurrency_limit = draft.concurrency_limit
+      }
       if (hasOwn(reasoningDrafts, key)) {
         update.reasoning_effort = reasoningDrafts[key] ?? null
       }
@@ -983,7 +988,11 @@ export function SchedulePanelDetail({
   }, [detail, sourceGroupId, selectedRow, rows])
 
   const dirty = Object.keys(draftMap).length > 0 || Object.keys(reasoningDrafts).length > 0
-  const invalid = Object.values(invalidInputs).some(Boolean)
+  const invalid =
+    Object.values(invalidInputs).some(Boolean) ||
+    Object.values(draftMap).some(
+      (draft) => hasOwn(draft, 'concurrency_limit') && draft.concurrency_limit === null,
+    )
   const hasScheduleDraft = Object.keys(draftMap).length > 0
 
   // Batch scope is exactly what is on screen: the same rows the table renders,
@@ -1220,6 +1229,7 @@ export function SchedulePanelDetail({
     const parsed = Number(value)
     if (!/^\d+$/.test(value.trim()) || !isValidValue(field, parsed)) {
       setInvalidInputs((previous) => ({ ...previous, [key]: true }))
+      if (field === 'concurrency_limit') setDraftValue(groupID, entry, field, null)
       return
     }
     setDraftValue(groupID, entry, field, parsed)
@@ -1641,6 +1651,30 @@ export function SchedulePanelDetail({
                       <div {...stylex.props(styles.cell, styles.cellBreaker)} role="cell">
                         <span {...stylex.props(styles.cellLabel)}>{text('breakerRecovery')}</span>
                         <span>{breakerRecoveryLabel(entry)}</span>
+                        <details onClick={(event) => event.stopPropagation()}>
+                          <summary>{t('monitor.schedule.detail.advanced')}</summary>
+                          <label htmlFor={`concurrency-${index}`}>
+                            {t('monitor.schedule.detail.concurrencyLimit')}
+                          </label>
+                          <ScheduleNumberInput
+                            id={`concurrency-${index}`}
+                            label={`${t('monitor.schedule.detail.concurrencyLimit')} ${entry.model_id}`}
+                            value={inputValue(group.group_id, entry, 'concurrency_limit')}
+                            min={0}
+                            max={2147483647}
+                            disabled={pending || derived}
+                            invalid={
+                              invalidInputs[
+                                fieldKey(group.group_id, entry.entry_id, 'concurrency_limit')
+                              ] === true || draftMap[key]?.concurrency_limit === null
+                            }
+                            invalidMessage={t('monitor.schedule.detail.invalidConcurrencyLimit')}
+                            onChange={(value) =>
+                              setInput(group.group_id, entry, 'concurrency_limit', value)
+                            }
+                          />
+                          <p>{t('monitor.schedule.detail.concurrencyHelp')}</p>
+                        </details>
                         <Button
                           variant="secondary"
                           size="sm"

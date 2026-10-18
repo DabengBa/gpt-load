@@ -176,7 +176,7 @@ func testFirstProviderSequence(t *testing.T, attempts, budget int, want []uint, 
 	for _, groupID := range []uint{1, 2, 3, 4} {
 		input.Groups = append(input.Groups, state.GroupConfig{
 			ID: groupID, Name: fmt.Sprintf("group-%d", groupID), ChannelID: channel.OpenAI, ConnectionType: "api_key",
-			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o", ConcurrencyLimit: 1}}, Enabled: true,
 		})
 		input.Credentials = append(input.Credentials, state.CredentialConfig{
 			ID: groupID, GroupID: groupID, Version: 1, IdentityGeneration: uint64(groupID),
@@ -185,6 +185,13 @@ func testFirstProviderSequence(t *testing.T, attempts, budget int, want []uint, 
 	}
 	if _, err := manager.Publish(input); err != nil {
 		t.Fatal(err)
+	}
+	forwarder.onCall = func(index int) {
+		selection := forwarder.inputs[index]
+		key := state.RouteEntryKey{GroupID: selection.Group.ID, EntryID: selection.Group.Models[0].EntryID}
+		if manager.CapacityInUse(key) != 1 {
+			t.Errorf("replay occupancy = %d, want 1", manager.CapacityInUse(key))
+		}
 	}
 	engine := gin.New()
 	bindGatewayRoutesForTest(t, engine, handler)
@@ -206,6 +213,11 @@ func testFirstProviderSequence(t *testing.T, attempts, budget int, want []uint, 
 	}
 	if !reflect.DeepEqual(gotGroups, want) {
 		t.Fatalf("attempt sequence = %v, want A-A-B-C %v", gotGroups, want)
+	}
+	for _, group := range manager.Current().Groups {
+		if manager.CapacityInUse(state.RouteEntryKey{GroupID: group.ID, EntryID: group.Models[0].EntryID}) != 0 {
+			t.Fatal("replay leaked capacity")
+		}
 	}
 }
 

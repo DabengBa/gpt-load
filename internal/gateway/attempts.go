@@ -198,6 +198,7 @@ type attemptLoop struct {
 
 	loggedOverrideFailures   map[uint]struct{}
 	parameterOverrideFailure *reason
+	capacityBlocked          bool
 }
 
 func newAttemptLoop(
@@ -417,13 +418,14 @@ func (loop *attemptLoop) nextCandidate() (scheduler.Selection, state.CredentialR
 	if loop.firstProvider != nil {
 		loop.firstProviderDisallowed = true
 	}
-	selection, err := loop.iterator.Next()
+	selection, err := loop.iterator.NextCandidate()
 	if err != nil {
 		return scheduler.Selection{}, state.CredentialRef{}, false, candidateExhausted
 	}
 	loop.dispatch.affinity.preferredHealthBypassed = loop.dispatch.affinity.preferredHealthBypassed || loop.iterator.PreferredHealthBypassed()
 	candidateRef, allowed := loop.dispatch.allowedCredentialRefs[selection.CredentialID]
 	if !allowed || candidateRef.GroupID != selection.GroupID {
+		loop.iterator.MarkAttempt(selection)
 		return scheduler.Selection{}, state.CredentialRef{}, false, candidateSkip
 	}
 	return selection, candidateRef, false, candidateYield
@@ -454,6 +456,10 @@ func (loop *attemptLoop) nextFirstProviderCandidate() (scheduler.Selection, bool
 	candidates := loop.handler.registry.CollectCredentialCandidates([]uint{selection.GroupID}, nil, now)
 	if len(candidates) != 1 || candidates[0].ID != selection.CredentialID ||
 		loop.handler.registry.CredentialCountsByGroup([]uint{selection.GroupID})[selection.GroupID] != 1 {
+		return scheduler.Selection{}, false
+	}
+	frozenRef, allowed := loop.dispatch.allowedCredentialRefs[selection.CredentialID]
+	if !allowed || frozenRef.GroupID != selection.GroupID || candidates[0].IdentityGeneration != frozenRef.IdentityGeneration {
 		return scheduler.Selection{}, false
 	}
 	loop.firstProviderRemaining--
@@ -518,6 +524,7 @@ func (loop *attemptLoop) run() {
 		}
 		encrypted, active := handler.registry.ActiveEncryptedCredentialDataIfMatch(ref)
 		if !active {
+			loop.iterator.MarkAttempt(selection)
 			// Stop replaying a stale reference after the first actual execution.
 			if loop.firstProvider != nil {
 				loop.firstProviderDisallowed = true
@@ -557,6 +564,7 @@ func (loop *attemptLoop) run() {
 		attemptObservationsAvailable := prepared.observationsAvailable
 		decryptedCredential, err := handler.encryption.Decrypt(encrypted)
 		if err != nil {
+			loop.iterator.MarkAttempt(selection)
 			if !loop.recordCandidatePreparationFailure(
 				selection,
 				attemptObservations,
@@ -577,6 +585,7 @@ func (loop *attemptLoop) run() {
 			decryptedCredential,
 		)
 		if err != nil {
+			loop.iterator.MarkAttempt(selection)
 			if !loop.recordCandidatePreparationFailure(
 				selection,
 				attemptObservations,
@@ -594,6 +603,7 @@ func (loop *attemptLoop) run() {
 			selection.Group.Proxy,
 		)
 		if err != nil {
+			loop.iterator.MarkAttempt(selection)
 			if !loop.recordCandidatePreparationFailure(
 				selection,
 				attemptObservations,
@@ -609,6 +619,14 @@ func (loop *attemptLoop) run() {
 		if !loop.admitQuota() {
 			return
 		}
+		reservation, admitted := handler.acquireCapacity(selection, ref, dispatch.affinity)
+		if !admitted {
+			loop.capacityBlocked = true
+			loop.iterator.SkipEntry(capacityKey(selection))
+			loop.firstProviderDisallowed = true
+			continue
+		}
+		loop.iterator.MarkAttempt(selection)
 
 		loop.attemptSequence++
 		loop.forwardAttempts++
@@ -701,6 +719,7 @@ func (loop *attemptLoop) run() {
 		)
 		dispatch.affinity.markBoundAttempt(selection, ref)
 		func() {
+			defer reservation.Release()
 			if loop.stream {
 				result = handler.forwarder.ForwardStream(attemptContext, input, ginContext.Writer)
 			} else {
@@ -962,6 +981,9 @@ func (loop *attemptLoop) completeExhausted() {
 	handler := loop.handler
 	ginContext := loop.ginContext
 	recorder := loop.recorder
+	if loop.capacityBlocked {
+		defer recordCapacityBlocked(recorder)
+	}
 
 	if loop.deferred.providerError != nil {
 		recorder.completeProviderError(
@@ -1013,6 +1035,10 @@ func (loop *attemptLoop) completeExhausted() {
 	}
 	if loop.parameterOverrideFailure != nil && loop.lastAttemptIndex < 0 {
 		handler.completeReason(ginContext, recorder, *loop.parameterOverrideFailure)
+		return
+	}
+	if loop.capacityBlocked {
+		handler.completeReason(ginContext, recorder, reasonScheduleCapacity)
 		return
 	}
 	handler.completeReason(ginContext, recorder, reasonNoCandidate)

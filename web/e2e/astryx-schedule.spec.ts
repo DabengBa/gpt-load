@@ -18,6 +18,7 @@ type SchedulePatch = {
     entry_id: string
     weight?: number | null
     priority?: number | null
+    concurrency_limit?: number
     enabled?: boolean
     reasoning_effort?: string | null
   }>
@@ -54,6 +55,7 @@ function entry(entryID: string, modelID: string, weight: number, priority = 1, o
     alias: '',
     weight,
     priority,
+    concurrency_limit: 0,
     enabled: true,
     circuit_breaker: {
       configured: { blacklist_threshold: null, cooldown_seconds: null },
@@ -118,6 +120,99 @@ function detailForModel(externalModel: string) {
 }
 
 type PatchOutcome = 'success' | 'error' | 'conflict'
+
+// The access-key surface projects the /api/models collection through the same
+// contract as production (summary + catalog + page-consistent pagination).
+// A bare `items` payload fails projection, so a retry could never clear the
+// error banner.
+function emptyModelCollection() {
+  return {
+    summary: {
+      client_model_count: 0,
+      upstream_model_count: 0,
+      price_count: 0,
+      pending_price_count: 0,
+      unreferenced_price_count: 0,
+    },
+    catalog: { available: false, checked_at_ms: 0, successful_fetch_at_ms: 0, error_code: '' },
+    items: [],
+    pagination: { page: 1, page_size: 10, total_items: 0, total_pages: 0 },
+  }
+}
+
+test('advanced concurrency saves, reloads, validates and discards incomplete input', async ({
+  page,
+}) => {
+  const { patches } = await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const row = page.locator('[data-row-key="1:entry-1"]')
+  await row.locator('summary').click()
+  const input = page.locator('#concurrency-0')
+  await expect(input).toHaveValue('0')
+  await expect(row.getByText(/0 means unlimited/)).toBeVisible()
+  for (const value of ['', '-1', '1.5', '2147483648']) {
+    await input.fill(value)
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  }
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await expect(input).toHaveValue('0')
+  await input.fill('2147483647')
+  await expect(page).toHaveURL(/schedule_draft=/)
+  await page.reload()
+  await waitForScheduleDetailReady(page)
+  await row.locator('summary').click()
+  await expect(input).toHaveValue('2147483647')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => patches.length).toBe(1)
+  expect(patches[0]!.updates).toEqual([
+    { group_id: 1, entry_id: 'entry-1', concurrency_limit: 2147483647 },
+  ])
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+})
+
+test('advanced concurrency survives a row toggle so one save carries every draft', async ({
+  page,
+}) => {
+  const { patches } = await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const row = page.locator('[data-row-key="1:entry-1"]')
+  await row.locator('summary').click()
+  await page.locator('#concurrency-0').fill('4')
+  await expect(page).toHaveURL(/schedule_draft=/)
+  await page.locator('#priority-0').fill('3')
+  // The row toggle issues its own PATCH; the outstanding concurrency draft must
+  // survive the re-render instead of being reposted as a separate update.
+  await page.getByRole('switch', { name: 'Toggle entry model-a', exact: true }).click()
+  await expect.poll(() => patches.length).toBe(1)
+  expect(patches[0]!.updates).toEqual([{ group_id: 1, entry_id: 'entry-1', enabled: false }])
+  await page.locator('[data-row-key="1:entry-1"] summary').click()
+  await expect(page.locator('#concurrency-0')).toHaveValue('4')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => patches.length).toBe(2)
+  expect(patches[1]!.updates).toEqual([
+    { group_id: 1, entry_id: 'entry-1', priority: 3, concurrency_limit: 4 },
+  ])
+})
+
+test('advanced concurrency preserves URL draft and input after revision conflict', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page, { patchOutcome: 'conflict' })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('[data-row-key="1:entry-1"] summary').click()
+  await page.locator('#concurrency-0').fill('3')
+  await expect(page).toHaveURL(/schedule_draft=/)
+  const draft = new URL(page.url()).searchParams.get('schedule_draft')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(
+    page.getByText('The configuration changed. Refresh and try again.').first(),
+  ).toBeVisible()
+  await expect(page.locator('#concurrency-0')).toHaveValue('3')
+  expect(new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
+})
 type DetailOutcome = 'success' | 'error' | 'empty'
 
 interface ScheduleRoutes {
@@ -777,12 +872,7 @@ test('read-only model search updates immediately but debounces the query and pag
   const requests: string[] = []
   await page.route('**/api/models?**', async (route) => {
     requests.push(route.request().url())
-    await route.fulfill(
-      response({
-        items: [],
-        pagination: { page: 1, page_size: 10, total_items: 0, total_pages: 1 },
-      }),
-    )
+    await route.fulfill(response(emptyModelCollection()))
   })
   await openSchedule(page, '?schedule_model=worker')
   const input = page.getByRole('textbox', { name: 'Model' })
@@ -802,14 +892,7 @@ test('read-only model collection errors use a banner and can retry', async ({ pa
   let attempts = 0
   await page.route('**/api/models?**', async (route) => {
     attempts += 1
-    await route.fulfill(
-      attempts === 1
-        ? response({}, 500)
-        : response({
-            items: [],
-            pagination: { page: 1, page_size: 10, total_items: 0, total_pages: 1 },
-          }),
-    )
+    await route.fulfill(attempts === 1 ? response({}, 500) : response(emptyModelCollection()))
   })
   await openSchedule(page, '?schedule_model=worker')
   await expect(page.getByRole('alert')).toBeVisible()

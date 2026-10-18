@@ -31,6 +31,7 @@ export function createModelDraft(items: readonly GroupModelItemDto[]): ModelDraf
       test_alias: item.test_alias,
       weight: item.weight ?? null,
       priority: item.priority ?? null,
+      concurrency_limit: item.concurrency_limit,
       pricing_status: item.pricing_status,
       price_id: item.price_id,
       key: index,

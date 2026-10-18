@@ -104,6 +104,7 @@ for (const width of [390, 900, 1440, 1920]) {
               entries: [
                 {
                   entry_id: 'entry-1',
+                  concurrency_limit: 0,
                   model_id: 'model-a',
                   alias: '',
                   weight: 50,

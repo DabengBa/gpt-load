@@ -81,6 +81,7 @@ type requestRecorder struct {
 	now                          func() time.Time
 	redactor                     *redact.Redactor
 	emitted                      bool
+	capacityBlocked              bool
 
 	pendingRetry int
 }
@@ -211,7 +212,11 @@ func (recorder *requestRecorder) freezeSensitiveInputErrorSummaries() {
 		return
 	}
 	if recorder.outcome.errorCode != "" {
+		capacitySummary := recorder.capacityBlocked
 		recorder.outcome.errorSummary = fixedErrorSummary(recorder.outcome.errorCode)
+		if capacitySummary {
+			recorder.outcome.errorSummary += " [schedule_capacity_exhausted: remaining eligible route entries are at capacity]"
+		}
 	}
 	for index := range recorder.attempts {
 		if recorder.attempts[index].ErrorCode != "" {

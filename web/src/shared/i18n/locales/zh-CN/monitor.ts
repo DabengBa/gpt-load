@@ -228,6 +228,10 @@ export default {
         reasoning: '推理策略',
         inherit: '未配置',
         groupDisabled: '分组已关闭',
+        advanced: '高级',
+        concurrencyLimit: '并发上限',
+        invalidConcurrencyLimit: '请输入 0 到 2147483647 的整数。',
+        concurrencyHelp: '0 表示不限。有效亲和绑定的请求可超限，且仍计入实际占用。',
       },
       reasons: {
         access_key_disabled: '访问密钥已停用',

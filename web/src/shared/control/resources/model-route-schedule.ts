@@ -79,6 +79,7 @@ export interface ModelRouteScheduleReasoningDto {
 
 export interface ModelRouteScheduleEntryDto {
   entry_id: string
+  concurrency_limit: number
   model_id: string
   alias: string
   weight: number
@@ -130,6 +131,7 @@ export interface ModelRouteScheduleBreakerPatch {
 
 export interface ModelRouteSchedulePatchUpdate {
   group_id: number
+  concurrency_limit?: number
   entry_id: string
   weight?: number | null
   priority?: number | null
@@ -197,6 +199,7 @@ const groupFields = [
 ] as const
 const entryFields = [
   'entry_id',
+  'concurrency_limit',
   'model_id',
   'alias',
   'weight',
@@ -352,6 +355,10 @@ function projectEntry(value: unknown, observedAtMS: number): ModelRouteScheduleE
   const priority = projectSafeInteger(record.priority, { minimum: 1 })
   return {
     entry_id: projectNonBlankString(record.entry_id),
+    concurrency_limit: projectSafeInteger(record.concurrency_limit, {
+      minimum: 0,
+      maximum: 2147483647,
+    }),
     model_id: projectNonBlankString(record.model_id),
     alias: projectString(record.alias, { allowEmpty: true }),
     weight: projectSafeInteger(record.weight, { minimum: 0, maximum: 100 }),

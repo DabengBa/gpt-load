@@ -62,6 +62,8 @@ ordinary secret refresh.
 
 ## Request-Specific Exclusions
 
+Dispatch-row capacity admission is owned by [Schedule concurrency](schedule-concurrency.md). Capacity overflow does not itself qualify as a health bypass or allow a binding takeover; only the valid binding and health observations defined below can do so.
+
 Bindings are never learned for requests that carry `previous_response_id`.
 Many other standalone requests do not carry that field while resolving to the
 same affinity key; those requests participate normally and may learn or

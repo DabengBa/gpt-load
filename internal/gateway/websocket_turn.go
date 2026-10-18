@@ -23,6 +23,7 @@ import (
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
+	"gpt-load/internal/telemetry"
 )
 
 var reasonWebsocketCapability = reason{400, "websocket_capability_unavailable", "The selected upstream does not support this WebSocket capability."}
@@ -287,6 +288,12 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	var finishRejectedAttempt func()
 	var finishFailedAttempt func()
 	var parameterOverrideFailure *reason
+	capacityBlocked := false
+	defer func() {
+		if capacityBlocked && recorder.outcome.status != telemetry.RequestStatusSuccess {
+			recordCapacityBlocked(recorder)
+		}
+	}()
 	recordPreparationFailure := func(selection scheduler.Selection, ref state.CredentialRef, code, summary string, scope execution.ErrorScope) bool {
 		started := recorder.beforeForward()
 		result := UpstreamResult{DispatchState: execution.DispatchNotSent,
@@ -331,7 +338,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			authRefreshUsed = true
 			refreshSelection = nil
 		} else {
-			selection, err = iterator.Next()
+			selection, err = iterator.NextCandidate()
 			if err != nil {
 				if finishRejectedAttempt != nil {
 					finishRejectedAttempt()
@@ -346,6 +353,10 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 					return
 				}
 
+				if capacityBlocked {
+					reject(reasonScheduleCapacity)
+					return
+				}
 				reject(reasonNoCandidate)
 				return
 			}
@@ -382,6 +393,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		encrypted, ok := h.registry.ActiveEncryptedCredentialDataIfMatch(ref)
 		if !ok {
 			if binding == nil && requiredRef == nil {
+				iterator.MarkAttempt(selection)
 				releaseInput()
 				continue
 			}
@@ -390,6 +402,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		}
 		plain, err := h.encryption.Decrypt(encrypted)
 		if err != nil {
+			iterator.MarkAttempt(selection)
 			if recordPreparationFailure(selection, ref, "credential_decrypt_failed", "Stored credential could not be decrypted.", execution.ErrorScopeCredential) {
 				releaseInput()
 				continue
@@ -398,6 +411,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		}
 		credential, err := normalizeChannelCredential(h.channels, h.subscriptions, selection.ChannelID, selection.Group.ConnectionType, plain)
 		if err != nil {
+			iterator.MarkAttempt(selection)
 			if recordPreparationFailure(selection, ref, "credential_normalization_failed", "Stored credential could not be prepared.", execution.ErrorScopeCredential) {
 				releaseInput()
 				continue
@@ -406,6 +420,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		}
 		proxy, fingerprint, err := resolveAttemptProxy(h.encryption, selection.Group.Proxy)
 		if err != nil {
+			iterator.MarkAttempt(selection)
 			if recordPreparationFailure(selection, ref, "group_proxy_prepare_failed", "Group proxy configuration could not be prepared.", execution.ErrorScopeGroup) {
 				releaseInput()
 				continue
@@ -483,6 +498,18 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 			admission.admitted = true
 		}
+		reservation, admitted := h.acquireCapacity(selection, ref, affinity)
+		if !admitted {
+			releaseInput()
+			capacityBlocked = true
+			if binding != nil || requiredRef != nil {
+				reject(reasonScheduleCapacity)
+				return
+			}
+			iterator.SkipEntry(capacityKey(selection))
+			continue
+		}
+		iterator.MarkAttempt(selection)
 		recorder.setReasoning(effective.metadata.Reasoning)
 		recorder.setUsageApplicable(effective.metadata.ObserveUsage)
 		recorder.setPricingMode(effective.metadata.PricingMode)
@@ -510,6 +537,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 				OpenWebsocket(context.Context, ForwardInput) (execution.WebsocketSession, execution.WebsocketResult)
 			})
 			if !ok {
+				reservation.Release()
 				cancel()
 				reject(reasonWebsocketCapability)
 				return
@@ -562,6 +590,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			result.Err = nil
 		}
 		cancel()
+		reservation.Release()
 		releaseInput()
 		if result.DispatchState != execution.DispatchNotSent {
 			forwardAttempts++

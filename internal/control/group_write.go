@@ -27,33 +27,45 @@ import (
 const maxCredentialLines = 1000
 
 type GroupModel struct {
-	ID                string                     `json:"id"`
-	Alias             string                     `json:"alias"`
-	TestAlias         string                     `json:"test_alias,omitempty"`
-	EntryID           string                     `json:"entry_id,omitempty"`
-	ReasoningEffort   string                     `json:"reasoning_effort,omitempty"`
-	AliasEnabled      bool                       `json:"-"`
-	Weight            *int                       `json:"weight,omitempty"`
-	Priority          *int                       `json:"priority,omitempty"`
-	Enabled           *bool                      `json:"enabled,omitempty"`
-	CircuitBreaker    *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
-	weightSet         bool
-	prioritySet       bool
-	circuitBreakerSet bool
+	ID              string                     `json:"id"`
+	Alias           string                     `json:"alias"`
+	TestAlias       string                     `json:"test_alias,omitempty"`
+	EntryID         string                     `json:"entry_id,omitempty"`
+	ReasoningEffort string                     `json:"reasoning_effort,omitempty"`
+	AliasEnabled    bool                       `json:"-"`
+	Weight          *int                       `json:"weight,omitempty"`
+	Priority        *int                       `json:"priority,omitempty"`
+	Enabled         *bool                      `json:"enabled,omitempty"`
+	CircuitBreaker  *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
+	// ConcurrencyLimit caps concurrent in-flight requests of this entry;
+	// 0 means unlimited.
+	ConcurrencyLimit    int `json:"concurrency_limit,omitempty"`
+	weightSet           bool
+	prioritySet         bool
+	circuitBreakerSet   bool
+	concurrencyLimitSet bool
+}
+
+// MaxConcurrencyLimit is the accepted upper bound of concurrency_limit.
+const MaxConcurrencyLimit = state.MaxConcurrencyLimit
+
+func validateConcurrencyLimit(limit int) error {
+	return state.ValidateConcurrencyLimit(limit)
 }
 
 func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	var wire struct {
-		ID              string          `json:"id"`
-		Alias           string          `json:"alias"`
-		TestAlias       string          `json:"test_alias"`
-		EntryID         string          `json:"entry_id"`
-		ReasoningEffort string          `json:"reasoning_effort"`
-		AliasEnabled    *bool           `json:"alias_enabled"`
-		Weight          *int            `json:"weight"`
-		Priority        *int            `json:"priority"`
-		Enabled         *bool           `json:"enabled"`
-		CircuitBreaker  json.RawMessage `json:"circuit_breaker"`
+		ID               string          `json:"id"`
+		Alias            string          `json:"alias"`
+		TestAlias        string          `json:"test_alias"`
+		EntryID          string          `json:"entry_id"`
+		ReasoningEffort  string          `json:"reasoning_effort"`
+		AliasEnabled     *bool           `json:"alias_enabled"`
+		Weight           *int            `json:"weight"`
+		Priority         *int            `json:"priority"`
+		Enabled          *bool           `json:"enabled"`
+		CircuitBreaker   json.RawMessage `json:"circuit_breaker"`
+		ConcurrencyLimit json.RawMessage `json:"concurrency_limit"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -78,6 +90,12 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 	model.Weight = cloneInt(wire.Weight)
 	model.Priority = cloneInt(wire.Priority)
 	model.Enabled = wire.Enabled
+	limit, err := decodeRequestConcurrencyLimit(wire.ConcurrencyLimit)
+	if err != nil {
+		return err
+	}
+	model.ConcurrencyLimit = limit
+	model.concurrencyLimitSet = wire.ConcurrencyLimit != nil
 	model.circuitBreakerSet = wire.CircuitBreaker != nil
 	if model.circuitBreakerSet && !bytes.Equal(bytes.TrimSpace(wire.CircuitBreaker), []byte("null")) {
 		var breaker state.EntryCircuitBreaker
@@ -111,15 +129,16 @@ type optionalGroupModels struct {
 }
 
 type groupModelRequestWire struct {
-	ID             string          `json:"id"`
-	Alias          string          `json:"alias"`
-	TestAlias      json.RawMessage `json:"test_alias"`
-	EntryID        string          `json:"entry_id"`
-	AliasEnabled   *bool           `json:"alias_enabled"`
-	Weight         json.RawMessage `json:"weight"`
-	Priority       json.RawMessage `json:"priority"`
-	Enabled        json.RawMessage `json:"enabled"`
-	CircuitBreaker json.RawMessage `json:"circuit_breaker"`
+	ID               string          `json:"id"`
+	Alias            string          `json:"alias"`
+	TestAlias        json.RawMessage `json:"test_alias"`
+	EntryID          string          `json:"entry_id"`
+	AliasEnabled     *bool           `json:"alias_enabled"`
+	Weight           json.RawMessage `json:"weight"`
+	Priority         json.RawMessage `json:"priority"`
+	Enabled          json.RawMessage `json:"enabled"`
+	CircuitBreaker   json.RawMessage `json:"circuit_breaker"`
+	ConcurrencyLimit json.RawMessage `json:"concurrency_limit"`
 }
 
 type optionalField[T any] struct {
@@ -201,17 +220,23 @@ func (value *optionalGroupModels) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("decode group model circuit_breaker: %w", err)
 		}
+		concurrencyLimit, err := decodeRequestConcurrencyLimit(wire.ConcurrencyLimit)
+		if err != nil {
+			return fmt.Errorf("decode group model concurrency_limit: %w", err)
+		}
 		decoded = append(decoded, GroupModel{
-			ID:                wire.ID,
-			Alias:             wire.Alias,
-			EntryID:           wire.EntryID,
-			AliasEnabled:      *wire.AliasEnabled,
-			Weight:            cloneInt(weight),
-			Priority:          cloneInt(priority),
-			CircuitBreaker:    breaker,
-			weightSet:         weightSet,
-			prioritySet:       prioritySet,
-			circuitBreakerSet: wire.CircuitBreaker != nil,
+			ID:                  wire.ID,
+			Alias:               wire.Alias,
+			EntryID:             wire.EntryID,
+			AliasEnabled:        *wire.AliasEnabled,
+			Weight:              cloneInt(weight),
+			Priority:            cloneInt(priority),
+			CircuitBreaker:      breaker,
+			ConcurrencyLimit:    concurrencyLimit,
+			weightSet:           weightSet,
+			prioritySet:         prioritySet,
+			circuitBreakerSet:   wire.CircuitBreaker != nil,
+			concurrencyLimitSet: wire.ConcurrencyLimit != nil,
 		})
 	}
 
@@ -254,6 +279,31 @@ func decodeRequestBreaker(raw json.RawMessage) (*state.EntryCircuitBreaker, erro
 		return nil, app_errors.ErrValidation
 	}
 	return &breaker, nil
+}
+
+// decodeRequestConcurrencyLimit accepts an absent limit as 0 (unlimited),
+// rejects null, and rejects values outside 0..MaxConcurrencyLimit.
+func decodeRequestConcurrencyLimit(raw json.RawMessage) (int, error) {
+	if len(raw) == 0 {
+		return 0, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return 0, app_errors.ErrValidation
+	}
+	var value int
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return 0, app_errors.ErrValidation
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return 0, app_errors.ErrValidation
+	}
+	if err := validateConcurrencyLimit(value); err != nil {
+		return 0, app_errors.ErrValidation
+	}
+	return value, nil
 }
 
 func newEntryID(used map[string]struct{}) (string, error) {
@@ -319,6 +369,12 @@ func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 			weightSet:         value.weightSet || value.Weight != nil,
 			prioritySet:       value.prioritySet || value.Priority != nil,
 			circuitBreakerSet: value.circuitBreakerSet || value.CircuitBreaker != nil,
+
+			ConcurrencyLimit:    value.ConcurrencyLimit,
+			concurrencyLimitSet: value.concurrencyLimitSet || value.ConcurrencyLimit != 0,
+		}
+		if err := validateConcurrencyLimit(normalized.ConcurrencyLimit); err != nil {
+			return nil, app_errors.ErrValidation
 		}
 
 		if normalized.ID == "" {
