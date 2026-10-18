@@ -10,6 +10,7 @@ import (
 )
 
 type Manager struct {
+	capacity     map[RouteEntryKey]*entryCapacity
 	publishMu    sync.RWMutex
 	current      atomic.Pointer[ConfigSnapshot]
 	reconciler   SnapshotReconciler
@@ -149,6 +150,7 @@ func (m *Manager) publishCompiled(next *ConfigSnapshot, beforeLock func()) *Conf
 }
 
 func (m *Manager) publishCompiledLocked(next *ConfigSnapshot) *ConfigSnapshot {
+	m.publishCapacityLocked(next)
 	next.Revision = 1
 	if current := m.current.Load(); current != nil {
 		next.Revision = current.Revision + 1

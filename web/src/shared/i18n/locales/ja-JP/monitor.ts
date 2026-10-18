@@ -233,6 +233,11 @@ export default {
         reasoning: '推論ポリシー',
         inherit: '未設定',
         groupDisabled: 'グループ無効',
+        advanced: '詳細設定',
+        concurrencyLimit: '同時実行上限',
+        invalidConcurrencyLimit: '0～2147483647 の整数を入力してください。',
+        concurrencyHelp:
+          '0 は無制限です。有効なアフィニティ binding のリクエストは上限を超えて実行でき、使用数にも計上されます。',
       },
       reasons: {
         access_key_disabled: 'アクセスキーは無効です',

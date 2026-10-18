@@ -126,6 +126,28 @@ test('schedule draft drops malformed rows and out-of-range fields', () => {
   assert.deepEqual(drafts, { '1:also-ok': { weight: 0 } })
 })
 
+test('concurrency drafts preserve zero, maximum and incomplete input through the URL', () => {
+  const drafts = {
+    '2:b': { concurrency_limit: null },
+    '1:a': { concurrency_limit: 2147483647 },
+    '3:c': { concurrency_limit: 0 },
+  }
+  const query = scheduleMonitorQuery({ drafts })
+  assert.deepEqual(parseScheduleMonitorState(query).drafts, {
+    '1:a': { concurrency_limit: 2147483647 },
+    '2:b': { concurrency_limit: null },
+    '3:c': { concurrency_limit: 0 },
+  })
+  for (const concurrency_limit of [-1, 1.5, 2147483648]) {
+    assert.deepEqual(
+      parseScheduleMonitorState({
+        schedule_draft: JSON.stringify({ '1:a': { concurrency_limit } }),
+      }).drafts,
+      {},
+    )
+  }
+})
+
 test('schedule draft ignores non-object and oversized payloads', () => {
   assert.deepEqual(parseScheduleMonitorState({ schedule_draft: '[1,2]' }).drafts, {})
   assert.deepEqual(parseScheduleMonitorState({ schedule_draft: 'x'.repeat(20_001) }).drafts, {})

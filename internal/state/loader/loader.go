@@ -81,15 +81,16 @@ type compileRows struct {
 // are optional: nil keeps the design defaults (weight 1, priority 1), which
 // keeps pre-route-entry rows backward compatible (design I2).
 type modelDTO struct {
-	ID              string                     `json:"id"`
-	Alias           string                     `json:"alias"`
-	TestAlias       string                     `json:"test_alias,omitempty"`
-	EntryID         string                     `json:"entry_id"`
-	ReasoningEffort string                     `json:"reasoning_effort,omitempty"`
-	Weight          *int                       `json:"weight"`
-	Priority        *int                       `json:"priority"`
-	Enabled         *bool                      `json:"enabled"`
-	CircuitBreaker  *state.EntryCircuitBreaker `json:"circuit_breaker"`
+	ID               string                     `json:"id"`
+	Alias            string                     `json:"alias"`
+	TestAlias        string                     `json:"test_alias,omitempty"`
+	EntryID          string                     `json:"entry_id"`
+	ReasoningEffort  string                     `json:"reasoning_effort,omitempty"`
+	Weight           *int                       `json:"weight"`
+	Priority         *int                       `json:"priority"`
+	Enabled          *bool                      `json:"enabled"`
+	CircuitBreaker   *state.EntryCircuitBreaker `json:"circuit_breaker"`
+	ConcurrencyLimit int                        `json:"concurrency_limit,omitempty"`
 }
 
 type filterDTO struct {
@@ -292,8 +293,9 @@ func decodeBackfillModels(row models.Group) ([]state.ModelConfig, []map[string]j
 			ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 			ReasoningEffort: model.ReasoningEffort,
 			Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
-			Enabled:        model.Enabled,
-			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+			Enabled:          model.Enabled,
+			CircuitBreaker:   cloneEntryCircuitBreaker(model.CircuitBreaker),
+			ConcurrencyLimit: model.ConcurrencyLimit,
 		})
 	}
 	if err := state.ValidateModelRouteEntries(fmt.Sprintf("group %d", row.ID), modelsForState); err != nil {
@@ -693,8 +695,9 @@ func mapSystemAndGroups(
 				ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 				ReasoningEffort: model.ReasoningEffort,
 				Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
-				Enabled:        model.Enabled,
-				CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+				Enabled:          model.Enabled,
+				CircuitBreaker:   cloneEntryCircuitBreaker(model.CircuitBreaker),
+				ConcurrencyLimit: model.ConcurrencyLimit,
 			})
 		}
 		group := state.GroupConfig{

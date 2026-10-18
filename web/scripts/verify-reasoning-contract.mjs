@@ -54,6 +54,7 @@ const baseSchedule = {
       entries: [
         {
           entry_id: 'entry-1',
+          concurrency_limit: 0,
           model_id: 'o3',
           alias: 'reasoning-model',
           weight: 100,

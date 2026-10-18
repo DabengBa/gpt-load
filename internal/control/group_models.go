@@ -29,8 +29,10 @@ type GroupModelResponse struct {
 	Weight         *int                       `json:"weight"`
 	Priority       *int                       `json:"priority"`
 	CircuitBreaker *state.EntryCircuitBreaker `json:"circuit_breaker"`
-	PricingStatus  PricingStatus              `json:"pricing_status"`
-	PriceID        *uint                      `json:"price_id,omitempty"`
+	// ConcurrencyLimit reflects the stored cap; always present, 0 = unlimited.
+	ConcurrencyLimit int           `json:"concurrency_limit"`
+	PricingStatus    PricingStatus `json:"pricing_status"`
+	PriceID          *uint         `json:"price_id,omitempty"`
 }
 
 type GroupModelsResponse struct {
@@ -62,6 +64,9 @@ type groupModelEntry struct {
 	Priority        *int                       `json:"priority,omitempty"`
 	Enabled         *bool                      `json:"enabled,omitempty"`
 	CircuitBreaker  *state.EntryCircuitBreaker `json:"circuit_breaker,omitempty"`
+	// ConcurrencyLimit caps concurrent in-flight requests of this entry;
+	// 0 means unlimited.
+	ConcurrencyLimit int `json:"concurrency_limit,omitempty"`
 }
 
 func assignMissingTestAliases(db *gorm.DB, groupModels []GroupModel) error {
@@ -134,8 +139,9 @@ func (model groupModelEntry) toModelConfig() state.ModelConfig {
 		ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: model.EntryID,
 		ReasoningEffort: model.ReasoningEffort,
 		Weight:          cloneInt(model.Weight), Priority: cloneInt(model.Priority),
-		Enabled:        model.Enabled,
-		CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+		Enabled:          model.Enabled,
+		CircuitBreaker:   cloneEntryCircuitBreaker(model.CircuitBreaker),
+		ConcurrencyLimit: model.ConcurrencyLimit,
 	}
 }
 
@@ -277,16 +283,17 @@ func mapGroupModelsResponse(
 	result := GroupModelsResponse{Items: make([]GroupModelResponse, 0, len(groupModels))}
 	for _, model := range groupModels {
 		item := GroupModelResponse{
-			ID:             model.ID,
-			Alias:          model.Alias,
-			TestAlias:      model.TestAlias,
-			AliasEnabled:   model.Alias != "",
-			ClientModel:    model.ID,
-			EntryID:        model.EntryID,
-			Weight:         cloneInt(model.Weight),
-			Priority:       cloneInt(model.Priority),
-			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
-			PricingStatus:  PricingStatusPending,
+			ID:               model.ID,
+			Alias:            model.Alias,
+			TestAlias:        model.TestAlias,
+			AliasEnabled:     model.Alias != "",
+			ClientModel:      model.ID,
+			EntryID:          model.EntryID,
+			Weight:           cloneInt(model.Weight),
+			Priority:         cloneInt(model.Priority),
+			CircuitBreaker:   cloneEntryCircuitBreaker(model.CircuitBreaker),
+			ConcurrencyLimit: model.ConcurrencyLimit,
+			PricingStatus:    PricingStatusPending,
 		}
 		if item.AliasEnabled {
 			item.ClientModel = model.Alias
@@ -432,6 +439,10 @@ func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel
 		}
 		if !model.circuitBreakerSet && exists {
 			model.CircuitBreaker = cloneEntryCircuitBreaker(preserved.CircuitBreaker)
+		}
+		// concurrency_limit 缺失保持已存值；显式 0 重新放开为该条目的“不限”。
+		if !model.concurrencyLimitSet && exists {
+			model.ConcurrencyLimit = preserved.ConcurrencyLimit
 		}
 		if exists {
 			model.ReasoningEffort = preserved.ReasoningEffort

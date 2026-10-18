@@ -230,6 +230,11 @@ export default {
         reasoning: 'Reasoning policy',
         inherit: 'Not configured',
         groupDisabled: 'Group disabled',
+        advanced: 'Advanced',
+        concurrencyLimit: 'Concurrency limit',
+        invalidConcurrencyLimit: 'Enter an integer from 0 to 2147483647.',
+        concurrencyHelp:
+          '0 means unlimited. Requests with a valid affinity binding may exceed this limit and still count toward usage.',
       },
       reasons: {
         access_key_disabled: 'Access key is disabled',

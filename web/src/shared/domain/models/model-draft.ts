@@ -154,6 +154,9 @@ export function normalizeModel(model: GroupModelUpdateDto): GroupModelUpdateDto 
   if (Object.prototype.hasOwnProperty.call(model, 'entry_id')) {
     normalized.entry_id = model.entry_id
   }
+  if (Object.prototype.hasOwnProperty.call(model, 'concurrency_limit')) {
+    normalized.concurrency_limit = model.concurrency_limit
+  }
   if (Object.prototype.hasOwnProperty.call(model, 'circuit_breaker')) {
     normalized.circuit_breaker = model.circuit_breaker
   }

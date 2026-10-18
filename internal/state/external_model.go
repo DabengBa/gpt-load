@@ -93,6 +93,19 @@ func ValidateTestAliases(groups []GroupConfig) error {
 	return nil
 }
 
+// MaxConcurrencyLimit bounds the per-route-entry in-flight request cap.
+// 0 means unlimited; the upper bound matches the int32 range the management
+// plane and the browser both represent exactly.
+const MaxConcurrencyLimit = 2147483647
+
+// ValidateConcurrencyLimit rejects limits outside 0..MaxConcurrencyLimit.
+func ValidateConcurrencyLimit(limit int) error {
+	if limit < 0 || limit > MaxConcurrencyLimit {
+		return fmt.Errorf("concurrency_limit must be between 0 and %d", MaxConcurrencyLimit)
+	}
+	return nil
+}
+
 type EntryCircuitBreaker struct {
 	BlacklistThreshold *int `json:"blacklist_threshold,omitempty"`
 	CooldownSeconds    *int `json:"cooldown_seconds,omitempty"`
@@ -155,6 +168,9 @@ func ValidateModelRouteEntries(subject string, models []ModelConfig) error {
 		}
 		if model.Priority != nil && *model.Priority < 1 {
 			return fmt.Errorf("%s model %q: priority must be at least 1", subject, upstream)
+		}
+		if err := ValidateConcurrencyLimit(model.ConcurrencyLimit); err != nil {
+			return fmt.Errorf("%s model %q: %w", subject, upstream, err)
 		}
 		if model.EntryID != "" && !entryIDPattern.MatchString(model.EntryID) {
 			return fmt.Errorf("%s model %q: entry_id has invalid format", subject, upstream)

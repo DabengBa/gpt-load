@@ -67,6 +67,9 @@ type ModelConfig struct {
 	Priority        *int
 	Enabled         *bool
 	CircuitBreaker  *EntryCircuitBreaker
+	// ConcurrencyLimit caps concurrent in-flight requests on this route
+	// entry; 0 means unlimited.
+	ConcurrencyLimit int
 }
 
 type AccessKeyConfig struct {
@@ -96,14 +99,15 @@ type FilterSet struct {
 }
 
 type RouteTarget struct {
-	GroupID         uint
-	UpstreamModelID string
-	EntryID         string
-	Mode            channel.RouteMode
-	ResolvedTarget  channel.ResolvedTarget
-	EntryWeight     int // 条目权重,nil 归一为 1;0 保留条目但不参与分流
-	Priority        int // 条目优先级,nil 归一为 1
-	Enabled         bool
+	GroupID          uint
+	UpstreamModelID  string
+	EntryID          string
+	Mode             channel.RouteMode
+	ResolvedTarget   channel.ResolvedTarget
+	EntryWeight      int // 条目权重,nil 归一为 1;0 保留条目但不参与分流
+	Priority         int // 条目优先级,nil 归一为 1
+	ConcurrencyLimit int // 并发上限,0 不限
+	Enabled          bool
 }
 
 // NoModelRouteKey identifies operations whose upstream resource ID, rather
@@ -409,19 +413,21 @@ func appendExecutionTargets(
 					appendExecutionTarget(index, clientProtocol, operation, external, RouteTarget{
 						GroupID: group.ID, UpstreamModelID: strings.TrimSpace(model.ID),
 						Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
-						EntryWeight: normalizeRouteEntryValue(model.Weight),
-						Priority:    normalizeRouteEntryValue(model.Priority),
-						Enabled:     model.Enabled == nil || *model.Enabled,
-						EntryID:     routeEntryIdentity(external, model),
+						EntryWeight:      normalizeRouteEntryValue(model.Weight),
+						Priority:         normalizeRouteEntryValue(model.Priority),
+						ConcurrencyLimit: model.ConcurrencyLimit,
+						Enabled:          model.Enabled == nil || *model.Enabled,
+						EntryID:          routeEntryIdentity(external, model),
 					})
 					if model.TestAlias != "" {
 						appendExecutionTarget(index, clientProtocol, operation, model.TestAlias, RouteTarget{
 							GroupID: group.ID, UpstreamModelID: strings.TrimSpace(model.ID),
 							Mode: modelMode, ResolvedTarget: cloneResolvedTarget(target),
-							EntryWeight: normalizeRouteEntryValue(model.Weight),
-							Priority:    normalizeRouteEntryValue(model.Priority),
-							Enabled:     model.Enabled == nil || *model.Enabled,
-							EntryID:     routeEntryIdentity(external, model),
+							EntryWeight:      normalizeRouteEntryValue(model.Weight),
+							Priority:         normalizeRouteEntryValue(model.Priority),
+							ConcurrencyLimit: model.ConcurrencyLimit,
+							Enabled:          model.Enabled == nil || *model.Enabled,
+							EntryID:          routeEntryIdentity(external, model),
 						})
 					}
 				}
@@ -487,8 +493,9 @@ func cloneModelConfigs(models []ModelConfig) []ModelConfig {
 			ID: model.ID, Alias: model.Alias, TestAlias: model.TestAlias, EntryID: routeEntryIdentity(ExternalModelName(model.ID, model.Alias), model),
 			ReasoningEffort: model.ReasoningEffort,
 			Weight:          cloneWeight(model.Weight), Priority: cloneWeight(model.Priority),
-			Enabled:        cloneBool(model.Enabled),
-			CircuitBreaker: cloneEntryCircuitBreaker(model.CircuitBreaker),
+			Enabled:          cloneBool(model.Enabled),
+			CircuitBreaker:   cloneEntryCircuitBreaker(model.CircuitBreaker),
+			ConcurrencyLimit: model.ConcurrencyLimit,
 		}
 	}
 	return cloned

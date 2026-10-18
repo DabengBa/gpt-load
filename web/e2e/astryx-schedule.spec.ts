@@ -18,6 +18,7 @@ type SchedulePatch = {
     entry_id: string
     weight?: number | null
     priority?: number | null
+    concurrency_limit?: number
     enabled?: boolean
     reasoning_effort?: string | null
   }>
@@ -54,6 +55,7 @@ function entry(entryID: string, modelID: string, weight: number, priority = 1, o
     alias: '',
     weight,
     priority,
+    concurrency_limit: 0,
     enabled: true,
     circuit_breaker: {
       configured: { blacklist_threshold: null, cooldown_seconds: null },
@@ -118,6 +120,55 @@ function detailForModel(externalModel: string) {
 }
 
 type PatchOutcome = 'success' | 'error' | 'conflict'
+
+test('advanced concurrency saves, reloads, validates and discards incomplete input', async ({
+  page,
+}) => {
+  const { patches } = await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const row = page.locator('[data-row-key="1:entry-1"]')
+  await row.locator('summary').click()
+  const input = page.locator('#concurrency-0')
+  await expect(input).toHaveValue('0')
+  await expect(row.getByText(/0 means unlimited/)).toBeVisible()
+  for (const value of ['', '-1', '1.5', '2147483648']) {
+    await input.fill(value)
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  }
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await expect(input).toHaveValue('0')
+  await input.fill('2147483647')
+  await expect(page).toHaveURL(/schedule_draft=/)
+  await page.reload()
+  await waitForScheduleDetailReady(page)
+  await row.locator('summary').click()
+  await expect(input).toHaveValue('2147483647')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => patches.length).toBe(1)
+  expect(patches[0]!.updates).toEqual([
+    { group_id: 1, entry_id: 'entry-1', concurrency_limit: 2147483647 },
+  ])
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+})
+
+test('advanced concurrency preserves URL draft and input after revision conflict', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page, { patchOutcome: 'conflict' })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('[data-row-key="1:entry-1"] summary').click()
+  await page.locator('#concurrency-0').fill('3')
+  await expect(page).toHaveURL(/schedule_draft=/)
+  const draft = new URL(page.url()).searchParams.get('schedule_draft')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(
+    page.getByText('The configuration changed. Refresh and try again.').first(),
+  ).toBeVisible()
+  await expect(page.locator('#concurrency-0')).toHaveValue('3')
+  expect(new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
+})
 type DetailOutcome = 'success' | 'error' | 'empty'
 
 interface ScheduleRoutes {

@@ -4719,13 +4719,14 @@ func TestHandlerKeepsFrozenSnapshotAcrossRetry(t *testing.T) {
 		if index != 0 {
 			return
 		}
+		current := manager.Current()
 		if _, err := manager.Publish(state.CompileInput{
 			ChannelRegistry: channel.NewRegistry(),
 			Groups: []state.GroupConfig{
 				{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-					Models: []state.ModelConfig{{ID: "gpt-4o"}}, Settings: config.Settings{state.SettingBlacklistThreshold: 7}, Enabled: true},
+					Models: current.Groups[1].Models, Settings: config.Settings{state.SettingBlacklistThreshold: 7}, Enabled: true},
 				{ConnectionType: "api_key", ID: 2, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
-					Models: []state.ModelConfig{{ID: "gpt-4o"}}, Settings: config.Settings{state.SettingBlacklistThreshold: 7}, Enabled: true},
+					Models: current.Groups[2].Models, Settings: config.Settings{state.SettingBlacklistThreshold: 7}, Enabled: true},
 			},
 			Credentials: []state.CredentialConfig{
 				testCredentialConfig(1, 1),

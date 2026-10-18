@@ -67,6 +67,7 @@ test('dirty settings and model drafts survive focus and reconnect', async ({ pag
             alias_enabled: true,
             client_model: 'original',
             test_alias: 'abc123',
+            concurrency_limit: 0,
             weight: null,
             priority: null,
             pricing_status: 'pending',

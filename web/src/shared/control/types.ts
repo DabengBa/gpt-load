@@ -160,6 +160,7 @@ export interface EntryCircuitBreakerDto {
 }
 
 export interface GroupModelItemDto {
+  concurrency_limit: number
   id: string
   alias: string
   alias_enabled: boolean

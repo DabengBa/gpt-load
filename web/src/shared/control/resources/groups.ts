@@ -76,6 +76,7 @@ const groupSettingsFields = [
 const groupModelsFields = ['items', 'total', 'pending'] as const
 const groupModelItemFields = [
   'id',
+  'concurrency_limit',
   'alias',
   'alias_enabled',
   'client_model',
@@ -174,6 +175,7 @@ export interface ModelDiscoveryResult {
 
 export interface GroupModelUpdateDto {
   id: string
+  concurrency_limit?: number
   alias: string
   alias_enabled: boolean
   entry_id?: string
@@ -479,6 +481,10 @@ function projectGroupModelItem(value: unknown): GroupModelItemDto {
   }
   const result: GroupModelItemDto = {
     id,
+    concurrency_limit: projectSafeInteger(record.concurrency_limit, {
+      minimum: 0,
+      maximum: 2147483647,
+    }),
     alias,
     alias_enabled: aliasEnabled,
     client_model: clientModel,

@@ -110,21 +110,23 @@ type scheduleEntryRuntimeView struct {
 }
 
 type modelRouteScheduleEntryResponse struct {
-	EntryID         string                           `json:"entry_id"`
-	ModelID         string                           `json:"model_id"`
-	Alias           string                           `json:"alias"`
-	Weight          int                              `json:"weight"`
-	Priority        int                              `json:"priority"`
-	CircuitBreaker  scheduleBreakerView              `json:"circuit_breaker"`
-	Reasoning       scheduleReasoningView            `json:"reasoning"`
-	Runtime         scheduleEntryRuntimeView         `json:"runtime"`
-	Enabled         bool                             `json:"enabled"`
-	Included        bool                             `json:"included"`
-	Routable        bool                             `json:"routable"`
-	ReasonCode      *scheduler.ReasonCode            `json:"reason_code"`
-	ConfiguredShare float64                          `json:"configured_share"`
-	EffectiveShare  float64                          `json:"effective_share"`
-	Credentials     []routeInspectCredentialResponse `json:"credentials"`
+	EntryID  string `json:"entry_id"`
+	ModelID  string `json:"model_id"`
+	Alias    string `json:"alias"`
+	Weight   int    `json:"weight"`
+	Priority int    `json:"priority"`
+	// ConcurrencyLimit is the entry's in-flight cap; 0 means unlimited.
+	ConcurrencyLimit int                              `json:"concurrency_limit"`
+	CircuitBreaker   scheduleBreakerView              `json:"circuit_breaker"`
+	Reasoning        scheduleReasoningView            `json:"reasoning"`
+	Runtime          scheduleEntryRuntimeView         `json:"runtime"`
+	Enabled          bool                             `json:"enabled"`
+	Included         bool                             `json:"included"`
+	Routable         bool                             `json:"routable"`
+	ReasonCode       *scheduler.ReasonCode            `json:"reason_code"`
+	ConfiguredShare  float64                          `json:"configured_share"`
+	EffectiveShare   float64                          `json:"effective_share"`
+	Credentials      []routeInspectCredentialResponse `json:"credentials"`
 }
 
 type modelRouteScheduleGroupResponse struct {
@@ -511,13 +513,14 @@ func mapModelRouteScheduleDetail(
 			CircuitBreaker: scheduleBreakerViewFromConfiguration(
 				configuration.circuitBreaker,
 			),
-			Runtime:         runtimeView,
-			Included:        group.Included,
-			Routable:        group.Routable,
-			ReasonCode:      optionalReason(group.Reason),
-			ConfiguredShare: configuredShares[index],
-			EffectiveShare:  group.EffectiveShare,
-			Credentials:     credentials,
+			ConcurrencyLimit: configuration.concurrencyLimit,
+			Runtime:          runtimeView,
+			Included:         group.Included,
+			Routable:         group.Routable,
+			ReasonCode:       optionalReason(group.Reason),
+			ConfiguredShare:  configuredShares[index],
+			EffectiveShare:   group.EffectiveShare,
+			Credentials:      credentials,
 		}
 		entry.Reasoning, err = scheduleReasoningProjection(configuration)
 		if err != nil {
@@ -623,10 +626,11 @@ func scheduleEntryRuntime(
 }
 
 type scheduleEntryConfiguration struct {
-	alias           string
-	enabled         bool
-	circuitBreaker  *state.EntryCircuitBreaker
-	reasoningEffort string
+	alias            string
+	enabled          bool
+	circuitBreaker   *state.EntryCircuitBreaker
+	reasoningEffort  string
+	concurrencyLimit int
 }
 
 // scheduleEntryConfigurations indexes every snapshot catalog group's models by
@@ -652,10 +656,11 @@ func scheduleEntryConfigurations(
 				result[groupID] = make(map[string]scheduleEntryConfiguration)
 			}
 			result[groupID][identity] = scheduleEntryConfiguration{
-				alias:           model.Alias,
-				enabled:         model.Enabled == nil || *model.Enabled,
-				circuitBreaker:  cloneEntryCircuitBreaker(model.CircuitBreaker),
-				reasoningEffort: model.ReasoningEffort,
+				alias:            model.Alias,
+				enabled:          model.Enabled == nil || *model.Enabled,
+				circuitBreaker:   cloneEntryCircuitBreaker(model.CircuitBreaker),
+				reasoningEffort:  model.ReasoningEffort,
+				concurrencyLimit: model.ConcurrencyLimit,
 			}
 		}
 	}
@@ -791,6 +796,8 @@ type modelRouteSchedulePatchUpdate struct {
 	Enabled         optionalField[bool]       `json:"enabled"`
 	CircuitBreaker  scheduleBreakerPatchField `json:"circuit_breaker"`
 	ReasoningEffort optionalField[string]     `json:"reasoning_effort"`
+	// ConcurrencyLimit absent keeps the stored cap; null is rejected.
+	ConcurrencyLimit optionalField[int] `json:"concurrency_limit"`
 }
 
 type modelRouteSchedulePatchRequest struct {
@@ -989,6 +996,15 @@ func applyModelRouteScheduleUpdateFields(
 			value := update.Priority.Value
 			entry.Priority = &value
 		}
+	}
+	if update.ConcurrencyLimit.Set {
+		if update.ConcurrencyLimit.Null {
+			return app_errors.ErrValidation
+		}
+		if err := validateConcurrencyLimit(update.ConcurrencyLimit.Value); err != nil {
+			return app_errors.ErrValidation
+		}
+		entry.ConcurrencyLimit = update.ConcurrencyLimit.Value
 	}
 	if update.Enabled.Set {
 		if update.Enabled.Null {

@@ -97,6 +97,7 @@ type Iterator struct {
 	preferredHealthBypassed     bool
 	tried                       map[candidateKey]struct{}
 	skippedGroups               map[uint]struct{}
+	skippedEntries              map[state.RouteEntryKey]struct{}
 	staticReason                ReasonCode
 	runtimeReason               ReasonCode
 	now                         func() time.Time
@@ -321,6 +322,9 @@ func (iterator *Iterator) weightedTierPool(
 	configuredCounts := iterator.credentials.CredentialCountsByGroup(groupIDs)
 	weighted := make([]weightedCandidate, 0, len(targets))
 	for _, target := range targets {
+		if _, skipped := iterator.skippedEntries[state.RouteEntryKey{GroupID: target.target.GroupID, EntryID: target.target.EntryID}]; skipped {
+			continue
+		}
 		if configuredCounts[target.target.GroupID] != 1 {
 			// Cardinality is checked against configured credentials, before health
 			// filtering, so an invalid group cannot use a remaining healthy key.
@@ -381,6 +385,16 @@ func (iterator *Iterator) weightedTierPool(
 }
 
 func (iterator *Iterator) Next() (Selection, error) {
+	selection, err := iterator.NextCandidate()
+	if err == nil {
+		iterator.MarkAttempt(selection)
+	}
+	return selection, err
+}
+
+// NextCandidate selects without spending the credential/upstream retry pair.
+// The executor must MarkAttempt on admission or SkipEntry on capacity denial.
+func (iterator *Iterator) NextCandidate() (Selection, error) {
 	if iterator != nil {
 		iterator.preferredHealthBypassed = false
 	}
@@ -392,7 +406,6 @@ func (iterator *Iterator) Next() (Selection, error) {
 	// 其他合格候选返回,不受 priority tier、route mode 或 store bucket 限制。
 	// 扫描沿用普通调度的 bucket 顺序,使同 credential 的多 entry 保持既有顺序。
 	if selected, found := iterator.preferredSelection(now); found {
-		iterator.markTried(selected)
 		return newSelection(selected.credential, selected.target), nil
 	}
 	// 优先级分层(设计 §5.2):只在当前最高可用层内挑选,层耗尽才降级。
@@ -422,12 +435,26 @@ func (iterator *Iterator) Next() (Selection, error) {
 					}
 				}
 				iterator.preferredHealthBypassed = selected.credential.ID != iterator.preferredCredentialID && iterator.preferredHealthExcluded(now)
-				iterator.markTried(selected)
 				return newSelection(selected.credential, selected.target), nil
 			}
 		}
 	}
 	return Selection{}, ErrExhausted
+}
+
+func (iterator *Iterator) SkipEntry(key state.RouteEntryKey) {
+	if iterator.skippedEntries == nil {
+		iterator.skippedEntries = make(map[state.RouteEntryKey]struct{})
+	}
+	iterator.skippedEntries[key] = struct{}{}
+}
+
+func (iterator *Iterator) MarkAttempt(selection Selection) {
+	upstream := ""
+	if selection.UpstreamModelID != nil {
+		upstream = *selection.UpstreamModelID
+	}
+	iterator.tried[candidateKey{credentialID: selection.CredentialID, upstreamModel: upstream}] = struct{}{}
 }
 
 // PreferredHealthBypassed reports whether the last Next selected a different
@@ -516,15 +543,6 @@ func (iterator *Iterator) preferredSelection(now time.Time) (weightedCandidate, 
 		}
 	}
 	return weightedCandidate{}, false
-}
-
-// markTried records the selected (credential, upstream model) pair so retries
-// never repeat it and the affinity credential moves on after its first attempt.
-func (iterator *Iterator) markTried(selected weightedCandidate) {
-	iterator.tried[candidateKey{
-		credentialID:  selected.credential.ID,
-		upstreamModel: selected.target.target.UpstreamModelID,
-	}] = struct{}{}
 }
 
 // preferredCandidate resolves the session-affinity credential inside the
