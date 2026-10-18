@@ -170,6 +170,54 @@ func TestScheduleCapacityAfterProviderFailurePreservesEvidence(t *testing.T) {
 	}
 }
 
+func TestScheduleCapacityFailureLogNamesCapacityNotNoCandidate(t *testing.T) {
+	for _, maxAttempts := range []int{1, 3} {
+		t.Run(fmt.Sprintf("max_attempts=%d", maxAttempts), func(t *testing.T) {
+			forwarder := &scriptedForwarder{results: successfulAffinityResults(maxAttempts)}
+			handler, _, _ := newHandlerForTest(t, forwarder, "sk-one")
+			sink := &recordingRequestLogSink{}
+			handler.requestLogSink = sink
+			group := affinityBucketGroup(1, channel.OpenAI, "gpt-4o", 1, 1)
+			group.Models[0].ConcurrencyLimit = 1
+			input := affinityBucketRuntimeInput(handler, config.Settings{state.SettingRetryCount: maxAttempts}, group)
+			input.Credentials = input.Credentials[:1]
+			if _, err := handler.manager.Publish(input); err != nil {
+				t.Fatal(err)
+			}
+			key := state.RouteEntryKey{GroupID: 1, EntryID: "e000000000001"}
+			occupied, ok := handler.manager.AcquireCapacity(key, false)
+			if !ok {
+				t.Fatal("occupy")
+			}
+			t.Cleanup(occupied.Release)
+			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"capacity"}]}`))
+			request.Header.Set("Authorization", "Bearer gl-client")
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			newAffinityTestEngine(t, handler).ServeHTTP(response, request)
+			events := sink.snapshot()
+			if response.Code != 503 || len(events) != 1 || len(forwarder.inputs) != 0 {
+				t.Fatalf("status=%d events=%+v forwards=%d", response.Code, events, len(forwarder.inputs))
+			}
+			event := events[0]
+			if event.ErrorCode != "schedule_capacity_exhausted" ||
+				!strings.Contains(event.ErrorSummary, "All eligible route entries are at capacity.") ||
+				strings.Contains(event.ErrorSummary, "remaining eligible") {
+				t.Fatalf("capacity denial logged as %q %q", event.ErrorCode, event.ErrorSummary)
+			}
+			if len(event.Attempts) != 0 {
+				t.Fatalf("capacity denial created attempts: %+v", event.Attempts)
+			}
+			if handler.manager.CapacityInUse(key) != 1 {
+				t.Fatal("denied request changed occupancy")
+			}
+			if !strings.Contains(response.Body.String(), "schedule_capacity_exhausted") {
+				t.Fatalf("body=%s", response.Body.String())
+			}
+		})
+	}
+}
+
 func TestScheduleCapacityHTTPAdmission(t *testing.T) {
 	for _, allFull := range []bool{false, true} {
 		t.Run(map[bool]string{false: "fallback", true: "exhausted"}[allFull], func(t *testing.T) {

@@ -132,3 +132,105 @@ func TestCapacityDisabledGroupRetainsOccupancyUntilRelease(t *testing.T) {
 		t.Fatal("capacity did not return after old request released")
 	}
 }
+
+func TestCapacityLimitChangeTakesEffectWithoutLeaking(t *testing.T) {
+	m := NewManager()
+	key := RouteEntryKey{1, "e1"}
+	m.publishCompiled(capacitySnapshot(0), nil)
+	reservations := make([]*CapacityReservation, 0, 3)
+	for range 3 {
+		reservation, ok := m.AcquireCapacity(key, false)
+		if !ok {
+			t.Fatal("unlimited entry rejected")
+		}
+		reservations = append(reservations, reservation)
+	}
+	m.publishCompiled(capacitySnapshot(5), nil)
+	for range 2 {
+		reservation, ok := m.AcquireCapacity(key, false)
+		if !ok {
+			t.Fatal("raised limit rejected below the new cap")
+		}
+		reservations = append(reservations, reservation)
+	}
+	if m.CapacityInUse(key) != 5 {
+		t.Fatalf("in use = %d, want 5", m.CapacityInUse(key))
+	}
+	if _, ok := m.AcquireCapacity(key, false); ok {
+		t.Fatal("new cap admitted an extra request")
+	}
+	for _, reservation := range reservations {
+		reservation.Release()
+	}
+	if m.CapacityInUse(key) != 0 {
+		t.Fatalf("in use after release = %d, want 0", m.CapacityInUse(key))
+	}
+}
+
+func TestCapacityCountsAnyRouteModeOfOneEntryOnce(t *testing.T) {
+	m := NewManager()
+	// One route entry reachable through several operations/protocols and both
+	// route modes shares a single in-flight budget: the key is (group, entry).
+	snapshot := &ConfigSnapshot{ExecutionCandidates: ExecutionCandidateIndex{
+		"chat_completion": {
+			"gpt-4o": {
+				"public": {
+					{GroupID: 1, EntryID: "e1", ConcurrencyLimit: 1},
+				},
+				"alias": {
+					{GroupID: 1, EntryID: "e1", ConcurrencyLimit: 1},
+				},
+			},
+		},
+		"embedding": {
+			"text-embedding-3": {
+				"public": {
+					{GroupID: 1, EntryID: "e1", ConcurrencyLimit: 1},
+				},
+			},
+		},
+	}}
+	m.publishCompiled(snapshot, nil)
+	key := RouteEntryKey{1, "e1"}
+	reservation, ok := m.AcquireCapacity(key, false)
+	if !ok {
+		t.Fatal("candidate-only entry rejected")
+	}
+	defer reservation.Release()
+	if _, ok := m.AcquireCapacity(key, false); ok {
+		t.Fatal("fan-out over-counted capacity: entry admitted twice")
+	}
+	if _, ok := m.AcquireCapacity(key, true); !ok {
+		t.Fatal("affinity overflow rejected")
+	}
+}
+
+func TestCapacityConcurrentAcquireReleaseUnderPublication(t *testing.T) {
+	m := NewManager()
+	key := RouteEntryKey{1, "e1"}
+	m.publishCompiled(capacitySnapshot(4), nil)
+	var admitted atomic.Int32
+	var wg sync.WaitGroup
+	for range 64 {
+		wg.Go(func() {
+			reservation, ok := m.AcquireCapacity(key, false)
+			if !ok {
+				return
+			}
+			admitted.Add(1)
+			reservation.Release()
+		})
+	}
+	for range 8 {
+		wg.Go(func() {
+			m.publishCompiled(capacitySnapshot(4), nil)
+		})
+	}
+	wg.Wait()
+	if m.CapacityInUse(key) != 0 {
+		t.Fatalf("in use = %d, want 0", m.CapacityInUse(key))
+	}
+	if admitted.Load() == 0 {
+		t.Fatal("no admission under concurrent publication")
+	}
+}
