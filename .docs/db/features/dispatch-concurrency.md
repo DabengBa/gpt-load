@@ -3,6 +3,7 @@ id: feature.dispatch-concurrency
 type: feature
 name: 调度行并发上限
 route: /schedule
+related: [feature.dispatch-reasoning-policy]
 ---
 # 调度行并发上限
 
