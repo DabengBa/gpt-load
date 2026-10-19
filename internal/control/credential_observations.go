@@ -696,8 +696,7 @@ func (s *Service) enrichCredentialActivities(
 	}
 	credentialIDs := make([]uint, 0, len(items))
 	for index := range items {
-		if items[index].ConnectionType == string(models.ConnectionTypeSubscription) &&
-			items[index].CredentialID != 0 {
+		if items[index].CredentialID != 0 {
 			credentialIDs = append(credentialIDs, items[index].CredentialID)
 		}
 	}
@@ -726,12 +725,17 @@ func (s *Service) enrichCredentialActivities(
 		if !exists {
 			continue
 		}
-		items[index].LastUsedAtMS = activity.LastUsedAtMS
-		items[index].DailyUsage = &CredentialDailyUsageResponse{
-			WindowSeconds: int64(credentialDailyUsageWindow / time.Second),
-			SuccessCount:  activity.SuccessCount,
-			FailureCount:  activity.FailureCount,
-			DataComplete:  activity.DataComplete,
+		items[index].LastFailureSummary = activity.LastFailureSummary
+		if items[index].ConnectionType == string(models.ConnectionTypeSubscription) {
+			items[index].LastUsedAtMS = activity.LastUsedAtMS
+		}
+		if items[index].ConnectionType == string(models.ConnectionTypeSubscription) {
+			items[index].DailyUsage = &CredentialDailyUsageResponse{
+				WindowSeconds: int64(credentialDailyUsageWindow / time.Second),
+				SuccessCount:  activity.SuccessCount,
+				FailureCount:  activity.FailureCount,
+				DataComplete:  activity.DataComplete,
+			}
 		}
 	}
 }

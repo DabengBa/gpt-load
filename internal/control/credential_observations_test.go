@@ -1144,13 +1144,14 @@ func TestEnrichCredentialDailyUsageLeavesItemUntouchedOnQueryFailure(t *testing.
 	}
 }
 
-func TestEnrichCredentialActivitiesBatchesSubscriptionItems(t *testing.T) {
+func TestEnrichCredentialActivitiesBatchesAllCredentialItems(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	now := time.UnixMilli(1_800_000_000_000)
 	fixture.service.now = func() time.Time { return now }
 	reader := &recordingCredentialActivityReader{result: map[uint]requestlog.CredentialActivity{
 		37: {CredentialID: 37, SuccessCount: 4, DataComplete: true},
+		38: {CredentialID: 38, LastFailureSummary: "provider unavailable"},
 		39: {CredentialID: 39, FailureCount: 2, DataComplete: true},
 	}}
 	fixture.service.credentialActivity = reader
@@ -1163,11 +1164,12 @@ func TestEnrichCredentialActivitiesBatchesSubscriptionItems(t *testing.T) {
 	fixture.service.enrichCredentialActivities(t.Context(), items)
 
 	if len(reader.queries) != 1 ||
-		!reflect.DeepEqual(reader.queries[0].CredentialIDs, []uint{37, 39}) {
-		t.Fatalf("activity queries = %#v, want one subscription batch", reader.queries)
+		!reflect.DeepEqual(reader.queries[0].CredentialIDs, []uint{37, 38, 39}) {
+		t.Fatalf("activity queries = %#v, want one credential batch", reader.queries)
 	}
 	if items[0].DailyUsage == nil || items[0].DailyUsage.SuccessCount != 4 ||
-		items[1].DailyUsage != nil || items[2].DailyUsage == nil ||
+		items[1].DailyUsage != nil || items[1].LastFailureSummary != "provider unavailable" ||
+		items[2].DailyUsage == nil ||
 		items[2].DailyUsage.FailureCount != 2 {
 		t.Fatalf("enriched items = %#v", items)
 	}

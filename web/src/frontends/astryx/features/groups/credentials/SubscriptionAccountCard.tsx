@@ -413,10 +413,10 @@ export function SubscriptionAccountCard({
       : undefined
   const failureLabel =
     item.recent_failure_count === 0
-      ? t('group.credentials.none')
+      ? item.last_failure_summary || t('group.credentials.none')
       : `${presentCredentialFailureCategory((key) => t(key as MessageId), item.last_failure_category)}${
           item.last_status_code === null ? '' : ` · ${item.last_status_code}`
-        }`
+        }${item.last_failure_summary ? ` · ${item.last_failure_summary}` : ''}`
 
   function observationErrorLabel(code: string | undefined): string {
     if (!code) return '—'

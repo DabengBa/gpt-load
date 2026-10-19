@@ -615,7 +615,6 @@ func firstStreamErrorEvidence(
 			typeValue,
 			codeValue,
 			statusValue,
-			evidence.Summary,
 		)
 	}
 	evidence.OriginHint = execution.ErrorOriginUpstream

@@ -51,6 +51,11 @@ func TestExtractErrorMessageUsesOnlySafeMessageShapes(t *testing.T) {
 			want: "nested reason",
 		},
 		{
+			name: "Responses failed nested error message",
+			body: []byte(`{"type":"response.failed","response":{"error":{"message":"provider capacity exhausted"}}}`),
+			want: "provider capacity exhausted",
+		},
+		{
 			name: "top-level reseller code and message",
 			body: []byte(`{"code":"rate_limit_exceeded","message":"Reseller quota exhausted for this key."}`),
 			want: "Reseller quota exhausted for this key.",
