@@ -27,10 +27,15 @@ upgrade procedure are recorded in
 
 ## Architecture And Constraints
 
-The root module requires Bifrost core v1.11.3 and replaces it with
+The root module requires Bifrost core v1.13.0 and replaces it with
 `third_party/bifrost-core`. Its schema converters and provider serializers
 determine the actual converted payload. Native passthrough does not repair
 previously saved client history.
+
+Bifrost v1.13.0 replaced the embedding input union with an item list. That is
+an Embeddings-wire concern, not a reasoning-history one: `internal/execution/bifrost/embeddings.go`
+builds a marker in the new item shape while the untouched raw body remains the
+upstream authority.
 
 Protocol conversion preserves tool-call/result pairing, but does not promise
 lossless reasoning-state transfer or encrypted reasoning portability between
@@ -98,6 +103,14 @@ These local tests prove the covered serialization and pairing behavior; they
 do not establish acceptance by every live provider. For an actual destination,
 inspect all observed provider attempts through
 [debug communication capture](debug-communications.md).
+
+Streaming startup events follow the destination, not a recovery policy: when
+the fork holds them (`streamHoldsStartupEvents`), a stream whose HTTP 200 body
+carries an error before any real output is not delivered as success. GPT-Load
+clears fallbacks and retries, so an OpenAI-family attempt with no retry budget
+left and no first-token deadline releases `created`/`in_progress` immediately;
+an attempt with a first-token deadline still holds them, because only real
+output counts as its first token.
 
 `internal/execution/bifrost/ahead_tool_output_test.go` verifies string-only tool
 output serialization and rejection before dispatch. Grok two-turn unary and

@@ -79,11 +79,24 @@ func ResolvePromptCacheConfig(ctx *schemas.BifrostContext, cfg *schemas.PromptCa
 // A caller that supplied any marker of its own is left completely alone. Injection is
 // a default for clients that say nothing, never an override of a client that spoke.
 func InjectResponsesCacheBreakpoints(cfg *schemas.PromptCacheConfig, input []schemas.ResponsesMessage) []schemas.ResponsesMessage {
+	return InjectResponsesCacheBreakpointsSkipping(cfg, input, -1)
+}
+
+// InjectResponsesCacheBreakpointsSkipping is InjectResponsesCacheBreakpoints with the item at
+// skip treated as absent: positions, roles and the auto strategy resolve against the remaining
+// items, and the skipped item is sent unmarked. It is how a message the gateway added (MCP
+// server instructions) is kept out of the caller's transcript. A negative skip skips nothing.
+func InjectResponsesCacheBreakpointsSkipping(cfg *schemas.PromptCacheConfig, input []schemas.ResponsesMessage, skip int) []schemas.ResponsesMessage {
 	if cfg == nil || len(input) == 0 || responsesHasCacheMarker(input) {
 		return input
 	}
 
-	targets := responsesInjectionTargets(cfg, input)
+	var targets []injectionTarget
+	if skip < 0 || skip >= len(input) {
+		targets = responsesInjectionTargets(cfg, input)
+	} else {
+		targets = shiftTargetsPast(responsesInjectionTargets(cfg, withoutIndex(input, skip)), skip)
+	}
 	if len(targets) == 0 {
 		return input
 	}
@@ -123,11 +136,22 @@ func InjectResponsesCacheBreakpoints(cfg *schemas.PromptCacheConfig, input []sch
 // InjectChatCacheBreakpoints is the Chat Completions parallel of
 // InjectResponsesCacheBreakpoints. Same rules, same copy-on-write guarantee.
 func InjectChatCacheBreakpoints(cfg *schemas.PromptCacheConfig, input []schemas.ChatMessage) []schemas.ChatMessage {
+	return InjectChatCacheBreakpointsSkipping(cfg, input, -1)
+}
+
+// InjectChatCacheBreakpointsSkipping is the Chat Completions parallel of
+// InjectResponsesCacheBreakpointsSkipping.
+func InjectChatCacheBreakpointsSkipping(cfg *schemas.PromptCacheConfig, input []schemas.ChatMessage, skip int) []schemas.ChatMessage {
 	if cfg == nil || len(input) == 0 || chatHasCacheMarker(input) {
 		return input
 	}
 
-	targets := chatInjectionTargets(cfg, input)
+	var targets []injectionTarget
+	if skip < 0 || skip >= len(input) {
+		targets = chatInjectionTargets(cfg, input)
+	} else {
+		targets = shiftTargetsPast(chatInjectionTargets(cfg, withoutIndex(input, skip)), skip)
+	}
 	if len(targets) == 0 {
 		return input
 	}
@@ -203,6 +227,24 @@ func hasChatCachePoint(block schemas.ChatContentBlock) bool {
 	return block.CachePoint != nil
 }
 
+// withoutIndex returns a copy of input without the element at skip (0 <= skip < len(input)).
+func withoutIndex[T any](input []T, skip int) []T {
+	view := make([]T, 0, len(input)-1)
+	view = append(view, input[:skip]...)
+	return append(view, input[skip+1:]...)
+}
+
+// shiftTargetsPast maps targets resolved on a view without the element at skip back onto the
+// full input.
+func shiftTargetsPast(targets []injectionTarget, skip int) []injectionTarget {
+	for i := range targets {
+		if targets[i].msg >= skip {
+			targets[i].msg++
+		}
+	}
+	return targets
+}
+
 // injectionTarget names one place to write a marker. promoteStr means the message
 // carries a bare ContentStr that must become a block first, in which case block is
 // meaningless.
@@ -276,17 +318,28 @@ func chatHasCacheMarker(input []schemas.ChatMessage) bool {
 // cache through the latest cacheable item on Anthropic. Other providers retain the
 // default first-block strategy. An explicit caller/configured policy always wins.
 func InjectLastResponsesCacheBreakpoint(cfg *schemas.PromptCacheConfig, input []schemas.ResponsesMessage) []schemas.ResponsesMessage {
+	return InjectLastResponsesCacheBreakpointSkipping(cfg, input, -1)
+}
+
+// InjectLastResponsesCacheBreakpointSkipping is InjectLastResponsesCacheBreakpoint with the
+// item at skip treated as absent, so a message the gateway added (MCP server instructions)
+// never becomes the Anthropic breakpoint. A negative skip skips nothing.
+func InjectLastResponsesCacheBreakpointSkipping(cfg *schemas.PromptCacheConfig, input []schemas.ResponsesMessage, skip int) []schemas.ResponsesMessage {
 	if cfg == nil || !cfg.AutoInject || len(cfg.InjectionPoints) > 0 {
-		return InjectResponsesCacheBreakpoints(cfg, input)
+		return InjectResponsesCacheBreakpointsSkipping(cfg, input, skip)
 	}
-	for i := len(input) - 1; i >= 0; i-- {
+	search := input
+	if skip >= 0 && skip < len(input) {
+		search = withoutIndex(input, skip)
+	}
+	for i := len(search) - 1; i >= 0; i-- {
 		point := schemas.CacheControlInjectionPoint{Location: schemas.CacheControlInjectionLocationMessage, Index: schemas.Ptr(i)}
-		if len(responsesPointTargets([]schemas.CacheControlInjectionPoint{point}, input)) == 0 {
+		if len(responsesPointTargets([]schemas.CacheControlInjectionPoint{point}, search)) == 0 {
 			continue
 		}
 		local := *cfg
 		local.InjectionPoints = []schemas.CacheControlInjectionPoint{point}
-		return InjectResponsesCacheBreakpoints(&local, input)
+		return InjectResponsesCacheBreakpointsSkipping(&local, input, skip)
 	}
 	return input
 }

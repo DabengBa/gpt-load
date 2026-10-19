@@ -27,9 +27,12 @@ func init() {
 }
 
 func codexRequestWithServiceTier(convert sdktranslator.RequestTransform) sdktranslator.RequestTransform {
-	return func(model string, raw []byte, stream bool) []byte {
+	return func(model string, raw []byte, stream bool) ([]byte, error) {
 		tier := strings.ToLower(strings.TrimSpace(gjson.GetBytes(raw, "service_tier").String()))
-		body := convert(model, raw, stream)
+		body, err := convert(model, raw, stream)
+		if err != nil {
+			return nil, err
+		}
 		switch tier {
 		case "fast", "priority":
 			// Codex 订阅端使用 priority，不能套用公开 API 的 fast 别名。
@@ -37,8 +40,8 @@ func codexRequestWithServiceTier(convert sdktranslator.RequestTransform) sdktran
 		case "ultrafast":
 			// 在 CPA 原始转换完成后恢复，避免被其字段过滤规则删除。
 		default:
-			return body
+			return body, nil
 		}
-		return helps.SetStringIfDifferent(body, "service_tier", tier)
+		return helps.SetStringIfDifferent(body, "service_tier", tier), nil
 	}
 }

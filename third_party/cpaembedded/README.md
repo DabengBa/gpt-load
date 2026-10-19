@@ -70,7 +70,7 @@ generation-stage proof, the existing conservative replay policy remains in effec
 ## Pinned upstream
 
 - Module: `github.com/router-for-me/CLIProxyAPI/v8`
-- Version: `v8.0.8`
+- Version: `v8.0.35`
 
 The bridge keeps Codex's fixed Version and observation identity aligned with
 CPA's default User-Agent. CPA now includes Antigravity reasoning tokens in unary

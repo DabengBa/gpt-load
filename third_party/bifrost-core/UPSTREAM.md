@@ -5,10 +5,10 @@ Pinned local fork of the Bifrost Go SDK used by gpt-load.
 | fact | value |
 |---|---|
 | module path | `github.com/maximhq/bifrost/core` |
-| upstream version | `v1.11.3` (`version` file contains `1.11.3`) |
-| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.11.3`, commit `40d588d6b371d18d426dca935601e99723e9b0db` |
-| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.11.3` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
-| nested go.mod / go.sum | byte-identical to upstream v1.11.3 (unchanged from v1.11.0; the root module's MVS selection applies) |
+| upstream version | `v1.13.0` (`version` file contains `1.13.0`) |
+| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.13.0`, module cache `github.com/maximhq/bifrost/core@v1.13.0` (no commit recorded in the downloaded module) |
+| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.13.0` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
+| nested go.mod / go.sum | byte-identical to upstream v1.13.0; the root module's MVS selection applies |
 
 ## Why the fork exists
 
@@ -22,10 +22,13 @@ way to add a request-scoped observer without a global registry.
 
 ## Fork delta
 
-`gptload-observer.patch` is the complete source diff against pristine v1.11.3,
+`gptload-observer.patch` is the complete source diff against pristine v1.13.0,
 excluding this document and the patch itself. Apply it with `patch -p1` in a
 fresh copy of the upstream module. Its historical name also covers the remaining
 cache, tool, stream, and schema changes; Git is the history of those changes.
+Verified after the v1.13.0 upgrade: applying the patch to a fresh copy of
+`core@v1.13.0` reproduces this tree with zero differences (see
+`.tmp/upgrade_cpa_bifrost_20261020/units/U002/result.md`).
 
 Modified/added files:
 
@@ -42,6 +45,28 @@ Modified/added files:
 | `providers/utils/streampoison_test.go` | same `DecompressStreamBody(ctx, resp)` signature follow for the v1.9.0 test |
 | `providers/utils/fasthttpreplace_test.go` | v1.9.0 monorepo drift guard: skip `TestFasthttpVersionIsConsistentAcrossModules` when the core/framework/transports root is absent (vendored core-only tree); `repoRoot` refactored to a non-fatal `tryRepoRoot` |
 | `providers/{anthropic,azure,cohere,elevenlabs,gemini,huggingface,mistral,openai,replicate,sarvam,vllm}/*.go` | mechanical `DecompressStreamBody(ctx, resp)` call-site update |
+
+### v1.13.0 fork changes
+
+The upgrade itself is a three-way merge of pristine v1.11.3, this fork, and
+pristine v1.13.0. Beyond the observer delta above, the fork now owns these
+behavior deltas:
+
+| file | change |
+|---|---|
+| `bifrost.go` (`executeRequestWithRetries`) | startup-event holding is narrowed for OpenAI-family wires with no fallback, no retry budget left and no first-token deadline, so `created`/`in_progress` reach the client immediately; the Azure preamble check and the OpenAIModelFamily-on-other-hosts rule are unchanged, and `streamHoldsStartupEvents` keeps its upstream contract for every other wire |
+| `bifrost.go` (`promptCacheResponsesRequest` / `prepareResponsesRequest`) | upstream's `InjectResponsesCacheBreakpointsSkipping` gained an Anthropic variant so the latest cacheable item stays the breakpoint while the injected MCP instructions message stays unmarked; both variants now run after namespace flattening and before `normalizeResponsesToolSchemas`, so explicit tool markers still suppress injection |
+| `providers/utils/promptcache.go` | added `InjectLastResponsesCacheBreakpointSkipping`; `InjectLastResponsesCacheBreakpoint` delegates to it with `skip = -1` |
+| `providers/utils/utils.go` (`SetupStreamCancellation`) | upstream's attempt-abort loop (`abortDone`) is kept and the fork's semantic termination label plus `completeIncomplete` moved into every close owner (first-token abort, request cancellation/deadline, teardown race) so a parser that returns early still leaves exactly one completion |
+| `providers/utils/passthrough_stream.go` | the observer wrap moved into upstream's shared `streamPassthrough` loop, so `StreamPassthrough` (fasthttp) and `StreamPassthroughHTTP` (net/http) both satisfy it while close/idle teardown keeps targeting the unwrapped body |
+| `providers/utils/largeresponse.go` | `WrapStreamingResponseBody` follows upstream's new `DecompressStreamBody(ctx, resp)` signature; the observer wrap remains inside `DecompressStreamBody` and in the `FinalizeResponseWithLargeDetection` read path |
+| `providers/openai/utils.go`, `providers/gemini/utils.go` | the local exported `DefaultEffortControl` re-exports are removed: upstream v1.13.0 rewrote the OpenAI ladder to take the provider (`defaultEffortControl(provider, model)`) for `xhigh` handling, and the repository has no consumer of either export (`rg DefaultEffortControl` finds only these two definitions) |
+| `providers/bedrock/bedrock.go` + its tests | upstream v1.13.0's `providers/bedrock` test package does not compile (`bedrock_test.go` is `package bedrock_test` but constructs the unexported `BedrockProvider`, which also makes `go vet ./...` fail): the merge target exports `InvokeBuildConfig` and the tests call it under its new name |
+
+Superceded local code removed in this upgrade: the whole `prevCheckedPreamble`
+wiring (v1.13.0 dropped the variable), the pre-flatten cache-injection call site
+in `prepareResponsesRequest`, and the duplicated per-request net/http observer
+setup that upstream's `DoHTTPRequest` attempt-abort wrapper replaced.
 
 The observer is purely observational: it never replaces `resp.BodyStream()`,
 never buffers the request body, and every callback is panic-recovered so a
@@ -105,6 +130,28 @@ either call site reachable, either the plan must narrow the matrix or a pinned
    it reproduces the source tree, excluding this document and the patch. If a
    later fix changes the fork, regenerate it again for the final source.
 
+   Use `hack/genpatch.py <pristine-tree> <fork-tree> <output-patch>`; it produces
+   the artifact and verifies the replay itself. Applied as
+   `patch -p1 -l < gptload-observer.patch` on a pristine tree:
+
+   - `-U0` (context-free hunks). `diff`'s three context lines start with a space,
+     so a context line inside a tab-indented Go block prints as ` <TAB>…` and is
+     reported by `git diff --check` as `space before tab in indent`. Context lines
+     also make a patch that only reorders added lines (`+`/`-` swap) ambiguous:
+     `patch` reads it as already reversed.
+   - trailing whitespace stripped from added lines and kept verbatim on removed
+     lines, so the artifact has no `git diff --check` diagnostics while the
+     removal of a tab-only line stays exact and the removal of a
+     trailing-whitespace line stays visible.
+   - `diff` runs under `LC_ALL=C`; a localized diff translates the no-newline
+     marker and `patch` rejects it.
+   - `-l` when applying, because ignoring whitespace makes a removal still match
+     a pristine line that differs only in trailing whitespace.
+6. While the root module's `go.sum` is owned by another task, prefix the test
+   commands with `-mod=mod` so the nested-module requirements
+   (`github.com/canonical/starlark` in v1.13.0) can be resolved; restore
+   `go.sum` afterwards and let `go mod tidy` regenerate it once.
+
 ## Rollback
 
 1. Delete `third_party/bifrost-core`.
@@ -127,6 +174,12 @@ suppress injection; tool normalization precedes detection so embedded and
 namespace tools participate. OpenAI prompt-cache keys are routing hints, not
 Anthropic breakpoints. Injection copies the selected item per attempt.
 
+On v1.13.0 the injected MCP instructions message is additionally kept unmarked:
+`InjectLastResponsesCacheBreakpointSkipping` resolves the latest item against
+the caller's transcript only, and `promptCacheResponsesRequest` runs after
+namespace flattening so an explicit tool marker anywhere in the final tool list
+still suppresses injection.
+
 Regression coverage: `promptcachedispatch_test.go`,
 `providers/utils/promptcache_test.go`, and GPT-Load's
 `internal/execution/bifrost/anthropic_cache_egress_test.go` exercise isolation,
@@ -144,9 +197,15 @@ Anthropic latest-item selection remains. The MCP test plugin adopts upstream's
 tool-name modifier while retaining the local Go syntax adjustments. Automatic
 overlaps in observer utilities, Anthropic usage, and cache tests were reviewed.
 
+The v1.13.0 upgrade is another three-way merge, now from pristine v1.11.3 and
+the actual local fork. Upstream extracted `streamHoldsStartupEvents`, which the
+merge adopts; only the OpenAI-family holding rule below stays local.
+
 Integration stream boundary: Azure keeps its preamble check. OpenAI checks the
 preamble only when the existing request has SDK fallbacks or the current attempt
 has SDK retry budget remaining. GPTLoad clears both, so created/in_progress is
 delivered immediately and cancellation and HTTP 200 response.failed retain their
 established response metadata. Explicit SDK fallback mocks still recover before
 exposing failed-attempt startup events. No new recovery policy or flag is added.
+An attempt with a first-token deadline also holds startup events, matching
+upstream: only real output counts as that attempt's first token.

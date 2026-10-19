@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -23,26 +24,26 @@ func TestBifrostEmbeddingWirePreservesRawOpenAIContract(t *testing.T) {
 	}{
 		{
 			name:  "string input with optional and unknown fields",
-			input: &schemas.EmbeddingInput{Text: schemas.Ptr("hello")},
+			input: embeddingTextInput("hello"),
 			body:  `{"model":"provider-model","input":"hello","dimensions":3,"encoding_format":"float","user":"user-1","vendor_extension":{"precise":1.2300}}`,
 			response: `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.12345678901234567,-0.00000000000000001234]}],` +
 				`"model":"provider-model","usage":{"prompt_tokens":1,"total_tokens":1},"vendor":{"precise":1.2300}}`,
 		},
 		{
 			name:     "string array input and base64 response",
-			input:    &schemas.EmbeddingInput{Texts: []string{"hello", "world"}},
+			input:    embeddingTextsInput("hello", "world"),
 			body:     `{"model":"provider-model","input":["hello","world"],"encoding_format":"base64"}`,
 			response: `{"object":"list","data":[{"object":"embedding","index":0,"embedding":"AQIDBA=="}],"model":"provider-model","usage":{"prompt_tokens":2,"total_tokens":2}}`,
 		},
 		{
 			name:     "token array input",
-			input:    &schemas.EmbeddingInput{Embedding: []int{10, 20, 30}},
+			input:    embeddingTokensInput([]int{10, 20, 30}),
 			body:     `{"model":"provider-model","input":[10,20,30],"encoding_format":"float"}`,
 			response: `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.25,-0.5]}],"model":"provider-model","usage":{"prompt_tokens":3,"total_tokens":3}}`,
 		},
 		{
 			name:     "token matrix input",
-			input:    &schemas.EmbeddingInput{Embeddings: [][]int{{10, 20}, {30, 40}}},
+			input:    embeddingTokenMatrixInput([]int{10, 20}, []int{30, 40}),
 			body:     `{"model":"provider-model","input":[[10,20],[30,40]],"encoding_format":"float"}`,
 			response: `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.25,-0.5]},{"object":"embedding","index":1,"embedding":[0.75,-1]}],"model":"provider-model","usage":{"prompt_tokens":4,"total_tokens":4}}`,
 		},
@@ -113,7 +114,7 @@ func TestBifrostEmbeddingWireUsesCompleteCompatiblePrefix(t *testing.T) {
 
 			wire := newEmbeddingWireTestRuntime(t, schemas.OpenAI, server.URL+test.baseSuffix, true)
 			response, bifrostErr := wire.request(
-				&schemas.EmbeddingInput{Text: schemas.Ptr("hello")},
+				embeddingTextInput("hello"),
 				[]byte(`{"model":"provider-model","input":"hello"}`),
 				nil,
 			)
@@ -155,7 +156,7 @@ func TestBifrostEmbeddingWireSupportsOpenRouterTypedRequest(t *testing.T) {
 	wire := newEmbeddingWireTestRuntime(t, schemas.OpenRouter, server.URL, false)
 	dimensions := 8
 	response, bifrostErr := wire.request(
-		&schemas.EmbeddingInput{Text: schemas.Ptr("hello")},
+		embeddingTextInput("hello"),
 		nil,
 		&schemas.EmbeddingParameters{
 			Dimensions: &dimensions,
@@ -186,7 +187,7 @@ func TestBifrostEmbeddingWirePreservesNon2xxEvidence(t *testing.T) {
 
 	wire := newEmbeddingWireTestRuntime(t, schemas.OpenAI, server.URL+"/v1", true)
 	response, bifrostErr := wire.request(
-		&schemas.EmbeddingInput{Text: schemas.Ptr("hello")},
+		embeddingTextInput("hello"),
 		[]byte(`{"model":"provider-model","input":"hello"}`),
 		nil,
 	)
@@ -267,10 +268,14 @@ func (runtime *embeddingWireTestRuntime) request(
 		bifrostContext.SetValue(schemas.BifrostContextKeyUseRawRequestBody, true)
 	}
 	runtime.context = bifrostContext
+	items := []schemas.EmbeddingInputItem{}
+	if input != nil {
+		items = *input
+	}
 	return runtime.core.EmbeddingRequest(bifrostContext, &schemas.BifrostEmbeddingRequest{
 		Provider:       runtime.provider,
 		Model:          "provider-model",
-		Input:          input,
+		Input:          items,
 		Params:         params,
 		RawRequestBody: bytes.Clone(rawBody),
 	})
@@ -278,6 +283,38 @@ func (runtime *embeddingWireTestRuntime) request(
 
 func (runtime *embeddingWireTestRuntime) responseHeaders() http.Header {
 	return responseHeaders(nil, runtime.context, false)
+}
+
+// The embedding wire tests build the same item-list marker the executor builds,
+// because Bifrost v1.13.0 no longer has the text/texts/embedding/embeddings
+// union. The raw body stays the wire authority in every case.
+func embeddingTextInput(text string) *schemas.EmbeddingInput {
+	return embeddingTextsInput(text)
+}
+
+func embeddingTextsInput(texts ...string) *schemas.EmbeddingInput {
+	item := schemas.EmbeddingInputItem{Content: schemas.EmbeddingContent{{
+		Type: schemas.EmbeddingContentPartTypeText,
+		Text: schemas.Ptr(strings.Join(texts, "\n")),
+	}}}
+	input := schemas.EmbeddingInput{item}
+	return &input
+}
+
+func embeddingTokensInput(tokens []int) *schemas.EmbeddingInput {
+	return embeddingTokenMatrixInput(tokens)
+}
+
+func embeddingTokenMatrixInput(rows ...[]int) *schemas.EmbeddingInput {
+	items := make([]schemas.EmbeddingInputItem, len(rows))
+	for index, row := range rows {
+		items[index] = schemas.EmbeddingInputItem{Content: schemas.EmbeddingContent{{
+			Type:   schemas.EmbeddingContentPartTypeTokens,
+			Tokens: row,
+		}}}
+	}
+	input := schemas.EmbeddingInput(items)
+	return &input
 }
 
 func rawEmbeddingResponseBytes(t *testing.T, raw any) []byte {
@@ -293,5 +330,64 @@ func rawEmbeddingResponseBytes(t *testing.T, raw any) []byte {
 			t.Fatalf("marshal raw response: %v", err)
 		}
 		return encoded
+	}
+}
+
+// TestEmbeddingInputMarkerKeepsBifrostWireShape pins the local marker to the
+// JSON wire shape it describes. Bifrost v1.13.0 replaced the old
+// text/texts/embedding/embeddings union with an item list, so the marker must
+// stay accepted by the typed preflight while the untouched raw body remains the
+// authority for the upstream request.
+//
+// Only the empty token cases are representable in the new item list: an empty
+// token scalar or matrix has no non-empty part, and such a request is already
+// invalid for every token-based destination.
+func TestEmbeddingInputMarkerKeepsBifrostWireShape(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+		// want is the serialized marker. Bifrost serializes an item without
+		// per-item params as its bare part list, so the marker round-trips to the
+		// same "array of parts" shape the wire uses.
+		want string
+	}{
+		{name: "string input", body: `{"input":"hello"}`, want: `[[{"type":"text","text":"hello"}]]`},
+		{name: "string array input", body: `{"input":["hello","world"]}`, want: `[[{"type":"text","text":"hello\nworld"}]]`},
+		{name: "token matrix input", body: `{"input":[[10,20],[30,40]]}`, want: `[[{"type":"tokens","tokens":[10,20]}],[{"type":"tokens","tokens":[30,40]}]]`},
+		{name: "token array input", body: `{"input":[10,20,30]}`, want: `[[{"type":"tokens","tokens":[10,20,30]}]]`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input, err := embeddingInputMarker([]byte(test.body))
+			if err != nil {
+				t.Fatalf("embeddingInputMarker() error = %v", err)
+			}
+			if input == nil {
+				t.Fatal("embeddingInputMarker() returned no marker")
+			}
+			encoded, err := json.Marshal(input)
+			if err != nil {
+				t.Fatalf("marshal marker: %v", err)
+			}
+			if string(encoded) != test.want {
+				t.Fatalf("marker = %s, want %s", encoded, test.want)
+			}
+			if len(*input) > 0 {
+				if err := schemas.ValidateEmbeddingInput(*input); err != nil {
+					t.Fatalf("marker rejected by the typed preflight: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestEmbeddingInputMarkerRejectsInvalidInput(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"provider-model"}`,
+		`{"model":"provider-model","input":null}`,
+		`{"model":"provider-model","input":{}}`,
+	} {
+		if input, err := embeddingInputMarker([]byte(body)); err == nil {
+			t.Fatalf("embeddingInputMarker(%s) = %#v, want an error", body, input)
+		}
 	}
 }

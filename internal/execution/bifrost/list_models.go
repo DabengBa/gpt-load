@@ -101,7 +101,12 @@ func sanitizeListModelsResponse(provider schemas.ModelProvider, response *schema
 		return nil
 	}
 	clone := *response
-	clone.Data = append([]schemas.Model(nil), response.Data...)
+	switch provider {
+	case schemas.OpenRouter:
+		clone.Data = withoutOpenRouterUnservedModels(response.Data)
+	default:
+		clone.Data = append([]schemas.Model(nil), response.Data...)
+	}
 	prefix := string(provider) + "/"
 	for index := range clone.Data {
 		clone.Data[index].ID = strings.TrimPrefix(clone.Data[index].ID, prefix)
@@ -109,4 +114,44 @@ func sanitizeListModelsResponse(provider schemas.ModelProvider, response *schema
 	clone.ExtraFields = schemas.BifrostResponseExtraFields{}
 	clone.KeyStatuses = nil
 	return &clone
+}
+
+// withoutOpenRouterUnservedModels keeps GPT-Load's published model list to the
+// models whose declared output modalities its proxies serve: chat and
+// embeddings. Bifrost v1.13.0 merges OpenRouter's decision catalog
+// (/v1/models?output_modalities=decisions) into ListModels, and those models are
+// served only by the native decisions endpoint, which no GPT-Load route uses.
+//
+// A model is published when at least one of its declared modalities is servable,
+// so a mixed entry such as ["text","decisions"] stays. Entries without a usable
+// modality declaration are dropped: a decisions-only entry declares no servable
+// output, and an entry that declares nothing (v1.13.0's merged {id,object,owned_by}
+// items decode without an architecture) cannot be shown to be chat or embed.
+func withoutOpenRouterUnservedModels(models []schemas.Model) []schemas.Model {
+	kept := make([]schemas.Model, 0, len(models))
+	for _, model := range models {
+		if model.Architecture == nil {
+			continue
+		}
+		for _, modality := range model.Architecture.OutputModalities {
+			if servableOutputModality(modality) {
+				kept = append(kept, model)
+				break
+			}
+		}
+	}
+	return kept
+}
+
+// servableOutputModality reports whether GPT-Load proxies a model whose declared
+// output modality is modality. Modality names are compared case-insensitively
+// and ignore surrounding space, matching what providers actually return
+// ("Embedding", "EMBEDDINGS").
+func servableOutputModality(modality string) bool {
+	switch strings.ToLower(strings.TrimSpace(modality)) {
+	case "text", "embedding", "embeddings":
+		return true
+	default:
+		return false
+	}
 }
