@@ -336,8 +336,13 @@ const styles = stylex.create({
     display: 'inline-flex',
     alignItems: 'center',
     gap: 'var(--space-2)',
+    minWidth: 0,
+    maxWidth: '100%',
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-meta)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   dotWarning: { backgroundColor: 'var(--color-warning)' },
   actionsCell: {
@@ -795,14 +800,19 @@ export function GroupsView() {
         align: 'end',
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.actionsCell)}>
-            <Button
+            <IconButton
               variant="ghost"
               size="sm"
               label={t('groups.collection.manageCredentialFor', { name: group.name })}
               icon={<KeyRound size={15} />}
-              href={`${groupDetailHref(group.id)}?tab=credentials`}
+              onClick={() =>
+                void navigate({
+                  to: groupDetailHref(group.id),
+                  search: { tab: 'credentials' } as never,
+                })
+              }
             />
-            <Button
+            <IconButton
               variant="ghost"
               size="sm"
               label={t('groups.collection.copyFor', { name: group.name })}
@@ -810,7 +820,7 @@ export function GroupsView() {
               isLoading={copyingGroupIDs.has(group.id)}
               onClick={() => void copyGroupRecord(group)}
             />
-            <Button
+            <IconButton
               variant="ghost"
               size="sm"
               label={t('groups.collection.openDetail', { name: group.name })}
