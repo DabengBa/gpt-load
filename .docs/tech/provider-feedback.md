@@ -6,6 +6,7 @@ relations:
   related:
     - tech/usage-accounting.md
     - tech/affinity-binding.md
+    - tech/credential-diagnostics.md
     - db/features/usage-timing-metrics.md
 code:
   paths:
@@ -42,6 +43,11 @@ request result. A successful response with poor performance remains available to
 the client; the performance fault separately contributes to credential health
 failure handling so later selection can avoid the credential according to the
 existing consecutive-failure and recovery policy.
+
+The credential record also carries the Provider's redacted message for its most
+recent real failure. That message is diagnostic only and is owned by
+[Credential Failure Diagnostics](credential-diagnostics.md); it must not feed
+back into the classification described here.
 
 ## Architecture And Constraints
 

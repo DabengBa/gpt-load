@@ -6,6 +6,29 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-10-20 — Bifrost v1.13.0 upgrade and credential failure messages
+
+[PR #189](https://github.com/DabengBa/gpt-load/pull/189) upgraded the embedded
+execution engines (CPA v8.0.8 → v8.0.35, local Bifrost fork v1.11.3 → v1.13.0,
+Go and the Docker builder to 1.27.2) with a three-way merge that kept the
+observer, cache-breakpoint, reasoning-replay, and stream-lifecycle patches.
+Two behavioral adaptations are now owned explicitly instead of living in an
+upgrade note: OpenRouter's published model list drops entries whose declared
+output modalities GPT-Load cannot serve, and the Embeddings marker follows the
+SDK's item list while the raw body stays the wire authority
+([Provider Model Registry And Embeddings Selection](tech/provider-registry.md)).
+The fork's startup-event holding rule for OpenAI-family wires without a retry
+budget remains described in
+[Reasoning History Replay](tech/reasoning-replay.md#failure-boundaries-and-verification).
+
+[PR #188](https://github.com/DabengBa/gpt-load/pull/188) added
+`last_failure_summary` to credential records: the redacted Provider message of
+the newest real attempt, batched for API-key and subscription credentials
+alike. It also taught the error extractor the Responses `response.error.message`
+envelope and routed the WebSocket error summary through the shared redaction
+path, while keeping the message out of `response.failed` health classification
+([Credential Failure Diagnostics](tech/credential-diagnostics.md)).
+
 ## 2026-10-11 — Astryx frontend module ownership
 
 [PR #177](https://github.com/DabengBa/gpt-load/pull/177) consolidated reused

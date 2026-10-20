@@ -32,10 +32,11 @@ The root module requires Bifrost core v1.13.0 and replaces it with
 determine the actual converted payload. Native passthrough does not repair
 previously saved client history.
 
-Bifrost v1.13.0 replaced the embedding input union with an item list. That is
-an Embeddings-wire concern, not a reasoning-history one: `internal/execution/bifrost/embeddings.go`
-builds a marker in the new item shape while the untouched raw body remains the
-upstream authority.
+Bifrost v1.13.0 replaced the embedding input union with an item list, which is
+an Embeddings-wire concern rather than a reasoning-history one. The marker
+shape, the OpenRouter model-list rule it shares an upgrade with, and the raw-body
+authority are owned by
+[Provider Model Registry And Embeddings Selection](provider-registry.md).
 
 Protocol conversion preserves tool-call/result pairing, but does not promise
 lossless reasoning-state transfer or encrypted reasoning portability between
