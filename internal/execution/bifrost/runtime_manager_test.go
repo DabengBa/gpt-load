@@ -1289,13 +1289,24 @@ func TestProductionRuntimeManagerUsesNativeProviderListModelsPaths(t *testing.T)
 					_, _ = io.WriteString(writer, `{"object":"list","data":[{"id":"embedding-only","architecture":{"output_modalities":["embeddings"]}}]}`)
 					return
 				}
+				// Bifrost v1.13.0 also merges OpenRouter's decision catalog. That listing
+				// is served only by the native decisions endpoint, so GPT-Load keeps
+				// publishing only the chat and embed models: an item is published when at
+				// least one declared output modality is servable, which drops both the
+				// architecture-less items and an explicitly decisions-only one.
+				if test.channelID == channel.OpenRouter && strings.HasPrefix(request.URL.RawQuery, "output_modalities=decisions") {
+					_, _ = io.WriteString(writer, `{"object":"list","data":[{"id":"decision-only"},{"id":"decision-declared","architecture":{"output_modalities":["decisions"]}},{"id":"decision-mixed","architecture":{"output_modalities":["decisions","text"]}}]}`)
+					return
+				}
 				if request.URL.Path != test.wantPath {
 					t.Errorf("path = %q, want %q", request.URL.Path, test.wantPath)
 				}
 				if request.URL.RawQuery != "cursor=%2F&limit=10" {
 					t.Errorf("query = %q", request.URL.RawQuery)
 				}
-				_, _ = io.WriteString(writer, `{"object":"list","data":[{"id":"model-one","object":"model"}]}`)
+				// OpenRouter's catalog declares output modalities; that is what tells a
+				// servable model apart from an unservable one.
+				_, _ = io.WriteString(writer, `{"object":"list","data":[{"id":"model-one","object":"model","architecture":{"output_modalities":["text"]}}]}`)
 			}))
 			defer server.Close()
 
@@ -1316,11 +1327,16 @@ func TestProductionRuntimeManagerUsesNativeProviderListModelsPaths(t *testing.T)
 			}
 			wantCalls := int64(1)
 			if test.channelID == channel.OpenRouter {
-				wantCalls = 2
+				wantCalls = 3
 			}
-			wantEmbeddingModel := test.channelID == channel.OpenRouter
+			unpublishedEmbedding := bytes.Contains(result.Body, []byte(`"id":"embedding-only"`)) != (test.channelID == channel.OpenRouter)
+			// "decision-mixed" declares text next to decisions, so its text output is
+			// served and the model is published.
+			publishedMixed := bytes.Contains(result.Body, []byte(`"id":"decision-mixed"`)) == (test.channelID == channel.OpenRouter)
 			if calls.Load() != wantCalls || !bytes.Contains(result.Body, []byte(`"id":"model-one"`)) ||
-				bytes.Contains(result.Body, []byte(`"id":"embedding-only"`)) != wantEmbeddingModel {
+				bytes.Contains(result.Body, []byte(`"id":"decision-only"`)) ||
+				bytes.Contains(result.Body, []byte(`"id":"decision-declared"`)) ||
+				!publishedMixed || unpublishedEmbedding {
 				t.Fatalf("calls/body = %d/%s", calls.Load(), result.Body)
 			}
 		})

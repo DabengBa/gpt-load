@@ -279,7 +279,7 @@ func cloneProviderConfig(source *schemas.ProviderConfig) *schemas.ProviderConfig
 		return nil
 	}
 	clone := *source
-	clone.NetworkConfig.ExtraHeaders = cloneStringMap(source.NetworkConfig.ExtraHeaders)
+	clone.NetworkConfig.ExtraHeaders = cloneSecretVarMap(source.NetworkConfig.ExtraHeaders)
 	clone.NetworkConfig.BetaHeaderOverrides = cloneBoolMap(source.NetworkConfig.BetaHeaderOverrides)
 	if source.ProxyConfig != nil {
 		proxy := *source.ProxyConfig
@@ -316,11 +316,14 @@ func cloneSecretVar(source *schemas.SecretVar) *schemas.SecretVar {
 	return &clone
 }
 
-func cloneStringMap(source map[string]string) map[string]string {
+// cloneSecretVarMap copies extra headers, whose values became secret
+// references in Bifrost v1.13.0, so a reloaded config cannot mutate a value the
+// detached provider config already handed to Bifrost.
+func cloneSecretVarMap(source map[string]schemas.SecretVar) map[string]schemas.SecretVar {
 	if source == nil {
 		return nil
 	}
-	clone := make(map[string]string, len(source))
+	clone := make(map[string]schemas.SecretVar, len(source))
 	for key, value := range source {
 		clone[key] = value
 	}

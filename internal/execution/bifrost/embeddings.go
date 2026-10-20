@@ -48,7 +48,7 @@ func buildEmbeddingRequest(
 	return &schemas.BifrostEmbeddingRequest{
 		Provider:       provider,
 		Model:          spec.UpstreamModel,
-		Input:          input,
+		Input:          *input,
 		Fallbacks:      nil,
 		RawRequestBody: bytes.Clone(sanitized.Body),
 	}, nil
@@ -57,6 +57,11 @@ func buildEmbeddingRequest(
 // embeddingInputMarker preserves only the validated input shape needed by
 // Bifrost's typed preflight. The selected provider receives RawRequestBody, so
 // GPT-Load does not impose Go integer bounds on token IDs or rebuild the wire.
+//
+// Bifrost v1.13.0 replaced the old text/texts/embedding/embeddings union with an
+// item list, so every shape becomes the one equivalent item: a string input or a
+// text array is one text part, a token array is one token part, and a token matrix
+// is one token part per row.
 func embeddingInputMarker(body []byte) (*schemas.EmbeddingInput, error) {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(body, &object); err != nil {
@@ -71,14 +76,19 @@ func embeddingInputMarker(body []byte) (*schemas.EmbeddingInput, error) {
 		if err := json.Unmarshal(raw, &text); err != nil {
 			return nil, fmt.Errorf("decode Embeddings text input")
 		}
-		return &schemas.EmbeddingInput{Text: &text}, nil
+		if text == "" {
+			return &schemas.EmbeddingInput{}, nil
+		}
+		return &schemas.EmbeddingInput{embeddingTextItem([]string{text})}, nil
 	}
 	var values []json.RawMessage
 	if err := json.Unmarshal(raw, &values); err != nil || values == nil {
 		return nil, fmt.Errorf("decode Embeddings array input")
 	}
 	if len(values) == 0 {
-		return &schemas.EmbeddingInput{Texts: []string{}}, nil
+		// An empty selection carries no part to describe; the raw body stays the
+		// wire authority and the empty slice already passes Bifrost's length gate.
+		return &schemas.EmbeddingInput{}, nil
 	}
 	first := bytes.TrimSpace(values[0])
 	if len(first) == 0 {
@@ -90,12 +100,44 @@ func embeddingInputMarker(body []byte) (*schemas.EmbeddingInput, error) {
 		if err := json.Unmarshal(raw, &texts); err != nil {
 			return nil, fmt.Errorf("decode Embeddings text array")
 		}
-		return &schemas.EmbeddingInput{Texts: texts}, nil
+		if len(texts) == 0 {
+			return &schemas.EmbeddingInput{}, nil
+		}
+		return &schemas.EmbeddingInput{embeddingTextItem(texts)}, nil
 	case '[':
-		return &schemas.EmbeddingInput{Embeddings: [][]int{}}, nil
+		var rows [][]int
+		if err := json.Unmarshal(raw, &rows); err != nil || len(rows) == 0 {
+			return &schemas.EmbeddingInput{}, nil
+		}
+		items := make([]schemas.EmbeddingInputItem, len(rows))
+		for index, row := range rows {
+			items[index] = schemas.EmbeddingInputItem{Content: schemas.EmbeddingContent{{
+				Type:   schemas.EmbeddingContentPartTypeTokens,
+				Tokens: row,
+			}}}
+		}
+		input := schemas.EmbeddingInput(items)
+		return &input, nil
 	default:
-		return &schemas.EmbeddingInput{Embedding: []int{}}, nil
+		var tokens []int
+		if err := json.Unmarshal(raw, &tokens); err != nil || len(tokens) == 0 {
+			return &schemas.EmbeddingInput{}, nil
+		}
+		return &schemas.EmbeddingInput{{Content: schemas.EmbeddingContent{{
+			Type:   schemas.EmbeddingContentPartTypeTokens,
+			Tokens: tokens,
+		}}}}, nil
 	}
+}
+
+// embeddingTextItem describes a text selection as the single text part the
+// v1.13.0 item list expresses it with. The text is kept verbatim in the part so
+// the marker can never disagree with the raw body about what was selected.
+func embeddingTextItem(texts []string) schemas.EmbeddingInputItem {
+	return schemas.EmbeddingInputItem{Content: schemas.EmbeddingContent{{
+		Type: schemas.EmbeddingContentPartTypeText,
+		Text: schemas.Ptr(strings.Join(texts, "\n")),
+	}}}
 }
 
 func embeddingTypedTarget(
