@@ -71,39 +71,34 @@ route serves the native decisions endpoint.
 
 ### Embeddings selection marker
 
-`embeddingInputMarker` accepts the four OpenAI Embeddings `input` shapes and
-describes each as the single equivalent item of the SDK's item list: a string or
-a text array becomes one text part, a token array becomes one token part, and a
-token matrix becomes one token part per row. The marker never becomes the
-request payload: the sanitized client body is sent as `RawRequestBody`, so the
-marker cannot widen or narrow what reaches the Provider.
+`embeddingInputMarker` builds the typed input the SDK requires while the
+sanitized client body is sent as `RawRequestBody`, so the marker never replaces
+what the Provider receives. It is not a validator: only some shapes produce an
+error, and the rest produce a marker that describes nothing.
 
-The marker's element dispatch has three branches, keyed on the first byte of the
-first array element:
+The whole body must decode as a JSON object, and `input` must be present and
+non-empty; those three failures return an error. A JSON string `input` decodes as
+one text part, with an empty string returning an empty marker.
 
-- `"` decodes the whole array as `[]string` and joins it into one text part.
-- `[` decodes the array as `[][]int`, one token part per row.
-- Any other first byte falls to the default branch, which decodes the whole
-  array as `[]int`. A numeric token array — the shape clients actually send —
-  takes this branch and becomes one token part.
+A non-string `input` must decode as a JSON array; if it does not, the marker
+returns an error. The first array element then selects the branch:
 
-The marker itself raises an error for only four shapes: a body that does not
-decode as a JSON object, an absent `input` member, an `[`-led array that does not
-decode as a token matrix, and an `input` whose value is neither a JSON string nor
-a JSON array. A text-array element that is not a string is not caught here — a
-mixed array such as `["x",1]` is already refused by the dialect validator in
-`InspectRequest` before the marker runs, so the marker is not the gate that keeps
-it out.
+- `"` decodes the whole array as `[]string` into one text part. A decode failure
+  returns an error; an empty result returns an empty marker.
+- `[` decodes the array as `[][]int` into one token part per row. A decode
+  failure or an empty result returns an empty marker, not an error.
+- Any other first byte decodes the array as `[]int` into one token part. A decode
+  failure or an empty result returns an empty marker, not an error.
 
-An empty marker is returned — not an error — whenever the selection carries no
-part the item list can describe. That covers an empty string, an empty array, an
-empty text array, and a token array or matrix that is empty or that fails to
-decode into Go `int` at all, which includes a token id beyond the Go integer
-range. The empty marker still occupies one slot, so the SDK's empty-input gate
-passes and the attempt proceeds. The raw body, already accepted by the dialect
-validator as a well-formed integer array, is then forwarded verbatim: GPT-Load
-imposes no Go integer bound on token ids and leaves the token id's validity to
-the destination.
+A numeric token array, which is what clients send, therefore takes the default
+branch. A token id beyond the Go integer range fails that `[]int` decode, or the
+matrix decode in the `[` branch, and returns an empty marker.
+
+An empty marker is a zero-length input. The SDK's `EmbeddingRequest` rejects a
+zero-length input unless the request is in large-payload passthrough mode, which
+GPT-Load does not enable, so every empty marker fails the attempt before
+dispatch regardless of the raw body. Shapes the marker cannot decode therefore
+never reach a Provider through this path.
 
 ## Related Product Semantics And Binding Points
 
@@ -120,10 +115,10 @@ the destination.
 - **Catalog degradation:** dropping an unclassifiable OpenRouter entry narrows
   the published list. It does not change routing, health, or any stored model
   selection; a group can still be configured with a model the list omits.
-- **Embeddings preflight:** the marker is a preflight description, not a
-  validator. Shape errors it does report stop the attempt before dispatch;
-  shapes it cannot describe degrade to an empty marker and still forward the raw
-  body. Neither path rewrites the client request.
+- **Embeddings preflight:** the marker either describes the selection or is
+  empty. An empty marker makes the SDK reject the request before dispatch, so a
+  shape the marker cannot describe fails locally instead of being forwarded; no
+  path rewrites the client request.
 - **Raw authority:** response bytes are taken from the SDK's raw response, and
   the typed response data is cleared before projection and gateway processing,
   so a converted typed value never replaces the observed wire.
