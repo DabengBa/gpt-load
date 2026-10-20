@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -447,4 +448,65 @@ func openAIEmbeddingsSpec(channelID channel.ID, baseURL string, body []byte) exe
 		Timeouts:   execution.AttemptTimeouts{FirstByte: time.Second, Request: 2 * time.Second},
 		Credential: execution.NewCredentialSnapshot(23, 1, 1, []byte(`{"api_key":"`+testAPIKey+`"}`)),
 	}))
+}
+
+// TestOpenAIEmbeddingsRuntimeDispatchesSelectionsTheMarkerCannotDescribe pins the
+// behavior a Bifrost v1.13.0 upgrade put at risk: a selection the typed input
+// list cannot express must still reach the Provider whenever the request itself
+// is valid, because RawRequestBody is the only wire authority.
+//
+// These cases are not marker mechanics. Each one is a whole Runtime.Execute run
+// through the real SDK, and the assertion is the bytes the Provider actually
+// received, so a marker that fails the SDK preflight is visible as a local
+// failure instead of a request that quietly never left.
+func TestOpenAIEmbeddingsRuntimeDispatchesSelectionsTheMarkerCannotDescribe(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		input string
+	}{
+		{name: "empty string", input: `""`},
+		{name: "empty array", input: `[]`},
+		{name: "empty text array", input: `[""]`},
+		{name: "empty token array", input: `[]`},
+		{name: "empty token matrix", input: `[[]]`},
+		{name: "token id beyond the Go integer range", input: `[10,123456789012345678901234567890]`},
+		{name: "token matrix row beyond the Go integer range", input: `[[10],[123456789012345678901234567890]]`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var received atomic.Int64
+			var gotBody []byte
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				received.Add(1)
+				body, err := io.ReadAll(request.Body)
+				if err != nil {
+					t.Errorf("read request body: %v", err)
+					return
+				}
+				gotBody = body
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(writer, `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[1]}],"model":"provider-model"}`)
+			}))
+			defer server.Close()
+			clientBody := []byte(`{"model":"provider-model","input":` + test.input + `}`)
+			runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true})
+			result := runtime.Execute(context.Background(),
+				openAIEmbeddingsSpec(channel.OpenAICompatible, server.URL+"/v1", clientBody))
+			if result.Error != nil {
+				t.Fatalf("dispatch failed locally: %v (summary %q)", result.Error,
+					result.Error.Summary)
+			}
+			if received.Load() != 1 {
+				t.Fatalf("upstream calls = %d, want exactly one", received.Load())
+			}
+			if !bytes.Contains(gotBody, []byte(`"input":`+test.input)) {
+				t.Fatalf("upstream body lost the selection: %s", gotBody)
+			}
+			if result.StatusCode != http.StatusOK || !result.ResponseStarted {
+				t.Fatalf("result = %+v", result)
+			}
+		})
+	}
 }

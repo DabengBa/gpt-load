@@ -73,32 +73,36 @@ route serves the native decisions endpoint.
 
 `embeddingInputMarker` builds the typed input the SDK requires while the
 sanitized client body is sent as `RawRequestBody`, so the marker never replaces
-what the Provider receives. It is not a validator: only some shapes produce an
-error, and the rest produce a marker that describes nothing.
+what the Provider receives. It is not a validator: only malformed bodies produce
+an error, and every selection the item list cannot express is described by one
+placeholder item.
 
 The whole body must decode as a JSON object, and `input` must be present and
 non-empty; those three failures return an error. A JSON string `input` decodes as
-one text part, with an empty string returning an empty marker.
+one text part. A non-string `input` must decode as a JSON array, otherwise the
+marker returns an error. The first array element then selects the branch:
 
-A non-string `input` must decode as a JSON array; if it does not, the marker
-returns an error. The first array element then selects the branch:
-
-- `"` decodes the whole array as `[]string` into one text part. A decode failure
-  returns an error; an empty result returns an empty marker.
-- `[` decodes the array as `[][]int` into one token part per row. A decode
-  failure or an empty result returns an empty marker, not an error.
-- Any other first byte decodes the array as `[]int` into one token part. A decode
-  failure or an empty result returns an empty marker, not an error.
+- `"` decodes the array as `[]string` into one text part. A decode failure
+  returns an error.
+- `[` decodes the array as `[][]int`, one token part per row.
+- Any other first byte decodes the array as `[]int`, one token part.
 
 A numeric token array, which is what clients send, therefore takes the default
-branch. A token id beyond the Go integer range fails that `[]int` decode, or the
-matrix decode in the `[` branch, and returns an empty marker.
+branch. A token id beyond the Go integer range fails the `[]int` decode, or the
+matrix decode in the `[` branch.
 
-An empty marker is a zero-length input. The SDK's `EmbeddingRequest` rejects a
-zero-length input unless the request is in large-payload passthrough mode, which
-GPT-Load does not enable, so every empty marker fails the attempt before
-dispatch regardless of the raw body. Shapes the marker cannot decode therefore
-never reach a Provider through this path.
+Two SDK rules decide which of those results can be expressed at all: an input
+slice must be non-empty, and a text part must carry non-empty text while a token
+part must carry at least one token id. Anything that would violate them — an
+empty string, an empty array, an empty text within an array, an empty matrix row,
+or a decode failure — is reported as the placeholder item instead: one text part
+holding a single space, which satisfies both rules.
+
+The placeholder is a description, not a request. Because the marker is only the
+SDK's typed preflight and the raw body is the wire authority, a selection
+described by the placeholder still reaches the Provider byte-for-byte unchanged.
+GPT-Load therefore imposes no Go integer bound on token ids, and the destination
+decides whether a selection it cannot represent locally is valid.
 
 ## Related Product Semantics And Binding Points
 
@@ -115,18 +119,21 @@ never reach a Provider through this path.
 - **Catalog degradation:** dropping an unclassifiable OpenRouter entry narrows
   the published list. It does not change routing, health, or any stored model
   selection; a group can still be configured with a model the list omits.
-- **Embeddings preflight:** the marker either describes the selection or is
-  empty. An empty marker makes the SDK reject the request before dispatch, so a
-  shape the marker cannot describe fails locally instead of being forwarded; no
-  path rewrites the client request.
+- **Embeddings preflight:** the marker either describes the selection or carries
+  the placeholder. Both are accepted by the SDK, so a malformed body is the only
+  local failure and every valid body reaches the Provider unchanged; no path
+  rewrites the client request.
 - **Raw authority:** response bytes are taken from the SDK's raw response, and
   the typed response data is cleared before projection and gateway processing,
   so a converted typed value never replaces the observed wire.
 
 Regression coverage: `list_models_test.go` pins the servable-modality rule
-(including the non-OpenRouter control), `embedding_wire_test.go` pins
-byte-identical request bodies and raw responses for all four input shapes, the
-marker's serialized shape, and its rejection cases,
+(including the non-OpenRouter control), `embedding_wire_test.go`
+pins byte-identical request bodies and raw responses for all four input shapes,
+the marker's serialized shape, the placeholder accepted by the SDK preflight for
+every undescribable selection, and the rejection cases,
+`embeddings_test.go` proves through the real Runtime and SDK that each of those
+selections still reaches the Provider,
 `internal/dialect/openai_embeddings_test.go` pins the accepted token ids
 (including one far beyond the Go integer range) and the refused mixed array, and
 `runtime_manager_test.go:TestProductionRuntimeManagerUsesNativeProviderListModelsPaths`

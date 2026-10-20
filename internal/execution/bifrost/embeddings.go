@@ -62,6 +62,13 @@ func buildEmbeddingRequest(
 // item list, so every shape becomes the one equivalent item: a string input or a
 // text array is one text part, a token array is one token part, and a token matrix
 // is one token part per row.
+//
+// Every shape that the item list cannot describe — an empty selection and a token
+// id outside Go's integer range — is reported as the placeholder item
+// placeholderEmbeddingInput returns. Bifrost rejects a zero-length input before
+// dispatch, so returning no items would refuse a request the dialect validator
+// already accepted; the raw body, not the marker, decides what the provider
+// receives.
 func embeddingInputMarker(body []byte) (*schemas.EmbeddingInput, error) {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(body, &object); err != nil {
@@ -77,7 +84,7 @@ func embeddingInputMarker(body []byte) (*schemas.EmbeddingInput, error) {
 			return nil, fmt.Errorf("decode Embeddings text input")
 		}
 		if text == "" {
-			return &schemas.EmbeddingInput{}, nil
+			return placeholderEmbeddingInput(), nil
 		}
 		return &schemas.EmbeddingInput{embeddingTextItem([]string{text})}, nil
 	}
@@ -86,9 +93,7 @@ func embeddingInputMarker(body []byte) (*schemas.EmbeddingInput, error) {
 		return nil, fmt.Errorf("decode Embeddings array input")
 	}
 	if len(values) == 0 {
-		// An empty selection carries no part to describe; the raw body stays the
-		// wire authority and the empty slice already passes Bifrost's length gate.
-		return &schemas.EmbeddingInput{}, nil
+		return placeholderEmbeddingInput(), nil
 	}
 	first := bytes.TrimSpace(values[0])
 	if len(first) == 0 {
@@ -100,14 +105,19 @@ func embeddingInputMarker(body []byte) (*schemas.EmbeddingInput, error) {
 		if err := json.Unmarshal(raw, &texts); err != nil {
 			return nil, fmt.Errorf("decode Embeddings text array")
 		}
-		if len(texts) == 0 {
-			return &schemas.EmbeddingInput{}, nil
+		// An empty text selects nothing the item list can describe, and an empty
+		// text part fails Bifrost's content validation before dispatch.
+		if countNonEmptyTexts(texts) != len(texts) || len(texts) == 0 {
+			return placeholderEmbeddingInput(), nil
 		}
 		return &schemas.EmbeddingInput{embeddingTextItem(texts)}, nil
 	case '[':
 		var rows [][]int
-		if err := json.Unmarshal(raw, &rows); err != nil || len(rows) == 0 {
-			return &schemas.EmbeddingInput{}, nil
+		// A row without tokens produces an empty token part, which Bifrost rejects
+		// before dispatch, so the whole selection is described by the placeholder.
+		if err := json.Unmarshal(raw, &rows); err != nil || len(rows) == 0 ||
+			countNonEmptyTokenRows(rows) != len(rows) {
+			return placeholderEmbeddingInput(), nil
 		}
 		items := make([]schemas.EmbeddingInputItem, len(rows))
 		for index, row := range rows {
@@ -121,13 +131,55 @@ func embeddingInputMarker(body []byte) (*schemas.EmbeddingInput, error) {
 	default:
 		var tokens []int
 		if err := json.Unmarshal(raw, &tokens); err != nil || len(tokens) == 0 {
-			return &schemas.EmbeddingInput{}, nil
+			return placeholderEmbeddingInput(), nil
 		}
 		return &schemas.EmbeddingInput{{Content: schemas.EmbeddingContent{{
 			Type:   schemas.EmbeddingContentPartTypeTokens,
 			Tokens: tokens,
 		}}}}, nil
 	}
+}
+
+// placeholderEmbeddingInput is the marker for a selection the item list cannot
+// describe. It carries one text part holding a single space: non-empty, so
+// Bifrost's length and content checks accept it, and never reaching a provider
+// because the raw body is the wire authority.
+//
+// A space rather than an empty string keeps the part valid under
+// EmbeddingContentPart.Validate, which rejects an empty text payload.
+func placeholderEmbeddingInput() *schemas.EmbeddingInput {
+	placeholder := " "
+	return &schemas.EmbeddingInput{{
+		Content: schemas.EmbeddingContent{{
+			Type: schemas.EmbeddingContentPartTypeText,
+			Text: &placeholder,
+		}},
+	}}
+}
+
+// countNonEmptyTexts reports how many texts carry content. Bifrost's content
+// validation requires a non-empty text payload, so an empty text cannot be
+// described by a text part.
+func countNonEmptyTexts(texts []string) int {
+	count := 0
+	for _, text := range texts {
+		if text != "" {
+			count++
+		}
+	}
+	return count
+}
+
+// countNonEmptyTokenRows reports how many matrix rows carry tokens, mirroring
+// Bifrost's requirement that a token part hold at least one token id.
+func countNonEmptyTokenRows(rows [][]int) int {
+	count := 0
+	for _, row := range rows {
+		if len(row) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 // embeddingTextItem describes a text selection as the single text part the

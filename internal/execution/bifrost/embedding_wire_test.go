@@ -338,10 +338,6 @@ func rawEmbeddingResponseBytes(t *testing.T, raw any) []byte {
 // text/texts/embedding/embeddings union with an item list, so the marker must
 // stay accepted by the typed preflight while the untouched raw body remains the
 // authority for the upstream request.
-//
-// Only the empty token cases are representable in the new item list: an empty
-// token scalar or matrix has no non-empty part, and such a request is already
-// invalid for every token-based destination.
 func TestEmbeddingInputMarkerKeepsBifrostWireShape(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -371,10 +367,37 @@ func TestEmbeddingInputMarkerKeepsBifrostWireShape(t *testing.T) {
 			if string(encoded) != test.want {
 				t.Fatalf("marker = %s, want %s", encoded, test.want)
 			}
-			if len(*input) > 0 {
-				if err := schemas.ValidateEmbeddingInput(*input); err != nil {
-					t.Fatalf("marker rejected by the typed preflight: %v", err)
-				}
+			if err := schemas.ValidateEmbeddingInput(*input); err != nil {
+				t.Fatalf("marker rejected by the typed preflight: %v", err)
+			}
+		})
+	}
+}
+
+// TestEmbeddingInputMarkerDescribesUndescribableSelectionsAsPlaceholder covers
+// every selection the item list cannot express. Each one must produce a marker
+// that Bifrost's preflight accepts, because the raw body is the wire authority
+// and rejecting the marker would refuse a request the dialect validator accepted.
+func TestEmbeddingInputMarkerDescribesUndescribableSelectionsAsPlaceholder(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "empty string", body: `{"input":""}`},
+		{name: "empty array", body: `{"input":[]}`},
+		{name: "empty text array", body: `{"input":[""]}`},
+		{name: "empty matrix", body: `{"input":[]}`},
+		{name: "empty matrix row", body: `{"input":[[]]}`},
+		{name: "token id beyond the Go integer range", body: `{"input":[10,123456789012345678901234567890]}`},
+		{name: "matrix row beyond the Go integer range", body: `{"input":[[10],[123456789012345678901234567890]]}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input, err := embeddingInputMarker([]byte(test.body))
+			if err != nil {
+				t.Fatalf("embeddingInputMarker(%s) error = %v", test.body, err)
+			}
+			if err := schemas.ValidateEmbeddingInput(*input); err != nil {
+				t.Fatalf("placeholder marker rejected by the typed preflight: %v", err)
 			}
 		})
 	}
