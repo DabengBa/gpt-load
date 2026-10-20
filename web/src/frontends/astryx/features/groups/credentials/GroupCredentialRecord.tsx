@@ -252,6 +252,9 @@ export function GroupCredentialRecord({
                   (key) => t(key as MessageId),
                   item.last_failure_category,
                 )}
+                {item.last_failure_summary !== undefined && item.last_failure_summary !== '' && (
+                  <span title={item.last_failure_summary}> · {item.last_failure_summary}</span>
+                )}
               </dd>
             </div>
             <div>

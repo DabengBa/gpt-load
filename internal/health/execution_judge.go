@@ -386,10 +386,13 @@ func classifyExecutionEvidence(attempt ExecutionAttempt) FailureCategory {
 		case execution.FailureHintHostError:
 			return FailureCategoryUpstreamHostError
 		}
-		signalValues = []string{
-			attempt.Evidence.Type,
-			attempt.Evidence.Code,
-			attempt.Evidence.Summary,
+		signalValues = []string{attempt.Evidence.Type, attempt.Evidence.Code}
+		// A structured provider event identifies its failure shape independently
+		// of the human-facing message. Keep summaries as a fallback signal only
+		// for legacy evidence that has no type or code, so adding diagnostics
+		// cannot change retry or credential-health decisions.
+		if !strings.EqualFold(attempt.Evidence.Type, "response.failed") {
+			signalValues = append(signalValues, attempt.Evidence.Summary)
 		}
 		markers = strings.ToLower(strings.Join(signalValues, " "))
 	}
