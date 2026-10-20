@@ -74,13 +74,36 @@ route serves the native decisions endpoint.
 `embeddingInputMarker` accepts the four OpenAI Embeddings `input` shapes and
 describes each as the single equivalent item of the SDK's item list: a string or
 a text array becomes one text part, a token array becomes one token part, and a
-token matrix becomes one token part per row. An empty selection produces an
-empty marker, which satisfies the SDK's length gate; the raw body remains the
-wire authority, so the marker cannot widen or narrow what is sent.
+token matrix becomes one token part per row. The marker never becomes the
+request payload: the sanitized client body is sent as `RawRequestBody`, so the
+marker cannot widen or narrow what reaches the Provider.
 
-A body with no `input` member, a `null` or non-array/non-string `input`, or an
-array whose first element is neither a string nor an array is rejected before
-dispatch.
+The marker's element dispatch has three branches, keyed on the first byte of the
+first array element:
+
+- `"` decodes the whole array as `[]string` and joins it into one text part.
+- `[` decodes the array as `[][]int`, one token part per row.
+- Any other first byte falls to the default branch, which decodes the whole
+  array as `[]int`. A numeric token array — the shape clients actually send —
+  takes this branch and becomes one token part.
+
+The marker itself raises an error for only four shapes: a body that does not
+decode as a JSON object, an absent `input` member, an `[`-led array that does not
+decode as a token matrix, and an `input` whose value is neither a JSON string nor
+a JSON array. A text-array element that is not a string is not caught here — a
+mixed array such as `["x",1]` is already refused by the dialect validator in
+`InspectRequest` before the marker runs, so the marker is not the gate that keeps
+it out.
+
+An empty marker is returned — not an error — whenever the selection carries no
+part the item list can describe. That covers an empty string, an empty array, an
+empty text array, and a token array or matrix that is empty or that fails to
+decode into Go `int` at all, which includes a token id beyond the Go integer
+range. The empty marker still occupies one slot, so the SDK's empty-input gate
+passes and the attempt proceeds. The raw body, already accepted by the dialect
+validator as a well-formed integer array, is then forwarded verbatim: GPT-Load
+imposes no Go integer bound on token ids and leaves the token id's validity to
+the destination.
 
 ## Related Product Semantics And Binding Points
 
@@ -97,17 +120,20 @@ dispatch.
 - **Catalog degradation:** dropping an unclassifiable OpenRouter entry narrows
   the published list. It does not change routing, health, or any stored model
   selection; a group can still be configured with a model the list omits.
-- **Embeddings preflight:** an unrepresentable input is rejected before dispatch
-  instead of being rewritten, so the client sees a local validation failure
-  rather than a silently altered upstream request.
+- **Embeddings preflight:** the marker is a preflight description, not a
+  validator. Shape errors it does report stop the attempt before dispatch;
+  shapes it cannot describe degrade to an empty marker and still forward the raw
+  body. Neither path rewrites the client request.
 - **Raw authority:** response bytes are taken from the SDK's raw response, and
   the typed response data is cleared before projection and gateway processing,
   so a converted typed value never replaces the observed wire.
 
 Regression coverage: `list_models_test.go` pins the servable-modality rule
 (including the non-OpenRouter control), `embedding_wire_test.go` pins
-byte-identical request bodies and raw responses for every input shape plus the
-marker's serialized shape and rejection cases, and
+byte-identical request bodies and raw responses for all four input shapes, the
+marker's serialized shape, and its rejection cases,
+`internal/dialect/openai_embeddings_test.go` pins the accepted token ids
+(including one far beyond the Go integer range) and the refused mixed array, and
 `runtime_manager_test.go:TestProductionRuntimeManagerUsesNativeProviderListModelsPaths`
 proves the OpenRouter behavior through the production runtime, including that
 the decisions query is actually issued.
