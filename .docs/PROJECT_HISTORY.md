@@ -6,6 +6,18 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-10-21 — Built-in subscriptions and embedded CPA removed
+
+[PR #191](https://github.com/DabengBa/gpt-load/pull/191) removed the built-in
+subscription channels and the embedded CLIProxyAPI (CPA) execution adapter,
+including the retired subscription tables and the `credentials.auth_state` /
+`auth_error_code` columns. A database written by the previous release cannot be
+opened in place: it is either converted offline with `gpt-load
+convert-legacy-db` or replaced with a fresh database configured by hand
+([Legacy Database Conversion](tech/legacy-db-conversion.md)). Ordinary API-key
+groups, cloud structured credentials, the external CLIProxyAPI gateway channel,
+Bifrost execution, and downstream Codex/Claude Code client configuration remain.
+
 ## 2026-10-20 — Bifrost v1.13.0 upgrade and credential failure messages
 
 [PR #189](https://github.com/DabengBa/gpt-load/pull/189) upgraded the embedded

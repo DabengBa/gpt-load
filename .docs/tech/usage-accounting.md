@@ -39,10 +39,10 @@ missing observation.
 
 ## Architecture And Constraints
 
-Usage aggregation excludes rows with no upstream attempt, probe operations,
-and standalone web-search operations. Each remaining row is assigned to the
-hour containing its completion time and grouped by access key, channel, group,
-credential, and upstream model.
+Usage aggregation excludes rows with no upstream attempt and `probe`
+operations (`internal/requestlog/worker.go:usageAggregationExcluded`). Each
+remaining row is assigned to the hour containing its completion time and
+grouped by access key, channel, group, credential, and upstream model.
 
 Duration is available for every eligible row. First-response timing is
 optional: a row contributes one first-response sample only when its persisted
@@ -97,6 +97,10 @@ without that value remain valid usage rows with zero first-response samples.
 - **Migration:** existing rows receive zero defaults for the new first-response
   fields. They therefore carry no historical first-response observation unless
   a later request contributes one; the migration does not invent timing data.
+- **Eligibility:** only `AttemptCount > 0` and non-`probe` rows produce usage
+  deltas. Every other operation the execution contract defines is counted
+  normally, so a new local-only operation must be added to that predicate
+  explicitly if it should not appear in reports.
 - **Degradation:** missing first-response observations reduce the denominator
   only for that metric. They do not remove the request from duration, status,
   token, or cost aggregates.

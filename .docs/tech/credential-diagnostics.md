@@ -47,7 +47,9 @@ message that attempt-level request logs already store. No new store, column, or
 capture path is introduced.
 
 Every API credential id on the page is queried in one batched read. The record
-retains the failure summary without subscription account or quota projections.
+retains the failure summary and nothing else from the activity projection: the
+last-used timestamp and the 24-hour success/failure counts the query also
+returns are not projected onto the credential record.
 
 The structured evidence fields and the message are separated on purpose. A
 structured provider event identifies its failure shape on its own, so the
@@ -59,11 +61,11 @@ neither a type nor a code.
 - `internal/requestlog/credential_activity.go:queryCredentialLatestActivity`
   selects, per credential, the `error_summary` of the newest attempt ordered by
   completion time, request id, and sequence. It excludes locally-dispatched
-  attempts, probe operations, `ok`, and `downstream_cancel`
+  attempts, `probe` operations, `ok`, and `downstream_cancel`
   attempts, so an expected or self-inflicted row cannot masquerade as an
   upstream failure.
 - The control-plane `internal/control/credential_observations.go:enrichCredentialActivities` projection
-  assigns the summary to every credential item.
+  assigns only `LastFailureSummary` to every credential item.
 - `internal/control/credentials.go` exposes it as the optional
   `last_failure_summary` field; `web/src/shared/control/resources/credentials.ts`
   projects it as a string and leaves it absent when the Provider omitted it.
@@ -91,14 +93,20 @@ neither a type nor a code.
 
 - **Selected attempt:** newest qualifying attempt for that credential, with no
   24-hour window on the summary itself.
+- **Query window:** the activity read still requires one, so
+  `enrichCredentialActivities` asks for the last 24 hours
+  (`credentialDailyUsageWindow`). `QueryCredentialActivity` rejects a window that
+  is empty, longer than 24 hours, or holds more than 100 credential ids.
+  `enrichCredentialActivities` returns without assigning anything when the read
+  fails, so a failed lookup leaves an empty summary.
 - **Sanitization:** the message passes the existing request-log path —
   `redact.ExtractErrorMessage` for the Provider field, then
   `sanitizeErrorSummary` (invalid UTF-8 repair, redaction of known secrets, and
   whitespace normalization). It is bounded like every other summary, so a long
   Provider message is truncated rather than rejected.
-- **Degradation:** a missing message leaves the field absent and the UI falls
-  back to the localized "none" label; a query failure leaves the field empty and
-  does not fail the credential read.
+- **Degradation:** a missing message leaves the field absent and the UI renders
+  the failure category alone. A query failure leaves the field empty and does not
+  fail the credential read.
 - **Decision isolation:** the summary must not change health classification,
   retry or fallback choice, cooldown, blacklist, or billing. Appending it to the
   marker text for `response.failed` evidence is precisely what would let a
