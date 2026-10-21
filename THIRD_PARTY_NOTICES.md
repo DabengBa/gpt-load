@@ -20,23 +20,6 @@ owned by GPT-Load.
 The complete Apache License 2.0 text is distributed in
 `LICENSES/Apache-2.0.txt`.
 
-## CLIProxyAPI
-
-- Module: `github.com/router-for-me/CLIProxyAPI/v8`
-- Version: `v8.0.35`
-- Copyright: 2025-2005.9 Luis Pater; 2025.9-present Router-For.ME
-- License: MIT License
-
-GPT-Load uses a pinned, execution-only embedded adapter around CLIProxyAPI's
-Codex, Claude, Antigravity, and xAI OAuth and HTTP executor code. GPT-Load retains ownership of
-credential storage, account selection, retry, health, affinity, logging, and
-usage policy; the embedded adapter does not use CLIProxyAPI's manager, pool,
-file store, fallback, or automatic retry. A separate, explicitly called Codex
-WebSocket session facade reuses the pinned WebSocket executor with HTTP fallback
-and business-request replay blocked; it is not wired into the request data plane.
-
-The complete MIT License text is distributed in `LICENSES/MIT.txt`.
-
 ## fasthttp
 
 - Module: `github.com/valyala/fasthttp`

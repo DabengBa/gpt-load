@@ -55,7 +55,6 @@ POST /api/groups/:group_id/credential/test
 → { outcome, model, protocol, latency_ms, reason, recovered, log_id, tested_at_ms }
 ```
 
-- 订阅凭据继续禁止手动测试。
 - 测试成功后，只有凭据身份、版本、指纹、失败代次、冷却视图和当前目标签名都与本次读取一致时，才清除该凭据的黑名单/失败状态。
 - `recovered` 由同一次操作直接返回；前端不再发起第二次「测试通过后恢复」请求。
 - 失败和无法判断结果不写入健康或恢复状态。成功但状态已被其他操作改变时，返回 `recovered=false`，不覆盖更新后的状态。
@@ -72,7 +71,6 @@ Provider 通过 `ProviderBinding.ProbeContract` 声明单一生成式探测协�
 | OpenAI Compatible | `openai-completions` |
 | Anthropic | `anthropic` |
 | Gemini、Vertex Gemini | `gemini` |
-| 没有生成式协议契约的订阅渠道 | 不支持 |
 
 探测提示为 `What is 2 + 2? Please answer briefly.`，所有生成式探测共用 contract 声明的 128 输出预算——思考型模型可能先把小预算全部花在内部推理上而不产出可见文本，因此预算必须明显高于各家最小输出限制。协议请求字段由最终 wire 语义决定：
 
@@ -150,7 +148,6 @@ Provider 通过 `ProviderBinding.ProbeContract` 声明单一生成式探测协�
 - 分组模型页只允许对已保存模型行测活；调度中心对当前可见行提供单行和批量测活，批量按钮显示真实行数并按 8 个目标一块顺序发送。
 - 弹窗展示协议、路由模式、结果、原因、凭据、耗时、`recovered` 和请求 ID；请求 ID可复制并深链到日志详情。
 - 凭据测试弹窗直接展示 `recovered`，不再显示 `can_restore`、`restore_proof` 或第二个恢复按钮。
-- 订阅凭据不显示测试动作。
 - 页面挂载、刷新、标签切换、可见性变化和健康轮询只读取控制面 API，不发送上游探测。
 - 所有支持的 locale（`en-US`、`zh-CN`、`ja-JP`）同步移除已删除的验证设置、验证模型和验证恢复文案。
 

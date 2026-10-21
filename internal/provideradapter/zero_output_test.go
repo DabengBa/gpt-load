@@ -20,12 +20,11 @@ func TestRegistryRejectsConvertedAnthropicZeroOutputBeforeDispatch(t *testing.T)
 		{channel.Gemini, nil},
 		{channel.OpenAI, nil},
 		{channel.OpenAICompatible, json.RawMessage(`{"base_url":"https://upstream.example/v1"}`)},
-		{channel.Codex, nil},
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%t", target.channelID, stream), func(t *testing.T) {
 				adapter := &recordingAdapter{}
-				registry, err := NewRegistry(channel.NewRegistry(), completeBindings(adapter, adapter))
+				registry, err := NewRegistry(channel.NewRegistry(), completeBindings(adapter))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -97,7 +96,7 @@ func TestRegistryZeroOutputGuardUsesEffectiveRequestAndOperation(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			adapter := &recordingAdapter{}
-			registry, err := NewRegistry(channel.NewRegistry(), completeBindings(adapter, adapter))
+			registry, err := NewRegistry(channel.NewRegistry(), completeBindings(adapter))
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -19,28 +19,15 @@ import { channelOperations, sameStringMembers, type ChannelOperation } from './c
 export type { ChannelOperation } from './channel-contract'
 
 export type ChannelFieldInputKind = 'text' | 'url' | 'secret'
-export type ChannelConnectionType = 'api_key' | 'subscription'
-const authorizationMethods = ['browser_oauth', 'device_oauth', 'oauth_file'] as const
-export type ChannelAuthorizationMethod = (typeof authorizationMethods)[number]
-export type ChannelCredentialAction = 'reset_credit'
-export type ChannelNoticeID = 'claude_oauth_risk' | 'antigravity_oauth_risk'
-export type ChannelNoticeTone = 'warning'
-
-export interface ChannelNoticeDto {
-  id: ChannelNoticeID
-  tone: ChannelNoticeTone
-}
+export type ChannelConnectionType = 'api_key'
 
 export interface ChannelConnectionDto {
   type: ChannelConnectionType
-  credential_input: 'batch_text' | 'authorization'
-  authorization_methods: ChannelAuthorizationMethod[]
+  credential_input: 'batch_text'
 }
 
 export interface ChannelCapabilitiesDto {
   model_discovery: boolean
-  quota_observation: boolean
-  credential_actions: ChannelCredentialAction[]
   outbound_proxy: boolean
 }
 
@@ -71,7 +58,6 @@ export interface ChannelDto {
   search_terms: string[]
   description: string
   default_base_url: string
-  notices: ChannelNoticeDto[]
   param_fields: ChannelFieldDto[]
   credential_fields: ChannelFieldDto[]
   connection: ChannelConnectionDto
@@ -93,7 +79,6 @@ const channelFields = [
   'search_terms',
   'description',
   'default_base_url',
-  'notices',
   'param_fields',
   'credential_fields',
   'connection',
@@ -111,19 +96,10 @@ const fieldFields = [
 ] as const
 const listFields = ['items', 'total'] as const
 const inputKinds = ['text', 'url', 'secret'] as const
-const connectionTypes = ['api_key', 'subscription'] as const
-const credentialInputs = ['batch_text', 'authorization'] as const
-const connectionFields = ['type', 'credential_input', 'authorization_methods'] as const
-const capabilityFields = [
-  'model_discovery',
-  'quota_observation',
-  'credential_actions',
-  'outbound_proxy',
-] as const
-const credentialActions = ['reset_credit'] as const
-const noticeFields = ['id', 'tone'] as const
-const noticeIDs = ['claude_oauth_risk', 'antigravity_oauth_risk'] as const
-const noticeTones = ['warning'] as const
+const connectionTypes = ['api_key'] as const
+const credentialInputs = ['batch_text'] as const
+const connectionFields = ['type', 'credential_input'] as const
+const capabilityFields = ['model_discovery', 'outbound_proxy'] as const
 const routeFields = [
   'client_protocol',
   'operation',
@@ -177,40 +153,15 @@ function projectConnection(value: unknown): ChannelConnectionDto {
   assertNoSecretLikeFields(record, connectionFields)
   const type = projectEnum(record.type, connectionTypes)
   const credentialInput = projectEnum(record.credential_input, credentialInputs)
-  const methods = projectArray(record.authorization_methods ?? [], (method) =>
-    projectEnum(method, authorizationMethods),
-  )
-  if (
-    new Set(methods).size !== methods.length ||
-    (type === 'api_key' && (credentialInput !== 'batch_text' || methods.length !== 0)) ||
-    (type === 'subscription' && (credentialInput !== 'authorization' || methods.length === 0))
-  ) {
-    invalidResponse()
-  }
-  return { type, credential_input: credentialInput, authorization_methods: methods }
+  return { type, credential_input: credentialInput }
 }
 
 function projectCapabilities(value: unknown): ChannelCapabilitiesDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, capabilityFields)
-  const actions = projectArray(record.credential_actions, (action) =>
-    projectEnum(action, credentialActions),
-  )
-  if (new Set(actions).size !== actions.length) invalidResponse()
   return {
     model_discovery: projectBoolean(record.model_discovery),
-    quota_observation: projectBoolean(record.quota_observation),
-    credential_actions: actions,
     outbound_proxy: projectBoolean(record.outbound_proxy),
-  }
-}
-
-function projectNotice(value: unknown): ChannelNoticeDto {
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, noticeFields)
-  return {
-    id: projectEnum(record.id, noticeIDs),
-    tone: projectEnum(record.tone, noticeTones),
   }
 }
 
@@ -245,7 +196,6 @@ function projectChannel(value: unknown): ChannelDto {
   const credentialFields = projectArray(record.credential_fields, projectChannelField)
   const connection = projectConnection(record.connection)
   const capabilities = projectCapabilities(record.capabilities)
-  const notices = projectArray(record.notices, projectNotice)
   const routes = projectArray(record.routes, projectRoute)
   const clientProtocols = projectArray(record.client_protocols, (protocol) =>
     projectEnum(protocol, enabledDataProtocols),
@@ -261,7 +211,6 @@ function projectChannel(value: unknown): ChannelDto {
     new Set(credentialFields.map(({ key }) => key)).size !== credentialFields.length ||
     new Set(routeKeys).size !== routeKeys.length ||
     credentialFields.some(({ sensitive }) => !sensitive) ||
-    new Set(notices.map(({ id }) => id)).size !== notices.length ||
     new Set(clientProtocols).size !== clientProtocols.length ||
     !sameStringMembers(clientProtocols, derivedProtocols)
   ) {
@@ -275,7 +224,6 @@ function projectChannel(value: unknown): ChannelDto {
     search_terms: projectArray(record.search_terms, (term) => projectString(term)),
     description: projectString(record.description, { allowEmpty: true }),
     default_base_url: projectString(record.default_base_url, { allowEmpty: true }),
-    notices,
     param_fields: paramFields,
     credential_fields: credentialFields,
     connection,

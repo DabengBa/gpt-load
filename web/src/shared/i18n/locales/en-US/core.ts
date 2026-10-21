@@ -67,32 +67,6 @@ export default {
         default: 'Default direct',
       },
     },
-    subscriptionErrors: {
-      oauthFileInvalid: 'The OAuth JSON is invalid or missing required fields',
-      oauthFileTooLarge: 'The OAuth JSON file must be smaller than 64 KiB',
-      authorizationUnavailable: 'Codex browser authorization is temporarily unavailable',
-      authorizationStateInvalid:
-        'This callback is expired, already used, or belongs to another authorization',
-      authorizationExchangeFailed:
-        'Codex rejected or could not complete the authorization exchange',
-      stageNotReady: 'The subscription account has not finished authorization',
-      stageExpired: 'The temporary subscription account expired; authorize or import it again',
-      stageConsumed: 'This temporary subscription account was already saved; authorize again',
-      stageMismatch: 'The temporary subscription account does not match this target',
-      duplicateAccount: 'This subscription account already exists in the Group',
-      reauthorizationRequired: 'This subscription account must be reconnected or re-imported',
-      outcomeUnknown:
-        'The credential refresh outcome is unknown; reconnect or re-import this account',
-      refreshTemporarilyUnavailable:
-        'Credential refresh is temporarily unavailable; try again later',
-      versionConflict: 'The authorization changed elsewhere; reload and try again',
-      resetCreditUnavailable: 'No reset credit is available; sync the account first',
-      resetCreditRejected: 'The upstream did not accept the reset credit; sync and try again',
-      resetCreditOutcomeUnknown:
-        'The reset outcome is unknown. Do not reload the page; confirm again to retry safely with the same operation identity',
-      operationIncomplete: 'The account was saved, but runtime recovery is still in progress',
-      recoveryPending: 'An earlier account operation is still recovering; try again shortly',
-    },
     unsavedChangesDialog: {
       title: 'Discard unsaved changes?',
       description:
@@ -291,15 +265,8 @@ export default {
         title: 'Needs attention',
         blacklisted: '{group} has {count} blacklisted credentials that need manual action',
         billing: '{group} has {count} credentials with insufficient balance, earliest retry',
-        resetCreditExpiring:
-          '{group} has {count} reset credits expiring soon; the nearest one expires',
-        lowQuota: '{group} has {remaining} quota left, resets',
         summary: '{count} items need your attention',
         action: 'Resolve',
-      },
-      subscriptionAccounts: {
-        title: 'Recently used',
-        availableGroups: '{available}/{total} available',
       },
       spend: {
         title: 'Estimated over 30 days',

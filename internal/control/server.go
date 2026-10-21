@@ -10,21 +10,18 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
+
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
-	"gpt-load/internal/channel"
-	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/i18n"
 	"gpt-load/internal/platform/response"
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/releasecheck"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
 // ReleaseUpdateChecker is the control-plane on-demand view of the public release checker.
@@ -46,16 +43,10 @@ type Server struct {
 }
 
 const maxControlJSONBodyBytes int64 = 32 << 20
-const (
-	maxCredentialStageChannelIDBytes int64 = 128
-	maxCredentialStageGroupIDBytes   int64 = 32
-)
 
 func NewServer(cfg *config.Config, service *Service) *Server {
 	now := time.Now
-	if service != nil && service.oauthCallback != nil {
-		service.oauthCallback.configureForServerHost(cfg.Server.Host)
-	}
+
 	return &Server{
 		authDigest:    sha256.Sum256([]byte(cfg.AuthKey)),
 		service:       service,
@@ -90,199 +81,6 @@ func (s *Server) handleGetSettings(c *gin.Context) {
 		return
 	}
 	writeSettingsResponse(c, result)
-}
-
-type credentialAuthorizationRequest struct {
-	ChannelID string                `json:"channel_id"`
-	Proxy     *outboundproxy.Config `json:"proxy"`
-	GroupID   *uint                 `json:"group_id"`
-}
-
-func (s *Server) handleBeginCredentialAuthorization(c *gin.Context) {
-	var request credentialAuthorizationRequest
-	if err := bindStrictJSON(c, &request); err != nil {
-		writeServiceError(c, "begin_credential_authorization", mapControlJSONError(err))
-		return
-	}
-	var result CredentialStageResult
-	var err error
-	switch {
-	case request.GroupID != nil && (*request.GroupID == 0 || request.Proxy != nil):
-		err = app_errors.ErrValidation
-	case request.GroupID != nil:
-		result, err = s.service.BeginGroupCredentialAuthorization(
-			c.Request.Context(), *request.GroupID, channel.ID(request.ChannelID),
-		)
-	default:
-		result, err = s.service.BeginCredentialAuthorization(
-			c.Request.Context(), channel.ID(request.ChannelID), request.Proxy,
-		)
-	}
-	if err != nil {
-		writeServiceError(c, "begin_credential_authorization", err)
-		return
-	}
-	if result.RedirectURI != "" && s.service.oauthCallback != nil {
-		if err := s.service.oauthCallback.EnsureStarted(subscriptionruntime.LocalCallbackSpec{RedirectURI: result.RedirectURI}); err != nil {
-			s.logger.WithField("event", "oauth.callback_start_failed").WithError(err).Warn("OAuth callback listener is unavailable; manual callback remains available")
-		}
-	}
-	setMutationResourceLocator(c, "credential-stage:"+result.StageID)
-	setSecretResponseHeaders(c)
-	response.SuccessI18n(c, "common.success", result)
-}
-
-type credentialAuthorizationCallbackRequest struct {
-	CallbackURL string `json:"callback_url"`
-}
-
-func (s *Server) handleCredentialAuthorizationCallback(c *gin.Context) {
-	var request credentialAuthorizationCallbackRequest
-	if err := bindStrictJSON(c, &request); err != nil {
-		writeServiceError(c, "complete_credential_authorization", mapControlJSONError(err))
-		return
-	}
-	stageID := strings.TrimSpace(c.Param("stage_id"))
-	result, err := s.service.CompleteCredentialAuthorizationCallback(
-		c.Request.Context(),
-		stageID,
-		request.CallbackURL,
-	)
-	if err != nil {
-		writeServiceError(c, "complete_credential_authorization", err)
-		return
-	}
-	setSecretResponseHeaders(c)
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handlePollCredentialDeviceAuthorization(c *gin.Context) {
-	result, err := s.service.PollCredentialDeviceAuthorization(
-		c.Request.Context(), strings.TrimSpace(c.Param("stage_id")),
-	)
-	if err != nil {
-		writeServiceError(c, "poll_credential_device_authorization", err)
-		return
-	}
-	setMutationResourceLocator(c, "credential-stage:"+result.StageID)
-	setSecretResponseHeaders(c)
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handleImportCredentialStage(c *gin.Context) {
-	reader, err := c.Request.MultipartReader()
-	if err != nil {
-		writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-		return
-	}
-	var raw []byte
-	defer func() { clear(raw) }()
-	var channelID channel.ID
-	var proxyConfig *outboundproxy.Config
-	var groupID uint
-	fileCount := 0
-	channelCount := 0
-	proxyCount := 0
-	groupCount := 0
-	for {
-		part, nextErr := reader.NextPart()
-		if errors.Is(nextErr, io.EOF) {
-			break
-		}
-		if nextErr != nil {
-			writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-			return
-		}
-		switch {
-		case part.FormName() == "channel_id" && part.FileName() == "":
-			channelCount++
-			value, readErr := io.ReadAll(io.LimitReader(part, maxCredentialStageChannelIDBytes+1))
-			_ = part.Close()
-			if readErr != nil || int64(len(value)) > maxCredentialStageChannelIDBytes || channelCount != 1 {
-				writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-				return
-			}
-			channelID = channel.ID(strings.TrimSpace(string(value)))
-		case part.FormName() == "file" && part.FileName() != "":
-			fileCount++
-			if fileCount != 1 {
-				_ = part.Close()
-				writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-				return
-			}
-			raw, err = io.ReadAll(io.LimitReader(part, maxOAuthFileBytes+1))
-			_ = part.Close()
-			if err != nil {
-				writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-				return
-			}
-		case part.FormName() == "proxy" && part.FileName() == "":
-			proxyCount++
-			value, readErr := io.ReadAll(io.LimitReader(part, 16*1024+1))
-			_ = part.Close()
-			if readErr != nil || len(value) > 16*1024 || proxyCount != 1 {
-				writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-				return
-			}
-			config, decodeErr := outboundproxy.Decode(string(value))
-			if decodeErr != nil || config.Mode == outboundproxy.ModeInherit {
-				writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-				return
-			}
-			proxyConfig = &config
-		case part.FormName() == "group_id" && part.FileName() == "":
-			groupCount++
-			value, readErr := io.ReadAll(io.LimitReader(part, maxCredentialStageGroupIDBytes+1))
-			_ = part.Close()
-			parsed, parseErr := parseCanonicalSafePlatformUint(strings.TrimSpace(string(value)))
-			if readErr != nil || int64(len(value)) > maxCredentialStageGroupIDBytes ||
-				groupCount != 1 || parseErr != nil || parsed == 0 {
-				writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-				return
-			}
-			groupID = parsed
-		default:
-			_ = part.Close()
-			writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-			return
-		}
-	}
-	if fileCount != 1 || channelCount != 1 || channelID == "" ||
-		(groupCount != 0 && proxyCount != 0) {
-		writeServiceError(c, "import_credential_stage", app_errors.ErrOAuthFileInvalid)
-		return
-	}
-	var result CredentialStageResult
-	if groupCount == 1 {
-		result, err = s.service.ImportGroupCredentialStage(c.Request.Context(), groupID, channelID, raw)
-	} else {
-		result, err = s.service.ImportCredentialStage(c.Request.Context(), channelID, raw, proxyConfig)
-	}
-	if err != nil {
-		writeServiceError(c, "import_credential_stage", err)
-		return
-	}
-	setMutationResourceLocator(c, "credential-stage:"+result.StageID)
-	setSecretResponseHeaders(c)
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handleGetCredentialStage(c *gin.Context) {
-	result, err := s.service.GetCredentialStage(c.Request.Context(), strings.TrimSpace(c.Param("stage_id")))
-	if err != nil {
-		writeServiceError(c, "get_credential_stage", err)
-		return
-	}
-	setSecretResponseHeaders(c)
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handleCancelCredentialStage(c *gin.Context) {
-	if err := s.service.CancelCredentialStage(c.Request.Context(), strings.TrimSpace(c.Param("stage_id"))); err != nil {
-		writeServiceError(c, "cancel_credential_stage", err)
-		return
-	}
-	response.SuccessI18n(c, "common.success", nil)
 }
 
 func (s *Server) handleUpdateSettings(c *gin.Context) {
@@ -483,79 +281,6 @@ func (s *Server) resolveGroupCredential(c *gin.Context) {
 	c.Params = append(c.Params, gin.Param{Key: "credential_id", Value: strconv.FormatUint(uint64(credentialID), 10)})
 }
 
-func (s *Server) handleRefreshGroupCredentialObservation(c *gin.Context) {
-	groupID, ok := groupID(c, "refresh_group_credential_observation")
-	if !ok {
-		return
-	}
-	credentialID, ok := credentialID(c, "refresh_group_credential_observation")
-	if !ok {
-		return
-	}
-	if err := bindOptionalEmptyJSONObject(c); err != nil {
-		writeServiceError(c, "refresh_group_credential_observation", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.RefreshCredentialObservation(c.Request.Context(), groupID, credentialID)
-	if err != nil {
-		writeServiceError(c, "refresh_group_credential_observation", err)
-		return
-	}
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handleRefreshGroupCredential(c *gin.Context) {
-	groupID, ok := groupID(c, "refresh_group_credential")
-	if !ok {
-		return
-	}
-	credentialID, ok := credentialID(c, "refresh_group_credential")
-	if !ok {
-		return
-	}
-	if err := bindOptionalEmptyJSONObject(c); err != nil {
-		writeServiceError(c, "refresh_group_credential", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.RefreshGroupCredential(c.Request.Context(), groupID, credentialID)
-	if err != nil {
-		writeServiceError(c, "refresh_group_credential", err)
-		return
-	}
-	setSecretResponseHeaders(c)
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handleConsumeGroupCredentialResetCredit(c *gin.Context) {
-	groupID, ok := groupID(c, "consume_group_credential_reset_credit")
-	if !ok {
-		return
-	}
-	credentialID, ok := credentialID(c, "consume_group_credential_reset_credit")
-	if !ok {
-		return
-	}
-	idempotencyKey, ok := requiredIdempotencyKey(c, "consume_group_credential_reset_credit")
-	if !ok {
-		return
-	}
-	if err := bindOptionalEmptyJSONObject(c); err != nil {
-		writeServiceError(c, "consume_group_credential_reset_credit", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.ConsumeCredentialResetCredit(
-		c.Request.Context(),
-		groupID,
-		credentialID,
-		idempotencyKey,
-	)
-	if err != nil {
-		writeServiceError(c, "consume_group_credential_reset_credit", err)
-		return
-	}
-	response.SuccessI18n(c, "common.success", result)
-}
-
 func (s *Server) handleRevealGroupCredential(c *gin.Context) {
 	groupID, ok := groupID(c, "reveal_group_credential")
 	if !ok {
@@ -572,28 +297,6 @@ func (s *Server) handleRevealGroupCredential(c *gin.Context) {
 	result, err := s.service.RevealGroupCredential(c.Request.Context(), groupID, credentialID)
 	if err != nil {
 		writeServiceError(c, "reveal_group_credential", err)
-		return
-	}
-	setSecretResponseHeaders(c)
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handleDownloadGroupCredential(c *gin.Context) {
-	groupID, ok := groupID(c, "download_group_credential")
-	if !ok {
-		return
-	}
-	credentialID, ok := credentialID(c, "download_group_credential")
-	if !ok {
-		return
-	}
-	if err := bindOptionalEmptyJSONObject(c); err != nil {
-		writeServiceError(c, "download_group_credential", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.DownloadGroupCredential(c.Request.Context(), groupID, credentialID)
-	if err != nil {
-		writeServiceError(c, "download_group_credential", err)
 		return
 	}
 	setSecretResponseHeaders(c)
@@ -703,33 +406,6 @@ func (s *Server) handleImportGroupCredentials(c *gin.Context) {
 	)
 	if err != nil {
 		writeServiceError(c, "import_group_credentials", err)
-		return
-	}
-	response.SuccessI18n(c, "common.success", result)
-}
-
-func (s *Server) handleConnectGroupCredentials(c *gin.Context) {
-	expectedID, err := strconv.ParseUint(c.GetHeader("X-Credential-ID"), 10, strconv.IntSize)
-	if err != nil {
-		writeServiceError(c, "connect_group_credentials", app_errors.ErrValidation)
-		return
-	}
-	id, ok := groupID(c, "connect_group_credentials")
-	if !ok {
-		return
-	}
-	idempotencyKey, ok := requiredIdempotencyKey(c, "connect_group_credentials")
-	if !ok {
-		return
-	}
-	var request CredentialConnectRequest
-	if err := bindStrictJSON(c, &request); err != nil {
-		writeServiceError(c, "connect_group_credentials", mapControlJSONError(err))
-		return
-	}
-	result, err := s.service.ConnectGroupCredentialsIdempotent(c.Request.Context(), idempotencyKey, id, uint(expectedID), request.StagedCredentialID)
-	if err != nil {
-		writeServiceError(c, "connect_group_credentials", err)
 		return
 	}
 	response.SuccessI18n(c, "common.success", result)
@@ -1111,12 +787,6 @@ func serviceErrorMessageID(
 		return "control.operation_incomplete"
 	case app_errors.ErrControlRecoveryPending.Code:
 		return "control.recovery_pending"
-	case app_errors.ErrResetCreditUnavailable.Code:
-		return "reset_credit.unavailable"
-	case app_errors.ErrResetCreditRejected.Code:
-		return "reset_credit.rejected"
-	case app_errors.ErrResetCreditOutcomeUnknown.Code:
-		return "reset_credit.outcome_unknown"
 	case app_errors.ErrModelPriceUnpricedConfirmationRequired.Code:
 		return "model_price.unpriced_confirmation_required"
 	case app_errors.ErrModelPriceReferenced.Code:

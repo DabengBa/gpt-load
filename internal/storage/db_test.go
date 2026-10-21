@@ -18,46 +18,6 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
-func TestCredentialAuthStateAcceptsOnlyDurableStates(t *testing.T) {
-	t.Parallel()
-
-	db := openMigratedDatabase(t)
-	for index, authState := range []models.CredentialAuthState{
-		models.CredentialAuthStateReady,
-		models.CredentialAuthStateRefreshing,
-	} {
-		group := models.Group{
-			Name: "credential-auth-state-parent-" + string(rune('a'+index)), ChannelID: "openai_compatible",
-			Params: models.JSON(`{"base_url":"https://credential-auth-state.example.com"}`), Models: models.JSON(`[]`),
-		}
-		if err := db.Create(&group).Error; err != nil {
-			t.Fatalf("create auth-state parent group: %v", err)
-		}
-		credential := models.Credential{
-			GroupID: group.ID, Data: "encrypted-data",
-			Fingerprint: "allowed-credential-auth-state-" + string(rune('a'+index)),
-			AuthState:   authState,
-		}
-		if err := db.Create(&credential).Error; err != nil {
-			t.Fatalf("create credential with auth state %q: %v", authState, err)
-		}
-	}
-	invalidGroup := models.Group{
-		Name: "credential-auth-state-invalid", ChannelID: "openai_compatible",
-		Params: models.JSON(`{"base_url":"https://credential-auth-state.example.com"}`), Models: models.JSON(`[]`),
-	}
-	if err := db.Create(&invalidGroup).Error; err != nil {
-		t.Fatalf("create invalid auth-state parent group: %v", err)
-	}
-	invalid := models.Credential{
-		GroupID: invalidGroup.ID, Data: "encrypted-data", Fingerprint: "invalid-credential-auth-state",
-		AuthState: models.CredentialAuthState("blacklisted"),
-	}
-	if err := db.Create(&invalid).Error; err == nil {
-		t.Fatal("create credential with runtime-only blacklisted auth state error = nil")
-	}
-}
-
 func TestGroupNormalizesMissingChannelParamsToEmptyObject(t *testing.T) {
 	t.Parallel()
 
@@ -676,9 +636,6 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"system_settings",
 		"jobs",
 		"control_operations",
-		"credential_stages",
-		"credential_observations",
-		"credential_reset_operations",
 		"credential_attempt_stats",
 		"usage_attempt_aggregation_journals",
 		"usage_attempt_stats",
@@ -698,7 +655,6 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 	wantMigrationIDs := []string{
 		"0001_initial",
 		"0002_access_key_cost_limits",
-		"0003_remove_observation_fresh_until",
 		"0004_usage_stats_group_activity_index",
 		"0005_proxy_config",
 		"0006_error_decision",

@@ -163,7 +163,7 @@ func (s *Service) readGroupCollectionRows(
 		}
 		var credentials []models.Credential
 		if err := tx.Model(&models.Credential{}).
-			Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version", "auth_state").
+			Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version").
 			Order("group_id ASC, id ASC").Find(&credentials).Error; err != nil {
 			return err
 		}

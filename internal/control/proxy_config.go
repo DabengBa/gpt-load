@@ -6,12 +6,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"gpt-load/internal/channel"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/encryption"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/storage/models"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
 func normalizeProxyOverride(
@@ -45,14 +43,14 @@ func normalizeProxyOverride(
 func (s *Service) globalNetworkContext(
 	ctx context.Context,
 	db *gorm.DB,
-) (subscriptionruntime.NetworkContext, error) {
+) (proxyNetwork, error) {
 	global, err := s.loadGlobalProxyConfig(ctx, db)
 	if err != nil {
-		return subscriptionruntime.NetworkContext{}, err
+		return proxyNetwork{}, err
 	}
 	effective, err := outboundproxy.Resolve(nil, nil, global, s.environmentProxy)
 	if err != nil {
-		return subscriptionruntime.NetworkContext{}, app_errors.ErrInternalServer
+		return proxyNetwork{}, app_errors.ErrInternalServer
 	}
 	return s.proxyNetworkContext(effective)
 }
@@ -60,17 +58,17 @@ func (s *Service) globalNetworkContext(
 func (s *Service) draftNetworkContext(
 	ctx context.Context,
 	config *outboundproxy.Config,
-) (subscriptionruntime.NetworkContext, error) {
+) (proxyNetwork, error) {
 	if config == nil {
 		return s.globalNetworkContext(ctx, s.db)
 	}
 	normalized, err := outboundproxy.Normalize(*config)
 	if err != nil || normalized.Mode == outboundproxy.ModeInherit {
-		return subscriptionruntime.NetworkContext{}, app_errors.ErrValidation
+		return proxyNetwork{}, app_errors.ErrValidation
 	}
 	effective, err := outboundproxy.Resolve(nil, &normalized, nil, nil)
 	if err != nil {
-		return subscriptionruntime.NetworkContext{}, app_errors.ErrValidation
+		return proxyNetwork{}, app_errors.ErrValidation
 	}
 	return s.proxyNetworkContext(effective)
 }
@@ -79,39 +77,20 @@ func (s *Service) groupNetworkContext(
 	ctx context.Context,
 	db *gorm.DB,
 	group models.Group,
-) (subscriptionruntime.NetworkContext, error) {
+) (proxyNetwork, error) {
 	_, effective, err := s.resolveGroupProxy(ctx, db, group)
 	if err != nil {
-		return subscriptionruntime.NetworkContext{}, err
+		return proxyNetwork{}, err
 	}
 	return s.proxyNetworkContext(effective)
 }
 
-func (s *Service) groupCredentialStageNetworkContext(
-	ctx context.Context,
-	groupID uint,
-	channelID channel.ID,
-) (subscriptionruntime.NetworkContext, error) {
-	if s == nil || s.db == nil || groupID == 0 || channelID == "" {
-		return subscriptionruntime.NetworkContext{}, app_errors.ErrValidation
-	}
-	db := s.db.WithContext(ctx)
-	group, err := loadGroupRow(db, groupID)
-	if err != nil {
-		return subscriptionruntime.NetworkContext{}, err
-	}
-	if group.ChannelID != string(channelID) || group.ConnectionType != models.ConnectionTypeSubscription {
-		return subscriptionruntime.NetworkContext{}, app_errors.ErrValidation
-	}
-	return s.groupNetworkContext(ctx, db, group)
-}
-
 func (s *Service) proxyNetworkContext(
 	effective outboundproxy.Effective,
-) (subscriptionruntime.NetworkContext, error) {
+) (proxyNetwork, error) {
 	effective, err := outboundproxy.NormalizeEffective(effective)
 	if err != nil || s.encryption == nil {
-		return subscriptionruntime.NetworkContext{}, app_errors.ErrInternalServer
+		return proxyNetwork{}, app_errors.ErrInternalServer
 	}
 	identity := ""
 	if effective.Config.Mode == outboundproxy.ModeEnvironment {
@@ -119,10 +98,10 @@ func (s *Service) proxyNetworkContext(
 	} else {
 		identity, err = outboundproxy.Encode(effective.Config)
 		if err != nil {
-			return subscriptionruntime.NetworkContext{}, app_errors.ErrInternalServer
+			return proxyNetwork{}, app_errors.ErrInternalServer
 		}
 	}
-	return subscriptionruntime.NetworkContext{
+	return proxyNetwork{
 		Proxy: effective, Fingerprint: s.encryption.Hash(identity),
 	}, nil
 }
@@ -225,4 +204,9 @@ func (s *Service) groupProxyView(
 		return outboundproxy.View{}, app_errors.ErrInternalServer
 	}
 	return view, nil
+}
+
+type proxyNetwork struct {
+	Proxy       outboundproxy.Effective
+	Fingerprint string
 }

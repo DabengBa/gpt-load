@@ -23,6 +23,12 @@ Thanks for helping improve GPT-Load. This document covers what a human contribut
 
 `2.x` and `1.x` are incompatible implementations and do not share data. Base 2.x work on the **`main` branch** and target your PR at `main`. The `1.x` line is in maintenance and only takes security and critical bug fixes.
 
+## 当前产品边界 / Current scope
+
+仅保留标准 API、云凭据和 external CLIProxyAPI 网关；不重新引入内置订阅、订阅 OAuth、账号观察或 CPA 依赖。Codex/Claude Code 下游客户端配置保留。破坏性存储变更不提供原地迁移：旧库只能停机后用 `gpt-load convert-legacy-db` 离线转换，或改用全新数据库；含退役订阅结构或 migration `0003` 的库会拒绝转换/启动。转换器改动必须覆盖保留与丢弃表清单、拒绝路径，以及转换后的启动测试。测试必须使用临时数据库，不连接业务数据库；启动拒绝不承诺 SQLite 文件/WAL 零副作用。
+
+Retain standard APIs, cloud credentials and the external CLIProxyAPI gateway, not embedded subscriptions/OAuth/account observation/CPA. Preserve downstream Codex/Claude Code setup. This breaking schema has no in-place migration: a legacy database is either converted offline with `gpt-load convert-legacy-db` after the old instance is stopped, or replaced with a fresh database; databases with retired subscription structures or migration `0003` are refused. Converter changes must cover the retained/dropped table lists, the refusal paths, and a startup test of the converted database. Use test-owned temporary databases, never business data.
+
 ## 本地开发 / Local development
 
 需要 Go（版本以 `go.mod` 为准）和 Node.js + pnpm（通过 corepack 调用）。
@@ -40,19 +46,6 @@ make check   # 完整验收门禁 / the full acceptance gate
 
 `make check` covers gofmt, `go mod tidy -diff`, `go vet`, web lint / format / build, the Go build, and the full unit test suite.
 
-`third_party/cpaembedded` 是独立 Go module，**不在 `make check` 覆盖范围内**。改动该目录时请额外执行：
-
-`third_party/cpaembedded` is a separate Go module and is **not covered by `make check`**. When changing it, also run:
-
-```bash
-cd third_party/cpaembedded
-go mod tidy -diff
-go vet ./...
-```
-
-该 module 的 race 测试由 CI 负责，按仓库约定不在本地运行。
-
-Race tests for that module run in CI; per repository convention they are not run locally.
 
 ## 提交 PR / Submitting a pull request
 
@@ -75,7 +68,7 @@ Race tests for that module run in CI; per repository convention they are not run
 Format: `<type>(scope): <summary>`, with an optional scope. Common types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
 
 ```text
-fix(subscription): 避免临时刷新失败锁死凭据
+fix(credentials): 保留 API 凭据失败诊断
 feat(gateway): 支持 OpenAI Embeddings API
 ```
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"reflect"
 	"sync"
 	"testing"
@@ -13,15 +12,11 @@ import (
 	"gorm.io/gorm"
 
 	"gpt-load/internal/channel"
-	"gpt-load/internal/execution"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
 	"gpt-load/internal/storage"
 	"gpt-load/internal/storage/models"
-	"gpt-load/internal/subscription/providers/claude"
-	"gpt-load/internal/subscription/providers/codex"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
 func TestDiscoveryUsesSingleReadSnapshot(t *testing.T) {
@@ -39,7 +34,7 @@ func TestDiscoveryUsesSingleReadSnapshot(t *testing.T) {
 		group.ID,
 		1,
 		"discovery-key-old",
-		models.CredentialAuthStateReady,
+		"ready",
 	)
 	if err := fixture.db.Create(&models.SystemSetting{
 		Key: "header_rules", Value: `{"set":{"X-Version":"old"}}`,
@@ -183,7 +178,7 @@ func TestDiscoveryReleasesReadSnapshotBeforeDecrypt(t *testing.T) {
 		group.ID,
 		1,
 		"release-snapshot-key",
-		models.CredentialAuthStateReady,
+		"ready",
 	)
 	decryptStarted := make(chan struct{})
 	releaseDecrypt := make(chan struct{})
@@ -241,7 +236,7 @@ func TestDiscoverGroupModelsUsesDisabledGroupAndAnActiveCredential(t *testing.T)
 	group := seedPersistedDiscoveryGroup(t, fixture, false, models.JSON(
 		`{"header_rules":{"set":{"X-Group":"group"},"remove":["X-Remove"]}}`,
 	))
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialAuthStateReady)
+	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", "ready")
 	if err := fixture.db.Create(&models.SystemSetting{
 		Key: "header_rules", Value: `{"set":{"X-System":"system"}}`,
 	}).Error; err != nil {
@@ -305,7 +300,7 @@ func TestDiscoverGroupModelsRejectsRetiredReasoningEffortOverrides(t *testing.T)
 	group := seedPersistedDiscoveryGroup(t, fixture, true, models.JSON(
 		`{"reasoning_effort_overrides":{"persisted-only":"max"}}`,
 	))
-	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", models.CredentialAuthStateReady)
+	seedPersistedDiscoveryCredential(t, fixture, group.ID, 1, "key-1", "ready")
 	fixture.service.executor = newRecordingDiscoveryExecutor(&recordingDiscoveryExecutorTarget{
 		value: protocol.OpenAICompletions,
 		listFn: func(context.Context, string, string, state.HeaderRules) ([]string, error) {
@@ -337,311 +332,6 @@ func TestDiscoverGroupModelsReturnsNotFoundAndNoActiveUpstreamKey(t *testing.T) 
 			t.Fatalf("DiscoverGroupModels() error = %v, want ErrNoActiveCredential", err)
 		}
 	})
-}
-
-func TestDiscoverGroupModelsUsesSubscriptionCredential(t *testing.T) {
-	t.Parallel()
-
-	fixture := newServiceFixture(t)
-	stage := mustImportSubscriptionStage(t, fixture, "account-saved-models", "saved@example.com")
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("saved subscription discovery"), ChannelID: channel.Codex,
-		ConnectionType:     models.ConnectionTypeSubscription,
-		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialID: stage.StageID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	setCodexModelDiscovery(t, fixture.service, func(_ context.Context, credential codex.Credential) ([]codex.Model, error) {
-		if credential.AccountID != "account-saved-models" {
-			t.Fatalf("credential = %#v", credential)
-		}
-		return []codex.Model{{ID: "gpt-5.2"}}, nil
-	})
-	result, err := fixture.service.DiscoverGroupModels(t.Context(), created.GroupID)
-	if err != nil || len(result.Models) != 1 || result.Models[0].ID != "gpt-5.2" {
-		t.Fatalf("result = %#v, %v", result, err)
-	}
-}
-
-func TestClaudeGroupDiscoversModelsAndBecomesAvailableAfterSelection(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	stage, err := fixture.service.ImportCredentialStage(t.Context(), channel.Claude, []byte(
-		`{"type":"claude","access_token":"claude-access","refresh_token":"claude-refresh","account_uuid":"claude-account","email":"claude@example.com","expired":"2030-01-01T00:00:00Z"}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("Claude subscription discovery"), ChannelID: channel.Claude,
-		ConnectionType:     models.ConnectionTypeSubscription,
-		Models:             optionalGroupModels{Set: true, Values: []GroupModel{}},
-		StagedCredentialID: stage.StageID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	before, err := fixture.service.GetGroupSummary(t.Context(), created.GroupID)
-	if err != nil || before.ServiceStatus != GroupCollectionStatusUnavailable || before.ModelCount != 0 {
-		t.Fatalf("summary before discovery = %#v, %v", before, err)
-	}
-
-	fixture.service.discoverSubscriptionModels = func(
-		_ context.Context,
-		channelID channel.ID,
-		credential subscriptionruntime.Credential,
-	) ([]string, error) {
-		if channelID != channel.Claude {
-			return nil, errors.New("unexpected subscription channel")
-		}
-		parsed, parseErr := claude.ParseCredentialJSON(credential.Canonical())
-		if parseErr != nil || parsed.AccountUUID != "claude-account" {
-			t.Fatalf("Claude credential = %#v, %v", parsed, parseErr)
-		}
-		return []string{"claude-sonnet-4-6", "claude-opus-4-6"}, nil
-	}
-	discovered, err := fixture.service.DiscoverGroupModels(t.Context(), created.GroupID)
-	if err != nil || len(discovered.Models) != 2 || discovered.Models[0].ID != "claude-sonnet-4-6" {
-		t.Fatalf("discovered models = %#v, %v", discovered, err)
-	}
-	updated, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
-		Models: optionalGroupModels{Set: true, Values: []GroupModel{
-			{ID: discovered.Models[0].ID}, {ID: discovered.Models[1].ID},
-		}},
-	})
-	if err != nil || updated.Total != 2 {
-		t.Fatalf("updated models = %#v, %v", updated, err)
-	}
-	after, err := fixture.service.GetGroupSummary(t.Context(), created.GroupID)
-	if err != nil || after.ServiceStatus != GroupCollectionStatusAvailable || after.ModelCount != 2 || !after.CredentialConfigured {
-		t.Fatalf("summary after selection = %#v, %v", after, err)
-	}
-}
-
-func TestDiscoverGroupModelsPreparesSubscriptionCredential(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	stage := mustImportSubscriptionStage(t, fixture, "account-prepared-models", "prepared@example.com")
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("prepared subscription discovery"), ChannelID: channel.Codex,
-		ConnectionType:     models.ConnectionTypeSubscription,
-		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialID: stage.StageID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepareCalls := 0
-	setCodexCredentialPreparer(t, fixture.service, func(_ context.Context, snapshot execution.CredentialSnapshot) (codex.Credential, *execution.ErrorEvidence) {
-		prepareCalls++
-		credential, parseErr := codex.ParseCredentialJSON(snapshot.Data())
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
-		credential.AccessToken = "refreshed-access"
-		return credential, nil
-	})
-	setCodexModelDiscovery(t, fixture.service, func(_ context.Context, credential codex.Credential) ([]codex.Model, error) {
-		if credential.AccessToken != "refreshed-access" {
-			t.Fatalf("credential = %#v", credential)
-		}
-		return []codex.Model{{ID: "gpt-5.2"}}, nil
-	})
-
-	if _, err := fixture.service.DiscoverGroupModels(t.Context(), created.GroupID); err != nil || prepareCalls != 1 {
-		t.Fatalf("DiscoverGroupModels() error/calls = %v/%d", err, prepareCalls)
-	}
-}
-
-func TestDiscoverGroupModelsRefreshesSameCredentialOnceAfterUnauthorized(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	stage := mustImportSubscriptionStage(t, fixture, "account-model-refresh", "model-refresh@example.com")
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("subscription discovery auth refresh"), ChannelID: channel.Codex,
-		ConnectionType:     models.ConnectionTypeSubscription,
-		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialID: stage.StageID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var forces []bool
-	fixture.service.prepareSubscriptionCredential = func(_ context.Context, _ channel.ID, snapshot execution.CredentialSnapshot, force bool) (subscriptionruntime.Credential, *execution.ErrorEvidence) {
-		forces = append(forces, force)
-		parsed, parseErr := codex.ParseCredentialJSON(snapshot.Data())
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
-		if force {
-			parsed.AccessToken = "fresh-access"
-		}
-		credential, convertErr := testRuntimeCredential(fixture.service, parsed)
-		if convertErr != nil {
-			t.Fatal(convertErr)
-		}
-		return credential, nil
-	}
-	discoveryCalls := 0
-	fixture.service.discoverSubscriptionModels = func(_ context.Context, _ channel.ID, credential subscriptionruntime.Credential) ([]string, error) {
-		discoveryCalls++
-		parsed, parseErr := codex.ParseCredentialJSON(credential.Canonical())
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
-		if parsed.AccessToken != "fresh-access" {
-			return nil, &subscriptionruntime.UpstreamHTTPError{StatusCode: http.StatusUnauthorized}
-		}
-		return []string{"gpt-5.2"}, nil
-	}
-
-	result, err := fixture.service.DiscoverGroupModels(t.Context(), created.GroupID)
-	if err != nil || !reflect.DeepEqual(forces, []bool{false, true}) || discoveryCalls != 2 || len(result.Models) != 1 {
-		t.Fatalf("result/error/forces/discovery = %#v/%v/%v/%d", result, err, forces, discoveryCalls)
-	}
-}
-
-func TestDiscoverGroupModelsSkipsSubscriptionCredentialRequiringAuthorization(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	stage := mustImportSubscriptionStage(t, fixture, "account-reauthorize-models", "reauthorize@example.com")
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("unauthorized subscription discovery"), ChannelID: channel.Codex,
-		ConnectionType:     models.ConnectionTypeSubscription,
-		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialID: stage.StageID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := fixture.db.Model(&models.Credential{}).Where("group_id = ?", created.GroupID).
-		Update("auth_state", models.CredentialAuthStateReauthorizationRequired).Error; err != nil {
-		t.Fatal(err)
-	}
-	calls := 0
-	setCodexModelDiscovery(t, fixture.service, func(context.Context, codex.Credential) ([]codex.Model, error) {
-		calls++
-		return nil, nil
-	})
-
-	_, err = fixture.service.DiscoverGroupModels(t.Context(), created.GroupID)
-	if !errors.Is(err, app_errors.ErrCredentialReauthorizationRequired) || calls != 0 {
-		t.Fatalf("DiscoverGroupModels() error/calls = %v/%d", err, calls)
-	}
-}
-
-func TestMapGroupDiscoveryTargetRejectsUnreadySubscriptionCredential(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	stage := mustImportSubscriptionStage(t, fixture, "account-route-owned", "route-owned@example.com")
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("route-owned subscription discovery"), ChannelID: channel.Codex,
-		ConnectionType:     models.ConnectionTypeSubscription,
-		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialID: stage.StageID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := fixture.db.Model(&models.Credential{}).Where("group_id = ?", created.GroupID).
-		Update("auth_state", models.CredentialAuthStateOutcomeUnknown).Error; err != nil {
-		t.Fatal(err)
-	}
-	rows, err := fixture.service.readGroupDiscoverySnapshot(t.Context(), created.GroupID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = fixture.service.mapGroupDiscoveryTarget(t.Context(), rows)
-	if !errors.Is(err, app_errors.ErrCredentialAuthOutcomeUnknown) {
-		t.Fatalf("mapGroupDiscoveryTarget() error = %v, want ErrCredentialAuthOutcomeUnknown", err)
-	}
-}
-
-func TestMapGroupDiscoveryTargetPreparesSubscriptionCredential(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	stage := mustImportSubscriptionStage(t, fixture, "account-route-refresh", "route-refresh@example.com")
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("route-owned subscription refresh"), ChannelID: channel.Codex,
-		ConnectionType:     models.ConnectionTypeSubscription,
-		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialID: stage.StageID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepareCalls := 0
-	setCodexCredentialPreparer(t, fixture.service, func(_ context.Context, snapshot execution.CredentialSnapshot) (codex.Credential, *execution.ErrorEvidence) {
-		prepareCalls++
-		credential, parseErr := codex.ParseCredentialJSON(snapshot.Data())
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
-		credential.AccessToken = "route-refreshed-access"
-		return credential, nil
-	})
-	rows, err := fixture.service.readGroupDiscoverySnapshot(t.Context(), created.GroupID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	target, err := fixture.service.mapGroupDiscoveryTarget(t.Context(), rows)
-	if err != nil || prepareCalls != 1 || len(target.credentials) != 1 {
-		t.Fatalf("mapGroupDiscoveryTarget() target/error/calls = %#v/%v/%d", target, err, prepareCalls)
-	}
-	credential, err := codex.ParseCredentialJSON(target.credentials[0].snapshot.Data())
-	if err != nil || credential.AccessToken != "route-refreshed-access" {
-		t.Fatalf("prepared credential = %#v, %v", credential, err)
-	}
-}
-
-func TestDiscoverGroupModelsDoesNotMaskAttemptedSubscriptionFailure(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	stage := mustImportSubscriptionStage(t, fixture, "account-upstream-failure", "second@example.com")
-	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name: stringPointer("subscription discovery failure"), ChannelID: channel.Codex,
-		ConnectionType:     models.ConnectionTypeSubscription,
-		Models:             optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.2"}}},
-		StagedCredentialID: stage.StageID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	calls := 0
-	setCodexModelDiscovery(t, fixture.service, func(context.Context, codex.Credential) ([]codex.Model, error) {
-		calls++
-		return nil, errors.New("upstream unavailable")
-	})
-
-	_, err = fixture.service.DiscoverGroupModels(t.Context(), created.GroupID)
-	if !errors.Is(err, app_errors.ErrBadGateway) || errors.Is(err, app_errors.ErrCredentialReauthorizationRequired) || calls != 1 {
-		t.Fatalf("DiscoverGroupModels() error/calls = %v/%d, want BadGateway/1", err, calls)
-	}
-}
-
-func TestCodexPreparationAPIErrorTreatsStateCommitFailureAsUnknown(t *testing.T) {
-	t.Parallel()
-	err := subscriptionPreparationAPIError(&execution.ErrorEvidence{Code: "refresh_state_commit_failed"})
-	if !errors.Is(err, app_errors.ErrCredentialAuthOutcomeUnknown) {
-		t.Fatalf("subscriptionPreparationAPIError() = %v, want ErrCredentialAuthOutcomeUnknown", err)
-	}
-}
-
-func TestSubscriptionPreparationAPIErrorTreatsRetryableRefreshAsTemporary(t *testing.T) {
-	t.Parallel()
-	err := subscriptionPreparationAPIError(&execution.ErrorEvidence{
-		Kind: execution.ErrorKindHTTP,
-		Code: "refresh_temporarily_unavailable",
-	})
-	var apiErr *app_errors.APIError
-	if !errors.As(err, &apiErr) || apiErr.Code != "CREDENTIAL_REFRESH_TEMPORARILY_UNAVAILABLE" ||
-		apiErr.HTTPStatus != http.StatusServiceUnavailable {
-		t.Fatalf("subscriptionPreparationAPIError() = %#v", err)
-	}
 }
 
 func TestDiscoverGroupModelsDoesNotMutateDatabaseSnapshotOrRegistry(t *testing.T) {
@@ -887,7 +577,7 @@ func seedPersistedDiscoveryCredential(
 	fixture serviceFixture,
 	groupID, credentialID uint,
 	plaintext string,
-	status models.CredentialAuthState,
+	status string,
 ) {
 	t.Helper()
 	canonical := `{"api_key":` + fmt.Sprintf("%q", plaintext) + `}`
@@ -896,8 +586,7 @@ func seedPersistedDiscoveryCredential(
 		t.Fatalf("encrypt seeded discovery credential: %v", err)
 	}
 	if err := fixture.db.Create(&models.Credential{
-		ID: credentialID, GroupID: groupID, Data: ciphertext,
-		Fingerprint: fixture.encryption.Hash(canonical), AuthState: status,
+		ID: credentialID, GroupID: groupID, Data: ciphertext, Fingerprint: fixture.encryption.Hash(canonical),
 	}).Error; err != nil {
 		t.Fatalf("seed persisted discovery credential: %v", err)
 	}

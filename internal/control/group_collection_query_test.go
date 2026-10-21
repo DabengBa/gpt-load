@@ -27,8 +27,8 @@ func TestListGroupCollectionCapturesThenQueries(t *testing.T) {
 	available := createGroupCollectionGroup(t, fixture, "available", true, nil)
 	disabled := createGroupCollectionGroup(t, fixture, "disabled", false, nil)
 	entries := []state.CredentialEntry{
-		createGroupCollectionKey(t, fixture, available.ID, models.CredentialAuthStateReady, nil),
-		createGroupCollectionKey(t, fixture, disabled.ID, models.CredentialAuthStateReady, nil),
+		createGroupCollectionKey(t, fixture, available.ID, "ready", nil),
+		createGroupCollectionKey(t, fixture, disabled.ID, "ready", nil),
 	}
 	publishGroupCollectionRuntime(t, fixture, entries)
 
@@ -60,11 +60,11 @@ func TestListGroupCollectionSortsRecentActivityByHourThenRequestCount(t *testing
 	unusedZulu := createGroupCollectionGroup(t, fixture, "zulu unused", true, nil)
 	unusedAlpha := createGroupCollectionGroup(t, fixture, "alpha unused", true, nil)
 	entries := []state.CredentialEntry{
-		createGroupCollectionKey(t, fixture, older.ID, models.CredentialAuthStateReady, nil),
-		createGroupCollectionKey(t, fixture, recentLow.ID, models.CredentialAuthStateReady, nil),
-		createGroupCollectionKey(t, fixture, recentHigh.ID, models.CredentialAuthStateReady, nil),
-		createGroupCollectionKey(t, fixture, unusedZulu.ID, models.CredentialAuthStateReady, nil),
-		createGroupCollectionKey(t, fixture, unusedAlpha.ID, models.CredentialAuthStateReady, nil),
+		createGroupCollectionKey(t, fixture, older.ID, "ready", nil),
+		createGroupCollectionKey(t, fixture, recentLow.ID, "ready", nil),
+		createGroupCollectionKey(t, fixture, recentHigh.ID, "ready", nil),
+		createGroupCollectionKey(t, fixture, unusedZulu.ID, "ready", nil),
+		createGroupCollectionKey(t, fixture, unusedAlpha.ID, "ready", nil),
 	}
 	publishGroupCollectionRuntime(t, fixture, entries)
 
@@ -119,7 +119,7 @@ func TestListGroupCollectionSkipsActivityReadForNonRecentSort(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	group := createGroupCollectionGroup(t, fixture, "name sort", true, nil)
-	entry := createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil)
+	entry := createGroupCollectionKey(t, fixture, group.ID, "ready", nil)
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{entry})
 	if err := fixture.db.Migrator().DropTable(&models.UsageStat{}); err != nil {
 		t.Fatalf("drop usage_stats: %v", err)
@@ -144,7 +144,7 @@ func TestListGroupCollectionQueryDoesNotSearchPersistedModelIDOrAlias(t *testing
 	if err := fixture.db.Model(group).Update("models", group.Models).Error; err != nil {
 		t.Fatalf("update persisted models: %v", err)
 	}
-	entry := createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil)
+	entry := createGroupCollectionKey(t, fixture, group.ID, "ready", nil)
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{entry})
 
 	for _, query := range []string{"private-upstream-model", "public-model-alias"} {
@@ -209,7 +209,7 @@ func TestGroupCollectionQueryMatchesUnicodeSimpleFoldAndSortsWithIt(t *testing.T
 
 func TestGroupCollectionQueryFiltersByConnectionType(t *testing.T) {
 	t.Parallel()
-	subscription := models.ConnectionTypeSubscription
+	subscription := models.ConnectionType("subscription")
 	records := []groupCollectionRecord{
 		groupCollectionQueryRecord(1, "API key", GroupCollectionStatusAvailable, "https://api-key.example", nil, 1, 100),
 		groupCollectionQueryRecord(2, "Subscription", GroupCollectionStatusAvailable, "https://subscription.example", nil, 1, 200),

@@ -14,10 +14,6 @@ type ID string
 
 const (
 	OpenAI           ID = "openai"
-	Codex            ID = "codex"
-	Claude           ID = "claude"
-	Antigravity      ID = "antigravity"
-	Grok             ID = "grok"
 	Anthropic        ID = "anthropic"
 	Gemini           ID = "gemini"
 	AzureOpenAI      ID = "azure_openai"
@@ -53,10 +49,6 @@ type ProviderKind string
 
 const (
 	ProviderOpenAI               ProviderKind = "openai"
-	ProviderCodex                ProviderKind = "codex"
-	ProviderClaude               ProviderKind = "claude"
-	ProviderAntigravity          ProviderKind = "antigravity"
-	ProviderGrok                 ProviderKind = "grok"
 	ProviderAnthropic            ProviderKind = "anthropic"
 	ProviderGemini               ProviderKind = "gemini"
 	ProviderMultiProtocolGateway ProviderKind = "multi_protocol_gateway"
@@ -70,43 +62,10 @@ const (
 	ProviderXAI                  ProviderKind = "xai"
 )
 
-// NoticeID identifies one code-owned, frontend-localized channel notice.
-type NoticeID string
-
-const (
-	NoticeClaudeOAuthRisk      NoticeID = "claude_oauth_risk"
-	NoticeAntigravityOAuthRisk NoticeID = "antigravity_oauth_risk"
-)
-
-// Valid reports whether the notice ID is part of the public channel contract.
-func (id NoticeID) Valid() bool {
-	return id == NoticeClaudeOAuthRisk || id == NoticeAntigravityOAuthRisk
-}
-
-// NoticeTone controls the bounded presentation style of one channel notice.
-type NoticeTone string
-
-const NoticeToneWarning NoticeTone = "warning"
-
-// Valid reports whether the notice tone is safe for public projection.
-func (tone NoticeTone) Valid() bool {
-	return tone == NoticeToneWarning
-}
-
-// Notice declares safe, non-executable channel guidance.
-type Notice struct {
-	ID   NoticeID
-	Tone NoticeTone
-}
-
 // Valid reports whether the provider adapter key is recognized.
 func (kind ProviderKind) Valid() bool {
 	switch kind {
 	case ProviderOpenAI,
-		ProviderCodex,
-		ProviderClaude,
-		ProviderAntigravity,
-		ProviderGrok,
 		ProviderAnthropic,
 		ProviderGemini,
 		ProviderMultiProtocolGateway,
@@ -167,34 +126,13 @@ type Field struct {
 type ConnectionType string
 
 const (
-	ConnectionAPIKey       ConnectionType = "api_key"
-	ConnectionSubscription ConnectionType = "subscription"
+	ConnectionAPIKey ConnectionType = "api_key"
 )
-
-// AuthorizationMethod is one supported subscription credential entry flow.
-type AuthorizationMethod string
-
-const (
-	AuthorizationBrowserOAuth AuthorizationMethod = "browser_oauth"
-	AuthorizationDeviceOAuth  AuthorizationMethod = "device_oauth"
-	AuthorizationOAuthFile    AuthorizationMethod = "oauth_file"
-)
-
-// Valid reports whether the authorization method is part of the public channel contract.
-func (method AuthorizationMethod) Valid() bool {
-	switch method {
-	case AuthorizationBrowserOAuth, AuthorizationDeviceOAuth, AuthorizationOAuthFile:
-		return true
-	default:
-		return false
-	}
-}
 
 // Connection is the single connection contract for a channel.
 type Connection struct {
-	Type                 ConnectionType
-	CredentialInput      string
-	AuthorizationMethods []AuthorizationMethod
+	Type            ConnectionType
+	CredentialInput string
 }
 
 // EndpointPolicy declares where non-secret target configuration comes from.
@@ -210,7 +148,7 @@ const (
 
 // ProbeContract is the single, code-owned probe contract for one provider.
 // Every API-key channel must declare exactly one probe protocol and its
-// minimum output token budget. Subscription channels leave this zero-valued.
+// minimum output token budget.
 type ProbeContract struct {
 	// Protocol is the single client protocol used for probe requests.
 	// It must be a generative data-plane protocol supported by the channel
@@ -252,15 +190,6 @@ type ParamsNormalizerID ExtensionID
 
 // CredentialValidatorID selects an object-level credential validator.
 type CredentialValidatorID ExtensionID
-
-// SubscriptionDriverID selects a subscription credential lifecycle driver.
-type SubscriptionDriverID ExtensionID
-
-// UtilityID selects a narrow control-plane capability implementation.
-type UtilityID ExtensionID
-
-// ActionID selects one explicitly supported credential/account action.
-type ActionID ExtensionID
 
 // ResponsesStoreHandling declares how one Responses Create route handles the
 // client's store intent without implying complete Responses lifecycle support.
@@ -312,15 +241,6 @@ func NewResponsesCreateRoute(
 	}
 }
 
-// CapabilityBindings names optional implementations without embedding runtime
-// objects in public manifests.
-type CapabilityBindings struct {
-	SubscriptionDriver SubscriptionDriverID
-	ModelDiscovery     UtilityID
-	QuotaObservation   UtilityID
-	ResetCreditAction  ActionID
-}
-
 // Definition is the complete, code-owned declaration for one channel. Every
 // built-in module declares its schema, provider, routes, and bindings inline;
 // shared helpers may normalize a field or construct one Route, but never hide
@@ -333,7 +253,6 @@ type Definition struct {
 	Icon                string
 	SearchTerms         []string
 	Description         string
-	Notices             []Notice
 	Connection          Connection
 	Params              []Field
 	ParamsNormalizer    ParamsNormalizerID
@@ -341,7 +260,6 @@ type Definition struct {
 	CredentialValidator CredentialValidatorID
 	Provider            ProviderBinding
 	Routes              []Route
-	Capabilities        CapabilityBindings
 }
 
 // ParamsNormalizer applies object-level defaults or cross-field rules.

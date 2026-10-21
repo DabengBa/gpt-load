@@ -29,7 +29,6 @@ const CANDIDATES = [
   },
 ]
 
-
 export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> {
   const puts: unknown[] = []
   await page.addInitScript((key) => {
@@ -40,8 +39,12 @@ export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> 
     const request = route.request()
     const path = new URL(request.url()).pathname
     const fulfill = (data: unknown) =>
-      route.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'ok', data }) })
-    if (path === '/api/auth/session') return fulfill({ authenticated: true, principal_type: 'admin' })
+      route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 0, message: 'ok', data }),
+      })
+    if (path === '/api/auth/session')
+      return fulfill({ authenticated: true, principal_type: 'admin' })
     if (path === '/api/channels')
       return fulfill({
         items: [
@@ -53,14 +56,13 @@ export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> 
             search_terms: ['openai'],
             description: '',
             default_base_url: 'https://api.openai.com',
-            notices: [],
+
             param_fields: [],
             credential_fields: [],
-            connection: { type: 'api_key', credential_input: 'batch_text', authorization_methods: [] },
+            connection: { type: 'api_key', credential_input: 'batch_text' },
             capabilities: {
               model_discovery: true,
-              quota_observation: false,
-              credential_actions: [],
+
               outbound_proxy: false,
             },
             routes: [
@@ -128,7 +130,7 @@ export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> 
       return fulfill({ items: [], total: 0, pending: 0 })
     }
     if (path === '/api/groups/1/models/discover') return fulfill({ models: CANDIDATES })
-    if (path === '/api/groups/1/credential') return fulfill({ credential: null, observation: null })
+    if (path === '/api/groups/1/credential') return fulfill({ credential: null })
     return fulfill({})
   })
   return { puts }

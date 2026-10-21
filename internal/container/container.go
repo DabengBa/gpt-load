@@ -20,7 +20,6 @@ import (
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	bifrostexecutor "gpt-load/internal/execution/bifrost"
-	cpaexecutor "gpt-load/internal/execution/cpa"
 	"gpt-load/internal/gateway"
 	"gpt-load/internal/health"
 	"gpt-load/internal/httplifecycle"
@@ -38,9 +37,6 @@ import (
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage"
-	"gpt-load/internal/subscription"
-	subscriptionproviders "gpt-load/internal/subscription/providers"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 	"gpt-load/internal/telemetry"
 	"gpt-load/internal/webui"
 
@@ -106,10 +102,8 @@ func BuildContainer() (*dig.Container, error) {
 			redactor *redact.Redactor,
 			retention requestlog.RetentionPolicyProvider,
 			quotaRuntime *accessquota.Runtime,
-			subscriptionCredentials *subscription.CredentialManager,
 		) *requestlog.Service {
 			service := requestlog.NewService(db, redactor, retention, quotaRuntime)
-			service.SetPassiveQuotaFlusher(subscriptionCredentials)
 			return service
 		},
 		func(service *requestlog.Service) telemetry.RequestLogSink {
@@ -218,9 +212,6 @@ func BuildContainer() (*dig.Container, error) {
 			})
 			return manager
 		},
-		newSubscriptionRuntime,
-		subscription.NewCredentialManager,
-		cpaexecutor.NewAdapter,
 		newProviderAdapterRegistry,
 		func(registry *provideradapter.Registry) execution.Executor { return registry },
 		func(runtime *bifrostexecutor.RuntimeManager) app.ExecutionRuntime { return runtime },
@@ -244,7 +235,6 @@ func BuildContainer() (*dig.Container, error) {
 			manager *state.Manager,
 			registry *state.CredentialRegistry,
 			channelRegistry *channel.Registry,
-			subscriptions *subscriptionruntime.Runtime,
 			encryptionService encryption.Service,
 			quotaRuntime *accessquota.Runtime,
 		) app.RuntimeStateLoader {
@@ -253,7 +243,6 @@ func BuildContainer() (*dig.Container, error) {
 				manager,
 				registry,
 				channelRegistry,
-				subscriptions,
 				encryptionService,
 				quotaRuntime,
 			)
@@ -318,14 +307,9 @@ type runtimeSnapshotReconciler struct {
 	accessQuota *accessquota.Runtime
 }
 
-func newSubscriptionRuntime(registry *channel.Registry) (*subscriptionruntime.Runtime, error) {
-	return subscriptionruntime.NewRuntime(registry, subscriptionproviders.Implementations()...)
-}
-
 func newProviderAdapterRegistry(
 	channels *channel.Registry,
 	bifrost *bifrostexecutor.RuntimeManager,
-	cpa *cpaexecutor.Adapter,
 ) (*provideradapter.Registry, error) {
 	bindings := []provideradapter.Binding{
 		{ProviderKind: channel.ProviderOpenAI, Adapter: bifrost},
@@ -340,10 +324,6 @@ func newProviderAdapterRegistry(
 		{ProviderKind: channel.ProviderOpenRouter, Adapter: bifrost},
 		{ProviderKind: channel.ProviderGroq, Adapter: bifrost},
 		{ProviderKind: channel.ProviderXAI, Adapter: bifrost},
-		{ProviderKind: channel.ProviderCodex, Adapter: cpa},
-		{ProviderKind: channel.ProviderClaude, Adapter: cpa},
-		{ProviderKind: channel.ProviderAntigravity, Adapter: cpa},
-		{ProviderKind: channel.ProviderGrok, Adapter: cpa},
 	}
 	return provideradapter.NewRegistry(channels, bindings)
 }

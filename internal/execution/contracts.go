@@ -41,7 +41,6 @@ const (
 	OperationResponsesInputTokens Operation = "responses_input_tokens"
 	OperationCountTokens          Operation = "count_tokens"
 	OperationResponsesPassthrough Operation = "responses_passthrough"
-	OperationWebSearch            Operation = "web_search"
 	OperationImagesGenerate       Operation = "images_generate"
 	OperationImagesEdit           Operation = "images_edit"
 	OperationEmbeddingsCreate     Operation = "embeddings_create"
@@ -63,7 +62,6 @@ func (o Operation) Valid() bool {
 		OperationResponsesInputTokens,
 		OperationCountTokens,
 		OperationResponsesPassthrough,
-		OperationWebSearch,
 		OperationImagesGenerate,
 		OperationImagesEdit,
 		OperationEmbeddingsCreate,
@@ -255,9 +253,7 @@ type AttemptSpec struct {
 	// channel probe contract selects it; it is never applied to ordinary
 	// requests. A generation probe must set it.
 	ProbeMaxOutputTokens int `json:"probe_max_output_tokens,omitempty"`
-	// ForceCredentialRefresh is set only by GPT-Load after a provider explicitly
-	// rejects this selected subscription credential before processing.
-	ForceCredentialRefresh bool `json:"force_credential_refresh,omitempty"`
+
 	// ContinuityKey is an opaque tenant-scoped value for provider-private
 	// thinking/tool continuity. It is never persisted, logged, or exposed.
 	ContinuityKey string `json:"-"`

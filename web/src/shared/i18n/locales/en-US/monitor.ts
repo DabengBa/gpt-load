@@ -251,7 +251,6 @@ export default {
         no_credentials: 'Group has no runtime credentials',
         credential_blacklisted: 'Credential is blacklisted',
         credential_cooldown: 'Credential is cooling down',
-        credential_auth_unavailable: 'Subscription authentication is unavailable',
         credential_not_allowed: 'This credential is excluded from the request',
         no_available_credential: 'Group has no available credential',
         entry_disabled: 'Route entry is disabled',
@@ -509,7 +508,6 @@ export default {
       },
       retryDirective: {
         none: 'Do not retry',
-        refresh_credential: 'Refresh credential and retry',
         next_candidate: 'Try next candidate',
       },
       effect: {
@@ -535,7 +533,6 @@ export default {
         rerank: 'Rerank documents',
         list_models: 'List models',
         probe: 'Health probe',
-        web_search: 'Codex standalone search',
       },
       dispatchState: {
         not_sent: 'Not sent upstream',

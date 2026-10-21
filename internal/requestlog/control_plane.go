@@ -7,9 +7,9 @@ import (
 )
 
 // withoutControlPlaneObservations keeps non-traffic observations
-// (operation = probe, web_search) out of a traffic read.
+// (operation = probe) out of a traffic read.
 //
-// Probe and standalone-search rows are durable request-log rows that really
+// Probe rows are durable request-log rows that really
 // reached an upstream, so they belong in the log page, but they are not model
 // traffic: they must not move request counts, success rates, or per-credential
 // activity. Excluding them on the aggregation-journal side alone is not enough,
@@ -21,6 +21,6 @@ import (
 func withoutControlPlaneObservations(db *gorm.DB) *gorm.DB {
 	return db.Where(
 		"operation NOT IN ?",
-		[]string{string(execution.OperationProbe), string(execution.OperationWebSearch)},
+		[]string{string(execution.OperationProbe)},
 	)
 }

@@ -14,8 +14,6 @@ import (
 	"gpt-load/internal/state"
 	"gpt-load/internal/state/loader"
 	"gpt-load/internal/storage/models"
-	subscriptionproviders "gpt-load/internal/subscription/providers"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
 func TestValidatedLoaderRejectsWrongEncryptionKeyBeforePublishing(t *testing.T) {
@@ -45,9 +43,9 @@ func TestValidatedLoaderRejectsWrongEncryptionKeyBeforePublishing(t *testing.T) 
 	}
 	manager := state.NewManager()
 	registry := state.NewCredentialRegistry()
-	channels, subscriptions := testSubscriptionRuntime(t)
+	channels := channel.NewRegistry()
 	err = loader.NewWithCredentialValidation(
-		db, manager, registry, channels, subscriptions, wrong,
+		db, manager, registry, channels, wrong,
 	).Load(t.Context())
 	if err == nil {
 		t.Fatal("Load() error = nil, want credential decryption failure")
@@ -83,9 +81,9 @@ func TestValidatedLoaderRejectsInvalidStoredCredentialShape(t *testing.T) {
 	})
 	manager := state.NewManager()
 	registry := state.NewCredentialRegistry()
-	channels, subscriptions := testSubscriptionRuntime(t)
+	channels := channel.NewRegistry()
 	err = loader.NewWithCredentialValidation(
-		db, manager, registry, channels, subscriptions, service,
+		db, manager, registry, channels, service,
 	).Load(t.Context())
 	if err == nil {
 		t.Fatal("Load() error = nil, want stored credential schema failure")
@@ -96,16 +94,6 @@ func TestValidatedLoaderRejectsInvalidStoredCredentialShape(t *testing.T) {
 	if strings.Contains(err.Error(), "must-not-leak") || strings.Contains(err.Error(), ciphertext) {
 		t.Fatalf("Load() error leaked credential material: %v", err)
 	}
-}
-
-func testSubscriptionRuntime(t *testing.T) (*channel.Registry, *subscriptionruntime.Runtime) {
-	t.Helper()
-	channels := channel.NewRegistry()
-	runtime, err := subscriptionruntime.NewRuntime(channels, subscriptionproviders.Implementations()...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return channels, runtime
 }
 
 func TestBuildCompileInputMapsChannelAndCredentialMetadata(t *testing.T) {
@@ -207,44 +195,6 @@ func TestBuildGroupCredentialEntriesChangesIdentityWhenExecutionTargetChanges(t 
 	}
 	if len(entries) != 1 || entries[0].Blacklisted || entries[0].FailureCount != 0 {
 		t.Fatalf("target change retained old health state: %#v", entries)
-	}
-}
-
-func TestSubscriptionTokenRefreshKeepsIdentityGeneration(t *testing.T) {
-	t.Parallel()
-
-	db := openMigratedDatabase(t)
-	group := models.Group{
-		Name: "subscription-refresh", ChannelID: string(channel.Codex),
-		ConnectionType: models.ConnectionTypeSubscription,
-		Params:         models.JSON(`{}`), Models: models.JSON(`[]`), Overrides: models.JSON(`{}`), Enabled: true,
-	}
-	mustCreate(t, db, &group)
-	credential := models.Credential{
-		GroupID: group.ID, Data: "old-cipher", Fingerprint: "old-secret-fingerprint",
-		IdentityFingerprint: "stable-account-fingerprint", SecretVersion: 7,
-	}
-	mustCreate(t, db, &credential)
-
-	before, err := loader.BuildGroupCredentialEntries(t.Context(), db, group.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Model(&models.Credential{}).Where("id = ?", credential.ID).Updates(map[string]any{
-		"data": "new-cipher", "fingerprint": "new-secret-fingerprint", "secret_version": 8,
-	}).Error; err != nil {
-		t.Fatal(err)
-	}
-	after, err := loader.BuildGroupCredentialEntries(t.Context(), db, group.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if before[0].IdentityGeneration != after[0].IdentityGeneration {
-		t.Fatalf("identity changed across token refresh: before=%d after=%d",
-			before[0].IdentityGeneration, after[0].IdentityGeneration)
-	}
-	if before[0].Version != 7 || after[0].Version != 8 {
-		t.Fatalf("secret versions = %d -> %d, want 7 -> 8", before[0].Version, after[0].Version)
 	}
 }
 

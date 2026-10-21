@@ -44,8 +44,7 @@
       "last_status_code": 401
     }
   ],
-  "low_quota_credentials": [],
-  "expiring_reset_credits": [],
+
   "blocked_access_keys": [],
   "request_log": {
     "enqueued_total": 42,

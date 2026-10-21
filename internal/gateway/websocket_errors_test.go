@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"gpt-load/internal/channel"
-	"gpt-load/internal/execution"
 	"gpt-load/internal/parameteroverride"
 	"gpt-load/internal/state"
 )
@@ -186,64 +184,6 @@ func TestWebsocketPreparationFailureSelectsBackup(t *testing.T) {
 	events := waitWebsocketLogs(t, sink, 1)
 	if calls.Load() != 1 || !strings.Contains(string(body), "response.completed") || len(events[0].Attempts) != 2 || events[0].Attempts[0].ErrorCode != "credential_decrypt_failed" {
 		t.Fatalf("preparation failure prevented backup: calls=%d response=%s attempts=%+v", calls.Load(), body, events[0].Attempts)
-	}
-}
-
-func TestWebsocketRefreshFailureSelectsBackup(t *testing.T) {
-	h, engine, input := websocketTestHandler(t, "http://127.0.0.1:1/v1", channel.OpenAI)
-	input.Groups[0].ChannelID = channel.Codex
-	input.Groups[0].ConnectionType = "subscription"
-	input.Groups[0].Params = json.RawMessage(`{}`)
-	addWebsocketErrorBackup(t, h, input)
-	h.manager.Current().Settings.RetryCount = 1
-	encrypted, e := h.encryption.Encrypt(`{"type":"codex","access_token":"fixture-access","refresh_token":"fixture-refresh","account_id":"fixture-account"}`)
-	if e != nil {
-		t.Fatal(e)
-	}
-	registry := h.registry.(*state.CredentialRegistry)
-	if e := registry.ReplaceCredentials([]state.CredentialEntry{
-		{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "fixture-1", EncryptedValue: encrypted},
-		{ID: 2, GroupID: 2, Version: 1, IdentityGeneration: 1, Fingerprint: "fixture-2", EncryptedValue: encrypted},
-	}); e != nil {
-		t.Fatal(e)
-	}
-	var opens atomic.Int32
-	h.forwarder = websocketScriptForwarder{AttemptForwarder: h.forwarder, open: func(_ context.Context, in ForwardInput) (execution.WebsocketSession, execution.WebsocketResult) {
-		n := opens.Add(1)
-		if in.ForceCredentialRefresh != (n == 2) || (in.Credential.ID == 2) != (n == 3) {
-			t.Errorf("attempt %d: credential=%d force refresh=%t", n, in.Credential.ID, in.ForceCredentialRefresh)
-		}
-		if n == 1 {
-			return nil, execution.WebsocketResult{DispatchState: execution.DispatchNotSent, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindHTTP, StatusCode: 401, Hint: execution.FailureHintRefreshRequired, Code: "auth_expired", OriginHint: execution.ErrorOriginUpstream, ReplaySafety: execution.ReplaySafetyRejectedBeforeProcessing}}
-		}
-		if n == 2 {
-			return nil, execution.WebsocketResult{DispatchState: execution.DispatchNotSent, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindHTTP, StatusCode: 503, Hint: execution.FailureHintRefreshUnavailable, Code: "refresh_unavailable", OriginHint: execution.ErrorOriginUpstream}}
-		}
-		session := &websocketScriptSession{done: make(chan struct{})}
-		session.turn = func(ctx context.Context, _ []byte, emit func(context.Context, []byte) error) execution.WebsocketResult {
-			if err := emit(ctx, websocketCompleted("resp_backup", "")); err != nil {
-				t.Error(err)
-			}
-			return execution.WebsocketResult{DispatchState: execution.DispatchMaybeSent}
-		}
-		return session, execution.WebsocketResult{DispatchState: execution.DispatchNotSent}
-	}}
-	sink := &recordingRequestLogSink{}
-	h.requestLogSink = sink
-	srv := httptest.NewServer(engine)
-	defer srv.Close()
-	c := dialGatewayWebsocket(t, srv.URL)
-	defer c.Close()
-	if err := c.WriteJSON(map[string]any{"type": "response.create", "model": "public", "input": "test", "store": false}); err != nil {
-		t.Fatal(err)
-	}
-	_, body, e := c.ReadMessage()
-	if e != nil {
-		t.Fatal(e)
-	}
-	events := waitWebsocketLogs(t, sink, 1)
-	if opens.Load() != 3 || !strings.Contains(string(body), "response.completed") || len(events[0].Attempts) != 3 || events[0].Attempts[2].CredentialID != 2 {
-		t.Fatalf("refresh failure prevented backup: opens=%d response=%s attempts=%+v", opens.Load(), body, events[0].Attempts)
 	}
 }
 

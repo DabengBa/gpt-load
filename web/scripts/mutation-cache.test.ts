@@ -119,7 +119,6 @@ for (const mutation of ['create', 'delete', 'importCredentials'] as const) {
       collection(2),
       k.health(),
       k.home.base(),
-      k.home.subscriptionAccounts(),
       ...schedule,
       ...(mutation === 'importCredentials'
         ? [k.groups.summary(7), [...k.groups.credentialsAll(7), 'page', 1]]

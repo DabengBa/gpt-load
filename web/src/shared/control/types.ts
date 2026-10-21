@@ -21,7 +21,7 @@ export type GroupUnavailableReason = 'no_available_credentials' | 'no_models'
 export type GroupCollectionSort = 'recent' | 'status' | 'name' | 'created'
 export type ModelPricingStatus = 'pending' | 'configured'
 export type ChannelParamsDto = Record<string, string>
-export type ConnectionType = 'api_key' | 'subscription'
+export type ConnectionType = 'api_key'
 export type ProxyConfiguredMode = 'inherit' | 'direct' | 'custom'
 export type ProxyEffectiveMode = 'direct' | 'environment' | 'custom'
 export type ProxyEffectiveSource = 'credential' | 'group' | 'global' | 'environment' | 'default'
@@ -185,103 +185,6 @@ export interface GroupModelsDto {
 
 export type CredentialStatus = 'available' | 'cooldown' | 'blacklisted' | 'disabled'
 export type CredentialRecoveryMode = 'none' | 'cooldown' | 'scheduled_release' | 'manual'
-export type CredentialAuthState =
-  'ready' | 'refreshing' | 'reauthorization_required' | 'outcome_unknown'
-export type CredentialObservationState = 'fresh' | 'stale' | 'refreshing' | 'error' | 'unavailable'
-
-export interface CredentialAccountDto {
-  email?: string
-  email_mask?: string
-  expires_at_ms?: number
-  last_refresh_at_ms?: number
-}
-
-export interface CredentialQuotaWindowDto {
-  source_id?: string
-  id: string
-  label: string
-  label_key?: CredentialQuotaLabelKey
-  scope: string
-  unit: string
-  used?: number
-  limit?: number
-  remaining?: number
-  utilization?: number
-  reset_at_ms?: number
-  window_seconds?: number
-  model_ids?: string[]
-  state: 'available' | 'exhausted' | 'unknown'
-  is_primary?: boolean
-  observed_usage?: CredentialObservedWindowUsageDto
-}
-
-export type CredentialQuotaLabelKey =
-  'session' | 'weekly' | 'extra_usage' | 'included_usage' | 'pay_as_you_go' | 'oauth_apps'
-
-export interface CredentialObservedWindowUsageDto {
-  window_start_ms: number
-  window_end_ms: number
-  source: 'request_logs' | 'usage_stats'
-  data_complete: boolean
-  usage_complete: boolean
-  pricing_complete: boolean
-  request_count: number
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
-  estimated_reference_cost_nano_usd: string
-  last_used_at_ms?: number
-}
-
-export interface CredentialObservationAccountSummaryDto {
-  display_name?: string
-  email?: string
-  organization_name?: string
-  organization_type?: string
-  organization_role?: string
-  workspace_role?: string
-  organization_rate_limit_tier?: string
-  user_rate_limit_tier?: string
-  seat_tier?: string
-  billing_type?: string
-  extra_usage_enabled?: boolean
-  extra_usage_disabled_reason?: string
-  account_created_at_ms?: number
-  subscription_created_at_ms?: number
-}
-
-export type CredentialPlanLevel = 'free' | 'standard' | 'premium' | 'elite'
-
-export interface CredentialObservationSnapshotDto {
-  plan_summary: { name?: string; level?: CredentialPlanLevel }
-  account_summary?: CredentialObservationAccountSummaryDto
-  quota_windows: CredentialQuotaWindowDto[]
-  reset_credits_available?: number
-  reset_credits?: CredentialResetCreditDto[]
-}
-
-export interface CredentialResetCreditDto {
-  expires_at_ms?: number
-}
-
-export interface CredentialObservationDto {
-  state: CredentialObservationState
-  snapshot: CredentialObservationSnapshotDto | null
-  observation_version: number
-  observed_at_ms: number | null
-  last_attempt_at_ms: number | null
-  last_error_code?: string
-}
-
-export interface CredentialResetCreditConsumeDto {
-  status: 'succeeded'
-  windows_reset: number
-  redeemed_at_ms?: number
-  observation?: CredentialObservationDto
-  observation_pending?: boolean
-  replayed: boolean
-}
-
 export interface CredentialRecoveryDto {
   mode: CredentialRecoveryMode
   automatic: boolean
@@ -293,10 +196,6 @@ export interface CredentialItemDto {
   connection_type: ConnectionType
   secret_version: number
   mask: string
-  account: CredentialAccountDto
-  auth_state: CredentialAuthState
-  auth_error_code?: string
-  observation?: CredentialObservationDto
   effective_status: CredentialStatus
   recent_success_count: number
   recent_failure_count: number
@@ -305,34 +204,17 @@ export interface CredentialItemDto {
   last_failure_summary?: string
   last_status_code: number | null
   cooldown_until_ms: number | null
-  last_used_at_ms?: number
-  daily_usage?: CredentialDailyUsageDto
   recovery: CredentialRecoveryDto
-}
-
-/** 固定 24 小时窗口的上游尝试结果分布，来源是小时聚合而非 health 的 5 分钟内存窗口。 */
-export interface CredentialDailyUsageDto {
-  window_seconds: number
-  success_count: number
-  failure_count: number
-  /** false 表示统计数据未覆盖完整窗口，计数可能偏低。 */
-  data_complete: boolean
 }
 
 export interface CredentialDetailDto {
   credential: CredentialItemDto | null
-  observation: CredentialObservationDto | null
 }
 
 export interface CredentialRevealDto {
   credential_id: number
   credential: Record<string, string>
   revealed_at_ms: number
-}
-
-export interface CredentialDownloadDto {
-  filename: string
-  credential: Record<string, unknown>
 }
 
 export type CredentialTestOutcome = 'passed' | 'failed' | 'inconclusive'
@@ -409,7 +291,7 @@ export interface HealthProblemCredentialDto {
   recent_problem_count: number
   consecutive_problem_count: number
   recovery: HealthRecoveryDto
-  /** API 密钥仍是掩码，订阅账号给完整邮箱，与凭据卡片、日志的展示约定一致。 */
+  /** API 密钥掩码。 */
   identity: string
   last_failure_category: Exclude<FailureCategory, 'ok'>
   last_status_code: number | null
@@ -460,28 +342,9 @@ export interface RuntimeHealthDto {
   groups: HealthGroupDto[]
   cooldown_credentials: HealthProblemCredentialDto[]
   blacklisted_credentials: HealthProblemCredentialDto[]
-  low_quota_credentials: HealthQuotaCredentialDto[]
-  expiring_reset_credits: HealthExpiringResetCreditDto[]
   blocked_access_keys: HealthAccessKeyCostLimitDto[]
   request_log: RequestLogHealthDto
   debug_capture: RuntimeDebugCaptureHealthDto
-}
-
-export interface HealthExpiringResetCreditDto {
-  credential_id: number
-  group_id: number
-  group_name: string
-  count: number
-  nearest_expires_at_ms: number
-}
-
-export interface HealthQuotaCredentialDto {
-  credential_id: number
-  group_id: number
-  group_name: string
-  /** 剩余额度比例，0..1 */
-  remaining: number
-  reset_at_ms: number
 }
 
 export interface AccessKeyFiltersDto {

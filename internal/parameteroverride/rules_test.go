@@ -319,7 +319,7 @@ func TestParameterOverrideConfiguredFieldsMatchAndOwnNames(t *testing.T) {
 	if names := rules.ConfiguredFields(protocol.OpenAIResponses, execution.OperationResponsesCreate, "public-model"); !reflect.DeepEqual(names, []string{"a", "z"}) {
 		t.Fatalf("configured fields alias prior result: %v", names)
 	}
-	if names := rules.ConfiguredFields(protocol.OpenAIResponses, execution.OperationWebSearch, "public-model"); len(names) != 0 {
+	if names := rules.ConfiguredFields(protocol.OpenAIResponses, execution.OperationProbe, "public-model"); len(names) != 0 {
 		t.Fatalf("unsupported operation configured fields = %v", names)
 	}
 }

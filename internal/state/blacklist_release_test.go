@@ -78,58 +78,9 @@ func TestReleaseExpiredBlacklistsReleasesExpiredReadyCredential(t *testing.T) {
 
 // R1: an expired credential that is not ready stays blacklisted and keeps its
 // deadline so a later maintenance run can release it once it is ready.
-func TestReleaseExpiredBlacklistsKeepsNonReadyCredentialBlacklisted(t *testing.T) {
-	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
-	entry := releaseTestEntry(1)
-	entry.AuthState = CredentialAuthStateRefreshing
-	registry := releaseTestRegistry(t, entry)
-	if _, changed := registry.SetBlacklistedWithChange(1); !changed {
-		t.Fatal("SetBlacklistedWithChange() changed = false")
-	}
-	deadline := now.Add(-time.Second)
-	if !registry.SetBlacklistReleaseAt(1, deadline) {
-		t.Fatal("SetBlacklistReleaseAt() = false")
-	}
-
-	credentials, _ := registry.ReleaseExpiredBlacklists(now)
-	if credentials != 0 {
-		t.Fatalf("ReleaseExpiredBlacklists() = %d, want 0 for non-ready credential", credentials)
-	}
-	view := registry.Snapshot()[0]
-	if !view.Blacklisted || !view.BlacklistReleaseAt.Equal(deadline) {
-		t.Fatalf("view = %#v, want still blacklisted with retained deadline %v", view, deadline)
-	}
-	if candidates := registry.CollectCredentialCandidates([]uint{1}, nil, now); len(candidates) != 0 {
-		t.Fatalf("candidates = %#v, want none for non-ready credential", candidates)
-	}
-}
 
 // R1: a credential whose deadline already passed while non-ready is released by
 // the next maintenance run after it becomes ready.
-func TestReleaseExpiredBlacklistsReleasesCredentialThatBecomesReadyLater(t *testing.T) {
-	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
-	entry := releaseTestEntry(1)
-	entry.AuthState = CredentialAuthStateReauthorizationRequired
-	registry := releaseTestRegistry(t, entry)
-	if _, changed := registry.SetBlacklistedWithChange(1); !changed {
-		t.Fatal("SetBlacklistedWithChange() changed = false")
-	}
-	if !registry.SetBlacklistReleaseAt(1, now.Add(-time.Minute)) {
-		t.Fatal("SetBlacklistReleaseAt() = false")
-	}
-	if credentials, _ := registry.ReleaseExpiredBlacklists(now); credentials != 0 {
-		t.Fatalf("first release = %d, want 0 while not ready", credentials)
-	}
-	if !registry.SetCredentialAuthState(1, CredentialAuthStateReady) {
-		t.Fatal("SetCredentialAuthState() = false")
-	}
-	if credentials, _ := registry.ReleaseExpiredBlacklists(now); credentials != 1 {
-		t.Fatalf("second release = %d, want 1 after ready", credentials)
-	}
-	if view := registry.Snapshot()[0]; view.Blacklisted {
-		t.Fatalf("view = %#v, want released", view)
-	}
-}
 
 // R1: release increments the credential failure generation so a restore proof
 // captured before the release can no longer clear a newer state.

@@ -10,21 +10,10 @@ type CredentialRuntimeView struct {
 	GroupID            uint
 	Version            uint64
 	IdentityGeneration uint64
-	AuthState          CredentialAuthState
 	CooldownUntil      time.Time
 	Blacklisted        bool
 	BlacklistReleaseAt time.Time
 	FailureCount       int
-	QuotaRemaining     *float64
-	QuotaResetAt       time.Time
-}
-
-func (view CredentialRuntimeView) AuthReady() bool {
-	return view.AuthState.normalize() == CredentialAuthStateReady
-}
-
-func (view CredentialRuntimeView) ObservedQuotaRemaining() *float64 {
-	return cloneFloat(view.QuotaRemaining)
 }
 
 type CredentialRuntimeState string
@@ -51,13 +40,10 @@ func runtimeView(entry *CredentialEntry) CredentialRuntimeView {
 		GroupID:            entry.GroupID,
 		Version:            entry.Version,
 		IdentityGeneration: entry.IdentityGeneration,
-		AuthState:          entry.AuthState.normalize(),
 		CooldownUntil:      entry.CooldownUntil,
 		Blacklisted:        entry.Blacklisted,
 		BlacklistReleaseAt: entry.BlacklistReleaseAt,
 		FailureCount:       entry.FailureCount,
-		QuotaRemaining:     cloneFloat(entry.quotaRemaining),
-		QuotaResetAt:       entry.quotaResetAt,
 	}
 }
 

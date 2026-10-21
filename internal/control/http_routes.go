@@ -43,42 +43,6 @@ func (s *Server) HTTPModule() httproute.Module {
 		MethodNotAllowed:  controlMethodNotAllowed,
 		Routes: []httproute.Route{
 			controlRoute("control.auth.session", http.MethodGet, "/auth/session", s.handleAuthSession),
-			controlRoute(
-				"control.credential-stages.authorize",
-				http.MethodPost,
-				"/credential-stages/authorizations",
-				s.auditMutation(newMutationDescriptor("credential_stage_authorize", "credential_stage", staticMutationLocator("new"))),
-				s.handleBeginCredentialAuthorization,
-			),
-			controlRoute(
-				"control.credential-stages.import",
-				http.MethodPost,
-				"/credential-stages/import",
-				s.auditMutation(newMutationDescriptor("credential_stage_import", "credential_stage", staticMutationLocator("new"))),
-				s.handleImportCredentialStage,
-			),
-			controlRoute("control.credential-stages.get", http.MethodGet, "/credential-stages/:stage_id", s.handleGetCredentialStage),
-			controlRoute(
-				"control.credential-stages.oauth-callback",
-				http.MethodPost,
-				"/credential-stages/:stage_id/oauth-callback",
-				s.auditMutation(newMutationDescriptor("credential_stage_oauth_callback", "credential_stage", credentialStageMutationLocator)),
-				s.handleCredentialAuthorizationCallback,
-			),
-			controlRoute(
-				"control.credential-stages.device-poll",
-				http.MethodPost,
-				"/credential-stages/:stage_id/device-poll",
-				s.auditMutation(newMutationDescriptor("credential_stage_device_poll", "credential_stage", credentialStageMutationLocator)),
-				s.handlePollCredentialDeviceAuthorization,
-			),
-			controlRoute(
-				"control.credential-stages.cancel",
-				http.MethodDelete,
-				"/credential-stages/:stage_id",
-				s.auditMutation(newMutationDescriptor("credential_stage_cancel", "credential_stage", credentialStageMutationLocator)),
-				s.handleCancelCredentialStage,
-			),
 			controlRoute("control.channels.list", http.MethodGet, "/channels", s.handleListChannels),
 			controlRoute("control.models.list", http.MethodGet, "/models", s.handleListProjectModels),
 			controlRoute(
@@ -138,12 +102,6 @@ func (s *Server) HTTPModule() httproute.Module {
 				s.handleDeleteModelPrice,
 			),
 			controlRoute("control.home", http.MethodGet, "/home", s.handleHome),
-			controlRoute(
-				"control.home.subscription-accounts",
-				http.MethodGet,
-				"/home/subscription-accounts",
-				s.handleHomeSubscriptionAccounts,
-			),
 			controlRoute(
 				"control.home.statistics",
 				http.MethodGet,
@@ -301,42 +259,6 @@ func (s *Server) HTTPModule() httproute.Module {
 				s.handleGetGroupCredential,
 			),
 			controlRoute(
-				"control.group-credentials.observation-refresh",
-				http.MethodPost,
-				"/groups/:group_id/credential/observation-refresh",
-				s.auditMutation(newMutationDescriptor(
-					"group_credential_observation_refresh",
-					"group_credential",
-					groupCredentialMutationLocator,
-				)),
-				s.resolveGroupCredential,
-				s.handleRefreshGroupCredentialObservation,
-			),
-			controlRoute(
-				"control.group-credentials.refresh",
-				http.MethodPost,
-				"/groups/:group_id/credential/refresh",
-				s.auditMutation(newMutationDescriptor(
-					"group_credential_refresh",
-					"group_credential",
-					groupCredentialMutationLocator,
-				)),
-				s.resolveGroupCredential,
-				s.handleRefreshGroupCredential,
-			),
-			controlRoute(
-				"control.group-credentials.reset-credit-consume",
-				http.MethodPost,
-				"/groups/:group_id/credential/reset-credits/consume",
-				s.auditMutation(newMutationDescriptor(
-					"group_credential_reset_credit_consume",
-					"group_credential",
-					groupCredentialMutationLocator,
-				)),
-				s.resolveGroupCredential,
-				s.handleConsumeGroupCredentialResetCredit,
-			),
-			controlRoute(
 				"control.group-credentials.reveal",
 				http.MethodPost,
 				"/groups/:group_id/credential/reveal",
@@ -347,18 +269,6 @@ func (s *Server) HTTPModule() httproute.Module {
 				)),
 				s.resolveGroupCredential,
 				s.handleRevealGroupCredential,
-			),
-			controlRoute(
-				"control.group-credentials.download",
-				http.MethodPost,
-				"/groups/:group_id/credential/download",
-				s.auditMutation(newMutationDescriptor(
-					"group_credential_download",
-					"group_credential",
-					groupCredentialMutationLocator,
-				)),
-				s.resolveGroupCredential,
-				s.handleDownloadGroupCredential,
 			),
 			controlRoute(
 				"control.group-credentials.update",
@@ -415,13 +325,6 @@ func (s *Server) HTTPModule() httproute.Module {
 				s.handleImportGroupCredentials,
 			),
 
-			controlRoute(
-				"control.group-credentials.connect",
-				http.MethodPost,
-				"/groups/:group_id/credential/connect",
-				s.auditMutation(newMutationDescriptor("group_credential_connect", "group_credential", groupCredentialsMutationLocator)),
-				s.handleConnectGroupCredentials,
-			),
 			controlRoute(
 				"control.group-models.discover",
 				http.MethodPost,

@@ -169,14 +169,13 @@ const openaiChannel = {
   search_terms: [],
   description: '',
   default_base_url: 'https://api.openai.com',
-  notices: [],
+
   param_fields: [],
   credential_fields: [],
-  connection: { type: 'api_key', credential_input: 'batch_text', authorization_methods: [] },
+  connection: { type: 'api_key', credential_input: 'batch_text' },
   capabilities: {
     model_discovery: false,
-    quota_observation: false,
-    credential_actions: [],
+
     outbound_proxy: false,
   },
   routes: [

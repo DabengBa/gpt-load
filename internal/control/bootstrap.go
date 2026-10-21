@@ -7,7 +7,6 @@ import (
 	"gorm.io/gorm"
 
 	"gpt-load/internal/catalog"
-	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/storage/models"
 
@@ -31,25 +30,6 @@ func (s *Service) EnsureInitialState(ctx context.Context) error {
 
 	var priceTable *pricing.Table
 	err := s.withControlTransaction(ctx, func(tx *gorm.DB) error {
-		nowMS := s.now().UnixMilli()
-		if err := tx.Model(&models.Credential{}).
-			Where("auth_state = ?", models.CredentialAuthStateRefreshing).
-			Updates(map[string]any{
-				"auth_state":      models.CredentialAuthStateOutcomeUnknown,
-				"auth_error_code": "refresh_interrupted", "updated_at_ms": nowMS,
-			}).Error; err != nil {
-			return app_errors.ParseDBError(err)
-		}
-		if err := tx.Model(&models.CredentialStage{}).
-			Where("status = ?", models.CredentialStageExchanging).
-			Updates(map[string]any{
-				"status":            models.CredentialStageOutcomeUnknown,
-				"encrypted_payload": "", "oauth_state_hash": nil,
-				"error_code": "authorization_exchange_interrupted", "updated_at_ms": nowMS,
-			}).Error; err != nil {
-			return app_errors.ParseDBError(err)
-		}
-
 		if catalogSnapshot != nil {
 			if err := reconcileCatalogAutomaticPrices(tx, catalogSnapshot); err != nil {
 				return err

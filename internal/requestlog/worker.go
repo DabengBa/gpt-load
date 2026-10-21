@@ -691,14 +691,9 @@ func usageStatUpsertClause() clause.OnConflict {
 	}
 }
 
-// usageAggregationExcluded reports whether a durable log row must stay out of
-// every usage statistic. Zero-attempt rows never reached an upstream; probe rows
-// are control-plane observations (execution.OperationProbe) and standalone
-// search rows (execution.OperationWebSearch) are not model traffic, so neither
-// may be counted even though they do carry an attempt.
+// usageAggregationExcluded excludes local-only rows and control-plane probes.
 func usageAggregationExcluded(row models.RequestLog) bool {
-	return row.AttemptCount == 0 || row.Operation == string(execution.OperationProbe) ||
-		row.Operation == string(execution.OperationWebSearch)
+	return row.AttemptCount == 0 || row.Operation == string(execution.OperationProbe)
 }
 
 func buildUsageAggregationJournals(
@@ -1275,7 +1270,6 @@ func (service *Service) drain(ctx context.Context, batch []queuedEvent) {
 					return
 				}
 			}
-			service.drainPassiveQuotaObservations(ctx)
 			return
 		}
 	}
@@ -1303,48 +1297,7 @@ func (service *Service) writeBatch(ctx context.Context, events []queuedEvent) er
 		}
 	}
 	err := service.flushAccessQuotaCheckpoints(ctx)
-	service.flushPassiveQuotaCheckpoint(ctx)
 	return err
-}
-
-// flushPassiveQuotaCheckpoint writes one bounded passive quota observation
-// batch after the log and AccessQuota checkpoint batches. It never returns
-// an error to writeBatch: a persistence failure here must not affect
-// RequestLog's own failure counters, dropped-event accounting, or Stop
-// result, and pending observations simply retry on the next wake.
-func (service *Service) flushPassiveQuotaCheckpoint(ctx context.Context) {
-	if service == nil || service.passiveQuota == nil {
-		return
-	}
-	remaining, err := service.passiveQuota.FlushPassiveQuotaObservations(ctx)
-	if err != nil {
-		service.warnPassiveQuotaFlushFailure(err)
-		service.wakeAccessQuotaCheckpoint()
-		return
-	}
-	if remaining {
-		service.wakeAccessQuotaCheckpoint()
-	}
-}
-
-// drainPassiveQuotaObservations makes a best-effort attempt to persist
-// remaining passive quota pending within the shutdown context. It stops on
-// an empty pending set, a canceled context, or the first write failure --
-// never retrying without bound -- and never marks RequestLog Stop as failed.
-func (service *Service) drainPassiveQuotaObservations(ctx context.Context) {
-	if service == nil || service.passiveQuota == nil {
-		return
-	}
-	for ctx.Err() == nil {
-		remaining, err := service.passiveQuota.FlushPassiveQuotaObservations(ctx)
-		if err != nil {
-			service.warnPassiveQuotaFlushFailure(err)
-			return
-		}
-		if !remaining {
-			return
-		}
-	}
 }
 
 func (service *Service) flushAccessQuotaCheckpoints(ctx context.Context) error {

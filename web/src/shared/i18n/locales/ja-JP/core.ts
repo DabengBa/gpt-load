@@ -67,33 +67,6 @@ export default {
         default: '既定の直接接続',
       },
     },
-    subscriptionErrors: {
-      oauthFileInvalid: 'OAuth JSON が無効、または必須項目がありません',
-      oauthFileTooLarge: 'OAuth JSON ファイルは 64 KiB 未満にしてください',
-      authorizationUnavailable: 'Codex のブラウザー認証を現在開始できません',
-      authorizationStateInvalid:
-        'このコールバックは期限切れ、使用済み、または別の認証に属しています',
-      authorizationExchangeFailed: 'Codex が認証交換を拒否したか、完了できませんでした',
-      stageNotReady: 'サブスクリプションアカウントの認証が完了していません',
-      stageExpired: '一時アカウントの期限が切れました。再度認証またはインポートしてください',
-      stageConsumed: 'この一時アカウントは保存済みです。再度認証してください',
-      stageMismatch: '一時アカウントが現在の対象と一致しません',
-      duplicateAccount: 'このサブスクリプションアカウントはグループに既に存在します',
-      reauthorizationRequired:
-        'このサブスクリプションアカウントは再接続または再インポートが必要です',
-      outcomeUnknown:
-        '認証情報の更新結果を確認できません。このアカウントを再接続または再インポートしてください',
-      refreshTemporarilyUnavailable:
-        '認証情報を一時的に更新できません。しばらくしてから再試行してください',
-      versionConflict: '認証が別の操作で更新されました。再読み込みしてから再試行してください',
-      resetCreditUnavailable: '利用可能なリセットクレジットがありません。先に同期してください',
-      resetCreditRejected:
-        '上流でリセットクレジットを使用できませんでした。同期後に再試行してください',
-      resetCreditOutcomeUnknown:
-        'リセット結果を確認できません。ページを再読み込みせず、もう一度確認して同じ操作 ID で安全に再試行してください',
-      operationIncomplete: 'アカウントは保存されましたが、ランタイムを復旧中です',
-      recoveryPending: '先行するアカウント操作を復旧中です。しばらくしてから再試行してください',
-    },
     unsavedChangesDialog: {
       title: '未保存の変更を破棄しますか？',
       description: 'このページの変更は保存されていません。移動すると復元できません。',
@@ -289,15 +262,8 @@ export default {
         title: '対応が必要',
         blacklisted: '{group} に {count} 件のブラックリスト入り認証情報があります',
         billing: '{group} で {count} 件の認証情報が残高不足です。最速の再試行は',
-        resetCreditExpiring:
-          '{group} のリセットカード {count} 枚が間もなく期限切れです。最短期限は',
-        lowQuota: '{group} の残額度は {remaining}、リセットは',
         summary: '{count} 件の対応が必要です',
         action: '対応',
-      },
-      subscriptionAccounts: {
-        title: '最近よく使う',
-        availableGroups: '{available}/{total} 利用可能',
       },
       spend: {
         title: '直近 30 日間の概算',

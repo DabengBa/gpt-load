@@ -49,10 +49,6 @@ func TestServerHomeAndSystemUpdateRoutesUseExactManagementContracts(t *testing.T
 			method: http.MethodGet,
 			path:   "/home/statistics",
 		},
-		"control.home.subscription-accounts": {
-			method: http.MethodGet,
-			path:   "/home/subscription-accounts",
-		},
 		"control.system.update": {
 			method: http.MethodGet,
 			path:   "/system/update",
@@ -2471,7 +2467,6 @@ func TestSettingsHTTPFiltersPrivateRowsAndDoesNotLogValues(t *testing.T) {
 		nil,
 		fixture.encryption,
 		fixture.service.executor,
-		nil,
 		fixture.service.requestLogs,
 		fixture.service.usageStats,
 		fixture.service.homeStatistics,

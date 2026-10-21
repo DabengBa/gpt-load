@@ -18,7 +18,7 @@ interface FixtureGroup {
   id: number
   name: string
   status: 'available' | 'unavailable' | 'disabled'
-  connection_type: 'api_key' | 'subscription'
+  connection_type: 'api_key'
   channel_id: string
   credential_total: number
   created_ms: number
@@ -53,7 +53,7 @@ function makeGroup(index: number): FixtureGroup {
     id: index + 1,
     name: `Group ${String(index + 1).padStart(4, '0')}`,
     status,
-    connection_type: index % 3 === 0 ? 'subscription' : 'api_key',
+    connection_type: 'api_key',
     channel_id: 'openai',
     credential_total: index % 2,
     created_ms: 1_700_000_000_000 + index * 60_000,
@@ -364,8 +364,8 @@ test('narrow layout keeps filters visible without page overflow', async ({ page 
     }),
   ).toBe(true)
   await page.getByRole('combobox', { name: 'Connection type' }).click()
-  await page.getByRole('option', { name: 'Subscription account' }).click()
-  await expect(page).toHaveURL(/connection_type=subscription/)
+  await page.getByRole('option', { name: 'API key' }).click()
+  await expect(page).toHaveURL(/connection_type=api_key/)
   await page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }).click()
   await expect(page).not.toHaveURL(/connection_type=/)
 })
@@ -379,7 +379,7 @@ for (const width of [320, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
     const groups = makeGroups(6)
-    groups[5]!.name = 'Production gateway / primary subscription / long upstream group name'
+    groups[5]!.name = 'Production gateway / primary API / long upstream group name'
     await mockCollection(page, groups)
     await page.goto('/groups', { waitUntil: 'load' })
     const table = collectionTable(page)
@@ -447,8 +447,8 @@ test('search, status chip, and connection-type select hit the server', async ({ 
   // Connection-type select writes the shared contract param.
   // (combobox role: 'Connection type' alone also matches the open listbox)
   await page.getByRole('combobox', { name: 'Connection type' }).click()
-  await page.getByRole('option', { name: 'Subscription account' }).click()
-  await expect(page).toHaveURL(/connection_type=subscription/)
+  await page.getByRole('option', { name: 'API key' }).click()
+  await expect(page).toHaveURL(/connection_type=api_key/)
 
   // Reset clears criteria back to canonical defaults. Two resets render at
   // this point (toolbar + no-results state); exercise the toolbar one.

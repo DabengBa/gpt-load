@@ -51,7 +51,7 @@ var decisionConstraints0006 = []struct {
 	},
 	{
 		name:       retryDirectiveConstraint0006,
-		expression: "retry_directive IN ('','none','refresh_credential','next_candidate')",
+		expression: "retry_directive IN ('','none','next_candidate')",
 	},
 	{
 		name:       effectConstraint0006,
@@ -121,7 +121,7 @@ func rebuildSQLiteRequestLogAttempts0006(db *gorm.DB) error {
 			CONSTRAINT chk_request_log_attempt_failure_category CHECK (` + failureCategoryExpression0006 + `),
 			CONSTRAINT chk_request_log_attempt_failure_origin CHECK (failure_origin IN ('','client','upstream','downstream','internal')),
 			CONSTRAINT chk_request_log_attempt_failure_scope CHECK (failure_scope IN ('','request','model','credential','group')),
-			CONSTRAINT chk_request_log_attempt_retry_directive CHECK (retry_directive IN ('','none','refresh_credential','next_candidate')),
+			CONSTRAINT chk_request_log_attempt_retry_directive CHECK (retry_directive IN ('','none','next_candidate')),
 			CONSTRAINT chk_request_log_attempt_effect CHECK (effect IN ('','none','cooldown_credential','record_credential_failure','skip_group')),
 			CONSTRAINT chk_request_log_attempt_action CHECK (action IN ('terminate','retry','cooldown_credential','fail_credential','skip_group'))
 		)`,

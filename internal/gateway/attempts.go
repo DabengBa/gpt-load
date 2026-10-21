@@ -12,7 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"gpt-load/internal/accessquota"
-	"gpt-load/internal/connection"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
@@ -20,7 +19,6 @@ import (
 	"gpt-load/internal/reasoning"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
 // deferredAttempt records one retryable outcome that may still become the
@@ -39,13 +37,6 @@ type deferredAttempts struct {
 	transport     *deferredAttempt
 	conversion    *deferredAttempt
 	providerError *deferredAttempt
-}
-
-// credentialRefreshRetry preserves one explicit provider-auth retry on the
-// same selected credential.
-type credentialRefreshRetry struct {
-	selection scheduler.Selection
-	ref       state.CredentialRef
 }
 
 // preparedRequest is the per-candidate rewrite result: an applied override
@@ -88,9 +79,6 @@ func (cache *preparedRequestCache) get(selection scheduler.Selection) preparedRe
 	cache.upstreamModel = upstreamModel
 	prepared := preparedRequest{
 		request: cache.parsed, observations: cache.metadata, observationsAvailable: true,
-	}
-	if cache.operation == execution.OperationWebSearch {
-		return prepared
 	}
 	body, applied, err := selection.Group.ParameterOverrides.Apply(
 		cache.dialect.Protocol(),
@@ -184,8 +172,6 @@ type attemptLoop struct {
 	lastAttemptIndex int
 	deferred         deferredAttempts
 
-	refreshRetry          *credentialRefreshRetry
-	authRefreshReplayUsed bool
 	// firstProvider carries the first actually executed Selection so the
 	// configured same-provider attempts can replay it before moving on. The
 	// replay re-enters the full forward path, so health effects applied to the
@@ -248,21 +234,16 @@ func newAttemptLoop(
 
 func (loop *attemptLoop) decisionContextForSelection(selection scheduler.Selection) health.DecisionContext {
 	defaultRateLimitCooldown := fixedCooldown
-	credentialRefreshable := false
-	if connection.Normalize(selection.Group.ConnectionType) == connection.Subscription {
-		defaultRateLimitCooldown = subscriptionruntime.DefaultRefreshFailureCooldown
-		credentialRefreshable = true
-	}
 	method := ""
 	if loop.dispatch.parsed != nil {
 		method = loop.dispatch.parsed.Method
 	}
 	return health.DecisionContext{
 		DefaultRateLimitCooldown: defaultRateLimitCooldown,
-		CredentialRefreshable:    credentialRefreshable,
-		Method:                   method,
-		Operation:                loop.operation,
-		BufferedReplayEligible:   loop.buffered && loop.bufferedReplayEligible,
+
+		Method:                 method,
+		Operation:              loop.operation,
+		BufferedReplayEligible: loop.buffered && loop.bufferedReplayEligible,
 	}
 }
 
@@ -390,45 +371,29 @@ const (
 
 // nextCandidate returns the next selection, honoring the credential-refresh
 // replay slot before consulting the iterator.
-func (loop *attemptLoop) nextCandidate() (scheduler.Selection, state.CredentialRef, bool, candidateStep) {
-	handler := loop.handler
-	if loop.refreshRetry == nil {
-		if selection, ok := loop.nextFirstProviderCandidate(); ok {
-			ref, allowed := loop.dispatch.allowedCredentialRefs[selection.CredentialID]
-			if !allowed || ref.GroupID != selection.GroupID {
-				loop.firstProviderDisallowed = true
-				return scheduler.Selection{}, state.CredentialRef{}, false, candidateSkip
-			}
-			return selection, ref, false, candidateYield
+func (loop *attemptLoop) nextCandidate() (scheduler.Selection, state.CredentialRef, candidateStep) {
+	if selection, ok := loop.nextFirstProviderCandidate(); ok {
+		ref, allowed := loop.dispatch.allowedCredentialRefs[selection.CredentialID]
+		if !allowed || ref.GroupID != selection.GroupID {
+			loop.firstProviderDisallowed = true
+			return scheduler.Selection{}, state.CredentialRef{}, candidateSkip
 		}
-	}
-	if loop.refreshRetry != nil {
-		selection := loop.refreshRetry.selection
-		currentRef, exists := handler.registry.CredentialRef(selection.CredentialID)
-		if !exists || currentRef.GroupID != selection.GroupID ||
-			currentRef.IdentityGeneration != loop.refreshRetry.ref.IdentityGeneration {
-			loop.refreshRetry = nil
-			return scheduler.Selection{}, state.CredentialRef{}, false, candidateSkip
-		}
-		loop.authRefreshReplayUsed = true
-		forceRefresh := currentRef.Version <= loop.refreshRetry.ref.Version
-		loop.refreshRetry = nil
-		return selection, currentRef, forceRefresh, candidateYield
+		return selection, ref, candidateYield
 	}
 	if loop.firstProvider != nil {
 		loop.firstProviderDisallowed = true
 	}
 	selection, err := loop.iterator.NextCandidate()
 	if err != nil {
-		return scheduler.Selection{}, state.CredentialRef{}, false, candidateExhausted
+		return scheduler.Selection{}, state.CredentialRef{}, candidateExhausted
 	}
 	loop.dispatch.affinity.preferredHealthBypassed = loop.dispatch.affinity.preferredHealthBypassed || loop.iterator.PreferredHealthBypassed()
 	candidateRef, allowed := loop.dispatch.allowedCredentialRefs[selection.CredentialID]
 	if !allowed || candidateRef.GroupID != selection.GroupID {
 		loop.iterator.MarkAttempt(selection)
-		return scheduler.Selection{}, state.CredentialRef{}, false, candidateSkip
+		return scheduler.Selection{}, state.CredentialRef{}, candidateSkip
 	}
-	return selection, candidateRef, false, candidateYield
+	return selection, candidateRef, candidateYield
 }
 
 // nextFirstProviderCandidate yields the recorded first Selection while its
@@ -515,7 +480,7 @@ func (loop *attemptLoop) run() {
 			recorder.completeCanceled(loop.requestContext, 0, loop.lastAttemptIndex)
 			return
 		}
-		selection, ref, forceCredentialRefresh, step := loop.nextCandidate()
+		selection, ref, step := loop.nextCandidate()
 		if step == candidateExhausted {
 			break
 		}
@@ -579,7 +544,6 @@ func (loop *attemptLoop) run() {
 		}
 		normalizedCredential, err := normalizeChannelCredential(
 			handler.channels,
-			handler.subscriptions,
 			selection.ChannelID,
 			selection.Group.ConnectionType,
 			decryptedCredential,
@@ -668,9 +632,8 @@ func (loop *attemptLoop) run() {
 					ref.IdentityGeneration,
 					normalizedCredential.payload,
 				),
-				Proxy:                  effectiveProxy,
-				ProxyFingerprint:       proxyFingerprint,
-				ForceCredentialRefresh: forceCredentialRefresh,
+				Proxy:            effectiveProxy,
+				ProxyFingerprint: proxyFingerprint,
 			},
 			attemptIdentity: attemptIdentity{
 				RequestID:       executionRequestID,
@@ -789,12 +752,7 @@ func (loop *attemptLoop) run() {
 			)
 		}
 		dispatch.affinity.markBoundProviderFailure(selection, ref, resultForDecision.DispatchState, decision)
-		if decision.Retry == health.RetryRefreshCredential {
-			loop.firstProviderDisallowed = true
-			if !loop.authRefreshReplayUsed && loop.forwardAttempts < loop.limit {
-				loop.refreshRetry = &credentialRefreshRetry{selection: selection, ref: ref}
-			}
-		}
+
 		if loop.stream && result.BufferedStream && result.HTTPCommitted && !result.PayloadReleased {
 			// A heartbeat has committed HTTP, but no provider payload is visible;
 			// this is the only committed state in which an explicit buffered retry
@@ -871,7 +829,7 @@ func (loop *attemptLoop) run() {
 			}
 			return
 		}
-		if loop.operation != execution.OperationWebSearch && !loop.stream && result.DispatchState != execution.DispatchLocal &&
+		if !loop.stream && result.DispatchState != execution.DispatchLocal &&
 			!result.ProviderErrorBeforeCommit && result.HasResponse() &&
 			result.StatusCode >= http.StatusOK &&
 			result.StatusCode < http.StatusMultipleChoices &&

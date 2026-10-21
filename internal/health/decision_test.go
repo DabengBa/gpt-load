@@ -8,7 +8,7 @@ func TestDecisionShouldRetry(t *testing.T) {
 		want  bool
 	}{
 		{retry: RetryNone, want: false},
-		{retry: RetryRefreshCredential, want: true},
+
 		{retry: RetryNextCandidate, want: true},
 		{retry: RetryDirective("unknown"), want: false},
 		{retry: "", want: false},

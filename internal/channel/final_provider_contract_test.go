@@ -14,10 +14,6 @@ func TestFinalRegistryContainsOnlyApprovedChannels(t *testing.T) {
 	registry := NewRegistry()
 	want := []ID{
 		OpenAI,
-		Codex,
-		Claude,
-		Antigravity,
-		Grok,
 		Anthropic,
 		Gemini,
 		AzureOpenAI,
@@ -219,17 +215,6 @@ func TestAPIKeyChannelsDeclareAuthoritativeProbeContract(t *testing.T) {
 		})
 	}
 
-	for _, subscription := range []ID{Claude, Codex, Antigravity, Grok} {
-		t.Run("subscription/"+string(subscription), func(t *testing.T) {
-			target, err := registry.Resolve(subscription, nil)
-			if err != nil {
-				t.Fatalf("Resolve() error = %v", err)
-			}
-			if _, ok := target.ProbeContract(); ok {
-				t.Fatal("subscription channel must not declare a probe contract")
-			}
-		})
-	}
 }
 
 func TestCompilerRejectsInvalidProbeContracts(t *testing.T) {
@@ -265,14 +250,6 @@ func TestCompilerRejectsInvalidProbeContracts(t *testing.T) {
 		{
 			name: "api key valid", connection: spec.ConnectionAPIKey,
 			contract: spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: 16},
-		},
-		{
-			name: "subscription with contract", connection: spec.ConnectionSubscription,
-			contract: spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: 16}, wantErr: true,
-		},
-		{
-			name: "subscription without contract", connection: spec.ConnectionSubscription,
-			contract: spec.ProbeContract{},
 		},
 	}
 	for _, test := range tests {

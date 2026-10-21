@@ -26,13 +26,11 @@ ENV GO111MODULE=on \
 WORKDIR /build
 
 COPY go.mod go.sum ./
-COPY third_party/cpaembedded/go.mod third_party/cpaembedded/go.sum ./third_party/cpaembedded/
 COPY third_party/bifrost-core/go.mod third_party/bifrost-core/go.sum ./third_party/bifrost-core/
 RUN go mod download
 
 COPY *.go ./
 COPY internal ./internal
-COPY third_party/cpaembedded ./third_party/cpaembedded
 COPY third_party/bifrost-core ./third_party/bifrost-core
 COPY --from=web-builder /build/internal/webui/dist ./internal/webui/dist
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
@@ -60,7 +58,7 @@ ENV DATA_DIR=/app/data
 COPY LICENSE THIRD_PARTY_NOTICES.md /app/licenses/
 COPY LICENSES/Apache-2.0.txt /app/licenses/Apache-2.0.txt
 COPY LICENSES/MIT.txt /app/licenses/MIT.txt
-EXPOSE 3001 1455 54545 51121
+EXPOSE 3001
 USER 10001:10001
 ENTRYPOINT ["/app/gpt-load"]
 

@@ -17,29 +17,29 @@ var ErrInconsistentSnapshot = errors.New("inconsistent scheduler snapshot")
 type ReasonCode string
 
 const (
-	ReasonAccessKeyDisabled         ReasonCode = "access_key_disabled"
-	ReasonAccessKeyExpired          ReasonCode = "access_key_expired"
-	ReasonProtocolFiltered          ReasonCode = "protocol_filtered"
-	ReasonModelFiltered             ReasonCode = "model_filtered"
-	ReasonModelRequiredByFilter     ReasonCode = "model_required_by_filter"
-	ReasonOperationUnsupported      ReasonCode = "operation_unsupported"
-	ReasonNativeRouteRequired       ReasonCode = "native_route_required"
-	ReasonNoRouteTarget             ReasonCode = "no_route_target"
-	ReasonGroupDisabled             ReasonCode = "group_disabled"
-	ReasonEntryDisabled             ReasonCode = "entry_disabled"
-	ReasonWebsocketDisabled         ReasonCode = "websocket_disabled"
-	ReasonGroupFiltered             ReasonCode = "group_filtered"
-	ReasonNoAvailableGroup          ReasonCode = "no_available_group"
-	ReasonNoCredentials             ReasonCode = "no_credentials"
-	ReasonEntryWeightZero           ReasonCode = "entry_weight_zero"
-	ReasonCredentialAuthUnavailable ReasonCode = "credential_auth_unavailable"
-	ReasonCredentialBlacklisted     ReasonCode = "credential_blacklisted"
-	ReasonCredentialCooldown        ReasonCode = "credential_cooldown"
-	ReasonCredentialNotAllowed      ReasonCode = "credential_not_allowed"
-	ReasonNoAvailableCredential     ReasonCode = "no_available_credential"
-	ReasonEntryBlacklisted          ReasonCode = "entry_blacklisted"
-	ReasonEntryCooldown             ReasonCode = "entry_cooldown"
-	ReasonTierDemoted               ReasonCode = "tier_demoted"
+	ReasonAccessKeyDisabled     ReasonCode = "access_key_disabled"
+	ReasonAccessKeyExpired      ReasonCode = "access_key_expired"
+	ReasonProtocolFiltered      ReasonCode = "protocol_filtered"
+	ReasonModelFiltered         ReasonCode = "model_filtered"
+	ReasonModelRequiredByFilter ReasonCode = "model_required_by_filter"
+	ReasonOperationUnsupported  ReasonCode = "operation_unsupported"
+	ReasonNativeRouteRequired   ReasonCode = "native_route_required"
+	ReasonNoRouteTarget         ReasonCode = "no_route_target"
+	ReasonGroupDisabled         ReasonCode = "group_disabled"
+	ReasonEntryDisabled         ReasonCode = "entry_disabled"
+	ReasonWebsocketDisabled     ReasonCode = "websocket_disabled"
+	ReasonGroupFiltered         ReasonCode = "group_filtered"
+	ReasonNoAvailableGroup      ReasonCode = "no_available_group"
+	ReasonNoCredentials         ReasonCode = "no_credentials"
+	ReasonEntryWeightZero       ReasonCode = "entry_weight_zero"
+
+	ReasonCredentialBlacklisted ReasonCode = "credential_blacklisted"
+	ReasonCredentialCooldown    ReasonCode = "credential_cooldown"
+	ReasonCredentialNotAllowed  ReasonCode = "credential_not_allowed"
+	ReasonNoAvailableCredential ReasonCode = "no_available_credential"
+	ReasonEntryBlacklisted      ReasonCode = "entry_blacklisted"
+	ReasonEntryCooldown         ReasonCode = "entry_cooldown"
+	ReasonTierDemoted           ReasonCode = "tier_demoted"
 )
 
 type Inspection struct {
@@ -279,10 +279,6 @@ func inspectCredential(
 			result.Reason = ReasonCredentialNotAllowed
 			return result
 		}
-	}
-	if !credential.AuthReady() {
-		result.Reason = ReasonCredentialAuthUnavailable
-		return result
 	}
 	switch credential.RuntimeState(now) {
 	case state.CredentialRuntimeBlacklisted:

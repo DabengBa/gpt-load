@@ -15,7 +15,6 @@ export const channelOperations = [
   'rerank',
   'list_models',
   'probe',
-  'web_search',
 ] as const
 
 export type ChannelOperation = (typeof channelOperations)[number]

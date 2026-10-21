@@ -6,10 +6,7 @@ import { TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 import { healthQueryOptions } from '@shared/control/resources/health'
-import {
-  homeBaseQueryOptions,
-  homeSubscriptionAccountsQueryOptions,
-} from '@shared/control/resources/home'
+import { homeBaseQueryOptions } from '@shared/control/resources/home'
 import { systemUpdateQueryOptions } from '@shared/control/resources/system-update'
 import type { GatewayClientID } from '@shared/domain/home/gateway-clients'
 import { pagePath } from '@shared/routing/page-routes'
@@ -29,7 +26,6 @@ import { CurrentAccessKeyCard } from './CurrentAccessKeyCard'
 import { GatewayConnection } from './GatewayConnection'
 import { HomeAttention } from './HomeAttention'
 import { HomeSpend } from './HomeSpend'
-import { HomeSubscriptionAccounts } from './HomeSubscriptionAccounts'
 import { HomeSummary } from './HomeSummary'
 import { HomeWelcome } from './HomeWelcome'
 
@@ -127,11 +123,7 @@ export function HomeView() {
   const homePath = pagePath('home')
 
   const baseQuery = useQuery(homeBaseQueryOptions(apiClient))
-  // 订阅账号含完整管理身份与额度,仅管理员发起;模板侧再 gate 一次防会话切换瞬间
-  // 复用旧查询缓存。
-  const subscriptionAccountsQuery = useQuery(
-    homeSubscriptionAccountsQueryOptions(apiClient, isAdmin),
-  )
+
   // 更新检查与首页数据解耦,仅管理员进首页时按需触发一次。
   const updateQuery = useQuery(systemUpdateQueryOptions(apiClient, isAdmin))
   // /api/health 不在 AccessKey 白名单里,必须前端主动 gate。
@@ -278,12 +270,6 @@ export function HomeView() {
 
               {/* 紧贴事实行:它是「X/Y 个凭据可用」的注解。 */}
               {!isAccessKey && <HomeAttention health={healthQuery.data ?? null} />}
-
-              {isAdmin &&
-                Boolean(subscriptionAccountsQuery.data?.items.length) &&
-                subscriptionAccountsQuery.data && (
-                  <HomeSubscriptionAccounts accounts={subscriptionAccountsQuery.data} />
-                )}
 
               {base.current_access_key && (
                 <CurrentAccessKeyCard accessKey={base.current_access_key} />

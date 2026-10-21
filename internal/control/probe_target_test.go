@@ -31,16 +31,6 @@ func probeTestGroup(channelID channel.ID, params json.RawMessage, models ...stri
 	return group
 }
 
-func TestBuildGroupProbeTargetSkipsSubscriptionGroups(t *testing.T) {
-	t.Parallel()
-
-	group := probeTestGroup(channel.Anthropic, json.RawMessage(`{}`), "claude-test")
-	group.ConnectionType = "subscription"
-	if _, ok := buildGroupProbeTarget(group, "claude-test", ""); ok {
-		t.Fatal("subscription group must not have a credential probe target")
-	}
-}
-
 func TestBuildGroupProbeTargetUsesAuthoritativeContractProtocol(t *testing.T) {
 	t.Parallel()
 

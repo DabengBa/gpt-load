@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  channelOperations,
-  sameStringMembers,
-} from '../src/shared/control/resources/channel-contract.ts'
+import { sameStringMembers } from '../src/shared/control/resources/channel-contract.ts'
 
 test('channel protocol membership does not depend on route declaration order', () => {
   assert.equal(
@@ -14,8 +11,4 @@ test('channel protocol membership does not depend on route declaration order', (
     ),
     true,
   )
-})
-
-test('channel operation contract includes Codex web search routes', () => {
-  assert.equal((channelOperations as readonly string[]).includes('web_search'), true)
 })

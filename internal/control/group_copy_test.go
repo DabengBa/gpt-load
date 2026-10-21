@@ -124,7 +124,7 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 	if cloneCredentials[0].Data != sourceCredentials[0].Data ||
 		cloneCredentials[0].Fingerprint != sourceCredentials[0].Fingerprint ||
 		cloneCredentials[0].IdentityFingerprint != sourceCredentials[0].IdentityFingerprint ||
-		cloneCredentials[0].AuthState != sourceCredentials[0].AuthState {
+		cloneCredentials[0].SecretVersion != sourceCredentials[0].SecretVersion {
 		t.Fatalf("cloned credential = %#v, want verbatim credential of %#v",
 			cloneCredentials[0], sourceCredentials[0])
 	}
@@ -225,41 +225,6 @@ func TestCopyGroupIdempotentLoadsEncryptedProxyPolicies(t *testing.T) {
 		source.GroupID,
 	); err != nil {
 		t.Fatalf("CopyGroupIdempotent() with encrypted proxies error = %v", err)
-	}
-}
-
-func TestCopyGroupIdempotentNormalizesRefreshingCredential(t *testing.T) {
-	t.Parallel()
-	fixture := newServiceFixture(t)
-	source := createGroupCopySource(t, fixture, "copy-refreshing")
-	credentials := loadGroupCredentials(t, fixture, source.GroupID)
-	if len(credentials) != 1 {
-		t.Fatalf("source credentials = %d, want 1", len(credentials))
-	}
-	if err := fixture.db.Model(&models.Credential{}).
-		Where("id = ?", credentials[0].ID).
-		Updates(map[string]any{
-			"auth_state":      models.CredentialAuthStateRefreshing,
-			"auth_error_code": "",
-		}).Error; err != nil {
-		t.Fatalf("mark source credential refreshing: %v", err)
-	}
-
-	result, err := fixture.service.CopyGroupIdempotent(
-		t.Context(),
-		"718f47a2-9c35-4d6e-8b1a-1234567890ab",
-		source.GroupID,
-	)
-	if err != nil {
-		t.Fatalf("CopyGroupIdempotent() error = %v", err)
-	}
-	cloned := loadGroupCredentials(t, fixture, result.GroupID)
-	if len(cloned) != 1 {
-		t.Fatalf("cloned credentials = %d, want 1", len(cloned))
-	}
-	if cloned[0].AuthState != models.CredentialAuthStateOutcomeUnknown ||
-		cloned[0].AuthErrorCode != "refresh_interrupted" {
-		t.Fatalf("cloned credential auth state = %q/%q, want outcome_unknown/refresh_interrupted", cloned[0].AuthState, cloned[0].AuthErrorCode)
 	}
 }
 

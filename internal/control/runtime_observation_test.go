@@ -46,13 +46,11 @@ func TestCaptureRuntimeObservationWaitsForPublishedConfigPair(t *testing.T) {
 			}
 			key = models.Credential{
 				GroupID: group.ID, Data: "cipher-runtime-observation",
-				Fingerprint: "hash-runtime-observation", AuthState: models.CredentialAuthStateReady,
-			}
+				Fingerprint: "hash-runtime-observation"}
 			return tx.Create(&key).Error
 		}, func() error {
 			if err := fixture.registry.ApplyCredentialImport(group.ID, []state.CredentialEntry{{
-				ID: key.ID, GroupID: group.ID, AuthState: state.CredentialAuthStateReady,
-				Version: 1, IdentityGeneration: 1, Fingerprint: key.Fingerprint, EncryptedValue: key.Data,
+				ID: key.ID, GroupID: group.ID, Version: 1, IdentityGeneration: 1, Fingerprint: key.Fingerprint, EncryptedValue: key.Data,
 			}}); err != nil {
 				return err
 			}
@@ -133,13 +131,11 @@ func TestCaptureRuntimeHealthObservationWaitsForPublishedConfigPair(t *testing.T
 			}
 			key = models.Credential{
 				GroupID: group.ID, Data: "cipher-runtime-health-observation",
-				Fingerprint: "hash-runtime-health-observation", AuthState: models.CredentialAuthStateReady,
-			}
+				Fingerprint: "hash-runtime-health-observation"}
 			return tx.Create(&key).Error
 		}, func() error {
 			if err := fixture.registry.ApplyCredentialImport(group.ID, []state.CredentialEntry{{
-				ID: key.ID, GroupID: group.ID, AuthState: state.CredentialAuthStateReady,
-				Version: 1, IdentityGeneration: 1, Fingerprint: key.Fingerprint, EncryptedValue: key.Data,
+				ID: key.ID, GroupID: group.ID, Version: 1, IdentityGeneration: 1, Fingerprint: key.Fingerprint, EncryptedValue: key.Data,
 			}}); err != nil {
 				return err
 			}
@@ -232,8 +228,7 @@ func TestRuntimeHealthReleasesReadLockBeforeDecryptingProblemKeys(t *testing.T) 
 		t.Fatalf("Publish() error = %v", err)
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", AuthState: state.CredentialAuthStateReady,
-		CooldownUntil:  now.Add(time.Minute),
+		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", CooldownUntil: now.Add(time.Minute),
 		EncryptedValue: encryptHealthKey(t, fixture, "health-lock-secret-safe"),
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)

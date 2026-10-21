@@ -57,7 +57,6 @@ func (forwarder *responseProcessor) prepareSuccessRepresentation(
 	}
 	opaqueRepresentation := input.ClientProtocol == protocol.OpenAIImages ||
 		embeddingsProtocol(input.ClientProtocol) || input.ClientProtocol == protocol.Rerank
-	nativeSearch := input.Operation == execution.OperationWebSearch
 	var originalPlain []byte
 	if opaqueRepresentation && encoding == contentcoding.Identity {
 		// The buffered attempt result owns wire for the duration of this terminal
@@ -78,12 +77,7 @@ func (forwarder *responseProcessor) prepareSuccessRepresentation(
 	modelTracker.observe(originalPlain)
 
 	var safePlain []byte
-	if nativeSearch {
-		if credentialLiteralsRemain(originalPlain, secrets) {
-			return preparedSuccessRepresentation{}, successRepresentationProtocolError("credential remains in response body")
-		}
-		safePlain = originalPlain
-	} else if opaqueRepresentation {
+	if opaqueRepresentation {
 		if opaqueCredentialLiteralsRemain(input.ClientProtocol, originalPlain, secrets) {
 			return preparedSuccessRepresentation{}, successRepresentationProtocolError("credential remains in response body")
 		}
@@ -121,7 +115,7 @@ func (forwarder *responseProcessor) prepareSuccessRepresentation(
 		inspectablePlain = bytes.Clone(safePlain)
 	}
 	downstreamPlain := safePlain
-	if !nativeSearch && needsModelRewrite(input) {
+	if needsModelRewrite(input) {
 		rewriteModel := true
 		if embeddingsProtocol(input.ClientProtocol) {
 			if required, valid := embeddingsResponseModelRewriteRequired(

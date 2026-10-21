@@ -28,9 +28,6 @@ import (
 	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage"
 	"gpt-load/internal/storage/models"
-	"gpt-load/internal/subscription"
-	subscriptionproviders "gpt-load/internal/subscription/providers"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 	"gpt-load/internal/telemetry"
 	"gpt-load/internal/testutil/encryptiontest"
 	"gpt-load/internal/testutil/sqlitetest"
@@ -221,11 +218,6 @@ func newServiceFixtureWithDatabase(t *testing.T, db *gorm.DB) serviceFixture {
 	}
 	stats := health.NewStatsStore()
 	mutations := health.NewMutationCoordinator()
-	subscriptions, err := subscriptionruntime.NewRuntime(channelRegistry, subscriptionproviders.Implementations()...)
-	if err != nil {
-		t.Fatalf("subscriptionruntime.NewRuntime() error = %v", err)
-	}
-	subscriptionCredentials := subscription.NewCredentialManager(db, keyService, registry, mutations, subscriptions)
 	requestLogStats := &staticRequestLogStatsReader{}
 	priceRuntime := NewPriceRuntime()
 	catalogRuntime := &catalog.Runtime{}
@@ -239,7 +231,6 @@ func newServiceFixtureWithDatabase(t *testing.T, db *gorm.DB) serviceFixture {
 		nil,
 		keyService,
 		controlHTTPExecutor{},
-		subscriptionCredentials,
 		nil,
 		nil,
 		nil,
@@ -250,10 +241,8 @@ func newServiceFixtureWithDatabase(t *testing.T, db *gorm.DB) serviceFixture {
 		probeSink,
 		channelRegistry,
 	)
-	installCodexControlTestHooks(service)
 	// Tests opt into reset-credit upstream calls explicitly; no fixture may
 	// reach a real provider by accident.
-	setCodexResetCreditObservation(service, nil)
 	return serviceFixture{
 		db: db, manager: manager, registry: registry, channelRegistry: channelRegistry, encryption: keyService,
 		priceRuntime: priceRuntime, catalogRuntime: catalogRuntime,

@@ -74,7 +74,7 @@ func createGroupCollectionKey(
 	t *testing.T,
 	fixture serviceFixture,
 	groupID uint,
-	status models.CredentialAuthState,
+	status string,
 	weight *int,
 ) state.CredentialEntry {
 	t.Helper()
@@ -89,7 +89,6 @@ func createGroupCollectionKey(
 	}
 	row := models.Credential{
 		GroupID: groupID, Data: encrypted, Fingerprint: fixture.encryption.Hash(string(plain)),
-		AuthState: status,
 	}
 	if err := fixture.db.Create(&row).Error; err != nil {
 		t.Fatalf("create credential for group %d: %v", groupID, err)
@@ -98,12 +97,8 @@ func createGroupCollectionKey(
 	if err := fixture.db.Where("id = ?", groupID).Take(&group).Error; err != nil {
 		t.Fatalf("load group %d: %v", groupID, err)
 	}
-	runtimeStatus := state.CredentialAuthStateReady
-	if status == models.CredentialAuthStateReauthorizationRequired {
-		runtimeStatus = state.CredentialAuthStateReauthorizationRequired
-	}
 	return state.CredentialEntry{
-		ID: row.ID, GroupID: groupID, AuthState: runtimeStatus,
+		ID: row.ID, GroupID: groupID,
 		Version:            groupCollectionCredentialVersion(row.SecretVersion),
 		IdentityGeneration: groupCollectionCredentialIdentity(row.IdentityFingerprint, group),
 		Fingerprint:        row.Fingerprint,

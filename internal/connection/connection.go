@@ -6,8 +6,7 @@ import "strings"
 
 // Stable product connection type values.
 const (
-	APIKey       = "api_key"
-	Subscription = "subscription"
+	APIKey = "api_key"
 )
 
 // Normalize trims an explicitly configured connection type.
@@ -18,7 +17,7 @@ func Normalize(value string) string {
 // Valid reports whether value names a supported product connection type.
 func Valid(value string) bool {
 	switch Normalize(value) {
-	case APIKey, Subscription:
+	case APIKey:
 		return true
 	default:
 		return false

@@ -65,7 +65,6 @@ func TestInspectReportsCredentialHealthReasons(t *testing.T) {
 		state state.CredentialRuntimeView
 		want  ReasonCode
 	}{
-		{name: "auth unavailable", state: state.CredentialRuntimeView{ID: 11, GroupID: 1, AuthState: state.CredentialAuthStateRefreshing}, want: ReasonCredentialAuthUnavailable},
 		{name: "blacklisted", state: state.CredentialRuntimeView{ID: 11, GroupID: 1, Blacklisted: true}, want: ReasonCredentialBlacklisted},
 		{name: "cooldown", state: state.CredentialRuntimeView{ID: 11, GroupID: 1, CooldownUntil: now.Add(time.Minute)}, want: ReasonCredentialCooldown},
 	} {

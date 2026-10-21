@@ -44,10 +44,13 @@ func TestReleaseWorkflowParallelizesIndependentBuildStages(t *testing.T) {
 	}
 
 	preflight := workflowJobBlock(t, content, "publication-preflight")
-	for _, dependency := range []string{"static-checks", "race-cpa"} {
+	for _, dependency := range []string{"static-checks", "race-tests"} {
 		if !strings.Contains(preflight, dependency) {
 			t.Fatalf("publication preflight does not need %s:\n%s", dependency, preflight)
 		}
+	}
+	if strings.Contains(preflight, "race-cpa") {
+		t.Fatalf("publication preflight still needs the removed CPA race gate:\n%s", preflight)
 	}
 }
 

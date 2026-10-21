@@ -118,7 +118,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # race 测试、CPA 桥接测试与数据库合同都是同一 commit 上的确定性验证，
+          # race 测试与数据库合同都是同一 commit 上的确定性验证，
           # ci.yml 已经整体成功过时重跑不会得出不同结论，只会让关键路径多等约 8 分钟。
           # 查不到成功记录、查询失败或结论不是 success 时一律回落为全量重跑。
           # release-ci-verdict-reuse:start
@@ -187,12 +187,6 @@ jobs:
       - name: Check module graph
         run: go mod tidy -diff
 
-      - name: Check embedded CPA bridge module
-        working-directory: third_party/cpaembedded
-        run: |
-          go mod tidy -diff
-          go vet ./...
-
       - name: Run Go vet
         run: go vet ./...
 
@@ -232,28 +226,6 @@ jobs:
 
       - name: Run race-enabled tests
         run: go test -race -count=1 -timeout=15m . ./internal/...
-
-  race-cpa:
-    needs: validate-tag
-    if: ${{ needs.validate-tag.outputs.ci_verified != 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Checkout tag commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: third_party/cpaembedded/go.sum
-
-      - name: Run embedded CPA bridge race-enabled tests
-        working-directory: third_party/cpaembedded
-        run: go test -race -count=1 -timeout=15m ./...
 
   build-binaries:
     needs: verify-and-build-web
@@ -506,13 +478,12 @@ jobs:
       - verify-and-build-web
       - static-checks
       - race-tests
-      - race-cpa
       - build-binaries
       - package-checksums
       - native-artifact-smoke
       - docker-smoke
       - prebuilt-image-smoke
-    # race-tests 与 race-cpa 在 CI 已验证同一 commit 时为 skipped，
+    # race-tests 在 CI 已验证同一 commit 时为 skipped，
     # 这里只拒绝真正失败的 gate，不把 skipped 当作缺失的验证。
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
@@ -952,11 +923,11 @@ jobs:
           # 目录内容已由上面的清单校验锁定为 .github/release-assets.txt 的全集。
           files: release/*
           body: |
-            2.x is a rewrite and is not compatible with 1.x data, start 2.x from an empty database and a new `encryption.key`.
+            2.x is a rewrite and cannot open 1.x data in place. A database written by the previous release must either be converted offline with `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` (groups, API credentials, access keys and quota state are kept; request logs and usage history are dropped) after the old instance is stopped, or replaced with an empty database. No in-place migration, automatic deletion or compatibility layer is provided.
 
             ---
 
-            2.x 是全新重写版本，与 1.x 数据不兼容，请以全新数据库和新的 `encryption.key` 部署 2.x。
+            2.x 是全新重写版本，无法原地打开 1.x 数据。上一版本写出的数据库只有两种处理方式：停机后用 `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` 离线转换（保留分组、API 凭据、访问密钥与限额用量，丢弃请求日志与用量历史），或改用空数据库。没有原地迁移、自动删除或兼容层。
 
   post-publish-image-smoke:
     # GHCR 与 Docker Hub 的 exact tag 已在 publish-images 断言为同一 digest，

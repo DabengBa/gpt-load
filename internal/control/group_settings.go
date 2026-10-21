@@ -278,7 +278,7 @@ func (s *Service) UpdateGroupSettings(
 		channelChanged := targetChannelID != channel.ID(group.ChannelID)
 		if channelChanged {
 			// 读取凭据行前独立比较 registry 派生的源/目标 connection type；
-			// 即使组没有 credential rows，API-key↔subscription（双向）也必须 ErrValidation。
+			// 即使组没有凭据，也必须验证连接类型。
 			sourceConnectionType, sourceKnown := s.channelRegistry.ConnectionType(channel.ID(group.ChannelID))
 			if !sourceKnown {
 				return app_errors.ErrInternalServer
@@ -315,10 +315,7 @@ func (s *Service) UpdateGroupSettings(
 			if validateErr != nil {
 				return app_errors.ErrValidation
 			}
-			if targetConnectionType == string(models.ConnectionTypeSubscription) &&
-				string(params.CanonicalJSON()) != "{}" {
-				return app_errors.ErrValidation
-			}
+
 			group.Params = models.JSON(params.CanonicalJSON())
 			if !bytes.Equal(bytes.TrimSpace(previousParams), bytes.TrimSpace(group.Params)) {
 				targetChanged = true
@@ -393,7 +390,7 @@ func (s *Service) UpdateGroupSettings(
 // validateGroupTargetCredentials verifies that every persisted encrypted
 // credential still validates against the mutated execution target before a
 // channel switch commits. It reuses the existing credential presentation path
-// (decrypt + channel/subscription validation) and never mutates or clears the
+// (decrypt + channel validation) and never mutates or clears the
 // stored rows, so an incompatible target rolls the whole update back.
 // For each credential row, it also validates the canonical fingerprint
 // matches the stored fingerprint, matching the full loader semantics.

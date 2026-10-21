@@ -7,7 +7,6 @@ import {
   listGroupCollection,
   projectGroupSummary,
 } from '../src/shared/control/resources/groups.ts'
-import { connectGroupCredential } from '../src/shared/control/resources/credential-stages.ts'
 
 function clientReturning(data: unknown) {
   const requests: Array<{ path: string; body: unknown; method: string | undefined }> = []
@@ -47,22 +46,7 @@ test('create and configure send one credential and consume one identity', async 
     (await createGroup(client, { ...base, credential: 'provider-key' }, 'create')).credential_id,
     9,
   )
-  assert.equal(
-    (
-      await createGroup(
-        client,
-        { ...base, connection_type: 'subscription', staged_credential_id: 'stage-one' },
-        'subscribe',
-      )
-    ).credential_id,
-    9,
-  )
   assert.deepEqual(requests[0]?.body, { ...base, credential: 'provider-key' })
-  assert.deepEqual(requests[1]?.body, {
-    ...base,
-    connection_type: 'subscription',
-    staged_credential_id: 'stage-one',
-  })
   const configured = clientReturning({ group_id: 1, credential_id: 9 })
   await importGroupCredentials(configured.client, 1, { credential: 'key' }, 'configure')
   assert.deepEqual(configured.requests[0], {
@@ -70,56 +54,6 @@ test('create and configure send one credential and consume one identity', async 
     body: { credential: 'key' },
     method: 'POST',
   })
-})
-
-test('connect sends exactly one stage to the singular resource', async () => {
-  const { client, requests } = clientReturning({ group_id: 1, credential_id: 9 })
-  assert.equal(
-    (await connectGroupCredential(client, 1, 'stage-one', 'connect', 0)).credential_id,
-    9,
-  )
-  assert.deepEqual(requests[0], {
-    path: '/api/groups/1/credential/connect',
-    body: { staged_credential_id: 'stage-one' },
-    method: 'POST',
-  })
-})
-
-for (const expectedCredentialID of [0, 99]) {
-  test(`connect sends expected credential header ${expectedCredentialID}`, async () => {
-    const headers: Headers[] = []
-    const client = createApiClient({
-      fetch: async (_input, init) => {
-        headers.push(new Headers(init?.headers))
-        return new Response(
-          JSON.stringify({ code: 0, message: 'ok', data: { group_id: 1, credential_id: 9 } }),
-        )
-      },
-      getAuthKey: () => 'test-key',
-      getLocale: () => 'en-US',
-      onUnauthorized: () => {},
-    })
-    await connectGroupCredential(client, 1, 'stage-one', 'connect', expectedCredentialID)
-    assert.equal(headers[0]?.get('X-Credential-ID'), String(expectedCredentialID))
-    assert.equal(headers[0]?.get('Idempotency-Key'), 'connect')
-  })
-}
-
-test('connect rejects stage arrays before making a request', async () => {
-  const { client, requests } = clientReturning({ group_id: 1, credential_id: 9 })
-  await assert.rejects(
-    connectGroupCredential(client, 1, ['one', 'two'] as unknown as string, 'connect', 0),
-  )
-  assert.equal(requests.length, 0)
-})
-
-test('connect rejects the retired plural result', async () => {
-  const { client } = clientReturning({
-    group_id: 1,
-    credentials_added: 1,
-    credentials_duplicated: 0,
-  })
-  await assert.rejects(connectGroupCredential(client, 1, 'stage-one', 'connect', 0))
 })
 
 const summary = {

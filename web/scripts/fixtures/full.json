@@ -25,8 +25,7 @@
   ],
   "cooldown_credentials": [],
   "blacklisted_credentials": [],
-  "low_quota_credentials": [],
-  "expiring_reset_credits": [],
+
   "blocked_access_keys": [],
   "request_log": {
     "enqueued_total": 42,

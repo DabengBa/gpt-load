@@ -12,7 +12,7 @@ const channel = {
   search_terms: ['openai'],
   description: '',
   default_base_url: 'https://api.openai.com',
-  notices: [],
+
   param_fields: [
     {
       key: 'base_url',
@@ -24,11 +24,10 @@ const channel = {
     },
   ],
   credential_fields: [],
-  connection: { type: 'api_key', credential_input: 'batch_text', authorization_methods: [] },
+  connection: { type: 'api_key', credential_input: 'batch_text' },
   capabilities: {
     model_discovery: false,
-    quota_observation: false,
-    credential_actions: [],
+
     outbound_proxy: true,
   },
   routes: [
@@ -97,7 +96,7 @@ async function installFields(page: Page, theme: string) {
         },
       }
     if (path === '/api/groups/1/models') data = { items: [], total: 0, pending: 0 }
-    if (path === '/api/groups/1/credential') data = { credential: null, observation: null }
+    if (path === '/api/groups/1/credential') data = { credential: null }
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({ code: 0, message: 'ok', data }),

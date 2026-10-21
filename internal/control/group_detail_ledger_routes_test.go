@@ -98,7 +98,7 @@ func TestGroupDetailLedgerRoutesReplaceLegacyContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, field := range []string{
-		"credential_id", "mask", "effective_status", "auth_state",
+		"credential_id", "mask", "effective_status",
 		"recent_success_count", "recent_failure_count", "consecutive_failure_count",
 		"last_failure_category", "last_status_code", "cooldown_until_ms", "recovery",
 	} {

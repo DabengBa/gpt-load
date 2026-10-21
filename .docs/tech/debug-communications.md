@@ -9,7 +9,6 @@ code:
     - internal/container/debug_capture_unix.go
     - internal/control/probe_capture.go
     - internal/execution/http_observer.go
-    - third_party/cpaembedded/embedded/http_observer.go
 ---
 # Debug Communication Capture
 
@@ -39,11 +38,11 @@ Feature-specific capture storage and adapters are Unix-only. Windows retains the
 
 ## Capture boundary
 
-A session starts at the Gateway data-plane boundary for `/v1` and `/v1beta` namespaces, before authentication and early route termination. It records the client request that is actually observed, final client response writes, material write/read/close/flush/hijack outcomes, logical retries and refresh attempts, and preparation failures.
+A session starts at the Gateway data-plane boundary for `/v1` and `/v1beta` namespaces, before authentication and early route termination. It records the client request that is actually observed, final client response writes, material write/read/close/flush/hijack outcomes, logical retry attempts, and preparation failures.
 
-CPA integrations for Codex, Claude, Antigravity, and Grok, plus the Bifrost-backed HTTP provider adapters, pass a real per-request observer through the supported execution context. Their observed upstream request and response headers, bodies, termination events, and callback errors are recorded in the corresponding logical attempt. When debug capture is enabled, model-probe and credential-test operations under `/api` use the same observer and store path; each dispatched probe has a session keyed by its `request_id` and a logical attempt containing provider, channel, model, route, sequence, and retry/fallback metadata. Probe capture remains disabled when the explicit opt-in is off.
+Bifrost-backed HTTP provider adapters pass a real per-request observer through the supported execution context. Their observed upstream request and response headers, bodies, termination events, and callback errors are recorded in the corresponding logical attempt. When debug capture is enabled, model-probe and credential-test operations under `/api` use the same observer and store path; each dispatched probe has a session keyed by its `request_id` and a logical attempt containing provider, channel, model, route, sequence, and retry/fallback metadata. Probe capture remains disabled when the explicit opt-in is off.
 
-The feature records only data that the Gateway or a supported CPA/Bifrost HTTP observer actually observes. It does not claim to capture TLS or socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed before cancellation, timeout, process failure, or connection close.
+The feature records only data that the Gateway or a supported Bifrost HTTP observer actually observes. It does not claim to capture TLS or socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed before cancellation, timeout, process failure, or connection close.
 
 Capture persistence is isolated from the data plane. Storage, queue, callback, or cleanup failures do not change the response returned to the client. The affected capture is instead marked failed or remains non-terminal, and the runtime health section reports cleanup state and active/completed/failed counts where available.
 
@@ -64,7 +63,7 @@ and attempt sequence. A failed provider call and a failed capture are separate:
 a provider error may still have a complete capture, while a capture write error
 marks the attempt/session failed without replacing the probe's execution result.
 
-CPA callbacks run asynchronously. An observer registers its lifecycle when
+Provider observations register a lifecycle. An observer registers its lifecycle when
 created and unregisters after the final queued callback completes. Probe
 finalization waits for registered observations and in-flight writes before
 completing the capture; a probe that never starts an observer does not wait for
@@ -76,8 +75,7 @@ The evidence boundary remains the bytes and events actually observed. A
 `completed` capture with no response body cannot establish that a provider
 returned a complete response; inspect parts and termination metadata together.
 Regression evidence lives in `internal/control/probe_capture_test.go`,
-`internal/container/debug_capture_test.go`, and
-`third_party/cpaembedded/embedded/http_observer_test.go`.
+`internal/container/debug_capture_test.go`.
 
 ## 空完成排查顺序
 

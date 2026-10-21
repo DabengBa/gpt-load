@@ -1,5 +1,7 @@
 # SQLite maintenance and recovery
 
+> Breaking / 破坏性变更：本次删除内置订阅/CPA 的版本无法原地打开旧库。旧库只能停机后用 `gpt-load convert-legacy-db` 离线转换，或改用全新数据库；含旧订阅结构或退役 migration `0003` 的库会被转换器拒绝，包括 API-only 旧库。本页的常规更新/恢复流程不会转换旧库，也不会把它接入此构建；转换步骤见 [旧库离线转换](../.docs/tech/legacy-db-conversion.md)。保留旧实例和备份。本次不部署、不修改业务库；启动拒绝不保证 SQLite 文件/WAL 零副作用。详见 [README](../README_CN.md#快速开始)。
+
 This guide applies to the **application-managed SQLite** deployment: leave
 `DATABASE_DSN` empty so the database is `${DATA_DIR}/gpt-load.db` (the official
 Compose data directory is `/app/data`). A non-empty `DATABASE_DSN` is an

@@ -10,10 +10,7 @@ import (
 func builtInModules() []spec.Module {
 	return []spec.Module{
 		modules.OpenAI(),
-		modules.Codex(),
-		modules.Claude(),
-		modules.Antigravity(),
-		modules.Grok(),
+
 		modules.Anthropic(),
 		modules.Gemini(),
 		modules.AzureOpenAI(),

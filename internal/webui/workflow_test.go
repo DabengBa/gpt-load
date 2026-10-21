@@ -107,11 +107,13 @@ func TestDependencyVulnerabilityMonitoringIsDelegatedToDependabot(t *testing.T) 
 	for _, required := range []string{
 		"- package-ecosystem: npm\n    directory: /web",
 		"- package-ecosystem: gomod\n    directory: /",
-		"- package-ecosystem: gomod\n    directory: /third_party/cpaembedded",
 	} {
 		if !strings.Contains(dependabot, required) {
 			t.Fatalf("Dependabot configuration does not contain %q", required)
 		}
+	}
+	if strings.Contains(dependabot, "third_party/cpaembedded") {
+		t.Fatal("Dependabot still tracks the removed CPA embedded module")
 	}
 }
 
@@ -197,19 +199,7 @@ func TestBranchAndReleaseWorkflowsRunRaceInParallelGates(t *testing.T) {
 		"Run race-enabled tests",
 		"go test -race -count=1 -timeout=15m . ./internal/...",
 	)
-	branchCPA := workflowStepBlock(
-		t,
-		workflowJobBlock(t, content, "race-cpa"),
-		"Run embedded CPA bridge race-enabled tests",
-	)
-	for _, required := range []string{
-		"working-directory: third_party/cpaembedded",
-		"run: go test -race -count=1 -timeout=15m ./...",
-	} {
-		if !strings.Contains(branchCPA, required) {
-			t.Fatalf("branch CPA race gate does not contain %q:\n%s", required, branchCPA)
-		}
-	}
+	assertNoCPAWorkflowWiring(t, content)
 
 	releaseContent := readRepositoryFile(t, ".github/workflows/release.yml")
 	releaseStaticJob := workflowJobBlock(
@@ -226,17 +216,19 @@ func TestBranchAndReleaseWorkflowsRunRaceInParallelGates(t *testing.T) {
 		"Run race-enabled tests",
 		"go test -race -count=1 -timeout=15m . ./internal/...",
 	)
-	releaseCPA := workflowStepBlock(
-		t,
-		workflowJobBlock(t, releaseContent, "race-cpa"),
-		"Run embedded CPA bridge race-enabled tests",
-	)
-	for _, required := range []string{
-		"working-directory: third_party/cpaembedded",
-		"run: go test -race -count=1 -timeout=15m ./...",
+	assertNoCPAWorkflowWiring(t, releaseContent)
+}
+
+func assertNoCPAWorkflowWiring(t *testing.T, content string) {
+	t.Helper()
+	for _, forbidden := range []string{
+		"race-cpa",
+		"third_party/cpaembedded",
+		"CPA bridge",
+		"cpaembedded",
 	} {
-		if !strings.Contains(releaseCPA, required) {
-			t.Fatalf("release CPA race gate does not contain %q:\n%s", required, releaseCPA)
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("workflow still contains removed CPA wiring %q", forbidden)
 		}
 	}
 }
@@ -798,7 +790,6 @@ func TestReleaseWorkflowGatesSingleReleaseWriterAndImagePublication(t *testing.T
 		"verify-and-build-web",
 		"static-checks",
 		"race-tests",
-		"race-cpa",
 		"build-binaries",
 		"package-checksums",
 		"native-artifact-smoke",
@@ -807,6 +798,9 @@ func TestReleaseWorkflowGatesSingleReleaseWriterAndImagePublication(t *testing.T
 		if !strings.Contains(preflight, dependency) {
 			t.Fatalf("publication preflight does not need %s:\n%s", dependency, preflight)
 		}
+	}
+	if strings.Contains(preflight, "race-cpa") {
+		t.Fatalf("publication preflight still needs the removed CPA race gate:\n%s", preflight)
 	}
 	if count := strings.Count(content, "softprops/action-gh-release@"); count != 1 {
 		t.Fatalf("release writer count = %d, want exactly 1", count)
@@ -1771,18 +1765,19 @@ func TestReleaseWorkflowKeepsReleaseNotesConciseAndWarnsAboutDataIncompatibility
 	english, chinese := paragraphs[0], paragraphs[1]
 
 	for _, required := range []string{
-		"not compatible with 1.x",
-		"start 2.x from an empty database",
-		"new `encryption.key`",
+		// 1.x 数据要么离线转换，要么从空数据库开始；这是唯一的数据警告。
+		"cannot open 1.x data in place",
+		"gpt-load convert-legacy-db --source",
+		"replaced with an empty database",
 	} {
 		if !strings.Contains(english, required) {
 			t.Fatalf("English release notes do not contain %q:\n%s", required, english)
 		}
 	}
 	for _, required := range []string{
-		"1.x 数据不兼容",
-		"全新数据库",
-		"新的 `encryption.key`",
+		"无法原地打开 1.x 数据",
+		"gpt-load convert-legacy-db --source",
+		"空数据库",
 	} {
 		if !strings.Contains(chinese, required) {
 			t.Fatalf("Chinese release notes do not contain %q:\n%s", required, chinese)
@@ -2832,7 +2827,7 @@ func TestReleaseWorkflowSkipsOnlyCIProvenGatesAndStillFailsClosed(t *testing.T) 
 	content := readRepositoryFile(t, ".github/workflows/release.yml")
 
 	// 只有同一 commit 上确定性重跑的 gate 才允许复用 CI 结论。
-	reusable := []string{"race-tests", "race-cpa"}
+	reusable := []string{"race-tests"}
 	for _, jobName := range reusable {
 		job := workflowJobBlock(t, content, jobName)
 		if !strings.Contains(job, "needs.validate-tag.outputs.ci_verified != 'true'") {
@@ -2858,7 +2853,6 @@ func TestReleaseWorkflowSkipsOnlyCIProvenGatesAndStillFailsClosed(t *testing.T) 
 		"verify-and-build-web",
 		"static-checks",
 		"race-tests",
-		"race-cpa",
 		"build-binaries",
 		"package-checksums",
 		"native-artifact-smoke",
@@ -2867,6 +2861,9 @@ func TestReleaseWorkflowSkipsOnlyCIProvenGatesAndStillFailsClosed(t *testing.T) 
 		if !strings.Contains(needsBlock, "- "+gate) {
 			t.Fatalf("publication preflight does not directly need gate %q:\n%s", gate, needsBlock)
 		}
+	}
+	if strings.Contains(needsBlock, "- race-cpa") {
+		t.Fatalf("publication preflight still directly needs the removed CPA race gate:\n%s", needsBlock)
 	}
 }
 
@@ -2914,7 +2911,7 @@ func TestReleaseWorkflowJobsDownstreamOfSkippableGatesOverrideDefaultCondition(t
 	// 它自己列出的直接 needs 全部成功（beta.8 的真实回归：publication-preflight
 	// 成功了，但下游 publish-images/publish-github/... 仍被跳过）。凡是这条链上
 	// 存在会被跳过的祖先的 job，都必须自己写显式 if，绕开默认条件的传播。
-	skippable := map[string]bool{"race-tests": true, "race-cpa": true}
+	skippable := map[string]bool{"race-tests": true}
 	var ancestors func(name string, seen map[string]bool)
 	ancestors = func(name string, seen map[string]bool) {
 		for _, dep := range needsOf[name] {

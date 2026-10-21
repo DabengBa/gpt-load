@@ -57,14 +57,13 @@ const openaiChannel = {
   search_terms: [],
   description: '',
   default_base_url: 'https://api.openai.com',
-  notices: [],
+
   param_fields: [],
   credential_fields: [],
-  connection: { type: 'api_key', credential_input: 'batch_text', authorization_methods: [] },
+  connection: { type: 'api_key', credential_input: 'batch_text' },
   capabilities: {
     model_discovery: false,
-    quota_observation: false,
-    credential_actions: [],
+
     outbound_proxy: false,
   },
   routes: [
@@ -408,7 +407,9 @@ test('creates an access key through the drawer', async ({ page }) => {
   await expect.poll(() => requests.collectionQueries.length).toBeGreaterThan(1)
 })
 
-test('keeps edit impact, readable blocker, and destructive actions separated on narrow screens', async ({ page }) => {
+test('keeps edit impact, readable blocker, and destructive actions separated on narrow screens', async ({
+  page,
+}) => {
   await mockAccessKeys(page)
   await page.setViewportSize({ width: 320, height: 900 })
   await page.goto(credentialsPath, { waitUntil: 'commit' })
@@ -427,7 +428,9 @@ test('keeps edit impact, readable blocker, and destructive actions separated on 
   await expect(drawer.getByText('Danger zone', { exact: true })).toBeVisible()
 })
 
-test('save blocker offers an actionable link that focuses the offending control', async ({ page }) => {
+test('save blocker offers an actionable link that focuses the offending control', async ({
+  page,
+}) => {
   await mockAccessKeys(page)
   await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
@@ -450,7 +453,9 @@ test('save blocker offers an actionable link that focuses the offending control'
   await expect(drawer.getByRole('textbox', { name: 'Requests per minute' })).toBeFocused()
 })
 
-test('save blocker focuses a permission scope control for an incomplete scope', async ({ page }) => {
+test('save blocker focuses a permission scope control for an incomplete scope', async ({
+  page,
+}) => {
   await mockAccessKeys(page)
   await page.goto(credentialsPath, { waitUntil: 'commit' })
   await expectAstryxDocument(page)

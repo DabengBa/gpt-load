@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
 import { classifyMutationOutcome, type MutationOutcome } from '@shared/control/mutation-outcome'
-import type { CredentialConnectResult } from '@shared/control/resources/credential-stages'
 import type {
   GroupCreateRequest,
   GroupCreateResult,
@@ -174,13 +173,6 @@ export interface ImportCredentialsOperationPayload {
   draft: ImportRecoveryDraft
 }
 
-export interface ConnectCredentialsOperationPayload {
-  groupID: number
-  stageID: string
-  expectedCredentialID: number
-  draft: ImportRecoveryDraft
-}
-
 export type ImportOperationMode = 'new' | 'existing'
 
 export interface ImportOperationOwnerSnapshot {
@@ -188,7 +180,7 @@ export interface ImportOperationOwnerSnapshot {
 }
 
 /**
- * Page-level owner for the three stable import operations. Classic keeps a
+ * Page-level owner for the two stable import operations. Classic keeps a
  * module singleton (survives mode switches and page remounts) whose clear() is
  * registered as an ephemeral-state cleaner — same shape here.
  */
@@ -201,10 +193,6 @@ export class ImportOperationOwnerStore {
     ImportCredentialsOperationPayload,
     CredentialImportResult
   >()
-  readonly connectCredentials = new StableOperationStore<
-    ConnectCredentialsOperationPayload,
-    CredentialConnectResult
-  >()
 
   private listeners = new Set<() => void>()
   private snapshot: ImportOperationOwnerSnapshot = { operationMode: null }
@@ -216,18 +204,13 @@ export class ImportOperationOwnerStore {
     const sync = (): void => {
       const locked =
         this.createGroup.getSnapshot().operation !== null ||
-        this.importCredentials.getSnapshot().operation !== null ||
-        this.connectCredentials.getSnapshot().operation !== null
+        this.importCredentials.getSnapshot().operation !== null
       if (!locked && this.snapshot.operationMode !== null) {
         this.snapshot = { operationMode: null }
         for (const listener of this.listeners) listener()
       }
     }
-    this.unsubscribeOps = [
-      this.createGroup.subscribe(sync),
-      this.importCredentials.subscribe(sync),
-      this.connectCredentials.subscribe(sync),
-    ]
+    this.unsubscribeOps = [this.createGroup.subscribe(sync), this.importCredentials.subscribe(sync)]
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -246,29 +229,11 @@ export class ImportOperationOwnerStore {
     request: GroupCreateRequest,
     draft: ImportDraft,
   ): StableImportOperation<CreateGroupImportOperationPayload> | null {
-    if (
-      this.importCredentials.getSnapshot().operation ||
-      this.connectCredentials.getSnapshot().operation
-    ) {
+    if (this.importCredentials.getSnapshot().operation) {
       return null
     }
     const operation = this.createGroup.begin({ request, draft })
     this.setMode('new')
-    return operation
-  }
-
-  beginConnectCredentials(
-    payload: { groupID: number; stageID: string; expectedCredentialID: number },
-    draft: ImportRecoveryDraft,
-  ): StableImportOperation<ConnectCredentialsOperationPayload> | null {
-    if (
-      this.createGroup.getSnapshot().operation ||
-      this.importCredentials.getSnapshot().operation
-    ) {
-      return null
-    }
-    const operation = this.connectCredentials.begin({ ...payload, draft })
-    this.setMode(draft.mode)
     return operation
   }
 
@@ -277,8 +242,7 @@ export class ImportOperationOwnerStore {
     mode: ImportOperationMode,
     draft: ImportRecoveryDraft,
   ): StableImportOperation<ImportCredentialsOperationPayload> | null {
-    if (this.createGroup.getSnapshot().operation || this.connectCredentials.getSnapshot().operation)
-      return null
+    if (this.createGroup.getSnapshot().operation) return null
     if (this.importCredentials.getSnapshot().operation && this.snapshot.operationMode !== mode) {
       return null
     }
@@ -290,7 +254,6 @@ export class ImportOperationOwnerStore {
   clear(): void {
     this.createGroup.reset()
     this.importCredentials.reset()
-    this.connectCredentials.reset()
     this.snapshot = { operationMode: null }
     for (const listener of this.listeners) listener()
   }

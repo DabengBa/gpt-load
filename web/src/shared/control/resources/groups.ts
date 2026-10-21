@@ -118,7 +118,7 @@ const groupOptionFields = [
 
 const groupCollectionStatuses = ['available', 'unavailable', 'disabled'] as const
 const groupUnavailableReasons = ['no_available_credentials', 'no_models'] as const
-const connectionTypes = ['api_key', 'subscription'] as const
+const connectionTypes = ['api_key'] as const
 const runtimeSettingFields = [
   'first_byte_timeout',
   'request_timeout',
@@ -165,7 +165,6 @@ export interface ModelDiscoveryRequest {
   connection_type: ConnectionType
   params: ChannelParamsDto
   credentials?: string
-  staged_credential_id?: string
   proxy?: ProxyConfigInput
 }
 
@@ -196,7 +195,6 @@ export interface GroupCreateRequest {
   provider_url?: string | null
   models: GroupModelUpdateDto[]
   credential?: string
-  staged_credential_id?: string
   proxy?: ProxyConfigInput
   confirm_same_target: boolean
 }

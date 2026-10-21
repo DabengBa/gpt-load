@@ -19,7 +19,7 @@ func TestModelRouteEntriesAcceptanceInspectionAndAPIRoundTrip(t *testing.T) {
 	}, AccessKeys: []state.AccessKeyConfig{{ID: 10, Name: "client", KeyHash: "hash", Status: state.AccessKeyStatusActive}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "k1", AuthState: state.CredentialAuthStateReady, EncryptedValue: "k1"}, {ID: 21, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "k2", AuthState: state.CredentialAuthStateReady, EncryptedValue: "k2"}, {ID: 31, GroupID: 3, Version: 1, IdentityGeneration: 3, Fingerprint: "k3", AuthState: state.CredentialAuthStateReady, EncryptedValue: "k3"}}); err != nil {
+	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "k1", EncryptedValue: "k1"}, {ID: 21, GroupID: 2, Version: 1, IdentityGeneration: 2, Fingerprint: "k2", EncryptedValue: "k2"}, {ID: 31, GroupID: 3, Version: 1, IdentityGeneration: 3, Fingerprint: "k3", EncryptedValue: "k3"}}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := fixture.service.InspectRoute(routeInspectRequest{Protocol: "openai-completions", ExternalModel: "A", AccessKeyID: 10})

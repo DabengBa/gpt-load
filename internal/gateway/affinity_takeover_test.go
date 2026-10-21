@@ -15,7 +15,6 @@ import (
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
 	"gpt-load/internal/scheduler"
-	"gpt-load/internal/state"
 	"gpt-load/internal/storage"
 )
 
@@ -253,7 +252,7 @@ func TestAffinityTakeoverConcurrentCBeforeB(t *testing.T) {
 }
 
 func TestAffinityCompletionSelectedHealth(t *testing.T) {
-	for _, name := range []string{"healthy", "auth", "cooldown", "blacklist", "entry cooldown", "entry blacklist", "identity"} {
+	for _, name := range []string{"healthy", "cooldown", "blacklist", "entry cooldown", "entry blacklist", "identity"} {
 		t.Run(name, func(t *testing.T) {
 			h, m, r := newHandlerForTest(t, &scriptedForwarder{}, "A", "B")
 			h.affinityCache.Configure(m.Current().Revision, 10, time.Hour)
@@ -263,8 +262,6 @@ func TestAffinityCompletionSelectedHealth(t *testing.T) {
 			request := requestAffinity{key: key, observation: h.affinityCache.Lookup(key), boundTarget: a, preferredHealthBypassed: true}
 			ref, _ := r.CredentialRef(2)
 			switch name {
-			case "auth":
-				r.SetCredentialAuthState(2, state.CredentialAuthStateRefreshing)
 			case "cooldown":
 				r.SetCooldown(2, time.Now().Add(time.Hour))
 			case "blacklist":

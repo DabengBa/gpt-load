@@ -1,6 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import { CircleAlert, TriangleAlert } from 'lucide-react'
-import { useIntl } from 'react-intl'
+import { CircleAlert } from 'lucide-react'
 
 import type { RuntimeHealthDto } from '@shared/control/resources/health'
 import {
@@ -48,14 +47,6 @@ const styles = stylex.create({
     transitionDuration: 'var(--duration-fast)',
     transitionTimingFunction: 'var(--easing-standard)',
   },
-  rowWarning: {
-    borderColor: {
-      default: 'color-mix(in srgb, var(--color-warning) 30%, var(--color-border-subtle))',
-      ':hover': 'var(--color-warning)',
-    },
-    backgroundColor: 'var(--color-warning-bg)',
-    color: 'var(--color-warning)',
-  },
   rowDanger: {
     borderColor: {
       default: 'color-mix(in srgb, var(--color-danger) 30%, var(--color-border-subtle))',
@@ -85,44 +76,19 @@ function itemHref(item: AttentionItem): string {
   return `${pagePath('groups')}/${item.groupID}?tab=credentials`
 }
 
-function itemTone(item: AttentionItem, health: RuntimeHealthDto | null): 'danger' | 'warning' {
-  if (item.kind === 'blacklisted' || item.kind === 'billing') return 'danger'
-  if (
-    item.kind === 'expiringResetCredit' &&
-    item.expiresAtMS !== undefined &&
-    health !== null &&
-    item.expiresAtMS - health.observed_at_ms <= 24 * 60 * 60 * 1_000
-  ) {
-    return 'danger'
-  }
-  return 'warning'
-}
-
 // Conditional block: nothing actionable means no section at all — no heading,
 // no border, no "all good" strip (classic HomeAttention).
 export function HomeAttention({ health }: { health: RuntimeHealthDto | null }) {
-  const intl = useIntl()
   const t = useT()
 
   const items =
     health === null
       ? []
-      : collectAttentionItems(
-          health.blacklisted_credentials,
-          health.expiring_reset_credits,
-          health.low_quota_credentials,
-          health.cooldown_credentials,
-        )
+      : collectAttentionItems(health.blacklisted_credentials, health.cooldown_credentials)
   if (items.length === 0) return null
 
   const overflowing = items.length > attentionRowLimit
   const total = attentionTotal(items)
-
-  const quotaPercent = (remaining: number): string =>
-    new Intl.NumberFormat(intl.locale, {
-      style: 'percent',
-      maximumFractionDigits: 0,
-    }).format(remaining)
 
   if (overflowing) {
     return (
@@ -147,18 +113,13 @@ export function HomeAttention({ health }: { health: RuntimeHealthDto | null }) {
         {t('home.ledger.attention.title')}
       </h2>
       {items.map((item) => {
-        const tone = itemTone(item, health)
         return (
           <RouteLink
             key={`${item.kind}-${item.groupID}`}
             to={itemHref(item)}
-            {...stylex.props(styles.row, tone === 'danger' ? styles.rowDanger : styles.rowWarning)}
+            {...stylex.props(styles.row, styles.rowDanger)}
           >
-            {item.kind === 'blacklisted' || item.kind === 'billing' ? (
-              <CircleAlert {...stylex.props(styles.icon)} size={14} aria-hidden="true" />
-            ) : (
-              <TriangleAlert {...stylex.props(styles.icon)} size={14} aria-hidden="true" />
-            )}
+            <CircleAlert {...stylex.props(styles.icon)} size={14} aria-hidden="true" />
             {item.kind === 'blacklisted' && (
               <span>
                 {t('home.ledger.attention.blacklisted', {
@@ -175,26 +136,6 @@ export function HomeAttention({ health }: { health: RuntimeHealthDto | null }) {
                 })}
                 {item.cooldownUntilMS !== undefined && (
                   <RelativeInstant instant={item.cooldownUntilMS} emptyLabel="" />
-                )}
-              </span>
-            )}
-            {item.kind === 'expiringResetCredit' && (
-              <span {...stylex.props(styles.detail)}>
-                {t('home.ledger.attention.resetCreditExpiring', {
-                  group: item.groupName,
-                  count: item.value,
-                })}
-                <RelativeInstant instant={item.expiresAtMS ?? null} emptyLabel="" />
-              </span>
-            )}
-            {item.kind === 'lowQuota' && (
-              <span {...stylex.props(styles.detail)}>
-                {t('home.ledger.attention.lowQuota', {
-                  group: item.groupName,
-                  remaining: quotaPercent(item.value),
-                })}
-                {item.resetAtMS !== undefined && (
-                  <RelativeInstant instant={item.resetAtMS} emptyLabel="" />
                 )}
               </span>
             )}

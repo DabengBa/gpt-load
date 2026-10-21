@@ -20,16 +20,16 @@ import (
 )
 
 type groupCreateDigestBody struct {
-	Name               *string               `json:"name"`
-	ChannelID          channel.ID            `json:"channel_id"`
-	ConnectionType     models.ConnectionType `json:"connection_type"`
-	Params             json.RawMessage       `json:"params"`
-	ProviderURL        *string               `json:"provider_url,omitempty"`
-	Models             []GroupModel          `json:"models"`
-	Credential         json.RawMessage       `json:"credential,omitempty"`
-	StagedCredentialID string                `json:"staged_credential_id,omitempty"`
-	ConfirmSameTarget  bool                  `json:"confirm_same_target,omitempty"`
-	Proxy              *outboundproxy.Config `json:"proxy,omitempty"`
+	Name           *string               `json:"name"`
+	ChannelID      channel.ID            `json:"channel_id"`
+	ConnectionType models.ConnectionType `json:"connection_type"`
+	Params         json.RawMessage       `json:"params"`
+	ProviderURL    *string               `json:"provider_url,omitempty"`
+	Models         []GroupModel          `json:"models"`
+	Credential     json.RawMessage       `json:"credential,omitempty"`
+
+	ConfirmSameTarget bool                  `json:"confirm_same_target,omitempty"`
+	Proxy             *outboundproxy.Config `json:"proxy,omitempty"`
 }
 
 type credentialImportDigestBody struct {
@@ -53,24 +53,18 @@ func (s *Service) CreateGroupIdempotent(
 	if err != nil {
 		return GroupCreateResult{}, err
 	}
-	var credential json.RawMessage
-	stageID := ""
-	if normalized.connectionType == models.ConnectionTypeAPIKey {
-		credential = append(json.RawMessage(nil), normalized.credentials.candidates[0].canonical...)
-	} else {
-		stageID = normalized.stagedCredentialID
-	}
+	credential := append(json.RawMessage(nil), normalized.credentials.candidates[0].canonical...)
 	digestBody := groupCreateDigestBody{
-		Name:               normalized.explicitName,
-		ChannelID:          normalized.channelID,
-		ConnectionType:     normalized.connectionType,
-		Params:             append(json.RawMessage(nil), normalized.params...),
-		ProviderURL:        cloneString(normalized.providerURL),
-		Models:             digestGroupModels(normalized.models),
-		Credential:         credential,
-		StagedCredentialID: stageID,
-		ConfirmSameTarget:  normalized.confirmSameTarget,
-		Proxy:              normalized.proxy,
+		Name:           normalized.explicitName,
+		ChannelID:      normalized.channelID,
+		ConnectionType: normalized.connectionType,
+		Params:         append(json.RawMessage(nil), normalized.params...),
+		ProviderURL:    cloneString(normalized.providerURL),
+		Models:         digestGroupModels(normalized.models),
+		Credential:     credential,
+
+		ConfirmSameTarget: normalized.confirmSameTarget,
+		Proxy:             normalized.proxy,
 	}
 	canonicalBody, err := canonicalIdempotencyBody(digestBody)
 	if err != nil {

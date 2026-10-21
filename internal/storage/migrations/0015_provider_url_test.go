@@ -12,7 +12,6 @@ func TestProviderURLMigrationAddsNullableTextColumnAndPreservesRows(t *testing.T
 	for _, migrate := range []func() error{
 		func() error { return migrations.Up0001(db) },
 		func() error { return migrations.Up0002(db) },
-		func() error { return migrations.Up0003(db) },
 		func() error { return migrations.Up0004(db) },
 		func() error { return migrations.Up0005(db) },
 		func() error { return migrations.Up0006(db) },

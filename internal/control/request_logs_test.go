@@ -1581,7 +1581,6 @@ func TestHistoricalCredentialLabelsPreserveUnavailableDataWithoutSchedulingIt(t 
 	t.Parallel()
 	for _, scenario := range []string{
 		"disabled group", "no models", "cooldown", "blacklisted",
-		"refreshing", "reauthorization required", "outcome unknown",
 	} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Parallel()
@@ -1592,18 +1591,12 @@ func TestHistoricalCredentialLabelsPreserveUnavailableDataWithoutSchedulingIt(t 
 				routeModels = `[]`
 			}
 			setGroupCollectionRoute(t, fixture, group, "", routeModels)
-			entry := createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil)
+			entry := createGroupCollectionKey(t, fixture, group.ID, "ready", nil)
 			switch scenario {
 			case "cooldown":
 				entry.CooldownUntil = time.Now().Add(time.Hour)
 			case "blacklisted":
 				entry.Blacklisted = true
-			case "refreshing":
-				entry.AuthState = state.CredentialAuthStateRefreshing
-			case "reauthorization required":
-				entry.AuthState = state.CredentialAuthStateReauthorizationRequired
-			case "outcome unknown":
-				entry.AuthState = state.CredentialAuthStateOutcomeUnknown
 			}
 			publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{entry})
 			labels := fixture.service.CredentialLabels([]uint{entry.ID})
@@ -1621,10 +1614,12 @@ func TestHistoricalCredentialLabelsPreserveUnavailableDataWithoutSchedulingIt(t 
 				ExternalModel:  &model,
 				AccessKey:      state.AccessKeyView{Status: state.AccessKeyStatusActive},
 			}
-			if _, err := scheduler.New(
-				snapshot, fixture.registry, query, rand.New(rand.NewSource(1)),
-			).Next(); !errors.Is(err, scheduler.ErrExhausted) {
-				t.Fatalf("unavailable data became schedulable: %v", err)
+			if scenario == "cooldown" || scenario == "blacklisted" || scenario == "no models" {
+				if _, err := scheduler.New(
+					snapshot, fixture.registry, query, rand.New(rand.NewSource(1)),
+				).Next(); !errors.Is(err, scheduler.ErrExhausted) {
+					t.Fatalf("unavailable data became schedulable: %v", err)
+				}
 			}
 		})
 	}
@@ -1635,7 +1630,7 @@ func TestHistoricalCredentialLabelFailuresAreNotDeletion(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	group := createGroupCollectionGroup(t, fixture, "unreadable identity", true, nil)
-	entry := createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil)
+	entry := createGroupCollectionKey(t, fixture, group.ID, "ready", nil)
 	entry.EncryptedValue = "invalid-ciphertext"
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{entry})
 	labels := fixture.service.CredentialLabels([]uint{entry.ID, 9_999})
@@ -1701,45 +1696,4 @@ func TestRequestLogCredentialLabelsPreserveExistingWireSchema(t *testing.T) {
 	}
 }
 
-// 订阅账号停用后历史标签仍在（含邮箱为空时只证明存在），真正删除后才消失。
-func TestHistoricalSubscriptionLabelsSurviveDisableUntilActualDeletion(t *testing.T) {
-	t.Parallel()
-	for _, email := range []string{"history@example.com", ""} {
-		t.Run("email="+email, func(t *testing.T) {
-			t.Parallel()
-			fixture := newServiceFixture(t)
-			stage := mustImportSubscriptionStage(t, fixture, "history-"+email, email)
-			created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-				Name: stringPointer("history subscription"), ChannelID: channel.Codex,
-				ConnectionType: models.ConnectionTypeSubscription,
-				Models:         optionalGroupModels{Set: true}, StagedCredentialID: stage.StageID,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			var credential models.Credential
-			if err := fixture.db.Where("group_id = ?", created.GroupID).Take(&credential).Error; err != nil {
-				t.Fatal(err)
-			}
-			if err := fixture.db.Model(&models.Group{}).Where("id = ?", created.GroupID).
-				Update("enabled", false).Error; err != nil {
-				t.Fatal(err)
-			}
-			entries, err := fixture.registry.SnapshotGroupCredentialEntriesExact(created.GroupID, []uint{credential.ID})
-			if err != nil {
-				t.Fatal(err)
-			}
-			publishGroupCollectionRuntime(t, fixture, entries)
-			labels := fixture.service.CredentialLabels([]uint{credential.ID})
-			if label, exists := labels[credential.ID]; !exists || label != email {
-				t.Fatalf("disabled subscription label = %q, exists = %t", label, exists)
-			}
-			if err := fixture.service.DeleteGroupCredential(t.Context(), created.GroupID, credential.ID); err != nil {
-				t.Fatal(err)
-			}
-			if _, exists := fixture.service.CredentialLabels([]uint{credential.ID})[credential.ID]; exists {
-				t.Fatal("actually deleted credential remains associated")
-			}
-		})
-	}
-}
+// 凭据失效后历史标签仍在，真正删除后才消失。

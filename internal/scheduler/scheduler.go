@@ -482,7 +482,7 @@ func (iterator *Iterator) preferredHealthExcluded(now time.Time) bool {
 			}
 		}
 	}
-	if !found || !preferred.AuthReady() {
+	if !found {
 		return false
 	}
 	if iterator.allowedCredentialIDs != nil {

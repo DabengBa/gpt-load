@@ -12,9 +12,9 @@ func TestJudgeExecutionProducesIndependentRetryAndEffect(t *testing.T) {
 	now := time.Date(2026, time.August, 24, 8, 0, 0, 0, time.UTC)
 	context := DecisionContext{
 		DefaultRateLimitCooldown: 10 * time.Minute,
-		CredentialRefreshable:    true,
-		Method:                   http.MethodPost,
-		Operation:                execution.OperationChatCompletion,
+
+		Method:    http.MethodPost,
+		Operation: execution.OperationChatCompletion,
 	}
 	evidence := &execution.ErrorEvidence{
 		Kind:       execution.ErrorKindHTTP,
@@ -247,7 +247,7 @@ func TestJudgeExecutionHandlesCandidatePreparationFacts(t *testing.T) {
 	}
 }
 
-func TestJudgeExecutionRefreshRequiresRefreshableCredential(t *testing.T) {
+func TestJudgeExecutionRefreshHintWithoutRefreshableCredential(t *testing.T) {
 	attempt := ExecutionAttempt{
 		DispatchState: execution.DispatchMaybeSent,
 		StatusCode:    http.StatusUnauthorized,
@@ -259,15 +259,6 @@ func TestJudgeExecutionRefreshRequiresRefreshableCredential(t *testing.T) {
 			ReplaySafety: execution.ReplaySafetyRejectedBeforeProcessing,
 			Summary:      "access token expired",
 		},
-	}
-
-	refresh := JudgeExecution(attempt, DecisionContext{
-		CredentialRefreshable: true,
-		Method:                http.MethodPost,
-		Operation:             execution.OperationResponsesCreate,
-	})
-	if refresh.Retry != RetryRefreshCredential || refresh.RuleID != RuleID("auth.refresh_required") {
-		t.Fatalf("refreshable decision = %#v", refresh)
 	}
 
 	next := JudgeExecution(attempt, DecisionContext{
@@ -537,7 +528,7 @@ func TestJudgeExecutionStableFallbackRuleMatrix(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			decision := JudgeExecution(test.attempt, DecisionContext{CredentialRefreshable: true})
+			decision := JudgeExecution(test.attempt, DecisionContext{})
 			if decision.RuleID != test.want {
 				t.Fatalf("JudgeExecution() = %#v, want rule %q", decision, test.want)
 			}

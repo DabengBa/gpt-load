@@ -1,5 +1,7 @@
 # 自建实例部署（gptl.tanyaleoallen.cloud）
 
+> Breaking / 破坏性变更：本次删除内置订阅/CPA 的版本无法原地打开旧库。旧库只能停机后用 `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` 离线转换（保留分组、API 凭据、访问密钥与限额用量，丢弃请求日志与用量历史），或改用全新数据库；含旧订阅结构或退役 migration `0003` 的库会被转换器拒绝，包括 API-only 旧库。没有原地 migration、自动删除或兼容层。**`scripts/deploy.sh` 复用现有数据卷，不转换数据库，本次升级不能指向旧卷。** 完整步骤见 [旧库离线转换](../.docs/tech/legacy-db-conversion.md)；保留旧实例和备份。本次不部署、不修改业务库；启动拒绝不保证 SQLite 文件/WAL 零副作用。详见 [README](../README_CN.md#快速开始)。
+
 本文只描述本仓库维护者自建实例的发布流程；上游通用部署（`ghcr.io/tbphp/gpt-load:2`、原生二进制）见 `README_CN.md` 的「部署与数据」。SQLite retention、停机维护和恢复流程见 [`docs/sqlite-maintenance.md`](sqlite-maintenance.md)。
 
 ## SSH 目标
@@ -67,6 +69,8 @@ idempotency 历史三项准备，详见
 scripts/deploy.sh dev --prepare-only               # 在线构建、上传，不切换生产容器
 scripts/deploy.sh dev --activate-only <完整提交SHA> # 演练后，一次完成停写、最终备份和镜像切换
 ```
+
+**本次删除内置订阅/CPA 的升级不适用上述原地流程。** 目标版本的 schema 不再包含退役迁移与该版本的旧结构，把旧卷直接交给新镜像只会启动拒绝；`scripts/deploy.sh` 复用现有数据卷且不转换数据库，因此不能指向旧卷。先按 [旧库离线转换](../.docs/tech/legacy-db-conversion.md) 停机备份、转换、复制 `encryption.key`、在新卷上以独立端口验证，再发布新版本并切换流量；回滚是「旧镜像 + 未改动的旧卷」。
 
 入口是本地仓库里的 `scripts/deploy.sh`。本机需要 Git、Docker Buildx、gzip、curl 和可连接 `vps-kl` 的 SSH；Docker 必须使用本机 Unix socket。BuildKit 和构建缓存留在本机，服务器不执行 Git 拉取、源码编译或镜像构建。
 

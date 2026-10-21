@@ -4,15 +4,13 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	providerobservation "gpt-load/internal/subscription/providers/observation"
 )
 
 func intPointer(value int) *int           { return &value }
 func floatPointer(value float64) *float64 { return &value }
 
 func testCredential(id, groupID uint) CredentialEntry {
-	return CredentialEntry{ID: id, GroupID: groupID, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", AuthState: CredentialAuthStateReady, EncryptedValue: "cipher"}
+	return CredentialEntry{ID: id, GroupID: groupID, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "cipher"}
 }
 
 func registryEntry(t *testing.T, registry *CredentialRegistry, credentialID uint) CredentialEntry {
@@ -140,56 +138,6 @@ func TestCredentialRegistryCooldownChangesInvalidateStaleRestoreRef(t *testing.T
 	}
 }
 
-func TestCredentialRegistryRestoreRuntimeStateIfMatchRequiresReadyAuthState(t *testing.T) {
-	registry := NewCredentialRegistry()
-	entry := testCredential(1, 10)
-	entry.Blacklisted = true
-	entry.AuthState = CredentialAuthStateReauthorizationRequired
-	if err := registry.ReplaceCredentials([]CredentialEntry{entry}); err != nil {
-		t.Fatal(err)
-	}
-	ref, ok := registry.CredentialRef(1)
-	if !ok {
-		t.Fatal("CredentialRef() failed")
-	}
-	if registry.RestoreRuntimeStateIfMatch(ref, time.Time{}) {
-		t.Fatal("restore succeeded for credential requiring reauthorization")
-	}
-	if got := registryEntry(t, registry, 1); !got.Blacklisted || got.AuthState != CredentialAuthStateReauthorizationRequired {
-		t.Fatalf("non-ready credential changed during restore: %#v", got)
-	}
-}
-
-func TestCredentialRegistryQuotaObservationDoesNotAffectCandidates(t *testing.T) {
-	registry := NewCredentialRegistry()
-	if err := registry.ReplaceCredentials([]CredentialEntry{testCredential(1, 10)}); err != nil {
-		t.Fatal(err)
-	}
-	remaining := 0.0
-	if !registry.SetCredentialQuotaObservation(1, &remaining, time.Now().Add(time.Hour)) {
-		t.Fatal("SetCredentialQuotaObservation() failed")
-	}
-	if got := registry.CollectCredentialCandidates([]uint{10}, nil, time.Now()); len(got) != 1 {
-		t.Fatalf("quota observation removed candidate: %#v", got)
-	}
-}
-
-func TestCredentialRegistryApplyQuotaWindowsPublishesTightestAccountBottleneck(t *testing.T) {
-	registry := NewCredentialRegistry()
-	if err := registry.ReplaceCredentials([]CredentialEntry{testCredential(1, 10)}); err != nil {
-		t.Fatal(err)
-	}
-	resetA, resetB := time.Now().Add(time.Hour).UnixMilli(), time.Now().Add(2*time.Hour).UnixMilli()
-	if !registry.ApplyQuotaWindows(1, []providerobservation.QuotaWindow{{Scope: "account", Utilization: floatPointer(0.6), ResetAtMS: &resetA}, {Scope: "account", Utilization: floatPointer(0.9), ResetAtMS: &resetB}}) {
-		t.Fatal("ApplyQuotaWindows() failed")
-	}
-	view := registry.Snapshot()[0]
-	remaining := view.ObservedQuotaRemaining()
-	if remaining == nil || *remaining < 0.099 || *remaining > 0.101 {
-		t.Fatalf("quota view = %#v", view)
-	}
-}
-
 func TestCredentialRegistryBatchMutationsAreAllOrNothing(t *testing.T) {
 	registry := NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]CredentialEntry{testCredential(1, 10)}); err != nil {
@@ -210,12 +158,11 @@ func TestCredentialRegistryCaptureRefsIncludesUnavailableRuntimeEntries(t *testi
 	entries := []CredentialEntry{testCredential(1, 10), testCredential(2, 20), testCredential(3, 30)}
 	entries[0].Blacklisted = true
 	entries[1].CooldownUntil = now
-	entries[2].AuthState = CredentialAuthStateRefreshing
 	if err := registry.ReplaceCredentials(entries); err != nil {
 		t.Fatal(err)
 	}
 	refs := registry.CaptureActiveCredentialRefs([]uint{10, 20, 30})
-	if len(refs) != 2 || refs[0].ID != 1 || refs[1].ID != 2 {
+	if len(refs) != 3 || refs[0].ID != 1 || refs[1].ID != 2 || refs[2].ID != 3 {
 		t.Fatalf("captured refs = %#v", refs)
 	}
 }
@@ -279,7 +226,6 @@ func TestCredentialRegistryValidateRejectsMalformedEntries(t *testing.T) {
 	for _, entries := range [][]CredentialEntry{
 		{{GroupID: 10, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "cipher"}},
 		{{ID: 1, GroupID: 10, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "cipher"}},
-		{{ID: 1, GroupID: 10, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", AuthState: CredentialAuthState("invalid"), EncryptedValue: "cipher"}},
 		{{ID: 1, GroupID: 10, Version: 1, IdentityGeneration: 1, Fingerprint: "fp"}},
 	} {
 		if err := ValidateCredentialEntries(entries); err == nil {

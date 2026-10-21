@@ -71,11 +71,9 @@ func (s *Service) RevealGroupCredential(
 	if group.ChannelID == "" {
 		return CredentialRevealResult{}, app_errors.ErrValidation
 	}
-	if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
-		return CredentialRevealResult{}, app_errors.ErrForbidden
-	}
+
 	var row models.Credential
-	if err := s.db.WithContext(ctx).Select("id", "group_id", "data", "fingerprint", "identity_fingerprint", "secret_version", "auth_state", "updated_at_ms").
+	if err := s.db.WithContext(ctx).Select("id", "group_id", "data", "fingerprint", "identity_fingerprint", "secret_version", "updated_at_ms").
 		Where("id = ? AND group_id = ?", credentialID, groupID).Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return CredentialRevealResult{}, credentialNotFoundError()
@@ -153,16 +151,13 @@ func (s *Service) UpdateGroupCredential(
 		committed.Data = ciphertext
 		committed.Fingerprint = candidate.fingerprint
 		committed.IdentityFingerprint = candidate.fingerprint
-		committed.AuthState = models.CredentialAuthStateReady
-		committed.AuthErrorCode = ""
 		committed.UpdatedAtMS = updatedAtMS
 		nextFingerprint = candidate.fingerprint
 		updates := map[string]any{
 			"data": ciphertext, "fingerprint": candidate.fingerprint,
 			"identity_fingerprint": candidate.fingerprint,
 			"secret_version":       committed.SecretVersion,
-			"auth_state":           committed.AuthState, "auth_error_code": "",
-			"updated_at_ms": updatedAtMS,
+			"updated_at_ms":        updatedAtMS,
 		}
 		if err := tx.Model(&models.Credential{}).Where("id = ? AND group_id = ?", credentialID, groupID).
 			Updates(updates).Error; err != nil {
@@ -175,7 +170,6 @@ func (s *Service) UpdateGroupCredential(
 			return dbRegistryMismatch(mismatchMissingRegistry, groupID, credentialID)
 		}
 		entry := entries[0]
-		entry.AuthState = state.CredentialAuthStateReady
 		entry.Version = groupCollectionCredentialVersion(committed.SecretVersion)
 		entry.IdentityGeneration = groupCollectionCredentialIdentity(
 			committed.IdentityFingerprint,
@@ -313,9 +307,7 @@ func validateCredentialRuntimeRow(
 	if view.GroupID != groupID {
 		return dbRegistryMismatch(mismatchGroupID, groupID, row.ID)
 	}
-	if view.AuthState != normalizeRuntimeCredentialAuthState(row.AuthState) {
-		return dbRegistryMismatch(mismatchStatus, groupID, row.ID)
-	}
+
 	if view.Version != groupCollectionCredentialVersion(row.SecretVersion) ||
 		view.IdentityGeneration != groupCollectionCredentialIdentity(row.IdentityFingerprint, group) {
 		return dbRegistryMismatch(mismatchIdentity, groupID, row.ID)
@@ -349,11 +341,11 @@ func (s *Service) mapCredentialItem(
 	stats health.CredentialStats,
 	observedAt time.Time,
 ) (CredentialItemResponse, error) {
-	canonical, identity, err := s.decodeCredential(group, row)
+	canonical, _, err := s.decodeCredential(group, row)
 	if err != nil {
 		return CredentialItemResponse{}, err
 	}
-	mask, account, err := s.credentialPresentation(group, row, canonical, identity)
+	mask, err := maskCanonicalCredential(canonical)
 	if err != nil {
 		return CredentialItemResponse{}, err
 	}
@@ -364,15 +356,6 @@ func (s *Service) mapCredentialItem(
 	}
 	item.ConnectionType = string(normalizeGroupConnectionType(group.ConnectionType))
 	item.SecretVersion = row.SecretVersion
-	item.AuthState = string(row.AuthState)
-	item.Account = account
-	if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
-		var observation models.CredentialObservation
-		result := s.db.WithContext(ctx).Take(&observation, "credential_id = ?", row.ID)
-		if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return CredentialItemResponse{}, app_errors.ParseDBError(result.Error)
-		}
-		item.Observation = presentCredentialObservation(observation, row.IdentityFingerprint)
-	}
+
 	return item, nil
 }

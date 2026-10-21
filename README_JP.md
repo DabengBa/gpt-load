@@ -6,7 +6,7 @@
 
 **マルチチャネル・マルチ認証情報向けのセルフホスト AI ゲートウェイ**
 
-API キー、サブスクリプションアカウント、トラフィック制御、障害処理、リクエストログ、使用量集計を一つの入口にまとめます。
+API キー、トラフィック制御、障害処理、リクエストログ、使用量集計を一つの入口にまとめます。
 
 [English](README.md) · [中文](README_CN.md) · 日本語 | [公式サイト](https://www.gpt-load.com)
 
@@ -53,7 +53,7 @@ API キー、サブスクリプションアカウント、トラフィック制�
 <img src="./screenshot/architecture-overview.png" alt="GPT-Load の統合アクセスとアップストリームルーティング構成図" width="860">
 
 - **単一ゲートウェイでネイティブプロトコルを維持** — 公式 API、クラウド基盤、モデルサービス、互換中継を一元管理しながら、クライアントは OpenAI、Anthropic、Gemini のネイティブインターフェイスをそのまま使えます。
-- **API キーとサブスクリプションを統一管理** — Codex、Claude、Antigravity、Grok と API キーチャネルで、認証情報管理・スケジューリング・健全性管理を共通化します。
+- **API 認証情報を統一管理** — 標準 API とクラウドの認証情報で、スケジューリング、健全性管理、ログ、通信捕捉を共通化します。
 - **スケジューリングと障害分離を内蔵** — 複数認証情報のスケジューリング、自動ウェイト、リトライ、クールダウン、ブラックリスト、セッションアフィニティにより、過負荷や失効の影響を抑えます。
 - **独立したスケジュールセンター** — 管理者は `/schedule` で同じ外部モデルの候補をグループ横断で比較し、重みと優先度をまとめて編集し、実行状態を確認し、クールダウン中またはブラックリストのエントリを復旧し、単体または一括でプローブできます。
 - **可観測で導入しやすく、データを自己管理** — 健全性、ルート、ログ、使用量、コスト概算とログ一覧でのキャッシュヒット率を確認でき、SQLite とローカル認証情報暗号化を単一バイナリで利用できます。
@@ -62,6 +62,9 @@ API キー、サブスクリプションアカウント、トラフィック制�
 
 > [!WARNING]
 > 1.x を使用している場合は、先に[「1.x からの移行」](#1x-からの移行)を確認してください。2.0 は 1.x データを開く・インポートする・その場で移行することはできません。
+
+> [!WARNING]
+> **破壊的変更：前バージョンが書き込んだデータベースは変換または作り直しが必要です。** 組み込み Codex、Claude、Antigravity、Grok サブスクリプションと埋め込み CPA は削除され、OAuth、認証ファイルのインポート、更新、アカウント／クォータ観測もありません。本ビルドは、廃止した構造や migration `0003` を含む旧 DB をその場で開くことはできず、起動を拒否します。サポートされる方法は 2 つです。停止した旧 DB を `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` でオフライン変換する（グループ、API 認証情報、アクセスキー、クォータ使用量は保持し、リクエストログと使用履歴は破棄）、または新規データベースで手動設定し直す。詳細は[旧 DB の変換](.docs/tech/legacy-db-conversion.md)を参照してください。その場での migration、自動削除、互換レイヤーはありません。旧環境とバックアップを保持し、このビルドを業務 DB に接続しないでください。起動拒否は SQLite ファイル／WAL の副作用がないことを保証しません。標準 API と外部 CLIProxyAPI ゲートウェイチャネルは引き続き利用できます。
 
 ### 1. サービスを起動する
 
@@ -95,28 +98,15 @@ docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 
 初期設定は 3 ステップです：
 
-1. **チャネルを追加** — アップストリームサービスを選び、API キーを 1 つ以上登録します。サブスクリプションチャネルは画面の案内に従って OAuth 認可または認証情報のインポートを行います。
+1. **チャネルを追加** — アップストリームサービスを選び、API キーを 1 つ以上登録します。
 2. **Group を作成** — チャネルを選び、利用可能なモデルと実行ポリシーを設定します。
 3. **AccessKey を作成** — アクセスを許可する Group とクライアントプロトコルを設定し、生成された AccessKey をアプリケーションに渡します。
-
-<details>
-<summary>サブスクリプションチャネルの OAuth コールバックポート</summary>
-
-Codex、Claude、Antigravity の OAuth クライアントは固定のコールバックポートを使用します。Compose はそれらを `HOST` で設定したアドレスに公開し、既定値は `127.0.0.1` です。`HOST=0.0.0.0` を設定すると、これらのコールバックポートもホストの全ネットワークインターフェイスに公開されます。ポートはアップストリームのクライアント側で固定されているため、同一ホスト上で同時に実行できる既定の Compose インスタンスは 1 つだけです。
-
-SSH やリモートブラウザ経由で操作する場合、ブラウザの `localhost` から GPT-Load に到達できないことがあります。その場合はコールバック URL 全体を認可ダイアログに貼り付けることでフローを完了できます。
-
-</details>
 
 ## 画面プレビュー
 
 **グループ概要** — チャネル、モデル、認証情報数、健全性をまとめて確認
 
 <img src="./screenshot/groups-overview.png" alt="GPT-Load グループ概要" width="860">
-
-**サブスクリプションアカウント** — アカウントの可用性、クォータ期間、リセット時刻、実行診断を確認
-
-<img src="./screenshot/subscription-accounts.png" alt="GPT-Load サブスクリプションアカウントとクォータ状態" width="860">
 
 **AccessKey 読み取り専用ホーム** — AccessKey でログインし、そのキーに限定されたグループ、モデル、リクエスト、使用量、費用上限を表示
 
@@ -144,16 +134,19 @@ SSH やリモートブラウザ経由で操作する場合、ブラウザの `lo
 
 HTTP レスポンスの送信開始前に上流リクエストがタイムアウトした場合、ゲートウェイは HTTP `408` と OpenAI 互換の JSON エラーを返します。`error.message` は `Gateway timeout: upstream request timed out`、`error.type` は `timeout_error`、`error.code` は `upstream_timeout` です。Chat Completions と Responses のクライアントは、このメッセージからタイムアウトを識別し、設定された再試行ポリシーを適用できます。送信開始後のレスポンスでは HTTP ステータスを変更できません。
 
-Embeddings は初期段階では OpenAI、OpenRouter、OpenAI Compatible の API Key チャネルでのみネイティブな OpenAI 互換ワイヤーを提供し、サブスクリプションチャネルとプロトコル変換には対応していません。プロトコルフィルターを設定していない AccessKey は既存の「有効なプロトコルをすべて許可する」動作を維持するため、アップグレード後に Embeddings へのアクセス権も得ます。最小権限で運用する場合は、プロトコルフィルターを明示的に設定してください。
+Embeddings は初期段階では OpenAI、OpenRouter、OpenAI Compatible の API Key チャネルでのみネイティブな OpenAI 互換ワイヤーを提供し、プロトコル変換には対応していません。プロトコルフィルターを設定していない AccessKey は既存の「有効なプロトコルをすべて許可する」動作を維持するため、アップグレード後に Embeddings へのアクセス権も得ます。最小権限で運用する場合は、プロトコルフィルターを明示的に設定してください。
 
-Rerank は独立した `rerank` プロトコルを使用し、OpenAI Compatible、New API、GPT-Load の API Key チャネルで `POST /v1/rerank` に対応します。リクエストには `model`、`query`、テキストのみの `documents` 配列を指定し、`top_n` や `return_documents` などの上流パラメーターも利用できます。ストリーミング、サブスクリプション、プロトコル変換には対応しません。OpenAI Compatible には完全な API プレフィックス（例：`https://host/v1`）、New API / GPT-Load にはゲートウェイのルートを設定します。上流は互換 Rerank API を提供する必要があります。プロトコルフィルターのない AccessKey は Rerank へのアクセス権も得ます。`search_units` など Token 以外の単位のみが返る場合は未計価とし、Token 数や無料リクエストとして扱いません。
+Rerank は独立した `rerank` プロトコルを使用し、OpenAI Compatible、New API、GPT-Load の API Key チャネルで `POST /v1/rerank` に対応します。リクエストには `model`、`query`、テキストのみの `documents` 配列を指定し、`top_n` や `return_documents` などの上流パラメーターも利用できます。ストリーミング、プロトコル変換には対応しません。OpenAI Compatible には完全な API プレフィックス（例：`https://host/v1`）、New API / GPT-Load にはゲートウェイのルートを設定します。上流は互換 Rerank API を提供する必要があります。プロトコルフィルターのない AccessKey は Rerank へのアクセス権も得ます。`search_units` など Token 以外の単位のみが返る場合は未計価とし、Token 数や無料リクエストとして扱いません。
 
 ### 組み込みチャネル
 
 - **公式・クラウド**：OpenAI、Anthropic、Gemini、xAI、Azure OpenAI、AWS Bedrock、Google Vertex AI
 - **モデルサービス**：DeepSeek、Moonshot AI、SiliconFlow、Zhipu AI、Alibaba、Volcengine、OpenRouter、Groq
-- **サブスクリプション**：Codex、Claude、Antigravity、Grok
 - **カスタム**：OpenAI Compatible（任意の互換中継）
+
+- **ゲートウェイ**：New API、GPT-Load、外部 CLIProxyAPI、sub2api
+
+Codex と Claude Code は引き続き下流クライアントとして利用でき、AccessKey 画面のクライアント設定も維持します。これは組み込みサブスクリプション認可ではありません。外部 CLIProxyAPI は運用者が別途管理し、Base URL と API キーで接続するサービスです。
 
 ## デプロイとデータ
 
@@ -196,10 +189,9 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 
 | 変数 | 既定値 | 説明 |
 | --- | --- | --- |
-| `HOST` | `127.0.0.1` | Native モードの待受アドレスであり、Compose のメインポートと OAuth コールバックポートをホストに公開する既定アドレスです。Compose コンテナ内部では常に `0.0.0.0` で待ち受けます。 |
+| `HOST` | `127.0.0.1` | Native モードの待受アドレスであり、Compose のメインポートをホストに公開する既定アドレスです。Compose コンテナ内部では常に `0.0.0.0` で待ち受けます。 |
 | `PORT` | `3001` | HTTP サービスポート。`1–65535` である必要があり、Compose はコンテナポート、ホスト公開ポート、ヘルスチェックにも使用します。 |
-| `BIND_ADDRESS` | 空、`HOST` を継承 | Compose のみ。OAuth コールバックポートを変更せず、メインサービスポートのホスト公開アドレスを上書きします。 |
-| `OAUTH_CALLBACK_BIND_ADDRESS` | 空、`HOST` を継承 | Compose のみ。固定 OAuth コールバックポート `1455`、`54545`、`51121` のホスト公開アドレスを上書きします。 |
+| `BIND_ADDRESS` | 空、`HOST` を継承 | Compose のみ。メインサービスポートのホスト公開アドレスを上書きします。 |
 | `GRACEFUL_SHUTDOWN_TIMEOUT` | `10` | 停止シグナル後にリクエストの完了を待つ最大時間。正の整数、単位は秒です。 |
 | `CONTAINER_STOP_GRACE_PERIOD` | `15s` | Compose がコンテナを強制停止する前に待つ Docker duration。`GRACEFUL_SHUTDOWN_TIMEOUT` より長くすることを推奨します。 |
 | `READ_TIMEOUT` | `60` | HTTP リクエストの読み取りタイムアウト。正の整数、単位は秒です。 |
@@ -224,11 +216,10 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 
 - 既定では `127.0.0.1` のみを待ち受けます。リモートアクセスが必要な場合は、管理されたネットワークまたは TLS 対応のリバースプロキシ経由で公開し、ACL とファイアウォールを設定してください。
 - `AUTH_KEY` と `ENCRYPTION_KEY` は厳重に管理し、実際のキーをリポジトリ、ログ、スクリーンショット、公開 Issue に含めないでください。
-- デバッグ通信捕捉はオプトインの運用ツールです。Unix ランタイムではデフォルトで無効で、`DEBUG_CAPTURE_ENABLED=true` で有効になります。独立した捕捉ストレージに、観測された平文のリクエストとレスポンスの Header、Body が固定 4 時間保存され、資格情報や Cookie を含む場合があります。詳細と ZIP ダウンロードは管理者向け API のみで提供されます。`AUTH_KEY`、データベース、バックアップ、エクスポートした ZIP を保護してください。捕捉範囲は Gateway、CPA、Bifrost HTTP 統合が実際に観測したアプリケーション層データです。TLS/socket wire、transport が除去した HTTP transfer framing、observer contract が公開しない HTTP trailers、または観測されなかったデータの捕捉は保証しません。
+- デバッグ通信捕捉はオプトインの運用ツールです。Unix ランタイムではデフォルトで無効で、`DEBUG_CAPTURE_ENABLED=true` で有効になります。独立した捕捉ストレージに、観測された平文のリクエストとレスポンスの Header、Body が固定 4 時間保存され、資格情報や Cookie を含む場合があります。詳細と ZIP ダウンロードは管理者向け API のみで提供されます。`AUTH_KEY`、データベース、バックアップ、エクスポートした ZIP を保護してください。捕捉範囲は Gateway、Bifrost HTTP 統合が実際に観測したアプリケーション層データです。TLS/socket wire、transport が除去した HTTP transfer framing、observer contract が公開しない HTTP trailers、または観測されなかったデータの捕捉は保証しません。
 - 2.0 は**単一アプリケーションインスタンス**を前提に設計されています。インスタンス間で状態を共有しないため、そのままの水平スケールには対応していません。
 - 使用量とコストはアップストリームの応答に基づく**概算**です。運用分析やリソース評価には使えますが、プロバイダーの請求書や会計上の照合結果とは一致しません。
-- サブスクリプションチャネルはアップストリームの OAuth と互換プロトコルに依存し、アップストリームの変更に伴って調整が必要になる場合があります。利用権限のあるアカウントのみを接続し、各プロバイダーの規約に従ってください。
-- Responses の `previous_response_id` による継続は、ネイティブ Responses と上流での状態管理を宣言した経路に自動で適用されます。現在は `openai`、`gpt_load`、`xai`、`newapi`、`cliproxyapi`、`sub2api` が該当します。帰属を AccessKey ごとに分離し、現在のルーティングで許可される元の認証情報へ固定します。アフィニティ設定には依存せず、状態が実際に利用できるかは上流に依存します。ステートレス応答と変換された応答は登録せず、Codex サブスクリプションの WebSocket 継続はまだ接続していません。アップグレード前やゲートウェイ外で作成されたものを含め、不明な ID は拒否されます。Group のパラメータ上書きでこのフィールドを変更することはできません。
+- Responses の `previous_response_id` による継続は、ネイティブ Responses と上流での状態管理を宣言した経路に自動で適用されます。現在は `openai`、`gpt_load`、`xai`、`newapi`、`cliproxyapi`、`sub2api` が該当します。帰属を AccessKey ごとに分離し、現在のルーティングで許可される元の認証情報へ固定します。アフィニティ設定には依存せず、状態が実際に利用できるかは上流に依存します。ステートレス応答と変換された応答は登録しません。アップグレード前やゲートウェイ外で作成されたものを含め、不明な ID は拒否されます。Group のパラメータ上書きでこのフィールドを変更することはできません。
 - Responses `create` はオプションのトップレベルフィールド `prompt_cache_key` をアフィニティシグナルとして受け入れます。値は空でなく、有効な UTF-8 で、先頭/末尾に空白や制御文字がなく、256 バイト以下である必要があります。無効な値はリクエストをブロックせずに静かに無視されます。有効な場合、明示的なキーは `instructions`/`system`/`developer` と最初の `user`/`input_text` から派生されるプロンプトプレフィックスシグナルより優先されます。生のキーや派生値はログに記録されたり公開されたりしません。アフィニティは適格な認証情報の集合を拡大せず、`previous_response_id` の独立した継続の帰属を上書きしません。リクエストログには、制限付きの `affinity_source`、`affinity_state`、および独立した `continuity_hit` インジケーターが表示されます。このバインディングは、厳密なセッション ID、マシンへの固定、インスタンス間共有を意味しません。
 - アフィニティのバインディングは永続化されます。既存の `system_settings` テーブルで、`_internal.affinity.binding.<raw-hmac>` キーごとに対象を保存します。ホットキャッシュの miss、TTL 満了、LRU による削除、capacity 変更、プロセス再起動後は、この durable store から read-through で復元し、適格な対象なら引き続き `hit` と記録します。無関係なグループ、エントリの重み、catalog/Models.dev の更新や snapshot revision の変更ではバインディングを失いません。復元には同じデータベースとアフィニティキーの導出材料が必要で、終了時の checkpoint には依存しません。
 - アクセスキー、グループ、ルート要件、エントリの重み、認証情報の同一性世代、クールダウン、ブラックリストの全適格性検査を通過した対象は、すべての適格な priority tier、route mode、regular/store-downgraded bucket にわたって最初に実際のプロバイダー試行を行います。その試行で再試行可能な provider failure が発生した場合にのみ、既存の再試行・リプレイ規則に従ってアフィニティの fallback が可能となり、成功後にバインディングを移せます。検査で除外された対象は試行せず、他の適格な候補で通常の処理を続けられますが、その成功で旧 durable row を削除・置換しません。準備段階のエラーや下流の障害は provider failure に含みません。
@@ -250,7 +241,6 @@ GPT-Load の一部機能は以下のプロジェクトを基盤としていま�
 | プロジェクト                                                | 役割                                                                            | ライセンス |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------- |
 | [Bifrost Core](https://github.com/maximhq/bifrost)          | 各プロバイダーの認証、リクエスト/レスポンス変換、ストリーミング、使用量の正規化 | Apache-2.0 |
-| [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | サブスクリプションチャネルの OAuth と実行アダプター                             | MIT        |
 | [Lobe Icons](https://github.com/lobehub/lobe-icons)         | 管理画面のチャネルブランドアイコン                                              | MIT        |
 
 認証情報の保存、アカウント選択、スケジューリング、リトライ、健全性、アフィニティ、ログ、使用量ポリシーは GPT-Load が担います。サードパーティ表記は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、ライセンス全文は [`LICENSES/`](LICENSES/) にあり、各リリースには Go 依存関係を対象とした CycloneDX SBOM が付属します。

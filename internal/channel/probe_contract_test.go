@@ -44,7 +44,7 @@ func TestProbeContractDeclaresSingleGenerativeProtocol(t *testing.T) {
 		Sub2API:          protocol.OpenAICompletions,
 		OpenAICompatible: protocol.OpenAICompletions,
 	}
-	unsupported := map[ID]struct{}{Codex: {}, Claude: {}, Antigravity: {}, Grok: {}}
+	unsupported := map[ID]struct{}{}
 
 	seen := make(map[ID]struct{}, len(registry.List()))
 	for _, descriptor := range registry.List() {

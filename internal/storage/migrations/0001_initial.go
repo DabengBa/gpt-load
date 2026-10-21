@@ -15,7 +15,7 @@ type initialGroup struct {
 	ID              uint        `gorm:"primaryKey;autoIncrement"`
 	Name            string      `gorm:"type:varchar(255);not null;uniqueIndex"`
 	ChannelID       string      `gorm:"type:varchar(64);not null"`
-	ConnectionType  string      `gorm:"type:varchar(32);not null;default:'api_key';check:chk_group_connection_type,connection_type IN ('api_key','subscription')"`
+	ConnectionType  string      `gorm:"type:varchar(32);not null;default:'api_key';check:chk_group_connection_type,connection_type = 'api_key'"`
 	Params          initialJSON `gorm:"type:json;not null"`
 	Models          initialJSON `gorm:"type:json;not null"`
 	WeightManual    *int
@@ -36,8 +36,6 @@ type initialCredential struct {
 	Fingerprint         string `gorm:"type:varchar(128);not null;uniqueIndex:idx_credentials_group_fingerprint,priority:2"`
 	IdentityFingerprint string `gorm:"type:varchar(128);not null;default:'';uniqueIndex:idx_credentials_group_identity,priority:2"`
 	SecretVersion       uint64 `gorm:"not null;default:1;check:chk_credential_secret_version,secret_version > 0"`
-	AuthState           string `gorm:"type:varchar(32);not null;default:'ready';check:chk_credential_auth_state,auth_state IN ('ready','refreshing','reauthorization_required','outcome_unknown')"`
-	AuthErrorCode       string `gorm:"type:varchar(64);not null;default:''"`
 	Status              string `gorm:"type:varchar(32);not null;default:'active';check:chk_credential_status,status IN ('active','disabled')"`
 	WeightManual        *int
 	Group               *initialGroup `gorm:"foreignKey:GroupID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
@@ -248,64 +246,6 @@ type initialControlOperation struct {
 
 func (initialControlOperation) TableName() string { return "control_operations" }
 
-type initialCredentialStage struct {
-	ID                   string      `gorm:"type:varchar(36);primaryKey;not null"`
-	ChannelID            string      `gorm:"type:varchar(64);not null"`
-	ConnectionType       string      `gorm:"type:varchar(32);not null;check:chk_credential_stage_connection_type,connection_type = 'subscription'"`
-	AuthorizationMethod  string      `gorm:"type:varchar(32);not null;check:chk_credential_stage_authorization_method,authorization_method IN ('browser_oauth','device_oauth','oauth_file')"`
-	Status               string      `gorm:"type:varchar(32);not null;check:chk_credential_stage_status,status IN ('pending_authorization','exchanging','ready','consumed','failed','cancelled','expired','outcome_unknown');index:idx_credential_stages_status_expires,priority:1"`
-	EncryptedPayload     string      `gorm:"type:text;not null"`
-	PayloadSchemaVersion uint        `gorm:"not null;default:1;check:chk_credential_stage_payload_schema,payload_schema_version > 0"`
-	SafeSummaryJSON      initialJSON `gorm:"column:safe_summary_json;type:json;not null"`
-	IdentityFingerprint  string      `gorm:"type:varchar(128);not null;default:''"`
-	OAuthStateHash       *string     `gorm:"column:oauth_state_hash;type:varchar(128);uniqueIndex:idx_credential_stages_oauth_state"`
-	ExpiresAtMS          int64       `gorm:"column:expires_at_ms;not null;check:chk_credential_stage_expires_at,expires_at_ms >= 0;index:idx_credential_stages_status_expires,priority:2"`
-	ConsumedAtMS         *int64      `gorm:"column:consumed_at_ms;check:chk_credential_stage_consumed_at,consumed_at_ms IS NULL OR consumed_at_ms >= 0"`
-	ConsumedGroupID      *uint
-	ErrorCode            string `gorm:"type:varchar(64);not null;default:''"`
-	CreatedAtMS          int64  `gorm:"column:created_at_ms;not null;check:chk_credential_stage_created_at,created_at_ms >= 0"`
-	UpdatedAtMS          int64  `gorm:"column:updated_at_ms;not null;check:chk_credential_stage_updated_at,updated_at_ms >= 0;index:idx_credential_stages_status_expires,priority:3"`
-}
-
-func (initialCredentialStage) TableName() string { return "credential_stages" }
-
-type initialCredentialObservation struct {
-	CredentialID                 uint               `gorm:"primaryKey;not null"`
-	Credential                   *initialCredential `gorm:"foreignKey:CredentialID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	IdentityFingerprint          string             `gorm:"type:varchar(128);not null"`
-	SchemaVersion                uint               `gorm:"not null;default:1;check:chk_credential_observation_schema,schema_version > 0"`
-	ObservationVersion           uint64             `gorm:"not null;default:1;check:chk_credential_observation_version,observation_version > 0"`
-	SnapshotJSON                 initialJSON        `gorm:"column:snapshot_json;type:json;not null"`
-	State                        string             `gorm:"type:varchar(32);not null;check:chk_credential_observation_state,state IN ('fresh','stale','refreshing','error','unavailable')"`
-	ObservedAtMS                 *int64             `gorm:"column:observed_at_ms;check:chk_credential_observation_observed_at,observed_at_ms IS NULL OR observed_at_ms >= 0"`
-	FreshUntilMS                 *int64             `gorm:"column:fresh_until_ms;check:chk_credential_observation_fresh_until,fresh_until_ms IS NULL OR fresh_until_ms >= 0"`
-	LastAttemptAtMS              *int64             `gorm:"column:last_attempt_at_ms;check:chk_credential_observation_last_attempt,last_attempt_at_ms IS NULL OR last_attempt_at_ms >= 0"`
-	NextAllowedAtMS              *int64             `gorm:"column:next_allowed_at_ms;check:chk_credential_observation_next_allowed,next_allowed_at_ms IS NULL OR next_allowed_at_ms >= 0"`
-	LastAuthRefreshSecretVersion *uint64            `gorm:"column:last_auth_refresh_secret_version"`
-	LastErrorCode                string             `gorm:"type:varchar(64);not null;default:''"`
-	UpdatedAtMS                  int64              `gorm:"column:updated_at_ms;not null;check:chk_credential_observation_updated_at,updated_at_ms >= 0"`
-}
-
-func (initialCredentialObservation) TableName() string { return "credential_observations" }
-
-type initialCredentialResetOperation struct {
-	IdempotencyKey  string      `gorm:"column:idempotency_key;type:char(36);primaryKey;not null"`
-	RequestDigest   []byte      `gorm:"column:request_digest;not null"`
-	GroupID         uint        `gorm:"column:group_id;not null;index:idx_credential_reset_operations_credential,priority:1"`
-	CredentialID    uint        `gorm:"column:credential_id;not null;index:idx_credential_reset_operations_credential,priority:2"`
-	RedeemRequestID string      `gorm:"column:redeem_request_id;type:char(36);not null;uniqueIndex"`
-	State           string      `gorm:"type:varchar(32);not null;check:chk_credential_reset_operation_state,state IN ('prepared','succeeded','rejected','outcome_unknown')"`
-	ResultJSON      initialJSON `gorm:"column:result_json;type:json"`
-	ErrorCode       string      `gorm:"column:error_code;type:varchar(64);not null;default:''"`
-	CreatedAtMS     int64       `gorm:"column:created_at_ms;not null;check:chk_credential_reset_operation_created_at,created_at_ms >= 0"`
-	UpdatedAtMS     int64       `gorm:"column:updated_at_ms;not null;check:chk_credential_reset_operation_updated_at,updated_at_ms >= 0"`
-	CompletedAtMS   *int64      `gorm:"column:completed_at_ms;check:chk_credential_reset_operation_completed_at,completed_at_ms IS NULL OR completed_at_ms >= 0"`
-}
-
-func (initialCredentialResetOperation) TableName() string {
-	return "credential_reset_operations"
-}
-
 type initialCredentialAttemptStat struct {
 	ID            uint  `gorm:"primaryKey;autoIncrement;index:idx_credential_attempt_stats_bucket_id,priority:2"`
 	CredentialID  uint  `gorm:"not null;check:chk_credential_attempt_stat_credential,credential_id > 0;uniqueIndex:idx_credential_attempt_stats_identity,priority:1"`
@@ -341,9 +281,6 @@ func SchemaModels0001() []any {
 		&initialSystemSetting{},
 		&initialJob{},
 		&initialControlOperation{},
-		&initialCredentialStage{},
-		&initialCredentialObservation{},
-		&initialCredentialResetOperation{},
 		&initialCredentialAttemptStat{},
 	}
 }
@@ -362,9 +299,6 @@ func TableNames0001() []string {
 		"system_settings",
 		"jobs",
 		"control_operations",
-		"credential_stages",
-		"credential_observations",
-		"credential_reset_operations",
 		"credential_attempt_stats",
 	}
 }

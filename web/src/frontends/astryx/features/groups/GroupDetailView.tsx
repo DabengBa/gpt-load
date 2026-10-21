@@ -276,12 +276,7 @@ export function GroupDetailView() {
                   blocked={deletePending}
                   onStateChange={setSettingsState}
                 />
-                <GroupCredentialsTab
-                  key={`credentials-${groupId}`}
-                  groupId={groupId}
-                  channelId={summaryQuery.data.channel_id}
-                  connectionType={summaryQuery.data.connection_type}
-                />
+                <GroupCredentialsTab key={`credentials-${groupId}`} groupId={groupId} />
                 <GroupModelsTab
                   ref={modelsEditorRef}
                   key={`models-${groupId}`}

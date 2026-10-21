@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 // Phase 4: the React /import surface — mode switching, group_id deep links,
-// stable idempotent submission, subscription staging polling, and the
+// stable idempotent submission and the
 // sessionStorage re-auth recovery chain (401 -> capture -> login -> restore).
 
 // The first navigation in a cold run pays vite's on-demand compile of the
@@ -20,18 +20,16 @@ const CHANNELS = [
     search_terms: ['openai'],
     description: '',
     default_base_url: 'https://api.openai.com',
-    notices: [],
+
     param_fields: [],
     credential_fields: [],
     connection: {
       type: 'api_key',
       credential_input: 'batch_text',
-      authorization_methods: [],
     },
     capabilities: {
       model_discovery: false,
-      quota_observation: false,
-      credential_actions: [],
+
       outbound_proxy: false,
     },
     routes: [
@@ -46,25 +44,23 @@ const CHANNELS = [
     client_protocols: ['openai-completions'],
   },
   {
-    channel_id: 'claude_sub',
-    name: 'Claude Subscription',
-    mark: 'CS',
-    icon: 'claude',
-    search_terms: ['claude'],
+    channel_id: 'cliproxyapi',
+    name: 'CLIProxyAPI',
+    mark: 'CPA',
+    icon: 'cpa',
+    search_terms: ['cpa'],
     description: '',
-    default_base_url: 'https://api.anthropic.com',
-    notices: [],
+    default_base_url: '',
+
     param_fields: [],
     credential_fields: [],
     connection: {
-      type: 'subscription',
-      credential_input: 'authorization',
-      authorization_methods: ['browser_oauth'],
+      type: 'api_key',
+      credential_input: 'batch_text',
     },
     capabilities: {
       model_discovery: false,
-      quota_observation: false,
-      credential_actions: [],
+
       outbound_proxy: false,
     },
     routes: [
@@ -93,9 +89,9 @@ const GROUP_OPTIONS = [
   },
   {
     id: 9,
-    name: 'Beta Subscription',
-    channel_id: 'claude_sub',
-    connection_type: 'subscription',
+    name: 'Beta Gateway',
+    channel_id: 'cliproxyapi',
+    connection_type: 'api_key',
     params: {},
     provider_url: null,
     enabled: true,
@@ -153,8 +149,6 @@ interface ImportRequests {
   createBodies: Record<string, unknown>[]
   createIdempotencyKeys: string[]
   credentialImports: { groupID: string; body: Record<string, unknown>; key: string }[]
-  stageAuthorizations: Record<string, unknown>[]
-  stagePolls: string[]
 }
 
 async function mockImportApi(
@@ -162,22 +156,16 @@ async function mockImportApi(
   options: {
     createStatus?: number
     credentialCount?: number
-    pollSequence?: Record<string, unknown>[]
   } = {},
 ): Promise<ImportRequests> {
   const requests: ImportRequests = {
     createBodies: [],
     createIdempotencyKeys: [],
     credentialImports: [],
-    stageAuthorizations: [],
-    stagePolls: [],
   }
   const ok = (data: unknown) => ({ code: 0, message: 'ok', data })
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
-    // OAuth popup stand-in: the stager needs `location.replace` and `close`.
-    window.open = () =>
-      ({ closed: false, close() {}, location: { replace() {} } }) as unknown as Window
   }, 'e2e-auth-key')
   await page.route('**/api/**', async (route: Route) => {
     const request = route.request()
@@ -228,32 +216,6 @@ async function mockImportApi(
         credential_id: 9,
       })
     }
-    if (path === '/api/credential-stages/authorizations' && request.method() === 'POST') {
-      requests.stageAuthorizations.push((request.postDataJSON() ?? {}) as Record<string, unknown>)
-      return fulfill({
-        stage_id: 'stage_abc',
-        status: 'pending_authorization',
-        authorization_method: 'browser_oauth',
-        authorization_url: 'https://auth.example.com/oauth',
-        redirect_uri: 'http://127.0.0.1/oauth/callback',
-        expires_at_ms: Date.now() + 600_000,
-        account: {},
-      })
-    }
-    const stageGet = path.match(/^\/api\/credential-stages\/([a-zA-Z0-9_-]+)$/)
-    if (stageGet && request.method() === 'GET') {
-      requests.stagePolls.push(stageGet[1]!)
-      const next = options.pollSequence?.[requests.stagePolls.length - 1]
-      return fulfill(
-        next ?? {
-          stage_id: stageGet[1],
-          status: 'ready',
-          authorization_method: 'browser_oauth',
-          expires_at_ms: Date.now() + 600_000,
-          account: { email_mask: 't***@example.com' },
-        },
-      )
-    }
     if (path === '/api/groups/42') return fulfill(GROUP_42.summary)
     if (path === '/api/groups/42/settings') return fulfill(GROUP_42.settings)
     if (path === '/api/groups/42/models') return fulfill(GROUP_42.models)
@@ -261,6 +223,19 @@ async function mockImportApi(
   })
   return requests
 }
+
+test('API-only picker retains external CPA without subscription authorization controls', async ({
+  page,
+}) => {
+  await mockImportApi(page)
+  await page.goto('/import', { waitUntil: 'commit' })
+  const externalGateway = page.getByRole('button', { name: 'CLIProxyAPI', exact: true })
+  await expect(externalGateway).toBeVisible({ timeout: FIRST_PAINT })
+  await externalGateway.click()
+  await expect(externalGateway).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('radio', { name: 'Subscription account' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Sign in with/ })).toHaveCount(0)
+})
 
 test('visible group name label focuses its input', async ({ page }) => {
   await mockImportApi(page)
@@ -326,207 +301,6 @@ test('adds the first manual model from the empty import form', async ({ page }) 
   await expect(page.locator('[data-model-id-index="1"]')).toBeVisible()
 })
 
-for (const authState of [
-  'reauthorization_required',
-  'outcome_unknown',
-  'available',
-  'empty',
-  'delete',
-  'unauthorized',
-  'mismatch',
-]) {
-  test(`existing subscription ${authState} configures only one stage`, async ({ page }) => {
-    const requests = await mockImportApi(page)
-    const connections: { body: unknown; key: string; expectedID: string }[] = []
-    let configured = authState !== 'empty'
-    let deletes = 0
-    await page.route('**/api/groups/9', (route) =>
-      route.fulfill({
-        json: {
-          code: 0,
-          message: 'ok',
-          data: {
-            ...GROUP_42.summary,
-            id: 9,
-            name: 'Beta Subscription',
-            channel_id: 'claude_sub',
-            connection_type: 'subscription',
-            credential_configured: configured,
-            credential_status: !configured
-              ? null
-              : ['available', 'delete'].includes(authState)
-                ? 'available'
-                : 'disabled',
-          },
-        },
-      }),
-    )
-    await page.route('**/api/groups/9/credential', async (route) => {
-      if (route.request().method() === 'DELETE') {
-        expect(route.request().headers()['x-credential-id']).toBe('99')
-        configured = false
-        deletes += 1
-      }
-      return route.fulfill({
-        json: {
-          code: 0,
-          message: 'ok',
-          data: {
-            credential: !configured
-              ? null
-              : {
-                  credential_id: 99,
-                  connection_type: 'subscription',
-                  auth_state: ['available', 'delete'].includes(authState)
-                    ? 'ready'
-                    : ['unauthorized', 'mismatch'].includes(authState)
-                      ? 'reauthorization_required'
-                      : authState,
-                  secret_version: 1,
-                  mask: '***',
-                  account: { email_mask: 't***@example.com' },
-                  effective_status: ['available', 'delete'].includes(authState)
-                    ? 'available'
-                    : 'disabled',
-                  recent_success_count: 0,
-                  recent_failure_count: 0,
-                  consecutive_failure_count: 0,
-                  last_failure_category: 'ok',
-                  last_status_code: null,
-                  cooldown_until_ms: null,
-                  recovery: { mode: 'none', automatic: false, at_ms: null },
-                },
-            observation: null,
-          },
-        },
-      })
-    })
-    await page.route('**/api/groups/9/settings', (route) =>
-      route.fulfill({
-        json: {
-          code: 0,
-          message: 'ok',
-          data: {
-            ...GROUP_42.settings,
-            name: 'Beta Subscription',
-            channel_id: 'claude_sub',
-            connection_type: 'subscription',
-          },
-        },
-      }),
-    )
-    await page.route('**/api/groups/9/models', (route) =>
-      route.fulfill({ json: { code: 0, message: 'ok', data: GROUP_42.models } }),
-    )
-    await page.route('**/api/groups/9/credential/connect', async (route) => {
-      const expectedID = route.request().headers()['x-credential-id'] ?? ''
-      expect(expectedID).toBe(['empty', 'delete'].includes(authState) ? '0' : '99')
-      connections.push({
-        body: route.request().postDataJSON(),
-        key: route.request().headers()['idempotency-key'] ?? '',
-        expectedID,
-      })
-      if (authState === 'mismatch')
-        return route.fulfill({
-          status: 409,
-          json: {
-            code: 'SINGLE_CREDENTIAL_REQUIRED',
-            message: 'same account required',
-            data: null,
-          },
-        })
-      if (authState === 'unauthorized' && connections.length === 1)
-        return route.fulfill({
-          status: 401,
-          json: { code: 401, message: 'unauthorized', data: null },
-        })
-      if (connections.length === 1)
-        return route.fulfill({
-          status: 503,
-          json: {
-            code: 'TEMPORARILY_UNAVAILABLE',
-            message: 'retry',
-            data: null,
-          },
-        })
-      return route.fulfill({
-        json: { code: 0, message: 'ok', data: { group_id: 9, credential_id: 99 } },
-      })
-    })
-    if (authState === 'delete') {
-      await page.goto('/groups/9?tab=credentials', { waitUntil: 'commit' })
-      await expect(page.getByRole('button', { name: 'More actions' })).toBeVisible({
-        timeout: FIRST_PAINT,
-      })
-      await page.getByRole('button', { name: 'More actions' }).click()
-      await page.getByRole('button', { name: 'Delete', exact: true }).click()
-      await page
-        .getByRole('alertdialog')
-        .getByRole('button', { name: 'Delete', exact: true })
-        .click()
-      await expect.poll(() => deletes).toBe(1)
-      await expect(page.getByText('No keys yet', { exact: true })).toBeVisible()
-      await page.getByRole('button', { name: 'Add key', exact: true }).click()
-    } else await page.goto('/import?mode=existing&group_id=9', { waitUntil: 'commit' })
-    if (authState === 'available') {
-      await expect(
-        page.getByText('This group already has a credential', { exact: false }),
-      ).toBeVisible({ timeout: FIRST_PAINT })
-      await expect(
-        page.getByRole('button', { name: 'Sign in with Claude Subscription' }),
-      ).toHaveCount(0)
-      expect(connections).toHaveLength(0)
-      return
-    }
-    const authorize = page.getByRole('button', { name: 'Sign in with Claude Subscription' })
-    await expect(authorize).toBeVisible({ timeout: FIRST_PAINT })
-    await authorize.click()
-    await expect.poll(() => requests.stageAuthorizations.length).toBe(1)
-    expect(requests.stageAuthorizations[0]).toEqual({ channel_id: 'claude_sub', group_id: 9 })
-    const submit = page.getByRole('button', { name: 'Import credential', exact: true })
-    await expect(submit).toBeEnabled()
-    await submit.click()
-    await expect.poll(() => connections.length).toBe(1)
-    if (authState === 'mismatch') {
-      await expect(
-        page.getByText('This Group already has a credential.', { exact: false }),
-      ).toBeVisible()
-      expect(connections[0]?.body).toEqual({ staged_credential_id: 'stage_abc' })
-      expect(deletes).toBe(0)
-      await expect(page).toHaveURL(/\/import/)
-      return
-    }
-    if (authState === 'unauthorized') {
-      await page.waitForURL(/\/login\?.*redirect=/)
-      const stored = await page.evaluate(() =>
-        JSON.parse(sessionStorage.getItem('gpt-load.import-reauth-draft') ?? 'null'),
-      )
-      expect(stored.draft.mode).toBe('existing')
-      expect(stored.draft.group_id).toBe(9)
-      expect(stored.draft.staged_credential.stage_id).toBe('stage_abc')
-      expect(stored.draft.staged_credential.authorization_method).toBe('browser_oauth')
-      await page.getByRole('textbox', { name: 'Sign-in key', exact: true }).fill('e2e-auth-key')
-      await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-      await page.waitForURL(/\/import/)
-      await expect(page.getByText('t***@example.com', { exact: true })).toBeVisible()
-      await expect(submit).toBeEnabled()
-      await submit.click()
-      await expect.poll(() => connections.length).toBe(2)
-      expect(connections[1]?.body).toEqual({ staged_credential_id: 'stage_abc' })
-      expect(requests.stageAuthorizations).toHaveLength(1)
-      await expect
-        .poll(() => page.evaluate(() => sessionStorage.getItem('gpt-load.import-reauth-draft')))
-        .toBeNull()
-      return
-    }
-    await page.getByRole('button', { name: 'Check result', exact: true }).click()
-    await expect.poll(() => connections.length).toBe(2)
-    expect(connections[0]?.body).toEqual({ staged_credential_id: 'stage_abc' })
-    expect(connections[0]?.key).not.toBe('')
-    expect(connections[1]?.key).toBe(connections[0]?.key)
-    expect(connections[1]?.expectedID).toBe(connections[0]?.expectedID)
-  })
-}
 test('single credential rejects multiple lines including duplicate keys', async ({ page }) => {
   const requests = await mockImportApi(page)
   await page.goto('/import', { waitUntil: 'commit' })
@@ -554,43 +328,6 @@ test('one formatted OpenAI JSON credential can be submitted unchanged', async ({
   await expect.poll(() => requests.createBodies.length).toBe(1)
   expect(requests.createBodies[0]!.credential).toBe(credential)
 })
-
-for (const status of ['pending_authorization', 'expired', 'failed']) {
-  test(`subscription ${status} can retry without connecting a second account`, async ({ page }) => {
-    const requests = await mockImportApi(page)
-    let authorizations = 0
-    const stage = () => ({
-      stage_id: authorizations === 1 ? 'stage_old' : 'stage_retried',
-      status: authorizations === 1 ? status : 'ready',
-      authorization_method: 'browser_oauth',
-      authorization_url: 'https://auth.example.com/oauth',
-      redirect_uri: 'http://127.0.0.1/oauth/callback',
-      expires_at_ms: Date.now() + 600_000,
-      account: {},
-    })
-    await page.route('**/api/credential-stages/**', async (route) => {
-      if (route.request().url().endsWith('/authorizations')) authorizations += 1
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ code: 0, message: 'ok', data: stage() }),
-      })
-    })
-    await page.goto('/import', { waitUntil: 'commit' })
-    await expect(page.locator('#channel-credentials')).toBeVisible({ timeout: FIRST_PAINT })
-    await page.getByRole('radio', { name: 'Subscription account' }).click()
-    await page.getByRole('button', { name: 'Sign in with Claude Subscription' }).click()
-    const add = page.getByRole('button', { name: 'Connect another account', exact: true })
-    await expect(add).toHaveCount(0)
-    const retry = page.getByRole('button', { name: 'Start a new authorization', exact: true })
-    await expect(retry).toBeEnabled()
-    await retry.click()
-    await expect.poll(() => authorizations).toBe(2)
-    await expect(add).toHaveCount(0)
-    await page.getByRole('button', { name: 'Create Group', exact: true }).click()
-    await expect.poll(() => requests.createBodies.length).toBe(1)
-    expect(requests.createBodies[0]!.staged_credential_id).toBe('stage_retried')
-  })
-}
 
 test('existing Group summary failure is visible and retry recovers the first import', async ({
   page,
@@ -807,34 +544,6 @@ test('a 401 captures the draft to sessionStorage and re-login restores it', asyn
   void context
 })
 
-test('subscription channel stages an account through authorization polling', async ({ page }) => {
-  const requests = await mockImportApi(page, {
-    pollSequence: [
-      {
-        stage_id: 'stage_abc',
-        status: 'pending_authorization',
-        authorization_method: 'browser_oauth',
-        authorization_url: 'https://auth.example.com/oauth',
-        redirect_uri: 'http://127.0.0.1/oauth/callback',
-        expires_at_ms: Date.now() + 600_000,
-        account: {},
-      },
-    ],
-  })
-  await page.goto('/import', { waitUntil: 'commit' })
-
-  await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
-    timeout: FIRST_PAINT,
-  })
-  await page.getByRole('radio', { name: 'Subscription account' }).click()
-  await page.getByRole('button', { name: 'Sign in with Claude Subscription' }).click()
-
-  await expect.poll(() => requests.stageAuthorizations.length).toBe(1)
-  expect(requests.stageAuthorizations[0]!.channel_id).toBe('claude_sub')
-  await expect.poll(() => requests.stagePolls.length, { timeout: 10_000 }).toBeGreaterThan(0)
-  await expect(page.getByText('t***@example.com')).toBeVisible({ timeout: 15_000 })
-})
-
 test('import discovery runs against the entered connection and appends candidates', async ({
   page,
 }) => {
@@ -914,7 +623,9 @@ test('import discovery runs against the entered connection and appends candidate
   await expect(legend.getByText('Live discovery', { exact: true })).toBeVisible()
 
   await expect(dialog.getByText('0 of 2 available models selected')).toBeVisible()
-  await dialog.getByRole('checkbox', { name: /^GPT Discovered GPT Discovered gpt-discovered/ }).click()
+  await dialog
+    .getByRole('checkbox', { name: /^GPT Discovered GPT Discovered gpt-discovered/ })
+    .click()
   await dialog.getByRole('checkbox', { name: /^GPT Priced GPT Priced gpt-priced/ }).click()
   await expect(dialog.getByText('2 of 2 available models selected')).toBeVisible()
 

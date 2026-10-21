@@ -1,15 +1,14 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 // Phase 2 home-domain coverage for the Astryx entry: the admin ledger
-// (summary/attention/subscriptions/access key/gateway/spend), canonical
+// (summary/attention/access key/gateway/spend), canonical
 // `access_key_id`/`client` query state, credential-sensitive copy and
 // quick-import flows, the empty welcome state, error + stale recovery, and
 // the access-key read-only mode.
 //
 // The mock mirrors the strict home projectors: 30d statistics must keep
 // day-aligned buckets whose counts sum to the summary, health recovery
-// objects must match cooldown/blacklist invariants, and subscription
-// credentials must satisfy the credential-item rules.
+// objects must match cooldown/blacklist invariants.
 
 const allProtocols = [
   'openai-completions',
@@ -136,8 +135,7 @@ function healthPayload(nowMS: number, attention: boolean) {
           },
         ]
       : [],
-    low_quota_credentials: [],
-    expiring_reset_credits: [],
+
     blocked_access_keys: [],
     request_log: {
       enqueued_total: 0,
@@ -235,72 +233,6 @@ function statisticsPayload(nowMS: number, range: '24h' | '30d') {
   }
 }
 
-function subscriptionAccountsPayload(nowMS: number) {
-  return {
-    observed_at_ms: nowMS,
-    items: [
-      {
-        channel_id: 'openai',
-        channel_name: 'OpenAI',
-        channel_mark: 'O',
-        channel_icon: 'openai',
-        capabilities: {
-          model_discovery: true,
-          quota_observation: true,
-          credential_actions: ['reset_credit'],
-          outbound_proxy: false,
-        },
-        group_count: 1,
-        available_group_count: 1,
-        credential: {
-          credential_id: 11,
-          connection_type: 'subscription',
-          secret_version: 1,
-          mask: '••••sub',
-          account: { email: 'sub@example.com' },
-          auth_state: 'ready',
-          observation: {
-            state: 'fresh',
-            snapshot: {
-              plan_summary: { name: 'Pro', level: 'premium' },
-              quota_windows: [
-                {
-                  id: 'w1',
-                  label: 'Weekly',
-                  label_key: 'weekly',
-                  scope: 'model',
-                  unit: 'requests',
-                  used: 20,
-                  limit: 100,
-                  remaining: 80,
-                  utilization: 0.2,
-                  reset_at_ms: nowMS + 3 * dayMilliseconds,
-                  window_seconds: 604_800,
-                  state: 'available',
-                  is_primary: true,
-                },
-              ],
-              reset_credits_available: 0,
-              reset_credits: [],
-            },
-            observation_version: 1,
-            observed_at_ms: nowMS,
-            last_attempt_at_ms: nowMS,
-          },
-          effective_status: 'available',
-          recent_success_count: 5,
-          recent_failure_count: 0,
-          consecutive_failure_count: 0,
-          last_failure_category: 'ok',
-          last_status_code: null,
-          cooldown_until_ms: null,
-          recovery: { mode: 'none', automatic: false, at_ms: null },
-        },
-      },
-    ],
-  }
-}
-
 interface HomeRequests {
   paths: string[]
   reveals: number[]
@@ -310,7 +242,6 @@ interface MockHomeOptions {
   principalType?: 'admin' | 'access_key'
   empty?: boolean
   attention?: boolean
-  subscription?: boolean
   baseStatus?: number
 }
 
@@ -353,14 +284,6 @@ async function mockHome(page: Page, options: MockHomeOptions = {}): Promise<Home
     if (path === '/api/home/statistics') {
       const range = url.searchParams.get('range') === '24h' ? '24h' : '30d'
       await fulfill(statisticsPayload(nowMS, range))
-      return
-    }
-    if (path === '/api/home/subscription-accounts') {
-      await fulfill(
-        options.subscription === false
-          ? { observed_at_ms: nowMS, items: [] }
-          : subscriptionAccountsPayload(nowMS),
-      )
       return
     }
     if (path === '/api/health') {
@@ -413,10 +336,6 @@ test('renders the admin ledger and canonicalizes the home query', async ({ page 
     name: /prod has 1 blacklisted credentials/,
   })
   await expect(blacklisted).toHaveAttribute('href', '/groups/1?tab=credentials')
-
-  // Subscription accounts card.
-  await expect(page.getByRole('heading', { name: 'Recently used' })).toBeVisible()
-  await expect(page.getByRole('article', { name: 'sub@example.com · Available' })).toBeVisible()
 
   // Gateway connection + spend.
   await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toBeVisible()
@@ -556,7 +475,6 @@ test('scopes home to the access-key session', async ({ page }) => {
   await expect(page.getByRole('combobox', { name: 'Access key' })).toBeDisabled()
   const requested = requests.paths
   expect(requested.some((path) => path.includes('/api/health'))).toBe(false)
-  expect(requested.some((path) => path.includes('subscription-accounts'))).toBe(false)
   expect(requested.some((path) => path.includes('/api/system/update'))).toBe(false)
 
   // Copying uses the session credential directly — no reveal request.

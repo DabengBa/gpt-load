@@ -35,14 +35,9 @@ type Loader struct {
 	manager          *state.Manager
 	registry         *state.CredentialRegistry
 	channelRegistry  *channel.Registry
-	subscriptions    subscriptionCredentialCanonicalizer
 	encryption       encryption.Service
 	environmentProxy *outboundproxy.Config
 	accessQuota      *accessquota.Runtime
-}
-
-type subscriptionCredentialCanonicalizer interface {
-	CanonicalCredential(channel.ID, []byte) ([]byte, error)
 }
 
 // NewWithCredentialValidation creates the production loader that verifies
@@ -52,14 +47,12 @@ func NewWithCredentialValidation(
 	manager *state.Manager,
 	registry *state.CredentialRegistry,
 	channelRegistry *channel.Registry,
-	subscriptions subscriptionCredentialCanonicalizer,
 	encryptionService encryption.Service,
 	accessQuotas ...*accessquota.Runtime,
 ) *Loader {
 	loader := New(db, manager, registry, channelRegistry)
 	loader.encryption = encryptionService
 	loader.environmentProxy = outboundproxy.Environment()
-	loader.subscriptions = subscriptions
 	for _, runtime := range accessQuotas {
 		if runtime != nil {
 			loader.accessQuota = runtime
@@ -336,29 +329,12 @@ func (l *Loader) validatePersistedCredentials(
 			clear(raw)
 			return fmt.Errorf("validate credential %d for group %d: connection does not match channel", entry.ID, entry.GroupID)
 		}
-		if expectedConnection == string(models.ConnectionTypeSubscription) {
-			if l.subscriptions == nil {
-				clear(raw)
-				return fmt.Errorf("validate credential %d for group %d: subscription driver is unavailable", entry.ID, entry.GroupID)
-			}
-			var parseErr error
-			canonical, parseErr = l.subscriptions.CanonicalCredential(target.channelID, raw)
-			clear(raw)
-			if parseErr != nil {
-				return fmt.Errorf("validate credential %d for group %d: stored shape is invalid", entry.ID, entry.GroupID)
-			}
-		} else {
-			if expectedConnection != string(models.ConnectionTypeAPIKey) {
-				clear(raw)
-				return fmt.Errorf("validate credential %d for group %d: subscription driver is unavailable", entry.ID, entry.GroupID)
-			}
-			credential, validateErr := l.channelRegistry.ValidateCredential(target.channelID, raw)
-			clear(raw)
-			if validateErr != nil {
-				return fmt.Errorf("validate credential %d for group %d: stored shape is invalid", entry.ID, entry.GroupID)
-			}
-			canonical = credential.CanonicalJSON()
+		credential, validateErr := l.channelRegistry.ValidateCredential(target.channelID, raw)
+		clear(raw)
+		if validateErr != nil {
+			return fmt.Errorf("validate credential %d for group %d: stored shape is invalid", entry.ID, entry.GroupID)
 		}
+		canonical = credential.CanonicalJSON()
 		fingerprint := l.encryption.Hash(string(canonical))
 		clear(canonical)
 		if subtle.ConstantTimeCompare([]byte(fingerprint), []byte(entry.Fingerprint)) != 1 {
@@ -380,7 +356,7 @@ func queryCompileRows(ctx context.Context, db *gorm.DB) (compileRows, error) {
 		return compileRows{}, fmt.Errorf("query groups: %w", err)
 	}
 	if err := db.
-		Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version", "auth_state", "auth_error_code").
+		Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version").
 		Order("id ASC").
 		Find(&rows.credentials).Error; err != nil {
 		return compileRows{}, fmt.Errorf("query credential metadata: %w", err)
@@ -862,8 +838,8 @@ func mapCredentials(rows []models.Credential, groups []models.Group) []state.Cre
 				target.connectionType,
 				target.params,
 			),
-			Fingerprint: row.Fingerprint,
-			AuthState:   state.CredentialAuthState(row.AuthState), EncryptedValue: row.Data,
+			Fingerprint:    row.Fingerprint,
+			EncryptedValue: row.Data,
 		})
 	}
 	return result

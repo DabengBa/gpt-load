@@ -42,9 +42,7 @@ func TestBeta1InitialMigrationCreatesCompleteFinalSchema(t *testing.T) {
 		"system_settings",
 		"jobs",
 		"control_operations",
-		"credential_stages",
-		"credential_observations",
-		"credential_reset_operations",
+
 		"credential_attempt_stats",
 	}
 	if got := migrations.TableNames0001(); !reflect.DeepEqual(got, wantTables) {
@@ -57,11 +55,10 @@ func TestBeta1InitialMigrationCreatesCompleteFinalSchema(t *testing.T) {
 	}
 
 	for table, columns := range map[string][]string{
-		"groups":                  {"connection_type"},
-		"credentials":             {"identity_fingerprint", "secret_version", "auth_state", "auth_error_code"},
-		"request_log_attempts":    {"upstream_protocol"},
-		"model_prices":            {"mode_price_schedules"},
-		"credential_observations": {"last_auth_refresh_secret_version"},
+		"groups":               {"connection_type"},
+		"credentials":          {"identity_fingerprint", "secret_version"},
+		"request_log_attempts": {"upstream_protocol"},
+		"model_prices":         {"mode_price_schedules"},
 	} {
 		assertColumns(t, db, table, columns)
 	}
@@ -81,59 +78,10 @@ func TestBeta1InitialMigrationCreatesCompleteFinalSchema(t *testing.T) {
 		}
 	}
 
-	for index, method := range []string{"browser_oauth", "device_oauth", "oauth_file"} {
-		if err := insertBeta1CredentialStage(db, fmt.Sprintf("stage-%d", index), method); err != nil {
-			t.Errorf("Beta.1 authorization method %q was rejected: %v", method, err)
-		}
-	}
-	if err := insertBeta1CredentialStage(db, "stage-invalid", "unsupported"); err == nil {
-		t.Fatal("Beta.1 initial migration accepted an unsupported authorization method")
-	}
 	if err := db.Exec(`INSERT INTO groups (
 		name, channel_id, connection_type, params, models, enabled, created_at_ms, updated_at_ms
 	) VALUES ('invalid', 'openai', 'other', '{}', '[]', true, 1, 1)`).Error; err == nil {
 		t.Fatal("Beta.1 initial migration accepted an unsupported connection type")
-	}
-}
-
-func insertBeta1CredentialStage(db *gorm.DB, id, method string) error {
-	return db.Exec(`INSERT INTO credential_stages (
-		id, channel_id, connection_type, authorization_method, status,
-		encrypted_payload, payload_schema_version, safe_summary_json,
-		identity_fingerprint, expires_at_ms, error_code, created_at_ms, updated_at_ms
-	) VALUES (?, 'grok', 'subscription', ?, 'pending_authorization',
-		'encrypted', 1, '{}', '', 100, '', 1, 1)`, id, method).Error
-}
-
-func TestBeta1InitialMigrationCascadesCredentialObservations(t *testing.T) {
-	t.Parallel()
-	db := openMigratedInitialTestDatabase(t)
-	if err := db.Exec(`INSERT INTO groups (
-		id, name, channel_id, connection_type, params, models, enabled, created_at_ms, updated_at_ms
-	) VALUES (1, 'subscription', 'openai', 'subscription', '{}', '[]', true, 1, 1)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`INSERT INTO credentials (
-		id, group_id, data, fingerprint, identity_fingerprint, secret_version,
-		auth_state, auth_error_code, status, created_at_ms, updated_at_ms
-	) VALUES (1, 1, 'cipher', 'secret', 'account', 1, 'ready', '', 'active', 1, 1)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`INSERT INTO credential_observations (
-		credential_id, identity_fingerprint, schema_version, observation_version,
-		snapshot_json, state, last_error_code, updated_at_ms
-	) VALUES (1, 'account', 1, 1, '{}', 'fresh', '', 1)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`DELETE FROM credentials WHERE id = 1`).Error; err != nil {
-		t.Fatal(err)
-	}
-	var count int64
-	if err := db.Table("credential_observations").Count(&count).Error; err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Fatalf("credential observation count = %d, want 0", count)
 	}
 }
 
