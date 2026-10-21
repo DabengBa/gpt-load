@@ -1,6 +1,6 @@
 # SQLite maintenance and recovery
 
-> Breaking / 破坏性变更：本次删除内置订阅/CPA 的版本无法原地打开旧库。旧库只能停机后用 `gpt-load convert-legacy-db` 离线转换，或改用全新数据库；含旧订阅结构或退役 migration `0003` 的库会被转换器拒绝，包括 API-only 旧库。本页的常规更新/恢复流程不会转换旧库，也不会把它接入此构建；转换步骤见 [旧库离线转换](../.docs/tech/legacy-db-conversion.md)。保留旧实例和备份。本次不部署、不修改业务库；启动拒绝不保证 SQLite 文件/WAL 零副作用。详见 [README](../README_CN.md#快速开始)。
+> Breaking / 破坏性变更：本次删除内置订阅/CPA 的版本无法原地打开旧库。旧库只能停机后用 `gpt-load convert-legacy-db` 离线转换，或改用全新数据库。拒绝来自**启动**而非转换：应用启动时拒绝含退役 migration `0003` 的旧库且不就地修改；转换器反而要求台账含 `0003`，因此 API-only 旧库可以正常转换，只有含退役订阅结构或丢失 `0003` 的库会被转换器拒绝。转换还需要持久磁盘上的额外临时空间（`TMPDIR` 至少容纳一份源库大小的快照），不要指向小容量 tmpfs。本页的常规更新/恢复流程不会转换旧库，也不会把它接入此构建；转换步骤见 [旧库离线转换](../.docs/tech/legacy-db-conversion.md)。保留旧实例和备份。本次不部署、不修改业务库；启动拒绝不保证 SQLite 文件/WAL 零副作用。详见 [README](../README_CN.md#快速开始)。
 
 This guide applies to the **application-managed SQLite** deployment: leave
 `DATABASE_DSN` empty so the database is `${DATA_DIR}/gpt-load.db` (the official

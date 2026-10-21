@@ -439,8 +439,8 @@ func validateConverted(ctx context.Context, target, source *gorm.DB, plan stage,
 	}
 	// The target schema is the current schema; a retired column surviving into
 	// it would mean the published database is not what the application expects.
-	for _, column := range retiredColumns() {
-		for table := range currentColumns {
+	for table := range currentColumns {
+		for _, column := range retiredColumns()[table] {
 			if target.Migrator().HasColumn(table, column) {
 				return fmt.Errorf("offline conversion: target still declares %s.%s", table, column)
 			}

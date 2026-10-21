@@ -358,7 +358,7 @@ func retiredSubscriptionTables() []string {
 func droppedSourceColumns(source *gorm.DB) ([]string, error) {
 	var columns []string
 	for table := range currentColumns {
-		for _, column := range retiredColumns() {
+		for _, column := range retiredColumns()[table] {
 			if source.Migrator().HasColumn(table, column) {
 				columns = append(columns, table+"."+column)
 			}
@@ -446,7 +446,7 @@ func requireExactLegacyColumns(source *gorm.DB, tables []string) error {
 			return fmt.Errorf("offline conversion: read %s columns: %w", table, err)
 		}
 		for _, column := range declared {
-			if slices.Contains(current, column) || slices.Contains(retiredColumns(), column) {
+			if slices.Contains(current, column) || isRetiredColumn(table, column) {
 				continue
 			}
 			return fmt.Errorf(
@@ -467,14 +467,43 @@ func requireExactLegacyColumns(source *gorm.DB, tables []string) error {
 	return nil
 }
 
-// retiredColumns are columns the current schema deliberately dropped. Their
-// presence is expected in a legacy source; they are not copied, and the
-// conversion reports them.
-func retiredColumns() []string {
-	return []string{
+// retiredColumns are the columns the current schema deliberately dropped, keyed
+// by the table that used to declare them.
+//
+// The retirement is per table and column, never a bare column-name allowlist: a
+// source that never declared `groups.price_multiplier_micros` but does declare
+// `credentials.price_multiplier_micros` stores a column this release cannot
+// interpret, and it must stay an unclassified column instead of being silently
+// dropped just because another table retired the same name.
+func retiredColumns() map[string][]string {
+	return map[string][]string{
 		// Subscription credential auth state.
-		"auth_state", "auth_error_code",
+		"credentials": {"auth_state", "auth_error_code"},
+		// Configurable price multipliers, retired by the frozen-pricing change
+		// (`0009_price_multipliers`). The stored value is never re-read: new
+		// receipts use frozen model prices only, so the value is retired with the
+		// column and no historical amount is recomputed.
+		"groups":      {"price_multiplier_micros"},
+		"access_keys": {"price_multiplier_micros"},
 	}
+}
+
+// isRetiredColumn reports whether table used to declare column before this
+// release dropped it.
+func isRetiredColumn(table, column string) bool {
+	return slices.Contains(retiredColumns()[table], column)
+}
+
+// retiredColumnPairs flattens the retired declaration to `table.column` names.
+func retiredColumnPairs() []string {
+	var pairs []string
+	for table, columns := range retiredColumns() {
+		for _, column := range columns {
+			pairs = append(pairs, table+"."+column)
+		}
+	}
+	slices.Sort(pairs)
+	return pairs
 }
 
 // currentColumns records the columns the current schema declares for every
