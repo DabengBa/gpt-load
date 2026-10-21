@@ -104,10 +104,28 @@ func TestRetiredColumnsAreAbsentFromCurrentSchema(t *testing.T) {
 	if len(retired) == 0 {
 		t.Fatal("no retired columns are declared")
 	}
-	for _, table := range migratedTables {
-		for _, column := range retired {
+	for table, columns := range retired {
+		if !slices.Contains(migratedTables, table) {
+			t.Errorf("retired columns are declared for %q, which is not a migrated table", table)
+		}
+		if len(columns) == 0 {
+			t.Errorf("%s declares no retired column", table)
+		}
+		for _, column := range columns {
 			if db.Migrator().HasColumn(table, column) {
 				t.Errorf("current schema still declares retired column %s.%s", table, column)
+			}
+		}
+	}
+	// The pairs are reported per table, so the same pair must not be declared
+	// twice and no pair may collide with a current column.
+	if pairs := retiredColumnPairs(); len(pairs) != len(retiredColumns()) && len(pairs) == 0 {
+		t.Fatalf("retired column pairs = %v", pairs)
+	}
+	for table, columns := range currentColumns {
+		for _, column := range columns {
+			if isRetiredColumn(table, column) {
+				t.Errorf("%s.%s is declared both current and retired", table, column)
 			}
 		}
 	}

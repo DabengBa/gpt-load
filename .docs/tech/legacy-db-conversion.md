@@ -15,8 +15,12 @@ code:
 Removing the built-in subscriptions and the embedded CLIProxyAPI adapter removed
 migration entries and two credential columns from the schema, so this build
 cannot open a database written by the last release that still shipped retired
-migration `0003_remove_observation_fresh_until`. Operators have exactly two
-supported paths:
+migration `0003_remove_observation_fresh_until`: startup refuses such a database
+instead of mutating it. That refusal is a **startup** verdict, not a conversion
+verdict — the converter requires `0003_remove_observation_fresh_until` in the
+ledger precisely because it is the marker of the supported legacy release, so a
+legacy source is accepted and only a source that lost the entry is refused.
+Operators have exactly two supported paths:
 
 - **Convert offline** with `gpt-load convert-legacy-db` and keep groups,
   encrypted credentials, access keys, quota state, and settings; request logs,
@@ -76,17 +80,33 @@ out-of-order entry, or a missing required entry is refused.
 
 The source **schema** is pinned in both directions per retained table: every
 current column must exist, and any other column must be a retired column
-(`credentials.auth_state`, `credentials.auth_error_code`). The retired
+declared for **that table**. The retired columns are
+`credentials.auth_state`, `credentials.auth_error_code`, and the pricing columns
+`groups.price_multiplier_micros` and `access_keys.price_multiplier_micros`.
+Retirement is a `table.column` pair, never a column-name allowlist: a source that
+declares `price_multiplier_micros` on any other table, or `auth_state` outside
+`credentials`, is still an unclassified column and is refused. The retired
 subscription tables are declared from
 `internal/storage/migrations/legacy_retired_schema.go`, the models that
 reproduce the historical DDL, so the converter no longer guesses what a real
 legacy database looks like.
 
+The two pricing columns exist only in a database that applied the retired
+`0009_price_multipliers` migration, which is why the ledger rule above accepts
+that retired ID as an optional addition. A source may declare either column,
+both, or neither.
+
+| Column | Table | Retired by |
+| --- | --- | --- |
+| `auth_state`, `auth_error_code` | `credentials` | subscription removal |
+| `price_multiplier_micros` | `groups` | frozen model pricing (`0009_price_multipliers`) |
+| `price_multiplier_micros` | `access_keys` | frozen model pricing (`0009_price_multipliers`) |
+
 | Refusal | Meaning |
 | --- | --- |
 | ledger mismatch | A required entry is missing, or an ID outside the pinned chain and the retired set is present. |
 | undocumented table | A source table is neither migrated nor on the drop list; the converter refuses to guess. |
-| extra or missing column | The declared schema cannot be reproduced in this release. |
+| extra or missing column | The declared schema cannot be reproduced in this release; an extra column must be one of the retired `table.column` pairs above. |
 | non-empty `-wal` / present `-journal` | A writer still holds the database, or a transaction was interrupted. Checked before the source is opened and again after the snapshot. |
 | missing retained table | A table the supported legacy schema declares is absent; copying would publish an empty table and silently lose the rows. |
 | `integrity_check` / `foreign_key_check` failure | The source is damaged; repair or restore it first. |
@@ -205,6 +225,17 @@ legacy database, and nothing below changes the running legacy instance in place.
    Check the printed row counts against the legacy counts for groups,
    credentials, and access keys before going further.
 
+   The command needs room for **two** database-sized copies that are not the
+   published file: the `VACUUM INTO` snapshot goes to the OS temporary
+   directory (`TMPDIR`, `/tmp` by default) and the working copy goes to a
+   scratch directory next to the target. Point `TMPDIR` at persistent disk with
+   at least the source size free, or pass
+   `-e TMPDIR=/backup/tmp` with that path also mounted — a small tmpfs fails
+   mid-snapshot with `disk I/O error` / `database or disk is full`, which is not
+   a source verdict. See
+   [SQLite maintenance and recovery](../../docs/sqlite-maintenance.md) for the
+   same space rules.
+
 5. **Move the key material.** Copy the legacy `encryption.key` into the new data
    directory, or set the same `ENCRYPTION_KEY` in the new environment. Do not let
    the gateway generate a new key.
@@ -249,7 +280,10 @@ and keep the legacy volume and backup out of the script's reach.
 
 删除内置订阅与嵌入式 CLIProxyAPI 后，schema 少了迁移条目和两个凭据列，本构建
 无法直接打开最后一个仍携带退役 migration `0003_remove_observation_fresh_until`
-的版本写出的数据库。只有两条受支持路径：
+的版本写出的数据库：启动会拒绝，而不是就地修改。该拒绝是**启动**判定而不是
+**转换**判定——转换器恰恰要求台账里含
+`0003_remove_observation_fresh_until`，因为它是受支持旧版本的标记：旧库会被
+接受，只有丢失该条目的源库才被拒绝。只有两条受支持路径：
 
 - **离线转换**：`gpt-load convert-legacy-db` 保留分组、加密凭据、访问密钥、
   限额用量与设置；请求日志、用量历史和 debug capture 不迁移。
@@ -292,8 +326,13 @@ gpt-load convert-legacy-db --source <legacy.db> --target <new.db>
 `0009_price_multipliers` 是转换器唯一接受的退役 ID，且只能作为额外项出现；其他
 未知 ID、重复项、乱序项或缺失的必填项都会被拒绝。
 
-源**结构**对每张保留表双向固定：当前列必须全部存在，其他列只能是退役列
-（`credentials.auth_state`、`credentials.auth_error_code`）。退役订阅表的结构
+源**结构**对每张保留表双向固定：当前列必须全部存在，其他列只能是**该表**声明过的
+退役列：`credentials.auth_state`、`credentials.auth_error_code`，以及计价列
+`groups.price_multiplier_micros`、`access_keys.price_multiplier_micros`。
+退役以 `表.列` 对为单位，不是列名白名单：其他表上出现 `price_multiplier_micros`，
+或 `auth_state` 出现在 `credentials` 之外，仍属未分类列并被拒绝。两个计价列只存在
+于执行过退役 `0009_price_multipliers` 的库，这也正是上表把该退役 ID 作为可选额外项
+接受的原因；源库可以有其中任意一列、两列都有或都没有。退役订阅表的结构
 来自 `internal/storage/migrations/legacy_retired_schema.go`——逐字复现历史 DDL
 的模型，转换器不再靠猜测判断真实旧库长什么样。
 
@@ -301,7 +340,7 @@ gpt-load convert-legacy-db --source <legacy.db> --target <new.db>
 | -------------------------------------------- | ------------------------------------------------------------------------ |
 | 台账不匹配                                   | 缺少必填项，或出现固定链与退役集合之外的 ID。                            |
 | 存在未分类表                                 | 转换器既不迁移也不在删除清单里，拒绝猜测。                               |
-| 列多出或缺失                                 | 声明的结构无法在本版本中复现。                                           |
+| 列多出或缺失                                 | 声明的结构无法在本版本中复现；多出的列必须属于上文的退役 `表.列` 对。    |
 | `-wal` 非空或存在 `-journal`                 | 仍有写入者持有数据库，或事务被中断；打开源库前与取快照后各检查一次。     |
 | 缺少保留表                                   | 支持的旧结构声明的表不存在；强行拷贝会发布空表并静默丢失行。             |
 | `integrity_check` / `foreign_key_check` 失败 | 源库损坏，需先修复或恢复。                                               |
@@ -364,6 +403,11 @@ API-key-only 部署的正常状态，可以接受。只拷贝 `connection_type=a
    [SQLite 运维与恢复](../../docs/sqlite-maintenance.md)。
 4. **转换到新数据目录或新卷。**用新镜像、`--network none`、只读挂载备份目录，
    目标指向新目录，不要指向旧目录；先核对输出的分组、凭据、访问密钥行数。
+   命令需要**两份**数据库大小的临时空间，且都不在发布文件里：`VACUUM INTO`
+   快照写入系统临时目录（`TMPDIR`，默认 `/tmp`），工作副本写入目标目录旁的
+   临时目录。请把 `TMPDIR` 指向至少有源库大小的持久磁盘，或用
+   `-e TMPDIR=/backup/tmp` 并同时挂载该路径；tmpfs 空间不足会在取快照中途报
+   `disk I/O error` / `database or disk is full`，那不是对源库的判断。
 5. **迁移密钥。**复制旧 `encryption.key` 到新数据目录，或沿用相同
    `ENCRYPTION_KEY`；不要让网关生成新密钥。
 6. **在新卷上用新版本启动，先换一个端口**（例如 3101），确认日志出现
