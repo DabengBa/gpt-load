@@ -6,27 +6,24 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
-## 2026-10-20 — Bifrost v1.13.0 upgrade and credential failure messages
+## 2026-10-21 — Built-in subscriptions and embedded CPA removed
 
 [PR #191](https://github.com/DabengBa/gpt-load/pull/191) removed the built-in
-subscriptions and the embedded CLIProxyAPI (CPA) execution adapter: the four
-subscription channels and their OAuth, credential-file import, refresh, and
-account/quota observation, plus `internal/subscription/`,
-`internal/execution/cpa/`, and `third_party/cpaembedded/`. The schema therefore
-lost retired migration `0003` and the `credentials.auth_state` /
-`auth_error_code` columns, and this build refuses a database that still declares
-them. The only supported upgrade path is the offline
-`gpt-load convert-legacy-db` command, owned by
-[Legacy Database Conversion](tech/legacy-db-conversion.md); ordinary API-key
+subscription channels and the embedded CLIProxyAPI (CPA) execution adapter,
+including the retired subscription tables and the `credentials.auth_state` /
+`auth_error_code` columns. A database written by the previous release cannot be
+opened in place: it is either converted offline with `gpt-load
+convert-legacy-db` or replaced with a fresh database configured by hand
+([Legacy Database Conversion](tech/legacy-db-conversion.md)). Ordinary API-key
 groups, cloud structured credentials, the external CLIProxyAPI gateway channel,
-and Bifrost execution remain. Downstream Codex and Claude Code client
-configuration is unaffected.
+Bifrost execution, and downstream Codex/Claude Code client configuration remain.
+
+## 2026-10-20 — Bifrost v1.13.0 upgrade and credential failure messages
 
 [PR #189](https://github.com/DabengBa/gpt-load/pull/189) upgraded the embedded
-execution engines — then CPA v8.0.8 → v8.0.35 and the local Bifrost fork
-v1.11.3 → v1.13.0, since removed from CPA and retained for Bifrost — and the
-Go toolchain and Docker builder to 1.27.2, with a three-way merge that kept
-the observer, cache-breakpoint, reasoning-replay, and stream-lifecycle patches.
+execution engines (CPA v8.0.8 → v8.0.35, local Bifrost fork v1.11.3 → v1.13.0,
+Go and the Docker builder to 1.27.2) with a three-way merge that kept the
+observer, cache-breakpoint, reasoning-replay, and stream-lifecycle patches.
 Two behavioral adaptations are now owned explicitly instead of living in an
 upgrade note: OpenRouter's published model list drops entries whose declared
 output modalities GPT-Load cannot serve, and the Embeddings marker follows the
@@ -38,10 +35,11 @@ budget remains described in
 
 [PR #188](https://github.com/DabengBa/gpt-load/pull/188) added
 `last_failure_summary` to credential records: the redacted Provider message of
-the newest real attempt. It also taught the error extractor the Responses
-`response.error.message` envelope and routed the WebSocket error summary through
-the shared redaction path, while keeping the message out of `response.failed`
-health classification ([Credential Failure Diagnostics](tech/credential-diagnostics.md)).
+the newest real attempt, batched for API-key and subscription credentials
+alike. It also taught the error extractor the Responses `response.error.message`
+envelope and routed the WebSocket error summary through the shared redaction
+path, while keeping the message out of `response.failed` health classification
+([Credential Failure Diagnostics](tech/credential-diagnostics.md)).
 
 ## 2026-10-11 — Astryx frontend module ownership
 

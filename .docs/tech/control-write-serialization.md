@@ -67,8 +67,9 @@ Every `writeMu.Lock()` site belongs to exactly one class:
 
 - A new committed side effect never lands while unfinished operation
   recovery is pending (barrier at every admission edge).
-- A side effect that already happened is always recordable (finish/cleanup
-  paths never barrier).
+- Retention cleanup of already-completed operations is never blocked by the
+  barrier (class 4 exempts `CompactCompletedOperations`, which reads only
+  `completed_at_ms IS NOT NULL` rows).
 - Replay of finished operations stays readable during pending recovery
   (replay checks precede the barrier in class 2).
 - Credential runtime-state mutations (health, cooldown, blacklist, restore)

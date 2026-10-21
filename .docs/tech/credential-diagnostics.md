@@ -96,10 +96,9 @@ neither a type nor a code.
 - **Query window:** the activity read still requires one, so
   `enrichCredentialActivities` asks for the last 24 hours
   (`credentialDailyUsageWindow`). `QueryCredentialActivity` rejects a window that
-  is empty, longer than 24 hours, or holds more than 100 credential ids, and
-  `enrichCredentialActivities` silently returns when the read fails. A first
-  real failure whose row is not reachable through that window therefore yields
-  an empty summary rather than an error.
+  is empty, longer than 24 hours, or holds more than 100 credential ids.
+  `enrichCredentialActivities` returns without assigning anything when the read
+  fails, so a failed lookup leaves an empty summary.
 - **Sanitization:** the message passes the existing request-log path —
   `redact.ExtractErrorMessage` for the Provider field, then
   `sanitizeErrorSummary` (invalid UTF-8 repair, redaction of known secrets, and

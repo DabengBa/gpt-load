@@ -106,7 +106,8 @@ Writer detection is a best-effort gate, not a lock. An empty `-wal` or a `-shm`
 side file is not treated as a writer because a read-only open creates them, so
 stopping the legacy instance remains the operator's responsibility. The gate
 runs twice — before the source is opened, and again after the `VACUUM INTO`
-snapshot — so a writer that appears mid-conversion is still caught.
+snapshot — so it can observe a non-empty `-wal` or a `-journal` that exists at
+either moment. It cannot prove that no concurrent writer exists.
 
 The published target is proven, not assumed: every copied table must match its
 source row count and identity set, the target must declare no retired column,
@@ -314,7 +315,8 @@ API-key-only 部署的正常状态，可以接受。只拷贝 `connection_type=a
 
 写入者检测只是尽力而为的门槛，不是锁：空的 `-wal` 或 `-shm` 不算写入者（只读
 打开本身就会创建），停旧实例仍是操作者的责任。该检查执行两次——打开源库前，
-以及 `VACUUM INTO` 取快照后——因此转换中途才出现的写入者同样会被拦下。
+以及 `VACUUM INTO` 取快照后——因此能发现这两个时刻存在的非空 `-wal` 或
+`-journal`；它不能证明不存在并发写入者。
 
 发布结果是被证明的，不是被假设的：每张拷贝表都要与源库行数、主键集合一致；
 目标库不得声明任何退役列；`AUTOINCREMENT` 计数器不得低于源库；且
