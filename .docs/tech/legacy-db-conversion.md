@@ -45,8 +45,19 @@ gpt-load convert-legacy-db --source <legacy.db> --target <new.db>
 - The command prints the copied row count per retained table, the retired columns
   it skipped, a fixed notice that request/usage logs and debug captures were not
   migrated, and a reminder to copy `encryption.key`.
+- Every precondition below is checked against the **source** before anything is
+  copied, and the whole result set is rewritten wholesale. A source that fails
+  any check produces no target file at all, so a partial conversion is not a
+  state an operator can end up in.
 
 ## Supported Source
+
+Acceptance is the conjunction of five independent proofs, all read from the
+source: the pinned ledger, the declared table and column shape, table integrity,
+ordinary (non-subscription) groups, and the absence of stored subscription
+material. The checks run in that order after the writer gate, so a missing table
+or column is reported as itself rather than as the foreign-key damage it would
+cause later.
 
 The ledger check is a **literal pinned list**, not a derivation from the running
 code: the converter carries its own copy of the last legacy release's chain, so a
@@ -76,7 +87,8 @@ legacy database looks like.
 | ledger mismatch | A required entry is missing, or an ID outside the pinned chain and the retired set is present. |
 | undocumented table | A source table is neither migrated nor on the drop list; the converter refuses to guess. |
 | extra or missing column | The declared schema cannot be reproduced in this release. |
-| non-empty `-wal` / present `-journal` | A writer still holds the database, or a transaction was interrupted. |
+| non-empty `-wal` / present `-journal` | A writer still holds the database, or a transaction was interrupted. Checked before the source is opened and again after the snapshot. |
+| missing retained table | A table the supported legacy schema declares is absent; copying would publish an empty table and silently lose the rows. |
 | `integrity_check` / `foreign_key_check` failure | The source is damaged; repair or restore it first. |
 | subscription group | A group uses a retired connection type (`subscription`, `oauth`), a deleted subscription channel (`codex`, `antigravity`, `grok`), or a channel this release no longer defines. |
 | stored subscription rows | Any row at all in `credential_stages`, `credential_observations`, or `credential_reset_operations`. |
@@ -92,7 +104,15 @@ no longer defines is refused as a subscription group rather than dropped.
 
 Writer detection is a best-effort gate, not a lock. An empty `-wal` or a `-shm`
 side file is not treated as a writer because a read-only open creates them, so
-stopping the legacy instance remains the operator's responsibility.
+stopping the legacy instance remains the operator's responsibility. The gate
+runs twice — before the source is opened, and again after the `VACUUM INTO`
+snapshot — so a writer that appears mid-conversion is still caught.
+
+The published target is proven, not assumed: every copied table must match its
+source row count and identity set, the target must declare no retired column,
+its `AUTOINCREMENT` counters must not fall below the source counters, and
+`PRAGMA foreign_key_check` plus `PRAGMA integrity_check` must both pass. Any
+failure aborts publication.
 
 ## What Is Migrated
 
@@ -248,8 +268,15 @@ gpt-load convert-legacy-db --source <legacy.db> --target <new.db>
   发布结果是 `journal_mode=delete` 的单文件数据库，通过同目录硬链接原子发布，
   失败不会留下目标文件。
 - 命令会打印每张保留表的拷贝行数、被跳过的退役列，并提示复制 `encryption.key`。
+- 下方所有前置条件都在拷贝前针对**源库**校验，结果整体重写。任何一项不通过的
+  源库都不会产生目标文件，因此操作者不会停在部分转换的状态里。
 
 ### 受支持的源库
+
+接受一个源库等于同时证明五件事，且全部读自源库：固定台账、声明的表与列结构、
+表级完整性、普通（非订阅）分组，以及不存在已保存的订阅材料。它们在写入者检查
+之后按此顺序执行，因此缺失的表或列会被如实报告，而不是表现为它后面引发的
+外键损坏。
 
 台账校验是一份**字面量固定清单**，不是从运行代派生：转换器自带最后发行版本
 的迁移链副本，未来新增的 migration 不会被重新解释为旧链的一部分。
@@ -274,7 +301,8 @@ gpt-load convert-legacy-db --source <legacy.db> --target <new.db>
 | 台账不匹配                                   | 缺少必填项，或出现固定链与退役集合之外的 ID。                            |
 | 存在未分类表                                 | 转换器既不迁移也不在删除清单里，拒绝猜测。                               |
 | 列多出或缺失                                 | 声明的结构无法在本版本中复现。                                           |
-| `-wal` 非空或存在 `-journal`                 | 仍有写入者持有数据库，或事务被中断。                                     |
+| `-wal` 非空或存在 `-journal`                 | 仍有写入者持有数据库，或事务被中断；打开源库前与取快照后各检查一次。     |
+| 缺少保留表                                   | 支持的旧结构声明的表不存在；强行拷贝会发布空表并静默丢失行。             |
 | `integrity_check` / `foreign_key_check` 失败 | 源库损坏，需先修复或恢复。                                               |
 | 存在订阅分组                                 | 分组使用退役连接类型（`subscription`、`oauth`）、已删除的订阅渠道（`codex`、`antigravity`、`grok`），或本版本已不再定义的渠道。 |
 | 存在订阅表数据行                             | `credential_stages`、`credential_observations`、`credential_reset_operations` 中只要有任意一行。 |
@@ -285,7 +313,13 @@ gpt-load convert-legacy-db --source <legacy.db> --target <new.db>
 API-key-only 部署的正常状态，可以接受。只拷贝 `connection_type=api_key` 的分组。
 
 写入者检测只是尽力而为的门槛，不是锁：空的 `-wal` 或 `-shm` 不算写入者（只读
-打开本身就会创建），停旧实例仍是操作者的责任。
+打开本身就会创建），停旧实例仍是操作者的责任。该检查执行两次——打开源库前，
+以及 `VACUUM INTO` 取快照后——因此转换中途才出现的写入者同样会被拦下。
+
+发布结果是被证明的，不是被假设的：每张拷贝表都要与源库行数、主键集合一致；
+目标库不得声明任何退役列；`AUTOINCREMENT` 计数器不得低于源库；且
+`PRAGMA foreign_key_check` 与 `PRAGMA integrity_check` 都必须通过。任一项失败
+即中止发布。
 
 ### 迁移与丢弃范围
 

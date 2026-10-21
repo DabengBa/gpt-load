@@ -9,7 +9,6 @@ code:
     - internal/control/operation_error.go
     - internal/control/bootstrap.go
     - internal/control/credential_mutations.go
-    - internal/control/credential_reset_credits.go
     - internal/control/idempotency_operation.go
     - internal/control/proposals.go
     - internal/control/model_price.go
@@ -48,14 +47,11 @@ Every `writeMu.Lock()` site belongs to exactly one class:
    `DrainCommittedOperations` during `app.Start`; sitting behind the barrier
    it drains would deadlock. Its writes are idempotent repairs the drain
    reconciles.
-4. **Finish/cleanup of an existing operation** —
-   `finishResetCreditOperation` (`credential_reset_credits.go`) and
-   `CompactCompletedOperations` (`operation_recovery.go`). They settle or
-   compact rows whose upstream side effect already happened; blocking them
-   would lose a real-world result. `finish` uses an ownership-tightened CAS
-   (`idempotency_key` + `group_id` + `credential_id` + `state=prepared`).
-   `Compact` touches only `completed_at_ms IS NOT NULL` rows, which pending
-   recovery never reads.
+4. **Cleanup of an existing operation** — `CompactCompletedOperations`
+   (`operation_recovery.go`). It removes replay payloads whose upstream side
+   effect already happened and whose result completed before the retention
+   cutoff; blocking it would only postpone reclaiming space. It touches only
+   `completed_at_ms IS NOT NULL` rows, which pending recovery never reads.
 5. **Durable metadata / runtime-state mutation without committed config** —
    proposal Create/Approve/Revoke (`proposals.go`) write only proposal rows;
    Apply revalidates base revision, runtime epoch and expected values under
@@ -74,7 +70,7 @@ Every `writeMu.Lock()` site belongs to exactly one class:
 - A side effect that already happened is always recordable (finish/cleanup
   paths never barrier).
 - Replay of finished operations stays readable during pending recovery
-  (replay checks precede the barrier in classes 2 and 4).
+  (replay checks precede the barrier in class 2).
 - Credential runtime-state mutations (health, cooldown, blacklist, restore)
   serialize through `MutationCoordinator`/`doCredentialMutations`, not just
   `writeMu`, because data-plane failure recording does not take `writeMu`.

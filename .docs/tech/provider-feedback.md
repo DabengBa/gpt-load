@@ -87,9 +87,12 @@ paired with `upstream_failure`, `first_response_slow`, or
   milliseconds, and output rate before persistence. `internal/requestlog/query.go`
   projects feedback for every attempt and separately derives the final attempt
   feedback for list and detail records.
-- `internal/control/request_logs.go` and the monitor frontend expose feedback
-  status, reason, first-response measurement, and output rate. The UI renders
-  feedback separately from request status and failure category.
+- `internal/control/request_logs.go` exposes feedback status, reason,
+  first-response measurement, and output rate. The Astryx logs view consumes the
+  classification as presentation only: the final attempt's Provider
+  first-response time and every displayed duration carry the `slow` or `faulty`
+  tone, while no surface renders the status or reason as a label. Feedback
+  therefore never shares a field with request status or failure category.
   The list displays the final attempt's Provider first-response time and attempt
   duration (`final_attempt_duration_ms`), excluding earlier failed attempts.
   Output rate uses that attempt's measured `provider_tokens_per_second` rather
@@ -99,8 +102,8 @@ paired with `upstream_failure`, `first_response_slow`, or
 
 ## Related Product Semantics And Binding Points
 
-- The monitor UI is the product-facing consumer; this document owns the
-  implementation contract behind its status badge and attempt details.
+- The logs view is the product-facing consumer; this document owns the
+  implementation contract behind its timing tone and attempt details.
 - Whether a request result learns a credential affinity binding is owned by
   [Affinity Binding](affinity-binding.md); this document owns the feedback
   status that its final-success gate consumes.
