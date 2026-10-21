@@ -45,14 +45,13 @@ func TestRegistryDispatchesOnlyByCompiledChannelProviderBinding(t *testing.T) {
 
 	channels := channel.NewRegistry()
 	bifrost := &recordingAdapter{}
-	codex := &recordingAdapter{}
-	registry, err := NewRegistry(channels, completeBindings(bifrost, codex))
+	registry, err := NewRegistry(channels, completeBindings(bifrost))
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 
 	registry.Execute(t.Context(), execution.AttemptSpec{
-		ChannelID:      string(channel.Codex),
+		ChannelID:      string(channel.OpenAI),
 		ClientProtocol: "openai-responses",
 		Operation:      execution.OperationResponsesCreate,
 		RouteMode:      execution.RouteNative,
@@ -64,8 +63,8 @@ func TestRegistryDispatchesOnlyByCompiledChannelProviderBinding(t *testing.T) {
 		RouteMode:      execution.RouteNative,
 	}, func(execution.StreamEvent) error { return nil })
 
-	if codex.unaryCalls != 1 || codex.streamCalls != 0 || bifrost.unaryCalls != 0 || bifrost.streamCalls != 1 {
-		t.Fatalf("bifrost=%+v codex=%+v", bifrost, codex)
+	if bifrost.unaryCalls != 1 || bifrost.streamCalls != 1 {
+		t.Fatalf("bifrost=%+v", bifrost)
 	}
 }
 
@@ -73,16 +72,16 @@ func TestRegistryFailsClosedForMissingBindingAndUndeclaredRoute(t *testing.T) {
 	t.Parallel()
 
 	channels := channel.NewRegistry()
-	if _, err := NewRegistry(channels, []Binding{{ProviderKind: channel.ProviderCodex, Adapter: &recordingAdapter{}}}); err == nil {
+	if _, err := NewRegistry(channels, []Binding{{ProviderKind: channel.ProviderXAI, Adapter: &recordingAdapter{}}}); err == nil {
 		t.Fatal("NewRegistry() accepted incomplete adapter bindings")
 	}
 
-	registry, err := NewRegistry(channels, completeBindings(&recordingAdapter{}, &recordingAdapter{}))
+	registry, err := NewRegistry(channels, completeBindings(&recordingAdapter{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	result := registry.Execute(t.Context(), execution.AttemptSpec{
-		ChannelID:      string(channel.Codex),
+		ChannelID:      string(channel.Anthropic),
 		ClientProtocol: "openai-responses",
 		Operation:      execution.OperationListModels,
 		RouteMode:      execution.RouteNative,
@@ -100,7 +99,7 @@ func TestRegistryRejectsStoreDowngradeNotDeclaredByChannel(t *testing.T) {
 	t.Parallel()
 
 	bifrost := &recordingAdapter{}
-	registry, err := NewRegistry(channel.NewRegistry(), completeBindings(bifrost, &recordingAdapter{}))
+	registry, err := NewRegistry(channel.NewRegistry(), completeBindings(bifrost))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,10 +121,10 @@ func TestRegistryRequiresAdaptersToValidateDeclaredCapabilities(t *testing.T) {
 	t.Parallel()
 
 	channels := channel.NewRegistry()
-	if _, err := NewRegistry(channels, completeBindings(&executorOnlyAdapter{}, &executorOnlyAdapter{})); err == nil {
+	if _, err := NewRegistry(channels, completeBindings(&executorOnlyAdapter{})); err == nil {
 		t.Fatal("NewRegistry() accepted an adapter without a capability contract")
 	}
-	if _, err := NewRegistry(channels, completeBindings(&recordingAdapter{}, &recordingAdapter{rejectRoutes: true})); err == nil {
+	if _, err := NewRegistry(channels, completeBindings(&recordingAdapter{rejectRoutes: true})); err == nil {
 		t.Fatal("NewRegistry() accepted a channel route rejected by its adapter")
 	}
 }
@@ -140,7 +139,7 @@ func (*executorOnlyAdapter) ExecuteStream(context.Context, execution.AttemptSpec
 	return execution.StreamResult{}
 }
 
-func completeBindings(bifrost execution.Executor, codex execution.Executor) []Binding {
+func completeBindings(bifrost execution.Executor) []Binding {
 	return []Binding{
 		{ProviderKind: channel.ProviderOpenAI, Adapter: bifrost},
 		{ProviderKind: channel.ProviderAnthropic, Adapter: bifrost},
@@ -154,9 +153,5 @@ func completeBindings(bifrost execution.Executor, codex execution.Executor) []Bi
 		{ProviderKind: channel.ProviderOpenRouter, Adapter: bifrost},
 		{ProviderKind: channel.ProviderGroq, Adapter: bifrost},
 		{ProviderKind: channel.ProviderXAI, Adapter: bifrost},
-		{ProviderKind: channel.ProviderCodex, Adapter: codex},
-		{ProviderKind: channel.ProviderClaude, Adapter: codex},
-		{ProviderKind: channel.ProviderAntigravity, Adapter: codex},
-		{ProviderKind: channel.ProviderGrok, Adapter: codex},
 	}
 }

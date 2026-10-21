@@ -66,7 +66,7 @@ for (const width of [390, 900, 1440, 1920]) {
           model_count: 0,
         }
       }
-      if (path === '/api/groups/1/credential') data = { credential: null, observation: null }
+      if (path === '/api/groups/1/credential') data = { credential: null }
       if (path === '/api/groups/1/models') data = { items: [], total: 0, pending: 0 }
       if (path === '/api/model-route/schedule')
         data = {

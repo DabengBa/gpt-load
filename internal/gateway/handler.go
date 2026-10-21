@@ -30,8 +30,6 @@ import (
 	"gpt-load/internal/ratelimit"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
-	subscriptionproviders "gpt-load/internal/subscription/providers"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 	"gpt-load/internal/telemetry"
 )
 
@@ -107,7 +105,6 @@ type blacklistReleaseRegistry interface {
 type Handler struct {
 	manager              *state.Manager
 	channels             *channel.Registry
-	subscriptions        *subscriptionruntime.Runtime
 	registry             runtimeCredentialRegistry
 	encryption           encryption.Service
 	forwarder            AttemptForwarder
@@ -152,7 +149,7 @@ func (handler *Handler) freezeAttemptPricing(
 		usageDiagnostics: observations.UsageDiagnostics,
 		reasoning:        observations.Reasoning.Clone(),
 	}
-	if observations.Operation != execution.OperationWebSearch && observationsAvailable && handler != nil && handler.priceTables != nil {
+	if observationsAvailable && handler != nil && handler.priceTables != nil {
 		frozen.table = handler.priceTables.Load()
 	}
 	return frozen
@@ -178,9 +175,8 @@ func NewHandler(
 		requestLogSink = telemetry.NoopRequestLogSink{}
 	}
 	channels := channel.NewRegistry()
-	subscriptions, _ := subscriptionruntime.NewRuntime(channels, subscriptionproviders.Implementations()...)
 	handler := &Handler{
-		manager: manager, channels: channels, subscriptions: subscriptions, registry: registry, encryption: encryptionService,
+		manager: manager, channels: channels, registry: registry, encryption: encryptionService,
 		forwarder: forwarder, dialects: dialects, stats: stats, mutations: mutations,
 		limiter: limiter, requestLogSink: requestLogSink, priceTables: priceTables,
 		affinityCache:    affinity.NewCache(),
@@ -218,7 +214,6 @@ func NewHandlerWithLifecycle(
 	manager *state.Manager,
 	registry *state.CredentialRegistry,
 	channelRegistry *channel.Registry,
-	subscriptions *subscriptionruntime.Runtime,
 	encryptionService encryption.Service,
 	forwarder AttemptForwarder,
 	dialects dialect.Set,
@@ -248,9 +243,6 @@ func NewHandlerWithLifecycle(
 	)
 	if channelRegistry != nil {
 		handler.channels = channelRegistry
-	}
-	if subscriptions != nil {
-		handler.subscriptions = subscriptions
 	}
 	handler.lifecycle = lifecycle
 	handler.responseBindings = responseBindings

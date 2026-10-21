@@ -63,7 +63,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			want: Result{Category: FailureCategoryUpstreamHostError, Action: ActionSkipGroup},
 		},
 		{
-			name: "not sent subscription reauthorization retries another credential",
+			name: "not sent reauthorization retries another credential",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchNotSent,
 				Evidence: &execution.ErrorEvidence{
@@ -200,7 +200,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			want: Result{Category: FailureCategoryInvalidKey, Action: ActionFailCredential},
 		},
 		{
-			name: "unknown subscription authorization failure stays ambiguous",
+			name: "unknown authorization failure stays ambiguous",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusUnauthorized,
@@ -311,7 +311,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			want: Result{Category: FailureCategoryInvalidKey, Action: ActionFailCredential},
 		},
 		{
-			name: "subscription refresh hint retries without blacklisting the credential",
+			name: "refresh hint retries without blacklisting the credential",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusUnauthorized,
@@ -428,9 +428,9 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got := JudgeExecution(test.attempt, DecisionContext{
 				DefaultRateLimitCooldown: time.Minute,
-				CredentialRefreshable:    true,
-				Method:                   http.MethodPost,
-				Operation:                execution.OperationChatCompletion,
+
+				Method:    http.MethodPost,
+				Operation: execution.OperationChatCompletion,
 			})
 			if err := got.Validate(); err != nil {
 				t.Fatalf("JudgeExecution() returned invalid decision %#v: %v", got, err)

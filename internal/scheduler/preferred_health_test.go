@@ -131,21 +131,6 @@ func TestPreferredHealthySiblingEntryPreventsBypass(t *testing.T) {
 }
 
 // R1: auth-unavailable credentials are static restrictions, not health bypasses.
-func TestPreferredAuthUnavailableIsNotBypass(t *testing.T) {
-	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
-	registry := twoGroupRegistry(t)
-	registry.SetCredentialAuthState(11, state.CredentialAuthStateReauthorizationRequired)
-	iterator := New(twoGroupSnapshot(t), registry, preferredHealthQuery(11), rand.New(zeroRandSource{}))
-	iterator.now = func() time.Time { return now }
-
-	selection, err := iterator.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if selection.CredentialID != 21 || iterator.PreferredHealthBypassed() {
-		t.Fatalf("selection = %d, bypassed = %v, want 21/false", selection.CredentialID, iterator.PreferredHealthBypassed())
-	}
-}
 
 // R1: static exclusions of the preferred candidate must not count as bypass.
 func TestPreferredStaticExclusionsAreNotBypass(t *testing.T) {
@@ -263,7 +248,7 @@ type preferredRuntimeSource struct {
 func (source preferredRuntimeSource) Snapshot() []state.CredentialRuntimeView { return source.views }
 
 func TestPreferredHealthWithOtherExclusions(t *testing.T) {
-	for _, restriction := range []string{"none", "auth", "allowed", "skipped", "tried", "cardinality", "weight", "static"} {
+	for _, restriction := range []string{"none", "allowed", "skipped", "tried", "cardinality", "weight", "static"} {
 		t.Run(restriction, func(t *testing.T) {
 			t.Parallel()
 			now := inspectNow()
@@ -274,8 +259,6 @@ func TestPreferredHealthWithOtherExclusions(t *testing.T) {
 			query := preferredHealthQuery(11)
 			snapshot := twoGroupSnapshot(t)
 			switch restriction {
-			case "auth":
-				source.views[0].AuthState = state.CredentialAuthStateReauthorizationRequired
 			case "allowed":
 				query.AllowedCredentialIDs = map[uint]struct{}{21: {}}
 			case "cardinality":

@@ -63,26 +63,6 @@ type healthProblemCredentialResponse struct {
 	Recovery                healthRecoveryResponse `json:"recovery"`
 }
 
-// healthQuotaCredentialResponse 描述额度即将耗尽的订阅凭据。
-//
-// 刻意不含掩码：调用方（首页「需要处理」）按分组说话，
-// 而生成掩码要对每条凭据逐条解密，为一行提示付这个代价不值得。
-type healthQuotaCredentialResponse struct {
-	CredentialID uint    `json:"credential_id"`
-	GroupID      uint    `json:"group_id"`
-	GroupName    string  `json:"group_name"`
-	Remaining    float64 `json:"remaining"`
-	ResetAtMS    int64   `json:"reset_at_ms"`
-}
-
-type healthExpiringResetCreditResponse struct {
-	CredentialID       uint   `json:"credential_id"`
-	GroupID            uint   `json:"group_id"`
-	GroupName          string `json:"group_name"`
-	Count              int    `json:"count"`
-	NearestExpiresAtMS int64  `json:"nearest_expires_at_ms"`
-}
-
 type requestLogHealthResponse struct {
 	EnqueuedTotal                             uint64 `json:"enqueued_total"`
 	PersistedTotal                            uint64 `json:"persisted_total"`
@@ -119,20 +99,18 @@ type debugCaptureHealthResponse struct {
 }
 
 type runtimeHealthResponse struct {
-	ObservedAtMS           int64                               `json:"observed_at_ms"`
-	Version                string                              `json:"version"`
-	UptimeSeconds          int64                               `json:"uptime_seconds"`
-	SnapshotRevision       uint64                              `json:"snapshot_revision"`
-	StatsWindowSeconds     int64                               `json:"stats_window_seconds"`
-	Counts                 healthCountsResponse                `json:"counts"`
-	Groups                 []healthGroupResponse               `json:"groups"`
-	CooldownCredentials    []healthProblemCredentialResponse   `json:"cooldown_credentials"`
-	BlacklistedCredentials []healthProblemCredentialResponse   `json:"blacklisted_credentials"`
-	LowQuotaCredentials    []healthQuotaCredentialResponse     `json:"low_quota_credentials"`
-	ExpiringResetCredits   []healthExpiringResetCreditResponse `json:"expiring_reset_credits"`
-	BlockedAccessKeys      []healthAccessKeyCostLimitResponse  `json:"blocked_access_keys"`
-	RequestLog             requestLogHealthResponse            `json:"request_log"`
-	DebugCapture           debugCaptureHealthResponse          `json:"debug_capture"`
+	ObservedAtMS           int64                              `json:"observed_at_ms"`
+	Version                string                             `json:"version"`
+	UptimeSeconds          int64                              `json:"uptime_seconds"`
+	SnapshotRevision       uint64                             `json:"snapshot_revision"`
+	StatsWindowSeconds     int64                              `json:"stats_window_seconds"`
+	Counts                 healthCountsResponse               `json:"counts"`
+	Groups                 []healthGroupResponse              `json:"groups"`
+	CooldownCredentials    []healthProblemCredentialResponse  `json:"cooldown_credentials"`
+	BlacklistedCredentials []healthProblemCredentialResponse  `json:"blacklisted_credentials"`
+	BlockedAccessKeys      []healthAccessKeyCostLimitResponse `json:"blocked_access_keys"`
+	RequestLog             requestLogHealthResponse           `json:"request_log"`
+	DebugCapture           debugCaptureHealthResponse         `json:"debug_capture"`
 }
 
 type healthAccessKeyCostLimitResponse struct {
@@ -168,8 +146,7 @@ func classifyHealthKey(
 	key state.CredentialRuntimeView,
 	now time.Time,
 ) healthBucket {
-	if !group.Enabled ||
-		(key.AuthState != "" && key.AuthState != state.CredentialAuthStateReady) {
+	if !group.Enabled {
 		return healthBucketDisabled
 	}
 	switch key.RuntimeState(now) {
@@ -212,9 +189,7 @@ func optionalHealthStatusCode(value int) *int {
 	return &cloned
 }
 
-// healthProblemCredentialIdentity 返回健康问题列表里凭据的展示身份：
-// API 密钥仍是掩码，订阅账号给完整邮箱，与凭据卡片、日志的既有约定一致；
-// 拿不到邮箱时回退到 "Subscription #ID"。access/refresh token 绝不进入返回值。
+// healthProblemCredentialIdentity 返回健康问题列表里凭据的脱敏展示身份。
 func (service *Service) healthProblemCredentialIdentity(
 	ciphertexts map[uint]string,
 	credentialID uint,
@@ -249,17 +224,7 @@ func (service *Service) healthProblemCredentialIdentity(
 		plaintext = ""
 		return "", fmt.Errorf("map runtime health credential %d: channel connection mismatch: %w", credentialID, app_errors.ErrInternalServer)
 	}
-	if driver, bound := service.subscriptions.Driver(channelID); bound {
-		credential, parseErr := driver.Parse([]byte(plaintext))
-		plaintext = ""
-		if parseErr != nil {
-			return "", fmt.Errorf("map runtime health subscription credential %d: %w", credentialID, app_errors.ErrInternalServer)
-		}
-		if email := strings.TrimSpace(credential.Account().Email); email != "" {
-			return email, nil
-		}
-		return fmt.Sprintf("Subscription #%d", credentialID), nil
-	}
+
 	validated, err := normalizeStoredCredential(service.channelRegistry, channelID, plaintext)
 	if err != nil {
 		return "", fmt.Errorf(
@@ -294,8 +259,6 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 		Groups:                 []healthGroupResponse{},
 		CooldownCredentials:    []healthProblemCredentialResponse{},
 		BlacklistedCredentials: []healthProblemCredentialResponse{},
-		LowQuotaCredentials:    []healthQuotaCredentialResponse{},
-		ExpiringResetCredits:   []healthExpiringResetCreditResponse{},
 		BlockedAccessKeys:      []healthAccessKeyCostLimitResponse{},
 	}
 	groupIDs := make([]uint, 0, len(observation.snapshot.GroupCatalog))
@@ -311,40 +274,15 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 			ID: group.ID, Name: group.Name, Enabled: group.Enabled,
 		})
 	}
-	resetCreditTargets := make(map[uint]healthResetCreditTarget)
 	for _, key := range observation.keys {
 		group := observation.snapshot.GroupCatalog[key.GroupID]
 		index := groupIndexes[key.GroupID]
 		bucket := classifyHealthKey(group, key, observation.observedAt)
-		if bucket != healthBucketDisabled {
-			resetCreditTargets[key.ID] = healthResetCreditTarget{
-				groupID: key.GroupID, groupName: group.Name,
-			}
-		}
+
 		addHealthCount(&result.Counts, bucket)
 		addHealthCount(&result.Groups[index].Counts, bucket)
 		// 额度只用于管理面展示，不参与健康分桶或调度；低额度凭据在这里单列提示。
-		if bucket == healthBucketAvailable || bucket == healthBucketCooldown {
-			if remaining := key.ObservedQuotaRemaining(); remaining != nil &&
-				*remaining <= healthLowQuotaRemainingRatio {
-				resetAtMS, err := safeEpochMilliseconds(key.QuotaResetAt)
-				if err != nil {
-					return runtimeHealthResponse{}, fmt.Errorf(
-						"map low quota credential %d reset_at_ms: %w", key.ID, err,
-					)
-				}
-				result.LowQuotaCredentials = append(
-					result.LowQuotaCredentials,
-					healthQuotaCredentialResponse{
-						CredentialID: key.ID,
-						GroupID:      key.GroupID,
-						GroupName:    group.Name,
-						Remaining:    *remaining,
-						ResetAtMS:    resetAtMS,
-					},
-				)
-			}
-		}
+
 		if bucket != healthBucketCooldown && bucket != healthBucketBlacklisted {
 			continue
 		}
@@ -411,13 +349,6 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 			}
 			result.BlacklistedCredentials = append(result.BlacklistedCredentials, detail)
 		}
-	}
-	result.ExpiringResetCredits, err = service.loadExpiringResetCredits(
-		resetCreditTargets,
-		observation.observedAt,
-	)
-	if err != nil {
-		return runtimeHealthResponse{}, err
 	}
 	if observation.accessQuotaViews != nil {
 		accessKeyIDs := make([]uint, 0, len(observation.snapshot.AccessKeysByID))

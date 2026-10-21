@@ -77,7 +77,7 @@ test('dirty settings and model drafts survive focus and reconnect', async ({ pag
         pending: 1,
       }
     }
-    if (path === '/api/groups/1/credential') data = { credential: null, observation: null }
+    if (path === '/api/groups/1/credential') data = { credential: null }
     await route.fulfill({ json: { code: 0, message: 'ok', data } })
   })
   await page.goto('/groups/1', { waitUntil: 'commit' })

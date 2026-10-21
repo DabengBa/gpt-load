@@ -106,8 +106,8 @@ func TestIteratorPreferredCredentialRespectsHardFilters(t *testing.T) {
 		now := time.Unix(100, 0)
 		registry := state.NewCredentialRegistry()
 		entries := []state.CredentialEntry{
-			{ID: 11, GroupID: 1, AuthState: state.CredentialAuthStateReady, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "one"},
-			{ID: 21, GroupID: 2, AuthState: state.CredentialAuthStateReady, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "two"},
+			{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "one"},
+			{ID: 21, GroupID: 2, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "two"},
 		}
 		if err := registry.ReplaceCredentials(entries); err != nil {
 			t.Fatalf("ReplaceCredentials() error = %v", err)
@@ -133,7 +133,7 @@ func TestImagesGenerationPrefersNativeBeforeGeminiConversions(t *testing.T) {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ID: 1, ChannelID: channel.Antigravity, ConnectionType: "subscription", Params: json.RawMessage(`{}`),
+			{ID: 1, ChannelID: channel.Gemini, ConnectionType: "api_key", Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "gemini-3.1-flash-image", Alias: "public"}}, Enabled: true},
 			{ID: 2, ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "gpt-image-2", Alias: "public"}}, Enabled: true},
@@ -158,11 +158,6 @@ func TestImagesGenerationPrefersNativeBeforeGeminiConversions(t *testing.T) {
 	if err != nil || second.GroupID != 1 || second.RouteMode != channel.RouteConverted ||
 		second.UpstreamModelID == nil || *second.UpstreamModelID != "gemini-3.1-flash-image" {
 		t.Fatalf("second selection = %+v, error = %v", second, err)
-	}
-	third, err := iterator.Next()
-	if err != nil || third.GroupID != 3 || third.RouteMode != channel.RouteConverted ||
-		third.UpstreamModelID == nil || *third.UpstreamModelID != "gemini-3.1-flash-image" {
-		t.Fatalf("third selection = %+v, error = %v", third, err)
 	}
 	if got := snapshot.ExecutionCandidates[protocol.OpenAIImages][execution.OperationImagesEdit]["public"]; len(got) != 1 || got[0].GroupID != 2 {
 		t.Fatalf("image edits targets = %+v", got)
@@ -347,7 +342,7 @@ func TestResponsesContinuationSeparatesStorageFromOtherResourceRequirements(t *t
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "grok", Alias: "gpt"}},
 			},
-			{ConnectionType: "subscription", ID: 10, Name: "codex", ChannelID: channel.Codex,
+			{ConnectionType: "api_key", ID: 10, Name: "stateless-native", ChannelID: channel.OpenRouter,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "gpt-codex", Alias: "gpt"}},
 			},
@@ -472,7 +467,7 @@ func TestResponsesStorePreferenceUsesNativeThenConvertedStatelessFallback(t *tes
 		{ID: 41, GroupID: 4},
 	}}, query, rand.New(zeroRandSource{}))
 	selection, err := iterator.Next()
-	if err != nil || selection.GroupID != 1 || selection.ChannelID != channel.Codex ||
+	if err != nil || selection.GroupID != 1 || selection.ChannelID != channel.OpenRouter ||
 		selection.RouteMode != channel.RouteNative || !selection.ResponsesStoreDowngraded {
 		t.Fatalf("Next() = (%#v, %v), want native Codex store fallback", selection, err)
 	}
@@ -502,10 +497,10 @@ func TestResponsesStorePreferenceAllowsVerifiedGrokFallback(t *testing.T) {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "subscription",
+			ConnectionType: "api_key",
 			ID:             5,
 			Name:           "grok",
-			ChannelID:      channel.Grok,
+			ChannelID:      channel.Anthropic,
 			Params:         json.RawMessage(`{}`),
 			Enabled:        true,
 			Models:         []state.ModelConfig{{ID: "grok-upstream", Alias: "gpt"}},
@@ -527,7 +522,7 @@ func TestResponsesStorePreferenceAllowsVerifiedGrokFallback(t *testing.T) {
 		query,
 		rand.New(zeroRandSource{}),
 	).Next()
-	if err != nil || selection.ChannelID != channel.Grok || !selection.ResponsesStoreDowngraded {
+	if err != nil || selection.ChannelID != channel.Anthropic || !selection.ResponsesStoreDowngraded {
 		t.Fatalf("Next() = (%#v, %v), want Grok store fallback", selection, err)
 	}
 }
@@ -548,7 +543,7 @@ func TestResponsesStorePreferenceFallsBackWhenUpstreamManagedTargetLacksCredenti
 		rand.New(zeroRandSource{}),
 	)
 	selection, err := iterator.Next()
-	if err != nil || selection.GroupID != 1 || selection.ChannelID != channel.Codex ||
+	if err != nil || selection.GroupID != 1 || selection.ChannelID != channel.OpenRouter ||
 		!selection.ResponsesStoreDowngraded {
 		t.Fatalf("Next() = (%#v, %v), want Codex stateless fallback", selection, err)
 	}
@@ -840,7 +835,7 @@ func channelSchedulerSnapshot(t *testing.T) *state.ConfigSnapshot {
 func responsesStoreSchedulerSnapshot(t *testing.T, includeExact bool) *state.ConfigSnapshot {
 	t.Helper()
 	groups := []state.GroupConfig{
-		{ConnectionType: "subscription", ID: 1, Name: "codex", ChannelID: channel.Codex,
+		{ConnectionType: "api_key", ID: 1, Name: "stateless-native", ChannelID: channel.OpenRouter,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "gpt-codex", Alias: "gpt"}},
 		},

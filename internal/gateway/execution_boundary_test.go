@@ -13,17 +13,14 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
-	subscriptionproviders "gpt-load/internal/subscription/providers"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
 func TestNormalizeChannelCredentialRequiresCanonicalStoredObject(t *testing.T) {
 	t.Parallel()
-	channels, subscriptions := testCredentialRuntimes(t)
+	channels := channel.NewRegistry()
 
 	credential, err := normalizeChannelCredential(
 		channels,
-		subscriptions,
 		channel.OpenAI,
 		"api_key",
 		` {"api_key":"sk-typed"} `,
@@ -36,41 +33,18 @@ func TestNormalizeChannelCredentialRequiresCanonicalStoredObject(t *testing.T) {
 	}
 
 	for _, invalid := range []string{"", " ", "sk-legacy", `"sk-legacy"`, `[]`, `{}`, `{"api_key":""}`} {
-		if credential, err := normalizeChannelCredential(channels, subscriptions, channel.OpenAI, "api_key", invalid); err == nil {
+		if credential, err := normalizeChannelCredential(channels, channel.OpenAI, "api_key", invalid); err == nil {
 			t.Fatalf("normalizeChannelCredential(%q) = %#v, nil", invalid, credential)
 		}
 	}
 }
 
-func TestCodexSearchErrorsDoNotAffectModelHealth(t *testing.T) {
-	for _, status := range []int{http.StatusNotFound, http.StatusTooManyRequests, http.StatusBadGateway} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
-			evidence := &execution.ErrorEvidence{Kind: execution.ErrorKindHTTP, StatusCode: status, Summary: "search unavailable"}
-			if status == http.StatusTooManyRequests {
-				evidence.Hint = execution.FailureHintRateLimited
-				evidence.ScopeHint = execution.ErrorScopeModel
-			}
-			decision := judgeUpstreamResult(UpstreamResult{
-				DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: status, ExecutionError: evidence,
-			}, time.Now(), health.DecisionContext{Method: http.MethodPost, Operation: execution.OperationWebSearch})
-			wantEffect := health.EffectNone
-			if status == http.StatusBadGateway {
-				wantEffect = health.EffectSkipGroup
-			}
-			if decision.Effect != wantEffect || !decision.CooldownUntil.IsZero() {
-				t.Fatalf("search must not penalize model health: %#v", decision)
-			}
-		})
-	}
-}
-
 func TestNormalizeChannelCredentialPreservesStructuredCloudSecrets(t *testing.T) {
 	t.Parallel()
-	channels, subscriptions := testCredentialRuntimes(t)
+	channels := channel.NewRegistry()
 
 	got, err := normalizeChannelCredential(
 		channels,
-		subscriptions,
 		channel.AWSBedrock,
 		"api_key",
 		` {"access_key":"AKIA_TEST","secret_key":"bedrock-secret","session_token":"bedrock-session"} `,
@@ -85,33 +59,6 @@ func TestNormalizeChannelCredentialPreservesStructuredCloudSecrets(t *testing.T)
 	if want := []string{"AKIA_TEST", "bedrock-secret", "bedrock-session"}; !reflect.DeepEqual(got.secrets, want) {
 		t.Fatalf("secrets = %#v, want %#v", got.secrets, want)
 	}
-}
-
-func TestNormalizeChannelCredentialUsesBoundSubscriptionDriver(t *testing.T) {
-	channels, subscriptions := testCredentialRuntimes(t)
-	got, err := normalizeChannelCredential(
-		channels,
-		subscriptions,
-		channel.Codex,
-		"subscription",
-		`{"type":"codex","access_token":"access-secret","refresh_token":"refresh-secret","account_id":"account-one"}`,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.apiKey != "" || len(got.payload) == 0 || !reflect.DeepEqual(got.secrets[:2], []string{"access-secret", "refresh-secret"}) {
-		t.Fatalf("normalized subscription credential = %#v", got)
-	}
-}
-
-func testCredentialRuntimes(t *testing.T) (*channel.Registry, *subscriptionruntime.Runtime) {
-	t.Helper()
-	channels := channel.NewRegistry()
-	subscriptions, err := subscriptionruntime.NewRuntime(channels, subscriptionproviders.Implementations()...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return channels, subscriptions
 }
 
 func TestDecisionEvidenceCanonicalizesOnlyBufferedUpstreamStreamFailures(t *testing.T) {

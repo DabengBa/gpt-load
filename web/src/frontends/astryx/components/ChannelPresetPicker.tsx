@@ -1,25 +1,16 @@
 import * as stylex from '@stylexjs/stylex'
-import {
-  Button,
-  Popover,
-  SegmentedControl,
-  SegmentedControlItem,
-  TextInput,
-} from '@astryxdesign/core'
+import { Button, Popover, TextInput } from '@astryxdesign/core'
 import { ChevronDown, Search } from 'lucide-react'
 import { useEffect, useId, useState, type KeyboardEvent } from 'react'
 
-import type { ChannelConnectionType, ChannelDto } from '@shared/control/resources/channels'
+import type { ChannelDto } from '@shared/control/resources/channels'
 
 import { useT } from '@app/app/i18n'
 import { ChannelIcon } from './ChannelIcon'
 import { InlineNotice } from './InlineNotice'
 
 const MAX_FEATURED_CHANNELS = 4
-const FEATURED_CHANNEL_IDS: Record<ChannelConnectionType, readonly string[]> = {
-  api_key: ['openai', 'anthropic', 'gemini', 'openai_compatible'],
-  subscription: ['codex', 'claude'],
-}
+const FEATURED_CHANNEL_IDS = ['openai', 'anthropic', 'gemini', 'openai_compatible']
 
 interface ChannelMatch {
   channel: ChannelDto
@@ -221,54 +212,21 @@ export function ChannelPresetPicker({
   const identity = useId()
   const optionId = (channelID: string) => `${identity}-channel-${channelID}`
   const channelListId = `${identity}-channel-list`
-  const [activeConnectionType, setActiveConnectionType] = useState<ChannelConnectionType>(
-    selectedChannel?.connection.type ?? 'api_key',
-  )
-  const [lastSelectedChannelIDs, setLastSelectedChannelIDs] = useState<
-    Partial<Record<ChannelConnectionType, string>>
-  >({})
-
-  // Classic watch(selectedChannel, {immediate}): adopting a selected channel
-  // flips the active connection-type segment and remembers the pick per type.
-  const [lastSelectedChannel, setLastSelectedChannel] = useState(selectedChannel)
-  if (lastSelectedChannel !== selectedChannel) {
-    setLastSelectedChannel(selectedChannel)
-    if (selectedChannel) {
-      setActiveConnectionType(selectedChannel.connection.type)
-      setLastSelectedChannelIDs((ids) => ({
-        ...ids,
-        [selectedChannel.connection.type]: selectedChannel.channel_id,
-      }))
-    }
-  }
-
   const initialLoading = loading && channels.length === 0
   const loadFailed = error && channels.length === 0
 
-  function channelsForType(type: ChannelConnectionType): ChannelDto[] {
-    return channels.filter((channel) => channel.connection.type === type)
-  }
-
-  function featuredChannelsForType(type: ChannelConnectionType): ChannelDto[] {
-    const typed = channelsForType(type)
-    const byID = new Map(typed.map((channel) => [channel.channel_id, channel]))
-    const preferredIDs = new Set(FEATURED_CHANNEL_IDS[type])
-    return [
-      ...FEATURED_CHANNEL_IDS[type]
-        .map((channelID) => byID.get(channelID))
-        .filter((channel): channel is ChannelDto => channel !== undefined),
-      ...typed.filter((channel) => !preferredIDs.has(channel.channel_id)),
-    ].slice(0, MAX_FEATURED_CHANNELS)
-  }
-
-  const activeChannels = channelsForType(activeConnectionType)
-  const featuredChannels = featuredChannelsForType(activeConnectionType)
+  const byID = new Map(channels.map((channel) => [channel.channel_id, channel]))
+  const preferredIDs = new Set(FEATURED_CHANNEL_IDS)
+  const featuredChannels = [
+    ...FEATURED_CHANNEL_IDS.map((id) => byID.get(id)).filter(
+      (channel): channel is ChannelDto => channel !== undefined,
+    ),
+    ...channels.filter((channel) => !preferredIDs.has(channel.channel_id)),
+  ].slice(0, MAX_FEATURED_CHANNELS)
+  const activeChannels = channels
   const featuredChannelIDs = new Set(featuredChannels.map((channel) => channel.channel_id))
   const extraChannel =
-    selectedChannel?.connection.type === activeConnectionType &&
-    !featuredChannelIDs.has(selectedChannel.channel_id)
-      ? selectedChannel
-      : null
+    selectedChannel && !featuredChannelIDs.has(selectedChannel.channel_id) ? selectedChannel : null
   const otherChannels = activeChannels.filter(
     (channel) => !featuredChannelIDs.has(channel.channel_id),
   )
@@ -344,29 +302,8 @@ export function ChannelPresetPicker({
 
   function choose(channel: ChannelDto): void {
     if (disabled) return
-    setActiveConnectionType(channel.connection.type)
-    setLastSelectedChannelIDs((ids) => ({
-      ...ids,
-      [channel.connection.type]: channel.channel_id,
-    }))
     setPopoverOpen(false)
     onSelect(channel)
-  }
-
-  function chooseConnectionType(next: string): void {
-    if (next !== 'api_key' && next !== 'subscription') return
-    const type: ChannelConnectionType = next
-    if (disabled || type === activeConnectionType) return
-    setActiveConnectionType(type)
-    setPopoverOpen(false)
-
-    const typed = channelsForType(type)
-    const rememberedID = lastSelectedChannelIDs[type]
-    const target =
-      typed.find((channel) => channel.channel_id === rememberedID) ??
-      featuredChannelsForType(type)[0] ??
-      typed[0]
-    if (target) choose(target)
   }
 
   function onSearchKeydown(event: KeyboardEvent<HTMLInputElement>): void {
@@ -424,28 +361,6 @@ export function ChannelPresetPicker({
           </InlineNotice>
         ) : (
           <div {...stylex.props(styles.selector)}>
-            <SegmentedControl
-              value={activeConnectionType}
-              label={t('import.presets.connectionType')}
-              size="sm"
-              onChange={(next) => chooseConnectionType(next)}
-            >
-              <SegmentedControlItem
-                xstyle={styles.mobileSegment}
-                value="api_key"
-                label={t('import.steps.channel.connectionTypes.apiKey')}
-                isDisabled={disabled || channelsForType('api_key').length === 0}
-              />
-              <SegmentedControlItem
-                xstyle={styles.mobileSegment}
-                value="subscription"
-                label={t('import.steps.channel.connectionTypes.subscription')}
-                isDisabled={disabled || channelsForType('subscription').length === 0}
-              />
-            </SegmentedControl>
-
-            <span {...stylex.props(styles.divider)} aria-hidden="true" />
-
             <div {...stylex.props(styles.chips)}>
               {featuredChannels.map((channel) => (
                 <button
@@ -461,7 +376,7 @@ export function ChannelPresetPicker({
                 </button>
               ))}
 
-              {activeConnectionType === 'api_key' && (
+              {
                 <>
                   <span {...stylex.props(styles.divider)} aria-hidden="true" />
                   <Popover
@@ -566,7 +481,7 @@ export function ChannelPresetPicker({
                     )}
                   </Popover>
                 </>
-              )}
+              }
             </div>
           </div>
         )}

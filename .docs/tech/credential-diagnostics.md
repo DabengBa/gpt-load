@@ -11,8 +11,8 @@ relations:
 code:
   paths:
     - internal/requestlog/credential_activity.go
-    - internal/control/credential_observations.go
     - internal/control/credentials.go
+    - internal/control/credential_observations.go
     - internal/gateway/websocket_turn.go
     - internal/health/execution_judge.go
     - internal/platform/redact/error_message.go
@@ -46,10 +46,8 @@ The summary comes from `request_log_attempts.error_summary`, the same redacted
 message that attempt-level request logs already store. No new store, column, or
 capture path is introduced.
 
-Every credential id on the page is queried in one batched read, API-key and
-subscription alike. Only the 24-hour daily counts and last-used timestamp stay
-restricted to subscription credentials, so the API-key record gains the summary
-without gaining the subscription-only usage block.
+Every API credential id on the page is queried in one batched read. The record
+retains the failure summary without subscription account or quota projections.
 
 The structured evidence fields and the message are separated on purpose. A
 structured provider event identifies its failure shape on its own, so the
@@ -61,12 +59,11 @@ neither a type nor a code.
 - `internal/requestlog/credential_activity.go:queryCredentialLatestActivity`
   selects, per credential, the `error_summary` of the newest attempt ordered by
   completion time, request id, and sequence. It excludes locally-dispatched
-  attempts, probe and web-search operations, `ok`, and `downstream_cancel`
+  attempts, probe operations, `ok`, and `downstream_cancel`
   attempts, so an expected or self-inflicted row cannot masquerade as an
   upstream failure.
-- `internal/control/credential_observations.go:enrichCredentialActivities`
-  assigns the summary to every credential item and keeps `LastUsedAtMS` and
-  `DailyUsage` on subscription items only.
+- The control-plane `internal/control/credential_observations.go:enrichCredentialActivities` projection
+  assigns the summary to every credential item.
 - `internal/control/credentials.go` exposes it as the optional
   `last_failure_summary` field; `web/src/shared/control/resources/credentials.ts`
   projects it as a string and leaves it absent when the Provider omitted it.
@@ -87,13 +84,13 @@ neither a type nor a code.
 - Product-facing credential surfaces are described in the Astryx credential
   feature components; this document owns only the field and its provenance.
 - Code binding: `internal/requestlog/credential_activity.go:QueryCredentialActivity`
-- Code binding: `internal/control/credential_observations.go:enrichCredentialActivities`
+- Code binding: `internal/control/credentials.go`
 - Code binding: `internal/platform/redact/error_message.go:extractJSONErrorMessage`
 
 ## Operations, Calculation, And Failure Boundaries
 
 - **Selected attempt:** newest qualifying attempt for that credential, with no
-  24-hour window on the summary itself; the window still bounds the counts.
+  24-hour window on the summary itself.
 - **Sanitization:** the message passes the existing request-log path —
   `redact.ExtractErrorMessage` for the Provider field, then
   `sanitizeErrorSummary` (invalid UTF-8 repair, redaction of known secrets, and
@@ -109,7 +106,7 @@ neither a type nor a code.
 
 Regression coverage: `internal/requestlog/credential_activity_test.go` and
 `internal/requestlog/model_probe_log_test.go` pin the activity query and probe
-isolation, `internal/control/credential_observations_test.go` pins the single
-combined batch plus the summary/usage split,
+isolation, `internal/control/credential_detail_summary_test.go` pins the API
+credential detail summary and nonfatal activity lookup failures,
 `internal/platform/redact/redactor_test.go` pins the Responses envelope message,
 and `internal/gateway/request_log_test.go` pins `summarizeErrorBody`.

@@ -16,7 +16,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 	wantIDs := []string{
 		migrationfiles.ID0001,
 		migrationfiles.ID0002,
-		migrationfiles.ID0003,
+
 		migrationfiles.ID0004,
 		migrationfiles.ID0005,
 		migrationfiles.ID0006,

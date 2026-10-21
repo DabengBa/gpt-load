@@ -214,8 +214,7 @@ func TestWriteConfigAppliesRuntimeBeforePublishingSnapshot(t *testing.T) {
 		}
 		credential = models.Credential{
 			GroupID: group.ID, Data: "ciphertext-runtime-order",
-			Fingerprint: "hash-runtime-order", AuthState: models.CredentialAuthStateReady,
-		}
+			Fingerprint: "hash-runtime-order"}
 		return tx.Create(&credential).Error
 	}, func() error {
 		if fixture.service.writeMu.TryLock() {
@@ -229,8 +228,7 @@ func TestWriteConfigAppliesRuntimeBeforePublishingSnapshot(t *testing.T) {
 			ID: credential.ID, GroupID: group.ID,
 			Version:            groupCollectionCredentialVersion(credential.SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credential.IdentityFingerprint, *group),
-			Fingerprint:        credential.Fingerprint, AuthState: state.CredentialAuthStateReady,
-			EncryptedValue: credential.Data,
+			Fingerprint:        credential.Fingerprint, EncryptedValue: credential.Data,
 		}})
 	})
 	if err != nil {
@@ -326,8 +324,7 @@ func TestWriteConfigMakesCreatedGroupAndFirstKeyAtomicallyVisibleToDataPlane(t *
 			}
 			credential = models.Credential{
 				GroupID: group.ID, Data: ciphertext,
-				Fingerprint: fixture.encryption.Hash(credentialData), AuthState: models.CredentialAuthStateReady,
-			}
+				Fingerprint: fixture.encryption.Hash(credentialData)}
 			return tx.Create(&credential).Error
 		}, func() error {
 			entries, buildErr := stateloader.BuildGroupCredentialEntries(t.Context(), fixture.db, group.ID)
@@ -488,8 +485,7 @@ func TestWriteConfigRecoveryPreservesCredentialRuntimeState(t *testing.T) {
 	credential := models.Credential{
 		GroupID: group.ID, Data: "ciphertext-runtime-health",
 		Fingerprint: "secret-runtime-health", IdentityFingerprint: "identity-runtime-health",
-		SecretVersion: 1, AuthState: models.CredentialAuthStateReady,
-	}
+		SecretVersion: 1}
 	if err := fixture.db.Create(&credential).Error; err != nil {
 		t.Fatal(err)
 	}

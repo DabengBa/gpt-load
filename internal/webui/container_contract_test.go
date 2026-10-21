@@ -12,7 +12,6 @@ import (
 func TestComposeShellPortOverridesDotEnvEverywhere(t *testing.T) {
 	t.Setenv("HOST", "")
 	t.Setenv("BIND_ADDRESS", "")
-	t.Setenv("OAUTH_CALLBACK_BIND_ADDRESS", "")
 
 	projectDir := t.TempDir()
 	if err := os.WriteFile(
@@ -60,20 +59,11 @@ func TestComposeShellPortOverridesDotEnvEverywhere(t *testing.T) {
 	if service.Environment["HOST"] != "0.0.0.0" {
 		t.Fatalf("resolved application HOST = %q, want 0.0.0.0", service.Environment["HOST"])
 	}
-	if len(service.Ports) != 4 ||
+	if len(service.Ports) != 1 ||
 		service.Ports[0].Target != 41234 ||
 		service.Ports[0].Published != "41234" ||
-		service.Ports[0].HostIP != "127.0.0.1" ||
-		service.Ports[1].Target != 1455 ||
-		service.Ports[1].Published != "1455" ||
-		service.Ports[1].HostIP != "127.0.0.1" ||
-		service.Ports[2].Target != 54545 ||
-		service.Ports[2].Published != "54545" ||
-		service.Ports[2].HostIP != "127.0.0.1" ||
-		service.Ports[3].Target != 51121 ||
-		service.Ports[3].Published != "51121" ||
-		service.Ports[3].HostIP != "127.0.0.1" {
-		t.Fatalf("resolved ports = %#v, want application 41234 and loopback OAuth callbacks 1455/54545/51121", service.Ports)
+		service.Ports[0].HostIP != "127.0.0.1" {
+		t.Fatalf("resolved ports = %#v, want the single application port 41234", service.Ports)
 	}
 	if len(service.Healthcheck.Test) != 2 ||
 		!strings.Contains(service.Healthcheck.Test[1], "localhost:41234/health") {
@@ -94,46 +84,30 @@ func TestComposeHostBindingsInheritHostAndAllowIndependentOverrides(t *testing.T
 	commandEnvironment := make([]string, 0, len(os.Environ()))
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if key != "HOST" && key != "BIND_ADDRESS" && key != "OAUTH_CALLBACK_BIND_ADDRESS" {
+		if key != "HOST" && key != "BIND_ADDRESS" {
 			commandEnvironment = append(commandEnvironment, entry)
 		}
 	}
 
 	for _, testCase := range []struct {
-		name             string
-		bindAddress      string
-		oauthBindAddress string
-		wantMainHost     string
-		wantOAuthHost    string
+		name         string
+		bindAddress  string
+		wantMainHost string
 	}{
 		{
-			name:          "host_default",
-			wantMainHost:  "192.0.2.10",
-			wantOAuthHost: "192.0.2.10",
+			name:         "host_default",
+			wantMainHost: "192.0.2.10",
 		},
 		{
-			name:          "main_service_override",
-			bindAddress:   "127.0.0.2",
-			wantMainHost:  "127.0.0.2",
-			wantOAuthHost: "192.0.2.10",
-		},
-		{
-			name:             "oauth_callback_override",
-			oauthBindAddress: "127.0.0.3",
-			wantMainHost:     "192.0.2.10",
-			wantOAuthHost:    "127.0.0.3",
+			name:         "main_service_override",
+			bindAddress:  "127.0.0.2",
+			wantMainHost: "127.0.0.2",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			environmentLines := []string{"HOST=192.0.2.10"}
 			if testCase.bindAddress != "" {
 				environmentLines = append(environmentLines, "BIND_ADDRESS="+testCase.bindAddress)
-			}
-			if testCase.oauthBindAddress != "" {
-				environmentLines = append(
-					environmentLines,
-					"OAUTH_CALLBACK_BIND_ADDRESS="+testCase.oauthBindAddress,
-				)
 			}
 			if err := os.WriteFile(
 				filepath.Join(projectDir, ".env"),
@@ -169,38 +143,33 @@ func TestComposeHostBindingsInheritHostAndAllowIndependentOverrides(t *testing.T
 			if service.Environment["HOST"] != "0.0.0.0" {
 				t.Fatalf("resolved application HOST = %q, want 0.0.0.0", service.Environment["HOST"])
 			}
-			if len(service.Ports) != 4 {
-				t.Fatalf("resolved ports = %#v, want application and three OAuth callback ports", service.Ports)
+			if len(service.Ports) != 1 {
+				t.Fatalf("resolved ports = %#v, want only the application port", service.Ports)
 			}
 			if service.Ports[0].HostIP != testCase.wantMainHost {
 				t.Fatalf("main service host IP = %q, want %q", service.Ports[0].HostIP, testCase.wantMainHost)
-			}
-			for index, port := range service.Ports[1:] {
-				if port.HostIP != testCase.wantOAuthHost {
-					t.Fatalf("OAuth callback %d host IP = %q, want %q", index, port.HostIP, testCase.wantOAuthHost)
-				}
 			}
 		})
 	}
 }
 
-func TestNetworkConfigurationKeepsExampleSimpleAndDocumentsAdvancedOverrides(t *testing.T) {
+func TestNetworkConfigurationKeepsExampleSimpleAndDocumentsBindOverride(t *testing.T) {
 	environmentExample := readRepositoryFile(t, ".env.example")
 	for _, required := range []string{"HOST=127.0.0.1", "PORT=3001"} {
 		if !strings.Contains(environmentExample, required) {
 			t.Fatalf(".env.example does not contain %q", required)
 		}
 	}
+	for _, removed := range []string{"BIND_ADDRESS", "OAUTH_CALLBACK_BIND_ADDRESS"} {
+		if strings.Contains(environmentExample, removed) {
+			t.Fatalf(".env.example exposes advanced Compose override %s", removed)
+		}
+	}
 
 	readmes := []string{"README.md", "README_CN.md", "README_JP.md"}
-	for _, advanced := range []string{"BIND_ADDRESS", "OAUTH_CALLBACK_BIND_ADDRESS"} {
-		if strings.Contains(environmentExample, advanced) {
-			t.Fatalf(".env.example exposes advanced Compose override %s", advanced)
-		}
-		for _, readme := range readmes {
-			if !strings.Contains(readRepositoryFile(t, readme), advanced) {
-				t.Fatalf("%s does not document advanced Compose override %s", readme, advanced)
-			}
+	for _, readme := range readmes {
+		if !strings.Contains(readRepositoryFile(t, readme), "BIND_ADDRESS") {
+			t.Fatalf("%s does not document advanced Compose override BIND_ADDRESS", readme)
 		}
 	}
 }
@@ -230,8 +199,8 @@ func TestDockerfileFinalStageDeclaresNonRootPersistentRuntime(t *testing.T) {
 	if strings.Count(content, "\nFROM alpine:") != 1 {
 		t.Fatal("Dockerfile declares a publishable stage that bypasses the shared runtime stage")
 	}
-	if !strings.Contains(finalStage, "EXPOSE 3001 1455 54545 51121") {
-		t.Fatal("Dockerfile runtime stage does not expose the application and all fixed OAuth callback ports")
+	if !strings.Contains(finalStage, "EXPOSE 3001\n") {
+		t.Fatal("Dockerfile runtime stage does not expose exactly the application port")
 	}
 
 	orderedBeforeUser := []string{
@@ -316,18 +285,21 @@ func TestDockerfileFinalStageDeclaresNonRootPersistentRuntime(t *testing.T) {
 	}
 }
 
-func TestDockerfileCopiesLocalCPAEmbeddedModuleBeforeGoModuleDownload(t *testing.T) {
+func TestDockerfileCopiesLocalBifrostModuleWithoutCPABridge(t *testing.T) {
 	content := readRepositoryFile(t, "Dockerfile")
+	if strings.Contains(content, "third_party/cpaembedded") {
+		t.Fatal("Dockerfile still references the removed CPA embedded module")
+	}
 	rootModules := strings.Index(content, "COPY go.mod go.sum ./")
-	bridgeModules := strings.Index(content, "COPY third_party/cpaembedded/go.mod third_party/cpaembedded/go.sum ./third_party/cpaembedded/")
+	bridgeModules := strings.Index(content, "COPY third_party/bifrost-core/go.mod third_party/bifrost-core/go.sum ./third_party/bifrost-core/")
 	download := strings.Index(content, "RUN go mod download")
-	bridgeSource := strings.Index(content, "COPY third_party/cpaembedded ./third_party/cpaembedded")
+	bridgeSource := strings.Index(content, "COPY third_party/bifrost-core ./third_party/bifrost-core")
 	build := strings.Index(content, "GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build")
 	if rootModules < 0 || bridgeModules < 0 || download < 0 || bridgeSource < 0 || build < 0 {
-		t.Fatalf("Dockerfile is missing local CPA embedded module build inputs")
+		t.Fatalf("Dockerfile is missing local Bifrost module build inputs")
 	}
 	if rootModules >= bridgeModules || bridgeModules >= download || download >= bridgeSource || bridgeSource >= build {
-		t.Fatalf("Dockerfile local CPA module copy order is invalid")
+		t.Fatalf("Dockerfile local module copy order is invalid")
 	}
 }
 
@@ -356,7 +328,6 @@ func TestDockerfileDistributesDeclaredThirdPartyLicenseTexts(t *testing.T) {
 func TestComposeBindsLoopbackAndConfiguresContainerAllInterfaces(t *testing.T) {
 	t.Setenv("HOST", "")
 	t.Setenv("BIND_ADDRESS", "")
-	t.Setenv("OAUTH_CALLBACK_BIND_ADDRESS", "")
 	t.Setenv("PORT", "")
 
 	projectDir := t.TempDir()
@@ -398,27 +369,17 @@ func TestComposeBindsLoopbackAndConfiguresContainerAllInterfaces(t *testing.T) {
 	if service.Environment["HOST"] != "0.0.0.0" {
 		t.Fatalf("resolved application HOST = %q, want 0.0.0.0", service.Environment["HOST"])
 	}
-	if len(service.Ports) != 4 ||
+	if len(service.Ports) != 1 ||
 		service.Ports[0].Target != 3001 ||
 		service.Ports[0].Published != "3001" ||
-		service.Ports[0].HostIP != "127.0.0.1" ||
-		service.Ports[1].Target != 1455 ||
-		service.Ports[1].Published != "1455" ||
-		service.Ports[1].HostIP != "127.0.0.1" ||
-		service.Ports[2].Target != 54545 ||
-		service.Ports[2].Published != "54545" ||
-		service.Ports[2].HostIP != "127.0.0.1" ||
-		service.Ports[3].Target != 51121 ||
-		service.Ports[3].Published != "51121" ||
-		service.Ports[3].HostIP != "127.0.0.1" {
-		t.Fatalf("resolved ports = %#v, want application 3001 and loopback OAuth callbacks 1455/54545/51121", service.Ports)
+		service.Ports[0].HostIP != "127.0.0.1" {
+		t.Fatalf("resolved ports = %#v, want the single loopback application port 3001", service.Ports)
 	}
 }
 
 func TestComposeProjectsHaveIndependentNamesApplicationPortsAndVolumes(t *testing.T) {
 	t.Setenv("HOST", "")
 	t.Setenv("BIND_ADDRESS", "")
-	t.Setenv("OAUTH_CALLBACK_BIND_ADDRESS", "")
 	t.Setenv("PORT", "")
 
 	projectDir := t.TempDir()
@@ -486,19 +447,10 @@ func TestComposeProjectsHaveIndependentNamesApplicationPortsAndVolumes(t *testin
 		if service.ContainerName != "" {
 			t.Fatalf("resolved project %s fixes container_name to %q", item.projectName, service.ContainerName)
 		}
-		if len(service.Ports) != 4 ||
+		if len(service.Ports) != 1 ||
 			service.Ports[0].Target != item.targetPort ||
 			service.Ports[0].Published != item.publishedPort ||
-			service.Ports[0].HostIP != "127.0.0.1" ||
-			service.Ports[1].Target != 1455 ||
-			service.Ports[1].Published != "1455" ||
-			service.Ports[1].HostIP != "127.0.0.1" ||
-			service.Ports[2].Target != 54545 ||
-			service.Ports[2].Published != "54545" ||
-			service.Ports[2].HostIP != "127.0.0.1" ||
-			service.Ports[3].Target != 51121 ||
-			service.Ports[3].Published != "51121" ||
-			service.Ports[3].HostIP != "127.0.0.1" {
+			service.Ports[0].HostIP != "127.0.0.1" {
 			t.Fatalf("resolved project %s ports = %#v", item.projectName, service.Ports)
 		}
 		wantVolume := item.projectName + "_gpt-load-data"

@@ -37,9 +37,6 @@ type attemptTarget struct {
 	TargetConfig      json.RawMessage
 	Proxy             outboundproxy.Effective
 	ProxyFingerprint  string
-	// ForceCredentialRefresh preserves one explicit provider-auth retry as a
-	// globally counted Attempt on the same selected credential.
-	ForceCredentialRefresh bool
 }
 
 // attemptIdentity stamps one logical attempt inside the request lifecycle.

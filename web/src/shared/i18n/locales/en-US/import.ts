@@ -27,13 +27,11 @@ export default {
         summary: '{channel} · {connection}',
         connectionTypes: {
           apiKey: 'API key',
-          subscription: 'Subscription account',
         },
       },
       credentials: {
         apiKeyTitle: 'Enter one API key',
         structuredTitle: 'Enter channel credentials',
-        subscriptionTitle: 'Connect one {channel} account',
         keyCount: '{count} key(s) entered',
         credentialCount: '{count} credential(s) entered',
         needsAttention: 'Credentials need attention',
@@ -41,7 +39,6 @@ export default {
       models: {
         title: 'Publish models',
         optionalSummary: 'Models are optional',
-        availableAfterAccount: 'Connect an account to get models from upstream',
         availableAfterCredentials: 'Enter credentials to get models from upstream',
         availableAfterChannel: 'Complete channel settings to get models from upstream',
       },
@@ -116,100 +113,6 @@ export default {
       customUrl: 'Custom upstream URL',
       urlError: 'Enter a valid HTTP or HTTPS upstream URL',
       paramRequired: 'Enter {name}',
-      proxyLocked: 'Remove the staged accounts before changing the proxy.',
-    },
-    subscription: {
-      title: 'Connect a subscription account',
-      riskNotice:
-        'Subscription accounts depend on provider authorization. Rule changes may invalidate access or restrict the account.',
-      channelNotice: {
-        claude_oauth_risk:
-          'Claude OAuth relies on a Claude Code compatibility protocol rather than a stable public API contract. Upstream changes may interrupt access or affect the account; evaluate this risk before authorizing.',
-        antigravity_oauth_risk:
-          'Antigravity OAuth depends on Google OAuth and Cloud Code interfaces that may change. Upstream policy, permission, or implementation changes can invalidate authorization, interrupt access, or affect the account. Connect only accounts you are authorized to manage and evaluate this risk first.',
-      },
-      authorize: 'Sign in with {channel}',
-      addAnother: 'Connect another account',
-      authorizeFailed: 'Unable to complete {channel} sign-in',
-      popupBlocked:
-        'The browser blocked the new window. Open the authorization link below instead.',
-      waiting: 'Waiting for the browser to finish authorization',
-      waitingHelp:
-        '{channel} opened in a new window; this page continues automatically when it is done',
-      deviceWaiting: 'Waiting for device authorization',
-      deviceWaitingHelp:
-        'Enter the user code below on the {channel} authorization page; this page continues automatically',
-      exchanging: 'Finishing authorization…',
-      sessionRemaining: 'Authorization session time left',
-      restart: 'Start a new authorization',
-      readyNotice: {
-        create: 'Written in when the group is created',
-        connect: 'Ready — will join this group',
-      },
-      duplicateNotice: 'Already in this group and will be skipped',
-      duplicateStatus: 'Already added',
-      manualHint:
-        'A local deployment finishes on its own. For a remote deployment where the browser cannot reach {redirectUri}, authorize with the link below and paste back the final browser URL.',
-      deviceInstructions:
-        'Open the authorization link and enter the user code. Keep this page open; it continues automatically when authorization finishes.',
-      authorizationLink: 'Authorization link',
-      copyAuthorization: 'Copy link',
-      openAuthorization: 'Open',
-      userCode: 'User code',
-      copyUserCode: 'Copy user code',
-      callbackLabel: 'URL your browser ended on',
-      callbackEndpointFallback: 'the local OAuth callback',
-      callbackPlaceholder: 'http://localhost:{port}/callback?code=...&state=...',
-      callbackPortToken: '<port>',
-      callbackHelp:
-        'Copy the whole URL from the address bar, not just part of it. It is fine if that page does not load.',
-      submitCallback: 'Submit',
-      callbackFailed: 'This URL is invalid, already used, or belongs to another authorization',
-      pasteJSON: 'Paste JSON content',
-      oauthJSONLabel: 'OAuth JSON content',
-      importText: 'Import pasted content',
-      importFile: 'Import credential files',
-      importing: 'Importing…',
-      importResult: 'Import complete: {succeeded} succeeded, {failed} failed',
-      importFailed: 'The OAuth JSON is invalid or unsupported',
-      pollFailed: 'Authorization status is temporarily unavailable; still retrying',
-      pollAbandoned:
-        'Authorization status could not be read after several tries; start a new authorization',
-      cancelFailed:
-        'The server could not cancel this temporary authorization; it will expire on its own',
-      remove: 'Remove',
-      required: 'Sign in to at least one account first',
-      readyCount: '{count} ready',
-      result: 'Connected {added} account(s)',
-      resultDuplicated: 'Connected {added} account(s), skipped {duplicated} already present',
-      pendingAccount: 'Waiting for account information',
-      expires: 'Expires',
-      unknown: 'Unknown',
-      stageError: {
-        authorizationDenied: '{channel} authorization was cancelled; start again',
-        authorizationFailed: '{channel} could not finish authorization; start again',
-        authorizationExpired: 'The device authorization code expired; start again',
-        exchangeRejected: '{channel} rejected the authorization code; authorize again',
-        exchangeUnknown: 'The authorization exchange outcome is unknown; authorize again',
-        exchangeInterrupted: 'The authorization exchange was interrupted; authorize again',
-        refreshIdentityChanged: 'The refreshed account identity changed; authorize again',
-        refreshRejected: 'The account credential refresh was rejected; authorize again',
-        refreshUnknown: 'The account credential refresh outcome is unknown; authorize again',
-        refreshPersistFailed: 'The refreshed account state could not be confirmed; authorize again',
-        expired: 'The authorization session timed out; start again',
-        cancelled: 'This authorization was cancelled; start again',
-        unknown: 'The temporary authorization did not finish; start again',
-      },
-      status: {
-        pending_authorization: 'Waiting for authorization',
-        exchanging: 'Exchanging credential',
-        ready: 'Ready',
-        consumed: 'Saved',
-        failed: 'Failed',
-        cancelled: 'Cancelled',
-        expired: 'Expired',
-        outcome_unknown: 'Outcome unknown',
-      },
     },
     credentials: {
       title: 'API keys',
@@ -255,8 +158,6 @@ export default {
     models: {
       title: 'Models and aliases',
       description: 'Models are always optional; enabled aliases become the public model names',
-      descriptionSubscription:
-        'Optional — you can create the Group without models. Connect an account to fetch the upstream list.',
       tableLabel: 'Models to publish',
       id: 'Model ID',
       alias: 'Public model name',
@@ -324,22 +225,14 @@ export default {
     create: 'Create Group',
     summary: '{credentials} credentials · {models} models',
     summaryOptional: '{credentials} credentials · models optional',
-    summaryAccounts: '{accounts} accounts · {models} models',
-    summaryAccountsOptional: '{accounts} accounts · models optional',
     createFailed: 'Unable to create the Group',
 
     conflict: {
       title: 'This channel target already exists',
-      titleSubscription: 'A subscription Group already exists',
       description: 'Manage an existing Group or create a separate Group with this credential',
-      descriptionSubscription:
-        'Manage an existing Group or create a separate Group with this account',
       close: 'Close URL conflict',
       manage: 'Manage Group',
-      manageSubscription: 'Manage Group',
       manageHelp: 'Open Group details to manage its credential; this draft is not imported',
-      manageHelpSubscription:
-        'Open Group details to manage its account; this draft is not imported',
       separate: 'Create a separate Group',
       edit: 'Return to edit',
     },

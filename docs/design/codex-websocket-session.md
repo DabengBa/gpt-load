@@ -1,5 +1,7 @@
 # Codex WebSocket Session 合同
 
+> 历史设计记录：内置订阅与嵌入式 CPA 已删除，下文涉及的订阅生命周期、路径和 SDK 限制不再是当前实现。保留原文用于历史追溯；当前范围见 [README](../../README_CN.md)，凭据合同见 [单凭据 API](../single-credential-management.md)。下游 Codex/Claude Code 客户端配置仍保留。
+
 上游提交：`7d80a981 feat(codex): 添加独立上游 WebSocket Session 封装 (#612)`
 数据面接入：`f091528b feat(gateway): 接入原生 Responses WebSocket 与逐轮治理 (#616)`
 

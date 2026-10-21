@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
+
 	"time"
 
 	"gorm.io/gorm"
@@ -32,8 +32,7 @@ type CredentialUpdateRequest struct {
 }
 
 type GroupCredentialResponse struct {
-	Credential  *CredentialItemResponse        `json:"credential"`
-	Observation *CredentialObservationResponse `json:"observation"`
+	Credential *CredentialItemResponse `json:"credential"`
 }
 
 func (s *Service) currentGroupCredentialID(ctx context.Context, groupID uint) (uint, error) {
@@ -61,11 +60,16 @@ func (s *Service) GetGroupCredential(ctx context.Context, groupID uint) (GroupCr
 	if err != nil || id == 0 {
 		return GroupCredentialResponse{}, err
 	}
-	detail, err := s.GetCredentialDetail(ctx, groupID, id)
+	detail, err := s.loadCredentialItem(ctx, groupID, id)
 	if err != nil {
 		return GroupCredentialResponse{}, err
 	}
-	return GroupCredentialResponse{Credential: &detail.Credential, Observation: detail.Credential.Observation}, nil
+	items := []CredentialItemResponse{detail}
+	// enrichCredentialActivities fills the slice elements in place; the summary
+	// lookup never fails the read, so a failed lookup leaves it empty.
+	s.enrichCredentialActivities(ctx, items)
+	detail = items[0]
+	return GroupCredentialResponse{Credential: &detail}, nil
 }
 
 type CredentialRevealResult struct {
@@ -74,44 +78,20 @@ type CredentialRevealResult struct {
 	RevealedAtMS int64           `json:"revealed_at_ms"`
 }
 
-type CredentialAccountResponse struct {
-	Email           string `json:"email,omitempty"`
-	EmailMask       string `json:"email_mask,omitempty"`
-	ExpiresAtMS     *int64 `json:"expires_at_ms,omitempty"`
-	LastRefreshAtMS *int64 `json:"last_refresh_at_ms,omitempty"`
-}
-
 type CredentialItemResponse struct {
-	CredentialID            uint                           `json:"credential_id"`
-	ConnectionType          string                         `json:"connection_type"`
-	SecretVersion           uint64                         `json:"secret_version"`
-	Mask                    string                         `json:"mask"`
-	Account                 CredentialAccountResponse      `json:"account"`
-	AuthState               string                         `json:"auth_state"`
-	AuthErrorCode           string                         `json:"auth_error_code,omitempty"`
-	Observation             *CredentialObservationResponse `json:"observation,omitempty"`
-	EffectiveStatus         string                         `json:"effective_status"`
-	RecentSuccessCount      uint64                         `json:"recent_success_count"`
-	RecentFailureCount      uint64                         `json:"recent_failure_count"`
-	ConsecutiveFailureCount uint64                         `json:"consecutive_failure_count"`
-	LastFailureCategory     string                         `json:"last_failure_category"`
-	LastFailureSummary      string                         `json:"last_failure_summary,omitempty"`
-	LastStatusCode          *int                           `json:"last_status_code"`
-	CooldownUntilMS         *int64                         `json:"cooldown_until_ms"`
-	LastUsedAtMS            *int64                         `json:"last_used_at_ms,omitempty"`
-	DailyUsage              *CredentialDailyUsageResponse  `json:"daily_usage,omitempty"`
-	Recovery                CredentialRecoveryResponse     `json:"recovery"`
-}
-
-// CredentialDailyUsageResponse 汇报固定 24 小时窗口内的上游尝试结果分布。
-// recent_success_count / recent_failure_count 来自 health 的 5 分钟内存窗口，
-// 是调度判定用的，重启即清零；这里的计数来自账号小时聚合，用于给人看。
-type CredentialDailyUsageResponse struct {
-	WindowSeconds int64 `json:"window_seconds"`
-	SuccessCount  int64 `json:"success_count"`
-	FailureCount  int64 `json:"failure_count"`
-	// DataComplete 为 false 表示统计数据未覆盖完整窗口，计数偏低。
-	DataComplete bool `json:"data_complete"`
+	CredentialID            uint                       `json:"credential_id"`
+	ConnectionType          string                     `json:"connection_type"`
+	SecretVersion           uint64                     `json:"secret_version"`
+	Mask                    string                     `json:"mask"`
+	EffectiveStatus         string                     `json:"effective_status"`
+	RecentSuccessCount      uint64                     `json:"recent_success_count"`
+	RecentFailureCount      uint64                     `json:"recent_failure_count"`
+	ConsecutiveFailureCount uint64                     `json:"consecutive_failure_count"`
+	LastFailureCategory     string                     `json:"last_failure_category"`
+	LastFailureSummary      string                     `json:"last_failure_summary,omitempty"`
+	LastStatusCode          *int                       `json:"last_status_code"`
+	CooldownUntilMS         *int64                     `json:"cooldown_until_ms"`
+	Recovery                CredentialRecoveryResponse `json:"recovery"`
 }
 
 type CredentialRecoveryResponse struct {
@@ -121,53 +101,21 @@ type CredentialRecoveryResponse struct {
 }
 
 type credentialCapture struct {
-	group        models.Group
-	rows         []models.Credential
-	observations []models.CredentialObservation
-	views        []state.CredentialRuntimeView
-	observedAt   time.Time
+	group      models.Group
+	rows       []models.Credential
+	views      []state.CredentialRuntimeView
+	observedAt time.Time
 }
 
 type credentialObservation struct {
-	group        models.Group
-	rows         []models.Credential
-	subscription map[uint]models.CredentialObservation
-	runtime      map[uint]state.CredentialRuntimeView
-	observedAt   time.Time
+	group      models.Group
+	rows       []models.Credential
+	runtime    map[uint]state.CredentialRuntimeView
+	observedAt time.Time
 }
 
 func normalizeGroupConnectionType(value models.ConnectionType) models.ConnectionType {
 	return models.ConnectionType(connection.Normalize(string(value)))
-}
-
-func (s *Service) credentialPresentation(
-	group models.Group,
-	row models.Credential,
-	canonical json.RawMessage,
-	identity string,
-) (string, CredentialAccountResponse, error) {
-	if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
-		driver, driverErr := s.subscriptionDriver(channel.ID(group.ChannelID))
-		if driverErr != nil {
-			return "", CredentialAccountResponse{}, driverErr
-		}
-		credential, err := driver.Parse(canonical)
-		if err != nil {
-			return "", CredentialAccountResponse{}, err
-		}
-		stagedAccount := subscriptionCredentialAccount(credential)
-		account := CredentialAccountResponse{
-			Email: strings.TrimSpace(credential.Account().Email), EmailMask: stagedAccount.EmailMask,
-			ExpiresAtMS: stagedAccount.ExpiresAtMS, LastRefreshAtMS: stagedAccount.LastRefreshAtMS,
-		}
-		mask := account.EmailMask
-		if mask == "" {
-			mask = fmt.Sprintf("Subscription #%d", row.ID)
-		}
-		return mask, account, nil
-	}
-	mask, err := maskCanonicalCredential(canonical)
-	return mask, CredentialAccountResponse{}, err
 }
 
 func (s *Service) ImportGroupCredentials(
@@ -258,15 +206,9 @@ func (s *Service) captureCredentials(ctx context.Context, groupID uint) (credent
 	if groupErr == nil {
 		rowsErr = s.db.WithContext(ctx).Where("group_id = ?", groupID).Order("id ASC").Find(&rows).Error
 	}
-	observations := make([]models.CredentialObservation, 0)
-	var observationsErr error
-	if groupErr == nil && rowsErr == nil && len(rows) > 0 && normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
-		observationsErr = s.db.WithContext(ctx).
-			Where("credential_id IN (?)", credentialIDs(rows)).Find(&observations).Error
-	}
 	var views []state.CredentialRuntimeView
 	var observedAt time.Time
-	if groupErr == nil && rowsErr == nil && observationsErr == nil {
+	if groupErr == nil && rowsErr == nil {
 		views = s.registry.Snapshot()
 		observedAt = s.now().UTC()
 	}
@@ -283,10 +225,8 @@ func (s *Service) captureCredentials(ctx context.Context, groupID uint) (credent
 	if rowsErr != nil {
 		return credentialCapture{}, app_errors.ParseDBError(rowsErr)
 	}
-	if observationsErr != nil {
-		return credentialCapture{}, app_errors.ParseDBError(observationsErr)
-	}
-	return credentialCapture{group: group, rows: rows, observations: observations, views: views, observedAt: observedAt}, nil
+
+	return credentialCapture{group: group, rows: rows, views: views, observedAt: observedAt}, nil
 }
 
 func credentialIDs(rows []models.Credential) []uint {
@@ -318,18 +258,7 @@ func validateCredentialCapture(capture credentialCapture) (credentialObservation
 			}
 		}
 	}
-	subscription := make(map[uint]models.CredentialObservation, len(capture.observations))
-	for _, row := range capture.observations {
-		subscription[row.CredentialID] = row
-	}
-	return credentialObservation{group: capture.group, rows: capture.rows, subscription: subscription, runtime: byID, observedAt: capture.observedAt}, nil
-}
-
-func normalizeRuntimeCredentialAuthState(value models.CredentialAuthState) state.CredentialAuthState {
-	if value == "" {
-		return state.CredentialAuthStateReady
-	}
-	return state.CredentialAuthState(value)
+	return credentialObservation{group: capture.group, rows: capture.rows, runtime: byID, observedAt: capture.observedAt}, nil
 }
 
 func (s *Service) decodeCredential(group models.Group, row models.Credential) (json.RawMessage, string, error) {
@@ -337,19 +266,7 @@ func (s *Service) decodeCredential(group models.Group, row models.Credential) (j
 	if err != nil {
 		return nil, "", fmt.Errorf("decrypt credential %d: %w", row.ID, app_errors.ErrInternalServer)
 	}
-	if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
-		driver, driverErr := s.subscriptionDriver(channel.ID(group.ChannelID))
-		if driverErr != nil {
-			plaintext = ""
-			return nil, "", fmt.Errorf("resolve subscription credential %d: %w", row.ID, app_errors.ErrInternalServer)
-		}
-		credential, err := driver.Parse([]byte(plaintext))
-		plaintext = ""
-		if err != nil {
-			return nil, "", fmt.Errorf("validate subscription credential %d: %w", row.ID, app_errors.ErrInternalServer)
-		}
-		return credential.Canonical(), credential.Account().Email, nil
-	}
+
 	validated, err := normalizeStoredCredential(s.channelRegistry, channel.ID(group.ChannelID), plaintext)
 	plaintext = ""
 	if err != nil {

@@ -10,6 +10,11 @@ Operators and administrators of a self-hosted GPT-Load instance — the people w
 ## Product Purpose
 GPT-Load is a self-hosted LLM gateway; this UI is its management plane. It exists to make gateway operations — group/channel configuration, key management, scheduling, request-log forensics — fast and legible for a technical operator. Success looks like: every operational task reachable in a few clicks, dense data surfaces that stay readable, and a UI that never hides state or surprises during production work.
 
+## Supported Upstream Scope
+Standard API-key and structured cloud credentials use Bifrost-backed execution. External CLIProxyAPI remains an independently operated gateway connected by base URL and API key. Built-in Codex/Claude/Antigravity/Grok subscription authorization, account observation and embedded CPA execution are removed. Codex and Claude Code remain downstream clients, not upstream subscription channels.
+
+This breaking release cannot open a legacy database in place. Convert the stopped legacy database offline with `gpt-load convert-legacy-db` (keeps groups, API credentials, access keys and quota state; drops request logs and usage history) or start from a fresh database; see the [startup warning](README.md#quick-start) and [legacy database conversion](.docs/tech/legacy-db-conversion.md). No in-place migration, automatic deletion or compatibility layer is supplied.
+
 ## Brand Personality
 Compact, professional, utilitarian. The interface is a tool, not a showcase — it favors information density, predictable layout, and restrained chrome over marketing flourish.
 

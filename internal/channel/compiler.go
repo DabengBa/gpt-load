@@ -84,10 +84,6 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 	if strings.TrimSpace(source.Name) == "" || strings.TrimSpace(source.Mark) == "" {
 		return definition{}, fmt.Errorf("channel %q has incomplete metadata", id)
 	}
-	notices, err := compileNotices(id, source.Notices)
-	if err != nil {
-		return definition{}, err
-	}
 	icon := strings.TrimSpace(source.Icon)
 	if icon == "" {
 		icon = id
@@ -128,9 +124,6 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 	if err := validateTargetPolicy(source, params); err != nil {
 		return definition{}, err
 	}
-	if source.Capabilities.ResetCreditAction != "" && source.Capabilities.QuotaObservation == "" {
-		return definition{}, fmt.Errorf("channel %q binds reset credit without quota observation", id)
-	}
 
 	fixedBaseURL := ""
 	var fixedTargetConfig json.RawMessage
@@ -151,16 +144,13 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 			Icon:             icon,
 			SearchTerms:      append([]string(nil), source.SearchTerms...),
 			Description:      source.Description,
-			Notices:          notices,
 			ParamFields:      params.descriptors(),
 			CredentialFields: credentials.descriptors(),
 			Connection: ConnectionDescriptor{
-				Type:                 string(source.Connection.Type),
-				CredentialInput:      source.Connection.CredentialInput,
-				AuthorizationMethods: append([]AuthorizationMethod(nil), source.Connection.AuthorizationMethods...),
+				Type:            string(source.Connection.Type),
+				CredentialInput: source.Connection.CredentialInput,
 			},
 			Capabilities: publicCapabilities(
-				source.Capabilities,
 				source.Routes,
 				source.Provider.ProviderKind,
 			),
@@ -175,7 +165,6 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 		providerKind:            source.Provider.ProviderKind,
 		probeContract:           source.Provider.ProbeContract,
 		connection:              cloneConnection(source.Connection),
-		capabilities:            cloneCapabilityBindings(source.Capabilities),
 		endpointPolicy:          source.Provider.EndpointPolicy,
 		fixedBaseURL:            fixedBaseURL,
 		fixedTargetConfig:       fixedTargetConfig,
@@ -185,56 +174,9 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 	}, nil
 }
 
-func compileNotices(channelID string, source []spec.Notice) ([]NoticeDescriptor, error) {
-	if len(source) == 0 {
-		return nil, nil
-	}
-	result := make([]NoticeDescriptor, 0, len(source))
-	seen := make(map[spec.NoticeID]struct{}, len(source))
-	for _, notice := range source {
-		if !notice.ID.Valid() || !notice.Tone.Valid() {
-			return nil, fmt.Errorf("channel %q has invalid notice %q/%q", channelID, notice.ID, notice.Tone)
-		}
-		if _, duplicate := seen[notice.ID]; duplicate {
-			return nil, fmt.Errorf("channel %q has duplicate notice %q", channelID, notice.ID)
-		}
-		seen[notice.ID] = struct{}{}
-		result = append(result, NoticeDescriptor{ID: notice.ID, Tone: notice.Tone})
-	}
-	return result, nil
-}
-
 func validateConnection(source spec.Definition) error {
-	id := source.ID
-	connection := source.Connection
-	switch connection.Type {
-	case spec.ConnectionAPIKey:
-		if connection.CredentialInput != "batch_text" || len(connection.AuthorizationMethods) != 0 {
-			return fmt.Errorf("channel %q has invalid API key connection", id)
-		}
-		if source.Capabilities.SubscriptionDriver != "" || source.Capabilities.ModelDiscovery != "" ||
-			source.Capabilities.QuotaObservation != "" || source.Capabilities.ResetCreditAction != "" {
-			return fmt.Errorf("channel %q binds subscription capabilities to an API key connection", id)
-		}
-	case spec.ConnectionSubscription:
-		if connection.CredentialInput != "authorization" || len(connection.AuthorizationMethods) == 0 {
-			return fmt.Errorf("channel %q has invalid subscription connection", id)
-		}
-		if source.Capabilities.SubscriptionDriver == "" {
-			return fmt.Errorf("channel %q has no subscription driver", id)
-		}
-	default:
-		return fmt.Errorf("channel %q has invalid connection type %q", id, connection.Type)
-	}
-	seen := make(map[spec.AuthorizationMethod]struct{}, len(connection.AuthorizationMethods))
-	for _, method := range connection.AuthorizationMethods {
-		if !method.Valid() {
-			return fmt.Errorf("channel %q has invalid authorization method %q", id, method)
-		}
-		if _, duplicate := seen[method]; duplicate {
-			return fmt.Errorf("channel %q has duplicate authorization method %q", id, method)
-		}
-		seen[method] = struct{}{}
+	if source.Connection.Type != spec.ConnectionAPIKey || source.Connection.CredentialInput != "batch_text" {
+		return fmt.Errorf("channel %q has invalid API key connection", source.ID)
 	}
 	return nil
 }
@@ -431,7 +373,7 @@ const minProbeOutputTokens = 3
 
 // validateProbeContract enforces the single-protocol probe contract: API-key
 // channels must declare one probe protocol with a usable output budget and a
-// declared probe route for that protocol; subscription channels must not.
+// declared probe route for that protocol.
 func validateProbeContract(
 	source spec.Definition,
 	modes map[protocol.Protocol]map[execution.Operation]RouteMode,
@@ -448,12 +390,6 @@ func validateProbeContract(
 		if contract.Protocol != value || contract.MinOutputTokens != 0 {
 			return fmt.Errorf("channel %q has a data probe route without an explicit data contract", id)
 		}
-	}
-	if source.Connection.Type == spec.ConnectionSubscription {
-		if contract.Protocol != "" || contract.MinOutputTokens != 0 {
-			return fmt.Errorf("channel %q declares a probe contract for a subscription connection", id)
-		}
-		return nil
 	}
 	if !contract.Valid() {
 		return fmt.Errorf("channel %q has an invalid probe contract", id)
@@ -500,7 +436,6 @@ func validProtocolOperation(clientProtocol protocol.Protocol, operation executio
 		execution.OperationResponsesInputItems,
 		execution.OperationResponsesCompact,
 		execution.OperationResponsesInputTokens,
-		execution.OperationWebSearch,
 		execution.OperationResponsesPassthrough:
 		return clientProtocol == protocol.OpenAIResponses
 	case execution.OperationImagesGenerate,
@@ -573,27 +508,15 @@ func schemaHasField(schema objectSchema, key string, required bool) bool {
 }
 
 func cloneConnection(source spec.Connection) spec.Connection {
-	source.AuthorizationMethods = append([]spec.AuthorizationMethod(nil), source.AuthorizationMethods...)
-	return source
-}
-
-func cloneCapabilityBindings(source spec.CapabilityBindings) spec.CapabilityBindings {
 	return source
 }
 
 func publicCapabilities(
-	source spec.CapabilityBindings,
 	routes []spec.Route,
 	providerKind spec.ProviderKind,
 ) CapabilityDescriptor {
 	result := CapabilityDescriptor{
-		ModelDiscovery:    source.ModelDiscovery != "",
-		QuotaObservation:  source.QuotaObservation != "",
-		CredentialActions: []CredentialAction{},
-		OutboundProxy:     providerKind.SupportsOutboundProxy(),
-	}
-	if source.ResetCreditAction != "" {
-		result.CredentialActions = append(result.CredentialActions, CredentialActionResetCredit)
+		OutboundProxy: providerKind.SupportsOutboundProxy(),
 	}
 	for _, route := range routes {
 		if route.Operation == execution.OperationListModels {

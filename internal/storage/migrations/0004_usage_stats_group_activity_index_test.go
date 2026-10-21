@@ -15,9 +15,6 @@ func TestUsageStatsGroupActivityIndexMigrationCreatesAndValidatesIndex(t *testin
 	if err := migrations.Up0002(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrations.Up0003(db); err != nil {
-		t.Fatal(err)
-	}
 	if db.Migrator().HasIndex("usage_stats", "idx_usage_stats_group_bucket") {
 		t.Fatal("usage_stats group activity index exists before migration")
 	}
@@ -42,9 +39,6 @@ func TestUsageStatsGroupActivityIndexMigrationRejectsMissingIndex(t *testing.T) 
 		t.Fatal(err)
 	}
 	if err := migrations.Up0002(db); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrations.Up0003(db); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrations.Validate0004(db); err == nil {

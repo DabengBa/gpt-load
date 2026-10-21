@@ -78,13 +78,12 @@ func FailureCategoryFromHealth(value health.FailureCategory) FailureCategory {
 type RetryDirective string
 
 const (
-	RetryNone              RetryDirective = "none"
-	RetryRefreshCredential RetryDirective = "refresh_credential"
-	RetryNextCandidate     RetryDirective = "next_candidate"
+	RetryNone          RetryDirective = "none"
+	RetryNextCandidate RetryDirective = "next_candidate"
 )
 
 func (value RetryDirective) Valid() bool {
-	return value == RetryNone || value == RetryRefreshCredential || value == RetryNextCandidate
+	return value == RetryNone || value == RetryNextCandidate
 }
 
 type Effect string

@@ -282,9 +282,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	}
 	iterator := scheduler.New(snapshot, h.registry, query, h.newRandom())
 	limit := retryAttemptLimit(snapshot.Settings.RetryCount)
-	var refreshSelection *scheduler.Selection
-	var refreshRef state.CredentialRef
-	authRefreshUsed := false
+
 	var finishRejectedAttempt func()
 	var finishFailedAttempt func()
 	var parameterOverrideFailure *reason
@@ -325,49 +323,35 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		}
 		var selection scheduler.Selection
 		var ref state.CredentialRef
-		forceCredentialRefresh := false
-		if refreshSelection != nil {
-			selection = *refreshSelection
-			currentRef, exists := h.registry.CredentialRef(selection.CredentialID)
-			if !exists || !sameWebsocketIdentity(currentRef, refreshRef) {
-				reject(reasonConfigurationChanged)
+		selection, err = iterator.NextCandidate()
+		if err != nil {
+			if finishRejectedAttempt != nil {
+				finishRejectedAttempt()
 				return
 			}
-			ref = currentRef
-			forceCredentialRefresh = currentRef.Version <= refreshRef.Version
-			authRefreshUsed = true
-			refreshSelection = nil
-		} else {
-			selection, err = iterator.NextCandidate()
-			if err != nil {
-				if finishRejectedAttempt != nil {
-					finishRejectedAttempt()
-					return
-				}
-				if finishFailedAttempt != nil {
-					finishFailedAttempt()
-					return
-				}
-				if parameterOverrideFailure != nil {
-					reject(*parameterOverrideFailure)
-					return
-				}
+			if finishFailedAttempt != nil {
+				finishFailedAttempt()
+				return
+			}
+			if parameterOverrideFailure != nil {
+				reject(*parameterOverrideFailure)
+				return
+			}
 
-				if capacityBlocked {
-					reject(reasonScheduleCapacity)
-					return
-				}
-				reject(reasonNoCandidate)
+			if capacityBlocked {
+				reject(reasonScheduleCapacity)
 				return
 			}
-			candidateRef, allowed := allowedCredentialRefs[selection.CredentialID]
-			affinity.preferredHealthBypassed = affinity.preferredHealthBypassed || iterator.PreferredHealthBypassed()
-			if !allowed || candidateRef.GroupID != selection.GroupID {
-				reject(reasonConfigurationChanged)
-				return
-			}
-			ref = candidateRef
+			reject(reasonNoCandidate)
+			return
 		}
+		candidateRef, allowed := allowedCredentialRefs[selection.CredentialID]
+		affinity.preferredHealthBypassed = affinity.preferredHealthBypassed || iterator.PreferredHealthBypassed()
+		if !allowed || candidateRef.GroupID != selection.GroupID {
+			reject(reasonConfigurationChanged)
+			return
+		}
+		ref = candidateRef
 		payload, effective, err := prepareWebsocketPayload(turn.body, original, selection)
 		if err != nil {
 			if binding != nil || requiredRef != nil {
@@ -409,7 +393,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 			return
 		}
-		credential, err := normalizeChannelCredential(h.channels, h.subscriptions, selection.ChannelID, selection.Group.ConnectionType, plain)
+		credential, err := normalizeChannelCredential(h.channels, selection.ChannelID, selection.Group.ConnectionType, plain)
 		if err != nil {
 			iterator.MarkAttempt(selection)
 			if recordPreparationFailure(selection, ref, "credential_normalization_failed", "Stored credential could not be prepared.", execution.ErrorScopeCredential) {
@@ -466,7 +450,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 				ObserveUsage:   effective.metadata.ObserveUsage,
 			},
 		}
-		input.ForceCredentialRefresh = forceCredentialRefresh
+
 		spec, err := newExecutionAttemptSpec(input)
 		if err != nil {
 			reject(reasonInvalidProtocolRequest)
@@ -601,7 +585,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 				break
 			}
 		}
-		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{DefaultRateLimitCooldown: fixedCooldown, CredentialRefreshable: selection.Group.ConnectionType == "subscription", Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
+		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{DefaultRateLimitCooldown: fixedCooldown, Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
 		result.Feedback = providerFeedbackForAttempt(result, decision, input.providerFeedback, true)
 		performanceFault := isSuccessfulPerformanceFault(result, decision)
 		if performanceFault {
@@ -657,9 +641,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		if retryableTurn && !result.Committed && newBinding &&
 			(binding == nil || !binding.capabilities.Multiplex) && decision.Retry != health.RetryNone &&
 			forwardAttempts < limit && requiredRef == nil && s.ctx.Err() == nil {
-			if decision.Retry == health.RetryRefreshCredential && !authRefreshUsed {
-				refreshSelection, refreshRef = &selection, ref
-			}
+
 			if binding != nil {
 				_ = binding.session.Close()
 				s.mu.Lock()

@@ -1481,7 +1481,7 @@ func mapRequestLogUsageCost(record requestlog.Record) (requestLogUsageCostRespon
 	return result, nil
 }
 
-// CredentialLabels 把凭据 ID 翻译成可读标识：API 密钥给掩码，订阅账号给邮箱掩码。
+// CredentialLabels 把凭据 ID 翻译成脱敏的可读标识。
 // 密文常驻凭据注册表，整个过程不读数据库；只按持久身份判断存在，不按运行状态过滤。
 // 已存在但标识无法解析的凭据保留空值，只有注册表中不存在的凭据才省略。
 // 入参允许重复，每个 ID 至多解密一次；nil 结果表示关联信息尚不可查询，而非删除。
@@ -1526,7 +1526,7 @@ func (s *Service) CredentialLabels(credentialIDs []uint) map[uint]string {
 	return labels
 }
 
-// 与凭据列表一致：订阅账号给完整邮箱（本就在管理面明示），API 密钥给掩码。
+// 与凭据列表一致：健康问题列表展示脱敏身份。
 func (s *Service) credentialLabel(
 	ciphertext string,
 	channelID channel.ID,
@@ -1540,14 +1540,7 @@ func (s *Service) credentialLabel(
 	if !known || expected != strings.TrimSpace(connectionType) {
 		return "", fmt.Errorf("channel connection mismatch")
 	}
-	if driver, bound := s.subscriptions.Driver(channelID); bound {
-		credential, parseErr := driver.Parse([]byte(plaintext))
-		plaintext = ""
-		if parseErr != nil {
-			return "", parseErr
-		}
-		return strings.TrimSpace(credential.Account().Email), nil
-	}
+
 	validated, err := normalizeStoredCredential(s.channelRegistry, channelID, plaintext)
 	if err != nil {
 		return "", err

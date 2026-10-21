@@ -266,8 +266,7 @@ func (service *Service) recoverTestedModelRoute(
 				return
 			}
 			current := credentialProbeCredentialFromEntry(entries[0])
-			if current.ref != tested.ref || !current.cooldownUntil.Equal(tested.cooldownUntil) ||
-				(entries[0].AuthState != "" && entries[0].AuthState != state.CredentialAuthStateReady) {
+			if current.ref != tested.ref || !current.cooldownUntil.Equal(tested.cooldownUntil) {
 				return
 			}
 			recovered = service.registry.RecoverEntryIfVersionMatch(

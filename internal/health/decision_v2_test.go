@@ -33,7 +33,7 @@ func TestDecisionLegacyActionProjection(t *testing.T) {
 	}{
 		{name: "none", decision: Decision{}, want: ActionTerminate},
 		{name: "retry", decision: Decision{Retry: RetryNextCandidate}, want: ActionRetry},
-		{name: "refresh", decision: Decision{Retry: RetryRefreshCredential}, want: ActionRetry},
+
 		{name: "cooldown", decision: Decision{Effect: EffectCooldownCredential}, want: ActionCooldownCredential},
 		{name: "failure", decision: Decision{Effect: EffectRecordCredentialFailure}, want: ActionFailCredential},
 		{name: "skip group", decision: Decision{Effect: EffectSkipGroup}, want: ActionSkipGroup},
@@ -59,12 +59,12 @@ func TestDecisionLegacyActionProjection(t *testing.T) {
 func TestDecisionContextCarriesExistingPolicyInputs(t *testing.T) {
 	context := DecisionContext{
 		DefaultRateLimitCooldown: 10 * time.Minute,
-		CredentialRefreshable:    true,
-		Method:                   "POST",
-		Operation:                execution.OperationResponsesCreate,
+
+		Method:    "POST",
+		Operation: execution.OperationResponsesCreate,
 	}
 	if context.DefaultRateLimitCooldown != 10*time.Minute ||
-		!context.CredentialRefreshable || context.Method != "POST" ||
+		context.Method != "POST" ||
 		context.Operation != execution.OperationResponsesCreate {
 		t.Fatalf("DecisionContext = %#v", context)
 	}

@@ -23,9 +23,8 @@ const (
 type RetryDirective string
 
 const (
-	RetryNone              RetryDirective = "none"
-	RetryRefreshCredential RetryDirective = "refresh_credential"
-	RetryNextCandidate     RetryDirective = "next_candidate"
+	RetryNone          RetryDirective = "none"
+	RetryNextCandidate RetryDirective = "next_candidate"
 )
 
 // Effect is the single runtime side effect selected for one attempt.
@@ -42,9 +41,7 @@ const (
 type RuleID string
 
 func (directive RetryDirective) Valid() bool {
-	return directive == RetryNone ||
-		directive == RetryRefreshCredential ||
-		directive == RetryNextCandidate
+	return directive == RetryNone || directive == RetryNextCandidate
 }
 
 func (effect Effect) Valid() bool {
@@ -58,7 +55,6 @@ func (effect Effect) Valid() bool {
 // that are not part of provider error evidence.
 type DecisionContext struct {
 	DefaultRateLimitCooldown time.Duration
-	CredentialRefreshable    bool
 	Method                   string
 	Operation                execution.Operation
 	// BufferedReplayEligible is a request-level proof that another buffered
@@ -78,8 +74,7 @@ type Decision struct {
 }
 
 func (decision Decision) ShouldRetry() bool {
-	return decision.Retry == RetryRefreshCredential ||
-		decision.Retry == RetryNextCandidate
+	return decision.Retry == RetryNextCandidate
 }
 
 // LegacyAction projects the new independent retry/effect decision onto the
@@ -93,7 +88,7 @@ func (decision Decision) LegacyAction() Action {
 	case EffectSkipGroup:
 		return ActionSkipGroup
 	}
-	if decision.Retry == RetryRefreshCredential || decision.Retry == RetryNextCandidate {
+	if decision.Retry == RetryNextCandidate {
 		return ActionRetry
 	}
 	return ActionTerminate

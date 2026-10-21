@@ -27,84 +27,59 @@ import (
 	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage/dbtx"
 	"gpt-load/internal/storage/models"
-	"gpt-load/internal/subscription"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 	"gpt-load/internal/telemetry"
 )
 
 const (
-	defaultModelDiscoveryTimeout      = 30 * time.Second
-	defaultSubscriptionControlTimeout = 30 * time.Second
-	controlTransactionCleanupTimeout  = time.Second
+	defaultModelDiscoveryTimeout     = 30 * time.Second
+	controlTransactionCleanupTimeout = time.Second
 )
 
 type Service struct {
-	db                                *gorm.DB
-	manager                           *state.Manager
-	registry                          *state.CredentialRegistry
-	channelRegistry                   *channel.Registry
-	channelDefaultBaseURLs            channelDefaultBaseURLProvider
-	registrySnapshot                  func() []state.CredentialRuntimeView
-	priceRuntime                      *PriceRuntime
-	catalogRuntime                    *catalog.Runtime
-	catalogSync                       *CatalogSyncCoordinator
-	modelsDevAutoSyncOverride         *bool
-	environmentProxy                  *outboundproxy.Config
-	encryption                        encryption.Service
-	executor                          execution.Executor
-	subscriptions                     *subscriptionruntime.Runtime
-	requestLogs                       RequestLogReader
-	usageStats                        UsageStatReader
-	credentialWindowUsage             credentialWindowUsageReader
-	credentialActivity                credentialActivityReader
-	homeStatistics                    HomeStatisticsReader
-	stats                             *health.StatsStore
-	mutations                         credentialMutationCoordinator
-	requestLogStats                   RequestLogStatsReader
-	debugCaptures                     DebugCaptureReader
-	debugCaptureHealth                DebugCaptureHealthReader
-	probeCaptures                     ProbeCaptureFactory
-	accessQuota                       *accessquota.Runtime
-	requestLogSink                    telemetry.RequestLogSink
-	agentCredentials                  *agent.CredentialStore
-	modelDiscoveryTimeout             time.Duration
-	random                            io.Reader
-	operationRandom                   io.Reader
-	beginSubscriptionAuthorization    func(channel.ID) (subscriptionruntime.Authorization, error)
-	completeSubscriptionAuthorization func(context.Context, channel.ID, subscriptionruntime.AuthorizationCompletion) (subscriptionruntime.Credential, error)
-	beginDeviceAuthorization          func(context.Context, channel.ID) (subscriptionruntime.DeviceAuthorization, error)
-	pollDeviceAuthorization           func(context.Context, channel.ID, []byte) (subscriptionruntime.DeviceAuthorizationPoll, error)
-	refreshSubscriptionCredential     func(context.Context, channel.ID, subscriptionruntime.Credential) (subscriptionruntime.Credential, error)
-	prepareSubscriptionCredential     func(context.Context, channel.ID, execution.CredentialSnapshot, bool) (subscriptionruntime.Credential, *execution.ErrorEvidence)
-	recoverSubscriptionCredential     func(context.Context, channel.ID, execution.CredentialSnapshot) (subscriptionruntime.Credential, *execution.ErrorEvidence)
-	discoverSubscriptionModels        func(context.Context, channel.ID, subscriptionruntime.Credential) ([]string, error)
-	observeSubscriptionAccount        func(context.Context, channel.ID, subscriptionruntime.Credential) (subscriptionruntime.Observation, error)
-	consumeSubscriptionResetCredit    func(context.Context, channel.ID, subscriptionruntime.Credential, string) (subscriptionruntime.ResetCreditResult, error)
-	oauthCallback                     *OAuthCallbackManager
-	now                               func() time.Time
-	publishSnapshot                   func(state.CompileInput) (*state.ConfigSnapshot, error)
-	reconcileRegistryGroup            func(uint, []state.CredentialEntry) (bool, error)
-	beforeAdvanceOperationStage       func(
+	db                        *gorm.DB
+	manager                   *state.Manager
+	registry                  *state.CredentialRegistry
+	channelRegistry           *channel.Registry
+	channelDefaultBaseURLs    channelDefaultBaseURLProvider
+	registrySnapshot          func() []state.CredentialRuntimeView
+	priceRuntime              *PriceRuntime
+	catalogRuntime            *catalog.Runtime
+	catalogSync               *CatalogSyncCoordinator
+	modelsDevAutoSyncOverride *bool
+	environmentProxy          *outboundproxy.Config
+	encryption                encryption.Service
+	executor                  execution.Executor
+	requestLogs               RequestLogReader
+	usageStats                UsageStatReader
+
+	credentialActivity          credentialActivityReader
+	homeStatistics              HomeStatisticsReader
+	stats                       *health.StatsStore
+	mutations                   credentialMutationCoordinator
+	requestLogStats             RequestLogStatsReader
+	debugCaptures               DebugCaptureReader
+	debugCaptureHealth          DebugCaptureHealthReader
+	probeCaptures               ProbeCaptureFactory
+	accessQuota                 *accessquota.Runtime
+	requestLogSink              telemetry.RequestLogSink
+	agentCredentials            *agent.CredentialStore
+	modelDiscoveryTimeout       time.Duration
+	random                      io.Reader
+	operationRandom             io.Reader
+	now                         func() time.Time
+	publishSnapshot             func(state.CompileInput) (*state.ConfigSnapshot, error)
+	reconcileRegistryGroup      func(uint, []state.CredentialEntry) (bool, error)
+	beforeAdvanceOperationStage func(
 		context.Context,
 		*models.ControlOperation,
 		operationStage,
 	) error
 	operationRecoveryWake chan struct{}
 	writeMu               sync.RWMutex
-	observationMu         sync.Mutex
-	observationFlights    map[observationFlightKey]*observationFlight
-	observationSemaphore  chan struct{}
 }
 
 type credentialRuntimeRetirer interface {
 	RetireCredential(uint)
-}
-
-type credentialWindowUsageReader interface {
-	QueryCredentialWindowUsage(
-		context.Context,
-		requestlog.CredentialWindowUsageQuery,
-	) (requestlog.CredentialWindowUsage, error)
 }
 
 type credentialActivityReader interface {
@@ -156,7 +131,6 @@ func NewService(
 	cfg *config.Config,
 	encryptionService encryption.Service,
 	executor execution.Executor,
-	subscriptionCredentials *subscription.CredentialManager,
 	requestLogs RequestLogReader,
 	usageStats UsageStatReader,
 	homeStatistics HomeStatisticsReader,
@@ -174,102 +148,25 @@ func NewService(
 			break
 		}
 	}
-	var subscriptions *subscriptionruntime.Runtime
-	if subscriptionCredentials != nil {
-		subscriptions = subscriptionCredentials.Runtime()
-	}
 	service := &Service{
 		db: db, manager: manager, registry: registry,
 		channelRegistry: channelRegistry,
 		priceRuntime:    priceRuntime,
 		catalogRuntime:  catalogRuntime,
-		encryption:      encryptionService, executor: executor, subscriptions: subscriptions, requestLogs: requestLogs,
+		encryption:      encryptionService, executor: executor, requestLogs: requestLogs,
 		usageStats: usageStats, homeStatistics: homeStatistics,
 		stats: stats, mutations: mutations, requestLogStats: requestLogStats, accessQuota: accessQuota,
 		requestLogSink:        requestLogSink,
 		modelDiscoveryTimeout: defaultModelDiscoveryTimeout,
 		random:                rand.Reader,
 		operationRandom:       rand.Reader,
-		beginSubscriptionAuthorization: func(channelID channel.ID) (subscriptionruntime.Authorization, error) {
-			browser, ok := subscriptionsBrowser(subscriptions, channelID)
-			if !ok {
-				return subscriptionruntime.Authorization{}, app_errors.ErrAuthorizationUnavailable
-			}
-			authorization, err := browser.BeginAuthorization()
-			if err == nil {
-				if callback, local := subscriptions.LocalCallback(channelID); local {
-					authorization.RedirectURI = callback.RedirectURI
-				}
-			}
-			return authorization, err
-		},
-		completeSubscriptionAuthorization: func(ctx context.Context, channelID channel.ID, completion subscriptionruntime.AuthorizationCompletion) (subscriptionruntime.Credential, error) {
-			browser, ok := subscriptionsBrowser(subscriptions, channelID)
-			if !ok {
-				return subscriptionruntime.Credential{}, app_errors.ErrAuthorizationUnavailable
-			}
-			return browser.CompleteAuthorization(ctx, completion)
-		},
-		beginDeviceAuthorization: func(ctx context.Context, channelID channel.ID) (subscriptionruntime.DeviceAuthorization, error) {
-			device, ok := subscriptionsDevice(subscriptions, channelID)
-			if !ok {
-				return subscriptionruntime.DeviceAuthorization{}, app_errors.ErrAuthorizationUnavailable
-			}
-			return device.BeginDeviceAuthorization(ctx)
-		},
-		pollDeviceAuthorization: func(ctx context.Context, channelID channel.ID, state []byte) (subscriptionruntime.DeviceAuthorizationPoll, error) {
-			device, ok := subscriptionsDevice(subscriptions, channelID)
-			if !ok {
-				return subscriptionruntime.DeviceAuthorizationPoll{}, app_errors.ErrAuthorizationUnavailable
-			}
-			return device.PollDeviceAuthorization(ctx, state)
-		},
-		refreshSubscriptionCredential: func(ctx context.Context, channelID channel.ID, credential subscriptionruntime.Credential) (subscriptionruntime.Credential, error) {
-			driver, ok := subscriptionsDriver(subscriptions, channelID)
-			if !ok {
-				return subscriptionruntime.Credential{}, app_errors.ErrAuthorizationUnavailable
-			}
-			return driver.Refresh(ctx, credential)
-		},
-		discoverSubscriptionModels: func(ctx context.Context, channelID channel.ID, credential subscriptionruntime.Credential) ([]string, error) {
-			capability, ok := subscriptions.ModelDiscovery(channelID)
-			if !ok {
-				return nil, app_errors.ErrValidation
-			}
-			return capability.DiscoverModels(ctx, credential)
-		},
-		observeSubscriptionAccount: func(ctx context.Context, channelID channel.ID, credential subscriptionruntime.Credential) (subscriptionruntime.Observation, error) {
-			capability, ok := subscriptions.QuotaObservation(channelID)
-			if !ok {
-				return subscriptionruntime.Observation{}, app_errors.ErrValidation
-			}
-			return capability.Observe(ctx, credential)
-		},
-		consumeSubscriptionResetCredit: func(ctx context.Context, channelID channel.ID, credential subscriptionruntime.Credential, requestID string) (subscriptionruntime.ResetCreditResult, error) {
-			capability, ok := subscriptions.ResetCreditAction(channelID)
-			if !ok {
-				return subscriptionruntime.ResetCreditResult{}, app_errors.ErrValidation
-			}
-			return capability.Consume(ctx, credential, requestID)
-		},
 		now:                   time.Now,
 		operationRecoveryWake: make(chan struct{}, 1),
-		observationFlights:    make(map[observationFlightKey]*observationFlight),
-		observationSemaphore:  make(chan struct{}, 1),
 	}
 	if cfg != nil {
 		service.environmentProxy = outboundproxy.Environment()
 	}
-	if subscriptionCredentials != nil {
-		service.prepareSubscriptionCredential = subscriptionCredentials.PrepareForControl
-		service.recoverSubscriptionCredential = subscriptionCredentials.RefreshForManualRecovery
-		service.subscriptions = subscriptionCredentials.Runtime()
-	}
-	if reader, ok := usageStats.(credentialWindowUsageReader); ok {
-		service.credentialWindowUsage = reader
-	} else if reader, ok := requestLogs.(credentialWindowUsageReader); ok {
-		service.credentialWindowUsage = reader
-	}
+
 	if reader, ok := usageStats.(credentialActivityReader); ok {
 		service.credentialActivity = reader
 	} else if reader, ok := requestLogs.(credentialActivityReader); ok {
@@ -285,29 +182,7 @@ func NewService(
 	service.publishSnapshot = manager.Publish
 	service.reconcileRegistryGroup = registry.ReconcileGroup
 	service.registrySnapshot = registry.Snapshot
-	service.oauthCallback = NewOAuthCallbackManager(service)
 	return service
-}
-
-func subscriptionsDriver(runtime *subscriptionruntime.Runtime, channelID channel.ID) (subscriptionruntime.Driver, bool) {
-	if runtime == nil {
-		return nil, false
-	}
-	return runtime.Driver(channelID)
-}
-
-func subscriptionsBrowser(runtime *subscriptionruntime.Runtime, channelID channel.ID) (subscriptionruntime.BrowserAuthorizationDriver, bool) {
-	if runtime == nil {
-		return nil, false
-	}
-	return runtime.BrowserAuthorization(channelID)
-}
-
-func subscriptionsDevice(runtime *subscriptionruntime.Runtime, channelID channel.ID) (subscriptionruntime.DeviceAuthorizationDriver, bool) {
-	if runtime == nil {
-		return nil, false
-	}
-	return runtime.DeviceAuthorization(channelID)
 }
 
 type configMutationPublication struct {
@@ -518,9 +393,6 @@ func (s *Service) recoverCommittedRuntime(ctx context.Context, includePrices boo
 		s.priceRuntime.Publish(priceTable)
 		if err := s.registry.ReplaceCredentials(entries); err != nil {
 			return fmt.Errorf("replace committed credentials: %w", err)
-		}
-		if err := s.restoreCredentialQuotaObservations(ctx); err != nil {
-			return fmt.Errorf("restore committed credential quota observations: %w", err)
 		}
 	}
 	if _, err := s.manager.Publish(input); err != nil {

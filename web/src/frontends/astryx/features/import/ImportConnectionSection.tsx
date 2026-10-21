@@ -88,7 +88,6 @@ export interface ImportConnectionSectionProps {
   paramErrors: Readonly<Record<string, string>>
   baseUrlOverrideEnabled: boolean
   disabled?: boolean
-  proxyDisabled?: boolean
   onNameChange(value: string): void
   onProviderUrlChange(value: string): void
 
@@ -108,7 +107,6 @@ export function ImportConnectionSection({
   paramErrors,
   baseUrlOverrideEnabled,
   disabled = false,
-  proxyDisabled = false,
   onNameChange,
   onProviderUrlChange,
 
@@ -130,11 +128,7 @@ export function ImportConnectionSection({
       : undefined
   const proxyDescription =
     !proxySupported || proxy.mode === 'custom' ? undefined : t(`common.proxy.help.${proxy.mode}`)
-  const proxyDisabledReason = !proxySupported
-    ? t('common.proxy.unsupportedHelp')
-    : proxyDisabled
-      ? t('import.connection.proxyLocked')
-      : undefined
+  const proxyDisabledReason = !proxySupported ? t('common.proxy.unsupportedHelp') : undefined
 
   function updateProxyMode(value: string): void {
     if (value !== 'inherit' && value !== 'direct' && value !== 'custom') return
@@ -311,7 +305,7 @@ export function ImportConnectionSection({
                     options={proxyModeOptions}
                     size="sm"
                     value={proxySupported ? proxy.mode : 'inherit'}
-                    isDisabled={disabled || proxyDisabled || !proxySupported}
+                    isDisabled={disabled || !proxySupported}
                     onChange={updateProxyMode}
                   />
                   {proxySupported && proxy.mode === 'custom' && (
@@ -325,7 +319,7 @@ export function ImportConnectionSection({
                       size="sm"
                       autoComplete="off"
                       {...plainTextInputAttrs}
-                      isDisabled={disabled || proxyDisabled}
+                      isDisabled={disabled}
                       status={proxyError ? { type: 'error', message: proxyError } : undefined}
                       statusVariant="tooltip"
                       onChange={updateProxyURL}

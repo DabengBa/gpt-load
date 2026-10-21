@@ -6,7 +6,7 @@
 
 **面向多渠道、多凭据场景的自托管 AI 网关**
 
-把 API Key、订阅账号、流量调度、故障处理、请求日志与用量统计，收进同一个入口。
+把 API Key、流量调度、故障处理、请求日志与用量统计，收进同一个入口。
 
 [English](README.md) · 中文 · [日本語](README_JP.md) | [官方网站](https://www.gpt-load.com)
 
@@ -53,7 +53,7 @@
 <img src="./screenshot/architecture-overview.png" alt="GPT-Load 统一接入与上游分流架构图" width="860">
 
 - **统一入口，保留原生协议** — 官方 API、云平台、模型服务和兼容中转统一管理；客户端继续使用 OpenAI、Anthropic 或 Gemini 原生接口，无需改造代码。
-- **统一管理 API Key 与订阅账号** — Codex、Claude、Antigravity、Grok 等订阅渠道与 API Key 渠道共享凭据管理、调度和健康体系。
+- **统一管理 API 凭据** — 标准 API 与云平台凭据共享调度、健康、请求日志和通讯捕获体系。
 - **内置调度与故障隔离** — 多凭据调度、自动权重、重试、冷却、黑名单与会话亲和，降低单个凭据过载或失效的影响。
 - **独立调度中心** — 管理员可打开 `/schedule`，跨分组查看同一对外模型的候选，统一编辑权重和优先级，查看运行态，恢复冷却或黑名单条目，并执行单条或批量测活。
 - **可观测、易部署、数据自持** — 提供健康、路由、日志、用量与成本估算，日志列表直接显示缓存命中率；单个 Go 二进制内嵌管理界面，支持 SQLite 和本地凭据加密。
@@ -62,6 +62,9 @@
 
 > [!WARNING]
 > 如果你正在使用 1.x，请先阅读[从 1.x 切换](#从-1x-切换)。2.0 不能打开、导入或原地迁移 1.x 数据。
+
+> [!WARNING]
+> **破坏性变更：上一版本写出的数据库必须转换或替换。** 内置 Codex、Claude、Antigravity、Grok 订阅及嵌入式 CPA 已删除，包括 OAuth、订阅凭据文件导入、刷新和账号/额度观察。本构建无法原地打开含已退役订阅结构或 migration `0003` 的旧库，会直接拒绝启动。受支持的路径有两条：停机后用 `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` 离线转换（保留分组、API 凭据、访问密钥与限额用量，丢弃请求日志与用量历史），或使用全新数据库手工重建。详见 [旧库离线转换](.docs/tech/legacy-db-conversion.md)。没有原地 migration、自动删除或兼容层；请保留旧部署和备份，不要让此构建连接业务数据库。启动拒绝不保证 SQLite 文件/WAL 零副作用。标准 API 与 external CLIProxyAPI 网关渠道仍受支持。
 
 ### 1. 启动服务
 
@@ -95,18 +98,9 @@ docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 
 首次配置只需三步：
 
-1. **添加渠道** — 选择上游服务，填入一个或多个 API Key；订阅渠道按界面提示完成 OAuth 授权或导入凭据。
+1. **添加渠道** — 选择上游服务，填入一个或多个 API Key。
 2. **创建 Group** — 选择渠道，配置可用模型与运行策略。
 3. **创建 AccessKey** — 设置允许访问的 Group 与客户端协议，把生成的 AccessKey 交给应用使用。
-
-<details>
-<summary>订阅渠道的 OAuth 回调端口</summary>
-
-Codex、Claude、Antigravity 的 OAuth 客户端使用固定回调端口。Compose 会把它们发布到 `HOST` 配置的地址，默认是 `127.0.0.1`；设置 `HOST=0.0.0.0` 时，这些回调端口也会发布到宿主机的全部网络接口。因为端口由上游客户端固定，同一台机器同一时刻只能运行一个默认 Compose 实例。
-
-如果通过 SSH 或远程浏览器操作，浏览器的 `localhost` 可能到不了 GPT-Load —— 此时把完整回调 URL 复制到授权弹窗里即可完成流程。
-
-</details>
 
 ### 流式响应交付
 
@@ -125,10 +119,6 @@ Gemini 和 OpenAI Images 是明确的实时例外：它们按原有实时流透�
 **分组总览** — 统一查看渠道、模型、凭据数量与健康状态
 
 <img src="./screenshot/groups-overview.png" alt="GPT-Load 分组总览" width="860">
-
-**订阅账号** — 查看账号可用性、额度窗口、重置时间与运行诊断
-
-<img src="./screenshot/subscription-accounts.png" alt="GPT-Load 订阅账号与额度状态" width="860">
 
 **访问密钥只读首页** — 使用 AccessKey 登录，只查看该密钥自己的分组、模型、请求、用量与费用额度
 
@@ -156,16 +146,19 @@ Gemini 和 OpenAI Images 是明确的实时例外：它们按原有实时流透�
 
 如果上游请求在 HTTP 响应提交前超时，网关返回 HTTP `408` 和 OpenAI 兼容的 JSON 错误：`error.message` 为 `Gateway timeout: upstream request timed out`，`error.type` 为 `timeout_error`，`error.code` 为 `upstream_timeout`。Chat Completions 和 Responses 客户端可通过该消息识别超时，并按自身配置的重试策略处理。响应一旦开始发送，就无法更改 HTTP 状态码。
 
-Embeddings 首期只在 OpenAI、OpenRouter 和 OpenAI Compatible API Key 渠道提供原生 OpenAI-compatible Wire，不支持订阅渠道或协议互转。未设置协议过滤器的 AccessKey 会按既有语义允许全部已启用协议，升级后也会获得 Embeddings 访问能力；最小权限部署请显式配置协议过滤器。
+Embeddings 首期只在 OpenAI、OpenRouter 和 OpenAI Compatible API Key 渠道提供原生 OpenAI-compatible Wire，不支持协议互转。未设置协议过滤器的 AccessKey 会按既有语义允许全部已启用协议，升级后也会获得 Embeddings 访问能力；最小权限部署请显式配置协议过滤器。
 
-Rerank 使用独立的 `rerank` 协议，在 OpenAI Compatible、New API、GPT-Load API Key 渠道支持 `POST /v1/rerank`。请求使用 `model`、`query` 和纯文本 `documents` 数组，可传 `top_n`、`return_documents` 等上游参数；不支持流式、订阅渠道或协议互转。OpenAI Compatible 的 Base URL 是完整 API 前缀（如 `https://host/v1`），New API / GPT-Load 使用网关根地址；上游必须提供兼容 Rerank 接口。未设置协议过滤器的 AccessKey 也会获得 Rerank 访问能力。仅有 `search_units` 等非 Token 计量时保持未计价，不将其视为 Token 或免费请求。
+Rerank 使用独立的 `rerank` 协议，在 OpenAI Compatible、New API、GPT-Load API Key 渠道支持 `POST /v1/rerank`。请求使用 `model`、`query` 和纯文本 `documents` 数组，可传 `top_n`、`return_documents` 等上游参数；不支持流式或协议互转。OpenAI Compatible 的 Base URL 是完整 API 前缀（如 `https://host/v1`），New API / GPT-Load 使用网关根地址；上游必须提供兼容 Rerank 接口。未设置协议过滤器的 AccessKey 也会获得 Rerank 访问能力。仅有 `search_units` 等非 Token 计量时保持未计价，不将其视为 Token 或免费请求。
 
 ### 内置渠道
 
 - **官方与云平台**：OpenAI、Anthropic、Gemini、xAI、Azure OpenAI、AWS Bedrock、Google Vertex AI
 - **常用模型服务**：DeepSeek、Moonshot AI、SiliconFlow、Zhipu AI、Alibaba、Volcengine、OpenRouter、Groq
-- **订阅渠道**：Codex、Claude、Antigravity、Grok
 - **自定义**：OpenAI Compatible（任意兼容中转）
+
+- **网关**：New API、GPT-Load、external CLIProxyAPI、sub2api
+
+Codex 与 Claude Code 仍可作为下游客户端使用，访问密钥页保留客户端配置；这不等于内置订阅授权。external CLIProxyAPI 是由运维方独立管理、通过 Base URL 和 API Key 接入的外部服务，不嵌入 GPT-Load。
 
 ## 部署与数据
 
@@ -210,10 +203,9 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 
 | 变量                            | 默认值                                      | 说明                                                                                                                                                     |
 | ------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HOST`                          | `127.0.0.1`                                 | Native 模式的监听地址，也是 Compose 主端口和 OAuth 回调端口的默认宿主机发布地址；Compose 容器内部固定监听 `0.0.0.0`。                                    |
+| `HOST`                          | `127.0.0.1`                                 | Native 模式的监听地址，也是 Compose 主端口的默认宿主机发布地址；Compose 容器内部固定监听 `0.0.0.0`。                                    |
 | `PORT`                          | `3001`                                      | HTTP 服务端口，必须为 `1–65535`；Compose 同时用于容器端口、宿主机发布端口和健康检查。                                                                    |
-| `BIND_ADDRESS`                  | 空，继承 `HOST`                             | 仅用于 Compose，单独覆盖主服务端口的宿主机发布地址，不改变 OAuth 回调端口。                                                                              |
-| `OAUTH_CALLBACK_BIND_ADDRESS`   | 空，继承 `HOST`                             | 仅用于 Compose，单独覆盖 OAuth 固定回调端口 `1455`、`54545`、`51121` 的宿主机发布地址。                                                                  |
+| `BIND_ADDRESS`                  | 空，继承 `HOST`                             | 仅用于 Compose，单独覆盖主服务端口的宿主机发布地址。                                                                              |
 | `GRACEFUL_SHUTDOWN_TIMEOUT`     | `10`                                        | 收到停止信号后等待请求结束的最长时间，正整数，单位秒。                                                                                                   |
 | `CONTAINER_STOP_GRACE_PERIOD`   | `15s`                                       | Compose 强制停止容器前的等待时间，使用 Docker duration，建议大于 `GRACEFUL_SHUTDOWN_TIMEOUT`。                                                           |
 | `READ_TIMEOUT`                  | `60`                                        | HTTP 请求读取超时，正整数，单位秒。                                                                                                                      |
@@ -238,18 +230,17 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 
 - 默认只监听 `127.0.0.1`。需要远程访问时，应通过受控网络或带 TLS 的反向代理暴露，并配置 ACL 与防火墙。
 - 妥善管理 `AUTH_KEY` 与 `ENCRYPTION_KEY`，不要把真实密钥提交到仓库、日志、截图或公开 Issue。
-- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会在固定 4 小时内保存观察到的明文请求和响应 Header、Body，其中可能包含凭据和 Cookie。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway、CPA 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
+- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会在固定 4 小时内保存观察到的明文请求和响应 Header、Body，其中可能包含凭据和 Cookie。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
 - 2.0 按**单应用实例**设计，多个实例之间不共享状态，不支持直接横向扩容。
 - 用量与成本是基于上游返回数据的**估算**，用于运行分析和资源评估，不等同于服务商账单或财务对账结果。
-- 订阅渠道依赖上游 OAuth 与兼容协议，可能随上游变化调整。请只接入自己有权使用的账号，并遵守对应服务商条款。
 - HTTP Responses 的 `previous_response_id` 续接按协议及现有存储能力自动接入：原生 Responses 且声明由上游管理状态的渠道目前包括 `openai`、`gpt_load`、`xai`、`newapi`、`cliproxyapi`、`sub2api`。按 AccessKey 隔离归属，在当前路由允许时固定原凭据，不受亲和开关影响；实际状态可用性由上游决定。无状态及转换响应不登记为持久状态。未知 ID（包括升级前或网关外创建的 ID）直接拒绝；Group 参数覆盖不能改写该字段。
 - Responses `create` 可接受可选顶层字段 `prompt_cache_key` 作为亲和信号。值必须非空、有效 UTF-8、首尾无空白、无控制字符、不超过 256 字节；无效值静默忽略，不阻断请求。有效时显式 key 优先于 prompt-prefix 派生信号（来自 `instructions`/`system`/`developer` 与首个 `user`/`input_text`）。原始 key 与任何派生值均不记入日志或暴露。亲和不扩大合格凭据集，也不覆盖 `previous_response_id` 的独立续接归属。请求日志展示有界的 `affinity_source`、`affinity_state` 及独立的 `continuity_hit`。此绑定不代表严格会话身份、机器绑定或跨实例共享。
 - 亲和绑定持久保存在现有 `system_settings` 表中，每个 `_internal.affinity.binding.<raw-hmac>` 键对应一个目标。热缓存 miss、TTL 到期、LRU 淘汰、capacity 变化或进程重启后，从该 durable store 读穿恢复；恢复的合格绑定仍记为 `hit`。无关分组、条目权重、catalog/Models.dev 更新及 snapshot revision 变化不会丢弃绑定。恢复需要同一数据库与亲和键派生材料，不依赖停机 checkpoint。
 - 绑定目标通过访问密钥、分组、路由要求、条目权重、凭据身份代际、冷却与黑名单等全部硬资格过滤后，必须跨所有合格 priority tier、route mode 和 regular/store-downgraded bucket 首试原供应商/凭据。只有实际且可重试的 provider failure 后，才按既有重试/重放规则进行亲和 fallback；fallback 成功后才可迁移绑定。目标被资格过滤排除时不尝试它，其他合格候选可正常服务，但其成功不会删除或覆盖旧 durable row。准备阶段错误和下游失败不算 provider failure。
 - `cache_miss` 表示适用查找路径未找到绑定，亲和启用时包括 durable store 查询；`hit` 包括从持久层恢复的绑定。`cache_unavailable` 表示亲和解析不可用，涵盖本地缓存/配置/键条件及持久查询/解码错误。必需的持久查询失败时 fail-closed，在 provider dispatch 前终止，不进入普通 fallback。所有合格分组均关闭亲和时跳过持久查询，继续普通调度；仅内存的测试装配保留本地行为。供应商已成功后的持久写入失败会保留热绑定和已交付响应，并记录 `affinity_binding_persist_failed`，不触发新的供应商尝试；该次失败写入不保证在缓存丢失或重启后恢复。
-- 原生 Responses WebSocket 使用同端口 `GET /v1/responses`，按渠道声明的实际能力准入，支持 OpenAI、xAI、Codex 及符合原生合同的 CPA/sub2api、GPT-Load 端点。兼容客户端携带布尔参数 `stream:true/false`，两者均按 WS 事件流返回。每轮独立检查权限、限流、额度与当前路由，并记录用量及成本。同一连接固定上游身份；不回退 HTTP、不缓存或重放聊天历史。
+- 原生 Responses WebSocket 使用同端口 `GET /v1/responses`，按渠道声明的实际能力准入，支持 OpenAI、xAI 及符合原生合同的 external CLIProxyAPI/sub2api、GPT-Load 端点。兼容客户端携带布尔参数 `stream:true/false`，两者均按 WS 事件流返回。每轮独立检查权限、限流、额度与当前路由，并记录用量及成本。同一连接固定上游身份；不回退 HTTP、不缓存或重放聊天历史。
 - `responses_websocket_enabled` 默认开启，分组显式设置优先于全局，未覆盖时继承全局。关闭会立即断开受影响的 WS 连接并中断生成；HTTP/SSE 不受影响。重新开启不会恢复旧连接的临时状态。
-- 完整 `stream_id` 多流与分叉用于 OpenAI 和满足端到端条件的 GPT-Load 级联；其余上述渠道串行执行并明确拒绝命名流。预热实际发送 `generate:false`。Codex 只支持原连接内续接，不能使用 `store:true` 或凭旧 ID 跨连接恢复；其他渠道的持久续接仍取决于存储能力与有效归属。[Codex SDK 的代理、读取和关闭边界](docs/design/codex-websocket-session.md)继续适用。
+- 完整 `stream_id` 多流与分叉用于 OpenAI 和满足端到端条件的 GPT-Load 级联；其余上述渠道串行执行并明确拒绝命名流。预热实际发送 `generate:false`。其他渠道的持久续接仍取决于存储能力与有效归属。
 - 响应归属保存在内存中，默认保留 30 天，最多 100,000 条，ID 文本合计最多 16 MiB，达到容量时淘汰旧记录。正常停机成功保存 checkpoint 后可在同一数据目录恢复；不保证崩溃恢复或上游历史仍有效。
 - `conversation` 与其他既有资源 ID 不在上述归属路由范围内，仍依赖单凭据或上游跨凭据共享资源。
 
@@ -267,7 +258,6 @@ GPT-Load 的部分能力构建在这些开源项目之上，在此致谢：
 | 项目                                                        | 作用                                           | 许可证     |
 | ----------------------------------------------------------- | ---------------------------------------------- | ---------- |
 | [Bifrost Core](https://github.com/maximhq/bifrost)          | 各服务商的认证、请求响应转换、流式与用量归一化 | Apache-2.0 |
-| [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | 订阅渠道的 OAuth 与执行适配                    | MIT        |
 | [Lobe Icons](https://github.com/lobehub/lobe-icons)         | 管理界面中的渠道品牌图标                       | MIT        |
 
 GPT-Load 自身负责凭据存储、账号选择、调度、重试、健康、亲和、日志与用量策略。第三方声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，许可证全文位于 [`LICENSES/`](LICENSES/)，每个 Release 另附覆盖 Go 依赖的 CycloneDX SBOM。

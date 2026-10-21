@@ -41,7 +41,7 @@ func (s *Service) DrainCommittedOperations(ctx context.Context) error {
 	if _, err := s.recoverPendingOperationsLocked(ctx, 0); err != nil {
 		return err
 	}
-	return s.restoreCredentialQuotaObservations(ctx)
+	return nil
 }
 
 func (s *Service) recoverPendingOperationsLocked(

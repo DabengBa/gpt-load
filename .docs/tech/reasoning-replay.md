@@ -77,17 +77,6 @@ converted candidate while preserving the original request for another route.
 Best-effort filtering of unsupported tool declarations does not permit dropping
 tool result images, files, or audio.
 
-### Grok Prompt Cache Identity
-
-The Grok bridge scopes continuity by credential and model, and uses the attempt
-identity when no continuity is available. For OpenAI Chat and Responses input,
-the embedded executor removes caller continuity fields and writes its stable
-gateway identity to `prompt_cache_key` in both payload and original request.
-CPA uses that key for the final request body and conversation header. The bridge
-does not pass this caching identity as trusted execution session metadata, which
-would enable automatic encrypted reasoning replay into later requests.
-Other input formats retain their existing metadata behavior.
-
 ## Failure Boundaries And Verification
 
 - `third_party/bifrost-core/schemas/reasoningreplay_test.go` checks serialized
@@ -114,8 +103,4 @@ an attempt with a first-token deadline still holds them, because only real
 output counts as its first token.
 
 `internal/execution/bifrost/ahead_tool_output_test.go` verifies string-only tool
-output serialization and rejection before dispatch. Grok two-turn unary and
-stream captures are covered by
-`third_party/cpaembedded/embedded/ahead_grok_cache_test.go`; credential, model,
-and attempt scope checks also run in
-`internal/execution/cpa/ahead_grok_scope_test.go`.
+output serialization and rejection before dispatch.

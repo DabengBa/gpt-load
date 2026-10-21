@@ -2,23 +2,11 @@ package state
 
 import (
 	"fmt"
-	"math"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-
-	providerobservation "gpt-load/internal/subscription/providers/observation"
-)
-
-type CredentialAuthState string
-
-const (
-	CredentialAuthStateReady                   CredentialAuthState = "ready"
-	CredentialAuthStateRefreshing              CredentialAuthState = "refreshing"
-	CredentialAuthStateReauthorizationRequired CredentialAuthState = "reauthorization_required"
-	CredentialAuthStateOutcomeUnknown          CredentialAuthState = "outcome_unknown"
 )
 
 type CredentialEntry struct {
@@ -27,15 +15,12 @@ type CredentialEntry struct {
 	Version            uint64
 	IdentityGeneration uint64
 	Fingerprint        string
-	AuthState          CredentialAuthState
 	CooldownUntil      time.Time
 	Blacklisted        bool
 	BlacklistReleaseAt time.Time
 	FailureCount       int
 	FailureGeneration  uint64
 	EncryptedValue     string
-	quotaRemaining     *float64
-	quotaResetAt       time.Time
 }
 
 type CredentialMeta struct {
@@ -138,9 +123,6 @@ func ValidateCredentialEntries(entries []CredentialEntry) error {
 			return fmt.Errorf("group %d must have at most one credential", entry.GroupID)
 		}
 		groups[entry.GroupID] = struct{}{}
-		if !entry.AuthState.valid() {
-			return fmt.Errorf("credential %d has invalid auth state %q", entry.ID, entry.AuthState)
-		}
 		if entry.EncryptedValue == "" {
 			return fmt.Errorf("credential %d encrypted value is required", entry.ID)
 		}
@@ -486,42 +468,7 @@ func (r *CredentialRegistry) ReplaceCredentialSecretIfMatch(
 	entry.Version = nextVersion
 	entry.Fingerprint = fingerprint
 	entry.EncryptedValue = encryptedValue
-	entry.AuthState = CredentialAuthStateReady
 	return true
-}
-
-func (r *CredentialRegistry) SetCredentialAuthState(credentialID uint, authState CredentialAuthState) bool {
-	if !authState.valid() {
-		return false
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	entry, ok := r.entryLocked(credentialID)
-	if !ok {
-		return false
-	}
-	next := authState.normalize()
-	changed := entry.AuthState.normalize() != next
-	entry.AuthState = next
-	if entry.AuthState != CredentialAuthStateReady {
-		entry.quotaRemaining = nil
-		entry.quotaResetAt = time.Time{}
-	}
-	if changed {
-		entry.FailureGeneration++
-	}
-	return true
-}
-
-// CredentialAuthStateOf returns the runtime auth state of one credential.
-func (r *CredentialRegistry) CredentialAuthStateOf(credentialID uint) (CredentialAuthState, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	entry, ok := r.entryLocked(credentialID)
-	if !ok {
-		return "", false
-	}
-	return entry.AuthState.normalize(), true
 }
 
 // EncryptedCredentialData returns encrypted credential data for the selected
@@ -544,7 +491,7 @@ func (r *CredentialRegistry) ActiveEncryptedCredentialData(credentialID, expecte
 		return "", false
 	}
 	entry, ok := r.buckets[groupID][credentialID]
-	if !ok || entry.AuthState.normalize() != CredentialAuthStateReady {
+	if !ok {
 		return "", false
 	}
 	return entry.EncryptedValue, true
@@ -563,9 +510,6 @@ func (r *CredentialRegistry) CaptureActiveCredentialRefs(groupIDs []uint) []Cred
 	for groupID := range selectedGroups {
 		bucket := r.buckets[groupID]
 		for _, entry := range bucket {
-			if entry.AuthState.normalize() != CredentialAuthStateReady {
-				continue
-			}
 			refs = append(refs, CredentialRef{
 				ID: entry.ID, GroupID: entry.GroupID,
 				Version: entry.Version, IdentityGeneration: entry.IdentityGeneration,
@@ -598,8 +542,7 @@ func (r *CredentialRegistry) ActiveEncryptedCredentialDataIfMatch(ref Credential
 		entry.Version != ref.Version ||
 		entry.IdentityGeneration != ref.IdentityGeneration ||
 		entry.Fingerprint != ref.Fingerprint ||
-		entry.EncryptedValue != ref.EncryptedValue ||
-		entry.AuthState.normalize() != CredentialAuthStateReady {
+		entry.EncryptedValue != ref.EncryptedValue {
 		return "", false
 	}
 	// FailureGeneration is intentionally excluded: failure accounting must not
@@ -612,9 +555,7 @@ func (r *CredentialRegistry) ActiveCredentialIDs() []uint {
 	ids := make([]uint, 0, len(r.credentialGroups))
 	for _, bucket := range r.buckets {
 		for _, entry := range bucket {
-			if entry.AuthState.normalize() == CredentialAuthStateReady {
-				ids = append(ids, entry.ID)
-			}
+			ids = append(ids, entry.ID)
 		}
 	}
 	r.mu.RUnlock()
@@ -645,7 +586,7 @@ func (r *CredentialRegistry) CollectCredentialCandidates(groupIDs []uint, exclud
 	for _, groupID := range groupIDs {
 		for _, entry := range r.buckets[groupID] {
 			view := runtimeView(entry)
-			if view.RuntimeState(now) != CredentialRuntimeAvailable || entry.AuthState.normalize() != CredentialAuthStateReady {
+			if view.RuntimeState(now) != CredentialRuntimeAvailable {
 				continue
 			}
 
@@ -681,9 +622,6 @@ func (r *CredentialRegistry) CollectCredentialProbeCandidates(groupIDs []uint, e
 	metas := make([]CredentialMeta, 0)
 	for _, groupID := range groupIDs {
 		for _, entry := range r.buckets[groupID] {
-			if entry.AuthState.normalize() != CredentialAuthStateReady {
-				continue
-			}
 			metas = append(metas, CredentialMeta{ID: entry.ID, GroupID: entry.GroupID, Version: entry.Version, IdentityGeneration: entry.IdentityGeneration})
 		}
 	}
@@ -997,9 +935,6 @@ func (r *CredentialRegistry) ReleaseExpiredBlacklists(
 				entry.BlacklistReleaseAt.After(now) {
 				continue
 			}
-			if entry.AuthState.normalize() != CredentialAuthStateReady {
-				continue
-			}
 			entry.Blacklisted = false
 			entry.BlacklistReleaseAt = time.Time{}
 			entry.FailureCount = 0
@@ -1047,80 +982,11 @@ func (r *CredentialRegistry) ClearExpiredEntryCooldowns(now time.Time) int {
 	return cleared
 }
 
-func (r *CredentialRegistry) SetCredentialQuotaObservation(
-	credentialID uint,
-	remaining *float64,
-	resetAt time.Time,
-) bool {
-
-	if credentialID == 0 {
-		return false
-	}
-	if remaining != nil && (math.IsNaN(*remaining) || math.IsInf(*remaining, 0) ||
-		*remaining < 0 || *remaining > 1 || resetAt.IsZero()) {
-		return false
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	entry, ok := r.entryLocked(credentialID)
-	if !ok {
-		return false
-	}
-	entry.quotaRemaining = cloneFloat(remaining)
-	if remaining == nil {
-		entry.quotaResetAt = time.Time{}
-		return true
-	}
-	entry.quotaResetAt = resetAt
-	return true
-}
-
 // ApplyQuotaWindows publishes the tightest account-scope remaining ratio
 // derived from windows to the management-plane health display, or clears it
 // when no account-scope window carries both a usable ratio and a reset time.
 // It is shared by the active and passive credential observation writers so
 // both pick the same bottleneck window using one rule.
-func (r *CredentialRegistry) ApplyQuotaWindows(credentialID uint, windows []providerobservation.QuotaWindow) bool {
-	if r == nil || credentialID == 0 {
-		return false
-	}
-	var remaining *float64
-	var resetAtMS int64
-	for _, window := range windows {
-		if window.Scope != "account" || window.ResetAtMS == nil {
-			continue
-		}
-		value, known := quotaWindowRemainingRatio(window)
-		if !known {
-			continue
-		}
-		if remaining == nil || value < *remaining {
-			cloned := value
-			remaining = &cloned
-			resetAtMS = *window.ResetAtMS
-		} else if value == *remaining && *window.ResetAtMS > resetAtMS {
-			// Equal bottlenecks must all recover before this credential is usable.
-			resetAtMS = *window.ResetAtMS
-		}
-	}
-	if remaining == nil || resetAtMS == 0 {
-		return r.SetCredentialQuotaObservation(credentialID, nil, time.Time{})
-	}
-	return r.SetCredentialQuotaObservation(credentialID, remaining, time.UnixMilli(resetAtMS).UTC())
-}
-
-func quotaWindowRemainingRatio(window providerobservation.QuotaWindow) (float64, bool) {
-	if window.State == "exhausted" {
-		return 0, true
-	}
-	if window.Utilization != nil {
-		return math.Max(0, math.Min(1, 1-*window.Utilization)), true
-	}
-	if window.Remaining != nil && window.Limit != nil && *window.Limit > 0 {
-		return math.Max(0, math.Min(1, *window.Remaining / *window.Limit)), true
-	}
-	return 0, false
-}
 
 func (r *CredentialRegistry) SetCooldown(credentialID uint, until time.Time) bool {
 	exists, _ := r.SetCooldownWithChange(credentialID, until)
@@ -1349,7 +1215,6 @@ func (r *CredentialRegistry) restoreRuntimeStateIfMatch(
 		entry.Fingerprint != ref.Fingerprint ||
 		entry.EncryptedValue != ref.EncryptedValue ||
 		entry.FailureGeneration != ref.FailureGeneration ||
-		entry.AuthState.normalize() != CredentialAuthStateReady ||
 		cooldownUntil != nil && !entry.CooldownUntil.Equal(*cooldownUntil) {
 		return false
 	}
@@ -1399,37 +1264,10 @@ func (r *CredentialRegistry) entryLocked(credentialID uint) (*CredentialEntry, b
 }
 
 func cloneCredentialEntry(entry CredentialEntry) CredentialEntry {
-	entry.quotaRemaining = cloneFloat(entry.quotaRemaining)
 	entry.FailureGeneration = 0
 	return entry
 }
 
-func (state CredentialAuthState) normalize() CredentialAuthState {
-	if state == "" {
-		return CredentialAuthStateReady
-	}
-	return state
-}
-
-func (state CredentialAuthState) valid() bool {
-	switch state.normalize() {
-	case CredentialAuthStateReady, CredentialAuthStateRefreshing,
-		CredentialAuthStateReauthorizationRequired, CredentialAuthStateOutcomeUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
 func detachCredentialEntryExact(entry CredentialEntry) CredentialEntry {
-	entry.quotaRemaining = cloneFloat(entry.quotaRemaining)
 	return entry
-}
-
-func cloneFloat(value *float64) *float64 {
-	if value == nil {
-		return nil
-	}
-	cloned := *value
-	return &cloned
 }

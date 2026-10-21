@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,19 @@ var migrationIDPattern = regexp.MustCompile(`^(\d{4})_[a-z0-9]+(?:_[a-z0-9]+)*$`
 // Retired migration IDs remain in the ledger but are not part of the active chain.
 var removedMigrationIDs = map[string]struct{}{
 	"0009_price_multipliers": {},
+}
+
+// RetiredMigrationIDs returns the retired migration IDs sorted ascending. A
+// stored ledger may contain any subset of them: the current chain skips retired
+// IDs instead of deleting their ledger rows, so a database that applied one of
+// them before its removal keeps the row forever.
+func RetiredMigrationIDs() []string {
+	ids := make([]string, 0, len(removedMigrationIDs))
+	for id := range removedMigrationIDs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 type schemaMigration struct {
@@ -51,11 +65,6 @@ var migrations = []migration{
 		ID:       migrationfiles.ID0002,
 		Up:       migrationfiles.Up0002,
 		Validate: migrationfiles.Validate0002,
-	},
-	{
-		ID:       migrationfiles.ID0003,
-		Up:       migrationfiles.Up0003,
-		Validate: migrationfiles.Validate0003,
 	},
 	{
 		ID:       migrationfiles.ID0004,

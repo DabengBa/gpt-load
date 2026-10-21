@@ -2,7 +2,7 @@ package channel
 
 import (
 	"encoding/json"
-	"reflect"
+
 	"testing"
 
 	"gpt-load/internal/channel/spec"
@@ -36,53 +36,6 @@ func TestCompilerRejectsUnreferencedChannelExtension(t *testing.T) {
 
 	if _, err := compileBuiltInModules([]spec.Module{openAI}); err == nil {
 		t.Fatal("compileBuiltInModules() accepted an unreferenced channel extension")
-	}
-}
-
-func TestCompilerRejectsUnknownAuthorizationMethod(t *testing.T) {
-	t.Parallel()
-
-	codex := findModule(t, builtInModules(), Codex)
-	codex.Definition.Connection.AuthorizationMethods = []spec.AuthorizationMethod{"unknown"}
-
-	if _, err := compileBuiltInModules([]spec.Module{codex}); err == nil {
-		t.Fatal("compileBuiltInModules() accepted an unknown authorization method")
-	}
-}
-
-func TestCompilerAcceptsDeviceOAuthAuthorizationMethod(t *testing.T) {
-	t.Parallel()
-
-	codex := findModule(t, builtInModules(), Codex)
-	codex.Definition.Connection.AuthorizationMethods = []spec.AuthorizationMethod{
-		"device_oauth",
-		spec.AuthorizationOAuthFile,
-	}
-
-	if _, err := compileBuiltInModules([]spec.Module{codex}); err != nil {
-		t.Fatalf("compileBuiltInModules() rejected device OAuth: %v", err)
-	}
-}
-
-func TestCompilerRejectsResetCreditWithoutObservation(t *testing.T) {
-	t.Parallel()
-
-	codex := findModule(t, builtInModules(), Codex)
-	codex.Definition.Capabilities.QuotaObservation = ""
-
-	if _, err := compileBuiltInModules([]spec.Module{codex}); err == nil {
-		t.Fatal("compileBuiltInModules() accepted reset credit without observation")
-	}
-}
-
-func TestCompilerRejectsSubscriptionCapabilityOnAPIKeyChannel(t *testing.T) {
-	t.Parallel()
-
-	openAI := findModule(t, builtInModules(), OpenAI)
-	openAI.Definition.Capabilities.ModelDiscovery = "subscription_models"
-
-	if _, err := compileBuiltInModules([]spec.Module{openAI}); err == nil {
-		t.Fatal("compileBuiltInModules() accepted a subscription capability on an API key channel")
 	}
 }
 
@@ -179,8 +132,8 @@ func TestCompilerValidatesExplicitResponsesStoreHandling(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			module := findModule(t, builtInModules(), Codex)
-			module.Definition.Routes = []spec.Route{{
+			module := findModule(t, builtInModules(), CLIProxyAPI)
+			module.Definition.Routes = []spec.Route{spec.NewRoute(protocol.OpenAICompletions, execution.OperationProbe, execution.RouteNative), {
 				ClientProtocol:         test.clientProtocol,
 				Operation:              test.operation,
 				Mode:                   test.mode,
@@ -251,68 +204,6 @@ func TestCompilerRejectsEmptyChannelMark(t *testing.T) {
 
 	if _, err := compileBuiltInModules([]spec.Module{openAI}); err == nil {
 		t.Fatal("compileBuiltInModules() accepted an empty channel mark")
-	}
-}
-
-func TestCompilerProjectsTypedChannelNotice(t *testing.T) {
-	t.Parallel()
-
-	openAI := findModule(t, builtInModules(), OpenAI)
-	openAI.Definition.Notices = []spec.Notice{{
-		ID:   spec.NoticeClaudeOAuthRisk,
-		Tone: spec.NoticeToneWarning,
-	}}
-
-	definitions, err := compileBuiltInModules([]spec.Module{openAI})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []NoticeDescriptor{{
-		ID:   NoticeClaudeOAuthRisk,
-		Tone: NoticeToneWarning,
-	}}
-	if got := definitions[0].descriptor.Notices; !reflect.DeepEqual(got, want) {
-		t.Fatalf("compiled notices = %#v, want %#v", got, want)
-	}
-}
-
-func TestCompilerRejectsInvalidOrDuplicateChannelNotice(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		notices []spec.Notice
-	}{
-		{
-			name: "unknown ID",
-			notices: []spec.Notice{{
-				ID: "unknown_notice", Tone: spec.NoticeToneWarning,
-			}},
-		},
-		{
-			name: "unknown tone",
-			notices: []spec.Notice{{
-				ID: spec.NoticeClaudeOAuthRisk, Tone: "critical",
-			}},
-		},
-		{
-			name: "duplicate",
-			notices: []spec.Notice{
-				{ID: spec.NoticeClaudeOAuthRisk, Tone: spec.NoticeToneWarning},
-				{ID: spec.NoticeClaudeOAuthRisk, Tone: spec.NoticeToneWarning},
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			openAI := findModule(t, builtInModules(), OpenAI)
-			openAI.Definition.Notices = test.notices
-			if _, err := compileBuiltInModules([]spec.Module{openAI}); err == nil {
-				t.Fatal("compileBuiltInModules() accepted invalid channel notice")
-			}
-		})
 	}
 }
 

@@ -13,13 +13,11 @@ func TestResponsesWebsocketCapabilitiesAreIndependent(t *testing.T) {
 	}{
 		{id: OpenAI, params: `{"base_url":"https://example.test"}`, native: true, stored: true, multiplex: true},
 		{id: XAI, params: `{"base_url":"https://example.test"}`, native: true, stored: true},
-		// Codex 与 Grok 是固定官方端点的订阅渠道，不接受 base_url。
-		{id: Codex, params: `{}`, native: true},
+
 		{id: CLIProxyAPI, params: `{"base_url":"https://example.test"}`, native: true},
 		{id: Sub2API, params: `{"base_url":"https://example.test"}`, native: true},
 		{id: GPTLoad, params: `{"base_url":"https://example.test"}`, native: true, stored: true, multiplex: true},
 		{id: NewAPI, params: `{"base_url":"https://example.test"}`},
-		{id: Grok, params: `{}`},
 	} {
 		t.Run(string(test.id), func(t *testing.T) {
 			target, err := registry.Resolve(test.id, []byte(test.params))

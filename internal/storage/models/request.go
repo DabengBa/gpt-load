@@ -80,7 +80,7 @@ type RequestLogAttempt struct {
 	ProviderTokensPerSecond *float64    `gorm:"column:provider_tokens_per_second;check:chk_request_log_attempt_provider_tokens_per_second,provider_tokens_per_second IS NULL OR (provider_tokens_per_second >= 0 AND provider_tokens_per_second < 1e308)"`
 	FailureOrigin           string      `gorm:"type:varchar(16);not null;default:'';check:chk_request_log_attempt_failure_origin,failure_origin IN ('','client','upstream','downstream','internal')"`
 	FailureScope            string      `gorm:"type:varchar(16);not null;default:'';check:chk_request_log_attempt_failure_scope,failure_scope IN ('','request','model','credential','group')"`
-	RetryDirective          string      `gorm:"type:varchar(32);not null;default:'';check:chk_request_log_attempt_retry_directive,retry_directive IN ('','none','refresh_credential','next_candidate')"`
+	RetryDirective          string      `gorm:"type:varchar(32);not null;default:'';check:chk_request_log_attempt_retry_directive,retry_directive IN ('','none','next_candidate')"`
 	Effect                  string      `gorm:"type:varchar(32);not null;default:'';check:chk_request_log_attempt_effect,effect IN ('','none','cooldown_credential','record_credential_failure','skip_group')"`
 	RuleID                  string      `gorm:"type:varchar(128);not null;default:''"`
 	Action                  string      `gorm:"type:varchar(32);not null;check:chk_request_log_attempt_action,action IN ('terminate','retry','cooldown_credential','fail_credential','skip_group')"`
@@ -92,8 +92,8 @@ type RequestLogAttempt struct {
 	RequestLog              *RequestLog `gorm:"foreignKey:RequestID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
-// CredentialAttemptStat is the hourly account-level outcome aggregate used by
-// subscription account cards. Downstream cancellations are intentionally not
+// CredentialAttemptStat is the hourly credential-level outcome aggregate.
+// Downstream cancellations are intentionally not
 // included in either outcome count.
 type CredentialAttemptStat struct {
 	ID            uint  `gorm:"primaryKey;autoIncrement;index:idx_credential_attempt_stats_bucket_id,priority:2"`

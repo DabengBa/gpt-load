@@ -38,8 +38,8 @@ func TestMultiplierFreshSchemaAndGapContinuation(t *testing.T) {
 	if err := applyMigrationRegistry(db, migrations[:8]); err != nil {
 		t.Fatal(err)
 	}
-	if migrations[8].ID != "0010_single_credential_per_group" {
-		t.Fatalf("next migration = %s", migrations[8].ID)
+	if migrations[7].ID != "0010_single_credential_per_group" {
+		t.Fatalf("next migration = %s", migrations[7].ID)
 	}
 	if err := AutoMigrate(db); err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestMultiplierRetiredLedgerUpgradeAndRepeatStart(t *testing.T) {
 			}
 			var want []string
 			for index, entry := range migrations {
-				if index == 8 {
+				if index == 7 {
 					want = append(want, "0009_price_multipliers")
 				}
 				want = append(want, entry.ID)

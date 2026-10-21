@@ -15,7 +15,6 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
-	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 )
 
@@ -78,13 +77,11 @@ func TestCredentialRoutesReplaceLegacyGroupKeyRoutes(t *testing.T) {
 	fixture := newServiceFixture(t)
 	module := NewServer(&config.Config{AuthKey: "credential-auth"}, fixture.service).HTTPModule()
 	want := map[string]string{
-		"control.group-credentials.detail":   "/groups/:group_id/credential",
-		"control.group-credentials.reveal":   "/groups/:group_id/credential/reveal",
-		"control.group-credentials.refresh":  "/groups/:group_id/credential/refresh",
-		"control.group-credentials.download": "/groups/:group_id/credential/download",
-		"control.group-credentials.update":   "/groups/:group_id/credential",
-		"control.group-credentials.restore":  "/groups/:group_id/credential/restore",
-		"control.group-credentials.test":     "/groups/:group_id/credential/test",
+		"control.group-credentials.detail":  "/groups/:group_id/credential",
+		"control.group-credentials.reveal":  "/groups/:group_id/credential/reveal",
+		"control.group-credentials.update":  "/groups/:group_id/credential",
+		"control.group-credentials.restore": "/groups/:group_id/credential/restore",
+		"control.group-credentials.test":    "/groups/:group_id/credential/test",
 
 		"control.group-credentials.delete": "/groups/:group_id/credential",
 		"control.group-credentials.import": "/groups/:group_id/credential",
@@ -285,7 +282,7 @@ func TestGroupCredentialMutationsPreserveRuntimeIdentityAndHealthContracts(t *te
 	if err != nil {
 		t.Fatalf("UpdateGroupCredential() error = %v", err)
 	}
-	if updated.CredentialID != row.ID || updated.AuthState != string(state.CredentialAuthStateReady) {
+	if updated.CredentialID != row.ID {
 		t.Fatalf("updated credential = %#v", updated)
 	}
 	var committed models.Credential
@@ -404,29 +401,6 @@ func TestCredentialHTTPUsesCanonicalWireAndRejectsLegacyFields(t *testing.T) {
 		fmt.Sprintf(`{"action":"disable","key_ids":[%d]}`, row.ID), auth, "")
 	if legacyBatchField.Code != http.StatusNotFound {
 		t.Fatalf("legacy batch field = %d %s", legacyBatchField.Code, legacyBatchField.Body.String())
-	}
-}
-
-func TestAPIKeyCredentialImportRejectsSubscriptionGroup(t *testing.T) {
-	t.Parallel()
-	fixture, groupID, _ := newSubscriptionCredentialFixture(t)
-	before, err := fixture.service.GetGroupCredential(t.Context(), groupID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = fixture.service.ImportGroupCredentialsIdempotent(
-		t.Context(),
-		"00000000-0000-4000-8000-0000000000c3",
-		groupID,
-		CredentialImportRequest{Credentials: "must-not-enter-subscription-group"},
-	)
-	if !errors.Is(err, app_errors.ErrValidation) {
-		t.Fatalf("ImportGroupCredentialsIdempotent() error = %v", err)
-	}
-	after, listErr := fixture.service.GetGroupCredential(t.Context(), groupID)
-	if listErr != nil || after.Credential.CredentialID != before.Credential.CredentialID {
-		t.Fatalf("credential collection changed: before=%#v after=%#v err=%v", before, after, listErr)
 	}
 }
 

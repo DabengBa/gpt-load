@@ -11,7 +11,7 @@ import (
 func TestUsageLatencyMigrationAddsValidatedColumnsAndIsIdempotent(t *testing.T) {
 	db := openInitialTestDatabase(t)
 	for _, up := range []func(*gorm.DB) error{
-		migrations.Up0001, migrations.Up0002, migrations.Up0003, migrations.Up0004,
+		migrations.Up0001, migrations.Up0002, migrations.Up0004,
 		migrations.Up0005, migrations.Up0006, migrations.Up0007, migrations.Up0008,
 		migrations.Up0010,
 	} {

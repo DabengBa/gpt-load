@@ -97,22 +97,6 @@ func TestCredentialPinnedIDRejectsReplacement(t *testing.T) {
 	}
 }
 
-func TestCredentialConnectRejectsStaleExpectedIDAtomically(t *testing.T) {
-	t.Parallel()
-	fixture, group, current := newSubscriptionCredentialFixture(t)
-	stage := mustImportSubscriptionStage(t, fixture, "account-observation", "observation@example.com")
-	_, err := fixture.service.ConnectGroupCredentialsIdempotent(t.Context(), "818f47a2-9c35-4d6e-8b1a-1234567890ab", group, current+1, stage.StageID)
-	if !errors.Is(err, app_errors.ErrCredentialVersionConflict) {
-		t.Fatalf("stale connect error = %v", err)
-	}
-	var after models.CredentialStage
-	if err := fixture.db.Take(&after, "id = ?", stage.StageID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if after.Status == models.CredentialStageConsumed || after.EncryptedPayload == "" {
-		t.Fatal("stale connect consumed stage")
-	}
-}
 func TestGroupCopyReturnsCopiedCredentialAndEmptyNull(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
@@ -162,26 +146,6 @@ func TestGroupCopyReturnsCopiedCredentialAndEmptyNull(t *testing.T) {
 	}
 }
 
-func TestCredentialConnectRequiresExpectedIDHeader(t *testing.T) {
-	initControlI18n(t)
-	t.Parallel()
-	fixture, id, current := newSubscriptionCredentialFixture(t)
-	if err := fixture.service.DeleteGroupCredential(t.Context(), id, current); err != nil {
-		t.Fatal(err)
-	}
-	stage := mustImportSubscriptionStage(t, fixture, "connect-header", "connect-header@example.com")
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Params = gin.Params{{Key: "group_id", Value: strconv.FormatUint(uint64(id), 10)}}
-	c.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"staged_credential_id":"`+stage.StageID+`"}`))
-	c.Request.Header.Set("Content-Type", "application/json")
-	c.Request.Header.Set("Idempotency-Key", "818f47a2-9c35-4d6e-8b1a-1234567890ab")
-	(&Server{service: fixture.service}).handleConnectGroupCredentials(c)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("connect without expected ID status = %d, want 400", recorder.Code)
-	}
-}
-
 func TestSingularCredentialRouteContract(t *testing.T) {
 	t.Parallel()
 	module := (&Server{}).HTTPModule()
@@ -228,7 +192,7 @@ func TestSingularCredentialEmptyAndOccupiedGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	encoded, err := json.Marshal(result)
-	if err != nil || string(encoded) != `{"credential":null,"observation":null}` {
+	if err != nil || string(encoded) != `{"credential":null}` {
 		t.Fatalf("empty group = %s, error = %v", encoded, err)
 	}
 	if _, err := fixture.service.GetGroupCredential(t.Context(), groupID+1000); err == nil {
@@ -243,20 +207,6 @@ func TestSingularCredentialEmptyAndOccupiedGroup(t *testing.T) {
 	}
 }
 
-func TestSingularSubscriptionConnectJSON(t *testing.T) {
-	t.Parallel()
-	var request CredentialConnectRequest
-	if err := json.Unmarshal([]byte(`{"staged_credential_id":"stage-one"}`), &request); err != nil {
-		t.Fatal(err)
-	}
-	if request.StagedCredentialID != "stage-one" {
-		t.Fatalf("one-stage request = %#v", request)
-	}
-	if err := json.Unmarshal([]byte(`{"staged_credential_id":["one","two"]}`), &request); err == nil {
-		t.Fatal("multi-stage request unexpectedly accepted")
-	}
-}
-
 func TestSingularCredentialDTORejectsPluralFields(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -266,7 +216,6 @@ func TestSingularCredentialDTORejectsPluralFields(t *testing.T) {
 		{body: `{"credentials":"one"}`, target: &GroupCreateRequest{}},
 		{body: `{"staged_credential_ids":["one"]}`, target: &GroupCreateRequest{}},
 		{body: `{"credentials":"one"}`, target: &CredentialImportRequest{}},
-		{body: `{"staged_credential_ids":["one"]}`, target: &CredentialConnectRequest{}},
 	} {
 		decoder := json.NewDecoder(strings.NewReader(test.body))
 		decoder.DisallowUnknownFields()

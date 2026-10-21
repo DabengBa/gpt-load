@@ -53,7 +53,6 @@ type homeCredentialRow struct {
 	Fingerprint         string
 	IdentityFingerprint string
 	SecretVersion       uint64
-	AuthState           models.CredentialAuthState
 }
 
 type homeAccessKeyRow struct {
@@ -248,7 +247,7 @@ func (s *Service) readHomeRows(
 		if err := tx.Model(&models.Credential{}).
 			Select(
 				"credentials.id", "credentials.group_id", "groups.channel_id", "groups.connection_type", "groups.params",
-				"credentials.fingerprint", "credentials.identity_fingerprint", "credentials.secret_version", "credentials.auth_state",
+				"credentials.fingerprint", "credentials.identity_fingerprint", "credentials.secret_version",
 			).
 			Joins("JOIN groups ON groups.id = credentials.group_id").
 			Order("credentials.id ASC").
@@ -432,7 +431,7 @@ func countAvailableHomeCredentialsInGroups(
 				ConnectionType: row.ConnectionType, Params: row.Params,
 			},
 			models.Credential{
-				ID: row.ID, GroupID: row.GroupID, AuthState: row.AuthState,
+				ID: row.ID, GroupID: row.GroupID,
 				SecretVersion: row.SecretVersion, IdentityFingerprint: row.IdentityFingerprint,
 			},
 			credential,

@@ -72,7 +72,7 @@ try {
   // 1. Every message must parse as ICU. A few catalog entries are interpolation
   // fragments (passed as values into other messages), never parsed by ICU —
   // keep them out of the parse pass but still covered by the parity checks.
-  const interpolationFragments = new Set(['import.subscription.callbackPortToken'])
+  const interpolationFragments = new Set()
   for (const locale of locales) {
     for (const namespace of namespaces) {
       for (const [path, message] of catalogs[locale][namespace]) {

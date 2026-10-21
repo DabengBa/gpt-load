@@ -34,7 +34,7 @@ export type RequestLogAction =
   'terminate' | 'retry' | 'cooldown_credential' | 'fail_credential' | 'skip_group'
 export type RequestLogFailureOrigin = 'client' | 'upstream' | 'downstream' | 'internal'
 export type RequestLogFailureScope = 'request' | 'model' | 'credential' | 'group'
-export type RequestLogRetryDirective = 'none' | 'refresh_credential' | 'next_candidate'
+export type RequestLogRetryDirective = 'none' | 'next_candidate'
 export type RequestLogEffect =
   'none' | 'cooldown_credential' | 'record_credential_failure' | 'skip_group'
 export type RequestLogUsageState = 'complete' | 'partial' | 'missing' | 'not_applicable'
@@ -64,7 +64,6 @@ export type RequestLogOperation =
   | 'rerank'
   | 'list_models'
   | 'probe'
-  | 'web_search'
 export type RequestLogRouteMode = 'native' | 'converted'
 export type RequestLogDispatchState = 'not_sent' | 'maybe_sent'
 export type RequestLogUpstreamProtocol = ProtocolValue
@@ -301,7 +300,6 @@ const operations = [
   'rerank',
   'list_models',
   'probe',
-  'web_search',
 ] as const
 const routeModes = ['native', 'converted'] as const
 const dispatchStates = ['not_sent', 'maybe_sent'] as const
@@ -577,7 +575,7 @@ function projectAttempt(value: unknown): RequestLogAttemptDto {
     retry_directive:
       record.retry_directive === null
         ? null
-        : projectEnum(record.retry_directive, ['none', 'refresh_credential', 'next_candidate']),
+        : projectEnum(record.retry_directive, ['none', 'next_candidate']),
     effect:
       record.effect === null
         ? null

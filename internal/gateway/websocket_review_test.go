@@ -1,21 +1,17 @@
 package gateway
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 
 	"gpt-load/internal/channel"
-	"gpt-load/internal/execution"
-	"gpt-load/internal/platform/config"
 	"gpt-load/internal/ratelimit"
 	"gpt-load/internal/state"
 	"gpt-load/internal/telemetry"
@@ -250,89 +246,5 @@ func TestWebsocketNamedStreamLimitPreservesExistingLanes(t *testing.T) {
 		} else if event.Type != "response.completed" || event.StreamID != lane {
 			t.Fatalf("existing lane failed: %+v", event)
 		}
-	}
-}
-
-func TestWebsocketSubscriptionRefreshRespectsDispatchAndBudget(t *testing.T) {
-	for _, test := range []struct {
-		name       string
-		dispatch   execution.DispatchState
-		retries    int
-		alwaysFail bool
-		wantOpens  int32
-		wantType   string
-	}{
-		{"refresh once", execution.DispatchNotSent, 2, false, 2, "response.completed"},
-		{"refresh failed", execution.DispatchNotSent, 2, true, 2, "error"},
-		{"unsent preserves budget", execution.DispatchNotSent, 0, false, 2, "response.completed"},
-		{"maybe sent", execution.DispatchMaybeSent, 2, false, 1, "error"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			h, engine, input := websocketTestHandler(t, "http://127.0.0.1:1", channel.OpenAI)
-			input.Groups[0].ChannelID = channel.Codex
-			input.Groups[0].ConnectionType = "subscription"
-			input.Groups[0].Params = json.RawMessage(`{}`)
-			input.SystemSettings = config.Settings{state.SettingRetryCount: test.retries}
-			if _, err := h.manager.Publish(input); err != nil {
-				t.Fatal(err)
-			}
-			encrypted, err := h.encryption.Encrypt(`{"type":"codex","access_token":"access","refresh_token":"refresh","account_id":"account-1"}`)
-			if err != nil {
-				t.Fatal(err)
-			}
-			registry := h.registry.(*state.CredentialRegistry)
-			if err := registry.ReplaceCredentials([]state.CredentialEntry{{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "subscription-account", EncryptedValue: encrypted}}); err != nil {
-				t.Fatal(err)
-			}
-			var opens atomic.Int32
-			sink := &recordingRequestLogSink{}
-			h.requestLogSink = sink
-			limiter := &recordingAccessKeyRPMLimiter{}
-			h.limiter = limiter
-			h.forwarder = websocketScriptForwarder{AttemptForwarder: h.forwarder, open: func(_ context.Context, input ForwardInput) (execution.WebsocketSession, execution.WebsocketResult) {
-				index := opens.Add(1)
-				if input.Credential.ID != 1 || input.ForceCredentialRefresh != (index == 2) {
-					t.Errorf("attempt %d: credential=%d force=%t", index, input.Credential.ID, input.ForceCredentialRefresh)
-				}
-				session := &websocketScriptSession{done: make(chan struct{})}
-				session.turn = func(ctx context.Context, body []byte, emit func(context.Context, []byte) error) execution.WebsocketResult {
-					var fields map[string]json.RawMessage
-					if json.Unmarshal(body, &fields) != nil || fields["stream"] != nil {
-						t.Error("Codex session received invalid or unnormalized create parameters")
-					}
-					if index == 1 || test.alwaysFail {
-						_ = session.Close()
-						return execution.WebsocketResult{DispatchState: test.dispatch, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindHTTP, StatusCode: 401, Code: "upstream_error", OriginHint: execution.ErrorOriginUpstream, Hint: execution.FailureHintRefreshRequired, ReplaySafety: execution.ReplaySafetyRejectedBeforeProcessing}}
-					}
-					if err := emit(ctx, websocketCompleted("resp_refreshed", "")); err != nil {
-						return execution.WebsocketResult{DispatchState: execution.DispatchMaybeSent, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindCanceled}}
-					}
-					return execution.WebsocketResult{DispatchState: execution.DispatchMaybeSent}
-				}
-				return session, execution.WebsocketResult{DispatchState: execution.DispatchNotSent}
-			}}
-			server := httptest.NewServer(engine)
-			defer server.Close()
-			conn := dialGatewayWebsocket(t, server.URL)
-			if err := conn.WriteJSON(map[string]any{"type": "response.create", "model": "public", "input": "hello", "store": false, "stream": true}); err != nil {
-				t.Fatal(err)
-			}
-			var event struct {
-				Type string `json:"type"`
-			}
-			if err := conn.ReadJSON(&event); err != nil {
-				t.Fatal(err)
-			}
-			logs := waitWebsocketLogs(t, sink, 1)
-			if opens.Load() != test.wantOpens || event.Type != test.wantType || len(logs[0].Attempts) != int(test.wantOpens) {
-				t.Fatalf("opens=%d event=%+v attempts=%+v", opens.Load(), event, logs[0].Attempts)
-			}
-			limiter.mu.Lock()
-			calls := len(limiter.calls)
-			limiter.mu.Unlock()
-			if calls != 1 {
-				t.Fatalf("one turn charged RPM %d times", calls)
-			}
-		})
 	}
 }

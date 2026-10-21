@@ -66,7 +66,6 @@ const scheduleReasonCodes = [
   'no_credentials',
   'credential_blacklisted',
   'credential_cooldown',
-  'credential_auth_unavailable',
   'credential_not_allowed',
   'no_available_credential',
   'entry_disabled',

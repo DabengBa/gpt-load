@@ -31,15 +31,7 @@ func (s *Service) DiscoverGroupModels(
 	if err != nil {
 		return ModelDiscoveryResult{}, err
 	}
-	if rows.found {
-		bindings, ok := s.channelRegistry.CapabilityBindings(channel.ID(rows.group.ChannelID))
-		if !ok {
-			return ModelDiscoveryResult{}, app_errors.ErrInternalServer
-		}
-		if bindings.ModelDiscovery != "" {
-			return s.discoverSubscriptionGroupModels(ctx, rows)
-		}
-	}
+
 	target, err := s.mapGroupDiscoveryTarget(ctx, rows)
 	if err != nil {
 		return ModelDiscoveryResult{}, err
@@ -197,28 +189,15 @@ func (s *Service) mapGroupDiscoveryTarget(
 		return discoveryTarget{}, fmt.Errorf("compiled persisted discovery Group is missing: %w", app_errors.ErrInternalServer)
 	}
 
-	connectionType := normalizeGroupConnectionType(rows.group.ConnectionType)
 	discoveryCredentials := make([]discoveryCredential, 0, len(rows.credentials))
 	var preparationErr error
 	for _, credentialRow := range rows.credentials {
 		var canonical []byte
 		apiKey := ""
-		if connectionType == models.ConnectionTypeSubscription {
-			credential, prepareErr := s.prepareStoredSubscriptionCredential(ctx, rows.group, credentialRow)
-			if prepareErr != nil {
-				if err := ctx.Err(); err != nil {
-					return discoveryTarget{}, err
-				}
-				preparationErr = prepareErr
-				continue
-			}
-			canonical = credential.Canonical()
-		} else {
-			var decodeErr error
-			canonical, apiKey, decodeErr = s.decodeCredential(rows.group, credentialRow)
-			if decodeErr != nil {
-				return discoveryTarget{}, decodeErr
-			}
+		var decodeErr error
+		canonical, apiKey, decodeErr = s.decodeCredential(rows.group, credentialRow)
+		if decodeErr != nil {
+			return discoveryTarget{}, decodeErr
 		}
 		discoveryCredentials = append(discoveryCredentials, discoveryCredential{
 			snapshot: execution.NewCredentialSnapshot(

@@ -21,7 +21,6 @@ func TestParseGroupCollectionQueryAcceptsStrictContract(t *testing.T) {
 	available := GroupCollectionStatusAvailable
 	unavailable := GroupCollectionStatusUnavailable
 	disabled := GroupCollectionStatusDisabled
-	subscription := models.ConnectionTypeSubscription
 	q200 := strings.Repeat("猫", 200)
 
 	tests := []struct {
@@ -78,13 +77,7 @@ func TestParseGroupCollectionQueryAcceptsStrictContract(t *testing.T) {
 				Status: &disabled, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
-		{
-			name:     "connection type subscription",
-			rawQuery: "connection_type=subscription",
-			want: GroupCollectionQuery{
-				ConnectionType: &subscription, Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
-			},
-		},
+
 		{
 			name:     "sort recent",
 			rawQuery: "sort=recent",
@@ -141,14 +134,6 @@ func TestParseGroupCollectionQueryAcceptsStrictContract(t *testing.T) {
 				Sort: GroupCollectionSortRecent, Page: 1, PageSize: 100,
 			},
 		},
-		{
-			name:     "all fields combine",
-			rawQuery: "q=+alpha+&status=available&connection_type=subscription&sort=created&page=2&page_size=100",
-			want: GroupCollectionQuery{
-				Query: "alpha", Status: &available, ConnectionType: &subscription,
-				Sort: GroupCollectionSortCreated, Page: 2, PageSize: 100,
-			},
-		},
 	}
 
 	for _, test := range tests {
@@ -196,6 +181,7 @@ func TestParseGroupCollectionQueryRejectsEveryInvalidForm(t *testing.T) {
 		{name: "status unknown", rawQuery: "status=healthy"},
 		{name: "connection type empty", rawQuery: "connection_type="},
 		{name: "connection type unknown", rawQuery: "connection_type=oauth"},
+		{name: "connection type retired subscription", rawQuery: "connection_type=subscription"},
 		{name: "protocol empty", rawQuery: "protocol="},
 		{name: "protocol unknown", rawQuery: "protocol=openai"},
 		{name: "sort empty", rawQuery: "sort="},
@@ -294,7 +280,7 @@ func TestGroupCollectionHTTPReturnsExactCollectionAndOptionsContracts(t *testing
 		t,
 		fixture,
 		10,
-		models.CredentialAuthStateReady,
+		"ready",
 		nil,
 	)
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{entry})
@@ -438,7 +424,7 @@ func TestGroupCollectionHTTPAllowsAvailableKeysInAnUnavailableStatus(t *testing.
 	setGroupCollectionChannel(t, fixture, group, channel.Anthropic, models.JSON(`{}`))
 	setGroupCollectionRoute(t, fixture, group, `["openai-completions"]`, `[]`)
 	publishGroupCollectionRuntime(t, fixture, []state.CredentialEntry{
-		createGroupCollectionKey(t, fixture, group.ID, models.CredentialAuthStateReady, nil),
+		createGroupCollectionKey(t, fixture, group.ID, "ready", nil),
 	})
 
 	engine := gin.New()

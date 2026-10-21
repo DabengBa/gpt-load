@@ -32,6 +32,12 @@ func dispatchCommand(args []string, stdout, stderr io.Writer) int {
 	case "help", "-h", "--help":
 		printHelp(stdout)
 		return 0
+	case "convert-legacy-db":
+		if err := convertLegacyDatabase(args[1:], stdout, stderr); err != nil {
+			fmt.Fprintf(stderr, "convert-legacy-db: %v\n", err)
+			return 1
+		}
+		return 0
 	case "migrate-keys":
 		fmt.Fprintln(stderr, "migrate-keys will be available in a later release")
 		return 1
@@ -48,6 +54,8 @@ func printHelp(output io.Writer) {
 	fmt.Fprintln(output, "Usage:")
 	fmt.Fprintln(output, "  gpt-load                    Start the gateway")
 	fmt.Fprintln(output, "  gpt-load help               Display this help message")
+	fmt.Fprintln(output, "  gpt-load convert-legacy-db --source <path> --target <path>")
+	fmt.Fprintln(output, "                              Convert a legacy SQLite database into a fresh one")
 	fmt.Fprintln(output)
 	fmt.Fprintln(output, "Deferred Commands:")
 	fmt.Fprintln(output, "  migrate-keys      Key rotation support will be available in a later release")

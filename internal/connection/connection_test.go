@@ -8,13 +8,13 @@ func TestNormalizeOnlyTrimsExplicitConnectionTypes(t *testing.T) {
 			t.Fatalf("Normalize(%q) = %q, want empty", value, got)
 		}
 	}
-	if got := Normalize(" subscription "); got != Subscription {
-		t.Fatalf("Normalize(subscription) = %q, want %q", got, Subscription)
+	if got := Normalize(" api_key "); got != APIKey {
+		t.Fatalf("Normalize(api_key) = %q, want %q", got, APIKey)
 	}
 }
 
 func TestValidAcceptsOnlyProductConnectionTypes(t *testing.T) {
-	for _, value := range []string{APIKey, Subscription} {
+	for _, value := range []string{APIKey} {
 		if !Valid(value) {
 			t.Fatalf("Valid(%q) = false", value)
 		}

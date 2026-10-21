@@ -206,26 +206,6 @@ func TestRuntimeSweepsRequestLogsImmediatelyAndHourlyWithoutOverlap(t *testing.T
 	}
 }
 
-func TestRuntimeSweepsCredentialStagesWithoutRequestLogCleaner(t *testing.T) {
-	t.Parallel()
-	base := time.Date(2026, time.August, 13, 8, 0, 0, 0, time.UTC)
-	retentionTicker := newFakeRuntimeTicker()
-	created := make(chan time.Duration, 1)
-	runtime := newTestRuntime(retentionTicker, created, func() time.Time { return base })
-	cleaner := &controlledStageCleaner{calls: make(chan time.Time, 2)}
-	runtime.stageCleaner = cleaner
-
-	cancel, done := startRuntime(t, runtime)
-	if interval := awaitValue(t, created); interval != time.Hour {
-		t.Fatalf("retention interval = %v", interval)
-	}
-	if got := awaitValue(t, cleaner.calls); !got.Equal(base) {
-		t.Fatalf("cleanup time = %v", got)
-	}
-	stopRuntime(t, cancel, done)
-	awaitSignal(t, retentionTicker.stopped)
-}
-
 func TestRuntimeSweepsDurableAffinityWithCurrentPolicy(t *testing.T) {
 	t.Parallel()
 	base := time.Date(2026, time.August, 13, 8, 0, 0, 0, time.UTC)
@@ -284,7 +264,7 @@ func TestCooldownProblemDoesNotAffectCandidateCollection(t *testing.T) {
 	base := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
-		ID: 1, GroupID: 10, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", AuthState: state.CredentialAuthStateReady, EncryptedValue: "cipher-one",
+		ID: 1, GroupID: 10, Version: 1, IdentityGeneration: 1, Fingerprint: "test-1", EncryptedValue: "cipher-one",
 	}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
 	}
@@ -323,8 +303,7 @@ func TestRuntimeBlacklistReleaseMaintenanceStartsRunsImmediatelyAndTicks(t *test
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "runtime-release", AuthState: state.CredentialAuthStateReady,
-		EncryptedValue: "cipher",
+		Fingerprint: "runtime-release", EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)
 	}
@@ -369,8 +348,7 @@ func TestRuntimeBlacklistReleaseClearsCredentialHealthProblemState(t *testing.T)
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "runtime-stats", AuthState: state.CredentialAuthStateReady,
-		EncryptedValue: "cipher",
+		Fingerprint: "runtime-stats", EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)
 	}
@@ -405,8 +383,7 @@ func TestRuntimeBlacklistReleaseMaintenanceCancellationSkipsInitialRun(t *testin
 	registry := state.NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]state.CredentialEntry{{
 		ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1,
-		Fingerprint: "runtime-cancel", AuthState: state.CredentialAuthStateReady,
-		EncryptedValue: "cipher",
+		Fingerprint: "runtime-cancel", EncryptedValue: "cipher",
 	}}); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)
 	}

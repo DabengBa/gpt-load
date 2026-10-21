@@ -22,10 +22,6 @@ type ID = spec.ID
 
 const (
 	OpenAI           = spec.OpenAI
-	Codex            = spec.Codex
-	Claude           = spec.Claude
-	Antigravity      = spec.Antigravity
-	Grok             = spec.Grok
 	Anthropic        = spec.Anthropic
 	Gemini           = spec.Gemini
 	AzureOpenAI      = spec.AzureOpenAI
@@ -78,50 +74,14 @@ type FieldDescriptor struct {
 // ConnectionDescriptor describes the single code-owned credential flow used
 // by a channel. Connection type never selects an execution adapter.
 type ConnectionDescriptor struct {
-	Type                 string                `json:"type"`
-	CredentialInput      string                `json:"credential_input"`
-	AuthorizationMethods []AuthorizationMethod `json:"authorization_methods,omitempty"`
+	Type            string `json:"type"`
+	CredentialInput string `json:"credential_input"`
 }
-
-// AuthorizationMethod is one supported subscription credential entry flow.
-type AuthorizationMethod = spec.AuthorizationMethod
-
-const (
-	AuthorizationBrowserOAuth = spec.AuthorizationBrowserOAuth
-	AuthorizationDeviceOAuth  = spec.AuthorizationDeviceOAuth
-	AuthorizationOAuthFile    = spec.AuthorizationOAuthFile
-)
-
-// CredentialAction is one safe account action advertised to the management UI.
-type CredentialAction string
-
-const CredentialActionResetCredit CredentialAction = "reset_credit"
 
 // CapabilityDescriptor is the safe public projection of optional channel behavior.
 type CapabilityDescriptor struct {
-	ModelDiscovery    bool               `json:"model_discovery"`
-	QuotaObservation  bool               `json:"quota_observation"`
-	CredentialActions []CredentialAction `json:"credential_actions"`
-	OutboundProxy     bool               `json:"outbound_proxy"`
-}
-
-// NoticeID identifies one frontend-localized channel notice.
-type NoticeID = spec.NoticeID
-
-const (
-	NoticeClaudeOAuthRisk      = spec.NoticeClaudeOAuthRisk
-	NoticeAntigravityOAuthRisk = spec.NoticeAntigravityOAuthRisk
-)
-
-// NoticeTone is the bounded presentation style of a channel notice.
-type NoticeTone = spec.NoticeTone
-
-const NoticeToneWarning = spec.NoticeToneWarning
-
-// NoticeDescriptor is the safe public projection of one channel notice.
-type NoticeDescriptor struct {
-	ID   NoticeID   `json:"id"`
-	Tone NoticeTone `json:"tone"`
+	ModelDiscovery bool `json:"model_discovery"`
+	OutboundProxy  bool `json:"outbound_proxy"`
 }
 
 // RouteDescriptor is the safe, compiled route projection exposed to the UI.
@@ -144,7 +104,6 @@ type Descriptor struct {
 	Icon             string               `json:"icon"`
 	SearchTerms      []string             `json:"search_terms"`
 	Description      string               `json:"description"`
-	Notices          []NoticeDescriptor   `json:"notices"`
 	ParamFields      []FieldDescriptor    `json:"param_fields"`
 	CredentialFields []FieldDescriptor    `json:"credential_fields"`
 	Connection       ConnectionDescriptor `json:"connection"`
@@ -208,10 +167,6 @@ type ProviderKind = spec.ProviderKind
 
 const (
 	ProviderOpenAI               = spec.ProviderOpenAI
-	ProviderCodex                = spec.ProviderCodex
-	ProviderClaude               = spec.ProviderClaude
-	ProviderAntigravity          = spec.ProviderAntigravity
-	ProviderGrok                 = spec.ProviderGrok
 	ProviderAnthropic            = spec.ProviderAnthropic
 	ProviderGemini               = spec.ProviderGemini
 	ProviderMultiProtocolGateway = spec.ProviderMultiProtocolGateway
@@ -343,7 +298,7 @@ func (t ResolvedTarget) PreferredProtocol(
 }
 
 // ProbeContract returns the code-owned manual probe contract. API-key channels
-// declare exactly one; subscription channels have none.
+// declare exactly one probe protocol.
 func (t ResolvedTarget) ProbeContract() (spec.ProbeContract, bool) {
 	if !t.probeContract.Valid() {
 		return spec.ProbeContract{}, false
@@ -496,30 +451,6 @@ func (r *Registry) ConnectionType(id ID) (string, bool) {
 		return "", false
 	}
 	return descriptor.Connection.Type, true
-}
-
-// CapabilityBindings returns an independent copy of the compiled optional
-// channel capabilities. Runtime consumers resolve these bindings at startup.
-func (r *Registry) CapabilityBindings(id ID) (spec.CapabilityBindings, bool) {
-	definition, ok := r.lookup(id)
-	if !ok {
-		return spec.CapabilityBindings{}, false
-	}
-	return definition.capabilities, true
-}
-
-// SupportsAuthorizationMethod reports whether a subscription channel declares one entry flow.
-func (r *Registry) SupportsAuthorizationMethod(id ID, method AuthorizationMethod) bool {
-	descriptor, ok := r.Get(id)
-	if !ok || !method.Valid() {
-		return false
-	}
-	for _, candidate := range descriptor.Connection.AuthorizationMethods {
-		if candidate == method {
-			return true
-		}
-	}
-	return false
 }
 
 // FixedBaseURL returns the code-owned endpoint for a fixed preset.
@@ -713,7 +644,6 @@ type definition struct {
 	providerKind            ProviderKind
 	probeContract           spec.ProbeContract
 	connection              spec.Connection
-	capabilities            spec.CapabilityBindings
 	endpointPolicy          spec.EndpointPolicy
 	fixedBaseURL            string
 	fixedTargetConfig       json.RawMessage
@@ -749,7 +679,6 @@ func newRegistry(definitions []definition) (*Registry, error) {
 		definition.responsesStoreHandlings = cloneResponsesStoreHandlings(
 			definition.responsesStoreHandlings,
 		)
-		definition.connection.AuthorizationMethods = append([]AuthorizationMethod(nil), definition.connection.AuthorizationMethods...)
 		definition.fixedTargetConfig = append(json.RawMessage(nil), definition.fixedTargetConfig...)
 		registry.byID[id] = definition
 		registry.order = append(registry.order, id)
@@ -768,7 +697,7 @@ func validateDefinition(definition definition) error {
 	if !definition.providerKind.Valid() {
 		return fmt.Errorf("channel %q has invalid provider kind", id)
 	}
-	if definition.connection.Type != spec.ConnectionAPIKey && definition.connection.Type != spec.ConnectionSubscription {
+	if definition.connection.Type != spec.ConnectionAPIKey {
 		return fmt.Errorf("channel %q has invalid connection type", id)
 	}
 	if definition.connection.CredentialInput == "" {
@@ -819,7 +748,6 @@ func (r *Registry) lookup(id ID) (definition, bool) {
 
 func cloneDescriptor(source Descriptor) Descriptor {
 	source.SearchTerms = append([]string{}, source.SearchTerms...)
-	source.Notices = append([]NoticeDescriptor{}, source.Notices...)
 	source.ParamFields = append([]FieldDescriptor{}, source.ParamFields...)
 	source.CredentialFields = append([]FieldDescriptor{}, source.CredentialFields...)
 	for index := range source.ParamFields {
@@ -828,8 +756,6 @@ func cloneDescriptor(source Descriptor) Descriptor {
 	for index := range source.CredentialFields {
 		source.CredentialFields[index].DefaultValue = cloneStringPointer(source.CredentialFields[index].DefaultValue)
 	}
-	source.Connection.AuthorizationMethods = append([]AuthorizationMethod{}, source.Connection.AuthorizationMethods...)
-	source.Capabilities.CredentialActions = append([]CredentialAction{}, source.Capabilities.CredentialActions...)
 	source.Routes = append([]RouteDescriptor{}, source.Routes...)
 	for index := range source.Routes {
 		source.Routes[index].PossibleModes = append([]RouteMode{}, source.Routes[index].PossibleModes...)

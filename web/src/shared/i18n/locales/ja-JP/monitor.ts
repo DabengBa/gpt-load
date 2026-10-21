@@ -254,7 +254,6 @@ export default {
         no_credentials: 'グループにランタイム認証情報がありません',
         credential_blacklisted: '認証情報はブラックリストに登録されています',
         credential_cooldown: '認証情報はクールダウン中です',
-        credential_auth_unavailable: 'サブスクリプション認証を利用できません',
         credential_not_allowed: 'この認証情報はリクエストから除外されています',
         no_available_credential: 'グループに利用可能な認証情報がありません',
         entry_disabled: 'ルートエントリは無効です',
@@ -510,7 +509,6 @@ export default {
       },
       retryDirective: {
         none: '再試行しない',
-        refresh_credential: '認証情報を更新して再試行',
         next_candidate: '次の候補を試行',
       },
       effect: {
@@ -536,7 +534,6 @@ export default {
         rerank: 'ドキュメントを再ランキング',
         list_models: 'モデル一覧',
         probe: 'ヘルスプローブ',
-        web_search: 'Codex スタンドアロン検索',
       },
       dispatchState: {
         not_sent: 'アップストリームへ未送信',

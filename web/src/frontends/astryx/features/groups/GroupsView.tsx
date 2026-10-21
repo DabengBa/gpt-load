@@ -91,7 +91,6 @@ const statusLabelIds: Record<GroupCollectionStatus, MessageId> = {
 }
 const connectionTypeLabelIds: Record<ConnectionType, MessageId> = {
   api_key: 'groups.collection.connectionType.apiKey',
-  subscription: 'groups.collection.connectionType.subscription',
 }
 
 type GroupRow = GroupCollectionItemDto & Record<string, unknown>
@@ -499,7 +498,7 @@ export function GroupsView() {
       updateConditions({ connection_type: undefined })
       return
     }
-    if (value !== 'api_key' && value !== 'subscription') return
+    if (value !== 'api_key') return
     updateConditions({ connection_type: value as ConnectionType })
   }
 
@@ -608,7 +607,6 @@ export function GroupsView() {
   const connectionTypeOptions = [
     { value: '', label: t('groups.collection.connectionType.all') },
     { value: 'api_key', label: t('groups.collection.connectionType.apiKey') },
-    { value: 'subscription', label: t('groups.collection.connectionType.subscription') },
   ]
   const sortSelectOptions = sortOptions.map((sort) => ({
     value: sort,

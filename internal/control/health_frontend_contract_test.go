@@ -45,9 +45,9 @@ func TestFrontendHealthAllowlistCoversWireKeys(t *testing.T) {
 
 	// 解析器自检（白名单守卫）：若 health.ts 被截断或解析器失效，
 	// 必须一眼看出是「解析器失效」，而非「白名单缺字段」。
-	if len(frontendKeys) < 13 {
+	if len(frontendKeys) < 12 {
 		t.Fatalf(
-			"解析器失效: healthFields 仅解析到 %d 个字段，期望 >= 13（疑似 health.ts 被截断或解析器失效）",
+			"解析器失效: healthFields 仅解析到 %d 个字段，期望 >= 12（疑似 health.ts 被截断或解析器失效）",
 			len(frontendKeys),
 		)
 	}

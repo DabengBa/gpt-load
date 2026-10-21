@@ -1,7 +1,7 @@
 package control
 
 import (
-	"encoding/json/v2"
+	"encoding/json"
 	"math"
 	"strings"
 	"testing"

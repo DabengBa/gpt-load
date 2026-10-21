@@ -11,7 +11,6 @@ func TestProxyConfigMigrationAddsNullableEncryptedColumnsAndPreservesRows(t *tes
 	for _, migrate := range []func() error{
 		func() error { return migrations.Up0001(db) },
 		func() error { return migrations.Up0002(db) },
-		func() error { return migrations.Up0003(db) },
 		func() error { return migrations.Up0004(db) },
 	} {
 		if err := migrate(); err != nil {
@@ -26,9 +25,9 @@ func TestProxyConfigMigrationAddsNullableEncryptedColumnsAndPreservesRows(t *tes
 	}
 	if err := db.Exec(`INSERT INTO credentials (
 		id, group_id, data, fingerprint, identity_fingerprint, secret_version,
-		auth_state, auth_error_code, status, created_at_ms, updated_at_ms
+		status, created_at_ms, updated_at_ms
 	) VALUES (1, 1, 'credential-cipher', 'fingerprint', 'identity', 1,
-		'ready', '', 'active', 1, 1)`).Error; err != nil {
+		'active', 1, 1)`).Error; err != nil {
 		t.Fatalf("create credential: %v", err)
 	}
 

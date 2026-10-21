@@ -8,7 +8,7 @@ import (
 	"gpt-load/internal/platform/version"
 )
 
-// withUserAgent 仅为普通渠道补齐出站身份；订阅渠道由各自适配器处理。
+// withUserAgent 为渠道补齐出站身份。
 func withUserAgent(spec execution.AttemptSpec) execution.AttemptSpec {
 	// 系统或分组规则已先应用，保留其配置值或客户端原始身份。
 	if strings.TrimSpace(spec.Header.Get("User-Agent")) != "" {

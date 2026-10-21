@@ -126,10 +126,6 @@ func (s *Service) CopyGroupIdempotent(
 				credential.Group = nil
 				credential.CreatedAtMS = 0
 				credential.UpdatedAtMS = 0
-				if credential.AuthState == models.CredentialAuthStateRefreshing {
-					credential.AuthState = models.CredentialAuthStateOutcomeUnknown
-					credential.AuthErrorCode = "refresh_interrupted"
-				}
 				if err := tx.Create(&credential).Error; err != nil {
 					return idempotentMutationResult{}, app_errors.ParseDBError(err)
 				}

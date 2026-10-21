@@ -695,9 +695,6 @@ func (forwarder *ExecutionForwarder) prepareBufferedResult(
 	if forwarder == nil || !result.HasResponse() {
 		return result
 	}
-	if input.Operation == execution.OperationWebSearch && result.ProviderErrorBeforeCommit {
-		return result
-	}
 	representation := forwarder.representation
 	if representation == nil {
 		representation = &responseProcessor{redactor: redact.New()}
@@ -897,9 +894,9 @@ func newExecutionAttemptSpec(input ForwardInput) (execution.AttemptSpec, error) 
 		ConfiguredParameters:     input.ConfiguredParameters,
 		Body:                     body,
 		IncludeUsage:             input.ObserveUsage,
-		ForceCredentialRefresh:   input.ForceCredentialRefresh,
-		ContinuityKey:            input.ContinuityKey,
-		TargetConfig:             input.TargetConfig,
+
+		ContinuityKey: input.ContinuityKey,
+		TargetConfig:  input.TargetConfig,
 		Timeouts: execution.AttemptTimeouts{
 			FirstByte:  input.Group.Timeouts.FirstByte,
 			Request:    input.Group.Timeouts.Request,

@@ -12,7 +12,6 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
-	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
 type normalizedCredential struct {
@@ -23,7 +22,6 @@ type normalizedCredential struct {
 
 func normalizeChannelCredential(
 	registry *channel.Registry,
-	subscriptions *subscriptionruntime.Runtime,
 	channelID channel.ID,
 	connectionType string,
 	decrypted string,
@@ -39,19 +37,6 @@ func normalizeChannelCredential(
 	expectedConnection, ok := registry.ConnectionType(channelID)
 	if !ok || strings.TrimSpace(connectionType) != expectedConnection {
 		return normalizedCredential{}, fmt.Errorf("credential connection does not match channel")
-	}
-	if driver, bound := subscriptions.Driver(channelID); bound {
-		credential, err := driver.Parse(raw)
-		if err != nil {
-			return normalizedCredential{}, fmt.Errorf("validate subscription credential: %w", err)
-		}
-		return normalizedCredential{
-			payload: credential.Canonical(),
-			secrets: credential.SecretValues(),
-		}, nil
-	}
-	if expectedConnection != "api_key" {
-		return normalizedCredential{}, fmt.Errorf("subscription credential driver is unavailable")
 	}
 	validated, err := registry.ValidateCredential(channelID, raw)
 	if err != nil {
@@ -129,15 +114,6 @@ func judgeUpstreamResult(
 		DownstreamErr:       downstreamErr,
 		Now:                 now,
 	}, decisionContext)
-	// 搜索错误不写入模型冷却或自动权重；明确的账号认证/余额故障仍沿用生命周期处理。
-	if decisionContext.Operation == execution.OperationWebSearch &&
-		decision.Effect != health.EffectSkipGroup &&
-		decision.Category != health.FailureCategoryAuthenticationRequired &&
-		decision.Category != health.FailureCategoryInvalidKey &&
-		decision.Category != health.FailureCategoryBilling {
-		decision.Effect = health.EffectNone
-		decision.CooldownUntil = time.Time{}
-	}
 	return decision
 }
 

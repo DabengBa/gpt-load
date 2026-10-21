@@ -14,7 +14,7 @@ type Group struct {
 	ID             uint           `gorm:"primaryKey;autoIncrement"`
 	Name           string         `gorm:"type:varchar(255);not null;uniqueIndex"`
 	ChannelID      string         `gorm:"type:varchar(64);not null"`
-	ConnectionType ConnectionType `gorm:"type:varchar(32);not null;default:'api_key';check:chk_group_connection_type,connection_type IN ('api_key','subscription')"`
+	ConnectionType ConnectionType `gorm:"type:varchar(32);not null;default:'api_key';check:chk_group_connection_type,connection_type = 'api_key'"`
 	Params         JSON           `gorm:"type:json;not null"`
 	Models         JSON           `gorm:"type:json;not null"`
 	Overrides      JSON           `gorm:"type:json"`
@@ -40,45 +40,29 @@ func (group *Group) BeforeSave(_ *gorm.DB) error {
 type ConnectionType string
 
 const (
-	ConnectionTypeAPIKey       ConnectionType = connection.APIKey
-	ConnectionTypeSubscription ConnectionType = connection.Subscription
+	ConnectionTypeAPIKey ConnectionType = connection.APIKey
 )
 
 // Credential is encrypted channel credential data that belongs to one group.
 type Credential struct {
-	ID                  uint                `gorm:"primaryKey;autoIncrement"`
-	GroupID             uint                `gorm:"not null;uniqueIndex:idx_credentials_group;uniqueIndex:idx_credentials_group_fingerprint,priority:1;uniqueIndex:idx_credentials_group_identity,priority:1"`
-	Data                string              `gorm:"type:text;not null"`
-	Fingerprint         string              `gorm:"type:varchar(128);not null;uniqueIndex:idx_credentials_group_fingerprint,priority:2"`
-	IdentityFingerprint string              `gorm:"type:varchar(128);not null;uniqueIndex:idx_credentials_group_identity,priority:2"`
-	SecretVersion       uint64              `gorm:"not null;default:1;check:chk_credential_secret_version,secret_version > 0"`
-	AuthState           CredentialAuthState `gorm:"type:varchar(32);not null;default:'ready';check:chk_credential_auth_state,auth_state IN ('ready','refreshing','reauthorization_required','outcome_unknown')"`
-	AuthErrorCode       string              `gorm:"type:varchar(64);not null;default:''"`
-	Group               *Group              `gorm:"foreignKey:GroupID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	CreatedAtMS         int64               `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_credential_created_at,created_at_ms >= 0"`
-	UpdatedAtMS         int64               `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_credential_updated_at,updated_at_ms >= 0"`
+	ID                  uint   `gorm:"primaryKey;autoIncrement"`
+	GroupID             uint   `gorm:"not null;uniqueIndex:idx_credentials_group;uniqueIndex:idx_credentials_group_fingerprint,priority:1;uniqueIndex:idx_credentials_group_identity,priority:1"`
+	Data                string `gorm:"type:text;not null"`
+	Fingerprint         string `gorm:"type:varchar(128);not null;uniqueIndex:idx_credentials_group_fingerprint,priority:2"`
+	IdentityFingerprint string `gorm:"type:varchar(128);not null;uniqueIndex:idx_credentials_group_identity,priority:2"`
+	SecretVersion       uint64 `gorm:"not null;default:1;check:chk_credential_secret_version,secret_version > 0"`
+	Group               *Group `gorm:"foreignKey:GroupID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	CreatedAtMS         int64  `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_credential_created_at,created_at_ms >= 0"`
+	UpdatedAtMS         int64  `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_credential_updated_at,updated_at_ms >= 0"`
 }
 
-type CredentialAuthState string
-
-const (
-	CredentialAuthStateReady                   CredentialAuthState = "ready"
-	CredentialAuthStateRefreshing              CredentialAuthState = "refreshing"
-	CredentialAuthStateReauthorizationRequired CredentialAuthState = "reauthorization_required"
-	CredentialAuthStateOutcomeUnknown          CredentialAuthState = "outcome_unknown"
-)
-
-// BeforeCreate keeps API-key model construction backward compatible while
-// subscription callers may provide a stable identity independent of token data.
+// BeforeCreate initializes credential identity and secret version metadata.
 func (credential *Credential) BeforeCreate(_ *gorm.DB) error {
 	if credential.IdentityFingerprint == "" {
 		credential.IdentityFingerprint = credential.Fingerprint
 	}
 	if credential.SecretVersion == 0 {
 		credential.SecretVersion = 1
-	}
-	if credential.AuthState == "" {
-		credential.AuthState = CredentialAuthStateReady
 	}
 	return nil
 }

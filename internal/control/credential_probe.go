@@ -457,9 +457,7 @@ func (s *Service) captureCredentialProbe(
 	if err != nil {
 		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, err
 	}
-	if normalizeGroupConnectionType(groupRow.ConnectionType) == models.ConnectionTypeSubscription {
-		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, app_errors.ErrForbidden
-	}
+
 	var credentialRow models.Credential
 	if err := s.db.WithContext(ctx).
 		Where("id = ? AND group_id = ?", credentialID, groupID).
@@ -562,8 +560,7 @@ func (s *Service) recoverTestedCredential(
 			}
 			current := credentialProbeCredentialFromEntry(entries[0])
 			if !entries[0].Blacklisted || current.ref != tested.ref ||
-				!current.cooldownUntil.Equal(tested.cooldownUntil) ||
-				(entries[0].AuthState != "" && entries[0].AuthState != state.CredentialAuthStateReady) {
+				!current.cooldownUntil.Equal(tested.cooldownUntil) {
 				return
 			}
 			recovered = s.registry.RestoreRuntimeStateIfMatch(

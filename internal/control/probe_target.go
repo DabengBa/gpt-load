@@ -13,7 +13,6 @@ import (
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
-	"gpt-load/internal/storage/models"
 )
 
 type credentialDecryptor interface {
@@ -57,9 +56,7 @@ func buildGroupValidationTarget(group state.GroupView) (groupValidationTarget, b
 // mode for the contract protocol and model, so native and converted routes keep
 // their declared semantics.
 func buildGroupProbeTarget(group state.GroupView, model string, requested protocol.Protocol) (groupValidationTarget, bool) {
-	if strings.TrimSpace(group.ConnectionType) == string(models.ConnectionTypeSubscription) {
-		return groupValidationTarget{}, false
-	}
+
 	if group.ChannelID == "" || group.ResolvedTarget.ChannelID != group.ChannelID ||
 		!group.ResolvedTarget.ProviderKind.Valid() {
 		return groupValidationTarget{}, false

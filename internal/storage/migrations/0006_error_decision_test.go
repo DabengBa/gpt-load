@@ -65,7 +65,7 @@ func TestErrorDecisionMigrationPreservesAttemptsAndAddsDecisionContract(t *testi
 		GroupID: 1, GroupName: "group", ChannelID: "openai", CredentialID: 1,
 		StatusCode: 401, DurationMs: 6, FailureCategory: "authentication_required",
 		FailureOrigin: "upstream", FailureScope: "credential",
-		RetryDirective: "refresh_credential", Effect: "none", RuleID: "auth.refresh_required",
+		RetryDirective: "next_candidate", Effect: "none", RuleID: "auth.refresh_unavailable",
 		Action: "retry", ErrorSummary: "refresh required",
 	}
 	if err := db.Omit(

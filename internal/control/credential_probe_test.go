@@ -3,7 +3,6 @@ package control
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -19,7 +18,6 @@ import (
 	"gpt-load/internal/health"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
-	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
@@ -382,16 +380,6 @@ func TestGroupCredentialProbeRevokesRestoreEligibilityWhenTargetChangesDuringPro
 			},
 		},
 		{
-			name: "credential auth state",
-			mutate: func(t *testing.T, fixture serviceFixture, groupID uint) {
-				t.Helper()
-				credential := takeGroupCredential(t, fixture, groupID)
-				if !fixture.registry.SetCredentialAuthState(credential.ID, state.CredentialAuthStateReauthorizationRequired) {
-					t.Fatal("SetCredentialAuthState() = false")
-				}
-			},
-		},
-		{
 			name: "tested model removed",
 			mutate: func(t *testing.T, fixture serviceFixture, groupID uint) {
 				t.Helper()
@@ -456,39 +444,6 @@ func TestGroupCredentialProbeRevokesRestoreEligibilityWhenTargetChangesDuringPro
 				t.Fatalf("probe response after target change = %#v", response)
 			}
 		})
-	}
-}
-
-func TestGroupCredentialProbeRejectsSubscriptionGroup(t *testing.T) {
-	t.Parallel()
-	fixture, groupID, credentialID := newSubscriptionCredentialFixture(t)
-	executor := &credentialProbeTestExecutor{result: successfulCredentialProbeResult()}
-	fixture.service.executor = executor
-
-	_, err := fixture.service.TestGroupCredential(t.Context(), groupID, credentialID)
-	if !errors.Is(err, app_errors.ErrForbidden) {
-		t.Fatalf("TestGroupCredential() error = %v, want forbidden", err)
-	}
-	if calls := executor.recordedCalls(); len(calls) != 0 {
-		t.Fatalf("subscription probe calls = %#v, want none", calls)
-	}
-	initControlI18n(t)
-	const auth = "subscription-probe-auth"
-	engine := gin.New()
-	NewServer(&config.Config{AuthKey: auth}, fixture.service).RegisterRoutes(engine)
-	response := serveCredentialRequest(
-		t,
-		engine,
-		http.MethodPost,
-		fmt.Sprintf("/api/groups/%d/credential/test", groupID),
-		"{}",
-		auth,
-		"",
-		credentialID,
-	)
-	if response.Code != http.StatusForbidden ||
-		!strings.Contains(response.Body.String(), `"code":"FORBIDDEN"`) {
-		t.Fatalf("subscription probe response = %d %s", response.Code, response.Body.String())
 	}
 }
 

@@ -54,19 +54,15 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 	credentials := []models.Credential{
 		{
 			ID: 1, GroupID: enabled.ID, Data: "cipher-1", Fingerprint: "hash-1",
-			AuthState: models.CredentialAuthStateReady,
 		},
 		{
 			ID: 2, GroupID: enabledTwo.ID, Data: "cipher-2", Fingerprint: "hash-2",
-			AuthState: models.CredentialAuthStateReady,
 		},
 		{
 			ID: 3, GroupID: runtimeOnly.ID, Data: "cipher-3", Fingerprint: "hash-3",
-			AuthState: models.CredentialAuthStateReauthorizationRequired,
 		},
 		{
 			ID: 4, GroupID: disabled.ID, Data: "cipher-4", Fingerprint: "hash-4",
-			AuthState: models.CredentialAuthStateReady,
 		},
 	}
 	if err := fixture.db.Create(&credentials).Error; err != nil {
@@ -74,26 +70,23 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 	}
 	if err := fixture.registry.ReplaceCredentials([]state.CredentialEntry{
 		{
-			ID: 1, GroupID: enabled.ID, AuthState: state.CredentialAuthStateReady,
-			Version:            groupCollectionCredentialVersion(credentials[0].SecretVersion),
+			ID: 1, GroupID: enabled.ID, Version: groupCollectionCredentialVersion(credentials[0].SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credentials[0].IdentityFingerprint, *enabled), Fingerprint: credentials[0].Fingerprint,
 			EncryptedValue: "cipher-1",
 		},
 		{
-			ID: 2, GroupID: enabledTwo.ID, AuthState: state.CredentialAuthStateReady,
-			Version:            groupCollectionCredentialVersion(credentials[1].SecretVersion),
+			ID: 2, GroupID: enabledTwo.ID, Version: groupCollectionCredentialVersion(credentials[1].SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credentials[1].IdentityFingerprint, *enabledTwo), Fingerprint: credentials[1].Fingerprint,
 			CooldownUntil: now.Add(time.Hour), EncryptedValue: "cipher-2",
 		},
 		{
-			ID: 3, GroupID: runtimeOnly.ID, AuthState: state.CredentialAuthStateReauthorizationRequired,
+			ID: 3, GroupID: runtimeOnly.ID,
 			Version:            groupCollectionCredentialVersion(credentials[2].SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credentials[2].IdentityFingerprint, *runtimeOnly), Fingerprint: credentials[2].Fingerprint,
 			EncryptedValue: "cipher-3",
 		},
 		{
-			ID: 4, GroupID: disabled.ID, AuthState: state.CredentialAuthStateReady,
-			Version:            groupCollectionCredentialVersion(credentials[3].SecretVersion),
+			ID: 4, GroupID: disabled.ID, Version: groupCollectionCredentialVersion(credentials[3].SecretVersion),
 			IdentityGeneration: groupCollectionCredentialIdentity(credentials[3].IdentityFingerprint, *disabled), Fingerprint: credentials[3].Fingerprint,
 			EncryptedValue: "cipher-4",
 		},
@@ -152,7 +145,7 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 		Inventory: HomeInventory{
 			GroupCount:               4,
 			CredentialCount:          4,
-			AvailableCredentialCount: 1,
+			AvailableCredentialCount: 2,
 			ModelCount:               4,
 		},
 		AccessKeys: []HomeAccessKey{
@@ -182,13 +175,13 @@ func TestReadHomeBaseUsesPersistedAndRuntimeSnapshots(t *testing.T) {
 func TestHomeInventoryWireUsesCredentialTerms(t *testing.T) {
 	t.Parallel()
 	encoded, err := json.Marshal(HomeInventory{
-		GroupCount: 1, CredentialCount: 2, AvailableCredentialCount: 1, ModelCount: 3,
+		GroupCount: 1, CredentialCount: 2, AvailableCredentialCount: 2, ModelCount: 3,
 	})
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	text := string(encoded)
-	for _, field := range []string{`"credential_count":2`, `"available_credential_count":1`} {
+	for _, field := range []string{`"credential_count":2`, `"available_credential_count":2`} {
 		if !strings.Contains(text, field) {
 			t.Fatalf("home inventory missing %s: %s", field, text)
 		}

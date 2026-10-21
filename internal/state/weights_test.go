@@ -21,12 +21,11 @@ func TestCredentialRegistryCollectCandidatesExcludesRuntimeUnavailable(t *testin
 	entries[1].CooldownUntil = now.Add(time.Second)
 	entries[2].Blacklisted = true
 	entries[3].CooldownUntil = now
-	entries[4].AuthState = CredentialAuthStateRefreshing
 	if err := registry.ReplaceCredentials(entries); err != nil {
 		t.Fatal(err)
 	}
 	got := registry.CollectCredentialCandidates([]uint{10, 11, 12, 13, 14, 15}, func(id uint) bool { return id == 6 }, now)
-	want := []CredentialMeta{{ID: 1, GroupID: 10, Version: 1, IdentityGeneration: 1}, {ID: 4, GroupID: 13, Version: 1, IdentityGeneration: 1}}
+	want := []CredentialMeta{{ID: 1, GroupID: 10, Version: 1, IdentityGeneration: 1}, {ID: 4, GroupID: 13, Version: 1, IdentityGeneration: 1}, {ID: 5, GroupID: 14, Version: 1, IdentityGeneration: 1}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("CollectCredentialCandidates() = %#v, want %#v", got, want)
 	}
@@ -185,13 +184,5 @@ func TestCredentialRegistryBlacklistedCredentialsReturnsSortedRefs(t *testing.T)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("BlacklistedCredentials() = %#v, want %#v", got, want)
-	}
-}
-
-func TestValidateCredentialEntriesRejectsInvalidAuthState(t *testing.T) {
-	entry := testCredential(1, 10)
-	entry.AuthState = CredentialAuthState("revoked")
-	if err := ValidateCredentialEntries([]CredentialEntry{entry}); err == nil {
-		t.Fatal("ValidateCredentialEntries() accepted invalid auth state")
 	}
 }

@@ -20,6 +20,8 @@ code:
 ---
 # Astryx + StyleX Migration Plan
 
+> Historical migration inventory: subscription components and staging flows named below have since been removed with embedded CPA. This is not the current feature list; see [Product](../../PRODUCT.md) and [credential API](../../docs/single-credential-management.md). The migration record is retained unchanged.
+
 **Status:** Migration complete (2026-09-30). Phases 0–4 migrated all eleven
 routes; Phases 5+6 shipped together (ADR-0003) — Astryx is the only frontend
 and all classic/Vue coexistence infrastructure is deleted. The document is

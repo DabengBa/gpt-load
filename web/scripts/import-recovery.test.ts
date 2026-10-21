@@ -1,19 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createImportRecoveryService } from '../src/shared/controllers/import-recovery.ts'
-import { projectCredentialStage } from '../src/shared/control/resources/credential-stages.ts'
 
-const draft = (staged_credential: unknown) => ({
+const draft = () => ({
   mode: 'new',
   channel_id: 'openai',
-  connection_type: 'subscription',
+  connection_type: 'api_key',
   params: {},
   proxy: { mode: 'inherit', url: '' },
   name: 'x',
 
   provider_url: '',
   credentials: '',
-  staged_credential,
+
   models: [],
 })
 
@@ -44,51 +43,24 @@ function roundTrip(value: unknown) {
   return controller.consume()
 }
 
-test('recovery persists and restores nullable single stage', () => {
-  assert.deepEqual(roundTrip(draft(null)), draft(null))
-  const stage = { stage_id: 'stage_one', status: 'ready', account: {}, expires_at_ms: 100000 }
-  assert.deepEqual(roundTrip(draft(stage)), draft(stage))
+test('API-only recovery preserves API/cloud/external gateway drafts without staging', () => {
+  for (const channel_id of ['openai', 'anthropic', 'azure', 'vertex', 'bedrock', 'cliproxyapi']) {
+    const value = { ...draft(), channel_id, credentials: '{"api_key":"test-only"}' }
+    assert.deepEqual(roundTrip(value), value)
+  }
+  const existing = { mode: 'existing', group_id: 9, credentials: 'test-only' }
+  assert.deepEqual(roundTrip(existing), existing)
 })
 
-test('recovery rejects arrays, malformed stages and retired plural fields', () => {
-  assert.equal(roundTrip(draft([])), null)
-  assert.equal(roundTrip(draft({ stage_id: 'invalid' })), null)
-  assert.equal(roundTrip({ ...draft(null), staged_credentials: [] }), null)
-  const value = draft(null)
-  const { staged_credential: omitted, ...missing } = value
-  assert.equal(omitted, null)
-  assert.equal(roundTrip(missing), null)
-})
-
-for (const authorization_method of ['browser_oauth', 'device_oauth'] as const) {
-  test(`real ${authorization_method} projector output survives unauthorized recovery`, () => {
-    const stage = projectCredentialStage({
-      stage_id: 'stage_real',
-      status: 'pending_authorization',
-      authorization_method,
-      authorization_url: 'https://auth.example.com/authorize',
-      redirect_uri: 'http://localhost/callback',
-      ...(authorization_method === 'device_oauth'
-        ? { user_code: 'ABCD-EFGH', next_poll_at_ms: 5000 }
-        : {}),
-      account: { email_mask: 'a***@example.com', expires_at_ms: 90000, last_refresh_at_ms: 1000 },
-      expires_at_ms: 100000,
-    })
-    assert.deepEqual(roundTrip(draft(stage)), draft(stage))
-    const existing = { mode: 'existing', group_id: 9, credentials: '', staged_credential: stage }
-    assert.deepEqual(roundTrip(existing), existing)
-  })
-}
-
-test('recovery validates authorization fields and rejects secret additions', () => {
-  const stage = { stage_id: 'stage_one', status: 'ready', account: {}, expires_at_ms: 100000 }
-  for (const fields of [
-    { authorization_method: 'invalid' },
-    { user_code: '\nsecret' },
-    { next_poll_at_ms: -1 },
-    { authorization_url: 'javascript:alert(1)' },
-    { access_token: 'not-a-real-secret' },
-    { duplicate: 'yes' },
-  ])
-    assert.equal(roundTrip(draft({ ...stage, ...fields })), null)
+test('API-only recovery rejects retired connection kinds and staging fields', () => {
+  assert.equal(
+    roundTrip({ ...draft(), connection_type: 'subscription', staged_credential: null }),
+    null,
+  )
+  assert.equal(roundTrip({ ...draft(), staged_credential: null }), null)
+  assert.equal(roundTrip({ ...draft(), staged_credentials: [] }), null)
+  assert.equal(
+    roundTrip({ mode: 'existing', group_id: 9, credentials: '', staged_credential: null }),
+    null,
+  )
 })

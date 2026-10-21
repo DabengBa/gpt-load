@@ -3,7 +3,6 @@ import type {
   ImportRecoveryDraft,
   ModelDraftItem,
 } from '@shared/domain/import/model-draft'
-import { projectCredentialStage } from '@shared/control/resources/credential-stages'
 
 export const importRecoveryStorageKey = 'gpt-load.import-reauth-draft'
 export const importRecoveryTtlMs = 15 * 60 * 1_000
@@ -133,18 +132,16 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
 
       'provider_url',
       'credentials',
-      'staged_credential',
       'models',
     ]) &&
     value.mode === 'new' &&
     isChannelID(value.channel_id) &&
-    (value.connection_type === 'api_key' || value.connection_type === 'subscription') &&
+    value.connection_type === 'api_key' &&
     isChannelParams(value.params) &&
     isImportProxyDraft(value.proxy) &&
     typeof value.name === 'string' &&
     typeof value.provider_url === 'string' &&
     typeof value.credentials === 'string' &&
-    (value.staged_credential === null || isRecoveredStage(value.staged_credential)) &&
     Array.isArray(value.models) &&
     value.models.every(isModel)
   )) {
@@ -154,47 +151,15 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
   return new Set(models.map(({ key }) => key)).size === models.length
 }
 
-function isRecoveredStage(value: unknown): boolean {
-  if (!isRecord(value)) return false
-  if (
-    !hasOnlyFields(value, [
-      'stage_id',
-      'status',
-      'authorization_method',
-      'authorization_url',
-      'redirect_uri',
-      'user_code',
-      'next_poll_at_ms',
-      'account',
-      'expires_at_ms',
-      'error_code',
-      'duplicate',
-    ]) ||
-    !isRecord(value.account) ||
-    !hasOnlyFields(value.account, ['email_mask', 'expires_at_ms', 'last_refresh_at_ms']) ||
-    (value.duplicate !== undefined && typeof value.duplicate !== 'boolean')
-  )
-    return false
-  try {
-    projectCredentialStage(value)
-    return true
-  } catch {
-    return false
-  }
-}
-
 function isExistingImportDraft(value: Record<string, unknown>): boolean {
   return (
-    hasOnlyFields(value, ['mode', 'group_id', 'credentials', 'staged_credential']) &&
+    hasOnlyFields(value, ['mode', 'group_id', 'credentials']) &&
     value.mode === 'existing' &&
     (value.group_id === null ||
       (typeof value.group_id === 'number' &&
         Number.isSafeInteger(value.group_id) &&
         value.group_id > 0)) &&
-    typeof value.credentials === 'string' &&
-    (value.staged_credential === undefined ||
-      value.staged_credential === null ||
-      isRecoveredStage(value.staged_credential))
+    typeof value.credentials === 'string'
   )
 }
 

@@ -53,3 +53,13 @@ test('image source round-trips the vendored markup', () => {
   assert.match(plan.src, /^data:image\/svg\+xml;charset=utf-8,/u)
   assert.equal(decodeURIComponent(plan.src.slice(plan.src.indexOf(',') + 1)), markup)
 })
+
+test('downstream Codex and Claude Code retain their shared brand icons', async () => {
+  for (const name of ['codex', 'claude']) {
+    const markup = await readFile(
+      new URL(`../src/shared/assets/channels/${name}.svg`, import.meta.url),
+      'utf8',
+    )
+    assert.match(markup, /<svg/u)
+  }
+})

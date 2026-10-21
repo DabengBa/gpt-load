@@ -6,7 +6,7 @@
 
 **A self-hosted AI gateway for multi-channel, multi-credential setups**
 
-API keys, subscription accounts, traffic scheduling, failure handling, request logs, and usage accounting — behind a single entry point.
+API keys, traffic scheduling, failure handling, request logs, and usage accounting — behind a single entry point.
 
 English · [中文](README_CN.md) · [日本語](README_JP.md) | [Official Website](https://www.gpt-load.com)
 
@@ -53,7 +53,7 @@ Your application only needs one base URL and one AccessKey. Providers, accounts,
 <img src="./screenshot/architecture-overview.png" alt="GPT-Load unified access and upstream routing architecture" width="860">
 
 - **One gateway, native protocols** — Manage official APIs, cloud platforms, model services, and compatible relays together while clients keep their OpenAI, Anthropic, or Gemini native interfaces.
-- **One mechanism for API keys and subscriptions** — Codex, Claude, Antigravity, Grok, and API-key channels share credential management, scheduling, and health handling.
+- **API credential management** — Standard API and cloud credentials share scheduling, health handling, request logs and communication capture.
 - **Scheduling and failure isolation built in** — Multi-credential scheduling, automatic weighting, retries, cooldown, blacklisting, and session affinity reduce the impact of overloaded or failing credentials.
 - **Dedicated scheduling workspace** — Administrators can open `/schedule` to compare an external model's candidates across groups, batch-edit weights and priorities, inspect runtime state, recover cooled or blacklisted entries, and run single or batch probes.
 - **Observable, self-hosted, and simple to deploy** — Inspect health, routes, logs with inline cache hit rates, usage, and cost estimates in an embedded UI backed by SQLite with local credential encryption.
@@ -62,6 +62,9 @@ Your application only needs one base URL and one AccessKey. Providers, accounts,
 
 > [!WARNING]
 > If you are using 1.x, read [Moving from 1.x](#moving-from-1x) first. 2.0 cannot open, import, or migrate 1.x data in place.
+
+> [!WARNING]
+> **Breaking change: a database written by the previous release must be converted or replaced.** Built-in Codex, Claude, Antigravity and Grok subscriptions and the embedded CPA adapter have been removed, including OAuth, credential-file import, refresh and account/quota observation. This build cannot open a legacy schema containing retired subscription structures or migration `0003` in place; it refuses to start instead. Two paths are supported: convert the stopped legacy database offline with `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` (keeps groups, API credentials, access keys and quota state, drops request logs and usage history), or start with a fresh database and reconfigure by hand. See [legacy database conversion](.docs/tech/legacy-db-conversion.md). There is no in-place migration, automatic deletion, or compatibility layer. Preserve the old deployment and backups; do not point this build at a business database. Startup rejection does not promise zero SQLite file/WAL side effects. Ordinary APIs and the external CLIProxyAPI gateway channel remain supported.
 
 ### 1. Start the service
 
@@ -95,18 +98,9 @@ Open <http://127.0.0.1:3001> and sign in to the console with that key.
 
 Initial setup takes three steps:
 
-1. **Add a channel** — Choose an upstream service and add one or more API keys. For subscription channels, complete the OAuth flow or import credentials as prompted.
+1. **Add a channel** — Choose an upstream service and add one or more API keys.
 2. **Create a group** — Pick a channel, then configure available models and runtime policy.
 3. **Create an AccessKey** — Set the groups and client protocols it may use, then give the generated AccessKey to your application.
-
-<details>
-<summary>OAuth callback ports for subscription channels</summary>
-
-The Codex, Claude, and Antigravity OAuth clients use fixed callback ports. Compose publishes them on the address configured by `HOST`, which defaults to `127.0.0.1`; setting `HOST=0.0.0.0` also publishes these callback ports on all host interfaces. Because the ports are fixed by the upstream clients, only one default Compose instance can run on a host at a time.
-
-When working over SSH or from a remote browser, the browser's `localhost` may not reach GPT-Load — paste the full callback URL into the authorization dialog to finish the flow.
-
-</details>
 
 ### Streaming responses
 
@@ -123,10 +117,6 @@ Streaming delivery has no switch, group override, default value, or rollback pat
 **Groups** — View channels, models, credential counts, and health in one place
 
 <img src="./screenshot/groups-overview.png" alt="GPT-Load groups overview" width="860">
-
-**Subscription accounts** — Track account availability, quota windows, reset times, and runtime diagnostics
-
-<img src="./screenshot/subscription-accounts.png" alt="GPT-Load subscription accounts and quota status" width="860">
 
 **AccessKey read-only home** — Sign in with an AccessKey to view only its own groups, models, requests, usage, and cost allowance
 
@@ -154,16 +144,19 @@ Each channel declares exactly which protocols and capabilities it can execute. G
 
 If an upstream request times out before the HTTP response is committed, the gateway returns HTTP `408` with an OpenAI-compatible JSON error: `error.message` is `Gateway timeout: upstream request timed out`, `error.type` is `timeout_error`, and `error.code` is `upstream_timeout`. Chat Completions and Responses clients can use this message to recognize timeouts and apply their configured retry policy. A response that has already started cannot change its HTTP status.
 
-Embeddings initially uses the native OpenAI-compatible wire only on the OpenAI, OpenRouter, and OpenAI Compatible API-key channels; subscription channels and protocol conversion are not supported. An AccessKey without a protocol filter keeps its existing “all enabled protocols” behavior and therefore gains Embeddings access after upgrade. Least-privilege deployments should configure an explicit protocol filter.
+Embeddings initially uses the native OpenAI-compatible wire only on the OpenAI, OpenRouter, and OpenAI Compatible API-key channels; protocol conversion is not supported. An AccessKey without a protocol filter keeps its existing “all enabled protocols” behavior and therefore gains Embeddings access after upgrade. Least-privilege deployments should configure an explicit protocol filter.
 
-Rerank uses the independent `rerank` protocol through `POST /v1/rerank` on the OpenAI Compatible, New API, and GPT-Load API-key channels. Requests contain `model`, `query`, and a text-only `documents` array, with optional upstream parameters such as `top_n` and `return_documents`. Streaming, subscription channels, and protocol conversion are not supported. OpenAI Compatible takes a complete API prefix (for example, `https://host/v1`); New API / GPT-Load take the gateway root. The upstream must implement a compatible Rerank endpoint. AccessKeys without a protocol filter also gain Rerank access. Responses containing only non-token units such as `search_units` remain unpriced; these units are not treated as tokens or free requests.
+Rerank uses the independent `rerank` protocol through `POST /v1/rerank` on the OpenAI Compatible, New API, and GPT-Load API-key channels. Requests contain `model`, `query`, and a text-only `documents` array, with optional upstream parameters such as `top_n` and `return_documents`. Streaming and protocol conversion are not supported. OpenAI Compatible takes a complete API prefix (for example, `https://host/v1`); New API / GPT-Load take the gateway root. The upstream must implement a compatible Rerank endpoint. AccessKeys without a protocol filter also gain Rerank access. Responses containing only non-token units such as `search_units` remain unpriced; these units are not treated as tokens or free requests.
 
 ### Built-in channels
 
 - **Official and cloud** — OpenAI, Anthropic, Gemini, xAI, Azure OpenAI, AWS Bedrock, Google Vertex AI
 - **Model services** — DeepSeek, Moonshot AI, SiliconFlow, Zhipu AI, Alibaba, Volcengine, OpenRouter, Groq
-- **Subscription** — Codex, Claude, Antigravity, Grok
 - **Custom** — OpenAI Compatible (any compatible relay)
+
+- **Gateways** — New API, GPT-Load, external CLIProxyAPI, sub2api
+
+Codex and Claude Code remain supported as downstream clients through the AccessKey client-configuration UI; this is not built-in subscription authorization. An external CLIProxyAPI service is operator-managed and connected by its base URL and API key, not embedded in GPT-Load.
 
 ## Deployment and data
 
@@ -208,10 +201,9 @@ At startup, the application reads `.env` in the current directory; existing proc
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `HOST` | `127.0.0.1` | Native listening address, and the default host address for Compose's main port and OAuth callback ports; Compose always listens on `0.0.0.0` inside the container. |
+| `HOST` | `127.0.0.1` | Native listening address, and the default host address for Compose's main port; Compose always listens on `0.0.0.0` inside the container. |
 | `PORT` | `3001` | HTTP service port, must be `1–65535`; Compose also uses it for the container port, host publishing, and health check. |
-| `BIND_ADDRESS` | Empty, inherits `HOST` | Compose only; overrides the host publishing address for the main service port without changing OAuth callback ports. |
-| `OAUTH_CALLBACK_BIND_ADDRESS` | Empty, inherits `HOST` | Compose only; overrides the host publishing address for the fixed OAuth callback ports `1455`, `54545`, and `51121`. |
+| `BIND_ADDRESS` | Empty, inherits `HOST` | Compose only; overrides the host publishing address for the main service port. |
 | `GRACEFUL_SHUTDOWN_TIMEOUT` | `10` | Maximum time to wait for requests after a stop signal, positive integer in seconds. |
 | `CONTAINER_STOP_GRACE_PERIOD` | `15s` | Docker duration to wait before Compose force-stops the container; should be longer than `GRACEFUL_SHUTDOWN_TIMEOUT`. |
 | `READ_TIMEOUT` | `60` | HTTP request read timeout, positive integer in seconds. |
@@ -236,18 +228,17 @@ Environment proxies apply only when no proxy is specified on the credential, gro
 
 - The service listens on `127.0.0.1` only by default. For remote access, expose it through a controlled network or a TLS reverse proxy, and configure ACLs and firewall rules.
 - Manage `AUTH_KEY` and `ENCRYPTION_KEY` carefully. Never commit real keys to a repository, log, screenshot, or public issue.
-- Debug communication capture is disabled by default. When `DEBUG_CAPTURE_ENABLED=true`, the separate capture store retains observed plaintext request and response headers and bodies, including credentials and cookies, for a fixed 4-hour period. Inspect or download captures only through the management-admin debug-capture API; protect `AUTH_KEY`, the database, backups, and exported ZIP files accordingly. The boundary covers application-layer data observed by Gateway, CPA, and Bifrost HTTP integrations. It does not claim TLS/socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed.
+- Debug communication capture is disabled by default. When `DEBUG_CAPTURE_ENABLED=true`, the separate capture store retains observed plaintext request and response headers and bodies, including credentials and cookies, for a fixed 4-hour period. Inspect or download captures only through the management-admin debug-capture API; protect `AUTH_KEY`, the database, backups, and exported ZIP files accordingly. The boundary covers application-layer data observed by Gateway and Bifrost HTTP integrations. It does not claim TLS/socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed.
 - 2.0 is designed for a **single application instance**. Instances do not share state, so horizontal scaling is not supported.
 - Usage and cost are **estimates** derived from upstream responses. They support operational analysis and capacity planning, and do not equal a provider invoice or a financial reconciliation.
-- Subscription channels depend on upstream OAuth and compatibility protocols and may change as upstreams change. Only connect accounts you are entitled to use, and follow each provider's terms.
 - HTTP Responses continuation with `previous_response_id` automatically uses native Responses routes that declare upstream-managed storage: currently `openai`, `gpt_load`, `xai`, `newapi`, `cliproxyapi`, and `sub2api`. Ownership is isolated by AccessKey and pins the original credential when current routing permits, independently of affinity; actual state availability depends on the upstream. Stateless and converted responses are not registered as persistent state. Unknown IDs, including IDs created before upgrading or outside this gateway, are rejected. Group parameter overrides cannot change this field.
 - Responses `create` accepts an optional `prompt_cache_key` as an affinity signal. The value must be non-empty, valid UTF-8 with no leading/trailing whitespace or control characters, and at most 256 bytes; invalid values are silently ignored without blocking the request. When valid, the explicit key takes priority over the prompt-prefix derived signal (from `instructions`/`system`/`developer` and the first `user`/`input_text`). Neither the raw key, prompt-prefix input, nor the full derived HMAC is logged or exposed. Admin request logs may show only a fixed-width masked projection of the derived scope key (`16 hex + **** + 16 hex`) for filtering; the raw key, source material, and full HMAC remain unavailable to the API and UI. Affinity never expands the eligible credential set or overrides `previous_response_id` continuation ownership. Request logs show the bounded `affinity_source`, `affinity_state`, and a separate `continuity_hit` indicator. This binding does not imply strict session identity, machine binding, or cross-instance sharing.
 - Affinity bindings are durable: the existing `system_settings` table stores one target per `_internal.affinity.binding.<raw-hmac>` key. A hot-cache miss, TTL expiry, LRU eviction, capacity change, or process restart causes read-through from that store; an eligible recovered binding is still `hit`. Unrelated group, entry-weight, catalog/Models.dev updates and snapshot revision changes do not discard the binding. Recovery requires the same database and affinity key derivation material; it does not depend on a shutdown checkpoint.
 - After all access-key, group, route requirement, entry-weight, credential identity, cooldown and blacklist checks pass, the bound provider/credential is tried first across every eligible priority tier, route mode and regular/store-downgraded bucket. Only an actual retryable provider failure permits affinity fallback under the existing retry/replay rules; a successful fallback may then move the binding. A target excluded by those checks is not tried; normal eligible candidates may serve the request, but their success does not delete or replace the old durable binding. Preparation errors and downstream failures do not count as provider failures.
 - `cache_miss` means no binding was found by the applicable lookup path, including the durable store when affinity is enabled; `hit` includes bindings recovered from that store. `cache_unavailable` covers unavailable affinity resolution, including local cache/configuration/key conditions and durable lookup/decode errors. A required durable lookup error fails closed before provider dispatch, without ordinary fallback. If all eligible groups disable affinity, durable lookup is skipped and ordinary scheduling continues; memory-only test setups retain their local behavior. A durable write error after a successful provider response retains the hot binding and delivered response and logs `affinity_binding_persist_failed`; it does not trigger another provider attempt, and that failed write is not guaranteed to survive cache loss or restart.
-- Native Responses WebSocket uses `GET /v1/responses` on the same port. Admission follows declared upstream capabilities for OpenAI, xAI, Codex, and compatible native CPA/sub2api and GPT-Load endpoints. Clients may include the boolean `stream:true/false`; both values still use the WS event stream. Each turn checks current permissions, rate and cost limits, and routing, with separate usage and cost records. One connection keeps one upstream identity; there is no HTTP fallback or conversation-history replay.
+- Native Responses WebSocket uses `GET /v1/responses` on the same port. Admission follows declared upstream capabilities for OpenAI, xAI, and compatible native external CLIProxyAPI/sub2api and GPT-Load endpoints. Clients may include the boolean `stream:true/false`; both values still use the WS event stream. Each turn checks current permissions, rate and cost limits, and routing, with separate usage and cost records. One connection keeps one upstream identity; there is no HTTP fallback or conversation-history replay.
 - `responses_websocket_enabled` defaults to enabled. An explicit group setting overrides the global value; otherwise the group inherits it. Disabling immediately closes affected WS connections and interrupts generation without affecting HTTP/SSE. Re-enabling does not restore the old connection's temporary state.
-- Full `stream_id` multiplexing and forks are enabled for OpenAI and GPT-Load cascades that support them end to end. The other channels above run serially and reject named streams. Prewarming sends `generate:false` upstream. Codex continuation requires the original live connection: `store:true` and restoration by an old ID on a new connection are unsupported. Persistent continuation on other channels depends on storage capabilities and valid ownership. Existing [Codex SDK proxy, reading, and shutdown limits](docs/design/codex-websocket-session.md) still apply.
+- Full `stream_id` multiplexing and forks are enabled for OpenAI and GPT-Load cascades that support them end to end. The other channels above run serially and reject named streams. Prewarming sends `generate:false` upstream. Persistent continuation on other channels depends on storage capabilities and valid ownership.
 - Response bindings stay in memory for up to 30 days, with limits of 100,000 entries and 16 MiB of ID text; older entries are evicted when capacity is reached. A successful checkpoint during normal shutdown allows restoration from the same data directory. Crash recovery and continued upstream state availability are not guaranteed.
 - `conversation` and other existing resource IDs are outside this ownership routing scope and still depend on a single credential or upstream resource sharing across credentials.
 
@@ -265,7 +256,6 @@ Some of GPT-Load's capabilities build on these projects, with thanks:
 | Project                                                     | Role                                                                                 | License    |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------- |
 | [Bifrost Core](https://github.com/maximhq/bifrost)          | Provider authentication, request/response conversion, streaming, usage normalization | Apache-2.0 |
-| [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | OAuth and execution adapter for subscription channels                                | MIT        |
 | [Lobe Icons](https://github.com/lobehub/lobe-icons)         | Channel brand icons in the management UI                                             | MIT        |
 
 GPT-Load owns credential storage, account selection, scheduling, retry, health, affinity, logging, and usage policy. Third-party notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), full license texts in [`LICENSES/`](LICENSES/), and each release ships a CycloneDX SBOM covering the Go dependency graph.

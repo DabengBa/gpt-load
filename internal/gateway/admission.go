@@ -94,9 +94,6 @@ func (handler *Handler) admitRequest(
 	recorder := in.recorder
 
 	quotaAdmission := &requestAccessQuotaAdmission{accessKeyID: accessKey.ID}
-	if in.request.URL.Path == "/v1/alpha/search" {
-		quotaAdmission = nil
-	}
 	if quotaAdmission != nil && len(accessKey.CostLimitRules) > 0 {
 		quotaAdmission.snapshot = snapshot
 	}

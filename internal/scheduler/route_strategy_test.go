@@ -132,8 +132,8 @@ func TestIteratorWeightedMixHonorsLiveHealthAndRequestExclusions(t *testing.T) {
 	setSnapshotRouteStrategy(t, snapshot, "weighted_mix")
 	registry := state.NewCredentialRegistry()
 	entries := []state.CredentialEntry{
-		{ID: 11, GroupID: 1, AuthState: state.CredentialAuthStateReady, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "one"},
-		{ID: 21, GroupID: 2, AuthState: state.CredentialAuthStateReady, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "two"},
+		{ID: 11, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "one"},
+		{ID: 21, GroupID: 2, Version: 1, IdentityGeneration: 1, Fingerprint: "fp", EncryptedValue: "two"},
 	}
 	if err := registry.ReplaceCredentials(entries); err != nil {
 		t.Fatalf("ReplaceCredentials() error = %v", err)

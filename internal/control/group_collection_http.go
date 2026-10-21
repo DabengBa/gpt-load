@@ -128,7 +128,7 @@ func parseGroupCollectionConnectionType(
 ) (*models.ConnectionType, bool) {
 	connectionType := models.ConnectionType(value)
 	switch connectionType {
-	case models.ConnectionTypeAPIKey, models.ConnectionTypeSubscription:
+	case models.ConnectionTypeAPIKey:
 		return &connectionType, true
 	default:
 		return nil, false

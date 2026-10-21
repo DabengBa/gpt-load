@@ -48,7 +48,6 @@ function newImportDraft() {
 
     provider_url: 'https://provider.example',
     credentials: 'sk-one',
-    staged_credential: null,
     models: [
       {
         id: 'gpt-4o',

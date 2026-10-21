@@ -808,17 +808,6 @@ func authenticationDecision(attempt ExecutionAttempt, decisionContext DecisionCo
 		)
 	}
 	if hint == execution.FailureHintRefreshRequired {
-		if decisionContext.CredentialRefreshable &&
-			attempt.Evidence.ReplaySafety == execution.ReplaySafetyRejectedBeforeProcessing {
-			return decision(
-				FailureCategoryAuthenticationRequired,
-				execution.ErrorOriginUpstream,
-				execution.ErrorScopeCredential,
-				RetryRefreshCredential,
-				EffectNone,
-				"auth.refresh_required",
-			)
-		}
 		return decision(
 			FailureCategoryAuthenticationRequired,
 			execution.ErrorOriginUpstream,

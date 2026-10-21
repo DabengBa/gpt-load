@@ -159,14 +159,14 @@ func queryCredentialLatestActivity(
 			FROM request_log_attempts
 			WHERE credential_id = ? AND completed_at_ms < ?
 				AND dispatch_state <> ?
-				AND operation NOT IN (?, ?)
+				AND operation <> ?
 				AND failure_category NOT IN (?, ?)
 			ORDER BY completed_at_ms DESC, request_id DESC, sequence DESC
 			LIMIT 1
 		) AS last_failure_summary`)
 		args = append(args, credentialID, credentialID, toMS, string(execution.DispatchLocal),
 			credentialID, toMS, string(execution.DispatchLocal),
-			string(execution.OperationProbe), string(execution.OperationWebSearch),
+			string(execution.OperationProbe),
 			string(telemetry.FailureCategoryOK), string(telemetry.FailureCategoryDownstreamCancel))
 	}
 	var rows []credentialLatestActivityRow

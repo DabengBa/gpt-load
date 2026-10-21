@@ -29,9 +29,9 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 	}
 
 	credentials := []models.Credential{
-		{ID: 1, GroupID: groups[0].ID, Data: "cipher-1", Fingerprint: "hash-1", AuthState: models.CredentialAuthStateReady},
-		{ID: 2, GroupID: groups[1].ID, Data: "cipher-2", Fingerprint: "hash-2", AuthState: models.CredentialAuthStateReauthorizationRequired},
-		{ID: 3, GroupID: groups[2].ID, Data: "cipher-3", Fingerprint: "hash-3", AuthState: models.CredentialAuthStateReauthorizationRequired},
+		{ID: 1, GroupID: groups[0].ID, Data: "cipher-1", Fingerprint: "hash-1"},
+		{ID: 2, GroupID: groups[1].ID, Data: "cipher-2", Fingerprint: "hash-2"},
+		{ID: 3, GroupID: groups[2].ID, Data: "cipher-3", Fingerprint: "hash-3"},
 	}
 	if err := fixture.db.Create(&credentials).Error; err != nil {
 		t.Fatalf("create credentials: %v", err)
@@ -49,12 +49,8 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 			IdentityGeneration: groupCollectionCredentialIdentity(credential.IdentityFingerprint, *group),
 			Fingerprint:        credential.Fingerprint,
 			EncryptedValue:     "cipher-" + string(rune('1'+index)),
-			AuthState:          state.CredentialAuthStateReady,
 		})
 	}
-	// 2、3 号待重新授权；统一分组凭据模型下，每个状态使用独立分组承载。
-	entries[1].AuthState = state.CredentialAuthStateReauthorizationRequired
-	entries[2].AuthState = state.CredentialAuthStateReauthorizationRequired
 	if err := fixture.registry.ReplaceCredentials(entries); err != nil {
 		t.Fatalf("registry.ReplaceCredentials() error = %v", err)
 	}
@@ -76,9 +72,9 @@ func TestReadHomeBaseAvailableCredentialsMatchHealthClassification(t *testing.T)
 	if base.Inventory.CredentialCount != 3 {
 		t.Fatalf("CredentialCount = %d, want 3", base.Inventory.CredentialCount)
 	}
-	if base.Inventory.AvailableCredentialCount != 1 {
+	if base.Inventory.AvailableCredentialCount != 3 {
 		t.Fatalf(
-			"AvailableCredentialCount = %d, want 1 (待重新授权的凭据不可用)",
+			"AvailableCredentialCount = %d, want 3",
 			base.Inventory.AvailableCredentialCount,
 		)
 	}

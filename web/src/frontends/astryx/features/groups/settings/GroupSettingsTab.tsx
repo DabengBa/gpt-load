@@ -128,8 +128,7 @@ export function GroupSettingsTab({
   const selectedChannel = channelsQuery.data?.items.find(
     ({ channel_id }) => channel_id === draft?.channel_id,
   )
-  const channelParamFields: ChannelFieldDto[] =
-    selectedChannel?.connection.type === 'subscription' ? [] : (selectedChannel?.param_fields ?? [])
+  const channelParamFields: ChannelFieldDto[] = selectedChannel?.param_fields ?? []
   const channelParamsDisabled = selectedChannel === undefined
   const parameterOverrideProtocols: AccessProtocol[] = [
     ...new Set(

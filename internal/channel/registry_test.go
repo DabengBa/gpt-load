@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"gpt-load/internal/channel/spec"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/protocol"
 )
@@ -16,10 +15,6 @@ func TestRegistryHasStableBuiltInOrderAndSearch(t *testing.T) {
 	registry := NewRegistry()
 	wantIDs := []ID{
 		OpenAI,
-		Codex,
-		Claude,
-		Antigravity,
-		Grok,
 		Anthropic,
 		Gemini,
 		ID("azure_openai"),
@@ -55,8 +50,8 @@ func TestRegistryHasStableBuiltInOrderAndSearch(t *testing.T) {
 	if got := descriptorIDs(registry.Search("GeMiNi")); !reflect.DeepEqual(got, []ID{Gemini}) {
 		t.Fatalf("Search(gemini) IDs = %v", got)
 	}
-	if got := descriptorIDs(registry.Search("subscription")); !reflect.DeepEqual(got, []ID{Codex, Claude, Antigravity, Grok}) {
-		t.Fatalf("Search(subscription) IDs = %v, want [codex claude antigravity grok]", got)
+	if got := descriptorIDs(registry.Search("subscription")); len(got) != 0 {
+		t.Fatalf("Search(subscription) IDs = %v, want none", got)
 	}
 	if got := descriptorIDs(registry.Search("compatible")); !reflect.DeepEqual(got, []ID{OpenAICompatible}) {
 		t.Fatalf("Search(compatible) IDs = %v", got)
@@ -92,7 +87,7 @@ func TestRegistryHasStableBuiltInOrderAndSearch(t *testing.T) {
 	first := registry.List()
 	first[0].ClientProtocols[0] = protocol.Protocol("mutated")
 	first[0].ParamFields = append(first[0].ParamFields, FieldDescriptor{Key: "mutated"})
-	vertexIndex := 9
+	vertexIndex := 5
 	if first[vertexIndex].ID != GoogleVertex || first[vertexIndex].ParamFields[0].DefaultValue == nil {
 		t.Fatalf("unexpected Vertex descriptor = %#v", first[vertexIndex])
 	}
@@ -102,15 +97,6 @@ func TestRegistryHasStableBuiltInOrderAndSearch(t *testing.T) {
 		second[vertexIndex].ParamFields[0].DefaultValue == nil ||
 		*second[vertexIndex].ParamFields[0].DefaultValue != "global" {
 		t.Fatal("mutating List() output changed registry state")
-	}
-}
-
-func TestBuiltInSubscriptionChannelsUseOnlyGlobalRiskNotice(t *testing.T) {
-	registry := NewRegistry()
-	for _, descriptor := range registry.List() {
-		if descriptor.Connection.Type == string(spec.ConnectionSubscription) && len(descriptor.Notices) != 0 {
-			t.Fatalf("subscription channel %q declares step-level notices: %#v", descriptor.ID, descriptor.Notices)
-		}
 	}
 }
 
@@ -185,73 +171,6 @@ func TestRegistryPublishesOnlySafeParameterDefaults(t *testing.T) {
 	}
 }
 
-func TestCodexIsTheOnlySubscriptionChannelWithoutExposingExecutor(t *testing.T) {
-	t.Parallel()
-
-	registry := NewRegistry()
-	descriptor, ok := registry.Get(Codex)
-	if !ok {
-		t.Fatal("Codex descriptor is missing")
-	}
-	if descriptor.Connection.Type != "subscription" {
-		t.Fatalf("connection = %#v", descriptor.Connection)
-	}
-	if got := descriptor.Connection.AuthorizationMethods; len(got) != 2 ||
-		got[0] != "browser_oauth" || got[1] != "oauth_file" {
-		t.Fatalf("subscription authorization methods = %#v", got)
-	}
-	if !descriptor.Capabilities.ModelDiscovery || !descriptor.Capabilities.QuotaObservation ||
-		!reflect.DeepEqual(descriptor.Capabilities.CredentialActions, []CredentialAction{CredentialActionResetCredit}) {
-		t.Fatalf("subscription capabilities = %#v", descriptor.Capabilities)
-	}
-	openAI, ok := registry.Get(OpenAI)
-	if !ok || openAI.Connection.Type != "api_key" {
-		t.Fatalf("OpenAI connection = %#v, found = %t", openAI.Connection, ok)
-	}
-	if !openAI.Capabilities.ModelDiscovery || openAI.Capabilities.QuotaObservation ||
-		len(openAI.Capabilities.CredentialActions) != 0 {
-		t.Fatalf("OpenAI capabilities = %#v", openAI.Capabilities)
-	}
-	target, err := registry.Resolve(Codex, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for clientProtocol, expectation := range map[protocol.Protocol]struct {
-		operation execution.Operation
-		mode      RouteMode
-	}{
-		protocol.OpenAICompletions: {operation: execution.OperationChatCompletion, mode: RouteConverted},
-		protocol.OpenAIResponses:   {operation: execution.OperationResponsesCreate, mode: RouteNative},
-		protocol.Anthropic:         {operation: execution.OperationChatCompletion, mode: RouteConverted},
-		protocol.Gemini:            {operation: execution.OperationChatCompletion, mode: RouteConverted},
-	} {
-		if mode, exists := target.Mode(clientProtocol, expectation.operation); !exists || mode != expectation.mode {
-			t.Fatalf("Codex %q/%q mode = %q, %t, want %q", clientProtocol, expectation.operation, mode, exists, expectation.mode)
-		}
-		for _, unsupported := range []execution.Operation{execution.OperationListModels, execution.OperationProbe} {
-			if _, exists := target.Mode(clientProtocol, unsupported); exists {
-				t.Fatalf("Codex unexpectedly advertises %q/%q", clientProtocol, unsupported)
-			}
-		}
-	}
-	encoded, err := json.Marshal(descriptor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var publicDescriptor map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &publicDescriptor); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := publicDescriptor["capabilities"]; !ok {
-		t.Fatalf("Codex descriptor omits safe capabilities: %s", encoded)
-	}
-	for _, internalName := range []string{"CPA", "Bifrost", "executor"} {
-		if strings.Contains(strings.ToLower(string(encoded)), strings.ToLower(internalName)) {
-			t.Fatalf("descriptor exposes %q: %s", internalName, encoded)
-		}
-	}
-}
-
 func TestChannelDescriptorMarksOutboundProxySupport(t *testing.T) {
 	t.Parallel()
 
@@ -261,7 +180,6 @@ func TestChannelDescriptorMarksOutboundProxySupport(t *testing.T) {
 		want      bool
 	}{
 		{channelID: OpenAI, want: true},
-		{channelID: Codex, want: true},
 		{channelID: AzureOpenAI, want: false},
 		{channelID: AWSBedrock, want: false},
 		{channelID: GoogleVertex, want: false},
@@ -317,32 +235,10 @@ func TestRegistryPublicDescriptorUsesSingularConnectionAndExplicitRoutes(t *test
 	}
 }
 
-func TestSubscriptionChannelsRemainSeparateFromAPIKeyChannels(t *testing.T) {
-	t.Parallel()
-
-	registry := NewRegistry()
-	for _, id := range []ID{Codex, Claude, Antigravity, Grok} {
-		if !registry.SupportsConnectionType(id, "subscription") {
-			t.Fatalf("%s subscription is not supported", id)
-		}
-	}
-	if registry.SupportsConnectionType(OpenAI, "subscription") ||
-		registry.SupportsConnectionType(Anthropic, "subscription") ||
-		registry.SupportsConnectionType(OpenAICompatible, "subscription") {
-		t.Fatal("an unsupported channel advertises subscription")
-	}
-	if registry.SupportsConnectionType(Codex, "api_key") {
-		t.Fatal("Codex unexpectedly supports API keys")
-	}
-	if !registry.SupportsConnectionType(Anthropic, "api_key") {
-		t.Fatal("legacy api_key support is missing")
-	}
-}
-
 func TestRegistryReturnsExactCatalogProviderMappingWithoutResolvingParams(t *testing.T) {
 	registry := NewRegistry()
 	for id, want := range map[ID]string{
-		OpenAI: "openai", Codex: "", Claude: "", Antigravity: "", Grok: "", Anthropic: "anthropic", Gemini: "google",
+		OpenAI: "openai", Anthropic: "anthropic", Gemini: "google",
 		ID("azure_openai"): "azure", ID("aws_bedrock"): "amazon-bedrock", ID("google_vertex"): "google-vertex",
 		OpenAICompatible: "",
 	} {
@@ -360,12 +256,6 @@ func TestRegistryReturnsProviderKindWithoutExposingItInDescriptor(t *testing.T) 
 	registry := NewRegistry()
 	if got, ok := registry.ProviderKind(OpenAI); !ok || got != ProviderOpenAI {
 		t.Fatalf("ProviderKind(openai) = %q, %t", got, ok)
-	}
-	if got, ok := registry.ProviderKind(Codex); !ok || string(got) != "codex" {
-		t.Fatalf("ProviderKind(codex) = %q, %t, want codex, true", got, ok)
-	}
-	if got, ok := registry.ProviderKind(Grok); !ok || got != ProviderGrok {
-		t.Fatalf("ProviderKind(grok) = %q, %t", got, ok)
 	}
 	if got, ok := registry.ProviderKind(ID("missing")); ok || got != "" {
 		t.Fatalf("ProviderKind(missing) = %q, %t", got, ok)
@@ -822,10 +712,6 @@ func TestEveryResponsesCreateChannelDeclaresStoreHandling(t *testing.T) {
 	registry := NewRegistry()
 	want := map[ID]ResponsesStoreHandling{
 		OpenAI:           ResponsesStoreHandlingUpstreamManaged,
-		Codex:            ResponsesStoreHandlingStateless,
-		Claude:           ResponsesStoreHandlingStateless,
-		Antigravity:      ResponsesStoreHandlingStateless,
-		Grok:             ResponsesStoreHandlingStateless,
 		Anthropic:        ResponsesStoreHandlingStateless,
 		Gemini:           ResponsesStoreHandlingStateless,
 		AzureOpenAI:      ResponsesStoreHandlingStateless,

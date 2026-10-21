@@ -248,7 +248,6 @@ export default {
         no_credentials: '分组没有运行时凭据',
         credential_blacklisted: '凭据已拉黑',
         credential_cooldown: '凭据正在冷却',
-        credential_auth_unavailable: '订阅账号当前无法鉴权',
         credential_not_allowed: '该请求排除了此凭据',
         no_available_credential: '分组当前没有可用凭据',
         entry_disabled: '路由条目已禁用',
@@ -509,7 +508,6 @@ export default {
       },
       retryDirective: {
         none: '不重试',
-        refresh_credential: '刷新当前凭据后重试',
         next_candidate: '尝试下一个候选',
       },
       effect: {
@@ -535,7 +533,6 @@ export default {
         rerank: '文档重排序',
         list_models: '列出模型',
         probe: '健康探测',
-        web_search: 'Codex 独立搜索',
       },
       dispatchState: {
         not_sent: '未发送到上游',
