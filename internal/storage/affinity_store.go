@@ -21,6 +21,8 @@ type affinityBindingValue struct {
 	GroupID            uint   `json:"group_id"`
 	CredentialID       uint   `json:"credential_id"`
 	IdentityGeneration uint64 `json:"identity_generation"`
+	EntryID            string `json:"entry_id"`
+	UpstreamModelID    string `json:"upstream_model_id"`
 }
 
 // AffinityStore persists one binding per HMAC-derived affinity key in the
@@ -69,7 +71,19 @@ func (store *AffinityStore) Lookup(
 	if err != nil {
 		return affinity.Target{}, false, fmt.Errorf("decode affinity binding: %w", err)
 	}
-	return affinity.Target{GroupID: value.GroupID, CredentialID: value.CredentialID, IdentityGeneration: value.IdentityGeneration}, true, nil
+	if value.EntryID == "" {
+		// A record written before route identity existed cannot name the route
+		// that succeeded. It is not migrated: the key is a plain miss and the
+		// next successful request replaces the row.
+		return affinity.Target{}, false, nil
+	}
+	return affinity.Target{
+		GroupID:            value.GroupID,
+		CredentialID:       value.CredentialID,
+		IdentityGeneration: value.IdentityGeneration,
+		EntryID:            value.EntryID,
+		UpstreamModelID:    value.UpstreamModelID,
+	}, true, nil
 }
 
 func (store *AffinityStore) Upsert(
@@ -90,7 +104,13 @@ func (store *AffinityStore) Upsert(
 	if store == nil || store.db == nil {
 		return errors.New("affinity store is unavailable")
 	}
-	payload, err := json.Marshal(affinityBindingValue{GroupID: target.GroupID, CredentialID: target.CredentialID, IdentityGeneration: target.IdentityGeneration})
+	payload, err := json.Marshal(affinityBindingValue{
+		GroupID:            target.GroupID,
+		CredentialID:       target.CredentialID,
+		IdentityGeneration: target.IdentityGeneration,
+		EntryID:            target.EntryID,
+		UpstreamModelID:    target.UpstreamModelID,
+	})
 	if err != nil {
 		return fmt.Errorf("encode affinity binding: %w", err)
 	}

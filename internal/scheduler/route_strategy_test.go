@@ -64,6 +64,7 @@ func TestIteratorWeightedMixFreezesStrategyAndPrefersEligibleConvertedCredential
 	setSnapshotRouteStrategy(t, snapshot, "weighted_mix")
 	iterator := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}, {ID: 21, GroupID: 2}}}, Query{
 		ClientProtocol: protocol.OpenAICompletions, ExternalModel: modelPointer("public"), PreferredCredentialID: 11,
+		PreferredEntryID: "derived:public#converted-model", PreferredUpstreamModel: "converted-model",
 	}, rand.New(routeStrategyRandSource(2500)))
 	setSnapshotRouteStrategy(t, snapshot, "native_first")
 	for index, want := range []uint{11, 21} {
@@ -97,7 +98,7 @@ func TestIteratorPreferredCredentialBeatsStoreDowngradeBucket(t *testing.T) {
 	iterator := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}, {ID: 21, GroupID: 2}, {ID: 31, GroupID: 3}, {ID: 41, GroupID: 4}}}, Query{
 		ClientProtocol: protocol.OpenAIResponses, Operation: execution.OperationResponsesCreate,
 		ResponsesStorePreference: execution.ResponsesStorePreferencePreferStored, ExternalModel: modelPointer("gpt"),
-		PreferredCredentialID: 31,
+		PreferredCredentialID: 31, PreferredEntryID: "derived:gpt#claude", PreferredUpstreamModel: "claude",
 	}, rand.New(routeStrategyRandSource(50)))
 	first, err := iterator.Next()
 	if err != nil || first.CredentialID != 31 || !first.ResponsesStoreDowngraded {

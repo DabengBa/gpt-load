@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
 	"gpt-load/internal/platform/redact"
@@ -66,6 +67,10 @@ type requestRecorder struct {
 	usageDiagnostics             usage.Diagnostics
 	affinityHit                  bool
 	resolvedAffinityCredentialID uint
+	// resolvedAffinityTarget is the exact bound route. affinity_hit requires an
+	// exact route match; resolvedAffinityCredentialID stays the credential-level
+	// diagnostic. No new persisted field is introduced.
+	resolvedAffinityTarget       affinity.Target
 	firstAttemptCredentialID     uint
 	affinityHitAssignmentReached bool
 	continuityHit                bool
@@ -240,12 +245,24 @@ func (recorder *requestRecorder) setAffinityHit(hit bool) {
 	}
 }
 
-func (recorder *requestRecorder) observeAffinityHitComparison(credentialID, preferredCredentialID uint) {
+// observeAffinityHitComparison records whether the first attempt is exactly the
+// route remembered by the affinity binding. A sibling model of the same
+// credential is not a hit.
+func (recorder *requestRecorder) observeAffinityHitComparison(selection scheduler.Selection) {
 	if recorder == nil {
 		return
 	}
 	recorder.affinityHitAssignmentReached = true
-	recorder.setAffinityHit(preferredCredentialID != 0 && credentialID == preferredCredentialID)
+	bound := recorder.resolvedAffinityTarget
+	if recorder.resolvedAffinityCredentialID == 0 || !bound.Valid() || selection.CredentialID != bound.CredentialID ||
+		selection.GroupID != bound.GroupID || selection.EntryID != bound.EntryID {
+		return
+	}
+	upstreamModel := ""
+	if selection.UpstreamModelID != nil {
+		upstreamModel = *selection.UpstreamModelID
+	}
+	recorder.setAffinityHit(upstreamModel == bound.UpstreamModelID)
 }
 
 func (recorder *requestRecorder) setContinuityHit(hit bool) {
@@ -301,6 +318,7 @@ func (recorder *requestRecorder) observeDispatch(dispatch *requestDispatch) {
 	recorder.setUsageDiagnostics(dispatch.metadata.UsageDiagnostics)
 	recorder.setAffinityKey(dispatch.affinity.displayKey)
 	recorder.resolvedAffinityCredentialID = dispatch.affinity.preferredCredentialID
+	recorder.resolvedAffinityTarget = dispatch.affinity.boundTarget
 	recorder.setAffinityObservations(dispatch.affinity.source, dispatch.affinity.state)
 }
 

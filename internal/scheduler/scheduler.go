@@ -33,6 +33,13 @@ type Query struct {
 	// same-ID replacement cannot lend its health state to the old binding.
 	PreferredIdentityGeneration uint64
 	PreferredGroupID            uint
+	// PreferredEntryID and PreferredUpstreamModel freeze the bound route inside
+	// the credential, so one credential's sibling model is never mistaken for
+	// the remembered route. A binding without an entry identity is not a route
+	// binding and is never resolved. An empty upstream model is a legitimate
+	// resource route and still pins the entry.
+	PreferredEntryID       string
+	PreferredUpstreamModel string
 
 	// ResponsesWebsocket 非 nil 时按原生 WS 合同准入，不要求 HTTP 资源接口。
 	ResponsesWebsocket *execution.WebsocketCapabilities
@@ -94,6 +101,8 @@ type Iterator struct {
 	preferredCredentialID       uint
 	preferredIdentityGeneration uint64
 	preferredGroupID            uint
+	preferredEntryID            string
+	preferredUpstreamModel      string
 	preferredHealthBypassed     bool
 	tried                       map[candidateKey]struct{}
 	skippedGroups               map[uint]struct{}
@@ -165,6 +174,8 @@ func newWithClock(
 		preferredCredentialID:       query.PreferredCredentialID,
 		preferredIdentityGeneration: query.PreferredIdentityGeneration,
 		preferredGroupID:            query.PreferredGroupID,
+		preferredEntryID:            query.PreferredEntryID,
+		preferredUpstreamModel:      query.PreferredUpstreamModel,
 		tried:                       make(map[candidateKey]struct{}),
 		skippedGroups:               make(map[uint]struct{}),
 		now:                         now,
@@ -419,10 +430,7 @@ func (iterator *Iterator) NextCandidate() (Selection, error) {
 					continue
 				}
 
-				selected, preferred := preferredCandidate(
-					weighted,
-					iterator.preferredCredentialID,
-				)
+				selected, preferred := iterator.preferredCandidate(weighted)
 				if !preferred {
 					ticket := iterator.random.Int63n(total)
 					selected = weighted[len(weighted)-1]
@@ -434,7 +442,7 @@ func (iterator *Iterator) NextCandidate() (Selection, error) {
 						ticket -= candidate.weight
 					}
 				}
-				iterator.preferredHealthBypassed = selected.credential.ID != iterator.preferredCredentialID && iterator.preferredHealthExcluded(now)
+				iterator.preferredHealthBypassed = !iterator.isPreferredRoute(selected) && iterator.preferredHealthExcluded(now)
 				return newSelection(selected.credential, selected.target), nil
 			}
 		}
@@ -496,12 +504,24 @@ func (iterator *Iterator) preferredHealthExcluded(now time.Time) bool {
 	if iterator.credentials.CredentialCountsByGroup([]uint{preferred.GroupID})[preferred.GroupID] != 1 {
 		return false
 	}
+	// The bypass is scoped to the exact bound route: a sibling entry or model of
+	// the same credential says nothing about the binding. A route that no longer
+	// exists in the snapshot is a removal, not a health signal, so a missing
+	// route never reports a bypass.
+	entryID := iterator.preferredEntryID
+	upstreamModel := iterator.preferredUpstreamModel
 	blocked := false
 	for _, pool := range []*candidatePool{&iterator.regular, &iterator.storeDowngraded} {
 		for _, byTier := range pool.tierTargetsByMode {
 			for _, targets := range byTier {
 				for _, target := range targets {
 					if target.target.GroupID != preferred.GroupID || target.target.EntryWeight <= 0 {
+						continue
+					}
+					if target.target.EntryID != entryID || target.target.UpstreamModelID != upstreamModel {
+						continue
+					}
+					if _, skipped := iterator.skippedEntries[state.RouteEntryKey{GroupID: preferred.GroupID, EntryID: entryID}]; skipped {
 						continue
 					}
 					if _, tried := iterator.tried[candidateKey{credentialID: preferred.ID, upstreamModel: target.target.UpstreamModelID}]; tried {
@@ -524,10 +544,12 @@ func (iterator *Iterator) preferredHealthExcluded(now time.Time) bool {
 }
 
 // preferredSelection scans every eligible bucket in the same deterministic
-// order as ordinary scheduling and returns the affinity credential once it is
-// found. Each bucket already applies the hard eligibility filters through
+// order as ordinary scheduling and returns the affinity route once it is found.
+// Each bucket already applies the hard eligibility filters through
 // weightedTierPool, so a filtered, cooled-down or blacklisted target is never
-// forced back into scheduling.
+// forced back into scheduling. A remembered route that no longer exists in the
+// snapshot is never forced into scheduling; the gateway owns invalidating
+// bindings after permanent configuration changes.
 func (iterator *Iterator) preferredSelection(now time.Time) (weightedCandidate, bool) {
 	if iterator.preferredCredentialID == 0 {
 		return weightedCandidate{}, false
@@ -536,7 +558,7 @@ func (iterator *Iterator) preferredSelection(now time.Time) (weightedCandidate, 
 		for _, pool := range []*candidatePool{&iterator.regular, &iterator.storeDowngraded} {
 			for _, modes := range iterator.routeModeTiers {
 				weighted, _ := iterator.weightedTierPool(pool, modes, tier, now)
-				if selected, found := preferredCandidate(weighted, iterator.preferredCredentialID); found {
+				if selected, found := iterator.preferredCandidate(weighted); found {
 					return selected, true
 				}
 			}
@@ -545,22 +567,31 @@ func (iterator *Iterator) preferredSelection(now time.Time) (weightedCandidate, 
 	return weightedCandidate{}, false
 }
 
-// preferredCandidate resolves the session-affinity credential inside the
-// current weighted bucket: the affinity hit pins the credential dimension of
-// the triple, while the entry follows the frozen target order (design §5.3).
-func preferredCandidate(
-	weighted []weightedCandidate,
-	credentialID uint,
-) (weightedCandidate, bool) {
-	if credentialID == 0 {
+// preferredCandidate resolves the session-affinity route inside the current
+// weighted bucket. The binding pins the credential, exact entry and upstream
+// model; the same credential's other models
+// stay ordinary candidates.
+func (iterator *Iterator) preferredCandidate(weighted []weightedCandidate) (weightedCandidate, bool) {
+	if iterator == nil || iterator.preferredCredentialID == 0 {
 		return weightedCandidate{}, false
 	}
 	for _, candidate := range weighted {
-		if candidate.credential.ID == credentialID {
+		if iterator.isPreferredRoute(candidate) {
 			return candidate, true
 		}
 	}
 	return weightedCandidate{}, false
+}
+
+// isPreferredRoute reports whether the candidate is exactly the remembered
+// route: same credential identity, same entry and same upstream model.
+func (iterator *Iterator) isPreferredRoute(candidate weightedCandidate) bool {
+	if iterator == nil || iterator.preferredCredentialID == 0 || iterator.preferredEntryID == "" ||
+		candidate.credential.ID != iterator.preferredCredentialID {
+		return false
+	}
+	return candidate.target.target.EntryID == iterator.preferredEntryID &&
+		candidate.target.target.UpstreamModelID == iterator.preferredUpstreamModel
 }
 
 func filterTargetsWithReason(

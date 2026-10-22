@@ -271,9 +271,12 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		query.PreferredCredentialID = affinity.preferredCredentialID
 		query.PreferredIdentityGeneration = affinity.preferredIdentityGeneration
 		query.PreferredGroupID = affinity.boundTarget.GroupID
+		query.PreferredEntryID = affinity.boundTarget.EntryID
+		query.PreferredUpstreamModel = affinity.boundTarget.UpstreamModelID
 	}
 	recorder.setAffinityKey(affinity.displayKey)
 	recorder.resolvedAffinityCredentialID = affinity.preferredCredentialID
+	recorder.resolvedAffinityTarget = affinity.boundTarget
 	recorder.setAffinityObservations(affinity.source, affinity.state)
 	if affinity.err != nil {
 		reject(reasonConfigurationChanged)
@@ -503,7 +506,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			if requiredRef != nil || binding != nil {
 				recorder.setContinuityHit(true)
 			} else {
-				recorder.observeAffinityHitComparison(selection.CredentialID, affinity.preferredCredentialID)
+				recorder.observeAffinityHitComparison(selection)
 			}
 		}
 		started := recorder.beforeForward()

@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,10 +43,16 @@ type requestAffinity struct {
 }
 
 func affinityTargetForSelection(selection scheduler.Selection, ref state.CredentialRef) affinity.Target {
+	upstreamModel := ""
+	if selection.UpstreamModelID != nil {
+		upstreamModel = *selection.UpstreamModelID
+	}
 	return affinity.Target{
 		GroupID:            selection.GroupID,
 		CredentialID:       selection.CredentialID,
 		IdentityGeneration: ref.IdentityGeneration,
+		EntryID:            selection.EntryID,
+		UpstreamModelID:    upstreamModel,
 	}
 }
 
@@ -285,6 +292,22 @@ func (handler *Handler) resolveRequestAffinity(
 	}
 	if !group.AffinityEnabled {
 		result.state = telemetry.AffinityStateGroupDisabled
+		return result
+	}
+	// Configuration removal or a model edit invalidates the remembered route.
+	// Inspect the full snapshot, not request-filtered candidates: temporary
+	// permission, weight, health or capacity exclusions must preserve a binding.
+	routeExists := false
+	for _, model := range group.Models {
+		if model.EntryID == target.EntryID && strings.TrimSpace(model.ID) == target.UpstreamModelID &&
+			(state.ExternalModelName(model.ID, model.Alias) == clientModel || model.TestAlias == clientModel) {
+			routeExists = true
+			break
+		}
+	}
+	if !routeExists {
+		result.boundTarget = affinity.Target{}
+		result.state = telemetry.AffinityStateTargetUnavailable
 		return result
 	}
 	ref, allowed := allowedCredentialRefs[target.CredentialID]

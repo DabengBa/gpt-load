@@ -12,12 +12,18 @@ import (
 	"gpt-load/internal/state"
 )
 
+// preferredHealthQuery binds the preferred credential to the exact route of
+// twoGroupSnapshot: credential 11 on entry e000000000001 with model
+// preferred-model. Route identity is mandatory, so the fixture can only express
+// a real binding.
 func preferredHealthQuery(preferred uint) Query {
 	return Query{
-		ClientProtocol:        protocol.OpenAICompletions,
-		Operation:             execution.OperationChatCompletion,
-		ExternalModel:         modelPointer("public"),
-		PreferredCredentialID: preferred,
+		ClientProtocol:         protocol.OpenAICompletions,
+		Operation:              execution.OperationChatCompletion,
+		ExternalModel:          modelPointer("public"),
+		PreferredCredentialID:  preferred,
+		PreferredEntryID:       "e000000000001",
+		PreferredUpstreamModel: "preferred-model",
 	}
 }
 

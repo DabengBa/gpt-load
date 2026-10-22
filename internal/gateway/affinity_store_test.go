@@ -287,7 +287,7 @@ func TestHandlerSerializesAffinityCacheAndDurableWritesPerKey(t *testing.T) {
 	}
 	key := affinity.Key("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	observation := handler.affinityCache.Lookup(key)
-	selection := scheduler.Selection{CredentialID: 1, GroupID: 1, Group: manager.Current().Groups[1]}
+	selection := scheduler.Selection{CredentialID: 1, GroupID: 1, EntryID: "e000000000001", Group: manager.Current().Groups[1]}
 	first := requestAffinity{key: key, observation: observation}
 	firstDone := make(chan struct{})
 	go func() {

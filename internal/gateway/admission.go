@@ -260,6 +260,8 @@ func (handler *Handler) admitRequest(
 		query.PreferredCredentialID = requestAff.preferredCredentialID
 		query.PreferredIdentityGeneration = requestAff.preferredIdentityGeneration
 		query.PreferredGroupID = requestAff.boundTarget.GroupID
+		query.PreferredEntryID = requestAff.boundTarget.EntryID
+		query.PreferredUpstreamModel = requestAff.boundTarget.UpstreamModelID
 	}
 	if requestAff.err != nil {
 		outcome := rejectAdmissionRetryAfter(reasonConfigurationChanged, 1).withInspected(inspected)
