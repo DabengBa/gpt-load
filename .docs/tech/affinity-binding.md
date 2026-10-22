@@ -42,9 +42,8 @@ used, not just the credential that owned it:
 Entry ID is mandatory. A target without a route entry is invalid and is never
 written. The whole target value is the comparison unit: the scheduler prefers a
 route only when group, credential, identity generation, entry and model all
-match, `affinity_hit` is reported only for that exact route, and capacity
-overflow for a bound request is granted only when the resolved route equals the
-binding.
+match, and capacity overflow for a bound request is granted only when the
+resolved route equals the binding.
 
 No-model Responses routes use the group-level `resource` entry identity with
 an empty upstream model. They do not borrow an arbitrary configured model's
@@ -57,6 +56,17 @@ credential may serve several entries and upstream models behind one public
 alias, and the binding must select the one that succeeded rather than whichever
 model sorts first. The scheduler's ordinary candidate ordering is unchanged
 for every other request.
+
+`affinity_hit` is a request-log observation of the first attempt, not a
+separate binding rule: it is recorded only when that attempt matches the
+bound group, credential, entry and upstream model. A same-credential sibling
+model is therefore a miss for this field even though it inherited the
+credential. The flag is monotone — once a request starts on the bound route it
+stays set after a later takeover fallback in the same request.
+
+The credential-only `resolved_affinity_credential_id` diagnostic is unchanged:
+it still records the credential that the binding resolved to, independent of
+whether the first attempt actually used the bound route.
 
 ## Health Bypass And Takeover
 
@@ -88,10 +98,11 @@ positive evidence for the request (once true it stays true across later
 attempts). A healthy successful fallback may take over an existing binding
 when the bound route was health-bypassed, including when the fallback is
 another entry or upstream model of the same credential. The takeover is
-validated at write time: the selected credential identity (ID, group,
-identity generation), its current auth readiness, its current runtime
-availability, and the selected entry's current availability are checked under
-the existing binding's stripe lock immediately before the cache CAS. A
+validated at write time by `Handler.affinitySelectionAvailable`: the selected
+credential identity (ID, group, identity generation), its current auth
+readiness, its current runtime availability, and the selected entry's current
+availability are checked under the existing binding's stripe lock immediately
+before the cache CAS. A
 credential that recovered between selection and write is therefore allowed to
 write; the captured health-bypass permission is not revoked by recovery during
 the flight.
@@ -178,6 +189,13 @@ the next healthy success rewrite the row. The entry ID alone cannot preserve a
 binding across a model change. Disabled or zero-weight entries still exist;
 these exclusions do not authorize a takeover. Request-specific restrictions
 also preserve the original binding.
+
+`target_unavailable` is also the state reported when the bound group is no
+longer present in the snapshot, or when the stored credential identity is no
+longer in the request's allowed credential set with a matching group and
+identity generation. Those cases leave the durable row untouched for the same
+reason: losing a temporary permission or an in-flight config revision must not
+destroy a binding that would be valid again.
 
 Credential recovery during an in-flight request does not retroactively change
 that request's behavior: a health-bypassed fallback that completes successfully
