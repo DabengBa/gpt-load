@@ -104,9 +104,9 @@ paired with `upstream_failure`, `first_response_slow`, or
 
 - The logs view is the product-facing consumer; this document owns the
   implementation contract behind its timing tone and attempt details.
-- Whether a request result learns a credential affinity binding is owned by
-  [Affinity Binding](affinity-binding.md); this document owns the feedback
-  status that its final-success gate consumes.
+- Whether a request result learns an affinity binding, and which upstream route
+  that binding records, is owned by [Affinity Binding](affinity-binding.md);
+  this document owns the feedback status that its final-success gate consumes.
 - Product-facing usage timing semantics remain owned by [Usage Duration And
   First-Response Metrics](../db/features/usage-timing-metrics.md).
 - Code binding: `internal/health/feedback.go:ClassifyFeedback`
