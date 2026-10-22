@@ -37,15 +37,22 @@ type DurableBindingCleaner interface {
 	SweepAffinityBindings(context.Context, time.Time, DurablePolicy) error
 }
 
-// Target is the exact Credential identity remembered as a preference.
+// Target is the exact upstream route a successful request used: the owning
+// credential identity plus the route entry and upstream model. Resource
+// operations legitimately address no upstream model, so UpstreamModelID may be
+// empty; EntryID is always required because it is the only route identity that
+// survives an upstream-model rename.
 type Target struct {
 	GroupID            uint
 	CredentialID       uint
 	IdentityGeneration uint64
+	EntryID            string
+	UpstreamModelID    string
 }
 
 func (target Target) Valid() bool {
-	return target.GroupID != 0 && target.CredentialID != 0 && target.IdentityGeneration != 0
+	return target.GroupID != 0 && target.CredentialID != 0 && target.IdentityGeneration != 0 &&
+		target.EntryID != ""
 }
 
 // Observation is a versioned cache lookup used for conditional success updates.

@@ -150,7 +150,7 @@ func TestAffinityBoundMissingObservationCannotWrite(t *testing.T) {
 	h.affinityCache.Configure(m.Current().Revision, 1, time.Hour)
 	key := affinity.Key("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	ref, _ := r.CredentialRef(2)
-	request := requestAffinity{key: key, observation: h.affinityCache.Lookup(key), boundTarget: affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1}, boundAttempted: true, boundProviderFailed: true}
+	request := requestAffinity{key: key, observation: h.affinityCache.Lookup(key), boundTarget: affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1, EntryID: "e000000000001"}, boundAttempted: true, boundProviderFailed: true}
 	h.recordAffinitySuccess(t.Context(), request, affinityTakeoverSelection(h, 2), ref)
 	if h.affinityCache.Lookup(key).Found() {
 		t.Fatal("bound target with missing observation inserted binding")
@@ -218,7 +218,7 @@ func TestAffinityTakeoverConcurrentCBeforeB(t *testing.T) {
 	h.affinityStore = storage.NewAffinityStore(db)
 	h.affinityCache.Configure(m.Current().Revision, 10, time.Hour)
 	key := affinity.Key("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	a := affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1}
+	a := affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1, EntryID: "e000000000001"}
 	h.affinityCache.RecordSuccess(key, h.affinityCache.Lookup(key), a)
 	observed := h.affinityCache.Lookup(key)
 	request := requestAffinity{key: key, observation: observed, boundTarget: a, preferredHealthBypassed: true, policy: affinity.DurablePolicy{Capacity: 10, TTL: time.Hour}}
@@ -257,7 +257,7 @@ func TestAffinityCompletionSelectedHealth(t *testing.T) {
 			h, m, r := newHandlerForTest(t, &scriptedForwarder{}, "A", "B")
 			h.affinityCache.Configure(m.Current().Revision, 10, time.Hour)
 			key := affinity.Key("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-			a := affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1}
+			a := affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1, EntryID: "e000000000001"}
 			h.affinityCache.RecordSuccess(key, h.affinityCache.Lookup(key), a)
 			request := requestAffinity{key: key, observation: h.affinityCache.Lookup(key), boundTarget: a, preferredHealthBypassed: true}
 			ref, _ := r.CredentialRef(2)

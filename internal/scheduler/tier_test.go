@@ -47,10 +47,12 @@ func TestIteratorPreferredCredentialBeatsHigherPriorityTier(t *testing.T) {
 		{ID: 11, GroupID: 1},
 		{ID: 21, GroupID: 2},
 	}}, Query{
-		ClientProtocol:        protocol.OpenAICompletions,
-		Operation:             execution.OperationChatCompletion,
-		ExternalModel:         modelPointer("public"),
-		PreferredCredentialID: 11,
+		ClientProtocol:         protocol.OpenAICompletions,
+		Operation:              execution.OperationChatCompletion,
+		ExternalModel:          modelPointer("public"),
+		PreferredCredentialID:  11,
+		PreferredEntryID:       "derived:public#fallback-model",
+		PreferredUpstreamModel: "fallback-model",
 	}, rand.New(zeroRandSource{}))
 
 	first, err := iterator.Next()

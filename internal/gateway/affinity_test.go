@@ -309,7 +309,7 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 	if !handler.affinityCache.RecordSuccess(
 		initial.key,
 		initial.observation,
-		affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1},
+		affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1, EntryID: "e000000000001", UpstreamModelID: "gpt-4o"},
 	) {
 		t.Fatal("RecordSuccess() = false, want cached identity")
 	}

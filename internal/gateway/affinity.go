@@ -42,10 +42,16 @@ type requestAffinity struct {
 }
 
 func affinityTargetForSelection(selection scheduler.Selection, ref state.CredentialRef) affinity.Target {
+	upstreamModel := ""
+	if selection.UpstreamModelID != nil {
+		upstreamModel = *selection.UpstreamModelID
+	}
 	return affinity.Target{
 		GroupID:            selection.GroupID,
 		CredentialID:       selection.CredentialID,
 		IdentityGeneration: ref.IdentityGeneration,
+		EntryID:            selection.EntryID,
+		UpstreamModelID:    upstreamModel,
 	}
 }
 
@@ -285,6 +291,21 @@ func (handler *Handler) resolveRequestAffinity(
 	}
 	if !group.AffinityEnabled {
 		result.state = telemetry.AffinityStateGroupDisabled
+		return result
+	}
+	// Configuration removal or a model edit invalidates the remembered route.
+	// Inspect the route catalog, not request-filtered candidates: temporary
+	// permission, weight, health or capacity exclusions must preserve a binding.
+	routeExists := false
+	for _, route := range snapshot.ExecutionRouteCatalog[clientProtocol][operation][clientModel] {
+		if route.GroupID == target.GroupID && route.EntryID == target.EntryID && route.UpstreamModelID == target.UpstreamModelID {
+			routeExists = true
+			break
+		}
+	}
+	if !routeExists {
+		result.boundTarget = affinity.Target{}
+		result.state = telemetry.AffinityStateTargetUnavailable
 		return result
 	}
 	ref, allowed := allowedCredentialRefs[target.CredentialID]

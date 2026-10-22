@@ -36,7 +36,7 @@ func TestAffinityStoreRoundTripAndRestart(t *testing.T) {
 	db := openAffinityDatabase(t)
 	store := NewAffinityStore(db)
 	key := affinity.Key("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	target := affinity.Target{GroupID: 7, CredentialID: 11, IdentityGeneration: 13}
+	target := affinity.Target{GroupID: 7, CredentialID: 11, IdentityGeneration: 13, EntryID: "e000000000001", UpstreamModelID: "gpt-4o"}
 	if err := store.Upsert(t.Context(), key, target, testDurablePolicy); err != nil {
 		t.Fatalf("Upsert() error = %v", err)
 	}
@@ -48,7 +48,7 @@ func TestAffinityStoreRoundTripAndRestart(t *testing.T) {
 
 func TestAffinityStoreRejectsInvalidKeyAndTarget(t *testing.T) {
 	store := NewAffinityStore(openAffinityDatabase(t))
-	valid := affinity.Target{GroupID: 1, CredentialID: 2, IdentityGeneration: 3}
+	valid := affinity.Target{GroupID: 1, CredentialID: 2, IdentityGeneration: 3, EntryID: "e000000000001"}
 	for _, key := range []affinity.Key{"", "not-a-hmac", "0123456789abcdef"} {
 		if err := store.Upsert(t.Context(), key, valid, testDurablePolicy); err == nil {
 			t.Fatalf("Upsert(%q) error = nil, want validation error", key)
@@ -87,7 +87,7 @@ func TestAffinityStoreDistinguishesNotFoundAndDecodeError(t *testing.T) {
 func TestAffinityStoreRecoversAfterDatabaseReopen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "affinity.db")
 	key := affinity.Key("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	target := affinity.Target{GroupID: 7, CredentialID: 11, IdentityGeneration: 13}
+	target := affinity.Target{GroupID: 7, CredentialID: 11, IdentityGeneration: 13, EntryID: "e000000000001", UpstreamModelID: "gpt-4o"}
 
 	first, err := Open(path)
 	if err != nil {
@@ -145,8 +145,8 @@ func TestAffinityStoreUpsertsSingleRowAtomically(t *testing.T) {
 	db := openAffinityDatabase(t)
 	store := NewAffinityStore(db)
 	key := affinity.Key("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	first := affinity.Target{GroupID: 1, CredentialID: 2, IdentityGeneration: 3}
-	second := affinity.Target{GroupID: 4, CredentialID: 5, IdentityGeneration: 6}
+	first := affinity.Target{GroupID: 1, CredentialID: 2, IdentityGeneration: 3, EntryID: "e000000000001"}
+	second := affinity.Target{GroupID: 4, CredentialID: 5, IdentityGeneration: 6, EntryID: "e000000000002"}
 	if err := store.Upsert(t.Context(), key, first, testDurablePolicy); err != nil {
 		t.Fatalf("first Upsert() error = %v", err)
 	}
@@ -213,7 +213,7 @@ func TestAffinityStoreSweepRemovesExpiredAndOldestBindings(t *testing.T) {
 func TestAffinityStoreUpsertEnforcesDurableCapacity(t *testing.T) {
 	db := openAffinityDatabase(t)
 	store := NewAffinityStore(db)
-	target := affinity.Target{GroupID: 1, CredentialID: 2, IdentityGeneration: 3}
+	target := affinity.Target{GroupID: 1, CredentialID: 2, IdentityGeneration: 3, EntryID: "e000000000001"}
 	for index, digit := range []byte{'1', '2', '3'} {
 		key := affinity.Key(string(bytes.Repeat([]byte{digit}, 64)))
 		if err := store.Upsert(t.Context(), key, target, affinity.DurablePolicy{TTL: time.Hour, Capacity: 2}); err != nil {

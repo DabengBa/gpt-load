@@ -9,7 +9,7 @@ func TestCacheLearnsAndRefreshesSuccessfulTarget(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
 	cache := newCache(2, time.Hour, func() time.Time { return now })
 	key := Key("one")
-	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
 
 	miss := cache.Lookup(key)
 	if miss.Found() {
@@ -37,7 +37,7 @@ func TestCacheLookupDoesNotRefreshTTL(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
 	cache := newCache(2, time.Hour, func() time.Time { return now })
 	key := Key("one")
-	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
 	cache.RecordSuccess(key, Observation{}, target)
 
 	now = now.Add(50 * time.Minute)
@@ -53,8 +53,8 @@ func TestCacheLookupDoesNotRefreshTTL(t *testing.T) {
 func TestCacheFirstSuccessWinsAndFallbackUsesCompareAndSwap(t *testing.T) {
 	cache := newCache(4, time.Hour, time.Now)
 	key := Key("conversation")
-	first := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
-	second := Target{GroupID: 1, CredentialID: 12, IdentityGeneration: 102}
+	first := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
+	second := Target{GroupID: 1, CredentialID: 12, IdentityGeneration: 102, EntryID: "e000000000001"}
 
 	missOne := cache.Lookup(key)
 	missTwo := cache.Lookup(key)
@@ -80,7 +80,7 @@ func TestCacheFirstSuccessWinsAndFallbackUsesCompareAndSwap(t *testing.T) {
 
 func TestCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	cache := newCache(2, time.Hour, time.Now)
-	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
 	for _, key := range []Key{"one", "two"} {
 		cache.RecordSuccess(key, Observation{}, target)
 	}
@@ -97,8 +97,8 @@ func TestCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 
 func TestCacheStaleFoundObservationDoesNotReinsert(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
-	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
-	next := Target{GroupID: 1, CredentialID: 12, IdentityGeneration: 102}
+	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
+	next := Target{GroupID: 1, CredentialID: 12, IdentityGeneration: 102, EntryID: "e000000000001"}
 
 	t.Run("evicted entry", func(t *testing.T) {
 		cache := newCache(2, time.Hour, func() time.Time { return now })
@@ -137,14 +137,14 @@ func TestCacheStaleFoundObservationDoesNotReinsert(t *testing.T) {
 
 func TestCacheRejectsInvalidInputs(t *testing.T) {
 	cache := newCache(2, time.Hour, time.Now)
-	validTarget := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	validTarget := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
 	for _, test := range []struct {
 		key    Key
 		target Target
 	}{
 		{target: validTarget},
 		{key: "key"},
-		{key: "key", target: Target{GroupID: 1, CredentialID: 11}},
+		{key: "key", target: Target{GroupID: 1, CredentialID: 11, EntryID: "e000000000001"}},
 	} {
 		if cache.RecordSuccess(test.key, Observation{}, test.target) {
 			t.Fatalf("RecordSuccess(%q, %#v) = true, want false", test.key, test.target)
@@ -159,7 +159,7 @@ func TestCacheConfigureClearsEntriesAndRejectsOlderRevision(t *testing.T) {
 	now := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
 	cache := newCache(2, time.Hour, func() time.Time { return now })
 	key := Key("one")
-	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
 	if !cache.Configure(1, 2, time.Hour) {
 		t.Fatal("Configure(1) = false")
 	}
@@ -204,7 +204,7 @@ func TestCacheConfigureKeepsEntriesWhenCapacityAndTTLUnchanged(t *testing.T) {
 	now := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
 	cache := newCache(2, time.Hour, func() time.Time { return now })
 	key := Key("one")
-	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
 	if !cache.Configure(1, 2, time.Hour) {
 		t.Fatal("Configure(1) = false")
 	}
@@ -226,7 +226,7 @@ func TestCacheConfigureKeepsEntriesWhenCapacityAndTTLUnchanged(t *testing.T) {
 	if cache.RecordSuccess(key, observed, target) {
 		t.Fatal("observation from an older revision rewrote the cache after a revision-only change")
 	}
-	next := Target{GroupID: 1, CredentialID: 12, IdentityGeneration: 102}
+	next := Target{GroupID: 1, CredentialID: 12, IdentityGeneration: 102, EntryID: "e000000000001"}
 	if !cache.RecordSuccess(key, cache.Lookup(key), next) {
 		t.Fatal("RecordSuccess() with current-revision observation = false, want update")
 	}
@@ -237,7 +237,7 @@ func TestCacheConfigureKeepsEntriesWhenCapacityAndTTLUnchanged(t *testing.T) {
 
 func TestCacheConfigureClearsEntriesOnCapacityOrTTLChange(t *testing.T) {
 	now := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
-	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	target := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101, EntryID: "e000000000001"}
 	for _, test := range []struct {
 		name     string
 		capacity int

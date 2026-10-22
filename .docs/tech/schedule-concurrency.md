@@ -37,7 +37,7 @@ code:
 
 ## 亲和与固定身份
 
-有效亲和请求沿用 [Affinity Binding](affinity-binding.md) 的绑定身份和资格检查；匹配 group、credential、identity generation 且当前条目可用时，即使达到普通上限也可申请名额，并继续计入实际占用。容量超限本身不会产生健康绕过或绑定接管。
+有效亲和请求沿用 [Affinity Binding](affinity-binding.md) 的绑定身份和资格检查；只有实际解析出的目标与绑定完全一致（group、credential、identity generation、route entry、upstream model）且当前条目可用时才可申请溢出名额，并继续计入实际占用。容量超限本身不会产生健康绕过或绑定接管。
 
 WebSocket 的 `binding` 或 `requiredRef` 固定身份是连续性约束，不自动等同于有效亲和。固定身份没有亲和豁免且条目满载时，连接返回本地容量错误，不改投其他身份；只有没有固定身份的普通 turn 才能在容量阻塞后选择其他候选。有效亲和固定身份可以超限。
 

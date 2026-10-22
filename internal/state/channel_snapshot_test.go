@@ -148,7 +148,8 @@ func TestCompileIndexesAllNativeResponsesExtensions(t *testing.T) {
 		execution.OperationResponsesPassthrough,
 	} {
 		got := snapshot.ExecutionCandidates[protocol.OpenAIResponses][operation][NoModelRouteKey]
-		if len(got) != 1 || got[0].GroupID != 1 || got[0].Mode != channel.RouteNative {
+		if len(got) != 1 || got[0].GroupID != 1 || got[0].Mode != channel.RouteNative ||
+			got[0].EntryID != NoModelRouteEntryID || got[0].UpstreamModelID != "" {
 			t.Errorf("resource candidates for %q = %#v, want native OpenAI only", operation, got)
 		}
 	}
