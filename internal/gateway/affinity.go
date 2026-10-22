@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -295,12 +294,11 @@ func (handler *Handler) resolveRequestAffinity(
 		return result
 	}
 	// Configuration removal or a model edit invalidates the remembered route.
-	// Inspect the full snapshot, not request-filtered candidates: temporary
+	// Inspect the route catalog, not request-filtered candidates: temporary
 	// permission, weight, health or capacity exclusions must preserve a binding.
 	routeExists := false
-	for _, model := range group.Models {
-		if model.EntryID == target.EntryID && strings.TrimSpace(model.ID) == target.UpstreamModelID &&
-			(state.ExternalModelName(model.ID, model.Alias) == clientModel || model.TestAlias == clientModel) {
+	for _, route := range snapshot.ExecutionRouteCatalog[clientProtocol][operation][clientModel] {
+		if route.GroupID == target.GroupID && route.EntryID == target.EntryID && route.UpstreamModelID == target.UpstreamModelID {
 			routeExists = true
 			break
 		}

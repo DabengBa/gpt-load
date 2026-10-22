@@ -3,8 +3,9 @@ package gateway
 import (
 	"context"
 	"fmt"
-
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,11 +13,48 @@ import (
 
 	"gpt-load/internal/affinity"
 	"gpt-load/internal/channel"
+	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 )
+
+func TestHandlerReusesNoModelAffinityRouteAfterDurableRecovery(t *testing.T) {
+	forwarder := &scriptedForwarder{results: successfulAffinityResults(3)}
+	h, _, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
+	h.dialects = dialect.NewSet(dialect.NewOpenAIResponses())
+	store := &affinityStoreStub{}
+	h.affinityStore = store
+	sink := &recordingRequestLogSink{}
+	h.requestLogSink = sink
+	// Ordinary scheduling would switch to the second credential after turn one.
+	useAffinityRandomValues(h, 0, 1, 1)
+	engine := newAffinityTestEngine(t, h)
+	for i := range 3 {
+		if i == 1 {
+			h.affinityCache = affinity.NewCache()
+		}
+		request := httptest.NewRequest(http.MethodPatch, "/v1/responses/vendor-extension/nested", strings.NewReader(`{"input":"hello"}`))
+		request.Header.Set("Authorization", "Bearer gl-client")
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("request %d: response = %d %s", i, response.Code, response.Body.String())
+		}
+	}
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one", "sk-one"})
+	assertAffinityHits(t, sink.snapshot(), []bool{false, true, true})
+	targets := store.targets()
+	if len(targets) != 1 {
+		t.Fatalf("bindings = %#v, want one recovered resource binding", targets)
+	}
+	for _, target := range targets {
+		if !target.Valid() || target.UpstreamModelID != "" {
+			t.Fatalf("resource binding = %#v, want valid target without a model", target)
+		}
+	}
+}
 
 func publishAffinityModelRoutes(t *testing.T, h *Handler, models ...state.ModelConfig) {
 	t.Helper()

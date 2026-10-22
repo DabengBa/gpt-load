@@ -46,6 +46,12 @@ match, `affinity_hit` is reported only for that exact route, and capacity
 overflow for a bound request is granted only when the resolved route equals the
 binding.
 
+No-model Responses routes use the group-level `resource` entry identity with
+an empty upstream model. They do not borrow an arbitrary configured model's
+entry. A resource or extension request with an extracted affinity signal can
+therefore learn and recover its successful route, including after hot-cache
+eviction; requests without a signal do not learn a binding.
+
 Route identity is what makes a same-credential sibling model reachable: a
 credential may serve several entries and upstream models behind one public
 alias, and the binding must select the one that succeeded rather than whichever
@@ -163,7 +169,8 @@ Corrupted JSON and rows with a missing credential identity still fail closed, so
 an unreadable durable authority is never mistaken for "no binding". No schema,
 column, or migration is added.
 
-Route changes are reconciled against the published snapshot rather than a
+Route changes are reconciled against the published execution route catalog,
+scoped to the key's client protocol, operation and client model, rather than a
 stored deletion list. When the bound entry is removed or its upstream model
 changes, or the entry no longer serves the key's client model or test alias,
 affinity reports `target_unavailable`, schedules normally, and lets
@@ -200,7 +207,8 @@ Regression coverage lives in `internal/scheduler/preferred_health_test.go` and
 `internal/scheduler/preferred_route_test.go` (observation and exact-route
 selection contract), `internal/gateway/affinity_route_test.go` (same-credential
 two-model learning over HTTP and the WebSocket turn, health takeover,
-`affinity_hit` route matching), `internal/gateway/affinity_takeover_test.go`
+`affinity_hit` route matching, and real compiled no-model extension routes
+across durable recovery), `internal/gateway/affinity_takeover_test.go`
 (takeover, exclusions, final-success boundary, C-before-B concurrency, durable
 preservation), `internal/storage/affinity_store_route_test.go` (route round
 trip, obsolete credential-only payload as a miss), and

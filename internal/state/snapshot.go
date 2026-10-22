@@ -114,6 +114,10 @@ type RouteTarget struct {
 // than a model, determines the target after affinity resolution.
 const NoModelRouteKey = ""
 
+// NoModelRouteEntryID identifies the group-level resource route independently
+// of its configured model entries. Resource operations carry no upstream model.
+const NoModelRouteEntryID = "resource"
+
 // ExecutionCandidateIndex indexes targets by client protocol, logical
 // operation, and external model. Resource operations use NoModelRouteKey.
 type ExecutionCandidateIndex map[protocol.Protocol]map[execution.Operation]map[string][]RouteTarget
@@ -385,11 +389,13 @@ func appendExecutionTargets(
 				execution.OperationResponsesInputItems:
 				appendExecutionTarget(index, clientProtocol, operation, NoModelRouteKey, RouteTarget{
 					GroupID: group.ID, Mode: mode, ResolvedTarget: cloneResolvedTarget(target),
+					EntryID:     NoModelRouteEntryID,
 					EntryWeight: 1, Priority: 1, Enabled: true,
 				})
 			case execution.OperationResponsesPassthrough:
 				appendExecutionTarget(index, clientProtocol, operation, NoModelRouteKey, RouteTarget{
 					GroupID: group.ID, Mode: mode, ResolvedTarget: cloneResolvedTarget(target),
+					EntryID:     NoModelRouteEntryID,
 					EntryWeight: 1, Priority: 1, Enabled: true,
 				})
 				fallthrough
