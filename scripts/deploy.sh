@@ -76,10 +76,10 @@ docker image inspect "$tag" >/dev/null
 }
 old=$(sed -n 's/^    image: gpt-load:\(.*\)$/\1/p' "$compose" | head -1)
 [ -n "$old" ] || { echo '未找到现有 gpt-load 镜像配置' >&2; exit 1; }
-data=$(docker volume inspect gpt-load_gpt-load-data --format '{{.Mountpoint}}')
-[ "$(docker inspect gpt-load --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Source}}{{end}}{{end}}')" = "$data" ] || {
-  echo '生产数据挂载与预期卷不一致' >&2; exit 1;
-}
+# 数据卷名由运行中的容器决定（切换版本时卷名可能带版本后缀），不硬编码。
+data=$(docker inspect gpt-load --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Source}}{{end}}{{end}}')
+volume=$(docker inspect gpt-load --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Name}}{{end}}{{end}}')
+[ -n "$data" ] && [ -n "$volume" ] || { echo '未找到运行容器的数据挂载' >&2; exit 1; }
 [ "$(findmnt -n -o FSTYPE -T "$PWD")" != tmpfs ]
 size=$(du -sb "$data" | cut -f1)
 avail=$(df -B1 --output=avail "$PWD" | tail -n 1)
@@ -102,7 +102,7 @@ echo "停写并备份: $backup"
 stopped=true
 docker compose -p gpt-load -f "$compose" stop -t 30 gpt-load
 [ "$(docker inspect gpt-load --format '{{.State.Running}}')" = false ]
-[ -z "$(docker ps -q --filter volume=gpt-load_gpt-load-data)" ] || {
+[ -z "$(docker ps -q --filter volume="$volume")" ] || {
   echo '数据卷仍有运行中的容器写入者' >&2; exit 1;
 }
 tar -C "$data" -cf "$backup/data.tar" .

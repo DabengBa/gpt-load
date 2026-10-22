@@ -24,10 +24,14 @@ with open(os.environ["COMMAND_LOG"], "a") as log:
     log.write(json.dumps([name, *args]) + "\n")
 if name == "docker":
     if args[:2] == ["volume", "inspect"]:
+        if args[2] != os.environ["VOLUME_NAME"]:
+            print("no such volume", file=sys.stderr)
+            sys.exit(1)
         print(os.environ["DATA_DIR"])
     elif args and args[0] == "inspect":
         if any("Mount" in arg for arg in args):
-            print(os.environ["DATA_DIR"])
+            print(os.environ["VOLUME_NAME"] if any(".Name" in arg for arg in args)
+                  else os.environ["DATA_DIR"])
         elif any("State.Running" in arg for arg in args):
             print("false" if Path(os.environ["RUNNING_STATE"]).read_text() == "stop" else "true")
         else:
@@ -100,6 +104,8 @@ class RemoteActivationTests(unittest.TestCase):
                 "TMPDIR": str(root),
                 "COMMAND_LOG": str(commands),
                 "DATA_DIR": str(data),
+                # 生产卷名带版本后缀，硬编码默认卷名的脚本必须失败。
+                "VOLUME_NAME": "gpt-load_gpt-load-data-ac7ddfe3",
                 "RUNNING_STATE": str(state),
                 "REAL_COMMANDS": json.dumps(real),
                 "FAIL_BACKUP": "1" if fail_backup else "0",
@@ -159,6 +165,11 @@ class RemoteActivationTests(unittest.TestCase):
         self.assertLess(switch, up)
         self.assertIn("image: gpt-load:new", compose)
         self.assertFalse(any(e[:2] == ["docker", "start"] for e in events))
+        self.assertTrue(
+            any(e[:2] == ["docker", "ps"] and "volume=gpt-load_gpt-load-data-ac7ddfe3" in e
+                for e in events),
+            events,
+        )
 
     def test_backup_failure_restarts_old_without_switching(self):
         result, events, compose, original, state = self.run_activation(fail_backup=True)
