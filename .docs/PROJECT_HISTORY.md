@@ -6,6 +6,19 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-10-23 — ModelTrace fingerprint detection
+
+[PR #196](https://github.com/DabengBa/gpt-load/pull/196) added per-model
+fingerprint detection in group model management and a separately deployable
+ModelTrace analysis service. Challenges use the saved model's real compiled
+route and credential; each dispatched challenge is recorded as ordinary model
+usage with pricing frozen before the challenge batch. The closed-set
+attribution is diagnostic only and does not affect health or routing.
+Configuration, execution and analysis boundaries are owned by
+[ModelTrace Fingerprint Detection](tech/modeltrace-fingerprint.md). Production
+deployment and a real paid-provider end-to-end run were not included in the PR
+validation.
+
 ## 2026-10-21 — Built-in subscriptions and embedded CPA removed
 
 [PR #191](https://github.com/DabengBa/gpt-load/pull/191) removed the built-in
