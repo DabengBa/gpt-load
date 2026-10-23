@@ -34,7 +34,7 @@ func TestWebCICompositeActionRunsCompleteFrontendGate(t *testing.T) {
 		pnpmSetupActionRef,
 		"version: latest",
 		setupNodeActionRef,
-		"node-version: 24.18.0",
+		"node-version: 26.12.1",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("web-ci action does not contain %q", required)
@@ -2561,8 +2561,8 @@ func TestDockerfileCopiesWebInstallPolicyBeforeInstalling(t *testing.T) {
 func TestDockerfilePinsBuildAndRuntimeImagesByVersionAndDigest(t *testing.T) {
 	content := readRepositoryFile(t, "Dockerfile")
 	for _, required := range []string{
-		"node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
-		"pnpm@latest",
+		"node:26.12.1-alpine3.24@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797",
+		"npm install --global pnpm@latest",
 		"golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d",
 		"alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
 	} {
