@@ -40,6 +40,7 @@ type admissionRejection struct {
 // requestDispatch is the frozen admission outcome consumed by the attempt
 // loop: everything needed to forward, nothing about how it was decided.
 type requestDispatch struct {
+	snapshot              *state.ConfigSnapshot
 	dialect               dialect.Dialect
 	parsed                *dialect.ParsedRequest
 	metadata              dialect.RequestMetadata
@@ -269,6 +270,7 @@ func (handler *Handler) admitRequest(
 		return outcome
 	}
 	return admissionOutcome{inspected: inspected, dispatch: &requestDispatch{
+		snapshot:              snapshot,
 		dialect:               selectedDialect,
 		parsed:                parsed,
 		metadata:              metadata,

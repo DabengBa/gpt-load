@@ -485,9 +485,13 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 			admission.admitted = true
 		}
-		reservation, admitted := h.acquireCapacity(selection, ref, affinity)
-		if !admitted {
+		reservation, admission := h.acquireCapacity(snapshot, selection, ref, affinity)
+		if admission != state.CapacityAdmitted {
 			releaseInput()
+			if admission != state.CapacityFull {
+				reject(reasonConfigurationChanged)
+				return
+			}
 			capacityBlocked = true
 			if binding != nil || requiredRef != nil {
 				reject(reasonScheduleCapacity)

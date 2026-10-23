@@ -275,6 +275,48 @@ func TestScheduleCapacityHTTPAdmission(t *testing.T) {
 	}
 }
 
+func TestScheduleCapacityReportsConfigurationChangeForStaleEntry(t *testing.T) {
+	forwarder := &scriptedForwarder{results: successfulAffinityResults(1)}
+	engine, handler, manager, _ := newRequestLogHandlerTestRuntime(
+		t, forwarder, &recordingAccessKeyRPMLimiter{}, &recordingRequestLogSink{}, "sk-one",
+	)
+	group := affinityBucketGroup(1, channel.OpenAI, "gpt-4o", 1, 1)
+	input := affinityBucketRuntimeInput(handler, config.Settings{}, group)
+	input.Credentials = input.Credentials[:1]
+	if _, err := manager.Publish(input); err != nil {
+		t.Fatal(err)
+	}
+
+	body := newBlockingRequestBody(`{"model":"gpt-4o"}`, nil)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	request.Body = body
+	request.Header.Set("Authorization", "Bearer gl-client")
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		engine.ServeHTTP(response, request)
+		close(done)
+	}()
+	receiveTestSignal(t, body.started, "capacity request body read")
+
+	group.Models = nil
+	changed := affinityBucketRuntimeInput(handler, config.Settings{}, group)
+	changed.Credentials = changed.Credentials[:1]
+	if _, err := manager.Publish(changed); err != nil {
+		t.Fatal(err)
+	}
+	close(body.release)
+	receiveTestSignal(t, done, "stale capacity admission completion")
+	if response.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(response.Body.String(), `"code":"configuration_changed"`) ||
+		strings.Contains(response.Body.String(), "schedule_capacity_exhausted") {
+		t.Fatalf("stale capacity response = %d %s", response.Code, response.Body.String())
+	}
+	if len(forwarder.inputs) != 0 {
+		t.Fatalf("stale capacity forward calls = %d, want 0", len(forwarder.inputs))
+	}
+}
+
 func TestScheduleCapacitySensitiveSummaryUsesLocalMarker(t *testing.T) {
 	withAttempt := func(summary string, blocked bool) string {
 		recorder := &requestRecorder{
