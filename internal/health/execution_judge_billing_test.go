@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"gpt-load/internal/execution"
+	"gpt-load/internal/state"
 )
 
-// 余额类失败是凭据级资损信号：换候选保住本请求，同时把该凭据冷却 24h——
-// 第一次命中即停止烧请求，充值后无需人工解锁即可自愈。
-func TestJudgeExecutionBillingDecisionCoolsCredentialForADay(t *testing.T) {
+// 余额类失败是凭据级资损信号：换候选保住本请求。冷却时长由共享系统参数
+// blacklist_release_seconds 决定，judge 只负责重试指令与效果选择。
+func TestJudgeExecutionBillingDecisionUsesConfiguredCooldown(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
 
 	decision := JudgeExecution(ExecutionAttempt{
@@ -27,7 +28,10 @@ func TestJudgeExecutionBillingDecisionCoolsCredentialForADay(t *testing.T) {
 			Summary:      "Insufficient Balance",
 			ReplaySafety: execution.ReplaySafetyRejectedBeforeProcessing,
 		},
-	}, DecisionContext{DefaultRateLimitCooldown: time.Minute})
+	}, DecisionContext{
+		DefaultRateLimitCooldown: time.Minute,
+		BillingCooldown:          45 * time.Minute,
+	})
 
 	want := Decision{
 		Category:      FailureCategoryBilling,
@@ -35,7 +39,7 @@ func TestJudgeExecutionBillingDecisionCoolsCredentialForADay(t *testing.T) {
 		Scope:         execution.ErrorScopeCredential,
 		Retry:         RetryNextCandidate,
 		Effect:        EffectCooldownCredential,
-		CooldownUntil: now.Add(24 * time.Hour),
+		CooldownUntil: now.Add(45 * time.Minute),
 		RuleID:        RuleID("billing.insufficient_balance"),
 	}
 	if decision != want {
@@ -120,7 +124,8 @@ func TestJudgeExecutionBillingClassificationSignals(t *testing.T) {
 	}
 }
 
-// 已承诺下游的 billing 证据仍保冷却效果：scope 是凭据级，committed 不会抹掉它。
+// 已承诺下游的 billing 证据仍保冷却效果：scope 是凭据级，committed 不会抹掉它，
+// 且冷却时长同样来自共享配置。
 func TestJudgeExecutionBillingCooldownSurvivesCommitted(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
 
@@ -137,11 +142,44 @@ func TestJudgeExecutionBillingCooldownSurvivesCommitted(t *testing.T) {
 			StatusCode: http.StatusPaymentRequired,
 			Summary:    "Insufficient Balance",
 		},
-	}, DecisionContext{DefaultRateLimitCooldown: time.Minute})
+	}, DecisionContext{
+		DefaultRateLimitCooldown: time.Minute,
+		BillingCooldown:          10 * time.Minute,
+	})
 
 	if decision.Category != FailureCategoryBilling ||
 		decision.Effect != EffectCooldownCredential ||
-		!decision.CooldownUntil.Equal(now.Add(24*time.Hour)) {
+		!decision.CooldownUntil.Equal(now.Add(10*time.Minute)) {
 		t.Fatalf("JudgeExecution() = %#v, want billing cooldown", decision)
+	}
+}
+
+// 未注入共享冷却时，billing 仍必须给出合法决策：Decision.Validate 要求
+// cooldown 效果必须带截止时间，取值使用系统熔断释放参数的出厂默认值
+// （blacklist_release_seconds），不退到限流冷却。
+func TestJudgeExecutionBillingWithoutConfiguredCooldownFallsBack(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+
+	decision := JudgeExecution(ExecutionAttempt{
+		DispatchState: execution.DispatchMaybeSent,
+		StatusCode:    http.StatusPaymentRequired,
+		Now:           now,
+		Evidence: &execution.ErrorEvidence{
+			Kind:       execution.ErrorKindHTTP,
+			Hint:       execution.FailureHintInsufficientBalance,
+			ScopeHint:  execution.ErrorScopeCredential,
+			StatusCode: http.StatusPaymentRequired,
+		},
+	}, DecisionContext{DefaultRateLimitCooldown: 7 * time.Minute})
+
+	if err := decision.Validate(); err != nil {
+		t.Fatalf("JudgeExecution() returned invalid decision %#v: %v", decision, err)
+	}
+	want := time.Duration(state.DefaultRuntimeSettings().BlacklistReleaseSeconds) * time.Second
+	if want != 3600*time.Second {
+		t.Fatalf("shipped blacklist release default = %v, want 3600s", want)
+	}
+	if !decision.CooldownUntil.Equal(now.Add(want)) {
+		t.Fatalf("cooldown = %v, want shipped blacklist release default %v", decision.CooldownUntil, want)
 	}
 }

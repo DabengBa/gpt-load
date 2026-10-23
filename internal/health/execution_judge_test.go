@@ -226,7 +226,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			want: Result{
 				Category:      FailureCategoryBilling,
 				Action:        ActionCooldownCredential,
-				CooldownUntil: now.Add(24 * time.Hour),
+				CooldownUntil: now.Add(3600 * time.Second),
 			},
 		},
 		{
@@ -246,7 +246,7 @@ func TestJudgeExecutionUsesNeutralEvidenceAndReplayBoundary(t *testing.T) {
 			want: Result{
 				Category:      FailureCategoryBilling,
 				Action:        ActionCooldownCredential,
-				CooldownUntil: now.Add(24 * time.Hour),
+				CooldownUntil: now.Add(3600 * time.Second),
 			},
 		},
 		{

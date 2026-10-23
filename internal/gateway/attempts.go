@@ -240,10 +240,10 @@ func (loop *attemptLoop) decisionContextForSelection(selection scheduler.Selecti
 	}
 	return health.DecisionContext{
 		DefaultRateLimitCooldown: defaultRateLimitCooldown,
-
-		Method:                 method,
-		Operation:              loop.operation,
-		BufferedReplayEligible: loop.buffered && loop.bufferedReplayEligible,
+		BillingCooldown:          loop.handler.blacklistReleaseDuration(),
+		Method:                   method,
+		Operation:                loop.operation,
+		BufferedReplayEligible:   loop.buffered && loop.bufferedReplayEligible,
 	}
 }
 

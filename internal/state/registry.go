@@ -21,6 +21,10 @@ type CredentialEntry struct {
 	FailureCount       int
 	FailureGeneration  uint64
 	EncryptedValue     string
+	// BillingStreak counts the credential's consecutive insufficient-balance
+	// failures. Any other attempt outcome clears it; a credential cooldown that
+	// actually lands clears it too, so the streak restarts after the window.
+	BillingStreak int
 }
 
 type CredentialMeta struct {
@@ -1033,6 +1037,8 @@ func (r *CredentialRegistry) SetCooldownWithChange(credentialID uint, until time
 		return true, false
 	}
 	entry.CooldownUntil = until
+	// 冷却已触发：余额不足连续段到此结束，窗口结束后重新开始计数。
+	entry.resetBillingStreakLocked()
 	entry.FailureGeneration++
 	return true, true
 }
@@ -1054,6 +1060,7 @@ func (r *CredentialRegistry) SetCooldownWithChangeIfVersion(
 		return true, false
 	}
 	entry.CooldownUntil = until
+	entry.resetBillingStreakLocked()
 	entry.FailureGeneration++
 	return true, true
 }
@@ -1128,6 +1135,8 @@ func (r *CredentialRegistry) RecordFailureWithBlacklist(
 	}
 	entry.FailureCount++
 	entry.FailureGeneration++
+	// 被记为「其他失败」的结果打断余额不足连续段。
+	entry.resetBillingStreakLocked()
 	if threshold <= 0 || entry.FailureCount < threshold {
 		return entry.FailureCount, true, false
 	}
@@ -1151,8 +1160,66 @@ func (r *CredentialRegistry) IncrFailure(credentialID uint) (int, bool) {
 		return 0, false
 	}
 	entry.FailureCount++
+	entry.resetBillingStreakLocked()
 	entry.FailureGeneration++
 	return entry.FailureCount, true
+}
+
+// RecordBillingFailure counts one insufficient-balance failure and applies the
+// cooldown of the reaching failure in a single locked step, so two concurrent
+// failures cannot both observe the threshold or land duplicate cooldowns.
+// Cooldown is written only while the credential still uses expectedVersion
+// (0 accepts any version). A non-zero streak carries the reached count and the
+// cooldown wrote changed; an interrupted or missing credential reports
+// exists=false.
+func (r *CredentialRegistry) RecordBillingFailure(
+	credentialID uint,
+	expectedVersion uint64,
+	threshold int,
+	until time.Time,
+) (streak int, cooling bool, exists bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok := r.entryLocked(credentialID)
+	if !ok {
+		return 0, false, false
+	}
+	if expectedVersion != 0 && entry.Version != expectedVersion {
+		return 0, false, false
+	}
+	for {
+		entry.BillingStreak++
+		if threshold <= 0 || entry.BillingStreak < threshold {
+			break
+		}
+		if !until.After(entry.CooldownUntil) {
+			// 已有更长的冷却，本次不再延长，也不再参与计数。
+			break
+		}
+		entry.CooldownUntil = until
+		entry.BillingStreak = 0
+		entry.FailureGeneration++
+		return threshold, true, true
+	}
+	return entry.BillingStreak, false, true
+}
+
+// ResetBillingStreak marks this attempt as an outcome other than
+// insufficient balance: any success, other failure family, or effect-less
+// decision breaks the consecutive run.
+func (r *CredentialRegistry) ResetBillingStreak(credentialID uint) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok := r.entryLocked(credentialID)
+	if !ok {
+		return false
+	}
+	entry.resetBillingStreakLocked()
+	return true
+}
+
+func (entry *CredentialEntry) resetBillingStreakLocked() {
+	entry.BillingStreak = 0
 }
 
 func (r *CredentialRegistry) ClearFailure(credentialID uint) bool {
@@ -1166,6 +1233,7 @@ func (r *CredentialRegistry) ClearFailure(credentialID uint) bool {
 		entry.FailureCount = 0
 		entry.FailureGeneration++
 	}
+	entry.resetBillingStreakLocked()
 	return true
 }
 
@@ -1182,6 +1250,7 @@ func (r *CredentialRegistry) Recover(credentialID uint) bool {
 		entry.FailureCount = 0
 		entry.FailureGeneration++
 	}
+	entry.resetBillingStreakLocked()
 	return true
 }
 
@@ -1224,6 +1293,7 @@ func (r *CredentialRegistry) restoreRuntimeStateIfMatch(
 	entry.Blacklisted = false
 	entry.BlacklistReleaseAt = time.Time{}
 	entry.FailureCount = 0
+	entry.resetBillingStreakLocked()
 	entry.FailureGeneration++
 	return true
 }

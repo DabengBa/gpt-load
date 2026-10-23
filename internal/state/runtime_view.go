@@ -14,6 +14,7 @@ type CredentialRuntimeView struct {
 	Blacklisted        bool
 	BlacklistReleaseAt time.Time
 	FailureCount       int
+	BillingStreak      int
 }
 
 type CredentialRuntimeState string
@@ -44,6 +45,7 @@ func runtimeView(entry *CredentialEntry) CredentialRuntimeView {
 		Blacklisted:        entry.Blacklisted,
 		BlacklistReleaseAt: entry.BlacklistReleaseAt,
 		FailureCount:       entry.FailureCount,
+		BillingStreak:      entry.BillingStreak,
 	}
 }
 

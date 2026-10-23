@@ -75,6 +75,10 @@ type credentialMutationCoordinator interface {
 	Do(uint, func())
 }
 
+// billingStreakThreshold 是余额不足冷却前必须连续出现的次数：单次余额报错
+// 可能只是上游中转抖动，连续两次才当作凭据级资损。
+const billingStreakThreshold = 2
+
 type runtimeCredentialRegistry interface {
 	scheduler.CredentialSource
 	CaptureActiveCredentialRefs(groupIDs []uint) []state.CredentialRef
@@ -85,6 +89,8 @@ type runtimeCredentialRegistry interface {
 	IncrFailure(credentialID uint) (int, bool)
 	SetBlacklistedWithChange(credentialID uint) (exists bool, changed bool)
 	ClearFailure(credentialID uint) bool
+	RecordBillingFailure(credentialID uint, expectedVersion uint64, threshold int, until time.Time) (streak int, cooling bool, exists bool)
+	ResetBillingStreak(credentialID uint) bool
 }
 
 type entryRuntimeRegistry interface {
@@ -317,6 +323,7 @@ func (handler *Handler) applyGroupDecisionEffectForEntry(
 	if decision.Scope == execution.ErrorScopeModel && entryID != "" {
 		if registry, ok := handler.registry.(entryRuntimeRegistry); ok {
 			mutate := func() {
+				handler.resetBillingStreakForResult(credentialID, decision)
 				if !isModelEntryFailure(decision) {
 					// Compatibility C1: model-scoped decisions outside the
 					// counted failure families (safety.replay_unknown and any
@@ -335,6 +342,7 @@ func (handler *Handler) applyGroupDecisionEffectForEntry(
 			return
 		}
 	}
+	handler.resetBillingStreakForResult(credentialID, decision)
 	handler.applyDecisionEffectWithBlacklistPolicy(
 		credentialID,
 		credentialVersion,
@@ -350,6 +358,11 @@ func (handler *Handler) applyGroupDecisionEffectForEntry(
 // for one failure event from the current published system setting, falling back
 // to the shipped default when no snapshot is available.
 func (handler *Handler) blacklistReleaseDeadline(attemptNow time.Time) time.Time {
+	return attemptNow.Add(handler.blacklistReleaseDuration())
+}
+
+// blacklistReleaseDuration reads the published system 熔断释放 window.
+func (handler *Handler) blacklistReleaseDuration() time.Duration {
 	seconds := state.DefaultRuntimeSettings().BlacklistReleaseSeconds
 	if handler != nil && handler.manager != nil {
 		if snapshot := handler.manager.Current(); snapshot != nil &&
@@ -357,7 +370,7 @@ func (handler *Handler) blacklistReleaseDeadline(attemptNow time.Time) time.Time
 			seconds = snapshot.Settings.BlacklistReleaseSeconds
 		}
 	}
-	return attemptNow.Add(time.Duration(seconds) * time.Second)
+	return time.Duration(seconds) * time.Second
 }
 
 // isModelEntryFailure implements design §4.1: a model-level failure is defined
@@ -470,7 +483,19 @@ func (handler *Handler) applyDecisionEffectWithBlacklistPolicy(
 		mutate := func() {
 			until := decision.CooldownUntil
 			exists, changed := false, false
-			if credentialVersion == 0 {
+			if decision.Category == health.FailureCategoryBilling {
+				// 余额不足要连续两次才冷却：计数与冷却在 registry 的同一次加锁内
+				// 完成，并按产出决策的凭据版本校验；未达阈值时本次只换候选。
+				_, changed, exists = handler.registry.RecordBillingFailure(
+					credentialID,
+					credentialVersion,
+					billingStreakThreshold,
+					until,
+				)
+				if !exists || !changed {
+					return
+				}
+			} else if credentialVersion == 0 {
 				exists, changed = handler.registry.SetCooldownWithChange(credentialID, until)
 			} else {
 				exists, changed = handler.registry.SetCooldownWithChangeIfVersion(
@@ -526,10 +551,23 @@ func (handler *Handler) applyDecisionEffectWithBlacklistPolicy(
 
 func (handler *Handler) recordCredentialSuccess(credentialID uint, at time.Time) {
 	handler.mutations.Do(credentialID, func() {
+		handler.registry.ResetBillingStreak(credentialID)
 		if handler.registry.ClearFailure(credentialID) {
 			handler.stats.RecordSuccess(credentialID, at)
 		}
 	})
+}
+
+// resetBillingStreakForResult is the single outcome entry point for the
+// consecutive-billing run: any decision that is not an insufficient-balance
+// cooldown breaks the streak, whatever its effect or scope. Billing cooldowns
+// advance the streak themselves inside applyDecisionEffectWithBlacklistPolicy.
+// Successes reset it in recordCredentialSuccess.
+func (handler *Handler) resetBillingStreakForResult(credentialID uint, decision health.Decision) {
+	if decision.Category == health.FailureCategoryBilling {
+		return
+	}
+	handler.registry.ResetBillingStreak(credentialID)
 }
 
 // recordEntrySuccess mirrors the credential success path for route entries

@@ -146,6 +146,94 @@ func TestCredentialRegistryClearFailureAndRecover(t *testing.T) {
 	}
 }
 
+// 余额不足连续段只服务 billing 冷却门限：连续失败计数到阈值时在同一次加锁里
+// 落下冷却并清零；任何其他结果（ResetBillingStreak）打断连续段。
+func TestCredentialRegistryRecordBillingFailureIsAtomic(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	registry := NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]CredentialEntry{testCredential(1, 10)}); err != nil {
+		t.Fatal(err)
+	}
+	coolUntil := now.Add(time.Hour)
+
+	if streak, cooling, exists := registry.RecordBillingFailure(1, 1, 2, coolUntil); !exists || streak != 1 || cooling {
+		t.Fatalf("first billing = %d/%t/%t, want streak 1 without cooldown", streak, cooling, exists)
+	}
+	if until, _ := registry.CredentialCooldownUntil(1); until.After(now) {
+		t.Fatalf("cooldown after first billing = %v, want none", until)
+	}
+	if streak, cooling, exists := registry.RecordBillingFailure(1, 1, 2, coolUntil); !exists || streak != 2 || !cooling {
+		t.Fatalf("second billing = %d/%t/%t, want threshold cooldown", streak, cooling, exists)
+	}
+	until, _ := registry.CredentialCooldownUntil(1)
+	if !until.Equal(coolUntil) {
+		t.Fatalf("cooldown = %v, want %v", until, coolUntil)
+	}
+	// 冷却落地后连续段清零：窗口结束后的下一次 billing 从 1 重新计数。
+	view := registry.Snapshot()[0]
+	if view.BillingStreak != 0 {
+		t.Fatalf("billing streak after cooldown = %d, want 0", view.BillingStreak)
+	}
+	if streak, _, _ := registry.RecordBillingFailure(1, 1, 2, coolUntil.Add(time.Hour)); streak != 1 {
+		t.Fatalf("billing after cooldown = %d, want restart at 1", streak)
+	}
+	if !registry.ResetBillingStreak(1) {
+		t.Fatal("ResetBillingStreak() = false")
+	}
+	if view := registry.Snapshot()[0]; view.BillingStreak != 0 {
+		t.Fatalf("billing streak after interruption = %d, want 0", view.BillingStreak)
+	}
+	if _, _, exists := registry.RecordBillingFailure(99, 0, 2, coolUntil); exists {
+		t.Fatal("missing credential billing record succeeded")
+	}
+	if registry.ResetBillingStreak(99) {
+		t.Fatal("missing credential billing reset succeeded")
+	}
+}
+
+// 计数与冷却都必须基于产出决策的凭据版本：新版本不写冷却，也不推进连续段。
+func TestCredentialRegistryRecordBillingFailureRejectsStaleVersion(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	registry := NewCredentialRegistry()
+	entry := testCredential(1, 10)
+	entry.Version = 2
+	if err := registry.ReplaceCredentials([]CredentialEntry{entry}); err != nil {
+		t.Fatal(err)
+	}
+	if streak, cooling, exists := registry.RecordBillingFailure(1, 1, 2, now.Add(time.Hour)); exists || streak != 0 || cooling {
+		t.Fatalf("stale version billing = %d/%t/%t, want rejected", streak, cooling, exists)
+	}
+	if view := registry.Snapshot()[0]; view.BillingStreak != 0 || view.CooldownUntil.After(now) {
+		t.Fatalf("stale version mutated credential = %#v", view)
+	}
+}
+
+// 并发余额不足只能产生一次冷却：计数与冷却在同一次加锁内完成。
+func TestCredentialRegistryRecordBillingFailureCoolsOnceUnderConcurrency(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	registry := NewCredentialRegistry()
+	if err := registry.ReplaceCredentials([]CredentialEntry{testCredential(1, 10)}); err != nil {
+		t.Fatal(err)
+	}
+	coolUntil := now.Add(time.Hour)
+	cooled := make(chan struct{}, 4)
+	var waitGroup sync.WaitGroup
+	for range 4 {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			if _, cooling, exists := registry.RecordBillingFailure(1, 1, 2, coolUntil); exists && cooling {
+				cooled <- struct{}{}
+			}
+		}()
+	}
+	waitGroup.Wait()
+	close(cooled)
+	if got := len(cooled); got != 1 {
+		t.Fatalf("cooldowns = %d, want exactly 1", got)
+	}
+}
+
 func TestCredentialRegistryRecoverIfMatchRejectsStaleGeneration(t *testing.T) {
 	registry := NewCredentialRegistry()
 	if err := registry.ReplaceCredentials([]CredentialEntry{testCredential(1, 10)}); err != nil {

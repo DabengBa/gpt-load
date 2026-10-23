@@ -55,8 +55,13 @@ func (effect Effect) Valid() bool {
 // that are not part of provider error evidence.
 type DecisionContext struct {
 	DefaultRateLimitCooldown time.Duration
-	Method                   string
-	Operation                execution.Operation
+	// BillingCooldown is the credential cooldown applied once the billing
+	// streak reaches its threshold. The gateway fills it with the published
+	// blacklist_release_seconds value; a caller that omits it gets the shipped
+	// default of that same system parameter, never the rate-limit window.
+	BillingCooldown time.Duration
+	Method          string
+	Operation       execution.Operation
 	// BufferedReplayEligible is a request-level proof that another buffered
 	// attempt cannot repeat a provider-side operation or continuity state.
 	BufferedReplayEligible bool

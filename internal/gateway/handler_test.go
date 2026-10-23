@@ -1983,6 +1983,14 @@ func (panicRuntimeRegistry) ClearFailure(uint) bool {
 	panic("model endpoint cleared failure")
 }
 
+func (panicRuntimeRegistry) RecordBillingFailure(uint, uint64, int, time.Time) (int, bool, bool) {
+	panic("model endpoint recorded a billing failure")
+}
+
+func (panicRuntimeRegistry) ResetBillingStreak(uint) bool {
+	panic("model endpoint reset a billing streak")
+}
+
 type panicForwarder struct{}
 
 func (panicForwarder) Forward(context.Context, ForwardInput) UpstreamResult {

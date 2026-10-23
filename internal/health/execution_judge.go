@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gpt-load/internal/execution"
+	"gpt-load/internal/state"
 )
 
 // ExecutionAttempt is the provider-neutral evidence used for one health and
@@ -42,11 +43,6 @@ const contentFilterRuleID = RuleID("content_filter.no_content")
 
 const emptyCompletionErrorCode = "upstream_empty_completion"
 const emptyCompletionRuleID = RuleID("upstream.empty_completion")
-
-// defaultBillingCooldown 是余额类失败的冷却时长：余额错误不会分钟级自愈，
-// 但充值后会恢复——24h 后凭据自动回来探一次，充值即自愈、未充值每天最多再
-// 烧一次请求。
-const defaultBillingCooldown = 24 * time.Hour
 
 // JudgeExecution decides the complete GPT-Load retry and runtime effect for one
 // executor result.
@@ -472,7 +468,7 @@ func decisionForExecutionCategory(
 			EffectCooldownCredential,
 			"billing.insufficient_balance",
 		)
-		result.CooldownUntil = attempt.Now.Add(defaultBillingCooldown)
+		result.CooldownUntil = attempt.Now.Add(decisionContext.BillingCooldown)
 		return result
 	case FailureCategoryRateLimited:
 		return rateLimitDecision(attempt, decisionContext)
@@ -728,6 +724,11 @@ func retryableUpstreamStatus(statusCode int) bool {
 func normalizeDecisionContext(value DecisionContext) DecisionContext {
 	if value.DefaultRateLimitCooldown <= 0 {
 		value.DefaultRateLimitCooldown = time.Minute
+	}
+	// billing 冷却必须带截止时间（Decision.Validate）。未注入时使用系统熔断释放
+	// 参数的出厂默认值，保持「与黑名单释放共用同一参数」，不退到限流冷却。
+	if value.BillingCooldown <= 0 {
+		value.BillingCooldown = time.Duration(state.DefaultRuntimeSettings().BlacklistReleaseSeconds) * time.Second
 	}
 	return value
 }
