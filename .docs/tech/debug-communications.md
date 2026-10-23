@@ -32,7 +32,7 @@ The list endpoint accepts `request_id`, `access_key_id`, `protocol`, `operation`
 
 The detail response contains session metadata, lifecycle state, errors, and ordered logical attempts. The download endpoint streams a ZIP containing a JSON manifest, per-attempt metadata, and raw request/response header and body parts. Download responses are marked `no-store`.
 
-The `/api/health` response includes `debug_capture` with enabled/running state, fixed retention seconds, active/completed/failed counts, sweep counters, and timestamps. If the optional store cannot provide counts, the component reports `error: "counts_unavailable"` while the broader health response remains available.
+The `/api/health` response includes `debug_capture` with enabled/running state, fixed retention seconds, active/completed/failed counts, sweep counters, and timestamps. These state counts describe unexpired database rows, not the runtime's in-memory admission slots. When all 64 slots are occupied, the component reports `error: "session_limit_reached"`, including when expired rows have already disappeared from the counts. The error clears when admission becomes available again. If the optional store cannot provide counts, the component reports `error: "counts_unavailable"` while the broader health response remains available.
 
 Feature-specific capture storage and adapters are Unix-only. Windows retains the public application types and no-op container assembly so the unrelated Windows binary continues to compile; Windows does not install a capture store or Gateway factory and does not provide raw capture.
 
@@ -45,6 +45,10 @@ Bifrost-backed HTTP provider adapters pass a real per-request observer through t
 The feature records only data that the Gateway or a supported Bifrost HTTP observer actually observes. It does not claim to capture TLS or socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed before cancellation, timeout, process failure, or connection close.
 
 Capture persistence is isolated from the data plane. Storage, queue, callback, or cleanup failures do not change the response returned to the client. The affected capture is instead marked failed or remains non-terminal, and the runtime health section reports cleanup state and active/completed/failed counts where available.
+
+Gateway finalization checks cancellation against the request context saved before the data-plane lifecycle adds its own child context. Normal lifecycle release must not turn a complete successful capture into a cancellation failure. Genuine client cancellation and server shutdown still propagate through the saved context.
+
+Provider observation sources register before emitting callbacks and unregister after their completion callback returns. Gateway capture waits for registered observations and admitted callbacks; an executor result alone does not establish that a transport observation started. Once the sources and callbacks have drained, absence of a response completion is recorded as `no_observation_source` and capture finalization fails explicitly, releasing its runtime admission instead of waiting forever. The event detail distinguishes a source that never started from one that started and ended without completion. Neither condition establishes whether request or response bytes were exchanged. This event identifies missing raw evidence; it is not a Provider response termination observed on the wire. A first-token abort already fired before the net/http send completes its registered observation with `no_response`, without issuing a Provider request.
 
 ## Model probes and credential tests
 

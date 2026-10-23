@@ -95,13 +95,25 @@ func TestRuntimeLimitsActiveCaptureSessions(t *testing.T) {
 		if !ok {
 			t.Fatal("AcquireSession() rejected a session below the configured limit")
 		}
+		defer release()
 		releases = append(releases, release)
 	}
 	if release, ok := runtime.AcquireSession(); ok || release != nil {
 		t.Fatal("AcquireSession() accepted a session above the configured limit")
 	}
+	health, err := runtime.Health()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if health.Active != 0 || health.Error != "session_limit_reached" {
+		t.Fatalf("health = %#v, want exhausted admission reported even with no persisted active rows", health)
+	}
 	for _, release := range releases {
 		release()
+	}
+	health, err = runtime.Health()
+	if err != nil || health.Error != "" {
+		t.Fatalf("health after release = %#v, err = %v", health, err)
 	}
 }
 

@@ -1417,3 +1417,228 @@ func TestMaterializeStreamErrorBodyReadErrorIsIncomplete(t *testing.T) {
 		t.Fatal("read-error termination must be marked incomplete (non-nil error)")
 	}
 }
+
+// lifecycleObserver records the bracketed observation source around callbacks.
+type lifecycleObserver struct {
+	recordingObserver
+	lifecycle []string
+}
+
+func (o *lifecycleObserver) record(kind string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.lifecycle = append(o.lifecycle, kind)
+}
+
+func (o *lifecycleObserver) BeginHTTPObservation(id string) {
+	if id != testAttemptID {
+		panic("unexpected attempt id " + id)
+	}
+	o.record("begin")
+}
+
+func (o *lifecycleObserver) EndHTTPObservation(id string) {
+	if id != testAttemptID {
+		panic("unexpected attempt id " + id)
+	}
+	o.record("end")
+}
+
+func (o *lifecycleObserver) ObserveResponseComplete(id string, headers http.Header, err error) {
+	o.record("complete")
+	o.recordingObserver.ObserveResponseComplete(id, headers, err)
+}
+
+func (o *lifecycleObserver) lifecycleEvents() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]string(nil), o.lifecycle...)
+}
+
+func TestMakeRequestWithContextBracketsObservationSource(t *testing.T) {
+	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
+		ctx.SetStatusCode(200)
+		ctx.SetBody([]byte(`{"ok":true}`))
+	})
+	defer cleanup()
+
+	observer := &lifecycleObserver{}
+	ctx := newObserverContext(observer)
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetRequestURI("http://example.invalid/v1/chat")
+	req.SetBody([]byte(`{}`))
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	if _, bifrostErr, wait := MakeRequestWithContext(ctx, client, req, resp); bifrostErr != nil {
+		t.Fatalf("unexpected error: %v", bifrostErr)
+	} else {
+		wait()
+	}
+
+	events := observer.lifecycleEvents()
+	if len(events) < 3 {
+		t.Fatalf("lifecycle events = %v, want begin, complete, end", events)
+	}
+	if events[0] != "begin" {
+		t.Fatalf("first lifecycle event = %q, want begin before any callback", events[0])
+	}
+	if events[len(events)-1] != "end" {
+		t.Fatalf("last lifecycle event = %q, want end after the final callback", events[len(events)-1])
+	}
+	seenComplete := false
+	for _, event := range events {
+		if event == "complete" {
+			seenComplete = true
+			continue
+		}
+		if seenComplete && event != "end" {
+			t.Fatalf("lifecycle event %q arrived after completion but before end: %v", event, events)
+		}
+	}
+	if !seenComplete {
+		t.Fatalf("lifecycle events = %v, want a completion callback", events)
+	}
+}
+
+func TestMakeRequestWithContextEndsSourceOnSendFailure(t *testing.T) {
+	// No listener accepts the connection, so the send fails before any
+	// response callback. The source must still be closed exactly once.
+	client := &fasthttp.Client{
+		Dial: func(string) (net.Conn, error) { return nil, errors.New("dial refused") },
+	}
+	observer := &lifecycleObserver{}
+	ctx := newObserverContext(observer)
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetRequestURI("http://example.invalid/v1/chat")
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	_, _, wait := MakeRequestWithContext(ctx, client, req, resp)
+	wait()
+
+	events := observer.lifecycleEvents()
+	begins, ends := 0, 0
+	for _, event := range events {
+		switch event {
+		case "begin":
+			begins++
+		case "end":
+			ends++
+		}
+	}
+	if begins != 1 || ends != 1 {
+		t.Fatalf("lifecycle events = %v, want exactly one begin and one end", events)
+	}
+	if observer.completionCount() != 1 {
+		t.Fatalf("completion count = %d, want the single no-response completion", observer.completionCount())
+	}
+}
+
+// A fired first-token abort returns before the transport runs, so no response
+// callback can be emitted. The observation source must still be closed, and the
+// observer must learn that this attempt produced no transport evidence.
+func TestDoHTTPRequestAbortFiredClosesObservationSource(t *testing.T) {
+	observer := &lifecycleObserver{}
+	ctx := newObserverContext(observer)
+	abort := NewAttemptAbort(time.Minute)
+	abort.Expire()
+	ctx.SetValue(schemas.BifrostContextKeyStreamAttemptAbort, abort)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://example.invalid/v1/chat", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	resp, err := DoHTTPRequest(&http.Client{}, req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	if !errors.Is(err, ErrStreamFirstTokenTimeout) {
+		t.Fatalf("DoHTTPRequest error = %v, want the first-token timeout", err)
+	}
+
+	events := observer.lifecycleEvents()
+	begins, ends := 0, 0
+	for _, event := range events {
+		switch event {
+		case "begin":
+			begins++
+		case "end":
+			ends++
+		}
+	}
+	if begins != 1 || ends != 1 {
+		t.Fatalf("lifecycle events = %v, want exactly one begin and one end after an early abort", events)
+	}
+	if observer.completionCount() != 1 {
+		t.Fatalf("completion count = %d, want one no-transport completion", observer.completionCount())
+	}
+	if observer.lastTermination() != TerminationNoResponse {
+		t.Fatalf("termination = %q, want %q", observer.lastTermination(), TerminationNoResponse)
+	}
+}
+
+// A context cancelled before the fasthttp send produces no response. The
+// observation source must still close exactly once, and the observer must not be
+// told that a response was observed.
+func TestMakeRequestWithContextCancelledContextClosesObservationSource(t *testing.T) {
+	parent := schemas.NewBifrostContext(context.Background(), schemas.NoDeadline)
+	observer := &lifecycleObserver{}
+	parent.SetValue(httpObserverContextKey, observer)
+	parent.SetValue(httpAttemptIDContextKey, testAttemptID)
+	cancelContext, cancel := context.WithCancel(parent)
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetRequestURI("http://example.invalid/v1/chat")
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	// The client never dials: the caller-side cancellation is what ends the
+	// request, which is the pre-send path under test.
+	dialed := make(chan struct{}, 1)
+	client := &fasthttp.Client{
+		Dial: func(string) (net.Conn, error) {
+			select {
+			case dialed <- struct{}{}:
+			default:
+			}
+			return nil, errors.New("dial refused")
+		},
+	}
+	cancel()
+	_, bifrostErr, wait := MakeRequestWithContext(cancelContext, client, req, resp)
+	wait()
+	if bifrostErr == nil {
+		t.Fatal("cancelled request reported no Bifrost error")
+	}
+
+	events := observer.lifecycleEvents()
+	begins, ends := 0, 0
+	for _, event := range events {
+		switch event {
+		case "begin":
+			begins++
+		case "end":
+			ends++
+		}
+	}
+	if begins != 1 || ends != 1 {
+		t.Fatalf("lifecycle events = %v, want exactly one begin and one end", events)
+	}
+	if observer.completionCount() != 1 {
+		t.Fatalf("completion count = %d, want one no-response completion", observer.completionCount())
+	}
+	observer.mu.Lock()
+	responses := len(observer.responses)
+	observer.mu.Unlock()
+	if responses != 0 {
+		t.Fatalf("response events = %d, want none for a cancelled request", responses)
+	}
+}

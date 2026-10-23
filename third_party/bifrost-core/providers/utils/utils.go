@@ -598,6 +598,11 @@ func DoHTTPRequest(client *http.Client, req *http.Request) (*http.Response, erro
 	}
 	if abort := AttemptAbortFromContext(req.Context()); abort != nil {
 		if abort.Fired() {
+			// The transport never runs on this path, so no response callback can
+			// be emitted. Complete the observation as a no-response attempt so
+			// the source is closed and the observer learns it has no transport
+			// evidence, instead of waiting for a completion that cannot arrive.
+			state.complete(ErrStreamFirstTokenTimeout, TerminationNoResponse)
 			return nil, ErrStreamFirstTokenTimeout
 		}
 		attemptCtx, cancel := context.WithCancelCause(req.Context())

@@ -17,8 +17,11 @@ type HTTPObserver interface {
 	ObserveResponseComplete(string, http.Header, error)
 }
 
-// HTTPObservationLifecycle optionally brackets an asynchronous HTTP observer
-// queue. End is called after its final completion callback returns.
+// HTTPObservationLifecycle optionally brackets an HTTP observation source.
+// Begin is called before the source can emit any callback and End after its
+// final completion callback returns, so an observer can distinguish "no
+// callback can arrive" from "callbacks are still queued" without a timeout.
+// An implementation must not block either call.
 type HTTPObservationLifecycle interface {
 	BeginHTTPObservation(string)
 	EndHTTPObservation(string)
