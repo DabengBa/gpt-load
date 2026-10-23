@@ -100,6 +100,21 @@ func (s AttemptSpec) Validate() error {
 				"must be greater than zero for a generation probe",
 			)
 		}
+	} else if s.Operation == OperationModelTrace {
+		// A fingerprint challenge owns its prompt: the control plane supplies the
+		// text and the budget, so the attempt carries no provider wire fields.
+		if s.Method != "" || s.Path != "" || len(s.Query) != 0 || s.RawQuery != "" || len(s.Body) != 0 {
+			return validationError("modeltrace", "must not contain provider wire fields")
+		}
+		if strings.TrimSpace(s.PromptText) == "" {
+			return validationError("prompt_text", "must not be empty for a fingerprint challenge")
+		}
+		if s.ProbeMaxOutputTokens <= 0 {
+			return validationError(
+				"probe_max_output_tokens",
+				"must be greater than zero for a fingerprint challenge",
+			)
+		}
 	} else {
 		if !validHTTPToken(s.Method) {
 			return validationError("method", "must be a valid HTTP method")
@@ -343,7 +358,8 @@ func operationRequiresModel(operation Operation) bool {
 		operation == OperationImagesEdit ||
 		operation == OperationEmbeddingsCreate ||
 		operation == OperationRerank ||
-		operation == OperationProbe
+		operation == OperationProbe ||
+		operation == OperationModelTrace
 }
 
 func validateRequestPath(path string) error {

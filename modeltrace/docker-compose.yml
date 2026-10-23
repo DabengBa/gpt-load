@@ -1,0 +1,33 @@
+services:
+  modeltrace:
+    image: ${MODELTRACE_IMAGE:-gpt-load-modeltrace:local}
+    build:
+      context: ..
+      dockerfile: modeltrace/Dockerfile
+    environment:
+      MODELTRACE_HOST: 0.0.0.0
+      MODELTRACE_PORT: 8080
+      MODELTRACE_TOKEN: ${MODELTRACE_TOKEN:?MODELTRACE_TOKEN must be set}
+    # No published ports: GPT-Load reaches this service over the shared compose
+    # network. Publish deliberately with `docker compose run --publish` if needed.
+    expose:
+      - "8080"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4).status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  default:
+    external: true
+    name: ${GPTLOAD_NETWORK:-gpt-load_default}

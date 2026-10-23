@@ -54,7 +54,7 @@ export interface ModelProbeResultDto {
 }
 
 const probeOutcomes = ['passed', 'failed', 'inconclusive'] as const
-const probeReasons = [
+export const modelProbeReasons = [
   'invalid_credential',
   'insufficient_balance',
   'model_unavailable',
@@ -109,7 +109,7 @@ export function projectModelProbeResult(value: unknown): ModelProbeResultDto {
     model: projectString(record.model),
     outcome,
 
-    reason: record.reason === null ? null : projectEnum(record.reason, probeReasons),
+    reason: record.reason === null ? null : projectEnum(record.reason, modelProbeReasons),
     protocol: record.protocol === null ? null : projectEnum(record.protocol, enabledDataProtocols),
     route_mode: record.route_mode === null ? null : projectEnum(record.route_mode, routeModes),
     status_code:

@@ -17,6 +17,16 @@ import (
 // accepting the request.
 const probeQuestion = "What is 2 + 2? Please answer briefly."
 
+// probePromptText returns the code-owned prompt of one diagnostic request. A
+// ModelTrace challenge carries its own prompt; a probe always asks the single
+// code-owned probe question.
+func probePromptText(spec execution.AttemptSpec) string {
+	if spec.Operation == execution.OperationModelTrace {
+		return spec.PromptText
+	}
+	return probeQuestion
+}
+
 const geminiEmbeddingsProbeBody = `{"content":{"parts":[{"text":"ping"}]}}`
 
 // probeDefaultOutputTokens is the fallback output budget for a probe that did
@@ -97,6 +107,9 @@ func decodeProbeResponseBody(result *execution.AttemptResult) ([]byte, error) {
 type probeExtraction struct {
 	present bool
 	valid   bool
+	// text is the generated text that made present true. It is consumed only by
+	// diagnostic requests that must forward the answer verbatim.
+	text string
 }
 
 // probeAnswerPresent extracts non-empty generated text from a probe response.
@@ -108,6 +121,35 @@ type probeExtraction struct {
 // while raw passthrough responses must match the selected protocol only. A body
 // matching neither shape is invalid, not merely empty.
 func probeAnswerPresent(clientProtocol protocol.Protocol, body []byte, rawPassthrough bool) probeExtraction {
+	return probeExtractionOf(clientProtocol, body, rawPassthrough)
+}
+
+// normalizeDiagnosticAttemptResult extracts the single generated answer of a
+// ModelTrace challenge. It writes only the ModelTrace result fields, so the
+// challenge path never reuses probe judgement (ProbeAnswerPresent /
+// ProbeResponseInvalid) or the data-probe failure rewrite.
+func normalizeDiagnosticAttemptResult(spec execution.AttemptSpec, result *execution.AttemptResult, rawPassthrough bool) {
+	if result == nil || spec.Operation != execution.OperationModelTrace {
+		return
+	}
+	result.GeneratedText = ""
+	result.GeneratedTextInvalid = false
+	if result.Error != nil ||
+		result.StatusCode < http.StatusOK ||
+		result.StatusCode >= http.StatusMultipleChoices {
+		return
+	}
+	body, err := decodeProbeResponseBody(result)
+	if err != nil {
+		result.GeneratedTextInvalid = true
+		return
+	}
+	extraction := probeExtractionOf(spec.ClientProtocol, body, rawPassthrough)
+	result.GeneratedText = extraction.text
+	result.GeneratedTextInvalid = !extraction.valid
+}
+
+func probeExtractionOf(clientProtocol protocol.Protocol, body []byte, rawPassthrough bool) probeExtraction {
 	if clientProtocol == protocol.GeminiEmbeddings || clientProtocol == protocol.OpenAIEmbeddings || clientProtocol == protocol.Rerank {
 		valid := validDataProbeResponse(clientProtocol, body)
 		return probeExtraction{present: valid, valid: valid}
@@ -154,7 +196,7 @@ func openAIChatExtraction(envelope map[string]json.RawMessage) probeExtraction {
 	}
 	for _, choice := range choices {
 		if hasProbeText(choice.Text) {
-			return probeExtraction{present: true, valid: true}
+			return probeExtraction{present: true, valid: true, text: choice.Text}
 		}
 		var message struct {
 			Content json.RawMessage `json:"content"`
@@ -162,8 +204,8 @@ func openAIChatExtraction(envelope map[string]json.RawMessage) probeExtraction {
 		if json.Unmarshal(choice.Message, &message) != nil {
 			continue
 		}
-		if hasProbeText(probeContentText(message.Content)) {
-			return probeExtraction{present: true, valid: true}
+		if text := probeContentText(message.Content); hasProbeText(text) {
+			return probeExtraction{present: true, valid: true, text: text}
 		}
 	}
 	return probeExtraction{valid: true}
@@ -214,7 +256,7 @@ func openAIResponsesExtraction(envelope map[string]json.RawMessage) probeExtract
 			return probeExtraction{}
 		}
 		if hasProbeText(outputText) {
-			return probeExtraction{present: true, valid: true}
+			return probeExtraction{present: true, valid: true, text: outputText}
 		}
 	}
 	if hasOutput {
@@ -225,8 +267,8 @@ func openAIResponsesExtraction(envelope map[string]json.RawMessage) probeExtract
 			return probeExtraction{}
 		}
 		for _, item := range output {
-			if hasProbeText(responsesContentText(item.Content)) {
-				return probeExtraction{present: true, valid: true}
+			if text := responsesContentText(item.Content); hasProbeText(text) {
+				return probeExtraction{present: true, valid: true, text: text}
 			}
 		}
 	}
@@ -279,12 +321,13 @@ func anthropicExtraction(envelope map[string]json.RawMessage) probeExtraction {
 	if json.Unmarshal(raw, &blocks) != nil {
 		return probeExtraction{}
 	}
+	parts := make([]string, 0, len(blocks))
 	for _, block := range blocks {
 		if block.Type == "text" && hasProbeText(block.Text) {
-			return probeExtraction{present: true, valid: true}
+			parts = append(parts, block.Text)
 		}
 	}
-	return probeExtraction{valid: true}
+	return probeExtraction{present: len(parts) > 0, valid: true, text: strings.Join(parts, "")}
 }
 
 func geminiExtraction(envelope map[string]json.RawMessage) probeExtraction {
@@ -303,6 +346,7 @@ func geminiExtraction(envelope map[string]json.RawMessage) probeExtraction {
 	if json.Unmarshal(raw, &candidates) != nil {
 		return probeExtraction{}
 	}
+	parts := make([]string, 0)
 	for _, candidate := range candidates {
 		for _, part := range candidate.Content.Parts {
 			// Gemini marks internal reasoning with thought:true; it is not
@@ -311,11 +355,11 @@ func geminiExtraction(envelope map[string]json.RawMessage) probeExtraction {
 				continue
 			}
 			if hasProbeText(part.Text) {
-				return probeExtraction{present: true, valid: true}
+				parts = append(parts, part.Text)
 			}
 		}
 	}
-	return probeExtraction{valid: true}
+	return probeExtraction{present: len(parts) > 0, valid: true, text: strings.Join(parts, "")}
 }
 
 func hasProbeText(value string) bool {

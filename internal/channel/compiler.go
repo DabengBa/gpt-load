@@ -296,6 +296,23 @@ func compileRoutes(
 			return nil, nil, nil, nil, fmt.Errorf("channel %q has duplicate route %q/%q", channelID, candidate.ClientProtocol, candidate.Operation)
 		}
 		seen[key] = struct{}{}
+		if candidate.Operation == execution.OperationProbe {
+			// 指纹挑战与测活共用同一条生成式线路：声明测活就必须声明挑战，避免
+			// 某个渠道只支持测活而让指纹检测在运行时才失败。
+			challengeKey := routeKey{
+				clientProtocol: candidate.ClientProtocol,
+				operation:      execution.OperationModelTrace,
+			}
+			if validProtocolOperation(candidate.ClientProtocol, execution.OperationModelTrace) {
+				if _, declared := seen[challengeKey]; !declared {
+					seen[challengeKey] = struct{}{}
+					if modes[candidate.ClientProtocol] == nil {
+						modes[candidate.ClientProtocol] = make(map[execution.Operation]RouteMode)
+					}
+					modes[candidate.ClientProtocol][execution.OperationModelTrace] = candidate.Mode
+				}
+			}
+		}
 		if isResponsesLifecycle(candidate.Operation) && candidate.Mode != execution.RouteNative {
 			return nil, nil, nil, nil, fmt.Errorf("channel %q has converted Responses lifecycle route %q", channelID, candidate.Operation)
 		}
@@ -355,6 +372,16 @@ func compileRoutes(
 			modes[candidate.ClientProtocol] = make(map[execution.Operation]RouteMode)
 		}
 		modes[candidate.ClientProtocol][candidate.Operation] = candidate.Mode
+		if candidate.Operation == execution.OperationProbe &&
+			validProtocolOperation(candidate.ClientProtocol, execution.OperationModelTrace) {
+			challengeKey := routeKey{
+				clientProtocol: candidate.ClientProtocol,
+				operation:      execution.OperationModelTrace,
+			}
+			if resolver, ok := resolvers[key]; ok {
+				resolvers[challengeKey] = resolver
+			}
+		}
 		public = append(public, RouteDescriptor{
 			ClientProtocol: candidate.ClientProtocol,
 			Operation:      candidate.Operation,
@@ -394,6 +421,14 @@ func validateProbeContract(
 	if !contract.Valid() {
 		return fmt.Errorf("channel %q has an invalid probe contract", id)
 	}
+	if _, ok := modes[contract.Protocol][execution.OperationProbe]; !ok {
+		return fmt.Errorf(
+			"channel %q probe contract protocol %q has no declared probe route",
+			id,
+			contract.Protocol,
+		)
+	}
+
 	if !validProtocolOperation(contract.Protocol, execution.OperationProbe) {
 		// The probe contract is restricted to generative protocols; a contract
 		// naming Embeddings, Rerank, or Images would reopen a non-generative
@@ -412,14 +447,14 @@ func validateProbeContract(
 			minProbeOutputTokens,
 		)
 	}
-	if _, ok := modes[contract.Protocol][execution.OperationProbe]; !ok {
-		return fmt.Errorf(
-			"channel %q probe contract protocol %q has no declared probe route",
-			id,
-			contract.Protocol,
-		)
-	}
 	return nil
+}
+
+var probeGenerationProtocols = map[protocol.Protocol]bool{
+	protocol.OpenAICompletions: true,
+	protocol.OpenAIResponses:   true,
+	protocol.Anthropic:         true,
+	protocol.Gemini:            true,
 }
 
 func validProtocolOperation(clientProtocol protocol.Protocol, operation execution.Operation) bool {
@@ -450,10 +485,18 @@ func validProtocolOperation(clientProtocol protocol.Protocol, operation executio
 			clientProtocol != protocol.OpenAIEmbeddings && clientProtocol != protocol.GeminiEmbeddings && clientProtocol != protocol.Rerank
 	case execution.OperationProbe:
 		return clientProtocol.Valid() && clientProtocol != protocol.OpenAIImages
+	case execution.OperationModelTrace:
+		// A fingerprint challenge needs generated text, so it shares the probe
+		// contract's generative-only protocol set.
+		return probeGenerationProtocols[clientProtocol]
 	default:
 		return false
 	}
 }
+
+// probeGenerationProtocols is the generated-text protocol set shared by the
+// probe contract and the fingerprint challenge route. It matches
+// protocol.Protocol.SupportsGeneratedText without widening either path.
 
 func isResponsesLifecycle(operation execution.Operation) bool {
 	switch operation {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 
 	"time"
@@ -46,6 +47,9 @@ const maxControlJSONBodyBytes int64 = 32 << 20
 
 func NewServer(cfg *config.Config, service *Service) *Server {
 	now := time.Now
+	if err := loadModelTraceConfigFromEnvironment(os.Getenv); err != nil {
+		logrus.WithError(err).Error("invalid ModelTrace configuration; fingerprint detection is disabled")
+	}
 
 	return &Server{
 		authDigest:    sha256.Sum256([]byte(cfg.AuthKey)),

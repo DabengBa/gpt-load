@@ -51,6 +51,10 @@ var (
 	ErrModelPriceReferenced                   = &APIError{HTTPStatus: http.StatusConflict, Code: "MODEL_PRICE_REFERENCED", Message: "Model price is referenced by Groups"}
 	ErrModelPriceAutomaticDeleteForbidden     = &APIError{HTTPStatus: http.StatusConflict, Code: "MODEL_PRICE_AUTOMATIC_DELETE_FORBIDDEN", Message: "Automatic model prices cannot be deleted manually"}
 	ErrCredentialVersionConflict              = &APIError{HTTPStatus: http.StatusConflict, Code: "CREDENTIAL_VERSION_CONFLICT", Message: "Credential changed since it was loaded"}
+	ErrModelTraceDisabled                     = &APIError{HTTPStatus: http.StatusServiceUnavailable, Code: "MODELTRACE_DISABLED", Message: "ModelTrace fingerprint detection is not configured"}
+	ErrModelTraceMisconfigured                = &APIError{HTTPStatus: http.StatusServiceUnavailable, Code: "MODELTRACE_MISCONFIGURED", Message: "ModelTrace fingerprint detection configuration is invalid"}
+	ErrModelTraceUnavailable                  = &APIError{HTTPStatus: http.StatusBadGateway, Code: "MODELTRACE_UNAVAILABLE", Message: "ModelTrace analysis service is unavailable"}
+	ErrModelTraceAnalysisRejected             = &APIError{HTTPStatus: http.StatusUnprocessableEntity, Code: "MODELTRACE_ANALYSIS_REJECTED", Message: "ModelTrace rejected every submitted fingerprint output"}
 )
 
 // NewAPIErrorWithData creates a copy of an APIError with response data.
