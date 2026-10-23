@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -325,8 +326,11 @@ func TestCaptureObserverWithoutCompletionSourceDoesNotWaitOrFail(t *testing.T) {
 }
 
 func TestCaptureForwardFinalizationDoesNotBlockLateCompletionDrain(t *testing.T) {
+	// The provider observation source for this attempt is still open, so the
+	// callbacks delivered below are legitimately queued rather than late.
 	attempt := &captureTestAttempt{}
 	observer := newCaptureHTTPObserver(attempt, "attempt-1")
+	observer.BeginHTTPObservation("attempt-1")
 	capture := &dataPlaneCapture{}
 	done := make(chan struct{})
 	go func() {
@@ -344,6 +348,7 @@ func TestCaptureForwardFinalizationDoesNotBlockLateCompletionDrain(t *testing.T)
 
 	observer.ObserveResponseBody("attempt-1", []byte("late-body"))
 	observer.ObserveResponseComplete("attempt-1", nil, nil)
+	observer.EndHTTPObservation("attempt-1")
 	deadline := time.After(time.Second)
 	for {
 		attempt.mu.Lock()
@@ -373,6 +378,105 @@ func TestCaptureObserverRecordsCallbackAppendPanic(t *testing.T) {
 	}
 }
 
+// When a MaybeSent transport error happens before the provider ever started
+// observing, no callback will ever arrive. The forward must still finalize the
+// attempt and release the session barrier instead of waiting for a completion
+// source that does not exist, while keeping the failure as honest evidence.
+func TestCaptureFinishForwardWithoutObservationDoesNotLeakPending(t *testing.T) {
+	ready := make(chan struct{})
+	close(ready)
+	session := &captureTestSession{}
+	capture := &dataPlaneCapture{session: session, sessionReady: ready}
+	attempt := &captureTestAttempt{}
+	observer := newCaptureHTTPObserver(attempt, "attempt-1")
+	capture.beginForwardCapture()
+
+	if err := capture.finalize(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	capture.finishForward(attempt, observer, UpstreamResult{
+		DispatchState:  execution.DispatchMaybeSent,
+		RequestWritten: true,
+		Err:            errors.New("transport refused before observation"),
+	})
+
+	if !waitForCapture(t, session.isCompleted) && !waitForCapture(t, func() bool { return session.failureValue() != nil }) {
+		capture.mu.Lock()
+		pending := capture.pending
+		capture.mu.Unlock()
+		t.Fatalf("session never finalized with no observer callbacks; pending=%d", pending)
+	}
+	attempt.mu.Lock()
+	completed := attempt.completed
+	failed := attempt.failed
+	attempt.mu.Unlock()
+	if completed || failed == nil {
+		t.Fatalf("attempt terminal completed=%t failed=%v, want retained failure evidence", completed, failed)
+	}
+	if !strings.Contains(failed.Error(), "transport refused before observation") &&
+		!strings.Contains(failed.Error(), "no completion source") {
+		t.Fatalf("attempt failure = %v, want transport or no-source evidence", failed)
+	}
+	// The gap must be persisted as its own incomplete-evidence event, so the
+	// capture can never be read as raw-complete for this attempt.
+	if !containsString(attempt.terminations, captureTerminationNoSource+":"+captureNoSourceNeverStarted+": capture observer has no completion source: no response completion observed") {
+		t.Fatalf("attempt terminations = %v, want an explicit %s evidence event", attempt.terminations, captureTerminationNoSource)
+	}
+}
+
+func TestCaptureFinishForwardDrainsInFlightCallback(t *testing.T) {
+	// The fake store blocks inside AppendResponseBody, which is the same door a
+	// queued provider callback goes through. No production test hook is needed
+	// to hold a callback in flight while the forward returns.
+	bodyBlock := make(chan struct{})
+	bodyEntered := make(chan struct{})
+	attempt := &captureTestAttempt{bodyBlock: bodyBlock, bodyEntered: bodyEntered}
+	observer := newCaptureHTTPObserver(attempt, "attempt-1")
+	capture := &dataPlaneCapture{}
+	observer.BeginHTTPObservation("attempt-1")
+	go func() {
+		observer.ObserveResponseBody("attempt-1", []byte("queued-body"))
+		observer.ObserveResponseComplete("attempt-1", nil, nil)
+		observer.EndHTTPObservation("attempt-1")
+	}()
+	select {
+	case <-bodyEntered:
+	case <-time.After(time.Second):
+		t.Fatal("queued observation callback never reached the store")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		capture.finishForward(attempt, observer, UpstreamResult{
+			DispatchState:  execution.DispatchMaybeSent,
+			RequestWritten: true,
+		})
+		close(done)
+	}()
+	time.Sleep(25 * time.Millisecond)
+	attempt.mu.Lock()
+	settled := attempt.completed || attempt.failed != nil
+	attempt.mu.Unlock()
+	if settled {
+		t.Fatal("attempt finalized while an admitted callback was still in flight")
+	}
+	close(bodyBlock)
+	if !waitForCapture(t, func() bool {
+		attempt.mu.Lock()
+		defer attempt.mu.Unlock()
+		return attempt.completed || attempt.failed != nil
+	}) {
+		t.Fatal("in-flight callback was never drained")
+	}
+	if !bytes.Contains(attempt.responseBodyValue(), []byte("queued-body")) {
+		t.Fatalf("raw response body = %q, want drained observation", attempt.responseBodyValue())
+	}
+	if observer.failureValue() != nil {
+		t.Fatalf("drained callback failed: %v", observer.failureValue())
+	}
+	<-done
+}
+
 func TestCaptureObserverWaitsForOrderedDrain(t *testing.T) {
 	attempt := &captureTestAttempt{}
 	observer := newCaptureHTTPObserver(attempt)
@@ -391,16 +495,24 @@ func TestCaptureObserverWaitsForOrderedDrain(t *testing.T) {
 }
 
 func TestCaptureObserverWaitsForAsynchronousCompletion(t *testing.T) {
+	// Mirrors the production fork ordering exactly: the observation source is
+	// begun before the provider task runs, the task emits its callbacks, and the
+	// source is ended after the completion callback returned. The observer must
+	// neither return early nor lose the queued bytes.
 	attempt := &captureTestAttempt{}
-	observer := newCaptureHTTPObserver(attempt)
+	observer := newCaptureHTTPObserver(attempt, "attempt-1")
+	observer.BeginHTTPObservation("attempt-1")
 	observer.AwaitCompletion()
 
 	release := make(chan struct{})
+	delivered := make(chan struct{})
 	go func() {
 		<-release
 		observer.ObserveRequest("attempt-1", &http.Request{Header: http.Header{"X-Test": {"request"}}})
 		observer.ObserveResponse("attempt-1", http.StatusOK, http.Header{"X-Test": {"response"}})
 		observer.ObserveResponseComplete("attempt-1", nil, nil)
+		observer.EndHTTPObservation("attempt-1")
+		close(delivered)
 	}()
 
 	waited := make(chan struct{})
@@ -414,10 +526,22 @@ func TestCaptureObserverWaitsForAsynchronousCompletion(t *testing.T) {
 	default:
 	}
 	close(release)
-	<-waited
-	if !bytes.Contains(attempt.request, []byte("X-Test: request")) ||
-		!bytes.Contains(attempt.response, []byte("X-Test: response")) {
-		t.Fatalf("asynchronous capture was not drained: request=%q response=%q", attempt.request, attempt.response)
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("queued observation callbacks were never delivered")
+	}
+	select {
+	case <-waited:
+	case <-time.After(time.Second):
+		t.Fatal("registered asynchronous completion was not drained")
+	}
+	attempt.mu.Lock()
+	request, response := append([]byte(nil), attempt.request...), append([]byte(nil), attempt.response...)
+	attempt.mu.Unlock()
+	if !bytes.Contains(request, []byte("X-Test: request")) ||
+		!bytes.Contains(response, []byte("X-Test: response")) {
+		t.Fatalf("asynchronous capture was not drained: request=%q response=%q", request, response)
 	}
 }
 
@@ -879,7 +1003,7 @@ func TestCaptureInitializationDoesNotBlockDataPlane(t *testing.T) {
 
 func TestCaptureDeferredPreparationFinalizationDoesNotBlockDataPlane(t *testing.T) {
 	factory := &blockingCaptureFactory{started: make(chan struct{}), release: make(chan struct{})}
-	capture := newDeferredDataPlaneCapture(factory, CaptureSessionMetadata{Method: http.MethodGet, Path: "/v1/models"})
+	capture := newDeferredDataPlaneCapture(factory, CaptureSessionMetadata{Method: http.MethodGet, Path: "/v1/models"}, context.Background())
 	finished := make(chan struct{})
 	go func() {
 		capture.finishPreparationAttempt(CaptureAttemptMetadata{
@@ -1405,3 +1529,92 @@ func (*bareCaptureSession) Fail(error) error { return nil }
 func (*bareCaptureSession) Wait()            {}
 
 func (w *capabilityResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseRecorder }
+
+// A cancelled request context before the provider can ever run a callback must
+// not leave the forward waiting for an observation that never starts.
+func TestCaptureFinishForwardCancelledBeforeObservationDoesNotLeakPending(t *testing.T) {
+	ready := make(chan struct{})
+	close(ready)
+	session := &captureTestSession{}
+	requestContext, cancel := context.WithCancel(context.Background())
+	capture := &dataPlaneCapture{session: session, sessionReady: ready, requestContext: requestContext}
+	attempt := &captureTestAttempt{}
+	observer := newCaptureHTTPObserver(attempt, "attempt-1")
+	capture.beginForwardCapture()
+	cancel()
+
+	if err := capture.finalize(requestContext); err != nil {
+		t.Fatal(err)
+	}
+	capture.finishForward(attempt, observer, UpstreamResult{
+		DispatchState:  execution.DispatchMaybeSent,
+		RequestWritten: true,
+		Err:            context.Canceled,
+	})
+
+	if !waitForCapture(t, func() bool {
+		return session.isCompleted() || session.failureValue() != nil
+	}) {
+		capture.mu.Lock()
+		pending := capture.pending
+		capture.mu.Unlock()
+		t.Fatalf("cancelled request before observation never finalized; pending=%d", pending)
+	}
+	attempt.mu.Lock()
+	completed := attempt.completed
+	failed := attempt.failed
+	attempt.mu.Unlock()
+	if completed || failed == nil {
+		t.Fatalf("attempt terminal completed=%t failed=%v, want retained cancellation evidence", completed, failed)
+	}
+	if !strings.Contains(failed.Error(), "context canceled") &&
+		!strings.Contains(failed.Error(), "no completion source") {
+		t.Fatalf("attempt failure = %v, want cancellation or no-source evidence", failed)
+	}
+	if !containsString(attempt.terminations, captureTerminationNoSource+":"+captureNoSourceNeverStarted+": capture observer has no completion source: no response completion observed") {
+		t.Fatalf("attempt terminations = %v, want an explicit %s evidence event", attempt.terminations, captureTerminationNoSource)
+	}
+}
+
+// The production fork begins the observation source before the provider task
+// runs and ends it after the final completion callback. The capture observer
+// must therefore be able to wait for a source that started, and must stop
+// waiting when the source ends even if the response never completed.
+func TestCaptureObserverHonorsProductionObservationLifecycle(t *testing.T) {
+	attempt := &captureTestAttempt{}
+	observer := newCaptureHTTPObserver(attempt, "attempt-1")
+	if _, ok := interface{}(observer).(execution.HTTPObservationLifecycle); !ok {
+		t.Fatal("capture observer does not implement execution.HTTPObservationLifecycle")
+	}
+	observer.BeginHTTPObservation("attempt-1")
+	observer.AwaitCompletion()
+
+	waited := make(chan struct{})
+	go func() {
+		observer.Wait()
+		close(waited)
+	}()
+	select {
+	case <-waited:
+		t.Fatal("observer stopped waiting while its observation source was open")
+	case <-time.After(20 * time.Millisecond):
+	}
+	// Ending the source without a completion callback means the provider task
+	// finished emitting; the attempt must finalize with explicit evidence that
+	// no raw response bytes were observed.
+	observer.EndHTTPObservation("attempt-1")
+	select {
+	case <-waited:
+	case <-time.After(time.Second):
+		t.Fatal("observer did not stop waiting after its source ended")
+	}
+	if !strings.Contains(observer.failureValue().Error(), "no completion source") {
+		t.Fatalf("observer failure = %v, want missing completion evidence", observer.failureValue())
+	}
+	if !containsString(attempt.terminations, captureTerminationNoSource+":"+captureNoSourceEndedIncomplete+": capture observer has no completion source: no response completion observed") {
+		t.Fatalf("attempt terminations = %v, want an explicit %s evidence event", attempt.terminations, captureTerminationNoSource)
+	}
+	if attempt.completed {
+		t.Fatal("attempt completed although no completion callback was observed")
+	}
+}

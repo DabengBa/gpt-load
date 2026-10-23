@@ -211,6 +211,7 @@ func (r *Runtime) Health() (Health, error) {
 	}
 	r.mu.Lock()
 	running := r.enabled && r.started && !r.stopping && !r.startFailed
+	admissionFull := r.activeSessions >= maxActiveCaptureSessions
 	r.mu.Unlock()
 	r.statsMu.RLock()
 	lastSweepAt := r.lastSweepAt
@@ -241,6 +242,9 @@ func (r *Runtime) Health() (Health, error) {
 	result.Active = counts.Active
 	result.Completed = counts.Completed
 	result.Failed = counts.Failed
+	if admissionFull {
+		result.Error = "session_limit_reached"
+	}
 	return result, nil
 }
 

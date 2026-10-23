@@ -41,6 +41,17 @@ type HTTPObserverTermination interface {
 	ObserveResponseTermination(attemptID string, termination string, detail string)
 }
 
+// HTTPObserverLifecycle is an optional extension. When the observer implements
+// it, this fork brackets exactly one observation source per real send: begin is
+// called before any callback can be emitted and end after the final completion
+// callback returns. An observer therefore never has to wait for a callback that
+// this fork could not start, while a started source is always closed even on
+// early client cancellation.
+type HTTPObserverLifecycle interface {
+	BeginHTTPObservation(attemptID string)
+	EndHTTPObservation(attemptID string)
+}
+
 // Termination values reported through HTTPObserverTermination.
 const (
 	TerminationEOF            = "eof"
@@ -80,6 +91,7 @@ const (
 type httpObserverState struct {
 	observer    HTTPObserver
 	termination HTTPObserverTermination
+	lifecycle   HTTPObserverLifecycle
 	attemptID   string
 
 	mu                 sync.Mutex
@@ -107,7 +119,29 @@ func newHTTPObserverState(ctx context.Context) *httpObserverState {
 	if termination, ok := observer.(HTTPObserverTermination); ok {
 		state.termination = termination
 	}
+	if lifecycle, ok := observer.(HTTPObserverLifecycle); ok {
+		state.lifecycle = lifecycle
+		// The observation source starts here, before any callback of this send
+		// can be emitted, so the observer never waits for a source that does not
+		// exist. endLifecycle in complete() closes it exactly once.
+		func() {
+			defer recoverObserverPanic()
+			lifecycle.BeginHTTPObservation(attemptID)
+		}()
+	}
 	return state
+}
+
+// endLifecycle closes the observation source opened by newHTTPObserverState.
+// It runs after the completion callback returned (or after a send that never
+// produced one), so an observer that drains its callback queue sees a source
+// that is already closed instead of waiting for one that will never arrive.
+func (s *httpObserverState) endLifecycle() {
+	if s == nil || s.lifecycle == nil {
+		return
+	}
+	defer recoverObserverPanic()
+	s.lifecycle.EndHTTPObservation(s.attemptID)
 }
 
 // attachToContext makes the state discoverable by later read sites that receive
@@ -213,6 +247,9 @@ func (s *httpObserverState) complete(err error, termination string) {
 		s.mu.Lock()
 		s.completed = true
 		s.mu.Unlock()
+		// The source is closed after the final callback below, so a late
+		// completion wrapper cannot reopen it and a drain never depends on it.
+		defer s.endLifecycle()
 		if s.termination != nil {
 			func() {
 				defer recoverObserverPanic()

@@ -1431,7 +1431,7 @@
 +			return "", false
 --- a/providers/utils/http_observer.go
 +++ b/providers/utils/http_observer.go
-@@ -0,0 +1,621 @@
+@@ -0,0 +1,658 @@
 +package utils
 +
 +import (
@@ -1475,6 +1475,17 @@
 +	ObserveResponseTermination(attemptID string, termination string, detail string)
 +}
 +
++// HTTPObserverLifecycle is an optional extension. When the observer implements
++// it, this fork brackets exactly one observation source per real send: begin is
++// called before any callback can be emitted and end after the final completion
++// callback returns. An observer therefore never has to wait for a callback that
++// this fork could not start, while a started source is always closed even on
++// early client cancellation.
++type HTTPObserverLifecycle interface {
++	BeginHTTPObservation(attemptID string)
++	EndHTTPObservation(attemptID string)
++}
++
 +// Termination values reported through HTTPObserverTermination.
 +const (
 +	TerminationEOF            = "eof"
@@ -1514,6 +1525,7 @@
 +type httpObserverState struct {
 +	observer    HTTPObserver
 +	termination HTTPObserverTermination
++	lifecycle   HTTPObserverLifecycle
 +	attemptID   string
 +
 +	mu                 sync.Mutex
@@ -1541,7 +1553,29 @@
 +	if termination, ok := observer.(HTTPObserverTermination); ok {
 +		state.termination = termination
 +	}
++	if lifecycle, ok := observer.(HTTPObserverLifecycle); ok {
++		state.lifecycle = lifecycle
++		// The observation source starts here, before any callback of this send
++		// can be emitted, so the observer never waits for a source that does not
++		// exist. endLifecycle in complete() closes it exactly once.
++		func() {
++			defer recoverObserverPanic()
++			lifecycle.BeginHTTPObservation(attemptID)
++		}()
++	}
 +	return state
++}
++
++// endLifecycle closes the observation source opened by newHTTPObserverState.
++// It runs after the completion callback returned (or after a send that never
++// produced one), so an observer that drains its callback queue sees a source
++// that is already closed instead of waiting for one that will never arrive.
++func (s *httpObserverState) endLifecycle() {
++	if s == nil || s.lifecycle == nil {
++		return
++	}
++	defer recoverObserverPanic()
++	s.lifecycle.EndHTTPObservation(s.attemptID)
 +}
 +
 +// attachToContext makes the state discoverable by later read sites that receive
@@ -1647,6 +1681,9 @@
 +		s.mu.Lock()
 +		s.completed = true
 +		s.mu.Unlock()
++		// The source is closed after the final callback below, so a late
++		// completion wrapper cannot reopen it and a drain never depends on it.
++		defer s.endLifecycle()
 +		if s.termination != nil {
 +			func() {
 +				defer recoverObserverPanic()
@@ -2055,7 +2092,7 @@
 +}
 --- a/providers/utils/http_observer_test.go
 +++ b/providers/utils/http_observer_test.go
-@@ -0,0 +1,1419 @@
+@@ -0,0 +1,1644 @@
 +package utils
 +
 +import (
@@ -3475,6 +3512,231 @@
 +		t.Fatal("read-error termination must be marked incomplete (non-nil error)")
 +	}
 +}
++
++// lifecycleObserver records the bracketed observation source around callbacks.
++type lifecycleObserver struct {
++	recordingObserver
++	lifecycle []string
++}
++
++func (o *lifecycleObserver) record(kind string) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	o.lifecycle = append(o.lifecycle, kind)
++}
++
++func (o *lifecycleObserver) BeginHTTPObservation(id string) {
++	if id != testAttemptID {
++		panic("unexpected attempt id " + id)
++	}
++	o.record("begin")
++}
++
++func (o *lifecycleObserver) EndHTTPObservation(id string) {
++	if id != testAttemptID {
++		panic("unexpected attempt id " + id)
++	}
++	o.record("end")
++}
++
++func (o *lifecycleObserver) ObserveResponseComplete(id string, headers http.Header, err error) {
++	o.record("complete")
++	o.recordingObserver.ObserveResponseComplete(id, headers, err)
++}
++
++func (o *lifecycleObserver) lifecycleEvents() []string {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	return append([]string(nil), o.lifecycle...)
++}
++
++func TestMakeRequestWithContextBracketsObservationSource(t *testing.T) {
++	client, cleanup := startServer(t, func(ctx *fasthttp.RequestCtx) {
++		ctx.SetStatusCode(200)
++		ctx.SetBody([]byte(`{"ok":true}`))
++	})
++	defer cleanup()
++
++	observer := &lifecycleObserver{}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat")
++	req.SetBody([]byte(`{}`))
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++
++	if _, bifrostErr, wait := MakeRequestWithContext(ctx, client, req, resp); bifrostErr != nil {
++		t.Fatalf("unexpected error: %v", bifrostErr)
++	} else {
++		wait()
++	}
++
++	events := observer.lifecycleEvents()
++	if len(events) < 3 {
++		t.Fatalf("lifecycle events = %v, want begin, complete, end", events)
++	}
++	if events[0] != "begin" {
++		t.Fatalf("first lifecycle event = %q, want begin before any callback", events[0])
++	}
++	if events[len(events)-1] != "end" {
++		t.Fatalf("last lifecycle event = %q, want end after the final callback", events[len(events)-1])
++	}
++	seenComplete := false
++	for _, event := range events {
++		if event == "complete" {
++			seenComplete = true
++			continue
++		}
++		if seenComplete && event != "end" {
++			t.Fatalf("lifecycle event %q arrived after completion but before end: %v", event, events)
++		}
++	}
++	if !seenComplete {
++		t.Fatalf("lifecycle events = %v, want a completion callback", events)
++	}
++}
++
++func TestMakeRequestWithContextEndsSourceOnSendFailure(t *testing.T) {
++	// No listener accepts the connection, so the send fails before any
++	// response callback. The source must still be closed exactly once.
++	client := &fasthttp.Client{
++		Dial: func(string) (net.Conn, error) { return nil, errors.New("dial refused") },
++	}
++	observer := &lifecycleObserver{}
++	ctx := newObserverContext(observer)
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat")
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++
++	_, _, wait := MakeRequestWithContext(ctx, client, req, resp)
++	wait()
++
++	events := observer.lifecycleEvents()
++	begins, ends := 0, 0
++	for _, event := range events {
++		switch event {
++		case "begin":
++			begins++
++		case "end":
++			ends++
++		}
++	}
++	if begins != 1 || ends != 1 {
++		t.Fatalf("lifecycle events = %v, want exactly one begin and one end", events)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("completion count = %d, want the single no-response completion", observer.completionCount())
++	}
++}
++
++// A fired first-token abort returns before the transport runs, so no response
++// callback can be emitted. The observation source must still be closed, and the
++// observer must learn that this attempt produced no transport evidence.
++func TestDoHTTPRequestAbortFiredClosesObservationSource(t *testing.T) {
++	observer := &lifecycleObserver{}
++	ctx := newObserverContext(observer)
++	abort := NewAttemptAbort(time.Minute)
++	abort.Expire()
++	ctx.SetValue(schemas.BifrostContextKeyStreamAttemptAbort, abort)
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://example.invalid/v1/chat", bytes.NewReader([]byte(`{}`)))
++	if err != nil {
++		t.Fatalf("new request: %v", err)
++	}
++
++	resp, err := DoHTTPRequest(&http.Client{}, req)
++	if resp != nil {
++		_ = resp.Body.Close()
++	}
++	if !errors.Is(err, ErrStreamFirstTokenTimeout) {
++		t.Fatalf("DoHTTPRequest error = %v, want the first-token timeout", err)
++	}
++
++	events := observer.lifecycleEvents()
++	begins, ends := 0, 0
++	for _, event := range events {
++		switch event {
++		case "begin":
++			begins++
++		case "end":
++			ends++
++		}
++	}
++	if begins != 1 || ends != 1 {
++		t.Fatalf("lifecycle events = %v, want exactly one begin and one end after an early abort", events)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("completion count = %d, want one no-transport completion", observer.completionCount())
++	}
++	if observer.lastTermination() != TerminationNoResponse {
++		t.Fatalf("termination = %q, want %q", observer.lastTermination(), TerminationNoResponse)
++	}
++}
++
++// A context cancelled before the fasthttp send produces no response. The
++// observation source must still close exactly once, and the observer must not be
++// told that a response was observed.
++func TestMakeRequestWithContextCancelledContextClosesObservationSource(t *testing.T) {
++	parent := schemas.NewBifrostContext(context.Background(), schemas.NoDeadline)
++	observer := &lifecycleObserver{}
++	parent.SetValue(httpObserverContextKey, observer)
++	parent.SetValue(httpAttemptIDContextKey, testAttemptID)
++	cancelContext, cancel := context.WithCancel(parent)
++
++	req := fasthttp.AcquireRequest()
++	defer fasthttp.ReleaseRequest(req)
++	req.Header.SetMethod(fasthttp.MethodPost)
++	req.SetRequestURI("http://example.invalid/v1/chat")
++	resp := fasthttp.AcquireResponse()
++	defer fasthttp.ReleaseResponse(resp)
++
++	// The client never dials: the caller-side cancellation is what ends the
++	// request, which is the pre-send path under test.
++	dialed := make(chan struct{}, 1)
++	client := &fasthttp.Client{
++		Dial: func(string) (net.Conn, error) {
++			select {
++			case dialed <- struct{}{}:
++			default:
++			}
++			return nil, errors.New("dial refused")
++		},
++	}
++	cancel()
++	_, bifrostErr, wait := MakeRequestWithContext(cancelContext, client, req, resp)
++	wait()
++	if bifrostErr == nil {
++		t.Fatal("cancelled request reported no Bifrost error")
++	}
++
++	events := observer.lifecycleEvents()
++	begins, ends := 0, 0
++	for _, event := range events {
++		switch event {
++		case "begin":
++			begins++
++		case "end":
++			ends++
++		}
++	}
++	if begins != 1 || ends != 1 {
++		t.Fatalf("lifecycle events = %v, want exactly one begin and one end", events)
++	}
++	if observer.completionCount() != 1 {
++		t.Fatalf("completion count = %d, want one no-response completion", observer.completionCount())
++	}
++	observer.mu.Lock()
++	responses := len(observer.responses)
++	observer.mu.Unlock()
++	if responses != 0 {
++		t.Fatalf("response events = %d, want none for a cancelled request", responses)
++	}
++}
 --- a/providers/utils/largeresponse.go
 +++ b/providers/utils/largeresponse.go
 @@ -59,0 +60,5 @@
@@ -3777,31 +4039,37 @@
 +		state.attachToContext(req.Context())
 +		state.observeHTTPRequest(req)
 +	}
-@@ -565,0 +617 @@
+@@ -549,0 +601,5 @@
++			// The transport never runs on this path, so no response callback can
++			// be emitted. Complete the observation as a no-response attempt so
++			// the source is closed and the observer learns it has no transport
++			// evidence, instead of waiting for a completion that cannot arrive.
++			state.complete(ErrStreamFirstTokenTimeout, TerminationNoResponse)
+@@ -565,0 +622 @@
 +	state.observeHTTPResponse(resp, err)
-@@ -567,0 +620,5 @@
+@@ -567,0 +625,5 @@
 +		// Observation sits outside the timing wrapper so the observer never
 +		// observes timing-internal reads, and the timing wrapper stays inner
 +		// (NewIdleTimeoutReader unwraps it; it would not unwrap an observer
 +		// wrapper, so timing must not be hidden behind the observer).
 +		resp.Body = state.wrapReadCloser(resp.Body)
-@@ -2206 +2263 @@
+@@ -2206 +2268 @@
 -func DecompressStreamBody(resp *fasthttp.Response) (io.Reader, func()) {
 +func DecompressStreamBody(ctx context.Context, resp *fasthttp.Response) (io.Reader, func()) {
-@@ -2212,0 +2270,4 @@
+@@ -2212,0 +2275,4 @@
 +	// Observe the raw transport body stream (transfer framing already removed
 +	// by fasthttp, Content-Encoding decoding not yet applied) so that the same
 +	// bytes are seen by the parser reader and, later, by the release drain.
 +	bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
-@@ -3870,0 +3932,5 @@
+@@ -3870,0 +3937,5 @@
 +				// Label and complete the attempt for the raw-layer observer. A parser that
 +				// returned early leaves no pending Read for ReleaseStreamingResponse to
 +				// drain, so the close owner owns the termination evidence. Observation-only.
 +				state := httpObserverStateFromContext(ctx)
 +				state.markPendingTermination(TerminationTimeout)
-@@ -3871,0 +3938 @@
+@@ -3871,0 +3943 @@
 +				state.completeIncomplete(ErrStreamFirstTokenTimeout, TerminationTimeout)
-@@ -3896,0 +3964,8 @@
+@@ -3896,0 +3969,8 @@
 +				// Leave a semantic termination label for the raw-layer observer, which
 +				// sees the transport error produced by the close below.
 +				termination := TerminationCancel
@@ -3810,7 +4078,7 @@
 +				}
 +				state := httpObserverStateFromContext(ctx)
 +				state.markPendingTermination(termination)
-@@ -3897,0 +3973,7 @@
+@@ -3897,0 +3978,7 @@
 +				// The close owner also owns the completion. A parser that returned early
 +				// ([DONE]/finish_reason/protocol error) leaves no pending Read, and
 +				// ReleaseStreamingResponse then skips its drain, so without this the
@@ -3818,16 +4086,16 @@
 +				// stream is already closed above, nothing is drained and the close is not
 +				// delayed.
 +				state.completeIncomplete(ctx.Err(), termination)
-@@ -3906,0 +3989,6 @@
+@@ -3906,0 +3994,6 @@
 +					termination := TerminationCancel
 +					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 +						termination = TerminationTimeout
 +					}
 +					state := httpObserverStateFromContext(ctx)
 +					state.markPendingTermination(termination)
-@@ -3907,0 +3996 @@
+@@ -3907,0 +4001 @@
 +					state.completeIncomplete(ctx.Err(), termination)
-@@ -4029,0 +4119,8 @@
+@@ -4029,0 +4124,8 @@
 +			state := httpObserverStateFromContext(r.ctx)
 +			state.markPendingTermination(TerminationIdleTimeout)
 +			// The idle timer owns this teardown, so it also owns exactly-once
@@ -3836,18 +4104,18 @@
 +			// timer's already-released stream and is observation-only: nothing is
 +			// drained and the close is not delayed.
 +			defer state.completeIncomplete(ErrStreamIdleTimeout, TerminationIdleTimeout)
-@@ -4520,0 +4618,4 @@
+@@ -4520,0 +4623,4 @@
 +		// No stream remains (buffered response already observed by the send
 +		// helper, or the stream was detached by a materializing read). Still
 +		// guarantee an exactly-once termination for an unfinished state.
 +		httpObserverStateFromContext(ctx).completePending()
-@@ -4531,0 +4633,5 @@
+@@ -4531,0 +4638,5 @@
 +		// Another owner (cancel/timeout/idle) already closed the stream and
 +		// skipped the drain. Complete any still-unfinished observation so the
 +		// attempt emits exactly one termination without a second close, a
 +		// drain, or a delayed close.
 +		httpObserverStateFromContext(ctx).completePending()
-@@ -4547,0 +4654,10 @@
+@@ -4547,0 +4659,10 @@
 +		// This close owner labels and completes the observation exactly as the
 +		// cancellation goroutine does: a parser that already returned leaves no
 +		// pending Read, so without this the attempt would carry no termination
@@ -3858,14 +4126,14 @@
 +		}
 +		state := httpObserverStateFromContext(ctx)
 +		state.markPendingTermination(termination)
-@@ -4548,0 +4665 @@
+@@ -4548,0 +4670 @@
 +		state.completeIncomplete(ctx.Err(), termination)
-@@ -4568,0 +4686,2 @@
+@@ -4568,0 +4691,2 @@
 +			state := httpObserverStateFromContext(ctx)
 +			state.markPendingTermination(TerminationClosed)
-@@ -4569,0 +4689 @@
+@@ -4569,0 +4694 @@
 +			state.completeIncomplete(errStreamParkedAfterFinish, TerminationClosed)
-@@ -4570,0 +4691,10 @@
+@@ -4570,0 +4696,10 @@
 +		}
 +		// The drain reads through the same request-scoped observer wrapper that the
 +		// parser used (both wrap resp.BodyStream() at the raw transport layer), so

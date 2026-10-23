@@ -80,6 +80,18 @@ type captureResponseTerminationEvents interface {
 	RecordResponseTermination(string, string) error
 }
 
+// captureTerminationNoSource marks an attempt where no provider completion
+// callback arrived, so its capture cannot be treated as a complete exchange.
+const captureTerminationNoSource = "no_observation_source"
+
+// The persisted detail distinguishes the two reasons a completion is missing.
+// Neither one asserts anything about bytes the provider may have sent: only the
+// absence of the callback that would prove what was exchanged.
+const (
+	captureNoSourceNeverStarted    = "provider observation source never started; no completion callback was possible"
+	captureNoSourceEndedIncomplete = "provider observation source started and ended without a completion callback"
+)
+
 type captureResponseHijackEvents interface {
 	RecordResponseHijack(error) error
 }
@@ -95,6 +107,7 @@ type dataPlaneCapture struct {
 	clientAttempt    CaptureAttempt
 	factory          CaptureFactory
 	initial          CaptureSessionMetadata
+	requestContext   context.Context
 	sessionReady     chan struct{}
 	sessionMu        sync.Mutex
 	initErr          error
@@ -117,11 +130,16 @@ type dataPlaneCapture struct {
 	finalizeOnce     sync.Once
 }
 
-func newDeferredDataPlaneCapture(factory CaptureFactory, metadata CaptureSessionMetadata) *dataPlaneCapture {
+func newDeferredDataPlaneCapture(
+	factory CaptureFactory,
+	metadata CaptureSessionMetadata,
+	requestContext context.Context,
+) *dataPlaneCapture {
 	capture := &dataPlaneCapture{
-		factory:      factory,
-		initial:      metadata,
-		sessionReady: make(chan struct{}),
+		factory:        factory,
+		initial:        metadata,
+		requestContext: requestContext,
+		sessionReady:   make(chan struct{}),
 	}
 	capture.clientAttempt = capture.startAttempt(CaptureAttemptMetadata{
 		AttemptID: "client",
@@ -919,7 +937,7 @@ func captureDataPlaneRequest(handler *Handler, ginContext *gin.Context) {
 	if request.URL != nil {
 		metadata.Path = request.URL.Path
 	}
-	capture := newDeferredDataPlaneCapture(handler.captureFactory, metadata)
+	capture := newDeferredDataPlaneCapture(handler.captureFactory, metadata, request.Context())
 	// Install the coordinator before any asynchronous storage work so route
 	// terminal hooks cannot create a second capture after an init failure.
 	ginContext.Set(captureContextKey, capture)
@@ -964,11 +982,7 @@ func finalizeDataPlaneCapture(ginContext *gin.Context) error {
 	if !ok || capture == nil {
 		return nil
 	}
-	var requestContext context.Context
-	if ginContext.Request != nil {
-		requestContext = ginContext.Request.Context()
-	}
-	return capture.finalize(requestContext)
+	return capture.finalize(capture.requestContext)
 }
 
 func captureFromContext(ginContext *gin.Context) *dataPlaneCapture {
@@ -1144,6 +1158,8 @@ type captureHTTPObserver struct {
 	failure             error
 	failureSink         func(error)
 	active              int
+	observations        int
+	sourceStarted       bool
 	complete            bool
 	await               bool
 	stopped             bool
@@ -1179,6 +1195,37 @@ func notifyCaptureFailure(sink func(error), err error) {
 	}
 	defer func() { _ = recover() }()
 	sink(err)
+}
+
+// BeginHTTPObservation registers that a provider observation source started.
+// AwaitCompletion is scoped to that source: without a registration no callback
+// can ever arrive, so waiting for one would leak the forward barrier forever.
+func (observer *captureHTTPObserver) BeginHTTPObservation(id string) {
+	if observer == nil || observer.attempt == nil || id != observer.expected {
+		return
+	}
+	observer.mu.Lock()
+	if observer.stopped {
+		observer.mu.Unlock()
+		return
+	}
+	observer.observations++
+	observer.sourceStarted = true
+	observer.cond.Broadcast()
+	observer.mu.Unlock()
+}
+
+// EndHTTPObservation releases one registered observation source.
+func (observer *captureHTTPObserver) EndHTTPObservation(id string) {
+	if observer == nil || id != observer.expected {
+		return
+	}
+	observer.mu.Lock()
+	if observer.observations > 0 {
+		observer.observations--
+	}
+	observer.cond.Broadcast()
+	observer.mu.Unlock()
 }
 
 func (observer *captureHTTPObserver) AwaitCompletion() {
@@ -1447,12 +1494,54 @@ func (observer *captureHTTPObserver) Wait() {
 		return
 	}
 	observer.mu.Lock()
-	for observer.active != 0 || (observer.await && !observer.complete) {
+	// An open observation source may still deliver queued callbacks, and an
+	// admitted callback is still running. Both must drain before terminal state;
+	// the source closes after its final completion callback, so this can never
+	// wait on a source that will not emit.
+	for observer.observations != 0 || observer.active != 0 {
 		observer.cond.Wait()
+	}
+	if observer.await && !observer.complete {
+		// Nothing is in flight and every source this attempt started has ended,
+		// yet no completion callback arrived. Only the callback can prove what
+		// the provider exchanged, so the capture cannot be reported as a
+		// complete exchange. Waiting any longer would block on a callback that
+		// cannot arrive.
+		detail := captureNoSourceNeverStarted
+		if observer.sourceStarted {
+			detail = captureNoSourceEndedIncomplete
+		}
+		err := errors.New("capture observer has no completion source: no response completion observed")
+		observer.complete = true
+		observer.cond.Broadcast()
+		observer.mu.Unlock()
+		observer.recordNoCompletionSource(detail, err)
+		observer.mu.Lock()
+		observer.failLocked(err)
 	}
 	observer.stopped = true
 	observer.cond.Broadcast()
 	observer.mu.Unlock()
+}
+
+// recordNoCompletionSource persists which kind of missing completion this
+// attempt hit. It runs outside observer.mu because the store append is an
+// arbitrary implementation.
+func (observer *captureHTTPObserver) recordNoCompletionSource(detail string, cause error) {
+	defer observer.recoverCallback()
+	if termination, ok := observer.attempt.(captureResponseTerminationEvents); ok {
+		if err := termination.RecordResponseTermination(
+			captureTerminationNoSource,
+			detail+": "+cause.Error(),
+		); err != nil {
+			observer.recordFailure(err)
+		}
+		return
+	}
+	observer.recordFailure(errors.Join(
+		cause,
+		errors.New("capture attempt cannot record missing observation source"),
+	))
 }
 
 func serializeHeaders(headers http.Header) []byte {
