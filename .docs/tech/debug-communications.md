@@ -109,8 +109,9 @@ raw capture 只记录 Gateway、支持的 provider observer 或 transport reader
 
 1. 读取 health：`running` 为 `true`、`error` 为 `session_limit_reached`，而 `active` 可能为 `0`。`active/completed/failed` 统计的是未过期的数据库行，不是内存中的准入槽位；名额耗尽与过期清理已完成可以同时发生。
 2. 用 `GET /api/debug-captures?state=active` 查看仍未终结的会话。如果 `active` 为 `0` 却仍报名额耗尽，说明槽位被运行期持有的会话占用，而不是被持久化行占用。
-3. 用 `state` 过滤查到的每个会话，按 `GET /api/debug-captures/:capture_id` 检查 attempt：`termination` 中含有 `no_observation_source` 表示该 attempt 没有收到 Provider 完成回调，事件 detail 会写明是“来源从未启动”还是“来源启动后未完成”。这类 attempt 不包含可用的原始响应字节。
-4. 如果会话长期停在 `active` 且没有对应 attempt 的 `no_observation_source`，先确认该会话对应的请求是否仍在处理中（`request_id` 关联 structured request log）。请求未结束时等待其终结，不要通过重启掩盖。
-5. 修复后用一个新请求验证：新的 capture 应能创建并终结，且 `error` 字段清空。已过期的历史会话无法补回原始正文，结构化 request log 不能替代 raw body。
+3. `no_observation_source` 会终结 attempt，因此该会话通常是 `failed` 而不是 `active`；只用 `state=active` 查不到它。名额异常时同时查询 `state=failed`（必要时再查 `completed`），对每个会话按 `GET /api/debug-captures/:capture_id` 检查 attempt。
+4. `termination` 中含有 `no_observation_source` 表示该 attempt 没有收到 Provider 完成回调，事件 detail 会写明是“来源从未启动”还是“来源启动后未完成”。这只能说明无法据此证明一次完整的请求/响应对换，不等于该 attempt 没有记录任何响应字节：已完成观察的 body、header part 可能仍然存在。必须查看实际记录的 parts 与终止信息，并按「空完成排查顺序」判定证据是否完整。
+5. 如果会话长期停在 `active` 且其 attempt 没有 `no_observation_source`，先确认该会话对应的请求是否仍在处理中（`request_id` 关联 structured request log）。请求未结束时等待其终结，不要通过重启掩盖。
+6. 修复后用一个新请求验证：新的 capture 应能创建并终结，且 `error` 字段清空。已过期的历史会话无法补回原始正文，结构化 request log 不能替代 raw body。
 
 名额泄漏的回归证据是 `internal/debugcapture/runtime_test.go`（健康状态报告耗尽与释放后清除）与 `internal/gateway/capture_test.go`（无观察来源、提前取消、in-flight 回调排空后均不留下 pending），端到端为 `internal/container/debug_capture_lifecycle_test.go`。
