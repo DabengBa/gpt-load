@@ -51,7 +51,7 @@ func prepareGatewayProtocolProbe(
 		budget := probeOutputTokenBudget(spec)
 		path = "/v1beta/models/" + url.PathEscape(spec.UpstreamModel) + ":generateContent"
 		payload = map[string]any{
-			"contents":         []any{map[string]any{"role": "user", "parts": []map[string]string{{"text": probeQuestion}}}},
+			"contents":         []any{map[string]any{"role": "user", "parts": []map[string]string{{"text": probePromptText(spec)}}}},
 			"generationConfig": map[string]int{"maxOutputTokens": budget},
 		}
 	default:
@@ -82,7 +82,7 @@ func prepareGatewayProtocolProbe(
 
 func responsesProbePayload(spec execution.AttemptSpec) map[string]any {
 	return map[string]any{
-		"model": spec.UpstreamModel, "input": probeQuestion,
+		"model": spec.UpstreamModel, "input": probePromptText(spec),
 		"max_output_tokens": probeOutputTokenBudget(spec), "store": false, "stream": false,
 	}
 }

@@ -375,7 +375,9 @@ func appendExecutionTargets(
 	}
 	for _, clientProtocol := range descriptor.ClientProtocols {
 		for _, operation := range target.Operations(clientProtocol) {
-			if operation == execution.OperationListModels || operation == execution.OperationProbe {
+			// 控制面诊断操作（列举模型、测活、指纹挑战）不进入数据面候选索引。
+			if operation == execution.OperationListModels || operation == execution.OperationProbe ||
+				operation == execution.OperationModelTrace {
 				continue
 			}
 			mode, ok := target.Mode(clientProtocol, operation)

@@ -47,23 +47,31 @@ export type RequestLogPricingCompleteness =
 export type RequestLogRetryState = 'retried' | 'not_retried'
 export type RequestLogReceiptLineState = 'priced' | 'unpriced'
 export type RequestLogPageSize = 20 | 50 | 100
-export type RequestLogOperation =
-  | 'chat_completion'
-  | 'responses_create'
-  | 'responses_retrieve'
-  | 'responses_delete'
-  | 'responses_cancel'
-  | 'responses_input_items'
-  | 'responses_compact'
-  | 'responses_input_tokens'
-  | 'count_tokens'
-  | 'responses_passthrough'
-  | 'images_generate'
-  | 'images_edit'
-  | 'embeddings_create'
-  | 'rerank'
-  | 'list_models'
-  | 'probe'
+// Request-log operations are the client route operations plus the diagnostic
+// executions that only exist as real upstream requests (fingerprint
+// challenges). They are not channel routes, so they are listed here instead of
+// in the channel contract.
+export const requestLogOperationValues = [
+  'chat_completion',
+  'responses_create',
+  'responses_retrieve',
+  'responses_delete',
+  'responses_cancel',
+  'responses_input_items',
+  'responses_compact',
+  'responses_input_tokens',
+  'count_tokens',
+  'responses_passthrough',
+  'images_generate',
+  'images_edit',
+  'embeddings_create',
+  'rerank',
+  'list_models',
+  'probe',
+  'modeltrace',
+] as const
+
+export type RequestLogOperation = (typeof requestLogOperationValues)[number]
 export type RequestLogRouteMode = 'native' | 'converted'
 export type RequestLogDispatchState = 'not_sent' | 'maybe_sent'
 export type RequestLogUpstreamProtocol = ProtocolValue
@@ -282,24 +290,6 @@ const actions = [
   'cooldown_credential',
   'fail_credential',
   'skip_group',
-] as const
-const operations = [
-  'chat_completion',
-  'responses_create',
-  'responses_retrieve',
-  'responses_delete',
-  'responses_cancel',
-  'responses_input_items',
-  'responses_compact',
-  'responses_input_tokens',
-  'count_tokens',
-  'responses_passthrough',
-  'images_generate',
-  'images_edit',
-  'embeddings_create',
-  'rerank',
-  'list_models',
-  'probe',
 ] as const
 const routeModes = ['native', 'converted'] as const
 const dispatchStates = ['not_sent', 'maybe_sent'] as const
@@ -549,7 +539,8 @@ function projectAttempt(value: unknown): RequestLogAttemptDto {
         ? null
         : projectSafeInteger(record.credential_id, { minimum: 1 }),
     credential_name: projectString(record.credential_name, { allowEmpty: true }),
-    operation: record.operation === null ? null : projectEnum(record.operation, operations),
+    operation:
+      record.operation === null ? null : projectEnum(record.operation, requestLogOperationValues),
     route_mode: record.route_mode === null ? null : projectEnum(record.route_mode, routeModes),
     upstream_model: projectNullableModel(record.upstream_model),
     upstream_request_id: projectNullableModel(record.upstream_request_id),
@@ -669,7 +660,8 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
     completed_at_ms: projectEpochMilliseconds(record.completed_at_ms),
     access_key: projectAccessKey(record.access_key),
     protocol: projectEnum(record.protocol, enabledDataProtocols),
-    operation: record.operation === null ? null : projectEnum(record.operation, operations),
+    operation:
+      record.operation === null ? null : projectEnum(record.operation, requestLogOperationValues),
     upstream_protocol:
       record.upstream_protocol === null
         ? null

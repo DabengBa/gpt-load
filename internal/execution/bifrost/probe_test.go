@@ -15,6 +15,7 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/protocol"
+	"gpt-load/internal/usage"
 )
 
 func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
@@ -28,11 +29,11 @@ func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
 	}{
 		{
 			name: "openai chat string content", clientProtocol: protocol.OpenAICompletions,
-			body: `{"choices":[{"message":{"role":"assistant","content":"4"}}]}`, want: probeExtraction{present: true, valid: true},
+			body: `{"choices":[{"message":{"role":"assistant","content":"4"}}]}`, want: probeExtraction{present: true, valid: true, text: "4"},
 		},
 		{
 			name: "openai chat block content", clientProtocol: protocol.OpenAICompletions,
-			body: `{"choices":[{"message":{"role":"assistant","content":[{"type":"text","text":"4"}]}}]}`, want: probeExtraction{present: true, valid: true},
+			body: `{"choices":[{"message":{"role":"assistant","content":[{"type":"text","text":"4"}]}}]}`, want: probeExtraction{present: true, valid: true, text: "4"},
 		},
 		{
 			name: "openai chat empty content", clientProtocol: protocol.OpenAICompletions,
@@ -44,7 +45,7 @@ func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
 		},
 		{
 			name: "openai responses output text", clientProtocol: protocol.OpenAIResponses,
-			body: `{"output":[{"type":"message","content":[{"type":"output_text","text":"4"}]}]}`, want: probeExtraction{present: true, valid: true},
+			body: `{"output":[{"type":"message","content":[{"type":"output_text","text":"4"}]}]}`, want: probeExtraction{present: true, valid: true, text: "4"},
 		},
 		{
 			name: "openai responses only reasoning", clientProtocol: protocol.OpenAIResponses,
@@ -56,7 +57,7 @@ func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
 		},
 		{
 			name: "anthropic text content", clientProtocol: protocol.Anthropic,
-			body: `{"content":[{"type":"text","text":"4"}]}`, want: probeExtraction{present: true, valid: true},
+			body: `{"content":[{"type":"text","text":"4"}]}`, want: probeExtraction{present: true, valid: true, text: "4"},
 		},
 		{
 			name: "anthropic thinking only", clientProtocol: protocol.Anthropic,
@@ -68,7 +69,7 @@ func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
 		},
 		{
 			name: "gemini candidate part", clientProtocol: protocol.Gemini,
-			body: `{"candidates":[{"content":{"parts":[{"text":"4"}]}}]}`, want: probeExtraction{present: true, valid: true},
+			body: `{"candidates":[{"content":{"parts":[{"text":"4"}]}}]}`, want: probeExtraction{present: true, valid: true, text: "4"},
 		},
 		{
 			name: "gemini empty candidate", clientProtocol: protocol.Gemini,
@@ -80,7 +81,7 @@ func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
 		},
 		{
 			name: "gemini thought plus answer", clientProtocol: protocol.Gemini,
-			body: `{"candidates":[{"content":{"parts":[{"thought":true,"text":"internal reasoning"},{"text":"4"}]}}]}`, want: probeExtraction{present: true, valid: true},
+			body: `{"candidates":[{"content":{"parts":[{"thought":true,"text":"internal reasoning"},{"text":"4"}]}}]}`, want: probeExtraction{present: true, valid: true, text: "4"},
 		},
 		{
 			name: "gemini missing candidates", clientProtocol: protocol.Gemini,
@@ -102,6 +103,9 @@ func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
 			if got != test.want {
 				t.Fatalf("probeAnswerPresent() = %#v, want %#v for %s", got, test.want, test.body)
 			}
+			if got.text != test.want.text {
+				t.Fatalf("extracted text = %q, want %q for %s", got.text, test.want.text, test.body)
+			}
 		})
 	}
 }
@@ -109,7 +113,7 @@ func TestProbeAnswerPresentExtractsEachProtocolShape(t *testing.T) {
 func TestNewProbeRequestCarriesQuestionAndContractBudget(t *testing.T) {
 	t.Parallel()
 
-	compatible := newProbeRequest("openai-compatible", channel.ProviderOpenAICompatible, "probe-upstream", 16)
+	compatible := newProbeRequest(execution.AttemptSpec{Operation: execution.OperationProbe}, "openai-compatible", channel.ProviderOpenAICompatible, "probe-upstream", 16)
 	if compatible.Params == nil || compatible.Params.MaxCompletionTokens != nil {
 		t.Fatalf("compatible probe must not send max_completion_tokens: %#v", compatible.Params)
 	}
@@ -121,12 +125,12 @@ func TestNewProbeRequestCarriesQuestionAndContractBudget(t *testing.T) {
 		t.Fatalf("compatible probe content = %#v", compatible.Input)
 	}
 
-	gated := newProbeRequest("openai", channel.ProviderOpenAI, "probe-upstream", 16)
+	gated := newProbeRequest(execution.AttemptSpec{Operation: execution.OperationProbe}, "openai", channel.ProviderOpenAI, "probe-upstream", 16)
 	if gated.Params == nil || gated.Params.MaxCompletionTokens == nil || *gated.Params.MaxCompletionTokens != 16 {
 		t.Fatalf("openai probe max_completion_tokens = %#v", gated.Params)
 	}
 
-	gateway := newProbeRequest("gpt-load", channel.ProviderMultiProtocolGateway, "probe-upstream", 16)
+	gateway := newProbeRequest(execution.AttemptSpec{Operation: execution.OperationProbe}, "gpt-load", channel.ProviderMultiProtocolGateway, "probe-upstream", 16)
 	if gateway.Params == nil || gateway.Params.MaxCompletionTokens != nil {
 		t.Fatalf("gateway probe must not send max_completion_tokens: %#v", gateway.Params)
 	}
@@ -386,5 +390,112 @@ func TestMultiProtocolGatewayProbeSerializesMaxTokensToChatWire(t *testing.T) {
 	}
 	if !result.ProbeAnswerPresent || result.ProbeResponseInvalid {
 		t.Fatalf("gateway probe answer not observed: %+v body=%s", result, result.Body)
+	}
+}
+
+// TestModelTraceChallengeRunsOnTheProbeWireWithItsOwnPrompt proves the
+// fingerprint challenge is wire-identical to a probe — same target, same token
+// field, same budget contract — while carrying its own prompt and its own
+// result field. A challenge must never inherit the probe question or the probe
+// answer flags, otherwise attribution would silently drift from the bank the
+// challenge came from.
+func TestModelTraceChallengeRunsOnTheProbeWireWithItsOwnPrompt(t *testing.T) {
+	t.Parallel()
+
+	const challengePrompt = "Provide exactly 218 integers from 1 to 355 inclusive, one per position."
+	const challengeAnswer = "17 42 113 250"
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		calls.Add(1)
+		if request.Method != http.MethodPost || request.URL.Path != "/v1/chat/completions" {
+			t.Errorf("challenge target = %s %s", request.Method, request.URL.Path)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read challenge body: %v", err)
+			return
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Errorf("decode challenge body: %v", err)
+			return
+		}
+		if payload["model"] != "challenge-upstream" {
+			t.Errorf("challenge model = %#v", payload["model"])
+		}
+		if payload["max_tokens"] != float64(testProbeOutputTokens) {
+			t.Errorf("challenge max_tokens = %#v, want %d", payload["max_tokens"], testProbeOutputTokens)
+		}
+		if _, exists := payload["max_completion_tokens"]; exists {
+			t.Errorf("challenge carried max_completion_tokens: %s", body)
+		}
+		if !strings.Contains(string(body), challengePrompt) {
+			t.Errorf("challenge prompt missing from wire: %s", body)
+		}
+		if strings.Contains(string(body), probeQuestion) {
+			t.Errorf("challenge sent the probe question instead of its own prompt: %s", body)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("X-Request-Id", "challenge-request")
+		_, _ = io.WriteString(writer, `{"id":"chat_1","object":"chat.completion","created":1,"model":"challenge-upstream","choices":[{"index":0,"message":{"role":"assistant","content":"`+challengeAnswer+`"},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":4,"total_tokens":15}}`)
+	}))
+	defer server.Close()
+
+	runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true})
+	spec := utilitySpec(channel.GPTLoad, protocol.OpenAICompletions, execution.OperationModelTrace, "", "", nil)
+	spec.TargetConfig = json.RawMessage(`{"base_url":"` + server.URL + `"}`)
+	spec.ClientModel, spec.UpstreamModel = "challenge-client", "challenge-upstream"
+	spec.PromptText = challengePrompt
+	spec.ProbeMaxOutputTokens = testProbeOutputTokens
+	result := runtime.Execute(context.Background(), freezeTestAttempt(spec))
+	if err := result.Validate(); err != nil {
+		t.Fatalf("result validation: %v; result=%+v", err, result)
+	}
+	if calls.Load() != 1 || result.Error != nil || result.StatusCode != http.StatusOK {
+		t.Fatalf("calls/result = %d/%+v", calls.Load(), result)
+	}
+	if result.GeneratedText != challengeAnswer || result.GeneratedTextInvalid {
+		t.Fatalf("challenge answer = %q/%t, want %q", result.GeneratedText, result.GeneratedTextInvalid, challengeAnswer)
+	}
+	if result.UpstreamRequestID != "challenge-request" {
+		t.Fatalf("upstream request id = %q", result.UpstreamRequestID)
+	}
+	if result.ProbeAnswerPresent || result.ProbeResponseInvalid {
+		t.Fatalf("challenge wrote probe judgement fields: %+v", result)
+	}
+	if result.Usage == nil || result.Usage.Normalized.State != usage.StateComplete {
+		t.Fatalf("challenge usage = %+v, want the provider's own usage", result.Usage)
+	}
+}
+
+// TestModelTraceChallengeRejectsEmptyPrompt proves the challenge contract still
+// refuses a request without a prompt: an empty prompt would be sent as a
+// meaningless model call, so it must fail before dispatch.
+func TestModelTraceChallengeRejectsEmptyPrompt(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"choices":[{"index":0,"message":{"role":"assistant","content":"1"}}]}`)
+	}))
+	defer server.Close()
+
+	runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true})
+	spec := utilitySpec(channel.GPTLoad, protocol.OpenAICompletions, execution.OperationModelTrace, "", "", nil)
+	spec.TargetConfig = json.RawMessage(`{"base_url":"` + server.URL + `"}`)
+	spec.ClientModel, spec.UpstreamModel = "challenge-client", "challenge-upstream"
+	spec.PromptText = "   "
+	spec.ProbeMaxOutputTokens = testProbeOutputTokens
+	result := runtime.Execute(context.Background(), freezeTestAttempt(spec))
+	if err := result.Validate(); err != nil {
+		t.Fatalf("result validation: %v", err)
+	}
+	if result.DispatchState != execution.DispatchNotSent || result.Error == nil {
+		t.Fatalf("empty challenge prompt = %+v, want a not-sent contract failure", result)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("upstream calls = %d, want none for an empty challenge prompt", calls.Load())
 	}
 }

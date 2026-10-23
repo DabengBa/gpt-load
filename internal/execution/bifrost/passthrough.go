@@ -403,7 +403,7 @@ complete:
 	if spec.ClientProtocol != protocol.OpenAIImages {
 		bodyBytes = bytes.Clone(bodyBytes)
 	}
-	if spec.Operation == execution.OperationProbe && spec.ClientProtocol == protocol.OpenAIResponses &&
+	if (spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace) && spec.ClientProtocol == protocol.OpenAIResponses &&
 		prepared.upstreamProtocol == protocol.OpenAIResponses && status >= http.StatusOK &&
 		status < http.StatusMultipleChoices {
 		encoding, err := contentcoding.ParseContentEncoding(headers.Values("Content-Encoding"))

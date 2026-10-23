@@ -7,6 +7,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 
 import { ApiError, RequestCancelledError } from '@shared/http/errors'
 import { channelsQueryOptions } from '@shared/control/resources/channels'
+import type { ModelFingerprintTargetDto } from '@shared/control/resources/fingerprint'
 import {
   cacheGroupModels,
   discoverGroupModels,
@@ -20,6 +21,7 @@ import {
 import type { ModelCandidate } from '@shared/control/resources/providers'
 import { enabledDataProtocols, type ProtocolValue } from '@shared/control/protocols'
 import type { ModelProbeTargetDto } from '@shared/control/resources/model-probe'
+import { isFingerprintDialogOpen } from '@shared/domain/models/fingerprint-run'
 import type {
   ModelAliasEditorLabels,
   ModelDiscoveryDrawerLabels,
@@ -62,8 +64,10 @@ import { useUnsavedChanges } from '../../../app/use-unsaved-changes'
 import { SectionHeader } from '../../../components/SectionHeader'
 import { StickySaveBar } from '../../../components/StickySaveBar'
 import { ModelDiscoveryDrawer } from '../../models/ModelDiscoveryDrawer'
+import { ModelFingerprintDialog } from '../../models/ModelFingerprintDialog'
 import { ModelPricingStatus } from '../../models/ModelPricingStatus'
 import { ModelProbeDialog } from '../../models/ModelProbeDialog'
+import { useModelFingerprint } from '../../models/use-model-fingerprint'
 import { useModelProbe } from '../../models/use-model-probe'
 import type { GroupEditorState, GroupModelsEditorHandle } from '../editor-handles'
 import {
@@ -76,6 +80,17 @@ const nativeDataProbeProtocols = new Set<ProtocolValue>([
   'openai-embeddings',
   'gemini-embeddings',
   'rerank',
+])
+
+// The backend derives the fingerprint challenge route from the channel's probe
+// contract, and a challenge needs generated text. A channel therefore declares
+// fingerprint support exactly when its declared probe route is one of the
+// generative probe protocols.
+const fingerprintProbeProtocols = new Set<ProtocolValue>([
+  'openai-completions',
+  'openai-responses',
+  'anthropic',
+  'gemini',
 ])
 
 function groupDetailHref(groupId: number): string {
@@ -133,6 +148,17 @@ export function GroupModelsTab({
   for (const item of saved) savedModelIDByKey.set(item.key, item.id.trim())
 
   const probe = useModelProbe()
+  const fingerprint = useModelFingerprint()
+
+  // Only a channel whose probe route is a generative protocol declares a
+  // fingerprint challenge route; the button itself never probes upstream.
+  const supportsModelFingerprint =
+    channelsQuery.data?.items
+      .find(({ channel_id }) => channel_id === channelId)
+      ?.routes.some(
+        (route) =>
+          route.operation === 'probe' && fingerprintProbeProtocols.has(route.client_protocol),
+      ) ?? false
 
   // In-flight guard for the probe's "apply enabled" action. Drives the dialog's
   // controlled `applying` prop and must be reset before returning on every path.
@@ -176,6 +202,15 @@ export function GroupModelsTab({
     }
   }
 
+  // Fingerprint detection has no protocol override: the backend executes the
+  // challenges through the target's own route, and only a saved row identifies
+  // a compiled route target.
+  function fingerprintRowTarget(item: ModelDraftItem): ModelFingerprintTargetDto | null {
+    const id = item.id.trim()
+    if (id === '' || savedModelIDByKey.get(item.key) !== id) return null
+    return { group_id: groupId, model: id }
+  }
+
   const [pendingProbe, setPendingProbe] = useState<ModelProbeTargetDto | null>(null)
 
   // A disabled group still serves a probe on explicit request, but it asks first so
@@ -201,6 +236,17 @@ export function GroupModelsTab({
       to: pagePath('logs'),
       search: { selected_request_id: logId },
     })
+  }
+
+  function fingerprintRow(item: ModelDraftItem): void {
+    const target = fingerprintRowTarget(item)
+    if (target === null) return
+    void fingerprint.start(target)
+  }
+
+  function retryFingerprint(): void {
+    const target = fingerprint.run.target
+    if (target !== null) void fingerprint.start(target)
   }
 
   // 调度跳转：带上对外模型/别名、来源分组与 entry 定位，让调度页精确高亮对应行；
@@ -901,6 +947,26 @@ export function GroupModelsTab({
                     xstyle={styles.probeButton}
                   />
                 </Tooltip>
+                {supportsModelFingerprint && (
+                  <Tooltip
+                    content={
+                      fingerprintRowTarget(item) === null
+                        ? t('monitor.modelFingerprint.draftHint')
+                        : ''
+                    }
+                  >
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      isDisabled={
+                        fingerprintRowTarget(item) === null || fingerprint.run.status === 'running'
+                      }
+                      onClick={() => fingerprintRow(item)}
+                      label={t('monitor.modelFingerprint.button')}
+                      xstyle={styles.probeButton}
+                    />
+                  </Tooltip>
+                )}
               </div>
             )}
           />
@@ -921,6 +987,17 @@ export function GroupModelsTab({
             onStop={probe.stop}
             onViewLog={viewProbeLog}
             onApplyEnabled={onApplyProbeEnabled}
+          />
+          <ModelFingerprintDialog
+            open={isFingerprintDialogOpen(fingerprint.run)}
+            pending={fingerprint.run.status === 'running'}
+            failure={fingerprint.run.failure}
+            result={fingerprint.run.result}
+            onOpenChange={(open) => {
+              if (!open) fingerprint.close()
+            }}
+            onRetry={retryFingerprint}
+            onViewLog={viewProbeLog}
           />
           <AlertDialog
             isOpen={pendingProbe !== null}

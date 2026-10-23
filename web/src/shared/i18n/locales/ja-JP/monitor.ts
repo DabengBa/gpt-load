@@ -98,6 +98,52 @@ export default {
         groupDisabled: '無効',
       },
     },
+    modelFingerprint: {
+      title: 'モデル指紋検出',
+      description:
+        'このモデルに対して能動的な帰属検出を 1 回実行します。チャレンジは実際のルートで実行され、独立した ModelTrace サービスが回答を分析します。',
+      button: '指紋検出',
+      draftHint: 'このモデル行を保存してから指紋検出してください',
+      loading: '検出中…',
+      requestFailed: '指紋検出に失敗しました。検出サービスが無効か、一時的に利用できません。',
+      retry: '再試行',
+      close: '閉じる',
+      unknownValue: '—',
+      notice:
+        '結果は検出サービスの参照バンクに対する閉集合の確率であり、上流モデルの確定証明ではありません。未収録のモデルも最も近い候補に割り当てられます。',
+      candidatesTitle: '候補モデル',
+      evidence: '帰属には有効な出力 {used}/{total} 件を使用しました',
+      challenge: {
+        title: 'チャレンジ実行',
+        succeeded: '成功',
+        failed: '失敗',
+        log: 'ログを表示',
+        noLog: 'リクエストログは記録されていません',
+        summary: '{succeeded}/{total} 件のチャレンジが成功しました',
+      },
+      failure: {
+        disabled:
+          '指紋検出が有効になっていません。ModelTrace の URL とトークンを設定してください。',
+        misconfigured: '指紋検出の設定が無効です。ModelTrace の URL とトークンを確認してください。',
+        unavailable: '検出サービスは一時的に利用できません。しばらくしてから再試行してください。',
+        analysis_rejected:
+          '検出サービスが送信したすべての出力を拒否したため、帰属結果はありません。',
+        analysis_unavailable:
+          '検出サービスが出力を分析できませんでした。実行済みのチャレンジはログで確認できます。',
+        no_usable_outputs: 'チャレンジから有効な出力が得られなかったため、帰属結果はありません。',
+        no_active_credential: 'このグループには現在スケジュール可能な認証情報がありません。',
+        unsupported_target: 'このグループまたはモデルは指紋検出に対応していません。',
+        failed: '指紋検出に失敗しました。再試行してください。',
+      },
+      fields: {
+        group: 'グループ',
+        model: 'モデル',
+        prediction: '推定モデル',
+        probability: '確率',
+        detectedAt: '検出日時',
+        logId: 'リクエスト ID',
+      },
+    },
     usage: {
       loading: '使用量レポートを読み込み中…',
       loadFailed: '使用量レポートを読み込めません。',
@@ -534,6 +580,7 @@ export default {
         rerank: 'ドキュメントを再ランキング',
         list_models: 'モデル一覧',
         probe: 'ヘルスプローブ',
+        modeltrace: 'モデル指紋検出',
       },
       dispatchState: {
         not_sent: 'アップストリームへ未送信',

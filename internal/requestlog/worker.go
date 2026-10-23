@@ -691,7 +691,9 @@ func usageStatUpsertClause() clause.OnConflict {
 	}
 }
 
-// usageAggregationExcluded excludes local-only rows and control-plane probes.
+// usageAggregationExcluded excludes local-only rows and legacy control-plane
+// probes. ModelTrace challenges are real model requests and therefore remain in
+// usage aggregation even though their attribution result is control-plane data.
 func usageAggregationExcluded(row models.RequestLog) bool {
 	return row.AttemptCount == 0 || row.Operation == string(execution.OperationProbe)
 }

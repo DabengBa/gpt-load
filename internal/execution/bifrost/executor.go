@@ -75,6 +75,7 @@ func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (r
 		normalizeEmbeddingsAttemptResult(spec, &result)
 		normalizeRerankAttemptResult(spec, &result)
 		normalizeProbeAttemptResult(spec, &result, rawProbePassthrough)
+		normalizeDiagnosticAttemptResult(spec, &result, rawProbePassthrough)
 		if r.providerKind(spec) == channel.ProviderMultiProtocolGateway {
 			normalizeGatewayProtocolProbeResult(spec, &result)
 		}
@@ -83,7 +84,7 @@ func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (r
 	if preflightError != nil {
 		return *preflightError
 	}
-	rawProbePassthrough = spec.Operation == execution.OperationProbe && prepared.passthrough != nil
+	rawProbePassthrough = (spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace) && prepared.passthrough != nil
 	var appliedReasoning *reasoning.Config
 	defer func() {
 		if result.AppliedReasoning == nil {
@@ -414,7 +415,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid execution attempt: "+safeValidationReason(err))
 		return preparedAttempt{}, &failure
 	}
-	if spec.Operation == execution.OperationProbe && !spec.ClientProtocol.SupportsGeneratedText() &&
+	if (spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace) && !spec.ClientProtocol.SupportsGeneratedText() &&
 		spec.ClientProtocol != protocol.GeminiEmbeddings && spec.ClientProtocol != protocol.OpenAIEmbeddings && spec.ClientProtocol != protocol.Rerank {
 		failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "probe protocol does not support generated text")
 		return preparedAttempt{}, &failure
@@ -434,7 +435,30 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid channel target: "+safeValidationReason(err))
 		return preparedAttempt{}, &failure
 	}
-	if spec.Operation == execution.OperationProbe {
+	if spec.Operation == execution.OperationModelTrace {
+		// A fingerprint challenge always runs on the channel's declared generative
+		// route, resolved by model. A multi-protocol gateway still resolves per
+		// protocol, so it shares the probe route lookup below.
+		var challengeOK bool
+		if resolved.ProviderKind == channel.ProviderMultiProtocolGateway {
+			mode, ok := resolved.ModeForModel(
+				spec.ClientProtocol, execution.OperationModelTrace, spec.UpstreamModel,
+			)
+			challengeOK = ok && channel.RouteMode(mode) == channel.RouteMode(spec.RouteMode)
+		} else {
+			challengeProtocol, challengeMode, ok := resolved.ModelTraceRoute(spec.UpstreamModel)
+			challengeOK = ok && challengeProtocol == spec.ClientProtocol &&
+				channel.RouteMode(challengeMode) == channel.RouteMode(spec.RouteMode)
+		}
+		if !challengeOK {
+			failure := notSentConversionFailure(
+				execution.ErrorCodeTargetConversionNotSupported,
+				"channel fingerprint route does not match the requested protocol or route",
+			)
+			return preparedAttempt{}, &failure
+		}
+	}
+	if spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace {
 		var probeOK bool
 		if providerKind := resolved.ProviderKind; providerKind == channel.ProviderMultiProtocolGateway || !spec.ClientProtocol.SupportsGeneratedText() {
 			var probeMode channel.RouteMode
@@ -568,7 +592,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 	if spec.ClientProtocol == protocol.Rerank {
 		return prepareRerank(spec, resolved, provider, directKey, secrets)
 	}
-	if spec.Operation == execution.OperationProbe {
+	if spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace {
 		if spec.ClientProtocol == protocol.GeminiEmbeddings && providerKind == channel.ProviderGemini {
 			return preparedAttempt{provider: provider, mode: mode, upstreamProtocol: protocol.GeminiEmbeddings,
 				directKey: directKey, secrets: secrets,
@@ -591,7 +615,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 					Model:    spec.UpstreamModel,
 					Method:   http.MethodPost,
 					Path:     passthroughPath,
-					Body:     geminiProbeRequestBody(probeOutputTokenBudget(spec)),
+					Body:     geminiProbeRequestBody(spec, probeOutputTokenBudget(spec)),
 					SafeHeaders: map[string]string{
 						"Content-Type": "application/json",
 					},
@@ -605,7 +629,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		}
 		if mode == channel.RouteNative &&
 			(providerKind == channel.ProviderAnthropic || providerKind == channel.ProviderGemini) {
-			probeBody, marshalErr := marshalNativeProbeBody(spec.ClientProtocol, spec.UpstreamModel, probeOutputTokenBudget(spec))
+			probeBody, marshalErr := marshalNativeProbeBody(spec, spec.ClientProtocol, spec.UpstreamModel, probeOutputTokenBudget(spec))
 			if marshalErr != nil {
 				failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode native probe body")
 				return preparedAttempt{}, &failure
@@ -644,7 +668,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		responses := spec.ClientProtocol == protocol.OpenAIResponses ||
 			(mode == channel.RouteConverted &&
 				(spec.ClientProtocol == protocol.Anthropic || spec.ClientProtocol == protocol.Gemini))
-		request := newProbeRequest(provider, providerKind, spec.UpstreamModel, probeOutputTokenBudget(spec))
+		request := newProbeRequest(spec, provider, providerKind, spec.UpstreamModel, probeOutputTokenBudget(spec))
 		if providerKind == channel.ProviderMultiProtocolGateway {
 			baseURL, configured, targetErr := targetBaseURL(resolved.TargetConfig)
 			if targetErr != nil || !configured {
@@ -1016,12 +1040,13 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 }
 
 func newProbeRequest(
+	spec execution.AttemptSpec,
 	provider schemas.ModelProvider,
 	providerKind channel.ProviderKind,
 	model string,
 	maxOutputTokens int,
 ) *schemas.BifrostChatRequest {
-	content := probeQuestion
+	content := probePromptText(spec)
 	params := &schemas.ChatParameters{MaxCompletionTokens: schemas.Ptr(maxOutputTokens)}
 	if providerKind == channel.ProviderOpenAICompatible ||
 		providerKind == channel.ProviderMultiProtocolGateway {
@@ -1045,11 +1070,11 @@ func newProbeRequest(
 
 // geminiProbeRequestBody builds the native Gemini generateContent body used by
 // the Vertex passthrough probe.
-func geminiProbeRequestBody(maxOutputTokens int) []byte {
+func geminiProbeRequestBody(spec execution.AttemptSpec, maxOutputTokens int) []byte {
 	body, err := json.Marshal(map[string]any{
 		"contents": []map[string]any{{
 			"role":  "user",
-			"parts": []map[string]string{{"text": probeQuestion}},
+			"parts": []map[string]string{{"text": probePromptText(spec)}},
 		}},
 		"generationConfig": map[string]int{"maxOutputTokens": maxOutputTokens},
 	})
@@ -1059,20 +1084,25 @@ func geminiProbeRequestBody(maxOutputTokens int) []byte {
 	return body
 }
 
-func marshalNativeProbeBody(clientProtocol protocol.Protocol, model string, maxOutputTokens int) ([]byte, error) {
+func marshalNativeProbeBody(
+	spec execution.AttemptSpec,
+	clientProtocol protocol.Protocol,
+	model string,
+	maxOutputTokens int,
+) ([]byte, error) {
 	switch clientProtocol {
 	case protocol.Anthropic:
 		return json.Marshal(map[string]any{
 			"model":      model,
 			"max_tokens": maxOutputTokens,
 			"messages": []map[string]any{{
-				"role": "user", "content": probeQuestion,
+				"role": "user", "content": probePromptText(spec),
 			}},
 		})
 	case protocol.Gemini:
 		return json.Marshal(map[string]any{
 			"contents": []map[string]any{{
-				"role": "user", "parts": []map[string]string{{"text": probeQuestion}},
+				"role": "user", "parts": []map[string]string{{"text": probePromptText(spec)}},
 			}},
 			"generationConfig": map[string]int{"maxOutputTokens": maxOutputTokens},
 		})
@@ -1132,7 +1162,7 @@ func supportedRequestShape(spec execution.AttemptSpec, stream bool) bool {
 			return false
 		}
 	}
-	if spec.Operation == execution.OperationProbe {
+	if spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace {
 		if stream || strings.TrimSpace(spec.UpstreamModel) == "" || spec.Method != "" ||
 			spec.Path != "" || len(spec.Query) != 0 || spec.RawQuery != "" || len(spec.Body) != 0 {
 			return false
@@ -1578,7 +1608,7 @@ func (r *Runtime) newSDKContext(parent context.Context, spec execution.AttemptSp
 		schemas.BifrostContextKeyLargeResponseThreshold,
 		r.unaryResponseBodyLimit(spec),
 	)
-	if spec.Operation == execution.OperationProbe {
+	if spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace {
 		bifrostContext.SetValue(schemas.BifrostContextKeyAllowPerRequestRawOverride, true)
 		bifrostContext.SetValue(schemas.BifrostContextKeySendBackRawResponse, true)
 	}
@@ -1587,7 +1617,7 @@ func (r *Runtime) newSDKContext(parent context.Context, spec execution.AttemptSp
 		spec.ClientProtocol == protocol.Anthropic {
 		bifrostContext.SetValue(schemas.BifrostContextKeyPassthroughExtraParams, true)
 	}
-	if spec.Operation == execution.OperationProbe &&
+	if (spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace) &&
 		(r.providerKind(spec) == channel.ProviderOpenAICompatible ||
 			r.providerKind(spec) == channel.ProviderMultiProtocolGateway) {
 		// Multi-protocol gateways serialize the same OpenAI-compatible Chat wire

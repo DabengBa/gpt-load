@@ -33,6 +33,22 @@ HTTP requests and streaming responses.
 
 The complete MIT License text is distributed in `LICENSES/MIT.txt`.
 
+## ModelTrace
+
+- Source: https://github.com/xqy2006/ModelTrace
+- Vendored commit: `6cd4a8ff0f3f4e49d6d6969dd2fbadfa1569fde2` (2026-10-09)
+- Copyright: 2026 xqy2006
+- License: MIT License
+
+GPT-Load vendors ModelTrace's fingerprint core (`fingerprint.py`) and its
+unified fingerprint bank (`unified_bank.json`) under
+`modeltrace/vendor/modeltrace/` to power the independently deployed
+`modeltrace/` analysis service. The vendored core provides the numeric
+challenge format and attribution scoring only; GPT-Load does not include
+ModelTrace's Flask application, provider enrollment, or bank-building code.
+
+The complete MIT License text is distributed in `LICENSES/ModelTrace-MIT.txt`.
+
 ## go-brrr
 
 - Module: `github.com/molecule-man/go-brrr`

@@ -126,7 +126,7 @@ func buildEffectiveProviderConfigForAttempt(
 	}
 	if resolved.ProviderKind != channel.ProviderDeepSeek ||
 		spec.ClientProtocol != protocol.OpenAIResponses ||
-		spec.Operation != execution.OperationProbe ||
+		(spec.Operation != execution.OperationProbe && spec.Operation != execution.OperationModelTrace) ||
 		channel.RouteMode(spec.RouteMode) != channel.RouteNative {
 		return applyAttemptProxy(base, spec.Proxy)
 	}

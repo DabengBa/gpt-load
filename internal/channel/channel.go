@@ -269,6 +269,20 @@ func (t ResolvedTarget) ProbeRoute(upstreamModel string) (protocol.Protocol, Rou
 	return contract.Protocol, mode, true
 }
 
+// ModelTraceRoute resolves the declared route of one diagnostic challenge.
+// Fingerprint challenges only use generative protocols: an Embeddings, Rerank,
+// or Images route cannot produce the fingerprint text the challenge asks for.
+func (t ResolvedTarget) ModelTraceRoute(upstreamModel string) (protocol.Protocol, RouteMode, bool) {
+	if !t.probeContract.Valid() || !t.probeContract.Protocol.SupportsGeneratedText() {
+		return "", "", false
+	}
+	mode, ok := t.ModeForModel(t.probeContract.Protocol, execution.OperationModelTrace, upstreamModel)
+	if !ok {
+		return "", "", false
+	}
+	return t.probeContract.Protocol, mode, true
+}
+
 // PreferredRoute selects one declared route for a utility operation,
 // preferring native mode and then canonical protocol order.
 func (t ResolvedTarget) PreferredRoute(

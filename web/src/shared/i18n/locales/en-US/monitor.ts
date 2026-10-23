@@ -97,6 +97,54 @@ export default {
         groupDisabled: 'Disabled',
       },
     },
+    modelFingerprint: {
+      title: 'Model fingerprint',
+      description:
+        'Runs one attribution check for this model: the challenges execute through its real route, then the separate ModelTrace service analyzes the answers.',
+      button: 'Fingerprint',
+      draftHint: 'Save this model row before fingerprinting it',
+      loading: 'Fingerprinting…',
+      requestFailed:
+        'Fingerprint detection failed; the detection service may be disabled or unavailable.',
+      retry: 'Retry',
+      close: 'Close',
+      unknownValue: '—',
+      notice:
+        'The result is a closed-set probability over the detection service reference bank, not proof of the upstream model: an unlisted model is still mapped to its nearest candidate.',
+      candidatesTitle: 'Candidates',
+      evidence: 'Attribution used {used}/{total} usable outputs',
+      challenge: {
+        title: 'Challenge runs',
+        succeeded: 'Succeeded',
+        failed: 'Failed',
+        log: 'View log',
+        noLog: 'No request log was recorded',
+        summary: '{succeeded}/{total} challenges succeeded',
+      },
+      failure: {
+        disabled: 'Fingerprint detection is not configured; set the ModelTrace URL and token.',
+        misconfigured:
+          'Fingerprint detection configuration is invalid; check the ModelTrace URL and token.',
+        unavailable: 'The detection service is temporarily unavailable; try again later.',
+        analysis_rejected:
+          'The detection service rejected every submitted output, so no attribution was produced.',
+        analysis_unavailable:
+          'The detection service could not analyze the submitted outputs; the executed challenges remain available in the logs.',
+        no_usable_outputs:
+          'The challenges produced no usable output, so no attribution was produced.',
+        no_active_credential: 'The group has no schedulable credential right now.',
+        unsupported_target: 'This group or model does not support fingerprint detection.',
+        failed: 'Fingerprint detection failed; try again.',
+      },
+      fields: {
+        group: 'Group',
+        model: 'Model',
+        prediction: 'Predicted model',
+        probability: 'Probability',
+        detectedAt: 'Detected at',
+        logId: 'Request ID',
+      },
+    },
     usage: {
       loading: 'Loading usage report…',
       loadFailed: 'Unable to load usage report.',
@@ -533,6 +581,7 @@ export default {
         rerank: 'Rerank documents',
         list_models: 'List models',
         probe: 'Health probe',
+        modeltrace: 'Model fingerprint',
       },
       dispatchState: {
         not_sent: 'Not sent upstream',

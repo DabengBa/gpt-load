@@ -34,6 +34,7 @@
     "type-check": "tsc --noEmit -p tsconfig.astryx.json && tsc --noEmit -p tsconfig.node.json",
     "verify:astryx-i18n": "node scripts/verify-astryx-i18n.mjs",
     "verify:group-collection": "node scripts/verify-group-collection.mjs",
+    "verify:fingerprint-contract": "node scripts/verify-fingerprint-contract.mjs",
     "verify:health-projection": "node scripts/verify-health-projection.mjs",
     "verify:i18n-icu": "node scripts/verify-i18n-icu.mjs",
     "verify:log-format": "node scripts/verify-log-format.mjs",

@@ -47,6 +47,11 @@ const (
 	OperationRerank               Operation = "rerank"
 	OperationListModels           Operation = "list_models"
 	OperationProbe                Operation = "probe"
+	// OperationModelTrace is a formal model request that answers one ModelTrace
+	// fingerprint challenge. It runs through the same attempt contract as any
+	// generated-text request, so its outcome and usage are recorded like traffic;
+	// only its attribution result stays a control-plane fact.
+	OperationModelTrace Operation = "modeltrace"
 )
 
 // Valid reports whether the operation is supported by the execution contract.
@@ -67,7 +72,8 @@ func (o Operation) Valid() bool {
 		OperationEmbeddingsCreate,
 		OperationRerank,
 		OperationListModels,
-		OperationProbe:
+		OperationProbe,
+		OperationModelTrace:
 		return true
 	default:
 		return false
@@ -253,6 +259,10 @@ type AttemptSpec struct {
 	// channel probe contract selects it; it is never applied to ordinary
 	// requests. A generation probe must set it.
 	ProbeMaxOutputTokens int `json:"probe_max_output_tokens,omitempty"`
+	// PromptText is the single code-owned user prompt of a diagnostic
+	// generated-text request (OperationModelTrace). Like ProbeMaxOutputTokens it
+	// replaces wire fields instead of adding them; ordinary requests never set it.
+	PromptText string `json:"-"`
 
 	// ContinuityKey is an opaque tenant-scoped value for provider-private
 	// thinking/tool continuity. It is never persisted, logged, or exposed.
@@ -517,6 +527,13 @@ type AttemptResult struct {
 	// lets the control layer distinguish invalid_response from no_answer: a
 	// parseable response without text is no_answer, an unparseable one is invalid.
 	ProbeResponseInvalid bool `json:"probe_response_invalid,omitempty"`
+	// GeneratedText is the single generated answer extracted from a diagnostic
+	// response (OperationModelTrace). It is deliberately independent of the probe
+	// answer flags so the challenge path cannot inherit probe judgement semantics.
+	GeneratedText string `json:"generated_text,omitempty"`
+	// GeneratedTextInvalid reports that a diagnostic response could not be parsed
+	// as the selected protocol's wire shape at all.
+	GeneratedTextInvalid bool `json:"generated_text_invalid,omitempty"`
 }
 
 // Clone returns an independent attempt result.

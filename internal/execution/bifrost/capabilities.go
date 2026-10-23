@@ -34,6 +34,13 @@ func (manager *RuntimeManager) ValidateRouteCapability(
 	return nil
 }
 
+// isGeneratedTextDiagnostic reports the operations that share one generated-text
+// route shape: protocol probes and ModelTrace fingerprint challenges. They are
+// the same wire path, so the route tables must stay in sync.
+func isGeneratedTextDiagnostic(operation execution.Operation) bool {
+	return operation == execution.OperationProbe || operation == execution.OperationModelTrace
+}
+
 func convertedRouteImplemented(providerKind channel.ProviderKind, clientProtocol protocol.Protocol, operation execution.Operation) bool {
 	switch operation {
 	case execution.OperationEmbeddingsCreate:
@@ -43,6 +50,10 @@ func convertedRouteImplemented(providerKind channel.ProviderKind, clientProtocol
 	case execution.OperationListModels:
 		return clientProtocol != protocol.OpenAIResponses && clientProtocol != protocol.Rerank && clientProtocol.Valid()
 	case execution.OperationProbe:
+		return clientProtocol.SupportsGeneratedText()
+	case execution.OperationModelTrace:
+		// A fingerprint challenge is wire-identical to a probe, but it stays a
+		// separate operation so route tables and validators cannot drift silently.
 		return clientProtocol.SupportsGeneratedText()
 	case execution.OperationChatCompletion:
 		return clientProtocol == protocol.OpenAICompletions ||
@@ -66,7 +77,7 @@ func nativeRouteImplemented(
 ) bool {
 	if clientProtocol == protocol.Rerank {
 		return (providerKind == channel.ProviderOpenAICompatible || providerKind == channel.ProviderMultiProtocolGateway) &&
-			(operation == execution.OperationRerank || operation == execution.OperationProbe)
+			(operation == execution.OperationRerank || isGeneratedTextDiagnostic(operation))
 	}
 	switch providerKind {
 	case channel.ProviderOpenAI:
@@ -81,7 +92,7 @@ func nativeRouteImplemented(
 		return clientProtocol == protocol.Anthropic && standardProtocolOperation(clientProtocol, operation)
 	case channel.ProviderGemini:
 		if clientProtocol == protocol.GeminiEmbeddings {
-			return operation == execution.OperationEmbeddingsCreate || operation == execution.OperationProbe
+			return operation == execution.OperationEmbeddingsCreate || isGeneratedTextDiagnostic(operation)
 		}
 		return clientProtocol == protocol.Gemini && standardProtocolOperation(clientProtocol, operation)
 	case channel.ProviderMultiProtocolGateway:
@@ -89,10 +100,10 @@ func nativeRouteImplemented(
 		case protocol.OpenAICompletions:
 			return operation == execution.OperationChatCompletion ||
 				operation == execution.OperationListModels ||
-				operation == execution.OperationProbe
+				isGeneratedTextDiagnostic(operation)
 		case protocol.OpenAIResponses:
 			return operation == execution.OperationResponsesCreate ||
-				operation == execution.OperationProbe ||
+				isGeneratedTextDiagnostic(operation) ||
 				nativeResponsesLifecycleOperation(operation)
 		case protocol.OpenAIImages:
 			return operation == execution.OperationImagesGenerate ||
@@ -100,10 +111,10 @@ func nativeRouteImplemented(
 		case protocol.OpenAIEmbeddings:
 			return operation == execution.OperationEmbeddingsCreate
 		case protocol.GeminiEmbeddings:
-			return operation == execution.OperationEmbeddingsCreate || operation == execution.OperationProbe
+			return operation == execution.OperationEmbeddingsCreate || isGeneratedTextDiagnostic(operation)
 		case protocol.Anthropic, protocol.Gemini:
 			return operation == execution.OperationChatCompletion ||
-				operation == execution.OperationProbe ||
+				isGeneratedTextDiagnostic(operation) ||
 				operation == execution.OperationCountTokens ||
 				operation == execution.OperationListModels
 		default:
@@ -122,7 +133,7 @@ func nativeRouteImplemented(
 		case protocol.OpenAICompletions, protocol.OpenAIResponses:
 			return standardProtocolOperation(clientProtocol, operation)
 		case protocol.Anthropic:
-			return operation == execution.OperationChatCompletion || operation == execution.OperationProbe
+			return operation == execution.OperationChatCompletion || isGeneratedTextDiagnostic(operation)
 		default:
 			return false
 		}
@@ -137,7 +148,7 @@ func nativeRouteImplemented(
 		return clientProtocol == protocol.OpenAICompletions && standardProtocolOperation(clientProtocol, operation)
 	case channel.ProviderGoogleVertex:
 		return clientProtocol == protocol.Gemini &&
-			(operation == execution.OperationChatCompletion || operation == execution.OperationProbe)
+			(operation == execution.OperationChatCompletion || isGeneratedTextDiagnostic(operation))
 	default:
 		return false
 	}
@@ -175,10 +186,10 @@ func standardProtocolOperation(clientProtocol protocol.Protocol, operation execu
 		return operation == execution.OperationChatCompletion ||
 			((clientProtocol == protocol.Anthropic || clientProtocol == protocol.Gemini) && operation == execution.OperationCountTokens) ||
 			operation == execution.OperationListModels ||
-			operation == execution.OperationProbe
+			isGeneratedTextDiagnostic(operation)
 	case protocol.OpenAIResponses:
 		return operation == execution.OperationResponsesCreate ||
-			operation == execution.OperationProbe
+			isGeneratedTextDiagnostic(operation)
 	default:
 		return false
 	}

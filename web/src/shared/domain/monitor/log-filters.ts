@@ -1,17 +1,17 @@
 import type { SharedRouteQueryRaw } from '@shared/routing/route-query'
 
 import { enabledDataProtocols } from '@shared/control/protocols'
-import { channelOperations } from '@shared/control/resources/channel-contract'
-import type {
-  RequestLogCostState,
-  RequestLogFilters,
-  RequestLogModelConsistency,
-  RequestLogOperation,
-  RequestLogPageSize,
-  RequestLogPricingCompleteness,
-  RequestLogRetryState,
-  RequestLogStatus,
-  RequestLogUsageState,
+import {
+  requestLogOperationValues,
+  type RequestLogCostState,
+  type RequestLogFilters,
+  type RequestLogModelConsistency,
+  type RequestLogOperation,
+  type RequestLogPageSize,
+  type RequestLogPricingCompleteness,
+  type RequestLogRetryState,
+  type RequestLogStatus,
+  type RequestLogUsageState,
 } from '@shared/control/resources/request-logs'
 import { requestLogFilterFields } from '@shared/control/resources/request-log-filters'
 import { defaultTimeRange, parseLocalDateTime, timeRangeMilliseconds } from '@shared/lib/time'
@@ -87,7 +87,7 @@ export const requestLogFailureCategories = [
 ] as const
 export const requestLogRetryStates = ['retried', 'not_retried'] as const
 export const requestLogModelConsistencies = ['match', 'mismatch', 'unknown'] as const
-export const requestLogOperations = channelOperations
+export const requestLogOperations = requestLogOperationValues
 
 const requestIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const channelIDPattern = /^[a-z][a-z0-9_]{0,99}$/u
