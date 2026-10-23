@@ -5,10 +5,12 @@ topic: debug-capture
 code:
   paths:
     - internal/debugcapture
+    - internal/gateway/capture.go
     - internal/container/debug_capture.go
     - internal/container/debug_capture_unix.go
     - internal/control/probe_capture.go
     - internal/execution/http_observer.go
+    - third_party/bifrost-core/providers/utils/http_observer.go
 ---
 # Debug Communication Capture
 
@@ -48,7 +50,13 @@ Capture persistence is isolated from the data plane. Storage, queue, callback, o
 
 Gateway finalization checks cancellation against the request context saved before the data-plane lifecycle adds its own child context. Normal lifecycle release must not turn a complete successful capture into a cancellation failure. Genuine client cancellation and server shutdown still propagate through the saved context.
 
+The saved context is `request.Context()` as bound when the capture is created, not a context the data-plane lifecycle derives afterwards.
+
 Provider observation sources register before emitting callbacks and unregister after their completion callback returns. Gateway capture waits for registered observations and admitted callbacks; an executor result alone does not establish that a transport observation started. Once the sources and callbacks have drained, absence of a response completion is recorded as `no_observation_source` and capture finalization fails explicitly, releasing its runtime admission instead of waiting forever. The event detail distinguishes a source that never started from one that started and ended without completion. Neither condition establishes whether request or response bytes were exchanged. This event identifies missing raw evidence; it is not a Provider response termination observed on the wire. A first-token abort already fired before the net/http send completes its registered observation with `no_response`, without issuing a Provider request.
+
+The lifecycle contract is optional on both sides. `internal/execution/http_observer.go` declares `HTTPObservationLifecycle`, and the fork's observer state in `third_party/bifrost-core/providers/utils/http_observer.go` begins one source per real send before any callback can be emitted and ends it after the final completion callback returns, including the fired-abort path in `DoHTTPRequest`. Neither call may block. `internal/gateway/capture.go` implements it for the Gateway; `internal/control/probe_capture.go` implements it for probes.
+
+Regression evidence for this lifecycle lives in `internal/gateway/capture_lifecycle_test.go`, `internal/gateway/capture_abort_evidence_test.go`, `internal/gateway/capture_test.go`, `internal/debugcapture/runtime_test.go`, `internal/container/debug_capture_lifecycle_test.go`, and `third_party/bifrost-core/providers/utils/http_observer_test.go`.
 
 ## Model probes and credential tests
 
@@ -94,3 +102,15 @@ GET /api/debug-captures/<capture-id>/download
 完整的 raw capture 可以核对实际观察到的 response body、usage、finish reason 和 message 字段是否真的缺失，从而区分空完成与 `upstream_content_filter`。capture 的 metadata、解析结果或只有部分 body 都不是完整 raw 证据；capture 查询时仍为 `active`、已为 `failed`、已过期或已不存在，缺少应有的 response parts，或终止信息不完整时，必须标记证据不完整，不能把 metadata-only 结果当作完整 raw 证据。
 
 raw capture 只记录 Gateway、支持的 provider observer 或 transport reader 实际观察到的字节和事件。它不声称是 TLS/socket wire capture，也不补齐已经被 transport 移除的 framing、未暴露的 trailers，或在取消、超时、进程失败、连接关闭前从未观察到的数据。
+
+## 快照名额耗尽排查顺序
+
+`/api/health` 的 `debug_capture.error` 为 `session_limit_reached` 时，先区分“名额被未释放的捕获占用”和“只是数据库行数看起来很多”。
+
+1. 读取 health：`running` 为 `true`、`error` 为 `session_limit_reached`，而 `active` 可能为 `0`。`active/completed/failed` 统计的是未过期的数据库行，不是内存中的准入槽位；名额耗尽与过期清理已完成可以同时发生。
+2. 用 `GET /api/debug-captures?state=active` 查看仍未终结的会话。如果 `active` 为 `0` 却仍报名额耗尽，说明槽位被运行期持有的会话占用，而不是被持久化行占用。
+3. 用 `state` 过滤查到的每个会话，按 `GET /api/debug-captures/:capture_id` 检查 attempt：`termination` 中含有 `no_observation_source` 表示该 attempt 没有收到 Provider 完成回调，事件 detail 会写明是“来源从未启动”还是“来源启动后未完成”。这类 attempt 不包含可用的原始响应字节。
+4. 如果会话长期停在 `active` 且没有对应 attempt 的 `no_observation_source`，先确认该会话对应的请求是否仍在处理中（`request_id` 关联 structured request log）。请求未结束时等待其终结，不要通过重启掩盖。
+5. 修复后用一个新请求验证：新的 capture 应能创建并终结，且 `error` 字段清空。已过期的历史会话无法补回原始正文，结构化 request log 不能替代 raw body。
+
+名额泄漏的回归证据是 `internal/debugcapture/runtime_test.go`（健康状态报告耗尽与释放后清除）与 `internal/gateway/capture_test.go`（无观察来源、提前取消、in-flight 回调排空后均不留下 pending），端到端为 `internal/container/debug_capture_lifecycle_test.go`。
