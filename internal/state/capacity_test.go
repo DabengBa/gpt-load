@@ -61,7 +61,6 @@ func TestCapacityPublicationPreservesOccupancy(t *testing.T) {
 	m := NewManager()
 	m.publishCompiled(capacitySnapshot(0), nil)
 	key := RouteEntryKey{1, "e1"}
-
 	reservation, ok := m.AcquireCapacity(key, false)
 	if !ok {
 		t.Fatal("unlimited admission rejected")
@@ -97,15 +96,58 @@ func TestCapacityPublicationPreservesOccupancy(t *testing.T) {
 	}
 	m.publishCompiled(&ConfigSnapshot{}, nil)
 	m.publishCompiled(capacitySnapshot(1), nil)
-	replacement, ok := m.AcquireCapacity(key, false)
-	if !ok {
-		t.Fatal("new entry unavailable")
+	if _, ok := m.AcquireCapacity(key, false); ok {
+		t.Fatal("recreated entry ignored old in-flight reservation")
 	}
 	last.Release()
-	if m.CapacityInUse(key) != 1 {
-		t.Fatal("old reservation released replacement occupancy")
+	replacement, ok := m.AcquireCapacity(key, false)
+	if !ok {
+		t.Fatal("new entry unavailable after old reservation released")
 	}
 	replacement.Release()
+}
+
+func TestCapacityDeletionAndRecreationPreservesInFlightOccupancy(t *testing.T) {
+	m := NewManager()
+	key := RouteEntryKey{1, "e1"}
+	m.publishCompiled(capacitySnapshot(1), nil)
+	first, ok := m.AcquireCapacity(key, false)
+	if !ok {
+		t.Fatal("initial admission rejected")
+	}
+	m.publishCompiled(&ConfigSnapshot{}, nil)
+	m.publishCompiled(capacitySnapshot(1), nil)
+	if _, ok := m.AcquireCapacity(key, false); ok {
+		t.Fatal("recreated entry admitted while old request remained in flight")
+	}
+	first.Release()
+	second, ok := m.AcquireCapacity(key, false)
+	if !ok {
+		t.Fatal("capacity did not return after old request released")
+	}
+	second.Release()
+}
+
+func TestCapacityAdmissionDistinguishesFullFromStaleSnapshot(t *testing.T) {
+	m := NewManager()
+	key := RouteEntryKey{1, "e1"}
+	old := capacitySnapshot(1)
+	m.publishCompiled(old, nil)
+	occupied, result := m.AcquireCapacityForSnapshot(m.Current(), key, false)
+	if result != CapacityAdmitted {
+		t.Fatalf("initial admission = %v", result)
+	}
+	defer occupied.Release()
+	if _, result = m.AcquireCapacityForSnapshot(m.Current(), key, false); result != CapacityFull {
+		t.Fatalf("full entry admission = %v, want CapacityFull", result)
+	}
+	m.publishCompiled(&ConfigSnapshot{}, nil)
+	if _, result = m.AcquireCapacityForSnapshot(old, key, false); result != CapacitySnapshotChanged {
+		t.Fatalf("stale snapshot admission = %v, want CapacitySnapshotChanged", result)
+	}
+	if _, result = m.AcquireCapacityForSnapshot(m.Current(), RouteEntryKey{1, "missing"}, false); result != CapacityUnavailable {
+		t.Fatalf("missing entry admission = %v, want CapacityUnavailable", result)
+	}
 }
 
 func TestCapacityDisabledGroupRetainsOccupancyUntilRelease(t *testing.T) {

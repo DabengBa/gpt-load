@@ -185,6 +185,7 @@ type attemptLoop struct {
 	loggedOverrideFailures   map[uint]struct{}
 	parameterOverrideFailure *reason
 	capacityBlocked          bool
+	configurationChanged     bool
 }
 
 func newAttemptLoop(
@@ -583,8 +584,14 @@ func (loop *attemptLoop) run() {
 		if !loop.admitQuota() {
 			return
 		}
-		reservation, admitted := handler.acquireCapacity(selection, ref, dispatch.affinity)
-		if !admitted {
+		reservation, admission := handler.acquireCapacity(dispatch.snapshot, selection, ref, dispatch.affinity)
+		if admission != state.CapacityAdmitted {
+			if admission != state.CapacityFull {
+				loop.configurationChanged = true
+				loop.iterator.SkipEntry(capacityKey(selection))
+				loop.firstProviderDisallowed = true
+				continue
+			}
 			loop.capacityBlocked = true
 			loop.iterator.SkipEntry(capacityKey(selection))
 			loop.firstProviderDisallowed = true
@@ -993,6 +1000,10 @@ func (loop *attemptLoop) completeExhausted() {
 	}
 	if loop.parameterOverrideFailure != nil && loop.lastAttemptIndex < 0 {
 		handler.completeReason(ginContext, recorder, *loop.parameterOverrideFailure)
+		return
+	}
+	if loop.configurationChanged {
+		handler.completeReason(ginContext, recorder, reasonConfigurationChanged)
 		return
 	}
 	if loop.capacityBlocked {

@@ -13,7 +13,7 @@ func capacityKey(selection scheduler.Selection) state.RouteEntryKey {
 
 // A fixed continuation identity alone never grants affinity overflow. Match
 // the actual resolved binding and recheck its live identity and health.
-func (h *Handler) acquireCapacity(selection scheduler.Selection, ref state.CredentialRef, affinity requestAffinity) (*state.CapacityReservation, bool) {
+func (h *Handler) acquireCapacity(snapshot *state.ConfigSnapshot, selection scheduler.Selection, ref state.CredentialRef, affinity requestAffinity) (*state.CapacityReservation, state.CapacityAdmission) {
 	overflow := affinity.boundTarget.Valid() && affinity.preferredCredentialID == ref.ID &&
 		affinity.preferredIdentityGeneration == ref.IdentityGeneration &&
 		affinityTargetForSelection(selection, ref) == affinity.boundTarget
@@ -28,7 +28,7 @@ func (h *Handler) acquireCapacity(selection scheduler.Selection, ref state.Crede
 			overflow = overflow && entry.RuntimeState(h.now()) == state.EntryRuntimeAvailable
 		}
 	}
-	return h.manager.AcquireCapacity(capacityKey(selection), overflow)
+	return h.manager.AcquireCapacityForSnapshot(snapshot, capacityKey(selection), overflow)
 }
 
 func recordCapacityBlocked(recorder *requestRecorder) {

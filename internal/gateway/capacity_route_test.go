@@ -42,12 +42,13 @@ func TestScheduleCapacityNoOverflowForStaleBoundEntry(t *testing.T) {
 		UpstreamModelID: new("gpt-4o"),
 		Group:           h.manager.Current().Groups[1],
 	}
+	snapshot := h.manager.Current()
 	ref, _ := h.registry.CredentialRef(1)
 	sameCredentialOtherRoute := affinity.Target{
 		GroupID: 1, CredentialID: 1, IdentityGeneration: 1,
 		EntryID: "e000000000002", UpstreamModelID: "gpt-4o",
 	}
-	if _, admitted := h.acquireCapacity(selection, ref, requestAffinity{boundTarget: sameCredentialOtherRoute, preferredCredentialID: 1, preferredIdentityGeneration: 1}); admitted {
+	if _, admission := h.acquireCapacity(snapshot, selection, ref, requestAffinity{boundTarget: sameCredentialOtherRoute, preferredCredentialID: 1, preferredIdentityGeneration: 1}); admission != state.CapacityFull {
 		t.Fatal("stale bound route admitted overflow capacity")
 	}
 
@@ -55,10 +56,10 @@ func TestScheduleCapacityNoOverflowForStaleBoundEntry(t *testing.T) {
 		GroupID: 1, CredentialID: 1, IdentityGeneration: 1,
 		EntryID: key.EntryID, UpstreamModelID: "gpt-4o",
 	}
-	reservation, admitted := h.acquireCapacity(selection, ref, requestAffinity{
+	reservation, admission := h.acquireCapacity(snapshot, selection, ref, requestAffinity{
 		boundTarget: bound, preferredCredentialID: 1, preferredIdentityGeneration: 1,
 	})
-	if !admitted {
+	if admission != state.CapacityAdmitted {
 		t.Fatal("exact bound route denied overflow capacity")
 	}
 	reservation.Release()
