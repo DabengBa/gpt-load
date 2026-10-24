@@ -1,13 +1,20 @@
-export function readSingleCredential(raw: string): string | null {
+type CredentialInputResult =
+  | { credential: string; error: null }
+  | { credential: null; error: 'required' | 'tooMany' | 'invalidJSON' }
+
+export function readSingleCredential(raw: string): CredentialInputResult {
   const value = raw.trim()
-  if (!value || value.startsWith('[')) return null
+  if (!value) return { credential: null, error: 'required' }
+  if (value.startsWith('[')) return { credential: null, error: 'invalidJSON' }
   if (value.startsWith('{')) {
     try {
-      const parsed: unknown = JSON.parse(value)
-      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? value : null
+      JSON.parse(value)
+      return { credential: value, error: null }
     } catch {
-      return null
+      return { credential: null, error: 'invalidJSON' }
     }
   }
-  return /[\r\n]/u.test(value) ? null : value
+  return /[\r\n]/u.test(value)
+    ? { credential: null, error: 'tooMany' }
+    : { credential: value, error: null }
 }

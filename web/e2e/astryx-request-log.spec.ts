@@ -156,6 +156,7 @@ for (const width of [1440, 900, 1920]) {
     expect(logHeader).toEqual(groupHeader)
     expect(logCell).toEqual(groupCell)
     const row = records(page).first()
+
     await row.hover()
     await expect
       .poll(() => row.evaluate((element) => getComputedStyle(element).backgroundColor))
@@ -188,6 +189,13 @@ for (const width of [390, 800]) {
     await expect(records(page).first().getByText('Model / protocol', { exact: true })).toBeVisible()
     const row = records(page).first()
     const modelBox = (await row.getByTestId('logs-list__model').boundingBox())!
+    for (const record of await records(page).all()) {
+      await expect(record.getByTestId('logs-list__time')).toContainText(/\d{4}-\d{2}-\d{2}/)
+      await expect(record.getByText('Actions', { exact: true })).toBeHidden()
+      const time = (await record.getByTestId('logs-list__time').boundingBox())!
+      const action = (await record.getByRole('button', { name: 'View details' }).boundingBox())!
+      expect(Math.abs(time.y - action.y)).toBeLessThanOrEqual(16)
+    }
     const protocolBox = (await row.getByTestId('logs-list__protocol').boundingBox())!
     expect(Math.abs(protocolBox.x - modelBox.x)).toBeLessThanOrEqual(1)
     expect(protocolBox.y).toBeGreaterThanOrEqual(modelBox.y + modelBox.height)

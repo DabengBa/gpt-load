@@ -115,8 +115,24 @@ captures = (capture_envelope.get("data") or {}).get("items") or []
 rows = []
 failures = []
 
+# Transport termination is evidence even when the upstream request failed.
+# Synthetic capture failures (notably no_observation_source) are not.
+observed_terminations = {
+    "eof", "closed", "close", "cancel", "timeout", "idle_timeout",
+    "unexpected_eof", "read_error", "no_response", "transport_error",
+}
+
+def terminal_state_has_evidence(record, transport_errors):
+    if record.get("state") == "completed":
+        return not record.get("error")
+    # Fail() also records transport errors. Accept only a failure accounted for
+    # by a recorded transport termination, never an unexplained capture error.
+    return record.get("state") == "failed" and record.get("error") in transport_errors
+
 for capture in captures:
     capture_id = capture.get("id")
+    capture_transport_errors = set()
+    capture_records = []
     archive_path = os.path.join(output_dir, "captures", f"{capture_id}.zip")
     if not os.path.isfile(archive_path):
         failures.append(f"capture={capture_id} missing zip")
@@ -131,31 +147,51 @@ for capture in captures:
             if metadata_name in names:
                 with archive.open(metadata_name) as handle:
                     metadata = json.load(handle)
-            events = metadata.get("events") or []
+            events = (metadata.get("metadata") or {}).get("events") or []
             terminations = [e for e in events if e.get("kind") == "response_termination"]
-            no_response = any(e.get("outcome") == "no_response" for e in terminations)
+            outcomes = {e.get("outcome") for e in terminations}
+            termination_ok = bool(outcomes) and outcomes <= observed_terminations
+            transport_errors = {
+                e["error"] for e in terminations
+                if e.get("outcome") in observed_terminations and e.get("error")
+            }
+            capture_transport_errors.update(transport_errors)
+            no_response = outcomes == {"no_response"}
             response_headers = prefix + "parts/response.headers"
             response_body = prefix + "parts/response.body"
             request_headers = prefix + "parts/request.headers"
             request_body = prefix + "parts/request.body"
             response_received = response_headers in names and archive.getinfo(response_headers).file_size > 0
             parts_ok = request_headers in names and request_body in names
-            if response_received:
+            if no_response:
+                parts_ok = parts_ok and not response_received and (
+                    response_body not in names or archive.getinfo(response_body).file_size == 0
+                )
+            elif response_received:
                 parts_ok = parts_ok and response_body in names
-            elif not no_response:
+            else:
                 parts_ok = False
-            complete = bool(terminations) and parts_ok
-            if not complete:
-                failures.append(f"capture={capture_id} attempt={attempt_id} raw evidence incomplete")
-            rows.append({
+            row = {
                 "capture": capture_id,
                 "sequence": attempt.get("sequence"),
                 "attempt": attempt_id,
                 "state": attempt.get("state"),
                 "response_received": response_received,
                 "termination": ",".join(e.get("outcome", "") for e in terminations) or "missing",
-                "raw_complete": complete,
-            })
+                "raw_complete": termination_ok and parts_ok,
+            }
+            rows.append(row)
+            capture_records.append((row, attempt, metadata))
+    # finishAttempt may inherit a prior transport error from this session.
+    for row, attempt, metadata in capture_records:
+        row["raw_complete"] = row["raw_complete"] and all(
+            terminal_state_has_evidence(record, capture_transport_errors)
+            for record in (attempt, metadata)
+        )
+        if not row["raw_complete"]:
+            failures.append(f"capture={capture_id} attempt={row['attempt']} raw evidence incomplete")
+    if not terminal_state_has_evidence(capture, capture_transport_errors):
+        failures.append(f"capture={capture_id} state lacks complete raw evidence")
 
 for request_attempt in request_attempts:
     sequence = request_attempt.get("sequence")

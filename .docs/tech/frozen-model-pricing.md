@@ -7,6 +7,9 @@ code:
     - internal/pricing/receipt.go
     - internal/pricing/quote.go
     - internal/storage/migration.go
+    - internal/storage/migrations/legacy_retired_schema.go
+    - web/scripts/receipt-v7.test.ts
+    - web/scripts/receipt-formula.test.ts
 ---
 # Frozen Model Pricing
 
@@ -19,7 +22,8 @@ pricing mode and matched tier. These amounts are estimates, not provider bills.
 
 Component arithmetic is unchanged: apply the component price and coefficient,
 round each priced component to the nearest 0.000000001 USD using the existing
-rules, and sum the rounded components. Cache coefficients such as 8/5 remain;
+rules, and sum the rounded components. Component cache coefficients such as
+8/5 for cache writes remain;
 they are not configurable group or access-key multipliers. Unpriced portions are
 excluded, and partial usage or incomplete pricing remains explicitly identified.
 HTTP, streaming, and WebSocket accounting use the same calculated amount for

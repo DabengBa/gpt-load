@@ -40,14 +40,17 @@ missing observation.
 ## Architecture And Constraints
 
 Usage aggregation excludes rows with no upstream attempt and `probe`
-operations (`internal/requestlog/worker.go:usageAggregationExcluded`). Each
-remaining row is assigned to the hour containing its completion time and
+operations (`internal/requestlog/worker.go:usageAggregationExcluded`);
+`modeltrace` challenges are real model requests and stay in the aggregates.
+Each remaining row is assigned to the hour containing its completion time and
 grouped by access key, channel, group, credential, and upstream model.
 
 Duration is available for every eligible row. First-response timing is
 optional: a row contributes one first-response sample only when its persisted
-`FirstResponseMs` value is present. Non-streaming requests and other rows
-without that value remain valid usage rows with zero first-response samples.
+`FirstResponseMs` value is present. The recorder captures that value only for
+streaming requests (`requestRecorder.recordFirstResponse` returns early
+otherwise), so non-streaming requests and every other row without an
+observation remain valid usage rows with zero first-response samples.
 
 ## Core Implementation
 
@@ -86,11 +89,17 @@ without that value remain valid usage rows with zero first-response samples.
   `FirstResponseSampleCount` once. Otherwise add neither value nor sample.
 - **Average:** return `total / sample_count` only when `sample_count > 0`;
   consumers render no first-response sample as undefined rather than zero.
+  The monitor table displays both averages in seconds with one decimal place
+  (`1234 ms` renders as `1.2 s`); `—` stands for a missing sample, not a
+  zero-latency measurement.
 - **Breakdown sorting:** the monitor table sorts all displayed columns through
   the usage query before pagination, including total, failed, normal, slow,
   and faulty upstream attempt counts. Clicking a different column starts in
   descending order; clicking the active column reverses the direction and
   resets pagination to page one. The URL preserves the selected sort.
+  `average_first_response_ms` is additionally sample-aware: rows without a
+  first-response sample stay after rows with samples in both directions, so a
+  row with no observation never ranks as the fastest or slowest.
 - **Integrity:** checked integer addition rejects overflow; aggregate mapping
   rejects negative values, unsafe JavaScript integers, and sample counts above
   request counts. Query integrity checks reject corrupt persisted timing rows.

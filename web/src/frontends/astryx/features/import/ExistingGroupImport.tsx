@@ -136,7 +136,7 @@ export function ExistingGroupImport({
   const selectedGroupMissing =
     targetGroupID !== undefined && groupsQuery.data !== undefined && selectedGroup === null
 
-  const credential = readSingleCredential(credentials)
+  const { credential } = readSingleCredential(credentials)
   const canSubmit =
     !payloadLocked &&
     !pending &&
@@ -455,7 +455,6 @@ export function ExistingGroupImport({
             }
             showHeaderDescription={false}
             storageDescription={t('import.existing.credentialStorageNotice')}
-            showCredentialNotice={false}
             rows={8}
             onChange={setCredentials}
           />

@@ -1,5 +1,11 @@
 import * as stylex from '@stylexjs/stylex'
-import { Button, Selector, TextInput } from '@astryxdesign/core'
+import {
+  Button,
+  DateTimeInput,
+  Selector,
+  TextInput,
+  type ISODateTimeString,
+} from '@astryxdesign/core'
 import { ListFilter, X } from 'lucide-react'
 import { useMemo, type FormEvent, type JSX } from 'react'
 
@@ -104,7 +110,7 @@ const styles = stylex.create({
     display: 'block',
     minWidth: 0,
     width: {
-      default: 150,
+      default: 220,
       [NARROW]: '100%',
     },
     gridColumn: {
@@ -184,6 +190,26 @@ const styles = stylex.create({
     color: 'var(--color-danger)',
     fontSize: 'var(--text-label-xs)',
   },
+  timeRow: {
+    display: 'grid',
+    gridTemplateColumns: { default: 'repeat(2, minmax(0, 300px))', [NARROW]: 'minmax(0, 1fr)' },
+    gap: 'var(--space-2)',
+    padding: 'var(--space-2-5)',
+  },
+  timeSummary: {
+    margin: 0,
+    paddingInline: 'var(--space-2-5)',
+    paddingBottom: 'var(--space-2)',
+    fontSize: 'var(--text-label-xs)',
+    color: 'var(--color-text-muted)',
+    overflowWrap: 'anywhere',
+  },
+  actions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 'var(--space-2)',
+    gridColumn: '1 / -1',
+  },
 })
 
 // Classic picker shortcut behaviour: presets only update the draft — Apply
@@ -207,6 +233,7 @@ export interface AppliedChip {
 
 export interface LogsFilterFormProps {
   draft: LogFilterDraft
+  appliedDraft: LogFilterDraft
   errors: LogFilterErrors
   groups: GroupOptionDto[]
   channels: ChannelDto[]
@@ -235,14 +262,15 @@ export interface LogsFilterFormProps {
  * Quick request-log filter bar — classic LogsFilterForm.vue. The
  * Time presets update the draft and Apply commits the range. SearchableSelect maps
  * to Selector hasSearch; AppSelect to Selector; compact size to `sm`. DS
- * field labels stay hidden (`isLabelHidden`) to keep the classic single-bar
- * density — each `label` still supplies the accessible name. Failure flags
+ * selector labels stay hidden (`isLabelHidden`); date editors retain visible
+ * labels. Each `label` supplies the accessible name. Failure flags
  * only disable their inputs (the single host-level InlineFeedback carries the
  * notice, same as classic) and the first draft error keeps the classic
  * `role="alert"` summary line.
  */
 export function LogsFilterForm({
   draft,
+  appliedDraft,
   errors,
   groups,
   channels,
@@ -262,6 +290,9 @@ export function LogsFilterForm({
 }: LogsFilterFormProps): JSX.Element {
   const t = useT()
   const timezone = useMemo(() => currentTimeZone(), [])
+  const dirty = Object.keys(draft).some(
+    (key) => draft[key as keyof LogFilterDraft] !== appliedDraft[key as keyof LogFilterDraft],
+  )
 
   function groupOptions() {
     return [
@@ -409,30 +440,59 @@ export function LogsFilterForm({
               onChange={(value) => onUpdateField('status', value)}
             />
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<ListFilter size={14} aria-hidden="true" />}
-            label={t('monitor.logs.filters.more')}
-            onClick={() => onAdvancedOpenChange(true)}
-            endContent={
-              advancedCount > 0 ? (
-                <span {...stylex.props(styles.count)}>{advancedCount}</span>
-              ) : undefined
-            }
-          />
-          <Button
-            type="submit"
-            variant="primary"
-            size="sm"
-            label={t('monitor.logs.filters.apply')}
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            label={t('monitor.logs.filters.reset')}
-            onClick={onReset}
-          />
+          <div {...stylex.props(styles.actions)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<ListFilter size={14} aria-hidden="true" />}
+              label={t('monitor.logs.filters.more')}
+              onClick={() => onAdvancedOpenChange(true)}
+              endContent={
+                advancedCount > 0 ? (
+                  <span {...stylex.props(styles.count)}>{advancedCount}</span>
+                ) : undefined
+              }
+            />
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              label={t('monitor.logs.filters.apply')}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              label={t('monitor.logs.filters.reset')}
+              onClick={onReset}
+            />
+          </div>
+        </div>
+
+        <div {...stylex.props(styles.timeRow)}>
+          {(['from', 'to'] as const).map((field) => (
+            <DateTimeInput
+              key={field}
+              label={t(`monitor.logs.filters.${field}`)}
+              size="sm"
+              width="100%"
+              hasSeconds
+              hourFormat="24h"
+              value={draft[field] ? (draft[field] as ISODateTimeString) : undefined}
+              onChange={(value) => onUpdateField(field, value ?? '')}
+              status={errors[field] ? { type: 'error' } : undefined}
+            />
+          ))}
+        </div>
+        <p {...stylex.props(styles.timeSummary)} data-testid="logs-applied-time-range">
+          {t('monitor.logs.filters.appliedTimeRange', {
+            from: appliedDraft.from.replace('T', ' '),
+            to: appliedDraft.to.replace('T', ' '),
+          })}{' '}
+          · {timezone}
+        </p>
+        <p {...stylex.props(styles.timeSummary)}>{t('monitor.logs.filters.shortcutsHelp')}</p>
+        <div role="status" aria-live="polite" {...stylex.props(styles.timeSummary)}>
+          {dirty ? t('monitor.logs.filters.dirty') : ''}
         </div>
 
         <div

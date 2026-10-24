@@ -182,11 +182,18 @@ function sameValue(left: unknown, right: unknown): boolean {
 }
 
 export function settingsSectionKeys(section: SettingsSection): RuntimeSettingKey[] {
-  if (section === 'request-forwarding') return [...requestForwardingKeys]
-  if (section === 'affinity') return [...affinityKeys]
-  if (section === 'browser-access') return [...browserAccessKeys]
-  if (section === 'logs-maintenance') return [...logsMaintenanceKeys]
-  return [...modelPriceKeys]
+  switch (section) {
+    case 'request-forwarding':
+      return [...requestForwardingKeys]
+    case 'affinity':
+      return [...affinityKeys]
+    case 'browser-access':
+      return [...browserAccessKeys]
+    case 'logs-maintenance':
+      return [...logsMaintenanceKeys]
+    case 'model-prices':
+      return [...modelPriceKeys]
+  }
 }
 
 export function settingsScopeKeys(scope: SettingsScope): RuntimeSettingKey[] {

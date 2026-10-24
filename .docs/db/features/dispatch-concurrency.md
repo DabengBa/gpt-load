@@ -1,40 +1,76 @@
 ---
 id: feature.dispatch-concurrency
 type: feature
-name: 调度行并发上限
+name: Dispatch row concurrency limit
 route: /schedule
 related: [feature.dispatch-reasoning-policy]
 ---
-# 调度行并发上限
+# Dispatch Row Concurrency Limit
 
-## ID 解释
+## ID Explanation
 
-`feature.dispatch-concurrency` 描述管理员为单条调度行设置并发上限，以及满载时普通请求与亲和请求的不同调度行为。它不定义分组总上限、请求速率或排队能力。
+`feature.dispatch-concurrency` describes how an administrator sets a
+concurrency cap on a single dispatch row, and how ordinary and affinity
+requests are scheduled differently once that row is full. It does not define a
+group-wide cap, a request rate, or queueing.
 
 ## Purpose
 
-控制普通新请求向某条调度行继续分配，同时让已有有效亲和会话保留原目标。
+Control how ordinary new requests keep being assigned to one dispatch row,
+while an existing valid affinity session keeps its original target.
 
 ## User-Visible Contract
 
-- 管理员在调度中心选择模型，打开对应行的“高级”，设置“并发上限”并保存。
-- 0 表示不限，正整数表示普通请求允许的最大同时在途数量。输入必须为 0 到 2147483647 的整数；清空输入后需要填写才能保存。
-- 上限属于具体调度行，不是整个分组。同一条目被不同请求入口使用时共享容量，其他条目分别计数。
-- 行满载后，普通请求直接调度到其他符合原有规则的候选。所有候选都满载时立即返回容量不足，不排队等待。
-- 有效亲和请求仍可进入绑定目标并计入占用，因此实际并发可以超过配置值。只有实际解析出的目标与绑定完全一致（同一分组、凭据、身份代际、调度条目和上游模型）时才算有效亲和；绑定目标仍需符合原有权限、健康和可用条件，只有亲和信号而没有有效绑定时不能超限。
-- 满载本身不会导致亲和改绑或将该行判为故障。必须固定目标的 WebSocket 请求不会因满载切换身份；没有有效亲和豁免时返回容量不足。
-- 普通请求持续占用到执行结束，流式请求持续占用到流结束。WebSocket 按活动请求计数，空闲连接不占用。
-- 降低上限不会中断已有请求；配置保存后重新打开或刷新仍显示已存值。保存失败或配置冲突时保留草稿，处理冲突后再保存。
+- An administrator selects a model in Dispatch Center, opens that row's
+  **Advanced** section, sets **Concurrency limit**, and saves.
+- 0 means unlimited; a positive integer is the maximum number of ordinary
+  in-flight requests. The input must be an integer from 0 to 2147483647, and a
+  cleared input must be filled in before the row can be saved.
+- The cap belongs to a specific dispatch row, not to a group. Different
+  request entrypoints that use the same row share its capacity; other rows
+  count separately.
+- Once a row is full, an ordinary request is scheduled directly to another
+  candidate that still matches the existing rules. When every candidate is
+  full, the request fails immediately with a capacity error instead of waiting
+  in a queue.
+- A valid affinity request may still enter its bound target and count toward
+  occupancy, so real concurrency can exceed the configured value. A request is
+  a valid affinity only when the target actually resolved for it matches the
+  binding exactly (same group, credential, identity generation, dispatch entry,
+  and upstream model); the bound target must still satisfy the existing
+  permission, health, and availability rules, and an affinity signal without a
+  valid binding cannot exceed the limit.
+- Being full does not by itself rebind an affinity or mark that row as faulty. A
+  WebSocket request with a fixed target identity is not switched to another
+  identity because of saturation; without a valid affinity exemption it returns
+  the capacity error.
+- An ordinary request holds its slot until execution ends, and a streaming
+  request holds it until the stream ends. WebSocket counts active requests; an
+  idle connection holds no capacity.
+- Lowering the limit never interrupts in-flight requests, and the stored value
+  is still shown after reopening or refreshing. A failed save or a
+  configuration conflict keeps the draft, which is saved after the conflict is
+  resolved.
 
 ## Acceptance Workflows
 
-### 保存并维护一条调度行的上限
+### Save and maintain one dispatch row's limit
 
-- **角色与目的：** 管理员希望某条调度行在达到两个普通并发后停止接收普通新请求。
-- **入口与动作：** 打开调度中心，选择模型，在目标行的高级配置中输入 2，保存并刷新，再次打开高级配置。
-- **预期结果：** 该行仍显示 2，其他行不受影响；有效亲和请求可超限的说明可见。
-- **维护与失败信号：** 输入负数、小数或留空时不能保存；保存冲突后输入不会丢失。改为 0 并保存后取消普通请求的容量限制。
+- **Role and purpose:** An administrator wants one dispatch row to stop
+  accepting ordinary new requests once two ordinary requests are in flight.
+- **Entry and action:** Open Dispatch Center, select the model, enter 2 in the
+  target row's advanced configuration, save, refresh, and reopen the advanced
+  configuration.
+- **Expected result:** That row still shows 2 and other rows are unaffected; the
+  note that a valid affinity request may exceed the limit remains visible.
+- **Maintenance and failure signal:** A negative number, a decimal, or an empty
+  value cannot be saved; a save conflict does not lose the input. Setting 0 and
+  saving removes the ordinary-request capacity limit.
 
 ## Boundaries
 
-并发表示同时执行的请求数量，和每分钟请求数不同。这里提供单服务进程内的调度行控制，不提供跨实例共享上限，也不承诺在亲和请求存在时严格保护上游并发。
+Concurrency means the number of simultaneously executing requests and is not
+requests per minute. This feature provides per-dispatch-row control inside a
+single service process. It does not provide a limit shared across instances and
+does not promise strict upstream concurrency protection while affinity requests
+exist.

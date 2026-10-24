@@ -1,5 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { Field, Selector, Switch, TextInput } from '@astryxdesign/core'
+import { ChevronRight } from 'lucide-react'
 
 import type { ChannelDto } from '@shared/control/resources/channels'
 import { proxyMutation } from '@shared/control/resources/proxy'
@@ -17,22 +18,22 @@ import { plainTextInputAttrs } from '../../components/input-attrs'
 const styles = stylex.create({
   root: {
     minWidth: 0,
-    marginTop: '12px',
+    marginTop: '8px',
   },
   fields: {
     display: 'grid',
     gridTemplateColumns: {
-      default: 'minmax(180px, 260px) minmax(0, 1fr)',
+      default: 'minmax(220px, 0.8fr) minmax(0, 1.2fr)',
       '@media (max-width: 860px)': 'minmax(0, 1fr)',
     },
     alignItems: 'start',
-    gap: '10px 14px',
+    gap: '8px 14px',
   },
   params: {
     display: 'grid',
     gridColumn: '1 / -1',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
-    gap: '10px 14px',
+    gap: '8px 14px',
   },
   fullWidth: {
     gridColumn: { default: '1 / -1', '@media (max-width: 860px)': 'auto' },
@@ -40,6 +41,28 @@ const styles = stylex.create({
   },
   minWidth: {
     minWidth: 0,
+  },
+  moreDetails: {
+    gridColumn: { default: '1 / -1', '@media (max-width: 860px)': 'auto' },
+    minWidth: 0,
+  },
+  moreSummary: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 'var(--space-1)',
+    color: 'var(--color-text-muted)',
+    cursor: 'pointer',
+    fontSize: 'var(--text-sm)',
+    fontWeight: 560,
+    userSelect: 'none',
+    listStyle: 'none',
+  },
+  moreIcon: {
+    transform: 'rotate(0deg)',
+    transition: 'transform 140ms ease',
+  },
+  moreBody: {
+    marginTop: '8px',
   },
 
   proxyControls: {
@@ -191,6 +214,21 @@ export function ImportConnectionSection({
           />
         </div>
 
+        <div {...stylex.props(styles.minWidth)}>
+          <TextInput
+            label={t('group.settings.base.providerUrl')}
+            isOptional
+            data-gptload-mono
+            value={providerUrl}
+            {...{ inputMode: 'url' as const, autoCapitalize: 'none' }}
+            isDisabled={disabled}
+            autoComplete="off"
+            {...plainTextInputAttrs}
+            placeholder="https://"
+            onChange={onProviderUrlChange}
+          />
+        </div>
+
         {channel !== null && channel.param_fields.length > 0 && (
           <div {...stylex.props(styles.params)}>
             {channel.param_fields.map((param) =>
@@ -198,7 +236,6 @@ export function ImportConnectionSection({
                 <div key={param.key} {...stylex.props(styles.minWidth)}>
                   <Field
                     label={t('import.connection.customUrl')}
-                    description={baseURLDescription()}
                     inputID="import-channel-base-url-override"
                     isRequired={baseUrlOverrideEnabled}
                     status={
@@ -231,7 +268,7 @@ export function ImportConnectionSection({
                             status={fieldError(param.key) ? { type: 'error' } : undefined}
                             autoComplete="off"
                             {...plainTextInputAttrs}
-                            placeholder="https://"
+                            placeholder={channel.default_base_url || 'https://'}
                             onChange={(value) => onParamChange(param.key, value)}
                             onBlur={() => onParamBlur(param.key)}
                           />
@@ -272,66 +309,59 @@ export function ImportConnectionSection({
           </div>
         )}
 
-        <div {...stylex.props(styles.fullWidth)}>
-          <TextInput
-            label={t('group.settings.base.providerUrl')}
-            isOptional
-            description={t('group.settings.base.providerUrlHelp')}
-            data-gptload-mono
-            value={providerUrl}
-            {...{ inputMode: 'url' as const, autoCapitalize: 'none' }}
-            isDisabled={disabled}
-            autoComplete="off"
-            {...plainTextInputAttrs}
-            placeholder="https://"
-            onChange={onProviderUrlChange}
-          />
-        </div>
-
         {channel && (
-          <div {...stylex.props(styles.fullWidth)}>
-            <Field
-              label={t('common.proxy.title')}
-              description={proxyDescription}
-              inputID="import-group-proxy-mode"
-              status={proxyError ? { type: 'error', message: proxyError } : undefined}
-            >
-              <div>
-                <div {...stylex.props(styles.proxyControls)}>
-                  <Selector
-                    id="import-group-proxy-mode"
-                    label={t('common.proxy.modeLabel')}
-                    isLabelHidden
-                    options={proxyModeOptions}
-                    size="sm"
-                    value={proxySupported ? proxy.mode : 'inherit'}
-                    isDisabled={disabled || !proxySupported}
-                    onChange={updateProxyMode}
-                  />
-                  {proxySupported && proxy.mode === 'custom' && (
-                    <TextInput
-                      xstyle={styles.proxyInput}
-                      data-gptload-mono
-                      value={proxy.url}
-                      label={t('common.proxy.urlLabel')}
+          <details
+            {...stylex.props(styles.moreDetails)}
+            open={proxy.mode !== 'inherit' || Boolean(proxyError) || undefined}
+          >
+            <summary {...stylex.props(styles.moreSummary)}>
+              <ChevronRight size={15} aria-hidden="true" {...stylex.props(styles.moreIcon)} />
+              {t('import.connection.moreOptions')}
+            </summary>
+            <div {...stylex.props(styles.moreBody)}>
+              <Field
+                label={t('common.proxy.title')}
+                description={proxyDescription}
+                inputID="import-group-proxy-mode"
+                status={proxyError ? { type: 'error', message: proxyError } : undefined}
+              >
+                <div>
+                  <div {...stylex.props(styles.proxyControls)}>
+                    <Selector
+                      id="import-group-proxy-mode"
+                      label={t('common.proxy.modeLabel')}
                       isLabelHidden
-                      placeholder={t('common.proxy.placeholder')}
+                      options={proxyModeOptions}
                       size="sm"
-                      autoComplete="off"
-                      {...plainTextInputAttrs}
-                      isDisabled={disabled}
-                      status={proxyError ? { type: 'error', message: proxyError } : undefined}
-                      statusVariant="tooltip"
-                      onChange={updateProxyURL}
+                      value={proxySupported ? proxy.mode : 'inherit'}
+                      isDisabled={disabled || !proxySupported}
+                      onChange={updateProxyMode}
                     />
+                    {proxySupported && proxy.mode === 'custom' && (
+                      <TextInput
+                        xstyle={styles.proxyInput}
+                        data-gptload-mono
+                        value={proxy.url}
+                        label={t('common.proxy.urlLabel')}
+                        isLabelHidden
+                        placeholder={t('common.proxy.placeholder')}
+                        size="sm"
+                        autoComplete="off"
+                        {...plainTextInputAttrs}
+                        isDisabled={disabled}
+                        status={proxyError ? { type: 'error', message: proxyError } : undefined}
+                        statusVariant="tooltip"
+                        onChange={updateProxyURL}
+                      />
+                    )}
+                  </div>
+                  {proxyDisabledReason !== undefined && (
+                    <p {...stylex.props(styles.disabledReason)}>{proxyDisabledReason}</p>
                   )}
                 </div>
-                {proxyDisabledReason !== undefined && (
-                  <p {...stylex.props(styles.disabledReason)}>{proxyDisabledReason}</p>
-                )}
-              </div>
-            </Field>
-          </div>
+              </Field>
+            </div>
+          </details>
         )}
       </div>
     </div>

@@ -125,7 +125,12 @@ const styles = stylex.create({
     display: 'grid',
     gap: 'var(--space-2)',
     padding: 'var(--space-2)',
-    minWidth: '260px',
+    minWidth: 0,
+  },
+  compatibleHelp: {
+    margin: 0,
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--text-sm)',
   },
   options: {
     display: 'grid',
@@ -253,7 +258,7 @@ export function ChannelPresetPicker({
   }
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const rankedMatches: ChannelMatch[] = (() => {
+  const searchMatches: ChannelMatch[] = (() => {
     if (!normalizedQuery) {
       return otherChannels.map((channel) => ({ channel, rank: 0, reason: '' }))
     }
@@ -262,10 +267,16 @@ export function ChannelPresetPicker({
       .filter((row): row is { index: number; match: ChannelMatch } => row.match !== null)
       .sort((a, b) => b.match.rank - a.match.rank || a.index - b.index)
       .map((row) => row.match)
-    if (matches.length > 0) return matches
-    const compatible = activeChannels.find((channel) => channel.channel_id === 'openai_compatible')
-    return compatible ? [{ channel: compatible, rank: 0, reason: '' }] : []
+    return matches
   })()
+  const compatibleAlternative =
+    normalizedQuery && searchMatches.length === 0
+      ? activeChannels.find((channel) => channel.channel_id === 'openai_compatible')
+      : undefined
+  const rankedMatches: ChannelMatch[] = compatibleAlternative
+    ? [{ channel: compatibleAlternative, rank: 0, reason: '' }]
+    : searchMatches
+  const compatibleHelpId = `${channelListId}-compatible-help`
 
   // Classic watch(rankedMatches) resets the highlight; fingerprint on the
   // ordered channel ids so identical lists don't retrigger.
@@ -383,7 +394,7 @@ export function ChannelPresetPicker({
                     isOpen={popoverOpen}
                     onOpenChange={onPopoverOpenChange}
                     placement="below"
-                    alignment="start"
+                    alignment="center"
                     width={320}
                     hasAutoFocus
                     label={t('import.presets.more')}
@@ -405,11 +416,17 @@ export function ChannelPresetPicker({
                           aria-controls={rankedMatches.length ? channelListId : undefined}
                           aria-activedescendant={activeOptionId}
                         />
-                        {rankedMatches.length === 0 ? (
+                        {searchMatches.length === 0 && (
                           <InlineNotice tone="neutral" appearance="hint">
                             {t('import.presets.noMatches')}
                           </InlineNotice>
-                        ) : (
+                        )}
+                        {compatibleAlternative && (
+                          <p id={compatibleHelpId} {...stylex.props(styles.compatibleHelp)}>
+                            {t('import.presets.compatibleHelp')}
+                          </p>
+                        )}
+                        {rankedMatches.length > 0 && (
                           <div
                             id={channelListId}
                             {...stylex.props(styles.options)}
@@ -423,6 +440,9 @@ export function ChannelPresetPicker({
                                 type="button"
                                 role="option"
                                 aria-selected={channelSelected(match.channel)}
+                                aria-describedby={
+                                  compatibleAlternative ? compatibleHelpId : undefined
+                                }
                                 {...stylex.props(
                                   styles.option,
                                   index === activeIndex && styles.optionActive,
@@ -432,14 +452,16 @@ export function ChannelPresetPicker({
                               >
                                 <ChannelIcon icon={match.channel.icon} mark={match.channel.mark} />
                                 <span {...stylex.props(styles.optionName)}>
-                                  {highlightSegments(match.channel.name, query).map(
-                                    (segment, segIndex) =>
-                                      segment.matched ? (
-                                        <mark key={segIndex}>{segment.text}</mark>
-                                      ) : (
-                                        segment.text
-                                      ),
-                                  )}
+                                  {compatibleAlternative
+                                    ? t('import.presets.useCompatible')
+                                    : highlightSegments(match.channel.name, query).map(
+                                        (segment, segIndex) =>
+                                          segment.matched ? (
+                                            <mark key={segIndex}>{segment.text}</mark>
+                                          ) : (
+                                            segment.text
+                                          ),
+                                      )}
                                 </span>
                                 {match.reason && (
                                   <span {...stylex.props(styles.optionReason)}>

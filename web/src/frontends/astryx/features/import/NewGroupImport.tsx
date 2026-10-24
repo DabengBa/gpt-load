@@ -232,9 +232,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const discoveryPanelRunRef = useRef(false)
   const [autoFilledSkip, setAutoFilledSkip] = useState(false)
 
-  const credential = readSingleCredential(draft.credentials)
+  const { credential, error: credentialInputError } = readSingleCredential(draft.credentials)
   const credentialCount = credential === null ? 0 : 1
-  const tooManyCredentials = draft.credentials.trim() !== '' && credential === null
+  const invalidCredential = credentialInputError !== null && credentialInputError !== 'required'
   const connectionChannel = selectedChannel
 
   const draftProxyMutation = proxyMutation(draft.proxy.mode, draft.proxy.url)
@@ -323,8 +323,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       if (selectedChannel === null) return t('import.presets.channelRequired')
       return visibleParamError || t('import.steps.channel.incomplete')
     }
-    if (credentialCount === 0) return t('import.credentials.required')
-    if (tooManyCredentials) return t('import.credentials.tooMany')
+    if (credentialInputError) return t(`import.credentials.${credentialInputError}`)
     if (modelValidity.invalidIndexes.size) return t('import.models.resolveErrors')
     return ''
   })()
@@ -333,15 +332,13 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     !payloadLocked &&
     !paramsError &&
     !connectionMappingBlocked &&
-    credentialCount > 0 &&
-    !tooManyCredentials
+    credentialCount > 0
   const canCreate =
     !payloadLocked &&
     !mutationPending &&
     !paramsError &&
     !connectionMappingBlocked &&
     credentialCount > 0 &&
-    !tooManyCredentials &&
     modelValidity.invalidIndexes.size === 0
   const currentModelIDs = draft.models.map(({ id }) => id.trim()).filter(Boolean)
   const dirty = !completed && JSON.stringify(draft) !== baselineJson
@@ -368,7 +365,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     })
   })()
   const credentialStepState: ImportStepState =
-    tooManyCredentials || credentialValidation !== null
+    invalidCredential || credentialValidation !== null
       ? 'error'
       : credentialCount > 0
         ? 'ready'
@@ -380,13 +377,8 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       ? 'import.steps.credentials.structuredTitle'
       : 'import.steps.credentials.apiKeyTitle',
   )
-  const credentialStepDescription = t(
-    structuredCredentials
-      ? 'import.credentials.structuredDescription'
-      : 'import.credentials.description',
-  )
   const credentialStepSummary = (() => {
-    if (tooManyCredentials) return t('import.credentials.tooMany')
+    if (invalidCredential) return t(`import.credentials.${credentialInputError}`)
     if (credentialValidation) return t('import.steps.credentials.needsAttention')
     if (credentialCount > 0)
       return t(
@@ -1187,7 +1179,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                   </span>
                 </>
               }
-              description={credentialStepDescription}
               actions={
                 credentialStepSummary ? (
                   <span
@@ -1210,7 +1201,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               disabled={payloadLocked}
               hideHeader
               compact
-              rows={4}
+              rows={3}
               onChange={(credentials) => setDraft((current) => ({ ...current, credentials }))}
             />
             {connectionParsedSuccess && (
@@ -1479,20 +1470,20 @@ const styles = stylex.create({
   steps: {
     display: 'grid',
     minWidth: 0,
-    gap: 'var(--space-2)',
+    gap: 'var(--space-1)',
   },
   step: {
     minWidth: 0,
-    paddingTop: 'var(--space-5)',
-    paddingBottom: 'var(--space-4)',
+    paddingTop: 'var(--space-3)',
+    paddingBottom: 'var(--space-2)',
   },
   stepHeader: {
     minWidth: 0,
   },
   stepBody: {
     minWidth: 0,
-    marginTop: '12px',
-    marginLeft: { default: '28px', '@media (max-width: 680px)': 0 },
+    marginTop: '8px',
+    marginLeft: 0,
   },
   credentialsStep: {},
   modelsBody: {},
@@ -1527,12 +1518,14 @@ const styles = stylex.create({
     color: 'var(--color-danger)',
   },
   modelsEmpty: {
-    display: 'grid',
-    gap: 'var(--space-3)',
-    justifyItems: 'start',
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 'var(--space-2)',
     color: 'var(--color-text-faint)',
     fontSize: 'var(--text-sm)',
-    paddingBlock: 'var(--space-3)',
+    paddingBlock: 'var(--space-1)',
   },
   modelsActions: {
     display: 'flex',
@@ -1549,6 +1542,7 @@ const styles = stylex.create({
     minWidth: 0,
   },
   saveBar: {
+    marginTop: 'var(--space-4)',
     borderRadius: 'var(--radius-control)',
     backgroundColor: 'var(--color-surface-raised)',
     backdropFilter: 'none',

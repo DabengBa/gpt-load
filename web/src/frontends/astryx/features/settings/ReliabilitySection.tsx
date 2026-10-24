@@ -31,6 +31,7 @@ export function ReliabilitySection(props: SettingsSectionProps) {
 
   const policyValue = (key: PolicyCountSettingKey): string => {
     if (tools.isPendingRestore(key)) return t('settings.runtime.resetPending')
+    if (tools.hasOverride(key)) return t('settings.runtime.effectiveCount', { value: draft.values[key] })
     return t('settings.runtime.effectiveCount', {
       value: formatInteger(base.settings.values[key], locale),
     })
@@ -92,9 +93,13 @@ export function ReliabilitySection(props: SettingsSectionProps) {
         value={
           tools.isPendingRestore('blacklist_release_seconds')
             ? t('settings.runtime.resetPending')
-            : t('settings.runtime.effectiveValue', {
-                value: formatInteger(base.settings.values.blacklist_release_seconds, locale),
-              })
+            : tools.hasOverride('blacklist_release_seconds')
+              ? t('settings.runtime.effectiveValue', {
+                  value: draft.values.blacklist_release_seconds,
+                })
+              : t('settings.runtime.effectiveValue', {
+                  value: formatInteger(base.settings.values.blacklist_release_seconds, locale),
+                })
         }
         help={t('settings.runtime.blacklistReleaseHelp')}
         sourceLabel={tools.sourceLabel('blacklist_release_seconds')}

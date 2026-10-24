@@ -30,7 +30,9 @@ These endpoints require the management `AUTH_KEY` and are administrator-only. Da
 - `GET /api/debug-captures/:capture_id`
 - `GET /api/debug-captures/:capture_id/download`
 
-The list endpoint accepts `request_id`, `access_key_id`, `protocol`, `operation`, `state`, `created_after_ms`, `created_before_ms`, `offset`, and `limit`. The default page size is 50 and the maximum is 200. `created_after_ms` is inclusive and `created_before_ms` is exclusive.
+The list endpoint accepts `request_id`, `access_key_id`, `protocol`, `operation`, `state`, `created_after_ms`, `created_before_ms`, `offset`, and `limit`. The default page size is 50 and the maximum is 200; `limit=0`, an unknown `state`, a non-canonical id, or a window whose start is not before its end is rejected. `created_after_ms` is inclusive and `created_before_ms` is exclusive.
+
+`state` accepts `active`, `completed`, `failed`, and `expired`, but the list only reads rows whose `expires_at_ms` is still in the future, ordered by creation time. A session that already expired is not listed under `state=expired`; that value currently returns nothing. Use the structured request log for history beyond the fixed 4-hour retention.
 
 The detail response contains session metadata, lifecycle state, errors, and ordered logical attempts. The download endpoint streams a ZIP containing a JSON manifest, per-attempt metadata, and raw request/response header and body parts. Download responses are marked `no-store`.
 
@@ -89,9 +91,9 @@ returned a complete response; inspect parts and termination metadata together.
 Regression evidence lives in `internal/control/probe_capture_test.go`,
 `internal/container/debug_capture_test.go`.
 
-## 空完成排查顺序
+## Empty-completion triage order
 
-先读取 structured request log，确认请求的 `error_code=upstream_empty_completion`、HTTP status、usage 和每个 attempt 的错误分类与决策；request log 是索引和结果记录，不能替代 Provider 原始 body。再使用管理员 debug capture API 按同一 `request_id` 查询全部 capture，并按 attempt sequence 关联原始 request/response：
+Start with the structured request log: confirm `error_code=upstream_empty_completion`, the HTTP status, the usage numbers, and each attempt's error classification and decision. The request log is an index and a result record, and it never substitutes for the Provider's raw body. Then query every capture for the same `request_id` through the administrator debug capture API and pair raw request/response bytes by attempt sequence:
 
 ```text
 GET /api/logs/<request-id>
@@ -99,19 +101,19 @@ GET /api/debug-captures?request_id=<request-id>
 GET /api/debug-captures/<capture-id>/download
 ```
 
-完整的 raw capture 可以核对实际观察到的 response body、usage、finish reason 和 message 字段是否真的缺失，从而区分空完成与 `upstream_content_filter`。capture 的 metadata、解析结果或只有部分 body 都不是完整 raw 证据；capture 查询时仍为 `active`、已为 `failed`、已过期或已不存在，缺少应有的 response parts，或终止信息不完整时，必须标记证据不完整，不能把 metadata-only 结果当作完整 raw 证据。
+A complete raw capture is what proves whether the observed response body, usage, finish reason, and message fields are genuinely absent, and therefore separates an empty completion from `upstream_content_filter`. Capture metadata, a parsed result, or a partial body is never complete raw evidence: a capture that is still `active`, already `failed`, expired, or gone, that lacks the response parts it should have, or that carries incomplete termination information must be marked as incomplete evidence. A metadata-only result must not be treated as a complete raw capture.
 
-raw capture 只记录 Gateway、支持的 provider observer 或 transport reader 实际观察到的字节和事件。它不声称是 TLS/socket wire capture，也不补齐已经被 transport 移除的 framing、未暴露的 trailers，或在取消、超时、进程失败、连接关闭前从未观察到的数据。
+Raw capture records only the bytes and events that the Gateway, a supported provider observer, or a transport reader actually observed. It is not a TLS or socket wire capture, and it does not reconstruct framing already removed by the transport, trailers that were never exposed, or data that was never observed before a cancellation, timeout, process failure, or connection close.
 
-## 快照名额耗尽排查顺序
+## Capture-slot exhaustion triage order
 
-`/api/health` 的 `debug_capture.error` 为 `session_limit_reached` 时，先区分“名额被未释放的捕获占用”和“只是数据库行数看起来很多”。
+When `/api/health` reports `debug_capture.error` as `session_limit_reached`, first separate "the slots are held by captures that have not been released" from "the database merely looks full".
 
-1. 读取 health：`running` 为 `true`、`error` 为 `session_limit_reached`，而 `active` 可能为 `0`。`active/completed/failed` 统计的是未过期的数据库行，不是内存中的准入槽位；名额耗尽与过期清理已完成可以同时发生。
-2. 用 `GET /api/debug-captures?state=active` 查看仍未终结的会话。如果 `active` 为 `0` 却仍报名额耗尽，说明槽位被运行期持有的会话占用，而不是被持久化行占用。
-3. `no_observation_source` 会终结 attempt，因此该会话通常是 `failed` 而不是 `active`；只用 `state=active` 查不到它。名额异常时同时查询 `state=failed`（必要时再查 `completed`），对每个会话按 `GET /api/debug-captures/:capture_id` 检查 attempt。
-4. `termination` 中含有 `no_observation_source` 表示该 attempt 没有收到 Provider 完成回调，事件 detail 会写明是“来源从未启动”还是“来源启动后未完成”。这只能说明无法据此证明一次完整的请求/响应对换，不等于该 attempt 没有记录任何响应字节：已完成观察的 body、header part 可能仍然存在。必须查看实际记录的 parts 与终止信息，并按「空完成排查顺序」判定证据是否完整。
-5. 如果会话长期停在 `active` 且其 attempt 没有 `no_observation_source`，先确认该会话对应的请求是否仍在处理中（`request_id` 关联 structured request log）。请求未结束时等待其终结，不要通过重启掩盖。
-6. 修复后用一个新请求验证：新的 capture 应能创建并终结，且 `error` 字段清空。已过期的历史会话无法补回原始正文，结构化 request log 不能替代 raw body。
+1. Read health: `running` is `true`, `error` is `session_limit_reached`, and `active` may be `0`. The `active`/`completed`/`failed` numbers count unexpired database rows, not in-memory admission slots, so slot exhaustion and a finished expiry sweep can coexist.
+2. Query `GET /api/debug-captures?state=active` for sessions that have not terminated. If `active` is `0` while the error persists, the slots are held by runtime-held sessions rather than by persisted rows.
+3. The session may already be terminated: an attempt that is cancelled, drains its in-flight callbacks, and still sees no completion event finishes as a failed attempt, so its session becomes `failed` and `state=active` will not find it. When the slot count looks wrong, also query `state=failed` (and `completed` if needed) and inspect each session's attempts through `GET /api/debug-captures/:capture_id`.
+4. A `termination` carrying `no_observation_source` is a Gateway-side finalization verdict: every registered observation source and admitted callback drained, yet no response completion event appeared. It only means the attempt cannot prove a full request/response exchange; it does not mean the attempt recorded no response bytes, because projected body and header parts may still exist. Inspect the recorded parts and the termination metadata, then judge evidence completeness by the empty-completion order above.
+5. If a session stays `active` for a long time and its attempt has no `no_observation_source`, first confirm through the structured request log (joined by `request_id`) that the request is still being processed. Wait for it to finish; do not mask the condition by restarting the process.
+6. After a fix, verify with a new request: the new capture must be created and terminate, and the `error` field must clear. Expired historical sessions cannot regain their raw bodies, and a structured request log never substitutes for a raw body.
 
-名额泄漏的回归证据是 `internal/debugcapture/runtime_test.go`（健康状态报告耗尽与释放后清除）与 `internal/gateway/capture_test.go`（无观察来源、提前取消、in-flight 回调排空后均不留下 pending），端到端为 `internal/container/debug_capture_lifecycle_test.go`。
+Regression evidence for slot leaks is `internal/debugcapture/runtime_test.go` (health reports exhaustion and clears it after release) and `internal/gateway/capture_test.go` (no observation source, early cancellation, and in-flight callback drain all leave no pending work), with `internal/container/debug_capture_lifecycle_test.go` covering the end-to-end path.

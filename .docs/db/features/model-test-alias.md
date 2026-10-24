@@ -34,9 +34,13 @@ traffic.
   the one group/model route entry that owns that alias instead of joining the
   route pool for a shared ordinary model name. Normal access-key and group
   visibility filters still apply.
+- Because the alias is an ordinary route key, an access key with a non-empty
+  model filter must include the alias itself; otherwise the alias is filtered
+  out exactly like any other model name it names.
 - The test alias is included in visible model listings when its route is
   visible to the caller, so an operator can discover it through the same model
-  surface used for other models.
+  surface used for other models. Under a model filter the list shows the alias
+  only when the alias is in the allowed set.
 - Keeping the same saved model entry preserves its alias across reads, updates,
   restarts, and repeated idempotent writes. Copying a group assigns the copied
   entries different aliases so the two groups remain independently testable.

@@ -318,11 +318,12 @@ for (const width of [375, 1440]) {
         localStorage.setItem('gpt-load.theme', theme)
       }, theme)
       await page.goto('/logs', { waitUntil: 'commit' })
-      // Manual date inputs were removed by design; the labelled filter form
-      // owns the remaining time surface, so scope geometry checks to it.
+      // Date editors and shortcuts share the existing compact filter surface.
       const filters = page.getByRole('form', { name: '请求日志筛选' })
       const shortcuts = filters.getByRole('group', { name: '快捷时间范围' })
       await expect(shortcuts).toBeVisible({ timeout: 60_000 })
+      await expect(filters.getByRole('combobox', { name: '开始时间', exact: true })).toBeVisible()
+      await expect(filters.getByRole('combobox', { name: '结束时间', exact: true })).toBeVisible()
       await page.screenshot({ path: testInfo.outputPath('logs.png'), fullPage: true })
       await expectUnclipped(shortcuts)
       expect(await shortcuts.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(

@@ -78,11 +78,11 @@ before starting each phase.
 | Topic | Decision | Consequence in this plan |
 | --- | --- | --- |
 | Supported browsers | Chromium 125+ (Chrome and Edge) | This is Astryx Tier 1 on Chromium, so anchor-positioned layers work. `build.target: 'chrome125'` and `browserslist` pin the output. Safari and Firefox are best-effort and do not gate releases |
-| Visual density | Match classic's compact metrics | The custom theme and default component sizes reproduce classic's type scale, control heights, and row heights; see [Theme and tokens](#theme-and-tokens) |
+| Visual density | Match the retired Vue frontend's compact metrics | The custom theme and default component sizes reproduce that type scale, control heights, and row heights; see [Theme and tokens](#theme-and-tokens) |
 | Router | TanStack Router, code-based routes | React Router 8 is no longer evaluated |
 | React Compiler | On, through the stable Babel preset | `babel-plugin-react-compiler@1.0.0` via `reactCompilerPreset`, scoped to the new frontend. Manual memoization is the exception, not the default |
-| App i18n library | `react-intl` | ICU catalogs. A few classic messages must be rewritten into a syntax both runtimes accept; see [Internationalization](#internationalization) |
-| Theme base | `neutral` extended by a custom `defineTheme` | Only `@astryxdesign/theme-neutral` is installed. The body font is overridden to the classic system stack, so no webfont is loaded and `font-src 'self'` holds; see [Theme and tokens](#theme-and-tokens) |
+| App i18n library | `react-intl` | ICU catalogs. A few messages written for the Vue frontend were rewritten into ICU syntax; see [Internationalization](#internationalization) |
+| Theme base | `neutral` extended by a custom `defineTheme` | Only `@astryxdesign/theme-neutral` is installed. The body font is overridden to the previous system stack, so no webfont is loaded and `font-src 'self'` holds; see [Theme and tokens](#theme-and-tokens) |
 
 Rejected alternative: StyleX on Vue without Astryx. `stylex.attrs` plus
 `@stylexjs/unplugin` would compile StyleX in `.ts` modules, but it delivers
@@ -184,7 +184,9 @@ Do not port them.
   Astryx source by path; they read classic source before the migration, for
   example `frontends/classic/app/resources/groups.ts`.
 - **Contract tests** run under `node:test`: `connection-json.test.ts` and
-  `channel-contract.test.ts`.
+  `channel-contract.test.ts`. The current `web/scripts/*.test.ts` suite has
+  since grown well past those two files; see
+  [Astryx Frontend Structure](frontend-structure.md) for the live layout.
 - **Go contract tests** in `internal/webui/workflow_test.go` pin these
   literals: `"build": "pnpm run type-check && vite build"` in
   `web/package.json`; the web-ci command order `install --frozen-lockfile →
@@ -197,7 +199,7 @@ Do not port them.
   `.docs/db` semantic docs carry no code bindings; the only retired Doc ID is
   `feature.frontend-preview-switch`.
 
-### Browser state contract (shared by both frontends)
+### Browser state contract (as measured pre-cutover)
 
 | Key | Storage | Owner |
 | --- | --- | --- |

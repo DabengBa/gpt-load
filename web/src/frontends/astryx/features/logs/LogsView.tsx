@@ -675,6 +675,7 @@ export function LogsView() {
 
         <LogsFilterForm
           draft={draft}
+          appliedDraft={createLogFilterDraft(appliedFilters)}
           errors={filterErrors}
           groups={groupsQuery.data ?? []}
           channels={channelsQuery.data?.items ?? []}

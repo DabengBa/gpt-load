@@ -42,9 +42,10 @@ conflicts return 409, and all affected groups are written in one transaction
 before the new snapshot is published. Group-level reasoning defaults and their
 PATCH fields are not part of the contract.
 
-Validation evaluates each changed item against its own provider/model
-capability. A failure aborts the whole transaction. The detail resource
-projects reasoning configuration and capability on each candidate entry.
+Validation checks each changed item against the central effort vocabulary;
+the first invalid entry aborts the whole transaction. The detail resource
+projects the configured value, the effective value, and its source for each
+candidate entry. It does not project per-model capability or supported levels.
 
 The former `reasoning_effort_overrides` map and group-level
 `reasoning_effort_default` setting are not part of runtime resolution. There is
@@ -54,25 +55,29 @@ and desired values configured as item overrides.
 ## Core Implementation
 
 `internal/reasoning/config.go:ResolveEffort` resolves entry, client, then
-provider default. Entry values are centrally owned and validated; client values
-retain their original semantics when no item override exists. An empty resolved
-value leaves the provider default in control.
+provider default. Entry values are centrally owned and validated against the
+effort vocabulary (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`);
+client values retain their original semantics when no item override exists and
+are never normalized. An empty resolved value leaves the provider default in
+control.
 
-`internal/reasoning/capabilities.go` projects Bifrost's model capability records
-and provider capability rules into known/supported state, levels, and a reason.
-`ValidateEffort` requires the requested label exactly; `none` additionally
-requires the ability to disable reasoning. Unsupported item values fail before
-provider dispatch rather than being silently downgraded.
+There is no capability registry. Which levels a saved entry actually supports
+is a Provider fact, so an entry value that the vocabulary accepts is persisted
+and sent; a provider that rejects it fails that attempt and the ordinary retry
+and health policy applies. The editor therefore offers the same vocabulary for
+every entry instead of a per-model allowlist.
 
 Gateway request preparation first applies general parameter overrides, then
 applies a configured item reasoning override. Consequently an explicit item
 override wins when both mechanisms write the reasoning field. Without an item
 override, reasoning resolution does not rewrite the body; independent
-parameter-override rules still operate normally. Capability validation uses
-the actual upstream model of the selected route.
+parameter-override rules still operate normally.
 
-For supported generation operations, the dialect layer writes the client
-protocol field before any provider conversion:
+`internal/gateway/attempts.go` writes the field only for generation operations
+whose client protocol defines one (`SupportsReasoningEffortOverride`), and only
+when the winning source is the entry override — a client-owned effort is left
+untouched. The dialect layer sets the client-protocol field with `sjson`
+before any provider conversion, creating the parent objects if needed:
 
 | Protocol | Effort field |
 | --- | --- |
@@ -89,8 +94,25 @@ is not evidence of the final provider field.
 
 ## Failure Boundaries And Verification
 
-- An unsupported item override cannot be saved. Clearing an override restores
-  client/provider behavior and does not modify other entries.
+The frontend stores reasoning edits in the same typed `ScheduleDrafts` map as
+priority, weight, and concurrency, serialized through `schedule_draft` in the
+current URL. Missing `reasoning_effort` means unchanged; explicit `null` means
+clear the override. Refresh and enable/disable mutations retain the local
+draft while adopting the latest observed snapshot revision. The navigation
+blocker permits same-model URL updates and protects model changes, Back, and
+page exits with save/discard/stay choices. Saving before navigation does not
+replace the outgoing draft URL: only a successful PATCH releases the original
+blocked navigation. The separate price editor retains its own guard.
+
+The scheduling UI shows six compact columns from 768px upward. A 180px model
+index is visible at 1440px and above; smaller screens use a searchable model
+popover. Below 768px candidates become compact records with 44px controls.
+Price editing, concurrency, and breaker details are disclosed in each row's
+More popover; recovery remains directly available for unhealthy candidates.
+
+- An item override outside the supported vocabulary cannot be saved. Clearing
+  an override restores client/provider behavior and does not modify other
+  entries.
 - A concurrent writer invalidates the supplied revision. Failed validation or
 a revision conflict must not publish a partially updated policy.
 - Client-owned effort is not subjected to central-policy normalization merely
@@ -101,6 +123,6 @@ a revision conflict must not publish a partially updated policy.
   covers persistence through the runtime snapshot to the observed provider
   request. Dialect, reasoning, and Gateway tests cover field selection and
   precedence.
-- `web/e2e/schedule-editing.spec.ts` verifies item capability feedback,
+- `web/e2e/astryx-schedule.spec.ts` verifies item capability feedback,
   saving/clearing, and narrow-screen interaction with mocked APIs. These tests
   do not establish acceptance by a live provider.

@@ -431,7 +431,7 @@ var insufficientBalanceMarkers = []string{
 	"credit balance", "balance is too low", "balance insufficient",
 	"exceeded your current quota",
 	"payment required", "payment_required",
-	"余额不足", "额度不足", "欠费",
+	"余额不足", "额度不足", "欠费", "预扣费额度",
 }
 
 // InsufficientBalanceSignal reports whether an upstream status or error text

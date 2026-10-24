@@ -1,5 +1,128 @@
-[data-testid='schedule-panel'] .schedule-model-search input {
+.schedule-model-search input {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+}
+
+.schedule-model-sidebar,
+.schedule-model-desktop-current {
+  display: none;
+}
+
+.schedule-model-compact,
+.schedule-model-context,
+.schedule-model-picker,
+.schedule-model-name {
+  min-width: 0;
+}
+
+.schedule-model-picker {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.schedule-model-popover {
+  padding: var(--space-2);
+  max-width: calc(100vw - 32px);
+}
+
+.schedule-model-list {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  max-height: min(65vh, 540px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-control) transparent;
+}
+
+.schedule-model-summary,
+.schedule-model-option,
+.schedule-model-selector {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.schedule-model-summary {
+  justify-content: space-between;
+}
+
+.schedule-model-option,
+.schedule-model-selector {
+  width: 100%;
+  min-height: var(--control-sm);
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-meta);
+  text-align: left;
+  cursor: pointer;
+}
+
+.schedule-model-selector {
+  border-color: var(--color-border-control);
+  background: var(--color-surface);
+}
+
+.schedule-model-name {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.schedule-model-meta {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-model-option:hover,
+.schedule-model-selector:hover {
+  background: var(--color-interactive-hover);
+}
+
+.schedule-model-option[aria-pressed='true'] {
+  background: var(--color-surface-sunken);
+  font-weight: 650;
+}
+
+.schedule-model-option:focus-visible,
+.schedule-model-selector:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
+}
+
+@media (min-width: 1440px) {
+  .schedule-model-sidebar {
+    display: grid;
+    align-content: start;
+    gap: var(--space-2);
+  }
+
+  .schedule-model-compact {
+    display: none;
+  }
+
+  .schedule-model-desktop-current {
+    display: block;
+    color: var(--color-text);
+    font-weight: 650;
+  }
+}
+
+@media (max-width: 767px) {
+  [data-schedule-settings] [role='combobox'] {
+    min-height: 44px;
+  }
+
+  .schedule-model-option,
+  .schedule-model-selector {
+    min-height: 44px;
+  }
 }

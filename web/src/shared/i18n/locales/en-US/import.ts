@@ -10,6 +10,8 @@ export default {
       search: 'Search channels, e.g. kimi, qwen',
       clearSearch: 'Clear channel search',
       noMatches: 'No channels match',
+      useCompatible: 'Use OpenAI-compatible channel',
+      compatibleHelp: 'Use this option only if the provider supports the OpenAI API.',
       loading: 'Loading channels…',
       loadFailed: 'Unable to load channels',
       channelRequired: 'Select a channel',
@@ -111,12 +113,13 @@ export default {
       urlDescriptionWithDefault: 'Default URL: {url}',
       urlVersionWarning: 'Version path may differ; please verify',
       customUrl: 'Custom upstream URL',
+      moreOptions: 'More optional settings',
       urlError: 'Enter a valid HTTP or HTTPS upstream URL',
       paramRequired: 'Enter {name}',
     },
     credentials: {
       title: 'API keys',
-      description: 'One Group contains one credential. Repeated identical lines count as one.',
+      description: 'One Group contains one credential. Paste one API key on a single line.',
       label: 'Key content',
       placeholder: 'Paste one API key',
       structuredTitle: 'Channel credentials',
@@ -128,8 +131,6 @@ export default {
         bedrock: '{example} or {exampleAlt}',
         vertex: 'Paste a Google Cloud service-account JSON object, or use {example}',
       },
-      storageNotice:
-        'Plaintext is never put in URLs, logs, or notifications; a login interruption keeps it in this session for at most 15 minutes',
       analysisLabel: 'Key preflight',
       noInput: 'No credentials yet',
       counters: {
@@ -137,11 +138,9 @@ export default {
         duplicates: 'Duplicates',
       },
       accessKeyWarning: '{count} lines look like GPT-Load access keys; verify before continuing',
-      tooMany:
-        'A Group allows only one distinct credential. Keep one credential and remove the others.',
-      required: 'Enter at least one credential first',
-      channelCredentialNotice:
-        'These are channel API keys; create client credentials on the Access Keys page',
+      tooMany: 'Keep only one credential, even if the lines are identical.',
+      invalidJSON: 'Enter one valid JSON object, not an array.',
+      required: 'Enter one credential first',
       result: 'Added {added} credentials and skipped {duplicated} duplicates',
       validation: 'Credential {entry}, field {field}: {reason}',
       validationReasons: {

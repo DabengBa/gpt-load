@@ -69,7 +69,7 @@ neither a type nor a code.
 - `internal/control/credentials.go` exposes it as the optional
   `last_failure_summary` field; `web/src/shared/control/resources/credentials.ts`
   projects it as a string and leaves it absent when the Provider omitted it.
-- `internal/platform/redact/error_message.go:extractJSONErrorMessage` also
+- `internal/platform/redact/error_message.go:ExtractErrorMessage` also
   reads the Responses failure envelope `response.error.message`, which is the
   shape a `response.failed` event uses.
 - `internal/gateway/websocket_turn.go` builds the WebSocket error summary
@@ -87,7 +87,7 @@ neither a type nor a code.
   feature components; this document owns only the field and its provenance.
 - Code binding: `internal/requestlog/credential_activity.go:QueryCredentialActivity`
 - Code binding: `internal/control/credentials.go`
-- Code binding: `internal/platform/redact/error_message.go:extractJSONErrorMessage`
+- Code binding: `internal/platform/redact/error_message.go:ExtractErrorMessage`
 
 ## Operations, Calculation, And Failure Boundaries
 

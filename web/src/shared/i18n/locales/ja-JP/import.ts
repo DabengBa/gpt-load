@@ -10,6 +10,8 @@ export default {
       search: 'チャネルを検索（例: kimi、qwen）',
       clearSearch: 'チャネル検索をクリア',
       noMatches: '一致するチャネルはありません',
+      useCompatible: 'OpenAI 互換チャネルを使用',
+      compatibleHelp: 'プロバイダーが OpenAI API に対応している場合のみ使用してください。',
       loading: 'チャネルを読み込み中…',
       loadFailed: 'チャネルを読み込めません',
       channelRequired: 'チャネルを選択してください',
@@ -108,12 +110,13 @@ export default {
       urlDescriptionWithDefault: '既定の URL：{url}',
       urlVersionWarning: 'バージョンパスが異なる可能性があります。確認してください',
       customUrl: 'カスタム上流 URL',
+      moreOptions: 'その他の任意設定',
       urlError: '有効な HTTP または HTTPS のアップストリーム URL を入力してください',
       paramRequired: '{name} を入力してください',
     },
     credentials: {
       title: 'API キー',
-      description: '1 グループにつき認証情報は 1 つです。同じキーの重複行は 1 件として扱います',
+      description: '1 グループにつき認証情報は 1 つです。API キーは 1 行だけ貼り付けてください',
       label: 'キー内容',
       placeholder: 'API キーを 1 つ貼り付け',
       structuredTitle: 'チャネル認証情報',
@@ -126,8 +129,6 @@ export default {
         bedrock: '{example} または {exampleAlt}',
         vertex: 'Google Cloud サービスアカウント JSON を貼り付けるか、{example} を使用',
       },
-      storageNotice:
-        '平文は URL、ログ、通知に入りません — ログイン中断時は現在のセッションに最大 15 分だけ保持されます',
       analysisLabel: 'キーの事前確認',
       noInput: 'まだ認証情報が入力されていません',
       counters: {
@@ -135,10 +136,9 @@ export default {
         duplicates: '重複',
       },
       accessKeyWarning: '{count} 行が GPT-Load アクセスキーのようです — 続行前に確認してください',
-      tooMany: '1 グループには異なる認証情報を 1 件だけ設定できます。他を削除してください',
-      required: '先に認証情報を 1 件以上入力してください',
-      channelCredentialNotice:
-        'ここにはチャネルの API キーを入力します — クライアント認証情報はアクセスキーページで作成してください',
+      tooMany: '認証情報は 1 つだけ残してください。同じキーでも重複行を削除してください',
+      invalidJSON: '配列ではなく、有効な JSON オブジェクトを 1 つ入力してください',
+      required: '先に認証情報を 1 つ入力してください',
       result: '認証情報を {added} 件追加し、重複 {duplicated} 件をスキップしました',
       validation: '認証情報 {entry} のフィールド {field} が無効です: {reason}',
       validationReasons: {

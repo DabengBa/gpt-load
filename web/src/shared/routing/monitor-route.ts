@@ -14,6 +14,8 @@ import {
   parseAppliedUsageFilters,
 } from '@shared/domain/monitor/usage-filters'
 import { normalizeMonitorText } from '@shared/domain/monitor/filter-validation'
+import { isReasoningEffort } from '@shared/control/resources/model-route-schedule'
+import type { ReasoningEffortDto } from '@shared/control/types'
 
 import type { SharedRouteQuery, SharedRouteQueryRaw } from './route-query'
 
@@ -22,7 +24,13 @@ import type { SharedRouteQuery, SharedRouteQueryRaw } from './route-query'
 // same query space.
 
 export type ScheduleDraftField = 'weight' | 'priority' | 'concurrency_limit'
-export type ScheduleDrafts = Record<string, Partial<Record<ScheduleDraftField, number | null>>>
+export interface ScheduleDraft {
+  weight?: number | null
+  priority?: number | null
+  concurrency_limit?: number | null
+  reasoning_effort?: ReasoningEffortDto | null
+}
+export type ScheduleDrafts = Record<string, ScheduleDraft>
 
 export interface ScheduleMonitorState {
   externalModel?: string
@@ -153,7 +161,7 @@ function parseScheduleDrafts(raw: unknown): ScheduleDrafts {
     const drafts: ScheduleDrafts = {}
     for (const [row, draft] of Object.entries(value)) {
       if (!scheduleRowPattern.test(row) || typeof draft !== 'object' || draft === null) continue
-      const next: Partial<Record<ScheduleDraftField, number | null>> = {}
+      const next: ScheduleDraft = {}
       for (const field of ['weight', 'priority', 'concurrency_limit'] as const) {
         const candidate = (draft as Record<string, unknown>)[field]
         if (candidate === null) {
@@ -170,6 +178,10 @@ function parseScheduleDrafts(raw: unknown): ScheduleDrafts {
           next[field] = candidate
         }
       }
+      const reasoning = (draft as Record<string, unknown>).reasoning_effort
+      if (reasoning === null || (typeof reasoning === 'string' && isReasoningEffort(reasoning))) {
+        next.reasoning_effort = reasoning
+      }
       if (Object.keys(next).length > 0) drafts[row] = next
     }
     return drafts
@@ -183,12 +195,16 @@ function serializeScheduleDrafts(drafts: ScheduleDrafts): string | undefined {
   for (const row of Object.keys(drafts).sort()) {
     const draft = drafts[row]
     if (!scheduleRowPattern.test(row) || draft === undefined) continue
-    const next: Partial<Record<ScheduleDraftField, number | null>> = {}
+    const next: ScheduleDraft = {}
     for (const field of ['weight', 'priority', 'concurrency_limit'] as const) {
       const value = draft[field]
       if (value === null || (typeof value === 'number' && Number.isSafeInteger(value))) {
         next[field] = value
       }
+    }
+    const reasoning = draft.reasoning_effort
+    if (reasoning === null || (typeof reasoning === 'string' && isReasoningEffort(reasoning))) {
+      next.reasoning_effort = reasoning
     }
     if (Object.keys(next).length > 0) normalized[row] = next
   }

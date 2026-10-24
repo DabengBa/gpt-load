@@ -50,9 +50,9 @@ const CARD = '@media (max-width: 860px)'
 // Keep domain-specific track widths with room for compact Table cell padding.
 // CARD retains the existing 860px card layout and label/value subgrid.
 const ADMIN_GRID =
-  '96px minmax(144px, 0.82fr) minmax(144px, 0.82fr) minmax(194px, 1.15fr) 120px minmax(100px, 0.42fr) minmax(128px, 0.6fr) 124px 58px'
+  '96px 132px minmax(194px, 1fr) minmax(194px, 1.15fr) 120px minmax(100px, 0.42fr) minmax(128px, 0.6fr) 124px 58px'
 const ADMIN_GRID_TABLET =
-  '92px minmax(132px, 0.78fr) minmax(132px, 0.78fr) minmax(174px, 1.1fr) 116px minmax(96px, 0.42fr) minmax(120px, 0.58fr) 120px 56px'
+  '92px 132px minmax(184px, 1fr) minmax(174px, 1.1fr) 116px minmax(96px, 0.42fr) minmax(120px, 0.58fr) 120px 56px'
 const SCOPED_GRID =
   '96px minmax(194px, 1.15fr) 120px minmax(100px, 0.42fr) minmax(128px, 0.6fr) 124px 58px'
 const SCOPED_GRID_TABLET =
@@ -185,6 +185,13 @@ const styles = stylex.create({
     fontWeight: 400,
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+  },
+  repeatedDay: {
+    display: { default: 'none', [CARD]: 'block' },
+  },
+  mobileTime: {
+    gridColumn: { [CARD]: '1 / -1' },
+    paddingRight: { [CARD]: 48 },
   },
   affinityKeyCell: {
     alignContent: 'center',
@@ -387,7 +394,11 @@ const styles = stylex.create({
     gridColumn: { [CARD]: '1 / -1' },
     gridTemplateColumns: { [CARD]: 'subgrid' },
     alignItems: { [CARD]: 'start' },
+    position: { [CARD]: 'absolute' },
+    top: { [CARD]: 10 },
+    right: { [CARD]: 10 },
   },
+  actionLabel: { display: 'none' },
   actionValue: {
     justifySelf: { [CARD]: 'end' },
   },
@@ -602,12 +613,16 @@ const LogRow = memo(function LogRow({
       role="row"
       aria-rowindex={rowIndex}
     >
-      <div role="cell" {...stylex.props(styles.cell, styles.time)} data-testid="logs-list__time">
+      <div
+        role="cell"
+        {...stylex.props(styles.cell, styles.time, styles.mobileTime)}
+        data-testid="logs-list__time"
+      >
         <CellLabel>{t('monitor.logs.columns.time')}</CellLabel>
         <span {...stylex.props(styles.cellValue)}>
-          {newDay && (
-            <small {...stylex.props(styles.dayLabel)}>{formatLogDay(log.completed_at_ms)}</small>
-          )}
+          <small {...stylex.props(styles.dayLabel, !newDay && styles.repeatedDay)}>
+            {formatLogDay(log.completed_at_ms)}
+          </small>
           <time
             dateTime={formatISOInstant(log.completed_at_ms)}
             title={`${formatLocalInstantWithSeconds(log.completed_at_ms)} · ${currentTimeZone()}`}
@@ -903,7 +918,7 @@ const LogRow = memo(function LogRow({
       </div>
 
       <div role="cell" {...stylex.props(styles.cell, styles.action)}>
-        <CellLabel>{t('monitor.logs.columns.actions')}</CellLabel>
+        <span {...stylex.props(styles.actionLabel)}>{t('monitor.logs.columns.actions')}</span>
         <span {...stylex.props(styles.cellValue, styles.actionValue)}>
           <IconButton
             id={`log-details-${log.request_id}`}

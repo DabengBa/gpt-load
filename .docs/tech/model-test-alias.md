@@ -106,6 +106,14 @@ while a replay returns the original durable operation result.
   lowercase alphanumeric alphabet until an unused value is found. The random
   allocator stops after its bounded collision-retry budget and fails the
   enclosing write instead of silently reusing a name.
+- **Model discovery:** model listings are built from the compiled execution
+  candidates, so the caller sees every key that resolves to a visible target,
+  test aliases included when their route is visible. Two consequences follow
+  from that shared index: an access key with a non-empty model filter must list
+  the alias itself to see it, and a request that names a test alias also
+  passes that filter only when the alias is in the allowed set. Operations
+  that address no model use the empty route key and never appear as a listed
+  name. Ordering is a plain lexical sort of the resulting names.
 - **Persistence:** startup backfill and control writes persist the generated
   value before publishing a snapshot. A failed transaction or failed snapshot
   compilation does not publish a partially allocated route.

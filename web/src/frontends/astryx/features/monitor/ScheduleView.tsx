@@ -1,6 +1,15 @@
 import * as stylex from '@stylexjs/stylex'
-import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import {
+  Button,
+  Dialog,
+  DialogHeader,
+  Layout,
+  LayoutContent,
+  LayoutFooter,
+} from '@astryxdesign/core'
+import { useBlocker, useNavigate, useRouterState, type ShouldBlockFn } from '@tanstack/react-router'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { flushSync } from 'react-dom'
 import { useIntl } from 'react-intl'
 
 import { pagePath } from '@shared/routing/page-routes'
@@ -18,7 +27,7 @@ import type { MessageId } from '@shared/i18n/message-ids'
 import { useAppServices } from '../../app/services'
 import { useT } from '../../app/i18n'
 
-import { SchedulePanel, type SchedulePanelLabels } from './SchedulePanel'
+import { SchedulePanel, type SchedulePanelHandle, type SchedulePanelLabels } from './SchedulePanel'
 import { ScheduleAccessReadOnly } from './ScheduleAccessReadOnly'
 import { ModelUpstreamDrawer, type ModelUpstreamDrawerHandle } from '../models/ModelUpstreamDrawer'
 
@@ -49,7 +58,15 @@ const styles = stylex.create({
     minWidth: 0,
     paddingTop: '8px',
   },
+  switchFooter: { display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 },
+  switchError: { color: 'var(--color-danger)', fontSize: 'var(--text-sm)' },
 })
+
+interface ScheduleNavigationPrompt {
+  model: string
+  target: { pathname: string; state: ScheduleMonitorState }
+  resolve(blocked: boolean): void
+}
 
 const scheduleReasonCodes = [
   'access_key_disabled',
@@ -121,10 +138,118 @@ export function ScheduleView() {
   const pendingStateRef = useRef<ScheduleMonitorState | null>(null)
   const pendingGenerationRef = useRef(0)
   const drawerRef = useRef<ModelUpstreamDrawerHandle>(null)
+  const panelRef = useRef<SchedulePanelHandle>(null)
+  const navigationPromptRef = useRef<ScheduleNavigationPrompt | null>(null)
+  const [navigationPrompt, setNavigationPrompt] = useState<ScheduleNavigationPrompt | null>(null)
+  const [switchSaving, setSwitchSaving] = useState(false)
+  const [switchError, setSwitchError] = useState('')
+  const suppressDraftNavigationRef = useRef(false)
+  const clearHistoryDraftRef = useRef(false)
   const latestStateRef = useRef(scheduleState)
   latestStateRef.current = scheduleState
   const latestPathRef = useRef(pathname)
   latestPathRef.current = pathname
+
+  // This guard owns scheduling drafts only. It must not consume the price
+  // editor's shared bypass when that editor opens, closes, or changes price.
+  const shouldBlock = useCallback<ShouldBlockFn>(
+    ({ current, next, action }) => {
+      const source = parseScheduleMonitorState(current.search as SharedRouteQuery)
+      const target = parseScheduleMonitorState(next.search as SharedRouteQuery)
+      const historyTraversal = action === 'BACK' || action === 'FORWARD' || action === 'GO'
+      if (
+        next.pathname === schedulePath &&
+        source.externalModel === target.externalModel &&
+        (!historyTraversal ||
+          scheduleMonitorQuery(source).schedule_draft ===
+            scheduleMonitorQuery(target).schedule_draft)
+      )
+        return false
+      if (panelRef.current?.pending || navigationPromptRef.current !== null) return true
+      if (Object.keys(latestStateRef.current.drafts).length === 0 && !panelRef.current?.invalid)
+        return false
+      return new Promise<boolean>((resolve) => {
+        const prompt = {
+          model: source.externalModel ?? '',
+          target: { pathname: next.pathname, state: target },
+          resolve,
+        }
+        navigationPromptRef.current = prompt
+        // Router navigation runs in a transition; the confirmation must commit
+        // synchronously rather than wait for the navigation it is blocking.
+        flushSync(() => {
+          setSwitchError('')
+          setNavigationPrompt(prompt)
+        })
+      })
+    },
+    [schedulePath],
+  )
+
+  const enableBeforeUnload = useCallback(
+    () =>
+      Object.keys(latestStateRef.current.drafts).length > 0 ||
+      panelRef.current?.pending === true ||
+      panelRef.current?.invalid === true,
+    [],
+  )
+  useBlocker({ shouldBlockFn: shouldBlock, enableBeforeUnload, disabled: !isAdmin })
+
+  function finishNavigation(blocked: boolean): void {
+    const prompt = navigationPromptRef.current
+    if (prompt && blocked) {
+      pendingGenerationRef.current += 1
+      pendingStateRef.current = null
+    }
+    if (
+      prompt &&
+      !blocked &&
+      prompt.target.pathname === schedulePath &&
+      prompt.model === prompt.target.state.externalModel &&
+      Object.keys(prompt.target.state.drafts).length > 0
+    ) {
+      clearHistoryDraftRef.current = true
+    }
+    navigationPromptRef.current = null
+    setNavigationPrompt(null)
+    prompt?.resolve(blocked)
+  }
+
+  useEffect(() => {
+    if (!clearHistoryDraftRef.current || navigationPromptRef.current !== null) return
+    clearHistoryDraftRef.current = false
+    if (pathname !== schedulePath || Object.keys(scheduleState.drafts).length === 0) return
+    void navigate({
+      to: schedulePath,
+      search: scheduleMonitorQuery({ ...scheduleState, drafts: {} }),
+      replace: true,
+      resetScroll: false,
+    })
+  }, [pathname, schedulePath, scheduleState, navigate])
+
+  function discardAndContinue(): void {
+    suppressDraftNavigationRef.current = true
+    panelRef.current?.discard()
+    suppressDraftNavigationRef.current = false
+    finishNavigation(false)
+  }
+
+  async function saveAndContinue(): Promise<void> {
+    if (switchSaving) return
+    setSwitchSaving(true)
+    setSwitchError('')
+    // Replacing the current draft URL would cancel the blocked navigation.
+    // The destination already omits the old model's draft, so save locally
+    // and let that original navigation commit only after the PATCH succeeds.
+    suppressDraftNavigationRef.current = true
+    try {
+      if (await panelRef.current?.save()) finishNavigation(false)
+      else setSwitchError(t('monitor.schedule.detail.saveSwitchFailed'))
+    } finally {
+      suppressDraftNavigationRef.current = false
+      setSwitchSaving(false)
+    }
+  }
 
   function withDrawerBypass(navigateState: () => Promise<void>): Promise<void> {
     return drawerRef.current?.runWithoutPrompt(navigateState) ?? navigateState()
@@ -164,6 +289,7 @@ export function ScheduleView() {
     next: Partial<ScheduleMonitorState>,
     method: 'push' | 'replace',
   ): void {
+    if (latestPathRef.current !== schedulePath || suppressDraftNavigationRef.current) return
     const current = pendingStateRef.current ?? latestStateRef.current
     const contextChanged =
       next.externalModel !== undefined && next.externalModel !== current.externalModel
@@ -179,12 +305,7 @@ export function ScheduleView() {
     const current = pendingStateRef.current ?? scheduleState
     const externalModel = context.externalModel?.trim() || undefined
     const contextChanged = externalModel !== current.externalModel
-    if (
-      contextChanged &&
-      Object.keys(current.drafts).length > 0 &&
-      !window.confirm(t('monitor.schedule.detail.unsaved'))
-    )
-      return
+
     if (contextChanged && drawerRef.current && !(await drawerRef.current.confirmDiscardSwitch()))
       return
     if (contextChanged) drawerRef.current?.discardChanges()
@@ -271,6 +392,7 @@ export function ScheduleView() {
         {isAdmin && isCanonicalQuery && (
           <div {...stylex.props(styles.panel)}>
             <SchedulePanel
+              ref={panelRef}
               externalModel={scheduleState.externalModel}
               selectedRow={scheduleState.selectedRow}
               sourceGroupId={scheduleState.sourceGroupId}
@@ -278,15 +400,17 @@ export function ScheduleView() {
               labels={scheduleLabels}
               locale={intl.locale}
               onChangeContext={commitScheduleContext}
-              onDraftChange={(drafts: ScheduleDrafts) =>
-                updateScheduleContext({ drafts }, 'replace')
-              }
+              onDraftChange={(drafts: ScheduleDrafts) => {
+                if (!suppressDraftNavigationRef.current)
+                  updateScheduleContext({ drafts }, 'replace')
+              }}
               onRowChange={(row) => updateScheduleContext({ selectedRow: row }, 'replace')}
-              onSaved={(_, clearDrafts) =>
-                updateScheduleContext(clearDrafts ? { drafts: {} } : {}, 'replace')
-              }
+              onSaved={(_, clearDrafts) => {
+                if (!suppressDraftNavigationRef.current)
+                  updateScheduleContext(clearDrafts ? { drafts: {} } : {}, 'replace')
+              }}
               onRecovered={() => updateScheduleContext({}, 'replace')}
-              onRefresh={() => updateScheduleContext({}, 'replace')}
+
               onOpenPrice={(priceID) => void openPrice(priceID)}
             />
           </div>
@@ -311,6 +435,65 @@ export function ScheduleView() {
           />
         )}
       </div>
+      <Dialog
+        isOpen={navigationPrompt !== null}
+        onOpenChange={(open) => {
+          if (!open && !switchSaving) finishNavigation(true)
+        }}
+        width={460}
+        purpose="form"
+      >
+        <Layout
+          header={
+            <DialogHeader
+              title={t('monitor.schedule.detail.switchTitle')}
+              subtitle={t('monitor.schedule.detail.switchDescription', {
+                model: navigationPrompt?.model ?? '',
+              })}
+              hasDivider
+            />
+          }
+          content={
+            <LayoutContent>
+              {panelRef.current?.invalid && (
+                <p {...stylex.props(styles.switchError)}>
+                  {t('monitor.schedule.detail.invalidSwitch')}
+                </p>
+              )}
+              {switchError !== '' && (
+                <p role="alert" {...stylex.props(styles.switchError)}>
+                  {switchError}
+                </p>
+              )}
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter hasDivider xstyle={styles.switchFooter}>
+              <Button
+                variant="secondary"
+                label={t('monitor.schedule.detail.stay')}
+                isDisabled={switchSaving}
+                onClick={() => finishNavigation(true)}
+              />
+              <Button
+                variant="secondary"
+                label={t('monitor.schedule.detail.discardAndContinue')}
+                isDisabled={switchSaving}
+                onClick={discardAndContinue}
+              />
+              <Button
+                variant="primary"
+                label={t('monitor.schedule.detail.saveAndContinue')}
+                isDisabled={switchSaving || panelRef.current?.invalid === true}
+                isLoading={switchSaving}
+                onClick={() => {
+                  void saveAndContinue()
+                }}
+              />
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
     </section>
   )
 }

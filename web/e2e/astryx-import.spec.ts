@@ -76,6 +76,43 @@ const CHANNELS = [
   },
 ]
 
+const PICKER_CHANNELS = [
+  ['openai', 'OpenAI'],
+  ['anthropic', 'Anthropic'],
+  ['gemini', 'Gemini'],
+  ['openai_compatible', 'OpenAI Compatible'],
+  ['cliproxyapi', 'CLIProxyAPI'],
+  ['deepseek', 'DeepSeek'],
+  ['groq', 'Groq'],
+  ['mistral', 'Mistral'],
+  ['extra', 'Extra Channel'],
+].map(([channel_id, name]) => ({
+  ...CHANNELS[0],
+  channel_id,
+  name,
+  icon: channel_id,
+  param_fields: [
+    {
+      key: 'base_url',
+      label: 'Base URL',
+      input_kind: 'url',
+      required: channel_id === 'openai_compatible',
+      sensitive: false,
+      default_value: null,
+    },
+  ],
+  credential_fields: [
+    {
+      key: 'api_key',
+      label: 'API Key',
+      input_kind: 'secret',
+      required: true,
+      sensitive: true,
+      default_value: null,
+    },
+  ],
+}))
+
 const GROUP_OPTIONS = [
   {
     id: 7,
@@ -288,6 +325,105 @@ test('channel search exposes its list and selects an option with the keyboard', 
   await expect(list).not.toBeVisible()
 })
 
+for (const width of [390, 320]) {
+  test(`channel picker contents fit the popup and viewport at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 })
+    await mockImportApi(page)
+    await page.route('**/api/channels', (route) =>
+      route.fulfill({
+        json: {
+          code: 0,
+          message: 'ok',
+          data: { items: PICKER_CHANNELS, total: PICKER_CHANNELS.length },
+        },
+      }),
+    )
+    await page.goto('/import?mode=new', { waitUntil: 'commit' })
+    await page.getByRole('button', { name: 'Other channels', exact: true }).click({
+      timeout: FIRST_PAINT,
+    })
+    const popup = page.getByRole('dialog', { name: 'Other channels', exact: true })
+    const search = popup.getByRole('combobox', { name: /Search channels/ })
+    await expect(search).toBeFocused()
+    await expect(popup.getByRole('option')).toHaveCount(5)
+    // Check inner controls and icons, not just the outer surface: a fitting
+    // popover can still clip an oversized inner panel or scroll it sideways.
+    await expect
+      .poll(() =>
+        popup.evaluate((surface) => {
+          const layer = surface.closest('[popover]')!
+          const outer = layer.getBoundingClientRect()
+          const left = Math.max(0, outer.left)
+          const right = Math.min(window.innerWidth, outer.right)
+          const top = Math.max(0, outer.top)
+          const bottom = Math.min(window.innerHeight, outer.bottom)
+          return Array.from(
+            surface.querySelectorAll(
+              '[role="combobox"], [role="listbox"], [role="option"], .channel-icon, svg',
+            ),
+          )
+            .filter((element) => {
+              const rect = element.getBoundingClientRect()
+              return (
+                rect.left < left - 1 ||
+                rect.right > right + 1 ||
+                rect.top < top - 1 ||
+                rect.bottom > bottom + 1
+              )
+            })
+            .map((element) => element.getAttribute('role') ?? element.className.toString())
+        }),
+      )
+      .toEqual([])
+    await search.fill('extra')
+    await search.press('Enter')
+    await expect(page.getByRole('button', { name: 'Extra Channel', exact: true })).toBeVisible()
+    await expect(popup).not.toBeVisible()
+  })
+}
+
+test('unmatched channel search explains the compatible alternative and selects it by keyboard', async ({
+  page,
+}) => {
+  await mockImportApi(page)
+  await page.route('**/api/channels', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: { items: PICKER_CHANNELS, total: PICKER_CHANNELS.length },
+      },
+    }),
+  )
+  await page.goto('/import?mode=new', { waitUntil: 'commit' })
+  await page.getByRole('button', { name: 'Other channels', exact: true }).click({
+    timeout: FIRST_PAINT,
+  })
+  const popup = page.getByRole('dialog', { name: 'Other channels', exact: true })
+  const search = popup.getByRole('combobox', { name: /Search channels/ })
+  await search.fill('zzzznonexistent')
+  await expect(popup.getByText('No channels match', { exact: true })).toBeVisible()
+  await expect(
+    popup.getByText('Use this option only if the provider supports the OpenAI API.', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  const alternative = popup.getByRole('option', {
+    name: 'Use OpenAI-compatible channel',
+    exact: true,
+  })
+  await expect(alternative).toBeVisible()
+  await expect(search).toHaveAttribute(
+    'aria-activedescendant',
+    (await alternative.getAttribute('id'))!,
+  )
+  await search.press('Enter')
+  await expect(popup).not.toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'OpenAI Compatible', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+})
+
 test('adds the first manual model from the empty import form', async ({ page }) => {
   await mockImportApi(page)
   await page.goto('/import', { waitUntil: 'commit' })
@@ -410,10 +546,7 @@ test('single-credential server rejection explains how to correct the draft', asy
   await page.locator('#channel-credentials').fill('sk-first')
   await page.getByRole('button', { name: 'Create Group', exact: true }).click()
   await expect(
-    page.getByText(
-      'A Group allows only one distinct credential. Keep one credential and remove the others.',
-      { exact: true },
-    ),
+    page.getByText('Keep only one credential, even if the lines are identical.', { exact: true }),
   ).toBeVisible()
   await expect(page.getByText('Unable to create the Group', { exact: true })).toHaveCount(0)
 })

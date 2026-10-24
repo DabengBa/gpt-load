@@ -22,13 +22,17 @@ pretending that an unobserved first response was instantaneous.
 ## User-Visible Contract
 
 - Usage breakdowns expose average total duration and average first-response
-  time in milliseconds alongside request, success, failure, token, and cost
-  measures.
+  time alongside request, success, failure, token, and cost measures. Both
+  averages are displayed in seconds with one decimal place.
+- A first-response measurement exists only for streaming requests. A group
+  that served only non-streaming requests therefore reports no first-response
+  average at all, which is a real absence of observation rather than fast
+  responses.
 - Average duration is calculated from the total duration and its observed
   request sample count.
 - Average first-response time is calculated only from requests with an
-  observed first-response measurement. A group with no such observations shows
-  `—`, not `0 ms`.
+  observed first-response measurement. A row with no such observations shows
+  `—`, not `0 s`.
 - The breakdown can be sorted by either timing measure. Rows without a
   first-response sample remain after rows with samples in both sort directions;
   they are not treated as zero-latency rows.

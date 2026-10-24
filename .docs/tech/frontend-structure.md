@@ -62,6 +62,22 @@ feature directory. [Navigation loading and cache policy](navigation-performance.
 owns route loading, intent preloading, and query freshness; its implementation
 starts in `app/router.tsx`.
 
+## Request-log filter and record presentation
+
+The logs quick form shows the applied local time bounds and timezone separately
+from the editable draft. Its six relative shortcuts only edit the draft;
+Apply validates and commits the bounds to the URL/API, while Reset restores the
+default window. Start and end editors reuse Astryx `DateTimeInput` with seconds.
+Unapplied changes are announced through a polite status region. Group filtering
+continues to match any attempt, not only the final attempt.
+
+Desktop records allocate a bounded affinity-key track and a wider route track.
+Below the existing 860px card breakpoint every record shows its local date,
+and its detail action sits beside the time rather than adding an Actions row.
+All diagnostic fields and detail/focus behavior remain available. Regression
+coverage lives in `astryx-log-time-range.spec.ts`, `astryx-request-log.spec.ts`,
+and the log geometry cases in `astryx-field-layout.spec.ts`.
+
 ## Detail panels
 
 `components/DetailPanel.tsx` owns the shared right-side modal shell. It uses

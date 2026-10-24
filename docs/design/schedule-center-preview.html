@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>调度中心 · 布局与交互预览 · GPT-Load</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #eeede9; --surface: #fff; --sunken: #f5f4f1;
+      --text: #15181b; --muted: #4e545b; --faint: #606870;
+      --line: #e6e5e0; --control: #cfcfc9; --accent: #1c4f6e; --accent-ink: #fff; --soft: #e8eff4;
+      --green: #1a6b3f; --green-bg: #e6f3ec; --amber: #8f6212; --amber-bg: #f8f0dd;
+      --red: #b82e2e; --red-bg: #fbebe9; --overlay: rgb(20 22 24 / 34%);
+      --focus: #1c4f6e; --shadow: 0 8px 28px rgb(28 26 20 / 13%);
+      font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 13px; line-height: 1.5;
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --canvas: #0c0f12; --surface: #171c21; --sunken: #20262c;
+      --text: #e9edf0; --muted: #bdc4cb; --faint: #9ca7b1;
+      --line: #303840; --control: #56616b; --accent: #8ad5f2; --accent-ink: #10242e; --soft: #203a48;
+      --green: #82d6a0; --green-bg: #173524; --amber: #e7be70; --amber-bg: #382c19;
+      --red: #ffa5a0; --red-bg: #3d2224; --overlay: rgb(0 0 0 / 62%); --focus: #8ad5f2;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--canvas); color: var(--text); }
+    ::selection { background: var(--accent); color: var(--accent-ink); }
+    button, input, select { font: inherit; color: inherit; }
+    button, summary, select { cursor: pointer; }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 5px 10px; border: 1px solid var(--control); border-radius: 6px; background: var(--surface); white-space: nowrap; }
+    button:hover:not(:disabled) { background: var(--sunken); border-color: var(--faint); }
+    button:active:not(:disabled) { background: var(--soft); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+    button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(.94); }
+    button.quiet { background: transparent; border-color: transparent; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+    input, select { min-width: 0; width: 100%; min-height: 32px; border: 1px solid var(--control); border-radius: 5px; background: var(--surface); padding: 5px 8px; caret-color: var(--accent); }
+    input:focus, select:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+    input[aria-invalid="true"] { border-color: var(--red); background: var(--red-bg); }
+    input[type="checkbox"] { accent-color: var(--accent); width: 15px; min-height: 15px; margin: 0; }
+    svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 22px; line-height: 30px; font-weight: 650; }
+    h2 { font-size: 17px; font-weight: 650; }
+    h3 { font-size: 15px; font-weight: 650; }
+    small, .meta { font-size: 12px; color: var(--faint); }
+    .number { font-variant-numeric: tabular-nums; }
+    .topbar { height: 54px; padding: 0 24px; display: flex; align-items: center; gap: 30px; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 9px; font-size: 17px; white-space: nowrap; }
+    .brand svg { color: var(--accent); width: 24px; height: 24px; stroke-width: 3; }
+    .nav { display: flex; align-items: center; gap: 24px; color: var(--muted); height: 100%; }
+    .nav span { height: 100%; display: flex; align-items: center; position: relative; }
+    .nav [aria-current] { color: var(--text); font-weight: 600; }
+    .nav [aria-current]::after { content: ""; position: absolute; height: 1px; background: var(--text); bottom: 10px; left: 0; right: 0; }
+    .top-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    main { padding: 12px 16px 20px; max-width: 1800px; margin: auto; }
+    .page-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+    .workspace { display: grid; gap: 16px; min-width: 0; }
+    .sidebar { display: none; align-self: start; position: sticky; top: 16px; }
+    .sidebar label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .model-list { display: grid; gap: 3px; margin-top: 8px; max-height: 65vh; overflow-y: auto; }
+    .model-list button { justify-content: space-between; text-align: left; white-space: normal; overflow-wrap: anywhere; background: transparent; border-color: transparent; padding: 6px 8px; }
+    .model-list button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+    .model-list button[aria-pressed="true"] small { color: inherit; }
+    .model-list small { margin-left: 8px; }
+    .content { min-width: 0; }
+    .context { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .context-info { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+    .context-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .context-title h2 { overflow-wrap: anywhere; }
+    .context-title button { min-height: 30px; font-size: 12px; }
+    .context-subtitle { color: var(--faint); font-size: 12px; }
+    .context-actions { display: flex; gap: 8px; align-items: center; flex: none; }
+    .context-actions .observed { margin-right: 4px; }
+
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+    .good { color: var(--green); } .warning { color: var(--amber); } .danger { color: var(--red); }
+    .ledger { background: var(--surface); border: 1px solid var(--line); }
+    .columns, .candidate { display: grid; grid-template-columns: minmax(150px, 1.6fr) 72px 100px minmax(190px, 1.2fr) 52px 116px; gap: 10px; }
+    .columns { padding: 8px 12px; background: var(--sunken); color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--control); }
+    .candidate { padding: 8px 12px; align-items: center; border-bottom: 1px solid var(--line); }
+    .candidate:last-child { border-bottom: 0; }
+    .candidate.modified { background: color-mix(in srgb, var(--soft) 35%, var(--surface)); }
+    .candidate > * { min-width: 0; }
+    .identity { grid-area: auto; }
+    .identity-name { padding: 0; display: block; width: 100%; text-align: left; min-height: 0; font-weight: 650; white-space: normal; overflow-wrap: anywhere; line-height: 1.45; border: 0; background: transparent; }
+    .identity-name:hover:not(:disabled) { background: transparent; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+    .group-name { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; margin-top: 4px; }
+    .candidate.modified .group-name::after { content: " · 已修改"; color: var(--accent); }
+    .state { font-weight: 650; display: flex; align-items: center; gap: 6px; }
+    .state-extra { display: block; font-size: 12px; color: var(--faint); margin-top: 2px; line-height: 1.4; }
+    .metrics { display: grid; gap: 1px; font-variant-numeric: tabular-nums; }
+    .metrics strong { font-weight: 500; white-space: nowrap; }
+    .metrics [data-stat="success"] { color: var(--muted); }
+    .metric-label { display: none; }
+    .settings, .settings-head { display: grid; grid-template-columns: 44px 44px minmax(82px, 1fr); gap: 6px; }
+    .field { display: grid; align-content: start; gap: 4px; min-width: 0; }
+    .field label { font-size: 12px; color: var(--muted); }
+    .settings .field label { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+    .field input { font-variant-numeric: tabular-nums; padding-inline: 6px; appearance: textfield; }
+    .field input::-webkit-inner-spin-button, .field input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+    .field select { padding-inline: 5px; font-size: 12px; }
+    .field-error { color: var(--red); font-size: 12px; grid-column: 1 / -1; line-height: 1.5; }
+    .share { font-variant-numeric: tabular-nums; }
+    .share-value { font-size: 13px; font-weight: 600; }
+    .actions { display: flex; gap: 5px; align-items: center; justify-content: flex-end; }
+    .actions > button:not(.toggle) { padding: 4px 5px; min-height: 30px; font-size: 12px; }
+    .toggle { padding: 2px; width: 30px; min-height: 18px; height: 18px; flex: none; border: 0; background: var(--control); border-radius: 12px; justify-content: flex-start; }
+    .toggle[aria-checked="true"] { background: var(--accent); }
+    .toggle:hover:not(:disabled) { background: var(--control); border: 0; }
+    .toggle[aria-checked="true"]:hover:not(:disabled) { background: var(--accent); }
+    .toggle::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); transition: transform 140ms ease-out; }
+    .toggle[aria-checked="true"]::before { transform: translateX(12px); }
+    .row-menu { position: fixed; inset: auto; margin: 0; width: 260px; max-width: calc(100vw - 16px); padding: 12px; border: 1px solid var(--control); border-radius: 6px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+    .menu-actions { display: flex; gap: 8px; padding-bottom: 12px; }
+    .row-menu .field { margin-top: 8px; }
+    .row-menu small { display: block; margin-top: 5px; }
+    .breaker { color: var(--muted); font-size: 12px; }
+    .breaker { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+    .ledger-note { color: var(--faint); font-size: 12px; margin: 6px 1px 0; }
+    .ledger-note summary { width: fit-content; padding: 3px 0; }
+    .ledger-note p { margin-top: 5px; }
+    .save-bar { position: sticky; z-index: 5; bottom: 12px; margin-top: 16px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--control); border-radius: 7px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+    .save-description { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .save-description strong { font-weight: 600; }
+    .save-actions { display: flex; gap: 8px; flex: none; }
+    .error-banner { background: var(--red-bg); border: 1px solid var(--red); color: var(--red); padding: 10px 12px; margin: 10px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .error-banner p { flex: 1; min-width: 200px; }
+    .empty { text-align: center; padding: 40px 20px; background: var(--surface); border: 1px dashed var(--control); }
+    .empty p { color: var(--muted); margin: 7px 0 16px; }
+    .prototype-tools { margin-top: 12px; border-top: 1px solid var(--control); padding-top: 8px; color: var(--faint); font-size: 12px; }
+    .prototype-tools > summary { width: fit-content; padding: 4px 0; }
+    .prototype-tools .tools-line { margin-top: 8px; }
+    .tools-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tools-line > span { margin-right: 4px; }
+    .tools-line button { font-size: 12px; min-height: 28px; }
+    .tools-line label { display: inline-flex; align-items: center; gap: 6px; margin-inline: 4px; cursor: pointer; }
+    .design-notes { margin-top: 10px; }
+    .design-notes summary { width: fit-content; padding: 5px 0; color: var(--muted); }
+    .design-notes ol { max-width: 850px; margin: 6px 0 0; padding-left: 20px; }
+    .design-notes li { padding: 3px 0; }
+    dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid var(--control); border-radius: 8px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+    dialog::backdrop { background: var(--overlay); }
+    .dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px 12px; }
+    .dialog-body { padding: 0 20px 18px; overflow-wrap: anywhere; }
+    .dialog-body > p { color: var(--muted); margin-bottom: 12px; }
+    .dialog-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--sunken); }
+    .dialog-close { width: 32px; padding: 5px; }
+    .dialog-list { margin-top: 12px; display: grid; gap: 4px; max-height: 50vh; overflow-y: auto; }
+    .dialog-list button { justify-content: space-between; padding: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+    .dialog-list button[aria-pressed="true"] { background: var(--soft); border-color: var(--accent); }
+    .search-label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+    .dialog-empty { padding: 22px 8px; text-align: center; }
+    .dialog-empty p { margin-bottom: 12px; }
+    .guard-summary { padding: 10px 12px; background: var(--sunken); border-radius: 5px; margin-bottom: 12px; }
+    .guard-summary li { padding: 3px 0; }
+    .guard-note { font-size: 12px; }
+    dl { margin: 0; display: grid; gap: 6px; }
+    dt { margin-top: 9px; color: var(--faint); font-size: 12px; }
+    dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .toast { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: 22px; padding: 11px 16px; border: 1px solid var(--control); border-radius: 6px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); max-width: calc(100% - 32px); font-size: 12px; }
+    body:has(.save-bar:not([hidden])) .toast { bottom: 94px; }
+    @media (min-width: 1440px) {
+      .workspace { grid-template-columns: 180px minmax(0, 1fr); }
+      .sidebar { display: block; }
+      [data-testid="model-picker"] { display: none; }
+    }
+    @media (min-width: 768px) and (max-width: 1199px) {
+      .columns, .candidate { grid-template-columns: minmax(150px, 1.3fr) 64px 90px minmax(182px, 1fr) 48px 112px; gap: 8px; padding-inline: 10px; }
+      .context-actions .observed { display: none; }
+      .context-info { gap: 8px; }
+      .context-subtitle { display: none; }
+    }
+    @media (max-width: 767px) {
+      .topbar { padding: 0 14px; gap: 12px; }
+      .brand { font-size: 16px; }
+      .nav { display: none; }
+      main { padding: 10px 12px 20px; }
+      h1 { font-size: 20px; }
+      .page-heading { margin-bottom: 6px; gap: 10px; flex-wrap: wrap; }
+      .page-heading .meta { font-size: 12px; }
+      button, input, select { min-height: 44px; }
+      .top-actions button { min-height: 40px; }
+      .context { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+      .context-info { min-width: 0; }
+      .context-title { gap: 4px; }
+      .context-title h2 { font-size: 14px; }
+      .context-title button { min-width: 44px; min-height: 44px; padding: 6px; }
+      .context-title button span, .context-subtitle, .observed, .refresh-text { display: none; }
+      .context-actions { gap: 4px; }
+      .context-actions button { font-size: 12px; padding: 5px 7px; }
+      #refresh-button { min-width: 44px; }
+      .columns { display: none; }
+      .candidate { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 80px; grid-template-areas: "identity identity status" "metrics metrics share" "settings settings settings" "actions actions actions"; gap: 6px 8px; padding: 8px 10px; align-items: start; }
+      .identity { grid-area: identity; } .status-cell { grid-area: status; text-align: right; }
+      .state { justify-content: flex-end; font-size: 12px; }
+      .state-extra { font-size: 12px; }
+      .metrics { grid-area: metrics; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .metric-label { display: inline; color: var(--faint); font-size: 12px; margin-right: 4px; }
+      .share { grid-area: share; text-align: right; }
+      .share::before { content: "占比 "; color: var(--faint); font-size: 12px; }
+      .settings { grid-area: settings; grid-template-columns: minmax(56px, .8fr) minmax(56px, .8fr) minmax(100px, 1.5fr); gap: 6px; }
+      .settings .field label { position: static; width: auto; height: auto; clip-path: none; overflow: visible; }
+      .settings label { font-size: 12px; }
+      .settings input, .settings select { font-size: 14px; }
+      .actions { grid-area: actions; gap: 8px; }
+      .actions > button:not(.toggle) { min-height: 44px; padding: 8px 12px; }
+      .toggle { min-width: 44px; min-height: 44px; height: 44px; border-radius: 5px; background: transparent; position: relative; padding: 0; }
+      .toggle::after { content: ""; position: absolute; width: 30px; height: 18px; background: var(--control); border-radius: 12px; left: 7px; top: 13px; }
+      .toggle::before { position: absolute; z-index: 1; left: 9px; top: 15px; }
+      .toggle[aria-checked="true"], .toggle[aria-checked="true"]:hover:not(:disabled), .toggle:hover:not(:disabled) { background: transparent; }
+      .toggle[aria-checked="true"]::after { background: var(--accent); }
+
+      .save-bar { bottom: 8px; padding: 11px; align-items: stretch; flex-direction: column; gap: 9px; }
+      .save-actions { justify-content: flex-end; }
+      .save-description { font-size: 12px; }
+      .save-description .meta { display: none; }
+      .prototype-tools { margin-top: 10px; }
+      .tools-line button { min-height: 44px; font-size: 12px; }
+      .tools-line label { min-height: 44px; }
+      dialog { width: calc(100% - 24px); }
+      .dialog-header { padding: 16px 16px 10px; }
+      .dialog-body { padding-inline: 16px; }
+      .dialog-footer { padding: 12px 16px; }
+      .dialog-close { width: 44px; }
+      .toast { bottom: 15px; }
+      body:has(.save-bar:not([hidden])) .toast { bottom: 154px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .toggle::before { transition: none; } }
+    @media print { .top-actions, .sidebar, .prototype-tools, .save-bar, .actions, .context-actions, .toast { display: none; } main { padding: 0; } .candidate { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" style="display:none">
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.5-1L20 9M4 15l2.4 3A7 7 0 0 0 18 17"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14A8.5 8.5 0 0 1 10 4a8.5 8.5 0 1 0 10 10Z"/></symbol>
+  </svg>
+  <header class="topbar">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 4-8 8 8 8M14 4l8 8-8 8"/></svg>GPT-Load</div>
+    <nav class="nav" aria-label="产品导航示意"><span>首页</span><span>分组</span><span aria-current="page">调度中心</span><span>监控</span><span>请求日志</span><span>设置</span></nav>
+    <div class="top-actions"><button class="quiet" id="theme-button" aria-label="切换深色模式" aria-pressed="false"><svg aria-hidden="true"><use href="#i-moon"/></svg><span>深色</span></button></div>
+  </header>
+  <main>
+    <div class="page-heading"><h1>调度中心</h1><span class="meta">方案预览 · 模拟数据</span></div>
+    <div class="workspace">
+      <aside class="sidebar" data-testid="model-sidebar" aria-label="对外模型索引">
+        <label for="sidebar-search">搜索对外模型</label><input id="sidebar-search" type="search" placeholder="输入模型名称" autocomplete="off">
+        <div id="sidebar-models" class="model-list"></div>
+
+      </aside>
+      <section class="content" aria-labelledby="current-model">
+        <header class="context">
+          <div class="context-info"><div class="context-title"><h2 id="current-model" data-testid="current-model">gpt-4.1-mini</h2><button data-testid="model-picker" id="open-picker" aria-label="切换模型"><span>切换模型</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button></div><span class="context-subtitle" id="context-subtitle"></span></div>
+          <div class="context-actions"><span class="observed meta" id="observed">14:32:08</span><button id="refresh-button" class="quiet" aria-label="刷新运行状态"><svg aria-hidden="true"><use href="#i-refresh"/></svg><span class="refresh-text">刷新</span></button><button id="probe-all">批量测活</button></div>
+        </header>
+
+        <div id="save-error" class="error-banner" role="alert" hidden><p>服务器配置已变化，未保存修改已保留。请先比较最新配置。</p><button id="compare-server">查看最新配置</button><button id="dismiss-error" class="quiet">继续编辑</button></div>
+        <div id="unknown-model" class="empty" hidden><h3>找不到这个对外模型</h3><p>模型可能已被移除或当前不可访问。请重新选择，不会自动覆盖已有草稿。</p><button id="unknown-picker" class="primary">重新选择模型</button></div>
+        <div id="ledger" class="ledger">
+          <div class="columns" aria-hidden="true"><span>上游模型 / 分组</span><span>状态</span><span>分组 24h<br>调用 / 成功率</span><div class="settings-head"><span>优先级</span><span>权重</span><span>推理策略</span></div><span id="share-heading">占比</span><span>操作</span></div>
+          <div id="candidates" aria-label="候选上游"></div>
+        </div>
+        <details id="ledger-note" class="ledger-note"><summary>口径与生效规则</summary><p>统计为分组最近 24 小时调用数与成功率。占比按同优先级内的权重计算，不代表实际请求量；数值越小的优先级越先尝试。启停即时生效，其余配置统一保存。</p></details>
+        <section class="save-bar" data-testid="save-bar" aria-label="未保存的调度修改" hidden>
+          <div class="save-description"><span class="dot warning" aria-hidden="true"></span><strong id="draft-count" aria-live="polite" aria-atomic="true"></strong><button id="locate-error" class="quiet danger" hidden></button></div>
+          <div class="save-actions"><button id="discard-button" class="quiet">放弃修改</button><button id="save-button" data-testid="save-button" class="primary">保存修改</button></div>
+        </section>
+      </section>
+    </div>
+    <details class="prototype-tools" id="prototype-tools"><summary>预览工具与方案说明</summary>
+      <div class="tools-line"><span>交互演示</span><button id="load-drafts">加载草稿示例</button><label><input id="simulate-conflict" data-testid="conflict-toggle" type="checkbox">模拟保存冲突</label><button id="invalid-model">查看失效模型链接</button><button id="reset-demo" class="quiet">重置演示</button></div>
+      <details class="design-notes"><summary>布局与交互说明</summary><ol><li>≥1440px 保留 180px 模型索引；768–1439px 收起索引，使用紧凑表格；≤767px 使用紧凑候选记录。公共标题只在表头出现一次。</li><li>长名称可换行并点击查看完整对象。默认仅显示状态、调用数、成功率、配置及占比；价格、并发与熔断收进“更多”，异常时保留直接恢复入口。手机主要控件至少 44px。</li><li>优先级、权重、推理策略与并发限制共用草稿。切换前确认、刷新保留本标签页草稿；启停不覆盖草稿。</li><li>全部操作为浏览器模拟，不连接后端。统计、价格和调度计算以真实产品为准。</li></ol></details>
+    </details>
+  </main>
+  <dialog id="model-dialog" aria-labelledby="model-dialog-title"><div class="dialog-header"><h3 id="model-dialog-title">切换对外模型</h3><button class="dialog-close quiet" data-close="model-dialog" aria-label="关闭模型选择"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><label class="search-label" for="model-search">搜索模型</label><input id="model-search" type="search" placeholder="输入名称筛选" autocomplete="off"><div id="dialog-models" class="dialog-list"></div></div></dialog>
+  <dialog id="guard-dialog" aria-labelledby="guard-title"><div class="dialog-header"><h3 id="guard-title">切换前处理未保存修改</h3><button class="dialog-close quiet" data-close="guard-dialog" aria-label="取消切换"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p id="guard-target"></p><ul id="guard-summary" class="guard-summary"></ul><p class="guard-note">推理策略、权重、优先级和并发限制一起保存。已经即时生效的启停操作不受影响。</p><p id="guard-error" class="danger" hidden>请先修正非法数值，才能保存并继续。</p></div><div class="dialog-footer"><button data-close="guard-dialog">留在当前模型</button><button id="discard-continue">放弃并继续</button><button id="save-continue" class="primary">保存并继续</button></div></dialog>
+  <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-header"><h3 id="detail-title"></h3><button class="dialog-close quiet" data-close="detail-dialog" aria-label="关闭详情"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body" id="detail-body"></div><div class="dialog-footer"><button data-close="detail-dialog">关闭</button></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script>
+    // Self-contained design prototype. No API requests, imports or build step.
+    const $ = (selector) => document.querySelector(selector)
+    const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
+    const fields = { priority: '优先级', weight: '权重', reasoning: '推理策略', concurrency: '并发限制' }
+    const catalog = [
+      { name: 'gpt-4.1-mini', protocol: 'OpenAI · chat/completions', count: 4 },
+      { name: 'gpt-4.1', protocol: 'OpenAI · chat/completions', count: 3 },
+      { name: 'claude-sonnet-4-5', protocol: 'Anthropic · messages', count: 2 },
+      { name: 'text-embedding-3-large', protocol: 'OpenAI · embeddings', count: 2 },
+      { name: 'deepseek-v3.2', protocol: 'OpenAI · chat/completions', count: 3 },
+    ]
+    function initialState() {
+      const data = {}
+      for (const model of catalog) {
+        const upstream = model.name === 'gpt-4.1-mini' ? 'gpt-4.1-mini-2025-04-14' : model.name
+        data[model.name] = [
+          { id: 'east', model: upstream, group: '生产网关 · 华东', priority: 1, weight: 60, reasoning: '', concurrency: 0, enabled: true, state: 'available', calls: 182340, rate: '99.92%', failures: 0 },
+          { id: 'north', model: `${upstream}-long-context`, group: '生产网关 · 华北长上下文专线', priority: 1, weight: 40, reasoning: 'medium', concurrency: 16, enabled: true, state: 'available', calls: 32861, rate: '99.76%', failures: 0 },
+          { id: 'backup', model: upstream, group: '备用网关 · 跨区容灾', priority: 2, weight: 100, reasoning: 'high', concurrency: 4, enabled: true, state: 'cooldown', calls: 2041, rate: '97.84%', failures: 4 },
+          { id: 'isolated', model: upstream, group: '隔离候选 · 待排查凭据', priority: 2, weight: 0, reasoning: '', concurrency: 2, enabled: true, state: 'blacklisted', calls: 9032, rate: '86.71%', failures: 12 },
+        ].slice(0, model.count)
+      }
+      return { selected: 'gpt-4.1-mini', data, drafts: {} }
+    }
+    let state = initialState()
+    try { const stored = sessionStorage.getItem('schedule-center-preview'); if (stored) state = JSON.parse(stored) } catch { /* Browser storage is optional for an offline preview. */ }
+    const queryModel = new URL(location.href).searchParams.get('preview_model')
+    if (queryModel) state.selected = queryModel
+    let pendingTarget = ''
+    let busy = false
+    let toastTimer
+    function persist() { try { sessionStorage.setItem('schedule-center-preview', JSON.stringify(state)) } catch { /* Editing remains usable when storage is blocked. */ } }
+    const currentRows = () => state.data[state.selected] ?? []
+    const currentDrafts = () => state.drafts[state.selected] ?? {}
+    const valueOf = (row, field) => currentDrafts()[row.id]?.[field] ?? String(row[field])
+    const dirtyCount = () => Object.values(currentDrafts()).reduce((count, draft) => count + Object.keys(draft).length, 0)
+    function validation(field, value) {
+      if (field === 'reasoning') return ''
+      const number = Number(value)
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(number) || number < (field === 'priority' ? 1 : 0) || number > (field === 'weight' ? 100 : 2147483647)) {
+        return field === 'priority' ? '请输入大于或等于 1 的整数。' : field === 'weight' ? '权重须为 0–100 的整数。' : '并发限制须为 0–2147483647 的整数。'
+      }
+      return ''
+    }
+    function errors() {
+      return currentRows().flatMap((row) => Object.entries(currentDrafts()[row.id] ?? {}).filter(([field, value]) => validation(field, value)).map(([field]) => ({ id: row.id, field })))
+    }
+    function notify(message) {
+      clearTimeout(toastTimer); $('#toast').textContent = message; $('#toast').hidden = false
+      toastTimer = setTimeout(() => { $('#toast').hidden = true }, 3400)
+    }
+    function modelButtons(query = '', dialog = false) {
+      const models = catalog.filter((model) => model.name.toLowerCase().includes(query.toLowerCase().trim()))
+      return models.map((model) => `<button data-model="${model.name}" aria-pressed="${model.name === state.selected}"><span>${model.name}</span><small>${model.count} 项</small></button>`).join('') || (dialog ? '<div class="dialog-empty"><p>没有匹配的模型</p><button id="clear-search">清空搜索</button></div>' : '<p class="meta">没有匹配的模型</p>')
+    }
+    function fieldHTML(row, field, label = fields[field]) {
+      const id = `${row.id}-${field}`
+      const name = `${label} · ${row.model} · ${row.group}`
+      const value = valueOf(row, field)
+      const error = validation(field, value)
+      const control = field === 'reasoning'
+        ? `<select id="${id}" data-field="${field}" aria-label="${escapeHTML(name)}">${[['', '继承分组'], ['none', 'none'], ['minimal', 'minimal'], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh'], ['max', 'max']].map(([option, text]) => `<option value="${option}" ${option === value ? 'selected' : ''}>${text}</option>`).join('')}</select>`
+        : `<input id="${id}" data-field="${field}" type="number" inputmode="numeric" min="${field === 'priority' ? 1 : 0}" max="${field === 'weight' ? 100 : 2147483647}" value="${escapeHTML(value)}" aria-label="${escapeHTML(name)}" aria-invalid="${Boolean(error)}" aria-describedby="${id}-error">`
+      return `<div class="field"><label for="${id}">${label}</label>${control}</div>`
+    }
+    function rowHTML(row) {
+      const enabled = row.enabled
+      const tone = !enabled ? '' : row.state === 'available' ? 'good' : row.state === 'cooldown' ? 'warning' : 'danger'
+      const status = !enabled ? '已停用' : row.state === 'available' ? '可用' : row.state === 'cooldown' ? '冷却中' : '已拉黑'
+      return `<article class="candidate" data-candidate="${row.id}" aria-label="${escapeHTML(`${row.model} · ${row.group}`)}">
+        <div class="identity"><button class="identity-name" data-action="identity" aria-label="查看完整名称 · ${escapeHTML(row.model)} · ${escapeHTML(row.group)}">${escapeHTML(row.model)}</button><p class="group-name">${escapeHTML(row.group)}</p></div>
+        <div class="status-cell"><span class="state ${tone}"><span class="dot" aria-hidden="true"></span>${status}</span>${row.failures ? `<span class="state-extra">${row.failures} 次失败${row.state === 'cooldown' ? '<br>至 14:48' : ''}</span>` : ''}</div>
+        <div class="metrics"><strong aria-label="分组 24 小时调用 ${row.calls}"><span class="metric-label" aria-hidden="true">24h</span>${row.calls.toLocaleString('en-US')}</strong><strong data-stat="success" aria-label="分组 24 小时成功率 ${row.rate}">${row.rate}</strong></div>
+        <div class="settings">${fieldHTML(row, 'priority')}${fieldHTML(row, 'weight')}${fieldHTML(row, 'reasoning')}${['priority', 'weight'].map((field) => `<p id="${row.id}-${field}-error" class="field-error" data-error="${field}" hidden></p>`).join('')}</div>
+        <div class="share"><span class="share-value"></span></div>
+        <div class="actions"><button class="toggle" role="switch" aria-checked="${enabled}" aria-label="启用候选 · ${escapeHTML(row.model)} · ${escapeHTML(row.group)}" title="启停即时生效" data-action="toggle"></button><button data-action="${row.state === 'available' ? 'probe' : 'recover'}">${row.state === 'available' ? '测活' : '恢复'}</button><button popovertarget="more-${row.id}" aria-label="更多操作 · ${escapeHTML(row.group)}">更多</button></div>
+        <div class="row-menu" id="more-${row.id}" popover aria-label="${escapeHTML(row.group)}的更多操作"><div class="menu-actions"><button data-action="price">价格</button>${row.state !== 'available' ? '<button data-action="probe">测活</button>' : ''}</div>${fieldHTML(row, 'concurrency')}<p class="field-error" id="${row.id}-concurrency-error" data-error="concurrency" hidden></p><small>0 表示不限制并发</small><p class="breaker">熔断：连续失败阈值 3，冷却 60 秒。${row.state === 'blacklisted' ? '<br>预计释放：今日 15:00' : ''}</p></div>
+      </article>`
+    }
+    function updateMarks() {
+      for (const row of currentRows()) {
+        const node = $(`[data-candidate="${row.id}"]`)
+        const draft = currentDrafts()[row.id] ?? {}
+        const modified = Object.keys(draft).length > 0
+        node.classList.toggle('modified', modified)
+        for (const field of ['priority', 'weight', 'concurrency']) {
+          const error = validation(field, valueOf(row, field))
+          const input = node.querySelector(`[data-field="${field}"]`)
+          input.setAttribute('aria-invalid', String(Boolean(error)))
+          const message = node.querySelector(`[data-error="${field}"]`)
+          message.textContent = error; message.hidden = !error
+        }
+        const priority = Number(valueOf(row, 'priority'))
+        const total = currentRows().filter((candidate) => candidate.enabled && Number(valueOf(candidate, 'priority')) === priority).reduce((sum, candidate) => sum + (validation('weight', valueOf(candidate, 'weight')) ? 0 : Number(valueOf(candidate, 'weight'))), 0)
+        const share = row.enabled && total > 0 && !validation('weight', valueOf(row, 'weight')) ? Number(valueOf(row, 'weight')) / total * 100 : 0
+        node.querySelector('.share-value').textContent = `${share.toFixed(1)}%`
+
+      }
+      const count = dirtyCount(); const invalid = errors().length
+      $('#share-heading').textContent = count ? '占比*' : '占比'
+      $('#share-heading').title = count ? '草稿配置预览，尚未保存' : '同优先级配置占比'
+
+      $('[data-testid="save-bar"]').hidden = count === 0
+      $('#draft-count').textContent = `${Object.keys(currentDrafts()).length} 个候选 · ${count} 项未保存修改`
+      $('#locate-error').hidden = invalid === 0; $('#locate-error').textContent = `${invalid} 项需修正 · 定位`
+      $('#save-button').disabled = busy || invalid > 0
+      $('#save-continue').disabled = busy || invalid > 0
+      $('#discard-button').disabled = busy
+      $('#save-button').textContent = busy ? '保存中…' : '保存修改'
+      $('#guard-error').hidden = invalid === 0
+    }
+    function render() {
+      const model = catalog.find((item) => item.name === state.selected)
+      $('#current-model').textContent = state.selected
+      $('#context-subtitle').textContent = model ? `${model.protocol.split(' · ')[0]} · ${model.count} 个候选` : '模型不可用'
+      $('#sidebar-models').innerHTML = modelButtons($('#sidebar-search').value)
+      $('#dialog-models').innerHTML = modelButtons($('#model-search').value, true)
+      $('#unknown-model').hidden = Boolean(model); $('#ledger').hidden = !model; $('#ledger-note').hidden = !model
+      $('#probe-all').disabled = !model
+      $('#candidates').innerHTML = currentRows().map(rowHTML).join('')
+      for (const menu of document.querySelectorAll('.row-menu')) menu.addEventListener('toggle', (event) => {
+        if (event.newState !== 'open') return
+        const button = $(`[popovertarget="${menu.id}"]`).getBoundingClientRect()
+        const bounds = menu.getBoundingClientRect()
+        menu.style.left = `${Math.max(8, Math.min(innerWidth - bounds.width - 8, button.right - bounds.width))}px`
+        menu.style.top = `${Math.max(8, Math.min(innerHeight - bounds.height - 8, button.bottom + 4))}px`
+      })
+      updateMarks()
+    }
+    function updateField(rowID, field, value) {
+      const row = currentRows().find((item) => item.id === rowID)
+      const drafts = state.drafts[state.selected] ??= {}
+      const draft = drafts[rowID] ??= {}
+      if (String(row[field]) === value) delete draft[field]; else draft[field] = value
+      if (!Object.keys(draft).length) delete drafts[rowID]
+      persist(); updateMarks()
+    }
+    function switchModel(model) {
+      state.selected = model; $('#save-error').hidden = true
+      const url = new URL(location.href); url.searchParams.set('preview_model', model); history.replaceState(null, '', url)
+      persist(); render()
+    }
+    function requestSwitch(model) {
+      if (model === state.selected) return
+      if (!dirtyCount()) { switchModel(model); return }
+      pendingTarget = model
+      $('#guard-target').textContent = `即将从 ${state.selected} 切换到 ${model}。`
+      $('#guard-summary').innerHTML = currentRows().filter((row) => currentDrafts()[row.id]).map((row) => `<li>${escapeHTML(row.group)}：${Object.keys(currentDrafts()[row.id]).map((field) => fields[field]).join('、')}</li>`).join('')
+      updateMarks(); $('#guard-dialog').showModal()
+    }
+    async function saveDrafts(next = '') {
+      if (busy || errors().length || !dirtyCount()) return
+      busy = true; updateMarks()
+      await new Promise((resolve) => setTimeout(resolve, 240))
+      busy = false
+      if ($('#simulate-conflict').checked) { $('#save-error').hidden = false; updateMarks(); notify('模拟版本冲突：所有草稿均已保留。'); return }
+      for (const row of currentRows()) for (const [field, value] of Object.entries(currentDrafts()[row.id] ?? {})) row[field] = field === 'reasoning' ? value : Number(value)
+      delete state.drafts[state.selected]; $('#save-error').hidden = true
+      persist(); render(); notify('模拟保存成功，全部配置修改已保存。')
+      if (next) switchModel(next)
+    }
+    function openPicker() { $('#model-search').value = ''; $('#dialog-models').innerHTML = modelButtons('', true); $('#model-dialog').showModal(); $('#model-search').focus() }
+    function showDetail(title, body) { $('#detail-title').textContent = title; $('#detail-body').innerHTML = body; $('#detail-dialog').showModal() }
+    document.addEventListener('click', (event) => {
+      const close = event.target.closest('[data-close]')
+      if (close) $(`#${close.dataset.close}`).close()
+      const model = event.target.closest('[data-model]')
+      if (model) { $('#model-dialog').close(); requestSwitch(model.dataset.model) }
+      const action = event.target.closest('[data-action]')
+      if (!action) return
+      const row = currentRows().find((item) => item.id === action.closest('[data-candidate]').dataset.candidate)
+      if (action.closest('[popover]')) action.closest('[popover]').hidePopover()
+      if (action.dataset.action === 'toggle') { row.enabled = !row.enabled; persist(); render(); notify(`模拟${row.enabled ? '启用' : '停用'}成功；其他未保存配置保持不变。`) }
+      if (action.dataset.action === 'identity') showDetail('候选完整名称', `<dl><dt>对外模型</dt><dd>${escapeHTML(state.selected)}</dd><dt>上游模型</dt><dd>${escapeHTML(row.model)}</dd><dt>分组</dt><dd>${escapeHTML(row.group)}</dd><dt>统计口径</dt><dd>最近 24 小时 · 分组调用统计</dd></dl>`)
+      if (action.dataset.action === 'price') showDetail('上游价格 · 示例', `<p>此入口在产品中打开已有上游价格详情。预览只展示入口与上下文，不替代完整价格编辑器。</p><dl><dt>上游模型</dt><dd>${escapeHTML(row.model)}</dd><dt>示例参考价格 · USD / 百万 Tokens</dt><dd>输入 $0.40 · 输出 $1.60</dd><dt>修改范围</dt><dd>价格按渠道和上游模型共享，保存前需确认关联分组。</dd></dl>`)
+      if (action.dataset.action === 'probe') notify(`模拟测活完成：${row.group}。未发送上游请求。`)
+      if (action.dataset.action === 'recover') { row.state = 'available'; row.failures = 0; persist(); render(); notify('模拟恢复成功；配置草稿保持不变。') }
+    })
+    $('#candidates').addEventListener('input', (event) => { if (event.target.dataset.field) updateField(event.target.closest('[data-candidate]').dataset.candidate, event.target.dataset.field, event.target.value) })
+    $('#candidates').addEventListener('change', (event) => { if (event.target.tagName === 'SELECT') updateField(event.target.closest('[data-candidate]').dataset.candidate, event.target.dataset.field, event.target.value) })
+    $('#sidebar-search').addEventListener('input', (event) => { $('#sidebar-models').innerHTML = modelButtons(event.target.value) })
+    $('#model-search').addEventListener('input', (event) => { $('#dialog-models').innerHTML = modelButtons(event.target.value, true) })
+    $('#dialog-models').addEventListener('click', (event) => { if (event.target.id === 'clear-search') { $('#model-search').value = ''; $('#dialog-models').innerHTML = modelButtons('', true); $('#model-search').focus() } })
+    $('#open-picker').addEventListener('click', openPicker); $('#unknown-picker').addEventListener('click', openPicker)
+    $('#save-button').addEventListener('click', () => saveDrafts())
+    $('#discard-button').addEventListener('click', () => { delete state.drafts[state.selected]; $('#save-error').hidden = true; persist(); render(); notify('已放弃配置草稿；即时启停状态保持不变。') })
+    $('#save-continue').addEventListener('click', () => { $('#guard-dialog').close(); void saveDrafts(pendingTarget) })
+    $('#discard-continue').addEventListener('click', () => { delete state.drafts[state.selected]; $('#guard-dialog').close(); switchModel(pendingTarget) })
+    $('#locate-error').addEventListener('click', () => { const error = errors()[0]; if (!error) return; const input = $(`#${error.id}-${error.field}`); const menu = input.closest('[popover]'); if (menu && !menu.matches(':popover-open')) menu.showPopover(); input.focus(); input.scrollIntoView({ block: 'center' }) })
+    $('#refresh-button').addEventListener('click', () => { $('#observed').textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false }); notify('已模拟刷新运行状态；全部草稿保持不变。') })
+    $('#probe-all').addEventListener('click', () => notify(`模拟完成 ${currentRows().length} 项测活；未发送上游请求。`))
+    $('#dismiss-error').addEventListener('click', () => { $('#save-error').hidden = true })
+    $('#compare-server').addEventListener('click', () => showDetail('比较最新配置 · 模拟冲突', '<p>服务器的配置版本已更新。以下仅演示比较方式；不会覆盖输入中的草稿。</p><dl><dt>服务器示例：华东候选权重</dt><dd>服务器为 55；草稿保持当前输入值。</dd><dt>继续操作</dt><dd>关闭后可继续编辑。取消“模拟保存冲突”，即可演示保存成功。</dd></dl>'))
+    $('#load-drafts').addEventListener('click', () => { if (!currentRows().length) switchModel('gpt-4.1-mini'); const row = currentRows()[0]; const drafts = state.drafts[state.selected] ??= {}; drafts[row.id] = { ...(drafts[row.id] ?? {}), weight: '75', reasoning: 'high' }; persist(); render(); notify('已载入权重和推理草稿。可尝试切换模型、刷新或行启停。') })
+    $('#invalid-model').addEventListener('click', () => requestSwitch('removed-model'))
+    $('#reset-demo').addEventListener('click', () => { state = initialState(); $('#simulate-conflict').checked = false; $('#sidebar-search').value = ''; switchModel('gpt-4.1-mini'); notify('演示已重置。') })
+    $('#theme-button').addEventListener('click', () => { const dark = document.documentElement.dataset.theme !== 'dark'; document.documentElement.dataset.theme = dark ? 'dark' : 'light'; $('#theme-button').setAttribute('aria-pressed', String(dark)); $('#theme-button').setAttribute('aria-label', dark ? '切换浅色模式' : '切换深色模式'); $('#theme-button span').textContent = dark ? '浅色' : '深色' })
+    window.addEventListener('beforeunload', (event) => { if (dirtyCount()) { event.preventDefault(); event.returnValue = '' } })
+    for (const dialog of document.querySelectorAll('dialog')) dialog.addEventListener('click', (event) => { if (event.target !== dialog) return; const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close() })
+    render()
+  </script>
+</body>
+</html>

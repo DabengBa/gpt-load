@@ -38,13 +38,14 @@ opens at the relevant place instead of requiring a second search.
 ### From request logs to group maintenance
 
 - In a request-log list, the group name remains the control for narrowing the
-  log list to that group. A separate maintenance link opens the group's
-  maintenance page.
-- Long route labels truncate within their text area. The group maintenance
-  arrow and configured provider website link remain on the same route line
-  and stay available independently of the truncated text.
-- The request-log detail view exposes the same maintenance link for a group
-  only after the group identity has been confirmed to exist.
+  log list to that group. The list route cell does not carry a separate
+  maintenance link.
+- The request-log detail view exposes a maintenance arrow for a group only
+  after the group identity has been confirmed to exist, together with the
+  configured provider website link.
+- Long route labels truncate within their text area. The maintenance arrow and
+  provider website link remain on the same route line and stay available
+  independently of the truncated text.
 - Deleted groups remain readable as historical log references, but do not
   expose a maintenance link. A missing or unresolved group likewise has no
   maintenance link.
@@ -74,13 +75,12 @@ opens at the relevant place instead of requiring a second search.
 
 - **Role and purpose:** An administrator wants to change the group associated
   with a visible request or inspect its configuration.
-- **Entry and action:** Open request logs, then use the separate maintenance
-  action beside a resolved group in the list or detail view.
+- **Entry and action:** Open request logs, select a record so its detail view
+  opens, then use the maintenance action beside the resolved group.
 - **Expected result:** The group maintenance page opens for that group, while
-  the existing group-name control continues to filter logs when the operator
-  chooses the filter action instead. With a long route name, the maintenance
-  arrow and any configured provider website link remain visible and operable
-  beside the shortened label.
+  the group-name control in the list continues to filter logs. With a long
+  route name, the maintenance arrow and any configured provider website link
+  remain visible and operable beside the shortened label.
 - **Failure signal:** Historical, deleted, or unresolved groups remain visible
   as log data but do not offer a link to a page that cannot be opened.
 

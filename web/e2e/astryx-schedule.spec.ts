@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+
 import { expect, test, type Page } from '@playwright/test'
 
 // Phase 3 schedule-domain coverage for the Astryx entry: index loading and
@@ -146,23 +148,26 @@ test('advanced concurrency saves, reloads, validates and discards incomplete inp
   const { patches } = await installScheduleRoutes(page)
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-  const row = page.locator('[data-row-key="1:entry-1"]')
-  await row.locator('summary').click()
+  await moreButton(page).click()
   const input = page.locator('#concurrency-0')
   await expect(input).toHaveValue('0')
-  await expect(row.getByText(/0 means unlimited/)).toBeVisible()
+  await expect(page.getByText(/0 means unlimited/).filter({ visible: true })).toBeVisible()
   for (const value of ['', '-1', '1.5', '2147483648']) {
     await input.fill(value)
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
   }
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await moreButton(page).click()
   await expect(input).toHaveValue('0')
   await input.fill('2147483647')
+  await page.keyboard.press('Escape')
   await expect(page).toHaveURL(/schedule_draft=/)
   await page.reload()
   await waitForScheduleDetailReady(page)
-  await row.locator('summary').click()
+  await moreButton(page).click()
   await expect(input).toHaveValue('2147483647')
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(() => patches.length).toBe(1)
   expect(patches[0]!.updates).toEqual([
@@ -177,18 +182,19 @@ test('advanced concurrency survives a row toggle so one save carries every draft
   const { patches } = await installScheduleRoutes(page)
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-  const row = page.locator('[data-row-key="1:entry-1"]')
-  await row.locator('summary').click()
+  await moreButton(page).click()
   await page.locator('#concurrency-0').fill('4')
+  await page.keyboard.press('Escape')
   await expect(page).toHaveURL(/schedule_draft=/)
   await page.locator('#priority-0').fill('3')
   // The row toggle issues its own PATCH; the outstanding concurrency draft must
   // survive the re-render instead of being reposted as a separate update.
-  await page.getByRole('switch', { name: 'Toggle entry model-a', exact: true }).click()
+  await page.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }).click()
   await expect.poll(() => patches.length).toBe(1)
   expect(patches[0]!.updates).toEqual([{ group_id: 1, entry_id: 'entry-1', enabled: false }])
-  await page.locator('[data-row-key="1:entry-1"] summary').click()
+  await moreButton(page).click()
   await expect(page.locator('#concurrency-0')).toHaveValue('4')
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(() => patches.length).toBe(2)
   expect(patches[1]!.updates).toEqual([
@@ -202,14 +208,16 @@ test('advanced concurrency preserves URL draft and input after revision conflict
   await installScheduleRoutes(page, { patchOutcome: 'conflict' })
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-  await page.locator('[data-row-key="1:entry-1"] summary').click()
+  await moreButton(page).click()
   await page.locator('#concurrency-0').fill('3')
+  await page.keyboard.press('Escape')
   await expect(page).toHaveURL(/schedule_draft=/)
   const draft = new URL(page.url()).searchParams.get('schedule_draft')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(
     page.getByText('The configuration changed. Refresh and try again.').first(),
   ).toBeVisible()
+  await moreButton(page).click()
   await expect(page.locator('#concurrency-0')).toHaveValue('3')
   expect(new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
 })
@@ -321,6 +329,12 @@ async function installScheduleRoutes(
 
 test.setTimeout(90_000)
 
+test.beforeEach(async ({ page }) => {
+  // Most flows use the persistent index. Smaller breakpoints are exercised
+  // explicitly below, where the approved design uses a model-switch entry.
+  await page.setViewportSize({ width: 1440, height: 900 })
+})
+
 async function openSchedule(page: Page, query = ''): Promise<void> {
   // `commit` returns once response headers arrive — the first cold vite
   // transform of the astryx graph outlasts the default navigation timeout.
@@ -337,6 +351,425 @@ async function waitForScheduleDetailReady(page: Page): Promise<void> {
 
 const rows = (page: Page) => page.locator('[data-row-key]')
 
+async function changeReasoning(page: Page, value = 'high') {
+  const selector = page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ })
+  await selector.click()
+  await page.getByRole('option', { name: value, exact: true }).click()
+  await expect(selector).toContainText(value)
+  return selector
+}
+
+const moreButton = (page: Page) =>
+  page.getByRole('button', { name: 'More model-a · primary group', exact: true })
+
+const modelSwitchDialog = (page: Page) => page.getByRole('dialog', { name: /Save changes before/ })
+
+test('reasoning-only draft writes URL, survives reload and saves its exact update', async ({
+  page,
+}) => {
+  const { patches } = await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  await expect(page).toHaveURL(/schedule_draft=/)
+  const draft = new URL(page.url()).searchParams.get('schedule_draft')
+  await page.reload()
+  await waitForScheduleDetailReady(page)
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  expect(new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => patches.length).toBe(1)
+  expect(patches[0]!.updates).toEqual([
+    { group_id: 1, entry_id: 'entry-1', reasoning_effort: 'high' },
+  ])
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+})
+
+test('reasoning-only model switch can cancel then explicitly discard', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  const guard = modelSwitchDialog(page)
+  await expect(guard).toBeVisible()
+  await guard.getByRole('button', { name: 'Stay on this model', exact: true }).click()
+  await expect(guard).not.toBeVisible()
+  await expect(page).toHaveURL(/schedule_model=worker(?:&|$)/)
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  await guard.getByRole('button', { name: 'Discard and continue', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+  await page.getByRole('button', { name: 'worker', exact: true }).click()
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).not.toContainText('high')
+})
+
+test('reasoning and numeric drafts survive row toggle with an increased server revision', async ({
+  page,
+}) => {
+  const state: ScheduleRoutes = await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      detail.snapshot_revision =
+        11 +
+        state.patches.filter((patch) =>
+          patch.updates.some((update) => update.enabled !== undefined),
+        ).length
+      if (detail.snapshot_revision > 11) detail.groups[0]!.entries[0]!.enabled = false
+      return detail
+    },
+  })
+  const { patches } = state
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('#priority-0').fill('3')
+  await page.locator('#weight-0').fill('37')
+  await moreButton(page).click()
+  await page.getByRole('spinbutton', { name: /Concurrency limit/ }).fill('4')
+  await page.keyboard.press('Escape')
+  await changeReasoning(page)
+  const refreshed = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/model-route/schedule/detail' &&
+      response.request().method() === 'GET',
+  )
+  await page.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }).click()
+  expect((await (await refreshed).json()).data.snapshot_revision).toBe(12)
+  await expect.poll(() => patches.length).toBe(1)
+  await expect(
+    page.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }),
+  ).not.toBeChecked()
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  await expect(page.locator('#priority-0')).toHaveValue('3')
+  await expect(page.locator('#weight-0')).toHaveValue('37')
+  await moreButton(page).click()
+  await expect(page.getByRole('spinbutton', { name: /Concurrency limit/ })).toHaveValue('4')
+  await page.keyboard.press('Escape')
+  expect(patches[0]!.updates).toEqual([{ group_id: 1, entry_id: 'entry-1', enabled: false }])
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => patches.length).toBe(2)
+  expect(patches[1]!.snapshot_revision).toBe(12)
+  expect(patches[1]!.updates).toEqual([
+    {
+      group_id: 1,
+      entry_id: 'entry-1',
+      priority: 3,
+      weight: 37,
+      concurrency_limit: 4,
+      reasoning_effort: 'high',
+    },
+  ])
+})
+
+test('reasoning-only 409 conflict preserves URL draft and editable selection', async ({ page }) => {
+  await installScheduleRoutes(page, { patchOutcome: 'conflict' })
+
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  await expect(page).toHaveURL(/schedule_draft=/)
+  const draft = new URL(page.url()).searchParams.get('schedule_draft')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(
+    page.getByText('The configuration changed. Refresh and try again.').first(),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  expect(new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+})
+
+test('reasoning model switch saves the old model before continuing to the requested model', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: (patch: SchedulePatch) => void
+  const requested = new Promise<SchedulePatch>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    started(route.request().postDataJSON() as SchedulePatch)
+    await gate
+    await route.fulfill(response({ snapshot_revision_new: 12, detail: null }))
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  await modelSwitchDialog(page)
+    .getByRole('button', { name: 'Save and continue', exact: true })
+    .click()
+  try {
+    const patch = await requested
+    expect(patch.external_model).toBe('worker')
+    expect(patch.updates).toEqual([{ group_id: 1, entry_id: 'entry-1', reasoning_effort: 'high' }])
+    // The response is held: navigating before successful persistence would lose the draft.
+    await expect(page).toHaveURL(/schedule_model=worker(?:&|$)/)
+    await expect(page).toHaveURL(/schedule_draft=/)
+  } finally {
+    release()
+  }
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+  await expect(page.getByRole('combobox', { name: /Reasoning policy model-a-b/ })).toBeVisible()
+})
+
+for (const outcome of ['error', 'conflict'] as const) {
+  test(`reasoning Save and continue ${outcome} stays on the original model with its draft`, async ({
+    page,
+  }) => {
+    const { patches } = await installScheduleRoutes(page, { patchOutcome: outcome })
+    await openSchedule(page, '?schedule_model=worker')
+    await waitForScheduleDetailReady(page)
+    await changeReasoning(page)
+    await expect(page).toHaveURL(/schedule_draft=/)
+    const draft = new URL(page.url()).searchParams.get('schedule_draft')
+    await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+    const guard = modelSwitchDialog(page)
+    await guard.getByRole('button', { name: 'Save and continue', exact: true }).click()
+    await expect.poll(() => patches.length).toBe(1)
+    await expect(
+      page
+        .getByText(
+          outcome === 'conflict'
+            ? 'The configuration changed. Refresh and try again.'
+            : 'Save failed.',
+        )
+        .first(),
+    ).toBeVisible()
+    await expect(page).toHaveURL(/schedule_model=worker(?:&|$)/)
+    expect(new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
+    await expect(guard).toBeVisible()
+    await guard.getByRole('button', { name: 'Stay on this model', exact: true }).click()
+    await expect(
+      page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+    ).toContainText('high')
+    await changeReasoning(page, 'low')
+  })
+}
+
+test('reasoning page exit Save and continue waits for successful persistence before leaving', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: (patch: SchedulePatch) => void
+  const requested = new Promise<SchedulePatch>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    started(route.request().postDataJSON() as SchedulePatch)
+    await gate
+    await route.fulfill(response({ snapshot_revision_new: 12, detail: null }))
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  const originalURL = page.url()
+  await page.getByRole('link', { name: 'Request logs', exact: true }).click()
+  const guard = modelSwitchDialog(page)
+  await expect(guard).toBeVisible()
+  await guard.getByRole('button', { name: 'Save and continue', exact: true }).click()
+  try {
+    expect((await requested).updates).toEqual([
+      { group_id: 1, entry_id: 'entry-1', reasoning_effort: 'high' },
+    ])
+    await expect(page).toHaveURL(originalURL)
+    await expect(guard).toBeVisible()
+  } finally {
+    release()
+  }
+  await expect(page).toHaveURL(/\/logs/)
+  await expect(guard).not.toBeVisible()
+})
+
+for (const outcome of ['error', 'conflict'] as const) {
+  test(`reasoning page exit Save and continue ${outcome} keeps pending guard and original draft URL`, async ({
+    page,
+  }) => {
+    const { patches } = await installScheduleRoutes(page, { patchOutcome: outcome })
+    await openSchedule(page, '?schedule_model=worker')
+    await waitForScheduleDetailReady(page)
+    await changeReasoning(page)
+    await expect(page).toHaveURL(/schedule_draft=/)
+    const originalURL = page.url()
+    await page.getByRole('link', { name: 'Request logs', exact: true }).click()
+    const guard = modelSwitchDialog(page)
+    await guard.getByRole('button', { name: 'Save and continue', exact: true }).click()
+    await expect.poll(() => patches.length).toBe(1)
+    await expect(
+      page
+        .getByText(
+          outcome === 'conflict'
+            ? 'The configuration changed. Refresh and try again.'
+            : 'Save failed.',
+        )
+        .first(),
+    ).toBeVisible()
+    await expect(guard).toBeVisible()
+    await expect(page).toHaveURL(originalURL)
+    await guard.getByRole('button', { name: 'Stay on this model', exact: true }).click()
+    await expect(
+      page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+    ).toContainText('high')
+  })
+}
+
+test('reasoning browser Back uses the same three-option guard and can stay or discard', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker-b')
+  await waitForScheduleDetailReady(page)
+  await page.getByRole('button', { name: 'worker', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker(?:&|$)/)
+  await changeReasoning(page)
+  const originalURL = page.url()
+  // History traversal is asynchronous; avoid awaiting a navigation that is intentionally blocked.
+  await page.evaluate(() => window.history.back())
+  const guard = modelSwitchDialog(page)
+  await expect(guard).toBeVisible()
+  await expect(guard.getByRole('button', { name: 'Save and continue', exact: true })).toBeVisible()
+  await guard.getByRole('button', { name: 'Stay on this model', exact: true }).click()
+  await expect(page).toHaveURL(originalURL)
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  await page.evaluate(() => window.history.back())
+  await expect(guard).toBeVisible()
+  await guard.getByRole('button', { name: 'Discard and continue', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+})
+
+test('reasoning draft survives explicit refresh with a newer snapshot revision', async ({
+  page,
+}) => {
+  let revision = 11
+  const { patches } = await installScheduleRoutes(page, {
+    projectDetail: (model) => ({ ...detailForModel(model), snapshot_revision: revision }),
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  await expect(page).toHaveURL(/schedule_draft=/)
+  const draft = new URL(page.url()).searchParams.get('schedule_draft')
+  revision = 12
+  const refreshed = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/model-route/schedule/detail',
+  )
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  expect((await (await refreshed).json()).data.snapshot_revision).toBe(12)
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  expect(new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => patches.length).toBe(1)
+  expect(patches[0]!.snapshot_revision).toBe(12)
+  expect(patches[0]!.updates).toEqual([
+    { group_id: 1, entry_id: 'entry-1', reasoning_effort: 'high' },
+  ])
+})
+
+test('reasoning-only page exit is guarded and beforeunload protects only dirty state', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const unloadPrevented = () =>
+    page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    })
+  expect(await unloadPrevented()).toBe(false)
+  await changeReasoning(page)
+  expect(await unloadPrevented()).toBe(true)
+  await page.getByRole('link', { name: 'Request logs', exact: true }).click()
+  const guard = modelSwitchDialog(page)
+  await expect(guard).toBeVisible()
+  await guard.getByRole('button', { name: 'Stay on this model', exact: true }).click()
+  await expect(page).toHaveURL(/\/schedule\?/)
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  await page.getByRole('link', { name: 'Request logs', exact: true }).click()
+  await guard.getByRole('button', { name: 'Discard and continue', exact: true }).click()
+  await expect(page).toHaveURL(/\/logs/)
+  expect(await unloadPrevented()).toBe(false)
+})
+
+test('row More popover exposes price and concurrency, Escape restores trigger focus', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await expect(page.getByRole('button', { name: 'Price', exact: true })).not.toBeVisible()
+  await expect(page.getByRole('spinbutton', { name: /Concurrency limit/ })).not.toBeVisible()
+  const trigger = moreButton(page)
+  await trigger.focus()
+  await trigger.press('Enter')
+  const popover = page.getByRole('dialog').filter({
+    has: page.locator('#concurrency-0'),
+  })
+  await expect(popover).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Price', exact: true })).toBeVisible()
+  const concurrency = popover.locator('#concurrency-0')
+  await expect(concurrency).toBeVisible()
+  await concurrency.focus()
+  await page.keyboard.press('Escape')
+  await expect(popover).not.toBeVisible()
+  await expect(concurrency).not.toBeVisible()
+  await expect(trigger).toBeFocused()
+})
+
+test('blacklisted row keeps recovery directly available outside More', async ({ page }) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      detail.groups[0]!.entries[0]!.runtime.state = 'blacklisted'
+      return detail
+    },
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const recovery = rows(page).first().getByRole('button', { name: 'Recover', exact: true })
+  await expect(recovery).toBeVisible()
+  const recovered = page.waitForRequest(
+    (request) =>
+      new URL(request.url()).pathname === '/api/model-route/schedule/recover' &&
+      request.method() === 'POST',
+  )
+  await recovery.click()
+  expect((await recovered).postDataJSON()).toEqual({
+    group_id: 1,
+    entry_id: 'entry-1',
+    failure_version: 0,
+  })
+})
+
 test('sticky schedule header has opaque background over scrolled rows', async ({
   page,
 }, testInfo) => {
@@ -348,14 +781,14 @@ test('sticky schedule header has opaque background over scrolled rows', async ({
   const header = table.getByRole('row').first()
   const wrap = table.locator('xpath=..')
   await wrap.evaluate((element) => {
-    element.style.height = '120px'
-    element.style.maxHeight = '120px'
+    element.style.height = '90px'
+    element.style.maxHeight = '90px'
   })
   expect(await wrap.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
   await wrap.evaluate((element) => {
-    element.scrollTop = 60
+    element.scrollTop = 48
   })
-  await expect.poll(() => wrap.evaluate((element) => element.scrollTop)).toBe(60)
+  await expect.poll(() => wrap.evaluate((element) => element.scrollTop)).toBe(48)
   const coverage = await header.evaluate((element) => {
     const css = getComputedStyle(element)
     const rect = element.getBoundingClientRect()
@@ -432,111 +865,61 @@ test('invalid schedule numbers explain their accepted range', async ({ page }) =
   await expect(weight).toHaveAccessibleDescription(/0.*100/)
 })
 
-test('schedule table matches populated groups density and hover', async ({ page }, testInfo) => {
+test('compact desktop uses six semantic columns and 58–84px rows at every desktop breakpoint', async ({
+  page,
+}) => {
   await installScheduleRoutes(page)
-  await page.route('**/api/groups?*', async (route) => {
-    await route.fulfill(
-      response({
-        observed_at_ms: 1_700_000_000_000,
-        summary: { total: 2, available: 2, unavailable: 0, disabled: 0 },
-        items: [1, 2].map((id) => ({
-          id,
-          name: `Group ${id}`,
-          channel_id: 'openai',
-          connection_type: 'api_key',
-          params: {},
-          provider_url: null,
-          status: 'available',
-          model_count: 4,
-          client_model_count: 2,
-          credential_configured: true,
-          credential_status: 'available',
-        })),
-        pagination: { page: 1, page_size: 100, total_items: 2, total_pages: 1 },
-      }),
-    )
-  })
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/groups', { waitUntil: 'commit' })
-  const groups = page.getByRole('table', { name: 'Group list' })
-  await expect(groups).toBeVisible({ timeout: 60_000 })
-  const readCell = (element: Element) => {
-    const css = getComputedStyle(element)
-    return { paddingTop: css.paddingTop, paddingLeft: css.paddingLeft, fontSize: css.fontSize }
-  }
-  const body = await groups.locator('tbody tr').first().locator('td').nth(1).evaluate(readCell)
-  const header = await groups.locator('th').nth(1).evaluate(readCell)
-  const border = await groups
-    .locator('tbody tr')
-    .first()
-    .locator('td')
-    .nth(1)
-    .evaluate((element) => getComputedStyle(element).borderBottomColor)
-  await groups.locator('tbody tr').first().hover()
-  await expect
-    .poll(() =>
-      groups
-        .locator('tbody tr')
-        .first()
-        .evaluate((element) => getComputedStyle(element).backgroundColor),
-    )
-    .toBe(
-      await groups.evaluate((element) => {
-        const probe = document.createElement('span')
-        probe.style.backgroundColor = 'var(--color-surface-sunken)'
-        element.append(probe)
-        const color = getComputedStyle(probe).backgroundColor
-        probe.remove()
-        return color
-      }),
-    )
-  const hover = await groups
-    .locator('tbody tr')
-    .first()
-    .evaluate((element) => getComputedStyle(element).backgroundColor)
-  await testInfo.attach('groups-computed-styles', {
-    body: JSON.stringify({ body, header, border, hover }, null, 2),
-    contentType: 'application/json',
-  })
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
   const table = page.getByRole('table', { name: 'Schedule detail' })
-  for (const width of [1440, 900, 1920]) {
+  for (const width of [768, 900, 1200, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 })
-    if (width === 900) {
-      expect(
-        await table
-          .locator('xpath=..')
-          .evaluate((element) => element.scrollWidth > element.clientWidth),
-      ).toBe(true)
-    }
-    expect(await rows(page).first().getByRole('cell').nth(1).evaluate(readCell)).toEqual(body)
-    expect(await table.getByRole('columnheader').nth(1).evaluate(readCell)).toEqual(header)
-    expect(
-      await rows(page)
-        .first()
-        .evaluate((element) => getComputedStyle(element).borderBottomColor),
-    ).toBe(border)
-    await rows(page).first().hover()
-    await expect
-      .poll(() =>
-        rows(page)
-          .first()
-          .evaluate((element) => getComputedStyle(element).backgroundColor),
-      )
-      .toBe(hover)
+    await expect(table.getByRole('columnheader')).toHaveCount(6)
+    const row = rows(page).first()
+    await expect(row.getByRole('cell')).toHaveCount(6)
+    const identity = row.getByRole('cell').nth(0)
+    await expect(identity.getByText('model-a', { exact: true })).toBeVisible()
+    await expect(identity.getByRole('link', { name: 'primary group', exact: true })).toBeVisible()
+    await expect(row.getByRole('cell').nth(1)).toContainText('Available')
+    await expect(row.getByRole('cell').nth(2)).toContainText('10')
+    await expect(row.getByRole('cell').nth(2)).toContainText('100')
+    const settings = row.getByRole('cell').nth(3)
+    await expect(
+      settings.getByRole('spinbutton', { name: /^Priority model-a(?: · |$)/ }),
+    ).toBeVisible()
+    await expect(
+      settings.getByRole('spinbutton', { name: /^Weight model-a(?: · |$)/ }),
+    ).toBeVisible()
+    await expect(
+      settings.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+    ).toBeVisible()
+    await expect(row.getByRole('cell').nth(4)).toContainText('50.0%')
+    await expect(row.getByRole('cell').nth(5).getByRole('switch')).toBeVisible()
+    await expect(
+      row
+        .getByRole('cell')
+        .nth(5)
+        .getByRole('button', { name: /More|更多/i }),
+    ).toBeVisible()
+    const geometry = await row.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return {
+        height: bounds.height,
+        columns: getComputedStyle(element).gridTemplateColumns.split(' ').length,
+      }
+    })
+    expect(geometry.height, `58–84px compact row at ${width}px`).toBeGreaterThanOrEqual(58)
+    expect(geometry.height).toBeLessThanOrEqual(84)
+    expect(geometry.columns).toBe(6)
+    expect(await table.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       width,
     )
-    await page.screenshot({
-      path: testInfo.outputPath(`schedule-balanced-${width}.png`),
-      fullPage: true,
-    })
+    await expect(row.locator('summary')).toHaveCount(0)
+    await expect(row.getByRole('progressbar')).toHaveCount(0)
+    await expect(page.getByRole('spinbutton', { name: /Concurrency limit/ })).not.toBeVisible()
+    await expect(page.getByRole('button', { name: 'Price', exact: true })).not.toBeVisible()
   }
-  await page.setViewportSize({ width: 390, height: 900 })
-  await expect(rows(page).first().getByText('Priority', { exact: true })).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-  await page.screenshot({ path: testInfo.outputPath('schedule-balanced-390.png'), fullPage: true })
 })
 
 test('schedule visible typography keeps metadata and controls readable', async ({ page }) => {
@@ -545,29 +928,14 @@ test('schedule visible typography keeps metadata and controls readable', async (
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
   const row = rows(page).first()
-  const sizes = await row.evaluate((element) => ({
-    cell: getComputedStyle(element.querySelector('[role="cell"]')!).fontSize,
-    metadata: getComputedStyle(element.querySelector('small')!).fontSize,
-    priority: getComputedStyle(element.querySelector('input')!).fontSize,
-  }))
-  expect(sizes.cell).toBe('13.5px')
-  expect(sizes.metadata).toBe('12px')
-  expect(sizes.priority).toBe('12px')
-})
-
-test('schedule stays within desktop and mobile viewport bounds', async ({ page }, testInfo) => {
-  await installScheduleRoutes(page)
-  await openSchedule(page, '?schedule_model=worker')
-  await waitForScheduleDetailReady(page)
-  for (const width of [1440, 390, 1920]) {
-    await page.setViewportSize({ width, height: 900 })
-    await expect(page.getByRole('button', { name: 'worker', exact: true })).toBeVisible()
-    await expect(rows(page).first()).toBeVisible()
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-      width,
-    )
-    await page.screenshot({ path: testInfo.outputPath(`schedule-${width}.png`), fullPage: true })
-  }
+  const identity = row.getByText('model-a', { exact: true })
+  const group = row.getByRole('link', { name: 'primary group', exact: true })
+  const readFont = (element: Element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  expect(await identity.evaluate(readFont)).toBeGreaterThanOrEqual(13)
+  expect(await group.evaluate(readFont)).toBeGreaterThanOrEqual(12)
+  expect(
+    await row.getByRole('spinbutton', { name: /^Priority model-a(?: · |$)/ }).evaluate(readFont),
+  ).toBeGreaterThanOrEqual(14)
 })
 
 async function delayPriceLookup(page: Page) {
@@ -648,7 +1016,8 @@ test('delayed price lookup preserves drafts edited while waiting', async ({ page
   const lookup = await delayPriceLookup(page)
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-  await page.getByRole('button', { name: 'Price', exact: true }).first().click()
+  await moreButton(page).click()
+  await page.getByRole('button', { name: 'Price', exact: true }).click()
   await lookup.requested
   await page.locator('#priority-0').fill('3')
   await expect(page).toHaveURL(/schedule_draft=/)
@@ -664,7 +1033,8 @@ test('delayed price lookup cannot navigate back after leaving schedule', async (
   const lookup = await delayPriceLookup(page)
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-  await page.getByRole('button', { name: 'Price', exact: true }).first().click()
+  await moreButton(page).click()
+  await page.getByRole('button', { name: 'Price', exact: true }).click()
   await lookup.requested
   await page.getByRole('link', { name: 'Request logs', exact: true }).click()
   await expect(page).toHaveURL(/\/logs/)
@@ -683,7 +1053,7 @@ test('loads the index, canonicalizes junk params, and renders the detail table',
   // Junk params are stripped; the valid model context stays.
   await expect.poll(() => new URL(page.url()).search).toBe('?schedule_model=worker')
   await expect(rows(page)).toHaveCount(2)
-  await expect(page.getByRole('columnheader', { name: 'Priority' })).toBeVisible()
+  await expect(page.getByRole('columnheader')).toHaveCount(6)
 })
 
 test('model selector commits schedule_model through the canonical query', async ({ page }) => {
@@ -710,51 +1080,34 @@ test('explains how to begin before a scheduling model is selected', async ({ pag
   await expect(selectModelPrompt).toHaveCount(0)
 })
 
-test('keeps the schedule readable on mobile and contains table overflow on narrow desktop', async ({
+test('compact mobile uses 205–240px cards and 44px settings and actions without an inline model index', async ({
   page,
-}, testInfo) => {
+}) => {
   await installScheduleRoutes(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-
-  await expect(
-    page.locator('[data-row-key]').first().getByText('Priority', { exact: true }),
-  ).toBeVisible()
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
-    .toBe(true)
-  await page.screenshot({ path: testInfo.outputPath('schedule-mobile.png'), fullPage: true })
-
-  await page.setViewportSize({ width: 800, height: 900 })
-  const table = page.getByRole('table', { name: 'Schedule detail' })
-  const tableWrap = table.locator('xpath=..')
-  await expect
-    .poll(() => tableWrap.evaluate((element) => element.scrollWidth > element.clientWidth))
-    .toBe(true)
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
-    .toBe(true)
-  await page.screenshot({
-    path: testInfo.outputPath('schedule-narrow-desktop.png'),
-    fullPage: true,
-  })
-
-  await page.setViewportSize({ width: 1440, height: 1000 })
-  const reasoning = await page
-    .getByRole('combobox', { name: 'Reasoning policy model-a' })
-    .boundingBox()
-  const weight = await page.locator('#weight-0').boundingBox()
-  expect(reasoning).not.toBeNull()
-  expect(weight).not.toBeNull()
-  expect(reasoning!.x + reasoning!.width).toBeLessThanOrEqual(weight!.x)
-  await page.screenshot({ path: testInfo.outputPath('schedule-desktop.png'), fullPage: true })
-
-  await page.evaluate(() => window.localStorage.setItem('gpt-load.theme', 'dark'))
-  await page.reload()
-  await waitForScheduleDetailReady(page)
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await page.screenshot({ path: testInfo.outputPath('schedule-dark.png'), fullPage: true })
+  await expect(page.getByRole('textbox', { name: 'External model', exact: true })).not.toBeVisible()
+  await expect(page.getByRole('button', { name: 'worker-b', exact: true })).not.toBeVisible()
+  const row = rows(page).first()
+  const box = await row.boundingBox()
+  expect(box!.height).toBeGreaterThanOrEqual(205)
+  expect(box!.height).toBeLessThanOrEqual(240)
+  for (const control of [
+    row.getByRole('spinbutton', { name: /^Priority model-a(?: · |$)/ }),
+    row.getByRole('spinbutton', { name: /^Weight model-a(?: · |$)/ }),
+    row.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+    row.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }),
+    row.getByRole('button', { name: /More|更多/i }),
+    row.getByRole('button', { name: 'Probe', exact: true }),
+  ]) {
+    const bounds = await control.boundingBox()
+    expect(bounds!.width).toBeGreaterThanOrEqual(44)
+    expect(bounds!.height).toBeGreaterThanOrEqual(44)
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await expect(row.locator('summary')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Price', exact: true })).not.toBeVisible()
 })
 
 test('draft edits serialize to schedule_draft and Save issues the PATCH', async ({ page }) => {
@@ -778,28 +1131,51 @@ test('draft edits serialize to schedule_draft and Save issues the PATCH', async 
   await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0)
 })
 
-test('desktop sidebar controls stay before the detail and page has inset spacing', async ({
+test('compact model index is 180px at wide desktop and collapsed below 1440px', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
   await installScheduleRoutes(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-  const search = await page
-    .getByRole('textbox', { name: 'External model', exact: true })
-    .boundingBox()
-  const table = await page.getByRole('table', { name: 'Schedule detail' }).boundingBox()
-  expect(search!.x).toBeGreaterThan(15)
-  expect(search!.x + search!.width).toBeLessThanOrEqual(table!.x)
-  const model = await page.getByRole('button', { name: 'worker', exact: true }).boundingBox()
-  expect(model!.x + model!.width).toBeLessThanOrEqual(table!.x)
+  const search = page.getByRole('textbox', { name: 'External model', exact: true })
+  const model = page.getByRole('button', { name: 'worker', exact: true })
+  const table = page.getByRole('table', { name: 'Schedule detail' })
+  const modelBounds = await model.boundingBox()
+  const tableBounds = await table.boundingBox()
+  expect(modelBounds!.width).toBeGreaterThanOrEqual(176)
+  expect(modelBounds!.width).toBeLessThanOrEqual(180)
+  expect(modelBounds!.x + modelBounds!.width).toBeLessThanOrEqual(tableBounds!.x)
+  await expect(search).toBeVisible()
+  for (const width of [1439, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(search).not.toBeVisible()
+    await expect(page.getByRole('button', { name: 'worker-b', exact: true })).not.toBeVisible()
+    await expect(rows(page).first()).toBeVisible()
+    const selector = page.getByTestId('schedule-model-selector')
+    await expect(selector).toBeVisible()
+    await selector.click()
+    const current = page.getByRole('button', { name: 'worker', exact: true })
+    await expect(current).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: 'worker-b', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    await page.keyboard.press('Escape')
+    await expect(selector).toBeFocused()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+  }
 })
 
 test('search with no match offers a distinct empty message and can recover', async ({ page }) => {
   await installScheduleRoutes(page)
   await openSchedule(page)
   await page.getByRole('textbox', { name: 'External model', exact: true }).fill('unknown-model')
-  await expect(page.getByText('No matching models', { exact: true })).toBeVisible()
+  await expect(
+    page.getByText('No matching models', { exact: true }).filter({ visible: true }),
+  ).toBeVisible()
   await page.getByRole('textbox', { name: 'External model', exact: true }).fill('')
   await expect(page.getByRole('button', { name: 'worker', exact: true })).toBeVisible()
 })
@@ -812,8 +1188,12 @@ test('empty model index offers import instead of asking to select a missing mode
     await route.fulfill(response({ items: [] }))
   })
   await openSchedule(page)
-  await expect(page.getByText('No models available', { exact: true })).toBeVisible()
-  await expect(page.getByText('Select a model', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByText('No models available', { exact: true }).filter({ visible: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByText('Select a model', { exact: true }).filter({ visible: true }),
+  ).not.toBeVisible()
   await page.getByRole('button', { name: 'Import credentials', exact: true }).click()
   await expect(page).toHaveURL(/\/import/)
 })
@@ -825,7 +1205,7 @@ test('entry enable toggle preserves unsaved priority draft', async ({ page }) =>
   await page.locator('#priority-0').fill('3')
   await expect(page).toHaveURL(/schedule_draft=/)
   const draft = new URL(page.url()).searchParams.get('schedule_draft')
-  await page.getByRole('switch', { name: 'Toggle entry model-a', exact: true }).click()
+  await page.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }).click()
   await expect.poll(() => patches.length).toBe(1)
   await expect.poll(() => new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
   await expect(page.locator('#priority-0')).toHaveValue('3')
@@ -902,6 +1282,387 @@ test('read-only model collection errors use a banner and can retry', async ({ pa
   await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(attempts).toBe(2)
+})
+
+test('review regression Stay cancels pending model state before subsequent draft edits', async ({
+  page,
+}) => {
+  test.setTimeout(20_000)
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  const guard = modelSwitchDialog(page)
+  await guard.getByRole('button', { name: 'Stay on this model', exact: true }).click()
+  await page.locator('#weight-0').fill('37')
+  await expect(guard).not.toBeVisible()
+  await expect(page).toHaveURL(/schedule_model=worker(?:&|$)/)
+  await expect
+    .poll(() => {
+      const raw = new URL(page.url()).searchParams.get('schedule_draft')
+      return raw ? JSON.parse(raw) : null
+    })
+    .toEqual({ '1:entry-1': { reasoning_effort: 'high', weight: 37 } })
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+})
+
+test('review regression late save refresh cannot resurrect schedule after leaving', async ({
+  page,
+}) => {
+  test.setTimeout(20_000)
+  await installScheduleRoutes(page)
+  let saved = false
+  let postSaveReads = 0
+  let refreshing = false
+  let completed = false
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() === 'PATCH') saved = true
+    await route.fallback()
+  })
+  await page.route('**/api/model-route/schedule/detail?*', async (route) => {
+    if (!saved) return route.fallback()
+    postSaveReads += 1
+    if (postSaveReads < 2) return route.fallback()
+    refreshing = true
+    await gate
+    await route.fulfill(response({ ...detailForModel('worker'), snapshot_revision: 12 }))
+    completed = true
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  await page.getByRole('link', { name: 'Request logs', exact: true }).click()
+  await modelSwitchDialog(page)
+    .getByRole('button', { name: 'Save and continue', exact: true })
+    .click()
+  try {
+    await expect.poll(() => refreshing).toBe(true)
+    await expect(page).toHaveURL(/\/logs/)
+  } finally {
+    release()
+  }
+  await expect.poll(() => completed).toBe(true)
+  await page.waitForLoadState('networkidle')
+  await expect(page).toHaveURL(/\/logs/)
+  await expect(page.getByTestId('schedule-page')).not.toBeVisible()
+})
+
+test('review regression same-model price history Back still guards reasoning drafts', async ({
+  page,
+}) => {
+  test.setTimeout(20_000)
+  await installScheduleRoutes(page)
+  const lookup = await delayPriceLookup(page)
+  let priceRequested = false
+  void lookup.requested.then(() => {
+    priceRequested = true
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await moreButton(page).click()
+  await page.getByRole('button', { name: 'Price', exact: true }).click()
+  await expect.poll(() => priceRequested).toBe(true)
+  lookup.release()
+  await expect(page).toHaveURL(/selected_price_id=7/)
+  // The drawer may show its mocked load error; closing it still exercises the real history entry.
+  const drawer = page
+    .getByRole('dialog')
+    .filter({ has: page.getByRole('button', { name: 'Close', exact: true }) })
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page).not.toHaveURL(/selected_price_id=/)
+  await changeReasoning(page)
+  const originalURL = page.url()
+  await page.evaluate(() => window.history.back())
+  const guard = modelSwitchDialog(page)
+  await expect(guard).toBeVisible()
+  await guard.getByRole('button', { name: 'Stay on this model', exact: true }).click()
+  await expect(page).toHaveURL(originalURL)
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  await page.evaluate(() => window.history.back())
+  await guard.getByRole('button', { name: 'Discard and continue', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker/)
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+})
+
+test('review regression URL echo preserves an invalid raw priority alongside reasoning and weight', async ({
+  page,
+}) => {
+  test.setTimeout(20_000)
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await changeReasoning(page)
+  const priority = page.locator('#priority-0')
+  await priority.fill('0')
+  await expect(priority).toHaveAttribute('aria-invalid', 'true')
+  await page.locator('#weight-0').fill('37')
+  await expect
+    .poll(() => {
+      const raw = new URL(page.url()).searchParams.get('schedule_draft')
+      return raw ? JSON.parse(raw) : null
+    })
+    .toEqual({ '1:entry-1': { reasoning_effort: 'high', weight: 37 } })
+  await expect(priority).toHaveValue('0')
+  await expect(priority).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+})
+
+test('review regression invalid-only numeric edit remains discardable and guarded without URL draft', async ({
+  page,
+}) => {
+  test.setTimeout(20_000)
+  let revision = 11
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => ({ ...detailForModel(model), snapshot_revision: revision }),
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const priority = page.locator('#priority-0')
+  await priority.fill('0')
+  await expect(priority).toHaveAttribute('aria-invalid', 'true')
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+  const unloadPrevented = await page.evaluate(() => {
+    const event = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(event)
+    return event.defaultPrevented
+  })
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Discard changes', exact: true })).toBeVisible()
+  expect(unloadPrevented).toBe(true)
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  const guard = modelSwitchDialog(page)
+  await expect(guard).toBeVisible()
+  await expect(guard.getByRole('button', { name: 'Save and continue', exact: true })).toBeDisabled()
+  await guard.getByRole('button', { name: 'Stay on this model', exact: true }).click()
+  await expect(priority).toHaveValue('0')
+  await expect(priority).toHaveAttribute('aria-invalid', 'true')
+  revision = 12
+  let refreshed = false
+  page.on('response', async (response) => {
+    if (new URL(response.url()).pathname === '/api/model-route/schedule/detail') {
+      refreshed = (await response.json()).data.snapshot_revision === 12
+    }
+  })
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect.poll(() => refreshed).toBe(true)
+  await expect(priority).toHaveValue('0')
+  await expect(priority).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  await guard.getByRole('button', { name: 'Discard and continue', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+})
+
+for (const action of ['Save and continue', 'Discard and continue'] as const) {
+  test(`review regression same-model Back ${action} never revives an older reasoning draft`, async ({
+    page,
+  }) => {
+    test.setTimeout(20_000)
+    const state: ScheduleRoutes = await installScheduleRoutes(page, {
+      projectDetail: (model) => {
+        const detail = detailForModel(model)
+        const saved = state.patches
+          .at(-1)
+          ?.updates.find((update) => update.reasoning_effort !== undefined)
+        if (saved) {
+          detail.snapshot_revision = 12
+          detail.groups[0]!.entries[0]!.reasoning.configured = saved.reasoning_effort ?? null
+          detail.groups[0]!.entries[0]!.reasoning.effective = saved.reasoning_effort ?? null
+          detail.groups[0]!.entries[0]!.reasoning.source = 'entry'
+        }
+        return detail
+      },
+    })
+    const lookup = await delayPriceLookup(page)
+    let priceRequested = false
+    void lookup.requested.then(() => {
+      priceRequested = true
+    })
+    await openSchedule(page, '?schedule_model=worker')
+    await waitForScheduleDetailReady(page)
+    await changeReasoning(page, 'high')
+    await expect(page).toHaveURL(/schedule_draft=/)
+    const oldDraft = new URL(page.url()).searchParams.get('schedule_draft')
+    await moreButton(page).click()
+    await page.getByRole('button', { name: 'Price', exact: true }).click()
+    await expect.poll(() => priceRequested).toBe(true)
+    lookup.release()
+    await expect(page).toHaveURL(/selected_price_id=7/)
+    const drawer = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('button', { name: 'Close', exact: true }) })
+    await drawer.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(page).not.toHaveURL(/selected_price_id=/)
+    await changeReasoning(page, 'low')
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('schedule_draft'))
+      .not.toBe(oldDraft)
+    await page.evaluate(() => window.history.back())
+    const guard = modelSwitchDialog(page)
+    await expect(guard).toBeVisible()
+    await guard.getByRole('button', { name: action, exact: true }).click()
+    await expect(page).not.toHaveURL(/schedule_draft=/)
+    await expect(guard).not.toBeVisible()
+    const reasoning = page.getByRole('combobox', {
+      name: /Reasoning policy model-a.*primary group/,
+    })
+    await expect(reasoning).not.toContainText('high')
+    if (action === 'Save and continue') {
+      await expect.poll(() => state.patches.length).toBe(1)
+      expect(state.patches[0]!.updates).toEqual([
+        { group_id: 1, entry_id: 'entry-1', reasoning_effort: 'low' },
+      ])
+      await expect(reasoning).toContainText('low')
+    } else {
+      expect(state.patches).toHaveLength(0)
+      await expect(reasoning).not.toContainText('low')
+    }
+  })
+}
+
+test('review regression reverted numeric input adopts a newer server value on refresh', async ({ page }) => {
+  test.setTimeout(20_000)
+  let revision = 11
+  let serverPriority = 1
+  let refreshed = false
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      detail.snapshot_revision = revision
+      detail.groups[0]!.entries[0]!.priority = serverPriority
+      if (serverPriority !== 1) {
+        // Configured shares sum to one within each priority tier, not globally.
+        detail.groups[0]!.entries[0]!.configured_share = 1
+        detail.groups[1]!.entries[0]!.configured_share = 1
+      }
+      return detail
+    },
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const priority = page.getByRole('spinbutton', { name: /^Priority model-a(?: · |$)/ })
+  await expect(priority).toHaveValue('1')
+  await priority.fill('2')
+  await expect(page).toHaveURL(/schedule_draft=/)
+  await priority.fill('1')
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+  await expect(page.getByRole('button', { name: 'Discard changes', exact: true })).not.toBeVisible()
+  revision = 12
+  serverPriority = 4
+  page.on('response', async (response) => {
+    if (new URL(response.url()).pathname === '/api/model-route/schedule/detail') {
+      refreshed = (await response.json()).data.snapshot_revision === 12
+    }
+  })
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect.poll(() => refreshed).toBe(true)
+  await expect(priority).toHaveValue('4')
+  await expect(priority).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(page).not.toHaveURL(/schedule_draft=/)
+})
+
+test('unknown schedule_model explains the empty state and can recover to worker', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=unknown-model')
+  await expect(
+    page.getByText('No matching models', { exact: true }).filter({ visible: true }),
+  ).toBeVisible()
+  await expect(page.getByRole('table', { name: 'Schedule detail' })).not.toBeVisible()
+  await expect(page).toHaveURL(/schedule_model=unknown-model/)
+  await page.getByRole('button', { name: 'worker', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker(?:&|$)/)
+  await waitForScheduleDetailReady(page)
+  await expect(rows(page)).toHaveCount(2)
+})
+
+test('compact model selector supports search, ArrowDown Enter and Escape focus restoration', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page)
+  await page.setViewportSize({ width: 900, height: 900 })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const trigger = page.getByTestId('schedule-model-selector')
+  await trigger.focus()
+  await trigger.press('Enter')
+  const picker = page.getByRole('dialog', { name: 'Select a model', exact: true })
+  const search = picker.getByRole('textbox', { name: 'External model', exact: true })
+  await search.fill('worker-b')
+  await expect(picker.getByRole('button', { name: 'worker', exact: true })).toHaveCount(0)
+  const next = picker.getByRole('button', { name: 'worker-b', exact: true })
+  await expect(next).toHaveAttribute('aria-pressed', 'false')
+  await search.press('ArrowDown')
+  await expect(next).toBeFocused()
+  await next.press('Enter')
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+  await expect(picker).not.toBeVisible()
+  await trigger.click()
+  await expect(picker.getByRole('button', { name: 'worker-b', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await search.fill('worker')
+  await search.press('ArrowDown')
+  const current = picker.getByRole('button', { name: 'worker', exact: true })
+  await expect(current).toBeFocused()
+  await current.press('Enter')
+  await expect(page).toHaveURL(/schedule_model=worker(?:&|$)/)
+  await trigger.click()
+  await search.fill('no-match')
+  await expect(picker.getByText('No matching models', { exact: true })).toBeVisible()
+  await search.press('Escape')
+  await expect(picker).not.toBeVisible()
+  await expect(trigger).toBeFocused()
+
+  const directory = '/tmp/gpt-load-schedule-product'
+  await mkdir(directory, { recursive: true })
+  const measurements = []
+  for (const { width, theme } of [
+    { width: 1440, theme: 'light' },
+    { width: 900, theme: 'light' },
+    { width: 390, theme: 'light' },
+    { width: 1440, theme: 'dark' },
+  ]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.evaluate((theme) => localStorage.setItem('gpt-load.theme', theme), theme)
+    await page.reload()
+    await waitForScheduleDetailReady(page)
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+    const geometry = await rows(page).evaluateAll((elements) => ({
+      viewport: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      rows: elements.map((element) => {
+        const rect = element.getBoundingClientRect()
+        return { width: rect.width, height: rect.height }
+      }),
+    }))
+    expect(geometry.documentWidth).toBeLessThanOrEqual(width)
+    for (const row of geometry.rows) {
+      expect(row.height).toBeGreaterThanOrEqual(width < 768 ? 205 : 58)
+      expect(row.height).toBeLessThanOrEqual(width < 768 ? 240 : 84)
+    }
+    const screenshot = `${directory}/schedule-${width}-${theme}.png`
+    await page.screenshot({ path: screenshot, fullPage: true })
+    measurements.push({ width, theme, screenshot, ...geometry })
+  }
+  const evidence = JSON.stringify(measurements, null, 2)
+  await writeFile(`${directory}/measurements.json`, evidence)
+  await testInfo.attach('compact-product-geometry', {
+    body: evidence,
+    contentType: 'application/json',
+  })
 })
 
 test('schedule_row deep link selects the target row', async ({ page }) => {

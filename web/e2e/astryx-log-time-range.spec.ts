@@ -53,9 +53,15 @@ test('preset applies to the request, reset restores the default window (en-US)',
   expect(to0 - from0).toBeLessThan(49 * 60 * 60 * 1000)
 
   const requestCount = logRequests.length
+  const appliedRange = page.getByTestId('logs-applied-time-range')
+  await expect(appliedRange).toContainText('Applied time range')
+  const initialRange = await appliedRange.textContent()
+  await expect(
+    page.getByText('Shortcuts edit the draft; select Apply to update results.'),
+  ).toBeVisible()
   await expect(page.getByRole('group', { name: 'Quick time ranges' })).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'From', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('combobox', { name: 'To', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('combobox', { name: 'From', exact: true })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'To', exact: true })).toBeVisible()
   await expect(
     page.getByRole('group', { name: 'Quick time ranges' }).getByRole('button'),
   ).toHaveText(['1h', '24h', '3d', '7d', '15d', '30d'])
@@ -64,6 +70,8 @@ test('preset applies to the request, reset restores the default window (en-US)',
     .getByRole('button', { name: '7d' })
     .click()
   expect(logRequests.length).toBe(requestCount)
+  await expect(page.getByText('Filter draft has not been applied')).toBeVisible()
+  await expect(appliedRange).toHaveText(initialRange!)
 
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
 
@@ -77,6 +85,8 @@ test('preset applies to the request, reset restores the default window (en-US)',
   await expect(page).toHaveURL(/from_ms=/)
   // The 7d window covers recent rows, not the 10-day-old row.
   await expect(detailButtons(page)).toHaveCount(2)
+  await expect(page.getByText('Filter draft has not been applied')).toBeHidden()
+  await expect(appliedRange).not.toHaveText(initialRange!)
   await expect(page.getByText('old-model')).toBeHidden()
 
   const appliedUrl = page.url()
@@ -137,6 +147,20 @@ test('ja-JP renders localized preset filter strings', async ({ page }) => {
   await expect(
     page.getByRole('group', { name: 'クイック時間範囲' }).getByRole('button', { name: '7d' }),
   ).toBeVisible()
+})
+
+test('manual time edits remain draft-only until Apply commits the range', async ({ page }) => {
+  const { logRequests } = await openLogs(page)
+  const count = logRequests.length
+  const fromTime = page.getByRole('textbox', { name: 'From time', exact: true })
+  await fromTime.fill('12:34:56')
+  await fromTime.press('Tab')
+  await expect(page.getByText('Filter draft has not been applied')).toBeVisible()
+  expect(logRequests.length).toBe(count)
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect.poll(() => logRequests.length).toBe(count + 1)
+  const from = new Date(Number(logRequests.at(-1)!.searchParams.get('from_ms')))
+  expect([from.getHours(), from.getMinutes(), from.getSeconds()]).toEqual([12, 34, 56])
 })
 
 test('all six shortcuts preserve draft-only selection and commit exact durations', async ({

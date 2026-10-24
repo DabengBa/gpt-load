@@ -1,9 +1,18 @@
 import * as stylex from '@stylexjs/stylex'
 import './SchedulePanel.css'
-import { Banner, Button, TextInput, EmptyState, Skeleton } from '@astryxdesign/core'
+import { Banner, Button, TextInput, EmptyState, Popover, Skeleton } from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ChevronDown, Search } from 'lucide-react'
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type Ref,
+} from 'react'
 
 import type { ModelProbeTargetDto } from '@shared/control/resources/model-probe'
 import {
@@ -19,7 +28,11 @@ import { listModels } from '@shared/control/resources/models'
 import { useAppServices } from '../../app/services'
 import { ModelProbeDialog } from '../models/ModelProbeDialog'
 import { useModelProbe } from '../models/use-model-probe'
-import { SchedulePanelDetail, type SchedulePanelDetailLabels } from './SchedulePanelDetail'
+import {
+  SchedulePanelDetail,
+  type SchedulePanelDetailHandle,
+  type SchedulePanelDetailLabels,
+} from './SchedulePanelDetail'
 
 export interface SchedulePanelLabels {
   model: string
@@ -42,11 +55,11 @@ const styles = stylex.create({
   panel: {
     display: 'grid',
     gridTemplateColumns: {
-      default: 'minmax(180px, 240px) minmax(0, 1fr)',
-      '@media (max-width: 800px)': 'minmax(0, 1fr)',
+      default: 'minmax(0, 1fr)',
+      '@media (min-width: 1440px)': '180px minmax(0, 1fr)',
     },
     minWidth: 0,
-    gap: '24px',
+    gap: 'var(--space-3)',
   },
   filters: {
     display: 'grid',
@@ -59,6 +72,9 @@ const styles = stylex.create({
     gap: 'var(--space-3)',
     width: '100%',
   },
+  sidebarOnly: {
+    display: { default: 'none', '@media (min-width: 1440px)': 'grid' },
+  },
   field: {
     display: 'grid',
     minWidth: 0,
@@ -68,11 +84,13 @@ const styles = stylex.create({
     fontWeight: 650,
   },
   detail: { minWidth: 0, display: 'grid', alignContent: 'start', gap: '16px' },
-  modelButton: { minWidth: 0, maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere' },
   searchControl: { minWidth: 0, width: '100%', boxSizing: 'border-box' },
 })
 
+export type SchedulePanelHandle = SchedulePanelDetailHandle
+
 export interface SchedulePanelProps {
+  ref?: Ref<SchedulePanelHandle>
   externalModel?: string
   selectedRow?: string
   sourceGroupId?: number
@@ -82,13 +100,14 @@ export interface SchedulePanelProps {
   onChangeContext(context: { externalModel?: string }): void
   onDraftChange(drafts: ScheduleDrafts): void
   onRowChange(row: string | undefined): void
-  onRefresh(): void
+
   onSaved(snapshotRevision: number, clearDrafts: boolean): void
   onRecovered(groupId: number, entryId: string): void
   onOpenPrice(priceID: number): void
 }
 
 export function SchedulePanel({
+  ref,
   externalModel = '',
   selectedRow,
   sourceGroupId,
@@ -98,7 +117,7 @@ export function SchedulePanel({
   onChangeContext,
   onDraftChange,
   onRowChange,
-  onRefresh,
+
   onSaved,
   onRecovered,
   onOpenPrice,
@@ -108,6 +127,9 @@ export function SchedulePanel({
 
   const [selectedModel, setSelectedModel] = useState(externalModel)
   const [search, setSearch] = useState('')
+  const [selectorOpen, setSelectorOpen] = useState(false)
+  const modelListID = useId()
+  const modelOptionsRef = useRef<HTMLDivElement>(null)
   const [priceError, setPriceError] = useState('')
   const [priceTarget, setPriceTarget] = useState<{ groupID: number; modelID: string }>()
   const priceGeneration = useRef(0)
@@ -156,6 +178,8 @@ export function SchedulePanel({
     : ''
 
   function setModel(value: string): void {
+    setSelectorOpen(false)
+    setSearch('')
     priceGeneration.current += 1
     onChangeContext({ externalModel: value || undefined })
   }
@@ -199,18 +223,15 @@ export function SchedulePanel({
 
   async function refreshIndex(): Promise<void> {
     await indexQuery.refetch()
-    onRefresh()
   }
 
   async function refreshDetail(): Promise<void> {
     if (detailRequest) await detailQuery.refetch()
     await indexQuery.refetch()
-    onRefresh()
   }
 
   async function refreshAll(): Promise<void> {
     await Promise.all([indexQuery.refetch(), detailQuery.refetch()])
-    onRefresh()
   }
 
   async function handleSaved(revision: number, clearDrafts: boolean): Promise<void> {
@@ -242,33 +263,73 @@ export function SchedulePanel({
     })
   }
 
-  return (
-    <section
-      {...stylex.props(styles.panel)}
-      data-testid="schedule-panel"
-      aria-label={labels.model ?? ''}
-    >
-      <div {...stylex.props(styles.filters)} aria-label={labels.context ?? ''}>
-        <div {...stylex.props(styles.field)}>
-          <div className="schedule-model-search">
-            <TextInput
-              label={labels.model ?? ''}
-              width="100%"
-              xstyle={styles.searchControl}
-              size="sm"
-              value={search}
-              onChange={setSearch}
-            />
-          </div>
-          {filteredModels.map((item) => (
-            <Button
+  function moveModelFocus(event: KeyboardEvent, currentIndex = -1): void {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const options =
+      modelOptionsRef.current?.querySelectorAll<HTMLButtonElement>('.schedule-model-option')
+    if (!options?.length) return
+    const nextIndex =
+      currentIndex === -1
+        ? event.key === 'ArrowDown'
+          ? 0
+          : options.length - 1
+        : Math.max(
+            0,
+            Math.min(options.length - 1, currentIndex + (event.key === 'ArrowDown' ? 1 : -1)),
+          )
+    options[nextIndex]?.focus()
+  }
+
+  function modelPicker(listID?: string) {
+    return (
+      <div className="schedule-model-picker">
+        <div className="schedule-model-search">
+          <TextInput
+            label={labels.model ?? ''}
+            isLabelHidden
+            width="100%"
+            xstyle={styles.searchControl}
+            size="sm"
+            value={search}
+            onChange={setSearch}
+            onKeyDown={
+              listID
+                ? (event) => {
+                    if (event.key === 'Enter' && filteredModels[0]) {
+                      event.preventDefault()
+                      setModel(filteredModels[0].external_model)
+                    } else {
+                      moveModelFocus(event)
+                    }
+                  }
+                : undefined
+            }
+            hasClear
+            startIcon={<Search size={14} aria-hidden="true" />}
+          />
+        </div>
+        <div
+          id={listID}
+          ref={listID ? modelOptionsRef : undefined}
+          className="schedule-model-list"
+          data-testid="schedule-model-list"
+          role="group"
+          aria-label={labels.selectModel ?? labels.model ?? ''}
+        >
+          {filteredModels.map((item, index) => (
+            <button
               key={item.external_model}
-              variant={selectedModel === item.external_model ? 'primary' : 'ghost'}
-              size="sm"
-              label={item.external_model}
-              xstyle={styles.modelButton}
+              type="button"
+              className="schedule-model-option"
+              aria-label={item.external_model}
+              aria-pressed={selectedModel === item.external_model}
               onClick={() => setModel(item.external_model)}
-            />
+              onKeyDown={listID ? (event) => moveModelFocus(event, index) : undefined}
+            >
+              <span className="schedule-model-name">{item.external_model}</span>
+              <span className="schedule-model-meta">{item.candidate_count}</span>
+            </button>
           ))}
           {!indexQuery.isPending && !indexQuery.isError && filteredModels.length === 0 && (
             <EmptyState
@@ -284,6 +345,89 @@ export function SchedulePanel({
             />
           )}
         </div>
+      </div>
+    )
+  }
+
+  const contextControl = (
+    <div className="schedule-model-context">
+      <span className="schedule-model-desktop-current schedule-model-name">{selectedModel}</span>
+      <div className="schedule-model-compact">
+        <Popover
+          isOpen={selectorOpen}
+          onOpenChange={(open) => {
+            setSelectorOpen(open)
+            if (!open) setSearch('')
+          }}
+          placement="below"
+          alignment="start"
+          width={300}
+          hasAutoFocus
+          label={labels.selectModel ?? labels.model ?? ''}
+          content={
+            selectorOpen ? (
+              <div className="schedule-model-popover">{modelPicker(modelListID)}</div>
+            ) : null
+          }
+        >
+          {(triggerProps) => (
+            <button
+              {...triggerProps}
+              type="button"
+              className="schedule-model-selector"
+              data-testid="schedule-model-selector"
+              aria-label={labels.selectModel ?? labels.model ?? ''}
+              aria-controls={modelListID}
+            >
+              <span>{labels.model}</span>
+              <span className="schedule-model-name">{selectedModel || labels.selectModel}</span>
+              <span className="schedule-model-meta">{indexItems.length}</span>
+              {selectedIndexItem && (
+                <span className="schedule-model-meta">{selectedIndexItem.protocol}</span>
+              )}
+              <ChevronDown size={14} aria-hidden="true" />
+            </button>
+          )}
+        </Popover>
+      </div>
+    </div>
+  )
+
+  return (
+    <section
+      {...stylex.props(styles.panel)}
+      data-testid="schedule-panel"
+      aria-label={labels.model ?? ''}
+    >
+      <div
+        {...stylex.props(
+          styles.filters,
+          selectedIndexItem && !indexQuery.isPending && !indexError && styles.sidebarOnly,
+        )}
+        aria-label={labels.context ?? ''}
+      >
+        <div className="schedule-model-sidebar">
+          <div {...stylex.props(styles.field)}>
+            <span className="schedule-model-summary">
+              <span>{labels.model}</span>
+              <span className="schedule-model-meta">{indexItems.length}</span>
+            </span>
+            {selectedIndexItem && (
+              <span className="schedule-model-meta">{selectedIndexItem.protocol}</span>
+            )}
+          </div>
+          {modelPicker()}
+        </div>
+        {!selectedIndexItem && contextControl}
+        {!indexQuery.isPending && !indexQuery.isError && indexItems.length === 0 && (
+          <div className="schedule-model-compact">
+            <EmptyState title={labels.noModels ?? ''} />
+            <Button
+              label={labels.importModels ?? ''}
+              onClick={() => void navigate({ to: pagePath('import') })}
+            />
+          </div>
+        )}
 
         {indexQuery.isPending ? (
           <div role="status" aria-label={labels.loadingOptions ?? ''}>
@@ -324,8 +468,14 @@ export function SchedulePanel({
           indexItems.length > 0 ? (
             <EmptyState title={labels.selectModel ?? ''} />
           ) : null
+        ) : !selectedIndexItem ? (
+          !indexQuery.isPending && !indexQuery.isError ? (
+            <EmptyState title={labels.noMatchingModels ?? labels.selectModel ?? ''} />
+          ) : null
         ) : (
           <SchedulePanelDetail
+            ref={ref}
+            contextControl={contextControl}
             detail={detailQuery.data}
             loading={
               detailQuery.isPending && detailQuery.data === undefined && Boolean(detailRequest)

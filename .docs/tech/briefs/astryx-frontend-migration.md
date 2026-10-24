@@ -1,6 +1,6 @@
 ---
 created: 2026-09-25
-source: 用户在迁移方案评审会话中的原始指令与逐项选型确认
+source: The user's original instruction and per-item choice confirmations in the migration-plan review session
 confirmed: 2026-09-25
 last_updated: 2026-09-25
 ---
@@ -10,58 +10,128 @@ last_updated: 2026-09-25
 
 > 阅读后，结合项目实际情况，结合网络迁移经验，更新并详细化这份迁移文档。
 
-随后：
+("After reading it, combine the project's actual situation and general migration
+experience, then update and expand this migration document.")
+
+Followed by:
 
 > 根据文档，继续完成开发工作。
 
+("Following the document, continue with the development work.")
+
 ## Background & Motivation
 
-管理界面当前是 Vue 3 + Reka UI + scoped BEM CSS(约 17.6k 行手写样式)。用户要求把前端迁到 React 19 + Astryx(`@astryxdesign/core`)+ StyleX,同时保持现有行为、路由、鉴权、多语言、Go 内嵌部署与紧凑视觉密度不变。迁移必须先产出可行性证据(go/no-go gate),再决定是否继续全量迁移。
+The management UI was Vue 3 + Reka UI + scoped BEM CSS (roughly 17.6k lines of
+hand-written styles). The user required migrating the frontend to React 19 +
+Astryx (`@astryxdesign/core`) + StyleX while keeping existing behavior, routing,
+authentication, localization, Go-embedded deployment, and the compact visual
+density unchanged. The migration had to produce feasibility evidence (a go/no-go
+gate) before a full migration was approved.
 
-用户在 2026-09-25 逐项确认了选型(均记录于 `.docs/tech/astryx-migration-plan.md` 的 Confirmed choices):
+On 2026-09-25 the user confirmed each choice, all recorded in the Confirmed
+choices section of `.docs/tech/astryx-migration-plan.md`:
 
-- 浏览器基线:Chromium/Chrome 125+;Safari/Firefox 尽力兼容、不卡发布
-- 视觉密度:贴近 classic 现有紧凑尺寸
-- 路由:TanStack Router(code-based)
-- React Compiler:开启(稳定 Babel 集成)
-- 应用 i18n:react-intl
-- 主题基底:`neutral` 加 GPT-Load 覆盖
+- Browser baseline: Chromium/Chrome 125+; Safari/Firefox best effort, not
+  release-blocking
+- Visual density: match the compact metrics of the then-current Vue frontend
+- Routing: TanStack Router (code-based)
+- React Compiler: enabled (stable Babel integration)
+- App i18n: react-intl
+- Theme base: `neutral` plus GPT-Load overrides
 
 ## Intent Domains
 
-### 迁移执行
+### Migration execution
 
-- 用户期望:按 `.docs/tech/astryx-migration-plan.md` 推进开发;第一阶段交付 Phase 0(框架无关共享层抽取)与 Phase 1(React/Astryx 脚手架、同 URL 共存、shell 对等、7 项 spike、go/no-go 门槛证据),在 gate 处由用户决定是否进入 Phase 2+ 域迁移。
-- 当前状态:**Phase 0 + Phase 1 + Phase 2(settings/models/home)+ Phase 3(access-keys/monitor/logs/schedule)已交付(2026-09-27)**;Phase 4(groups + import)按方案继续。
-- 变更历史:
-  - 2026-09-25 方案文档扩写完成(149 → ~900 行),记录实测基线与全部技术选型。
-  - 2026-09-25 用户确认五项开放选型与 neutral 主题基底,文档内不再有待决项。
-  - 2026-09-25 用户指示"根据文档，继续完成开发工作",brainstorming 判定首个可交付切片为 Phase 0 + Phase 1(到 go/no-go gate 为止)。
-  - 2026-09-26 Phase 1 全部 spike 完成,七条门槛证据齐备,用户审阅后回复 "go"。
-  - 2026-09-26 final-review 发现 17 项全部处置(路由移交、sparse validateSearch、codec parity、resetScroll、`Vary: Cookie` 等),评审关闭。
-  - 2026-09-27 Phase 2 三域交付:settings(e9a8b0bf)、models 含 model-prices 嵌入(7f6e2b1c)、home(805b0f95);切片终审收敛死字段并关闭(1b8d0a18),方案文档回写 Phase 2 outcome(3dffa83b)。
-  - 2026-09-27 Phase 3 交付:access-keys(3a019b90)、monitor 宿主 + health/usage(781ef55b)、inspector(ef97aaa7)、logs 全量 parity(ac540c16)、schedule 调度中心(2fdd51c6);终审补 monitor-route codec 单测 12 条,真机 CSP 30/30 三浏览器矩阵全绿;方案文档回写 Phase 3 outcome,过程文件删除,wrap-up 提交 8cbd2125。
-  - 2026-09-27 Phase 4 立项摸底:group-detail(9,219 行)+ import(5,670 行)为最后两条 classic 路由;发现 astryx `importRecovery` 误接 localStorage(classic 用 sessionStorage)且 `onUnauthorized` 未接 `captureForUnauthorized`——列为 flag 前置修复项。
-  - 2026-09-30 Phase 4 交付:codec 抽取 + recovery 修复(641f3950);detail 宿主 + settings/models/credentials 三 tab + import 双模式 + staging 层(057a7833)——rebase fork/dev 后同步上游 f78071f8 可读性语义(eefa9bc3、cff1b699);终审修掉 flag 翻转遗留的四处 document 导航;astryx e2e 134/134 + classic readability 7/7 + codec 15/15;manifest 终态 11/11 astryx flag,仅剩 Phase 5 默认切换与 Phase 6 删除。
-- 实现追溯:
-  - 规格目录 `.docs/specs/260925-01-astryx-migration-foundation/`(归档时已删过程文件;gate 证据与评审记录已并入 `.docs/tech/astryx-migration-plan.md` Phase 1 小节)。
-  - Phase 2 规格目录 `.docs/specs/260926-01-astryx-phase2-domains/`(归档时已删过程文件;域分解、三评审面记录与真机证据并入 `.docs/tech/astryx-migration-plan.md` Phase 2 outcome 与本条追溯)。
-  - Phase 3 规格目录 `.docs/specs/260927-01-astryx-phase3-domains/`(归档时已删过程文件;同上并入 Phase 3 outcome)。
-  - 分支 `docs/astryx-migration-plan`;关键提交:`55add5be`(groups 集合)、`ef6b2779`(log detail layer + ADR-0002)、`d0362813`(日志时间范围)、`c28a1c2c`(门槛证据)、`d1570ac6`(方案文档回写)、`f1e722cf`(final-review 修正批)、`e9a8b0bf`(settings 域)、`7f6e2b1c`(models 域)、`805b0f95`(home 域)、`1b8d0a18`(Phase 2 切片终审)。
-  - 代码路径:`web/src/frontends/astryx/`、`web/src/shared/`(routing/lib/control/controllers/domain)、`internal/webui/`(manifest v2、文档选择、`cmd/webui` CSP harness)、`web/e2e/astryx-*.spec.ts`。
-  - ADR:`.docs/adr/0001-collection-read-model-scale.md`(集合读模型)、`0002-astryx-detail-layer-primitive.md`(detail overlay 原语)。
-  - Phase 2 确立的约束性约定(记录在方案文档 Phase 2 outcome,Phases 3-4 适用):mutable controller 一律 memoized snapshot + `useSyncExternalStore`;Vue watch 语义转 render-phase adjustment + post-commit effect;敏感操作状态机下沉 shared controller(`gateway-actions`)。
+- What the user wanted: work through `.docs/tech/astryx-migration-plan.md`,
+  delivering Phase 0 (framework-neutral shared-layer extraction) and Phase 1
+  (React/Astryx scaffolding, same-URL coexistence, shell parity, 7 spikes,
+  go/no-go gate evidence) first, with the user deciding at the gate whether to
+  enter Phase 2+ domain migration.
+- Status: **Phase 0 + Phase 1 + Phase 2 (settings/models/home) + Phase 3
+  (access-keys/monitor/logs/schedule) shipped (2026-09-27)**; Phase 4 (groups +
+  import) follows the plan.
+- Change history:
+  - 2026-09-25 the plan document was expanded (149 → ~900 lines), recording the
+    measured baseline and every technical choice.
+  - 2026-09-25 the user confirmed five open choices and the neutral theme base,
+    leaving no open decisions in the document.
+  - 2026-09-25 the user said "following the document, continue with the
+    development work"; brainstorming scoped the first deliverable as Phase 0 +
+    Phase 1 up to the go/no-go gate.
+  - 2026-09-26 all Phase 1 spikes finished, the seven gate evidence items were
+    complete, and the user reviewed and replied "go".
+  - 2026-09-26 final review found 17 items, all handled (route handoff, sparse
+    `validateSearch`, codec parity, `resetScroll`, `Vary: Cookie`, and others);
+    the review was closed.
+  - 2026-09-27 Phase 2 shipped three domains: settings (`e9a8b0bf`), models with
+    embedded model prices (`7f6e2b1c`), and home (`805b0f95`); the slice review
+    collapsed dead fields and closed (`1b8d0a18`), and the plan document recorded
+    the Phase 2 outcome (`3dffa83b`).
+  - 2026-09-27 Phase 3 shipped: access-keys (`3a019b90`), the monitor host with
+    health and usage (`781ef55b`), inspector (`ef97aaa7`), full logs parity
+    (`ac540c16`), and the schedule dispatch center (`2fdd51c6`); the final review
+    added 12 monitor-route codec unit tests, the real-binary CSP matrix passed
+    30/30 across three browsers, the plan recorded the Phase 3 outcome, process
+    files were deleted, and wrap-up commit `8cbd2125` followed.
+  - 2026-09-27 Phase 4 scoping: group-detail (9,219 lines) and import (5,670
+    lines) were the last two classic routes; astryx `importRecovery` was wrongly
+    wired to localStorage (classic used sessionStorage) and `onUnauthorized` was
+    not connected to `captureForUnauthorized`, so both became pre-flag fixes.
+  - 2026-09-30 Phase 4 shipped: codec extraction plus the recovery fix
+    (`641f3950`); the detail host with settings/models/credentials tabs, dual
+    import modes, and the staging layer (`057a7833`) — after rebasing onto
+    fork/dev, upstream `f78071f8` readability semantics were synced
+    (`eefa9bc3`, `cff1b699`); the final review fixed four leftover document
+    navigations from the flag flip; astryx e2e 134/134, classic readability 7/7,
+    codec 15/15; the manifest ended with 11/11 astryx flags, leaving only the
+    Phase 5 default flip and Phase 6 deletion.
+- Implementation trail:
+  - Spec directory `.docs/specs/260925-01-astryx-migration-foundation/`
+    (process files deleted during archive; gate evidence and review records were
+    merged into the Phase 1 section of `.docs/tech/astryx-migration-plan.md`).
+  - Phase 2 spec directory `.docs/specs/260926-01-astryx-phase2-domains/`
+    (process files deleted during archive; domain breakdown, review records, and
+    real-binary evidence merged into the Phase 2 outcome and this trail).
+  - Phase 3 spec directory `.docs/specs/260927-01-astryx-phase3-domains/` (same
+    handling).
+  - Branch `docs/astryx-migration-plan`; key commits: `55add5be` (groups
+    collection), `ef6b2779` (log detail layer + ADR-0002), `d0362813` (log time
+    range), `c28a1c2c` (gate evidence), `d1570ac6` (plan writeback), `f1e722cf`
+    (final-review fixes), `e9a8b0bf` (settings domain), `7f6e2b1c` (models
+    domain), `805b0f95` (home domain), `1b8d0a18` (Phase 2 slice review).
+  - Code paths: `web/src/frontends/astryx/`, `web/src/shared/`
+    (routing/lib/control/controllers/domain), `internal/webui/` (manifest v2,
+    document selection, `cmd/webui` CSP harness), and `web/e2e/astryx-*.spec.ts`.
+  - ADRs: `.docs/adr/0001-collection-read-model-scale.md` (collection read
+    model) and `0002-astryx-detail-layer-primitive.md` (detail overlay
+    primitive).
+  - Binding conventions established in Phase 2 (recorded in the plan's Phase 2
+    outcome, applied to Phases 3–4): a mutable controller always publishes a
+    memoized snapshot consumed through `useSyncExternalStore`; Vue `watch`
+    semantics port to a render-phase adjustment plus a post-commit effect; and
+    sensitive-operation state machines move down into a shared controller
+    (`gateway-actions`).
 
-### 约束(贯穿全部阶段)
+### Constraints (across all phases)
 
-- 用户可见 URL、登录态、locale、主题、`gpt-load.import-reauth-draft` 等浏览器状态键在共存期冻结;新增 `gpt-load.frontend` cookie 仅用于选择静态文档,不得影响鉴权、API 路由或文件路径。
-- CSP 不变:`style-src-elem 'self'` 排除运行时样式注入,主题必须 `astryx theme build` 静态产出。
-- Go 内嵌部署与 CI 命令契约(`workflow_test.go` 钉住的命令集)不得破坏。
-- 依赖固定精确版本且遵守 7 天规则。
+- User-visible URLs, session state, locale, theme, and browser state keys such as
+  `gpt-load.import-reauth-draft` were frozen during coexistence; the new
+  `gpt-load.frontend` cookie only selected a static document and could not affect
+  authentication, API routing, or file paths.
+- CSP is unchanged: `style-src-elem 'self'` rules out runtime style injection, so
+  every theme must be produced statically by `astryx theme build`.
+- The Go-embedded deployment and CI command contract (the command set pinned by
+  `workflow_test.go`) must not break.
+- Dependencies are pinned to exact versions under the seven-day rule.
 
 ## Non-Goals
 
-- 已完成切片不做 Phase 3-6(operational/highest-coupling 域、默认前端切换、classic 删除);这些阶段按方案文档逐阶段立项。
-- 不改产品行为、后端 API 契约、页面语义;`.docs/db` 语义文档继续作为验收清单。
-- 不做超出 Astryx 采用本身的视觉重设计。
-- 不写迁移 ADR(go/no-go gate 之后才有难以逆转的决定可记录)。
+- Completed slices do not take on Phases 3–6 (operational and
+  highest-coupling domains, the default frontend flip, classic deletion); those
+  phases are scoped one at a time by the plan.
+- No product behavior, backend API contract, or page semantics change; `.docs/db`
+  semantic docs remain the acceptance checklist.
+- No visual redesign beyond what adopting Astryx itself implies.
+- No migration ADR until the go/no-go gate has produced a hard-to-reverse
+  decision to record.

@@ -40,7 +40,7 @@ const styles = stylex.create({
   },
   textarea: {
     width: '100%',
-    minHeight: '124px',
+    minHeight: '80px',
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor: 'var(--color-border-control)',
@@ -52,6 +52,14 @@ const styles = stylex.create({
     fontFamily: 'var(--font-mono)',
     fontSize: 'var(--text-meta)',
     lineHeight: 1.65,
+    resize: 'vertical',
+  },
+  textareaSingleLine: {
+    minHeight: '44px',
+    height: '44px',
+    resize: 'none',
+    lineHeight: '24px',
+    paddingBlock: '9px',
   },
   counters: {
     display: 'flex',
@@ -87,9 +95,6 @@ const styles = stylex.create({
   warning: {
     marginTop: '14px',
   },
-  note: {
-    marginTop: '18px',
-  },
 })
 
 export interface CredentialTextareaProps {
@@ -99,7 +104,6 @@ export interface CredentialTextareaProps {
   showHeaderDescription?: boolean
   storageDescription?: string
 
-  showCredentialNotice?: boolean
   hideHeader?: boolean
   compact?: boolean
   rows?: number
@@ -113,14 +117,13 @@ export function CredentialTextarea({
   showHeaderDescription = true,
   storageDescription,
 
-  showCredentialNotice = true,
   hideHeader = false,
   compact = false,
   rows = 6,
   onChange,
 }: CredentialTextareaProps) {
   const t = useT()
-  const credential = readSingleCredential(value)
+  const { credential, error: inputError } = readSingleCredential(value)
   const structured =
     channel !== null &&
     channel !== undefined &&
@@ -152,7 +155,7 @@ export function CredentialTextarea({
   })()
   const fieldSummary =
     channel?.credential_fields.map(({ label: fieldLabel }) => fieldLabel).join(' · ') ?? ''
-  const error = value.trim() !== '' && credential === null ? t('import.credentials.tooMany') : ''
+  const error = inputError && inputError !== 'required' ? t(`import.credentials.${inputError}`) : ''
   // Only the metrics worth a second look become pills; a likely-AccessKey
   // count already gets its own warning banner below, so it is not repeated
   // here.
@@ -176,17 +179,33 @@ export function CredentialTextarea({
 
       <Field
         label={label}
-        description={storageDescription ?? t('import.credentials.storageNotice')}
+        description={storageDescription ?? (hideHeader ? description : undefined)}
         inputID="channel-credentials"
+        descriptionID={
+          storageDescription || hideHeader ? 'channel-credentials-desc' : undefined
+        }
         isRequired
-        status={error ? { type: 'error', message: error } : undefined}
+        status={
+          error
+            ? { type: 'error', message: error, messageID: 'channel-credentials-status' }
+            : undefined
+        }
       >
         <textarea
           id="channel-credentials"
-          {...stylex.props(styles.textarea)}
+          {...stylex.props(styles.textarea, !structured && styles.textareaSingleLine)}
           rows={rows}
           value={value}
           disabled={disabled}
+          aria-required="true"
+          aria-describedby={
+            [
+              storageDescription || hideHeader ? 'channel-credentials-desc' : '',
+              error ? 'channel-credentials-status' : '',
+            ]
+              .filter(Boolean)
+              .join(' ') || undefined
+          }
           aria-invalid={error ? true : undefined}
           autoComplete="off"
           autoCapitalize="none"
@@ -208,13 +227,6 @@ export function CredentialTextarea({
         <div {...stylex.props(styles.warning)}>
           <InlineNotice tone="warning" appearance="hint">
             {t('import.credentials.accessKeyWarning', { count: 1 })}
-          </InlineNotice>
-        </div>
-      )}
-      {showCredentialNotice && (
-        <div {...stylex.props(styles.note)}>
-          <InlineNotice tone="neutral" appearance="ledger-hint" glyph="i">
-            {t('import.credentials.channelCredentialNotice')}
           </InlineNotice>
         </div>
       )}

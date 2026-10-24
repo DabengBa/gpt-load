@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { reasoningEffortValues } from '../src/shared/control/resources/model-route-schedule.ts'
 
 import {
   normalizeAccessKeyMonitorQuery,
@@ -77,6 +78,38 @@ test('schedule draft round-trips with sorted rows and explicit null clears', () 
   })
 })
 
+test('reasoning drafts round-trip every effort and explicit null inheritance with numeric fields', () => {
+  for (const reasoning_effort of [null, ...reasoningEffortValues]) {
+    const drafts = { '1:a': { weight: 50, priority: null, concurrency_limit: 0, reasoning_effort } }
+    const query = scheduleMonitorQuery({ externalModel: 'gpt-5', drafts })
+    assert.deepEqual(JSON.parse(query.schedule_draft!), drafts)
+    assert.deepEqual(parseScheduleMonitorState(query).drafts, drafts)
+    assert.deepEqual(
+      scheduleMonitorQuery(scopeAccessKeyScheduleMonitorState(parseScheduleMonitorState(query))),
+      { schedule_model: 'gpt-5' },
+    )
+  }
+})
+
+test('reasoning drafts filter invalid values without dropping valid numeric fields', () => {
+  for (const reasoning_effort of ['', 'HIGH', 'invalid', 1, false, [], {}]) {
+    const drafts = { '1:a': { weight: 25, reasoning_effort } }
+    assert.deepEqual(
+      parseScheduleMonitorState({ schedule_draft: JSON.stringify(drafts) }).drafts,
+      { '1:a': { weight: 25 } },
+    )
+    // Malformed URL/runtime input must not leak into canonical serialization.
+    assert.deepEqual(JSON.parse(scheduleMonitorQuery({ drafts: drafts as never }).schedule_draft!), {
+      '1:a': { weight: 25 },
+    })
+    assert.deepEqual(
+      parseScheduleMonitorState({
+        schedule_draft: JSON.stringify({ '1:a': { reasoning_effort } }),
+      }).drafts,
+      {},
+    )
+  }
+})
 test('schedule price selection round-trips as a positive integer id', () => {
   const query = scheduleMonitorQuery({ externalModel: 'gpt-5', selectedPriceID: 42, drafts: {} })
   assert.equal(query.selected_price_id, '42')

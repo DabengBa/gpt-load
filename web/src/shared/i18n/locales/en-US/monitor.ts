@@ -279,6 +279,22 @@ export default {
         inherit: 'Not configured',
         groupDisabled: 'Group disabled',
         advanced: 'Advanced',
+        more: 'More',
+        actions: 'Actions',
+        moreActions: 'More actions for {model} · {group}',
+        dirtySummary: 'Candidates: {entries} · Changes: {fields}',
+        invalidInputs: 'Invalid fields: {count}',
+        rules: 'Scheduling and statistics',
+        rulesHelp:
+          'Lower priority values run first. Candidates in the same priority share traffic by weight. Calls and success rate are group-level totals for the past 24 hours. Enable/disable and recovery take effect immediately; other settings are saved together.',
+        switchTitle: 'Save changes before leaving?',
+        switchDescription: 'Changes to {model} have not been saved.',
+        stay: 'Stay on this model',
+        discardAndContinue: 'Discard and continue',
+        saveAndContinue: 'Save and continue',
+        invalidSwitch: 'Fix the invalid fields before saving, or discard the changes.',
+        saveSwitchFailed:
+          'Could not save changes. You are still on the current model; your draft is intact.',
         concurrencyLimit: 'Concurrency limit',
         invalidConcurrencyLimit: 'Enter an integer from 0 to 2147483647.',
         concurrencyHelp:
@@ -331,6 +347,8 @@ export default {
       filters: {
         label: 'Request log filters',
         timeRange: 'Time range',
+        appliedTimeRange: 'Applied time range: {from} – {to}',
+        shortcutsHelp: 'Shortcuts edit the draft; select Apply to update results.',
         from: 'From',
         to: 'To',
         quickRanges: 'Quick time ranges',
@@ -358,7 +376,7 @@ export default {
         any: 'Any',
         group: 'Any-attempt Group',
         groupHelp: 'Matches any Group used by an attempt.',
-        anyGroup: 'Any attempt Group',
+        anyGroup: 'All groups (any attempt)',
         searchGroups: 'Search groups',
         model: 'Client model',
         clientModel: 'Client model',
@@ -384,7 +402,7 @@ export default {
         attemptStatusCode: 'Any-attempt status',
         failureCategory: 'Any-attempt failure',
         errorCode: 'Any-attempt error code',
-        retryStateLabel: 'Retry state',
+
         modelConsistencyLabel: 'Returned model',
         retryMin: 'Minimum retries',
         retryMax: 'Maximum retries',
@@ -421,6 +439,7 @@ export default {
           result: 'Final result',
           ranges: 'Numeric ranges',
         },
+        retryStateLabel: 'Retry state',
         retryState: { retried: 'Retried', not_retried: 'Not retried' },
         modelConsistency: {
           match: 'Match',

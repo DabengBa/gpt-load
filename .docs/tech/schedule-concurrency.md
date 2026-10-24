@@ -1,5 +1,5 @@
 ---
-description: "调度行并发上限的运行时语义、亲和优先边界和请求生命周期。"
+description: "Runtime semantics, affinity-priority boundary, and request lifecycle of the per-dispatch-row concurrency limit."
 kind: technical
 topic: schedule-concurrency
 relations:
@@ -15,36 +15,95 @@ code:
     - internal/gateway/websocket_turn.go
     - internal/control/model_route_schedule.go
 ---
-# 调度行并发上限
+# Dispatch Row Concurrency Limit
 
-## Owner 与范围
+## Owner And Scope
 
-本文档拥有调度行并发限制的实现事实：配置贯通、进程内容量记录、原子准入、候选跳过、释放和容量错误。产品可见的配置与调度行为由 [调度行并发上限](../db/features/dispatch-concurrency.md) 拥有；亲和绑定、身份代际和健康绕过仍由 [Affinity Binding](affinity-binding.md) 拥有。
+This document owns the implementation facts of the dispatch-row concurrency
+limit: configuration plumbing, in-process capacity records, atomic admission,
+candidate skipping, release, and the capacity error. The product-visible
+configuration and scheduling behavior are owned by [Dispatch Row Concurrency
+Limit](../db/features/dispatch-concurrency.md); affinity bindings, identity
+generations, and the health bypass remain owned by
+[Affinity Binding](affinity-binding.md).
 
-## 容量键与配置
+## Capacity Key And Configuration
 
-容量按 `RouteEntryKey`（`GroupID + EntryID`）记录。`concurrency_limit` 存在于模型条目 JSON、运行时 `ModelConfig` 和 `RouteTarget`，缺失归一为 0；0 表示不限。数值范围是 0 到 2147483647。调度中心 PATCH 的字段缺失保持原值，显式 0 解除限制，`null` 被拒绝。
+Capacity is recorded per `RouteEntryKey` (`GroupID + EntryID`).
+`concurrency_limit` lives in the model entry JSON, the runtime `ModelConfig`,
+and `RouteTarget`; a missing value normalizes to 0, and 0 means unlimited. The
+accepted range is 0 to 2147483647. In the Dispatch Center PATCH an absent field
+keeps the stored value, an explicit 0 removes the limit, and `null` is rejected.
 
-容量记录属于单个服务进程。配置快照发布和容量状态更新在同一进程锁边界内协调；已有 reservation 不因降低上限、切换 0 或删除条目而中断。删除条目禁止新的准入；在飞记录作为不可准入的 tombstone 保留至最后一个 reservation 释放，因此同键快速重建也不会清零占用。准入与请求快照在同一发布锁边界校验；过期快照或已删除/禁用条目返回配置变更，不会误报容量耗尽。
+Capacity records belong to a single service process. Snapshot publication and
+capacity state updates are coordinated under the same in-process lock, and an
+existing reservation is never interrupted by lowering the limit, switching to
+0, or deleting the entry. Deleting an entry blocks new admission; an in-flight
+record survives as a non-admittable tombstone until the last reservation
+releases, so recreating the same key immediately cannot reset occupancy.
+Admission validates both the snapshot the request belongs to and the entry's
+existence: a request holding a stale snapshot, and a deleted or disabled entry,
+return `CapacitySnapshotChanged` or `CapacityUnavailable` instead of a false
+capacity-exhausted result.
 
-## 准入顺序
+## Admission Order
 
-调度候选先经过既有协议、权限、模型、启用、权重、优先级、健康和亲和资格。普通候选在正式尝试前申请容量；容量不足只跳过当前 `RouteEntryKey`，不会写入 scheduler 的 credential/upstream tried pair，也不会增加执行重试预算或产生 provider attempt。所有候选都被容量阻塞时，网关返回 `503 schedule_capacity_exhausted`。
+Candidates first pass the existing protocol, permission, model, enabled,
+weight, priority, health, and affinity eligibility filters. An ordinary
+candidate requests capacity before its real attempt; a capacity shortage only
+skips the current `RouteEntryKey` and does not write the scheduler's
+credential/upstream tried pair, consume execution retry budget, or produce a
+provider attempt. When every candidate is blocked by capacity, the gateway
+returns `503 schedule_capacity_exhausted`.
 
-调度器的 `NextCandidate()` 只选择、不记录代价；执行方准入成功后才 `MarkAttempt`，容量拒绝则以 `SkipEntry` 排除该条目后继续。`Next()` 只保留为选择加标记的包装，数据面路径使用分离形式，否则一次容量拒绝会提前消耗该 credential/upstream 对。
+The scheduler's `NextCandidate()` only selects; it records no cost. The
+executor calls `MarkAttempt` only after admission succeeds, and a capacity
+rejection calls `SkipEntry` to exclude that entry and continue. `Next()` remains
+only as a select-and-mark wrapper; the data plane uses the separated form,
+because otherwise a single capacity rejection would consume that
+credential/upstream pair in advance.
 
-本地 payload、凭据解密和代理准备完成后进行原子准入，防止准备与实际发送之间超发。准入成功后才标记正式 attempt。容量拒绝不执行健康反馈；已有真实上游失败时，原失败证据保留，容量原因作为独立的请求级结果补充。
+Atomic admission happens after the local payload, credential decryption, and
+proxy preparation, which prevents over-admission between preparation and the
+actual send. Only a successful admission marks a real attempt. A capacity
+rejection runs no health feedback; when a real upstream failure already exists,
+its evidence is preserved and the capacity reason is appended as a separate
+request-level outcome.
 
-## 亲和与固定身份
+## Affinity And Fixed Identity
 
-有效亲和请求沿用 [Affinity Binding](affinity-binding.md) 的绑定身份和资格检查；只有实际解析出的目标与绑定完全一致（group、credential、identity generation、route entry、upstream model）且当前条目可用时才可申请溢出名额，并继续计入实际占用。容量超限本身不会产生健康绕过或绑定接管。
+A valid affinity request reuses the binding identity and eligibility checks of
+[Affinity Binding](affinity-binding.md). It may claim an overflow slot only when
+the target actually resolved for this request matches the binding exactly
+(group, credential, identity generation, route entry, upstream model) and the
+current entry is available; it still counts toward real occupancy. Exceeding
+the limit never produces a health bypass or a binding takeover by itself.
 
-WebSocket 的 `binding` 或 `requiredRef` 固定身份是连续性约束，不自动等同于有效亲和。固定身份没有亲和豁免且条目满载时，连接返回本地容量错误，不改投其他身份；只有没有固定身份的普通 turn 才能在容量阻塞后选择其他候选。有效亲和固定身份可以超限。
+A WebSocket `binding` or `requiredRef` fixed identity is a continuity
+constraint, not automatically a valid affinity. A fixed identity without an
+affinity exemption returns the local capacity error when its entry is full and
+is not moved to another identity; only an ordinary turn without a fixed
+identity may choose another candidate after a capacity block. A fixed identity
+with a valid affinity may exceed the limit.
 
-## 生命周期
+## Lifecycle
 
-HTTP 和流式请求在实际 Forward/ForwardStream 期间各持有一个 reservation；返回、失败、取消、超时和预派发终止均幂等释放。reservation 覆盖一次 Forward 调用及其内部执行；不同候选的重试分别准入。WebSocket 的准入发生在每次 `executeTurn` 内，只覆盖该活动 turn；握手和等待下一条 turn 的空闲连接都不占用容量。释放使用 reservation 自带的记录，不重新读取当前条目配置。
+HTTP and streaming requests each hold one reservation during the actual
+Forward/ForwardStream call; return, failure, cancellation, timeout, and a
+pre-dispatch termination all release it idempotently. A reservation covers one
+Forward call and its internal execution; retries on different candidates are
+admitted separately. WebSocket admission happens inside each `executeTurn` and
+covers only that active turn, so the handshake and an idle connection waiting
+for the next turn hold no capacity. Release uses the record carried by the
+reservation and never re-reads the entry's current configuration.
 
-## 验证
+## Verification
 
-容量单元测试覆盖原子竞争、亲和超限、条目精确跳过、热更新/删除、HTTP/流、WebSocket 固定身份及重放生命周期。控制台测试覆盖配置 round-trip、非法输入、草稿 URL、冲突保留和字段投影。系统 Chrome 可启动新增并发 UI 用例；完整 schedule E2E 仍有一个未改动的 models mock 投影契约失败。
+Capacity unit tests cover atomic races, affinity overflow, exact entry skipping,
+hot updates and deletion, HTTP and streaming requests, WebSocket fixed
+identities, and the replay lifecycle. Control-plane tests cover configuration
+round trips, invalid input, draft URL state, conflict preservation, and field
+projection. The concurrency-limit UI cases run in
+`web/e2e/astryx-schedule.spec.ts`; the models mock projection contract failure
+recorded there earlier is fixed and its assertions match the current
+projection.
