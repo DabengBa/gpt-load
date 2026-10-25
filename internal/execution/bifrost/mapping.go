@@ -19,6 +19,7 @@ import (
 	"gpt-load/internal/execution"
 	platformheader "gpt-load/internal/platform/httpheader"
 	platformredact "gpt-load/internal/platform/redact"
+	"gpt-load/internal/usage"
 )
 
 type openAIChatResponse struct {
@@ -140,6 +141,60 @@ func usageEvidenceFromResponses(source *schemas.ResponsesResponseUsage) (*execut
 		return nil, fmt.Errorf("normalize Responses usage")
 	}
 	return &execution.UsageEvidence{Normalized: normalized, Raw: rawUsage}, nil
+}
+
+// BilledUsage is a cumulative provider snapshot, not a delta to add to the stream.
+func errorUsageEvidence(bifrostError *schemas.BifrostError, previous *execution.UsageEvidence) *execution.UsageEvidence {
+	if bifrostError == nil || bifrostError.ExtraFields.BilledUsage == nil {
+		return cloneUsage(previous)
+	}
+	evidence, err := billedUsageEvidence(bifrostError.ExtraFields.BilledUsage)
+	if err != nil {
+		evidence = cloneUsage(previous)
+		if evidence == nil {
+			evidence = &execution.UsageEvidence{Normalized: usage.Result{State: usage.StateMissing}}
+		}
+		evidence.Normalized.Diagnostics.Add(usage.DiagnosticInvalidPayload)
+		return evidence
+	}
+	if evidence.Normalized.State == usage.StateComplete {
+		evidence.Normalized.State = usage.StatePartial
+	}
+	return evidence
+}
+
+func billedUsageEvidence(source *schemas.BifrostLLMUsage) (*execution.UsageEvidence, error) {
+	evidence, err := usageEvidenceFromResponses(source.ToResponsesResponseUsage())
+	if err != nil || evidence == nil || source.PromptTokensDetails == nil {
+		return evidence, err
+	}
+	details := source.PromptTokensDetails
+	write := int64(details.CachedWriteTokens)
+	var five, hour int64
+	if details.CachedWriteTokenDetails != nil {
+		five = int64(details.CachedWriteTokenDetails.CachedWriteTokens5m)
+		hour = int64(details.CachedWriteTokenDetails.CachedWriteTokens1h)
+	}
+	split, ok := usage.CheckedAdd(five, hour)
+	if !ok || write < 0 {
+		return nil, fmt.Errorf("invalid billed cache write usage")
+	}
+	if write == 0 {
+		write = split
+	}
+	unknown, ok := usage.SubtractCached(write, split)
+	if !ok {
+		return nil, fmt.Errorf("billed cache write details exceed aggregate")
+	}
+	uncached, ok := usage.SubtractCached(evidence.Normalized.Tokens.UncachedInput, write)
+	if !ok {
+		return nil, fmt.Errorf("billed cache writes exceed input")
+	}
+	evidence.Normalized.Tokens.UncachedInput = uncached
+	evidence.Normalized.Tokens.CacheWrite5M = five
+	evidence.Normalized.Tokens.CacheWrite1H = hour
+	evidence.Normalized.Tokens.CacheWriteUnknown = unknown
+	return evidence, nil
 }
 
 func openAIResponseModel(body []byte, fallback string) string {
@@ -496,6 +551,7 @@ func unaryErrorResult(bifrostError *schemas.BifrostError, bifrostContext *schema
 		StatusCode:        status,
 		Header:            nil,
 		UpstreamRequestID: "",
+		Usage:             errorUsageEvidence(bifrostError, nil),
 		Error:             evidence,
 	}
 	if started {
@@ -513,7 +569,9 @@ func convertedUnaryErrorResult(
 ) execution.AttemptResult {
 	result := unaryErrorResult(bifrostError, bifrostContext, secrets)
 	if convertedSDKPreflightFailure(bifrostError, result.ResponseStarted) {
-		result.DispatchState = execution.DispatchNotSent
+		if bifrostError.ExtraFields.BilledUsage == nil {
+			result.DispatchState = execution.DispatchNotSent
+		}
 		result.Error = convertedSerializationEvidence()
 	}
 	return result
@@ -536,7 +594,7 @@ func streamErrorResult(
 	result := execution.StreamResult{
 		DispatchState: sdkErrorDispatchState(bifrostError, alreadyStarted || started),
 		Model:         model,
-		Usage:         cloneUsage(usageEvidence),
+		Usage:         errorUsageEvidence(bifrostError, usageEvidence),
 		Error:         evidence,
 	}
 	if started {
@@ -582,7 +640,9 @@ func convertedStreamErrorResult(
 		usageEvidence,
 	)
 	if !alreadyStarted && convertedSDKPreflightFailure(bifrostError, result.ResponseStarted) {
-		result.DispatchState = execution.DispatchNotSent
+		if bifrostError.ExtraFields.BilledUsage == nil {
+			result.DispatchState = execution.DispatchNotSent
+		}
 		result.Error = convertedSerializationEvidence()
 	}
 	return result
@@ -608,6 +668,9 @@ func sdkErrorDispatchState(bifrostError *schemas.BifrostError, responseStarted b
 		return execution.DispatchMaybeSent
 	}
 	underlying := bifrostError.Error.Error
+	if bifrostError.ExtraFields.BilledUsage != nil {
+		return execution.DispatchMaybeSent
+	}
 	var dnsError *net.DNSError
 	if errors.As(underlying, &dnsError) {
 		return execution.DispatchNotSent

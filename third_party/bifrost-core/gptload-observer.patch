@@ -79,6 +79,39 @@
 +				return r
 +			}
 +		}
+--- a/injectedtools.go
++++ b/injectedtools.go
+@@ -490,0 +491 @@
++	contexts ...*schemas.BifrostContext,
+@@ -498,0 +500,3 @@
++			if len(contexts) > 0 {
++				schemas.SetReportedUsageSnapshot(contexts[0], bifrostErr.ExtraFields.BilledUsage)
++			}
+@@ -516,0 +521,3 @@
++			if len(contexts) > 0 {
++				schemas.SetReportedUsageSnapshot(contexts[0], resp.Usage.ToBifrostLLMUsage())
++			}
+@@ -519,0 +527,3 @@
++		if len(contexts) > 0 {
++			schemas.SetReportedUsageSnapshot(contexts[0], usage)
++		}
+@@ -781 +791 @@
+-		}, exec)
++		}, exec, ctx)
+--- a/injectedtoolstream.go
++++ b/injectedtoolstream.go
+@@ -394,0 +395 @@
++				schemas.SetReportedUsageSnapshot(c, bifrostErr.ExtraFields.BilledUsage)
+@@ -401,0 +403,6 @@
++		schemas.SetReportedUsageSnapshot(c, turns.usage())
++		for _, emit := range emits {
++			if emit.terminal {
++				schemas.SetReportedUsageSnapshot(c, emit.result.NormalizedUsage())
++			}
++		}
+@@ -479,0 +487,2 @@
++				// The dispatch error can contain newly reported current-turn usage.
++				schemas.SetReportedUsageSnapshot(ctx, bifrostErr.ExtraFields.BilledUsage)
 --- a/internal/llmtests/automatic_function_calling.go
 +++ b/internal/llmtests/automatic_function_calling.go
 @@ -167 +167 @@
@@ -4173,6 +4206,81 @@
 -}
 \ No newline at end of file
 +}
+--- a/reportedusage_test.go
++++ b/reportedusage_test.go
+@@ -0,0 +1,72 @@
++package bifrost
++
++import (
++	"context"
++	"testing"
++
++	"github.com/maximhq/bifrost/core/schemas"
++)
++
++func TestInjectedResponsesReportedUsageBeforeToolAndNextTurn(t *testing.T) {
++	ctx := schemas.NewBifrostContext(t.Context(), schemas.NoDeadline)
++	defer ctx.Cancel()
++	set := testInjectedSet(t)
++	var calls int
++	dispatch := func(*schemas.BifrostResponsesRequest) (*schemas.BifrostResponsesResponse, *schemas.BifrostError) {
++		calls++
++		if calls == 1 {
++			return &schemas.BifrostResponsesResponse{Output: []schemas.ResponsesMessage{responsesFunctionCall("c1", "web_search")}, Usage: &schemas.ResponsesResponseUsage{InputTokens: 10, OutputTokens: 1, TotalTokens: 11}}, nil
++		}
++		if got := schemas.ReportedUsageSnapshot(ctx); got == nil || got.PromptTokens != 10 {
++			t.Errorf("next turn snapshot=%+v", got)
++		}
++		return &schemas.BifrostResponsesResponse{Output: []schemas.ResponsesMessage{responsesText("done")}, Usage: &schemas.ResponsesResponseUsage{InputTokens: 20, OutputTokens: 2, TotalTokens: 22}}, nil
++	}
++	exec := func(call schemas.ChatAssistantMessageToolCall) *schemas.ChatMessage {
++		got := schemas.ReportedUsageSnapshot(ctx)
++		if got == nil || got.PromptTokens != 10 {
++			t.Errorf("tool snapshot=%+v", got)
++		}
++		return searchResult(call)
++	}
++	_, err := runInjectedResponsesLoop(&schemas.BifrostResponsesRequest{Model: "m"}, set, dispatch, exec, ctx)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for range 2 {
++		got := schemas.ReportedUsageSnapshot(ctx)
++		if got == nil || got.PromptTokens != 30 || got.CompletionTokens != 3 {
++			t.Fatalf("final cumulative snapshot=%+v, want 30/3 exactly once", got)
++		}
++	}
++}
++
++func TestInjectedStreamReportedUsageBeforeTerminalHook(t *testing.T) {
++	ctx := schemas.NewBifrostContext(t.Context(), schemas.NoDeadline)
++	defer ctx.Cancel()
++	cumulative := &schemas.BifrostLLMUsage{PromptTokens: 30, CompletionTokens: 3, TotalTokens: 33}
++	response := &schemas.BifrostResponse{ResponsesResponse: &schemas.BifrostResponsesResponse{Usage: cumulative.ToResponsesResponseUsage()}}
++	stream, err := chainInjectedStream(ctx, injectedStreamTurns{
++		process: func(*schemas.BifrostResponse, bool) ([]clientEmit, bool) {
++			return []clientEmit{{result: response, terminal: true}}, true
++		},
++		usage:     func() *schemas.BifrostLLMUsage { return cumulative },
++		continues: func() bool { return false },
++		dispatch: func(runner schemas.PostHookRunner, _ func(context.Context)) (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
++			_, _ = runner(ctx, response, nil)
++			done := make(chan *schemas.BifrostStreamChunk)
++			close(done)
++			return done, nil
++		},
++	}, func(_ *schemas.BifrostContext, r *schemas.BifrostResponse, e *schemas.BifrostError) (*schemas.BifrostResponse, *schemas.BifrostError) {
++		if got := schemas.ReportedUsageSnapshot(ctx); got == nil || got.PromptTokens != 30 {
++			t.Errorf("terminal hook snapshot=%+v", got)
++		}
++		return r, e
++	}, func(context.Context) {})
++	if err != nil {
++		t.Fatal(err)
++	}
++	for range stream {
++	}
++}
 --- a/schemas/containers.go
 +++ b/schemas/containers.go
 @@ -150,3 +150,3 @@
@@ -4452,6 +4560,74 @@
 +			}
 +		})
 +	}
++}
+--- a/schemas/reportedusage.go
++++ b/schemas/reportedusage.go
+@@ -0,0 +1,22 @@
++package schemas
++
++type reportedUsageSnapshotKey struct{}
++
++// SetReportedUsageSnapshot publishes an owned cumulative snapshot at the usage
++// owner's synchronous merge point, before any next tool/turn or post-hook.
++// The context lock synchronizes publication; the stored copy is immutable.
++func SetReportedUsageSnapshot(ctx *BifrostContext, value *BifrostLLMUsage) {
++	if ctx != nil && value != nil {
++		ctx.SetValue(reportedUsageSnapshotKey{}, value.DeepCopy())
++	}
++}
++
++// ReportedUsageSnapshot returns an independent copy, never a mutable provider
++// accumulation handle. Reading it does not wait for cancellation/terminal hooks.
++func ReportedUsageSnapshot(ctx *BifrostContext) *BifrostLLMUsage {
++	if ctx == nil {
++		return nil
++	}
++	value, _ := ctx.Value(reportedUsageSnapshotKey{}).(*BifrostLLMUsage)
++	return value.DeepCopy()
++}
+--- a/schemas/reportedusage_test.go
++++ b/schemas/reportedusage_test.go
+@@ -0,0 +1,40 @@
++package schemas
++
++import (
++	"sync"
++	"testing"
++)
++
++func TestReportedUsageSnapshotOwnedReplacement(t *testing.T) {
++	ctx := NewBifrostContext(t.Context(), NoDeadline)
++	defer ctx.Cancel()
++	if ReportedUsageSnapshot(ctx) != nil {
++		t.Fatal("invented usage")
++	}
++	source := &BifrostLLMUsage{PromptTokens: 10, PromptTokensDetails: &ChatPromptTokensDetails{CachedWriteTokenDetails: &ChatCachedWriteTokenDetails{CachedWriteTokens5m: 3}}}
++	SetReportedUsageSnapshot(ctx, source)
++	source.PromptTokens = 99
++	source.PromptTokensDetails.CachedWriteTokenDetails.CachedWriteTokens5m = 99
++	got := ReportedUsageSnapshot(ctx)
++	if got.PromptTokens != 10 || got.PromptTokensDetails.CachedWriteTokenDetails.CachedWriteTokens5m != 3 {
++		t.Fatalf("snapshot aliases source: %+v", got)
++	}
++	got.PromptTokens = 88
++	if ReportedUsageSnapshot(ctx).PromptTokens != 10 {
++		t.Fatal("snapshot getter aliases stored value")
++	}
++	SetReportedUsageSnapshot(ctx, &BifrostLLMUsage{PromptTokens: 20})
++	if ReportedUsageSnapshot(ctx).PromptTokens != 20 {
++		t.Fatal("cumulative snapshot must replace, not add")
++	}
++	var wg sync.WaitGroup
++	for range 4 {
++		wg.Go(func() {
++			for i := range 100 {
++				SetReportedUsageSnapshot(ctx, &BifrostLLMUsage{PromptTokens: i})
++				_ = ReportedUsageSnapshot(ctx)
++			}
++		})
++	}
++	wg.Wait()
 +}
 --- a/schemas/websocket.go
 +++ b/schemas/websocket.go

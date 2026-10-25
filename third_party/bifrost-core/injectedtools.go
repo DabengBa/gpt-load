@@ -488,6 +488,7 @@ func runInjectedResponsesLoop(
 	set *injectedToolSet,
 	dispatch func(*schemas.BifrostResponsesRequest) (*schemas.BifrostResponsesResponse, *schemas.BifrostError),
 	exec func(schemas.ChatAssistantMessageToolCall) *schemas.ChatMessage,
+	contexts ...*schemas.BifrostContext,
 ) (*schemas.BifrostResponsesResponse, *schemas.BifrostError) {
 	turn := applyInjectedToolsResponses(original, set)
 	var usage *schemas.BifrostLLMUsage
@@ -496,6 +497,9 @@ func runInjectedResponsesLoop(
 		resp, bifrostErr := dispatch(turn)
 		if bifrostErr != nil {
 			billEarlierTurns(bifrostErr, usage)
+			if len(contexts) > 0 {
+				schemas.SetReportedUsageSnapshot(contexts[0], bifrostErr.ExtraFields.BilledUsage)
+			}
 			return nil, bifrostErr
 		}
 		var injected []schemas.ChatAssistantMessageToolCall
@@ -514,9 +518,15 @@ func runInjectedResponsesLoop(
 			}
 			resp.Output = output
 			resp.Usage = schemas.MergeBifrostLLMUsage(usage, resp.Usage.ToBifrostLLMUsage()).ToResponsesResponseUsage()
+			if len(contexts) > 0 {
+				schemas.SetReportedUsageSnapshot(contexts[0], resp.Usage.ToBifrostLLMUsage())
+			}
 			return resp, nil
 		}
 		usage = schemas.MergeBifrostLLMUsage(usage, resp.Usage.ToBifrostLLMUsage())
+		if len(contexts) > 0 {
+			schemas.SetReportedUsageSnapshot(contexts[0], usage)
+		}
 
 		results := executeInjectedCalls(injected, exec)
 		next := *turn
@@ -778,7 +788,7 @@ func (bifrost *Bifrost) runInjectedTools(provider schemas.Provider, config *sche
 		original := req.BifrostRequest.ResponsesRequest
 		resp, bifrostErr := runInjectedResponsesLoop(original, set, func(turn *schemas.BifrostResponsesRequest) (*schemas.BifrostResponsesResponse, *schemas.BifrostError) {
 			return bifrost.dispatchResponses(ctx, provider, config, key, turn, original)
-		}, exec)
+		}, exec, ctx)
 		if bifrostErr != nil {
 			return nil, bifrostErr
 		}

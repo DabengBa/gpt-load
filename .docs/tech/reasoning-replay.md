@@ -13,6 +13,10 @@ code:
     - third_party/bifrost-core/providers/openai/chat.go
     - internal/execution/bifrost/reasoning_replay_test.go
     - internal/execution/bifrost/responses_to_chat_replay_test.go
+    - internal/codexrecovery/classify.go
+    - internal/codexrecovery/sanitize.go
+    - internal/gateway/responses_recovery.go
+    - internal/gateway/websocket_turn.go
 ---
 # Reasoning History Replay
 
@@ -30,7 +34,9 @@ upgrade procedure are recorded in
 The root module requires Bifrost core v1.13.0 and replaces it with
 `third_party/bifrost-core`. Its schema converters and provider serializers
 determine the actual converted payload. Native passthrough does not repair
-previously saved client history.
+previously saved client history during normal forwarding. The failure-triggered
+Responses recovery below is a separate, bounded gateway behavior, not a
+conversion guarantee.
 
 Bifrost v1.13.0 replaced the embedding input union with an item list, which is
 an Embeddings-wire concern rather than a reasoning-history one. The marker
@@ -78,6 +84,62 @@ Best-effort filtering of unsupported tool declarations does not permit dropping
 tool result images, files, or audio.
 
 ## Failure Boundaries And Verification
+
+### HTTP Responses History Rejection Recovery
+
+For Responses create, the gateway recognizes specific encrypted-content,
+history-item ownership and missing-item rejections. Ordinary errors and
+successful payloads do not authorize history rewriting. Normal first attempts
+are unchanged. After an explicit rejection, safe cleanup may remove inline
+history item IDs and opaque encrypted reasoning/tool-output/agent-message
+state, retaining readable content and tool call associations. Compaction items
+are preserved; an `item_reference` makes full cleanup unavailable. Unknown
+items, resource IDs and `previous_response_id` are not stripped to force success.
+
+HTTP recovery has one request-local cleanup replay on the same captured
+credential identity. It consumes the existing attempt budget and respects
+retry policy, current availability, entry health, quota and capacity admission.
+A repeated recognized rejection terminates recovery. Existing response-owner
+bindings remain mandatory: recovery never turns a continuation into arbitrary
+cross-account failover. Later otherwise-permitted candidates rebuild from their
+own parameter/reasoning overrides and apply the cleanup, rather than inheriting
+another group's prepared request.
+
+Visible provider output forbids recovery. In buffered streaming, an already
+committed HTTP heartbeat without released provider payload may use the existing
+replay-eligible window; the committed flag and writer/session remain intact,
+and the new attempt gets its own spool. Store/resource-dependent requests do
+not gain replay eligibility through recovery. If a pinned retry cannot execute,
+the original rejection remains the fallback, with SSE framing after commitment.
+
+Recovery is best effort and may lose opaque reasoning continuity. It cannot
+reconstruct history held only by remote IDs. There is no global/session-digest
+rejection cache: new HTTP requests are not proactively rewritten based on an
+earlier request's rejection. Unit and local HTTP/SSE integration evidence lives
+in `internal/codexrecovery/*_test.go` and
+`internal/gateway/responses_recovery*_test.go`; it is not live-provider acceptance.
+
+### WebSocket Responses Recovery
+
+An unbound WebSocket turn can use the same classifier and cleanup for one
+same-identity replay, within its existing retry budget and admission rules.
+Recoverable error events are identified before delivery, including on
+multiplex sessions; generic errors keep their existing delivery behavior.
+Once any event has reached the client, history recovery cannot replay the turn.
+Serial recovery opens a new upstream session because the rejected session may
+have closed. Multiplex recovery retains the existing upstream session so other
+lanes continue independently.
+
+Recovery state belongs only to the current turn. It neither changes another
+lane's history nor proactively cleans a later turn. Already-bound turns retain
+their existing client-reconnect behavior and do not silently replay on another
+account. Credential version refresh may use the current reference only when
+ID, group and identity generation still match. Parent ownership and lane
+constraints remain unchanged. Local socket integration and concurrent-lane
+race evidence is covered by `internal/gateway/websocket_recovery_test.go`;
+no acceptance by a live provider is implied.
+
+### Protocol Conversion Verification
 
 - `third_party/bifrost-core/schemas/reasoningreplay_test.go` checks serialized
   unary and streaming items, terminal completed/incomplete output, and Chat

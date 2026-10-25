@@ -85,6 +85,7 @@ func TestRequestTelemetryContractUsesExactFieldAllowlist(t *testing.T) {
 			"BufferedStream",
 			"PayloadReleaseStartedMs",
 			"Usage",
+			"Pricing",
 		},
 		reflect.TypeOf(PricingObservation{}): {
 			"UpstreamModel",

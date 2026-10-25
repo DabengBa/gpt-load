@@ -45,7 +45,12 @@ func mapEvent(
 		return models.RequestLog{}, fmt.Errorf("map request event pricing receipt: %w", err)
 	}
 	attempts := make([]models.RequestLogAttempt, 0, len(event.Attempts))
+	seen := make(map[int]bool, len(event.Attempts))
 	for _, attempt := range event.Attempts {
+		if attempt.Sequence < 1 || seen[attempt.Sequence] {
+			return models.RequestLog{}, fmt.Errorf("invalid or duplicate attempt sequence %d", attempt.Sequence)
+		}
+		seen[attempt.Sequence] = true
 		if err := validateAttemptFeedback(attempt.Feedback); err != nil {
 			return models.RequestLog{}, fmt.Errorf("map request event attempt %d feedback: %w", attempt.Sequence, err)
 		}
@@ -63,6 +68,20 @@ func mapEvent(
 		attemptReceipt := models.JSON(nil)
 		if attempt.Sequence == event.Usage.AttemptSequence {
 			attemptReceipt = receipt
+		} else if attempt.Usage.State == usage.StateComplete || attempt.Usage.State == usage.StatePartial {
+			if attempt.Pricing.CostState == string(pricing.CostStatePriced) && attempt.Pricing.ReceiptJSON == "" {
+				return models.RequestLog{}, fmt.Errorf("attempt %d billed pricing requires frozen receipt", attempt.Sequence)
+			}
+			observation := event
+			observation.UpstreamModel = attempt.UpstreamModel
+			observation.Usage = telemetry.UsageObservation{Result: attempt.Usage, GroupID: attempt.GroupID, ChannelID: attempt.ChannelID, CredentialID: attempt.CredentialID, AttemptSequence: attempt.Sequence, Pricing: attempt.Pricing}
+			if err := validateFrozenObservation(observation); err != nil {
+				return models.RequestLog{}, fmt.Errorf("attempt %d billed usage: %w", attempt.Sequence, err)
+			}
+			attemptReceipt, err = canonicalPricingReceipt(attempt.Pricing, string(attempt.ChannelID))
+			if err != nil {
+				return models.RequestLog{}, fmt.Errorf("attempt %d pricing receipt: %w", attempt.Sequence, err)
+			}
 		}
 		attempts = append(attempts, models.RequestLogAttempt{
 			RequestID:               event.RequestID,
@@ -106,7 +125,7 @@ func mapEvent(
 	result := event.Usage.Result
 	pricingObservation := event.Usage.Pricing
 
-	return models.RequestLog{
+	row := models.RequestLog{
 		ID:                           event.RequestID,
 		CompletedAtMS:                completedAtMS,
 		AccessKeyID:                  event.AccessKeyID,
@@ -149,7 +168,57 @@ func mapEvent(
 		CostState:                    pricingObservation.CostState,
 		PricingCompleteness:          pricingObservation.PricingCompleteness,
 		AttemptRows:                  attempts,
-	}, nil
+	}
+	// Request totals include all billed attempts, while the identity and final
+	// receipt remain attributed to the terminal attempt. The existing journal
+	// then persists/applies this request total exactly once.
+	for _, attempt := range event.Attempts {
+		if attempt.Sequence == event.Usage.AttemptSequence ||
+			(attempt.Usage.State != usage.StateComplete && attempt.Usage.State != usage.StatePartial) {
+			continue
+		}
+		if err := addBilledAttempt(&row, attempt); err != nil {
+			return models.RequestLog{}, err
+		}
+	}
+	return row, nil
+}
+
+func addBilledAttempt(row *models.RequestLog, attempt telemetry.Attempt) error {
+	for _, pair := range []struct {
+		target *int64
+		value  int64
+	}{
+		{&row.UncachedInputTokens, attempt.Usage.Tokens.UncachedInput},
+		{&row.OutputTokens, attempt.Usage.Tokens.Output},
+		{&row.CacheReadTokens, attempt.Usage.Tokens.CacheRead},
+		{&row.CacheWrite5MTokens, attempt.Usage.Tokens.CacheWrite5M},
+		{&row.CacheWrite1HTokens, attempt.Usage.Tokens.CacheWrite1H},
+		{&row.CacheWriteUnknownTokens, attempt.Usage.Tokens.CacheWriteUnknown},
+		{&row.EstimatedCostNanoUSD, attempt.Pricing.EstimatedCostNanoUSD},
+	} {
+		value, ok := usage.CheckedAdd(*pair.target, pair.value)
+		if !ok {
+			return fmt.Errorf("billed attempt totals overflow")
+		}
+		*pair.target = value
+	}
+	if _, ok := usage.CheckedTotal(usage.Tokens{UncachedInput: row.UncachedInputTokens, Output: row.OutputTokens, CacheRead: row.CacheReadTokens, CacheWrite5M: row.CacheWrite5MTokens, CacheWrite1H: row.CacheWrite1HTokens, CacheWriteUnknown: row.CacheWriteUnknownTokens}); !ok {
+		return fmt.Errorf("billed attempt token total overflows")
+	}
+	if row.UsageState != string(usage.StateComplete) || attempt.Usage.State != usage.StateComplete {
+		row.UsageState = string(usage.StatePartial)
+	}
+	if row.CostState == string(pricing.CostStatePriced) || attempt.Pricing.CostState == string(pricing.CostStatePriced) {
+		if row.CostState != string(pricing.CostStatePriced) || attempt.Pricing.CostState != string(pricing.CostStatePriced) || row.PricingCompleteness != string(pricing.CompletenessComplete) || attempt.Pricing.PricingCompleteness != string(pricing.CompletenessComplete) {
+			row.PricingCompleteness = string(pricing.CompletenessPartial)
+		}
+		row.CostState = string(pricing.CostStatePriced)
+	} else {
+		row.CostState = string(pricing.CostStateUnpriced)
+		row.PricingCompleteness = string(pricing.CompletenessUnavailable)
+	}
+	return nil
 }
 
 func validateAttemptFeedback(feedback health.Feedback) error {

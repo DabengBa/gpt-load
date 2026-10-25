@@ -107,6 +107,29 @@ per-hop gap is deliberately not claimed as covered; if a future route makes
 either call site reachable, either the plan must narrow the matrix or a pinned
 `third_party/fasthttp` fork with an additive per-hop hook must be added.
 
+## Reported injected-turn usage snapshots
+
+`schemas/reportedusage.go` publishes a deep-copied cumulative usage value in
+the existing synchronized request context and returns independent copies to
+readers. `injectedtools.go:runInjectedResponsesLoop` publishes at its existing
+intermediate/final merges, before tool execution or the next provider call.
+`injectedtoolstream.go:chainInjectedStream` publishes immediately after turn
+processing and before terminal post-hooks/output delivery, including terminal
+error billed usage. Snapshots replace rather than add cumulative values.
+
+This makes already-reported billed evidence available to the adapter when
+cancellation abandons the SDK result or terminal hooks are delayed. It does not
+read mutable provider accumulation handles, change abandonment ownership, wait
+for hooks, add a timer, or estimate unreported work. Tests in
+`reportedusage_test.go`, `schemas/reportedusage_test.go`, and the adapter's
+`billed_usage_snapshot_test.go` cover ownership, exact cumulative totals,
+publication before tools/hooks, real unary/stream cancellation, delayed hooks,
+and success/cancel races.
+
+The patch artifact includes this delta and its regression tests. Regeneration
+against pristine `core@v1.13.0` verified byte-for-byte source replay, excluding
+this document, the patch and `hack/`, as specified by the generator.
+
 ## Upstream sync procedure
 
 1. `go mod download github.com/maximhq/bifrost/core@<new version>` (module cache

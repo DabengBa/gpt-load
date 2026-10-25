@@ -29,6 +29,35 @@ excluded, and partial usage or incomplete pricing remains explicitly identified.
 HTTP, streaming, and WebSocket accounting use the same calculated amount for
 request logs, usage statistics, and cost quotas.
 
+### Failed Attempts With Reported Usage
+
+Provider-reported billed usage remains billable evidence when an attempt fails,
+times out, or is canceled. Failure status does not erase reported token usage;
+an error without usage does not authorize estimating tokens from its text or
+status. SDK cumulative usage snapshots replace the preceding snapshot rather
+than being added to it. Observed usage also survives a buffered stream's first
+heartbeat write/flush failure while the executor is canceled and drained.
+
+Injected Responses tool turns publish owned cumulative usage in the local SDK
+before starting tools or another turn. Cancellation reads this synchronized
+snapshot without waiting for terminal hooks; a completed result's usage is also
+captured before a racing cancellation can discard the response. Cache-read,
+5-minute/1-hour cache-write and unknown-write quantities remain separate for
+pricing. The SDK snapshot delta and replay artifact are recorded in
+[Bifrost Fork Notes](../../third_party/bifrost-core/UPSTREAM.md).
+
+Each attempt is quoted against its own frozen model, pricing mode and rate
+snapshot. Request token/cost totals and quota settlement include all reported
+billed attempts, counting the terminal attempt once. Each attempt's existing
+v7 receipt retains its own quantities and rates, including explicitly unpriced
+quantities when no price is available. No historical requests are repriced.
+
+Request summaries retain terminal-attempt attribution: a retry through a
+different model or credential does not create another request. Consequently,
+the final-attempt receipt is not a receipt for the combined request total;
+inspect all attempt receipts to explain that total. Aggregation dimensions and
+this distinction are owned by [Usage Accounting](usage-accounting.md).
+
 ## Receipt Boundary
 
 New pricing receipts use schema v7 only, with frozen component pricing and one

@@ -715,7 +715,7 @@ func TestRequestRecorderBindsUsageToRecordedAttempt(t *testing.T) {
 	}
 }
 
-func TestRequestRecorderNon2xxKeepsAttributionButNotApplicable(t *testing.T) {
+func TestRequestRecorderNon2xxKeepsReportedUsageAndAttribution(t *testing.T) {
 	sink := &recordingRequestLogSink{}
 	recorder := newRequestRecorder(sink, "req-usage-429", time.Unix(100, 0), 9, protocol.OpenAICompletions, func() time.Time { return time.Unix(101, 0) })
 	index := recorder.appendAttempt(requestLogSelection(12, 22, "second"), UpstreamResult{StatusCode: http.StatusTooManyRequests}, telemetry.FailureCategoryRateLimited, telemetry.ActionRetry, "", "", time.Unix(100, 0), time.Unix(100, 0))
@@ -723,7 +723,7 @@ func TestRequestRecorderNon2xxKeepsAttributionButNotApplicable(t *testing.T) {
 	recorder.emit()
 
 	event := sink.events[0]
-	if event.Usage.Result != (usage.Result{State: usage.StateNotApplicable}) || event.Usage.GroupID != 12 || event.Usage.ChannelID != channel.OpenAI || event.Usage.CredentialID != 22 || event.Usage.AttemptSequence != 1 {
+	if event.Usage.Result != (usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 30}}) || event.Usage.GroupID != 12 || event.Usage.ChannelID != channel.OpenAI || event.Usage.CredentialID != 22 || event.Usage.AttemptSequence != 1 {
 		t.Fatalf("Usage = %#v", event.Usage)
 	}
 }
@@ -1982,7 +1982,7 @@ func TestHandlerRememberedLastResponseKeepsOriginalUsageAttempt(t *testing.T) {
 	}
 }
 
-func TestHandlerFinalNon2xxPublishesNotApplicableWithResponseAttribution(t *testing.T) {
+func TestHandlerFinalNon2xxPublishesReportedUsageWithResponseAttribution(t *testing.T) {
 	sink := &recordingRequestLogSink{}
 	forwarder := &scriptedForwarder{results: []UpstreamResult{{
 		StatusCode: http.StatusTooManyRequests, Header: make(http.Header), ClassificationBody: []byte(`{"error":{"type":"rate_limit_error"}}`), Usage: usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 99}}, RequestWritten: true,
@@ -1993,7 +1993,7 @@ func TestHandlerFinalNon2xxPublishesNotApplicableWithResponseAttribution(t *test
 	engine.ServeHTTP(httptest.NewRecorder(), request)
 
 	events := sink.snapshot()
-	if len(events) != 1 || events[0].Usage.Result != (usage.Result{State: usage.StateNotApplicable}) || events[0].Usage.GroupID != 1 || events[0].Usage.CredentialID != 1 || events[0].Usage.AttemptSequence != 1 {
+	if len(events) != 1 || events[0].Usage.Result != (usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{Output: 99}}) || events[0].Usage.GroupID != 1 || events[0].Usage.CredentialID != 1 || events[0].Usage.AttemptSequence != 1 {
 		t.Fatalf("events = %#v", events)
 	}
 }

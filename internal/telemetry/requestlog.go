@@ -183,6 +183,7 @@ type Attempt struct {
 	BufferedStream          bool
 	PayloadReleaseStartedMs int64
 	Usage                   usage.Result
+	Pricing                 PricingObservation
 }
 
 // PricingObservation is the frozen, dependency-neutral quote selected by the
