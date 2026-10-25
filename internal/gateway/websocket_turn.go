@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"gpt-load/internal/accessquota"
+	"gpt-load/internal/codexrecovery"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/execution/responsealias"
@@ -285,6 +286,10 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	}
 	iterator := scheduler.New(snapshot, h.registry, query, h.newRandom())
 	limit := retryAttemptLimit(snapshot.Settings.RetryCount)
+	// Recovery belongs to this turn, never to the connection or another lane.
+	var recoveryNext *scheduler.Selection
+	var recoveryRef state.CredentialRef
+	recoveryUsed := false
 
 	var finishRejectedAttempt func()
 	var finishFailedAttempt func()
@@ -326,7 +331,19 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		}
 		var selection scheduler.Selection
 		var ref state.CredentialRef
-		selection, err = iterator.NextCandidate()
+		if recoveryNext != nil {
+			selection = *recoveryNext
+			recoveryNext = nil
+			current, exists := h.registry.CredentialRef(recoveryRef.ID)
+			if !exists || !sameWebsocketIdentity(current, recoveryRef) || iterator.GroupSkipped(selection.GroupID) || !h.affinitySelectionAvailable(selection, current) {
+				finishRejectedAttempt()
+				return
+			}
+			ref = current
+			err = nil
+		} else {
+			selection, err = iterator.NextCandidate()
+		}
 		if err != nil {
 			if finishRejectedAttempt != nil {
 				finishRejectedAttempt()
@@ -354,7 +371,9 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			reject(reasonConfigurationChanged)
 			return
 		}
-		ref = candidateRef
+		if ref.ID == 0 {
+			ref = candidateRef
+		}
 		payload, effective, err := prepareWebsocketPayload(turn.body, original, selection)
 		if err != nil {
 			if binding != nil || requiredRef != nil {
@@ -364,6 +383,11 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			parameterOverrideFailure = &reasonParameterOverrideUnavailable
 			iterator.SkipGroup(selection.GroupID)
 			continue
+		}
+		if recoveryUsed {
+			if cleaned, _, changed := codexrecovery.Sanitize(payload); changed {
+				payload = cleaned
+			}
 		}
 		extraBytes := max(0, len(payload)-len(turn.body))
 		if !s.reserveInput(extraBytes) {
@@ -570,7 +594,8 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			result.ExecutionError = &execution.ErrorEvidence{Kind: execution.ErrorKindCanceled, OriginHint: execution.ErrorOriginDownstream, Code: "websocket_canceled"}
 		} else if binding != nil {
 			bufferFirstError := startedBound || (newBinding && requiredRef == nil && !binding.capabilities.Multiplex)
-			result = s.runWebsocketAttempt(ctx, cancel, binding, turn.lane, selection, ref, input, spec.Body, recorder, unlock, firstByteDeadline, bufferFirstError)
+			bufferRecoverableError := !startedBound && requiredRef == nil && !recoveryUsed && forwardAttempts+1 < limit
+			result = s.runWebsocketAttempt(ctx, cancel, binding, turn.lane, selection, ref, input, spec.Body, recorder, unlock, firstByteDeadline, bufferFirstError, bufferRecoverableError)
 		} else {
 			result.Err = executionFailureError(ctx, wsResult.Error)
 			result.StatusCode = wsResult.Error.StatusCode
@@ -593,6 +618,10 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 		}
 		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{DefaultRateLimitCooldown: fixedCooldown, Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
+		recoverySignal := responsesRecoverySignal(result)
+		if recoveryUsed && recoverySignal != "" {
+			decision.Retry = health.RetryNone
+		}
 		result.Feedback = providerFeedbackForAttempt(result, decision, input.providerFeedback, true)
 		performanceFault := isSuccessfulPerformanceFault(result, decision)
 		if performanceFault {
@@ -645,6 +674,25 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		// 是否可重放仍由错误规则决定；续接和共享连接不能随某一轮切换身份。
 		retryableTurn := result.DispatchState == execution.DispatchNotSent ||
 			(len(result.Body) > 0 && result.Stream.EndReason == StreamEndSSEError)
+		if recoverySignal != "" && !recoveryUsed && !startedBound && requiredRef == nil &&
+			retryableTurn && !result.Committed && decision.Retry != health.RetryNone &&
+			decision.Effect == health.EffectNone && forwardAttempts < limit && s.ctx.Err() == nil {
+			if _, _, changed := codexrecovery.Sanitize(payload); changed {
+				recoveryUsed = true
+				recoveryNext, recoveryRef = &selection, ref
+				// A serial provider may close after rejection. Never close a
+				// multiplex session: unrelated lanes can already be executing.
+				if binding != nil && !binding.capabilities.Multiplex {
+					_ = binding.session.Close()
+					s.mu.Lock()
+					s.binding = nil
+					s.mu.Unlock()
+					binding = nil
+				}
+				recorder.retryIfAnotherForward(index)
+				continue
+			}
+		}
 		if retryableTurn && !result.Committed && newBinding &&
 			(binding == nil || !binding.capabilities.Multiplex) && decision.Retry != health.RetryNone &&
 			forwardAttempts < limit && requiredRef == nil && s.ctx.Err() == nil {
@@ -743,7 +791,7 @@ type websocketCancelCloser struct {
 
 func (c websocketCancelCloser) Close() error { c.timedOut.Store(true); c.cancel(); return nil }
 
-func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel context.CancelFunc, binding *websocketBinding, lane string, selection scheduler.Selection, ref state.CredentialRef, input ForwardInput, body []byte, recorder *requestRecorder, unlock func(), firstByteDeadline time.Time, bufferFirstError bool) UpstreamResult {
+func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel context.CancelFunc, binding *websocketBinding, lane string, selection scheduler.Selection, ref state.CredentialRef, input ForwardInput, body []byte, recorder *requestRecorder, unlock func(), firstByteDeadline time.Time, bufferFirstError, bufferRecoverableError bool) UpstreamResult {
 	observer := newStreamEventObserver(input.Dialect, newUsageCaptureBoundary().newStreamForRequest(input.Dialect, input.ObserveUsage))
 	result := UpstreamResult{UpstreamProtocol: protocol.OpenAIResponses}
 	var responseID string
@@ -875,7 +923,7 @@ func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel co
 			result.ResponseModelObserved = true
 			result.ResponseModelMismatch = response.Model != input.UpstreamModelID
 		}
-		if providerError && !result.Committed && bufferFirstError {
+		if providerError && !result.Committed && (bufferFirstError || (bufferRecoverableError && codexrecovery.Classify(string(body)) != "")) {
 			// 先保留已脱敏的错误，待分类及候选选择结束后再决定是否交付。
 			// 失败响应不能登记为后续请求的续接目标。
 			result.Body = append([]byte(nil), body...)

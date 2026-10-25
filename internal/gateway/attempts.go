@@ -12,10 +12,12 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"gpt-load/internal/accessquota"
+	"gpt-load/internal/codexrecovery"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
 	"gpt-load/internal/platform/utils"
+	"gpt-load/internal/protocol"
 	"gpt-load/internal/reasoning"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
@@ -59,10 +61,11 @@ type preparedRequestCache struct {
 	externalModel string
 	operation     execution.Operation
 
-	groupID       uint
-	entryID       string
-	upstreamModel string
-	cached        *preparedRequest
+	groupID        uint
+	entryID        string
+	upstreamModel  string
+	cached         *preparedRequest
+	recoverHistory bool
 }
 
 func (cache *preparedRequestCache) get(selection scheduler.Selection) preparedRequest {
@@ -115,6 +118,13 @@ func (cache *preparedRequestCache) get(selection scheduler.Selection) preparedRe
 			return prepared
 		}
 		applied = applied || effortApplied
+	}
+	// Rebuild each candidate from its own overrides, never from a previous
+	// group's prepared body. Recovery is request-local and invalidates the cache.
+	if cache.recoverHistory {
+		if cleaned, _, changed := codexrecovery.Sanitize(body); changed {
+			body, applied = cleaned, true
+		}
 	}
 	if !applied {
 		cache.cached = &prepared
@@ -180,7 +190,11 @@ type attemptLoop struct {
 	firstProviderRemaining  int
 	firstProviderDisallowed bool
 
-	prepared *preparedRequestCache
+	prepared          *preparedRequestCache
+	recoveryUsed      bool
+	recoveryNext      *scheduler.Selection
+	recoveryRef       state.CredentialRef
+	recoveryRejection *deferredAttempt
 
 	loggedOverrideFailures   map[uint]struct{}
 	parameterOverrideFailure *reason
@@ -373,6 +387,25 @@ const (
 // nextCandidate returns the next selection, honoring the credential-refresh
 // replay slot before consulting the iterator.
 func (loop *attemptLoop) nextCandidate() (scheduler.Selection, state.CredentialRef, candidateStep) {
+	if loop.recoveryNext != nil {
+		selection, ref := *loop.recoveryNext, loop.recoveryRef
+		loop.recoveryNext = nil
+		// Secret/version refresh is not an account change. Resolve the current
+		// exact reference, but retain the captured logical identity boundary.
+		current, exists := loop.handler.registry.CredentialRef(ref.ID)
+		if !exists || current.ID != ref.ID || current.GroupID != ref.GroupID ||
+			current.GroupID != selection.GroupID || current.IdentityGeneration != ref.IdentityGeneration ||
+			loop.iterator.GroupSkipped(selection.GroupID) || !loop.handler.affinitySelectionAvailable(selection, current) {
+			return scheduler.Selection{}, state.CredentialRef{}, candidateExhausted
+		}
+		return selection, current, candidateYield
+	}
+	if loop.recoveryRejection != nil {
+		// The pinned replay has not reached forwarding. A reference can become
+		// stale even after the availability check; preparation/admission may
+		// also fail. Preserve the rejection rather than advancing credentials.
+		return scheduler.Selection{}, state.CredentialRef{}, candidateExhausted
+	}
 	if selection, ok := loop.nextFirstProviderCandidate(); ok {
 		ref, allowed := loop.dispatch.allowedCredentialRefs[selection.CredentialID]
 		if !allowed || ref.GroupID != selection.GroupID {
@@ -601,6 +634,7 @@ func (loop *attemptLoop) run() {
 
 		loop.attemptSequence++
 		loop.forwardAttempts++
+		loop.recoveryRejection = nil
 		if loop.firstProvider == nil {
 			firstProvider := selection
 			loop.firstProvider = &firstProvider
@@ -747,6 +781,9 @@ func (loop *attemptLoop) run() {
 			attemptNow,
 			loop.decisionContextForSelection(selection),
 		)
+		if loop.operation == execution.OperationResponsesCreate && dispatch.dialect.Protocol() == protocol.OpenAIResponses {
+			decision = responsesBufferedRecoveryDecision(resultForDecision, decision, loop.buffered && loop.bufferedReplayEligible)
+		}
 		result.Feedback = providerFeedbackForAttempt(result, decision, providerFeedback, loop.stream)
 		performanceFault := isSuccessfulPerformanceFault(result, decision)
 		if performanceFault {
@@ -759,6 +796,37 @@ func (loop *attemptLoop) run() {
 			)
 		}
 		dispatch.affinity.markBoundProviderFailure(selection, ref, resultForDecision.DispatchState, decision)
+
+		// Recovery must precede the heartbeat-committed terminal branch. Keep
+		// the original result, writer and buffered session; ForwardStream owns a
+		// fresh attempt spool on the next iteration.
+		if !requestCanceled && loop.operation == execution.OperationResponsesCreate &&
+			dispatch.dialect.Protocol() == protocol.OpenAIResponses &&
+			(!result.Committed || (loop.buffered && loop.bufferedReplayEligible && result.BufferedStream && result.HTTPCommitted && !result.PayloadReleased)) &&
+			responsesRecoverySignal(result) != "" {
+			if loop.recoveryUsed {
+				decision.Retry = health.RetryNone
+			} else if decision.Retry != health.RetryNone && decision.Effect == health.EffectNone && loop.forwardAttempts < loop.limit {
+				if _, _, changed := codexrecovery.Sanitize(prepared.request.Body); changed {
+					recordAttempt := recorder.recordAttempt
+					if result.Committed {
+						recordAttempt = recorder.recordStreamAttempt
+					}
+					recordedAttempt := recordAttempt(selection, normalizedCredential.secrets, result, decision, attemptStarted, attemptCompleted)
+					loop.lastAttemptIndex = recordedAttempt
+					loop.deferred.response = &deferredAttempt{result: result, decision: decision, upstreamModel: optionalModelValue(selection.UpstreamModelID), attemptIndex: recordedAttempt}
+					loop.recoveryRejection = loop.deferred.response
+					if result.ProviderErrorBeforeCommit {
+						loop.deferred.providerError = loop.deferred.response
+					}
+					loop.recoveryUsed, loop.prepared.recoverHistory = true, true
+					loop.prepared.cached = nil
+					loop.recoveryNext, loop.recoveryRef = &selection, ref
+					recorder.retryIfAnotherForward(recordedAttempt)
+					continue
+				}
+			}
+		}
 
 		if loop.stream && result.BufferedStream && result.HTTPCommitted && !result.PayloadReleased {
 			// A heartbeat has committed HTTP, but no provider payload is visible;
@@ -946,6 +1014,13 @@ func (loop *attemptLoop) completeExhausted() {
 	handler := loop.handler
 	ginContext := loop.ginContext
 	recorder := loop.recorder
+	if rejected := loop.recoveryRejection; rejected != nil && rejected.result.HTTPCommitted && rejected.result.BufferedStream {
+		recorder.completeStream(rejected.result, rejected.upstreamModel, rejected.attemptIndex)
+		if err := handler.writeBufferedStreamError(ginContext, loop.dispatch.dialect.Protocol(), rejected.result.Stream.ResponseID); err != nil {
+			handler.completeWriteTerminal(ginContext, recorder, rejected.result.StatusCode)
+		}
+		return
+	}
 	if loop.capacityBlocked {
 		defer recordCapacityBlocked(recorder)
 	}

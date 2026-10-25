@@ -308,12 +308,29 @@ func (r *Runtime) executeConvertedResponses(
 	}()
 
 	var outcome responsesUnarySDKResult
+	defer func() {
+		if requestContext.Err() != nil {
+			if result.Usage == nil && outcome.response != nil {
+				result.Usage, _ = billedUsageEvidence(outcome.response.Usage.ToBifrostLLMUsage())
+			}
+			if result.Usage == nil {
+				result.Usage = errorUsageEvidence(outcome.err, nil)
+			}
+			result.Usage = canceledReportedUsage(bifrostContext, result.Usage)
+		}
+	}()
 	select {
 	case outcome = <-outcomeChannel:
 		if requestContext.Err() != nil {
 			return unaryContextFailure(requestContext, false)
 		}
 	case <-callContext.Done():
+		// If success and cancellation became ready together, retain the already
+		// delivered outcome without waiting for an abandoned SDK worker.
+		select {
+		case outcome = <-outcomeChannel:
+		default:
+		}
 		return unaryContextFailure(requestContext, false)
 	}
 
@@ -597,6 +614,11 @@ func (r *Runtime) executeConvertedResponsesStream(
 	defer preResponse.stop()
 
 	bifrostContext := r.newStreamingSDKContext(callContext, spec, prepared.directKey)
+	defer func() {
+		if requestContext.Err() != nil || preResponse.expired() {
+			result.Usage = canceledReportedUsage(bifrostContext, result.Usage)
+		}
+	}()
 	enableConvertedWireCapture(bifrostContext, prepared)
 	if prepared.request != nil && prepared.upstreamProtocol == protocol.Anthropic {
 		body, err := anthropic.BuildAnthropicChatRequestBody(bifrostContext, prepared.request, anthropic.AnthropicRequestBuildConfig{
@@ -673,6 +695,13 @@ func (r *Runtime) executeConvertedResponsesStream(
 			return streamContextFailure(requestContext, true, true, headers, requestID, model, usageEvidence)
 		case chunk, open := <-outcome.stream:
 			idleTimer.pause()
+			if chunk != nil && chunk.BifrostResponsesStreamResponse != nil && chunk.BifrostResponsesStreamResponse.Response != nil {
+				if reported := chunk.BifrostResponsesStreamResponse.Response.Usage; reported != nil {
+					if evidence, err := billedUsageEvidence(reported.ToBifrostLLMUsage()); err == nil {
+						usageEvidence = evidence
+					}
+				}
+			}
 			if requestContext.Err() != nil {
 				callCancel()
 				return streamContextFailure(requestContext, false, true, headers, requestID, model, usageEvidence)
@@ -728,6 +757,9 @@ func (r *Runtime) executeConvertedResponsesStream(
 			}
 			if evidence := wireUsage.evidence(); evidence != nil {
 				chunkUsage = evidence
+			}
+			if chunkUsage != nil {
+				usageEvidence = cloneUsage(chunkUsage)
 			}
 			frames, err := encoder.encode(bifrostContext, response, raw)
 			if err != nil {

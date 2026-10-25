@@ -392,6 +392,7 @@ func chainInjectedStream(ctx *schemas.BifrostContext, turns injectedStreamTurns,
 			if bifrostErr != nil {
 				ended.Store(true)
 				billEarlierTurns(bifrostErr, turns.usage())
+				schemas.SetReportedUsageSnapshot(c, bifrostErr.ExtraFields.BilledUsage)
 				c.SetValue(schemas.BifrostContextKeyStreamTurnPending, false)
 			}
 			sendThroughPostHooks(c, postHookRunner, result, bifrostErr, out)
@@ -399,6 +400,12 @@ func chainInjectedStream(ctx *schemas.BifrostContext, turns injectedStreamTurns,
 		}
 		final := IsFinalChunk(c)
 		emits, ok := turns.process(result, final)
+		schemas.SetReportedUsageSnapshot(c, turns.usage())
+		for _, emit := range emits {
+			if emit.terminal {
+				schemas.SetReportedUsageSnapshot(c, emit.result.NormalizedUsage())
+			}
+		}
 		if !ok {
 			sendThroughPostHooks(c, postHookRunner, result, nil, out)
 			return nil, injectedStreamSkip
@@ -477,6 +484,8 @@ func chainInjectedStream(ctx *schemas.BifrostContext, turns injectedStreamTurns,
 				ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
 				ended.Store(true)
 				billEarlierTurns(bifrostErr, turns.usage())
+				// The dispatch error can contain newly reported current-turn usage.
+				schemas.SetReportedUsageSnapshot(ctx, bifrostErr.ExtraFields.BilledUsage)
 				sendThroughPostHooks(ctx, postHookRunner, nil, bifrostErr, out)
 				failed = true
 				return

@@ -102,10 +102,9 @@ func (forwarder *ExecutionForwarder) forwardBufferedStream(
 	}()
 	// abort stops the executor goroutine and drains it before any return path
 	// that abandons the attempt, so the spool is never written after it closes.
-	abort := func(failure UpstreamResult) UpstreamResult {
+	abort := func() UpstreamResult {
 		cancel()
-		<-done
-		return failure
+		return <-done
 	}
 
 	heartbeatInterval := forwarder.heartbeatInterval
@@ -131,7 +130,9 @@ streamWait:
 					if failure, committed := commitClient(); !committed {
 						// done was already consumed by this branch, so the executor
 						// is complete and there is nothing left to drain.
-						return failure
+						heartbeatErr = failure.Err
+						output.ClientVisibleBytes = failure.ClientVisibleBytes
+						break streamWait
 					}
 				}
 			}
@@ -140,7 +141,10 @@ streamWait:
 			dispatchWatch = nil
 			if streamCtx.Err() == nil {
 				if failure, committed := commitClient(); !committed {
-					return abort(failure)
+					result = abort()
+					heartbeatErr = failure.Err
+					output.ClientVisibleBytes = failure.ClientVisibleBytes
+					break streamWait
 				}
 			}
 		case <-ticker.C:

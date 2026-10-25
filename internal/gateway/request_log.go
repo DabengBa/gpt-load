@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -236,7 +237,18 @@ func (recorder *requestRecorder) estimatedCostNanoUSD() int64 {
 	if recorder == nil {
 		return 0
 	}
-	return recorder.usage.Pricing.EstimatedCostNanoUSD
+	total := pricing.NanoUSD(recorder.usage.Pricing.EstimatedCostNanoUSD)
+	for _, attempt := range recorder.attempts {
+		if attempt.Sequence == recorder.usage.AttemptSequence {
+			continue
+		}
+		var ok bool
+		total, ok = pricing.CheckedAddNanoUSD(total, pricing.NanoUSD(attempt.Pricing.EstimatedCostNanoUSD))
+		if !ok {
+			return math.MaxInt64 // fail closed on an unrepresentable quota debit
+		}
+	}
+	return int64(total)
 }
 
 func (recorder *requestRecorder) setAffinityHit(hit bool) {
@@ -546,6 +558,11 @@ func (recorder *requestRecorder) appendDecisionAttempt(
 	recorder.attemptPricing = append(recorder.attemptPricing, frozen)
 	recorder.pendingPricing = frozenAttemptPricing{}
 	recorder.pricingPending = false
+	if reportedUsage(result.Usage) {
+		previous := recorder.usage
+		recorder.bindUsage(len(recorder.attempts)-1, result.Usage, true)
+		recorder.usage = previous
+	}
 	return len(recorder.attempts) - 1
 }
 
@@ -570,6 +587,11 @@ func (recorder *requestRecorder) completeReason(value reason) {
 	recorder.outcome = requestOutcome{
 		status: telemetry.RequestStatusError, statusCode: value.Status,
 		errorCode: value.Code, errorSummary: summary,
+	}
+	if len(recorder.attempts) > 0 {
+		index := len(recorder.attempts) - 1
+		recorder.outcome.upstreamModel = recorder.attempts[index].UpstreamModel
+		recorder.bindFailedAttemptUsage(index)
 	}
 }
 
@@ -668,7 +690,7 @@ func (recorder *requestRecorder) completeResponse(
 	if diagnostic {
 		recorder.bindUsage(attemptIndex, result.Usage, true)
 	} else {
-		recorder.bindUsage(attemptIndex, result.Usage, false)
+		recorder.bindUsage(attemptIndex, result.Usage, reportedUsage(result.Usage))
 	}
 }
 
@@ -736,6 +758,8 @@ func (recorder *requestRecorder) bindUsage(
 	}
 	pricingMode = effectivePricingMode(pricingMode)
 	pricingObservation := quoteFrozenAttempt(frozen, result, pricingMode)
+	recorder.attempts[attemptIndex].Pricing = pricingObservation
+	recorder.attempts[attemptIndex].Usage = result
 	recorder.usage = telemetry.UsageObservation{
 		Result:          result,
 		GroupID:         attempt.GroupID,
@@ -761,7 +785,7 @@ func quoteFrozenAttempt(
 		observation.PricingCompleteness = string(pricing.CompletenessNotApplicable)
 		return observation
 	}
-	if frozen.table == nil || frozen.upstreamModel == "" {
+	if frozen.upstreamModel == "" {
 		return observation
 	}
 	identity := pricing.Identity{
@@ -769,6 +793,13 @@ func quoteFrozenAttempt(
 		ModelID:   frozen.upstreamModel,
 	}
 	quote, receipt := frozen.table.QuoteForModeWithReceipt(identity, result, pricingMode)
+	if receipt == nil && reportedUsage(result) {
+		// No rate is not no usage. Reuse the existing v7 unpriced-line format
+		// to retain quantities without inventing a price or changing the quote.
+		if unpriced, err := pricing.NewTable([]pricing.Rule{{Identity: identity}}); err == nil {
+			_, receipt = unpriced.QuoteForModeWithReceipt(identity, result, pricingMode)
+		}
+	}
 	observation.CostState = string(quote.State)
 	observation.PricingCompleteness = string(quote.Completeness)
 	observation.EstimatedCostNanoUSD = int64(quote.EstimatedCostNanoUSD)
@@ -787,6 +818,18 @@ func effectivePricingMode(requestedMode pricing.Mode) pricing.Mode {
 	return pricing.ModeStandard
 }
 
+func reportedUsage(result usage.Result) bool {
+	return result.State == usage.StateComplete || result.State == usage.StatePartial
+}
+
+func (recorder *requestRecorder) bindFailedAttemptUsage(attemptIndex int) {
+	if recorder == nil || attemptIndex < 0 || attemptIndex >= len(recorder.attempts) {
+		return
+	}
+	result := recorder.attempts[attemptIndex].Usage
+	recorder.bindUsage(attemptIndex, result, reportedUsage(result))
+}
+
 func (recorder *requestRecorder) completeTransport(
 	value reason,
 	upstreamModel string,
@@ -803,7 +846,7 @@ func (recorder *requestRecorder) completeTransport(
 		status: telemetry.RequestStatusError, statusCode: value.Status,
 		errorCode: value.Code, errorSummary: summary, upstreamModel: upstreamModel,
 	}
-	recorder.bindUsage(attemptIndex, usage.Result{}, false)
+	recorder.bindFailedAttemptUsage(attemptIndex)
 }
 
 func (recorder *requestRecorder) completeCanceled(
@@ -826,7 +869,7 @@ func (recorder *requestRecorder) completeCanceled(
 		errorCode: code, errorSummary: fixedErrorSummary(code),
 		upstreamModel: upstreamModel,
 	}
-	recorder.bindUsage(attemptIndex, usage.Result{}, false)
+	recorder.bindFailedAttemptUsage(attemptIndex)
 }
 
 func (recorder *requestRecorder) completeDownstreamWrite(status int) {

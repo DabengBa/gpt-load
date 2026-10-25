@@ -45,6 +45,22 @@ operations (`internal/requestlog/worker.go:usageAggregationExcluded`);
 Each remaining row is assigned to the hour containing its completion time and
 grouped by access key, channel, group, credential, and upstream model.
 
+Request token and estimated-cost amounts include reported billed usage from
+earlier failed attempts as well as the terminal attempt, each priced with its
+own frozen snapshot. The request still contributes one request count and one
+duration sample under its terminal-attempt dimensions. Thus a model/group cost
+breakdown attributes the whole request amount to its terminal route; it is not
+a per-provider invoice breakdown. Individual attempt receipts retain the
+actual route, quantities and frozen prices for diagnosis.
+
+The mapper checked-sums billed attempt quantities and amounts, excludes the
+terminal attempt from the additional sum, and rejects overflow. Existing
+request-idempotent transactional journals apply the combined totals once even
+when the same event is persisted again. Missing usage is not reconstructed;
+partial or unpriced evidence remains explicit. Runtime access-key quota
+settlement uses the same individually priced attempt sum. Calculation details
+are owned by [Frozen Model Pricing](frozen-model-pricing.md).
+
 Duration is available for every eligible row. First-response timing is
 optional: a row contributes one first-response sample only when its persisted
 `FirstResponseMs` value is present. The recorder captures that value only for
