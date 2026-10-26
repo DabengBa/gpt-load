@@ -6,6 +6,17 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-10-26 — PR204 connection-type documentation sync (pending integration)
+
+Documentation for [PR #204](https://github.com/DabengBa/gpt-load/pull/204)
+was prepared against its implementation branch before integration into `dev`;
+this entry records the documentation delivery, not a deployed release.
+[Legacy Database Conversion](tech/legacy-db-conversion.md) owns the retired
+`groups.connection_type` column and the source validation boundary.
+[ScriptCat Channel Import Handoff](tech/scriptcat-channel-import.md) describes
+the prefilled draft without the removed connection-type field. Historical
+analysis and design records remain unchanged.
+
 ## 2026-10-26 — Durable affinity failure contract and ScriptCat credential handoff
 
 [PR #201](https://github.com/DabengBa/gpt-load/pull/201) separated a required
