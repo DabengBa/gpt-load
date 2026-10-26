@@ -92,8 +92,8 @@ on the `gpt-load:scriptcat-import` event, and through a short bounded poll while
 the page stays open; the first non-null result stops the poll and the record is
 gone for every later consumer.
 
-A consumed payload becomes a new-group draft with `channel_id` empty, an
-API-key connection, the payload Base URL as the URL parameter, the group name,
+A consumed payload becomes a new-group draft with `channel_id` empty,
+the payload Base URL as the URL parameter, the group name,
 the provider website and the API key as credentials. Nothing is submitted.
 Selecting a channel keeps the imported Base URL when the channel exposes a URL
 parameter, and a draft the operator has already edited is not replaced by the

@@ -6,6 +6,18 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-10-26 — Redundant connection type removed
+
+[PR #204](https://github.com/DabengBa/gpt-load/pull/204), integrated into `dev`,
+removed the redundant connection-type field from group configuration and control
+surfaces. The included `926cd749` fix preserves the credential identity digest's
+fixed domain, so an old checkpoint can still resume on the same credential.
+[Legacy Database Conversion](tech/legacy-db-conversion.md) owns the retired
+`groups.connection_type` column and the source validation boundary.
+[ScriptCat Channel Import Handoff](tech/scriptcat-channel-import.md) describes
+the prefilled draft without the removed connection-type field. Historical
+analysis and design records remain unchanged.
+
 ## 2026-10-26 — Durable affinity failure contract and ScriptCat credential handoff
 
 [PR #201](https://github.com/DabengBa/gpt-load/pull/201) separated a required
