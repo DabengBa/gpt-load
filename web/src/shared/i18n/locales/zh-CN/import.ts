@@ -15,7 +15,6 @@ export default {
       loading: '正在加载渠道…',
       loadFailed: '无法加载渠道列表',
       channelRequired: '请选择渠道',
-      connectionType: '凭据类型',
     },
     mode: {
       label: '导入目标',
@@ -26,10 +25,7 @@ export default {
       channel: {
         title: '选择渠道',
         incomplete: '请完善必填的渠道参数',
-        summary: '{channel} · {connection}',
-        connectionTypes: {
-          apiKey: 'API 密钥',
-        },
+        summary: '{channel}',
       },
       credentials: {
         apiKeyTitle: '添加 API 密钥',

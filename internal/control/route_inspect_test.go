@@ -94,7 +94,7 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI,
+			{ID: 1, Name: "one", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{
 					{ID: "up-a", Alias: "pub", EntryID: "e000000000001", Weight: &weightA},
@@ -102,11 +102,11 @@ func TestRouteInspectShowsBenchmarkEntryRowsSharesAndEntryCooldown(t *testing.T)
 					{ID: "up-c", Alias: "pub", EntryID: "e000000000003", Weight: &weightC, Priority: &twoPriority},
 				},
 			},
-			{ConnectionType: "api_key", ID: 2, Name: "two", ChannelID: channel.OpenAI,
+			{ID: 2, Name: "two", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "up-b", Alias: "pub", EntryID: "e000000000004", Weight: &weightFull}},
 			},
-			{ConnectionType: "api_key", ID: 3, Name: "three", ChannelID: channel.OpenAI,
+			{ID: 3, Name: "three", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "up-d", Alias: "pub", EntryID: "e000000000005", Weight: &weightFull}},
 			},
@@ -281,7 +281,7 @@ func TestRouteInspectReportsSnapshotRouteStrategy(t *testing.T) {
 				ChannelRegistry: fixture.channelRegistry,
 				SystemSettings:  settings,
 				Groups: []state.GroupConfig{{
-					ID: 1, Name: "openai", ChannelID: channel.OpenAI, ConnectionType: "api_key",
+					ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 					Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 				}},
 				AccessKeys: []state.AccessKeyConfig{{
@@ -441,7 +441,7 @@ func TestRouteInspectDerivesStandardRequestMetadataFromProtocol(t *testing.T) {
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
 		Groups: []state.GroupConfig{{
-			ID: 1, Name: "openai", ChannelID: channel.OpenAI, ConnectionType: "api_key",
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "provider-model", Alias: "public"}},
 			Enabled: true,
 		}},
@@ -522,10 +522,10 @@ func TestRouteInspectStandardRequestIncludesNativeAndConvertedTargets(t *testing
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 1, Name: "native", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, Name: "native", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "native-model", Alias: "public-model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 2, Name: "converted", ChannelID: channel.OpenAICompatible,
+			{ID: 2, Name: "converted", ChannelID: channel.OpenAICompatible,
 				Params: json.RawMessage(`{"base_url":"https://compatible.example/v1"}`),
 				Models: []state.ModelConfig{{ID: "converted-model", Alias: "public-model"}}, Enabled: true,
 			},
@@ -566,17 +566,17 @@ func TestRouteInspectEndpointReturnsCurrentSafeExplanation(t *testing.T) {
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 2, Name: "backup", ChannelID: channel.OpenAI,
+			{ID: 2, Name: "backup", ChannelID: channel.OpenAI,
 				Params:  json.RawMessage(`{}`),
 				Models:  []state.ModelConfig{{ID: "provider-backup", Alias: "public-model"}},
 				Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 3, Name: "cooling", ChannelID: channel.OpenAI,
+			{ID: 3, Name: "cooling", ChannelID: channel.OpenAI,
 				Params:  json.RawMessage(`{}`),
 				Models:  []state.ModelConfig{{ID: "provider-cooling", Alias: "public-model"}},
 				Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 1, Name: "primary", ChannelID: channel.OpenAI,
+			{ID: 1, Name: "primary", ChannelID: channel.OpenAI,
 				Params:  json.RawMessage(`{}`),
 				Models:  []state.ModelConfig{{ID: "provider-model", Alias: "public-model"}},
 				Enabled: true,
@@ -723,11 +723,11 @@ func TestRouteInspectEndpointReturnsFilterExplanations(t *testing.T) {
 			if _, err := fixture.manager.Publish(state.CompileInput{
 				ChannelRegistry: fixture.channelRegistry,
 				Groups: []state.GroupConfig{
-					{ConnectionType: "api_key", ID: 2, Name: "second", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+					{ID: 2, Name: "second", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 						Models:  []state.ModelConfig{{ID: "provider-two", Alias: "public-model"}},
 						Enabled: true,
 					},
-					{ConnectionType: "api_key", ID: 1, Name: "first", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+					{ID: 1, Name: "first", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 						Models:  []state.ModelConfig{{ID: "provider-one", Alias: "public-model"}},
 						Enabled: true,
 					},
@@ -796,7 +796,7 @@ func TestRouteInspectEndpointReturnsNoRouteTargetExplanation(t *testing.T) {
 	fixture.service.now = func() time.Time { return now }
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "primary", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+		Groups: []state.GroupConfig{{ID: 1, Name: "primary", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{{ID: "configured-model"}}, Enabled: true,
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -959,7 +959,7 @@ func TestRouteInspectNeverCallsUpstreamOrMutatesRuntime(t *testing.T) {
 	})
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "upstream", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+		Groups: []state.GroupConfig{{ID: 1, Name: "upstream", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -1034,7 +1034,7 @@ func TestRouteInspectCatalogMismatchReturnsInternalServerError(t *testing.T) {
 	fixture := newServiceFixture(t)
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "primary", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+		Groups: []state.GroupConfig{{ID: 1, Name: "primary", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 		}},
 		AccessKeys: []state.AccessKeyConfig{{

@@ -16,7 +16,6 @@ func ZhipuAI() spec.Module {
 			SearchTerms: []string{"glm", "bigmodel"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

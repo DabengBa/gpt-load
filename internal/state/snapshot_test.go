@@ -17,7 +17,7 @@ import (
 func TestCompileKeepsDerivedPolicyEntryIdentity(t *testing.T) {
 	t.Parallel()
 	snapshot, err := Compile(CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{
-		ID: 1, Name: "group", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true,
+		ID: 1, Name: "group", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Enabled: true,
 		Models: []ModelConfig{{ID: "gpt-5.4", Alias: "public", ReasoningEffort: "high"}},
 	}}})
 	if err != nil {
@@ -37,7 +37,7 @@ func TestCompileIndexesExternalModelsAndPreservesUpstreamIDs(t *testing.T) {
 	input := CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{
 					{ID: "provider-a", Alias: "public"},
 					{ID: "provider-a", Alias: "secondary"},
@@ -45,7 +45,7 @@ func TestCompileIndexesExternalModelsAndPreservesUpstreamIDs(t *testing.T) {
 				},
 				Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 2, Name: "two", ChannelID: channel.OpenAICompatible,
+			{ID: 2, Name: "two", ChannelID: channel.OpenAICompatible,
 				Params:  json.RawMessage(`{"base_url":"https://proxy.example/v1"}`),
 				Models:  []ModelConfig{{ID: "provider-b", Alias: "public"}},
 				Enabled: true,
@@ -79,9 +79,9 @@ func TestCompileIndexesOpenAIImagesOperationsForAllConfiguredModels(t *testing.T
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "official-image", Alias: "public"}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAICompatible,
+			{ID: 2, ChannelID: channel.OpenAICompatible,
 				Params: json.RawMessage(`{"base_url":"https://proxy.example/api/v4"}`),
 				Models: []ModelConfig{{ID: "compatible-image", Alias: "public"}}, Enabled: true},
 		},
@@ -104,12 +104,12 @@ func TestCompileIndexesOpenAIEmbeddingsForAllConfiguredModels(t *testing.T) {
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "text-embedding-3-small", Alias: "public"}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAICompatible,
+			{ID: 2, ChannelID: channel.OpenAICompatible,
 				Params: json.RawMessage(`{"base_url":"https://proxy.example/api/v4"}`),
 				Models: []ModelConfig{{ID: "Qwen/Qwen3-Embedding-8B", Alias: "public"}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 3, ChannelID: channel.OpenRouter, Params: json.RawMessage(`{}`),
+			{ID: 3, ChannelID: channel.OpenRouter, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "openai/text-embedding-3-small", Alias: "public"}}, Enabled: true},
 		},
 	})
@@ -134,10 +134,10 @@ func TestCompileBuildsManagementCatalogsWithoutChangingActiveIndexes(t *testing.
 	input := CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 2, Name: "disabled", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 2, Name: "disabled", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "provider-disabled", Alias: "public"}},
 			},
-			{ConnectionType: "api_key", ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "provider-active", Alias: "public"}}, Enabled: true,
 			},
 		},
@@ -179,7 +179,7 @@ func TestCompileCarriesSettingsAndRuntimeGroupState(t *testing.T) {
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		SystemSettings:  config.Settings{"first_byte_timeout": json.Number("20")},
-		Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+		Groups: []GroupConfig{{ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models:   []ModelConfig{{ID: "real-model", Alias: "public-model"}},
 			Settings: config.Settings{"request_timeout": json.Number("30")}, Enabled: true,
 		}},
@@ -204,7 +204,7 @@ func TestCompileOwnsInputData(t *testing.T) {
 	}
 	input := CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+		Groups: []GroupConfig{{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models: []ModelConfig{{ID: "upstream", Alias: "public"}}, Enabled: true,
 		}},
 		AccessKeys: []AccessKeyConfig{{
@@ -266,34 +266,34 @@ func TestCompileRejectsInvalidCoreConfiguration(t *testing.T) {
 	}{
 		{
 			name:    "duplicate route entry",
-			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a"}, {ID: "a", Alias: "a"}}, Enabled: true}}},
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a"}, {ID: "a", Alias: "a"}}, Enabled: true}}},
 			wantErr: "duplicate route entry",
 		},
 		{
 			name:    "zero external model weight sum",
-			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Weight: intPointer(0)}}, Enabled: true}}},
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Weight: intPointer(0)}}, Enabled: true}}},
 			wantErr: "entry weights must sum to a positive value",
 		},
 		{
 			name:    "negative entry weight",
-			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Weight: intPointer(-1)}}, Enabled: true}}},
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Weight: intPointer(-1)}}, Enabled: true}}},
 			wantErr: "weight must be between 0 and",
 		},
 		{
 			name:    "non positive entry priority",
-			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Priority: intPointer(0)}}, Enabled: true}}},
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "a", Priority: intPointer(0)}}, Enabled: true}}},
 			wantErr: "priority must be at least 1",
 		},
 		{
 			name:    "blank model id",
-			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "  "}}, Enabled: true}}},
+			input:   CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "  "}}, Enabled: true}}},
 			wantErr: "model id is required",
 		},
 		{
 			name: "duplicate group id",
 			input: CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{
-				{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`)},
-				{ConnectionType: "api_key", ID: 1, ChannelID: channel.Anthropic, Params: json.RawMessage(`{}`)},
+				{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`)},
+				{ID: 1, ChannelID: channel.Anthropic, Params: json.RawMessage(`{}`)},
 			}},
 			wantErr: "duplicate group id",
 		},
@@ -373,7 +373,7 @@ func TestCompileEmitsOneRouteTargetPerModelEntry(t *testing.T) {
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI,
+			ID: 1, Name: "one", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []ModelConfig{
 				{ID: "upstream-a", Alias: "A", Weight: &weightA},
@@ -425,7 +425,7 @@ func TestCompileNormalizesUnsetEntryFields(t *testing.T) {
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{{
-			ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI,
+			ID: 1, ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []ModelConfig{
 				{ID: "legacy"},
@@ -462,7 +462,7 @@ func TestCompileKeepsNoModelRouteKeyResourcesUnchanged(t *testing.T) {
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{{
-			ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI,
+			ID: 1, ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []ModelConfig{{ID: "upstream-a", Alias: "A"}, {ID: "upstream-b", Alias: "A"}},
 		}},
@@ -497,9 +497,9 @@ func TestCompileKeepsSingleEntryRoutingUnchanged(t *testing.T) {
 	legacy, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "provider-a", Alias: "public"}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAICompatible,
+			{ID: 2, ChannelID: channel.OpenAICompatible,
 				Params: json.RawMessage(`{"base_url":"https://proxy.example/v1"}`),
 				Models: []ModelConfig{{ID: "public"}}, Enabled: true},
 		},
@@ -510,9 +510,9 @@ func TestCompileKeepsSingleEntryRoutingUnchanged(t *testing.T) {
 	upgraded, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "provider-a", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAICompatible,
+			{ID: 2, ChannelID: channel.OpenAICompatible,
 				Params: json.RawMessage(`{"base_url":"https://proxy.example/v1"}`),
 				Models: []ModelConfig{{ID: "public", Weight: intPointer(1), Priority: intPointer(1)}}, Enabled: true},
 		},
@@ -545,9 +545,9 @@ func TestCompileIndexesTestAliasOnlyToItsRouteTarget(t *testing.T) {
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "provider-a", Alias: "public", TestAlias: "a4g233"}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 2, ChannelID: channel.OpenAICompatible,
+			{ID: 2, ChannelID: channel.OpenAICompatible,
 				Params: json.RawMessage(`{"base_url":"https://proxy.example/v1"}`),
 				Models: []ModelConfig{{ID: "provider-b", Alias: "public"}}, Enabled: true},
 		},
@@ -583,7 +583,7 @@ func TestCompileRejectsTestAliasStandardNameConflict(t *testing.T) {
 	_, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{{
-			ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models: []ModelConfig{
 				{ID: "provider-a", Alias: "public"},
 				{ID: "provider-b", TestAlias: "public"},

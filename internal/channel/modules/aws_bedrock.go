@@ -20,7 +20,6 @@ func AWSBedrock() spec.Module {
 			SearchTerms: []string{"aws", "amazon", "sigv4", "iam"},
 			Description: "Amazon Bedrock",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

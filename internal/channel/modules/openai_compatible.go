@@ -16,7 +16,6 @@ func OpenAICompatible() spec.Module {
 			SearchTerms: []string{"custom", "proxy", "gateway"},
 			Description: "Custom OpenAI-compatible API",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

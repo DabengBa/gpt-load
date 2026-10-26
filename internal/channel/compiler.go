@@ -147,7 +147,6 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 			ParamFields:      params.descriptors(),
 			CredentialFields: credentials.descriptors(),
 			Connection: ConnectionDescriptor{
-				Type:            string(source.Connection.Type),
 				CredentialInput: source.Connection.CredentialInput,
 			},
 			Capabilities: publicCapabilities(
@@ -175,7 +174,7 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 }
 
 func validateConnection(source spec.Definition) error {
-	if source.Connection.Type != spec.ConnectionAPIKey || source.Connection.CredentialInput != "batch_text" {
+	if source.Connection.CredentialInput != "batch_text" {
 		return fmt.Errorf("channel %q has invalid API key connection", source.ID)
 	}
 	return nil

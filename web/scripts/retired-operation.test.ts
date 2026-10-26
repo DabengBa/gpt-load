@@ -28,7 +28,7 @@ const channel = {
       default_value: null,
     },
   ],
-  connection: { type: 'api_key', credential_input: 'batch_text' },
+  connection: { credential_input: 'batch_text' },
   capabilities: { model_discovery: true, outbound_proxy: true },
   routes: [
     {

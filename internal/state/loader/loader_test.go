@@ -48,7 +48,7 @@ func TestBuildCompileInputWithProxyDecryptsGlobalAndGroupPolicies(t *testing.T) 
 	mustCreate(t, db, &models.SystemSetting{Key: outboundproxy.SystemSettingKey, Value: globalCiphertext})
 	groupCiphertext := encrypt(outboundproxy.Config{Mode: outboundproxy.ModeDirect})
 	mustCreate(t, db, &models.Group{
-		Name: "proxy", ChannelID: string(channel.OpenAI), ConnectionType: models.ConnectionTypeAPIKey,
+		Name: "proxy", ChannelID: string(channel.OpenAI),
 		Params: models.JSON(`{}`), Models: models.JSON(`[{"id":"gpt-4o"}]`),
 		Overrides: models.JSON(`{}`), ProxyConfig: &groupCiphertext, Enabled: true,
 	})

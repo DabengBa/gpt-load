@@ -244,7 +244,7 @@ func TestHandlerRoutesGeminiEmbeddingsWithAliasUsageAndPricing(t *testing.T) {
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "gemini", ChannelID: channel.Gemini,
+			ID: 1, Name: "gemini", ChannelID: channel.Gemini,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "gemini-embedding-001", Alias: "public-embedding"}},
 		}},

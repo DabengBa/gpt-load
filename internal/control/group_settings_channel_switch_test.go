@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm/clause"
 
 	"gpt-load/internal/channel"
-	"gpt-load/internal/platform/encryption"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/state"
@@ -164,9 +163,8 @@ func assertGroupSwitchStateEqual(t *testing.T, before, after groupSwitchState) {
 	}
 	// The two runtime objects above are compared by identity; equality of the
 	// persisted rows that feed them is asserted above as well.
-	if before.Group.ChannelID != after.Group.ChannelID ||
-		before.Group.ConnectionType != after.Group.ConnectionType {
-		t.Fatal("channel_id/connection_type changed by a failed switch")
+	if before.Group.ChannelID != after.Group.ChannelID {
+		t.Fatal("channel_id changed by a failed switch")
 	}
 }
 
@@ -194,14 +192,12 @@ func assertSuccessfulGroupSwitchState(
 	groupID uint,
 	before, after groupSwitchState,
 	target channel.ID,
-	targetConnectionType models.ConnectionType,
 	targetParams models.JSON,
 ) {
 	t.Helper()
 
 	expectedGroup := before.Group
 	expectedGroup.ChannelID = string(target)
-	expectedGroup.ConnectionType = targetConnectionType
 	expectedGroup.Params = append(models.JSON(nil), targetParams...)
 	// GORM may advance this timestamp for the successful group write.
 	expectedGroup.UpdatedAtMS = after.Group.UpdatedAtMS
@@ -211,8 +207,8 @@ func assertSuccessfulGroupSwitchState(
 	if string(after.Group.Models) != string(before.Group.Models) {
 		t.Fatalf("Models JSON changed:\nbefore=%s\nafter=%s", before.Group.Models, after.Group.Models)
 	}
-	if after.Group.ChannelID != string(target) || after.Group.ConnectionType != targetConnectionType {
-		t.Fatalf("group target = %q/%q, want %q/%q", after.Group.ChannelID, after.Group.ConnectionType, target, targetConnectionType)
+	if after.Group.ChannelID != string(target) {
+		t.Fatalf("group target = %q, want %q", after.Group.ChannelID, target)
 	}
 	if string(after.Group.Params) != string(targetParams) || string(after.Group.Params) == `{}` {
 		t.Fatalf("target params = %s, want preserved non-empty %s", after.Group.Params, targetParams)
@@ -237,7 +233,6 @@ func assertSuccessfulGroupSwitchState(
 		expectedEntry.IdentityGeneration = stateloader.CredentialIdentityGeneration(
 			before.Credentials[index].IdentityFingerprint,
 			string(target),
-			string(targetConnectionType),
 			json.RawMessage(targetParams),
 		)
 		if !reflect.DeepEqual(expectedEntry, after.CredentialEntries[index]) {
@@ -260,12 +255,12 @@ func assertSuccessfulGroupSwitchState(
 	if !ok {
 		t.Fatalf("group %d missing from after ConfigSnapshot", groupID)
 	}
-	assertRuntimeGroupViewSwitch(t, fixture, beforeSnapshotView, afterSnapshotView, target, targetConnectionType, targetParams)
+	assertRuntimeGroupViewSwitch(t, fixture, beforeSnapshotView, afterSnapshotView, target, targetParams)
 	if !reflect.DeepEqual(before.Snapshot.GroupCatalog[groupID], after.Snapshot.GroupCatalog[groupID]) {
 		t.Fatalf("target GroupCatalog entry changed:\nbefore=%+v\nafter=%+v",
 			before.Snapshot.GroupCatalog[groupID], after.Snapshot.GroupCatalog[groupID])
 	}
-	assertRuntimeGroupViewSwitch(t, fixture, before.View, after.View, target, targetConnectionType, targetParams)
+	assertRuntimeGroupViewSwitch(t, fixture, before.View, after.View, target, targetParams)
 }
 
 // assertRuntimeGroupViewSwitch compares every GroupView field other than the
@@ -276,23 +271,20 @@ func assertRuntimeGroupViewSwitch(
 	fixture serviceFixture,
 	before, after state.GroupView,
 	target channel.ID,
-	targetConnectionType models.ConnectionType,
 	targetParams models.JSON,
 ) {
 	t.Helper()
 	beforeComparable, afterComparable := before, after
 	beforeComparable.ChannelID, afterComparable.ChannelID = "", ""
-	beforeComparable.ConnectionType, afterComparable.ConnectionType = "", ""
 	beforeComparable.Params, afterComparable.Params = nil, nil
 	beforeComparable.ClientProtocols, afterComparable.ClientProtocols = nil, nil
 	beforeComparable.ResolvedTarget, afterComparable.ResolvedTarget = channel.ResolvedTarget{}, channel.ResolvedTarget{}
 	if !reflect.DeepEqual(beforeComparable, afterComparable) {
 		t.Fatalf("runtime GroupView changed outside target fields:\nbefore=%+v\nafter=%+v", before, after)
 	}
-	if after.ChannelID != target || after.ConnectionType != string(targetConnectionType) ||
-		string(after.Params) != string(targetParams) {
-		t.Fatalf("runtime GroupView target = %q/%q/%s, want %q/%q/%s",
-			after.ChannelID, after.ConnectionType, after.Params, target, targetConnectionType, targetParams)
+	if after.ChannelID != target || string(after.Params) != string(targetParams) {
+		t.Fatalf("runtime GroupView target = %q/%s, want %q/%s",
+			after.ChannelID, after.Params, target, targetParams)
 	}
 	expectedTarget, err := fixture.channelRegistry.Resolve(target, json.RawMessage(targetParams))
 	if err != nil {
@@ -307,18 +299,6 @@ func assertRuntimeGroupViewSwitch(
 	}
 }
 
-// decryptCallTracker makes the reverse credential-backed test observable: a
-// connection-type mismatch must return before the credential is decrypted.
-type decryptCallTracker struct {
-	encryption.Service
-	decryptCalls int
-}
-
-func (tracker *decryptCallTracker) Decrypt(ciphertext string) (string, error) {
-	tracker.decryptCalls++
-	return tracker.Service.Decrypt(ciphertext)
-}
-
 // ––––– R1: API-key 通道间兼容切换并精确保留 –––––
 
 func TestUpdateGroupSettingsSwitchChannelAPIKeyCompatible(t *testing.T) {
@@ -330,7 +310,7 @@ func TestUpdateGroupSettingsSwitchChannelAPIKeyCompatible(t *testing.T) {
 		Name: stringPointer(name), ChannelID: channel.OpenAI,
 		Params:      json.RawMessage(`{"base_url":"` + legacyBaseURL + `"}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-4o", Alias: "legacy-model", AliasEnabled: true}}},
-		Credentials: "sk-switch-compatible", ConnectionType: models.ConnectionTypeAPIKey,
+		Credentials: "sk-switch-compatible",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -373,7 +353,7 @@ func TestUpdateGroupSettingsSwitchChannelAPIKeyCompatible(t *testing.T) {
 
 	after := captureGroupSwitchState(t, fixture, groupID)
 	assertSuccessfulGroupSwitchState(t, fixture, groupID, before, after,
-		channel.Anthropic, models.ConnectionTypeAPIKey, targetParams)
+		channel.Anthropic, targetParams)
 	if after.Snapshot.Revision <= beforeRevision {
 		t.Fatalf("runtime revision did not advance: before=%d after=%d", beforeRevision, after.Snapshot.Revision)
 	}
@@ -459,11 +439,9 @@ func TestUpdateGroupSettingsSameChannelNoRegression(t *testing.T) {
 	if string(afterGroup.Models) != string(beforeGroup.Models) {
 		t.Fatalf("group models changed:\nbefore=%s\nafter= %s", beforeGroup.Models, afterGroup.Models)
 	}
-	if afterGroup.ChannelID != beforeGroup.ChannelID ||
-		afterGroup.ConnectionType != beforeGroup.ConnectionType {
-		t.Fatalf("channel unchanged expectation violated: %q/%q -> %q/%q",
-			beforeGroup.ChannelID, beforeGroup.ConnectionType,
-			afterGroup.ChannelID, afterGroup.ConnectionType)
+	if afterGroup.ChannelID != beforeGroup.ChannelID {
+		t.Fatalf("channel unchanged expectation violated: %q -> %q",
+			beforeGroup.ChannelID, afterGroup.ChannelID)
 	}
 	assertCredentialRowsIdentical(t, beforeCreds, captureGroupCredentialRows(t, fixture, groupID))
 	afterEntries := captureCredentialRegistryEntries(t, fixture, groupID)
@@ -588,7 +566,7 @@ func TestUpdateGroupSettingsSwitchChannelCredentialSchemaRejected(t *testing.T) 
 // TestUpdateGroupSettingsSwitchChannelRollsBackOnDuplicateNameConstraint covers
 // the rollback boundary the reviewer required: target channel, params and
 // credential validation all pass, the candidate update set (channel_id,
-// connection_type, params, name) is already formed, and the transaction then
+// params, name) is already formed, and the transaction then
 // fails on the pre-existing unique index on groups.name. Nothing may be
 // partially written and no runtime object may be republished.
 func TestUpdateGroupSettingsSwitchChannelRollsBackOnDuplicateNameConstraint(t *testing.T) {
@@ -627,19 +605,15 @@ func TestUpdateGroupSettingsSwitchChannelRollsBackOnDuplicateNameConstraint(t *t
 
 	after := captureGroupSwitchState(t, fixture, groupID)
 	assertGroupSwitchStateEqual(t, before, after)
-	if after.Group.ChannelID != string(channel.OpenAI) ||
-		after.Group.ConnectionType != models.ConnectionTypeAPIKey {
-		t.Fatalf("channel change leaked after rollback: channel_id=%q connection_type=%q",
-			after.Group.ChannelID, after.Group.ConnectionType)
+	if after.Group.ChannelID != string(channel.OpenAI) {
+		t.Fatalf("channel change leaked after rollback: channel_id=%q", after.Group.ChannelID)
 	}
 	if after.Group.Name != before.Group.Name {
 		t.Fatalf("name change leaked after rollback: %q -> %q", before.Group.Name, after.Group.Name)
 	}
 }
 
-// ––––– R2: 连接类型双向零凭据回滚 –––––
-
-// ––––– R2: 连接类型有凭据时双向回滚 –––––
+// ––––– R2: 目标凭据不可解析时不泄漏 –––––
 
 // ––––– R2: 按目标 schema 校验每条凭据（fingerprint 不匹配） –––––
 
@@ -679,7 +653,7 @@ func TestUpdateGroupSettingsSwitchChannelFingerprintMismatchRejected(t *testing.
 
 // TestUpdateGroupSettingsSwitchChannelCredentialErrorDoesNotLeakSecret covers
 // the two real decodeCredential failure paths while switching between two
-// API-key channels (so the connection-type guard cannot short-circuit first):
+// API-key channels:
 // undecryptable stored ciphertext, and a stored API-key payload that the target
 // API-key credential schema cannot parse. In both cases the caller must receive
 // the generic validation error and never the plaintext secret or ciphertext.

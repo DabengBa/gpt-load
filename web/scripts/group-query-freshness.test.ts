@@ -14,7 +14,6 @@ const summary = {
   id: 1,
   name: 'Cached',
   channel_id: 'openai',
-  connection_type: 'api_key',
   params: {},
   provider_url: null,
   service_status: 'available',

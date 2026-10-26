@@ -30,12 +30,11 @@ func affinityBucketGroup(
 	weight int,
 ) state.GroupConfig {
 	return state.GroupConfig{
-		ConnectionType: "api_key",
-		ID:             id,
-		Name:           fmt.Sprintf("bucket-%d", id),
-		ChannelID:      channelID,
-		Params:         json.RawMessage(`{}`),
-		Enabled:        true,
+		ID:        id,
+		Name:      fmt.Sprintf("bucket-%d", id),
+		ChannelID: channelID,
+		Params:    json.RawMessage(`{}`),
+		Enabled:   true,
 		Models: []state.ModelConfig{{
 			ID: model, EntryID: "e000000000001",
 			Priority: new(priority), Weight: new(weight),

@@ -67,7 +67,7 @@ func TestDiscoverModelsUsesSystemDefaultsAndNormalizesSuccessfulResult(t *testin
 	result, err := fixture.service.DiscoverModels(context.Background(), ModelDiscoveryRequest{
 		ChannelID:   channel.OpenAICompatible,
 		Params:      json.RawMessage(`{"base_url":" HTTPS://API.Example.COM/v1/ "}`),
-		Credentials: " key-a \nkey-a\n\n key-b \nkey-b", ConnectionType: "api_key",
+		Credentials: " key-a \nkey-a\n\n key-b \nkey-b",
 	})
 	if err != nil {
 		t.Fatalf("DiscoverModels() error = %v", err)
@@ -101,7 +101,7 @@ func TestDiscoverModelsRejectsInvalidDraftBeforeHTTP(t *testing.T) {
 	valid := ModelDiscoveryRequest{
 		ChannelID:   channel.OpenAICompatible,
 		Params:      json.RawMessage(`{"base_url":"https://api.example.com"}`),
-		Credentials: "key-a", ConnectionType: "api_key",
+		Credentials: "key-a",
 	}
 	tests := []struct {
 		name   string
@@ -162,7 +162,7 @@ func TestDiscoverModelsUsesChannelNativeDiscoveryProtocol(t *testing.T) {
 		ModelDiscoveryRequest{
 			ChannelID:   channel.OpenAICompatible,
 			Params:      json.RawMessage(`{"base_url":"https://api.example.com"}`),
-			Credentials: "key-a", ConnectionType: "api_key",
+			Credentials: "key-a",
 		},
 	)
 	if err != nil {
@@ -198,7 +198,7 @@ func TestDiscoverModelsPassesStructuredCloudCredentialToExecutor(t *testing.T) {
 		ChannelID: channel.AWSBedrock,
 		Params:    json.RawMessage(`{"region":"us-east-1"}`),
 		Credentials: `{"access_key":"AKIA_TEST","secret_key":"bedrock-secret",` +
-			`"session_token":"bedrock-session"}`, ConnectionType: "api_key",
+			`"session_token":"bedrock-session"}`,
 	})
 	if err != nil {
 		t.Fatalf("DiscoverModels() error = %v", err)
@@ -225,7 +225,7 @@ func TestDiscoverModelsDoesNotReadOrMutateRuntimeState(t *testing.T) {
 		Params: json.RawMessage(`{"base_url":"https://state.example.com"}`), Credentials: "sk-state",
 		Models: optionalGroupModels{
 			Set: true, Values: []GroupModel{{ID: "gpt-4o"}},
-		}, ConnectionType: "api_key",
+		},
 	})
 	if err != nil {
 		t.Fatalf("seed CreateGroup() error = %v", err)
@@ -282,7 +282,7 @@ func TestDiscoverModelsDoesNotReadOrMutateRuntimeState(t *testing.T) {
 	result, err := fixture.service.DiscoverModels(context.Background(), ModelDiscoveryRequest{
 		ChannelID:   channel.OpenAICompatible,
 		Params:      json.RawMessage(`{"base_url":"https://discover.example.com"}`),
-		Credentials: "sk-discovery", ConnectionType: "api_key",
+		Credentials: "sk-discovery",
 	})
 	if err != nil || !reflect.DeepEqual(result.Models, []ModelCandidate{
 		{ID: "remote-only", Name: "remote-only", Sources: []string{"live"}, PricingStatus: PricingStatusPending},
@@ -332,7 +332,7 @@ func TestDiscoverModelsDoesNotAcquireWriteMu(t *testing.T) {
 		_, err := fixture.service.DiscoverModels(ctx, ModelDiscoveryRequest{
 			ChannelID:   channel.OpenAICompatible,
 			Params:      json.RawMessage(`{"base_url":"https://discover.example.com"}`),
-			Credentials: "sk-discovery", ConnectionType: "api_key",
+			Credentials: "sk-discovery",
 		})
 		done <- err
 	}()
@@ -373,7 +373,7 @@ func TestDiscoverModelsDoesNotBlockMutation(t *testing.T) {
 		_, err := fixture.service.DiscoverModels(context.Background(), ModelDiscoveryRequest{
 			ChannelID:   channel.Anthropic,
 			Params:      json.RawMessage(`{"base_url":"https://discover.example.com"}`),
-			Credentials: "sk-discovery", ConnectionType: "api_key",
+			Credentials: "sk-discovery",
 		})
 		discoveryDone <- err
 	}()
@@ -390,7 +390,7 @@ func TestDiscoverModelsDoesNotBlockMutation(t *testing.T) {
 			Params: json.RawMessage(`{"base_url":"https://mutation.example.com"}`), Credentials: "sk-mutation",
 			Models: optionalGroupModels{
 				Set: true, Values: []GroupModel{{ID: "gpt-4o"}},
-			}, ConnectionType: "api_key",
+			},
 		})
 		mutationDone <- err
 	}()

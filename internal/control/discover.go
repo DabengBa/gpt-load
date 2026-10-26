@@ -11,15 +11,13 @@ import (
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
-	"gpt-load/internal/storage/models"
 )
 
 type ModelDiscoveryRequest struct {
-	ChannelID      channel.ID            `json:"channel_id"`
-	ConnectionType models.ConnectionType `json:"connection_type"`
-	Params         json.RawMessage       `json:"params"`
-	Credentials    string                `json:"credentials"`
-	Proxy          *outboundproxy.Config `json:"proxy"`
+	ChannelID   channel.ID            `json:"channel_id"`
+	Params      json.RawMessage       `json:"params"`
+	Credentials string                `json:"credentials"`
+	Proxy       *outboundproxy.Config `json:"proxy"`
 }
 
 type ModelDiscoveryResult struct {
@@ -37,8 +35,7 @@ func (s *Service) DiscoverModels(
 	if s == nil || s.channelRegistry == nil || request.ChannelID == "" {
 		return ModelDiscoveryResult{}, app_errors.ErrValidation
 	}
-	connectionType, err := s.resolveChannelConnectionType(request.ChannelID, request.ConnectionType)
-	if err != nil {
+	if _, ok := s.channelRegistry.Get(request.ChannelID); !ok {
 		return ModelDiscoveryResult{}, app_errors.ErrValidation
 	}
 	if request.Proxy != nil && !s.channelRegistry.SupportsOutboundProxy(request.ChannelID) {
@@ -87,8 +84,7 @@ func (s *Service) DiscoverModels(
 		GlobalProxy: globalProxy, EnvironmentProxy: s.environmentProxy,
 		Groups: []state.GroupConfig{{
 			ID: 1, Name: "draft", ChannelID: request.ChannelID,
-			ConnectionType: string(connectionType),
-			Params:         append(json.RawMessage(nil), request.Params...), Proxy: draftProxy, Enabled: true,
+			Params: append(json.RawMessage(nil), request.Params...), Proxy: draftProxy, Enabled: true,
 		}},
 	})
 	if err != nil {

@@ -88,8 +88,6 @@ export function GroupApiKeyEditor({
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
 
-  const isAPIKey = credential.connection_type === 'api_key'
-
   async function resolveCopyValue(): Promise<string> {
     const controller = new AbortController()
     copyControllersRef.current.add(controller)
@@ -108,7 +106,7 @@ export function GroupApiKeyEditor({
   }
 
   function startEditing(): void {
-    if (disabled || !isAPIKey) return
+    if (disabled) return
     setError('')
     setSaved(false)
     setEditing(true)
@@ -123,7 +121,7 @@ export function GroupApiKeyEditor({
 
   async function submit(): Promise<void> {
     const value = nextCredential.trim()
-    if (pending || disabled || !isAPIKey) return
+    if (pending || disabled) return
     if (!value) {
       setError(t('group.credentials.update.required'))
       setSaved(false)
@@ -198,8 +196,6 @@ export function GroupApiKeyEditor({
     },
     [],
   )
-
-  if (!isAPIKey) return null
 
   return (
     <div {...stylex.props(styles.root)}>

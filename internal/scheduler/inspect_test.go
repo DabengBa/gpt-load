@@ -23,9 +23,9 @@ func inspectSnapshot(t *testing.T) *state.ConfigSnapshot {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 2, Name: "disabled", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "provider-disabled", Alias: "public"}}, Enabled: false},
-			{ConnectionType: "api_key", ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "provider-active", Alias: "public", EntryID: "e000000000001"}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 3, Name: "active-two", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "provider-zero", Alias: "public"}}, Enabled: true},
+			{ID: 2, Name: "disabled", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "provider-disabled", Alias: "public"}}, Enabled: false},
+			{ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "provider-active", Alias: "public", EntryID: "e000000000001"}}, Enabled: true},
+			{ID: 3, Name: "active-two", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "provider-zero", Alias: "public"}}, Enabled: true},
 		},
 	})
 	if err != nil {
@@ -35,7 +35,7 @@ func inspectSnapshot(t *testing.T) *state.ConfigSnapshot {
 }
 
 func singleInspectSnapshot(t *testing.T) *state.ConfigSnapshot {
-	return routeEntrySnapshot(t, []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-4o", Alias: "gpt-4o", Weight: intPointer(100)}}}})
+	return routeEntrySnapshot(t, []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-4o", Alias: "gpt-4o", Weight: intPointer(100)}}}})
 }
 
 func TestInspectReportsMultiCredentialGroupUnavailable(t *testing.T) {
@@ -248,7 +248,7 @@ func TestInspectReportsNoKeysForIncludedGroup(t *testing.T) {
 
 func TestInspectSummarizesStaticGroupExclusions(t *testing.T) {
 	group := func(id uint, enabled bool) state.GroupConfig {
-		return state.GroupConfig{ConnectionType: "api_key", ID: id, Name: fmt.Sprintf("group-%d", id),
+		return state.GroupConfig{ID: id, Name: fmt.Sprintf("group-%d", id),
 			ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models:  []state.ModelConfig{{ID: fmt.Sprintf("provider-%d", id), Alias: "public"}},
 			Enabled: enabled,

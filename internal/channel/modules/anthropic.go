@@ -16,7 +16,6 @@ func Anthropic() spec.Module {
 			SearchTerms: []string{"claude"},
 			Description: "Anthropic official API",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

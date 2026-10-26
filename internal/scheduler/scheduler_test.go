@@ -71,8 +71,8 @@ func TestIteratorRejectsMultiCredentialGroupWithOneHealthyCredential(t *testing.
 
 func TestIteratorUsesEntryWeightOnly(t *testing.T) {
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "one", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "light", Alias: "public", Weight: intPointer(1)}}},
-		{ID: 2, Name: "two", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "heavy", Alias: "public", Weight: intPointer(100)}}},
+		{ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "light", Alias: "public", Weight: intPointer(1)}}},
+		{ID: 2, Name: "two", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "heavy", Alias: "public", Weight: intPointer(100)}}},
 	})
 	selection, err := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}, {ID: 21, GroupID: 2}}}, routeEntryQuery(), rand.New(zeroRandSource{})).Next()
 	if err != nil {
@@ -85,8 +85,8 @@ func TestIteratorUsesEntryWeightOnly(t *testing.T) {
 
 func schedulerSnapshot() *state.ConfigSnapshot {
 	return routeEntrySnapshot(nil, []state.GroupConfig{
-		{ID: 1, Name: "group-one", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-4o", Alias: "gpt-4o", Weight: intPointer(100)}}},
-		{ID: 2, Name: "group-two", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-4o", Alias: "gpt-4o", Weight: intPointer(100)}}},
+		{ID: 1, Name: "group-one", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-4o", Alias: "gpt-4o", Weight: intPointer(100)}}},
+		{ID: 2, Name: "group-two", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-4o", Alias: "gpt-4o", Weight: intPointer(100)}}},
 	})
 }
 

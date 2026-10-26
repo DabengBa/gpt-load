@@ -16,7 +16,6 @@ func Volcengine() spec.Module {
 			SearchTerms: []string{"doubao", "ark"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

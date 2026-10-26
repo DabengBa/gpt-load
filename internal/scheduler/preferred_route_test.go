@@ -26,7 +26,7 @@ func preferredRouteQuery(credentialID uint, entryID string, upstreamModel string
 func sameCredentialMultiModelSnapshot(t *testing.T) *state.ConfigSnapshot {
 	t.Helper()
 	return routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{
 				{ID: "sibling-model", Alias: "public", EntryID: "e000000000001", Weight: intPointer(100)},
 				{ID: "bound-model", Alias: "public", EntryID: "e000000000002", Weight: intPointer(100)},
@@ -197,7 +197,7 @@ func TestIteratorPreferredRouteStaticExclusionIsNotBypass(t *testing.T) {
 func TestIteratorPreferredRouteDeletedRouteIsNotHealthBypass(t *testing.T) {
 	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{
 				{ID: "sibling-model", Alias: "public", EntryID: "e000000000001", Weight: intPointer(100)},
 			}},
@@ -227,7 +227,7 @@ func TestIteratorPreferredRouteDeletedRouteIsNotHealthBypass(t *testing.T) {
 func TestIteratorPreferredRouteZeroWeightRouteIsNotHealthBypass(t *testing.T) {
 	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{
 				{ID: "sibling-model", Alias: "public", EntryID: "e000000000001", Weight: intPointer(100)},
 				{ID: "bound-model", Alias: "public", EntryID: "e000000000002", Weight: intPointer(0)},
@@ -279,7 +279,7 @@ func TestIteratorPreferredRouteTriedIsNotHealthBypass(t *testing.T) {
 func TestIteratorPreferredRouteExclusiveTargetExhausts(t *testing.T) {
 	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{
 				{ID: "sibling-model", Alias: "public", EntryID: "e000000000001", Weight: intPointer(100)},
 				{ID: "bound-model", Alias: "public", EntryID: "e000000000002", Weight: intPointer(100)},

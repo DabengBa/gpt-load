@@ -15,7 +15,6 @@ func NewAPI() spec.Module {
 			Icon:        "new-api",
 			Description: "New API multi-protocol gateway",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

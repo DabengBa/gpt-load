@@ -16,7 +16,6 @@ func Alibaba() spec.Module {
 			SearchTerms: []string{"dashscope", "qwen", "bailian"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

@@ -94,16 +94,14 @@ func (s *Service) CopyGroupIdempotent(
 				return idempotentMutationResult{}, app_errors.ErrInternalServer
 			}
 			clone := models.Group{
-
-				Name:           name,
-				ChannelID:      source.ChannelID,
-				ConnectionType: source.ConnectionType,
-				Params:         append(models.JSON(nil), source.Params...),
-				ProviderURL:    cloneString(source.ProviderURL),
-				Models:         models.JSON(encodedModels),
-				Overrides:      append(models.JSON(nil), source.Overrides...),
-				ProxyConfig:    cloneString(source.ProxyConfig),
-				Enabled:        source.Enabled,
+				Name:        name,
+				ChannelID:   source.ChannelID,
+				Params:      append(models.JSON(nil), source.Params...),
+				ProviderURL: cloneString(source.ProviderURL),
+				Models:      models.JSON(encodedModels),
+				Overrides:   append(models.JSON(nil), source.Overrides...),
+				ProxyConfig: cloneString(source.ProxyConfig),
+				Enabled:     source.Enabled,
 			}
 			if err := tx.Create(&clone).Error; err != nil {
 				return idempotentMutationResult{}, app_errors.ParseDBError(err)

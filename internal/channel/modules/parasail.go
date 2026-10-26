@@ -16,7 +16,6 @@ func Parasail() spec.Module {
 			SearchTerms: []string{"parasail ai"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

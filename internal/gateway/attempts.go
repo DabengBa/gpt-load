@@ -579,7 +579,6 @@ func (loop *attemptLoop) run() {
 		normalizedCredential, err := normalizeChannelCredential(
 			handler.channels,
 			selection.ChannelID,
-			selection.Group.ConnectionType,
 			decryptedCredential,
 		)
 		if err != nil {

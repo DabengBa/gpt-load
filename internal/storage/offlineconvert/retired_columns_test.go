@@ -166,6 +166,7 @@ func TestConvertReportsDeclaredRetiredColumnsOnly(t *testing.T) {
 		"access_keys.price_multiplier_micros",
 		"credentials.auth_error_code",
 		"credentials.auth_state",
+		"groups.connection_type",
 		"groups.price_multiplier_micros",
 	}
 	if !slices.Equal(result.RetiredColumns, want) {
@@ -186,9 +187,11 @@ func TestConvertAcceptsASingleRetiredPriceMultiplierColumn(t *testing.T) {
 			writeSource(t, sourcePath,
 				"ALTER TABLE "+table+" ADD COLUMN price_multiplier_micros INTEGER NOT NULL DEFAULT 1000000")
 			// The legacy fixture also declares the retired subscription credential
-			// columns; drop them so this source carries exactly one retired column.
+			// columns and the retired group connection type; drop them so this
+			// source carries exactly one retired column.
 			writeSource(t, sourcePath, "ALTER TABLE credentials DROP COLUMN auth_state")
 			writeSource(t, sourcePath, "ALTER TABLE credentials DROP COLUMN auth_error_code")
+			writeSource(t, sourcePath, "ALTER TABLE groups DROP COLUMN connection_type")
 			before := snapshotSource(t, sourcePath)
 
 			targetDSN := filepath.Join(dir, "out", "gpt-load.db")

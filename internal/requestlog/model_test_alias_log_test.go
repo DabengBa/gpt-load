@@ -30,14 +30,13 @@ func TestModelTestAliasDurableLogKeepsRouteAttributionAndUpstreamUsage(t *testin
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key",
-			ID:             groupID,
-			Name:           "primary",
-			ChannelID:      channel.OpenAI,
-			Params:         []byte(`{}`),
-			Models:         []state.ModelConfig{{ID: upstream, TestAlias: alias, EntryID: entryID}},
-			Settings:       config.Settings{},
-			Enabled:        true,
+			ID:        groupID,
+			Name:      "primary",
+			ChannelID: channel.OpenAI,
+			Params:    []byte(`{}`),
+			Models:    []state.ModelConfig{{ID: upstream, TestAlias: alias, EntryID: entryID}},
+			Settings:  config.Settings{},
+			Enabled:   true,
 		}},
 	})
 	if err != nil {

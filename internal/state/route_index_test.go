@@ -77,13 +77,13 @@ func TestCompileRouteIndexStructure(t *testing.T) {
 		return CompileInput{
 			ChannelRegistry: channel.NewRegistry(),
 			Groups: []GroupConfig{
-				{ConnectionType: "api_key", ID: 2, Name: "two", ChannelID: channel.OpenAI,
+				{ID: 2, Name: "two", ChannelID: channel.OpenAI,
 					Params: json.RawMessage(`{}`), Enabled: true,
 					Models: []ModelConfig{
 						{ID: "zeta", Alias: "shared", Weight: intPointer(40)},
 						{ID: "alpha", Alias: "shared", Weight: intPointer(30)},
 					}},
-				{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAICompatible,
+				{ID: 1, Name: "one", ChannelID: channel.OpenAICompatible,
 					Params: json.RawMessage(`{"base_url":"https://proxy.example/v1"}`), Enabled: true,
 					Models: []ModelConfig{
 						{ID: "fallback", Alias: "shared", Weight: intPointer(20), Priority: intPointer(2)},
@@ -164,9 +164,9 @@ func TestCompileOrdersNoModelRouteKeyTargetsByGroup(t *testing.T) {
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{
-			{ConnectionType: "api_key", ID: 3, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 3, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "model-c"}}, Enabled: true},
-			{ConnectionType: "api_key", ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []ModelConfig{{ID: "model-a"}}, Enabled: true},
 		},
 	})

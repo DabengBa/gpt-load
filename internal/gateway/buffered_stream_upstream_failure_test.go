@@ -395,7 +395,7 @@ func newBufferedFallbackRuntime(
 			settings[key] = value
 		}
 		groups = append(groups, state.GroupConfig{
-			ConnectionType: "api_key", ID: id, Name: fmt.Sprintf("openai-%d", index),
+			ID: id, Name: fmt.Sprintf("openai-%d", index),
 			ChannelID: channelID, Params: params,
 			Models:   []state.ModelConfig{{ID: "gpt-4o"}},
 			Settings: settings,

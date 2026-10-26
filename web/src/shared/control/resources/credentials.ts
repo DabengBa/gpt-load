@@ -40,7 +40,6 @@ export interface CredentialPatch {
 }
 const credentialItemFields = [
   'credential_id',
-  'connection_type',
   'secret_version',
   'mask',
   'effective_status',
@@ -94,7 +93,6 @@ const failureCategories = [
   'authentication_required',
   'ambiguous',
 ] as const
-const connectionTypes = ['api_key'] as const
 
 function invalidResponse(): never {
   throw new InvalidResponseError()
@@ -128,7 +126,6 @@ export function projectCredentialItem(value: unknown, expectedId?: number): Cred
   assertNoSecretLikeFields(record, credentialItemFields)
   const credentialId = projectSafeInteger(record.credential_id, { minimum: 1 })
   if (expectedId !== undefined && credentialId !== expectedId) invalidResponse()
-  const connectionType = projectEnum(record.connection_type, connectionTypes)
   const effectiveStatus = projectEnum(record.effective_status, effectiveStatuses)
   const cooldownUntil = projectNullableEpochMilliseconds(record.cooldown_until_ms)
   const recovery = projectRecovery(record.recovery)
@@ -141,7 +138,6 @@ export function projectCredentialItem(value: unknown, expectedId?: number): Cred
   }
   return {
     credential_id: credentialId,
-    connection_type: connectionType,
     secret_version: projectSafeInteger(record.secret_version, { minimum: 1 }),
     mask: projectMask(record.mask),
     effective_status: effectiveStatus,

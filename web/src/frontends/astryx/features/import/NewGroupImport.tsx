@@ -82,7 +82,6 @@ function freshDraft(): ImportDraft {
   return {
     mode: 'new',
     channel_id: '',
-    connection_type: 'api_key',
     params: {},
     proxy: { mode: 'inherit', url: '' },
     name: '',
@@ -269,11 +268,10 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     (selectedChannel.credential_fields.length !== 1 ||
       selectedChannel.credential_fields[0]?.key !== 'api_key')
   const connectionMappingBlocked = (() => {
-    if (draft.connection_type !== 'api_key') return false
     const parsed = parseConnectionJSON(draft.credentials)
     if (!parsed) return connectionUnsupported
     const channel = selectedChannel
-    if (!channel || channel.connection.type !== 'api_key') return true
+    if (!channel) return true
     const mapping = mapConnectionToChannel(parsed, channel)
     return (
       mapping.credentials === null ||
@@ -366,7 +364,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     })
   })()
 
-  const connectionTypeLabel = t('import.steps.channel.connectionTypes.apiKey')
   const channelStepState: ImportStepState = visibleParamError
     ? 'error'
     : selectedChannel && !paramsError
@@ -375,10 +372,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const channelStepSummary = (() => {
     if (visibleParamError) return visibleParamError
     if (!selectedChannel) return ''
-    return t('import.steps.channel.summary', {
-      channel: selectedChannel.name,
-      connection: connectionTypeLabel,
-    })
+    return t('import.steps.channel.summary', { channel: selectedChannel.name })
   })()
   const credentialStepState: ImportStepState =
     invalidCredential || credentialValidation !== null
@@ -589,7 +583,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     setDraft((current) => ({
       ...current,
       channel_id: channel.channel_id,
-      connection_type: channel.connection.type,
       params: {
         ...initialChannelParams(channel),
         ...(importedBaseURL && urlField ? { [urlField.key]: importedBaseURL } : {}),
@@ -678,7 +671,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (!ensureConnectionMapping() || !canDiscover || discoveryLoading) return
     const request: ModelDiscoveryRequest = {
       channel_id: draft.channel_id,
-      connection_type: draft.connection_type,
       params: Object.fromEntries(
         Object.entries(draft.params).map(([key, value]) => [key, value.trim()]),
       ),
@@ -762,7 +754,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     const name = draft.name.trim()
     return {
       channel_id: draft.channel_id,
-      connection_type: draft.connection_type,
       params: Object.fromEntries(
         Object.entries(draft.params).map(([key, value]) => [key, value.trim()]),
       ),
@@ -918,7 +909,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     setConnectionUnsupported(false)
 
     const channel = selectedChannel
-    if (!channel || channel.connection.type !== 'api_key') return
+    if (!channel) return
 
     const parsed = parseConnectionJSON(draft.credentials)
     if (!parsed) return
@@ -941,11 +932,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   }
 
   function ensureConnectionMapping(): boolean {
-    if (draft.connection_type !== 'api_key') {
-      setConnectionUnsupported(false)
-      return true
-    }
-
     const parsed = parseConnectionJSON(draft.credentials)
     if (!parsed) {
       setConnectionUnsupported(false)
@@ -953,7 +939,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     }
 
     const channel = selectedChannel
-    if (!channel || channel.connection.type !== 'api_key') {
+    if (!channel) {
       setConnectionUnsupported(true)
       return false
     }
@@ -963,12 +949,11 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     return !connectionUnsupported && !connectionMappingBlocked
   }
 
-  // Classic watch([channel_id, connection_type, params, credentials,
-  // proxy]) → invalidateDiscovery. Effect keyed on the composite
-  // signature; the credential-mapping render adjustment converges first.
+  // Classic watch([channel_id, params, credentials, proxy])
+  // → invalidateDiscovery. Effect keyed on the composite signature; the
+  // credential-mapping render adjustment converges first.
   const discoveryInvalidationSignature = [
     draft.channel_id,
-    draft.connection_type,
     JSON.stringify(draft.params),
     draft.credentials,
     JSON.stringify(draft.proxy),
@@ -992,37 +977,27 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       setDraft((current) => ({
         ...current,
         channel_id: channel.channel_id,
-        connection_type: channel.connection.type,
         params,
       }))
       setBaselineJson(
         JSON.stringify({
           ...freshDraft(),
           channel_id: channel.channel_id,
-          connection_type: channel.connection.type,
           params,
         }),
       )
     }
   }
 
-  // Classic watch(selectedChannel, immediate): sync proxy/connection_type,
-  // then run the connection mapping (classic nextTick — here the batched
-  // adjustment converges in the same re-render).
+  // Classic watch(selectedChannel, immediate): sync proxy, then run the
+  // connection mapping (classic nextTick — here the batched adjustment
+  // converges in the same re-render).
   const [lastSelectedChannel, setLastSelectedChannel] = useState<ChannelDto | null>(null)
   if (lastSelectedChannel !== selectedChannel) {
     setLastSelectedChannel(selectedChannel)
     if (selectedChannel && !payloadLocked) {
       if (!selectedChannel.capabilities.outbound_proxy && draft.proxy.mode !== 'inherit') {
         setDraft((current) => ({ ...current, proxy: { mode: 'inherit', url: '' } }))
-      }
-      if (draft.connection_type !== selectedChannel.connection.type) {
-        setDraft((current) => ({
-          ...current,
-          connection_type: selectedChannel.connection.type,
-          params: initialChannelParams(selectedChannel),
-        }))
-        setBaseUrlOverrideEnabled(true)
       }
       applyConnectionMapping()
     }

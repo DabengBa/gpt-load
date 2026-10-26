@@ -15,7 +15,6 @@ export default {
       loading: 'チャネルを読み込み中…',
       loadFailed: 'チャネルを読み込めません',
       channelRequired: 'チャネルを選択してください',
-      connectionType: '認証情報の種類',
     },
     mode: {
       label: 'インポート先',
@@ -26,10 +25,7 @@ export default {
       channel: {
         title: 'チャネルを選択',
         incomplete: '必須のチャネル設定を完了してください',
-        summary: '{channel} · {connection}',
-        connectionTypes: {
-          apiKey: 'API キー',
-        },
+        summary: '{channel}',
       },
       credentials: {
         apiKeyTitle: 'API キーを追加',

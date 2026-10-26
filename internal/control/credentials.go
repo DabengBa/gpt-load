@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 
 	"gpt-load/internal/channel"
-	"gpt-load/internal/connection"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
@@ -80,7 +79,6 @@ type CredentialRevealResult struct {
 
 type CredentialItemResponse struct {
 	CredentialID            uint                       `json:"credential_id"`
-	ConnectionType          string                     `json:"connection_type"`
 	SecretVersion           uint64                     `json:"secret_version"`
 	Mask                    string                     `json:"mask"`
 	EffectiveStatus         string                     `json:"effective_status"`
@@ -112,10 +110,6 @@ type credentialObservation struct {
 	rows       []models.Credential
 	runtime    map[uint]state.CredentialRuntimeView
 	observedAt time.Time
-}
-
-func normalizeGroupConnectionType(value models.ConnectionType) models.ConnectionType {
-	return models.ConnectionType(connection.Normalize(string(value)))
 }
 
 func (s *Service) ImportGroupCredentials(
@@ -161,9 +155,6 @@ func (s *Service) importGroupCredentialsMutation(
 		return CredentialImportResult{}, nil, err
 	}
 	if group.ChannelID == "" {
-		return CredentialImportResult{}, nil, app_errors.ErrValidation
-	}
-	if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeAPIKey {
 		return CredentialImportResult{}, nil, app_errors.ErrValidation
 	}
 	var count int64

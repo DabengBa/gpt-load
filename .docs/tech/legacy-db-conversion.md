@@ -81,7 +81,8 @@ out-of-order entry, or a missing required entry is refused.
 The source **schema** is pinned in both directions per retained table: every
 current column must exist, and any other column must be a retired column
 declared for **that table**. The retired columns are
-`credentials.auth_state`, `credentials.auth_error_code`, and the pricing columns
+`credentials.auth_state`, `credentials.auth_error_code`, the retired
+`groups.connection_type`, and the pricing columns
 `groups.price_multiplier_micros` and `access_keys.price_multiplier_micros`.
 Retirement is a `table.column` pair, never a column-name allowlist: a source that
 declares `price_multiplier_micros` on any other table, or `auth_state` outside
@@ -99,6 +100,7 @@ both, or neither.
 | Column | Table | Retired by |
 | --- | --- | --- |
 | `auth_state`, `auth_error_code` | `credentials` | subscription removal |
+| `connection_type` | `groups` | single API-key connection per channel |
 | `price_multiplier_micros` | `groups` | frozen model pricing (`0009_price_multipliers`) |
 | `price_multiplier_micros` | `access_keys` | frozen model pricing (`0009_price_multipliers`) |
 
@@ -118,9 +120,10 @@ The last three rows are deliberate: subscription material is refused rather than
 silently dropped. Row count decides the table check, not reachability or state:
 one stored row in any of the three retired tables is enough, because the
 conversion drops those tables and the stored data could not be recovered. An
-empty retired table is the normal API-key-only state and is accepted. Only
-`connection_type=api_key` groups are copied; a group whose channel this release
-no longer defines is refused as a subscription group rather than dropped.
+empty retired table is the normal API-key-only state and is accepted. A group
+whose stored connection type is anything but `api_key`, or whose channel this
+release no longer defines, is refused as a subscription group rather than
+dropped, and `groups.connection_type` is never copied.
 
 Writer detection is a best-effort gate, not a lock. An empty `-wal` or a `-shm`
 side file is not treated as a writer because a read-only open creates them, so
@@ -148,7 +151,8 @@ Not copied, with no replacement: `request_logs`, `request_log_attempts`,
 `credential_reset_operations`, `credential_stages`, all `debug_capture*` tables,
 `usage_stats`, `usage_attempt_stats`, `usage_aggregation_journal`,
 `usage_attempt_aggregation_journals`, and `schema_migrations`. Retired columns
-`auth_state` and `auth_error_code` are dropped and reported.
+`auth_state`, `auth_error_code`, and `groups.connection_type` are dropped and
+reported.
 
 `credential_attempt_stats` is **dropped, not retained**: it is per-credential
 attempt statistics, so it is history like the usage tables around it. Do not

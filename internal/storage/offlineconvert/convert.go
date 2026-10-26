@@ -117,13 +117,13 @@ func Convert(ctx context.Context, options Options) (Result, error) {
 // stage is the validated copy plan derived from one legacy source.
 type stage struct {
 	sourcePath     string
-	flavourFilter  string
 	retainedTables []string
 	retiredColumns []string
 }
 
-// convertibleFlavours are the connection_type values this release still writes.
-// The retired "subscription" flavour is deliberately absent.
+// convertibleFlavours are the stored connection types a legacy source may carry
+// without describing subscription material. The retired "subscription" flavour
+// is deliberately absent.
 var convertibleFlavours = []string{"api_key"}
 
 func inspectSource(ctx context.Context, dsn string) (stage, error) {
@@ -157,7 +157,7 @@ func inspectSource(ctx context.Context, dsn string) (stage, error) {
 		if err := requireSourceIntegrity(source); err != nil {
 			return err
 		}
-		if result.flavourFilter, err = requireOrdinaryGroups(source); err != nil {
+		if err := requireOrdinaryGroups(source); err != nil {
 			return err
 		}
 		if err := requireNoRetiredSubscriptionData(source); err != nil {
@@ -236,56 +236,64 @@ func requireKnownLedger(source *gorm.DB) error {
 }
 
 // requireOrdinaryGroups rejects any stored group whose flavour this release can
-// no longer express, and returns the connection_type predicate for the copy.
-func requireOrdinaryGroups(source *gorm.DB) (string, error) {
+// no longer express.
+//
+// The stored connection type is a retired column: the current schema
+// authenticates every group exactly one code-owned way per channel, so the
+// value is never copied. A legacy source that still declares it is read here
+// only to refuse subscription material, because publishing a database with
+// those groups silently missing is exactly what this tool must not do. A source
+// that already dropped the column is inspected on channel identity alone.
+func requireOrdinaryGroups(source *gorm.DB) error {
+	hasFlavour := source.Migrator().HasColumn("groups", "connection_type")
+	query := source.Table("groups").Select("id", "channel_id")
+	if hasFlavour {
+		query = query.Select("id", "channel_id", "connection_type")
+	}
 	var rows []struct {
 		ID             uint   `gorm:"column:id"`
 		ChannelID      string `gorm:"column:channel_id"`
 		ConnectionType string `gorm:"column:connection_type"`
 	}
-	if err := source.Table("groups").
-		Select("id", "channel_id", "connection_type").
-		Order("id ASC").
-		Find(&rows).Error; err != nil {
-		return "", fmt.Errorf("offline conversion: read source groups: %w", err)
+	if err := query.Order("id ASC").Find(&rows).Error; err != nil {
+		return fmt.Errorf("offline conversion: read source groups: %w", err)
 	}
 	registry := channel.NewRegistry()
-	quoted := make([]string, 0, len(convertibleFlavours))
-	for _, flavour := range convertibleFlavours {
-		quoted = append(quoted, quoteLiteral(flavour))
-	}
 	for _, row := range rows {
-		if slices.Contains(deletedSubscriptionConnectionTypes, row.ConnectionType) {
-			return "", fmt.Errorf(
-				"offline conversion: group %d uses retired subscription connection type %q; subscriptions are unsupported, refusing to drop it",
-				row.ID, row.ConnectionType,
+		if hasFlavour {
+			if slices.Contains(deletedSubscriptionConnectionTypes, row.ConnectionType) {
+				return fmt.Errorf(
+					"offline conversion: group %d uses retired subscription connection type %q; subscriptions are unsupported, refusing to drop it",
+					row.ID, row.ConnectionType,
+				)
+			}
+			if !slices.Contains(convertibleFlavours, row.ConnectionType) {
+				return fmt.Errorf(
+					"offline conversion: group %d stores the unknown connection type %q; refusing to drop it",
+					row.ID, row.ConnectionType,
+				)
+			}
+		}
+		if strings.Contains(strings.ToLower(row.ChannelID), "subscription") {
+			return fmt.Errorf(
+				"offline conversion: group %d stores a subscription channel %q; subscriptions are unsupported, refusing to drop it",
+				row.ID, row.ChannelID,
 			)
 		}
-		if isSubscriptionGroup(row.ChannelID, row.ConnectionType, registry) {
-			return "", fmt.Errorf(
-				"offline conversion: group %d stores a subscription channel %q (%s); subscriptions are unsupported, refusing to drop it",
-				row.ID, row.ChannelID, row.ConnectionType,
+		if slices.Contains(deletedSubscriptionChannelIDs, row.ChannelID) {
+			return fmt.Errorf(
+				"offline conversion: group %d stores the deleted subscription channel %q; subscriptions are unsupported, refusing to drop it",
+				row.ID, row.ChannelID,
 			)
 		}
-		// isSubscriptionGroup already accepted only convertible flavours, so an
-		// unknown flavour is reported here with its stored value instead of
-		// being silently filtered out of the copy.
+		if _, known := registry.Get(channel.ID(row.ChannelID)); !known {
+			return fmt.Errorf(
+				"offline conversion: group %d stores the unknown channel %q; refusing to guess what it authenticates",
+				row.ID, row.ChannelID,
+			)
+		}
 	}
-	return "connection_type IN (" + strings.Join(quoted, ", ") + ")", nil
-}
-
-// isSubscriptionGroup reports whether a stored group is subscription material
-// this release can no longer express: a retired subscription connection type, a
-// deleted subscription channel, a channel the current registry does not know, or
-// an unknown flavour that must not be filtered away silently.
-func isSubscriptionGroup(channelID, connectionType string, registry *channel.Registry) bool {
-	if !slices.Contains(convertibleFlavours, connectionType) {
-		return true
-	}
-	if _, known := registry.Get(channel.ID(channelID)); !known {
-		return true
-	}
-	return strings.Contains(strings.ToLower(channelID), "subscription")
+	return nil
 }
 
 // requireOrdinaryCredentials refuses stored credentials that are evidently
@@ -479,11 +487,14 @@ func retiredColumns() map[string][]string {
 	return map[string][]string{
 		// Subscription credential auth state.
 		"credentials": {"auth_state", "auth_error_code"},
+		// The product no longer models a per-group connection type; groups
+		// authenticate exactly one code-owned way per channel. Sources still
+		// declare the column, so it is retired here and never copied.
+		"groups": {"connection_type", "price_multiplier_micros"},
 		// Configurable price multipliers, retired by the frozen-pricing change
 		// (`0009_price_multipliers`). The stored value is never re-read: new
 		// receipts use frozen model prices only, so the value is retired with the
 		// column and no historical amount is recomputed.
-		"groups":      {"price_multiplier_micros"},
 		"access_keys": {"price_multiplier_micros"},
 	}
 }
@@ -512,7 +523,7 @@ func retiredColumnPairs() []string {
 // conversion.
 var currentColumns = map[string][]string{
 	"groups": {
-		"id", "name", "channel_id", "connection_type", "params", "models", "overrides",
+		"id", "name", "channel_id", "params", "models", "overrides",
 		"proxy_config", "provider_url", "enabled", "weight_manual", "validation_model",
 		"created_at_ms", "updated_at_ms",
 	},
@@ -680,8 +691,4 @@ func sqliteFilePath(dsn string) (string, error) {
 		return "", fmt.Errorf("offline conversion: invalid SQLite source path: %w", err)
 	}
 	return base, nil
-}
-
-func quoteLiteral(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }

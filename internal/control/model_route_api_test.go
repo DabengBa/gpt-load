@@ -22,7 +22,7 @@ func createModelRouteTestGroup(t *testing.T, fixture serviceFixture) uint {
 				{ID: "provider-b", Alias: "public-b", AliasEnabled: true},
 			},
 		},
-		Credentials: "sk-model-route-a", ConnectionType: "api_key",
+		Credentials: "sk-model-route-a",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)

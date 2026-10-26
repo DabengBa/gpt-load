@@ -344,7 +344,7 @@ func gatewayAccessQuotaCompileInput(
 		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{

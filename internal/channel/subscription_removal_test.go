@@ -34,8 +34,8 @@ func TestRemovedSubscriptionChannels(t *testing.T) {
 	}
 	for _, id := range []ID{"openai", "anthropic", "gemini", "xai", "azure_openai", "aws_bedrock", "google_vertex", "cliproxyapi"} {
 		d, ok := r.Get(id)
-		if !ok || d.Connection.Type != "api_key" {
-			t.Errorf("ordinary channel %q missing or not api_key: %#v", id, d)
+		if !ok || d.Connection.CredentialInput != "batch_text" {
+			t.Errorf("ordinary channel %q missing or without a batch credential input: %#v", id, d)
 		}
 	}
 }

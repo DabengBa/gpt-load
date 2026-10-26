@@ -31,9 +31,8 @@ func createGroupCopySource(
 		Models: optionalGroupModels{Set: true, Values: []GroupModel{
 			{ID: "provider-model", Alias: "public-model", AliasEnabled: true},
 		}},
-		Credentials:    "sk-" + name,
-		ConnectionType: models.ConnectionTypeAPIKey,
-		ProviderURL:    optionalField[string]{Set: true, Value: "https://provider.example"},
+		Credentials: "sk-" + name,
+		ProviderURL: optionalField[string]{Set: true, Value: "https://provider.example"},
 	})
 	if err != nil {
 		t.Fatalf("create copy source %q: %v", name, err)
@@ -83,7 +82,6 @@ func TestCopyGroupIdempotentClonesConfigAndCredential(t *testing.T) {
 	clone := loadGroupByID(t, fixture, first.GroupID)
 	if clone.Name != "copy-source-copy" ||
 		clone.ChannelID != original.ChannelID ||
-		clone.ConnectionType != original.ConnectionType ||
 		string(clone.Params) != string(original.Params) ||
 		string(clone.Overrides) != string(original.Overrides) ||
 		clone.Enabled != false ||

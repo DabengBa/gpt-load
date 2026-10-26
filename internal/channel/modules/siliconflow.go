@@ -16,7 +16,6 @@ func SiliconFlow() spec.Module {
 			SearchTerms: []string{"silicon flow"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

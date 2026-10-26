@@ -29,11 +29,6 @@ export default {
         sortLabel: 'Sort',
         reset: 'Reset filters',
       },
-      connectionType: {
-        label: 'Connection type',
-        all: 'All connection types',
-        apiKey: 'API key',
-      },
       sort: {
         recent: 'Recently used',
         status: 'Status first',

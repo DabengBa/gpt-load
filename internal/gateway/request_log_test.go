@@ -355,7 +355,7 @@ func TestHandlerRecordsProtocolOnlyResponsesResourceWithoutFabricatingModels(t *
 	)
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "responses", ChannelID: channel.OpenAI,
+		Groups: []state.GroupConfig{{ID: 1, Name: "responses", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-resource"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{testCredentialConfig(1, 1)},
@@ -407,7 +407,7 @@ func TestHandlerRejectsResponsesResourceWhenGroupHasNoModels(t *testing.T) {
 	)
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "responses", ChannelID: channel.OpenAI,
+		Groups: []state.GroupConfig{{ID: 1, Name: "responses", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{testCredentialConfig(1, 1)},
@@ -547,7 +547,7 @@ func TestHandlerBillableResponsesUsageWithoutPriceIsUnpriced(t *testing.T) {
 	)
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "responses", ChannelID: channel.OpenAI,
+		Groups: []state.GroupConfig{{ID: 1, Name: "responses", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{{ID: "unpriced-model"}}, Enabled: true,
 		}},
@@ -1213,7 +1213,7 @@ func TestHandlerUsesSelectedProviderModelForPricingInsteadOfAliasOrBodyModel(t *
 	)
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "provider", ChannelID: channel.OpenAI,
+		Groups: []state.GroupConfig{{ID: 1, Name: "provider", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{{ID: model, Alias: "client-alias"}}, Enabled: true,
 		}},
@@ -1304,7 +1304,7 @@ func TestHandlerUsesParameterOverrideAttemptObservations(t *testing.T) {
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 			Settings: config.Settings{state.SettingParameterOverrides: []any{
 				map[string]any{
@@ -1377,7 +1377,7 @@ func TestHandlerUnknownModelReasoningPolicyDispatches(t *testing.T) {
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-5.4", ReasoningEffort: "max"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1"}},
@@ -1417,7 +1417,7 @@ func TestHandlerUsesEntryReasoningEffortOverrideAttemptObservations(t *testing.T
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{
 				ID: "gpt-4o", EntryID: "e000000000001", ReasoningEffort: "low",
 			}}, Enabled: true,
@@ -1471,7 +1471,7 @@ func TestHandlerDoesNotReplaceParameterInjectedReasoningEffort(t *testing.T) {
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 			Settings: config.Settings{
 				state.SettingParameterOverrides: []any{map[string]any{
@@ -1520,7 +1520,7 @@ func TestHandlerDoesNotReplaceReasoningEffortForUnsupportedOperation(t *testing.
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{
@@ -2505,7 +2505,7 @@ func TestHandlerUsesFrozenRPMLimitAcrossSnapshotPublish(t *testing.T) {
 		t.Helper()
 		if _, err := manager.Publish(state.CompileInput{
 			ChannelRegistry: channel.NewRegistry(),
-			Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			Groups: []state.GroupConfig{{ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 			}},
 			AccessKeys: []state.AccessKeyConfig{{
@@ -4546,7 +4546,7 @@ func newContentFilterRequestLogRuntime(
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channelID,
+			ID: 1, Name: "openai", ChannelID: channelID,
 			Params: params, Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		}},
 		Credentials: []state.CredentialConfig{{

@@ -22,15 +22,14 @@ import (
 )
 
 type GroupSettingsResponse struct {
-	ChannelID      channel.ID                   `json:"channel_id"`
-	ConnectionType models.ConnectionType        `json:"connection_type"`
-	Params         json.RawMessage              `json:"params"`
-	Name           string                       `json:"name"`
-	ProviderURL    *string                      `json:"provider_url"`
-	Enabled        bool                         `json:"enabled"`
-	Overrides      config.Settings              `json:"overrides"`
-	Effective      GroupEffectiveConfigResponse `json:"effective"`
-	Proxy          outboundproxy.View           `json:"proxy"`
+	ChannelID   channel.ID                   `json:"channel_id"`
+	Params      json.RawMessage              `json:"params"`
+	Name        string                       `json:"name"`
+	ProviderURL *string                      `json:"provider_url"`
+	Enabled     bool                         `json:"enabled"`
+	Overrides   config.Settings              `json:"overrides"`
+	Effective   GroupEffectiveConfigResponse `json:"effective"`
+	Proxy       outboundproxy.View           `json:"proxy"`
 }
 
 type GroupSettingsUpdateRequest struct {
@@ -146,14 +145,13 @@ func groupSettingsResponse(
 	}
 	return GroupSettingsResponse{
 
-		ChannelID:      channelID,
-		ConnectionType: normalizeGroupConnectionType(group.ConnectionType),
-		Params:         validated.CanonicalJSON(),
-		Name:           group.Name,
-		ProviderURL:    cloneString(group.ProviderURL),
-		Enabled:        group.Enabled,
-		Overrides:      overrides,
-		Effective:      effective,
+		ChannelID:   channelID,
+		Params:      validated.CanonicalJSON(),
+		Name:        group.Name,
+		ProviderURL: cloneString(group.ProviderURL),
+		Enabled:     group.Enabled,
+		Overrides:   overrides,
+		Effective:   effective,
 	}, nil
 }
 
@@ -266,27 +264,15 @@ func (s *Service) UpdateGroupSettings(
 		if err := validateGroupRowCandidate(ctx, tx, group, s.channelRegistry); err != nil {
 			return fmt.Errorf("validate existing group %d: %w", groupID, app_errors.ErrInternalServer)
 		}
-		// 目标通道完全由 registry 派生：客户端只提交 channel_id，连接类型不参与信任边界。
+		// 目标通道完全由 registry 派生：客户端只提交 channel_id。
 		targetChannelID := channel.ID(group.ChannelID)
 		if normalized.channelID != nil {
 			targetChannelID = *normalized.channelID
 		}
-		targetConnectionType, known := s.channelRegistry.ConnectionType(targetChannelID)
-		if !known {
+		if _, known := s.channelRegistry.Get(targetChannelID); !known {
 			return app_errors.ErrValidation
 		}
 		channelChanged := targetChannelID != channel.ID(group.ChannelID)
-		if channelChanged {
-			// 读取凭据行前独立比较 registry 派生的源/目标 connection type；
-			// 即使组没有凭据，也必须验证连接类型。
-			sourceConnectionType, sourceKnown := s.channelRegistry.ConnectionType(channel.ID(group.ChannelID))
-			if !sourceKnown {
-				return app_errors.ErrInternalServer
-			}
-			if sourceConnectionType != targetConnectionType {
-				return app_errors.ErrValidation
-			}
-		}
 		if request.Proxy.Set && !request.Proxy.Null &&
 			!s.channelRegistry.SupportsOutboundProxy(targetChannelID) {
 			return app_errors.ErrValidation
@@ -295,9 +281,7 @@ func (s *Service) UpdateGroupSettings(
 		updates := make(map[string]any, 10)
 		if channelChanged {
 			group.ChannelID = string(targetChannelID)
-			group.ConnectionType = models.ConnectionType(targetConnectionType)
 			updates["channel_id"] = group.ChannelID
-			updates["connection_type"] = group.ConnectionType
 			targetChanged = true
 		}
 

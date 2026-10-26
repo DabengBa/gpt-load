@@ -194,7 +194,6 @@ export function ImportView() {
         ? {
             mode: 'new',
             channel_id: '',
-            connection_type: 'api_key',
             params: { base_url: scriptcatPayload.baseURL },
             proxy: { mode: 'inherit', url: '' },
             name: scriptcatPayload.groupName,

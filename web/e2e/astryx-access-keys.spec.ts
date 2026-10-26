@@ -42,7 +42,6 @@ const prodGroupOption = {
   id: 1,
   name: 'prod',
   channel_id: 'openai',
-  connection_type: 'api_key',
   params: {},
   provider_url: null,
   enabled: true,
@@ -60,7 +59,7 @@ const openaiChannel = {
 
   param_fields: [],
   credential_fields: [],
-  connection: { type: 'api_key', credential_input: 'batch_text' },
+  connection: { credential_input: 'batch_text' },
   capabilities: {
     model_discovery: false,
 

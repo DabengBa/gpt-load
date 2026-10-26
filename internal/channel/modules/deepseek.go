@@ -16,7 +16,6 @@ func DeepSeek() spec.Module {
 			SearchTerms: []string{"deep seek"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

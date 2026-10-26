@@ -55,7 +55,6 @@ func TestBeta1InitialMigrationCreatesCompleteFinalSchema(t *testing.T) {
 	}
 
 	for table, columns := range map[string][]string{
-		"groups":               {"connection_type"},
 		"credentials":          {"identity_fingerprint", "secret_version"},
 		"request_log_attempts": {"upstream_protocol"},
 		"model_prices":         {"mode_price_schedules"},
@@ -78,10 +77,8 @@ func TestBeta1InitialMigrationCreatesCompleteFinalSchema(t *testing.T) {
 		}
 	}
 
-	if err := db.Exec(`INSERT INTO groups (
-		name, channel_id, connection_type, params, models, enabled, created_at_ms, updated_at_ms
-	) VALUES ('invalid', 'openai', 'other', '{}', '[]', true, 1, 1)`).Error; err == nil {
-		t.Fatal("Beta.1 initial migration accepted an unsupported connection type")
+	if db.Migrator().HasColumn("groups", "connection_type") {
+		t.Fatal("Beta.1 initial migration declares the retired groups.connection_type column")
 	}
 }
 

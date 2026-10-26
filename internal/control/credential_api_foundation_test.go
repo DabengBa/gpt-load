@@ -24,7 +24,7 @@ func TestRestoreGroupCredentialLogsRuntimeRecovery(t *testing.T) {
 	fixture := newServiceFixture(t)
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("restore log"), ChannelID: channel.OpenAI,
-		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true}, Credentials: "restore-secret", ConnectionType: "api_key",
+		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true}, Credentials: "restore-secret",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ func TestCloudCredentialImportAcceptsOneStrictJSONObjectPerLine(t *testing.T) {
 			created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 				Name: stringPointer("cloud " + test.name), ChannelID: test.channelID,
 				Params: json.RawMessage(test.params), Models: optionalGroupModels{Set: true},
-				Credentials: test.credentials, ConnectionType: "api_key",
+				Credentials: test.credentials,
 			})
 			if err != nil {
 				t.Fatalf("CreateGroup() error = %v", err)
@@ -200,7 +200,7 @@ func TestVertexCredentialImportAcceptsPastedServiceAccountJSON(t *testing.T) {
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("vertex pasted credential"), ChannelID: channel.GoogleVertex,
 		Params: json.RawMessage(`{"location":"us-central1"}`),
-		Models: optionalGroupModels{Set: true}, Credentials: raw, ConnectionType: "api_key",
+		Models: optionalGroupModels{Set: true}, Credentials: raw,
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -236,7 +236,7 @@ func TestVertexCredentialImportAcceptsOneRawServiceAccountPerLine(t *testing.T) 
 		created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 			Name: stringPointer(fmt.Sprintf("vertex credential batch %d", index)), ChannelID: channel.GoogleVertex,
 			Params: json.RawMessage(`{"location":"us-central1"}`),
-			Models: optionalGroupModels{Set: true}, Credentials: credential, ConnectionType: "api_key",
+			Models: optionalGroupModels{Set: true}, Credentials: credential,
 			ConfirmSameTarget: index > 0,
 		})
 		if err != nil {
@@ -263,7 +263,7 @@ func TestGroupCredentialMutationsPreserveRuntimeIdentityAndHealthContracts(t *te
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("credential mutations"), ChannelID: channel.OpenAI,
 		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true},
-		Credentials: "first-secret", ConnectionType: "api_key",
+		Credentials: "first-secret",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -298,7 +298,7 @@ func TestGroupCredentialMutationsPreserveRuntimeIdentityAndHealthContracts(t *te
 	if _, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("second credential rejected"), ChannelID: channel.OpenAI,
 		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true},
-		Credentials: "one\ntwo", ConnectionType: "api_key",
+		Credentials: "one\ntwo",
 	}); err == nil {
 		t.Fatal("multiple credentials in one group error = nil")
 	}
@@ -328,7 +328,7 @@ func TestCredentialHTTPUsesCanonicalWireAndRejectsLegacyFields(t *testing.T) {
 	fixture := newServiceFixture(t)
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("credential http"), ChannelID: channel.OpenAI,
-		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true}, Credentials: "first-secret", ConnectionType: "api_key",
+		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true}, Credentials: "first-secret",
 	})
 	if err != nil {
 		t.Fatal(err)

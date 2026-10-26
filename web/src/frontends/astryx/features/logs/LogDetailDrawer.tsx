@@ -947,7 +947,7 @@ export function LogDetailDrawer({
   }
 
   // 已知渠道的密钥展示为掩码，复制时通过受保护的 reveal 接口取真值。
-  const revealsCredential = channelDefinition(log?.channel_id)?.connection.type === 'api_key'
+  const revealsCredential = channelDefinition(log?.channel_id) !== null
 
   async function resolveCredentialCopyValue(): Promise<string> {
     const record = log

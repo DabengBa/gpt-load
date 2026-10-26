@@ -139,11 +139,11 @@ func TestImagesGenerationPrefersNativeBeforeGeminiConversions(t *testing.T) {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ID: 1, ChannelID: channel.Gemini, ConnectionType: "api_key", Params: json.RawMessage(`{}`),
+			{ID: 1, ChannelID: channel.Gemini, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "gemini-3.1-flash-image", Alias: "public"}}, Enabled: true},
-			{ID: 2, ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`),
+			{ID: 2, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "gpt-image-2", Alias: "public"}}, Enabled: true},
-			{ID: 3, ChannelID: channel.Gemini, ConnectionType: "api_key", Params: json.RawMessage(`{}`),
+			{ID: 3, ChannelID: channel.Gemini, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "gemini-3.1-flash-image", Alias: "public"}}, Enabled: true},
 		},
 	})
@@ -200,7 +200,7 @@ func TestIteratorRejectsResponsesResourceOperationWithoutConfiguredModels(t *tes
 
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 7, Name: "responses", ChannelID: channel.OpenAI,
+		Groups: []state.GroupConfig{{ID: 7, Name: "responses", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Enabled: true,
 		}},
 	})
@@ -258,10 +258,10 @@ func TestCandidateGroupIDsForQueryRejectsResourceOperationWithoutConfiguredModel
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 7, Name: "official", ChannelID: channel.OpenAI,
+			{ID: 7, Name: "official", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 8, Name: "compatible", ChannelID: channel.OpenAICompatible,
+			{ID: 8, Name: "compatible", ChannelID: channel.OpenAICompatible,
 				Params: json.RawMessage(`{"base_url":"https://compatible.example/v1"}`), Enabled: true,
 			},
 		},
@@ -287,11 +287,11 @@ func TestRouteRequirementKeepsStatefulResponsesOnNativeTargets(t *testing.T) {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 7, Name: "official", ChannelID: channel.OpenAI,
+			{ID: 7, Name: "official", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "gpt-native", Alias: "gpt"}},
 			},
-			{ConnectionType: "api_key", ID: 8, Name: "compatible", ChannelID: channel.OpenAICompatible,
+			{ID: 8, Name: "compatible", ChannelID: channel.OpenAICompatible,
 				Params: json.RawMessage(`{"base_url":"https://compatible.example/v1"}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "gpt-converted", Alias: "gpt"}},
 			},
@@ -336,23 +336,23 @@ func TestResponsesContinuationSeparatesStorageFromOtherResourceRequirements(t *t
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 7, Name: "openai", ChannelID: channel.OpenAI,
+			{ID: 7, Name: "openai", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "gpt-openai", Alias: "gpt"}},
 			},
-			{ConnectionType: "api_key", ID: 8, Name: "openrouter", ChannelID: channel.OpenRouter,
+			{ID: 8, Name: "openrouter", ChannelID: channel.OpenRouter,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "openai/gpt", Alias: "gpt"}},
 			},
-			{ConnectionType: "api_key", ID: 9, Name: "xai", ChannelID: channel.XAI,
+			{ID: 9, Name: "xai", ChannelID: channel.XAI,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "grok", Alias: "gpt"}},
 			},
-			{ConnectionType: "api_key", ID: 10, Name: "stateless-native", ChannelID: channel.OpenRouter,
+			{ID: 10, Name: "stateless-native", ChannelID: channel.OpenRouter,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "gpt-codex", Alias: "gpt"}},
 			},
-			{ConnectionType: "api_key", ID: 11, Name: "converted", ChannelID: channel.Anthropic,
+			{ID: 11, Name: "converted", ChannelID: channel.Anthropic,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "claude", Alias: "gpt"}},
 			},
@@ -503,13 +503,12 @@ func TestResponsesStorePreferenceAllowsVerifiedGrokFallback(t *testing.T) {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key",
-			ID:             5,
-			Name:           "grok",
-			ChannelID:      channel.Anthropic,
-			Params:         json.RawMessage(`{}`),
-			Enabled:        true,
-			Models:         []state.ModelConfig{{ID: "grok-upstream", Alias: "gpt"}},
+			ID:        5,
+			Name:      "grok",
+			ChannelID: channel.Anthropic,
+			Params:    json.RawMessage(`{}`),
+			Enabled:   true,
+			Models:    []state.ModelConfig{{ID: "grok-upstream", Alias: "gpt"}},
 		}},
 	})
 	if err != nil {
@@ -582,7 +581,7 @@ func TestResponsesStorePreferenceKeepsUpstreamManagedGatewayUndowngraded(t *test
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 12, Name: "newapi", ChannelID: channel.NewAPI,
+			ID: 12, Name: "newapi", ChannelID: channel.NewAPI,
 			Params: json.RawMessage(`{"base_url":"https://newapi.example"}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "upstream", Alias: "gpt"}},
 		}},
@@ -611,12 +610,12 @@ func TestResponsesStorePreferenceDefersStatelessDeepSeekTarget(t *testing.T) {
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
 			{
-				ConnectionType: "api_key", ID: 11, Name: "deepseek", ChannelID: channel.DeepSeek,
+				ID: 11, Name: "deepseek", ChannelID: channel.DeepSeek,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "deepseek-model", Alias: "gpt"}},
 			},
 			{
-				ConnectionType: "api_key", ID: 12, Name: "openai", ChannelID: channel.OpenAI,
+				ID: 12, Name: "openai", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "openai-model", Alias: "gpt"}},
 			},
@@ -651,7 +650,7 @@ func TestOpenRouterRoutesResponsesWithReasoningOptOut(t *testing.T) {
 
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 9, Name: "openrouter", ChannelID: channel.OpenRouter,
+		Groups: []state.GroupConfig{{ID: 9, Name: "openrouter", ChannelID: channel.OpenRouter,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "openai/gpt-5.6-luna", Alias: "gpt-5.6-luna"}},
 		}},
@@ -695,7 +694,7 @@ func TestCandidateGroupIDsForQueryRoutesAnthropicThinkingToOpenAICompatible(t *t
 
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 10, Name: "compatible", ChannelID: channel.OpenAICompatible,
+		Groups: []state.GroupConfig{{ID: 10, Name: "compatible", ChannelID: channel.OpenAICompatible,
 			Params: json.RawMessage(`{"base_url":"https://compatible.example/v1"}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "reasoning-model", Alias: "claude-sonnet"}},
 		}},
@@ -820,14 +819,14 @@ func channelSchedulerSnapshot(t *testing.T) *state.ConfigSnapshot {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 1, Name: "converted", ChannelID: channel.Anthropic, Params: json.RawMessage(`{}`),
+			{ID: 1, Name: "converted", ChannelID: channel.Anthropic, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{
 					{ID: "converted-model", Alias: "public"},
 					{ID: "converted-only", Alias: "converted-only"},
 				},
 				Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 2, Name: "native", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 2, Name: "native", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "native-model", Alias: "public"}}, Enabled: true,
 			},
 		},
@@ -841,22 +840,22 @@ func channelSchedulerSnapshot(t *testing.T) *state.ConfigSnapshot {
 func responsesStoreSchedulerSnapshot(t *testing.T, includeExact bool) *state.ConfigSnapshot {
 	t.Helper()
 	groups := []state.GroupConfig{
-		{ConnectionType: "api_key", ID: 1, Name: "stateless-native", ChannelID: channel.OpenRouter,
+		{ID: 1, Name: "stateless-native", ChannelID: channel.OpenRouter,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "gpt-codex", Alias: "gpt"}},
 		},
-		{ConnectionType: "api_key", ID: 3, Name: "converted", ChannelID: channel.Anthropic,
+		{ID: 3, Name: "converted", ChannelID: channel.Anthropic,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "claude", Alias: "gpt"}},
 		},
-		{ConnectionType: "api_key", ID: 4, Name: "stateless-native", ChannelID: channel.OpenRouter,
+		{ID: 4, Name: "stateless-native", ChannelID: channel.OpenRouter,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "openai/gpt", Alias: "gpt"}},
 		},
 	}
 	if includeExact {
 		groups = append(groups, state.GroupConfig{
-			ConnectionType: "api_key", ID: 2, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 2, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "gpt-openai", Alias: "gpt"}},
 		})

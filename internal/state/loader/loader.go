@@ -17,7 +17,6 @@ import (
 
 	"gpt-load/internal/accessquota"
 	"gpt-load/internal/channel"
-	"gpt-load/internal/connection"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/encryption"
@@ -305,12 +304,11 @@ func (l *Loader) validatePersistedCredentials(
 		return nil
 	}
 	type validationTarget struct {
-		channelID      channel.ID
-		connectionType string
+		channelID channel.ID
 	}
 	targets := make(map[uint]validationTarget, len(input.Groups))
 	for _, group := range input.Groups {
-		targets[group.ID] = validationTarget{channelID: group.ChannelID, connectionType: group.ConnectionType}
+		targets[group.ID] = validationTarget{channelID: group.ChannelID}
 	}
 	for _, entry := range entries {
 		target, exists := targets[entry.GroupID]
@@ -324,11 +322,6 @@ func (l *Loader) validatePersistedCredentials(
 		raw := []byte(plaintext)
 		plaintext = ""
 		var canonical []byte
-		expectedConnection, known := l.channelRegistry.ConnectionType(target.channelID)
-		if !known || strings.TrimSpace(target.connectionType) != expectedConnection {
-			clear(raw)
-			return fmt.Errorf("validate credential %d for group %d: connection does not match channel", entry.ID, entry.GroupID)
-		}
 		credential, validateErr := l.channelRegistry.ValidateCredential(target.channelID, raw)
 		clear(raw)
 		if validateErr != nil {
@@ -445,7 +438,7 @@ func BuildGroupCredentialEntries(
 	var group models.Group
 	if err := db.WithContext(ctx).
 		Model(&models.Group{}).
-		Select("id", "channel_id", "connection_type", "params").
+		Select("id", "channel_id", "params").
 		Where("id = ?", groupID).
 		Take(&group).Error; err != nil {
 		return nil, fmt.Errorf("query group %d: %w", groupID, err)
@@ -471,7 +464,7 @@ func BuildCredentialEntries(ctx context.Context, db *gorm.DB) ([]state.Credentia
 	var groups []models.Group
 	if err := db.WithContext(ctx).
 		Model(&models.Group{}).
-		Select("id", "channel_id", "connection_type", "params").
+		Select("id", "channel_id", "params").
 		Order("id ASC").
 		Find(&groups).Error; err != nil {
 		return nil, fmt.Errorf("query credential targets: %w", err)
@@ -677,14 +670,13 @@ func mapSystemAndGroups(
 			})
 		}
 		group := state.GroupConfig{
-			ID:             row.ID,
-			Name:           row.Name,
-			ChannelID:      channel.ID(row.ChannelID),
-			ConnectionType: string(row.ConnectionType),
-			Params:         append(json.RawMessage(nil), row.Params...),
-			Models:         runtimeModels,
-			Settings:       settings,
-			Enabled:        row.Enabled,
+			ID:        row.ID,
+			Name:      row.Name,
+			ChannelID: channel.ID(row.ChannelID),
+			Params:    append(json.RawMessage(nil), row.Params...),
+			Models:    runtimeModels,
+			Settings:  settings,
+			Enabled:   row.Enabled,
 		}
 		if row.ProxyConfig != nil {
 			proxy, err := decodePersistedProxy(*row.ProxyConfig, encryptionService)
@@ -815,7 +807,6 @@ func mapCredentialConfigs(
 			IdentityGeneration: CredentialIdentityGeneration(
 				row.IdentityFingerprint,
 				target.channelID,
-				target.connectionType,
 				target.params,
 			),
 			Fingerprint: row.Fingerprint,
@@ -835,7 +826,6 @@ func mapCredentials(rows []models.Credential, groups []models.Group) []state.Cre
 			IdentityGeneration: CredentialIdentityGeneration(
 				row.IdentityFingerprint,
 				target.channelID,
-				target.connectionType,
 				target.params,
 			),
 			Fingerprint:    row.Fingerprint,
@@ -853,18 +843,16 @@ func credentialVersion(secretVersion uint64) uint64 {
 }
 
 type credentialTarget struct {
-	channelID      string
-	connectionType string
-	params         json.RawMessage
+	channelID string
+	params    json.RawMessage
 }
 
 func credentialTargets(groups []models.Group) map[uint]credentialTarget {
 	targets := make(map[uint]credentialTarget, len(groups))
 	for _, group := range groups {
 		targets[group.ID] = credentialTarget{
-			channelID:      group.ChannelID,
-			connectionType: string(group.ConnectionType),
-			params:         append(json.RawMessage(nil), bytes.TrimSpace(group.Params)...),
+			channelID: group.ChannelID,
+			params:    append(json.RawMessage(nil), bytes.TrimSpace(group.Params)...),
 		}
 	}
 	return targets
@@ -875,7 +863,6 @@ func credentialTargets(groups []models.Group) map[uint]credentialTarget {
 func CredentialIdentityGeneration(
 	identityFingerprint string,
 	channelID string,
-	connectionType string,
 	params json.RawMessage,
 ) uint64 {
 	hasher := fnv.New64a()
@@ -883,9 +870,10 @@ func CredentialIdentityGeneration(
 	_, _ = hasher.Write([]byte{0})
 	_, _ = hasher.Write([]byte(channelID))
 	_, _ = hasher.Write([]byte{0})
-	connectionType = connection.Normalize(connectionType)
-	_, _ = hasher.Write([]byte(connectionType))
-	_, _ = hasher.Write([]byte{0})
+	// "api_key\x00" is the fixed authentication identity domain in this digest,
+	// not a configurable connection type. Keep these bytes stable so unchanged
+	// credentials retain their identity across restarts and checkpoint restores.
+	_, _ = hasher.Write([]byte("api_key\x00"))
 	_, _ = hasher.Write(bytes.TrimSpace(params))
 	generation := hasher.Sum64()
 	if generation == 0 {

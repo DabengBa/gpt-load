@@ -52,7 +52,7 @@ func TestHandlerForwardsStructuredCloudCredentialWithoutAPIKeyAssumption(t *test
 	handler, manager, registry := newHandlerForTest(t, forwarder)
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "bedrock", ChannelID: channel.AWSBedrock,
+		Groups: []state.GroupConfig{{ID: 1, Name: "bedrock", ChannelID: channel.AWSBedrock,
 			Params: json.RawMessage(`{"region":"us-east-1"}`),
 			Models: []state.ModelConfig{{ID: "anthropic.claude-test"}}, Enabled: true,
 		}},
@@ -1661,7 +1661,7 @@ func TestHandlerEnforcesModelUTF8ByteLimitBeforeAttempt(t *testing.T) {
 			)
 			if _, err := manager.Publish(state.CompileInput{
 				ChannelRegistry: channel.NewRegistry(),
-				Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				Groups: []state.GroupConfig{{ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 					Models: []state.ModelConfig{{
 						ID:    "gpt-4o",
 						Alias: test.model,
@@ -1840,7 +1840,7 @@ func TestHandlerModelEndpointHasNoDataPlaneSideEffects(t *testing.T) {
 	manager := state.NewManager()
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+		Groups: []state.GroupConfig{{ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{{ID: "alpha"}}, Enabled: true,
 		}},
 		AccessKeys: []state.AccessKeyConfig{{
@@ -1904,10 +1904,10 @@ func newModelListHandlerEngineWithLimit(
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 1, Name: "multi", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, Name: "multi", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "zeta"}, {ID: "alpha"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 2, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 2, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "beta"}}, Enabled: true,
 			},
 		},
@@ -4067,7 +4067,7 @@ func TestHandlerReturnsModelRequiredByFilterForProtocolOnlyRequest(t *testing.T)
 	keyService := encryptiontest.Service(t, "handler-test-master-key")
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1,
+		Groups: []state.GroupConfig{{ID: 1,
 			Name:      "responses",
 			ChannelID: channel.OpenAI,
 			Params:    json.RawMessage(`{}`),
@@ -4353,9 +4353,9 @@ func TestHandlerKeepsFrozenSnapshotAcrossRetry(t *testing.T) {
 		if _, err := manager.Publish(state.CompileInput{
 			ChannelRegistry: channel.NewRegistry(),
 			Groups: []state.GroupConfig{
-				{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				{ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 					Models: current.Groups[1].Models, Settings: config.Settings{state.SettingBlacklistThreshold: 7}, Enabled: true},
-				{ConnectionType: "api_key", ID: 2, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+				{ID: 2, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 					Models: current.Groups[2].Models, Settings: config.Settings{state.SettingBlacklistThreshold: 7}, Enabled: true},
 			},
 			Credentials: []state.CredentialConfig{
@@ -4406,12 +4406,12 @@ func newRealGatewayEngine(t *testing.T, upstreamURL string, upstreamKeys ...stri
 	for index := range upstreamKeys {
 		groupID := uint(index + 1)
 		credentialConfigs = append(credentialConfigs, testCredentialConfig(uint(index+1), groupID))
-		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: groupID, Name: "openai", ChannelID: channelID, Params: params,
+		groups = append(groups, state.GroupConfig{ID: groupID, Name: "openai", ChannelID: channelID, Params: params,
 			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		})
 	}
 	if len(groups) == 0 {
-		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channelID, Params: params,
+		groups = append(groups, state.GroupConfig{ID: 1, Name: "openai", ChannelID: channelID, Params: params,
 			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		})
 	}
@@ -4485,13 +4485,12 @@ func newResponsesStoreHandlerRuntime(
 	t.Helper()
 	handler, manager, registry := newHandlerForTest(t, forwarder)
 	groups := []state.GroupConfig{{
-		ConnectionType: "api_key",
-		ID:             1,
-		Name:           "stateless-native",
-		ChannelID:      channel.OpenRouter,
-		Params:         json.RawMessage(`{}`),
-		Models:         []state.ModelConfig{{ID: "gpt-codex", Alias: "gpt"}},
-		Enabled:        true,
+		ID:        1,
+		Name:      "stateless-native",
+		ChannelID: channel.OpenRouter,
+		Params:    json.RawMessage(`{}`),
+		Models:    []state.ModelConfig{{ID: "gpt-codex", Alias: "gpt"}},
+		Enabled:   true,
 	}}
 	credentials := []state.CredentialConfig{{
 		ID: 1, GroupID: 1,
@@ -4499,13 +4498,12 @@ func newResponsesStoreHandlerRuntime(
 	}}
 	if includeExact {
 		groups = append(groups, state.GroupConfig{
-			ConnectionType: "api_key",
-			ID:             2,
-			Name:           "openai",
-			ChannelID:      channel.OpenAI,
-			Params:         json.RawMessage(`{}`),
-			Models:         []state.ModelConfig{{ID: "gpt-openai", Alias: "gpt"}},
-			Enabled:        true,
+			ID:        2,
+			Name:      "openai",
+			ChannelID: channel.OpenAI,
+			Params:    json.RawMessage(`{}`),
+			Models:    []state.ModelConfig{{ID: "gpt-openai", Alias: "gpt"}},
+			Enabled:   true,
 		})
 		credentials = append(credentials, state.CredentialConfig{
 			ID: 2, GroupID: 2,
@@ -4590,7 +4588,7 @@ func publishHandlerPolicySettings(
 		Groups: func() []state.GroupConfig {
 			groups := make([]state.GroupConfig, 0, credentialCount)
 			for index := 0; index < credentialCount; index++ {
-				groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: uint(index + 1), Name: fmt.Sprintf("openai-%d", index+1), ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Settings: groupSettings, Enabled: true})
+				groups = append(groups, state.GroupConfig{ID: uint(index + 1), Name: fmt.Sprintf("openai-%d", index+1), ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Settings: groupSettings, Enabled: true})
 			}
 			return groups
 		}(),
@@ -4654,7 +4652,7 @@ func newHandlerForTestWithStats(
 	}
 	groups := make([]state.GroupConfig, 0, len(upstreamKeys)+1)
 	for index := 0; index < len(upstreamKeys) || index == 0; index++ {
-		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: uint(index + 1), Name: "openai", ChannelID: channel.OpenAI,
+		groups = append(groups, state.GroupConfig{ID: uint(index + 1), Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o", EntryID: "e000000000001"}}, Enabled: true,
 		})
 	}
@@ -4727,11 +4725,11 @@ func newConvertedFallbackHandlerTestRuntimeWithSystemSettings(
 	channelRegistry := channel.NewRegistry()
 	manager := state.NewManager()
 	groups := []state.GroupConfig{
-		{ConnectionType: "api_key", ID: 1, Name: "compatible-one", ChannelID: channel.OpenAICompatible,
+		{ID: 1, Name: "compatible-one", ChannelID: channel.OpenAICompatible,
 			Params: json.RawMessage(`{"base_url":"https://one.example/v1"}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "upstream-one", Alias: "claude-client"}},
 		},
-		{ConnectionType: "api_key", ID: 2, Name: "compatible-two", ChannelID: channel.OpenAICompatible,
+		{ID: 2, Name: "compatible-two", ChannelID: channel.OpenAICompatible,
 			Params: json.RawMessage(`{"base_url":"https://two.example/v1"}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "upstream-two", Alias: "claude-client"}},
 		},

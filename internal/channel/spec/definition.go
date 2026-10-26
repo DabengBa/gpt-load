@@ -121,17 +121,8 @@ type Field struct {
 	Normalizer ValueNormalizer
 }
 
-// ConnectionType describes credential acquisition and lifecycle only. It is
-// never an execution dispatch key.
-type ConnectionType string
-
-const (
-	ConnectionAPIKey ConnectionType = "api_key"
-)
-
 // Connection is the single connection contract for a channel.
 type Connection struct {
-	Type            ConnectionType
 	CredentialInput string
 }
 

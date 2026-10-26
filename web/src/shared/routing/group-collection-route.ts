@@ -1,7 +1,6 @@
 import type { SharedRouteQuery, SharedRouteQueryRaw } from './route-query'
 
 import type {
-  ConnectionType,
   GroupCollectionFilters,
   GroupCollectionSort,
   GroupCollectionStatus,
@@ -20,7 +19,6 @@ const defaultFilters: GroupCollectionFilters = {
   page_size: 100,
 }
 const statuses = new Set<GroupCollectionStatus>(['available', 'unavailable', 'disabled'])
-const connectionTypes = new Set<ConnectionType>(['api_key'])
 const sorts = new Set<GroupCollectionSort>(['recent', 'status', 'name', 'created'])
 
 export function normalizeGroupCollectionSearchQuery(value: string | undefined): string | undefined {
@@ -35,16 +33,12 @@ export function parseGroupCollectionRouteQuery(query: SharedRouteQuery): GroupCo
   const filters: GroupCollectionFilters = { ...defaultFilters }
   const q = normalizeGroupCollectionSearchQuery(scalarRouteQuery(query.q))
   const status = scalarRouteQuery(query.status)
-  const connectionType = scalarRouteQuery(query.connection_type)
   const sort = scalarRouteQuery(query.sort)
   const page = parsePositiveRouteInteger(query.page)
 
   if (q) filters.q = q
   if (status !== undefined && statuses.has(status as GroupCollectionStatus)) {
     filters.status = status as GroupCollectionStatus
-  }
-  if (connectionType !== undefined && connectionTypes.has(connectionType as ConnectionType)) {
-    filters.connection_type = connectionType as ConnectionType
   }
   if (sort !== undefined && sorts.has(sort as GroupCollectionSort)) {
     filters.sort = sort as GroupCollectionSort
@@ -61,7 +55,6 @@ export function serializeGroupCollectionRouteQuery(
   const q = normalizeGroupCollectionSearchQuery(filters.q)
   if (q) query.q = q
   if (filters.status !== undefined) query.status = filters.status
-  if (filters.connection_type !== undefined) query.connection_type = filters.connection_type
   if (filters.sort !== defaultFilters.sort) query.sort = filters.sort
   if (filters.page !== defaultFilters.page) query.page = String(filters.page)
   return query

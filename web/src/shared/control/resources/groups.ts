@@ -3,7 +3,6 @@ import { keepPreviousData, type QueryClient, type QueryFunctionContext } from '@
 import type { ApiClient } from '@shared/http/client'
 import type {
   ChannelParamsDto,
-  ConnectionType,
   GroupCollectionFilters,
   GroupCollectionItemDto,
   GroupCollectionPaginationDto,
@@ -52,7 +51,6 @@ const groupSummaryFields = [
   'name',
 
   'channel_id',
-  'connection_type',
   'params',
   'provider_url',
   'service_status',
@@ -65,7 +63,6 @@ const groupSettingsFields = [
   'name',
 
   'channel_id',
-  'connection_type',
   'params',
   'provider_url',
   'enabled',
@@ -95,7 +92,6 @@ const groupCollectionItemFields = [
   'name',
 
   'channel_id',
-  'connection_type',
   'params',
   'provider_url',
   'status',
@@ -109,7 +105,6 @@ const groupOptionFields = [
   'id',
   'name',
   'channel_id',
-  'connection_type',
   'params',
   'provider_url',
   'enabled',
@@ -118,7 +113,6 @@ const groupOptionFields = [
 
 const groupCollectionStatuses = ['available', 'unavailable', 'disabled'] as const
 const groupUnavailableReasons = ['no_available_credentials', 'no_models'] as const
-const connectionTypes = ['api_key'] as const
 const runtimeSettingFields = [
   'first_byte_timeout',
   'request_timeout',
@@ -162,7 +156,6 @@ export interface GroupInUseData {
 
 export interface ModelDiscoveryRequest {
   channel_id: string
-  connection_type: ConnectionType
   params: ChannelParamsDto
   credentials?: string
   proxy?: ProxyConfigInput
@@ -190,7 +183,6 @@ export interface GroupModelsReplaceRequest {
 export interface GroupCreateRequest {
   name?: string
   channel_id: string
-  connection_type: ConnectionType
   params: ChannelParamsDto
   provider_url?: string | null
   models: GroupModelUpdateDto[]
@@ -404,7 +396,6 @@ export function projectGroupSummary(value: unknown): GroupSummaryDto {
     id: projectSafeInteger(record.id, { minimum: 1 }),
     name: projectNonBlankString(record.name),
     channel_id: projectChannelID(record.channel_id),
-    connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
 
@@ -430,7 +421,6 @@ export function projectGroupSettings(value: unknown): GroupSettingsDto {
   return {
     name: projectNonBlankString(record.name),
     channel_id: projectChannelID(record.channel_id),
-    connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
 
@@ -556,7 +546,6 @@ function projectGroupCollectionItem(value: unknown): GroupCollectionItemDto {
     id: projectSafeInteger(record.id, { minimum: 1 }),
     name: projectNonBlankString(record.name),
     channel_id: projectChannelID(record.channel_id),
-    connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
     status,
@@ -624,7 +613,6 @@ function projectGroupOption(value: unknown): GroupOptionDto {
     id: projectSafeInteger(record.id, { minimum: 1 }),
     name: projectNonBlankString(record.name),
     channel_id: projectChannelID(record.channel_id),
-    connection_type: projectEnum(record.connection_type, connectionTypes),
     params: projectChannelParams(record.params),
     provider_url: projectNullableHTTPURL(record.provider_url),
     enabled: projectBoolean(record.enabled),
@@ -721,9 +709,6 @@ export async function listGroupCollection(
   params.set('page_size', String(normalized.page_size))
   if (normalized.q !== undefined) params.set('q', normalized.q)
   if (normalized.status !== undefined) params.set('status', normalized.status)
-  if (normalized.connection_type !== undefined) {
-    params.set('connection_type', normalized.connection_type)
-  }
   const result = projectGroupCollection(
     await client.request(`/api/groups?${params.toString()}`, { method: 'GET', signal }),
   )

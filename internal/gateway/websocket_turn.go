@@ -420,7 +420,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			}
 			return
 		}
-		credential, err := normalizeChannelCredential(h.channels, selection.ChannelID, selection.Group.ConnectionType, plain)
+		credential, err := normalizeChannelCredential(h.channels, selection.ChannelID, plain)
 		if err != nil {
 			iterator.MarkAttempt(selection)
 			if recordPreparationFailure(selection, ref, "credential_normalization_failed", "Stored credential could not be prepared.", execution.ErrorScopeCredential) {
