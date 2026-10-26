@@ -50,6 +50,8 @@ test('API-only recovery preserves API/cloud/external gateway drafts without stag
   }
   const existing = { mode: 'existing', group_id: 9, credentials: 'test-only' }
   assert.deepEqual(roundTrip(existing), existing)
+  const channelNotSelected = { ...draft(), channel_id: '', credentials: 'key-before-login' }
+  assert.deepEqual(roundTrip(channelNotSelected), channelNotSelected)
 })
 
 test('API-only recovery rejects retired connection kinds and staging fields', () => {
