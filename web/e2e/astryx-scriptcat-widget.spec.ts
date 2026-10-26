@@ -94,7 +94,7 @@ async function mockImportAPI(page: Page): Promise<void> {
                       default_value: null,
                     },
                   ],
-                  connection: { type: 'api_key', credential_input: 'batch_text' },
+                  connection: { credential_input: 'batch_text' },
                   capabilities: { model_discovery: false, outbound_proxy: false },
                   routes: [],
                   client_protocols: [],

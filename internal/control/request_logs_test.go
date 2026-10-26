@@ -1388,9 +1388,8 @@ func TestCredentialLabelsMasksFromRegistryWithoutDatabaseReads(t *testing.T) {
 	fixture := newServiceFixture(t)
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("log labels"), ChannelID: channel.OpenAI,
-		ConnectionType: models.ConnectionTypeAPIKey,
-		Models:         optionalGroupModels{Set: true},
-		Credentials:    "sk-log-label-abcdefghijklmnop",
+		Models:      optionalGroupModels{Set: true},
+		Credentials: "sk-log-label-abcdefghijklmnop",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)

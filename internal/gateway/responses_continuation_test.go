@@ -519,7 +519,7 @@ func setContinuationChannel(t *testing.T, handler *Handler, channelID channel.ID
 	credentials := make([]state.CredentialConfig, 0, 2)
 	for _, id := range []uint{1, 2} {
 		groups = append(groups, state.GroupConfig{
-			ID: id, Name: string(channelID), ChannelID: channelID, ConnectionType: "api_key",
+			ID: id, Name: string(channelID), ChannelID: channelID,
 			Params: params, Models: []state.ModelConfig{{ID: "gpt-4o", EntryID: "e000000000001"}}, Enabled: true,
 		})
 		credentials = append(credentials, state.CredentialConfig{

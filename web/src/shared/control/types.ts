@@ -21,7 +21,6 @@ export type GroupUnavailableReason = 'no_available_credentials' | 'no_models'
 export type GroupCollectionSort = 'recent' | 'status' | 'name' | 'created'
 export type ModelPricingStatus = 'pending' | 'configured'
 export type ChannelParamsDto = Record<string, string>
-export type ConnectionType = 'api_key'
 export type ProxyConfiguredMode = 'inherit' | 'direct' | 'custom'
 export type ProxyEffectiveMode = 'direct' | 'environment' | 'custom'
 export type ProxyEffectiveSource = 'credential' | 'group' | 'global' | 'environment' | 'default'
@@ -40,7 +39,6 @@ export type ProxyMutation = ProxyConfigInput | null
 export interface GroupCollectionFilters {
   q?: string
   status?: GroupCollectionStatus
-  connection_type?: ConnectionType
   sort: GroupCollectionSort
   page: number
   page_size: 100
@@ -58,7 +56,6 @@ export interface GroupCollectionItemDto {
   name: string
 
   channel_id: string
-  connection_type: ConnectionType
   params: ChannelParamsDto
   provider_url: string | null
   status: GroupCollectionStatus
@@ -87,7 +84,6 @@ export interface GroupSummaryDto {
   name: string
 
   channel_id: string
-  connection_type: ConnectionType
   params: ChannelParamsDto
   provider_url: string | null
   service_status: GroupCollectionStatus
@@ -145,7 +141,6 @@ export interface GroupSettingsDto {
   name: string
 
   channel_id: string
-  connection_type: ConnectionType
   params: ChannelParamsDto
   provider_url: string | null
   enabled: boolean
@@ -193,7 +188,6 @@ export interface CredentialRecoveryDto {
 
 export interface CredentialItemDto {
   credential_id: number
-  connection_type: ConnectionType
   secret_version: number
   mask: string
   effective_status: CredentialStatus
@@ -246,7 +240,6 @@ export interface GroupOptionDto {
   id: number
   name: string
   channel_id: string
-  connection_type: ConnectionType
   params: ChannelParamsDto
   provider_url: string | null
   enabled: boolean

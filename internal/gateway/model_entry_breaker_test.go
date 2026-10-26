@@ -319,7 +319,7 @@ func publishBreakerSnapshot(
 	if _, err := manager.Publish(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{{
 				ID: "gpt-4o", EntryID: breakerTestEntryID, CircuitBreaker: breaker,

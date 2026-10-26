@@ -29,11 +29,6 @@ export default {
         sortLabel: '並び順',
         reset: '条件をリセット',
       },
-      connectionType: {
-        label: '接続方式',
-        all: 'すべての接続方式',
-        apiKey: 'API キー',
-      },
       sort: {
         recent: '最近利用',
         status: 'ステータス優先',

@@ -68,7 +68,6 @@ for (const width of [1440, 900, 1920]) {
               id,
               name: id === 1 ? 'alpha' : 'beta',
               channel_id: 'openai_compatible',
-              connection_type: 'api_key',
               params: {},
               provider_url: null,
               status: 'available',

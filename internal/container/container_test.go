@@ -1025,7 +1025,7 @@ func TestContainerHealthEndpointReadsSharedStatsStore(t *testing.T) {
 				_ = sqlDB.Close()
 			}
 		})
-		if _, publishErr := manager.Publish(state.CompileInput{ChannelRegistry: channels, Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "shared", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+		if _, publishErr := manager.Publish(state.CompileInput{ChannelRegistry: channels, Groups: []state.GroupConfig{{ID: 1, Name: "shared", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 		}}}); publishErr != nil {
 			t.Fatalf("Publish() error = %v", publishErr)

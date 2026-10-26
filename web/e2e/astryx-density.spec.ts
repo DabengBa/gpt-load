@@ -120,7 +120,6 @@ test('compact table row height on the groups collection', async ({ page }) => {
           name: `Group ${id}`,
 
           channel_id: 'openai',
-          connection_type: 'api_key',
           params: {},
           provider_url: null,
           status: 'available',

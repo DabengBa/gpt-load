@@ -18,7 +18,6 @@ func GPTLoad() spec.Module {
 			SearchTerms: []string{"gpt-load", "gptload", "gpt load", "gl", "gpt-load v2"},
 			Description: "GPT-Load multi-protocol gateway",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

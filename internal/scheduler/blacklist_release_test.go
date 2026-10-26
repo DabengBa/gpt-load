@@ -13,7 +13,7 @@ import (
 func TestInspectEntryReleaseMakesEntryRoutableAgain(t *testing.T) {
 	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{
-		ID: 1, Name: "group", ChannelID: channel.OpenAI, ConnectionType: "api_key",
+		ID: 1, Name: "group", ChannelID: channel.OpenAI,
 		Params: []byte(`{}`), Enabled: true,
 		Models: []state.ModelConfig{{
 			ID: "gpt-4o", Alias: "gpt-4o", EntryID: "e000000000001", Weight: intPointer(100),

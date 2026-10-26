@@ -16,7 +16,6 @@ func Gemini() spec.Module {
 			SearchTerms: []string{"google"},
 			Description: "Google Gemini official API",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

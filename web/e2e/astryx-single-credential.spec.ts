@@ -9,7 +9,6 @@ for (const width of [1280, 390]) {
     await page.addInitScript(() => localStorage.setItem('gpt-load.auth-key', 'fixture-auth'))
     let credential: Record<string, unknown> | null = {
       credential_id: 11,
-      connection_type: 'api_key',
       secret_version: 1,
       mask: 'fixture-mask',
 
@@ -35,7 +34,6 @@ for (const width of [1280, 390]) {
           id: 7,
           name: 'Fixture group',
           channel_id: 'openai',
-          connection_type: 'api_key',
           params: {},
           provider_url: null,
 

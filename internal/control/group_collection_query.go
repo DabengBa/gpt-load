@@ -3,8 +3,6 @@ package control
 import (
 	"context"
 	"sort"
-
-	"gpt-load/internal/storage/models"
 )
 
 type GroupCollectionSort string
@@ -18,12 +16,11 @@ const (
 )
 
 type GroupCollectionQuery struct {
-	Query          string
-	Status         *GroupCollectionStatus
-	ConnectionType *models.ConnectionType
-	Sort           GroupCollectionSort
-	Page           int64
-	PageSize       int64
+	Query    string
+	Status   *GroupCollectionStatus
+	Sort     GroupCollectionSort
+	Page     int64
+	PageSize int64
 }
 
 type GroupCollectionSummary struct {
@@ -132,9 +129,6 @@ func matchesGroupCollectionQuery(
 	record groupCollectionRecord,
 	query GroupCollectionQuery,
 ) bool {
-	if query.ConnectionType != nil && record.ConnectionType != *query.ConnectionType {
-		return false
-	}
 	if query.Status != nil && record.Status != *query.Status {
 		return false
 	}

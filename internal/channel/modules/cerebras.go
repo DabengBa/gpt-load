@@ -16,7 +16,6 @@ func Cerebras() spec.Module {
 			SearchTerms: []string{"cerebras inference"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

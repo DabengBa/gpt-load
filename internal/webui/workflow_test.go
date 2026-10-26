@@ -1918,7 +1918,6 @@ func TestReleaseWorkflowRunsCompleteLocalDockerSmoke(t *testing.T) {
 		"/api/usage",
 		"/api/model-prices",
 		"/api/groups",
-		"connection_type:\"api_key\"",
 		"/api/access-keys",
 		"value.data.items.some(item=>item.name===\"Task13 Release Smoke Access\")",
 		"/v1/chat/completions",

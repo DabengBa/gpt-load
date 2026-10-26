@@ -18,7 +18,6 @@ func OpenAI() spec.Module {
 			SearchTerms: []string{"gpt"},
 			Description: "OpenAI official API",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

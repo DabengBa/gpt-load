@@ -27,7 +27,6 @@ import {
   RefreshCw,
   Search,
   TriangleAlert,
-  UserRound,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useIntl } from 'react-intl'
@@ -35,7 +34,6 @@ import { useIntl } from 'react-intl'
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import type {
-  ConnectionType,
   GroupCollectionFilters,
   GroupCollectionItemDto,
   GroupCollectionSort,
@@ -89,10 +87,6 @@ const statusLabelIds: Record<GroupCollectionStatus, MessageId> = {
   unavailable: 'groups.collection.status.unavailable',
   disabled: 'groups.collection.status.disabled',
 }
-const connectionTypeLabelIds: Record<ConnectionType, MessageId> = {
-  api_key: 'groups.collection.connectionType.apiKey',
-}
-
 type GroupRow = GroupCollectionItemDto & Record<string, unknown>
 
 // Manifest-derived hrefs; the dynamic route tree keeps `to`/`search` loosely
@@ -300,21 +294,6 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  typeBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 3,
-    borderRadius: 'var(--radius-tag)',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    padding: '0 5px',
-    fontSize: 11,
-    lineHeight: '16px',
-    color: 'var(--color-text-muted)',
-    whiteSpace: 'nowrap',
-    flex: 'none',
-  },
   providerLink: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -469,7 +448,7 @@ export function GroupsView() {
   }
 
   function updateConditions(
-    patch: Partial<Pick<GroupCollectionFilters, 'q' | 'status' | 'connection_type' | 'sort'>>,
+    patch: Partial<Pick<GroupCollectionFilters, 'q' | 'status' | 'sort'>>,
   ): void {
     const q = constrainGroupCollectionSearchQuery(searchDraftRef.current)
     routeWithFilters({ ...filters, q, ...patch, page: 1 })
@@ -491,15 +470,6 @@ export function GroupsView() {
 
   function setStatus(status: GroupCollectionStatus | undefined): void {
     updateConditions({ status })
-  }
-
-  function setConnectionType(value: string | null): void {
-    if (value === null || value === '') {
-      updateConditions({ connection_type: undefined })
-      return
-    }
-    if (value !== 'api_key') return
-    updateConditions({ connection_type: value as ConnectionType })
   }
 
   function setSort(value: string): void {
@@ -584,8 +554,7 @@ export function GroupsView() {
     }
   }
 
-  const hasFilterCriteria =
-    filters.q !== undefined || filters.status !== undefined || filters.connection_type !== undefined
+  const hasFilterCriteria = filters.q !== undefined || filters.status !== undefined
   const hasChangedConditions = hasFilterCriteria || filters.sort !== 'recent'
   const collectionBusy = data !== undefined && groupsQuery.isFetching
   const {
@@ -604,10 +573,6 @@ export function GroupsView() {
     { fallbackRows: 20 },
   )
 
-  const connectionTypeOptions = [
-    { value: '', label: t('groups.collection.connectionType.all') },
-    { value: 'api_key', label: t('groups.collection.connectionType.apiKey') },
-  ]
   const sortSelectOptions = sortOptions.map((sort) => ({
     value: sort,
     label: t(sortLabelIds[sort]),
@@ -713,15 +678,6 @@ export function GroupsView() {
                 {channel !== undefined && <ChannelIcon icon={channel.icon} mark={channel.mark} />}
                 <span {...stylex.props(styles.channelName)} title={channelName(group.channel_id)}>
                   {channelName(group.channel_id)}
-                </span>
-
-                <span {...stylex.props(styles.typeBadge)}>
-                  {group.connection_type === 'api_key' ? (
-                    <KeyRound size={10} aria-hidden />
-                  ) : (
-                    <UserRound size={10} aria-hidden />
-                  )}
-                  {t(connectionTypeLabelIds[group.connection_type])}
                 </span>
               </span>
               {group.provider_url !== null && (
@@ -972,16 +928,6 @@ export function GroupsView() {
                       value={searchDraft}
                       hasClear
                       onChange={onSearchChange}
-                    />
-                  </div>
-                  <div {...stylex.props(styles.toolbarField)}>
-                    <Selector
-                      size="sm"
-                      variant="input"
-                      label={t('groups.collection.connectionType.label')}
-                      options={connectionTypeOptions}
-                      value={filters.connection_type ?? ''}
-                      onChange={setConnectionType}
                     />
                   </div>
                   <div {...stylex.props(styles.toolbarField)}>

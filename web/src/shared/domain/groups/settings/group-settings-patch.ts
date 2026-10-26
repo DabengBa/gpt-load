@@ -16,7 +16,6 @@ export type GroupPolicyCountKey = 'blacklist_threshold'
 
 export interface GroupSettingsDraft {
   channel_id: string
-  connection_type: GroupSettingsDto['connection_type']
   params: ChannelParamsDto
   name: string
   provider_url: string | null

@@ -31,15 +31,13 @@ func mapGroupRowToState(group models.Group) (state.GroupConfig, error) {
 	}
 
 	result := state.GroupConfig{
-
-		ID:             group.ID,
-		Name:           group.Name,
-		ChannelID:      channel.ID(group.ChannelID),
-		ConnectionType: string(group.ConnectionType),
-		Params:         append(json.RawMessage(nil), group.Params...),
-		Models:         runtimeModels,
-		Settings:       settings,
-		Enabled:        group.Enabled,
+		ID:        group.ID,
+		Name:      group.Name,
+		ChannelID: channel.ID(group.ChannelID),
+		Params:    append(json.RawMessage(nil), group.Params...),
+		Models:    runtimeModels,
+		Settings:  settings,
+		Enabled:   group.Enabled,
 	}
 	return result, nil
 }

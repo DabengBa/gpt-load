@@ -15,7 +15,6 @@ export default {
       loading: 'Loading channels…',
       loadFailed: 'Unable to load channels',
       channelRequired: 'Select a channel',
-      connectionType: 'Credential type',
     },
     mode: {
       label: 'Import destination',
@@ -26,10 +25,7 @@ export default {
       channel: {
         title: 'Choose a channel',
         incomplete: 'Complete the required channel settings',
-        summary: '{channel} · {connection}',
-        connectionTypes: {
-          apiKey: 'API key',
-        },
+        summary: '{channel}',
       },
       credentials: {
         apiKeyTitle: 'Enter one API key',

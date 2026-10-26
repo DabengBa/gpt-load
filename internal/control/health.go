@@ -3,7 +3,6 @@ package control
 import (
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -194,7 +193,6 @@ func (service *Service) healthProblemCredentialIdentity(
 	ciphertexts map[uint]string,
 	credentialID uint,
 	channelID channel.ID,
-	connectionType string,
 ) (string, error) {
 	if service == nil || service.encryption == nil || credentialID == 0 {
 		return "", fmt.Errorf(
@@ -219,12 +217,6 @@ func (service *Service) healthProblemCredentialIdentity(
 			app_errors.ErrInternalServer,
 		)
 	}
-	expectedConnection, known := service.channelRegistry.ConnectionType(channelID)
-	if !known || expectedConnection != strings.TrimSpace(connectionType) {
-		plaintext = ""
-		return "", fmt.Errorf("map runtime health credential %d: channel connection mismatch: %w", credentialID, app_errors.ErrInternalServer)
-	}
-
 	validated, err := normalizeStoredCredential(service.channelRegistry, channelID, plaintext)
 	if err != nil {
 		return "", fmt.Errorf(
@@ -295,7 +287,6 @@ func (service *Service) RuntimeHealth() (runtimeHealthResponse, error) {
 			observation.problemCiphertexts,
 			key.ID,
 			groupView.ChannelID,
-			groupView.ConnectionType,
 		)
 		if err != nil {
 			return runtimeHealthResponse{}, err

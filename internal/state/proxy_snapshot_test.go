@@ -17,8 +17,8 @@ func TestCompileResolvesImmutableGroupProxy(t *testing.T) {
 		ChannelRegistry: channel.NewRegistry(),
 		GlobalProxy:     &global,
 		Groups: []GroupConfig{
-			{ID: 1, Name: "inherit", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "gpt-4o"}}, Enabled: true},
-			{ID: 2, Name: "direct", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "gpt-4o"}}, Proxy: &groupOverride, Enabled: true},
+			{ID: 1, Name: "inherit", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "gpt-4o"}}, Enabled: true},
+			{ID: 2, Name: "direct", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: []ModelConfig{{ID: "gpt-4o"}}, Proxy: &groupOverride, Enabled: true},
 		},
 	})
 	if err != nil {

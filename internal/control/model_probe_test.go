@@ -36,7 +36,7 @@ func createProbeGroup(t *testing.T, fixture serviceFixture, models []string) uin
 	result, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: &name, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 		Models:      optionalGroupModels{Set: true, Values: values},
-		Credentials: "model-probe-secret", ConnectionType: "api_key", ConfirmSameTarget: true,
+		Credentials: "model-probe-secret", ConfirmSameTarget: true,
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup(%q) error = %v", name, err)

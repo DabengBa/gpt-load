@@ -44,8 +44,8 @@ func TestDraftDiscoveryMergesLiveAndLocalCatalogByExactIDWithoutURLInference(t *
 		},
 	})
 	got, err := fixture.service.DiscoverModels(t.Context(), ModelDiscoveryRequest{
-		ChannelID: channel.OpenAI, ConnectionType: models.ConnectionTypeAPIKey,
-		Params: json.RawMessage(`{}`), Credentials: "secret",
+		ChannelID: channel.OpenAI,
+		Params:    json.RawMessage(`{}`), Credentials: "secret",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -65,9 +65,8 @@ func TestDraftDiscoveryMergesLiveAndLocalCatalogByExactIDWithoutURLInference(t *
 	}
 
 	withoutProvider, err := fixture.service.DiscoverModels(t.Context(), ModelDiscoveryRequest{
-		ChannelID:      channel.OpenAICompatible,
-		ConnectionType: models.ConnectionTypeAPIKey,
-		Params:         json.RawMessage(`{"base_url":"https://api.openai.com/v1"}`), Credentials: "secret",
+		ChannelID: channel.OpenAICompatible,
+		Params:    json.RawMessage(`{"base_url":"https://api.openai.com/v1"}`), Credentials: "secret",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -115,9 +114,8 @@ func TestDiscoveryPricingStatusUsesAutomaticPriceReferenceForDraftScopes(t *test
 	)
 
 	request := ModelDiscoveryRequest{
-		ChannelID:      channel.OpenAICompatible,
-		ConnectionType: models.ConnectionTypeAPIKey,
-		Params:         json.RawMessage(`{"base_url":"https://proxy.example/v1"}`), Credentials: "secret",
+		ChannelID: channel.OpenAICompatible,
+		Params:    json.RawMessage(`{"base_url":"https://proxy.example/v1"}`), Credentials: "secret",
 	}
 	custom, err := fixture.service.DiscoverModels(t.Context(), request)
 	if err != nil {
@@ -133,11 +131,10 @@ func TestDiscoveryPricingStatusUsesAutomaticPriceReferenceForDraftScopes(t *test
 	}
 
 	savedCustom, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		ChannelID:      channel.OpenAICompatible,
-		ConnectionType: models.ConnectionTypeAPIKey,
-		Params:         json.RawMessage(`{"base_url":"https://saved-custom.example/v1"}`),
-		Models:         optionalGroupModels{Set: true, Values: []GroupModel{}},
-		Credentials:    "saved-secret",
+		ChannelID:   channel.OpenAICompatible,
+		Params:      json.RawMessage(`{"base_url":"https://saved-custom.example/v1"}`),
+		Models:      optionalGroupModels{Set: true, Values: []GroupModel{}},
+		Credentials: "saved-secret",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -193,11 +190,10 @@ func TestSavedGroupDiscoveryUsesPersistedProviderAndSharedPricingStatus(t *testi
 	})
 	providerID := "openai"
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		ChannelID:      channel.OpenAI,
-		ConnectionType: models.ConnectionTypeAPIKey,
-		Params:         json.RawMessage(`{}`),
-		Models:         optionalGroupModels{Set: true, Values: []GroupModel{{ID: "shared"}}},
-		Credentials:    "saved-secret",
+		ChannelID:   channel.OpenAI,
+		Params:      json.RawMessage(`{}`),
+		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "shared"}}},
+		Credentials: "saved-secret",
 	})
 	if err != nil {
 		t.Fatal(err)

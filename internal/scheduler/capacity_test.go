@@ -9,7 +9,7 @@ import (
 )
 
 func TestCapacitySkipDoesNotTrySiblingEntry(t *testing.T) {
-	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{ID: 1, Name: "one", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 		Models: []state.ModelConfig{{ID: "up", Alias: "public", EntryID: "e000000000001"}, {ID: "other", Alias: "public", EntryID: "e000000000002"}}}})
 	iterator := New(snapshot, twoGroupRegistry(t), preferredHealthQuery(0), rand.New(zeroRandSource{}))
 	// Compile currently rejects duplicate external/upstream pairs. Exercise the

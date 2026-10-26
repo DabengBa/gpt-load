@@ -43,12 +43,12 @@ func newModelRewriteTestRuntime(
 			Fingerprint: "credential-" + string(rune('a'+index)),
 		})
 		groups = append(groups, state.GroupConfig{
-			ConnectionType: "api_key", ID: groupID, Name: "openai", ChannelID: channel.OpenAI,
+			ID: groupID, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: models, Enabled: true,
 		})
 	}
 	if len(groups) == 0 {
-		groups = append(groups, state.GroupConfig{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: models, Enabled: true})
+		groups = append(groups, state.GroupConfig{ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Models: models, Enabled: true})
 	}
 	if _, err := manager.Publish(state.CompileInput{
 		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
@@ -193,7 +193,7 @@ func TestHandlerRetriesProvider4xxWithCandidateReasoningEffortOverrides(t *testi
 		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			ID: 1, Name: "openai", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`),
 			Models: []state.ModelConfig{
 				{ID: "up-a", Alias: "pub", ReasoningEffort: "low"},
@@ -248,8 +248,8 @@ func TestHandlerReasoningPolicyCacheSeparatesGroupsWithSameUpstream(t *testing.T
 		SystemSettings:  config.Settings{state.SettingRetryCount: testDefaultRetryBudget},
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ID: 1, Name: "one", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-5.4", Alias: "pub", EntryID: "e000000000001", ReasoningEffort: "low"}}},
-			{ID: 2, Name: "two", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-5.4", Alias: "pub", EntryID: "e000000000002", ReasoningEffort: "high"}}},
+			{ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-5.4", Alias: "pub", EntryID: "e000000000001", ReasoningEffort: "low"}}},
+			{ID: 2, Name: "two", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "gpt-5.4", Alias: "pub", EntryID: "e000000000002", ReasoningEffort: "high"}}},
 		},
 		Credentials: []state.CredentialConfig{
 			{ID: 1, GroupID: 1, Version: 1, IdentityGeneration: 1, Fingerprint: "credential-1"},

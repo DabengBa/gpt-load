@@ -47,7 +47,7 @@ func TestGetGroupModelsReturnsClientNamesAndPricingStatus(t *testing.T) {
 			{ID: "gpt-4o", Alias: "default", AliasEnabled: true},
 			{ID: "missing-price", Alias: ""},
 		}},
-		Credentials: "sk-model-read", ConnectionType: "api_key",
+		Credentials: "sk-model-read",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestGetGroupModelsSkipsGlobalAliasBackfillWhenCurrentGroupIsComplete(t *tes
 		ChannelID:   channel.OpenAI,
 		Params:      json.RawMessage(`{}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "existing-model"}}},
-		Credentials: "sk-group-model-load", ConnectionType: "api_key",
+		Credentials: "sk-group-model-load",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -142,7 +142,7 @@ func TestGroupModelsGenerateAndPreserveReadOnlyTestAlias(t *testing.T) {
 		Name: stringPointer("test-alias-control"), ChannelID: channel.OpenAICompatible,
 		Params:      json.RawMessage(`{"base_url":"https://test-alias-control.example/v1"}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "upstream-model"}}},
-		Credentials: "sk-test-alias-control", ConnectionType: "api_key",
+		Credentials: "sk-test-alias-control",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -207,7 +207,7 @@ func TestCreateGroupAllocatesTestAliasInsideControlTransaction(t *testing.T) {
 					Name: stringPointer("transactional-test-alias"), ChannelID: channel.OpenAI,
 					Params:      json.RawMessage(`{}`),
 					Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "upstream"}}},
-					Credentials: "sk-transactional-test-alias", ConnectionType: "api_key",
+					Credentials: "sk-transactional-test-alias",
 				})
 				if err != nil {
 					t.Fatalf("CreateGroup() error = %v", err)
@@ -219,9 +219,9 @@ func TestCreateGroupAllocatesTestAliasInsideControlTransaction(t *testing.T) {
 			call: func(t *testing.T, fixture *serviceFixture) {
 				_, err := fixture.service.CreateGroupIdempotent(t.Context(), "918f47a2-9c35-4d6e-8b1a-1234567890ab", GroupCreateRequest{
 					Name: stringPointer("transactional-idempotent-test-alias"), ChannelID: channel.OpenAI,
-					Params:      json.RawMessage(`{}`),
-					Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "upstream"}}},
-					Credentials: "sk-transactional-idempotent-test-alias", ConnectionType: "api_key",
+					Params:            json.RawMessage(`{}`),
+					Models:            optionalGroupModels{Set: true, Values: []GroupModel{{ID: "upstream"}}},
+					Credentials:       "sk-transactional-idempotent-test-alias",
 					ConfirmSameTarget: true,
 				})
 				if err != nil {
@@ -548,7 +548,7 @@ func TestUpdateGroupModelsReplacesAuthoritativeListAndPublishesOnce(t *testing.T
 			Set:    true,
 			Values: []GroupModel{{ID: "provider-old", Alias: "old-public", AliasEnabled: true}},
 		},
-		Credentials: "sk-model-save-a", ConnectionType: "api_key",
+		Credentials: "sk-model-save-a",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -712,7 +712,7 @@ func TestUpdateGroupModelsAllowsEmptyList(t *testing.T) {
 			Set:    true,
 			Values: []GroupModel{{ID: "provider-old", Alias: "old-public", AliasEnabled: true}},
 		},
-		Credentials: "sk-empty-models", ConnectionType: "api_key",
+		Credentials: "sk-empty-models",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -748,7 +748,7 @@ func TestUpdateGroupModelsPreservesScheduleEntryReasoning(t *testing.T) {
 			{ID: "gpt-5.6-luna"},
 			{ID: "gpt-6-astra"},
 		}},
-		Credentials: "sk-model-reasoning-override", ConnectionType: "api_key",
+		Credentials: "sk-model-reasoning-override",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -914,7 +914,7 @@ func TestUpdateGroupModelsFailuresDoNotPublish(t *testing.T) {
 				Set:    true,
 				Values: []GroupModel{{ID: "provider-old", Alias: "old-public", AliasEnabled: true}},
 			},
-			Credentials: "sk-commit-models", ConnectionType: "api_key",
+			Credentials: "sk-commit-models",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -1033,7 +1033,7 @@ func TestUpdateGroupModelsRoundTripsLegacyPayloadWithoutRouteFields(t *testing.T
 			Set:    true,
 			Values: []GroupModel{{ID: "provider-old", Alias: "old-public", AliasEnabled: true}},
 		},
-		Credentials: "sk-legacy-models", ConnectionType: "api_key",
+		Credentials: "sk-legacy-models",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1077,7 +1077,7 @@ func TestGroupModelRouteFieldsRoundTripThroughStorageAndRuntime(t *testing.T) {
 			Set:    true,
 			Values: []GroupModel{{ID: "provider-old", Alias: "old-public", AliasEnabled: true}},
 		},
-		Credentials: "sk-route-fields", ConnectionType: "api_key",
+		Credentials: "sk-route-fields",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1174,7 +1174,7 @@ func TestGetGroupModelsRepublishesBackfillAfterPublishFailure(t *testing.T) {
 			Set:    true,
 			Values: []GroupModel{{ID: "provider-old", Alias: "public", AliasEnabled: true}},
 		},
-		Credentials: "sk-republish", ConnectionType: "api_key",
+		Credentials: "sk-republish",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1268,8 +1268,7 @@ func TestValidateGroupRowCandidateEnforcesRouteEntryRules(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			group := models.Group{
 				ID: 7, Name: "route-rules", ChannelID: string(channel.OpenAI),
-				ConnectionType: models.ConnectionTypeAPIKey,
-				Params:         models.JSON(`{}`), Models: models.JSON(test.models),
+				Params: models.JSON(`{}`), Models: models.JSON(test.models),
 			}
 			err := validateGroupRowCandidate(t.Context(), fixture.db, group, fixture.channelRegistry)
 			if test.wantErr == "" {
@@ -1296,7 +1295,7 @@ func TestUpdateGroupModelsRejectsUnroutableStoredEntries(t *testing.T) {
 			Set:    true,
 			Values: []GroupModel{{ID: "provider-a", Alias: "public", AliasEnabled: true}},
 		},
-		Credentials: "sk-unroutable-entries", ConnectionType: "api_key",
+		Credentials: "sk-unroutable-entries",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1355,7 +1354,7 @@ func TestGetGroupModelsRepublishesWhenRuntimeDivergesFromPersisted(t *testing.T)
 			Set:    true,
 			Values: []GroupModel{{ID: "provider-old", Alias: "public", AliasEnabled: true}},
 		},
-		Credentials: "sk-diverged", ConnectionType: "api_key",
+		Credentials: "sk-diverged",
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -139,7 +139,7 @@ func newBufferedResponsesFramingRuntime(
 			models = []state.ModelConfig{{ID: "gpt-4o"}}
 		}
 		configs = append(configs, state.GroupConfig{
-			ConnectionType: "api_key", ID: group.id, Name: group.name,
+			ID: group.id, Name: group.name,
 			ChannelID: channel.OpenAI, Params: params, Models: models,
 			Settings: group.settings, Enabled: true,
 		})

@@ -54,7 +54,7 @@ func TestModelProbeManagementCompileHTTPVectorAndProtocolRecovery(t *testing.T) 
 		Name: &name, ChannelID: channel.Gemini,
 		Params:      json.RawMessage(`{"base_url":"` + server.URL + `/v1beta"}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "embedding-model"}}},
-		Credentials: "mock-key", ConnectionType: "api_key", ConfirmSameTarget: true,
+		Credentials: "mock-key", ConfirmSameTarget: true,
 	})
 	if err != nil {
 		t.Fatal(err)

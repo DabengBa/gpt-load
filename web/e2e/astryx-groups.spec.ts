@@ -18,7 +18,6 @@ interface FixtureGroup {
   id: number
   name: string
   status: 'available' | 'unavailable' | 'disabled'
-  connection_type: 'api_key'
   channel_id: string
   credential_total: number
   created_ms: number
@@ -30,7 +29,6 @@ function collectionItem(group: FixtureGroup) {
     name: group.name,
 
     channel_id: group.channel_id,
-    connection_type: group.connection_type,
     params: {},
     provider_url: null,
     status: group.status,
@@ -53,7 +51,6 @@ function makeGroup(index: number): FixtureGroup {
     id: index + 1,
     name: `Group ${String(index + 1).padStart(4, '0')}`,
     status,
-    connection_type: 'api_key',
     channel_id: 'openai',
     credential_total: index % 2,
     created_ms: 1_700_000_000_000 + index * 60_000,
@@ -63,7 +60,6 @@ function makeGroup(index: number): FixtureGroup {
 interface LastQuery {
   q?: string
   status?: string
-  connection_type?: string
   sort?: string
   page?: number
   page_size?: number
@@ -97,7 +93,6 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
       const query: LastQuery = {
         q: params.get('q') ?? undefined,
         status: params.get('status') ?? undefined,
-        connection_type: params.get('connection_type') ?? undefined,
         sort: params.get('sort') ?? 'recent',
         page: Number(params.get('page') ?? '1'),
         page_size: Number(params.get('page_size') ?? '100'),
@@ -115,9 +110,6 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
       }
       if (query.status !== undefined) {
         rows = rows.filter((group) => group.status === query.status)
-      }
-      if (query.connection_type !== undefined) {
-        rows = rows.filter((group) => group.connection_type === query.connection_type)
       }
       const sorted = [...rows]
       switch (query.sort) {
@@ -223,7 +215,7 @@ for (const width of [390, 1440]) {
       )
       await route.fulfill({ json: { code: 0, message: 'ok', data: null } })
     })
-    await page.goto('/groups?q=Group&status=available&connection_type=api_key&sort=name&page=2', {
+    await page.goto('/groups?q=Group&status=available&sort=name&page=2', {
       waitUntil: 'load',
     })
     const row = collectionTable(page).getByRole('row').nth(1)
@@ -257,7 +249,6 @@ for (const width of [390, 1440]) {
     expect(seen.at(-1)).toMatchObject({
       q: 'Group',
       status: 'available',
-      connection_type: 'api_key',
       sort: 'name',
       page: 2,
     })
@@ -363,11 +354,13 @@ test('narrow layout keeps filters visible without page overflow', async ({ page 
       )
     }),
   ).toBe(true)
-  await page.getByRole('combobox', { name: 'Connection type' }).click()
-  await page.getByRole('option', { name: 'API key' }).click()
-  await expect(page).toHaveURL(/connection_type=api_key/)
+  await page
+    .getByRole('region', { name: 'Group status overview' })
+    .getByRole('button', { name: /Available/ })
+    .click()
+  await expect(page).toHaveURL(/status=available/)
   await page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }).click()
-  await expect(page).not.toHaveURL(/connection_type=/)
+  await expect(page).not.toHaveURL(/q=|status=/)
 })
 
 for (const width of [320, 768, 1440]) {
@@ -422,7 +415,7 @@ test('renders summary chips, toolbar, and server-paginated rows', async ({ page 
   await expect(seen.at(-1)).toMatchObject({ page: 1, page_size: 100 })
 })
 
-test('search, status chip, and connection-type select hit the server', async ({ page }) => {
+test('search and status chip hit the server', async ({ page }) => {
   const seen = await mockCollection(page, makeGroups(20))
   await page.goto('/groups', { waitUntil: 'load' })
   await expectAstryxDocument(page)
@@ -444,16 +437,10 @@ test('search, status chip, and connection-type select hit the server', async ({ 
   await expect(page).toHaveURL(/status=disabled/)
   await expect.poll(() => seen.at(-1)?.status).toBe('disabled')
 
-  // Connection-type select writes the shared contract param.
-  // (combobox role: 'Connection type' alone also matches the open listbox)
-  await page.getByRole('combobox', { name: 'Connection type' }).click()
-  await page.getByRole('option', { name: 'API key' }).click()
-  await expect(page).toHaveURL(/connection_type=api_key/)
-
   // Reset clears criteria back to canonical defaults. Two resets render at
   // this point (toolbar + no-results state); exercise the toolbar one.
   await page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }).click()
-  await expect(page).not.toHaveURL(/q=|status=|connection_type=/)
+  await expect(page).not.toHaveURL(/q=|status=/)
 })
 
 test('sort select stays controlled', async ({ page }) => {

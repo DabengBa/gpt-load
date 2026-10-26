@@ -45,7 +45,6 @@ type GroupCollectionItem struct {
 	ID                   uint                  `json:"id"`
 	Name                 string                `json:"name"`
 	ChannelID            channel.ID            `json:"channel_id"`
-	ConnectionType       models.ConnectionType `json:"connection_type"`
 	Params               json.RawMessage       `json:"params"`
 	ProviderURL          *string               `json:"provider_url"`
 	Status               GroupCollectionStatus `json:"status"`
@@ -348,7 +347,6 @@ func mapGroupCollectionRecords(
 				ID:               group.ID,
 				Name:             group.Name,
 				ChannelID:        channelID,
-				ConnectionType:   normalizeGroupConnectionType(group.ConnectionType),
 				Params:           append(json.RawMessage(nil), params...),
 				ProviderURL:      cloneString(group.ProviderURL),
 				ModelCount:       int64(len(groupModels)),
@@ -399,7 +397,6 @@ func groupCollectionCredentialIdentity(fingerprint string, group models.Group) u
 	return stateloader.CredentialIdentityGeneration(
 		fingerprint,
 		group.ChannelID,
-		string(group.ConnectionType),
 		json.RawMessage(group.Params),
 	)
 }

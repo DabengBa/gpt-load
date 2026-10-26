@@ -15,7 +15,6 @@ func OpenCodeGo() spec.Module {
 			Icon:        "opencode",
 			Description: "Native multi-protocol API gateway",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

@@ -5,7 +5,6 @@ import { createImportRecoveryService } from '../src/shared/controllers/import-re
 const draft = () => ({
   mode: 'new',
   channel_id: 'openai',
-  connection_type: 'api_key',
   params: {},
   proxy: { mode: 'inherit', url: '' },
   name: 'x',
@@ -43,7 +42,7 @@ function roundTrip(value: unknown) {
   return controller.consume()
 }
 
-test('API-only recovery preserves API/cloud/external gateway drafts without staging', () => {
+test('recovery preserves channel drafts without staging fields', () => {
   for (const channel_id of ['openai', 'anthropic', 'azure', 'vertex', 'bedrock', 'cliproxyapi']) {
     const value = { ...draft(), channel_id, credentials: '{"api_key":"test-only"}' }
     assert.deepEqual(roundTrip(value), value)
@@ -54,11 +53,8 @@ test('API-only recovery preserves API/cloud/external gateway drafts without stag
   assert.deepEqual(roundTrip(channelNotSelected), channelNotSelected)
 })
 
-test('API-only recovery rejects retired connection kinds and staging fields', () => {
-  assert.equal(
-    roundTrip({ ...draft(), connection_type: 'subscription', staged_credential: null }),
-    null,
-  )
+test('recovery rejects retired connection kinds and staging fields', () => {
+  assert.equal(roundTrip({ ...draft(), connection_type: 'api_key' }), null)
   assert.equal(roundTrip({ ...draft(), staged_credential: null }), null)
   assert.equal(roundTrip({ ...draft(), staged_credentials: [] }), null)
   assert.equal(

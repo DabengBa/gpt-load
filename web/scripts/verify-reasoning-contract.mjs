@@ -8,7 +8,6 @@ const baseSettings = {
   name: 'Reasoning group',
 
   channel_id: 'openai',
-  connection_type: 'api_key',
   params: {},
   provider_url: null,
   enabled: true,

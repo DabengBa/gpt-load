@@ -42,7 +42,6 @@ func TestReasoningPolicyPersistedScheduleReachesProviderWire(t *testing.T) {
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name:              stringPointer("reasoning-wire-group"),
 		ChannelID:         channel.OpenAI,
-		ConnectionType:    "api_key",
 		Params:            json.RawMessage(`{"base_url":"` + upstream.URL + `"}`),
 		Models:            optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.4"}}},
 		Credentials:       "provider-wire-key",

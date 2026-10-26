@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -1517,7 +1516,7 @@ func (s *Service) CredentialLabels(credentialIDs []uint) map[uint]string {
 		if !exists {
 			continue
 		}
-		label, err := s.credentialLabel(ref.EncryptedValue, group.ChannelID, group.ConnectionType)
+		label, err := s.credentialLabel(ref.EncryptedValue, group.ChannelID)
 		if err != nil || label == "" {
 			continue
 		}
@@ -1530,17 +1529,11 @@ func (s *Service) CredentialLabels(credentialIDs []uint) map[uint]string {
 func (s *Service) credentialLabel(
 	ciphertext string,
 	channelID channel.ID,
-	connectionType string,
 ) (string, error) {
 	plaintext, err := s.encryption.Decrypt(ciphertext)
 	if err != nil {
 		return "", err
 	}
-	expected, known := s.channelRegistry.ConnectionType(channelID)
-	if !known || expected != strings.TrimSpace(connectionType) {
-		return "", fmt.Errorf("channel connection mismatch")
-	}
-
 	validated, err := normalizeStoredCredential(s.channelRegistry, channelID, plaintext)
 	if err != nil {
 		return "", err

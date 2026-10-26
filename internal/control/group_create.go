@@ -27,7 +27,6 @@ import (
 type GroupCreateRequest struct {
 	Name              *string                             `json:"name"`
 	ChannelID         channel.ID                          `json:"channel_id"`
-	ConnectionType    models.ConnectionType               `json:"connection_type"`
 	Params            json.RawMessage                     `json:"params"`
 	ProviderURL       optionalField[string]               `json:"provider_url"`
 	Models            optionalGroupModels                 `json:"models"`
@@ -53,7 +52,6 @@ type SameTargetConflictData struct {
 
 type normalizedGroupCreate struct {
 	channelID         channel.ID
-	connectionType    models.ConnectionType
 	params            models.JSON
 	providerURL       *string
 	defaultName       string
@@ -172,7 +170,7 @@ func (s *Service) mutateCreateGroup(
 func (s *Service) validateGroupCreateTarget(tx *gorm.DB, normalized normalizedGroupCreate) error {
 
 	if !normalized.confirmSameTarget {
-		conflicts, err := findGroupsByTarget(tx, normalized.channelID, normalized.connectionType, normalized.params)
+		conflicts, err := findGroupsByTarget(tx, normalized.channelID, normalized.params)
 		if err != nil {
 			return err
 		}
@@ -188,16 +186,14 @@ func (s *Service) validateGroupCreateTarget(tx *gorm.DB, normalized normalizedGr
 
 func buildCreatedGroup(normalized normalizedGroupCreate, name string, encodedModels []byte) models.Group {
 	return models.Group{
-
-		Name:           name,
-		ChannelID:      string(normalized.channelID),
-		ConnectionType: normalized.connectionType,
-		Params:         append(models.JSON(nil), normalized.params...),
-		ProviderURL:    normalized.providerURL,
-		Models:         models.JSON(encodedModels),
-		Overrides:      normalized.encodedOverrides,
-		ProxyConfig:    normalized.proxyConfig,
-		Enabled:        true,
+		Name:        name,
+		ChannelID:   string(normalized.channelID),
+		Params:      append(models.JSON(nil), normalized.params...),
+		ProviderURL: normalized.providerURL,
+		Models:      models.JSON(encodedModels),
+		Overrides:   normalized.encodedOverrides,
+		ProxyConfig: normalized.proxyConfig,
+		Enabled:     true,
 	}
 }
 
@@ -229,8 +225,7 @@ func (s *Service) normalizeGroupCreate(
 		return normalizedGroupCreate{}, app_errors.ErrValidation
 	}
 
-	connectionType, err := s.resolveChannelConnectionType(request.ChannelID, request.ConnectionType)
-	if err != nil {
+	if _, ok := s.channelRegistry.Get(request.ChannelID); !ok {
 		return normalizedGroupCreate{}, app_errors.ErrValidation
 	}
 	params, err := s.channelRegistry.ValidateParams(request.ChannelID, request.Params)
@@ -315,8 +310,8 @@ func (s *Service) normalizeGroupCreate(
 		EnvironmentProxy: s.environmentProxy,
 		Groups: []state.GroupConfig{{
 			ID: 1, Name: "candidate", ChannelID: request.ChannelID,
-			ConnectionType: string(connectionType), Params: canonicalParams,
-			Models: runtimeModels, Settings: config.Settings{}, Proxy: proxy, Enabled: true,
+			Params: canonicalParams, Models: runtimeModels,
+			Settings: config.Settings{}, Proxy: proxy, Enabled: true,
 		}},
 	})
 	if err != nil {
@@ -334,7 +329,6 @@ func (s *Service) normalizeGroupCreate(
 	}
 	return normalizedGroupCreate{
 		channelID:         request.ChannelID,
-		connectionType:    connectionType,
 		params:            models.JSON(canonicalParams),
 		providerURL:       providerURL,
 		defaultName:       defaultName,
@@ -347,24 +341,6 @@ func (s *Service) normalizeGroupCreate(
 		proxy:             proxy,
 		proxyConfig:       proxyConfig,
 	}, nil
-}
-
-func (s *Service) resolveChannelConnectionType(
-	channelID channel.ID,
-	requested models.ConnectionType,
-) (models.ConnectionType, error) {
-	if s == nil || s.channelRegistry == nil {
-		return "", app_errors.ErrValidation
-	}
-	expected, ok := s.channelRegistry.ConnectionType(channelID)
-	if !ok {
-		return "", app_errors.ErrValidation
-	}
-	connectionType := models.ConnectionType(expected)
-	if requested == "" || requested != connectionType {
-		return "", app_errors.ErrValidation
-	}
-	return connectionType, nil
 }
 
 func normalizeGroupSettings(settings config.Settings) (config.Settings, models.JSON, error) {
@@ -434,7 +410,6 @@ func canonicalizeGroupSettingNumbers(value any) any {
 func findGroupsByTarget(
 	tx *gorm.DB,
 	channelID channel.ID,
-	connectionType models.ConnectionType,
 	params models.JSON,
 ) ([]ExistingGroupSummary, error) {
 	type targetRow struct {
@@ -445,7 +420,7 @@ func findGroupsByTarget(
 	var rows []targetRow
 	if err := tx.Model(&models.Group{}).
 		Select("id", "name", "params").
-		Where("channel_id = ? AND connection_type = ?", string(channelID), string(connectionType)).
+		Where("channel_id = ?", string(channelID)).
 		Order("id ASC").
 		Find(&rows).Error; err != nil {
 		return nil, app_errors.ParseDBError(err)

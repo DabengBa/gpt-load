@@ -28,7 +28,6 @@ test('single credential actions call singular endpoints', async () => {
 
 const item = {
   credential_id: 11,
-  connection_type: 'api_key' as const,
   secret_version: 1,
   mask: 'test-mask',
   effective_status: 'available' as const,

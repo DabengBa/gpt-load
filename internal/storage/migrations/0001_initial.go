@@ -15,7 +15,6 @@ type initialGroup struct {
 	ID              uint        `gorm:"primaryKey;autoIncrement"`
 	Name            string      `gorm:"type:varchar(255);not null;uniqueIndex"`
 	ChannelID       string      `gorm:"type:varchar(64);not null"`
-	ConnectionType  string      `gorm:"type:varchar(32);not null;default:'api_key';check:chk_group_connection_type,connection_type = 'api_key'"`
 	Params          initialJSON `gorm:"type:json;not null"`
 	Models          initialJSON `gorm:"type:json;not null"`
 	WeightManual    *int

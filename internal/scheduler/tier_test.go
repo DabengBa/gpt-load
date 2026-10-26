@@ -26,7 +26,7 @@ func routeEntrySnapshot(_ *testing.T, groups []state.GroupConfig) *state.ConfigS
 func intPointer(value int) *int { return &value }
 
 func TestIteratorKeepsPriorityTiersSeparate(t *testing.T) {
-	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "primary", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}, {ID: "fallback", Alias: "public", Weight: intPointer(100), Priority: intPointer(2)}}}})
+	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "primary", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}, {ID: "fallback", Alias: "public", Weight: intPointer(100), Priority: intPointer(2)}}}})
 	selection, err := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}}}, routeEntryQuery(), rand.New(zeroRandSource{})).Next()
 	if err != nil {
 		t.Fatal(err)
@@ -38,9 +38,9 @@ func TestIteratorKeepsPriorityTiersSeparate(t *testing.T) {
 
 func TestIteratorPreferredCredentialBeatsHigherPriorityTier(t *testing.T) {
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "fallback", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 1, Name: "fallback", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "fallback-model", Alias: "public", Weight: intPointer(100), Priority: intPointer(2)}}},
-		{ID: 2, Name: "primary", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 2, Name: "primary", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "primary-model", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}}},
 	})
 	iterator := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{
@@ -69,7 +69,7 @@ func TestIteratorPreferredCredentialBeatsHigherPriorityTier(t *testing.T) {
 }
 
 func TestIteratorWeightedMixUsesEntryWeight(t *testing.T) {
-	snapshot, err := state.Compile(state.CompileInput{ChannelRegistry: channel.NewRegistry(), SystemSettings: config.Settings{state.SettingRouteStrategy: string(state.RouteStrategyWeightedMix)}, Groups: []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "model", Alias: "public", Weight: intPointer(100)}}}}})
+	snapshot, err := state.Compile(state.CompileInput{ChannelRegistry: channel.NewRegistry(), SystemSettings: config.Settings{state.SettingRouteStrategy: string(state.RouteStrategyWeightedMix)}, Groups: []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "model", Alias: "public", Weight: intPointer(100)}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestIteratorWeightedMixUsesEntryWeight(t *testing.T) {
 
 func TestIteratorSupportsMultipleTargetsInOneGroupAndPairRetry(t *testing.T) {
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{
-		ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI,
+		ID: 1, Name: "one", ChannelID: channel.OpenAI,
 		Params: json.RawMessage(`{}`), Enabled: true,
 		Models: []state.ModelConfig{
 			{ID: "upstream-a", Alias: "public", Weight: intPointer(30)},
@@ -105,7 +105,7 @@ func TestIteratorSupportsMultipleTargetsInOneGroupAndPairRetry(t *testing.T) {
 
 func TestIteratorUsesCombinedWeightsWithinPriorityTier(t *testing.T) {
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{
-		ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI,
+		ID: 1, Name: "one", ChannelID: channel.OpenAI,
 		Params: json.RawMessage(`{}`), Enabled: true,
 		Models: []state.ModelConfig{
 			{ID: "light", Alias: "public", Weight: intPointer(30)},

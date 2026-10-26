@@ -73,7 +73,7 @@ func TestHandlerFreezesSystemRetryBudgetAcrossGroups(t *testing.T) {
 			for index, groupCount := range test.groupCounts {
 				id := uint(index + 1)
 				input.Groups = append(input.Groups, state.GroupConfig{
-					ID: id, Name: fmt.Sprintf("group-%d", id), ChannelID: channel.OpenAI, ConnectionType: "api_key",
+					ID: id, Name: fmt.Sprintf("group-%d", id), ChannelID: channel.OpenAI,
 					Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 					Settings: config.Settings{state.SettingRetryCount: groupCount},
 				})
@@ -175,7 +175,7 @@ func testFirstProviderSequence(t *testing.T, attempts, budget int, want []uint, 
 	}
 	for _, groupID := range []uint{1, 2, 3, 4} {
 		input.Groups = append(input.Groups, state.GroupConfig{
-			ID: groupID, Name: fmt.Sprintf("group-%d", groupID), ChannelID: channel.OpenAI, ConnectionType: "api_key",
+			ID: groupID, Name: fmt.Sprintf("group-%d", groupID), ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o", ConcurrencyLimit: 1}}, Enabled: true,
 		})
 		input.Credentials = append(input.Credentials, state.CredentialConfig{
@@ -240,7 +240,7 @@ func TestHandlerFirstProviderAttemptsDefaultOneNeverReplaysFirstCandidate(t *tes
 	}
 	for _, groupID := range []uint{1, 2, 3} {
 		input.Groups = append(input.Groups, state.GroupConfig{
-			ID: groupID, Name: fmt.Sprintf("group-%d", groupID), ChannelID: channel.OpenAI, ConnectionType: "api_key",
+			ID: groupID, Name: fmt.Sprintf("group-%d", groupID), ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
 		})
 		input.Credentials = append(input.Credentials, state.CredentialConfig{

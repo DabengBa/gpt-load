@@ -125,7 +125,6 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
     hasOnlyFields(value, [
       'mode',
       'channel_id',
-      'connection_type',
       'params',
       'proxy',
       'name',
@@ -136,7 +135,6 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
     ]) &&
     value.mode === 'new' &&
     (value.channel_id === '' || isChannelID(value.channel_id)) &&
-    value.connection_type === 'api_key' &&
     isChannelParams(value.params) &&
     isImportProxyDraft(value.proxy) &&
     typeof value.name === 'string' &&

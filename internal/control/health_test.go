@@ -53,22 +53,22 @@ func TestRuntimeHealthReturnsMutuallyExclusiveCurrentState(t *testing.T) {
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 2, Name: "disabled", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 2, Name: "disabled", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: false,
 			},
-			{ConnectionType: "api_key", ID: 3, Name: "zero-weight", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 3, Name: "zero-weight", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 4, Name: "empty", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 4, Name: "empty", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 5, Name: "cooldown", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 5, Name: "cooldown", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 6, Name: "blacklisted", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 6, Name: "blacklisted", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
 		},
@@ -191,7 +191,7 @@ func TestRuntimeHealthAdvertisesScheduledReleaseForChannelCredential(t *testing.
 	fixture.service.now = func() time.Time { return now }
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "channel", ChannelID: channel.OpenAI,
+		Groups: []state.GroupConfig{{ID: 1, Name: "channel", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 		}},
 	}); err != nil {
@@ -224,7 +224,7 @@ func TestRuntimeHealthExposesProblemCountsInsteadOfFailureAliases(t *testing.T) 
 	fixture := newServiceFixture(t)
 	now := healthNow()
 	fixture.service.now = func() time.Time { return now }
-	if _, err := fixture.manager.Publish(state.CompileInput{ChannelRegistry: fixture.channelRegistry, Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+	if _, err := fixture.manager.Publish(state.CompileInput{ChannelRegistry: fixture.channelRegistry, Groups: []state.GroupConfig{{ID: 1, Name: "active", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 		Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 	}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
@@ -285,19 +285,19 @@ func TestRuntimeHealthSortsProblemKeysByGroupAndKey(t *testing.T) {
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 1, Name: "one", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 2, Name: "two", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 2, Name: "two", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 3, Name: "three", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 3, Name: "three", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 4, Name: "four", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 4, Name: "four", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
-			{ConnectionType: "api_key", ID: 5, Name: "five", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+			{ID: 5, Name: "five", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 				Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 			},
 		},
@@ -361,7 +361,7 @@ func TestRuntimeHealthCapsProblemCredentialDetails(t *testing.T) {
 	groups := make([]state.GroupConfig, 0, 2*(detailLimit+1))
 	for groupID := uint(1); groupID <= uint(2*(detailLimit+1)); groupID++ {
 		groups = append(groups, state.GroupConfig{
-			ConnectionType: "api_key", ID: groupID, Name: fmt.Sprintf("group-%d", groupID), ChannelID: channel.OpenAI,
+			ID: groupID, Name: fmt.Sprintf("group-%d", groupID), ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 		})
 	}
@@ -423,7 +423,7 @@ func TestRuntimeHealthJSONOmitsScoresCredentialsAndZeroTimes(t *testing.T) {
 	fixture.service.now = healthNow
 	plaintext := "provider-secret-credential-tail"
 	ciphertext := encryptHealthKey(t, fixture, plaintext)
-	if _, err := fixture.manager.Publish(state.CompileInput{ChannelRegistry: fixture.channelRegistry, Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "safe", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+	if _, err := fixture.manager.Publish(state.CompileInput{ChannelRegistry: fixture.channelRegistry, Groups: []state.GroupConfig{{ID: 1, Name: "safe", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 		Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 	}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
@@ -506,7 +506,7 @@ func TestRuntimeHealthFailsClosedWhenProblemKeyCannotBeDecrypted(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	fixture.service.now = healthNow
-	if _, err := fixture.manager.Publish(state.CompileInput{ChannelRegistry: fixture.channelRegistry, Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "safe", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
+	if _, err := fixture.manager.Publish(state.CompileInput{ChannelRegistry: fixture.channelRegistry, Groups: []state.GroupConfig{{ID: 1, Name: "safe", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 		Models: []state.ModelConfig{{ID: "model"}}, Enabled: true,
 	}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
@@ -528,7 +528,7 @@ func TestRuntimeHealthFailsClosedWhenProblemKeyCannotBeDecrypted(t *testing.T) {
 func TestHealthProblemCredentialIdentityFailsClosedWhenCiphertextIsMissing(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	if _, err := fixture.service.healthProblemCredentialIdentity(nil, 1, "", "api_key"); !errors.Is(
+	if _, err := fixture.service.healthProblemCredentialIdentity(nil, 1, ""); !errors.Is(
 		err,
 		app_errors.ErrInternalServer,
 	) {
@@ -548,7 +548,6 @@ func TestHealthProblemCredentialIdentityMasksAPIKeySecret(t *testing.T) {
 		map[uint]string{1: ciphertext},
 		1,
 		channel.OpenAI,
-		"api_key",
 	)
 	if err != nil {
 		t.Fatalf("healthProblemCredentialIdentity() error = %v", err)
@@ -619,7 +618,7 @@ func TestRuntimeHealthEndpointRequiresManagementAuthentication(t *testing.T) {
 	fixture.service.now = healthNow
 	if _, err := fixture.manager.Publish(state.CompileInput{
 		ChannelRegistry: fixture.channelRegistry,
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "manual-health", ChannelID: channel.OpenAI,
+		Groups: []state.GroupConfig{{ID: 1, Name: "manual-health", ChannelID: channel.OpenAI,
 			Params: json.RawMessage(`{}`), Models: []state.ModelConfig{{ID: "model"}}, Enabled: true}},
 	}); err != nil {
 		t.Fatalf("Publish() error = %v", err)

@@ -59,7 +59,7 @@ export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> 
 
             param_fields: [],
             credential_fields: [],
-            connection: { type: 'api_key', credential_input: 'batch_text' },
+            connection: { credential_input: 'batch_text' },
             capabilities: {
               model_discovery: true,
 
@@ -83,7 +83,6 @@ export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> 
       id: 1,
       name: 'Discovery Group',
       channel_id: 'openai',
-      connection_type: 'api_key',
       params: {},
       provider_url: null,
     }
@@ -100,7 +99,6 @@ export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> 
       return fulfill({
         name: groupBase.name,
         channel_id: groupBase.channel_id,
-        connection_type: groupBase.connection_type,
         params: groupBase.params,
         provider_url: groupBase.provider_url,
         enabled: true,

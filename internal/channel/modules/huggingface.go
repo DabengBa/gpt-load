@@ -16,7 +16,6 @@ func HuggingFace() spec.Module {
 			SearchTerms: []string{"hugging face", "hf", "inference providers"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{
