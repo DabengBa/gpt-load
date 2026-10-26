@@ -335,6 +335,10 @@ func (handler *Handler) logAffinityLookupFailure(request requestAffinity) {
 	if !shouldLog {
 		return
 	}
+	rootCause := request.err
+	for next := errors.Unwrap(rootCause); next != nil; next = errors.Unwrap(rootCause) {
+		rootCause = next
+	}
 	utils.LogPlaneBestEffort(
 		handler.logger,
 		logrus.ErrorLevel,
@@ -344,7 +348,7 @@ func (handler *Handler) logAffinityLookupFailure(request requestAffinity) {
 			"request_id":   request.requestID,
 			"phase":        "durable_lookup",
 			"affinity_key": request.displayKey,
-			"error_type":   fmt.Sprintf("%T", errors.Unwrap(request.err)),
+			"error_type":   fmt.Sprintf("%T", rootCause),
 			"total":        total,
 		},
 		"Durable affinity binding lookup failed",

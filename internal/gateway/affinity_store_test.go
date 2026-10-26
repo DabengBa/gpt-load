@@ -22,6 +22,7 @@ import (
 	"gpt-load/internal/execution"
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/utils"
+	"gpt-load/internal/protocol"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 	"gpt-load/internal/storage"
@@ -373,6 +374,83 @@ func TestHandlerFailsClosedWhenDurableAffinityLookupFails(t *testing.T) {
 		!hasDisplayKey || !affinity.ValidDisplayKey(displayKey) || events[0]["error_type"] != "*errors.errorString" ||
 		strings.Contains(logs.String(), "payload-canary") {
 		t.Fatalf("affinity lookup diagnostic events = %#v", events)
+	}
+}
+
+func TestHandlerLogsDurableAffinityLookupRootCause(t *testing.T) {
+	const rawCacheKey = "raw-affinity-cache-key-canary"
+	tests := []struct {
+		name          string
+		payload       string
+		wantErrorType string
+		errorText     string
+	}{
+		{name: "query error", wantErrorType: "*sqlite.Error", errorText: "no such table"},
+		{name: "invalid JSON", payload: "payload-canary", wantErrorType: "*json.SyntaxError", errorText: "invalid character"},
+		{name: "invalid target", payload: `{"group_id":1,"note":"payload-canary"}`, wantErrorType: "*errors.errorString", errorText: "invalid affinity target"},
+		{name: "closed database", wantErrorType: "*errors.errorString", errorText: "database is closed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, err := storage.Open(":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			sqlDB, err := db.DB()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = sqlDB.Close() })
+			if err := db.AutoMigrate(&models.SystemSetting{}); err != nil {
+				t.Fatal(err)
+			}
+
+			var logs bytes.Buffer
+			forwarder := &scriptedForwarder{results: successfulAffinityResults(1)}
+			handler, _, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
+			handler.affinityStore = storage.NewAffinityStore(db)
+			handler.logger = newGatewayJSONLogger(&logs)
+			key := affinity.DeriveKey(
+				handler.encryption, 1, protocol.OpenAICompletions, "gpt-4o",
+				execution.OperationChatCompletion, affinity.SignalPromptCacheKey, []byte(rawCacheKey),
+			)
+			switch test.name {
+			case "query error":
+				err = db.Exec("DROP TABLE system_settings").Error
+			case "closed database":
+				err = sqlDB.Close()
+			default:
+				err = db.Create(&models.SystemSetting{
+					Key:         models.InternalSystemSettingPrefix + "affinity.binding." + string(key),
+					Value:       test.payload,
+					UpdatedAtMS: time.Now().UnixMilli(),
+				}).Error
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			response := serveAffinityResponse(t, newAffinityTestEngine(t, handler),
+				`{"model":"gpt-4o","prompt_cache_key":"`+rawCacheKey+`","messages":[{"role":"user","content":"stable durable conversation"}]}`,
+			)
+			if response.Code != http.StatusServiceUnavailable ||
+				!strings.Contains(response.Body.String(), reasonAffinityUnavailable.Code) || len(forwarder.inputs) != 0 {
+				t.Fatalf("response = %d %s, attempts = %d; want 503 %s and no attempts",
+					response.Code, response.Body.String(), len(forwarder.inputs), reasonAffinityUnavailable.Code)
+			}
+			events := gatewayEventsNamed(decodeGatewayJSONLogs(t, logs.Bytes()), "affinity_binding_lookup_failed")
+			if len(events) != 1 {
+				t.Fatalf("affinity lookup diagnostic events = %#v, want one event", events)
+			}
+			if got := events[0]["error_type"]; got != test.wantErrorType {
+				t.Errorf("error_type = %q, want %q", got, test.wantErrorType)
+			}
+			if events[0]["affinity_key"] != affinity.DisplayKey(key) ||
+				events[0]["request_id"] != response.Header().Get(requestIDHeader) {
+				t.Errorf("affinity lookup diagnostic correlation = %#v", events[0])
+			}
+			assertGatewayLogExcludes(t, logs.String(), rawCacheKey, "payload-canary", test.errorText)
+		})
 	}
 }
 
