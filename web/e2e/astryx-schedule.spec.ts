@@ -79,8 +79,12 @@ function entry(entryID: string, modelID: string, weight: number, priority = 1, o
     included: true,
     routable: true,
     reason_code: null as string | null,
-    configured_share: 0.5,
-    effective_share: 0.5,
+    // A lone entry owns its priority tier: internal/control/route_inspect.go
+    // `configuredEntryShares` normalizes weight within the priority and skips
+    // disabled groups/entries, while applyEffectiveShares only assigns share to
+    // routable rows in the lowest active tier.
+    configured_share: 1,
+    effective_share: 1,
     credentials: [],
   }
 }
@@ -115,7 +119,15 @@ function detailForModel(externalModel: string) {
         enabled: false,
         request_count: 20,
         success_rate: 1,
-        entries: [entry(`entry-2${suffix}`, `model-b${suffix}`, 50, 1, true)],
+        // A disabled group neither contributes to nor receives a configured
+        // share, and a non-routable row gets no effective share.
+        entries: [
+          {
+            ...entry(`entry-2${suffix}`, `model-b${suffix}`, 50, 1, true),
+            configured_share: 0,
+            effective_share: 0,
+          },
+        ],
       },
     ],
   }
@@ -189,7 +201,9 @@ test('advanced concurrency survives a row toggle so one save carries every draft
   await page.locator('#priority-0').fill('3')
   // The row toggle issues its own PATCH; the outstanding concurrency draft must
   // survive the re-render instead of being reposted as a separate update.
-  await page.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }).click()
+  await page
+    .getByRole('switch', { name: /^(?:Enable|Disable) entry model-a(?: · primary group)?$/ })
+    .click()
   await expect.poll(() => patches.length).toBe(1)
   expect(patches[0]!.updates).toEqual([{ group_id: 1, entry_id: 'entry-1', enabled: false }])
   await moreButton(page).click()
@@ -349,7 +363,126 @@ async function waitForScheduleDetailReady(page: Page): Promise<void> {
   await page.getByRole('table', { name: 'Schedule detail' }).waitFor({ timeout: 30_000 })
 }
 
+// Locale-agnostic readiness probe for screenshot runs that switch catalogs.
+async function waitForScheduleTable(page: Page): Promise<void> {
+  await page.locator('[role="table"] [data-row-key]').first().waitFor({ timeout: 30_000 })
+}
+
 const rows = (page: Page) => page.locator('[data-row-key]')
+
+test('optimistic disable hides schedulable eligibility and failure restores the saved snapshot', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    await gate
+    await route.fulfill(response({}, 500))
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const row = rows(page).first()
+  const status = row.getByRole('cell').nth(1)
+  await row.getByRole('switch', { name: /^Disable entry model-a/ }).click()
+  try {
+    await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+    await expect(row.getByRole('switch')).toHaveAccessibleName(/^Enable entry model-a/)
+    await expect(status).toContainText('Route entry is disabled')
+    await expect(status).not.toContainText('Schedulable')
+  } finally {
+    release()
+  }
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+  await expect(status).toContainText('Schedulable')
+})
+
+test('draft share excludes disabled groups from both numerator and denominator', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('#weight-0').fill('100')
+  await expect(rows(page).first().getByRole('cell').nth(4)).toContainText('100.0%')
+  await expect(rows(page).nth(1).getByRole('cell').nth(4)).toContainText('0.0%')
+})
+
+test('eligibility snapshot separates health, group statistics and unsaved share preview', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      const group = detail.groups[0]!
+      group.request_count = 0
+      group.success_rate = 0
+      group.entries = [
+        entry('entry-1', 'model-a', 50),
+        ...[
+          [true, 'tier_demoted', 'available'],
+          [false, 'credential_cooldown', 'available'],
+          [false, 'entry_cooldown', 'cooldown'],
+          [false, null, 'blacklisted'],
+          [false, 'entry_disabled', 'available'],
+        ].map(([routable, reason, health], index) => {
+          const candidate = entry(`zcase-${index}`, `model-z${index}`, 10)
+          candidate.routable = routable === true
+          candidate.reason_code = typeof reason === 'string' ? reason : null
+          candidate.runtime.state = String(health)
+          candidate.enabled = reason !== 'entry_disabled'
+          return candidate
+        }),
+      ]
+      detail.groups[1]!.success_rate = 0
+      for (const candidate of group.entries) {
+        candidate.configured_share = 0
+        candidate.effective_share = 0
+      }
+      // The one enabled group in this tier owns the whole configured share, and
+      // the only routable row carries the whole effective share.
+      group.entries[0]!.configured_share = 1
+      group.entries[0]!.effective_share = 1
+      return detail
+    },
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const status = (index: number) => rows(page).nth(index).getByRole('cell').nth(1)
+  await expect(status(0)).toContainText('Schedulable')
+  await expect(status(0)).toContainText('Entry health: Available')
+  await expect(status(1)).toContainText('Standing by in a standby priority tier')
+  await expect(status(2)).toContainText('Credential is cooling down')
+  await expect(status(3)).toContainText('Route entry is cooling down')
+  await expect(status(4)).toContainText('Unknown route reason')
+  await expect(status(4)).toContainText('Entry health: Blacklisted')
+  await expect(status(5)).toContainText('Route entry is disabled')
+  await expect(status(6)).toContainText('Group is disabled')
+  await expect(rows(page).first().getByRole('cell').nth(2)).toContainText('—')
+  await expect(rows(page).nth(6).getByRole('cell').nth(2)).toContainText('0.0%')
+  // A disabled group holds no configured share even before any draft exists.
+  await expect(rows(page).first().getByRole('cell').nth(4)).toContainText('100.0%')
+  await expect(rows(page).nth(6).getByRole('cell').nth(4)).toContainText('0.0%')
+  await page.locator('#weight-0').fill('100')
+  await expect(status(1)).toContainText('Standing by in a standby priority tier')
+  await expect(rows(page).first().getByRole('cell').nth(4)).toContainText('71.4%')
+  await expect(rows(page).nth(6).getByRole('cell').nth(4)).toContainText('0.0%')
+  await expect(page.getByText('Unsaved share preview', { exact: true })).toBeVisible()
+  const toggle = rows(page)
+    .first()
+    .getByRole('switch', { name: /^Disable entry model-a/ })
+  await expect(toggle).toHaveAttribute('title', 'Disable entry model-a · primary group')
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.screenshot({ path: testInfo.outputPath(`eligibility-${width}.png`), fullPage: true })
+  }
+})
 
 async function changeReasoning(page: Page, value = 'high') {
   const selector = page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ })
@@ -440,11 +573,13 @@ test('reasoning and numeric drafts survive row toggle with an increased server r
       new URL(response.url()).pathname === '/api/model-route/schedule/detail' &&
       response.request().method() === 'GET',
   )
-  await page.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }).click()
+  await page
+    .getByRole('switch', { name: /^(?:Enable|Disable) entry model-a(?: · primary group)?$/ })
+    .click()
   expect((await (await refreshed).json()).data.snapshot_revision).toBe(12)
   await expect.poll(() => patches.length).toBe(1)
   await expect(
-    page.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }),
+    page.getByRole('switch', { name: /^(?:Enable|Disable) entry model-a(?: · primary group)?$/ }),
   ).not.toBeChecked()
   await expect(
     page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
@@ -893,7 +1028,85 @@ test('compact desktop uses six semantic columns and 58–84px rows at every desk
     await expect(
       settings.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
     ).toBeVisible()
-    await expect(row.getByRole('cell').nth(4)).toContainText('50.0%')
+    // Configured share is normalized within each priority across every row the
+    // server includes: the enabled group owns the whole tier, the disabled
+    // group contributes and receives nothing (internal/control/route_inspect.go
+    // `configuredEntryShares`).
+    await expect(row.getByRole('cell').nth(4)).toContainText('100.0%')
+    await expect(rows(page).nth(1).getByRole('cell').nth(4)).toContainText('0.0%')
+    const settingsGeometry = await row.evaluate((element) => {
+      const cells = [...element.querySelectorAll<HTMLElement>('[role="cell"]')]
+      const settingsCell = cells[3]!
+      const shareCell = cells[4]!
+      const combo = settingsCell.querySelector<HTMLElement>('[role="combobox"]')!
+      return {
+        scroll: settingsCell.scrollWidth,
+        client: settingsCell.clientWidth,
+        comboRight: combo.getBoundingClientRect().right,
+        shareLeft: shareCell.getBoundingClientRect().left,
+      }
+    })
+    expect(
+      settingsGeometry.scroll,
+      `settings controls stay inside their column at ${width}px`,
+    ).toBeLessThanOrEqual(settingsGeometry.client + 1)
+    expect(
+      settingsGeometry.comboRight,
+      `reasoning selector does not reach the share column at ${width}px`,
+    ).toBeLessThanOrEqual(settingsGeometry.shareLeft)
+    // The share cell must render `100.0%` (the widest real value) inside its own
+    // track instead of sliding under the action switch.
+    const shareGeometry = await row.evaluate((element) => {
+      const cells = [...element.querySelectorAll<HTMLElement>('[role="cell"]')]
+      const shareCell = cells[4]!
+      const actionsCell = cells[5]!
+      const value = shareCell.querySelector<HTMLElement>('span')!
+      return {
+        scroll: shareCell.scrollWidth,
+        client: shareCell.clientWidth,
+        valueRight: value.getBoundingClientRect().right,
+        actionsLeft: actionsCell.getBoundingClientRect().left,
+      }
+    })
+    expect(
+      shareGeometry.scroll,
+      `share text stays inside its column at ${width}px`,
+    ).toBeLessThanOrEqual(shareGeometry.client + 1)
+    expect(
+      shareGeometry.valueRight,
+      `share value does not reach the actions column at ${width}px`,
+    ).toBeLessThanOrEqual(shareGeometry.actionsLeft)
+    // The actions cell is right-aligned, so any content wider than its track
+    // spills leftwards over the share value instead of growing rightwards.
+    const actionsGeometry = await row.evaluate((element) => {
+      const cells = [...element.querySelectorAll<HTMLElement>('[role="cell"]')]
+      const actionsCell = cells[5]!
+      const children = [...actionsCell.children].filter(
+        (child) => child.getBoundingClientRect().width > 0,
+      )
+      const content = children.reduce(
+        (total, child) =>
+          total +
+          child.getBoundingClientRect().width +
+          Number.parseFloat(getComputedStyle(actionsCell).columnGap || '0'),
+        0,
+      )
+      return {
+        scroll: actionsCell.scrollWidth,
+        client: actionsCell.clientWidth,
+        content,
+        firstChildLeft: children[0]!.getBoundingClientRect().left,
+        shareRight: cells[4]!.getBoundingClientRect().right,
+      }
+    })
+    expect(
+      actionsGeometry.scroll,
+      `action controls stay inside their column at ${width}px`,
+    ).toBeLessThanOrEqual(actionsGeometry.client + 1)
+    expect(
+      actionsGeometry.firstChildLeft,
+      `action controls do not reach back into the share column at ${width}px`,
+    ).toBeGreaterThanOrEqual(actionsGeometry.shareRight)
     await expect(row.getByRole('cell').nth(5).getByRole('switch')).toBeVisible()
     await expect(
       row
@@ -1097,7 +1310,7 @@ test('compact mobile uses 205–240px cards and 44px settings and actions withou
     row.getByRole('spinbutton', { name: /^Priority model-a(?: · |$)/ }),
     row.getByRole('spinbutton', { name: /^Weight model-a(?: · |$)/ }),
     row.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
-    row.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }),
+    row.getByRole('switch', { name: /^(?:Enable|Disable) entry model-a(?: · primary group)?$/ }),
     row.getByRole('button', { name: /More|更多/i }),
     row.getByRole('button', { name: 'Probe', exact: true }),
   ]) {
@@ -1205,7 +1418,9 @@ test('entry enable toggle preserves unsaved priority draft', async ({ page }) =>
   await page.locator('#priority-0').fill('3')
   await expect(page).toHaveURL(/schedule_draft=/)
   const draft = new URL(page.url()).searchParams.get('schedule_draft')
-  await page.getByRole('switch', { name: /^Toggle entry model-a(?: · primary group)?$/ }).click()
+  await page
+    .getByRole('switch', { name: /^(?:Enable|Disable) entry model-a(?: · primary group)?$/ })
+    .click()
   await expect.poll(() => patches.length).toBe(1)
   await expect.poll(() => new URL(page.url()).searchParams.get('schedule_draft')).toBe(draft)
   await expect(page.locator('#priority-0')).toHaveValue('3')
@@ -1530,7 +1745,9 @@ for (const action of ['Save and continue', 'Discard and continue'] as const) {
   })
 }
 
-test('review regression reverted numeric input adopts a newer server value on refresh', async ({ page }) => {
+test('review regression reverted numeric input adopts a newer server value on refresh', async ({
+  page,
+}) => {
   test.setTimeout(20_000)
   let revision = 11
   let serverPriority = 1
@@ -1541,9 +1758,12 @@ test('review regression reverted numeric input adopts a newer server value on re
       detail.snapshot_revision = revision
       detail.groups[0]!.entries[0]!.priority = serverPriority
       if (serverPriority !== 1) {
-        // Configured shares sum to one within each priority tier, not globally.
+        // Configured shares normalize within each priority tier, not globally.
+        // The disabled group is excluded from the distribution entirely, so its
+        // row holds no configured share (internal/control/route_inspect.go
+        // `configuredEntryShares`).
         detail.groups[0]!.entries[0]!.configured_share = 1
-        detail.groups[1]!.entries[0]!.configured_share = 1
+        detail.groups[1]!.entries[0]!.configured_share = 0
       }
       return detail
     },
@@ -1629,17 +1849,38 @@ test('compact model selector supports search, ArrowDown Enter and Escape focus r
   const directory = '/tmp/gpt-load-schedule-product'
   await mkdir(directory, { recursive: true })
   const measurements = []
-  for (const { width, theme } of [
-    { width: 1440, theme: 'light' },
-    { width: 900, theme: 'light' },
-    { width: 390, theme: 'light' },
-    { width: 1440, theme: 'dark' },
-  ]) {
+  for (const { width, theme, locale } of [
+    { width: 1440, theme: 'light', locale: 'en-US' },
+    { width: 900, theme: 'light', locale: 'en-US' },
+    { width: 390, theme: 'light', locale: 'en-US' },
+    { width: 1440, theme: 'dark', locale: 'en-US' },
+    { width: 1440, theme: 'light', locale: 'zh-CN' },
+    { width: 390, theme: 'light', locale: 'zh-CN' },
+  ] as const) {
     await page.setViewportSize({ width, height: 900 })
-    await page.evaluate((theme) => localStorage.setItem('gpt-load.theme', theme), theme)
+    await page.evaluate(
+      ({ theme, locale }) => {
+        localStorage.setItem('gpt-load.theme', theme)
+        localStorage.setItem('gpt-load.locale', locale)
+      },
+      { theme, locale },
+    )
     await page.reload()
-    await waitForScheduleDetailReady(page)
+    await waitForScheduleTable(page)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+    if (locale === 'zh-CN') {
+      // Long localized eligibility copy renders in both layouts; the header row
+      // only exists at >=768px (`rowHeader` is display:none in the narrow card).
+      await expect(rows(page).first().getByRole('cell').nth(1)).toContainText('可调度')
+      await expect(rows(page).nth(1).getByRole('cell').nth(1)).toContainText('分组已停用')
+      if (width >= 768) {
+        await expect(page.getByRole('columnheader').nth(1)).toContainText('已保存调度资格')
+        await expect(page.getByRole('columnheader').nth(4)).toContainText('同级配置占比')
+      }
+    }
+    // Fixture truth: the enabled group owns the tier, the disabled group none.
+    await expect(rows(page).first().getByRole('cell').nth(4)).toContainText('100.0%')
+    await expect(rows(page).nth(1).getByRole('cell').nth(4)).toContainText('0.0%')
     const geometry = await rows(page).evaluateAll((elements) => ({
       viewport: window.innerWidth,
       documentWidth: document.documentElement.scrollWidth,
@@ -1653,9 +1894,9 @@ test('compact model selector supports search, ArrowDown Enter and Escape focus r
       expect(row.height).toBeGreaterThanOrEqual(width < 768 ? 205 : 58)
       expect(row.height).toBeLessThanOrEqual(width < 768 ? 240 : 84)
     }
-    const screenshot = `${directory}/schedule-${width}-${theme}.png`
+    const screenshot = `${directory}/schedule-${width}-${theme}-${locale}.png`
     await page.screenshot({ path: screenshot, fullPage: true })
-    measurements.push({ width, theme, screenshot, ...geometry })
+    measurements.push({ width, theme, locale, screenshot, ...geometry })
   }
   const evidence = JSON.stringify(measurements, null, 2)
   await writeFile(`${directory}/measurements.json`, evidence)
