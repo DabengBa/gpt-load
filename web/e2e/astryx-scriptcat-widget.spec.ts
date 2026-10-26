@@ -219,6 +219,83 @@ test('ScriptCat handoff fills group name, provider website, API key, and Base UR
   )
 })
 
+test('a concurrent ScriptCat handoff delivers credentials to only one tab', async ({ context }) => {
+  const origin = 'https://gpt-load.example.test'
+  const transferKey = 'pending-import:concurrent-fixture'
+  const sessionKey = 'gpt-load.scriptcat-import-payload'
+  const values = new Map([
+    [
+      transferKey,
+      {
+        createdAt: Date.now(),
+        targetOrigin: origin,
+        apiKey: 'sk-concurrent-fixture',
+        baseURL: 'https://relay.example.test/v1',
+        groupName: 'Concurrent fixture',
+        providerUrl: 'https://provider.example.test',
+      },
+    ],
+  ])
+  const readers = new Set<Page>()
+  const firstRead = Promise.withResolvers<void>()
+  const releaseRead = Promise.withResolvers<void>()
+  let deletions = 0
+  await context.exposeBinding('readScriptcatTransfer', async ({ page }, key: string) => {
+    const snapshot = values.get(key)
+    if (snapshot) {
+      readers.add(page)
+      firstRead.resolve()
+      await releaseRead.promise
+    }
+    return snapshot
+  })
+  await context.exposeBinding('deleteScriptcatTransfer', (_source, key: string) => {
+    deletions += 1
+    values.delete(key)
+  })
+  await context.addInitScript(() => {
+    const bridge = window as Window & {
+      readScriptcatTransfer(key: string): Promise<unknown>
+      deleteScriptcatTransfer(key: string): Promise<void>
+    }
+    Object.defineProperty(window, 'GM', {
+      value: {
+        getValue: bridge.readScriptcatTransfer,
+        deleteValue: bridge.deleteScriptcatTransfer,
+      },
+    })
+  })
+  await context.route(`${origin}/**`, (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<title>ScriptCat receiver fixture</title>' }),
+  )
+  const pages = await Promise.all([context.newPage(), context.newPage()])
+  await Promise.all(
+    pages.map((page) => page.goto(`${origin}/import?scriptcat_handoff=concurrent-fixture`)),
+  )
+  const receiving = Promise.all(pages.map((page) => page.evaluate(userscript)))
+  try {
+    await firstRead.promise
+    // Hold the first GM response until the second tab either reads the same
+    // transfer (the race) or queues behind the browser's real exclusive lock.
+    await expect
+      .poll(async () => {
+        const { pending } = await pages[0].evaluate(() => navigator.locks.query())
+        return readers.size === 2 || pending?.length === 1
+      })
+      .toBe(true)
+  } finally {
+    releaseRead.resolve()
+    await receiving
+  }
+  const payloads = await Promise.all(
+    pages.map((page) => page.evaluate((key) => sessionStorage.getItem(key), sessionKey)),
+  )
+  expect(payloads.filter((payload) => payload !== null)).toHaveLength(1)
+  expect(readers.size).toBe(1)
+  expect(deletions).toBe(1)
+  expect(values.has(transferKey)).toBe(false)
+})
+
 test('does not show the import widget on unrelated pages', async ({ page }) => {
   await installGMBridge(page)
   await serveKeyPage(page, '/account')

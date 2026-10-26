@@ -25,7 +25,6 @@
   const targetOriginKey = "gpt-load-origin";
   const defaultTargetOrigin = "https://gptl.tanyaleoallen.cloud";
   const sessionKey = "gpt-load.scriptcat-import-payload";
-  const claimPrefix = `${sessionKey}.claim.`;
   const transferTtlMs = 60_000;
   const sessionTtlMs = 15 * 60_000;
   const currentURL = new URL(location.href);
@@ -59,69 +58,49 @@
     if (!transferId || !/^[a-z0-9-]{1,64}$/u.test(transferId)) return;
 
     const transferKey = `${transferPrefix}${transferId}`;
-    const pending = await GM.getValue(transferKey);
-    if (!pending || typeof pending !== "object") return;
-
-    if (
-      typeof pending.createdAt !== "number" ||
-      pending.createdAt > Date.now() ||
-      typeof pending.apiKey !== "string" ||
-      typeof pending.baseURL !== "string" ||
-      typeof pending.groupName !== "string" ||
-      typeof pending.providerUrl !== "string"
-    ) {
-      await GM.deleteValue(transferKey);
-      return;
-    }
-    if (Date.now() - pending.createdAt > transferTtlMs) {
-      await GM.deleteValue(transferKey);
-      return;
-    }
-    if (pending.targetOrigin !== location.origin) {
-      return;
-    }
-
     try {
-      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-        const key = localStorage.key(index);
-        if (!key?.startsWith(claimPrefix)) continue;
-        const expiresAt = Number(localStorage.getItem(key));
-        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-          localStorage.removeItem(key);
+      await navigator.locks.request(`${sessionKey}:${transferId}`, async () => {
+        const pending = await GM.getValue(transferKey);
+        if (!pending || typeof pending !== "object") return;
+
+        if (
+          typeof pending.createdAt !== "number" ||
+          pending.createdAt > Date.now() ||
+          typeof pending.apiKey !== "string" ||
+          typeof pending.baseURL !== "string" ||
+          typeof pending.groupName !== "string" ||
+          typeof pending.providerUrl !== "string"
+        ) {
+          await GM.deleteValue(transferKey);
+          return;
         }
-      }
-      const claimKey = `${claimPrefix}${transferId}`;
-      if (localStorage.getItem(claimKey) !== null) return;
-      const claimExpiresAt = Date.now() + sessionTtlMs;
-      localStorage.setItem(claimKey, String(claimExpiresAt));
-      const sessionValue = JSON.stringify({
-        version: 2,
-        createdAt: Date.now(),
-        apiKey: pending.apiKey,
-        baseURL: pending.baseURL,
-        groupName: pending.groupName,
-        providerUrl: pending.providerUrl,
+        if (Date.now() - pending.createdAt > transferTtlMs) {
+          await GM.deleteValue(transferKey);
+          return;
+        }
+        if (pending.targetOrigin !== location.origin) {
+          return;
+        }
+
+        const sessionValue = JSON.stringify({
+          version: 2,
+          createdAt: Date.now(),
+          apiKey: pending.apiKey,
+          baseURL: pending.baseURL,
+          groupName: pending.groupName,
+          providerUrl: pending.providerUrl,
+        });
+        sessionStorage.setItem(sessionKey, sessionValue);
+        window.setTimeout(() => {
+          if (sessionStorage.getItem(sessionKey) === sessionValue) {
+            sessionStorage.removeItem(sessionKey);
+          }
+        }, sessionTtlMs);
+        await GM.deleteValue(transferKey);
+        window.dispatchEvent(new Event("gpt-load:scriptcat-import"));
       });
-      sessionStorage.setItem(sessionKey, sessionValue);
-      window.setTimeout(() => {
-        if (sessionStorage.getItem(sessionKey) === sessionValue) {
-          sessionStorage.removeItem(sessionKey);
-        }
-      }, sessionTtlMs);
-      window.setTimeout(() => {
-        if (localStorage.getItem(claimKey) === String(claimExpiresAt)) {
-          localStorage.removeItem(claimKey);
-        }
-      }, sessionTtlMs);
-      await GM.deleteValue(transferKey);
-      window.dispatchEvent(new Event("gpt-load:scriptcat-import"));
     } catch {
-      try {
-        localStorage.removeItem(`${claimPrefix}${transferId}`);
-      } catch {
-        // Storage may be blocked.
-      }
-      // The import page remains usable for manual entry if browser storage is blocked.
+      // Manual import remains available when Web Locks or storage are unavailable.
     }
     return;
   }
