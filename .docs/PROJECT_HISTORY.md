@@ -6,6 +6,27 @@ deployment shape, or long-lived conventions. Each entry links to owning docs
 content. Process files are deleted after wrap-up; this file is the surviving
 narrative.
 
+## 2026-10-26 — Durable affinity failure contract and ScriptCat credential handoff
+
+[PR #201](https://github.com/DabengBa/gpt-load/pull/201) separated a required
+durable affinity lookup failure from configuration change: both transports now
+answer HTTP 503 `affinity_store_unavailable` (`Retry-After: 1` on HTTP, the same
+code on the WebSocket error event) instead of `configuration_changed`, still
+dispatch no provider attempt, and emit a rate-limited
+`affinity_binding_lookup_failed` diagnostic that reports the unwrapped root
+cause type without the error text, the raw cache key or the stored binding.
+[Affinity Binding](tech/affinity-binding.md) owns the failure contract.
+
+[PR #202](https://github.com/DabengBa/gpt-load/pull/202) added a ScriptCat
+userscript that hands an API key, Base URL, group name and provider website from
+a provider key page to the new-group import form. The claim runs under a browser
+Web Lock so a handoff link opened in several tabs fills one form, and it has no
+fallback path: without Web Locks or storage the user imports manually.
+[ScriptCat Channel Import Handoff](tech/scriptcat-channel-import.md) owns the
+delivery and claim rules; [ScriptCat credential
+import](db/features/scriptcat-credential-import.md) owns what the administrator
+sees.
+
 ## 2026-10-23 — ModelTrace fingerprint detection
 
 [PR #196](https://github.com/DabengBa/gpt-load/pull/196) added per-model
