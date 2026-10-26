@@ -2,8 +2,23 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 
 test.setTimeout(90_000)
 
-async function openImport(page: Page): Promise<void> {
-  await page.addInitScript(() => localStorage.setItem('gpt-load.auth-key', 'fixture-auth'))
+async function openImport(page: Page, withScriptcatPayload = false): Promise<void> {
+  await page.addInitScript((includePayload) => {
+    localStorage.setItem('gpt-load.auth-key', 'fixture-auth')
+    if (includePayload) {
+      sessionStorage.setItem(
+        'gpt-load.scriptcat-import-payload',
+        JSON.stringify({
+          version: 2,
+          createdAt: Date.now(),
+          apiKey: 'sk-scriptcat-fixture',
+          baseURL: 'https://relay.example.test/v1',
+          groupName: 'ScriptCat fixture group',
+          providerUrl: 'https://provider.example.test',
+        }),
+      )
+    }
+  }, withScriptcatPayload)
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname
     const data =
@@ -54,6 +69,77 @@ async function openImport(page: Page): Promise<void> {
   await page.goto('/import?mode=new', { waitUntil: 'commit' })
   await expect(page.locator('#channel-credentials')).toBeVisible({ timeout: 60_000 })
 }
+
+test('ScriptCat payload pre-fills credentials and keeps Base URL when a channel is selected', async ({
+  page,
+}) => {
+  await openImport(page, true)
+  const credentials = page.locator('#channel-credentials')
+  await expect(credentials).toHaveValue('sk-scriptcat-fixture')
+  await expect(page.getByRole('textbox', { name: /^Group name/ })).toHaveValue(
+    'ScriptCat fixture group',
+  )
+  await expect(page.getByRole('textbox', { name: /^Provider website/ })).toHaveValue(
+    'https://provider.example.test',
+  )
+  await expect
+    .poll(() => page.evaluate(() => sessionStorage.getItem('gpt-load.scriptcat-import-payload')))
+    .toBeNull()
+
+  await page.getByRole('button', { name: 'OpenAI', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: /^Custom upstream URL/ })).toHaveValue(
+    'https://relay.example.test/v1',
+  )
+})
+
+test('ScriptCat payload arriving after the import view mounts is consumed', async ({ page }) => {
+  await openImport(page)
+  await page.evaluate(() => {
+    sessionStorage.setItem(
+      'gpt-load.scriptcat-import-payload',
+      JSON.stringify({
+        version: 2,
+        createdAt: Date.now(),
+        apiKey: 'sk-late-scriptcat-fixture',
+        baseURL: 'https://relay.example.test',
+        groupName: 'Late fixture group',
+        providerUrl: 'https://late-provider.example.test',
+      }),
+    )
+    window.dispatchEvent(new Event('gpt-load:scriptcat-import'))
+  })
+  await expect(page.locator('#channel-credentials')).toHaveValue('sk-late-scriptcat-fixture')
+})
+
+test('a repeated ScriptCat handoff does not replace edits made to the first payload', async ({
+  page,
+}) => {
+  await openImport(page)
+  const deliver = (apiKey: string) =>
+    page.evaluate((key) => {
+      sessionStorage.setItem(
+        'gpt-load.scriptcat-import-payload',
+        JSON.stringify({
+          version: 2,
+          createdAt: Date.now(),
+          apiKey: key,
+          baseURL: 'https://relay.example.test',
+          groupName: 'ScriptCat fixture group',
+          providerUrl: 'https://provider.example.test',
+        }),
+      )
+      window.dispatchEvent(new Event('gpt-load:scriptcat-import'))
+    }, apiKey)
+
+  await deliver('sk-first-scriptcat-fixture')
+  await expect(page.locator('#channel-credentials')).toHaveValue('sk-first-scriptcat-fixture')
+  const groupName = page.getByRole('textbox', { name: /^Group name/ })
+  await groupName.fill('Keep this edit')
+
+  await deliver('sk-second-scriptcat-fixture')
+  await expect(page.locator('#channel-credentials')).toHaveValue('sk-first-scriptcat-fixture')
+  await expect(groupName).toHaveValue('Keep this edit')
+})
 
 async function descriptions(input: Locator): Promise<string[]> {
   return input.evaluate((element) =>

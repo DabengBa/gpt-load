@@ -11,6 +11,7 @@ import {
 } from '@shared/routing/import-route'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 import type { ExistingGroupImportDraft, ImportDraft } from '@shared/domain/import/model-draft'
+import { consumeScriptcatImportPayload } from '@shared/domain/import/scriptcat-payload'
 
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
@@ -43,6 +44,40 @@ export function ImportView() {
   // Classic `recoveredDraft = ref(recovery.consume())` — consumed exactly once
   // per page mount (initialDraft prop, not a reactive source afterwards).
   const [recoveredDraft] = useState(() => services.importRecovery.consume())
+  const [scriptcatPayload, setScriptcatPayload] = useState(() => {
+    try {
+      return typeof window === 'undefined'
+        ? null
+        : consumeScriptcatImportPayload(window.sessionStorage)
+    } catch {
+      return null
+    }
+  })
+  useEffect(() => {
+    let pollCount = 0
+    function receiveScriptcatPayload(): void {
+      try {
+        const payload = consumeScriptcatImportPayload(window.sessionStorage)
+        if (payload !== null) {
+          window.clearInterval(pollTimer)
+          setScriptcatPayload(payload)
+        }
+      } catch {
+        // Storage access can be blocked; manual import remains available.
+      }
+    }
+    window.addEventListener('gpt-load:scriptcat-import', receiveScriptcatPayload)
+    const pollTimer = window.setInterval(() => {
+      receiveScriptcatPayload()
+      pollCount += 1
+      if (pollCount >= 20) window.clearInterval(pollTimer)
+    }, 100)
+    receiveScriptcatPayload()
+    return () => {
+      window.removeEventListener('gpt-load:scriptcat-import', receiveScriptcatPayload)
+      window.clearInterval(pollTimer)
+    }
+  }, [])
 
   const activeMode: ImportOperationMode =
     operationMode ??
@@ -150,7 +185,24 @@ export function ImportView() {
 
   const effectiveRecovered = clearedRecoveryOnSwitch ? null : recoveredDraft
   const recoveredNewDraft: ImportDraft | null =
-    effectiveRecovered?.mode === 'new' ? effectiveRecovered : null
+    effectiveRecovered?.mode === 'new'
+      ? effectiveRecovered
+      : recoveredDraft === null &&
+          !clearedRecoveryOnSwitch &&
+          scriptcatPayload &&
+          activeMode === 'new'
+        ? {
+            mode: 'new',
+            channel_id: '',
+            connection_type: 'api_key',
+            params: { base_url: scriptcatPayload.baseURL },
+            proxy: { mode: 'inherit', url: '' },
+            name: scriptcatPayload.groupName,
+            provider_url: scriptcatPayload.providerUrl,
+            credentials: scriptcatPayload.apiKey,
+            models: [],
+          }
+        : null
   const recoveredExistingDraft: ExistingGroupImportDraft | null =
     effectiveRecovered?.mode === 'existing' ? effectiveRecovered : null
 

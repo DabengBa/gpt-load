@@ -135,7 +135,7 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
       'models',
     ]) &&
     value.mode === 'new' &&
-    isChannelID(value.channel_id) &&
+    (value.channel_id === '' || isChannelID(value.channel_id)) &&
     value.connection_type === 'api_key' &&
     isChannelParams(value.params) &&
     isImportProxyDraft(value.proxy) &&

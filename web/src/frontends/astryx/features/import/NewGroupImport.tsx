@@ -10,7 +10,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { ArrowRight, Plus, RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { ApiError, RequestCancelledError } from '@shared/http/errors'
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
@@ -161,6 +161,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const [draft, setDraft] = useState<ImportDraft>(() =>
     cloneDraft(initialOperationDraft ?? initialDraft ?? freshDraft()),
   )
+  const lastInitialDraftJsonRef = useRef(initialDraft ? JSON.stringify(initialDraft) : '')
   // Classic `defaultDraft` baseline: freshDraft() JSON mutated by
   // default-channel adoption — recovered/locked drafts never match it and
   // stay dirty.
@@ -205,6 +206,21 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   )
   const [serverModelConflicts, setServerModelConflicts] = useState<ModelNameConflict[]>([])
   const [completed, setCompleted] = useState(false)
+
+  useLayoutEffect(() => {
+    if (!initialDraft) return
+    const nextInitialDraftJson = JSON.stringify(initialDraft)
+    const previousInitialDraftJson = lastInitialDraftJsonRef.current
+    if (nextInitialDraftJson === previousInitialDraftJson) return
+    lastInitialDraftJsonRef.current = nextInitialDraftJson
+    const draftJson = JSON.stringify(draft)
+    if (draftJson !== baselineJson && draftJson !== previousInitialDraftJson) return
+    setDraft(cloneDraft(initialDraft))
+    setBaseUrlOverrideEnabled(Boolean(initialDraft.params.base_url?.trim()))
+    setParamTouched({})
+    setErrorKey('')
+    setCredentialValidation(null)
+  }, [baselineJson, draft, initialDraft])
 
   const mutationPending = createSnap.pending
   const payloadLocked = createSnap.operation !== null
@@ -568,11 +584,16 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     cancelDefaultChannel()
     resetParamTouches()
     setSelectedChannelCache(channel)
+    const importedBaseURL = selectedChannel === null ? draft.params.base_url?.trim() : undefined
+    const urlField = channel.param_fields.find((field) => field.input_kind === 'url')
     setDraft((current) => ({
       ...current,
       channel_id: channel.channel_id,
       connection_type: channel.connection.type,
-      params: initialChannelParams(channel),
+      params: {
+        ...initialChannelParams(channel),
+        ...(importedBaseURL && urlField ? { [urlField.key]: importedBaseURL } : {}),
+      },
     }))
     setBaseUrlOverrideEnabled(true)
     setPanel(undefined)
