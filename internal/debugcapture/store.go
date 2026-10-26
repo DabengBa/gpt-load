@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	retention        = 4 * time.Hour
+	retention        = 24 * time.Hour
 	bodyChunkSize    = 64 * 1024
 	cleanupBatchSize = 100
 )

@@ -11,6 +11,12 @@ import (
 	"gpt-load/internal/storage"
 )
 
+func TestRetentionPeriodIs24Hours(t *testing.T) {
+	if got := RetentionPeriod(); got != 24*time.Hour {
+		t.Fatalf("RetentionPeriod() = %s, want 24h", got)
+	}
+}
+
 func TestRuntimeSweepsOnStartupAndDrainsRegisteredSessions(t *testing.T) {
 	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
 	store := newTestStore(t, &now)

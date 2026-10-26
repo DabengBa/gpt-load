@@ -18,7 +18,7 @@ Debug communication capture is an opt-in operational tool for investigating gate
 
 ## Retention
 
-The capture store uses the existing configured database and remains separate from `request_logs`. Captures are retained for a fixed 4-hour expiry, then startup and periodic cleanup remove expired rows and chunks automatically. Each runtime admits at most 64 concurrent capture sessions; each attempt retains at most 8 MiB of raw body data and 128 pending persistence events. Exceeding a limit fails the affected capture without changing the data-plane response.
+The capture store uses the existing configured database and remains separate from `request_logs`. Captures are retained for a fixed 24-hour expiry, then startup and periodic cleanup remove expired rows and chunks automatically. Each runtime admits at most 64 concurrent capture sessions; each attempt retains at most 8 MiB of raw body data and 128 pending persistence events. Exceeding a limit fails the affected capture without changing the data-plane response.
 
 The capture can contain complete observed sensitive values, including `Authorization`, `Cookie`, API keys, request bodies, response bodies, and provider credentials passed through the supported observation boundary. Protect `AUTH_KEY`, the database, database backups, and exported archives. Do not enable this feature on an untrusted or shared deployment unless that exposure is intentional.
 
@@ -32,7 +32,7 @@ These endpoints require the management `AUTH_KEY` and are administrator-only. Da
 
 The list endpoint accepts `request_id`, `access_key_id`, `protocol`, `operation`, `state`, `created_after_ms`, `created_before_ms`, `offset`, and `limit`. The default page size is 50 and the maximum is 200; `limit=0`, an unknown `state`, a non-canonical id, or a window whose start is not before its end is rejected. `created_after_ms` is inclusive and `created_before_ms` is exclusive.
 
-`state` accepts `active`, `completed`, `failed`, and `expired`, but the list only reads rows whose `expires_at_ms` is still in the future, ordered by creation time. A session that already expired is not listed under `state=expired`; that value currently returns nothing. Use the structured request log for history beyond the fixed 4-hour retention.
+`state` accepts `active`, `completed`, `failed`, and `expired`, but the list only reads rows whose `expires_at_ms` is still in the future, ordered by creation time. A session that already expired is not listed under `state=expired`; that value currently returns nothing. Use the structured request log for history beyond the fixed 24-hour retention.
 
 The detail response contains session metadata, lifecycle state, errors, and ordered logical attempts. The download endpoint streams a ZIP containing a JSON manifest, per-attempt metadata, and raw request/response header and body parts. Download responses are marked `no-store`.
 
