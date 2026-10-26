@@ -75,14 +75,11 @@ export interface SchedulePanelDetailLabels {
   unknownReason?: string
   reasonLabels?: Partial<Record<string, string>>
   draftPreview?: string
-  toggleEnabled?: string
   toggleFailed?: string
-  disabled?: string
   calls24h?: string
   successRate24h?: string
   reasoning: string
   inherit: string
-  groupDisabled: string
 }
 
 export interface SchedulePanelDetailProps {
@@ -450,10 +447,13 @@ const styles = stylex.create({
   row: {
     display: 'grid',
     gridTemplateColumns: {
-      default: 'minmax(150px, 1.6fr) 72px 100px minmax(206px, 1.2fr) 56px 116px',
+      // The actions track must fit switch + recovery + More (115px of controls
+      // plus two 5px gaps) because it is right-aligned and would otherwise spill
+      // leftwards over the share value.
+      default: 'minmax(120px, 1.6fr) 116px 100px minmax(206px, 1.2fr) 56px 128px',
       '@media (min-width: 768px) and (max-width: 1199px)':
-        'minmax(144px, 1.3fr) 64px 90px minmax(194px, 1fr) 52px 112px',
-      [narrow]: 'minmax(0, 1fr) minmax(0, 1fr) 84px',
+        'minmax(100px, 1.3fr) 108px 90px minmax(194px, 1fr) 52px 128px',
+      [narrow]: 'minmax(0, 1fr) minmax(0, 1fr) 148px',
     },
     gridTemplateAreas: {
       default: '"identity status metrics settings share actions"',
@@ -463,7 +463,7 @@ const styles = stylex.create({
     minHeight: 58,
     alignItems: { default: 'center', [narrow]: 'start' },
     columnGap: { default: 10, '@media (max-width: 1199px)': 8 },
-    rowGap: { default: 0, [narrow]: 8 },
+    rowGap: { default: 0, [narrow]: 4 },
     paddingBlock: 8,
     paddingInline: { default: 12, '@media (max-width: 1199px)': 10 },
     borderBottomWidth: { default: 1, ':last-child': 0 },
@@ -489,6 +489,13 @@ const styles = stylex.create({
   cell: { minWidth: 0, color: 'var(--color-text)', fontSize: 'var(--text-body)' },
   identity: { gridArea: 'identity' },
   statusCell: { gridArea: 'status', textAlign: { default: 'left', [narrow]: 'right' } },
+  eligibility: {
+    display: 'block',
+    fontWeight: 600,
+    fontSize: 'var(--text-meta)',
+    lineHeight: 1.3,
+    overflowWrap: 'anywhere',
+  },
   cellStrong: {
     display: 'block',
     overflowWrap: 'anywhere',
@@ -544,7 +551,17 @@ const styles = stylex.create({
     gap: 6,
     minWidth: 0,
   },
-  controlGroup: { display: 'grid', minWidth: 0, alignContent: 'start', gap: 4 },
+  controlGroup: {
+    display: 'grid',
+    minWidth: 0,
+    // A bare `grid` gives the control an `auto` track, which sizes to the
+    // Selector's max-content width and refuses to shrink — the reasoning
+    // trigger then spills over the share column at 768–1199px. `minmax(0, 1fr)`
+    // lets the control use the column width it is given.
+    gridTemplateColumns: 'minmax(0, 1fr)',
+    alignContent: 'start',
+    gap: 4,
+  },
   controlLabel: {
     display: { default: 'none', [narrow]: 'block' },
     fontSize: 'var(--text-meta)',
@@ -620,9 +637,6 @@ const styles = stylex.create({
     transitionDuration: { default: '140ms', [reduceMotion]: '0s' },
   },
   toggleThumbOn: { transform: 'translateX(12px)' },
-  runtimeAvailable: { color: 'var(--color-success)' },
-  runtimeCooldown: { color: 'var(--color-warning)' },
-  runtimeBlacklisted: { color: 'var(--color-danger)' },
   numberField: { display: 'grid', minWidth: 0, gap: 4 },
   inputShell: {
     display: 'flex',
@@ -1037,7 +1051,7 @@ export function SchedulePanelDetail({
     for (const candidate of candidates) {
       const key = rowKey(candidate.group.group_id, candidate.entry.entry_id)
       const enabled = optimisticEnabled.get(key) ?? candidate.entry.enabled
-      if (enabled) {
+      if (enabled && candidate.group.enabled) {
         totals.set(candidate.priority, (totals.get(candidate.priority) ?? 0) + candidate.weight)
       }
     }
@@ -1045,7 +1059,10 @@ export function SchedulePanelDetail({
       const key = rowKey(candidate.group.group_id, candidate.entry.entry_id)
       const enabled = optimisticEnabled.get(key) ?? candidate.entry.enabled
       const total = totals.get(candidate.priority) ?? 0
-      result.set(key, enabled && total > 0 ? Math.max(0, candidate.weight) / total : 0)
+      result.set(
+        key,
+        enabled && candidate.group.enabled && total > 0 ? Math.max(0, candidate.weight) / total : 0,
+      )
     }
     return result
   }, [detail, draftMap, optimisticEnabled, hasScheduleDraft])
@@ -1454,6 +1471,9 @@ export function SchedulePanelDetail({
             </div>
           ) : (
             <div ref={scheduleTableRef} {...stylex.props(styles.tableWrap)}>
+              {hasScheduleDraft && (
+                <span {...stylex.props(styles.cellSmall)}>{text('draftPreview')}</span>
+              )}
               <div role="table" aria-label={text('title')} {...stylex.props(styles.table)}>
                 <div role="row" {...stylex.props(styles.row, styles.rowHeader)}>
                   <div role="columnheader" {...stylex.props(styles.headerCell, styles.identity)}>
@@ -1488,6 +1508,18 @@ export function SchedulePanelDetail({
                   const needsRecovery = entry.runtime.state !== 'available'
                   const rowChanged = Object.keys(draftMap[key] ?? {}).length > 0
                   const rowLabel = `${entry.model_id} · ${group.group_name}`
+                  const reason = !group.enabled
+                    ? 'group_disabled'
+                    : !enabled
+                      ? 'entry_disabled'
+                      : entry.reason_code
+                  const eligibility =
+                    reason !== null
+                      ? (labels.reasonLabels?.[reason] ?? text('unknownReason'))
+                      : entry.routable
+                        ? t('monitor.schedule.detail.schedulable')
+                        : text('unknownReason')
+                  const toggleLabel = `${t(enabled ? 'monitor.schedule.detail.disableEntry' : 'monitor.schedule.detail.enableEntry')} ${rowLabel}`
                   return (
                     <div
                       key={key}
@@ -1530,15 +1562,9 @@ export function SchedulePanelDetail({
                         )}
                       </div>
                       <div role="cell" {...stylex.props(styles.cell, styles.statusCell)}>
-                        <span
-                          {...stylex.props(
-                            entry.runtime.state === 'available'
-                              ? styles.runtimeAvailable
-                              : entry.runtime.state === 'cooldown'
-                                ? styles.runtimeCooldown
-                                : styles.runtimeBlacklisted,
-                          )}
-                        >
+                        <span {...stylex.props(styles.eligibility)}>{eligibility}</span>
+                        <span {...stylex.props(styles.cellSmall)}>
+                          {t('monitor.schedule.detail.entryHealth')}:{' '}
                           {entry.runtime.state === 'available'
                             ? text('available')
                             : entry.runtime.state === 'cooldown'
@@ -1550,12 +1576,6 @@ export function SchedulePanelDetail({
                             {entry.runtime.failure_count} {text('failures')}
                           </span>
                         )}
-                        {!enabled && (
-                          <span {...stylex.props(styles.cellSmall)}>{text('disabled')}</span>
-                        )}
-                        {!group.enabled && (
-                          <span {...stylex.props(styles.cellSmall)}>{text('groupDisabled')}</span>
-                        )}
                       </div>
                       <div role="cell" {...stylex.props(styles.cell, styles.metrics)}>
                         <span {...stylex.props(styles.metricValue)}>
@@ -1566,7 +1586,7 @@ export function SchedulePanelDetail({
                           <span {...stylex.props(styles.metricLabel)}>
                             {text('successRate24h')}
                           </span>
-                          {formatRate(group.success_rate)}
+                          {group.request_count === 0 ? '—' : formatRate(group.success_rate)}
                         </span>
                       </div>
                       <div
@@ -1643,7 +1663,8 @@ export function SchedulePanelDetail({
                           type="button"
                           role="switch"
                           aria-checked={enabled}
-                          aria-label={`${text('toggleEnabled')} ${rowLabel}`}
+                          aria-label={toggleLabel}
+                          title={toggleLabel}
                           disabled={pending || togglingEntries.has(key) || derived}
                           {...stylex.props(styles.toggle)}
                           onClick={() => {
