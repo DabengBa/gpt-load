@@ -76,11 +76,13 @@ Two independent timers bound the credential, and neither survives its document:
   a matching destination page removes it as expired.
 - The destination claim schedules removal of the `sessionStorage` record when
   its 15-minute TTL elapses, only while the stored value is still the one it
-  wrote. A full reload interrupts that timer; opening `/import` again removes an
-  already expired record, so cleanup happens at the next consumption.
+  wrote. A full reload interrupts that timer, and the userscript reschedules it
+  when it starts on `/import` again: an expired record is removed immediately,
+  an unexpired one gets a new timer for its remaining lifetime.
 
-The claim also sweeps expired `GM` entries before writing a new transfer, and
-deletes a malformed or expired entry it is asked to claim.
+Creating a transfer from the source page sweeps expired `GM` entries before it
+writes the new one, and a destination claim deletes a malformed or expired entry
+it is asked to claim.
 
 ## Consumption And Prefill
 
