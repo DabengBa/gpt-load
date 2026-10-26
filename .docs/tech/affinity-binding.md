@@ -181,13 +181,26 @@ an unreadable durable authority is never mistaken for "no binding". No schema,
 column, or migration is added.
 
 A required durable lookup/decode failure is returned as HTTP 503
-`affinity_store_unavailable` with `Retry-After: 1`; WebSocket turns return the
-same error code. It is not reported as `configuration_changed`, because a
-storage read failure does not establish that configuration changed. The data
-plane emits a rate-limited `affinity_binding_lookup_failed` diagnostic with the
-request ID, lookup phase, masked affinity key and underlying error. It never
-includes the raw client cache key or stored binding payload. Both transports
-remain fail closed and dispatch no provider attempt.
+`affinity_store_unavailable` with `Retry-After: 1`; a WebSocket turn returns an
+`error` event with the same code. It is not reported as
+`configuration_changed`, because a storage read failure does not establish that
+configuration changed. Both transports remain fail closed and dispatch no
+provider attempt.
+
+That failure emits one rate-limited (per minute) data-plane diagnostic,
+`affinity_binding_lookup_failed`, carrying the request ID, the lookup phase
+(`durable_lookup`), the masked affinity display key, the root-cause Go type of
+the wrapped error, and the number of events counted in the window. The
+diagnostic deliberately omits the error text itself, the raw client cache key
+and the stored binding payload. The type alone separates a storage driver error
+and a JSON syntax error from an ordinary Go error, but it is not proof of the
+exact cause: an invalid binding and a closed database both surface as
+`*errors.errorString`. Treat the type as a coarse hint for which layer failed,
+not as the reason for the fault.
+
+The type reported is the innermost cause: the error is unwrapped repeatedly
+until no further wrapper remains, so multi-layer `%w` wrapping in the storage
+path does not hide the root.
 
 Route changes are reconciled against the published execution route catalog,
 scoped to the key's client protocol, operation and client model, rather than a
@@ -241,3 +254,12 @@ preservation), `internal/storage/affinity_store_route_test.go` (route round
 trip, obsolete credential-only payload as a miss), and
 `internal/affinity/cache_test.go` / `internal/affinity/target_test.go`
 (target validity, stale found observation does not reinsert).
+
+Durable-store failure coverage lives in `internal/gateway/affinity_store_test.go`:
+`TestHandlerFailsClosedWhenDurableAffinityLookupFails` and
+`TestWebsocketFailsClosedWhenDurableAffinityLookupFails` assert the 503 error
+code, `Retry-After`, zero provider attempts, the diagnostic event and the
+absence of the raw cache key and payload in logs;
+`TestHandlerLogsDurableAffinityLookupRootCause` drives a dropped table, invalid
+JSON, an invalid target and a closed database through the real SQLite store and
+asserts the reported root-cause type plus the redaction contract.
