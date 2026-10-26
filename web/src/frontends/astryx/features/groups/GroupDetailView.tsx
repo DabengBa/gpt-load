@@ -285,7 +285,6 @@ export function GroupDetailView() {
                   enabled={settingsQuery.data?.enabled ?? true}
                   unified
                   blocked={deletePending}
-                  readonlyRouteFields
                   onStateChange={setModelsState}
                 />
                 {/* Unified-mode portal target: GroupSettingsTab portals its

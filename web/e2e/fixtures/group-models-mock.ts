@@ -29,8 +29,36 @@ const CANDIDATES = [
   },
 ]
 
-export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> {
+export interface GroupModelSeed {
+  id: string
+  alias?: string
+  alias_enabled?: boolean
+  weight?: number | null
+  priority?: number | null
+}
+
+function modelItem(seed: GroupModelSeed, index: number, testAlias?: string) {
+  const alias = seed.alias ?? ''
+  const aliasEnabled = seed.alias_enabled ?? false
+  return {
+    id: seed.id,
+    alias,
+    alias_enabled: aliasEnabled,
+    client_model: aliasEnabled ? alias : seed.id,
+    concurrency_limit: 0,
+    test_alias: testAlias ?? `tst${String(index).padStart(3, '0')}`,
+    weight: seed.weight ?? null,
+    priority: seed.priority ?? null,
+    pricing_status: 'configured',
+  }
+}
+
+export async function mockGroupModels(
+  page: Page,
+  options: { models?: GroupModelSeed[] } = {},
+): Promise<{ puts: unknown[] }> {
   const puts: unknown[] = []
+  let items = (options.models ?? []).map((seed, index) => modelItem(seed, index))
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
     window.localStorage.setItem('gpt-load.locale', 'en-US')
@@ -122,10 +150,19 @@ export async function mockGroupModels(page: Page): Promise<{ puts: unknown[] }> 
         },
       })
     if (path === '/api/groups/1/models' && request.method() === 'GET')
-      return fulfill({ items: [], total: 0, pending: 0 })
+      return fulfill({ items, total: items.length, pending: 0 })
     if (path === '/api/groups/1/models' && request.method() === 'PUT') {
-      puts.push(request.postDataJSON())
-      return fulfill({ items: [], total: 0, pending: 0 })
+      const body = request.postDataJSON() as { models?: GroupModelSeed[] }
+      puts.push(body)
+      items = (body.models ?? []).map((model, index) => {
+        const previous = items[index]
+        return modelItem(
+          model,
+          index,
+          previous && previous.id === model.id ? previous.test_alias : undefined,
+        )
+      })
+      return fulfill({ items, total: items.length, pending: 0 })
     }
     if (path === '/api/groups/1/models/discover') return fulfill({ models: CANDIDATES })
     if (path === '/api/groups/1/credential') return fulfill({ credential: null })

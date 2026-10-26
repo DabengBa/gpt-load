@@ -14,7 +14,6 @@ import {
 import {
   clientModel,
   modelDraftValidity,
-  routeEntryShares,
   type ModelAliasEditorLabels,
   type ModelDraftKey,
   type ModelDraftValue,
@@ -77,21 +76,6 @@ const styles = stylex.create({
     fontFamily: 'var(--font-mono)',
     fontSize: 'var(--text-meta)',
     fontWeight: 500,
-  },
-  distribution: {
-    display: 'flex',
-    width: 'min(100%, 360px)',
-    height: '6px',
-    overflow: 'hidden',
-    borderRadius: '999px',
-    backgroundColor: 'var(--color-border-subtle)',
-  },
-  distributionSegment: {
-    height: '100%',
-    backgroundColor: 'var(--color-action)',
-  },
-  distributionSegmentZero: {
-    backgroundColor: 'var(--color-border-subtle)',
   },
   recordInvalid: {
     backgroundColor: 'var(--color-danger-bg)',
@@ -208,41 +192,6 @@ const styles = stylex.create({
     width: 'min(96px, 100%)',
     position: 'relative',
   },
-  routeSummary: {
-    display: 'inline-flex',
-    minWidth: '42px',
-    minHeight: 'var(--control-compact)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: 'var(--radius-control)',
-    backgroundColor: 'var(--color-surface-sunken)',
-    color: 'var(--color-text-muted)',
-    fontFamily: 'var(--font-mono)',
-    fontSize: 'var(--text-meta)',
-  },
-  routeMeta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    minHeight: '16px',
-  },
-  routeFlag: {
-    paddingBlock: '1px',
-    paddingInline: '7px',
-    borderRadius: '999px',
-    backgroundColor: 'var(--color-border-subtle)',
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-meta)',
-    fontWeight: 560,
-  },
-  routeShare: {
-    color: 'var(--color-text-faint)',
-    fontFamily: 'var(--font-mono)',
-    fontSize: 'var(--text-meta)',
-  },
   thirdColumn: {
     minWidth: 0,
     gridColumn: { [narrow]: '1 / -1' },
@@ -344,7 +293,6 @@ export interface ModelAliasEditorProps<T extends ModelDraftValue> {
   search?: string
   validationMode?: 'immediate' | 'blur'
   showAllErrors?: boolean
-  readonlyRouteFields?: boolean
   renderThirdColumn?: (item: T, index: number) => ReactNode
   onChange(value: T[]): void
   onSearchChange?(value: string): void
@@ -363,7 +311,6 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
   search,
   validationMode = 'immediate',
   showAllErrors = false,
-  readonlyRouteFields = false,
   renderThirdColumn,
   onChange,
   onSearchChange,
@@ -391,7 +338,6 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
   }
 
   const validity = modelDraftValidity(value, conflicts)
-  const shares = routeEntryShares(value)
 
   const query = searchValue.trim().toLocaleLowerCase()
   const rows = value.flatMap<VisibleRow<T>>((item, index) =>
@@ -435,16 +381,21 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
     }
   }
 
-  function sharePercent(index: number): string {
-    const share = shares[index] ?? 0
-    return `${Math.round(share * 1_000) / 10}%`
-  }
-
-  function routeCountText(routeValue: number | null): string {
-    return routeValue === null ? '' : String(routeValue)
-  }
-
   type RouteCountField = 'weight' | 'priority'
+
+  // In-progress text per route field. An untouched field states its effective
+  // value (unset weight/priority route as 1) without writing 1 into the draft,
+  // so persistence keeps null.
+  const [routeText, setRouteText] = useState<Readonly<Record<string, string>>>({})
+
+  function routeTextKey(key: ModelDraftKey, field: RouteCountField): string {
+    return `${String(key)}:${field}`
+  }
+
+  function routeCountText(item: T, field: RouteCountField): string {
+    const raw = routeText[routeTextKey(item.key, field)]
+    return raw ?? String(item[field] ?? 1)
+  }
 
   function updateRow(
     index: number,
@@ -464,13 +415,26 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
   }
 
   function updateRouteCount(index: number, field: RouteCountField, raw: string): void {
-    if (readonlyRouteFields) return
+    setRouteText((previous) => ({
+      ...previous,
+      [routeTextKey(value[index].key, field)]: raw,
+    }))
     const trimmed = raw.trim()
     if (trimmed === '') {
       updateRow(index, { [field]: null })
       return
     }
     updateRow(index, { [field]: Number(trimmed) })
+  }
+
+  function releaseRouteText(item: T, field: RouteCountField): void {
+    const key = routeTextKey(item.key, field)
+    setRouteText((previous) => {
+      if (!(key in previous)) return previous
+      const next = { ...previous }
+      delete next[key]
+      return next
+    })
   }
 
   function removeRow(index: number): void {
@@ -698,18 +662,6 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
                   <strong>{render.group.clientModel}</strong>
                   <span {...stylex.props(styles.groupCount)}>{render.group.rows.length}</span>
                 </button>
-                <div {...stylex.props(styles.distribution)} aria-hidden="true">
-                  {render.group.rows.map((row) => (
-                    <i
-                      key={row.item.key}
-                      {...stylex.props(
-                        styles.distributionSegment,
-                        (row.item.weight ?? 1) === 0 && styles.distributionSegmentZero,
-                      )}
-                      style={{ width: sharePercent(row.index) }}
-                    />
-                  ))}
-                </div>
               </div>
             </article>
           ) : (
@@ -829,86 +781,61 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
                   {labels.weight} / {labels.priority}
                 </span>
                 <div {...stylex.props(styles.routeInputs)}>
-                  {readonlyRouteFields ? (
-                    <>
-                      <span {...stylex.props(styles.routeSummary)} aria-label={labels.weight}>
-                        {routeCountText(render.item.weight ?? null) || '—'}
+                  {(() => {
+                    const weightError = visibleWeightError(render.index)
+                    const weightId = `${instanceId}-model-weight-${render.index}`
+                    return (
+                      <span {...stylex.props(styles.routeField)}>
+                        <input
+                          id={weightId}
+                          {...stylex.props(styles.input, weightError !== '' && styles.inputInvalid)}
+                          value={routeCountText(render.item, 'weight')}
+                          aria-label={labels.weight}
+                          aria-invalid={weightError !== '' || undefined}
+                          aria-describedby={weightError !== '' ? `${weightId}-error` : undefined}
+                          data-model-weight-index={render.index}
+                          spellCheck={false}
+                          disabled={disabled}
+                          onChange={(event) =>
+                            updateRouteCount(render.index, 'weight', event.target.value)
+                          }
+                          onBlur={() => releaseRouteText(render.item, 'weight')}
+                        />
+                        {weightError !== '' && <FieldError id={weightId} error={weightError} />}
                       </span>
-                      <span {...stylex.props(styles.routeSummary)} aria-label={labels.priority}>
-                        {routeCountText(render.item.priority ?? null) || '—'}
+                    )
+                  })()}
+                  {(() => {
+                    const priorityError = visiblePriorityError(render.index)
+                    const priorityId = `${instanceId}-model-priority-${render.index}`
+                    return (
+                      <span {...stylex.props(styles.routeField)}>
+                        <input
+                          id={priorityId}
+                          {...stylex.props(
+                            styles.input,
+                            priorityError !== '' && styles.inputInvalid,
+                          )}
+                          value={routeCountText(render.item, 'priority')}
+                          aria-label={labels.priority}
+                          aria-invalid={priorityError !== '' || undefined}
+                          aria-describedby={
+                            priorityError !== '' ? `${priorityId}-error` : undefined
+                          }
+                          data-model-priority-index={render.index}
+                          spellCheck={false}
+                          disabled={disabled}
+                          onChange={(event) =>
+                            updateRouteCount(render.index, 'priority', event.target.value)
+                          }
+                          onBlur={() => releaseRouteText(render.item, 'priority')}
+                        />
+                        {priorityError !== '' && (
+                          <FieldError id={priorityId} error={priorityError} />
+                        )}
                       </span>
-                    </>
-                  ) : (
-                    <>
-                      {(() => {
-                        const weightError = visibleWeightError(render.index)
-                        const weightId = `${instanceId}-model-weight-${render.index}`
-                        return (
-                          <span {...stylex.props(styles.routeField)}>
-                            <input
-                              id={weightId}
-                              {...stylex.props(
-                                styles.input,
-                                weightError !== '' && styles.inputInvalid,
-                              )}
-                              value={routeCountText(render.item.weight ?? null)}
-                              aria-label={labels.weight}
-                              placeholder="1"
-                              aria-invalid={weightError !== '' || undefined}
-                              aria-describedby={
-                                weightError !== '' ? `${weightId}-error` : undefined
-                              }
-                              data-model-weight-index={render.index}
-                              spellCheck={false}
-                              disabled={disabled}
-                              onChange={(event) =>
-                                updateRouteCount(render.index, 'weight', event.target.value)
-                              }
-                            />
-                            {weightError !== '' && <FieldError id={weightId} error={weightError} />}
-                          </span>
-                        )
-                      })()}
-                      {(() => {
-                        const priorityError = visiblePriorityError(render.index)
-                        const priorityId = `${instanceId}-model-priority-${render.index}`
-                        return (
-                          <span {...stylex.props(styles.routeField)}>
-                            <input
-                              id={priorityId}
-                              {...stylex.props(
-                                styles.input,
-                                priorityError !== '' && styles.inputInvalid,
-                              )}
-                              value={routeCountText(render.item.priority ?? null)}
-                              aria-label={labels.priority}
-                              placeholder="1"
-                              aria-invalid={priorityError !== '' || undefined}
-                              aria-describedby={
-                                priorityError !== '' ? `${priorityId}-error` : undefined
-                              }
-                              data-model-priority-index={render.index}
-                              spellCheck={false}
-                              disabled={disabled}
-                              onChange={(event) =>
-                                updateRouteCount(render.index, 'priority', event.target.value)
-                              }
-                            />
-                            {priorityError !== '' && (
-                              <FieldError id={priorityId} error={priorityError} />
-                            )}
-                          </span>
-                        )
-                      })()}
-                    </>
-                  )}
-                </div>
-                <div {...stylex.props(styles.routeMeta)}>
-                  {(render.item.weight ?? 1) === 0 ? (
-                    <span {...stylex.props(styles.routeFlag)}>{labels.weightDisabled}</span>
-                  ) : (
-                    <span {...stylex.props(styles.routeShare)}>{sharePercent(render.index)}</span>
-                  )}
+                    )
+                  })()}
                 </div>
               </div>
 

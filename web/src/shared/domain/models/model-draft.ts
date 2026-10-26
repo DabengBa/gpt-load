@@ -228,24 +228,6 @@ export function effectiveEntryWeight(model: GroupModelUpdateDto): number {
   return model.weight ?? 1
 }
 
-/**
- * 每个条目在其对外名分组内的占比（null 权重按 1 参与，设计 §3）。
- * 权重合计为 0 的分组内所有条目占比均为 0。
- */
-export function routeEntryShares(models: readonly GroupModelUpdateDto[]): number[] {
-  const totals = new Map<string, number>()
-  for (const model of models) {
-    const name = clientModel(model)
-    if (!name) continue
-    totals.set(name, (totals.get(name) ?? 0) + effectiveEntryWeight(model))
-  }
-  return models.map((model) => {
-    const name = clientModel(model)
-    const total = name ? (totals.get(name) ?? 0) : 0
-    return total > 0 ? effectiveEntryWeight(model) / total : 0
-  })
-}
-
 /** 同一对外名下条目权重合计为 0（该对外模型完全不可分流，设计 §3 V2）。 */
 export function indexesWithZeroShare(models: readonly GroupModelUpdateDto[]): Set<number> {
   const totals = new Map<string, number>()
