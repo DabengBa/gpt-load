@@ -222,42 +222,40 @@ func TestCompilerRejectsInvalidProbeContracts(t *testing.T) {
 		protocol.OpenAICompletions: {execution.OperationProbe: execution.RouteNative},
 	}
 	tests := []struct {
-		name       string
-		connection spec.ConnectionType
-		contract   spec.ProbeContract
-		wantErr    bool
+		name     string
+		contract spec.ProbeContract
+		wantErr  bool
 	}{
 		{
-			name: "api key without contract", connection: spec.ConnectionAPIKey,
+			name:     "api key without contract",
 			contract: spec.ProbeContract{}, wantErr: true,
 		},
 		{
-			name: "api key budget below floor", connection: spec.ConnectionAPIKey,
+			name:     "api key budget below floor",
 			contract: spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: 1}, wantErr: true,
 		},
 		{
-			name: "api key embeddings contract", connection: spec.ConnectionAPIKey,
+			name:     "api key embeddings contract",
 			contract: spec.ProbeContract{Protocol: protocol.OpenAIEmbeddings, MinOutputTokens: 16}, wantErr: true,
 		},
 		{
-			name: "api key rerank contract", connection: spec.ConnectionAPIKey,
+			name:     "api key rerank contract",
 			contract: spec.ProbeContract{Protocol: protocol.Rerank, MinOutputTokens: 16}, wantErr: true,
 		},
 		{
-			name: "api key without declared route", connection: spec.ConnectionAPIKey,
+			name:     "api key without declared route",
 			contract: spec.ProbeContract{Protocol: protocol.Anthropic, MinOutputTokens: 16}, wantErr: true,
 		},
 		{
-			name: "api key valid", connection: spec.ConnectionAPIKey,
+			name:     "api key valid",
 			contract: spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: 16},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			definition := spec.Definition{
-				ID:         spec.OpenAI,
-				Connection: spec.Connection{Type: test.connection},
-				Provider:   spec.ProviderBinding{ProbeContract: test.contract},
+				ID:       spec.OpenAI,
+				Provider: spec.ProviderBinding{ProbeContract: test.contract},
 			}
 			err := validateProbeContract(definition, probeRoute)
 			if test.wantErr && err == nil {

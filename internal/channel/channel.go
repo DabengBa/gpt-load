@@ -72,9 +72,8 @@ type FieldDescriptor struct {
 }
 
 // ConnectionDescriptor describes the single code-owned credential flow used
-// by a channel. Connection type never selects an execution adapter.
+// by a channel.
 type ConnectionDescriptor struct {
-	Type            string `json:"type"`
 	CredentialInput string `json:"credential_input"`
 }
 
@@ -450,23 +449,6 @@ func (r *Registry) SupportsOutboundProxy(id ID) bool {
 	return ok && definition.providerKind.SupportsOutboundProxy()
 }
 
-// SupportsConnectionType reports whether a channel accepts one connection type.
-func (r *Registry) SupportsConnectionType(id ID, connectionType string) bool {
-	descriptor, ok := r.Get(id)
-	return ok && descriptor.Connection.Type == strings.TrimSpace(connectionType)
-}
-
-// ConnectionType returns the single code-owned connection type for a channel.
-// Connection type remains runtime metadata; callers must not treat it as a
-// user-selectable option.
-func (r *Registry) ConnectionType(id ID) (string, bool) {
-	descriptor, ok := r.Get(id)
-	if !ok || descriptor.Connection.Type == "" {
-		return "", false
-	}
-	return descriptor.Connection.Type, true
-}
-
 // FixedBaseURL returns the code-owned endpoint for a fixed preset.
 func (r *Registry) FixedBaseURL(id ID) (string, bool) {
 	definition, ok := r.lookup(id)
@@ -710,9 +692,6 @@ func validateDefinition(definition definition) error {
 	}
 	if !definition.providerKind.Valid() {
 		return fmt.Errorf("channel %q has invalid provider kind", id)
-	}
-	if definition.connection.Type != spec.ConnectionAPIKey {
-		return fmt.Errorf("channel %q has invalid connection type", id)
 	}
 	if definition.connection.CredentialInput == "" {
 		return fmt.Errorf("channel %q has no credential input", id)

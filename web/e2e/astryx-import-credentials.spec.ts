@@ -55,7 +55,7 @@ async function openImport(page: Page, withScriptcatPayload = false): Promise<voi
                       default_value: null,
                     },
                   ],
-                  connection: { type: 'api_key', credential_input: 'batch_text' },
+                  connection: { credential_input: 'batch_text' },
                   capabilities: { model_discovery: false, outbound_proxy: false },
                   routes: [],
                   client_protocols: [],

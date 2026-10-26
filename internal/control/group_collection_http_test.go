@@ -170,7 +170,6 @@ func TestParseGroupCollectionQueryRejectsEveryInvalidForm(t *testing.T) {
 		{name: "unknown key", rawQuery: "unknown=1"},
 		{name: "q repeated", rawQuery: "q=one&q=two"},
 		{name: "status repeated", rawQuery: "status=available&status=disabled"},
-		{name: "connection type repeated", rawQuery: "connection_type=api_key&connection_type=subscription"},
 		{name: "protocol repeated", rawQuery: "protocol=anthropic&protocol=gemini"},
 		{name: "sort repeated", rawQuery: "sort=name&sort=keys"},
 		{name: "page repeated", rawQuery: "page=1&page=2"},
@@ -179,9 +178,7 @@ func TestParseGroupCollectionQueryRejectsEveryInvalidForm(t *testing.T) {
 		{name: "status empty", rawQuery: "status="},
 		{name: "status all", rawQuery: "status=all"},
 		{name: "status unknown", rawQuery: "status=healthy"},
-		{name: "connection type empty", rawQuery: "connection_type="},
-		{name: "connection type unknown", rawQuery: "connection_type=oauth"},
-		{name: "connection type retired subscription", rawQuery: "connection_type=subscription"},
+		{name: "retired connection type filter", rawQuery: "connection_type=api_key"},
 		{name: "protocol empty", rawQuery: "protocol="},
 		{name: "protocol unknown", rawQuery: "protocol=openai"},
 		{name: "sort empty", rawQuery: "sort="},
@@ -240,10 +237,6 @@ func assertGroupCollectionQueryEqual(
 	if (got.Status == nil) != (want.Status == nil) ||
 		got.Status != nil && *got.Status != *want.Status {
 		t.Fatalf("query status = %#v, want %#v", got.Status, want.Status)
-	}
-	if (got.ConnectionType == nil) != (want.ConnectionType == nil) ||
-		got.ConnectionType != nil && *got.ConnectionType != *want.ConnectionType {
-		t.Fatalf("query connection type = %#v, want %#v", got.ConnectionType, want.ConnectionType)
 	}
 }
 
@@ -581,10 +574,10 @@ func decodeGroupOptionsSuccess(
 		t.Fatalf("decode raw options data: %v", err)
 	}
 	for _, rawOption := range rawOptions {
-		if len(rawOption) != 8 {
-			t.Fatalf("option fields = %#v, want exactly id/name/channel_id/connection_type/params/provider_url/enabled/models", rawOption)
+		if len(rawOption) != 7 {
+			t.Fatalf("option fields = %#v, want exactly id/name/channel_id/params/provider_url/enabled/models", rawOption)
 		}
-		for _, field := range []string{"id", "name", "channel_id", "connection_type", "params", "provider_url", "enabled", "models"} {
+		for _, field := range []string{"id", "name", "channel_id", "params", "provider_url", "enabled", "models"} {
 			if _, ok := rawOption[field]; !ok {
 				t.Fatalf("option fields = %#v, missing %q", rawOption, field)
 			}

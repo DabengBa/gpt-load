@@ -13,7 +13,6 @@ export interface ImportProxyDraft {
 export interface ImportDraft {
   mode: 'new'
   channel_id: string
-  connection_type: 'api_key'
   params: ChannelParamsDto
   proxy: ImportProxyDraft
   name: string

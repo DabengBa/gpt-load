@@ -125,7 +125,7 @@ payload = json.load(open(sys.argv[1], encoding="utf-8"))
 items = (payload.get("data") or {}).get("items") or []
 for item in items:
     print(json.dumps({key: item.get(key) for key in
-        ("id", "name", "channel_id", "connection_type", "enabled")},
+        ("id", "name", "channel_id", "enabled")},
         ensure_ascii=False, separators=(",", ":")))
 PY
 rm -f /tmp/gpt-load-groups.json

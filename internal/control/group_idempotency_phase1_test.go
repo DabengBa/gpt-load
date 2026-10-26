@@ -21,7 +21,7 @@ func TestCreateGroupIdempotentReplaysOriginalCountsAndPreservesCredentialMultipl
 		ChannelID:   channel.OpenAICompatible,
 		Params:      json.RawMessage(`{"base_url":"https://idempotent.example.com/v1"}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{}},
-		Credentials: " K ", ConnectionType: "api_key",
+		Credentials: " K ",
 	}
 	const key = "218f47a2-9c35-4d6e-8b1a-1234567890ab"
 
@@ -69,7 +69,7 @@ func TestCreateGroupIdempotentCanonicalizesDisabledAliasesAndReplaysNarrowResult
 				ID: "provider-model", Alias: "discarded-a", AliasEnabled: false,
 			}},
 		},
-		Credentials: "key-one", ConnectionType: "api_key",
+		Credentials: "key-one",
 	}
 	const key = "238f47a2-9c35-4d6e-8b1a-1234567890ab"
 

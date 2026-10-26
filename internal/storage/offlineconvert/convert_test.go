@@ -77,6 +77,7 @@ func buildLegacyDatabase(t *testing.T, path string) *gorm.DB {
 	}
 
 	for _, statement := range []string{
+		`ALTER TABLE groups ADD COLUMN connection_type varchar(32) NOT NULL DEFAULT 'api_key'`,
 		`ALTER TABLE credentials ADD COLUMN auth_state varchar(32) NOT NULL DEFAULT 'ready'`,
 		`ALTER TABLE credentials ADD COLUMN auth_error_code varchar(64) NOT NULL DEFAULT ''`,
 	} {
@@ -84,6 +85,8 @@ func buildLegacyDatabase(t *testing.T, path string) *gorm.DB {
 			t.Fatalf("declare legacy subscription schema: %v", err)
 		}
 	}
+	// The legacy source still stores the retired per-group connection type; the
+	// converter reports it as a retired column instead of copying it.
 	// The retired subscription tables are declared from the schema the supported
 	// legacy release actually created, not from a hand-written stand-in: the real
 	// `credential_stages` has a string `id` primary key and no `credential_id`
@@ -1284,6 +1287,7 @@ func TestConvertAcceptsSourceWithoutRetiredColumns(t *testing.T) {
 	want := buildLegacyFixture(t, sourcePath, newTestCipher(t, strings.Repeat("9c", 32)))
 	writeSource(t, sourcePath, "ALTER TABLE credentials DROP COLUMN auth_state")
 	writeSource(t, sourcePath, "ALTER TABLE credentials DROP COLUMN auth_error_code")
+	writeSource(t, sourcePath, "ALTER TABLE groups DROP COLUMN connection_type")
 
 	targetDSN := filepath.Join(dir, "out", "gpt-load.db")
 	result, err := offlineconvert.Convert(context.Background(), offlineconvert.Options{

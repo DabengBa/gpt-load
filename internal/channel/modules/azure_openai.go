@@ -20,7 +20,6 @@ func AzureOpenAI() spec.Module {
 			SearchTerms: []string{"azure", "foundry", "entra"},
 			Description: "Azure OpenAI and Microsoft Foundry",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

@@ -214,7 +214,7 @@ func copyRows(ctx context.Context, source, target *gorm.DB, plan stage) (map[str
 			if err := requireTargetColumns(table, columns, targetColumns); err != nil {
 				return err
 			}
-			rows, err := readRows(ctx, source, table, columns, plan.flavourFilter)
+			rows, err := readRows(ctx, source, table, columns)
 			if err != nil {
 				return err
 			}
@@ -272,11 +272,8 @@ func requireTargetColumns(table string, expected, declared []string) error {
 	return nil
 }
 
-func readRows(ctx context.Context, source *gorm.DB, table string, columns []string, flavourFilter string) ([][]any, error) {
+func readRows(ctx context.Context, source *gorm.DB, table string, columns []string) ([][]any, error) {
 	query := "SELECT " + quoteIdentifiers(columns) + " FROM " + quoteIdentifier(table)
-	if table == "groups" && flavourFilter != "" {
-		query += " WHERE " + flavourFilter
-	}
 	// The identity column is first in the shared set only when the source and
 	// target agree on column order; order by the table's primary key instead.
 	query += " ORDER BY " + quoteIdentifier(identityColumn(table, columns))
@@ -411,29 +408,25 @@ func quoteIdentifiers(values []string) string {
 // SQLite integrity, and the absence of retired subscription columns.
 func validateConverted(ctx context.Context, target, source *gorm.DB, plan stage, result Result) error {
 	for _, table := range plan.retainedTables {
-		filter := ""
-		if table == "groups" {
-			filter = plan.flavourFilter
-		}
 		column := "id"
 		if table == "access_key_cost_limit_states" {
 			column = "rule_id"
 		}
-		sourceCount, err := countRows(ctx, source, table, filter)
+		sourceCount, err := countRows(ctx, source, table)
 		if err != nil {
 			return err
 		}
 		if result.Tables[table] != sourceCount {
 			return fmt.Errorf("offline conversion: %s copied %d rows, want %d", table, result.Tables[table], sourceCount)
 		}
-		targetCount, err := countRows(ctx, target, table, "")
+		targetCount, err := countRows(ctx, target, table)
 		if err != nil {
 			return err
 		}
 		if targetCount != result.Tables[table] {
 			return fmt.Errorf("offline conversion: %s stored %d rows, want %d", table, targetCount, result.Tables[table])
 		}
-		if err := compareIdentities(ctx, source, target, table, column, filter); err != nil {
+		if err := compareIdentities(ctx, source, target, table, column); err != nil {
 			return err
 		}
 	}
@@ -495,11 +488,8 @@ func requirePreservedSequences(ctx context.Context, source, target *gorm.DB, pla
 	return nil
 }
 
-func countRows(ctx context.Context, db *gorm.DB, table, filter string) (int64, error) {
+func countRows(ctx context.Context, db *gorm.DB, table string) (int64, error) {
 	query := "SELECT count(*) FROM " + quoteIdentifier(table)
-	if filter != "" {
-		query += " WHERE " + filter
-	}
 	var count int64
 	if err := db.WithContext(ctx).Raw(query).Scan(&count).Error; err != nil {
 		return 0, fmt.Errorf("offline conversion: count %s: %w", table, err)
@@ -507,19 +497,14 @@ func countRows(ctx context.Context, db *gorm.DB, table, filter string) (int64, e
 	return count, nil
 }
 
-func compareIdentities(ctx context.Context, source, target *gorm.DB, table, column, filter string) error {
-	query := func() string {
-		statement := "SELECT " + quoteIdentifier(column) + " FROM " + quoteIdentifier(table)
-		if filter != "" {
-			statement += " WHERE " + filter
-		}
-		return statement + " ORDER BY " + quoteIdentifier(column)
-	}
+func compareIdentities(ctx context.Context, source, target *gorm.DB, table, column string) error {
+	query := "SELECT " + quoteIdentifier(column) + " FROM " + quoteIdentifier(table) +
+		" ORDER BY " + quoteIdentifier(column)
 	var want, got []string
-	if err := source.WithContext(ctx).Raw(query()).Scan(&want).Error; err != nil {
+	if err := source.WithContext(ctx).Raw(query).Scan(&want).Error; err != nil {
 		return fmt.Errorf("offline conversion: read %s.%s: %w", table, column, err)
 	}
-	if err := target.WithContext(ctx).Raw(query()).Scan(&got).Error; err != nil {
+	if err := target.WithContext(ctx).Raw(query).Scan(&got).Error; err != nil {
 		return fmt.Errorf("offline conversion: read target %s.%s: %w", table, column, err)
 	}
 	if !slices.Equal(want, got) {

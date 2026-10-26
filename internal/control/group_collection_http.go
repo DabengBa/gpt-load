@@ -5,7 +5,6 @@ import (
 
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/response"
-	"gpt-load/internal/storage/models"
 )
 
 const (
@@ -54,7 +53,7 @@ func parseGroupCollectionQuery(
 		PageSize: groupCollectionDefaultPageSize,
 	}
 	values, apiErr := parseCollectionQueryValues(
-		rawQuery, forceQuery, "q", "status", "connection_type", "sort", "page", "page_size",
+		rawQuery, forceQuery, "q", "status", "sort", "page", "page_size",
 	)
 	if apiErr != nil {
 		return GroupCollectionQuery{}, apiErr
@@ -71,13 +70,6 @@ func parseGroupCollectionQuery(
 			return GroupCollectionQuery{}, app_errors.ErrBadRequest
 		}
 		query.Status = status
-	}
-	if entries, exists := values["connection_type"]; exists {
-		connectionType, ok := parseGroupCollectionConnectionType(entries[0])
-		if !ok {
-			return GroupCollectionQuery{}, app_errors.ErrBadRequest
-		}
-		query.ConnectionType = connectionType
 	}
 	if entries, exists := values["sort"]; exists {
 		sortValue := GroupCollectionSort(entries[0])
@@ -118,18 +110,6 @@ func parseGroupCollectionStatus(
 		GroupCollectionStatusUnavailable,
 		GroupCollectionStatusDisabled:
 		return &status, true
-	default:
-		return nil, false
-	}
-}
-
-func parseGroupCollectionConnectionType(
-	value string,
-) (*models.ConnectionType, bool) {
-	connectionType := models.ConnectionType(value)
-	switch connectionType {
-	case models.ConnectionTypeAPIKey:
-		return &connectionType, true
 	default:
 		return nil, false
 	}

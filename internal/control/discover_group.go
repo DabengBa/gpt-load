@@ -175,10 +175,10 @@ func (s *Service) mapGroupDiscoveryTarget(
 		SystemSettings: systemSettings, ChannelRegistry: s.channelRegistry,
 		Groups: []state.GroupConfig{{
 			ID: rows.group.ID, Name: rows.group.Name,
-			ChannelID: channel.ID(rows.group.ChannelID), ConnectionType: string(rows.group.ConnectionType),
-			Params:   append(json.RawMessage(nil), rows.group.Params...),
-			Models:   runtimeModels,
-			Settings: settings, Enabled: true,
+			ChannelID: channel.ID(rows.group.ChannelID),
+			Params:    append(json.RawMessage(nil), rows.group.Params...),
+			Models:    runtimeModels,
+			Settings:  settings, Enabled: true,
 		}},
 	})
 	if err != nil {

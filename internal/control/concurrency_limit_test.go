@@ -118,7 +118,7 @@ func TestGroupModelsConcurrencyLimitRoundTrip(t *testing.T) {
 			{ID: "limited", AliasEnabled: false, ConcurrencyLimit: 3},
 			{ID: "unlimited", AliasEnabled: false},
 		}},
-		Credentials: "sk-concurrency-phase-one", ConnectionType: "api_key",
+		Credentials: "sk-concurrency-phase-one",
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -227,7 +227,7 @@ func TestSnapshotRouteTargetsCarryConcurrencyLimit(t *testing.T) {
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
 			ID: 11, Name: "limited-group", ChannelID: channel.OpenAI,
-			ConnectionType: "api_key", Params: json.RawMessage(`{}`),
+			Params:  json.RawMessage(`{}`),
 			Models:  []state.ModelConfig{{ID: "upstream", Alias: "public", ConcurrencyLimit: 4}},
 			Enabled: true,
 		}},

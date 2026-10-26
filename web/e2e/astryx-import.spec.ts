@@ -23,10 +23,7 @@ const CHANNELS = [
 
     param_fields: [],
     credential_fields: [],
-    connection: {
-      type: 'api_key',
-      credential_input: 'batch_text',
-    },
+    connection: { credential_input: 'batch_text' },
     capabilities: {
       model_discovery: false,
 
@@ -54,10 +51,7 @@ const CHANNELS = [
 
     param_fields: [],
     credential_fields: [],
-    connection: {
-      type: 'api_key',
-      credential_input: 'batch_text',
-    },
+    connection: { credential_input: 'batch_text' },
     capabilities: {
       model_discovery: false,
 
@@ -118,7 +112,6 @@ const GROUP_OPTIONS = [
     id: 7,
     name: 'Alpha Group',
     channel_id: 'openai',
-    connection_type: 'api_key',
     params: {},
     provider_url: null,
     enabled: true,
@@ -128,7 +121,6 @@ const GROUP_OPTIONS = [
     id: 9,
     name: 'Beta Gateway',
     channel_id: 'cliproxyapi',
-    connection_type: 'api_key',
     params: {},
     provider_url: null,
     enabled: true,
@@ -153,7 +145,6 @@ const GROUP_42 = {
     name: 'Imported Group',
 
     channel_id: 'openai',
-    connection_type: 'api_key',
     params: {},
     provider_url: null,
     service_status: 'available',
@@ -166,7 +157,6 @@ const GROUP_42 = {
     name: 'Imported Group',
 
     channel_id: 'openai',
-    connection_type: 'api_key',
     params: {},
     provider_url: null,
     enabled: true,
@@ -746,7 +736,6 @@ test('import discovery runs against the entered connection and appends candidate
   await expect.poll(() => discoveries.length).toBe(1)
   expect(discoveries[0]).toMatchObject({
     channel_id: 'openai',
-    connection_type: 'api_key',
     credentials: 'sk-discover',
   })
 

@@ -23,7 +23,6 @@ type normalizedCredential struct {
 func normalizeChannelCredential(
 	registry *channel.Registry,
 	channelID channel.ID,
-	connectionType string,
 	decrypted string,
 ) (normalizedCredential, error) {
 	if registry == nil || channelID == "" {
@@ -34,10 +33,6 @@ func normalizeChannelCredential(
 		return normalizedCredential{}, fmt.Errorf("credential is empty")
 	}
 	raw := []byte(trimmed)
-	expectedConnection, ok := registry.ConnectionType(channelID)
-	if !ok || strings.TrimSpace(connectionType) != expectedConnection {
-		return normalizedCredential{}, fmt.Errorf("credential connection does not match channel")
-	}
 	validated, err := registry.ValidateCredential(channelID, raw)
 	if err != nil {
 		return normalizedCredential{}, fmt.Errorf("validate credential: %w", err)

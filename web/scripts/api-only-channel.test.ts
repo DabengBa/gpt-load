@@ -30,7 +30,7 @@ const channel = {
       default_value: null,
     },
   ],
-  connection: { type: 'api_key', credential_input: 'batch_text' },
+  connection: { credential_input: 'batch_text' },
   capabilities: { model_discovery: true, outbound_proxy: true },
   routes: [
     {
@@ -44,7 +44,7 @@ const channel = {
   client_protocols: ['openai-completions'],
 }
 
-test('external CPA and ordinary/cloud channel schemas project without subscription metadata', () => {
+test('external CPA and ordinary/cloud channel schemas project without connection kind', () => {
   for (const channel_id of [
     'cliproxyapi',
     'openai',
@@ -59,17 +59,19 @@ test('external CPA and ordinary/cloud channel schemas project without subscripti
   }
 })
 
-test('subscription authorization cannot project as an API channel', () => {
+test('channel connection rejects any input kind beyond batch text', () => {
+  assert.throws(() =>
+    projectChannelList({
+      items: [{ ...channel, connection: { credential_input: 'authorization' } }],
+      total: 1,
+    }),
+  )
   assert.throws(() =>
     projectChannelList({
       items: [
         {
           ...channel,
-          connection: {
-            type: 'subscription',
-            credential_input: 'authorization',
-            authorization_methods: ['browser_oauth'],
-          },
+          connection: { credential_input: 'batch_text', type: 'api_key' },
         },
       ],
       total: 1,

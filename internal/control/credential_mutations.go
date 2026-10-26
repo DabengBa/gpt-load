@@ -118,9 +118,6 @@ func (s *Service) UpdateGroupCredential(
 			return app_errors.ErrValidation
 		}
 		committedGroup = group
-		if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeAPIKey {
-			return app_errors.ErrValidation
-		}
 		if err := tx.Where("id = ? AND group_id = ?", credentialID, groupID).Take(&committed).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return credentialNotFoundError()
@@ -354,7 +351,6 @@ func (s *Service) mapCredentialItem(
 	if err != nil {
 		return CredentialItemResponse{}, err
 	}
-	item.ConnectionType = string(normalizeGroupConnectionType(group.ConnectionType))
 	item.SecretVersion = row.SecretVersion
 
 	return item, nil

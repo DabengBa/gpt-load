@@ -14,7 +14,6 @@ const baseCollectionItem = {
   name: 'alpha',
 
   channel_id: 'openai_compatible',
-  connection_type: 'api_key',
   params: { base_url: 'https://alpha.example/v1' },
   status: 'available',
   model_count: 1,
@@ -41,7 +40,6 @@ function newImportDraft() {
   return {
     mode: 'new',
     channel_id: 'openai_compatible',
-    connection_type: 'api_key',
     params: { base_url: 'https://alpha.example/v1' },
     proxy: { mode: 'inherit', url: '' },
     name: 'alpha',

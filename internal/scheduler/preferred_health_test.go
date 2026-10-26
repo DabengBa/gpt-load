@@ -30,9 +30,9 @@ func preferredHealthQuery(preferred uint) Query {
 func twoGroupSnapshot(t *testing.T) *state.ConfigSnapshot {
 	t.Helper()
 	return routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "preferred-model", Alias: "public", EntryID: "e000000000001", Weight: intPointer(100)}}},
-		{ID: 2, Name: "sibling", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 2, Name: "sibling", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "sibling-model", Alias: "public", EntryID: "e000000000002", Weight: intPointer(100)}}},
 	})
 }
@@ -111,12 +111,12 @@ func TestPreferredHealthBypassedOnCredentialBlacklist(t *testing.T) {
 func TestPreferredHealthySiblingEntryPreventsBypass(t *testing.T) {
 	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{
 				{ID: "down-model", Alias: "public", EntryID: "e000000000001", Weight: intPointer(100)},
 				{ID: "up-model", Alias: "public", EntryID: "e000000000003", Weight: intPointer(100)},
 			}},
-		{ID: 2, Name: "sibling", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 2, Name: "sibling", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "sibling-model", Alias: "public", EntryID: "e000000000002", Weight: intPointer(100)}}},
 	})
 	registry := twoGroupRegistry(t)
@@ -162,9 +162,9 @@ func TestPreferredStaticExclusionsAreNotBypass(t *testing.T) {
 			name:   "entry weight zero",
 			mutate: func(_ *state.CredentialRegistry, _ *Query) {},
 			snapshot: routeEntrySnapshot(t, []state.GroupConfig{
-				{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+				{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 					Models: []state.ModelConfig{{ID: "preferred-model", Alias: "public", EntryID: "e000000000001", Weight: intPointer(100)}}},
-				{ID: 2, Name: "sibling", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+				{ID: 2, Name: "sibling", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 					Models: []state.ModelConfig{{ID: "sibling-model", Alias: "public", EntryID: "e000000000002", Weight: intPointer(100)}}},
 			}),
 		},
@@ -229,7 +229,7 @@ func TestPreferredObservationResetsAfterNext(t *testing.T) {
 func TestPreferredHealthBypassedFalseWhenExhausted(t *testing.T) {
 	now := time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC)
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: []byte(`{}`), Enabled: true,
+		{ID: 1, Name: "preferred", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "preferred-model", Alias: "public", EntryID: "e000000000001", Weight: intPointer(100)}}},
 	})
 	registry := twoGroupRegistry(t)

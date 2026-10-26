@@ -132,7 +132,7 @@ func (scenario *scheduleTestScenario) mustCreateGroup(
 	result, err := scenario.fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: &name, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 		Models:      optionalGroupModels{Set: true, Values: models},
-		Credentials: "sk-schedule-" + name, ConnectionType: "api_key",
+		Credentials: "sk-schedule-" + name,
 		// The scenario intentionally shares one channel target across groups.
 		ConfirmSameTarget: true,
 	})
@@ -586,7 +586,7 @@ func TestModelRouteScheduleValidatesReasoningPerEntry(t *testing.T) {
 				Models: optionalGroupModels{Set: true, Values: []GroupModel{
 					{ID: "gemini-3.7-flash", EntryID: scheduleEntryOneA},
 					{ID: "gemini-3.1-flash-lite-image", EntryID: scheduleEntryOneB, ReasoningEffort: tc.initial},
-				}}, Credentials: "gemini-key", ConnectionType: "api_key",
+				}}, Credentials: "gemini-key",
 			})
 			if err != nil {
 				t.Fatal(err)

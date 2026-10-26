@@ -16,7 +16,6 @@ func Cohere() spec.Module {
 			SearchTerms: []string{"cohere ai", "rerank"},
 			Description: "Cohere text rerank API",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

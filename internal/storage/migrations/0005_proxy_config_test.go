@@ -19,8 +19,8 @@ func TestProxyConfigMigrationAddsNullableEncryptedColumnsAndPreservesRows(t *tes
 	}
 
 	if err := db.Exec(`INSERT INTO groups (
-		id, name, channel_id, connection_type, params, models, enabled, created_at_ms, updated_at_ms
-	) VALUES (1, 'proxy migration', 'openai', 'api_key', '{}', '[]', true, 1, 1)`).Error; err != nil {
+		id, name, channel_id, params, models, enabled, created_at_ms, updated_at_ms
+	) VALUES (1, 'proxy migration', 'openai', '{}', '[]', true, 1, 1)`).Error; err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 	if err := db.Exec(`INSERT INTO credentials (

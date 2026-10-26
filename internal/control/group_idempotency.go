@@ -16,17 +16,15 @@ import (
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
-	"gpt-load/internal/storage/models"
 )
 
 type groupCreateDigestBody struct {
-	Name           *string               `json:"name"`
-	ChannelID      channel.ID            `json:"channel_id"`
-	ConnectionType models.ConnectionType `json:"connection_type"`
-	Params         json.RawMessage       `json:"params"`
-	ProviderURL    *string               `json:"provider_url,omitempty"`
-	Models         []GroupModel          `json:"models"`
-	Credential     json.RawMessage       `json:"credential,omitempty"`
+	Name        *string         `json:"name"`
+	ChannelID   channel.ID      `json:"channel_id"`
+	Params      json.RawMessage `json:"params"`
+	ProviderURL *string         `json:"provider_url,omitempty"`
+	Models      []GroupModel    `json:"models"`
+	Credential  json.RawMessage `json:"credential,omitempty"`
 
 	ConfirmSameTarget bool                  `json:"confirm_same_target,omitempty"`
 	Proxy             *outboundproxy.Config `json:"proxy,omitempty"`
@@ -55,13 +53,12 @@ func (s *Service) CreateGroupIdempotent(
 	}
 	credential := append(json.RawMessage(nil), normalized.credentials.candidates[0].canonical...)
 	digestBody := groupCreateDigestBody{
-		Name:           normalized.explicitName,
-		ChannelID:      normalized.channelID,
-		ConnectionType: normalized.connectionType,
-		Params:         append(json.RawMessage(nil), normalized.params...),
-		ProviderURL:    cloneString(normalized.providerURL),
-		Models:         digestGroupModels(normalized.models),
-		Credential:     credential,
+		Name:        normalized.explicitName,
+		ChannelID:   normalized.channelID,
+		Params:      append(json.RawMessage(nil), normalized.params...),
+		ProviderURL: cloneString(normalized.providerURL),
+		Models:      digestGroupModels(normalized.models),
+		Credential:  credential,
 
 		ConfirmSameTarget: normalized.confirmSameTarget,
 		Proxy:             normalized.proxy,

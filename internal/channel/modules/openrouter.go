@@ -16,7 +16,6 @@ func OpenRouter() spec.Module {
 			SearchTerms: []string{"router"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

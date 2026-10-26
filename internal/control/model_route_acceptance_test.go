@@ -13,9 +13,9 @@ func TestModelRouteEntriesAcceptanceInspectionAndAPIRoundTrip(t *testing.T) {
 	fixture := newServiceFixture(t)
 	a, b, c, full, p2 := 30, 50, 20, 100, 2
 	if _, err := fixture.manager.Publish(state.CompileInput{ChannelRegistry: fixture.channelRegistry, Groups: []state.GroupConfig{
-		{ID: 1, Name: "openai", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "A", Alias: "A", Weight: &a}, {ID: "B", Alias: "A", Weight: &b}, {ID: "C", Alias: "A", Weight: &c, Priority: &p2}}},
-		{ID: 2, Name: "claude", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "B", Alias: "A", Weight: &full}}},
-		{ID: 3, Name: "gemini", ChannelID: channel.OpenAI, ConnectionType: "api_key", Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "D", Alias: "A", Weight: &full}}},
+		{ID: 1, Name: "openai", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "A", Alias: "A", Weight: &a}, {ID: "B", Alias: "A", Weight: &b}, {ID: "C", Alias: "A", Weight: &c, Priority: &p2}}},
+		{ID: 2, Name: "claude", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "B", Alias: "A", Weight: &full}}},
+		{ID: 3, Name: "gemini", ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "D", Alias: "A", Weight: &full}}},
 	}, AccessKeys: []state.AccessKeyConfig{{ID: 10, Name: "client", KeyHash: "hash", Status: state.AccessKeyStatusActive}}}); err != nil {
 		t.Fatal(err)
 	}

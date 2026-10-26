@@ -82,7 +82,7 @@ func TestGroupCredentialProbeHTTPRequiresAuthAndUsesOnlySpecifiedCredential(t *t
 	secondResult, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: &secondName, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-4o"}}},
-		Credentials: "probe-second-secret", ConfirmSameTarget: true, ConnectionType: "api_key",
+		Credentials: "probe-second-secret", ConfirmSameTarget: true,
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup(second) error = %v", err)
@@ -416,7 +416,7 @@ func TestGroupCredentialProbeRevokesRestoreEligibilityWhenTargetChangesDuringPro
 				ChannelID:   channel.OpenAICompatible,
 				Params:      json.RawMessage(`{"base_url":"https://initial-probe-target.example/v1"}`),
 				Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-4o"}}},
-				Credentials: "probe-target-change-secret", ConnectionType: "api_key",
+				Credentials: "probe-target-change-secret",
 			})
 			if err != nil {
 				t.Fatal(err)

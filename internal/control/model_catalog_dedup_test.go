@@ -14,7 +14,7 @@ func newCatalogDedupSnapshot(t *testing.T) *state.ConfigSnapshot {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
-			{ConnectionType: "api_key", ID: 1, Name: "one", ChannelID: channel.OpenAI,
+			{ID: 1, Name: "one", ChannelID: channel.OpenAI,
 				Params: mustRawJSON(`{}`), Enabled: true,
 				Models: []state.ModelConfig{
 					{ID: "up-a", Alias: "pub"},
@@ -22,11 +22,11 @@ func newCatalogDedupSnapshot(t *testing.T) *state.ConfigSnapshot {
 					{ID: "solo"},
 				},
 			},
-			{ConnectionType: "api_key", ID: 2, Name: "two", ChannelID: channel.OpenAI,
+			{ID: 2, Name: "two", ChannelID: channel.OpenAI,
 				Params: mustRawJSON(`{}`), Enabled: true,
 				Models: []state.ModelConfig{{ID: "up-c", Alias: "pub"}},
 			},
-			{ConnectionType: "api_key", ID: 3, Name: "three", ChannelID: channel.OpenAI,
+			{ID: 3, Name: "three", ChannelID: channel.OpenAI,
 				Params: mustRawJSON(`{}`), Enabled: false,
 				Models: []state.ModelConfig{{ID: "up-d", Alias: "pub"}},
 			},
@@ -80,7 +80,7 @@ func TestCatalogDedupKeepsSingleEntryBehavior(t *testing.T) {
 	snapshot, err := state.Compile(state.CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{{
-			ConnectionType: "api_key", ID: 1, Name: "single", ChannelID: channel.OpenAI,
+			ID: 1, Name: "single", ChannelID: channel.OpenAI,
 			Params: mustRawJSON(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "plain"}, {ID: "up", Alias: "aliased"}},
 		}},

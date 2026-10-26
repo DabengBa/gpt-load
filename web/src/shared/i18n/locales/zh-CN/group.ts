@@ -29,11 +29,6 @@ export default {
         sortLabel: '排序',
         reset: '重置条件',
       },
-      connectionType: {
-        label: '渠道类型',
-        all: '全部渠道类型',
-        apiKey: 'API 密钥',
-      },
       sort: {
         recent: '最近调用',
         status: '状态优先',

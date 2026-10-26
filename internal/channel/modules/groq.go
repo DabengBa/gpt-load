@@ -16,7 +16,6 @@ func Groq() spec.Module {
 			SearchTerms: []string{"groqcloud"},
 			Description: "Managed API preset",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

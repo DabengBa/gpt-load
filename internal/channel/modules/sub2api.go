@@ -18,7 +18,6 @@ func Sub2API() spec.Module {
 			SearchTerms: []string{"sub 2 api", "s2a"},
 			Description: "Sub2API multi-protocol gateway",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

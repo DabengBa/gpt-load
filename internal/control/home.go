@@ -48,7 +48,6 @@ type homeCredentialRow struct {
 	ID                  uint
 	GroupID             uint
 	ChannelID           string
-	ConnectionType      models.ConnectionType
 	Params              models.JSON
 	Fingerprint         string
 	IdentityFingerprint string
@@ -246,7 +245,7 @@ func (s *Service) readHomeRows(
 		}
 		if err := tx.Model(&models.Credential{}).
 			Select(
-				"credentials.id", "credentials.group_id", "groups.channel_id", "groups.connection_type", "groups.params",
+				"credentials.id", "credentials.group_id", "groups.channel_id", "groups.params",
 				"credentials.fingerprint", "credentials.identity_fingerprint", "credentials.secret_version",
 			).
 			Joins("JOIN groups ON groups.id = credentials.group_id").
@@ -427,8 +426,7 @@ func countAvailableHomeCredentialsInGroups(
 		}
 		if err := validateCredentialRuntimeRow(
 			models.Group{
-				ID: row.GroupID, ChannelID: row.ChannelID,
-				ConnectionType: row.ConnectionType, Params: row.Params,
+				ID: row.GroupID, ChannelID: row.ChannelID, Params: row.Params,
 			},
 			models.Credential{
 				ID: row.ID, GroupID: row.GroupID,

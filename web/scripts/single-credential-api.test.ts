@@ -37,7 +37,6 @@ test('create and configure send one credential and consume one identity', async 
   })
   const base = {
     channel_id: 'openai',
-    connection_type: 'api_key' as const,
     params: {},
     models: [],
     confirm_same_target: false,
@@ -61,7 +60,6 @@ const summary = {
   name: 'Provider',
 
   channel_id: 'openai',
-  connection_type: 'api_key',
   params: {},
   provider_url: null,
   service_status: 'unavailable',
@@ -101,7 +99,6 @@ test('collection projects empty and configured states without credential counts'
       name: item.name,
 
       channel_id: item.channel_id,
-      connection_type: item.connection_type,
       params: item.params,
       provider_url: item.provider_url,
       status: item.status,

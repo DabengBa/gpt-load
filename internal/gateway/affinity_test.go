@@ -521,12 +521,12 @@ func newAffinityWebsocketFixture(t *testing.T, endpoint string) (*Handler, *gin.
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []state.GroupConfig{
 			{
-				ID: 1, Name: "ws", ConnectionType: "api_key", ChannelID: channel.OpenAI,
+				ID: 1, Name: "ws", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(fmt.Sprintf(`{"base_url":%q}`, endpoint)),
 				Models: []state.ModelConfig{{ID: "upstream", Alias: "public"}}, Enabled: true,
 			},
 			{
-				ID: 2, Name: "ws-two", ConnectionType: "api_key", ChannelID: channel.OpenAI,
+				ID: 2, Name: "ws-two", ChannelID: channel.OpenAI,
 				Params: json.RawMessage(fmt.Sprintf(`{"base_url":%q}`, endpoint)),
 				Models: []state.ModelConfig{{ID: "upstream", Alias: "public"}}, Enabled: true,
 			},
@@ -824,7 +824,7 @@ func affinityRuntimeInput(
 
 func affinityFixtureGroup(id uint, model string) state.GroupConfig {
 	return state.GroupConfig{
-		ConnectionType: "api_key", ID: id, Name: "openai", ChannelID: channel.OpenAI,
+		ID: id, Name: "openai", ChannelID: channel.OpenAI,
 		Params: json.RawMessage(`{}`), Enabled: true,
 		Models: []state.ModelConfig{{ID: model, EntryID: "e000000000001"}},
 	}

@@ -336,7 +336,6 @@ export function GroupSettingsTab({
       return {
         ...current,
         channel_id: channel.channel_id,
-        connection_type: channel.connection.type,
         params,
       }
     })

@@ -4,26 +4,23 @@ import (
 	"bytes"
 
 	"gorm.io/gorm"
-
-	"gpt-load/internal/connection"
 )
 
 // Group is the persisted configuration for an upstream service group.
 // API DTOs and runtime state views must be defined outside the storage package.
 type Group struct {
-	ID             uint           `gorm:"primaryKey;autoIncrement"`
-	Name           string         `gorm:"type:varchar(255);not null;uniqueIndex"`
-	ChannelID      string         `gorm:"type:varchar(64);not null"`
-	ConnectionType ConnectionType `gorm:"type:varchar(32);not null;default:'api_key';check:chk_group_connection_type,connection_type = 'api_key'"`
-	Params         JSON           `gorm:"type:json;not null"`
-	Models         JSON           `gorm:"type:json;not null"`
-	Overrides      JSON           `gorm:"type:json"`
-	ProxyConfig    *string        `gorm:"column:proxy_config;type:text"`
-	ProviderURL    *string        `gorm:"column:provider_url;type:text"`
-	Enabled        bool           `gorm:"not null;default:true"`
-	Credential     *Credential    `gorm:"foreignKey:GroupID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	CreatedAtMS    int64          `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_group_created_at,created_at_ms >= 0"`
-	UpdatedAtMS    int64          `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_group_updated_at,updated_at_ms >= 0"`
+	ID          uint        `gorm:"primaryKey;autoIncrement"`
+	Name        string      `gorm:"type:varchar(255);not null;uniqueIndex"`
+	ChannelID   string      `gorm:"type:varchar(64);not null"`
+	Params      JSON        `gorm:"type:json;not null"`
+	Models      JSON        `gorm:"type:json;not null"`
+	Overrides   JSON        `gorm:"type:json"`
+	ProxyConfig *string     `gorm:"column:proxy_config;type:text"`
+	ProviderURL *string     `gorm:"column:provider_url;type:text"`
+	Enabled     bool        `gorm:"not null;default:true"`
+	Credential  *Credential `gorm:"foreignKey:GroupID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	CreatedAtMS int64       `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_group_created_at,created_at_ms >= 0"`
+	UpdatedAtMS int64       `gorm:"column:updated_at_ms;not null;autoUpdateTime:milli;check:chk_group_updated_at,updated_at_ms >= 0"`
 }
 
 // BeforeSave keeps channel parameters representable. Channel-specific shape
@@ -35,13 +32,6 @@ func (group *Group) BeforeSave(_ *gorm.DB) error {
 	}
 	return nil
 }
-
-// ConnectionType is the product-level way a Group authenticates upstream.
-type ConnectionType string
-
-const (
-	ConnectionTypeAPIKey ConnectionType = connection.APIKey
-)
 
 // Credential is encrypted channel credential data that belongs to one group.
 type Credential struct {

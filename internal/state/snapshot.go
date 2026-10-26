@@ -11,7 +11,6 @@ import (
 
 	"gpt-load/internal/accessquota"
 	"gpt-load/internal/channel"
-	"gpt-load/internal/connection"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/parameteroverride"
@@ -33,15 +32,14 @@ type CompileInput struct {
 }
 
 type GroupConfig struct {
-	ID             uint
-	Name           string
-	ChannelID      channel.ID
-	ConnectionType string
-	Params         json.RawMessage
-	Models         []ModelConfig
-	Settings       config.Settings
-	Enabled        bool
-	Proxy          *outboundproxy.Config
+	ID        uint
+	Name      string
+	ChannelID channel.ID
+	Params    json.RawMessage
+	Models    []ModelConfig
+	Settings  config.Settings
+	Enabled   bool
+	Proxy     *outboundproxy.Config
 }
 
 // CredentialConfig contains only non-secret credential metadata required to
@@ -149,7 +147,6 @@ type GroupView struct {
 	ID                                    uint
 	Name                                  string
 	ChannelID                             channel.ID
-	ConnectionType                        string
 	Params                                json.RawMessage
 	ResolvedTarget                        channel.ResolvedTarget
 	ClientProtocols                       []protocol.Protocol
@@ -250,7 +247,6 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			AffinityEnabled:                       resolved.AffinityEnabled,
 			ResponsesWebsocketEnabled:             resolved.ResponsesWebsocketEnabled,
 			ResponsesReasoningStatusFilterEnabled: resolved.ResponsesReasoningStatusFilterEnabled,
-			ConnectionType:                        connection.Normalize(group.ConnectionType),
 			Proxy:                                 groupProxy,
 			ParameterOverrides:                    resolved.ParameterOverrides,
 			ModelBreakerByEntry:                   make(map[uint]map[string]*EntryCircuitBreaker),
@@ -552,10 +548,6 @@ func validateCompileInput(input CompileInput) error {
 		}
 		if _, ok := input.ChannelRegistry.Get(group.ChannelID); !ok {
 			return fmt.Errorf("group %d has unknown channel %q", group.ID, group.ChannelID)
-		}
-		connectionType := connection.Normalize(group.ConnectionType)
-		if !input.ChannelRegistry.SupportsConnectionType(group.ChannelID, connectionType) {
-			return fmt.Errorf("group %d channel %q does not support connection type %q", group.ID, group.ChannelID, connectionType)
 		}
 		if _, err := input.ChannelRegistry.Resolve(group.ChannelID, group.Params); err != nil {
 			return fmt.Errorf("group %d channel %q: %w", group.ID, group.ChannelID, err)

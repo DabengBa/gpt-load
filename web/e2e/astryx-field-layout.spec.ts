@@ -24,7 +24,7 @@ const channel = {
     },
   ],
   credential_fields: [],
-  connection: { type: 'api_key', credential_input: 'batch_text' },
+  connection: { credential_input: 'batch_text' },
   capabilities: {
     model_discovery: false,
 
@@ -64,7 +64,6 @@ async function installFields(page: Page, theme: string) {
       name: 'Geometry group',
 
       channel_id: 'openai',
-      connection_type: 'api_key',
       params: {},
       provider_url: null,
     }

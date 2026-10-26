@@ -113,7 +113,7 @@ export async function mockGroupFingerprint(page: Page): Promise<FingerprintMock>
             default_base_url: 'https://api.openai.com',
             param_fields: [],
             credential_fields: [],
-            connection: { type: 'api_key', credential_input: 'batch_text' },
+            connection: { credential_input: 'batch_text' },
             capabilities: { model_discovery: false, outbound_proxy: false },
             routes: [
               {
@@ -140,7 +140,6 @@ export async function mockGroupFingerprint(page: Page): Promise<FingerprintMock>
       id: 1,
       name: 'Fingerprint Group',
       channel_id: 'openai',
-      connection_type: 'api_key',
       params: {},
       provider_url: null,
     }
@@ -157,7 +156,6 @@ export async function mockGroupFingerprint(page: Page): Promise<FingerprintMock>
       return fulfill({
         name: groupBase.name,
         channel_id: groupBase.channel_id,
-        connection_type: groupBase.connection_type,
         params: groupBase.params,
         provider_url: groupBase.provider_url,
         enabled: true,

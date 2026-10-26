@@ -18,7 +18,6 @@ func CLIProxyAPI() spec.Module {
 			SearchTerms: []string{"cpa", "cli proxy api"},
 			Description: "CLIProxyAPI multi-protocol gateway",
 			Connection: spec.Connection{
-				Type:            spec.ConnectionAPIKey,
 				CredentialInput: "batch_text",
 			},
 			Params: []spec.Field{{

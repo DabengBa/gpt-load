@@ -373,7 +373,7 @@ func TestDiscoverGroupModelsDoesNotMutateDatabaseSnapshotOrRegistry(t *testing.T
 				Credentials: "state-key",
 				Models: optionalGroupModels{
 					Set: true, Values: []GroupModel{{ID: "persisted-model"}},
-				}, ConnectionType: "api_key",
+				},
 			})
 			if err != nil {
 				t.Fatalf("seed CreateGroup() error = %v", err)
@@ -410,7 +410,7 @@ func TestDiscoverGroupModelsDoesNotAcquireWriteMuOrBlockWrites(t *testing.T) {
 		ChannelID:   channel.OpenAICompatible,
 		Params:      []byte(`{"base_url":"https://discovery-lock.example.com/v1"}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{}},
-		Credentials: "key-1", ConnectionType: "api_key",
+		Credentials: "key-1",
 	})
 	if err != nil {
 		t.Fatalf("seed CreateGroup() error = %v", err)
@@ -475,7 +475,7 @@ func TestDiscoverGroupModelsDoesNotAcquireWriteMuOrBlockWrites(t *testing.T) {
 			ChannelID:   channel.Anthropic,
 			Params:      []byte(`{"base_url":"https://concurrent-group-write.example.com"}`),
 			Models:      optionalGroupModels{Set: true, Values: []GroupModel{}},
-			Credentials: "concurrent-group-key", ConnectionType: "api_key",
+			Credentials: "concurrent-group-key",
 		})
 		groupWriteDone <- err
 	}()

@@ -19,10 +19,8 @@ import { channelOperations, sameStringMembers, type ChannelOperation } from './c
 export type { ChannelOperation } from './channel-contract'
 
 export type ChannelFieldInputKind = 'text' | 'url' | 'secret'
-export type ChannelConnectionType = 'api_key'
 
 export interface ChannelConnectionDto {
-  type: ChannelConnectionType
   credential_input: 'batch_text'
 }
 
@@ -96,9 +94,8 @@ const fieldFields = [
 ] as const
 const listFields = ['items', 'total'] as const
 const inputKinds = ['text', 'url', 'secret'] as const
-const connectionTypes = ['api_key'] as const
 const credentialInputs = ['batch_text'] as const
-const connectionFields = ['type', 'credential_input'] as const
+const connectionFields = ['credential_input'] as const
 const capabilityFields = ['model_discovery', 'outbound_proxy'] as const
 const routeFields = [
   'client_protocol',
@@ -151,9 +148,8 @@ function projectChannelField(value: unknown): ChannelFieldDto {
 function projectConnection(value: unknown): ChannelConnectionDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, connectionFields)
-  const type = projectEnum(record.type, connectionTypes)
   const credentialInput = projectEnum(record.credential_input, credentialInputs)
-  return { type, credential_input: credentialInput }
+  return { credential_input: credentialInput }
 }
 
 function projectCapabilities(value: unknown): ChannelCapabilitiesDto {

@@ -9,7 +9,6 @@ test('dirty settings and model drafts survive focus and reconnect', async ({ pag
   const base = {
     name: 'Freshness group',
     channel_id: 'openai',
-    connection_type: 'api_key',
     params: {},
     provider_url: null,
   }

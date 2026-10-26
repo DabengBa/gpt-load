@@ -73,7 +73,7 @@ func createGroupWithCredentials(t *testing.T, fixture serviceFixture, credential
 	result, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: &name, ChannelID: channel.OpenAI, Params: json.RawMessage(`{}`),
 		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-4o"}}},
-		Credentials: credentials, ConnectionType: "api_key",
+		Credentials: credentials,
 	})
 	if err != nil {
 		t.Fatalf("CreateGroup(%q) error = %v", name, err)

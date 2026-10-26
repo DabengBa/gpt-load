@@ -41,12 +41,11 @@ func newCredentialDetailSummaryFixture(t *testing.T, stub *credentialActivityStu
 	fixture := newServiceFixture(t)
 	fixture.service.credentialActivity = stub
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
-		Name:           stringPointer("detail summary"),
-		ChannelID:      channel.OpenAI,
-		Params:         json.RawMessage(`{}`),
-		Models:         optionalGroupModels{Set: true},
-		Credentials:    "sk-detail-summary",
-		ConnectionType: "api_key",
+		Name:        stringPointer("detail summary"),
+		ChannelID:   channel.OpenAI,
+		Params:      json.RawMessage(`{}`),
+		Models:      optionalGroupModels{Set: true},
+		Credentials: "sk-detail-summary",
 	})
 	if err != nil {
 		t.Fatal(err)
