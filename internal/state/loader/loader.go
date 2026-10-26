@@ -870,6 +870,10 @@ func CredentialIdentityGeneration(
 	_, _ = hasher.Write([]byte{0})
 	_, _ = hasher.Write([]byte(channelID))
 	_, _ = hasher.Write([]byte{0})
+	// "api_key\x00" is the fixed authentication identity domain in this digest,
+	// not a configurable connection type. Keep these bytes stable so unchanged
+	// credentials retain their identity across restarts and checkpoint restores.
+	_, _ = hasher.Write([]byte("api_key\x00"))
 	_, _ = hasher.Write(bytes.TrimSpace(params))
 	generation := hasher.Sum64()
 	if generation == 0 {

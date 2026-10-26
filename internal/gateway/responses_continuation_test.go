@@ -22,6 +22,7 @@ import (
 	"gpt-load/internal/execution"
 	"gpt-load/internal/parameteroverride"
 	"gpt-load/internal/state"
+	"gpt-load/internal/state/loader"
 	"gpt-load/internal/telemetry"
 )
 
@@ -363,6 +364,57 @@ func TestResponsesContinuationRejectsLegacyOverrideBeforeForward(t *testing.T) {
 	serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","previous_response_id":"first","input":"continue"}`, http.StatusServiceUnavailable)
 	if len(forwarder.inputs) != 1 {
 		t.Fatal("legacy override dispatched a changed continuation")
+	}
+}
+
+func TestResponsesContinuationResumesLegacyCredentialIdentityCheckpoint(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("credential_changed=%t", changed), func(t *testing.T) {
+			before, engine, _ := newContinuationFixture(t, &scriptedForwarder{results: []UpstreamResult{storedResponse("legacy-response")}})
+			params := json.RawMessage(`{"base_url":"https://upstream.example"}`)
+			const fingerprint = "checkpoint-identity"
+			// Pre-PR204 FNV-1a digest of fingerprint, NUL, openai, NUL,
+			// api_key, NUL, params. Do not derive this fixture with the current loader.
+			const legacyGeneration uint64 = 7563311325893489693
+			setIdentity := func(handler *Handler, generation uint64) {
+				t.Helper()
+				ref, _ := handler.registry.CredentialRef(1)
+				if err := handler.registry.(*state.CredentialRegistry).ApplyCredentialImport(1, []state.CredentialEntry{{
+					ID: 1, GroupID: 1, Version: ref.Version, IdentityGeneration: generation,
+					Fingerprint: ref.Fingerprint, EncryptedValue: ref.EncryptedValue,
+				}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			setIdentity(before, legacyGeneration)
+			useAffinityRandomValues(before, 0)
+			serveContinuation(t, engine, "gl-client", `{"model":"gpt-4o","input":"initial"}`, http.StatusOK)
+			dir := t.TempDir()
+			if err := app.NewFileRuntimeStateCheckpoint(dir, nil, nil, before.responseBindings).Save(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			forwarder := &scriptedForwarder{results: []UpstreamResult{storedResponse("continued")}}
+			after, restarted, _ := newContinuationFixture(t, forwarder)
+			currentFingerprint := fingerprint
+			if changed {
+				currentFingerprint += "-replacement"
+			}
+			setIdentity(after, loader.CredentialIdentityGeneration(currentFingerprint, "openai", params))
+			if err := app.NewFileRuntimeStateCheckpoint(dir, nil, nil, after.responseBindings).Restore(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			status, attempts := http.StatusOK, 1
+			if changed {
+				status, attempts = http.StatusServiceUnavailable, 0
+			}
+			serveContinuation(t, restarted, "gl-client", `{"model":"gpt-4o","previous_response_id":"legacy-response","input":"continue"}`, status)
+			if len(forwarder.inputs) != attempts {
+				t.Fatalf("upstream attempts = %d, want %d", len(forwarder.inputs), attempts)
+			}
+			if !changed {
+				assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one"})
+			}
+		})
 	}
 }
 
