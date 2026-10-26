@@ -266,7 +266,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	if original.previous == "" {
 		affinity = h.resolveRequestAffinity(
 			s.ctx,
-			snapshot, key.ID, protocol.OpenAIResponses, model,
+			snapshot, recorder.requestID, key.ID, protocol.OpenAIResponses, model,
 			execution.OperationResponsesCreate, original.metadata, allowedCredentialRefs,
 		)
 		query.PreferredCredentialID = affinity.preferredCredentialID
@@ -280,7 +280,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	recorder.resolvedAffinityTarget = affinity.boundTarget
 	recorder.setAffinityObservations(affinity.source, affinity.state)
 	if affinity.err != nil {
-		reject(reasonConfigurationChanged)
+		reject(reasonAffinityUnavailable)
 		s.cancel()
 		return
 	}
