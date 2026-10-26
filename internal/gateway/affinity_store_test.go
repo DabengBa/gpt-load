@@ -21,6 +21,7 @@ import (
 	"gpt-load/internal/affinity"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/platform/config"
+	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 	"gpt-load/internal/storage"
@@ -332,27 +333,47 @@ func TestHandlerSerializesAffinityCacheAndDurableWritesPerKey(t *testing.T) {
 }
 
 func TestHandlerFailsClosedWhenDurableAffinityLookupFails(t *testing.T) {
+	const rawCacheKey = "raw-affinity-cache-key-canary"
+	var logs bytes.Buffer
 	forwarder := &scriptedForwarder{results: successfulAffinityResults(1)}
 	handler, _, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
-	handler.affinityStore = &affinityStoreStub{lookupErr: errors.New("durable store unavailable")}
+	handler.affinityStore = &affinityStoreStub{lookupErr: errors.New("durable store unavailable payload-canary")}
+	handler.logger = newGatewayJSONLogger(&logs)
 	sink := &recordingRequestLogSink{}
 	handler.requestLogSink = sink
 	engine := newAffinityTestEngine(t, handler)
 
 	response := serveAffinityResponse(
 		t, engine,
-		`{"model":"gpt-4o","messages":[{"role":"user","content":"stable durable conversation"}]}`,
+		`{"model":"gpt-4o","prompt_cache_key":"`+rawCacheKey+`","messages":[{"role":"user","content":"stable durable conversation"}]}`,
 	)
-	if response.Code != reasonConfigurationChanged.Status ||
-		!strings.Contains(response.Body.String(), reasonConfigurationChanged.Code) {
+	if response.Code != reasonAffinityUnavailable.Status ||
+		!strings.Contains(response.Body.String(), reasonAffinityUnavailable.Code) {
 		t.Fatalf("response = %d %s, want %d %s",
-			response.Code, response.Body.String(), reasonConfigurationChanged.Status, reasonConfigurationChanged.Code)
+			response.Code, response.Body.String(), reasonAffinityUnavailable.Status, reasonAffinityUnavailable.Code)
+	}
+	if response.Header().Get("Retry-After") != "1" {
+		t.Fatalf("Retry-After = %q, want 1", response.Header().Get("Retry-After"))
 	}
 	if len(forwarder.inputs) != 0 {
 		t.Fatalf("attempts after durable lookup failure = %d, want 0", len(forwarder.inputs))
 	}
 	assertAffinityStates(t, sink.snapshot(), []telemetry.AffinityState{telemetry.AffinityStateCacheUnavailable})
 	assertAffinityHits(t, sink.snapshot(), []bool{false})
+	if strings.Contains(logs.String(), rawCacheKey) {
+		t.Fatalf("affinity lookup log leaked raw prompt_cache_key: %s", logs.String())
+	}
+	events := gatewayEventsNamed(decodeGatewayJSONLogs(t, logs.Bytes()), "affinity_binding_lookup_failed")
+	if len(events) != 1 {
+		t.Fatalf("affinity lookup diagnostic events = %#v", events)
+	}
+	requestID, hasRequestID := events[0]["request_id"].(string)
+	displayKey, hasDisplayKey := events[0]["affinity_key"].(string)
+	if !hasRequestID || requestID == "" || events[0]["phase"] != "durable_lookup" ||
+		!hasDisplayKey || !affinity.ValidDisplayKey(displayKey) || events[0]["error_type"] != "*errors.errorString" ||
+		strings.Contains(logs.String(), "payload-canary") {
+		t.Fatalf("affinity lookup diagnostic events = %#v", events)
+	}
 }
 
 func TestWebsocketMigratesDurableBindingAfterBoundProviderFailure(t *testing.T) {
@@ -455,7 +476,10 @@ func TestWebsocketFailsClosedWhenDurableAffinityLookupFails(t *testing.T) {
 		writer.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
+	var logs bytes.Buffer
 	handler, engine, _ := newAffinityWebsocketFixture(t, upstream.URL+"/v1")
+	handler.logger = newGatewayJSONLogger(&logs)
+	handler.affinityLookupEvents = utils.NewRateLimitedEventCounter(time.Minute, time.Now)
 	handler.affinityStore = &affinityStoreStub{lookupErr: errors.New("durable store unavailable")}
 	server := httptest.NewServer(engine)
 	defer server.Close()
@@ -474,8 +498,18 @@ func TestWebsocketFailsClosedWhenDurableAffinityLookupFails(t *testing.T) {
 	if err := conn.ReadJSON(&event); err != nil {
 		t.Fatal(err)
 	}
-	if event.Type != "error" || event.Error.Code != reasonConfigurationChanged.Code {
-		t.Fatalf("websocket event = %+v, want error %s", event, reasonConfigurationChanged.Code)
+	if event.Type != "error" || event.Error.Code != reasonAffinityUnavailable.Code {
+		t.Fatalf("websocket event = %+v, want error %s", event, reasonAffinityUnavailable.Code)
+	}
+	events := gatewayEventsNamed(decodeGatewayJSONLogs(t, logs.Bytes()), "affinity_binding_lookup_failed")
+	if len(events) != 1 {
+		t.Fatalf("websocket affinity lookup diagnostic events = %#v", events)
+	}
+	requestID, hasRequestID := events[0]["request_id"].(string)
+	displayKey, hasDisplayKey := events[0]["affinity_key"].(string)
+	if !hasRequestID || requestID == "" || events[0]["phase"] != "durable_lookup" ||
+		!hasDisplayKey || !affinity.ValidDisplayKey(displayKey) || strings.Contains(logs.String(), "durable-lookup-key") {
+		t.Fatalf("websocket affinity lookup diagnostic missing or leaked key: %s", logs.String())
 	}
 }
 

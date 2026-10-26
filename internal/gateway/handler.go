@@ -131,6 +131,7 @@ type Handler struct {
 	logger               *logrus.Logger
 	authFailureEvents    *utils.RateLimitedEventCounter
 	routeNotFoundEvents  *utils.RateLimitedEventCounter
+	affinityLookupEvents *utils.RateLimitedEventCounter
 	lifecycle            *httplifecycle.Coordinator
 	affinityCache        *affinity.Cache
 	affinityStore        affinity.BindingStore
@@ -203,6 +204,7 @@ func NewHandler(
 			time.Minute,
 			time.Now,
 		),
+		affinityLookupEvents: utils.NewRateLimitedEventCounter(time.Minute, time.Now),
 	}
 	for _, runtime := range accessQuotas {
 		if runtime != nil {

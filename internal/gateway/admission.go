@@ -253,9 +253,13 @@ func (handler *Handler) admitRequest(
 			query.AllowedCredentialIDs = map[uint]struct{}{binding.CredentialID: {}}
 		}
 	} else {
+		requestID := ""
+		if recorder != nil {
+			requestID = recorder.requestID
+		}
 		requestAff = handler.resolveRequestAffinity(
 			ctx,
-			snapshot, accessKey.ID, selectedRoute.Protocol, model, metadata.Operation,
+			snapshot, requestID, accessKey.ID, selectedRoute.Protocol, model, metadata.Operation,
 			metadata, allowedCredentialRefs,
 		)
 		query.PreferredCredentialID = requestAff.preferredCredentialID
@@ -265,7 +269,7 @@ func (handler *Handler) admitRequest(
 		query.PreferredUpstreamModel = requestAff.boundTarget.UpstreamModelID
 	}
 	if requestAff.err != nil {
-		outcome := rejectAdmissionRetryAfter(reasonConfigurationChanged, 1).withInspected(inspected)
+		outcome := rejectAdmissionRetryAfter(reasonAffinityUnavailable, 1).withInspected(inspected)
 		outcome.rejection.affinity = &requestAff
 		return outcome
 	}

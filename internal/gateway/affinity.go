@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ type requestAffinity struct {
 	source                      telemetry.AffinitySource
 	state                       telemetry.AffinityState
 	err                         error
+	requestID                   string
 }
 
 func affinityTargetForSelection(selection scheduler.Selection, ref state.CredentialRef) affinity.Target {
@@ -190,6 +192,7 @@ func hasAffinityEnabledCandidate(
 func (handler *Handler) resolveRequestAffinity(
 	ctx context.Context,
 	snapshot *state.ConfigSnapshot,
+	requestID string,
 	accessKeyID uint,
 	clientProtocol protocol.Protocol,
 	clientModel string,
@@ -202,8 +205,9 @@ func (handler *Handler) resolveRequestAffinity(
 	}
 	signalType, source, signalValue, hasSignal := affinitySignal(metadata)
 	result := requestAffinity{
-		source: source,
-		state:  telemetry.AffinityStateNoSignal,
+		source:    source,
+		state:     telemetry.AffinityStateNoSignal,
+		requestID: requestID,
 		policy: affinity.DurablePolicy{
 			TTL:      snapshot.Settings.AffinityTTL,
 			Capacity: snapshot.Settings.AffinityCapacity,
@@ -273,6 +277,7 @@ func (handler *Handler) resolveRequestAffinity(
 		if err != nil {
 			result.state = telemetry.AffinityStateCacheUnavailable
 			result.err = fmt.Errorf("lookup affinity binding: %w", err)
+			handler.logAffinityLookupFailure(result)
 			return result
 		}
 	}
@@ -320,6 +325,30 @@ func (handler *Handler) resolveRequestAffinity(
 	result.preferredIdentityGeneration = target.IdentityGeneration
 	result.state = telemetry.AffinityStateHit
 	return result
+}
+
+func (handler *Handler) logAffinityLookupFailure(request requestAffinity) {
+	if handler == nil || handler.affinityLookupEvents == nil {
+		return
+	}
+	total, shouldLog := handler.affinityLookupEvents.Observe()
+	if !shouldLog {
+		return
+	}
+	utils.LogPlaneBestEffort(
+		handler.logger,
+		logrus.ErrorLevel,
+		utils.LogPlaneData,
+		logrus.Fields{
+			"event":        "affinity_binding_lookup_failed",
+			"request_id":   request.requestID,
+			"phase":        "durable_lookup",
+			"affinity_key": request.displayKey,
+			"error_type":   fmt.Sprintf("%T", errors.Unwrap(request.err)),
+			"total":        total,
+		},
+		"Durable affinity binding lookup failed",
+	)
 }
 
 // recordAffinitySuccess mirrors one successful provider selection into the hot

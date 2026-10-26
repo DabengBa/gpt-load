@@ -180,6 +180,15 @@ Corrupted JSON and rows with a missing credential identity still fail closed, so
 an unreadable durable authority is never mistaken for "no binding". No schema,
 column, or migration is added.
 
+A required durable lookup/decode failure is returned as HTTP 503
+`affinity_store_unavailable` with `Retry-After: 1`; WebSocket turns return the
+same error code. It is not reported as `configuration_changed`, because a
+storage read failure does not establish that configuration changed. The data
+plane emits a rate-limited `affinity_binding_lookup_failed` diagnostic with the
+request ID, lookup phase, masked affinity key and underlying error. It never
+includes the raw client cache key or stored binding payload. Both transports
+remain fail closed and dispatch no provider attempt.
+
 Route changes are reconciled against the published execution route catalog,
 scoped to the key's client protocol, operation and client model, rather than a
 stored deletion list. When the bound entry is removed or its upstream model

@@ -270,7 +270,7 @@ func TestHandlerUsesPromptCacheKeyForAffinityButPromptPrefixForContinuity(t *tes
 		AffinityPrefix: []byte(`{"v":1,"user":["stable"]}`),
 	}
 	resolved := handler.resolveRequestAffinity(
-		t.Context(), snapshot, 1, protocol.OpenAIResponses, "gpt-4o", execution.OperationResponsesCreate,
+		t.Context(), snapshot, "req-affinity", 1, protocol.OpenAIResponses, "gpt-4o", execution.OperationResponsesCreate,
 		metadata, map[uint]state.CredentialRef{1: {ID: 1, GroupID: 1, IdentityGeneration: 1}},
 	)
 	wantAffinity := affinity.DeriveKey(
@@ -295,7 +295,7 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 	prefix := []byte(`{"v":1,"user":["hello"]}`)
 	oldRef := state.CredentialRef{ID: 1, GroupID: 1, IdentityGeneration: 1}
 	initial := handler.resolveRequestAffinity(
-		t.Context(), snapshot,
+		t.Context(), snapshot, "req-affinity",
 		1,
 		protocol.OpenAICompletions,
 		"gpt-4o",
@@ -315,7 +315,7 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 	}
 
 	hit := handler.resolveRequestAffinity(
-		t.Context(), snapshot,
+		t.Context(), snapshot, "req-affinity",
 		1,
 		protocol.OpenAICompletions,
 		"gpt-4o",
@@ -329,7 +329,7 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 	changedRef := oldRef
 	changedRef.IdentityGeneration = 2
 	stale := handler.resolveRequestAffinity(
-		t.Context(), snapshot,
+		t.Context(), snapshot, "req-affinity",
 		1,
 		protocol.OpenAICompletions,
 		"gpt-4o",
@@ -350,7 +350,7 @@ func TestHandlerDerivesPrivateContinuityWithoutReenablingDisabledAffinity(t *tes
 	snapshot := manager.Current()
 	snapshot.Settings.AffinityCapacity = 0
 	resolved := handler.resolveRequestAffinity(
-		t.Context(), snapshot,
+		t.Context(), snapshot, "req-affinity",
 		1,
 		protocol.OpenAICompletions,
 		"gpt-4o",

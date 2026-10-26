@@ -79,6 +79,11 @@ var (
 		Code:    "configuration_changed",
 		Message: "Configuration changed; retry the request.",
 	}
+	reasonAffinityUnavailable = reason{
+		Status:  http.StatusServiceUnavailable,
+		Code:    "affinity_store_unavailable",
+		Message: "Conversation routing is temporarily unavailable; retry the request.",
+	}
 	reasonParameterOverrideUnavailable = reason{
 		Status:  http.StatusServiceUnavailable,
 		Code:    "parameter_override_unavailable",
