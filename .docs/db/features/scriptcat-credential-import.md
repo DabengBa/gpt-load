@@ -13,7 +13,7 @@ carrying an API key from a provider key page into the new-group import form: the
 entry control, the values that arrive, what the form pre-fills, and how the
 administrator finishes or abandons the import. The handoff storage, claim
 protocol and expiry rules belong to
-[ScriptCat Channel Import Handoff](../tech/scriptcat-channel-import.md).
+[ScriptCat Channel Import Handoff](../../tech/scriptcat-channel-import.md).
 
 ## Purpose
 
@@ -41,9 +41,10 @@ and only review and submit there.
 - A handoff is delivered at most once. Opening the same handoff link in several
   tabs fills the form in one tab and leaves the others as ordinary manual
   imports.
-- If the browser does not provide the required locking or storage, the panel
-  reports the failure instead of sending anything, and manual import remains
-  available.
+- If the browser does not provide the required locking or storage, the form is
+  not pre-filled and the administrator enters the values manually. That
+  fallback is not guaranteed to be announced: the destination may fail
+  silently, and the source may already hold the transfer it created.
 - Signing in after the redirect keeps an import draft that has no channel
   selected yet.
 

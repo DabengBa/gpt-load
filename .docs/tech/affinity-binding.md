@@ -192,11 +192,15 @@ That failure emits one rate-limited (per minute) data-plane diagnostic,
 (`durable_lookup`), the masked affinity display key, the root-cause Go type of
 the wrapped error, and the number of events counted in the window. The
 diagnostic deliberately omits the error text itself, the raw client cache key
-and the stored binding payload: the type alone distinguishes a driver error, a
-JSON syntax error, an invalid binding and a closed database, which is what an
-operator needs to classify the fault. The root-cause type is unwrapped
-repeatedly until no further wrapper remains, so multi-layer `%w` wrapping in
-the storage path does not hide the innermost cause.
+and the stored binding payload. The type alone separates a storage driver error
+and a JSON syntax error from an ordinary Go error, but it is not proof of the
+exact cause: an invalid binding and a closed database both surface as
+`*errors.errorString`. Treat the type as a coarse hint for which layer failed,
+not as the reason for the fault.
+
+The type reported is the innermost cause: the error is unwrapped repeatedly
+until no further wrapper remains, so multi-layer `%w` wrapping in the storage
+path does not hide the root.
 
 Route changes are reconciled against the published execution route catalog,
 scoped to the key's client protocol, operation and client model, rather than a

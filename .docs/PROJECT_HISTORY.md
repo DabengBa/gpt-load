@@ -9,10 +9,11 @@ narrative.
 ## 2026-10-26 — Durable affinity failure contract and ScriptCat credential handoff
 
 [PR #201](https://github.com/DabengBa/gpt-load/pull/201) separated a required
-durable affinity lookup failure from configuration change: both transports now
-answer HTTP 503 `affinity_store_unavailable` (`Retry-After: 1` on HTTP, the same
-code on the WebSocket error event) instead of `configuration_changed`, still
-dispatch no provider attempt, and emit a rate-limited
+durable affinity lookup failure from configuration change. An HTTP request now
+answers 503 `affinity_store_unavailable` with `Retry-After: 1`; a WebSocket turn
+fails with an error event carrying the same code, since a turn has no HTTP
+status. Neither transport reports `configuration_changed`, dispatches a
+provider attempt, and both emit a rate-limited
 `affinity_binding_lookup_failed` diagnostic that reports the unwrapped root
 cause type without the error text, the raw cache key or the stored binding.
 [Affinity Binding](tech/affinity-binding.md) owns the failure contract.

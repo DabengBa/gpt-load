@@ -53,22 +53,34 @@ the first claims and deletes the transfer, and the second finds nothing and
 renders a plain manual form.
 
 There is no fallback claim path. When Web Locks or browser storage are
-unavailable the claim throws, nothing is written to `sessionStorage`, and the
-user imports manually. No local-storage marker, retry loop or compatibility
-record is used to emulate the lock.
+unavailable the claim throws, nothing is written to `sessionStorage`, the
+receiver's failure is silent, and the user imports manually. No local-storage
+marker, retry loop or compatibility record is used to emulate the lock.
 
 ## Payload Record And Expiry
 
 The claimed record is written to the page's own `sessionStorage` under
 `gpt-load.scriptcat-import-payload` as `version: 2` with `createdAt`, `apiKey`,
-`baseURL`, `groupName` and `providerUrl`. Consumption requires the exact field
-set, a `createdAt` that is not in the future and not older than 15 minutes, a
-non-empty API key, Base URL and group name within their length bounds, and an
-http or https provider URL. Any other content is discarded.
+`baseURL`, `groupName` and `providerUrl`. Consumption requires those fields,
+rejects a record with any additional field, requires a `createdAt` that is not
+in the future and not older than 15 minutes, a non-empty API key, Base URL and
+group name within their length bounds, and an http or https provider URL. Any
+other content is discarded.
 
-The destination document removes the record when its 15-minute TTL elapses if
-it is still the same value it wrote. An abandoned transfer is otherwise removed
-by the next transfer attempt or by a later matching destination page.
+Two independent timers bound the credential, and neither survives its document:
+
+- The source tab schedules deletion of the `GM` transfer entry 60 seconds after
+  writing it, while the source page is still open. If the destination has not
+  claimed it by then, the entry is gone and the handoff must be repeated; if the
+  source tab closes first, the entry persists until a later transfer attempt or
+  a matching destination page removes it as expired.
+- The destination claim schedules removal of the `sessionStorage` record when
+  its 15-minute TTL elapses, only while the stored value is still the one it
+  wrote. A full reload interrupts that timer; opening `/import` again removes an
+  already expired record, so cleanup happens at the next consumption.
+
+The claim also sweeps expired `GM` entries before writing a new transfer, and
+deletes a malformed or expired entry it is asked to claim.
 
 ## Consumption And Prefill
 
