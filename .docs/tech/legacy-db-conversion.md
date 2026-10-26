@@ -101,7 +101,6 @@ both, or neither.
 | --- | --- | --- |
 | `connection_type` | `groups` | removal of the redundant connection-type field |
 | `auth_state`, `auth_error_code` | `credentials` | subscription removal |
-
 | `price_multiplier_micros` | `groups` | frozen model pricing (`0009_price_multipliers`) |
 | `price_multiplier_micros` | `access_keys` | frozen model pricing (`0009_price_multipliers`) |
 
@@ -126,7 +125,6 @@ source declares `groups.connection_type`, every value must be `api_key`; a sourc
 without that retired column is also accepted. A group whose channel this release
 no longer defines is refused as a subscription group rather than dropped.
 `groups.connection_type` is never copied into the target schema.
-
 
 Writer detection is a best-effort gate, not a lock. An empty `-wal` or a `-shm`
 side file is not treated as a writer because a read-only open creates them, so
@@ -157,7 +155,6 @@ Not copied, with no replacement: `request_logs`, `request_log_attempts`,
 `groups.connection_type`, `credentials.auth_state`,
 `credentials.auth_error_code`, and the pricing columns listed above are dropped
 and reported when present.
-
 
 `credential_attempt_stats` is **dropped, not retained**: it is per-credential
 attempt statistics, so it is history like the usage tables around it. Do not
