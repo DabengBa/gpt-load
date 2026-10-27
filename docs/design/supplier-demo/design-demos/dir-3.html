@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>供应商 · 未分配分组整理</title>
+<style>
+:root{--bg:#f7f8fa;--ink:#20242b;--muted:#646c78;--line:#e1e4e9;--line2:#cbd1d9;--blue:#2768bd;--bluebg:#eef4fc;--green:#26734b;--greenbg:#eaf5ee;--amber:#8b5d11;--amberbg:#fff3db;--red:#a33d3d;--redbg:#fbeceb;--r:5px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}button,input,select{font:inherit;color:inherit}button{cursor:pointer}
+.top{height:58px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 max(22px,calc((100% - 1240px)/2));gap:28px}.brand{font-size:16px;font-weight:700}.nav{height:100%;display:flex;gap:23px;color:var(--muted)}.nav a{display:flex;align-items:center;color:inherit;text-decoration:none}.nav .active{color:var(--ink);font-weight:650;border-bottom:2px solid #343a42}.user{margin-left:auto;color:var(--muted);font-size:13px}
+.wrap{max-width:1240px;margin:auto;padding:28px 24px 50px}.crumb{font-size:12px;color:var(--muted);margin-bottom:10px}.head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:21px}.head h1{font-size:24px;line-height:1.25;margin:0;font-weight:650}.head p{margin:5px 0 0;color:var(--muted)}
+.actions{display:flex;gap:8px}.btn{height:38px;border:1px solid var(--line2);border-radius:var(--r);padding:0 12px;background:#fff;font-weight:550}.btn:disabled{opacity:.45;cursor:not-allowed}.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.summary{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);background:#fff;margin-bottom:15px}.metric{padding:12px 15px;border-right:1px solid var(--line)}.metric:last-child{border:0}.metric b{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}.metric span{font-size:12px;color:var(--muted)}
+.assignbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:11px 13px;margin-bottom:12px;background:#fff;border:1px solid var(--line)}.assignbar b{font-size:13px}.assignbar .selcount{color:var(--blue);font-weight:650;font-variant-numeric:tabular-nums}.assignbar .sp{margin-left:auto;font-size:12px;color:var(--muted)}
+select.pick{height:34px;border:1px solid var(--line2);border-radius:var(--r);padding:0 9px;background:#fff;max-width:220px}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:10px}.search{height:38px;max-width:330px;flex:1;border:1px solid var(--line2);border-radius:var(--r);padding:0 11px;background:#fff}.filter{height:38px;border:1px solid var(--line2);border-radius:var(--r);padding:0 10px;background:#fff}.count{margin-left:auto;color:var(--muted);font-size:12px}
+.tablebox{overflow:auto;background:#fff;border:1px solid var(--line)}table{width:100%;min-width:900px;border-collapse:collapse}th{text-align:left;height:38px;background:#f3f5f7;color:#59616d;font-size:12px;font-weight:600;border-bottom:1px solid var(--line);padding:0 12px;white-space:nowrap}th.chk,td.chk{width:38px;padding-right:0}td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}tbody tr:last-child td{border:0}tbody tr:hover{background:#fafbfd}tbody tr.picked{background:var(--bluebg)}
+.gcell{display:flex;align-items:center;gap:9px;min-width:190px}.gname{font-weight:620}.gk{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.status{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap}.status:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.ok{color:var(--green);background:var(--greenbg)}.warn{color:var(--amber);background:var(--amberbg)}.bad{color:var(--red);background:var(--redbg)}.off{color:#5c636e;background:#f0f2f5}
+.tag{display:inline-block;border:1px solid var(--line2);border-radius:4px;padding:1px 6px;font-size:12px;color:var(--muted);background:#fff}
+.link{border:0;background:transparent;color:var(--blue);padding:6px 4px;font-weight:600}
+.empty{padding:34px 15px;text-align:center;color:var(--muted)}.note{font-size:12px;color:#858d98;margin-top:11px}
+.toast{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 15px;background:#242a33;color:#fff;border-radius:5px;z-index:40}.toast.show{display:block}
+.scrim{position:fixed;inset:0;background:rgba(24,28,34,.34);display:none;z-index:30}.scrim.show{display:block}
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(430px,100%);background:#fff;border-left:1px solid var(--line);transform:translateX(102%);transition:transform .18s ease;z-index:31;display:flex;flex-direction:column}.drawer.show{transform:none}
+.drw-hd{display:flex;align-items:flex-start;gap:10px;padding:15px;border-bottom:1px solid var(--line)}.drw-hd h2{margin:0;font-size:17px;font-weight:650;word-break:break-all}.drw-hd p{margin:3px 0 0;font-size:12px;color:var(--muted)}.drw-body{padding:15px;overflow:auto;flex:1}
+.kv{display:grid;grid-template-columns:104px minmax(0,1fr);gap:9px 12px;font-size:14px;margin-bottom:15px}.kv dt{color:var(--muted);font-size:12px}.kv dd{margin:0;font-weight:550;word-break:break-all}
+.sect{font-size:13px;font-weight:650;margin:0 0 8px;padding-top:13px;border-top:1px solid var(--line)}
+.pstate{display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px;background:#fcfcfd}.pstate b{font-size:13px;flex:1}.pstate small{display:block;color:var(--muted);font-size:12px;font-weight:400;margin-top:1px}
+.drw-ft{padding:12px 15px;border-top:1px solid var(--line);display:flex;gap:8px}.drw-ft .btn{flex:1}
+.x{border:0;background:transparent;font-size:19px;line-height:1;padding:2px 4px;color:var(--muted);margin-left:auto}
+@media(max-width:820px){th.hide,td.hide{display:none}table{min-width:640px}}
+@media(max-width:700px){.top{padding:0 14px;gap:15px}.nav{gap:13px}.nav a:nth-child(3){display:none}.user{display:none}.wrap{padding:20px 13px 40px}.head{flex-direction:column;align-items:flex-start}.head h1{font-size:22px}.summary{grid-template-columns:1fr}.metric{border-right:0;border-bottom:1px solid var(--line)}.metric:last-child{border:0}.toolbar{flex-wrap:wrap}.search{flex-basis:100%;max-width:none}.count{margin-left:0}.assignbar .sp{margin-left:0;flex-basis:100%}}
+</style>
+</head>
+<body>
+<header class="top"><div class="brand">GPT-Load</div><nav class="nav"><a href="#">首页</a><a class="active" href="#">分组管理</a><a href="#">调度中心</a><a href="#">监控</a></nav><div class="user">管理员</div></header>
+<main class="wrap">
+<div class="crumb">分组管理 / 供应商 / 未分配分组</div>
+<div class="head"><div><h1>未分配分组</h1><p>为本页分组指定供应商归属；也可逐行分配。整理不影响分组当前的调度与凭据。</p></div>
+  <div class="actions"><button class="btn" id="resetBtn">重置本页</button><button class="btn primary" id="applyBtn" disabled>应用归属</button></div></div>
+
+<section class="summary"><div class="metric"><b id="mTotal">0</b><span>待整理分组</span></div><div class="metric"><b id="mPicked">0</b><span>已选择</span></div><div class="metric"><b id="mDone">0</b><span>本次已归属</span></div></section>
+
+<div class="assignbar"><b>批量分配</b><span class="selcount" id="selLabel">未选择</span>
+  <select class="pick" id="bulkPick" aria-label="选择供应商"></select>
+  <button class="btn primary" id="bulkBtn" disabled>应用到已选</button>
+  <span class="sp">也可在每行右侧单独指定</span></div>
+
+<div class="toolbar"><input class="search" id="search" placeholder="搜索分组名、凭据或备注" aria-label="搜索分组"><label class="filter" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="onlyBad"> 仅看异常</label><span class="count" id="count"></span></div>
+
+<div class="tablebox"><table><thead><tr><th class="chk"><input type="checkbox" id="checkAll" aria-label="全选本页"></th><th>分组</th><th>凭据状态</th><th class="hide">模型</th><th class="hide">最近更新</th><th>供应商</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+<p class="note">分配后分组会出现在对应供应商详情中；凭据 Key 始终只属于原分组，不跨供应商共享。</p>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="分组详情">
+  <div class="drw-hd"><div><h2 id="dName">—</h2><p id="dSub">—</p></div><button class="x" id="dClose" aria-label="关闭">×</button></div>
+  <div class="drw-body" id="dBody"></div>
+  <div class="drw-ft"><button class="btn" id="dCancel">关闭</button><button class="btn primary" id="dAssign">分配供应商</button></div>
+</aside>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const SUPPLIERS=[
+ {id:"nw",name:"Northwind AI"},{id:"ac",name:"Acme Cloud"},{id:"ds",name:"DeepSource"},
+ {id:"op",name:"Orbit Proxy"},{id:"vx",name:"Vertex Lane"},{id:"hn",name:"Harbor Node"},
+ {id:"zy",name:"Zephyr Yield"},{id:"gl",name:"未命名供应商"}];
+const STATE={ok:{cls:"ok",label:"正常"},warn:{cls:"warn",label:"冷却"},bad:{cls:"bad",label:"异常"},off:{cls:"off",label:"已停用"}};
+let ROWS=[
+ {id:"g1",name:"legacy-openai-a",key:"sk-la-••••31",state:"ok",models:3,updated:"6 分钟前",supplier:null,proto:["OpenAI Chat","OpenAI Responses"],note:"历史分组，尚未归类"},
+ {id:"g2",name:"legacy-openai-b",key:"sk-lb-••••32",state:"warn",models:2,updated:"24 分钟前",supplier:null,proto:["OpenAI Chat"],note:"等待上游恢复"},
+ {id:"g3",name:"import-anthropic",key:"sk-ia-••••33",state:"ok",models:4,updated:"41 分钟前",supplier:null,proto:["Anthropic Messages"],note:"批量导入"},
+ {id:"g4",name:"import-gemini",key:"sk-ig-••••34",state:"bad",models:2,updated:"2 小时前",supplier:null,proto:["Gemini v1beta"],note:"凭据校验失败"},
+ {id:"g5",name:"team-alpha",key:"sk-ta-••••35",state:"ok",models:5,updated:"3 小时前",supplier:null,proto:["OpenAI Chat","Anthropic Messages"],note:"团队专用"},
+ {id:"g6",name:"team-beta",key:"sk-tb-••••36",state:"off",models:1,updated:"2 天前",supplier:null,proto:["OpenAI Chat"],note:"已停用待清理"},
+ {id:"g7",name:"proxy-mix-01",key:"sk-pm-••••37",state:"ok",models:6,updated:"5 小时前",supplier:null,proto:["OpenAI Chat","OpenAI Responses","Anthropic Messages"],note:"混合代理"},
+ {id:"g8",name:"proxy-mix-02",key:"sk-pn-••••38",state:"ok",models:3,updated:"1 天前",supplier:null,proto:["OpenAI Chat"],note:"混合代理备份"}
+];
+const picked=new Set();
+let done=0,currentDetail=null;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const toast=s=>{const n=$("#toast");n.textContent=s;n.classList.add("show");clearTimeout(window.__t);window.__t=setTimeout(()=>n.classList.remove("show"),1900)};
+const suppliersOf=r=>SUPPLIERS.find(s=>s.id===r.supplier);
+$("#bulkPick").innerHTML='<option value="">选择供应商…</option>'+SUPPLIERS.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join("");
+
+function visibleRows(){
+  const q=$("#search").value.trim().toLowerCase();
+  const onlyBad=$("#onlyBad").checked;
+  return ROWS.filter(r=>{
+    if(r.supplier)return false;
+    if(onlyBad&&!["warn","bad"].includes(r.state))return false;
+    if(!q)return true;
+    return r.name.toLowerCase().includes(q)||r.key.toLowerCase().includes(q)||r.note.toLowerCase().includes(q);
+  });
+}
+function render(){
+  const list=visibleRows();
+  $("#rows").innerHTML=list.length?list.map(r=>'<tr class="'+(picked.has(r.id)?"picked":"")+'">'
+    +'<td class="chk"><input type="checkbox" data-pick="'+r.id+'" '+(picked.has(r.id)?"checked":"")+' aria-label="选择 '+esc(r.name)+'"></td>'
+    +'<td><div class="gcell"><div><span class="gname">'+esc(r.name)+'</span><span class="gk">'+esc(r.key)+'</span></div></div></td>'
+    +'<td><span class="status '+STATE[r.state].cls+'">'+STATE[r.state].label+'</span></td>'
+    +'<td class="hide">'+r.models+' 个</td><td class="hide"><span class="tag">'+r.updated+'</span></td>'
+    +'<td><select class="pick" data-row="'+r.id+'" aria-label="为 '+esc(r.name)+' 选择供应商"><option value="">未分配</option>'
+      +SUPPLIERS.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join("")+'</select></td>'
+    +'<td><button class="link" data-open="'+r.id+'">详情</button></td></tr>').join("")
+    :'<tr><td colspan="7"><div class="empty">'+(ROWS.some(r=>!r.supplier)?"当前筛选没有匹配的分组":"全部未分配分组已整理完毕")+'</div></td></tr>';
+
+  $("#rows").querySelectorAll("[data-pick]").forEach(cb=>cb.addEventListener("change",()=>{
+    cb.checked?picked.add(cb.dataset.pick):picked.delete(cb.dataset.pick);
+    render();
+  }));
+  $("#rows").querySelectorAll("[data-row]").forEach(sel=>sel.addEventListener("change",()=>{
+    if(!sel.value)return;
+    const r=ROWS.find(x=>x.id===sel.dataset.row);
+    r.supplier=sel.value;done++;picked.delete(r.id);
+    toast("「"+r.name+"」已归属 "+suppliersOf(r).name);
+    render();
+  }));
+  $("#rows").querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>openDrawer(b.dataset.open)));
+
+  const remain=ROWS.filter(r=>!r.supplier).length;
+  const allChecked=list.length>0&&list.every(r=>picked.has(r.id));
+  $("#checkAll").checked=allChecked;
+  $("#checkAll").disabled=list.length===0;
+  $("#mTotal").textContent=remain;
+  $("#mPicked").textContent=picked.size;
+  $("#mDone").textContent=done;
+  $("#count").textContent="显示 "+list.length+" 个";
+  $("#selLabel").textContent=picked.size?("已选 "+picked.size+" 个"):"未选择";
+  $("#bulkBtn").disabled=picked.size===0||!$("#bulkPick").value;
+  $("#applyBtn").disabled=done===0;
+  if(currentDetail)fillDrawer();
+}
+function openDrawer(id){
+  currentDetail=ROWS.find(r=>r.id===id)||null;
+  if(!currentDetail)return;
+  fillDrawer();$("#scrim").classList.add("show");$("#drawer").classList.add("show");
+}
+function closeDrawer(){$("#scrim").classList.remove("show");$("#drawer").classList.remove("show");currentDetail=null}
+function fillDrawer(){
+  const r=currentDetail;if(!r)return;
+  const s=suppliersOf(r);
+  $("#dName").textContent=r.name;
+  $("#dSub").textContent=r.key+" · "+r.updated;
+  const proto=r.proto.map(p=>'<span class="tag" style="margin:0 6px 6px 0">'+esc(p)+'</span>').join("");
+  const states=[
+    {n:"凭据可用性",v:r.state==="ok"?"通过":r.state==="warn"?"冷却中":r.state==="bad"?"校验失败":"已停用",st:r.state},
+    {n:"协议入口",v:r.proto.length+" 条已启用",st:"ok"},
+    {n:"调度资格",v:r.state==="off"?"已移出候选":"参与本轮路由",st:r.state==="off"?"off":"ok"}
+  ].map(x=>'<div class="pstate"><div><b>'+x.n+'<small>'+esc(x.v)+'</small></b></div><span class="status '+STATE[x.st].cls+'">'+STATE[x.st].label+'</span></div>').join("");
+  $("#dBody").innerHTML=
+    '<dl class="kv"><dt>当前供应商</dt><dd>'+(s?esc(s.name):'<span style="color:#8b5d11">未分配</span>')+'</dd>'
+    +'<dt>可用模型</dt><dd>'+r.models+' 个</dd>'
+    +'<dt>备注</dt><dd style="font-weight:400">'+esc(r.note)+'</dd>'
+    +'<dt>凭据状态</dt><dd><span class="status '+STATE[r.state].cls+'">'+STATE[r.state].label+'</span></dd></dl>'
+    +'<p class="sect">客户端协议</p><div>'+proto+'</div>'
+    +'<p class="sect">运行态校验</p>'+states;
+  $("#dAssign").textContent=s?"更改供应商":"分配供应商";
+}
+$("#search").addEventListener("input",render);
+$("#onlyBad").addEventListener("change",render);
+$("#checkAll").addEventListener("change",e=>{
+  const list=visibleRows();
+  if(e.target.checked)list.forEach(r=>picked.add(r.id));else list.forEach(r=>picked.delete(r.id));
+  render();
+});
+$("#bulkPick").addEventListener("change",()=>{$("#bulkBtn").disabled=picked.size===0||!$("#bulkPick").value});
+$("#bulkBtn").addEventListener("click",()=>{
+  const sid=$("#bulkPick").value;if(!sid||!picked.size)return;
+  const name=SUPPLIERS.find(s=>s.id===sid).name;let n=0;
+  ROWS.forEach(r=>{if(picked.has(r.id)){r.supplier=sid;n++}});
+  picked.clear();done+=n;$("#bulkPick").value="";
+  toast(n+" 个分组已归属 "+name);
+  render();
+});
+$("#resetBtn").addEventListener("click",()=>{picked.clear();$("#bulkPick").value="";$("#search").value="";$("#onlyBad").checked=false;render();toast("已重置筛选与选择")});
+$("#applyBtn").addEventListener("click",()=>toast("已保存 "+done+" 个分组的供应商归属"));
+$("#dClose").addEventListener("click",closeDrawer);
+$("#dCancel").addEventListener("click",closeDrawer);
+$("#scrim").addEventListener("click",closeDrawer);
+$("#dAssign").addEventListener("click",()=>{
+  if(!currentDetail)return;
+  const sid=$("#bulkPick").value||SUPPLIERS[0].id;
+  currentDetail.supplier=sid;done++;fillDrawer();
+  toast("「"+currentDetail.name+"」已归属 "+suppliersOf(currentDetail).name);
+  render();
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeDrawer()});
+render();
+</script>
+</body></html>

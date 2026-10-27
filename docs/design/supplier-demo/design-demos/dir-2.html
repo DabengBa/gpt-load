@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>供应商 · 目录与分组详情</title>
+<style>
+:root{--bg:#f7f8fa;--ink:#20242b;--muted:#646c78;--line:#e1e4e9;--line2:#cbd1d9;--blue:#2768bd;--bluebg:#eef4fc;--green:#26734b;--greenbg:#eaf5ee;--amber:#8b5d11;--amberbg:#fff3db;--red:#a33d3d;--redbg:#fbeceb;--r:5px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}button,input,select{font:inherit;color:inherit}button{cursor:pointer}
+.top{height:58px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 max(22px,calc((100% - 1240px)/2));gap:28px}.brand{font-size:16px;font-weight:700}.nav{height:100%;display:flex;gap:23px;color:var(--muted)}.nav a{display:flex;align-items:center;color:inherit;text-decoration:none}.nav .active{color:var(--ink);font-weight:650;border-bottom:2px solid #343a42}.user{margin-left:auto;color:var(--muted);font-size:13px}
+.wrap{max-width:1240px;margin:auto;padding:28px 24px 50px}.crumb{font-size:12px;color:var(--muted);margin-bottom:10px}.head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:21px}.head h1{font-size:24px;line-height:1.25;margin:0;font-weight:650}.head p{margin:5px 0 0;color:var(--muted)}
+.actions{display:flex;gap:8px}.btn{height:38px;border:1px solid var(--line2);border-radius:var(--r);padding:0 12px;background:#fff;font-weight:550}.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.layout{display:grid;grid-template-columns:308px minmax(0,1fr);gap:16px;align-items:start}
+.pane{background:#fff;border:1px solid var(--line)}.pane-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line)}.pane-hd b{font-size:13px}.pane-hd span{font-size:12px;color:var(--muted)}
+.srch{margin:10px 13px;height:36px;width:calc(100% - 26px);border:1px solid var(--line2);border-radius:var(--r);padding:0 10px;background:#fff}
+.dirlist{list-style:none;margin:0;padding:0 6px 8px;max-height:calc(100vh - 330px);overflow:auto}
+.diritem{display:flex;align-items:center;gap:10px;width:100%;border:1px solid transparent;background:transparent;border-radius:var(--r);padding:9px 8px;text-align:left}
+.diritem:hover{background:#fafbfd;border-color:var(--line)}.diritem[aria-current="true"]{background:var(--bluebg);border-color:#cfe0f5}
+.mark{width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;border:1px solid var(--line);border-radius:5px;background:#fafafa;font-size:14px;font-weight:700;color:#414852}
+.dirin{min-width:0;flex:1}.dirin b{display:block;font-size:14px;font-weight:620;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dirin small{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+.pill{flex:0 0 auto;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted);border:1px solid var(--line);border-radius:10px;padding:1px 7px;background:#fff}
+.detail{padding:0}.dt-hd{padding:15px;border-bottom:1px solid var(--line);display:flex;gap:13px;align-items:flex-start}.dt-hd h2{margin:0;font-size:19px;font-weight:650}.dt-hd p{margin:3px 0 0;font-size:12px;color:var(--muted);word-break:break-all}
+.dt-body{padding:15px}
+.sum{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);margin-bottom:15px}.met{padding:10px 12px;border-right:1px solid var(--line)}.met:last-child{border:0}.met b{display:block;font-size:19px;font-weight:650;font-variant-numeric:tabular-nums}.met span{font-size:12px;color:var(--muted)}
+.subhd{display:flex;align-items:center;gap:8px;margin:0 0 8px}.subhd b{font-size:13px}.subhd .sp{margin-left:auto;font-size:12px;color:var(--muted)}
+.tablebox{overflow:auto;border:1px solid var(--line)}table{width:100%;min-width:640px;border-collapse:collapse}th{text-align:left;height:36px;background:#f3f5f7;color:#59616d;font-size:12px;font-weight:600;border-bottom:1px solid var(--line);padding:0 11px;white-space:nowrap}td{padding:10px 11px;border-bottom:1px solid var(--line);vertical-align:middle}tbody tr:last-child td{border:0}tbody tr:hover{background:#fafbfd}.gname{font-weight:600}.gk{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.status{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap}.status:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.ok{color:var(--green);background:var(--greenbg)}.warn{color:var(--amber);background:var(--amberbg)}.bad{color:var(--red);background:var(--redbg)}.off{color:#5c636e;background:#f0f2f5}
+.tag{display:inline-block;border:1px solid var(--line2);border-radius:4px;padding:1px 6px;font-size:12px;color:var(--muted);background:#fff}
+.empty{padding:34px 15px;text-align:center;color:var(--muted)}
+.note{font-size:12px;color:#858d98;margin:11px 0 0}.toast{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 15px;background:#242a33;color:#fff;border-radius:5px;z-index:9}.toast.show{display:block}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.dirlist{max-height:290px}.sum{grid-template-columns:repeat(2,1fr)}.met:nth-child(2){border-right:0}.met:nth-child(-n+2){border-bottom:1px solid var(--line)}}
+@media(max-width:700px){.top{padding:0 14px;gap:15px}.nav{gap:13px}.nav a:nth-child(3){display:none}.user{display:none}.wrap{padding:20px 13px 40px}.head{flex-direction:column;align-items:flex-start}.head h1{font-size:22px}.actions{width:100%}.actions .btn{flex:1}.dt-hd{flex-wrap:wrap}.pane-hd{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<header class="top"><div class="brand">GPT-Load</div><nav class="nav"><a href="#">首页</a><a class="active" href="#">分组管理</a><a href="#">调度中心</a><a href="#">监控</a></nav><div class="user">管理员</div></header>
+<main class="wrap">
+<div class="crumb">分组管理 / 供应商</div>
+<div class="head"><div><h1>供应商</h1><p>左侧为供应商目录，右侧展示所选供应商名下的分组与凭据状态。</p></div><div class="actions"><button class="btn" data-act="edit">编辑供应商</button><button class="btn primary" data-act="assign">整理分组归属</button></div></div>
+
+<div class="layout">
+  <section class="pane" aria-label="供应商目录">
+    <div class="pane-hd"><b>供应商目录</b><span id="dirCount"></span></div>
+    <input class="srch" id="dirSearch" placeholder="搜索供应商或分组" aria-label="搜索供应商">
+    <ul class="dirlist" id="dirList"></ul>
+  </section>
+
+  <section class="pane detail" id="detail" aria-live="polite"></section>
+</div>
+<p class="note">供应商只用于归类与汇总；凭据、路由与权重仍由各分组独立持有，切换供应商不改变调度行为。</p>
+</main>
+<div class="toast" id="toast" role="status"></div>
+<script>
+const SUPPLIERS=[
+ {id:"nw",name:"Northwind AI",host:"northwind.example",mark:"NW",note:"主力推理服务",groups:[
+   {name:"northwind-prod",key:"sk-nw-••••a1",state:"ok",models:4,weight:70,updated:"2 分钟前"},
+   {name:"northwind-backup",key:"sk-nw-••••b7",state:"warn",models:3,weight:30,updated:"11 分钟前"},
+   {name:"northwind-vision",key:"sk-nw-••••c3",state:"ok",models:2,weight:50,updated:"26 分钟前"},
+   {name:"northwind-legacy",key:"sk-nw-••••d9",state:"off",models:1,weight:0,updated:"4 天前"},
+   {name:"northwind-eu",key:"sk-nw-••••e2",state:"ok",models:3,weight:45,updated:"1 小时前"},
+   {name:"northwind-apac",key:"sk-nw-••••f4",state:"ok",models:3,weight:45,updated:"2 小时前"}]},
+ {id:"ac",name:"Acme Cloud",host:"console.acme.example",mark:"AC",note:"多区域接入",groups:[
+   {name:"acme-us-east",key:"sk-ac-••••11",state:"ok",models:5,weight:60,updated:"5 分钟前"},
+   {name:"acme-us-west",key:"sk-ac-••••22",state:"ok",models:5,weight:40,updated:"9 分钟前"},
+   {name:"acme-eu-central",key:"sk-ac-••••33",state:"warn",models:4,weight:25,updated:"18 分钟前"},
+   {name:"acme-canary",key:"sk-ac-••••44",state:"ok",models:2,weight:10,updated:"33 分钟前"}]},
+ {id:"ds",name:"DeepSource",host:"deepsource.example",mark:"DS",note:"备用渠道",groups:[
+   {name:"deepsource-main",key:"sk-ds-••••aa",state:"ok",models:6,weight:55,updated:"7 分钟前"},
+   {name:"deepsource-small",key:"sk-ds-••••bb",state:"ok",models:3,weight:20,updated:"21 分钟前"},
+   {name:"deepsource-experiment",key:"sk-ds-••••cc",state:"bad",models:2,weight:0,updated:"3 小时前"}]},
+ {id:"op",name:"Orbit Proxy",host:"orbit.example",mark:"OP",note:"OpenAI / Anthropic 兼容",groups:[
+   {name:"orbit-oai",key:"sk-op-••••01",state:"ok",models:7,weight:65,updated:"1 分钟前"},
+   {name:"orbit-anthropic",key:"sk-op-••••02",state:"ok",models:4,weight:55,updated:"4 分钟前"},
+   {name:"orbit-gemini",key:"sk-op-••••03",state:"ok",models:3,weight:35,updated:"12 分钟前"},
+   {name:"orbit-eu",key:"sk-op-••••04",state:"ok",models:4,weight:40,updated:"38 分钟前"},
+   {name:"orbit-staging",key:"sk-op-••••05",state:"ok",models:2,weight:5,updated:"2 小时前"}]},
+ {id:"gl",name:"未命名供应商",host:"未填写网站",mark:"GL",note:"尚未补充资料",groups:[
+   {name:"temp-group-a",key:"sk-gl-••••x1",state:"ok",models:2,weight:30,updated:"1 小时前"},
+   {name:"temp-group-b",key:"sk-gl-••••x2",state:"ok",models:1,weight:10,updated:"5 小时前"}]},
+ {id:"vx",name:"Vertex Lane",host:"vertexlane.example",mark:"VX",note:"本地化模型",groups:[
+   {name:"vertexlane-cn",key:"sk-vx-••••51",state:"ok",models:3,weight:50,updated:"3 分钟前"},
+   {name:"vertexlane-hk",key:"sk-vx-••••52",state:"warn",models:2,weight:20,updated:"16 分钟前"}]},
+ {id:"hn",name:"Harbor Node",host:"harbor.example",mark:"HN",note:"低频批处理",groups:[
+   {name:"harbor-batch",key:"sk-hn-••••71",state:"ok",models:2,weight:15,updated:"44 分钟前"}]},
+ {id:"zy",name:"Zephyr Yield",host:"zephyr.example",mark:"ZY",note:"新签约，待验证",groups:[]}
+];
+const STATE={ok:{cls:"ok",label:"正常"},warn:{cls:"warn",label:"冷却"},bad:{cls:"bad",label:"异常"},off:{cls:"off",label:"已停用"}};
+const $=s=>document.querySelector(s);
+let current=SUPPLIERS[0].id;
+const toast=(s)=>{const n=$("#toast");n.textContent=s;n.classList.add("show");clearTimeout(window.__t);window.__t=setTimeout(()=>n.classList.remove("show"),1800)};
+function totals(groups){
+  const c={ok:0,warn:0,bad:0,off:0};
+  groups.forEach(g=>c[g.state]++);
+  return c;
+}
+function healthOf(c){
+  if(c.bad)return{cls:"bad",label:"存在异常"};
+  if(c.warn)return{cls:"warn",label:"部分冷却"};
+  if(c.ok)return{cls:"ok",label:"正常"};
+  return{cls:"off",label:"无分组"};
+}
+function renderList(){
+  const q=$("#dirSearch").value.trim().toLowerCase();
+  const list=$("#dirList");
+  const rows=SUPPLIERS.filter(s=>!q||s.name.toLowerCase().includes(q)||s.host.toLowerCase().includes(q)||s.groups.some(g=>g.name.toLowerCase().includes(q)));
+  list.innerHTML=rows.map(s=>{
+    const c=totals(s.groups);
+    return '<li><button class="diritem" data-id="'+s.id+'" aria-current="'+(s.id===current)+'">'
+      +'<span class="mark">'+s.mark+'</span>'
+      +'<span class="dirin"><b>'+s.name+'</b><small>'+s.groups.length+' 个分组 · '+(c.ok+' 正常')+(c.bad?' · '+c.bad+' 异常':'')+(c.warn?' · '+c.warn+' 冷却':'')+'</small></span>'
+      +'<span class="pill">'+s.groups.length+'</span></button></li>';
+  }).join("")||'<li class="empty">没有匹配的供应商</li>';
+  $("#dirCount").textContent=rows.length+" / "+SUPPLIERS.length;
+  list.querySelectorAll(".diritem").forEach(b=>b.addEventListener("click",()=>{
+    current=b.dataset.id;renderList();renderDetail();
+    toast("已切换到 "+SUPPLIERS.find(s=>s.id===current).name);
+  }));
+}
+function renderDetail(){
+  const s=SUPPLIERS.find(x=>x.id===current)||SUPPLIERS[0];
+  if(!s){$("#detail").innerHTML='<div class="empty">未选择供应商</div>';return}
+  const c=totals(s.groups),h=healthOf(c);
+  const rows=s.groups.length?s.groups.map(g=>'<tr>'
+     +'<td><span class="gname">'+g.name+'</span><span class="gk">'+g.key+'</span></td>'
+     +'<td><span class="status '+STATE[g.state].cls+'">'+STATE[g.state].label+'</span></td>'
+     +'<td>'+g.models+' 个</td><td>'+g.weight+'%</td>'
+     +'<td><span class="tag">'+g.updated+'</span></td></tr>').join("")
+    :'<tr><td colspan="5"><div class="empty">该供应商名下还没有分组，可在「整理分组归属」中分配。</div></td></tr>';
+  $("#detail").innerHTML=
+    '<div class="dt-hd"><span class="mark">'+s.mark+'</span><div><h2>'+s.name+'</h2><p>'+s.host+' · '+s.note+'</p></div>'
+    +'<span style="margin-left:auto"><span class="status '+h.cls+'">'+h.label+'</span></span></div>'
+    +'<div class="dt-body">'
+    +'<div class="sum"><div class="met"><b>'+s.groups.length+'</b><span>分组总数</span></div>'
+    +'<div class="met"><b>'+c.ok+'</b><span>正常凭据</span></div>'
+    +'<div class="met"><b>'+(c.warn+c.bad)+'</b><span>需关注</span></div>'
+    +'<div class="met"><b>'+c.off+'</b><span>已停用</span></div></div>'
+    +'<div class="subhd"><b>所属分组</b><span class="sp">凭据与路由由各分组独立持有</span></div>'
+    +'<div class="tablebox"><table><thead><tr><th>分组 / 凭据</th><th>凭据状态</th><th>模型</th><th>权重</th><th>最近更新</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'</div>';
+}
+$("#dirSearch").addEventListener("input",renderList);
+document.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>{
+  const s=SUPPLIERS.find(x=>x.id===current);
+  toast(b.dataset.act==="edit"?("编辑 "+s.name):("为 "+s.name+" 整理分组归属"));
+}));
+renderList();renderDetail();
+</script>
+</body></html>
