@@ -415,7 +415,7 @@ test('unmatched channel search explains the compatible alternative and selects i
 })
 
 test('adds the first manual model from the empty import form', async ({ page }) => {
-  await mockImportApi(page)
+  const requests = await mockImportApi(page)
   await page.goto('/import', { waitUntil: 'commit' })
   await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
     timeout: FIRST_PAINT,
@@ -425,6 +425,29 @@ test('adds the first manual model from the empty import form', async ({ page }) 
   await page.locator('[data-model-id-index="0"]').fill('ux-first-model')
   await page.getByRole('button', { name: 'Add model', exact: true }).click()
   await expect(page.locator('[data-model-id-index="1"]')).toBeVisible()
+  await page.locator('[data-model-id-index="1"]').fill('ux-second-model')
+  const weight = page.locator('[data-model-weight-index="0"]')
+  const priority = page.locator('[data-model-priority-index="0"]')
+  await expect(weight).toHaveValue('1')
+  await expect(priority).toHaveValue('1')
+  await expect(weight).toBeEditable()
+  await expect(priority).toBeEditable()
+  const rows = page.locator('[data-testid="model-alias-editor__record"]')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.nth(0)).not.toContainText('%')
+  await expect(rows.nth(1)).not.toContainText('%')
+  await expect(page.locator('[role="table"] i')).toHaveCount(0)
+  await weight.fill('9')
+  await priority.fill('2')
+  await page.locator('#channel-credentials').fill('sk-route-fields')
+  await page.getByRole('button', { name: 'Create Group', exact: true }).click()
+  await expect.poll(() => requests.createBodies.length).toBe(1)
+  expect(requests.createBodies[0]).toMatchObject({
+    models: [
+      { id: 'ux-first-model', weight: 9, priority: 2 },
+      { id: 'ux-second-model', weight: null, priority: null },
+    ],
+  })
 })
 
 test('single credential rejects multiple lines including duplicate keys', async ({ page }) => {

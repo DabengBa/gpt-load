@@ -88,8 +88,13 @@ opens at the relevant place instead of requiring a second search.
 
 - This feature owns cross-page context, target-row highlighting, and
   maintenance-link availability.
-- The schedule center owns route selection, weight and priority editing,
-  probing, and recovery actions after navigation completes.
+- The schedule center owns cross-group route selection, calculated distribution
+  percentages, weight and priority editing, probing, and recovery actions after
+  navigation completes.
+- Group creation and maintenance also allow editing model-entry weights and
+  priorities, but do not display calculated distribution percentages. An
+  unconfigured weight or priority displays its effective default of 1;
+  explicitly configured values, including weight 0, remain visible.
 - Group maintenance owns group and model changes; request logs own filtering,
   detail inspection, and historical display.
 - The feature does not change routing eligibility, log data, group lifecycle,

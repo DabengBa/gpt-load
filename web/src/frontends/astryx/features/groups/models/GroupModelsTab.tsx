@@ -107,7 +107,6 @@ export function GroupModelsTab({
   enabled = true,
   unified = false,
   blocked = false,
-  readonlyRouteFields = false,
   onStateChange,
   ref,
 }: {
@@ -116,7 +115,6 @@ export function GroupModelsTab({
   enabled?: boolean
   unified?: boolean
   blocked?: boolean
-  readonlyRouteFields?: boolean
   onStateChange(state: GroupEditorState): void
   ref?: Ref<GroupModelsEditorHandle>
 }) {
@@ -873,7 +871,6 @@ export function GroupModelsTab({
             createRow={createManualRow}
             disabled={operationBlocked}
             searchable={false}
-            readonlyRouteFields={readonlyRouteFields}
             onChange={updateModels}
             renderThirdColumn={(item) => (
               <div {...stylex.props(styles.pricingCell)}>
