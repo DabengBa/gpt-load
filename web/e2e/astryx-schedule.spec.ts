@@ -370,6 +370,154 @@ async function waitForScheduleTable(page: Page): Promise<void> {
 
 const rows = (page: Page) => page.locator('[data-row-key]')
 
+test('disabled schedule rows remain visually distinct without changing their switches', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const active = rows(page).first()
+  const disabledGroup = rows(page).nth(1)
+  await expect(disabledGroup.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+  const marker = (element: Element) => getComputedStyle(element).boxShadow
+  expect(await disabledGroup.evaluate(marker)).not.toBe(await active.evaluate(marker))
+  await disabledGroup.click()
+  await page.locator('#weight-1').fill('40')
+  await disabledGroup.hover()
+  await expect(disabledGroup).toHaveAttribute('aria-selected', 'true')
+  await expect(disabledGroup.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+  expect(await disabledGroup.evaluate(marker)).not.toBe(await active.evaluate(marker))
+  expect(
+    await disabledGroup.evaluate((element) => {
+      const probe = document.createElement('i')
+      probe.style.backgroundColor = 'var(--color-action-soft)'
+      element.append(probe)
+      const matches =
+        getComputedStyle(element).backgroundColor === getComputedStyle(probe).backgroundColor
+      probe.remove()
+      return matches
+    }),
+  ).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('disabled-selected-draft-light.png') })
+  await page.evaluate(() => localStorage.setItem('gpt-load.theme', 'dark'))
+  await page.reload()
+  await waitForScheduleDetailReady(page)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  expect(await disabledGroup.evaluate(marker)).not.toBe(await active.evaluate(marker))
+  await page.screenshot({ path: testInfo.outputPath('disabled-selected-draft-dark.png') })
+})
+
+test('Chinese schedule headings and ordinary rows fit desktop tracks', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleTable(page)
+  for (const width of [768, 1199, 1200, 1439, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    const geometry = await page.evaluate(() => {
+      const headers = [...document.querySelectorAll<HTMLElement>('[role="columnheader"]')]
+      const lineCount = (element: HTMLElement) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size
+      }
+      const visibleRows = [...document.querySelectorAll<HTMLElement>('[data-row-key]')]
+      return {
+        lines: [lineCount(headers[1]!), lineCount(headers[4]!)],
+        statusLines: visibleRows.map((row) =>
+          lineCount(
+            row.querySelectorAll<HTMLElement>('[role="cell"]')[1]!.firstElementChild as HTMLElement,
+          ),
+        ),
+        heights: visibleRows.map((row) => row.getBoundingClientRect().height),
+        actionRight: headers[5]!.getBoundingClientRect().right,
+        buttonRight: Math.max(
+          ...[...visibleRows[0]!.querySelectorAll('[role="cell"]:last-child button')]
+            .filter((button) => button.getBoundingClientRect().width > 0)
+            .map((button) => button.getBoundingClientRect().right),
+        ),
+        pageWidth: document.documentElement.scrollWidth,
+      }
+    })
+    expect(geometry.lines, `${width}px headings`).toEqual([1, 1])
+    expect(geometry.statusLines, `${width}px eligibility`).toEqual([1, 1])
+    expect(
+      Math.abs(geometry.heights[0]! - geometry.heights[1]!),
+      `${width}px rows`,
+    ).toBeLessThanOrEqual(1)
+    expect(
+      Math.abs(geometry.actionRight - geometry.buttonRight),
+      `${width}px actions`,
+    ).toBeLessThanOrEqual(1)
+    expect(geometry.pageWidth).toBeLessThanOrEqual(width)
+    const wrap = page.getByRole('table').locator('..')
+    await wrap.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+    })
+
+    const reachable = await wrap.evaluate((element) => {
+      const button = element.querySelector('[data-row-key] [role="cell"]:last-child button')!
+      return button.getBoundingClientRect().right <= element.getBoundingClientRect().right + 1
+    })
+    expect(reachable, `${width}px last column reachable`).toBe(true)
+  }
+})
+
+test('Chinese tier-demoted eligibility has no orphan character or uneven ordinary row', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      detail.groups[0]!.entries[0]!.reason_code = 'tier_demoted'
+      detail.groups[1]!.enabled = true
+      return detail
+    },
+  })
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleTable(page)
+  const status = rows(page).first().getByRole('cell').nth(1).locator('span').first()
+  await expect(status).toHaveText('处于后备优先级层待命')
+
+  for (const width of [768, 1199, 1200, 1439, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    const lineLengths = await status.evaluate((element) => {
+      const text = element.firstChild!
+      const lines = new Map<number, number>()
+      for (let index = 0; index < text.textContent!.length; index++) {
+        const range = document.createRange()
+        range.setStart(text, index)
+        range.setEnd(text, index + 1)
+        const top = Math.round(range.getBoundingClientRect().top)
+        lines.set(top, (lines.get(top) ?? 0) + 1)
+      }
+      return [...lines.values()]
+    })
+    expect(lineLengths.at(-1), `${width}px final status line`).toBeGreaterThan(1)
+    const heights = await rows(page).evaluateAll((elements) =>
+      elements.map((element) => element.getBoundingClientRect().height),
+    )
+    expect(
+      Math.abs(heights[0]! - heights[1]!),
+      `${width}px ordinary row heights`,
+    ).toBeLessThanOrEqual(1)
+  }
+})
+
+test('Chinese schedule switches to usable cards at 767px', async ({ page }, testInfo) => {
+  await installScheduleRoutes(page)
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await page.setViewportSize({ width: 767, height: 900 })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleTable(page)
+  await expect(page.getByRole('columnheader').first()).toBeHidden()
+  await expect(rows(page).first().getByRole('switch')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(767)
+  await page.screenshot({ path: testInfo.outputPath('schedule-767-zh.png') })
+})
+
 test('optimistic disable hides schedulable eligibility and failure restores the saved snapshot', async ({
   page,
 }) => {
@@ -393,10 +541,12 @@ test('optimistic disable hides schedulable eligibility and failure restores the 
     await expect(row.getByRole('switch')).toHaveAccessibleName(/^Enable entry model-a/)
     await expect(status).toContainText('Route entry is disabled')
     await expect(status).not.toContainText('Schedulable')
+    expect(await row.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe('none')
   } finally {
     release()
   }
   await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+  expect(await row.evaluate((element) => getComputedStyle(element).boxShadow)).toBe('none')
   await expect(status).toContainText('Schedulable')
 })
 
@@ -1060,7 +1210,8 @@ test('compact desktop uses six semantic columns and 58–84px rows at every desk
       const cells = [...element.querySelectorAll<HTMLElement>('[role="cell"]')]
       const shareCell = cells[4]!
       const actionsCell = cells[5]!
-      const value = shareCell.querySelector<HTMLElement>('span')!
+      const value = document.createRange()
+      value.selectNode(shareCell.lastChild!)
       return {
         scroll: shareCell.scrollWidth,
         client: shareCell.clientWidth,
