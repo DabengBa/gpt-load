@@ -175,6 +175,12 @@ settings evidence.
 - retention runtime **启动时立即清理一次**，之后每小时清理一次。清理按批次
   删除过期请求日志；不会在线执行 `VACUUM` 或 WAL checkpoint，因此清理不等于
   在线压缩数据库。
+- Debug Communication Capture 独立按固定 **24 小时**过期并清理 chunks。新版本
+  将新写入 chunk 按行使用 zstd（仅压缩结果更小时），历史 chunk 保持原始字节；读取
+  和 ZIP 下载会还原原始内容。删除过期 capture 只释放 SQLite 内部页面供复用，不保证
+  数据库文件缩小；需要归还文件系统空间时按本文停机维护流程检查备份和余量后执行。
+- 应用升级执行新的 chunk encoding schema migration 后，不支持把旧应用镜像直接回滚到
+  已升级的数据库。回滚需按部署恢复流程恢复升级前完整数据目录和对应镜像。
 - `DELETE` 只会让 SQLite 页面可复用，不会自动缩小数据库文件或清除磁盘上的
   freelist pages。应通过状态中的 `freelist_pages` 观察，再按需安排停机维护。
 - 应用托管的文件 SQLite 默认使用 **WAL**。当 `DATABASE_DSN` 为空时，支持
