@@ -39,6 +39,9 @@ opened from [model maintenance](feature.monitor-navigation-shortcuts).
   by weight within each priority tier. Disabled groups and entries are excluded;
   entries in cooldown or blacklisted still count. This share is not the
   probability of selection for the next request.
+- A muted leading marker calls out rows disabled by either the group or the
+  entry. The entry switch reflects only its own setting and can remain on while
+  its group is disabled.
 - Unsaved priority and weight edits show an unsaved share preview; they do not
   change actual scheduling or the saved eligibility snapshot. Enabling or
   disabling an entry takes effect immediately; if the action fails, its prior
