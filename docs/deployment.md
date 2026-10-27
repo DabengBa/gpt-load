@@ -85,6 +85,20 @@ scripts/deploy.sh dev --activate-only <完整提交SHA> # 演练后，一次完�
 
 ### 快照演练约束
 
+本地统一入口（先准备与服务器架构一致的目标镜像；不会构建、推送或切换生产）：
+
+```bash
+sudo install -d -m 0700 /持久磁盘/gpt-load-rehearsals
+sudo python3 scripts/local-rehearsal.py --output /持久磁盘/gpt-load-rehearsals \
+  --image gpt-load:<目标标签> --host vps-kl --timeout 1800
+```
+
+以 root 运行，确保所用用户的 SSH 配置和 Docker 本地连接可用；依赖本机 Python 3、SSH、Docker、`findmnt`，服务器需 Python 3、Docker、`findmnt`、GNU `timeout`。目录必须由执行者拥有、权限 0700，路径不能含软链接或逗号，不能位于 tmpfs、ramfs 或 overlay。脚本核验服务器运行容器、固定数据卷和默认数据库路径，拒绝自定义 DSN；在线 SQLite backup 写入 `/opt/gpt-load/.local-rehearsal-<随机ID>`，经 SSH 传输并校验 SHA-256，远端仅清理本次暂存，不碰历史备份。磁盘空间不足或超时即失败；SSH 中断或强杀可能留下远端暂存，按输出的确切路径人工检查，不要删除其他目录。
+
+本地保留 `rehearsal-<随机ID>/snapshot.db` 原始证据（0400），工作库与密钥保存在独立临时目录；同一工作库在 `--network none` 下连续启动两次，检查 health、分页管理 API、各分组凭据 reveal 解密、完整性、外键、业务计数和 migration ID，不打印密钥或 API 响应。reveal 只在工作副本写入审计记录，不调用 Provider。成功或普通异常退出时先停止本次容器再删除临时密钥、传输包及工作库；无法确认容器停止时保留工作目录与 `.active-*` 标记，必须人工处理。异常断电或 SIGKILL 无法保证清理，重跑前检查标记、容器和临时文件。原始数据库快照没有随存密钥，不能独立用于恢复；演练不生成或替代切换前的最终备份。
+
+- 离线回归测试：`python3 scripts/test-local-rehearsal.py`；测试不连接服务器、不访问生产数据。
+
 - SQLite `.backup` 方法见「健康检查异常排障」。目录必须位于持久磁盘，权限为 `0700`，文件为 `0600`，空间还要覆盖工作副本和最终备份；不要使用宿主机 `/tmp` 的 tmpfs。
 - 原快照保持不变，另建工作副本，复制原 `auth.key`、`encryption.key`。若原容器通过环境变量提供密钥，安全复用相同变量，不能生成新密钥；环境文件同样受限访问且不进入 Git 或日志。
 - 演练容器使用独立名称、`--network none`、独立数据目录，不绑定生产端口，不挂载生产卷；保持目标镜像的运行 UID/GID 与副本权限匹配。禁用 Models.dev 自动同步，不允许探测、刷新或请求真实 Provider。通过 `docker exec` 访问容器内 health 和认证只读管理 API，完整响应与令牌不打印。
