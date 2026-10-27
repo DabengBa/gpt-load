@@ -8,6 +8,7 @@
 // @match        *://*/api-keys*
 // @match        *://*/user/api-keys*
 // @match        https://totokens.cc/keys*
+// @match        https://sidrune.ai/keys*
 // @match        *://*/import*
 // @run-at       document-start
 // @grant        GM_openInTab
@@ -111,7 +112,9 @@
       path.startsWith("/console/token") ||
       path.startsWith("/api-keys") ||
       path.startsWith("/user/api-keys") ||
-      (location.origin === "https://totokens.cc" && path.startsWith("/keys"))
+      ((location.origin === "https://totokens.cc" ||
+        location.origin === "https://sidrune.ai") &&
+        path.startsWith("/keys"))
     );
   }
 
@@ -136,7 +139,7 @@
     const selected = window.getSelection()?.toString().trim() ?? "";
     if (selected) return selected;
     const visibleText = document.body?.innerText ?? "";
-    return visibleText.match(/\bsk-[A-Za-z0-9_-]{8,}\b/u)?.[0] ?? "";
+    return visibleText.match(/\bsk-(?:fx-)?[A-Za-z0-9_-]{8,}\b/u)?.[0] ?? "";
   }
 
   function createWidget() {
@@ -259,7 +262,10 @@
         if (!fieldsInitialized) {
           apiKeyInput.value = suggestedAPIKey();
           groupNameInput.value = location.hostname;
-          baseURLInput.value = location.origin;
+          baseURLInput.value =
+            location.origin === "https://sidrune.ai"
+              ? "https://sidrune.ai/v1"
+              : location.origin;
           fieldsInitialized = true;
           setStatus("");
         }

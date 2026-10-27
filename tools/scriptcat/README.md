@@ -1,7 +1,7 @@
 # GPT-Load ScriptCat Import
 
 `gpt-load-channel-import.user.js` transfers an API key, Base URL, group name and
-provider website from a Sub2API, New API or To-Tokens key page into GPT-Load's
+provider website from a Sub2API, New API, To-Tokens or Sidrune key page into GPT-Load's
 new-channel import form. It does not submit the form or call either service.
 
 How the credential is stored, claimed once, expired and pre-filled is owned by
@@ -26,7 +26,9 @@ in agreement:
   offered on that page.
 
 The recognized source routes are `/console/token*`, `/console/tokens*`,
-`/api-keys*`, `/user/api-keys*` and `https://totokens.cc/keys*`. GPT-Load's
+`/api-keys*`, `/user/api-keys*`, `https://totokens.cc/keys*` and
+`https://sidrune.ai/keys*`. Sidrune keys using the `sk-fx-` prefix are detected;
+its suggested Base URL is `https://sidrune.ai/v1`. GPT-Load's
 destination is the `/import` path; the script sets that path itself and adds
 only the `mode=new` and `scriptcat_handoff` parameters. A GPT-Load deployment
 that serves the import page elsewhere needs a script edit, not a configuration

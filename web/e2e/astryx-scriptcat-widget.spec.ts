@@ -43,6 +43,18 @@ async function serveKeyPage(page: Page, path = '/keys'): Promise<void> {
   await page.addScriptTag({ content: userscript })
 }
 
+async function serveSidruneKeyPage(page: Page): Promise<void> {
+  await page.route('https://sidrune.ai/**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<main><h1>API Keys</h1><table><tr><td>sk-fx-widget-fixture-12345678</td></tr></table></main>',
+    }),
+  )
+  await page.goto('https://sidrune.ai/keys')
+  await page.addScriptTag({ content: userscript })
+}
+
 function receiverGMBridge(entries: Array<[string, unknown]>): void {
   const values = new Map(entries)
   Object.defineProperty(window, 'GM', {
@@ -159,6 +171,19 @@ test('automatically shows the import widget on To-Tokens keys and transfers only
     document.body.innerHTML = '<form><input type="password"><button>登录</button></form>'
   })
   await expect(launcher).toBeHidden()
+})
+
+test('shows the import widget on Sidrune keys and recognizes its sk-fx API key', async ({
+  page,
+}) => {
+  await installGMBridge(page)
+  await serveSidruneKeyPage(page)
+
+  const widget = page.locator('#gpt-load-scriptcat-widget')
+  await expect(widget).toHaveCount(1)
+  await page.getByRole('button', { name: '导入到 GPT-Load' }).click()
+  await expect(page.locator('#sc-api-key')).toHaveValue('sk-fx-widget-fixture-12345678')
+  await expect(page.locator('#sc-base-url')).toHaveValue('https://sidrune.ai/v1')
 })
 
 test('ScriptCat handoff fills group name, provider website, API key, and Base URL in GPT-Load', async ({
