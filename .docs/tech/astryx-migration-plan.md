@@ -444,9 +444,9 @@ the 860px card breakpoint. Desktop track widths accommodate the cell
 padding, with horizontal overflow confined to the table region. Cards keep
 their label/value layout, spacing, and surface-sunken hover. Schedule keeps
 editable controls, selected-row highlighting, priority boundaries, and
-domain status colors. Its desktop grid has a 1120px minimum width and
-scrolls inside the table wrapper; at 620px or less, it uses the existing
-two-column mobile layout with the header hidden and no table minimum width.
+domain status colors. Its desktop grid has an 800px minimum width and
+scrolls inside the table wrapper; at 767px or less, it uses the existing
+mobile card layout with the header hidden and no table minimum width.
 
 The Groups list exposes deletion through the existing typed-name confirmation
 dialog. List-context deletion refreshes the collection while retaining its

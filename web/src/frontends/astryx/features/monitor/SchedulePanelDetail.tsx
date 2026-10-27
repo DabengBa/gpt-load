@@ -443,16 +443,16 @@ const styles = stylex.create({
     borderStyle: 'solid',
     borderColor: 'var(--color-border-subtle)',
   },
-  table: { minWidth: 0 },
+  table: { minWidth: { default: 800, [narrow]: 0 } },
   row: {
     display: 'grid',
     gridTemplateColumns: {
       // The actions track must fit switch + recovery + More (115px of controls
       // plus two 5px gaps) because it is right-aligned and would otherwise spill
       // leftwards over the share value.
-      default: 'minmax(120px, 1.6fr) 116px 100px minmax(206px, 1.2fr) 56px 128px',
+      default: 'minmax(120px, 1.6fr) 130px 100px minmax(194px, 1.2fr) 90px 128px',
       '@media (min-width: 768px) and (max-width: 1199px)':
-        'minmax(100px, 1.3fr) 108px 90px minmax(194px, 1fr) 52px 128px',
+        'minmax(100px, 1.3fr) 130px 90px minmax(194px, 1fr) 90px 128px',
       [narrow]: 'minmax(0, 1fr) minmax(0, 1fr) 148px',
     },
     gridTemplateAreas: {
@@ -469,8 +469,9 @@ const styles = stylex.create({
     borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: 'var(--color-border-subtle)',
-    backgroundColor: { default: 'var(--color-surface)', ':hover': 'var(--color-surface-sunken)' },
+    backgroundColor: 'var(--color-surface)',
   },
+
   rowHeader: {
     display: { default: 'grid', [narrow]: 'none' },
     position: 'sticky',
@@ -482,10 +483,10 @@ const styles = stylex.create({
     fontSize: 'var(--text-meta)',
   },
   headerCell: { minWidth: 0, fontWeight: 600 },
-  rowSelected: { backgroundColor: 'var(--color-action-soft)' },
-  rowModified: {
-    backgroundColor: 'color-mix(in srgb, var(--color-action-soft) 35%, var(--color-surface))',
+  rowDisabled: {
+    boxShadow: 'inset 3px 0 var(--color-text-muted)',
   },
+
   cell: { minWidth: 0, color: 'var(--color-text)', fontSize: 'var(--text-body)' },
   identity: { gridArea: 'identity' },
   statusCell: { gridArea: 'status', textAlign: { default: 'left', [narrow]: 'right' } },
@@ -1527,6 +1528,14 @@ export function SchedulePanelDetail({
                       role="row"
                       tabIndex={0}
                       aria-selected={selectedRow === key}
+                      style={{
+                        backgroundColor:
+                          selectedRow === key
+                            ? 'var(--color-action-soft)'
+                            : rowChanged
+                              ? 'color-mix(in srgb, var(--color-action-soft) 35%, var(--color-surface))'
+                              : undefined,
+                      }}
                       onClick={() => onRowChange(key)}
                       onKeyDown={(event) => {
                         if (
@@ -1539,8 +1548,7 @@ export function SchedulePanelDetail({
                       }}
                       {...stylex.props(
                         styles.row,
-                        rowChanged && styles.rowModified,
-                        selectedRow === key && styles.rowSelected,
+                        (!group.enabled || !enabled) && styles.rowDisabled,
                       )}
                     >
                       <div role="cell" {...stylex.props(styles.cell, styles.identity)}>
