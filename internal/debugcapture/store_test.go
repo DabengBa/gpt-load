@@ -73,6 +73,13 @@ func TestDBStoreCapturesSensitiveBytesChunksQueriesAndStreamingZIP(t *testing.T)
 	if chunkCount != 4 {
 		t.Fatalf("stored chunk count = %d, want headers plus three body chunks", chunkCount)
 	}
+	var stored []models.DebugCaptureChunk
+	if err := store.db.Where("attempt_id = ?", attempt.ID()).Order("id ASC").Find(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 4 || stored[0].Encoding != "identity" || stored[1].Encoding != "zstd" {
+		t.Fatalf("stored encodings = %#v, want identity headers and compressed body chunks", stored)
+	}
 	if err := attempt.Complete(); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +89,6 @@ func TestDBStoreCapturesSensitiveBytesChunksQueriesAndStreamingZIP(t *testing.T)
 	if err := session.Complete(); err != nil {
 		t.Fatal(err)
 	}
-
 	record, err := store.ReadSession(session.ID())
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +133,42 @@ func TestDBStoreCapturesSensitiveBytesChunksQueriesAndStreamingZIP(t *testing.T)
 	if !bytes.Equal(files[archivePartName(attempt.ID(), PartHeaders, DirectionRequest)], rawHeaders) ||
 		!bytes.Equal(files[archivePartName(attempt.ID(), PartBody, DirectionRequest)], rawBody) {
 		t.Fatal("ZIP did not preserve raw bytes")
+	}
+}
+
+func TestDBStoreReadsLegacyRawChunks(t *testing.T) {
+	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore(t, &now)
+	session, err := store.StartSession(SessionMetadata{RequestID: "legacy-raw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := session.StartAttempt(AttemptMetadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := []byte("legacy bytes\x00\xff")
+	row := models.DebugCaptureChunk{CaptureID: session.ID(), AttemptID: attempt.ID(), Part: string(PartBody), Direction: string(DirectionRequest), Data: legacy, CreatedAtMS: now.UnixMilli()}
+	if err := store.db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.ReadPart(session.ID(), attempt.ID(), PartBody, DirectionRequest)
+	if err != nil || !bytes.Equal(got, legacy) {
+		t.Fatalf("legacy ReadPart() = %x, %v; want %x", got, err, legacy)
+	}
+}
+
+func TestDecodeChunkRejectsUnknownEncodingAndOversizedFrame(t *testing.T) {
+	if _, err := decodeChunk([]byte("payload"), "unknown"); err == nil {
+		t.Fatal("decodeChunk() accepted unknown encoding")
+	}
+	large := bytes.Repeat([]byte("a"), bodyChunkSize+1)
+	encoded, encoding, err := encodeChunk(large)
+	if err != nil || encoding != "zstd" {
+		t.Fatalf("encodeChunk() = %q, %v", encoding, err)
+	}
+	if _, err := decodeChunk(encoded, encoding); err == nil {
+		t.Fatal("decodeChunk() accepted payload larger than the raw chunk limit")
 	}
 }
 

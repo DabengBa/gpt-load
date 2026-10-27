@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -377,8 +378,12 @@ func (s *Store) appendPart(sessionID, attemptID string, part Part, direction Dir
 					return err
 				}
 				data := append([]byte(nil), buffer[:n]...)
+				encoded, encoding, err := encodeChunk(data)
+				if err != nil {
+					return err
+				}
 				if err := tx.Create(&models.DebugCaptureChunk{
-					CaptureID: sessionID, AttemptID: attemptID, Part: string(part), Direction: string(direction), Data: data, CreatedAtMS: now.UnixMilli(),
+					CaptureID: sessionID, AttemptID: attemptID, Part: string(part), Direction: string(direction), Encoding: encoding, Data: encoded, CreatedAtMS: now.UnixMilli(),
 				}).Error; err != nil {
 					return err
 				}
@@ -396,7 +401,7 @@ func (s *Store) appendPart(sessionID, attemptID string, part Part, direction Dir
 			return err
 		}
 		if !wrote && part == PartHeaders {
-			return tx.Create(&models.DebugCaptureChunk{CaptureID: sessionID, AttemptID: attemptID, Part: string(part), Direction: string(direction), Data: []byte{}, CreatedAtMS: now.UnixMilli()}).Error
+			return tx.Create(&models.DebugCaptureChunk{CaptureID: sessionID, AttemptID: attemptID, Part: string(part), Direction: string(direction), Encoding: "identity", Data: []byte{}, CreatedAtMS: now.UnixMilli()}).Error
 		}
 		return nil
 	})
@@ -652,7 +657,7 @@ func decodeAttemptMetadata(raw models.JSON) (AttemptMetadata, error) {
 }
 
 func streamChunks(tx *gorm.DB, captureID, attemptID string, part Part, direction Direction, output io.Writer, found *bool) error {
-	rows, err := tx.Model(&models.DebugCaptureChunk{}).Select("data").Where("capture_id = ? AND attempt_id = ? AND part = ? AND direction = ?", captureID, attemptID, part, direction).Order("id ASC").Rows()
+	rows, err := tx.Model(&models.DebugCaptureChunk{}).Select("data", "encoding").Where("capture_id = ? AND attempt_id = ? AND part = ? AND direction = ?", captureID, attemptID, part, direction).Order("id ASC").Rows()
 	if err != nil {
 		return err
 	}
@@ -660,14 +665,64 @@ func streamChunks(tx *gorm.DB, captureID, attemptID string, part Part, direction
 	for rows.Next() {
 		*found = true
 		var data []byte
-		if err := rows.Scan(&data); err != nil {
+		var encoding string
+		if err := rows.Scan(&data, &encoding); err != nil {
 			return err
 		}
-		if _, err := output.Write(data); err != nil {
+		decoded, err := decodeChunk(data, encoding)
+		if err != nil {
+			return err
+		}
+		if _, err := output.Write(decoded); err != nil {
 			return err
 		}
 	}
 	return rows.Err()
+}
+
+func encodeChunk(raw []byte) ([]byte, string, error) {
+	if len(raw) == 0 {
+		return raw, "identity", nil
+	}
+	var compressed bytes.Buffer
+	encoder, err := zstd.NewWriter(&compressed, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(zstd.SpeedFastest))
+	if err != nil {
+		return nil, "", fmt.Errorf("create debug capture chunk encoder: %w", err)
+	}
+	if _, err := encoder.Write(raw); err != nil {
+		_ = encoder.Close()
+		return nil, "", fmt.Errorf("compress debug capture chunk: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, "", fmt.Errorf("finish debug capture chunk compression: %w", err)
+	}
+	if compressed.Len() >= len(raw) {
+		return raw, "identity", nil
+	}
+	return compressed.Bytes(), "zstd", nil
+}
+
+func decodeChunk(data []byte, encoding string) ([]byte, error) {
+	switch encoding {
+	case "identity":
+		return data, nil
+	case "zstd":
+		decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true), zstd.WithDecoderMaxMemory(bodyChunkSize*2))
+		if err != nil {
+			return nil, fmt.Errorf("create debug capture chunk decoder: %w", err)
+		}
+		defer decoder.Close()
+		decoded, err := decoder.DecodeAll(data, make([]byte, 0, bodyChunkSize))
+		if err != nil {
+			return nil, fmt.Errorf("decompress debug capture chunk: %w", err)
+		}
+		if len(decoded) > bodyChunkSize {
+			return nil, fmt.Errorf("debug capture chunk expands beyond %d bytes", bodyChunkSize)
+		}
+		return decoded, nil
+	default:
+		return nil, fmt.Errorf("unsupported debug capture chunk encoding %q", encoding)
+	}
 }
 
 func addChunksToZIP(tx *gorm.DB, archive *zip.Writer, captureID, attemptID string, part Part, direction Direction) error {

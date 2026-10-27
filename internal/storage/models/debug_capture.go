@@ -44,6 +44,7 @@ type DebugCaptureChunk struct {
 	AttemptID   string               `gorm:"column:attempt_id;type:varchar(64);not null;index:idx_debug_capture_chunks_attempt_part_direction_id,priority:1"`
 	Part        string               `gorm:"type:varchar(16);not null;index:idx_debug_capture_chunks_attempt_part_direction_id,priority:2"`
 	Direction   string               `gorm:"type:varchar(16);not null;index:idx_debug_capture_chunks_attempt_part_direction_id,priority:3"`
+	Encoding    string               `gorm:"type:varchar(16);not null;default:'identity'"`
 	Data        []byte               `gorm:"not null"`
 	CreatedAtMS int64                `gorm:"column:created_at_ms;not null"`
 	Capture     *DebugCapture        `gorm:"foreignKey:CaptureID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
