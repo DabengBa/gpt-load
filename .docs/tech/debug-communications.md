@@ -23,7 +23,9 @@ The capture store uses the existing configured database and remains separate fro
 Capture chunk payloads are stored independently in SQLite. Existing rows remain
 raw (`identity`); newly captured chunks use Zstandard (`zstd`) when that makes
 the stored payload smaller, otherwise they remain `identity`. Reads and ZIP
-downloads decode chunks and preserve the exact observed bytes. Expiry removes
+downloads decode chunks and preserve the exact observed bytes. Body chunks are
+at most 64 KiB before compression; reads reject a decoded chunk larger than
+that bound or an encoding the application does not support. Expiry removes
 both old and new chunks, but SQLite reuses freed pages and does not necessarily
 shrink the database file. Database backups and direct SQL consumers must account
 for the per-row `encoding` column. Do not roll an older application binary back
