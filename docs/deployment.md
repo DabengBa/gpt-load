@@ -1,6 +1,6 @@
 # 自建实例部署（gptl.tanyaleoallen.cloud）
 
-> Breaking / 破坏性变更：本次删除内置订阅/CPA 的版本无法原地打开旧库。旧库只能停机后用 `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` 离线转换（保留分组、API 凭据、访问密钥与限额用量，丢弃请求日志与用量历史），或改用全新数据库。拒绝来自**启动**而非转换：应用启动时拒绝含退役 migration `0003` 的旧库且不就地修改；转换器反而要求台账含 `0003`，因此 API-only 旧库可以正常转换，只有含退役订阅结构（订阅分组、`credential_stages` 等表有数据、`credentials.auth_state` 非 `ready`）或丢失 `0003` 的库会被转换器拒绝。退役计价列 `groups.price_multiplier_micros`、`access_keys.price_multiplier_micros` 会被跳过并报告，不重算历史金额。没有原地 migration、自动删除或兼容层。**`scripts/deploy.sh` 复用现有数据卷，不转换数据库，本次升级不能指向旧卷。** 完整步骤见 [旧库离线转换](../.docs/tech/legacy-db-conversion.md)；保留旧实例和备份。转换需要持久磁盘上的额外临时空间（见该文档的 `TMPDIR` 要求）。本次不部署、不修改业务库；启动拒绝不保证 SQLite 文件/WAL 零副作用。详见 [README](../README_CN.md#快速开始)。
+> Breaking / 破坏性变更：本次删除内置订阅/CPA 的版本无法原地打开旧库。旧库只能停机后用 `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` 离线转换（保留分组、API 凭据、访问密钥与限额用量，丢弃请求日志与用量历史），或改用全新数据库。拒绝来自**启动**而非转换：应用启动时拒绝含退役 migration `0003` 的旧库且不就地修改；转换器反而要求台账含 `0003`，因此 API-only 旧库可以正常转换，只有含退役订阅结构（订阅分组、`credential_stages` 等表有数据、`credentials.auth_state` 非 `ready`）或丢失 `0003` 的库会被转换器拒绝。退役计价列 `groups.price_multiplier_micros`、`access_keys.price_multiplier_micros` 会被跳过并报告，不重算历史金额。没有原地 migration、自动删除或兼容层。**`scripts/deploy.sh` 只切换镜像、沿用运行中容器当前挂载的数据卷，不转换数据库，本次升级不能指向旧卷。** 完整步骤见 [旧库离线转换](../.docs/tech/legacy-db-conversion.md)；保留旧实例和备份。转换需要持久磁盘上的额外临时空间（见该文档的 `TMPDIR` 要求）。本次不部署、不修改业务库；启动拒绝不保证 SQLite 文件/WAL 零副作用。详见 [README](../README_CN.md#快速开始)。
 
 本文只描述本仓库维护者自建实例的发布流程；上游通用部署（`ghcr.io/tbphp/gpt-load:2`、原生二进制）见 `README_CN.md` 的「部署与数据」。SQLite retention、停机维护和恢复流程见 [`docs/sqlite-maintenance.md`](sqlite-maintenance.md)。
 
@@ -26,7 +26,7 @@
 
   443 的证书由 GoDoxy autocert（provider `hostinger`）签发，落在具名卷 `godoxy_godoxy-certs`（`/app/certs/gptl.tanyaleoallen.cloud.crt`）。`config.yml` 的 entrypoint 中间件对本域名生效：响应带 `Referrer-Policy`、`Strict-Transport-Security`、`X-Content-Type-Options`、`X-Frame-Options` 四个安全头，`http://` 请求在 80 端口得到 **308** 跳转到 https（切换前是 404）。443 响应**没有** `via: 1.1 Caddy`，并广告 `alt-svc: h3=":443"; ma=2592000`。
 - Caddy 已于 2026-10-10 停用并删除：`gptl-proxy` 容器和 `/opt/gptl-proxy` 启动配置已移除，TCP/UDP 1443 均无监听，旧 `:1443` 地址不可用。配置备份保留在 `/opt/gptl-proxy-retired-20261010T065651Z`，`/acme` 旧证书未删除；恢复条件见 [`docs/godoxy-ingress.md`](godoxy-ingress.md) 的 6.5/6.6。
-- 应用：Compose 项目 `/opt/gpt-load`，容器 `gpt-load`，镜像为自建 `gpt-load:<分支>-<短sha>`，数据在具名卷 `gpt-load_gpt-load-data`（含 `gpt-load.db`、`auth.key`、`encryption.key`）。
+- 应用：Compose 项目 `/opt/gpt-load`，容器 `gpt-load`，镜像为自建 `gpt-load:<分支>-<短sha>`。数据在运行中容器挂载到 `/app/data` 的具名卷，卷内是 `gpt-load.db`、`auth.key`、`encryption.key`。卷名带版本后缀（实际观测到 `gpt-load_gpt-load-data-ac7ddfe3`），本文不假定固定卷名：发布脚本每次从运行中容器的 `/app/data` 挂载读取实际卷名与路径，手工命令也应按同一方式取得。
 - 源码与构建：在本地仓库执行发布脚本，本机 Docker/BuildKit 完成构建。服务器只加载镜像和运行容器，`/opt/gpt-load-src` 不再参与发布。
 - 该容器已用 `com.centurylinklabs.watchtower.enable: "false"` 关闭自动更新，镜像只通过下面的脚本切换。
 - 发布健康 URL 用 `https://gptl.tanyaleoallen.cloud/health`（不带端口），不再有常驻的 Caddy 回滚入口。
@@ -66,26 +66,43 @@ idempotency 历史三项准备，详见
 不需要删除或重写历史台账行；其他未知 ID 或缺失有效迁移仍拒绝启动。
 
 ```bash
-scripts/deploy.sh dev --prepare-only               # 在线构建、上传，不切换生产容器
-scripts/deploy.sh dev --activate-only <完整提交SHA> # 演练后，一次完成停写、最终备份和镜像切换
+scripts/deploy.sh dev                               # 一条命令：本地构建 → 本地验证 → 上传 → 连续停写备份切换
+scripts/deploy.sh dev --prepare-only                # 只构建、验证、上传，不切换生产容器
+scripts/deploy.sh dev --activate-only <完整提交SHA>  # 不构建、不上传；重新验证本地镜像后切换
 ```
 
-**本次删除内置订阅/CPA 的升级不适用上述原地流程。** 目标版本的 schema 不再包含退役迁移与该版本的旧结构，把旧卷直接交给新镜像只会启动拒绝（拒绝发生在启动，不会就地改写旧库）；`scripts/deploy.sh` 复用现有数据卷且不转换数据库，因此不能指向旧卷。先按 [旧库离线转换](../.docs/tech/legacy-db-conversion.md) 停机备份、转换、复制 `encryption.key`、在新卷上以独立端口验证，再发布新版本并切换流量；回滚是「旧镜像 + 未改动的旧卷」。转换的临时空间取自 `TMPDIR`，必须指向持久磁盘而不是小容量 tmpfs。
+**本次删除内置订阅/CPA 的升级不适用上述原地流程。** 目标版本的 schema 不再包含退役迁移与该版本的旧结构，把旧卷直接交给新镜像只会启动拒绝（拒绝发生在启动，不会就地改写旧库）；`scripts/deploy.sh` 只切换镜像并沿用运行中容器当前挂载的数据卷，不转换数据库，因此不能指向旧卷。先按 [旧库离线转换](../.docs/tech/legacy-db-conversion.md) 停机备份、转换、复制 `encryption.key`、在新卷上以独立端口验证，再发布新版本并切换流量；回滚是「旧镜像 + 未改动的旧卷」。转换的临时空间取自 `TMPDIR`，必须指向持久磁盘而不是小容量 tmpfs。
 
-入口是本地仓库里的 `scripts/deploy.sh`。本机需要 Git、Docker Buildx、gzip、curl 和可连接 `vps-kl` 的 SSH；Docker 必须使用本机 Unix socket。BuildKit 和构建缓存留在本机，服务器不执行 Git 拉取、源码编译或镜像构建。
+入口是本地仓库里的 `scripts/deploy.sh`。本机需要 Git、Docker Buildx、Python 3、gzip、curl 和可连接 `vps-kl` 的 SSH；Docker 必须使用本机 Unix socket。服务器需要 Docker 与 `findmnt`。BuildKit 和构建缓存留在本机，服务器不执行 Git 拉取、源码编译或镜像构建。默认不要求、也不接受把生产数据带到本地：常规发布的验证全部在合成夹具上完成。
 
 1. **固定版本与授权范围。** 核对 Hostinger SSH 目标、现有镜像、health、数据卷和持久磁盘空间。完成相关测试，只提交本次文件并推送到 `DabengBa/gpt-load` 的目标分支（默认 `dev`），不要夹带其他工作区改动。记录完整提交 SHA、目标标签、旧镜像和需要的修复 SQL；没有格式问题就不修数据。
-2. **在线准备镜像。** 在本机运行 `--prepare-only`。脚本 fetch 目标分支，以 `git archive` 导出已推送提交，按服务器架构本地构建，再通过 `docker save | gzip -1 | ssh vps-kl 'docker load'` 上传。生产容器保持运行。记录脚本输出的提交与镜像标签；Hostinger 只加载镜像，不构建。
-3. **在线快照演练。** 按下节取得一致 SQLite 快照和原密钥，在独立目录、隔离网络、无生产数据卷的目标镜像中演练启动、迁移和再次启动。检查台账、数据格式、认证管理 API 和真实加密凭据读取。演练失败就停止发布，保留生产服务；禁止把演练库覆盖回生产，快照后的新写入不能丢失。
+2. **本地构建并按服务器架构验证。** 脚本先 fetch 目标分支，用 `git archive` 导出该提交并在导出副本里重新执行 `deploy.sh`；构建上下文、验证脚本和切换脚本都来自这个提交，本地未提交改动既进不了镜像也改不了流程。然后在服务器架构上用本机 builder 构建，并运行 `scripts/verify-built-image.py --expected-version <分支>-<短sha>`（见下节）。验证失败即中止，不执行 `docker save` 上传，旧容器继续提供服务。
+3. **上传镜像。** 验证通过后才 `docker save | gzip -1 | ssh vps-kl 'docker load'`。生产容器此时仍在运行，未发生停机。
 4. **必要 SQL 的部署边界。** 常规发布不执行手工 SQL，不删除迁移台账，不转换旧 receipt、不重算费用。确有格式问题时先在副本验证已审阅 SQL，另行制定停写、备份、事务、验证和恢复的连续执行步骤；不能用普通发布脚本代替该操作。
-5. **连续切换。** 旧容器保持运行，本机执行 `--activate-only <完整提交SHA>`。脚本在停机前确认远端提交未变化、目标镜像存在、生产挂载一致及备份空间充足，然后在同一个 Hostinger 脚本内依次停止旧容器、确认卷无运行中的容器写入者、完整备份并检查归档、切换 Compose 和启动目标镜像。必须事先确认无宿主机或其他外部写入者。禁止在另一次命令中预先停止服务；脚本会拒绝从停止状态开始。
-6. **失败恢复与验证。** 切换前备份失败时，脚本自动重启源库未修改的旧容器，执行者须核对内外 health；切换开始后数据库可能已被新版修改，不自动回滚镜像或恢复数据，按「回滚」判断兼容性。脚本忽略 SSH HUP，避免普通连接断开中止已开始的远端步骤，但主机故障、强制杀进程仍需要人工恢复。成功后核对镜像和 health 的目标版本、容器健康和重启次数、认证管理 API、真实凭据解密读取及相关业务行为。
+5. **连续切换。** 旧容器保持运行；默认模式在镜像上传成功后直接进入切换，`--activate-only <完整提交SHA>` 用于单独重放该步（该模式会先核对远端分支头仍等于给定提交，不一致即拒绝；它同样先重新跑本地验证，不使用上传作为捷径，也不重新构建或重新上传）。进入远端前有两道身份核对：服务器上 `gpt-load:$tag` 的镜像 ID 必须等于本地验证过的镜像 ID（上传被替换或截断即拒绝），生产容器的 `{{.Image}}` 必须仍等于验证时用的旧镜像 ID（验证后旧容器被换掉即拒绝，因为升级验证的结论只对那个旧库成立）。随后在一个 Hostinger 脚本内依次停止旧容器、确认数据卷无运行中的容器写入者、归档整个数据目录、切换 Compose 并启动目标镜像；守卫条件与失败语义见 [发布流水线](../.docs/tech/release-pipeline.md)。数据卷取自运行中容器的实际 `/app/data` 挂载，不硬编码卷名。必须事先确认无宿主机或其他外部写入者。禁止在另一次命令中预先停止服务；脚本会拒绝从停止状态开始。
+6. **失败恢复与验证。** 切换前备份失败时，脚本自动重启源库未修改的旧容器，执行者须核对内外 health；切换开始后数据库可能已被新版修改，不自动回滚镜像或恢复数据，按「回滚」判断兼容性。脚本忽略 SSH HUP，避免普通连接断开中止已开始的远端步骤，但主机故障、强制杀进程仍需要人工恢复。成功后脚本要求容器健康状态为 `healthy`，并核对回环与公网 `/health` 的 `version` 精确等于 `<分支>-<短sha>`：健康但跑着旧镜像同样判为发布失败。执行者再核对镜像标签、容器重启次数、认证管理 API、真实凭据解密读取及相关业务行为。
 
-当前单实例停机会取消在途 HTTP/流式请求，不能承诺零停机。整个停写至启动期间不得插入人工确认、额外工具调用、代码修改或耗时在线准备。发布不执行 `VACUUM`。`scripts/deploy.sh [分支]` 同样执行连续切换，但不代替预先快照演练；`--prepare-only` 不停止生产。备份与源库同盘，只是本次恢复点，不能代替独立存储灾备。脚本不清理旧镜像或备份。
+当前单实例停机会取消在途 HTTP/流式请求，不能承诺零停机。整个停写至启动期间不得插入人工确认、额外工具调用、代码修改或其他耗时步骤。发布不执行 `VACUUM`。`--prepare-only` 不停止生产，之后仍需单独执行切换。备份与源库同盘，只是本次恢复点，不能代替独立存储灾备。脚本不清理旧镜像或备份。
 
-### 快照演练约束
+### 本地镜像验证（自动执行）
 
-本地统一入口（先准备与服务器架构一致的目标镜像；不会构建、推送或切换生产）：
+上传前脚本自动运行 `scripts/verify-built-image.py --expected-version <分支>-<短sha>`（`--activate-only` 在切换前同样重跑一遍）：目标镜像在空目录上全新安装一次，再在「服务器上实际运行的旧镜像」建好的目录上连续启动两次，每次检查 `/health`、管理 API、凭据解密，并校验 SQLite 完整性、外键、台账与计数。`/health` 的 `version` 必须等于期望版本，跑着旧镜像的「健康」容器不能通过验证。失败即中止，不执行上传。容器以 `--network none`、操作者 UID、临时目录绑定挂载运行，不接触生产数据或真实 Provider。
+
+验证分两层，需要区分「数据是合成的」与「服务端行为是真的」：
+
+- **真正的 Provider 调用：没有。** 全程没有出网，没有上游请求，也没有真实请求/响应流量。夹具里的请求与响应字节是脚本内常量。
+- **数据层面的合成程度：** 分组与凭据是通过旧镜像自己的管理 API 创建的真实加密行（不是直接拼 schema），但只有 1 个分组 / 1 条凭据；debug capture 的会话、attempt 和 chunk 行是直接写进旧镜像已建好的表的数据行，不新建或修改任何表。仓库里没有从生产捕获的 migration 回归夹具。
+- **服务端行为是真的：** 版本、管理 API、解密、ZIP 导出与迁移执行都由目标镜像真实处理这些数据行。
+
+debug capture 路径是显式覆盖的：旧镜像的库里先有未压缩的 capture 会话、1 次 attempt 和按追加顺序排列的 chunk 行，升级后必须保留原有字节与顺序，并带上迁移新增的 chunk 编码字段（取值只能是 `identity` 或 `zstd`）；目标镜像上还要能列出该会话、读到该 attempt、并下载 ZIP，其中 `manifest.json` 的 id 与每个 `attempts/<attempt>/parts/<方向>.<部分>` 条目必须逐字节等于原始捕获数据。ZIP 导出是唯一会把每个 chunk 都经 chunk store 解码一遍的表面，所以这项检查同时证明编码迁移后数据仍可读。
+
+它仍不覆盖生产数据规模、真实分组形态与每分组凭据数量、retention 启动清理、历史异常台账行、真实 Provider 流量和升级耗时。即它只证明「目标镜像能在空库与上一版真实镜像的库上两次启动、迁移到与全新安装一致的台账、保留并解码既有 capture 数据、并正确解密凭据」，不证明任何具体生产库兼容或数据无损。完整契约（阶段、守卫、边界）由 [发布流水线](../.docs/tech/release-pipeline.md) 持有，本节只保留操作者判断；需要按生产数据形态验证时另行发起并单独限定范围的快照演练，它不属于必经步骤。
+
+流程本身的离线回归是 `make test-deploy`（`scripts/test-deploy.py`、`scripts/test-deploy-activation.py`、`scripts/test-verify-built-image.py`），不需要 Docker、SSH 或生产访问。
+
+### 可选的快照演练（不属发布必经步骤）
+
+仅在单独决定要对生产快照做验证时使用；该工具不构建、推送或切换生产，但它的定位方式是固定的：只接受具名卷 `gpt-load_gpt-load-data` 与默认数据库路径，拒绝自定义 `DATABASE_DSN`。当前部署的实际卷带版本后缀（如 `gpt-load_gpt-load-data-ac7ddfe3`），因此在使用它之前必须先单独限定范围把它改成按运行中容器的挂载发现卷；本文不声称它现在就能对当前生产卷运行。
 
 ```bash
 sudo install -d -m 0700 /持久磁盘/gpt-load-rehearsals
@@ -93,18 +110,15 @@ sudo python3 scripts/local-rehearsal.py --output /持久磁盘/gpt-load-rehearsa
   --image gpt-load:<目标标签> --host vps-kl --timeout 1800
 ```
 
-以 root 运行，确保所用用户的 SSH 配置和 Docker 本地连接可用；依赖本机 Python 3、SSH、Docker、`findmnt`，服务器需 Python 3、Docker、`findmnt`、GNU `timeout`。目录必须由执行者拥有、权限 0700，路径不能含软链接或逗号，不能位于 tmpfs、ramfs 或 overlay。脚本核验服务器运行容器、固定数据卷和默认数据库路径，拒绝自定义 DSN；在线 SQLite backup 写入 `/opt/gpt-load/.local-rehearsal-<随机ID>`，经 SSH 传输并校验 SHA-256，远端仅清理本次暂存，不碰历史备份。磁盘空间不足或超时即失败；SSH 中断或强杀可能留下远端暂存，按输出的确切路径人工检查，不要删除其他目录。
+以 root 运行，确保所用用户的 SSH 配置和 Docker 本地连接可用；依赖本机 Python 3、SSH、Docker、`findmnt`，服务器需 Python 3、Docker、`findmnt`、GNU `timeout`。目录必须由执行者拥有、权限 0700，路径不能含软链接或逗号，不能位于 tmpfs、ramfs 或 overlay。在线 SQLite backup 写入 `/opt/gpt-load/.local-rehearsal-<随机ID>`，经 SSH 传输并校验 SHA-256，远端仅清理本次暂存，不碰历史备份。磁盘空间不足或超时即失败；SSH 中断或强杀可能留下远端暂存，按输出的确切路径人工检查，不要删除其他目录。
 
 本地保留 `rehearsal-<随机ID>/snapshot.db` 原始证据（0400），工作库与密钥保存在独立临时目录；同一工作库在 `--network none` 下连续启动两次，检查 health、分页管理 API、各分组凭据 reveal 解密、完整性、外键、业务计数和 migration ID，不打印密钥或 API 响应。reveal 只在工作副本写入审计记录，不调用 Provider。成功或普通异常退出时先停止本次容器再删除临时密钥、传输包及工作库；无法确认容器停止时保留工作目录与 `.active-*` 标记，必须人工处理。异常断电或 SIGKILL 无法保证清理，重跑前检查标记、容器和临时文件。原始数据库快照没有随存密钥，不能独立用于恢复；演练不生成或替代切换前的最终备份。
 
 - 离线回归测试：`python3 scripts/test-local-rehearsal.py`；测试不连接服务器、不访问生产数据。
-
-- SQLite `.backup` 方法见「健康检查异常排障」。目录必须位于持久磁盘，权限为 `0700`，文件为 `0600`，空间还要覆盖工作副本和最终备份；不要使用宿主机 `/tmp` 的 tmpfs。
 - 原快照保持不变，另建工作副本，复制原 `auth.key`、`encryption.key`。若原容器通过环境变量提供密钥，安全复用相同变量，不能生成新密钥；环境文件同样受限访问且不进入 Git 或日志。
-- 演练容器使用独立名称、`--network none`、独立数据目录，不绑定生产端口，不挂载生产卷；保持目标镜像的运行 UID/GID 与副本权限匹配。禁用 Models.dev 自动同步，不允许探测、刷新或请求真实 Provider。通过 `docker exec` 访问容器内 health 和认证只读管理 API，完整响应与令牌不打印。
+- 演练容器使用独立名称、`--network none`、独立数据目录，不绑定生产端口，不挂载生产卷；保持目标镜像的运行 UID/GID 与副本权限匹配。禁用 Models.dev 自动同步，不允许探测、刷新或请求真实 Provider。
 - 记录目标版本、有效台账、前后关键业务计数，以及两次启动与加密凭据读取结果。health 成功不等于数据兼容；retention 启动清理只影响副本，检查计数时按已配置保留期解释。
-- `0009` 曾被人工删除的库，可以仅在**工作副本**重新插入该历史 ID，验证目标版本允许它保留并重复启动；这不是生产数据修复步骤。
-- 演练结束停止并移除演练容器，清理含密钥的临时环境文件。原快照与最终备份按受限权限保留；切换前仍须确认磁盘空间。演练只是旧状态验证，不能替代停写后的最终备份和前置条件复查。
+- 演练结束停止并移除演练容器，清理含密钥的临时环境文件。原快照与最终备份按受限权限保留；切换前仍须确认磁盘空间。
 
 ### 2026-10-03 发布中断记录
 
@@ -125,9 +139,10 @@ sudo python3 scripts/local-rehearsal.py --output /持久磁盘/gpt-load-rehearsa
 `fb0ba58716d3ed0b6e7641603dd355dd76234d60`，Hostinger 运行镜像为
 `gpt-load:dev-fb0ba587`。镜像在本地构建并经 `ssh vps-kl` 上传，服务器没有构建镜像。
 
-1. 在线取得当前生产 SQLite 一致快照，在无网络、无生产卷的隔离容器中两次启动目标镜像，
-   验证真实凭据解密读取、业务计数、完整性和外键。仅在副本插入 `0009_price_multipliers`，
-   验证退役台账行保留且不阻断启动。
+1. 按当时的流程要求，在线取得当前生产 SQLite 一致快照，在无网络、无生产卷的隔离容器中
+   两次启动目标镜像，验证真实凭据解密读取、业务计数、完整性和外键。仅在副本插入
+   `0009_price_multipliers`，验证退役台账行保留且不阻断启动。该在线快照步骤现已改为可选，
+   常规发布只做本地合成夹具验证。
 2. 连续脚本自动完成停机、最终备份、Compose 切换与启动，退出码为 0。
    Docker 记录旧容器于 05:05:17 UTC 停止、新容器于 05:05:21 UTC 启动；
    应用于 05:05:23 UTC 报告 `startup.ready`。这些时间不表示停机前在途请求全部完成，
@@ -136,8 +151,9 @@ sudo python3 scripts/local-rehearsal.py --output /持久磁盘/gpt-load-rehearsa
    认证管理 API 和全部 54 个分组的真实凭据解密读取通过，数据库外键检查通过；
    分组、凭据、访问密钥、有效台账计数为 `54 / 54 / 2 / 23`。
 
-最终备份位于 Hostinger `/opt/gpt-load/pre-upgrade.2epxDMQd`，包括完整数据归档和旧 Compose。
-当前快照演练目录为 `/opt/gpt-load/rehearsal-fb0ba587`；旧备份和旧镜像保留。
+最终备份位于 Hostinger `/opt/gpt-load/pre-upgrade.2epxDMQd`，包括完整数据归档和旧 Compose；
+该次升级另在 `/opt/gpt-load/rehearsal-fb0ba587` 留存快照演练证据（当时流程要求，现已改为可选）。
+旧备份和旧镜像保留。
 本次没有执行生产修复 SQL、删除台账、重算费用、压缩数据库或恢复旧备份。
 发布后的代码提交不自动进入此镜像；核对线上版本时以实际容器标签及 health 为准。
 
@@ -202,7 +218,9 @@ ssh vps-kl 'df -h /tmp; findmnt /tmp; journalctl -u docker --since "15 minutes a
 ```bash
 ssh vps-kl 'bash -se' <<'REMOTE'
 umask 077
-src=/var/lib/docker/volumes/gpt-load_gpt-load-data/_data/gpt-load.db
+data=$(docker inspect gpt-load --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Source}}{{end}}{{end}}')
+[ -n "$data" ] || { echo '未找到运行容器的数据挂载' >&2; exit 1; }
+src=$data/gpt-load.db
 root=/opt/gpt-load
 [ "$(findmnt -n -o FSTYPE -T "$root")" != tmpfs ] || { echo '备份目标不能是 tmpfs' >&2; exit 1; }
 size=$(stat -c %s "$src")
@@ -237,7 +255,7 @@ cp docker-compose.yml.bak-<时间戳>-<旧分支>-<旧短sha> docker-compose.yml
 docker compose -p gpt-load up -d --no-build --pull never   # 保持项目名与原数据卷
 ```
 
-旧镜像不会自动清理，`docker images | grep gpt-load` 可直接看到待回滚的版本。上述镜像回滚不恢复 `gpt-load_gpt-load-data` 卷；恢复后仍须验证版本、内外 health 和真实加密配置读取。
+旧镜像不会自动清理，`docker images | grep gpt-load` 可直接看到待回滚的版本。上述镜像回滚不恢复数据卷（卷名按运行中容器的 `/app/data` 挂载读取，不要假设固定名字）；恢复后仍须验证版本、内外 health 和真实加密配置读取。
 
 ## 注意
 
