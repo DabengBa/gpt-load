@@ -20,6 +20,9 @@ function usageAggregate(overrides: Record<string, unknown> = {}): Record<string,
     cache_write_1h_tokens: 0,
     cache_write_unknown_tokens: 0,
     output_tokens: 0,
+    success_output_tokens: 0,
+    success_duration_ms_total: 0,
+    success_efficiency_sample_count: 0,
     total_tokens: 0,
     duration_ms_total: 0,
     duration_sample_count: 0,
@@ -86,8 +89,13 @@ function usagePayload(options: { scope?: 'admin' | 'access_key' } = {}) {
       success_count: 2,
       failure_count: 0,
       uncached_input_tokens: 500,
+      cache_read_tokens: 500,
+      cache_write_5m_tokens: 1000,
       output_tokens: 500,
-      total_tokens: 1000,
+      success_output_tokens: 500,
+      success_duration_ms_total: 10000,
+      success_efficiency_sample_count: model === 'gpt-4o' ? 2 : 0,
+      total_tokens: 2500,
       estimated_cost_nano_usd: '750000000',
     }),
     attempt_count: 2,
@@ -279,6 +287,34 @@ test('usage renders the breakdown without a redundant heading', async ({ page })
 
   await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toHaveCount(0)
   await expect(page.getByText('gpt-4o-mini')).toBeVisible()
+  const table = page.getByRole('table')
+  await expect(table.getByRole('columnheader', { name: 'Cache rate' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Token efficiency' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Uncached input' })).toHaveCount(0)
+  await expect(table.getByRole('columnheader', { name: 'Cache read' })).toHaveCount(0)
+  await expect(table.getByRole('columnheader', { name: 'Output', exact: true })).toHaveCount(0)
+  await expect(table.locator('tfoot')).toHaveCount(0)
+  await expect(table.getByRole('link', { name: 'prod' }).first()).toHaveAttribute(
+    'href',
+    '/groups/1',
+  )
+  await expect(table.locator('tbody tr').first()).toContainText('50%')
+  await expect(table.locator('tbody tr').first()).toContainText('—')
+  const firstRow = table.locator('tbody tr').first()
+  const cacheRate = firstRow.locator('td').nth(10)
+  const tokenEfficiency = firstRow.locator('td').nth(11)
+  await expect(cacheRate).toHaveText('50%')
+  await expect(tokenEfficiency).toHaveText('100 /s')
+  await expect(table.locator('tbody tr').nth(1).locator('td').nth(11)).toHaveText('—')
+  const numericPadding = await cacheRate.evaluate((cell) => {
+    const style = getComputedStyle(cell)
+    return [style.paddingLeft, style.paddingRight]
+  })
+  expect(numericPadding[0]).toBe(numericPadding[1])
+  await expect(table.getByRole('link', { name: 'prod' }).first()).toHaveCSS(
+    'text-decoration-line',
+    'underline',
+  )
   // The request carried the canonical filter params.
   expect(requests.usageQueries.at(-1)?.get('range')).toBe('24h')
 })
@@ -299,9 +335,8 @@ test('breakdown headers sort descending first and toggle ascending', async ({ pa
     ['Success rate', 'success_rate'],
     ['Average request duration', 'average_duration_ms'],
     ['Average request first response', 'average_first_response_ms'],
-    ['Uncached input', 'uncached_input_tokens'],
-    ['Cache read', 'cache_read_tokens'],
-    ['Output', 'output_tokens'],
+    ['Cache rate', 'cache_rate'],
+    ['Token efficiency', 'token_efficiency'],
     ['Total tokens', 'total_tokens'],
   ]) {
     const header = table.getByRole('columnheader', { name, exact: true })

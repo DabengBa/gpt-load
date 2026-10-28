@@ -195,7 +195,9 @@ func validUsageBreakdownSort(sort UsageBreakdownSort) bool {
 		UsageBreakdownSortCacheWriteUnknown,
 		UsageBreakdownSortOutputTokens,
 		UsageBreakdownSortTotalTokens,
-		UsageBreakdownSortEstimatedCost:
+		UsageBreakdownSortEstimatedCost,
+		UsageBreakdownSortCacheRate,
+		UsageBreakdownSortTokenEfficiency:
 		return true
 	default:
 		return false
@@ -298,6 +300,7 @@ func validateUsageStatIntegrity(scope *gorm.DB) error {
 			WHEN first_response_ms_total < 0 OR first_response_sample_count < 0
 				OR first_response_sample_count > request_count
 			THEN 1 ELSE 0 END), 0) AS invalid_first_response,
+		COALESCE(MAX(CASE WHEN success_output_tokens < 0 OR success_duration_ms_total < 0 OR success_efficiency_sample_count < 0 OR success_efficiency_sample_count > success_count THEN 1 ELSE 0 END), 0) AS invalid_success_efficiency,
 		COALESCE(MAX(CASE
 			WHEN estimated_cost_nano_usd < 0
 			THEN 1 ELSE 0 END), 0) AS invalid_cost
@@ -306,7 +309,7 @@ func validateUsageStatIntegrity(scope *gorm.DB) error {
 	}
 	if integrity.InvalidBucket != 0 || integrity.InvalidCount != 0 ||
 		integrity.InvalidToken != 0 || integrity.InvalidCost != 0 || integrity.InvalidDuration != 0 ||
-		integrity.InvalidFirstResponse != 0 {
+		integrity.InvalidFirstResponse != 0 || integrity.InvalidSuccessEfficiency != 0 {
 		return fmt.Errorf("check usage stat integrity: corrupt row")
 	}
 	return nil
@@ -724,11 +727,19 @@ func sortUsageBreakdownRows(scope *gorm.DB, rows []usageBreakdownCandidate, inpu
 // samples after rows with samples in both sort directions, matching the
 // frontend that renders a missing average first response as "—".
 func compareUsageBreakdownSamplePresence(left, right usageBreakdownCandidate, sortBy UsageBreakdownSort) int {
-	if sortBy != UsageBreakdownSortAverageFirstResponse {
+	if sortBy != UsageBreakdownSortAverageFirstResponse && sortBy != UsageBreakdownSortCacheRate && sortBy != UsageBreakdownSortTokenEfficiency {
 		return 0
 	}
 	leftHasSamples := left.row.UsageAggregate.FirstResponseSampleCount > 0
 	rightHasSamples := right.row.UsageAggregate.FirstResponseSampleCount > 0
+	if sortBy == UsageBreakdownSortCacheRate {
+		leftHasSamples = left.row.UncachedInputTokens+left.row.CacheReadTokens > 0
+		rightHasSamples = right.row.UncachedInputTokens+right.row.CacheReadTokens > 0
+	}
+	if sortBy == UsageBreakdownSortTokenEfficiency {
+		leftHasSamples = left.row.SuccessCount > 0 && left.row.SuccessEfficiencySampleCount == left.row.SuccessCount && left.row.SuccessDurationMsTotal > 0
+		rightHasSamples = right.row.SuccessCount > 0 && right.row.SuccessEfficiencySampleCount == right.row.SuccessCount && right.row.SuccessDurationMsTotal > 0
+	}
 	switch {
 	case leftHasSamples == rightHasSamples:
 		return 0
@@ -737,6 +748,20 @@ func compareUsageBreakdownSamplePresence(left, right usageBreakdownCandidate, so
 	default:
 		return 1
 	}
+}
+
+func compareRatios(leftN, leftD, rightN, rightD float64) int {
+	if leftD == 0 || rightD == 0 {
+		return 0
+	}
+	left, right := leftN/leftD, rightN/rightD
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
 }
 
 func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy UsageBreakdownSort) (int, error) {
@@ -818,6 +843,16 @@ func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy Us
 			return 1, nil
 		}
 		return 0, nil
+	case UsageBreakdownSortCacheRate:
+		return compareRatios(float64(leftAggregate.CacheReadTokens), float64(leftAggregate.UncachedInputTokens)+float64(leftAggregate.CacheReadTokens),
+			float64(rightAggregate.CacheReadTokens), float64(rightAggregate.UncachedInputTokens)+float64(rightAggregate.CacheReadTokens)), nil
+	case UsageBreakdownSortTokenEfficiency:
+		if leftAggregate.SuccessCount == 0 || leftAggregate.SuccessEfficiencySampleCount != leftAggregate.SuccessCount || leftAggregate.SuccessDurationMsTotal <= 0 ||
+			rightAggregate.SuccessCount == 0 || rightAggregate.SuccessEfficiencySampleCount != rightAggregate.SuccessCount || rightAggregate.SuccessDurationMsTotal <= 0 {
+			return 0, nil
+		}
+		return compareRatios(float64(leftAggregate.SuccessOutputTokens)*float64(leftAggregate.SuccessCount), float64(leftAggregate.SuccessDurationMsTotal),
+			float64(rightAggregate.SuccessOutputTokens)*float64(rightAggregate.SuccessCount), float64(rightAggregate.SuccessDurationMsTotal)), nil
 	case UsageBreakdownSortUncachedInputTokens:
 		return compareInt64(leftAggregate.UncachedInputTokens, rightAggregate.UncachedInputTokens), nil
 	case UsageBreakdownSortCacheReadTokens:
@@ -991,6 +1026,9 @@ func addUsageAggregates(left, right UsageAggregate) (UsageAggregate, error) {
 		{"cache write 1h tokens", left.CacheWrite1HTokens, right.CacheWrite1HTokens, &result.CacheWrite1HTokens},
 		{"cache write unknown tokens", left.CacheWriteUnknownTokens, right.CacheWriteUnknownTokens, &result.CacheWriteUnknownTokens},
 		{"output tokens", left.OutputTokens, right.OutputTokens, &result.OutputTokens},
+		{"success output tokens", left.SuccessOutputTokens, right.SuccessOutputTokens, &result.SuccessOutputTokens},
+		{"success duration total", left.SuccessDurationMsTotal, right.SuccessDurationMsTotal, &result.SuccessDurationMsTotal},
+		{"success efficiency samples", left.SuccessEfficiencySampleCount, right.SuccessEfficiencySampleCount, &result.SuccessEfficiencySampleCount},
 		{"usage missing count", left.UsageMissingCount, right.UsageMissingCount, &result.UsageMissingCount},
 		{"partial count", left.PartialCount, right.PartialCount, &result.PartialCount},
 		{"unpriced request count", left.UnpricedRequestCount, right.UnpricedRequestCount, &result.UnpricedRequestCount},
@@ -1078,6 +1116,9 @@ func validateUsageAggregate(aggregate UsageAggregate) error {
 		{"cache write 1h tokens", aggregate.CacheWrite1HTokens},
 		{"cache write unknown tokens", aggregate.CacheWriteUnknownTokens},
 		{"output tokens", aggregate.OutputTokens},
+		{"success output tokens", aggregate.SuccessOutputTokens},
+		{"success duration total", aggregate.SuccessDurationMsTotal},
+		{"success efficiency samples", aggregate.SuccessEfficiencySampleCount},
 		{"usage missing count", aggregate.UsageMissingCount},
 		{"partial count", aggregate.PartialCount},
 		{"unpriced request count", aggregate.UnpricedRequestCount},
@@ -1101,6 +1142,9 @@ func validateUsageAggregate(aggregate UsageAggregate) error {
 	}
 	if aggregate.FirstResponseSampleCount > aggregate.RequestCount {
 		return fmt.Errorf("first response sample count exceeds request count")
+	}
+	if aggregate.SuccessEfficiencySampleCount > aggregate.SuccessCount {
+		return fmt.Errorf("success efficiency sample count exceeds success count")
 	}
 	if _, err := usageAggregateTotalTokens(aggregate); err != nil {
 		return err
@@ -1141,6 +1185,9 @@ const usageAggregateSelect = "" +
 	"COALESCE(SUM(cache_write_1h_tokens), 0) AS cache_write1_h_tokens, " +
 	"COALESCE(SUM(cache_write_unknown_tokens), 0) AS cache_write_unknown_tokens, " +
 	"COALESCE(SUM(output_tokens), 0) AS output_tokens, " +
+	"COALESCE(SUM(success_output_tokens), 0) AS success_output_tokens, " +
+	"COALESCE(SUM(success_duration_ms_total), 0) AS success_duration_ms_total, " +
+	"COALESCE(SUM(success_efficiency_sample_count), 0) AS success_efficiency_sample_count, " +
 	"COALESCE(SUM(estimated_cost_nano_usd), 0) AS estimated_cost_nano_usd, " +
 	"COALESCE(SUM(duration_ms_total), 0) AS duration_ms_total, " +
 	"COALESCE(SUM(duration_sample_count), 0) AS duration_sample_count, " +
@@ -1177,12 +1224,13 @@ type usageHourPoint struct {
 }
 
 type usageStatIntegrity struct {
-	InvalidBucket        int64
-	InvalidCount         int64
-	InvalidToken         int64
-	InvalidCost          int64
-	InvalidDuration      int64
-	InvalidFirstResponse int64
+	InvalidBucket            int64
+	InvalidCount             int64
+	InvalidToken             int64
+	InvalidCost              int64
+	InvalidDuration          int64
+	InvalidFirstResponse     int64
+	InvalidSuccessEfficiency int64
 }
 
 type usageDistributionRow struct {

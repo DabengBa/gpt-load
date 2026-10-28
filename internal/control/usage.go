@@ -36,25 +36,28 @@ type UsageStatReader interface {
 }
 
 type usageAggregateResponse struct {
-	RequestCount             int64  `json:"request_count"`
-	SuccessCount             int64  `json:"success_count"`
-	FailureCount             int64  `json:"failure_count"`
-	UncachedInputTokens      int64  `json:"uncached_input_tokens"`
-	CacheReadTokens          int64  `json:"cache_read_tokens"`
-	CacheWrite5MTokens       int64  `json:"cache_write_5m_tokens"`
-	CacheWrite1HTokens       int64  `json:"cache_write_1h_tokens"`
-	CacheWriteUnknownTokens  int64  `json:"cache_write_unknown_tokens"`
-	OutputTokens             int64  `json:"output_tokens"`
-	TotalTokens              int64  `json:"total_tokens"`
-	EstimatedCostNanoUSD     string `json:"estimated_cost_nano_usd"`
-	DurationMsTotal          int64  `json:"duration_ms_total"`
-	DurationSampleCount      int64  `json:"duration_sample_count"`
-	FirstResponseMsTotal     int64  `json:"first_response_ms_total"`
-	FirstResponseSampleCount int64  `json:"first_response_sample_count"`
-	UsageMissingCount        int64  `json:"usage_missing_count"`
-	PartialCount             int64  `json:"partial_count"`
-	UnpricedRequestCount     int64  `json:"unpriced_request_count"`
-	PricingPartialCount      int64  `json:"pricing_partial_count"`
+	RequestCount                 int64  `json:"request_count"`
+	SuccessCount                 int64  `json:"success_count"`
+	FailureCount                 int64  `json:"failure_count"`
+	UncachedInputTokens          int64  `json:"uncached_input_tokens"`
+	CacheReadTokens              int64  `json:"cache_read_tokens"`
+	CacheWrite5MTokens           int64  `json:"cache_write_5m_tokens"`
+	CacheWrite1HTokens           int64  `json:"cache_write_1h_tokens"`
+	CacheWriteUnknownTokens      int64  `json:"cache_write_unknown_tokens"`
+	OutputTokens                 int64  `json:"output_tokens"`
+	SuccessOutputTokens          int64  `json:"success_output_tokens"`
+	SuccessDurationMsTotal       int64  `json:"success_duration_ms_total"`
+	SuccessEfficiencySampleCount int64  `json:"success_efficiency_sample_count"`
+	TotalTokens                  int64  `json:"total_tokens"`
+	EstimatedCostNanoUSD         string `json:"estimated_cost_nano_usd"`
+	DurationMsTotal              int64  `json:"duration_ms_total"`
+	DurationSampleCount          int64  `json:"duration_sample_count"`
+	FirstResponseMsTotal         int64  `json:"first_response_ms_total"`
+	FirstResponseSampleCount     int64  `json:"first_response_sample_count"`
+	UsageMissingCount            int64  `json:"usage_missing_count"`
+	PartialCount                 int64  `json:"partial_count"`
+	UnpricedRequestCount         int64  `json:"unpriced_request_count"`
+	PricingPartialCount          int64  `json:"pricing_partial_count"`
 }
 
 type usageSeriesResponse struct {
@@ -356,7 +359,9 @@ func validUsageBreakdownSort(sort requestlog.UsageBreakdownSort) bool {
 		requestlog.UsageBreakdownSortCacheWriteUnknown,
 		requestlog.UsageBreakdownSortOutputTokens,
 		requestlog.UsageBreakdownSortTotalTokens,
-		requestlog.UsageBreakdownSortEstimatedCost:
+		requestlog.UsageBreakdownSortEstimatedCost,
+		requestlog.UsageBreakdownSortCacheRate,
+		requestlog.UsageBreakdownSortTokenEfficiency:
 		return true
 	default:
 		return false
@@ -854,6 +859,7 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 		source.CacheWriteUnknownTokens, source.PartialCount, source.UnpricedRequestCount,
 		source.PricingPartialCount, source.DurationMsTotal, source.DurationSampleCount,
 		source.FirstResponseMsTotal, source.FirstResponseSampleCount,
+		source.SuccessOutputTokens, source.SuccessDurationMsTotal, source.SuccessEfficiencySampleCount,
 	}
 	for _, value := range values {
 		if value < 0 || value > maxSafeInteger {
@@ -880,18 +886,24 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 	if source.FirstResponseSampleCount > source.RequestCount {
 		return usageAggregateResponse{}, fmt.Errorf("map usage first response: sample count exceeds requests")
 	}
+	if source.SuccessEfficiencySampleCount > source.SuccessCount {
+		return usageAggregateResponse{}, fmt.Errorf("map usage success efficiency: sample count exceeds successes")
+	}
 	return usageAggregateResponse{
 		RequestCount: source.RequestCount, SuccessCount: source.SuccessCount, FailureCount: source.FailureCount,
 		UncachedInputTokens: source.UncachedInputTokens, CacheReadTokens: source.CacheReadTokens,
 		CacheWrite5MTokens: source.CacheWrite5MTokens, CacheWrite1HTokens: source.CacheWrite1HTokens,
 		CacheWriteUnknownTokens: source.CacheWriteUnknownTokens,
 		OutputTokens:            source.OutputTokens, TotalTokens: totalTokens,
-		DurationMsTotal:          source.DurationMsTotal,
-		DurationSampleCount:      source.DurationSampleCount,
-		FirstResponseMsTotal:     source.FirstResponseMsTotal,
-		FirstResponseSampleCount: source.FirstResponseSampleCount,
-		EstimatedCostNanoUSD:     strconv.FormatInt(source.EstimatedCostNanoUSD, 10),
-		UsageMissingCount:        source.UsageMissingCount, PartialCount: source.PartialCount,
+		SuccessOutputTokens:          source.SuccessOutputTokens,
+		SuccessDurationMsTotal:       source.SuccessDurationMsTotal,
+		SuccessEfficiencySampleCount: source.SuccessEfficiencySampleCount,
+		DurationMsTotal:              source.DurationMsTotal,
+		DurationSampleCount:          source.DurationSampleCount,
+		FirstResponseMsTotal:         source.FirstResponseMsTotal,
+		FirstResponseSampleCount:     source.FirstResponseSampleCount,
+		EstimatedCostNanoUSD:         strconv.FormatInt(source.EstimatedCostNanoUSD, 10),
+		UsageMissingCount:            source.UsageMissingCount, PartialCount: source.PartialCount,
 		UnpricedRequestCount: source.UnpricedRequestCount,
 		PricingPartialCount:  source.PricingPartialCount,
 	}, nil

@@ -159,15 +159,16 @@ func mapEvent(
 		ReasoningBudgetTokens:        event.Reasoning.BudgetTokens,
 		UncachedInputTokens:          result.Tokens.UncachedInput,
 		OutputTokens:                 result.Tokens.Output,
-		CacheReadTokens:              result.Tokens.CacheRead,
-		CacheWrite5MTokens:           result.Tokens.CacheWrite5M,
-		CacheWrite1HTokens:           result.Tokens.CacheWrite1H,
-		CacheWriteUnknownTokens:      result.Tokens.CacheWriteUnknown,
-		EstimatedCostNanoUSD:         pricingObservation.EstimatedCostNanoUSD,
-		UsageState:                   string(result.State),
-		CostState:                    pricingObservation.CostState,
-		PricingCompleteness:          pricingObservation.PricingCompleteness,
-		AttemptRows:                  attempts,
+
+		CacheReadTokens:         result.Tokens.CacheRead,
+		CacheWrite5MTokens:      result.Tokens.CacheWrite5M,
+		CacheWrite1HTokens:      result.Tokens.CacheWrite1H,
+		CacheWriteUnknownTokens: result.Tokens.CacheWriteUnknown,
+		EstimatedCostNanoUSD:    pricingObservation.EstimatedCostNanoUSD,
+		UsageState:              string(result.State),
+		CostState:               pricingObservation.CostState,
+		PricingCompleteness:     pricingObservation.PricingCompleteness,
+		AttemptRows:             attempts,
 	}
 	// Request totals include all billed attempts, while the identity and final
 	// receipt remain attributed to the terminal attempt. The existing journal
@@ -185,6 +186,7 @@ func mapEvent(
 }
 
 func addBilledAttempt(row *models.RequestLog, attempt telemetry.Attempt) error {
+
 	for _, pair := range []struct {
 		target *int64
 		value  int64

@@ -650,6 +650,7 @@ func TestWriteBatchAggregatesStatusQualityAndCompletePricedTotals(t *testing.T) 
 	complete := aggregationRow(aggregationRequestID(10), hour, 8, "quality-model")
 	complete.UncachedInputTokens = 1
 	complete.OutputTokens = 2
+
 	complete.CacheReadTokens = 3
 	complete.CacheWrite5MTokens = 4
 	complete.CacheWrite1HTokens = 5
@@ -660,6 +661,7 @@ func TestWriteBatchAggregatesStatusQualityAndCompletePricedTotals(t *testing.T) 
 	completeUnpriced.PricingCompleteness = string(pricing.CompletenessUnavailable)
 	completeUnpriced.UncachedInputTokens = 400
 	completeUnpriced.OutputTokens = 500
+
 	completeUnpriced.EstimatedCostNanoUSD = 0
 
 	missing := aggregationRow(aggregationRequestID(11), hour, 8, "quality-model")
@@ -723,6 +725,19 @@ func TestWriteBatchAggregatesStatusQualityAndCompletePricedTotals(t *testing.T) 
 		stat.CacheWriteUnknownTokens != 7 ||
 		stat.EstimatedCostNanoUSD != 3_750_000_000 {
 		t.Fatalf("complete/partial totals = %+v", stat)
+	}
+	if stat.SuccessOutputTokens != 502 || stat.SuccessDurationMsTotal != 20 ||
+		stat.SuccessEfficiencySampleCount != 2 {
+		t.Fatalf("success efficiency totals = output %d, duration %d, samples %d; want 502, 20, 2",
+			stat.SuccessOutputTokens, stat.SuccessDurationMsTotal, stat.SuccessEfficiencySampleCount)
+	}
+	var journal models.UsageAggregationJournal
+	if err := db.First(&journal, "request_id = ?", complete.ID).Error; err != nil {
+		t.Fatalf("query complete UsageAggregationJournal: %v", err)
+	}
+	if journal.SuccessOutputTokens != 2 || journal.SuccessDurationMsTotal != 10 ||
+		journal.SuccessEfficiencySampleCount != 1 {
+		t.Fatalf("success efficiency journal = %+v", journal)
 	}
 	var persistedPartial models.RequestLog
 	if err := db.First(&persistedPartial, "id = ?", partialPriced.ID).Error; err != nil {
@@ -1328,6 +1343,40 @@ func TestWriteBatchRecoversMixedPendingJournalAndNewRequestBySubmittedIDs(t *tes
 	}
 }
 
+func TestWriteBatchReplaysHistoricalJournalWithoutInventingEfficiency(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	row := aggregationRow(aggregationRequestID(75), time.Date(2026, time.August, 8, 18, 0, 0, 0, time.UTC), 19, "historical-model")
+	row.OutputTokens, row.DurationMs = 42, 50
+	journals, err := buildUsageAggregationJournals([]models.RequestLog{row})
+	if err != nil || len(journals) != 1 {
+		t.Fatalf("build journal = %v, %#v", err, journals)
+	}
+	// A pre-migration journal has no efficiency samples, even if the submitted
+	// request now claims output was observed.
+	journal := journals[0]
+	journal.SuccessOutputTokens, journal.SuccessDurationMsTotal, journal.SuccessEfficiencySampleCount = 0, 0, 0
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&journal).Error; err != nil {
+		t.Fatal(err)
+	}
+	writer := &gormBatchWriter{db: db}
+	for range 2 {
+		if err := writer.WriteBatch(context.Background(), []models.RequestLog{row}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stat models.UsageStat
+	if err := db.First(&stat).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stat.RequestCount != 1 || stat.OutputTokens != 42 || stat.DurationMsTotal != 50 ||
+		stat.SuccessOutputTokens != 0 || stat.SuccessDurationMsTotal != 0 || stat.SuccessEfficiencySampleCount != 0 {
+		t.Fatalf("historical replay = %+v", stat)
+	}
+}
+
 func TestWriteBatchRejectsDurationSampleCountOverflowWithoutPartialWrites(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	hour := time.Date(2026, time.July, 24, 15, 30, 0, 0, time.UTC)
@@ -1426,8 +1475,10 @@ func TestWriteBatchRollsBackUsageJournalWithFailedRequestLogTransaction(t *testi
 	if err := db.First(&recovered).Error; err != nil {
 		t.Fatalf("query recovered UsageStat: %v", err)
 	}
-	if recovered.RequestCount != 1 || recovered.DurationMsTotal != row.DurationMs || recovered.DurationSampleCount != 1 {
-		t.Fatalf("recovered UsageStat = %+v, want one latency sample", recovered)
+	if recovered.RequestCount != 1 || recovered.DurationMsTotal != row.DurationMs || recovered.DurationSampleCount != 1 ||
+		recovered.SuccessOutputTokens != row.OutputTokens || recovered.SuccessDurationMsTotal != row.DurationMs ||
+		recovered.SuccessEfficiencySampleCount != 1 {
+		t.Fatalf("recovered UsageStat = %+v, want one regular and one success-efficiency sample", recovered)
 	}
 }
 

@@ -37,6 +37,8 @@ export type UsageBreakdownSort =
   | 'slow_attempt_count'
   | 'faulty_attempt_count'
   | 'success_rate'
+  | 'cache_rate'
+  | 'token_efficiency'
   | 'average_duration_ms'
   | 'average_first_response_ms'
   | 'uncached_input_tokens'
@@ -62,6 +64,8 @@ export function normalizeUsageBreakdownSort(value: unknown): UsageBreakdownSort 
     case 'slow_attempt_count':
     case 'faulty_attempt_count':
     case 'success_rate':
+    case 'cache_rate':
+    case 'token_efficiency':
     case 'average_duration_ms':
     case 'average_first_response_ms':
     case 'uncached_input_tokens':
@@ -121,6 +125,9 @@ export interface UsageAggregateDto {
   partial_count: number
   unpriced_request_count: number
   pricing_partial_count: number
+  success_output_tokens: number
+  success_duration_ms_total: number
+  success_efficiency_sample_count: number
 }
 
 export interface UsageDistributionAggregateDto {
@@ -213,6 +220,9 @@ const aggregateKeys = [
   'partial_count',
   'unpriced_request_count',
   'pricing_partial_count',
+  'success_output_tokens',
+  'success_duration_ms_total',
+  'success_efficiency_sample_count',
 ] as const
 const aggregateFields = [...aggregateKeys, 'estimated_cost_nano_usd'] as const
 const distributionAggregateFields = [
@@ -282,6 +292,13 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
     partial_count: projectSafeInteger(record.partial_count, { minimum: 0 }),
     unpriced_request_count: projectSafeInteger(record.unpriced_request_count, { minimum: 0 }),
     pricing_partial_count: projectSafeInteger(record.pricing_partial_count, { minimum: 0 }),
+    success_output_tokens: projectSafeInteger(record.success_output_tokens, { minimum: 0 }),
+    success_duration_ms_total: projectSafeInteger(record.success_duration_ms_total, {
+      minimum: 0,
+    }),
+    success_efficiency_sample_count: projectSafeInteger(record.success_efficiency_sample_count, {
+      minimum: 0,
+    }),
   }
   if (
     result.duration_sample_count > result.request_count ||
@@ -297,7 +314,8 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
     result.usage_missing_count > result.request_count ||
     result.partial_count > result.request_count ||
     result.unpriced_request_count > result.request_count ||
-    result.pricing_partial_count > result.request_count
+    result.pricing_partial_count > result.request_count ||
+    result.success_efficiency_sample_count > result.success_count
   ) {
     invalidResponse()
   }
