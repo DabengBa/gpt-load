@@ -289,7 +289,7 @@ export function SchedulePanel({
             label={labels.model ?? ''}
             isLabelHidden
             width="100%"
-            xstyle={styles.searchControl}
+            controlXstyle={styles.searchControl}
             size="sm"
             value={search}
             onChange={setSearch}
@@ -346,7 +346,7 @@ export function SchedulePanel({
           )}
         </div>
       </div>
-    )
+    );
   }
 
   const contextControl = (

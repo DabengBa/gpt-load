@@ -198,7 +198,7 @@ export function ModelDiscoveryDrawer({
     >
       <div {...stylex.props(styles.filters)}>
         <TextInput
-          xstyle={styles.search}
+          controlXstyle={styles.search}
           label={labels.search}
           isLabelHidden
           placeholder={labels.search}
@@ -329,7 +329,7 @@ export function ModelDiscoveryDrawer({
         )}
       </div>
     </DetailPanel>
-  )
+  );
 }
 
 const styles = stylex.create({

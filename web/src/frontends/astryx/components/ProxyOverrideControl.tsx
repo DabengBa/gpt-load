@@ -67,7 +67,7 @@ export function ProxyOverrideControl({
       {mode === 'custom' && (
         <TextInput
           id={inputId}
-          xstyle={styles.input}
+          controlXstyle={styles.input}
           data-gptload-mono
           value={endpoint}
           label={t('common.proxy.urlLabel')}
@@ -83,5 +83,5 @@ export function ProxyOverrideControl({
         />
       )}
     </div>
-  )
+  );
 }

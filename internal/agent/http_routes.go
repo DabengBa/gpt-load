@@ -112,12 +112,6 @@ func (server *Server) Module() httproute.Module {
 				Path:     "/control-operations/:" + operationIDRouteParam,
 				Handlers: gin.HandlersChain{server.handleGetControlOperation},
 			},
-			{
-				Name:     "mcp",
-				Methods:  []string{http.MethodPost, http.MethodGet, http.MethodDelete},
-				Path:     "/mcp",
-				Handlers: gin.HandlersChain{server.handleMCP},
-			},
 		},
 		NotFound:         agentRouteNotFound,
 		MethodNotAllowed: agentMethodNotAllowed,

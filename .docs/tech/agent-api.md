@@ -19,7 +19,7 @@ code:
 
 - **Owner:** `internal/agent` and the control-plane proposal/credential boundary.
 - **Authoritative for:** current HTTP resource shape, authentication scopes, redaction rules, proposal lifecycle, and durable operation behavior.
-- **Excludes:** the web UI, ordinary provider/data-plane authentication, and MCP transport details owned by [Agent Operations MCP](mcp-agent-ops.md).
+- **Excludes:** the web UI and ordinary provider/data-plane authentication.
 
 ## Responsibility
 

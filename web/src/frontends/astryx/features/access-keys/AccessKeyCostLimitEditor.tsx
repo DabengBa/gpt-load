@@ -533,7 +533,7 @@ export function AccessKeyCostLimitEditor({
                       value={rule.limit_usd}
                       isDisabled={disabled}
                       startIcon={<span aria-hidden="true">$</span>}
-                      xstyle={[styles.embeddedCell, styles.embeddedTextInput]}
+                      controlXstyle={[styles.embeddedCell, styles.embeddedTextInput]}
                       data-gptload-mono
                       {...decimalInputAttrs}
                       onChange={(next) => updateRule(rule.clientKey, { limit_usd: next })}
@@ -551,7 +551,7 @@ export function AccessKeyCostLimitEditor({
                     />
                   )}
                 </article>
-              )
+              );
             })}
           </div>
         )}
@@ -600,7 +600,7 @@ export function AccessKeyCostLimitEditor({
                           value={rule.limit_usd}
                           isDisabled={disabled}
                           startIcon={<span aria-hidden="true">$</span>}
-                          xstyle={[styles.embeddedCell, styles.embeddedTextInput]}
+                          controlXstyle={[styles.embeddedCell, styles.embeddedTextInput]}
                           data-gptload-mono
                           {...decimalInputAttrs}
                           onChange={(next) => updateRule(rule.clientKey, { limit_usd: next })}
@@ -612,7 +612,7 @@ export function AccessKeyCostLimitEditor({
                           size="sm"
                           value={String(periodValue(rule.period_seconds))}
                           isDisabled={disabled}
-                          xstyle={[
+                          controlXstyle={[
                             styles.embeddedCell,
                             styles.embeddedTextInput,
                             styles.embeddedDivider,
@@ -630,7 +630,7 @@ export function AccessKeyCostLimitEditor({
                           options={periodUnitOptions}
                           value={periodUnit(rule.period_seconds)}
                           isDisabled={disabled}
-                          xstyle={[
+                          controlXstyle={[
                             styles.embeddedCell,
                             styles.embeddedDivider,
                             styles.embeddedSelector,
@@ -684,12 +684,12 @@ export function AccessKeyCostLimitEditor({
                       />
                     )}
                   </article>
-                )
+                );
               })}
             </div>
           </div>
         )}
       </section>
     </div>
-  )
+  );
 }

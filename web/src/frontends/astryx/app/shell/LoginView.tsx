@@ -374,7 +374,7 @@ export function LoginView() {
               >
                 <TextInput
                   label=""
-                  xstyle={styles.groupedInput}
+                  controlXstyle={styles.groupedInput}
                   htmlName="auth-key"
                   type={visible ? 'text' : 'password'}
                   autoComplete="current-password"
@@ -489,5 +489,5 @@ export function LoginView() {
         </section>
       </div>
     </main>
-  )
+  );
 }

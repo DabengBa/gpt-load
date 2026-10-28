@@ -257,7 +257,7 @@ export function ImportConnectionSection({
                       {baseUrlOverrideEnabled && (
                         <div {...stylex.props(styles.urlInputWrap)}>
                           <TextInput
-                            xstyle={styles.urlInput}
+                            controlXstyle={styles.urlInput}
                             data-gptload-mono
                             label={t('import.connection.customUrl')}
                             isLabelHidden
@@ -339,7 +339,7 @@ export function ImportConnectionSection({
                     />
                     {proxySupported && proxy.mode === 'custom' && (
                       <TextInput
-                        xstyle={styles.proxyInput}
+                        controlXstyle={styles.proxyInput}
                         data-gptload-mono
                         value={proxy.url}
                         label={t('common.proxy.urlLabel')}
@@ -365,5 +365,5 @@ export function ImportConnectionSection({
         )}
       </div>
     </div>
-  )
+  );
 }

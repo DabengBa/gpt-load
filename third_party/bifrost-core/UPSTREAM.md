@@ -5,10 +5,10 @@ Pinned local fork of the Bifrost Go SDK used by gpt-load.
 | fact | value |
 |---|---|
 | module path | `github.com/maximhq/bifrost/core` |
-| upstream version | `v1.13.0` (`version` file contains `1.13.0`) |
-| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.13.0`, module cache `github.com/maximhq/bifrost/core@v1.13.0` (no commit recorded in the downloaded module) |
-| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.13.0` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
-| nested go.mod / go.sum | byte-identical to upstream v1.13.0; the root module's MVS selection applies |
+| upstream version | `v1.13.1` (`version` file contains `1.13.1`) |
+| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.13.1`, commit `df9554745b8686b3a688bdc62adbbe2461ae87f5`, module cache `github.com/maximhq/bifrost/core@v1.13.1` |
+| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.13.1` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
+| nested go.mod / go.sum | byte-identical to upstream v1.13.1; the root module's MVS selection applies |
 
 ## Why the fork exists
 
@@ -22,13 +22,13 @@ way to add a request-scoped observer without a global registry.
 
 ## Fork delta
 
-`gptload-observer.patch` is the complete source diff against pristine v1.13.0,
+`gptload-observer.patch` is the complete source diff against pristine v1.13.1,
 excluding this document and the patch itself. Apply it with `patch -p1` in a
 fresh copy of the upstream module. Its historical name also covers the remaining
 cache, tool, stream, and schema changes; Git is the history of those changes.
-Verified after the v1.13.0 upgrade: applying the patch to a fresh copy of
-`core@v1.13.0` reproduces this tree with zero differences (see
-`.tmp/upgrade_cpa_bifrost_20261020/units/U002/result.md`).
+The v1.13.1 upstream update changes only version metadata, the Go directive,
+and changelog, not Go source. Applying the patch to a fresh copy of
+`core@v1.13.1` reproduces this tree with zero differences.
 
 Modified/added files:
 
@@ -127,7 +127,7 @@ publication before tools/hooks, real unary/stream cancellation, delayed hooks,
 and success/cancel races.
 
 The patch artifact includes this delta and its regression tests. Regeneration
-against pristine `core@v1.13.0` verified byte-for-byte source replay, excluding
+against pristine `core@v1.13.1` verified byte-for-byte source replay, excluding
 this document, the patch and `hack/`, as specified by the generator.
 
 ## Upstream sync procedure
@@ -170,10 +170,7 @@ this document, the patch and `hack/`, as specified by the generator.
      marker and `patch` rejects it.
    - `-l` when applying, because ignoring whitespace makes a removal still match
      a pristine line that differs only in trailing whitespace.
-6. While the root module's `go.sum` is owned by another task, prefix the test
-   commands with `-mod=mod` so the nested-module requirements
-   (`github.com/canonical/starlark` in v1.13.0) can be resolved; restore
-   `go.sum` afterwards and let `go mod tidy` regenerate it once.
+
 
 ## Rollback
 

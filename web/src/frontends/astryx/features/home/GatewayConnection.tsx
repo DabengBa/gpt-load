@@ -746,7 +746,7 @@ export function GatewayConnection({
                   id="gateway-access-key"
                   variant="ghost"
                   size="sm"
-                  xstyle={styles.keySelector}
+                  controlXstyle={styles.keySelector}
                   label={t('home.ledger.connection.accessKey')}
                   isLabelHidden
                   value={String(selectedKey.id)}
@@ -862,7 +862,7 @@ export function GatewayConnection({
                       isDisabled={actionBusy}
                       {...({ maxLength: 200, spellCheck: false } as const)}
                       size="sm"
-                      xstyle={[styles.modelInput, tightViewport && styles.modelInputTight]}
+                      controlXstyle={[styles.modelInput, tightViewport && styles.modelInputTight]}
                     />
                   </div>
                 </div>
@@ -1019,5 +1019,5 @@ export function GatewayConnection({
         onAction={() => void openQuickImport()}
       />
     </section>
-  )
+  );
 }

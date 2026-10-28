@@ -50,7 +50,7 @@ export default {
       agent: {
         title: 'Agent 凭证',
         description:
-          '为自动化与 MCP Agent 签发访问 /api/agent/v1 的 gla_ 凭证。密钥仅在创建时显示一次，无法找回 —— 丢失后需新建凭证并停用旧的。',
+          '为自动化 Agent 签发访问 /api/agent/v1 的 gla_ 凭证。密钥仅在创建时显示一次，无法找回 —— 丢失后需新建凭证并停用旧的。',
         create: '创建 Agent 凭证',
         createTitle: '创建 Agent 凭证',
         createDescription: '为凭证命名并选择 Agent 可用的能力。',

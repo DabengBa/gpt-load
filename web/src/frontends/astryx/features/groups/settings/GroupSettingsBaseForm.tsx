@@ -235,12 +235,12 @@ export function GroupSettingsBaseForm({
                         : undefined
                     }
                     onChange={(value) => updateParam(field, value)}
-                    xstyle={styles.mono}
+                    controlXstyle={styles.mono}
                   />
                 </label>
               )}
             </div>
-          )
+          );
         })}
         <label {...stylex.props(styles.field, styles.wide)}>
           <span {...stylex.props(styles.fieldLabel)}>{t('group.settings.base.providerUrl')}</span>
@@ -252,13 +252,13 @@ export function GroupSettingsBaseForm({
             isDisabled={pending}
             description={t('group.settings.base.providerUrlHelp')}
             onChange={onProviderUrlChange}
-            xstyle={styles.mono}
+            controlXstyle={styles.mono}
           />
         </label>
         {unified && headerActionsTarget ? createPortal(switchRow, headerActionsTarget) : switchRow}
       </div>
     </section>
-  )
+  );
 }
 
 const styles = stylex.create({

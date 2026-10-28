@@ -31,7 +31,7 @@ upgrade procedure are recorded in
 
 ## Architecture And Constraints
 
-The root module requires Bifrost core v1.13.0 and replaces it with
+The root module requires Bifrost core v1.13.1 and replaces it with
 `third_party/bifrost-core`. Its schema converters and provider serializers
 determine the actual converted payload. Native passthrough does not repair
 previously saved client history during normal forwarding. The failure-triggered

@@ -738,7 +738,7 @@ export function ParameterOverrideRulesEditor({
                           size="sm"
                           isDisabled={disabled}
                           onChange={(value) => updateRule(row.key, { protocol: value })}
-                          xstyle={styles.protocolSelect}
+                          controlXstyle={styles.protocolSelect}
                         />
                         <span {...stylex.props(styles.modelCell)}>
                           <input
@@ -1012,7 +1012,7 @@ export function ParameterOverrideRulesEditor({
                   </div>
                 )}
               </article>
-            )
+            );
           })}
         </div>
       )}
@@ -1023,7 +1023,7 @@ export function ParameterOverrideRulesEditor({
         ))}
       </datalist>
     </div>
-  )
+  );
 }
 
 const styles = stylex.create({

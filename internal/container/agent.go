@@ -33,15 +33,14 @@ func newAgentServer(
 	optional agentOptionalDependencies,
 ) *agent.Server {
 	dependencies := agent.Dependencies{
-		Credentials:          credentials,
-		RequestLogs:          requestLogs,
-		RequestLogStats:      requestLogs,
-		Usage:                requestLogs,
-		Snapshots:            manager,
-		Redactor:             redactor,
-		Version:              version.Version,
-		Features:             agent.Features{},
-		MCPTrustedProxyCIDRs: cfg.MCPTrustedProxyCIDRs,
+		Credentials:     credentials,
+		RequestLogs:     requestLogs,
+		RequestLogStats: requestLogs,
+		Usage:           requestLogs,
+		Snapshots:       manager,
+		Redactor:        redactor,
+		Version:         version.Version,
+		Features:        agent.Features{},
 	}
 	if optional.DebugCaptureStore != nil {
 		dependencies.Evidence = optional.DebugCaptureStore

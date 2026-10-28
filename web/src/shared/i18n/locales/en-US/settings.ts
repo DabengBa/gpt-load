@@ -51,7 +51,7 @@ export default {
       agent: {
         title: 'Agent credentials',
         description:
-          'Issue gla_ credentials for automation and MCP agents on /api/agent/v1. A secret is shown once at creation and cannot be recovered — a lost secret needs a replacement credential.',
+          'Issue gla_ credentials for automation agents on /api/agent/v1. A secret is shown once at creation and cannot be recovered — a lost secret needs a replacement credential.',
         create: 'Create agent credential',
         createTitle: 'Create agent credential',
         createDescription: 'Name the credential and choose what the agent may do.',

@@ -219,12 +219,12 @@ export function AccessKeyPolicyFields({
             isDisabled={disabled}
             hasSpellCheck={false}
             size="sm"
-            xstyle={styles.cidrField}
+            controlXstyle={styles.cidrField}
             onChange={setCIDRs}
           />
           <p {...stylex.props(styles.cidrWarning)}>{t('accessKeys.drawer.proxyIPWarning')}</p>
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -92,11 +92,8 @@ func TestChangeProposalApprovalIsAdminOnly(t *testing.T) {
 	}
 }
 
-// TestChangeProposalConcurrentApplyMixedHTTPMCPBindSingleOperation drives the
-// real Agent HTTP and MCP apply handlers with simultaneous distinct
-// idempotency-key requests for one approved proposal. It asserts that both
-// adapters preserve the same durable operation binding and route mutation.
-func TestChangeProposalConcurrentApplyMixedHTTPMCPBindSingleOperation(t *testing.T) {
+// TestChangeProposalConcurrentHTTPApplyBindsSingleOperation drives concurrent Agent HTTP apply requests for one approved proposal.
+func TestChangeProposalConcurrentHTTPApplyBindsSingleOperation(t *testing.T) {
 	initControlI18n(t)
 	fixture := newServiceFixture(t)
 	credentialStore := agent.NewCredentialStore(fixture.db, fixture.encryption)
@@ -161,14 +158,9 @@ func TestChangeProposalConcurrentApplyMixedHTTPMCPBindSingleOperation(t *testing
 	}
 
 	path := agent.APIPrefix + "/change-proposals/" + proposal.ProposalID + "/apply"
-	requests := []struct {
-		key string
-		mcp bool
-	}{
-		{key: "11111111-1111-4111-8111-111111111111"},
-		{key: "22222222-2222-4222-8222-222222222222"},
-		{key: "33333333-3333-4333-8333-333333333333", mcp: true},
-		{key: "44444444-4444-4444-8444-444444444444", mcp: true},
+	requests := []string{
+		"11111111-1111-4111-8111-111111111111",
+		"22222222-2222-4222-8222-222222222222",
 	}
 	type applyOutcome struct {
 		status      int
@@ -178,58 +170,25 @@ func TestChangeProposalConcurrentApplyMixedHTTPMCPBindSingleOperation(t *testing
 	outcomes := make([]applyOutcome, len(requests))
 	start := make(chan struct{})
 	var wait sync.WaitGroup
-	for index, requestSpec := range requests {
+	for index, key := range requests {
 		wait.Add(1)
-		go func(index int, requestSpec struct {
-			key string
-			mcp bool
-		}) {
+		go func(index int, key string) {
 			defer wait.Done()
-			requestPath := path
-			var requestBody *bytes.Reader
-			if requestSpec.mcp {
-				requestPath = agent.APIPrefix + "/mcp"
-				requestBody = bytes.NewReader([]byte(
-					`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"agent_apply_proposal","arguments":{"proposal_id":"` + proposal.ProposalID + `","idempotency_key":"` + requestSpec.key + `"}}}`,
-				))
-			} else {
-				requestBody = bytes.NewReader(nil)
-			}
-			request := httptest.NewRequest(http.MethodPost, requestPath, requestBody)
+			request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(nil))
 			request.Header.Set("Authorization", "Bearer "+created.Secret)
-			if requestSpec.mcp {
-				request.Header.Set("Content-Type", "application/json")
-				request.Header.Set("Accept", "application/json, text/event-stream")
-				request.Host = "example.com"
-			} else {
-				request.Header.Set("Idempotency-Key", requestSpec.key)
-			}
+			request.Header.Set("Idempotency-Key", key)
 			recorder := httptest.NewRecorder()
 			<-start
 			engine.ServeHTTP(recorder, request)
 			outcome := applyOutcome{status: recorder.Code, body: recorder.Body.String()}
 			var envelope struct {
-				Data   agent.ChangeProposalView `json:"data"`
-				Result struct {
-					StructuredContent agent.ChangeProposalView `json:"structuredContent"`
-					IsError           bool                     `json:"isError"`
-				} `json:"result"`
+				Data agent.ChangeProposalView `json:"data"`
 			}
-			if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err == nil {
-				view := envelope.Data
-				if requestSpec.mcp {
-					if envelope.Result.IsError {
-						outcome.body += " (MCP isError=true)"
-					} else {
-						view = envelope.Result.StructuredContent
-					}
-				}
-				if view.Execution.OperationID != nil {
-					outcome.operationID = *view.Execution.OperationID
-				}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err == nil && envelope.Data.Execution.OperationID != nil {
+				outcome.operationID = *envelope.Data.Execution.OperationID
 			}
 			outcomes[index] = outcome
-		}(index, requestSpec)
+		}(index, key)
 	}
 	close(start)
 	wait.Wait()

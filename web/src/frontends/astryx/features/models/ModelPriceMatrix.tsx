@@ -327,7 +327,7 @@ export function ModelPriceMatrix({
                 size="sm"
                 value={t('modelPrices.matrix.baseRow')}
                 isReadOnly
-                xstyle={styles.cellInput}
+                controlXstyle={styles.cellInput}
               />
             </PriceInputGroup>
           )}
@@ -351,7 +351,7 @@ export function ModelPriceMatrix({
                   value={draft.base[field]}
                   isDisabled={pending}
                   status={baseFieldError(field) ? { type: 'error' } : undefined}
-                  xstyle={[
+                  controlXstyle={[
                     styles.cellInput,
                     index > 0 && styles.cellInputDivider,
                     !!baseFieldError(field) && styles.cellInputInvalid,
@@ -399,7 +399,7 @@ export function ModelPriceMatrix({
                   value={tier.threshold}
                   isDisabled={pending}
                   status={tierThresholdError(tier.key) ? { type: 'error' } : undefined}
-                  xstyle={[
+                  controlXstyle={[
                     styles.cellInput,
                     !!tierThresholdError(tier.key) && styles.cellInputInvalid,
                   ]}
@@ -436,7 +436,7 @@ export function ModelPriceMatrix({
                       value={tier.slots[field]}
                       isDisabled={pending}
                       status={tierSlotError(tier.key, field) ? { type: 'error' } : undefined}
-                      xstyle={[
+                      controlXstyle={[
                         styles.cellInput,
                         fieldIndex > 0 && styles.cellInputDivider,
                         !!tierSlotError(tier.key, field) && styles.cellInputInvalid,
@@ -534,5 +534,5 @@ export function ModelPriceMatrix({
         />
       </Dialog>
     </div>
-  )
+  );
 }

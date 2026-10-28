@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -142,5 +143,33 @@ func TestAgentCapabilitiesReturnsVersionedReadContract(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `"schema_version":1`) {
 		t.Fatalf("response = %s, want schema_version 1", recorder.Body.String())
+	}
+}
+
+func TestAgentMCPRouteIsUnavailable(t *testing.T) {
+	if err := i18n.Init(); err != nil {
+		t.Fatalf("i18n.Init() error = %v", err)
+	}
+	server := NewServer(Dependencies{})
+	registry, err := httproute.NewRegistry(server.Module())
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	engine := gin.New()
+	if err := registry.Bind(engine); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, APIPrefix+"/mcp", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("POST %s status = %d, want %d", APIPrefix+"/mcp", recorder.Code, http.StatusNotFound)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, APIPrefix+"/capabilities", nil)
+	recorder = httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	if recorder.Code == http.StatusNotFound {
+		t.Fatalf("GET %s status = %d, want Agent HTTP route retained", APIPrefix+"/capabilities", recorder.Code)
 	}
 }

@@ -48,38 +48,35 @@ type SnapshotProvider interface {
 // Dependencies assembles the Agent surface. Read dependencies are query-only;
 // ChangeProposals is the control-owned proposal lifecycle service.
 type Dependencies struct {
-	Credentials          *CredentialStore
-	ChangeProposals      ChangeProposalService
-	RequestLogs          RequestLogReader
-	RequestLogStats      RequestLogStatsReader
-	Usage                UsageReader
-	Evidence             EvidenceReader
-	EvidenceHealth       EvidenceHealthReader
-	Snapshots            SnapshotProvider
-	Redactor             *redact.Redactor
-	Version              string
-	Features             Features
-	MCPTrustedProxyCIDRs []string
-	Now                  func() time.Time
+	Credentials     *CredentialStore
+	ChangeProposals ChangeProposalService
+	RequestLogs     RequestLogReader
+	RequestLogStats RequestLogStatsReader
+	Usage           UsageReader
+	Evidence        EvidenceReader
+	EvidenceHealth  EvidenceHealthReader
+	Snapshots       SnapshotProvider
+	Redactor        *redact.Redactor
+	Version         string
+	Features        Features
+	Now             func() time.Time
 }
 
 // Server implements the control-owned Agent HTTP module.
 type Server struct {
-	credentials          *CredentialStore
-	requestLogs          RequestLogReader
-	requestLogStats      RequestLogStatsReader
-	usage                UsageReader
-	evidence             EvidenceReader
-	evidenceHealth       EvidenceHealthReader
-	snapshots            SnapshotProvider
-	redactor             *redact.Redactor
-	version              string
-	features             Features
-	mcpTrustedProxyCIDRs []string
-	mcpHTTP              mcpHTTPHandler
-	now                  func() time.Time
-	startedAt            time.Time
-	changeProposals      ChangeProposalService
+	credentials     *CredentialStore
+	requestLogs     RequestLogReader
+	requestLogStats RequestLogStatsReader
+	usage           UsageReader
+	evidence        EvidenceReader
+	evidenceHealth  EvidenceHealthReader
+	snapshots       SnapshotProvider
+	redactor        *redact.Redactor
+	version         string
+	features        Features
+	now             func() time.Time
+	startedAt       time.Time
+	changeProposals ChangeProposalService
 }
 
 // NewServer builds the Agent surface; missing optional readers degrade the
@@ -99,22 +96,21 @@ func NewServer(deps Dependencies) *Server {
 		buildVersion = version.Version
 	}
 	server := &Server{
-		credentials:          deps.Credentials,
-		changeProposals:      deps.ChangeProposals,
-		requestLogs:          deps.RequestLogs,
-		requestLogStats:      deps.RequestLogStats,
-		usage:                deps.Usage,
-		evidence:             deps.Evidence,
-		evidenceHealth:       deps.EvidenceHealth,
-		snapshots:            deps.Snapshots,
-		redactor:             redactor,
-		version:              buildVersion,
-		features:             deps.Features,
-		mcpTrustedProxyCIDRs: append([]string(nil), deps.MCPTrustedProxyCIDRs...),
-		now:                  now,
-		startedAt:            now().UTC(),
+		credentials:     deps.Credentials,
+		changeProposals: deps.ChangeProposals,
+		requestLogs:     deps.RequestLogs,
+		requestLogStats: deps.RequestLogStats,
+		usage:           deps.Usage,
+		evidence:        deps.Evidence,
+		evidenceHealth:  deps.EvidenceHealth,
+		snapshots:       deps.Snapshots,
+		redactor:        redactor,
+		version:         buildVersion,
+		features:        deps.Features,
+		now:             now,
+		startedAt:       now().UTC(),
 	}
-	server.mcpHTTP = server.buildMCPServer()
+
 	if deps.ChangeProposals != nil {
 		server.features.ChangeProposals = true
 	}

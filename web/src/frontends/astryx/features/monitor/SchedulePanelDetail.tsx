@@ -1650,7 +1650,7 @@ export function SchedulePanelDetail({
                             isLabelHidden
                             size="sm"
                             width="100%"
-                            xstyle={styles.selector}
+                            controlXstyle={styles.selector}
                             value={entryReasoningValue(group.group_id, entry)}
                             options={reasoningOptionsFor(entry)}
                             isDisabled={pending || derived}
@@ -1797,7 +1797,7 @@ export function SchedulePanelDetail({
                         </Popover>
                       </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -1876,5 +1876,5 @@ export function SchedulePanelDetail({
         onAction={confirmSingleProbe}
       />
     </section>
-  )
+  );
 }
