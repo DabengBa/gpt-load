@@ -22,3 +22,21 @@ test('Node loads TypeScript tests that use transform-only syntax', () => {
 
   assert.equal(result.status, 0, result.stderr)
 })
+
+test('shared alias loader registers without Node deprecation warnings', () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      new URL('./register-shared-alias.mjs', import.meta.url).pathname,
+      '--input-type=module',
+      '--eval',
+      "import('@shared/controllers/import-recovery').then(() => console.log('loaded'))",
+    ],
+    { cwd: new URL('..', import.meta.url), encoding: 'utf8' },
+  )
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /loaded/u)
+  assert.doesNotMatch(result.stderr, /DEP0205/u)
+})
