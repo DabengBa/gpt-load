@@ -304,7 +304,7 @@ test('usage renders the breakdown without a redundant heading', async ({ page })
   const cacheRate = firstRow.locator('td').nth(10)
   const tokenEfficiency = firstRow.locator('td').nth(11)
   await expect(cacheRate).toHaveText('50%')
-  await expect(tokenEfficiency).toHaveText('100 /s')
+  await expect(tokenEfficiency).toHaveText('50 /s')
   await expect(table.locator('tbody tr').nth(1).locator('td').nth(11)).toHaveText('—')
   const numericPadding = await cacheRate.evaluate((cell) => {
     const style = getComputedStyle(cell)

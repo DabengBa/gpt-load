@@ -316,11 +316,12 @@ export function UsageBreakdownTable({
         if (
           success_count === 0 ||
           success_efficiency_sample_count !== success_count ||
-          success_duration_ms_total === 0
+          success_output_tokens <= 0 ||
+          success_duration_ms_total <= 0
         )
           return '—'
         return `${intl.formatNumber(
-          (success_output_tokens * success_count * 1000) / success_duration_ms_total,
+          (success_output_tokens * 1000) / success_duration_ms_total,
           {
             maximumFractionDigits: 1,
           },

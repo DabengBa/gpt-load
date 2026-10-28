@@ -939,7 +939,7 @@ func (delta *usageStatDelta) addRow(row models.RequestLog) error {
 		return err
 	}
 	if row.Status == string(telemetry.RequestStatusSuccess) &&
-		row.UsageState == string(usage.StateComplete) && row.DurationMs > 0 {
+		row.UsageState == string(usage.StateComplete) && row.OutputTokens > 0 && row.DurationMs > 0 {
 		if err := checkedInt64Add(&delta.SuccessOutputTokens, row.OutputTokens, "success_output_tokens"); err != nil {
 			return err
 		}

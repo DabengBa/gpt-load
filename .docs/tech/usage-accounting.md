@@ -75,7 +75,7 @@ successful, usage is complete, output tokens are positive, and duration is
 positive. Its success output and duration are added together and the sample
 count is incremented once. The aggregate is valid only when the sample count
 equals `success_count`, is positive, and success duration is positive; the
-reported rate is `success_output_tokens * success_count * 1000 /
+reported rate is `success_output_tokens * 1000 /
 success_duration_ms_total` tokens per second. Otherwise it is unavailable.
 Success-only historical values are not inferred from all-request aggregates.
 
@@ -122,9 +122,9 @@ Success-only historical values are not inferred from all-request aggregates.
 - **Success efficiency:** complete success-only totals and sample counts are
   included in summary, series, and breakdown aggregates. The efficiency rate is
   output tokens per successful request divided by average duration per
-  successful request, equivalently `success_output_tokens * success_count *
-  1000 / success_duration_ms_total`. It requires a positive sample count equal
-  to `success_count` and positive duration; unavailable rows sort after
+  successful request, equivalently `success_output_tokens * 1000 /
+  success_duration_ms_total`. It requires positive output, a sample count equal
+  to `success_count`, and positive duration; unavailable rows sort after
   available rows in either direction.
 - **Cache rate:** `cache_read_tokens / (uncached_input_tokens +
   cache_read_tokens)`; a zero denominator is unavailable and sorts last in

@@ -851,8 +851,8 @@ func compareUsageBreakdownPrimary(left, right usageBreakdownCandidate, sortBy Us
 			rightAggregate.SuccessCount == 0 || rightAggregate.SuccessEfficiencySampleCount != rightAggregate.SuccessCount || rightAggregate.SuccessDurationMsTotal <= 0 {
 			return 0, nil
 		}
-		return compareRatios(float64(leftAggregate.SuccessOutputTokens)*float64(leftAggregate.SuccessCount), float64(leftAggregate.SuccessDurationMsTotal),
-			float64(rightAggregate.SuccessOutputTokens)*float64(rightAggregate.SuccessCount), float64(rightAggregate.SuccessDurationMsTotal)), nil
+		return compareRatios(float64(leftAggregate.SuccessOutputTokens), float64(leftAggregate.SuccessDurationMsTotal),
+			float64(rightAggregate.SuccessOutputTokens), float64(rightAggregate.SuccessDurationMsTotal)), nil
 	case UsageBreakdownSortUncachedInputTokens:
 		return compareInt64(leftAggregate.UncachedInputTokens, rightAggregate.UncachedInputTokens), nil
 	case UsageBreakdownSortCacheReadTokens:

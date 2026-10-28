@@ -328,7 +328,7 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		value.CacheWrite1HTokens = int64(groupID) * 40
 		value.CacheWriteUnknownTokens = int64(groupID) * 50
 		value.OutputTokens = int64(groupID) * 60
-		value.SuccessOutputTokens = int64(groupID) * 70
+		value.SuccessOutputTokens = int64(groupID)*70 + int64(10-groupID)*10
 		value.SuccessDurationMsTotal = int64(groupID) * 100
 		value.SuccessEfficiencySampleCount = successes
 		value.EstimatedCostNanoUSD = int64(groupID) * 100
@@ -383,7 +383,7 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		{"total tokens ascending", UsageBreakdownSortTotalTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"cost descending", UsageBreakdownSortEstimatedCost, UsageBreakdownSortDescending, "charlie", "alpha"},
 		{"cache rate ascending", UsageBreakdownSortCacheRate, UsageBreakdownSortAscending, "alpha", "charlie"},
-		{"token efficiency descending", UsageBreakdownSortTokenEfficiency, UsageBreakdownSortDescending, "charlie", "alpha"},
+		{"token efficiency descending", UsageBreakdownSortTokenEfficiency, UsageBreakdownSortDescending, "alpha", "charlie"},
 		{"attempts descending", UsageBreakdownSortAttemptCount, UsageBreakdownSortDescending, "charlie", "alpha"},
 		{"attempt failures descending", UsageBreakdownSortAttemptFailureCount, UsageBreakdownSortDescending, "charlie", "alpha"},
 		{"normal attempts descending", UsageBreakdownSortNormalAttemptCount, UsageBreakdownSortDescending, "charlie", "alpha"},

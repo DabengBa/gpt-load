@@ -757,6 +757,22 @@ func TestWriteBatchAggregatesStatusQualityAndCompletePricedTotals(t *testing.T) 
 	}
 }
 
+func TestBuildUsageStatDeltasExcludesSuccessfulRowsWithoutOutputTokens(t *testing.T) {
+	hour := time.Date(2026, time.July, 24, 13, 0, 0, 0, time.UTC)
+	row := aggregationRow(aggregationRequestID(16), hour, 8, "zero-output")
+	row.OutputTokens = 0
+
+	deltas, err := buildUsageStatDeltas([]models.RequestLog{row})
+	if err != nil {
+		t.Fatalf("buildUsageStatDeltas() error = %v", err)
+	}
+	for _, delta := range deltas {
+		if delta.SuccessOutputTokens != 0 || delta.SuccessDurationMsTotal != 0 || delta.SuccessEfficiencySampleCount != 0 {
+			t.Fatalf("zero-output success contributed efficiency sample: %+v", delta)
+		}
+	}
+}
+
 func TestWriteBatchSeparatesHourAccessGroupAndUpstreamModelWithoutSkippingZeroDimensions(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	location := time.FixedZone("utc-plus-eight", 8*60*60)
