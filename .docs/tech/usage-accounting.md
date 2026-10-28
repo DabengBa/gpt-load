@@ -12,6 +12,7 @@ code:
     - internal/requestlog/usage_query.go
     - internal/storage/models/request.go
     - internal/storage/migrations/0022_usage_first_response.go
+    - internal/storage/migrations/0027_success_usage_efficiency.go
     - internal/control/usage.go
     - internal/agent/usage.go
     - web/src/shared/control/resources/usage.ts
@@ -68,6 +69,16 @@ streaming requests (`requestRecorder.recordFirstResponse` returns early
 otherwise), so non-streaming requests and every other row without an
 observation remain valid usage rows with zero first-response samples.
 
+Successful-request token efficiency is tracked independently of all-request
+output and duration. A request contributes to this metric only when it is
+successful, usage is complete, output tokens are positive, and duration is
+positive. Its success output and duration are added together and the sample
+count is incremented once. The aggregate is valid only when the sample count
+equals `success_count`, is positive, and success duration is positive; the
+reported rate is `success_output_tokens * success_count * 1000 /
+success_duration_ms_total` tokens per second. Otherwise it is unavailable.
+Success-only historical values are not inferred from all-request aggregates.
+
 ## Core Implementation
 
 - `internal/requestlog/worker.go` builds one journal delta per eligible request,
@@ -108,6 +119,16 @@ observation remain valid usage rows with zero first-response samples.
   The monitor table displays both averages in seconds with one decimal place
   (`1234 ms` renders as `1.2 s`); `—` stands for a missing sample, not a
   zero-latency measurement.
+- **Success efficiency:** complete success-only totals and sample counts are
+  included in summary, series, and breakdown aggregates. The efficiency rate is
+  output tokens per successful request divided by average duration per
+  successful request, equivalently `success_output_tokens * success_count *
+  1000 / success_duration_ms_total`. It requires a positive sample count equal
+  to `success_count` and positive duration; unavailable rows sort after
+  available rows in either direction.
+- **Cache rate:** `cache_read_tokens / (uncached_input_tokens +
+  cache_read_tokens)`; a zero denominator is unavailable and sorts last in
+  either direction.
 - **Breakdown sorting:** the monitor table sorts all displayed columns through
   the usage query before pagination, including total, failed, normal, slow,
   and faulty upstream attempt counts. Clicking a different column starts in

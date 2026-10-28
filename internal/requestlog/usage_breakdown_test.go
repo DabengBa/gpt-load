@@ -3,11 +3,106 @@ package requestlog
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
 	"gpt-load/internal/storage/models"
 )
+
+func TestUsageBreakdownUnavailableEfficiencyStableAcrossPages(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	start := time.Date(2026, time.August, 8, 15, 0, 0, 0, time.UTC)
+	rows := make([]models.UsageStat, 0, 21)
+	for index := 0; index < 18; index++ {
+		row := usageStat(start, 7, fmt.Sprintf("valid-%02d", index), 1)
+		row.ID = 0
+		row.SuccessEfficiencySampleCount = 1
+		row.SuccessDurationMsTotal = 100
+		row.SuccessOutputTokens = 10
+		rows = append(rows, row)
+	}
+	for index, model := range []string{"alpha", "bravo", "charlie"} {
+		row := usageStat(start, 7, model, 2)
+		row.ID = 0
+		row.SuccessEfficiencySampleCount = 1
+		row.SuccessDurationMsTotal = int64(100 * index)
+		row.SuccessOutputTokens = int64(30 - index*10)
+		row.CacheReadTokens = int64((index + 1) * 10)
+		row.UncachedInputTokens = int64((3 - index) * 10)
+		rows = append(rows, row)
+	}
+	createUsageStats(t, db, rows...)
+	service := newRequestLogTestService(db)
+	for _, direction := range []UsageBreakdownSortDirection{UsageBreakdownSortAscending, UsageBreakdownSortDescending} {
+		query := UsageQuery{FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(), Granularity: UsageGranularityHour,
+			BreakdownPageSize: 20, BreakdownSort: UsageBreakdownSortTokenEfficiency, BreakdownSortDirection: direction}
+		var got []string
+		for page := 1; page <= 2; page++ {
+			query.BreakdownPage = page
+			report, err := service.QueryUsage(context.Background(), query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range report.Breakdown.Rows {
+				got = append(got, row.Model)
+			}
+		}
+		if len(got) != 21 || !slices.Equal(got[18:], []string{"alpha", "bravo", "charlie"}) {
+			t.Fatalf("%s efficiency pages = %v, want unavailable alpha/bravo/charlie last", direction, got)
+		}
+	}
+	for _, test := range []struct {
+		direction UsageBreakdownSortDirection
+		want      []string
+	}{
+		{UsageBreakdownSortAscending, []string{"alpha", "bravo", "charlie"}},
+		{UsageBreakdownSortDescending, []string{"charlie", "bravo", "alpha"}},
+	} {
+		report, err := service.QueryUsage(context.Background(), UsageQuery{FromMS: start.UnixMilli(), ToMS: start.Add(time.Hour).UnixMilli(), Granularity: UsageGranularityHour,
+			BreakdownPageSize: 100, BreakdownSort: UsageBreakdownSortCacheRate, BreakdownSortDirection: test.direction})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, row := range report.Breakdown.Rows {
+			if row.Model == "alpha" || row.Model == "bravo" || row.Model == "charlie" {
+				got = append(got, row.Model)
+			}
+		}
+		if !slices.Equal(got, test.want) {
+			t.Fatalf("%s cache rate = %v, want %v", test.direction, got, test.want)
+		}
+	}
+}
+
+func TestUsageBreakdownUnavailableEfficiencyPermutations(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	rows := []usageBreakdownCandidate{
+		{row: UsageBreakdownRow{Model: "alpha", UsageAggregate: UsageAggregate{SuccessCount: 2, SuccessEfficiencySampleCount: 1}}},
+		{row: UsageBreakdownRow{Model: "bravo", UsageAggregate: UsageAggregate{SuccessCount: 2, SuccessEfficiencySampleCount: 1, SuccessDurationMsTotal: 100, SuccessOutputTokens: 20}}},
+		{row: UsageBreakdownRow{Model: "charlie", UsageAggregate: UsageAggregate{SuccessCount: 2, SuccessEfficiencySampleCount: 1, SuccessDurationMsTotal: 100, SuccessOutputTokens: 10}}},
+	}
+	for _, direction := range []UsageBreakdownSortDirection{UsageBreakdownSortAscending, UsageBreakdownSortDescending} {
+		for a := range rows {
+			for b := range rows {
+				for c := range rows {
+					if a == b || b == c || a == c {
+						continue
+					}
+					candidates := []usageBreakdownCandidate{rows[a], rows[b], rows[c]}
+					if err := sortUsageBreakdownRows(db, candidates, UsageQuery{BreakdownSort: UsageBreakdownSortTokenEfficiency, BreakdownSortDirection: direction}); err != nil {
+						t.Fatal(err)
+					}
+					got := []string{candidates[0].row.Model, candidates[1].row.Model, candidates[2].row.Model}
+					if !slices.Equal(got, []string{"alpha", "bravo", "charlie"}) {
+						t.Fatalf("%s permutation %d/%d/%d = %v, want [alpha bravo charlie]", direction, a, b, c, got)
+					}
+				}
+			}
+		}
+	}
+}
 
 func TestUsageBreakdownAggregatesByScopeAndMasksAccessKeyDimensions(t *testing.T) {
 	db := openRequestLogQueryDB(t)
@@ -233,6 +328,9 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		value.CacheWrite1HTokens = int64(groupID) * 40
 		value.CacheWriteUnknownTokens = int64(groupID) * 50
 		value.OutputTokens = int64(groupID) * 60
+		value.SuccessOutputTokens = int64(groupID) * 70
+		value.SuccessDurationMsTotal = int64(groupID) * 100
+		value.SuccessEfficiencySampleCount = successes
 		value.EstimatedCostNanoUSD = int64(groupID) * 100
 		attemptValue := models.UsageAttemptStat{
 			BucketStartMS: start.UnixMilli(), AccessKeyID: 41, GroupID: groupID,
@@ -284,6 +382,8 @@ func TestUsageBreakdownSortsByAggregateValues(t *testing.T) {
 		{"output ascending", UsageBreakdownSortOutputTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"total tokens ascending", UsageBreakdownSortTotalTokens, UsageBreakdownSortAscending, "alpha", "charlie"},
 		{"cost descending", UsageBreakdownSortEstimatedCost, UsageBreakdownSortDescending, "charlie", "alpha"},
+		{"cache rate ascending", UsageBreakdownSortCacheRate, UsageBreakdownSortAscending, "alpha", "charlie"},
+		{"token efficiency descending", UsageBreakdownSortTokenEfficiency, UsageBreakdownSortDescending, "charlie", "alpha"},
 		{"attempts descending", UsageBreakdownSortAttemptCount, UsageBreakdownSortDescending, "charlie", "alpha"},
 		{"attempt failures descending", UsageBreakdownSortAttemptFailureCount, UsageBreakdownSortDescending, "charlie", "alpha"},
 		{"normal attempts descending", UsageBreakdownSortNormalAttemptCount, UsageBreakdownSortDescending, "charlie", "alpha"},

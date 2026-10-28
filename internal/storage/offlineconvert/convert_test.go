@@ -59,8 +59,8 @@ func buildLegacyDatabase(t *testing.T, path string) *gorm.DB {
 	if err := storage.AutoMigrate(db); err != nil {
 		t.Fatalf("apply current migrations to legacy fixture: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE id = ?", migrations.ID0026).Error; err != nil {
-		t.Fatalf("remove post-legacy compression migration from fixture ledger: %v", err)
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{migrations.ID0026, migrations.ID0027}).Error; err != nil {
+		t.Fatalf("remove post-legacy migrations from fixture ledger: %v", err)
 	}
 	// Reconstruct the pre-refactor ledger: every active migration plus the
 	// retired subscription migration, in ascending order.

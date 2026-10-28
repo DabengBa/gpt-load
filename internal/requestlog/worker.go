@@ -188,24 +188,27 @@ type usageStatKey struct {
 }
 
 type usageStatDelta struct {
-	RequestCount             int64
-	SuccessCount             int64
-	FailureCount             int64
-	UncachedInputTokens      int64
-	OutputTokens             int64
-	CacheReadTokens          int64
-	CacheWrite5MTokens       int64
-	CacheWrite1HTokens       int64
-	CacheWriteUnknownTokens  int64
-	EstimatedCostNanoUSD     int64
-	DurationMsTotal          int64
-	DurationSampleCount      int64
-	FirstResponseMsTotal     int64
-	FirstResponseSampleCount int64
-	UsageMissingCount        int64
-	PartialCount             int64
-	UnpricedRequestCount     int64
-	PricingPartialCount      int64
+	RequestCount                 int64
+	SuccessCount                 int64
+	FailureCount                 int64
+	UncachedInputTokens          int64
+	OutputTokens                 int64
+	SuccessOutputTokens          int64
+	SuccessDurationMsTotal       int64
+	SuccessEfficiencySampleCount int64
+	CacheReadTokens              int64
+	CacheWrite5MTokens           int64
+	CacheWrite1HTokens           int64
+	CacheWriteUnknownTokens      int64
+	EstimatedCostNanoUSD         int64
+	DurationMsTotal              int64
+	DurationSampleCount          int64
+	FirstResponseMsTotal         int64
+	FirstResponseSampleCount     int64
+	UsageMissingCount            int64
+	PartialCount                 int64
+	UnpricedRequestCount         int64
+	PricingPartialCount          int64
 }
 
 func writeRequestLogBatch(tx *gorm.DB, rows []models.RequestLog) error {
@@ -674,6 +677,9 @@ func usageStatUpsertClause() clause.OnConflict {
 			"failure_count",
 			"uncached_input_tokens",
 			"output_tokens",
+			"success_output_tokens",
+			"success_duration_ms_total",
+			"success_efficiency_sample_count",
 			"cache_read_tokens",
 			"cache_write_5m_tokens",
 			"cache_write_1h_tokens",
@@ -715,31 +721,34 @@ func buildUsageAggregationJournals(
 		}
 		for key, delta := range deltas {
 			journals = append(journals, models.UsageAggregationJournal{
-				RequestID:                row.ID,
-				BucketStartMS:            key.BucketStartMS,
-				AccessKeyID:              key.AccessKeyID,
-				ChannelID:                key.ChannelID,
-				GroupID:                  key.GroupID,
-				CredentialID:             key.CredentialID,
-				Model:                    key.Model,
-				RequestCount:             delta.RequestCount,
-				SuccessCount:             delta.SuccessCount,
-				FailureCount:             delta.FailureCount,
-				UncachedInputTokens:      delta.UncachedInputTokens,
-				OutputTokens:             delta.OutputTokens,
-				CacheReadTokens:          delta.CacheReadTokens,
-				CacheWrite5MTokens:       delta.CacheWrite5MTokens,
-				CacheWrite1HTokens:       delta.CacheWrite1HTokens,
-				CacheWriteUnknownTokens:  delta.CacheWriteUnknownTokens,
-				EstimatedCostNanoUSD:     delta.EstimatedCostNanoUSD,
-				DurationMsTotal:          delta.DurationMsTotal,
-				DurationSampleCount:      delta.DurationSampleCount,
-				FirstResponseMsTotal:     delta.FirstResponseMsTotal,
-				FirstResponseSampleCount: delta.FirstResponseSampleCount,
-				UsageMissingCount:        delta.UsageMissingCount,
-				PartialCount:             delta.PartialCount,
-				UnpricedRequestCount:     delta.UnpricedRequestCount,
-				PricingPartialCount:      delta.PricingPartialCount,
+				RequestID:                    row.ID,
+				BucketStartMS:                key.BucketStartMS,
+				AccessKeyID:                  key.AccessKeyID,
+				ChannelID:                    key.ChannelID,
+				GroupID:                      key.GroupID,
+				CredentialID:                 key.CredentialID,
+				Model:                        key.Model,
+				RequestCount:                 delta.RequestCount,
+				SuccessCount:                 delta.SuccessCount,
+				FailureCount:                 delta.FailureCount,
+				UncachedInputTokens:          delta.UncachedInputTokens,
+				OutputTokens:                 delta.OutputTokens,
+				SuccessOutputTokens:          delta.SuccessOutputTokens,
+				SuccessDurationMsTotal:       delta.SuccessDurationMsTotal,
+				SuccessEfficiencySampleCount: delta.SuccessEfficiencySampleCount,
+				CacheReadTokens:              delta.CacheReadTokens,
+				CacheWrite5MTokens:           delta.CacheWrite5MTokens,
+				CacheWrite1HTokens:           delta.CacheWrite1HTokens,
+				CacheWriteUnknownTokens:      delta.CacheWriteUnknownTokens,
+				EstimatedCostNanoUSD:         delta.EstimatedCostNanoUSD,
+				DurationMsTotal:              delta.DurationMsTotal,
+				DurationSampleCount:          delta.DurationSampleCount,
+				FirstResponseMsTotal:         delta.FirstResponseMsTotal,
+				FirstResponseSampleCount:     delta.FirstResponseSampleCount,
+				UsageMissingCount:            delta.UsageMissingCount,
+				PartialCount:                 delta.PartialCount,
+				UnpricedRequestCount:         delta.UnpricedRequestCount,
+				PricingPartialCount:          delta.PricingPartialCount,
 			})
 		}
 	}
@@ -833,6 +842,9 @@ func buildUsageJournalDeltas(
 			{name: "failure_count", target: &delta.FailureCount, value: journal.FailureCount},
 			{name: "uncached_input_tokens", target: &delta.UncachedInputTokens, value: journal.UncachedInputTokens},
 			{name: "output_tokens", target: &delta.OutputTokens, value: journal.OutputTokens},
+			{name: "success_output_tokens", target: &delta.SuccessOutputTokens, value: journal.SuccessOutputTokens},
+			{name: "success_duration_ms_total", target: &delta.SuccessDurationMsTotal, value: journal.SuccessDurationMsTotal},
+			{name: "success_efficiency_sample_count", target: &delta.SuccessEfficiencySampleCount, value: journal.SuccessEfficiencySampleCount},
 			{name: "cache_read_tokens", target: &delta.CacheReadTokens, value: journal.CacheReadTokens},
 			{name: "cache_write_5m_tokens", target: &delta.CacheWrite5MTokens, value: journal.CacheWrite5MTokens},
 			{name: "cache_write_1h_tokens", target: &delta.CacheWrite1HTokens, value: journal.CacheWrite1HTokens},
@@ -850,7 +862,7 @@ func buildUsageJournalDeltas(
 				return nil, err
 			}
 		}
-		if delta.DurationSampleCount > delta.RequestCount {
+		if delta.DurationSampleCount > delta.RequestCount || delta.SuccessEfficiencySampleCount > delta.SuccessCount {
 			return nil, fmt.Errorf("aggregate usage journal duration_sample_count exceeds request_count")
 		}
 		if delta.FirstResponseSampleCount > delta.RequestCount {
@@ -925,6 +937,18 @@ func (delta *usageStatDelta) addRow(row models.RequestLog) error {
 	}
 	if err := checkedInt64Add(&delta.DurationSampleCount, 1, "duration_sample_count"); err != nil {
 		return err
+	}
+	if row.Status == string(telemetry.RequestStatusSuccess) &&
+		row.UsageState == string(usage.StateComplete) && row.DurationMs > 0 {
+		if err := checkedInt64Add(&delta.SuccessOutputTokens, row.OutputTokens, "success_output_tokens"); err != nil {
+			return err
+		}
+		if err := checkedInt64Add(&delta.SuccessDurationMsTotal, row.DurationMs, "success_duration_ms_total"); err != nil {
+			return err
+		}
+		if err := checkedInt64Add(&delta.SuccessEfficiencySampleCount, 1, "success_efficiency_sample_count"); err != nil {
+			return err
+		}
 	}
 	if row.FirstResponseMs != nil {
 		if err := checkedInt64Add(&delta.FirstResponseMsTotal, *row.FirstResponseMs, "first_response_ms_total"); err != nil {
@@ -1145,6 +1169,9 @@ func checkedUsageStatTotal(
 		{name: "failure_count", left: existing.FailureCount, right: delta.FailureCount, set: func(value int64) { total.FailureCount = value }},
 		{name: "uncached_input_tokens", left: existing.UncachedInputTokens, right: delta.UncachedInputTokens, set: func(value int64) { total.UncachedInputTokens = value }},
 		{name: "output_tokens", left: existing.OutputTokens, right: delta.OutputTokens, set: func(value int64) { total.OutputTokens = value }},
+		{name: "success_output_tokens", left: existing.SuccessOutputTokens, right: delta.SuccessOutputTokens, set: func(value int64) { total.SuccessOutputTokens = value }},
+		{name: "success_duration_ms_total", left: existing.SuccessDurationMsTotal, right: delta.SuccessDurationMsTotal, set: func(value int64) { total.SuccessDurationMsTotal = value }},
+		{name: "success_efficiency_sample_count", left: existing.SuccessEfficiencySampleCount, right: delta.SuccessEfficiencySampleCount, set: func(value int64) { total.SuccessEfficiencySampleCount = value }},
 		{name: "cache_read_tokens", left: existing.CacheReadTokens, right: delta.CacheReadTokens, set: func(value int64) { total.CacheReadTokens = value }},
 		{name: "cache_write_5m_tokens", left: existing.CacheWrite5MTokens, right: delta.CacheWrite5MTokens, set: func(value int64) { total.CacheWrite5MTokens = value }},
 		{name: "cache_write_1h_tokens", left: existing.CacheWrite1HTokens, right: delta.CacheWrite1HTokens, set: func(value int64) { total.CacheWrite1HTokens = value }},
@@ -1173,7 +1200,7 @@ func checkedUsageStatTotal(
 		)
 	}
 	total.EstimatedCostNanoUSD = int64(cost)
-	if total.DurationSampleCount > total.RequestCount {
+	if total.DurationSampleCount > total.RequestCount || total.SuccessEfficiencySampleCount > total.SuccessCount {
 		return models.UsageStat{}, fmt.Errorf("calculate absolute usage stat duration_sample_count exceeds request_count")
 	}
 	if total.FirstResponseSampleCount > total.RequestCount {

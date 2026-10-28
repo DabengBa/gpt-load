@@ -230,6 +230,8 @@ const (
 	UsageBreakdownSortOutputTokens         UsageBreakdownSort = "output_tokens"
 	UsageBreakdownSortTotalTokens          UsageBreakdownSort = "total_tokens"
 	UsageBreakdownSortEstimatedCost        UsageBreakdownSort = "estimated_cost_nano_usd"
+	UsageBreakdownSortCacheRate            UsageBreakdownSort = "cache_rate"
+	UsageBreakdownSortTokenEfficiency      UsageBreakdownSort = "token_efficiency"
 )
 
 type UsageBreakdownSortDirection string
@@ -286,24 +288,27 @@ type UsageQuery struct {
 }
 
 type UsageAggregate struct {
-	RequestCount             int64
-	SuccessCount             int64
-	FailureCount             int64
-	UncachedInputTokens      int64
-	CacheReadTokens          int64
-	CacheWrite5MTokens       int64
-	CacheWrite1HTokens       int64
-	CacheWriteUnknownTokens  int64
-	OutputTokens             int64
-	EstimatedCostNanoUSD     int64
-	DurationMsTotal          int64
-	DurationSampleCount      int64
-	FirstResponseMsTotal     int64
-	FirstResponseSampleCount int64
-	UsageMissingCount        int64
-	PartialCount             int64
-	UnpricedRequestCount     int64
-	PricingPartialCount      int64
+	RequestCount                 int64
+	SuccessCount                 int64
+	FailureCount                 int64
+	UncachedInputTokens          int64
+	CacheReadTokens              int64
+	CacheWrite5MTokens           int64
+	CacheWrite1HTokens           int64
+	CacheWriteUnknownTokens      int64
+	OutputTokens                 int64
+	SuccessOutputTokens          int64
+	SuccessDurationMsTotal       int64
+	SuccessEfficiencySampleCount int64
+	EstimatedCostNanoUSD         int64
+	DurationMsTotal              int64
+	DurationSampleCount          int64
+	FirstResponseMsTotal         int64
+	FirstResponseSampleCount     int64
+	UsageMissingCount            int64
+	PartialCount                 int64
+	UnpricedRequestCount         int64
+	PricingPartialCount          int64
 }
 
 type UsageSeriesPoint struct {

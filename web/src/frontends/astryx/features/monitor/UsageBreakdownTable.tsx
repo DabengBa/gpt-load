@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { Pagination } from '@astryxdesign/core'
 import { useEffect, useId, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useIntl } from 'react-intl'
 
 import type { GroupOptionDto } from '@shared/control/types'
@@ -16,6 +17,7 @@ import { formatEstimatedCost, formatInteger, formatPercent, formatTokens } from 
 import type { MessageId } from '@shared/i18n/message-ids'
 
 import { useT } from '../../app/i18n'
+import { RouteLink } from '../../app/route-link'
 
 const styles = stylex.create({
   // DataTable port (appearance="editorial"): a horizontal-scroll container
@@ -53,7 +55,9 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   numericHeadCell: {
-    textAlign: 'right',
+    textAlign: 'center',
+    paddingInlineStart: 12,
+    paddingInlineEnd: 12,
   },
   cell: {
     paddingTop: 10,
@@ -68,8 +72,10 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   numericCell: {
-    textAlign: 'right',
+    textAlign: 'center',
     fontVariantNumeric: 'tabular-nums',
+    paddingInlineStart: 12,
+    paddingInlineEnd: 12,
   },
   primaryNumericCell: {
     fontWeight: 620,
@@ -120,15 +126,9 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  // Classic `.usage-breakdown__total th/td`: layered on top of the regular
-  // headCell/cell rules, so tfoot cells keep their border-bottom and padding.
-  totalAccent: {
-    borderTopWidth: 2,
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
-    backgroundColor: 'var(--color-surface-sunken)',
-    fontWeight: 700,
-    fontVariantNumeric: 'tabular-nums',
+  groupLink: {
+    textDecorationLine: 'underline',
+    textUnderlineOffset: 3,
   },
 })
 
@@ -140,7 +140,7 @@ interface BreakdownColumn {
   identity?: boolean
   numeric?: boolean
   primary?: boolean
-  cell(row: UsageBreakdownRowDto): string
+  cell(row: UsageBreakdownRowDto): ReactNode
   total(breakdown: UsageBreakdownDto): string
 }
 
@@ -207,6 +207,11 @@ export function UsageBreakdownTable({
     return formatPercent(aggregate.success_count, aggregate.request_count, locale)
   }
 
+  function cacheRate(row: UsageBreakdownRowDto): string {
+    const inputTokens = row.uncached_input_tokens + row.cache_read_tokens
+    return inputTokens === 0 ? '—' : formatPercent(row.cache_read_tokens, inputTokens, locale)
+  }
+
   const columns: BreakdownColumn[] = [
     {
       key: 'model',
@@ -221,7 +226,15 @@ export function UsageBreakdownTable({
       labelId: 'monitor.usage.breakdown.columns.group',
       sortKey: 'group',
       adminOnly: true,
-      cell: (row) => groupName(row),
+      cell: (row) => {
+        const knownGroup = groups.find((group) => group.id === row.group_id)
+        if (knownGroup === undefined || row.group_id === undefined) return groupName(row)
+        return (
+          <RouteLink to={`/groups/${row.group_id}`} {...stylex.props(styles.groupLink)}>
+            {knownGroup.name}
+          </RouteLink>
+        )
+      },
       total: () => '—',
     },
 
@@ -283,25 +296,37 @@ export function UsageBreakdownTable({
       total: (data) => averageFirstResponse(data.total),
     },
     {
-      key: 'uncached_input_tokens',
-      labelId: 'monitor.usage.breakdown.columns.uncachedInput',
-      sortKey: 'uncached_input_tokens',
-      cell: (row) => formatTokens(row.uncached_input_tokens, locale),
-      total: (data) => formatTokens(data.total.uncached_input_tokens, locale),
+      key: 'cache_rate',
+      labelId: 'monitor.usage.breakdown.columns.cacheRate',
+      sortKey: 'cache_rate',
+      cell: (row) => cacheRate(row),
+      total: () => '—',
     },
     {
-      key: 'cache_read_tokens',
-      labelId: 'monitor.usage.breakdown.columns.cacheRead',
-      sortKey: 'cache_read_tokens',
-      cell: (row) => formatTokens(row.cache_read_tokens, locale),
-      total: (data) => formatTokens(data.total.cache_read_tokens, locale),
-    },
-    {
-      key: 'output_tokens',
-      labelId: 'monitor.usage.breakdown.columns.output',
-      sortKey: 'output_tokens',
-      cell: (row) => formatTokens(row.output_tokens, locale),
-      total: (data) => formatTokens(data.total.output_tokens, locale),
+      key: 'token_efficiency',
+      labelId: 'monitor.usage.breakdown.columns.tokenEfficiency',
+      sortKey: 'token_efficiency',
+      cell: (row) => {
+        const {
+          success_output_tokens,
+          success_duration_ms_total,
+          success_efficiency_sample_count,
+          success_count,
+        } = row
+        if (
+          success_count === 0 ||
+          success_efficiency_sample_count !== success_count ||
+          success_duration_ms_total === 0
+        )
+          return '—'
+        return `${intl.formatNumber(
+          (success_output_tokens * success_count * 1000) / success_duration_ms_total,
+          {
+            maximumFractionDigits: 1,
+          },
+        )} /s`
+      },
+      total: () => '—',
     },
     {
       key: 'total_tokens',
@@ -397,8 +422,9 @@ export function UsageBreakdownTable({
                     {...stylex.props(
                       styles.headCell,
                       isNumeric && styles.numericHeadCell,
-                      columnIndex === 0 && styles.cellFirst,
-                      columnIndex === lastColumnIndex && styles.cellLast,
+                      !isNumeric && columnIndex === 0 && styles.cellFirst,
+                      !isNumeric && columnIndex === lastColumnIndex && styles.cellLast,
+                      isNumeric && styles.numericHeadCell,
                     )}
                   >
                     {sortKey !== undefined ? (
@@ -432,8 +458,14 @@ export function UsageBreakdownTable({
                       (column.numeric ?? (column.key !== 'model' && column.key !== 'group')) &&
                         styles.numericCell,
                       column.primary === true && styles.primaryNumericCell,
-                      columnIndex === 0 && styles.cellFirst,
-                      columnIndex === lastColumnIndex && styles.cellLast,
+                      !(column.numeric ?? (column.key !== 'model' && column.key !== 'group')) &&
+                        columnIndex === 0 &&
+                        styles.cellFirst,
+                      !(column.numeric ?? (column.key !== 'model' && column.key !== 'group')) &&
+                        columnIndex === lastColumnIndex &&
+                        styles.cellLast,
+                      (column.numeric ?? (column.key !== 'model' && column.key !== 'group')) &&
+                        styles.numericCell,
                       rowIndex === breakdown.rows.length - 1 && styles.cellNoBorder,
                     )}
                   >
@@ -443,40 +475,6 @@ export function UsageBreakdownTable({
               </tr>
             ))}
           </tbody>
-          <tfoot>
-            <tr>
-              {visibleColumns.map((column, columnIndex) =>
-                columnIndex === 0 ? (
-                  <th
-                    key={column.key}
-                    scope="row"
-                    {...stylex.props(
-                      styles.headCell,
-                      styles.totalAccent,
-                      styles.cellFirst,
-                      columnIndex === lastColumnIndex && styles.cellLast,
-                    )}
-                  >
-                    {column.total(breakdown)}
-                  </th>
-                ) : (
-                  <td
-                    key={column.key}
-                    {...stylex.props(
-                      styles.cell,
-                      styles.totalAccent,
-                      (column.numeric ?? (column.key !== 'model' && column.key !== 'group')) &&
-                        styles.numericCell,
-                      column.primary === true && styles.primaryNumericCell,
-                      columnIndex === lastColumnIndex && styles.cellLast,
-                    )}
-                  >
-                    {column.total(breakdown)}
-                  </td>
-                ),
-              )}
-            </tr>
-          </tfoot>
         </table>
         <span id={scrollHintId} {...stylex.props(styles.srOnly)}>
           {scrollHint}
