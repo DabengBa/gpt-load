@@ -98,7 +98,13 @@ The frontend stores reasoning edits in the same typed `ScheduleDrafts` map as
 priority, weight, and concurrency, serialized through `schedule_draft` in the
 current URL. Missing `reasoning_effort` means unchanged; explicit `null` means
 clear the override. Refresh and enable/disable mutations retain the local
-draft while adopting the latest observed snapshot revision. The navigation
+draft while adopting the latest observed snapshot revision. Enable/disable
+and draft saves for the same model context are serialized in the editor. A
+queued write advances only after its predecessor publishes the next revision
+and a detail refresh observes that exact revision; an intervening change,
+failed refresh, or context change stops subsequent queued writes. A successful
+PATCH remains committed even if its subsequent refresh fails. Revision
+conflicts trigger a refresh and preserve unsaved drafts. The navigation
 blocker permits same-model URL updates and protects model changes, Back, and
 page exits with save/discard/stay choices. Saving before navigation does not
 replace the outgoing draft URL: only a successful PATCH releases the original
