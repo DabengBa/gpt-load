@@ -165,7 +165,8 @@ switched=true
 docker compose -p gpt-load -f "$compose" up -d --no-build --pull never
 
 status=unknown
-for _ in $(seq 1 24); do
+# 13G 生产库启动实测耗时约 135s，等待最多 6 分钟。
+for _ in $(seq 1 72); do
   sleep 5
   status=$(docker inspect gpt-load --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)
   [ "$status" = healthy ] && break

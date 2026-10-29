@@ -6,8 +6,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// validateMigrationForeignKeys performs SQLite's post-migration integrity
-// check. SQLite validates foreign keys during normal writes as well.
+// validateMigrationForeignKeys performs SQLite's integrity check for the
+// migration that just rewrote schema. It only runs while applying pending
+// migrations inside the migration transaction; a start that only revalidates
+// the ledger leaves existing rows to SQLite's per-write enforcement.
 func validateMigrationForeignKeys(db *gorm.DB) error {
 	if db == nil || db.Dialector == nil || db.Dialector.Name() != "sqlite" {
 		return nil

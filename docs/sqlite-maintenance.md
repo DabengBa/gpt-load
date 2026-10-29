@@ -83,6 +83,34 @@ WAL/SHM sidecars, or all runtime state. Keep the required keys with any copy
 intended for recovery. For offline disaster recovery and compaction, stop all
 writers and use the full-directory archive below instead.
 
+## Verifying a copy explicitly
+
+Starting the application does not prove a database is free of foreign-key
+violations: `PRAGMA foreign_key_check` only runs inside the transaction that
+applies pending migrations, and a start with no pending migration just
+revalidates the migration ledger and each applied migration's schema checks
+(owned by [Deployment
+Prerequisites](../.docs/tech/frozen-model-pricing.md#deployment-prerequisites)).
+The offline maintenance script above is also limited to `integrity_check`,
+checkpoint, and `VACUUM`.
+
+Whenever a database copy must be proven consistent — a pre-upgrade rehearsal, a
+restored archive, a converted legacy database, or a snapshot kept as evidence —
+run both checks on that copy yourself, before starting any version on it:
+
+```bash
+test -s "$COPY_DIR/gpt-load.db" || { echo 'Missing or empty copy' >&2; exit 1; }
+sqlite3 -readonly -batch "$COPY_DIR/gpt-load.db" 'SELECT count(*) FROM schema_migrations;' # must succeed
+sqlite3 -readonly -batch "$COPY_DIR/gpt-load.db" 'PRAGMA integrity_check;'    # must print ok
+sqlite3 -readonly -batch "$COPY_DIR/gpt-load.db" 'PRAGMA foreign_key_check;'  # must print nothing
+```
+
+`foreign_key_check` prints one row per violating child row (table, rowid,
+parent table, constraint index); any output means the copy is damaged and must
+not be started or promoted. Both statements are read-only, so they are safe
+against an opened copy or a `?mode=ro` URI. Check the copy, never the live
+volume, and record the command and its output with the copy.
+
 ## Offline maintenance command
 
 The command is deliberately offline and **never stops the service itself**.
@@ -203,6 +231,28 @@ settings evidence.
 在线排障或数据库副本；它不是包含密钥、WAL/SHM 和运行时状态的整目录灾备。需要
 停机压缩或灾备时，停止所有写入者，使用
 [`scripts/sqlite-maintenance.sh`](../scripts/sqlite-maintenance.sh) 创建整目录归档。
+
+### 显式校验副本
+
+启动本身不能证明数据库没有外键违规。存在待执行迁移时，`PRAGMA foreign_key_check`
+会跑在迁移事务内并让本次启动失败；但没有待执行迁移的启动只重新校验迁移台账和各
+个已应用迁移的 schema 检查，故意不扫描既有数据行。上面的停机维护脚本也只执行
+integrity check、checkpoint 和 `VACUUM`，不做外键检查。
+
+凡是需要证明某个副本一致——升级前演练、恢复的归档、转换后的旧库、作为证据保留的
+快照——都要在启动任何版本之前，自行对这个副本执行两项检查：
+
+```bash
+test -s "$COPY_DIR/gpt-load.db" || { echo '副本不存在或为空' >&2; exit 1; }
+sqlite3 -readonly -batch "$COPY_DIR/gpt-load.db" 'SELECT count(*) FROM schema_migrations;' # 必须成功
+sqlite3 -readonly -batch "$COPY_DIR/gpt-load.db" 'PRAGMA integrity_check;'    # 必须输出 ok
+sqlite3 -readonly -batch "$COPY_DIR/gpt-load.db" 'PRAGMA foreign_key_check;'  # 必须没有任何输出
+```
+
+`foreign_key_check` 会为每条违规子行输出一行（表名、rowid、父表、约束序号），只要
+有输出就说明副本已损坏，不得启动或切换使用。两条语句都是只读的，可以安全地作用于
+已打开的副本或 `?mode=ro` URI。检查对象必须是副本而不是生产卷，并把命令和输出与该
+副本一起留存。
 
 该脚本不会自行停止服务。先停服务，再根据实际部署使用
 `--service CONTAINER`、`--volume NAME` 或 `--data-dir DIR`，并始终提供必需的

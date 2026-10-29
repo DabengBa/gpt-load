@@ -79,6 +79,11 @@ deployment, the operator must separately approve and complete all three items:
    Remaining migration IDs keep their identity; the gap from
    0008 to 0010 does not authorize rewriting historical ledger entries. External
    archival, retention scope, and schema preparation require a separate decision.
+   `applyMigrationsLocked` runs `PRAGMA foreign_key_check` inside the migration
+   transaction only when pending migrations remain; a start that merely
+   revalidates the ledger never scans existing rows for violations. Proving a
+   prepared copy has no such violations therefore requires the explicit check in
+   [SQLite maintenance and recovery](../../docs/sqlite-maintenance.md#verifying-a-copy-explicitly).
 2. **Old receipts:** decide how incompatible historical receipts are archived,
    retained, and accessed outside the v7-only application before cutover. The
    application supplies no old-receipt reader, migration, or automatic cleanup.

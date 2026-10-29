@@ -274,7 +274,11 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration) error {
 		}
 	}
 
-	for _, entry := range entries[len(applied):] {
+	pending := entries[len(applied):]
+	if len(pending) == 0 {
+		return nil
+	}
+	for _, entry := range pending {
 		if err := applyMigration(db, entry); err != nil {
 			return err
 		}
