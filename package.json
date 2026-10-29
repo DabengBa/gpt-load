@@ -4,6 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "docs:check": "pnpm --dir web run docs:check",
+    "docs:build": "pnpm --dir web run docs:build",
+    "docs:tree": "node .docs/scripts/docs.js tree",
+    "docs:index": "node .docs/scripts/docs.js index",
+    "docs:search": "node .docs/scripts/docs.js search",
+    "docs:show": "node .docs/scripts/docs.js show",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

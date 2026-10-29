@@ -28,6 +28,10 @@ runs:
       shell: bash
       run: pnpm --dir web run docs:check
 
+    - name: Test documentation scripts
+      shell: bash
+      run: node --test .docs/scripts/doc-runtime.test.js .docs/scripts/doc-integrity-check.test.js
+
     - name: Build semantic documentation
       shell: bash
       run: pnpm --dir web run docs:build
