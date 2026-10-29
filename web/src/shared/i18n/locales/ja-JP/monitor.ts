@@ -269,6 +269,8 @@ export default {
         saved: '保存しました',
         saveFailed: '保存に失敗しました。',
         conflict: '設定が変更されました。更新して再試行してください。',
+        refreshAfterWriteFailed:
+          '変更は保存されましたが、更新に失敗しました。更新してから操作を続けてください。',
         refreshToResolve: '更新して解決',
         recoverFailed: '回復に失敗しました。',
         noEntries: 'エントリがありません。',

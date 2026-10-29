@@ -268,6 +268,8 @@ export default {
         saved: 'Saved',
         saveFailed: 'Save failed.',
         conflict: 'The configuration changed. Refresh and try again.',
+        refreshAfterWriteFailed:
+          'The change was saved, but refreshing failed. Refresh before making further changes.',
         refreshToResolve: 'Refresh to resolve',
         recoverFailed: 'Recovery failed.',
         noEntries: 'No entries are available.',

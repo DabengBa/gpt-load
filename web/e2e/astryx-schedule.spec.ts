@@ -370,6 +370,223 @@ async function waitForScheduleTable(page: Page): Promise<void> {
 
 const rows = (page: Page) => page.locator('[data-row-key]')
 
+async function installVersionedSchedule(
+  page: Page,
+  options: { externalAfterFirst?: boolean; failRefresh?: boolean } = {},
+) {
+  await installScheduleRoutes(page)
+  const state = detailForModel('worker')
+  const requests: SchedulePatch[] = []
+  let releaseFirst = () => {}
+  const firstHeld = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  await page.route('**/api/model-route/schedule/detail*', async (route) => {
+    if (options.failRefresh && requests.length > 0) {
+      await route.fulfill(response({}, 500))
+      return
+    }
+    await route.fulfill(response(state))
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    const patch = route.request().postDataJSON() as SchedulePatch
+    requests.push(patch)
+    if (requests.length === 1) await firstHeld
+    if (patch.snapshot_revision !== state.snapshot_revision) {
+      await route.fulfill(conflictResponse())
+      return
+    }
+    for (const update of patch.updates) {
+      const group = state.groups.find((item) => item.group_id === update.group_id)
+      const target = group?.entries.find((item) => item.entry_id === update.entry_id)
+      if (target && update.enabled !== undefined) target.enabled = update.enabled
+      if (target && update.weight != null) target.weight = update.weight
+    }
+    state.snapshot_revision++
+    if (requests.length === 1 && options.externalAfterFirst) {
+      state.groups[0]!.entries[0]!.weight = 73
+      state.snapshot_revision++
+    }
+    await route.fulfill(response({ snapshot_revision_new: state.snapshot_revision, detail: null }))
+  })
+  return { state, requests, releaseFirst }
+}
+
+test('new model accepts its first write while previous model write is pending', async ({
+  page,
+}) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  const other = detailForModel('worker-b')
+  await page.route('**/api/model-route/schedule/detail*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('external_model') === 'worker-b')
+      return route.fulfill(response(other))
+    return route.fallback()
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (
+      route.request().method() !== 'PATCH' ||
+      route.request().postDataJSON().external_model !== 'worker-b'
+    )
+      return route.fallback()
+    const patch = route.request().postDataJSON() as SchedulePatch
+    requests.push(patch)
+    other.groups[1]!.entries[0]!.enabled = false
+    other.snapshot_revision++
+    await route.fulfill(response({ snapshot_revision_new: other.snapshot_revision, detail: null }))
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+  await rows(page).nth(1).getByRole('switch').click()
+  try {
+    await expect.poll(() => requests.length).toBe(2)
+    expect(requests[1]!.external_model).toBe('worker-b')
+    expect(other.groups[1]!.entries[0]!.enabled).toBe(false)
+  } finally {
+    releaseFirst()
+  }
+  await expect.poll(() => state.groups[0]!.entries[0]!.enabled).toBe(false)
+  expect(requests.map((request) => request.external_model)).toEqual(['worker', 'worker-b'])
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+})
+
+test('single successful switch observes a subsequent external publication', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page, {
+    externalAfterFirst: true,
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  releaseFirst()
+  await expect.poll(() => state.groups[0]!.entries[0]!.weight).toBe(73)
+  await expect(page.locator('#weight-0')).toHaveValue('73')
+  expect(requests).toHaveLength(1)
+})
+
+test('rapid switches across entries commit both intentions', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  await rows(page).nth(1).getByRole('switch').click()
+  releaseFirst()
+  await expect.poll(() => state.groups[1]!.entries[0]!.enabled).toBe(false)
+  expect(state.groups[0]!.entries[0]!.enabled).toBe(false)
+  expect(requests.map((request) => request.snapshot_revision)).toEqual([11, 12])
+})
+
+test('save following an in-flight switch commits the draft', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('#weight-0').fill('37')
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  releaseFirst()
+  await expect.poll(() => state.groups[0]!.entries[0]!.weight).toBe(37)
+  expect(state.groups[0]!.entries[0]!.enabled).toBe(false)
+  expect(requests.map((request) => request.snapshot_revision)).toEqual([11, 12])
+})
+
+test('external write after a switch blocks a queued draft save', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page, {
+    externalAfterFirst: true,
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('#weight-0').fill('37')
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  releaseFirst()
+  await expect(
+    page.getByText('The configuration changed. Refresh and try again.').first(),
+  ).toBeVisible()
+  expect(requests).toHaveLength(1)
+  expect(state.groups[0]!.entries[0]!.weight).toBe(73)
+  await expect(page.locator('#weight-0')).toHaveValue('37')
+  await expect(page).toHaveURL(/schedule_draft=/)
+})
+
+test('real revision conflict refreshes server values without losing a draft', async ({ page }) => {
+  await installScheduleRoutes(page)
+  let updated = false
+  await page.route('**/api/model-route/schedule/detail*', async (route) => {
+    const detail = detailForModel('worker')
+    if (updated) {
+      detail.snapshot_revision = 12
+      detail.groups[1]!.entries[0]!.weight = 73
+    }
+    await route.fulfill(response(detail))
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    updated = true
+    await route.fulfill(conflictResponse())
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('#weight-0').fill('37')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.locator('#weight-1')).toHaveValue('73')
+  await expect(page.locator('#weight-0')).toHaveValue('37')
+  await expect(page).toHaveURL(/schedule_draft=/)
+  await expect(
+    page.getByText('The configuration changed. Refresh and try again.').first(),
+  ).toBeVisible()
+})
+
+test('switching model while a write is pending does not replay queued changes on the new model', async ({
+  page,
+}) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await page.route('**/api/model-route/schedule/detail*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('external_model') === 'worker-b') {
+      return route.fulfill(response(detailForModel('worker-b')))
+    }
+    return route.fallback()
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  await rows(page).nth(1).getByRole('switch').click()
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+  releaseFirst()
+  await expect.poll(() => state.groups[0]!.entries[0]!.enabled).toBe(false)
+  await expect(rows(page).first().getByRole('switch')).toBeVisible()
+  await expect.poll(() => requests.length).toBe(1)
+  expect(requests[0]!.external_model).toBe('worker')
+})
+
+test('successful switch with failed refresh reports stale state without retrying the write', async ({
+  page,
+}) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page, {
+    failRefresh: true,
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  releaseFirst()
+  await expect(
+    page.getByText(
+      'The change was saved, but refreshing failed. Refresh before making further changes.',
+    ),
+  ).toBeVisible()
+  expect(requests).toHaveLength(1)
+  expect(state.groups[0]!.entries[0]!.enabled).toBe(false)
+})
+
 test('disabled schedule rows remain visually distinct without changing their switches', async ({
   page,
 }, testInfo) => {
@@ -1641,12 +1858,10 @@ test('read-only model collection errors use a banner and can retry', async ({ pa
     await route.fulfill(attempts === 1 ? response({}, 500) : response(emptyModelCollection()))
   })
   await openSchedule(page, '?schedule_model=worker')
-  await expect(page.getByRole('alert')).toBeVisible()
-  await expect(
-    page.getByText('Unable to load the model schedule index.', { exact: true }),
-  ).toBeVisible()
+  const banner = page.getByText('Unable to load the model schedule index.', { exact: true })
+  await expect(banner).toBeVisible()
   await page.getByRole('button', { name: 'Retry', exact: true }).click()
-  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(banner).toHaveCount(0)
   expect(attempts).toBe(2)
 })
 
@@ -1997,7 +2212,7 @@ test('compact model selector supports search, ArrowDown Enter and Escape focus r
   await expect(picker).not.toBeVisible()
   await expect(trigger).toBeFocused()
 
-  const directory = '/tmp/gpt-load-schedule-product'
+  const directory = testInfo.outputPath('schedule-product')
   await mkdir(directory, { recursive: true })
   const measurements = []
   for (const { width, theme, locale } of [

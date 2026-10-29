@@ -16,7 +16,9 @@ import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/contro
 import type { ModelProbeTargetDto } from '@shared/control/resources/model-probe'
 import {
   isModelRouteScheduleRevisionConflict,
+  getModelRouteScheduleDetail,
   isReasoningEffort,
+  modelRouteScheduleDetailQueryOptions,
   reasoningEffortValues,
   recoverModelRouteScheduleEntry,
   updateModelRouteSchedule,
@@ -870,6 +872,23 @@ export function SchedulePanelDetail({
   } | null>(null)
 
   const scheduleTableRef = useRef<HTMLDivElement | null>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+  const currentDetailRef = useRef(detail)
+  currentDetailRef.current = detail
+  const writesRef = useRef<{
+    tail: Promise<boolean>
+    revision: number
+    initialRevision: number
+    context: string
+    count: number
+    aborted: boolean
+  } | null>(null)
   const callbacksRef = useRef({
     onDraftChange,
     onRowChange,
@@ -956,8 +975,10 @@ export function SchedulePanelDetail({
         setRawInputs(hydrated.rawInputs)
         setInvalidInputs({})
       }
-      setSaveStatus('idle')
-      setSaveError('')
+      if (!(keyChanged && sameContext && saveStatus === 'error')) {
+        if (saveStatus !== 'saved' || (keyChanged && !sameContext)) setSaveStatus('idle')
+        setSaveError('')
+      }
     }
     if (nextRevisions !== preserveDraftRevisions) {
       setPreserveDraftRevisions(nextRevisions)
@@ -1076,6 +1097,118 @@ export function SchedulePanelDetail({
     return optimisticEnabled.get(rowKey(groupID, entry.entry_id)) ?? entry.enabled
   }
 
+  function contextKey(value: ModelRouteScheduleDetailDto): string {
+    return JSON.stringify([value.protocol, value.external_model, value.operation])
+  }
+
+  // A queued write may advance only through our own consecutive publication.
+  // The response can include a later publication, so it is not itself proof.
+  async function coordinatedWrite(
+    body: ModelRouteSchedulePatchRequest,
+    current: ModelRouteScheduleDetailDto,
+    committed: (revision: number) => void,
+  ): Promise<boolean> {
+    const context = contextKey(current)
+    if (writesRef.current !== null && writesRef.current.context !== context) {
+      writesRef.current.aborted = true
+      writesRef.current = null
+    }
+    let queue = writesRef.current
+    if (queue === null) {
+      queue = {
+        tail: Promise.resolve(true),
+        revision: body.snapshot_revision,
+        initialRevision: body.snapshot_revision,
+        context,
+        count: 0,
+        aborted: false,
+      }
+      writesRef.current = queue
+    }
+    const active = queue
+    const previous = active.tail
+    active.count++
+    const task = (async () => {
+      if (
+        !(await previous) ||
+        active.aborted ||
+        active.context !== context ||
+        (body.snapshot_revision !== active.initialRevision &&
+          body.snapshot_revision !== active.revision) ||
+        !mountedRef.current ||
+        currentDetailRef.current === undefined ||
+        contextKey(currentDetailRef.current) !== context
+      ) {
+        throw new Error('schedule-write-conflict')
+      }
+      const revision = active.revision
+      const response = await updateModelRouteSchedule(apiClient, {
+        ...body,
+        snapshot_revision: revision,
+      })
+      // A successful PATCH is final even if the following observation fails.
+      committed(response.snapshot_revision_new)
+      try {
+        const refreshed = await getModelRouteScheduleDetail(apiClient, {
+          protocol: current.protocol,
+          external_model: current.external_model ?? '',
+          operation: current.operation,
+        })
+        if (
+          !mountedRef.current ||
+          currentDetailRef.current === undefined ||
+          contextKey(currentDetailRef.current) !== context
+        )
+          return false
+        if (
+          response.snapshot_revision_new !== revision + 1 ||
+          refreshed.snapshot_revision !== response.snapshot_revision_new
+        ) {
+          if (active.count > 1 && contextKey(currentDetailRef.current) === context) {
+            setSaveStatus('error')
+            setSaveError(text('conflict'))
+            toast.show({ message: text('conflict'), tone: 'danger' })
+          }
+          return false
+        }
+        queryClient.setQueryData(
+          modelRouteScheduleDetailQueryOptions(apiClient, {
+            protocol: current.protocol,
+            external_model: current.external_model ?? '',
+            operation: current.operation,
+          }).queryKey,
+          refreshed,
+        )
+        active.revision = refreshed.snapshot_revision
+        await applyInvalidationPlan(
+          queryClient,
+          mutationInvalidationPlans.modelRouteSchedule.update,
+        )
+        return true
+      } catch {
+        if (
+          mountedRef.current &&
+          currentDetailRef.current !== undefined &&
+          contextKey(currentDetailRef.current) === context
+        ) {
+          toast.show({
+            message: t('monitor.schedule.detail.refreshAfterWriteFailed'),
+            tone: 'danger',
+          })
+        }
+        return false
+      }
+    })()
+    active.tail = task.catch(() => false)
+    try {
+      return await task
+    } finally {
+      void previous.catch(() => false)
+      active.count--
+      if (active.count === 0 && writesRef.current === active) writesRef.current = null
+    }
+  }
+
   async function toggleEntryEnabled(
     groupID: number,
     entry: ModelRouteScheduleEntryDto,
@@ -1096,20 +1229,40 @@ export function SchedulePanelDetail({
     setPreserveDraftRevisions((previous) => withSetValue(previous, revision))
     setPreserveDraftSnapshots((previous) => withMapValue(previous, revision, cloneDrafts(draftMap)))
     try {
-      const response = await updateModelRouteSchedule(apiClient, {
-        snapshot_revision: revision,
-        protocol: current.protocol,
-        external_model: current.external_model ?? '',
-        operation: current.operation,
-        updates: [{ group_id: groupID, entry_id: entry.entry_id, enabled: next }],
-      })
-      await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.update)
-      onSaved(response.snapshot_revision_new, false)
+      await coordinatedWrite(
+        {
+          snapshot_revision: revision,
+          protocol: current.protocol,
+          external_model: current.external_model ?? '',
+          operation: current.operation,
+          updates: [{ group_id: groupID, entry_id: entry.entry_id, enabled: next }],
+        },
+        current,
+        (nextRevision) => {
+          if (
+            mountedRef.current &&
+            currentDetailRef.current !== undefined &&
+            contextKey(currentDetailRef.current) === contextKey(current)
+          ) {
+            onSaved(nextRevision, false)
+          }
+        },
+      )
     } catch (toggleFailure: unknown) {
+      if (
+        !mountedRef.current ||
+        currentDetailRef.current === undefined ||
+        contextKey(currentDetailRef.current) !== contextKey(current)
+      )
+        return
+      const conflict =
+        isModelRouteScheduleRevisionConflict(toggleFailure) ||
+        (toggleFailure instanceof Error && toggleFailure.message === 'schedule-write-conflict')
+      setSaveStatus('error')
+      setSaveError(text(conflict ? 'conflict' : 'toggleFailed'))
+      if (isModelRouteScheduleRevisionConflict(toggleFailure)) onRefresh()
       toast.show({
-        message: isModelRouteScheduleRevisionConflict(toggleFailure)
-          ? text('conflict')
-          : text('toggleFailed'),
+        message: text(conflict ? 'conflict' : 'toggleFailed'),
         tone: 'danger',
       })
     } finally {
@@ -1280,17 +1433,40 @@ export function SchedulePanelDetail({
     setSaveStatus('idle')
     setSaveError('')
     try {
-      const response = await updateModelRouteSchedule(apiClient, body)
-      await applyInvalidationPlan(queryClient, mutationInvalidationPlans.modelRouteSchedule.update)
-      resetDrafts()
-      emitDraftChange({})
-      setSaveStatus('saved')
-      onSaved(response.snapshot_revision_new, true)
-      return true
+      let didCommit = false
+      let resolveCommitted: (value: boolean) => void = () => {}
+      const committed = new Promise<boolean>((resolve) => {
+        resolveCommitted = resolve
+      })
+      const writing = coordinatedWrite(body, detail, (revision) => {
+        didCommit = true
+        if (
+          mountedRef.current &&
+          currentDetailRef.current !== undefined &&
+          contextKey(currentDetailRef.current) === contextKey(detail)
+        ) {
+          resetDrafts()
+          emitDraftChange({})
+          setSaveStatus('saved')
+          onSaved(revision, true)
+        }
+        resolveCommitted(true)
+      })
+      return await Promise.race([committed, writing.then(() => didCommit)])
     } catch (saveFailure: unknown) {
+      if (
+        !mountedRef.current ||
+        currentDetailRef.current === undefined ||
+        contextKey(currentDetailRef.current) !== contextKey(detail)
+      )
+        return false
+      if (isModelRouteScheduleRevisionConflict(saveFailure)) onRefresh()
       setSaveStatus('error')
       setSaveError(
-        isModelRouteScheduleRevisionConflict(saveFailure) ? text('conflict') : text('saveFailed'),
+        isModelRouteScheduleRevisionConflict(saveFailure) ||
+          (saveFailure instanceof Error && saveFailure.message === 'schedule-write-conflict')
+          ? text('conflict')
+          : text('saveFailed'),
       )
       return false
     } finally {
@@ -1797,7 +1973,7 @@ export function SchedulePanelDetail({
                         </Popover>
                       </div>
                     </div>
-                  );
+                  )
                 })}
               </div>
             </div>
@@ -1876,5 +2052,5 @@ export function SchedulePanelDetail({
         onAction={confirmSingleProbe}
       />
     </section>
-  );
+  )
 }
