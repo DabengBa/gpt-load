@@ -70,7 +70,7 @@ verification plus switch against the already uploaded local image.
    stop -t 30`, confirm no running container still mounts that volume, `tar` the
    whole data directory into `pre-upgrade.XXXXXXXX` and list the archive, copy
    Compose aside, repoint the `image:` line, `docker compose up -d --no-build
-   --pull never`, poll health 24×5s, then `curl` the loopback and public
+   --pull never`, poll health for up to 6 minutes (72×5s), then `curl` the loopback and public
    `/health`. Both health responses must report `version` exactly equal to
    `<branch>-<short sha>`; a healthy container running the previous image is a
    failed release.

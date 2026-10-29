@@ -35,7 +35,15 @@ if name == "docker":
         elif any(".Image" in arg for arg in args):
             print(os.environ["PRODUCTION_IMAGE"])
         else:
-            print(os.environ["HEALTH_STATUS"])
+            sequence = os.environ.get("HEALTH_SEQUENCE", "")
+            if sequence:
+                path = Path(os.environ["HEALTH_SEQUENCE_FILE"])
+                seen = int(path.read_text() or 0)
+                values = sequence.split(",")
+                print(values[min(seen, len(values) - 1)])
+                path.write_text(str(seen + 1))
+            else:
+                print(os.environ["HEALTH_STATUS"])
     elif args and args[0] == "compose" and "stop" in args:
         Path(os.environ["RUNNING_STATE"]).write_text("stop")
     elif args and args[0] in {"stop", "start"}:
@@ -73,7 +81,7 @@ VERSION = "dev-abc1234"
 class RemoteActivationTests(unittest.TestCase):
     def run_activation(self, fail_backup=False, image_id=SERVER_IMAGE_ID,
                        production_image=PREVIOUS_IMAGE, served_version=VERSION, health="healthy",
-                       backup_fs="ext4"):
+                       backup_fs="ext4", health_sequence=""):
         source = Path(__file__).with_name("deploy.sh").read_text()
         lines = source.splitlines()
         starts = [i for i, line in enumerate(lines) if "<<'REMOTE'" in line]
@@ -95,6 +103,8 @@ class RemoteActivationTests(unittest.TestCase):
             commands.touch()
             state = root / "running"
             state.write_text("running")
+            sequence_file = root / "health-sequence"
+            sequence_file.write_text("0")
             bin_dir = root / "bin"
             bin_dir.mkdir()
             mock = bin_dir / "mock"
@@ -120,6 +130,8 @@ class RemoteActivationTests(unittest.TestCase):
                 "PRODUCTION_IMAGE": production_image,
                 "SERVED_VERSION": served_version,
                 "HEALTH_STATUS": health,
+                "HEALTH_SEQUENCE": health_sequence,
+                "HEALTH_SEQUENCE_FILE": str(sequence_file),
                 "BACKUP_FS": backup_fs,
             }
             remote = remote.replace("cd /opt/gpt-load", "cd " + shlex.quote(str(root)))
@@ -229,6 +241,18 @@ class RemoteActivationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("运行版本不是目标版本", result.stderr)
         self.assertIn("image: gpt-load:new", compose)
+
+    def test_slow_startup_beyond_two_minutes_is_still_accepted(self):
+        # 生产 13G 卷上重启实测启动耗时 135s，旧的 24 次 × 5s 预算会误判失败。
+        result, events, compose, _, _ = self.run_activation(
+            health_sequence=",".join(["starting"] * 40 + ["healthy"]))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("image: gpt-load:new", compose)
+
+    def test_never_healthy_container_still_fails(self):
+        result, events, compose, _, _ = self.run_activation(health="starting")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("健康检查未通过", result.stderr)
 
 
 if __name__ == "__main__":

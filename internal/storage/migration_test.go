@@ -283,3 +283,56 @@ func testMigrationRegistry() ([]migration, *[]string) {
 	}
 	return []migration{entry("0001_test"), entry("0002_test")}, &calls
 }
+
+func TestApplyMigrationRegistrySkipsForeignKeyCheckWithoutPendingMigrations(t *testing.T) {
+	db := openInternalMigrationTestDatabase(t)
+	if err := applyMigrationRegistry(db, migrations); err != nil {
+		t.Fatalf("applyMigrationRegistry() fresh error = %v", err)
+	}
+	insertOrphanCredential(t, db)
+	if err := validateMigrationForeignKeys(db); err == nil || !strings.Contains(err.Error(), "1 violation(s)") {
+		t.Fatalf("validateMigrationForeignKeys() error = %v, want the orphan credential reported as one violation", err)
+	}
+	if err := applyMigrationRegistry(db, migrations); err != nil {
+		t.Fatalf("applyMigrationRegistry() repeat error = %v, want no foreign key scan without pending migrations", err)
+	}
+	var orphans int64
+	if err := db.Raw("SELECT COUNT(*) FROM credentials WHERE group_id = ?", 9999).Scan(&orphans).Error; err != nil {
+		t.Fatalf("count orphan credentials: %v", err)
+	}
+	if orphans != 1 {
+		t.Fatalf("orphan credential count = %d, want 1", orphans)
+	}
+}
+
+func TestApplyMigrationRegistryChecksForeignKeysWhenMigrationsArePending(t *testing.T) {
+	pending := migrations[len(migrations)-1]
+	db := openInternalMigrationTestDatabase(t)
+	if err := applyMigrationRegistry(db, migrations[:len(migrations)-1]); err != nil {
+		t.Fatalf("applyMigrationRegistry() baseline error = %v", err)
+	}
+	insertOrphanCredential(t, db)
+	err := applyMigrationRegistry(db, migrations)
+	if err == nil || !strings.Contains(err.Error(), "validate migration foreign keys: 1 violation(s)") {
+		t.Fatalf("applyMigrationRegistry() error = %v, want a foreign key violation before committing %s", err, pending.ID)
+	}
+	var recorded int64
+	if err := db.Table(migrationLedgerTable).Where("id = ?", pending.ID).Count(&recorded).Error; err != nil {
+		t.Fatalf("count pending migration ledger row: %v", err)
+	}
+	if recorded != 0 {
+		t.Fatalf("ledger rows for %s = %d, want 0 after the foreign key check aborted the transaction", pending.ID, recorded)
+	}
+}
+
+func insertOrphanCredential(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	if err := db.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+		t.Fatalf("disable foreign keys: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO credentials (
+		group_id, data, fingerprint, identity_fingerprint, secret_version, status, created_at_ms, updated_at_ms
+	) VALUES (9999, '{}', 'orphan-fingerprint', '', 1, 'active', 1, 1)`).Error; err != nil {
+		t.Fatalf("insert orphan credential: %v", err)
+	}
+}
