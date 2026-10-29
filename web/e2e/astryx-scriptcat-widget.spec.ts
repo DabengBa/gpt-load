@@ -43,17 +43,6 @@ async function serveKeyPage(page: Page, path = '/keys'): Promise<void> {
   await page.addScriptTag({ content: userscript })
 }
 
-async function serveSidruneKeyPage(page: Page): Promise<void> {
-  await page.route('https://sidrune.ai/**', async (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'text/html',
-      body: '<main><h1>API Keys</h1><table><tr><td>sk-fx-widget-fixture-12345678</td></tr></table></main>',
-    }),
-  )
-  await page.goto('https://sidrune.ai/keys')
-  await page.addScriptTag({ content: userscript })
-}
 
 function receiverGMBridge(entries: Array<[string, unknown]>): void {
   const values = new Map(entries)
@@ -140,7 +129,7 @@ test('automatically shows the import widget on To-Tokens keys and transfers only
   const apiKey = page.locator('#sc-api-key')
   await expect(apiKey).toHaveValue('sk-widget-fixture-12345678')
   await expect(page.getByLabel('Base URL')).toHaveValue('https://totokens.cc')
-  await expect(page.getByLabel('GPT-Load 地址')).toHaveValue('https://gptl.tanyaleoallen.cloud')
+  await expect(page.getByLabel('GPT-Load 地址')).toHaveValue('')
   await page.getByLabel('GPT-Load 地址').fill('https://gpt-load.example.test')
   await page.getByLabel('Base URL').fill('https://api.custom.example.test/v1')
   await page.getByRole('button', { name: '关闭导入面板' }).click()
@@ -173,17 +162,24 @@ test('automatically shows the import widget on To-Tokens keys and transfers only
   await expect(launcher).toBeHidden()
 })
 
-test('shows the import widget on Sidrune keys and recognizes its sk-fx API key', async ({
+test('shows the import widget on generic keys routes and uses the current origin as Base URL', async ({
   page,
 }) => {
   await installGMBridge(page)
-  await serveSidruneKeyPage(page)
+  await page.route('https://provider.example.test/**', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: '<main><h1>API Keys</h1><table><tr><td>sk-fx-widget-fixture-12345678</td></tr></table></main>',
+    }),
+  )
+  await page.goto('https://provider.example.test/keys')
+  await page.addScriptTag({ content: userscript })
 
   const widget = page.locator('#gpt-load-scriptcat-widget')
   await expect(widget).toHaveCount(1)
   await page.getByRole('button', { name: '导入到 GPT-Load' }).click()
   await expect(page.locator('#sc-api-key')).toHaveValue('sk-fx-widget-fixture-12345678')
-  await expect(page.locator('#sc-base-url')).toHaveValue('https://sidrune.ai/v1')
+  await expect(page.locator('#sc-base-url')).toHaveValue('https://provider.example.test')
 })
 
 test('ScriptCat handoff fills group name, provider website, API key, and Base URL in GPT-Load', async ({
@@ -325,6 +321,28 @@ test('does not show the import widget on unrelated pages', async ({ page }) => {
   await installGMBridge(page)
   await serveKeyPage(page, '/account')
   await expect(page.locator('#gpt-load-scriptcat-widget')).toHaveCount(0)
+})
+
+test('generic SPA navigation shows the widget only on the token route without domain-specific matches', async ({ page }) => {
+  const startURL = 'https://provider.example.test/console'
+  const matches = [...userscript.matchAll(/^\/\/\s*@match\s+(\S+)/gm)].map((match) => match[1])
+  expect(matches).toContain('*://*/*')
+  expect(matches).not.toContain('*://*/console/tokens*')
+  expect(matches.every((match) => !/https?:\/\//u.test(match))).toBe(true)
+  await installGMBridge(page)
+  await page.route('https://provider.example.test/**', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<main>PackyAPI console</main>' }),
+  )
+  await page.goto(startURL)
+  await page.addScriptTag({ content: userscript })
+  const widget = page.locator('#gpt-load-scriptcat-widget')
+  await expect(widget).toHaveCount(0)
+  await page.evaluate(() => history.pushState({}, '', '/console/token'))
+  await expect(page.getByRole('button', { name: '导入到 GPT-Load' })).toBeVisible()
+  await page.evaluate(() => history.pushState({}, '', '/console'))
+  await expect(widget).toBeHidden()
+  await page.evaluate(() => history.pushState({}, '', '/console/token'))
+  await expect(page.getByRole('button', { name: '导入到 GPT-Load' })).toBeVisible()
 })
 
 test('keeps the panel within a narrow mobile viewport', async ({ page }) => {

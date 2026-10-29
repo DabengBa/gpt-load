@@ -3,13 +3,7 @@
 // @namespace    https://github.com/DabengBa/gpt-load
 // @version      1.1.0
 // @description  Send group details and API credentials to GPT-Load's import form.
-// @match        *://*/console/token*
-// @match        *://*/console/tokens*
-// @match        *://*/api-keys*
-// @match        *://*/user/api-keys*
-// @match        https://totokens.cc/keys*
-// @match        https://sidrune.ai/keys*
-// @match        *://*/import*
+// @match        *://*/*
 // @run-at       document-start
 // @grant        GM_openInTab
 // @grant        GM.getValue
@@ -24,7 +18,6 @@
 
   const transferPrefix = "pending-import:";
   const targetOriginKey = "gpt-load-origin";
-  const defaultTargetOrigin = "https://gptl.tanyaleoallen.cloud";
   const sessionKey = "gpt-load.scriptcat-import-payload";
   const transferTtlMs = 60_000;
   const sessionTtlMs = 15 * 60_000;
@@ -110,11 +103,9 @@
     const path = location.pathname;
     return (
       path.startsWith("/console/token") ||
+      path.startsWith("/keys") ||
       path.startsWith("/api-keys") ||
-      path.startsWith("/user/api-keys") ||
-      ((location.origin === "https://totokens.cc" ||
-        location.origin === "https://sidrune.ai") &&
-        path.startsWith("/keys"))
+      path.startsWith("/user/api-keys")
     );
   }
 
@@ -262,15 +253,12 @@
         if (!fieldsInitialized) {
           apiKeyInput.value = suggestedAPIKey();
           groupNameInput.value = location.hostname;
-          baseURLInput.value =
-            location.origin === "https://sidrune.ai"
-              ? "https://sidrune.ai/v1"
-              : location.origin;
+          baseURLInput.value = location.origin;
           fieldsInitialized = true;
           setStatus("");
         }
         apiKeyInput.focus();
-        GM.getValue(targetOriginKey, defaultTargetOrigin).then(
+        GM.getValue(targetOriginKey).then(
           (savedOrigin) => {
             if (!targetURLInput.value && savedOrigin) {
               targetURLInput.value = savedOrigin;

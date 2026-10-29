@@ -29,7 +29,8 @@ code:
 
 ## Delivery Path
 
-The userscript runs in two roles. On a supported provider key page it renders a
+The userscript runs in two roles. On a provider key page matching the generic
+routes `/console/token*`, `/keys*`, `/api-keys*` or `/user/api-keys*` it renders a
 panel and, on submit, stores the credential, Base URL, group name, target
 origin and the current page origin under `pending-import:<transferId>` in the
 userscript manager's shared value store. The transfer expires 60 seconds after
