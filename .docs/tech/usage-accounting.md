@@ -5,6 +5,7 @@ topic: usage-accounting
 relations:
   related:
     - db/features/usage-timing-metrics.md
+    - db/features/usage-request-model.md
     - tech/agent-api.md
 code:
   paths:
@@ -13,6 +14,7 @@ code:
     - internal/storage/models/request.go
     - internal/storage/migrations/0022_usage_first_response.go
     - internal/storage/migrations/0027_success_usage_efficiency.go
+    - internal/storage/migrations/0028_usage_client_model.go
     - internal/control/usage.go
     - internal/agent/usage.go
     - web/src/shared/control/resources/usage.ts
@@ -107,7 +109,8 @@ Success-only historical values are not inferred from all-request aggregates.
 ## Related Product Semantics And Binding Points
 
 - Product behavior is owned by [Usage Duration And First-Response
-  Metrics](../db/features/usage-timing-metrics.md).
+  Metrics](../db/features/usage-timing-metrics.md) and [Usage Reporting By
+  Request Model](../db/features/usage-request-model.md).
 - Agent API projection details are owned by [Agent Control-Plane
   API](agent-api.md).
 - Code binding: `internal/requestlog/worker.go:buildUsageStatDeltas`
@@ -136,7 +139,7 @@ Success-only historical values are not inferred from all-request aggregates.
 - **Cache rate:** `cache_read_tokens / (uncached_input_tokens +
   cache_read_tokens)`; a zero denominator is unavailable and sorts last in
   either direction.
-- **Breakdown sorting:** the monitor table sorts all displayed columns through
+- **Breakdown sorting:** the monitor table sorts sortable columns through
   the usage query before pagination, including total, failed, normal, slow,
   and faulty upstream attempt counts. Clicking a different column starts in
   descending order; clicking the active column reverses the direction and
