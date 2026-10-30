@@ -41,7 +41,7 @@ pretending that an unobserved first response was instantaneous.
   measure. This is an unavailable state, not a zero value. The cache-rate and
   token-efficiency totals are also shown as `—` when the report does not offer
   a meaningful combined value.
-- The breakdown can be sorted by any displayed measure, including cache rate
+- The breakdown can be sorted by its sortable measures, including cache rate
   and token efficiency. Selecting a different column starts with descending
   order; selecting the active column reverses the direction and returns to the
   first page. Rows with unavailable timing or efficiency measures remain after
@@ -58,12 +58,12 @@ pretending that an unobserved first response was instantaneous.
 - **Entry and action:** Open the usage report for a selected range and compare
   the average duration and average first-response columns; sort either column
   in both directions.
-- **Expected result:** Each row shows the appropriate millisecond average,
+- **Expected result:** Each row shows the appropriate average in seconds,
   rows with observed first-response samples sort by that average, and rows
   without observations remain visibly undefined and grouped after sampled
   rows.
 - **Failure signal:** A row without a first-response observation must not show
-  `0 ms` or move ahead of rows with measured response times merely because its
+  `0 s` or move ahead of rows with measured response times merely because its
   sample count is zero.
 
 ### Compare cache coverage and successful-request efficiency
