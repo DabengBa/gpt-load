@@ -162,6 +162,7 @@ export default {
         groupPlaceholder: '分组 ID',
         searchGroups: '搜索分组',
         model: '上游模型',
+        clientModel: '请求模型',
         modelPlaceholder: '精确模型名',
         anyModel: '全部上游模型',
         searchModels: '搜索模型',
@@ -175,6 +176,7 @@ export default {
       errors: {
         positiveId: '请输入有效的正整数分组 ID。',
         model: '上游模型不能包含首尾空白或控制字符。',
+        clientModel: '请求模型不能包含首尾空白或控制字符。',
       },
       empty: {
         title: '没有匹配的用量数据',
@@ -193,9 +195,11 @@ export default {
         caption: '按模型与路由统计的用量与成本明细',
         rowCount: '{count} 行',
         total: '总计',
+        unknownModel: '未知',
         deletedOrUnknownChannel: '#{id} · 已删除或未知',
         columns: {
-          model: '模型',
+          model: '上游模型',
+          clientModel: '请求模型',
           group: '分组',
           channel: '渠道',
           attempts: '尝试数',

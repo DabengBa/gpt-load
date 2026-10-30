@@ -110,9 +110,10 @@ type usageAttemptAggregateResponse struct {
 }
 
 type usageBreakdownRowResponse struct {
-	Model     string  `json:"model"`
-	GroupID   *uint   `json:"group_id,omitempty"`
-	ChannelID *string `json:"channel_id,omitempty"`
+	Model       string  `json:"model"`
+	ClientModel *string `json:"client_model"`
+	GroupID     *uint   `json:"group_id,omitempty"`
+	ChannelID   *string `json:"channel_id,omitempty"`
 	usageAggregateResponse
 	usageAttemptAggregateResponse
 }
@@ -204,6 +205,7 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 		"channel_id",
 		"credential_id",
 		"upstream_model",
+		"client_model",
 		"breakdown_page",
 		"breakdown_page_size",
 		"breakdown_sort",
@@ -216,7 +218,7 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 	if err := validateSafeMilliseconds(observedAtMS); err != nil {
 		return requestlog.UsageQuery{}, app_errors.ErrInternalServer
 	}
-	query := requestlog.UsageQuery{}
+	query := requestlog.UsageQuery{BreakdownByClientModel: true}
 	rangeValue := usageRange24Hours
 	if value, ok := singleQueryValue(values, "range"); ok {
 		rangeValue = value
@@ -304,6 +306,12 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 			return requestlog.UsageQuery{}, app_errors.ErrValidation
 		}
 		query.UpstreamModel = value
+	}
+	if value, ok := singleQueryValue(values, "client_model"); ok {
+		if !validUsageModel(value) {
+			return requestlog.UsageQuery{}, app_errors.ErrValidation
+		}
+		query.ClientModel = value
 	}
 	if value, ok := singleQueryValue(values, "breakdown_page"); ok {
 		page, err := parseCanonicalSafeUint(value)
@@ -610,13 +618,16 @@ func mapUsageBreakdown(
 		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: pagination row count mismatch")
 	}
 	type identity struct {
-		model, channel string
-		group          uint
+		model, clientModel, channel string
+		group                       uint
 	}
 	seen := make(map[identity]struct{}, len(source.Rows))
 	for _, row := range source.Rows {
 		if !validUsageModel(row.Model) {
 			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid model")
+		}
+		if row.ClientModel != "" && !validUsageModel(row.ClientModel) {
+			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid client model")
 		}
 		if row.GroupID != nil && uint64(*row.GroupID) > uint64(maxSafeInteger) {
 			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: unsafe group")
@@ -627,7 +638,7 @@ func mapUsageBreakdown(
 		if !accessKeyScoped && (row.GroupID == nil || row.ChannelID == nil) {
 			return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: admin row is missing identity")
 		}
-		key := identity{model: row.Model}
+		key := identity{model: row.Model, clientModel: row.ClientModel}
 		if row.GroupID != nil {
 			key.group = *row.GroupID
 		}
@@ -647,7 +658,7 @@ func mapUsageBreakdown(
 			return usageBreakdownResponse{}, err
 		}
 		result.Rows = append(result.Rows, usageBreakdownRowResponse{
-			Model: row.Model, GroupID: row.GroupID, ChannelID: row.ChannelID,
+			Model: row.Model, ClientModel: nullableRequestLogModel(row.ClientModel), GroupID: row.GroupID, ChannelID: row.ChannelID,
 			usageAggregateResponse: aggregate, usageAttemptAggregateResponse: attemptAggregate,
 		})
 	}

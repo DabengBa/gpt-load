@@ -185,6 +185,7 @@ type usageStatKey struct {
 	GroupID       uint
 	CredentialID  uint
 	Model         string
+	ClientModel   string
 }
 
 type usageStatDelta struct {
@@ -419,6 +420,7 @@ func applyUsageJournalBatch(
 		stat.GroupID = key.GroupID
 		stat.CredentialID = key.CredentialID
 		stat.Model = key.Model
+		stat.ClientModel = key.ClientModel
 		total, err := checkedUsageStatTotal(stat, deltas[key])
 		if err != nil {
 			return err
@@ -458,6 +460,7 @@ type usageAttemptStatKey struct {
 	GroupID       uint
 	CredentialID  uint
 	Model         string
+	ClientModel   string
 }
 
 type usageAttemptStatDelta struct {
@@ -480,6 +483,7 @@ func buildUsageAttemptJournalDeltas(
 			GroupID:       journal.GroupID,
 			CredentialID:  journal.CredentialID,
 			Model:         journal.Model,
+			ClientModel:   journal.ClientModel,
 		}
 		delta := deltas[key]
 		if err := checkedInt64Add(&delta.AttemptCount, journal.AttemptCount, "attempt_count"); err != nil {
@@ -534,6 +538,7 @@ func applyUsageAttemptJournalBatch(
 		stat.GroupID = key.GroupID
 		stat.CredentialID = key.CredentialID
 		stat.Model = key.Model
+		stat.ClientModel = key.ClientModel
 		var ok bool
 		stat.AttemptCount, ok = usage.CheckedAdd(stat.AttemptCount, deltas[key].AttemptCount)
 		if !ok {
@@ -596,6 +601,7 @@ func usageAttemptStatUpsertClause() clause.OnConflict {
 			{Name: "group_id"},
 			{Name: "credential_id"},
 			{Name: "model"},
+			{Name: "client_model"},
 		},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"attempt_count", "failure_count", "normal_attempt_count", "slow_attempt_count", "faulty_attempt_count",
@@ -624,7 +630,10 @@ func sortedUsageAttemptStatKeys(deltas map[usageAttemptStatKey]usageAttemptStatD
 		if keys[left].CredentialID != keys[right].CredentialID {
 			return keys[left].CredentialID < keys[right].CredentialID
 		}
-		return keys[left].Model < keys[right].Model
+		if keys[left].Model != keys[right].Model {
+			return keys[left].Model < keys[right].Model
+		}
+		return keys[left].ClientModel < keys[right].ClientModel
 	})
 	return keys
 }
@@ -635,8 +644,8 @@ func queryExistingUsageAttemptStats(
 ) (map[usageAttemptStatKey]models.UsageAttemptStat, error) {
 	query := tx.Model(&models.UsageAttemptStat{})
 	for index, key := range keys {
-		condition := "bucket_start_ms = ? AND access_key_id = ? AND channel_id = ? AND group_id = ? AND credential_id = ? AND model = ?"
-		args := []any{key.BucketStartMS, key.AccessKeyID, key.ChannelID, key.GroupID, key.CredentialID, key.Model}
+		condition := "bucket_start_ms = ? AND access_key_id = ? AND channel_id = ? AND group_id = ? AND credential_id = ? AND model = ? AND client_model = ?"
+		args := []any{key.BucketStartMS, key.AccessKeyID, key.ChannelID, key.GroupID, key.CredentialID, key.Model, key.ClientModel}
 		if index == 0 {
 			query = query.Where(condition, args...)
 		} else {
@@ -656,6 +665,7 @@ func queryExistingUsageAttemptStats(
 			GroupID:       row.GroupID,
 			CredentialID:  row.CredentialID,
 			Model:         row.Model,
+			ClientModel:   row.ClientModel,
 		}] = row
 	}
 	return existing, nil
@@ -670,6 +680,7 @@ func usageStatUpsertClause() clause.OnConflict {
 			{Name: "group_id"},
 			{Name: "credential_id"},
 			{Name: "model"},
+			{Name: "client_model"},
 		},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"request_count",
@@ -728,6 +739,7 @@ func buildUsageAggregationJournals(
 				GroupID:                      key.GroupID,
 				CredentialID:                 key.CredentialID,
 				Model:                        key.Model,
+				ClientModel:                  key.ClientModel,
 				RequestCount:                 delta.RequestCount,
 				SuccessCount:                 delta.SuccessCount,
 				FailureCount:                 delta.FailureCount,
@@ -807,6 +819,7 @@ func buildUsageAttemptAggregationJournals(
 				ChannelID:          attempt.ChannelID,
 				CredentialID:       attempt.CredentialID,
 				Model:              attempt.UpstreamModel,
+				ClientModel:        row.ClientModel,
 				AttemptCount:       1,
 				FailureCount:       failureCount,
 				NormalAttemptCount: feedbackCounts.NormalAttemptCount,
@@ -830,6 +843,7 @@ func buildUsageJournalDeltas(
 			GroupID:       journal.GroupID,
 			CredentialID:  journal.CredentialID,
 			Model:         journal.Model,
+			ClientModel:   journal.ClientModel,
 		}
 		delta := deltas[key]
 		for _, field := range []struct {
@@ -903,6 +917,7 @@ func buildUsageStatDeltas(rows []models.RequestLog) (map[usageStatKey]usageStatD
 			GroupID:       row.GroupID,
 			CredentialID:  row.CredentialID,
 			Model:         row.UpstreamModel,
+			ClientModel:   row.ClientModel,
 		}
 		delta := deltas[key]
 		if err := delta.addRow(row); err != nil {
@@ -1091,7 +1106,10 @@ func sortedUsageStatKeys(deltas map[usageStatKey]usageStatDelta) []usageStatKey 
 		if keys[left].CredentialID != keys[right].CredentialID {
 			return keys[left].CredentialID < keys[right].CredentialID
 		}
-		return keys[left].Model < keys[right].Model
+		if keys[left].Model != keys[right].Model {
+			return keys[left].Model < keys[right].Model
+		}
+		return keys[left].ClientModel < keys[right].ClientModel
 	})
 	return keys
 }
@@ -1104,24 +1122,26 @@ func queryExistingUsageStats(
 	for index, key := range keys {
 		if index == 0 {
 			query = query.Where(
-				"bucket_start_ms = ? AND access_key_id = ? AND channel_id = ? AND group_id = ? AND credential_id = ? AND model = ?",
+				"bucket_start_ms = ? AND access_key_id = ? AND channel_id = ? AND group_id = ? AND credential_id = ? AND model = ? AND client_model = ?",
 				key.BucketStartMS,
 				key.AccessKeyID,
 				key.ChannelID,
 				key.GroupID,
 				key.CredentialID,
 				key.Model,
+				key.ClientModel,
 			)
 			continue
 		}
 		query = query.Or(
-			"bucket_start_ms = ? AND access_key_id = ? AND channel_id = ? AND group_id = ? AND credential_id = ? AND model = ?",
+			"bucket_start_ms = ? AND access_key_id = ? AND channel_id = ? AND group_id = ? AND credential_id = ? AND model = ? AND client_model = ?",
 			key.BucketStartMS,
 			key.AccessKeyID,
 			key.ChannelID,
 			key.GroupID,
 			key.CredentialID,
 			key.Model,
+			key.ClientModel,
 		)
 	}
 	var rows []models.UsageStat
@@ -1137,6 +1157,7 @@ func queryExistingUsageStats(
 			GroupID:       row.GroupID,
 			CredentialID:  row.CredentialID,
 			Model:         row.Model,
+			ClientModel:   row.ClientModel,
 		}
 		existing[key] = row
 	}

@@ -51,6 +51,7 @@ function normalizeUsageFilters(filters: UsageFilters): UsageFilters {
   if (filters.channel_id !== undefined) result.channel_id = filters.channel_id
   if (filters.credential_id !== undefined) result.credential_id = filters.credential_id
   if (filters.upstream_model !== undefined) result.upstream_model = filters.upstream_model
+  if (filters.client_model !== undefined) result.client_model = filters.client_model
   return result
 }
 

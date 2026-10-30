@@ -44,7 +44,14 @@ Usage aggregation excludes rows with no upstream attempt and `probe`
 operations (`internal/requestlog/worker.go:usageAggregationExcluded`);
 `modeltrace` challenges are real model requests and stay in the aggregates.
 Each remaining row is assigned to the hour containing its completion time and
-grouped by access key, channel, group, credential, and upstream model.
+grouped by access key, channel, group, credential, upstream model, and the
+original client-requested model. Attempts inherit the request model even when
+retries use a different upstream model. Existing aggregates and pending
+journals upgraded without this dimension retain an unknown client model; no
+historical model is inferred. The monitoring breakdown exposes unknown as
+`null` and supports exact, non-empty `client_model` filtering for both request
+and attempt aggregates. The Agent API keeps its existing upstream-only model
+grouping and pagination semantics.
 
 Request token and estimated-cost amounts include reported billed usage from
 earlier failed attempts as well as the terminal attempt, each priced with its

@@ -41,6 +41,7 @@ function breakdown(row: ReturnType<typeof aggregate>) {
       {
         ...row,
         model: 'model',
+        client_model: null,
         group_id: 1,
         channel_id: 'openai',
         attempt_count: 1,
@@ -86,4 +87,27 @@ test('rejects success efficiency sample counts above successful requests', () =>
 test('accepts cache rate and token efficiency as breakdown sort keys', () => {
   assert.equal(normalizeUsageBreakdownSort('cache_rate'), 'cache_rate')
   assert.equal(normalizeUsageBreakdownSort('token_efficiency'), 'token_efficiency')
+})
+
+test('keeps distinct request models sharing an upstream for both scopes', () => {
+  for (const scope of ['admin', 'access_key'] as const) {
+    const fixture = breakdown(aggregate())
+    const first = { ...fixture.rows[0], client_model: 'alias-a' }
+    const second = { ...fixture.rows[0], client_model: 'alias-b' }
+    const rows =
+      scope === 'admin'
+        ? [first, second]
+        : [first, second].map(({ group_id, channel_id, ...row }) => row)
+    const result = projectUsageBreakdown({
+      ...fixture,
+      scope,
+      rows,
+      pagination: { ...fixture.pagination, total_items: 2 },
+    })
+    assert.deepEqual(
+      result.rows.map((row) => row.client_model),
+      ['alias-a', 'alias-b'],
+    )
+  }
+  assert.equal(projectUsageBreakdown(breakdown(aggregate())).rows[0]?.client_model, null)
 })

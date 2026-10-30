@@ -20,6 +20,18 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
+func TestUsageClientModelQuery(t *testing.T) {
+	query, apiErr := parseUsageQuery("range=24h&client_model=alias-one", time.Now().UnixMilli())
+	if apiErr != nil || query.ClientModel != "alias-one" || !query.BreakdownByClientModel {
+		t.Fatalf("query = %#v, error = %v", query, apiErr)
+	}
+	for _, raw := range []string{"client_model=", "client_model=a&client_model=b", "client_model=%20alias", "client_model=%FF"} {
+		if _, err := parseUsageQuery(raw, time.Now().UnixMilli()); err == nil {
+			t.Errorf("accepted invalid query %q", raw)
+		}
+	}
+}
+
 func TestUsageAPIRouteUsesManagementAuthentication(t *testing.T) {
 	t.Parallel()
 	initControlI18n(t)
@@ -942,6 +954,80 @@ func TestUsageAPIRequiresManagementAuthentication(t *testing.T) {
 	recorder := performUsageRequest(engine, "", "")
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("response = %d %s, want 401", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestUsageAPIClientModelAccessKeyIsolation(t *testing.T) {
+	initControlI18n(t)
+	fixture := newServiceFixture(t)
+	first, err := fixture.service.CreateAccessKey(t.Context(), AccessKeyCreateRequest{Name: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := fixture.service.CreateAccessKey(t.Context(), AccessKeyCreateRequest{Name: "second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.August, 8, 17, 30, 0, 0, time.UTC)
+	for _, item := range []struct {
+		key   uint
+		alias string
+		count int64
+	}{
+		{first.ID, "alias-one", 2}, {first.ID, "alias-two", 3}, {second.ID, "alias-one", 7},
+	} {
+		stat := models.UsageStat{BucketStartMS: now.Add(-time.Hour).Truncate(time.Hour).UnixMilli(), AccessKeyID: item.key, GroupID: 7, ChannelID: "openai", CredentialID: 8, Model: "upstream", ClientModel: item.alias, RequestCount: item.count, SuccessCount: item.count}
+		attempt := models.UsageAttemptStat{BucketStartMS: stat.BucketStartMS, AccessKeyID: item.key, GroupID: 7, ChannelID: "openai", CredentialID: 8, Model: "upstream", ClientModel: item.alias, AttemptCount: item.count}
+		if err := fixture.db.Create(&stat).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := fixture.db.Create(&attempt).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	fixture.service.now = func() time.Time { return now }
+	fixture.service.usageStats = requestlog.NewService(fixture.db, nil, nil)
+	engine := gin.New()
+	NewServer(&config.Config{AuthKey: "test-auth-key"}, fixture.service).RegisterRoutes(engine)
+	for _, check := range []struct {
+		key, query, alias string
+		count             int64
+	}{
+		{first.Key, "client_model=alias-one&upstream_model=upstream", "alias-one", 2},
+		{second.Key, "client_model=alias-one&upstream_model=upstream", "alias-one", 7},
+		{first.Key, "client_model=alias-two&upstream_model=upstream", "alias-two", 3},
+	} {
+		recorder := performUsageRequest(engine, check.key, check.query)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("HTTP %d: %s", recorder.Code, recorder.Body.String())
+		}
+		var response struct {
+			Data struct {
+				Summary struct {
+					RequestCount int64 `json:"request_count"`
+				} `json:"summary"`
+				Breakdown struct {
+					Rows []struct {
+						ClientModel  *string `json:"client_model"`
+						RequestCount int64   `json:"request_count"`
+						AttemptCount int64   `json:"attempt_count"`
+						GroupID      *uint   `json:"group_id"`
+						ChannelID    *string `json:"channel_id"`
+					} `json:"rows"`
+				} `json:"breakdown"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		rows := response.Data.Breakdown.Rows
+		if response.Data.Summary.RequestCount != check.count || len(rows) != 1 || rows[0].ClientModel == nil || *rows[0].ClientModel != check.alias || rows[0].RequestCount != check.count || rows[0].AttemptCount != check.count || rows[0].GroupID != nil || rows[0].ChannelID != nil {
+			t.Fatalf("query %q: %s", check.query, recorder.Body.String())
+		}
+	}
+	forbidden := performUsageRequest(engine, first.Key, "client_model=alias-one&group_id=7")
+	if forbidden.Code != http.StatusBadRequest {
+		t.Fatalf("forbidden filter: %d %s", forbidden.Code, forbidden.Body.String())
 	}
 }
 

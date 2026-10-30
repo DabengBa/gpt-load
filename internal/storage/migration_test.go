@@ -41,6 +41,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0025,
 		migrationfiles.ID0026,
 		migrationfiles.ID0027,
+		migrationfiles.ID0028,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -49,6 +50,36 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		if entry.ID != wantIDs[index] || entry.Up == nil || entry.Validate == nil {
 			t.Fatalf("migration registry entry %d = %#v", index, entry)
 		}
+	}
+}
+
+func TestUsageClientModelMigrationPreservesHistoryAndRestarts(t *testing.T) {
+	db := openInternalMigrationTestDatabase(t)
+	if err := applyMigrationRegistry(db, migrations[:len(migrations)-1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO usage_stats (bucket_start_ms, access_key_id, channel_id, group_id, credential_id, model, request_count, success_count) VALUES (3600000, 1, '', 1, 1, 'upstream', 3, 3)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := applyMigrationRegistry(db, migrations); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyMigrationRegistry(db, migrations); err != nil {
+		t.Fatalf("repeat startup: %v", err)
+	}
+	var old models.UsageStat
+	if err := db.Where("model = ?", "upstream").First(&old).Error; err != nil || old.ClientModel != "" || old.RequestCount != 3 {
+		t.Fatalf("historical row = %#v, error %v", old, err)
+	}
+	newRow := old
+	newRow.ID = 0
+	newRow.ClientModel = "alias"
+	if err := db.Create(&newRow).Error; err != nil {
+		t.Fatalf("distinct client model: %v", err)
+	}
+	newRow.ID = 0
+	if err := db.Create(&newRow).Error; err == nil {
+		t.Fatal("duplicate identity accepted")
 	}
 }
 

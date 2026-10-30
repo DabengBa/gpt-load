@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { reasoningEffortValues } from '../src/shared/control/resources/model-route-schedule.ts'
+import {
+  applyUsageFilterDraft,
+  createUsageFilterDraft,
+  validateUsageFilterDraft,
+} from '../src/shared/domain/monitor/usage-filters.ts'
 
 import {
   normalizeAccessKeyMonitorQuery,
@@ -45,6 +50,26 @@ test('access-key scoping drops the group filter and rescales sort', () => {
   assert.equal(scoped.upstream_model, 'gpt-4o')
   assert.equal(scoped.breakdown_sort, 'model')
   assert.equal(scoped.breakdown_sort_direction, 'asc')
+})
+
+test('request model survives admin and access-key URL normalization', () => {
+  for (const normalize of [normalizeMonitorQuery, normalizeAccessKeyMonitorQuery]) {
+    assert.deepEqual(normalize({ client_model: 'alias', model: 'upstream' }), {
+      range: '24h',
+      client_model: 'alias',
+      upstream_model: 'upstream',
+    })
+  }
+})
+
+test('request model draft applies exact values and rejects invalid input', () => {
+  const draft = createUsageFilterDraft({ range: '24h', client_model: 'alias' })
+  assert.equal(applyUsageFilterDraft(draft).client_model, 'alias')
+  assert.equal(
+    validateUsageFilterDraft({ ...draft, client_model: ' bad ' }).client_model,
+    'monitor.usage.errors.clientModel',
+  )
+  assert.equal(applyUsageFilterDraft({ ...draft, client_model: '' }).client_model, undefined)
 })
 
 test('schedule draft round-trips with sorted rows and explicit null clears', () => {
@@ -94,14 +119,16 @@ test('reasoning drafts round-trip every effort and explicit null inheritance wit
 test('reasoning drafts filter invalid values without dropping valid numeric fields', () => {
   for (const reasoning_effort of ['', 'HIGH', 'invalid', 1, false, [], {}]) {
     const drafts = { '1:a': { weight: 25, reasoning_effort } }
-    assert.deepEqual(
-      parseScheduleMonitorState({ schedule_draft: JSON.stringify(drafts) }).drafts,
-      { '1:a': { weight: 25 } },
-    )
-    // Malformed URL/runtime input must not leak into canonical serialization.
-    assert.deepEqual(JSON.parse(scheduleMonitorQuery({ drafts: drafts as never }).schedule_draft!), {
+    assert.deepEqual(parseScheduleMonitorState({ schedule_draft: JSON.stringify(drafts) }).drafts, {
       '1:a': { weight: 25 },
     })
+    // Malformed URL/runtime input must not leak into canonical serialization.
+    assert.deepEqual(
+      JSON.parse(scheduleMonitorQuery({ drafts: drafts as never }).schedule_draft!),
+      {
+        '1:a': { weight: 25 },
+      },
+    )
     assert.deepEqual(
       parseScheduleMonitorState({
         schedule_draft: JSON.stringify({ '1:a': { reasoning_effort } }),

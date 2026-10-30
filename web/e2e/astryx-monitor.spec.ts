@@ -83,6 +83,7 @@ function usagePayload(options: { scope?: 'admin' | 'access_key' } = {}) {
   })
   const breakdownRow = (model: string) => ({
     model,
+    client_model: model === 'gpt-4o' ? 'request-alias' : null,
     ...(scope === 'admin' ? { group_id: 1, channel_id: 'openai' } : {}),
     ...usageAggregate({
       request_count: 2,
@@ -288,6 +289,9 @@ test('usage renders the breakdown without a redundant heading', async ({ page })
   await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toHaveCount(0)
   await expect(page.getByText('gpt-4o-mini')).toBeVisible()
   const table = page.getByRole('table')
+  await expect(table.getByRole('columnheader', { name: 'Request model' })).toBeVisible()
+  await expect(table.getByText('request-alias')).toBeVisible()
+  await expect(table.getByText('Unknown')).toBeVisible()
   await expect(table.getByRole('columnheader', { name: 'Cache rate' })).toBeVisible()
   await expect(table.getByRole('columnheader', { name: 'Token efficiency' })).toBeVisible()
   await expect(table.getByRole('columnheader', { name: 'Uncached input' })).toHaveCount(0)
@@ -301,11 +305,11 @@ test('usage renders the breakdown without a redundant heading', async ({ page })
   await expect(table.locator('tbody tr').first()).toContainText('50%')
   await expect(table.locator('tbody tr').first()).toContainText('—')
   const firstRow = table.locator('tbody tr').first()
-  const cacheRate = firstRow.locator('td').nth(10)
-  const tokenEfficiency = firstRow.locator('td').nth(11)
+  const cacheRate = firstRow.locator('td').nth(11)
+  const tokenEfficiency = firstRow.locator('td').nth(12)
   await expect(cacheRate).toHaveText('50%')
   await expect(tokenEfficiency).toHaveText('50 /s')
-  await expect(table.locator('tbody tr').nth(1).locator('td').nth(11)).toHaveText('—')
+  await expect(table.locator('tbody tr').nth(1).locator('td').nth(12)).toHaveText('—')
   const numericPadding = await cacheRate.evaluate((cell) => {
     const style = getComputedStyle(cell)
     return [style.paddingLeft, style.paddingRight]
@@ -325,7 +329,7 @@ test('breakdown headers sort descending first and toggle ascending', async ({ pa
   const table = page.getByRole('table')
   await expect(table).toBeVisible()
   for (const [name, key] of [
-    ['Model', 'model'],
+    ['Upstream model', 'model'],
     ['Group', 'group'],
     ['Attempts', 'attempt_count'],
     ['Attempt failures', 'attempt_failure_count'],
@@ -372,7 +376,7 @@ test('usage range selector applies through the filter bar', async ({ page }) => 
 })
 
 test('usage filter bar applies filters through the canonical query', async ({ page }) => {
-  await mockMonitor(page)
+  const requests = await mockMonitor(page)
   await page.goto('/monitor', { waitUntil: 'load' })
   await expectAstryxDocument(page)
   await expect(page.getByRole('table')).toBeVisible()
@@ -385,15 +389,18 @@ test('usage filter bar applies filters through the canonical query', async ({ pa
   await page.getByRole('option', { name: 'prod' }).click()
   await bar.getByRole('button', { name: 'Upstream model', exact: true }).click()
   await page.getByRole('option', { name: 'gpt-4o' }).click()
+  await bar.getByLabel('Request model').fill('request-alias')
   await bar.getByRole('button', { name: 'Apply' }).click()
 
   await expect(page).toHaveURL(/upstream_model=gpt-4o/)
   await expect(page).toHaveURL(/group_id=1/)
+  await expect(page).toHaveURL(/client_model=request-alias/)
+  await expect.poll(() => requests.usageQueries.at(-1)?.get('client_model')).toBe('request-alias')
   await expect(page).not.toHaveURL(/channel_id=|credential_id=|panel=/)
 })
 
 test('access_key usage hides cross-principal filter fields', async ({ page }) => {
-  await mockMonitor(page, { principalType: 'access_key' })
+  const requests = await mockMonitor(page, { principalType: 'access_key' })
   await page.goto('/monitor', { waitUntil: 'load' })
   await expectAstryxDocument(page)
   await expect(page.getByRole('table')).toBeVisible()
@@ -402,7 +409,12 @@ test('access_key usage hides cross-principal filter fields', async ({ page }) =>
   await expect(bar).toBeVisible()
   // selfScoped: the model filter is a free-text input; the Group selector is absent.
   await expect(bar.getByLabel('Upstream model')).toBeVisible()
+  await expect(bar.getByLabel('Request model')).toBeVisible()
   await expect(bar.getByRole('button', { name: 'Group', exact: true })).not.toBeVisible()
+  await bar.getByLabel('Request model').fill('request-alias')
+  await bar.getByRole('button', { name: 'Apply' }).click()
+  await expect(page).toHaveURL(/client_model=request-alias/)
+  await expect.poll(() => requests.usageQueries.at(-1)?.get('client_model')).toBe('request-alias')
 })
 
 test('access_key principal never calls /api/health or /api/route/inspect', async ({ page }) => {

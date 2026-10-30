@@ -84,7 +84,7 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
   // as a render adjustment on a signature key.
   const draftSignature = `${appliedFilters.range}|${appliedFilters.group_id ?? ''}|${
     appliedFilters.upstream_model ?? ''
-  }`
+  }|${appliedFilters.client_model ?? ''}`
   const [draftState, setDraftState] = useState<{
     signature: string
     draft: UsageFilterDraft

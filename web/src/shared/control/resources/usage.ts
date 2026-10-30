@@ -99,6 +99,7 @@ export interface UsageFilters {
   channel_id?: string
   credential_id?: number
   upstream_model?: string
+  client_model?: string
   breakdown_page?: number
   breakdown_page_size?: UsageBreakdownPageSize
   breakdown_sort?: UsageBreakdownSort
@@ -171,6 +172,7 @@ export interface UsageAttemptAggregateDto {
 
 export interface UsageBreakdownRowDto extends UsageAggregateDto, UsageAttemptAggregateDto {
   model: string
+  client_model: string | null
   group_id?: number
   channel_id?: string
 }
@@ -384,13 +386,17 @@ export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
   const pagination = projectUsagePagination(record.pagination)
   const rows = projectArray(record.rows, (value): UsageBreakdownRowDto => {
     const row = projectRecord(value)
-    const identityFields = scope === 'admin' ? ['model', 'group_id', 'channel_id'] : ['model']
+    const identityFields =
+      scope === 'admin'
+        ? ['model', 'client_model', 'group_id', 'channel_id']
+        : ['model', 'client_model']
     assertNoSecretLikeFields(row, [
       ...identityFields,
       ...breakdownAggregateFields,
       ...attemptAggregateFields,
     ])
     const model = projectUsageModel(row.model)
+    const client_model = row.client_model === null ? null : projectUsageModel(row.client_model)
     const aggregate = projectUsageAggregate(
       Object.fromEntries(breakdownAggregateFields.map((field) => [field, row[field]])),
     )
@@ -402,17 +408,19 @@ export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
         ...aggregate,
         ...attempts,
         model,
+        client_model,
         group_id: projectSafeInteger(row.group_id, { minimum: 1 }),
         channel_id: projectChannelID(row.channel_id),
       }
     }
-    return { ...aggregate, ...attempts, model }
+    return { ...aggregate, ...attempts, model, client_model }
   })
   const identities = new Set<string>()
   for (const row of rows) {
     const identity = JSON.stringify([
       scope,
       row.model,
+      row.client_model,
       row.group_id ?? null,
       row.channel_id ?? null,
     ])
@@ -685,6 +693,7 @@ export function normalizeUsageFilters(filters: UsageFilters): UsageFilters {
   if (filters.channel_id !== undefined) result.channel_id = filters.channel_id
   if (filters.credential_id !== undefined) result.credential_id = filters.credential_id
   if (filters.upstream_model !== undefined) result.upstream_model = filters.upstream_model
+  if (filters.client_model !== undefined) result.client_model = filters.client_model
   result.breakdown_sort_direction =
     rawBreakdownSort === breakdownSort
       ? normalizeUsageBreakdownSortDirection(filters.breakdown_sort_direction, breakdownSort)
@@ -724,6 +733,7 @@ export async function getUsageReport(
   if (normalized.upstream_model !== undefined) {
     params.append('upstream_model', normalized.upstream_model)
   }
+  if (normalized.client_model !== undefined) params.append('client_model', normalized.client_model)
   params.append('breakdown_page', String(normalized.breakdown_page))
   params.append('breakdown_page_size', String(normalized.breakdown_page_size))
   params.append('breakdown_sort', breakdownSort)

@@ -13,6 +13,7 @@ export interface UsageFilterDraft {
   range: UsageFilters['range']
   group_id: string
   upstream_model: string
+  client_model: string
 }
 
 export type UsageFilterErrors = Partial<Record<Exclude<keyof UsageFilterDraft, 'range'>, string>>
@@ -21,6 +22,7 @@ const emptyDraft = (): UsageFilterDraft => ({
   range: defaultTimeRange,
   group_id: '',
   upstream_model: '',
+  client_model: '',
 })
 
 export function normalizeUsageRange(raw: unknown): UsageFilters['range'] {
@@ -56,8 +58,10 @@ export function parseAppliedUsageFilters(query: Record<string, unknown>): UsageF
   const filters: UsageFilters = { range: normalizeUsageRange(query.range) }
   const groupID = normalizeUsageGroupID(query.group_id)
   const upstreamModel = normalizeUsageModel(query.upstream_model ?? query.model)
+  const clientModel = normalizeUsageModel(query.client_model)
   if (groupID !== undefined) filters.group_id = groupID
   if (upstreamModel !== undefined) filters.upstream_model = upstreamModel
+  if (clientModel !== undefined) filters.client_model = clientModel
   const page = normalizeUsagePage(query.breakdown_page)
   const pageSize = normalizeUsagePageSize(query.breakdown_page_size)
   if (page !== 1) filters.breakdown_page = page
@@ -79,6 +83,7 @@ export function createUsageFilterDraft(filters: UsageFilters): UsageFilterDraft 
     range: filters.range,
     group_id: filters.group_id === undefined ? '' : String(filters.group_id),
     upstream_model: filters.upstream_model ?? '',
+    client_model: filters.client_model ?? '',
   }
 }
 
@@ -88,8 +93,10 @@ export function applyUsageFilterDraft(draft: UsageFilterDraft): UsageFilters {
   }
   const groupID = normalizeUsageGroupID(draft.group_id)
   const upstreamModel = normalizeUsageModel(draft.upstream_model)
+  const clientModel = normalizeUsageModel(draft.client_model)
   if (groupID !== undefined) filters.group_id = groupID
   if (upstreamModel !== undefined) filters.upstream_model = upstreamModel
+  if (clientModel !== undefined) filters.client_model = clientModel
   return filters
 }
 
@@ -100,6 +107,9 @@ export function validateUsageFilterDraft(draft: UsageFilterDraft): UsageFilterEr
   }
   if (draft.upstream_model && normalizeUsageModel(draft.upstream_model) === undefined) {
     errors.upstream_model = 'monitor.usage.errors.model'
+  }
+  if (draft.client_model && normalizeUsageModel(draft.client_model) === undefined) {
+    errors.client_model = 'monitor.usage.errors.clientModel'
   }
   return errors
 }
