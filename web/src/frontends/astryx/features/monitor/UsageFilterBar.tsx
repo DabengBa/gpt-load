@@ -12,7 +12,7 @@ import { numericInputAttrs, plainTextInputAttrs } from '../../components/input-a
 
 // LogsFilterForm-style inline bar: sunken card shell, single control row that
 // wraps and drops to a full-width grid at 560px. The usage surface has three
-// filters only — range, group (admin principals), upstream model.
+// filters — range, group (admin principals), request and upstream models.
 
 const NARROW = '@media (max-width: 560px)'
 
@@ -216,6 +216,24 @@ export function UsageFilterBar({
           </span>
         )}
         <span {...stylex.props(styles.fieldModel)}>
+          <TextInput
+            label={t('monitor.usage.filters.clientModel')}
+            isLabelHidden={false}
+            size="sm"
+            width="100%"
+            value={draft.client_model}
+            onChange={(value) => onFieldChange('client_model', value)}
+            placeholder={t('monitor.usage.filters.modelPlaceholder')}
+            status={fieldError('client_model')}
+            aria-describedby={
+              fieldError('client_model') !== undefined
+                ? 'usage-filter-error-client-model'
+                : undefined
+            }
+            {...plainTextInputAttrs}
+          />
+        </span>
+        <span {...stylex.props(styles.fieldModel)}>
           {selfScoped === true ? (
             <TextInput
               label={modelLabel}
@@ -267,7 +285,9 @@ export function UsageFilterBar({
           id={
             errors.group_id !== undefined && errors.group_id !== ''
               ? 'usage-filter-error-group'
-              : 'usage-filter-error-model'
+              : errors.upstream_model !== undefined && errors.upstream_model !== ''
+                ? 'usage-filter-error-model'
+                : 'usage-filter-error-client-model'
           }
           {...stylex.props(styles.error)}
           role="alert"

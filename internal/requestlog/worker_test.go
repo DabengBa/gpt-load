@@ -420,6 +420,7 @@ func TestWriteBatchInsertsOnlyNewRequestLogsAndAggregatesUsage(t *testing.T) {
 		AccessKeyID:          1,
 		GroupID:              7,
 		Model:                "aggregate-model",
+		ClientModel:          existing.ClientModel,
 		RequestCount:         10,
 		SuccessCount:         10,
 		UncachedInputTokens:  100,
@@ -975,13 +976,14 @@ func TestWriteBatchRollsBackRequestLogsAndStatsOnFailure(t *testing.T) {
 		}
 		if err := db.Exec(`
 			INSERT INTO usage_stats (
-				bucket_start_ms, access_key_id, group_id, model,
+				bucket_start_ms, access_key_id, group_id, model, client_model,
 				request_count, success_count, estimated_cost_nano_usd
-			) VALUES (?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			hourMS,
 			row.AccessKeyID,
 			row.GroupID,
+			row.ClientModel,
 			row.ClientModel,
 			invalidRequestCount,
 			7,
@@ -1403,6 +1405,7 @@ func TestWriteBatchRejectsDurationSampleCountOverflowWithoutPartialWrites(t *tes
 		AccessKeyID:         existing.AccessKeyID,
 		GroupID:             existing.GroupID,
 		Model:               existing.UpstreamModel,
+		ClientModel:         existing.ClientModel,
 		RequestCount:        math.MaxInt64,
 		SuccessCount:        math.MaxInt64,
 		DurationMsTotal:     99,
@@ -1570,6 +1573,7 @@ func assertBatchWriterRejectsRowsWithoutChanges(
 ) {
 	t.Helper()
 	if existing != nil {
+		existing.ClientModel = rows[0].ClientModel
 		createCorruptUsageStats(t, db, *existing)
 	}
 	var before []models.UsageStat

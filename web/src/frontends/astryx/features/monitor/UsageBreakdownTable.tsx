@@ -175,6 +175,7 @@ export function UsageBreakdownTable({
     return JSON.stringify([
       breakdown.scope,
       row.model,
+      row.client_model,
       row.group_id ?? null,
       row.channel_id ?? null,
     ])
@@ -213,6 +214,14 @@ export function UsageBreakdownTable({
   }
 
   const columns: BreakdownColumn[] = [
+    {
+      key: 'client_model',
+      labelId: 'monitor.usage.breakdown.columns.clientModel',
+      identity: true,
+      numeric: false,
+      cell: (row) => row.client_model ?? t('monitor.usage.breakdown.unknownModel'),
+      total: () => '—',
+    },
     {
       key: 'model',
       labelId: 'monitor.usage.breakdown.columns.model',
@@ -320,12 +329,9 @@ export function UsageBreakdownTable({
           success_duration_ms_total <= 0
         )
           return '—'
-        return `${intl.formatNumber(
-          (success_output_tokens * 1000) / success_duration_ms_total,
-          {
-            maximumFractionDigits: 1,
-          },
-        )} /s`
+        return `${intl.formatNumber((success_output_tokens * 1000) / success_duration_ms_total, {
+          maximumFractionDigits: 1,
+        })} /s`
       },
       total: () => '—',
     },

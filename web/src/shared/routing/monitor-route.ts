@@ -105,8 +105,10 @@ export function usageMonitorQuery(
   }
   const groupID = normalizeUsageGroupID(filters.group_id)
   const upstreamModel = normalizeUsageModel(filters.upstream_model)
+  const clientModel = normalizeUsageModel(filters.client_model)
   if (groupID !== undefined) normalized.group_id = String(groupID)
   if (upstreamModel !== undefined) normalized.upstream_model = upstreamModel
+  if (clientModel !== undefined) normalized.client_model = clientModel
   const breakdownPage = normalizeUsagePage(filters.breakdown_page)
   const breakdownPageSize = normalizeUsagePageSize(filters.breakdown_page_size)
   if (breakdownPage !== 1) normalized.breakdown_page = String(breakdownPage)

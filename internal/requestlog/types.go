@@ -281,6 +281,8 @@ type UsageQuery struct {
 	ChannelID              channel.ID
 	CredentialID           *uint
 	UpstreamModel          string
+	ClientModel            string
+	BreakdownByClientModel bool
 	BreakdownPage          int
 	BreakdownPageSize      int
 	BreakdownSort          UsageBreakdownSort
@@ -368,9 +370,10 @@ type UsagePagination struct {
 }
 
 type UsageBreakdownRow struct {
-	Model     string
-	GroupID   *uint
-	ChannelID *string
+	Model       string
+	ClientModel string
+	GroupID     *uint
+	ChannelID   *string
 	UsageAggregate
 	UsageAttemptAggregate
 }

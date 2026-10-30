@@ -114,6 +114,7 @@ type UsageAggregationJournal struct {
 	ChannelID                    string `gorm:"type:varchar(64);not null;default:''"`
 	CredentialID                 uint   `gorm:"not null;default:0"`
 	Model                        string `gorm:"type:varchar(255);not null"`
+	ClientModel                  string `gorm:"type:varchar(255);not null;default:''"`
 	RequestCount                 int64  `gorm:"not null;check:chk_usage_journal_request_count,request_count = 1;check:chk_usage_journal_request_outcome,request_count = success_count + failure_count"`
 	SuccessCount                 int64  `gorm:"not null;check:chk_usage_journal_success_count,success_count >= 0"`
 	FailureCount                 int64  `gorm:"not null;check:chk_usage_journal_failure_count,failure_count >= 0"`
@@ -154,6 +155,7 @@ type UsageAttemptAggregationJournal struct {
 	ChannelID          string `gorm:"type:varchar(64);not null;default:''"`
 	CredentialID       uint   `gorm:"not null;check:chk_usage_attempt_journal_credential,credential_id > 0"`
 	Model              string `gorm:"type:varchar(255);not null"`
+	ClientModel        string `gorm:"type:varchar(255);not null;default:''"`
 	AttemptCount       int64  `gorm:"not null;check:chk_usage_attempt_journal_attempt_count,attempt_count = 1"`
 	FailureCount       int64  `gorm:"not null;check:chk_usage_attempt_journal_failure_count,failure_count >= 0 AND failure_count <= attempt_count"`
 	NormalAttemptCount int64  `gorm:"column:normal_attempt_count;not null;default:0;check:chk_usage_attempt_journal_normal_count,normal_attempt_count >= 0 AND normal_attempt_count <= attempt_count"`
@@ -173,6 +175,7 @@ type UsageAttemptStat struct {
 	GroupID            uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:4"`
 	CredentialID       uint   `gorm:"not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:5"`
 	Model              string `gorm:"type:varchar(255);not null;uniqueIndex:idx_usage_attempt_stats_identity,priority:6"`
+	ClientModel        string `gorm:"type:varchar(255);not null;default:'';uniqueIndex:idx_usage_attempt_stats_identity,priority:7"`
 	AttemptCount       int64  `gorm:"not null;default:0;check:chk_usage_attempt_stat_attempt_count,attempt_count >= 0"`
 	FailureCount       int64  `gorm:"not null;default:0;check:chk_usage_attempt_stat_failure_count,failure_count >= 0;check:chk_usage_attempt_stat_failure_le_attempt, failure_count <= attempt_count"`
 	NormalAttemptCount int64  `gorm:"column:normal_attempt_count;not null;default:0;check:chk_usage_attempt_stat_normal_count,normal_attempt_count >= 0 AND normal_attempt_count <= attempt_count"`
@@ -190,6 +193,7 @@ type UsageStat struct {
 	GroupID                      uint   `gorm:"not null;uniqueIndex:idx_usage_stats_identity,priority:4;index:idx_usage_stats_group_bucket,priority:1"`
 	CredentialID                 uint   `gorm:"not null;default:0;uniqueIndex:idx_usage_stats_identity,priority:5;index:idx_usage_stats_credential_bucket,priority:1"`
 	Model                        string `gorm:"type:varchar(255);not null;uniqueIndex:idx_usage_stats_identity,priority:6"`
+	ClientModel                  string `gorm:"type:varchar(255);not null;default:'';uniqueIndex:idx_usage_stats_identity,priority:7"`
 	RequestCount                 int64  `gorm:"not null;default:0;check:chk_usage_stat_request_count,request_count >= 0;check:chk_usage_stat_request_outcome,request_count = success_count + failure_count"`
 	SuccessCount                 int64  `gorm:"not null;default:0;check:chk_usage_stat_success_count,success_count >= 0"`
 	FailureCount                 int64  `gorm:"not null;default:0;check:chk_usage_stat_failure_count,failure_count >= 0"`

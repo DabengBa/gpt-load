@@ -168,6 +168,7 @@ export default {
         groupPlaceholder: 'グループ ID',
         searchGroups: 'グループを検索',
         model: 'アップストリームモデル',
+        clientModel: 'リクエストモデル',
         modelPlaceholder: '完全一致のモデル名',
         anyModel: 'すべてのアップストリームモデル',
         searchModels: 'モデルを検索',
@@ -181,6 +182,7 @@ export default {
       errors: {
         positiveId: '有効な正のグループ ID を入力してください。',
         model: 'アップストリームモデルの前後に空白や制御文字を含めることはできません。',
+        clientModel: 'リクエストモデルの前後に空白や制御文字を含めることはできません。',
       },
       empty: {
         title: '一致する使用量データがありません',
@@ -201,9 +203,11 @@ export default {
         caption: 'モデルとルート別の使用量・コスト内訳',
         rowCount: '{count} 行',
         total: '合計',
+        unknownModel: '不明',
         deletedOrUnknownChannel: '#{id} · 削除済みまたは不明',
         columns: {
-          model: 'モデル',
+          model: 'アップストリームモデル',
+          clientModel: 'リクエストモデル',
           group: 'グループ',
           channel: 'チャネル',
           attempts: '試行数',

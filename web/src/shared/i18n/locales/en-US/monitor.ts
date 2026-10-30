@@ -169,6 +169,7 @@ export default {
         groupPlaceholder: 'Group ID',
         searchGroups: 'Search groups',
         model: 'Upstream model',
+        clientModel: 'Request model',
         modelPlaceholder: 'Exact model name',
         anyModel: 'All upstream models',
         searchModels: 'Search models',
@@ -182,6 +183,7 @@ export default {
       errors: {
         positiveId: 'Enter a valid positive Group ID.',
         model: 'Upstream model cannot contain surrounding whitespace or control characters.',
+        clientModel: 'Request model cannot contain surrounding whitespace or control characters.',
       },
       empty: {
         title: 'No usage data matches',
@@ -200,9 +202,11 @@ export default {
         caption: 'Usage and cost breakdown by model and route',
         rowCount: '{count} rows',
         total: 'Total',
+        unknownModel: 'Unknown',
         deletedOrUnknownChannel: '#{id} · Deleted or unknown',
         columns: {
-          model: 'Model',
+          model: 'Upstream model',
+          clientModel: 'Request model',
           group: 'Group',
           channel: 'Channel',
           attempts: 'Attempts',

@@ -267,6 +267,9 @@ func usageStatScope(db *gorm.DB, input UsageQuery) *gorm.DB {
 	if input.UpstreamModel != "" {
 		scope = scope.Where("model = ?", input.UpstreamModel)
 	}
+	if input.ClientModel != "" {
+		scope = scope.Where("client_model = ?", input.ClientModel)
+	}
 	return scope
 }
 
@@ -372,7 +375,7 @@ func queryUsageBreakdown(
 		return UsageBreakdown{}, fmt.Errorf("query usage breakdown: pagination offset overflows int")
 	}
 
-	usageRows, err := queryUsageBreakdownRows(scope, accessKeyScoped)
+	usageRows, err := queryUsageBreakdownRows(scope, accessKeyScoped, input.BreakdownByClientModel)
 	if err != nil {
 		return UsageBreakdown{}, err
 	}
@@ -418,6 +421,7 @@ func queryUsageBreakdown(
 
 type usageAttemptBreakdownRow struct {
 	Model               string
+	ClientModel         string
 	GroupID             *uint
 	ChannelID           *string
 	AttemptCount        int64
@@ -428,9 +432,10 @@ type usageAttemptBreakdownRow struct {
 }
 
 type usageBreakdownKey struct {
-	Model     string
-	GroupID   uint
-	ChannelID string
+	Model       string
+	ClientModel string
+	GroupID     uint
+	ChannelID   string
 }
 
 type usageBreakdownCandidate struct {
@@ -439,14 +444,21 @@ type usageBreakdownCandidate struct {
 	channelName string
 }
 
-func queryUsageBreakdownRows(scope *gorm.DB, accessKeyScoped bool) ([]usageBreakdownRow, error) {
+func queryUsageBreakdownRows(scope *gorm.DB, accessKeyScoped bool, byClientModel bool) ([]usageBreakdownRow, error) {
 	query := scope.Session(&gorm.Session{})
+	clientSelect := "'' AS client_model, "
+	if byClientModel {
+		clientSelect = "usage_stats.client_model, "
+	}
 	if accessKeyScoped {
-		query = query.Select("usage_stats.model, NULL AS group_id, NULL AS channel_id, " + usageAggregateSelect).
+		query = query.Select(clientSelect + "usage_stats.model, NULL AS group_id, NULL AS channel_id, " + usageAggregateSelect).
 			Group("usage_stats.model")
 	} else {
-		query = query.Select("usage_stats.model, usage_stats.group_id, usage_stats.channel_id, " + usageAggregateSelect).
+		query = query.Select(clientSelect + "usage_stats.model, usage_stats.group_id, usage_stats.channel_id, " + usageAggregateSelect).
 			Group("usage_stats.model, usage_stats.group_id, usage_stats.channel_id")
+	}
+	if byClientModel {
+		query = query.Group("usage_stats.client_model")
 	}
 	var rows []usageBreakdownRow
 	if err := query.Find(&rows).Error; err != nil {
@@ -473,6 +485,9 @@ func usageAttemptStatScope(db *gorm.DB, input UsageQuery) *gorm.DB {
 	if input.UpstreamModel != "" {
 		scope = scope.Where("model = ?", input.UpstreamModel)
 	}
+	if input.ClientModel != "" {
+		scope = scope.Where("client_model = ?", input.ClientModel)
+	}
 	return scope
 }
 
@@ -495,8 +510,12 @@ func queryUsageAttemptBreakdown(
 	if err := validateUsageAttemptAggregate(total); err != nil {
 		return nil, UsageAttemptAggregate{}, err
 	}
+	clientSelect := "'' AS client_model, "
+	if input.BreakdownByClientModel {
+		clientSelect = "client_model, "
+	}
 	query := attemptScope.Select(
-		"model, NULL AS group_id, NULL AS channel_id, SUM(attempt_count) AS attempt_count, " +
+		clientSelect + "model, NULL AS group_id, NULL AS channel_id, SUM(attempt_count) AS attempt_count, " +
 			"SUM(failure_count) AS attempt_failure_count, " +
 			"SUM(normal_attempt_count) AS normal_attempt_count, " +
 			"SUM(slow_attempt_count) AS slow_attempt_count, " +
@@ -504,7 +523,7 @@ func queryUsageAttemptBreakdown(
 	)
 	if !accessKeyScoped {
 		query = attemptScope.Select(
-			"model, group_id, channel_id, SUM(attempt_count) AS attempt_count, " +
+			clientSelect + "model, group_id, channel_id, SUM(attempt_count) AS attempt_count, " +
 				"SUM(failure_count) AS attempt_failure_count, " +
 				"SUM(normal_attempt_count) AS normal_attempt_count, " +
 				"SUM(slow_attempt_count) AS slow_attempt_count, " +
@@ -513,6 +532,9 @@ func queryUsageAttemptBreakdown(
 			Group("model, group_id, channel_id")
 	} else {
 		query = query.Group("model")
+	}
+	if input.BreakdownByClientModel {
+		query = query.Group("client_model")
 	}
 	var rows []usageAttemptBreakdownRow
 	if err := query.Find(&rows).Error; err != nil {
@@ -557,7 +579,7 @@ func mergeUsageBreakdownRows(
 		if err := validateUsageAggregate(row.UsageAggregate); err != nil {
 			return nil, fmt.Errorf("validate usage breakdown: %w", err)
 		}
-		key := usageBreakdownKey{Model: row.Model}
+		key := usageBreakdownKey{Model: row.Model, ClientModel: row.ClientModel}
 		if row.GroupID != nil {
 			key.GroupID = *row.GroupID
 		}
@@ -565,7 +587,7 @@ func mergeUsageBreakdownRows(
 			key.ChannelID = *row.ChannelID
 		}
 		merged[key] = usageBreakdownCandidate{row: UsageBreakdownRow{
-			Model: row.Model, GroupID: cloneUintPointer(row.GroupID), ChannelID: cloneStringPointer(row.ChannelID),
+			Model: row.Model, ClientModel: row.ClientModel, GroupID: cloneUintPointer(row.GroupID), ChannelID: cloneStringPointer(row.ChannelID),
 			UsageAggregate: row.UsageAggregate,
 		}}
 	}
@@ -575,7 +597,7 @@ func mergeUsageBreakdownRows(
 			NormalAttemptCount: row.NormalAttemptCount, SlowAttemptCount: row.SlowAttemptCount,
 			FaultyAttemptCount: row.FaultyAttemptCount,
 		}
-		key := usageBreakdownKey{Model: row.Model}
+		key := usageBreakdownKey{Model: row.Model, ClientModel: row.ClientModel}
 		if row.GroupID != nil {
 			key.GroupID = *row.GroupID
 		}
@@ -585,6 +607,7 @@ func mergeUsageBreakdownRows(
 		candidate, ok := merged[key]
 		if !ok {
 			candidate.row.Model = row.Model
+			candidate.row.ClientModel = row.ClientModel
 			if !accessKeyScoped {
 				candidate.row.GroupID = cloneUintPointer(row.GroupID)
 				candidate.row.ChannelID = cloneStringPointer(row.ChannelID)
@@ -697,6 +720,9 @@ func sortUsageBreakdownRows(scope *gorm.DB, rows []usageBreakdownCandidate, inpu
 		}
 		if rows[left].row.Model != rows[right].row.Model {
 			return rows[left].row.Model < rows[right].row.Model
+		}
+		if rows[left].row.ClientModel != rows[right].row.ClientModel {
+			return rows[left].row.ClientModel < rows[right].row.ClientModel
 		}
 		leftGroup, rightGroup := uint(0), uint(0)
 		if rows[left].row.GroupID != nil {
@@ -1212,9 +1238,10 @@ const usageDistributionAggregateSelect = "" +
 	"COALESCE(SUM(estimated_cost_nano_usd), 0) AS estimated_cost_nano_usd"
 
 type usageBreakdownRow struct {
-	Model     string
-	GroupID   *uint
-	ChannelID *string
+	Model       string
+	ClientModel string
+	GroupID     *uint
+	ChannelID   *string
 	UsageAggregate
 }
 
