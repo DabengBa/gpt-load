@@ -44,11 +44,12 @@ type deferredAttempts struct {
 // preparedRequest is the per-candidate rewrite result: an applied override
 // body plus refreshed attempt-local observations.
 type preparedRequest struct {
-	configuredParameters  []string
-	request               *dialect.ParsedRequest
-	observations          dialect.RequestMetadata
-	observationsAvailable bool
-	err                   error
+	configuredParameters      []string
+	reasoningEffortOverridden bool
+	request                   *dialect.ParsedRequest
+	observations              dialect.RequestMetadata
+	observationsAvailable     bool
+	err                       error
 }
 
 // preparedRequestCache is the per-request prepared-request cache. It keeps at
@@ -118,6 +119,9 @@ func (cache *preparedRequestCache) get(selection scheduler.Selection) preparedRe
 			return prepared
 		}
 		applied = applied || effortApplied
+		// Preserve ownership even when the body already contains the selected
+		// value; native providers still need to reconcile dependent fields.
+		prepared.reasoningEffortOverridden = source == reasoning.EffortSourceEntry
 	}
 	// Rebuild each candidate from its own overrides, never from a previous
 	// group's prepared body. Recovery is request-local and invalidates the cache.
@@ -532,6 +536,10 @@ func (loop *attemptLoop) run() {
 		}
 		prepared := loop.prepared.get(selection)
 		if prepared.err != nil {
+			if errors.Is(prepared.err, dialect.ErrReasoningPolicyConflict) {
+				handler.completeReason(ginContext, recorder, reasonReasoningPolicyConflict)
+				return
+			}
 			code := "parameter_override_failed"
 			summary := "Parameter override could not be applied."
 			if errors.Is(prepared.err, errRequestTooLarge) {
@@ -681,14 +689,15 @@ func (loop *attemptLoop) run() {
 				AttemptSequence: uint32(loop.attemptSequence),
 			},
 			preparedRoute: preparedRoute{
-				ConfiguredParameters:     append([]string(nil), prepared.configuredParameters...),
-				Request:                  prepared.request,
-				ExternalModel:            dispatch.model,
-				Operation:                dispatch.metadata.Operation,
-				RouteRequirement:         dispatch.metadata.RouteRequirement,
-				ResponsesStorePreference: dispatch.metadata.ResponsesStorePreference,
-				ResponsesStoreDowngraded: selection.ResponsesStoreDowngraded,
-				RouteMode:                execution.RouteMode(selection.RouteMode),
+				ConfiguredParameters:      append([]string(nil), prepared.configuredParameters...),
+				ReasoningEffortOverridden: prepared.reasoningEffortOverridden,
+				Request:                   prepared.request,
+				ExternalModel:             dispatch.model,
+				Operation:                 dispatch.metadata.Operation,
+				RouteRequirement:          dispatch.metadata.RouteRequirement,
+				ResponsesStorePreference:  dispatch.metadata.ResponsesStorePreference,
+				ResponsesStoreDowngraded:  selection.ResponsesStoreDowngraded,
+				RouteMode:                 execution.RouteMode(selection.RouteMode),
 			},
 			attemptEffects: attemptEffects{
 				Dialect:        dispatch.dialect,

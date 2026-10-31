@@ -173,6 +173,53 @@ func NormalizeRawGenerateContentRequestForCompatibility(jsonBody []byte) []byte 
 	return out
 }
 
+// NormalizeRawReasoningForModel reconciles the two Gemini thinking control
+// surfaces after a native request has received an entry-owned effort override.
+// It intentionally derives 2.5 budgets with the same mapping as typed
+// conversion instead of inventing a budget in the gateway.
+func NormalizeRawReasoningForModel(jsonBody []byte, model, effort string) ([]byte, error) {
+	if len(jsonBody) == 0 || effort == "" {
+		return jsonBody, nil
+	}
+	thinkingPath := "generationConfig.thinkingConfig"
+	if !gjson.GetBytes(jsonBody, thinkingPath).IsObject() {
+		return jsonBody, nil
+	}
+
+	if isGemini3Plus(model) {
+		level := gjson.GetBytes(jsonBody, thinkingPath+".thinkingLevel").String()
+		if level == "" {
+			return jsonBody, nil
+		}
+		level = clampThinkingLevel(strings.ToLower(level), model)
+		updated, err := sjson.SetBytes(jsonBody, thinkingPath+".thinkingLevel", level)
+		if err != nil {
+			return nil, err
+		}
+		return providerUtils.DeleteJSONField(updated, thinkingPath+".thinkingBudget")
+	}
+
+	level := gjson.GetBytes(jsonBody, thinkingPath+".thinkingLevel")
+	if !level.Exists() {
+		return jsonBody, nil
+	}
+	maxTokens := providerUtils.GetMaxOutputTokensOrDefault(schemas.Gemini, model, DefaultCompletionMaxTokens)
+	if configured := gjson.GetBytes(jsonBody, "generationConfig.maxOutputTokens").Int(); configured > 0 {
+		maxTokens = int(configured)
+	}
+	caps := schemas.ResolveModelCaps(schemas.Gemini, model)
+	budgetRange := getThinkingBudgetRange(caps, maxTokens)
+	budget, err := providerUtils.GetBudgetTokensFromReasoningEffort(effort, budgetRange.Min, budgetRange.Max)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := providerUtils.DeleteJSONField(jsonBody, thinkingPath+".thinkingLevel")
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetBytes(updated, thinkingPath+".thinkingBudget", budget)
+}
+
 func isValidAudioBase64Payload(data string) bool {
 	decoded, err := decodeBase64StringToBytes(data)
 	return err == nil && len(decoded) > 0

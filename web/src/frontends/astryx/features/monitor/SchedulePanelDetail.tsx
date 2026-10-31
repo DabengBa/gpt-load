@@ -1295,16 +1295,20 @@ export function SchedulePanelDetail({
   // Unconfigured entries fold the effective value into the option label: the
   // cell has a single line, so the operator can see where the effective
   // reasoning effort comes from without opening the menu.
-  function reasoningOptionsFor(entry: ModelRouteScheduleEntryDto): {
+  function reasoningOptionsFor(
+    group: ModelRouteScheduleGroupDto,
+    entry: ModelRouteScheduleEntryDto,
+  ): {
     value: string
     label: string
   }[] {
     const effective = entry.reasoning.effective
     const inheritLabel = effective === null ? text('inherit') : `${text('inherit')} · ${effective}`
-    return [
-      { value: '', label: inheritLabel },
-      ...reasoningEffortValues.map((value) => ({ value, label: value })),
-    ]
+    const values =
+      group.channel_id === 'gemini' || group.channel_id === 'google_vertex'
+        ? reasoningEffortValues.filter((value) => value !== 'none')
+        : reasoningEffortValues
+    return [{ value: '', label: inheritLabel }, ...values.map((value) => ({ value, label: value }))]
   }
 
   function setEntryReasoning(
@@ -1828,7 +1832,7 @@ export function SchedulePanelDetail({
                             width="100%"
                             controlXstyle={styles.selector}
                             value={entryReasoningValue(group.group_id, entry)}
-                            options={reasoningOptionsFor(entry)}
+                            options={reasoningOptionsFor(group, entry)}
                             isDisabled={pending || derived}
                             onChange={(value) => setEntryReasoning(group.group_id, entry, value)}
                           />

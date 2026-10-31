@@ -3,6 +3,7 @@ package dialect
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -15,6 +16,8 @@ import (
 )
 
 const maxReasoningValueBytes = 64
+
+var ErrReasoningPolicyConflict = errors.New("reasoning policy cannot be represented by the request protocol")
 
 // SupportsReasoningEffortOverride limits group effort replacement to generation
 // operations whose client protocol defines the corresponding field.
@@ -60,6 +63,16 @@ func SetReasoningEffort(body []byte, effort string, client protocol.Protocol) ([
 	if effort == "" {
 		return body, false, nil
 	}
+	if (client == protocol.Anthropic || client == protocol.Gemini) && effort == "none" {
+		start, end, exists := jsonPathValue(body, []string{"thinking", "type"})
+		var mode string
+		if client == protocol.Gemini {
+			return nil, false, ErrReasoningPolicyConflict
+		}
+		if exists && json.Unmarshal(body[start:end], &mode) == nil && mode == "enabled" {
+			return nil, false, ErrReasoningPolicyConflict
+		}
+	}
 	path := reasoningEffortPath(client)
 	if len(path) == 0 {
 		return nil, false, fmt.Errorf("reasoning effort is not supported by protocol %q", client)
@@ -67,6 +80,23 @@ func SetReasoningEffort(body []byte, effort string, client protocol.Protocol) ([
 	updated, err := sjson.SetBytes(body, strings.Join(path, "."), effort)
 	if err != nil {
 		return nil, false, fmt.Errorf("set %s reasoning effort: %w", client, err)
+	}
+	if client == protocol.OpenAICompletions {
+		for _, switchPath := range [][]string{{"enable_thinking"}, {"chat_template_kwargs", "enable_thinking"}} {
+			start, end, exists := jsonPathValue(updated, switchPath)
+			if exists && (string(updated[start:end]) == "true" || string(updated[start:end]) == "false") {
+				updated, err = sjson.SetBytes(updated, strings.Join(switchPath, "."), effort != "none")
+				if err != nil {
+					return nil, false, fmt.Errorf("set %s thinking switch: %w", client, err)
+				}
+			}
+		}
+		if _, _, exists := jsonPathValue(updated, []string{"reasoning", "effort"}); exists {
+			updated, err = sjson.SetBytes(updated, "reasoning.effort", effort)
+			if err != nil {
+				return nil, false, fmt.Errorf("set %s nested reasoning effort: %w", client, err)
+			}
+		}
 	}
 	return updated, true, nil
 }

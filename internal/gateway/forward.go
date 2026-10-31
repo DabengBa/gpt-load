@@ -49,14 +49,15 @@ type attemptIdentity struct {
 // preparedRoute is the prepared-request half of ForwardInput: values produced
 // by preparedRequestCache for one group/entry, frozen once applied.
 type preparedRoute struct {
-	ConfiguredParameters     []string
-	Request                  *dialect.ParsedRequest
-	ExternalModel            string
-	Operation                execution.Operation
-	RouteRequirement         execution.RouteRequirement
-	ResponsesStorePreference execution.ResponsesStorePreference
-	ResponsesStoreDowngraded bool
-	RouteMode                execution.RouteMode
+	ConfiguredParameters      []string
+	ReasoningEffortOverridden bool
+	Request                   *dialect.ParsedRequest
+	ExternalModel             string
+	Operation                 execution.Operation
+	RouteRequirement          execution.RouteRequirement
+	ResponsesStorePreference  execution.ResponsesStorePreference
+	ResponsesStoreDowngraded  bool
+	RouteMode                 execution.RouteMode
 }
 
 // attemptEffects carries the request-level policy flags and the side-effect

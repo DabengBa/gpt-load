@@ -577,6 +577,7 @@ func TestModelRouteScheduleValidatesReasoningPerEntry(t *testing.T) {
 	}{
 		{name: "supported override", value: `"high"`, want: http.StatusOK, stored: "high"},
 		{name: "canonical low override", value: `"low"`, want: http.StatusOK, stored: "low"},
+		{name: "gemini cannot disable thinking", value: `"none"`, want: http.StatusBadRequest, stored: ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scenario := newScheduleTestScenario(t)
@@ -604,7 +605,8 @@ func TestModelRouteScheduleValidatesReasoningPerEntry(t *testing.T) {
 				t.Fatalf("PATCH = %d %s, want %d", recorder.Code, recorder.Body.String(), tc.want)
 			}
 			if tc.want == http.StatusBadRequest {
-				if !strings.Contains(recorder.Body.String(), "gemini-3.1-flash-lite-image") {
+				if !strings.Contains(recorder.Body.String(), "gemini-3.1-flash-lite-image") &&
+					!strings.Contains(recorder.Body.String(), "Gemini routes cannot configure reasoning effort none") {
 					t.Fatalf("missing affected model: %s", recorder.Body.String())
 				}
 				var after models.Group
