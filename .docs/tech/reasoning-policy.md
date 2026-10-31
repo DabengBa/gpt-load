@@ -61,11 +61,11 @@ client values retain their original semantics when no item override exists and
 are never normalized. An empty resolved value leaves the provider default in
 control.
 
-There is no capability registry. Which levels a saved entry actually supports
-is a Provider fact, so an entry value that the vocabulary accepts is persisted
-and sent; a provider that rejects it fails that attempt and the ordinary retry
-and health policy applies. The editor therefore offers the same vocabulary for
-every entry instead of a per-model allowlist.
+There is no model capability registry. The schedule editor applies one
+protocol-level boundary: Gemini and Google Vertex routes do not offer `none`,
+because those routes cannot reliably disable thinking. Other accepted levels
+are persisted and sent; a provider that rejects a model-specific level fails
+that attempt and the ordinary retry and health policy applies.
 
 Gateway request preparation first applies general parameter overrides, then
 applies a configured item reasoning override. Consequently an explicit item
@@ -91,6 +91,17 @@ path. Provider adapters serialize the resulting policy for their upstream
 protocol. `internal/execution/bifrost/reasoning_policy_wire_test.go` verifies
 observed request bodies across these paths; a successful control PATCH alone
 is not evidence of the final provider field.
+
+Protocol conflicts are rejected before dispatch. The schedule editor does not offer `none` for Gemini and Google Vertex routes;
+the backend rejects it as well if an old or manually crafted request reaches
+the schedule API. Anthropic rejects `none` when
+the request already has `thinking.type: "enabled"`; the enabled mode is kept
+and its budget is reconciled from the configured effort where the request
+contains a usable `max_tokens`. Gemini does not support a portable `none`
+policy because some models cannot disable thinking, so a Gemini protocol entry
+configured as `none` returns `reasoning_policy_conflict` without sending an
+upstream request. The gateway does not guess provider-specific budgets or
+switch thinking modes to make these cases appear valid.
 
 ## Failure Boundaries And Verification
 

@@ -934,11 +934,17 @@ func (s *Service) applyModelRouteScheduleGroupPatch(
 			return err
 		}
 	}
-	if _, ok := s.channelRegistry.ProviderKind(channel.ID(group.ChannelID)); !ok {
+	providerKind, ok := s.channelRegistry.ProviderKind(channel.ID(group.ChannelID))
+	if !ok {
 		return app_errors.ErrValidation
 	}
 	configurations := make([]state.ModelConfig, 0, len(entries))
 	for _, entry := range entries {
+		if (providerKind == channel.ProviderGemini || providerKind == channel.ProviderGoogleVertex) && entry.ReasoningEffort == "none" {
+			return app_errors.NewAPIErrorWithData(app_errors.ErrValidation, scheduleValidationData{
+				GroupID: groupID, Message: "Gemini routes cannot configure reasoning effort none",
+			})
+		}
 		_, _, err := reasoning.ResolveEffort(entry.ReasoningEffort, "")
 		if err != nil {
 			return app_errors.ErrValidation

@@ -2,6 +2,7 @@ package gemini_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -111,6 +112,57 @@ func TestGeminiThinkingLevelClampedToModelSupport(t *testing.T) {
 			assert.Nil(t, out.GenerationConfig.ThinkingConfig.ThinkingBudget,
 				"Gemini 3 is controlled by thinkingLevel, thinkingBudget must not be sent alongside it")
 			assertFunctionDeclarationsSurvived(t, out)
+		})
+	}
+}
+
+func TestNormalizeRawReasoningForModelRemovesConflictingGeminiControls(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		effort     string
+		body       string
+		wantLevel  string
+		wantBudget *int
+	}{
+		{
+			name:      "gemini 3 keeps legal level and drops budget",
+			model:     "gemini-3.7-flash",
+			effort:    "minimal",
+			body:      `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal","thinkingBudget":900}}}`,
+			wantLevel: "low",
+		},
+		{
+			name:       "gemini 2.5 maps effort to budget and drops level",
+			model:      "gemini-2.5-flash",
+			effort:     "low",
+			body:       `{"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingLevel":"low","thinkingBudget":900}}}`,
+			wantBudget: func() *int { v := 3686; return &v }(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := gemini.NormalizeRawReasoningForModel([]byte(tt.body), tt.model, tt.effort)
+			require.NoError(t, err)
+			var request struct {
+				GenerationConfig struct {
+					ThinkingConfig *struct {
+						ThinkingLevel  *string `json:"thinkingLevel"`
+						ThinkingBudget *int    `json:"thinkingBudget"`
+					} `json:"thinkingConfig"`
+				} `json:"generationConfig"`
+			}
+			require.NoError(t, json.Unmarshal(got, &request))
+			require.NotNil(t, request.GenerationConfig.ThinkingConfig)
+			if tt.wantLevel != "" {
+				require.NotNil(t, request.GenerationConfig.ThinkingConfig.ThinkingLevel)
+				assert.Equal(t, tt.wantLevel, *request.GenerationConfig.ThinkingConfig.ThinkingLevel)
+				assert.Nil(t, request.GenerationConfig.ThinkingConfig.ThinkingBudget)
+			} else {
+				assert.Nil(t, request.GenerationConfig.ThinkingConfig.ThinkingLevel)
+				require.NotNil(t, request.GenerationConfig.ThinkingConfig.ThinkingBudget)
+				assert.Equal(t, *tt.wantBudget, *request.GenerationConfig.ThinkingConfig.ThinkingBudget)
+			}
 		})
 	}
 }

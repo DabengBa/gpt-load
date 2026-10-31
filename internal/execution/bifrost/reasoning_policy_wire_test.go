@@ -96,9 +96,9 @@ func TestReasoningPolicyFinalProviderWire(t *testing.T) {
 		{"chat native", channel.OpenAI, protocol.OpenAICompletions, execution.OperationChatCompletion, "/v1/chat/completions", `{"model":"client-model","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"high"}`, "gpt-5.4", "/v1/chat/completions", "reasoning_effort", "high", `{"id":"chat_1","object":"chat.completion","created":1,"model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`, execution.RouteNative},
 		{"responses native", channel.OpenAI, protocol.OpenAIResponses, execution.OperationResponsesCreate, "/v1/responses", `{"model":"client-model","input":"hi","reasoning":{"effort":"high"}}`, "gpt-5.4", "/v1/responses", "reasoning.effort", "high", openAIResponsesConvertedFixture, execution.RouteNative},
 		{"responses converted", channel.OpenAI, protocol.Anthropic, execution.OperationChatCompletion, "/v1/messages", `{"model":"client-model","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"output_config":{"effort":"high"}}`, "gpt-5.4", "/v1/responses", "reasoning.effort", "high", openAIResponsesConvertedFixture, execution.RouteConverted},
-		{"anthropic native", channel.Anthropic, protocol.Anthropic, execution.OperationChatCompletion, "/v1/messages", `{"model":"client-model","max_tokens":4096,"messages":[{"role":"user","content":"hi"}],"output_config":{"effort":"high"}}`, "claude-sonnet-4-6", "/v1/messages", "output_config.effort", "high", anthropicResponsesConvertedFixture, execution.RouteNative},
+		{"anthropic native", channel.Anthropic, protocol.Anthropic, execution.OperationChatCompletion, "/v1/messages", `{"model":"client-model","max_tokens":4096,"messages":[{"role":"user","content":"hi"}],"thinking":{"type":"enabled","budget_tokens":4096},"output_config":{"effort":"high"}}`, "claude-sonnet-4-6", "/v1/messages", "output_config.effort", "high", anthropicResponsesConvertedFixture, execution.RouteNative},
 		{"anthropic converted", channel.Anthropic, protocol.OpenAIResponses, execution.OperationResponsesCreate, "/v1/responses", `{"model":"client-model","input":"hi","max_output_tokens":4096,"reasoning":{"effort":"high"}}`, "claude-sonnet-4-6", "/v1/messages", "output_config.effort", "high", anthropicResponsesConvertedFixture, execution.RouteConverted},
-		{"gemini native", channel.Gemini, protocol.Gemini, execution.OperationChatCompletion, "/v1beta/models/client-model:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH"}}}`, "gemini-3-flash", "/v1beta/models/gemini-3-flash:generateContent", "generationConfig.thinkingConfig.thinkingLevel", "HIGH", geminiResponsesConvertedFixture, execution.RouteNative},
+		{"gemini native", channel.Gemini, protocol.Gemini, execution.OperationChatCompletion, "/v1beta/models/client-model:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH","thinkingBudget":900}}}`, "gemini-3-flash", "/v1beta/models/gemini-3-flash:generateContent", "generationConfig.thinkingConfig.thinkingLevel", "high", geminiResponsesConvertedFixture, execution.RouteNative},
 		{"gemini converted", channel.Gemini, protocol.OpenAIResponses, execution.OperationResponsesCreate, "/v1/responses", `{"model":"client-model","input":"hi","reasoning":{"effort":"high"}}`, "gemini-3-flash", "/v1beta/models/gemini-3-flash:generateContent", "generationConfig.thinkingConfig.thinkingLevel", "high", geminiResponsesConvertedFixture, execution.RouteConverted},
 	}
 	for _, tc := range cases {
@@ -130,6 +130,9 @@ func TestReasoningPolicyFinalProviderWire(t *testing.T) {
 			runtime := newProtocolTestRuntime(t, options)
 			spec := convertedSpec(tc.channel, tc.client, tc.operation, tc.path, []byte(tc.body)).Clone()
 			spec.RouteMode, spec.UpstreamModel = tc.mode, tc.model
+			if tc.name == "anthropic native" || tc.name == "gemini native" {
+				spec.ReasoningEffortOverridden = true
+			}
 			spec = freezeTestAttempt(spec)
 			result := runtime.Execute(t.Context(), spec)
 			if result.Error != nil || result.StatusCode != http.StatusOK {
@@ -147,6 +150,18 @@ func TestReasoningPolicyFinalProviderWire(t *testing.T) {
 				}
 				if value != tc.effort {
 					t.Fatalf("wire %s = %v, want %s", tc.field, value, tc.effort)
+				}
+				if tc.name == "gemini native" {
+					thinkingConfig := payload["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
+					if _, exists := thinkingConfig["thinkingBudget"]; exists {
+						t.Fatalf("wire thinkingConfig retained conflicting thinkingBudget: %#v", thinkingConfig)
+					}
+				}
+				if tc.name == "anthropic native" {
+					thinking, ok := payload["thinking"].(map[string]any)
+					if !ok || thinking["type"] != "enabled" || thinking["budget_tokens"] != float64(3481) {
+						t.Fatalf("wire thinking = %#v, want enabled with budget_tokens 3481", payload["thinking"])
+					}
 				}
 			default:
 				t.Fatal("no provider HTTP request")

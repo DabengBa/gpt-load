@@ -252,6 +252,9 @@ type AttemptSpec struct {
 	ConfiguredHeaders []string `json:"-"`
 	// ConfiguredParameters 仅记录本次分组覆盖设置的字段，值从最终 Body 读取。
 	ConfiguredParameters []string `json:"-"`
+	// ReasoningEffortOverridden records that the selected entry, rather than
+	// the client, supplied the effective reasoning effort.
+	ReasoningEffortOverridden bool `json:"-"`
 	// IncludeUsage asks the executor to request provider usage details when the
 	// selected operation supports an explicit wire option.
 	IncludeUsage bool `json:"include_usage,omitempty"`

@@ -33,9 +33,10 @@ request runs.
   upstream model can have different choices. Requests using a
   [model test alias](feature.model-test-alias) select that same owning entry.
 - Details show the configured value, effective level, and policy source for
-  each candidate route. Every candidate offers the same level list; which
-  levels a provider actually honors is a provider fact, reported by a failed
-  request rather than pre-validated per model.
+  each candidate route. Gemini and Google Vertex routes do not offer `none`,
+  because their thinking controls cannot reliably disable thinking. Other
+  levels remain selectable and provider-specific model limits are handled by
+  the provider.
 - Before saving, the editor validates each changed item's requested level
   against the supported level list. A validation failure saves none of the
   changes. A concurrent configuration change requires refreshing the current
@@ -60,8 +61,9 @@ request runs.
   source are shown after saving. Clearing it restores the client/provider
   default path without changing other candidates.
 - **Maintenance and failure signal:** An invalid level value is rejected and
-  cannot be saved. No partial change should persist. A level the provider
-  refuses is visible as that route's failed request, not as a save error.
+  cannot be saved. No partial change should persist. A manually submitted
+  `none` value for a Gemini route is rejected before persistence; a level the
+  provider refuses is visible as that route's failed request.
 
 ## Boundaries
 

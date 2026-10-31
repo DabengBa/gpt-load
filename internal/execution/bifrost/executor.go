@@ -15,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tidwall/gjson"
+
+	"github.com/maximhq/bifrost/core/providers/gemini"
 	"github.com/maximhq/bifrost/core/providers/openai"
 	"github.com/maximhq/bifrost/core/schemas"
 
@@ -750,6 +753,18 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		body, sanitizedHeaders, err := sanitizeNativePassthroughRequest(spec, stream)
 		if err == nil && mode == channel.RouteNative && providerKind == channel.ProviderDeepSeek {
 			body, err = normalizeDeepSeekNativeRequest(body, spec.ClientProtocol)
+		}
+		if err == nil && mode == channel.RouteNative && providerKind == channel.ProviderAnthropic &&
+			spec.Operation == execution.OperationChatCompletion && spec.ClientProtocol == protocol.Anthropic &&
+			spec.ReasoningEffortOverridden {
+			body, err = normalizeAnthropicNativeReasoning(body, effortFromAnthropicBody(body))
+		}
+		if err == nil && mode == channel.RouteNative &&
+			(providerKind == channel.ProviderGemini || providerKind == channel.ProviderGoogleVertex) &&
+			spec.ClientProtocol == protocol.Gemini && spec.Operation == execution.OperationChatCompletion &&
+			spec.ReasoningEffortOverridden {
+			body, err = gemini.NormalizeRawReasoningForModel(body, spec.UpstreamModel,
+				gjson.GetBytes(body, "generationConfig.thinkingConfig.thinkingLevel").String())
 		}
 		if err != nil {
 			failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid native request body")
