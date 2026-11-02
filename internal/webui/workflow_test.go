@@ -197,7 +197,7 @@ func TestBranchAndReleaseWorkflowsRunRaceInParallelGates(t *testing.T) {
 		t,
 		workflowJobBlock(t, content, "race-tests"),
 		"Run race-enabled tests",
-		"go test -race -count=1 -timeout=15m . ./internal/...",
+		"go test -race -gcflags='modernc.org/...=-race=false' -count=1 -timeout=15m . ./internal/...",
 	)
 	assertNoCPAWorkflowWiring(t, content)
 
