@@ -68,8 +68,13 @@ class DeployTest(unittest.TestCase):
     def run_deploy(self, fail="", endpoint="unix:///var/run/docker.sock"):
         return self.run_script(fail, endpoint, [])
 
-    def run_script(self, fail="", endpoint="unix:///var/run/docker.sock", args=(),
-                   missing_image=False):
+    def run_script(
+        self,
+        fail="",
+        endpoint="unix:///var/run/docker.sock",
+        args=(),
+        missing_image=False,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             stub = root / "stub"
@@ -90,7 +95,11 @@ class DeployTest(unittest.TestCase):
             env.pop("DOCKER_CONTEXT", None)
             env.pop("DEPLOY_COMMIT", None)
             result = subprocess.run(
-                ["bash", str(SCRIPT), *args], env=env, capture_output=True, text=True, timeout=60
+                ["bash", str(SCRIPT), *args],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
             )
             log = root / "calls"
             calls = log.read_text() if log.exists() else ""
@@ -131,9 +140,13 @@ class DeployTest(unittest.TestCase):
         self.assertIn("docker save 'sha256:", calls)
         self.assertIn("docker load", calls)
         self.assertIn("--previous-image sha256:" + "b" * 64, calls)
-        self.assertLess(calls.index("docker build"), calls.index("verify-built-image.py"))
+        self.assertLess(
+            calls.index("docker build"), calls.index("verify-built-image.py")
+        )
         # Only the verified image is uploaded to the server.
-        self.assertLess(calls.index("verify-built-image.py"), calls.index("docker save gpt-load:"))
+        self.assertLess(
+            calls.index("verify-built-image.py"), calls.index("docker save gpt-load:")
+        )
 
     def test_validation_runs_the_fetched_commit_scripts(self):
         result, calls, _ = self.run_deploy()
@@ -142,7 +155,11 @@ class DeployTest(unittest.TestCase):
         # tree copy of deploy.sh never runs the build, so a dirty tree cannot ship.
         self.assertIn("bundle-script-ran", result.stdout)
         self.assertLess(calls.index("git archive"), calls.index("docker build"))
-        verify = [line.split() for line in calls.splitlines() if "verify-built-image.py" in line]
+        verify = [
+            line.split()
+            for line in calls.splitlines()
+            if "verify-built-image.py" in line
+        ]
         self.assertEqual(len(verify), 1, calls)
         self.assertNotIn(str(REPO), verify[0][1])
         self.assertIn("--expected-version " + VERSION, calls)
@@ -150,8 +167,12 @@ class DeployTest(unittest.TestCase):
     def test_prepare_only_verifies_and_uploads_but_does_not_switch(self):
         result, calls, remote = self.run_script(args=("dev", "--prepare-only"))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertLess(calls.index("docker build"), calls.index("verify-built-image.py"))
-        self.assertLess(calls.index("verify-built-image.py"), calls.index("docker save gpt-load:"))
+        self.assertLess(
+            calls.index("docker build"), calls.index("verify-built-image.py")
+        )
+        self.assertLess(
+            calls.index("verify-built-image.py"), calls.index("docker save gpt-load:")
+        )
         self.assertEqual(remote, "")
 
     def test_activate_only_still_verifies_before_switching(self):
@@ -164,16 +185,21 @@ class DeployTest(unittest.TestCase):
         self.assertIn("docker compose", remote)
 
     def test_activate_only_refuses_a_commit_that_is_not_the_remote_head(self):
-        result, calls, remote = self.run_script(args=("dev", "--activate-only", "b" * 40))
+        result, calls, remote = self.run_script(
+            args=("dev", "--activate-only", "b" * 40)
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("远端分支已变化", result.stderr)
         # 只允许读取分支信息，不构建、不上传、不切换。
-        self.assertEqual([line for line in calls.splitlines() if not line.startswith("git")], [])
+        self.assertEqual(
+            [line for line in calls.splitlines() if not line.startswith("git")], []
+        )
         self.assertEqual(remote, "")
 
     def test_activate_only_refuses_when_the_image_is_missing_locally(self):
-        result, calls, remote = self.run_script(args=("dev", "--activate-only", COMMIT),
-                                                missing_image=True)
+        result, calls, remote = self.run_script(
+            args=("dev", "--activate-only", COMMIT), missing_image=True
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("本地没有待切换镜像", result.stderr)
         self.assertNotIn("verify-built-image.py", calls)

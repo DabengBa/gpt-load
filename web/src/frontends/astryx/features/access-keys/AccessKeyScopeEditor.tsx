@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { Button, SegmentedControl, SegmentedControlItem, TextInput } from '@astryxdesign/core'
 import { Plus, Search, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { AccessKeyFiltersDto, AccessProtocol } from '@shared/control/types'
 import type {
@@ -453,6 +453,52 @@ function ScopeMultiSelect({
   )
 }
 
+/** "All <dimension> allowed" note that replaces the picker in `all` mode. */
+function PermissionNote({ label }: { label: string }) {
+  return (
+    <div {...stylex.props(styles.permissionNote)}>
+      <i aria-hidden="true" {...stylex.props(styles.permissionNoteDot)} />
+      {label}
+    </div>
+  )
+}
+
+/**
+ * One scope dimension: fieldset shell, screen-reader legend, the visible
+ * title/description head, and the All/Specified `SegmentedControl`. Groups,
+ * Protocols and Models differ only in copy, mode control and body, so the
+ * three fieldsets share this shell instead of repeating it.
+ */
+function ScopeFieldset({
+  title,
+  description,
+  sibling,
+  modeControl,
+  children,
+}: {
+  title: string
+  description: string
+  sibling: boolean
+  modeControl: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <fieldset
+      {...stylex.props(styles.scopeEditor, sibling && styles.scopeEditorSibling)}
+    >
+      <legend {...stylex.props(styles.srOnly)}>{title}</legend>
+      <div {...stylex.props(styles.scopeHead)}>
+        <div>
+          <strong {...stylex.props(styles.scopeHeadTitle)}>{title}</strong>
+          <small {...stylex.props(styles.scopeHeadDescription)}>{description}</small>
+        </div>
+        {modeControl}
+      </div>
+      <div {...stylex.props(styles.scopeBody)}>{children}</div>
+    </fieldset>
+  )
+}
+
 /**
  * Port of classic `AccessKeyScopeEditor.vue` — three fieldsets (Groups,
  * Protocols, Models) each with an All/Specified `SegmentedControl`; a
@@ -549,149 +595,113 @@ export function AccessKeyScopeEditor({
 
   return (
     <>
-      <fieldset {...stylex.props(styles.scopeEditor)}>
-        <legend {...stylex.props(styles.srOnly)}>{t('accessKeys.drawer.groups')}</legend>
-        <div {...stylex.props(styles.scopeHead)}>
-          <div>
-            <strong {...stylex.props(styles.scopeHeadTitle)}>
-              {t('accessKeys.drawer.groups')}
-            </strong>
-            <small {...stylex.props(styles.scopeHeadDescription)}>
-              {t('accessKeys.drawer.groupsDescription')}
-            </small>
-          </div>
-          {scopeModeControl('groups', t('accessKeys.drawer.groups'))}
-        </div>
-        <div {...stylex.props(styles.scopeBody)}>
-          {modes.groups === 'all' ? (
-            <div {...stylex.props(styles.permissionNote)}>
-              <i aria-hidden="true" {...stylex.props(styles.permissionNoteDot)} />
-              {t('accessKeys.drawer.allGroupsAllowed')}
-            </div>
-          ) : (
+      <ScopeFieldset
+        title={t('accessKeys.drawer.groups')}
+        description={t('accessKeys.drawer.groupsDescription')}
+        sibling={false}
+        modeControl={scopeModeControl('groups', t('accessKeys.drawer.groups'))}
+      >
+        {modes.groups === 'all' ? (
+          <PermissionNote label={t('accessKeys.drawer.allGroupsAllowed')} />
+        ) : (
+          <ScopeMultiSelect
+            id="access-key-groups"
+            label={t('accessKeys.drawer.groupSelectorLabel')}
+            searchLabel={t('accessKeys.drawer.searchGroups')}
+            searchPlaceholder={t('accessKeys.drawer.searchGroupsPlaceholder')}
+            emptyLabel={t('accessKeys.drawer.noGroupOptions')}
+            loadingLabel={t('accessKeys.drawer.groupOptionsLoading')}
+            options={groupOptions}
+            value={filters.groups}
+            disabled={disabled || catalogUnavailable()}
+            loading={groupCatalogState === 'loading'}
+            autoFocusSearch
+            onChange={updateGroups}
+          />
+        )}
+      </ScopeFieldset>
+
+      <ScopeFieldset
+        title={t('accessKeys.drawer.protocols')}
+        description={t('accessKeys.drawer.protocolsDescription')}
+        sibling
+        modeControl={scopeModeControl('protocols', t('accessKeys.drawer.protocols'))}
+      >
+        {modes.protocols === 'all' ? (
+          <PermissionNote label={t('accessKeys.drawer.allProtocolsAllowed')} />
+        ) : (
+          <ScopeMultiSelect
+            id="access-key-protocols"
+            label={t('accessKeys.drawer.protocolSelectorLabel')}
+            searchLabel={t('accessKeys.drawer.protocols')}
+            emptyLabel={t('accessKeys.drawer.noProtocolOptions')}
+            loadingLabel={t('accessKeys.drawer.groupOptionsLoading')}
+            options={protocolMultiSelectOptions}
+            value={filters.protocols}
+            disabled={optionDisabled('protocols')}
+            searchable={false}
+            onChange={updateProtocols}
+          />
+        )}
+      </ScopeFieldset>
+
+      <ScopeFieldset
+        title={t('accessKeys.drawer.models')}
+        description={t('accessKeys.drawer.modelsScopeDescription')}
+        sibling
+        modeControl={scopeModeControl('models', t('accessKeys.drawer.models'))}
+      >
+        {modes.models === 'all' ? (
+          <PermissionNote label={t('accessKeys.drawer.allModelsAllowed')} />
+        ) : (
+          <>
             <ScopeMultiSelect
-              id="access-key-groups"
-              label={t('accessKeys.drawer.groupSelectorLabel')}
-              searchLabel={t('accessKeys.drawer.searchGroups')}
-              searchPlaceholder={t('accessKeys.drawer.searchGroupsPlaceholder')}
-              emptyLabel={t('accessKeys.drawer.noGroupOptions')}
+              id="access-key-models"
+              label={t('accessKeys.drawer.modelSelectorLabel')}
+              searchLabel={t('accessKeys.drawer.searchModels')}
+              searchPlaceholder={t('accessKeys.drawer.searchModelsPlaceholder')}
+              emptyLabel={t('accessKeys.drawer.noModelOptions')}
               loadingLabel={t('accessKeys.drawer.groupOptionsLoading')}
-              options={groupOptions}
-              value={filters.groups}
-              disabled={disabled || catalogUnavailable()}
+              options={modelOptions}
+              value={filters.models}
+              disabled={optionDisabled('models')}
               loading={groupCatalogState === 'loading'}
               autoFocusSearch
-              onChange={updateGroups}
+              onChange={updateModels}
             />
-          )}
-        </div>
-      </fieldset>
-
-      <fieldset {...stylex.props(styles.scopeEditor, styles.scopeEditorSibling)}>
-        <legend {...stylex.props(styles.srOnly)}>{t('accessKeys.drawer.protocols')}</legend>
-        <div {...stylex.props(styles.scopeHead)}>
-          <div>
-            <strong {...stylex.props(styles.scopeHeadTitle)}>
-              {t('accessKeys.drawer.protocols')}
-            </strong>
-            <small {...stylex.props(styles.scopeHeadDescription)}>
-              {t('accessKeys.drawer.protocolsDescription')}
-            </small>
-          </div>
-          {scopeModeControl('protocols', t('accessKeys.drawer.protocols'))}
-        </div>
-        <div {...stylex.props(styles.scopeBody)}>
-          {modes.protocols === 'all' ? (
-            <div {...stylex.props(styles.permissionNote)}>
-              <i aria-hidden="true" {...stylex.props(styles.permissionNoteDot)} />
-              {t('accessKeys.drawer.allProtocolsAllowed')}
-            </div>
-          ) : (
-            <ScopeMultiSelect
-              id="access-key-protocols"
-              label={t('accessKeys.drawer.protocolSelectorLabel')}
-              searchLabel={t('accessKeys.drawer.protocols')}
-              emptyLabel={t('accessKeys.drawer.noProtocolOptions')}
-              loadingLabel={t('accessKeys.drawer.groupOptionsLoading')}
-              options={protocolMultiSelectOptions}
-              value={filters.protocols}
-              disabled={optionDisabled('protocols')}
-              searchable={false}
-              onChange={updateProtocols}
-            />
-          )}
-        </div>
-      </fieldset>
-
-      <fieldset {...stylex.props(styles.scopeEditor, styles.scopeEditorSibling)}>
-        <legend {...stylex.props(styles.srOnly)}>{t('accessKeys.drawer.models')}</legend>
-        <div {...stylex.props(styles.scopeHead)}>
-          <div>
-            <strong {...stylex.props(styles.scopeHeadTitle)}>
-              {t('accessKeys.drawer.models')}
-            </strong>
-            <small {...stylex.props(styles.scopeHeadDescription)}>
-              {t('accessKeys.drawer.modelsScopeDescription')}
-            </small>
-          </div>
-          {scopeModeControl('models', t('accessKeys.drawer.models'))}
-        </div>
-        <div {...stylex.props(styles.scopeBody)}>
-          {modes.models === 'all' ? (
-            <div {...stylex.props(styles.permissionNote)}>
-              <i aria-hidden="true" {...stylex.props(styles.permissionNoteDot)} />
-              {t('accessKeys.drawer.allModelsAllowed')}
-            </div>
-          ) : (
-            <>
-              <ScopeMultiSelect
-                id="access-key-models"
-                label={t('accessKeys.drawer.modelSelectorLabel')}
-                searchLabel={t('accessKeys.drawer.searchModels')}
-                searchPlaceholder={t('accessKeys.drawer.searchModelsPlaceholder')}
-                emptyLabel={t('accessKeys.drawer.noModelOptions')}
-                loadingLabel={t('accessKeys.drawer.groupOptionsLoading')}
-                options={modelOptions}
-                value={filters.models}
+            <div {...stylex.props(styles.modelEntry)}>
+              <input
+                {...stylex.props(styles.modelEntryInput)}
+                value={modelInput}
+                type="text"
+                autoComplete="off"
+                placeholder={t('accessKeys.drawer.modelPlaceholder')}
                 disabled={optionDisabled('models')}
-                loading={groupCatalogState === 'loading'}
-                autoFocusSearch
-                onChange={updateModels}
+                onChange={(event) => onModelInputChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    onAddModel()
+                  }
+                }}
               />
-              <div {...stylex.props(styles.modelEntry)}>
-                <input
-                  {...stylex.props(styles.modelEntryInput)}
-                  value={modelInput}
-                  type="text"
-                  autoComplete="off"
-                  placeholder={t('accessKeys.drawer.modelPlaceholder')}
-                  disabled={optionDisabled('models')}
-                  onChange={(event) => onModelInputChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      onAddModel()
-                    }
-                  }}
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  isDisabled={optionDisabled('models') || modelInput.trim() === ''}
-                  icon={<Plus size={14} aria-hidden="true" />}
-                  label={t('accessKeys.drawer.addModel')}
-                  onClick={onAddModel}
-                />
-              </div>
-              {modelMismatch && (
-                <p {...stylex.props(styles.modelRisk)} role="status">
-                  {t('accessKeys.drawer.modelRouteRisk')}
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      </fieldset>
+              <Button
+                variant="secondary"
+                size="sm"
+                isDisabled={optionDisabled('models') || modelInput.trim() === ''}
+                icon={<Plus size={14} aria-hidden="true" />}
+                label={t('accessKeys.drawer.addModel')}
+                onClick={onAddModel}
+              />
+            </div>
+            {modelMismatch && (
+              <p {...stylex.props(styles.modelRisk)} role="status">
+                {t('accessKeys.drawer.modelRouteRisk')}
+              </p>
+            )}
+          </>
+        )}
+      </ScopeFieldset>
     </>
   )
 }

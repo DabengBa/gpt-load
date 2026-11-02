@@ -87,17 +87,7 @@ func (writer *gormBatchWriter) prepareNewRequestLogRows(
 	ctx context.Context,
 	rows []models.RequestLog,
 ) ([]models.RequestLog, error) {
-	uniqueRows := make([]models.RequestLog, 0, len(rows))
-	ids := make([]string, 0, len(rows))
-	seen := make(map[string]struct{}, len(rows))
-	for _, row := range rows {
-		if _, exists := seen[row.ID]; exists {
-			continue
-		}
-		seen[row.ID] = struct{}{}
-		uniqueRows = append(uniqueRows, row)
-		ids = append(ids, row.ID)
-	}
+	uniqueRows, ids := uniqueRequestLogRows(rows)
 	if len(uniqueRows) == 0 {
 		return nil, nil
 	}
@@ -123,15 +113,7 @@ func (writer *gormBatchWriter) prepareNewRequestLogRows(
 }
 
 func recoverPendingUsageJournals(tx *gorm.DB, rows []models.RequestLog) error {
-	ids := make([]string, 0, len(rows))
-	seen := make(map[string]struct{}, len(rows))
-	for _, row := range rows {
-		if _, exists := seen[row.ID]; exists {
-			continue
-		}
-		seen[row.ID] = struct{}{}
-		ids = append(ids, row.ID)
-	}
+	ids := uniqueRequestLogIDs(rows)
 	if len(ids) == 0 {
 		return nil
 	}
@@ -148,6 +130,35 @@ func recoverPendingUsageJournals(tx *gorm.DB, rows []models.RequestLog) error {
 		return fmt.Errorf("query pending usage attempt journals for recovery: %w", err)
 	}
 	return applyUsageAttemptJournalBatch(tx, attemptJournals)
+}
+
+func uniqueRequestLogRows(rows []models.RequestLog) ([]models.RequestLog, []string) {
+	uniqueRows := make([]models.RequestLog, 0, len(rows))
+	ids := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		if _, exists := seen[row.ID]; exists {
+			continue
+		}
+		seen[row.ID] = struct{}{}
+		uniqueRows = append(uniqueRows, row)
+		ids = append(ids, row.ID)
+	}
+	return uniqueRows, ids
+}
+
+func uniqueRequestLogIDs(rows []models.RequestLog) []string {
+	ids := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for i := range rows {
+		id := rows[i].ID
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func stageUsageAggregationJournals(

@@ -2,7 +2,7 @@
 """Clean /opt/gpt-load deployment artifacts with retention quotas.
 
 Dry-run by default; pass --apply to delete. Fail-closed: if Docker mount
-source inspection fails, abort without deleting anything.
+source or process inspection fails, abort without deleting anything.
 
 Quotas: newest 1 rehearsal-*, newest 2 pre-upgrade.* dirs, newest 2
 backups/gpt-load-offline-*.tar.gz. Entries younger than 24h are never
@@ -11,7 +11,9 @@ or paths opened/cwd'd by running processes (/proc scan).
 """
 
 import argparse
+import errno
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -37,15 +39,22 @@ def docker_mount_sources():
     try:
         ids = subprocess.run(
             ["docker", "ps", "-a", "--format", "{{.ID}}"],
-            capture_output=True, text=True, check=True, timeout=30,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
         ).stdout.split()
         mounts = set()
         for cid in ids:
             data = subprocess.run(
                 ["docker", "inspect", cid],
-                capture_output=True, text=True, check=True, timeout=30,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30,
             ).stdout
             import json
+
             info = json.loads(data)[0]
             for m in info.get("Mounts", []):
                 src = m.get("Source") or m.get("Name")
@@ -59,24 +68,49 @@ def docker_mount_sources():
 def proc_protected(_root):
     """Paths held open or used as cwd by any process, plus their prefixes."""
     protected = set()
-    for pid in os.listdir("/proc"):
+
+    def vanished(error):
+        return error.errno in (errno.ENOENT, errno.ESRCH)
+
+    def add_link(path):
+        target = None
+        try:
+            target = os.readlink(path)
+            if target.endswith(" (deleted)"):
+                if os.path.isabs(target):
+                    protected.add(target)
+                target = target[: -len(" (deleted)")]
+            if os.path.isabs(target):
+                protected.add(str(Path(target).resolve(strict=True)))
+        except OSError as error:
+            if vanished(error):
+                if target is not None and os.path.isabs(target):
+                    protected.add(target)
+                return
+            raise ProtectionError(
+                f"process inspection failed: {path}: {error}"
+            ) from error
+
+    try:
+        pids = os.listdir("/proc")
+    except OSError as error:
+        raise ProtectionError(f"process inspection failed: /proc: {error}") from error
+    for pid in pids:
         if not pid.isdigit():
             continue
         for sub in ("cwd", "root"):
-            try:
-                protected.add(os.path.realpath(f"/proc/{pid}/{sub}"))
-            except OSError:
-                pass
+            add_link(f"/proc/{pid}/{sub}")
         fd_dir = f"/proc/{pid}/fd"
         try:
             fds = os.listdir(fd_dir)
-        except OSError:
-            continue
+        except OSError as error:
+            if vanished(error):
+                continue
+            raise ProtectionError(
+                f"process inspection failed: {fd_dir}: {error}"
+            ) from error
         for fd in fds:
-            try:
-                protected.add(os.path.realpath(os.path.join(fd_dir, fd)))
-            except OSError:
-                pass
+            add_link(os.path.join(fd_dir, fd))
     return protected
 
 
@@ -114,7 +148,6 @@ def newest_mtime(path):
 
 def collect_candidates(root, now, docker_mounts, protected):
     """Return (dirs, files) to delete, sorted oldest-first, applying quotas."""
-    candidates = []
 
     def ok(name, path):
         if is_protected(path, docker_mounts | protected):
@@ -128,27 +161,40 @@ def collect_candidates(root, now, docker_mounts, protected):
             if not entry.is_dir(follow_symlinks=False):
                 continue
             if REHEARSAL_RE.match(entry.name) and ok(entry.name, entry.path):
-                rehearsal_dirs.append((entry.path, entry.stat(follow_symlinks=False).st_mtime))
+                rehearsal_dirs.append(
+                    (entry.path, entry.stat(follow_symlinks=False).st_mtime)
+                )
             elif PRE_UPGRADE_RE.match(entry.name) and ok(entry.name, entry.path):
-                pre_upgrade_dirs.append((entry.path, entry.stat(follow_symlinks=False).st_mtime))
+                pre_upgrade_dirs.append(
+                    (entry.path, entry.stat(follow_symlinks=False).st_mtime)
+                )
 
     backup_files = []
     backups_dir = os.path.join(root, "backups")
     if os.path.isdir(backups_dir) and not os.path.islink(backups_dir):
         with os.scandir(backups_dir) as it:
             for entry in it:
-                if entry.is_file(follow_symlinks=False) and OFFLINE_BACKUP_RE.match(entry.name) \
-                        and ok(entry.name, entry.path):
-                    backup_files.append((entry.path, entry.stat(follow_symlinks=False).st_mtime))
+                if (
+                    entry.is_file(follow_symlinks=False)
+                    and OFFLINE_BACKUP_RE.match(entry.name)
+                    and ok(entry.name, entry.path)
+                ):
+                    backup_files.append(
+                        (entry.path, entry.stat(follow_symlinks=False).st_mtime)
+                    )
 
     # Oldest-first so quota keep = newest N.
     dirs, files = [], []
-    for items, keep in ((sorted(rehearsal_dirs, key=lambda x: x[1]), KEEP["rehearsal"]),
-                        (sorted(pre_upgrade_dirs, key=lambda x: x[1]), KEEP["pre_upgrade"]),
-                        (sorted(backup_files, key=lambda x: x[1]), KEEP["offline_backup"])):
+    for items, keep in (
+        (sorted(rehearsal_dirs, key=lambda x: x[1]), KEEP["rehearsal"]),
+        (sorted(pre_upgrade_dirs, key=lambda x: x[1]), KEEP["pre_upgrade"]),
+        (sorted(backup_files, key=lambda x: x[1]), KEEP["offline_backup"]),
+    ):
         stale = items[:-keep] if keep else items
         for path, _ in stale:
-            (files if path.endswith((".tar.gz",)) and os.path.isfile(path) else dirs).append(path)
+            (
+                files if path.endswith((".tar.gz",)) and os.path.isfile(path) else dirs
+            ).append(path)
     return sorted(dirs), sorted(files)
 
 
@@ -175,15 +221,18 @@ def run(root, apply, docker_mounts, protected, log=print):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default="/opt/gpt-load")
-    parser.add_argument("--apply", action="store_true",
-                        help="actually delete (default: dry run)")
+    parser.add_argument(
+        "--apply", action="store_true", help="actually delete (default: dry run)"
+    )
     args = parser.parse_args()
     mounts = docker_mount_sources()  # fail-closed
     proc = proc_protected(args.root)
     result = run(args.root, args.apply, mounts, proc)
-    print(f"dirs: {len(result['deleted_dirs'])}, "
-          f"files: {len(result['deleted_files'])}, "
-          f"freed: {result['freed_bytes'] / 1e9:.2f} GB")
+    print(
+        f"dirs: {len(result['deleted_dirs'])}, "
+        f"files: {len(result['deleted_files'])}, "
+        f"freed: {result['freed_bytes'] / 1e9:.2f} GB"
+    )
     return 0
 
 

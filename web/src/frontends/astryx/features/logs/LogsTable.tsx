@@ -392,7 +392,7 @@ const styles = stylex.create({
     minWidth: 0,
     justifySelf: { default: 'end', [CARD]: 'stretch' },
     gridColumn: { [CARD]: '1 / -1' },
-    gridTemplateColumns: { [CARD]: 'subgrid' },
+    gridTemplateColumns: { [CARD]: 'auto' },
     alignItems: { [CARD]: 'start' },
     position: { [CARD]: 'absolute' },
     top: { [CARD]: 10 },
@@ -401,6 +401,7 @@ const styles = stylex.create({
   actionLabel: { display: 'none' },
   actionValue: {
     justifySelf: { [CARD]: 'end' },
+    gridColumn: { [CARD]: 'auto' },
   },
 })
 

@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 
-MOCK = r'''#!/usr/bin/env python3
+MOCK = r"""#!/usr/bin/env python3
 import json
 import os
 from pathlib import Path
@@ -70,7 +70,7 @@ elif name == "sleep":
 else:
     real = json.loads(os.environ["REAL_COMMANDS"])[name]
     sys.exit(subprocess.run([real, *args]).returncode)
-'''
+"""
 
 
 SERVER_IMAGE_ID = "sha256:" + "c" * 64
@@ -79,9 +79,16 @@ VERSION = "dev-abc1234"
 
 
 class RemoteActivationTests(unittest.TestCase):
-    def run_activation(self, fail_backup=False, image_id=SERVER_IMAGE_ID,
-                       production_image=PREVIOUS_IMAGE, served_version=VERSION, health="healthy",
-                       backup_fs="ext4", health_sequence=""):
+    def run_activation(
+        self,
+        fail_backup=False,
+        image_id=SERVER_IMAGE_ID,
+        production_image=PREVIOUS_IMAGE,
+        served_version=VERSION,
+        health="healthy",
+        backup_fs="ext4",
+        health_sequence="",
+    ):
         source = Path(__file__).with_name("deploy.sh").read_text()
         lines = source.splitlines()
         starts = [i for i, line in enumerate(lines) if "<<'REMOTE'" in line]
@@ -110,8 +117,19 @@ class RemoteActivationTests(unittest.TestCase):
             mock = bin_dir / "mock"
             mock.write_text(MOCK)
             mock.chmod(0o755)
-            names = ("docker", "cp", "tar", "sed", "du", "df", "findmnt",
-                     "date", "mktemp", "curl", "sleep")
+            names = (
+                "docker",
+                "cp",
+                "tar",
+                "sed",
+                "du",
+                "df",
+                "findmnt",
+                "date",
+                "mktemp",
+                "curl",
+                "sleep",
+            )
             real = {name: shutil.which(name) for name in names}
             for name in names:
                 (bin_dir / name).symlink_to(mock)
@@ -137,10 +155,21 @@ class RemoteActivationTests(unittest.TestCase):
             remote = remote.replace("cd /opt/gpt-load", "cd " + shlex.quote(str(root)))
             # argv 是本地验证通过的镜像 ID 与旧镜像；mock 报告的是服务器上的实际情况。
             result = subprocess.run(
-                ["bash", "-s", "--", "gpt-load:new", SERVER_IMAGE_ID, PREVIOUS_IMAGE, VERSION],
+                [
+                    "bash",
+                    "-s",
+                    "--",
+                    "gpt-load:new",
+                    SERVER_IMAGE_ID,
+                    PREVIOUS_IMAGE,
+                    VERSION,
+                ],
                 input=remote,
-                text=True, capture_output=True, env=environment,
-                cwd=root, timeout=10,
+                text=True,
+                capture_output=True,
+                env=environment,
+                cwd=root,
+                timeout=10,
             )
             events = [json.loads(line) for line in commands.read_text().splitlines()]
             return result, events, compose.read_text(), original, state.read_text()
@@ -169,18 +198,26 @@ class RemoteActivationTests(unittest.TestCase):
 
     @staticmethod
     def is_stop(event):
-        return event[0] == "docker" and "gpt-load" in event and (
-            event[1] == "stop" or (event[1] == "compose" and "stop" in event)
+        return (
+            event[0] == "docker"
+            and "gpt-load" in event
+            and (event[1] == "stop" or (event[1] == "compose" and "stop" in event))
         )
 
     def test_success_stops_and_validates_backup_before_switch(self):
         result, events, compose, _, _ = self.run_activation()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        precheck = self.event_index(events, lambda e: e[:3] == ["docker", "image", "inspect"], "image precheck")
+        precheck = self.event_index(
+            events, lambda e: e[:3] == ["docker", "image", "inspect"], "image precheck"
+        )
         space = self.event_index(events, lambda e: e[0] == "df", "free-space precheck")
         stop = self.event_index(events, self.is_stop, "old container stop")
-        backup = self.event_index(events, lambda e: self.is_archive(e, "c"), "backup creation")
-        validate = self.event_index(events, lambda e: self.is_archive(e, "t"), "backup validation")
+        backup = self.event_index(
+            events, lambda e: self.is_archive(e, "c"), "backup creation"
+        )
+        validate = self.event_index(
+            events, lambda e: self.is_archive(e, "t"), "backup validation"
+        )
         switch = self.event_index(events, self.is_switch, "compose image switch")
         up = self.event_index(events, self.is_up, "new container start")
         self.assertLess(precheck, stop)
@@ -192,8 +229,11 @@ class RemoteActivationTests(unittest.TestCase):
         self.assertIn("image: gpt-load:new", compose)
         self.assertFalse(any(e[:2] == ["docker", "start"] for e in events))
         self.assertTrue(
-            any(e[:2] == ["docker", "ps"] and "volume=gpt-load_gpt-load-data-ac7ddfe3" in e
-                for e in events),
+            any(
+                e[:2] == ["docker", "ps"]
+                and "volume=gpt-load_gpt-load-data-ac7ddfe3" in e
+                for e in events
+            ),
             events,
         )
 
@@ -202,8 +242,14 @@ class RemoteActivationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("injected backup creation failure", result.stderr)
         stop = self.event_index(events, self.is_stop, "old container stop")
-        backup = self.event_index(events, lambda e: self.is_archive(e, "c"), "failed backup")
-        restart = self.event_index(events, lambda e: e[:2] == ["docker", "start"] and "gpt-load" in e, "old container recovery")
+        backup = self.event_index(
+            events, lambda e: self.is_archive(e, "c"), "failed backup"
+        )
+        restart = self.event_index(
+            events,
+            lambda e: e[:2] == ["docker", "start"] and "gpt-load" in e,
+            "old container recovery",
+        )
         self.assertLess(stop, backup)
         self.assertLess(backup, restart)
         self.assertEqual(state, "start")
@@ -214,7 +260,8 @@ class RemoteActivationTests(unittest.TestCase):
     def test_stale_production_image_is_rejected_before_stopping(self):
         # 验证用的旧镜像已经被替换：升级结论失效，必须在停写前拒绝。
         result, events, compose, original, _ = self.run_activation(
-            production_image="sha256:" + "d" * 64)
+            production_image="sha256:" + "d" * 64
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("生产旧镜像在验证后被替换", result.stderr)
         self.assertFalse(any(self.is_stop(e) for e in events), events)
@@ -222,7 +269,8 @@ class RemoteActivationTests(unittest.TestCase):
 
     def test_server_image_must_be_the_locally_verified_one(self):
         result, events, compose, original, _ = self.run_activation(
-            image_id="sha256:" + "e" * 64)
+            image_id="sha256:" + "e" * 64
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("服务器镜像 ID 与本地验证的镜像不一致", result.stderr)
         self.assertFalse(any(self.is_stop(e) for e in events), events)
@@ -237,7 +285,9 @@ class RemoteActivationTests(unittest.TestCase):
         self.assertEqual(compose, original)
 
     def test_healthy_container_running_the_wrong_version_fails(self):
-        result, events, compose, _, _ = self.run_activation(served_version="dev-0000000")
+        result, events, compose, _, _ = self.run_activation(
+            served_version="dev-0000000"
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("运行版本不是目标版本", result.stderr)
         self.assertIn("image: gpt-load:new", compose)
@@ -245,7 +295,8 @@ class RemoteActivationTests(unittest.TestCase):
     def test_slow_startup_beyond_two_minutes_is_still_accepted(self):
         # 生产 13G 卷上重启实测启动耗时 135s，旧的 24 次 × 5s 预算会误判失败。
         result, events, compose, _, _ = self.run_activation(
-            health_sequence=",".join(["starting"] * 40 + ["healthy"]))
+            health_sequence=",".join(["starting"] * 40 + ["healthy"])
+        )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("image: gpt-load:new", compose)
 

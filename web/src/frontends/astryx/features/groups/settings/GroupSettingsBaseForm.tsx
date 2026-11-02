@@ -240,7 +240,7 @@ export function GroupSettingsBaseForm({
                 </label>
               )}
             </div>
-          );
+          )
         })}
         <label {...stylex.props(styles.field, styles.wide)}>
           <span {...stylex.props(styles.fieldLabel)}>{t('group.settings.base.providerUrl')}</span>
@@ -258,7 +258,7 @@ export function GroupSettingsBaseForm({
         {unified && headerActionsTarget ? createPortal(switchRow, headerActionsTarget) : switchRow}
       </div>
     </section>
-  );
+  )
 }
 
 const styles = stylex.create({

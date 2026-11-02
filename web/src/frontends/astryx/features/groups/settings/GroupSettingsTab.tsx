@@ -1,20 +1,13 @@
-import { Button, EmptyState, Skeleton, Switch, TextInput } from '@astryxdesign/core'
+import { Button, EmptyState, Skeleton } from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, TriangleAlert } from 'lucide-react'
-import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 
-import type {
-  AccessProtocol,
-  GroupSettingsDto,
-  HeaderRulesDto,
-  ParameterOverrideRuleDto,
-  ProxyConfiguredMode,
-} from '@shared/control/types'
-import type { ChannelDto, ChannelFieldDto } from '@shared/control/resources/channels'
+import type { AccessProtocol, GroupSettingsDto } from '@shared/control/types'
+import type { ChannelFieldDto } from '@shared/control/resources/channels'
 import { channelsQueryOptions } from '@shared/control/resources/channels'
-import { proxyDraftState, proxyOverrideToggleMode } from '@shared/control/resources/proxy'
 import {
   cacheGroupSettings,
   groupModelsQueryOptions,
@@ -25,43 +18,30 @@ import {
 import { RequestCancelledError } from '@shared/http/errors'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
 
-import type { MessageId } from '@shared/i18n/message-ids'
-
 import { useStableLoading } from '../../../app/collection-loading'
 import { useT } from '../../../app/i18n'
 import { useAppServices } from '../../../app/services'
 import { usePortalTarget } from '../../../app/use-portal-target'
 import { useTransientFlag } from '../../../app/use-transient-flag'
 import { useUnsavedChanges } from '../../../app/use-unsaved-changes'
-import { HeaderRulesEditor } from '../../../components/HeaderRulesEditor'
 import { InlineNotice } from '../../../components/InlineNotice'
-import { ProxyOverrideControl } from '../../../components/ProxyOverrideControl'
-import { SettingBlock, SettingRow } from '../../../components/setting-chrome'
 import { SectionHeader } from '../../../components/SectionHeader'
-import { StickySaveBar } from '../../../components/StickySaveBar'
 import type { GroupEditorHandle, GroupEditorState } from '../editor-handles'
-import { GroupDeleteDialog } from './GroupDeleteDialog'
+import { GroupSettingsAdvanced } from './GroupSettingsAdvanced'
 import { GroupSettingsBaseForm } from './GroupSettingsBaseForm'
-import { ParameterOverrideRulesEditor } from './ParameterOverrideRulesEditor'
+import { GroupSettingsSaveBar } from './GroupSettingsSaveBar'
+import { useGroupOverrideFlags, useGroupProxyDraft } from './use-group-settings-overrides'
+import {
+  useGroupSettingsFieldsMutators,
+  useGroupSettingsOverrideMutators,
+} from './use-group-settings-mutators'
 import {
   buildGroupSettingsPatch,
   createGroupSettingsDraft,
   groupPolicyCountKeys,
   groupTimeoutKeys,
-  preserveChannelParams,
-  setGroupConfigOverride,
-  setGroupPolicyCountOverride,
-  type GroupPolicyCountKey,
   type GroupSettingsDraft,
-  type GroupTimeoutKey,
 } from '@shared/domain/groups/settings/group-settings-patch'
-
-const policyRows = [
-  {
-    key: 'blacklist_threshold',
-    helpKey: 'blacklistThresholdHelp',
-  },
-] as const
 
 const parameterOverrideOperations = new Set([
   'chat_completion',
@@ -110,8 +90,6 @@ export function GroupSettingsTab({
   const [parameterOverridesValid, setParameterOverridesValid] = useState(true)
   const [parameterOverridesInvalidEdits, setParameterOverridesInvalidEdits] = useState(false)
   const [parameterOverridesEditorRevision, setParameterOverridesEditorRevision] = useState(0)
-  const [proxyMode, setProxyMode] = useState<ProxyConfiguredMode>('inherit')
-  const [proxyEndpoint, setProxyEndpoint] = useState('')
   const {
     value: savedFeedback,
     clear: clearSavedFeedback,
@@ -130,6 +108,7 @@ export function GroupSettingsTab({
   )
   const channelParamFields: ChannelFieldDto[] = selectedChannel?.param_fields ?? []
   const channelParamsDisabled = selectedChannel === undefined
+  const proxySupported = selectedChannel?.capabilities.outbound_proxy ?? false
   const parameterOverrideProtocols: AccessProtocol[] = [
     ...new Set(
       (selectedChannel?.routes ?? [])
@@ -139,29 +118,17 @@ export function GroupSettingsTab({
   ]
 
   const patch = saved && draft ? buildGroupSettingsPatch(saved, draft) : {}
-  const proxyState = saved
-    ? proxyDraftState(saved.proxy, proxyMode, proxyEndpoint)
-    : { dirty: false, invalid: false, value: undefined }
-  // 代理沿用其它设置项的覆盖语义：inherit 即“继承全局”，direct/custom 即“本分组覆盖”。
-  const proxyOverridden = proxyMode !== 'inherit'
-  const proxyPendingRestore = saved?.proxy.configured_mode !== 'inherit' && proxyMode === 'inherit'
-  const proxyEffectiveLabel = (() => {
-    const view = saved?.proxy
-    if (!view) return ''
-    return view.display_url ?? t(`common.proxy.mode.${view.effective_mode}` as MessageId)
-  })()
-  const proxySupported = selectedChannel?.capabilities.outbound_proxy ?? false
-  const proxyValue = (() => {
-    if (!proxySupported) return t('common.proxy.unsupported')
-    if (proxyPendingRestore) return t('group.settings.runtime.resetPending')
-    return proxyEffectiveLabel
-  })()
-
-  function toggleProxyOverride(): void {
-    const base = saved?.proxy
-    if (base) setProxyMode(proxyOverrideToggleMode(base, proxyOverridden))
-    setProxyEndpoint('')
-  }
+  const {
+    proxyMode,
+    proxyEndpoint,
+    setProxyEndpoint,
+    proxyState,
+    proxyOverridden,
+    proxyPendingRestore,
+    proxyValue,
+    toggleProxyOverride,
+    resetProxyDraft,
+  } = useGroupProxyDraft({ saved, proxySupported, t })
 
   const dirty =
     !deleted &&
@@ -198,36 +165,57 @@ export function GroupSettingsTab({
     parameterOverridesValid &&
     !proxyState.invalid
 
-  function isPendingRestore(key: GroupTimeoutKey | GroupPolicyCountKey): boolean {
-    return draft?.overrides[key] === undefined && saved?.overrides[key] !== undefined
-  }
+  const {
+    isPendingRestore,
+    headerRulesOverridden,
+    headerRulesPendingRestore,
+    displayedHeaderRules,
+    affinity,
+    websocket,
+    reasoningStatusFilter,
+  } = useGroupOverrideFlags(saved, draft, t)
 
-  const headerRulesOverridden = draft?.overrides.header_rules !== undefined
-  const headerRulesPendingRestore =
-    !headerRulesOverridden && saved?.overrides.header_rules !== undefined
-  const displayedHeaderRules: HeaderRulesDto = (() => {
-    if (draft?.overrides.header_rules !== undefined) return draft.overrides.header_rules
-    if (headerRulesPendingRestore) return { set: {}, remove: [] }
-    return saved?.effective.header_rules ?? { set: {}, remove: [] }
-  })()
-  const affinityOverridden = draft?.overrides.affinity_enabled !== undefined
-  const affinityPendingRestore =
-    !affinityOverridden && saved?.overrides.affinity_enabled !== undefined
-  const affinityEnabledLabel = saved?.effective.affinity_enabled
-    ? t('group.settings.runtime.enabledValue')
-    : t('group.settings.runtime.disabledValue')
-  const websocketOverridden = draft?.overrides.responses_websocket_enabled !== undefined
-  const websocketPendingRestore =
-    !websocketOverridden && saved?.overrides.responses_websocket_enabled !== undefined
-  const websocketEnabledLabel = saved?.effective.responses_websocket_enabled
-    ? t('group.settings.runtime.enabledValue')
-    : t('group.settings.runtime.disabledValue')
-  const reasoningStatusFilterOverridden =
-    draft?.overrides.responses_reasoning_status_filter_enabled !== undefined
-  const reasoningStatusFilterEnabledLabel = saved?.effective
-    .responses_reasoning_status_filter_enabled
-    ? t('group.settings.runtime.enabledValue')
-    : t('group.settings.runtime.disabledValue')
+  const {
+    updateParam,
+    selectChannel,
+    setTimeoutOverride,
+    setTimeoutValue,
+    setPolicyCountOverride,
+    setPolicyCountValue,
+    policyCountError,
+  } = useGroupSettingsFieldsMutators({
+    saved,
+    draft,
+    setDraft,
+    isMutationPending: () => stateRef.current.mutationPending,
+    t,
+  })
+
+  const {
+    updateHeaderRules,
+    toggleHeaderRulesOverride,
+    updateParameterOverrides,
+    toggleAffinityOverride,
+    setAffinityValue,
+    toggleWebsocketOverride,
+    setWebsocketValue,
+    toggleReasoningStatusFilterOverride,
+    setReasoningStatusFilterValue,
+  } = useGroupSettingsOverrideMutators({
+    saved,
+    setDraft,
+    overridden: {
+      headerRules: headerRulesOverridden,
+      affinity: affinity.overridden,
+      websocket: websocket.overridden,
+      reasoningStatusFilter: reasoningStatusFilter.overridden,
+    },
+    onHeaderRulesReset: () => {
+      setHeaderRulesValid(true)
+      setHeaderRulesInvalidEdits(false)
+      setHeaderRulesEditorRevision((rev) => rev + 1)
+    },
+  })
 
   function resetSavedDraft(settings: GroupSettingsDto): void {
     setSaved(settings)
@@ -238,8 +226,7 @@ export function GroupSettingsTab({
     setParameterOverridesValid(true)
     setParameterOverridesInvalidEdits(false)
     setParameterOverridesEditorRevision((rev) => rev + 1)
-    setProxyMode(settings.proxy.configured_mode)
-    setProxyEndpoint('')
+    resetProxyDraft(settings.proxy.configured_mode)
   }
 
   // Latest-value refs read by effects and async continuations. Written in the
@@ -317,178 +304,6 @@ export function GroupSettingsTab({
     if (last.mutationPending === mutationPending && last.deleted === deleted) return
     consumeCurrentQueryRef.current()
   }, [mutationPending, deleted])
-
-  function updateParam(key: string, value: string | null): void {
-    setDraft((current) => {
-      if (!current) return current
-      const params = { ...current.params }
-      if (value === null) delete params[key]
-      else params[key] = value
-      return { ...current, params }
-    })
-  }
-
-  function selectChannel(channel: ChannelDto): void {
-    if (stateRef.current.mutationPending) return
-    setDraft((current) => {
-      if (!current) return current
-      const params = preserveChannelParams(current.params, channel.param_fields)
-      return {
-        ...current,
-        channel_id: channel.channel_id,
-        params,
-      }
-    })
-  }
-
-  function setTimeoutOverride(key: GroupTimeoutKey, enabled: boolean): void {
-    if (!saved) return
-    const effective = saved.effective[key]
-    setDraft((current) =>
-      current ? setGroupConfigOverride(current, key, enabled, effective) : current,
-    )
-  }
-
-  function setTimeoutValue(key: GroupTimeoutKey, value: string): void {
-    setDraft((current) =>
-      current ? { ...current, overrides: { ...current.overrides, [key]: Number(value) } } : current,
-    )
-  }
-
-  function setPolicyCountOverride(key: GroupPolicyCountKey, enabled: boolean): void {
-    if (!saved) return
-    const effective = saved.effective[key]
-    setDraft((current) =>
-      current ? setGroupPolicyCountOverride(current, key, enabled, effective) : current,
-    )
-  }
-
-  function setPolicyCountValue(key: GroupPolicyCountKey, value: string): void {
-    setDraft((current) =>
-      current ? { ...current, overrides: { ...current.overrides, [key]: Number(value) } } : current,
-    )
-  }
-
-  function policyCountError(key: GroupPolicyCountKey): string | undefined {
-    const value = draft?.overrides[key]
-    return value !== undefined && (!Number.isSafeInteger(value) || value < 0)
-      ? t('group.settings.runtime.nonNegativeIntegerError')
-      : undefined
-  }
-
-  function updateHeaderRules(value: HeaderRulesDto): void {
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            overrides: {
-              ...current.overrides,
-              header_rules: { set: { ...value.set }, remove: [...value.remove] },
-            },
-          }
-        : current,
-    )
-  }
-
-  function toggleHeaderRulesOverride(): void {
-    if (!saved) return
-    setDraft((current) => {
-      if (!current) return current
-      const overrides = { ...current.overrides }
-      if (headerRulesOverridden) {
-        delete overrides.header_rules
-      } else {
-        overrides.header_rules = {
-          set: { ...saved.effective.header_rules.set },
-          remove: [...saved.effective.header_rules.remove],
-        }
-      }
-      return { ...current, overrides }
-    })
-    setHeaderRulesValid(true)
-    setHeaderRulesInvalidEdits(false)
-    setHeaderRulesEditorRevision((rev) => rev + 1)
-  }
-
-  function updateParameterOverrides(value: ParameterOverrideRuleDto[]): void {
-    setDraft((current) => {
-      if (!current) return current
-      const overrides = { ...current.overrides }
-      if (value.length === 0) delete overrides.parameter_overrides
-      else overrides.parameter_overrides = value
-      return { ...current, overrides }
-    })
-  }
-
-  function toggleAffinityOverride(): void {
-    if (!saved) return
-    setDraft((current) => {
-      if (!current) return current
-      const overrides = { ...current.overrides }
-      if (affinityOverridden) delete overrides.affinity_enabled
-      else overrides.affinity_enabled = saved.effective.affinity_enabled
-      return { ...current, overrides }
-    })
-  }
-
-  function setAffinityValue(value: boolean): void {
-    setDraft((current) =>
-      current
-        ? { ...current, overrides: { ...current.overrides, affinity_enabled: value } }
-        : current,
-    )
-  }
-
-  function toggleWebsocketOverride(): void {
-    if (!saved) return
-    setDraft((current) => {
-      if (!current) return current
-      const overrides = { ...current.overrides }
-      if (websocketOverridden) delete overrides.responses_websocket_enabled
-      else overrides.responses_websocket_enabled = saved.effective.responses_websocket_enabled
-      return { ...current, overrides }
-    })
-  }
-
-  function setWebsocketValue(value: boolean): void {
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            overrides: { ...current.overrides, responses_websocket_enabled: value },
-          }
-        : current,
-    )
-  }
-
-  function toggleReasoningStatusFilterOverride(): void {
-    if (!saved) return
-    setDraft((current) => {
-      if (!current) return current
-      const overrides = { ...current.overrides }
-      if (reasoningStatusFilterOverridden)
-        delete overrides.responses_reasoning_status_filter_enabled
-      else {
-        overrides.responses_reasoning_status_filter_enabled =
-          saved.effective.responses_reasoning_status_filter_enabled
-      }
-      return { ...current, overrides }
-    })
-  }
-
-  function setReasoningStatusFilterValue(value: boolean): void {
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            overrides: {
-              ...current.overrides,
-              responses_reasoning_status_filter_enabled: value,
-            },
-          }
-        : current,
-    )
-  }
 
   function requestSave(): void {
     if (!dirty || !valid || stateRef.current.mutationPending) return
@@ -585,322 +400,69 @@ export function GroupSettingsTab({
     [],
   )
 
-  const advancedContent: ReactNode = saved && draft && (
-    <details {...stylex.props(styles.advanced)}>
-      <summary {...stylex.props(styles.advancedSummary)}>{t('group.settings.advanced')}</summary>
-      <div {...stylex.props(styles.advancedContent)}>
-        <div {...stylex.props(styles.advancedSections)}>
-          <section id="settings-runtime" {...stylex.props(styles.section)}>
-            <header>
-              <h3 {...stylex.props(styles.sectionTitle)}>{t('group.settings.sections.runtime')}</h3>
-              <p {...stylex.props(styles.sectionDescription)}>
-                {t('group.settings.runtime.description')}
-              </p>
-            </header>
-            <div {...stylex.props(styles.runtime)}>
-              <SettingRow
-                label={t('group.settings.runtime.responses_websocket_enabled')}
-                value={
-                  websocketPendingRestore
-                    ? t('group.settings.runtime.resetPending')
-                    : websocketEnabledLabel
-                }
-                help={t('group.settings.runtime.websocketHelp')}
-                sourceLabel={
-                  websocketOverridden
-                    ? t('group.settings.runtime.override')
-                    : websocketPendingRestore
-                      ? t('group.settings.runtime.pendingRestoreSource')
-                      : t('group.settings.runtime.inherited')
-                }
-                actionLabel={
-                  websocketOverridden
-                    ? t('group.settings.runtime.useInherited')
-                    : t('group.settings.runtime.useOverride')
-                }
-                overridden={websocketOverridden}
-                pendingRestore={websocketPendingRestore}
-                disabled={mutationPending}
-                onToggle={toggleWebsocketOverride}
-                control={
-                  <Switch
-                    size="sm"
-                    value={draft.overrides.responses_websocket_enabled ?? false}
-                    isDisabled={mutationPending}
-                    label={t('group.settings.runtime.responses_websocket_enabled')}
-                    isLabelHidden
-                    onChange={setWebsocketValue}
-                  />
-                }
-              />
-              <SettingRow
-                label={t('group.settings.runtime.responses_reasoning_status_filter_enabled')}
-                value={reasoningStatusFilterEnabledLabel}
-                help={t('group.settings.runtime.reasoningStatusFilterHelp')}
-                sourceLabel={
-                  reasoningStatusFilterOverridden
-                    ? t('group.settings.runtime.override')
-                    : t('group.settings.runtime.groupDefault')
-                }
-                actionLabel={
-                  reasoningStatusFilterOverridden
-                    ? t('group.settings.runtime.useDefault')
-                    : t('group.settings.runtime.useOverride')
-                }
-                overridden={reasoningStatusFilterOverridden}
-                disabled={mutationPending}
-                onToggle={toggleReasoningStatusFilterOverride}
-                control={
-                  <Switch
-                    size="sm"
-                    value={draft.overrides.responses_reasoning_status_filter_enabled ?? false}
-                    isDisabled={mutationPending}
-                    label={t('group.settings.runtime.responses_reasoning_status_filter_enabled')}
-                    isLabelHidden
-                    onChange={setReasoningStatusFilterValue}
-                  />
-                }
-              />
-              <SettingRow
-                label={t('common.proxy.title')}
-                value={proxyValue}
-                help={proxySupported ? undefined : t('common.proxy.unsupportedHelp')}
-                sourceLabel={
-                  !proxySupported
-                    ? t('common.proxy.unsupportedBadge')
-                    : proxyOverridden
-                      ? t('group.settings.runtime.override')
-                      : proxyPendingRestore
-                        ? t('group.settings.runtime.pendingRestoreSource')
-                        : t('group.settings.runtime.inherited')
-                }
-                actionLabel={
-                  proxyOverridden
-                    ? t('group.settings.runtime.useInherited')
-                    : t('group.settings.runtime.useOverride')
-                }
-                overridden={proxySupported && proxyOverridden}
-                pendingRestore={proxySupported && proxyPendingRestore}
-                locked={!proxySupported}
-                disabled={mutationPending || selectedChannel === undefined || !proxySupported}
-                onToggle={toggleProxyOverride}
-                control={
-                  <ProxyOverrideControl
-                    base={saved.proxy}
-                    mode={proxyMode}
-                    endpoint={proxyEndpoint}
-                    disabled={mutationPending}
-                    onModeChange={setProxyMode}
-                    onEndpointChange={setProxyEndpoint}
-                  />
-                }
-              />
-              {timeoutKeys.map((key) => (
-                <SettingRow
-                  key={key}
-                  label={t(`group.settings.runtime.${key}` as MessageId)}
-                  value={
-                    isPendingRestore(key)
-                      ? t('group.settings.runtime.resetPending')
-                      : t('group.settings.runtime.effective', {
-                          value: saved.effective[key],
-                        })
-                  }
-                  sourceLabel={
-                    draft.overrides[key] !== undefined
-                      ? t('group.settings.runtime.override')
-                      : isPendingRestore(key)
-                        ? t('group.settings.runtime.pendingRestoreSource')
-                        : t('group.settings.runtime.inherited')
-                  }
-                  actionLabel={
-                    draft.overrides[key] === undefined
-                      ? t('group.settings.runtime.useOverride')
-                      : t('group.settings.runtime.useInherited')
-                  }
-                  overridden={draft.overrides[key] !== undefined}
-                  pendingRestore={isPendingRestore(key)}
-                  disabled={mutationPending}
-                  onToggle={() => setTimeoutOverride(key, draft.overrides[key] === undefined)}
-                  control={
-                    <div {...stylex.props(styles.runtimeInput)}>
-                      <TextInput
-                        type="text"
-                        size="sm"
-                        value={String(draft.overrides[key])}
-                        label={t('group.settings.runtime.valueFor', {
-                          field: t(`group.settings.runtime.${key}` as MessageId),
-                        })}
-                        isLabelHidden
-                        data-gptload-mono
-                        isDisabled={mutationPending}
-                        onChange={(value) => setTimeoutValue(key, value)}
-                      />
-                      <span aria-hidden="true" {...stylex.props(styles.runtimeUnit)}>
-                        {t('group.settings.runtime.seconds')}
-                      </span>
-                    </div>
-                  }
-                />
-              ))}
-              {policyRows.map((policy) => (
-                <SettingRow
-                  key={policy.key}
-                  label={t(`group.settings.runtime.${policy.key}` as MessageId)}
-                  value={
-                    isPendingRestore(policy.key)
-                      ? t('group.settings.runtime.resetPending')
-                      : t('group.settings.runtime.effectiveCount', {
-                          value: saved.effective[policy.key],
-                        })
-                  }
-                  help={t(`group.settings.runtime.${policy.helpKey}` as MessageId)}
-                  sourceLabel={
-                    draft.overrides[policy.key] !== undefined
-                      ? t('group.settings.runtime.override')
-                      : isPendingRestore(policy.key)
-                        ? t('group.settings.runtime.pendingRestoreSource')
-                        : t('group.settings.runtime.inherited')
-                  }
-                  actionLabel={
-                    draft.overrides[policy.key] === undefined
-                      ? t('group.settings.runtime.useOverride')
-                      : t('group.settings.runtime.useInherited')
-                  }
-                  overridden={draft.overrides[policy.key] !== undefined}
-                  pendingRestore={isPendingRestore(policy.key)}
-                  disabled={mutationPending}
-                  onToggle={() =>
-                    setPolicyCountOverride(policy.key, draft.overrides[policy.key] === undefined)
-                  }
-                  control={
-                    <div {...stylex.props(styles.runtimeInput)}>
-                      <TextInput
-                        id={`group-settings-${policy.key}`}
-                        type="text"
-                        size="sm"
-                        value={String(draft.overrides[policy.key])}
-                        label={t('group.settings.runtime.valueFor', {
-                          field: t(`group.settings.runtime.${policy.key}` as MessageId),
-                        })}
-                        isLabelHidden
-                        data-gptload-mono
-                        isDisabled={mutationPending}
-                        status={
-                          policyCountError(policy.key) === undefined
-                            ? undefined
-                            : {
-                                type: 'error',
-                                message: policyCountError(policy.key) ?? '',
-                              }
-                        }
-                        statusVariant="tooltip"
-                        onChange={(value) => setPolicyCountValue(policy.key, value)}
-                      />
-                      <span aria-hidden="true" {...stylex.props(styles.runtimeUnit)}>
-                        {t('group.settings.runtime.countUnit')}
-                      </span>
-                    </div>
-                  }
-                />
-              ))}
-              <SettingRow
-                label={t('group.settings.runtime.affinity_enabled')}
-                value={
-                  affinityPendingRestore
-                    ? t('group.settings.runtime.resetPending')
-                    : affinityEnabledLabel
-                }
-                help={t('group.settings.runtime.affinityHelp')}
-                sourceLabel={
-                  affinityOverridden
-                    ? t('group.settings.runtime.override')
-                    : affinityPendingRestore
-                      ? t('group.settings.runtime.pendingRestoreSource')
-                      : t('group.settings.runtime.inherited')
-                }
-                actionLabel={
-                  affinityOverridden
-                    ? t('group.settings.runtime.useInherited')
-                    : t('group.settings.runtime.useOverride')
-                }
-                overridden={affinityOverridden}
-                pendingRestore={affinityPendingRestore}
-                divided={false}
-                disabled={mutationPending}
-                onToggle={toggleAffinityOverride}
-                control={
-                  <Switch
-                    size="sm"
-                    value={draft.overrides.affinity_enabled ?? false}
-                    isDisabled={mutationPending}
-                    label={t('group.settings.runtime.affinity_enabled')}
-                    isLabelHidden
-                    onChange={setAffinityValue}
-                  />
-                }
-              />
-            </div>
-          </section>
-          <section id="settings-parameters" {...stylex.props(styles.section)}>
-            <header>
-              <h3 {...stylex.props(styles.sectionTitle)}>
-                {t('group.settings.sections.parameters')}
-              </h3>
-              <p {...stylex.props(styles.sectionDescription)}>
-                {t('group.settings.parameterOverrides.description')}
-              </p>
-            </header>
-            <ParameterOverrideRulesEditor
-              resetKey={parameterOverridesEditorRevision}
-              value={draft.overrides.parameter_overrides ?? []}
-              protocols={parameterOverrideProtocols}
-              models={modelsQuery.data?.items ?? []}
-              disabled={mutationPending}
-              onValidChange={setParameterOverridesValid}
-              onInvalidEditsChange={setParameterOverridesInvalidEdits}
-              onChange={updateParameterOverrides}
-            />
-          </section>
-
-          <section id="settings-headers" {...stylex.props(styles.section)}>
-            <SettingBlock
-              title={t('group.settings.sections.headers')}
-              help={t('group.settings.headers.description')}
-              meta={headerSummary()}
-              sourceLabel={
-                headerRulesOverridden
-                  ? t('group.settings.runtime.override')
-                  : headerRulesPendingRestore
-                    ? t('group.settings.runtime.pendingRestoreSource')
-                    : t('group.settings.runtime.inherited')
-              }
-              actionLabel={
-                headerRulesOverridden
-                  ? t('group.settings.runtime.useInherited')
-                  : t('group.settings.runtime.useOverride')
-              }
-              overridden={headerRulesOverridden}
-              pendingRestore={headerRulesPendingRestore}
-              disabled={mutationPending}
-              onToggle={() => void toggleHeaderRulesOverride()}
-            >
-              <HeaderRulesEditor
-                resetKey={headerRulesEditorRevision}
-                value={displayedHeaderRules}
-                disabled={mutationPending || !headerRulesOverridden}
-                showAdd={headerRulesOverridden}
-                removeLabel={t('group.settings.runtime.headerRemove')}
-                removeHint={t('group.settings.runtime.headerRemoveHint')}
-                onValidChange={(value) => setHeaderRulesValid(value)}
-                onInvalidEditsChange={(value) => setHeaderRulesInvalidEdits(value)}
-                onChange={updateHeaderRules}
-              />
-            </SettingBlock>
-          </section>
-        </div>
-      </div>
-    </details>
+  const advanced = saved && draft && (
+    <GroupSettingsAdvanced
+      saved={saved}
+      draft={draft}
+      pending={mutationPending}
+      proxy={{
+        mode: proxyMode,
+        endpoint: proxyEndpoint,
+        supported: proxySupported,
+        overridden: proxyOverridden,
+        pendingRestore: proxyPendingRestore,
+        value: proxyValue,
+        disabled: mutationPending || selectedChannel === undefined || !proxySupported,
+      }}
+      onProxyModeChange={resetProxyDraft}
+      onProxyEndpointChange={setProxyEndpoint}
+      onToggleProxy={toggleProxyOverride}
+      websocket={{
+        overridden: websocket.overridden,
+        pendingRestore: websocket.pendingRestore,
+        label: websocket.label,
+      }}
+      onToggleWebsocket={toggleWebsocketOverride}
+      onSetWebsocket={setWebsocketValue}
+      reasoningStatusFilter={{
+        overridden: reasoningStatusFilter.overridden,
+        label: reasoningStatusFilter.label,
+      }}
+      onToggleReasoningStatusFilter={toggleReasoningStatusFilterOverride}
+      onSetReasoningStatusFilter={setReasoningStatusFilterValue}
+      affinity={{
+        overridden: affinity.overridden,
+        pendingRestore: affinity.pendingRestore,
+        label: affinity.label,
+      }}
+      onToggleAffinity={toggleAffinityOverride}
+      onSetAffinity={setAffinityValue}
+      isPendingRestore={isPendingRestore}
+      onSetTimeoutOverride={setTimeoutOverride}
+      onSetTimeoutValue={setTimeoutValue}
+      onSetPolicyCountOverride={setPolicyCountOverride}
+      onSetPolicyCountValue={setPolicyCountValue}
+      onPolicyCountError={policyCountError}
+      parameterOverrides={{
+        revision: parameterOverridesEditorRevision,
+        protocols: parameterOverrideProtocols,
+        models: modelsQuery.data?.items ?? [],
+        onValidChange: setParameterOverridesValid,
+        onInvalidEditsChange: setParameterOverridesInvalidEdits,
+        onChange: updateParameterOverrides,
+      }}
+      headerRules={{
+        overridden: headerRulesOverridden,
+        pendingRestore: headerRulesPendingRestore,
+        revision: headerRulesEditorRevision,
+        value: displayedHeaderRules,
+        summary: headerSummary(),
+        onToggle: toggleHeaderRulesOverride,
+        onValidChange: setHeaderRulesValid,
+        onInvalidEditsChange: setHeaderRulesInvalidEdits,
+        onChange: updateHeaderRules,
+      }}
+    />
   )
 
   return (
@@ -1003,65 +565,25 @@ export function GroupSettingsTab({
 
                 onSetEnabled={(value) => void setGroupEnabled(value)}
               />
-              {unified && advancedTarget
-                ? createPortal(advancedContent, advancedTarget)
-                : advancedContent}
+              {unified && advancedTarget ? createPortal(advanced, advancedTarget) : advanced}
             </div>
           </div>
           {!unified && (
-            <StickySaveBar
-              appearance="ledger"
-              alwaysVisible
+            <GroupSettingsSaveBar
+              groupId={groupId}
+              groupName={saved.name}
               dirty={dirty}
-              pending={mutationPending}
-              status={error ? 'error' : savedFeedback ? 'saved' : 'idle'}
+              pending={pending}
+              blocked={mutationPending}
               error={error}
-              statusContent={
-                <div>
-                  <strong>
-                    {pending
-                      ? t('group.settings.saving')
-                      : savedFeedback
-                        ? t('group.settings.savedFeedback')
-                        : dirty
-                          ? t('group.settings.unsaved')
-                          : t('group.settings.saved')}
-                  </strong>
-                  <span>
-                    {pending
-                      ? t('group.settings.savingNote')
-                      : savedFeedback
-                        ? t('group.settings.savedFeedbackNote')
-                        : dirty
-                          ? t('group.settings.dirtyNote')
-                          : t('group.settings.saveNote')}
-                  </span>
-                </div>
-              }
-              actions={
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    isDisabled={mutationPending || !dirty || deletePending}
-                    onClick={discard}
-                    label={t('common.discard')}
-                  />
-                  <GroupDeleteDialog
-                    groupId={groupId}
-                    groupName={saved.name}
-                    disabled={mutationPending || dirty || deleted}
-                    onPendingChange={setDeletePending}
-                    onDeleted={onDeleted}
-                  />
-                  <Button
-                    size="sm"
-                    isDisabled={mutationPending || !dirty || !valid || deletePending}
-                    onClick={requestSave}
-                    label={t('group.settings.save')}
-                  />
-                </>
-              }
+              savedFeedback={savedFeedback}
+              valid={valid}
+              deletePending={deletePending}
+              deleted={deleted}
+              onDeletePendingChange={setDeletePending}
+              onDeleted={onDeleted}
+              onDiscard={discard}
+              onSave={requestSave}
             />
           )}
         </>
@@ -1101,78 +623,5 @@ const styles = stylex.create({
     display: 'grid',
     minWidth: 0,
     gap: 'var(--space-4)',
-  },
-  advanced: {
-    borderTopWidth: '1px',
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: 'var(--space-3)',
-  },
-  advancedSummary: {
-    color: 'var(--color-text-muted)',
-    cursor: 'pointer',
-    fontSize: 'var(--text-sm)',
-    fontWeight: 600,
-  },
-  advancedContent: {
-    display: 'grid',
-    gridTemplateColumns: '1fr',
-    alignItems: 'start',
-    gap: {
-      default: 'var(--space-3)',
-      '@media (max-width: 860px)': 'var(--space-2)',
-    },
-    marginTop: 'var(--space-3)',
-  },
-  advancedSections: {
-    display: 'grid',
-    minWidth: 0,
-    gap: {
-      default: 'var(--space-4)',
-      '@media (max-width: 860px)': 'var(--space-3)',
-    },
-  },
-  section: {
-    display: 'grid',
-    gap: '15px',
-    scrollMarginTop: '76px',
-    borderTopWidth: '1px',
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: '17px',
-  },
-  sectionTitle: {
-    margin: 0,
-    fontSize: 'var(--text-body)',
-    fontWeight: 650,
-  },
-  sectionDescription: {
-    maxWidth: '580px',
-    marginTop: '3px',
-    marginBottom: 0,
-    marginLeft: 0,
-    marginRight: 0,
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-sm)',
-  },
-  runtime: {
-    display: 'grid',
-    gap: 'var(--space-1)',
-  },
-  runtimeInput: {
-    display: 'flex',
-    width: {
-      default: 'min(100%, 190px)',
-      '@media (max-width: 800px)': 'min(100%, 220px)',
-    },
-    minWidth: 0,
-    alignItems: 'center',
-    gap: '7px',
-  },
-  runtimeUnit: {
-    color: 'var(--color-text-faint)',
-    fontFamily: 'var(--font-mono)',
-    fontSize: '11px',
-    whiteSpace: 'nowrap',
   },
 })

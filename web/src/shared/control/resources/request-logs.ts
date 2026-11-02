@@ -632,7 +632,7 @@ function projectUsageCost(record: Record<string, unknown>) {
   }
 }
 
-function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
+function projectModelObservation(record: Record<string, unknown>) {
   const status = projectEnum(record.status, statuses)
   const upstreamModel = projectNullableModel(record.upstream_model)
   const upstreamReportedModel = projectNullableModel(record.upstream_reported_model)
@@ -654,6 +654,13 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
       upstreamModel !== null &&
       upstreamReportedModel !== null)
   if (!validModelObservation) invalidResponse()
+
+  return { status, upstreamModel, upstreamReportedModel, modelConsistency }
+}
+
+function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
+  const { status, upstreamModel, upstreamReportedModel, modelConsistency } =
+    projectModelObservation(record)
 
   return {
     request_id: projectRequestID(record.request_id),

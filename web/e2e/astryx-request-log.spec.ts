@@ -194,6 +194,7 @@ for (const width of [390, 800]) {
       const time = (await record.getByTestId('logs-list__time').boundingBox())!
       const action = (await record.getByRole('button', { name: 'View details' }).boundingBox())!
       expect(Math.abs(time.y - action.y)).toBeLessThanOrEqual(16)
+      expect(action.x + action.width).toBeLessThanOrEqual(width)
     }
     const protocolBox = (await row.getByTestId('logs-list__protocol').boundingBox())!
     expect(Math.abs(protocolBox.x - modelBox.x)).toBeLessThanOrEqual(1)

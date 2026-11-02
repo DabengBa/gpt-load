@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   normalizeUsageBreakdownSort,
   projectUsageBreakdown,
+  projectUsageReport,
 } from '../src/shared/control/resources/usage.ts'
 
 function aggregate(overrides: Record<string, number | string> = {}) {
@@ -110,4 +111,52 @@ test('keeps distinct request models sharing an upstream for both scopes', () => 
     )
   }
   assert.equal(projectUsageBreakdown(breakdown(aggregate())).rows[0]?.client_model, null)
+})
+
+test('report distributions retain strict identity, totals and field validation', () => {
+  const distribution = (metric: string) => ({
+    dimension: 'model',
+    metric,
+    items: [{ model: 'model', request_count: 1, total_tokens: 0, estimated_cost_nano_usd: '0' }],
+    other: null,
+  })
+  const report = {
+    range: '1h',
+    granularity: 'hour',
+    bucket_width_ms: 3600000,
+    from_ms: 0,
+    to_ms: 3600000,
+    observed_at_ms: 0,
+    summary: aggregate(),
+    series: [],
+    distributions: {
+      model: {
+        requests: distribution('requests'),
+        tokens: distribution('tokens'),
+        cost: distribution('cost'),
+      },
+    },
+    collection_health: {
+      scope: 'current_process',
+      dropped_total: 0,
+      write_failure_total: 0,
+      last_write_failure_at_ms: null,
+    },
+    breakdown: breakdown(aggregate()),
+  }
+  assert.equal(projectUsageReport(report).distributions.model.requests.items[0]?.model, 'model')
+  const requests = report.distributions.model.requests
+  for (const invalid of [
+    { ...requests, dimension: 'group' },
+    { ...requests, items: [requests.items[0], requests.items[0]] },
+    { ...requests, items: [{ ...requests.items[0], request_count: 0 }] },
+    { ...requests, items: [{ ...requests.items[0], api_key: 'secret' }] },
+  ]) {
+    assert.throws(() =>
+      projectUsageReport({
+        ...report,
+        distributions: { model: { ...report.distributions.model, requests: invalid } },
+      }),
+    )
+  }
 })

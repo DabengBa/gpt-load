@@ -26,6 +26,26 @@ import (
 	"gpt-load/internal/usage"
 )
 
+func TestUniqueRequestLogIDsPreservesFirstOccurrenceOrder(t *testing.T) {
+	rows := []models.RequestLog{{ID: "b"}, {ID: "a"}, {ID: "b"}, {ID: ""}, {ID: "a"}, {ID: ""}}
+	want := []string{"b", "a", ""}
+	if got := uniqueRequestLogIDs(rows); !reflect.DeepEqual(got, want) {
+		t.Fatalf("uniqueRequestLogIDs() = %v, want %v", got, want)
+	}
+}
+
+func BenchmarkUniqueRequestLogIDs(b *testing.B) {
+	rows := make([]models.RequestLog, 1024)
+	for i := range rows {
+		rows[i].ID = fmt.Sprintf("request-%d", i)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		uniqueRequestLogIDs(rows)
+	}
+}
+
 func TestUsageStatUpsertUsesDialectSpecificGORMConflictSQL(t *testing.T) {
 	stat := models.UsageStat{
 		BucketStartMS: 1_784_894_400_000,

@@ -6,6 +6,7 @@ code:
   paths:
     - internal/debugcapture
     - internal/gateway/capture.go
+    - internal/gateway/capture_http_observer.go
     - internal/container/debug_capture.go
     - internal/container/debug_capture_unix.go
     - internal/control/probe_capture.go
@@ -68,7 +69,7 @@ The saved context is `request.Context()` as bound when the capture is created, n
 
 Provider observation sources register before emitting callbacks and unregister after their completion callback returns. Gateway capture waits for registered observations and admitted callbacks; an executor result alone does not establish that a transport observation started. Once the sources and callbacks have drained, absence of a response completion is recorded as `no_observation_source` and capture finalization fails explicitly, releasing its runtime admission instead of waiting forever. The event detail distinguishes a source that never started from one that started and ended without completion. Neither condition establishes whether request or response bytes were exchanged. This event identifies missing raw evidence; it is not a Provider response termination observed on the wire. A first-token abort already fired before the net/http send completes its registered observation with `no_response`, without issuing a Provider request.
 
-The lifecycle contract is optional on both sides. `internal/execution/http_observer.go` declares `HTTPObservationLifecycle`, and the fork's observer state in `third_party/bifrost-core/providers/utils/http_observer.go` begins one source per real send before any callback can be emitted and ends it after the final completion callback returns, including the fired-abort path in `DoHTTPRequest`. Neither call may block. `internal/gateway/capture.go` implements it for the Gateway; `internal/control/probe_capture.go` implements it for probes.
+The lifecycle contract is optional on both sides. `internal/execution/http_observer.go` declares `HTTPObservationLifecycle`, and the fork's observer state in `third_party/bifrost-core/providers/utils/http_observer.go` begins one source per real send before any callback can be emitted and ends it after the final completion callback returns, including the fired-abort path in `DoHTTPRequest`. Neither call may block. `internal/gateway/capture_http_observer.go` implements it for the Gateway; `internal/control/probe_capture.go` implements it for probes.
 
 Regression evidence for this lifecycle lives in `internal/gateway/capture_lifecycle_test.go`, `internal/gateway/capture_abort_evidence_test.go`, `internal/gateway/capture_test.go`, `internal/debugcapture/runtime_test.go`, `internal/container/debug_capture_lifecycle_test.go`, and `third_party/bifrost-core/providers/utils/http_observer_test.go`.
 

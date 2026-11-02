@@ -302,6 +302,11 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
       minimum: 0,
     }),
   }
+  validateUsageAggregate(result)
+  return result
+}
+
+function validateUsageAggregate(result: UsageAggregateDto): void {
   if (
     result.duration_sample_count > result.request_count ||
     result.first_response_sample_count > result.request_count ||
@@ -321,7 +326,6 @@ export function projectUsageAggregate(value: unknown): UsageAggregateDto {
   ) {
     invalidResponse()
   }
-  return result
 }
 
 const breakdownAggregateFields = [...aggregateFields] as const
@@ -481,6 +485,115 @@ function projectCollectionHealth(value: unknown): UsageReportDto['collection_hea
   }
 }
 
+function projectDistribution(
+  value: unknown,
+  expectedDimension: UsageDistributionDimension,
+  expectedMetric: UsageDistributionMetric,
+  summaryValue: unknown,
+): UsageDistributionDto {
+  const distributionRecord = projectRecord(value)
+  assertNoSecretLikeFields(distributionRecord, ['dimension', 'metric', 'items', 'other'])
+  const distributionDimension = projectEnum(distributionRecord.dimension, [
+    'group',
+    'model',
+    'access_key',
+  ] as const)
+  const distributionMetric = projectEnum(distributionRecord.metric, [
+    'requests',
+    'tokens',
+    'cost',
+  ] as const)
+  if (distributionDimension !== expectedDimension || distributionMetric !== expectedMetric) {
+    invalidResponse()
+  }
+  const identities = new Set<string>()
+  const distributionItems = projectArray(distributionRecord.items, (value) => {
+    const item = projectRecord(value)
+    const identityField =
+      distributionDimension === 'group'
+        ? 'group_id'
+        : distributionDimension === 'access_key'
+          ? 'access_key_id'
+          : 'model'
+    assertNoSecretLikeFields(item, [...distributionAggregateFields, identityField])
+    const aggregate = projectUsageDistributionAggregate(
+      Object.fromEntries(distributionAggregateFields.map((field) => [field, item[field]])),
+    )
+    if (distributionDimension === 'group') {
+      const groupID = projectSafeInteger(item.group_id, { minimum: 1 })
+      if (identities.has(String(groupID))) invalidResponse()
+      identities.add(String(groupID))
+      return { ...aggregate, group_id: groupID }
+    }
+    if (distributionDimension === 'access_key') {
+      const accessKeyID = projectSafeInteger(item.access_key_id, { minimum: 1 })
+      if (identities.has(String(accessKeyID))) invalidResponse()
+      identities.add(String(accessKeyID))
+      return { ...aggregate, access_key_id: accessKeyID }
+    }
+    const model = projectString(item.model, { allowEmpty: true })
+    if (
+      new TextEncoder().encode(model).length > 255 ||
+      model !== model.trim() ||
+      /[\p{Cc}]/u.test(model) ||
+      identities.has(model)
+    ) {
+      invalidResponse()
+    }
+    identities.add(model)
+    return { ...aggregate, model }
+  })
+  if (distributionItems.length > 5) invalidResponse()
+  const distributionOther =
+    distributionRecord.other === null
+      ? null
+      : projectUsageDistributionAggregate(distributionRecord.other)
+  const summary = projectUsageAggregate(summaryValue)
+  const visibleAndOther = [
+    ...distributionItems,
+    ...(distributionOther === null ? [] : [distributionOther]),
+  ]
+  const distributedRequests = visibleAndOther.reduce((total, item) => total + item.request_count, 0)
+  const distributedCost = visibleAndOther.reduce(
+    (total, item) => total + BigInt(item.estimated_cost_nano_usd),
+    0n,
+  )
+  const distributedTokens = visibleAndOther.reduce((total, item) => total + item.total_tokens, 0)
+  const summaryCost = BigInt(summary.estimated_cost_nano_usd)
+  // 自动决策费用可能没有回答 Group 归属，因此分组成本只要求不超过总成本。
+  const costMatches =
+    distributionDimension === 'group'
+      ? distributedCost <= summaryCost
+      : distributedCost === summaryCost
+  if (
+    distributedRequests !== summary.request_count ||
+    distributedTokens !== summary.total_tokens ||
+    !costMatches
+  ) {
+    invalidResponse()
+  }
+  return {
+    dimension: distributionDimension,
+    metric: distributionMetric,
+    items: distributionItems,
+    other: distributionOther,
+  }
+}
+
+function projectDistributionMetricRecord(
+  value: unknown,
+  dimension: UsageDistributionDimension,
+  summaryValue: unknown,
+): Record<UsageDistributionMetric, UsageDistributionDto> {
+  const metricRecord = projectRecord(value)
+  assertNoSecretLikeFields(metricRecord, ['requests', 'tokens', 'cost'])
+  return {
+    requests: projectDistribution(metricRecord.requests, dimension, 'requests', summaryValue),
+    tokens: projectDistribution(metricRecord.tokens, dimension, 'tokens', summaryValue),
+    cost: projectDistribution(metricRecord.cost, dimension, 'cost', summaryValue),
+  }
+}
+
 export function projectUsageReport(value: unknown): UsageReportDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, reportFields)
@@ -537,125 +650,19 @@ export function projectUsageReport(value: unknown): UsageReportDto {
   const distributionsRecord = projectRecord(record.distributions)
   assertNoSecretLikeFields(distributionsRecord, ['group', 'model', 'access_key'])
 
-  function projectDistribution(
-    value: unknown,
-    expectedDimension: UsageDistributionDimension,
-    expectedMetric: UsageDistributionMetric,
-  ): UsageDistributionDto {
-    const distributionRecord = projectRecord(value)
-    assertNoSecretLikeFields(distributionRecord, ['dimension', 'metric', 'items', 'other'])
-    const distributionDimension = projectEnum(distributionRecord.dimension, [
-      'group',
-      'model',
-      'access_key',
-    ] as const)
-    const distributionMetric = projectEnum(distributionRecord.metric, [
-      'requests',
-      'tokens',
-      'cost',
-    ] as const)
-    if (distributionDimension !== expectedDimension || distributionMetric !== expectedMetric) {
-      invalidResponse()
-    }
-    const identities = new Set<string>()
-    const distributionItems = projectArray(distributionRecord.items, (value) => {
-      const item = projectRecord(value)
-      const identityField =
-        distributionDimension === 'group'
-          ? 'group_id'
-          : distributionDimension === 'access_key'
-            ? 'access_key_id'
-            : 'model'
-      assertNoSecretLikeFields(item, [...distributionAggregateFields, identityField])
-      const aggregate = projectUsageDistributionAggregate(
-        Object.fromEntries(distributionAggregateFields.map((field) => [field, item[field]])),
-      )
-      if (distributionDimension === 'group') {
-        const groupID = projectSafeInteger(item.group_id, { minimum: 1 })
-        if (identities.has(String(groupID))) invalidResponse()
-        identities.add(String(groupID))
-        return { ...aggregate, group_id: groupID }
-      }
-      if (distributionDimension === 'access_key') {
-        const accessKeyID = projectSafeInteger(item.access_key_id, { minimum: 1 })
-        if (identities.has(String(accessKeyID))) invalidResponse()
-        identities.add(String(accessKeyID))
-        return { ...aggregate, access_key_id: accessKeyID }
-      }
-      const model = projectString(item.model, { allowEmpty: true })
-      if (
-        new TextEncoder().encode(model).length > 255 ||
-        model !== model.trim() ||
-        /[\p{Cc}]/u.test(model) ||
-        identities.has(model)
-      ) {
-        invalidResponse()
-      }
-      identities.add(model)
-      return { ...aggregate, model }
-    })
-    if (distributionItems.length > 5) invalidResponse()
-    const distributionOther =
-      distributionRecord.other === null
-        ? null
-        : projectUsageDistributionAggregate(distributionRecord.other)
-    const summary = projectUsageAggregate(record.summary)
-    const visibleAndOther = [
-      ...distributionItems,
-      ...(distributionOther === null ? [] : [distributionOther]),
-    ]
-    const distributedRequests = visibleAndOther.reduce(
-      (total, item) => total + item.request_count,
-      0,
-    )
-    const distributedCost = visibleAndOther.reduce(
-      (total, item) => total + BigInt(item.estimated_cost_nano_usd),
-      0n,
-    )
-    const distributedTokens = visibleAndOther.reduce((total, item) => total + item.total_tokens, 0)
-    const summaryCost = BigInt(summary.estimated_cost_nano_usd)
-    // 自动决策费用可能没有回答 Group 归属，因此分组成本只要求不超过总成本。
-    const costMatches =
-      distributionDimension === 'group'
-        ? distributedCost <= summaryCost
-        : distributedCost === summaryCost
-    if (
-      distributedRequests !== summary.request_count ||
-      distributedTokens !== summary.total_tokens ||
-      !costMatches
-    ) {
-      invalidResponse()
-    }
-    return {
-      dimension: distributionDimension,
-      metric: distributionMetric,
-      items: distributionItems,
-      other: distributionOther,
-    }
-  }
-
-  function projectDistributionMetricRecord(
-    value: unknown,
-    dimension: UsageDistributionDimension,
-  ): Record<UsageDistributionMetric, UsageDistributionDto> {
-    const metricRecord = projectRecord(value)
-    assertNoSecretLikeFields(metricRecord, ['requests', 'tokens', 'cost'])
-    return {
-      requests: projectDistribution(metricRecord.requests, dimension, 'requests'),
-      tokens: projectDistribution(metricRecord.tokens, dimension, 'tokens'),
-      cost: projectDistribution(metricRecord.cost, dimension, 'cost'),
-    }
-  }
-
-  const modelDistributions = projectDistributionMetricRecord(distributionsRecord.model, 'model')
+  const modelDistributions = projectDistributionMetricRecord(
+    distributionsRecord.model,
+    'model',
+    record.summary,
+  )
   const groupDistributions = Object.prototype.hasOwnProperty.call(distributionsRecord, 'group')
-    ? projectDistributionMetricRecord(distributionsRecord.group, 'group')
+    ? projectDistributionMetricRecord(distributionsRecord.group, 'group', record.summary)
     : undefined
   const accessKeyDistributions = Object.prototype.hasOwnProperty.call(
     distributionsRecord,
     'access_key',
   )
-    ? projectDistributionMetricRecord(distributionsRecord.access_key, 'access_key')
+    ? projectDistributionMetricRecord(distributionsRecord.access_key, 'access_key', record.summary)
     : undefined
   const summary = projectUsageAggregate(record.summary)
   const breakdown = projectUsageBreakdown(record.breakdown)

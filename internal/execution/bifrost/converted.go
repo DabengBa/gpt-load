@@ -310,13 +310,7 @@ func (r *Runtime) executeConvertedResponses(
 	var outcome responsesUnarySDKResult
 	defer func() {
 		if requestContext.Err() != nil {
-			if result.Usage == nil && outcome.response != nil {
-				result.Usage, _ = billedUsageEvidence(outcome.response.Usage.ToBifrostLLMUsage())
-			}
-			if result.Usage == nil {
-				result.Usage = errorUsageEvidence(outcome.err, nil)
-			}
-			result.Usage = canceledReportedUsage(bifrostContext, result.Usage)
+			result.Usage = canceledResponsesUsage(bifrostContext, result.Usage, outcome.response, outcome.err)
 		}
 	}()
 	select {
