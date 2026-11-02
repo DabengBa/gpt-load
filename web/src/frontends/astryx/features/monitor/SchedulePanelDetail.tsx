@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { AlertDialog, Button, Popover, Selector } from '@astryxdesign/core'
-import { LoaderCircle, RefreshCw, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
 import {
   useEffect,
   useImperativeHandle,
@@ -26,19 +26,46 @@ import {
   type ModelRouteScheduleEntryDto,
   type ModelRouteScheduleGroupDto,
   type ModelRouteSchedulePatchRequest,
-  type ModelRouteSchedulePatchUpdate,
 } from '@shared/control/resources/model-route-schedule'
 import type { ReasoningEffortDto } from '@shared/control/types'
 import type { MessageId } from '@shared/i18n/message-ids'
 import { formatLocalInstant } from '@shared/lib/format'
-import type { ScheduleDraft, ScheduleDrafts } from '@shared/routing/monitor-route'
-import { pagePath } from '@shared/routing/page-routes'
+import type { ScheduleDrafts } from '@shared/routing/monitor-route'
 
 import { useT } from '../../app/i18n'
 import { RouteLink } from '../../app/route-link'
 import { useAppServices } from '../../app/services'
 import { StickySaveBar } from '../../components/StickySaveBar'
 import { ModelProbeScopeDialog } from '../models/ModelProbeScopeDialog'
+import { ScheduleFeedback } from './ScheduleFeedback'
+import { ScheduleNumberInput } from './ScheduleNumberInput'
+import {
+  buildHydration,
+  buildPatchUpdates,
+  cloneDrafts,
+  configuredValue,
+  draftFingerprint,
+  draftKey,
+  effectiveValue,
+  EMPTY_DETAIL_KEY,
+  FIELD_BOUNDS,
+  fieldKey,
+  groupDetailHref,
+  hasOwn,
+  isValidValue,
+  revealScheduleRow,
+  rowKey,
+  ROW_NUMBER_FIELDS,
+  scheduleRows,
+  waitNextTick,
+  withMapValue,
+  withSetValue,
+  withoutMapValue,
+  withoutSetValue,
+  type DetailKey,
+  type Draft,
+  type EditableField,
+} from './schedule-detail-model'
 
 export interface SchedulePanelDetailLabels {
   title: string
@@ -113,181 +140,9 @@ export interface SchedulePanelDetailHandle {
   readonly pending: boolean
 }
 
-type EditableField = 'weight' | 'priority' | 'concurrency_limit'
-type Draft = ScheduleDraft
-
-interface ScheduleRow {
-  readonly group: ModelRouteScheduleGroupDto
-  readonly entry: ModelRouteScheduleEntryDto
-}
-
-type DetailKey = readonly [revision: number, externalModel: string | null, protocol: string]
-
-const EMPTY_DETAIL_KEY: DetailKey = [0, '', '']
-
-function scheduleRows(detail: ModelRouteScheduleDetailDto | undefined): ScheduleRow[] {
-  return (detail?.groups ?? [])
-    .flatMap((group) => group.entries.map((entry) => ({ group, entry })))
-    .sort(
-      (a, b) =>
-        a.entry.priority - b.entry.priority ||
-        a.group.group_id - b.group.group_id ||
-        (a.entry.entry_id < b.entry.entry_id ? -1 : a.entry.entry_id > b.entry.entry_id ? 1 : 0),
-    )
-}
-
-function rowKey(groupID: number, entryID: string): string {
-  return `${groupID}:${entryID}`
-}
-
-function draftKey(groupID: number, entryID: string): string {
-  return rowKey(groupID, entryID)
-}
-
-function fieldKey(groupID: number, entryID: string, field: EditableField): string {
-  return `${draftKey(groupID, entryID)}\u0000${field}`
-}
-
-function hasOwn(source: object, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(source, key)
-}
-
-function configuredValue(entry: ModelRouteScheduleEntryDto, field: EditableField): number | null {
-  if (field === 'concurrency_limit') return entry.concurrency_limit
-  if (field === 'weight') return null
-  return entry.priority === 1 ? null : entry.priority
-}
-
-function effectiveValue(entry: ModelRouteScheduleEntryDto, field: EditableField): number {
-  return entry[field]
-}
-
-function isValidValue(field: EditableField, value: number): boolean {
-  if (!Number.isSafeInteger(value)) return false
-  if (field === 'concurrency_limit') return value >= 0 && value <= 2147483647
-  return field === 'weight' ? value >= 0 && value <= 100 : value >= 1
-}
-
-function draftFingerprint(source: ScheduleDrafts): string {
-  return JSON.stringify(
-    Object.keys(source)
-      .sort()
-      .map((key) => [
-        key,
-        Object.entries(source[key] ?? {}).sort(([a], [b]) => a.localeCompare(b)),
-      ]),
-  )
-}
-
-function cloneDrafts(source: ScheduleDrafts): ScheduleDrafts {
-  return Object.fromEntries(
-    Object.entries(source).map(([key, draft]) => [key, draft === undefined ? {} : { ...draft }]),
-  )
-}
-
-// hydrateDraftState: resets the local edit surface, then re-populates drafts
-// for keys that still resolve to rendered rows; raw inputs mirror the draft
-// values so a URL-decode round trip keeps the same visible text.
-function buildHydration(
-  rows: ScheduleRow[],
-  source: ScheduleDrafts,
-): { draftMap: Record<string, Draft>; rawInputs: Record<string, string> } {
-  const rowsByKey = new Map(
-    rows.map(({ group, entry }) => [draftKey(group.group_id, entry.entry_id), { group, entry }]),
-  )
-  const nextDraftMap: Record<string, Draft> = {}
-  const nextRawInputs: Record<string, string> = {}
-  for (const [key, draft] of Object.entries(source)) {
-    const row = rowsByKey.get(key)
-    if (row === undefined) continue
-    const next = { ...draft }
-    nextDraftMap[key] = next
-    for (const field of ['weight', 'priority', 'concurrency_limit'] as const) {
-      if (!hasOwn(next, field)) continue
-      const value = next[field]
-      nextRawInputs[fieldKey(row.group.group_id, row.entry.entry_id, field)] =
-        value === null || value === undefined ? '' : String(value)
-    }
-  }
-  return { draftMap: nextDraftMap, rawInputs: nextRawInputs }
-}
-
-function buildPatchUpdates(
-  detail: ModelRouteScheduleDetailDto | undefined,
-  draftMap: Record<string, Draft>,
-): ModelRouteSchedulePatchUpdate[] {
-  const result: ModelRouteSchedulePatchUpdate[] = []
-  for (const group of detail?.groups ?? []) {
-    for (const entry of group.entries) {
-      const key = draftKey(group.group_id, entry.entry_id)
-      const draft = draftMap[key]
-      if (draft === undefined || entry.entry_id.startsWith('derived:')) {
-        continue
-      }
-      const update: ModelRouteSchedulePatchUpdate = {
-        group_id: group.group_id,
-        entry_id: entry.entry_id,
-      }
-      if (draft !== undefined && hasOwn(draft, 'weight')) update.weight = draft.weight
-      if (draft !== undefined && hasOwn(draft, 'priority')) update.priority = draft.priority
-      if (draft?.concurrency_limit !== undefined && draft.concurrency_limit !== null) {
-        update.concurrency_limit = draft.concurrency_limit
-      }
-      if (hasOwn(draft, 'reasoning_effort')) {
-        update.reasoning_effort = draft.reasoning_effort ?? null
-      }
-      if (Object.keys(update).length > 2) result.push(update)
-    }
-  }
-  return result
-}
-
-function groupDetailHref(id: number): string {
-  return `${pagePath('groups')}/${id}`
-}
-
-function revealScheduleRow(container: HTMLElement | null, key: string): void {
-  if (container === null) return
-  container
-    .querySelector(`[data-row-key="${CSS.escape(key)}"]`)
-    ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-}
-
-function withSetValue<T>(set: ReadonlySet<T>, value: T): ReadonlySet<T> {
-  return new Set(set).add(value)
-}
-
-function withoutSetValue<T>(set: ReadonlySet<T>, value: T): ReadonlySet<T> {
-  if (!set.has(value)) return set
-  const next = new Set(set)
-  next.delete(value)
-  return next
-}
-
-function withMapValue<K, V>(map: ReadonlyMap<K, V>, key: K, value: V): ReadonlyMap<K, V> {
-  return new Map(map).set(key, value)
-}
-
-function withoutMapValue<K, V>(map: ReadonlyMap<K, V>, key: K): ReadonlyMap<K, V> {
-  if (!map.has(key)) return map
-  const next = new Map(map)
-  next.delete(key)
-  return next
-}
-
-// Classic `await nextTick()` after the mutation: give the invalidation-driven
-// parent refresh a macrotask to land before the preserve markers clear.
-function waitNextTick(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0))
-}
-
 const narrow = '@media (max-width: 767px)'
 const touch = '@media (pointer: coarse)'
 const reduceMotion = '@media (prefers-reduced-motion: reduce)'
-
-const spin = stylex.keyframes({
-  to: { transform: 'rotate(360deg)' },
-})
 
 const styles = stylex.create({
   detail: {
@@ -317,63 +172,6 @@ const styles = stylex.create({
     color: 'var(--color-text-faint)',
     fontSize: 'var(--text-meta)',
     textAlign: { default: 'right', [narrow]: 'left' },
-  },
-  // QueryFeedback port (loading/error/stale strips).
-  feedback: {
-    display: 'flex',
-    minHeight: 48,
-    alignItems: 'center',
-    gap: 'var(--space-2)',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: 'var(--radius-control)',
-    backgroundColor: 'var(--color-surface-sunken)',
-    color: 'var(--color-text-muted)',
-    padding: 'var(--space-3)',
-  },
-  feedbackError: {
-    borderColor: 'var(--color-danger)',
-    backgroundColor: 'var(--color-danger-bg)',
-    color: 'var(--color-danger)',
-  },
-  feedbackStale: {
-    borderColor: 'color-mix(in srgb, var(--color-warning) 32%, var(--color-border-subtle))',
-    backgroundColor: 'var(--color-warning-bg)',
-    color: 'var(--color-warning)',
-    paddingTop: 9,
-    paddingBottom: 9,
-    paddingInline: 11,
-    fontSize: 'var(--text-sm)',
-  },
-  feedbackText: {
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 'auto',
-  },
-  feedbackRetry: {
-    display: 'inline-flex',
-    flex: 'none',
-    minHeight: { default: 44, [touch]: 'var(--touch-target)' },
-    alignItems: 'center',
-    gap: 'var(--space-1)',
-    marginLeft: 'auto',
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    color: 'inherit',
-    fontWeight: 650,
-    whiteSpace: 'nowrap',
-    cursor: 'pointer',
-  },
-  feedbackRetryStale: {
-    minHeight: { default: 'var(--control-compact)', [touch]: 'var(--touch-target)' },
-  },
-  spin: {
-    animationName: { default: spin, [reduceMotion]: 'none' },
-    animationDuration: '1s',
-    animationTimingFunction: 'linear',
-    animationIterationCount: 'infinite',
   },
   // InlineFeedback tone="danger" port.
   inlineDanger: {
@@ -640,46 +438,6 @@ const styles = stylex.create({
     transitionDuration: { default: '140ms', [reduceMotion]: '0s' },
   },
   toggleThumbOn: { transform: 'translateX(12px)' },
-  numberField: { display: 'grid', minWidth: 0, gap: 4 },
-  inputShell: {
-    display: 'flex',
-    width: '100%',
-    minWidth: 0,
-    boxSizing: 'border-box',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: { default: 'var(--color-border-control)', ':focus-within': 'var(--color-focus)' },
-    borderRadius: 'var(--radius-control)',
-    backgroundColor: 'var(--color-surface)',
-    paddingInline: 6,
-    minHeight: { default: 32, [narrow]: 44, [touch]: 44 },
-    fontSize: 'var(--text-meta)',
-  },
-  inputShellInvalid: { borderColor: 'var(--color-danger)' },
-  inputError: {
-    color: 'var(--color-danger)',
-    fontSize: 'var(--text-meta)',
-    overflowWrap: 'anywhere',
-  },
-  inputShellDisabled: { cursor: 'not-allowed', opacity: 0.55 },
-  inputInner: {
-    width: '100%',
-    minWidth: 0,
-    minHeight: 'inherit',
-    borderWidth: 0,
-    outlineStyle: 'none',
-    backgroundColor: 'transparent',
-    color: { default: 'var(--color-text)', '::placeholder': 'var(--color-text-faint)' },
-    padding: 0,
-    fontFamily: 'inherit',
-    fontSize: { default: 'inherit', [narrow]: '14px' },
-    fontWeight: 'inherit',
-    lineHeight: 'inherit',
-    appearance: 'textfield',
-    fontVariantNumeric: 'tabular-nums',
-    cursor: { ':disabled': 'not-allowed' },
-  },
   srOnly: {
     position: 'absolute',
     width: 1,
@@ -689,110 +447,6 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
 })
-
-function ScheduleFeedback({
-  state,
-  message,
-  retryLabel,
-  onRetry,
-}: {
-  state: 'loading' | 'error' | 'stale'
-  message: string
-  retryLabel?: string
-  onRetry?(): void
-}): JSX.Element {
-  return (
-    <div
-      {...stylex.props(
-        styles.feedback,
-        state === 'error' && styles.feedbackError,
-        state === 'stale' && styles.feedbackStale,
-      )}
-      role={state === 'error' ? 'alert' : 'status'}
-    >
-      {state === 'loading' ? (
-        <LoaderCircle size={18} aria-hidden {...stylex.props(styles.spin)} />
-      ) : (
-        <TriangleAlert size={state === 'stale' ? 14 : 18} aria-hidden />
-      )}
-      <span {...stylex.props(styles.feedbackText)}>{message}</span>
-      {state !== 'loading' && retryLabel !== undefined && (
-        <button
-          type="button"
-          {...stylex.props(styles.feedbackRetry, state === 'stale' && styles.feedbackRetryStale)}
-          onClick={onRetry}
-        >
-          <RefreshCw size={15} aria-hidden />
-          {retryLabel}
-        </button>
-      )}
-    </div>
-  )
-}
-
-function ScheduleNumberInput({
-  id,
-  label,
-  value,
-  placeholder,
-  invalid,
-  invalidMessage,
-  min,
-  max,
-  disabled,
-  onChange,
-}: {
-  id: string
-  label: string
-  value: string
-  placeholder?: string
-  invalid?: boolean
-  invalidMessage?: string
-  min?: number
-  max?: number
-  disabled?: boolean
-  onChange(value: string): void
-}): JSX.Element {
-  return (
-    <div {...stylex.props(styles.numberField)}>
-      <div
-        data-input-shell
-        {...stylex.props(
-          styles.inputShell,
-          invalid === true && styles.inputShellInvalid,
-          disabled === true && styles.inputShellDisabled,
-        )}
-      >
-        <label {...stylex.props(styles.srOnly)} htmlFor={id}>
-          {label}
-        </label>
-        <input
-          id={id}
-          data-input-inner
-          {...stylex.props(styles.inputInner)}
-          type="number"
-          value={value}
-          placeholder={placeholder}
-          min={min}
-          max={max}
-          disabled={disabled}
-          aria-invalid={invalid === true || undefined}
-          aria-describedby={invalid === true ? `${id}-error` : undefined}
-          autoComplete="off"
-          spellCheck={false}
-          inputMode="numeric"
-          onChange={(event) => onChange(event.currentTarget.value)}
-        />
-      </div>
-      {invalid === true && (
-        <span id={`${id}-error`} {...stylex.props(styles.inputError)} role="alert">
-          {invalidMessage} (
-          {min !== undefined ? `${min}${max !== undefined ? `–${max}` : '+'}` : ''})
-        </span>
-      )}
-    </div>
-  )
-}
 
 export function SchedulePanelDetail({
   ref,
@@ -1438,7 +1092,7 @@ export function SchedulePanelDetail({
     setSaveError('')
     try {
       let didCommit = false
-      let resolveCommitted: (value: boolean) => void = () => {}
+      let resolveCommitted: ((value: boolean) => void) | undefined
       const committed = new Promise<boolean>((resolve) => {
         resolveCommitted = resolve
       })
@@ -1454,7 +1108,7 @@ export function SchedulePanelDetail({
           setSaveStatus('saved')
           onSaved(revision, true)
         }
-        resolveCommitted(true)
+        resolveCommitted?.(true)
       })
       return await Promise.race([committed, writing.then(() => didCommit)])
     } catch (saveFailure: unknown) {
@@ -1783,44 +1437,29 @@ export function SchedulePanelDetail({
                         {...stylex.props(styles.cell, styles.settings)}
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <div {...stylex.props(styles.controlGroup)}>
-                          <span aria-hidden {...stylex.props(styles.controlLabel)}>
-                            {text('priority')}
-                          </span>
-                          <ScheduleNumberInput
-                            id={`priority-${index}`}
-                            label={`${text('priority')} ${rowLabel}`}
-                            value={inputValue(group.group_id, entry, 'priority')}
-                            min={1}
-                            invalid={
-                              invalidInputs[
-                                fieldKey(group.group_id, entry.entry_id, 'priority')
-                              ] === true
-                            }
-                            invalidMessage={text('invalidValue')}
-                            disabled={pending || derived}
-                            onChange={(value) => setInput(group.group_id, entry, 'priority', value)}
-                          />
-                        </div>
-                        <div {...stylex.props(styles.controlGroup)}>
-                          <span aria-hidden {...stylex.props(styles.controlLabel)}>
-                            {text('weight')}
-                          </span>
-                          <ScheduleNumberInput
-                            id={`weight-${index}`}
-                            max={100}
-                            label={`${text('weight')} ${rowLabel}`}
-                            value={inputValue(group.group_id, entry, 'weight')}
-                            min={0}
-                            invalid={
-                              invalidInputs[fieldKey(group.group_id, entry.entry_id, 'weight')] ===
-                              true
-                            }
-                            invalidMessage={text('invalidValue')}
-                            disabled={pending || derived}
-                            onChange={(value) => setInput(group.group_id, entry, 'weight', value)}
-                          />
-                        </div>
+                        {/* Priority then weight: one definition so the visible
+                            bounds and the accessible names cannot drift apart. */}
+                        {ROW_NUMBER_FIELDS.map((field) => (
+                          <div key={field} {...stylex.props(styles.controlGroup)}>
+                            <span aria-hidden {...stylex.props(styles.controlLabel)}>
+                              {text(field)}
+                            </span>
+                            <ScheduleNumberInput
+                              id={`${field}-${index}`}
+                              label={`${text(field)} ${rowLabel}`}
+                              value={inputValue(group.group_id, entry, field)}
+                              min={FIELD_BOUNDS[field].min}
+                              max={FIELD_BOUNDS[field].max}
+                              invalid={
+                                invalidInputs[fieldKey(group.group_id, entry.entry_id, field)] ===
+                                true
+                              }
+                              invalidMessage={text('invalidValue')}
+                              disabled={pending || derived}
+                              onChange={(value) => setInput(group.group_id, entry, field, value)}
+                            />
+                          </div>
+                        ))}
                         <div {...stylex.props(styles.controlGroup)}>
                           <span aria-hidden {...stylex.props(styles.controlLabel)}>
                             {text('reasoning')}
@@ -1938,8 +1577,8 @@ export function SchedulePanelDetail({
                                   label={`${t('monitor.schedule.detail.concurrencyLimit')} ${rowLabel}`}
                                   value={inputValue(group.group_id, entry, 'concurrency_limit')}
                                   placeholder={String(entry.concurrency_limit ?? 0)}
-                                  min={0}
-                                  max={2147483647}
+                                  min={FIELD_BOUNDS.concurrency_limit.min}
+                                  max={FIELD_BOUNDS.concurrency_limit.max}
                                   invalid={
                                     invalidInputs[
                                       fieldKey(group.group_id, entry.entry_id, 'concurrency_limit')

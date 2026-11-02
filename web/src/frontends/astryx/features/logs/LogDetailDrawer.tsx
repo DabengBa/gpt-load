@@ -703,6 +703,22 @@ function errorMessageNeedsDisclosure(message: string): boolean {
   return message.length > 240
 }
 
+function ErrorMessageToggle({ expanded, onClick }: { expanded: boolean; onClick: () => void }) {
+  const t = useT()
+  return (
+    <button
+      type="button"
+      {...stylex.props(styles.linkToggle, styles.errorMessageToggle)}
+      aria-expanded={expanded}
+      onClick={onClick}
+    >
+      {expanded
+        ? t('monitor.logs.drawer.collapseErrorMessage')
+        : t('monitor.logs.drawer.expandErrorMessage')}
+    </button>
+  )
+}
+
 export interface LogDetailDrawerProps {
   open: boolean
   requestId: string | undefined
@@ -1135,16 +1151,10 @@ export function LogDetailDrawer({
                   {keyReasonText}
                 </p>
                 {errorMessageNeedsDisclosure(keyReasonText) && (
-                  <button
-                    type="button"
-                    {...stylex.props(styles.linkToggle, styles.errorMessageToggle)}
-                    aria-expanded={errorMessageExpanded}
+                  <ErrorMessageToggle
+                    expanded={errorMessageExpanded}
                     onClick={() => setErrorMessageExpanded(!errorMessageExpanded)}
-                  >
-                    {errorMessageExpanded
-                      ? t('monitor.logs.drawer.collapseErrorMessage')
-                      : t('monitor.logs.drawer.expandErrorMessage')}
-                  </button>
+                  />
                 )}
                 {keyReasonCode !== '' && (
                   <p {...stylex.props(styles.errorMessageCode)}>
@@ -1506,16 +1516,10 @@ export function LogDetailDrawer({
                               {reasonText}
                             </p>
                             {errorMessageNeedsDisclosure(reasonText) && (
-                              <button
-                                type="button"
-                                {...stylex.props(styles.linkToggle, styles.errorMessageToggle)}
-                                aria-expanded={reasonExpanded}
+                              <ErrorMessageToggle
+                                expanded={reasonExpanded}
                                 onClick={() => toggleAttemptErrorMessage(attempt.sequence)}
-                              >
-                                {reasonExpanded
-                                  ? t('monitor.logs.drawer.collapseErrorMessage')
-                                  : t('monitor.logs.drawer.expandErrorMessage')}
-                              </button>
+                              />
                             )}
                           </div>
                         )}

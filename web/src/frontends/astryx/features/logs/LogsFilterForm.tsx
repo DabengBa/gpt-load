@@ -106,16 +106,18 @@ const styles = stylex.create({
 
   // Field wrappers carry the classic fixed/flex widths; controls fill them
   // via width="100%". At <=560px each spans the full two-column grid row.
-  fieldGroup: {
+  fixedField: {
     display: 'block',
     minWidth: 0,
-    width: {
-      default: 220,
-      [NARROW]: '100%',
-    },
     gridColumn: {
       default: 'auto',
       [NARROW]: '1 / -1',
+    },
+  },
+  fieldGroup: {
+    width: {
+      default: 220,
+      [NARROW]: '100%',
     },
   },
   fieldModel: {
@@ -137,15 +139,9 @@ const styles = stylex.create({
     },
   },
   fieldStatus: {
-    display: 'block',
-    minWidth: 0,
     width: {
       default: 108,
       [NARROW]: '100%',
-    },
-    gridColumn: {
-      default: 'auto',
-      [NARROW]: '1 / -1',
     },
   },
   // Classic .logs-filter__count — the badge inside the "More filters" button.
@@ -366,7 +362,7 @@ export function LogsFilterForm({
 
         <div {...stylex.props(styles.row)}>
           {selfScoped !== true && (
-            <span {...stylex.props(styles.fieldGroup)}>
+            <span {...stylex.props(styles.fixedField, styles.fieldGroup)}>
               <Selector
                 label={t('monitor.logs.filters.group')}
                 isLabelHidden
@@ -429,7 +425,7 @@ export function LogsFilterForm({
               />
             )}
           </span>
-          <span {...stylex.props(styles.fieldStatus)}>
+          <span {...stylex.props(styles.fixedField, styles.fieldStatus)}>
             <Selector
               label={t('monitor.logs.filters.status')}
               isLabelHidden

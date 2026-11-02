@@ -83,12 +83,20 @@ def validate_outputs(payload: object) -> list[dict]:
     validated = []
     for index, item in enumerate(outputs):
         if not isinstance(item, dict):
-            raise RequestError(400, "invalid_outputs", detail=f"outputs[{index}] must be an object")
+            raise RequestError(
+                400, "invalid_outputs", detail=f"outputs[{index}] must be an object"
+            )
         prompt_id = item.get("prompt_id")
         expected = item.get("expected_count")
         text = item.get("text")
-        if not isinstance(prompt_id, str) or not prompt_id.strip() or len(prompt_id) > 128:
-            raise RequestError(400, "invalid_outputs", detail=f"outputs[{index}].prompt_id invalid")
+        if (
+            not isinstance(prompt_id, str)
+            or not prompt_id.strip()
+            or len(prompt_id) > 128
+        ):
+            raise RequestError(
+                400, "invalid_outputs", detail=f"outputs[{index}].prompt_id invalid"
+            )
         if (
             isinstance(expected, bool)
             or not isinstance(expected, int)
@@ -106,7 +114,9 @@ def validate_outputs(payload: object) -> list[dict]:
                 "invalid_outputs",
                 detail=f"outputs[{index}].text must be a string under {MAX_OUTPUT_CHARS} chars",
             )
-        validated.append({"prompt_id": prompt_id, "expected_count": expected, "text": text})
+        validated.append(
+            {"prompt_id": prompt_id, "expected_count": expected, "text": text}
+        )
     if len({item["prompt_id"] for item in validated}) != len(validated):
         raise RequestError(400, "invalid_outputs", detail="prompt_id must be unique")
     return validated
@@ -216,28 +226,42 @@ class Handler(BaseHTTPRequestHandler):
         header = self.headers.get("Authorization", "")
         scheme, _, token = header.partition(" ")
         expected = self.server.token
-        if scheme.lower() != "bearer" or not token or not hmac.compare_digest(
-            token.strip().encode(), expected.encode()
+        if (
+            scheme.lower() != "bearer"
+            or not token
+            or not hmac.compare_digest(token.strip().encode(), expected.encode())
         ):
             self.send_error_json(401, "unauthorized")
             return False
         return True
 
     def read_json(self) -> object:
-        content_type = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        content_type = (
+            self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        )
         if content_type != "application/json":
-            raise RequestError(415, "unsupported_media_type", detail="Content-Type must be application/json")
+            raise RequestError(
+                415,
+                "unsupported_media_type",
+                detail="Content-Type must be application/json",
+            )
         try:
             length = int(self.headers.get("Content-Length", ""))
         except ValueError:
-            raise RequestError(400, "invalid_request", detail="Content-Length required") from None
+            raise RequestError(
+                400, "invalid_request", detail="Content-Length required"
+            ) from None
         if length < 0:
             raise RequestError(400, "invalid_request", detail="Content-Length invalid")
         if length > MAX_BODY_BYTES:
-            raise RequestError(413, "payload_too_large", detail=f"body limit is {MAX_BODY_BYTES} bytes")
+            raise RequestError(
+                413, "payload_too_large", detail=f"body limit is {MAX_BODY_BYTES} bytes"
+            )
         body = self.rfile.read(length)
         if len(body) != length:
-            raise RequestError(400, "invalid_request", detail="body shorter than Content-Length")
+            raise RequestError(
+                400, "invalid_request", detail="body shorter than Content-Length"
+            )
         try:
             return json.loads(body)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -270,7 +294,9 @@ class Server(ThreadingHTTPServer):
 
 def build_server(host: str, port: int, token: str, bank: Bank | None = None) -> Server:
     if len(token) < MIN_TOKEN_LENGTH:
-        raise ValueError(f"MODELTRACE_TOKEN must be at least {MIN_TOKEN_LENGTH} characters")
+        raise ValueError(
+            f"MODELTRACE_TOKEN must be at least {MIN_TOKEN_LENGTH} characters"
+        )
     return Server((host, port), token=token, bank=bank or Bank())
 
 

@@ -339,6 +339,39 @@ function InputGroup({
   )
 }
 
+/**
+ * USD amount cell. Total and periodic rows render the same control — same
+ * `id`, same mono/embedded styling, same decimal attrs — so the cell lives
+ * here instead of being spelled out in both branches.
+ */
+function AmountCell({
+  rule,
+  label,
+  disabled,
+  onChange,
+}: {
+  rule: AccessKeyCostLimitRuleDraft
+  label: string
+  disabled: boolean
+  onChange: (next: string) => void
+}) {
+  return (
+    <TextInput
+      id={`cost-limit-amount-${rule.clientKey}`}
+      label={label}
+      isLabelHidden
+      size="sm"
+      value={rule.limit_usd}
+      isDisabled={disabled}
+      startIcon={<span aria-hidden="true">$</span>}
+      controlXstyle={[styles.embeddedCell, styles.embeddedTextInput]}
+      data-gptload-mono
+      {...decimalInputAttrs}
+      onChange={onChange}
+    />
+  )
+}
+
 type PeriodUnit = 'seconds' | 'minutes' | 'hours' | 'days'
 
 const periodUnits: ReadonlyArray<{ value: PeriodUnit; seconds: number }> = [
@@ -525,17 +558,10 @@ export function AccessKeyCostLimitEditor({
               return (
                 <article key={rule.clientKey} {...stylex.props(styles.rule)}>
                   <InputGroup label={totalLabel} periodic={false}>
-                    <TextInput
-                      id={`cost-limit-amount-${rule.clientKey}`}
+                    <AmountCell
+                      rule={rule}
                       label={amountLabel}
-                      isLabelHidden
-                      size="sm"
-                      value={rule.limit_usd}
-                      isDisabled={disabled}
-                      startIcon={<span aria-hidden="true">$</span>}
-                      controlXstyle={[styles.embeddedCell, styles.embeddedTextInput]}
-                      data-gptload-mono
-                      {...decimalInputAttrs}
+                      disabled={disabled}
                       onChange={(next) => updateRule(rule.clientKey, { limit_usd: next })}
                     />
                   </InputGroup>
@@ -592,17 +618,10 @@ export function AccessKeyCostLimitEditor({
                   <article key={rule.clientKey} {...stylex.props(styles.rule)}>
                     <div {...stylex.props(styles.ruleRow)}>
                       <InputGroup label={periodicLabel} periodic>
-                        <TextInput
-                          id={`cost-limit-amount-${rule.clientKey}`}
+                        <AmountCell
+                          rule={rule}
                           label={amountLabel}
-                          isLabelHidden
-                          size="sm"
-                          value={rule.limit_usd}
-                          isDisabled={disabled}
-                          startIcon={<span aria-hidden="true">$</span>}
-                          controlXstyle={[styles.embeddedCell, styles.embeddedTextInput]}
-                          data-gptload-mono
-                          {...decimalInputAttrs}
+                          disabled={disabled}
                           onChange={(next) => updateRule(rule.clientKey, { limit_usd: next })}
                         />
                         <TextInput

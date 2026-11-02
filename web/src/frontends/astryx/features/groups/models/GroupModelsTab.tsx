@@ -29,9 +29,6 @@ import type {
 import {
   appendSelectedCandidates,
   clientModel,
-  indexesWithInvalidPriorities,
-  indexesWithInvalidWeights,
-  indexesWithZeroShare,
   mergeCandidateMetadata,
   readModelNameConflicts,
 } from '@shared/domain/models/model-draft'
@@ -40,7 +37,6 @@ import {
   createModelDraft,
   findModelNameConflicts,
   normalizedModels,
-  sameModels,
   syncedModels,
   type ModelDraftItem,
   type ModelNameConflict,
@@ -75,6 +71,8 @@ import {
   type ModelAliasEditorHandle,
 } from '@app/features/models/ModelAliasEditor'
 import { GroupModelSyncDialog } from './GroupModelSyncDialog'
+import { analyzeModelDraft } from './model-editor-analysis'
+import { buildAliasEditorLabels } from './model-editor-labels'
 
 const nativeDataProbeProtocols = new Set<ProtocolValue>([
   'openai-embeddings',
@@ -297,50 +295,18 @@ export function GroupModelsTab({
   const nextKeyRef = useRef(1)
   const controllerRef = useRef<AbortController | undefined>(undefined)
 
-  const conflicts = serverConflicts.length
-    ? serverConflicts
-    : findModelNameConflicts(normalizedModels(draft))
-  const emptyAliasIndexes = new Set(
-    draft.flatMap((item, index) => (item.alias_enabled && !item.alias.trim() ? [index] : [])),
-  )
-  const emptyIDIndexes = new Set(draft.flatMap((item, index) => (!item.id.trim() ? [index] : [])))
-  const invalidWeightIndexes = indexesWithInvalidWeights(draft)
-  const invalidPriorityIndexes = indexesWithInvalidPriorities(draft)
-  const zeroShareIndexes = indexesWithZeroShare(draft)
-  const invalidRowCount = new Set([
-    ...conflicts.flatMap((item) => item.indexes),
-    ...emptyAliasIndexes,
-    ...emptyIDIndexes,
-    ...invalidWeightIndexes,
-    ...invalidPriorityIndexes,
-    ...zeroShareIndexes,
-  ]).size
-  const validationSummary = [
-    conflicts.length ? t('group.modelEditor.conflictSummary') : '',
-    emptyIDIndexes.size ? t('group.modelEditor.manualIdRequired') : '',
-    emptyAliasIndexes.size ? t('group.modelEditor.emptyAliasSummary') : '',
-    zeroShareIndexes.size ? t('group.modelEditor.zeroShareSummary') : '',
-    invalidWeightIndexes.size ? t('group.modelEditor.invalidWeight') : '',
-    invalidPriorityIndexes.size ? t('group.modelEditor.invalidPriority') : '',
-  ]
-    .filter(Boolean)
-    .join(' · ')
-  const saveBarError = validationSummary || saveError
-  const dirty =
-    !sameModels(saved, draft) || draft.some((item) => item.editable_id && !item.id.trim())
-  const savePending = pending === 'save' || pending === 'sync'
   const operationBlocked = pending !== null || blocked
+  const analysis = analyzeModelDraft({
+    saved,
+    draft,
+    serverConflicts,
+    saveError,
+    operationBlocked,
+    t,
+  })
+  const { conflicts, dirty, empty, canSave, saveBarError, invalidRowCount } = analysis
+  const savePending = pending === 'save' || pending === 'sync'
 
-  const empty = normalizedModels(draft).length === 0
-  const canSave =
-    dirty &&
-    !operationBlocked &&
-    conflicts.length === 0 &&
-    emptyIDIndexes.size === 0 &&
-    emptyAliasIndexes.size === 0 &&
-    invalidWeightIndexes.size === 0 &&
-    invalidPriorityIndexes.size === 0 &&
-    zeroShareIndexes.size === 0
   const pendingPricingCount = draft.filter((item) => item.pricing_status === 'pending').length
   const currentModelIDs = draft.map((item) => item.id.trim()).filter(Boolean)
   const knownPricingStatusByID = new Map(
@@ -355,38 +321,7 @@ export function GroupModelsTab({
   const syncDisabled = !discoveryReady || dirty || operationBlocked
   const syncDisabledReason = dirty ? t('group.modelEditor.sync.dirty') : undefined
 
-  const aliasEditorLabels: ModelAliasEditorLabels = {
-    tableLabel: t('group.modelEditor.tableLabel'),
-    id: t('group.modelEditor.id'),
-    alias: t('group.modelEditor.alias'),
-    thirdColumn: t('group.modelEditor.testAliasAndPricing'),
-    actions: t('group.modelEditor.actions'),
-    search: t('group.modelEditor.searchPlaceholder'),
-    searchLabel: t('group.modelEditor.searchLabel'),
-    clearSearch: t('group.modelEditor.searchClear'),
-    aliasEnabledFor: (id) => t('group.modelEditor.aliasEnabledFor', { id }),
-    aliasFor: (id) => t('group.modelEditor.aliasFor', { id }),
-    aliasPlaceholder: t('group.modelEditor.aliasPlaceholder'),
-    aliasRequired: t('group.modelEditor.aliasRequired'),
-    removeFor: (id) => t('group.modelEditor.removeFor', { id }),
-    manualId: t('group.modelEditor.manualId'),
-    manualIdRequired: t('group.modelEditor.manualIdRequired'),
-    add: t('group.modelEditor.add'),
-    addInline: t('group.modelEditor.addInline'),
-    count: (count) =>
-      pendingPricingCount
-        ? t('group.modelEditor.summary', { count, pending: pendingPricingCount })
-        : t('group.modelEditor.total', { count }),
-    empty: t('group.modelEditor.empty'),
-    noMatches: t('group.modelEditor.noMatches'),
-    nameConflict: (name) => t('group.modelEditor.nameConflict', { name }),
-    weight: t('group.modelEditor.weight'),
-    priority: t('group.modelEditor.priority'),
-    weightDisabled: t('group.modelEditor.weightDisabled'),
-    invalidWeight: t('group.modelEditor.invalidWeight'),
-    invalidPriority: t('group.modelEditor.invalidPriority'),
-    zeroShare: t('group.modelEditor.zeroShareSummary'),
-  }
+  const aliasEditorLabels: ModelAliasEditorLabels = buildAliasEditorLabels(t, pendingPricingCount)
   const discoveryDrawerLabels: ModelDiscoveryDrawerLabels = {
     title: t('group.modelEditor.drawer.title'),
     description: t('group.modelEditor.drawer.description'),

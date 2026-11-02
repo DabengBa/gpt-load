@@ -238,60 +238,84 @@ func parseRequestListQuery(rawQuery string) (requestlog.ListQuery, *app_errors.A
 		}
 	}
 	query := requestlog.ListQuery{Limit: DefaultPageLimit}
+	if apiErr := parseRequestTimeFilters(values, &query); apiErr != nil {
+		return requestlog.ListQuery{}, apiErr
+	}
+	if apiErr := parseRequestIdentityFilters(values, &query); apiErr != nil {
+		return requestlog.ListQuery{}, apiErr
+	}
+	if apiErr := parseRequestClassificationFilters(values, &query); apiErr != nil {
+		return requestlog.ListQuery{}, apiErr
+	}
+	if apiErr := parseRequestPagination(values, &query); apiErr != nil {
+		return requestlog.ListQuery{}, apiErr
+	}
+	return query, nil
+}
+
+func parseRequestTimeFilters(values url.Values, query *requestlog.ListQuery) *app_errors.APIError {
 	if value, ok := agentQueryValue(values, "from_ms"); ok {
 		parsed, err := parseCanonicalSafeMilliseconds(value)
 		if err != nil {
-			return requestlog.ListQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		query.FromMS = &parsed
 	}
 	if value, ok := agentQueryValue(values, "to_ms"); ok {
 		parsed, err := parseCanonicalSafeMilliseconds(value)
 		if err != nil {
-			return requestlog.ListQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		query.ToMS = &parsed
 	}
 	if query.FromMS != nil && query.ToMS != nil && *query.FromMS >= *query.ToMS {
-		return requestlog.ListQuery{}, app_errors.ErrValidation
+		return app_errors.ErrValidation
 	}
+	return nil
+}
+
+func parseRequestIdentityFilters(values url.Values, query *requestlog.ListQuery) *app_errors.APIError {
 	if value, ok := agentQueryValue(values, "group_id"); ok {
 		parsed, apiErr := parseAgentScopedID(value)
 		if apiErr != nil {
-			return requestlog.ListQuery{}, apiErr
+			return apiErr
 		}
 		query.GroupID = &parsed
 	}
 	if value, ok := agentQueryValue(values, "channel_id"); ok {
 		channelID := channel.ID(value)
 		if _, known := agentChannelRegistry.Get(channelID); !known {
-			return requestlog.ListQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.ChannelID = channelID
 	}
 	if value, ok := agentQueryValue(values, "credential_id"); ok {
 		parsed, apiErr := parseAgentScopedID(value)
 		if apiErr != nil {
-			return requestlog.ListQuery{}, apiErr
+			return apiErr
 		}
 		query.CredentialID = &parsed
 	}
 	if value, ok := agentQueryValue(values, "access_key_id"); ok {
 		parsed, apiErr := parseAgentScopedID(value)
 		if apiErr != nil {
-			return requestlog.ListQuery{}, apiErr
+			return apiErr
 		}
 		query.AccessKeyID = &parsed
 	}
+	return nil
+}
+
+func parseRequestClassificationFilters(values url.Values, query *requestlog.ListQuery) *app_errors.APIError {
 	if value, ok := agentQueryValue(values, "client_model"); ok {
 		if !validAgentModel(value) {
-			return requestlog.ListQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.ClientModel = value
 	}
 	if value, ok := agentQueryValue(values, "upstream_model"); ok {
 		if !validAgentModel(value) {
-			return requestlog.ListQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.UpstreamModel = value
 	}
@@ -302,20 +326,20 @@ func parseRequestListQuery(rawQuery string) (requestlog.ListQuery, *app_errors.A
 			telemetry.RequestStatusIncomplete, telemetry.RequestStatusCanceled:
 			query.Status = status
 		default:
-			return requestlog.ListQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 	}
 	if value, ok := agentQueryValue(values, "protocol"); ok {
 		parsed := protocol.Protocol(value)
 		if !parsed.Valid() {
-			return requestlog.ListQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.Protocol = parsed
 	}
 	if value, ok := agentQueryValue(values, "operation"); ok {
 		parsed := execution.Operation(value)
 		if !parsed.Valid() {
-			return requestlog.ListQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.Operation = parsed
 	}
@@ -328,33 +352,37 @@ func parseRequestListQuery(rawQuery string) (requestlog.ListQuery, *app_errors.A
 			parsed := false
 			query.Stream = &parsed
 		default:
-			return requestlog.ListQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 	}
+	return nil
+}
+
+func parseRequestPagination(values url.Values, query *requestlog.ListQuery) *app_errors.APIError {
 	if value, ok := agentQueryValue(values, "request_id"); ok {
 		if !canonicalLowercaseUUIDv4.MatchString(value) {
-			return requestlog.ListQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		query.RequestID = value
 	}
 	if value, ok := agentQueryValue(values, "limit"); ok {
 		parsed, err := parseCanonicalSafeUint(value)
 		if err != nil {
-			return requestlog.ListQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		if parsed < 1 || parsed > MaxPageLimit {
-			return requestlog.ListQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.Limit = int(parsed)
 	}
 	if value, ok := agentQueryValue(values, "cursor"); ok {
 		cursor, err := decodeRequestCursor(value)
 		if err != nil {
-			return requestlog.ListQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		query.Cursor = cursor
 	}
-	return query, nil
+	return nil
 }
 
 func agentQueryValue(values url.Values, key string) (string, bool) {

@@ -72,7 +72,7 @@ import {
 } from '@app/features/models/ModelAliasEditor'
 import { ModelDiscoveryDrawer } from '../models/ModelDiscoveryDrawer'
 import { ModelPricingStatus } from '../models/ModelPricingStatus'
-import { ChannelPresetPicker } from '@app/components/ChannelPresetPicker'
+import { ChannelPresetPicker } from '../../components/ChannelPresetPicker'
 import { CredentialTextarea } from './CredentialTextarea'
 import { ImportConnectionSection } from './ImportConnectionSection'
 import { ImportOperationNotice } from './ImportOperationNotice'
@@ -118,6 +118,54 @@ function initialChannelParams(channel: ChannelDto): Record<string, string> {
 }
 
 type ImportStepState = 'pending' | 'active' | 'ready' | 'error' | 'optional'
+
+/**
+ * Discovery + manual-add controls for the model step. Rendered both in the
+ * empty state (beside the placeholder copy) and in the populated toolbar, so
+ * the button cluster lives in one place; only the wrapper layout differs.
+ */
+function ModelDraftActions({
+  showDiscovery,
+  discoveryLoading,
+  canDiscover,
+  addDisabled,
+  onDiscover,
+  onAdd,
+  xstyle,
+}: {
+  showDiscovery?: boolean
+  discoveryLoading: boolean
+  canDiscover: boolean
+  addDisabled: boolean
+  onDiscover: () => void
+  onAdd: () => void
+  xstyle: stylex.StyleXStyles
+}) {
+  const t = useT()
+  return (
+    <div {...stylex.props(xstyle)}>
+      {showDiscovery && (
+        <Button
+          variant="secondary"
+          size="sm"
+          isLoading={discoveryLoading}
+          isDisabled={!canDiscover}
+          icon={<RefreshCw size={16} aria-hidden="true" />}
+          label={t('import.discover')}
+          onClick={onDiscover}
+        />
+      )}
+      <Button
+        variant="secondary"
+        size="sm"
+        isDisabled={addDisabled}
+        icon={<Plus size={16} aria-hidden="true" />}
+        label={t('import.models.add')}
+        onClick={onAdd}
+      />
+    </div>
+  )
+}
 
 /**
  * Classic features/import/NewGroupImport.vue — three-step create flow:
@@ -1242,52 +1290,28 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
             {draft.models.length === 0 && (
               <div {...stylex.props(styles.modelsEmpty)}>
                 <span>{t('import.models.empty')}</span>
-                <div {...stylex.props(styles.modelsActions)}>
-                  {selectedChannel?.capabilities.model_discovery && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      isLoading={discoveryLoading}
-                      isDisabled={!canDiscover}
-                      icon={<RefreshCw size={16} aria-hidden="true" />}
-                      label={t('import.discover')}
-                      onClick={requestDiscovery}
-                    />
-                  )}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    isDisabled={payloadLocked}
-                    icon={<Plus size={16} aria-hidden="true" />}
-                    label={t('import.models.add')}
-                    onClick={() => void addManualModel()}
-                  />
-                </div>
+                <ModelDraftActions
+                  showDiscovery={selectedChannel?.capabilities.model_discovery}
+                  discoveryLoading={discoveryLoading}
+                  canDiscover={canDiscover}
+                  addDisabled={payloadLocked}
+                  onDiscover={requestDiscovery}
+                  onAdd={() => void addManualModel()}
+                  xstyle={styles.modelsActions}
+                />
               </div>
             )}
 
             {draft.models.length > 0 && (
-              <div {...stylex.props(styles.modelsToolbar)}>
-                {selectedChannel?.capabilities.model_discovery && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    isLoading={discoveryLoading}
-                    isDisabled={!canDiscover}
-                    icon={<RefreshCw size={16} aria-hidden="true" />}
-                    label={t('import.discover')}
-                    onClick={requestDiscovery}
-                  />
-                )}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  isDisabled={payloadLocked}
-                  icon={<Plus size={16} aria-hidden="true" />}
-                  label={t('import.models.add')}
-                  onClick={() => void addManualModel()}
-                />
-              </div>
+              <ModelDraftActions
+                showDiscovery={selectedChannel?.capabilities.model_discovery}
+                discoveryLoading={discoveryLoading}
+                canDiscover={canDiscover}
+                addDisabled={payloadLocked}
+                onDiscover={requestDiscovery}
+                onAdd={() => void addManualModel()}
+                xstyle={styles.modelsToolbar}
+              />
             )}
 
             {draft.models.length > 0 && (

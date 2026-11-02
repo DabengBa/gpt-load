@@ -383,6 +383,33 @@ function LogIdCopyChip({
   )
 }
 
+/** Log-id cluster: copy chip + "View log" link, shared by both result layouts. */
+function LogIdActions({
+  logId,
+  layout,
+  onViewLog,
+}: {
+  logId: string
+  layout?: 'leading' | 'trailing'
+  onViewLog(logId: string): void
+}) {
+  const t = useT()
+  return (
+    <>
+      <LogIdCopyChip
+        value={logId}
+        layout={layout}
+        label={t('monitor.modelProbe.fields.logId')}
+        successLabel={t('common.copied')}
+        failureLabel={t('common.copyFailed')}
+      />
+      <button type="button" {...stylex.props(styles.linkButton)} onClick={() => onViewLog(logId)}>
+        {t('monitor.modelProbe.viewLog')}
+      </button>
+    </>
+  )
+}
+
 interface ProbeGroup {
   group_id: number
   group_name: string
@@ -728,21 +755,7 @@ export function ModelProbeDialog({
                     {(() => {
                       const logId = detail.log_id
                       return logId ? (
-                        <>
-                          <LogIdCopyChip
-                            value={logId}
-                            label={t('monitor.modelProbe.fields.logId')}
-                            successLabel={t('common.copied')}
-                            failureLabel={t('common.copyFailed')}
-                          />
-                          <button
-                            type="button"
-                            {...stylex.props(styles.linkButton)}
-                            onClick={() => onViewLog(logId)}
-                          >
-                            {t('monitor.modelProbe.viewLog')}
-                          </button>
-                        </>
+                        <LogIdActions logId={logId} onViewLog={onViewLog} />
                       ) : (
                         t('monitor.modelProbe.notExecuted')
                       )
@@ -807,22 +820,7 @@ export function ModelProbeDialog({
                             </span>
                           )}
                           {logId && (
-                            <>
-                              <LogIdCopyChip
-                                value={logId}
-                                layout="trailing"
-                                label={t('monitor.modelProbe.fields.logId')}
-                                successLabel={t('common.copied')}
-                                failureLabel={t('common.copyFailed')}
-                              />
-                              <button
-                                type="button"
-                                {...stylex.props(styles.linkButton)}
-                                onClick={() => onViewLog(logId)}
-                              >
-                                {t('monitor.modelProbe.viewLog')}
-                              </button>
-                            </>
+                            <LogIdActions logId={logId} layout="trailing" onViewLog={onViewLog} />
                           )}
                         </div>
                       </li>

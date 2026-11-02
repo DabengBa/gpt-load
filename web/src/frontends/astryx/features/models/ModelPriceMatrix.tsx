@@ -179,6 +179,15 @@ function dedupe(messages: (string | undefined)[]): string[] {
   return [...new Set(messages.filter((message): message is string => Boolean(message)))]
 }
 
+function ValidationErrors({ messages }: { messages: string[] }) {
+  if (messages.length === 0) return null
+  return (
+    <p {...stylex.props(styles.error)} role="alert">
+      {messages.join(' · ')}
+    </p>
+  )
+}
+
 /** 组合控件统一由外框表达焦点,子输入仅保留单元格分隔线(focus-within 等价)。 */
 function PriceInputGroup({
   children,
@@ -290,6 +299,17 @@ export function ModelPriceMatrix({
     }),
   }))
 
+  const addTierAction = (
+    <IconButton
+      variant="ghost"
+      size="sm"
+      isDisabled={pending}
+      label={t('modelPrices.matrix.addTier')}
+      icon={<Plus size={14} aria-hidden />}
+      onClick={onAddTier}
+    />
+  )
+
   return (
     <div {...stylex.props(styles.matrix)}>
       {failure && (
@@ -366,23 +386,10 @@ export function ModelPriceMatrix({
           </PriceInputGroup>
           {/* 增删都落在同一列:无档位时基础行就是最后一行,由它承载加号。 */}
           <div {...stylex.props(styles.actions, styles.actionsCell)}>
-            {!tiered && (
-              <IconButton
-                variant="ghost"
-                size="sm"
-                isDisabled={pending}
-                label={t('modelPrices.matrix.addTier')}
-                icon={<Plus size={14} aria-hidden />}
-                onClick={onAddTier}
-              />
-            )}
+            {!tiered && addTierAction}
           </div>
         </div>
-        {baseErrors.length > 0 && (
-          <p {...stylex.props(styles.error)} role="alert">
-            {baseErrors.join(' · ')}
-          </p>
-        )}
+        <ValidationErrors messages={baseErrors} />
 
         {draft.tiers.map((tier, index) => (
           <div key={tier.key}>
@@ -465,23 +472,10 @@ export function ModelPriceMatrix({
                   icon={<X size={14} aria-hidden />}
                   onClick={() => onRemoveTier(tier.key)}
                 />
-                {index === draft.tiers.length - 1 && (
-                  <IconButton
-                    variant="ghost"
-                    size="sm"
-                    isDisabled={pending}
-                    label={t('modelPrices.matrix.addTier')}
-                    icon={<Plus size={14} aria-hidden />}
-                    onClick={onAddTier}
-                  />
-                )}
+                {index === draft.tiers.length - 1 && addTierAction}
               </div>
             </div>
-            {tierErrors(tier.key).length > 0 && (
-              <p {...stylex.props(styles.error)} role="alert">
-                {tierErrors(tier.key).join(' · ')}
-              </p>
-            )}
+            <ValidationErrors messages={tierErrors(tier.key)} />
           </div>
         ))}
       </div>
@@ -534,5 +528,5 @@ export function ModelPriceMatrix({
         />
       </Dialog>
     </div>
-  );
+  )
 }

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -18,8 +19,9 @@ import importlib.util
 
 _spec = importlib.util.spec_from_file_location(
     "cleanup_deployment_artifacts",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                 "cleanup-deployment-artifacts.py"),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "cleanup-deployment-artifacts.py"
+    ),
 )
 cda = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cda)
@@ -38,8 +40,12 @@ class Base(unittest.TestCase):
         self.root = tempfile.mkdtemp(prefix="gptl-cleanup-test-")
         self.addCleanup(shutil.rmtree, self.root, True)
 
-    def run_clean(self, apply_=False, docker_mounts=None, proc=None,
-                  ):
+    def run_clean(
+        self,
+        apply_=False,
+        docker_mounts=None,
+        proc=None,
+    ):
         return cda.run(
             root=self.root,
             apply=apply_,
@@ -103,7 +109,7 @@ class Protection(Base):
     def test_symlink_never_deleted(self):
         touch(f"{self.root}/real/gpt-load.db", age_days=5)
         os.symlink(f"{self.root}/real", f"{self.root}/rehearsal-link")
-        result = self.run_clean()
+        self.run_clean()
         self.assertTrue(os.path.islink(f"{self.root}/rehearsal-link"))
         self.assertTrue(os.path.isdir(f"{self.root}/real"))
 
@@ -123,8 +129,7 @@ class Protection(Base):
     def test_open_file_inside_candidate_protects_candidate(self):
         touch(f"{self.root}/rehearsal-a/gpt-load.db", age_days=5)
         touch(f"{self.root}/rehearsal-b/gpt-load.db", age_days=4)
-        result = self.run_clean(
-            proc={f"{self.root}/rehearsal-a/gpt-load.db"})
+        result = self.run_clean(proc={f"{self.root}/rehearsal-a/gpt-load.db"})
         # a holds an open file → protected; b is newest eligible, kept by quota
         self.assertEqual(result["deleted_dirs"], [])
         self.assertTrue(os.path.isdir(f"{self.root}/rehearsal-a"))
@@ -133,27 +138,125 @@ class Protection(Base):
     def test_docker_mount_child_protects_candidate(self):
         touch(f"{self.root}/rehearsal-a/data/gpt-load.db", age_days=5)
         touch(f"{self.root}/rehearsal-b/gpt-load.db", age_days=4)
-        result = self.run_clean(
-            docker_mounts={f"{self.root}/rehearsal-a/data"})
+        result = self.run_clean(docker_mounts={f"{self.root}/rehearsal-a/data"})
         self.assertEqual(result["deleted_dirs"], [])
 
     def test_generic_process_root_slash_not_protecting_everything(self):
         touch(f"{self.root}/rehearsal-a/gpt-load.db", age_days=5)
         touch(f"{self.root}/rehearsal-b/gpt-load.db", age_days=4)
         result = self.run_clean(proc={"/"})
-        self.assertEqual(
-            result["deleted_dirs"], [f"{self.root}/rehearsal-a"])
+        self.assertEqual(result["deleted_dirs"], [f"{self.root}/rehearsal-a"])
 
     def test_open_file_inside_backup_protects_file(self):
         touch(f"{self.root}/backups/gpt-load-offline-a.tar.gz", age_days=6)
         touch(f"{self.root}/backups/gpt-load-offline-b.tar.gz", age_days=5)
         touch(f"{self.root}/backups/gpt-load-offline-c.tar.gz", age_days=4)
-        result = self.run_clean(
-            proc={f"{self.root}/backups/gpt-load-offline-a.tar.gz"})
+        result = self.run_clean(proc={f"{self.root}/backups/gpt-load-offline-a.tar.gz"})
         self.assertEqual(result["deleted_files"], [])
 
 
 class FailClosed(Base):
+    def test_literal_deleted_suffix_in_cwd_is_protected(self):
+        candidate = self.root + "/rehearsal-a (deleted)"
+        touch(candidate + "/gpt-load.db", age_days=5)
+        touch(self.root + "/rehearsal-b/gpt-load.db", age_days=4)
+        with (
+            patch.object(
+                cda.os,
+                "listdir",
+                side_effect=lambda path: ["123"] if path == "/proc" else [],
+            ),
+            patch.object(
+                cda.os,
+                "readlink",
+                side_effect=lambda path: candidate if path.endswith("/cwd") else "/",
+            ),
+        ):
+            protected = cda.proc_protected(self.root)
+        self.run_clean(apply_=True, proc=protected)
+        self.assertTrue(os.path.isdir(candidate))
+
+    def test_proc_open_and_deleted_paths_protect_candidates(self):
+        touch(f"{self.root}/rehearsal-a/gpt-load.db", age_days=5)
+        touch(f"{self.root}/rehearsal-b/gpt-load.db", age_days=4)
+        with tempfile.TemporaryDirectory() as proc:
+            os.makedirs(f"{proc}/123/fd")
+            os.symlink("/", f"{proc}/123/root")
+            os.symlink(self.root + "/rehearsal-a", f"{proc}/123/cwd")
+            os.symlink(self.root + "/rehearsal-a/gone (deleted)", f"{proc}/123/fd/3")
+            os.symlink("pipe:[123]", f"{proc}/123/fd/4")
+            original_listdir, original_readlink = os.listdir, os.readlink
+
+            def map_proc(path):
+                return proc + path[5:] if str(path).startswith("/proc") else path
+
+            with (
+                patch.object(
+                    cda.os,
+                    "listdir",
+                    side_effect=lambda p: original_listdir(map_proc(p)),
+                ),
+                patch.object(
+                    cda.os,
+                    "readlink",
+                    side_effect=lambda p: original_readlink(map_proc(p)),
+                ),
+            ):
+                protected = cda.proc_protected(self.root)
+            self.assertIn(self.root + "/rehearsal-a/gone", protected)
+            self.assertFalse(any("pipe:" in path for path in protected))
+            result = self.run_clean(apply_=True, proc=protected)
+            self.assertEqual(result["deleted_dirs"], [])
+            self.assertTrue(os.path.exists(self.root + "/rehearsal-a"))
+
+    def test_proc_fd_permission_denied_aborts(self):
+        with (
+            patch.object(
+                cda.os,
+                "listdir",
+                side_effect=lambda path: (
+                    ["123"]
+                    if path == "/proc"
+                    else (_ for _ in ()).throw(PermissionError(13, "denied"))
+                ),
+            ),
+            patch.object(cda.os, "readlink", return_value="/"),
+        ):
+            with self.assertRaises(cda.ProtectionError):
+                cda.proc_protected(self.root)
+
+    def test_proc_permission_denied_aborts_before_deletion(self):
+        touch(f"{self.root}/rehearsal-a/gpt-load.db", age_days=5)
+        touch(f"{self.root}/rehearsal-b/gpt-load.db", age_days=4)
+        with (
+            patch.object(cda, "docker_mount_sources", return_value=set()),
+            patch.object(sys, "argv", ["cleanup", "--root", self.root, "--apply"]),
+            patch.object(
+                cda.os,
+                "listdir",
+                side_effect=lambda path: ["123"] if path == "/proc" else [],
+            ),
+            patch.object(cda.os, "readlink", side_effect=PermissionError(13, "denied")),
+        ):
+            with self.assertRaises(cda.ProtectionError):
+                cda.main()
+        self.assertTrue(os.path.exists(f"{self.root}/rehearsal-a"))
+
+    def test_vanished_process_is_ignored(self):
+        with (
+            patch.object(
+                cda.os,
+                "listdir",
+                side_effect=lambda path: (
+                    ["123"]
+                    if path == "/proc"
+                    else (_ for _ in ()).throw(FileNotFoundError(2, "gone"))
+                ),
+            ),
+            patch.object(cda.os, "readlink", side_effect=FileNotFoundError(2, "gone")),
+        ):
+            self.assertEqual(cda.proc_protected(self.root), set())
+
     def test_unmatched_names_never_deleted(self):
         touch(f"{self.root}/random-dir/gpt-load.db", age_days=9)
         touch(f"{self.root}/backups/other.tar.gz", age_days=9)

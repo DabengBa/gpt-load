@@ -18,12 +18,11 @@ import { useStableLoading } from '../../app/collection-loading'
 import { useT } from '../../app/i18n'
 import { RouteLink } from '../../app/route-link'
 import { useAppServices } from '../../app/services'
-import { StickySaveBar } from '../../components/StickySaveBar'
 import { GroupCredentialsTab } from './credentials/GroupCredentialsTab'
-import { GroupDeleteDialog } from './settings/GroupDeleteDialog'
 import { GroupSettingsTab } from './settings/GroupSettingsTab'
 import { GroupModelsTab } from './models/GroupModelsTab'
 import { GroupHeader } from './GroupHeader'
+import { GroupUnifiedSaveBar } from './GroupUnifiedSaveBar'
 import type { GroupEditorHandle, GroupEditorState, GroupModelsEditorHandle } from './editor-handles'
 
 const idleEditorState: GroupEditorState = {
@@ -127,12 +126,6 @@ const styles = stylex.create({
     fontSize: 'var(--title-section)',
     fontWeight: 650,
   },
-  saveBar: {
-    borderRadius: 'var(--radius-control)',
-    backgroundColor: 'var(--color-surface-raised)',
-    backdropFilter: 'none',
-    boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
-  },
   empty: {
     gridColumn: { default: '2', '@media (max-width: 640px)': '1' },
     margin: 0,
@@ -180,30 +173,6 @@ export function GroupDetailView() {
   const [deletePending, setDeletePending] = useState(false)
   const settingsEditorRef = useRef<GroupEditorHandle>(null)
   const modelsEditorRef = useRef<GroupModelsEditorHandle>(null)
-
-  const unifiedDirty = settingsState.dirty || modelsState.dirty
-  const unifiedPending = settingsState.pending || modelsState.pending || deletePending
-  const unifiedInvalid = settingsState.invalid === true || (modelsState.invalidRowCount ?? 0) > 0
-  const unifiedError = settingsState.error || modelsState.error
-  const unifiedSaved = !unifiedDirty && (settingsState.saved || modelsState.saved)
-  const unifiedSaveStatus: 'idle' | 'saved' | 'error' = unifiedError
-    ? 'error'
-    : unifiedSaved
-      ? 'saved'
-      : 'idle'
-  const unifiedErrorActionLabel = modelsState.invalidRowCount
-    ? t('group.modelEditor.locateFirstInvalid')
-    : ''
-
-  function saveUnified(): void {
-    if (settingsState.dirty) settingsEditorRef.current?.requestSave()
-    if (modelsState.dirty) modelsEditorRef.current?.requestSave()
-  }
-
-  function discardUnified(): void {
-    if (settingsState.dirty) settingsEditorRef.current?.discard()
-    if (modelsState.dirty) modelsEditorRef.current?.discard()
-  }
 
   // Warm the tab queries as soon as the id resolves — classic prefetches on
   // the same immediate groupId watch.
@@ -290,53 +259,15 @@ export function GroupDetailView() {
                 {/* Unified-mode portal target: GroupSettingsTab portals its
                       advanced section here via createPortal. Contractual id. */}
                 <div id="group-settings-advanced-target" />
-                <StickySaveBar
-                  appearance="ledger"
-                  xstyle={styles.saveBar}
-                  alwaysVisible
-                  dirty={unifiedDirty}
-                  pending={unifiedPending}
-                  status={unifiedSaveStatus}
-                  error={unifiedError}
-                  errorActionLabel={unifiedErrorActionLabel}
-                  onErrorAction={() => void modelsEditorRef.current?.focusFirstInvalid()}
-                  statusContent={
-                    <div>
-                      <strong>
-                        {unifiedPending
-                          ? t('group.settings.saving')
-                          : unifiedSaved
-                            ? t('group.settings.savedFeedback')
-                            : unifiedDirty
-                              ? t('group.settings.unsaved')
-                              : t('group.settings.saved')}
-                      </strong>
-                      <span>{unifiedError || t('group.settings.saveNote')}</span>
-                    </div>
-                  }
-                  actions={
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        label={t('common.discard')}
-                        isDisabled={unifiedPending || !unifiedDirty}
-                        onClick={discardUnified}
-                      />
-                      <GroupDeleteDialog
-                        groupId={groupId}
-                        groupName={summaryQuery.data.name}
-                        disabled={unifiedPending || unifiedDirty}
-                        onPendingChange={setDeletePending}
-                      />
-                      <Button
-                        size="sm"
-                        label={t('group.settings.save')}
-                        isDisabled={unifiedPending || !unifiedDirty || unifiedInvalid}
-                        onClick={saveUnified}
-                      />
-                    </>
-                  }
+                <GroupUnifiedSaveBar
+                  groupId={groupId}
+                  groupName={summaryQuery.data.name}
+                  settingsState={settingsState}
+                  modelsState={modelsState}
+                  deletePending={deletePending}
+                  settingsEditorRef={settingsEditorRef}
+                  modelsEditorRef={modelsEditorRef}
+                  onDeletePendingChange={setDeletePending}
                 />
               </>
             </>

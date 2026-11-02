@@ -10,6 +10,7 @@ relations:
     - db/features/usage-timing-metrics.md
 code:
   paths:
+    - internal/control/request_logs_mapping.go
     - internal/health/feedback.go
     - internal/gateway/feedback.go
     - internal/requestlog/worker.go
@@ -87,7 +88,7 @@ paired with `upstream_failure`, `first_response_slow`, or
   milliseconds, and output rate before persistence. `internal/requestlog/query.go`
   projects feedback for every attempt and separately derives the final attempt
   feedback for list and detail records.
-- `internal/control/request_logs.go` exposes feedback status, reason,
+- `internal/control/request_logs_mapping.go` exposes feedback status, reason,
   first-response measurement, and output rate. The Astryx logs view consumes the
   classification as presentation only: the final attempt's Provider
   first-response time and every displayed duration carry the `slow` or `faulty`

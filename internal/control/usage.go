@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
@@ -219,6 +220,19 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 		return requestlog.UsageQuery{}, app_errors.ErrInternalServer
 	}
 	query := requestlog.UsageQuery{BreakdownByClientModel: true}
+	if apiErr := parseUsageWindow(values, &query, observedAtMS); apiErr != nil {
+		return requestlog.UsageQuery{}, apiErr
+	}
+	if apiErr := parseUsageFilters(values, &query); apiErr != nil {
+		return requestlog.UsageQuery{}, apiErr
+	}
+	if apiErr := parseUsageBreakdownOptions(values, &query); apiErr != nil {
+		return requestlog.UsageQuery{}, apiErr
+	}
+	return query, nil
+}
+
+func parseUsageWindow(values url.Values, query *requestlog.UsageQuery, observedAtMS int64) *app_errors.APIError {
 	rangeValue := usageRange24Hours
 	if value, ok := singleQueryValue(values, "range"); ok {
 		rangeValue = value
@@ -226,26 +240,26 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 	fromValue, hasFrom := singleQueryValue(values, "from_ms")
 	toValue, hasTo := singleQueryValue(values, "to_ms")
 	if hasFrom != hasTo {
-		return requestlog.UsageQuery{}, app_errors.ErrValidation
+		return app_errors.ErrValidation
 	}
 	if hasFrom {
 		if _, hasRange := singleQueryValue(values, "range"); hasRange {
-			return requestlog.UsageQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		fromMS, err := parseCanonicalSafeMilliseconds(fromValue)
 		if err != nil {
-			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		toMS, err := parseCanonicalSafeMilliseconds(toValue)
 		if err != nil {
-			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		if fromMS >= toMS {
-			return requestlog.UsageQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		spanMS := toMS - fromMS
 		if spanMS > usageCustomMaxMS {
-			return requestlog.UsageQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.FromMS = fromMS
 		query.ToMS = toMS
@@ -258,14 +272,14 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 		}
 		query.BucketWidthMS = bucketWidth
 		if fromMS%bucketWidth != 0 || toMS%bucketWidth != 0 {
-			return requestlog.UsageQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		rangeValue = ""
 	}
 	if !hasFrom {
 		preset, ok := usageRangePreset(rangeValue)
 		if !ok {
-			return requestlog.UsageQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		fromMS, toMS, err := epochms.WindowEndingAt(
 			observedAtMS,
@@ -273,75 +287,83 @@ func parseUsageQuery(rawQuery string, observedAtMS int64) (requestlog.UsageQuery
 			preset.bucketCount,
 		)
 		if err != nil {
-			return requestlog.UsageQuery{}, app_errors.ErrInternalServer
+			return app_errors.ErrInternalServer
 		}
 		query.FromMS = fromMS
 		query.ToMS = toMS
 		query.Granularity = preset.granularity
 		query.BucketWidthMS = preset.bucketWidthMS
 	}
+	return nil
+}
+
+func parseUsageFilters(values url.Values, query *requestlog.UsageQuery) *app_errors.APIError {
 	if value, ok := singleQueryValue(values, "group_id"); ok {
 		groupID, apiErr := parseUsageGroupID(value)
 		if apiErr != nil {
-			return requestlog.UsageQuery{}, apiErr
+			return apiErr
 		}
 		query.GroupID = &groupID
 	}
 	if value, ok := singleQueryValue(values, "channel_id"); ok {
 		channelID, apiErr := parseRequestLogChannelID(value)
 		if apiErr != nil {
-			return requestlog.UsageQuery{}, apiErr
+			return apiErr
 		}
 		query.ChannelID = channelID
 	}
 	if value, ok := singleQueryValue(values, "credential_id"); ok {
 		credentialID, apiErr := parseUsageGroupID(value)
 		if apiErr != nil {
-			return requestlog.UsageQuery{}, apiErr
+			return apiErr
 		}
 		query.CredentialID = &credentialID
 	}
 	if value, ok := singleQueryValue(values, "upstream_model"); ok {
 		if !validUsageModel(value) {
-			return requestlog.UsageQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.UpstreamModel = value
 	}
 	if value, ok := singleQueryValue(values, "client_model"); ok {
 		if !validUsageModel(value) {
-			return requestlog.UsageQuery{}, app_errors.ErrValidation
+			return app_errors.ErrValidation
 		}
 		query.ClientModel = value
 	}
+	return nil
+}
+
+func parseUsageBreakdownOptions(values url.Values, query *requestlog.UsageQuery) *app_errors.APIError {
 	if value, ok := singleQueryValue(values, "breakdown_page"); ok {
 		page, err := parseCanonicalSafeUint(value)
 		if err != nil || page == 0 || page > uint64(maxSafeInteger) || page > uint64(^uint(0)>>1) {
-			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		query.BreakdownPage = int(page)
 	}
 	if value, ok := singleQueryValue(values, "breakdown_page_size"); ok {
 		pageSize, err := parseCanonicalSafeUint(value)
 		if err != nil || (pageSize != 20 && pageSize != 50 && pageSize != 100) {
-			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		query.BreakdownPageSize = int(pageSize)
 	}
 	if value, ok := singleQueryValue(values, "breakdown_sort"); ok {
 		sort := requestlog.UsageBreakdownSort(value)
 		if !validUsageBreakdownSort(sort) {
-			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		query.BreakdownSort = sort
 	}
 	if value, ok := singleQueryValue(values, "breakdown_sort_direction"); ok {
 		direction := requestlog.UsageBreakdownSortDirection(value)
 		if direction != requestlog.UsageBreakdownSortAscending && direction != requestlog.UsageBreakdownSortDescending {
-			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+			return app_errors.ErrBadRequest
 		}
 		query.BreakdownSortDirection = direction
 	}
-	return query, nil
+	return nil
 }
 
 func validUsageBreakdownSort(sort requestlog.UsageBreakdownSort) bool {
@@ -497,16 +519,26 @@ func (service *Service) mapUsageResponse(
 	if accessKeyScoped {
 		result.CollectionHealth = usageCollectionHealthResponse{Scope: "access_key"}
 	}
+	if err := mapUsageSeries(&result, report); err != nil {
+		return usageResponse{}, err
+	}
+	if err := mapUsageDistributionViews(&result, report, accessKeyScoped); err != nil {
+		return usageResponse{}, err
+	}
+	return result, nil
+}
+
+func mapUsageSeries(result *usageResponse, report requestlog.UsageReport) error {
 	for _, point := range report.Series {
 		if err := validateSafeMilliseconds(point.BucketStartMS); err != nil {
-			return usageResponse{}, fmt.Errorf("map usage bucket_start_ms: %w", err)
+			return fmt.Errorf("map usage bucket_start_ms: %w", err)
 		}
 		if err := validateSafeMilliseconds(point.BucketEndMS); err != nil {
-			return usageResponse{}, fmt.Errorf("map usage bucket_end_ms: %w", err)
+			return fmt.Errorf("map usage bucket_end_ms: %w", err)
 		}
 		aggregate, err := mapUsageAggregate(point.UsageAggregate)
 		if err != nil {
-			return usageResponse{}, err
+			return err
 		}
 		result.Series = append(result.Series, usageSeriesResponse{
 			BucketStartMS:          point.BucketStartMS,
@@ -514,6 +546,10 @@ func (service *Service) mapUsageResponse(
 			usageAggregateResponse: aggregate,
 		})
 	}
+	return nil
+}
+
+func mapUsageDistributionViews(result *usageResponse, report requestlog.UsageReport, accessKeyScoped bool) error {
 	if !accessKeyScoped {
 		result.Distributions.Group = make(map[requestlog.UsageDistributionMetric]usageDistributionResponse, 3)
 		result.Distributions.AccessKey = make(map[requestlog.UsageDistributionMetric]usageDistributionResponse, 3)
@@ -533,17 +569,17 @@ func (service *Service) mapUsageResponse(
 		} {
 			distribution, ok := report.Distributions.Get(dimension, metric)
 			if !ok {
-				return usageResponse{}, fmt.Errorf("map usage response: distribution view unavailable")
+				return fmt.Errorf("map usage response: distribution view unavailable")
 			}
 			if distribution.Dimension != dimension || distribution.Metric != metric {
-				return usageResponse{}, fmt.Errorf("map usage response: distribution metadata mismatch")
+				return fmt.Errorf("map usage response: distribution metadata mismatch")
 			}
 			mapped, err := mapUsageDistribution(distribution)
 			if err != nil {
-				return usageResponse{}, err
+				return err
 			}
 			if err := validateMappedUsageDistribution(result.Summary, mapped); err != nil {
-				return usageResponse{}, err
+				return err
 			}
 			switch dimension {
 			case requestlog.UsageDistributionDimensionGroup:
@@ -555,7 +591,7 @@ func (service *Service) mapUsageResponse(
 			}
 		}
 	}
-	return result, nil
+	return nil
 }
 
 func mapUsageBreakdown(
@@ -591,31 +627,8 @@ func mapUsageBreakdown(
 			TotalItems: source.Pagination.TotalItems, TotalPages: source.Pagination.TotalPages,
 		},
 	}
-	if result.Pagination.Page < 1 ||
-		(result.Pagination.PageSize != 20 && result.Pagination.PageSize != 50 && result.Pagination.PageSize != 100) ||
-		result.Pagination.TotalItems < 0 || result.Pagination.TotalPages < 0 ||
-		uint64(result.Pagination.Page) > uint64(maxSafeInteger) ||
-		uint64(result.Pagination.TotalItems) > uint64(maxSafeInteger) ||
-		uint64(result.Pagination.TotalPages) > uint64(maxSafeInteger) {
-		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid pagination")
-	}
-	expectedTotalPages := 0
-	if result.Pagination.TotalItems > 0 {
-		expectedTotalPages = (result.Pagination.TotalItems-1)/result.Pagination.PageSize + 1
-	}
-	if result.Pagination.TotalPages != expectedTotalPages {
-		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid pagination")
-	}
-	expectedRows := 0
-	if result.Pagination.TotalItems > 0 && result.Pagination.Page <= result.Pagination.TotalPages {
-		remaining := result.Pagination.TotalItems - (result.Pagination.Page-1)*result.Pagination.PageSize
-		expectedRows = result.Pagination.PageSize
-		if remaining < expectedRows {
-			expectedRows = remaining
-		}
-	}
-	if len(source.Rows) != expectedRows {
-		return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: pagination row count mismatch")
+	if err := validateUsageBreakdownPagination(result.Pagination, len(source.Rows)); err != nil {
+		return usageBreakdownResponse{}, err
 	}
 	type identity struct {
 		model, clientModel, channel string
@@ -663,6 +676,36 @@ func mapUsageBreakdown(
 		})
 	}
 	return result, nil
+}
+
+func validateUsageBreakdownPagination(pagination usagePaginationResponse, rowCount int) error {
+	if pagination.Page < 1 ||
+		(pagination.PageSize != 20 && pagination.PageSize != 50 && pagination.PageSize != 100) ||
+		pagination.TotalItems < 0 || pagination.TotalPages < 0 ||
+		uint64(pagination.Page) > uint64(maxSafeInteger) ||
+		uint64(pagination.TotalItems) > uint64(maxSafeInteger) ||
+		uint64(pagination.TotalPages) > uint64(maxSafeInteger) {
+		return fmt.Errorf("map usage breakdown: invalid pagination")
+	}
+	expectedTotalPages := 0
+	if pagination.TotalItems > 0 {
+		expectedTotalPages = (pagination.TotalItems-1)/pagination.PageSize + 1
+	}
+	if pagination.TotalPages != expectedTotalPages {
+		return fmt.Errorf("map usage breakdown: invalid pagination")
+	}
+	expectedRows := 0
+	if pagination.TotalItems > 0 && pagination.Page <= pagination.TotalPages {
+		remaining := pagination.TotalItems - (pagination.Page-1)*pagination.PageSize
+		expectedRows = pagination.PageSize
+		if remaining < expectedRows {
+			expectedRows = remaining
+		}
+	}
+	if rowCount != expectedRows {
+		return fmt.Errorf("map usage breakdown: pagination row count mismatch")
+	}
+	return nil
 }
 
 func mapUsageDistribution(

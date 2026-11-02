@@ -11,13 +11,14 @@ import {
 } from '@shared/routing/import-route'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 import type { ExistingGroupImportDraft, ImportDraft } from '@shared/domain/import/model-draft'
-import { consumeScriptcatImportPayload } from '@shared/domain/import/scriptcat-payload'
+
 
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
 import { ExistingGroupImport } from './ExistingGroupImport'
 import { useImportOperationMode, type ImportOperationMode } from './import-operation'
 import { NewGroupImport } from './NewGroupImport'
+import { useScriptcatPayload } from './use-scriptcat-payload'
 
 /**
  * Classic features/import/ImportView.vue — mode switcher + recovery draft
@@ -44,40 +45,7 @@ export function ImportView() {
   // Classic `recoveredDraft = ref(recovery.consume())` — consumed exactly once
   // per page mount (initialDraft prop, not a reactive source afterwards).
   const [recoveredDraft] = useState(() => services.importRecovery.consume())
-  const [scriptcatPayload, setScriptcatPayload] = useState(() => {
-    try {
-      return typeof window === 'undefined'
-        ? null
-        : consumeScriptcatImportPayload(window.sessionStorage)
-    } catch {
-      return null
-    }
-  })
-  useEffect(() => {
-    let pollCount = 0
-    function receiveScriptcatPayload(): void {
-      try {
-        const payload = consumeScriptcatImportPayload(window.sessionStorage)
-        if (payload !== null) {
-          window.clearInterval(pollTimer)
-          setScriptcatPayload(payload)
-        }
-      } catch {
-        // Storage access can be blocked; manual import remains available.
-      }
-    }
-    window.addEventListener('gpt-load:scriptcat-import', receiveScriptcatPayload)
-    const pollTimer = window.setInterval(() => {
-      receiveScriptcatPayload()
-      pollCount += 1
-      if (pollCount >= 20) window.clearInterval(pollTimer)
-    }, 100)
-    receiveScriptcatPayload()
-    return () => {
-      window.removeEventListener('gpt-load:scriptcat-import', receiveScriptcatPayload)
-      window.clearInterval(pollTimer)
-    }
-  }, [])
+  const scriptcatPayload = useScriptcatPayload()
 
   const activeMode: ImportOperationMode =
     operationMode ??

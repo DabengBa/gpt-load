@@ -6,6 +6,26 @@ import (
 	"gpt-load/internal/usage"
 )
 
+func canceledResponsesUsage(ctx *schemas.BifrostContext, observed *execution.UsageEvidence, response *schemas.BifrostResponsesResponse, bifrostError *schemas.BifrostError) *execution.UsageEvidence {
+	invalid := false
+	if observed == nil && response != nil {
+		var err error
+		observed, err = billedUsageEvidence(response.Usage.ToBifrostLLMUsage())
+		invalid = err != nil
+	}
+	if observed == nil {
+		observed = errorUsageEvidence(bifrostError, nil)
+	}
+	observed = canceledReportedUsage(ctx, observed)
+	if invalid {
+		if observed == nil {
+			observed = &execution.UsageEvidence{Normalized: usage.Result{State: usage.StateMissing}}
+		}
+		observed.Normalized.Diagnostics.Add(usage.DiagnosticInvalidPayload)
+	}
+	return observed
+}
+
 // Completed injected turns are published by their SDK owner before starting
 // tools or another turn. Cancellation reads that immutable snapshot immediately.
 func canceledReportedUsage(ctx *schemas.BifrostContext, observed *execution.UsageEvidence) *execution.UsageEvidence {

@@ -142,3 +142,26 @@ func TestCanceledReportedUsageImmediateReplacement(t *testing.T) {
 		t.Fatalf("cumulative handoff = %+v, want replacement not sum", got)
 	}
 }
+
+func TestCanceledResponsesInvalidUsageRetainsDiagnostic(t *testing.T) {
+	for _, snapshot := range []bool{false, true} {
+		t.Run(fmt.Sprintf("snapshot=%t", snapshot), func(t *testing.T) {
+			ctx := schemas.NewBifrostContext(t.Context(), schemas.NoDeadline)
+			defer ctx.Cancel()
+			if snapshot {
+				schemas.SetReportedUsageSnapshot(ctx, &schemas.BifrostLLMUsage{PromptTokens: 10, CompletionTokens: 2, TotalTokens: 12})
+			}
+			response := &schemas.BifrostResponsesResponse{Usage: &schemas.ResponsesResponseUsage{
+				InputTokens: 10, TotalTokens: 10,
+				InputTokensDetails: &schemas.ResponsesResponseInputTokens{CachedWriteTokens: 2, CachedWriteTokenDetails: &schemas.ChatCachedWriteTokenDetails{CachedWriteTokens5m: 3}},
+			}}
+			got := canceledResponsesUsage(ctx, nil, response, nil)
+			if got == nil || !got.Normalized.Diagnostics.Has(usage.DiagnosticInvalidPayload) {
+				t.Fatalf("invalid usage diagnostic missing: %+v", got)
+			}
+			if snapshot && (got.Normalized.Tokens.UncachedInput != 10 || got.Normalized.Tokens.Output != 2) {
+				t.Fatalf("snapshot tokens lost: %+v", got)
+			}
+		})
+	}
+}
