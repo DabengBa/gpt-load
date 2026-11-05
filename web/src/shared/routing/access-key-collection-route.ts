@@ -30,9 +30,7 @@ export function parseAccessKeyDrawerRoute(
   return action === 'edit' && accessKeyID !== undefined ? { mode: 'edit', accessKeyID } : undefined
 }
 
-function normalizeAccessKeyCollectionSearchQuery(
-  value: string | undefined,
-): string | undefined {
+function normalizeAccessKeyCollectionSearchQuery(value: string | undefined): string | undefined {
   return normalizeCollectionSearch(value)
 }
 
