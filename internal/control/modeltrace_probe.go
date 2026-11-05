@@ -3,11 +3,11 @@ package control
 /*
 ModelTrace 指纹检测把「模型归因」做成一次正式模型使用：
 
-1. 从独立部署的 ModelTrace 取得固定数量的挑战；
+1. 使用本地检测器生成固定数量的挑战；
 2. 每条挑战经分组实际路由、协议转换和凭据执行一次真实模型请求；
 3. 每条挑战无论成败都写一条正式 request log（operation = modeltrace），
    usage 按正式请求规则计量；
-4. 把所有可用输出一次性提交 /api/analyze 得到归因结果。
+4. 把所有可用输出交给本地检测器得到归因结果。
 
 归因结果只作为独立诊断事实返回，不参与健康、路由、熔断、重试或亲和决策；
 本文件也不调用任何健康恢复入口。
@@ -17,13 +17,13 @@ import (
 	"context"
 	cryptorand "crypto/rand"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	lmfpd "github.com/Ikaleio/lm-detector/sdk/go"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
@@ -48,6 +48,7 @@ const modelTraceRunDeadline = 6 * time.Minute
 
 var modelTraceInFlight sync.Map
 var modelTraceSlots = make(chan struct{}, 4)
+var generateModelTraceChallenges = lmfpd.GenerateChallenges
 
 type ModelTraceChallengeOutcome string
 
@@ -72,13 +73,6 @@ type ModelTraceRequest struct {
 	Model   string `json:"model"`
 }
 
-// ModelTraceServiceDescription is the safe identity of the configured
-// deployment. The token is never part of it.
-type ModelTraceServiceDescription struct {
-	BaseURL string `json:"base_url"`
-	Enabled bool   `json:"enabled"`
-}
-
 // ModelTraceChallengeResponse is one executed challenge.
 type ModelTraceChallengeResponse struct {
 	ID            string                     `json:"id"`
@@ -96,9 +90,8 @@ type ModelTraceProbeResponse struct {
 	GroupID    uint                          `json:"group_id"`
 	GroupName  string                        `json:"group_name"`
 	Model      string                        `json:"model"`
-	Service    *ModelTraceServiceDescription `json:"service"`
 	Challenges []ModelTraceChallengeResponse `json:"challenges"`
-	Analysis   *modelTraceAnalysis           `json:"analysis"`
+	Analysis   *lmfpd.Analysis               `json:"analysis"`
 	Failure    *ModelTraceFailure            `json:"failure"`
 	TestedAtMS int64                         `json:"tested_at_ms"`
 }
@@ -147,6 +140,9 @@ func (s *Service) RunModelTraceProbe(
 	if err := validateModelTraceRequest(request); err != nil {
 		return ModelTraceProbeResponse{}, err
 	}
+	if cfg := loadModelTraceConfig(); cfg == nil || !cfg.Enabled {
+		return ModelTraceProbeResponse{}, app_errors.ErrModelTraceDisabled
+	}
 	key := fmt.Sprintf("%d:%s", request.GroupID, request.Model)
 	if _, loaded := modelTraceInFlight.LoadOrStore(key, struct{}{}); loaded {
 		return ModelTraceProbeResponse{}, app_errors.ErrDuplicateResource
@@ -160,9 +156,9 @@ func (s *Service) RunModelTraceProbe(
 	}
 	ctx, cancel := context.WithTimeout(ctx, modelTraceRunDeadline)
 	defer cancel()
-	cfg, err := normalizedModelTraceConfig(loadModelTraceConfig())
+	detector, err := getModelTraceDetector(ctx)
 	if err != nil {
-		return ModelTraceProbeResponse{}, err
+		return ModelTraceProbeResponse{}, app_errors.ErrModelTraceUnavailable
 	}
 	if s == nil {
 		return ModelTraceProbeResponse{}, app_errors.ErrInternalServer
@@ -171,8 +167,7 @@ func (s *Service) RunModelTraceProbe(
 	if err != nil {
 		return ModelTraceProbeResponse{}, err
 	}
-	client := newModelTraceClient(cfg)
-	challenges, err := client.challenges(ctx)
+	challenges, err := generateModelTraceChallenges(modelTraceChallengeCount)
 	if err != nil {
 		return ModelTraceProbeResponse{}, err
 	}
@@ -181,7 +176,6 @@ func (s *Service) RunModelTraceProbe(
 		GroupID:    group.ID,
 		GroupName:  group.Name,
 		Model:      target.model,
-		Service:    &ModelTraceServiceDescription{BaseURL: cfg.BaseURL, Enabled: true},
 		Challenges: executed.challenges,
 		TestedAtMS: probeTestedAtMS(s.now().UTC()),
 	}
@@ -192,15 +186,21 @@ func (s *Service) RunModelTraceProbe(
 		logModelTraceProbe(outcome)
 		return outcome, nil
 	}
-	analysis, err := client.analyze(ctx, outputs)
+	sdkOutputs := make([]lmfpd.Output, len(outputs))
+	for i, output := range outputs {
+		sdkOutputs[i] = lmfpd.Output{Text: output.Text, ExpectedCount: output.ExpectedCount}
+	}
+	analysis, err := detector.Analyze(sdkOutputs, false)
 	if err != nil {
 		failure := modelTraceFailureAnalysisUnavailable
-		if errors.Is(err, app_errors.ErrModelTraceAnalysisRejected) {
-			failure = modelTraceFailureAnalysisRejected
-		}
 		outcome.Failure = &failure
 		logModelTraceProbe(outcome)
 		return outcome, nil
+	}
+	// SDK indices refer to the filtered input slice, not the challenge list.
+	// Translate only diagnostic indices; scoring receives the exact same inputs.
+	for i := range analysis.Diagnostics {
+		analysis.Diagnostics[i].Index = outputs[analysis.Diagnostics[i].Index].ChallengeIndex
 	}
 	outcome.Analysis = analysis
 	logModelTraceProbe(outcome)
@@ -623,6 +623,7 @@ func modelTraceAcceptedOutputs(
 		}
 		output.PromptID = challenge.ID
 		output.ExpectedCount = challenge.ExpectedCount
+		output.ChallengeIndex = index
 		outputs = append(outputs, output)
 	}
 	return outputs
@@ -658,21 +659,21 @@ func logModelTraceProbe(outcome ModelTraceProbeResponse) {
 	)
 }
 
-func modelTracePrediction(analysis *modelTraceAnalysis) string {
+func modelTracePrediction(analysis *lmfpd.Analysis) string {
 	if analysis == nil {
 		return ""
 	}
 	return analysis.Prediction
 }
 
-func modelTraceProbability(analysis *modelTraceAnalysis) float64 {
+func modelTraceProbability(analysis *lmfpd.Analysis) *float64 {
 	if analysis == nil {
-		return 0
+		return nil
 	}
 	return analysis.Probability
 }
 
-func modelTraceUsedOutputs(analysis *modelTraceAnalysis) int {
+func modelTraceUsedOutputs(analysis *lmfpd.Analysis) int {
 	if analysis == nil {
 		return 0
 	}

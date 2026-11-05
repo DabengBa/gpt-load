@@ -3,6 +3,7 @@ module gpt-load
 go 1.27.3
 
 require (
+	github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261103125945-f920cfe2ff0b
 	github.com/andybalholm/brotli v1.2.7
 	github.com/buger/jsonparser v1.6.1
 	github.com/gin-gonic/gin v1.12.0
@@ -11,7 +12,6 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/compress v1.20.3
-
 	github.com/maximhq/bifrost/core v1.13.1
 	github.com/nicksnyder/go-i18n/v2 v2.7.0
 	github.com/sirupsen/logrus v1.10.2
@@ -33,6 +33,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
+
 	github.com/aws/aws-sdk-go-v2 v1.42.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.10 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.14 // indirect

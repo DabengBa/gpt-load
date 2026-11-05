@@ -33,21 +33,19 @@ HTTP requests and streaming responses.
 
 The complete MIT License text is distributed in `LICENSES/MIT.txt`.
 
-## ModelTrace
+## lm-detector
 
-- Source: https://github.com/xqy2006/ModelTrace
-- Vendored commit: `6cd4a8ff0f3f4e49d6d6969dd2fbadfa1569fde2` (2026-10-09)
+- Source: https://github.com/Ikaleio/lm-detector
+- Go SDK: `github.com/Ikaleio/lm-detector/sdk/go` version
+  `v0.2.1-0.20261103125945-f920cfe2ff0b`
+- Embedded data snapshot: `f920cfe2ff0bab94989ce01ac061e21425b6e321`,
+  `data/unified_bank.json` and `data/shared_detector.bin`
 - Copyright: 2026 xqy2006
 - License: MIT License
 
-GPT-Load vendors ModelTrace's fingerprint core (`fingerprint.py`) and its
-unified fingerprint bank (`unified_bank.json`) under
-`modeltrace/vendor/modeltrace/` to power the independently deployed
-`modeltrace/` analysis service. The vendored core provides the numeric
-challenge format and attribution scoring only; GPT-Load does not include
-ModelTrace's Flask application, provider enrollment, or bank-building code.
-
-The complete MIT License text is distributed in `LICENSES/ModelTrace-MIT.txt`.
+The SDK and matching reference data power the local fingerprint detector. The
+complete MIT License text is distributed in `LICENSES/ModelTrace-MIT.txt`
+and as `ModelTrace-MIT.txt` in native releases.
 
 ## go-brrr
 

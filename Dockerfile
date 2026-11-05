@@ -57,6 +57,7 @@ ENV DATA_DIR=/app/data
 COPY LICENSE THIRD_PARTY_NOTICES.md /app/licenses/
 COPY LICENSES/Apache-2.0.txt /app/licenses/Apache-2.0.txt
 COPY LICENSES/MIT.txt /app/licenses/MIT.txt
+COPY LICENSES/ModelTrace-MIT.txt /app/licenses/ModelTrace-MIT.txt
 EXPOSE 3001
 USER 10001:10001
 ENTRYPOINT ["/app/gpt-load"]

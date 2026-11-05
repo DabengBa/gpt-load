@@ -1,5 +1,5 @@
-The ModelTrace fingerprint core vendored at
-`modeltrace/vendor/modeltrace/` is distributed under the MIT License:
+The ModelTrace fingerprint core and lm-detector SDK and data are distributed
+under the MIT License:
 
 MIT License
 
