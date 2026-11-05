@@ -23,7 +23,6 @@ import type { SharedRouteQuery, SharedRouteQueryRaw } from './route-query'
 // usage & cost surface; /schedule reuses the schedule draft surface of the
 // same query space.
 
-export type ScheduleDraftField = 'weight' | 'priority' | 'concurrency_limit'
 export interface ScheduleDraft {
   weight?: number | null
   priority?: number | null

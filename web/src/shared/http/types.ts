@@ -19,8 +19,4 @@ export interface AuthSessionPayload {
   principal_type: AuthPrincipalType
 }
 
-export interface AuthLockedPayload {
-  retry_after_seconds: number
-}
-
 export type { AppLocale }

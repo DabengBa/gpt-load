@@ -2,7 +2,6 @@ import type { AccessKeyCollectionFilters, AccessKeyCollectionStatus } from '@sha
 
 import {
   constrainCollectionSearch,
-  isCanonicalRouteQuery,
   normalizeCollectionSearch,
   parsePositiveRouteInteger,
   scalarRouteQuery,
@@ -13,7 +12,7 @@ import {
 // Framework-free port of the classic access-key collection route codec. The
 // drawer is part of the canonical surface: ?action=create|edit&access_key_id=.
 
-export const defaultAccessKeyCollectionFilters: AccessKeyCollectionFilters = {
+const defaultAccessKeyCollectionFilters: AccessKeyCollectionFilters = {
   page: 1,
   page_size: 20,
 }
@@ -31,9 +30,7 @@ export function parseAccessKeyDrawerRoute(
   return action === 'edit' && accessKeyID !== undefined ? { mode: 'edit', accessKeyID } : undefined
 }
 
-export function normalizeAccessKeyCollectionSearchQuery(
-  value: string | undefined,
-): string | undefined {
+function normalizeAccessKeyCollectionSearchQuery(value: string | undefined): string | undefined {
   return normalizeCollectionSearch(value)
 }
 
@@ -74,12 +71,4 @@ export function serializeAccessKeyCollectionRouteQuery(
     query.access_key_id = String(drawer.accessKeyID)
   }
   return query
-}
-
-export function isCanonicalAccessKeyCollectionRouteQuery(
-  query: SharedRouteQuery,
-  filters: AccessKeyCollectionFilters,
-  drawer?: AccessKeyDrawerRoute,
-): boolean {
-  return isCanonicalRouteQuery(query, serializeAccessKeyCollectionRouteQuery(filters, drawer))
 }

@@ -104,8 +104,6 @@ export function useSettingTools({ base, draft, publish }: SettingsSectionProps) 
   }
 }
 
-export type SettingTools = ReturnType<typeof useSettingTools>
-
 /**
  * Draft number → input text. `NaN` renders as the empty string, matching what
  * a number input shows for `String(NaN)` in classic.
