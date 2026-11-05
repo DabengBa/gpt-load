@@ -9,21 +9,17 @@ import {
   projectEnum,
   projectEpochMilliseconds,
   projectFiniteNumber,
-  projectHTTPURL,
   projectNullableRequestID,
   projectRecord,
   projectSafeInteger,
   projectString,
 } from './projector'
 
-// Model fingerprint detection. The backend executes the ModelTrace challenges
-// through the target's real route and hands the answers to the separately
-// deployed ModelTrace service. This module only speaks the control API:
-// upstream credentials and the ModelTrace token never reach the browser.
+// Challenges use the target's real route; analysis runs locally in the backend.
 //
 // Wire contract (`control.modeltrace-probe.run`, POST /api/modeltrace-probe):
 //   { group_id, model }
-//     -> { group_id, group_name, model, service, challenges, analysis,
+//     -> { group_id, group_name, model, challenges, analysis,
 //          failure, tested_at_ms }
 // `analysis` and `failure` are mutually exclusive: a run either attributes the
 // outputs or explains why it could not. Errors use the standard error envelope
@@ -35,11 +31,6 @@ export const modelFingerprintPath = '/api/modeltrace-probe' as const
 export interface ModelFingerprintTargetDto {
   group_id: number
   model: string
-}
-
-export interface ModelFingerprintServiceDto {
-  base_url: string
-  enabled: boolean
 }
 
 export type ModelFingerprintChallengeOutcome = 'succeeded' | 'failed'
@@ -56,44 +47,52 @@ export interface ModelFingerprintChallengeDto {
 
 export interface ModelFingerprintCandidateDto {
   model: string
+  display_name: string
   family: string
-  probability: number
-  conditional_probability: number
+  family_name: string
+  score: number
+  probability: number | null
 }
 
 export interface ModelFingerprintDiagnosticDto {
-  prompt_id: string
+  index: number
   accepted: boolean
   parsed_numbers: number
   minimum_numbers: number
-}
-
-export interface ModelFingerprintBankDto {
-  models: number
-  built_at: string
-  bank_sha256: string
-}
-
-export interface ModelFingerprintUpstreamDto {
-  repository: string
-  commit: string
+  raw_out_of_range_count: number
 }
 
 export interface ModelFingerprintAnalysisDto {
+  decision: 'scored' | 'partial' | 'unscorable' | 'not_model'
   prediction: string
   prediction_name: string
-  probability: number
+  probability: number | null
   family_prediction: string
-  family_probability: number
+  family_prediction_name: string
+  ranking_score: number | null
+  probability_status: string
+  probability_scope: string | null
+  calibration: { method: string; run: string; tau: number; sha256: string | null } | null
   used_outputs: number
   method: string
-  candidates: ModelFingerprintCandidateDto[]
+  results: ModelFingerprintCandidateDto[]
   diagnostics: ModelFingerprintDiagnosticDto[]
-  bank: ModelFingerprintBankDto
-  upstream: ModelFingerprintUpstreamDto
+  sequence: { autocorrelation: number; small_step_share: number; model_like: boolean } | null
+  model_version: { base_sha256: string }
+  evidence: {
+    insufficient: boolean
+    label: string
+    reason: string
+    threshold: number | null
+    method: string
+  }
 }
 
-export const fingerprintFailureKinds = ['no_usable_outputs', 'analysis_rejected', 'analysis_unavailable'] as const
+export const fingerprintFailureKinds = [
+  'no_usable_outputs',
+  'analysis_rejected',
+  'analysis_unavailable',
+] as const
 
 export type FingerprintFailureKind = (typeof fingerprintFailureKinds)[number]
 
@@ -101,7 +100,7 @@ export interface ModelFingerprintResultDto {
   group_id: number
   group_name: string
   model: string
-  service: ModelFingerprintServiceDto | null
+
   challenges: ModelFingerprintChallengeDto[]
   analysis: ModelFingerprintAnalysisDto | null
   failure: FingerprintFailureKind | null
@@ -114,17 +113,13 @@ export const modelFingerprintResultFields = [
   'group_id',
   'group_name',
   'model',
-  'service',
+
   'challenges',
   'analysis',
   'failure',
   'tested_at_ms',
 ] as const satisfies readonly (keyof ModelFingerprintResultDto)[]
 
-const serviceFields = [
-  'base_url',
-  'enabled',
-] as const satisfies readonly (keyof ModelFingerprintServiceDto)[]
 const challengeFields = [
   'id',
   'expected_count',
@@ -135,39 +130,39 @@ const challengeFields = [
   'status_code',
 ] as const satisfies readonly (keyof ModelFingerprintChallengeDto)[]
 const analysisFields = [
+  'decision',
   'prediction',
   'prediction_name',
   'probability',
   'family_prediction',
-  'family_probability',
+  'family_prediction_name',
+  'ranking_score',
+  'probability_status',
+  'probability_scope',
+  'calibration',
   'used_outputs',
   'method',
-  'candidates',
+  'results',
   'diagnostics',
-  'bank',
-  'upstream',
+  'sequence',
+  'model_version',
+  'evidence',
 ] as const satisfies readonly (keyof ModelFingerprintAnalysisDto)[]
 const candidateFields = [
   'model',
+  'display_name',
   'family',
+  'family_name',
+  'score',
   'probability',
-  'conditional_probability',
 ] as const satisfies readonly (keyof ModelFingerprintCandidateDto)[]
 const diagnosticFields = [
-  'prompt_id',
+  'index',
   'accepted',
   'parsed_numbers',
   'minimum_numbers',
+  'raw_out_of_range_count',
 ] as const satisfies readonly (keyof ModelFingerprintDiagnosticDto)[]
-const bankFields = [
-  'models',
-  'built_at',
-  'bank_sha256',
-] as const satisfies readonly (keyof ModelFingerprintBankDto)[]
-const upstreamFields = [
-  'repository',
-  'commit',
-] as const satisfies readonly (keyof ModelFingerprintUpstreamDto)[]
 const challengeOutcomes = ['succeeded', 'failed'] as const
 
 function invalidResponse(): never {
@@ -182,14 +177,6 @@ function projectNonBlankString(value: unknown): string {
 
 function projectProbability(value: unknown): number {
   return projectFiniteNumber(value, { minimum: 0, maximum: 1 })
-}
-
-function projectService(value: unknown): ModelFingerprintServiceDto | null {
-  if (value === null) return null
-  const record = projectRecord(value)
-  assertNoSecretLikeFields(record, serviceFields)
-  if (projectBoolean(record.enabled) !== true) invalidResponse()
-  return { base_url: projectHTTPURL(record.base_url), enabled: true }
 }
 
 function projectChallenge(value: unknown): ModelFingerprintChallengeDto {
@@ -215,9 +202,11 @@ function projectCandidate(value: unknown): ModelFingerprintCandidateDto {
   assertNoSecretLikeFields(record, candidateFields)
   return {
     model: projectNonBlankString(record.model),
+    display_name: projectString(record.display_name, { allowEmpty: true }),
     family: projectString(record.family, { allowEmpty: true }),
-    probability: projectProbability(record.probability),
-    conditional_probability: projectProbability(record.conditional_probability),
+    family_name: projectString(record.family_name, { allowEmpty: true }),
+    score: projectFiniteNumber(record.score),
+    probability: record.probability === null ? null : projectProbability(record.probability),
   }
 }
 
@@ -225,43 +214,75 @@ function projectDiagnostic(value: unknown): ModelFingerprintDiagnosticDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, diagnosticFields)
   return {
-    prompt_id: projectNonBlankString(record.prompt_id),
+    index: projectSafeInteger(record.index, { minimum: 0 }),
     accepted: projectBoolean(record.accepted),
     parsed_numbers: projectSafeInteger(record.parsed_numbers, { minimum: 0 }),
     minimum_numbers: projectSafeInteger(record.minimum_numbers, { minimum: 0 }),
+    raw_out_of_range_count: projectSafeInteger(record.raw_out_of_range_count, { minimum: 0 }),
   }
 }
 
 function projectAnalysis(value: unknown): ModelFingerprintAnalysisDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, analysisFields)
-  const candidates = projectArray(record.candidates, projectCandidate)
-  if (candidates.length === 0) invalidResponse()
-  if (new Set(candidates.map((candidate) => candidate.model)).size !== candidates.length) {
+  const results = projectArray(record.results, projectCandidate)
+  if (new Set(results.map((candidate) => candidate.model)).size !== results.length) {
     invalidResponse()
   }
-  const bank = projectRecord(record.bank)
-  assertNoSecretLikeFields(bank, bankFields)
-  const upstream = projectRecord(record.upstream)
-  assertNoSecretLikeFields(upstream, upstreamFields)
+  const decision = projectEnum(record.decision, [
+    'scored',
+    'partial',
+    'unscorable',
+    'not_model',
+  ] as const)
+  const calibration = record.calibration === null ? null : projectRecord(record.calibration)
+  const sequence = record.sequence === null ? null : projectRecord(record.sequence)
+  const version = projectRecord(record.model_version)
+  const evidence = projectRecord(record.evidence)
+  if (calibration) assertNoSecretLikeFields(calibration, ['method', 'run', 'tau', 'sha256'])
+  if (sequence)
+    assertNoSecretLikeFields(sequence, ['autocorrelation', 'small_step_share', 'model_like'])
+  assertNoSecretLikeFields(version, ['base_sha256'])
+  assertNoSecretLikeFields(evidence, ['insufficient', 'label', 'reason', 'threshold', 'method'])
   return {
-    prediction: projectNonBlankString(record.prediction),
+    decision,
+    prediction: projectString(record.prediction, { allowEmpty: true }),
     prediction_name: projectString(record.prediction_name, { allowEmpty: true }),
-    probability: projectProbability(record.probability),
+    probability: record.probability === null ? null : projectProbability(record.probability),
     family_prediction: projectString(record.family_prediction, { allowEmpty: true }),
-    family_probability: projectProbability(record.family_probability),
+    family_prediction_name: projectString(record.family_prediction_name, { allowEmpty: true }),
+    ranking_score: record.ranking_score === null ? null : projectFiniteNumber(record.ranking_score),
+    probability_status: projectString(record.probability_status),
+    probability_scope:
+      record.probability_scope === null ? null : projectString(record.probability_scope),
+    calibration:
+      calibration === null
+        ? null
+        : {
+            method: projectString(calibration.method),
+            run: projectString(calibration.run, { allowEmpty: true }),
+            tau: projectFiniteNumber(calibration.tau),
+            sha256: calibration.sha256 === null ? null : projectString(calibration.sha256),
+          },
     used_outputs: projectSafeInteger(record.used_outputs, { minimum: 0 }),
     method: projectString(record.method, { allowEmpty: true }),
-    candidates,
+    results,
     diagnostics: projectArray(record.diagnostics, projectDiagnostic),
-    bank: {
-      models: projectSafeInteger(bank.models, { minimum: 0 }),
-      built_at: projectString(bank.built_at, { allowEmpty: true }),
-      bank_sha256: projectString(bank.bank_sha256, { allowEmpty: true }),
-    },
-    upstream: {
-      repository: projectString(upstream.repository, { allowEmpty: true }),
-      commit: projectString(upstream.commit, { allowEmpty: true }),
+    sequence:
+      sequence === null
+        ? null
+        : {
+            autocorrelation: projectFiniteNumber(sequence.autocorrelation),
+            small_step_share: projectFiniteNumber(sequence.small_step_share),
+            model_like: projectBoolean(sequence.model_like),
+          },
+    model_version: { base_sha256: projectString(version.base_sha256, { allowEmpty: true }) },
+    evidence: {
+      insufficient: projectBoolean(evidence.insufficient),
+      label: projectString(evidence.label, { allowEmpty: true }),
+      reason: projectString(evidence.reason, { allowEmpty: true }),
+      threshold: evidence.threshold === null ? null : projectFiniteNumber(evidence.threshold),
+      method: projectString(evidence.method, { allowEmpty: true }),
     },
   }
 }
@@ -281,7 +302,7 @@ export function projectModelFingerprintResult(value: unknown): ModelFingerprintR
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
     group_name: projectString(record.group_name, { allowEmpty: true }),
     model: projectNonBlankString(record.model),
-    service: projectService(record.service),
+
     challenges,
     analysis,
     failure,

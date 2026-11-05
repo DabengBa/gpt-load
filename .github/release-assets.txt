@@ -1,6 +1,7 @@
 Apache-2.0.txt
 LICENSE
 MIT.txt
+ModelTrace-MIT.txt
 SHA256SUMS
 THIRD_PARTY_NOTICES.md
 bom.cdx.json

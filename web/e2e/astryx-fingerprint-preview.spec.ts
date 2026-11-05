@@ -5,7 +5,7 @@ for (const viewport of [
   { name: 'desktop', width: 1440, height: 1100 },
   { name: 'mobile', width: 390, height: 844 },
 ]) {
-  test(`capture actual fingerprint dialog: ${viewport.name}`, async ({ page }) => {
+  test(`capture actual fingerprint dialog: ${viewport.name}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
     await mockGroupFingerprint(page)
     await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
@@ -13,7 +13,7 @@ for (const viewport of [
     await page.route('**/api/modeltrace-probe', async (route) => {
       const result = fingerprintSuccess()
       result.group_name = 'OpenAI · 演示分组'
-      result.analysis.candidates[1]!.model =
+      result.analysis.results[1]!.display_name =
         'gpt-5.6-sol-long-model-name-for-responsive-wrapping-verification'
       result.challenges = [1, 2, 3].map((index) => ({
         ...result.challenges[0]!,
@@ -22,7 +22,7 @@ for (const viewport of [
         latency_ms: 12000 + index * 420,
       }))
       result.analysis.used_outputs = 3
-      result.analysis.candidates[1]!.probability = 0.088
+      result.analysis.results[1]!.probability = 0.088
       if (unavailable) {
         result.challenges[1] = {
           ...result.challenges[1]!,
@@ -47,15 +47,15 @@ for (const viewport of [
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByText('91.2%', { exact: true }).first()).toBeVisible()
     await dialog.screenshot({
-      path: `../tmp/demos/fingerprint-polish-${viewport.name}-success.png`,
+      path: testInfo.outputPath('success.png'),
     })
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
     await dialog.getByRole('button', { name: '关闭', exact: true }).last().click()
     unavailable = true
     await button.click()
-    await expect(dialog.getByText(/检测服务无法分析/)).toBeVisible()
+    await expect(dialog.getByText(/检测器无法分析/)).toBeVisible()
     await dialog.screenshot({
-      path: `../tmp/demos/fingerprint-polish-${viewport.name}-failure.png`,
+      path: testInfo.outputPath('failure.png'),
     })
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
   })

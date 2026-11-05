@@ -100,18 +100,24 @@ export default {
     },
     modelFingerprint: {
       title: 'モデル指紋検出',
-      description:
-        'このモデルに対して能動的な帰属検出を 1 回実行します。チャレンジは実際のルートで実行され、独立した ModelTrace サービスが回答を分析します。',
+      description: 'モデルの実際のルートでチャレンジを実行し、応答をローカルで分析します。',
       button: '指紋検出',
       draftHint: 'このモデル行を保存してから指紋検出してください',
       loading: '検出中…',
-      requestFailed: '指紋検出に失敗しました。検出サービスが無効か、一時的に利用できません。',
+      requestFailed: '指紋検出に失敗しました。再試行してください。',
       retry: '再試行',
       close: '閉じる',
       unknownValue: '—',
       notice:
-        '結果は検出サービスの参照バンクに対する閉集合の確率であり、上流モデルの確定証明ではありません。未収録のモデルも最も近い候補に割り当てられます。',
+        '順位は参照バンク内に限られ、モデルの確定証明ではありません。確率がある場合は閉集合内の確率です。',
+      decision: {
+        scored: '評価済み',
+        partial: '部分サンプルの順位（確率なし）',
+        unscorable: '有効なサンプル不足',
+        not_model: 'モデルの応答に類似しません',
+      },
       candidatesTitle: '候補モデル',
+      rankingScore: '順位スコア: {score}',
       evidence: '帰属には有効な出力 {used}/{total} 件を使用しました',
       challenge: {
         title: 'チャレンジ実行',
@@ -122,10 +128,9 @@ export default {
         summary: '{succeeded}/{total} 件のチャレンジが成功しました',
       },
       failure: {
-        disabled:
-          '指紋検出が有効になっていません。ModelTrace の URL とトークンを設定してください。',
-        misconfigured: '指紋検出の設定が無効です。ModelTrace の URL とトークンを確認してください。',
-        unavailable: '検出サービスは一時的に利用できません。しばらくしてから再試行してください。',
+        disabled: '指紋検出は一時的に利用できません。しばらくしてから再試行してください。',
+        misconfigured: '指紋検出は一時的に利用できません。しばらくしてから再試行してください。',
+        unavailable: '指紋検出は一時的に利用できません。しばらくしてから再試行してください。',
         analysis_rejected:
           '検出サービスが送信したすべての出力を拒否したため、帰属結果はありません。',
         analysis_unavailable:
@@ -136,6 +141,7 @@ export default {
         failed: '指紋検出に失敗しました。再試行してください。',
       },
       fields: {
+        decision: '結果',
         group: 'グループ',
         model: 'モデル',
         prediction: '推定モデル',

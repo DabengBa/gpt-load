@@ -99,19 +99,24 @@ export default {
     },
     modelFingerprint: {
       title: 'Model fingerprint',
-      description:
-        'Runs one attribution check for this model: the challenges execute through its real route, then the separate ModelTrace service analyzes the answers.',
+      description: 'Runs challenges through this model’s route and analyzes the responses locally.',
       button: 'Fingerprint',
       draftHint: 'Save this model row before fingerprinting it',
       loading: 'Fingerprinting…',
-      requestFailed:
-        'Fingerprint detection failed; the detection service may be disabled or unavailable.',
+      requestFailed: 'Fingerprint detection failed; try again.',
       retry: 'Retry',
       close: 'Close',
       unknownValue: '—',
       notice:
-        'The result is a closed-set probability over the detection service reference bank, not proof of the upstream model: an unlisted model is still mapped to its nearest candidate.',
+        'Ranking is limited to the reference bank, not proof of identity. A probability, when available, is a closed-set probability.',
+      decision: {
+        scored: 'Scored',
+        partial: 'Partial ranking (probability unavailable)',
+        unscorable: 'Not enough valid samples',
+        not_model: 'Response does not resemble a model reply',
+      },
       candidatesTitle: 'Candidates',
+      rankingScore: 'Ranking score: {score}',
       evidence: 'Attribution used {used}/{total} usable outputs',
       challenge: {
         title: 'Challenge runs',
@@ -122,14 +127,13 @@ export default {
         summary: '{succeeded}/{total} challenges succeeded',
       },
       failure: {
-        disabled: 'Fingerprint detection is not configured; set the ModelTrace URL and token.',
-        misconfigured:
-          'Fingerprint detection configuration is invalid; check the ModelTrace URL and token.',
-        unavailable: 'The detection service is temporarily unavailable; try again later.',
+        disabled: 'Fingerprint detection is unavailable; try again later.',
+        misconfigured: 'Fingerprint detection is unavailable; try again later.',
+        unavailable: 'Fingerprint detection is temporarily unavailable; try again later.',
         analysis_rejected:
-          'The detection service rejected every submitted output, so no attribution was produced.',
+          'The detector rejected the submitted outputs, so no attribution was produced.',
         analysis_unavailable:
-          'The detection service could not analyze the submitted outputs; the executed challenges remain available in the logs.',
+          'The detector could not analyze the outputs; executed challenges remain available in the logs.',
         no_usable_outputs:
           'The challenges produced no usable output, so no attribution was produced.',
         no_active_credential: 'The group has no schedulable credential right now.',
@@ -137,6 +141,7 @@ export default {
         failed: 'Fingerprint detection failed; try again.',
       },
       fields: {
+        decision: 'Result',
         group: 'Group',
         model: 'Model',
         prediction: 'Predicted model',

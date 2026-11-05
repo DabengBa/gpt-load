@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"sort"
+
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	lmfpd "github.com/Ikaleio/lm-detector/sdk/go"
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
@@ -268,14 +270,11 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 	if len(response.Challenges) != len(analysis.challenges) {
 		t.Fatalf("challenges = %d, want %d", len(response.Challenges), len(analysis.challenges))
 	}
-	if response.Analysis == nil || response.Analysis.Prediction != "gpt-5.4" {
-		t.Fatalf("analysis = %#v, want the ModelTrace attribution", response.Analysis)
+	if response.Analysis == nil {
+		t.Fatal("analysis is nil")
 	}
 	if response.Analysis.UsedOutputs != len(analysis.challenges) {
 		t.Fatalf("used_outputs = %d, want %d", response.Analysis.UsedOutputs, len(analysis.challenges))
-	}
-	if response.Service == nil || !response.Service.Enabled || response.Service.BaseURL == "" {
-		t.Fatalf("service = %#v, want the enabled deployment identity", response.Service)
 	}
 
 	// Every challenge is its own upstream request and its own request-log row.
@@ -327,32 +326,6 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 		}
 	}
 
-	// The whole accepted output set reaches ModelTrace in one calibration call.
-	_, calls := analysis.observed()
-	if len(calls) != 1 {
-		t.Fatalf("analyze calls = %d, want 1", len(calls))
-	}
-	outputs, _ := calls[0]["outputs"].([]any)
-	if len(outputs) != len(analysis.challenges) {
-		t.Fatalf("analyze outputs = %d, want %d", len(outputs), len(analysis.challenges))
-	}
-	submitted := make([]string, 0, len(outputs))
-	for _, raw := range outputs {
-		output, _ := raw.(map[string]any)
-		submitted = append(submitted, fmt.Sprint(output["prompt_id"]))
-		if _, exists := output["text"]; !exists {
-			t.Fatalf("output %v has no text", output["prompt_id"])
-		}
-	}
-	wantIDs := make([]string, 0, len(analysis.challenges))
-	for _, challenge := range analysis.challenges {
-		wantIDs = append(wantIDs, challenge.ID)
-	}
-	sort.Strings(submitted)
-	sort.Strings(wantIDs)
-	if !reflect.DeepEqual(submitted, wantIDs) {
-		t.Fatalf("analyze prompt ids = %v, want %v", submitted, wantIDs)
-	}
 }
 
 func TestModelTraceProbeKeepsPartialOutputsAndLogsFailures(t *testing.T) {
@@ -395,17 +368,52 @@ func TestModelTraceProbeKeepsPartialOutputsAndLogsFailures(t *testing.T) {
 	if upstreamFailures != 1 {
 		t.Fatalf("error request-log rows = %d, want the failed challenge", upstreamFailures)
 	}
-	_, calls := analysis.observed()
-	if len(calls) != 1 {
-		t.Fatalf("analyze calls = %d, want 1", len(calls))
-	}
-	outputs, _ := calls[0]["outputs"].([]any)
-	if len(outputs) != len(analysis.challenges)-1 {
-		t.Fatalf("analyze outputs = %d, want the %d accepted challenges",
-			len(outputs), len(analysis.challenges)-1)
-	}
+
 	if response.Analysis == nil || response.Analysis.UsedOutputs != len(analysis.challenges)-1 {
 		t.Fatalf("analysis = %#v, want calibration over the accepted outputs", response.Analysis)
+	}
+}
+
+func TestModelTraceDiagnosticsIdentifyOriginalChallenge(t *testing.T) {
+	_, server := newModelTraceTestService(t)
+	fixture, _ := newModelTraceFixture(t, server)
+	groupID := createGroupWithCredentials(t, fixture, "diagnostic-index-secret")
+	previous := generateModelTraceChallenges
+	t.Cleanup(func() { generateModelTraceChallenges = previous })
+	generateModelTraceChallenges = func(int) ([]lmfpd.Challenge, error) {
+		return []lmfpd.Challenge{{ID: "first", Prompt: "first", ExpectedCount: 300}, {ID: "second", Prompt: "second", ExpectedCount: 300}, {ID: "third", Prompt: "third", ExpectedCount: 300}}, nil
+	}
+	numbers := make([]string, 300)
+	for i := range numbers {
+		numbers[i] = fmt.Sprint(i + 1)
+	}
+	answer := strings.Join(numbers, " ")
+	fixture.service.executor = &modelTraceChallengeExecutor{execute: func(spec execution.AttemptSpec) execution.AttemptResult {
+		if spec.PromptText == "first" {
+			return execution.AttemptResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusTooManyRequests, Header: http.Header{}, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindHTTP, StatusCode: http.StatusTooManyRequests}}
+		}
+		return execution.AttemptResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK, Header: http.Header{}, GeneratedText: answer}
+	}}
+	response, err := fixture.service.RunModelTraceProbe(t.Context(), modelTraceTestRequest(groupID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Challenges[0].Outcome != modelTraceChallengeFailed || response.Analysis == nil || response.Analysis.UsedOutputs != 2 || len(response.Analysis.Diagnostics) != 2 {
+		t.Fatalf("response = %#v, want failed first challenge and two real outputs", response)
+	}
+	detector, err := getModelTraceDetector(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := detector.Analyze([]lmfpd.Output{{Text: answer, ExpectedCount: 300}, {Text: answer, ExpectedCount: 300}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range expected.Diagnostics {
+		expected.Diagnostics[i].Index = i + 1
+	}
+	if !reflect.DeepEqual(response.Analysis, expected) {
+		t.Fatalf("analysis differs from SDK with mapped indices: got %#v, want %#v", response.Analysis, expected)
 	}
 }
 
@@ -434,133 +442,6 @@ func TestModelTraceProbeFailsClearlyWithoutUsableOutputs(t *testing.T) {
 	if len(fixture.probeSink.Events()) != len(analysis.challenges) {
 		t.Fatalf("request log events = %d, want one failed row per challenge",
 			len(fixture.probeSink.Events()))
-	}
-}
-
-func TestModelTraceProbeReportsAnalysisFailureWithoutDroppingLogs(t *testing.T) {
-	analysis, server := newModelTraceTestService(t)
-	analysis.analyzeFn = func(map[string]any) (int, map[string]any) {
-		return http.StatusUnprocessableEntity, map[string]any{"error": "no_usable_outputs"}
-	}
-	fixture, _ := newModelTraceFixture(t, server)
-	groupID := createGroupWithCredentials(t, fixture, "modeltrace-analysis-fail-secret")
-	fixture.service.executor = &modelTraceChallengeExecutor{}
-
-	response, err := fixture.service.RunModelTraceProbe(t.Context(), modelTraceTestRequest(groupID))
-	if err != nil {
-		t.Fatalf("RunModelTraceProbe() error = %v", err)
-	}
-	if response.Analysis != nil {
-		t.Fatalf("analysis = %#v, want null on an analysis error", response.Analysis)
-	}
-	if response.Failure == nil || *response.Failure != modelTraceFailureAnalysisRejected {
-		t.Fatalf("failure = %#v, want %q", response.Failure, modelTraceFailureAnalysisRejected)
-	}
-	if len(fixture.probeSink.Events()) != len(analysis.challenges) {
-		t.Fatalf("request log events = %d, want one formal row per challenge",
-			len(fixture.probeSink.Events()))
-	}
-}
-
-func TestModelTraceProbeRequiresEnabledConfiguration(t *testing.T) {
-	fixture := newServiceFixture(t)
-	useModelTraceConfig(t, nil)
-	groupID := createGroupWithCredentials(t, fixture, "modeltrace-disabled-secret")
-	executor := &modelTraceChallengeExecutor{}
-	fixture.service.executor = executor
-
-	_, err := fixture.service.RunModelTraceProbe(t.Context(), modelTraceTestRequest(groupID))
-	if !errors.Is(err, app_errors.ErrModelTraceDisabled) {
-		t.Fatalf("RunModelTraceProbe() error = %v, want ErrModelTraceDisabled", err)
-	}
-	if len(executor.recordedPrompts()) != 0 {
-		t.Fatal("a disabled ModelTrace must not spend upstream requests")
-	}
-	if len(fixture.probeSink.Events()) != 0 {
-		t.Fatal("a disabled ModelTrace must not write request logs")
-	}
-}
-
-func TestModelTraceProbeRejectsMalformedConfiguration(t *testing.T) {
-	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "modeltrace-badconfig-secret")
-	tests := []struct {
-		name string
-		cfg  *ModelTraceConfig
-	}{
-		{
-			name: "no base url",
-			cfg:  &ModelTraceConfig{Enabled: true, Token: modelTraceTestToken},
-		},
-		{
-			name: "no token",
-			cfg:  &ModelTraceConfig{Enabled: true, BaseURL: "http://127.0.0.1:1"},
-		},
-		{
-			name: "unsupported scheme",
-			cfg: &ModelTraceConfig{
-				Enabled: true, BaseURL: "ftp://127.0.0.1:8080", Token: modelTraceTestToken,
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			useModelTraceConfig(t, test.cfg)
-			if _, err := fixture.service.RunModelTraceProbe(
-				t.Context(), modelTraceTestRequest(groupID),
-			); !errors.Is(err, app_errors.ErrModelTraceMisconfigured) {
-				t.Fatalf("error = %v, want ErrModelTraceMisconfigured", err)
-			}
-		})
-	}
-}
-
-func TestModelTraceProbeReportsUnavailableAndTimeout(t *testing.T) {
-	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "modeltrace-unavailable-secret")
-	fixture.service.executor = &modelTraceChallengeExecutor{}
-
-	closed := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	closedURL := closed.URL
-	closed.Close()
-	useModelTraceConfig(t, &ModelTraceConfig{
-		Enabled: true, BaseURL: closedURL, Token: modelTraceTestToken,
-	})
-	if _, err := fixture.service.RunModelTraceProbe(
-		t.Context(), modelTraceTestRequest(groupID),
-	); !errors.Is(err, app_errors.ErrModelTraceUnavailable) {
-		t.Fatalf("unreachable deployment error = %v, want ErrModelTraceUnavailable", err)
-	}
-
-	blocking := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
-	}))
-	t.Cleanup(blocking.Close)
-	useModelTraceConfig(t, &ModelTraceConfig{
-		Enabled: true, BaseURL: blocking.URL, Token: modelTraceTestToken, RequestTimeout: 50 * time.Millisecond,
-	})
-	_, err := fixture.service.RunModelTraceProbe(t.Context(), modelTraceTestRequest(groupID))
-	if !errors.Is(err, app_errors.ErrModelTraceUnavailable) {
-		t.Fatalf("timeout error = %v, want ErrModelTraceUnavailable", err)
-	}
-	if len(fixture.probeSink.Events()) != 0 {
-		t.Fatal("a challenge that never ran must not write request logs")
-	}
-}
-
-func TestModelTraceProbeRejectsUnauthorizedAnalysis(t *testing.T) {
-	_, server := newModelTraceTestService(t)
-	fixture := newServiceFixture(t)
-	groupID := createGroupWithCredentials(t, fixture, "modeltrace-unauthorized-secret")
-	fixture.service.executor = &modelTraceChallengeExecutor{}
-	useModelTraceConfig(t, &ModelTraceConfig{
-		Enabled: true, BaseURL: server.URL, Token: "wrong-token-value-0123456789",
-	})
-
-	_, err := fixture.service.RunModelTraceProbe(t.Context(), modelTraceTestRequest(groupID))
-	var apiErr *app_errors.APIError
-	if !errors.As(err, &apiErr) || apiErr.Code != app_errors.ErrModelTraceUnavailable.Code {
-		t.Fatalf("unauthorized error = %v, want %s", err, app_errors.ErrModelTraceUnavailable.Code)
 	}
 }
 
@@ -784,7 +665,7 @@ func TestModelTraceProbeRejectsUnsupportedTarget(t *testing.T) {
 
 func TestModelTraceProbeNeverExposesCredentialMaterial(t *testing.T) {
 	const secret = "sk-modeltrace-secret-material"
-	analysis, server := newModelTraceTestService(t)
+	_, server := newModelTraceTestService(t)
 	fixture, _ := newModelTraceFixture(t, server)
 	groupID := createGroupWithCredentials(t, fixture, secret)
 	fixture.service.executor = &modelTraceChallengeExecutor{}
@@ -800,17 +681,7 @@ func TestModelTraceProbeNeverExposesCredentialMaterial(t *testing.T) {
 	if strings.Contains(string(encoded), secret) {
 		t.Fatalf("probe response leaked credential material: %s", encoded)
 	}
-	_, calls := analysis.observed()
-	if len(calls) == 0 {
-		t.Fatal("expected at least one analyze call")
-	}
-	rawCall, err := json.Marshal(calls)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(rawCall), secret) {
-		t.Fatal("the analyze payload leaked credential material")
-	}
+
 }
 
 func TestModelTraceProbeResponseContract(t *testing.T) {
@@ -832,7 +703,7 @@ func TestModelTraceProbeResponseContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertJSONKeys(t, payload, []string{
-		"group_id", "group_name", "model", "service", "challenges", "analysis", "failure",
+		"group_id", "group_name", "model", "challenges", "analysis", "failure",
 		"tested_at_ms",
 	})
 	var challenges []map[string]json.RawMessage
@@ -844,11 +715,7 @@ func TestModelTraceProbeResponseContract(t *testing.T) {
 			"id", "expected_count", "outcome", "reason", "log_id", "latency_ms", "status_code",
 		})
 	}
-	var service map[string]json.RawMessage
-	if err := json.Unmarshal(payload["service"], &service); err != nil {
-		t.Fatal(err)
-	}
-	assertJSONKeys(t, service, []string{"base_url", "enabled"})
+
 }
 
 func TestModelTraceRoutesAndConfigContract(t *testing.T) {
@@ -882,9 +749,7 @@ func TestModelTraceRoutesAndConfigContract(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("loadModelTraceConfigFromEnvironment() error = %v", err)
 	}
-	loaded := loadModelTraceConfig()
-	if loaded == nil || !loaded.Enabled || loaded.BaseURL != "http://modeltrace:8080" ||
-		loaded.Token != modelTraceTestToken || loaded.RequestTimeout != 45*time.Second {
-		t.Fatalf("loaded config = %#v", loaded)
+	if loaded := loadModelTraceConfig(); loaded == nil || !loaded.Enabled || loaded.BaseURL != "" || loaded.Token != "" {
+		t.Fatalf("local detector config = %#v, want enabled without service credentials", loaded)
 	}
 }

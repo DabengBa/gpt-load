@@ -178,7 +178,7 @@ const styles = stylex.create({
 
 /**
  * Fingerprint detection result. The dialog states plainly that the attribution
- * is a closed-set probability over the service's reference bank, not proof of
+ * is limited to the detector's reference bank, not proof of
  * the upstream model: an unlisted model is still mapped to its nearest
  * candidate. Every executed challenge keeps its own request-log entry.
  */
@@ -282,15 +282,36 @@ export function ModelFingerprintDialog({
                   {analysis !== null && (
                     <>
                       <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelFingerprint.fields.prediction')}
+                        {t('monitor.modelFingerprint.fields.decision')}
                       </dt>
                       <dd {...stylex.props(styles.detailsDesc)}>
-                        <span {...stylex.props(styles.prediction)}>{analysis.prediction}</span>
+                        {t(`monitor.modelFingerprint.decision.${analysis.decision}`)}
                       </dd>
-                      <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelFingerprint.fields.probability')}
-                      </dt>
-                      <dd {...stylex.props(styles.detailsDesc)}>{percent(analysis.probability)}</dd>
+                      {(analysis.decision === 'scored' || analysis.decision === 'partial') && (
+                        <>
+                          <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                            {t('monitor.modelFingerprint.fields.prediction')}
+                          </dt>
+                          <dd {...stylex.props(styles.detailsDesc)}>
+                            <span {...stylex.props(styles.prediction)}>
+                              {analysis.prediction_name || analysis.prediction}
+                            </span>
+                          </dd>
+                          {analysis.decision === 'scored' &&
+                            analysis.probability !== null &&
+                            analysis.probability_status === 'reference_calibrated' &&
+                            analysis.probability_scope === 'reference-closed-set' && (
+                              <>
+                                <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                                  {t('monitor.modelFingerprint.fields.probability')}
+                                </dt>
+                                <dd {...stylex.props(styles.detailsDesc)}>
+                                  {percent(analysis.probability)}
+                                </dd>
+                              </>
+                            )}
+                        </>
+                      )}
                     </>
                   )}
                   <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
@@ -302,34 +323,54 @@ export function ModelFingerprintDialog({
                 </dl>
               )}
 
-              {analysis !== null && (
-                <section {...stylex.props(styles.section)} aria-labelledby="fingerprint-candidates">
-                  <h3 id="fingerprint-candidates" {...stylex.props(styles.sectionTitle)}>
-                    {t('monitor.modelFingerprint.candidatesTitle')}
-                  </h3>
-                  <ul {...stylex.props(styles.list)}>
-                    {analysis.candidates.map((candidate) => (
-                      <li key={candidate.model} {...stylex.props(styles.row)}>
-                        <span {...stylex.props(styles.rowIdentity)}>
-                          <span {...stylex.props(styles.identity)}>{candidate.model}</span>
-                          {candidate.family !== '' && (
-                            <span {...stylex.props(styles.meta)}>{candidate.family}</span>
+              {analysis !== null &&
+                analysis.results.length > 0 &&
+                (analysis.decision === 'scored' || analysis.decision === 'partial') && (
+                  <section
+                    {...stylex.props(styles.section)}
+                    aria-labelledby="fingerprint-candidates"
+                  >
+                    <h3 id="fingerprint-candidates" {...stylex.props(styles.sectionTitle)}>
+                      {t('monitor.modelFingerprint.candidatesTitle')}
+                    </h3>
+                    <ul {...stylex.props(styles.list)}>
+                      {analysis.results.map((candidate) => (
+                        <li key={candidate.model} {...stylex.props(styles.row)}>
+                          <span {...stylex.props(styles.rowIdentity)}>
+                            <span {...stylex.props(styles.identity)}>
+                              {candidate.display_name || candidate.model}
+                            </span>
+                            {candidate.family !== '' && (
+                              <span {...stylex.props(styles.meta)}>{candidate.family}</span>
+                            )}
+                          </span>
+                          {analysis.decision === 'scored' &&
+                          analysis.probability_status === 'reference_calibrated' &&
+                          analysis.probability_scope === 'reference-closed-set' &&
+                          candidate.probability !== null ? (
+                            <span {...stylex.props(styles.rowDetail)}>
+                              {percent(candidate.probability)}
+                            </span>
+                          ) : (
+                            <span {...stylex.props(styles.rowDetail)}>
+                              {t('monitor.modelFingerprint.rankingScore', {
+                                score: intl.formatNumber(candidate.score, {
+                                  maximumFractionDigits: 3,
+                                }),
+                              })}
+                            </span>
                           )}
-                        </span>
-                        <span {...stylex.props(styles.rowDetail)}>
-                          {percent(candidate.probability)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p {...stylex.props(styles.meta)}>
-                    {t('monitor.modelFingerprint.evidence', {
-                      used: analysis.used_outputs,
-                      total: challenges.length,
-                    })}
-                  </p>
-                </section>
-              )}
+                        </li>
+                      ))}
+                    </ul>
+                    <p {...stylex.props(styles.meta)}>
+                      {t('monitor.modelFingerprint.evidence', {
+                        used: analysis.used_outputs,
+                        total: challenges.length,
+                      })}
+                    </p>
+                  </section>
+                )}
 
               {challenges.length > 0 && (
                 <section {...stylex.props(styles.section)} aria-labelledby="fingerprint-challenges">
