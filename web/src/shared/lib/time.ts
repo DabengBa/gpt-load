@@ -1,7 +1,6 @@
 export const timeRanges = ['1h', '24h', '3d', '7d', '15d', '30d'] as const
 export type TimeRange = (typeof timeRanges)[number]
-export const dateTimePresets = ['today', 'yesterday', ...timeRanges] as const
-export type DateTimePreset = (typeof dateTimePresets)[number]
+type DateTimePreset = 'today' | 'yesterday' | TimeRange
 
 export const defaultTimeRange: TimeRange = '24h'
 
@@ -18,10 +17,6 @@ export const timeRangeMilliseconds: Record<TimeRange, number> = {
 
 export function isTimeRange(value: unknown): value is TimeRange {
   return typeof value === 'string' && timeRanges.some((range) => range === value)
-}
-
-export function isDateTimePreset(value: unknown): value is DateTimePreset {
-  return value === 'today' || value === 'yesterday' || isTimeRange(value)
 }
 
 export function resolveDateTimePreset(
@@ -92,27 +87,5 @@ export function currentTimeZone(): string {
     return new Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   } catch {
     return 'UTC'
-  }
-}
-
-export function serverClockOffset(serverNowMs: number, clientNowMs: number = Date.now()): number {
-  assertMilliseconds(serverNowMs)
-  assertMilliseconds(clientNowMs)
-  return serverNowMs - clientNowMs
-}
-
-export function serverNow(offsetMs: number, clientNowMs: number = Date.now()): number {
-  if (!Number.isFinite(offsetMs)) {
-    throw new RangeError('Server clock offset must be finite')
-  }
-  assertMilliseconds(clientNowMs)
-  const resolved = clientNowMs + offsetMs
-  assertMilliseconds(resolved)
-  return resolved
-}
-
-function assertMilliseconds(value: number): void {
-  if (!Number.isSafeInteger(value)) {
-    throw new RangeError('Epoch milliseconds must be a safe integer')
   }
 }

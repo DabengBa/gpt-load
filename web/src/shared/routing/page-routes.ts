@@ -153,9 +153,3 @@ export function pagePathMatches(name: string, rawPath: string): boolean {
   if (routePath === undefined) return false
   return routePathMatches(routePath, rawPath)
 }
-
-// Resolves a concrete pathname to its manifest entry (the route record that
-// pagePathMatches hides behind names).
-export function pageRouteEntryForPath(rawPath: string): PageRouteEntry | undefined {
-  return pageRouteEntries.find((entry) => routePathMatches(entry.path, rawPath))
-}

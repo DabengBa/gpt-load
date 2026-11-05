@@ -246,14 +246,6 @@ export interface GroupOptionDto {
   models: string[]
 }
 
-export interface CredentialCounts {
-  total: number
-  available: number
-  cooldown: number
-  blacklisted: number
-  disabled: number
-}
-
 export interface HealthCredentialCountsDto {
   credentials: number
   available: number

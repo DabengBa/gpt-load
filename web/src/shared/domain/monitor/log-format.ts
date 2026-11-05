@@ -86,10 +86,6 @@ export function formatRequestLogReasoning(
   return details.join('/')
 }
 
-export function formatLogReasoningBudget(value: string, locale: string): string {
-  return formatSignedInteger(value, locale)
-}
-
 export function reasoningBudgetSemantic(value: string): 'disabled' | 'dynamic' | null {
   if (value === '0') return 'disabled'
   if (value === '-1') return 'dynamic'

@@ -67,34 +67,3 @@ function sameRouteQueryValue(
   }
   return actual === canonical
 }
-
-export function parsePositiveRouteIntegerList(
-  value: SharedRouteQueryValue | readonly SharedRouteQueryValue[],
-): number[] {
-  const candidate = scalarRouteQuery(value)
-  if (candidate === undefined || candidate === '') return []
-
-  const values = candidate.split(',').map((part) => Number(part))
-  if (
-    values.some((part) => !Number.isSafeInteger(part) || part <= 0) ||
-    new Set(values).size !== values.length
-  ) {
-    return []
-  }
-  return [...values].sort((left, right) => left - right)
-}
-
-export function serializePositiveRouteIntegerList(values: readonly number[]): string | undefined {
-  const normalized = [...new Set(values)]
-    .filter((value) => Number.isSafeInteger(value) && value > 0)
-    .sort((left, right) => left - right)
-  return normalized.length > 0 ? normalized.join(',') : undefined
-}
-
-export function normalizedRouteQueryValue(
-  value: SharedRouteQueryValue | readonly SharedRouteQueryValue[],
-): string {
-  if (value === null || value === undefined) return ''
-  if (typeof value === 'number') return String(value)
-  return typeof value === 'string' ? value : String(value[0] ?? '')
-}

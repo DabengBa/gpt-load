@@ -41,3 +41,43 @@ documented scope flags and record the base ref in the review result.
 - Disposition: retain; Application: applied
 
 ---
+
+## [LRN-20261105-002] best_practice
+
+**Logged**: 2026-11-05T05:32:00Z
+**Priority**: low
+**Status**: pending
+**Area**: frontend
+
+### Summary
+Inspect Knip's report structure and verify consumers before removing reported symbols.
+
+### Details
+Knip 5.88.1 JSON reports `issues` as an array of per-file records, not an
+iterable map. Reports may include dynamic entry points and exports used inside
+their own module. A clean archive scan also differed from the live worktree,
+so compare reports from the same command and environment and disclose limits.
+
+### Suggested Action
+Inspect the installed version's JSON output, compare findings by file, kind
+and name, and check dynamic and internal consumers before deleting code.
+
+### Metadata
+- Source: error
+- Related Files: web/package.json
+- Tags: knip, dead-code, tooling
+- Pattern-Key: tooling.knip-report-review
+- Recurrence-Count: 1
+- First-Seen: 2026-11-05
+- Last-Seen: 2026-11-05
+- Promotion: not eligible; one task only
+
+### Context Maintenance
+- Decay-Type: dependency
+- Decay-Rate: fast (tool output and project entry points can change)
+- Authority: Knip 5.88.1 reports and current source; Owner: unknown
+- Revalidation: inspect current report shape and consumers on each audit; if evidence is unavailable, retain candidates rather than deleting them
+- Validation: verified; Last-Validated: 2026-11-05; Evidence: paired live-worktree reports and source review
+- Disposition: retain; Application: applied
+
+---

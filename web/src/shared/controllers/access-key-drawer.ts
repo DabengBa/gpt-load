@@ -47,7 +47,7 @@ export interface AccessKeyDrawerSnapshot {
   modelInput: string
 }
 
-export interface AccessKeyDrawerOpenInput {
+interface AccessKeyDrawerOpenInput {
   accessKey: AccessKeyDto | null
   createOperation: PendingAccessKeyCreateOperation | null
   editOperation: PendingAccessKeyEditOperation | null
@@ -55,13 +55,13 @@ export interface AccessKeyDrawerOpenInput {
 
 // Static construction deps; per-render callbacks are pushed via setRuntime
 // (the Phase 2 controller convention — keeps refs out of useState initializers).
-export interface AccessKeyDrawerDeps {
+interface AccessKeyDrawerDeps {
   client: ApiClient
   queryClient: QueryClient
   generateOperationID(): string
 }
 
-export interface AccessKeyDrawerRuntime {
+interface AccessKeyDrawerRuntime {
   isOpen(): boolean
   onSaved(kind: 'created' | 'updated', name: string): void
   onDeleted(name: string): void
@@ -427,5 +427,3 @@ export function createAccessKeyDrawerController(deps: AccessKeyDrawerDeps) {
     },
   }
 }
-
-export type AccessKeyDrawerController = ReturnType<typeof createAccessKeyDrawerController>

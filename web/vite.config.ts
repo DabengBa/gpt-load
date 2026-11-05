@@ -59,7 +59,6 @@ export default defineConfig({
       '@tanstack/react-router',
       '@tanstack/react-query',
       '@tanstack/query-core',
-      '@internationalized/date',
       '@stylexjs/stylex',
       '@astryxdesign/core',
       '@astryxdesign/core/Banner',
