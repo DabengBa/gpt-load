@@ -6,11 +6,15 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"gpt-load/internal/storage"
+	"gpt-load/internal/storage/dbtx"
 	"gpt-load/internal/storage/models"
 )
 
@@ -245,6 +249,83 @@ func TestRuntimeDisabledStopWaitsForCleanup(t *testing.T) {
 	}
 	if err := runtime.Stop(context.Background()); err != nil {
 		t.Fatalf("repeated Stop() = %v", err)
+	}
+}
+
+func TestRuntimeStopCancelsCleanupWaitingForDatabaseWriter(t *testing.T) {
+	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore(t, &now)
+	runtime := NewRuntimeWithInterval(false, store, time.Millisecond)
+	if err := runtime.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		health, err := runtime.Health()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if health.SweepTotal >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			_ = runtime.Stop(context.Background())
+			t.Fatal("periodic cleanup did not run")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// Hold the per-pool SQLite write gate so the next sweep blocks inside
+	// Cleanup instead of reaching the database. Shutdown must be able to abort
+	// that wait; otherwise closing the pool races with a still-running sweep.
+	gateHeld := make(chan struct{})
+	releaseGate := make(chan struct{})
+	var releaseOnce sync.Once
+	holderDone := make(chan error, 1)
+	go func() {
+		holderDone <- dbtx.Run(context.Background(), store.db, dbtx.Options{
+			Mode:      dbtx.Write,
+			Operation: "hold write gate during cleanup cancellation test",
+		}, func(*gorm.DB) error {
+			close(gateHeld)
+			<-releaseGate
+			return nil
+		})
+	}()
+	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseGate) }) })
+	select {
+	case <-gateHeld:
+	case <-time.After(time.Second):
+		t.Fatal("could not hold the SQLite write gate")
+	}
+	// One ticker interval is enough for a sweep to queue behind the gate.
+	time.Sleep(20 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := runtime.Stop(ctx)
+	if err != nil {
+		releaseOnce.Do(func() { close(releaseGate) })
+		t.Fatalf("Stop() = %v while cleanup waited for the write gate; want the in-flight sweep canceled", err)
+	}
+	if elapsed := time.Since(start); elapsed >= 250*time.Millisecond {
+		releaseOnce.Do(func() { close(releaseGate) })
+		t.Fatalf("Stop() took %s; want it to abandon the sweep before the shutdown deadline", elapsed)
+	}
+	releaseOnce.Do(func() { close(releaseGate) })
+	if err := <-holderDone; err != nil {
+		t.Fatalf("write gate holder error = %v", err)
+	}
+	if err := runtime.Stop(context.Background()); err != nil {
+		t.Fatalf("repeated Stop() = %v", err)
+	}
+	sqlDB, err := store.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("close database after Stop() = %v; want no in-flight sweep", err)
 	}
 }
 

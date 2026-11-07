@@ -357,7 +357,15 @@ func (a *App) Stop(ctx context.Context) error {
 		}
 	}
 	if debugCapture != nil {
-		if err := debugCapture.Stop(ctx); err != nil {
+		captureCtx := ctx
+		cancelCapture := func() {}
+		if deadline, ok := ctx.Deadline(); ok && requestLogs != nil {
+			// Preserve part of the remaining shutdown budget for durable logs.
+			captureCtx, cancelCapture = context.WithDeadline(ctx, time.Now().Add(time.Until(deadline)/2))
+		}
+		err := debugCapture.Stop(captureCtx)
+		cancelCapture()
+		if err != nil {
 			debugCaptureDrained = false
 			errs = append(errs, fmt.Errorf("stop debug capture runtime: %w", err))
 			logrus.WithError(err).WithFields(logrus.Fields{

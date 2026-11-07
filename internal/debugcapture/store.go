@@ -5,6 +5,7 @@ package debugcapture
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -197,11 +198,15 @@ func (s *Store) Counts() (Counts, error) {
 }
 
 func (s *Store) Cleanup() (int, error) {
+	return s.cleanupContext(context.Background())
+}
+
+func (s *Store) cleanupContext(ctx context.Context) (int, error) {
 	removed := 0
 	nowMS := s.now().UTC().UnixMilli()
 	for {
 		var batch []string
-		err := s.write("clean up debug captures", func(tx *gorm.DB) error {
+		err := s.writeContext(ctx, "clean up debug captures", func(tx *gorm.DB) error {
 			return tx.Model(&models.DebugCapture{}).Where("expires_at_ms <= ?", nowMS).
 				Order("expires_at_ms ASC, id ASC").Limit(cleanupBatchSize).Pluck("id", &batch).Error
 		})
@@ -212,7 +217,7 @@ func (s *Store) Cleanup() (int, error) {
 			return removed, nil
 		}
 		var deleted int64
-		if err := s.write("delete expired debug captures", func(tx *gorm.DB) error {
+		if err := s.writeContext(ctx, "delete expired debug captures", func(tx *gorm.DB) error {
 			result := tx.Where("id IN ?", batch).Delete(&models.DebugCapture{})
 			deleted = result.RowsAffected
 			return result.Error
@@ -572,7 +577,11 @@ func (s *Store) markExpired(id string) error {
 }
 
 func (s *Store) write(operation string, callback func(*gorm.DB) error) error {
-	return dbtx.Run(nil, s.db, dbtx.Options{Mode: dbtx.Write, Operation: operation}, callback)
+	return s.writeContext(context.Background(), operation, callback)
+}
+
+func (s *Store) writeContext(ctx context.Context, operation string, callback func(*gorm.DB) error) error {
+	return dbtx.Run(ctx, s.db, dbtx.Options{Mode: dbtx.Write, Operation: operation}, callback)
 }
 
 func (s *Store) read(operation string, callback func(*gorm.DB) error) error {
