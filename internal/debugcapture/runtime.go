@@ -83,11 +83,6 @@ func (r *Runtime) Start() error {
 		return errors.New("debug capture runtime store is required")
 	}
 	r.started = true
-	if !r.enabled {
-		r.mu.Unlock()
-		r.sweep()
-		return nil
-	}
 	r.stop = make(chan struct{})
 	r.workerDone = make(chan struct{})
 	r.startupDone = make(chan struct{})
@@ -175,7 +170,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	r.mu.Lock()
-	if !r.enabled || !r.started {
+	if !r.started {
 		r.mu.Unlock()
 		return nil
 	}

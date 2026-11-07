@@ -5,10 +5,13 @@ package debugcapture
 import (
 	"context"
 	"errors"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"gpt-load/internal/storage"
+	"gpt-load/internal/storage/models"
 )
 
 func TestRetentionPeriodIs24Hours(t *testing.T) {
@@ -140,6 +143,108 @@ func TestRuntimeDisabledStillCleansExpiredSessions(t *testing.T) {
 	}
 	if _, err := store.ReadSession(expired.ID()); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("disabled runtime ReadSession() = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRuntimeDisabledPeriodicallyDeletesExpiredRawChunks(t *testing.T) {
+	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore(t, &now)
+	session, err := store.StartSession(SessionMetadata{RequestID: "periodic-disabled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := session.StartAttempt(AttemptMetadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := attempt.AppendBodyPart(DirectionRequest, strings.NewReader("synthetic payload")); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := store.StartSession(SessionMetadata{RequestID: "remaining"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := func(model any, where string, id string) int64 {
+		t.Helper()
+		var n int64
+		if err := store.db.Model(model).Where(where, id).Count(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if count(&models.DebugCaptureChunk{}, "capture_id = ?", session.ID()) != 1 {
+		t.Fatal("expected stored raw chunk")
+	}
+	runtime := NewRuntimeWithInterval(false, store, 10*time.Millisecond)
+	if err := runtime.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Stop(context.Background()) })
+	if release, ok := runtime.AcquireSession(); ok || release != nil {
+		t.Fatal("disabled capture admitted session")
+	}
+	result := store.db.Exec("UPDATE debug_captures SET expires_at_ms = ? WHERE id = ?", now.Add(-time.Millisecond).UnixMilli(), session.ID())
+	if result.Error != nil || result.RowsAffected != 1 {
+		t.Fatalf("expire row: %v, affected %d", result.Error, result.RowsAffected)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		health, err := runtime.Health()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count(&models.DebugCapture{}, "id = ?", session.ID()) == 0 && health.SweepTotal >= 2 && health.RemovedTotal >= 1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if count(&models.DebugCapture{}, "id = ?", session.ID()) != 0 || count(&models.DebugCaptureAttempt{}, "capture_id = ?", session.ID()) != 0 || count(&models.DebugCaptureChunk{}, "capture_id = ?", session.ID()) != 0 {
+		t.Fatal("expired session and raw children must be deleted")
+	}
+	if count(&models.DebugCapture{}, "id = ?", remaining.ID()) != 1 {
+		t.Fatal("unexpired session removed")
+	}
+	health, err := runtime.Health()
+	if err != nil || health.Enabled || health.Running || health.SweepTotal < 2 || health.RemovedTotal < 1 {
+		t.Fatalf("disabled health = %#v, %v", health, err)
+	}
+}
+
+func TestRuntimeDisabledStopWaitsForCleanup(t *testing.T) {
+	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
+	runtime := NewRuntimeWithInterval(false, newTestStore(t, &now), time.Millisecond)
+	var calls atomic.Int32
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	runtime.now = func() time.Time {
+		if calls.Add(1) == 2 {
+			close(entered)
+			<-release
+		}
+		return now
+	}
+	if err := runtime.Start(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		close(release)
+		_ = runtime.Stop(context.Background())
+		t.Fatal("periodic cleanup did not start")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if err := runtime.Stop(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		close(release)
+		t.Fatalf("Stop() = %v, want deadline exceeded while cleanup is blocked", err)
+	}
+	close(release)
+	if err := runtime.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Stop(context.Background()); err != nil {
+		t.Fatalf("repeated Stop() = %v", err)
 	}
 }
 
