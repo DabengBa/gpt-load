@@ -230,7 +230,7 @@ HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
 
 - 默认只监听 `127.0.0.1`。需要远程访问时，应通过受控网络或带 TLS 的反向代理暴露，并配置 ACL 与防火墙。
 - 妥善管理 `AUTH_KEY` 与 `ENCRYPTION_KEY`，不要把真实密钥提交到仓库、日志、截图或公开 Issue。
-- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会在固定 4 小时内保存观察到的明文请求和响应 Header、Body，其中可能包含凭据和 Cookie。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
+- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会将观察到的明文请求和响应 Header、Body（可能含凭据和 Cookie）保存至会话创建后 24 小时到期。Unix 进程运行时异步清理到期行；进程停止或清理反复失败会延迟删除，删除数据库行不等于安全擦除数据库页、备份或已下载 ZIP。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
 - 2.0 按**单应用实例**设计，多个实例之间不共享状态，不支持直接横向扩容。
 - 用量与成本是基于上游返回数据的**估算**，用于运行分析和资源评估，不等同于服务商账单或财务对账结果。
 - HTTP Responses 的 `previous_response_id` 续接按协议及现有存储能力自动接入：原生 Responses 且声明由上游管理状态的渠道目前包括 `openai`、`gpt_load`、`xai`、`newapi`、`cliproxyapi`、`sub2api`。按 AccessKey 隔离归属，在当前路由允许时固定原凭据，不受亲和开关影响；实际状态可用性由上游决定。无状态及转换响应不登记为持久状态。未知 ID（包括升级前或网关外创建的 ID）直接拒绝；Group 参数覆盖不能改写该字段。

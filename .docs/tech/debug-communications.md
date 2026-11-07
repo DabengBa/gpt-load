@@ -19,7 +19,9 @@ Debug communication capture is an opt-in operational tool for investigating gate
 
 ## Retention
 
-The capture store uses the existing configured database and remains separate from `request_logs`. Captures are retained for a fixed 24-hour expiry, then startup and periodic cleanup remove expired rows and chunks automatically. Each runtime admits at most 64 concurrent capture sessions; each attempt retains at most 8 MiB of raw body data and 128 pending persistence events. Exceeding a limit fails the affected capture without changing the data-plane response.
+The capture store uses the existing configured database and remains separate from `request_logs`. Captures expire 24 hours after session creation. On Unix, cleanup runs at startup and then hourly even when new capture is disabled; it is best effort, so stopped processes or repeated failures can delay deletion of expired rows and chunks. Each runtime admits at most 64 concurrent capture sessions; each attempt retains at most 8 MiB of raw body data and 128 pending persistence events. Exceeding a limit fails the affected capture without changing the data-plane response.
+
+The management health `debug_capture` sweep counters and failure timestamp report cleanup attempts. `running=false` while capture is disabled does not mean the cleanup worker is stopped. `last_sweep_at_ms` records an attempt, not necessarily a successful sweep; `last_failure_at_ms` records the most recent failed attempt. Disabling capture prevents new sessions but does not revoke administrator access to existing unexpired sessions.
 
 Capture chunk payloads are stored independently in SQLite. Existing rows remain
 raw (`identity`); newly captured chunks use Zstandard (`zstd`) when that makes

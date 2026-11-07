@@ -29,6 +29,7 @@ type Runtime struct {
 	stopping       bool
 	startFailed    bool
 	stop           chan struct{}
+	cancelCleanup  context.CancelFunc
 	workerDone     chan struct{}
 	startupDone    chan struct{}
 	sessionsDone   chan struct{}
@@ -83,12 +84,9 @@ func (r *Runtime) Start() error {
 		return errors.New("debug capture runtime store is required")
 	}
 	r.started = true
-	if !r.enabled {
-		r.mu.Unlock()
-		r.sweep()
-		return nil
-	}
 	r.stop = make(chan struct{})
+	cleanupCtx, cancelCleanup := context.WithCancel(context.Background())
+	r.cancelCleanup = cancelCleanup
 	r.workerDone = make(chan struct{})
 	r.startupDone = make(chan struct{})
 	r.sessionsDone = make(chan struct{})
@@ -98,38 +96,38 @@ func (r *Runtime) Start() error {
 	startupDone := r.startupDone
 	r.mu.Unlock()
 
-	go r.run(stop, workerDone, startupDone)
+	go r.run(cleanupCtx, stop, workerDone, startupDone)
 	<-startupDone
 	return nil
 }
 
-func (r *Runtime) run(stop <-chan struct{}, workerDone chan<- struct{}, startupDone chan<- struct{}) {
+func (r *Runtime) run(ctx context.Context, stop <-chan struct{}, workerDone chan<- struct{}, startupDone chan<- struct{}) {
 	defer close(workerDone)
-	r.sweep()
+	r.sweep(ctx)
 	close(startupDone)
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			r.sweep()
+			r.sweep(ctx)
 		case <-stop:
 			return
 		}
 	}
 }
 
-func (r *Runtime) sweep() {
+func (r *Runtime) sweep(ctx context.Context) {
 	if r == nil || r.store == nil {
 		return
 	}
-	removed, err := r.store.Cleanup()
+	removed, err := r.store.cleanupContext(ctx)
 	r.sweepTotal.Add(1)
 	r.removedTotal.Add(uint64(maxInt(removed, 0)))
 	now := r.now().UTC()
 	r.statsMu.Lock()
 	r.lastSweepAt = now
-	if err != nil {
+	if err != nil && !errors.Is(err, context.Canceled) {
 		r.sweepFailureTotal.Add(1)
 		r.lastSweepFailure = now
 	}
@@ -175,12 +173,13 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	r.mu.Lock()
-	if !r.enabled || !r.started {
+	if !r.started {
 		r.mu.Unlock()
 		return nil
 	}
 	if !r.stopping {
 		r.stopping = true
+		r.cancelCleanup()
 		close(r.stop)
 	}
 	workerDone := r.workerDone
