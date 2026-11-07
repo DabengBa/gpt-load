@@ -702,6 +702,14 @@ func TestSiteInfoCoordinatorRequestGroupSync(t *testing.T) {
 			_, _ = w.Write([]byte(`{"success":true,"data":{"quota":1}}`))
 			return
 		}
+		switch r.URL.Path {
+		case "/api/status":
+			_, _ = w.Write([]byte(`{"success":true,"data":{}}`))
+			return
+		case "/api/token/":
+			_, _ = w.Write([]byte(`{"success":true,"data":[]}`))
+			return
+		}
 		w.WriteHeader(404)
 	}))
 	defer server.Close()

@@ -225,6 +225,7 @@ func (s *Service) updateSiteAccess(tx *gorm.DB, group models.Group, input option
 	cfg.FetchedAtMS = nil
 	cfg.LastAttemptAtMS = nil
 	cfg.LastError = ""
+	cfg.AnnouncementLastError, cfg.NoticeLastError = "", ""
 	cfg.AnnouncementStatus, cfg.NoticeStatus = "pending", "pending"
 	cfg.AnnouncementFetchedAtMS, cfg.NoticeFetchedAtMS = nil, nil
 	cfg.Status = "unconfigured"

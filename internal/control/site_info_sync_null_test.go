@@ -36,6 +36,8 @@ func TestSiteInfoRejectsNullAndMissingResponseData(t *testing.T) {
 					data = tt.status
 				case "/api/notice":
 					data = tt.notice
+				case "/api/token/":
+					data = `[]`
 				default:
 					w.WriteHeader(http.StatusNotFound)
 					return
@@ -72,7 +74,7 @@ func TestSiteInfoRejectsNullAndMissingResponseData(t *testing.T) {
 				if cfg.Status != "error" || cfg.BalanceQuota == nil || *cfg.BalanceQuota != oldQuota || cfg.RemainingAmount == nil || *cfg.RemainingAmount != oldAmount || cfg.FetchedAtMS == nil || *cfg.FetchedAtMS != oldTime {
 					t.Fatalf("invalid user overwrote snapshot: %+v", cfg)
 				}
-			} else if cfg.Status != "ok" || cfg.BalanceQuota == nil || (tt.wantUnknown && (cfg.RemainingAmount != nil || cfg.QuotaPerUnit != nil)) || (!tt.wantUnknown && cfg.RemainingAmount == nil) {
+			} else if cfg.BalanceQuota == nil || (tt.wantUnknown && (cfg.Status != "error" || cfg.RemainingAmount == nil || *cfg.RemainingAmount != oldAmount || cfg.QuotaPerUnit == nil || *cfg.QuotaPerUnit != oldUnit)) || (!tt.wantUnknown && (cfg.Status != "ok" || cfg.RemainingAmount == nil)) {
 				t.Fatalf("unexpected balance: %+v", cfg)
 			}
 			if tt.name == "zero quota and missing conversion" && (*cfg.BalanceQuota != 0 || *cfg.RemainingAmount != 0 || cfg.QuotaPerUnit == nil || *cfg.QuotaPerUnit != 500000) {

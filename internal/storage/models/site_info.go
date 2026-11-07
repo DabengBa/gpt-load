@@ -1,6 +1,8 @@
 package models
 
 type GroupSiteConfig struct {
+	AnnouncementLastError   string   `gorm:"type:text;not null;default:''"`
+	NoticeLastError         string   `gorm:"type:text;not null;default:''"`
 	AnnouncementStatus      string   `gorm:"not null;default:'pending'"`
 	NoticeStatus            string   `gorm:"not null;default:'pending'"`
 	AnnouncementFetchedAtMS *int64   `gorm:"column:announcement_fetched_at_ms"`

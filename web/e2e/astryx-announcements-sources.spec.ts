@@ -30,8 +30,12 @@ test('shows independent source states alongside preserved announcements', async 
                 group: { id: 1, name: 'Group A' },
                 site_root_url: 'https://alpha.example',
                 site_name: 'Alpha',
-                announcement: { status: 'error', fetched_at_ms: 1700000000000 },
-                notice: { status: 'pending', fetched_at_ms: null },
+                announcement: {
+                  status: 'error',
+                  fetched_at_ms: 1700000000000,
+                  last_error: 'Announcement HTTP 503',
+                },
+                notice: { status: 'error', fetched_at_ms: null, last_error: 'Notice HTTP 429' },
               },
             ],
           }
@@ -43,5 +47,7 @@ test('shows independent source states alongside preserved announcements', async 
   await page.goto('/announcements')
   await expect(page.getByText('Old announcement')).toBeVisible()
   await expect(page.getByText('Announcement: Sync failed')).toBeVisible()
-  await expect(page.getByText('Notice: Never synced')).toBeVisible()
+  await expect(page.getByText('Notice: Sync failed')).toBeVisible()
+  await expect(page.getByText('Announcement HTTP 503')).toBeVisible()
+  await expect(page.getByText('Notice HTTP 429')).toBeVisible()
 })

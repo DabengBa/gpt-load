@@ -159,11 +159,18 @@ export function AnnouncementsView() {
                 </span>
                 {(source.announcement.status === 'error' || source.notice.status === 'error') && (
                   <>
-                    <span {...stylex.props(styles.sourceHelp)}>
-                      {source.announcement.last_error ||
-                        source.notice.last_error ||
-                        t('announcements.sourceFailureHelp')}
-                    </span>
+                    {source.announcement.status === 'error' && (
+                      <span {...stylex.props(styles.sourceHelp)}>
+                        {t('announcements.sourceAnnouncement')}:{' '}
+                        {source.announcement.last_error || t('announcements.sourceFailureHelp')}
+                      </span>
+                    )}
+                    {source.notice.status === 'error' && (
+                      <span {...stylex.props(styles.sourceHelp)}>
+                        {t('announcements.sourceNotice')}:{' '}
+                        {source.notice.last_error || t('announcements.sourceFailureHelp')}
+                      </span>
+                    )}
                     <Button
                       size="sm"
                       variant="secondary"

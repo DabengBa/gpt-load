@@ -73,6 +73,9 @@ func fetchSiteJSON(ctx context.Context, client *http.Client, root, path, userID,
 
 func parseSiteTokens(raw json.RawMessage) ([]siteToken, error) {
 	var tokens []siteToken
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, fmt.Errorf("invalid token list")
+	}
 	if err := json.Unmarshal(raw, &tokens); err == nil {
 		return tokens, nil
 	}
@@ -88,7 +91,7 @@ func parseSiteTokens(raw json.RawMessage) ([]siteToken, error) {
 	} else {
 		raw = page.Data
 	}
-	if len(raw) == 0 {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return nil, fmt.Errorf("missing token list")
 	}
 	if err := json.Unmarshal(raw, &tokens); err != nil {
@@ -291,7 +294,8 @@ func (c *SiteInfoSyncCoordinator) syncGroup(ctx context.Context, id uint) error 
 		return fetchSiteJSON(requestCtx, client, cfg.SiteRootURL, path, userID, token, result)
 	}
 	var status siteStatus
-	statusOK := optionalFetch("/api/status", "", "", &status) == nil
+	statusErr := optionalFetch("/api/status", "", "", &status)
+	statusOK := statusErr == nil
 	conversionOK := statusOK
 	var quotaPerUnit float64
 	if conversionOK && len(status.QuotaPerUnit) != 0 {
@@ -328,30 +332,53 @@ func (c *SiteInfoSyncCoordinator) syncGroup(ctx context.Context, id uint) error 
 	announcementsOK := statusOK
 	if announcementsOK && len(status.Announcements) != 0 {
 		announcementsOK = json.Unmarshal(status.Announcements, &announcements) == nil
+		if !announcementsOK {
+			statusErr = fmt.Errorf("invalid site announcement data")
+		}
 	}
 	var notice string
-	noticeOK := optionalFetch("/api/notice", "", "", &notice) == nil
+	noticeErr := optionalFetch("/api/notice", "", "", &notice)
+	noticeOK := noticeErr == nil
 	user.Group = strings.TrimSpace(user.Group)
 	if user.Group == "" {
 		user.Group = "default"
 	}
 	tokenGroup, effectiveGroup := "", ""
+	var enrichmentErr error
 	var credential models.Credential
 	if s.db.WithContext(ctx).Where("group_id = ?", id).First(&credential).Error == nil {
 		_, apiKey, decodeErr := s.decodeCredential(group, credential)
 		if decodeErr == nil && len(strings.TrimPrefix(apiKey, "sk-")) >= 8 {
-			var raw json.RawMessage
-			if optionalFetch("/api/token/?p=1&size=100", cfg.UserID, token, &raw) == nil {
-				if tokens, e := parseSiteTokens(raw); e == nil {
-					tokenGroup, effectiveGroup = siteInfoTokenGroup(apiKey, user.Group, tokens)
+			var tokens []siteToken
+			complete := false
+			for page := 1; page <= 100; page++ {
+				var raw json.RawMessage
+				if e := optionalFetch(fmt.Sprintf("/api/token/?p=%d&size=100", page), cfg.UserID, token, &raw); e != nil {
+					enrichmentErr = e
+					break
 				}
+				items, e := parseSiteTokens(raw)
+				if e != nil {
+					enrichmentErr = fmt.Errorf("invalid site token data")
+					break
+				}
+				tokens = append(tokens, items...)
+				if len(items) < 100 {
+					complete = true
+					break
+				}
+			}
+			if complete {
+				tokenGroup, effectiveGroup = siteInfoTokenGroup(apiKey, user.Group, tokens)
+			} else if enrichmentErr == nil {
+				enrichmentErr = fmt.Errorf("site token pagination limit exceeded")
 			}
 		}
 	}
 	var ratio *float64
 	if effectiveGroup != "" && effectiveGroup != "auto" {
 		var raw map[string]json.RawMessage
-		if optionalFetch("/api/user/self/groups", cfg.UserID, token, &raw) == nil {
+		if e := optionalFetch("/api/user/self/groups", cfg.UserID, token, &raw); e == nil {
 			if value, ok := raw[effectiveGroup]; ok {
 				var number *float64
 				if json.Unmarshal(value, &number) == nil && number != nil {
@@ -365,6 +392,11 @@ func (c *SiteInfoSyncCoordinator) syncGroup(ctx context.Context, id uint) error 
 					}
 				}
 			}
+			if ratio == nil || math.IsNaN(*ratio) || math.IsInf(*ratio, 0) {
+				enrichmentErr = fmt.Errorf("invalid site group ratio data")
+			}
+		} else {
+			enrichmentErr = e
 		}
 	}
 	now := s.now().UTC().UnixMilli()
@@ -379,10 +411,26 @@ func (c *SiteInfoSyncCoordinator) syncGroup(ctx context.Context, id uint) error 
 		if !math.IsInf(amount, 0) && !math.IsNaN(amount) {
 			storedAmount = amount
 			storedQuotaPerUnit = quotaPerUnit
+		} else {
+			conversionOK = false
 		}
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		updates := map[string]any{"status": "ok", "last_error": "", "fetched_at_ms": now, "last_attempt_at_ms": now, "updated_at_ms": now, "site_name": siteName, "balance_quota": user.Quota, "quota_per_unit": storedQuotaPerUnit, "remaining_amount": storedAmount, "currency_symbol": symbol, "user_group": user.Group, "token_group": tokenGroup, "effective_group": effectiveGroup, "group_ratio": ratio, "announcement_status": "error", "notice_status": "error"}
+		updates := map[string]any{"status": "ok", "last_error": "", "fetched_at_ms": now, "last_attempt_at_ms": now, "updated_at_ms": now, "site_name": siteName, "balance_quota": user.Quota, "quota_per_unit": storedQuotaPerUnit, "remaining_amount": storedAmount, "currency_symbol": symbol, "user_group": user.Group, "token_group": tokenGroup, "effective_group": effectiveGroup, "group_ratio": ratio, "announcement_status": "error", "notice_status": "error", "announcement_last_error": sanitizeSiteError(statusErr, token), "notice_last_error": sanitizeSiteError(noticeErr, token)}
+		if enrichmentErr != nil {
+			delete(updates, "token_group")
+			delete(updates, "effective_group")
+			delete(updates, "group_ratio")
+			updates["status"] = "error"
+			updates["last_error"] = sanitizeSiteError(enrichmentErr, token)
+		}
+		if !conversionOK {
+			delete(updates, "quota_per_unit")
+			delete(updates, "remaining_amount")
+			delete(updates, "currency_symbol")
+			updates["status"] = "error"
+			updates["last_error"] = "site status unavailable or invalid"
+		}
 		if announcementsOK {
 			updates["announcement_status"] = "ok"
 			updates["announcement_fetched_at_ms"] = now
@@ -469,5 +517,5 @@ func (c *SiteInfoSyncCoordinator) syncGroup(ctx context.Context, id uint) error 
 }
 func (c *SiteInfoSyncCoordinator) storeSiteFailure(ctx context.Context, cfg models.GroupSiteConfig, message string) error {
 	now := c.service.now().UTC().UnixMilli()
-	return c.service.db.WithContext(ctx).Model(&models.GroupSiteConfig{}).Where("group_id = ? AND config_version = ?", cfg.GroupID, cfg.ConfigVersion).Updates(map[string]any{"status": "error", "last_error": message, "last_attempt_at_ms": now, "updated_at_ms": now, "announcement_status": "error", "notice_status": "error"}).Error
+	return c.service.db.WithContext(ctx).Model(&models.GroupSiteConfig{}).Where("group_id = ? AND config_version = ?", cfg.GroupID, cfg.ConfigVersion).Updates(map[string]any{"status": "error", "last_error": message, "last_attempt_at_ms": now, "updated_at_ms": now, "announcement_status": "error", "notice_status": "error", "announcement_last_error": message, "notice_last_error": message}).Error
 }

@@ -148,13 +148,14 @@ func (s *Service) GetAnnouncements(ctx context.Context, site, query string) (Ann
 		NoticeStatus            string
 		AnnouncementFetchedAtMS *int64
 		NoticeFetchedAtMS       *int64
-		LastError               string
+		AnnouncementLastError   string
+		NoticeLastError         string
 	}
 	err := dbtx.Run(ctx, s.db, dbtx.Options{Mode: dbtx.ReadSnapshot, Operation: "list announcements"}, func(tx *gorm.DB) error {
 		if err := tx.Table("site_announcements").Select("site_announcements.*, groups.name AS group_name").Joins("JOIN groups ON groups.id = site_announcements.group_id").Order("site_announcements.id ASC").Scan(&rows).Error; err != nil {
 			return err
 		}
-		return tx.Table("group_site_configs").Select("group_site_configs.group_id, groups.name AS group_name, site_root_url, site_name, announcement_status, notice_status, announcement_fetched_at_ms, notice_fetched_at_ms, last_error").Joins("JOIN groups ON groups.id = group_site_configs.group_id").Where("access_token <> '' AND site_root_url <> ''").Order("group_site_configs.group_id ASC").Scan(&configs).Error
+		return tx.Table("group_site_configs").Select("group_site_configs.group_id, groups.name AS group_name, site_root_url, site_name, announcement_status, notice_status, announcement_fetched_at_ms, notice_fetched_at_ms, announcement_last_error, notice_last_error").Joins("JOIN groups ON groups.id = group_site_configs.group_id").Where("access_token <> '' AND site_root_url <> ''").Order("group_site_configs.group_id ASC").Scan(&configs).Error
 	})
 	if err != nil {
 		return AnnouncementsResponse{}, app_errors.ParseDBError(err)
@@ -170,7 +171,7 @@ func (s *Service) GetAnnouncements(ctx context.Context, site, query string) (Ann
 		return AnnouncementSourceState{Status: status, FetchedAtMS: fetched, LastError: lastError}
 	}
 	for _, cfg := range configs {
-		result.Sources = append(result.Sources, AnnouncementSource{Group: AnnouncementGroupRef{ID: cfg.GroupID, Name: cfg.GroupName}, SiteRootURL: cfg.SiteRootURL, SiteName: cfg.SiteName, Announcement: state(cfg.AnnouncementStatus, cfg.AnnouncementFetchedAtMS, cfg.LastError), Notice: state(cfg.NoticeStatus, cfg.NoticeFetchedAtMS, cfg.LastError)})
+		result.Sources = append(result.Sources, AnnouncementSource{Group: AnnouncementGroupRef{ID: cfg.GroupID, Name: cfg.GroupName}, SiteRootURL: cfg.SiteRootURL, SiteName: cfg.SiteName, Announcement: state(cfg.AnnouncementStatus, cfg.AnnouncementFetchedAtMS, cfg.AnnouncementLastError), Notice: state(cfg.NoticeStatus, cfg.NoticeFetchedAtMS, cfg.NoticeLastError)})
 	}
 	return result, nil
 }

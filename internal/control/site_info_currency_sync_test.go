@@ -19,11 +19,11 @@ func TestSiteInfoCurrencyAndAnnouncementSync(t *testing.T) {
 		{"official CUSTOM", `{"quota_display_type":"CUSTOM","quota_per_unit":500000,"custom_currency_symbol":"€","custom_currency_exchange_rate":3}`, "€", floatPtr(6)},
 		{"legacy currency_type", `{"currency_type":"CNY","quota_per_unit":500000,"usd_exchange_rate":7}`, "¥", floatPtr(14)},
 		{"official takes precedence", `{"quota_display_type":"CNY","currency_type":"CUSTOM","quota_per_unit":500000,"usd_exchange_rate":7,"custom_currency_symbol":"€","custom_currency_exchange_rate":3}`, "¥", floatPtr(14)},
-		{"invalid exchange rate", `{"quota_display_type":"CNY","quota_per_unit":500000,"usd_exchange_rate":"bad"}`, "", nil},
+		{"invalid exchange rate", `{"quota_display_type":"CNY","quota_per_unit":500000,"usd_exchange_rate":"bad"}`, "$", nil},
 		{"invalid system name", `{"system_name":{"bad":true},"quota_per_unit":500000}`, "$", floatPtr(2)},
-		{"invalid custom rate", `{"quota_display_type":"CUSTOM","custom_currency_symbol":"€","custom_currency_exchange_rate":"bad"}`, "", nil},
-		{"invalid custom symbol", `{"quota_display_type":"CUSTOM","custom_currency_symbol":{},"custom_currency_exchange_rate":3}`, "", nil},
-		{"invalid display type", `{"quota_display_type":{},"currency_type":"CNY","usd_exchange_rate":7}`, "", nil},
+		{"invalid custom rate", `{"quota_display_type":"CUSTOM","custom_currency_symbol":"€","custom_currency_exchange_rate":"bad"}`, "$", nil},
+		{"invalid custom symbol", `{"quota_display_type":"CUSTOM","custom_currency_symbol":{},"custom_currency_exchange_rate":3}`, "$", nil},
+		{"invalid display type", `{"quota_display_type":{},"currency_type":"CNY","usd_exchange_rate":7}`, "$", nil},
 		{"unused invalid currency fields", `{"quota_display_type":"USD","usd_exchange_rate":"bad","custom_currency_symbol":{},"custom_currency_exchange_rate":[]}`, "$", floatPtr(2)},
 	}
 	for _, tc := range cases {

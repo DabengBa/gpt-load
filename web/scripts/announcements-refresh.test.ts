@@ -40,7 +40,13 @@ test('announcement source status survives projection and legacy feeds remain rea
       notice: { status: 'pending', fetched_at_ms: null },
     },
   ]
-  assert.deepEqual(projectAnnouncementsResponse({ items: [], sites: [], sources }).sources, sources)
+  assert.deepEqual(projectAnnouncementsResponse({ items: [], sites: [], sources }).sources, [
+    {
+      ...sources[0],
+      announcement: { ...sources[0].announcement, last_error: '' },
+      notice: { ...sources[0].notice, last_error: '' },
+    },
+  ])
 })
 
 function feedWith(content: string): AnnouncementsResponseDto {

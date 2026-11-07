@@ -42,7 +42,7 @@ documented scope flags and record the base ref in the review result.
 
 ---
 
-## [LRN-20261107-001] best_practice
+## [LRN-20261107-002] best_practice
 
 **Logged**: 2026-11-07T11:38:00Z
 **Priority**: medium
