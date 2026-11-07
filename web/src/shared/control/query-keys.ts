@@ -57,6 +57,8 @@ function normalizeUsageFilters(filters: UsageFilters): UsageFilters {
 
 export const controlQueryKeys = {
   all: ['control'] as const,
+  announcements: (filters?: { site?: string; q?: string }) =>
+    ['control', 'announcements', filters ?? {}] as const,
   groups: {
     all: ['control', 'groups'] as const,
     collectionAll: ['control', 'groups', 'collection'] as const,

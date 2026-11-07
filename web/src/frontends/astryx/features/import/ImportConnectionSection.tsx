@@ -10,6 +10,7 @@ import {
   hasUpstreamBaseURLVersionMismatch,
   isValidUpstreamBaseURL,
 } from '@shared/lib/upstream-base-url'
+import { extractSiteRootUrl, isValidProviderUrlForWrite } from '@shared/domain/groups/settings/group-settings-patch'
 import type { ImportProxyDraft } from '@shared/domain/import/model-draft'
 
 import { useT } from '../../app/i18n'
@@ -28,6 +29,27 @@ const styles = stylex.create({
     },
     alignItems: 'start',
     gap: '8px 14px',
+  },
+  siteHeading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
+    flexWrap: 'wrap',
+    marginBottom: 'var(--space-2)',
+  },
+  siteRoot: {
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--text-meta)',
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  siteGrid: {
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'repeat(2, minmax(0, 1fr))',
+      '@media (max-width: 680px)': 'minmax(0, 1fr)',
+    },
+    gap: 'var(--space-2)',
   },
   params: {
     display: 'grid',
@@ -105,6 +127,8 @@ export interface ImportConnectionSectionProps {
   channel: ChannelDto | null
   name: string
   providerUrl: string
+  siteUserId: string
+  siteAccessToken: string
 
   params: Record<string, string>
   proxy: ImportProxyDraft
@@ -113,6 +137,8 @@ export interface ImportConnectionSectionProps {
   disabled?: boolean
   onNameChange(value: string): void
   onProviderUrlChange(value: string): void
+  onSiteUserIdChange(value: string): void
+  onSiteAccessTokenChange(value: string): void
 
   onParamChange(key: string, value: string): void
   onProxyChange(value: ImportProxyDraft): void
@@ -124,6 +150,8 @@ export function ImportConnectionSection({
   channel,
   name,
   providerUrl,
+  siteUserId,
+  siteAccessToken,
 
   params,
   proxy,
@@ -132,6 +160,8 @@ export function ImportConnectionSection({
   disabled = false,
   onNameChange,
   onProviderUrlChange,
+  onSiteUserIdChange,
+  onSiteAccessTokenChange,
 
   onParamChange,
   onProxyChange,
@@ -225,10 +255,41 @@ export function ImportConnectionSection({
             autoComplete="off"
             {...plainTextInputAttrs}
             placeholder="https://"
+            status={
+              providerUrl.trim() && !isValidProviderUrlForWrite(providerUrl)
+                ? { type: 'error', message: t('group.settings.base.providerUrlError') }
+                : undefined
+            }
             onChange={onProviderUrlChange}
           />
         </div>
 
+        <section {...stylex.props(styles.fullWidth)} aria-labelledby="import-site-access">
+          <div {...stylex.props(styles.siteHeading)}>
+            <h3 id="import-site-access">{t('siteAccess.title')}</h3>
+            <span {...stylex.props(styles.siteRoot)}>
+              {extractSiteRootUrl(providerUrl)
+                ? `${t('siteAccess.root')} ${extractSiteRootUrl(providerUrl)}`
+                : t('siteAccess.missingRoot')}
+            </span>
+          </div>
+          <div {...stylex.props(styles.siteGrid)}>
+            <TextInput
+              label={t('siteAccess.userId')}
+              value={siteUserId}
+              isDisabled={disabled}
+              onChange={onSiteUserIdChange}
+            />
+            <TextInput
+              label={t('siteAccess.token')}
+              type="password"
+              autoComplete="new-password"
+              value={siteAccessToken}
+              isDisabled={disabled}
+              onChange={onSiteAccessTokenChange}
+            />
+          </div>
+        </section>
         {channel !== null && channel.param_fields.length > 0 && (
           <div {...stylex.props(styles.params)}>
             {channel.param_fields.map((param) =>
@@ -365,5 +426,5 @@ export function ImportConnectionSection({
         )}
       </div>
     </div>
-  );
+  )
 }

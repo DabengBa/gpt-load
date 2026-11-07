@@ -5,6 +5,8 @@ import {
   createGroup,
   importGroupCredentials,
   listGroupCollection,
+  getGroupSettings,
+  updateGroupSettings,
   projectGroupSummary,
 } from '../src/shared/control/resources/groups.ts'
 
@@ -81,7 +83,7 @@ test('actual summary fixture rejects retired pricing and collection fields', () 
 })
 
 test('collection projects empty and configured states without credential counts', async () => {
-  const { client } = clientReturning({
+  const { client, requests } = clientReturning({
     observed_at_ms: 1,
     summary: { total: 2, available: 1, unavailable: 1, disabled: 0 },
     items: [
@@ -106,11 +108,56 @@ test('collection projects empty and configured states without credential counts'
       client_model_count: item.client_model_count,
       credential_configured: item.credential_configured,
       credential_status: item.credential_status,
+      site_info: null,
     })),
     pagination: { page: 1, page_size: 100, total_items: 2, total_pages: 1 },
   })
   const result = await listGroupCollection(client, { sort: 'recent', page: 1, page_size: 100 })
+  assert.equal(
+    new URL(requests[0]!.path, 'http://localhost').searchParams.get('include'),
+    'site_info',
+  )
   assert.equal(result.items[0]?.credential_configured, false)
   assert.equal(result.items[1]?.credential_status, 'available')
   assert.equal('credential_counts' in (result.items[1] ?? {}), false)
+})
+
+test('settings reads and writes explicitly request the site extension', async () => {
+  const { client, requests } = clientReturning({
+    name: 'Provider',
+    channel_id: 'openai',
+    params: {},
+    provider_url: null,
+    enabled: true,
+    overrides: {},
+    effective: {
+      first_byte_timeout: 120,
+      request_timeout: 600,
+      stream_idle_timeout: 300,
+      blacklist_threshold: 3,
+      header_rules: { set: {}, remove: [] },
+      affinity_enabled: true,
+      responses_websocket_enabled: true,
+      responses_reasoning_status_filter_enabled: false,
+    },
+    proxy: {
+      configured_mode: 'inherit',
+      effective_mode: 'direct',
+      effective_source: 'default',
+      has_auth: false,
+    },
+    site_access: { user_id: '42', token_configured: false, site_root_url: '', snapshot: null },
+  })
+  assert.equal((await getGroupSettings(client, 1)).site_access.user_id, '42')
+  assert.equal((await updateGroupSettings(client, 1, { enabled: true })).site_access.user_id, '42')
+  assert.deepEqual(
+    requests.map((request) => [
+      request.method,
+      new URL(request.path, 'http://localhost').searchParams.get('include'),
+    ]),
+    [
+      ['GET', 'site_info'],
+      ['PUT', 'site_info'],
+    ],
+  )
 })

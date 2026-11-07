@@ -24,15 +24,20 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
+type GroupCreateSiteAccessInput struct {
+	UserID      string `json:"user_id"`
+	AccessToken string `json:"access_token"`
+}
 type GroupCreateRequest struct {
-	Name              *string                             `json:"name"`
-	ChannelID         channel.ID                          `json:"channel_id"`
-	Params            json.RawMessage                     `json:"params"`
-	ProviderURL       optionalField[string]               `json:"provider_url"`
-	Models            optionalGroupModels                 `json:"models"`
-	Credentials       string                              `json:"credential"`
-	ConfirmSameTarget bool                                `json:"confirm_same_target"`
-	Proxy             optionalField[outboundproxy.Config] `json:"proxy"`
+	SiteAccess        optionalField[GroupCreateSiteAccessInput] `json:"site_access"`
+	Name              *string                                   `json:"name"`
+	ChannelID         channel.ID                                `json:"channel_id"`
+	Params            json.RawMessage                           `json:"params"`
+	ProviderURL       optionalField[string]                     `json:"provider_url"`
+	Models            optionalGroupModels                       `json:"models"`
+	Credentials       string                                    `json:"credential"`
+	ConfirmSameTarget bool                                      `json:"confirm_same_target"`
+	Proxy             optionalField[outboundproxy.Config]       `json:"proxy"`
 }
 
 type GroupCreateResult struct {
@@ -51,6 +56,8 @@ type SameTargetConflictData struct {
 }
 
 type normalizedGroupCreate struct {
+	siteAccess        *GroupCreateSiteAccessInput
+	siteRoot          string
 	channelID         channel.ID
 	params            models.JSON
 	providerURL       *string
@@ -97,6 +104,9 @@ func (s *Service) CreateGroup(ctx context.Context, request GroupCreateRequest) (
 	if err != nil {
 		return GroupCreateResult{}, err
 	}
+	if normalized.siteAccess != nil && s.siteInfoSync != nil {
+		s.siteInfoSync.RequestGroupSync(result.GroupID)
+	}
 	if len(normalized.models) > 0 && s.catalogSync != nil {
 		s.catalogSync.RequestGroupSync()
 	}
@@ -139,6 +149,16 @@ func (s *Service) mutateCreateGroup(
 		return groupCreateMutation{}, app_errors.ParseDBError(err)
 	}
 
+	if normalized.siteAccess != nil {
+		ciphertext, err := s.encryption.Encrypt(normalized.siteAccess.AccessToken)
+		if err != nil {
+			return groupCreateMutation{}, app_errors.ErrInternalServer
+		}
+		cfg := models.GroupSiteConfig{GroupID: group.ID, ConfigVersion: 1, UserID: normalized.siteAccess.UserID, AccessToken: ciphertext, SiteRootURL: normalized.siteRoot, Status: "pending", CurrencySymbol: "$", UpdatedAtMS: s.now().UTC().UnixMilli()}
+		if err := tx.Create(&cfg).Error; err != nil {
+			return groupCreateMutation{}, app_errors.ParseDBError(err)
+		}
+	}
 	mutation := groupCreateMutation{}
 	mutation.result.GroupID = group.ID
 	mutation.result.GroupName = group.Name
@@ -243,6 +263,22 @@ func (s *Service) normalizeGroupCreate(
 			providerURL = &normalized
 		}
 	}
+	var siteAccess *GroupCreateSiteAccessInput
+	var siteRoot string
+	if request.SiteAccess.Set && !request.SiteAccess.Null {
+		input := request.SiteAccess.Value
+		input.UserID = strings.TrimSpace(input.UserID)
+		if input.UserID != "" || input.AccessToken != "" {
+			if input.UserID == "" || strings.TrimSpace(input.AccessToken) == "" || providerURL == nil {
+				return normalizedGroupCreate{}, siteInvalidGroupCreate
+			}
+			siteRoot, err = spec.ExtractSiteRootURL(*providerURL)
+			if err != nil {
+				return normalizedGroupCreate{}, siteInvalidGroupCreate
+			}
+			siteAccess = &input
+		}
+	}
 	descriptor, ok := s.channelRegistry.Get(request.ChannelID)
 	if !ok {
 		return normalizedGroupCreate{}, app_errors.ErrValidation
@@ -328,6 +364,7 @@ func (s *Service) normalizeGroupCreate(
 		defaultName = hostname
 	}
 	return normalizedGroupCreate{
+		siteAccess: siteAccess, siteRoot: siteRoot,
 		channelID:         request.ChannelID,
 		params:            models.JSON(canonicalParams),
 		providerURL:       providerURL,

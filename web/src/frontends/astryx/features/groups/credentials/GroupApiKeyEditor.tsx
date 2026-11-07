@@ -10,6 +10,7 @@ import {
   updateCredential,
 } from '@shared/control/resources/credentials'
 import { invalidateGroupSettingsDependents } from '@shared/control/resources/groups'
+import { controlQueryKeys } from '@shared/control/query-keys'
 
 import { useT } from '../../../app/i18n'
 import { useAppServices } from '../../../app/services'
@@ -151,7 +152,16 @@ export function GroupApiKeyEditor({
       }
       setSaved(true)
       try {
-        await invalidateGroupSettingsDependents(queryClient, groupId)
+        // The site snapshot (ratio/balance) is derived from the credential, so the
+        // settings read must refetch too; its pending status then drives the short
+        // poll. Only the cached query is invalidated, so an unsaved draft is kept.
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: controlQueryKeys.groups.settings(groupId),
+            exact: true,
+          }),
+          invalidateGroupSettingsDependents(queryClient, groupId),
+        ])
       } catch {
         setError(t('group.credentials.reconcileFailed'))
       }

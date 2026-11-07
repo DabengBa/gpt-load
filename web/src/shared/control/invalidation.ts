@@ -14,9 +14,18 @@ function plan(
   return { exact, prefixes }
 }
 
+/**
+ * Credentials decide the site sync snapshot (balance, effective token group, ratio),
+ * so the group settings read that renders them must be refreshed as well — otherwise
+ * the detail page keeps showing the old key's ratio until the 60 minute sync.
+ */
 const importedCredentialResourcePlan = (groupID: number) =>
   plan(
-    [controlQueryKeys.groups.summary(groupID), controlQueryKeys.health()],
+    [
+      controlQueryKeys.groups.settings(groupID),
+      controlQueryKeys.groups.summary(groupID),
+      controlQueryKeys.health(),
+    ],
     [
       controlQueryKeys.groups.credentialsAll(groupID),
       controlQueryKeys.groups.collectionAll,
@@ -30,6 +39,9 @@ const modelRouteSchedulePlan = plan(
   [controlQueryKeys.modelRouteSchedule.all, controlQueryKeys.groups.modelsAll()],
 )
 
+/** Site access changes can rewrite the announcement feed, so its lists go stale too. */
+const announcementsPrefix = ['control', 'announcements'] as const
+
 export const mutationInvalidationPlans = {
   settings: {
     update: () =>
@@ -40,6 +52,7 @@ export const mutationInvalidationPlans = {
       [controlQueryKeys.groups.options(), controlQueryKeys.health()],
       [
         controlQueryKeys.groups.collectionAll,
+        announcementsPrefix,
         controlQueryKeys.home.all,
         controlQueryKeys.models.all,
         controlQueryKeys.modelPrices(),
@@ -50,6 +63,7 @@ export const mutationInvalidationPlans = {
       [controlQueryKeys.groups.options(), controlQueryKeys.health()],
       [
         controlQueryKeys.groups.collectionAll,
+        announcementsPrefix,
         controlQueryKeys.home.all,
         controlQueryKeys.models.all,
         controlQueryKeys.modelPrices(),
@@ -58,7 +72,14 @@ export const mutationInvalidationPlans = {
     ),
     importCredentials: importedCredentialResourcePlan,
     modelsUpdate: modelRouteSchedulePlan,
-    settingsUpdate: modelRouteSchedulePlan,
+    settingsUpdate: plan(
+      [],
+      [
+        controlQueryKeys.modelRouteSchedule.all,
+        controlQueryKeys.groups.modelsAll(),
+        announcementsPrefix,
+      ],
+    ),
   },
   accessKey: {
     create: plan(

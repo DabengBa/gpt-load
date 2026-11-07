@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import type { ChannelParamsDto } from '@shared/control/types'
 import type { ChannelDto, ChannelFieldDto } from '@shared/control/resources/channels'
 
+
 import { useT } from '../../../app/i18n'
 import { ChannelPresetPicker } from '@app/components/ChannelPresetPicker'
 
@@ -20,6 +21,7 @@ export function GroupSettingsBaseForm({
   params,
   name,
   providerUrl,
+  providerUrlInvalid,
 
   enabled,
   enabledPending = false,
@@ -49,6 +51,7 @@ export function GroupSettingsBaseForm({
   params: ChannelParamsDto
   name: string
   providerUrl: string | null
+  providerUrlInvalid: boolean
 
   enabled: boolean
   enabledPending?: boolean
@@ -250,6 +253,11 @@ export function GroupSettingsBaseForm({
             type="text"
             value={providerUrl ?? ''}
             isDisabled={pending}
+            status={
+              providerUrlInvalid
+                ? { type: 'error', message: t('group.settings.base.providerUrlError') }
+                : undefined
+            }
             description={t('group.settings.base.providerUrlHelp')}
             onChange={onProviderUrlChange}
             controlXstyle={styles.mono}

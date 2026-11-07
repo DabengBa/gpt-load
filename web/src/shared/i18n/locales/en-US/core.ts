@@ -1,4 +1,5 @@
 export default {
+  nav: { announcements: 'Announcements' },
   common: {
     appName: 'GPT-Load',
     retry: 'Retry',

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -63,6 +64,12 @@ func NormalizeProviderURL(value string) (string, error) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", fmt.Errorf("must be an absolute HTTP(S) URL without credentials or fragment")
 	}
+	if port := parsed.Port(); port != "" {
+		portNumber, portErr := strconv.Atoi(port)
+		if portErr != nil || portNumber > 65535 {
+			return "", fmt.Errorf("must use a port no greater than 65535")
+		}
+	}
 	parsed.Host = strings.ToLower(parsed.Host)
 	if (parsed.Scheme == "https" && parsed.Port() == "443") || (parsed.Scheme == "http" && parsed.Port() == "80") {
 		hostname := parsed.Hostname()
@@ -75,6 +82,39 @@ func NormalizeProviderURL(value string) (string, error) {
 	parsed.RawPath = strings.TrimRight(parsed.RawPath, "/")
 	parsed.ForceQuery = false
 	return parsed.String(), nil
+}
+
+// ExtractSiteRootURL returns the scheme and host of a provider website.
+func ExtractSiteRootURL(providerURL string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(providerURL))
+	if err != nil || parsed == nil {
+		return "", fmt.Errorf("must be an absolute HTTP(S) URL without credentials")
+	}
+	parsed.Fragment = ""
+	parsed.RawFragment = ""
+	value := parsed.String()
+	port := parsed.Port()
+	legacyPort := false
+	if port != "" {
+		portNumber, portErr := strconv.Atoi(port)
+		legacyPort = portErr != nil || portNumber > 65535
+		if legacyPort {
+			parsed.Host = strings.TrimSuffix(parsed.Host, ":"+port) + ":1"
+			value = parsed.String()
+		}
+	}
+	normalized, err := NormalizeProviderURL(value)
+	if err != nil {
+		return "", err
+	}
+	parsed, err = url.Parse(normalized)
+	if err != nil {
+		return "", err
+	}
+	if legacyPort {
+		return parsed.Scheme + "://" + strings.TrimSuffix(parsed.Host, ":1") + ":" + port, nil
+	}
+	return parsed.Scheme + "://" + parsed.Host, nil
 }
 
 // NormalizeCloudIdentifier rejects whitespace and control characters in a

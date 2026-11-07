@@ -55,6 +55,18 @@ export function projectEpochMilliseconds(value: unknown): number {
   return projectSafeInteger(value, { minimum: 0 })
 }
 
+/**
+ * Millisecond timestamps that predate the Unix epoch stay valid: the backend stores
+ * RFC3339 event times, so a site announcement from e.g. 1960 is a legitimate negative
+ * epoch. Only the JavaScript `Date` range is required.
+ */
+export function projectUnixMilliseconds(value: unknown): number {
+  return projectSafeInteger(value, {
+    minimum: -8_640_000_000_000_000,
+    maximum: 8_640_000_000_000_000,
+  })
+}
+
 export function projectNullableEpochMilliseconds(value: unknown): number | null {
   return value === null ? null : projectEpochMilliseconds(value)
 }

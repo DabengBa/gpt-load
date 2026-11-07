@@ -10,6 +10,7 @@ const baseSettings = {
   channel_id: 'openai',
   params: {},
   provider_url: null,
+  site_access: { user_id: '', token_configured: false, site_root_url: '', snapshot: null },
   enabled: true,
   overrides: {
     parameter_overrides: [{ match: { model: 'public-*' }, set: { temperature: 0.4 } }],

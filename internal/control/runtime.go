@@ -55,6 +55,7 @@ type Runtime struct {
 	requestLogCleaner RequestLogCleaner
 	operationRecovery operationRecoveryRuntime
 	catalogSync       catalogSyncRuntime
+	siteInfoSync      catalogSyncRuntime
 	registry          *state.CredentialRegistry
 	affinityCleaner   affinity.DurableBindingCleaner
 	affinityPolicy    func() affinity.DurablePolicy
@@ -88,6 +89,8 @@ func NewRuntime(
 	return runtime
 }
 
+func (runtime *Runtime) SetSiteInfoSync(sync *SiteInfoSyncCoordinator) { runtime.siteInfoSync = sync }
+
 // SetHealthStats connects release maintenance to the shared health window.
 func (runtime *Runtime) SetHealthStats(stats interface{ ClearProblemState(uint) }) {
 	if runtime != nil {
@@ -118,6 +121,10 @@ func (runtime *Runtime) Run(ctx context.Context) {
 		wait.Go(func() {
 			runtime.catalogSync.Run(ctx)
 		})
+	}
+
+	if runtime.siteInfoSync != nil {
+		wait.Go(func() { runtime.siteInfoSync.Run(ctx) })
 	}
 
 	wait.Wait()

@@ -680,6 +680,8 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0026_debug_capture_chunk_compression",
 		"0027_success_usage_efficiency",
 		"0028_usage_client_model",
+		"0029_group_site_info",
+		"0030_announcement_source_status",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)
@@ -708,7 +710,7 @@ func TestAutoMigrateRemovesRetiredValidationInterval(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("create legacy validation_interval setting: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{"0017_remove_validation_interval", "0018_usage_journal_bucket_index", "0019_request_log_operation_index", "0020_agent_credentials", "0021_agent_change_proposals", "0022_usage_first_response", "0023_billing_failure_category", "0024_provider_feedback", "0025_affinity_diagnostics", "0026_debug_capture_chunk_compression", "0027_success_usage_efficiency", "0028_usage_client_model"}).Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{"0017_remove_validation_interval", "0018_usage_journal_bucket_index", "0019_request_log_operation_index", "0020_agent_credentials", "0021_agent_change_proposals", "0022_usage_first_response", "0023_billing_failure_category", "0024_provider_feedback", "0025_affinity_diagnostics", "0026_debug_capture_chunk_compression", "0027_success_usage_efficiency", "0028_usage_client_model", "0029_group_site_info", "0030_announcement_source_status"}).Error; err != nil {
 		t.Fatalf("simulate pre-0017 migration ledger: %v", err)
 	}
 	if err := storage.AutoMigrate(db); err != nil {

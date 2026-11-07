@@ -45,7 +45,9 @@ const styles = stylex.create({
     alignContent: 'start',
     gap: 'var(--space-2)',
     paddingTop: 'var(--stage-padding-top)',
-    paddingBottom: 'var(--stage-padding-bottom)',
+    paddingBottom: {
+      default: 'var(--stage-padding-bottom)',
+    },
     paddingInline: {
       default: 'var(--stage-padding-inline)',
       '@media (max-width: 680px)': 'var(--stage-padding-inline-compact)',

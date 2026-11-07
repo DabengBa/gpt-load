@@ -12,7 +12,7 @@ import {
   type TableColumn,
 } from '@astryxdesign/core'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowRight, Copy, ExternalLink, KeyRound } from 'lucide-react'
+import { ArrowRight, Copy, ExternalLink, KeyRound, MoveHorizontal } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
 import { useIntl } from 'react-intl'
 
@@ -25,6 +25,8 @@ import type {
   GroupCollectionPaginationDto,
 } from '@shared/control/types'
 import type { ChannelDto } from '@shared/control/resources/channels'
+
+import { formatGroupRatio } from '@shared/domain/groups/settings/group-settings-patch'
 
 import { useT } from '../../app/i18n'
 import { RouteLink } from '../../app/route-link'
@@ -46,6 +48,14 @@ const styles = stylex.create({
     marginTop: 'var(--space-1)',
     minWidth: 0,
   },
+  scrollHint: {
+    display: { default: 'none', '@media (max-width: 680px)': 'flex' },
+    alignItems: { default: null, '@media (max-width: 680px)': 'center' },
+    gap: { default: null, '@media (max-width: 680px)': 6 },
+    marginBottom: { default: null, '@media (max-width: 680px)': 'var(--space-1)' },
+    color: { default: null, '@media (max-width: 680px)': 'var(--color-text-muted)' },
+    fontSize: { default: null, '@media (max-width: 680px)': 'var(--text-sm)' },
+  },
   nameCell: {
     minWidth: 0,
   },
@@ -55,9 +65,10 @@ const styles = stylex.create({
     textDecoration: { default: 'none', ':hover': 'underline' },
     display: 'inline-block',
     maxWidth: '100%',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    overflow: { default: 'hidden', '@media (max-width: 680px)': 'visible' },
+    textOverflow: { default: 'ellipsis', '@media (max-width: 680px)': 'clip' },
+    whiteSpace: { default: 'nowrap', '@media (max-width: 680px)': 'normal' },
+    overflowWrap: { default: 'normal', '@media (max-width: 680px)': 'anywhere' },
     verticalAlign: 'bottom',
     textUnderlineOffset: 3,
   },
@@ -92,6 +103,21 @@ const styles = stylex.create({
     color: 'var(--color-text-muted)',
     fontSize: 11,
     textDecoration: 'none',
+  },
+  siteMetric: {
+    display: 'inline-flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 'var(--space-0-5)',
+    minWidth: 0,
+    maxWidth: '100%',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  siteValue: { fontWeight: 600, overflowWrap: 'anywhere' },
+  siteMeta: {
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--text-sm)',
+    overflowWrap: 'anywhere',
   },
   modelCount: {
     fontVariantNumeric: 'tabular-nums',
@@ -201,7 +227,7 @@ export function GroupCollectionTable({
     pageSize: pagination.page_size,
   })
   const stickyPlugin = useTableStickyColumns<GroupRow>({
-    startKeys: narrowViewport ? [] : ['group'],
+    startKeys: ['group'],
     endKeys: narrowViewport ? [] : ['actions'],
   })
 
@@ -210,7 +236,7 @@ export function GroupCollectionTable({
       {
         key: 'group',
         header: t('groups.collection.columns.group'),
-        width: proportional(1),
+        width: narrowViewport ? pixel(120) : proportional(1),
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.nameCell)}>
             <RouteLink
@@ -271,6 +297,64 @@ export function GroupCollectionTable({
                   <ExternalLink size={11} aria-hidden />
                   <span>{t('group.settings.base.providerUrl')}</span>
                 </a>
+              )}
+            </span>
+          )
+        },
+      },
+      {
+        key: 'site-balance',
+        header: t('groups.collection.siteBalance'),
+        width: pixel(170),
+        renderCell: (group): ReactNode => {
+          const site = group.site_info
+          if (!site) return '—'
+          if (site.remaining_amount !== null)
+            return (
+              <span {...stylex.props(styles.siteMetric)}>
+                <span {...stylex.props(styles.siteValue)}>
+                  {site.currency_symbol}
+                  {site.remaining_amount.toFixed(2)}
+                </span>
+                {site.status === 'error' ? (
+                  <Badge variant="warning" label={t('groups.collection.siteStale')} />
+                ) : site.fetched_at_ms !== null ? (
+                  <time
+                    {...stylex.props(styles.siteMeta)}
+                    dateTime={new Date(site.fetched_at_ms).toISOString()}
+                  >
+                    {intl.formatDate(site.fetched_at_ms, {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </time>
+                ) : null}
+              </span>
+            )
+          if (site.status === 'pending') return t('groups.collection.sitePending')
+          if (site.status === 'error') return t('groups.collection.siteError')
+          return '—'
+        },
+      },
+      {
+        key: 'site-ratio',
+        header: t('groups.collection.siteRatio'),
+        width: pixel(160),
+        renderCell: (group): ReactNode => {
+          const site = group.site_info
+          if (!site) return '—'
+          if (site.group_ratio === null && !site.effective_group)
+            return site.status === 'error' ? t('groups.collection.siteError') : '—'
+          return (
+            <span {...stylex.props(styles.siteMetric)}>
+              <span {...stylex.props(styles.siteValue)}>
+                {site.group_ratio !== null ? `${formatGroupRatio(site.group_ratio)}x` : '—'}
+              </span>
+              {site.effective_group && (
+                <span {...stylex.props(styles.siteMeta)}>{site.effective_group}</span>
+              )}
+              {site.status === 'error' && (
+                <Badge variant="warning" label={t('groups.collection.siteError')} />
               )}
             </span>
           )
@@ -377,6 +461,10 @@ export function GroupCollectionTable({
 
   return (
     <div {...stylex.props(styles.tableWrap)}>
+      <div {...stylex.props(styles.scrollHint)}>
+        <MoveHorizontal size={14} aria-hidden />
+        <span>{t('groups.collection.scrollHint')}</span>
+      </div>
       <Table<GroupRow>
         data={items as GroupRow[]}
         columns={columns}

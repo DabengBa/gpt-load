@@ -22,6 +22,7 @@ import (
 )
 
 type GroupSettingsResponse struct {
+	SiteAccess  GroupSiteAccessResponse      `json:"site_access"`
 	ChannelID   channel.ID                   `json:"channel_id"`
 	Params      json.RawMessage              `json:"params"`
 	Name        string                       `json:"name"`
@@ -33,27 +34,29 @@ type GroupSettingsResponse struct {
 }
 
 type GroupSettingsUpdateRequest struct {
-	Name        optionalField[string]               `json:"name"`
-	ChannelID   optionalField[channel.ID]           `json:"channel_id"`
-	Params      optionalField[json.RawMessage]      `json:"params"`
-	ProviderURL optionalField[string]               `json:"provider_url"`
-	Enabled     optionalField[bool]                 `json:"enabled"`
-	Overrides   optionalField[config.Settings]      `json:"overrides"`
-	Proxy       optionalField[outboundproxy.Config] `json:"proxy"`
+	SiteAccess  optionalField[GroupSiteAccessUpdateInput] `json:"site_access"`
+	Name        optionalField[string]                     `json:"name"`
+	ChannelID   optionalField[channel.ID]                 `json:"channel_id"`
+	Params      optionalField[json.RawMessage]            `json:"params"`
+	ProviderURL optionalField[string]                     `json:"provider_url"`
+	Enabled     optionalField[bool]                       `json:"enabled"`
+	Overrides   optionalField[config.Settings]            `json:"overrides"`
+	Proxy       optionalField[outboundproxy.Config]       `json:"proxy"`
 }
 
 type normalizedGroupSettingsUpdate struct {
-	name             *string
-	channelID        *channel.ID
-	params           json.RawMessage
-	paramsSet        bool
-	providerURL      *string
-	providerURLSet   bool
-	enabled          *bool
-	encodedOverrides models.JSON
-	overridesSet     bool
-	proxyConfig      *string
-	proxySet         bool
+	name               *string
+	channelID          *channel.ID
+	params             json.RawMessage
+	paramsSet          bool
+	providerURL        *string
+	providerURLSet     bool
+	providerURLInvalid bool
+	enabled            *bool
+	encodedOverrides   models.JSON
+	overridesSet       bool
+	proxyConfig        *string
+	proxySet           bool
 }
 
 func (s *Service) GetGroupSettings(ctx context.Context, groupID uint) (GroupSettingsResponse, error) {
@@ -79,6 +82,9 @@ func (s *Service) GetGroupSettings(ctx context.Context, groupID uint) (GroupSett
 		return GroupSettingsResponse{}, err
 	}
 	response.Proxy, err = s.groupProxyView(ctx, s.db, group)
+	if err == nil {
+		response.SiteAccess, err = s.readSiteAccess(s.db.WithContext(ctx), groupID)
+	}
 	return response, err
 }
 
@@ -180,7 +186,7 @@ func normalizeGroupSettingsUpdate(
 	}
 	if !request.Name.Set && !request.ChannelID.Set && !request.Params.Set &&
 		!request.ProviderURL.Set && !request.Enabled.Set && !request.Overrides.Set &&
-		!request.Proxy.Set {
+		!request.Proxy.Set && !request.SiteAccess.Set {
 		return normalizedGroupSettingsUpdate{}, app_errors.ErrBadRequest
 	}
 
@@ -213,9 +219,10 @@ func normalizeGroupSettingsUpdate(
 			} else {
 				normalized, err := spec.NormalizeProviderURL(value)
 				if err != nil {
-					return normalizedGroupSettingsUpdate{}, app_errors.ErrValidation
+					result.providerURLInvalid = true
+				} else {
+					result.providerURL = &normalized
 				}
-				result.providerURL = &normalized
 			}
 		}
 	}
@@ -253,6 +260,7 @@ func (s *Service) UpdateGroupSettings(
 		return GroupSettingsResponse{}, err
 	}
 
+	var siteSync bool
 	var committed models.Group
 	var targetEntries []state.CredentialEntry
 	targetChanged := false
@@ -307,8 +315,14 @@ func (s *Service) UpdateGroupSettings(
 			updates["params"] = append(models.JSON(nil), group.Params...)
 		}
 		if normalized.providerURLSet {
-			group.ProviderURL = normalized.providerURL
-			updates["provider_url"] = normalized.providerURL
+			if normalized.providerURLInvalid {
+				if group.ProviderURL == nil || request.ProviderURL.Value != *group.ProviderURL {
+					return app_errors.ErrValidation
+				}
+			} else {
+				group.ProviderURL = normalized.providerURL
+				updates["provider_url"] = normalized.providerURL
+			}
 		}
 		if normalized.enabled != nil {
 			group.Enabled = *normalized.enabled
@@ -346,6 +360,10 @@ func (s *Service) UpdateGroupSettings(
 				return err
 			}
 		}
+		siteSync, err = s.updateSiteAccess(tx, group, request.SiteAccess)
+		if err != nil {
+			return err
+		}
 		committed = group
 		return nil
 	}, func() error {
@@ -368,6 +386,12 @@ func (s *Service) UpdateGroupSettings(
 		return GroupSettingsResponse{}, err
 	}
 	response.Proxy, err = s.groupProxyView(ctx, s.db, committed)
+	if err == nil {
+		response.SiteAccess, err = s.readSiteAccess(s.db.WithContext(ctx), groupID)
+	}
+	if siteSync && s.siteInfoSync != nil {
+		s.siteInfoSync.RequestGroupSync(groupID)
+	}
 	return response, err
 }
 

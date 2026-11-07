@@ -42,6 +42,53 @@ documented scope flags and record the base ref in the review result.
 
 ---
 
+## [LRN-20261107-001] best_practice
+
+**Logged**: 2026-11-07T11:38:00Z
+**Priority**: medium
+**Status**: pending
+**Area**: frontend
+
+### Summary
+Validate route-scoped localization and optional response fields, then verify mobile layout in a real browser.
+
+### Details
+The groups route crashed when its collection component requested a message from
+the monitor catalog, because route chunks load only their registered catalogs.
+An announcement source projection also rejected an older response and a test
+fixture when the newly added diagnostic field was absent. Separately, compact
+CSS did not prove that a mobile save bar stopped covering the form: actual
+375px browser geometry showed the sticky bar still overlapped content until it
+was moved into document flow. Hiding a wrapping helper note reduced its height
+from about 152px to 58px.
+
+### Suggested Action
+When adding localized UI, use a message in the owning feature's route catalog
+and exercise the actual route. When extending response projections, default
+optional fields at the compatibility boundary and test old payloads. For
+responsive layout changes, inspect a real rendered mobile viewport and element
+geometry instead of relying only on styles or mocked route tests.
+
+### Metadata
+- Source: task_observation
+- Related Files: `web/src/frontends/astryx/features/groups/GroupCollectionTable.tsx`, `web/src/shared/control/resources/announcements.ts`, `web/src/frontends/astryx/components/StickySaveBar.tsx`
+- Tags: i18n, compatibility, responsive-layout, browser-verification
+- Pattern-Key: frontend.route-catalog-compatibility-and-rendered-layout
+- Recurrence-Count: 1
+- First-Seen: 2026-11-07
+- Last-Seen: 2026-11-07
+- Promotion: not eligible; one task only and below the recurrence threshold
+
+### Context Maintenance
+- Decay-Type: mixed
+- Decay-Rate: medium (route catalog ownership and response contracts can change)
+- Authority: current route catalog registration, API projection contracts, and browser-rendered layout; Owner: feature maintainers
+- Revalidation: on each related change, inspect route-specific catalog wiring and response optionality; repeat mobile browser geometry checks when layout or sticky positioning changes
+- Validation: verified; Last-Validated: 2026-11-07; Evidence: Astryx route tests, older announcement source fixture compatibility, and Chromium 156 at 375×812
+- Disposition: retain; Application: applied
+
+---
+
 ## [LRN-20261105-002] best_practice
 
 **Logged**: 2026-11-05T05:32:00Z

@@ -41,17 +41,29 @@ type groupCollectionCredentialCounts struct {
 	Disabled    int64
 }
 
+type GroupCollectionSiteInfo struct {
+	Status          string   `json:"status"`
+	SiteRootURL     string   `json:"site_root_url"`
+	SiteName        string   `json:"site_name"`
+	RemainingAmount *float64 `json:"remaining_amount"`
+	CurrencySymbol  string   `json:"currency_symbol"`
+	EffectiveGroup  string   `json:"effective_group"`
+	GroupRatio      *float64 `json:"group_ratio"`
+	FetchedAtMS     *int64   `json:"fetched_at_ms"`
+	LastError       string   `json:"last_error"`
+}
 type GroupCollectionItem struct {
-	ID                   uint                  `json:"id"`
-	Name                 string                `json:"name"`
-	ChannelID            channel.ID            `json:"channel_id"`
-	Params               json.RawMessage       `json:"params"`
-	ProviderURL          *string               `json:"provider_url"`
-	Status               GroupCollectionStatus `json:"status"`
-	ModelCount           int64                 `json:"model_count"`
-	ClientModelCount     int64                 `json:"client_model_count"`
-	CredentialConfigured bool                  `json:"credential_configured"`
-	CredentialStatus     *string               `json:"credential_status"`
+	SiteInfo             *GroupCollectionSiteInfo `json:"site_info"`
+	ID                   uint                     `json:"id"`
+	Name                 string                   `json:"name"`
+	ChannelID            channel.ID               `json:"channel_id"`
+	Params               json.RawMessage          `json:"params"`
+	ProviderURL          *string                  `json:"provider_url"`
+	Status               GroupCollectionStatus    `json:"status"`
+	ModelCount           int64                    `json:"model_count"`
+	ClientModelCount     int64                    `json:"client_model_count"`
+	CredentialConfigured bool                     `json:"credential_configured"`
+	CredentialStatus     *string                  `json:"credential_status"`
 }
 
 type groupCollectionRecord struct {
@@ -64,6 +76,7 @@ type groupCollectionRecord struct {
 }
 
 type groupCollectionRows struct {
+	siteConfigs []models.GroupSiteConfig
 	groups      []models.Group
 	credentials []models.Credential
 	activity    []groupCollectionActivityRow
@@ -164,6 +177,9 @@ func (s *Service) readGroupCollectionRows(
 		if err := tx.Model(&models.Credential{}).
 			Select("id", "group_id", "fingerprint", "identity_fingerprint", "secret_version").
 			Order("group_id ASC, id ASC").Find(&credentials).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("access_token <> ''").Find(&rows.siteConfigs).Error; err != nil {
 			return err
 		}
 		rows.credentials = cloneCredentialRows(credentials)
@@ -300,6 +316,10 @@ func mapGroupCollectionRecords(
 			return nil, err
 		}
 	}
+	siteByGroup := make(map[uint]models.GroupSiteConfig, len(rows.siteConfigs))
+	for _, cfg := range rows.siteConfigs {
+		siteByGroup[cfg.GroupID] = cfg
+	}
 	records := make([]groupCollectionRecord, 0, len(rows.groups))
 	for _, group := range rows.groups {
 		channelID := channel.ID(group.ChannelID)
@@ -353,6 +373,9 @@ func mapGroupCollectionRecords(
 				ClientModelCount: int64(len(clientModels)),
 			},
 			CreatedAtMS: group.CreatedAtMS,
+		}
+		if cfg, ok := siteByGroup[group.ID]; ok && cfg.AccessToken != "" {
+			record.SiteInfo = &GroupCollectionSiteInfo{Status: cfg.Status, SiteRootURL: cfg.SiteRootURL, SiteName: cfg.SiteName, RemainingAmount: finiteSiteInfoFloat(cfg.RemainingAmount), CurrencySymbol: cfg.CurrencySymbol, EffectiveGroup: cfg.EffectiveGroup, GroupRatio: finiteSiteInfoFloat(cfg.GroupRatio), FetchedAtMS: cfg.FetchedAtMS, LastError: cfg.LastError}
 		}
 		if activity, exists := activityByGroup[group.ID]; exists {
 			lastActiveAtMS := activity.LastActiveAtMS

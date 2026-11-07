@@ -14,6 +14,7 @@ export interface StickySaveBarProps {
   errorPlacement?: 'inline' | 'floating'
   appearance?: 'default' | 'ledger'
   alwaysVisible?: boolean
+  compactOnMobile?: boolean
   onErrorAction?(): void
   statusContent?: ReactNode
   actions?: ReactNode
@@ -65,6 +66,14 @@ const styles = stylex.create({
     paddingBottom: { default: '9px', [ledgerNarrow]: 'calc(6px + env(safe-area-inset-bottom))' },
     paddingInline: '14px 11px',
     backdropFilter: 'blur(10px)',
+  },
+  barLedgerCompact: {
+    position: { default: null, '@media (max-width: 680px)': 'static' },
+    boxShadow: { default: null, '@media (max-width: 680px)': 'var(--shadow-sheet)' },
+    flexDirection: { default: null, '@media (max-width: 680px)': 'row' },
+    alignItems: { default: null, '@media (max-width: 680px)': 'center' },
+    gap: { default: null, '@media (max-width: 680px)': 'var(--space-2)' },
+    paddingInline: { default: null, '@media (max-width: 680px)': '8px' },
   },
   status: {
     minWidth: 0,
@@ -138,6 +147,11 @@ const styles = stylex.create({
     display: { default: 'flex', [ledgerNarrow]: 'grid' },
     gridTemplateColumns: { [ledgerNarrow]: '1fr 1fr' },
   },
+  actionsLedgerCompact: {
+    display: { default: null, '@media (max-width: 680px)': 'grid' },
+    gridTemplateColumns: { default: null, '@media (max-width: 680px)': 'repeat(3, max-content)' },
+    gap: { default: null, '@media (max-width: 680px)': '4px' },
+  },
 })
 
 const ledgerDotClass: Record<SaveBarStatus | 'saving' | 'dirty', stylex.StyleXStyles> = {
@@ -158,6 +172,7 @@ export function StickySaveBar({
   errorPlacement = 'inline',
   appearance = 'default',
   alwaysVisible = false,
+  compactOnMobile = false,
   onErrorAction,
   statusContent,
   actions,
@@ -182,7 +197,12 @@ export function StickySaveBar({
 
   return (
     <footer
-      {...stylex.props(styles.bar, ledger && styles.barLedger, xstyle)}
+      {...stylex.props(
+        styles.bar,
+        ledger && styles.barLedger,
+        ledger && compactOnMobile && styles.barLedgerCompact,
+        xstyle,
+      )}
       data-status={visualState}
       aria-busy={pending || undefined}
     >
@@ -212,7 +232,15 @@ export function StickySaveBar({
           )}
         </p>
       )}
-      <div {...stylex.props(styles.actions, ledger && styles.actionsLedger)}>{actions}</div>
+      <div
+        {...stylex.props(
+          styles.actions,
+          ledger && styles.actionsLedger,
+          ledger && compactOnMobile && styles.actionsLedgerCompact,
+        )}
+      >
+        {actions}
+      </div>
     </footer>
   )
 }

@@ -67,6 +67,9 @@ func serviceErrorMessageID(operation string, err error, apiErr *app_errors.APIEr
 		return "bad_request"
 	case app_errors.ErrRequestTooLarge.Code:
 		return "request_too_large"
+	case "site_root_url_change_confirmation_required", "site_access_provider_url_required", "site_access_incomplete",
+		"SITE_ROOT_CHANGE_CONFIRMATION_REQUIRED", "INVALID_GROUP_SETTINGS", "INVALID_GROUP_CREATE":
+		return "bad_request"
 	case app_errors.ErrBadRequest.Code, app_errors.ErrInvalidJSON.Code, app_errors.ErrValidation.Code:
 		return "bad_request"
 	case app_errors.ErrResourceNotFound.Code:
