@@ -21,7 +21,7 @@ For module ownership and intentional cross-feature imports, see
 
 ## Page loading and navigation intent
 
-The router loads the eight business views (home, group collection, group detail, import, logs, settings, monitor, and schedule) through dynamic imports. Login remains an eager view. The Go server continues to serve the embedded frontend; direct page URLs use the same router and authentication checks.
+The router loads the nine business views (home, group collection, group detail, import, logs, settings, monitor, schedule, and announcements) through dynamic imports. Login remains an eager view. The Go server continues to serve the embedded frontend; direct page URLs use the same router and authentication checks.
 
 The router's intent preload policy warms target page code when a navigation link is hovered or focused, without changing the current location. Authentication and administrator route guards still apply. A route loading failure displays the localized failure message and retry button; retry resets the error boundary and reloads the browser to request the page again.
 
@@ -29,7 +29,9 @@ In the group collection, pointer entry or keyboard focus on a group detail link 
 
 ## Query freshness and editor snapshots
 
-Group collection, options, and summaries use a 30-second stale window and may refresh on focus or reconnect. Options always refetch on mount; collection filter changes retain previous data. Group settings and models retain the manual snapshot policy (infinite stale time, no focus or reconnect refresh). Successful saves write their own exact snapshots and invalidate dependent reads. Model saves stale pricing/catalog without immediate refetch; settings saves refresh those active consumers. Group create and delete additionally invalidate health and the broad home/model reads.
+Group collection, options, and summaries use a 30-second stale window and may refresh on focus or reconnect. Options always refetch on mount; collection filter changes retain previous data. Group site-information reads refresh while visible, normally every 60 minutes, and poll more frequently while a refresh is pending. Group settings and models retain the manual snapshot policy (infinite stale time, no focus or reconnect refresh); site-information polling does not replace the user's settings draft. Successful saves write their own exact snapshots and invalidate dependent reads. Model saves stale pricing/catalog without immediate refetch; settings saves refresh those active consumers. Group create and delete additionally invalidate health and the broad home/model reads.
+
+The announcements page refreshes its aggregate read while open. Site source retries invalidate the announcement and group site-information reads; they enqueue a backend refresh rather than fetching provider data in the user's request.
 
 Mutation invalidation uses exact keys for singleton reads and prefixes for filtered collections or per-group families. Settings and model mutation helpers cover home base because home inventory derives from group state. Logout cancels protected queries, removes protected query data, removes the auth session query, and clears mutation cache entries. The API client's default unauthorized handler routes a 401 through session clear; callers may explicitly disable that handler.
 

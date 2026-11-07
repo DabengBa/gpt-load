@@ -29,6 +29,7 @@ import type { ModelCandidate } from '@shared/control/resources/providers'
 import { proxyMutation } from '@shared/control/resources/proxy'
 import type { MessageId } from '@shared/i18n/message-ids'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
+import { extractSiteRootUrl, isValidProviderUrlForWrite } from '@shared/domain/groups/settings/group-settings-patch'
 
 import { constrainCollectionSearch } from '@shared/routing/route-query'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
@@ -86,6 +87,7 @@ function freshDraft(): ImportDraft {
     proxy: { mode: 'inherit', url: '' },
     name: '',
     provider_url: '',
+    site_user_id: '',
 
     credentials: '',
     models: [],
@@ -212,6 +214,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   // Classic `defaultDraft` baseline: freshDraft() JSON mutated by
   // default-channel adoption — recovered/locked drafts never match it and
   // stay dirty.
+  const [siteAccessToken, setSiteAccessToken] = useState('')
   const [baselineJson, setBaselineJson] = useState(() => JSON.stringify(freshDraft()))
   const [baseUrlOverrideEnabled, setBaseUrlOverrideEnabled] = useState(
     () => isFreshNewGroup || Boolean(draft.params.base_url?.trim()),
@@ -378,9 +381,15 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       : errorKey
         ? t(errorKey as MessageId)
         : '')
+  const siteAccessIncomplete =
+    Boolean(draft.site_user_id.trim() || siteAccessToken.trim()) &&
+    !(draft.site_user_id.trim() && siteAccessToken.trim() && draft.provider_url.trim())
+  const providerUrlInvalid = !!draft.provider_url.trim() && !isValidProviderUrlForWrite(draft.provider_url)
   const submitBlockedReason = (() => {
     if (payloadLocked || mutationPending) return ''
 
+    if (providerUrlInvalid) return t('group.settings.base.providerUrlError')
+    if (siteAccessIncomplete) return t('siteAccessIncomplete')
     if (paramsError) {
       if (selectedChannel === null) return t('import.presets.channelRequired')
       return visibleParamError || t('import.steps.channel.incomplete')
@@ -400,10 +409,12 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     !mutationPending &&
     !paramsError &&
     !connectionMappingBlocked &&
+    !providerUrlInvalid &&
+    !siteAccessIncomplete &&
     credentialCount > 0 &&
     modelValidity.invalidIndexes.size === 0
   const currentModelIDs = draft.models.map(({ id }) => id.trim()).filter(Boolean)
-  const dirty = !completed && JSON.stringify(draft) !== baselineJson
+  const dirty = !completed && (JSON.stringify(draft) !== baselineJson || siteAccessToken !== '')
   const summary = (() => {
     const models = draft.models.length
     return t(models ? 'import.summary' : 'import.summaryOptional', {
@@ -808,6 +819,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       ...(draftProxyOverride === undefined ? {} : { proxy: draftProxyOverride }),
       ...(name ? { name } : {}),
       provider_url: draft.provider_url.trim() || null,
+      ...(draft.site_user_id.trim() && siteAccessToken.trim()
+        ? { site_access: { user_id: draft.site_user_id.trim(), access_token: siteAccessToken } }
+        : {}),
 
       models: toGroupModels(draft.models),
       credential: draft.credentials,
@@ -817,6 +831,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
   async function finishSuccess(groupID: number): Promise<void> {
     setCompleted(true)
+    setSiteAccessToken('')
     setDraft((current) => ({ ...current, credentials: '' }))
     services.importRecovery.clear()
     createOperation.reset()
@@ -1187,6 +1202,12 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               channel={connectionChannel}
               name={draft.name}
               providerUrl={draft.provider_url}
+              siteUserId={draft.site_user_id}
+              siteAccessToken={siteAccessToken}
+              onSiteUserIdChange={(value) =>
+                setDraft((current) => ({ ...current, site_user_id: value }))
+              }
+              onSiteAccessTokenChange={setSiteAccessToken}
 
               params={draft.params}
               proxy={draft.proxy}

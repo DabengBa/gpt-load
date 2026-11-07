@@ -10,12 +10,20 @@ const draft = () => ({
   name: 'x',
 
   provider_url: '',
+  site_user_id: '42',
   credentials: '',
 
   models: [],
 })
 
-function roundTrip(value: unknown) {
+/** v10 record written before the site access fields existed. */
+const legacyDraft = () => {
+  const value: Record<string, unknown> = { ...draft() }
+  delete value.site_user_id
+  return value
+}
+
+function attempt(value: unknown) {
   const storage = new Map<string, string>()
   const controller = createImportRecoveryService({
     storage: {
@@ -38,8 +46,21 @@ function roundTrip(value: unknown) {
   })
 
   controller.register(() => value as never)
-  assert.equal(controller.captureForUnauthorized(), 'stored')
-  return controller.consume()
+  const result = controller.captureForUnauthorized()
+  return { result, consumed: controller.consume(), stored: storage.size > 0 }
+}
+
+function roundTrip(value: unknown) {
+  const { result, consumed } = attempt(value)
+  assert.equal(result, 'stored')
+  return consumed
+}
+
+function rejects(value: unknown) {
+  const { result, consumed, stored } = attempt(value)
+  assert.equal(result, 'no-active-draft')
+  assert.equal(consumed, null)
+  assert.equal(stored, false)
 }
 
 test('recovery preserves channel drafts without staging fields', () => {
@@ -53,12 +74,25 @@ test('recovery preserves channel drafts without staging fields', () => {
   assert.deepEqual(roundTrip(channelNotSelected), channelNotSelected)
 })
 
+test('recovery keeps drafts written before the site user id field existed', () => {
+  for (const channel_id of ['openai', 'anthropic', 'azure', 'vertex', 'bedrock', 'cliproxyapi']) {
+    const value = { ...legacyDraft(), channel_id, credentials: '{"api_key":"test-only"}' }
+    assert.deepEqual(roundTrip(value), { ...value, site_user_id: '' })
+  }
+  const legacyNotSelected = { ...legacyDraft(), channel_id: '', credentials: 'key-before-login' }
+  assert.deepEqual(roundTrip(legacyNotSelected), { ...legacyNotSelected, site_user_id: '' })
+})
+
+test('recovery rejects drafts that carry site access secrets', () => {
+  rejects({ ...draft(), site_access_token: 'not-persisted' })
+  rejects({ ...draft(), access_token: 'not-persisted' })
+  rejects({ ...draft(), encrypted_access_token: 'not-persisted' })
+  rejects({ ...legacyDraft(), site_access_token: 'not-persisted' })
+})
+
 test('recovery rejects retired connection kinds and staging fields', () => {
-  assert.equal(roundTrip({ ...draft(), connection_type: 'api_key' }), null)
-  assert.equal(roundTrip({ ...draft(), staged_credential: null }), null)
-  assert.equal(roundTrip({ ...draft(), staged_credentials: [] }), null)
-  assert.equal(
-    roundTrip({ mode: 'existing', group_id: 9, credentials: '', staged_credential: null }),
-    null,
-  )
+  rejects({ ...draft(), connection_type: 'api_key' })
+  rejects({ ...draft(), staged_credential: null })
+  rejects({ ...draft(), staged_credentials: [] })
+  rejects({ mode: 'existing', group_id: 9, credentials: '', staged_credential: null })
 })

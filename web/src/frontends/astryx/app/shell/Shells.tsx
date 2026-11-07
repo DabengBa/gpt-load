@@ -197,6 +197,7 @@ function navItems(isAccessKey: boolean): readonly NavItem[] {
   return [
     shared[0]!,
     { key: 'groups', to: pagePath('groups'), labelKey: 'shell.groups' },
+    { key: 'announcements', to: pagePath('announcements'), labelKey: 'nav.announcements' },
     shared[1]!,
     shared[2]!,
     shared[3]!,

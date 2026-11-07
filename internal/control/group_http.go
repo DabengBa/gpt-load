@@ -33,7 +33,7 @@ func (s *Server) handleGetGroupSettings(c *gin.Context) {
 		writeServiceError(c, "get_group_settings", err)
 		return
 	}
-	response.SuccessI18n(c, "common.success", result)
+	response.SuccessI18n(c, "common.success", groupSettingsHTTPProjection(result, wantsSiteInfo(c)))
 }
 
 func (s *Server) handleCreateGroup(c *gin.Context) {
@@ -92,7 +92,23 @@ func (s *Server) handleUpdateGroupSettings(c *gin.Context) {
 		writeServiceError(c, "update_group_settings", err)
 		return
 	}
-	response.SuccessI18n(c, "common.success", result)
+	response.SuccessI18n(c, "common.success", groupSettingsHTTPProjection(result, wantsSiteInfo(c)))
+}
+
+func wantsSiteInfo(c *gin.Context) bool {
+	values := c.Request.URL.Query()["include"]
+	return len(values) == 1 && values[0] == "site_info"
+}
+
+func groupSettingsHTTPProjection(result GroupSettingsResponse, include bool) any {
+	projected := struct {
+		GroupSettingsResponse
+		SiteAccess *GroupSiteAccessResponse `json:"site_access,omitempty"`
+	}{GroupSettingsResponse: result}
+	if include {
+		projected.SiteAccess = &result.SiteAccess
+	}
+	return projected
 }
 
 func (s *Server) handleUpdateGroupModels(c *gin.Context) {

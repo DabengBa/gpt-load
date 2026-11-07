@@ -51,7 +51,20 @@ export interface GroupCollectionSummaryDto {
   disabled: number
 }
 
+export interface GroupCollectionSiteInfoDto {
+  status: 'unconfigured' | 'pending' | 'ok' | 'error'
+  site_root_url: string
+  site_name: string
+  remaining_amount: number | null
+  currency_symbol: string
+  effective_group: string
+  group_ratio: number | null
+  fetched_at_ms: number | null
+  last_error: string
+}
+
 export interface GroupCollectionItemDto {
+  site_info: GroupCollectionSiteInfoDto | null
   id: number
   name: string
 
@@ -137,7 +150,26 @@ export interface GroupEffectiveConfigDto {
   responses_reasoning_status_filter_enabled: boolean
 }
 
+export interface GroupSiteInfoSnapshotDto extends GroupCollectionSiteInfoDto {
+  announcement_count: number
+}
+
+export interface GroupSiteAccessDto {
+  user_id: string
+  token_configured: boolean
+  site_root_url: string
+  snapshot: GroupSiteInfoSnapshotDto | null
+}
+
+export interface GroupSiteAccessPatchInput {
+  user_id?: string
+  access_token?: string
+  clear_access_token?: boolean
+  confirm_site_root_change?: boolean
+}
+
 export interface GroupSettingsDto {
+  site_access: GroupSiteAccessDto
   name: string
 
   channel_id: string
@@ -464,4 +496,43 @@ export interface AgentCredentialCreateResultDto extends AgentCredentialDto {
   secret?: string
   replayed: boolean
   operation_id: string
+}
+
+export interface AnnouncementGroupRefDto {
+  id: number
+  name: string
+}
+export interface AnnouncementItemDto {
+  id: string
+  site_root_url: string
+  site_name: string
+  content: string
+  extra: string
+  level: string
+  source: string
+  event_at_ms: number
+  fetched_at_ms: number
+  groups: AnnouncementGroupRefDto[]
+}
+export interface AnnouncementSiteOptionDto {
+  site_root_url: string
+  site_name: string
+  count: number
+}
+export interface AnnouncementsResponseDto {
+  items: AnnouncementItemDto[]
+  sites: AnnouncementSiteOptionDto[]
+  sources?: AnnouncementSourceDto[]
+}
+export interface AnnouncementSourceDto {
+  group: AnnouncementGroupRefDto
+  site_root_url: string
+  site_name: string
+  announcement: AnnouncementSourceStateDto
+  notice: AnnouncementSourceStateDto
+}
+export interface AnnouncementSourceStateDto {
+  status: 'pending' | 'unknown' | 'ok' | 'error' | 'stale'
+  fetched_at_ms: number | null
+  last_error: string
 }

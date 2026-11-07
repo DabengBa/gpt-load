@@ -5,6 +5,7 @@ import type {
   ChannelParamsDto,
   GroupCollectionFilters,
   GroupCollectionItemDto,
+  GroupCollectionSiteInfoDto,
   GroupCollectionPaginationDto,
   GroupCollectionResponseDto,
   GroupCollectionStatus,
@@ -14,6 +15,9 @@ import type {
   GroupModelsDto,
   GroupOptionDto,
   EntryCircuitBreakerDto,
+  GroupSiteAccessDto,
+  GroupSiteAccessPatchInput,
+  GroupSiteInfoSnapshotDto,
   GroupSettingsDto,
   GroupSummaryDto,
   HeaderRulesDto,
@@ -31,6 +35,7 @@ import { controlQueryKeys, normalizeGroupCollectionFilters } from '@shared/contr
 import { projectChannelID } from '@shared/control/resources/channels'
 import { projectModelCandidate, type ModelCandidate } from '@shared/control/resources/providers'
 import { isJSONSafeNumber } from '@shared/lib/json-number'
+import { extractSiteRootUrl } from '@shared/domain/groups/settings/group-settings-patch'
 
 import {
   assertNoSecretLikeFields,
@@ -40,6 +45,7 @@ import {
   projectEnum,
   projectFiniteNumber,
   projectHTTPURL,
+  projectNullableEpochMilliseconds,
   projectRecord,
   projectSafeInteger,
   projectString,
@@ -69,6 +75,7 @@ const groupSettingsFields = [
   'overrides',
   'effective',
   'proxy',
+  'site_access',
 ] as const
 const groupModelsFields = ['items', 'total', 'pending'] as const
 const groupModelItemFields = [
@@ -99,6 +106,7 @@ const groupCollectionItemFields = [
   'client_model_count',
   'credential_configured',
   'credential_status',
+  'site_info',
 ] as const
 const groupCollectionPaginationFields = ['page', 'page_size', 'total_items', 'total_pages'] as const
 const groupOptionFields = [
@@ -113,6 +121,29 @@ const groupOptionFields = [
 
 const groupCollectionStatuses = ['available', 'unavailable', 'disabled'] as const
 const groupUnavailableReasons = ['no_available_credentials', 'no_models'] as const
+const groupSiteInfoStatuses = ['unconfigured', 'pending', 'ok', 'error'] as const
+const groupSiteInfoFields = [
+  'status',
+  'site_root_url',
+  'site_name',
+  'remaining_amount',
+  'currency_symbol',
+  'effective_group',
+  'group_ratio',
+  'fetched_at_ms',
+  'last_error',
+] as const
+const groupSiteInfoSnapshotFields = [...groupSiteInfoFields, 'announcement_count'] as const
+const groupSiteAccessFields = ['user_id', 'token_configured', 'site_root_url', 'snapshot'] as const
+/**
+ * The backend re-reads each site on its own 60 minute cadence and only exposes the
+ * result after that tick, so a client interval matching 60 minutes can land just
+ * before the tick and stay stale for almost an hour. Visible pages therefore poll
+ * once a minute — the backend resolver ticks once a minute — and `pending` waits for
+ * the first fetch.
+ */
+const siteInfoPendingRefetchIntervalMs = 2_000
+export const siteInfoVisibleRefetchIntervalMs = 60_000
 const runtimeSettingFields = [
   'first_byte_timeout',
   'request_timeout',
@@ -143,6 +174,7 @@ export type GroupSettingsUpdateRequest = Partial<{
   enabled: boolean
   overrides: GroupRuntimeConfigDto
   proxy: ProxyMutation
+  site_access: GroupSiteAccessPatchInput
 }>
 
 export interface AccessKeyReferenceDto {
@@ -188,6 +220,7 @@ export interface GroupCreateRequest {
   models: GroupModelUpdateDto[]
   credential?: string
   proxy?: ProxyConfigInput
+  site_access?: { user_id: string; access_token: string }
   confirm_same_target: boolean
 }
 
@@ -372,7 +405,64 @@ function projectRuntimeConfig(
 }
 
 function projectNullableHTTPURL(value: unknown): string | null {
-  return value === null ? null : projectHTTPURL(value)
+  if (value === null) return null
+  if (typeof value === 'string' && value === value.trim() && extractSiteRootUrl(value)) return value
+  return projectHTTPURL(value)
+}
+
+/** Balances can go negative on the upstream site, so only nullability and finiteness are enforced. */
+function projectNullableFiniteNumber(value: unknown): number | null {
+  return value === null ? null : projectFiniteNumber(value)
+}
+
+/** `site_root_url` is derived from the provider URL, so it is either empty or an http(s) root. */
+function projectSiteRootURL(value: unknown): string {
+  if (value === '') return ''
+  if (typeof value === 'string' && value === value.trim() && extractSiteRootUrl(value)) return value
+  return projectHTTPURL(value)
+}
+
+/** Mirrors `GroupCollectionSiteInfo`: absent credentials surface as `null`, never as a blank object. */
+export function projectGroupSiteInfo(value: unknown): GroupCollectionSiteInfoDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, groupSiteInfoFields)
+  return {
+    status: projectEnum(record.status, groupSiteInfoStatuses),
+    site_root_url: projectSiteRootURL(record.site_root_url),
+    site_name: projectString(record.site_name, { allowEmpty: true }),
+    remaining_amount: projectNullableFiniteNumber(record.remaining_amount),
+    currency_symbol: projectString(record.currency_symbol, { allowEmpty: true }),
+    effective_group: projectString(record.effective_group, { allowEmpty: true }),
+    group_ratio: projectNullableFiniteNumber(record.group_ratio),
+    fetched_at_ms: projectNullableEpochMilliseconds(record.fetched_at_ms),
+    last_error: projectString(record.last_error, { allowEmpty: true }),
+  }
+}
+
+function projectGroupSiteInfoSnapshot(value: unknown): GroupSiteInfoSnapshotDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, groupSiteInfoSnapshotFields)
+  return {
+    ...projectGroupSiteInfo(
+      Object.fromEntries(groupSiteInfoFields.map((field) => [field, record[field]] as const)),
+    ),
+    announcement_count: projectSafeInteger(record.announcement_count, { minimum: 0 }),
+  }
+}
+
+export function projectGroupSiteAccess(value: unknown): GroupSiteAccessDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, groupSiteAccessFields)
+  const tokenConfigured = projectBoolean(record.token_configured)
+  const snapshot = record.snapshot === null ? null : projectGroupSiteInfoSnapshot(record.snapshot)
+  // The backend only exposes a snapshot once a token is stored.
+  if (tokenConfigured !== (snapshot !== null)) throw new InvalidResponseError()
+  return {
+    user_id: projectString(record.user_id, { allowEmpty: true }),
+    token_configured: tokenConfigured,
+    site_root_url: projectSiteRootURL(record.site_root_url),
+    snapshot,
+  }
 }
 
 export function projectGroupSummary(value: unknown): GroupSummaryDto {
@@ -428,6 +518,7 @@ export function projectGroupSettings(value: unknown): GroupSettingsDto {
     overrides: projectRuntimeConfig(record.overrides, false),
     effective: projectRuntimeConfig(record.effective, true),
     proxy: projectProxyView(record.proxy),
+    site_access: projectGroupSiteAccess(record.site_access),
   }
 }
 
@@ -541,6 +632,7 @@ function projectGroupCollectionItem(value: unknown): GroupCollectionItemDto {
         ] as const)
   if (credentialConfigured !== (credentialStatus !== null)) throw new InvalidResponseError()
   const modelCount = projectSafeInteger(record.model_count, { minimum: 0 })
+  const siteInfo = record.site_info === null ? null : projectGroupSiteInfo(record.site_info)
 
   return {
     id: projectSafeInteger(record.id, { minimum: 1 }),
@@ -554,6 +646,7 @@ function projectGroupCollectionItem(value: unknown): GroupCollectionItemDto {
     client_model_count: projectSafeInteger(record.client_model_count, { minimum: 0 }),
     credential_configured: credentialConfigured,
     credential_status: credentialStatus,
+    site_info: siteInfo,
   }
 }
 
@@ -704,6 +797,7 @@ export async function listGroupCollection(
 ): Promise<GroupCollectionResponseDto> {
   const normalized = normalizeGroupCollectionFilters(filters)
   const params = new URLSearchParams()
+  params.set('include', 'site_info')
   params.set('sort', normalized.sort)
   params.set('page', String(normalized.page))
   params.set('page_size', String(normalized.page_size))
@@ -739,7 +833,10 @@ export async function getGroupSettings(
   signal?: AbortSignal,
 ): Promise<GroupSettingsDto> {
   return projectGroupSettings(
-    await client.request(`/api/groups/${groupID}/settings`, { method: 'GET', signal }),
+    await client.request(`/api/groups/${groupID}/settings?include=site_info`, {
+      method: 'GET',
+      signal,
+    }),
   )
 }
 
@@ -774,6 +871,14 @@ export function groupCollectionQueryOptions(client: ApiClient, filters: GroupCol
     queryFn: ({ queryKey, signal }: QueryFunctionContext<typeof key>) =>
       listGroupCollection(client, queryKey[3], signal),
     placeholderData: keepPreviousData,
+    // A pending site info resolves on the next sync tick; a resolved snapshot changes at
+    // the next 60 minute backend sync, which a visible page picks up within a minute.
+    // Polling pauses while the tab is hidden and resumes through the visibility refetch.
+    refetchIntervalInBackground: false,
+    refetchInterval: (query: { state: { data: GroupCollectionResponseDto | undefined } }) =>
+      query.state.data?.items.some((item) => item.site_info?.status === 'pending')
+        ? siteInfoPendingRefetchIntervalMs
+        : siteInfoVisibleRefetchIntervalMs,
   }
 }
 
@@ -817,6 +922,14 @@ export function groupSettingsQueryOptions(client: ApiClient, groupID: number | u
       return getGroupSettings(client, id, signal)
     },
     enabled: groupID !== undefined,
+    // Same cadence as the collection: follow a pending fetch closely, then poll once a
+    // minute so a snapshot written by the 60 minute backend sync appears without a
+    // reload. Unsaved drafts are protected by the hydration guards in the settings tab.
+    refetchIntervalInBackground: false,
+    refetchInterval: (query: { state: { data: GroupSettingsDto | undefined } }) =>
+      query.state.data?.site_access?.snapshot?.status === 'pending'
+        ? siteInfoPendingRefetchIntervalMs
+        : siteInfoVisibleRefetchIntervalMs,
   }
 }
 
@@ -843,7 +956,7 @@ export async function updateGroupSettings(
   signal?: AbortSignal,
 ): Promise<GroupSettingsDto> {
   return projectGroupSettings(
-    await client.request(`/api/groups/${groupID}/settings`, {
+    await client.request(`/api/groups/${groupID}/settings?include=site_info`, {
       method: 'PUT',
       json: body,
       signal,
@@ -857,6 +970,10 @@ export async function deleteGroup(
   signal?: AbortSignal,
 ): Promise<void> {
   await client.request(`/api/groups/${groupID}`, { method: 'DELETE', signal })
+}
+
+export async function retryGroupSiteInfo(client: ApiClient, groupID: number): Promise<void> {
+  await client.request(`/api/groups/${groupID}/site-info/retry`, { method: 'POST' })
 }
 
 export async function discoverModels(
@@ -956,6 +1073,12 @@ export async function invalidateGroupSettingsDependents(
   groupID: number,
 ): Promise<void> {
   await invalidateGroupDependents(queryClient, [
+    // Credentials and provider URL drive site announcements, so an active announcements
+    // view must reload together with the settings that changed them.
+    {
+      queryKey: ['control', 'announcements'],
+      refetchType: 'active',
+    },
     {
       queryKey: controlQueryKeys.groups.summary(groupID),
       exact: true,

@@ -90,6 +90,12 @@ func (s *Service) DeleteGroup(ctx context.Context, groupID uint) error {
 			Pluck("id", &deletedCredentialIDs).Error; err != nil {
 			return app_errors.ParseDBError(err)
 		}
+		if err := tx.Where("group_id = ?", groupID).Delete(&models.SiteAnnouncement{}).Error; err != nil {
+			return app_errors.ParseDBError(err)
+		}
+		if err := tx.Where("group_id = ?", groupID).Delete(&models.GroupSiteConfig{}).Error; err != nil {
+			return app_errors.ParseDBError(err)
+		}
 		if err := tx.Delete(&group).Error; err != nil {
 			return app_errors.ParseDBError(err)
 		}

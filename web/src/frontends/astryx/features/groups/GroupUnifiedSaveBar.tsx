@@ -5,11 +5,7 @@ import type { RefObject } from 'react'
 import { useT } from '../../app/i18n'
 import { StickySaveBar } from '../../components/StickySaveBar'
 import { GroupDeleteDialog } from './settings/GroupDeleteDialog'
-import type {
-  GroupEditorHandle,
-  GroupEditorState,
-  GroupModelsEditorHandle,
-} from './editor-handles'
+import type { GroupEditorHandle, GroupEditorState, GroupModelsEditorHandle } from './editor-handles'
 
 export interface GroupUnifiedSaveBarProps {
   groupId: number
@@ -28,6 +24,14 @@ const styles = stylex.create({
     backgroundColor: 'var(--color-surface-raised)',
     backdropFilter: 'none',
     boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
+  },
+  statusText: {
+    display: 'grid',
+    minWidth: 0,
+    fontSize: { default: null, '@media (max-width: 680px)': 'var(--text-sm)' },
+  },
+  statusNote: {
+    display: { default: 'inline', '@media (max-width: 680px)': 'none' },
   },
 })
 
@@ -74,6 +78,7 @@ export function GroupUnifiedSaveBar({
       appearance="ledger"
       xstyle={styles.saveBar}
       alwaysVisible
+      compactOnMobile
       dirty={dirty}
       pending={pending}
       status={status}
@@ -81,7 +86,7 @@ export function GroupUnifiedSaveBar({
       errorActionLabel={errorActionLabel}
       onErrorAction={() => void modelsEditorRef.current?.focusFirstInvalid()}
       statusContent={
-        <div>
+        <div {...stylex.props(styles.statusText)}>
           <strong>
             {pending
               ? t('group.settings.saving')
@@ -91,7 +96,11 @@ export function GroupUnifiedSaveBar({
                   ? t('group.settings.unsaved')
                   : t('group.settings.saved')}
           </strong>
-          <span>{error || t('group.settings.saveNote')}</span>
+          {error ? (
+            <span>{error}</span>
+          ) : (
+            <span {...stylex.props(styles.statusNote)}>{t('group.settings.saveNote')}</span>
+          )}
         </div>
       }
       actions={

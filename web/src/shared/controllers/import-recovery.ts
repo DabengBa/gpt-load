@@ -1,8 +1,12 @@
 import type {
+  ImportDraft,
   ImportProxyDraft,
   ImportRecoveryDraft,
   ModelDraftItem,
 } from '@shared/domain/import/model-draft'
+
+/** v10 records written before the site user id field existed omit it entirely. */
+type LegacyNewImportDraft = Omit<ImportDraft, 'site_user_id'> & { site_user_id?: string }
 
 export const importRecoveryStorageKey = 'gpt-load.import-reauth-draft'
 export const importRecoveryTtlMs = 15 * 60 * 1_000
@@ -130,6 +134,7 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
       'name',
 
       'provider_url',
+      'site_user_id',
       'credentials',
       'models',
     ]) &&
@@ -139,6 +144,7 @@ function isNewImportDraft(value: Record<string, unknown>): boolean {
     isImportProxyDraft(value.proxy) &&
     typeof value.name === 'string' &&
     typeof value.provider_url === 'string' &&
+    (value.site_user_id === undefined || typeof value.site_user_id === 'string') &&
     typeof value.credentials === 'string' &&
     Array.isArray(value.models) &&
     value.models.every(isModel)
@@ -161,8 +167,16 @@ function isExistingImportDraft(value: Record<string, unknown>): boolean {
   )
 }
 
-function isImportDraft(value: unknown): value is ImportRecoveryDraft {
+function isImportDraft(value: unknown): value is ImportRecoveryDraft | LegacyNewImportDraft {
   return isRecord(value) && (isNewImportDraft(value) || isExistingImportDraft(value))
+}
+
+/** Older drafts restore with an empty site user id; the form then renders it as blank. */
+function normalizeStoredDraft(
+  draft: ImportRecoveryDraft | LegacyNewImportDraft,
+): ImportRecoveryDraft {
+  if (draft.mode === 'existing') return draft
+  return { ...draft, site_user_id: draft.site_user_id ?? '' }
 }
 
 function parseRecoveryRecord(raw: string): ImportRecoveryRecord | null {
@@ -181,7 +195,7 @@ function parseRecoveryRecord(raw: string): ImportRecoveryRecord | null {
     return {
       version: value.version,
       expires_at: value.expires_at,
-      draft: value.draft,
+      draft: normalizeStoredDraft(value.draft),
     }
   } catch {
     return null
@@ -249,13 +263,13 @@ export function createImportRecoveryService(
     } catch {
       return 'no-active-draft'
     }
-    if (!draft) return 'no-active-draft'
+    if (!draft || !isImportDraft(draft)) return 'no-active-draft'
     if (!deps.storage) return 'storage-unavailable'
 
     const record: ImportRecoveryRecord = {
       version: 10,
       expires_at: deps.now() + importRecoveryTtlMs,
-      draft,
+      draft: normalizeStoredDraft(draft),
     }
     try {
       deps.storage.setItem(importRecoveryStorageKey, JSON.stringify(record))

@@ -28,7 +28,27 @@ func (s *Server) handleListGroupCollection(c *gin.Context) {
 		writeServiceError(c, "list_groups", err)
 		return
 	}
-	response.SuccessI18n(c, "common.success", result)
+	items := make([]groupCollectionHTTPItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		projected := groupCollectionHTTPItem{GroupCollectionItem: item}
+		if wantsSiteInfo(c) {
+			projected.SiteInfo = &item.SiteInfo
+		}
+		items = append(items, projected)
+	}
+	response.SuccessI18n(c, "common.success", struct {
+		ObservedAtMS int64                     `json:"observed_at_ms"`
+		Summary      GroupCollectionSummary    `json:"summary"`
+		Items        []groupCollectionHTTPItem `json:"items"`
+		Pagination   GroupCollectionPagination `json:"pagination"`
+	}{result.ObservedAtMS, result.Summary, items, result.Pagination})
+}
+
+// Shadow the service field so legacy HTTP clients see the original whitelist.
+// A pointer to a pointer preserves explicit null for opted-in unconfigured groups.
+type groupCollectionHTTPItem struct {
+	GroupCollectionItem
+	SiteInfo **GroupCollectionSiteInfo `json:"site_info,omitempty"`
 }
 
 func (s *Server) handleListGroupOptions(c *gin.Context) {
@@ -53,10 +73,13 @@ func parseGroupCollectionQuery(
 		PageSize: groupCollectionDefaultPageSize,
 	}
 	values, apiErr := parseCollectionQueryValues(
-		rawQuery, forceQuery, "q", "status", "sort", "page", "page_size",
+		rawQuery, forceQuery, "q", "status", "sort", "page", "page_size", "include",
 	)
 	if apiErr != nil {
 		return GroupCollectionQuery{}, apiErr
+	}
+	if entries, exists := values["include"]; exists && entries[0] != "site_info" {
+		return GroupCollectionQuery{}, app_errors.ErrBadRequest
 	}
 
 	text, ok := collectionQueryText(values, "q", groupCollectionMaxQueryRunes)

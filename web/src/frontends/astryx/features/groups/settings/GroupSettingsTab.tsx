@@ -15,7 +15,7 @@ import {
   invalidateGroupSettingsDependents,
   updateGroupSettings,
 } from '@shared/control/resources/groups'
-import { RequestCancelledError } from '@shared/http/errors'
+import { ApiError, RequestCancelledError } from '@shared/http/errors'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
 
 import { useStableLoading } from '../../../app/collection-loading'
@@ -29,6 +29,7 @@ import { SectionHeader } from '../../../components/SectionHeader'
 import type { GroupEditorHandle, GroupEditorState } from '../editor-handles'
 import { GroupSettingsAdvanced } from './GroupSettingsAdvanced'
 import { GroupSettingsBaseForm } from './GroupSettingsBaseForm'
+import { GroupSettingsSiteAccessSection } from './GroupSettingsSiteAccessSection'
 import { GroupSettingsSaveBar } from './GroupSettingsSaveBar'
 import { useGroupOverrideFlags, useGroupProxyDraft } from './use-group-settings-overrides'
 import {
@@ -40,6 +41,9 @@ import {
   createGroupSettingsDraft,
   groupPolicyCountKeys,
   groupTimeoutKeys,
+  requiresSiteRootConfirmation,
+  extractSiteRootUrl,
+  isValidProviderUrlForWrite,
   type GroupSettingsDraft,
 } from '@shared/domain/groups/settings/group-settings-patch'
 
@@ -84,6 +88,7 @@ export function GroupSettingsTab({
   const [deletePending, setDeletePending] = useState(false)
   const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
+  const [forceSiteRootConfirmation, setForceSiteRootConfirmation] = useState(false)
   const [headerRulesValid, setHeaderRulesValid] = useState(true)
   const [headerRulesInvalidEdits, setHeaderRulesInvalidEdits] = useState(false)
   const [headerRulesEditorRevision, setHeaderRulesEditorRevision] = useState(0)
@@ -117,7 +122,8 @@ export function GroupSettingsTab({
     ),
   ]
 
-  const patch = saved && draft ? buildGroupSettingsPatch(saved, draft) : {}
+  const patch =
+    saved && draft ? buildGroupSettingsPatch(saved, draft, forceSiteRootConfirmation) : {}
   const {
     proxyMode,
     proxyEndpoint,
@@ -156,7 +162,31 @@ export function GroupSettingsTab({
     const value = draft?.overrides[key]
     return value === undefined || (Number.isSafeInteger(value) && value >= 0)
   })
+  const rootConfirmationRequired =
+    !!saved &&
+    !!draft &&
+    (forceSiteRootConfirmation || requiresSiteRootConfirmation(saved, draft)) &&
+    !draft.clearSiteAccessToken &&
+    !draft.siteAccessToken.trim() &&
+    !draft.confirmSiteRootChange
+  const siteAccessInvalid =
+    !!saved &&
+    !!draft &&
+    ((saved.site_access.token_configured && !draft.clearSiteAccessToken) ||
+      !!draft.siteAccessToken.trim()) &&
+    (!draft.siteUserId.trim() || !extractSiteRootUrl(draft.provider_url ?? ''))
+  const providerUrlInvalid =
+    !!draft?.provider_url?.trim() &&
+    (draft.provider_url !== saved?.provider_url ||
+      (!draft.clearSiteAccessToken &&
+        (!!draft.siteAccessToken.trim() ||
+          (saved?.site_access.token_configured &&
+            draft.siteUserId.trim() !== saved.site_access.user_id)))) &&
+    !isValidProviderUrlForWrite(draft.provider_url)
   const valid =
+    !providerUrlInvalid &&
+    !siteAccessInvalid &&
+    !rootConfirmationRequired &&
     !nameError &&
     Object.keys(paramErrors).length === 0 &&
     timeoutValid &&
@@ -324,13 +354,18 @@ export function GroupSettingsTab({
       }
       const result = await updateGroupSettings(apiClient, groupId, body, active.signal)
       if (controllerRef.current !== active) return
+      setForceSiteRootConfirmation(false)
       resetSavedDraft(result)
       cacheGroupSettings(queryClient, groupId, result)
       await invalidateGroupSettingsDependents(queryClient, groupId)
       showSavedFeedback()
     } catch (cause: unknown) {
       if (cause instanceof RequestCancelledError || controllerRef.current !== active) return
-      setError(t('group.settings.saveFailed'))
+      if (cause instanceof ApiError && cause.code === 'SITE_ROOT_CHANGE_CONFIRMATION_REQUIRED') {
+        setForceSiteRootConfirmation(true)
+        setDraft((current) => (current ? { ...current, confirmSiteRootChange: false } : current))
+        setError(t('siteAccess.confirmError'))
+      } else setError(t('group.settings.saveFailed'))
     } finally {
       if (controllerRef.current === active) {
         controllerRef.current = undefined
@@ -342,6 +377,7 @@ export function GroupSettingsTab({
   function discard(): void {
     if (!saved || stateRef.current.mutationPending) return
     setError('')
+    setForceSiteRootConfirmation(false)
     clearSavedFeedback()
     resetSavedDraft(saved)
     consumeCurrentQuery()
@@ -514,6 +550,12 @@ export function GroupSettingsTab({
       ) : saved && draft ? (
         <>
           {error !== '' && <InlineNotice tone="danger">{error}</InlineNotice>}
+          {siteAccessInvalid && (
+            <InlineNotice tone="danger">{t('siteAccess.required')}</InlineNotice>
+          )}
+          {rootConfirmationRequired && (
+            <InlineNotice tone="danger">{t('siteAccess.confirmError')}</InlineNotice>
+          )}
           {channelParamsDisabled && (
             <InlineNotice
               tone="danger"
@@ -545,6 +587,7 @@ export function GroupSettingsTab({
                 params={draft.params}
                 name={draft.name}
                 providerUrl={draft.provider_url}
+                providerUrlInvalid={providerUrlInvalid}
 
                 enabled={saved.enabled}
                 enabledPending={enabledPending}
@@ -560,10 +603,25 @@ export function GroupSettingsTab({
                   setDraft((current) => (current ? { ...current, name: value } : current))
                 }
                 onProviderUrlChange={(value) =>
-                  setDraft((current) => (current ? { ...current, provider_url: value } : current))
+                  setDraft((current) =>
+                    current
+                      ? { ...current, provider_url: value, confirmSiteRootChange: false }
+                      : current,
+                  )
                 }
 
                 onSetEnabled={(value) => void setGroupEnabled(value)}
+              />
+              <GroupSettingsSiteAccessSection
+                groupId={groupId}
+                saved={saved}
+                draft={draft}
+                access={query.data?.site_access ?? saved.site_access}
+                forceConfirmation={forceSiteRootConfirmation}
+                disabled={mutationPending}
+                onChange={(value) =>
+                  setDraft((current) => (current ? { ...current, ...value } : current))
+                }
               />
               {unified && advancedTarget ? createPortal(advanced, advancedTarget) : advanced}
             </div>

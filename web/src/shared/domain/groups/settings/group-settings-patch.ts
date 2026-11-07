@@ -15,6 +15,10 @@ export type GroupTimeoutKey = 'first_byte_timeout' | 'request_timeout' | 'stream
 export type GroupPolicyCountKey = 'blacklist_threshold'
 
 export interface GroupSettingsDraft {
+  siteUserId: string
+  siteAccessToken: string
+  clearSiteAccessToken: boolean
+  confirmSiteRootChange: boolean
   channel_id: string
   params: ChannelParamsDto
   name: string
@@ -138,7 +142,78 @@ function normalizeParameterValue(value: unknown): ParameterJSONValue {
 }
 
 export function createGroupSettingsDraft(group: GroupSettingsDto): GroupSettingsDraft {
-  return { ...group, params: { ...group.params }, overrides: cloneOverrides(group.overrides) }
+  return {
+    ...group,
+    siteUserId: group.site_access.user_id,
+    siteAccessToken: '',
+    clearSiteAccessToken: false,
+    confirmSiteRootChange: false,
+    params: { ...group.params },
+    overrides: cloneOverrides(group.overrides),
+  }
+}
+
+export function extractSiteRootUrl(providerUrl: string): string {
+  try {
+    const value = providerUrl.trim()
+    if (
+      !/^https?:\/\//i.test(value) ||
+      /[\\\x00-\x1f\x7f]/.test(value) ||
+      /%(?![\da-f]{2})/i.test(value.split('?')[0])
+    )
+      return ''
+    const authority = value.match(/^https?:\/\/([^/?#]*)/i)?.[1] ?? ''
+    // net/url rejects escaped ASCII in hostnames but permits escaped UTF-8.
+    if (/%[0-7][\da-f]/i.test(authority)) return ''
+    const port = authority.match(/:(\d+)$/)?.[1]
+    // net/url historically accepts numeric ports above 65535. Preserve those
+    // saved URLs even though WHATWG URL refuses to parse them.
+    const oversizedPort = port && Number(port) > 65535 ? port : ''
+    const parseValue = oversizedPort
+      ? value.replace(/^(https?:\/\/[^/?#]*):\d+(?=[/?#]|$)/i, '$1:1')
+      : value
+    const url = new URL(parseValue)
+    if (
+      (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      /^https?:\/\/[^/?#]*@/i.test(value)
+    )
+      return ''
+    return `${url.protocol}//${oversizedPort ? `${url.hostname}:${oversizedPort}` : url.host}`
+  } catch {
+    return ''
+  }
+}
+
+export function isValidProviderUrlForWrite(providerUrl: string): boolean {
+  const root = extractSiteRootUrl(providerUrl)
+  if (!root) return false
+  const authority = providerUrl.trim().match(/^https?:\/\/([^/?#]*)/i)?.[1] ?? ''
+  const port = authority.match(/:(\d+)$/)?.[1]
+  return !port || Number(port) <= 65535
+}
+
+/**
+ * Format a group ratio with its full precision, keeping at least 1 decimal place.
+ * Rounding is deliberately avoided so small ratios such as 0.04 never collapse to 0.
+ */
+export function formatGroupRatio(r: number): string {
+  return Number.isInteger(r) ? r.toFixed(1) : String(r)
+}
+
+export function requiresSiteRootConfirmation(
+  base: GroupSettingsDto,
+  draft: GroupSettingsDraft,
+): boolean {
+  return (
+    base.site_access.token_configured &&
+    !draft.clearSiteAccessToken &&
+    !draft.siteAccessToken.trim() &&
+    extractSiteRootUrl(draft.provider_url ?? '') !==
+      extractSiteRootUrl(base.site_access.site_root_url)
+  )
 }
 
 export function preserveChannelParams(
@@ -182,6 +257,7 @@ export function setGroupPolicyCountOverride(
 export function buildGroupSettingsPatch(
   base: GroupSettingsDto,
   draft: GroupSettingsDraft,
+  forceSiteRootConfirmation = false,
 ): GroupSettingsUpdateRequest {
   const patch: GroupSettingsUpdateRequest = {}
   const overrides = normalizeOverrides(draft.overrides)
@@ -199,6 +275,17 @@ export function buildGroupSettingsPatch(
   const providerURL = draft.provider_url?.trim() || null
   if (providerURL !== base.provider_url) patch.provider_url = providerURL
   if (draft.enabled !== base.enabled) patch.enabled = draft.enabled
+  const siteAccess: NonNullable<GroupSettingsUpdateRequest['site_access']> = {}
+  if (draft.siteUserId.trim() !== base.site_access.user_id)
+    siteAccess.user_id = draft.siteUserId.trim()
+  if (draft.siteAccessToken.trim()) siteAccess.access_token = draft.siteAccessToken
+  if (draft.clearSiteAccessToken) siteAccess.clear_access_token = true
+  if (
+    (forceSiteRootConfirmation || requiresSiteRootConfirmation(base, draft)) &&
+    draft.confirmSiteRootChange
+  )
+    siteAccess.confirm_site_root_change = true
+  if (Object.keys(siteAccess).length) patch.site_access = siteAccess
 
   if (JSON.stringify(overrides) !== JSON.stringify(normalizeOverrides(base.overrides))) {
     patch.overrides = overrides

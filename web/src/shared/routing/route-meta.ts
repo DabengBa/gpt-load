@@ -11,7 +11,7 @@ export type PageRouteMeta = {
   readonly requiresAuth?: boolean
   readonly adminOnly?: boolean
   readonly primaryNav?: string
-  readonly messageNamespaces?: readonly MessageNamespace[]
+  readonly messageNamespaces?: readonly (MessageNamespace | 'core')[]
 }
 
 export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.freeze({
@@ -37,6 +37,13 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
     adminOnly: true,
     primaryNav: 'groups',
     messageNamespaces: ['group'],
+  },
+  announcements: {
+    titleKey: 'nav.announcements',
+    requiresAuth: true,
+    adminOnly: true,
+    primaryNav: 'announcements',
+    messageNamespaces: ['core', 'group'],
   },
   // 模型 Tab 的「测活」入口与 ModelProbeDialog 用的是 monitor.modelProbe.* 文案，
   // 命名空间必须在这里声明；少一个就会在页面上渲染出原始 key。

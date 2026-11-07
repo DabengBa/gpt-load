@@ -12,7 +12,6 @@ import {
 import type { SharedRouteQuery } from '@shared/routing/route-query'
 import type { ExistingGroupImportDraft, ImportDraft } from '@shared/domain/import/model-draft'
 
-
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
 import { ExistingGroupImport } from './ExistingGroupImport'
@@ -166,6 +165,7 @@ export function ImportView() {
             proxy: { mode: 'inherit', url: '' },
             name: scriptcatPayload.groupName,
             provider_url: scriptcatPayload.providerUrl,
+            site_user_id: '',
             credentials: scriptcatPayload.apiKey,
             models: [],
           }

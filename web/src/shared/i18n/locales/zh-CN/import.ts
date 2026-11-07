@@ -1,4 +1,5 @@
 export default {
+  siteAccessIncomplete: '用户 ID、访问令牌和供应商官网需同时填写',
   import: {
     title: '导入渠道凭据',
     required: '必填',

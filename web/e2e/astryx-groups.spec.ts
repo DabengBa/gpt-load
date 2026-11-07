@@ -36,6 +36,7 @@ function collectionItem(group: FixtureGroup) {
     client_model_count: 2,
     credential_configured: group.credential_total > 0,
     credential_status: group.credential_total > 0 ? 'available' : null,
+    site_info: null,
   }
 }
 

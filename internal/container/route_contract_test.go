@@ -43,6 +43,7 @@ func TestBuildContainerExposesUnifiedRouteCatalog(t *testing.T) {
 	}
 
 	for _, expected := range []httproute.RouteInfo{
+		{ModuleName: "control", RouteName: "control.announcements.list", Owner: httproute.OwnerControl, Auth: httproute.AuthControl, Methods: []string{http.MethodGet}, Path: "/api/announcements"},
 		{
 			ModuleName: "system",
 			RouteName:  "system.health",
