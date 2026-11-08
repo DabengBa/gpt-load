@@ -4,6 +4,7 @@ import {
   createModelDraft,
   normalizedModels,
   sameModels,
+  syncedModels,
 } from '../src/shared/domain/groups/models/model-diff.ts'
 import {
   cacheGroupModels,
@@ -16,6 +17,7 @@ import type { ApiClient } from '../src/shared/http/client.ts'
 
 test('late model GET cannot overwrite successful replacement cache', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
   const key = controlQueryKeys.groups.models(1)
   let resolve!: (value: { items: never[]; total: number; pending: number }) => void
   const get = client
@@ -33,6 +35,26 @@ test('late model GET cannot overwrite successful replacement cache', async () =>
   await get
   assert.deepEqual(client.getQueryData(key), fresh)
   client.clear()
+})
+
+test('sync retains rows without sending unchanged routing settings', () => {
+  const saved = [
+    {
+      key: 1,
+      id: 'm',
+      alias: '',
+      alias_enabled: false,
+      name: 'm',
+      sources: [],
+      pricing_status: 'pending' as const,
+      entry_id: 'e1',
+      weight: 3,
+      priority: 2,
+    },
+  ]
+  const [wire] = syncedModels(saved, { additions: [], removals: [] }, 'full')
+  assert.equal(Object.hasOwn(wire, 'weight'), false)
+  assert.equal(Object.hasOwn(wire, 'priority'), false)
 })
 
 test('schedule edits are dirty and reverting restores equality', () => {
@@ -118,8 +140,6 @@ test('replacement sends only schedule fields changed relative to baseline, inclu
       id: 'm',
       alias: '',
       alias_enabled: false,
-      weight: null,
-      priority: null,
       entry_id: 'e1',
       reasoning_effort: null,
       enabled: false,
@@ -135,6 +155,29 @@ test('replacement sends only schedule fields changed relative to baseline, inclu
     },
   ])
   assert.deepEqual(normalizedModels(saved, saved), [
-    { id: 'm', alias: '', alias_enabled: false, weight: null, priority: null, entry_id: 'e1' },
+    { id: 'm', alias: '', alias_enabled: false, entry_id: 'e1' },
   ])
+})
+
+test('replacement omits unchanged routing settings to preserve concurrent edits', () => {
+  const saved = [
+    {
+      key: 1,
+      id: 'm',
+      alias: '',
+      alias_enabled: false,
+      name: 'm',
+      sources: [],
+      pricing_status: 'pending' as const,
+      entry_id: 'e1',
+      weight: 3,
+      priority: 2,
+      concurrency_limit: 5,
+      circuit_breaker: null,
+    },
+  ]
+  const [wire] = normalizedModels([{ ...saved[0], reasoning_effort: 'high' }], saved)
+  for (const field of ['weight', 'priority', 'concurrency_limit', 'circuit_breaker']) {
+    assert.equal(Object.hasOwn(wire, field), false, `${field} must not overwrite a concurrent edit`)
+  }
 })

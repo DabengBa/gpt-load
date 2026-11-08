@@ -58,6 +58,13 @@ export function normalizedModels(
     const normalized = normalizeSharedModels([item])[0]
     if (!normalized) return []
     const original = byKey.get(item.key)
+    if (original) {
+      if ((item.weight ?? null) === (original.weight ?? null)) delete normalized.weight
+      if ((item.priority ?? null) === (original.priority ?? null)) delete normalized.priority
+      if (item.concurrency_limit === original.concurrency_limit) delete normalized.concurrency_limit
+      if (JSON.stringify(item.circuit_breaker) === JSON.stringify(original.circuit_breaker))
+        delete normalized.circuit_breaker
+    }
     const reasoning = item.reasoning_effort ?? ''
     if (reasoning !== (original?.reasoning_effort ?? ''))
       normalized.reasoning_effort = reasoning || null
@@ -112,5 +119,5 @@ export function syncedModels(
           weight: null,
           priority: null,
         }))
-  return normalizeSharedModels([...retained, ...additions])
+  return [...normalizedModels(retained, current), ...normalizeSharedModels(additions)]
 }
