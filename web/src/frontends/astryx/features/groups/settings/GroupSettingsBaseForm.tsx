@@ -1,6 +1,6 @@
-import { Button, Switch, TextInput } from '@astryxdesign/core'
+import { Button, TextInput } from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
-import { useState } from 'react'
+
 import { createPortal } from 'react-dom'
 
 import type { ChannelParamsDto } from '@shared/control/types'
@@ -72,32 +72,13 @@ export function GroupSettingsBaseForm({
   onSetEnabled(value: boolean): void
 }) {
   const t = useT()
-  const [baseUrlOverrideEnabled, setBaseUrlOverrideEnabled] = useState(true)
-  const [lastChannelId, setLastChannelId] = useState(channelId)
-  if (lastChannelId !== channelId) {
-    setLastChannelId(channelId)
-    setBaseUrlOverrideEnabled(true)
-  }
-
-  const baseUrlParam = params.base_url
-  const [lastBaseUrl, setLastBaseUrl] = useState(baseUrlParam)
-  if (baseUrlParam !== lastBaseUrl) {
-    setLastBaseUrl(baseUrlParam)
-    if (baseUrlParam?.trim()) setBaseUrlOverrideEnabled(true)
-  }
 
   function isOptionalBaseURL(field: ChannelFieldDto): boolean {
     return field.key === 'base_url' && !field.required
   }
 
-  function setBaseURLOverride(enabled: boolean): void {
-    setBaseUrlOverrideEnabled(enabled)
-    if (!enabled) onParamChange('base_url', null)
-  }
-
   function updateParam(field: ChannelFieldDto, value: string): void {
     if (isOptionalBaseURL(field) && !value.trim()) {
-      setBaseUrlOverrideEnabled(false)
       onParamChange(field.key, null)
       return
     }
@@ -187,61 +168,32 @@ export function GroupSettingsBaseForm({
         </label>
 
         {paramFields.map((field) => {
-          const optionalBaseURL = isOptionalBaseURL(field)
           const error = paramErrors[field.key]
           return (
             <div key={field.key} style={{ display: 'contents' }}>
-              {optionalBaseURL && (
-                <div {...stylex.props(styles.field, styles.baseUrlToggle)}>
-                  <span {...stylex.props(styles.fieldLabel)}>
-                    {t('group.settings.base.customUrl')}
-                  </span>
-                  <div {...stylex.props(styles.baseUrlSwitch)}>
-                    <small {...stylex.props(styles.fieldHint)}>
-                      {t('group.settings.base.customUrlHelp')}
-                    </small>
-                    <Switch
-                      value={baseUrlOverrideEnabled}
-                      isDisabled={pending || paramsDisabled}
-                      label={t('group.settings.base.customUrl')}
-                      isLabelHidden
-                      onChange={setBaseURLOverride}
-                    />
-                  </div>
-                </div>
-              )}
-              {(!optionalBaseURL || baseUrlOverrideEnabled) && (
-                <label
-                  {...stylex.props(
-                    styles.field,
-                    optionalBaseURL ? styles.baseUrlInput : styles.wide,
-                  )}
-                >
-                  <span {...stylex.props(styles.fieldLabel)}>
-                    {field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label}
-                  </span>
-                  <TextInput
-                    label={
-                      field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label
-                    }
-                    isLabelHidden
-                    type="text"
-                    value={params[field.key] ?? ''}
-                    isDisabled={pending || paramsDisabled}
-                    isRequired={
-                      field.required || (field.key === 'base_url' && baseUrlOverrideEnabled)
-                    }
-                    status={error ? { type: 'error', message: error } : undefined}
-                    description={
-                      error === undefined && field.input_kind === 'url'
-                        ? parameterHelp(field)
-                        : undefined
-                    }
-                    onChange={(value) => updateParam(field, value)}
-                    controlXstyle={styles.mono}
-                  />
-                </label>
-              )}
+              <label {...stylex.props(styles.field, styles.wide)}>
+                <span {...stylex.props(styles.fieldLabel)}>
+                  {field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label}
+                </span>
+                <TextInput
+                  label={
+                    field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label
+                  }
+                  isLabelHidden
+                  type="text"
+                  value={params[field.key] ?? ''}
+                  isDisabled={pending || paramsDisabled}
+                  isRequired={field.required}
+                  status={error ? { type: 'error', message: error } : undefined}
+                  description={
+                    error === undefined && field.input_kind === 'url'
+                      ? parameterHelp(field)
+                      : undefined
+                  }
+                  onChange={(value) => updateParam(field, value)}
+                  controlXstyle={styles.mono}
+                />
+              </label>
             </div>
           )
         })}

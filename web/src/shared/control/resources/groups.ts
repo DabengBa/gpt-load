@@ -91,6 +91,8 @@ const groupModelItemFields = [
   'circuit_breaker',
   'pricing_status',
   'price_id',
+  'reasoning_effort',
+  'enabled',
 ] as const
 const groupCollectionFields = ['observed_at_ms', 'summary', 'items', 'pagination'] as const
 const groupCollectionSummaryFields = ['total', 'available', 'unavailable', 'disabled'] as const
@@ -206,6 +208,8 @@ export interface GroupModelUpdateDto {
   weight?: number | null
   priority?: number | null
   circuit_breaker?: EntryCircuitBreakerDto | null
+  reasoning_effort?: string | null
+  enabled?: boolean
 }
 
 export interface GroupModelsReplaceRequest {
@@ -581,6 +585,12 @@ function projectGroupModelItem(value: unknown): GroupModelItemDto {
   if (Object.prototype.hasOwnProperty.call(record, 'price_id')) {
     result.price_id = projectSafeInteger(record.price_id, { minimum: 1 })
   }
+  if (Object.prototype.hasOwnProperty.call(record, 'reasoning_effort')) {
+    result.reasoning_effort = projectString(record.reasoning_effort, { allowEmpty: true })
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'enabled')) {
+    result.enabled = projectBoolean(record.enabled)
+  }
   return result
 }
 
@@ -846,7 +856,10 @@ export async function getGroupModels(
   signal?: AbortSignal,
 ): Promise<GroupModelsDto> {
   return projectGroupModels(
-    await client.request(`/api/groups/${groupID}/models`, { method: 'GET', signal }),
+    await client.request(`/api/groups/${groupID}/models?include_schedule=true`, {
+      method: 'GET',
+      signal,
+    }),
   )
 }
 
@@ -964,6 +977,22 @@ export async function updateGroupSettings(
   )
 }
 
+export async function updateGroupConfiguration(
+  client: ApiClient,
+  groupID: number,
+  settings: GroupSettingsUpdateRequest,
+  models: GroupModelUpdateDto[],
+  signal?: AbortSignal,
+): Promise<GroupSettingsDto> {
+  return projectGroupSettings(
+    await client.request(`/api/groups/${groupID}/configuration`, {
+      method: 'PUT',
+      json: { settings, models },
+      signal,
+    }),
+  )
+}
+
 export async function deleteGroup(
   client: ApiClient,
   groupID: number,
@@ -1010,7 +1039,7 @@ export async function replaceGroupModelsResource(
   signal?: AbortSignal,
 ): Promise<GroupModelsDto> {
   return projectGroupModels(
-    await client.request(`/api/groups/${groupID}/models`, {
+    await client.request(`/api/groups/${groupID}/models?include_schedule=true`, {
       method: 'PUT',
       json: body,
       signal,
@@ -1025,6 +1054,19 @@ export function cacheGroupSettings(
   settings: GroupSettingsDto,
 ): void {
   queryClient.setQueryData(controlQueryKeys.groups.settings(groupID), settings)
+}
+
+/** Prevent a pre-recovery poll from replacing a newer authoritative read. */
+export async function cacheRecoveredGroupSettings(
+  queryClient: QueryClient,
+  groupID: number,
+  settings: GroupSettingsDto,
+): Promise<void> {
+  await queryClient.cancelQueries({
+    queryKey: controlQueryKeys.groups.settings(groupID),
+    exact: true,
+  })
+  cacheGroupSettings(queryClient, groupID, settings)
 }
 
 /** Invalidate cached resources whose representations derive from Group models. */
@@ -1129,11 +1171,15 @@ async function invalidateGroupDependents(
   await Promise.all(queries.map((filters) => queryClient.invalidateQueries(filters)))
 }
 
-export function cacheGroupModels(
+export async function cacheGroupModels(
   queryClient: QueryClient,
   groupID: number,
   models: GroupModelsDto,
-): void {
+): Promise<void> {
+  await queryClient.cancelQueries({
+    queryKey: controlQueryKeys.groups.models(groupID),
+    exact: true,
+  })
   queryClient.setQueryData(controlQueryKeys.groups.models(groupID), models)
   queryClient.setQueryData<GroupSummaryDto>(controlQueryKeys.groups.summary(groupID), (summary) =>
     summary === undefined ? summary : { ...summary, model_count: models.total },

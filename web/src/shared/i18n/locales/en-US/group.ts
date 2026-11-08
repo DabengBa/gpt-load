@@ -135,6 +135,20 @@ export default {
     copyFailure: 'Copy failed',
     openProviderUrl: 'Open provider website {url} in a new tab',
     modelEditor: {
+      recoveryChecking:
+        'The server may have changed. Checking the latest models; your draft is preserved.',
+      reviewServer: 'Discard draft and review server',
+      recoveryConflict:
+        'The save outcome is uncertain. Your draft is shown for reference but cannot be saved safely. Copy any changes you need, then discard the draft and review the server state.',
+      recoveryReady:
+        'The server may have changed. Your draft is preserved; review it and save again, or discard it to see the refreshed server state.',
+      recoveryFailed:
+        'The server may have changed. Could not refresh; retry before discarding or saving your draft.',
+      reasoning: 'Reasoning policy',
+      reasoningFor: 'Reasoning policy for {id}',
+      reasoningInherit: 'Not configured',
+      enabled: 'Enabled',
+      enabledFor: 'Enable model {id}',
       title: 'Models and aliases',
       schedule: 'Schedule',
       breaker: 'Breaker',
@@ -259,6 +273,10 @@ export default {
       save: 'Save settings',
       loading: 'Loading Group settings',
       loadFailed: 'Unable to load Group settings',
+      recoveryFailed:
+        'Could not refresh settings after the uncertain save. Retry before saving or discarding.',
+      recoveryReview:
+        'Settings may have changed. Discard the settings draft and review the server values before saving.',
       saved: 'Settings saved',
       unsaved: 'Unsaved changes',
       saving: 'Saving',

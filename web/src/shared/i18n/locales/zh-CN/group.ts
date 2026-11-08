@@ -130,6 +130,18 @@ export default {
     copyFailure: '复制失败',
     openProviderUrl: '在新标签页打开供应商官网 {url}',
     modelEditor: {
+      recoveryChecking: '服务器数据可能已变化。正在刷新核对，草稿已保留。',
+      reviewServer: '放弃草稿并核对服务器状态',
+      recoveryConflict:
+        '保存结果不确定。草稿仅供参考，无法安全保存。请先复制需要的修改，再放弃草稿并核对服务器状态。',
+      recoveryReady:
+        '服务器数据可能已变化。草稿已保留；请检查后重新保存，或放弃草稿以查看刷新后的服务器状态。',
+      recoveryFailed: '服务器数据可能已变化，刷新失败。请重试后再放弃或保存草稿。',
+      reasoning: '推理策略',
+      reasoningFor: '{id} 的推理策略',
+      reasoningInherit: '未配置',
+      enabled: '启用',
+      enabledFor: '启用模型 {id}',
       title: '模型与别名',
       schedule: '调度',
       breaker: '熔断',
@@ -251,6 +263,8 @@ export default {
       save: '保存设置',
       loading: '正在加载分组设置',
       loadFailed: '无法加载分组设置',
+      recoveryFailed: '保存结果不确定，无法刷新分组设置。请重试后再保存或放弃。',
+      recoveryReview: '分组设置可能已更改。请先放弃设置草稿并核对服务器值，再保存。',
       saved: '设置已保存',
       unsaved: '有未保存的修改',
       saving: '正在保存',

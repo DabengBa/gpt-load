@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"gpt-load/internal/channel"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/pricing"
 	"gpt-load/internal/state"
@@ -16,10 +17,14 @@ import (
 )
 
 type GroupModelsUpdateRequest struct {
-	Models optionalGroupModels `json:"models"`
+	Models   optionalGroupModels `json:"models"`
+	schedule bool
 }
 
 type GroupModelResponse struct {
+	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+
 	ID             string                     `json:"id"`
 	Alias          string                     `json:"alias"`
 	TestAlias      string                     `json:"test_alias"`
@@ -153,6 +158,10 @@ func (model groupModelEntry) toModelConfig() state.ModelConfig {
 // guarantees a retry republishes after a failed publication instead of
 // short-circuiting on changed==false.
 func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModelsResponse, error) {
+	return s.getGroupModels(ctx, groupID, false)
+}
+
+func (s *Service) getGroupModels(ctx context.Context, groupID uint, schedule bool) (GroupModelsResponse, error) {
 	if groupID == 0 {
 		return GroupModelsResponse{}, app_errors.ErrBadRequest
 	}
@@ -242,14 +251,13 @@ func (s *Service) GetGroupModels(ctx context.Context, groupID uint) (GroupModels
 		return GroupModelsResponse{}, app_errors.ParseDBError(err)
 	}
 
-	return mapGroupModelsResponse(group.ChannelID, groupModels, rows)
+	return mapGroupModelsResponse(group.ChannelID, groupModels, rows, schedule)
 }
 
 // groupModelsRuntimeStale reports whether the published runtime catalog
-// disagrees with the persisted route-entry identities. A model still missing
-// its stored EntryID counts as needing a write; a model whose persisted
-// identity is not what the runtime catalog last published counts as stale
-// (e.g. the previous publication failed after the database commit).
+// disagrees with persisted route-entry identities or schedule fields. Missing
+// identities require a write; mismatches require republication (for example,
+// when publication failed after the database commit).
 func (s *Service) groupModelsRuntimeStale(groupID uint, groupModels []groupModelEntry) bool {
 	if s.manager == nil {
 		return false
@@ -268,7 +276,9 @@ func (s *Service) groupModelsRuntimeStale(groupID uint, groupModels []groupModel
 			return true
 		}
 		if runtimeModel.ID != model.ID || runtimeModel.Alias != model.Alias ||
-			runtimeModel.TestAlias != model.TestAlias || runtimeModel.EntryID != model.EntryID {
+			runtimeModel.TestAlias != model.TestAlias || runtimeModel.EntryID != model.EntryID ||
+			runtimeModel.ReasoningEffort != model.ReasoningEffort ||
+			(runtimeModel.Enabled == nil || *runtimeModel.Enabled) != (model.Enabled == nil || *model.Enabled) {
 			return true
 		}
 	}
@@ -279,6 +289,7 @@ func mapGroupModelsResponse(
 	channelID string,
 	groupModels []groupModelEntry,
 	rows modelPriceRows,
+	includeSchedule ...bool,
 ) (GroupModelsResponse, error) {
 	result := GroupModelsResponse{Items: make([]GroupModelResponse, 0, len(groupModels))}
 	for _, model := range groupModels {
@@ -294,6 +305,12 @@ func mapGroupModelsResponse(
 			CircuitBreaker:   cloneEntryCircuitBreaker(model.CircuitBreaker),
 			ConcurrencyLimit: model.ConcurrencyLimit,
 			PricingStatus:    PricingStatusPending,
+		}
+		if len(includeSchedule) > 0 && includeSchedule[0] {
+			effort := model.ReasoningEffort
+			enabled := model.Enabled == nil || *model.Enabled
+			item.ReasoningEffort = &effort
+			item.Enabled = &enabled
 		}
 		if item.AliasEnabled {
 			item.ClientModel = model.Alias
@@ -344,6 +361,25 @@ func (s *Service) UpdateGroupModels(
 		if preserveErr != nil {
 			return preserveErr
 		}
+		if request.schedule {
+			providerKind, ok := s.channelRegistry.ProviderKind(channel.ID(group.ChannelID))
+			if !ok {
+				return app_errors.ErrValidation
+			}
+			for i := range preserved {
+				model := &preserved[i]
+				if model.reasoningSet && !model.reasoningNull {
+					value, err := canonicalScheduleReasoningEffort(model.ReasoningEffort)
+					if err != nil {
+						return err
+					}
+					model.ReasoningEffort = value
+				}
+				if (providerKind == channel.ProviderGemini || providerKind == channel.ProviderGoogleVertex) && model.ReasoningEffort == "none" {
+					return app_errors.ErrValidation
+				}
+			}
+		}
 		if err := assignMissingTestAliases(tx, preserved); err != nil {
 			return fmt.Errorf("assign group %d model test aliases: %w", groupID, err)
 		}
@@ -369,7 +405,7 @@ func (s *Service) UpdateGroupModels(
 	if modelIDsChanged && s.catalogSync != nil {
 		s.catalogSync.RequestGroupSync()
 	}
-	result, err := s.GetGroupModels(ctx, groupID)
+	result, err := s.getGroupModels(ctx, groupID, request.schedule)
 	if err != nil {
 		return GroupModelsResponse{}, fmt.Errorf(
 			"load group %d models after update: %w",
@@ -434,7 +470,7 @@ func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel
 		if !model.prioritySet && exists {
 			model.Priority = cloneInt(preserved.Priority)
 		}
-		if exists {
+		if exists && !model.enabledSet {
 			model.Enabled = preserved.Enabled
 		}
 		if !model.circuitBreakerSet && exists {
@@ -444,7 +480,7 @@ func preserveGroupModelFields(previous []groupModelEntry, requested []GroupModel
 		if !model.concurrencyLimitSet && exists {
 			model.ConcurrencyLimit = preserved.ConcurrencyLimit
 		}
-		if exists {
+		if exists && !model.reasoningSet {
 			model.ReasoningEffort = preserved.ReasoningEffort
 		}
 		if exists {

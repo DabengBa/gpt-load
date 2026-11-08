@@ -23,6 +23,99 @@ interface FixtureGroup {
   created_ms: number
 }
 
+// Catalog entry for the collection's channel cell and the detail page's
+// channel picker. No routes means no protocol is derived, so the client-side
+// consistency check stays satisfied.
+const channelFixture = {
+  channel_id: 'openai',
+  name: 'OpenAI',
+  mark: 'OA',
+  icon: 'openai',
+  search_terms: ['openai'],
+  description: '',
+  default_base_url: 'https://api.openai.com',
+  param_fields: [],
+  credential_fields: [],
+  connection: { credential_input: 'batch_text' },
+  capabilities: { model_discovery: false, outbound_proxy: false },
+  routes: [],
+  client_protocols: [],
+}
+
+// Complete effective runtime config — every field is required when the
+// projection is exhaustive.
+const runtimeFixture = {
+  first_byte_timeout: 30,
+  request_timeout: 60,
+  stream_idle_timeout: 30,
+  blacklist_threshold: 3,
+  header_rules: { set: {}, remove: [] },
+  affinity_enabled: false,
+  responses_websocket_enabled: false,
+  responses_reasoning_status_filter_enabled: false,
+}
+
+// Detail fixtures stay consistent with the collection row they belong to: a
+// group without credentials reads `credential: null`, so the credentials tab
+// renders its real empty state instead of an error.
+function groupDetail(group: FixtureGroup) {
+  const configured = group.credential_total > 0
+  const mask = `sk-${String(group.id).padStart(4, '0')}-fixture`
+  return {
+    summary: {
+      id: group.id,
+      name: group.name,
+      channel_id: group.channel_id,
+      params: {},
+      provider_url: null,
+      service_status: group.status,
+      service_status_reason: group.status === 'unavailable' ? 'no_models' : null,
+      credential_configured: configured,
+      credential_status: configured ? 'available' : null,
+      model_count: 4,
+    },
+    settings: {
+      name: group.name,
+      channel_id: group.channel_id,
+      params: {},
+      provider_url: null,
+      enabled: group.status !== 'disabled',
+      overrides: {},
+      effective: runtimeFixture,
+      proxy: {
+        configured_mode: 'inherit',
+        effective_mode: 'direct',
+        effective_source: 'default',
+        has_auth: false,
+      },
+      site_access: {
+        user_id: '',
+        token_configured: false,
+        site_root_url: '',
+        snapshot: null,
+      },
+    },
+    models: { items: [], total: 0, pending: 0 },
+    credential: {
+      credential: configured
+        ? {
+            credential_id: group.id,
+            secret_version: 1,
+            mask,
+            effective_status: 'available',
+            recent_success_count: 0,
+            recent_failure_count: 0,
+            consecutive_failure_count: 0,
+            last_failure_category: 'ok',
+            last_status_code: null,
+            cooldown_until_ms: null,
+            recovery: { mode: 'none', automatic: false, at_ms: null },
+          }
+        : null,
+    },
+  }
+}
+
 function collectionItem(group: FixtureGroup) {
   return {
     id: group.id,
@@ -168,6 +261,37 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
       })
       return
     }
+    // Detail surface: the credential action navigates here, so the mocked
+    // resource must actually resolve — otherwise the page falls into its
+    // "Unable to load Group details." error state.
+    const detailMatch = /^\/api\/groups\/(\d+)(?:\/(settings|models|credential))?$/.exec(path)
+    if (detailMatch) {
+      const id = Number(detailMatch[1])
+      const group = groups.find((row) => row.id === id)
+      if (group === undefined) {
+        await route.fulfill({
+          status: 404,
+          json: { code: 'NOT_FOUND', message: 'fixture group missing', data: null },
+        })
+        return
+      }
+      const detail = groupDetail(group)
+      const section = detailMatch[2]
+      const data =
+        section === 'settings'
+          ? detail.settings
+          : section === 'models'
+            ? detail.models
+            : section === 'credential'
+              ? detail.credential
+              : detail.summary
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 0, message: 'ok', data }),
+      })
+      return
+    }
     if (path === '/api/channels') {
       await route.fulfill({
         status: 200,
@@ -175,7 +299,7 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
         body: JSON.stringify({
           code: 0,
           message: 'ok',
-          data: { items: [], total: 0 },
+          data: { items: [channelFixture], total: 1 },
         }),
       })
       return
@@ -310,9 +434,36 @@ test('populated collection exposes import, result count, and credential deep lin
     '/import',
   )
   await expect(page.getByLabel('Filter Groups')).toContainText('Showing 5 / 5 Groups')
-  await expect(
-    collectionTable(page).getByRole('link', { name: 'Manage credential for Group 0005' }),
-  ).toHaveAttribute('href', '/groups/5?tab=credentials')
+  // The actions column is icon-only (01313a16): the credential action is a
+  // button that routes client-side, not an <a href>. Prove the deep link by
+  // following it and asserting the exact route plus the credentials surface
+  // that route resolves to (Group 0002 owns a credential in the fixture).
+  const credentialAction = collectionTable(page)
+    .getByRole('row')
+    .filter({ hasText: 'Group 0002' })
+    .getByRole('button', {
+      name: 'Manage credential for Group 0002',
+    })
+  await expect(credentialAction).toBeVisible()
+  await credentialAction.click()
+  await expect(page).toHaveURL('/groups/2?tab=credentials')
+  await expect(page.getByRole('heading', { name: 'Group 0002', level: 1 })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy key' })).toContainText('sk-0002-fixture')
+})
+
+test('credential deep link keeps the empty credential state honest', async ({ page }) => {
+  await mockCollection(page, makeGroups(5))
+  await page.goto('/groups', { waitUntil: 'load' })
+  const credentialAction = collectionTable(page)
+    .getByRole('row')
+    .filter({ hasText: 'Group 0005' })
+    .getByRole('button', {
+      name: 'Manage credential for Group 0005',
+    })
+  await credentialAction.click()
+  await expect(page).toHaveURL('/groups/5?tab=credentials')
+  await expect(page.getByRole('heading', { name: 'No keys yet', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add key', exact: true })).toBeVisible()
 })
 
 test('narrow layout keeps filters visible without page overflow', async ({ page }) => {
@@ -341,7 +492,8 @@ test('narrow layout keeps filters visible without page overflow', async ({ page 
       return topElement !== null && (node === topElement || node.contains(topElement))
     }),
   ).toBe(true)
-  const credentialAction = collectionTable(page).getByRole('link', {
+  // Icon-only action column: the credential action is a button, not a link.
+  const credentialAction = collectionTable(page).getByRole('button', {
     name: 'Manage credential for Group 0005',
   })
   await credentialAction.focus()

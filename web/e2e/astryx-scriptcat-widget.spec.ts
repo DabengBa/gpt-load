@@ -43,7 +43,6 @@ async function serveKeyPage(page: Page, path = '/keys'): Promise<void> {
   await page.addScriptTag({ content: userscript })
 }
 
-
 function receiverGMBridge(entries: Array<[string, unknown]>): void {
   const values = new Map(entries)
   Object.defineProperty(window, 'GM', {
@@ -235,7 +234,7 @@ test('ScriptCat handoff fills group name, provider website, API key, and Base UR
     'https://totokens.cc',
   )
   await receiver.getByRole('button', { name: 'OpenAI', exact: true }).click()
-  await expect(receiver.getByRole('textbox', { name: /^Custom upstream URL/ })).toHaveValue(
+  await expect(receiver.getByRole('textbox', { name: /^Upstream base URL/ })).toHaveValue(
     'https://api.totokens.example/v1',
   )
 })
@@ -323,7 +322,9 @@ test('does not show the import widget on unrelated pages', async ({ page }) => {
   await expect(page.locator('#gpt-load-scriptcat-widget')).toHaveCount(0)
 })
 
-test('generic SPA navigation shows the widget only on the token route without domain-specific matches', async ({ page }) => {
+test('generic SPA navigation shows the widget only on the token route without domain-specific matches', async ({
+  page,
+}) => {
   const startURL = 'https://provider.example.test/console'
   const matches = [...userscript.matchAll(/^\/\/\s*@match\s+(\S+)/gm)].map((match) => match[1])
   expect(matches).toContain('*://*/*')

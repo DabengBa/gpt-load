@@ -23,7 +23,11 @@ import { GroupSettingsTab } from './settings/GroupSettingsTab'
 import { GroupModelsTab } from './models/GroupModelsTab'
 import { GroupHeader } from './GroupHeader'
 import { GroupUnifiedSaveBar } from './GroupUnifiedSaveBar'
-import type { GroupEditorHandle, GroupEditorState, GroupModelsEditorHandle } from './editor-handles'
+import type {
+  GroupSettingsEditorHandle,
+  GroupEditorState,
+  GroupModelsEditorHandle,
+} from './editor-handles'
 
 const idleEditorState: GroupEditorState = {
   dirty: false,
@@ -173,7 +177,8 @@ export function GroupDetailView() {
   const [settingsState, setSettingsState] = useState<GroupEditorState>(idleEditorState)
   const [modelsState, setModelsState] = useState<GroupEditorState>(idleEditorState)
   const [deletePending, setDeletePending] = useState(false)
-  const settingsEditorRef = useRef<GroupEditorHandle>(null)
+  const [combinedPending, setCombinedPending] = useState(false)
+  const settingsEditorRef = useRef<GroupSettingsEditorHandle>(null)
   const modelsEditorRef = useRef<GroupModelsEditorHandle>(null)
 
   // Warm the tab queries as soon as the id resolves — classic prefetches on
@@ -244,7 +249,7 @@ export function GroupDetailView() {
                   key={`settings-${groupId}`}
                   groupId={groupId}
                   unified
-                  blocked={deletePending}
+                  blocked={deletePending || combinedPending}
                   onStateChange={setSettingsState}
                 />
                 <GroupCredentialsTab key={`credentials-${groupId}`} groupId={groupId} />
@@ -253,9 +258,10 @@ export function GroupDetailView() {
                   key={`models-${groupId}`}
                   groupId={groupId}
                   channelId={summaryQuery.data.channel_id}
+                  scheduleChannelId={settingsState.channelId ?? summaryQuery.data.channel_id}
                   enabled={settingsQuery.data?.enabled ?? true}
                   unified
-                  blocked={deletePending}
+                  blocked={deletePending || combinedPending}
                   onStateChange={setModelsState}
                 />
                 {/* Unified-mode portal target: GroupSettingsTab portals its
@@ -270,6 +276,8 @@ export function GroupDetailView() {
                   settingsEditorRef={settingsEditorRef}
                   modelsEditorRef={modelsEditorRef}
                   onDeletePendingChange={setDeletePending}
+                  combinedPending={combinedPending}
+                  onCombinedPendingChange={setCombinedPending}
                 />
               </>
             </>

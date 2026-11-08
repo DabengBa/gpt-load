@@ -44,6 +44,9 @@ type GroupModel struct {
 	prioritySet         bool
 	circuitBreakerSet   bool
 	concurrencyLimitSet bool
+	reasoningSet        bool
+	reasoningNull       bool
+	enabledSet          bool
 }
 
 // MaxConcurrencyLimit is the accepted upper bound of concurrency_limit.
@@ -137,6 +140,7 @@ type groupModelRequestWire struct {
 	Weight           json.RawMessage `json:"weight"`
 	Priority         json.RawMessage `json:"priority"`
 	Enabled          json.RawMessage `json:"enabled"`
+	ReasoningEffort  json.RawMessage `json:"reasoning_effort"`
 	CircuitBreaker   json.RawMessage `json:"circuit_breaker"`
 	ConcurrencyLimit json.RawMessage `json:"concurrency_limit"`
 }
@@ -176,6 +180,10 @@ func (field *optionalField[T]) UnmarshalJSON(data []byte) error {
 }
 
 func (value *optionalGroupModels) UnmarshalJSON(data []byte) error {
+	return value.decode(data, false)
+}
+
+func (value *optionalGroupModels) decode(data []byte, schedule bool) error {
 	if value == nil {
 		return fmt.Errorf("models must be an array")
 	}
@@ -208,6 +216,21 @@ func (value *optionalGroupModels) UnmarshalJSON(data []byte) error {
 		if wire.AliasEnabled == nil {
 			return app_errors.ErrValidation
 		}
+		if !schedule && wire.ReasoningEffort != nil {
+			return app_errors.ErrValidation
+		}
+		var effort optionalField[string]
+		var enabled optionalField[bool]
+		if schedule && wire.ReasoningEffort != nil {
+			if err := json.Unmarshal(wire.ReasoningEffort, &effort); err != nil {
+				return app_errors.ErrValidation
+			}
+		}
+		if schedule && wire.Enabled != nil {
+			if err := json.Unmarshal(wire.Enabled, &enabled); err != nil || enabled.Null {
+				return app_errors.ErrValidation
+			}
+		}
 		weight, weightSet, err := decodeOptionalInt(wire.Weight)
 		if err != nil {
 			return fmt.Errorf("decode group model weight: %w", err)
@@ -237,7 +260,14 @@ func (value *optionalGroupModels) UnmarshalJSON(data []byte) error {
 			prioritySet:         prioritySet,
 			circuitBreakerSet:   wire.CircuitBreaker != nil,
 			concurrencyLimitSet: wire.ConcurrencyLimit != nil,
+			ReasoningEffort:     effort.Value,
+			reasoningSet:        effort.Set,
+			reasoningNull:       effort.Null,
+			enabledSet:          enabled.Set,
 		})
+		if enabled.Set {
+			decoded[len(decoded)-1].Enabled = &enabled.Value
+		}
 	}
 
 	value.Set = true
@@ -357,7 +387,7 @@ func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 	indexesByClientModel := make(map[string]map[string][]int, len(values))
 	clientModelOrder := make([]string, 0, len(values))
 	for index, value := range values {
-		if value.ReasoningEffort != "" {
+		if value.ReasoningEffort != "" && !value.reasoningSet {
 			return nil, app_errors.ErrValidation
 		}
 		normalized := GroupModel{
@@ -372,6 +402,13 @@ func normalizeGroupModels(values []GroupModel) ([]GroupModel, error) {
 
 			ConcurrencyLimit:    value.ConcurrencyLimit,
 			concurrencyLimitSet: value.concurrencyLimitSet || value.ConcurrencyLimit != 0,
+			ReasoningEffort:     value.ReasoningEffort,
+			reasoningSet:        value.reasoningSet,
+			reasoningNull:       value.reasoningNull,
+			enabledSet:          value.enabledSet,
+		}
+		if value.enabledSet {
+			normalized.Enabled = value.Enabled
 		}
 		if err := validateConcurrencyLimit(normalized.ConcurrencyLimit); err != nil {
 			return nil, app_errors.ErrValidation

@@ -160,6 +160,12 @@ const GROUP_42 = {
     params: {},
     provider_url: null,
     enabled: true,
+    site_access: {
+      user_id: '',
+      token_configured: false,
+      site_root_url: '',
+      snapshot: null,
+    },
     overrides: { ...RUNTIME, parameter_overrides: [] },
     effective: RUNTIME,
     proxy: {
@@ -276,6 +282,42 @@ test('visible group name label focuses its input', async ({ page }) => {
   await expect(page.locator(`input[id="${await label.getAttribute('for')}"]`)).toBeFocused()
 })
 
+test('optional OpenAI address can be omitted and required compatible address blocks creation', async ({
+  page,
+}) => {
+  const requests = await mockImportApi(page)
+  await page.route('**/api/channels', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: { items: PICKER_CHANNELS, total: PICKER_CHANNELS.length },
+      },
+    }),
+  )
+  await page.goto('/import?mode=new', { waitUntil: 'commit' })
+  const address = page.getByRole('textbox', { name: /^Upstream base URL/ })
+  await expect(address).toBeVisible({ timeout: FIRST_PAINT })
+  await expect(page.getByRole('switch', { name: 'Custom upstream URL' })).toHaveCount(0)
+  await page.locator('#channel-credentials').fill('fixture-key')
+  await page.getByRole('button', { name: 'Other channels', exact: true }).click()
+  const search = page.getByRole('combobox', { name: /Search channels/ })
+  await search.fill('openai_compatible')
+  await search.press('Enter')
+  await expect(address).toHaveAttribute('aria-required', 'true')
+  await expect(page.getByRole('button', { name: 'Create Group', exact: true })).toBeDisabled()
+  await address.fill('not a URL')
+  await expect(page.getByRole('button', { name: 'Create Group', exact: true })).toBeDisabled()
+  await address.fill('https://relay.example.test/v1')
+  await expect(page.getByRole('button', { name: 'Create Group', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'OpenAI', exact: true }).click()
+  await address.clear()
+  await page.getByRole('button', { name: 'Create Group', exact: true }).click()
+  await expect.poll(() => requests.createBodies.length).toBe(1)
+  expect(
+    (requests.createBodies[0]?.params as Record<string, unknown> | undefined)?.base_url,
+  ).toBeUndefined()
+})
 test('channel search exposes its list and selects an option with the keyboard', async ({
   page,
 }) => {

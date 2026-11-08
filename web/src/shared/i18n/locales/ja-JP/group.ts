@@ -130,6 +130,20 @@ export default {
     copyFailure: 'コピーできませんでした',
     openProviderUrl: 'プロバイダーサイト {url} を新しいタブで開く',
     modelEditor: {
+      recoveryChecking:
+        'サーバーの状態が変わった可能性があります。最新の状態を確認中です。下書きは保持されています。',
+      reviewServer: '下書きを破棄してサーバーの状態を確認',
+      recoveryConflict:
+        '保存結果が不明です。下書きは参照用で、安全に保存できません。必要な変更を控えてから下書きを破棄し、サーバーの状態を確認してください。',
+      recoveryReady:
+        'サーバーの状態が変わった可能性があります。下書きは保持されています。内容を確認して再保存するか、破棄して最新の状態を確認してください。',
+      recoveryFailed:
+        'サーバーの状態が変わった可能性があります。更新に失敗しました。下書きを破棄または保存する前に再試行してください。',
+      reasoning: '推論ポリシー',
+      reasoningFor: '{id} の推論ポリシー',
+      reasoningInherit: '未設定',
+      enabled: '有効',
+      enabledFor: 'モデル {id} を有効化',
       title: 'モデルとエイリアス',
       schedule: 'スケジュール',
       breaker: 'ブレーカー',
@@ -253,6 +267,10 @@ export default {
       save: '設定を保存',
       loading: 'グループ設定を読み込み中',
       loadFailed: 'グループ設定を読み込めません',
+      recoveryFailed:
+        '保存結果が不明で、設定を更新できませんでした。保存または破棄する前に再試行してください。',
+      recoveryReview:
+        '設定が変更された可能性があります。保存する前に設定の下書きを破棄し、サーバーの値を確認してください。',
       saved: '設定を保存しました',
       unsaved: '未保存の変更があります',
       saving: '保存中',

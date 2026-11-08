@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -95,6 +96,33 @@ func (s *Server) handleUpdateGroupSettings(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", groupSettingsHTTPProjection(result, wantsSiteInfo(c)))
 }
 
+func (s *Server) handleUpdateGroupConfiguration(c *gin.Context) {
+	id, ok := groupID(c, "update_group_configuration")
+	if !ok {
+		return
+	}
+	var wire struct {
+		Settings GroupSettingsUpdateRequest `json:"settings"`
+		Models   json.RawMessage            `json:"models"`
+	}
+	if err := bindStrictJSON(c, &wire); err != nil {
+		writeServiceError(c, "update_group_configuration", mapControlJSONError(err))
+		return
+	}
+	var request GroupModelsUpdateRequest
+	request.schedule = true
+	if err := request.Models.decode(wire.Models, true); err != nil {
+		writeServiceError(c, "update_group_configuration", mapControlJSONError(err))
+		return
+	}
+	result, err := s.service.updateGroupSettingsAndModels(c.Request.Context(), id, wire.Settings, &request)
+	if err != nil {
+		writeServiceError(c, "update_group_configuration", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", groupSettingsHTTPProjection(result, true))
+}
+
 func wantsSiteInfo(c *gin.Context) bool {
 	values := c.Request.URL.Query()["include"]
 	return len(values) == 1 && values[0] == "site_info"
@@ -117,7 +145,20 @@ func (s *Server) handleUpdateGroupModels(c *gin.Context) {
 		return
 	}
 	var request GroupModelsUpdateRequest
-	if err := bindStrictJSON(c, &request); err != nil {
+	var bindErr error
+	if c.Query("include_schedule") == "true" {
+		request.schedule = true
+		var wire struct {
+			Models json.RawMessage `json:"models"`
+		}
+		bindErr = bindStrictJSON(c, &wire)
+		if bindErr == nil && wire.Models != nil {
+			bindErr = request.Models.decode(wire.Models, true)
+		}
+	} else {
+		bindErr = bindStrictJSON(c, &request)
+	}
+	if err := bindErr; err != nil {
 		writeServiceError(c, "update_group_models", mapControlJSONError(err))
 		return
 	}
@@ -134,7 +175,7 @@ func (s *Server) handleGetGroupModels(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := s.service.GetGroupModels(c.Request.Context(), id)
+	result, err := s.service.getGroupModels(c.Request.Context(), id, c.Query("include_schedule") == "true")
 	if err != nil {
 		writeServiceError(c, "get_group_models", err)
 		return

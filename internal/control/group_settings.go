@@ -252,6 +252,15 @@ func (s *Service) UpdateGroupSettings(
 	groupID uint,
 	request GroupSettingsUpdateRequest,
 ) (GroupSettingsResponse, error) {
+	return s.updateGroupSettingsAndModels(ctx, groupID, request, nil)
+}
+
+func (s *Service) updateGroupSettingsAndModels(
+	ctx context.Context,
+	groupID uint,
+	request GroupSettingsUpdateRequest,
+	modelsRequest *GroupModelsUpdateRequest,
+) (GroupSettingsResponse, error) {
 	if groupID == 0 {
 		return GroupSettingsResponse{}, app_errors.ErrBadRequest
 	}
@@ -259,6 +268,17 @@ func (s *Service) UpdateGroupSettings(
 	if err != nil {
 		return GroupSettingsResponse{}, err
 	}
+	var normalizedModels []GroupModel
+	if modelsRequest != nil {
+		if !modelsRequest.Models.Set {
+			return GroupSettingsResponse{}, app_errors.ErrBadRequest
+		}
+		normalizedModels, err = normalizeGroupModels(modelsRequest.Models.Values)
+		if err != nil {
+			return GroupSettingsResponse{}, err
+		}
+	}
+	modelIDsChanged := false
 
 	var siteSync bool
 	var committed models.Group
@@ -281,12 +301,51 @@ func (s *Service) UpdateGroupSettings(
 			return app_errors.ErrValidation
 		}
 		channelChanged := targetChannelID != channel.ID(group.ChannelID)
+		if modelsRequest != nil {
+			var previous []groupModelEntry
+			if err := decodeGroupDiscoveryJSON(group.Models, &previous); err != nil {
+				return err
+			}
+			modelIDsChanged = !sameGroupModelIDs(previous, normalizedModels)
+			preserved, err := preserveGroupModelFields(previous, normalizedModels)
+			if err != nil {
+				return err
+			}
+			for i := range preserved {
+				if preserved[i].reasoningSet && !preserved[i].reasoningNull {
+					value, err := canonicalScheduleReasoningEffort(preserved[i].ReasoningEffort)
+					if err != nil {
+						return err
+					}
+					preserved[i].ReasoningEffort = value
+				}
+			}
+			if err := assignMissingTestAliases(tx, preserved); err != nil {
+				return err
+			}
+			encoded, err := json.Marshal(preserved)
+			if err != nil {
+				return err
+			}
+			group.Models = models.JSON(encoded)
+			if err := validateGroupReasoningForChannel(group, targetChannelID, s.channelRegistry); err != nil {
+				return err
+			}
+		}
+		if channelChanged {
+			if err := validateGroupReasoningForChannel(group, targetChannelID, s.channelRegistry); err != nil {
+				return err
+			}
+		}
 		if request.Proxy.Set && !request.Proxy.Null &&
 			!s.channelRegistry.SupportsOutboundProxy(targetChannelID) {
 			return app_errors.ErrValidation
 		}
 
 		updates := make(map[string]any, 10)
+		if modelsRequest != nil {
+			updates["models"] = group.Models
+		}
 		if channelChanged {
 			group.ChannelID = string(targetChannelID)
 			updates["channel_id"] = group.ChannelID
@@ -392,7 +451,34 @@ func (s *Service) UpdateGroupSettings(
 	if siteSync && s.siteInfoSync != nil {
 		s.siteInfoSync.RequestGroupSync(groupID)
 	}
+	if modelIDsChanged && s.catalogSync != nil {
+		s.catalogSync.RequestGroupSync()
+	}
 	return response, err
+}
+
+func validateGroupReasoningForChannel(
+	group models.Group,
+	targetChannelID channel.ID,
+	registry *channel.Registry,
+) error {
+	providerKind, ok := registry.ProviderKind(targetChannelID)
+	if !ok {
+		return app_errors.ErrValidation
+	}
+	if providerKind != channel.ProviderGemini && providerKind != channel.ProviderGoogleVertex {
+		return nil
+	}
+	var groupModels []groupModelEntry
+	if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
+		return app_errors.ErrValidation
+	}
+	for _, model := range groupModels {
+		if model.ReasoningEffort == "none" {
+			return app_errors.ErrValidation
+		}
+	}
+	return nil
 }
 
 // validateGroupTargetCredentials verifies that every persisted encrypted

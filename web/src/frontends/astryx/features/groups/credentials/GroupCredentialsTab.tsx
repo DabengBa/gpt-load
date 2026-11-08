@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
+import * as stylex from '@stylexjs/stylex'
 import * as actions from '@shared/control/resources/credentials'
 
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
@@ -14,6 +15,21 @@ import { useAppServices } from '../../../app/services'
 import { InlineNotice } from '../../../components/InlineNotice'
 import { GroupCredentialRecord } from './GroupCredentialRecord'
 import { CredentialTestDialog } from './CredentialTestDialog'
+
+const styles = stylex.create({
+  empty: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 'var(--space-2)',
+    paddingTop: 'var(--space-3)',
+    paddingBottom: 'var(--space-3)',
+  },
+  emptyCopy: { minWidth: 0 },
+  emptyTitle: { margin: 0, fontSize: 'var(--text-body)', fontWeight: 650 },
+  emptyDescription: { margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' },
+})
 
 export function GroupCredentialsTab({ groupId }: { groupId: number }) {
   return <CredentialDetail key={groupId} groupId={groupId} />
@@ -100,17 +116,15 @@ function CredentialDetail({ groupId }: { groupId: number }) {
   const item = query.data.credential
   if (!item)
     return (
-      <EmptyState
-        title={t('group.credentials.emptyTitle')}
-        description={t('group.credentials.emptyDescription')}
-        actions={
-          <Button
-            label={t('group.credentials.add')}
-            icon={<Plus size={16} />}
-            onClick={configure}
-          />
-        }
-      />
+      <section {...stylex.props(styles.empty)}>
+        <div {...stylex.props(styles.emptyCopy)}>
+          <h2 {...stylex.props(styles.emptyTitle)}>{t('group.credentials.emptyTitle')}</h2>
+          <p {...stylex.props(styles.emptyDescription)}>
+            {t('group.credentials.emptyDescription')}
+          </p>
+        </div>
+        <Button label={t('group.credentials.add')} icon={<Plus size={16} />} onClick={configure} />
+      </section>
     )
   const restore = () =>
     void run('restore', () => actions.restoreCredential(apiClient, groupId, item.credential_id))
