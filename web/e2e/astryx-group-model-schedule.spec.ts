@@ -54,7 +54,7 @@ test('failed save refreshes server state without discarding the draft', async ({
   const reasoning = page.getByLabel('Reasoning policy for model-a')
   await reasoning.selectOption('high')
   await page.getByRole('button', { name: 'Save settings', exact: true }).click()
-  await expect(page.getByText(/may have changed/i)).toBeVisible()
+  await expect(page.getByText(/save outcome is uncertain/i)).toBeVisible()
   await expect.poll(() => gets).toBeGreaterThan(1)
   await expect(reasoning).toHaveValue('high')
   await page.getByRole('button', { name: 'Discard draft and review server' }).click()
@@ -72,7 +72,9 @@ test('schedule controls remain operable at mobile width', async ({ page }) => {
   await expect(page.getByLabel('Enable model model-a')).not.toBeChecked()
 })
 
-test('a refreshed failed draft can be retried against the refreshed baseline', async ({ page }) => {
+test('conflicting remote edits block retry until the server state is reviewed', async ({
+  page,
+}) => {
   await mockGroupModels(page, { models: [{ id: 'model-a' }] })
   let puts = 0
   const row = {
@@ -110,8 +112,10 @@ test('a refreshed failed draft can be retried against the refreshed baseline', a
   await page.getByLabel('Reasoning policy for model-a').selectOption('high')
   await page.getByRole('button', { name: 'Save settings', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Discard draft and review server' })).toBeVisible()
-  await page.getByRole('button', { name: 'Save settings', exact: true }).click()
-  await expect.poll(() => puts).toBe(2)
+  await expect(page.getByRole('button', { name: 'Save settings', exact: true })).toBeDisabled()
+  expect(puts).toBe(1)
+  await page.getByRole('button', { name: 'Discard draft and review server' }).click()
+  await expect(page.getByLabel('Reasoning policy for model-a')).toHaveValue('medium')
 })
 
 test('aliases of the same model have distinct accessible scheduling controls', async ({ page }) => {
@@ -127,6 +131,31 @@ test('aliases of the same model have distinct accessible scheduling controls', a
     await expect(page.getByLabel(`Reasoning policy for ${name}`, { exact: true })).toHaveCount(1)
     await expect(page.getByLabel(`Enable model ${name}`, { exact: true })).toHaveCount(1)
   }
+})
+
+test('unified settings and model edits use a single combined write', async ({ page }) => {
+  const { puts } = await mockGroupModels(page, { models: [{ id: 'model-a' }], extraChannel: true })
+  const requests: unknown[] = []
+  let separateSettingsWrites = 0
+  await page.route('**/api/groups/1/configuration', async (route) => {
+    requests.push(route.request().postDataJSON())
+    await route.fulfill({ status: 500, json: { code: 'ERROR', message: 'failed', data: null } })
+  })
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && new URL(request.url()).pathname === '/api/groups/1/settings')
+      separateSettingsWrites++
+  })
+  await page.goto('/groups/1')
+  await page.getByRole('button', { name: 'Gemini', exact: true }).click()
+  await page.getByLabel('Reasoning policy for model-a').selectOption('high')
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click()
+  await expect.poll(() => requests.length).toBe(1)
+  expect(requests[0]).toMatchObject({
+    settings: { channel_id: 'gemini' },
+    models: [{ id: 'model-a', reasoning_effort: 'high' }],
+  })
+  expect(puts).toHaveLength(0)
+  expect(separateSettingsWrites).toBe(0)
 })
 
 test('reasoning options follow the unsaved target channel', async ({ page }) => {

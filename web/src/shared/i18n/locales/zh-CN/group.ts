@@ -132,6 +132,8 @@ export default {
     modelEditor: {
       recoveryChecking: '服务器数据可能已变化。正在刷新核对，草稿已保留。',
       reviewServer: '放弃草稿并核对服务器状态',
+      recoveryConflict:
+        '保存结果不确定。草稿仅供参考，无法安全保存。请先复制需要的修改，再放弃草稿并核对服务器状态。',
       recoveryReady:
         '服务器数据可能已变化。草稿已保留；请检查后重新保存，或放弃草稿以查看刷新后的服务器状态。',
       recoveryFailed: '服务器数据可能已变化，刷新失败。请重试后再放弃或保存草稿。',

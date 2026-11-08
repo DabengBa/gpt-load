@@ -38,6 +38,7 @@ import {
   createModelDraft,
   findModelNameConflicts,
   normalizedModels,
+  reconcileUncertainModels,
   syncedModels,
   type ModelDraftItem,
   type ModelNameConflict,
@@ -141,7 +142,10 @@ export function GroupModelsTab({
   const [discoveryError, setDiscoveryError] = useState('')
   const [discoveryReady, setDiscoveryReady] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [recovery, setRecovery] = useState<'checking' | 'ready' | 'failed' | null>(null)
+  const [recovery, setRecovery] = useState<'checking' | 'ready' | 'failed' | 'conflict' | null>(
+    null,
+  )
+  const recoveryOperationRef = useRef<'sync' | 'save'>('save')
   const [serverConflicts, setServerConflicts] = useState<ModelNameConflict[]>([])
   const drawerOpen = routeState.discoveryOpen
   const savedModelIDByKey = new Map<number, string>()
@@ -287,6 +291,8 @@ export function GroupModelsTab({
 
   const modelEditorRef = useRef<ModelAliasEditorHandle>(null)
   const [emptyConfirmOpen, setEmptyConfirmOpen] = useState(false)
+  const emptyCombinedActionRef = useRef<(() => void) | null>(null)
+  const combinedRecoveryRef = useRef(false)
   const [candidates, setCandidates] = useState<ModelCandidate[]>([])
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncMode, setSyncMode] = useState<ModelSyncMode>('full')
@@ -635,27 +641,20 @@ export function GroupModelsTab({
       ...item,
       key: (item.entry_id && previousByEntry.get(item.entry_id)?.key) || nextKeyRef.current++,
     }))
-    const remoteByEntry = new Map(
-      refreshed.filter((item) => item.entry_id).map((item) => [item.entry_id, item]),
+    const reconciled = reconcileUncertainModels(
+      stateRef.current.saved,
+      stateRef.current.draft,
+      refreshed,
+      recoveryOperationRef.current,
     )
-    setDraft((current) =>
-      current.map((item) => {
-        const original = item.entry_id && previousByEntry.get(item.entry_id)
-        const remote = item.entry_id && remoteByEntry.get(item.entry_id)
-        if (!original || !remote) return item
-        return {
-          ...item,
-          reasoning_effort:
-            (item.reasoning_effort ?? '') === (original.reasoning_effort ?? '')
-              ? remote.reasoning_effort
-              : item.reasoning_effort,
-          enabled:
-            (item.enabled ?? true) === (original.enabled ?? true) ? remote.enabled : item.enabled,
-        }
-      }),
-    )
-    setSaved(refreshed)
-    setRecovery('ready')
+    setDraft(reconciled.draft)
+    setSaved(reconciled.saved)
+    setRecovery(reconciled.conflict || combinedRecoveryRef.current ? 'conflict' : 'ready')
+    if (recoveryOperationRef.current === 'sync') {
+      setDiscoveryReady(false)
+      setSyncDialogOpen(false)
+      setDiscoveryOpen(false)
+    }
     void invalidateGroupModelDependents(queryClient, groupId)
   }
 
@@ -679,6 +678,8 @@ export function GroupModelsTab({
     } catch (cause: unknown) {
       if (cause instanceof RequestCancelledError || controllerRef.current !== active) return
       setSyncError(t('group.modelEditor.sync.saveFailed'))
+      combinedRecoveryRef.current = false
+      recoveryOperationRef.current = 'sync'
       await refreshAfterUncertainWrite()
     } finally {
       if (controllerRef.current === active) {
@@ -729,6 +730,8 @@ export function GroupModelsTab({
       showSavedFeedback()
     } catch (cause: unknown) {
       if (cause instanceof RequestCancelledError || controllerRef.current !== active) return
+      combinedRecoveryRef.current = false
+      recoveryOperationRef.current = 'save'
       await refreshAfterUncertainWrite()
       const nextConflicts =
         cause instanceof ApiError && cause.code === 'MODEL_NAME_CONFLICT'
@@ -752,7 +755,11 @@ export function GroupModelsTab({
   }
 
   function discard(): void {
-    if (stateRef.current.operationBlocked || (recovery !== null && recovery !== 'ready')) return
+    if (
+      stateRef.current.operationBlocked ||
+      (recovery !== null && recovery !== 'ready' && recovery !== 'conflict')
+    )
+      return
     clearSavedFeedback()
     setServerConflicts([])
     setSaveError('')
@@ -764,7 +771,29 @@ export function GroupModelsTab({
     await modelEditorRef.current?.focusFirstInvalid()
   }
 
-  useImperativeHandle(ref, () => ({ requestSave, discard, focusFirstInvalid }))
+  useImperativeHandle(ref, () => ({
+    requestSave,
+    discard,
+    focusFirstInvalid,
+    prepareCombined: () =>
+      canSave && (recovery === null || recovery === 'ready') && !stateRef.current.operationBlocked
+        ? normalizedModels(draft, saved)
+        : undefined,
+    acceptCombined: async (result) => {
+      await acceptSavedModels(result)
+      await invalidateGroupModelDependents(queryClient, groupId)
+      showSavedFeedback()
+    },
+    recoverCombined: async () => {
+      combinedRecoveryRef.current = true
+      recoveryOperationRef.current = 'save'
+      await refreshAfterUncertainWrite()
+    },
+    confirmCombinedEmpty: (action) => {
+      emptyCombinedActionRef.current = action
+      setEmptyConfirmOpen(true)
+    },
+  }))
 
   // Classic watch([dirty, operationBlocked, saveBarError, savedFeedback]):
   // report aggregate state to the host's unified save bar.
@@ -774,9 +803,10 @@ export function GroupModelsTab({
       pending: operationBlocked,
       error: saveBarError,
       saved: savedFeedback,
+      invalid: recovery !== null && recovery !== 'ready',
       invalidRowCount,
     })
-  }, [dirty, operationBlocked, saveBarError, savedFeedback, invalidRowCount])
+  }, [dirty, operationBlocked, saveBarError, savedFeedback, invalidRowCount, recovery])
 
   useEffect(
     () => () => {
@@ -819,9 +849,11 @@ export function GroupModelsTab({
           {t(
             recovery === 'failed'
               ? 'group.modelEditor.recoveryFailed'
-              : recovery === 'checking'
-                ? 'group.modelEditor.recoveryChecking'
-                : 'group.modelEditor.recoveryReady',
+              : recovery === 'conflict'
+                ? 'group.modelEditor.recoveryConflict'
+                : recovery === 'checking'
+                  ? 'group.modelEditor.recoveryChecking'
+                  : 'group.modelEditor.recoveryReady',
           )}
           {recovery === 'failed' && (
             <Button
@@ -830,7 +862,7 @@ export function GroupModelsTab({
               onClick={() => void refreshAfterUncertainWrite()}
             />
           )}
-          {recovery === 'ready' && (
+          {(recovery === 'ready' || recovery === 'conflict') && (
             <Button size="sm" label={t('group.modelEditor.reviewServer')} onClick={discard} />
           )}
         </div>
@@ -1127,14 +1159,24 @@ export function GroupModelsTab({
 
           <AlertDialog
             isOpen={emptyConfirmOpen}
-            onOpenChange={setEmptyConfirmOpen}
+            onOpenChange={(open) => {
+              setEmptyConfirmOpen(open)
+              if (!open) emptyCombinedActionRef.current = null
+            }}
             title={t('group.modelEditor.emptyConfirm.title')}
             description={t('group.modelEditor.emptyConfirm.description')}
             cancelLabel={t('group.modelEditor.emptyConfirm.cancel')}
             actionLabel={t('group.modelEditor.emptyConfirm.confirm')}
             actionVariant="destructive"
             isActionLoading={pending === 'save'}
-            onAction={() => void save()}
+            onAction={() => {
+              const combined = emptyCombinedActionRef.current
+              emptyCombinedActionRef.current = null
+              if (combined) {
+                setEmptyConfirmOpen(false)
+                combined()
+              } else void save()
+            }}
           />
 
           {!unified && (

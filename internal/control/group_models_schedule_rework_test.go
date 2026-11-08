@@ -40,6 +40,32 @@ func TestGroupSettingsChannelSwitchRejectsGeminiNoneReasoning(t *testing.T) {
 	}
 }
 
+func TestGroupCombinedUpdateIsAtomic(t *testing.T) {
+	s := newScheduleTestScenario(t)
+	path := "/api/groups/1/models?include_schedule=true"
+	body := fmt.Sprintf(`{"models":[{"id":"up-a","alias":"pub","alias_enabled":true,"entry_id":"%s","reasoning_effort":"none"}]}`, scheduleEntryOneA)
+	decodeScheduleSuccess(t, s.perform(http.MethodPut, path, body, s.authKey), new(map[string]any))
+	combined := fmt.Sprintf(`{"settings":{"channel_id":"gemini","params":{}},"models":[{"id":"up-a","alias":"pub","alias_enabled":true,"entry_id":"%s","reasoning_effort":null}]}`, scheduleEntryOneA)
+	response := s.perform(http.MethodPut, "/api/groups/1/configuration", combined, s.authKey)
+	if response.Code != http.StatusOK {
+		t.Fatalf("combined transition: %d %s", response.Code, response.Body.String())
+	}
+	group := captureGroupRow(t, s.fixture, 1)
+	if group.ChannelID != "gemini" || loadCreatedGroupModels(t, s.fixture, 1)[0].ReasoningEffort != "" {
+		t.Fatal("combined transition not committed")
+	}
+	before := captureGroupRow(t, s.fixture, 1)
+	invalid := fmt.Sprintf(`{"settings":{"name":"should-not-save"},"models":[{"id":"up-a","alias":"pub","alias_enabled":true,"entry_id":"%s","reasoning_effort":"none"}]}`, scheduleEntryOneA)
+	response = s.perform(http.MethodPut, "/api/groups/1/configuration", invalid, s.authKey)
+	if response.Code == http.StatusOK {
+		t.Fatal("invalid combined update succeeded")
+	}
+	after := captureGroupRow(t, s.fixture, 1)
+	if after.Name != before.Name || string(after.Models) != string(before.Models) {
+		t.Fatal("invalid combined update partially committed")
+	}
+}
+
 type failingScheduleReconciler struct {
 	delegate state.SnapshotReconciler
 	fail     bool

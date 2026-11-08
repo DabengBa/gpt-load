@@ -138,6 +138,8 @@ export default {
       recoveryChecking:
         'The server may have changed. Checking the latest models; your draft is preserved.',
       reviewServer: 'Discard draft and review server',
+      recoveryConflict:
+        'The save outcome is uncertain. Your draft is shown for reference but cannot be saved safely. Copy any changes you need, then discard the draft and review the server state.',
       recoveryReady:
         'The server may have changed. Your draft is preserved; review it and save again, or discard it to see the refreshed server state.',
       recoveryFailed:

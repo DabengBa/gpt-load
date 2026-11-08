@@ -26,7 +26,7 @@ import { useTransientFlag } from '../../../app/use-transient-flag'
 import { useUnsavedChanges } from '../../../app/use-unsaved-changes'
 import { InlineNotice } from '../../../components/InlineNotice'
 import { SectionHeader } from '../../../components/SectionHeader'
-import type { GroupEditorHandle, GroupEditorState } from '../editor-handles'
+import type { GroupSettingsEditorHandle, GroupEditorState } from '../editor-handles'
 import { GroupSettingsAdvanced } from './GroupSettingsAdvanced'
 import { GroupSettingsBaseForm } from './GroupSettingsBaseForm'
 import { GroupSettingsSiteAccessSection } from './GroupSettingsSiteAccessSection'
@@ -71,7 +71,7 @@ export function GroupSettingsTab({
   unified?: boolean
   blocked?: boolean
   onStateChange(state: GroupEditorState): void
-  ref?: Ref<GroupEditorHandle>
+  ref?: Ref<GroupSettingsEditorHandle>
 }) {
   const t = useT()
   const { apiClient } = useAppServices()
@@ -415,7 +415,34 @@ export function GroupSettingsTab({
     })
   }
 
-  useImperativeHandle(ref, () => ({ requestSave, discard }))
+  useImperativeHandle(ref, () => ({
+    requestSave,
+    discard,
+    prepareCombined: () =>
+      !saved || !draft || !valid || stateRef.current.mutationPending
+        ? undefined
+        : {
+            ...patch,
+            ...(proxyState.dirty && proxyState.value !== undefined
+              ? { proxy: proxyState.value }
+              : {}),
+          },
+    acceptCombined: async (result) => {
+      setForceSiteRootConfirmation(false)
+      setError('')
+      resetSavedDraft(result)
+      cacheGroupSettings(queryClient, groupId, result)
+      await invalidateGroupSettingsDependents(queryClient, groupId)
+      showSavedFeedback()
+    },
+    failCombined: (cause) => {
+      if (cause instanceof ApiError && cause.code === 'SITE_ROOT_CHANGE_CONFIRMATION_REQUIRED') {
+        setForceSiteRootConfirmation(true)
+        setDraft((current) => (current ? { ...current, confirmSiteRootChange: false } : current))
+        setError(t('siteAccess.confirmError'))
+      } else setError(t('group.settings.saveFailed'))
+    },
+  }))
 
   // Classic watch([dirty, mutationPending, error, savedFeedback, valid]):
   // report aggregate state to the host's unified save bar.

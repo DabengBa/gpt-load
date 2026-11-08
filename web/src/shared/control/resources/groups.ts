@@ -977,6 +977,22 @@ export async function updateGroupSettings(
   )
 }
 
+export async function updateGroupConfiguration(
+  client: ApiClient,
+  groupID: number,
+  settings: GroupSettingsUpdateRequest,
+  models: GroupModelUpdateDto[],
+  signal?: AbortSignal,
+): Promise<GroupSettingsDto> {
+  return projectGroupSettings(
+    await client.request(`/api/groups/${groupID}/configuration`, {
+      method: 'PUT',
+      json: { settings, models },
+      signal,
+    }),
+  )
+}
+
 export async function deleteGroup(
   client: ApiClient,
   groupID: number,
