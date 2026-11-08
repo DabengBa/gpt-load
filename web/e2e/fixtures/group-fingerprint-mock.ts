@@ -12,6 +12,13 @@ const RUNTIME = {
   parameter_overrides: [],
 }
 
+const SITE_ACCESS = {
+  user_id: '',
+  token_configured: false,
+  site_root_url: '',
+  snapshot: null,
+}
+
 export const fingerprintLogID = '9f1c2b3a-4d5e-4f60-8a9b-0c1d2e3f4a5b'
 
 const MODEL_ROW = {
@@ -200,6 +207,7 @@ export async function mockGroupFingerprint(page: Page): Promise<FingerprintMock>
         params: groupBase.params,
         provider_url: groupBase.provider_url,
         enabled: true,
+        site_access: SITE_ACCESS,
         overrides: RUNTIME,
         effective: {
           first_byte_timeout: RUNTIME.first_byte_timeout,

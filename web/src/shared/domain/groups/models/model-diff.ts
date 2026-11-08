@@ -34,6 +34,8 @@ export function createModelDraft(items: readonly GroupModelItemDto[]): ModelDraf
       concurrency_limit: item.concurrency_limit,
       pricing_status: item.pricing_status,
       price_id: item.price_id,
+      reasoning_effort: item.reasoning_effort ?? '',
+      enabled: item.enabled ?? true,
       key: index,
     }
     if (Object.prototype.hasOwnProperty.call(item, 'entry_id')) {
@@ -46,15 +48,38 @@ export function createModelDraft(items: readonly GroupModelItemDto[]): ModelDraf
   })
 }
 
-export function normalizedModels(draft: readonly ModelDraftItem[]) {
-  return normalizeSharedModels(draft)
+export function normalizedModels(
+  draft: readonly ModelDraftItem[],
+  baseline?: readonly ModelDraftItem[],
+) {
+  if (!baseline) return normalizeSharedModels(draft)
+  const byKey = new Map(baseline.map((item) => [item.key, item]))
+  return draft.flatMap((item) => {
+    const normalized = normalizeSharedModels([item])[0]
+    if (!normalized) return []
+    const original = byKey.get(item.key)
+    const reasoning = item.reasoning_effort ?? ''
+    if (reasoning !== (original?.reasoning_effort ?? ''))
+      normalized.reasoning_effort = reasoning || null
+    const enabled = item.enabled ?? true
+    if (enabled !== (original?.enabled ?? true)) normalized.enabled = enabled
+    return [normalized]
+  })
 }
 
 export function sameModels(
   left: readonly ModelDraftItem[],
   right: readonly ModelDraftItem[],
 ): boolean {
-  return sameSharedModels(left, right)
+  return (
+    sameSharedModels(left, right) &&
+    left.length === right.length &&
+    left.every(
+      (item, index) =>
+        (item.reasoning_effort ?? '') === (right[index]?.reasoning_effort ?? '') &&
+        (item.enabled ?? true) === (right[index]?.enabled ?? true),
+    )
+  )
 }
 
 export function createModelSyncDiff(

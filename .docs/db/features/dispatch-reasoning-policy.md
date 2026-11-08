@@ -10,7 +10,8 @@ related: [feature.model-test-alias]
 ## ID Explanation
 
 `feature.dispatch-reasoning-policy` owns administrator control of reasoning
-intensity for individual model routes in Dispatch Center. It covers the level
+intensity for individual model routes in Dispatch Center and group model
+details. It covers the level
 choices shown in the editor, saving, clearing, and the resulting effective
 value. Provider transport fields and persistence belong to the technical
 reasoning-policy owner.
@@ -26,6 +27,11 @@ request runs.
 - Administrators enter Dispatch Center at `/schedule`, select an external
   model, and edit its route details. Reasoning is configurable only as an
   entry override; there is no group-level default.
+- In a group's model details, administrators can also edit each model's
+  reasoning override and enabled state alongside its other model settings.
+  These changes are saved together; discarding the draft restores saved values.
+  After an uncertain save, the editor refreshes the saved state for review;
+  if refresh fails, it offers a retry before another save.
 - The effective order is entry override, client request, then provider
   default. Clearing an entry override lets that request use the client or
   provider value. An unset value is distinct from an explicit `none` setting.

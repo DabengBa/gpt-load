@@ -195,6 +195,8 @@ export interface GroupModelItemDto {
   test_alias: string
   /** Present after the server lazily backfills the route-entry identity. */
   entry_id?: string
+  reasoning_effort?: string
+  enabled?: boolean
   weight: number | null
   priority: number | null
   /** Optional for compatibility with responses produced before breaker exposure. */

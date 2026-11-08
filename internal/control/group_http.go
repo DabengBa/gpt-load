@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -117,7 +118,20 @@ func (s *Server) handleUpdateGroupModels(c *gin.Context) {
 		return
 	}
 	var request GroupModelsUpdateRequest
-	if err := bindStrictJSON(c, &request); err != nil {
+	var bindErr error
+	if c.Query("include_schedule") == "true" {
+		request.schedule = true
+		var wire struct {
+			Models json.RawMessage `json:"models"`
+		}
+		bindErr = bindStrictJSON(c, &wire)
+		if bindErr == nil && wire.Models != nil {
+			bindErr = request.Models.decode(wire.Models, true)
+		}
+	} else {
+		bindErr = bindStrictJSON(c, &request)
+	}
+	if err := bindErr; err != nil {
 		writeServiceError(c, "update_group_models", mapControlJSONError(err))
 		return
 	}
@@ -134,7 +148,7 @@ func (s *Server) handleGetGroupModels(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := s.service.GetGroupModels(c.Request.Context(), id)
+	result, err := s.service.getGroupModels(c.Request.Context(), id, c.Query("include_schedule") == "true")
 	if err != nil {
 		writeServiceError(c, "get_group_models", err)
 		return

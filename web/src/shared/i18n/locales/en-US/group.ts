@@ -135,6 +135,18 @@ export default {
     copyFailure: 'Copy failed',
     openProviderUrl: 'Open provider website {url} in a new tab',
     modelEditor: {
+      recoveryChecking:
+        'The server may have changed. Checking the latest models; your draft is preserved.',
+      reviewServer: 'Discard draft and review server',
+      recoveryReady:
+        'The server may have changed. Your draft is preserved; review it and save again, or discard it to see the refreshed server state.',
+      recoveryFailed:
+        'The server may have changed. Could not refresh; retry before discarding or saving your draft.',
+      reasoning: 'Reasoning policy',
+      reasoningFor: 'Reasoning policy for {id}',
+      reasoningInherit: 'Not configured',
+      enabled: 'Enabled',
+      enabledFor: 'Enable model {id}',
       title: 'Models and aliases',
       schedule: 'Schedule',
       breaker: 'Breaker',

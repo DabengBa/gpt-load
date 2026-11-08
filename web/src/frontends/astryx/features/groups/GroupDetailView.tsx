@@ -253,6 +253,7 @@ export function GroupDetailView() {
                   key={`models-${groupId}`}
                   groupId={groupId}
                   channelId={summaryQuery.data.channel_id}
+                  scheduleChannelId={settingsState.channelId ?? summaryQuery.data.channel_id}
                   enabled={settingsQuery.data?.enabled ?? true}
                   unified
                   blocked={deletePending}

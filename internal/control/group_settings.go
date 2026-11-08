@@ -281,6 +281,11 @@ func (s *Service) UpdateGroupSettings(
 			return app_errors.ErrValidation
 		}
 		channelChanged := targetChannelID != channel.ID(group.ChannelID)
+		if channelChanged {
+			if err := validateGroupReasoningForChannel(group, targetChannelID, s.channelRegistry); err != nil {
+				return err
+			}
+		}
 		if request.Proxy.Set && !request.Proxy.Null &&
 			!s.channelRegistry.SupportsOutboundProxy(targetChannelID) {
 			return app_errors.ErrValidation
@@ -393,6 +398,30 @@ func (s *Service) UpdateGroupSettings(
 		s.siteInfoSync.RequestGroupSync(groupID)
 	}
 	return response, err
+}
+
+func validateGroupReasoningForChannel(
+	group models.Group,
+	targetChannelID channel.ID,
+	registry *channel.Registry,
+) error {
+	providerKind, ok := registry.ProviderKind(targetChannelID)
+	if !ok {
+		return app_errors.ErrValidation
+	}
+	if providerKind != channel.ProviderGemini && providerKind != channel.ProviderGoogleVertex {
+		return nil
+	}
+	var groupModels []groupModelEntry
+	if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
+		return app_errors.ErrValidation
+	}
+	for _, model := range groupModels {
+		if model.ReasoningEffort == "none" {
+			return app_errors.ErrValidation
+		}
+	}
+	return nil
 }
 
 // validateGroupTargetCredentials verifies that every persisted encrypted

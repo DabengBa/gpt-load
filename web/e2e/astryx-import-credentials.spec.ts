@@ -87,7 +87,7 @@ test('ScriptCat payload pre-fills credentials and keeps Base URL when a channel 
     .toBeNull()
 
   await page.getByRole('button', { name: 'OpenAI', exact: true }).click()
-  await expect(page.getByRole('textbox', { name: /^Custom upstream URL/ })).toHaveValue(
+  await expect(page.getByRole('textbox', { name: /^Upstream base URL/ })).toHaveValue(
     'https://relay.example.test/v1',
   )
 })
@@ -195,10 +195,8 @@ test('outbound proxy is collapsed inside More optional settings by default and d
 
 test('credential field, section summary and footer agree on invalid input', async ({ page }) => {
   await openImport(page)
-  const override = page.getByRole('switch', { name: 'Custom upstream URL' })
-  await expect(override).toBeChecked()
   await page
-    .getByRole('textbox', { name: 'Custom upstream URL' })
+    .getByRole('textbox', { name: /^Upstream base URL/ })
     .fill('https://api.example.test/v1')
   const input = page.locator('#channel-credentials')
   const section = page.getByRole('region', { name: 'Enter one API key required', exact: true })

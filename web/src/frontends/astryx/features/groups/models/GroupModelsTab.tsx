@@ -21,6 +21,7 @@ import {
 import type { ModelCandidate } from '@shared/control/resources/providers'
 import { enabledDataProtocols, type ProtocolValue } from '@shared/control/protocols'
 import type { ModelProbeTargetDto } from '@shared/control/resources/model-probe'
+import { reasoningEffortValues } from '@shared/control/resources/model-route-schedule'
 import { isFingerprintDialogOpen } from '@shared/domain/models/fingerprint-run'
 import type {
   ModelAliasEditorLabels,
@@ -102,6 +103,7 @@ function groupDetailHref(groupId: number): string {
 export function GroupModelsTab({
   groupId,
   channelId,
+  scheduleChannelId = channelId,
   enabled = true,
   unified = false,
   blocked = false,
@@ -110,6 +112,7 @@ export function GroupModelsTab({
 }: {
   groupId: number
   channelId: string
+  scheduleChannelId?: string
   enabled?: boolean
   unified?: boolean
   blocked?: boolean
@@ -138,6 +141,7 @@ export function GroupModelsTab({
   const [discoveryError, setDiscoveryError] = useState('')
   const [discoveryReady, setDiscoveryReady] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [recovery, setRecovery] = useState<'checking' | 'ready' | 'failed' | null>(null)
   const [serverConflicts, setServerConflicts] = useState<ModelNameConflict[]>([])
   const drawerOpen = routeState.discoveryOpen
   const savedModelIDByKey = new Map<number, string>()
@@ -318,7 +322,7 @@ export function GroupModelsTab({
   const syncChangeCount =
     (syncMode === 'cleanup' ? 0 : syncDiff.additions.length) +
     (syncMode === 'add' ? 0 : syncDiff.removals.length)
-  const syncDisabled = !discoveryReady || dirty || operationBlocked
+  const syncDisabled = !discoveryReady || dirty || operationBlocked || recovery !== null
   const syncDisabledReason = dirty ? t('group.modelEditor.sync.dirty') : undefined
 
   const aliasEditorLabels: ModelAliasEditorLabels = buildAliasEditorLabels(t, pendingPricingCount)
@@ -605,7 +609,8 @@ export function GroupModelsTab({
     setSyncDialogOpen(true)
   }
 
-  function acceptSavedModels(result: GroupModelsDto): void {
+  async function acceptSavedModels(result: GroupModelsDto): Promise<void> {
+    await cacheGroupModels(queryClient, groupId, result)
     const next = createModelDraft(result.items).map((item) => ({
       ...item,
       key: nextKeyRef.current++,
@@ -613,7 +618,45 @@ export function GroupModelsTab({
     setSaved(next)
     setDraft(next.map((item) => ({ ...item, sources: [...item.sources] })))
     setServerConflicts([])
-    cacheGroupModels(queryClient, groupId, result)
+    setRecovery(null)
+  }
+
+  async function refreshAfterUncertainWrite(): Promise<void> {
+    setRecovery('checking')
+    const result = await query.refetch()
+    if (result.isError || !result.data) {
+      setRecovery('failed')
+      return
+    }
+    const previousByEntry = new Map(
+      stateRef.current.saved.filter((item) => item.entry_id).map((item) => [item.entry_id, item]),
+    )
+    const refreshed = createModelDraft(result.data.items).map((item) => ({
+      ...item,
+      key: (item.entry_id && previousByEntry.get(item.entry_id)?.key) || nextKeyRef.current++,
+    }))
+    const remoteByEntry = new Map(
+      refreshed.filter((item) => item.entry_id).map((item) => [item.entry_id, item]),
+    )
+    setDraft((current) =>
+      current.map((item) => {
+        const original = item.entry_id && previousByEntry.get(item.entry_id)
+        const remote = item.entry_id && remoteByEntry.get(item.entry_id)
+        if (!original || !remote) return item
+        return {
+          ...item,
+          reasoning_effort:
+            (item.reasoning_effort ?? '') === (original.reasoning_effort ?? '')
+              ? remote.reasoning_effort
+              : item.reasoning_effort,
+          enabled:
+            (item.enabled ?? true) === (original.enabled ?? true) ? remote.enabled : item.enabled,
+        }
+      }),
+    )
+    setSaved(refreshed)
+    setRecovery('ready')
+    void invalidateGroupModelDependents(queryClient, groupId)
   }
 
   async function confirmSync(): Promise<void> {
@@ -627,7 +670,7 @@ export function GroupModelsTab({
     try {
       const result = await replaceGroupModelsResource(apiClient, groupId, { models }, active.signal)
       if (controllerRef.current !== active || stateRef.current.blocked) return
-      acceptSavedModels(result)
+      await acceptSavedModels(result)
       setDiscoveryReady(false)
       setSyncDialogOpen(false)
       setDiscoveryOpen(false)
@@ -636,6 +679,7 @@ export function GroupModelsTab({
     } catch (cause: unknown) {
       if (cause instanceof RequestCancelledError || controllerRef.current !== active) return
       setSyncError(t('group.modelEditor.sync.saveFailed'))
+      await refreshAfterUncertainWrite()
     } finally {
       if (controllerRef.current === active) {
         controllerRef.current = undefined
@@ -645,7 +689,12 @@ export function GroupModelsTab({
   }
 
   function requestSave(): void {
-    if (stateRef.current.operationBlocked || !canSave) return
+    if (
+      stateRef.current.operationBlocked ||
+      !canSave ||
+      (recovery !== null && recovery !== 'ready')
+    )
+      return
     if (empty) {
       setEmptyConfirmOpen(true)
       return
@@ -654,7 +703,12 @@ export function GroupModelsTab({
   }
 
   async function save(): Promise<void> {
-    if (stateRef.current.operationBlocked || !canSave) return
+    if (
+      stateRef.current.operationBlocked ||
+      !canSave ||
+      (recovery !== null && recovery !== 'ready')
+    )
+      return
     const active = new AbortController()
     controllerRef.current = active
     setPending('save')
@@ -665,16 +719,17 @@ export function GroupModelsTab({
       const result = await replaceGroupModelsResource(
         apiClient,
         groupId,
-        { models: normalizedModels(draft) },
+        { models: normalizedModels(draft, saved) },
         active.signal,
       )
       if (controllerRef.current !== active || stateRef.current.blocked) return
-      acceptSavedModels(result)
+      await acceptSavedModels(result)
       setEmptyConfirmOpen(false)
       await invalidateGroupModelDependents(queryClient, groupId)
       showSavedFeedback()
     } catch (cause: unknown) {
       if (cause instanceof RequestCancelledError || controllerRef.current !== active) return
+      await refreshAfterUncertainWrite()
       const nextConflicts =
         cause instanceof ApiError && cause.code === 'MODEL_NAME_CONFLICT'
           ? readModelNameConflicts(cause.data)
@@ -697,10 +752,11 @@ export function GroupModelsTab({
   }
 
   function discard(): void {
-    if (stateRef.current.operationBlocked) return
+    if (stateRef.current.operationBlocked || (recovery !== null && recovery !== 'ready')) return
     clearSavedFeedback()
     setServerConflicts([])
     setSaveError('')
+    setRecovery(null)
     setDraft(stateRef.current.saved.map((item) => ({ ...item, sources: [...item.sources] })))
   }
 
@@ -758,6 +814,28 @@ export function GroupModelsTab({
         }
       />
 
+      {recovery !== null && (
+        <div role="alert">
+          {t(
+            recovery === 'failed'
+              ? 'group.modelEditor.recoveryFailed'
+              : recovery === 'checking'
+                ? 'group.modelEditor.recoveryChecking'
+                : 'group.modelEditor.recoveryReady',
+          )}
+          {recovery === 'failed' && (
+            <Button
+              size="sm"
+              label={t('common.retry')}
+              onClick={() => void refreshAfterUncertainWrite()}
+            />
+          )}
+          {recovery === 'ready' && (
+            <Button size="sm" label={t('group.modelEditor.reviewServer')} onClick={discard} />
+          )}
+        </div>
+      )}
+
       {queryRefreshing && (
         <div
           role="status"
@@ -809,6 +887,67 @@ export function GroupModelsTab({
             onChange={updateModels}
             renderThirdColumn={(item) => (
               <div {...stylex.props(styles.pricingCell)}>
+                <label {...stylex.props(styles.scheduleControl)}>
+                  <span>{t('group.modelEditor.reasoning')}</span>
+                  <select
+                    aria-label={t('group.modelEditor.reasoningFor', {
+                      id: item.alias.trim() ? `${item.id} (${item.alias})` : item.id,
+                    })}
+                    value={item.reasoning_effort ?? ''}
+                    disabled={operationBlocked}
+                    {...stylex.props(styles.scheduleSelect)}
+                    onChange={(event) =>
+                      updateModels(
+                        draft.map((row) =>
+                          row.key === item.key
+                            ? { ...row, reasoning_effort: event.target.value }
+                            : row,
+                        ),
+                      )
+                    }
+                  >
+                    <option value="">{t('group.modelEditor.reasoningInherit')}</option>
+                    {reasoningEffortValues
+                      .filter(
+                        (value) =>
+                          value !== 'none' ||
+                          (scheduleChannelId !== 'gemini' &&
+                            scheduleChannelId !== 'google_vertex') ||
+                          item.reasoning_effort === 'none',
+                      )
+                      .map((value) => (
+                        <option
+                          key={value}
+                          value={value}
+                          disabled={
+                            value === 'none' &&
+                            (scheduleChannelId === 'gemini' ||
+                              scheduleChannelId === 'google_vertex')
+                          }
+                        >
+                          {value}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label {...stylex.props(styles.scheduleControl)}>
+                  <input
+                    type="checkbox"
+                    checked={item.enabled ?? true}
+                    disabled={operationBlocked}
+                    aria-label={t('group.modelEditor.enabledFor', {
+                      id: item.alias.trim() ? `${item.id} (${item.alias})` : item.id,
+                    })}
+                    onChange={(event) =>
+                      updateModels(
+                        draft.map((row) =>
+                          row.key === item.key ? { ...row, enabled: event.target.checked } : row,
+                        ),
+                      )
+                    }
+                  />
+                  <span>{t('group.modelEditor.enabled')}</span>
+                </label>
                 <div {...stylex.props(styles.testAlias)} data-testid="group-models__test-alias">
                   <span {...stylex.props(styles.testAliasLabel)}>
                     {t('group.modelEditor.testAlias')}
@@ -1044,7 +1183,9 @@ export function GroupModelsTab({
                   />
                   <Button
                     size="sm"
-                    isDisabled={savePending || !canSave}
+                    isDisabled={
+                      savePending || !canSave || (recovery !== null && recovery !== 'ready')
+                    }
                     onClick={requestSave}
                     label={t('group.modelEditor.save')}
                   />
@@ -1082,6 +1223,23 @@ const styles = stylex.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: '4px 8px',
+  },
+  scheduleControl: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--text-meta)',
+  },
+  scheduleSelect: {
+    minHeight: 'var(--control-sm)',
+    maxWidth: '100%',
+    color: 'var(--color-text)',
+    backgroundColor: 'var(--color-surface)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--color-border-control)',
+    borderRadius: 'var(--radius-control)',
   },
   testAlias: {
     display: 'inline-flex',

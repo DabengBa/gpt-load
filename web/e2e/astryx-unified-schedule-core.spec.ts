@@ -74,6 +74,7 @@ test('admin searches the model list and recovers an empty filter', async ({ page
     })
   })
   await page.goto('/schedule')
+  await page.getByTestId('schedule-model-selector').click()
   const search = page.getByRole('textbox', { name: 'External model' })
   await search.fill('worker')
   await expect(page.getByRole('button', { name: 'worker', exact: true })).toBeVisible()

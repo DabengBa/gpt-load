@@ -45,6 +45,7 @@ async function mockGroupPrefetch(
                 client_model_count: 1,
                 credential_configured: true,
                 credential_status: 'available',
+                site_info: null,
               },
             ],
             pagination: { page: 1, page_size: 100, total_items: 1, total_pages: 1 },

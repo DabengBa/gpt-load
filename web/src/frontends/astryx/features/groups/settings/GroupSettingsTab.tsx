@@ -426,8 +426,9 @@ export function GroupSettingsTab({
       error,
       saved: savedFeedback,
       invalid: !valid,
+      channelId: draft?.channel_id,
     })
-  }, [dirty, mutationPending, error, savedFeedback, valid])
+  }, [dirty, mutationPending, error, savedFeedback, valid, draft?.channel_id])
 
   useEffect(
     () => () => {

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR 检查报告 · 分组设置紧凑化与模型调度字段</title>
+  <style>
+    :root { color-scheme:light; --ink:#202b29; --muted:#52635e; --paper:#f4f3ed; --white:#fffefa; --line:#cbd3cd; --accent:#285b4c; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    a { color:var(--accent); text-underline-offset:.2em; }
+    a:focus-visible { outline:3px solid #b56e23; outline-offset:4px; }
+    ::selection { background:#b9d8c8; color:#142820; }
+    .skip { position:absolute; left:1rem; top:-5rem; background:var(--white); padding:.6rem 1rem; z-index:2; }
+    .skip:focus { top:1rem; }
+    .shell { max-width:1200px; margin:auto; padding:0 clamp(1.25rem,4vw,3rem); }
+    header { background:#183b32; color:#f8faf5; }
+    header .shell { padding-top:clamp(2.5rem,6vw,5rem); padding-bottom:2.5rem; }
+    .masthead { display:flex; justify-content:space-between; gap:1rem; border-bottom:1px solid #77958a; padding-bottom:1rem; color:#e0eee5; font-size:.875rem; }
+    h1 { font-family:Georgia,"Songti SC",serif; font-size:clamp(2.1rem,4.4vw,4rem); line-height:1.12; letter-spacing:-.025em; margin:2rem 0 1rem; }
+    .lead { max-width:64ch; color:#e0eee5; margin:0; font-size:1.05rem; }
+    .header-meta { display:flex; flex-wrap:wrap; gap:.5rem 2rem; margin:2rem 0 0; color:#e0eee5; font-size:.9rem; }
+    .layout { display:grid; grid-template-columns:190px minmax(0,1fr); gap:clamp(2rem,5vw,5rem); align-items:start; padding-top:3rem; padding-bottom:5rem; }
+    nav { position:sticky; top:1.5rem; font-size:.9rem; }
+    nav strong { display:block; margin-bottom:.75rem; }
+    nav a { display:block; padding:.3rem 0; text-decoration:none; }
+    nav a:hover { text-decoration:underline; }
+    main { min-width:0; }
+    section { padding:0 0 3rem; margin:0 0 3rem; border-bottom:1px solid var(--line); scroll-margin-top:1.5rem; }
+    section:last-child { border:0; margin-bottom:0; }
+    h2 { font-family:Georgia,"Songti SC",serif; font-size:clamp(1.6rem,3vw,2.2rem); line-height:1.25; margin:0 0 .75rem; }
+    h3 { font-size:1.05rem; margin:1.6rem 0 .5rem; }
+    p { max-width:72ch; margin:.5rem 0 1rem; }
+    .intro { color:var(--muted); }
+    .summary { background:var(--white); border:1px solid var(--line); padding:clamp(1.25rem,3vw,2rem); }
+    .summary p:last-child, .empty p:last-child { margin-bottom:0; }
+    .status { display:inline-block; padding:.16rem .55rem; background:#f8eddb; color:#70491a; font-size:.85rem; font-weight:700; border-radius:3px; }
+    .chip { display:inline-block; padding:.05rem .45rem; border:1px solid var(--line); border-radius:3px; font-size:.8rem; font-weight:700; white-space:nowrap; }
+    .chip.run { background:#e4eee8; color:#1f4d3f; border-color:#a9c8b8; }
+    .chip.reuse { background:#e8eef6; color:#294a72; border-color:#b6c9de; }
+    .chip.skip { background:#ececec; color:#4a4a4a; border-color:#cfcfcf; }
+    .chip.block { background:#f8eddb; color:#70491a; border-color:#e0c9a2; }
+    .pass { color:#1f4d3f; font-weight:700; }
+    .fail { color:#8a2f2f; font-weight:700; }
+    .facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); margin:1.5rem 0 0; }
+    .facts div { border-top:1px solid var(--line); padding:.8rem 1rem .8rem 0; min-width:0; }
+    dt { color:var(--muted); font-size:.85rem; }
+    dd { margin:.2rem 0 0; overflow-wrap:anywhere; }
+    .table-wrap { overflow-x:auto; border-top:1px solid var(--line); }
+    table { border-collapse:collapse; width:100%; min-width:680px; text-align:left; }
+    th,td { border-bottom:1px solid var(--line); padding:.85rem .8rem .85rem 0; vertical-align:top; overflow-wrap:break-word; }
+    td:first-child, th:first-child { min-width:9.5rem; }
+    td:nth-child(2), th:nth-child(2) { min-width:4.5rem; }
+    th { font-size:.85rem; color:var(--muted); }
+    code { font:0.88em/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#e9ece7; padding:.1rem .3rem; border-radius:3px; overflow-wrap:anywhere; }
+    pre { background:#1c2c27; color:#eaf3ee; padding:1rem 1.15rem; overflow-x:auto; font:0.85rem/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; border-radius:3px; }
+    pre code { background:none; padding:0; color:inherit; }
+    header code { background:rgba(255,255,255,.16); color:#f4faf6; }
+    .empty { background:#e4eee8; padding:1.25rem 1.5rem; }
+    figure { margin:1.5rem 0; }
+    figure img { display:block; width:100%; height:auto; border:1px solid var(--line); }
+    .narrow img { max-width:340px; }
+    figcaption { margin-top:.5rem; color:var(--muted); font-size:.9rem; }
+    .pairs { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem 1.5rem; }
+    .note { font-size:.9rem; color:var(--muted); }
+    ul { max-width:72ch; }
+    footer { border-top:1px solid var(--line); padding:1.5rem 0 2rem; color:var(--muted); font-size:.875rem; }
+    @media (max-width:700px) { .layout { display:block; padding-top:2rem; } nav { position:static; margin-bottom:2.5rem; } nav div { display:flex; flex-wrap:wrap; gap:.25rem 1rem; } .facts { grid-template-columns:1fr; } .masthead { flex-wrap:wrap; } }
+    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } }
+    @media print { body { background:white; } header { background:white; color:var(--ink); border-bottom:1px solid var(--line); } .masthead,.lead,.header-meta { color:var(--ink); } nav,.skip { display:none; } .layout { display:block; padding-top:2rem; } section,figure { break-inside:avoid; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#overview">跳到报告内容</a>
+  <header><div class="shell">
+    <div class="masthead"><span>PR PREFLIGHT / 检查报告</span><span>报告日期：2026-11-08（rebase 后复核）</span></div>
+    <h1>分组设置紧凑化与模型调度字段</h1>
+    <p class="lead">分支 <code>feat/compact-group-settings</code> → <code>dev</code>。结论：工作树已按授权 rebase 到 <code>origin/dev</code> 的 <code>94f18390</code>（2026-11-08 08:01:46 完成，无 Git 冲突，<code>git stash apply</code> 恢复未提交改动，安全 stash 保留），当前 HEAD 与 <code>origin/dev</code> 为同一提交、领先 0 / 落后 0。R1 / R2 / R3 三项需求仍有可复跑的命令证据，但工作区<strong>仍未提交</strong>，最新前端全量 astryx e2e 为 <strong>352 passed / 4 skipped</strong>；先前 8 项失败通过更新过时的浏览器测试修复，并非生产代码修复。本页所有截图均为 rebase 前（2026-11-07）采集，<strong>不反映 rebase 后的站点访问区块与布局修正</strong>。</p>
+    <div class="header-meta"><span>分支：feat/compact-group-settings</span><span>基线：HEAD = origin/dev = 94f18390</span><span>检查人：pi 会话代理</span></div>
+  </div></header>
+  <div class="shell layout">
+    <nav aria-label="报告目录"><strong>报告目录</strong><div><a href="#overview">概览</a><a href="#scope">检查范围</a><a href="#verification">验证记录</a><a href="#visual">视觉证据</a><a href="#findings">问题与风险</a><a href="#pr">PR 信息</a></div></nav>
+    <main>
+      <section id="overview" aria-labelledby="overview-title">
+        <h2 id="overview-title">概览</h2><p class="intro">先看结论，再沿证据追溯。</p>
+        <div class="summary"><span class="status">结论：已 rebase 至 origin/dev；工作区仍未提交，检查未全绿（失败项逐条披露）</span>
+          <p><strong>已经做到、可复跑的部分</strong>：R1 导入地址必填性、R2 两页紧凑化、R3 模型推理策略与启用开关三项需求都有命令与截图证据；rebase 后复跑 <code>go build ./...</code>、<code>go test ./internal/control</code>（<span class="pass">1680 passed</span>）、<code>go vet ./internal/control</code>、<code>pnpm docs:check</code> / <code>docs:build</code>（12 篇语义文档）、<code>pnpm run type-check</code>、定向 ESLint（当前变更及新增的 34 个 ts/tsx，<span class="pass">exit 0</span>）、前端单测 <span class="pass">214 / 214</span> 与定向单测 <span class="pass">4 / 4</span>、i18n ICU（<span class="pass">6783 messages</span>）、部署回归 <span class="pass">28 tests OK</span> 均通过；rebase 后因上游新增 <code>site_access</code> / <code>site_info</code> 强制字段而失效的 e2e 夹具已补齐，目标对（<code>astryx-group-model-schedule</code> + <code>astryx-field-layout</code>）<span class="pass">42 passed</span>，回归批次 <span class="pass">106 passed / 1 failed</span>，导入相关 <span class="pass">20 / 20</span> 与 <span class="pass">6 / 6</span>。</p>
+          <p><strong>必须同时披露的事实</strong>：(1) 先前复核时工作区为 34 个已修改（+878 / −272）与 7 项未跟踪条目（后续浏览器测试修订使该统计过时），本次改动未 commit、push 或建 PR；当时根目录 <code>pnpm-lock.yaml</code>（114 B 空 importers）是 <code>docs:check</code> 触发的残留产物；本次报告检查时该文件不存在。(2) rebase 后 <code>web/e2e/astryx-field-layout.spec.ts:173</code> 的紧凑行断言一度失败（<code>Received: 174.296875</code>，上限 30），原因是上游新增的整行站点访问区插在供应商官网与参数块之间；已把站点访问区移到参数块之后并删除 <code>NewGroupImport.tsx</code> 里一个未使用的 import，<strong>修复后仅由 e2e 断言与 ESLint / type-check 验证，未重新截图</strong>。(3) 早期全量 343 passed / 8 failed / 4 skipped 的失败已通过浏览器测试更新消除；最终全量 352 passed / 4 skipped，跳过项及中断运行详见验证记录。Fast 输入框仍有重复可访问名称 <code>Input Input</code>，本轮仅记录、未修复。(4) <code>make check</code> 仍无法整体通过：<code>gofmt -l .</code> 15 个文件（全在 <code>third_party/bifrost-core</code>）、<code>go mod tidy -diff</code> exit 1（<code>google/uuid</code> 直接→indirect）、<code>pnpm run lint</code> 3 errors、<code>pnpm run format</code> 39 个文件不合规、全仓 <code>go test</code> 1 项失败（release asset manifest 9 vs 8）。</p>
+        </div>
+        <dl class="facts">
+          <div><dt>变更摘要</dt><dd>导入渠道地址改为直接可编辑、必填性由渠道描述符决定；分组详情/设置紧凑化；分组模型行新增推理策略与启用，与调度中心同记录双向同步（<code>?include_schedule=true</code> 显式 opt-in）。</dd></div>
+          <div><dt>检查时间与环境</dt><dd>rebase 完成于 2026-11-08 08:01:46 +0800；早期复核 08:00–10:35 CST，之后补充浏览器修复与最终全量运行。Linux x86_64，go1.27.3，node v26.12.1，pnpm 12.4.1，Playwright 取自 <code>web/node_modules</code>。</dd></div>
+          <div><dt>当前基线 / 提交</dt><dd><code>HEAD</code> = <code>origin/dev</code> = <code>94f18390</code>（<code>git rev-parse</code> 一致），领先 0 / 落后 0。<code>git fetch origin</code> 成功；rebase 自 <code>5125707f</code> 起，08:01:46 记录 <code>rebase (finish)</code>，<strong>无 Git 冲突</strong>；<code>git stash apply</code> 已恢复 rebase 前的未提交改动，安全 stash <code>stash@{0}: compact-group-settings before authorized dev rebase 2026-11-08</code> 仍保留。rebase 未产生提交，工作树改动仍是未提交状态。</dd></div>
+          <div><dt>证据缺口与限制</dt><dd>全部 17 张截图采集于 rebase 前（U001 20:12，UX 走查 22:57–23:07），不含上游新增的站点访问区块，也不含本轮布局修正；无真实上游、无移动真机、仅 OpenAI Compatible 一条渠道走查；浏览器用例使用 mock API；4 项浏览器测试因缺少本地 demo API 和认证密钥跳过；Fast 输入框重复可访问名称尚未修复；此前的根目录 <code>pnpm-lock.yaml</code> 残留本次检查时不存在；无 PR 链接与远端 CI。</dd></div>
+        </dl>
+      </section>
+
+      <section id="scope" aria-labelledby="scope-title">
+        <h2 id="scope-title">检查范围</h2><p class="intro">说明比较基准、受影响区域以及没有覆盖的部分。</p>
+        <dl class="facts">
+          <div><dt>比较范围</dt><dd>本变更 = 工作区 vs 当前 <code>HEAD</code>（即 <code>origin/dev</code> <code>94f18390</code>）：早期统计为 <strong>34 个已跟踪文件 +878 / −272</strong>，另有 <strong>7 项未跟踪条目</strong>（后续浏览器测试修订后不再代表当前数量）——5 个新文件（<code>web/e2e/astryx-group-model-schedule.spec.ts</code>、<code>web/scripts/group-model-schedule-draft.test.ts</code>、<code>internal/control/group_models_schedule_optin_test.go</code>、<code>internal/control/group_models_schedule_rework_test.go</code>、<code>docs/design/compact-group-workspace-demo.html</code>）、报告目录 <code>.docs/pr-reports/</code>，以及当时残留的根 <code>pnpm-lock.yaml</code>（本次检查时不存在）。rebase 前的口径是 29 个修改 + 5 个未跟踪、+839/−253，已随 rebase 与后续夹具修复失效，本报告不再沿用。</dd></div>
+          <div><dt>受影响功能与路径</dt><dd>后端：<code>internal/control/group_http.go</code>、<code>group_models.go</code>、<code>group_settings.go</code>、<code>group_write.go</code>。前端：<code>web/src/frontends/astryx/features/groups/**</code>、<code>features/import/**</code>（<code>ImportConnectionSection.tsx</code>、<code>NewGroupImport.tsx</code>）、<code>web/src/shared/control/{resources/groups.ts,types.ts}</code>、<code>web/src/shared/domain/groups/models/model-diff.ts</code>、三份 i18n <code>group.ts</code>。测试：<code>web/e2e/</code> 下多个 spec 修改 + 1 个新增、<code>fixtures/group-models-mock.ts</code> 与 <code>fixtures/group-fingerprint-mock.ts</code>、<code>web/scripts/group-model-schedule-draft.test.ts</code>、两个新增 Go 测试文件。文档：<code>.docs/db/features/dispatch-reasoning-policy.md</code>、<code>.docs/db/features/scriptcat-credential-import.md</code>、<code>.learnings/LEARNINGS.md</code>。设计原型：<code>docs/design/compact-group-workspace-demo.html</code>（未跟踪，脱敏版经确认纳入交付）。</dd></div>
+          <div><dt>验收依据</dt><dd><code>.tmp/compact-delivery/plan.md</code> 中 R1（上游地址无独立开关、必填性由渠道描述符决定、可选空值使用默认、详情清除保留其余 params）、R2（两页紧凑化、去重、高级配置置于底部、宽窄屏可读可操作）、R3（模型行推理策略与启用、与调度中心同一记录双向同步、未改动调度字段不被覆盖、旧调用方兼容、非法策略拒绝、保存/放弃遵循草稿语义）。</dd></div>
+          <div><dt>范围外及原因</dt><dd>真实上游连通性、其他渠道（OpenAI / Anthropic / Gemini / Vertex）的真实浏览器流程、移动真机、真实客户数据与生产库迁移——无可用环境，属部署后验证；未授权 commit / push / 建 PR，因此没有远端 CI 与 PR 模板必填的 Issue 编号。</dd></div>
+        </dl>
+      </section>
+      <section id="verification" aria-labelledby="verification-title">
+        <h2 id="verification-title">验证记录</h2><p class="intro">下表区分 rebase 后记录、报告复核时重跑及历史证据；测试数量包含子测试，浏览器套件使用 mock API。</p>
+        <div class="table-wrap"><table><thead><tr><th>检查</th><th>状态</th><th>结果与边界</th></tr></thead><tbody>
+          <tr><td>文档</td><td>通过</td><td><code>pnpm docs:check</code>、<code>pnpm docs:build</code> 通过；复核时 12 篇语义文档。生成的 bundle 不代表浏览器运行验证。</td></tr>
+          <tr><td>Go 构建 / 控制层</td><td>通过</td><td><code>go build ./...</code>、<code>go test ./internal/control -count=1</code>（1680 passed）、<code>go vet ./internal/control</code> 通过。</td></tr>
+          <tr><td>全仓 Go</td><td>失败</td><td>rebase 后 <code>go test ./... -count=1</code> 曾记录 8114 passed / 1 failed / 2 skipped；报告复核时以 JSON 事件重计为 8119 passed / 1 failed / 2 skipped（包含子测试，64 包；运行次数不同不应视为同一次结果）。失败均为 <code>internal/webui/workflow_test.go:2959</code> 的 <code>TestReleaseAssetManifestIsTheSingleSourceOfTruth</code>：<code>release asset manifest lists 9 assets, want 8</code>；同一错误已在 pristine <code>origin/dev</code> 复现。全仓并非全绿。</td></tr>
+          <tr><td>前端静态检查</td><td>部分通过</td><td><code>pnpm run type-check</code> 通过。报告复核时，以 <code>git ls-files -m -o --exclude-standard -- 'web/*.ts' 'web/*.tsx'</code> 收集当前已修改及未跟踪文件，在 <code>web</code> 目录运行 <code>pnpm exec eslint</code> 检查全部 34 个文件，exit 0；此前 29 个文件的结果为历史范围。全量 <code>pnpm run lint</code> 仍 3 errors：<code>web/scripts/usage-resource.test.ts</code> 两个未使用变量、<code>web/src/frontends/astryx/features/monitor/SchedulePanelDetail.tsx:537</code> render 中访问 ref；未声明它们已在当前干净基线复现。</td></tr>
+          <tr><td>前端单测 / i18n</td><td>通过</td><td>报告复核时 <code>pnpm run test</code> 214 passed；<code>scripts/group-model-schedule-draft.test.ts</code> 定向 4 passed；<code>node scripts/verify-i18n-icu.mjs</code> 6783 messages passed。旧版 172 / 4 及旧隔离 e2e 数字不作为当前验证。</td></tr>
+          <tr><td>布局修复与夹具</td><td>已修复</td><td>rebase 后宽屏导入几何断言 <code>Math.abs(urlBox!.y - nameBox!.y) &lt; 30</code> 曾收到 <code>174.296875</code>：全宽站点访问区阻断参数块的 grid 流。将站点访问区移到参数块之后，移除 <code>NewGroupImport.tsx</code> 的未使用 <code>extractSiteRootUrl</code> import。针对上游强制 <code>site_access</code> 与 <code>site_info</code> 补充 mock 数据。修复后目标对 <code>astryx-group-model-schedule.spec.ts</code> + <code>astryx-field-layout.spec.ts</code> 42 passed；导入 <code>astryx-import.spec.ts</code> 20/20、<code>astryx-import-credentials.spec.ts</code> 6/6。</td></tr>
+          <tr><td>浏览器回归</td><td>通过（4 项跳过）</td><td>最终命令 <code>cd web &amp;&amp; PLAYWRIGHT_PORT=41992 pnpm exec playwright test --config playwright.config.ts --project=astryx</code>：<strong>352 passed / 4 skipped (10.5m)</strong>，356 项，日志 <code>/tmp/compact-astryx-final-reviewed.log</code>。4 项为 <code>web/e2e/astryx-table-colors.spec.ts</code> 的 light/dark × 390/1440，缺少已填充的本地 demo API 和 <code>GPT_LOAD_DEMO_AUTH_KEY</code> 时跳过；不能将跳过视为通过。浏览器回归使用 mock API，非真实后端端到端验证。</td></tr>
+          <tr><td>浏览器修订与历史运行</td><td>已复验</td><td>早期 10-spec 106 passed / 1 failed、全量 343 passed / 8 failed / 4 skipped 均为修复前历史结果，不是当前状态。8 项通过更新过时测试修复：将主题 token 解析为像素；采用按钮导航及含凭据和空状态的真实详情夹具；显式 hover 触发校验；修正语言标签交互与导航；打开模型选择器；以 ID 定位价格输入并刷新验证。独立评审补强了仅凭 URL 的错误证明及隐式 hover；这 8 项未改生产代码。较早一次全量为 351 passed / 4 skipped，随后新增测试及评审修订，因此不可替代最终结果。另一次完整套件运行中 Vite 服务中止（<code>Lazy deopt after a fast API call with return value is unsupported</code>），随后出现 <code>net::ERR_CONNECTION_REFUSED</code>，汇总 336 passed / 16 failed / 4 skipped (11.1m)，见 <code>/tmp/compact-astryx-reviewed.log</code>；这是服务中断污染的历史运行，不是最终结果。</td></tr>
+          <tr><td>可访问性已知问题</td><td>未修复</td><td>Fast 输入框已有重复可访问名称 <code>Input Input</code>；测试现已记录该实际名称，不代表问题已修复。</td></tr>
+          <tr><td>其他检查</td><td>未全绿</td><td><code>gofmt -l .</code> 列出 15 个 third_party 文件；<code>go mod tidy -diff</code> exit 1；此前全量 <code>pnpm run format</code> 报 39 个文件（31 个源文件、8 个 test-results 文件），当时有 3 个源文件也在工作区变更中，此交集为历史统计。报告复核时对上述 34 个 TS/TSX 在 <code>web</code> 目录运行 <code>pnpm exec prettier --check</code>，有 4 个已修改文件不合规：<code>web/e2e/astryx-unified-schedule-prices.spec.ts</code>、<code>web/src/frontends/astryx/features/groups/settings/GroupSettingsBaseForm.tsx</code>、<code>web/src/frontends/astryx/features/import/ImportConnectionSection.tsx</code>、<code>web/src/frontends/astryx/features/import/NewGroupImport.tsx</code>。分别用 <code>git show HEAD:&lt;路径&gt;</code> 管道输入 <code>pnpm exec prettier --check --stdin-filepath &lt;web 内相对路径&gt;</code>，四个 HEAD 版本均 exit 1，表明基线也不合规，并不证明本次修改没有影响格式。此前 10 个格式修复文件单独检查通过，不代表当前所有变更文件格式通过。<code>git diff --check</code> 干净；部署回归 28 tests OK。<code>make check</code> 未整体执行，不能声明通过；全量前端 build、全仓 vet 等未作为本轮最新结果声明。</td></tr>
+          <tr><td>历史工具结果</td><td>历史</td><td>rebase 前 aislop 曾 exit 1，存在 <code>@app</code> 别名相关诊断及未跟踪文件覆盖不明；旧基线的 lint、format 与隔离测试结果不能证明 rebase 后状态。需当前完整工具结果时重新运行。</td></tr>
+          <tr><td>脱敏原型</td><td>纳入范围</td><td><code>docs/design/compact-group-workspace-demo.html</code> 使用虚构 <code>gateway.example.com</code>、<code>portal.example.com</code>、<code>demo_gpt_0.16</code> 与 <code>demo-user</code>，无外部资源、<code>fetch</code> 或 XHR。历史 Chromium <code>file://</code> 原型验证不等于真实后端或跨浏览器验证。</td></tr>
+        </tbody></table></div>
+      </section>
+      <section id="visual" aria-labelledby="visual-title">
+        <h2 id="visual-title">视觉证据：仅供历史参考</h2>
+        <div class="summary"><strong>所有 17 张图均为 2026-11-07、rebase 前截图，不是当前运行态走查。</strong> 编号图来自当时本地真实后端 + Vite、隔离 SQLite 的走查（22:57–23:07，假上游和合成数据）；五张 astryx 图来自当时的 mock 布局证据（约 20:12）。截图复制时间不是采集时间。它们不包含 rebase 引入的站点访问区，也不能证明当前保存、刷新、遮挡或端到端行为；目前没有 rebase 后真实后端浏览器走查。</div>
+        <figure><img src="screenshots/03-import.png" alt="导入渠道凭据页面，OpenAI 渠道，上游基础地址预填默认地址，底部提示请先填写一个凭据"><figcaption><strong>历史截图 · rebase 前：</strong> 导入 · 新建分组（1440×973，22:58）：移除“自定义地址”开关后，渠道为 OpenAI 时“上游基础地址”直接可编辑并预填默认 <code>https://api.openai.com</code>；底部保存栏在凭据为空时禁用并给出“请完成必填项 请先填写一个凭据”。</figcaption></figure>
+
+        <figure><img src="screenshots/04-compatible.png" alt="导入页面选择 OpenAI Compatible 后，上游基础地址变为必填，创建按钮保持禁用"><figcaption><strong>历史截图 · rebase 前：</strong> 导入 · 切换到 OpenAI Compatible（1440×973，22:59）：同一个字段标题变为“上游基础地址 · 必填”，占位符为 <code>https://</code>，创建按钮提示“请完善必填的渠道参数”。这是当时 R1 必填性的可见状态。</figcaption></figure>
+
+        <figure><img src="screenshots/05-ready.png" alt="导入表单填写完成，显示一条凭据与可选模型，创建分组按钮可用"><figcaption><strong>历史截图 · rebase 前：</strong> 导入 · 填写完成（1440×973，22:59）：分组名 <code>UX 测试渠道</code>、上游 <code>127.0.0.1:39999</code>（回环假服务）、明文假密钥 <code>sk-ux-fake-only-123456</code>，按钮说明变为“1 条凭据 · 模型可选”，创建可用。</figcaption></figure>
+
+        <figure><img src="screenshots/07-detail.png" alt="分组详情页，紧凑布局，凭据行显示掩码密钥与最近失败信息，模型列表为空"><figcaption><strong>历史截图 · rebase 前：</strong> 详情 · 紧凑布局（1440×900，23:00）：凭据 <code>sk-u****3456</code> 掩码显示，“最近失败 / 恢复方式 / 连续失败”合并为一行，模型与别名在高级配置之前，高级配置折叠，底部为统一保存栏（R2）。</figcaption></figure>
+
+        <figure><img src="screenshots/08-credential.png" alt="在凭据行内更新密钥，新密钥输入框为空时保存按钮禁用"><figcaption><strong>历史截图 · rebase 前：</strong> 详情 · 行内更新密钥（1440×900，23:01）：<code>sk-u****3456</code> 保持掩码，新密钥未输入前“保存密钥”禁用，避免空值覆盖。</figcaption></figure>
+
+        <figure><img src="screenshots/09-model.png" alt="模型表格新增空行，行内报错请输入模型 ID，底部出现有未保存的修改提示"><figcaption><strong>历史截图 · rebase 前：</strong> 模型 · 空行校验（1440×973，23:03）：新增模型行即时提示“请输入模型 ID”，底部草稿栏变为“有未保存的修改 / 清除搜索并定位首个问题”。</figcaption></figure>
+
+        <figure><img src="screenshots/10-policy.png" alt="模型行显示推理策略下拉（未配置）与启用复选框，页面处于有未保存修改状态"><figcaption><strong>历史截图 · rebase 前：</strong> 模型 · 推理策略与启用（1440×973，23:05）：每行新增“推理策略（未配置）”与“启用”复选框，与权重/优先级并列，即 R3 的编辑入口。</figcaption></figure>
+
+        <figure><img src="screenshots/11-schedule.png" alt="离开页面时弹出放弃未保存的修改确认对话框"><figcaption><strong>历史截图 · rebase 前：</strong> 草稿语义（1440×973，23:05）：有未保存修改时离开页面会弹出“放弃未保存的修改?”确认（继续编辑 / 放弃修改），避免静默丢失。</figcaption></figure>
+
+        <figure><img src="screenshots/13-schedule-page.png" alt="调度中心页面，fake-model 一行的推理策略显示为未配置，同级配置占比 100%"><figcaption><strong>历史截图 · rebase 前：</strong> 调度中心 · 同一记录（1440×900，23:06）：组内 <code>fake-model</code> 行在调度中心可见，显示优先级/权重 1/1、推理策略“未配置”，当时走查显示两页的同一模型记录。</figcaption></figure>
+
+        <figure><img src="screenshots/15-draft.png" alt="详情页草稿状态，供应商官网填入 example.invalid，底部保存设置可用"><figcaption><strong>历史截图 · rebase 前：</strong> 设置 · 草稿（1440×900，23:07）：修改“供应商官网”为 <code>https://example.invalid</code> 后出现“有未保存的修改”，保存按钮启用（R2 的草稿统一提交）。</figcaption></figure>
+
+        <figure><img src="screenshots/16-persist.png" alt="刷新后供应商官网与推理策略 high 已保存，启用未勾选，保存设置按钮禁用"><figcaption><strong>历史截图 · rebase 前：</strong> 设置 · 保存并刷新后（1440×900，23:07）：<code>https://example.invalid</code> 与模型行“推理策略 high”“启用未勾选”均已持久化，保存按钮回到禁用。<strong>这是当时跨刷新持久化的可见记录</strong>（服务端日志中 <code>group_settings_update</code>、<code>group_update_models</code> 均 200）。</figcaption></figure>
+
+        <figure><img src="screenshots/14-advanced.png" alt="详情页展开高级配置，浮动保存栏覆盖在高级配置标题区域上方，遮住部分内容"><figcaption><strong>历史截图 · rebase 前：</strong> 详情 · 展开高级配置（1440×1688，23:07）：高级配置位于模型之后（R2 要求）；<strong>同时可见浮动保存栏压住“高级配置”标题下方的内容</strong>（截图高 1688，页面可继续滚动）。这是当时记录的遮挡现象，当前状态需重新走查。</figcaption></figure>
+
+        <h3>窄屏与暗色主题布局</h3>
+        <div class="pairs">
+          <figure><img src="screenshots/astryx-field-layout-task-surface-import-320-light-astryx.png" alt="导入页 320 宽浅色布局，单列，三个步骤顺序排列，底部保存栏固定"><figcaption><strong>历史截图 · rebase 前：</strong> 导入 · 320 宽 · 浅色：单列，上游基础地址仍直接可编辑并显示默认地址，保存栏固定于底部但未遮挡输入区。</figcaption></figure>
+          <figure><img src="screenshots/astryx-field-layout-task-surface-groups-1-320-light-astryx.png" alt="详情页 320 宽浅色布局，浮动保存栏覆盖在模型与别名区域之上"><figcaption><strong>历史截图 · rebase 前：</strong> 详情 · 320 宽 · 浅色：<strong>浮动保存栏覆盖“模型与别名”区域</strong>，当时可滚动访问；当前状态需重新走查。</figcaption></figure>
+          <figure><img src="screenshots/astryx-field-layout-task-surface-import-1440-light-astryx.png" alt="导入页 1440 宽浅色布局，名称、供应商官网、上游地址三列并排"><figcaption><strong>历史截图 · rebase 前：</strong> 导入 · 1440 宽 · 浅色：名称、供应商官网、上游基础地址同排，凭据区占满宽度，层次与当时的 1440 截图一致。</figcaption></figure>
+          <figure><img src="screenshots/astryx-field-layout-task-surface-import-1440-dark-astryx.png" alt="导入页 1440 宽暗色布局"><figcaption><strong>历史截图 · rebase 前：</strong> 导入 · 1440 宽 · 暗色：暗色下输入框、禁用按钮与提示文本对比度正常，未出现纯黑底黑字。</figcaption></figure>
+          <figure><img src="screenshots/astryx-field-layout-task-surface-groups-1-1440-dark-astryx.png" alt="详情页 1440 宽暗色布局，空模型列表与折叠的高级配置"><figcaption><strong>历史截图 · rebase 前：</strong> 详情 · 1440 宽 · 暗色：空状态“尚未添加模型”与折叠的“高级配置”仍可辨识，底部保存栏文案“设置已保存修改会作为一份草稿统一提交”。</figcaption></figure>
+        </div>
+      </section>
+      <section id="findings" aria-labelledby="findings-title">
+        <h2 id="findings-title">问题与剩余风险</h2>
+        <ul>
+          <li>同步已完成且安全 stash 保留；仍需授权才能 commit、push 或创建 PR。</li>
+          <li>宽屏布局回归已修复并以目标测试复验；旧图不能证明现状。建议在当前代码和真实后端重新走查，包括历史图中保存栏遮挡现象。</li>
+          <li>Go 资产清单失败可在 pristine origin/dev 重现；先前 8 项浏览器失败已通过测试修订消除，不能据此推断其他未覆盖场景无缺陷。Fast 输入框重复可访问名称 <code>Input Input</code> 仍待修复。</li>
+          <li>全量 lint、format、gofmt 和 tidy 仍有失败或差异；不要宣称 <code>make check</code> 通过。此前根目录的 <code>pnpm-lock.yaml</code> 残留在本次报告检查时不存在；提交前仍须复核工作区。</li>
+          <li>组设置与模型写入是独立请求；调度字段按修改意图合并，其他模型字段仍为完整替换，不保证跨请求原子性。真实上游、移动真机与其他渠道仍未覆盖。</li>
+        </ul>
+      </section>
+      <section id="pr" aria-labelledby="pr-title">
+        <h2 id="pr-title">PR 信息</h2>
+        <p>建议标题：<code>feat(groups): 紧凑化分组设置并支持模型推理策略与启用开关</code>。PR 未创建；以下仅为草稿，不构成提交或发布授权。</p>
+        <h3>PR 正文草稿</h3>
+        <pre><code>Closes #&lt;待填写&gt;
+
+## 变更内容 / Change Content
+- [x] 新功能 / New feature
+
+- 导入页去除自定义地址开关，上游地址直接编辑，必填性由渠道描述符决定；
+  可选空值采用默认值，清除地址时保留其他 params。
+- 紧凑化导入与分组设置，提供统一草稿、保存与放弃交互。
+- 分组模型增加推理策略和启用状态；GET/PUT 通过 ?include_schedule=true 显式 opt-in。
+  PUT 仍为完整列表替换，以 entry_id 标识；省略调度字段保留原值，
+  reasoning_effort:null 清除，enabled:null 拒绝。Gemini / Vertex 禁止 none。
+  失败后刷新并保留草稿，按 entry_id 合并调度字段；跨请求不保证原子性。
+- 纳入脱敏静态原型 docs/design/compact-group-workspace-demo.html。
+
+## 自查清单 / Checklist
+- [x] 已说明检查结果和未验证范围（make check 未整体通过或完整执行）。
+- [ ] 提交前复核工作区和测试数据；此前根目录 pnpm-lock.yaml 残留本次检查时不存在。
+- [x] 文档更新；docs:check 与 docs:build 通过。
+- [x] 已说明 opt-in 兼容性与独立请求的边界。
+
+## 验证 / Verification
+- HEAD = origin/dev 94f18390；fetch 成功，rebase 无 Git 冲突，stash apply 恢复改动，安全 stash 保留。
+- go build ./...；go test ./internal/control -count=1：1680 passed；go vet ./internal/control：通过。
+- go test ./... -count=1：rebase 后记录 8114 passed / 1 failed / 2 skipped；
+  报告复核 JSON 重计 8119 / 1 / 2。release asset manifest 9 vs 8 在 pristine origin/dev 复现。
+- 前端 type-check、变更文件定向 ESLint 通过；前端单测 214/214，定向单测 4/4。
+- schedule + field-layout 42 passed；import 20/20；import-credentials 6/6。
+- 最终 cd web &amp;&amp; PLAYWRIGHT_PORT=41992 pnpm exec playwright test --config playwright.config.ts --project=astryx：
+  352 passed / 4 skipped (10.5m)，/tmp/compact-astryx-final-reviewed.log。
+  4 项 table-colors 因缺少本地 demo API 与认证密钥跳过；非真实后端验证。
+- 旧的 8 项失败已通过测试修订解决，无生产代码变更；另一次运行 Vite 中断，
+  336 passed / 16 failed / 4 skipped，/tmp/compact-astryx-reviewed.log。
+- Fast 输入框已有重复可访问名称 Input Input，测试已记录，尚未修复。
+- 全量 lint、format、gofmt、go mod tidy -diff 存在失败或差异；make check 未完整执行。
+- 旧截图均为 rebase 前；当前真实后端端到端走查、真实上游及移动真机未覆盖。
+- 报告：.docs/pr-reports/compact-group-settings/index.html
+</code></pre>
+      </section>
+    </main>
+  </div>
+  <footer><div class="shell">结果以记录的运行和范围为准；历史截图均为 rebase 前，不代表当前运行态。</div></footer>
+</body>
+</html>

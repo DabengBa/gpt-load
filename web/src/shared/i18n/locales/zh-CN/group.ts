@@ -130,6 +130,16 @@ export default {
     copyFailure: '复制失败',
     openProviderUrl: '在新标签页打开供应商官网 {url}',
     modelEditor: {
+      recoveryChecking: '服务器数据可能已变化。正在刷新核对，草稿已保留。',
+      reviewServer: '放弃草稿并核对服务器状态',
+      recoveryReady:
+        '服务器数据可能已变化。草稿已保留；请检查后重新保存，或放弃草稿以查看刷新后的服务器状态。',
+      recoveryFailed: '服务器数据可能已变化，刷新失败。请重试后再放弃或保存草稿。',
+      reasoning: '推理策略',
+      reasoningFor: '{id} 的推理策略',
+      reasoningInherit: '未配置',
+      enabled: '启用',
+      enabledFor: '启用模型 {id}',
       title: '模型与别名',
       schedule: '调度',
       breaker: '熔断',

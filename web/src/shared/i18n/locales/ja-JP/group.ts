@@ -130,6 +130,18 @@ export default {
     copyFailure: 'コピーできませんでした',
     openProviderUrl: 'プロバイダーサイト {url} を新しいタブで開く',
     modelEditor: {
+      recoveryChecking:
+        'サーバーの状態が変わった可能性があります。最新の状態を確認中です。下書きは保持されています。',
+      reviewServer: '下書きを破棄してサーバーの状態を確認',
+      recoveryReady:
+        'サーバーの状態が変わった可能性があります。下書きは保持されています。内容を確認して再保存するか、破棄して最新の状態を確認してください。',
+      recoveryFailed:
+        'サーバーの状態が変わった可能性があります。更新に失敗しました。下書きを破棄または保存する前に再試行してください。',
+      reasoning: '推論ポリシー',
+      reasoningFor: '{id} の推論ポリシー',
+      reasoningInherit: '未設定',
+      enabled: '有効',
+      enabledFor: 'モデル {id} を有効化',
       title: 'モデルとエイリアス',
       schedule: 'スケジュール',
       breaker: 'ブレーカー',

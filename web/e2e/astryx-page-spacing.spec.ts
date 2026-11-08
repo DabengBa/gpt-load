@@ -45,6 +45,7 @@ for (const width of [390, 900, 1440, 1920]) {
               client_model_count: 2,
               credential_configured: false,
               credential_status: null,
+              site_info: null,
             },
           ],
           pagination: { page: 1, page_size: 100, total_items: 1, total_pages: 1 },

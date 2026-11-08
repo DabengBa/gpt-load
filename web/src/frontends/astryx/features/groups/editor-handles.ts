@@ -23,4 +23,5 @@ export interface GroupEditorState {
   saved: boolean
   invalid?: boolean
   invalidRowCount?: number
+  channelId?: string
 }

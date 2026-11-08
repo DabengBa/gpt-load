@@ -29,7 +29,7 @@ import type { ModelCandidate } from '@shared/control/resources/providers'
 import { proxyMutation } from '@shared/control/resources/proxy'
 import type { MessageId } from '@shared/i18n/message-ids'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
-import { extractSiteRootUrl, isValidProviderUrlForWrite } from '@shared/domain/groups/settings/group-settings-patch'
+import { isValidProviderUrlForWrite } from '@shared/domain/groups/settings/group-settings-patch'
 
 import { constrainCollectionSearch } from '@shared/routing/route-query'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
@@ -216,9 +216,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   // stay dirty.
   const [siteAccessToken, setSiteAccessToken] = useState('')
   const [baselineJson, setBaselineJson] = useState(() => JSON.stringify(freshDraft()))
-  const [baseUrlOverrideEnabled, setBaseUrlOverrideEnabled] = useState(
-    () => isFreshNewGroup || Boolean(draft.params.base_url?.trim()),
-  )
+
   const [paramTouched, setParamTouched] = useState<Record<string, boolean>>({})
   const [visibleModelInvalidIndexes, setVisibleModelInvalidIndexes] = useState<Set<number>>(
     new Set(),
@@ -266,7 +264,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     const draftJson = JSON.stringify(draft)
     if (draftJson !== baselineJson && draftJson !== previousInitialDraftJson) return
     setDraft(cloneDraft(initialDraft))
-    setBaseUrlOverrideEnabled(Boolean(initialDraft.params.base_url?.trim()))
+
     setParamTouched({})
     setErrorKey('')
     setCredentialValidation(null)
@@ -336,7 +334,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (!channel) return errors
     for (const field of channel.param_fields) {
       const value = draft.params[field.key]?.trim() ?? ''
-      if ((field.required || (field.key === 'base_url' && baseUrlOverrideEnabled)) && !value) {
+      if (field.required && !value) {
         errors[field.key] = t('import.connection.paramRequired', { name: field.label })
         continue
       }
@@ -647,7 +645,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
         ...(importedBaseURL && urlField ? { [urlField.key]: importedBaseURL } : {}),
       },
     }))
-    setBaseUrlOverrideEnabled(true)
+
     setPanel(undefined)
   }
 
@@ -658,25 +656,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       const params = { ...current.params }
       if (key === 'base_url' && !value.trim()) delete params.base_url
       else params[key] = value
-      return { ...current, params }
-    })
-    if (key === 'base_url' && value.trim()) setBaseUrlOverrideEnabled(true)
-  }
-
-  function setBaseURLOverride(enabled: boolean): void {
-    cancelDefaultChannel()
-    setParamTouched((current) => {
-      if (!((field) => field in current)('base_url')) return current
-      const next = { ...current }
-      delete next.base_url
-      return next
-    })
-    setBaseUrlOverrideEnabled(enabled)
-    if (enabled) return
-    setConnectionParsedSuccess(false)
-    setDraft((current) => {
-      const params = { ...current.params }
-      delete params.base_url
       return { ...current, params }
     })
   }
@@ -1213,7 +1192,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               proxy={draft.proxy}
 
               paramErrors={paramErrors}
-              baseUrlOverrideEnabled={baseUrlOverrideEnabled}
+
               disabled={payloadLocked}
               onNameChange={(value) => setDraft((current) => ({ ...current, name: value }))}
               onProviderUrlChange={(value) =>
@@ -1222,7 +1201,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
               onParamChange={setChannelParam}
               onProxyChange={(proxy) => setDraft((current) => ({ ...current, proxy }))}
-              onBaseUrlOverrideChange={setBaseURLOverride}
+
               onParamBlur={touchChannelParam}
             />
           </div>
