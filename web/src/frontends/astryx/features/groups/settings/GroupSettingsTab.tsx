@@ -10,6 +10,7 @@ import type { ChannelFieldDto } from '@shared/control/resources/channels'
 import { channelsQueryOptions } from '@shared/control/resources/channels'
 import {
   cacheGroupSettings,
+  getGroupSettings,
   groupModelsQueryOptions,
   groupSettingsQueryOptions,
   invalidateGroupSettingsDependents,
@@ -88,6 +89,7 @@ export function GroupSettingsTab({
   const [deletePending, setDeletePending] = useState(false)
   const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
+  const [recovery, setRecovery] = useState<'checking' | 'failed' | null>(null)
   const [forceSiteRootConfirmation, setForceSiteRootConfirmation] = useState(false)
   const [headerRulesValid, setHeaderRulesValid] = useState(true)
   const [headerRulesInvalidEdits, setHeaderRulesInvalidEdits] = useState(false)
@@ -336,7 +338,7 @@ export function GroupSettingsTab({
   }, [mutationPending, deleted])
 
   function requestSave(): void {
-    if (!dirty || !valid || stateRef.current.mutationPending) return
+    if (!dirty || !valid || stateRef.current.mutationPending || recovery !== null) return
     void save()
   }
 
@@ -375,7 +377,7 @@ export function GroupSettingsTab({
   }
 
   function discard(): void {
-    if (!saved || stateRef.current.mutationPending) return
+    if (!saved || stateRef.current.mutationPending || recovery !== null) return
     setError('')
     setForceSiteRootConfirmation(false)
     clearSavedFeedback()
@@ -408,6 +410,19 @@ export function GroupSettingsTab({
     setError('')
   }
 
+  async function recoverCombined(): Promise<void> {
+    setRecovery('checking')
+    try {
+      const result = await getGroupSettings(apiClient, groupId)
+      cacheGroupSettings(queryClient, groupId, result)
+      // Update the discard baseline, but retain the draft until the user reviews it.
+      setSaved(result)
+      setRecovery(null)
+    } catch {
+      setRecovery('failed')
+    }
+  }
+
   function headerSummary(): string {
     return t('group.settings.runtime.headerSummary', {
       set: Object.keys(displayedHeaderRules.set).length,
@@ -418,8 +433,9 @@ export function GroupSettingsTab({
   useImperativeHandle(ref, () => ({
     requestSave,
     discard,
+    recoverCombined,
     prepareCombined: () =>
-      !saved || !draft || !valid || stateRef.current.mutationPending
+      !saved || !draft || !valid || stateRef.current.mutationPending || recovery !== null
         ? undefined
         : {
             ...patch,
@@ -452,10 +468,10 @@ export function GroupSettingsTab({
       pending: mutationPending,
       error,
       saved: savedFeedback,
-      invalid: !valid,
+      invalid: !valid || recovery !== null,
       channelId: draft?.channel_id,
     })
-  }, [dirty, mutationPending, error, savedFeedback, valid, draft?.channel_id])
+  }, [dirty, mutationPending, error, savedFeedback, valid, draft?.channel_id, recovery])
 
   useEffect(
     () => () => {
@@ -537,6 +553,13 @@ export function GroupSettingsTab({
     >
       {!unified && (
         <SectionHeader headingId="group-settings-heading" title={t('group.settings.title')} />
+      )}
+
+      {recovery === 'failed' && (
+        <div role="alert">
+          {t('group.settings.recoveryFailed')}
+          <Button size="sm" label={t('common.retry')} onClick={() => void recoverCombined()} />
+        </div>
       )}
 
       {queryRefreshing && (

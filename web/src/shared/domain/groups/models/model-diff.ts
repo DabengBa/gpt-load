@@ -79,9 +79,16 @@ export function reconcileUncertainModels(
               ...item,
               entry_id: matches[0].entry_id,
               concurrency_limit: item.concurrency_limit ?? 0,
+              circuit_breaker: item.circuit_breaker ?? null,
             },
           ],
-          [{ ...matches[0], concurrency_limit: matches[0].concurrency_limit ?? 0 }],
+          [
+            {
+              ...matches[0],
+              concurrency_limit: matches[0].concurrency_limit ?? 0,
+              circuit_breaker: matches[0].circuit_breaker ?? null,
+            },
+          ],
         )
       )
         conflict = true
@@ -133,6 +140,7 @@ export function reconcileUncertainModels(
               ...item,
               entry_id: fresh.entry_id,
               concurrency_limit: item.concurrency_limit ?? fresh.concurrency_limit,
+              circuit_breaker: item.circuit_breaker ?? fresh.circuit_breaker,
             }
           : { ...item },
       )

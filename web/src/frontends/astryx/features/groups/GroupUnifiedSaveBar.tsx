@@ -93,8 +93,8 @@ export function GroupUnifiedSaveBar({
       void (async () => {
         try {
           const result = await updateGroupConfiguration(apiClient, groupId, settings, models)
-          const updatedModels = await getGroupModels(apiClient, groupId)
           await settingsEditor.acceptCombined(result)
+          const updatedModels = await getGroupModels(apiClient, groupId)
           await modelsEditor.acceptCombined(updatedModels)
         } catch (cause) {
           settingsEditor.failCombined(cause)
@@ -102,7 +102,7 @@ export function GroupUnifiedSaveBar({
           if (!(
             cause instanceof ApiError && cause.code === 'SITE_ROOT_CHANGE_CONFIRMATION_REQUIRED'
           )) {
-            await modelsEditor.recoverCombined()
+            await Promise.all([settingsEditor.recoverCombined(), modelsEditor.recoverCombined()])
           }
         } finally {
           onCombinedPendingChange(false)

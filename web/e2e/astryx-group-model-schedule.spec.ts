@@ -169,6 +169,76 @@ test('reasoning options follow the unsaved target channel', async ({ page }) => 
   await expect(page.getByText('Probe protocol', { exact: true })).toBeVisible()
 })
 
+for (const failure of ['lost-response', 'models-get', 'settings-get'] as const) {
+  test(`combined commit ${failure} recovers settings before discard`, async ({ page }) => {
+    await mockGroupModels(page, { models: [{ id: 'model-a' }], extraChannel: true })
+    await page.goto('/groups/1')
+    await expect(page.getByRole('button', { name: 'Gemini', exact: true })).toBeVisible()
+    const serverSettings = await page.evaluate(async () =>
+      (await fetch('/api/groups/1/settings?include=site_info')).json(),
+    )
+    let committed = false
+    let failedModelGet = false
+    let modelGetsAfterCommit = 0
+    let settingsRefreshes = 0
+    let allowSettingsRecovery = false
+    await page.route('**/api/groups/1/settings?**', async (route) => {
+      settingsRefreshes++
+      if (failure === 'settings-get' && committed && !allowSettingsRecovery) {
+        return route.fulfill({
+          status: 500,
+          json: { code: 'ERROR', message: 'failed', data: null },
+        })
+      }
+      await route.fulfill({ json: serverSettings })
+    })
+    await page.route('**/api/groups/1/models?**', async (route) => {
+      if (committed && route.request().method() === 'GET') modelGetsAfterCommit++
+      if (
+        failure === 'models-get' &&
+        modelGetsAfterCommit === 2 &&
+        !failedModelGet &&
+        route.request().method() === 'GET'
+      ) {
+        failedModelGet = true
+        return route.fulfill({
+          status: 500,
+          json: { code: 'ERROR', message: 'failed', data: null },
+        })
+      }
+      await route.fallback()
+    })
+    await page.route('**/api/groups/1/configuration', async (route) => {
+      committed = true
+      serverSettings.data.channel_id = 'gemini'
+      if (failure !== 'models-get') return route.abort('failed')
+      await route.fulfill({ json: serverSettings })
+    })
+    await page.getByRole('button', { name: 'Gemini', exact: true }).click()
+    await page.getByLabel('Reasoning policy for model-a').selectOption('high')
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click()
+    await expect(
+      page.getByRole('button', { name: 'Discard draft and review server' }),
+    ).toBeVisible()
+    if (failure === 'settings-get') {
+      const alert = page.getByRole('alert').filter({ hasText: 'Could not refresh settings' })
+      await expect(alert).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Save settings', exact: true })).toBeDisabled()
+      await expect(
+        page.getByLabel('Reasoning policy for model-a').locator('option[value="none"]'),
+      ).toHaveCount(0)
+      allowSettingsRecovery = true
+      await alert.getByRole('button', { name: 'Retry' }).click()
+      await expect(alert).toBeHidden()
+    }
+    await page.getByRole('button', { name: 'Discard', exact: true }).click()
+    await expect(
+      page.getByLabel('Reasoning policy for model-a').locator('option[value="none"]'),
+    ).toHaveCount(0)
+    if (failure !== 'models-get') expect(settingsRefreshes).toBeGreaterThan(0)
+  })
+}
+
 for (const edited of ['reasoning', 'enabled'] as const) {
   test(`recovery retains remote unedited ${edited === 'reasoning' ? 'enabled' : 'reasoning'} on retry`, async ({
     page,

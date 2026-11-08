@@ -263,6 +263,7 @@ export default {
       save: '保存设置',
       loading: '正在加载分组设置',
       loadFailed: '无法加载分组设置',
+      recoveryFailed: '保存结果不确定，无法刷新分组设置。请重试后再保存或放弃。',
       saved: '设置已保存',
       unsaved: '有未保存的修改',
       saving: '正在保存',

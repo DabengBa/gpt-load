@@ -273,6 +273,8 @@ export default {
       save: 'Save settings',
       loading: 'Loading Group settings',
       loadFailed: 'Unable to load Group settings',
+      recoveryFailed:
+        'Could not refresh settings after the uncertain save. Retry before saving or discarding.',
       saved: 'Settings saved',
       unsaved: 'Unsaved changes',
       saving: 'Saving',

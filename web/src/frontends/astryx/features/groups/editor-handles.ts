@@ -21,6 +21,7 @@ export interface GroupSettingsEditorHandle extends GroupEditorHandle {
   prepareCombined(): GroupSettingsUpdateRequest | undefined
   acceptCombined(result: GroupSettingsDto): Promise<void>
   failCombined(cause: unknown): void
+  recoverCombined(): Promise<void>
 }
 
 export interface GroupModelsEditorHandle extends GroupEditorHandle {

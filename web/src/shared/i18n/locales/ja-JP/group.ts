@@ -267,6 +267,8 @@ export default {
       save: '設定を保存',
       loading: 'グループ設定を読み込み中',
       loadFailed: 'グループ設定を読み込めません',
+      recoveryFailed:
+        '保存結果が不明で、設定を更新できませんでした。保存または破棄する前に再試行してください。',
       saved: '設定を保存しました',
       unsaved: '未保存の変更があります',
       saving: '保存中',

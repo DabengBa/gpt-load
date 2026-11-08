@@ -148,7 +148,17 @@ test('committed new row matches server defaults without losing identity', () => 
   const result = reconcileUncertainModels(
     [],
     [row],
-    [{ ...row, key: 2, entry_id: 'e1', concurrency_limit: 0, weight: null, priority: null }],
+    [
+      {
+        ...row,
+        key: 2,
+        entry_id: 'e1',
+        concurrency_limit: 0,
+        weight: null,
+        priority: null,
+        circuit_breaker: null,
+      },
+    ],
     'save',
   )
   assert.equal(result.conflict, false)
