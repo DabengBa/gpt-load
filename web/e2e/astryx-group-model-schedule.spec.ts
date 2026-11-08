@@ -211,6 +211,7 @@ for (const failure of ['lost-response', 'models-get', 'settings-get'] as const) 
     await page.route('**/api/groups/1/configuration', async (route) => {
       committed = true
       serverSettings.data.channel_id = 'gemini'
+      if (failure === 'lost-response') serverSettings.data.name = 'Concurrent name'
       if (failure !== 'models-get') return route.abort('failed')
       await route.fulfill({ json: serverSettings })
     })
@@ -220,6 +221,15 @@ for (const failure of ['lost-response', 'models-get', 'settings-get'] as const) 
     await expect(
       page.getByRole('button', { name: 'Discard draft and review server' }),
     ).toBeVisible()
+    if (failure === 'lost-response') {
+      await page.getByRole('button', { name: 'Discard draft and review server' }).click()
+      await expect(page.getByRole('button', { name: 'Save settings', exact: true })).toBeDisabled()
+      await expect(
+        page.getByText(
+          'Settings may have changed. Discard the settings draft and review the server values before saving.',
+        ),
+      ).toBeVisible()
+    }
     if (failure === 'settings-get') {
       const alert = page.getByRole('alert').filter({ hasText: 'Could not refresh settings' })
       await expect(alert).toBeVisible()
@@ -232,6 +242,8 @@ for (const failure of ['lost-response', 'models-get', 'settings-get'] as const) 
       await expect(alert).toBeHidden()
     }
     await page.getByRole('button', { name: 'Discard', exact: true }).click()
+    if (failure === 'lost-response')
+      await expect(page.getByRole('textbox', { name: 'Name Name' })).toHaveValue('Concurrent name')
     await expect(
       page.getByLabel('Reasoning policy for model-a').locator('option[value="none"]'),
     ).toHaveCount(0)

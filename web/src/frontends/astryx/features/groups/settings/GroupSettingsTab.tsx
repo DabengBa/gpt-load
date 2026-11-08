@@ -10,6 +10,7 @@ import type { ChannelFieldDto } from '@shared/control/resources/channels'
 import { channelsQueryOptions } from '@shared/control/resources/channels'
 import {
   cacheGroupSettings,
+  cacheRecoveredGroupSettings,
   getGroupSettings,
   groupModelsQueryOptions,
   groupSettingsQueryOptions,
@@ -89,7 +90,7 @@ export function GroupSettingsTab({
   const [deletePending, setDeletePending] = useState(false)
   const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
-  const [recovery, setRecovery] = useState<'checking' | 'failed' | null>(null)
+  const [recovery, setRecovery] = useState<'checking' | 'failed' | 'review' | null>(null)
   const [forceSiteRootConfirmation, setForceSiteRootConfirmation] = useState(false)
   const [headerRulesValid, setHeaderRulesValid] = useState(true)
   const [headerRulesInvalidEdits, setHeaderRulesInvalidEdits] = useState(false)
@@ -377,10 +378,12 @@ export function GroupSettingsTab({
   }
 
   function discard(): void {
-    if (!saved || stateRef.current.mutationPending || recovery !== null) return
+    if (!saved || stateRef.current.mutationPending || (recovery !== null && recovery !== 'review'))
+      return
     setError('')
     setForceSiteRootConfirmation(false)
     clearSavedFeedback()
+    setRecovery(null)
     resetSavedDraft(saved)
     consumeCurrentQuery()
   }
@@ -414,10 +417,10 @@ export function GroupSettingsTab({
     setRecovery('checking')
     try {
       const result = await getGroupSettings(apiClient, groupId)
-      cacheGroupSettings(queryClient, groupId, result)
+      await cacheRecoveredGroupSettings(queryClient, groupId, result)
       // Update the discard baseline, but retain the draft until the user reviews it.
       setSaved(result)
-      setRecovery(null)
+      setRecovery('review')
     } catch {
       setRecovery('failed')
     }
@@ -446,8 +449,8 @@ export function GroupSettingsTab({
     acceptCombined: async (result) => {
       setForceSiteRootConfirmation(false)
       setError('')
+      await cacheRecoveredGroupSettings(queryClient, groupId, result)
       resetSavedDraft(result)
-      cacheGroupSettings(queryClient, groupId, result)
       await invalidateGroupSettingsDependents(queryClient, groupId)
       showSavedFeedback()
     },
@@ -464,7 +467,7 @@ export function GroupSettingsTab({
   // report aggregate state to the host's unified save bar.
   useEffect(() => {
     onStateChangeRef.current({
-      dirty,
+      dirty: dirty || recovery === 'review',
       pending: mutationPending,
       error,
       saved: savedFeedback,
@@ -561,6 +564,7 @@ export function GroupSettingsTab({
           <Button size="sm" label={t('common.retry')} onClick={() => void recoverCombined()} />
         </div>
       )}
+      {recovery === 'review' && <div role="alert">{t('group.settings.recoveryReview')}</div>}
 
       {queryRefreshing && (
         <div

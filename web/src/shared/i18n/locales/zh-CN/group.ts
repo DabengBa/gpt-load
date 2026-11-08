@@ -264,6 +264,7 @@ export default {
       loading: '正在加载分组设置',
       loadFailed: '无法加载分组设置',
       recoveryFailed: '保存结果不确定，无法刷新分组设置。请重试后再保存或放弃。',
+      recoveryReview: '分组设置可能已更改。请先放弃设置草稿并核对服务器值，再保存。',
       saved: '设置已保存',
       unsaved: '有未保存的修改',
       saving: '正在保存',

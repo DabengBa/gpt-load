@@ -275,6 +275,8 @@ export default {
       loadFailed: 'Unable to load Group settings',
       recoveryFailed:
         'Could not refresh settings after the uncertain save. Retry before saving or discarding.',
+      recoveryReview:
+        'Settings may have changed. Discard the settings draft and review the server values before saving.',
       saved: 'Settings saved',
       unsaved: 'Unsaved changes',
       saving: 'Saving',

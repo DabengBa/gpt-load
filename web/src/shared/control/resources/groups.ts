@@ -1056,6 +1056,19 @@ export function cacheGroupSettings(
   queryClient.setQueryData(controlQueryKeys.groups.settings(groupID), settings)
 }
 
+/** Prevent a pre-recovery poll from replacing a newer authoritative read. */
+export async function cacheRecoveredGroupSettings(
+  queryClient: QueryClient,
+  groupID: number,
+  settings: GroupSettingsDto,
+): Promise<void> {
+  await queryClient.cancelQueries({
+    queryKey: controlQueryKeys.groups.settings(groupID),
+    exact: true,
+  })
+  cacheGroupSettings(queryClient, groupID, settings)
+}
+
 /** Invalidate cached resources whose representations derive from Group models. */
 export async function invalidateGroupModelDependents(
   queryClient: QueryClient,

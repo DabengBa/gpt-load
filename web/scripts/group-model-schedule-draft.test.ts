@@ -9,6 +9,7 @@ import {
 } from '../src/shared/domain/groups/models/model-diff.ts'
 import {
   cacheGroupModels,
+  cacheRecoveredGroupSettings,
   getGroupModels,
   replaceGroupModelsResource,
   updateGroupConfiguration,
@@ -16,6 +17,27 @@ import {
 import { QueryClient } from '@tanstack/react-query'
 import { controlQueryKeys } from '../src/shared/control/query-keys.ts'
 import type { ApiClient } from '../src/shared/http/client.ts'
+
+test('recovered settings cache cannot be overwritten by an older pending poll', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const key = controlQueryKeys.groups.settings(1)
+  let resolve!: (value: unknown) => void
+  const poll = client
+    .fetchQuery({
+      queryKey: key,
+      queryFn: () =>
+        new Promise((done) => {
+          resolve = done
+        }),
+    })
+    .catch(() => undefined)
+  const fresh = { name: 'fresh' }
+  await cacheRecoveredGroupSettings(client, 1, fresh as never)
+  resolve({ name: 'stale' })
+  await poll
+  assert.deepEqual(client.getQueryData(key), fresh)
+  client.clear()
+})
 
 test('combined settings and models use one atomic request', async () => {
   const calls: unknown[] = []
