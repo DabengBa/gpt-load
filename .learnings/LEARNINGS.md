@@ -1,5 +1,35 @@
 # Project Learnings
 
+## [LRN-20261110-001] correction
+
+**Logged**: 2026-11-10T20:52:52+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: backend
+
+### Summary
+扩展失败重试时，先复用现有预算和候选轮询，并检查共享判定器的调用边界。
+
+### Details
+用户要求空完成和上游主机失败使用已有策略，不新增专属开关。共享判定器同时服务 HTTP、WebSocket 和缓冲流；扩大重试范围时还需保护已提交响应、本地错误和操作重放限制，并分别验证健康效果。
+
+### Suggested Action
+扩展重试判定前核对调用方、共享预算和终止边界，再用对应路径的回归测试验证。
+
+### Metadata
+- Source: user_feedback
+- Related Files: internal/health/execution_judge.go, internal/gateway/websocket_turn.go
+- Tags: retry, shared-judge, replay
+
+### Context Maintenance
+- Decay-Type: decision; Decay-Rate: slow（策略或调用方变化时复核）
+- Authority: 用户本次要求及现有实现；Owner: gateway maintainers
+- Revalidation: 修改重试策略或共享调用方时检查实现和测试；来源不可用时标记 unresolved
+- Validation: verified; Last-Validated: 2026-11-10; Evidence: 用户纠正及相关 gateway/health 回归测试
+- Disposition: retain; Application: applied
+
+---
+
 ## [LRN-20261107-001] best_practice
 
 **Logged**: 2026-11-07T10:24:10+08:00

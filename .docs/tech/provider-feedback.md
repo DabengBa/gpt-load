@@ -1,5 +1,5 @@
 ---
-description: "Classify streamed Provider attempts by upstream failure, first-response latency, and output rate, then persist bounded feedback without changing the current successful response."
+description: "Classify Provider attempt feedback and describe retry decisions, budgets, and their safety boundaries."
 kind: technical
 topic: provider-feedback
 relations:
@@ -12,7 +12,10 @@ code:
   paths:
     - internal/control/request_logs_mapping.go
     - internal/health/feedback.go
+    - internal/health/execution_judge.go
     - internal/gateway/feedback.go
+    - internal/gateway/execution_forward.go
+    - internal/gateway/attempts.go
     - internal/requestlog/worker.go
     - internal/requestlog/query.go
     - internal/storage/migrations/0024_provider_feedback.go
@@ -23,7 +26,7 @@ code:
 ## Scope
 
 - **Owner:** provider-attempt feedback classification, measurement, persistence,
-  request-log projection, and usage attempt aggregates.
+  request-log projection, usage attempt aggregates, and retry decisions.
 - **Authoritative for:** eligibility, thresholds, status and reason invariants,
   performance-fault effects, migration behavior, and the distinction between
   feedback and request success/failure.
@@ -160,6 +163,18 @@ committed buffered response do not apply that effect. The normal committed-respo
 buffered-replay eligibility, operation replay-safety, and WebSocket turn
 boundaries still apply. Failed attempts remain individually visible in request
 logs even when a later attempt determines the final request result.
+
+The gateway detects `upstream_empty_completion` only for a completed non-stream
+OpenAI Chat Completions 2xx response with a complete JSON object, at least one
+assistant choice without consumable payload, an absent, empty or `stop` finish
+reason for every choice, and complete usage with positive output tokens. An
+explicit `content_filter` finish reason is not an empty completion. The gateway
+marks this diagnosis internally; an upstream error code alone cannot assert it.
+If no later attempt succeeds, the existing deferred-attempt fallback determines
+the final response; an empty completion's original response is returned only if
+that attempt is selected by the fallback. See
+`internal/gateway/retry_rotation_http_integration_test.go` for candidate order,
+budget exhaustion, and attempt log coverage.
 
 Before a same-provider replay, current credential and route-entry health plus
 group skip state are checked. Cooldown, blacklist, breaker, and replay-safety

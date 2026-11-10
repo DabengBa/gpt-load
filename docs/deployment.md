@@ -178,7 +178,7 @@ GET /api/debug-captures/<capture-id>/download
 
 它不同于 `upstream_content_filter`：后者由明确的 `finish_reason=content_filter` 表示供应商因内容过滤终止；该 finish reason 不会被当作空完成。空完成进入现有重试与候选轮询，使用共享尝试次数预算；失败 attempt 保留 `failure_category=ambiguous`、`EffectNone` 和规则 `upstream.empty_completion`。是否实际重试仍取决于预算、可用候选、响应提交状态及操作的重放限制；不会因此熔断或冷却。
 
-上游主机错误（例如 HTTP 524）也进入现有重试与候选轮询，并保留原有的分组健康处理。上游可能已经处理失败的请求，重试可能导致重复生成、收费或其他副作用。
+符合重放和响应提交边界的上游主机错误（例如 HTTP 524）也进入现有重试与候选轮询；普通上游主机错误保留原有分组健康处理。buffered 响应资格、操作重放限制及 WebSocket 边界见 [Provider Feedback](../.docs/tech/provider-feedback.md)。上游可能已经处理失败的请求，重试可能导致重复生成、收费或其他副作用。
 
 发布后可使用管理面管理员凭据，通过现有 request-log API 按 attempt 错误码查询，不需要访问数据库：
 

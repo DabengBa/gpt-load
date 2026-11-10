@@ -108,7 +108,7 @@ Regression evidence lives in `internal/control/probe_capture_test.go`,
 
 ## Empty-completion triage order
 
-Start with the structured request log: confirm `error_code=upstream_empty_completion`, the HTTP status, the usage numbers, and each attempt's error classification and decision. The request log is an index and a result record, and it never substitutes for the Provider's raw body. Then query every capture for the same `request_id` through the administrator debug capture API and pair raw request/response bytes by attempt sequence:
+Start with the structured request log: find attempts with `error_code=upstream_empty_completion`, and check their HTTP status, usage numbers, error classification and decision. A later attempt may succeed, so the final request status and error code can differ from an earlier attempt. The request log is an index and a result record, and it never substitutes for the Provider's raw body. Then query every capture for the same `request_id` through the administrator debug capture API and pair raw request/response bytes by attempt sequence:
 
 ```text
 GET /api/logs/<request-id>
