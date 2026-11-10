@@ -6,7 +6,6 @@ import { createPortal } from 'react-dom'
 import type { ChannelParamsDto } from '@shared/control/types'
 import type { ChannelDto, ChannelFieldDto } from '@shared/control/resources/channels'
 
-
 import { useT } from '../../../app/i18n'
 import { ChannelPresetPicker } from '@app/components/ChannelPresetPicker'
 

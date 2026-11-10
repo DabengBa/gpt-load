@@ -1115,6 +1115,7 @@ func upstreamFromExecutionResult(
 	}
 	if upstream.ExecutionError == nil && emptyChatCompletion(
 		input.ClientProtocol, upstream.StatusCode, upstream.ClassificationBody, upstream.Usage) {
+		upstream.EmptyCompletion = true
 		upstream.ExecutionError = &execution.ErrorEvidence{
 			Kind:       execution.ErrorKindProvider,
 			OriginHint: execution.ErrorOriginUpstream,

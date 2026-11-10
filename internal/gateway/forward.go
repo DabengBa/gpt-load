@@ -128,6 +128,8 @@ type UpstreamResult struct {
 	AppliedReasoning          reasoning.Config
 	UpstreamRequestID         string
 	ExecutionError            *execution.ErrorEvidence
+	// EmptyCompletion is set only by the gateway's non-stream response detector.
+	EmptyCompletion bool
 }
 
 func (result UpstreamResult) HasResponse() bool {

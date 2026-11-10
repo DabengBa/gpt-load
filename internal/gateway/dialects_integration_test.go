@@ -27,6 +27,7 @@ import (
 	"gpt-load/internal/platform/contentcoding"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/state"
+	"gpt-load/internal/telemetry"
 	"gpt-load/internal/testutil/encryptiontest"
 	"gpt-load/internal/testutil/fakeupstream"
 )
@@ -38,6 +39,7 @@ type dialectGatewayGroup struct {
 	channelID   channel.ID
 	params      json.RawMessage
 	apiKeys     []string
+
 	models      []state.ModelConfig
 	settings    config.Settings
 	headerRules state.HeaderRules
@@ -100,6 +102,20 @@ func newDialectGatewayEngineWithSystemSettings(
 	dialects dialect.Set,
 	forwarder AttemptForwarder,
 	systemSettings config.Settings,
+	groups ...dialectGatewayGroup,
+) (*gin.Engine, *state.CredentialRegistry) {
+	t.Helper()
+	return newDialectGatewayEngineWithRequestLog(t, selectedProtocol, model, dialects, forwarder, systemSettings, nil, groups...)
+}
+
+func newDialectGatewayEngineWithRequestLog(
+	t *testing.T,
+	selectedProtocol protocol.Protocol,
+	model string,
+	dialects dialect.Set,
+	forwarder AttemptForwarder,
+	systemSettings config.Settings,
+	sink telemetry.RequestLogSink,
 	groups ...dialectGatewayGroup,
 ) (*gin.Engine, *state.CredentialRegistry) {
 	t.Helper()
@@ -189,7 +205,7 @@ func newDialectGatewayEngineWithSystemSettings(
 		health.NewStatsStore(),
 		health.NewMutationCoordinator(),
 		nil,
-		nil,
+		sink,
 		nil,
 	)
 	handler.newRandom = func() *rand.Rand { return rand.New(zeroSource{}) }
@@ -708,7 +724,7 @@ func TestGatewayAppliesEachGroupsParameterOverridesFromOriginal(t *testing.T) {
 	}
 }
 
-func TestHandlerHostFailureDoesNotReplayGenerationAcrossGroups(t *testing.T) {
+func TestHandlerHostFailureReplaysGenerationAcrossGroups(t *testing.T) {
 	primary := fakeupstream.New(
 		fakeupstream.Step{Status: http.StatusInternalServerError, Fixture: "openai/500.json"},
 		fakeupstream.Step{Status: http.StatusInternalServerError, Fixture: "openai/500.json"},
@@ -729,26 +745,24 @@ func TestHandlerHostFailureDoesNotReplayGenerationAcrossGroups(t *testing.T) {
 		dialectGatewayGroup{id: 2, name: "backup", upstreamURL: backup.URL,
 			apiKeys: []string{"sk-backup"}},
 	)
-	for range 2 {
-		request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
-			bytes.NewBufferString(`{"model":"gpt-4o"}`))
-		request.Header.Set("Authorization", "Bearer gl-client")
-		recorder := httptest.NewRecorder()
-		engine.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusInternalServerError || recorder.Header().Get(debugHeaderAttempts) != "1" {
-			t.Fatalf("response = %d attempts=%s body=%s",
-				recorder.Code, recorder.Header().Get(debugHeaderAttempts), recorder.Body.String())
-		}
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewBufferString(`{"model":"gpt-4o"}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || recorder.Header().Get(debugHeaderAttempts) != "2" {
+		t.Fatalf("response = %d attempts=%s body=%s",
+			recorder.Code, recorder.Header().Get(debugHeaderAttempts), recorder.Body.String())
 	}
-	if got := len(primary.Requests()); got != 2 {
-		t.Fatalf("primary requests = %d, want one per downstream request", got)
+	if got := len(primary.Requests()); got != 1 {
+		t.Fatalf("primary requests = %d, want one", got)
 	}
-	if got := len(backup.Requests()); got != 0 {
-		t.Fatalf("backup requests = %d, want none for ambiguous generation failures", got)
+	if got := len(backup.Requests()); got != 1 {
+		t.Fatalf("backup requests = %d, want one after host failure", got)
 	}
 }
 
-func TestHandlerReturnsLastHostErrorWhenSkippedGroupHasNoBackup(t *testing.T) {
+func TestHandlerHostErrorRotatesAcrossExpandedTestGroups(t *testing.T) {
 	upstream := fakeupstream.New(
 		fakeupstream.Step{Status: http.StatusInternalServerError, Fixture: "openai/500.json"},
 		fakeupstream.Step{Status: http.StatusOK, Fixture: "openai/success.json"},
@@ -766,9 +780,11 @@ func TestHandlerReturnsLastHostErrorWhenSkippedGroupHasNoBackup(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusInternalServerError || len(upstream.Requests()) != 1 ||
-		!bytes.Contains(recorder.Body.Bytes(), []byte("internal_error")) {
-		t.Fatalf("response/attempts = %d/%d body=%s, want safe 500/1",
+	// The test helper expands each API key into a separate group; SkipGroup
+	// skips the first synthetic group, not both credentials.
+	if recorder.Code != http.StatusOK || len(upstream.Requests()) != 2 ||
+		!bytes.Contains(recorder.Body.Bytes(), []byte("chatcmpl-test")) {
+		t.Fatalf("response/attempts = %d/%d body=%s, want success/2",
 			recorder.Code, len(upstream.Requests()), recorder.Body.String())
 	}
 }

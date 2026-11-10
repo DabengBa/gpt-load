@@ -534,7 +534,9 @@ export function SchedulePanelDetail({
     }
   }, [])
   const currentDetailRef = useRef(detail)
-  currentDetailRef.current = detail
+  useEffect(() => {
+    currentDetailRef.current = detail
+  }, [detail])
   const writesRef = useRef<{
     tail: Promise<boolean>
     revision: number

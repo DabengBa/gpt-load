@@ -42,7 +42,11 @@ export function GroupCollectionToolbar({
   const intl = useIntl()
 
   return (
-    <div {...stylex.props(styles.toolbar)} role="group" aria-label={t('groups.collection.filters.region')}>
+    <div
+      {...stylex.props(styles.toolbar)}
+      role="group"
+      aria-label={t('groups.collection.filters.region')}
+    >
       <div {...stylex.props(styles.toolbarSearch)}>
         <TextInput
           size="sm"

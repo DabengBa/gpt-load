@@ -226,5 +226,5 @@ export function AccessKeyPolicyFields({
         </div>
       )}
     </div>
-  );
+  )
 }

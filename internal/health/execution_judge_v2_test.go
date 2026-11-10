@@ -333,7 +333,7 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 			wantRule:  RuleID("upstream.host_error.read_only"),
 		},
 		{
-			name: "mutating host error terminates",
+			name: "legacy mutating host error switches candidate",
 			attempt: ExecutionAttempt{
 				DispatchState: execution.DispatchMaybeSent,
 				StatusCode:    http.StatusServiceUnavailable,
@@ -343,8 +343,22 @@ func TestJudgeExecutionPreservesReplayCompatibilityRules(t *testing.T) {
 				},
 			},
 			context:   DecisionContext{Method: http.MethodPost, Operation: execution.OperationChatCompletion},
+			wantRetry: RetryNextCandidate,
+			wantRule:  RuleID("upstream.host_error.retry"),
+		},
+		{
+			name: "strict operation host error remains replay unsafe",
+			attempt: ExecutionAttempt{
+				DispatchState: execution.DispatchMaybeSent,
+				StatusCode:    http.StatusServiceUnavailable,
+				Evidence: &execution.ErrorEvidence{
+					Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintHostError,
+					StatusCode: http.StatusServiceUnavailable, Summary: "unavailable",
+				},
+			},
+			context:   DecisionContext{Method: http.MethodPost, Operation: execution.OperationEmbeddingsCreate},
 			wantRetry: RetryNone,
-			wantRule:  RuleID("upstream.host_error.replay_unsafe"),
+			wantRule:  RuleID("safety.operation_replay_unsafe"),
 		},
 		{
 			name: "explicitly rejected mutating host error retries",
@@ -412,7 +426,7 @@ func TestJudgeExecutionRetriesSafeBootstrapCapacityRejectionsWithoutEffects(t *t
 	}
 }
 
-func TestJudgeExecutionDoesNotBroadenBootstrapCapacityRetry(t *testing.T) {
+func TestJudgeExecutionPreservesBootstrapCapacityEffectBoundary(t *testing.T) {
 	tests := []struct {
 		name       string
 		evidence   execution.ErrorEvidence
@@ -422,14 +436,14 @@ func TestJudgeExecutionDoesNotBroadenBootstrapCapacityRetry(t *testing.T) {
 		wantRule   RuleID
 	}{
 		{
-			name: "unknown replay safety",
+			name: "unknown replay safety uses ordinary host retry and group effect",
 			evidence: execution.ErrorEvidence{
 				Kind: execution.ErrorKindHTTP, OriginHint: execution.ErrorOriginUpstream,
 				StatusCode: http.StatusServiceUnavailable, Code: "server_is_overloaded",
 				Summary: "replay is unknown", ReplaySafety: execution.ReplaySafetyUnknown,
 			},
-			wantRetry: RetryNone, wantEffect: EffectSkipGroup,
-			wantRule: "upstream.host_error.replay_unsafe",
+			wantRetry: RetryNextCandidate, wantEffect: EffectSkipGroup,
+			wantRule: "upstream.host_error.retry",
 		},
 		{
 			name: "similar code",

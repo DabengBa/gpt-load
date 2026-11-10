@@ -382,7 +382,8 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const siteAccessIncomplete =
     Boolean(draft.site_user_id.trim() || siteAccessToken.trim()) &&
     !(draft.site_user_id.trim() && siteAccessToken.trim() && draft.provider_url.trim())
-  const providerUrlInvalid = !!draft.provider_url.trim() && !isValidProviderUrlForWrite(draft.provider_url)
+  const providerUrlInvalid =
+    !!draft.provider_url.trim() && !isValidProviderUrlForWrite(draft.provider_url)
   const submitBlockedReason = (() => {
     if (payloadLocked || mutationPending) return ''
 

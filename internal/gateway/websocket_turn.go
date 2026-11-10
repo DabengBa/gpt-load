@@ -306,7 +306,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			Err: fmt.Errorf("%w: candidate preparation failed", ErrUpstreamProtocol), ErrorSummary: summary,
 			ExecutionError: &execution.ErrorEvidence{Kind: execution.ErrorKindInternal, OriginHint: execution.ErrorOriginInternal,
 				ScopeHint: scope, Code: code, Summary: summary}}
-		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{Operation: execution.OperationResponsesCreate, Method: http.MethodPost})
+		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{Operation: execution.OperationResponsesCreate, Method: http.MethodPost, WebSocket: true})
 		index := recorder.recordAttempt(selection, nil, result, decision, started, recorder.now())
 		h.applyGroupDecisionEffectForEntry(selection.Group, ref.ID, 0, selection.EntryID, decision, 0, h.now())
 		if decision.Effect == health.EffectSkipGroup {
@@ -617,7 +617,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 				break
 			}
 		}
-		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{DefaultRateLimitCooldown: fixedCooldown, Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
+		decision := judgeUpstreamResult(result, h.now(), health.DecisionContext{DefaultRateLimitCooldown: fixedCooldown, Method: http.MethodPost, Operation: execution.OperationResponsesCreate, WebSocket: true})
 		recoverySignal := responsesRecoverySignal(result)
 		if recoveryUsed && recoverySignal != "" {
 			decision.Retry = health.RetryNone

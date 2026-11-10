@@ -21,7 +21,9 @@ test('discovery drawer shows an evidence legend and a scoped selection summary',
   const legend = dialog.getByLabel('Evidence legend')
   await expect(legend).toBeVisible()
   await expect(legend.getByText('Live discovery', { exact: true })).toBeVisible()
-  await expect(legend.getByText('Price found from a matched provider', { exact: true })).toBeVisible()
+  await expect(
+    legend.getByText('Price found from a matched provider', { exact: true }),
+  ).toBeVisible()
 
   // Batch selection states how many of the available candidates are picked.
   await expect(dialog.getByText('0 of 2 available models selected')).toBeVisible()
@@ -49,9 +51,6 @@ test('discovery drawer shows an evidence legend and a scoped selection summary',
   await page.getByRole('button', { name: 'Save settings', exact: true }).click()
   await expect.poll(() => puts.length).toBe(1)
   expect(puts[0]).toMatchObject({
-    models: [
-      { id: 'gpt-5.2' },
-      { id: 'gpt-5.2-mini' },
-    ],
+    models: [{ id: 'gpt-5.2' }, { id: 'gpt-5.2-mini' }],
   })
 })

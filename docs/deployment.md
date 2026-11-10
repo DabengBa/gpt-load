@@ -174,9 +174,11 @@ GET /api/debug-captures/<capture-id>/download
 
 ## 空完成诊断
 
-`upstream_empty_completion` 只表示非流式 OpenAI Chat Completions 的一个保守诊断：上游返回 2xx，响应已正常完成，JSON 是完整对象且包含至少一个 choice；每个 choice 都是 assistant message，message 没有可消费 payload，`finish_reason` 缺失或为空/`stop`，并且 usage 已完整、output tokens 大于 0。命中后 request log 记录 `status=error` 和 `error_code=upstream_empty_completion`，但客户端仍收到上游原始的 2xx status（通常为 200）、headers 和 body。
+`upstream_empty_completion` 只表示非流式 OpenAI Chat Completions 的一个保守诊断：上游返回 2xx，响应已正常完成，JSON 是完整对象且包含至少一个 choice；每个 choice 都是 assistant message，message 没有可消费 payload，`finish_reason` 缺失或为空/`stop`，并且 usage 已完整、output tokens 大于 0。该 attempt 记录 `error_code=upstream_empty_completion`；若后续候选成功，请求最终记录和客户端响应反映该成功结果，而不是前一 attempt 的空响应。没有后续尝试成功时，最终响应遵循既有 deferred-attempt 回退顺序；只有最终落在空完成 attempt 时，客户端才收到它的原始 2xx status（通常为 200）、headers 和 body。
 
-它不同于 `upstream_content_filter`：后者由明确的 `finish_reason=content_filter` 表示供应商因内容过滤终止；该 finish reason 不会被当作空完成。空完成只记录诊断，不轮询、不重试、不熔断、不冷却：attempt 的 `failure_category=ambiguous`、`RetryNone`、`EffectNone`，并使用规则 `upstream.empty_completion`。
+它不同于 `upstream_content_filter`：后者由明确的 `finish_reason=content_filter` 表示供应商因内容过滤终止；该 finish reason 不会被当作空完成。空完成进入现有重试与候选轮询，使用共享尝试次数预算；失败 attempt 保留 `failure_category=ambiguous`、`EffectNone` 和规则 `upstream.empty_completion`。是否实际重试仍取决于预算、可用候选、响应提交状态及操作的重放限制；不会因此熔断或冷却。
+
+符合重放和响应提交边界的上游主机错误（例如 HTTP 524）也进入现有重试与候选轮询；普通上游主机错误保留原有分组健康处理。buffered 响应资格、操作重放限制及 WebSocket 边界见 [Provider Feedback](../.docs/tech/provider-feedback.md)。上游可能已经处理失败的请求，重试可能导致重复生成、收费或其他副作用。
 
 发布后可使用管理面管理员凭据，通过现有 request-log API 按 attempt 错误码查询，不需要访问数据库：
 

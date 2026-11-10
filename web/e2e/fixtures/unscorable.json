@@ -1,1 +1,53 @@
-{"group_id":1,"group_name":"example","model":"example","challenges":[{"id":"example","expected_count":300,"outcome":"succeeded","reason":null,"log_id":null,"latency_ms":null,"status_code":null}],"analysis":{"decision":"unscorable","prediction":"","prediction_name":"Not scored","family_prediction":"","family_prediction_name":"","results":[],"ranking_score":null,"probability":null,"probability_status":"unavailable","probability_scope":null,"calibration":null,"used_outputs":0,"diagnostics":[{"index":0,"parsed_numbers":0,"minimum_numbers":165,"accepted":false,"raw_out_of_range_count":0}],"sequence":null,"method":"shared-detector-v2","model_version":{"base_sha256":"ae48f7c1832e118382b03da9b150fa333cabc5f91a74e722e0719caa48ff87c4"},"evidence":{"insufficient":true,"label":"Not enough valid samples","reason":"Received 0/3 valid samples. Three valid samples are required.","threshold":null,"method":"complete-three-answers"}},"failure":null,"tested_at_ms":0}
+{
+  "group_id": 1,
+  "group_name": "example",
+  "model": "example",
+  "challenges": [
+    {
+      "id": "example",
+      "expected_count": 300,
+      "outcome": "succeeded",
+      "reason": null,
+      "log_id": null,
+      "latency_ms": null,
+      "status_code": null
+    }
+  ],
+  "analysis": {
+    "decision": "unscorable",
+    "prediction": "",
+    "prediction_name": "Not scored",
+    "family_prediction": "",
+    "family_prediction_name": "",
+    "results": [],
+    "ranking_score": null,
+    "probability": null,
+    "probability_status": "unavailable",
+    "probability_scope": null,
+    "calibration": null,
+    "used_outputs": 0,
+    "diagnostics": [
+      {
+        "index": 0,
+        "parsed_numbers": 0,
+        "minimum_numbers": 165,
+        "accepted": false,
+        "raw_out_of_range_count": 0
+      }
+    ],
+    "sequence": null,
+    "method": "shared-detector-v2",
+    "model_version": {
+      "base_sha256": "ae48f7c1832e118382b03da9b150fa333cabc5f91a74e722e0719caa48ff87c4"
+    },
+    "evidence": {
+      "insufficient": true,
+      "label": "Not enough valid samples",
+      "reason": "Received 0/3 valid samples. Three valid samples are required.",
+      "threshold": null,
+      "method": "complete-three-answers"
+    }
+  },
+  "failure": null,
+  "tested_at_ms": 0
+}

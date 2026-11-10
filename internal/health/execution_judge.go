@@ -14,10 +14,12 @@ import (
 // ExecutionAttempt is the provider-neutral evidence used for one health and
 // retry decision after an executor call.
 type ExecutionAttempt struct {
-	DispatchState       execution.DispatchState
-	StatusCode          int
-	Header              http.Header
-	Evidence            *execution.ErrorEvidence
+	DispatchState execution.DispatchState
+	StatusCode    int
+	Header        http.Header
+	Evidence      *execution.ErrorEvidence
+	// EmptyCompletion is a gateway-generated diagnosis, not an upstream code.
+	EmptyCompletion     bool
 	DownstreamCommitted bool
 	// HTTPCommitted is true once the gateway has sent response headers or a
 	// heartbeat. It is deliberately independent from payload release.
@@ -243,15 +245,17 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 			"safety.final_informational_response",
 		)
 	}
-	if attempt.Evidence.Code == emptyCompletionErrorCode {
-		return constrainCommittedDecision(decision(
+	if attempt.EmptyCompletion && attempt.Evidence.Code == emptyCompletionErrorCode {
+		result := decision(
 			FailureCategoryAmbiguous,
 			originForEvidence(attempt.Evidence),
 			scopeOrDefault(attempt.Evidence.ScopeHint, execution.ErrorScopeRequest),
-			RetryNone,
+			RetryNextCandidate,
 			EffectNone,
 			emptyCompletionRuleID,
-		), attempt)
+		)
+		result = constrainOperationReplay(result, attempt, decisionContext)
+		return constrainCommittedDecision(result, attempt)
 	}
 	if attempt.Evidence.Code == contentFilterErrorCode {
 		// The upstream answered successfully but the content filter removed the
@@ -513,24 +517,58 @@ func decisionForExecutionCategory(
 	case FailureCategoryAuthenticationRequired:
 		return authenticationDecision(attempt, decisionContext)
 	case FailureCategoryUpstreamHostError:
-		retry := RetryNone
-		ruleID := RuleID("upstream.host_error.replay_unsafe")
+		if origin != execution.ErrorOriginUpstream {
+			return decision(
+				category,
+				origin,
+				scopeOrDefault(scope, execution.ErrorScopeRequest),
+				RetryNone,
+				EffectNone,
+				"upstream.host_error.local_failure",
+			)
+		}
+		if decisionContext.WebSocket &&
+			attempt.Evidence.ReplaySafety != execution.ReplaySafetyRejectedBeforeProcessing {
+			return decision(
+				category,
+				origin,
+				scopeOrDefault(scope, execution.ErrorScopeGroup),
+				RetryNone,
+				EffectSkipGroup,
+				"upstream.host_error.replay_unsafe",
+			)
+		}
+		if attempt.BufferedStream && attempt.HTTPCommitted && !attempt.PayloadReleased &&
+			attempt.ClientVisibleBytes > 0 && !decisionContext.BufferedReplayEligible {
+			return decision(
+				category,
+				origin,
+				scopeOrDefault(scope, execution.ErrorScopeGroup),
+				RetryNone,
+				EffectNone,
+				"safety.buffered_replay_ineligible",
+			)
+		}
+		ruleID := RuleID("upstream.host_error.retry")
 		if attempt.Evidence.ReplaySafety == execution.ReplaySafetyRejectedBeforeProcessing {
-			retry = RetryNextCandidate
 			ruleID = "upstream.host_error.rejected_before_processing"
 		} else if attempt.Evidence.ReplaySafety != execution.ReplaySafetyUnknown &&
 			requestMayReplayAfterResponse(decisionContext) {
-			retry = RetryNextCandidate
 			ruleID = "upstream.host_error.read_only"
 		}
-		return decision(
+		result := decision(
 			category,
 			origin,
 			scopeOrDefault(scope, execution.ErrorScopeGroup),
-			retry,
+			RetryNextCandidate,
 			EffectSkipGroup,
 			ruleID,
 		)
+		if attempt.BufferedStream && attempt.HTTPCommitted && !attempt.PayloadReleased &&
+			attempt.ClientVisibleBytes > 0 && decisionContext.BufferedReplayEligible {
+			result.RuleID = "buffered_stream.retry_before_release_upstream_status"
+		}
+		return result
 	case FailureCategoryConversionUnsupported:
 		return decision(
 			category,
@@ -616,7 +654,8 @@ func bufferedStreamRetryDecision(
 ) Decision {
 	if !attempt.BufferedStream || !attempt.HTTPCommitted || attempt.PayloadReleased ||
 		attempt.ClientVisibleBytes <= 0 || !decisionContext.BufferedReplayEligible ||
-		attempt.Evidence == nil || result.Retry != RetryNone {
+		attempt.Evidence == nil || result.Retry != RetryNone ||
+		originForEvidence(attempt.Evidence) != execution.ErrorOriginUpstream {
 		return result
 	}
 	// Only failures produced by the buffered collector may use this gate. In

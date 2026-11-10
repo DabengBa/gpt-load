@@ -4663,11 +4663,11 @@ func TestRequestLogEmptyCompletionEndToEnd(t *testing.T) {
 	}
 	if len(event.Attempts) != 1 ||
 		event.Attempts[0].FailureCategory != telemetry.FailureCategoryAmbiguous ||
-		event.Attempts[0].RetryDirective != telemetry.RetryNone ||
+		event.Attempts[0].RetryDirective != telemetry.RetryNextCandidate ||
 		event.Attempts[0].Effect != telemetry.EffectNone ||
 		event.Attempts[0].RuleID != "upstream.empty_completion" ||
 		event.Attempts[0].ErrorCode != "upstream_empty_completion" {
-		t.Fatalf("attempts = %#v, want one ambiguous no-retry attempt with upstream_empty_completion", event.Attempts)
+		t.Fatalf("attempts = %#v, want one ambiguous retryable attempt with upstream_empty_completion", event.Attempts)
 	}
 	if event.Usage.Result.State != usage.StateComplete || event.Usage.Result.Tokens.Output != 12 {
 		t.Fatalf("usage = %#v, want complete usage with 12 output tokens", event.Usage)

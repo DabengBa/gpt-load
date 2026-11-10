@@ -385,8 +385,7 @@ export function ModelUpstreamDrawer({
             {t('models.drawer.contextImpact', {
               clients: detail.client_model_count,
               groups: detail.group_count,
-            })}
-            {' '}
+            })}{' '}
             {t('models.drawer.saveScope')}
           </>
         ) : undefined

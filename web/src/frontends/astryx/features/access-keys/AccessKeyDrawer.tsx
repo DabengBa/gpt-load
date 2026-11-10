@@ -631,8 +631,10 @@ export function AccessKeyDrawer({
                   {t('accessKeys.drawer.fixThisField')}
                 </button>
               </>
+            ) : saveBlockerKey ? (
+              t(saveBlockerKey)
             ) : (
-              (saveBlockerKey ? t(saveBlockerKey) : '')
+              ''
             )}
           </p>
           <Button
@@ -739,9 +741,7 @@ export function AccessKeyDrawer({
         </section>
 
         <section id="access-key-scope" {...stylex.props(styles.section)}>
-          <h3 {...stylex.props(styles.sectionTitle)}>
-            {t('accessKeys.drawer.permissionScope')}
-          </h3>
+          <h3 {...stylex.props(styles.sectionTitle)}>{t('accessKeys.drawer.permissionScope')}</h3>
           <p {...stylex.props(styles.sectionDescription)}>
             {t('accessKeys.drawer.permissionScopeDescription')}
           </p>

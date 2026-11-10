@@ -101,6 +101,7 @@ func judgeUpstreamResult(
 		StatusCode:          result.StatusCode,
 		Header:              result.Header,
 		Evidence:            evidence,
+		EmptyCompletion:     result.EmptyCompletion,
 		DownstreamCommitted: result.Committed,
 		HTTPCommitted:       result.HTTPCommitted,
 		PayloadReleased:     result.PayloadReleased,

@@ -398,6 +398,7 @@ func TestToBedrockChatCompletionRequest_ToolCallCacheControlBecomesCachePoint(t 
 		t.Fatalf("block 2 must be the unmarked berlin toolUse with no cachePoint after it, got %+v", blocks[2])
 	}
 }
+
 // TestToBedrockChatCompletionRequest_TopLevelCacheControlBecomesCachePoint is the Chat
 // Completions twin of the Anthropic-ingress test for issue #8541: a top-level cache_control
 // carried in ExtraParams becomes a cachePoint after the last cacheable block of the last message.
@@ -453,7 +454,9 @@ func BenchmarkToBedrockResponsesRequestTopLevelCacheControl(b *testing.B) {
 		name  string
 		extra func() map[string]interface{}
 	}{
-		{"absent", func() map[string]interface{} { return map[string]interface{}{"requestMetadata": map[string]string{"k": "v"}} }},
+		{"absent", func() map[string]interface{} {
+			return map[string]interface{}{"requestMetadata": map[string]string{"k": "v"}}
+		}},
 		{"present", func() map[string]interface{} {
 			return map[string]interface{}{"cache_control": &schemas.CacheControl{Type: schemas.CacheControlTypeEphemeral}}
 		}},

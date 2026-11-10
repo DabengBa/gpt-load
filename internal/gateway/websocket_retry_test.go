@@ -243,6 +243,7 @@ func TestWebsocketFirstRejectionRetry(t *testing.T) {
 		{name: "exhausted budget preserves last error", retries: 2, credentials: 2, wantAttempts: 2, exhausted: true},
 		{name: "output already committed", retries: 2, credentials: 2, wantAttempts: 1, partial: true},
 		{name: "unknown replay safety", retries: 2, credentials: 2, wantAttempts: 1, unknown: true},
+		{name: "host error with unknown outcome stays final", retries: 2, credentials: 2, wantAttempts: 1, host: true, unknown: true},
 		{name: "multiplex stays bound", retries: 2, credentials: 2, wantAttempts: 1, multiplex: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -294,7 +295,7 @@ func TestWebsocketFirstRejectionRetry(t *testing.T) {
 					if tc.host {
 						status, errorType = 503, "server_error"
 					}
-					if tc.unknown {
+					if tc.unknown && !tc.host {
 						status = http.StatusOK
 					}
 					payload := []byte(fmt.Sprintf(`{"type":"error","status":%d,"error":{"type":%q,"message":"quota-%d %s","resets_in_seconds":60}}`, status, errorType, in.Credential.ID, in.APIKey))
@@ -338,8 +339,11 @@ func TestWebsocketFirstRejectionRetry(t *testing.T) {
 				t.Fatalf("attempted=%v logs=%+v response=%s", attempted, event.Attempts, body)
 			}
 			// Runtime effects remain governed by dev's existing health contract.
-			if tc.host && attempted[1] != 3 {
+			if tc.host && tc.wantAttempts > 1 && attempted[1] != 3 {
 				t.Fatalf("failed group was not skipped: %v", attempted)
+			}
+			if tc.unknown && (event.Attempts[0].WillRetry || event.Attempts[0].RetryDirective != "none") {
+				t.Errorf("unknown outcome must not authorize replay: %+v", event.Attempts[0])
 			}
 			var response map[string]any
 			if err := json.Unmarshal(body, &response); err != nil {

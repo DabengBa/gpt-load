@@ -304,7 +304,7 @@ func TestDecisionEvidencePreservesServerOverloadedHealthDecisions(t *testing.T) 
 			},
 		},
 		{
-			name:           "replay ineligible keeps safe fallback",
+			name:           "host error cannot replay ineligible committed buffer",
 			status:         http.StatusServiceUnavailable,
 			replaySafety:   execution.ReplaySafetyUnknown,
 			buffered:       true,
@@ -312,8 +312,8 @@ func TestDecisionEvidencePreservesServerOverloadedHealthDecisions(t *testing.T) 
 			want: health.Decision{
 				Category: health.FailureCategoryUpstreamHostError,
 				Origin:   execution.ErrorOriginUpstream, Scope: execution.ErrorScopeGroup,
-				Retry: health.RetryNone, Effect: health.EffectSkipGroup,
-				RuleID: "upstream.host_error.replay_unsafe",
+				Retry: health.RetryNone, Effect: health.EffectNone,
+				RuleID: "safety.buffered_replay_ineligible",
 			},
 		},
 	}

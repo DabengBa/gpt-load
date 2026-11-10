@@ -31,14 +31,17 @@ export function ReliabilitySection(props: SettingsSectionProps) {
 
   const policyValue = (key: PolicyCountSettingKey): string => {
     if (tools.isPendingRestore(key)) return t('settings.runtime.resetPending')
-    if (tools.hasOverride(key)) return t('settings.runtime.effectiveCount', { value: draft.values[key] })
+    if (tools.hasOverride(key))
+      return t('settings.runtime.effectiveCount', { value: draft.values[key] })
     return t('settings.runtime.effectiveCount', {
       value: formatInteger(base.settings.values[key], locale),
     })
   }
   const policyCountError = (key: PolicyCountSettingKey): string | undefined =>
     tools.hasOverride(key) &&
-    !(key === 'first_provider_attempts' ? isValidPositiveCount(draft.values[key]) : isValidNonNegativeInteger(draft.values[key]))
+    !(key === 'first_provider_attempts'
+      ? isValidPositiveCount(draft.values[key])
+      : isValidNonNegativeInteger(draft.values[key]))
       ? key === 'first_provider_attempts'
         ? t('settings.runtime.positiveCountError')
         : t('settings.runtime.nonNegativeIntegerError')

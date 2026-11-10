@@ -83,5 +83,5 @@ export function ProxyOverrideControl({
         />
       )}
     </div>
-  );
+  )
 }

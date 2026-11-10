@@ -20,6 +20,7 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/health"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/usage"
 )
@@ -160,6 +161,45 @@ func TestRuntimeUnaryUsesSelectedCredentialModelAndEndpoint(t *testing.T) {
 		t.Fatalf("key-pool calls = %d, want 0", runtime.keyPoolCalls())
 	}
 	assertNoPrivateLeak(t, result, testAPIKey, "gptload-custom-")
+}
+
+// Exercise the real response limiter: an oversized 5xx response is a local
+// failure, not evidence that permits replay or penalizes the upstream group.
+func TestRuntimeOversizedHostErrorDoesNotRetryOrAffectUpstreamHealth(t *testing.T) {
+	const limit = int64(256)
+	for _, status := range []int{http.StatusBadGateway, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(status)
+				_, _ = writer.Write(bytes.Repeat([]byte("x"), int(limit+1)))
+			}))
+			defer server.Close()
+			runtime := newProtocolTestRuntime(t, testRuntimeOptions{
+				allowPrivateNetwork: true, maxUnaryResponseBodyBytes: limit,
+			})
+			spec := compatibleSpec(server.URL)
+			spec.ClientModel = spec.UpstreamModel
+			result := runtime.Execute(context.Background(), spec)
+			if result.Error == nil || result.Error.Kind != execution.ErrorKindInternal ||
+				result.Error.Summary != "upstream response exceeds size limit" || result.StatusCode != status {
+				t.Fatalf("expected local size-limit failure preserving upstream status %d: %+v", status, result)
+			}
+			decision := health.JudgeExecution(health.ExecutionAttempt{
+				DispatchState: result.DispatchState, StatusCode: result.StatusCode,
+				Evidence: result.Error,
+			}, health.DecisionContext{Method: http.MethodPost, Operation: execution.OperationChatCompletion})
+			if decision.Origin != execution.ErrorOriginInternal {
+				t.Errorf("local size-limit failure origin = %q, want internal", decision.Origin)
+			}
+			if decision.Retry != health.RetryNone {
+				t.Errorf("local size-limit failure must not retry: %#v", decision)
+			}
+			if decision.Effect != health.EffectNone || !decision.CooldownUntil.IsZero() {
+				t.Errorf("local size-limit failure must not affect upstream health: %#v", decision)
+			}
+		})
+	}
 }
 
 func TestRuntimeBoundsUnaryResponsesBeforeMaterialization(t *testing.T) {

@@ -123,7 +123,8 @@ export default {
         'Edit routing filters and the RPM limit. Plaintext is masked unless explicitly revealed.',
       impactSummary: 'Impact summary',
       createImpactSummary: 'This key authenticates clients and controls which routes they can use.',
-      editImpactSummary: 'Changes affect future authentication and routing requests using this key.',
+      editImpactSummary:
+        'Changes affect future authentication and routing requests using this key.',
       dangerZone: 'Danger zone',
       fixThisField: 'Fix this field',
       close: 'Close access key editor',
