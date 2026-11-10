@@ -101,6 +101,14 @@ func (s *Server) HTTPModule() httproute.Module {
 				)),
 				s.handleDeleteModelPrice,
 			),
+			controlRoute("control.announcements.list", http.MethodGet, "/announcements", s.handleGetAnnouncements),
+			controlRoute(
+				"control.groups.site-info.retry",
+				http.MethodPost,
+				"/groups/:group_id/site-info/retry",
+				s.auditMutation(newMutationDescriptor("group_site_info_retry", "group", groupMutationLocator)),
+				s.handleRetryGroupSiteInfo,
+			),
 			controlRoute("control.home", http.MethodGet, "/home", s.handleHome),
 			controlRoute(
 				"control.home.statistics",
@@ -223,6 +231,13 @@ func (s *Server) HTTPModule() httproute.Module {
 					groupMutationLocator,
 				)),
 				s.handleUpdateGroupSettings,
+			),
+			controlRoute(
+				"control.groups.configuration.update",
+				http.MethodPut,
+				"/groups/:group_id/configuration",
+				s.auditMutation(newMutationDescriptor("group_configuration_update", "group", groupMutationLocator)),
+				s.handleUpdateGroupConfiguration,
 			),
 			controlRoute(
 				"control.groups.retired-update",

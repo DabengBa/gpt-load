@@ -159,7 +159,9 @@ sudo python3 scripts/local-rehearsal.py --output /持久磁盘/gpt-load-rehearsa
 
 ## Raw 通信证据
 
-在 Unix 运行时，debug capture 是可选的，默认关闭；设置 `DEBUG_CAPTURE_ENABLED=true` 后，capture store 才记录 Gateway 及支持的 Provider observer 实际观察到的请求/响应。raw capture 与 `request_logs` 分离，固定保留 4 小时，只能通过管理面管理员身份访问：
+在 Unix 运行时，debug capture 是可选的，默认关闭；设置 `DEBUG_CAPTURE_ENABLED=true` 后，capture store 才记录 Gateway 及支持的 Provider observer 实际观察到的请求/响应。raw capture 与 `request_logs` 分离，固定保留 24 小时，只能通过管理面管理员身份访问：
+
+到期时间从会话创建时计算。进程启动时及运行期间每小时尽力清理到期行；关闭新捕获后仍会周期清理。进程停止或清理反复失败会延迟删除，关闭捕获也不会撤销管理员对未到期记录的访问。查看管理面 `/api/health` 的 `debug_capture` 清理次数和失败计数；关闭捕获时 `running=false` 不表示清理线程停止，最后清理时间也可能是失败的尝试。数据库页、WAL、备份和已下载 ZIP 不保证随行删除而安全擦除，应分别保护和管理。
 
 ```text
 GET /api/debug-captures?request_id=<request-id>
@@ -167,6 +169,8 @@ GET /api/debug-captures/<capture-id>/download
 ```
 
 `request_logs` 用于状态、重试、错误分类和计费结果，不能替代 Provider 原始 Body 或 SSE。可在发布后使用 `scripts/fetch-hostinger-request-log.sh <request-id>` 下载结构化日志、全部 capture ZIP 和脱敏 attempt evidence matrix。脚本只把原始文件写入本地 `tmp/`，不会打印认证信息或 raw 内容。
+
+管理面 `/api/health` 的 `request_log` 包含丢弃及写入失败计数和配额 checkpoint 状态。监控计数的增量及 checkpoint degraded，识别进程重启造成的计数重置；`/health` 成功不保证请求日志完整。已丢弃的日志和其用量聚合不能仅凭这些计数恢复，配额 checkpoint 是独立的持久化路径。
 
 ## 空完成诊断
 

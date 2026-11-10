@@ -19,12 +19,13 @@ import (
 )
 
 type groupCreateDigestBody struct {
-	Name        *string         `json:"name"`
-	ChannelID   channel.ID      `json:"channel_id"`
-	Params      json.RawMessage `json:"params"`
-	ProviderURL *string         `json:"provider_url,omitempty"`
-	Models      []GroupModel    `json:"models"`
-	Credential  json.RawMessage `json:"credential,omitempty"`
+	SiteAccess  *GroupCreateSiteAccessInput `json:"site_access,omitempty"`
+	Name        *string                     `json:"name"`
+	ChannelID   channel.ID                  `json:"channel_id"`
+	Params      json.RawMessage             `json:"params"`
+	ProviderURL *string                     `json:"provider_url,omitempty"`
+	Models      []GroupModel                `json:"models"`
+	Credential  json.RawMessage             `json:"credential,omitempty"`
 
 	ConfirmSameTarget bool                  `json:"confirm_same_target,omitempty"`
 	Proxy             *outboundproxy.Config `json:"proxy,omitempty"`
@@ -53,6 +54,7 @@ func (s *Service) CreateGroupIdempotent(
 	}
 	credential := append(json.RawMessage(nil), normalized.credentials.candidates[0].canonical...)
 	digestBody := groupCreateDigestBody{
+		SiteAccess:  normalized.siteAccess,
 		Name:        normalized.explicitName,
 		ChannelID:   normalized.channelID,
 		Params:      append(json.RawMessage(nil), normalized.params...),
@@ -135,6 +137,9 @@ func (s *Service) CreateGroupIdempotent(
 	if err := json.Unmarshal(operationResult.CanonicalResult, &result); err != nil {
 		return GroupCreateResult{}, app_errors.ErrInternalServer
 	}
+	if !operationResult.Replayed && normalized.siteAccess != nil && s.siteInfoSync != nil {
+		s.siteInfoSync.RequestGroupSync(result.GroupID)
+	}
 	if !operationResult.Replayed && len(normalized.models) > 0 && s.catalogSync != nil {
 		s.catalogSync.RequestGroupSync()
 	}
@@ -168,6 +173,7 @@ func (s *Service) ImportGroupCredentialsIdempotent(
 		return CredentialImportResult{}, app_errors.ErrInternalServer
 	}
 
+	var siteSync bool
 	operationResult, err := s.executeIdempotentOperation(ctx, idempotentOperationInput{
 		IdempotencyKey: idempotencyKey,
 		DigestVersion:  1,
@@ -177,6 +183,10 @@ func (s *Service) ImportGroupCredentialsIdempotent(
 			result, _, err := s.importGroupCredentialsMutation(
 				ctx, tx, groupID, request.Credentials,
 			)
+			if err != nil {
+				return idempotentMutationResult{}, err
+			}
+			siteSync, err = s.invalidateSiteCredential(tx, groupID)
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
@@ -190,6 +200,11 @@ func (s *Service) ImportGroupCredentialsIdempotent(
 			}, nil
 		},
 	})
+	// A committed operation may return a recovery error; wake even then. A
+	// rollback is harmless because the scan only selects pending configurations.
+	if siteSync && s.siteInfoSync != nil {
+		s.siteInfoSync.RequestGroupSync(groupID)
+	}
 	if err != nil {
 		return CredentialImportResult{}, err
 	}

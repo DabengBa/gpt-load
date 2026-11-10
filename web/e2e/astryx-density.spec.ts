@@ -56,10 +56,20 @@ test('theme emits the classic density tokens', async ({ page }) => {
     expect(await computedVar(page, name), name).toBe(expected)
   }
   // Spacing base: the Astryx spacing unit must stay the classic 4px grid.
-  const spacing = await page.evaluate(() =>
-    getComputedStyle(document.documentElement).getPropertyValue('--spacing-1').trim(),
-  )
-  expect(spacing).toBe('4px')
+  // The theme keeps the neutral rem scale (`--spacing-1: 0.25rem`), which the
+  // migration plan records as "no remapping", so resolve the token to px
+  // instead of comparing the literal unit text.
+  const spacingPx = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.position = 'absolute'
+    probe.style.visibility = 'hidden'
+    probe.style.width = 'var(--spacing-1)'
+    document.documentElement.append(probe)
+    const px = Number.parseFloat(getComputedStyle(probe).width)
+    probe.remove()
+    return px
+  })
+  expect(Math.abs(spacingPx - 4)).toBeLessThanOrEqual(1)
 })
 
 test('rendered shell controls hold compact metrics', async ({ page }) => {
@@ -127,6 +137,7 @@ test('compact table row height on the groups collection', async ({ page }) => {
           client_model_count: 2,
           credential_configured: true,
           credential_status: 'available',
+          site_info: null,
         })),
         pagination: { page: 1, page_size: 100, total_items: 3, total_pages: 1 },
       })

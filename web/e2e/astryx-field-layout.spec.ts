@@ -52,7 +52,14 @@ const runtime = {
   responses_reasoning_status_filter_enabled: false,
 }
 
-async function installFields(page: Page, theme: string) {
+const siteAccess = {
+  user_id: '',
+  token_configured: false,
+  site_root_url: '',
+  snapshot: null,
+}
+
+async function installFields(page: Page, theme: string, params: Record<string, string> = {}) {
   await page.addInitScript((theme) => {
     localStorage.setItem('gpt-load.auth-key', 'e2e-field-layout')
     localStorage.setItem('gpt-load.locale', 'zh-CN')
@@ -64,7 +71,7 @@ async function installFields(page: Page, theme: string) {
       name: 'Geometry group',
 
       channel_id: 'openai',
-      params: {},
+      params,
       provider_url: null,
     }
     let data: unknown = {}
@@ -85,6 +92,7 @@ async function installFields(page: Page, theme: string) {
       data = {
         ...base,
         enabled: true,
+        site_access: siteAccess,
         overrides: { ...runtime, parameter_overrides: [] },
         effective: runtime,
         proxy: {
@@ -129,6 +137,113 @@ async function expectUnclipped(locator: Locator) {
   )
   expect(clipped, 'visible control text must not be ellipsized').toBe(false)
 }
+
+test('optional upstream address is directly editable without a switch', async ({ page }) => {
+  await installFields(page, 'light')
+  await page.goto('/import', { waitUntil: 'commit' })
+  const address = page.getByRole('textbox', { name: '上游基础地址', exact: true })
+  await expect(address).toBeVisible({ timeout: 10_000 })
+  await expect(address).not.toHaveAttribute('required', '')
+  await expect(page.getByRole('switch', { name: '自定义上游地址' })).toHaveCount(0)
+})
+
+test('group settings exposes optional address without a switch', async ({ page }) => {
+  await installFields(page, 'light')
+  await page.goto('/groups/1', { waitUntil: 'commit' })
+  await expect(page.getByRole('textbox', { name: /上游地址/ })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('switch', { name: '自定义上游地址' })).toHaveCount(0)
+})
+
+test('clearing an existing upstream sends the remaining params', async ({ page }) => {
+  await installFields(page, 'light', { base_url: 'https://relay.example.test', region: 'west' })
+  const puts: Record<string, unknown>[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && new URL(request.url()).pathname === '/api/groups/1/settings')
+      puts.push(request.postDataJSON())
+  })
+  await page.goto('/groups/1', { waitUntil: 'commit' })
+  const address = page.getByRole('textbox', { name: /上游地址/ })
+  await expect(address).toHaveValue('https://relay.example.test')
+  await address.fill('')
+  await page.getByRole('button', { name: '保存设置', exact: true }).click()
+  await expect.poll(() => puts.length).toBe(1)
+  expect(puts[0]?.params).toEqual({ region: 'west' })
+})
+test('wide import keeps connection fields in a compact row', async ({ page }) => {
+  await installFields(page, 'light')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/import', { waitUntil: 'commit' })
+  const name = page.getByRole('textbox', { name: /^分组名称/ })
+  const url = page.getByRole('textbox', { name: /^上游基础地址/ })
+  await expect(name).toBeVisible({ timeout: 10_000 })
+  await expect(url).toBeVisible()
+  const [nameBox, urlBox] = await Promise.all([name.boundingBox(), url.boundingBox()])
+  expect(Math.abs(urlBox!.y - nameBox!.y)).toBeLessThan(30)
+  expect(urlBox!.x).toBeGreaterThan(nameBox!.x + nameBox!.width)
+})
+
+test('empty credential state stays compact without hiding its action', async ({ page }) => {
+  await installFields(page, 'light')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/groups/1', { waitUntil: 'commit' })
+  const empty = page.getByText('尚无密钥', { exact: true })
+  const add = page.getByRole('button', { name: '添加密钥', exact: true })
+  const models = page.getByText('模型与别名', { exact: true })
+  await expect(empty).toBeVisible({ timeout: 10_000 })
+  await expect(add).toBeVisible()
+  await expect(models).toBeVisible()
+  expect((await models.boundingBox())!.y - (await empty.boundingBox())!.y).toBeLessThan(110)
+})
+
+test('required channel address cannot be cleared in settings', async ({ page }) => {
+  await installFields(page, 'light', { base_url: 'https://relay.example.test/v1' })
+  await page.route('**/api/channels', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          items: [{ ...channel, param_fields: [{ ...channel.param_fields[0], required: true }] }],
+          total: 1,
+        },
+      },
+    }),
+  )
+  await page.goto('/groups/1', { waitUntil: 'commit' })
+  const address = page.getByRole('textbox', { name: /上游地址/ })
+  await expect(address).toHaveValue('https://relay.example.test/v1')
+  await expect(address).toHaveAttribute('aria-required', 'true')
+  await address.clear()
+  await expect(page.getByRole('button', { name: '保存设置', exact: true })).toBeDisabled()
+})
+
+test('advanced settings follow the model section at desktop and mobile widths', async ({
+  page,
+}) => {
+  await installFields(page, 'light')
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/groups/1', { waitUntil: 'commit' })
+    const models = page.getByText('模型与别名', { exact: true })
+    const advanced = page
+      .locator('#group-settings-advanced-target')
+      .getByText('高级配置', { exact: true })
+    await expect(models).toBeVisible({ timeout: 10000 })
+    await expect(advanced).toBeVisible()
+    expect(
+      await models.evaluate(
+        (el, other) =>
+          Boolean(el.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING),
+        await advanced.elementHandle(),
+      ),
+    ).toBe(true)
+    const [modelBox, advancedBox] = await Promise.all([
+      models.boundingBox(),
+      advanced.boundingBox(),
+    ])
+    expect(advancedBox!.y).toBeGreaterThan(modelBox!.y)
+  }
+})
 
 test('successful group delete navigates before stalled options refetch and survives reload', async ({
   page,
@@ -269,10 +384,8 @@ for (const width of [375, 1440]) {
       await installFields(page, theme)
       await page.goto('/import', { waitUntil: 'commit' })
       await expect(page.getByRole('textbox', { name: '价格倍率', exact: true })).toHaveCount(0)
-      const customURL = page.getByRole('switch').first()
-      if (!(await customURL.isChecked())) await customURL.click()
       await page.screenshot({ path: testInfo.outputPath('import.png'), fullPage: true })
-      for (const name of ['自定义上游地址', '供应商官网']) {
+      for (const name of ['上游基础地址', '供应商官网']) {
         const input = page.getByRole('textbox', { name: new RegExp(`^${name}`) })
         await expect(input).toBeVisible()
         const geometry = await input.evaluate((input) => {

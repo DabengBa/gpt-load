@@ -6,11 +6,13 @@ import {
   Layout,
   LayoutContent,
   LayoutFooter,
+  IconButton,
   TextInput,
 } from '@astryxdesign/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
 import {
@@ -136,13 +138,24 @@ export function GroupDeleteDialog({
 
   return (
     <>
-      <Button
-        variant="secondary"
-        size="sm"
-        isDisabled={disabled}
-        label={t('group.settings.delete.open')}
-        onClick={() => setDialogOpen(true)}
-      />
+      {context === 'list' ? (
+        <IconButton
+          variant="ghost"
+          size="sm"
+          isDisabled={disabled}
+          label={t('group.settings.delete.open')}
+          icon={<Trash2 size={15} aria-hidden />}
+          onClick={() => setDialogOpen(true)}
+        />
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          isDisabled={disabled}
+          label={t('group.settings.delete.open')}
+          onClick={() => setDialogOpen(true)}
+        />
+      )}
       <Dialog isOpen={open} onOpenChange={setDialogOpen} width={440}>
         <Layout
           header={

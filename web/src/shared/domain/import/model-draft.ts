@@ -18,6 +18,7 @@ export interface ImportDraft {
   name: string
 
   provider_url: string
+  site_user_id: string
   credentials: string
   models: ModelDraftItem[]
 }

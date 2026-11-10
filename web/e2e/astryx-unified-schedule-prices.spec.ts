@@ -443,8 +443,13 @@ test('drawer saves actual tier and Fast prices', async ({ page }) => {
   const dialog = await openPriceDrawer(page)
   await dialog.getByRole('button', { name: 'Add tier' }).click()
   await dialog.getByRole('textbox', { name: 'Tier', exact: true }).fill('128000')
-  await dialog.getByRole('textbox', { name: 'Input', exact: true }).nth(1).fill('0.008')
-  await dialog.getByRole('textbox', { name: 'Input', exact: true }).last().fill('0.009')
+  const tierInput = dialog.locator('input[id^="model-price-tier-"][id$="-input"]')
+  const fastInput = dialog.locator('#model-price-fast-input')
+  await expect(tierInput).toHaveAccessibleName('Input')
+  // The Fast editor currently associates both its visible and hidden labels.
+  await expect(fastInput).toHaveAccessibleName('Input Input')
+  await tierInput.fill('0.008')
+  await fastInput.fill('0.009')
   await dialog.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(() => requests.puts.length).toBe(1)
   expect(requests.puts[0]?.context_tiers).toEqual(
@@ -461,9 +466,8 @@ test('drawer saves actual tier and Fast prices', async ({ page }) => {
     }),
   )
   await page.reload()
-  await expect(dialog.getByRole('textbox', { name: 'Input', exact: true }).last()).toHaveValue(
-    '0.009',
-  )
+  await expect(tierInput).toHaveValue('0.008')
+  await expect(fastInput).toHaveValue('0.009')
 })
 
 test('drawer protects unsaved prices when closing', async ({ page }) => {

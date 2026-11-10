@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 
 import { expect, test, type Page } from '@playwright/test'
+import { mockGroupModels } from './fixtures/group-models-mock'
 
 // Phase 3 schedule-domain coverage for the Astryx entry: index loading and
 // model context, detail table rendering, draft → PATCH round trip, revision
@@ -2281,4 +2282,83 @@ test('schedule_row deep link selects the target row', async ({ page }) => {
     'data-row-key',
     '2:entry-2',
   )
+})
+
+test('group and schedule edit the same entry scheduling fields', async ({ page }) => {
+  await mockGroupModels(page, { models: [{ id: 'model-a' }] })
+  const row = {
+    id: 'model-a',
+    alias: '',
+    alias_enabled: false,
+    client_model: 'model-a',
+    test_alias: 'abc123',
+    concurrency_limit: 0,
+    weight: null,
+    priority: null,
+    pricing_status: 'configured',
+    entry_id: 'entry-1',
+    reasoning_effort: '',
+    enabled: true,
+  }
+  await page.route('**/api/groups/1/models?**', async (route) => {
+    if (route.request().method() === 'PUT')
+      Object.assign(row, route.request().postDataJSON().models[0])
+    await route.fulfill(response({ items: [row], total: 1, pending: 0 }))
+  })
+  await page.route('**/api/model-route/schedule/detail*', async (route) => {
+    const detail = detailForModel('worker')
+    detail.groups[0]!.entries[0]!.enabled = row.enabled
+    detail.groups[0]!.entries[0]!.reasoning.configured = row.reasoning_effort || null
+    detail.groups[0]!.entries[0]!.reasoning.effective = row.reasoning_effort || null
+    detail.groups[0]!.entries[0]!.reasoning.source = row.reasoning_effort
+      ? 'entry'
+      : 'provider_default'
+    await route.fulfill(response(detail))
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const update = route.request().postDataJSON().updates[0]
+      if (update.reasoning_effort !== undefined)
+        row.reasoning_effort = update.reasoning_effort ?? ''
+      if (update.enabled !== undefined) row.enabled = update.enabled
+      await route.fulfill(response({ snapshot_revision_new: 12, detail: null }))
+    } else {
+      await route.fulfill(
+        response({
+          items: [
+            {
+              external_model: 'worker',
+              protocol: 'openai-completions',
+              operation: 'chat_completion',
+              candidate_count: 2,
+              group_count: 2,
+              cooled_candidates: 0,
+              blacklisted_candidates: 0,
+            },
+          ],
+        }),
+      )
+    }
+  })
+  await page.goto('/groups/1?tab=models')
+  await page.getByLabel('Reasoning policy for model-a').selectOption('high')
+  await page.getByLabel('Enable model model-a').uncheck()
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click()
+  await expect.poll(() => row.reasoning_effort).toBe('high')
+  expect(row.enabled).toBe(false)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await expect(
+    page.getByRole('combobox', { name: /Reasoning policy model-a.*primary group/ }),
+  ).toContainText('high')
+  const switcher = page.getByRole('switch', { name: /^Enable entry model-a/ })
+  await expect(switcher).not.toBeChecked()
+  await switcher.click()
+  await expect.poll(() => row.enabled).toBe(true)
+  await changeReasoning(page, 'low')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => row.reasoning_effort).toBe('low')
+  await page.goto('/groups/1?tab=models')
+  await expect(page.getByLabel('Reasoning policy for model-a')).toHaveValue('low')
+  await expect(page.getByLabel('Enable model model-a')).toBeChecked()
 })

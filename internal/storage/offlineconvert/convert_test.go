@@ -59,7 +59,12 @@ func buildLegacyDatabase(t *testing.T, path string) *gorm.DB {
 	if err := storage.AutoMigrate(db); err != nil {
 		t.Fatalf("apply current migrations to legacy fixture: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{migrations.ID0026, migrations.ID0027, migrations.ID0028}).Error; err != nil {
+	for _, table := range []string{"site_announcements", "group_site_configs"} {
+		if err := db.Exec("DROP TABLE IF EXISTS " + table).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id IN ?", []string{migrations.ID0026, migrations.ID0027, migrations.ID0028, migrations.ID0029, migrations.ID0030, migrations.ID0031}).Error; err != nil {
 		t.Fatalf("remove post-legacy migrations from fixture ledger: %v", err)
 	}
 	// Reconstruct the pre-refactor ledger: every active migration plus the
@@ -109,7 +114,7 @@ func TestLegacyFixtureExcludesPostLegacyMigrations(t *testing.T) {
 	if err := db.Table("schema_migrations").Pluck("id", &ledger).Error; err != nil {
 		t.Fatalf("read fixture ledger: %v", err)
 	}
-	for _, id := range []string{migrations.ID0026, migrations.ID0027, migrations.ID0028} {
+	for _, id := range []string{migrations.ID0026, migrations.ID0027, migrations.ID0028, migrations.ID0029, migrations.ID0030, migrations.ID0031} {
 		if slices.Contains(ledger, id) {
 			t.Errorf("legacy fixture contains post-legacy migration %s", id)
 		}

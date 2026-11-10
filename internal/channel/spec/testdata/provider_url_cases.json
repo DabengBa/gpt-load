@@ -1,0 +1,21 @@
+[
+  {"input":"https://%65xample.com","valid":false},
+  {"input":"https://example.com:99999/path","valid":false},
+  {"input":"https://example.com:65536/path","valid":false},
+  {"input":"https://example.com:65535/path","valid":true},
+  {"input":"https://example.com:8443/path?q=1","valid":true},
+  {"input":"https://example.com:443/","valid":true},
+  {"input":"http://example.com:80","valid":true},
+  {"input":"https://例子.测试/path","valid":true},
+  {"input":"https://%E4%BE%8B%E5%AD%90.测试/path","valid":true},
+  {"input":"https://xn--fsqu00a.xn--0zwm56d","valid":true},
+  {"input":"https://[::1]:8080/path","valid":true},
+  {"input":"https://user:pass@example.com","valid":false},
+  {"input":"https://@example.com","valid":false},
+  {"input":"https://example.com/#pricing","valid":false},
+  {"input":"https://example.com/#","valid":true},
+  {"input":"https://example.com/path?x=%zz","valid":true},
+  {"input":"https://example.com/%zz","valid":false},
+  {"input":"ftp://example.com","valid":false},
+  {"input":"https://example.com:abc","valid":false}
+]

@@ -20,6 +20,7 @@ const baseCollectionItem = {
   client_model_count: 1,
   credential_configured: true,
   credential_status: 'available',
+  site_info: null,
 }
 
 function collectionResponse(pageSize, items, totalItems) {
@@ -45,6 +46,7 @@ function newImportDraft() {
     name: 'alpha',
 
     provider_url: 'https://provider.example',
+    site_user_id: '123',
     credentials: 'sk-one',
     models: [
       {
@@ -86,6 +88,63 @@ export function runGroupCollectionContractTests({
   assert.equal(projected.pagination.page_size, 100)
   assert.equal(projected.items[0].provider_url, 'https://provider.example')
   assert.equal(projected.items[1].provider_url, null)
+  const siteInfo = {
+    status: 'ok',
+    site_root_url: 'https://provider.example',
+    site_name: 'Provider',
+    remaining_amount: 48.2,
+    currency_symbol: '$',
+    effective_group: 'default',
+    group_ratio: 1,
+    fetched_at_ms: 1700000000000,
+    last_error: '',
+  }
+  assert.deepEqual(
+    projectGroupCollection(collectionResponse(100, [{ ...linked, site_info: siteInfo }], 1))
+      .items[0].site_info,
+    siteInfo,
+  )
+  // 未配置凭据时后端发 null；pending 快照只带空值字段也必须保持类型完整。
+  assert.equal(projected.items[0].site_info, null)
+  const pendingSiteInfo = {
+    status: 'pending',
+    site_root_url: 'https://provider.example',
+    site_name: '',
+    remaining_amount: null,
+    currency_symbol: '$',
+    effective_group: '',
+    group_ratio: null,
+    fetched_at_ms: null,
+    last_error: '',
+  }
+  assert.deepEqual(
+    projectGroupCollection(collectionResponse(100, [{ ...linked, site_info: pendingSiteInfo }], 1))
+      .items[0].site_info,
+    pendingSiteInfo,
+  )
+  assert.throws(
+    () =>
+      projectGroupCollection(
+        collectionResponse(
+          100,
+          [{ ...linked, site_info: { ...siteInfo, site_root_url: 'ftp://bad' } }],
+          1,
+        ),
+      ),
+    /INVALID_API_RESPONSE/u,
+    'site_root_url must stay an absolute http(s) root even when it comes from the provider',
+  )
+  assert.throws(
+    () =>
+      projectGroupCollection(
+        collectionResponse(
+          100,
+          [{ ...linked, site_info: { ...siteInfo, access_token: 'secret' } }],
+          1,
+        ),
+      ),
+    /INVALID_API_RESPONSE/u,
+  )
   assert.throws(
     () =>
       projectGroupCollection(
@@ -111,6 +170,16 @@ export function runGroupCollectionContractTests({
   service.register(() => draft)
   assert.equal(service.captureForUnauthorized(), 'stored')
   assert.deepEqual(service.consume(), draft)
+  service.register(() => ({ ...draft, site_access_token: 'not-persisted' }))
+  assert.notEqual(service.captureForUnauthorized(), 'stored')
+  assert.equal(storage.getItem(importRecoveryStorageKey), null)
+
+  // 站点用户 ID 引入前的 v10 草稿不带该字段，恢复时补空串而不是被丢弃。
+  const preSiteUserIdDraft = newImportDraft()
+  delete preSiteUserIdDraft.site_user_id
+  service.register(() => preSiteUserIdDraft)
+  assert.equal(service.captureForUnauthorized(), 'stored')
+  assert.deepEqual(service.consume(), { ...preSiteUserIdDraft, site_user_id: '' })
 
   const legacyDraft = newImportDraft()
   delete legacyDraft.provider_url

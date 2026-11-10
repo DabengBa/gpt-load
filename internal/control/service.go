@@ -36,6 +36,7 @@ const (
 )
 
 type Service struct {
+	siteInfoSync              *SiteInfoSyncCoordinator
 	db                        *gorm.DB
 	manager                   *state.Manager
 	registry                  *state.CredentialRegistry
@@ -343,9 +344,20 @@ func (s *Service) writeCredentialConfig(
 	}
 	var result error
 	apply := func() {
-		if err := s.withControlTransaction(ctx, mutate); err != nil {
+		var siteSync bool
+		if err := s.withControlTransaction(ctx, func(tx *gorm.DB) error {
+			if err := mutate(tx); err != nil {
+				return err
+			}
+			var err error
+			siteSync, err = s.invalidateSiteCredential(tx, groupID)
+			return err
+		}); err != nil {
 			result = err
 			return
+		}
+		if siteSync && s.siteInfoSync != nil {
+			s.siteInfoSync.RequestGroupSync(groupID)
 		}
 		if afterCommit == nil {
 			return

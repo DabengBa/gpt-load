@@ -29,6 +29,7 @@ import type { ModelCandidate } from '@shared/control/resources/providers'
 import { proxyMutation } from '@shared/control/resources/proxy'
 import type { MessageId } from '@shared/i18n/message-ids'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
+import { isValidProviderUrlForWrite } from '@shared/domain/groups/settings/group-settings-patch'
 
 import { constrainCollectionSearch } from '@shared/routing/route-query'
 import type { SharedRouteQuery } from '@shared/routing/route-query'
@@ -86,6 +87,7 @@ function freshDraft(): ImportDraft {
     proxy: { mode: 'inherit', url: '' },
     name: '',
     provider_url: '',
+    site_user_id: '',
 
     credentials: '',
     models: [],
@@ -212,10 +214,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   // Classic `defaultDraft` baseline: freshDraft() JSON mutated by
   // default-channel adoption — recovered/locked drafts never match it and
   // stay dirty.
+  const [siteAccessToken, setSiteAccessToken] = useState('')
   const [baselineJson, setBaselineJson] = useState(() => JSON.stringify(freshDraft()))
-  const [baseUrlOverrideEnabled, setBaseUrlOverrideEnabled] = useState(
-    () => isFreshNewGroup || Boolean(draft.params.base_url?.trim()),
-  )
+
   const [paramTouched, setParamTouched] = useState<Record<string, boolean>>({})
   const [visibleModelInvalidIndexes, setVisibleModelInvalidIndexes] = useState<Set<number>>(
     new Set(),
@@ -263,7 +264,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     const draftJson = JSON.stringify(draft)
     if (draftJson !== baselineJson && draftJson !== previousInitialDraftJson) return
     setDraft(cloneDraft(initialDraft))
-    setBaseUrlOverrideEnabled(Boolean(initialDraft.params.base_url?.trim()))
+
     setParamTouched({})
     setErrorKey('')
     setCredentialValidation(null)
@@ -333,7 +334,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (!channel) return errors
     for (const field of channel.param_fields) {
       const value = draft.params[field.key]?.trim() ?? ''
-      if ((field.required || (field.key === 'base_url' && baseUrlOverrideEnabled)) && !value) {
+      if (field.required && !value) {
         errors[field.key] = t('import.connection.paramRequired', { name: field.label })
         continue
       }
@@ -378,9 +379,15 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       : errorKey
         ? t(errorKey as MessageId)
         : '')
+  const siteAccessIncomplete =
+    Boolean(draft.site_user_id.trim() || siteAccessToken.trim()) &&
+    !(draft.site_user_id.trim() && siteAccessToken.trim() && draft.provider_url.trim())
+  const providerUrlInvalid = !!draft.provider_url.trim() && !isValidProviderUrlForWrite(draft.provider_url)
   const submitBlockedReason = (() => {
     if (payloadLocked || mutationPending) return ''
 
+    if (providerUrlInvalid) return t('group.settings.base.providerUrlError')
+    if (siteAccessIncomplete) return t('siteAccessIncomplete')
     if (paramsError) {
       if (selectedChannel === null) return t('import.presets.channelRequired')
       return visibleParamError || t('import.steps.channel.incomplete')
@@ -400,10 +407,12 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     !mutationPending &&
     !paramsError &&
     !connectionMappingBlocked &&
+    !providerUrlInvalid &&
+    !siteAccessIncomplete &&
     credentialCount > 0 &&
     modelValidity.invalidIndexes.size === 0
   const currentModelIDs = draft.models.map(({ id }) => id.trim()).filter(Boolean)
-  const dirty = !completed && JSON.stringify(draft) !== baselineJson
+  const dirty = !completed && (JSON.stringify(draft) !== baselineJson || siteAccessToken !== '')
   const summary = (() => {
     const models = draft.models.length
     return t(models ? 'import.summary' : 'import.summaryOptional', {
@@ -636,7 +645,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
         ...(importedBaseURL && urlField ? { [urlField.key]: importedBaseURL } : {}),
       },
     }))
-    setBaseUrlOverrideEnabled(true)
+
     setPanel(undefined)
   }
 
@@ -647,25 +656,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       const params = { ...current.params }
       if (key === 'base_url' && !value.trim()) delete params.base_url
       else params[key] = value
-      return { ...current, params }
-    })
-    if (key === 'base_url' && value.trim()) setBaseUrlOverrideEnabled(true)
-  }
-
-  function setBaseURLOverride(enabled: boolean): void {
-    cancelDefaultChannel()
-    setParamTouched((current) => {
-      if (!((field) => field in current)('base_url')) return current
-      const next = { ...current }
-      delete next.base_url
-      return next
-    })
-    setBaseUrlOverrideEnabled(enabled)
-    if (enabled) return
-    setConnectionParsedSuccess(false)
-    setDraft((current) => {
-      const params = { ...current.params }
-      delete params.base_url
       return { ...current, params }
     })
   }
@@ -808,6 +798,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       ...(draftProxyOverride === undefined ? {} : { proxy: draftProxyOverride }),
       ...(name ? { name } : {}),
       provider_url: draft.provider_url.trim() || null,
+      ...(draft.site_user_id.trim() && siteAccessToken.trim()
+        ? { site_access: { user_id: draft.site_user_id.trim(), access_token: siteAccessToken } }
+        : {}),
 
       models: toGroupModels(draft.models),
       credential: draft.credentials,
@@ -817,6 +810,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
   async function finishSuccess(groupID: number): Promise<void> {
     setCompleted(true)
+    setSiteAccessToken('')
     setDraft((current) => ({ ...current, credentials: '' }))
     services.importRecovery.clear()
     createOperation.reset()
@@ -1187,12 +1181,18 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
               channel={connectionChannel}
               name={draft.name}
               providerUrl={draft.provider_url}
+              siteUserId={draft.site_user_id}
+              siteAccessToken={siteAccessToken}
+              onSiteUserIdChange={(value) =>
+                setDraft((current) => ({ ...current, site_user_id: value }))
+              }
+              onSiteAccessTokenChange={setSiteAccessToken}
 
               params={draft.params}
               proxy={draft.proxy}
 
               paramErrors={paramErrors}
-              baseUrlOverrideEnabled={baseUrlOverrideEnabled}
+
               disabled={payloadLocked}
               onNameChange={(value) => setDraft((current) => ({ ...current, name: value }))}
               onProviderUrlChange={(value) =>
@@ -1201,7 +1201,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
 
               onParamChange={setChannelParam}
               onProxyChange={(proxy) => setDraft((current) => ({ ...current, proxy }))}
-              onBaseUrlOverrideChange={setBaseURLOverride}
+
               onParamBlur={touchChannelParam}
             />
           </div>

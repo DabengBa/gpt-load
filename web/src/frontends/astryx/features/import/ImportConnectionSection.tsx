@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import { Field, Selector, Switch, TextInput } from '@astryxdesign/core'
+import { Field, Selector, TextInput } from '@astryxdesign/core'
 import { ChevronRight } from 'lucide-react'
 
 import type { ChannelDto } from '@shared/control/resources/channels'
@@ -10,6 +10,7 @@ import {
   hasUpstreamBaseURLVersionMismatch,
   isValidUpstreamBaseURL,
 } from '@shared/lib/upstream-base-url'
+import { extractSiteRootUrl, isValidProviderUrlForWrite } from '@shared/domain/groups/settings/group-settings-patch'
 import type { ImportProxyDraft } from '@shared/domain/import/model-draft'
 
 import { useT } from '../../app/i18n'
@@ -23,14 +24,36 @@ const styles = stylex.create({
   fields: {
     display: 'grid',
     gridTemplateColumns: {
-      default: 'minmax(220px, 0.8fr) minmax(0, 1.2fr)',
+      default: 'repeat(3, minmax(0, 1fr))',
+      '@media (max-width: 1100px)': 'minmax(220px, 0.8fr) minmax(0, 1.2fr)',
       '@media (max-width: 860px)': 'minmax(0, 1fr)',
     },
-    alignItems: 'start',
+    alignItems: { default: 'end', '@media (max-width: 1100px)': 'start' },
     gap: '8px 14px',
   },
-  params: {
+  siteHeading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
+    flexWrap: 'wrap',
+    marginBottom: 'var(--space-2)',
+  },
+  siteRoot: {
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--text-meta)',
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  siteGrid: {
     display: 'grid',
+    gridTemplateColumns: {
+      default: 'repeat(2, minmax(0, 1fr))',
+      '@media (max-width: 680px)': 'minmax(0, 1fr)',
+    },
+    gap: 'var(--space-2)',
+  },
+  params: {
+    display: { default: 'contents', '@media (max-width: 1100px)': 'grid' },
     gridColumn: '1 / -1',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
     gap: '8px 14px',
@@ -78,21 +101,6 @@ const styles = stylex.create({
     flexBasis: 'auto',
     minWidth: 0,
   },
-  urlInput: {
-    fontFamily: 'var(--font-mono)',
-  },
-  switchRow: {
-    display: 'flex',
-    minHeight: { default: 'var(--control-xs)', '@media (max-width: 860px)': 'var(--touch-target)' },
-    alignItems: 'center',
-    gap: 'var(--space-3)',
-  },
-  urlInputWrap: {
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 'auto',
-  },
   disabledReason: {
     margin: 0,
     marginTop: '4px',
@@ -105,18 +113,22 @@ export interface ImportConnectionSectionProps {
   channel: ChannelDto | null
   name: string
   providerUrl: string
+  siteUserId: string
+  siteAccessToken: string
 
   params: Record<string, string>
   proxy: ImportProxyDraft
   paramErrors: Readonly<Record<string, string>>
-  baseUrlOverrideEnabled: boolean
+
   disabled?: boolean
   onNameChange(value: string): void
   onProviderUrlChange(value: string): void
+  onSiteUserIdChange(value: string): void
+  onSiteAccessTokenChange(value: string): void
 
   onParamChange(key: string, value: string): void
   onProxyChange(value: ImportProxyDraft): void
-  onBaseUrlOverrideChange(enabled: boolean): void
+
   onParamBlur(key: string): void
 }
 
@@ -124,18 +136,22 @@ export function ImportConnectionSection({
   channel,
   name,
   providerUrl,
+  siteUserId,
+  siteAccessToken,
 
   params,
   proxy,
   paramErrors,
-  baseUrlOverrideEnabled,
+
   disabled = false,
   onNameChange,
   onProviderUrlChange,
+  onSiteUserIdChange,
+  onSiteAccessTokenChange,
 
   onParamChange,
   onProxyChange,
-  onBaseUrlOverrideChange,
+
   onParamBlur,
 }: ImportConnectionSectionProps) {
   const t = useT()
@@ -165,10 +181,6 @@ export function ImportConnectionSection({
 
   function fieldError(key: string): string {
     return paramErrors[key] ?? ''
-  }
-
-  function isOptionalBaseURL(key: string, required: boolean): boolean {
-    return key === 'base_url' && !required
   }
 
   function baseURLDescription(): string {
@@ -225,89 +237,76 @@ export function ImportConnectionSection({
             autoComplete="off"
             {...plainTextInputAttrs}
             placeholder="https://"
+            status={
+              providerUrl.trim() && !isValidProviderUrlForWrite(providerUrl)
+                ? { type: 'error', message: t('group.settings.base.providerUrlError') }
+                : undefined
+            }
             onChange={onProviderUrlChange}
           />
         </div>
 
         {channel !== null && channel.param_fields.length > 0 && (
           <div {...stylex.props(styles.params)}>
-            {channel.param_fields.map((param) =>
-              isOptionalBaseURL(param.key, param.required) ? (
-                <div key={param.key} {...stylex.props(styles.minWidth)}>
-                  <Field
-                    label={t('import.connection.customUrl')}
-                    inputID="import-channel-base-url-override"
-                    isRequired={baseUrlOverrideEnabled}
-                    status={
-                      fieldError(param.key)
-                        ? { type: 'error', message: fieldError(param.key) }
-                        : baseURLVersionWarning(param.key)
-                          ? { type: 'warning', message: baseURLVersionWarning(param.key) }
-                          : undefined
-                    }
-                  >
-                    <div {...stylex.props(styles.switchRow)}>
-                      <Switch
-                        value={baseUrlOverrideEnabled}
-                        isDisabled={disabled}
-                        label={t('import.connection.customUrl')}
-                        isLabelHidden
-                        onChange={(checked) => onBaseUrlOverrideChange(checked)}
-                      />
-                      {baseUrlOverrideEnabled && (
-                        <div {...stylex.props(styles.urlInputWrap)}>
-                          <TextInput
-                            controlXstyle={styles.urlInput}
-                            data-gptload-mono
-                            label={t('import.connection.customUrl')}
-                            isLabelHidden
-                            value={params[param.key] ?? ''}
-                            {...{ inputMode: 'url' as const, autoCapitalize: 'none' }}
-                            isRequired
-                            isDisabled={disabled}
-                            status={fieldError(param.key) ? { type: 'error' } : undefined}
-                            autoComplete="off"
-                            {...plainTextInputAttrs}
-                            placeholder={channel.default_base_url || 'https://'}
-                            onChange={(value) => onParamChange(param.key, value)}
-                            onBlur={() => onParamBlur(param.key)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </Field>
-                </div>
-              ) : (
-                <div key={param.key} {...stylex.props(styles.minWidth)}>
-                  <TextInput
-                    label={param.key === 'base_url' ? t('import.connection.url') : param.label}
-                    description={param.key === 'base_url' ? baseURLDescription() : undefined}
-                    data-gptload-mono={param.input_kind === 'url' || undefined}
-                    value={params[param.key] ?? ''}
-                    {...{
-                      inputMode: param.input_kind === 'url' ? ('url' as const) : ('text' as const),
-                      autoCapitalize: 'none',
-                    }}
-                    isDisabled={disabled}
-                    autoComplete="off"
-                    {...plainTextInputAttrs}
-                    placeholder={param.input_kind === 'url' ? 'https://' : undefined}
-                    onChange={(value) => onParamChange(param.key, value)}
-                    onBlur={() => onParamBlur(param.key)}
-                    isRequired={param.required}
-                    status={
-                      fieldError(param.key)
-                        ? { type: 'error', message: fieldError(param.key) }
-                        : param.key === 'base_url' && baseURLVersionWarning(param.key)
-                          ? { type: 'warning', message: baseURLVersionWarning(param.key) }
-                          : undefined
-                    }
-                  />
-                </div>
-              ),
-            )}
+            {channel.param_fields.map((param) => (
+              <div key={param.key} {...stylex.props(styles.minWidth)}>
+                <TextInput
+                  label={param.key === 'base_url' ? t('import.connection.url') : param.label}
+                  description={param.key === 'base_url' ? baseURLDescription() : undefined}
+                  data-gptload-mono={param.input_kind === 'url' || undefined}
+                  value={params[param.key] ?? ''}
+                  {...{
+                    inputMode: param.input_kind === 'url' ? ('url' as const) : ('text' as const),
+                    autoCapitalize: 'none',
+                  }}
+                  isDisabled={disabled}
+                  autoComplete="off"
+                  {...plainTextInputAttrs}
+                  placeholder={
+                    param.input_kind === 'url' ? channel.default_base_url || 'https://' : undefined
+                  }
+                  onChange={(value) => onParamChange(param.key, value)}
+                  onBlur={() => onParamBlur(param.key)}
+                  isRequired={param.required}
+                  status={
+                    fieldError(param.key)
+                      ? { type: 'error', message: fieldError(param.key) }
+                      : param.key === 'base_url' && baseURLVersionWarning(param.key)
+                        ? { type: 'warning', message: baseURLVersionWarning(param.key) }
+                        : undefined
+                  }
+                />
+              </div>
+            ))}
           </div>
         )}
+
+        <section {...stylex.props(styles.fullWidth)} aria-labelledby="import-site-access">
+          <div {...stylex.props(styles.siteHeading)}>
+            <h3 id="import-site-access">{t('siteAccess.title')}</h3>
+            <span {...stylex.props(styles.siteRoot)}>
+              {extractSiteRootUrl(providerUrl)
+                ? `${t('siteAccess.root')} ${extractSiteRootUrl(providerUrl)}`
+                : t('siteAccess.missingRoot')}
+            </span>
+          </div>
+          <div {...stylex.props(styles.siteGrid)}>
+            <TextInput
+              label={t('siteAccess.userId')}
+              value={siteUserId}
+              isDisabled={disabled}
+              onChange={onSiteUserIdChange}
+            />
+            <TextInput
+              label={t('siteAccess.token')}
+              type="password"
+              autoComplete="new-password"
+              value={siteAccessToken}
+              isDisabled={disabled}
+              onChange={onSiteAccessTokenChange}
+            />
+          </div>
+        </section>
 
         {channel && (
           <details
@@ -365,5 +364,5 @@ export function ImportConnectionSection({
         )}
       </div>
     </div>
-  );
+  )
 }

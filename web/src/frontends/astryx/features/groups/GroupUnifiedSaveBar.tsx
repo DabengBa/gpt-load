@@ -6,10 +6,13 @@ import { useT } from '../../app/i18n'
 import { StickySaveBar } from '../../components/StickySaveBar'
 import { GroupDeleteDialog } from './settings/GroupDeleteDialog'
 import type {
-  GroupEditorHandle,
+  GroupSettingsEditorHandle,
   GroupEditorState,
   GroupModelsEditorHandle,
 } from './editor-handles'
+import { getGroupModels, updateGroupConfiguration } from '@shared/control/resources/groups'
+import { useAppServices } from '../../app/services'
+import { ApiError } from '@shared/http/errors'
 
 export interface GroupUnifiedSaveBarProps {
   groupId: number
@@ -17,9 +20,11 @@ export interface GroupUnifiedSaveBarProps {
   settingsState: GroupEditorState
   modelsState: GroupEditorState
   deletePending: boolean
-  settingsEditorRef: RefObject<GroupEditorHandle | null>
+  settingsEditorRef: RefObject<GroupSettingsEditorHandle | null>
   modelsEditorRef: RefObject<GroupModelsEditorHandle | null>
   onDeletePendingChange(pending: boolean): void
+  combinedPending: boolean
+  onCombinedPendingChange(pending: boolean): void
 }
 
 const styles = stylex.create({
@@ -28,6 +33,14 @@ const styles = stylex.create({
     backgroundColor: 'var(--color-surface-raised)',
     backdropFilter: 'none',
     boxShadow: '0 2px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28))',
+  },
+  statusText: {
+    display: 'grid',
+    minWidth: 0,
+    fontSize: { default: null, '@media (max-width: 680px)': 'var(--text-sm)' },
+  },
+  statusNote: {
+    display: { default: 'inline', '@media (max-width: 680px)': 'none' },
   },
 })
 
@@ -46,12 +59,18 @@ export function GroupUnifiedSaveBar({
   settingsEditorRef,
   modelsEditorRef,
   onDeletePendingChange,
+  combinedPending,
+  onCombinedPendingChange,
 }: GroupUnifiedSaveBarProps) {
   const t = useT()
+  const { apiClient } = useAppServices()
 
   const dirty = settingsState.dirty || modelsState.dirty
-  const pending = settingsState.pending || modelsState.pending || deletePending
-  const invalid = settingsState.invalid === true || (modelsState.invalidRowCount ?? 0) > 0
+  const pending = settingsState.pending || modelsState.pending || deletePending || combinedPending
+  const invalid =
+    settingsState.invalid === true ||
+    modelsState.invalid === true ||
+    (modelsState.invalidRowCount ?? 0) > 0
   const error = settingsState.error || modelsState.error
   const saved = !dirty && (settingsState.saved || modelsState.saved)
   const status: 'idle' | 'saved' | 'error' = error ? 'error' : saved ? 'saved' : 'idle'
@@ -59,7 +78,38 @@ export function GroupUnifiedSaveBar({
     ? t('group.modelEditor.locateFirstInvalid')
     : ''
 
-  function saveUnified(): void {
+  function saveUnified(confirmedEmpty = false): void {
+    if (settingsState.dirty && modelsState.dirty) {
+      const settingsEditor = settingsEditorRef.current
+      const modelsEditor = modelsEditorRef.current
+      const settings = settingsEditor?.prepareCombined()
+      const models = modelsEditor?.prepareCombined()
+      if (!settingsEditor || !modelsEditor || !settings || !models) return
+      if (models.length === 0 && !confirmedEmpty) {
+        modelsEditor.confirmCombinedEmpty(() => saveUnified(true))
+        return
+      }
+      onCombinedPendingChange(true)
+      void (async () => {
+        try {
+          const result = await updateGroupConfiguration(apiClient, groupId, settings, models)
+          await settingsEditor.acceptCombined(result)
+          const updatedModels = await getGroupModels(apiClient, groupId)
+          await modelsEditor.acceptCombined(updatedModels)
+        } catch (cause) {
+          settingsEditor.failCombined(cause)
+          // This validation response is known to precede any transaction commit.
+          if (!(
+            cause instanceof ApiError && cause.code === 'SITE_ROOT_CHANGE_CONFIRMATION_REQUIRED'
+          )) {
+            await Promise.all([settingsEditor.recoverCombined(), modelsEditor.recoverCombined()])
+          }
+        } finally {
+          onCombinedPendingChange(false)
+        }
+      })()
+      return
+    }
     if (settingsState.dirty) settingsEditorRef.current?.requestSave()
     if (modelsState.dirty) modelsEditorRef.current?.requestSave()
   }
@@ -74,6 +124,7 @@ export function GroupUnifiedSaveBar({
       appearance="ledger"
       xstyle={styles.saveBar}
       alwaysVisible
+      compactOnMobile
       dirty={dirty}
       pending={pending}
       status={status}
@@ -81,7 +132,7 @@ export function GroupUnifiedSaveBar({
       errorActionLabel={errorActionLabel}
       onErrorAction={() => void modelsEditorRef.current?.focusFirstInvalid()}
       statusContent={
-        <div>
+        <div {...stylex.props(styles.statusText)}>
           <strong>
             {pending
               ? t('group.settings.saving')
@@ -91,7 +142,11 @@ export function GroupUnifiedSaveBar({
                   ? t('group.settings.unsaved')
                   : t('group.settings.saved')}
           </strong>
-          <span>{error || t('group.settings.saveNote')}</span>
+          {error ? (
+            <span>{error}</span>
+          ) : (
+            <span {...stylex.props(styles.statusNote)}>{t('group.settings.saveNote')}</span>
+          )}
         </div>
       }
       actions={
@@ -113,7 +168,7 @@ export function GroupUnifiedSaveBar({
             size="sm"
             label={t('group.settings.save')}
             isDisabled={pending || !dirty || invalid}
-            onClick={saveUnified}
+            onClick={() => saveUnified()}
           />
         </>
       }

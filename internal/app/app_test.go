@@ -126,6 +126,39 @@ func TestAppStopShutsDownExecutionRuntime(t *testing.T) {
 	}
 }
 
+func TestAppReservesTimeForRequestLogsWhenDebugCaptureDoesNotDrain(t *testing.T) {
+	db, err := storage.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	var logContextErr error
+	runtime := &debugCaptureRuntimeFake{stopFunc: func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	logs := newRequestLogRuntimeFake(nil, func(ctx context.Context) error {
+		logContextErr = ctx.Err()
+		return logContextErr
+	})
+	application := NewApp(AppParams{DB: db, DebugCapture: runtime, RequestLogs: logs})
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if err := application.Stop(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Stop() = %v, want debug capture deadline", err)
+	}
+	if logContextErr != nil {
+		t.Fatalf("request logs received an expired shutdown context: %v", logContextErr)
+	}
+	if err := sqlDB.Ping(); err != nil {
+		t.Fatalf("database closed before debug capture drained: %v", err)
+	}
+}
+
 func TestAppKeepsDatabaseOpenWhenDebugCaptureDoesNotDrain(t *testing.T) {
 	db, err := storage.Open(":memory:")
 	if err != nil {

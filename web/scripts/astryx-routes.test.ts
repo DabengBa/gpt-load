@@ -116,3 +116,21 @@ test('router no longer wires the models route', () => {
     'router still registers the models route name',
   )
 })
+
+// Announcement navigation is a guarded, first-class page.
+test('announcements route is registered for administrators', () => {
+  assert.ok(
+    manifest.routes.some(
+      (route) => route.name === 'announcements' && route.path === '/announcements',
+    ),
+  )
+  assert.deepEqual(pageRouteMeta.announcements, {
+    titleKey: 'nav.announcements',
+    requiresAuth: true,
+    adminOnly: true,
+    primaryNav: 'announcements',
+    messageNamespaces: ['core', 'group'],
+  })
+  assert.ok(readFileSync(shellPath, 'utf8').includes("pagePath('announcements')"))
+  assert.ok(readFileSync(routerPath, 'utf8').includes('AnnouncementsView'))
+})

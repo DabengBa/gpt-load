@@ -17,6 +17,8 @@ for (const width of [1280, 390]) {
       recent_failure_count: 1,
       consecutive_failure_count: 1,
       last_failure_category: 'invalid_key',
+      last_failure_summary:
+        width === 1280 ? 'Invalid channel credential' : 'Upstream returned HTTP 401',
       last_status_code: 401,
       cooldown_until_ms: null,
       recovery: { mode: 'scheduled_release', automatic: true, at_ms: null },
@@ -82,6 +84,14 @@ for (const width of [1280, 390]) {
     await expect(page.getByRole('button', { name: 'Copy key' })).toContainText('fixture-mask', {
       timeout: 60000,
     })
+    if (width === 1280) {
+      await expect(page.getByText('Invalid channel credential', { exact: true })).toHaveCount(1)
+      await expect(
+        page.getByText('Invalid channel credential · Invalid channel credential'),
+      ).toHaveCount(0)
+    } else {
+      await expect(page.getByText('Upstream returned HTTP 401')).toBeVisible()
+    }
     await expect(page.locator('input[type=checkbox]')).toHaveCount(0)
     await page.getByRole('button', { name: 'More actions' }).click()
     await page.getByRole('button', { name: 'Test connection', exact: true }).click()

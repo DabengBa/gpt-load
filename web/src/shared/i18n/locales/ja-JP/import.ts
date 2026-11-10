@@ -1,4 +1,5 @@
 export default {
+  siteAccessIncomplete: 'ユーザー ID、アクセストークン、提供元サイトをすべて入力してください',
   import: {
     title: 'チャネル認証情報をインポート',
     required: '必須',

@@ -146,6 +146,14 @@ export function GroupCredentialRecord({
 
   const detailId = `group-credential-details-${item.credential_id}`
   const isProblem = item.effective_status === 'cooldown' || item.effective_status === 'blacklisted'
+  const failureCategory = presentCredentialFailureCategory(
+    (key) => t(key as MessageId),
+    item.last_failure_category,
+  )
+  const failureSummary = item.last_failure_summary?.trim()
+  const showFailureSummary =
+    failureSummary &&
+    failureSummary.toLocaleLowerCase() !== failureCategory.trim().toLocaleLowerCase()
   const recentLabel =
     item.recent_failure_count === 0
       ? t('group.credentials.recentSuccessOnly', {
@@ -248,13 +256,8 @@ export function GroupCredentialRecord({
             <div>
               <dt {...stylex.props(styles.detailsTerm)}>{t('group.credentials.detailsFailure')}</dt>
               <dd {...stylex.props(styles.detailsValue)}>
-                {presentCredentialFailureCategory(
-                  (key) => t(key as MessageId),
-                  item.last_failure_category,
-                )}
-                {item.last_failure_summary !== undefined && item.last_failure_summary !== '' && (
-                  <span title={item.last_failure_summary}> · {item.last_failure_summary}</span>
-                )}
+                {failureCategory}
+                {showFailureSummary && <span title={failureSummary}> · {failureSummary}</span>}
               </dd>
             </div>
             <div>

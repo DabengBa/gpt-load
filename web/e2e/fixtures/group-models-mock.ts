@@ -12,6 +12,13 @@ const RUNTIME = {
   parameter_overrides: [],
 }
 
+const SITE_ACCESS = {
+  user_id: '',
+  token_configured: false,
+  site_root_url: '',
+  snapshot: null,
+}
+
 const CANDIDATES = [
   {
     id: 'gpt-5.2',
@@ -55,7 +62,7 @@ function modelItem(seed: GroupModelSeed, index: number, testAlias?: string) {
 
 export async function mockGroupModels(
   page: Page,
-  options: { models?: GroupModelSeed[] } = {},
+  options: { models?: GroupModelSeed[]; extraChannel?: boolean } = {},
 ): Promise<{ puts: unknown[] }> {
   const puts: unknown[] = []
   let items = (options.models ?? []).map((seed, index) => modelItem(seed, index))
@@ -101,11 +108,43 @@ export async function mockGroupModels(
                 model_dependent: false,
                 possible_modes: [],
               },
+              ...(options.extraChannel
+                ? [
+                    {
+                      client_protocol: 'openai-embeddings',
+                      operation: 'probe',
+                      route_mode: 'native',
+                      model_dependent: false,
+                      possible_modes: [],
+                    },
+                  ]
+                : []),
             ],
-            client_protocols: ['openai-completions'],
+            client_protocols: options.extraChannel
+              ? ['openai-completions', 'openai-embeddings']
+              : ['openai-completions'],
           },
+          ...(options.extraChannel
+            ? [
+                {
+                  channel_id: 'gemini',
+                  name: 'Gemini',
+                  mark: 'G',
+                  icon: 'gemini',
+                  search_terms: ['gemini'],
+                  description: '',
+                  default_base_url: 'https://example.com',
+                  param_fields: [],
+                  credential_fields: [],
+                  connection: { credential_input: 'batch_text' },
+                  capabilities: { model_discovery: false, outbound_proxy: false },
+                  routes: [],
+                  client_protocols: [],
+                },
+              ]
+            : []),
         ],
-        total: 1,
+        total: options.extraChannel ? 2 : 1,
       })
     const groupBase = {
       id: 1,
@@ -130,6 +169,7 @@ export async function mockGroupModels(
         params: groupBase.params,
         provider_url: groupBase.provider_url,
         enabled: true,
+        site_access: SITE_ACCESS,
         overrides: RUNTIME,
         effective: {
           first_byte_timeout: RUNTIME.first_byte_timeout,

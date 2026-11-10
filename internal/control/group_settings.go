@@ -22,6 +22,7 @@ import (
 )
 
 type GroupSettingsResponse struct {
+	SiteAccess  GroupSiteAccessResponse      `json:"site_access"`
 	ChannelID   channel.ID                   `json:"channel_id"`
 	Params      json.RawMessage              `json:"params"`
 	Name        string                       `json:"name"`
@@ -33,27 +34,29 @@ type GroupSettingsResponse struct {
 }
 
 type GroupSettingsUpdateRequest struct {
-	Name        optionalField[string]               `json:"name"`
-	ChannelID   optionalField[channel.ID]           `json:"channel_id"`
-	Params      optionalField[json.RawMessage]      `json:"params"`
-	ProviderURL optionalField[string]               `json:"provider_url"`
-	Enabled     optionalField[bool]                 `json:"enabled"`
-	Overrides   optionalField[config.Settings]      `json:"overrides"`
-	Proxy       optionalField[outboundproxy.Config] `json:"proxy"`
+	SiteAccess  optionalField[GroupSiteAccessUpdateInput] `json:"site_access"`
+	Name        optionalField[string]                     `json:"name"`
+	ChannelID   optionalField[channel.ID]                 `json:"channel_id"`
+	Params      optionalField[json.RawMessage]            `json:"params"`
+	ProviderURL optionalField[string]                     `json:"provider_url"`
+	Enabled     optionalField[bool]                       `json:"enabled"`
+	Overrides   optionalField[config.Settings]            `json:"overrides"`
+	Proxy       optionalField[outboundproxy.Config]       `json:"proxy"`
 }
 
 type normalizedGroupSettingsUpdate struct {
-	name             *string
-	channelID        *channel.ID
-	params           json.RawMessage
-	paramsSet        bool
-	providerURL      *string
-	providerURLSet   bool
-	enabled          *bool
-	encodedOverrides models.JSON
-	overridesSet     bool
-	proxyConfig      *string
-	proxySet         bool
+	name               *string
+	channelID          *channel.ID
+	params             json.RawMessage
+	paramsSet          bool
+	providerURL        *string
+	providerURLSet     bool
+	providerURLInvalid bool
+	enabled            *bool
+	encodedOverrides   models.JSON
+	overridesSet       bool
+	proxyConfig        *string
+	proxySet           bool
 }
 
 func (s *Service) GetGroupSettings(ctx context.Context, groupID uint) (GroupSettingsResponse, error) {
@@ -79,6 +82,9 @@ func (s *Service) GetGroupSettings(ctx context.Context, groupID uint) (GroupSett
 		return GroupSettingsResponse{}, err
 	}
 	response.Proxy, err = s.groupProxyView(ctx, s.db, group)
+	if err == nil {
+		response.SiteAccess, err = s.readSiteAccess(s.db.WithContext(ctx), groupID)
+	}
 	return response, err
 }
 
@@ -180,7 +186,7 @@ func normalizeGroupSettingsUpdate(
 	}
 	if !request.Name.Set && !request.ChannelID.Set && !request.Params.Set &&
 		!request.ProviderURL.Set && !request.Enabled.Set && !request.Overrides.Set &&
-		!request.Proxy.Set {
+		!request.Proxy.Set && !request.SiteAccess.Set {
 		return normalizedGroupSettingsUpdate{}, app_errors.ErrBadRequest
 	}
 
@@ -213,9 +219,10 @@ func normalizeGroupSettingsUpdate(
 			} else {
 				normalized, err := spec.NormalizeProviderURL(value)
 				if err != nil {
-					return normalizedGroupSettingsUpdate{}, app_errors.ErrValidation
+					result.providerURLInvalid = true
+				} else {
+					result.providerURL = &normalized
 				}
-				result.providerURL = &normalized
 			}
 		}
 	}
@@ -245,6 +252,15 @@ func (s *Service) UpdateGroupSettings(
 	groupID uint,
 	request GroupSettingsUpdateRequest,
 ) (GroupSettingsResponse, error) {
+	return s.updateGroupSettingsAndModels(ctx, groupID, request, nil)
+}
+
+func (s *Service) updateGroupSettingsAndModels(
+	ctx context.Context,
+	groupID uint,
+	request GroupSettingsUpdateRequest,
+	modelsRequest *GroupModelsUpdateRequest,
+) (GroupSettingsResponse, error) {
 	if groupID == 0 {
 		return GroupSettingsResponse{}, app_errors.ErrBadRequest
 	}
@@ -252,7 +268,19 @@ func (s *Service) UpdateGroupSettings(
 	if err != nil {
 		return GroupSettingsResponse{}, err
 	}
+	var normalizedModels []GroupModel
+	if modelsRequest != nil {
+		if !modelsRequest.Models.Set {
+			return GroupSettingsResponse{}, app_errors.ErrBadRequest
+		}
+		normalizedModels, err = normalizeGroupModels(modelsRequest.Models.Values)
+		if err != nil {
+			return GroupSettingsResponse{}, err
+		}
+	}
+	modelIDsChanged := false
 
+	var siteSync bool
 	var committed models.Group
 	var targetEntries []state.CredentialEntry
 	targetChanged := false
@@ -273,12 +301,51 @@ func (s *Service) UpdateGroupSettings(
 			return app_errors.ErrValidation
 		}
 		channelChanged := targetChannelID != channel.ID(group.ChannelID)
+		if modelsRequest != nil {
+			var previous []groupModelEntry
+			if err := decodeGroupDiscoveryJSON(group.Models, &previous); err != nil {
+				return err
+			}
+			modelIDsChanged = !sameGroupModelIDs(previous, normalizedModels)
+			preserved, err := preserveGroupModelFields(previous, normalizedModels)
+			if err != nil {
+				return err
+			}
+			for i := range preserved {
+				if preserved[i].reasoningSet && !preserved[i].reasoningNull {
+					value, err := canonicalScheduleReasoningEffort(preserved[i].ReasoningEffort)
+					if err != nil {
+						return err
+					}
+					preserved[i].ReasoningEffort = value
+				}
+			}
+			if err := assignMissingTestAliases(tx, preserved); err != nil {
+				return err
+			}
+			encoded, err := json.Marshal(preserved)
+			if err != nil {
+				return err
+			}
+			group.Models = models.JSON(encoded)
+			if err := validateGroupReasoningForChannel(group, targetChannelID, s.channelRegistry); err != nil {
+				return err
+			}
+		}
+		if channelChanged {
+			if err := validateGroupReasoningForChannel(group, targetChannelID, s.channelRegistry); err != nil {
+				return err
+			}
+		}
 		if request.Proxy.Set && !request.Proxy.Null &&
 			!s.channelRegistry.SupportsOutboundProxy(targetChannelID) {
 			return app_errors.ErrValidation
 		}
 
 		updates := make(map[string]any, 10)
+		if modelsRequest != nil {
+			updates["models"] = group.Models
+		}
 		if channelChanged {
 			group.ChannelID = string(targetChannelID)
 			updates["channel_id"] = group.ChannelID
@@ -307,8 +374,14 @@ func (s *Service) UpdateGroupSettings(
 			updates["params"] = append(models.JSON(nil), group.Params...)
 		}
 		if normalized.providerURLSet {
-			group.ProviderURL = normalized.providerURL
-			updates["provider_url"] = normalized.providerURL
+			if normalized.providerURLInvalid {
+				if group.ProviderURL == nil || request.ProviderURL.Value != *group.ProviderURL {
+					return app_errors.ErrValidation
+				}
+			} else {
+				group.ProviderURL = normalized.providerURL
+				updates["provider_url"] = normalized.providerURL
+			}
 		}
 		if normalized.enabled != nil {
 			group.Enabled = *normalized.enabled
@@ -346,6 +419,10 @@ func (s *Service) UpdateGroupSettings(
 				return err
 			}
 		}
+		siteSync, err = s.updateSiteAccess(tx, group, request.SiteAccess)
+		if err != nil {
+			return err
+		}
 		committed = group
 		return nil
 	}, func() error {
@@ -368,7 +445,40 @@ func (s *Service) UpdateGroupSettings(
 		return GroupSettingsResponse{}, err
 	}
 	response.Proxy, err = s.groupProxyView(ctx, s.db, committed)
+	if err == nil {
+		response.SiteAccess, err = s.readSiteAccess(s.db.WithContext(ctx), groupID)
+	}
+	if siteSync && s.siteInfoSync != nil {
+		s.siteInfoSync.RequestGroupSync(groupID)
+	}
+	if modelIDsChanged && s.catalogSync != nil {
+		s.catalogSync.RequestGroupSync()
+	}
 	return response, err
+}
+
+func validateGroupReasoningForChannel(
+	group models.Group,
+	targetChannelID channel.ID,
+	registry *channel.Registry,
+) error {
+	providerKind, ok := registry.ProviderKind(targetChannelID)
+	if !ok {
+		return app_errors.ErrValidation
+	}
+	if providerKind != channel.ProviderGemini && providerKind != channel.ProviderGoogleVertex {
+		return nil
+	}
+	var groupModels []groupModelEntry
+	if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
+		return app_errors.ErrValidation
+	}
+	for _, model := range groupModels {
+		if model.ReasoningEffort == "none" {
+			return app_errors.ErrValidation
+		}
+	}
+	return nil
 }
 
 // validateGroupTargetCredentials verifies that every persisted encrypted

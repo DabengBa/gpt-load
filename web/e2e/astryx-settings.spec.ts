@@ -225,8 +225,13 @@ test('invalid intermediate input blocks save with a validation summary', async (
   await input.fill('0')
 
   await expect(page.getByText('Fix these settings before saving:')).toBeVisible()
+  // Do not rely on the pointer remaining over the error icon after editing.
+  await page.mouse.move(0, 0)
+  await page.getByRole('button', { name: 'Error details' }).hover()
   await expect(
-    page.getByText('Enter a positive safe integer no greater than 9,223,372,036.'),
+    page
+      .getByTestId('astryx-shell')
+      .getByText('Enter a positive safe integer no greater than 9,223,372,036.'),
   ).toBeVisible()
   await expect(saveButton(page)).toBeDisabled()
 

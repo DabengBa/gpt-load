@@ -10,12 +10,14 @@ import type { ChannelFieldDto } from '@shared/control/resources/channels'
 import { channelsQueryOptions } from '@shared/control/resources/channels'
 import {
   cacheGroupSettings,
+  cacheRecoveredGroupSettings,
+  getGroupSettings,
   groupModelsQueryOptions,
   groupSettingsQueryOptions,
   invalidateGroupSettingsDependents,
   updateGroupSettings,
 } from '@shared/control/resources/groups'
-import { RequestCancelledError } from '@shared/http/errors'
+import { ApiError, RequestCancelledError } from '@shared/http/errors'
 import { isValidUpstreamBaseURL } from '@shared/lib/upstream-base-url'
 
 import { useStableLoading } from '../../../app/collection-loading'
@@ -26,9 +28,10 @@ import { useTransientFlag } from '../../../app/use-transient-flag'
 import { useUnsavedChanges } from '../../../app/use-unsaved-changes'
 import { InlineNotice } from '../../../components/InlineNotice'
 import { SectionHeader } from '../../../components/SectionHeader'
-import type { GroupEditorHandle, GroupEditorState } from '../editor-handles'
+import type { GroupSettingsEditorHandle, GroupEditorState } from '../editor-handles'
 import { GroupSettingsAdvanced } from './GroupSettingsAdvanced'
 import { GroupSettingsBaseForm } from './GroupSettingsBaseForm'
+import { GroupSettingsSiteAccessSection } from './GroupSettingsSiteAccessSection'
 import { GroupSettingsSaveBar } from './GroupSettingsSaveBar'
 import { useGroupOverrideFlags, useGroupProxyDraft } from './use-group-settings-overrides'
 import {
@@ -40,6 +43,9 @@ import {
   createGroupSettingsDraft,
   groupPolicyCountKeys,
   groupTimeoutKeys,
+  requiresSiteRootConfirmation,
+  extractSiteRootUrl,
+  isValidProviderUrlForWrite,
   type GroupSettingsDraft,
 } from '@shared/domain/groups/settings/group-settings-patch'
 
@@ -67,7 +73,7 @@ export function GroupSettingsTab({
   unified?: boolean
   blocked?: boolean
   onStateChange(state: GroupEditorState): void
-  ref?: Ref<GroupEditorHandle>
+  ref?: Ref<GroupSettingsEditorHandle>
 }) {
   const t = useT()
   const { apiClient } = useAppServices()
@@ -84,6 +90,8 @@ export function GroupSettingsTab({
   const [deletePending, setDeletePending] = useState(false)
   const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
+  const [recovery, setRecovery] = useState<'checking' | 'failed' | 'review' | null>(null)
+  const [forceSiteRootConfirmation, setForceSiteRootConfirmation] = useState(false)
   const [headerRulesValid, setHeaderRulesValid] = useState(true)
   const [headerRulesInvalidEdits, setHeaderRulesInvalidEdits] = useState(false)
   const [headerRulesEditorRevision, setHeaderRulesEditorRevision] = useState(0)
@@ -117,7 +125,8 @@ export function GroupSettingsTab({
     ),
   ]
 
-  const patch = saved && draft ? buildGroupSettingsPatch(saved, draft) : {}
+  const patch =
+    saved && draft ? buildGroupSettingsPatch(saved, draft, forceSiteRootConfirmation) : {}
   const {
     proxyMode,
     proxyEndpoint,
@@ -156,7 +165,31 @@ export function GroupSettingsTab({
     const value = draft?.overrides[key]
     return value === undefined || (Number.isSafeInteger(value) && value >= 0)
   })
+  const rootConfirmationRequired =
+    !!saved &&
+    !!draft &&
+    (forceSiteRootConfirmation || requiresSiteRootConfirmation(saved, draft)) &&
+    !draft.clearSiteAccessToken &&
+    !draft.siteAccessToken.trim() &&
+    !draft.confirmSiteRootChange
+  const siteAccessInvalid =
+    !!saved &&
+    !!draft &&
+    ((saved.site_access.token_configured && !draft.clearSiteAccessToken) ||
+      !!draft.siteAccessToken.trim()) &&
+    (!draft.siteUserId.trim() || !extractSiteRootUrl(draft.provider_url ?? ''))
+  const providerUrlInvalid =
+    !!draft?.provider_url?.trim() &&
+    (draft.provider_url !== saved?.provider_url ||
+      (!draft.clearSiteAccessToken &&
+        (!!draft.siteAccessToken.trim() ||
+          (saved?.site_access.token_configured &&
+            draft.siteUserId.trim() !== saved.site_access.user_id)))) &&
+    !isValidProviderUrlForWrite(draft.provider_url)
   const valid =
+    !providerUrlInvalid &&
+    !siteAccessInvalid &&
+    !rootConfirmationRequired &&
     !nameError &&
     Object.keys(paramErrors).length === 0 &&
     timeoutValid &&
@@ -306,7 +339,7 @@ export function GroupSettingsTab({
   }, [mutationPending, deleted])
 
   function requestSave(): void {
-    if (!dirty || !valid || stateRef.current.mutationPending) return
+    if (!dirty || !valid || stateRef.current.mutationPending || recovery !== null) return
     void save()
   }
 
@@ -324,13 +357,18 @@ export function GroupSettingsTab({
       }
       const result = await updateGroupSettings(apiClient, groupId, body, active.signal)
       if (controllerRef.current !== active) return
+      setForceSiteRootConfirmation(false)
       resetSavedDraft(result)
       cacheGroupSettings(queryClient, groupId, result)
       await invalidateGroupSettingsDependents(queryClient, groupId)
       showSavedFeedback()
     } catch (cause: unknown) {
       if (cause instanceof RequestCancelledError || controllerRef.current !== active) return
-      setError(t('group.settings.saveFailed'))
+      if (cause instanceof ApiError && cause.code === 'SITE_ROOT_CHANGE_CONFIRMATION_REQUIRED') {
+        setForceSiteRootConfirmation(true)
+        setDraft((current) => (current ? { ...current, confirmSiteRootChange: false } : current))
+        setError(t('siteAccess.confirmError'))
+      } else setError(t('group.settings.saveFailed'))
     } finally {
       if (controllerRef.current === active) {
         controllerRef.current = undefined
@@ -340,9 +378,12 @@ export function GroupSettingsTab({
   }
 
   function discard(): void {
-    if (!saved || stateRef.current.mutationPending) return
+    if (!saved || stateRef.current.mutationPending || (recovery !== null && recovery !== 'review'))
+      return
     setError('')
+    setForceSiteRootConfirmation(false)
     clearSavedFeedback()
+    setRecovery(null)
     resetSavedDraft(saved)
     consumeCurrentQuery()
   }
@@ -372,6 +413,19 @@ export function GroupSettingsTab({
     setError('')
   }
 
+  async function recoverCombined(): Promise<void> {
+    setRecovery('checking')
+    try {
+      const result = await getGroupSettings(apiClient, groupId)
+      await cacheRecoveredGroupSettings(queryClient, groupId, result)
+      // Update the discard baseline, but retain the draft until the user reviews it.
+      setSaved(result)
+      setRecovery('review')
+    } catch {
+      setRecovery('failed')
+    }
+  }
+
   function headerSummary(): string {
     return t('group.settings.runtime.headerSummary', {
       set: Object.keys(displayedHeaderRules.set).length,
@@ -379,19 +433,48 @@ export function GroupSettingsTab({
     })
   }
 
-  useImperativeHandle(ref, () => ({ requestSave, discard }))
+  useImperativeHandle(ref, () => ({
+    requestSave,
+    discard,
+    recoverCombined,
+    prepareCombined: () =>
+      !saved || !draft || !valid || stateRef.current.mutationPending || recovery !== null
+        ? undefined
+        : {
+            ...patch,
+            ...(proxyState.dirty && proxyState.value !== undefined
+              ? { proxy: proxyState.value }
+              : {}),
+          },
+    acceptCombined: async (result) => {
+      setForceSiteRootConfirmation(false)
+      setError('')
+      await cacheRecoveredGroupSettings(queryClient, groupId, result)
+      resetSavedDraft(result)
+      await invalidateGroupSettingsDependents(queryClient, groupId)
+      showSavedFeedback()
+    },
+    failCombined: (cause) => {
+      if (cause instanceof ApiError && cause.code === 'SITE_ROOT_CHANGE_CONFIRMATION_REQUIRED') {
+        setForceSiteRootConfirmation(true)
+        setDraft((current) => (current ? { ...current, confirmSiteRootChange: false } : current))
+        setError(t('siteAccess.confirmError'))
+      } else setError(t('group.settings.saveFailed'))
+    },
+  }))
 
   // Classic watch([dirty, mutationPending, error, savedFeedback, valid]):
   // report aggregate state to the host's unified save bar.
   useEffect(() => {
     onStateChangeRef.current({
-      dirty,
+      dirty: dirty || recovery === 'review',
       pending: mutationPending,
       error,
       saved: savedFeedback,
-      invalid: !valid,
+      invalid: !valid || recovery !== null,
+      channelId: draft?.channel_id,
     })
-  }, [dirty, mutationPending, error, savedFeedback, valid])
+  }, [dirty, mutationPending, error, savedFeedback, valid, draft?.channel_id, recovery])
 
   useEffect(
     () => () => {
@@ -475,6 +558,14 @@ export function GroupSettingsTab({
         <SectionHeader headingId="group-settings-heading" title={t('group.settings.title')} />
       )}
 
+      {recovery === 'failed' && (
+        <div role="alert">
+          {t('group.settings.recoveryFailed')}
+          <Button size="sm" label={t('common.retry')} onClick={() => void recoverCombined()} />
+        </div>
+      )}
+      {recovery === 'review' && <div role="alert">{t('group.settings.recoveryReview')}</div>}
+
       {queryRefreshing && (
         <div
           role="status"
@@ -514,6 +605,12 @@ export function GroupSettingsTab({
       ) : saved && draft ? (
         <>
           {error !== '' && <InlineNotice tone="danger">{error}</InlineNotice>}
+          {siteAccessInvalid && (
+            <InlineNotice tone="danger">{t('siteAccess.required')}</InlineNotice>
+          )}
+          {rootConfirmationRequired && (
+            <InlineNotice tone="danger">{t('siteAccess.confirmError')}</InlineNotice>
+          )}
           {channelParamsDisabled && (
             <InlineNotice
               tone="danger"
@@ -545,6 +642,7 @@ export function GroupSettingsTab({
                 params={draft.params}
                 name={draft.name}
                 providerUrl={draft.provider_url}
+                providerUrlInvalid={providerUrlInvalid}
 
                 enabled={saved.enabled}
                 enabledPending={enabledPending}
@@ -560,10 +658,25 @@ export function GroupSettingsTab({
                   setDraft((current) => (current ? { ...current, name: value } : current))
                 }
                 onProviderUrlChange={(value) =>
-                  setDraft((current) => (current ? { ...current, provider_url: value } : current))
+                  setDraft((current) =>
+                    current
+                      ? { ...current, provider_url: value, confirmSiteRootChange: false }
+                      : current,
+                  )
                 }
 
                 onSetEnabled={(value) => void setGroupEnabled(value)}
+              />
+              <GroupSettingsSiteAccessSection
+                groupId={groupId}
+                saved={saved}
+                draft={draft}
+                access={query.data?.site_access ?? saved.site_access}
+                forceConfirmation={forceSiteRootConfirmation}
+                disabled={mutationPending}
+                onChange={(value) =>
+                  setDraft((current) => (current ? { ...current, ...value } : current))
+                }
               />
               {unified && advancedTarget ? createPortal(advanced, advancedTarget) : advanced}
             </div>

@@ -121,11 +121,18 @@ for (const mutation of ['create', 'delete', 'importCredentials'] as const) {
       k.home.base(),
       ...schedule,
       ...(mutation === 'importCredentials'
-        ? [k.groups.summary(7), [...k.groups.credentialsAll(7), 'page', 1]]
-        : [k.groups.options(), catalog, prices]),
+        ? [
+            // A credential decides the site snapshot (balance/ratio), so the
+            // current group settings read must be refreshed with it.
+            k.groups.settings(7),
+            k.groups.summary(7),
+            [...k.groups.credentialsAll(7), 'page', 1],
+          ]
+        : [k.groups.options(), catalog, prices, k.announcements()]),
     ]
+    const unaffected = mutation === 'importCredentials' ? [k.announcements()] : []
     try {
-      seed(client, [...affected, ...unrelated])
+      seed(client, [...affected, ...unrelated, ...unaffected])
       if (mutation === 'delete') {
         const removed = [
           k.groups.summary(7),
@@ -145,6 +152,7 @@ for (const mutation of ['create', 'delete', 'importCredentials'] as const) {
       )
       assertState(client, affected, true)
       assertState(client, unrelated, false)
+      assertState(client, unaffected, false)
     } finally {
       client.clear()
     }

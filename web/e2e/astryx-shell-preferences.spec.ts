@@ -68,43 +68,44 @@ test('rapid locale changes during navigation publish complete catalogs', async (
   const coreGate = new Promise<void>((resolve) => {
     releaseCore = resolve
   })
-  let releaseGroups = () => {}
-  const groupsGate = new Promise<void>((resolve) => {
-    releaseGroups = resolve
+  let releaseMonitor = () => {}
+  const monitorGate = new Promise<void>((resolve) => {
+    releaseMonitor = resolve
   })
   await page.route('**/shared/i18n/locales/ja-JP/core.ts*', async (route) => {
     await coreGate
-    await route.continue()
-  })
-  await page.route('**/shared/i18n/locales/en-US/group.ts*', async (route) => {
-    await groupsGate
     await route.continue()
   })
   try {
     await page.goto('/settings')
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('设置')
     await page.getByRole('button', { name: '菜单与偏好设置' }).click()
-    await page.getByRole('radio', { name: 'EN', exact: true }).check()
+    await page.getByRole('radio', { name: 'EN', exact: true }).locator('..').click()
     await expect(page.locator('html')).toHaveAttribute('lang', 'en-US')
+    await expect(page.getByRole('radio', { name: 'EN', exact: true })).toBeChecked()
+    await page.route('**/shared/i18n/locales/en-US/monitor.ts*', async (route) => {
+      await monitorGate
+      await route.continue()
+    })
     const coreRequested = page.waitForRequest('**/shared/i18n/locales/ja-JP/core.ts*')
-    await page.getByRole('radio', { name: '日本語', exact: true }).click()
+    await page.getByRole('radio', { name: '日本語', exact: true }).locator('..').click()
     await coreRequested
-    const groupsRequested = page.waitForRequest('**/shared/i18n/locales/en-US/group.ts*')
-    await page.getByRole('dialog').getByRole('link', { name: 'Groups', exact: true }).click()
-    await groupsRequested
+    const monitorRequested = page.waitForRequest('**/shared/i18n/locales/en-US/monitor.ts*')
+    await page.getByRole('dialog').getByRole('link', { name: 'Monitor', exact: true }).click()
+    await monitorRequested
     // Navigation owns a new namespace while the pending locale owns the old page.
-    releaseGroups()
-    await expect(page).toHaveURL(/\/groups$/)
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Groups')
+    releaseMonitor()
+    await expect(page).toHaveURL(/\/monitor(?:\?|$)/)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Monitor')
     releaseCore()
     await expect(page.locator('html')).toHaveAttribute('lang', 'ja-JP')
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('グループ')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('モニター')
     await expect(page.getByRole('dialog')).not.toBeVisible()
     expect(errors).toEqual([])
     expect(await page.evaluate(() => localStorage.getItem('gpt-load.locale'))).toBe('ja-JP')
   } finally {
     releaseCore()
-    releaseGroups()
+    releaseMonitor()
   }
 })
 
@@ -171,8 +172,9 @@ for (const width of [1440, 375]) {
       { radio: '中文', tag: 'zh-CN', title: '设置', body: '路由与调度' },
       { radio: 'EN', tag: 'en-US', title: 'Settings', body: 'Routing and scheduling' },
     ]) {
-      await page.getByRole('radio', { name: locale.radio, exact: true }).check()
+      await page.getByRole('radio', { name: locale.radio, exact: true }).locator('..').click()
       await expect(page.locator('html')).toHaveAttribute('lang', locale.tag)
+      await expect(page.getByRole('radio', { name: locale.radio, exact: true })).toBeChecked()
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(locale.title)
       await expect(page).toHaveTitle(`${locale.title} · GPT-Load`)
       const nav = width > 860 ? page.getByTestId('desktop-nav') : page.getByRole('dialog')

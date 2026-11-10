@@ -38,6 +38,9 @@ and only review and submit there.
 - The administrator can edit every pre-filled value, choose a different
   channel, or abandon the import. Choosing a channel keeps the imported Base URL
   when that channel has a URL parameter.
+- The upstream address is directly editable without a separate custom-address
+  switch. Whether it is required depends on the selected channel; an optional
+  address may be left empty.
 - A handoff is delivered at most once. Opening the same handoff link in several
   tabs fills the form in one tab and leaves the others as ordinary manual
   imports.

@@ -42,6 +42,9 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0026,
 		migrationfiles.ID0027,
 		migrationfiles.ID0028,
+		migrationfiles.ID0029,
+		migrationfiles.ID0030,
+		migrationfiles.ID0031,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -55,7 +58,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 
 func TestUsageClientModelMigrationPreservesHistoryAndRestarts(t *testing.T) {
 	db := openInternalMigrationTestDatabase(t)
-	if err := applyMigrationRegistry(db, migrations[:len(migrations)-1]); err != nil {
+	if err := applyMigrationRegistry(db, migrations[:len(migrations)-2]); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`INSERT INTO usage_stats (bucket_start_ms, access_key_id, channel_id, group_id, credential_id, model, request_count, success_count) VALUES (3600000, 1, '', 1, 1, 'upstream', 3, 3)`).Error; err != nil {
@@ -365,5 +368,35 @@ func insertOrphanCredential(t *testing.T, db *gorm.DB) {
 		group_id, data, fingerprint, identity_fingerprint, secret_version, status, created_at_ms, updated_at_ms
 	) VALUES (9999, '{}', 'orphan-fingerprint', '', 1, 'active', 1, 1)`).Error; err != nil {
 		t.Fatalf("insert orphan credential: %v", err)
+	}
+}
+
+func TestGroupSiteInfoMigrationSchema(t *testing.T) {
+	db := openInternalMigrationTestDatabase(t)
+	if err := AutoMigrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"group_site_configs", "site_announcements"} {
+		if !db.Migrator().HasTable(table) {
+			t.Errorf("missing %s", table)
+		}
+		var keys []struct {
+			Table    string
+			From     string
+			To       string
+			OnDelete string `gorm:"column:on_delete"`
+		}
+		if err := db.Raw("PRAGMA foreign_key_list('" + table + "')").Scan(&keys).Error; err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, k := range keys {
+			if k.Table == "groups" && k.From == "group_id" && k.To == "id" && k.OnDelete == "CASCADE" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s lacks cascade group foreign key: %+v", table, keys)
+		}
 	}
 }

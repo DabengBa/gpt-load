@@ -1,4 +1,5 @@
 export default {
+  siteAccessIncomplete: 'User ID, access token and provider website are required together',
   import: {
     title: 'Import channel credentials',
     required: 'required',

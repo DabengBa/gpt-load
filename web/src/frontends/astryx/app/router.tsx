@@ -13,6 +13,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
+import type { MessageNamespace } from '@shared/i18n/namespaces'
 import { pagePath, pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
@@ -284,6 +285,10 @@ const routeViews: Record<RouteName, RouteComponent> = {
     () => import('../features/groups/GroupsView'),
     'GroupsView',
   ),
+  [sharedPageRouteNames.announcements]: lazyRouteComponent(
+    () => import('../features/announcements/AnnouncementsView'),
+    'AnnouncementsView',
+  ),
   [sharedPageRouteNames.groupDetail]: lazyRouteComponent(
     () => import('../features/groups/GroupDetailView'),
     'GroupDetailView',
@@ -355,7 +360,11 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
           replace: true,
         })
       }
-      await context.services.i18n.ensureNamespaces(meta.messageNamespaces ?? [])
+      await context.services.i18n.ensureNamespaces(
+        (meta.messageNamespaces ?? []).filter(
+          (namespace): namespace is MessageNamespace => namespace !== 'core',
+        ),
+      )
     },
     component: routeViews[name as RouteName],
   })

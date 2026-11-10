@@ -143,6 +143,7 @@ func BuildContainer() (*dig.Container, error) {
 			affinityCleaner affinity.DurableBindingCleaner,
 			affinityPolicy func() affinity.DurablePolicy,
 			stats *health.StatsStore,
+			siteInfoSync *control.SiteInfoSyncCoordinator,
 		) *control.Runtime {
 			runtime := control.NewRuntime(
 				registry,
@@ -153,6 +154,7 @@ func BuildContainer() (*dig.Container, error) {
 				affinityPolicy,
 			)
 			runtime.SetHealthStats(stats)
+			runtime.SetSiteInfoSync(siteInfoSync)
 			return runtime
 		},
 		func(runtime *control.Runtime) app.ControlRuntime { return runtime },
@@ -220,6 +222,7 @@ func BuildContainer() (*dig.Container, error) {
 		gateway.NewHandlerWithLifecycle,
 		control.NewService,
 		control.NewCatalogSyncCoordinator,
+		control.NewSiteInfoSyncCoordinator,
 		func(service *control.Service) app.StartupBootstrap { return service },
 		func(service *control.Service) app.StartupRecovery { return service },
 		func(
