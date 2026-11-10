@@ -63,14 +63,15 @@ class RetentionPolicy(Base):
         self.assertEqual(result["deleted_dirs"], [f"{self.root}/rehearsal-old"])
         self.assertTrue(os.path.isdir(f"{self.root}/rehearsal-new"))
 
-    def test_keeps_two_pre_upgrade(self):
+    def test_keeps_one_pre_upgrade(self):
         touch(f"{self.root}/pre-upgrade.1/data.tar", age_days=5)
         touch(f"{self.root}/pre-upgrade.2/data.tar", age_days=4)
         touch(f"{self.root}/pre-upgrade.3/data.tar", age_days=3)
         result = self.run_clean(apply_=True)
-        self.assertEqual(result["deleted_dirs"], [f"{self.root}/pre-upgrade.1"])
+        self.assertEqual(result["deleted_dirs"], [f"{self.root}/pre-upgrade.1", f"{self.root}/pre-upgrade.2"])
         self.assertFalse(os.path.exists(f"{self.root}/pre-upgrade.1"))
-        self.assertTrue(os.path.isdir(f"{self.root}/pre-upgrade.2"))
+        self.assertFalse(os.path.exists(f"{self.root}/pre-upgrade.2"))
+        self.assertTrue(os.path.isdir(f"{self.root}/pre-upgrade.3"))
 
     def test_keeps_two_offline_backups(self):
         touch(f"{self.root}/backups/gpt-load-offline-a.tar.gz", age_days=6)

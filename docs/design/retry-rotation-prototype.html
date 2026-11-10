@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>重试与轮换策略原型 · GPT-Load</title>
+<style>
+:root{color-scheme:light;--canvas:#eeede9;--surface:#fff;--text:#15181b;--muted:#4e545b;--border:#cfcfc9;--action:#1c4f6e;--soft:#e8eff4;--warn:#77500e;--warn-bg:#f8f0dd;--success:#1a6b3f;--danger:#a42d2d;font:13.5px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--canvas)}
+*{box-sizing:border-box}body{margin:0}h1,h2,h3,p{margin:0}h1{font-size:22px;line-height:1.4}h2{font-size:16px}h3{font-size:14px}a{color:var(--action);text-underline-offset:3px}button,input,select{font:inherit;color:inherit}button,select,input[type=number]{min-height:32px;border:1px solid var(--border);border-radius:6px;background:white;padding:5px 9px}button{cursor:pointer}button:hover:enabled{background:var(--soft);border-color:var(--action)}button:disabled{cursor:not-allowed;color:#626970;background:#eeede9}button.primary{background:var(--action);border-color:var(--action);color:white}button.primary:hover:enabled{background:#163f58}button.primary:disabled{background:#e0e5e8;color:#4e545b;border-color:var(--border)}input[type=checkbox]{width:17px;height:17px;accent-color:var(--action);flex:none}input,select{caret-color:var(--action)}:focus-visible{outline:3px solid var(--action);outline-offset:3px}::selection{background:#c6deec;color:#15181b}*{scrollbar-color:#9aabb5 #eeede9}code{font:12px/1.5 ui-monospace,monospace;overflow-wrap:anywhere}.topbar{background:white;border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:28px}.brand{font-size:19px;font-weight:700}.nav{display:flex;gap:22px;color:var(--muted)}.nav strong{color:var(--action)}.badge{display:inline-block;padding:2px 7px;border-radius:5px;font-size:12px;background:var(--soft);color:var(--action)}main{max-width:1320px;margin:auto;padding:20px 24px 40px}.intro{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:15px}.intro p{margin-top:5px;max-width:84ch}.muted,small{color:var(--muted)}small{font-size:12px}.notice{background:var(--warn-bg);color:var(--warn);padding:9px 12px;border:1px solid #d9c79c;border-radius:6px}.layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:18px;margin-top:16px;align-items:start}.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:15px;min-width:0}.panel h2{margin-bottom:10px}.settings{display:grid;gap:13px}.field{display:grid;gap:4px}.field input,.field select{width:100%}.check{display:flex;align-items:start;gap:7px}.check input{margin-top:3px}.setting-note{padding-top:10px;border-top:1px solid var(--border)}.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.spread{justify-content:space-between}.tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:12px}.tabs button[aria-selected=true]{color:var(--action);background:var(--soft);border-color:var(--action);font-weight:600}.scenario{min-height:72px}.scenario p{margin-top:4px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.state{background:#f5f4f1;padding:12px;border-radius:6px;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:10px}.stats dt{font-size:12px;color:var(--muted)}.stats dd{margin:2px 0 0;font-weight:650;font-variant-numeric:tabular-nums}.stats dl{margin:0}progress{width:100%;height:7px;accent-color:var(--action);display:block;margin:8px 0}.outcome{font-weight:600;overflow-wrap:anywhere}.outcome[data-tone=stop]{color:var(--danger)}.outcome[data-tone=success]{color:var(--success)}.events{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.table-wrap{overflow:auto;margin-top:12px}table{border-collapse:collapse;width:100%;font-size:12px;text-align:left}caption{text-align:left;font-size:14px;font-weight:650;margin-bottom:7px}th{color:var(--muted);background:#f5f4f1;font-weight:500}td,th{padding:8px;border-bottom:1px solid #e6e5e0;vertical-align:top}td:first-child{font-variant-numeric:tabular-nums}td code{font-size:11px}.bottom{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}.bottom p{margin-top:8px}.bottom ul{padding-left:19px;margin:8px 0}.bottom li+li{margin-top:5px}.sources{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}.sources p{margin-top:5px}.error{color:var(--danger)}[hidden]{display:none!important}.skip{position:absolute;left:12px;top:-80px;background:white;padding:10px;z-index:5}.skip:focus{top:8px}
+@media(max-width:900px){.layout{grid-template-columns:270px minmax(0,1fr)}.nav{display:none}.stats{grid-template-columns:1fr 1fr}.bottom{grid-template-columns:1fr}}
+@media(max-width:680px){main{padding:16px 12px 28px}.topbar{padding:10px 12px}.layout{grid-template-columns:1fr;gap:12px}.intro{display:block}.intro>.badge{margin-top:8px}.panel{padding:12px}.scenario{min-height:0}button,select,input[type=number]{min-height:44px}.check{min-height:36px}.tabs button{flex:1 1 42%}.stats{grid-template-columns:1fr 1fr}.bottom{gap:12px}table{min-width:600px}th,td{padding:7px;min-width:65px}td:last-child{min-width:170px}}
+</style>
+</head>
+<body>
+<a class="skip" href="#workspace">跳至模拟工作区</a>
+<header class="topbar"><span class="brand">GPT-Load</span><nav class="nav" aria-label="管理界面位置示意"><span>分组</span><span>调度中心</span><span>请求日志</span><strong>设置 / 重试策略</strong></nav><span class="badge">本地模拟 · 不连接服务</span></header>
+<main>
+<div class="intro"><div><h1>失败后，沿用重试与轮询流程</h1><p class="muted">尝试未成功，就按现有共享预算与候选顺序继续；触及公共停止条件时结束。<strong>这是产品假设的交互演示，生产实现尚未改变。</strong></p></div><span class="badge">策略讨论稿</span></div>
+<div class="notice"><strong>重放不等于恢复。</strong>上游可能已完成生成；再次请求可能重复生成、重复计费或产生副作用。524 的上游结果仍未知，后续成功也不能证明前次未执行。</div>
+<div class="layout">
+<aside class="panel"><h2>设置示意</h2><form id="settings" class="settings">
+<label class="field" for="budget">总尝试上限 · 现有设置<input id="budget" type="number" min="0" max="100" step="1" value="5" required aria-describedby="budget-help"><small id="budget-help"><code>retry_count</code> 默认 5，含首次；0 / 1 都只执行一次。原型输入上限为 100。</small></label>
+<label class="field" for="first">首供应商最多尝试 · 现有设置<input id="first" type="number" min="1" max="100" step="1" value="1" required><small><code>first_provider_attempts</code> 默认 1，含首次，消耗同一预算；不能保证供应商始终可用。</small></label>
+<p class="setting-note muted">以下为模拟请求边界与候选可用性，并非新增生产设置。</p>
+<label class="check"><input id="committed" type="checkbox"><span>本次尝试已向客户端提交响应<br><small>包括已提交的流式内容；失败后停止继续尝试。</small></span></label>
+<label class="check"><input id="a" type="checkbox" checked><span>候选 A 健康且可用</span></label>
+<label class="check"><input id="b" type="checkbox" checked><span>候选 B 健康且可用</span></label>
+<p class="muted">A → B 为固定模拟顺序；真实选择仍受健康、凭据、模型及调度约束。关闭可用性不会撤销已经发出的尝试。</p>
+<p id="validation" class="error" role="alert" hidden></p>
+<button type="submit">应用设置并重新开始</button><small>编辑为草稿；应用后清空记录。事件过程中不会偷偷改变已生效设置。</small>
+</form></aside>
+<section id="workspace" class="panel" tabindex="-1" aria-labelledby="simulation-title"><div class="row spread"><h2 id="simulation-title">策略模拟器</h2><span class="muted">无网络请求 · 刷新即重置</span></div>
+<div id="tabs" class="tabs" role="tablist" aria-label="重置为已知情景"></div>
+<div id="scenario-panel" role="tabpanel" aria-labelledby="tab-empty" class="scenario"><h3 id="scenario-title"></h3><p id="scenario-description" class="muted"></p></div>
+<div class="toolbar"><button id="step" class="primary" type="button">执行下一步</button><button id="reset" type="button">重置本情景</button><span id="step-hint" class="muted"></span></div>
+<div class="state" aria-live="polite" aria-atomic="true"><div class="stats"><dl><dt>共享预算（已用 / 总量）</dt><dd id="used"></dd></dl><dl><dt>当前供应商 / 尝试</dt><dd id="provider"></dd></dl><dl><dt>首供应商最多尝试</dt><dd id="policy"></dd></dl></div><progress id="progress" aria-label="已消耗的共享尝试预算" max="5" value="0"></progress><p id="boundary" class="muted"></p><p id="outcome" class="outcome"></p></div>
+<h3>自由注入本次尝试的结果</h3><p class="muted">先开始请求，再任意选择事件。每次结果只结算当前尝试；允许继续时立即发起下一次并扣除预算。</p>
+<div class="events" id="events"><button data-event="failure" type="button">失败</button><button data-event="empty" type="button">失败 · 空响应</button><button data-event="524" type="button">失败 · 524</button><button data-event="success" type="button">成功</button></div>
+<p class="muted">模拟公共停止条件（对所有失败适用）：</p><div class="events"><button data-event="committed" type="button">已提交后失败</button><button data-event="unavailable" type="button">候选耗尽后失败</button><button data-event="cancelled" type="button">请求取消</button><button data-event="deadline" type="button">请求截止</button></div>
+<div class="table-wrap" tabindex="0" role="region" aria-label="可横向滚动的模拟尝试记录"><table><caption>尝试记录 <span class="muted">· 全部为模拟，非线上日志</span></caption><thead><tr><th scope="col">次数</th><th scope="col">供应商</th><th scope="col">结果 / 发送状态</th><th scope="col">决策及原因</th></tr></thead><tbody id="attempts"></tbody></table></div>
+</section></div>
+<div class="bottom"><section class="panel"><h2>日志情景与证据边界</h2><p><strong>空响应：</strong>采用需求摘要中的 <code>upstream_empty_completion</code> 事件，作为一次失败展示并进入统一流程。此例指已判定的空响应，不把工具调用等无文本输出直接判作失败。</p><p><strong>524：</strong>采用需求摘要中的 <code>524 / maybe_sent</code> 事件，同样作为失败进入统一流程。发送状态只用于观察：上游结果未知，不能据此断言未执行、未收费或必须换供应商。</p><p class="notice">本页未附完整 request_id、各 attempt 原始请求 / 响应与完整 capture。事件依据来自需求摘要，不冒充已复核的原始日志。A / B、次数编排、可用性和后续成功均为演示假设。</p><p class="muted">预算耗尽、已提交、候选耗尽及取消 / 截止是合成边界情景。真实排查须按 request_id 配对每次尝试的原始请求 / 响应，并检查 capture 的完整性与终止元数据；不能用日志摘要补齐缺失正文。</p></section>
+<section class="panel"><h2>产品假设与局限</h2><ul><li>本次产品假设：失败统一进入已有重试与轮询流程，沿用总尝试上限和首供应商最多尝试设置；不新增授权开关、特殊状态或按错误类别选择的路由。</li><li>先检查已提交、取消 / 截止等公共边界，再检查共享预算和可用候选。首供应商次数是上限，不是额外配额；首次与轮换均扣同一预算。</li><li>空响应、524 仅保留为可观察的失败例子。记录每次尝试结果与最终停止原因，后续成功不会改写前次失败，也不能证明前次未执行。</li><li>本页不代表生产实现已调整。真实请求判定、凭据处理、健康检查和协议边界仍以现有实现为准；本原型不复刻全部调度细节。</li></ul><p class="muted">原型仅演示离散结果及取消 / 截止事件，不模拟真实计时、退避、并发、健康恢复、凭据刷新、动态路由或计费；不落盘、不调用生产 API。</p></section></div>
+<footer class="sources"><h2>竞品参考与来源</h2><p><a href="https://portkey.ai/docs/product/ai-gateway/fallbacks" target="_blank" rel="noopener noreferrer">Portkey Fallbacks</a> 支持按状态码触发备用目标，并按 Trace ID 查看各次尝试；其文档也提示多供应商可能带来不同延迟与价格。对本项目的启发是展示每次尝试及最终停止原因。</p><p><a href="https://docs.litellm.ai/docs/completion/reliable_completions" target="_blank" rel="noopener noreferrer">LiteLLM Reliability</a> 的官方搜索结果描述了重试次数和模型、密钥、API 地址的备用选择；本次未能抓取该页面正文，具体行为须再核对。现阶段建议沿用本项目已有候选调度，不新增备用链配置。</p><p>项目现有语义：<a href="../../.docs/db/features/first-provider-attempts.md">首供应商尝试次数</a> · <a href="../../.docs/tech/provider-feedback.md">供应商反馈机制</a> · <a href="../../.docs/tech/debug-communications.md">原始通信证据边界</a></p><p>其他资料：<a href="https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/" target="_blank" rel="noopener noreferrer">Cloudflare：Error 524</a> · <a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2" target="_blank" rel="noopener noreferrer">RFC 9110：幂等与自动重试</a></p><p class="muted">竞品资料不代表其对本项目空响应或 524 场景有相同策略。链接仅点击时打开；本页不加载外部资源。</p></footer>
+</main>
+<script>
+'use strict';
+// Pure model: no DOM, network, timers or persistence. Each issued attempt costs one unit.
+const RetrySimulation = (() => {
+  const defaults = {budget:5,first:1,committed:false,a:true,b:true};
+  const scenarios = [
+    {id:'empty',name:'空响应',title:'失败后轮换，下一次成功',description:'首供应商上限 1：A 返回空响应后按同一流程选择 B，B 模拟成功；共用 2 次预算。',config:{},steps:['start','empty','success']},
+    {id:'timeout',name:'524',title:'失败后先重试首供应商，再轮换',description:'首供应商上限 2：A 的 524 与后续普通失败走同一流程，顺序 A → A → B，最后模拟成功。524 的上游结果仍未知。',config:{first:2},steps:['start','524','failure','success']},
+    {id:'budget',name:'预算耗尽',title:'留在首供应商也消耗总预算',description:'总量 2，首供应商上限 3。空响应和 524 共耗尽 2 次预算，不会再发起 B。',config:{budget:2,first:3},steps:['start','empty','524']},
+    {id:'committed',name:'已提交',title:'响应已提交，失败后停止',description:'A 已向客户端提交响应，即使预算充足，失败后也停止继续尝试。',config:{committed:true},steps:['start','failure']},
+    {id:'candidate',name:'候选耗尽',title:'没有可用的下一候选',description:'A 可用、B 不可用，首供应商上限 1。首次失败后剩余预算不能换来可用候选。',config:{b:false},steps:['start','failure']},
+    {id:'cancelled',name:'取消 / 截止',title:'请求取消或截止，停止继续尝试',description:'发起 A 后模拟请求取消；也可自由注入请求截止。两者均结束请求，不再消耗后续预算。',config:{},steps:['start','cancelled']}
+  ];
+  const names={start:'发起首次请求',failure:'失败',empty:'失败 · 空响应（upstream_empty_completion）',524:'失败 · 524（上游结果未知）',success:'成功',committed:'失败',unavailable:'失败',cancelled:'未完成 · 请求取消',deadline:'未完成 · 请求截止'};
+  function create(config){return {config:{...defaults,...config},phase:'idle',used:0,current:null,firstProvider:null,firstUsed:0,visited:[],rows:[],reason:'尚未开始；选择逐步执行或应用设置。'};}
+  function stop(s,reason){s.phase='stopped';s.reason='停止：'+reason;return s;}
+  function issue(s,provider){s.used++;s.current=provider;if(!s.firstProvider)s.firstProvider=provider;if(provider===s.firstProvider)s.firstUsed++;if(!s.visited.includes(provider))s.visited.push(provider);s.rows.push({n:s.used,provider,result:'等待模拟结果',dispatch:'maybe_sent（模拟已发出）',decision:'已发起，占用共享预算 1 次'});s.phase='active';s.reason='等待第 '+s.used+' 次尝试的结果。';return s;}
+  function transition(state,event){
+    const s=structuredClone(state),c=s.config,limit=Math.max(1,c.budget);
+    if(event==='start'){
+      if(s.phase!=='idle')return s;
+      const first=['A','B'].find(p=>c[p.toLowerCase()]);
+      return first?issue(s,first):stop(s,'无健康且可用候选；未发起请求，未消耗预算。');
+    }
+    if(s.phase!=='active'||!Object.hasOwn(names,event))return s;
+    const row=s.rows[s.rows.length-1];row.result=names[event];
+    if(event==='success'){s.phase='success';s.reason='完成：本次尝试成功。';row.decision=s.reason;return s;}
+    if(event==='committed')c.committed=true;
+
+    if(event==='unavailable'){c.a=false;c.b=false;}
+    let reason='';
+    if(event==='cancelled')reason='请求已取消。';
+    else if(event==='deadline')reason='请求已截止。';
+    else if(c.committed)reason='响应已提交，停止继续尝试。';
+    else if(s.used>=limit)reason='共享总尝试预算耗尽；首供应商额度不能增加总量。';
+    if(reason){row.decision='停止：'+reason;return stop(s,reason);}
+    let next=null;
+    if(s.current===s.firstProvider&&s.firstUsed<c.first&&c[s.current.toLowerCase()])next=s.current;
+    else next=['A','B'].find(p=>!s.visited.includes(p)&&c[p.toLowerCase()]);
+    if(!next){reason='无可用下一候选；已离开的候选不在本简化模型中循环使用。';row.decision='停止：'+reason;return stop(s,reason);}
+    row.decision=next===s.current?'重试首供应商，共享预算扣 1':'轮换至 '+next+'，共享预算扣 1';
+    return issue(s,next);
+  }
+  return {defaults,scenarios,names,create,transition};
+})();
+// DOM adapter: renders model output and translates user actions into model events.
+(() => {
+  const $=id=>document.getElementById(id),M=RetrySimulation;
+  let scenario=M.scenarios[0],state=M.create(scenario.config),cursor=0,custom=false;
+  const inputs=['budget','first','committed','a','b'];
+  function fill(config){inputs.forEach(id=>{const el=$(id);if(el.type==='checkbox')el.checked=config[id];else el.value=config[id];});}
+  function render(){
+    $('used').textContent=state.used+' / '+Math.max(1,state.config.budget)+' 次';
+    $('provider').textContent=state.current?state.current+' / 第 '+state.used+' 次':'未分配';
+    $('policy').textContent=state.config.first+' 次（含首次）';
+    $('progress').max=Math.max(1,state.config.budget);$('progress').value=state.used;
+    $('boundary').textContent='候选 A '+(state.config.a?'可用':'不可用')+' / B '+(state.config.b?'可用':'不可用')+'；'+(state.config.committed?'已提交':'未提交');
+    $('outcome').textContent=state.reason;$('outcome').dataset.tone=state.phase==='stopped'?'stop':state.phase;
+    const done=['stopped','success'].includes(state.phase);
+    $('step').disabled=done||(state.phase!=='idle'&&(custom||cursor>=scenario.steps.length));
+    $('step').textContent=state.phase==='idle'?'开始 · 发起首次请求':done?'情景已结束':'下一步 · '+(M.names[scenario.steps[cursor]]||'自由选择事件');
+    $('step-hint').textContent=custom?'自定义路径：开始后自由注入结果。':'预设进度 '+cursor+' / '+scenario.steps.length;
+    if(custom){$('scenario-title').textContent='自定义路径';$('scenario-description').textContent='按已生效设置自由注入结果；所有失败共用重试与轮询流程。重置可恢复所选预设情景。';}
+    document.querySelectorAll('[data-event]').forEach(b=>b.disabled=state.phase!=='active');
+    $('attempts').replaceChildren();
+    if(!state.rows.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=4;td.textContent='尚无尝试记录。开始请求后，首次尝试也计入总预算。';tr.append(td);$('attempts').append(tr);}
+    state.rows.forEach(row=>{const tr=document.createElement('tr');[String(row.n),row.provider,row.result+' · '+row.dispatch,row.decision].forEach(value=>{const td=document.createElement('td');td.textContent=value;tr.append(td);});$('attempts').append(tr);});
+  }
+  function select(next,focus=false){scenario=next;cursor=0;custom=false;state=M.create(next.config);fill(state.config);$('validation').hidden=true;document.querySelectorAll('[role=tab]').forEach(b=>{const chosen=b.id==='tab-'+next.id;b.setAttribute('aria-selected',String(chosen));b.tabIndex=chosen?0:-1;});$('scenario-panel').setAttribute('aria-labelledby','tab-'+next.id);$('scenario-title').textContent=next.title;$('scenario-description').textContent=next.description;render();if(focus)$('tab-'+next.id).focus();}
+  M.scenarios.forEach((item,index)=>{const b=document.createElement('button');b.type='button';b.id='tab-'+item.id;b.setAttribute('role','tab');b.setAttribute('aria-controls','scenario-panel');b.textContent=item.name;b.addEventListener('click',()=>select(item));b.addEventListener('keydown',e=>{let n=index;if(e.key==='ArrowRight')n=(index+1)%M.scenarios.length;else if(e.key==='ArrowLeft')n=(index+M.scenarios.length-1)%M.scenarios.length;else if(e.key==='Home')n=0;else if(e.key==='End')n=M.scenarios.length-1;else return;e.preventDefault();select(M.scenarios[n],true);});$('tabs').append(b);});
+  $('settings').addEventListener('submit',e=>{e.preventDefault();const config={};inputs.forEach(id=>{const el=$(id);config[id]=el.type==='checkbox'?el.checked:el.type==='number'?Number(el.value):el.value;});if(!Number.isInteger(config.budget)||config.budget<0||config.budget>100||!Number.isInteger(config.first)||config.first<1||config.first>100){$('validation').hidden=false;$('validation').textContent='请输入有效整数：总量 0–100，首供应商 1–100。';return;}$('validation').hidden=true;state=M.create(config);cursor=0;custom=true;render();});
+  $('step').addEventListener('click',()=>{const event=state.phase==='idle'?'start':scenario.steps[cursor];state=M.transition(state,event);cursor++;render();});
+  $('reset').addEventListener('click',()=>select(scenario));
+  document.querySelectorAll('[data-event]').forEach(b=>b.addEventListener('click',()=>{custom=true;state=M.transition(state,b.dataset.event);render();}));
+  select(scenario);
+})();
+</script>
+</body>
+</html>

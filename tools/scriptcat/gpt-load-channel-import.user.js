@@ -146,12 +146,14 @@
       button { cursor: pointer; }
       .launcher, .panel { position: fixed; z-index: 2147483647; }
       .launcher {
-        right: 20px; bottom: 20px; min-height: 44px; padding: 0 16px;
+        right: 20px; bottom: 20px; width: 44px; height: 44px; padding: 0;
+        display: grid; place-items: center;
         border: 1px solid #0b544a; border-radius: 7px; background: #0e6b5d;
         color: #fff; font-size: 14px; font-weight: 650;
         box-shadow: 0 4px 14px rgb(13 37 32 / 22%);
         transition: background-color 140ms ease, box-shadow 140ms ease;
       }
+      .launcher svg { width: 20px; height: 20px; }
       .launcher:hover { background: #09594e; box-shadow: 0 6px 18px rgb(13 37 32 / 25%); }
       .launcher:focus-visible, .close:focus-visible, .reveal:focus-visible, input:focus-visible, .submit:focus-visible {
         outline: 3px solid #e09b36; outline-offset: 2px;
@@ -192,7 +194,7 @@
     `;
     const surface = document.createElement("div");
     surface.innerHTML = `
-      <button class="launcher" type="button" aria-expanded="false" aria-controls="sc-panel">导入到 GPT-Load</button>
+      <button class="launcher" type="button" aria-label="导入到 GPT-Load" title="导入到 GPT-Load" aria-expanded="false" aria-controls="sc-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg></button>
       <section class="panel" id="sc-panel" aria-labelledby="sc-title" hidden>
         <div class="header">
           <h2 id="sc-title">导入 API Key</h2>

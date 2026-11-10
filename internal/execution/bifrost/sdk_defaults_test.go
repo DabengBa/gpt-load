@@ -19,6 +19,13 @@ func TestSDKProviderTimeoutDoesNotPreemptAcceptedRequestTimeouts(t *testing.T) {
 	}
 }
 
+func TestSDKStreamIdleTimeoutDefault(t *testing.T) {
+	config := providerConfig("https://api.openai.com", false, "openai", false)
+	if got, want := config.NetworkConfig.StreamIdleTimeoutInSeconds, 240; got != want {
+		t.Fatalf("SDK stream idle timeout = %d seconds, want %d", got, want)
+	}
+}
+
 func TestProviderConfigEnablesAnthropicPromptCaching(t *testing.T) {
 	config := providerConfig("https://api.anthropic.com", false, schemas.Anthropic, false)
 

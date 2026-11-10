@@ -51,7 +51,7 @@ upstream model's identity.
 - The SDK and its matching reference data are bundled with GPT-Load. The data
   is loaded locally on the first fingerprint run; no separate analysis service
   or runtime download is required.
-- The run has a six-minute deadline, duplicate runs for the same group/model
+- The run has a ten-minute deadline, duplicate runs for the same group/model
   are rejected, and at most four runs execute concurrently per process.
 - Attribution is diagnostic only. It does not trigger health recovery,
   cooldown, circuit breaking, retries, routing, or affinity changes.

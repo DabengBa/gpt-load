@@ -191,7 +191,7 @@ func providerConfig(baseURL string, custom bool, baseProvider schemas.ModelProvi
 			BaseURL:                        networkBaseURL,
 			DefaultRequestTimeoutInSeconds: providerTimeoutSecs,
 			MaxRetries:                     0,
-			StreamIdleTimeoutInSeconds:     120,
+			StreamIdleTimeoutInSeconds:     240,
 			AllowPrivateNetwork:            allowPrivateNetwork,
 		},
 		ConcurrencyAndBufferSize: schemas.ConcurrencyAndBufferSize{

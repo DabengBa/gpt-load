@@ -29,6 +29,12 @@ import (
 
 const modelTraceTestToken = "modeltrace-test-token-0123456789"
 
+func TestModelTraceRunDeadline(t *testing.T) {
+	if got, want := modelTraceRunDeadline, 10*time.Minute; got != want {
+		t.Fatalf("ModelTrace run deadline = %s, want %s", got, want)
+	}
+}
+
 // modelTraceTestService is a faithful stub of the ModelTrace analysis contract:
 // Bearer authentication, GET /api/challenges, POST /api/analyze.
 type modelTraceTestService struct {

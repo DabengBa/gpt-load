@@ -44,7 +44,7 @@ import (
 // largest expected count is 332 integers, which fits comfortably below this
 // budget while staying a bounded, code-owned value.
 const modelTraceChallengeOutputTokens = 2048
-const modelTraceRunDeadline = 6 * time.Minute
+const modelTraceRunDeadline = 10 * time.Minute
 
 var modelTraceInFlight sync.Map
 var modelTraceSlots = make(chan struct{}, 4)

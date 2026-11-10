@@ -107,6 +107,31 @@ async function mockImportAPI(page: Page): Promise<void> {
   })
 }
 
+for (const viewport of [{ width: 1280, height: 720 }, { width: 320, height: 640 }]) {
+  test(`launcher is compact and operable at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await installGMBridge(page)
+    await serveKeyPage(page)
+
+    const launcher = page.getByRole('button', { name: '导入到 GPT-Load' })
+    await expect(launcher).toBeVisible()
+    const bounds = await launcher.boundingBox()
+    expect(bounds).not.toBeNull()
+    expect(bounds!.width).toBeGreaterThanOrEqual(44)
+    expect(bounds!.width).toBeLessThanOrEqual(48)
+    expect(bounds!.height).toBeGreaterThanOrEqual(44)
+    expect(bounds!.height).toBeLessThanOrEqual(48)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width)
+    await launcher.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('region', { name: '导入 API Key' })).toBeVisible()
+    await page.getByRole('button', { name: '关闭导入面板' }).click()
+    await expect(launcher).toBeFocused()
+    await launcher.click()
+    await expect(page.getByRole('region', { name: '导入 API Key' })).toBeVisible()
+  })
+}
+
 test('automatically shows the import widget on To-Tokens keys and transfers only after confirmation', async ({
   page,
 }) => {

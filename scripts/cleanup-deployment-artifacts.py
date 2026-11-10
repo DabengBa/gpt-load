@@ -4,7 +4,7 @@
 Dry-run by default; pass --apply to delete. Fail-closed: if Docker mount
 source or process inspection fails, abort without deleting anything.
 
-Quotas: newest 1 rehearsal-*, newest 2 pre-upgrade.* dirs, newest 2
+Quotas: newest 1 rehearsal-*, newest 1 pre-upgrade.* dirs, newest 2
 backups/gpt-load-offline-*.tar.gz. Entries younger than 24h are never
 deleted. Never touches symlinks, Docker mount sources (running or stopped),
 or paths opened/cwd'd by running processes (/proc scan).
@@ -24,7 +24,7 @@ REHEARSAL_RE = re.compile(r"^rehearsal-.+$")
 PRE_UPGRADE_RE = re.compile(r"^pre-upgrade\..+$")
 OFFLINE_BACKUP_RE = re.compile(r"^gpt-load-offline-.+\.tar\.gz$")
 MIN_AGE_SECONDS = 24 * 3600
-KEEP = {"rehearsal": 1, "pre_upgrade": 2, "offline_backup": 2}
+KEEP = {"rehearsal": 1, "pre_upgrade": 1, "offline_backup": 2}
 
 
 class ProtectionError(RuntimeError):
