@@ -26,10 +26,7 @@ test('all three locales document first_provider_attempts and its error message',
     )
     const source = readFileSync(path, 'utf8')
     assert.ok(source.includes('first_provider_attempts'), `${locale} missing field label`)
-    assert.ok(
-      source.includes('firstProviderAttemptsHelp'),
-      `${locale} missing field help`,
-    )
+    assert.ok(source.includes('firstProviderAttemptsHelp'), `${locale} missing field help`)
     assert.ok(source.includes('positiveCountError'), `${locale} missing validation message`)
   }
 })

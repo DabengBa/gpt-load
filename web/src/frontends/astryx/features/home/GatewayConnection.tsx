@@ -1019,5 +1019,5 @@ export function GatewayConnection({
         onAction={() => void openQuickImport()}
       />
     </section>
-  );
+  )
 }

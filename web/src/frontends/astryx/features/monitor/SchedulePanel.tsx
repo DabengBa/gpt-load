@@ -346,7 +346,7 @@ export function SchedulePanel({
           )}
         </div>
       </div>
-    );
+    )
   }
 
   const contextControl = (

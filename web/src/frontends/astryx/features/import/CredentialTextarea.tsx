@@ -181,9 +181,7 @@ export function CredentialTextarea({
         label={label}
         description={storageDescription ?? (hideHeader ? description : undefined)}
         inputID="channel-credentials"
-        descriptionID={
-          storageDescription || hideHeader ? 'channel-credentials-desc' : undefined
-        }
+        descriptionID={storageDescription || hideHeader ? 'channel-credentials-desc' : undefined}
         isRequired
         status={
           error

@@ -47,7 +47,10 @@ export function GroupsView() {
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="groups-title">
       <div {...stylex.props(styles.pageInner)}>
-        <div {...stylex.props(styles.collection)} aria-busy={collection.collectionBusy || undefined}>
+        <div
+          {...stylex.props(styles.collection)}
+          aria-busy={collection.collectionBusy || undefined}
+        >
           <GroupCollectionHeader
             total={data?.summary.total}
             refreshing={collection.groupsQuery.isFetching}
@@ -68,9 +71,7 @@ export function GroupsView() {
                 />
               )}
               {collection.groupsQuery.isError && (
-                <GroupCollectionStaleBanner
-                  onRetry={() => void collection.groupsQuery.refetch()}
-                />
+                <GroupCollectionStaleBanner onRetry={() => void collection.groupsQuery.refetch()} />
               )}
               {data.summary.total > 0 && (
                 <GroupCollectionToolbar

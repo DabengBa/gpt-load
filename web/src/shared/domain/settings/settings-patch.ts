@@ -359,8 +359,11 @@ export function validateSettingsSection(draft: SettingsDraft, section: SettingsS
   return (
     timeouts.every((key) => !draft.overrides.has(key) || isValidTimeout(draft.values[key])) &&
     policyCounts.every(
-      (key) => !draft.overrides.has(key) || (key === 'first_provider_attempts'
-        ? isValidPositiveCount(draft.values[key]) : isValidNonNegativeInteger(draft.values[key])),
+      (key) =>
+        !draft.overrides.has(key) ||
+        (key === 'first_provider_attempts'
+          ? isValidPositiveCount(draft.values[key])
+          : isValidNonNegativeInteger(draft.values[key])),
     )
   )
 }

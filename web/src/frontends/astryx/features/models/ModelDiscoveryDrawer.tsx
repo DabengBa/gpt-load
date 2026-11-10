@@ -250,11 +250,7 @@ export function ModelDiscoveryDrawer({
         ) : (
           <fieldset {...stylex.props(styles.candidateList)}>
             <legend {...stylex.props(styles.srOnly)}>{labels.filterLabel}</legend>
-            <div
-              {...stylex.props(styles.legend)}
-              role="group"
-              aria-label={labels.legendLabel}
-            >
+            <div {...stylex.props(styles.legend)} role="group" aria-label={labels.legendLabel}>
               <span {...stylex.props(styles.legendItem)}>
                 <span {...stylex.props(styles.statusIcon, styles.statusIconLive)} aria-hidden>
                   <Radar size={15} strokeWidth={1.9} aria-hidden />
@@ -329,7 +325,7 @@ export function ModelDiscoveryDrawer({
         )}
       </div>
     </DetailPanel>
-  );
+  )
 }
 
 const styles = stylex.create({

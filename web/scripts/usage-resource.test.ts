@@ -98,7 +98,12 @@ test('keeps distinct request models sharing an upstream for both scopes', () => 
     const rows =
       scope === 'admin'
         ? [first, second]
-        : [first, second].map(({ group_id, channel_id, ...row }) => row)
+        : [first, second].map((row) => {
+            const accessKeyRow = { ...row }
+            delete accessKeyRow.group_id
+            delete accessKeyRow.channel_id
+            return accessKeyRow
+          })
     const result = projectUsageBreakdown({
       ...fixture,
       scope,

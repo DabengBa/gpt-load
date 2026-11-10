@@ -58,7 +58,8 @@ export type TimeoutSettingKey = Exclude<
   | 'request_log_retention_days'
   | 'models_dev_auto_sync_enabled'
 >
-export type PolicyCountSettingKey = 'retry_count' | 'first_provider_attempts' | 'blacklist_threshold'
+export type PolicyCountSettingKey =
+  'retry_count' | 'first_provider_attempts' | 'blacklist_threshold'
 
 export interface CORSConfigDto {
   enabled: boolean

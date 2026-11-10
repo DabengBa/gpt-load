@@ -483,9 +483,7 @@ function ScopeFieldset({
   children: ReactNode
 }) {
   return (
-    <fieldset
-      {...stylex.props(styles.scopeEditor, sibling && styles.scopeEditorSibling)}
-    >
+    <fieldset {...stylex.props(styles.scopeEditor, sibling && styles.scopeEditorSibling)}>
       <legend {...stylex.props(styles.srOnly)}>{title}</legend>
       <div {...stylex.props(styles.scopeHead)}>
         <div>

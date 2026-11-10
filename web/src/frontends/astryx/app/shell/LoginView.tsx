@@ -489,5 +489,5 @@ export function LoginView() {
         </section>
       </div>
     </main>
-  );
+  )
 }

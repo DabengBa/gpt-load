@@ -577,7 +577,7 @@ export function AccessKeyCostLimitEditor({
                     />
                   )}
                 </article>
-              );
+              )
             })}
           </div>
         )}
@@ -703,12 +703,12 @@ export function AccessKeyCostLimitEditor({
                       />
                     )}
                   </article>
-                );
+                )
               })}
             </div>
           </div>
         )}
       </section>
     </div>
-  );
+  )
 }

@@ -10,7 +10,10 @@ import {
   hasUpstreamBaseURLVersionMismatch,
   isValidUpstreamBaseURL,
 } from '@shared/lib/upstream-base-url'
-import { extractSiteRootUrl, isValidProviderUrlForWrite } from '@shared/domain/groups/settings/group-settings-patch'
+import {
+  extractSiteRootUrl,
+  isValidProviderUrlForWrite,
+} from '@shared/domain/groups/settings/group-settings-patch'
 import type { ImportProxyDraft } from '@shared/domain/import/model-draft'
 
 import { useT } from '../../app/i18n'

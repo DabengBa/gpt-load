@@ -412,9 +412,7 @@ test('drawer keeps the shared-impact and save scope notice visible while editing
     const filler = document.createElement('div')
     filler.style.height = '2000px'
     filler.setAttribute('aria-hidden', 'true')
-    node
-      .querySelector('[data-detail-panel-context-notice]')
-      ?.after(filler)
+    node.querySelector('[data-detail-panel-context-notice]')?.after(filler)
   })
   const geometry = await notice.evaluate((node) => {
     let parent = node.parentElement as HTMLElement | null

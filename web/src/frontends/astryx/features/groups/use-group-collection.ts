@@ -19,7 +19,9 @@ import { useGroupSummaryItems } from './use-group-summary-items'
  */
 export function useGroupCollection() {
   const { apiClient } = useAppServices()
-  const { searchStr } = useRouterState({ select: (state) => ({ searchStr: state.location.searchStr }) })
+  const { searchStr } = useRouterState({
+    select: (state) => ({ searchStr: state.location.searchStr }),
+  })
   const {
     filters,
     searchDraft,

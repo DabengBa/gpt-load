@@ -9030,7 +9030,6 @@ func TestBedrockConverseFineGrainedToolStreaming(t *testing.T) {
 	}
 }
 
-
 func TestInvokeBuildConfig_ExcludesInternalConverseFields(t *testing.T) {
 	// Vendored-core repair: this file is the external (`bedrock_test`) package, so the
 	// struct is not reachable by bare name. The probe needs no clients, so a zero

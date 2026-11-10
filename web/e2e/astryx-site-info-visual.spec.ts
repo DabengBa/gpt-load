@@ -51,7 +51,13 @@ const channel = {
   client_protocols: ['openai-completions'],
 }
 
-async function mock(page: Page, locale = 'en-US', longNames = false, providerUrl = base.provider_url, tokenConfigured = true) {
+async function mock(
+  page: Page,
+  locale = 'en-US',
+  longNames = false,
+  providerUrl = base.provider_url,
+  tokenConfigured = true,
+) {
   await page.addInitScript((locale) => {
     localStorage.setItem('gpt-load.auth-key', 'visual-test')
     localStorage.setItem('gpt-load.locale', locale)
@@ -146,12 +152,10 @@ test('provider website validation is recoverable in creation and settings', asyn
     const button = page.getByRole('button', {
       name: path.startsWith('/import') ? 'Create Group' : 'Save settings',
     })
-    const message = page
-      .locator('.astryx-field-status')
-      .filter({
-        hasText:
-          'Enter a valid HTTP or HTTPS provider website URL without credentials or a fragment.',
-      })
+    const message = page.locator('.astryx-field-status').filter({
+      hasText:
+        'Enter a valid HTTP or HTTPS provider website URL without credentials or a fragment.',
+    })
     for (const invalid of [
       'https://site.example/#pricing',
       'https://user:pass@site.example',
@@ -175,7 +179,9 @@ test('provider website validation is recoverable in creation and settings', asyn
   }
 })
 
-test('legacy provider port stays readable and does not block unrelated settings edits', async ({ page }) => {
+test('legacy provider port stays readable and does not block unrelated settings edits', async ({
+  page,
+}) => {
   await mock(page, 'en-US', false, 'https://site.example:99999')
   await page.goto('/groups/1')
   const field = page.getByRole('textbox', { name: /Provider website/ })
@@ -191,13 +197,17 @@ test('legacy provider port stays readable and does not block unrelated settings 
 })
 
 for (const configured of [false, true]) {
-  test(`legacy provider port blocks ${configured ? 'replacing' : 'adding'} a site token`, async ({ page }) => {
+  test(`legacy provider port blocks ${configured ? 'replacing' : 'adding'} a site token`, async ({
+    page,
+  }) => {
     await mock(page, 'en-US', false, 'https://site.example:99999', configured)
     await page.goto('/groups/1')
     const website = page.getByRole('textbox', { name: /Provider website/ })
     const token = page.getByLabel('Access token')
     const save = page.getByRole('button', { name: 'Save settings' })
-    const error = page.locator('.astryx-field-status').filter({ hasText: 'Enter a valid HTTP or HTTPS provider website URL' })
+    const error = page
+      .locator('.astryx-field-status')
+      .filter({ hasText: 'Enter a valid HTTP or HTTPS provider website URL' })
     await page.getByRole('textbox', { name: /^Name Name/ }).fill('Updated group')
     await expect(save).toBeEnabled()
     await token.fill('new-secret')
@@ -220,13 +230,17 @@ for (const configured of [false, true]) {
   })
 }
 
-test('legacy provider port validates changed site user ID only while a token remains configured', async ({ page }) => {
+test('legacy provider port validates changed site user ID only while a token remains configured', async ({
+  page,
+}) => {
   await mock(page, 'en-US', false, 'https://site.example:99999')
   await page.goto('/groups/1')
   const website = page.getByRole('textbox', { name: /Provider website/ })
   const userId = page.getByRole('textbox', { name: 'User ID' })
   const save = page.getByRole('button', { name: 'Save settings' })
-  const error = page.locator('.astryx-field-status').filter({ hasText: 'Enter a valid HTTP or HTTPS provider website URL' })
+  const error = page
+    .locator('.astryx-field-status')
+    .filter({ hasText: 'Enter a valid HTTP or HTTPS provider website URL' })
   await page.getByRole('textbox', { name: /^Name Name/ }).fill('Updated group')
   await userId.fill('  operator-123  ')
   await expect(save).toBeEnabled()
@@ -250,12 +264,17 @@ test('legacy provider port validates changed site user ID only while a token rem
   await expect(save).toBeEnabled()
 })
 
-test('legacy provider port allows changing site user ID without a configured token', async ({ page }) => {
+test('legacy provider port allows changing site user ID without a configured token', async ({
+  page,
+}) => {
   await mock(page, 'en-US', false, 'https://site.example:99999', false)
   await page.goto('/groups/1')
   await page.getByRole('textbox', { name: 'User ID' }).fill('new-user')
   await expect(page.getByRole('button', { name: 'Save settings' })).toBeEnabled()
-  await expect(page.getByRole('textbox', { name: /Provider website/ })).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByRole('textbox', { name: /Provider website/ })).not.toHaveAttribute(
+    'aria-invalid',
+    'true',
+  )
 })
 
 test('long common-prefix group names remain fully readable beside mobile metrics', async ({
