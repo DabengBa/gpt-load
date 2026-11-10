@@ -152,6 +152,15 @@ candidate switch consumes the same request-wide `retry_count` budget, so the
 configured same-provider limit never creates additional attempts beyond the
 global budget.
 
+Non-stream empty completions and upstream host errors enter the ordinary HTTP
+candidate retry loop; they do not receive a separate retry budget. Empty
+completion remains an ambiguous attempt with no health effect. Ordinary upstream
+host errors retain the group-skip effect; local failures and an ineligible
+committed buffered response do not apply that effect. The normal committed-response,
+buffered-replay eligibility, operation replay-safety, and WebSocket turn
+boundaries still apply. Failed attempts remain individually visible in request
+logs even when a later attempt determines the final request result.
+
 Before a same-provider replay, current credential and route-entry health plus
 group skip state are checked. Cooldown, blacklist, breaker, and replay-safety
 effects remain authoritative; a changed credential reference ends the replay

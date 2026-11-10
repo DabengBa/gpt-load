@@ -8,8 +8,7 @@ import (
 )
 
 // 上游以可重试状态（408/429/5xx）失败、且下游只收到心跳时，网关必须换候选。
-// 证据一旦在 buffered 路径上被保留，upstream.host_error.replay_unsafe 的默认值就会
-// 把这类失败重新变回终局，所以重放许可必须由 buffered 合同单独给出。
+// Host error 使用通用重试规则；408 仍由 buffered 合同授予重放许可。
 func TestJudgeExecutionSwitchesCandidateOnTransientUpstreamStatusBeforeRelease(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -180,5 +179,49 @@ func TestJudgeExecutionRetriesBufferedStreamOnSuccessStatusWithoutPayload(t *tes
 	decision = JudgeExecution(attempt, DecisionContext{BufferedReplayEligible: true})
 	if decision.Retry != RetryNextCandidate || decision.Effect != EffectNone {
 		t.Fatalf("client error JudgeExecution() = %#v, want candidate retry", decision)
+	}
+}
+
+// A heartbeat alone does not grant replay permission. The request must also
+// qualify for the buffered replay contract, even when the error is a 5xx.
+func TestJudgeExecutionNonEligibleBufferedHostErrorDoesNotRetry(t *testing.T) {
+	for _, status := range []int{http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			attempt := bufferedUpstreamStatusAttempt(status, execution.ErrorScopeGroup)
+			decision := JudgeExecution(attempt, DecisionContext{
+				Method: http.MethodPost, Operation: execution.OperationChatCompletion,
+				BufferedReplayEligible: false,
+			})
+			if decision.Retry != RetryNone {
+				t.Errorf("non-eligible committed heartbeat must not retry: %#v", decision)
+			}
+			if err := decision.Validate(); err != nil {
+				t.Errorf("Decision.Validate() = %v", err)
+			}
+		})
+	}
+}
+
+func TestJudgeExecutionBufferedInternalHostErrorDoesNotRetry(t *testing.T) {
+	attempt := bufferedUpstreamStatusAttempt(http.StatusServiceUnavailable, execution.ErrorScopeGroup)
+	attempt.Evidence.OriginHint = execution.ErrorOriginInternal
+	attempt.Evidence.Kind = execution.ErrorKindInternal
+	got := JudgeExecution(attempt, DecisionContext{BufferedReplayEligible: true})
+	if got.Retry != RetryNone || got.Effect != EffectNone {
+		t.Fatalf("internal failure must not retry or affect upstream: %#v", got)
+	}
+}
+
+func TestJudgeExecutionUntrustedEmptyCompletionCodeDoesNotBypassSafety(t *testing.T) {
+	for _, websocket := range []bool{false, true} {
+		attempt := bufferedUpstreamStatusAttempt(http.StatusServiceUnavailable, execution.ErrorScopeGroup)
+		attempt.Evidence.Code = "upstream_empty_completion"
+		if websocket {
+			attempt.BufferedStream, attempt.HTTPCommitted, attempt.ClientVisibleBytes = false, false, 0
+		}
+		got := JudgeExecution(attempt, DecisionContext{WebSocket: websocket})
+		if got.Retry != RetryNone {
+			t.Fatalf("websocket=%v: untrusted upstream code bypassed replay safety: %#v", websocket, got)
+		}
 	}
 }

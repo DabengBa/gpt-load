@@ -4327,8 +4327,8 @@ func TestHandlerDoesNotExposeAliasedUpstreamModelWhenRetryBudgetIsExhausted(t *t
 
 	engine.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusInternalServerError || attempts.Load() != 1 {
-		t.Fatalf("response/attempts = %d/%d, want 500/1", recorder.Code, attempts.Load())
+	if recorder.Code != http.StatusInternalServerError || attempts.Load() != testDefaultRetryBudget {
+		t.Fatalf("response/attempts = %d/%d, want 500/%d", recorder.Code, attempts.Load(), testDefaultRetryBudget)
 	}
 	if strings.Contains(recorder.Body.String(), upstreamModel) ||
 		!strings.Contains(recorder.Body.String(), externalModel) {

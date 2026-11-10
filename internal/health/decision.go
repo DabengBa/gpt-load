@@ -62,6 +62,9 @@ type DecisionContext struct {
 	BillingCooldown time.Duration
 	Method          string
 	Operation       execution.Operation
+	// WebSocket marks a turn bound to an already-upgraded provider session.
+	// An unknown upstream outcome cannot be replayed through another session.
+	WebSocket bool
 	// BufferedReplayEligible is a request-level proof that another buffered
 	// attempt cannot repeat a provider-side operation or continuity state.
 	BufferedReplayEligible bool
