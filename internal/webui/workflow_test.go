@@ -2955,8 +2955,8 @@ func TestReleaseAssetManifestIsTheSingleSourceOfTruth(t *testing.T) {
 			assets = append(assets, name)
 		}
 	}
-	if len(assets) != 8 {
-		t.Fatalf("release asset manifest lists %d assets, want 8", len(assets))
+	if len(assets) != 9 {
+		t.Fatalf("release asset manifest lists %d assets, want 9", len(assets))
 	}
 	sorted := append([]string(nil), assets...)
 	sort.Strings(sorted)
