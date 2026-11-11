@@ -16,6 +16,9 @@ code:
     - internal/gateway/feedback.go
     - internal/gateway/execution_forward.go
     - internal/gateway/attempts.go
+    - internal/gateway/stream_observation.go
+    - internal/gateway/buffered_stream_forward.go
+    - internal/execution/bifrost/converted.go
     - internal/requestlog/worker.go
     - internal/requestlog/query.go
     - internal/storage/migrations/0024_provider_feedback.go
@@ -163,6 +166,42 @@ committed buffered response do not apply that effect. The normal committed-respo
 buffered-replay eligibility, operation replay-safety, and WebSocket turn
 boundaries still apply. Failed attempts remain individually visible in request
 logs even when a later attempt determines the final request result.
+
+### Retry To Obtain A Usable Upstream Answer
+
+Internal retry and candidate rotation are intentional: within the existing
+candidate selection, health/admission rules, request-wide retry budget, and
+buffered replay boundary, the Gateway should keep trying eligible upstreams so
+that the client can receive a usable upstream answer. Do not remove an existing
+retry classification solely to reduce retries or because the earlier upstream
+may have processed the request; evaluate that change against this delivery
+intent and the existing replay boundary.
+
+In particular, a complete Responses `response.incomplete` with
+`incomplete_details.reason = "max_output_tokens"` remains an unsuccessful
+buffered attempt eligible for the existing retry/rotation policy. It must not
+be released immediately just because it is a syntactically complete upstream
+event. If another eligible candidate succeeds, release that candidate's
+response. If candidates or budget are exhausted, preserve the current buffered
+failure behavior; do not add cross-attempt response storage or an incomplete
+response fallback without a separately approved behavior change.
+
+The converted Responses streaming adapter also retains its existing internal
+replay classification for HTTP 429 `rate_limit_exceeded`, allowing the Gateway
+to try another candidate. This is specific to the existing classification; it
+does not authorize adding replay eligibility to every HTTP 429 code, including
+usage-limit or model-capacity responses, without evidence and a policy decision.
+
+These retries remain subject to the current request-wide budget, candidate
+eligibility and health effects. A heartbeat without released payload does not
+by itself stop an eligible buffered retry. Once upstream payload is released
+to the client, another candidate must not be replayed; cancellation or the
+request-wide deadline also stops further attempts. Reported usage from failed
+attempts remains billable under [Frozen Model Pricing](frozen-model-pricing.md).
+The intended paths are covered by
+`internal/gateway/provider_incomplete_integration_test.go`,
+`internal/gateway/http_rate_limit_integration_test.go`, and
+`internal/execution/bifrost/http_rate_limit_replay_test.go`.
 
 The gateway detects `upstream_empty_completion` only for a completed non-stream
 OpenAI Chat Completions 2xx response with a complete JSON object, at least one

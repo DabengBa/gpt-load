@@ -1934,6 +1934,9 @@ func TestReleaseWorkflowRunsCompleteLocalDockerSmoke(t *testing.T) {
 			t.Fatalf("release Docker smoke does not contain %q", required)
 		}
 	}
+	if strings.Contains(script, "/app/licenses/MPL-2.0.txt") {
+		t.Fatal("release Docker smoke requires an unshipped MPL license file")
+	}
 	if strings.Contains(script, "00000000-0000-4000-8000-") {
 		t.Fatal("release Docker smoke reuses fixed Idempotency-Keys")
 	}
@@ -2563,7 +2566,7 @@ func TestDockerfilePinsBuildAndRuntimeImagesByVersionAndDigest(t *testing.T) {
 		"node:26.12.1-alpine3.24@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797",
 		"npm install --global pnpm@latest",
 		"golang:1.27.3-alpine3.24@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb",
-		"alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
+		"alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf",
 	} {
 		if !strings.Contains(content, required) {
 			t.Errorf("Dockerfile does not contain %q", required)
@@ -2571,7 +2574,7 @@ func TestDockerfilePinsBuildAndRuntimeImagesByVersionAndDigest(t *testing.T) {
 	}
 }
 
-func TestDockerfileRuntimePinsPatchedOpenSSLPackages(t *testing.T) {
+func TestDockerfileRuntimePinsPatchedAlpinePackages(t *testing.T) {
 	content := readRepositoryFile(t, "Dockerfile")
 	runtimeStart := strings.Index(content, "\nFROM alpine:")
 	if runtimeStart < 0 {
@@ -2583,17 +2586,17 @@ func TestDockerfileRuntimePinsPatchedOpenSSLPackages(t *testing.T) {
 	}
 	runtimeStage := content[runtimeStart : runtimeStart+1+runtimeEnd]
 
-	upgrade := "apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0"
+	upgrade := "apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 zlib=1.4-r0"
 	upgradeIndex := strings.Index(runtimeStage, upgrade)
 	if upgradeIndex < 0 {
-		t.Fatalf("Dockerfile runtime stage does not pin patched OpenSSL packages via %q", upgrade)
+		t.Fatalf("Dockerfile runtime stage does not pin patched Alpine packages via %q", upgrade)
 	}
 	packageInstallIndex := strings.Index(runtimeStage, "apk add --no-cache ca-certificates tzdata")
 	if packageInstallIndex < 0 {
 		t.Fatal("Dockerfile runtime stage does not install certificate and timezone packages")
 	}
 	if upgradeIndex >= packageInstallIndex {
-		t.Fatal("Dockerfile upgrades OpenSSL after installing certificate and timezone packages")
+		t.Fatal("Dockerfile upgrades patched packages after installing certificate and timezone packages")
 	}
 }
 

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上游修复与依赖提交对比</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#202b37;background:#f5f7fa}body{max-width:1060px;margin:auto;padding:1.2rem;line-height:1.65}header,article,aside{background:#fff;border:1px solid #d9e0e8;border-radius:8px;padding:1rem 1.2rem;margin:.8rem 0}h1,h2,h3{line-height:1.3}h1{margin:0 0 .6rem;font-size:2rem}h2{margin:1.7rem 0 .5rem;font-size:1.4rem}h3{margin:0 0 .5rem;font-size:1.08rem}p{margin:.42rem 0}a{color:#165b9d}code{font-size:.92em;overflow-wrap:anywhere;color:#344b63}.tag{display:inline-block;padding:.05rem .45rem;border-radius:4px;background:#e2f4e9;color:#145b34;font-weight:700}[data-class="none"] .tag{background:#f6ecda;color:#755113}.verification{border-left:3px solid #51799b;padding:.5rem .75rem;background:#f1f6fa}pre{white-space:pre-wrap;overflow-wrap:anywhere}article{scroll-margin-top:1rem}h3 a{white-space:nowrap}.evidence{font-size:.92rem;color:#485765}@media(max-width:600px){body{padding:.65rem}header,article,aside{padding:.8rem}}
+</style>
+</head>
+<body>
+<header>
+<h1>上游修复与依赖提交对比 · 九项复核</h1>
+<p>维护仓库 <code>DabengBa/gpt-load</code>（<code>/mnt/projects/repos/gpt-load</code>）；原分析基线 <code>dev</code> / HEAD <code>1530185a49cf13ffa8aebfe191cfea35e08538a8</code>。上游参考为 <code>tbphp/gpt-load</code>，各项链接指向对应提交；代码行号指向对应版本中的实现。</p>
+<p>仅保留指定的 <strong>9 项</strong>：修复类 4 项、依赖类 5 项。每项重新判断适用范围，列出上游做法、真实代码、当前用户操作、项目调整与验证步骤。“有价值”表示值得评估，不代表可以直接 cherry-pick，也不代表本项目已出现同一故障。本报告是分析记录，不是已实施的升级清单。</p>
+<p><strong>验证口径：</strong>“已运行”指本次复核中执行的检查；“未复现”表示未取得对应故障证据，不表示已证明不存在；“待验证”列出尚未执行的场景。报告还经过文档结构、九项唯一性与 diff 格式检查。</p>
+<p><strong>本次复核已运行：</strong>4 项发布脚本 / Docker 静态 Go 测试；gateway 与 health 指定 reasoning / incomplete 测试；Bifrost 2 项定向测试；contentcoding 测试和 2 项网关压缩测试；前端 type-check、eslint，group-query-freshness 与 mutation-cache 共 25 项；本地 amd64 基础镜像包检查及 brotli 回归样本。Python 3.14.7 比较正常。</p>
+<p><strong>尚未运行：</strong>Python 3.9、浏览器、项目最终镜像构建与扫描、任何候选依赖升级后的兼容性测试。已有通过结果均属当前基线或独立回归样本，不能作为升级后的验收结论。</p>
+</header>
+<h2>修复类 · 4 项</h2>
+<article id="commit-f6d6e9f2" data-commit="f6d6e9f2" data-class="none">
+<h3>1. <a href="https://github.com/tbphp/gpt-load/commit/f6d6e9f2">f6d6e9f2</a> · Python 3.9 发布兼容 <span class="tag">无参考意义</span></h3>
+<p><strong>重新判断：</strong>本项目没有已确认的 Python 3.9 发布需求或由此引起的故障；正式发布使用 <code>ubuntu-24.04</code>，本机 Python 3.14.7 的比较与现有发布相关测试正常。虽然比较器的注解在 Python 3.9 下存在兼容风险，但仅凭理论上的旧环境兼容性，不值得调整当前项目。</p>
+<p><strong>上游做法：</strong>加入 <code>from __future__ import annotations</code> 延迟注解求值，并增加发布 CLI 帮助测试；上游 <code>python -m scripts.release</code> 对应入口在本项目不存在，不能照搬。</p>
+<p><strong>真实代码与当前操作：</strong>维护者提升镜像渠道时，<code>.github/scripts/release-promote-image-channels.sh:61-80</code> 仅在目标渠道已有版本、需要比较时调用本地 <code>python3</code>；不是每次提升都会触发。<code>.github/scripts/release-compare-semver.py:1-17</code> 的返回注解包含 <code>list[tuple[bool, int | str]]</code>。</p>
+<p><strong>本项目调整：</strong>不调整脚本，也不新增 Python 3.9 测试；当前没有实际需求支持这一改动。</p>
+<p class="verification"><strong>已运行：</strong>复核记录本机 Python 3.14.7 比较正常，发布相关静态 Go 测试通过。<strong>未复现：</strong>Python 3.9 现场失败。<strong>待验证：</strong>真实 Python 3.9 及加 future import 后的兼容性。</p>
+<p class="evidence">补充证据：<code>.github/workflows/release.yml:1096-1114</code>、<code>.github/scripts/release-promote-image-channels.sh:61-80</code>、<code>internal/webui/workflow_test.go:2231-2265</code>。</p>
+<p class="evidence">证据：当前 <code>.github/scripts/release-compare-semver.py:1-17</code>、<code>.github/scripts/release-promote-image-channels.sh:69-80</code>；上游 <code>.github/scripts/release-compare-semver.py:3-17</code>、<code>internal/webui/workflow_test.go:2297-2308</code>。</p>
+</article>
+<article id="commit-b8dc8bd0" data-commit="b8dc8bd0" data-class="valuable">
+<h3>2. <a href="https://github.com/tbphp/gpt-load/commit/b8dc8bd0">b8dc8bd0</a> · 未定价确认框与刷新反馈 <span class="tag">部分有价值</span></h3>
+<p><strong>重新判断：</strong>值得修正的是保存失败时错误是否可见、可访问，以及失败语义；尚不能断言当前遮罩或焦点存在浏览器故障。React 确认框无需照搬 Vue Portal，也不应直接采用“提前关闭再保存”。</p>
+<p><strong>上游做法：</strong>Vue Portal 仅打开时挂载，遮罩与内容同层并按挂载顺序覆盖；未定价确认先关闭再保存，另调整复制、长关联文本、日志详情与静默刷新骨架屏。</p>
+<p><strong>真实代码与当前操作：</strong>管理员将价格设为未定价并确认后，<code>web/src/shared/controllers/model-price-editor.ts:210-245</code> 置 pending，先写服务端、更新 baseline/draft，再等待缓存失效，全部成功才关闭确认框；异常写入 failure 并保持确认框打开。<code>web/src/frontends/astryx/features/models/ModelPriceMatrix.tsx:313-319</code> 的错误在底层，<code>web/src/frontends/astryx/features/models/ModelPriceMatrix.tsx:494-529</code> 的确认框没有错误呈现，可能被遮罩或无障碍模态边界阻隔。</p>
+<p><strong>具体调整与验证步骤：</strong>在确认框内呈现 <code>role="alert"</code> 错误，避免底层和弹窗重复播报，保留 pending 期间防重复提交。区分“服务端写入失败”与“已保存，但缓存刷新失败”：后者不能统一说未保存或引导重复写入。用浏览器 E2E 分别模拟两类失败、成功、重复点击，检查焦点、屏幕阅读器可访问性和恢复操作。</p>
+<p><strong>刷新契约：</strong>LogsView 与 <code>web/src/frontends/astryx/app/collection-loading.ts:70-94</code> 的刷新状态并不相同；<code>web/e2e/astryx-request-log.spec.ts:580-591</code> 明确要求翻页显示骨架。验证后台刷新与翻页、筛选切换各自的反馈，不能统一取消骨架。复制失败的手动复制、长文本和嵌套弹窗可作浏览器检查项，不能当作已证缺陷。</p>
+<p class="verification"><strong>已运行：</strong>复核中的前端 type-check、eslint 及 group-query-freshness / mutation-cache 共 25 项测试通过。<strong>未复现：</strong>实际浏览器中的遮挡或无障碍故障。<strong>待验证：</strong>以上 E2E、错误分阶段提示及修改后的交互。</p>
+<p class="evidence">证据：当前 <code>web/src/frontends/astryx/features/models/ModelPriceMatrix.tsx:494-529</code>、<code>web/src/shared/controllers/model-price-editor.ts:210-241,246-261</code>、<code>web/src/frontends/astryx/components/CopyButton.tsx:73-74,119-122</code>；上游 <code>web/src/frontends/classic/components/ui/AppDialog.vue:51-55,92-103</code>、<code>web/src/frontends/classic/features/model-prices/ModelPriceSetupDrawer.vue:280-288</code>、<code>web/src/frontends/classic/components/ui/CopyButton.vue:10-13,46-55,89-95</code>、<code>web/src/frontends/classic/features/model-prices/ModelPriceRelations.vue:114-146</code>、<code>web/src/frontends/classic/features/monitor/LogsTab.vue:206-211,801</code>。</p>
+</article>
+<article id="commit-463808f6" data-commit="463808f6" data-class="valuable">
+<h3>3. <a href="https://github.com/tbphp/gpt-load/commit/463808f6">463808f6</a> · reasoning.status 出站过滤 <span class="tag">部分已有，先补强验证</span></h3>
+<p><strong>重新判断：</strong>本项目已有默认关闭的分组兼容开关和数组过滤；与上游的单对象支持有差异，但无证据证明单对象为协议必需或当前实际故障。保持默认关闭，先提高测试可信度，再按真实客户端需求决定扩展。</p>
+<p><strong>上游做法：</strong>嵌入式 Codex 准备执行时同时处理 <code>Payload</code>、<code>OriginalRequest</code>，移除 input 中 reasoning 项的 status，支持数组和单对象，数组变动后一次写回。本项目内置 Codex 订阅执行器已移除，不能原样移植。</p>
+<p><strong>真实代码与当前操作：</strong>管理员启用 Responses 分组过滤后，客户端发送 Responses create，<code>internal/gateway/responses_store.go:29-74</code> 解码 <code>[]json.RawMessage</code>，只对 <code>type == "reasoning"</code> 执行 <code>delete(item, "status")</code>。单对象解码失败时返回原 payload；开关关闭不处理。</p>
+<p><strong>具体调整与验证步骤：</strong>先将 <code>internal/gateway/reasoning_status_filter_forward_test.go:10-23</code> 和 <code>internal/gateway/websocket_reasoning_status_filter_test.go:17-48</code> 的字符串相邻匹配改为 JSON 语义断言，避免字段顺序或中间字段导致漏检。覆盖 HTTP、SSE、WebSocket 的开关两态，断言 reasoning.status 删除且其他字段保留；补单对象当前原样透传的契约。只有确认客户端输入需求后再扩展对象处理并增加对应回归。</p>
+<p class="verification"><strong>已运行：</strong>复核中的 gateway / health 指定 reasoning、incomplete 测试通过。<strong>未复现：</strong>单对象引发的用户故障；没有验证真实 Codex。<strong>待验证：</strong>更强语义断言和真实客户端兼容性，现有通过结果不能消除断言盲点。</p>
+<p class="evidence">证据：当前 <code>PRODUCT.md:13-14</code>、<code>internal/state/runtime_settings.go:275,324-329</code>、<code>web/src/frontends/astryx/features/groups/settings/GroupSettingsAdvanced.tsx:173-200</code>、<code>internal/gateway/execution_forward.go:866-875</code>、<code>internal/gateway/responses_store.go:29-63</code>、<code>internal/gateway/reasoning_status_filter_forward_test.go:10-37</code>、<code>internal/gateway/websocket_reasoning_status_filter_test.go:17-48</code>；上游 <code>third_party/cpaembedded/embedded/codex_prepare.go:11-32,37-73</code>。</p>
+</article>
+<article id="commit-243874ff" data-commit="243874ff" data-class="valuable">
+<h3>4. <a href="https://github.com/tbphp/gpt-load/commit/243874ff">243874ff</a> · Alpine 运行时依赖 <span class="tag">高价值</span></h3>
+<p><strong>重新判断：</strong>源码构建与 prebuilt 共用旧 runtime，升级覆盖两条交付路径，优先级高。已检查的是本地基础镜像包，不是最终应用镜像；不能据此断言最终扫描结果或漏洞可利用性。</p>
+<p><strong>上游做法：</strong>更新为 <code>alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf</code> 并固定 <code>zlib=1.4-r0</code>。提交说明以 musl 1.2.6-r3 与 CVE-2026-107891、CVE-2026-4738 扫描为目标，仍需对实际制品验证。</p>
+<p><strong>真实代码与当前操作：</strong>部署者构建 source-build 或发布者构建 prebuilt 时，<code>Dockerfile:40-47</code> 都使用 <code>alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b</code> 的 runtime；已有 OpenSSL 3.5.9-r0 固定规则，没有显式固定 zlib。</p>
+<p><strong>具体调整与验证步骤：</strong>升级 runtime digest 并固定 zlib，保留已有 OpenSSL 3.5.9-r0；同步 <code>internal/webui/workflow_test.go:2560-2600</code> 的现有静态断言。构建 source-build / prebuilt × amd64 / arm64 四个组合，检查最终镜像 musl、zlib、OpenSSL 包版本，运行 health、nonroot 和可写数据目录 smoke，再跑 Trivy 并记录扫描库时间及结果。</p>
+<p><strong>独立风险：</strong><code>.github/scripts/release-docker-smoke.sh:174-182</code> 要求 <code>/app/licenses/MPL-2.0.txt</code>，但 <code>Dockerfile:57-60</code> 的许可证 COPY 未列出它。需在最终镜像核实该文件与 smoke 契约，不能归因于此次 Alpine 升级。</p>
+<p class="verification"><strong>已运行：</strong>复核时离线检查本地 amd64 基础镜像得到 musl 1.2.6-r2、zlib 1.3.2-r0；发布脚本 / Docker 静态 Go 测试通过。<strong>未复现：</strong>最终应用镜像的扫描失败或可利用攻击。<strong>待验证：</strong>升级后的四组合构建、包版本、运行 smoke 和扫描，均未运行。</p>
+<p class="evidence">证据：当前 <code>Dockerfile:40-49,67-78</code>；上游 <code>Dockerfile:41-48</code>。</p>
+</article>
+<h2>依赖类 · 5 项</h2>
+<article id="commit-20891535" data-commit="20891535" data-class="valuable">
+<h3>5. <a href="https://github.com/tbphp/gpt-load/commit/20891535">20891535</a> · Go 依赖与流式终态适配 <span class="tag">版本已对齐，测试矩阵有价值</span></h3>
+<p><strong>重新判断：</strong>brotli 1.2.7、go-i18n 2.7.0、x/net 0.62.0 已对齐；内置 CPA 已移除。参考价值在跨协议终态及重放边界测试，不是重新引入 CPA 或不加区分地重试 incomplete。</p>
+<p><strong>上游做法：</strong>升级上述依赖与 CPA 8.0.49，调整客户端、WebSocket 和流式终态，用 <code>Incomplete</code> 保留未完成终态并用于分类；跨 Responses、Chat、Anthropic、Gemini 的覆盖思路可借用。</p>
+<p><strong>真实代码与当前操作：</strong>客户端发起流式请求时，<code>internal/gateway/stream_observation.go:595-628</code> 已识别 native SSE incomplete；本项目 <code>StreamResult</code> 没有 <code>Incomplete</code> 字段。<code>internal/health/execution_judge.go:650-681</code> 对缓冲收集器生成的失败设有特定重试门槛，不能将合法 provider incomplete 一概视为可重试失败。用户收到部分内容、正常未完成终态或错误时，是否可切换候选取决于终态来源、缓冲释放与重放证据。</p>
+<p><strong>具体调整与验证步骤：</strong>以实际 Bifrost 转换链路测试 Responses / Chat / Anthropic / Gemini 的合法 incomplete、缺失终态和错误；逐一覆盖首字节前、缓冲未释放、释放后，以及有无预算、usage 保留。分别断言客户端终态、attempt 数与计费数据。另对 429 capacity / usage limit 构造原始响应证据，核对 <code>internal/execution/bifrost/mapping.go:113-200</code>、<code>internal/execution/bifrost/mapping.go:320-330</code> 的分类及重放安全；<code>internal/health/execution_judge.go:620-646</code> 的 transient capacity 分支明确排除 429，不能混用其他状态的路径。</p>
+<p><strong>调整边界：</strong>证据不足不新增 Incomplete 字段；不为已输出内容或重放安全未知的请求开启重试。先证明现有转换丢失了哪一项语义，再决定最小实现调整。</p>
+<p class="verification"><strong>已运行：</strong>复核中的 gateway / health 指定 reasoning、incomplete 测试及 Bifrost 两项定向测试通过。<strong>未复现：</strong>现有跨协议链路的具体用户故障。<strong>待验证：</strong>上述完整跨协议与 429 矩阵；定向测试通过不代表这些组合全部覆盖。</p>
+<p class="evidence">补充证据：<code>internal/gateway/stream_observation.go:595-628</code>、<code>internal/health/execution_judge.go:620-681</code>、<code>internal/execution/bifrost/mapping.go:113-200</code>、<code>internal/execution/bifrost/mapping.go:320-330</code>。</p>
+<p class="evidence">证据：当前 <code>go.mod:7,15,22</code>、<code>PRODUCT.md:13-14</code>、<code>internal/gateway/buffered_stream_upstream_failure_test.go:30-180</code>；上游 <code>go.mod:6,14,21-22,29</code>、<code>internal/execution/contracts.go:570-575</code>、<code>internal/gateway/execution_forward.go:508-510,1213-1221</code>。</p>
+</article>
+<article id="commit-6cdd5d0c" data-commit="6cdd5d0c" data-class="valuable">
+<h3>6. <a href="https://github.com/tbphp/gpt-load/commit/6cdd5d0c">6cdd5d0c</a> · minimatch override <span class="tag">有价值，跨主版本需验证</span></h3>
+<p><strong>重新判断：</strong>旧 override 未命中当前依赖，值得整理；11.0.1 跨越 ESLint 等声明的 <code>^10.2.5</code> 主版本范围，匹配算法与 API 有差异，不能机械覆盖后宣称兼容或修复网关漏洞。</p>
+<p><strong>上游做法：</strong>把 <code>minimatch@9.0.9: 10.2.5</code> 改成 <code>minimatch@10.2.6: 11.0.1</code> 并更新 lockfile。</p>
+<p><strong>真实代码与当前操作：</strong>前端维护者安装依赖和运行 lint 时使用 workspace override；复核中的 <code>pnpm why minimatch</code> 实证当前 10.2.6 由 eslint、@eslint/config-array、typescript-eslint 引入，旧 9.0.9 规则未命中，brace-expansion 实际为 5.0.12。这里是开发 / 构建期的路径匹配，未证明生产网关存在对应漏洞。</p>
+<p><strong>具体调整与验证步骤：</strong>候选方案仅精确覆盖 10.2.6→11.0.1，重新生成并审查锁文件，检查声明范围和实际安装图。在相同文件树、相同 lint 配置下比较升级前后的 lint 覆盖文件集与忽略结果，尤其目录 glob 和边界路径，防止“lint 通过”其实是漏检；再运行全量 lint、type-check 及前端构建，确认没有非预期版本漂移。与 ESLint 自身升级分开评估。</p>
+<p class="verification"><strong>已运行：</strong>复核中的 pnpm why 依赖定位、当前基线 eslint 与 type-check 通过。<strong>未复现：</strong>网关漏洞或当前路径匹配故障。<strong>待验证：</strong>11.0.1 覆盖文件集与升级兼容性；基线通过不能替代升级后验证。</p>
+<p class="evidence">证据：当前 <code>web/pnpm-workspace.yaml:10-14</code>、<code>web/pnpm-lock.yaml:1368,2129,2445,2691,2963</code>、<code>web/package.json:11-18</code>；上游 <code>web/pnpm-workspace.yaml:4-8</code>、<code>web/pnpm-lock.yaml:1105,1525</code>。</p>
+</article>
+<article id="commit-62546839" data-commit="62546839" data-class="valuable">
+<h3>7. <a href="https://github.com/tbphp/gpt-load/commit/62546839">62546839</a> · Bifrost 本地 fork 升级 <span class="tag">部分有价值，必须三方评估</span></h3>
+<p><strong>重新判断：</strong>不能只改 require：<code>go.mod:14</code> 声明 1.13.1，<code>go.mod:114</code> 的 replace 始终指向 <code>third_party/bifrost-core</code>。官方 1.14.1 的收益必须结合本地补丁逐项确认，CPA 部分不适用。</p>
+<p><strong>上游做法：</strong>Bifrost core 1.13.1→1.14.1、CPA 8.0.49→8.0.51，并同步间接依赖。复核时实际比较 1.14.1 源码发现 Anthropic 流 usage 字段存在性、thinking 保留与 SSRF 客户端变更；这些是核查点，不是已经证实的本项目故障。</p>
+<p><strong>真实代码与当前操作：</strong>管理员开启 Debug Communication Capture 排查请求时，依赖 fork 对真实 provider attempt 的原始请求 / 响应字节及终止状态捕获。<code>third_party/bifrost-core/UPSTREAM.md:1-30</code> 和 <code>third_party/bifrost-core/UPSTREAM.md:49-62</code> 记录 observer、stream、cache、tool、schema 改动，影响客户端流式输出、取消与工具请求，不能被升级覆盖。</p>
+<p><strong>具体调整与验证步骤：</strong>先对原版 1.13.1、本地 fork、原版 1.14.1 做三方合并评估，逐项保留或有证据地替代本地补丁，更新 fork 来源和补丁说明。在根模块及嵌套模块分别测试：原始字节完整捕获、每个 attempt 的结束、取消 / 超时、SSE、工具 schema、缓存行为、Anthropic usage 字段缺失与零值及 thinking；网络代理和 SSRF 客户端变更要覆盖合法目标、拒绝目标与代理路径。不要重新引入 CPA。</p>
+<p class="verification"><strong>已运行：</strong>复核中的 Bifrost 两项定向测试通过，并完成上游相关源码比较。<strong>未复现：</strong>上述 1.14.1 核查点对应的本项目用户故障。<strong>待验证：</strong>三方合并和升级后根 / 嵌套模块完整回归，当前定向结果不是升级兼容性证明。</p>
+<p class="evidence">证据：当前 <code>go.mod:14,114</code>、<code>third_party/bifrost-core/UPSTREAM.md:1-30</code>、<code>PRODUCT.md:13-14</code>；上游 <code>go.mod:13,21</code>、<code>third_party/cpaembedded/go.mod:9</code>。</p>
+</article>
+<article id="commit-09ce770b" data-commit="09ce770b" data-class="valuable">
+<h3>8. <a href="https://github.com/tbphp/gpt-load/commit/09ce770b">09ce770b</a> · brotli 与 protobuf <span class="tag">brotli 有实证，protobuf 单独维护</span></h3>
+<p><strong>重新判断：</strong>brotli 1.2.7 的上游回归样本已在特定 reader 下复现 panic，值得升级 1.2.8；当前网关读取方式不同，不能声称样本已打崩网关。protobuf 是独立维护升级，未证实故障或安全风险。</p>
+<p><strong>上游做法：</strong>根模块和嵌入式 CPA 统一升级 brotli 1.2.8、protobuf 正式版 1.36.12。brotli 修复涉及判断 <code>len(r.in) &gt; 0 || r.buffer_length &gt; 0</code>，应保留对应损坏输入回归。</p>
+<p><strong>真实代码与当前操作：</strong>上游返回 br 压缩内容时，当前 <code>internal/platform/contentcoding/contentcoding.go:79</code> 与 <code>third_party/bifrost-core/providers/utils/utils.go:3166</code> 都使用 <code>bytes.NewReader</code>。复核时在 brotli 1.2.7 上用逐字节 reader 运行样本，实测 <code>runtime error: index out of range [8] with length 8</code>；同样样本用 bytes.Reader 返回 <code>brotli: excessive input</code>，没有相同 panic。必须区分库级复现与当前网关调用路径。</p>
+<p><strong>具体调整与验证步骤：</strong>升级 brotli 1.2.8 后重跑逐字节 reader 回归，增加损坏、截断、尾随字节及解码大小限制场景，验证正常数据和错误处理，并重跑现有 contentcoding 与网关压缩测试。检查根模块与 fork 实际选择版本。protobuf 当前为 <code>v1.36.12-0.20260120151049-f2248ac996af</code>，与正式 1.36.12 源码有差异；单独评估升级，检查 <code>go mod graph</code> 并运行控制接口测试，避免将版本转正包装成已证安全修复。</p>
+<p class="verification"><strong>已运行：</strong>复核中的 brotli 两种 reader 样本、contentcoding 测试及两项网关压缩测试。<strong>未复现：</strong>当前 bytes.Reader 路径的同样 panic，未证明当前网关被样本打崩。<strong>待验证：</strong>brotli 1.2.8 与 protobuf 正式版升级后的兼容性及上述补充边界测试。</p>
+<p class="evidence">证据：当前 <code>go.mod:7,106</code>、<code>internal/platform/contentcoding/contentcoding.go:38-80</code>；上游 <code>go.mod:6,32</code>、<code>third_party/cpaembedded/go.mod:6,14</code>。</p>
+</article>
+<article id="commit-0dd5eabb" data-commit="0dd5eabb" data-class="valuable">
+<h3>9. <a href="https://github.com/tbphp/gpt-load/commit/0dd5eabb">0dd5eabb</a> · React Query 与前端工具更新 <span class="tag">部分有价值，分组件评估</span></h3>
+<p><strong>重新判断：</strong>本项目使用 React，直接依赖 query-core 和 react-query 均为 5.105.0。上游 Vue Query 更新可提示共享 core 的检查点，但不能直接安装 Vue 包或承诺修复当前用户故障。</p>
+<p><strong>上游做法：</strong>vue-query 5.105.0→5.106.0、ESLint 10.13.0→10.14.0、Vite 8.3.5→8.3.6，另含 Vue 图标、i18n、类型工具和 Tailwind 包。复核时实际检查 core 5.106.0 源码发现 retryer resolve 暂停处理、refetch paused 错误、shallow compare 自有属性和取消行为变化。</p>
+<p><strong>真实代码与当前操作：</strong>用户打开首页、刷新统计、断网后恢复或退出登录时涉及查询生命周期；<code>web/src/shared/control/resources/home.ts:564</code> 传递 AbortSignal，<code>web/src/shared/controllers/auth-session.ts:78</code> 取消查询。当前 ESLint 为 10.13.0，Vite 为 8.3.3，本项目到 8.3.6 的升级跨度大于上游此次提交。</p>
+<p><strong>具体调整与验证步骤：</strong>同步评估 query-core / react-query 5.106.0，测试 401 注销时取消请求和清理会话、断网恢复、后台切回、手动刷新、mutation 失效后的查询与错误呈现，检查陈旧数据和重复请求。ESLint 10.13→10.14 与 minimatch 跨主版本覆盖分别验证。Vite 8.3.3→8.3.6 需覆盖整个版本跨度，执行生产构建并检查 StyleX、React Compiler、懒加载路由与资源加载；不迁入 Vue 或 Tailwind。</p>
+<p class="verification"><strong>已运行：</strong>复核中的 type-check、eslint、group-query-freshness / mutation-cache 共 25 项基线测试，以及 core 源码比较。<strong>未复现：</strong>当前用户的查询暂停、取消或浅比较故障。<strong>待验证：</strong>三个组件分别升级后的兼容性、生产构建及浏览器交互；基线结果不能作为新版本通过证据。</p>
+<p class="evidence">证据：当前 <code>web/package.json:47-77</code>、<code>web/src/frontends/astryx/features/home/use-home-statistics.ts:1,21-41</code>；上游 <code>web/package.json:21-40</code>。</p>
+</article>
+<aside><h2>实施优先级与证据边界</h2><p>先验证 Alpine 最终制品与 brotli 升级回归。Python 3.9 兼容改动当前无参考意义，不处理。UI 先验证错误可达性和写入 / 刷新两阶段语义；reasoning 先补 JSON 语义断言，跨协议流式行为先建立终态与重放证据矩阵。Bifrost 做三方合并，minimatch 与 ESLint 分开验证，React Query 与 Vite 按本项目实际版本跨度评估。</p><p>本轮未修改业务代码、依赖、测试或发布配置。原有源码证据与上游 commit 链接保留用于追溯；复核中的局部实测、静态判断、未复现事项与未来验收不得混为同一结论。最终制品版本、浏览器行为、真实 Codex 兼容性和升级后的安全扫描仍需对应环境证据。</p></aside>
+</body>
+</html>

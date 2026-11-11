@@ -1610,6 +1610,9 @@ func (r *Runtime) newSDKContext(parent context.Context, spec execution.AttemptSp
 	bifrostContext := schemas.NewBifrostContext(parent, schemas.NoDeadline)
 	bifrostContext.SetValue(schemas.BifrostContextKeyRequestID, spec.RequestID)
 	bifrostContext.SetValue(schemas.BifrostContextKeyDirectKey, directKey)
+	// The gateway owns retries and their request-wide budget; an SDK fail-soft
+	// retry would silently issue another provider attempt with rewritten input.
+	bifrostContext.SetValue(schemas.BifrostContextKeyDisableReasoningStripRetry, true)
 	// The fork in third_party/bifrost-core reads the request-scoped raw HTTP
 	// observer and attempt identity from these same string keys. They are set
 	// here so every fasthttp/net-http send performed by the SDK for this

@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+// Deliberately put status before type and separate them with other fields.
+const reasoningStatusInput = `[{"status":"completed","id":"r1","type":"reasoning","summary":[{"type":"summary_text","text":"keep <&>"}],"encrypted_content":"opaque"},{"summary":[],"status":null,"id":"r2","type":"reasoning"},{"status":"completed","role":"assistant","type":"message","content":[{"type":"output_text","text":"history"}]},{"status":"completed","call_id":"call_1","name":"lookup","arguments":"{}","type":"function_call"}]`
+const reasoningStatusFilteredInput = `[{"id":"r1","type":"reasoning","summary":[{"type":"summary_text","text":"keep <&>"}],"encrypted_content":"opaque"},{"summary":[],"id":"r2","type":"reasoning"},{"status":"completed","role":"assistant","type":"message","content":[{"type":"output_text","text":"history"}]},{"status":"completed","call_id":"call_1","name":"lookup","arguments":"{}","type":"function_call"}]`
+
+func TestResponsesReasoningStatusReorderedFields(t *testing.T) {
+	if strings.Contains(reasoningStatusInput, `"type":"reasoning","status"`) {
+		t.Fatal("negative control does not reproduce the old assertion blind spot")
+	}
+	got, err := removeResponsesReasoningStatus([]byte(`{"input":` + reasoningStatusInput + `}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertJSONEqual(t, string(got), `{"input":`+reasoningStatusFilteredInput+`}`)
+}
+
 func TestRemoveResponsesReasoningStatus(t *testing.T) {
 	input := []byte(`{"model":"gpt-5","input":[{"type":"reasoning","id":"r1","status":"completed","summary":[]},{"type":"message","status":"completed","content":[]},{"type":"function_call","status":"completed","call_id":"call_1"},{"type":"reasoning","id":"r2","status":null,"encrypted_content":"opaque"}]}`)
 
@@ -46,12 +61,24 @@ func TestRemoveResponsesReasoningStatusPreservesHTMLCharacters(t *testing.T) {
 }
 
 func TestRemoveResponsesReasoningStatusLeavesPayloadWithoutReasoningStatusUnchanged(t *testing.T) {
-	input := []byte(`{"model":"gpt-5","input":"hello"}`)
-	got, err := removeResponsesReasoningStatus(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != string(input) {
-		t.Fatalf("payload = %s, want unchanged %s", got, input)
+	for _, payload := range []string{
+		`{ "model":"gpt-5", "input":"hello" }`,
+		`{ "input": null }`,
+		`{ "model":"gpt-5" }`,
+		`{ "input": [] }`,
+		`{ "input": [{"type":"reasoning","summary":[]},{"status":"completed","type":"message","content":[]}] }`,
+		// Preserve existing behavior; this is not a claim that object input is supported by Responses.
+		`{ "input": {"status":"completed","type":"reasoning","summary":[]} }`,
+	} {
+		t.Run(payload, func(t *testing.T) {
+			input := []byte(payload)
+			got, err := removeResponsesReasoningStatus(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(input) {
+				t.Fatalf("payload = %s, want unchanged %s", got, input)
+			}
+		})
 	}
 }
