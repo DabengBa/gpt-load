@@ -99,6 +99,7 @@ func TestReasoningPolicyFinalProviderWire(t *testing.T) {
 		{"anthropic native", channel.Anthropic, protocol.Anthropic, execution.OperationChatCompletion, "/v1/messages", `{"model":"client-model","max_tokens":4096,"messages":[{"role":"user","content":"hi"}],"thinking":{"type":"enabled","budget_tokens":4096},"output_config":{"effort":"high"}}`, "claude-sonnet-4-6", "/v1/messages", "output_config.effort", "high", anthropicResponsesConvertedFixture, execution.RouteNative},
 		{"anthropic converted", channel.Anthropic, protocol.OpenAIResponses, execution.OperationResponsesCreate, "/v1/responses", `{"model":"client-model","input":"hi","max_output_tokens":4096,"reasoning":{"effort":"high"}}`, "claude-sonnet-4-6", "/v1/messages", "output_config.effort", "high", anthropicResponsesConvertedFixture, execution.RouteConverted},
 		{"gemini native", channel.Gemini, protocol.Gemini, execution.OperationChatCompletion, "/v1beta/models/client-model:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH","thinkingBudget":900}}}`, "gemini-3-flash", "/v1beta/models/gemini-3-flash:generateContent", "generationConfig.thinkingConfig.thinkingLevel", "high", geminiResponsesConvertedFixture, execution.RouteNative},
+		{"gemini native 4", channel.Gemini, protocol.Gemini, execution.OperationChatCompletion, "/v1beta/models/client-model:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH","thinkingBudget":900,"thinking_budget":901}}}`, "gemini-4-argon", "/v1beta/models/gemini-4-argon:generateContent", "generationConfig.thinkingConfig.thinkingLevel", "high", geminiResponsesConvertedFixture, execution.RouteNative},
 		{"gemini converted", channel.Gemini, protocol.OpenAIResponses, execution.OperationResponsesCreate, "/v1/responses", `{"model":"client-model","input":"hi","reasoning":{"effort":"high"}}`, "gemini-3-flash", "/v1beta/models/gemini-3-flash:generateContent", "generationConfig.thinkingConfig.thinkingLevel", "high", geminiResponsesConvertedFixture, execution.RouteConverted},
 	}
 	for _, tc := range cases {
@@ -130,7 +131,7 @@ func TestReasoningPolicyFinalProviderWire(t *testing.T) {
 			runtime := newProtocolTestRuntime(t, options)
 			spec := convertedSpec(tc.channel, tc.client, tc.operation, tc.path, []byte(tc.body)).Clone()
 			spec.RouteMode, spec.UpstreamModel = tc.mode, tc.model
-			if tc.name == "anthropic native" || tc.name == "gemini native" {
+			if tc.name == "anthropic native" || strings.HasPrefix(tc.name, "gemini native") {
 				spec.ReasoningEffortOverridden = true
 			}
 			spec = freezeTestAttempt(spec)
@@ -151,10 +152,13 @@ func TestReasoningPolicyFinalProviderWire(t *testing.T) {
 				if value != tc.effort {
 					t.Fatalf("wire %s = %v, want %s", tc.field, value, tc.effort)
 				}
-				if tc.name == "gemini native" {
+				if strings.HasPrefix(tc.name, "gemini native") {
 					thinkingConfig := payload["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
 					if _, exists := thinkingConfig["thinkingBudget"]; exists {
 						t.Fatalf("wire thinkingConfig retained conflicting thinkingBudget: %#v", thinkingConfig)
+					}
+					if _, exists := thinkingConfig["thinking_budget"]; exists {
+						t.Fatalf("wire thinkingConfig retained conflicting thinking_budget: %#v", thinkingConfig)
 					}
 				}
 				if tc.name == "anthropic native" {

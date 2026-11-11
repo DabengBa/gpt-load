@@ -5,10 +5,10 @@ Pinned local fork of the Bifrost Go SDK used by gpt-load.
 | fact | value |
 |---|---|
 | module path | `github.com/maximhq/bifrost/core` |
-| upstream version | `v1.13.1` (`version` file contains `1.13.1`) |
-| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.13.1`, commit `df9554745b8686b3a688bdc62adbbe2461ae87f5`, module cache `github.com/maximhq/bifrost/core@v1.13.1` |
-| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.13.1` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
-| nested go.mod / go.sum | byte-identical to upstream v1.13.1; the root module's MVS selection applies |
+| upstream version | `v1.14.1` (`version` file contains `1.14.1`) |
+| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.14.1`, commit `2975d142abcffc5783a60201394631b5576c748f`, module cache `github.com/maximhq/bifrost/core@v1.14.1` |
+| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.14.1` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
+| nested go.mod / go.sum | byte-identical to upstream v1.14.1; the root module's MVS selection applies, including `github.com/mark3labs/mcp-go v1.3.0` |
 
 ## Why the fork exists
 
@@ -22,13 +22,34 @@ way to add a request-scoped observer without a global registry.
 
 ## Fork delta
 
-`gptload-observer.patch` is the complete source diff against pristine v1.13.1,
+`gptload-observer.patch` is the complete source diff against pristine v1.14.1,
 excluding this document and the patch itself. Apply it with `patch -p1` in a
 fresh copy of the upstream module. Its historical name also covers the remaining
 cache, tool, stream, and schema changes; Git is the history of those changes.
-The v1.13.1 upstream update changes only version metadata, the Go directive,
-and changelog, not Go source. Applying the patch to a fresh copy of
-`core@v1.13.1` reproduces this tree with zero differences.
+Applying the patch to a fresh copy of `core@v1.14.1` reproduces this tree with
+zero differences, excluding this document, the patch and `hack/`.
+
+### v1.14.1 upgrade
+
+The source was three-way merged from pristine v1.13.1, the actual local fork,
+and pristine v1.14.1. Upstream additions and the observer, reported usage,
+prompt-cache, and stream behavior are retained. The moved Bedrock build-config
+test calls the fork's existing exported `InvokeBuildConfig`.
+
+The fork's `DecompressStreamBody(ctx, resp)` observer signature also applies to
+new upstream Azure speech, BytePlus and MiniMax stream call sites. GPT-Load sets
+`schemas.BifrostContextKeyDisableReasoningStripRetry` on SDK contexts: this
+prevents the new upstream encrypted-reasoning fail-soft retry from issuing an
+extra rewritten provider request outside the gateway's retry budget. Other SDK
+callers retain upstream's default behavior. The Gemini native effort-override
+helper removes both `thinkingBudget` and `thinking_budget` when a Gemini 3+
+level takes precedence; upstream raw budget conversion remains in place.
+
+Anthropic's stream prompt-usage ledger releases at terminal conversion or via
+its explicit consumer hook, with a later-stream sweep for cancelled contexts.
+The adapter can abandon conversion before its producer finishes, so it does not
+release the ledger prematurely; immediate cleanup on abandonment remains a
+separate lifecycle verification concern.
 
 Modified/added files:
 
@@ -126,9 +147,8 @@ for hooks, add a timer, or estimate unreported work. Tests in
 publication before tools/hooks, real unary/stream cancellation, delayed hooks,
 and success/cancel races.
 
-The patch artifact includes this delta and its regression tests. Regeneration
-against pristine `core@v1.13.1` verified byte-for-byte source replay, excluding
-this document, the patch and `hack/`, as specified by the generator.
+The patch artifact includes this delta and its regression tests. The sync
+procedure below verifies replay against the currently pinned pristine source.
 
 ## Upstream sync procedure
 
@@ -181,8 +201,9 @@ this document, the patch and `hack/`, as specified by the generator.
 4. `go build ./... && go test ./internal/execution/bifrost/` must pass, and
    `go list -m github.com/maximhq/bifrost/core` must resolve to the module cache.
 
-Because the fork changes no dependency requirements, rollback is a single revert
-of the `replace` line plus the directory removal.
+Rollback also requires reconciling root dependency requirements with the selected
+upstream version and the rest of the root module's MVS graph; do not discard
+unrelated root dependency changes.
 
 ## Anthropic prompt-cache integration
 

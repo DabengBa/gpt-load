@@ -173,6 +173,10 @@ const styles = stylex.create({
     padding: '9px 12px',
     fontSize: 'var(--text-meta)',
   },
+  dialogMessages: {
+    display: 'grid',
+    gap: 'var(--space-2)',
+  },
 })
 
 function dedupe(messages: (string | undefined)[]): string[] {
@@ -312,7 +316,7 @@ export function ModelPriceMatrix({
 
   return (
     <div {...stylex.props(styles.matrix)}>
-      {failure && (
+      {failure && !unpricedConfirmOpen && (
         <div {...stylex.props(styles.failureBanner)} role="alert">
           <TriangleAlert size={13} aria-hidden />
           <span>{failure}</span>
@@ -503,8 +507,16 @@ export function ModelPriceMatrix({
           }
           content={
             <LayoutContent>
-              <div {...stylex.props(styles.dialogWarning)} role="status">
-                {t('modelPrices.matrix.unpricedConfirm.warning')}
+              <div {...stylex.props(styles.dialogMessages)}>
+                {failure && (
+                  <div {...stylex.props(styles.failureBanner)} role="alert">
+                    <TriangleAlert size={13} aria-hidden />
+                    <span>{failure}</span>
+                  </div>
+                )}
+                <div {...stylex.props(styles.dialogWarning)} role="status">
+                  {t('modelPrices.matrix.unpricedConfirm.warning')}
+                </div>
               </div>
             </LayoutContent>
           }

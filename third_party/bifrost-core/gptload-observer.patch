@@ -1,9 +1,9 @@
 --- a/bifrost.go
 +++ b/bifrost.go
-@@ -7164 +7164 @@
+@@ -7394 +7394 @@
 -					// are correctly linked in the trace hierarchy.
 +					// are correctlyed in the trace hierarchy.
-@@ -7458,0 +7459,14 @@
+@@ -7696,0 +7697,14 @@
 +		// GPT-Load clears fallbacks and retries, so startup (created/in_progress)
 +		// events are delivered immediately instead of being held for a recovery
 +		// that cannot happen. When a fallback or a further attempt remains, the
@@ -18,18 +18,22 @@
 +			}
 +			checkPreamble = hasFallbacks || attempts < config.NetworkConfig.MaxRetries+extraAttempts
 +		}
-@@ -8613,0 +8628,3 @@
+@@ -7887 +7901,2 @@
+-		if !shouldRetry && !strippedEncryptedContent && shouldStripReasoningAfterClientError(bifrostError) &&
++		disableReasoningStripRetry, _ := ctx.Value(schemas.BifrostContextKeyDisableReasoningStripRetry).(bool)
++		if !disableReasoningStripRetry && !shouldRetry && !strippedEncryptedContent && shouldStripReasoningAfterClientError(bifrostError) &&
+@@ -8876,0 +8892,3 @@
 +	if responsesRequestHasCacheIntent(r) {
 +		return r
 +	}
-@@ -8619 +8636,5 @@
+@@ -8882 +8900,5 @@
 -	cp.Input = providerUtils.InjectResponsesCacheBreakpointsSkipping(promptCache, r.Input, injectedMCPInstructionsResponsesIndex(ctx, r.Input))
 +	if schemas.ResolveBaseProvider(ctx, provider) == schemas.Anthropic {
 +		cp.Input = providerUtils.InjectLastResponsesCacheBreakpointSkipping(promptCache, r.Input, injectedMCPInstructionsResponsesIndex(ctx, r.Input))
 +	} else {
 +		cp.Input = providerUtils.InjectResponsesCacheBreakpointsSkipping(promptCache, r.Input, injectedMCPInstructionsResponsesIndex(ctx, r.Input))
 +	}
-@@ -8622,0 +8644,25 @@
+@@ -8885,0 +8908,25 @@
 +func responsesRequestHasCacheIntent(r *schemas.BifrostResponsesRequest) bool {
 +	if r == nil || r.Params == nil {
 +		return false
@@ -55,20 +59,20 @@
 +	return false
 +}
 +
-@@ -8624,3 +8670,3 @@
+@@ -8887,3 +8934,3 @@
 -// billing metadata restored for Anthropic models, prompt-cache breakpoints
 -// injected, then embedded client tools promoted and namespace
 -// tools flattened when the target wire does not understand them. All steps are copy-on-write, so the shared
 +// billing metadata restored for Anthropic models, embedded client tools promoted and namespace
 +// tools flattened when the target wire does not understand them, then cache breakpoints
 +// injected after all explicit tool markers are visible. All steps are copy-on-write, so the shared
-@@ -8711 +8756,0 @@
+@@ -8974 +9020,0 @@
 -	r = promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r)
-@@ -8740,0 +8786,3 @@
+@@ -9003,0 +9050,3 @@
 +	// Cache breakpoints go in after every explicit tool marker is visible; the
 +	// skipped item is the MCP instructions message GPT-Load did not write.
 +	r = promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r)
-@@ -8843,0 +8892,10 @@
+@@ -9109,0 +9159,10 @@
 +	}
 +	if r.Params != nil {
 +		if r.Params.CacheControl != nil {
@@ -109,7 +113,7 @@
 +				schemas.SetReportedUsageSnapshot(c, emit.result.NormalizedUsage())
 +			}
 +		}
-@@ -479,0 +487,2 @@
+@@ -480,0 +488,2 @@
 +				// The dispatch error can contain newly reported current-turn usage.
 +				schemas.SetReportedUsageSnapshot(ctx, bifrostErr.ExtraFields.BilledUsage)
 --- a/internal/llmtests/automatic_function_calling.go
@@ -929,15 +933,15 @@
 +	}
 --- a/providers/anthropic/anthropic.go
 +++ b/providers/anthropic/anthropic.go
-@@ -1013 +1013 @@
+@@ -1018 +1018 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1694 +1694 @@
+@@ -1702 +1702 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/azure/azure.go
 +++ b/providers/azure/azure.go
-@@ -908 +908 @@
+@@ -976 +976 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/azure/azure_passthrough_test.go
@@ -946,64 +950,99 @@
 -}
 \ No newline at end of file
 +}
+--- a/providers/azure/speech.go
++++ b/providers/azure/speech.go
+@@ -621 +621 @@
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/bedrock/adaptivethinkingdisplay_test.go
 +++ b/providers/bedrock/adaptivethinkingdisplay_test.go
-@@ -407 +407 @@
+@@ -409 +409 @@
 -		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.invokeBuildConfig(model, false, true, nil))
 +		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(model, false, true, nil))
 --- a/providers/bedrock/bedrock.go
 +++ b/providers/bedrock/bedrock.go
-@@ -4273 +4273 @@
+@@ -4226 +4226 @@
 -		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, request, provider.invokeBuildConfig(request.Model, false, true, guardrailBody))
 +		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, request, provider.InvokeBuildConfig(request.Model, false, true, guardrailBody))
-@@ -4627 +4627 @@
+@@ -4580 +4580 @@
 -func (provider *BedrockProvider) invokeBuildConfig(model string, streaming, validateTools bool, guardrailBody map[string]any) anthropic.AnthropicRequestBuildConfig {
 +func (provider *BedrockProvider) InvokeBuildConfig(model string, streaming, validateTools bool, guardrailBody map[string]any) anthropic.AnthropicRequestBuildConfig {
-@@ -4699 +4699 @@
+@@ -4652 +4652 @@
 -		provider.invokeBuildConfig(request.Model, false, false, guardrailBody),
 +		provider.InvokeBuildConfig(request.Model, false, false, guardrailBody),
-@@ -4715 +4715 @@
+@@ -4668 +4668 @@
 -	jsonData, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, request, provider.invokeBuildConfig(request.Model, true, false, guardrailBody))
 +	jsonData, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, request, provider.InvokeBuildConfig(request.Model, true, false, guardrailBody))
-@@ -4747 +4747 @@
+@@ -4700 +4700 @@
 -		provider.invokeBuildConfig(request.Model, false, true, guardrailBody),
 +		provider.InvokeBuildConfig(request.Model, false, true, guardrailBody),
-@@ -4763 +4763 @@
+@@ -4716 +4716 @@
 -	jsonData, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, request, provider.invokeBuildConfig(request.Model, true, true, guardrailBody))
 +	jsonData, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, request, provider.InvokeBuildConfig(request.Model, true, true, guardrailBody))
---- a/providers/bedrock/bedrock_test.go
-+++ b/providers/bedrock/bedrock_test.go
-@@ -9035,2 +9035,5 @@
--	provider := &BedrockProvider{}
--	config := provider.invokeBuildConfig("us.anthropic.claude-sonnet-4-6", false, false, nil)
-+	// Vendored-core repair: this file is the external (`bedrock_test`) package, so the
-+	// struct is not reachable by bare name. The probe needs no clients, so a zero
-+	// provider built through the exported constructor's type is equivalent.
-+	provider := &bedrock.BedrockProvider{}
-+	config := provider.InvokeBuildConfig("us.anthropic.claude-sonnet-4-6", false, false, nil)
+--- a/providers/bedrock/cache_points_test.go
++++ b/providers/bedrock/cache_points_test.go
+@@ -400,0 +401 @@
++
+@@ -456 +457,3 @@
+-		{"absent", func() map[string]interface{} { return map[string]interface{}{"requestMetadata": map[string]string{"k": "v"}} }},
++		{"absent", func() map[string]interface{} {
++			return map[string]interface{}{"requestMetadata": map[string]string{"k": "v"}}
++		}},
+--- a/providers/bedrock/embedding.go
++++ b/providers/bedrock/embedding.go
+@@ -805 +805 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/bedrock/invoke_test.go
 +++ b/providers/bedrock/invoke_test.go
-@@ -1472 +1472 @@
+@@ -1473 +1473 @@
 -	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.invokeBuildConfig(req.Model, false, true, nil))
 +	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(req.Model, false, true, nil))
-@@ -2163 +2163 @@
+@@ -2164 +2164 @@
 -	out, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.invokeBuildConfig(req.Model, false, true, nil))
 +	out, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(req.Model, false, true, nil))
-@@ -2227 +2227 @@
+@@ -2228 +2228 @@
 -	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, tagged, provider.invokeBuildConfig(tagged.Model, false, true, guardrailBody))
 +	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, tagged, provider.InvokeBuildConfig(tagged.Model, false, true, guardrailBody))
-@@ -2285 +2285 @@
+@@ -2286 +2286 @@
 -	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(schemas.NewBifrostContext(context.Background(), time.Time{}), same, provider.invokeBuildConfig(same.Model, false, true, guardrailBody))
 +	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(schemas.NewBifrostContext(context.Background(), time.Time{}), same, provider.InvokeBuildConfig(same.Model, false, true, guardrailBody))
-@@ -2462 +2462 @@
+@@ -2463 +2463 @@
 -// invokeBuildConfig strips from the body is rendered as the InvokeModel guardrail request
 +// InvokeBuildConfig strips from the body is rendered as the InvokeModel guardrail request
-@@ -2686 +2686 @@
+@@ -2687 +2687 @@
 -	body, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, tagged, provider.invokeBuildConfig(tagged.Model, false, false, guardrailBody))
 +	body, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, tagged, provider.InvokeBuildConfig(tagged.Model, false, false, guardrailBody))
-@@ -2738 +2738 @@
+@@ -2739 +2739 @@
 -	body, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, tagged, provider.invokeBuildConfig(tagged.Model, false, false, guardrailBody))
 +	body, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, tagged, provider.InvokeBuildConfig(tagged.Model, false, false, guardrailBody))
+@@ -3235 +3235 @@
+-	config := provider.invokeBuildConfig("us.anthropic.claude-sonnet-4-6", false, false, nil)
++	config := provider.InvokeBuildConfig("us.anthropic.claude-sonnet-4-6", false, false, nil)
+--- a/providers/bedrock/transport_test.go
++++ b/providers/bedrock/transport_test.go
+@@ -345 +345 @@
+-
++
+--- a/providers/bedrock/types.go
++++ b/providers/bedrock/types.go
+@@ -1827 +1827 @@
+-}
+\ No newline at end of file
++}
+--- a/providers/bedrock/utils.go
++++ b/providers/bedrock/utils.go
+@@ -4134 +4134 @@
+-}
+\ No newline at end of file
++}
+--- a/providers/byteplus/byteplus.go
++++ b/providers/byteplus/byteplus.go
+@@ -651 +651 @@
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/cohere/cohere.go
 +++ b/providers/cohere/cohere.go
 @@ -597 +597 @@
@@ -1026,11 +1065,29 @@
 @@ -59 +59 @@
 -				Document: &CohereRerankDocument{Text: "provider-doc-0"},
 +				Document:       &CohereRerankDocument{Text: "provider-doc-0"},
+--- a/providers/cohere/types.go
++++ b/providers/cohere/types.go
+@@ -659 +659 @@
+-}
+\ No newline at end of file
++}
+--- a/providers/deepseek/deepseek.go
++++ b/providers/deepseek/deepseek.go
+@@ -721 +721 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/elevenlabs/elevenlabs.go
 +++ b/providers/elevenlabs/elevenlabs.go
 @@ -431 +431 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+--- a/providers/gemini/embedding.go
++++ b/providers/gemini/embedding.go
+@@ -583 +583 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/gemini/gemini.go
 +++ b/providers/gemini/gemini.go
 @@ -553,0 +554,5 @@
@@ -1225,6 +1282,128 @@
 +	req.Header.SetMethod(fasthttp.MethodGet)
 +	return client.DoTimeout(req, resp, time.Second)
 +}
+--- a/providers/gemini/responses.go
++++ b/providers/gemini/responses.go
+@@ -6003 +6003 @@
+-}
+\ No newline at end of file
++}
+--- a/providers/gemini/thinkinglevelsupport_test.go
++++ b/providers/gemini/thinkinglevelsupport_test.go
+@@ -4,0 +5 @@
++	"encoding/json"
+@@ -113,0 +115,51 @@
++		})
++	}
++}
++
++func TestNormalizeRawReasoningForModelRemovesConflictingGeminiControls(t *testing.T) {
++	tests := []struct {
++		name       string
++		model      string
++		effort     string
++		body       string
++		wantLevel  string
++		wantBudget *int
++	}{
++		{
++			name:      "gemini 3 keeps legal level and drops budget",
++			model:     "gemini-3.7-flash",
++			effort:    "minimal",
++			body:      `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal","thinkingBudget":900}}}`,
++			wantLevel: "low",
++		},
++		{
++			name:       "gemini 2.5 maps effort to budget and drops level",
++			model:      "gemini-2.5-flash",
++			effort:     "low",
++			body:       `{"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingLevel":"low","thinkingBudget":900}}}`,
++			wantBudget: func() *int { v := 3686; return &v }(),
++		},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			got, err := gemini.NormalizeRawReasoningForModel([]byte(tt.body), tt.model, tt.effort)
++			require.NoError(t, err)
++			var request struct {
++				GenerationConfig struct {
++					ThinkingConfig *struct {
++						ThinkingLevel  *string `json:"thinkingLevel"`
++						ThinkingBudget *int    `json:"thinkingBudget"`
++					} `json:"thinkingConfig"`
++				} `json:"generationConfig"`
++			}
++			require.NoError(t, json.Unmarshal(got, &request))
++			require.NotNil(t, request.GenerationConfig.ThinkingConfig)
++			if tt.wantLevel != "" {
++				require.NotNil(t, request.GenerationConfig.ThinkingConfig.ThinkingLevel)
++				assert.Equal(t, tt.wantLevel, *request.GenerationConfig.ThinkingConfig.ThinkingLevel)
++				assert.Nil(t, request.GenerationConfig.ThinkingConfig.ThinkingBudget)
++			} else {
++				assert.Nil(t, request.GenerationConfig.ThinkingConfig.ThinkingLevel)
++				require.NotNil(t, request.GenerationConfig.ThinkingConfig.ThinkingBudget)
++				assert.Equal(t, *tt.wantBudget, *request.GenerationConfig.ThinkingConfig.ThinkingBudget)
++			}
+--- a/providers/gemini/types.go
++++ b/providers/gemini/types.go
+@@ -3681 +3681 @@
+-}
+\ No newline at end of file
++}
+--- a/providers/gemini/utils.go
++++ b/providers/gemini/utils.go
+@@ -205,0 +206,51 @@
++// NormalizeRawReasoningForModel reconciles the two Gemini thinking control
++// surfaces after a native request has received an entry-owned effort override.
++// It intentionally derives 2.5 budgets with the same mapping as typed
++// conversion instead of inventing a budget in the gateway.
++func NormalizeRawReasoningForModel(jsonBody []byte, model, effort string) ([]byte, error) {
++	if len(jsonBody) == 0 || effort == "" {
++		return jsonBody, nil
++	}
++	thinkingPath := "generationConfig.thinkingConfig"
++	if !gjson.GetBytes(jsonBody, thinkingPath).IsObject() {
++		return jsonBody, nil
++	}
++
++	if isGemini3Plus(model) {
++		level := gjson.GetBytes(jsonBody, thinkingPath+".thinkingLevel").String()
++		if level == "" {
++			return jsonBody, nil
++		}
++		level = clampThinkingLevel(strings.ToLower(level), model)
++		updated, err := sjson.SetBytes(jsonBody, thinkingPath+".thinkingLevel", level)
++		if err != nil {
++			return nil, err
++		}
++		updated, err = providerUtils.DeleteJSONField(updated, thinkingPath+".thinkingBudget")
++		if err != nil {
++			return nil, err
++		}
++		return providerUtils.DeleteJSONField(updated, thinkingPath+".thinking_budget")
++	}
++
++	level := gjson.GetBytes(jsonBody, thinkingPath+".thinkingLevel")
++	if !level.Exists() {
++		return jsonBody, nil
++	}
++	maxTokens := providerUtils.GetMaxOutputTokensOrDefault(schemas.Gemini, model, DefaultCompletionMaxTokens)
++	if configured := gjson.GetBytes(jsonBody, "generationConfig.maxOutputTokens").Int(); configured > 0 {
++		maxTokens = int(configured)
++	}
++	caps := schemas.ResolveModelCaps(schemas.Gemini, model)
++	budgetRange := getThinkingBudgetRange(caps, maxTokens)
++	budget, err := providerUtils.GetBudgetTokensFromReasoningEffort(effort, budgetRange.Min, budgetRange.Max)
++	if err != nil {
++		return nil, err
++	}
++	updated, err := providerUtils.DeleteJSONField(jsonBody, thinkingPath+".thinkingLevel")
++	if err != nil {
++		return nil, err
++	}
++	return sjson.SetBytes(updated, thinkingPath+".thinkingBudget", budget)
++}
++
 --- a/providers/gemini/websearchstreamstate_test.go
 +++ b/providers/gemini/websearchstreamstate_test.go
 @@ -388 +388 @@
@@ -1236,6 +1415,11 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 @@ -1532 +1532 @@
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+--- a/providers/minimax/minimax.go
++++ b/providers/minimax/minimax.go
+@@ -921 +921 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/mistral/mistral.go
@@ -1309,25 +1493,25 @@
 @@ -710 +710 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1444 +1444 @@
+@@ -1438 +1438 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -2368 +2368 @@
+@@ -2358 +2358 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -3023 +3023 @@
+@@ -3013 +3013 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -3603 +3603 @@
+@@ -3593 +3593 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -4074 +4074 @@
+@@ -4064 +4064 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -5810 +5810 @@
+@@ -5800 +5800 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -8692,0 +8693,8 @@
+@@ -8682,0 +8683,8 @@
 +	// This path forwards encoded bytes unchanged; retain the encoding needed
 +	// by consumers to decode them. Unary Passthrough decodes the body itself.
 +	if encoding := resp.Header.Peek("Content-Encoding"); len(encoding) > 0 {
@@ -1358,7 +1542,7 @@
 +}
 --- a/providers/perplexity/chat.go
 +++ b/providers/perplexity/chat.go
-@@ -282,6 +282,5 @@
+@@ -283,6 +283,5 @@
 -		ID:      response.ID,
 -		Model:   model,
 -		Object:  response.Object,
@@ -3857,7 +4041,7 @@
 -
 --- a/providers/utils/passthrough_stream.go
 +++ b/providers/utils/passthrough_stream.go
-@@ -85,2 +85,5 @@
+@@ -88,2 +88,5 @@
 -	// Wrap reader with idle timeout to detect stalled streams.
 -	bodyStream, stopIdleTimeout := NewIdleTimeoutReader(rawBodyStream, rawBodyStream, GetStreamIdleTimeout(ctx), ctx)
 +	// Wrap reader with idle timeout to detect stalled streams. The observer
@@ -4086,23 +4270,23 @@
 +		// (NewIdleTimeoutReader unwraps it; it would not unwrap an observer
 +		// wrapper, so timing must not be hidden behind the observer).
 +		resp.Body = state.wrapReadCloser(resp.Body)
-@@ -2206 +2268 @@
+@@ -2269 +2331 @@
 -func DecompressStreamBody(resp *fasthttp.Response) (io.Reader, func()) {
 +func DecompressStreamBody(ctx context.Context, resp *fasthttp.Response) (io.Reader, func()) {
-@@ -2212,0 +2275,4 @@
+@@ -2275,0 +2338,4 @@
 +	// Observe the raw transport body stream (transfer framing already removed
 +	// by fasthttp, Content-Encoding decoding not yet applied) so that the same
 +	// bytes are seen by the parser reader and, later, by the release drain.
 +	bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
-@@ -3870,0 +3937,5 @@
+@@ -3944,0 +4011,5 @@
 +				// Label and complete the attempt for the raw-layer observer. A parser that
 +				// returned early leaves no pending Read for ReleaseStreamingResponse to
 +				// drain, so the close owner owns the termination evidence. Observation-only.
 +				state := httpObserverStateFromContext(ctx)
 +				state.markPendingTermination(TerminationTimeout)
-@@ -3871,0 +3943 @@
+@@ -3945,0 +4017 @@
 +				state.completeIncomplete(ErrStreamFirstTokenTimeout, TerminationTimeout)
-@@ -3896,0 +3969,8 @@
+@@ -3970,0 +4043,8 @@
 +				// Leave a semantic termination label for the raw-layer observer, which
 +				// sees the transport error produced by the close below.
 +				termination := TerminationCancel
@@ -4111,7 +4295,7 @@
 +				}
 +				state := httpObserverStateFromContext(ctx)
 +				state.markPendingTermination(termination)
-@@ -3897,0 +3978,7 @@
+@@ -3971,0 +4052,7 @@
 +				// The close owner also owns the completion. A parser that returned early
 +				// ([DONE]/finish_reason/protocol error) leaves no pending Read, and
 +				// ReleaseStreamingResponse then skips its drain, so without this the
@@ -4119,16 +4303,16 @@
 +				// stream is already closed above, nothing is drained and the close is not
 +				// delayed.
 +				state.completeIncomplete(ctx.Err(), termination)
-@@ -3906,0 +3994,6 @@
+@@ -3980,0 +4068,6 @@
 +					termination := TerminationCancel
 +					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 +						termination = TerminationTimeout
 +					}
 +					state := httpObserverStateFromContext(ctx)
 +					state.markPendingTermination(termination)
-@@ -3907,0 +4001 @@
+@@ -3981,0 +4075 @@
 +					state.completeIncomplete(ctx.Err(), termination)
-@@ -4029,0 +4124,8 @@
+@@ -4103,0 +4198,8 @@
 +			state := httpObserverStateFromContext(r.ctx)
 +			state.markPendingTermination(TerminationIdleTimeout)
 +			// The idle timer owns this teardown, so it also owns exactly-once
@@ -4137,18 +4321,18 @@
 +			// timer's already-released stream and is observation-only: nothing is
 +			// drained and the close is not delayed.
 +			defer state.completeIncomplete(ErrStreamIdleTimeout, TerminationIdleTimeout)
-@@ -4520,0 +4623,4 @@
+@@ -4595,0 +4698,4 @@
 +		// No stream remains (buffered response already observed by the send
 +		// helper, or the stream was detached by a materializing read). Still
 +		// guarantee an exactly-once termination for an unfinished state.
 +		httpObserverStateFromContext(ctx).completePending()
-@@ -4531,0 +4638,5 @@
+@@ -4606,0 +4713,5 @@
 +		// Another owner (cancel/timeout/idle) already closed the stream and
 +		// skipped the drain. Complete any still-unfinished observation so the
 +		// attempt emits exactly one termination without a second close, a
 +		// drain, or a delayed close.
 +		httpObserverStateFromContext(ctx).completePending()
-@@ -4547,0 +4659,10 @@
+@@ -4622,0 +4734,10 @@
 +		// This close owner labels and completes the observation exactly as the
 +		// cancellation goroutine does: a parser that already returned leaves no
 +		// pending Read, so without this the attempt would carry no termination
@@ -4159,14 +4343,14 @@
 +		}
 +		state := httpObserverStateFromContext(ctx)
 +		state.markPendingTermination(termination)
-@@ -4548,0 +4670 @@
+@@ -4623,0 +4745 @@
 +		state.completeIncomplete(ctx.Err(), termination)
-@@ -4568,0 +4691,2 @@
+@@ -4643,0 +4766,2 @@
 +			state := httpObserverStateFromContext(ctx)
 +			state.markPendingTermination(TerminationClosed)
-@@ -4569,0 +4694 @@
+@@ -4644,0 +4769 @@
 +			state.completeIncomplete(errStreamParkedAfterFinish, TerminationClosed)
-@@ -4570,0 +4696,10 @@
+@@ -4645,0 +4771,10 @@
 +		}
 +		// The drain reads through the same request-scoped observer wrapper that the
 +		// parser used (both wrap resp.BodyStream() at the raw transport layer), so
@@ -4185,6 +4369,12 @@
 @@ -1202 +1202 @@
 -	reader, releaseGzip := DecompressStreamBody(resp)
 +	reader, releaseGzip := DecompressStreamBody(nil, resp)
+--- a/providers/vertex/embedding.go
++++ b/providers/vertex/embedding.go
+@@ -290 +290 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/vertex/models.go
 +++ b/providers/vertex/models.go
 @@ -197 +197 @@
@@ -4197,15 +4387,9 @@
 -
 --- a/providers/vllm/vllm.go
 +++ b/providers/vllm/vllm.go
-@@ -690 +690 @@
+@@ -685 +685 @@
 -			reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +			reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
---- a/providers/vllm/vllm_test.go
-+++ b/providers/vllm/vllm_test.go
-@@ -98 +98 @@
--}
-\ No newline at end of file
-+}
 --- a/reportedusage_test.go
 +++ b/reportedusage_test.go
 @@ -0,0 +1,72 @@
@@ -4281,6 +4465,28 @@
 +	for range stream {
 +	}
 +}
+--- a/schemas/bifrost.go
++++ b/schemas/bifrost.go
+@@ -263,9 +263,10 @@
+-	BifrostContextKeySessionToken       BifrostContextKey = "bifrost-session-token" // string (session token for authentication - set by auth middleware)
+-	BifrostContextKeyAcceptedCredential BifrostContextKey = "bifrost-accepted-credential"
+-	BifrostContextKeyVirtualKey         BifrostContextKey = "x-bf-vk"               // string
+-	BifrostContextKeyAPIKeyName         BifrostContextKey = "x-bf-api-key"          // string (explicit key name selection)
+-	BifrostContextKeyAPIKeyID           BifrostContextKey = "x-bf-api-key-id"       // string (explicit key ID selection, takes priority over name)
+-	BifrostContextKeyDirectKey          BifrostContextKey = "x-bf-direct-key"       // schemas.Key (raw key supplied via x-bf-direct-key: true header; bypasses registered key pool)
+-	BifrostContextKeyRequestID          BifrostContextKey = "request-id"            // string
+-	BifrostContextKeyFallbackRequestID  BifrostContextKey = "fallback-request-id"   // string
+-	BifrostContextKeyBillingNonce       BifrostContextKey = "bifrost-billing-nonce" // string (internally minted per physical HTTP request; makes the billing-idempotency key unforgeable since request-id may be caller-supplied via x-request-id. Never read from headers, never echoed to the caller - DO NOT SET THIS MANUALLY)
++	BifrostContextKeySessionToken               BifrostContextKey = "bifrost-session-token" // string (session token for authentication - set by auth middleware)
++	BifrostContextKeyAcceptedCredential         BifrostContextKey = "bifrost-accepted-credential"
++	BifrostContextKeyVirtualKey                 BifrostContextKey = "x-bf-vk"                                // string
++	BifrostContextKeyAPIKeyName                 BifrostContextKey = "x-bf-api-key"                           // string (explicit key name selection)
++	BifrostContextKeyAPIKeyID                   BifrostContextKey = "x-bf-api-key-id"                        // string (explicit key ID selection, takes priority over name)
++	BifrostContextKeyDirectKey                  BifrostContextKey = "x-bf-direct-key"                        // schemas.Key (raw key supplied via x-bf-direct-key: true header; bypasses registered key pool)
++	BifrostContextKeyDisableReasoningStripRetry BifrostContextKey = "gpt-load.disable-reasoning-strip-retry" // bool: caller owns retries and request-rewrite decisions
++	BifrostContextKeyRequestID                  BifrostContextKey = "request-id"                             // string
++	BifrostContextKeyFallbackRequestID          BifrostContextKey = "fallback-request-id"                    // string
++	BifrostContextKeyBillingNonce               BifrostContextKey = "bifrost-billing-nonce"                  // string (internally minted per physical HTTP request; makes the billing-idempotency key unforgeable since request-id may be caller-supplied via x-request-id. Never read from headers, never echoed to the caller - DO NOT SET THIS MANUALLY)
 --- a/schemas/containers.go
 +++ b/schemas/containers.go
 @@ -150,3 +150,3 @@
@@ -4290,6 +4496,82 @@
 +	File   []byte  `json:"-"`                   // File content (for multipart upload)
 +	FileID *string `json:"file_id,omitempty"`   // Reference to existing file
 +	Path   *string `json:"file_path,omitempty"` // Path for the file in the container
+--- a/schemas/context.go
++++ b/schemas/context.go
+@@ -21,36 +21,37 @@
+-	BifrostContextKeyVirtualKey:              {},
+-	BifrostContextKeyAPIKeyName:              {},
+-	BifrostContextKeyAPIKeyID:                {},
+-	BifrostContextKeyDirectKey:               {},
+-	BifrostContextKeyRequestID:               {},
+-	BifrostContextKeyFallbackRequestID:       {},
+-	BifrostContextKeyBillingNonce:            {},
+-	BifrostContextKeySelectedKeyID:           {},
+-	BifrostContextKeySelectedKeyName:         {},
+-	BifrostContextKeyNumberOfRetries:         {},
+-	BifrostContextKeyFallbackIndex:           {},
+-	BifrostContextKeySkipKeySelection:        {},
+-	BifrostContextKeyPassthroughHeaders:      {},
+-	BifrostContextKeySkipBudgetAndRateLimits: {},
+-	BifrostContextKeySkipProviderCheck:       {},
+-	BifrostContextKeySkipModelCheck:          {},
+-	BifrostContextKeyAdmitUngrantedUser:      {},
+-	BifrostContextKeyURLPath:                 {},
+-	BifrostContextKeyDeferTraceCompletion:    {},
+-	BifrostContextKeyAttemptTrail:            {},
+-	BifrostContextKeyStreamGated:             {},
+-	BifrostContextKeyStreamAttemptAbort:      {},
+-	BifrostContextKeyStreamCommitWatch:       {},
+-	BifrostContextKeyMCPHealthCheckRequest:   {},
+-	BifrostContextKeyMCPUnattendedExecution:  {},
+-	BifrostContextKeyInjectedToolsExecuted:   {},
+-	BifrostContextKeyUpstreamLatency:         {},
+-	BifrostContextKeyStreamOverhead:          {},
+-	BifrostContextKeyRoutingInfo:             {},
+-	BifrostContextKeyRequestedProvider:       {},
+-	BifrostContextKeyRequestedModel:          {},
+-	BifrostContextKeyProviderProxyConfig:     {},
+-	BifrostContextKeyMCPInboundBearer:        {},
+-	BifrostContextKeyAuthCredential:          {},
+-	BifrostContextKeyMCPAgentServedRoute:     {},
+-	BifrostContextKeyMCPInstructionsText:     {},
++	BifrostContextKeyVirtualKey:                 {},
++	BifrostContextKeyAPIKeyName:                 {},
++	BifrostContextKeyAPIKeyID:                   {},
++	BifrostContextKeyDirectKey:                  {},
++	BifrostContextKeyDisableReasoningStripRetry: {},
++	BifrostContextKeyRequestID:                  {},
++	BifrostContextKeyFallbackRequestID:          {},
++	BifrostContextKeyBillingNonce:               {},
++	BifrostContextKeySelectedKeyID:              {},
++	BifrostContextKeySelectedKeyName:            {},
++	BifrostContextKeyNumberOfRetries:            {},
++	BifrostContextKeyFallbackIndex:              {},
++	BifrostContextKeySkipKeySelection:           {},
++	BifrostContextKeyPassthroughHeaders:         {},
++	BifrostContextKeySkipBudgetAndRateLimits:    {},
++	BifrostContextKeySkipProviderCheck:          {},
++	BifrostContextKeySkipModelCheck:             {},
++	BifrostContextKeyAdmitUngrantedUser:         {},
++	BifrostContextKeyURLPath:                    {},
++	BifrostContextKeyDeferTraceCompletion:       {},
++	BifrostContextKeyAttemptTrail:               {},
++	BifrostContextKeyStreamGated:                {},
++	BifrostContextKeyStreamAttemptAbort:         {},
++	BifrostContextKeyStreamCommitWatch:          {},
++	BifrostContextKeyMCPHealthCheckRequest:      {},
++	BifrostContextKeyMCPUnattendedExecution:     {},
++	BifrostContextKeyInjectedToolsExecuted:      {},
++	BifrostContextKeyUpstreamLatency:            {},
++	BifrostContextKeyStreamOverhead:             {},
++	BifrostContextKeyRoutingInfo:                {},
++	BifrostContextKeyRequestedProvider:          {},
++	BifrostContextKeyRequestedModel:             {},
++	BifrostContextKeyProviderProxyConfig:        {},
++	BifrostContextKeyMCPInboundBearer:           {},
++	BifrostContextKeyAuthCredential:             {},
++	BifrostContextKeyMCPAgentServedRoute:        {},
++	BifrostContextKeyMCPInstructionsText:        {},
 --- a/schemas/context_fasthttp_test.go
 +++ b/schemas/context_fasthttp_test.go
 @@ -35 +35,3 @@
@@ -4297,6 +4579,12 @@
 +//
 +//	fall-through link exists) → test FAILS.
 +//
+--- a/schemas/embedding.go
++++ b/schemas/embedding.go
+@@ -463 +463 @@
+-}
+\ No newline at end of file
++}
 --- a/schemas/models_test.go
 +++ b/schemas/models_test.go
 @@ -96 +96 @@
@@ -4304,15 +4592,15 @@
 +			Provider:               "openai",
 --- a/schemas/mux.go
 +++ b/schemas/mux.go
-@@ -476 +475,0 @@
+@@ -477 +476,0 @@
 -				reasoningRole := ResponsesInputMessageRoleAssistant
-@@ -480 +479,4 @@
+@@ -481 +480,4 @@
 -					Role: &reasoningRole,
 +					ResponsesReasoning: &ResponsesReasoning{
 +						Summary:          summaries,
 +						EncryptedContent: encryptedContent,
 +					},
-@@ -485,6 +487 @@
+@@ -486,6 +488 @@
 -				if len(summaries) > 0 || encryptedContent != nil {
 -					rm.ResponsesReasoning = &ResponsesReasoning{
 -						Summary:          summaries,
@@ -4320,34 +4608,34 @@
 -					}
 -				}
 +
-@@ -496 +492,0 @@
+@@ -497 +493,0 @@
 -			reasoningRole := ResponsesInputMessageRoleAssistant
-@@ -499,3 +495,3 @@
+@@ -500,3 +496,3 @@
 -				ID:   new("rs_" + GetRandomString(50)),
 -				Type: &reasoningType,
 -				Role: &reasoningRole,
 +				ID:                 new("rs_" + GetRandomString(50)),
 +				Type:               &reasoningType,
 +				ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
-@@ -2017 +2012,0 @@
+@@ -2037 +2032,0 @@
 -		role := ResponsesInputMessageRoleAssistant
-@@ -2019,2 +2014,2 @@
+@@ -2039,2 +2034,2 @@
 -			Type: &reasoningType,
 -			Role: &role,
 +			Type:               &reasoningType,
 +			ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
-@@ -2059 +2053,0 @@
+@@ -2079 +2073,0 @@
 -			role := ResponsesInputMessageRoleAssistant
-@@ -2061,3 +2055,3 @@
+@@ -2081,3 +2075,3 @@
 -				ID:   &itemID,
 -				Type: &reasoningType,
 -				Role: &role,
 +				ID:                 &itemID,
 +				Type:               &reasoningType,
 +				ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
-@@ -2525 +2518,0 @@
+@@ -2545 +2538,0 @@
 -			role := ResponsesInputMessageRoleAssistant
-@@ -2529,2 +2522,2 @@
+@@ -2549,2 +2542,2 @@
 -				Type: &reasoningType,
 -				Role: &role,
 +				Type:               &reasoningType,
@@ -4631,14 +4919,14 @@
 +}
 --- a/schemas/websocket.go
 +++ b/schemas/websocket.go
-@@ -37,3 +37,3 @@
+@@ -38,3 +38,3 @@
 -	Type   WebSocketEventType   `json:"type"`
 -	Status int                  `json:"status,omitempty"`
 -	Error  *WebSocketErrorBody  `json:"error,omitempty"`
 +	Type   WebSocketEventType  `json:"type"`
 +	Status int                 `json:"status,omitempty"`
 +	Error  *WebSocketErrorBody `json:"error,omitempty"`
-@@ -52,3 +52,3 @@
+@@ -53,3 +53,3 @@
 -	MaxConnections int           `json:"max_connections_per_user"`
 -	TranscriptBufferSize  int           `json:"transcript_buffer_size"`
 -	Pool                  *WSPoolConfig `json:"pool,omitempty"`

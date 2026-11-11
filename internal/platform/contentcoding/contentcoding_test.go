@@ -167,6 +167,7 @@ func TestDecodeLimitedRejectsTrailingData(t *testing.T) {
 		encoded  []byte
 	}{
 		{name: "gzip", encoding: Gzip, encoded: append(encodeGzip(t, plain), []byte("trailing")...)},
+		{name: "brotli", encoding: Brotli, encoded: append(encodeBrotli(t, plain), []byte("trailing")...)},
 		{name: "zlib deflate", encoding: Deflate, encoded: append(encodeZlib(t, plain), []byte("trailing")...)},
 	}
 
@@ -296,4 +297,38 @@ func writeAndClose(t *testing.T, writer io.WriteCloser, plain []byte) {
 
 func truncate(encoded []byte) []byte {
 	return append([]byte(nil), encoded[:len(encoded)-1]...)
+}
+
+// Input and reader reproduced from andybalholm/brotli commit
+// 5ad9f4053d18173b0ee17ba3d2f5164b23326017, TestDecodeByteAtATimeWithExcessiveInput.
+// This exercises the library's arbitrary-reader contract, not network fragmentation.
+const brotliExcessiveInput = "\x1b*\x00\x88\x9c\t6N\xa8w7\xbc$00K01\xbc20K012\x98\xc8\x81C[\xa0\xf7\xde$X.\xe91A0Z1$\xe0Y07000\xab#x\xf6\xda%2\x1e"
+
+type oneByteReader struct {
+	data  string
+	index int
+}
+
+func (r *oneByteReader) Read(p []byte) (int, error) {
+	if r.index >= len(r.data) {
+		return 0, io.EOF
+	}
+	p[0] = r.data[r.index]
+	r.index++
+	return 1, nil
+}
+
+func TestBrotliExcessiveInputShortReads(t *testing.T) {
+	_, err := io.ReadAll(brotli.NewReader(&oneByteReader{data: brotliExcessiveInput}))
+	// Upstream's errExcessiveInput is private; check its public diagnostic.
+	if err == nil || err.Error() != "brotli: excessive input" {
+		t.Fatalf("short-read decode error = %v, want excessive input", err)
+	}
+}
+
+func TestDecodeLimitedBrotliExcessiveInput(t *testing.T) {
+	got, err := DecodeLimited(Brotli, []byte(brotliExcessiveInput), 1024)
+	if got != nil || !errors.Is(err, ErrInvalidContentEncoding) {
+		t.Fatalf("bytes.Reader decode = %q, %v; want invalid content encoding", got, err)
+	}
 }

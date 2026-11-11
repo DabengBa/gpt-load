@@ -163,16 +163,24 @@ interface PriceJourneyRequests {
   resets: number[]
   syncs: number
   syncOutcome: 'ok' | 'fail'
+  putOutcome: 'ok' | 'fail'
+  beforePut?: () => Promise<void>
+  detailReads: number
 }
 
-async function mockPriceJourney(page: Page): Promise<PriceJourneyRequests> {
+async function mockPriceJourney(
+  page: Page,
+  priceOverrides: Record<string, unknown> = {},
+): Promise<PriceJourneyRequests> {
   const requests: PriceJourneyRequests = {
     puts: [],
     resets: [],
     syncs: 0,
     syncOutcome: 'ok',
+    putOutcome: 'ok',
+    detailReads: 0,
   }
-  let price = basePrice()
+  let price = basePrice(priceOverrides)
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
   }, 'e2e-auth-key')
@@ -216,7 +224,17 @@ async function mockPriceJourney(page: Page): Promise<PriceJourneyRequests> {
       if (route.request().method() === 'PUT') {
         const body = route.request().postDataJSON() as ModelPriceUpdateRequest
         requests.puts.push(body)
+        await requests.beforePut?.()
+        if (requests.putOutcome === 'fail') {
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ code: 1, message: 'save failed', data: null }),
+          })
+          return
+        }
         price = basePrice({
+          ...(body.confirm_unpriced ? { method: 'user_marked_unpriced' } : {}),
           prices: {
             input: body.input,
             output: body.output,
@@ -243,6 +261,7 @@ async function mockPriceJourney(page: Page): Promise<PriceJourneyRequests> {
         await fulfill(price)
         return
       }
+      requests.detailReads += 1
       await fulfill({ ...baseDetail(), price })
       return
     }
@@ -276,6 +295,58 @@ async function openPriceDrawer(page: Page) {
 }
 
 test.setTimeout(90_000)
+
+test('unpriced confirmation exposes write failure and retries preserved draft while pending', async ({
+  page,
+}, testInfo) => {
+  const requests = await mockPriceJourney(page, { mode_schedules: {} })
+  requests.putOutcome = 'fail'
+  const drawer = await openPriceDrawer(page)
+  for (const field of ['input', 'output', 'cache_read', 'cache_write']) {
+    await drawer.locator(`#model-price-base-${field}`).fill('')
+  }
+  await drawer.getByRole('button', { name: 'Save', exact: true }).click()
+  const confirm = page.getByRole('dialog', { name: 'Mark this model unpriced?' })
+  const submit = confirm.getByRole('button', { name: 'Confirm unpriced', exact: true })
+  await submit.click()
+  await expect.poll(() => requests.puts.length).toBe(1)
+  const alert = confirm.getByRole('alert')
+  await expect(alert).toHaveText('Unable to save model prices; your input is preserved')
+  await expect(alert).toBeVisible()
+  await expect(page.locator('[role="alert"]')).toHaveCount(1)
+  const warning = confirm.locator('[role="status"]').filter({ hasText: 'Future requests still record tokens' })
+  const alertBox = await alert.boundingBox()
+  const warningBox = await warning.boundingBox()
+  expect(alertBox).not.toBeNull()
+  expect(warningBox).not.toBeNull()
+  expect(warningBox!.y - (alertBox!.y + alertBox!.height)).toBeGreaterThanOrEqual(8)
+  await page.screenshot({ path: testInfo.outputPath('unpriced-failure.png') })
+  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(confirm).not.toBeVisible()
+  await expect(drawer.getByRole('alert')).toBeVisible()
+  for (const field of ['input', 'output', 'cache_read', 'cache_write']) {
+    await expect(drawer.locator(`#model-price-base-${field}`)).toHaveValue('')
+  }
+  await drawer.getByRole('button', { name: 'Save', exact: true }).click()
+  requests.putOutcome = 'ok'
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  requests.beforePut = () => gate
+  const reads = requests.detailReads
+  await submit.click()
+  await expect.poll(() => requests.puts.length).toBe(2)
+  await expect(submit).toBeDisabled()
+  await submit.press('Enter')
+  expect(requests.puts).toHaveLength(2)
+  expect(requests.puts[1]).toEqual(requests.puts[0])
+  release()
+  await expect(confirm).not.toBeVisible()
+  await expect.poll(() => requests.detailReads).toBeGreaterThan(reads)
+  await expect(drawer.getByRole('alert')).toHaveCount(0)
+  await expect(drawer.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+})
 
 test('390px price matrix shows base and tier field labels without desktop duplicates', async ({
   page,
