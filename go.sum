@@ -16,8 +16,8 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 h1:XRzhVemXdgv
 github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0/go.mod h1:HKpQxkWaGLJ+D/5H8QRpyQXA1eKjxkFlOMwck5+33Jk=
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261103125945-f920cfe2ff0b h1:L6IdGviantoDkib8R7rO1UOzPaCd2PKaWWXWtLVOsts=
-github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261103125945-f920cfe2ff0b/go.mod h1:D0K9qKdAasfIkdNhz2bpJYyNdkDy7EOrHvG8aLNo1GA=
+github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261111013050-a7e9d3056e01 h1:uxPNMHn8cukqtdteSvM4AsE+YXqZJbF2GSMtDkgphBw=
+github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261111013050-a7e9d3056e01/go.mod h1:D0K9qKdAasfIkdNhz2bpJYyNdkDy7EOrHvG8aLNo1GA=
 github.com/andybalholm/brotli v1.2.8 h1:H9F6r7RNwzSRsx/lytpIYkbjNFMt2yNBwsJ2+0gpx78=
 github.com/andybalholm/brotli v1.2.8/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/aws/aws-sdk-go-v2 v1.42.0 h1:XvXMJTkFQtpBKIWZnmr9ZEOc2InWM2yldjXEJ/bymhA=

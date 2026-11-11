@@ -1,0 +1,70 @@
+name: Update lm-detector
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-lm-detector
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GOPROXY: https://proxy.golang.org|direct
+    steps:
+      - name: Check out dev
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dev
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test and update
+        id: update
+        run: |
+          python3 scripts/test_update_lm_detector.py
+          python3 scripts/update-lm-detector.py
+          if git diff --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            sha=$(python3 -c 'import re; from pathlib import Path; print(re.search(r"Data and SDK are pinned to upstream commit ([0-9a-f]{40})", Path("internal/control/modeltrace_detector.go").read_text()).group(1))')
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate updated detector
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          go mod tidy -diff
+          go vet ./...
+          go test -count=1 ./internal/control ./internal/requestlog
+          go build -o "$RUNNER_TEMP/gpt-load" .
+          git diff --check
+      - name: Open update pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          UPSTREAM_SHA: ${{ steps.update.outputs.sha }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          branch="automation/lm-detector-${UPSTREAM_SHA:0:12}"
+          if gh pr list --base dev --head "$branch" --state open --json number --jq '.[0].number' | grep -q .; then
+            echo "An update PR for $UPSTREAM_SHA is already open."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add go.mod go.sum THIRD_PARTY_NOTICES.md internal/control/modeltrace_detector.go internal/control/lmdata/
+          git commit -m "chore: update lm-detector to ${UPSTREAM_SHA:0:12}"
+          git push origin "$branch"
+          gh pr create --base dev --head "$branch" --title "Update lm-detector to ${UPSTREAM_SHA:0:12}" --body "Updates the SDK and fingerprint data to upstream commit https://github.com/Ikaleio/lm-detector/commit/${UPSTREAM_SHA}. The scheduled workflow verifies the Go module graph, vet, detector tests, and build. Review the data and deploy GPT-Load separately after merging."

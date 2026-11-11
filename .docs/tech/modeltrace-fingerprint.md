@@ -51,6 +51,19 @@ upstream model's identity.
 - The SDK and its matching reference data are bundled with GPT-Load. The data
   is loaded locally on the first fingerprint run; no separate analysis service
   or runtime download is required.
+- `.github/workflows/update-lm-detector.yml` checks upstream daily and can be
+  run manually. `scripts/update-lm-detector.py` resolves one upstream commit,
+  updates the SDK and both embedded data files together, and opens a `dev` PR
+  after validation. Unrelated upstream changes are skipped; license changes
+  require manual review. GitHub Actions must be allowed to create pull requests
+  in the repository's Actions settings. PRs created with `GITHUB_TOKEN` do not
+  generally trigger other PR workflows, so the updater runs its Go checks before
+  creating the PR. A Dependabot PR for the Go SDK alone must not be merged
+  without updating the matching data.
+  Scheduled workflows run from the default branch, while the updater is checked
+  out from `dev`, so both branches need the workflow and script. Merging the PR
+  does not update Hostinger: deploy the resulting GPT-Load commit using the
+  [release pipeline](release-pipeline.md).
 - The run has a ten-minute deadline, duplicate runs for the same group/model
   are rejected, and at most four runs execute concurrently per process.
 - Attribution is diagnostic only. It does not trigger health recovery,
