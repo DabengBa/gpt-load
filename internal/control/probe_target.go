@@ -29,11 +29,14 @@ type groupValidationSignature [sha256.Size]byte
 // model, the route mode resolved by the channel, and the contract's output
 // budget. There is intentionally no protocol fallback list.
 type groupValidationTarget struct {
-	protocol        protocol.Protocol
-	routeMode       channel.RouteMode
-	model           string
-	maxOutputTokens int
-	signature       groupValidationSignature
+	protocol                  protocol.Protocol
+	routeMode                 channel.RouteMode
+	model                     string
+	maxOutputTokens           int
+	signature                 groupValidationSignature
+	preparedBody              []byte
+	configuredParameters      []string
+	reasoningEffortOverridden bool
 }
 
 func validationAttemptProxy(

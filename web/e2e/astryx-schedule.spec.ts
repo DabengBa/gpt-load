@@ -11,6 +11,126 @@ import { mockGroupModels } from './fixtures/group-models-mock'
 
 const adminKey = 'e2e-admin-key'
 
+test('batch probe sends visible fixed-group targets after disabled confirmation', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  let payload: unknown
+  await page.route('**/api/model-probe', async (route) => {
+    payload = route.request().postDataJSON()
+    await route.fulfill(
+      response({
+        results: [
+          {
+            group_id: 1,
+            group_name: 'primary group',
+            model: 'model-a',
+            outcome: 'passed',
+            reason: null,
+            protocol: 'openai-completions',
+            route_mode: 'native',
+            status_code: 200,
+            latency_ms: 12,
+            credential_id: 3,
+            credential_label: 'masked',
+            recovered: false,
+            log_id: null,
+            tested_at_ms: 1700000000000,
+          },
+          {
+            group_id: 2,
+            group_name: 'secondary group',
+            model: 'model-b',
+            outcome: 'passed',
+            reason: null,
+            protocol: 'openai-completions',
+            route_mode: 'native',
+            status_code: 200,
+            latency_ms: 13,
+            credential_id: 4,
+            credential_label: 'masked',
+            recovered: false,
+            log_id: null,
+            tested_at_ms: 1700000000000,
+          },
+        ],
+      }),
+    )
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await page.getByRole('button', { name: 'Probe 2 visible rows' }).click()
+  await expect(page.getByRole('button', { name: 'Probe all (2 rows)' })).toBeVisible()
+  expect(payload).toBeUndefined()
+  await page.getByRole('button', { name: 'Probe all (2 rows)' }).click()
+  await expect
+    .poll(() => payload)
+    .toEqual({
+      targets: [
+        { group_id: 1, model: 'model-a' },
+        { group_id: 2, model: 'model-b' },
+      ],
+    })
+  const dialog = page.getByRole('dialog')
+  await expect(
+    dialog.getByRole('listitem').filter({ hasText: 'primary group · model-a' }),
+  ).toContainText('Passed')
+  await expect(
+    dialog.getByRole('listitem').filter({ hasText: 'secondary group · model-b' }),
+  ).toContainText('Passed')
+  await expect(dialog.getByRole('button', { name: 'Probe again' })).toHaveCount(0)
+})
+
+test('retry single disabled schedule row reconfirms and retains the target', async ({ page }) => {
+  await installScheduleRoutes(page)
+  const requests: unknown[] = []
+  const logs = ['123e4567-e89b-42d3-a456-426614174000', '223e4567-e89b-42d3-a456-426614174000']
+  await page.route('**/api/model-probe', async (route) => {
+    requests.push(route.request().postDataJSON())
+    await route.fulfill(
+      response({
+        results: [
+          {
+            group_id: 2,
+            group_name: 'secondary group',
+            model: 'model-b',
+            outcome: 'passed',
+            reason: null,
+            protocol: 'openai-completions',
+            route_mode: 'native',
+            status_code: 200,
+            latency_ms: 13,
+            credential_id: 4,
+            credential_label: 'masked',
+            recovered: false,
+            log_id: logs[requests.length - 1],
+            tested_at_ms: 1700000000000,
+          },
+        ],
+      }),
+    )
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await rows(page)
+    .filter({ hasText: 'secondary group' })
+    .getByRole('button', { name: 'Probe', exact: true })
+    .click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Probe', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Model liveness' })
+  await expect(dialog.getByText(logs[0]!)).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Probe again' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Probe again' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog.getByText(logs[0]!)).toBeVisible()
+  expect(requests).toHaveLength(1)
+  await dialog.getByRole('button', { name: 'Probe again' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Probe', exact: true }).click()
+  await expect(dialog.getByText(logs[1]!)).toBeVisible()
+  expect(requests).toEqual([
+    { targets: [{ group_id: 2, model: 'model-b' }] },
+    { targets: [{ group_id: 2, model: 'model-b' }] },
+  ])
+})
+
 type SchedulePatch = {
   snapshot_revision: number
   protocol: string

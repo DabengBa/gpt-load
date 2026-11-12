@@ -46,18 +46,19 @@ test('maintenance shows editable effective route fields and no share presentatio
     await expect(row).not.toContainText('%')
   }
 
-  // Editing one entry leaves the untouched unset fields null in the payload.
+  // Only changed route fields are sent; the server preserves omitted fields.
   await weight(0).fill('9')
   await priority(0).fill('2')
   await page.getByRole('button', { name: 'Save settings', exact: true }).click()
   await expect.poll(() => puts.length).toBe(1)
   expect(puts[0]).toMatchObject({
-    models: [
-      { id: 'gpt-5.2', weight: 9, priority: 2 },
-      { id: 'gpt-5.2-mini', weight: 0, priority: 3 },
-      { id: 'gpt-5.3', weight: null, priority: null },
-    ],
+    models: [{ id: 'gpt-5.2', weight: 9, priority: 2 }, { id: 'gpt-5.2-mini' }, { id: 'gpt-5.3' }],
   })
+  const sent = (puts[0] as { models: Record<string, unknown>[] }).models
+  for (const model of sent.slice(1)) {
+    expect(model).not.toHaveProperty('weight')
+    expect(model).not.toHaveProperty('priority')
+  }
 
   // Saved values survive a reload; the untouched entry still reads 1.
   await page.reload({ waitUntil: 'load' })
@@ -65,6 +66,7 @@ test('maintenance shows editable effective route fields and no share presentatio
   await expect(weight(0)).toHaveValue('9')
   await expect(priority(0)).toHaveValue('2')
   await expect(weight(1)).toHaveValue('0')
+  await expect(priority(1)).toHaveValue('3')
   await expect(weight(2)).toHaveValue('1')
   await page.screenshot({ path: testInfo.outputPath('route-fields-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -73,6 +75,57 @@ test('maintenance shows editable effective route fields and no share presentatio
   await page.screenshot({ path: testInfo.outputPath('route-fields-mobile.png'), fullPage: true })
 })
 
+test('model fixture preserves omitted route fields by identity and clears explicit null', async ({
+  page,
+}) => {
+  await mockGroupModels(page, {
+    models: [
+      { id: 'same', alias: 'a', alias_enabled: true, weight: 7, priority: 2 },
+      { id: 'same', alias: 'b', alias_enabled: true, weight: 6, priority: 3 },
+      { id: 'single', weight: 5, priority: 4 },
+    ],
+  })
+  await page.goto('/groups/1?tab=models')
+  const request = (method: string, body?: unknown) =>
+    page.evaluate(
+      async ({ method, body }) => {
+        const response = await fetch('/api/groups/1/models', {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        })
+        return (await response.json()).data.items as Array<Record<string, unknown>>
+      },
+      { method, body },
+    )
+  const before = await request('GET')
+  expect(before[1].entry_id).toEqual(expect.any(String))
+  const after = await request('PUT', {
+    models: [
+      {
+        id: 'same',
+        alias: 'renamed',
+        alias_enabled: true,
+        entry_id: before[1].entry_id,
+        weight: null,
+      },
+      { id: 'same', alias: 'a', alias_enabled: true, priority: null },
+      { id: 'single', alias: 'renamed-single', alias_enabled: true },
+      { id: 'same', alias: 'new', alias_enabled: true },
+    ],
+  })
+  expect(after.map(({ weight, priority }) => ({ weight, priority }))).toEqual([
+    { weight: null, priority: 3 },
+    { weight: 7, priority: null },
+    { weight: 5, priority: 4 },
+    { weight: null, priority: null },
+  ])
+  expect(after[0].entry_id).toBe(before[1].entry_id)
+  expect(after[1].entry_id).toBe(before[0].entry_id)
+  expect(after[2].entry_id).toBe(before[2].entry_id)
+  expect(after[3].entry_id).not.toBe(before[0].entry_id)
+  expect(after[3].entry_id).not.toBe(before[1].entry_id)
+})
 test('maintenance keeps the route-field validation gate', async ({ page }) => {
   await mockGroupModels(page, { models: [{ id: 'gpt-5.2' }] })
   await page.goto('/groups/1?tab=models', { waitUntil: 'load' })

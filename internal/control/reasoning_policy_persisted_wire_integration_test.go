@@ -16,7 +16,104 @@ import (
 	"gpt-load/internal/execution/bifrost"
 	"gpt-load/internal/gateway"
 	"gpt-load/internal/health"
+	"gpt-load/internal/platform/config"
+	"gpt-load/internal/state"
 )
+
+func TestModelProbeUsesSelectedGroupsPreparedWire(t *testing.T) {
+	bodies := make(chan []byte, 2)
+	selected := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		bodies <- body
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"4","annotations":[]}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))
+	}))
+	defer selected.Close()
+	otherRequests := make(chan struct{}, 1)
+	other := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		otherRequests <- struct{}{}
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer other.Close()
+	fixture := newServiceFixture(t)
+	create := func(name, url string) uint {
+		t.Helper()
+		group, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+			Name: stringPointer(name), ChannelID: channel.OpenAI,
+			Params:      json.RawMessage(`{"base_url":"` + url + `"}`),
+			Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "gpt-5.4", Alias: "client-alias", AliasEnabled: true}}},
+			Credentials: "provider-key", ConfirmSameTarget: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return group.GroupID
+	}
+	groupID := create("selected-wire-group", selected.URL)
+	create("other-wire-group", other.URL)
+	if got := fixture.manager.Current().Groups[groupID].Models[0].Alias; got != "client-alias" {
+		t.Fatalf("saved alias = %q, want client-alias", got)
+	}
+	_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingParameterOverrides: []any{map[string]any{
+				"match": map[string]any{"model": "client-alias"}, "set": map[string]any{"temperature": 0.3, "fallbacks": []string{"other/model"}},
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, err := fixture.service.GetGroupModels(t.Context(), groupID)
+	if err != nil || len(models.Items) != 1 {
+		t.Fatalf("models = %#v, %v", models, err)
+	}
+	revision := fixture.manager.Current().Revision
+	_, err = fixture.service.UpdateModelRouteSchedule(t.Context(), modelRouteSchedulePatchRequest{
+		SnapshotRevision: &revision,
+		Updates: []modelRouteSchedulePatchUpdate{{GroupID: groupID, EntryID: models.Items[0].EntryID,
+			ReasoningEffort: optionalField[string]{Set: true, Value: "high"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := bifrost.NewRuntime(t.Context(), fixture.channelRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Shutdown()
+	fixture.service.executor = runtime
+	response, err := fixture.service.ProbeGroupModels(t.Context(), ModelProbeRequest{
+		Targets: []ModelProbeTargetRequest{{GroupID: groupID, Model: "gpt-5.4"}},
+	})
+	if err != nil || len(response.Results) != 1 {
+		t.Fatalf("probe = %#v, %v", response, err)
+	}
+	select {
+	case <-otherRequests:
+		t.Fatal("probe reached the other group")
+	default:
+	}
+	select {
+	case body := <-bodies:
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatal(err)
+		}
+		reasoning, _ := payload["reasoning"].(map[string]any)
+		if _, leaked := payload["fallbacks"]; leaked {
+			t.Fatalf("control field leaked to provider wire: %s", body)
+		}
+		if payload["model"] != "gpt-5.4" || payload["temperature"] != 0.3 || reasoning["effort"] != "high" || payload["input"] == nil {
+			t.Fatalf("provider wire = %s, want selected upstream model, preset, alias override and reasoning", body)
+		}
+	default:
+		t.Fatal("selected upstream not called")
+	}
+	if response.Results[0].Outcome != ProbeOutcomePassed {
+		t.Fatalf("probe result = %#v, want passed", response.Results[0])
+	}
+}
 
 func TestReasoningPolicyPersistedScheduleReachesProviderWire(t *testing.T) {
 	var upstreamBody []byte

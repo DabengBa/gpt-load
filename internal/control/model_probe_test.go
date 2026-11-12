@@ -841,6 +841,53 @@ func TestModelProbeDoesNotRecoverAfterRouteCooldownChanges(t *testing.T) {
 	}
 }
 
+func TestModelProbeDoesNotRecoverAfterParameterOverridesChange(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createProbeGroup(t, fixture, []string{probeTestModel})
+	group := fixture.manager.Current().Groups[groupID]
+	key := state.RouteEntryKey{GroupID: groupID, EntryID: probeModelEntryID(group, probeTestModel)}
+	if _, changed := fixture.registry.SetEntryBlacklistedWithChange(key); !changed {
+		t.Fatal("failed to seed route blacklist")
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	fixture.service.executor = &credentialProbeTestExecutor{execute: func(execution.AttemptSpec) execution.AttemptResult {
+		close(started)
+		<-release
+		return successfulCredentialProbeResult()
+	}}
+	resultCh := make(chan ModelProbeResponse, 1)
+	go func() {
+		response, err := fixture.service.ProbeGroupModels(t.Context(), ModelProbeRequest{
+			Targets: []ModelProbeTargetRequest{{GroupID: groupID, Model: probeTestModel}},
+		})
+		if err != nil {
+			t.Errorf("ProbeGroupModels() error = %v", err)
+		}
+		resultCh <- response
+	}()
+	<-started
+	_, err := fixture.service.UpdateGroupSettings(t.Context(), groupID, GroupSettingsUpdateRequest{
+		Overrides: optionalField[config.Settings]{Set: true, Value: config.Settings{
+			state.SettingParameterOverrides: []any{map[string]any{"set": map[string]any{"temperature": 0.3}}},
+		}},
+	})
+	close(release)
+	response := <-resultCh
+	if err != nil {
+		t.Fatalf("UpdateGroupSettings() error = %v", err)
+	}
+	if len(response.Results) != 1 || response.Results[0].Recovered {
+		t.Fatalf("probe response after parameter override change = %#v, want no recovery", response)
+	}
+	runtime, ok := fixture.registry.EntryRuntime(key, time.Now())
+	if !ok || !runtime.Blacklisted {
+		t.Fatalf("route runtime = %#v/%t, want to remain blacklisted", runtime, ok)
+	}
+}
+
 func TestModelProbeDoesNotRecoverAfterTargetChange(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)

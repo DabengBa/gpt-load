@@ -26,10 +26,7 @@ import { resolveSchedulePriceID } from '@shared/domain/monitor/schedule-price'
 import { listModels } from '@shared/control/resources/models'
 
 import { useAppServices } from '../../app/services'
-import { useT } from '../../app/i18n'
 import { ModelProbeDialog } from '../models/ModelProbeDialog'
-import { isRealisticProbeProtocol, RealisticProbeDialog } from '../models/RealisticProbeDialog'
-import type { RealisticProbeProtocol } from '@shared/probe/realistic-probe'
 import { useModelProbe } from '../models/use-model-probe'
 import {
   SchedulePanelDetail,
@@ -126,12 +123,7 @@ export function SchedulePanel({
   onOpenPrice,
 }: SchedulePanelProps) {
   const { apiClient } = useAppServices()
-  const t = useT()
   const navigate = useNavigate()
-  const [realisticModel, setRealisticModel] = useState<{
-    model: string
-    protocol: RealisticProbeProtocol
-  } | null>(null)
 
   const [selectedModel, setSelectedModel] = useState(externalModel)
   const [search, setSearch] = useState('')
@@ -253,6 +245,18 @@ export function SchedulePanel({
   }
 
   const probe = useModelProbe()
+  const probeDisabledGroupIds = [
+    ...new Set([
+      ...probe.disabledGroupIds,
+      ...probe.targets
+        .filter((target) =>
+          detailQuery.data?.groups.some(
+            (group) => group.group_id === target.group_id && !group.enabled,
+          ),
+        )
+        .map((target) => target.group_id),
+    ]),
+  ]
 
   function probeRow(groupID: number, modelID: string, disabled: boolean): void {
     void probe.start([{ group_id: groupID, model: modelID }], {
@@ -482,20 +486,6 @@ export function SchedulePanel({
           ) : null
         ) : (
           <>
-            {isRealisticProbeProtocol(selectedIndexItem.protocol) && (
-              <Button
-                variant="secondary"
-                size="sm"
-                label={t('monitor.realisticProbe.entry')}
-                onClick={() => {
-                  if (isRealisticProbeProtocol(selectedIndexItem.protocol))
-                    setRealisticModel({
-                      model: selectedModel,
-                      protocol: selectedIndexItem.protocol,
-                    })
-                }}
-              />
-            )}
             <SchedulePanelDetail
               ref={ref}
               contextControl={contextControl}
@@ -528,7 +518,7 @@ export function SchedulePanel({
         failed={probe.failed}
         stopped={probe.stopped}
         results={probe.results}
-        disabledGroupIds={probe.disabledGroupIds}
+        disabledGroupIds={probeDisabledGroupIds}
         total={probe.total}
         completed={probe.completed}
         applying={true}
@@ -537,16 +527,9 @@ export function SchedulePanel({
           if (!open) probe.close()
         }}
         onStop={probe.stop}
+        onRetry={() => void probe.start(probe.targets, { disabledGroupIds: probeDisabledGroupIds })}
         onViewLog={viewProbeLog}
       />
-      {realisticModel !== null && (
-        <RealisticProbeDialog
-          model={realisticModel.model}
-          initialProtocol={realisticModel.protocol}
-          onClose={() => setRealisticModel(null)}
-          onViewLog={viewProbeLog}
-        />
-      )}
     </section>
   )
 }

@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/parameteroverride/prepare"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/redact"
 	"gpt-load/internal/platform/response"
@@ -160,6 +162,49 @@ func (service *Service) probeModelTarget(
 		return probeWithoutExecution(result, ProbeReasonNoSchedulableCredential)
 	}
 	entryID := probeModelEntryID(group, target.Model)
+	// Build the same code-owned preset before applying the group's request policy.
+	if probeTarget.protocol == protocol.OpenAIResponses && probeTarget.routeMode == channel.RouteNative ||
+		probeTarget.protocol == protocol.Rerank || probeTarget.protocol == protocol.OpenAICompletions ||
+		probeTarget.protocol == protocol.Anthropic || probeTarget.protocol == protocol.Gemini ||
+		probeTarget.protocol == protocol.GeminiEmbeddings || probeTarget.protocol == protocol.OpenAIEmbeddings {
+		var body []byte
+		var operation execution.Operation
+		var prepareErr error
+		if probeTarget.protocol == protocol.Rerank {
+			body = []byte(`{"model":"probe","query":"hello","documents":["hello"],"top_n":1}`)
+			operation = execution.OperationRerank
+		} else if probeTarget.protocol == protocol.GeminiEmbeddings {
+			body = []byte(`{"content":{"parts":[{"text":"ping"}]}}`)
+			operation = execution.OperationEmbeddingsCreate
+		} else if probeTarget.protocol == protocol.OpenAIEmbeddings {
+			body = []byte(`{"model":"probe","input":"hello"}`)
+			operation = execution.OperationEmbeddingsCreate
+		} else if probeTarget.protocol == protocol.Gemini {
+			body, prepareErr = execution.GeminiProbePreset(probeTarget.maxOutputTokens)
+			operation = execution.OperationChatCompletion
+		} else if probeTarget.protocol == protocol.OpenAICompletions || probeTarget.protocol == protocol.Anthropic {
+			body, prepareErr = execution.ChatProbePreset(target.Model, probeTarget.maxOutputTokens)
+			operation = execution.OperationChatCompletion
+		} else {
+			body, prepareErr = execution.ResponsesProbePreset(target.Model, execution.ProbeQuestion, probeTarget.maxOutputTokens)
+			operation = execution.OperationResponsesCreate
+		}
+		if prepareErr != nil {
+			return probeWithoutExecution(result, ProbeReasonUnknown)
+		}
+		for _, model := range group.Models {
+			if model.ID != target.Model {
+				continue
+			}
+			body, probeTarget.configuredParameters, probeTarget.reasoningEffortOverridden, _, prepareErr = prepare.Request(group.ParameterOverrides, probeTarget.protocol,
+				operation, state.ExternalModelName(model.ID, model.Alias), body, model.ReasoningEffort, "")
+			break
+		}
+		if prepareErr != nil {
+			return probeWithoutExecution(result, ProbeReasonUnknown)
+		}
+		probeTarget.preparedBody = body
+	}
 	entryKey := state.RouteEntryKey{GroupID: group.ID, EntryID: entryID}
 	entryView, _ := service.registry.EntryRuntime(entryKey, observation.observedAt)
 	expectedFailureVersion := entryView.FailureVersion
@@ -183,8 +228,8 @@ func (service *Service) probeModelTarget(
 	if evidence.outcome == ProbeOutcomePassed && wasUnhealthy {
 		testedCredential := credentialProbeCredentialFromEntry(entry)
 		result.Recovered = service.recoverTestedModelRoute(
-			group.ID, target.Model, probeTarget.protocol, probeTarget.signature, testedCredential,
-			entryID, expectedFailureVersion,
+			group, target.Model, probeTarget.protocol, probeTarget.signature, testedCredential,
+			entryID, expectedFailureVersion, len(probeTarget.preparedBody) != 0,
 		)
 	}
 	if label, known := service.CredentialLabels([]uint{entry.ID})[entry.ID]; known && label != "" {
@@ -229,14 +274,16 @@ func probeModelEntryID(group state.GroupView, model string) string {
 }
 
 func (service *Service) recoverTestedModelRoute(
-	groupID uint,
+	testedGroup state.GroupView,
 	model string,
 	selectedProtocol protocol.Protocol,
 	testedSignature groupValidationSignature,
 	tested credentialProbeCredential,
 	entryID string,
 	expectedFailureVersion uint64,
+	prepared bool,
 ) bool {
+	groupID := testedGroup.ID
 	if service == nil || service.manager == nil || service.registry == nil ||
 		groupID == 0 || strings.TrimSpace(entryID) == "" || tested.ref.ID == 0 {
 		return false
@@ -255,9 +302,12 @@ func (service *Service) recoverTestedModelRoute(
 			currentTarget, valid = buildGroupProbeTarget(group, model, selectedProtocol)
 		}
 		if !valid || currentTarget.protocol != selectedProtocol || currentTarget.signature != testedSignature ||
-			probeModelEntryID(group, model) != entryID {
+			probeModelEntryID(group, model) != entryID ||
+			(prepared && (!reflect.DeepEqual(group.ParameterOverrides, testedGroup.ParameterOverrides) ||
+				!sameProbeModelRequestSettings(group, testedGroup, model))) {
 			return false
 		}
+
 		restore := func() {
 			entries, err := service.registry.SnapshotGroupCredentialEntriesExact(
 				tested.ref.GroupID, []uint{tested.ref.ID},
@@ -281,6 +331,22 @@ func (service *Service) recoverTestedModelRoute(
 		return recovered
 	})
 	return recovered
+}
+
+// The first matching model is also the entry selected for the probe.
+func sameProbeModelRequestSettings(current, tested state.GroupView, model string) bool {
+	for _, a := range current.Models {
+		if a.ID != model {
+			continue
+		}
+		for _, b := range tested.Models {
+			if b.ID == model {
+				return a.Alias == b.Alias && a.ReasoningEffort == b.ReasoningEffort
+			}
+		}
+		return false
+	}
+	return false
 }
 
 func groupHasModel(group state.GroupView, model string) bool {

@@ -212,8 +212,11 @@ func (probe *credentialProbeExecutor) Probe(
 			generation,
 			credential.CanonicalJSON(),
 		),
-		ProbeMaxOutputTokens: target.maxOutputTokens,
-		Proxy:                proxy, ProxyFingerprint: proxyFingerprint,
+		ProbeMaxOutputTokens:      target.maxOutputTokens,
+		ProbePreparedBody:         target.preparedBody,
+		ConfiguredParameters:      target.configuredParameters,
+		ReasoningEffortOverridden: target.reasoningEffortOverridden,
+		Proxy:                     proxy, ProxyFingerprint: proxyFingerprint,
 	})
 	if err := spec.Validate(); err != nil {
 		return credentialProbeExecution{}, newCredentialProbeFailure(

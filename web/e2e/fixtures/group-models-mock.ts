@@ -40,11 +40,12 @@ export interface GroupModelSeed {
   id: string
   alias?: string
   alias_enabled?: boolean
+  entry_id?: string
   weight?: number | null
   priority?: number | null
 }
 
-function modelItem(seed: GroupModelSeed, index: number, testAlias?: string) {
+function modelItem(seed: GroupModelSeed, index: number, testAlias?: string, entryID?: string) {
   const alias = seed.alias ?? ''
   const aliasEnabled = seed.alias_enabled ?? false
   return {
@@ -54,6 +55,7 @@ function modelItem(seed: GroupModelSeed, index: number, testAlias?: string) {
     client_model: aliasEnabled ? alias : seed.id,
     concurrency_limit: 0,
     test_alias: testAlias ?? `tst${String(index).padStart(3, '0')}`,
+    entry_id: entryID ?? `e${index.toString(16).padStart(12, '0')}`,
     weight: seed.weight ?? null,
     priority: seed.priority ?? null,
     pricing_status: 'configured',
@@ -66,10 +68,12 @@ export async function mockGroupModels(
     models?: GroupModelSeed[]
     extraChannel?: boolean
     generationProtocol?: 'openai-completions' | 'anthropic'
+    enabled?: boolean
   } = {},
 ): Promise<{ puts: unknown[] }> {
   const puts: unknown[] = []
   let items = (options.models ?? []).map((seed, index) => modelItem(seed, index))
+  let nextIdentity = items.length
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
     window.localStorage.setItem('gpt-load.locale', 'en-US')
@@ -172,7 +176,7 @@ export async function mockGroupModels(
         channel_id: groupBase.channel_id,
         params: groupBase.params,
         provider_url: groupBase.provider_url,
-        enabled: true,
+        enabled: options.enabled ?? true,
         site_access: SITE_ACCESS,
         overrides: RUNTIME,
         effective: {
@@ -198,12 +202,29 @@ export async function mockGroupModels(
     if (path === '/api/groups/1/models' && request.method() === 'PUT') {
       const body = request.postDataJSON() as { models?: GroupModelSeed[] }
       puts.push(body)
-      items = (body.models ?? []).map((model, index) => {
-        const previous = items[index]
+      const assigned = new Set<string>()
+      items = (body.models ?? []).map((model) => {
+        let previous = model.entry_id
+          ? items.find((item) => item.entry_id === model.entry_id)
+          : undefined
+        if (!previous) {
+          let matches = items.filter(
+            (item) => item.id === model.id && item.alias === (model.alias ?? ''),
+          )
+          if (matches.length === 0)
+            matches = items.filter((item) => item.id === model.id && item.alias === '')
+          if (matches.length === 1 && !assigned.has(matches[0].entry_id)) previous = matches[0]
+        }
+        if (previous) assigned.add(previous.entry_id)
         return modelItem(
-          model,
-          index,
-          previous && previous.id === model.id ? previous.test_alias : undefined,
+          {
+            ...model,
+            weight: model.weight === undefined ? previous?.weight : model.weight,
+            priority: model.priority === undefined ? previous?.priority : model.priority,
+          },
+          previous ? 0 : nextIdentity++,
+          previous?.test_alias,
+          model.entry_id || previous?.entry_id,
         )
       })
       return fulfill({ items, total: items.length, pending: 0 })

@@ -59,6 +59,9 @@ func prepareGatewayProtocolProbe(
 		return preparedAttempt{}, &failure
 	}
 	body, err := json.Marshal(payload)
+	if spec.ClientProtocol == protocol.OpenAIResponses && len(spec.ProbePreparedBody) > 0 {
+		body, err = sanitizePreparedResponsesProbe(spec)
+	}
 	if err != nil {
 		failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode gateway protocol probe")
 		return preparedAttempt{}, &failure
@@ -80,18 +83,19 @@ func prepareGatewayProtocolProbe(
 	}, nil
 }
 
+// Use the normal Responses sanitizer for a model probe's prepared body.
+func sanitizePreparedResponsesProbe(spec execution.AttemptSpec) ([]byte, error) {
+	spec.Operation = execution.OperationResponsesCreate
+	spec.Body = spec.ProbePreparedBody
+	body, _, err := sanitizeNativePassthroughRequest(spec, false)
+	return body, err
+}
+
 func responsesProbePayload(spec execution.AttemptSpec) map[string]any {
-	return map[string]any{
-		"model": spec.UpstreamModel,
-		"input": []map[string]any{{
-			"role": "user",
-			"content": []map[string]any{{
-				"type": "input_text",
-				"text": probePromptText(spec),
-			}},
-		}},
-		"max_output_tokens": probeOutputTokenBudget(spec), "store": false, "stream": false,
-	}
+	body, _ := execution.ResponsesProbePreset(spec.UpstreamModel, probePromptText(spec), probeOutputTokenBudget(spec))
+	var payload map[string]any
+	_ = json.Unmarshal(body, &payload)
+	return payload
 }
 
 func normalizeGatewayProtocolProbeResult(spec execution.AttemptSpec, result *execution.AttemptResult) {

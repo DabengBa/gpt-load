@@ -91,6 +91,9 @@ func (s AttemptSpec) Validate() error {
 		}
 	}
 	if s.Operation == OperationProbe {
+		if len(s.ProbePreparedBody) > 0 && !json.Valid(s.ProbePreparedBody) {
+			return validationError("probe_prepared_body", "must contain valid JSON")
+		}
 		if s.Method != "" || s.Path != "" || len(s.Query) != 0 || s.RawQuery != "" || len(s.Body) != 0 {
 			return validationError("probe", "must not contain provider wire fields")
 		}
@@ -100,6 +103,8 @@ func (s AttemptSpec) Validate() error {
 				"must be greater than zero for a generation probe",
 			)
 		}
+	} else if len(s.ProbePreparedBody) > 0 {
+		return validationError("probe_prepared_body", "requires a probe")
 	} else if s.Operation == OperationModelTrace {
 		// A fingerprint challenge owns its prompt: the control plane supplies the
 		// text and the budget, so the attempt carries no provider wire fields.
