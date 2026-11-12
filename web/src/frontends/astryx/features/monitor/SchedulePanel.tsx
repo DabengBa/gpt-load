@@ -26,7 +26,10 @@ import { resolveSchedulePriceID } from '@shared/domain/monitor/schedule-price'
 import { listModels } from '@shared/control/resources/models'
 
 import { useAppServices } from '../../app/services'
+import { useT } from '../../app/i18n'
 import { ModelProbeDialog } from '../models/ModelProbeDialog'
+import { isRealisticProbeProtocol, RealisticProbeDialog } from '../models/RealisticProbeDialog'
+import type { RealisticProbeProtocol } from '@shared/probe/realistic-probe'
 import { useModelProbe } from '../models/use-model-probe'
 import {
   SchedulePanelDetail,
@@ -123,7 +126,12 @@ export function SchedulePanel({
   onOpenPrice,
 }: SchedulePanelProps) {
   const { apiClient } = useAppServices()
+  const t = useT()
   const navigate = useNavigate()
+  const [realisticModel, setRealisticModel] = useState<{
+    model: string
+    protocol: RealisticProbeProtocol
+  } | null>(null)
 
   const [selectedModel, setSelectedModel] = useState(externalModel)
   const [search, setSearch] = useState('')
@@ -473,29 +481,45 @@ export function SchedulePanel({
             <EmptyState title={labels.noMatchingModels ?? labels.selectModel ?? ''} />
           ) : null
         ) : (
-          <SchedulePanelDetail
-            ref={ref}
-            contextControl={contextControl}
-            detail={detailQuery.data}
-            loading={
-              detailQuery.isPending && detailQuery.data === undefined && Boolean(detailRequest)
-            }
-            error={detailRequest && detailQuery.data === undefined ? detailError : ''}
-            stale={detailQuery.isRefetchError}
-            locale={locale}
-            selectedRow={selectedRow}
-            sourceGroupId={sourceGroupId}
-            drafts={drafts}
-            labels={labels.detail}
-            onRefresh={() => void refreshDetail()}
-            onSaved={(revision, clearDrafts) => void handleSaved(revision, clearDrafts)}
-            onRecovered={(groupId, entryId) => void handleRecovered(groupId, entryId)}
-            onProbe={probeRow}
-            onProbeAll={probeRows}
-            onDraftChange={onDraftChange}
-            onRowChange={onRowChange}
-            onOpenPrice={(groupID, modelID) => void openPrice(groupID, modelID)}
-          />
+          <>
+            {isRealisticProbeProtocol(selectedIndexItem.protocol) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                label={t('monitor.realisticProbe.entry')}
+                onClick={() => {
+                  if (isRealisticProbeProtocol(selectedIndexItem.protocol))
+                    setRealisticModel({
+                      model: selectedModel,
+                      protocol: selectedIndexItem.protocol,
+                    })
+                }}
+              />
+            )}
+            <SchedulePanelDetail
+              ref={ref}
+              contextControl={contextControl}
+              detail={detailQuery.data}
+              loading={
+                detailQuery.isPending && detailQuery.data === undefined && Boolean(detailRequest)
+              }
+              error={detailRequest && detailQuery.data === undefined ? detailError : ''}
+              stale={detailQuery.isRefetchError}
+              locale={locale}
+              selectedRow={selectedRow}
+              sourceGroupId={sourceGroupId}
+              drafts={drafts}
+              labels={labels.detail}
+              onRefresh={() => void refreshDetail()}
+              onSaved={(revision, clearDrafts) => void handleSaved(revision, clearDrafts)}
+              onRecovered={(groupId, entryId) => void handleRecovered(groupId, entryId)}
+              onProbe={probeRow}
+              onProbeAll={probeRows}
+              onDraftChange={onDraftChange}
+              onRowChange={onRowChange}
+              onOpenPrice={(groupID, modelID) => void openPrice(groupID, modelID)}
+            />
+          </>
         )}
       </div>
       <ModelProbeDialog
@@ -515,6 +539,14 @@ export function SchedulePanel({
         onStop={probe.stop}
         onViewLog={viewProbeLog}
       />
+      {realisticModel !== null && (
+        <RealisticProbeDialog
+          model={realisticModel.model}
+          initialProtocol={realisticModel.protocol}
+          onClose={() => setRealisticModel(null)}
+          onViewLog={viewProbeLog}
+        />
+      )}
     </section>
   )
 }

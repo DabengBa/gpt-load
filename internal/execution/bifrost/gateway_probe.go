@@ -82,7 +82,14 @@ func prepareGatewayProtocolProbe(
 
 func responsesProbePayload(spec execution.AttemptSpec) map[string]any {
 	return map[string]any{
-		"model": spec.UpstreamModel, "input": probePromptText(spec),
+		"model": spec.UpstreamModel,
+		"input": []map[string]any{{
+			"role": "user",
+			"content": []map[string]any{{
+				"type": "input_text",
+				"text": probePromptText(spec),
+			}},
+		}},
 		"max_output_tokens": probeOutputTokenBudget(spec), "store": false, "stream": false,
 	}
 }

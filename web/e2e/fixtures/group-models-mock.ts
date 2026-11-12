@@ -62,7 +62,11 @@ function modelItem(seed: GroupModelSeed, index: number, testAlias?: string) {
 
 export async function mockGroupModels(
   page: Page,
-  options: { models?: GroupModelSeed[]; extraChannel?: boolean } = {},
+  options: {
+    models?: GroupModelSeed[]
+    extraChannel?: boolean
+    generationProtocol?: 'openai-completions' | 'anthropic'
+  } = {},
 ): Promise<{ puts: unknown[] }> {
   const puts: unknown[] = []
   let items = (options.models ?? []).map((seed, index) => modelItem(seed, index))
@@ -102,7 +106,7 @@ export async function mockGroupModels(
             },
             routes: [
               {
-                client_protocol: 'openai-completions',
+                client_protocol: options.generationProtocol ?? 'openai-completions',
                 operation: 'chat_completion',
                 route_mode: 'native',
                 model_dependent: false,
@@ -122,7 +126,7 @@ export async function mockGroupModels(
             ],
             client_protocols: options.extraChannel
               ? ['openai-completions', 'openai-embeddings']
-              : ['openai-completions'],
+              : [options.generationProtocol ?? 'openai-completions'],
           },
           ...(options.extraChannel
             ? [

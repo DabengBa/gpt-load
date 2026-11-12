@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>GPT-Load · 按实际请求测活</title>
+  <style>
+    :root{--canvas:#eeede9;--surface:#fff;--sunken:#f5f4f1;--ink:#15181b;--muted:#4e545b;--line:#e6e5e0;--control:#cfcfc9;--action:#1c4f6e;--soft:#e8eff4;--green:#1a6b3f;--green-bg:#e6f3ec;--red:#b62f2f;--red-bg:#fbebe9;--amber:#805710;--amber-bg:#f8f0dd;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;font:13.5px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--ink);background:var(--canvas)}
+    *{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit;color:inherit}button,select,input,textarea{border:1px solid var(--control);border-radius:7px;background:var(--surface)}button{min-height:34px;padding:6px 12px;cursor:pointer;font-weight:550;white-space:nowrap}button:hover:not(:disabled){background:var(--sunken)}button:active:not(:disabled){background:var(--soft)}button:disabled{opacity:.48;cursor:not-allowed}button.primary{background:var(--action);border-color:var(--action);color:white}button.primary:hover:not(:disabled){background:#163f58}button.quiet{border-color:transparent;background:transparent}button[aria-pressed=true]{color:var(--action);background:var(--soft);border-color:var(--action)}:focus-visible{outline:2px solid var(--action);outline-offset:3px}::selection{color:var(--ink);background:#ccdfeb}input,textarea{caret-color:var(--action)}a{color:var(--action);text-underline-offset:3px}h1,h2,h3,p{margin:0}h1{font-size:22px;line-height:1.3}h2{font-size:16px}h3{font-size:14px}small,.small{font-size:12px}.muted{color:var(--muted)}.mono,code,pre{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}code{overflow-wrap:anywhere}pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.spread{justify-content:space-between}.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:5px;background:var(--sunken);font-size:12px;font-weight:600}.good{color:var(--green);background:var(--green-bg)}.bad{color:var(--red);background:var(--red-bg)}.warn{color:var(--amber);background:var(--amber-bg)}[hidden]{display:none!important}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+    .demo-bar{padding:8px 24px;background:#202b31;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px}.demo-bar button{background:transparent;color:#fff;border-color:#77868e;min-height:30px;font-size:12px}.demo-bar button[aria-pressed=true]{background:#fff;color:var(--action);border-color:#fff}.topbar{height:54px;padding:0 30px;display:flex;align-items:center;gap:32px;background:white;border-bottom:1px solid var(--line)}.brand{font-size:16px;font-weight:750}.nav{display:flex;gap:24px;color:var(--muted)}.nav strong{color:var(--ink);border-bottom:2px solid var(--ink);padding:16px 0}.page{max-width:1360px;margin:auto;padding:24px 30px 36px}.heading{margin-bottom:20px}.heading .context{margin-bottom:8px;font-size:12px;color:var(--muted)}.scenarios{border-top:1px solid var(--control);padding:15px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}.scenarios strong{margin-right:3px}.scenarios button{background:transparent;min-height:32px;font-size:12px}.scenarios button[aria-pressed=true]{background:var(--surface);border-color:var(--action)}.scenario-guide{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.scenario-guide p{max-width:76ch}.scenario-guide button{font-size:12px}.workspace{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}.workspace-head{padding:16px 20px;border-bottom:1px solid var(--line)}.columns{display:grid;grid-template-columns:minmax(350px,.92fr) minmax(450px,1.25fr)}.request{padding:20px;border-right:1px solid var(--line);min-width:0}.result{padding:20px;min-width:0}.section-title{margin-bottom:14px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}.field{display:flex;flex-direction:column;gap:6px;min-width:0}.field>label{font-size:12px;font-weight:600}.field.wide{grid-column:1/-1}select,input{min-height:36px;padding:6px 9px;width:100%}.segments{display:flex;gap:6px}.segments button{flex:1}.check{display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer}.check input{accent-color:var(--action);width:16px;min-height:16px;margin:0}.editor-head{margin:18px 0 8px}.editor-head label{font-weight:600}.editor{width:100%;min-height:255px;resize:vertical;padding:12px;background:var(--sunken);border-color:var(--line);font-family:var(--mono);font-size:12px;line-height:1.65;tab-size:2}.editor[aria-invalid=true]{border-color:var(--red)}.error{color:var(--red);font-size:12px;margin-top:6px}.request-footer{margin-top:10px}.effects{padding:12px 0 0;border-top:1px solid var(--line);margin-top:16px;font-size:12px;color:var(--muted)}.runbar{margin-top:16px;display:flex;gap:8px;align-items:center}.runbar .primary{flex:1}.result-title{padding-bottom:15px;border-bottom:1px solid var(--line)}.result-title h2{font-size:20px;line-height:1.4;margin:8px 0}.result-title p{font-size:12px;min-height:18px}.metrics{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line);padding:16px 0;gap:12px}.metrics dt{font-size:12px;color:var(--muted);margin-bottom:5px}.metrics dd{margin:0;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}.trace{margin:20px 0}.trace h3{margin-bottom:12px}.trace-item{display:grid;grid-template-columns:26px 1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:start}.trace-num{width:24px;height:24px;display:grid;place-items:center;background:var(--sunken);border-radius:50%;font-size:12px;font-variant-numeric:tabular-nums}.trace-item p{font-size:12px;margin-top:3px}.trace-item .badge{white-space:nowrap}.response-head{margin:18px 0 10px}.response-box{background:var(--sunken);padding:14px;border-radius:7px;min-height:96px}.response-box p{font-size:13px;line-height:1.7}.result details{border-top:1px solid var(--line);margin-top:18px;padding-top:12px}.result summary{cursor:pointer;font-weight:600;font-size:12px;padding:4px 0}.result details pre{padding:12px 0}.coverage{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}.coverage span{font-size:11.5px;padding:3px 7px;background:var(--sunken);border-radius:4px}.statebar{border-top:1px solid var(--line);padding:12px 20px;background:var(--sunken);display:flex;gap:20px;flex-wrap:wrap;font-size:12px}.statebar b{font-weight:600;margin-left:6px}.notice{padding:10px 12px;background:var(--amber-bg);color:var(--amber);border-radius:6px;font-size:12px;margin-bottom:12px}.notice button{margin-top:8px}.logic,.research{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px}.logic h2,.research h2{margin-bottom:16px}.pipeline{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:22px 0;border:1px solid var(--line);border-radius:7px;overflow:hidden}.stage{padding:18px 14px;border-right:1px solid var(--line);background:var(--sunken)}.stage:last-child{border:0}.stage.active{background:var(--soft);color:var(--action)}.stage.done{background:var(--green-bg);color:var(--green)}.stage p{margin-top:6px;font-size:12px}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;text-align:left;font-size:13px}th,td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}th{font-weight:600;background:var(--sunken)}.logic .statebar{margin-top:20px}.decision{margin-top:24px}.decision ul{padding-left:20px;line-height:1.9}.source{padding:18px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:180px 1fr;gap:24px}.source p{margin-top:6px;max-width:78ch}.source time{font-size:12px;color:var(--muted)}.source ul{padding-left:18px;margin:8px 0;line-height:1.8}.page-note{margin-top:16px;color:var(--muted);font-size:12px}.empty-trace{padding:18px 0;color:var(--muted);font-size:12px}.pending{border-radius:4px;background:var(--sunken);height:5px;overflow:hidden;margin-top:15px}.pending span{display:block;height:100%;background:var(--action);transition:width .18s ease-out}.form-lock{padding:0;border:0;margin:0;min-width:0}.form-lock:disabled{opacity:.7}.form-lock:disabled textarea{resize:none}.research ol{padding-left:22px;line-height:1.9}.link-button{padding:0;border:0;background:transparent!important;color:var(--action);text-decoration:underline;text-underline-offset:3px;min-height:26px}.logic-controls{margin-top:20px}
+    @media(max-width:1000px){.page{padding:20px}.columns{grid-template-columns:minmax(300px,1fr) minmax(340px,1fr)}.nav{gap:16px}.topbar{padding:0 20px}.pipeline{grid-template-columns:1fr}.stage{border-right:0;border-bottom:1px solid var(--line);display:flex;gap:15px;align-items:center}.stage p{margin:0}}
+    @media(max-width:740px){.demo-bar{align-items:flex-start;padding:12px 16px;flex-direction:column}.topbar{padding:0 16px;height:48px}.nav{display:none}.page{padding:20px 12px}.heading{gap:12px}.heading h1{font-size:20px}.columns{grid-template-columns:1fr}.request{border-right:0;border-bottom:1px solid var(--line);padding:16px}.result{padding:16px}.workspace-head{padding:14px 16px}.scenario-guide{align-items:flex-start;flex-direction:column;gap:10px}.scenario-guide .row{gap:6px}.scenarios{gap:7px}.scenarios strong{width:100%}.scenarios button{flex:1}.fields{gap:12px}.metrics{gap:8px}.metrics dd{font-size:15px}.source{grid-template-columns:1fr;gap:8px}.research,.logic{padding:16px}.statebar{gap:8px 16px;padding:12px 16px}.trace-item{grid-template-columns:24px minmax(0,1fr) auto;gap:8px}button,select,input{min-height:42px}.demo-bar button{min-height:36px}.check{min-height:32px}.check input{min-height:16px}.editor{min-height:280px}.logic table{min-width:620px}}
+    .nav{align-items:center}.demo-bar button:hover:not(:disabled){background:#394c57;color:#fff}.demo-bar button[aria-pressed=true]:hover:not(:disabled){background:var(--soft);color:var(--action)}.stage.failed{background:var(--red-bg);color:var(--red)}.stage.incomplete{background:var(--amber-bg);color:var(--amber)}.stage small{display:block;margin-top:8px}.rule-line{padding:12px 0;border-bottom:1px solid var(--line);font-size:12px}.rule-line strong{margin-right:10px}.stage{overflow-wrap:anywhere}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;scroll-behavior:auto!important}}
+  </style>
+</head>
+<body>
+  <div class="demo-bar">
+    <span><strong>历史方案演示</strong> · 并非当前实现；合成数据，不连接上游、不保存内容。请勿粘贴真实密钥。</span>
+    <div class="row" aria-label="演示视图">
+      <button type="button" data-view="ui" aria-pressed="true">测活界面</button>
+      <button type="button" data-view="logic" aria-pressed="false">执行逻辑</button>
+      <button type="button" data-view="research" aria-pressed="false">方案依据</button>
+    </div>
+  </div>
+  <header class="topbar"><span class="brand">GPT-Load</span><nav class="nav" aria-label="现有导航位置示意"><span>首页</span><strong>分组</strong><span>调度中心</span><span>监控</span><span>请求日志</span><span>设置</span></nav></header>
+  <main class="page">
+    <header class="heading row spread"><div><p class="context">模型与别名 / gpt-6-astra / 测活</p><h1>按我的客户端调用，能正常完成吗？</h1></div><button type="button" id="reset">重置演示</button></header>
+    <div class="scenarios" aria-label="演示情境"><strong>演示情境</strong><button type="button" data-scenario="format" aria-pressed="true">请求格式差异</button><button type="button" data-scenario="alias" aria-pressed="false">别名与覆盖</button><button type="button" data-scenario="fallback" aria-pressed="false">回退后成功</button><button type="button" data-scenario="disconnect" aria-pressed="false">流式中断</button><button type="button" data-scenario="tools" aria-pressed="false">工具调用</button><button type="button" data-scenario="missing" aria-pressed="false">原文缺失</button><button type="button" data-scenario="free" aria-pressed="false">自由演练</button></div>
+    <div class="scenario-guide"><p id="scenario-copy" class="small"></p><div class="row" id="scenario-actions"></div></div>
+
+    <section id="view-ui" aria-label="测活方案">
+      <div class="workspace">
+        <header class="workspace-head row spread"><div class="row"><h2>模型测活</h2><span class="badge">demo_packy</span></div><span class="small muted">配置、响应与耗时均为演示值</span></header>
+        <div class="columns">
+          <section class="request" aria-label="测试请求">
+            <fieldset id="form-lock" class="form-lock">
+              <div class="section-title row spread"><h3>这次验证什么</h3><span id="scope-hint" class="small muted"></span></div>
+              <div class="segments" aria-label="测试范围"><button type="button" data-scope="group" aria-pressed="true">当前分组</button><button type="button" data-scope="route" aria-pressed="false">客户端路由</button></div>
+              <div class="fields">
+                <div class="field"><label for="protocol">客户端协议</label><select id="protocol"><option value="responses">OpenAI Responses</option><option value="chat">OpenAI Chat Completions</option></select></div>
+                <div class="field"><label for="access">调用身份 · 示例</label><select id="access"><option value="allowed">demo-client · 有权限</option><option value="denied">demo-limited · 无权限</option></select></div>
+                <div class="field wide"><label for="template">请求来源</label><select id="template"><option value="text">文本模板 · 消息列表</option><option value="tools">工具模板 · 只验证工具请求</option><option value="string">字符串输入 · 复现兼容差异</option><option value="custom">自定义 JSON · 仅本页</option></select></div>
+              </div>
+              <div class="editor-head row spread"><label for="payload">客户端请求</label><label class="check"><input id="stream" type="checkbox" checked>流式</label></div>
+              <div id="missing-notice" class="notice" hidden>这条示例日志没有原始请求体，不能还原为真实请求。<br><button type="button" id="use-template">改用新模板</button></div>
+              <textarea id="payload" class="editor" spellcheck="false" aria-describedby="payload-error"></textarea>
+              <p id="payload-error" class="error" role="alert" hidden></p>
+              <div class="request-footer row spread"><code id="endpoint">POST /v1/responses</code><button type="button" id="format-json" class="quiet">格式化 JSON</button></div>
+            </fieldset>
+            <div class="effects" id="effects">按正常调用计量，可能影响额度与健康状态；上游可能收费。</div>
+            <div class="runbar"><button type="button" id="run" class="primary">开始模拟测活</button><button type="button" id="stop" disabled>中止本次</button></div>
+          </section>
+          <section class="result" aria-label="测活结果">
+            <div class="result-title" aria-live="polite"><div class="row spread"><span class="badge" id="result-badge">未开始</span><span class="small muted" id="run-type">按实际请求</span></div><h2 id="result-title">准备就绪</h2><p id="result-subtitle" class="muted">按右侧情境步骤，或直接发送左侧请求。</p><div id="pending" class="pending" hidden><span id="pending-bar"></span></div></div>
+            <dl class="metrics"><div><dt>首个有效输出</dt><dd id="first-token">—</dd></div><div><dt>总耗时</dt><dd id="duration">—</dd></div><div><dt>上游尝试</dt><dd id="attempt-count">0</dd></div></dl>
+            <div class="rule-line"><strong>命中参数规则</strong><span id="matched-rules">尚未准备请求</span></div>
+            <div class="trace"><div class="row spread"><h3>实际执行</h3><span class="small muted" id="route-label">限定 demo_packy</span></div><div id="trace"><p class="empty-trace">等待发送请求。</p></div></div>
+            <div class="response-head row spread"><h3>客户端输出 · 内容摘录</h3><span class="badge" id="terminal">尚无终态</span></div>
+            <div class="response-box"><pre id="response">尚未收到响应。</pre></div>
+            <div class="coverage" id="coverage"><span>协议待验证</span><span>流式待验证</span><span>工具未测试</span></div>
+            <details id="request-details"><summary>本次请求与上游请求</summary><pre id="request-diff">发送后查看实际模拟快照。</pre></details>
+            <details id="log-details"><summary>查看本次日志 · 演示</summary><pre id="log">尚无执行记录。</pre></details>
+          </section>
+        </div>
+        <div class="statebar" aria-label="当前状态"><span>阶段<b data-state="phase">待发送</b></span><span>客户端模型<b data-state="model">a7f2c9</b></span><span>参数覆盖<b data-state="override">按分组配置</b></span><span>数据来源<b>合成样例</b></span></div>
+      </div>
+      <p class="page-note">本页验证的是“请求完成与协议兼容”，不证明模型身份、答案质量或真实客户端完整工作流。不会自动启用任何分组。</p>
+    </section>
+
+    <section id="view-logic" class="logic" hidden aria-label="执行逻辑说明">
+      <div class="row spread"><h2>共享真实执行链路，不共享一个模糊的“通过”</h2><span class="badge" id="logic-status">待发送</span></div>
+      <div class="pipeline" id="pipeline"></div>
+      <div class="logic-controls row"><button type="button" id="logic-start" class="primary">开始分步演示</button><button type="button" id="logic-step" disabled>执行下一步</button><button type="button" id="logic-stop" disabled>中止本次</button><button type="button" data-goto-ui>返回请求与结果</button></div>
+      <div class="statebar"><span>阶段<b data-state="phase">待发送</b></span><span>客户端模型<b data-state="model">a7f2c9</b></span><span>参数覆盖<b data-state="override">按分组配置</b></span></div>
+      <div class="decision table-wrap"><table><thead><tr><th>验证范围</th><th>当前固定测活</th><th>方案：当前分组</th><th>方案：客户端路由</th></tr></thead><tbody>
+        <tr><td>入口与身份</td><td>管理端 probe</td><td>真实数据面 + 调用身份</td><td>真实数据面 + 调用身份</td></tr>
+        <tr><td>模型</td><td>分组内模型 ID</td><td>该条目的 test_alias</td><td>客户端原始模型 / 别名</td></tr>
+        <tr><td>请求体 / 流式</td><td>固定短问题 / 非流式</td><td colspan="2">请求 JSON 为准；保留 tools、多轮内容与 stream</td></tr>
+        <tr><td>参数覆盖</td><td>不经过普通参数覆盖</td><td>按 test_alias 匹配规则；可能与真实模型名不同</td><td>按客户端原始模型名匹配规则</td></tr>
+        <tr><td>调度 / 回退</td><td>单次直接执行</td><td>限定分组；仍遵守正常调度约束</td><td>正常权限、候选与重试预算</td></tr>
+        <tr><td>计量 / 健康</td><td>本地计量不适用；成功可恢复</td><td colspan="2">按普通请求处理，单独标记测试来源供筛选；不承诺无副作用</td></tr>
+        <tr><td>结果</td><td>模板是否得到有效响应</td><td>该分组在本次请求下的结果</td><td>客户端结果 + 每个上游的独立结果</td></tr>
+      </tbody></table></div>
+      <div class="decision"><h3>判定规则</h3><ul><li>收到 200 或第一个 token 不等于完成；必须获得对应协议的完整有效终态。</li><li>test_alias 更换了客户端模型名，权限过滤和参数覆盖可能因此不同；验证真实模型名时，使用“客户端路由”。</li><li>上游 503 后回退成功：客户端完成，第一条线路仍失败；中途已向客户端提交内容后，不拼接另一上游的答案。</li><li>有效工具调用不要求可见文本；只证明模型返回了工具请求，不代表工具执行或任务完成。</li><li>取消、流式断开与缺少终态显示“未完成”；日志缺失原文时不伪造重放。</li><li>示例路由最多尝试两个候选，每个一次；这不是项目当前默认重试配置。</li></ul></div>
+    </section>
+
+    <section id="view-research" class="research" hidden aria-label="产品方案依据">
+      <h2>测活要回答的不是“2 + 2 有没有回复”</h2>
+      <p>管理员的任务：接入一个模型后，确认自己的请求能用；出错后，定位是格式、授权、参数、上游还是路由问题。</p>
+      <div class="decision"><h3>建议范围</h3><ol><li><strong>默认按实际请求测活。</strong> 从模型行进入时限定当前分组；从调度中心进入时使用客户端模型名。简单模板可直接运行，JSON 编辑按需使用。</li><li><strong>旧固定测活保留为基础诊断。</strong> 不把旧结果叫作真实使用验证，也不删除凭据恢复能力。</li><li><strong>结果保留上下文。</strong> 协议、流式、调用身份、模型映射、参数变化、attempt 与完成终态一起展示；不汇总成永久的“全功能可用”。</li><li><strong>日志重放后续独立增加。</strong> 有原文且完成脱敏确认才创建测试草稿，不自动发送；缺原文允许新建模板，不称作重放。</li></ol></div>
+      <div class="decision"><h3>官方资料 · 查阅于 2026-11-12</h3></div>
+      <article class="source"><div><h3><a href="https://docs.litellm.ai/docs/proxy/health" target="_blank" rel="noreferrer">LiteLLM</a></h3><time>文档更新：2026-11-11</time></div><div><strong>区分进程健康与模型请求健康</strong><p>模型检查会发出真实请求并产生 token 消耗；提供模型模式、测试模型、输出预算、推理参数等定制。借鉴“明确检查对象 + 可配置请求”，不把它解释为完整客户端行为验证。</p></div></article>
+      <article class="source"><div><h3><a href="https://docs.newapi.pro/zh/docs/guide/feature-guide/user/api" target="_blank" rel="noreferrer">New API</a></h3><time>当前文档；更新日未明确</time></div><div><strong>游乐场复用转发链路</strong><p>支持选择分组、模型及生成参数；文档说明 /pg/chat/completions 复用分流、协议转换、计费和重试链路。借鉴共用执行路径；不推断渠道“测试”与游乐场完全等价，也不把 Chat 能力泛化到所有协议。</p></div></article>
+      <article class="source"><div><h3><a href="https://docs.gw.prismaairs.com/docs/product/observability/logs" target="_blank" rel="noreferrer">Portkey · Logs</a></h3><time>当前文档；更新日未明确</time></div><div><strong>请求日志连接调试，回退状态单独可见</strong><p>日志展示请求 / 响应与重试、回退状态；Replay 打开可编辑 playground。文档列出的重放端点限于 Chat、Completions、Embeddings，不能据此声称支持 Responses 重放。借鉴有证据的诊断闭环。</p></div></article>
+      <div class="decision"><h3>本项目的事实边界</h3><ul><li>现有 probe 固定短问题、非流式、不走普通参数覆盖；本页的真实请求工作区是拟议能力。</li><li>已有 test_alias、真实执行器、请求日志、可选 debug capture 可复用；不再写一套“模拟真实请求”的后端。</li><li>这次 input 报错仅有结构化日志和代码线索，没有原始通信。情境中的修复成功是模拟，不是线上复测结论。</li><li>本期不扩展为评测平台、定时压测或工具执行器；真实客户端的动态 Header、SDK 行为仍需客户端验证。</li></ul></div>
+      <p class="page-note">详细取舍、落地范围与验收场景：<a href="realistic-probe-proposal.md">realistic-probe-proposal.md</a></p>
+    </section>
+    <div class="sr" role="status" id="feedback" aria-live="polite"></div>
+  </main>
+
+  <script id="probe-logic">
+    // Pure simulation: no DOM, network, storage or timers in this block.
+    const ProbeLogic = (() => {
+      const copy = value => JSON.parse(JSON.stringify(value));
+      const endpoints = {responses:'/v1/responses',chat:'/v1/chat/completions'};
+      const phases = ['待发送','请求校验','路由与权限','准备上游请求','接收响应','结果判定'];
+      function template(protocol, kind, scope, stream) {
+        const body = {model:scope === 'group' ? 'a7f2c9' : 'coding',stream};
+        const prompt = kind === 'tools' ? '请调用 get_weather 查询杭州天气。' : '用一句话确认你能收到这条消息。';
+        if (protocol === 'responses') {
+          body.input = kind === 'string' ? prompt : [{role:'user',content:[{type:'input_text',text:prompt}]}];
+          body.max_output_tokens = 1024;
+          body.store = false;
+          if (kind === 'tools') {
+            body.tools = [{type:'function',name:'get_weather',description:'查询天气',parameters:{type:'object',properties:{city:{type:'string'}},required:['city'],additionalProperties:false},strict:true}];
+            body.tool_choice = {type:'function',name:'get_weather'};
+          }
+        } else {
+          body.messages = [{role:'user',content:prompt}];
+          body.max_tokens = 1024;
+          if (kind === 'tools') {
+            body.tools = [{type:'function',function:{name:'get_weather',description:'查询天气',parameters:{type:'object',properties:{city:{type:'string'}},required:['city'],additionalProperties:false}}}];
+            body.tool_choice = {type:'function',function:{name:'get_weather'}};
+          }
+        }
+        return body;
+      }
+      function validate(config) {
+        if (config.missing) return {error:'没有原始请求体。请先选择“改用新模板”。'};
+        let body;
+        try {body = JSON.parse(config.raw);} catch {return {error:'JSON 格式无效，请检查引号、逗号和括号。'};}
+        if (!body || typeof body !== 'object' || Array.isArray(body)) return {error:'请求体必须是 JSON 对象。'};
+        if (typeof body.model !== 'string' || !body.model.trim()) return {error:'请填写非空的 model。'};
+        if ('stream' in body && typeof body.stream !== 'boolean') return {error:'stream 必须为 true 或 false。'};
+        if (config.protocol === 'responses' && !(typeof body.input === 'string' && body.input.trim() || Array.isArray(body.input) && body.input.length)) return {error:'Responses 需要非空的 input 字符串或列表。'};
+        if (config.protocol === 'chat' && !(Array.isArray(body.messages) && body.messages.length)) return {error:'Chat Completions 需要非空的 messages 列表。'};
+        if ('tools' in body && !Array.isArray(body.tools)) return {error:'tools 必须是列表。'};
+        if (body.tools?.some(tool => !tool || tool.type !== 'function' || typeof (config.protocol === 'responses' ? tool.name : tool.function?.name) !== 'string')) return {error:'此 Demo 仅支持有名称的 function 工具；它不会执行工具。'};
+        for (const key of ['max_tokens','max_output_tokens']) if (key in body && (!Number.isInteger(body[key]) || body[key] < 1)) return {error:key+' 必须是正整数。'};
+        return {body};
+      }
+      function idle() {return {phase:0,running:false,legacy:false,events:[],attempts:[],status:'idle',title:'准备就绪',detail:'使用情境步骤，或直接发送左侧请求。',response:'尚未收到响应。',terminal:'尚无终态',duration:null,first:null,request:null};}
+      function start(config, legacy = false) {
+        const checked = validate(config);
+        if (checked.error && !legacy) return {...idle(),status:'invalid',title:'请求尚未发送',detail:checked.error};
+        const request = copy(config);
+        request.body = legacy ? {model:'gpt-6-astra',input:'What is 2 + 2? Please answer briefly.',max_output_tokens:128,store:false,stream:false} : checked.body;
+        if (legacy) {request.protocol='responses';request.scope='group';}
+        return {...idle(),phase:1,running:true,legacy,request,status:'running',title:legacy?'运行旧固定测活':'正在校验请求',detail:'合成执行，不访问真实服务。',events:['请求已创建（模拟）']};
+      }
+      function complete(state, status, title, detail, terminal) {return {...state,running:false,status,title,detail,terminal};}
+      function next(previous) {
+        if (!previous.running) return previous;
+        let s = copy(previous), c = s.request, b = c.body;
+        s.phase++;
+        if (s.phase === 2) {
+          s.events.push(s.legacy ? '固定 probe：不验证客户端访问密钥与别名' : '校验调用身份与模型访问范围');
+          if (!s.legacy && c.access === 'denied') return complete(s,'failed','客户端无权调用','403 · 请求在网关终止，没有发往上游。','permission_denied');
+          if (!s.legacy && b.model !== (c.scope === 'group' ? 'a7f2c9' : 'coding')) return complete(s,'failed','没有匹配的模型路由','此合成环境仅配置 a7f2c9（当前分组）与 coding（客户端路由）。','model_not_found');
+          s.title='已选择调用路径';s.detail=c.scope === 'group'?'限定 demo_packy；不向其他分组回退。':'coding → demo_packy / demo_backup，按示例策略调度。';
+        } else if (s.phase === 3) {
+          s.upstream = copy(b); s.upstream.model='gpt-6-astra';
+          s.rules=[];
+          if (!s.legacy && c.protocol === 'responses') {
+            s.upstream.store=false;s.rules.push('默认规则：store=false');
+            if (b.model==='coding') {s.upstream.max_output_tokens=512;s.rules.push('model=coding：max_output_tokens=512');}
+          }
+          s.events.push(s.legacy ? '使用固定请求体；未应用普通参数覆盖' : '模型映射完成；'+(s.rules.join('；')||'此协议没有示例参数覆盖'));
+          s.title='已准备上游请求';s.detail='可展开“本次请求与上游请求”核对。';
+        } else if (s.phase === 4) {
+          const add=(group,http,outcome,ms)=>s.attempts.push({group,http,outcome,duration_ms:ms,request:copy(s.upstream)});
+          if (c.protocol === 'responses' && !Array.isArray(b.input)) {
+            add('demo_packy',400,'失败',1016);s.duration=1016;s.response='Input must be a list';
+            s.events.push('上游拒绝字符串 input；示例策略对此 400 不回退');
+            return complete(s,'failed','请求格式不兼容','此模拟上游只接受 input 列表；不代表所有 Responses 服务都要求列表。','upstream_error');
+          }
+          if (c.fault === 'fallback') {
+            add('demo_packy',503,'失败',310);s.events.push('demo_packy 返回 503，尚未向客户端提交内容');
+            if (c.scope === 'group') {s.duration=310;s.response='Service unavailable';return complete(s,'failed','当前分组失败','测试限定当前分组；没有把其他分组的成功算作它的通过。','upstream_error');}
+            add('demo_backup',200,'接收中',0);s.first=980;s.events.push('触发回退：demo_backup；不是 demo_packy 恢复');
+          } else {add('demo_packy',200,'接收中',0);s.first=b.stream?420:null;}
+          const tool=b.tools?.[0];
+          const name=tool && (c.protocol === 'responses'?tool.name:tool.function.name);
+          s.tool=name || null;
+          s.response=name ? JSON.stringify({type:'function_call',name,arguments:name==='get_weather'?'↳ 接收参数中…':'{}'},null,2) : b.stream?'已收到你的消息，':'等待完整响应体。';
+          if (!b.stream) s.first=null;
+          s.title=b.stream?'正在接收流式响应':'等待响应完成';s.detail='已连接不等于完成；继续等待协议终态。';
+          s.events.push(b.stream?'收到首个有效输出（模拟）':'等待完整非流式响应');
+        } else {
+          const last=s.attempts.at(-1);
+          if (c.fault === 'disconnect' && b.stream) {
+            last.outcome='未完成';last.duration_ms=1250;s.duration=1250;
+            s.events.push('流中断，未收到有效终态；已提交内容，不做拼接回退');
+            return complete(s,'incomplete','收到了内容，但没有完成','流式响应中断；HTTP 200 不构成通过。','stream_interrupted');
+          }
+          last.outcome='通过';last.duration_ms=c.fault === 'fallback'?1410:1260;
+          s.duration=c.fault === 'fallback'?1720:1260;
+          s.response=s.tool?JSON.stringify({type:'function_call',name:s.tool,arguments:s.tool==='get_weather'?'{"city":"杭州"}':'{}'},null,2):'模拟响应：已收到请求，并已返回完整响应。';
+          s.events.push('收到有效协议终态（模拟）；未执行任何外部工具');
+          const terminal=c.protocol==='responses'?'response.completed':s.tool?'finish_reason: tool_calls':'finish_reason: stop';
+          return complete(s,'passed',s.tool?'工具请求有效':s.attempts.length>1?'客户端完成 · 经回退':'本次请求完成',s.tool?'仅验证工具请求结构；工具未执行，任务闭环未验证。':s.attempts.length>1?'demo_backup 通过；demo_packy 仍为失败。':c.scope==='group'?'仅验证本次 test_alias 请求；不代表真实模型名命中相同覆盖规则。':'仅代表这次请求；不等于所有协议、凭据与能力均可用。',terminal);
+        }
+        return s;
+      }
+      function cancel(previous) {
+        if (!previous.running) return previous;
+        const s=copy(previous);
+        s.attempts.forEach(a=>{if(a.outcome==='接收中')a.outcome='已中止';});
+        s.events.push('用户中止；不再发起新 attempt；已发出的上游请求可能消耗额度');
+        return complete(s,'incomplete','本次测试已中止',s.attempts.length?'上游已接收请求，不能保证没有费用。':'尚未收到结果，不判定分组健康。','canceled');
+      }
+      return {template,validate,idle,start,next,cancel,endpoints,phases};
+    })();
+  </script>
+  <script id="probe-ui">
+    (()=>{
+      const $=id=>document.getElementById(id), all=selector=>[...document.querySelectorAll(selector)];
+      const scenes={
+        format:{copy:'同一个上游：旧测活的字符串 input 被拒绝，消息列表可以完成。本情境不代表线上复测结果。',fault:'none',template:'text',scope:'group',actions:[['legacy','1. 运行旧测活'],['list','2. 换消息列表'],['run','3. 按实际请求测试']]},
+        alias:{copy:'test_alias 会改变规则匹配。比较两次请求的输出预算：别名保持 1024，真实模型名 coding 命中覆盖后为 512。',fault:'none',template:'text',scope:'group',actions:[['group-run','1. 用 test_alias 定向'],['route-run','2. 用真实模型名']]},
+        fallback:{copy:'第一条线路返回 503。比较“当前分组”与“客户端路由”，看清是谁真正完成了请求。',fault:'fallback',template:'text',scope:'group',actions:[['group-run','1. 测当前分组'],['route-run','2. 测客户端路由']]},
+        disconnect:{copy:'上游返回 200 并开始输出，然后断开。没有完整终态，就不能显示“通过”。',fault:'disconnect',template:'text',scope:'route',actions:[['run','1. 观察流中断'],['healthy-run','2. 恢复后再测']]},
+        tools:{copy:'模型返回工具调用而非文字。正确结论是“工具请求有效”，不是“没有回复”或“任务完成”。',fault:'none',template:'tools',scope:'group',actions:[['run','运行工具请求']]},
+        missing:{copy:'没有请求体，就没有可复现的原请求。新建模板与重放必须分清。',fault:'none',template:'text',scope:'group',actions:[['new-template','从新模板开始']]},
+        free:{copy:'自由修改请求、协议、调用身份与测试范围；结果由当前输入和示例环境共同决定。',fault:'none',template:'text',scope:'group',actions:[['deny','模拟权限不足'],['reset-free','恢复可用身份']]}
+      };
+      let scene='format',scope='group',fault='none',missing=false,state=ProbeLogic.idle(),timer=null,manual=false,previousProtocol='responses';
+      function config(){return {protocol:$('protocol').value,access:$('access').value,raw:$('payload').value,scope,fault,missing};}
+      function draft(){const checked=ProbeLogic.validate(config());return checked.body;}
+      function clearTimer(){if(timer!==null)clearTimeout(timer);timer=null;}
+      function clearResult(){clearTimer();state=ProbeLogic.idle();render();}
+      function setPayload(body){$('payload').value=JSON.stringify(body,null,2);$('stream').checked=body.stream===true;}
+      function loadTemplate(kind){missing=false;$('template').value=kind;setPayload(ProbeLogic.template($('protocol').value,kind,scope,$('stream').checked));clearResult();}
+      function setScope(value){scope=value;const body=draft();if(body){body.model=value==='group'?'a7f2c9':'coding';setPayload(body);}clearResult();}
+      function sceneReset(name){clearTimer();scene=name;const s=scenes[name];scope=s.scope;fault=s.fault;missing=name==='missing';$('protocol').value=previousProtocol='responses';$('access').value='allowed';$('template').value=s.template;setPayload(ProbeLogic.template('responses',s.template,scope,true));if(missing)$('payload').value='';state=ProbeLogic.idle();$('request-details').open=false;$('log-details').open=false;render();}
+      function openView(name){all('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===name)));['ui','logic','research'].forEach(v=>$('view-'+v).hidden=v!==name);}
+      function run(legacy=false,stepwise=false){clearTimer();manual=stepwise;state=ProbeLogic.start(config(),legacy);render();if(state.running&&!manual)timer=setTimeout(tick,650);}
+      function tick(){timer=null;state=ProbeLogic.next(state);render();if(state.running&&!manual)timer=setTimeout(tick,650);}
+      function stop(){clearTimer();state=ProbeLogic.cancel(state);render();}
+      function sceneAction(action){
+        if(state.running)return;
+        if(action==='legacy')run(true);
+        if(action==='list'){ $('protocol').value=previousProtocol='responses';loadTemplate('text'); }
+        if(action==='run')run();
+        if(action==='group-run'){setScope('group');run();}
+        if(action==='route-run'){setScope('route');run();}
+        if(action==='healthy-run'){fault='none';clearResult();run();}
+        if(action==='new-template'){loadTemplate('text');openView('ui');$('payload').focus();}
+        if(action==='deny'){$('access').value='denied';clearResult();run();}
+        if(action==='reset-free'){$('access').value='allowed';clearResult();}
+      }
+      function text(id,value){$(id).textContent=value;}
+      function badge(id,label,kind=''){text(id,label);$(id).className='badge '+kind;}
+      function row(title,detail,label,index,kind){
+        const item=document.createElement('div');item.className='trace-item';
+        const n=document.createElement('span');n.className='trace-num';n.textContent=index;
+        const content=document.createElement('div');const strong=document.createElement('strong');strong.textContent=title;
+        const p=document.createElement('p');p.className='muted';p.textContent=detail;content.append(strong,p);
+        const status=document.createElement('span');status.className='badge '+kind;status.textContent=label;
+        item.append(n,content,status);return item;
+      }
+      function render(){
+        const checked=ProbeLogic.validate(config()), body=state.request?.body || checked.body;
+        $('form-lock').disabled=state.running;
+        all('[data-scope]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scope===scope)));
+        all('[data-scenario]').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.scenario===scene));b.disabled=state.running;});
+        text('scope-hint',scope==='group'?'test_alias · 已替换模型名':'原始模型名 / 别名');
+        text('endpoint','POST '+ProbeLogic.endpoints[$('protocol').value]);
+        text('scenario-copy',scenes[scene].copy);
+        const actions=$('scenario-actions');
+        if(actions.dataset.scene!==scene){actions.replaceChildren();scenes[scene].actions.forEach(([value,label])=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=value;b.addEventListener('click',()=>sceneAction(value));actions.append(b);});actions.dataset.scene=scene;}
+        actions.querySelectorAll('button').forEach(b=>b.disabled=state.running);
+        $('missing-notice').hidden=!missing;$('payload').hidden=missing;
+        $('payload').setAttribute('aria-invalid',String(!!checked.error&&!missing));
+        $('stream').disabled=!!checked.error;$('template').querySelector('[value="string"]').disabled=$('protocol').value!=='responses';
+        text('payload-error',checked.error||'');$('payload-error').hidden=!checked.error||missing;
+        $('run').disabled=state.running||!!checked.error;$('stop').disabled=!state.running;
+        text('run',state.running?'模拟执行中…':'开始模拟测活');
+        $('logic-start').disabled=state.running||!!checked.error;$('logic-step').disabled=!state.running||!manual;$('logic-stop').disabled=!state.running;
+        const labels={idle:['未开始',''],invalid:['未发送','warn'],running:['执行中',''],passed:['本次通过','good'],failed:['失败','bad'],incomplete:['未完成','warn']};
+        badge('result-badge',...labels[state.status]);text('result-title',state.title);text('result-subtitle',state.detail);
+        text('run-type',state.legacy?'旧固定测活 · 对照':scope==='group'?'test_alias 定向 · 方案':'客户端请求 · 方案');
+        text('effects',state.legacy?'旧 probe：本地用量不适用，成功可能恢复健康；上游仍可能收费。':'按正常调用计量，可能影响额度与健康状态；上游可能收费。');
+        $('pending').hidden=!state.running;$('pending-bar').style.width=(state.phase/5*100)+'%';
+        text('first-token',state.first===null?'—':state.first+' ms');text('duration',state.duration===null?'—':state.duration+' ms');text('attempt-count',String(state.attempts.length));
+        text('matched-rules',state.legacy?'旧测活不应用普通覆盖':state.rules?.length?state.rules.join('；'):state.upstream?'无匹配规则':'尚未准备请求');
+        text('route-label',(state.request?.scope||scope)==='group'?'限定 demo_packy':'coding · 正常路由（模拟）');
+        const trace=$('trace');trace.replaceChildren();
+        if(!state.attempts.length){const p=document.createElement('p');p.className='empty-trace';p.textContent=state.status==='failed'?state.detail:state.running?'正在准备请求，尚未调用上游。':'等待发送请求。';trace.append(p);}
+        state.attempts.forEach((a,i)=>trace.append(row(a.group,'gpt-6-astra · HTTP '+a.http+(a.duration_ms?' · '+a.duration_ms+' ms':''),a.outcome,i+1,a.outcome==='通过'?'good':a.outcome==='失败'?'bad':a.outcome==='接收中'?'':'warn')));
+        text('response',state.response);badge('terminal',state.terminal,state.status==='passed'?'good':state.status==='incomplete'?'warn':'');
+        const cover=$('coverage');cover.replaceChildren();
+        const passed=state.status==='passed';
+        const coverage=[(body ? (state.request?.protocol||$('protocol').value)==='responses'?'Responses':'Chat Completions':'协议')+(passed?' 已验证':' 待验证'),body?.stream?(passed?'流式终态有效':state.status==='idle'?'流式待验证':state.running?'等待流式终态':'流式未完成'):'未测试流式',state.tool?(passed?'工具结构有效':'工具待验证'):'工具未测试'];
+        coverage.forEach(value=>{const el=document.createElement('span');el.textContent=value;cover.append(el);});
+        text('request-diff',state.request?'客户端请求\n'+JSON.stringify(state.request.body,null,2)+(state.upstream?'\n\n上游请求 · demo_packy\n'+JSON.stringify(state.upstream,null,2):'\n\n尚未构造上游请求。')+(state.attempts.length>1?'\n\n上游请求 · demo_backup\n'+JSON.stringify(state.attempts[1].request,null,2):''):'发送后查看实际模拟快照。');
+        text('log',state.request?JSON.stringify({source:'synthetic_demo',mode:state.legacy?'legacy_probe':'client_request',state:state.status,terminal:state.terminal,events:state.events,attempts:state.attempts,usage:'未接入真实计量；不代表免费'},null,2):'尚无执行记录。');
+        all('[data-state="phase"]').forEach(e=>e.textContent=state.running?ProbeLogic.phases[state.phase]:state.status==='idle'?'待发送':state.status==='invalid'?'未发送':'已结束');
+        all('[data-state="model"]').forEach(e=>e.textContent=body?.model||'—');
+        all('[data-state="override"]').forEach(e=>e.textContent=state.legacy?'未应用':state.upstream?'已应用示例配置':'按分组配置');
+        text('logic-status',state.running?ProbeLogic.phases[state.phase]:labels[state.status][0]);
+        const pipeline=$('pipeline');pipeline.replaceChildren();
+        const stages=[['请求校验','协议、请求体、流式'],['路由与权限','调用身份、模型别名'],['准备上游请求','映射、参数覆盖、Headers'],['接收响应','attempt、输出、回退'],['结果判定','终态、工具、完整性']];
+        stages.forEach(([title,desc],i)=>{const current=state.phase===i+1,done=state.phase>i+1||(current&&state.status==='passed');const kind=done?'done':current?(state.running?'active':state.status==='failed'?'failed':'incomplete'):'';const el=document.createElement('div');el.className='stage'+(kind?' '+kind:'');const h=document.createElement('strong');h.textContent=title;const p=document.createElement('p');p.textContent=desc;const small=document.createElement('small');small.textContent=done?'已完成':current?(state.running?'当前阶段':'在此终止'):'未执行';el.append(h,p,small);pipeline.append(el);});
+        text('feedback',state.title+'。'+state.detail);
+      }
+      all('[data-view]').forEach(b=>b.addEventListener('click',()=>openView(b.dataset.view)));
+      all('[data-goto-ui]').forEach(b=>b.addEventListener('click',()=>openView('ui')));
+      all('[data-scenario]').forEach(b=>b.addEventListener('click',()=>sceneReset(b.dataset.scenario)));
+      all('[data-scope]').forEach(b=>b.addEventListener('click',()=>setScope(b.dataset.scope)));
+      $('reset').addEventListener('click',()=>sceneReset(scene));
+      $('protocol').addEventListener('change',()=>{if($('template').value==='custom'&&!confirm('切换协议将用新模板替换当前 JSON。继续吗？')){$('protocol').value=previousProtocol;return;}previousProtocol=$('protocol').value;const selected=$('template').value;const kind=selected==='custom'||(selected==='string'&&previousProtocol==='chat')?'text':selected;loadTemplate(kind);});
+      $('access').addEventListener('change',clearResult);
+      $('template').addEventListener('change',()=>{if($('template').value==='custom'){$('payload').focus();clearResult();}else loadTemplate($('template').value);});
+      $('stream').addEventListener('change',()=>{let b;try{b=JSON.parse($('payload').value);}catch{}if(b&&typeof b==='object'&&!Array.isArray(b)){b.stream=$('stream').checked;setPayload(b);}clearResult();});
+      $('payload').addEventListener('input',()=>{$('template').value='custom';const b=draft();if(b)$('stream').checked=b.stream===true;clearResult();});
+      $('format-json').addEventListener('click',()=>{const b=draft();if(b){setPayload(b);render();}});
+      $('use-template').addEventListener('click',()=>loadTemplate('text'));
+      $('run').addEventListener('click',()=>run());$('stop').addEventListener('click',stop);
+      $('logic-start').addEventListener('click',()=>run(false,true));$('logic-step').addEventListener('click',tick);$('logic-stop').addEventListener('click',stop);
+      sceneReset('format');
+    })();
+  </script>
+</body>
+</html>

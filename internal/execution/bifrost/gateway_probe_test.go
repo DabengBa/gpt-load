@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -58,9 +59,10 @@ func TestMultiProtocolGatewayProbesUseSelectedProtocol(t *testing.T) {
 					}
 					switch selected {
 					case protocol.OpenAIResponses:
-						if payload["store"] != false || payload["max_output_tokens"] != float64(testProbeOutputTokens) || payload["input"] != probeQuestion {
+						if payload["store"] != false || payload["max_output_tokens"] != float64(testProbeOutputTokens) || payload["stream"] != false {
 							t.Errorf("Responses probe = %#v", payload)
 						}
+						assertResponsesProbeInput(t, payload)
 					case protocol.Anthropic:
 						if payload["max_tokens"] != float64(testProbeOutputTokens) {
 							t.Errorf("Anthropic probe = %#v", payload)
@@ -85,6 +87,20 @@ func TestMultiProtocolGatewayProbesUseSelectedProtocol(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func assertResponsesProbeInput(t *testing.T, payload map[string]any) {
+	t.Helper()
+	want := []any{map[string]any{
+		"role": "user",
+		"content": []any{map[string]any{
+			"type": "input_text",
+			"text": probeQuestion,
+		}},
+	}}
+	if !reflect.DeepEqual(payload["input"], want) {
+		t.Errorf("Responses input = %#v, want user message list %#v", payload["input"], want)
 	}
 }
 
