@@ -162,6 +162,10 @@ func TestNativeResponsesProbeUsesInputAndMaxOutputTokens(t *testing.T) {
 		if payload["max_output_tokens"] != float64(testProbeOutputTokens) {
 			t.Errorf("max_output_tokens = %#v, want %d", payload["max_output_tokens"], testProbeOutputTokens)
 		}
+		assertResponsesProbeInput(t, payload)
+		if payload["store"] != false || payload["stream"] != false {
+			t.Errorf("Responses diagnostic flags = %#v", payload)
+		}
 		for _, forbidden := range []string{"max_tokens", "max_completion_tokens", "messages"} {
 			if _, exists := payload[forbidden]; exists {
 				t.Errorf("Responses probe carried %s: %s", forbidden, body)

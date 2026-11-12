@@ -3,7 +3,7 @@ id: page.dispatch-center
 type: page
 name: Dispatch Center
 route: /schedule
-related: [feature.dispatch-concurrency, feature.dispatch-reasoning-policy, feature.monitor-navigation-shortcuts]
+related: [feature.dispatch-concurrency, feature.dispatch-reasoning-policy, feature.monitor-navigation-shortcuts, feature.realistic-probe]
 ---
 # Dispatch Center
 
@@ -28,6 +28,9 @@ configured share, and actions. Advanced row controls include
 [concurrency](feature.dispatch-concurrency) and
 [reasoning policy](feature.dispatch-reasoning-policy). The page can also be
 opened from [model maintenance](feature.monitor-navigation-shortcuts).
+The selected generation model can open
+[Actual Request Testing](feature.realistic-probe) with its protocol and external
+model preserved.
 
 ## Reading Candidate Rows
 

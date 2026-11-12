@@ -3,7 +3,7 @@ id: page.groups
 type: page
 name: Groups
 route: /groups
-related: [feature.group-site-information]
+related: [feature.group-site-information, feature.realistic-probe]
 ---
 # Groups
 
@@ -30,6 +30,9 @@ horizontally to inspect all columns.
 The group detail view uses full-width sections and a unified save action for
 settings and model edits. Site access is maintained in its own section. On
 mobile, the save controls stay in document flow so they do not cover the form.
+
+Saved model rows expose [Actual Request Testing](feature.realistic-probe) for
+supported generation routes, alongside the existing diagnostic probe.
 
 ## Reading Site Information
 
