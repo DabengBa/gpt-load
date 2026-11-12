@@ -47,10 +47,10 @@ test('theme emits the classic density tokens', async ({ page }) => {
     ['--text-large-size', '16px'],
     ['--text-heading-3-size', '16px'],
     ['--text-heading-2-size', '22px'],
-    // Radius — classic tag/control/sheet (6/7/10)
+    // Radius — tag/control/sheet (6/8/14)
     ['--radius-inner', '6px'],
-    ['--radius-element', '7px'],
-    ['--radius-container', '10px'],
+    ['--radius-element', '8px'],
+    ['--radius-container', '14px'],
   ]
   for (const [name, expected] of expectations) {
     expect(await computedVar(page, name), name).toBe(expected)
@@ -82,9 +82,9 @@ test('rendered shell controls hold compact metrics', async ({ page }) => {
   const main = page.getByTestId('astryx-shell')
   const fontSize = await main.evaluate((el) => getComputedStyle(el).fontSize)
   expect(fontSize).toBe('13.5px')
-  // Radius reaching a component: classic --radius-control 7px.
+  // Radius reaching a component: --radius-control 8px.
   const radius = await trigger.evaluate((el) => getComputedStyle(el).borderRadius)
-  expect(radius).toBe('7px')
+  expect(radius).toBe('8px')
 })
 
 test('narrow viewport keeps 44px touch targets', async ({ page }) => {

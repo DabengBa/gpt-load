@@ -14,7 +14,7 @@ import { AuthGate } from './AuthGate'
 import { BrandMark } from './BrandMark'
 import { PreferencesControl } from './PreferencesControl'
 
-const wide = '@media (min-width: 1360px)'
+const wide = '@media (min-width: 1400px)'
 const narrow = '@media (max-width: 860px)'
 
 const styles = stylex.create({
@@ -61,7 +61,7 @@ const styles = stylex.create({
     color: 'var(--color-text)',
     fontFamily: 'var(--font-serif)',
     fontSize: 'var(--title-section, 16px)',
-    fontWeight: 400,
+    fontWeight: 650,
     letterSpacing: '-0.01em',
     whiteSpace: 'nowrap',
     textDecoration: 'none',
@@ -73,23 +73,21 @@ const styles = stylex.create({
   desktopNav: {
     display: { default: 'flex', [narrow]: 'none' },
     alignItems: 'center',
-    gap: 'var(--space-5)',
+    gap: 'var(--space-1)',
   },
   navLink: {
     display: 'inline-flex',
     alignItems: 'center',
-    borderBottomWidth: '1.5px',
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'transparent',
+    borderRadius: 'var(--radius-control)',
     color: { default: 'var(--color-text-muted)', ':hover': 'var(--color-text)' },
-    padding: '3px 0',
+    padding: '6px 5px',
     fontSize: '13px',
     fontWeight: 400,
     textDecoration: 'none',
   },
   navLinkActive: {
-    color: 'var(--color-text)',
-    borderBottomColor: 'var(--color-text)',
+    color: 'var(--color-action-ink)',
+    backgroundColor: 'var(--color-action)',
     fontWeight: 560,
   },
   badge: {
@@ -171,9 +169,9 @@ const styles = stylex.create({
     textDecoration: 'none',
   },
   mobileNavLinkActive: {
-    borderColor: 'var(--color-border-control, rgba(0,0,0,0.16))',
-    backgroundColor: 'var(--color-surface-sunken)',
-    color: 'var(--color-text)',
+    borderColor: 'var(--color-action)',
+    backgroundColor: 'var(--color-action)',
+    color: 'var(--color-action-ink)',
     fontWeight: 560,
   },
 })

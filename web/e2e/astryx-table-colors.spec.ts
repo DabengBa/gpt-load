@@ -47,7 +47,7 @@ for (const theme of ['light', 'dark']) {
       })
       expect(new Set(headers.map((h) => JSON.stringify(h))).size).toBe(1)
       expect(headers[0].background).toBe(
-        theme === 'light' ? 'rgb(245, 244, 241)' : 'rgb(18, 21, 26)',
+        theme === 'light' ? 'rgb(245, 247, 250)' : 'rgb(18, 21, 26)',
       )
       const row = table.locator('tbody tr').first()
       const colors = await row
@@ -81,7 +81,7 @@ for (const theme of ['light', 'dark']) {
             .locator('td')
             .evaluateAll((cells) => cells.map((cell) => getComputedStyle(cell).backgroundColor)),
         )
-        .toEqual(colors.map(() => (theme === 'light' ? 'rgb(245, 244, 241)' : 'rgb(18, 21, 26)')))
+        .toEqual(colors.map(() => (theme === 'light' ? 'rgb(245, 247, 250)' : 'rgb(18, 21, 26)')))
       await page.goto('/schedule')
       await page
         .getByRole('button', { name: /demo-1-chat/ })
@@ -101,7 +101,7 @@ for (const theme of ['light', 'dark']) {
       await scheduleRow.hover()
       await expect
         .poll(() => scheduleRow.evaluate((row) => getComputedStyle(row).backgroundColor))
-        .toBe(theme === 'light' ? 'rgb(245, 244, 241)' : 'rgb(18, 21, 26)')
+        .toBe(theme === 'light' ? 'rgb(245, 247, 250)' : 'rgb(18, 21, 26)')
       await page.goto('/settings?section=credentials')
       const settings = page.locator('table').first()
       await expect(settings.locator('tbody tr').first()).toBeVisible()
@@ -138,7 +138,7 @@ for (const theme of ['light', 'dark']) {
       await logRow.hover()
       await expect
         .poll(() => logRow.evaluate((row) => getComputedStyle(row).backgroundColor))
-        .toBe(theme === 'light' ? 'rgb(245, 244, 241)' : 'rgb(18, 21, 26)')
+        .toBe(theme === 'light' ? 'rgb(245, 247, 250)' : 'rgb(18, 21, 26)')
       await info.attach('logs-table', { body: await page.screenshot(), contentType: 'image/png' })
     })
   }

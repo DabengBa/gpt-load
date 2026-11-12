@@ -13,7 +13,7 @@ export default defineTheme({
   extends: neutralTheme,
   color: {
     // classic --color-action / --color-focus
-    accent: ['#1c4f6e', '#6fb2d6'],
+    accent: ['#3155ef', '#6fb2d6'],
   },
   typography: {
     // classic --text-body 13.5px anchors the scale
@@ -30,34 +30,34 @@ export default defineTheme({
   },
   tokens: {
     // Surfaces — classic canvas/surface/surface-raised/surface-sunken
-    '--color-background-body': ['#eeede9', '#0b0d10'],
+    '--color-background-body': ['#f7f8fa', '#0b0d10'],
     '--color-background-surface': ['#ffffff', '#171b20'],
     '--color-background-card': ['#ffffff', '#171b20'],
     '--color-background-popover': ['#ffffff', '#171b20'],
-    '--color-background-muted': ['#f5f4f1', '#12151a'],
+    '--color-background-muted': ['#f5f7fa', '#12151a'],
 
     // Text — classic text / text-muted / text-faint
-    '--color-text-primary': ['#15181b', '#e8eaec'],
-    '--color-text-secondary': ['#4e545b', '#969ca3'],
-    '--color-text-disabled': ['#687078', '#858c94'],
+    '--color-text-primary': ['#202634', '#e8eaec'],
+    '--color-text-secondary': ['#515c70', '#969ca3'],
+    '--color-text-disabled': ['#626c7e', '#858c94'],
 
     // Borders — classic border-subtle / border-control
-    '--color-border': ['#e6e5e0', '#232830'],
-    '--color-border-emphasized': ['#cfcfc9', '#333a43'],
+    '--color-border': ['#e4e7ee', '#232830'],
+    '--color-border-emphasized': ['#c6cedb', '#333a43'],
 
     // Accent-adjacent — classic action-soft / action-ink / info
-    '--color-accent-muted': ['#e8eff4', '#142633'],
+    '--color-accent-muted': ['#edf1ff', '#142633'],
     '--color-on-accent': ['#ffffff', '#0c1a22'],
-    '--color-background-blue': ['#e8eff4', '#142633'],
-    '--color-text-blue': ['#1c4f6e', '#6fb2d6'],
-    '--color-icon-blue': ['#1c4f6e', '#6fb2d6'],
+    '--color-background-blue': ['#edf1ff', '#142633'],
+    '--color-text-blue': ['#3155ef', '#6fb2d6'],
+    '--color-icon-blue': ['#3155ef', '#6fb2d6'],
     '--color-border-blue': ['#b9ccd7', '#27455a'],
 
     // Status — classic success/warning/danger/neutral + muted backgrounds
     '--color-success': ['#1a6b3f', '#4fb178'],
     '--color-success-muted': ['#e6f3ec', '#112a1d'],
     '--color-on-success': ['#ffffff', '#0d1f14'],
-    '--color-warning': ['#8f6212', '#d5a341'],
+    '--color-warning': ['#8a5b00', '#d5a341'],
     '--color-warning-muted': ['#f8f0dd', '#241d10'],
     '--color-on-warning': '#241d10',
     '--color-error': ['#d03b3b', '#e66767'],
@@ -77,12 +77,12 @@ export default defineTheme({
     '--color-track': ['#eceded', '#1c1e21'],
 
     // Focus ring color — classic --color-focus
-    '--focus-outline-color': ['#1c4f6e', '#6fb2d6'],
+    '--focus-outline-color': ['#3155ef', '#6fb2d6'],
 
     // Shadows — classic card / sheet / overlay pairs
-    '--shadow-low': ['0 1px 2px rgba(28, 26, 20, 0.05)', '0 1px 2px rgba(0, 0, 0, 0.45)'],
+    '--shadow-low': ['0 1px 3px rgba(32, 38, 52, 0.04)', '0 1px 2px rgba(0, 0, 0, 0.45)'],
     '--shadow-med': [
-      '0 1px 2px rgba(28, 26, 20, 0.05), 0 12px 32px rgba(28, 26, 20, 0.06)',
+      '0 1px 3px rgba(32, 38, 52, 0.04)',
       '0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.3)',
     ],
     '--shadow-high': [
@@ -92,10 +92,10 @@ export default defineTheme({
 
     // Radius — classic tag 6 / control 7 / sheet 10 (fixed scale can't express them)
     '--radius-inner': '6px',
-    '--radius-element': '7px',
-    '--radius-container': '10px',
-    '--radius-page': '10px',
-    '--radius-chat': '10px',
+    '--radius-element': '8px',
+    '--radius-container': '14px',
+    '--radius-page': '14px',
+    '--radius-chat': '14px',
 
     // Control heights — classic compact/sm/md stops (26/32/42 gaps handled
     // via component overrides once the shell lands)

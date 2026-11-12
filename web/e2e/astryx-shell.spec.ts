@@ -48,6 +48,77 @@ const adminNav = [
 ] as const
 const accessKeyNav = ['Home', 'Dispatch center', 'Monitor', 'Request logs'] as const
 
+for (const width of [861, 900]) {
+  test(`desktop nav geometry stays inside topbar at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await seedSession(page, 'admin')
+    await page.goto('/schedule', { waitUntil: 'load' })
+    const header = page.locator('header')
+    const nav = page.getByTestId('desktop-nav')
+    await expect(nav).toBeVisible()
+    await expect(nav.getByRole('link', { name: 'Dispatch center' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    const headerBox = await header.boundingBox()
+    expect(headerBox).not.toBeNull()
+    const links = nav.getByRole('link')
+    expect(await links.count()).toBeGreaterThanOrEqual(adminNav.length)
+    for (const link of await links.all()) {
+      await expect(link).toBeVisible()
+      const box = await link.boundingBox()
+      expect(box).not.toBeNull()
+      expect(box!.y, `${await link.innerText()} top`).toBeGreaterThanOrEqual(headerBox!.y)
+      expect(box!.y + box!.height, `${await link.innerText()} bottom`).toBeLessThanOrEqual(
+        headerBox!.y + headerBox!.height - 1,
+      )
+    }
+  })
+}
+
+for (const width of [1360, 1366, 1399, 1400]) {
+  test(`desktop brand geometry stays visible at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await seedSession(page, 'admin')
+    await page.goto('/schedule', { waitUntil: 'load' })
+    const brand = page.locator('header').getByRole('link', { name: 'GPT-Load · Home' })
+    const icon = brand.locator('svg')
+    await expect(brand).toBeVisible()
+    await expect(icon).toBeVisible()
+    for (const element of [brand, icon]) {
+      const box = await element.boundingBox()
+      expect(box).not.toBeNull()
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width)
+    }
+    const navBox = await page.getByTestId('desktop-nav').boundingBox()
+    const brandBox = await brand.boundingBox()
+    const menuBox = await page.getByRole('button', { name: 'Menu and preferences' }).boundingBox()
+    expect(navBox).not.toBeNull()
+    expect(brandBox).not.toBeNull()
+    expect(menuBox).not.toBeNull()
+    expect(brandBox!.x + brandBox!.width).toBeLessThanOrEqual(navBox!.x)
+    expect(navBox!.x + navBox!.width).toBeLessThanOrEqual(menuBox!.x)
+    expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  })
+}
+
+test('desktop navigation fits just above the mobile breakpoint', async ({ page }) => {
+  await page.setViewportSize({ width: 861, height: 900 })
+  await seedSession(page, 'admin')
+  await page.goto('/', { waitUntil: 'load' })
+  await expect(page.getByTestId('desktop-nav')).toBeVisible()
+  const menu = page.getByRole('button', { name: 'Menu and preferences' })
+  await expect(menu).toBeVisible()
+  const box = await menu.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x + box!.width).toBeLessThanOrEqual(861)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(861)
+  await menu.click()
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+})
+
 for (const width of [1280, 390]) {
   test(`login reveal stays inside the input and toggles safely at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
