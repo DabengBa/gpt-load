@@ -1,48 +1,14 @@
 export default {
   monitor: {
-    realisticProbe: {
-      entry: 'Actual request',
-      entryFor: 'Actual request for {model}',
-      title: 'Actual request',
-      notice:
-        'Uses normal routing, not the selected group. Normal quotas, costs and health effects apply.',
-      protocol: 'Protocol',
-      endpoint: 'Endpoint',
-      model: 'Client model',
-      stream: 'Stream',
-      json: 'Request JSON',
-      key: 'Access key',
-      tools: 'Tool calls are not executed.',
-      replaceConfirm: 'Replace the current JSON with the selected protocol template?',
-      replace: 'Replace',
-      run: 'Send request',
-      stop: 'Stop',
-      close: 'Close',
-      unexpected: 'The request could not be completed.',
-      firstOutput: 'First output',
-      duration: 'Duration',
-      requestId: 'Request ID',
-      terminal: 'Terminal reason',
-      preview: 'Response preview',
-      noId: 'Unavailable',
-      truncated: 'Preview truncated.',
-      viewLog: 'View routing and logs',
-      outcomes: {
-        running: 'Running',
-        completed: 'Complete',
-        incomplete: 'Incomplete',
-        failed: 'Failed',
-        canceled: 'Canceled',
-      },
-    },
     title: 'Monitor',
     help: 'View description',
     scrollHint: 'Scroll horizontally to inspect every column.',
     modelProbe: {
       title: 'Model liveness',
       description:
-        'Sends one low-cost real upstream question per target and records the result in the request log.',
+        'Runs a preset real upstream request per target. Providers may charge; request logging is best effort.',
       button: 'Probe',
+      retry: 'Probe again',
       protocolLabel: 'Probe protocol',
       defaultProtocol: 'Default probe protocol',
       protocols: {
@@ -65,6 +31,20 @@ export default {
       notExecuted: 'No upstream request was sent, so there is no request ID',
       recovered: 'Recovered immediately',
       recoveryNotNeeded: 'No recovery change was needed',
+      recoveryNotReported:
+        'No recovery was reported; this does not establish whether recovery was needed.',
+      logUnavailable: 'Request log ID unavailable',
+      technicalDetails: 'Technical details',
+      nextLabel: 'Next:',
+      next: {
+        passed: 'Verify with an actual client request as needed.',
+        credential: 'Check the group’s schedulable credentials, then probe again.',
+        target: 'Check that the group and model exist, then probe again.',
+        review: 'Review the available diagnostic details and probe again as needed.',
+      },
+      scope:
+        'A non-streaming management probe does not validate client access, quota, or streaming.',
+      disabledResult: 'This group remains disabled and does not serve traffic.',
       unknownValue: '—',
       disabledBadge: 'Disabled',
       disabledScope: {

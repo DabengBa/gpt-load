@@ -15,7 +15,7 @@ import (
 // is short, deterministic, and clearly answerable, so a non-empty answer is
 // strong evidence that the upstream actually generated text instead of merely
 // accepting the request.
-const probeQuestion = "What is 2 + 2? Please answer briefly."
+const probeQuestion = execution.ProbeQuestion
 
 // probePromptText returns the code-owned prompt of one diagnostic request. A
 // ModelTrace challenge carries its own prompt; a probe always asks the single

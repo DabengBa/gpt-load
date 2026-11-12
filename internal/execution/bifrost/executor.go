@@ -517,6 +517,39 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		)
 		return preparedAttempt{}, &failure
 	}
+	// The outer attempt stays a probe for result classification and route
+	// validation. Typed Responses providers use the normal request builder so
+	// configured additions and removals survive SDK conversion.
+	if spec.Operation == execution.OperationProbe && spec.ClientProtocol == protocol.OpenAIResponses &&
+		len(spec.ProbePreparedBody) > 0 && providerKind != channel.ProviderOpenAI && providerKind != channel.ProviderMultiProtocolGateway {
+		spec.Operation = execution.OperationResponsesCreate
+		spec.Method, spec.Path = http.MethodPost, "/v1/responses"
+		spec.Body, spec.ProbePreparedBody = spec.ProbePreparedBody, nil
+	}
+	if spec.Operation == execution.OperationProbe && spec.ClientProtocol == protocol.OpenAICompletions && len(spec.ProbePreparedBody) > 0 {
+		spec.Operation = execution.OperationChatCompletion
+		spec.Method, spec.Path = http.MethodPost, "/v1/chat/completions"
+		spec.Body, spec.ProbePreparedBody = spec.ProbePreparedBody, nil
+	}
+	if spec.Operation == execution.OperationProbe && spec.ClientProtocol == protocol.Anthropic && len(spec.ProbePreparedBody) > 0 {
+		spec.Operation = execution.OperationChatCompletion
+		spec.Method, spec.Path = http.MethodPost, "/v1/messages"
+		spec.Body, spec.ProbePreparedBody = spec.ProbePreparedBody, nil
+	}
+	if spec.Operation == execution.OperationProbe && spec.ClientProtocol == protocol.Gemini && len(spec.ProbePreparedBody) > 0 {
+		spec.Operation = execution.OperationChatCompletion
+		spec.Method, spec.Path = http.MethodPost, "/v1beta/models/"+url.PathEscape(spec.UpstreamModel)+":generateContent"
+		spec.Body, spec.ProbePreparedBody = spec.ProbePreparedBody, nil
+	}
+	if spec.Operation == execution.OperationProbe && len(spec.ProbePreparedBody) > 0 &&
+		(spec.ClientProtocol == protocol.GeminiEmbeddings || spec.ClientProtocol == protocol.OpenAIEmbeddings) {
+		spec.Operation = execution.OperationEmbeddingsCreate
+		spec.Method, spec.Path = http.MethodPost, "/v1/embeddings"
+		if spec.ClientProtocol == protocol.GeminiEmbeddings {
+			spec.Path = "/v1beta/models/" + url.PathEscape(spec.UpstreamModel) + ":embedContent"
+		}
+		spec.Body, spec.ProbePreparedBody = spec.ProbePreparedBody, nil
+	}
 	if spec.Operation == execution.OperationResponsesCreate &&
 		spec.RouteRequirement.Normalize() == execution.RouteRequirementNative {
 		var stateSupported bool
@@ -654,6 +687,9 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		if mode == channel.RouteNative && providerKind == channel.ProviderOpenAI &&
 			spec.ClientProtocol == protocol.OpenAIResponses {
 			probeBody, marshalErr := json.Marshal(responsesProbePayload(spec))
+			if len(spec.ProbePreparedBody) > 0 {
+				probeBody, marshalErr = sanitizePreparedResponsesProbe(spec)
+			}
 			if marshalErr != nil {
 				failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode native Responses probe body")
 				return preparedAttempt{}, &failure

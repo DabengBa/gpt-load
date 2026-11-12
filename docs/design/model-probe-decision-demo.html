@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>模型测活 · 决策体验示例</title>
+<style>
+:root{color-scheme:light;--ink:#202937;--muted:#586779;--line:#dce2e9;--soft:#f5f7fa;--blue:#2864c5;--green:#147451;--red:#b53636;--amber:#8b5c0c}*{box-sizing:border-box}body{margin:0;background:#edf1f5;color:var(--ink);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button{font:inherit;color:inherit;cursor:pointer}button:focus-visible,summary:focus-visible{outline:3px solid #79a7ee;outline-offset:2px}button:disabled{opacity:.48;cursor:not-allowed}::selection{background:#c9defc}.topbar{height:51px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 28px;gap:12px}.brand{font-weight:750;color:#254d86;letter-spacing:.01em}.topbar span:last-child{color:var(--muted);border-left:1px solid var(--line);padding-left:12px}.shell{max-width:1200px;margin:0 auto;padding:24px}.intro{margin-bottom:18px}.intro h1{font-size:21px;line-height:1.25;margin:0 0 7px}.intro p{color:var(--muted);margin:0;max-width:95ch}.notice{margin-top:10px;color:#485b73;font-size:12px}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 305px;gap:16px;align-items:start}.panel{background:#fff;border:1px solid #d4dce5;border-radius:7px}.panel-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.panel-head h2,.side h2{font-size:16px;line-height:1.3;margin:0}.sub{font-size:12px;color:var(--muted);margin:5px 0 0}.tag{display:inline-flex;border:1px solid #cad8ec;background:#f1f6fd;color:#315c93;border-radius:4px;padding:2px 7px;font-size:12px;white-space:nowrap}.body{padding:16px 18px}.banner{background:#f5f8fd;border:1px solid #dbe6f5;border-radius:5px;padding:10px 12px;color:#334d70;font-size:13px}.banner strong{color:#223c60}.section-title{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:18px 0 8px}.section-title h3{font-size:13px;margin:0}.small{font-size:12px;color:var(--muted)}.progress{height:5px;background:#e9edf2;border-radius:4px;overflow:hidden;margin-top:9px}.progress span{display:block;height:100%;background:#4c7fca}.summary{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px}.good{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--amber)}.list{border:1px solid var(--line);border-radius:5px;overflow:hidden}.result{padding:11px 12px;border-top:1px solid #e8ecf1}.result:first-child{border-top:0}.row{display:flex;justify-content:space-between;align-items:center;gap:10px}.name{font-weight:650}.badge{font-size:12px;font-weight:650;white-space:nowrap}.meta{color:var(--muted);font-size:12px;margin-top:3px}.diagnosis{font-size:13px;margin-top:6px}.result details{margin-top:6px}.result summary,details.reference summary{font-size:12px;color:#285da6;cursor:pointer;width:fit-content}.detail{font-size:12px;color:var(--muted);margin:7px 0 0;line-height:1.65;overflow-wrap:anywhere}.empty{padding:22px 12px;color:var(--muted);text-align:center;font-size:13px}.controls{border-top:1px solid var(--line);margin-top:18px;padding-top:15px}.group-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #edf0f3}.group-row:last-child{border:0}.group-name{font-weight:600}.group-info{font-size:12px;color:var(--muted)}.buttons{display:flex;gap:7px;flex-wrap:wrap}.btn{border:1px solid #cbd4de;border-radius:5px;background:white;padding:5px 10px;font-size:12px;font-weight:600;min-height:30px}.btn:hover:not(:disabled){background:#f2f6fb;border-color:#9fb6d2}.btn.primary{background:#2864c5;border-color:#2864c5;color:#fff}.btn.primary:hover:not(:disabled){background:#1f53a7}.footer{border-top:1px solid var(--line);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px}.side{padding:16px}.side h2{margin-bottom:5px}.side-section{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}.side h3{font-size:13px;margin:0 0 8px}.stack{display:grid;grid-template-columns:1fr 1fr;gap:6px}.stack .btn{text-align:left}.tabs{display:flex;flex-wrap:wrap;gap:5px}.tab{font-size:12px;padding:4px 8px;border:1px solid #d4dce5;background:white;border-radius:4px}.tab[aria-pressed=true]{color:#214f90;border-color:#9cbbe4;background:#eef5ff}.scenario-desc{font-size:12px;color:var(--muted);margin:9px 0}.steps{display:grid;gap:6px}.step{width:100%;text-align:left}.step.done{color:var(--muted);background:#f5f7f9}.hint{font-size:12px;color:var(--muted);margin:8px 0 0}.reference{margin-top:18px;font-size:12px;color:var(--muted)}dialog{border:1px solid #ccd5e0;border-radius:7px;max-width:min(480px,calc(100vw - 30px));padding:0;color:var(--ink);box-shadow:0 14px 38px #14223530}dialog::backdrop{background:#18263866}.dialog-body{padding:18px}.dialog-body h2{font-size:16px;margin:0 0 9px}.dialog-body p{margin:8px 0}.dialog-body ul{padding-left:20px}.dialog-footer{border-top:1px solid var(--line);padding:12px 18px;display:flex;justify-content:flex-end;gap:8px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}@media(max-width:780px){.shell{padding:16px 12px}.topbar{padding:0 14px}.workspace{grid-template-columns:1fr}.side{order:2}.footer{align-items:flex-start;flex-wrap:wrap}}@media(max-width:400px){.body,.panel-head{padding-left:12px;padding-right:12px}.row{align-items:flex-start}.stack{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header class="topbar"><strong class="brand">GPT-Load</strong><span>模型管理 / 测活体验方案</span></header>
+<main class="shell">
+  <div class="intro"><h1>测活结果，如何帮助下一步判断？</h1><p>探索一次测活后的结论、证据与整组启停：当请求失败、没有发往上游或批次未完成时，怎样避免把不确定误当成失败？选择右侧演示场景，或自由操作。</p><p class="notice">交互方案 · 所有数据均为虚构，仅在本地内存模拟；新增的诊断文案、确认和演示流程是建议，并非现有能力。</p></div>
+  <div class="workspace">
+    <section class="panel" aria-labelledby="result-title">
+      <div class="panel-head"><div><h2 id="result-title">模型测活结果</h2><p class="sub">组内固定目标 · 非流式探测</p></div><span class="tag">方案预览</span></div>
+      <div class="body">
+        <div class="banner"><strong>开始前请留意</strong>　测活不验证客户端权限；上游可能收费。成功可能恢复路由状态，但不等同于验证全部业务流量。</div>
+        <div id="result" aria-live="polite"></div>
+        <section class="controls" aria-labelledby="group-title"><div class="section-title" style="margin-top:0"><h3 id="group-title">整组启停</h3><span class="small">模拟提议，不会自动应用</span></div><p class="small">变更影响整个组，不只影响此次测活的模型。无法判断不会被当作失败自动停用。</p><div id="groups"></div></section>
+      </div>
+      <div class="footer"><span id="feedback" class="small" role="status"></span><button class="btn primary" id="review">检查变更</button></div>
+    </section>
+    <aside class="panel side" aria-labelledby="play-title"><h2 id="play-title">交互实验台</h2><p class="sub">每次选择场景都会重置模拟数据。</p>
+      <section class="side-section"><h3>自由操作</h3><div class="stack"><button class="btn" data-action="START_PASS">开始单项 · 通过</button><button class="btn" data-action="START_FAIL">开始单项 · 失败</button><button class="btn" data-action="START_UNKNOWN">开始单项 · 未发上游</button><button class="btn" data-action="START_BATCH">开始批量 · 10 项</button><button class="btn" data-action="FINISH">完成当前批</button><button class="btn" data-action="STOP">停止后续批次</button><button class="btn" data-action="NEXT">开始下一批</button><button class="btn" data-action="RESET">重置</button></div><p class="hint">操作不符合当前状态时会说明原因；当前批次由你手动完成。</p></section>
+      <section class="side-section"><h3>场景演示</h3><div class="tabs" id="tabs" aria-label="选择演示场景"></div><p class="scenario-desc" id="scenario-desc"></p><div class="steps" id="steps"></div></section>
+    </aside>
+  </div>
+  <details class="reference"><summary>设计依据与边界</summary><p>现有弹窗展示结果、日志及组启停；目标固定于组，批次最多 8 个目标，按批次顺序发起；停止只阻止后续批次。现有快捷操作将未通过（含无法判断）纳入停用提议，本方案刻意不沿用这一策略。</p><p>参考（2026-11-12 查阅）：<a href="https://docs.litellm.ai/docs/proxy/health">LiteLLM 健康检查</a>区分服务健康和模型真实请求，并展示模型状态与错误；<a href="https://portkey.ai/docs/product/observability/logs">Portkey 日志</a>通过详情展示请求响应。仅借鉴信息组织，不表示本产品已有相同能力或证明体验效果。</p></details>
+</main>
+<dialog id="confirm" aria-labelledby="confirm-title"><div class="dialog-body"><h2 id="confirm-title">确认整组启停？</h2><p>以下变更影响整个组的流量，而非仅影响测活的模型。请核对后再应用。</p><ul id="changes"></ul><p class="small">这只是本地模拟，不会修改真实分组。</p></div><div class="dialog-footer"><button class="btn" id="cancel">返回检查</button><button class="btn primary" id="apply">确认模拟应用</button></div></dialog>
+
+<!-- Portable decision model: pure state and transitions, no browser dependencies. -->
+<script>
+const initial = () => ({phase:'idle',kind:null,total:0,completed:0,active:0,stop:false,results:[],groups:{alpha:true,beta:false},proposed:{alpha:true,beta:false},message:'尚未开始。',scenario:null,step:0});
+const items = [
+ {id:1,group:'alpha',model:'gpt-4.1',outcome:'passed',reason:'上游返回成功响应',status:'200',latency:'438 ms',log:'probe-demo-001',recovered:true},
+ {id:2,group:'alpha',model:'gpt-4.1-mini',outcome:'failed',reason:'上游返回 429；建议检查配额或稍后重试',status:'429',latency:'612 ms',log:'probe-demo-002'},
+ {id:3,group:'alpha',model:'text-embedding-3',outcome:'inconclusive',reason:'没有可用凭据，请先检查组内凭据',status:null,latency:null,log:null},
+ ...Array.from({length:5},(_,i)=>({id:i+4,group:'alpha',model:'model-'+(i+4),outcome:'passed',reason:'上游返回成功响应',status:'200',latency:(490+i*31)+' ms',log:'probe-demo-00'+(i+4),recovered:false})),
+ {id:9,group:'beta',model:'claude-sonnet',outcome:'passed',reason:'上游返回成功响应',status:'200',latency:'721 ms',log:'probe-demo-009',recovered:false},
+ {id:10,group:'beta',model:'claude-haiku',outcome:'failed',reason:'上游返回 503；建议查看请求日志',status:'503',latency:'832 ms',log:'probe-demo-010'}
+];
+function reducer(s,a){
+ const error=message=>({...s,message});
+ if(a.type==='RESET') return initial();
+ if(a.type==='SCENARIO') return {...initial(),scenario:a.id,message:'已重置，按顺序点击场景步骤。'};
+ if(a.type.startsWith('START_')){
+  if(s.phase==='running'||s.phase==='between') return error('本轮尚未结束，请先完成当前轮次。');
+  const kind=a.type.slice(6); return {...s,phase:'running',kind,total:kind==='BATCH'?10:1,completed:0,active:kind==='BATCH'?8:1,stop:false,results:[],proposed:{...s.groups},message:'当前批次已开始；这是模拟，不会发送请求。'};
+ }
+ if(a.type==='STOP') return s.phase==='running'?{...s,stop:true,message:'已请求停止后续批次；当前批次仍在运行。'}:s.phase==='between'?{...s,phase:'done',stop:true,message:'已停止，后续批次未执行。'}:error('当前没有可停止的批次。');
+ if(a.type==='FINISH'){
+  if(s.phase!=='running') return error('没有运行中的批次。');
+  let added=s.kind==='BATCH'?items.slice(s.completed,s.completed+s.active):[items[s.kind==='PASS'?0:s.kind==='FAIL'?1:2]];
+  const completed=s.completed+added.length, more=completed<s.total;
+  return {...s,results:[...s.results,...added],completed,active:0,phase:more&&!s.stop?'between':'done',message:more?(s.stop?'当前批次已完成，后续批次未执行。':'当前批次已完成，可以开始下一批。'):'测活完成；可检查证据并决定是否调整分组。'};
+ }
+ if(a.type==='NEXT') return s.phase==='between'?{...s,phase:'running',active:Math.min(8,s.total-s.completed),message:'下一批已开始。'}:error('没有可开始的下一批。');
+ if(a.type==='PROPOSE') return s.phase==='running'||s.phase==='between'?error('请等本轮结束后再提议变更。'):!s.results.some(r=>r.group===a.group)?error('该组尚无本轮结果，请先完成测活。'):{...s,proposed:{...s.proposed,[a.group]:!s.proposed[a.group]},message:'已修改提议；尚未应用。'};
+ if(a.type==='APPLY') return {...s,groups:{...s.proposed},message:'已模拟应用整组变更；真实分组未改变。'};
+ if(a.type==='MESSAGE') return error(a.message);
+ if(a.type==='STEP') {if(s.scenario!==a.id||s.step!==a.index)return error('请按顺序完成当前场景步骤。'); const next=reducer(s,a.action); return {...next,step:s.step+1};}
+ return s;
+}
+</script>
+<script>
+const scenarios=[
+ {id:'pass',name:'通过',desc:'一次成功探测：查看证据和恢复状态，成功不代表客户端权限已验证。',steps:[['开始单项测活',{type:'START_PASS'}],['完成当前批',{type:'FINISH'}]]},
+ {id:'fail',name:'失败',desc:'上游返回错误，先看日志；是否停用仍由人判断。',steps:[['开始失败测活',{type:'START_FAIL'}],['完成当前批',{type:'FINISH'}],['提议停用 Alpha 组',{type:'PROPOSE',group:'alpha'}],['检查整组变更',{type:'REVIEW'}]]},
+ {id:'unknown',name:'无法判断',desc:'没有可用凭据，请求未发上游，因此没有请求日志，也不自动停用。',steps:[['开始未发上游测活',{type:'START_UNKNOWN'}],['完成当前批',{type:'FINISH'}]]},
+ {id:'batch',name:'批量结果',desc:'10 项分两批，每批最多 8 项；第一批结束后结果仍不完整。',steps:[['开始批量测活',{type:'START_BATCH'}],['完成第一批',{type:'FINISH'}],['开始第二批',{type:'NEXT'}],['完成第二批',{type:'FINISH'}]]},
+ {id:'stop',name:'停止批次',desc:'停止只阻止后续批次，第一批仍会运行并产生结果。',steps:[['开始批量测活',{type:'START_BATCH'}],['停止后续批次',{type:'STOP'}],['完成当前批',{type:'FINISH'}],['尝试开始下一批',{type:'NEXT'}]]},
+ {id:'disabled',name:'停用组',desc:'Beta 组原本停用；完成两批后可提议启用整个组并二次确认。',steps:[['开始批量测活',{type:'START_BATCH'}],['完成第一批',{type:'FINISH'}],['开始第二批',{type:'NEXT'}],['完成第二批',{type:'FINISH'}],['提议启用 Beta 组',{type:'PROPOSE',group:'beta'}],['检查整组变更',{type:'REVIEW'}]]}
+];
+let state=initial(),returnFocus=null;
+const $=id=>document.getElementById(id), names={alpha:'Alpha',beta:'Beta'}, labels={passed:'通过',failed:'失败',inconclusive:'无法判断'}, tones={passed:'good',failed:'bad',inconclusive:'warn'};
+function dispatch(action){state=reducer(state,action);render()}
+function render(){
+ const counts={passed:0,failed:0,inconclusive:0};state.results.forEach(r=>counts[r.outcome]++);
+ const phase={idle:'等待开始',running:'当前批次运行中',between:'等待下一批',done:state.stop&&state.completed<state.total?'已停止后续批次':'本轮已结束'}[state.phase];
+ const results=state.results.map(r=>`<article class="result"><div class="row"><span class="name">${names[r.group]} · ${r.model} ${!state.groups[r.group]?'<span class="small">（组已停用）</span>':''}</span><span class="badge ${tones[r.outcome]}">${labels[r.outcome]}</span></div><div class="diagnosis">${r.reason}</div><div class="meta">${r.log?`HTTP ${r.status} · ${r.latency} · 日志 ${r.log}`:'未发往上游 · 无请求日志'}</div><details><summary>查看详情与日志</summary><div class="detail">目标组：${names[r.group]}　｜　模型：${r.model}<br>请求方式：非流式　｜　日志：${r.log?`${r.log}（模拟记录，无真实内容）`:'未产生，请求未执行'}${r.outcome==='passed'?`<br>恢复标记：${r.recovered?'true（发生恢复）':'false（仅表示未报告恢复，不能判断是否无需恢复）'}`:''}</div></details></article>`).join('');
+ $('result').innerHTML=`<div class="section-title"><h3>本轮结果</h3><span class="small">${phase} · ${state.completed} / ${state.total} 项</span></div><div class="progress" aria-hidden="true"><span style="width:${state.total?state.completed/state.total*100:0}%"></span></div><div class="summary"><span class="good">通过 ${counts.passed}</span><span class="bad">失败 ${counts.failed}</span><span class="warn">无法判断 ${counts.inconclusive}</span><span class="small">未完成 ${state.total-state.completed}</span></div><div class="section-title"><h3>结果与诊断</h3><span class="small">${state.active?'当前批 '+state.active+' 项运行中':''}</span></div><div class="list">${results||'<div class="empty">暂无结果。开始测活并完成当前批次后，在这里查看结论。</div>'}</div>`;
+ $('groups').innerHTML=Object.keys(state.groups).map(g=>`<div class="group-row"><div><div class="group-name">${names[g]} 组</div><div class="group-info">当前：${state.groups[g]?'启用':'停用'} · 提议：${state.proposed[g]?'启用':'停用'}</div></div><button class="btn" data-group="${g}" aria-label="提议${state.proposed[g]?'停用':'启用'} ${names[g]} 组">提议${state.proposed[g]?'停用':'启用'}</button></div>`).join('');
+ $('feedback').textContent=state.message;
+ const diffs=Object.keys(state.groups).filter(g=>state.groups[g]!==state.proposed[g]);$('review').disabled=!diffs.length||state.phase==='running'||state.phase==='between';
+ $('tabs').innerHTML=scenarios.map(x=>`<button class="tab" data-scenario="${x.id}" aria-pressed="${state.scenario===x.id}">${x.name}</button>`).join('');
+ const scenario=scenarios.find(x=>x.id===state.scenario);$('scenario-desc').textContent=scenario?scenario.desc:'选择一个场景，从已知初始状态开始。';
+ $('steps').innerHTML=scenario?scenario.steps.map(([label],i)=>`<button class="btn step ${i<state.step?'done':''}" data-step="${i}" ${i!==state.step?'disabled':''}>${i+1}. ${label}${i<state.step?' · 已完成':''}</button>`).join(''):'';
+}
+function review(){const diff=Object.keys(state.groups).filter(g=>state.groups[g]!==state.proposed[g]);if(!diff.length||state.phase==='running'||state.phase==='between'){dispatch({type:'MESSAGE',message:'没有可检查的变更，或本轮尚未结束。'});return} $('changes').innerHTML=diff.map(g=>`<li>${names[g]} 组：${state.groups[g]?'启用':'停用'} → <strong>${state.proposed[g]?'启用':'停用'}</strong></li>`).join('');returnFocus=document.activeElement;$('confirm').showModal();$('cancel').focus()}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.action)dispatch({type:b.dataset.action});else if(b.dataset.group){const group=b.dataset.group;dispatch({type:'PROPOSE',group});document.querySelector(`[data-group="${group}"]`).focus()}else if(b.dataset.scenario){const id=b.dataset.scenario;dispatch({type:'SCENARIO',id});document.querySelector(`[data-scenario="${id}"]`).focus()}else if(b.dataset.step!==undefined){const index=Number(b.dataset.step),scenario=scenarios.find(x=>x.id===state.scenario),action=scenario.steps[index][1];if(action.type==='REVIEW'){state={...state,step:state.step+1};render();$('review').focus();review()}else{dispatch({type:'STEP',id:scenario.id,index,action});(document.querySelector(`[data-step="${state.step}"]`)||document.querySelector(`[data-scenario="${scenario.id}"]`)).focus()}}});
+$('review').addEventListener('click',review);$('cancel').addEventListener('click',()=>$('confirm').close());$('apply').addEventListener('click',()=>{dispatch({type:'APPLY'});$('confirm').close()});$('confirm').addEventListener('close',()=>{if(returnFocus&&returnFocus.isConnected)returnFocus.focus();else $('review').focus()});render();
+</script>
+</body>
+</html>

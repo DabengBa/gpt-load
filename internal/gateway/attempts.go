@@ -16,9 +16,10 @@ import (
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
+	"gpt-load/internal/parameteroverride/prepare"
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/protocol"
-	"gpt-load/internal/reasoning"
+
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 )
@@ -84,18 +85,6 @@ func (cache *preparedRequestCache) get(selection scheduler.Selection) preparedRe
 	prepared := preparedRequest{
 		request: cache.parsed, observations: cache.metadata, observationsAvailable: true,
 	}
-	body, applied, err := selection.Group.ParameterOverrides.Apply(
-		cache.dialect.Protocol(),
-		cache.metadata.Operation,
-		cache.externalModel,
-		cache.parsed.Body,
-	)
-	if err != nil {
-		prepared.err = err
-		cache.cached = &prepared
-		return prepared
-	}
-	prepared.configuredParameters = selection.Group.ParameterOverrides.ConfiguredFields(cache.dialect.Protocol(), cache.metadata.Operation, cache.externalModel)
 	entryEffort := ""
 	for _, model := range selection.Group.Models {
 		if selection.EntryID != "" && model.EntryID == selection.EntryID {
@@ -103,26 +92,17 @@ func (cache *preparedRequestCache) get(selection scheduler.Selection) preparedRe
 			break
 		}
 	}
-	effort, source, resolveErr := reasoning.ResolveEffort(entryEffort, cache.metadata.Reasoning.Effort)
-	if resolveErr != nil {
-		prepared.err = resolveErr
+	body, configured, overridden, applied, err := prepare.Request(
+		selection.Group.ParameterOverrides, cache.dialect.Protocol(), cache.metadata.Operation,
+		cache.externalModel, cache.parsed.Body, entryEffort, cache.metadata.Reasoning.Effort,
+	)
+	if err != nil {
+		prepared.err = err
 		cache.cached = &prepared
 		return prepared
 	}
-	if dialect.SupportsReasoningEffortOverride(cache.dialect.Protocol(), cache.metadata.Operation) &&
-		effort != "" && source != reasoning.EffortSourceClient {
-		var effortApplied bool
-		body, effortApplied, err = dialect.SetReasoningEffort(body, effort, cache.dialect.Protocol())
-		if err != nil {
-			prepared.err = err
-			cache.cached = &prepared
-			return prepared
-		}
-		applied = applied || effortApplied
-		// Preserve ownership even when the body already contains the selected
-		// value; native providers still need to reconcile dependent fields.
-		prepared.reasoningEffortOverridden = source == reasoning.EffortSourceEntry
-	}
+	prepared.configuredParameters = configured
+	prepared.reasoningEffortOverridden = overridden
 	// Rebuild each candidate from its own overrides, never from a previous
 	// group's prepared body. Recovery is request-local and invalidates the cache.
 	if cache.recoverHistory {

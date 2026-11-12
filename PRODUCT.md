@@ -1,8 +1,10 @@
 # Product
 
-## Register
+<!-- impeccable:product-schema 1 -->
 
-product
+## Platform
+
+web
 
 ## Users
 Operators and administrators of a self-hosted GPT-Load instance — the people who configure LLM upstream groups, manage credentials and access keys, and monitor request logs. They work inside an admin console during triage and configuration sessions, often on dense tables of channels, groups, and log records. The job to be done on any screen is operational: find a record, inspect it, change a setting, verify the result.

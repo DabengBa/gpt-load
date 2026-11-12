@@ -1,5 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import {
+  AlertDialog,
   Badge,
   Banner,
   Button,
@@ -31,6 +32,24 @@ const styles = stylex.create({
   body: {
     display: 'grid',
     gap: 'var(--space-3)',
+  },
+  conclusion: { display: 'grid', gap: 'var(--space-2)', overflowWrap: 'anywhere' },
+  conclusionTitle: { margin: 0, fontSize: 'var(--text-md)', fontWeight: 600 },
+  conclusionSuccess: { color: 'var(--color-success)' },
+  conclusionDanger: { color: 'var(--color-danger)' },
+  conclusionWarning: { color: 'var(--color-warning)' },
+  conclusionText: { margin: 0, lineHeight: 'var(--line-normal)' },
+  conclusionMeta: { margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' },
+  technical: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: 'var(--color-border-subtle)',
+    paddingTop: 'var(--space-3)',
+  },
+  technicalSummary: {
+    color: 'var(--color-action)',
+    cursor: 'pointer',
+    marginBottom: 'var(--space-3)',
   },
   // Classic QueryFeedback state="loading": bordered sunken box + spinner,
   // role="status".
@@ -431,6 +450,7 @@ export interface ModelProbeDialogProps {
   /** classic update:open */
   onOpenChange(open: boolean): void
   onStop(): void
+  onRetry(): void
   onViewLog(logId: string): void
   /** classic apply-enabled */
   onApplyEnabled?(changes: Map<number, boolean>): void
@@ -451,13 +471,14 @@ export function ModelProbeDialog({
   hideGroupControls = false,
   onOpenChange,
   onStop,
+  onRetry,
   onViewLog,
   onApplyEnabled,
 }: ModelProbeDialogProps) {
   const t = useT()
   const intl = useIntl()
 
-  const detail = results.length === 1 ? results[0] : undefined
+  const detail = total === 1 && results.length === 1 ? results[0] : undefined
   const summary = { passed: 0, failed: 0, inconclusive: 0 }
   for (const result of results) summary[result.outcome] += 1
 
@@ -467,6 +488,7 @@ export function ModelProbeDialog({
     () => new Map<number, boolean>(),
   )
   const [initialized, setInitialized] = useState(false)
+  const [confirmRetry, setConfirmRetry] = useState(false)
 
   // Classic watch(props.open): opening re-arms the one-shot seed; closing drops
   // every proposal. Render-time adjustments, not effects.
@@ -477,6 +499,7 @@ export function ModelProbeDialog({
       setInitialized(false)
     } else {
       setProposedEnabled(new Map())
+      setConfirmRetry(false)
     }
   }
 
@@ -561,6 +584,14 @@ export function ModelProbeDialog({
     return result.reason === null ? '' : t(`monitor.modelProbe.reason.${result.reason}`)
   }
 
+  function nextStep(result: ModelProbeResultDto): string {
+    if (result.outcome === 'passed') return t('monitor.modelProbe.next.passed')
+    if (result.reason === 'no_schedulable_credential')
+      return t('monitor.modelProbe.next.credential')
+    if (result.reason === 'target_unavailable') return t('monitor.modelProbe.next.target')
+    return t('monitor.modelProbe.next.review')
+  }
+
   function routeModeLabel(result: ModelProbeResultDto): string {
     return result.route_mode === null
       ? t('monitor.modelProbe.unknownValue')
@@ -616,319 +647,386 @@ export function ModelProbeDialog({
   }
 
   return (
-    <Dialog
-      isOpen={open}
-      onOpenChange={setOpen}
-      // Classic model-probe-dialog__surface: 720px ledger-width dialog whose
-      // body owns the only scroll region while the footer stays pinned.
-      width={720}
-      maxHeight="calc(100dvh - 36px)"
-    >
-      <Layout
-        header={
-          <DialogHeader
-            title={t('monitor.modelProbe.title')}
-            subtitle={t('monitor.modelProbe.description')}
-            onOpenChange={setOpen}
-            hasDivider
-          />
-        }
-        content={
-          <LayoutContent isScrollable>
-            <div {...stylex.props(styles.body)}>
-              {pending && results.length === 0 && (
-                <div {...stylex.props(styles.loading)} role="status">
-                  <LoaderCircle
-                    size={18}
-                    aria-hidden="true"
-                    {...stylex.props(styles.loadingSpin)}
+    <>
+      <Dialog
+        isOpen={open}
+        onOpenChange={setOpen}
+        // Classic model-probe-dialog__surface: 720px ledger-width dialog whose
+        // body owns the only scroll region while the footer stays pinned.
+        width={720}
+        maxHeight="calc(100dvh - 36px)"
+      >
+        <Layout
+          header={
+            <DialogHeader
+              title={t('monitor.modelProbe.title')}
+              subtitle={t('monitor.modelProbe.description')}
+              onOpenChange={setOpen}
+              hasDivider
+            />
+          }
+          content={
+            <LayoutContent isScrollable>
+              <div {...stylex.props(styles.body)}>
+                {pending && results.length === 0 && (
+                  <div {...stylex.props(styles.loading)} role="status">
+                    <LoaderCircle
+                      size={18}
+                      aria-hidden="true"
+                      {...stylex.props(styles.loadingSpin)}
+                    />
+                    <span>{t('monitor.modelProbe.loading')}</span>
+                  </div>
+                )}
+                {failed && <Banner status="error" title={t('monitor.modelProbe.requestFailed')} />}
+                {stopped && <Banner status="warning" title={t('monitor.modelProbe.stopped')} />}
+                {total > 1 && (
+                  <Banner
+                    status="warning"
+                    title={t('monitor.modelProbe.progress', { completed, total })}
                   />
-                  <span>{t('monitor.modelProbe.loading')}</span>
-                </div>
-              )}
-              {failed && <Banner status="error" title={t('monitor.modelProbe.requestFailed')} />}
-              {stopped && <Banner status="warning" title={t('monitor.modelProbe.stopped')} />}
-              {total > 1 && (
-                <Banner
-                  status="warning"
-                  title={t('monitor.modelProbe.progress', { completed, total })}
-                />
-              )}
-              {total > 1 && results.length > 0 && (
-                <Banner
-                  status="warning"
-                  title={t('monitor.modelProbe.summary', {
-                    passed: summary.passed,
-                    failed: summary.failed,
-                    inconclusive: summary.inconclusive,
-                  })}
-                />
-              )}
+                )}
+                {total > 1 && results.length > 0 && (
+                  <Banner
+                    status="warning"
+                    title={t('monitor.modelProbe.summary', {
+                      passed: summary.passed,
+                      failed: summary.failed,
+                      inconclusive: summary.inconclusive,
+                    })}
+                  />
+                )}
 
-              {detail !== undefined ? (
-                <dl {...stylex.props(styles.details)}>
-                  <dt {...stylex.props(styles.detailsTerm)}>
-                    {t('monitor.modelProbe.fields.group')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>
-                    {groupLabel(detail)}
-                    {isDisabledGroup(detail) && (
-                      <Badge
-                        variant="neutral"
-                        label={t('monitor.modelProbe.disabledBadge')}
-                        xstyle={styles.disabledBadge}
-                      />
-                    )}
-                  </dd>
-                  <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                    {t('monitor.modelProbe.fields.model')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>{detail.model}</dd>
-                  <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                    {t('monitor.modelProbe.fields.outcome')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>{outcomeLabel(detail)}</dd>
-                  {detail.outcome === 'passed' && (
-                    <>
-                      <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelProbe.fields.recovered')}
-                      </dt>
-                      <dd {...stylex.props(styles.detailsDesc)}>
-                        {detail.recovered
-                          ? t('monitor.modelProbe.recovered')
-                          : t('monitor.modelProbe.recoveryNotNeeded')}
-                      </dd>
-                    </>
-                  )}
-                  {detail.reason && (
-                    <>
-                      <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelProbe.fields.reason')}
-                      </dt>
-                      <dd {...stylex.props(styles.detailsDesc)}>{reasonLabel(detail)}</dd>
-                    </>
-                  )}
-                  {detail.protocol && (
-                    <>
-                      <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelProbe.fields.protocol')}
-                      </dt>
-                      <dd {...stylex.props(styles.detailsDesc)}>{detail.protocol}</dd>
-                    </>
-                  )}
-                  <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                    {t('monitor.modelProbe.fields.routeMode')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>{routeModeLabel(detail)}</dd>
-                  {detail.status_code !== null && (
-                    <>
-                      <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelProbe.fields.statusCode')}
-                      </dt>
-                      <dd {...stylex.props(styles.detailsDesc)}>{detail.status_code}</dd>
-                    </>
-                  )}
-                  {detail.latency_ms !== null && (
-                    <>
-                      <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelProbe.fields.latency')}
-                      </dt>
-                      <dd {...stylex.props(styles.detailsDesc)}>
-                        {t('monitor.modelProbe.latency', {
-                          value: intl.formatNumber(detail.latency_ms),
-                        })}
-                      </dd>
-                    </>
-                  )}
-                  {detail.credential_label && (
-                    <>
-                      <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelProbe.fields.credential')}
-                      </dt>
-                      <dd {...stylex.props(styles.detailsDesc)}>{detail.credential_label}</dd>
-                    </>
-                  )}
-                  <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                    {t('monitor.modelProbe.fields.logId')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>
-                    {(() => {
-                      const logId = detail.log_id
-                      return logId ? (
-                        <LogIdActions logId={logId} onViewLog={onViewLog} />
-                      ) : (
-                        t('monitor.modelProbe.notExecuted')
-                      )
-                    })()}
-                  </dd>
-                  <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                    {t('monitor.modelProbe.fields.testedAt')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>
-                    {formatLocalInstant(detail.tested_at_ms, intl.locale)}
-                  </dd>
-                </dl>
-              ) : results.length > 1 ? (
-                <ul {...stylex.props(styles.list)}>
-                  {results.map((result) => {
-                    const logId = result.log_id
-                    return (
-                      <li key={`${result.group_id}:${result.model}`}>
-                        <div {...stylex.props(styles.row)}>
-                          <span {...stylex.props(styles.identity)}>
-                            {groupLabel(result)} · {result.model}
-                            {isDisabledGroup(result) && (
-                              <Badge
-                                variant="neutral"
-                                label={t('monitor.modelProbe.disabledBadge')}
-                                xstyle={styles.disabledBadge}
-                              />
+                {detail !== undefined ? (
+                  <>
+                    <section {...stylex.props(styles.conclusion)} aria-live="polite">
+                      <h3
+                        {...stylex.props(
+                          styles.conclusionTitle,
+                          tone(detail) === 'success' && styles.conclusionSuccess,
+                          tone(detail) === 'danger' && styles.conclusionDanger,
+                          tone(detail) === 'warning' && styles.conclusionWarning,
+                        )}
+                      >
+                        {outcomeLabel(detail)}
+                      </h3>
+                      <p {...stylex.props(styles.conclusionMeta)}>
+                        {groupLabel(detail)} · {detail.model}
+                        {isDisabledGroup(detail) && (
+                          <Badge
+                            variant="neutral"
+                            label={t('monitor.modelProbe.disabledBadge')}
+                            xstyle={styles.disabledBadge}
+                          />
+                        )}
+                      </p>
+                      {detail.reason && (
+                        <p {...stylex.props(styles.conclusionText)}>{reasonLabel(detail)}</p>
+                      )}
+                      <p {...stylex.props(styles.conclusionText)}>
+                        <strong>{t('monitor.modelProbe.nextLabel')}</strong> {nextStep(detail)}
+                      </p>
+                      {isDisabledGroup(detail) && (
+                        <p {...stylex.props(styles.conclusionMeta)}>
+                          {t('monitor.modelProbe.disabledResult')}
+                        </p>
+                      )}
+                      <p {...stylex.props(styles.conclusionMeta)}>
+                        {t('monitor.modelProbe.scope')}
+                      </p>
+                      <div {...stylex.props(styles.meta)}>
+                        <span>{t('monitor.modelProbe.fields.logId')}:</span>
+                        {detail.log_id ? (
+                          <LogIdActions logId={detail.log_id} onViewLog={onViewLog} />
+                        ) : (
+                          t('monitor.modelProbe.logUnavailable')
+                        )}
+                      </div>
+                    </section>
+                    <details {...stylex.props(styles.technical)}>
+                      <summary {...stylex.props(styles.technicalSummary)}>
+                        {t('monitor.modelProbe.technicalDetails')}
+                      </summary>
+                      <dl {...stylex.props(styles.details)}>
+                        <dt {...stylex.props(styles.detailsTerm)}>
+                          {t('monitor.modelProbe.fields.group')}
+                        </dt>
+                        <dd {...stylex.props(styles.detailsDesc)}>
+                          {groupLabel(detail)}
+                          {isDisabledGroup(detail) && (
+                            <Badge
+                              variant="neutral"
+                              label={t('monitor.modelProbe.disabledBadge')}
+                              xstyle={styles.disabledBadge}
+                            />
+                          )}
+                        </dd>
+                        <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                          {t('monitor.modelProbe.fields.model')}
+                        </dt>
+                        <dd {...stylex.props(styles.detailsDesc)}>{detail.model}</dd>
+                        <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                          {t('monitor.modelProbe.fields.outcome')}
+                        </dt>
+                        <dd {...stylex.props(styles.detailsDesc)}>{outcomeLabel(detail)}</dd>
+                        {detail.outcome === 'passed' && (
+                          <>
+                            <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                              {t('monitor.modelProbe.fields.recovered')}
+                            </dt>
+                            <dd {...stylex.props(styles.detailsDesc)}>
+                              {detail.recovered
+                                ? t('monitor.modelProbe.recovered')
+                                : t('monitor.modelProbe.recoveryNotReported')}
+                            </dd>
+                          </>
+                        )}
+                        {detail.reason && (
+                          <>
+                            <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                              {t('monitor.modelProbe.fields.reason')}
+                            </dt>
+                            <dd {...stylex.props(styles.detailsDesc)}>{reasonLabel(detail)}</dd>
+                          </>
+                        )}
+                        {detail.protocol && (
+                          <>
+                            <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                              {t('monitor.modelProbe.fields.protocol')}
+                            </dt>
+                            <dd {...stylex.props(styles.detailsDesc)}>{detail.protocol}</dd>
+                          </>
+                        )}
+                        <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                          {t('monitor.modelProbe.fields.routeMode')}
+                        </dt>
+                        <dd {...stylex.props(styles.detailsDesc)}>{routeModeLabel(detail)}</dd>
+                        {detail.status_code !== null && (
+                          <>
+                            <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                              {t('monitor.modelProbe.fields.statusCode')}
+                            </dt>
+                            <dd {...stylex.props(styles.detailsDesc)}>{detail.status_code}</dd>
+                          </>
+                        )}
+                        {detail.latency_ms !== null && (
+                          <>
+                            <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                              {t('monitor.modelProbe.fields.latency')}
+                            </dt>
+                            <dd {...stylex.props(styles.detailsDesc)}>
+                              {t('monitor.modelProbe.latency', {
+                                value: intl.formatNumber(detail.latency_ms),
+                              })}
+                            </dd>
+                          </>
+                        )}
+                        {detail.credential_label && (
+                          <>
+                            <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                              {t('monitor.modelProbe.fields.credential')}
+                            </dt>
+                            <dd {...stylex.props(styles.detailsDesc)}>{detail.credential_label}</dd>
+                          </>
+                        )}
+
+                        <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
+                          {t('monitor.modelProbe.fields.testedAt')}
+                        </dt>
+                        <dd {...stylex.props(styles.detailsDesc)}>
+                          {formatLocalInstant(detail.tested_at_ms, intl.locale)}
+                        </dd>
+                      </dl>
+                    </details>
+                  </>
+                ) : results.length > 0 ? (
+                  <ul {...stylex.props(styles.list)}>
+                    {results.map((result) => {
+                      const logId = result.log_id
+                      return (
+                        <li key={`${result.group_id}:${result.model}`}>
+                          <div {...stylex.props(styles.row)}>
+                            <span {...stylex.props(styles.identity)}>
+                              {groupLabel(result)} · {result.model}
+                              {isDisabledGroup(result) && (
+                                <Badge
+                                  variant="neutral"
+                                  label={t('monitor.modelProbe.disabledBadge')}
+                                  xstyle={styles.disabledBadge}
+                                />
+                              )}
+                            </span>
+                            <span
+                              {...stylex.props(
+                                styles.outcome,
+                                tone(result) === 'success' && styles.outcomeSuccess,
+                                tone(result) === 'danger' && styles.outcomeDanger,
+                                tone(result) === 'warning' && styles.outcomeWarning,
+                              )}
+                            >
+                              {outcomeLabel(result)}
+                            </span>
+                          </div>
+                          <div {...stylex.props(styles.meta)}>
+                            <span>
+                              {t('monitor.modelProbe.fields.protocol')}:{' '}
+                              {result.protocol ?? t('monitor.modelProbe.unknownValue')}
+                            </span>
+                            <span>
+                              {t('monitor.modelProbe.fields.routeMode')}: {routeModeLabel(result)}
+                            </span>
+                            {result.reason && <span>{reasonLabel(result)}</span>}
+                            {result.credential_label && (
+                              <span>
+                                {t('monitor.modelProbe.credential', {
+                                  credential: result.credential_label,
+                                })}
+                              </span>
                             )}
+                            {result.outcome === 'passed' && (
+                              <span>
+                                {result.recovered
+                                  ? t('monitor.modelProbe.recovered')
+                                  : t('monitor.modelProbe.recoveryNotReported')}
+                              </span>
+                            )}
+                            {logId && (
+                              <LogIdActions logId={logId} layout="trailing" onViewLog={onViewLog} />
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : null}
+
+                {!hideGroupControls && total > 1 && !pending && results.length > 0 && !failed && (
+                  <section
+                    {...stylex.props(styles.toggle)}
+                    aria-labelledby="model-probe-toggle-title"
+                  >
+                    <h3 id="model-probe-toggle-title" {...stylex.props(styles.toggleTitle)}>
+                      {t('monitor.modelProbe.toggle.title')}
+                    </h3>
+                    <p {...stylex.props(styles.toggleHint)}>
+                      {t('monitor.modelProbe.toggle.hint')}
+                    </p>
+
+                    <div {...stylex.props(styles.toggleActions)}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        label={t('monitor.modelProbe.toggle.enablePassed')}
+                        onClick={enablePassedGroups}
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        label={t('monitor.modelProbe.toggle.disableNotPassed')}
+                        onClick={disableNotPassedGroups}
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        label={t('monitor.modelProbe.toggle.reset')}
+                        onClick={resetProposedGroups}
+                      />
+                    </div>
+
+                    <ul {...stylex.props(styles.toggleList)}>
+                      {groups.map((group) => (
+                        <li key={group.group_id} {...stylex.props(styles.toggleRow)}>
+                          <span {...stylex.props(styles.toggleIdentity)}>
+                            {group.group_name === '' ? `#${group.group_id}` : group.group_name}
                           </span>
                           <span
                             {...stylex.props(
-                              styles.outcome,
-                              tone(result) === 'success' && styles.outcomeSuccess,
-                              tone(result) === 'danger' && styles.outcomeDanger,
-                              tone(result) === 'warning' && styles.outcomeWarning,
+                              styles.toggleState,
+                              proposedEnabled.get(group.group_id)
+                                ? styles.toggleStateEnabled
+                                : styles.toggleStateDisabled,
                             )}
                           >
-                            {outcomeLabel(result)}
+                            {proposedEnabled.get(group.group_id)
+                              ? t('monitor.modelProbe.toggle.groupEnabled')
+                              : t('monitor.modelProbe.toggle.groupDisabled')}
                           </span>
-                        </div>
-                        <div {...stylex.props(styles.meta)}>
-                          <span>
-                            {t('monitor.modelProbe.fields.protocol')}:{' '}
-                            {result.protocol ?? t('monitor.modelProbe.unknownValue')}
-                          </span>
-                          <span>
-                            {t('monitor.modelProbe.fields.routeMode')}: {routeModeLabel(result)}
-                          </span>
-                          {result.reason && <span>{reasonLabel(result)}</span>}
-                          {result.credential_label && (
-                            <span>
-                              {t('monitor.modelProbe.credential', {
-                                credential: result.credential_label,
-                              })}
-                            </span>
-                          )}
-                          {result.outcome === 'passed' && (
-                            <span>
-                              {result.recovered
-                                ? t('monitor.modelProbe.recovered')
-                                : t('monitor.modelProbe.recoveryNotNeeded')}
-                            </span>
-                          )}
-                          {logId && (
-                            <LogIdActions logId={logId} layout="trailing" onViewLog={onViewLog} />
-                          )}
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              ) : null}
+                          <Switch
+                            label={groupToggleLabel(group.group_id, group.group_name)}
+                            isLabelHidden
+                            size="sm"
+                            value={proposedEnabled.get(group.group_id) ?? true}
+                            isDisabled={applying}
+                            onChange={(checked) => setProposed(group.group_id, checked)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
 
-              {!hideGroupControls && !pending && results.length > 0 && !failed && (
-                <section
-                  {...stylex.props(styles.toggle)}
-                  aria-labelledby="model-probe-toggle-title"
-                >
-                  <h3 id="model-probe-toggle-title" {...stylex.props(styles.toggleTitle)}>
-                    {t('monitor.modelProbe.toggle.title')}
-                  </h3>
-                  <p {...stylex.props(styles.toggleHint)}>{t('monitor.modelProbe.toggle.hint')}</p>
-
-                  <div {...stylex.props(styles.toggleActions)}>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      label={t('monitor.modelProbe.toggle.enablePassed')}
-                      onClick={enablePassedGroups}
-                    />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      label={t('monitor.modelProbe.toggle.disableNotPassed')}
-                      onClick={disableNotPassedGroups}
-                    />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      label={t('monitor.modelProbe.toggle.reset')}
-                      onClick={resetProposedGroups}
-                    />
-                  </div>
-
-                  <ul {...stylex.props(styles.toggleList)}>
-                    {groups.map((group) => (
-                      <li key={group.group_id} {...stylex.props(styles.toggleRow)}>
-                        <span {...stylex.props(styles.toggleIdentity)}>
-                          {group.group_name === '' ? `#${group.group_id}` : group.group_name}
+                    <div {...stylex.props(styles.toggleFooter)}>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        isDisabled={applying || !hasChanges}
+                        label={t('monitor.modelProbe.toggle.apply')}
+                        onClick={apply}
+                      />
+                      {!hasChanges && (
+                        <span {...stylex.props(styles.toggleNote)}>
+                          {t('monitor.modelProbe.toggle.noChanges')}
                         </span>
-                        <span
-                          {...stylex.props(
-                            styles.toggleState,
-                            proposedEnabled.get(group.group_id)
-                              ? styles.toggleStateEnabled
-                              : styles.toggleStateDisabled,
-                          )}
-                        >
-                          {proposedEnabled.get(group.group_id)
-                            ? t('monitor.modelProbe.toggle.groupEnabled')
-                            : t('monitor.modelProbe.toggle.groupDisabled')}
-                        </span>
-                        <Switch
-                          label={groupToggleLabel(group.group_id, group.group_name)}
-                          isLabelHidden
-                          size="sm"
-                          value={proposedEnabled.get(group.group_id) ?? true}
-                          isDisabled={applying}
-                          onChange={(checked) => setProposed(group.group_id, checked)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div {...stylex.props(styles.toggleFooter)}>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      isDisabled={applying || !hasChanges}
-                      label={t('monitor.modelProbe.toggle.apply')}
-                      onClick={apply}
-                    />
-                    {!hasChanges && (
-                      <span {...stylex.props(styles.toggleNote)}>
-                        {t('monitor.modelProbe.toggle.noChanges')}
-                      </span>
-                    )}
-                  </div>
-                </section>
+                      )}
+                    </div>
+                  </section>
+                )}
+              </div>
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter hasDivider>
+              {pending && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  label={t('monitor.modelProbe.stop')}
+                  onClick={onStop}
+                />
               )}
-            </div>
-          </LayoutContent>
-        }
-        footer={
-          <LayoutFooter hasDivider>
-            {pending && (
+              {!pending && total === 1 && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  label={t('monitor.modelProbe.retry')}
+                  onClick={() => {
+                    if (disabledGroupIds.length > 0) setConfirmRetry(true)
+                    else onRetry()
+                  }}
+                />
+              )}
               <Button
                 variant="secondary"
                 size="sm"
-                label={t('monitor.modelProbe.stop')}
-                onClick={onStop}
+                isDisabled={pending}
+                label={t('monitor.modelProbe.close')}
+                onClick={() => setOpen(false)}
               />
-            )}
-            <Button
-              variant="secondary"
-              size="sm"
-              isDisabled={pending}
-              label={t('monitor.modelProbe.close')}
-              onClick={() => setOpen(false)}
-            />
-          </LayoutFooter>
-        }
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
+      <AlertDialog
+        isOpen={open && confirmRetry}
+        onOpenChange={setConfirmRetry}
+        title={t('monitor.modelProbe.disabledConfirm.title')}
+        description={t('monitor.modelProbe.disabledConfirm.description')}
+        cancelLabel={t('monitor.modelProbe.disabledConfirm.cancel')}
+        actionLabel={t('monitor.modelProbe.disabledConfirm.confirm')}
+        actionVariant="primary"
+        onAction={() => {
+          setConfirmRetry(false)
+          onRetry()
+        }}
       />
-    </Dialog>
+    </>
   )
 }

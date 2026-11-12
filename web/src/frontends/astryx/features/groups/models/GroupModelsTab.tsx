@@ -65,7 +65,6 @@ import { ModelDiscoveryDrawer } from '../../models/ModelDiscoveryDrawer'
 import { ModelFingerprintDialog } from '../../models/ModelFingerprintDialog'
 import { ModelPricingStatus } from '../../models/ModelPricingStatus'
 import { ModelProbeDialog } from '../../models/ModelProbeDialog'
-import { isRealisticProbeProtocol, RealisticProbeDialog } from '../../models/RealisticProbeDialog'
 import { useModelFingerprint } from '../../models/use-model-fingerprint'
 import { useModelProbe } from '../../models/use-model-probe'
 import type { GroupEditorState, GroupModelsEditorHandle } from '../editor-handles'
@@ -138,16 +137,6 @@ export function GroupModelsTab({
   const queryRefreshing = query.data !== undefined && query.isFetching
 
   const [saved, setSaved] = useState<ModelDraftItem[]>([])
-  const [realisticModel, setRealisticModel] = useState<string | null>(null)
-  const generationRoutes =
-    channelsQuery.data?.items
-      .find(({ channel_id }) => channel_id === channelId)
-      ?.routes.filter((route) => isRealisticProbeProtocol(route.client_protocol)) ?? []
-  const templateProtocol = (
-    generationRoutes.find((route) => route.route_mode === 'native') ?? generationRoutes[0]
-  )?.client_protocol
-  const realisticProtocol =
-    templateProtocol && isRealisticProbeProtocol(templateProtocol) ? templateProtocol : null
   const [draft, setDraft] = useState<ModelDraftItem[]>([])
   const [pending, setPending] = useState<'discover' | 'save' | 'sync' | null>(null)
   const [discoveryError, setDiscoveryError] = useState('')
@@ -1061,19 +1050,6 @@ export function GroupModelsTab({
                     xstyle={styles.probeButton}
                   />
                 </Tooltip>
-                {realisticProtocol && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    isDisabled={probeRowTarget(item) === null}
-                    label={t('monitor.realisticProbe.entryFor', { model: item.id })}
-                    onClick={() => {
-                      const savedItem = saved.find((row) => row.key === item.key)
-                      if (savedItem && probeRowTarget(item))
-                        setRealisticModel(clientModel(savedItem))
-                    }}
-                  />
-                )}
                 {supportsModelFingerprint && (
                   <Tooltip
                     content={
@@ -1112,6 +1088,9 @@ export function GroupModelsTab({
               if (!open) probe.close()
             }}
             onStop={probe.stop}
+            onRetry={() =>
+              void probe.start(probe.targets, { disabledGroupIds: enabled ? [] : [groupId] })
+            }
             onViewLog={viewProbeLog}
             onApplyEnabled={onApplyProbeEnabled}
           />
@@ -1126,14 +1105,6 @@ export function GroupModelsTab({
             onRetry={retryFingerprint}
             onViewLog={viewProbeLog}
           />
-          {realisticModel !== null && realisticProtocol && (
-            <RealisticProbeDialog
-              model={realisticModel}
-              initialProtocol={realisticProtocol}
-              onClose={() => setRealisticModel(null)}
-              onViewLog={viewProbeLog}
-            />
-          )}
           <AlertDialog
             isOpen={pendingProbe !== null}
             onOpenChange={(open) => {

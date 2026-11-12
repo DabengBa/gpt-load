@@ -262,6 +262,9 @@ type AttemptSpec struct {
 	// channel probe contract selects it; it is never applied to ordinary
 	// requests. A generation probe must set it.
 	ProbeMaxOutputTokens int `json:"probe_max_output_tokens,omitempty"`
+	// ProbePreparedBody is an internal, code-owned model-probe preset after
+	// group request preparation. It is never accepted from a client request.
+	ProbePreparedBody []byte `json:"-"`
 	// PromptText is the single code-owned user prompt of a diagnostic
 	// generated-text request (OperationModelTrace). Like ProbeMaxOutputTokens it
 	// replaces wire fields instead of adding them; ordinary requests never set it.
@@ -292,6 +295,7 @@ func (s AttemptSpec) Clone() AttemptSpec {
 	clone.ConfiguredHeaders = append([]string(nil), s.ConfiguredHeaders...)
 	clone.ConfiguredParameters = append([]string(nil), s.ConfiguredParameters...)
 	clone.Body = cloneBytes(s.Body)
+	clone.ProbePreparedBody = cloneBytes(s.ProbePreparedBody)
 	clone.TargetConfig = cloneRawMessage(s.TargetConfig)
 	clone.Credential = s.Credential.Clone()
 	return clone

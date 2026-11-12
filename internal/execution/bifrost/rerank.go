@@ -20,6 +20,9 @@ func prepareRerank(
 ) (preparedAttempt, *execution.AttemptResult) {
 	if spec.Operation == execution.OperationProbe {
 		spec.Body = []byte(`{"model":"probe","query":"hello","documents":["hello"],"top_n":1}`)
+		if len(spec.ProbePreparedBody) > 0 {
+			spec.Body = spec.ProbePreparedBody
+		}
 	}
 	request := &dialect.ParsedRequest{Method: http.MethodPost, Path: "/v1/rerank", Header: spec.Header.Clone(), Body: spec.Body}
 	request, err := dialect.NewRerank().RewriteRequestModel(request, spec.UpstreamModel)
