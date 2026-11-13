@@ -1,4 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
+import { ContentPanel } from '../../components/ContentPanel'
 import './SchedulePanel.css'
 import { Banner, Button, TextInput, EmptyState, Popover, Skeleton } from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
@@ -462,55 +463,57 @@ export function SchedulePanel({
       </div>
 
       <div {...stylex.props(styles.detail)}>
-        {priceError && (
-          <Banner
-            status="error"
-            title={priceError}
-            endContent={
-              <Button
-                label={labels.retry ?? ''}
-                onClick={() => {
-                  if (priceTarget) void openPrice(priceTarget.groupID, priceTarget.modelID)
-                }}
-              />
-            }
-          />
-        )}
-        {selectedModel === '' ? (
-          indexItems.length > 0 ? (
-            <EmptyState title={labels.selectModel ?? ''} />
-          ) : null
-        ) : !selectedIndexItem ? (
-          !indexQuery.isPending && !indexQuery.isError ? (
-            <EmptyState title={labels.noMatchingModels ?? labels.selectModel ?? ''} />
-          ) : null
-        ) : (
-          <>
-            <SchedulePanelDetail
-              ref={ref}
-              contextControl={contextControl}
-              detail={detailQuery.data}
-              loading={
-                detailQuery.isPending && detailQuery.data === undefined && Boolean(detailRequest)
+        <ContentPanel>
+          {priceError && (
+            <Banner
+              status="error"
+              title={priceError}
+              endContent={
+                <Button
+                  label={labels.retry ?? ''}
+                  onClick={() => {
+                    if (priceTarget) void openPrice(priceTarget.groupID, priceTarget.modelID)
+                  }}
+                />
               }
-              error={detailRequest && detailQuery.data === undefined ? detailError : ''}
-              stale={detailQuery.isRefetchError}
-              locale={locale}
-              selectedRow={selectedRow}
-              sourceGroupId={sourceGroupId}
-              drafts={drafts}
-              labels={labels.detail}
-              onRefresh={() => void refreshDetail()}
-              onSaved={(revision, clearDrafts) => void handleSaved(revision, clearDrafts)}
-              onRecovered={(groupId, entryId) => void handleRecovered(groupId, entryId)}
-              onProbe={probeRow}
-              onProbeAll={probeRows}
-              onDraftChange={onDraftChange}
-              onRowChange={onRowChange}
-              onOpenPrice={(groupID, modelID) => void openPrice(groupID, modelID)}
             />
-          </>
-        )}
+          )}
+          {selectedModel === '' ? (
+            indexItems.length > 0 ? (
+              <EmptyState title={labels.selectModel ?? ''} />
+            ) : null
+          ) : !selectedIndexItem ? (
+            !indexQuery.isPending && !indexQuery.isError ? (
+              <EmptyState title={labels.noMatchingModels ?? labels.selectModel ?? ''} />
+            ) : null
+          ) : (
+            <>
+              <SchedulePanelDetail
+                ref={ref}
+                contextControl={contextControl}
+                detail={detailQuery.data}
+                loading={
+                  detailQuery.isPending && detailQuery.data === undefined && Boolean(detailRequest)
+                }
+                error={detailRequest && detailQuery.data === undefined ? detailError : ''}
+                stale={detailQuery.isRefetchError}
+                locale={locale}
+                selectedRow={selectedRow}
+                sourceGroupId={sourceGroupId}
+                drafts={drafts}
+                labels={labels.detail}
+                onRefresh={() => void refreshDetail()}
+                onSaved={(revision, clearDrafts) => void handleSaved(revision, clearDrafts)}
+                onRecovered={(groupId, entryId) => void handleRecovered(groupId, entryId)}
+                onProbe={probeRow}
+                onProbeAll={probeRows}
+                onDraftChange={onDraftChange}
+                onRowChange={onRowChange}
+                onOpenPrice={(groupID, modelID) => void openPrice(groupID, modelID)}
+              />
+            </>
+          )}
+        </ContentPanel>
       </div>
       <ModelProbeDialog
         open={probe.open}

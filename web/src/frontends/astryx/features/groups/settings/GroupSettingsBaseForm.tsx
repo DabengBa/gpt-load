@@ -122,7 +122,10 @@ export function GroupSettingsBaseForm({
   )
 
   return (
-    <section id="settings-general" {...stylex.props(styles.section)}>
+    <section
+      id="settings-general"
+      {...stylex.props(styles.section, unified && styles.panelSection)}
+    >
       {(showTitle || showDescription) && (
         <header>
           {showTitle && (
@@ -234,6 +237,10 @@ const styles = stylex.create({
     margin: 0,
     fontSize: 'var(--text-body)',
     fontWeight: 650,
+  },
+  panelSection: {
+    borderTopWidth: 0,
+    paddingTop: 0,
   },
   sectionDescription: {
     maxWidth: '580px',

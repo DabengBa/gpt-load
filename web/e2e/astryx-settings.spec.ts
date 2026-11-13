@@ -154,6 +154,47 @@ function saveButton(page: Page) {
   return page.getByRole('button', { name: 'Save changes' })
 }
 
+test('settings task sections use separate responsive surfaces', async ({ page }) => {
+  await mockSettings(page, baseSettingsDto())
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/settings', { waitUntil: 'load' })
+  const routing = page.locator('#settings-routing')
+  const connection = page.locator('#settings-connection')
+  const reliability = page.locator('#settings-reliability')
+  await expect(routing).toBeVisible()
+  for (const section of [
+    routing,
+    connection,
+    reliability,
+    page.locator('#settings-browser-access'),
+    page.locator('#settings-data-maintenance'),
+    page.locator('#settings-system'),
+  ]) {
+    await expect(section.locator('xpath=ancestor::*[@data-content-panel]')).toHaveCount(1)
+    await expect(section.locator('[data-content-panel]')).toHaveCount(0)
+  }
+  const desktopConnection = (await connection.boundingBox())!
+  const desktopReliability = (await reliability.boundingBox())!
+  expect(desktopReliability.x).toBeGreaterThan(desktopConnection.x + desktopConnection.width - 2)
+  expect(Math.abs(desktopReliability.y - desktopConnection.y)).toBeLessThan(2)
+  if (process.env.SETTINGS_SCREENSHOTS) await page.screenshot({ path: '/tmp/settings-desktop.png' })
+
+  await page.setViewportSize({ width: 375, height: 900 })
+  const mobileConnection = (await connection.boundingBox())!
+  const mobileReliability = (await reliability.boundingBox())!
+  expect(mobileReliability.y).toBeGreaterThan(mobileConnection.y + mobileConnection.height)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  if (process.env.SETTINGS_SCREENSHOTS) await page.screenshot({ path: '/tmp/settings-mobile.png' })
+
+  await page.evaluate(() => localStorage.setItem('gpt-load.theme', 'dark'))
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  const panel = routing.locator('xpath=ancestor::*[@data-content-panel]')
+  await expect(panel).toHaveCSS('background-color', 'rgb(23, 27, 32)')
+  if (process.env.SETTINGS_SCREENSHOTS)
+    await page.screenshot({ path: '/tmp/settings-dark-mobile.png' })
+})
+
 test('renders all sections and canonicalizes the section route query', async ({ page }) => {
   await mockSettings(page, baseSettingsDto())
   await page.goto('/settings', { waitUntil: 'load' })

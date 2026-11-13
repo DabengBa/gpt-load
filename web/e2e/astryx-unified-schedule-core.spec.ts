@@ -37,8 +37,16 @@ test('access-key clears administrative context and never requests management API
     '/schedule?schedule_model=allowed&selected_price_id=7&schedule_row=1%3Ax&schedule_group=1&schedule_draft=%7B%7D',
   )
   await expect(page.getByTestId('schedule-read-only')).toBeVisible()
+  await expect(page.getByTestId('schedule-read-only').locator('[data-content-panel]')).toHaveCount(
+    1,
+  )
   await expect.poll(() => new URL(page.url()).search).toBe('?schedule_model=allowed')
   await expect(page.getByRole('textbox', { name: 'External model' })).toHaveValue('allowed')
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/schedule-access.png`,
+      fullPage: true,
+    })
   await expect
     .poll(() => requests.some((url) => url.startsWith('/api/models?') && url.includes('q=allowed')))
     .toBe(true)

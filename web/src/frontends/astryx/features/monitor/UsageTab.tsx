@@ -31,6 +31,7 @@ import type { SharedRouteQuery } from '@shared/routing/route-query'
 import { useAppServices } from '../../app/services'
 import { useCollectionLoading } from '../../app/collection-loading'
 import { useT } from '../../app/i18n'
+import { ContentPanel } from '../../components/ContentPanel'
 import { UsageBreakdownTable } from './UsageBreakdownTable'
 import { UsageFilterBar } from './UsageFilterBar'
 
@@ -226,33 +227,18 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
         onReset={() => void resetFilters()}
       />
 
-      {usageQuery.isPending || loading.initial || loading.transition ? (
-        <div {...stylex.props(styles.skeleton)} aria-label={t('monitor.usage.loading')}>
-          <Skeleton height={38} radius={2} />
-          <Skeleton height={320} radius={2} />
-        </div>
-      ) : usageQuery.isError && !report ? (
-        <div role="alert">
-          <EmptyState
-            title={t('monitor.usage.loadFailed')}
-            icon={<TriangleAlert size={20} />}
-            actions={
-              <Button
-                variant="secondary"
-                size="sm"
-                label={t('common.retry')}
-                onClick={() => void usageQuery.refetch()}
-              />
-            }
-          />
-        </div>
-      ) : report ? (
-        <>
-          {usageQuery.isError && (
-            <Banner
-              status="warning"
-              title={t('monitor.usage.stale')}
-              endContent={
+      <ContentPanel>
+        {usageQuery.isPending || loading.initial || loading.transition ? (
+          <div {...stylex.props(styles.skeleton)} aria-label={t('monitor.usage.loading')}>
+            <Skeleton height={38} radius={2} />
+            <Skeleton height={320} radius={2} />
+          </div>
+        ) : usageQuery.isError && !report ? (
+          <div role="alert">
+            <EmptyState
+              title={t('monitor.usage.loadFailed')}
+              icon={<TriangleAlert size={20} />}
+              actions={
                 <Button
                   variant="secondary"
                   size="sm"
@@ -261,36 +247,53 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
                 />
               }
             />
-          )}
-
-          {!isAccessKey && (groupsQuery.isError || channelsQuery.isError) && (
-            <Banner status="warning" title={t('monitor.usage.options.partialFailed')} />
-          )}
-
-          {!hasData ? (
-            <EmptyState
-              title={t('monitor.usage.empty.title')}
-              description={t('monitor.usage.empty.description')}
-              icon={<Database size={20} aria-hidden />}
-            />
-          ) : (
-            <section
-              {...stylex.props(styles.section)}
-              aria-label={t('monitor.usage.breakdown.caption')}
-            >
-              <UsageBreakdownTable
-                breakdown={report.breakdown}
-                groups={groupsQuery.data ?? []}
-                sort={breakdownSort}
-                sortDirection={breakdownSortDirection}
-                onPage={(page) => void setBreakdownPage(page)}
-                onPageSize={(size) => void setBreakdownPageSize(size)}
-                onSort={(sort, direction) => void setBreakdownSort(sort, direction)}
+          </div>
+        ) : report ? (
+          <>
+            {usageQuery.isError && (
+              <Banner
+                status="warning"
+                title={t('monitor.usage.stale')}
+                endContent={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    label={t('common.retry')}
+                    onClick={() => void usageQuery.refetch()}
+                  />
+                }
               />
-            </section>
-          )}
-        </>
-      ) : null}
+            )}
+
+            {!isAccessKey && (groupsQuery.isError || channelsQuery.isError) && (
+              <Banner status="warning" title={t('monitor.usage.options.partialFailed')} />
+            )}
+
+            {!hasData ? (
+              <EmptyState
+                title={t('monitor.usage.empty.title')}
+                description={t('monitor.usage.empty.description')}
+                icon={<Database size={20} aria-hidden />}
+              />
+            ) : (
+              <section
+                {...stylex.props(styles.section)}
+                aria-label={t('monitor.usage.breakdown.caption')}
+              >
+                <UsageBreakdownTable
+                  breakdown={report.breakdown}
+                  groups={groupsQuery.data ?? []}
+                  sort={breakdownSort}
+                  sortDirection={breakdownSortDirection}
+                  onPage={(page) => void setBreakdownPage(page)}
+                  onPageSize={(size) => void setBreakdownPageSize(size)}
+                  onSort={(sort, direction) => void setBreakdownSort(sort, direction)}
+                />
+              </section>
+            )}
+          </>
+        ) : null}
+      </ContentPanel>
     </div>
   )
 }

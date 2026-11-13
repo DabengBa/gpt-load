@@ -15,11 +15,19 @@ const pages = [
   '/schedule',
 ]
 
-for (const width of [390, 900, 1440, 1920]) {
-  test(`management pages use compact gutters and available content width at ${width}px`, async ({
+for (const [theme, width] of [
+  ['light', 390],
+  ['light', 900],
+  ['light', 1440],
+  ['light', 1920],
+  ['dark', 390],
+  ['dark', 1440],
+] as const) {
+  test(`management pages use compact gutters and available content width in ${theme} at ${width}px`, async ({
     page,
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })
+    await page.addInitScript((theme) => localStorage.setItem('gpt-load.theme', theme), theme)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await installRequestLogTableRoutes(page)
@@ -155,8 +163,41 @@ for (const width of [390, 900, 1440, 1920]) {
             .getByRole('table', { name: 'Group list' })
             .getByText('Spacing group', { exact: true }),
         ).toBeVisible()
+      if (path === '/groups/1') {
+        // Measure the loaded model ledger, not its transient loading skeleton.
+        await expect(page.getByText('No models have been added')).toBeVisible()
+        if (width === 900) {
+          const ledger = page.getByRole('table').filter({ hasText: 'No models have been added' })
+          await expect(ledger.getByRole('columnheader', { name: 'Actions' })).toHaveCount(1)
+          const scrollable = await ledger.evaluate(
+            (element) => element.scrollWidth > element.clientWidth,
+          )
+          expect(scrollable, 'wide model ledger remains independently scrollable').toBe(true)
+        }
+      }
       if (path === '/schedule')
         await expect(page.getByRole('table', { name: 'Schedule detail' })).toBeVisible()
+      if (path === '/groups' || path === '/logs') {
+        const panel = page.locator('[data-content-panel]')
+        await expect(panel).toBeVisible()
+        const surface = await panel.evaluate((element) => {
+          const style = getComputedStyle(element)
+          return {
+            background: style.backgroundColor,
+            radius: style.borderTopLeftRadius,
+            border: style.borderTopWidth,
+          }
+        })
+        if (path === '/logs' && width <= 860) {
+          expect(surface.border).toBe('0px')
+        } else {
+          expect(surface).toEqual({
+            background: theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(23, 27, 32)',
+            radius: '14px',
+            border: '1px',
+          })
+        }
+      }
       const root = page.locator('#main-content > :first-child')
       await expect(root, `page root for ${path} at ${width}px`).toBeVisible({ timeout: 60_000 })
       const geometry = await root.evaluate((element) => {

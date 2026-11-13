@@ -1,10 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// B9: shell parity on the Astryx entry. Covers the AuthGate-validated
-// topbar shell (admin vs access_key principal visibility), the
-// login → shell → logout round trip, the not-found view, the preferences
-// panel (theme/locale/frontend switch), and compact-density measurements
-// against the classic token values (gate #6 input: ±1px).
+// Authenticated shell geometry, role boundaries, navigation, preferences,
+// and login/logout behavior across desktop and mobile.
 
 // Cold Vite transforms of the full route graph exceed the default test
 // timeout; keep the same headroom as astryx-groups.spec.ts.
@@ -47,6 +44,97 @@ const adminNav = [
   'Settings',
 ] as const
 const accessKeyNav = ['Home', 'Dispatch center', 'Monitor', 'Request logs'] as const
+
+for (const width of [861, 900, 1360, 1400]) {
+  test(`desktop navigation is a sidebar beside the workspace at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await seedSession(page, 'admin')
+    await page.goto('/schedule', { waitUntil: 'load' })
+    const header = page.locator('header')
+    const nav = page.getByTestId('desktop-nav')
+    const sidebar = page.getByTestId('desktop-sidebar')
+    await expect(nav).toBeVisible()
+    await expect(nav.getByRole('link', { name: 'Dispatch center' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    const headerBox = await header.boundingBox()
+    const sidebarBox = await sidebar.boundingBox()
+    const mainBox = await page.locator('main#main-content').boundingBox()
+    expect(headerBox).not.toBeNull()
+    expect(sidebarBox).not.toBeNull()
+    expect(mainBox).not.toBeNull()
+    expect(sidebarBox!.width).toBeGreaterThanOrEqual(200)
+    expect(sidebarBox!.width).toBeLessThanOrEqual(260)
+    expect(sidebarBox!.x + sidebarBox!.width).toBeLessThanOrEqual(headerBox!.x + 1)
+    expect(mainBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width - 1)
+    const links = nav.getByRole('link')
+    expect(await links.count()).toBeGreaterThanOrEqual(adminNav.length)
+    let previousY = 0
+    for (const link of await links.all()) {
+      await expect(link).toBeVisible()
+      const box = await link.boundingBox()
+      expect(box).not.toBeNull()
+      expect(box!.y).toBeGreaterThan(previousY)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(sidebarBox!.x + sidebarBox!.width)
+      previousY = box!.y
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+  })
+}
+
+test('desktop navigation fits just above the mobile breakpoint', async ({ page }) => {
+  await page.setViewportSize({ width: 861, height: 900 })
+  await seedSession(page, 'admin')
+  await page.goto('/', { waitUntil: 'load' })
+  await expect(page.getByTestId('desktop-nav')).toBeVisible()
+  const menu = page.getByRole('button', { name: 'Menu and preferences' })
+  await expect(menu).toBeVisible()
+  const box = await menu.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x + box!.width).toBeLessThanOrEqual(861)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(861)
+  await menu.click()
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+})
+
+test('sidebar tracks navigation and remains legible in dark mode', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await seedSession(page, 'admin')
+  await page.goto('/settings')
+  const sidebar = page.getByTestId('desktop-sidebar')
+  const nav = page.getByTestId('desktop-nav')
+  await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
+  await nav.getByRole('link', { name: 'Groups' }).click()
+  await expect(page).toHaveURL(/\/groups$/)
+  await expect(nav.getByRole('link', { name: 'Groups' })).toHaveAttribute('aria-current', 'page')
+  await expect(nav.getByRole('link', { name: 'Settings' })).not.toHaveAttribute('aria-current')
+  await page.getByRole('button', { name: 'Menu and preferences' }).click()
+  await page.getByRole('radio', { name: 'Dark' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(sidebar).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Groups' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('mobile access key navigation keeps its permission boundary', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await seedSession(page, 'access_key')
+  await page.goto('/')
+  await expect(page.getByTestId('desktop-sidebar')).toBeHidden()
+  await expect(page.getByText('Access key · Read-only')).toBeVisible()
+  await page.getByRole('button', { name: 'Menu and preferences' }).click()
+  const dialog = page.getByRole('dialog')
+  for (const label of accessKeyNav) {
+    await expect(dialog.getByRole('link', { name: label, exact: true })).toBeVisible()
+  }
+  for (const label of ['Groups', 'Settings', 'Import credentials']) {
+    await expect(dialog.getByRole('link', { name: label, exact: true })).toHaveCount(0)
+  }
+  await expect(dialog.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+})
 
 for (const width of [1280, 390]) {
   test(`login reveal stays inside the input and toggles safely at ${width}px`, async ({ page }) => {
@@ -128,7 +216,7 @@ test('login → authed shell → sign out round trip', async ({ page }) => {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await page.waitForURL(/\/$/, { timeout: 10_000 })
 
-  // Authenticated shell: topbar nav + import action for an admin principal.
+  // Authenticated shell: sidebar nav + import action for an admin principal.
   const nav = page.locator('[data-testid="desktop-nav"]')
   await expect(nav).toBeVisible()
   for (const label of adminNav) {
@@ -195,17 +283,14 @@ test('preferences panel switches theme and locale', async ({ page }) => {
   await expect(page.getByRole('button', { name: '菜单与偏好设置' })).toBeVisible()
 })
 
-// Density parity measurements (gate #6 input). Values come from
-// astryx/theme/tokens.css, which the Astryx entry imports at the
-// tokens layer; each rendered metric must land within ±1px.
 const densityExpectations = [
-  { metric: 'topbar height', expected: 54 },
+  { metric: 'topbar height', expected: 68 },
   { metric: 'topbar padding-inline', expected: 30 },
   { metric: 'import action height', expected: 30 },
   { metric: 'shell font-size', expected: 13.5 },
 ] as const
 
-test('compact density matches classic tokens within ±1px', async ({ page }) => {
+test('shell dimensions retain compact controls in the new frame', async ({ page }) => {
   await seedSession(page, 'admin')
   await page.goto('/settings', { waitUntil: 'load' })
   await page.locator('[data-testid="desktop-nav"]').waitFor()

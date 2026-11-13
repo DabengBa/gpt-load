@@ -303,7 +303,7 @@ export function AccessKeyCollection({
     {
       key: 'actions',
       header: t('accessKeys.columns.actions'),
-      width: pixel(170),
+      width: pixel(210),
       renderCell: (record): ReactNode => (
         <AccessKeyRowActions
           item={source(record.id)}

@@ -1,7 +1,19 @@
 import * as stylex from '@stylexjs/stylex'
 import { useRouter } from '@tanstack/react-router'
-import { Check, KeyRound, LockKeyhole } from 'lucide-react'
-import { useSyncExternalStore, type ReactNode } from 'react'
+import {
+  Activity,
+  Check,
+  FileText,
+  Home,
+  KeyRound,
+  LockKeyhole,
+  Megaphone,
+  Settings,
+  SlidersHorizontal,
+  UsersRound,
+  type LucideIcon,
+} from 'lucide-react'
+import { useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 
 import type { MessageId } from '@shared/i18n/message-ids'
 import { pagePath } from '@shared/routing/page-routes'
@@ -14,7 +26,6 @@ import { AuthGate } from './AuthGate'
 import { BrandMark } from './BrandMark'
 import { PreferencesControl } from './PreferencesControl'
 
-const wide = '@media (min-width: 1360px)'
 const narrow = '@media (max-width: 860px)'
 
 const styles = stylex.create({
@@ -46,13 +57,10 @@ const styles = stylex.create({
   },
   topbarInner: {
     display: 'flex',
-    width: { default: '100%', [wide]: 'min(100%, var(--page-max))' },
+    width: '100%',
     height: '100%',
     alignItems: 'center',
     gap: { default: '28px', [narrow]: 'var(--space-2)' },
-    position: { default: null, [wide]: 'relative' },
-    marginLeft: { default: null, [wide]: 'auto' },
-    marginRight: { default: null, [wide]: 'auto' },
   },
   brand: {
     display: 'inline-flex',
@@ -61,35 +69,66 @@ const styles = stylex.create({
     color: 'var(--color-text)',
     fontFamily: 'var(--font-serif)',
     fontSize: 'var(--title-section, 16px)',
-    fontWeight: 400,
+    fontWeight: 650,
     letterSpacing: '-0.01em',
     whiteSpace: 'nowrap',
     textDecoration: 'none',
-    position: { default: null, [wide]: 'absolute' },
-    top: { default: null, [wide]: '50%' },
-    right: { default: null, [wide]: 'calc(100% + var(--space-4))' },
-    transform: { default: null, [wide]: 'translateY(-50%)' },
+  },
+  sidebar: {
+    display: { default: 'flex', [narrow]: 'none' },
+    position: 'fixed',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: '216px',
+    overflowY: 'auto',
+    flexDirection: 'column',
+    backgroundColor: 'var(--color-surface-sunken)',
+    borderRightWidth: '1px',
+    borderRightStyle: 'solid',
+    borderRightColor: 'var(--color-border-subtle)',
+    padding: '24px 14px',
+  },
+  sidebarBrand: {
+    padding: '0 8px',
+    minHeight: '28px',
+    marginBottom: '32px',
+  },
+  workspace: {
+    marginLeft: { default: '216px', [narrow]: 0 },
+    minWidth: 0,
+  },
+
+  mobileBrand: {
+    display: { default: 'none', [narrow]: 'inline-flex' },
+  },
+  currentPage: {
+    display: { default: 'block', [narrow]: 'none' },
+    color: 'var(--color-text)',
+    fontSize: '14px',
+    fontWeight: 600,
   },
   desktopNav: {
     display: { default: 'flex', [narrow]: 'none' },
-    alignItems: 'center',
-    gap: 'var(--space-5)',
+    flexDirection: 'column',
+    gap: '4px',
   },
   navLink: {
-    display: 'inline-flex',
+    display: 'flex',
     alignItems: 'center',
-    borderBottomWidth: '1.5px',
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'transparent',
+    gap: '12px',
+    minHeight: '42px',
+    borderRadius: 'var(--radius-control)',
     color: { default: 'var(--color-text-muted)', ':hover': 'var(--color-text)' },
-    padding: '3px 0',
+    backgroundColor: { default: 'transparent', ':hover': 'var(--color-interactive-hover)' },
+    padding: '8px 12px',
     fontSize: '13px',
     fontWeight: 400,
     textDecoration: 'none',
   },
   navLinkActive: {
-    color: 'var(--color-text)',
-    borderBottomColor: 'var(--color-text)',
+    color: { default: 'var(--color-action-ink)', ':hover': 'var(--color-action-ink)' },
+    backgroundColor: { default: 'var(--color-action)', ':hover': 'var(--color-action-hover)' },
     fontWeight: 560,
   },
   badge: {
@@ -171,9 +210,9 @@ const styles = stylex.create({
     textDecoration: 'none',
   },
   mobileNavLinkActive: {
-    borderColor: 'var(--color-border-control, rgba(0,0,0,0.16))',
-    backgroundColor: 'var(--color-surface-sunken)',
-    color: 'var(--color-text)',
+    borderColor: 'var(--color-action)',
+    backgroundColor: 'var(--color-action)',
+    color: 'var(--color-action-ink)',
     fontWeight: 560,
   },
 })
@@ -182,26 +221,37 @@ interface NavItem {
   key: string
   to: string
   labelKey: MessageId
+  icon: LucideIcon
 }
 
 function navItems(isAccessKey: boolean): readonly NavItem[] {
   // Schedule is the single model entry for both principals; the retired
   // models page no longer gets a nav slot.
   const shared: NavItem[] = [
-    { key: 'home', to: pagePath('home'), labelKey: 'shell.home' },
-    { key: 'schedule', to: pagePath('schedule'), labelKey: 'shell.schedule' },
-    { key: 'monitor', to: pagePath('monitor'), labelKey: 'shell.monitor' },
-    { key: 'logs', to: pagePath('logs'), labelKey: 'shell.logs' },
+    { key: 'home', to: pagePath('home'), labelKey: 'shell.home', icon: Home },
+    {
+      key: 'schedule',
+      to: pagePath('schedule'),
+      labelKey: 'shell.schedule',
+      icon: SlidersHorizontal,
+    },
+    { key: 'monitor', to: pagePath('monitor'), labelKey: 'shell.monitor', icon: Activity },
+    { key: 'logs', to: pagePath('logs'), labelKey: 'shell.logs', icon: FileText },
   ]
   if (isAccessKey) return shared
   return [
     shared[0]!,
-    { key: 'groups', to: pagePath('groups'), labelKey: 'shell.groups' },
-    { key: 'announcements', to: pagePath('announcements'), labelKey: 'nav.announcements' },
+    { key: 'groups', to: pagePath('groups'), labelKey: 'shell.groups', icon: UsersRound },
+    {
+      key: 'announcements',
+      to: pagePath('announcements'),
+      labelKey: 'nav.announcements',
+      icon: Megaphone,
+    },
     shared[1]!,
     shared[2]!,
     shared[3]!,
-    { key: 'settings', to: pagePath('settings'), labelKey: 'shell.settings' },
+    { key: 'settings', to: pagePath('settings'), labelKey: 'shell.settings', icon: Settings },
   ]
 }
 
@@ -256,6 +306,7 @@ export function AuthedShell({
   const t = useT()
   const isAccessKey = state.principalType === 'access_key'
   const items = navItems(isAccessKey)
+  const currentItem = items.find((item) => item.key === meta?.primaryNav)
 
   async function logout(): Promise<void> {
     const recovery = services.importRecovery
@@ -281,67 +332,85 @@ export function AuthedShell({
       <a {...stylex.props(styles.skipLink)} href="#main-content">
         {t('shell.skip')}
       </a>
-      <header {...stylex.props(styles.topbar)}>
-        <div {...stylex.props(styles.topbarInner)}>
-          <RouteLink
-            to={pagePath('home')}
-            aria-label={`${t('common.appName')} · ${t('shell.home')}`}
-            {...stylex.props(styles.brand)}
-          >
-            <BrandMark size={24} />
-            <span>{t('common.appName')}</span>
-          </RouteLink>
+      <aside data-testid="desktop-sidebar" {...stylex.props(styles.sidebar)}>
+        <RouteLink
+          to={pagePath('home')}
+          aria-label={`${t('common.appName')} · ${t('shell.home')}`}
+          {...stylex.props(styles.brand, styles.sidebarBrand)}
+        >
+          <BrandMark size={24} />
+          <span>{t('common.appName')}</span>
+        </RouteLink>
 
-          <nav
-            data-testid="desktop-nav"
-            aria-label={t('shell.primaryNavigation')}
-            {...stylex.props(styles.desktopNav)}
-          >
-            {items.map((item) => {
-              const active = meta?.primaryNav === item.key
-              return (
-                <RouteLink
-                  key={item.key}
-                  to={item.to}
-                  aria-current={active ? 'page' : undefined}
-                  {...stylex.props(styles.navLink, active && styles.navLinkActive)}
-                >
-                  {t(item.labelKey)}
-                </RouteLink>
-              )
-            })}
-          </nav>
-
-          {isAccessKey && (
-            <span {...stylex.props(styles.badge)} title={t('shell.accessKeyReadOnlyDescription')}>
-              <LockKeyhole size={13} aria-hidden />
-              <span>{t('shell.accessKeyReadOnly')}</span>
-            </span>
-          )}
-
-          <div {...stylex.props(styles.actions)}>
-            {!isAccessKey && (
+        <nav
+          data-testid="desktop-nav"
+          aria-label={t('shell.primaryNavigation')}
+          {...stylex.props(styles.desktopNav)}
+        >
+          {items.map((item) => {
+            const active = meta?.primaryNav === item.key
+            return (
               <RouteLink
-                to={pagePath('import')}
-                aria-label={t('shell.import')}
-                {...stylex.props(styles.importAction)}
+                key={item.key}
+                to={item.to}
+                aria-current={active ? 'page' : undefined}
+                {...stylex.props(styles.navLink, active && styles.navLinkActive)}
               >
-                <KeyRound size={15} aria-hidden />
-                <span {...stylex.props(styles.importLabel)}>{t('shell.import')}</span>
+                <item.icon size={17} aria-hidden />
+                {t(item.labelKey)}
               </RouteLink>
+            )
+          })}
+        </nav>
+      </aside>
+      <div
+        {...stylex.props(styles.workspace)}
+        style={{ '--topbar-height': '68px' } as CSSProperties}
+      >
+        <header {...stylex.props(styles.topbar)}>
+          <div {...stylex.props(styles.topbarInner)}>
+            <RouteLink
+              to={pagePath('home')}
+              aria-label={`${t('common.appName')} · ${t('shell.home')}`}
+              {...stylex.props(styles.brand, styles.mobileBrand)}
+            >
+              <BrandMark size={24} />
+              <span>{t('common.appName')}</span>
+            </RouteLink>
+            {currentItem && (
+              <span {...stylex.props(styles.currentPage)}>{t(currentItem.labelKey)}</span>
             )}
-            <PreferencesControl
-              triggerLabel={t('shell.menu')}
-              showSignOut
-              mobileNav={<MobileNavItems items={items} activeKey={meta?.primaryNav} />}
-              onSignOut={() => void logout()}
-            />
+            {isAccessKey && (
+              <span {...stylex.props(styles.badge)} title={t('shell.accessKeyReadOnlyDescription')}>
+                <LockKeyhole size={13} aria-hidden />
+                <span>{t('shell.accessKeyReadOnly')}</span>
+              </span>
+            )}
+
+            <div {...stylex.props(styles.actions)}>
+              {!isAccessKey && (
+                <RouteLink
+                  to={pagePath('import')}
+                  aria-label={t('shell.import')}
+                  {...stylex.props(styles.importAction)}
+                >
+                  <KeyRound size={15} aria-hidden />
+                  <span {...stylex.props(styles.importLabel)}>{t('shell.import')}</span>
+                </RouteLink>
+              )}
+              <PreferencesControl
+                triggerLabel={t('shell.menu')}
+                showSignOut
+                mobileNav={<MobileNavItems items={items} activeKey={meta?.primaryNav} />}
+                onSignOut={() => void logout()}
+              />
+            </div>
           </div>
-        </div>
-      </header>
-      <main id="main-content" tabIndex={-1} {...stylex.props(styles.content)}>
-        {children}
-      </main>
+        </header>
+        <main id="main-content" tabIndex={-1} {...stylex.props(styles.content)}>
+          {children}
+        </main>
+      </div>
     </AuthGate>
   )
 }

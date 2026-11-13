@@ -30,13 +30,7 @@ const spin = stylex.keyframes({
 
 const styles = stylex.create({
   panel: {
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: 'var(--radius-control)',
-    backgroundColor: 'var(--color-surface-sunken)',
-    paddingBlock: 'var(--space-4)',
-    paddingInline: 'var(--space-4)',
+    minWidth: 0,
   },
   definition: {
     display: 'grid',

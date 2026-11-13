@@ -14,6 +14,7 @@ import type { ExistingGroupImportDraft, ImportDraft } from '@shared/domain/impor
 
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
+import { ContentPanel } from '../../components/ContentPanel'
 import { ExistingGroupImport } from './ExistingGroupImport'
 import { useImportOperationMode, type ImportOperationMode } from './import-operation'
 import { NewGroupImport } from './NewGroupImport'
@@ -204,7 +205,9 @@ export function ImportView() {
       {activeMode === 'new' ? (
         <NewGroupImport initialDraft={recoveredNewDraft} />
       ) : (
-        <ExistingGroupImport initialDraft={recoveredExistingDraft} />
+        <ContentPanel>
+          <ExistingGroupImport initialDraft={recoveredExistingDraft} />
+        </ContentPanel>
       )}
     </section>
   )

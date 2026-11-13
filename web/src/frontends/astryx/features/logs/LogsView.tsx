@@ -39,6 +39,7 @@ import { useCollectionLoading } from '../../app/collection-loading'
 import { useT } from '../../app/i18n'
 import { stringifySharedRouteSearch } from '../../app/search-codec'
 import { useAppServices } from '../../app/services'
+import { ContentPanel } from '../../components/ContentPanel'
 import { LogDetailDrawer } from './LogDetailDrawer'
 import { LogsFilterForm, type AppliedChip } from './LogsFilterForm'
 import { LogsTable } from './LogsTable'
@@ -702,104 +703,106 @@ export function LogsView() {
           {logsRefreshing ? t('monitor.logs.loading') : ''}
         </span>
 
-        {listBlocked || logsQuery.isPending || loading.initial ? (
-          !listBlocked && (
-            <div
-              role="status"
-              aria-label={t('monitor.logs.loading')}
-              {...stylex.props(styles.skeleton)}
-            >
-              {Array.from({ length: appliedFilters.limit ?? 20 }, (_, index) => (
-                <Skeleton key={index} height={52} radius={2} />
-              ))}
-            </div>
-          )
-        ) : logsQuery.isError && !logsQuery.data ? (
-          <div role="alert" {...stylex.props(styles.state)}>
-            <EmptyState
-              title={t('monitor.logs.loadFailed')}
-              icon={<TriangleAlert size={20} aria-hidden />}
-              actions={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  label={t('common.retry')}
-                  onClick={() => void logsQuery.refetch()}
-                />
-              }
-            />
-          </div>
-        ) : logsQuery.data ? (
-          <>
-            {logsQuery.isError && (
-              <Banner
-                status="warning"
-                title={t('monitor.logs.stale')}
-                endContent={
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    label={t('common.retry')}
-                    onClick={() => void logsQuery.refetch()}
-                  />
-                }
-              />
-            )}
-            {loading.transition ? (
+        {!listBlocked && (
+          <ContentPanel unframedCards>
+            {logsQuery.isPending || loading.initial ? (
               <div
                 role="status"
                 aria-label={t('monitor.logs.loading')}
                 {...stylex.props(styles.skeleton)}
               >
-                {Array.from({ length: skeletonRows }, (_, index) => (
+                {Array.from({ length: appliedFilters.limit ?? 20 }, (_, index) => (
                   <Skeleton key={index} height={52} radius={2} />
                 ))}
               </div>
-            ) : (
+            ) : logsQuery.isError && !logsQuery.data ? (
+              <div role="alert" {...stylex.props(styles.state)}>
+                <EmptyState
+                  title={t('monitor.logs.loadFailed')}
+                  icon={<TriangleAlert size={20} aria-hidden />}
+                  actions={
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      label={t('common.retry')}
+                      onClick={() => void logsQuery.refetch()}
+                    />
+                  }
+                />
+              </div>
+            ) : logsQuery.data ? (
               <>
-                {logs.length > 0 ? (
-                  <LogsTable
-                    logs={logs}
-                    isAccessKey={isAccessKey}
-                    groupNames={groupNames}
-                    groupProviderUrls={groupProviderUrls}
-                    groupsLoaded={groupsQuery.isSuccess}
-                    channelsByID={channelsByID}
-                    onFilterGroup={filterByGroup}
-                    onFilterCredential={filterByCredential}
-                    onFilterClientModel={filterByClientModel}
-                    onFilterAffinityKey={filterByAffinityKey}
-                    onOpenDetail={(id) => void setDetailOpen(id, true)}
-                  />
-                ) : (
-                  <EmptyState
-                    title={t(
-                      hasNonTimeFilters
-                        ? 'monitor.logs.empty.filteredTitle'
-                        : 'monitor.logs.empty.title',
-                    )}
-                    description={t(
-                      hasNonTimeFilters
-                        ? 'monitor.logs.empty.filteredDescription'
-                        : 'monitor.logs.empty.description',
-                    )}
-                    icon={<Search size={20} aria-hidden />}
+                {logsQuery.isError && (
+                  <Banner
+                    status="warning"
+                    title={t('monitor.logs.stale')}
+                    endContent={
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        label={t('common.retry')}
+                        onClick={() => void logsQuery.refetch()}
+                      />
+                    }
                   />
                 )}
-                <LogsPagination
-                  page={currentPage}
-                  pageSize={appliedFilters.limit ?? 20}
-                  hasPrevious={routeState.cursorHistory.length > 0}
-                  hasNext={Boolean(logsQuery.data.next_cursor)}
-                  busy={paginationBusy}
-                  onPrevious={previousPage}
-                  onNext={nextPage}
-                  onPageSize={setPageSize}
-                />
+                {loading.transition ? (
+                  <div
+                    role="status"
+                    aria-label={t('monitor.logs.loading')}
+                    {...stylex.props(styles.skeleton)}
+                  >
+                    {Array.from({ length: skeletonRows }, (_, index) => (
+                      <Skeleton key={index} height={52} radius={2} />
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    {logs.length > 0 ? (
+                      <LogsTable
+                        logs={logs}
+                        isAccessKey={isAccessKey}
+                        groupNames={groupNames}
+                        groupProviderUrls={groupProviderUrls}
+                        groupsLoaded={groupsQuery.isSuccess}
+                        channelsByID={channelsByID}
+                        onFilterGroup={filterByGroup}
+                        onFilterCredential={filterByCredential}
+                        onFilterClientModel={filterByClientModel}
+                        onFilterAffinityKey={filterByAffinityKey}
+                        onOpenDetail={(id) => void setDetailOpen(id, true)}
+                      />
+                    ) : (
+                      <EmptyState
+                        title={t(
+                          hasNonTimeFilters
+                            ? 'monitor.logs.empty.filteredTitle'
+                            : 'monitor.logs.empty.title',
+                        )}
+                        description={t(
+                          hasNonTimeFilters
+                            ? 'monitor.logs.empty.filteredDescription'
+                            : 'monitor.logs.empty.description',
+                        )}
+                        icon={<Search size={20} aria-hidden />}
+                      />
+                    )}
+                    <LogsPagination
+                      page={currentPage}
+                      pageSize={appliedFilters.limit ?? 20}
+                      hasPrevious={routeState.cursorHistory.length > 0}
+                      hasNext={Boolean(logsQuery.data.next_cursor)}
+                      busy={paginationBusy}
+                      onPrevious={previousPage}
+                      onNext={nextPage}
+                      onPageSize={setPageSize}
+                    />
+                  </>
+                )}
               </>
-            )}
-          </>
-        ) : null}
+            ) : null}
+          </ContentPanel>
+        )}
 
         <LogDetailDrawer
           open={Boolean(selectedRequestID) && !detailClosing && invalidAffinityKey === undefined}

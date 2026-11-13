@@ -30,6 +30,7 @@ const sectionStyles = stylex.create({
   },
   rows: {
     display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     gap: 'var(--space-1)',
   },
   numberInput: {

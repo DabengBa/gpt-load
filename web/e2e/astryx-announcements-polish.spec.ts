@@ -56,6 +56,16 @@ test('announcement loading, error recovery, long content and keyboard controls',
   await retry.focus()
   await page.keyboard.press('Enter')
   await expect(page.getByText('Extra')).toBeVisible()
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/announcements-mobile.png`,
+      fullPage: true,
+    })
+  const panel = page.locator('[data-content-panel]')
+  await expect(panel).toHaveCount(1)
+  await expect(panel.getByRole('textbox', { name: 'Search' })).toBeVisible()
+  await expect(panel.locator('article')).toHaveCount(1)
+  await expect(panel.locator('article').locator('[data-content-panel]')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Example' })).toHaveAttribute(
     'rel',
     'noopener noreferrer',
@@ -64,4 +74,21 @@ test('announcement loading, error recovery, long content and keyboard controls',
   await page.getByRole('textbox', { name: 'Search' }).focus()
   await page.keyboard.type('test')
   await expect(page.getByRole('textbox', { name: 'Search' })).toHaveValue('test')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.getByRole('textbox', { name: 'Search' }).clear()
+  await expect(page.getByText('Extra')).toBeVisible()
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/announcements-desktop.png`,
+      fullPage: true,
+    })
+  await page.evaluate(() => localStorage.setItem('gpt-load.theme', 'dark'))
+  await page.reload()
+  await expect(page.getByText('Extra')).toBeVisible()
+  await expect(panel).toHaveCSS('background-color', 'rgb(23, 27, 32)')
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/announcements-dark.png`,
+      fullPage: true,
+    })
 })

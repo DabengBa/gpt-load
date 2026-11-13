@@ -14,11 +14,6 @@ const NARROW = '@media (max-width: 560px)'
 
 const styles = stylex.create({
   section: {
-    marginTop: 36,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: 20,
     paddingBottom: 4,
   },
   link: {

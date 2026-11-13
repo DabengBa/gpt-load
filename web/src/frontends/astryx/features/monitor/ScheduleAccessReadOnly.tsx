@@ -6,9 +6,11 @@ import { modelCollectionQueryOptions } from '@shared/control/resources/models'
 import { useAppServices } from '../../app/services'
 import { useT } from '../../app/i18n'
 import { useDebouncedAction } from '../../app/use-debounced-action'
+import { ContentPanel } from '../../components/ContentPanel'
 
 const styles = stylex.create({
-  panel: { display: 'grid', gap: '16px', minWidth: 0, paddingTop: '16px' },
+  panel: { minWidth: 0, paddingTop: '16px' },
+  content: { display: 'grid', gap: '16px', minWidth: 0 },
   row: {
     display: 'grid',
     gap: '8px',
@@ -56,73 +58,77 @@ export function ScheduleAccessReadOnly({ externalModel }: { externalModel?: stri
   )
   return (
     <section {...stylex.props(styles.panel)} data-testid="schedule-read-only">
-      <TextInput
-        label={t('monitor.schedule.panel.model')}
-        value={q}
-        onChange={(value) => {
-          setQ(value)
-          qRef.current = value
-          debounce.schedule(() => {
-            setCommittedQ(qRef.current)
-            setCommittedPage(1)
-            setPage(1)
-          })
-        }}
-      />
-      {query.isPending && <Skeleton height={44} radius={2} />}
-      {query.isError && (
-        <Banner
-          status="error"
-          title={t('monitor.schedule.panel.indexFailed')}
-          endContent={
-            <Button
-              label={t('monitor.schedule.panel.retry')}
-              onClick={() => void query.refetch()}
+      <ContentPanel>
+        <div {...stylex.props(styles.content)}>
+          <TextInput
+            label={t('monitor.schedule.panel.model')}
+            value={q}
+            onChange={(value) => {
+              setQ(value)
+              qRef.current = value
+              debounce.schedule(() => {
+                setCommittedQ(qRef.current)
+                setCommittedPage(1)
+                setPage(1)
+              })
+            }}
+          />
+          {query.isPending && <Skeleton height={44} radius={2} />}
+          {query.isError && (
+            <Banner
+              status="error"
+              title={t('monitor.schedule.panel.indexFailed')}
+              endContent={
+                <Button
+                  label={t('monitor.schedule.panel.retry')}
+                  onClick={() => void query.refetch()}
+                />
+              }
             />
-          }
-        />
-      )}
-      {query.data?.items.length === 0 && (
-        <EmptyState title={t('monitor.schedule.detail.noEntries')} />
-      )}
-      {query.data?.items.map((item) => (
-        <div key={item.client_model} {...stylex.props(styles.row)}>
-          <strong>{item.client_model}</strong>
-          <span>{item.protocols.join(', ')}</span>
-          {item.upstream_models.map(({ price }) => (
-            <div key={price.id} {...stylex.props(styles.prices)}>
-              <span>
-                {price.model_id} / {price.channel_name}
-              </span>
-              <span>
-                {t('modelPrices.fields.input')}:{' '}
-                {price.prices.input ?? t('models.filters.pricingStatus.pending')}
-              </span>
-              <span>
-                {t('modelPrices.fields.output')}:{' '}
-                {price.prices.output ?? t('models.filters.pricingStatus.pending')}
-              </span>
-              <span>{t('models.status.unit')}</span>
+          )}
+          {query.data?.items.length === 0 && (
+            <EmptyState title={t('monitor.schedule.detail.noEntries')} />
+          )}
+          {query.data?.items.map((item) => (
+            <div key={item.client_model} {...stylex.props(styles.row)}>
+              <strong>{item.client_model}</strong>
+              <span>{item.protocols.join(', ')}</span>
+              {item.upstream_models.map(({ price }) => (
+                <div key={price.id} {...stylex.props(styles.prices)}>
+                  <span>
+                    {price.model_id} / {price.channel_name}
+                  </span>
+                  <span>
+                    {t('modelPrices.fields.input')}:{' '}
+                    {price.prices.input ?? t('models.filters.pricingStatus.pending')}
+                  </span>
+                  <span>
+                    {t('modelPrices.fields.output')}:{' '}
+                    {price.prices.output ?? t('models.filters.pricingStatus.pending')}
+                  </span>
+                  <span>{t('models.status.unit')}</span>
+                </div>
+              ))}
             </div>
           ))}
+          {query.data && (
+            <Pagination
+              page={page}
+              totalItems={query.data.pagination.total_items}
+              totalPages={query.data.pagination.total_pages}
+              pageSize={10}
+              onChange={(nextPage) => {
+                debounce.schedule(() => {
+                  setCommittedQ(qRef.current)
+                  setCommittedPage(nextPage)
+                  setPage(nextPage)
+                })
+              }}
+              size="sm"
+            />
+          )}
         </div>
-      ))}
-      {query.data && (
-        <Pagination
-          page={page}
-          totalItems={query.data.pagination.total_items}
-          totalPages={query.data.pagination.total_pages}
-          pageSize={10}
-          onChange={(nextPage) => {
-            debounce.schedule(() => {
-              setCommittedQ(qRef.current)
-              setCommittedPage(nextPage)
-              setPage(nextPage)
-            })
-          }}
-          size="sm"
-        />
-      )}
+      </ContentPanel>
     </section>
   )
 }

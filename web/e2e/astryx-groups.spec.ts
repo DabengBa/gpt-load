@@ -540,6 +540,7 @@ for (const width of [320, 768, 1440]) {
     await page.keyboard.press('Space')
     await expect(available).toHaveAttribute('aria-pressed', 'true')
     await expect(page).toHaveURL(/status=available/)
+    await expect(table.getByRole('row')).toHaveCount(5)
     await page.screenshot({
       path: test.info().outputPath(`groups-dark-${width}.png`),
       fullPage: true,

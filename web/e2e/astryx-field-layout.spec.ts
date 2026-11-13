@@ -364,7 +364,9 @@ for (const width of [320, 768, 1440]) {
         expect(box).not.toBeNull()
         expect(box!.x).toBeGreaterThanOrEqual(12)
         expect(box!.x + box!.width).toBeLessThanOrEqual(width - 12)
-        if (width === 320) expect(box!.width).toBeGreaterThanOrEqual(270)
+        // Task panels have an inset; retain a usable input width without
+        // requiring it to extend through that inset.
+        if (width === 320) expect(box!.width).toBeGreaterThanOrEqual(240)
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
           width,
         )

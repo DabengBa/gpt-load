@@ -28,13 +28,13 @@ async function openAstryx(
   await expect(page.getByRole('heading', { name: 'Sign in to GPT-Load' })).toBeVisible()
 }
 
-test('light mode applies the classic canvas without a flash', async ({ page }) => {
+test('light mode applies the light canvas without a flash', async ({ page }) => {
   await openAstryx(page, { theme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   const main = page.getByTestId('astryx-shell')
   await expect
     .poll(async () => main.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe('rgb(238, 237, 233)') // --color-canvas #eeede9
+    .toBe('rgb(247, 248, 250)') // --color-canvas #f7f8fa
 })
 
 test('dark mode applies the dark canvas', async ({ page }) => {
@@ -57,7 +57,7 @@ test('system mode removes data-theme and follows prefers-color-scheme', async ({
   await page.emulateMedia({ colorScheme: 'light' })
   await expect
     .poll(async () => main.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe('rgb(238, 237, 233)')
+    .toBe('rgb(247, 248, 250)')
 })
 
 test('precedence: app layers register after the theme layer', async ({ page }) => {
@@ -92,11 +92,11 @@ test('precedence: app layers register after the theme layer', async ({ page }) =
   expect(firstAppIndex).toBeGreaterThan(tokensIndex)
 
   // Theme override reaching a component: the preferences IconButton gets
-  // --radius-element 7px from gptload theme (neutral default is 8px).
+  // --radius-element 8px from the GPT-Load theme.
   const trigger = page.locator('.preferences-trigger')
   await expect
     .poll(async () => trigger.evaluate((el) => getComputedStyle(el).borderRadius))
-    .toBe('7px')
+    .toBe('8px')
 })
 
 test('classic density: compact control height and body text', async ({ page }) => {
