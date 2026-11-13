@@ -297,7 +297,7 @@ export function LogsAdvancedFilterDrawer({
       isOpen={open}
       onOpenChange={onOpenChange}
       title={t('monitor.logs.filters.advancedTitle')}
-      subtitle={t('monitor.logs.filters.advancedDescription')}
+
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button

@@ -57,7 +57,7 @@ export function AnnouncementsView() {
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="announcements-title">
       <header {...stylex.props(styles.heading)}>
-        <h1 id="announcements-title" {...stylex.props(styles.title)}>
+        <h1 id="announcements-title" data-shell-page-title {...stylex.props(styles.title)}>
           {t('nav.announcements')}
         </h1>
         {query.data && !query.isPlaceholderData && (
@@ -70,6 +70,7 @@ export function AnnouncementsView() {
             size="sm"
             variant="input"
             label={t('announcements.site')}
+            isLabelHidden
             options={[
               { value: '', label: t('announcements.allSites') },
               ...(site &&
@@ -98,6 +99,7 @@ export function AnnouncementsView() {
           <TextInput
             size="sm"
             label={t('announcements.search')}
+            isLabelHidden
             placeholder={t('announcements.searchPlaceholder')}
             startIcon={<Search size={14} aria-hidden />}
             value={q}

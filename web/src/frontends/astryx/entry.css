@@ -22,6 +22,20 @@
    Used for descendant-targeted parity rules StyleX cannot express — keep it
    tiny and attribute-keyed. */
 @layer app.base {
+  /* The shell supplies the visible page name on desktop. Keep the content
+     heading in the accessibility tree and restore it with the mobile nav. */
+  @media (min-width: 861px) {
+    [data-shell-page-title] {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+  }
+
   /* One painting contract for native/kit tables and semantic grid tables.
      Cells inherit an opaque row so pinned columns never reveal the canvas. */
   :is(table, [role='table']) {
@@ -48,6 +62,9 @@
     letter-spacing: normal;
     text-transform: none;
     border-bottom: 1px solid var(--color-border);
+  }
+  [data-schedule-candidates] > [role='row'] > [role='columnheader'] {
+    border-bottom: 0;
   }
 
   [data-gptload-mono] input {

@@ -44,7 +44,7 @@ import { LogDetailDrawer } from './LogDetailDrawer'
 import { LogsFilterForm, type AppliedChip } from './LogsFilterForm'
 import { LogsTable } from './LogsTable'
 
-const TABLET = '@media (max-width: 860px)'
+const NARROW = '@media (max-width: 560px)'
 
 const styles = stylex.create({
   page: {
@@ -62,14 +62,7 @@ const styles = stylex.create({
     alignContent: 'start',
     gap: 'var(--space-3)',
   },
-  heading: {
-    display: 'flex',
-    minWidth: 0,
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 'var(--space-3)',
-    flexWrap: 'wrap',
-  },
+
   title: {
     margin: 0,
     fontSize: 'var(--text-title)',
@@ -79,8 +72,8 @@ const styles = stylex.create({
     margin: 0,
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-sm)',
-    width: { default: 'auto', '@media (max-width: 560px)': '100%' },
-    textAlign: { default: 'end', '@media (max-width: 560px)': 'start' },
+    marginInlineEnd: 'auto',
+    width: { default: 'auto', [NARROW]: '100%' },
   },
   skeleton: {
     display: 'grid',
@@ -101,11 +94,12 @@ const styles = stylex.create({
     display: 'flex',
     minHeight: 32,
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 10,
     paddingBlock: 4,
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-sm)',
-    justifyContent: { default: 'flex-end', [TABLET]: 'center' },
+    justifyContent: { default: 'flex-end', [NARROW]: 'center' },
   },
   pageNumber: {
     minWidth: 24,
@@ -172,6 +166,7 @@ const accessKeyForbiddenFilterKeys: ReadonlySet<keyof RequestLogFilters> = new S
 function LogsPagination({
   page,
   pageSize,
+  resultCount,
   hasPrevious,
   hasNext,
   busy,
@@ -181,6 +176,7 @@ function LogsPagination({
 }: {
   page: number
   pageSize: number
+  resultCount: number
   hasPrevious: boolean
   hasNext: boolean
   busy: boolean
@@ -203,6 +199,11 @@ function LogsPagination({
       aria-label={t('common.pagination.label')}
       aria-busy={busy || undefined}
     >
+      {resultCount > 0 && (
+        <p {...stylex.props(styles.summary)} data-testid="logs-result-summary">
+          {t('monitor.logs.resultSummary', { count: resultCount })}
+        </p>
+      )}
       <span {...stylex.props(styles.pageSize)}>
         <Selector
           label={t('common.pagination.pageSizeLabel')}
@@ -658,21 +659,9 @@ export function LogsView() {
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="logs-title">
       <div {...stylex.props(styles.sheet)} data-testid="logs-tab">
-        <div {...stylex.props(styles.heading)}>
-          <h1 id="logs-title" {...stylex.props(styles.title)}>
-            {t('shell.logs')}
-          </h1>
-          {!listBlocked &&
-            !logsQuery.isPending &&
-            !loading.initial &&
-            !loading.transition &&
-            logsQuery.data &&
-            logs.length > 0 && (
-              <p {...stylex.props(styles.summary)} data-testid="logs-result-summary">
-                {t('monitor.logs.resultSummary', { count: logs.length })}
-              </p>
-            )}
-        </div>
+        <h1 id="logs-title" data-shell-page-title {...stylex.props(styles.title)}>
+          {t('shell.logs')}
+        </h1>
 
         <LogsFilterForm
           draft={draft}
@@ -790,6 +779,7 @@ export function LogsView() {
                     <LogsPagination
                       page={currentPage}
                       pageSize={appliedFilters.limit ?? 20}
+                      resultCount={logs.length}
                       hasPrevious={routeState.cursorHistory.length > 0}
                       hasNext={Boolean(logsQuery.data.next_cursor)}
                       busy={paginationBusy}

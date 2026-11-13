@@ -1,5 +1,7 @@
 # 设计方向：明亮的通用管理界面
 
+开发前参考 [UI 开发检查清单](docs/design/ui-checklist.md)。
+
 > **状态：当前工作区的生产界面已实现桌面侧栏、移动导航，并按各页面任务组织内容面板。** 用户提供的 Neko Master 截图用于学习通用前端风格，不是要求复制其业务或建设运营总览。亮色主题使用浅灰画布与蓝色操作色，亦保留暗色主题；见 [现有 token](web/src/frontends/astryx/theme/tokens.css) 和 [应用外壳](web/src/frontends/astryx/app/shell/Shells.tsx)。产品范围和当前行为见 [PRODUCT.md](PRODUCT.md)。[分组管理演示](docs/design/management-demo.html) 是离线、合成数据的设计探索，不是线上数据或生产界面。
 
 ## 参考图拆解与取舍

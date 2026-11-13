@@ -153,23 +153,6 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: '9px',
   },
-  aliasToggle: {
-    display: 'grid',
-    width: { default: '32px', [narrow]: 'var(--touch-target)' },
-    height: { default: '32px', [narrow]: 'var(--touch-target)' },
-    flexBasis: { default: '32px', [narrow]: 'var(--touch-target)' },
-    flexShrink: 0,
-    placeItems: 'center',
-    cursor: { default: 'pointer', ':has(:disabled)': 'not-allowed' },
-  },
-  aliasToggleInput: {
-    width: '16px',
-    height: '16px',
-    margin: 0,
-    accentColor: 'var(--color-action)',
-    cursor: { default: 'pointer', ':disabled': 'not-allowed' },
-    opacity: { ':disabled': 0.55 },
-  },
   aliasField: {
     width: 'min(100%, 300px)',
     minWidth: 0,
@@ -195,6 +178,13 @@ const styles = stylex.create({
   thirdColumn: {
     minWidth: 0,
     gridColumn: { [narrow]: '1 / -1' },
+  },
+  extraColumn: {
+    minWidth: 0,
+    gridColumn: { [narrow]: '1 / -1' },
+    display: 'grid',
+    gap: 4,
+    alignContent: 'center',
   },
   actions: {
     display: 'flex',
@@ -293,6 +283,9 @@ export interface ModelAliasEditorProps<T extends ModelDraftValue> {
   search?: string
   validationMode?: 'immediate' | 'blur'
   showAllErrors?: boolean
+  extraColumn?: { label: string; render: (item: T, index: number) => ReactNode }
+  removeColumnLabel?: string
+  removeIcon?: ReactNode
   renderThirdColumn?: (item: T, index: number) => ReactNode
   onChange(value: T[]): void
   onSearchChange?(value: string): void
@@ -311,6 +304,9 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
   search,
   validationMode = 'immediate',
   showAllErrors = false,
+  extraColumn,
+  removeColumnLabel,
+  removeIcon,
   renderThirdColumn,
   onChange,
   onSearchChange,
@@ -407,7 +403,8 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
           ? ({
               ...item,
               ...patch,
-              alias: patch.alias_enabled === false ? '' : (patch.alias ?? item.alias),
+              alias_enabled:
+                patch.alias === undefined ? item.alias_enabled : patch.alias.trim() !== '',
             } as T)
           : ({ ...item, sources: [...item.sources] } as T),
       ),
@@ -452,15 +449,14 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
 
   function modelIDError(item: ModelDraftValue, index: number): string {
     if (validity.emptyIDIndexes.has(index)) return labels.manualIdRequired
-    if (!item.alias_enabled && validity.conflictIndexes.has(index)) {
+    if (!item.alias.trim() && validity.conflictIndexes.has(index)) {
       return conflictMessage(index)
     }
     return ''
   }
 
   function modelAliasError(item: ModelDraftValue, index: number): string {
-    if (!item.alias_enabled) return ''
-    if (validity.emptyAliasIndexes.has(index)) return labels.aliasRequired
+    if (!item.alias.trim()) return ''
     return validity.conflictIndexes.has(index) ? conflictMessage(index) : ''
   }
 
@@ -527,23 +523,6 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
     setTouchedAliases(new Set(touchedAliases).add(key))
   }
 
-  async function setAliasEnabled(index: number, enabled: boolean): Promise<void> {
-    const item = value[index]
-    if (enabled && item && validationMode === 'blur') {
-      const nextTouched = new Set(touchedAliases)
-      nextTouched.delete(item.key)
-      setTouchedAliases(nextTouched)
-    }
-    updateRow(index, { alias_enabled: enabled })
-    if (!enabled) return
-    // Focus the freshly-enabled alias input after the parent re-renders.
-    requestAnimationFrame(() => {
-      rootRef.current
-        ?.querySelector<HTMLInputElement>(`[data-alias-input-index="${index}"]`)
-        ?.focus()
-    })
-  }
-
   async function addManual(): Promise<void> {
     if (disabled || !createRow) return
     setSearchValue('')
@@ -561,13 +540,13 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
     const item = value[index]
     const targetsModelID =
       validity.emptyIDIndexes.has(index) ||
-      (validity.conflictIndexes.has(index) && item?.editable_id && !item.alias_enabled)
+      (validity.conflictIndexes.has(index) && item?.editable_id && !item.alias.trim())
     const targetsWeight =
       validity.invalidWeightIndexes.has(index) || validity.zeroShareIndexes.has(index)
     const targetsPriority = validity.invalidPriorityIndexes.has(index)
     if (item) {
       if (targetsModelID) touchModelID(item.key)
-      else if (item.alias_enabled && !targetsWeight && !targetsPriority) touchAlias(item.key)
+      else if (item.alias.trim() && !targetsWeight && !targetsPriority) touchAlias(item.key)
     }
     await Promise.resolve()
     requestAnimationFrame(() => {
@@ -577,9 +556,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
           ? `[data-model-weight-index="${index}"]`
           : targetsPriority
             ? `[data-model-priority-index="${index}"]`
-            : item?.alias_enabled
-              ? `[data-alias-input-index="${index}"]`
-              : `[data-alias-toggle-index="${index}"]`
+            : `[data-alias-input-index="${index}"]`
       rootRef.current?.querySelector<HTMLElement>(selector)?.focus()
     })
   }
@@ -613,7 +590,11 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
       <LedgerRecordList
         label={labels.tableLabel}
         rowCount={visibleRowCount + groupHeaderCount + 1}
-        grid="minmax(160px, 22fr) minmax(180px, 26fr) minmax(110px, 14fr) minmax(280px, 38fr) 40px"
+        grid={
+          extraColumn
+            ? 'minmax(140px, 20fr) minmax(140px, 18fr) minmax(105px, 13fr) minmax(110px, 14fr) minmax(280px, 35fr) 40px'
+            : 'minmax(160px, 22fr) minmax(180px, 26fr) minmax(110px, 14fr) minmax(280px, 38fr) 40px'
+        }
         cardGrid="minmax(0, 0.7fr) minmax(0, 1.3fr)"
         recordMinHeight="58px"
         recordPadding="5px 0"
@@ -626,6 +607,11 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
             <span role="columnheader" {...stylex.props(ledgerRecordStyles.cell)}>
               {labels.alias}
             </span>
+            {extraColumn && (
+              <span role="columnheader" {...stylex.props(ledgerRecordStyles.cell)}>
+                {extraColumn.label}
+              </span>
+            )}
             <span role="columnheader" {...stylex.props(ledgerRecordStyles.cell)}>
               {labels.weight} / {labels.priority}
             </span>
@@ -634,7 +620,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
             </span>
             <span
               role="columnheader"
-              aria-label={labels.actions}
+              aria-label={removeColumnLabel ?? labels.actions}
               {...stylex.props(ledgerRecordStyles.cell)}
             />
           </>
@@ -731,52 +717,40 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
               >
                 <span {...stylex.props(styles.mobileLabel)}>{labels.alias}</span>
                 <div {...stylex.props(styles.aliasControl)}>
-                  <label {...stylex.props(styles.aliasToggle)}>
-                    <span {...stylex.props(styles.srOnly)}>
-                      {labels.aliasEnabledFor(render.item.id)}
-                    </span>
-                    <input
-                      {...stylex.props(styles.aliasToggleInput)}
-                      data-alias-toggle-index={render.index}
-                      type="checkbox"
-                      checked={render.item.alias_enabled}
-                      disabled={disabled}
-                      onChange={(event) => void setAliasEnabled(render.index, event.target.checked)}
-                    />
-                  </label>
-                  {render.item.alias_enabled &&
-                    (() => {
-                      const aliasError = visibleModelAliasError(render.item, render.index)
-                      const aliasFieldId = `${instanceId}-model-alias-${render.index}`
-                      return (
-                        <span {...stylex.props(styles.fieldWrap, styles.aliasField)}>
-                          <input
-                            id={aliasFieldId}
-                            {...stylex.props(
-                              styles.input,
-                              aliasError !== '' && styles.inputInvalid,
-                            )}
-                            value={render.item.alias}
-                            aria-label={labels.aliasFor(render.item.id)}
-                            disabled={disabled}
-                            placeholder={labels.aliasPlaceholder}
-                            aria-invalid={aliasError !== '' || undefined}
-                            aria-describedby={
-                              aliasError !== '' ? `${aliasFieldId}-error` : undefined
-                            }
-                            data-alias-input-index={render.index}
-                            spellCheck={false}
-                            onChange={(event) =>
-                              updateRow(render.index, { alias: event.target.value })
-                            }
-                            onBlur={() => touchAlias(render.item.key)}
-                          />
-                          {aliasError !== '' && <FieldError id={aliasFieldId} error={aliasError} />}
-                        </span>
-                      )
-                    })()}
+                  {(() => {
+                    const aliasError = visibleModelAliasError(render.item, render.index)
+                    const aliasFieldId = `${instanceId}-model-alias-${render.index}`
+                    return (
+                      <span {...stylex.props(styles.fieldWrap, styles.aliasField)}>
+                        <input
+                          id={aliasFieldId}
+                          {...stylex.props(styles.input, aliasError !== '' && styles.inputInvalid)}
+                          value={render.item.alias}
+                          aria-label={labels.aliasFor(render.item.id)}
+                          disabled={disabled}
+                          placeholder={labels.aliasPlaceholder}
+                          aria-invalid={aliasError !== '' || undefined}
+                          aria-describedby={aliasError !== '' ? `${aliasFieldId}-error` : undefined}
+                          data-alias-input-index={render.index}
+                          spellCheck={false}
+                          onChange={(event) =>
+                            updateRow(render.index, { alias: event.target.value })
+                          }
+                          onBlur={() => touchAlias(render.item.key)}
+                        />
+                        {aliasError !== '' && <FieldError id={aliasFieldId} error={aliasError} />}
+                      </span>
+                    )
+                  })()}
                 </div>
               </div>
+
+              {extraColumn && (
+                <div {...stylex.props(ledgerRecordStyles.cell, styles.extraColumn)} role="cell">
+                  <span {...stylex.props(styles.mobileLabel)}>{extraColumn.label}</span>
+                  {extraColumn.render(render.item, render.index)}
+                </div>
+              )}
 
               <div {...stylex.props(ledgerRecordStyles.cell, styles.routeCell)} role="cell">
                 <span {...stylex.props(styles.mobileLabel)}>
@@ -852,7 +826,7 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
                   size="sm"
                   isDisabled={disabled}
                   label={labels.removeFor(render.item.id || labels.manualId)}
-                  icon={<X size={16} aria-hidden="true" />}
+                  icon={removeIcon ?? <X size={16} aria-hidden="true" />}
                   onClick={() => removeRow(render.index)}
                 />
               </div>

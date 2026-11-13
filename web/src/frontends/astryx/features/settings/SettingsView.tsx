@@ -532,7 +532,7 @@ export function SettingsView() {
     <div {...stylex.props(styles.page)}>
       <div {...stylex.props(styles.pageInner)}>
         <article {...stylex.props(styles.sheet)} aria-labelledby="settings-title">
-          <h1 id="settings-title" {...stylex.props(styles.title)}>
+          <h1 id="settings-title" data-shell-page-title {...stylex.props(styles.title)}>
             {t('settings.title')}
           </h1>
           <span aria-live="polite" {...stylex.props(styles.refreshing)}>

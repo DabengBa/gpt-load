@@ -229,7 +229,7 @@ export function HomeView() {
             </div>
           ) : baseQuery.isError && !base ? (
             <section {...stylex.props(styles.error)} aria-labelledby="home-title">
-              <h1 id="home-title" {...stylex.props(styles.title)}>
+              <h1 id="home-title" data-shell-page-title {...stylex.props(styles.title)}>
                 {t('home.ledger.title')}
               </h1>
               <div role="alert">

@@ -1,4 +1,4 @@
-import { AlertDialog, EmptyState, Skeleton, Button } from '@astryxdesign/core'
+import { EmptyState, Skeleton, Button } from '@astryxdesign/core'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
@@ -7,14 +7,12 @@ import * as stylex from '@stylexjs/stylex'
 import * as actions from '@shared/control/resources/credentials'
 
 import { applyInvalidationPlan, mutationInvalidationPlans } from '@shared/control/invalidation'
-import type { CredentialItemDto, CredentialTestResultDto } from '@shared/control/types'
 import type { MessageId } from '@shared/i18n/message-ids'
 import { pagePath } from '@shared/routing/page-routes'
 import { useT } from '../../../app/i18n'
 import { useAppServices } from '../../../app/services'
 import { InlineNotice } from '../../../components/InlineNotice'
 import { GroupCredentialRecord } from './GroupCredentialRecord'
-import { CredentialTestDialog } from './CredentialTestDialog'
 
 const styles = stylex.create({
   empty: {
@@ -43,10 +41,7 @@ function CredentialDetail({ groupId }: { groupId: number }) {
   const query = useQuery(actions.credentialQueryOptions(apiClient, groupId))
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [testOpen, setTestOpen] = useState(false)
-  const [testResult, setTestResult] = useState<CredentialTestResultDto>()
-  const [testFailed, setTestFailed] = useState(false)
+
   const busyRef = useRef(false)
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -73,9 +68,7 @@ function CredentialDetail({ groupId }: { groupId: number }) {
       }
     } catch {
       const failureKeys: Record<string, MessageId> = {
-        delete: 'group.credentials.deleteFailed',
         restore: 'group.credentials.restoreFailed',
-        test: 'group.credentials.test.requestFailed',
       }
       if (mountedRef.current) setError(t(failureKeys[name] ?? 'group.credentials.reconcileFailed'))
     } finally {
@@ -89,22 +82,7 @@ function CredentialDetail({ groupId }: { groupId: number }) {
       search: { mode: 'existing', group_id: String(groupId) },
     })
   }
-  async function test(item: CredentialItemDto) {
-    if (busyRef.current) return
-    setTestOpen(true)
-    setTestFailed(false)
-    setTestResult(undefined)
-    await run('test', async () => {
-      try {
-        setTestResult(
-          await actions.testCredentialConnection(apiClient, groupId, item.credential_id),
-        )
-      } catch (cause) {
-        setTestFailed(true)
-        throw cause
-      }
-    })
-  }
+
   if (query.isPending) return <Skeleton />
   if (query.isError)
     return (
@@ -131,37 +109,7 @@ function CredentialDetail({ groupId }: { groupId: number }) {
   return (
     <>
       {error && <InlineNotice tone="danger">{error}</InlineNotice>}
-      <GroupCredentialRecord
-        item={item}
-        groupId={groupId}
-        busy={!!pending}
-        onTest={() => void test(item)}
-        onRestore={restore}
-        onRemove={() => setDeleteOpen(true)}
-      />
-      <CredentialTestDialog
-        open={testOpen}
-        mask={item.mask}
-        pending={pending === 'test'}
-        requestFailed={testFailed}
-        result={testResult}
-        onOpenChange={setTestOpen}
-        onViewLog={(id) => void navigate({ to: pagePath('logs'), search: { log_id: id } })}
-      />
-      <AlertDialog
-        isOpen={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title={t('group.credentials.delete')}
-        description={item.mask}
-        actionLabel={t('group.credentials.delete')}
-        isActionLoading={pending === 'delete'}
-        onAction={() =>
-          void run('delete', async () => {
-            await actions.deleteCredential(apiClient, groupId, item.credential_id)
-            setDeleteOpen(false)
-          })
-        }
-      />
+      <GroupCredentialRecord item={item} groupId={groupId} busy={!!pending} onRestore={restore} />
     </>
   )
 }

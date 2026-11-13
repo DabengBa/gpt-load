@@ -161,7 +161,7 @@ export default {
       searchLabel: '検索',
       clearSearch: 'モデル検索をクリア',
       aliasEnabledFor: '{id} のエイリアスを有効化',
-      aliasPlaceholder: '公開モデル名を入力',
+      aliasPlaceholder: '任意。空欄ならモデル ID を使用',
       aliasRequired: 'エイリアスを有効にした場合は公開モデル名が必要です',
       removeFor: 'モデル {id} を削除',
       empty: 'モデルは未追加です — このままグループを作成できます',

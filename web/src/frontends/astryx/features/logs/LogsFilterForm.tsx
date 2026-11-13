@@ -122,7 +122,7 @@ const styles = stylex.create({
   },
   fieldModel: {
     display: 'block',
-    flexGrow: 1,
+    flexGrow: 0,
     flexShrink: 1,
     flexBasis: 180,
     minWidth: {
@@ -130,7 +130,7 @@ const styles = stylex.create({
       [NARROW]: 0,
     },
     width: {
-      default: 'auto',
+      default: 220,
       [NARROW]: '100%',
     },
     gridColumn: {
@@ -163,11 +163,7 @@ const styles = stylex.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 2,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
     paddingBlock: 'var(--space-1-75)',
-    paddingInline: 'var(--space-2-5)',
   },
   preset: {
     flexShrink: 0,
@@ -187,10 +183,18 @@ const styles = stylex.create({
     fontSize: 'var(--text-label-xs)',
   },
   timeRow: {
-    display: 'grid',
-    gridTemplateColumns: { default: 'repeat(2, minmax(0, 300px))', [NARROW]: 'minmax(0, 1fr)' },
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'end',
     gap: 'var(--space-2)',
     padding: 'var(--space-2-5)',
+    paddingTop: 0,
+  },
+  timeField: {
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: { default: 300, [NARROW]: '100%' },
+    minWidth: 0,
   },
   timeSummary: {
     margin: 0,
@@ -466,51 +470,45 @@ export function LogsFilterForm({
 
         <div {...stylex.props(styles.timeRow)}>
           {(['from', 'to'] as const).map((field) => (
-            <DateTimeInput
-              key={field}
-              label={t(`monitor.logs.filters.${field}`)}
-              size="sm"
-              width="100%"
-              hasSeconds
-              hourFormat="24h"
-              value={draft[field] ? (draft[field] as ISODateTimeString) : undefined}
-              onChange={(value) => onUpdateField(field, value ?? '')}
-              status={errors[field] ? { type: 'error' } : undefined}
-            />
+            <div key={field} {...stylex.props(styles.timeField)}>
+              <DateTimeInput
+                label={t(`monitor.logs.filters.${field}`)}
+                size="sm"
+                width="100%"
+                hasSeconds
+                hourFormat="24h"
+                value={draft[field] ? (draft[field] as ISODateTimeString) : undefined}
+                onChange={(value) => onUpdateField(field, value ?? '')}
+                status={errors[field] ? { type: 'error' } : undefined}
+              />
+            </div>
           ))}
+          <div
+            {...stylex.props(styles.presets)}
+            role="group"
+            aria-label={t('monitor.logs.filters.quickRanges')}
+          >
+            {timeRanges.map((preset) => (
+              <Button
+                key={preset}
+                type="button"
+                variant="ghost"
+                size="sm"
+                label={t(`monitor.logs.filters.quick.${preset}` as MessageId)}
+                xstyle={styles.preset}
+                onClick={() => selectPreset(preset, onUpdateField)}
+              />
+            ))}
+            <span {...stylex.props(styles.timezone)}>
+              {t('monitor.logs.filters.timezone')} · {timezone}
+            </span>
+          </div>
         </div>
-        <p {...stylex.props(styles.timeSummary)} data-testid="logs-applied-time-range">
-          {t('monitor.logs.filters.appliedTimeRange', {
-            from: appliedDraft.from.replace('T', ' '),
-            to: appliedDraft.to.replace('T', ' '),
-          })}{' '}
-          · {timezone}
-        </p>
-        <p {...stylex.props(styles.timeSummary)}>{t('monitor.logs.filters.shortcutsHelp')}</p>
-        <div role="status" aria-live="polite" {...stylex.props(styles.timeSummary)}>
-          {dirty ? t('monitor.logs.filters.dirty') : ''}
-        </div>
-
-        <div
-          {...stylex.props(styles.presets)}
-          role="group"
-          aria-label={t('monitor.logs.filters.quickRanges')}
-        >
-          {timeRanges.map((preset) => (
-            <Button
-              key={preset}
-              type="button"
-              variant="ghost"
-              size="sm"
-              label={t(`monitor.logs.filters.quick.${preset}` as MessageId)}
-              xstyle={styles.preset}
-              onClick={() => selectPreset(preset, onUpdateField)}
-            />
-          ))}
-          <span {...stylex.props(styles.timezone)}>
-            {t('monitor.logs.filters.timezone')} · {timezone}
-          </span>
-        </div>
+        {dirty && (
+          <div role="status" aria-live="polite" {...stylex.props(styles.timeSummary)}>
+            {t('monitor.logs.filters.dirty')}
+          </div>
+        )}
 
         {firstErrorKey !== undefined && firstErrorKey !== '' && (
           <p id="logs-filter-error" {...stylex.props(styles.error)} role="alert">

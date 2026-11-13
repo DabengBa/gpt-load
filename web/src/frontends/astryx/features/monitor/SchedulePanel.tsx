@@ -1,7 +1,15 @@
 import * as stylex from '@stylexjs/stylex'
 import { ContentPanel } from '../../components/ContentPanel'
 import './SchedulePanel.css'
-import { Banner, Button, TextInput, EmptyState, Popover, Skeleton } from '@astryxdesign/core'
+import {
+  Banner,
+  Button,
+  TextInput,
+  EmptyState,
+  Popover,
+  Skeleton,
+  Tooltip,
+} from '@astryxdesign/core'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, Search } from 'lucide-react'
@@ -76,14 +84,6 @@ const styles = stylex.create({
   sidebarOnly: {
     display: { default: 'none', '@media (min-width: 1440px)': 'grid' },
   },
-  field: {
-    display: 'grid',
-    minWidth: 0,
-    gap: '5px',
-    color: 'var(--color-text-muted)',
-    fontSize: 'var(--text-meta)',
-    fontWeight: 650,
-  },
   detail: { minWidth: 0, display: 'grid', alignContent: 'start', gap: '16px' },
   searchControl: { minWidth: 0, width: '100%', boxSizing: 'border-box' },
 })
@@ -105,6 +105,48 @@ export interface SchedulePanelProps {
   onSaved(snapshotRevision: number, clearDrafts: boolean): void
   onRecovered(groupId: number, entryId: string): void
   onOpenPrice(priceID: number): void
+}
+
+function ModelOption({
+  item,
+  selected,
+  onSelect,
+  onKeyDown,
+}: {
+  item: ModelRouteScheduleIndexItemDto
+  selected: boolean
+  onSelect(): void
+  onKeyDown?: (event: KeyboardEvent) => void
+}) {
+  const nameRef = useRef<HTMLSpanElement>(null)
+  const [overflowing, setOverflowing] = useState(false)
+  useLayoutEffect(() => {
+    const name = nameRef.current
+    if (!name) return
+    const update = () => setOverflowing(name.scrollWidth > name.clientWidth)
+    const observer = new ResizeObserver(update)
+    observer.observe(name)
+    update()
+    return () => observer.disconnect()
+  }, [item.external_model])
+
+  return (
+    <Tooltip content={item.external_model} isEnabled={overflowing} placement="above">
+      <button
+        type="button"
+        className="schedule-model-option"
+        aria-label={item.external_model}
+        aria-pressed={selected}
+        onClick={onSelect}
+        onKeyDown={onKeyDown}
+      >
+        <span ref={nameRef} className="schedule-model-name">
+          {item.external_model}
+        </span>
+        <span className="schedule-model-meta">{item.candidate_count}</span>
+      </button>
+    </Tooltip>
+  )
 }
 
 export function SchedulePanel({
@@ -331,25 +373,18 @@ export function SchedulePanel({
           aria-label={labels.selectModel ?? labels.model ?? ''}
         >
           {filteredModels.map((item, index) => (
-            <button
+            <ModelOption
               key={item.external_model}
-              type="button"
-              className="schedule-model-option"
-              aria-label={item.external_model}
-              aria-pressed={selectedModel === item.external_model}
-              onClick={() => setModel(item.external_model)}
+              item={item}
+              selected={selectedModel === item.external_model}
+              onSelect={() => setModel(item.external_model)}
               onKeyDown={listID ? (event) => moveModelFocus(event, index) : undefined}
-            >
-              <span className="schedule-model-name">{item.external_model}</span>
-              <span className="schedule-model-meta">{item.candidate_count}</span>
-            </button>
+            />
           ))}
           {!indexQuery.isPending && !indexQuery.isError && filteredModels.length === 0 && (
-            <EmptyState
-              title={
-                indexItems.length === 0 ? (labels.noModels ?? '') : (labels.noMatchingModels ?? '')
-              }
-            />
+            <div className="schedule-model-empty" role="status">
+              {indexItems.length === 0 ? (labels.noModels ?? '') : (labels.noMatchingModels ?? '')}
+            </div>
           )}
           {!indexQuery.isPending && !indexQuery.isError && indexItems.length === 0 && (
             <Button
@@ -364,7 +399,6 @@ export function SchedulePanel({
 
   const contextControl = (
     <div className="schedule-model-context">
-      <span className="schedule-model-desktop-current schedule-model-name">{selectedModel}</span>
       <div className="schedule-model-compact">
         <Popover
           isOpen={selectorOpen}
@@ -392,12 +426,7 @@ export function SchedulePanel({
               aria-label={labels.selectModel ?? labels.model ?? ''}
               aria-controls={modelListID}
             >
-              <span>{labels.model}</span>
               <span className="schedule-model-name">{selectedModel || labels.selectModel}</span>
-              <span className="schedule-model-meta">{indexItems.length}</span>
-              {selectedIndexItem && (
-                <span className="schedule-model-meta">{selectedIndexItem.protocol}</span>
-              )}
               <ChevronDown size={14} aria-hidden="true" />
             </button>
           )}
@@ -419,18 +448,7 @@ export function SchedulePanel({
         )}
         aria-label={labels.context ?? ''}
       >
-        <div className="schedule-model-sidebar">
-          <div {...stylex.props(styles.field)}>
-            <span className="schedule-model-summary">
-              <span>{labels.model}</span>
-              <span className="schedule-model-meta">{indexItems.length}</span>
-            </span>
-            {selectedIndexItem && (
-              <span className="schedule-model-meta">{selectedIndexItem.protocol}</span>
-            )}
-          </div>
-          {modelPicker()}
-        </div>
+        <div className="schedule-model-sidebar">{modelPicker()}</div>
         {!selectedIndexItem && contextControl}
         {!indexQuery.isPending && !indexQuery.isError && indexItems.length === 0 && (
           <div className="schedule-model-compact">

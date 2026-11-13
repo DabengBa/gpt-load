@@ -269,7 +269,7 @@ export default {
         weight: 'Weight',
         priority: 'Priority',
         share: 'Tier config share',
-        status: 'Saved eligibility',
+        status: 'Status',
         schedulable: 'Schedulable',
         entryHealth: 'Entry health',
         enableEntry: 'Enable entry',
@@ -302,6 +302,8 @@ export default {
         toggleFailed: 'Unable to update entry enabled state.',
         calls24h: 'Group 24h calls',
         successRate24h: 'Group 24h success',
+        group24h: 'Group 24h',
+        callsSuccessRate: 'Calls / Success rate',
         reasoning: 'Reasoning policy',
         inherit: 'Not configured',
         advanced: 'Advanced',
@@ -347,7 +349,7 @@ export default {
         entry_blacklisted: 'Route entry is blacklisted',
         entry_cooldown: 'Route entry is cooling down',
         entry_weight_zero: 'Route entry weight is zero',
-        tier_demoted: 'Standing by in a standby priority tier',
+        tier_demoted: 'Schedulable',
       },
     },
     logs: {
@@ -373,8 +375,7 @@ export default {
       filters: {
         label: 'Request log filters',
         timeRange: 'Time range',
-        appliedTimeRange: 'Applied time range: {from} – {to}',
-        shortcutsHelp: 'Shortcuts edit the draft; select Apply to update results.',
+
         from: 'From',
         to: 'To',
         quickRanges: 'Quick time ranges',
@@ -457,7 +458,7 @@ export default {
         lastRefreshed: 'Last successful refresh',
         remove: 'Remove filter {value}',
         advancedTitle: 'More filters',
-        advancedDescription: 'Filter by request, retry attempts, final result, and numeric ranges.',
+
         closeAdvanced: 'Close more filters',
         sections: {
           request: 'Request',

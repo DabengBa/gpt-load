@@ -29,6 +29,8 @@ export interface GroupUnifiedSaveBarProps {
 
 const styles = stylex.create({
   saveBar: {
+    flexDirection: { default: null, '@media (max-width: 480px)': 'column' },
+    alignItems: { default: null, '@media (max-width: 480px)': 'stretch' },
     borderRadius: 'var(--radius-control)',
     backgroundColor: 'var(--color-surface-raised)',
     backdropFilter: 'none',

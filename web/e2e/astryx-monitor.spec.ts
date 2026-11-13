@@ -268,6 +268,43 @@ async function expectAstryxDocument(page: Page): Promise<void> {
   await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible()
 }
 
+for (const width of [390, 1440]) {
+  test(`usage breakdown header has balanced vertical spacing at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockMonitor(page)
+    await page.goto('/monitor')
+    const table = page.getByRole('table')
+    const headers = table.getByRole('columnheader')
+    await expect(headers.first()).toBeVisible()
+    const metrics = await headers.evaluateAll((cells) =>
+      cells.map((cell) => {
+        const style = getComputedStyle(cell)
+        return {
+          top: parseFloat(style.paddingTop),
+          bottom: parseFloat(style.paddingBottom),
+          alignment: style.verticalAlign,
+        }
+      }),
+    )
+    for (const cell of metrics) {
+      expect(cell.top).toBeGreaterThanOrEqual(4)
+      expect(cell.top).toBe(cell.bottom)
+      expect(cell.alignment).toBe('middle')
+    }
+    await expect(headers.first()).toHaveAttribute('scope', 'col')
+    await expect(table.getByRole('button', { name: 'Upstream model' })).toBeVisible()
+    await headers
+      .first()
+      .evaluate((cell) => cell.append(document.createElement('br'), 'Second line'))
+    const delta = await headers.nth(1).evaluate((cell) => {
+      const box = cell.getBoundingClientRect()
+      const button = cell.querySelector('button')!.getBoundingClientRect()
+      return button.top + button.height / 2 - (box.top + box.height / 2)
+    })
+    expect(Math.abs(delta)).toBeLessThanOrEqual(1)
+  })
+}
+
 test('canonicalizes the bare query to the usage filters and renders the page', async ({ page }) => {
   await mockMonitor(page)
   await page.goto('/monitor?tab=bogus&junk=1', { waitUntil: 'load' })
@@ -331,6 +368,97 @@ test('usage renders the breakdown without a redundant heading', async ({ page })
   // The request carried the canonical filter params.
   expect(requests.usageQueries.at(-1)?.get('range')).toBe('24h')
 })
+
+test('breakdown aligns headers with values and gives long sortable labels room', async ({
+  page,
+}) => {
+  await mockMonitor(page)
+  await page.goto('/monitor')
+  const table = page.getByRole('table')
+  await expect(table.locator('tbody tr').first()).toBeVisible()
+
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+
+    const columns = await table.evaluate((element) => {
+      const headers = [...element.querySelectorAll('thead th')]
+      const cells = [...element.querySelectorAll('tbody tr:first-child td')]
+      return headers.map((header, index) => {
+        const cell = cells[index]
+        const range = document.createRange()
+        range.selectNodeContents(header)
+        const style = getComputedStyle(header)
+        return {
+          headerAlign: style.textAlign,
+          cellAlign: getComputedStyle(cell).textAlign,
+          fontSize: style.fontSize,
+          labelWidth: range.getBoundingClientRect().width,
+          availableWidth:
+            header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        }
+      })
+    })
+    expect(columns).toHaveLength(15)
+    for (const [index, column] of columns.entries()) {
+      const alignment = index < 3 ? 'left' : 'right'
+      expect(column.headerAlign).toBe(alignment)
+      expect(column.cellAlign === 'start' ? 'left' : column.cellAlign).toBe(alignment)
+      expect(column.fontSize).toBe('11.5px')
+      expect(column.labelWidth).toBeLessThanOrEqual(column.availableWidth + 1)
+    }
+    const scroller = page.locator('[data-table-scroll]')
+    expect(await scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
+    await expect(scroller).toHaveAttribute('tabindex', '0')
+    if (width === 390) {
+      await scroller.focus()
+      await page.keyboard.press('ArrowRight')
+      await expect.poll(() => scroller.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+  }
+})
+
+for (const locale of ['zh-CN', 'ja-JP']) {
+  test(`translated breakdown headings and active sort fit at desktop and mobile widths (${locale})`, async ({
+    page,
+  }) => {
+    await page.addInitScript((value) => localStorage.setItem('gpt-load.locale', value), locale)
+    await mockMonitor(page)
+    await page.goto('/monitor')
+    const table = page.getByRole('table')
+    await expect(table.locator('tbody tr').first()).toBeVisible()
+    const header = table.locator('thead th').nth(9)
+    await header.getByRole('button').click()
+    await expect(header).toHaveAttribute('aria-sort', 'descending')
+
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 })
+      const geometry = await table.locator('thead th').evaluateAll((headers) =>
+        headers.map((cell) => {
+          const range = document.createRange()
+          range.selectNodeContents(cell)
+          const style = getComputedStyle(cell)
+          return {
+            text: range.getBoundingClientRect().width,
+            available:
+              cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+            size: style.fontSize,
+          }
+        }),
+      )
+      expect(geometry).toHaveLength(15)
+      for (const cell of geometry) {
+        expect(cell.size).toBe('11.5px')
+        expect(cell.text).toBeLessThanOrEqual(cell.available + 1)
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      )
+    }
+  })
+}
 
 test('usage results stay contained on a narrow screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -409,6 +537,44 @@ test('usage range selector applies through the filter bar', async ({ page }) => 
   await page.getByRole('button', { name: 'Apply' }).click()
   await expect(page).toHaveURL(/\/monitor\?range=7d$/)
   await expect.poll(() => requests.usageQueries.at(-1)?.get('range')).toBe('7d')
+})
+
+test('refresh sits with usage filters and refreshes the report at desktop and mobile widths', async ({
+  page,
+}) => {
+  const requests = await mockMonitor(page)
+  await page.goto('/monitor?range=24h')
+  const bar = page.getByRole('form', { name: 'Usage report filters' })
+  await expect(page.getByRole('table')).toBeVisible()
+  const refresh = bar.getByRole('button', { name: 'Refresh' })
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(refresh).toBeVisible()
+    if (width <= 390) {
+      const actions = await Promise.all(
+        ['Apply', 'Reset', 'Refresh'].map(async (name) =>
+          bar.getByRole('button', { name }).boundingBox(),
+        ),
+      )
+      expect(actions.map((box) => box?.y)).toEqual([actions[0]?.y, actions[0]?.y, actions[0]?.y])
+      for (const name of ['Apply', 'Reset', 'Refresh']) {
+        expect(
+          await bar.getByRole('button', { name }).evaluate((button, name) => {
+            const label = [...button.querySelectorAll('span')].find(
+              (span) => span.textContent === name,
+            )
+            return !label || label.scrollWidth <= label.clientWidth
+          }, name),
+        ).toBe(true)
+      }
+    }
+    const count = requests.usageQueries.length
+    await refresh.click()
+    await expect.poll(() => requests.usageQueries.length).toBeGreaterThan(count)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+  }
 })
 
 test('usage filter bar applies filters through the canonical query', async ({ page }) => {

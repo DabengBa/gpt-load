@@ -146,7 +146,7 @@ test('unified settings and model edits use a single combined write', async ({ pa
       separateSettingsWrites++
   })
   await page.goto('/groups/1')
-  await page.getByRole('button', { name: 'Gemini', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Channel', exact: true }).selectOption('gemini')
   await page.getByLabel('Reasoning policy for model-a').selectOption('high')
   await page.getByRole('button', { name: 'Save settings', exact: true }).click()
   await expect.poll(() => requests.length).toBe(1)
@@ -164,7 +164,7 @@ test('reasoning options follow the unsaved target channel', async ({ page }) => 
   const reasoning = page.getByLabel('Reasoning policy for model-a')
   await expect(reasoning.locator('option[value="none"]')).toHaveCount(1)
   await expect(page.getByText('Probe protocol', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Gemini', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Channel', exact: true }).selectOption('gemini')
   await expect(reasoning.locator('option[value="none"]')).toHaveCount(0)
   await expect(page.getByText('Probe protocol', { exact: true })).toBeVisible()
 })
@@ -173,7 +173,8 @@ for (const failure of ['lost-response', 'models-get', 'settings-get'] as const) 
   test(`combined commit ${failure} recovers settings before discard`, async ({ page }) => {
     await mockGroupModels(page, { models: [{ id: 'model-a' }], extraChannel: true })
     await page.goto('/groups/1')
-    await expect(page.getByRole('button', { name: 'Gemini', exact: true })).toBeVisible()
+    const channel = page.getByRole('combobox', { name: 'Channel', exact: true })
+    await expect(channel.locator('option[value="gemini"]')).toHaveText('Gemini')
     const serverSettings = await page.evaluate(async () =>
       (await fetch('/api/groups/1/settings?include=site_info')).json(),
     )
@@ -215,7 +216,7 @@ for (const failure of ['lost-response', 'models-get', 'settings-get'] as const) 
       if (failure !== 'models-get') return route.abort('failed')
       await route.fulfill({ json: serverSettings })
     })
-    await page.getByRole('button', { name: 'Gemini', exact: true }).click()
+    await channel.selectOption('gemini')
     await page.getByLabel('Reasoning policy for model-a').selectOption('high')
     await page.getByRole('button', { name: 'Save settings', exact: true }).click()
     await expect(
@@ -243,7 +244,9 @@ for (const failure of ['lost-response', 'models-get', 'settings-get'] as const) 
     }
     await page.getByRole('button', { name: 'Discard', exact: true }).click()
     if (failure === 'lost-response')
-      await expect(page.getByRole('textbox', { name: 'Name Name' })).toHaveValue('Concurrent name')
+      await expect(page.getByRole('textbox', { name: /^Name(?: Name)?$/ })).toHaveValue(
+        'Concurrent name',
+      )
     await expect(
       page.getByLabel('Reasoning policy for model-a').locator('option[value="none"]'),
     ).toHaveCount(0)

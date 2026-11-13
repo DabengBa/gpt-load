@@ -302,7 +302,7 @@
         data[model.name] = [
           { id: 'east', model: upstream, group: '生产网关 · 华东', priority: 1, weight: 60, reasoning: '', concurrency: 0, enabled: true, state: 'available', calls: 182340, rate: '99.92%', failures: 0 },
           { id: 'north', model: `${upstream}-long-context`, group: '生产网关 · 华北长上下文专线', priority: 1, weight: 40, reasoning: 'medium', concurrency: 16, enabled: true, state: 'available', calls: 32861, rate: '99.76%', failures: 0 },
-          { id: 'backup', model: upstream, group: '备用网关 · 跨区容灾', priority: 2, weight: 100, reasoning: 'high', concurrency: 4, enabled: true, state: 'cooldown', calls: 2041, rate: '97.84%', failures: 4 },
+          { id: 'backup', model: upstream, group: '跨区网关', priority: 2, weight: 100, reasoning: 'high', concurrency: 4, enabled: true, state: 'cooldown', calls: 2041, rate: '97.84%', failures: 4 },
           { id: 'isolated', model: upstream, group: '隔离候选 · 待排查凭据', priority: 2, weight: 0, reasoning: '', concurrency: 2, enabled: true, state: 'blacklisted', calls: 9032, rate: '86.71%', failures: 12 },
         ].slice(0, model.count)
       }

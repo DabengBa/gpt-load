@@ -19,12 +19,16 @@ export type DetailKey = readonly [revision: number, externalModel: string | null
 
 export const EMPTY_DETAIL_KEY: DetailKey = [0, '', '']
 
+// Use the saved, unrounded share rather than the editable preview: drafts must
+// not move an input while it is being edited. Retain the existing key order for ties.
 export function scheduleRows(detail: ModelRouteScheduleDetailDto | undefined): ScheduleRow[] {
   return (detail?.groups ?? [])
     .flatMap((group) => group.entries.map((entry) => ({ group, entry })))
     .sort(
       (a, b) =>
         a.entry.priority - b.entry.priority ||
+        (b.group.enabled && b.entry.enabled ? b.entry.configured_share : 0) -
+          (a.group.enabled && a.entry.enabled ? a.entry.configured_share : 0) ||
         a.group.group_id - b.group.group_id ||
         (a.entry.entry_id < b.entry.entry_id ? -1 : a.entry.entry_id > b.entry.entry_id ? 1 : 0),
     )

@@ -26,7 +26,7 @@ async function openLogs(page: Page, query = ''): Promise<void> {
   await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({
     timeout: 60_000,
   })
-  await expect(page.getByRole('heading', { name: 'Request logs' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Request logs' })).toBeVisible()
 }
 
 const records = (page: Page) => page.getByTestId('logs-list__record')
@@ -86,6 +86,13 @@ for (const width of [1440, 900, 1920]) {
     await expect(page.getByTestId('astryx-shell')).toBeVisible({ timeout: 60_000 })
     const groupTable = page.locator('table')
     await expect(groupTable.locator('tbody tr')).toHaveCount(2)
+    if (width === 1920) {
+      const columns = await groupTable
+        .locator('thead th')
+        .evaluateAll((headers) => headers.map((header) => header.getBoundingClientRect().width))
+      // Names need more room than the short credential-health status.
+      expect(columns[0]).toBeGreaterThan(columns[6])
+    }
     const groupHeader = await tableCellPresentation(groupTable.locator('th').nth(1))
     const groupCell = await tableCellPresentation(groupTable.locator('tbody td').nth(1))
     const groupRow = groupTable.locator('tbody tr').first()
@@ -245,7 +252,7 @@ test.describe('mobile log diagnostics', () => {
     expect(hintBox.height).toBeGreaterThanOrEqual(44)
     await modelHint.tap()
     await expect(page.getByRole('tooltip')).toContainText('unexpected-model')
-    await page.getByRole('heading', { name: 'Request logs' }).tap()
+    await page.getByTestId('logs-tab').tap({ position: { x: 1, y: 1 } })
     await expect(page.getByRole('tooltip')).toHaveCount(0)
     const cacheHint = row.getByTestId('logs-list__cache-rate')
     expect((await cacheHint.boundingBox())!.height).toBeGreaterThanOrEqual(44)

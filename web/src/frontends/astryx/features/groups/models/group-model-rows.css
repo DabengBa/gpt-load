@@ -1,0 +1,164 @@
+/* Scope the model-row treatment to group details; the editor is also used by import. */
+
+@media (min-width: 861px) {
+  .group-model-rows [data-testid='model-alias-editor__record'] {
+    min-height: 66px;
+  }
+}
+
+.group-model-rows [data-testid='model-alias-editor__record'] > [role='cell']:first-child code {
+  font-weight: 650;
+  color: var(--color-text);
+}
+
+.group-model-rows [data-testid='group-models__test-alias'] code {
+  color: var(--color-text-muted);
+}
+
+.group-model-test-alias-pending {
+  display: inline-flex;
+  padding: 2px 7px;
+  border-radius: var(--radius-tag);
+  color: var(--color-text-muted);
+  background: var(--color-surface-sunken);
+  font-size: var(--text-meta);
+}
+
+.group-model-rows [data-model-id-index],
+.group-model-rows [data-alias-input-index],
+.group-model-rows [data-model-weight-index],
+.group-model-rows [data-model-priority-index] {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.group-model-rows [data-model-weight-index],
+.group-model-rows [data-model-priority-index] {
+  width: 100%;
+  padding-inline: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.group-model-rows span:has(> [data-model-weight-index]),
+.group-model-rows span:has(> [data-model-priority-index]) {
+  width: 60px;
+  min-width: 0;
+}
+
+.group-model-rows
+  :is(
+    [data-model-id-index],
+    [data-alias-input-index],
+    [data-model-weight-index],
+    [data-model-priority-index],
+    select
+  ):not(:disabled):not([aria-invalid='true']) {
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.group-model-rows
+  :is(
+    [data-model-id-index],
+    [data-alias-input-index],
+    [data-model-weight-index],
+    [data-model-priority-index],
+    select
+  ):not(:disabled):hover {
+  border-color: var(--color-border-control);
+  background-color: var(--color-surface);
+}
+
+.group-model-rows
+  :is(
+    [data-model-id-index],
+    [data-alias-input-index],
+    [data-model-weight-index],
+    [data-model-priority-index],
+    select
+  ):focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  background-color: var(--color-surface);
+}
+
+.group-model-rows
+  :is(
+    [data-model-id-index],
+    [data-alias-input-index],
+    [data-model-weight-index],
+    [data-model-priority-index]
+  )[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.group-model-rows [data-alias-input-index] {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.group-model-rows [data-testid='group-models__schedule-link'],
+.group-model-rows .group-model-row-action button,
+.group-model-rows [data-testid='model-alias-editor__record'] > [role='cell']:last-child button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.group-model-rows [data-testid='model-alias-editor__record'] > [role='cell']:last-child button {
+  width: 32px;
+  padding: 0;
+  color: var(--color-danger);
+}
+
+.group-model-rows [data-testid='group-models__schedule-link']:hover,
+.group-model-rows .group-model-row-action button:not(:disabled):hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-action);
+}
+
+.group-model-rows
+  [data-testid='model-alias-editor__record']
+  > [role='cell']:last-child
+  button:not(:disabled):hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+@media (max-width: 860px) {
+  .group-model-rows [data-testid='model-alias-editor__record'] > [role='cell']:last-child button {
+    width: var(--touch-target);
+    height: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+}
+
+.group-model-price-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-tag);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.group-model-price-status--configured {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.group-model-price-status--pending {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}

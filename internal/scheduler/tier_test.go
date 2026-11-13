@@ -26,7 +26,7 @@ func routeEntrySnapshot(_ *testing.T, groups []state.GroupConfig) *state.ConfigS
 func intPointer(value int) *int { return &value }
 
 func TestIteratorKeepsPriorityTiersSeparate(t *testing.T) {
-	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "primary", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}, {ID: "fallback", Alias: "public", Weight: intPointer(100), Priority: intPointer(2)}}}})
+	snapshot := routeEntrySnapshot(t, []state.GroupConfig{{ID: 1, Name: "group", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true, Models: []state.ModelConfig{{ID: "primary", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}, {ID: "priority-2", Alias: "public", Weight: intPointer(100), Priority: intPointer(2)}}}})
 	selection, err := New(snapshot, fakeCredentialSource{keys: []state.CredentialMeta{{ID: 11, GroupID: 1}}}, routeEntryQuery(), rand.New(zeroRandSource{})).Next()
 	if err != nil {
 		t.Fatal(err)
@@ -38,8 +38,8 @@ func TestIteratorKeepsPriorityTiersSeparate(t *testing.T) {
 
 func TestIteratorPreferredCredentialBeatsHigherPriorityTier(t *testing.T) {
 	snapshot := routeEntrySnapshot(t, []state.GroupConfig{
-		{ID: 1, Name: "fallback", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
-			Models: []state.ModelConfig{{ID: "fallback-model", Alias: "public", Weight: intPointer(100), Priority: intPointer(2)}}},
+		{ID: 1, Name: "priority-2", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
+			Models: []state.ModelConfig{{ID: "priority-2-model", Alias: "public", Weight: intPointer(100), Priority: intPointer(2)}}},
 		{ID: 2, Name: "primary", ChannelID: channel.OpenAI, Params: []byte(`{}`), Enabled: true,
 			Models: []state.ModelConfig{{ID: "primary-model", Alias: "public", Weight: intPointer(1), Priority: intPointer(1)}}},
 	})
@@ -51,12 +51,12 @@ func TestIteratorPreferredCredentialBeatsHigherPriorityTier(t *testing.T) {
 		Operation:              execution.OperationChatCompletion,
 		ExternalModel:          modelPointer("public"),
 		PreferredCredentialID:  11,
-		PreferredEntryID:       "derived:public#fallback-model",
-		PreferredUpstreamModel: "fallback-model",
+		PreferredEntryID:       "derived:public#priority-2-model",
+		PreferredUpstreamModel: "priority-2-model",
 	}, rand.New(zeroRandSource{}))
 
 	first, err := iterator.Next()
-	if err != nil || first.CredentialID != 11 || first.UpstreamModelID == nil || *first.UpstreamModelID != "fallback-model" {
+	if err != nil || first.CredentialID != 11 || first.UpstreamModelID == nil || *first.UpstreamModelID != "priority-2-model" {
 		t.Fatalf("first Next() = (%#v, %v), want preferred priority-2 credential 11", first, err)
 	}
 	second, err := iterator.Next()

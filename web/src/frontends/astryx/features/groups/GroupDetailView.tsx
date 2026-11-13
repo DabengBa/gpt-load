@@ -44,6 +44,7 @@ const spin = stylex.keyframes({
 const styles = stylex.create({
   page: {
     display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     width: '100%',
     minWidth: 0,
     marginInline: 'auto',

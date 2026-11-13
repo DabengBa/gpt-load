@@ -1,8 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
-import { Badge, IconButton, Popover } from '@astryxdesign/core'
-import { Activity, ChevronDown, Ellipsis, RotateCcw, Trash2 } from 'lucide-react'
+import { Button } from '@astryxdesign/core'
+import { RotateCcw } from 'lucide-react'
 import { useIntl } from 'react-intl'
-import { useState } from 'react'
 
 import type { CredentialItemDto } from '@shared/control/types'
 import type { MessageId } from '@shared/i18n/message-ids'
@@ -10,10 +9,10 @@ import { formatLocalInstant } from '@shared/lib/format'
 import { presentCredentialFailureCategory } from '@shared/domain/groups/credentials/credential-failure-presenter'
 
 import { useT } from '../../../app/i18n'
-import { credentialStatusBadgeVariant } from '../credential-status'
 import { GroupApiKeyEditor } from './GroupApiKeyEditor'
 
 const narrow = '@media (max-width: 700px)'
+const small = '@media (max-width: 520px)'
 
 const styles = stylex.create({
   record: {
@@ -23,99 +22,56 @@ const styles = stylex.create({
   },
   summary: {
     display: 'grid',
-    gridTemplateColumns: {
-      default: 'minmax(150px, 1.4fr) minmax(110px, 0.8fr) minmax(130px, 1fr) 90px',
-      [narrow]: 'minmax(0, 1fr) 86px',
-    },
+    gridTemplateColumns: { default: 'minmax(0, 1fr) auto', [small]: 'minmax(0, 1fr)' },
     alignItems: 'center',
     minHeight: '56px',
     gap: '12px',
     paddingBlock: { [narrow]: '8px' },
   },
-  select: {
-    display: 'flex',
-    justifyContent: 'center',
-  },
-  selectInput: {
-    width: '16px',
-    height: '16px',
-    accentColor: 'var(--color-action)',
-  },
+
   maskCell: {
     minWidth: 0,
     fontFamily: 'var(--font-mono)',
     fontVariantNumeric: 'tabular-nums',
   },
-  statusCell: {
-    display: { [narrow]: 'none' },
-  },
-  recentCell: {
-    minWidth: 0,
-    fontFamily: 'var(--font-mono)',
-    fontVariantNumeric: 'tabular-nums',
-    display: { [narrow]: 'none' },
-  },
+
   actions: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: { default: 'flex-end', [small]: 'flex-start' },
     gap: '4px',
-  },
-  menu: {
-    display: 'grid',
-    minWidth: '160px',
-    gap: '2px',
-  },
-  menuItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    color: 'var(--color-text)',
-    padding: '8px',
-    textAlign: 'left',
-    font: 'inherit',
-    cursor: { default: 'pointer', ':disabled': 'not-allowed' },
-    opacity: { ':disabled': 0.55 },
-    borderRadius: 'var(--radius-control)',
-  },
-  menuItemDanger: {
-    color: 'var(--color-danger)',
   },
   details: {
     marginBlock: '0 8px',
     marginInline: '14px',
     borderRadius: 'var(--radius-control)',
     backgroundColor: 'var(--color-surface-sunken)',
-    paddingBlock: '12px',
+    paddingBlock: '8px',
     paddingInline: '14px',
   },
   detailsList: {
-    display: 'grid',
-    gridTemplateColumns: { default: 'repeat(3, minmax(0, 1fr))', [narrow]: '1fr' },
-    gap: '16px',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '4px 16px',
     margin: 0,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  detailsPair: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: '4px',
+    maxWidth: '100%',
+    minWidth: 0,
   },
   detailsTerm: {
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-meta)',
+    flexShrink: 0,
   },
   detailsValue: {
-    marginBlockStart: '3px',
-  },
-  mobileLabel: {
-    display: { default: 'none', [narrow]: 'block' },
-    color: 'var(--color-text-muted)',
-    fontSize: 'var(--text-meta)',
-  },
-  srOnly: {
-    position: 'absolute',
-    width: '1px',
-    height: '1px',
-    overflow: 'hidden',
-    clip: 'rect(0 0 0 0)',
-    whiteSpace: 'nowrap',
+    margin: 0,
+    minWidth: 0,
+    overflowWrap: 'anywhere',
   },
 })
 
@@ -124,27 +80,16 @@ export function GroupCredentialRecord({
   groupId,
 
   busy,
-  expanded,
-
-  onTest,
   onRestore,
-  onRemove,
 }: {
   item: CredentialItemDto
   groupId: number
 
   busy: boolean
-  expanded?: boolean
-  onTest(item: CredentialItemDto): void
   onRestore(item: CredentialItemDto): void
-  onRemove(item: CredentialItemDto): void
 }) {
   const t = useT()
   const intl = useIntl()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [detailsOpen, setDetailsOpen] = useState(expanded ?? true)
-
-  const detailId = `group-credential-details-${item.credential_id}`
   const isProblem = item.effective_status === 'cooldown' || item.effective_status === 'blacklisted'
   const failureCategory = presentCredentialFailureCategory(
     (key) => t(key as MessageId),
@@ -164,125 +109,60 @@ export function GroupCredentialRecord({
           failure: intl.formatNumber(item.recent_failure_count),
         })
 
-  function menuAction(action: () => void): () => void {
-    return () => {
-      setMenuOpen(false)
-      action()
-    }
-  }
-
   return (
     <article {...stylex.props(styles.record)}>
-      <div {...stylex.props(styles.summary)} role="presentation">
-        <div {...stylex.props(styles.maskCell)} role="cell">
-          <span {...stylex.props(styles.mobileLabel)}>
-            {t('group.credentials.columns.credential')}
-          </span>
+      <div {...stylex.props(styles.summary)}>
+        <div {...stylex.props(styles.maskCell)}>
           <GroupApiKeyEditor groupId={groupId} credential={item} disabled={busy} />
         </div>
-        <div {...stylex.props(styles.statusCell)} role="cell">
-          <span {...stylex.props(styles.mobileLabel)}>{t('group.credentials.columns.status')}</span>
-          <Badge
-            variant={credentialStatusBadgeVariant(item.effective_status)}
-            label={t(`group.credentials.effective.${item.effective_status}` as MessageId)}
-          />
-        </div>
-        <div {...stylex.props(styles.recentCell)} role="cell">
-          <span {...stylex.props(styles.mobileLabel)}>{t('group.credentials.columns.recent')}</span>
-          {recentLabel}
-        </div>
-        <div {...stylex.props(styles.actions)} role="cell">
-          <Popover
-            isOpen={menuOpen}
-            onOpenChange={setMenuOpen}
-            placement="below"
-            alignment="end"
-            content={
-              <div {...stylex.props(styles.menu)}>
-                <button
-                  type="button"
-                  {...stylex.props(styles.menuItem)}
-                  disabled={busy}
-                  onClick={menuAction(() => onTest(item))}
-                >
-                  <Activity size={15} aria-hidden="true" />
-                  {t('group.credentials.test.action')}
-                </button>
-                {isProblem && (
-                  <button
-                    type="button"
-                    {...stylex.props(styles.menuItem)}
-                    disabled={busy}
-                    onClick={menuAction(() => onRestore(item))}
-                  >
-                    <RotateCcw size={15} aria-hidden="true" />
-                    {t('group.credentials.restore')}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  {...stylex.props(styles.menuItem, styles.menuItemDanger)}
-                  disabled={busy}
-                  onClick={menuAction(() => onRemove(item))}
-                >
-                  <Trash2 size={15} aria-hidden="true" />
-                  {t('group.credentials.delete')}
-                </button>
-              </div>
-            }
-          >
-            <IconButton
-              variant="ghost"
+        {isProblem && (
+          <div {...stylex.props(styles.actions)}>
+            <Button
+              variant="secondary"
               size="sm"
-              label={t('group.credentials.moreActions')}
+              label={t('group.credentials.restore')}
               isDisabled={busy}
-              icon={<Ellipsis size={16} aria-hidden="true" />}
+              icon={<RotateCcw size={15} aria-hidden="true" />}
+              onClick={() => onRestore(item)}
             />
-          </Popover>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            label={detailsOpen ? t('group.credentials.collapse') : t('group.credentials.expand')}
-            aria-expanded={detailsOpen}
-            aria-controls={detailId}
-            icon={<ChevronDown size={16} aria-hidden="true" />}
-            onClick={() => setDetailsOpen(!detailsOpen)}
-          />
-        </div>
+          </div>
+        )}
       </div>
-      {detailsOpen && (
-        <div id={detailId} {...stylex.props(styles.details)} role="cell">
-          <dl {...stylex.props(styles.detailsList)}>
-            <div>
-              <dt {...stylex.props(styles.detailsTerm)}>{t('group.credentials.detailsFailure')}</dt>
-              <dd {...stylex.props(styles.detailsValue)}>
-                {failureCategory}
-                {showFailureSummary && <span title={failureSummary}> · {failureSummary}</span>}
-              </dd>
-            </div>
-            <div>
-              <dt {...stylex.props(styles.detailsTerm)}>
-                {t('group.credentials.detailsRecovery')}
-              </dt>
-              <dd {...stylex.props(styles.detailsValue)}>
-                {item.recovery.at_ms
+      <div {...stylex.props(styles.details)}>
+        <dl {...stylex.props(styles.detailsList)}>
+          <div {...stylex.props(styles.detailsPair)}>
+            <dt {...stylex.props(styles.detailsTerm)}>{t('group.credentials.columns.recent')}</dt>
+            <dd {...stylex.props(styles.detailsValue)}>{recentLabel}</dd>
+          </div>
+          <div {...stylex.props(styles.detailsPair)}>
+            <dt {...stylex.props(styles.detailsTerm)}>{t('group.credentials.detailsFailure')}</dt>
+            <dd {...stylex.props(styles.detailsValue)}>
+              {failureCategory}
+              {showFailureSummary && <span title={failureSummary}> · {failureSummary}</span>}
+            </dd>
+          </div>
+          <div {...stylex.props(styles.detailsPair)}>
+            <dt {...stylex.props(styles.detailsTerm)}>{t('group.credentials.detailsRecovery')}</dt>
+            <dd {...stylex.props(styles.detailsValue)}>
+              {item.effective_status === 'disabled'
+                ? t('group.credentials.recovery.groupDisabled')
+                : item.recovery.at_ms
                   ? t('group.credentials.recovery.at', {
                       time: formatLocalInstant(item.recovery.at_ms, intl.locale),
                     })
                   : t(`group.credentials.recovery.${item.recovery.mode}` as MessageId)}
-              </dd>
-            </div>
-            <div>
-              <dt {...stylex.props(styles.detailsTerm)}>
-                {t('group.credentials.detailsConsecutive')}
-              </dt>
-              <dd {...stylex.props(styles.detailsValue)}>
-                {intl.formatNumber(item.consecutive_failure_count)}
-              </dd>
-            </div>
-          </dl>
-        </div>
-      )}
+            </dd>
+          </div>
+          <div {...stylex.props(styles.detailsPair)}>
+            <dt {...stylex.props(styles.detailsTerm)}>
+              {t('group.credentials.detailsConsecutive')}
+            </dt>
+            <dd {...stylex.props(styles.detailsValue)}>
+              {intl.formatNumber(item.consecutive_failure_count)}
+            </dd>
+          </div>
+        </dl>
+      </div>
     </article>
   )
 }

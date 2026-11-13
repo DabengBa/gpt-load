@@ -186,7 +186,7 @@ test('legacy provider port stays readable and does not block unrelated settings 
   await page.goto('/groups/1')
   const field = page.getByRole('textbox', { name: /Provider website/ })
   await expect(field).toHaveValue('https://site.example:99999')
-  await page.getByRole('textbox', { name: /^Name Name/ }).fill('Updated group')
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Updated group')
   const save = page.getByRole('button', { name: 'Save settings' })
   await expect(save).toBeEnabled()
   await field.fill('https://site.example:65536')
@@ -208,7 +208,7 @@ for (const configured of [false, true]) {
     const error = page
       .locator('.astryx-field-status')
       .filter({ hasText: 'Enter a valid HTTP or HTTPS provider website URL' })
-    await page.getByRole('textbox', { name: /^Name Name/ }).fill('Updated group')
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Updated group')
     await expect(save).toBeEnabled()
     await token.fill('new-secret')
     await expect(error).toBeVisible()
@@ -241,7 +241,7 @@ test('legacy provider port validates changed site user ID only while a token rem
   const error = page
     .locator('.astryx-field-status')
     .filter({ hasText: 'Enter a valid HTTP or HTTPS provider website URL' })
-  await page.getByRole('textbox', { name: /^Name Name/ }).fill('Updated group')
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Updated group')
   await userId.fill('  operator-123  ')
   await expect(save).toBeEnabled()
   await expect(error).toHaveCount(0)
@@ -388,7 +388,7 @@ for (const [locale, status] of [
   }) => {
     await mock(page, locale)
     await page.goto('/groups/1')
-    const section = page.locator('section[aria-labelledby="site-access-title"]')
+    const section = page.locator('#settings-general section[aria-label]')
     await expect(section).toContainText(status)
 
     // Browser context uses the host timezone; derive the expected date there as well.
@@ -442,7 +442,8 @@ for (const width of [390, 1440]) {
       await page.screenshot({ path: '../.tmp/site-info/list-390-scrolled.png', fullPage: true })
     }
     await page.goto('/groups/1')
-    await expect(page.getByRole('heading', { name: 'Site access' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Site access' })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Site access' })).toBeVisible()
     await expect(page.getByText(/123\.45/)).toBeVisible()
     await expect(page.getByText(/long-group-name-without-spaces/)).toBeVisible()
     await expect(page.getByRole('link', { name: /Announcements: 3/ })).toBeVisible()
@@ -453,9 +454,9 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('button', { name: 'Clear token' })).toBeVisible()
-    await page.getByRole('heading', { name: 'Site access' }).scrollIntoViewIfNeeded()
+    await page.getByRole('region', { name: 'Site access' }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: `../.tmp/site-info/detail-${width}.png`, fullPage: true })
-    await page.locator('section[aria-labelledby="site-access-title"]').screenshot({
+    await page.locator('#settings-general').screenshot({
       path: `../.tmp/site-info/site-access-${width}.png`,
     })
     await page.goto('/import?mode=new')

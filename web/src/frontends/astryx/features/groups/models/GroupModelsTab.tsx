@@ -1,8 +1,16 @@
-import { AlertDialog, Button, EmptyState, Selector, Skeleton, Tooltip } from '@astryxdesign/core'
+import {
+  AlertDialog,
+  Button,
+  EmptyState,
+  Selector,
+  Skeleton,
+  Switch,
+  Tooltip,
+} from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { Plus, RefreshCw, TriangleAlert } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 
 import { ApiError, RequestCancelledError } from '@shared/http/errors'
@@ -63,7 +71,6 @@ import { useUnsavedChanges } from '../../../app/use-unsaved-changes'
 import { StickySaveBar } from '../../../components/StickySaveBar'
 import { ModelDiscoveryDrawer } from '../../models/ModelDiscoveryDrawer'
 import { ModelFingerprintDialog } from '../../models/ModelFingerprintDialog'
-import { ModelPricingStatus } from '../../models/ModelPricingStatus'
 import { ModelProbeDialog } from '../../models/ModelProbeDialog'
 import { useModelFingerprint } from '../../models/use-model-fingerprint'
 import { useModelProbe } from '../../models/use-model-probe'
@@ -75,6 +82,7 @@ import {
 import { GroupModelSyncDialog } from './GroupModelSyncDialog'
 import { analyzeModelDraft } from './model-editor-analysis'
 import { buildAliasEditorLabels } from './model-editor-labels'
+import './group-model-rows.css'
 
 const nativeDataProbeProtocols = new Set<ProtocolValue>([
   'openai-embeddings',
@@ -907,171 +915,181 @@ export function GroupModelsTab({
         </div>
       ) : query.data ? (
         <>
-          <ModelAliasEditor
-            ref={modelEditorRef}
-            value={draft}
-            conflicts={conflicts}
-            labels={aliasEditorLabels}
-            createRow={createManualRow}
-            disabled={operationBlocked}
-            searchable={false}
-            onChange={updateModels}
-            renderThirdColumn={(item) => (
-              <div {...stylex.props(styles.pricingCell)}>
-                <label {...stylex.props(styles.scheduleControl)}>
-                  <span>{t('group.modelEditor.reasoning')}</span>
-                  <select
-                    aria-label={t('group.modelEditor.reasoningFor', {
-                      id: item.alias.trim() ? `${item.id} (${item.alias})` : item.id,
-                    })}
-                    value={item.reasoning_effort ?? ''}
-                    disabled={operationBlocked}
-                    {...stylex.props(styles.scheduleSelect)}
-                    onChange={(event) =>
-                      updateModels(
-                        draft.map((row) =>
-                          row.key === item.key
-                            ? { ...row, reasoning_effort: event.target.value }
-                            : row,
-                        ),
-                      )
-                    }
-                  >
-                    <option value="">{t('group.modelEditor.reasoningInherit')}</option>
-                    {reasoningEffortValues
-                      .filter(
-                        (value) =>
-                          value !== 'none' ||
-                          (scheduleChannelId !== 'gemini' &&
-                            scheduleChannelId !== 'google_vertex') ||
-                          item.reasoning_effort === 'none',
-                      )
-                      .map((value) => (
-                        <option
-                          key={value}
-                          value={value}
-                          disabled={
-                            value === 'none' &&
-                            (scheduleChannelId === 'gemini' ||
-                              scheduleChannelId === 'google_vertex')
-                          }
-                        >
-                          {value}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <label {...stylex.props(styles.scheduleControl)}>
-                  <input
-                    type="checkbox"
-                    checked={item.enabled ?? true}
-                    disabled={operationBlocked}
-                    aria-label={t('group.modelEditor.enabledFor', {
-                      id: item.alias.trim() ? `${item.id} (${item.alias})` : item.id,
-                    })}
-                    onChange={(event) =>
-                      updateModels(
-                        draft.map((row) =>
-                          row.key === item.key ? { ...row, enabled: event.target.checked } : row,
-                        ),
-                      )
-                    }
-                  />
-                  <span>{t('group.modelEditor.enabled')}</span>
-                </label>
-                <div {...stylex.props(styles.testAlias)} data-testid="group-models__test-alias">
-                  <span {...stylex.props(styles.testAliasLabel)}>
-                    {t('group.modelEditor.testAlias')}
-                  </span>
-                  {item.test_alias ? (
-                    <code {...stylex.props(styles.testAliasCode)}>{item.test_alias}</code>
+          <div className="group-model-rows">
+            <ModelAliasEditor
+              ref={modelEditorRef}
+              value={draft}
+              conflicts={conflicts}
+              labels={aliasEditorLabels}
+              createRow={createManualRow}
+              disabled={operationBlocked}
+              searchable={false}
+              onChange={updateModels}
+              removeColumnLabel={t('group.modelEditor.removeColumn')}
+              removeIcon={<Trash2 size={16} aria-hidden="true" />}
+              extraColumn={{
+                label: t('group.modelEditor.testAlias'),
+                render: (item) => (
+                  <div {...stylex.props(styles.testAlias)} data-testid="group-models__test-alias">
+                    {item.test_alias ? (
+                      <code {...stylex.props(styles.testAliasCode)}>{item.test_alias}</code>
+                    ) : (
+                      <span className="group-model-test-alias-pending">
+                        {t('group.modelEditor.testAliasPending')}
+                      </span>
+                    )}
+                  </div>
+                ),
+              }}
+              renderThirdColumn={(item) => (
+                <div {...stylex.props(styles.pricingCell)}>
+                  <label {...stylex.props(styles.scheduleControl)}>
+                    <span>{t('group.modelEditor.reasoning')}</span>
+                    <select
+                      aria-label={t('group.modelEditor.reasoningFor', {
+                        id: item.alias.trim() ? `${item.id} (${item.alias})` : item.id,
+                      })}
+                      value={item.reasoning_effort ?? ''}
+                      disabled={operationBlocked}
+                      {...stylex.props(styles.scheduleSelect)}
+                      onChange={(event) =>
+                        updateModels(
+                          draft.map((row) =>
+                            row.key === item.key
+                              ? { ...row, reasoning_effort: event.target.value }
+                              : row,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="">{t('group.modelEditor.reasoningInherit')}</option>
+                      {reasoningEffortValues
+                        .filter(
+                          (value) =>
+                            value !== 'none' ||
+                            (scheduleChannelId !== 'gemini' &&
+                              scheduleChannelId !== 'google_vertex') ||
+                            item.reasoning_effort === 'none',
+                        )
+                        .map((value) => (
+                          <option
+                            key={value}
+                            value={value}
+                            disabled={
+                              value === 'none' &&
+                              (scheduleChannelId === 'gemini' ||
+                                scheduleChannelId === 'google_vertex')
+                            }
+                          >
+                            {value}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <div {...stylex.props(styles.scheduleControl)}>
+                    <Switch
+                      id={`group-model-enabled-${groupId}-${item.key}`}
+                      size="sm"
+                      isLabelHidden
+                      value={item.enabled ?? true}
+                      isDisabled={operationBlocked}
+                      label={t('group.modelEditor.enabledFor', {
+                        id: item.alias.trim() ? `${item.id} (${item.alias})` : item.id,
+                      })}
+                      onChange={(checked) =>
+                        updateModels(
+                          draft.map((row) =>
+                            row.key === item.key ? { ...row, enabled: checked } : row,
+                          ),
+                        )
+                      }
+                    />
+                    <label htmlFor={`group-model-enabled-${groupId}-${item.key}`}>
+                      {t('group.modelEditor.enabled')}
+                    </label>
+                  </div>
+
+                  {item.pricing_status === 'pending' && item.price_id !== undefined ? (
+                    <RouteLink
+                      to={`${pagePath('schedule')}${stringifySharedRouteSearch({ selected_price_id: item.price_id })}`}
+                      {...stylex.props(styles.pricingLink)}
+                    >
+                      <span className="group-model-price-status group-model-price-status--pending">
+                        {t('group.modelEditor.pricingStatus.pending')}
+                      </span>
+                    </RouteLink>
                   ) : (
-                    <span {...stylex.props(styles.testAliasPending)}>
-                      {t('group.modelEditor.testAliasPending')}
+                    <span
+                      className={`group-model-price-status group-model-price-status--${item.pricing_status}`}
+                    >
+                      {t(`group.modelEditor.pricingStatus.${item.pricing_status}`)}
+                    </span>
+                  )}
+                  {item.circuit_breaker && (
+                    <span {...stylex.props(styles.breakerSummary)}>
+                      {t('group.modelEditor.breaker')}:{' '}
+                      {item.circuit_breaker.blacklist_threshold ?? '—'}
+                    </span>
+                  )}
+                  <RouteLink
+                    to={scheduleHrefFor(item)}
+                    {...stylex.props(styles.scheduleLink)}
+                    data-testid="group-models__schedule-link"
+                  >
+                    {t('group.modelEditor.schedule')}
+                  </RouteLink>
+                  {nativeProbeProtocols.size > 0 && (
+                    <Selector
+                      size="sm"
+                      variant="input"
+                      label={t('monitor.modelProbe.protocolLabel')}
+                      options={probeProtocolOptions}
+                      value={probeProtocol}
+                      onChange={(value) => setProbeProtocol(value as ProtocolValue | '')}
+                      isDisabled={probe.pending}
+                    />
+                  )}
+                  <span className="group-model-row-action">
+                    <Tooltip
+                      content={
+                        probeRowTarget(item) === null ? t('monitor.modelProbe.draftHint') : ''
+                      }
+                    >
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        isDisabled={probeRowTarget(item) === null || probe.pending}
+                        onClick={() => probeRow(item)}
+                        label={t('monitor.modelProbe.button')}
+                      />
+                    </Tooltip>
+                  </span>
+                  {supportsModelFingerprint && (
+                    <span className="group-model-row-action">
+                      <Tooltip
+                        content={
+                          fingerprintRowTarget(item) === null
+                            ? t('monitor.modelFingerprint.draftHint')
+                            : ''
+                        }
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          isDisabled={
+                            fingerprintRowTarget(item) === null ||
+                            fingerprint.run.status === 'running'
+                          }
+                          onClick={() => fingerprintRow(item)}
+                          label={t('monitor.modelFingerprint.button')}
+                        />
+                      </Tooltip>
                     </span>
                   )}
                 </div>
-                {item.pricing_status === 'pending' && item.price_id !== undefined ? (
-                  <RouteLink
-                    to={`${pagePath('schedule')}${stringifySharedRouteSearch({ selected_price_id: item.price_id })}`}
-                    {...stylex.props(styles.pricingLink)}
-                  >
-                    <ModelPricingStatus
-                      status={item.pricing_status}
-                      labels={{
-                        pending: t('group.modelEditor.pricingStatus.pending'),
-                        configured: t('group.modelEditor.pricingStatus.configured'),
-                      }}
-                    />
-                  </RouteLink>
-                ) : (
-                  <ModelPricingStatus
-                    status={item.pricing_status}
-                    labels={{
-                      pending: t('group.modelEditor.pricingStatus.pending'),
-                      configured: t('group.modelEditor.pricingStatus.configured'),
-                    }}
-                  />
-                )}
-                {item.circuit_breaker && (
-                  <span {...stylex.props(styles.breakerSummary)}>
-                    {t('group.modelEditor.breaker')}:{' '}
-                    {item.circuit_breaker.blacklist_threshold ?? '—'}
-                  </span>
-                )}
-                <RouteLink
-                  to={scheduleHrefFor(item)}
-                  {...stylex.props(styles.scheduleLink)}
-                  data-testid="group-models__schedule-link"
-                >
-                  {t('group.modelEditor.schedule')}
-                </RouteLink>
-                {nativeProbeProtocols.size > 0 && (
-                  <Selector
-                    size="sm"
-                    variant="input"
-                    label={t('monitor.modelProbe.protocolLabel')}
-                    options={probeProtocolOptions}
-                    value={probeProtocol}
-                    onChange={(value) => setProbeProtocol(value as ProtocolValue | '')}
-                    isDisabled={probe.pending}
-                  />
-                )}
-                <Tooltip
-                  content={probeRowTarget(item) === null ? t('monitor.modelProbe.draftHint') : ''}
-                >
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    isDisabled={probeRowTarget(item) === null || probe.pending}
-                    onClick={() => probeRow(item)}
-                    label={t('monitor.modelProbe.button')}
-                    xstyle={styles.probeButton}
-                  />
-                </Tooltip>
-                {supportsModelFingerprint && (
-                  <Tooltip
-                    content={
-                      fingerprintRowTarget(item) === null
-                        ? t('monitor.modelFingerprint.draftHint')
-                        : ''
-                    }
-                  >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      isDisabled={
-                        fingerprintRowTarget(item) === null || fingerprint.run.status === 'running'
-                      }
-                      onClick={() => fingerprintRow(item)}
-                      label={t('monitor.modelFingerprint.button')}
-                      xstyle={styles.probeButton}
-                    />
-                  </Tooltip>
-                )}
-              </div>
-            )}
-          />
+              )}
+            />
+          </div>
           <ModelProbeDialog
             open={probe.open}
             pending={probe.pending}
@@ -1316,14 +1334,7 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: '4px',
   },
-  testAliasLabel: {
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-meta)',
-  },
-  testAliasPending: {
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-meta)',
-  },
+
   testAliasCode: {
     minWidth: 0,
     overflowWrap: 'anywhere',
@@ -1342,12 +1353,6 @@ const styles = stylex.create({
     color: 'var(--color-text-muted)',
     fontFamily: 'var(--font-mono)',
     fontSize: 'var(--text-meta)',
-  },
-  probeButton: {
-    paddingLeft: 0,
-    paddingRight: 0,
-    color: 'var(--color-action)',
-    fontSize: 'var(--text-meta)',
-    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
   },
 })

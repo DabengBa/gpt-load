@@ -83,8 +83,8 @@ traffic.
 - This feature owns test-alias discovery, single-entry route selection, and
   operator-facing attribution.
 - Ordinary client aliases continue to own shared traffic routing; test aliases
-  do not replace them, alter weights, or disable fallback behavior for ordinary
-  requests.
+  do not replace them, alter weights, or prevent ordinary requests from
+  switching candidates under the existing rules.
 - The feature does not change provider model IDs, provider pricing rules,
   credentials, request-log retention, or access-key permissions.
 - A test alias is a routing identifier, not a secret or an authorization

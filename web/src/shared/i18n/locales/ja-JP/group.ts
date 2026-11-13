@@ -125,9 +125,7 @@ export default {
     stale: 'バックグラウンド更新に失敗したため、グループ詳細が古い可能性があります。',
     backToGroups: 'グループ一覧に戻る',
     importCredentials: 'チャネル認証情報をインポート',
-    copyUpstreamUrl: 'アップストリームアドレス {url} をコピー',
-    copySuccess: 'コピーしました',
-    copyFailure: 'コピーできませんでした',
+
     openProviderUrl: 'プロバイダーサイト {url} を新しいタブで開く',
     modelEditor: {
       recoveryChecking:
@@ -172,6 +170,8 @@ export default {
       alias: 'クライアント別名',
       pricing: '価格設定',
       testAliasAndPricing: 'テスト別名 / 価格設定',
+      schedulingPricingActions: 'スケジュール / 価格 / 操作',
+      removeColumn: '削除',
       testAlias: 'テスト別名',
       testAliasPending: '保存後に生成',
       actions: '操作',
@@ -179,7 +179,7 @@ export default {
       clearSearch: 'モデル検索をクリア',
       aliasEnabledFor: '{id} の別名を有効化',
       aliasFor: '{id} のクライアント別名',
-      aliasPlaceholder: 'モデル別名を入力',
+      aliasPlaceholder: '任意。空欄ならモデル ID を使用',
       aliasRequired: '別名を有効にする場合はクライアント別名を入力してください',
       removeFor: 'モデル {id} を削除',
       manualId: 'モデル ID を追加',
@@ -388,7 +388,7 @@ export default {
         providerUrlError:
           '認証情報やフラグメントを含まない、有効な HTTP または HTTPS のプロバイダーサイト URL を入力してください。',
         providerUrlHelp:
-          '任意。グループ詳細ヘッダーに外部リンクとして表示され、リクエストの送信先は変わりません。',
+          '任意。保存した公式サイトをここから開けます。リクエストの送信先は変わりません。',
         paramRequired: '{field} を入力してください。',
         weight: 'グループ手動ウェイト',
         auto: '自動',
@@ -401,7 +401,7 @@ export default {
       },
       runtime: {
         title: 'ランタイム上書き',
-        description: '継承値はグローバル設定に従い、グループ上書きは疎なまま保持されます。',
+
         first_byte_timeout: 'ネイティブ応答 / ストリーム初回イベントのタイムアウト',
         request_timeout: 'リクエストタイムアウト',
         stream_idle_timeout: 'ストリームアイドルタイムアウト',
@@ -576,6 +576,7 @@ export default {
         cooldown: 'クールダウン終了時に回復',
         scheduled_release: 'ローカルのブラックリスト遅延後に復帰',
         manual: '手動回復が必要',
+        groupDisabled: 'グループを有効にして認証情報の状態を確認',
         at: '{time} に自動回復',
       },
       failure: {

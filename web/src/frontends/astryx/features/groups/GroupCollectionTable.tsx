@@ -236,7 +236,7 @@ export function GroupCollectionTable({
       {
         key: 'group',
         header: t('groups.collection.columns.group'),
-        width: narrowViewport ? pixel(120) : proportional(1),
+        width: narrowViewport ? pixel(120) : proportional(1.3),
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.nameCell)}>
             <RouteLink
@@ -389,7 +389,7 @@ export function GroupCollectionTable({
       {
         key: 'credentialHealth',
         header: t('groups.collection.columns.credentialHealth'),
-        width: proportional(1.2),
+        width: proportional(narrowViewport ? 1.2 : 1),
         renderCell: (group): ReactNode => (
           <span {...stylex.props(styles.credentialCell)}>
             <span

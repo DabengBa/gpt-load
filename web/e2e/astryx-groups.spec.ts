@@ -162,7 +162,11 @@ interface LastQuery {
 // Server-mirroring collection mock: applies the shared filter/sort/page
 // contract to the fixture so the test observes what the route actually
 // sent, not a canned page.
-async function mockCollection(page: Page, groups: FixtureGroup[]) {
+async function mockCollection(
+  page: Page,
+  groups: FixtureGroup[],
+  principalType: 'admin' | 'access_key' = 'admin',
+) {
   const seen: LastQuery[] = []
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
@@ -177,7 +181,7 @@ async function mockCollection(page: Page, groups: FixtureGroup[]) {
         body: JSON.stringify({
           code: 0,
           message: 'ok',
-          data: { authenticated: true, principal_type: 'admin' },
+          data: { authenticated: true, principal_type: principalType },
         }),
       })
       return
@@ -322,6 +326,28 @@ function collectionTable(page: Page) {
   return page.getByRole('table', { name: 'Group list' })
 }
 
+test('group table centers single-line headers beside a wrapped header', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockCollection(page, makeGroups(3))
+  await page.goto('/groups')
+  const headers = collectionTable(page).getByRole('columnheader')
+  await expect(headers.first()).toBeVisible()
+  // Exercise mixed line counts without changing any saved data or translations.
+  await headers.first().evaluate((cell) => cell.append(document.createElement('br'), 'Second line'))
+  const geometry = await headers.nth(1).evaluate((cell) => {
+    const range = document.createRange()
+    range.selectNodeContents(cell)
+    const text = range.getBoundingClientRect()
+    const box = cell.getBoundingClientRect()
+    return {
+      alignment: getComputedStyle(cell).verticalAlign,
+      delta: text.top + text.height / 2 - (box.top + box.height / 2),
+    }
+  })
+  expect(geometry.alignment).toBe('middle')
+  expect(Math.abs(geometry.delta)).toBeLessThanOrEqual(1.5)
+})
+
 for (const width of [390, 1440]) {
   test(`list deletion confirms exact name and preserves collection URL at ${width}px`, async ({
     page,
@@ -421,19 +447,17 @@ for (const failure of ['server', 'reference'] as const) {
   })
 }
 
-test('populated collection exposes import, result count, and credential deep links', async ({
-  page,
-}) => {
+test('populated collection exposes global import and credential deep links', async ({ page }) => {
   await mockCollection(page, makeGroups(5))
   await page.goto('/groups', { waitUntil: 'load' })
   await expect(collectionTable(page)).toBeVisible()
   await page.screenshot({ path: test.info().outputPath('groups-desktop.png'), fullPage: true })
 
-  await expect(page.getByRole('link', { name: 'Import channel credentials' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: 'Import credentials', exact: true })).toHaveAttribute(
     'href',
     '/import',
   )
-  await expect(page.getByLabel('Filter Groups')).toContainText('Showing 5 / 5 Groups')
+  await expect(page.getByLabel('Filter Groups')).not.toContainText('Showing 5 / 5 Groups')
   // The actions column is icon-only (01313a16): the credential action is a
   // button that routes client-side, not an <a href>. Prove the deep link by
   // following it and asserting the exact route plus the credentials surface
@@ -566,6 +590,7 @@ test('renders summary chips, toolbar, and server-paginated rows', async ({ page 
   const table = collectionTable(page)
   await expect(table).toBeVisible()
   await expect(table.getByRole('row')).toHaveCount(101) // header + 100 rows
+  await expect(page.getByLabel('Filter Groups')).toContainText('Showing 100 / 150 Groups')
   await expect(seen.at(-1)).toMatchObject({ page: 1, page_size: 100 })
 })
 
@@ -591,9 +616,9 @@ test('search and status chip hit the server', async ({ page }) => {
   await expect(page).toHaveURL(/status=disabled/)
   await expect.poll(() => seen.at(-1)?.status).toBe('disabled')
 
-  // Reset clears criteria back to canonical defaults. Two resets render at
-  // this point (toolbar + no-results state); exercise the toolbar one.
-  await page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }).click()
+  // No-results recovery clears criteria back to canonical defaults.
+  await expect(page.getByRole('heading', { name: 'No Groups match these filters' })).toBeVisible()
+  await page.getByRole('button', { name: 'Reset filters' }).click()
   await expect(page).not.toHaveURL(/q=|status=/)
 })
 
@@ -691,7 +716,14 @@ test('empty and no-results states mirror the classic contract', async ({ page })
   await expect(
     page.getByRole('heading', { name: 'Start with your first channel Group' }),
   ).toBeVisible()
-  await expect(page.getByRole('link', { name: /Import channel credentials/ })).toBeVisible()
+  await expect(
+    page.locator('[data-content-panel] header').getByRole('button', { name: 'Reload' }),
+  ).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Import channel credentials' })).toHaveAttribute(
+    'href',
+    '/import',
+  )
+  await expect(page.getByRole('link', { name: 'Import credentials', exact: true })).toBeVisible()
 
   // Repopulate, then filter to zero matches: no-results + reset.
   await page.unrouteAll()
@@ -705,9 +737,142 @@ test('empty and no-results states mirror the classic contract', async ({ page })
   await expect.poll(() => seen2.at(-1)?.q).toBe('nothing-matches-this')
   await expect(page.getByRole('heading', { name: 'No Groups match these filters' })).toBeVisible()
 
-  // Two resets are on screen (toolbar + empty-state action); activate the
-  // empty-state one — it is the primary recovery affordance in this state.
-  await page.getByRole('button', { name: 'Reset filters' }).last().click()
+  await expect(page.getByRole('button', { name: 'Reset filters' })).toHaveCount(1)
+  await expect(
+    page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }),
+  ).toHaveCount(0)
+  await page.getByRole('button', { name: 'Reset filters' }).click()
   await expect(page).not.toHaveURL(/q=/)
   await expect(table.getByRole('row')).toHaveCount(9)
+})
+
+test('collection refresh remains available through loading, failure and recovery', async ({
+  page,
+}) => {
+  await mockCollection(page, makeGroups(5))
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let fail = true
+  await page.route('**/api/groups?*', async (route) => {
+    if (!fail) return route.fallback()
+    await gate
+    await route.fulfill({ status: 500, json: { code: 'INTERNAL_ERROR', message: 'failed' } })
+  })
+  await page.goto('/groups', { waitUntil: 'load' })
+  const reload = page.locator('[data-content-panel] header').getByRole('button', { name: 'Reload' })
+  try {
+    await expect(page.getByRole('status', { name: 'Loading Groups' })).toBeVisible()
+    await expect(reload).toBeVisible()
+  } finally {
+    release()
+  }
+  await expect(
+    page.getByRole('heading', { name: 'Groups are temporarily unavailable' }),
+  ).toBeVisible()
+  await expect(reload).toBeEnabled()
+  fail = false
+  await reload.click()
+  await expect(collectionTable(page)).toBeVisible()
+})
+
+test('collection title does not repeat the all-groups count', async ({ page }) => {
+  await mockCollection(page, makeGroups(5))
+  await page.goto('/groups', { waitUntil: 'load' })
+  await expect(collectionTable(page)).toBeVisible()
+  await expect(page.locator('#groups-title').locator('..').locator(':scope > *')).toHaveCount(1)
+  await expect(
+    page
+      .getByRole('region', { name: 'Group status overview' })
+      .getByRole('button', { name: /All/ }),
+  ).toContainText('5')
+})
+
+for (const width of [360, 1440]) {
+  test(`collection avoids duplicate controls at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockCollection(page, makeGroups(5))
+    await page.goto('/groups', { waitUntil: 'load' })
+    await expect(collectionTable(page)).toBeVisible()
+
+    await expect(page.getByRole('link', { name: 'Import credentials', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Import channel credentials' })).toHaveCount(0)
+    await expect(page.locator('#groups-title').locator('..').locator(':scope > *')).toHaveCount(1)
+    const summary = page.getByRole('region', { name: 'Group status overview' })
+    await expect(summary.getByRole('button', { name: /All/ })).toBeVisible()
+    await expect(
+      collectionTable(page).getByText('Available', { exact: true }).first(),
+    ).toBeVisible()
+    await expect(collectionTable(page).getByRole('switch').first()).toBeVisible()
+    await expect(page.getByLabel('Filter Groups')).not.toContainText('Showing 5 / 5 Groups')
+
+    await page.getByLabel('Search').fill('nothing-matches-this')
+    await expect(page.getByRole('heading', { name: 'No Groups match these filters' })).toBeVisible()
+    await expect(page.getByLabel('Filter Groups')).toContainText('Showing 0 / 0 Groups')
+    await expect(page.getByRole('button', { name: 'Reset filters' })).toHaveCount(1)
+    await expect(
+      page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }),
+    ).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.getByRole('button', { name: 'Reset filters' }).click()
+    await expect(collectionTable(page)).toBeVisible()
+
+    await page.getByLabel('Search').fill('Group 0001')
+    await expect(collectionTable(page).getByRole('row')).toHaveCount(2)
+    await expect(page.getByLabel('Filter Groups')).toContainText('Showing 1 / 1 Groups')
+    await expect(
+      page.getByLabel('Filter Groups').getByRole('button', { name: 'Reset filters' }),
+    ).toBeVisible()
+  })
+}
+
+for (const width of [360, 1440]) {
+  test(`compact collection controls preserve names and refresh at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const seen = await mockCollection(page, makeGroups(5))
+    await page.goto('/groups', { waitUntil: 'load' })
+    await expect(collectionTable(page)).toBeVisible()
+    const filters = page.getByRole('group', { name: 'Filter Groups' })
+    await expect(filters.getByLabel('Search')).toBeVisible()
+    await expect(filters.getByRole('combobox', { name: 'Sort' })).toBeVisible()
+    for (const label of ['Search', 'Sort']) {
+      const rect = await filters
+        .locator('label', { hasText: new RegExp(`^${label}$`) })
+        .boundingBox()
+      expect(rect && rect.width <= 1 && rect.height <= 1).toBe(true)
+    }
+    const summary = page.getByRole('region', { name: 'Group status overview' })
+    const reload = page.getByRole('button', { name: 'Reload', exact: true })
+    await expect(reload).toBeVisible()
+    await expect(
+      page.locator('[data-content-panel]').getByRole('button', { name: 'Reload' }),
+    ).toHaveCount(1)
+    const summaryRect = await summary.boundingBox()
+    const reloadRect = await reload.boundingBox()
+    expect(summaryRect && reloadRect && reloadRect.y < summaryRect.y + summaryRect.height).toBe(
+      true,
+    )
+    const previousRequests = seen.length
+    await reload.focus()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => seen.length).toBeGreaterThan(previousRequests)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.screenshot({
+      path: test.info().outputPath(`compact-groups-${width}.png`),
+      fullPage: true,
+    })
+  })
+}
+
+test('access keys cannot reach groups or import credentials', async ({ page }) => {
+  await mockCollection(page, makeGroups(5), 'access_key')
+  await page.goto('/groups', { waitUntil: 'load' })
+  await expect(page).not.toHaveURL(/\/groups/)
+  await expect(page.getByRole('link', { name: 'Import credentials', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Import channel credentials' })).toHaveCount(0)
 })

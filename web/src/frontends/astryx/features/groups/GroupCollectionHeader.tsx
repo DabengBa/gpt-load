@@ -1,40 +1,33 @@
 import * as stylex from '@stylexjs/stylex'
-import { Badge, Button, IconButton } from '@astryxdesign/core'
-import { KeyRound, RefreshCw } from 'lucide-react'
-import { useIntl } from 'react-intl'
-
-import { pagePath } from '@shared/routing/page-routes'
+import { IconButton } from '@astryxdesign/core'
+import { RefreshCw } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { useT } from '../../app/i18n'
 
-/**
- * Page heading plus the two collection-level actions. Import is only offered
- * once the collection has rows — an empty install gets the empty-state CTA
- * instead, so the same button never appears twice on screen.
- */
+/** Page heading and collection refresh action. */
 export function GroupCollectionHeader({
-  total,
   refreshing,
   refreshingLabel,
   onRefresh,
+  children,
 }: {
-  total: number | undefined
   refreshing: boolean
   refreshingLabel: string
   onRefresh(): void
+  children?: ReactNode
 }) {
   const t = useT()
-  const intl = useIntl()
 
   return (
     <>
       <header {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.heading)}>
-          <h1 id="groups-title" {...stylex.props(styles.title)}>
+          <h1 id="groups-title" data-shell-page-title {...stylex.props(styles.title)}>
             {t('groups.title')}
           </h1>
-          {total !== undefined && <Badge variant="neutral" label={intl.formatNumber(total)} />}
         </div>
+        {children && <div {...stylex.props(styles.summary)}>{children}</div>}
         <div {...stylex.props(styles.headerActions)}>
           <IconButton
             variant="ghost"
@@ -44,15 +37,6 @@ export function GroupCollectionHeader({
             isLoading={refreshing}
             onClick={onRefresh}
           />
-          {total !== undefined && total > 0 && (
-            <Button
-              variant="primary"
-              size="sm"
-              label={t('groups.collection.importCredentials')}
-              icon={<KeyRound size={15} />}
-              href={pagePath('import')}
-            />
-          )}
         </div>
       </header>
       <span aria-live="polite" {...stylex.props(styles.refreshing)}>
@@ -69,12 +53,13 @@ const styles = stylex.create({
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 'var(--space-2)',
-    paddingBottom: 'var(--space-2)',
   },
   heading: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--space-2)',
+    width: { default: 0, '@media (max-width: 860px)': '100%' },
+  },
+  summary: {
+    flex: '1 1 0',
+    minWidth: 0,
   },
   headerActions: {
     display: 'flex',

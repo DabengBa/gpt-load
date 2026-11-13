@@ -21,7 +21,7 @@ func TestSortExecutionRouteIndexOrdersByPriorityGroupAndUpstream(t *testing.T) {
 			execution.OperationChatCompletion: {
 				"shared": []RouteTarget{
 					{GroupID: 2, UpstreamModelID: "zeta", Mode: channel.RouteNative, EntryWeight: 40, Priority: 1},
-					{GroupID: 1, UpstreamModelID: "fallback", Mode: channel.RouteNative, EntryWeight: 20, Priority: 2},
+					{GroupID: 1, UpstreamModelID: "priority-2", Mode: channel.RouteNative, EntryWeight: 20, Priority: 2},
 					{GroupID: 1, UpstreamModelID: "beta", Mode: channel.RouteNative, EntryWeight: 10, Priority: 1},
 					{GroupID: 2, UpstreamModelID: "alpha", Mode: channel.RouteNative, EntryWeight: 30, Priority: 1},
 				},
@@ -36,7 +36,7 @@ func TestSortExecutionRouteIndexOrdersByPriorityGroupAndUpstream(t *testing.T) {
 		{GroupID: 1, UpstreamModelID: "beta", Mode: channel.RouteNative, EntryWeight: 10, Priority: 1},
 		{GroupID: 2, UpstreamModelID: "alpha", Mode: channel.RouteNative, EntryWeight: 30, Priority: 1},
 		{GroupID: 2, UpstreamModelID: "zeta", Mode: channel.RouteNative, EntryWeight: 40, Priority: 1},
-		{GroupID: 1, UpstreamModelID: "fallback", Mode: channel.RouteNative, EntryWeight: 20, Priority: 2},
+		{GroupID: 1, UpstreamModelID: "priority-2", Mode: channel.RouteNative, EntryWeight: 20, Priority: 2},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sorted targets = %#v, want %#v", got, want)
@@ -86,7 +86,7 @@ func TestCompileRouteIndexStructure(t *testing.T) {
 				{ID: 1, Name: "one", ChannelID: channel.OpenAICompatible,
 					Params: json.RawMessage(`{"base_url":"https://proxy.example/v1"}`), Enabled: true,
 					Models: []ModelConfig{
-						{ID: "fallback", Alias: "shared", Weight: intPointer(20), Priority: intPointer(2)},
+						{ID: "priority-2", Alias: "shared", Weight: intPointer(20), Priority: intPointer(2)},
 						{ID: "solo"},
 					}},
 			},
@@ -115,7 +115,7 @@ func TestCompileRouteIndexStructure(t *testing.T) {
 	}{
 		{groupID: 2, upstreamModelID: "alpha", entryWeight: 30, priority: 1},
 		{groupID: 2, upstreamModelID: "zeta", entryWeight: 40, priority: 1},
-		{groupID: 1, upstreamModelID: "fallback", entryWeight: 20, priority: 2},
+		{groupID: 1, upstreamModelID: "priority-2", entryWeight: 20, priority: 2},
 	}
 	if len(shared) != len(want) {
 		t.Fatalf("shared targets = %#v, want %d entries", shared, len(want))

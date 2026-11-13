@@ -15,6 +15,34 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 const now = 1730000000000
 const credentialsPath = '/settings?section=credentials'
 
+async function accessKeyFilterBounds(page: Page) {
+  const filters = page.getByRole('group', { name: 'Filter access keys' })
+  return filters.evaluate((filterGroup) => {
+    // The accessible input/button are inset inside their visible bordered controls.
+    const search = filterGroup.querySelector('.astryx-text-input')
+    const status = filterGroup.parentElement?.querySelector('.astryx-selector')
+    if (!search || !status) throw new Error('Access key filter controls not found')
+
+    // Read both rectangles in one frame: settings navigation can scroll the page.
+    const searchRect = search.getBoundingClientRect()
+    const statusRect = status.getBoundingClientRect()
+    return {
+      search: {
+        x: searchRect.x,
+        y: searchRect.y,
+        width: searchRect.width,
+        height: searchRect.height,
+      },
+      status: {
+        x: statusRect.x,
+        y: statusRect.y,
+        width: statusRect.width,
+        height: statusRect.height,
+      },
+    }
+  })
+}
+
 function accessKey(
   id: number,
   name: string,
@@ -408,6 +436,25 @@ test('applies search and status filters through the route query', async ({ page 
   await expectAstryxDocument(page)
   await expect(page.getByRole('table', { name: 'Access key list' })).toBeVisible()
 
+  const filters = page.getByRole('group', { name: 'Filter access keys' })
+  await expect(filters.getByRole('textbox', { name: 'Search' })).toBeVisible()
+  for (const label of await filters.locator('label').all()) {
+    expect((await label.boundingBox())?.height ?? 0).toBeLessThanOrEqual(1)
+  }
+  const status = page.getByRole('combobox', { name: 'Access key status overview' })
+  await expect(status).toContainText('All (2)')
+  await expect(page.getByText('Current access keys', { exact: true })).toHaveCount(0)
+  const statusLabel = page.locator('label').filter({ hasText: /^Access key status overview$/ })
+  for (const label of await statusLabel.all()) {
+    expect((await label.boundingBox())?.height ?? 0).toBeLessThanOrEqual(1)
+  }
+  const { search, status: statusControl } = await accessKeyFilterBounds(page)
+  expect(search.width).toBeGreaterThan(0)
+  expect(statusControl.width).toBeGreaterThan(0)
+  expect(Math.abs(search.y - statusControl.y)).toBeLessThan(1)
+  expect(Math.abs(search.height - statusControl.height)).toBeLessThan(1)
+  expect(search.x).toBeGreaterThanOrEqual(statusControl.x + statusControl.width)
+
   await page.getByRole('textbox', { name: 'Search' }).fill('prod')
   await expect(page).toHaveURL(/[?&]q=prod/)
 
@@ -418,6 +465,23 @@ test('applies search and status filters through the route query', async ({ page 
   const last = requests.collectionQueries.at(-1)
   expect(last?.get('q')).toBe('prod')
   expect(last?.get('status')).toBe('disabled')
+})
+
+test('stacks access key filters without overflow on narrow screens', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await mockAccessKeys(page)
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('combobox', { name: 'Access key status overview' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Search' })).toBeVisible()
+
+  const { search, status } = await accessKeyFilterBounds(page)
+  expect(status.width).toBeGreaterThan(0)
+  expect(search.width).toBeGreaterThan(0)
+  expect(search.y).toBeGreaterThanOrEqual(status.y + status.height)
+  expect(Math.abs(search.x - status.x)).toBeLessThan(1)
+  expect(Math.abs(search.width - status.width)).toBeLessThan(1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
 })
 
 test('clearing a specified expiration selects never expires', async ({ page }) => {

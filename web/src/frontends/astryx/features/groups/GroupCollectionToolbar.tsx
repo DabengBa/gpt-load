@@ -23,6 +23,7 @@ export function GroupCollectionToolbar({
   sortOptions,
   itemsShown,
   totalItems,
+  showResult,
   hasChangedConditions,
   onSearchChange,
   onSortChange,
@@ -33,6 +34,7 @@ export function GroupCollectionToolbar({
   sortOptions: GroupSortOption[]
   itemsShown: readonly unknown[]
   totalItems: number
+  showResult: boolean
   hasChangedConditions: boolean
   onSearchChange(value: string): void
   onSortChange(value: string): void
@@ -51,6 +53,7 @@ export function GroupCollectionToolbar({
         <TextInput
           size="sm"
           label={t('groups.collection.filters.searchLabel')}
+          isLabelHidden
           placeholder={t('groups.collection.filters.searchPlaceholder')}
           startIcon={<Search size={14} />}
           value={searchDraft}
@@ -63,27 +66,32 @@ export function GroupCollectionToolbar({
           size="sm"
           variant="input"
           label={t('groups.collection.filters.sortLabel')}
+          isLabelHidden
           options={sortOptions}
           value={sort}
           onChange={onSortChange}
         />
       </div>
-      <div {...stylex.props(styles.toolbarResult)}>
-        <span aria-live="polite">
-          {t('groups.collection.result', {
-            shown: intl.formatNumber(itemsShown.length),
-            total: intl.formatNumber(totalItems),
-          })}
-        </span>
-        {hasChangedConditions && (
-          <Button
-            variant="ghost"
-            size="sm"
-            label={t('groups.collection.filters.reset')}
-            onClick={onReset}
-          />
-        )}
-      </div>
+      {(showResult || hasChangedConditions) && (
+        <div {...stylex.props(styles.toolbarResult)}>
+          {showResult && (
+            <span aria-live="polite">
+              {t('groups.collection.result', {
+                shown: intl.formatNumber(itemsShown.length),
+                total: intl.formatNumber(totalItems),
+              })}
+            </span>
+          )}
+          {hasChangedConditions && (
+            <Button
+              variant="ghost"
+              size="sm"
+              label={t('groups.collection.filters.reset')}
+              onClick={onReset}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }

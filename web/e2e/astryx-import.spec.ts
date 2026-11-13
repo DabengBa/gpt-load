@@ -508,6 +508,12 @@ test('adds the first manual model from the empty import form', async ({ page }) 
   await page.getByRole('button', { name: 'Add model', exact: true }).click()
   await expect(page.locator('[data-model-id-index="1"]')).toBeVisible()
   await page.locator('[data-model-id-index="1"]').fill('ux-second-model')
+  const firstAlias = page.getByLabel('Alias for ux-first-model')
+  const secondAlias = page.getByLabel('Alias for ux-second-model')
+  await expect(firstAlias).toBeVisible()
+  await expect(page.getByLabel('Enable an alias for ux-first-model')).toHaveCount(0)
+  await firstAlias.fill('  public-first  ')
+  await secondAlias.fill('   ')
   const weight = page.locator('[data-model-weight-index="0"]')
   const priority = page.locator('[data-model-priority-index="0"]')
   await expect(weight).toHaveValue('1')
@@ -526,8 +532,8 @@ test('adds the first manual model from the empty import form', async ({ page }) 
   await expect.poll(() => requests.createBodies.length).toBe(1)
   expect(requests.createBodies[0]).toMatchObject({
     models: [
-      { id: 'ux-first-model', weight: 9, priority: 2 },
-      { id: 'ux-second-model', weight: null, priority: null },
+      { id: 'ux-first-model', alias: 'public-first', alias_enabled: true, weight: 9, priority: 2 },
+      { id: 'ux-second-model', alias: '', alias_enabled: false, weight: null, priority: null },
     ],
   })
 })

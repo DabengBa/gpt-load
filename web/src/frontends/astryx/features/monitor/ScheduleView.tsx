@@ -371,7 +371,7 @@ export function ScheduleView() {
         recoverFailed: t('monitor.schedule.detail.recoverFailed'),
         noEntries: t('monitor.schedule.detail.noEntries'),
         unknownReason: t('monitor.schedule.detail.unknownReason'),
-        draftPreview: t('monitor.schedule.detail.draftPreview'),
+
         reasonLabels: Object.fromEntries(
           scheduleReasonCodes.map((code) => [
             code,
@@ -386,7 +386,7 @@ export function ScheduleView() {
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="schedule-title">
       <div {...stylex.props(styles.sheet)} data-testid="schedule-page">
-        <h1 id="schedule-title" {...stylex.props(styles.title)}>
+        <h1 id="schedule-title" data-shell-page-title {...stylex.props(styles.title)}>
           {t('shell.schedule')}
         </h1>
         {isAdmin && isCanonicalQuery && (

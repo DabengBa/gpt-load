@@ -270,7 +270,7 @@ export default {
         weight: 'ウェイト',
         priority: '優先度',
         share: '同優先度の設定比率',
-        status: '保存済み調度資格',
+        status: '状態',
         schedulable: '調度可能',
         entryHealth: 'エントリの健全性',
         enableEntry: 'エントリを有効化',
@@ -303,6 +303,8 @@ export default {
         toggleFailed: 'エントリの有効状態を更新できません。',
         calls24h: 'グループ24h要求',
         successRate24h: 'グループ24h成功率',
+        group24h: 'グループ 24h',
+        callsSuccessRate: 'リクエスト / 成功率',
         reasoning: '推論ポリシー',
         inherit: '未設定',
         advanced: '詳細設定',
@@ -347,7 +349,7 @@ export default {
         entry_blacklisted: 'ルートエントリはブラックリスト登録中です',
         entry_cooldown: 'ルートエントリはクールダウン中です',
         entry_weight_zero: 'ルートエントリのウェイトがゼロです',
-        tier_demoted: 'スタンバイ優先度レイヤーで待機中です',
+        tier_demoted: 'スケジュール可能',
       },
     },
     logs: {
@@ -374,8 +376,7 @@ export default {
       filters: {
         label: 'リクエストログのフィルター',
         timeRange: '時間範囲',
-        appliedTimeRange: '適用中の時間範囲：{from} – {to}',
-        shortcutsHelp: 'ショートカットは下書きのみ変更します。「適用」で結果を更新します。',
+
         from: '開始時刻',
         to: '終了時刻',
         quickRanges: 'クイック時間範囲',
@@ -458,7 +459,7 @@ export default {
         lastRefreshed: '最終成功更新',
         remove: 'フィルター {value} を削除',
         advancedTitle: 'その他のフィルター',
-        advancedDescription: 'リクエスト、再試行、最終結果、数値範囲で絞り込みます。',
+
         closeAdvanced: 'その他のフィルターを閉じる',
         sections: {
           request: 'リクエスト',

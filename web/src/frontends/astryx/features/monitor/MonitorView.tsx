@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
-import { Button } from '@astryxdesign/core'
+
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { RefreshCw } from 'lucide-react'
+
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { pagePath } from '@shared/routing/page-routes'
@@ -29,13 +29,7 @@ const styles = stylex.create({
       '@media (max-width: 800px)': 'var(--space-3)',
     },
   },
-  headerRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 'var(--space-2)',
-  },
+
   title: {
     margin: 0,
     fontSize: 'var(--text-title)',
@@ -97,22 +91,17 @@ export function MonitorView() {
 
   return (
     <section {...stylex.props(styles.page)} aria-labelledby="monitor-title">
-      <div {...stylex.props(styles.headerRow)}>
-        <h1 id="monitor-title" {...stylex.props(styles.title)}>
-          {t('monitor.title')}
-        </h1>
+      <h1 id="monitor-title" data-shell-page-title {...stylex.props(styles.title)}>
+        {t('monitor.title')}
+      </h1>
 
-        <Button
-          variant="secondary"
-          size="sm"
-          isLoading={usageRefreshPending}
-          icon={<RefreshCw size={14} aria-hidden />}
-          label={t('monitor.usage.filters.refresh')}
-          onClick={() => void refreshUsage()}
+      {isCanonicalQuery && (
+        <UsageTab
+          handleRef={usageTabRef}
+          refreshPending={usageRefreshPending}
+          onRefresh={() => void refreshUsage()}
         />
-      </div>
-
-      {isCanonicalQuery && <UsageTab handleRef={usageTabRef} />}
+      )}
     </section>
   )
 }

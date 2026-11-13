@@ -363,7 +363,6 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const modelValidationSummary = [
     modelConflicts.length ? t('import.models.conflictSummary') : '',
     modelValidity.emptyIDIndexes.size ? t('import.models.manualIdRequired') : '',
-    modelValidity.emptyAliasIndexes.size ? t('import.models.emptyAliasSummary') : '',
   ]
     .filter(Boolean)
     .join(' · ')
@@ -493,10 +492,8 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     search: t('import.models.search'),
     searchLabel: t('import.models.searchLabel'),
     clearSearch: t('import.models.clearSearch'),
-    aliasEnabledFor: (id) => t('import.models.aliasEnabledFor', { id }),
     aliasFor: (id) => t('import.models.aliasFor', { id }),
     aliasPlaceholder: t('import.models.aliasPlaceholder'),
-    aliasRequired: t('import.models.aliasRequired'),
     removeFor: (id) => t('import.models.removeFor', { id }),
     manualId: t('import.models.manualId'),
     manualIdRequired: t('import.models.manualIdRequired'),

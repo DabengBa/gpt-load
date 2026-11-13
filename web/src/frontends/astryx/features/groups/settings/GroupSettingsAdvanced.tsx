@@ -132,9 +132,7 @@ export function GroupSettingsAdvanced({
           <section id="settings-runtime" {...stylex.props(styles.section)}>
             <header>
               <h3 {...stylex.props(styles.sectionTitle)}>{t('group.settings.sections.runtime')}</h3>
-              <p {...stylex.props(styles.sectionDescription)}>
-                {t('group.settings.runtime.description')}
-              </p>
+
             </header>
             <div {...stylex.props(styles.runtime)}>
               <SettingRow

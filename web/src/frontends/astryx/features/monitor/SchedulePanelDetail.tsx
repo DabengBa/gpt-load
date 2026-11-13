@@ -1,7 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
 import { AlertDialog, Button, Popover, Selector } from '@astryxdesign/core'
-import { TriangleAlert } from 'lucide-react'
+import { Ellipsis, TriangleAlert } from 'lucide-react'
 import {
+  Fragment,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -103,10 +104,12 @@ export interface SchedulePanelDetailLabels {
   noEntries: string
   unknownReason?: string
   reasonLabels?: Partial<Record<string, string>>
-  draftPreview?: string
+
   toggleFailed?: string
   calls24h?: string
   successRate24h?: string
+  group24h?: string
+  callsSuccessRate?: string
   reasoning: string
   inherit: string
 }
@@ -243,16 +246,15 @@ const styles = stylex.create({
     borderStyle: 'solid',
     borderColor: 'var(--color-border-subtle)',
   },
-  table: { minWidth: { default: 800, [narrow]: 0 } },
+  table: { minWidth: { default: 992, [narrow]: 0 } },
   row: {
     display: 'grid',
     gridTemplateColumns: {
       // The actions track must fit switch + recovery + More (115px of controls
       // plus two 5px gaps) because it is right-aligned and would otherwise spill
       // leftwards over the share value.
-      default: 'minmax(120px, 1.6fr) 130px 100px minmax(194px, 1.2fr) 90px 128px',
-      '@media (min-width: 768px) and (max-width: 1199px)':
-        'minmax(100px, 1.3fr) 130px 90px minmax(194px, 1fr) 90px 128px',
+      default:
+        'minmax(212px, 2fr) minmax(110px, .7fr) minmax(140px, .7fr) 238px minmax(90px, .6fr) 128px',
       [narrow]: 'minmax(0, 1fr) minmax(0, 1fr) 148px',
     },
     gridTemplateAreas: {
@@ -278,25 +280,64 @@ const styles = stylex.create({
     zIndex: 1,
     top: 0,
     minHeight: 42,
+    alignItems: 'center',
     backgroundColor: 'var(--color-surface-sunken)',
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-meta)',
+    borderBottomWidth: 0,
   },
-  headerCell: { minWidth: 0, fontWeight: 600 },
-  rowDisabled: {
-    boxShadow: 'inset 3px 0 var(--color-text-muted)',
+  priorityGroup: {
+    display: 'flex',
+    minHeight: 28,
+    boxSizing: 'border-box',
+    alignItems: 'center',
+    gap: 10,
+    paddingBlock: 4,
+    paddingInline: { default: 12, [narrow]: 10 },
+
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--text-meta)',
+    fontWeight: 600,
+    lineHeight: 1.35,
   },
+  priorityRule: {
+    flex: '1',
+    height: 1,
+    backgroundColor: 'var(--color-border-subtle)',
+  },
+  headerCell: { minWidth: 0, fontWeight: 600, lineHeight: 1.35 },
+  headerCentered: { textAlign: 'center', justifyContent: 'center' },
 
   cell: { minWidth: 0, color: 'var(--color-text)', fontSize: 'var(--text-body)' },
   identity: { gridArea: 'identity' },
-  statusCell: { gridArea: 'status', textAlign: { default: 'left', [narrow]: 'right' } },
+  statusCell: { gridArea: 'status', textAlign: { default: 'center', [narrow]: 'right' } },
   eligibility: {
-    display: 'block',
+    display: 'inline-block',
+    maxWidth: '100%',
+    paddingBlock: 2,
+    paddingInline: 7,
+    borderRadius: 'var(--radius-tag)',
     fontWeight: 600,
     fontSize: 'var(--text-meta)',
     lineHeight: 1.3,
     overflowWrap: 'anywhere',
+    textAlign: 'left',
+    '::before': {
+      content: '""',
+      display: 'inline-block',
+      width: 6,
+      height: 6,
+      marginInlineEnd: 5,
+      borderRadius: '50%',
+      backgroundColor: 'currentColor',
+      verticalAlign: 'middle',
+    },
   },
+  statusAvailable: { color: 'var(--color-success)', backgroundColor: 'var(--color-success-bg)' },
+  statusDisabled: { color: 'var(--color-neutral-fg)', backgroundColor: 'var(--color-neutral-bg)' },
+  statusWarningBadge: { color: 'var(--color-warning)', backgroundColor: 'var(--color-warning-bg)' },
+  statusAttention: { color: 'var(--color-warning)' },
+  disabledContent: { color: 'var(--color-text-muted)', fontWeight: 500 },
   cellStrong: {
     display: 'block',
     overflowWrap: 'anywhere',
@@ -327,6 +368,7 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
     alignItems: 'center',
     flexWrap: 'wrap',
+    textAlign: { default: 'center', [narrow]: 'left' },
   },
   metricValue: { fontWeight: 500, whiteSpace: 'nowrap' },
   metricLabel: {
@@ -341,15 +383,17 @@ const styles = stylex.create({
     display: 'grid',
     minWidth: 0,
     gridTemplateColumns: {
-      default: '44px 48px minmax(82px, 1fr)',
+      default: '54px 48px 112px',
       [narrow]: 'minmax(56px, .8fr) minmax(56px, .8fr) minmax(100px, 1.5fr)',
     },
-    gap: 6,
+    gap: 12,
   },
   settingsHead: {
+    gridArea: 'settings',
     display: 'grid',
-    gridTemplateColumns: '44px 48px minmax(82px, 1fr)',
-    gap: 6,
+    gridTemplateColumns: '54px 48px 112px',
+    alignItems: 'center',
+    gap: 12,
     minWidth: 0,
   },
   controlGroup: {
@@ -372,13 +416,28 @@ const styles = stylex.create({
     gridArea: 'share',
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 600,
-    textAlign: { default: 'left', [narrow]: 'right' },
+    textAlign: { default: 'center', [narrow]: 'right' },
   },
   shareLabel: {
     display: { default: 'none', [narrow]: 'inline' },
     color: 'var(--color-text-muted)',
     fontWeight: 400,
     fontSize: 'var(--text-meta)',
+  },
+  shareTrack: {
+    height: 4,
+    maxWidth: 90,
+    marginTop: 4,
+    marginInline: { default: 'auto', [narrow]: '0' },
+    marginInlineStart: { [narrow]: 'auto' },
+    overflow: 'hidden',
+    borderRadius: 2,
+    backgroundColor: 'var(--color-border-subtle)',
+  },
+  shareFill: {
+    height: '100%',
+    backgroundColor: 'var(--color-action)',
+    borderRadius: 2,
   },
   actions: {
     gridArea: 'actions',
@@ -393,6 +452,11 @@ const styles = stylex.create({
     minHeight: { default: 30, [narrow]: 44, [touch]: 44 },
     fontSize: 'var(--text-meta)',
     flexShrink: 0,
+  },
+  probeAction: {
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'var(--color-border-control)',
   },
   selector: { minWidth: 0, width: '100%', minHeight: { default: 32, [narrow]: 44, [touch]: 44 } },
   menu: { display: 'grid', gap: 12, minWidth: 0, padding: 4 },
@@ -426,7 +490,7 @@ const styles = stylex.create({
     height: 18,
     padding: 2,
     borderRadius: 12,
-    backgroundColor: 'var(--color-border-control)',
+    backgroundColor: 'var(--color-text-muted)',
   },
   toggleTrackOn: { backgroundColor: 'var(--color-action)' },
   toggleThumb: {
@@ -1308,33 +1372,46 @@ export function SchedulePanelDetail({
             </div>
           ) : (
             <div ref={scheduleTableRef} {...stylex.props(styles.tableWrap)}>
-              {hasScheduleDraft && (
-                <span {...stylex.props(styles.cellSmall)}>{text('draftPreview')}</span>
-              )}
-              <div role="table" aria-label={text('title')} {...stylex.props(styles.table)}>
+              <div
+                role="table"
+                aria-label={text('title')}
+                data-schedule-candidates
+                {...stylex.props(styles.table)}
+              >
                 <div role="row" {...stylex.props(styles.row, styles.rowHeader)}>
                   <div role="columnheader" {...stylex.props(styles.headerCell, styles.identity)}>
                     {text('upstreamModel')} / {text('group')}
                   </div>
-                  <div role="columnheader" {...stylex.props(styles.headerCell, styles.statusCell)}>
+                  <div
+                    role="columnheader"
+                    {...stylex.props(styles.headerCell, styles.statusCell, styles.headerCentered)}
+                  >
                     {text('status')}
-                  </div>
-                  <div role="columnheader" {...stylex.props(styles.headerCell, styles.metrics)}>
-                    <span>{text('calls24h')}</span>
-                    <span>{text('successRate24h')}</span>
                   </div>
                   <div
                     role="columnheader"
-                    {...stylex.props(styles.headerCell, styles.settingsHead)}
+                    {...stylex.props(styles.headerCell, styles.metrics, styles.headerCentered)}
+                  >
+                    <span>{text('group24h')}</span> <span>{text('callsSuccessRate')}</span>
+                  </div>
+                  <div
+                    role="columnheader"
+                    {...stylex.props(styles.headerCell, styles.settingsHead, styles.headerCentered)}
                   >
                     <span>{text('priority')}</span>
                     <span>{text('weight')}</span>
                     <span>{text('reasoning')}</span>
                   </div>
-                  <div role="columnheader" {...stylex.props(styles.headerCell, styles.cellShare)}>
+                  <div
+                    role="columnheader"
+                    {...stylex.props(styles.headerCell, styles.cellShare, styles.headerCentered)}
+                  >
                     {text('share')}
                   </div>
-                  <div role="columnheader" {...stylex.props(styles.headerCell, styles.actions)}>
+                  <div
+                    role="columnheader"
+                    {...stylex.props(styles.headerCell, styles.actions, styles.headerCentered)}
+                  >
                     {t('monitor.schedule.detail.actions')}
                   </div>
                 </div>
@@ -1351,273 +1428,346 @@ export function SchedulePanelDetail({
                       ? 'entry_disabled'
                       : entry.reason_code
                   const eligibility =
-                    reason !== null
-                      ? (labels.reasonLabels?.[reason] ?? text('unknownReason'))
-                      : entry.routable
-                        ? t('monitor.schedule.detail.schedulable')
-                        : text('unknownReason')
+                    reason === 'entry_disabled' && enabled
+                      ? text('unknownReason')
+                      : reason !== null
+                        ? (labels.reasonLabels?.[reason] ?? text('unknownReason'))
+                        : entry.routable
+                          ? t('monitor.schedule.detail.schedulable')
+                          : text('unknownReason')
                   const toggleLabel = `${t(enabled ? 'monitor.schedule.detail.disableEntry' : 'monitor.schedule.detail.enableEntry')} ${rowLabel}`
+                  const displayedShare = (shareValue(group.group_id, entry) * 100).toFixed(1)
                   return (
-                    <div
-                      key={key}
-                      data-row-key={key}
-                      role="row"
-                      tabIndex={0}
-                      aria-selected={selectedRow === key}
-                      style={{
-                        backgroundColor:
-                          selectedRow === key
-                            ? 'var(--color-action-soft)'
-                            : rowChanged
-                              ? 'color-mix(in srgb, var(--color-action-soft) 35%, var(--color-surface))'
-                              : undefined,
-                      }}
-                      onClick={() => onRowChange(key)}
-                      onKeyDown={(event) => {
-                        if (
-                          event.target === event.currentTarget &&
-                          (event.key === 'Enter' || event.key === ' ')
-                        ) {
-                          event.preventDefault()
-                          onRowChange(key)
-                        }
-                      }}
-                      {...stylex.props(
-                        styles.row,
-                        (!group.enabled || !enabled) && styles.rowDisabled,
+                    <Fragment key={key}>
+                      {(index === 0 || rows[index - 1]?.entry.priority !== entry.priority) && (
+                        <div
+                          role="row"
+                          data-priority-group={entry.priority}
+                          style={{
+                            backgroundColor:
+                              'color-mix(in srgb, var(--color-surface-sunken) 55%, var(--color-surface))',
+                          }}
+                          {...stylex.props(styles.priorityGroup)}
+                        >
+                          <span role="rowheader" aria-colspan={6}>
+                            {text('priority')} {entry.priority}
+                          </span>
+                          <span aria-hidden="true" {...stylex.props(styles.priorityRule)} />
+                        </div>
                       )}
-                    >
-                      <div role="cell" {...stylex.props(styles.cell, styles.identity)}>
-                        <strong {...stylex.props(styles.cellStrong)}>{entry.model_id}</strong>
-                        <RouteLink
-                          to={groupDetailHref(group.group_id)}
-                          {...stylex.props(styles.groupLink)}
+                      <div
+                        data-row-key={key}
+                        role="row"
+                        tabIndex={0}
+                        aria-selected={selectedRow === key}
+                        style={{
+                          backgroundColor:
+                            selectedRow === key
+                              ? 'var(--color-action-soft)'
+                              : rowChanged
+                                ? 'color-mix(in srgb, var(--color-action-soft) 35%, var(--color-surface))'
+                                : undefined,
+                        }}
+                        onClick={() => onRowChange(key)}
+                        onKeyDown={(event) => {
+                          if (
+                            event.target === event.currentTarget &&
+                            (event.key === 'Enter' || event.key === ' ')
+                          ) {
+                            event.preventDefault()
+                            onRowChange(key)
+                          }
+                        }}
+                        {...stylex.props(styles.row)}
+                      >
+                        <div role="cell" {...stylex.props(styles.cell, styles.identity)}>
+                          <strong
+                            {...stylex.props(
+                              styles.cellStrong,
+                              (!group.enabled || !enabled) && styles.disabledContent,
+                            )}
+                          >
+                            {entry.model_id}
+                          </strong>
+                          <RouteLink
+                            to={groupDetailHref(group.group_id)}
+                            {...stylex.props(styles.groupLink)}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {group.group_name}
+                          </RouteLink>
+                          {entry.alias !== '' &&
+                            entry.alias !== detail.external_model &&
+                            entry.alias !== entry.model_id && (
+                              <span {...stylex.props(styles.cellSmall)}>{entry.alias}</span>
+                            )}
+                          {derived && (
+                            <span {...stylex.props(styles.cellSmall)}>
+                              {text('derivedReadOnly')}
+                            </span>
+                          )}
+                        </div>
+                        <div role="cell" {...stylex.props(styles.cell, styles.statusCell)}>
+                          {eligibility !== null && (
+                            <span
+                              {...stylex.props(
+                                styles.eligibility,
+                                reason === 'group_disabled' ||
+                                  (reason === 'entry_disabled' && !enabled)
+                                  ? styles.statusDisabled
+                                  : (reason === null || reason === 'tier_demoted') && entry.routable
+                                    ? styles.statusAvailable
+                                    : styles.statusWarningBadge,
+                              )}
+                            >
+                              {eligibility}
+                            </span>
+                          )}
+                          {entry.runtime.state !== 'available' && (
+                            <span {...stylex.props(styles.cellSmall, styles.statusAttention)}>
+                              {t('monitor.schedule.detail.entryHealth')}:{' '}
+                              {entry.runtime.state === 'cooldown'
+                                ? text('cooldown')
+                                : text('blacklisted')}
+                            </span>
+                          )}
+                          {eligibility === null &&
+                            entry.runtime.state === 'available' &&
+                            entry.runtime.failure_count === 0 &&
+                            '—'}
+                          {entry.runtime.failure_count > 0 && (
+                            <span {...stylex.props(styles.cellSmall)}>
+                              {entry.runtime.failure_count} {text('failures')}
+                            </span>
+                          )}
+                        </div>
+                        <div role="cell" {...stylex.props(styles.cell, styles.metrics)}>
+                          <span {...stylex.props(styles.metricValue)}>
+                            <span {...stylex.props(styles.metricLabel)}>{text('calls24h')}</span>
+                            {formatCount(group.request_count)}
+                          </span>
+                          <span {...stylex.props(styles.metricValue, styles.metricRate)}>
+                            <span {...stylex.props(styles.metricLabel)}>
+                              {text('successRate24h')}
+                            </span>
+                            {group.request_count === 0 ? '—' : formatRate(group.success_rate)}
+                          </span>
+                        </div>
+                        <div
+                          role="cell"
+                          data-schedule-settings
+                          {...stylex.props(styles.cell, styles.settings)}
                           onClick={(event) => event.stopPropagation()}
                         >
-                          {group.group_name}
-                        </RouteLink>
-                        {entry.alias !== '' &&
-                          entry.alias !== detail.external_model &&
-                          entry.alias !== entry.model_id && (
-                            <span {...stylex.props(styles.cellSmall)}>{entry.alias}</span>
-                          )}
-                        {derived && (
-                          <span {...stylex.props(styles.cellSmall)}>{text('derivedReadOnly')}</span>
-                        )}
-                      </div>
-                      <div role="cell" {...stylex.props(styles.cell, styles.statusCell)}>
-                        <span {...stylex.props(styles.eligibility)}>{eligibility}</span>
-                        <span {...stylex.props(styles.cellSmall)}>
-                          {t('monitor.schedule.detail.entryHealth')}:{' '}
-                          {entry.runtime.state === 'available'
-                            ? text('available')
-                            : entry.runtime.state === 'cooldown'
-                              ? text('cooldown')
-                              : text('blacklisted')}
-                        </span>
-                        {entry.runtime.failure_count > 0 && (
-                          <span {...stylex.props(styles.cellSmall)}>
-                            {entry.runtime.failure_count} {text('failures')}
-                          </span>
-                        )}
-                      </div>
-                      <div role="cell" {...stylex.props(styles.cell, styles.metrics)}>
-                        <span {...stylex.props(styles.metricValue)}>
-                          <span {...stylex.props(styles.metricLabel)}>{text('calls24h')}</span>
-                          {formatCount(group.request_count)}
-                        </span>
-                        <span {...stylex.props(styles.metricValue, styles.metricRate)}>
-                          <span {...stylex.props(styles.metricLabel)}>
-                            {text('successRate24h')}
-                          </span>
-                          {group.request_count === 0 ? '—' : formatRate(group.success_rate)}
-                        </span>
-                      </div>
-                      <div
-                        role="cell"
-                        data-schedule-settings
-                        {...stylex.props(styles.cell, styles.settings)}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        {/* Priority then weight: one definition so the visible
+                          {/* Priority then weight: one definition so the visible
                             bounds and the accessible names cannot drift apart. */}
-                        {ROW_NUMBER_FIELDS.map((field) => (
-                          <div key={field} {...stylex.props(styles.controlGroup)}>
+                          {ROW_NUMBER_FIELDS.map((field) => (
+                            <div key={field} {...stylex.props(styles.controlGroup)}>
+                              <span aria-hidden {...stylex.props(styles.controlLabel)}>
+                                {text(field)}
+                              </span>
+                              <ScheduleNumberInput
+                                id={`${field}-${index}`}
+                                compact
+                                label={`${text(field)} ${rowLabel}`}
+                                value={inputValue(group.group_id, entry, field)}
+                                min={FIELD_BOUNDS[field].min}
+                                max={FIELD_BOUNDS[field].max}
+                                invalid={
+                                  invalidInputs[fieldKey(group.group_id, entry.entry_id, field)] ===
+                                  true
+                                }
+                                invalidMessage={text('invalidValue')}
+                                disabled={pending || derived}
+                                onChange={(value) => setInput(group.group_id, entry, field, value)}
+                              />
+                            </div>
+                          ))}
+                          <div {...stylex.props(styles.controlGroup)}>
                             <span aria-hidden {...stylex.props(styles.controlLabel)}>
-                              {text(field)}
+                              {text('reasoning')}
                             </span>
-                            <ScheduleNumberInput
-                              id={`${field}-${index}`}
-                              label={`${text(field)} ${rowLabel}`}
-                              value={inputValue(group.group_id, entry, field)}
-                              min={FIELD_BOUNDS[field].min}
-                              max={FIELD_BOUNDS[field].max}
-                              invalid={
-                                invalidInputs[fieldKey(group.group_id, entry.entry_id, field)] ===
-                                true
-                              }
-                              invalidMessage={text('invalidValue')}
-                              disabled={pending || derived}
-                              onChange={(value) => setInput(group.group_id, entry, field, value)}
+                            <Selector
+                              label={`${text('reasoning')} ${rowLabel}`}
+                              isLabelHidden
+                              size="sm"
+                              width="100%"
+                              controlXstyle={styles.selector}
+                              value={entryReasoningValue(group.group_id, entry)}
+                              options={reasoningOptionsFor(group, entry)}
+                              isDisabled={pending || derived}
+                              onChange={(value) => setEntryReasoning(group.group_id, entry, value)}
                             />
                           </div>
-                        ))}
-                        <div {...stylex.props(styles.controlGroup)}>
-                          <span aria-hidden {...stylex.props(styles.controlLabel)}>
-                            {text('reasoning')}
-                          </span>
-                          <Selector
-                            label={`${text('reasoning')} ${rowLabel}`}
-                            isLabelHidden
-                            size="sm"
-                            width="100%"
-                            controlXstyle={styles.selector}
-                            value={entryReasoningValue(group.group_id, entry)}
-                            options={reasoningOptionsFor(group, entry)}
-                            isDisabled={pending || derived}
-                            onChange={(value) => setEntryReasoning(group.group_id, entry, value)}
-                          />
                         </div>
-                      </div>
-                      <div role="cell" {...stylex.props(styles.cell, styles.cellShare)}>
-                        <span {...stylex.props(styles.shareLabel)}>{text('share')} </span>
-                        {`${(shareValue(group.group_id, entry) * 100).toFixed(1)}%`}
-                      </div>
-                      <div
-                        role="cell"
-                        {...stylex.props(styles.cell, styles.actions)}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={enabled}
-                          aria-label={toggleLabel}
-                          title={toggleLabel}
-                          disabled={pending || togglingEntries.has(key) || derived}
-                          {...stylex.props(styles.toggle)}
-                          onClick={() => {
-                            void toggleEntryEnabled(group.group_id, entry, !enabled)
-                          }}
+                        <div
+                          role="cell"
+                          {...stylex.props(
+                            styles.cell,
+                            styles.cellShare,
+                            (!group.enabled || !enabled) && styles.disabledContent,
+                          )}
                         >
-                          <span
-                            {...stylex.props(styles.toggleTrack, enabled && styles.toggleTrackOn)}
+                          <span {...stylex.props(styles.shareLabel)}>{text('share')} </span>
+                          {`${displayedShare}%`}
+                          <div
+                            data-share-track
+                            aria-hidden="true"
+                            {...stylex.props(styles.shareTrack)}
+                          >
+                            <div
+                              data-share-fill
+                              {...stylex.props(styles.shareFill)}
+                              style={{
+                                width: `${Math.min(100, Math.max(0, Number(displayedShare)))}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div
+                          role="cell"
+                          {...stylex.props(styles.cell, styles.actions)}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={enabled}
+                            aria-label={toggleLabel}
+                            title={toggleLabel}
+                            disabled={pending || togglingEntries.has(key) || derived}
+                            {...stylex.props(styles.toggle)}
+                            onClick={() => {
+                              void toggleEntryEnabled(group.group_id, entry, !enabled)
+                            }}
                           >
                             <span
-                              {...stylex.props(styles.toggleThumb, enabled && styles.toggleThumbOn)}
-                            />
-                          </span>
-                        </button>
-                        {needsRecovery ? (
-                          <Button
-                            label={text('recover')}
-                            isLoading={recovering === key}
-                            variant="secondary"
-                            size="sm"
-                            xstyle={styles.rowAction}
-                            isDisabled={pending || derived}
-                            onClick={() => {
-                              void recover(group.group_id, entry)
-                            }}
-                          />
-                        ) : (
-                          <Button
-                            label={t('monitor.modelProbe.button')}
-                            variant="secondary"
-                            size="sm"
-                            xstyle={styles.rowAction}
-                            isDisabled={pending || derived}
-                            onClick={() =>
-                              requestProbe(group.group_id, entry.model_id, !group.enabled)
-                            }
-                          />
-                        )}
-                        <Popover
-                          isOpen={menuRow === key}
-                          onOpenChange={(open) => setMenuRow(open ? key : null)}
-                          placement="below"
-                          alignment="end"
-                          width={300}
-                          label={t('monitor.schedule.detail.moreActions', {
-                            model: entry.model_id,
-                            group: group.group_name,
-                          })}
-                          closeButtonLabel={t('common.close')}
-                          content={
-                            <div
-                              {...stylex.props(styles.menu)}
-                              onClick={(event) => event.stopPropagation()}
+                              {...stylex.props(styles.toggleTrack, enabled && styles.toggleTrackOn)}
                             >
-                              <div {...stylex.props(styles.menuActions)}>
-                                <Button
-                                  label={t('modelPrices.matrix.heading')}
-                                  variant="secondary"
-                                  size="sm"
-                                  isDisabled={pending || onOpenPrice === undefined}
-                                  onClick={() => {
-                                    setMenuRow(null)
-                                    onOpenPrice(group.group_id, entry.model_id)
-                                  }}
-                                />
-                                {needsRecovery && (
+                              <span
+                                {...stylex.props(
+                                  styles.toggleThumb,
+                                  enabled && styles.toggleThumbOn,
+                                )}
+                              />
+                            </span>
+                          </button>
+                          {needsRecovery ? (
+                            <Button
+                              label={text('recover')}
+                              isLoading={recovering === key}
+                              variant="secondary"
+                              size="sm"
+                              xstyle={styles.rowAction}
+                              isDisabled={pending || derived}
+                              onClick={() => {
+                                void recover(group.group_id, entry)
+                              }}
+                            />
+                          ) : (
+                            <Button
+                              label={t('monitor.modelProbe.button')}
+                              variant="ghost"
+                              size="sm"
+                              xstyle={[styles.rowAction, styles.probeAction]}
+                              isDisabled={pending || derived}
+                              onClick={() =>
+                                requestProbe(group.group_id, entry.model_id, !group.enabled)
+                              }
+                            />
+                          )}
+                          <Popover
+                            isOpen={menuRow === key}
+                            onOpenChange={(open) => setMenuRow(open ? key : null)}
+                            placement="below"
+                            alignment="end"
+                            width={300}
+                            label={t('monitor.schedule.detail.moreActions', {
+                              model: entry.model_id,
+                              group: group.group_name,
+                            })}
+                            closeButtonLabel={t('common.close')}
+                            content={
+                              <div
+                                {...stylex.props(styles.menu)}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <div {...stylex.props(styles.menuActions)}>
                                   <Button
-                                    label={t('monitor.modelProbe.button')}
+                                    label={t('modelPrices.matrix.heading')}
                                     variant="secondary"
                                     size="sm"
-                                    isDisabled={pending || derived}
+                                    isDisabled={pending || onOpenPrice === undefined}
                                     onClick={() => {
                                       setMenuRow(null)
-                                      requestProbe(group.group_id, entry.model_id, !group.enabled)
+                                      onOpenPrice(group.group_id, entry.model_id)
                                     }}
                                   />
-                                )}
-                              </div>
-                              <div {...stylex.props(styles.menuField)}>
-                                <span>{t('monitor.schedule.detail.concurrencyLimit')}</span>
-                                <ScheduleNumberInput
-                                  id={`concurrency-${index}`}
-                                  label={`${t('monitor.schedule.detail.concurrencyLimit')} ${rowLabel}`}
-                                  value={inputValue(group.group_id, entry, 'concurrency_limit')}
-                                  placeholder={String(entry.concurrency_limit ?? 0)}
-                                  min={FIELD_BOUNDS.concurrency_limit.min}
-                                  max={FIELD_BOUNDS.concurrency_limit.max}
-                                  invalid={
-                                    invalidInputs[
-                                      fieldKey(group.group_id, entry.entry_id, 'concurrency_limit')
-                                    ] === true || draftMap[key]?.concurrency_limit === null
-                                  }
-                                  invalidMessage={t(
-                                    'monitor.schedule.detail.invalidConcurrencyLimit',
+                                  {needsRecovery && (
+                                    <Button
+                                      label={t('monitor.modelProbe.button')}
+                                      variant="secondary"
+                                      size="sm"
+                                      isDisabled={pending || derived}
+                                      onClick={() => {
+                                        setMenuRow(null)
+                                        requestProbe(group.group_id, entry.model_id, !group.enabled)
+                                      }}
+                                    />
                                   )}
-                                  disabled={pending || derived}
-                                  onChange={(value) =>
-                                    setInput(group.group_id, entry, 'concurrency_limit', value)
-                                  }
-                                />
-                                <span {...stylex.props(styles.menuHelp)}>
-                                  {t('monitor.schedule.detail.concurrencyHelp')}
-                                </span>
+                                </div>
+                                <div {...stylex.props(styles.menuField)}>
+                                  <span>{t('monitor.schedule.detail.concurrencyLimit')}</span>
+                                  <ScheduleNumberInput
+                                    id={`concurrency-${index}`}
+                                    label={`${t('monitor.schedule.detail.concurrencyLimit')} ${rowLabel}`}
+                                    value={inputValue(group.group_id, entry, 'concurrency_limit')}
+                                    placeholder={String(entry.concurrency_limit ?? 0)}
+                                    min={FIELD_BOUNDS.concurrency_limit.min}
+                                    max={FIELD_BOUNDS.concurrency_limit.max}
+                                    invalid={
+                                      invalidInputs[
+                                        fieldKey(
+                                          group.group_id,
+                                          entry.entry_id,
+                                          'concurrency_limit',
+                                        )
+                                      ] === true || draftMap[key]?.concurrency_limit === null
+                                    }
+                                    invalidMessage={t(
+                                      'monitor.schedule.detail.invalidConcurrencyLimit',
+                                    )}
+                                    disabled={pending || derived}
+                                    onChange={(value) =>
+                                      setInput(group.group_id, entry, 'concurrency_limit', value)
+                                    }
+                                  />
+                                  <span {...stylex.props(styles.menuHelp)}>
+                                    {t('monitor.schedule.detail.concurrencyHelp')}
+                                  </span>
+                                </div>
+                                <div {...stylex.props(styles.breaker)}>
+                                  <strong>{text('breakerRecovery')}</strong>
+                                  <span {...stylex.props(styles.cellSmall)}>
+                                    {breakerRecoveryLabel(entry)}
+                                  </span>
+                                </div>
                               </div>
-                              <div {...stylex.props(styles.breaker)}>
-                                <strong>{text('breakerRecovery')}</strong>
-                                <span {...stylex.props(styles.cellSmall)}>
-                                  {breakerRecoveryLabel(entry)}
-                                </span>
-                              </div>
-                            </div>
-                          }
-                        >
-                          <Button
-                            label={t('monitor.schedule.detail.more')}
-                            variant="ghost"
-                            size="sm"
-                            xstyle={styles.rowAction}
-                            isDisabled={pending}
-                            aria-label={`${t('monitor.schedule.detail.more')} ${rowLabel}`}
-                          />
-                        </Popover>
+                            }
+                          >
+                            <Button
+                              label={`${t('monitor.schedule.detail.more')} ${rowLabel}`}
+                              icon={<Ellipsis size={16} aria-hidden="true" />}
+                              isIconOnly
+                              variant="ghost"
+                              size="sm"
+                              xstyle={styles.rowAction}
+                              isDisabled={pending}
+                            />
+                          </Popover>
+                        </div>
                       </div>
-                    </div>
+                    </Fragment>
                   )
                 })}
               </div>
@@ -1669,12 +1819,6 @@ export function SchedulePanelDetail({
               </>
             }
           />
-          <details>
-            <summary {...stylex.props(styles.menuHelp)}>
-              {t('monitor.schedule.detail.rules')}
-            </summary>
-            <p {...stylex.props(styles.menuHelp)}>{t('monitor.schedule.detail.rulesHelp')}</p>
-          </details>
         </>
       ) : null}
 

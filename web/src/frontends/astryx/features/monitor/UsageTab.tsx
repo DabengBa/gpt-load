@@ -60,7 +60,15 @@ export interface UsageTabHandle {
   refresh(): Promise<void>
 }
 
-export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
+export function UsageTab({
+  handleRef,
+  refreshPending,
+  onRefresh,
+}: {
+  handleRef?: Ref<UsageTabHandle>
+  refreshPending: boolean
+  onRefresh(): void
+}) {
   const t = useT()
   const navigate = useNavigate()
   const { apiClient, authSession } = useAppServices()
@@ -225,6 +233,8 @@ export function UsageTab({ handleRef }: { handleRef?: Ref<UsageTabHandle> }) {
         onFieldChange={updateDraftField}
         onApply={() => void applyFilters()}
         onReset={() => void resetFilters()}
+        refreshPending={refreshPending}
+        onRefresh={onRefresh}
       />
 
       <ContentPanel>

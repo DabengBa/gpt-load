@@ -27,7 +27,7 @@
   <header class="topbar"><span class="brand">GPT-Load</span><nav class="nav" aria-label="现有导航位置示意"><span>首页</span><strong>分组</strong><span>调度中心</span><span>监控</span><span>请求日志</span><span>设置</span></nav></header>
   <main class="page">
     <header class="heading row spread"><div><p class="context">模型与别名 / gpt-6-astra / 测活</p><h1>按我的客户端调用，能正常完成吗？</h1></div><button type="button" id="reset">重置演示</button></header>
-    <div class="scenarios" aria-label="演示情境"><strong>演示情境</strong><button type="button" data-scenario="format" aria-pressed="true">请求格式差异</button><button type="button" data-scenario="alias" aria-pressed="false">别名与覆盖</button><button type="button" data-scenario="fallback" aria-pressed="false">回退后成功</button><button type="button" data-scenario="disconnect" aria-pressed="false">流式中断</button><button type="button" data-scenario="tools" aria-pressed="false">工具调用</button><button type="button" data-scenario="missing" aria-pressed="false">原文缺失</button><button type="button" data-scenario="free" aria-pressed="false">自由演练</button></div>
+    <div class="scenarios" aria-label="演示情境"><strong>演示情境</strong><button type="button" data-scenario="format" aria-pressed="true">请求格式差异</button><button type="button" data-scenario="alias" aria-pressed="false">别名与覆盖</button><button type="button" data-scenario="fallback" aria-pressed="false">切换候选后成功</button><button type="button" data-scenario="disconnect" aria-pressed="false">流式中断</button><button type="button" data-scenario="tools" aria-pressed="false">工具调用</button><button type="button" data-scenario="missing" aria-pressed="false">原文缺失</button><button type="button" data-scenario="free" aria-pressed="false">自由演练</button></div>
     <div class="scenario-guide"><p id="scenario-copy" class="small"></p><div class="row" id="scenario-actions"></div></div>
 
     <section id="view-ui" aria-label="测活方案">
@@ -79,11 +79,11 @@
         <tr><td>模型</td><td>分组内模型 ID</td><td>该条目的 test_alias</td><td>客户端原始模型 / 别名</td></tr>
         <tr><td>请求体 / 流式</td><td>固定短问题 / 非流式</td><td colspan="2">请求 JSON 为准；保留 tools、多轮内容与 stream</td></tr>
         <tr><td>参数覆盖</td><td>不经过普通参数覆盖</td><td>按 test_alias 匹配规则；可能与真实模型名不同</td><td>按客户端原始模型名匹配规则</td></tr>
-        <tr><td>调度 / 回退</td><td>单次直接执行</td><td>限定分组；仍遵守正常调度约束</td><td>正常权限、候选与重试预算</td></tr>
+        <tr><td>调度与重试</td><td>单次直接执行</td><td>限定分组；仍遵守正常调度约束</td><td>正常权限、候选与重试预算</td></tr>
         <tr><td>计量 / 健康</td><td>本地计量不适用；成功可恢复</td><td colspan="2">按普通请求处理，单独标记测试来源供筛选；不承诺无副作用</td></tr>
         <tr><td>结果</td><td>模板是否得到有效响应</td><td>该分组在本次请求下的结果</td><td>客户端结果 + 每个上游的独立结果</td></tr>
       </tbody></table></div>
-      <div class="decision"><h3>判定规则</h3><ul><li>收到 200 或第一个 token 不等于完成；必须获得对应协议的完整有效终态。</li><li>test_alias 更换了客户端模型名，权限过滤和参数覆盖可能因此不同；验证真实模型名时，使用“客户端路由”。</li><li>上游 503 后回退成功：客户端完成，第一条线路仍失败；中途已向客户端提交内容后，不拼接另一上游的答案。</li><li>有效工具调用不要求可见文本；只证明模型返回了工具请求，不代表工具执行或任务完成。</li><li>取消、流式断开与缺少终态显示“未完成”；日志缺失原文时不伪造重放。</li><li>示例路由最多尝试两个候选，每个一次；这不是项目当前默认重试配置。</li></ul></div>
+      <div class="decision"><h3>判定规则</h3><ul><li>收到 200 或第一个 token 不等于完成；必须获得对应协议的完整有效终态。</li><li>test_alias 更换了客户端模型名，权限过滤和参数覆盖可能因此不同；验证真实模型名时，使用“客户端路由”。</li><li>上游 503 后切换候选并成功：客户端完成，第一条线路仍失败；中途已向客户端提交内容后，不拼接另一上游的答案。</li><li>有效工具调用不要求可见文本；只证明模型返回了工具请求，不代表工具执行或任务完成。</li><li>取消、流式断开与缺少终态显示“未完成”；日志缺失原文时不伪造重放。</li><li>示例路由最多尝试两个候选，每个一次；这不是项目当前默认重试配置。</li></ul></div>
     </section>
 
     <section id="view-research" class="research" hidden aria-label="产品方案依据">
@@ -159,7 +159,7 @@
           s.events.push(s.legacy ? '固定 probe：不验证客户端访问密钥与别名' : '校验调用身份与模型访问范围');
           if (!s.legacy && c.access === 'denied') return complete(s,'failed','客户端无权调用','403 · 请求在网关终止，没有发往上游。','permission_denied');
           if (!s.legacy && b.model !== (c.scope === 'group' ? 'a7f2c9' : 'coding')) return complete(s,'failed','没有匹配的模型路由','此合成环境仅配置 a7f2c9（当前分组）与 coding（客户端路由）。','model_not_found');
-          s.title='已选择调用路径';s.detail=c.scope === 'group'?'限定 demo_packy；不向其他分组回退。':'coding → demo_packy / demo_backup，按示例策略调度。';
+          s.title='已选择调用路径';s.detail=c.scope === 'group'?'限定 demo_packy；不切换到其他分组。':'coding → demo_packy / demo_gateway，按示例策略调度。';
         } else if (s.phase === 3) {
           s.upstream = copy(b); s.upstream.model='gpt-6-astra';
           s.rules=[];
@@ -173,13 +173,13 @@
           const add=(group,http,outcome,ms)=>s.attempts.push({group,http,outcome,duration_ms:ms,request:copy(s.upstream)});
           if (c.protocol === 'responses' && !Array.isArray(b.input)) {
             add('demo_packy',400,'失败',1016);s.duration=1016;s.response='Input must be a list';
-            s.events.push('上游拒绝字符串 input；示例策略对此 400 不回退');
+            s.events.push('上游拒绝字符串 input；示例策略对此 400 不切换候选');
             return complete(s,'failed','请求格式不兼容','此模拟上游只接受 input 列表；不代表所有 Responses 服务都要求列表。','upstream_error');
           }
           if (c.fault === 'fallback') {
             add('demo_packy',503,'失败',310);s.events.push('demo_packy 返回 503，尚未向客户端提交内容');
             if (c.scope === 'group') {s.duration=310;s.response='Service unavailable';return complete(s,'failed','当前分组失败','测试限定当前分组；没有把其他分组的成功算作它的通过。','upstream_error');}
-            add('demo_backup',200,'接收中',0);s.first=980;s.events.push('触发回退：demo_backup；不是 demo_packy 恢复');
+            add('demo_gateway',200,'接收中',0);s.first=980;s.events.push('切换候选：demo_gateway；不是 demo_packy 恢复');
           } else {add('demo_packy',200,'接收中',0);s.first=b.stream?420:null;}
           const tool=b.tools?.[0];
           const name=tool && (c.protocol === 'responses'?tool.name:tool.function.name);
@@ -192,7 +192,7 @@
           const last=s.attempts.at(-1);
           if (c.fault === 'disconnect' && b.stream) {
             last.outcome='未完成';last.duration_ms=1250;s.duration=1250;
-            s.events.push('流中断，未收到有效终态；已提交内容，不做拼接回退');
+            s.events.push('流中断，未收到有效终态；已提交内容，不拼接另一上游的答案');
             return complete(s,'incomplete','收到了内容，但没有完成','流式响应中断；HTTP 200 不构成通过。','stream_interrupted');
           }
           last.outcome='通过';last.duration_ms=c.fault === 'fallback'?1410:1260;
@@ -200,7 +200,7 @@
           s.response=s.tool?JSON.stringify({type:'function_call',name:s.tool,arguments:s.tool==='get_weather'?'{"city":"杭州"}':'{}'},null,2):'模拟响应：已收到请求，并已返回完整响应。';
           s.events.push('收到有效协议终态（模拟）；未执行任何外部工具');
           const terminal=c.protocol==='responses'?'response.completed':s.tool?'finish_reason: tool_calls':'finish_reason: stop';
-          return complete(s,'passed',s.tool?'工具请求有效':s.attempts.length>1?'客户端完成 · 经回退':'本次请求完成',s.tool?'仅验证工具请求结构；工具未执行，任务闭环未验证。':s.attempts.length>1?'demo_backup 通过；demo_packy 仍为失败。':c.scope==='group'?'仅验证本次 test_alias 请求；不代表真实模型名命中相同覆盖规则。':'仅代表这次请求；不等于所有协议、凭据与能力均可用。',terminal);
+          return complete(s,'passed',s.tool?'工具请求有效':s.attempts.length>1?'客户端完成 · 切换候选后成功':'本次请求完成',s.tool?'仅验证工具请求结构；工具未执行，任务闭环未验证。':s.attempts.length>1?'demo_gateway 通过；demo_packy 仍为失败。':c.scope==='group'?'仅验证本次 test_alias 请求；不代表真实模型名命中相同覆盖规则。':'仅代表这次请求；不等于所有协议、凭据与能力均可用。',terminal);
         }
         return s;
       }
@@ -295,14 +295,14 @@
         const passed=state.status==='passed';
         const coverage=[(body ? (state.request?.protocol||$('protocol').value)==='responses'?'Responses':'Chat Completions':'协议')+(passed?' 已验证':' 待验证'),body?.stream?(passed?'流式终态有效':state.status==='idle'?'流式待验证':state.running?'等待流式终态':'流式未完成'):'未测试流式',state.tool?(passed?'工具结构有效':'工具待验证'):'工具未测试'];
         coverage.forEach(value=>{const el=document.createElement('span');el.textContent=value;cover.append(el);});
-        text('request-diff',state.request?'客户端请求\n'+JSON.stringify(state.request.body,null,2)+(state.upstream?'\n\n上游请求 · demo_packy\n'+JSON.stringify(state.upstream,null,2):'\n\n尚未构造上游请求。')+(state.attempts.length>1?'\n\n上游请求 · demo_backup\n'+JSON.stringify(state.attempts[1].request,null,2):''):'发送后查看实际模拟快照。');
+        text('request-diff',state.request?'客户端请求\n'+JSON.stringify(state.request.body,null,2)+(state.upstream?'\n\n上游请求 · demo_packy\n'+JSON.stringify(state.upstream,null,2):'\n\n尚未构造上游请求。')+(state.attempts.length>1?'\n\n上游请求 · demo_gateway\n'+JSON.stringify(state.attempts[1].request,null,2):''):'发送后查看实际模拟快照。');
         text('log',state.request?JSON.stringify({source:'synthetic_demo',mode:state.legacy?'legacy_probe':'client_request',state:state.status,terminal:state.terminal,events:state.events,attempts:state.attempts,usage:'未接入真实计量；不代表免费'},null,2):'尚无执行记录。');
         all('[data-state="phase"]').forEach(e=>e.textContent=state.running?ProbeLogic.phases[state.phase]:state.status==='idle'?'待发送':state.status==='invalid'?'未发送':'已结束');
         all('[data-state="model"]').forEach(e=>e.textContent=body?.model||'—');
         all('[data-state="override"]').forEach(e=>e.textContent=state.legacy?'未应用':state.upstream?'已应用示例配置':'按分组配置');
         text('logic-status',state.running?ProbeLogic.phases[state.phase]:labels[state.status][0]);
         const pipeline=$('pipeline');pipeline.replaceChildren();
-        const stages=[['请求校验','协议、请求体、流式'],['路由与权限','调用身份、模型别名'],['准备上游请求','映射、参数覆盖、Headers'],['接收响应','attempt、输出、回退'],['结果判定','终态、工具、完整性']];
+        const stages=[['请求校验','协议、请求体、流式'],['路由与权限','调用身份、模型别名'],['准备上游请求','映射、参数覆盖、Headers'],['接收响应','attempt、输出、候选切换'],['结果判定','终态、工具、完整性']];
         stages.forEach(([title,desc],i)=>{const current=state.phase===i+1,done=state.phase>i+1||(current&&state.status==='passed');const kind=done?'done':current?(state.running?'active':state.status==='failed'?'failed':'incomplete'):'';const el=document.createElement('div');el.className='stage'+(kind?' '+kind:'');const h=document.createElement('strong');h.textContent=title;const p=document.createElement('p');p.textContent=desc;const small=document.createElement('small');small.textContent=done?'已完成':current?(state.running?'当前阶段':'在此终止'):'未执行';el.append(h,p,small);pipeline.append(el);});
         text('feedback',state.title+'。'+state.detail);
       }

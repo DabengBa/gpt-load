@@ -163,7 +163,7 @@ export default {
       searchLabel: 'Search',
       clearSearch: 'Clear model search',
       aliasEnabledFor: 'Enable an alias for {id}',
-      aliasPlaceholder: 'Enter a public model name',
+      aliasPlaceholder: 'Optional (defaults to model ID)',
       aliasRequired: 'A public model name is required when the alias is enabled',
       removeFor: 'Remove model {id}',
       empty: 'No models added; you can create the Group now',

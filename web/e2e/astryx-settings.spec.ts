@@ -154,6 +154,29 @@ function saveButton(page: Page) {
   return page.getByRole('button', { name: 'Save changes' })
 }
 
+test('CORS editor stays readable on wide and narrow screens', async ({ page }, testInfo) => {
+  await mockSettings(page, baseSettingsDto())
+  await page.setViewportSize({ width: 1920, height: 900 })
+  await page.goto('/settings?section=browser-access', { waitUntil: 'load' })
+  await page.getByRole('button', { name: 'Override · CORS policy' }).click()
+  const form = page
+    .locator('#settings-value-cors-origins')
+    .locator('xpath=ancestor::div[.//input[@id="settings-value-cors-methods"]][1]')
+  const desktop = (await form.boundingBox())!
+  expect(desktop.width).toBeLessThanOrEqual(960)
+  const methods = (await page.getByLabel('Allowed methods').boundingBox())!
+  const headers = (await page.getByLabel('Allowed request headers').boundingBox())!
+  expect(headers.x).toBeGreaterThan(methods.x + methods.width - 2)
+  await form.screenshot({ path: testInfo.outputPath('cors-desktop.png') })
+
+  await page.setViewportSize({ width: 390, height: 900 })
+  const mobileMethods = (await page.getByLabel('Allowed methods').boundingBox())!
+  const mobileHeaders = (await page.getByLabel('Allowed request headers').boundingBox())!
+  expect(mobileHeaders.y).toBeGreaterThan(mobileMethods.y + mobileMethods.height)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await form.screenshot({ path: testInfo.outputPath('cors-mobile.png') })
+})
+
 test('settings task sections use separate responsive surfaces', async ({ page }) => {
   await mockSettings(page, baseSettingsDto())
   await page.setViewportSize({ width: 1440, height: 900 })

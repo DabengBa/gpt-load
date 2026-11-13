@@ -1,5 +1,7 @@
-import { Button, TextInput } from '@astryxdesign/core'
+import { Switch, TextInput } from '@astryxdesign/core'
 import * as stylex from '@stylexjs/stylex'
+import { ExternalLink } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { createPortal } from 'react-dom'
 
@@ -7,7 +9,6 @@ import type { ChannelParamsDto } from '@shared/control/types'
 import type { ChannelDto, ChannelFieldDto } from '@shared/control/resources/channels'
 
 import { useT } from '../../../app/i18n'
-import { ChannelPresetPicker } from '@app/components/ChannelPresetPicker'
 
 export function GroupSettingsBaseForm({
   section,
@@ -20,6 +21,7 @@ export function GroupSettingsBaseForm({
   params,
   name,
   providerUrl,
+  savedProviderUrl,
   providerUrlInvalid,
 
   enabled,
@@ -32,6 +34,7 @@ export function GroupSettingsBaseForm({
   showDescription = true,
   unified = false,
   headerActionsTarget,
+  siteAccessFields,
   onParamChange,
   onChannelSelect,
   onChannelsRetry,
@@ -50,6 +53,7 @@ export function GroupSettingsBaseForm({
   params: ChannelParamsDto
   name: string
   providerUrl: string | null
+  savedProviderUrl: string | null
   providerUrlInvalid: boolean
 
   enabled: boolean
@@ -62,6 +66,7 @@ export function GroupSettingsBaseForm({
   showDescription?: boolean
   unified?: boolean
   headerActionsTarget?: HTMLElement | null
+  siteAccessFields: ReactNode
   onParamChange(key: string, value: string | null): void
   onChannelSelect(channel: ChannelDto): void
   onChannelsRetry(): void
@@ -91,7 +96,32 @@ export function GroupSettingsBaseForm({
       if (channelId === 'cliproxyapi') return t('group.settings.base.cpaUrlDescription')
       if (channelId === 'sub2api') return t('group.settings.base.sub2ApiUrlDescription')
     }
+
     return t('group.settings.base.urlWarning')
+  }
+
+  function renderParam(field: ChannelFieldDto) {
+    const error = paramErrors[field.key]
+    const label = field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label
+    return (
+      <div key={field.key} {...stylex.props(styles.field)}>
+        <span {...stylex.props(styles.fieldLabel)}>{label}</span>
+        <TextInput
+          label={label}
+          isLabelHidden
+          type="text"
+          value={params[field.key] ?? ''}
+          isDisabled={pending || paramsDisabled}
+          isRequired={field.required}
+          status={error ? { type: 'error', message: error } : undefined}
+          description={
+            error === undefined && field.input_kind === 'url' ? parameterHelp(field) : undefined
+          }
+          onChange={(value) => updateParam(field, value)}
+          controlXstyle={styles.mono}
+        />
+      </div>
+    )
   }
 
   if (section !== 'general') return null
@@ -102,22 +132,13 @@ export function GroupSettingsBaseForm({
         <strong {...stylex.props(styles.switchTitle)}>{t('group.settings.base.enabled')}</strong>
         <small {...stylex.props(styles.switchHint)}>{t('group.settings.base.enabledHelp')}</small>
       </span>
-      <div {...stylex.props(styles.enabledActions)}>
-        <Button
-          variant="secondary"
-          size="sm"
-          isDisabled={pending || enabledPending || enabled}
-          onClick={() => onSetEnabled(true)}
-          label={t('group.settings.base.enableAll')}
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          isDisabled={pending || enabledPending || !enabled}
-          onClick={() => onSetEnabled(false)}
-          label={t('group.settings.base.disableAll')}
-        />
-      </div>
+      <Switch
+        label={t('group.settings.base.enabled')}
+        isLabelHidden
+        value={enabled}
+        isDisabled={pending || enabledPending}
+        onChange={onSetEnabled}
+      />
     </div>
   )
 
@@ -138,26 +159,43 @@ export function GroupSettingsBaseForm({
           )}
         </header>
       )}
-      <div {...stylex.props(styles.channelField)}>
-        <span {...stylex.props(styles.fieldLabel)}>{t('group.settings.base.channel')}</span>
-        <small {...stylex.props(styles.fieldHint)}>{t('group.settings.base.channelHelp')}</small>
-        <div {...stylex.props(styles.channelPicker)}>
-          <ChannelPresetPicker
-            value={channelId}
-            channels={channels}
-            selectedChannel={selectedChannel}
-            loading={channelsLoading}
-            error={channelsError}
-            disabled={pending}
-            hideHeader
-            compact
-            onSelect={onChannelSelect}
-            onRetry={onChannelsRetry}
-          />
-        </div>
-      </div>
       <div {...stylex.props(styles.grid)}>
-        <label {...stylex.props(styles.field)}>
+        <div {...stylex.props(styles.field)}>
+          <label {...stylex.props(styles.fieldLabel)} htmlFor="settings-channel">
+            {t('group.settings.base.channel')}
+          </label>
+          <select
+            id="settings-channel"
+            {...stylex.props(styles.channelSelect)}
+            value={channelId}
+            disabled={pending || (channels.length === 0 && (channelsLoading || channelsError))}
+            aria-describedby="settings-channel-help"
+            onChange={(event) => {
+              const channel = channels.find((item) => item.channel_id === event.target.value)
+              if (channel) onChannelSelect(channel)
+            }}
+          >
+            {!selectedChannel && <option value={channelId}>{channelId}</option>}
+            {channels.map((channel) => (
+              <option key={channel.channel_id} value={channel.channel_id}>
+                {channel.name}
+              </option>
+            ))}
+          </select>
+          <small id="settings-channel-help" {...stylex.props(styles.fieldHint)}>
+            {t('group.settings.base.channelHelp')}
+          </small>
+          {channelsLoading && <small role="status">{t('import.presets.loading')}</small>}
+          {channelsError && channels.length === 0 && (
+            <div role="alert">
+              {t('import.presets.loadFailed')}{' '}
+              <button type="button" onClick={onChannelsRetry}>
+                {t('common.retry')}
+              </button>
+            </div>
+          )}
+        </div>
+        <div {...stylex.props(styles.field)}>
           <span {...stylex.props(styles.fieldLabel)}>{t('group.settings.base.name')}</span>
           <TextInput
             label={t('group.settings.base.name')}
@@ -167,56 +205,45 @@ export function GroupSettingsBaseForm({
             status={nameError !== '' ? { type: 'error', message: nameError } : undefined}
             onChange={onNameChange}
           />
-        </label>
+        </div>
 
-        {paramFields.map((field) => {
-          const error = paramErrors[field.key]
-          return (
-            <div key={field.key} style={{ display: 'contents' }}>
-              <label {...stylex.props(styles.field, styles.wide)}>
-                <span {...stylex.props(styles.fieldLabel)}>
-                  {field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label}
-                </span>
-                <TextInput
-                  label={
-                    field.key === 'base_url' ? t('group.settings.base.upstreamUrl') : field.label
-                  }
-                  isLabelHidden
-                  type="text"
-                  value={params[field.key] ?? ''}
-                  isDisabled={pending || paramsDisabled}
-                  isRequired={field.required}
-                  status={error ? { type: 'error', message: error } : undefined}
-                  description={
-                    error === undefined && field.input_kind === 'url'
-                      ? parameterHelp(field)
-                      : undefined
-                  }
-                  onChange={(value) => updateParam(field, value)}
-                  controlXstyle={styles.mono}
-                />
-              </label>
-            </div>
-          )
-        })}
-        <label {...stylex.props(styles.field, styles.wide)}>
+        {paramFields.filter((field) => field.key === 'base_url').map(renderParam)}
+        <div {...stylex.props(styles.field)}>
           <span {...stylex.props(styles.fieldLabel)}>{t('group.settings.base.providerUrl')}</span>
-          <TextInput
-            label={t('group.settings.base.providerUrl')}
-            isLabelHidden
-            type="text"
-            value={providerUrl ?? ''}
-            isDisabled={pending}
-            status={
-              providerUrlInvalid
-                ? { type: 'error', message: t('group.settings.base.providerUrlError') }
-                : undefined
-            }
-            description={t('group.settings.base.providerUrlHelp')}
-            onChange={onProviderUrlChange}
-            controlXstyle={styles.mono}
-          />
-        </label>
+          <div {...stylex.props(styles.providerRow)}>
+            <div {...stylex.props(styles.providerInput)}>
+              <TextInput
+                label={t('group.settings.base.providerUrl')}
+                isLabelHidden
+                type="text"
+                value={providerUrl ?? ''}
+                isDisabled={pending}
+                status={
+                  providerUrlInvalid
+                    ? { type: 'error', message: t('group.settings.base.providerUrlError') }
+                    : undefined
+                }
+                description={t('group.settings.base.providerUrlHelp')}
+                onChange={onProviderUrlChange}
+                controlXstyle={styles.mono}
+              />
+            </div>
+            {savedProviderUrl && (
+              <a
+                {...stylex.props(styles.providerLink)}
+                href={savedProviderUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t('group.openProviderUrl', { url: savedProviderUrl })}
+                title={t('group.openProviderUrl', { url: savedProviderUrl })}
+              >
+                <ExternalLink size={16} aria-hidden="true" />
+              </a>
+            )}
+          </div>
+        </div>
+        {siteAccessFields}
+        {paramFields.filter((field) => field.key !== 'base_url').map(renderParam)}
         {unified && headerActionsTarget ? createPortal(switchRow, headerActionsTarget) : switchRow}
       </div>
     </section>
@@ -254,17 +281,13 @@ const styles = stylex.create({
   grid: {
     display: 'grid',
     gridTemplateColumns: {
-      default: 'repeat(2, minmax(0, 1fr))',
+      default: 'repeat(3, minmax(0, 1fr))',
+      '@media (max-width: 1100px)': 'repeat(2, minmax(0, 1fr))',
       '@media (max-width: 800px)': '1fr',
     },
     gap: 'var(--space-2) var(--space-3)',
   },
-  wide: {
-    gridColumn: 'auto',
-  },
-  baseUrlInput: {
-    gridColumn: 'auto',
-  },
+
   field: {
     display: 'grid',
     alignContent: 'start',
@@ -280,28 +303,42 @@ const styles = stylex.create({
     fontSize: 'var(--text-label-xs)',
     lineHeight: 'var(--line-normal)',
   },
-  channelField: {
-    display: 'grid',
+  channelSelect: {
+    width: '100%',
     minWidth: 0,
-    gap: '4px',
-    borderBottomWidth: '1px',
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-subtle)',
-    paddingBottom: 'var(--space-2)',
-  },
-  channelPicker: {
-    marginTop: '3px',
+    minHeight: { default: 'var(--control-sm)', '@media (max-width: 680px)': 'var(--touch-target)' },
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--color-border-control)',
+    borderRadius: 'var(--radius-control)',
+    backgroundColor: 'var(--color-surface)',
+    color: 'var(--color-text)',
+    paddingInline: 'var(--space-2)',
+    font: 'inherit',
   },
   mono: {
     fontFamily: 'var(--font-mono)',
   },
-  baseUrlToggle: {},
-  baseUrlSwitch: {
+  providerRow: {
     display: 'flex',
-    minHeight: 'var(--control-xs)',
+    minWidth: 0,
+    alignItems: 'flex-start',
+    gap: 'var(--space-1)',
+  },
+  providerInput: {
+    flex: '1 1 0',
+    minWidth: 0,
+  },
+  providerLink: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    width: 'var(--touch-target)',
+    height: 'var(--touch-target)',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 'var(--space-3)',
+    justifyContent: 'center',
+    borderRadius: 'var(--radius-tag)',
+    color: { default: 'var(--color-text-muted)', ':hover': 'var(--color-action)' },
+    backgroundColor: { default: 'transparent', ':hover': 'var(--color-surface-sunken)' },
   },
   switchRow: {
     display: 'flex',
@@ -323,11 +360,5 @@ const styles = stylex.create({
   switchHint: {
     color: 'var(--color-text-faint)',
     fontSize: '11px',
-  },
-  enabledActions: {
-    display: 'flex',
-    flexShrink: 0,
-    alignItems: 'center',
-    gap: '8px',
   },
 })

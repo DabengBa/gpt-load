@@ -35,16 +35,24 @@ model preserved.
 ## Reading Candidate Rows
 
 - Saved scheduling eligibility is separate from entry health: a healthy entry
-  can still be ineligible or in a standby priority tier because of another
-  scheduling condition. The displayed reason explains the saved snapshot; an
-  unknown reason is shown as such.
+  can still be ineligible because of another scheduling condition. A schedulable
+  entry can have lower priority than another schedulable entry; this does not
+  mean it was selected for a request. The displayed reason explains the saved
+  snapshot; an unknown reason is shown as such.
 - Smaller priority numbers are considered first. Configured share is normalized
   by weight within each priority tier. Disabled groups and entries are excluded;
   entries in cooldown or blacklisted still count. This share is not the
   probability of selection for the next request.
-- A muted leading marker calls out rows disabled by either the group or the
-  entry. The entry switch reflects only its own setting and can remain on while
-  its group is disabled.
+- Rows are grouped by saved priority and ordered within each group by saved,
+  unrounded configured share, highest first. Equal shares retain the existing
+  group and entry key order. Editing a draft does not move rows; a successful
+  save reorders them according to the refreshed saved configuration.
+- Text-and-dot soft badges distinguish saved eligibility, disabled groups and
+  entries, and other reasons without using color to indicate priority. Disabled
+  rows mute non-interactive model and share text, not the controls. A muted
+  leading marker also calls out rows disabled by either the group or the entry.
+  The entry switch reflects only its own setting and can remain on while its
+  group is disabled.
 - Unsaved priority and weight edits show an unsaved share preview; they do not
   change actual scheduling or the saved eligibility snapshot. Enabling or
   disabling an entry takes effect immediately; if the action fails, its prior

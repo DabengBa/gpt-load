@@ -107,7 +107,7 @@ test('saved model offers one group probe rather than an independent request work
 }) => {
   await mockGroupModels(page, { models: [{ id: 'model-a' }] })
   await page.goto('/groups/1?tab=models')
-  await expect(page.getByRole('checkbox', { name: 'Enable model model-a' })).toBeVisible()
+  await expect(page.getByRole('switch', { name: 'Enable model model-a' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Probe', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Actual request for model-a' })).toHaveCount(0)
 })

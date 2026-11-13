@@ -34,10 +34,8 @@ export interface ModelAliasEditorLabels {
   search: string
   searchLabel: string
   clearSearch: string
-  aliasEnabledFor: (id: string) => string
   aliasFor: (id: string) => string
   aliasPlaceholder: string
-  aliasRequired: string
   removeFor: (id: string) => string
   manualId: string
   manualIdRequired: string
@@ -143,11 +141,11 @@ export function readModelNameConflicts(value: unknown): ModelNameConflict[] {
 export function normalizeModel(model: GroupModelUpdateDto): GroupModelUpdateDto | undefined {
   const id = model.id.trim()
   if (!id) return undefined
-  const alias = model.alias_enabled ? model.alias.trim() : ''
+  const alias = model.alias.trim()
   const normalized: GroupModelUpdateDto = {
     id,
     alias,
-    alias_enabled: model.alias_enabled,
+    alias_enabled: alias !== '',
     weight: model.weight ?? null,
     priority: model.priority ?? null,
   }
@@ -189,12 +187,6 @@ export function findModelNameConflicts(
 
 export function indexesWithConflicts(conflicts: readonly ModelNameConflict[]): Set<number> {
   return new Set(conflicts.flatMap((conflict) => conflict.indexes))
-}
-
-export function indexesWithEmptyAliases(models: readonly GroupModelUpdateDto[]): Set<number> {
-  return new Set(
-    models.flatMap((model, index) => (model.alias_enabled && !model.alias.trim() ? [index] : [])),
-  )
 }
 
 export function indexesWithEmptyIDs(models: readonly GroupModelUpdateDto[]): Set<number> {
@@ -250,7 +242,6 @@ export function modelDraftValidity(
 ): {
   conflictIndexes: Set<number>
   emptyIDIndexes: Set<number>
-  emptyAliasIndexes: Set<number>
   invalidWeightIndexes: Set<number>
   invalidPriorityIndexes: Set<number>
   zeroShareIndexes: Set<number>
@@ -258,21 +249,18 @@ export function modelDraftValidity(
 } {
   const conflictIndexes = indexesWithConflicts(conflicts)
   const emptyIDIndexes = indexesWithEmptyIDs(models)
-  const emptyAliasIndexes = indexesWithEmptyAliases(models)
   const invalidWeightIndexes = indexesWithInvalidWeights(models)
   const invalidPriorityIndexes = indexesWithInvalidPriorities(models)
   const zeroShareIndexes = indexesWithZeroShare(models)
   return {
     conflictIndexes,
     emptyIDIndexes,
-    emptyAliasIndexes,
     invalidWeightIndexes,
     invalidPriorityIndexes,
     zeroShareIndexes,
     invalidIndexes: new Set([
       ...conflictIndexes,
       ...emptyIDIndexes,
-      ...emptyAliasIndexes,
       ...invalidWeightIndexes,
       ...invalidPriorityIndexes,
       ...zeroShareIndexes,

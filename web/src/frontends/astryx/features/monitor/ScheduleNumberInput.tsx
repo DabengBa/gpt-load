@@ -22,6 +22,7 @@ const styles = stylex.create({
     fontSize: 'var(--text-meta)',
   },
   inputShellInvalid: { borderColor: 'var(--color-danger)' },
+  compactInput: { textAlign: 'center' },
   inputError: {
     color: 'var(--color-danger)',
     fontSize: 'var(--text-meta)',
@@ -65,6 +66,7 @@ export function ScheduleNumberInput({
   min,
   max,
   disabled,
+  compact = false,
   onChange,
 }: {
   id: string
@@ -76,6 +78,7 @@ export function ScheduleNumberInput({
   min?: number
   max?: number
   disabled?: boolean
+  compact?: boolean
   onChange(value: string): void
 }): JSX.Element {
   return (
@@ -94,7 +97,7 @@ export function ScheduleNumberInput({
         <input
           id={id}
           data-input-inner
-          {...stylex.props(styles.inputInner)}
+          {...stylex.props(styles.inputInner, compact && styles.compactInput)}
           type="number"
           value={value}
           placeholder={placeholder}

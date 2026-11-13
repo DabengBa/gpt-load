@@ -39,6 +39,12 @@ export function GroupsView() {
   const t = useT()
   const collection = useGroupCollection()
   const data = collection.data
+  const showNoResults =
+    !collection.collectionTransition &&
+    data !== undefined &&
+    data.summary.total > 0 &&
+    data.pagination.total_items === 0 &&
+    collection.hasFilterCriteria
 
   const sortSelectOptions: GroupSortOption[] = sortOptions.map((sort) => ({
     value: sort,
@@ -52,26 +58,28 @@ export function GroupsView() {
           {...stylex.props(styles.collection)}
           aria-busy={collection.collectionBusy || undefined}
         >
-          <GroupCollectionHeader
-            total={data?.summary.total}
-            refreshing={collection.groupsQuery.isFetching}
-            refreshingLabel={collection.collectionRefreshing ? t('groups.collection.loading') : ''}
-            onRefresh={() => void collection.groupsQuery.refetch()}
-          />
           <ContentPanel>
+            <GroupCollectionHeader
+              refreshing={collection.groupsQuery.isFetching}
+              refreshingLabel={
+                collection.collectionRefreshing ? t('groups.collection.loading') : ''
+              }
+              onRefresh={() => void collection.groupsQuery.refetch()}
+            >
+              {data !== undefined && data.summary.total > 0 && (
+                <GroupCollectionSummary
+                  items={collection.summaryItems}
+                  status={collection.filters.status}
+                  onSelect={collection.setStatus}
+                />
+              )}
+            </GroupCollectionHeader>
             {collection.groupsQuery.isPending || collection.initialLoading ? (
               <GroupCollectionSkeleton rows={8} height={68} />
             ) : collection.groupsQuery.isError && !data ? (
               <GroupCollectionError onRetry={() => void collection.groupsQuery.refetch()} />
             ) : data !== undefined ? (
               <>
-                {data.summary.total > 0 && (
-                  <GroupCollectionSummary
-                    items={collection.summaryItems}
-                    status={collection.filters.status}
-                    onSelect={collection.setStatus}
-                  />
-                )}
                 {collection.groupsQuery.isError && (
                   <GroupCollectionStaleBanner
                     onRetry={() => void collection.groupsQuery.refetch()}
@@ -84,7 +92,13 @@ export function GroupsView() {
                     sortOptions={sortSelectOptions}
                     itemsShown={data.items}
                     totalItems={data.pagination.total_items}
-                    hasChangedConditions={collection.hasChangedConditions}
+                    showResult={
+                      collection.hasFilterCriteria ||
+                      data.pagination.total_pages > 1 ||
+                      data.pagination.page > 1 ||
+                      data.items.length !== data.pagination.total_items
+                    }
+                    hasChangedConditions={collection.hasChangedConditions && !showNoResults}
                     onSearchChange={collection.onSearchChange}
                     onSortChange={collection.setSort}
                     onReset={collection.resetConditions}
@@ -97,7 +111,7 @@ export function GroupsView() {
                   />
                 ) : data.summary.total === 0 ? (
                   <GroupCollectionEmpty variant="empty" onReset={collection.resetConditions} />
-                ) : data.pagination.total_items === 0 && collection.hasFilterCriteria ? (
+                ) : showNoResults ? (
                   <GroupCollectionEmpty variant="noResults" onReset={collection.resetConditions} />
                 ) : data.items.length > 0 ? (
                   <GroupCollectionTable

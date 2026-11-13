@@ -130,9 +130,7 @@ export default {
     stale: 'Group details may be stale because the background refresh failed.',
     backToGroups: 'Back to Groups',
     importCredentials: 'Import channel credentials',
-    copyUpstreamUrl: 'Copy upstream address {url}',
-    copySuccess: 'Copied',
-    copyFailure: 'Copy failed',
+
     openProviderUrl: 'Open provider website {url} in a new tab',
     modelEditor: {
       recoveryChecking:
@@ -177,6 +175,8 @@ export default {
       alias: 'Client alias',
       pricing: 'Pricing',
       testAliasAndPricing: 'Test alias / pricing',
+      schedulingPricingActions: 'Scheduling / pricing / actions',
+      removeColumn: 'Remove',
       testAlias: 'Test alias',
       testAliasPending: 'Assigned after save',
       actions: 'Actions',
@@ -184,7 +184,7 @@ export default {
       clearSearch: 'Clear model search',
       aliasEnabledFor: 'Enable alias for {id}',
       aliasFor: 'Client alias for {id}',
-      aliasPlaceholder: 'Enter model alias',
+      aliasPlaceholder: 'Optional (defaults to model ID)',
       aliasRequired: 'An enabled alias requires a client alias',
       removeFor: 'Remove model {id}',
       manualId: 'Add model ID',
@@ -394,7 +394,7 @@ export default {
         providerUrlError:
           'Enter a valid HTTP or HTTPS provider website URL without credentials or a fragment.',
         providerUrlHelp:
-          'Optional. Shown as a link in the Group header; it does not change where requests are sent.',
+          'Optional. The saved website can be opened here; it does not change where requests are sent.',
         paramRequired: 'Enter {field}.',
         weight: 'Manual Group weight',
         auto: 'Auto',
@@ -407,7 +407,7 @@ export default {
       },
       runtime: {
         title: 'Runtime overrides',
-        description: 'Inherited values follow global settings. Group overrides remain sparse.',
+
         first_byte_timeout: 'Native response / stream first-event timeout',
         request_timeout: 'Request timeout',
         stream_idle_timeout: 'Stream-idle timeout',
@@ -580,6 +580,7 @@ export default {
         cooldown: 'Recovers when cooldown ends',
         scheduled_release: 'Returns after the local blacklist delay',
         manual: 'Needs manual recovery',
+        groupDisabled: 'Enable the group to check credential status',
         at: 'Recovers automatically at {time}',
       },
       failure: {

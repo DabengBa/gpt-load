@@ -4,8 +4,7 @@
   box-sizing: border-box;
 }
 
-.schedule-model-sidebar,
-.schedule-model-desktop-current {
+.schedule-model-sidebar {
   display: none;
 }
 
@@ -30,24 +29,23 @@
   display: grid;
   align-content: start;
   gap: 3px;
-  max-height: min(65vh, 540px);
+  max-height: max(8rem, calc(100dvh - 10rem));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-control) transparent;
 }
 
-.schedule-model-summary,
+.schedule-model-popover .schedule-model-list {
+  max-height: 60dvh;
+}
+
 .schedule-model-option,
 .schedule-model-selector {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-}
-
-.schedule-model-summary {
-  justify-content: space-between;
 }
 
 .schedule-model-option,
@@ -72,7 +70,10 @@
 
 .schedule-model-name {
   flex: 1;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .schedule-model-meta {
@@ -88,14 +89,24 @@
 }
 
 .schedule-model-option[aria-pressed='true'] {
-  background: var(--color-surface-sunken);
+  background: var(--color-action-soft);
   font-weight: 650;
+}
+
+.schedule-model-empty {
+  padding: 8px;
+  color: var(--color-text-muted);
+  font-size: var(--text-meta);
 }
 
 .schedule-model-option:focus-visible,
 .schedule-model-selector:focus-visible {
   outline: 2px solid var(--color-text);
   outline-offset: 2px;
+}
+
+.schedule-model-option:focus-visible {
+  outline-offset: -2px;
 }
 
 @media (min-width: 1440px) {
@@ -107,12 +118,6 @@
 
   .schedule-model-compact {
     display: none;
-  }
-
-  .schedule-model-desktop-current {
-    display: block;
-    color: var(--color-text);
-    font-weight: 650;
   }
 }
 

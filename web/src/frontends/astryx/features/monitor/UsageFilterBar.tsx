@@ -1,5 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { Button, Selector, TextInput } from '@astryxdesign/core'
+import { RefreshCw } from 'lucide-react'
 import { useMemo, type FormEvent, type JSX } from 'react'
 
 import type { GroupOptionDto } from '@shared/control/types'
@@ -33,7 +34,7 @@ const styles = stylex.create({
     },
     gridTemplateColumns: {
       default: 'none',
-      [NARROW]: 'repeat(2, minmax(0, 1fr))',
+      [NARROW]: 'repeat(3, minmax(0, 1fr))',
     },
     minWidth: 0,
     alignItems: {
@@ -91,6 +92,8 @@ export interface UsageFilterBarProps {
   onFieldChange(field: keyof UsageFilterDraft, value: string): void
   onApply(): void
   onReset(): void
+  refreshPending: boolean
+  onRefresh(): void
   /**
    * Access-key session view: hides the Group selector and swaps the
    * model Selector for a free-text input, matching LogsFilterForm.
@@ -106,6 +109,8 @@ export function UsageFilterBar({
   onFieldChange,
   onApply,
   onReset,
+  refreshPending,
+  onRefresh,
   selfScoped,
 }: UsageFilterBarProps): JSX.Element {
   const t = useT()
@@ -278,6 +283,15 @@ export function UsageFilterBar({
           size="sm"
           label={t('monitor.usage.filters.reset')}
           onClick={onReset}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          isLoading={refreshPending}
+          icon={<RefreshCw size={14} aria-hidden />}
+          label={t('monitor.usage.filters.refresh')}
+          onClick={onRefresh}
         />
       </div>
       {firstError !== undefined && (

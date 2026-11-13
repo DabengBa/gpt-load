@@ -26,6 +26,8 @@ const styles = stylex.create({
   },
   corsForm: {
     display: 'grid',
+    width: '100%',
+    maxWidth: '960px',
     gridTemplateColumns: {
       default: 'repeat(2, minmax(0, 1fr))',
       [narrow]: '1fr',

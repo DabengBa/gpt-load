@@ -120,6 +120,22 @@ test('site choices stay available while filtering and search results match the r
   await page.goto('/announcements')
   await expect(page.getByText('Beta release')).toBeVisible()
   const selector = page.getByRole('combobox', { name: 'Site' })
+  const search = page.getByRole('textbox', { name: 'Search' })
+  await expect(search).toBeVisible()
+  for (const name of ['Site', 'Search']) {
+    const labels = page.locator('label').filter({ hasText: new RegExp(`^${name}$`) })
+    for (const label of await labels.all()) {
+      expect((await label.boundingBox())?.height ?? 0).toBeLessThanOrEqual(1)
+    }
+  }
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(selector).toBeVisible()
+    await expect(search).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+  }
   await selector.click()
   await page.getByRole('option', { name: 'Alpha' }).click()
   await expect.poll(() => blocked).toBe(true)

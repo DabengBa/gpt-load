@@ -154,7 +154,7 @@ export default {
       searchLabel: '搜索',
       clearSearch: '清空模型搜索',
       aliasEnabledFor: '为 {id} 启用别名',
-      aliasPlaceholder: '输入对外模型名称',
+      aliasPlaceholder: '选填，留空使用模型 ID',
       aliasRequired: '启用别名后必须填写对外模型名称',
       removeFor: '移除模型 {id}',
       empty: '尚未添加模型，可直接创建分组',

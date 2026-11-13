@@ -16,6 +16,8 @@ import { useT } from '../../../app/i18n'
 import { useAppServices } from '../../../app/services'
 import { InlineNotice } from '../../../components/InlineNotice'
 import { CopyChip } from '@app/components/CopyChip'
+import { credentialStatusBadgeVariant } from '../credential-status'
+import type { MessageId } from '@shared/i18n/message-ids'
 
 const small = '@media (max-width: 520px)'
 
@@ -32,6 +34,23 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: '8px',
   },
+  status: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    borderRadius: 'var(--radius-tag)',
+    paddingBlock: '3px',
+    paddingInline: '8px',
+    fontFamily: 'var(--font-sans)',
+    fontSize: 'var(--text-meta)',
+    fontWeight: 600,
+  },
+  statusSuccess: { color: 'var(--color-success)', backgroundColor: 'var(--color-success-bg)' },
+  statusWarning: { color: 'var(--color-warning)', backgroundColor: 'var(--color-warning-bg)' },
+  statusError: {
+    color: 'color-mix(in srgb, var(--color-danger) 80%, var(--color-text))',
+    backgroundColor: 'var(--color-danger-bg)',
+  },
+  statusNeutral: { color: 'var(--color-neutral-fg)', backgroundColor: 'var(--color-neutral-bg)' },
   form: {
     display: 'flex',
     minWidth: 0,
@@ -88,6 +107,7 @@ export function GroupApiKeyEditor({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const statusVariant = credentialStatusBadgeVariant(credential.effective_status)
 
   async function resolveCopyValue(): Promise<string> {
     const controller = new AbortController()
@@ -218,8 +238,22 @@ export function GroupApiKeyEditor({
           failureLabel={t('common.copyFailed')}
           resolveValue={resolveCopyValue}
         />
+        <span
+          {...stylex.props(
+            styles.status,
+            statusVariant === 'success'
+              ? styles.statusSuccess
+              : statusVariant === 'warning'
+                ? styles.statusWarning
+                : statusVariant === 'error'
+                  ? styles.statusError
+                  : styles.statusNeutral,
+          )}
+        >
+          {t(`group.credentials.effective.${credential.effective_status}` as MessageId)}
+        </span>
         <Button
-          variant="ghost"
+          variant="secondary"
           size="sm"
           isDisabled={disabled || pending}
           aria-expanded={editing}

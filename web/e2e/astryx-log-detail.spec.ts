@@ -84,7 +84,7 @@ async function openLogs(page: Page, query = ''): Promise<void> {
   await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({
     timeout: 60_000,
   })
-  await expect(page.getByRole('heading', { name: 'Request logs' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Request logs' })).toBeVisible()
 }
 
 test.beforeEach(async ({ page }) => {

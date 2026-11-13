@@ -91,17 +91,19 @@ const styles = stylex.create({
     marginTop: 'var(--space-1)',
   },
   summaryStrip: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--space-2)',
-    fontSize: 'var(--text-sm)',
+    minWidth: 0,
+    width: { default: 170, [narrow]: '100%' },
   },
-  summaryLabel: {
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-label-xs)',
+  collectionToolbar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'end',
+    gap: 'var(--space-3)',
   },
   filterBar: {
     display: 'grid',
+    flexGrow: 1,
+    minWidth: 0,
     gridTemplateColumns: { default: 'minmax(0, 320px) minmax(0, 1fr)', [narrow]: 'minmax(0, 1fr)' },
     alignItems: 'end',
     gap: 'var(--space-3)',
@@ -110,10 +112,6 @@ const styles = stylex.create({
     display: 'grid',
     gap: 'var(--space-1)',
     minWidth: 0,
-  },
-  filterLabel: {
-    color: 'var(--color-text-faint)',
-    fontSize: 'var(--text-label-xs)',
   },
   filterResult: {
     display: 'flex',
@@ -660,33 +658,6 @@ export function AccessKeysPanel() {
         </div>
       ) : data ? (
         <>
-          {data.summary.total > 0 && (
-            <div
-              {...stylex.props(styles.summaryStrip)}
-              role="group"
-              aria-label={t('accessKeys.collection.summary.region')}
-            >
-              <span {...stylex.props(styles.summaryLabel)}>
-                {t('accessKeys.collection.summary.current')}
-              </span>
-              <Selector
-                size="sm"
-                variant="input"
-                label={t('accessKeys.collection.summary.region')}
-                options={statusSummaryItems.map((item) => ({
-                  value: item.value ?? 'all',
-                  label: `${t(item.id)} (${intl.formatNumber(item.count)})`,
-                }))}
-                value={filters.status ?? 'all'}
-                onChange={(value) =>
-                  setStatusFilter(
-                    value === 'all' ? undefined : (value as AccessKeyCollectionStatus),
-                  )
-                }
-              />
-            </div>
-          )}
-
           {accessKeysQuery.isError && (
             <div role="status">
               <Banner
@@ -721,41 +692,64 @@ export function AccessKeysPanel() {
           )}
 
           {data.summary.total > 0 && (
-            <div
-              {...stylex.props(styles.filterBar)}
-              role="group"
-              aria-label={t('accessKeys.collection.filters.region')}
-            >
-              <label {...stylex.props(styles.filterField)}>
-                <span {...stylex.props(styles.filterLabel)}>
-                  {t('accessKeys.collection.filters.searchLabel')}
-                </span>
-                <TextInput
+            <div {...stylex.props(styles.collectionToolbar)}>
+              <div
+                {...stylex.props(styles.summaryStrip)}
+                role="group"
+                aria-label={t('accessKeys.collection.summary.region')}
+              >
+                <Selector
                   size="sm"
-                  label={t('accessKeys.collection.filters.searchLabel')}
-                  placeholder={t('accessKeys.collection.filters.searchPlaceholder')}
-                  startIcon={<Search size={14} />}
-                  value={searchDraft}
-                  hasClear
-                  onChange={onSearchChange}
+                  variant="input"
+                  label={t('accessKeys.collection.summary.region')}
+                  isLabelHidden
+                  width="100%"
+                  options={statusSummaryItems.map((item) => ({
+                    value: item.value ?? 'all',
+                    label: `${t(item.id)} (${intl.formatNumber(item.count)})`,
+                  }))}
+                  value={filters.status ?? 'all'}
+                  onChange={(value) =>
+                    setStatusFilter(
+                      value === 'all' ? undefined : (value as AccessKeyCollectionStatus),
+                    )
+                  }
                 />
-              </label>
-              {hasFilterCriteria && (
-                <span {...stylex.props(styles.filterResult)}>
-                  <span aria-live="polite">
-                    {t('accessKeys.collection.result', {
-                      shown: intl.formatNumber(data.items.length),
-                      total: intl.formatNumber(data.pagination.total_items),
-                    })}
-                  </span>
-                  <Button
-                    variant="ghost"
+              </div>
+              <div
+                {...stylex.props(styles.filterBar)}
+                role="group"
+                aria-label={t('accessKeys.collection.filters.region')}
+              >
+                <div {...stylex.props(styles.filterField)}>
+                  <TextInput
                     size="sm"
-                    label={t('accessKeys.collection.filters.reset')}
-                    onClick={resetConditions}
+                    label={t('accessKeys.collection.filters.searchLabel')}
+                    isLabelHidden
+                    placeholder={t('accessKeys.collection.filters.searchPlaceholder')}
+                    startIcon={<Search size={14} />}
+                    value={searchDraft}
+                    hasClear
+                    onChange={onSearchChange}
                   />
-                </span>
-              )}
+                </div>
+                {hasFilterCriteria && (
+                  <span {...stylex.props(styles.filterResult)}>
+                    <span aria-live="polite">
+                      {t('accessKeys.collection.result', {
+                        shown: intl.formatNumber(data.items.length),
+                        total: intl.formatNumber(data.pagination.total_items),
+                      })}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      label={t('accessKeys.collection.filters.reset')}
+                      onClick={resetConditions}
+                    />
+                  </span>
+                )}
+              </div>
             </div>
           )}
 

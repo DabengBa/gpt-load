@@ -125,9 +125,7 @@ export default {
     stale: '分组详情可能已过期；后台刷新失败。',
     backToGroups: '返回分组列表',
     importCredentials: '导入渠道凭据',
-    copyUpstreamUrl: '复制上游地址 {url}',
-    copySuccess: '已复制',
-    copyFailure: '复制失败',
+
     openProviderUrl: '在新标签页打开供应商官网 {url}',
     modelEditor: {
       recoveryChecking: '服务器数据可能已变化。正在刷新核对，草稿已保留。',
@@ -169,6 +167,8 @@ export default {
       alias: '对外别名',
       pricing: '定价',
       testAliasAndPricing: '测试别名 / 定价',
+      schedulingPricingActions: '调度 / 定价 / 操作',
+      removeColumn: '移除',
       testAlias: '测试别名',
       testAliasPending: '保存后生成',
       actions: '操作',
@@ -176,7 +176,7 @@ export default {
       clearSearch: '清空模型搜索',
       aliasEnabledFor: '启用 {id} 的模型别名',
       aliasFor: '{id} 的对外别名',
-      aliasPlaceholder: '输入模型别名',
+      aliasPlaceholder: '选填，留空使用模型 ID',
       aliasRequired: '启用别名时必须填写对外别名',
       removeFor: '移除模型 {id}',
       manualId: '添加模型 ID',
@@ -374,7 +374,7 @@ export default {
         customUrlHelp: '默认使用渠道预设或 SDK 官方地址。',
         providerUrl: '供应商官网',
         providerUrlError: '请输入有效的 HTTP 或 HTTPS 供应商官网地址，不得包含凭据或片段（#）。',
-        providerUrlHelp: '可选。保存后在分组详情头部显示为外链，不影响请求发送地址。',
+        providerUrlHelp: '可选。保存后可在此打开官网，不影响请求发送地址。',
         paramRequired: '请输入{field}。',
         weight: '分组权重',
         auto: '自动',
@@ -387,7 +387,7 @@ export default {
       },
       runtime: {
         title: '运行时覆盖',
-        description: '每行只表达来源、当前值与一个切换动作。',
+
         first_byte_timeout: '原生响应 / 流式首事件超时',
         request_timeout: '请求超时',
         stream_idle_timeout: '流空闲超时',
@@ -555,6 +555,7 @@ export default {
         cooldown: '冷却结束后自动恢复',
         scheduled_release: '本地拉黑延迟结束后恢复',
         manual: '需手动恢复',
+        groupDisabled: '启用分组后查看密钥状态',
         at: '将于 {time} 自动恢复',
       },
       failure: {

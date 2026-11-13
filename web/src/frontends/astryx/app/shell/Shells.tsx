@@ -181,6 +181,10 @@ const styles = stylex.create({
     minHeight: 'calc(100vh - var(--topbar-height))',
     outlineStyle: 'none',
   },
+  workspaceContent: {
+    maxWidth: 'var(--content-max)',
+    marginInline: 'auto',
+  },
   mobileNav: {
     display: 'grid',
     gap: 'var(--space-1)',
@@ -407,7 +411,11 @@ export function AuthedShell({
             </div>
           </div>
         </header>
-        <main id="main-content" tabIndex={-1} {...stylex.props(styles.content)}>
+        <main
+          id="main-content"
+          tabIndex={-1}
+          {...stylex.props(styles.content, styles.workspaceContent)}
+        >
           {children}
         </main>
       </div>

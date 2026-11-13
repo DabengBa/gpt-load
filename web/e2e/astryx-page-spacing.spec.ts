@@ -168,7 +168,15 @@ for (const [theme, width] of [
         await expect(page.getByText('No models have been added')).toBeVisible()
         if (width === 900) {
           const ledger = page.getByRole('table').filter({ hasText: 'No models have been added' })
-          await expect(ledger.getByRole('columnheader', { name: 'Actions' })).toHaveCount(1)
+          await expect(
+            ledger.getByRole('columnheader', { name: 'Remove', exact: true }),
+          ).toHaveCount(1)
+          await expect(
+            ledger.getByRole('columnheader', {
+              name: 'Scheduling / pricing / actions',
+              exact: true,
+            }),
+          ).toHaveCount(1)
           const scrollable = await ledger.evaluate(
             (element) => element.scrollWidth > element.clientWidth,
           )
@@ -177,6 +185,14 @@ for (const [theme, width] of [
       }
       if (path === '/schedule')
         await expect(page.getByRole('table', { name: 'Schedule detail' })).toBeVisible()
+      const panelPadding = await page
+        .locator('[data-content-panel]')
+        .evaluateAll((panels) => panels.map((panel) => getComputedStyle(panel).padding))
+      for (const padding of panelPadding) {
+        expect(padding, `${path} uses the shared panel padding`).toBe(
+          path === '/logs' && width <= 860 ? '0px' : '16px',
+        )
+      }
       if (path === '/groups' || path === '/logs') {
         const panel = page.locator('[data-content-panel]')
         await expect(panel).toBeVisible()
@@ -222,6 +238,8 @@ for (const [theme, width] of [
           mainPadding: mainStyle.padding,
           mainLeft: main.getBoundingClientRect().left,
           mainWidth: main.getBoundingClientRect().width,
+          workspaceLeft: main.parentElement!.getBoundingClientRect().left,
+          workspaceWidth: main.parentElement!.getBoundingClientRect().width,
           content: content.map((child) => ({ left: child.left, width: child.width })),
           leadingSpace: Math.min(...content.map((child) => child.top)) - rect.top,
           trailingSpace: rect.bottom - Math.max(...content.map((child) => child.bottom)),
@@ -257,6 +275,10 @@ for (const [theme, width] of [
         expect.soft(extra, `${path} ${name} extra whitespace`).toBeLessThanOrEqual(16)
       }
       expect.soft(geometry.mainPadding, `${path} shell padding`).toBe('0px')
+      expect.soft(geometry.mainWidth, `${path} content width cap`).toBeLessThanOrEqual(1600)
+      expect
+        .soft(geometry.mainLeft, `${path} centered in workspace`)
+        .toBeCloseTo(geometry.workspaceLeft + (geometry.workspaceWidth - geometry.mainWidth) / 2, 0)
       expect.soft(geometry.overflow, `${path} horizontal overflow`).toBeLessThanOrEqual(width)
       const expectedWidth = geometry.mainWidth - gutter * 2
       expect.soft(geometry.innerWidth, `${path} available width`).toBeCloseTo(expectedWidth, 0)

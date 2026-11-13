@@ -27,7 +27,7 @@ export function createModelDraft(items: readonly GroupModelItemDto[]): ModelDraf
       name: item.id,
       sources: [],
       alias: item.alias,
-      alias_enabled: item.alias_enabled,
+      alias_enabled: item.alias.trim() !== '',
       test_alias: item.test_alias,
       weight: item.weight ?? null,
       priority: item.priority ?? null,

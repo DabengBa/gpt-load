@@ -18,7 +18,6 @@ type Translate = (id: MessageId, values?: TValues) => string
 
 export interface ModelEditorAnalysis {
   conflicts: ModelNameConflict[]
-  emptyAliasIndexes: Set<number>
   emptyIDIndexes: Set<number>
   invalidWeightIndexes: Set<number>
   invalidPriorityIndexes: Set<number>
@@ -43,16 +42,12 @@ export function analyzeModelDraft(args: {
   const conflicts = serverConflicts.length
     ? serverConflicts
     : findModelNameConflicts(normalizedModels(draft))
-  const emptyAliasIndexes = new Set(
-    draft.flatMap((item, index) => (item.alias_enabled && !item.alias.trim() ? [index] : [])),
-  )
   const emptyIDIndexes = new Set(draft.flatMap((item, index) => (!item.id.trim() ? [index] : [])))
   const invalidWeightIndexes = indexesWithInvalidWeights(draft)
   const invalidPriorityIndexes = indexesWithInvalidPriorities(draft)
   const zeroShareIndexes = indexesWithZeroShare(draft)
   const invalidRowCount = new Set([
     ...conflicts.flatMap((item) => item.indexes),
-    ...emptyAliasIndexes,
     ...emptyIDIndexes,
     ...invalidWeightIndexes,
     ...invalidPriorityIndexes,
@@ -61,7 +56,6 @@ export function analyzeModelDraft(args: {
   const validationSummary = [
     conflicts.length ? t('group.modelEditor.conflictSummary') : '',
     emptyIDIndexes.size ? t('group.modelEditor.manualIdRequired') : '',
-    emptyAliasIndexes.size ? t('group.modelEditor.emptyAliasSummary') : '',
     zeroShareIndexes.size ? t('group.modelEditor.zeroShareSummary') : '',
     invalidWeightIndexes.size ? t('group.modelEditor.invalidWeight') : '',
     invalidPriorityIndexes.size ? t('group.modelEditor.invalidPriority') : '',
@@ -75,14 +69,12 @@ export function analyzeModelDraft(args: {
     !operationBlocked &&
     conflicts.length === 0 &&
     emptyIDIndexes.size === 0 &&
-    emptyAliasIndexes.size === 0 &&
     invalidWeightIndexes.size === 0 &&
     invalidPriorityIndexes.size === 0 &&
     zeroShareIndexes.size === 0
 
   return {
     conflicts,
-    emptyAliasIndexes,
     emptyIDIndexes,
     invalidWeightIndexes,
     invalidPriorityIndexes,

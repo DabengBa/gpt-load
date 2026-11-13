@@ -29,7 +29,7 @@ async function openLogs(page: Page, locale?: string) {
   await expect(page.locator('[data-testid="astryx-shell"]')).toBeVisible({
     timeout: 60_000,
   })
-  await expect(page.getByRole('heading', { name: /.+/ })).toBeVisible()
+  await expect(page.getByTestId('logs-tab')).toBeVisible()
   return routes
 }
 
@@ -53,12 +53,13 @@ test('preset applies to the request, reset restores the default window (en-US)',
   expect(to0 - from0).toBeLessThan(49 * 60 * 60 * 1000)
 
   const requestCount = logRequests.length
-  const appliedRange = page.getByTestId('logs-applied-time-range')
-  await expect(appliedRange).toContainText('Applied time range')
-  const initialRange = await appliedRange.textContent()
+  await expect(
+    page.getByTestId('logs-tab').getByRole('heading', { name: 'Request logs', level: 1 }),
+  ).toHaveCount(1)
+  await expect(page.getByTestId('logs-applied-time-range')).toHaveCount(0)
   await expect(
     page.getByText('Shortcuts edit the draft; select Apply to update results.'),
-  ).toBeVisible()
+  ).toHaveCount(0)
   await expect(page.getByRole('group', { name: 'Quick time ranges' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'From', exact: true })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'To', exact: true })).toBeVisible()
@@ -71,7 +72,7 @@ test('preset applies to the request, reset restores the default window (en-US)',
     .click()
   expect(logRequests.length).toBe(requestCount)
   await expect(page.getByText('Filter draft has not been applied')).toBeVisible()
-  await expect(appliedRange).toHaveText(initialRange!)
+
 
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
 
@@ -86,7 +87,7 @@ test('preset applies to the request, reset restores the default window (en-US)',
   // The 7d window covers recent rows, not the 10-day-old row.
   await expect(detailButtons(page)).toHaveCount(2)
   await expect(page.getByText('Filter draft has not been applied')).toBeHidden()
-  await expect(appliedRange).not.toHaveText(initialRange!)
+
   await expect(page.getByText('old-model')).toBeHidden()
 
   const appliedUrl = page.url()

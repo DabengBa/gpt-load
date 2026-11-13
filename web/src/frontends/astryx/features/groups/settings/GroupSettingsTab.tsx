@@ -643,6 +643,7 @@ export function GroupSettingsTab({
                 params={draft.params}
                 name={draft.name}
                 providerUrl={draft.provider_url}
+                savedProviderUrl={saved.provider_url}
                 providerUrlInvalid={providerUrlInvalid}
 
                 enabled={saved.enabled}
@@ -652,6 +653,19 @@ export function GroupSettingsTab({
                 nameError={nameError}
                 paramErrors={paramErrors}
                 headerActionsTarget={unified ? headerActionsTarget : null}
+                siteAccessFields={
+                  <GroupSettingsSiteAccessSection
+                    groupId={groupId}
+                    saved={saved}
+                    draft={draft}
+                    access={query.data?.site_access ?? saved.site_access}
+                    forceConfirmation={forceSiteRootConfirmation}
+                    disabled={mutationPending}
+                    onChange={(value) =>
+                      setDraft((current) => (current ? { ...current, ...value } : current))
+                    }
+                  />
+                }
                 onParamChange={updateParam}
                 onChannelSelect={selectChannel}
                 onChannelsRetry={() => void channelsQuery.refetch()}
@@ -668,17 +682,7 @@ export function GroupSettingsTab({
 
                 onSetEnabled={(value) => void setGroupEnabled(value)}
               />
-              <GroupSettingsSiteAccessSection
-                groupId={groupId}
-                saved={saved}
-                draft={draft}
-                access={query.data?.site_access ?? saved.site_access}
-                forceConfirmation={forceSiteRootConfirmation}
-                disabled={mutationPending}
-                onChange={(value) =>
-                  setDraft((current) => (current ? { ...current, ...value } : current))
-                }
-              />
+
               {unified && advancedTarget ? createPortal(advanced, advancedTarget) : advanced}
             </div>
           </div>

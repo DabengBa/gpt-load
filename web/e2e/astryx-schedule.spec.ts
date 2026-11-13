@@ -11,6 +11,86 @@ import { mockGroupModels } from './fixtures/group-models-mock'
 
 const adminKey = 'e2e-admin-key'
 
+test('configured share bars match displayed values and retain compact accessible actions', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      detail.groups[0]!.entries[0]!.configured_share = 0.33334
+      detail.groups[0]!.entries.push({
+        ...entry('entry-extra', 'model-extra', 100),
+        configured_share: 0.66666,
+        effective_share: 0,
+      })
+      return detail
+    },
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => localStorage.setItem('gpt-load.theme', value), theme)
+    await page.reload()
+    await waitForScheduleDetailReady(page)
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 })
+      const first = rows(page).filter({ hasText: 'model-a' })
+      const disabled = rows(page).filter({ hasText: 'secondary group' })
+      const track = first.locator('[data-share-track]')
+      const fill = first.locator('[data-share-fill]')
+      await expect(first.getByRole('cell').nth(4)).toContainText('33.3%')
+      await expect(track).toHaveAttribute('aria-hidden', 'true')
+      const geometry = await track.evaluate((element) => {
+        const fill = element.firstElementChild as HTMLElement
+        const rect = element.getBoundingClientRect()
+        return { height: rect.height, fraction: fill.getBoundingClientRect().width / rect.width }
+      })
+      expect(geometry.height).toBe(4)
+      expect(geometry.fraction).toBeCloseTo(0.333, 2)
+      await expect(disabled.locator('[data-share-fill]')).toHaveCSS('width', '0px')
+      for (const field of ['priority', 'weight']) {
+        const input = first.locator(`input[id^="${field}-"]`)
+        await expect(input).toHaveCSS('text-align', 'center')
+        await expect(input).toHaveCSS('font-variant-numeric', 'tabular-nums')
+        await expect(input).toHaveAccessibleName(new RegExp(`${field} model-a`, 'i'))
+        expect((await input.boundingBox())!.height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32)
+      }
+      const heading = page.locator('[data-priority-group]').first()
+      expect((await heading.boundingBox())!.height).toBe(28)
+      expect(await heading.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
+        await first.evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      const probe = first.getByRole('button', { name: 'Probe', exact: true })
+      await expect(probe).toBeVisible()
+      await expect(probe).toHaveCSS('border-top-width', '1px')
+      const more = first.getByRole('button', { name: /More model-a/ })
+      await more.focus()
+      await page.keyboard.press('Enter')
+      await expect(page.getByText('0 means unlimited').filter({ visible: true })).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(more).toBeFocused()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      )
+      await page.screenshot({ path: testInfo.outputPath(`share-${theme}-${width}.png`) })
+      await expect(fill).toBeVisible()
+    }
+  }
+  const first = rows(page).filter({ hasText: 'model-a' })
+  const other = rows(page).filter({ hasText: 'model-extra' })
+  await other.locator('input[id^="weight-"]').fill('0')
+  await expect(first.getByRole('cell').nth(4)).toContainText('100.0%')
+  await expect(first.locator('[data-share-fill]')).toHaveCSS(
+    'width',
+    await first
+      .locator('[data-share-track]')
+      .evaluate((el) => `${el.getBoundingClientRect().width}px`),
+  )
+  await first.locator('input[id^="weight-"]').fill('0')
+  await expect(first.getByRole('cell').nth(4)).toContainText('0.0%')
+  await expect(first.locator('[data-share-fill]')).toHaveCSS('width', '0px')
+})
+
 test('batch probe sends visible fixed-group targets after disabled confirmation', async ({
   page,
 }) => {
@@ -491,6 +571,422 @@ async function waitForScheduleTable(page: Page): Promise<void> {
 
 const rows = (page: Page) => page.locator('[data-row-key]')
 
+test('current model is shown once across the schedule picker breakpoint', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  for (const width of [1920, 1440, 1439, 900, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    const sidebar = page.locator('.schedule-model-sidebar')
+    const current = page.locator('.schedule-model-desktop-current')
+    const compact = page.getByTestId('schedule-model-selector')
+    if (width >= 1440) {
+      await expect(sidebar.getByRole('button', { name: 'worker', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+      await expect(current).toBeHidden()
+      await expect(compact).toBeHidden()
+    } else {
+      await expect(sidebar).toBeHidden()
+      await expect(compact).toBeVisible()
+      await expect(compact).toContainText('worker')
+      await expect(compact).toHaveAccessibleName('Select a model')
+    }
+    await expect(page.getByRole('heading', { name: 'Schedule detail' })).toBeAttached()
+  }
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => localStorage.setItem('gpt-load.theme', value), theme)
+    await page.reload()
+    await waitForScheduleDetailReady(page)
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+      if (width === 390) {
+        const metrics = rows(page).first().getByRole('cell').nth(2)
+        await expect(metrics).toContainText('Group 24h calls')
+        await expect(metrics).toContainText('Group 24h success')
+        await expect(page.getByTestId('schedule-model-selector')).toContainText('worker')
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width,
+        )
+      } else {
+        await expect(
+          page
+            .locator('.schedule-model-sidebar')
+            .getByRole('button', { name: 'worker', exact: true }),
+        ).toBeVisible()
+        await expect(page.locator('.schedule-model-desktop-current')).toBeHidden()
+      }
+      await page.screenshot({ path: testInfo.outputPath(`schedule-${width}-${theme}.png`) })
+    }
+  }
+})
+
+test('schedule statistics heading and all header titles are vertically centered', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  const translations = {
+    'zh-CN': ['分组 24h', '请求 / 成功率'],
+    'en-US': ['Group 24h', 'Calls / Success rate'],
+    'ja-JP': ['グループ 24h', 'リクエスト / 成功率'],
+  } as const
+  for (const locale of Object.keys(translations) as (keyof typeof translations)[]) {
+    await page.evaluate((value) => localStorage.setItem('gpt-load.locale', value), locale)
+    await page.reload()
+    await waitForScheduleTable(page)
+    for (const width of [768, 1200, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 })
+      const headers = page.locator('[data-schedule-candidates] [role="columnheader"]')
+      const metrics = headers.nth(2)
+      await expect(metrics.locator('span')).toHaveText([...translations[locale]])
+      await expect(metrics).toHaveAccessibleName(translations[locale].join(' '))
+      const lines = await metrics.locator('span').evaluateAll((elements) =>
+        elements.map((element) => {
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          return range.getClientRects().length
+        }),
+      )
+      expect(lines, `${locale} ${width}px: each label occupies one line`).toEqual([1, 1])
+      const bounds = await headers.evaluateAll((elements) =>
+        elements.map((element) => {
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          const rect = range.getBoundingClientRect()
+          return { left: rect.left, right: rect.right }
+        }),
+      )
+      expect(bounds[2]!.left).toBeGreaterThanOrEqual(bounds[1]!.right)
+      expect(bounds[2]!.right).toBeLessThanOrEqual(bounds[3]!.left)
+      const geometry = await headers.evaluateAll((elements) => {
+        const row = elements[0]!.parentElement!
+        const rowRect = row.getBoundingClientRect()
+        const style = getComputedStyle(row)
+        const textRect = (element: Element) => {
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          return range.getBoundingClientRect()
+        }
+        return {
+          paddingTop: parseFloat(style.paddingTop),
+          paddingBottom: parseFloat(style.paddingBottom),
+          centers: elements.flatMap((element, index) =>
+            (index === 3 ? [...element.children] : [element]).map((title) => {
+              const rect = textRect(title)
+              return Math.abs((rect.top + rect.bottom - rowRect.top - rowRect.bottom) / 2)
+            }),
+          ),
+        }
+      })
+      expect(geometry.paddingTop).toBe(geometry.paddingBottom)
+      for (const center of geometry.centers)
+        expect(center, `${locale} ${width}px`).toBeLessThanOrEqual(2)
+    }
+    await page.screenshot({ path: testInfo.outputPath(`header-${locale}.png`) })
+  }
+})
+
+test('model picker keeps the search fixed and exposes truncated names in both themes', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page)
+  const longName = 'worker-with-a-very-long-unbroken-model-name-for-truncation'
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill(
+      response({
+        items: ['worker', longName, ...Array.from({ length: 24 }, (_, i) => `model-${i}`)].map(
+          (external_model) => ({
+            external_model,
+            protocol: 'openai-completions',
+            operation: 'chat_completion',
+            candidate_count: 2,
+            group_count: 2,
+            cooled_candidates: 0,
+            blacklisted_candidates: 0,
+          }),
+        ),
+      }),
+    )
+  })
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await openSchedule(page, '?schedule_model=worker')
+  const sidebar = page.locator('.schedule-model-sidebar')
+  const list = sidebar.getByTestId('schedule-model-list')
+  const search = sidebar.getByRole('textbox', { name: '对外模型' })
+  const selected = list.getByRole('button', { name: 'worker', exact: true })
+  const long = list.getByRole('button', { name: longName })
+  await expect(selected).toHaveAttribute('aria-pressed', 'true')
+  await expect(sidebar.locator('span').filter({ hasText: /^对外模型$/ })).toHaveCount(0)
+  await expect(sidebar.getByText('openai-completions', { exact: true })).toHaveCount(0)
+  await expect(sidebar.getByText('26', { exact: true })).toHaveCount(0)
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => localStorage.setItem('gpt-load.theme', value), theme)
+    await page.reload()
+    await expect(selected).toBeVisible()
+    const metrics = await selected.evaluate((el) => {
+      const css = getComputedStyle(el)
+      const probe = document.createElement('span')
+      probe.style.backgroundColor = 'var(--color-action-soft)'
+      el.append(probe)
+      const selectedColor = getComputedStyle(probe).backgroundColor
+      probe.remove()
+      return {
+        height: el.getBoundingClientRect().height,
+        background: css.backgroundColor,
+        selectedColor,
+        weight: Number(css.fontWeight),
+        shadow: css.boxShadow,
+      }
+    })
+    expect(metrics.height).toBeGreaterThanOrEqual(34)
+    expect(metrics.height).toBeLessThanOrEqual(38)
+    expect(metrics.background).toBe(metrics.selectedColor)
+    expect(metrics.weight).toBeGreaterThanOrEqual(600)
+    expect(metrics.shadow).toBe('none')
+    const name = long.locator('.schedule-model-name')
+    await expect(name).toHaveCSS('text-overflow', 'ellipsis')
+    expect(await name.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
+    await long.focus()
+    await expect(page.getByRole('tooltip').filter({ hasText: longName })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await long.hover()
+    await expect(page.getByRole('tooltip').filter({ hasText: longName })).toBeVisible()
+    const before = await search.boundingBox()
+    await list.evaluate((el) => {
+      el.scrollTop = el.scrollHeight
+    })
+    expect(await list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    expect((await search.boundingBox())!.y).toBe(before!.y)
+    await search.fill('no-match')
+    await expect(sidebar.getByText('未找到匹配模型', { exact: true })).toBeVisible()
+    await search.fill('')
+    await page.screenshot({ path: testInfo.outputPath(`model-picker-${theme}.png`) })
+  }
+  await page.setViewportSize({ width: 1440, height: 450 })
+  const shortList = (await list.boundingBox())!
+  expect(shortList.y + shortList.height).toBeLessThanOrEqual(450)
+  await list.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  await expect(list.getByRole('button', { name: 'model-23' })).toBeInViewport()
+})
+
+test('compact model picker removes redundant summary while retaining keyboard selection', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openSchedule(page, '?schedule_model=worker')
+  const trigger = page.getByTestId('schedule-model-selector')
+  await expect(trigger).toHaveAccessibleName('Select a model')
+  await expect(trigger).not.toContainText('External model')
+  await expect(trigger).not.toContainText('openai-completions')
+  await expect(trigger).not.toContainText('2')
+  await trigger.press('Enter')
+  const picker = page.getByRole('dialog', { name: 'Select a model' })
+  const search = picker.getByRole('textbox', { name: 'External model' })
+  await search.fill('worker-b')
+  await search.press('ArrowDown')
+  await expect(picker.getByRole('button', { name: 'worker-b' })).toBeFocused()
+  await page.screenshot({
+    path: testInfo.outputPath('model-picker-mobile.png'),
+    animations: 'disabled',
+  })
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})
+
+for (const width of [1440, 390]) {
+  test(`configured share order uses saved data while editing at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    const detail = detailForModel('worker')
+    const a = entry('entry-a', 'model-a', 20)
+    const b = entry('entry-b', 'model-b', 60)
+    const c = entry('entry-c', 'model-c', 20)
+    c.runtime.state = 'cooldown'
+    c.routable = false
+    c.reason_code = 'entry_cooldown'
+    const disabled = { ...entry('entry-d', 'model-d', 90), enabled: false, configured_share: 0 }
+    a.configured_share = 0.2
+    b.configured_share = 0.6
+    c.configured_share = 0.2
+    a.effective_share = 0.25
+    b.effective_share = 0.75
+    c.effective_share = 0
+    disabled.effective_share = 0
+    detail.groups[0]!.entries = [a, b, c, disabled]
+    detail.groups[1]!.entries = [
+      { ...entry('entry-e', 'model-e', 100), configured_share: 0, effective_share: 0 },
+    ]
+    await installScheduleRoutes(page, { projectDetail: () => detail })
+    let fail = true
+    await page.route('**/api/model-route/schedule', async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      if (fail) return route.fulfill(response({}, 500))
+      // The refreshed snapshot, not the submitted 90, is authoritative.
+      a.weight = 80
+      a.configured_share = 80 / 160
+      b.configured_share = 60 / 160
+      c.configured_share = 20 / 160
+      detail.snapshot_revision = 12
+      return route.fulfill(response({ snapshot_revision_new: 12, detail: null }))
+    })
+    await openSchedule(page, '?schedule_model=worker')
+    await waitForScheduleDetailReady(page)
+    const assertOrder = async (expected: string[]) => {
+      await expect
+        .poll(() =>
+          rows(page).evaluateAll((elements) =>
+            elements.map((element) => element.getAttribute('data-row-key')),
+          ),
+        )
+        .toEqual(expected)
+    }
+    const initial = ['1:entry-b', '1:entry-a', '1:entry-c', '1:entry-d', '2:entry-e']
+    await assertOrder(initial)
+    await expect(rows(page).filter({ hasText: 'model-c' }).getByRole('cell').nth(4)).toContainText(
+      '20.0%',
+    )
+    await expect(rows(page).filter({ hasText: 'model-d' }).getByRole('cell').nth(4)).toContainText(
+      '0.0%',
+    )
+    await expect(rows(page).filter({ hasText: 'model-e' }).getByRole('cell').nth(4)).toContainText(
+      '0.0%',
+    )
+    const weight = rows(page)
+      .filter({ hasText: 'model-a' })
+      .getByRole('spinbutton', { name: /Weight model-a/ })
+    await weight.fill('90')
+    await expect(weight).toBeFocused()
+    await expect(rows(page).filter({ hasText: 'model-a' }).getByRole('cell').nth(4)).toContainText(
+      '52.9%',
+    )
+    await assertOrder(initial)
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByRole('alert').first()).toBeVisible()
+    await assertOrder(initial)
+    fail = false
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page).not.toHaveURL(/schedule_draft=/)
+    await assertOrder(['1:entry-a', '1:entry-b', '1:entry-c', '1:entry-d', '2:entry-e'])
+    await expect(rows(page).filter({ hasText: 'model-a' }).getByRole('cell').nth(4)).toContainText(
+      '50.0%',
+    )
+    await expect(weight).toHaveValue('80')
+    await page.screenshot({ path: testInfo.outputPath('share-order.png'), fullPage: true })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+  })
+}
+
+for (const width of [1440, 390]) {
+  test(`priority groups remain stable while editing and follow saved data at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    const detail = detailForModel('worker')
+    detail.groups[0]!.entries = [
+      entry('entry-1', 'model-a', 50, 3),
+      entry('entry-3', 'model-c', 50, 1),
+    ]
+    detail.groups[1]!.entries = [
+      entry('entry-2', 'model-b', 50, 2),
+      entry('entry-4', 'model-d', 50, 1),
+    ]
+    detail.groups[0]!.entries[0]!.effective_share = 0
+    for (const candidate of detail.groups[1]!.entries) {
+      candidate.configured_share = 0
+      candidate.effective_share = 0
+    }
+    await installScheduleRoutes(page, { projectDetail: () => detail })
+    let fail = true
+    await page.route('**/api/model-route/schedule', async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      if (fail) return route.fulfill(response({}, 500))
+      detail.groups[0]!.entries[0]!.priority = 1
+      detail.groups[0]!.entries[0]!.configured_share = 0.5
+      detail.groups[0]!.entries[0]!.effective_share = 0.5
+      detail.groups[0]!.entries[1]!.configured_share = 0.5
+      detail.groups[0]!.entries[1]!.effective_share = 0.5
+      detail.snapshot_revision = 12
+      return route.fulfill(response({ snapshot_revision_new: 12, detail: null }))
+    })
+    await openSchedule(page, '?schedule_model=worker')
+    await waitForScheduleDetailReady(page)
+    const sequence = page.locator('[data-priority-group], [data-row-key]')
+    const assertSequence = async (expected: string[]) => {
+      await expect
+        .poll(() =>
+          sequence.evaluateAll((elements) =>
+            elements.map(
+              (element) =>
+                element.getAttribute('data-priority-group') ?? element.getAttribute('data-row-key'),
+            ),
+          ),
+        )
+        .toEqual(expected)
+    }
+    const initial = ['1', '1:entry-3', '2:entry-4', '2', '2:entry-2', '3', '1:entry-1']
+    await assertSequence(initial)
+    await expect(page.locator('[data-priority-group="1"]')).toContainText('Priority 1')
+    await page.screenshot({ path: testInfo.outputPath('priority-groups.png'), fullPage: true })
+    const input = rows(page)
+      .filter({ hasText: 'model-a' })
+      .getByRole('spinbutton', { name: /Priority model-a/ })
+    await input.fill('1')
+    await expect(input).toBeFocused()
+    await assertSequence(initial)
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByRole('alert').first()).toBeVisible()
+    await expect(input).toHaveValue('1')
+    await assertSequence(initial)
+    await page.reload()
+    await waitForScheduleDetailReady(page)
+    await assertSequence(initial)
+    await expect(
+      rows(page)
+        .filter({ hasText: 'model-a' })
+        .getByRole('spinbutton', { name: /Priority model-a/ }),
+    ).toHaveValue('1')
+    fail = false
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page).not.toHaveURL(/schedule_draft=/)
+    await assertSequence(['1', '1:entry-1', '1:entry-3', '2:entry-4', '2', '2:entry-2'])
+    await page.reload()
+    await waitForScheduleDetailReady(page)
+    await assertSequence(['1', '1:entry-1', '1:entry-3', '2:entry-4', '2', '2:entry-2'])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+  })
+}
+
+for (const [locale, label] of [
+  ['en-US', 'Priority'],
+  ['zh-CN', '优先级'],
+  ['ja-JP', '優先度'],
+]) {
+  test(`priority group heading is localized in ${locale}`, async ({ page }) => {
+    await installScheduleRoutes(page)
+    await page.addInitScript((value) => localStorage.setItem('gpt-load.locale', value), locale)
+    await openSchedule(page, '?schedule_model=worker')
+    await waitForScheduleTable(page)
+    const heading = page.locator('[data-priority-group]').first()
+    await expect(heading.getByRole('rowheader')).toHaveText(`${label} 1`)
+    await expect(heading.getByRole('rowheader')).toHaveAttribute('aria-colspan', '6')
+  })
+}
+
 test('schedule detail is a distinct task surface at desktop and mobile sizes', async ({ page }) => {
   await installScheduleRoutes(page)
   await openSchedule(page, '?schedule_model=worker')
@@ -741,23 +1237,89 @@ test('successful switch with failed refresh reports stale state without retrying
   expect(state.groups[0]!.entries[0]!.enabled).toBe(false)
 })
 
+test('candidate headings and controls have compact centered desktop alignment', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page)
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleTable(page)
+  for (const width of [768, 1200, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    const geometry = await page.evaluate(() => {
+      const headers = [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-schedule-candidates] [role="columnheader"]',
+        ),
+      ]
+      const row = document.querySelector<HTMLElement>('[data-row-key]')!
+      const textBounds = (element: Element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return range.getBoundingClientRect()
+      }
+      const titles = [...headers[3]!.children].map(textBounds)
+      const controls = [
+        ...row.querySelector<HTMLElement>('[data-schedule-settings]')!.children,
+      ].map((element) => element.getBoundingClientRect())
+      return {
+        identityHeader: textBounds(headers[0]!).left,
+        identityContent: row.querySelector('[role="cell"] strong')!.getBoundingClientRect().left,
+        gaps: controls.slice(1).map((rect, index) => rect.left - controls[index]!.right),
+        centers: titles.map((rect, index) =>
+          Math.abs((rect.left + rect.right - controls[index]!.left - controls[index]!.right) / 2),
+        ),
+      }
+    })
+    for (const gap of geometry.gaps) {
+      expect(gap, `${width}px control gap`).toBeGreaterThanOrEqual(12)
+      expect(gap, `${width}px control gap`).toBeLessThanOrEqual(16)
+    }
+    expect(
+      Math.abs(geometry.identityHeader - geometry.identityContent),
+      `${width}px identity`,
+    ).toBeLessThanOrEqual(1)
+    for (const center of geometry.centers)
+      expect(center, `${width}px heading center`).toBeLessThanOrEqual(1)
+  }
+})
+
+test('disabled status has no misleading edge stripe in either theme', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleTable(page)
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => localStorage.setItem('gpt-load.theme', value), theme)
+    await page.reload()
+    await waitForScheduleTable(page)
+    const disabled = rows(page).nth(1)
+    await expect(disabled.getByRole('cell').nth(1)).toContainText('disabled')
+    await expect(disabled.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+    expect(await disabled.evaluate((element) => getComputedStyle(element).boxShadow), theme).toBe(
+      'none',
+    )
+    await disabled.focus()
+    await page.keyboard.press('Enter')
+    await expect(disabled).toHaveAttribute('aria-selected', 'true')
+    await expect(disabled).toBeFocused()
+  }
+})
+
 test('disabled schedule rows remain visually distinct without changing their switches', async ({
   page,
 }, testInfo) => {
   await installScheduleRoutes(page)
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
-  const active = rows(page).first()
   const disabledGroup = rows(page).nth(1)
   await expect(disabledGroup.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
-  const marker = (element: Element) => getComputedStyle(element).boxShadow
-  expect(await disabledGroup.evaluate(marker)).not.toBe(await active.evaluate(marker))
+  await expect(disabledGroup.getByRole('cell').nth(1)).toContainText('disabled')
   await disabledGroup.click()
   await page.locator('#weight-1').fill('40')
   await disabledGroup.hover()
   await expect(disabledGroup).toHaveAttribute('aria-selected', 'true')
   await expect(disabledGroup.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
-  expect(await disabledGroup.evaluate(marker)).not.toBe(await active.evaluate(marker))
+  await expect(disabledGroup.getByRole('cell').nth(1)).toContainText('disabled')
   expect(
     await disabledGroup.evaluate((element) => {
       const probe = document.createElement('i')
@@ -774,17 +1336,67 @@ test('disabled schedule rows remain visually distinct without changing their swi
   await page.reload()
   await waitForScheduleDetailReady(page)
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  expect(await disabledGroup.evaluate(marker)).not.toBe(await active.evaluate(marker))
+  await expect(disabledGroup.getByRole('cell').nth(1)).toContainText('disabled')
   await page.screenshot({ path: testInfo.outputPath('disabled-selected-draft-dark.png') })
 })
 
-test('Chinese schedule headings and ordinary rows fit desktop tracks', async ({ page }) => {
+test('schedule header tracks remain aligned and balanced on wide screens', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  for (const width of [1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    const geometry = await page.evaluate(() => {
+      const headers = [...document.querySelectorAll<HTMLElement>('[role="columnheader"]')]
+      const row = document.querySelector<HTMLElement>('[data-row-key]')!
+      const settings = row.querySelector<HTMLElement>('[data-schedule-settings]')!
+      const titles = [...headers[3]!.children] as HTMLElement[]
+      const controls = [...settings.children] as HTMLElement[]
+      const titleBounds = titles.map((title) => {
+        const range = document.createRange()
+        range.selectNodeContents(title)
+        const text = range.getBoundingClientRect()
+        const track = title.getBoundingClientRect()
+        return { textRight: text.right, trackRight: track.right, left: track.left }
+      })
+      return {
+        identityWidth: headers[0]!.getBoundingClientRect().width,
+        statusWidth: headers[1]!.getBoundingClientRect().width,
+        metricsWidth: headers[2]!.getBoundingClientRect().width,
+        reasoningWidth: titles[2]!.getBoundingClientRect().width,
+        titleBounds,
+        controlLefts: controls.map((control) => control.getBoundingClientRect().left),
+      }
+    })
+    expect(geometry.identityWidth, `${width}px identity track`).toBeGreaterThanOrEqual(200)
+    expect(geometry.identityWidth, `${width}px identity versus status`).toBeGreaterThan(
+      geometry.statusWidth,
+    )
+    expect(geometry.identityWidth, `${width}px identity versus metrics`).toBeGreaterThan(
+      geometry.metricsWidth,
+    )
+    expect(geometry.reasoningWidth, `${width}px reasoning track`).toBeLessThanOrEqual(113)
+    for (const [index, title] of geometry.titleBounds.entries()) {
+      expect(title.textRight, `${width}px title ${index} fits`).toBeLessThanOrEqual(
+        title.trackRight + 1,
+      )
+      expect(
+        Math.abs(title.left - geometry.controlLefts[index]!),
+        `${width}px column ${index}`,
+      ).toBeLessThanOrEqual(1)
+    }
+  }
+})
+
+test('Chinese schedule headings and ordinary rows fit desktop tracks', async ({
+  page,
+}, testInfo) => {
   await installScheduleRoutes(page)
   await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
   await page.setViewportSize({ width: 1200, height: 900 })
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleTable(page)
-  for (const width of [768, 1199, 1200, 1439, 1440]) {
+  for (const width of [768, 1199, 1200, 1439, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 })
     const geometry = await page.evaluate(() => {
       const headers = [...document.querySelectorAll<HTMLElement>('[role="columnheader"]')]
@@ -822,6 +1434,8 @@ test('Chinese schedule headings and ordinary rows fit desktop tracks', async ({ 
       `${width}px actions`,
     ).toBeLessThanOrEqual(1)
     expect(geometry.pageWidth).toBeLessThanOrEqual(width)
+    if (width === 1440 || width === 1920)
+      await page.screenshot({ path: testInfo.outputPath(`schedule-${width}-zh.png`) })
     const wrap = page.getByRole('table').locator('..')
     await wrap.evaluate((element) => {
       element.scrollLeft = element.scrollWidth
@@ -850,7 +1464,7 @@ test('Chinese tier-demoted eligibility has no orphan character or uneven ordinar
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleTable(page)
   const status = rows(page).first().getByRole('cell').nth(1).locator('span').first()
-  await expect(status).toHaveText('处于后备优先级层待命')
+  await expect(status).toHaveText('可调度')
 
   for (const width of [768, 1199, 1200, 1439, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 })
@@ -910,15 +1524,53 @@ test('optimistic disable hides schedulable eligibility and failure restores the 
   try {
     await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
     await expect(row.getByRole('switch')).toHaveAccessibleName(/^Enable entry model-a/)
-    await expect(status).toContainText('Route entry is disabled')
+    await expect(status).toHaveText('Route entry is disabled')
     await expect(status).not.toContainText('Schedulable')
-    expect(await row.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe('none')
   } finally {
     release()
   }
   await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
   expect(await row.evaluate((element) => getComputedStyle(element).boxShadow)).toBe('none')
   await expect(status).toContainText('Schedulable')
+})
+
+test('optimistic enable does not show a stale disabled reason before rollback', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      const candidate = detail.groups[0]!.entries[0]!
+      candidate.enabled = false
+      candidate.routable = false
+      candidate.reason_code = 'entry_disabled'
+      return detail
+    },
+  })
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    await gate
+    await route.fulfill(response({}, 500))
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const row = rows(page).first()
+  const status = row.getByRole('cell').nth(1)
+  await expect(status).toHaveText('Route entry is disabled')
+  await row.getByRole('switch', { name: /^Enable entry model-a/ }).click()
+  try {
+    await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+    await expect(status).toHaveText('Unknown route reason')
+    await expect(status).not.toContainText('Schedulable')
+  } finally {
+    release()
+  }
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+  await expect(status).toHaveText('Route entry is disabled')
 })
 
 test('draft share excludes disabled groups from both numerator and denominator', async ({
@@ -930,6 +1582,326 @@ test('draft share excludes disabled groups from both numerator and denominator',
   await page.locator('#weight-0').fill('100')
   await expect(rows(page).first().getByRole('cell').nth(4)).toContainText('100.0%')
   await expect(rows(page).nth(1).getByRole('cell').nth(4)).toContainText('0.0%')
+})
+
+test('candidate status names disabled entries without hiding abnormal health', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      const group = detail.groups[0]!
+      group.entries = [
+        entry('entry-1', 'model-a', 50),
+        ...[
+          { enabled: false, routable: false, reason: 'entry_disabled', state: 'available' },
+          // Guard against a stale positive scheduler snapshot while the switch is off.
+          { enabled: false, routable: true, reason: null, state: 'available' },
+          { enabled: false, routable: false, reason: 'entry_disabled', state: 'cooldown' },
+          { enabled: false, routable: false, reason: 'entry_disabled', state: 'blacklisted' },
+          { enabled: true, routable: true, reason: 'tier_demoted', state: 'available' },
+          { enabled: true, routable: false, reason: 'credential_cooldown', state: 'available' },
+          { enabled: true, routable: false, reason: 'entry_cooldown', state: 'cooldown' },
+          { enabled: true, routable: false, reason: 'entry_blacklisted', state: 'blacklisted' },
+          { enabled: true, routable: false, reason: null, state: 'available' },
+        ].map((item, index) => ({
+          ...entry(`zcase-${index}`, `model-z${index}`, 10),
+          enabled: item.enabled,
+          routable: item.routable,
+          reason_code: item.reason,
+          runtime: { ...entry('x', 'x', 1).runtime, state: item.state },
+          configured_share: 0,
+          effective_share: 0,
+        })),
+      ]
+      detail.groups[1]!.entries.push({
+        ...entry('disabled-unhealthy', 'model-z-disabled', 10),
+        enabled: false,
+        routable: true,
+        reason_code: 'entry_disabled',
+        runtime: { ...entry('x', 'x', 1).runtime, state: 'blacklisted', failure_count: 2 },
+        configured_share: 0,
+        effective_share: 0,
+      })
+      return detail
+    },
+  })
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleTable(page)
+  const status = (index: number) => rows(page).nth(index).getByRole('cell').nth(1)
+  await expect(status(0)).toHaveText('可调度')
+  for (const index of [1, 2, 3, 4]) {
+    await expect(rows(page).nth(index).getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+    await expect(status(index)).toContainText('路由条目已禁用')
+    await expect(status(index)).not.toContainText('可调度')
+    await expect(status(index)).not.toContainText('条目健康: 可用')
+  }
+  await expect(status(3)).toContainText('条目健康: 冷却中')
+  await expect(status(4)).toContainText('条目健康: 已拉黑')
+  await expect(status(5)).toHaveText('可调度')
+  await expect(status(6)).toHaveText('凭据正在冷却')
+  await expect(status(7)).toContainText('路由条目正在冷却')
+  await expect(status(7)).toContainText('条目健康: 冷却中')
+  await expect(status(8)).toContainText('条目健康: 已拉黑')
+  await expect(status(9)).toHaveText('未知路由原因')
+  const disabledGroupRow = rows(page).filter({ hasText: 'model-z-disabled' })
+  const disabledGroupStatus = disabledGroupRow.getByRole('cell').nth(1)
+  await expect(disabledGroupRow.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+  await expect(disabledGroupStatus).toContainText('分组已停用')
+  await expect(disabledGroupStatus).toContainText('条目健康: 已拉黑')
+  await expect(disabledGroupStatus).toContainText('2 次失败')
+  await expect(disabledGroupStatus).not.toContainText('可调度')
+  await expect(rows(page).filter({ hasText: 'model-b' }).getByRole('cell').nth(1)).toHaveText(
+    '分组已停用',
+  )
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.screenshot({
+      path: testInfo.outputPath(`candidate-status-${width}.png`),
+      fullPage: true,
+    })
+  }
+})
+
+test('schedule status colors preserve eligibility and health meanings without header underlines', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      const group = detail.groups[0]!
+      group.entries = [
+        entry('entry-1', 'model-a', 50),
+        ...[
+          { reason: 'tier_demoted', routable: true, state: 'available', enabled: true },
+          { reason: 'credential_cooldown', routable: false, state: 'available', enabled: true },
+          { reason: 'entry_cooldown', routable: false, state: 'cooldown', enabled: true },
+          { reason: 'entry_blacklisted', routable: false, state: 'blacklisted', enabled: true },
+          { reason: 'entry_disabled', routable: false, state: 'available', enabled: false },
+          { reason: 'entry_weight_zero', routable: false, state: 'available', enabled: true },
+          { reason: null, routable: false, state: 'available', enabled: true },
+        ].map((item, index) => ({
+          ...entry(`zcase-${index}`, `model-z${index}`, 10),
+          reason_code: item.reason,
+          routable: item.routable,
+          enabled: item.enabled,
+          runtime: { ...entry('x', 'x', 1).runtime, state: item.state },
+        })),
+      ]
+      for (const candidate of group.entries.slice(1)) {
+        candidate.configured_share = 0
+        candidate.effective_share = 0
+      }
+      return detail
+    },
+  })
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleTable(page)
+  const status = (index: number) => rows(page).nth(index).getByRole('cell').nth(1)
+  const expected = [
+    ['可调度'],
+    ['可调度'],
+    ['凭据正在冷却'],
+    ['路由条目正在冷却', '条目健康: 冷却中'],
+    ['路由条目已拉黑', '条目健康: 已拉黑'],
+    ['路由条目已禁用'],
+    ['路由条目权重为零'],
+    ['未知路由原因'],
+    ['分组已停用'],
+  ]
+  for (const [index, lines] of expected.entries()) {
+    await expect(status(index)).toHaveText(lines.join(''))
+  }
+  const color = async (index: number, span = 0) =>
+    status(index)
+      .locator('span')
+      .nth(span)
+      .evaluate((element) => getComputedStyle(element).color)
+  const header = page.getByRole('columnheader')
+  await expect(header.nth(1)).toHaveText('状态')
+  for (const cell of await header.all()) {
+    expect(await cell.evaluate((element) => getComputedStyle(element).borderBottomWidth)).toBe(
+      '0px',
+    )
+  }
+  expect(
+    await header
+      .first()
+      .locator('..')
+      .evaluate((element) => getComputedStyle(element).borderBottomWidth),
+  ).toBe('0px')
+
+  // Check every visible status line on selected and ordinary rows, in both themes and
+  // layouts. Color supplements the full status text, and must remain legible.
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => localStorage.setItem('gpt-load.theme', value), theme)
+    await page.reload()
+    await waitForScheduleTable(page)
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+    const available = await color(0)
+    expect(await color(1), `${theme}: both schedulable states`).toBe(available)
+    for (const index of [2, 3, 4, 6, 7, 8]) {
+      expect(await color(index), `${theme}: non-schedulable state ${index}`).not.toBe(available)
+    }
+    expect(await color(3, 1)).not.toBe(available)
+    expect(await color(4, 1)).not.toBe(available)
+    await expect(status(5)).toHaveText('路由条目已禁用')
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 })
+      for (const index of [0, 1, 3, 4, 5, 7, 8]) {
+        for (const selected of [false, true]) {
+          await rows(page)
+            .nth(selected ? index : (index + 1) % 9)
+            .click()
+          for (let span = 0; span < (await status(index).locator('span').count()); span++) {
+            const ratio = await status(index)
+              .locator('span')
+              .nth(span)
+              .evaluate((element) => {
+                const rgb = (value: string) =>
+                  value
+                    .match(/[\d.]+/g)!
+                    .slice(0, 3)
+                    .map(Number)
+                const luminance = (value: string) => {
+                  const channels = rgb(value).map((channel) => {
+                    const n = channel / 255
+                    return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4
+                  })
+                  return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
+                }
+                const foreground = luminance(getComputedStyle(element).color)
+                const ownBackground = getComputedStyle(element).backgroundColor
+                const background = luminance(
+                  ownBackground === 'rgba(0, 0, 0, 0)'
+                    ? getComputedStyle(element.closest('[data-row-key]')!).backgroundColor
+                    : ownBackground,
+                )
+                return (
+                  (Math.max(foreground, background) + 0.05) /
+                  (Math.min(foreground, background) + 0.05)
+                )
+              })
+            expect(
+              ratio,
+              `${theme} ${width}px row ${index} selected=${selected} line ${span}`,
+            ).toBeGreaterThanOrEqual(4.5)
+          }
+        }
+      }
+    }
+  }
+})
+
+test('candidate soft badges and disabled content retain contrast and usable controls', async ({
+  page,
+}, testInfo) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      detail.groups[0]!.entries.push({
+        ...entry('disabled', 'model-disabled', 10),
+        enabled: false,
+        routable: false,
+        reason_code: 'entry_disabled',
+        configured_share: 0,
+        effective_share: 0,
+      })
+      return detail
+    },
+  })
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleTable(page)
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => localStorage.setItem('gpt-load.theme', value), theme)
+    await page.reload()
+    await waitForScheduleTable(page)
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 })
+      const active = rows(page).filter({ hasText: 'model-a' })
+      const disabled = rows(page).filter({ hasText: 'model-disabled' })
+      const disabledGroup = rows(page).filter({ hasText: 'model-b' })
+      for (const [row, label] of [
+        [active, '可调度'],
+        [disabled, '路由条目已禁用'],
+        [disabledGroup, '分组已停用'],
+      ] as const) {
+        const badge = row.getByRole('cell').nth(1).locator('span').first()
+        await expect(badge).toHaveText(label)
+        const appearance = await badge.evaluate((element) => ({
+          background: getComputedStyle(element).backgroundColor,
+          dot: getComputedStyle(element, '::before').content,
+        }))
+        expect(appearance.background, `${theme} ${width} ${label} badge background`).not.toBe(
+          'rgba(0, 0, 0, 0)',
+        )
+        expect(appearance.dot, `${theme} ${width} ${label} dot`).not.toBe('none')
+      }
+      const textColor = (row: typeof active, selector: string) =>
+        row
+          .locator(selector)
+          .first()
+          .evaluate((el) => getComputedStyle(el).color)
+      expect(await textColor(disabled, 'strong')).not.toBe(await textColor(active, 'strong'))
+      expect(await textColor(disabledGroup, 'strong')).not.toBe(await textColor(active, 'strong'))
+      expect(await disabled.evaluate((el) => getComputedStyle(el).opacity)).toBe('1')
+      const toggle = disabled.getByRole('switch')
+      await expect(toggle).toBeEnabled()
+      await expect(toggle).toHaveAttribute('aria-checked', 'false')
+      await disabled.focus()
+      await page.keyboard.press('Enter')
+      await expect(disabled).toHaveAttribute('aria-selected', 'true')
+      for (const row of [disabled, disabledGroup]) {
+        const contrast = await row.evaluate((element) => {
+          const cells = element.querySelectorAll('[role="cell"]')
+          const name = cells[0]!.querySelector('strong')!
+          const share = cells[4]!
+          const track = element.querySelector('[role="switch"] > span')!
+          const thumb = track.querySelector('span')!
+          const luminance = (color: string) => {
+            const channels = color
+              .match(/[\d.]+/g)!
+              .slice(0, 3)
+              .map((value) => {
+                const n = Number(value) / 255
+                return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4
+              })
+            return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
+          }
+          const ratio = (a: string, b: string) => {
+            const x = luminance(a),
+              y = luminance(b)
+            return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+          }
+          const bg = getComputedStyle(element).backgroundColor
+          const trackBg = getComputedStyle(track).backgroundColor
+          return {
+            name: ratio(getComputedStyle(name).color, bg),
+            share: ratio(getComputedStyle(share).color, bg),
+            track: ratio(trackBg, bg),
+            thumb: ratio(getComputedStyle(thumb).backgroundColor, trackBg),
+          }
+        })
+        expect(contrast.name, `${theme} ${width} muted name`).toBeGreaterThanOrEqual(4.5)
+        expect(contrast.share, `${theme} ${width} muted share`).toBeGreaterThanOrEqual(4.5)
+        expect(contrast.track, `${theme} ${width} switch track`).toBeGreaterThanOrEqual(3)
+        expect(contrast.thumb, `${theme} ${width} switch thumb`).toBeGreaterThanOrEqual(3)
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      )
+      await page.screenshot({
+        path: testInfo.outputPath(`soft-badges-${theme}-${width}.png`),
+        fullPage: true,
+      })
+    }
+  }
 })
 
 test('eligibility snapshot separates health, group statistics and unsaved share preview', async ({
@@ -974,13 +1946,13 @@ test('eligibility snapshot separates health, group statistics and unsaved share 
   await waitForScheduleDetailReady(page)
   const status = (index: number) => rows(page).nth(index).getByRole('cell').nth(1)
   await expect(status(0)).toContainText('Schedulable')
-  await expect(status(0)).toContainText('Entry health: Available')
-  await expect(status(1)).toContainText('Standing by in a standby priority tier')
+  await expect(status(0)).not.toContainText('Entry health: Available')
+  await expect(status(1)).toHaveText('Schedulable')
   await expect(status(2)).toContainText('Credential is cooling down')
   await expect(status(3)).toContainText('Route entry is cooling down')
   await expect(status(4)).toContainText('Unknown route reason')
   await expect(status(4)).toContainText('Entry health: Blacklisted')
-  await expect(status(5)).toContainText('Route entry is disabled')
+  await expect(status(5)).toHaveText('Route entry is disabled')
   await expect(status(6)).toContainText('Group is disabled')
   await expect(rows(page).first().getByRole('cell').nth(2)).toContainText('—')
   await expect(rows(page).nth(6).getByRole('cell').nth(2)).toContainText('0.0%')
@@ -988,10 +1960,11 @@ test('eligibility snapshot separates health, group statistics and unsaved share 
   await expect(rows(page).first().getByRole('cell').nth(4)).toContainText('100.0%')
   await expect(rows(page).nth(6).getByRole('cell').nth(4)).toContainText('0.0%')
   await page.locator('#weight-0').fill('100')
-  await expect(status(1)).toContainText('Standing by in a standby priority tier')
+  await expect(status(1)).toHaveText('Schedulable')
   await expect(rows(page).first().getByRole('cell').nth(4)).toContainText('71.4%')
   await expect(rows(page).nth(6).getByRole('cell').nth(4)).toContainText('0.0%')
-  await expect(page.getByText('Unsaved share preview', { exact: true })).toBeVisible()
+  await expect(page.getByText('Unsaved share preview', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Candidates: 1 · Changes: 1', { exact: true })).toBeVisible()
   const toggle = rows(page)
     .first()
     .getByRole('switch', { name: /^Disable entry model-a/ })
@@ -1442,9 +2415,11 @@ test('sticky schedule header has opaque background over scrolled rows', async ({
   })
   expect(await wrap.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
   await wrap.evaluate((element) => {
-    element.scrollTop = 48
+    const header = element.querySelector('[role="row"]')!.getBoundingClientRect()
+    const row = element.querySelector('[data-row-key]')!.getBoundingClientRect()
+    element.scrollTop += row.top + row.height / 2 - (header.top + header.height / 2)
   })
-  await expect.poll(() => wrap.evaluate((element) => element.scrollTop)).toBe(48)
+  await expect.poll(() => wrap.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
   const coverage = await header.evaluate((element) => {
     const css = getComputedStyle(element)
     const rect = element.getBoundingClientRect()
@@ -1536,7 +2511,7 @@ test('compact desktop uses six semantic columns and 58–84px rows at every desk
     const identity = row.getByRole('cell').nth(0)
     await expect(identity.getByText('model-a', { exact: true })).toBeVisible()
     await expect(identity.getByRole('link', { name: 'primary group', exact: true })).toBeVisible()
-    await expect(row.getByRole('cell').nth(1)).toContainText('Available')
+    await expect(row.getByRole('cell').nth(1)).toHaveText('Schedulable')
     await expect(row.getByRole('cell').nth(2)).toContainText('10')
     await expect(row.getByRole('cell').nth(2)).toContainText('100')
     const settings = row.getByRole('cell').nth(3)
@@ -2327,6 +3302,58 @@ test('unknown schedule_model explains the empty state and can recover to worker'
   await expect(rows(page)).toHaveCount(2)
 })
 
+test('candidate layout aligns headings and prioritizes model width without losing mobile controls', async ({
+  page,
+}, testInfo) => {
+  const model = 'claude-3-7-sonnet-20250219'
+  await installScheduleRoutes(page, {
+    projectDetail: (name) => {
+      const detail = detailForModel(name)
+      detail.groups[0]!.entries[0]!.model_id = model
+      return detail
+    },
+  })
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  await openSchedule(page, '?schedule_model=worker')
+  const table = page.locator('[data-schedule-candidates]')
+  await expect(table).toBeVisible()
+  await expect(page.locator('summary').filter({ hasText: '调度与统计说明' })).toHaveCount(0)
+  const headers = table.getByRole('columnheader')
+  const alignment = await headers.evaluateAll((elements) =>
+    elements.map((element) => ({
+      align: getComputedStyle(element).textAlign,
+      justify: getComputedStyle(element).justifyContent,
+      children: [...element.children].map((child) => getComputedStyle(child).textAlign),
+    })),
+  )
+  expect(alignment.map((item) => item.align)).toEqual(['start', ...Array(5).fill('center')])
+  expect(alignment[5]!.justify).toBe('center')
+  expect(alignment[3]!.children).toEqual(['center', 'center', 'center'])
+  const widths = await rows(page)
+    .first()
+    .getByRole('cell')
+    .evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect().width))
+  expect(widths[0]!).toBeGreaterThan(widths[1]! * 1.5)
+  expect(widths[0]!).toBeGreaterThan(widths[2]! * 1.5)
+  const modelLines = await rows(page)
+    .first()
+    .getByText(model, { exact: true })
+    .evaluate((element) => {
+      const style = getComputedStyle(element)
+      return element.getBoundingClientRect().height / parseFloat(style.lineHeight)
+    })
+  expect(modelLines).toBeLessThan(1.5)
+  await page.screenshot({ path: testInfo.outputPath('candidates-desktop.png'), fullPage: true })
+
+  await page.setViewportSize({ width: 390, height: 900 })
+  await expect(headers.first()).toBeHidden()
+  await expect(rows(page).first().getByText(model, { exact: true })).toBeVisible()
+  await expect(rows(page).first().getByRole('spinbutton').first()).toBeVisible()
+  await expect(rows(page).first().getByRole('switch')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await page.screenshot({ path: testInfo.outputPath('candidates-mobile.png'), fullPage: true })
+})
+
 test('compact model selector supports search, ArrowDown Enter and Escape focus restoration', async ({
   page,
 }, testInfo) => {
@@ -2394,7 +3421,7 @@ test('compact model selector supports search, ArrowDown Enter and Escape focus r
       await expect(rows(page).first().getByRole('cell').nth(1)).toContainText('可调度')
       await expect(rows(page).nth(1).getByRole('cell').nth(1)).toContainText('分组已停用')
       if (width >= 768) {
-        await expect(page.getByRole('columnheader').nth(1)).toContainText('已保存调度资格')
+        await expect(page.getByRole('columnheader').nth(1)).toHaveText('状态')
         await expect(page.getByRole('columnheader').nth(4)).toContainText('同级配置占比')
       }
     }

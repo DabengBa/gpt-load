@@ -364,12 +364,12 @@ func int64Pointer(value int64) *int64 { return &value }
 
 // TestCompileEmitsOneRouteTargetPerModelEntry covers design §1.2 group one:
 // three entries share external model "A" with per-entry weights and a
-// fallback priority, plus a plain single-entry model. Every entry compiles
+// lower priority, plus a plain single-entry model. Every entry compiles
 // into its own RouteTarget under the shared external name.
 func TestCompileEmitsOneRouteTargetPerModelEntry(t *testing.T) {
 	t.Parallel()
 
-	weightA, weightB, weightC, fallback := 30, 50, 20, 2
+	weightA, weightB, weightC, lowerPriority := 30, 50, 20, 2
 	snapshot, err := Compile(CompileInput{
 		ChannelRegistry: channel.NewRegistry(),
 		Groups: []GroupConfig{{
@@ -378,7 +378,7 @@ func TestCompileEmitsOneRouteTargetPerModelEntry(t *testing.T) {
 			Models: []ModelConfig{
 				{ID: "upstream-a", Alias: "A", Weight: &weightA},
 				{ID: "upstream-b", Alias: "A", Weight: &weightB},
-				{ID: "upstream-c", Alias: "A", Weight: &weightC, Priority: &fallback},
+				{ID: "upstream-c", Alias: "A", Weight: &weightC, Priority: &lowerPriority},
 				{ID: "gpt-4o-mini"},
 			},
 		}},

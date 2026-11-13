@@ -28,8 +28,10 @@ const styles = stylex.create({
     overscrollBehaviorInline: 'contain',
   },
   table: {
-    width: '100%',
-    minWidth: 'var(--table-editorial-min-width)',
+    // Intrinsic columns keep translated labels and the active sort arrow intact;
+    // the surrounding region scrolls instead of squeezing a wide report.
+    width: 'max-content',
+    minWidth: '100%',
     borderCollapse: 'collapse',
     fontSize: 12.5,
   },
@@ -42,7 +44,7 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   headCell: {
-    paddingTop: 0,
+    paddingTop: 8,
     paddingBottom: 8,
     paddingInlineStart: 0,
     paddingInlineEnd: 12,
@@ -51,11 +53,12 @@ const styles = stylex.create({
 
     lineHeight: 1.3,
     textAlign: 'left',
+    verticalAlign: 'middle',
 
     whiteSpace: 'nowrap',
   },
   numericHeadCell: {
-    textAlign: 'center',
+    textAlign: 'right',
     paddingInlineStart: 12,
     paddingInlineEnd: 12,
   },
@@ -72,7 +75,7 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   numericCell: {
-    textAlign: 'center',
+    textAlign: 'right',
     fontVariantNumeric: 'tabular-nums',
     paddingInlineStart: 12,
     paddingInlineEnd: 12,
@@ -100,7 +103,7 @@ const styles = stylex.create({
     backgroundColor: 'transparent',
     cursor: 'pointer',
     letterSpacing: 'inherit',
-    textAlign: 'left',
+    textAlign: 'inherit',
     textTransform: 'inherit',
     fontVariantNumeric: 'tabular-nums',
     color: {
@@ -431,7 +434,6 @@ export function UsageBreakdownTable({
                       isNumeric && styles.numericHeadCell,
                       !isNumeric && columnIndex === 0 && styles.cellFirst,
                       !isNumeric && columnIndex === lastColumnIndex && styles.cellLast,
-                      isNumeric && styles.numericHeadCell,
                     )}
                   >
                     {sortKey !== undefined ? (
@@ -471,8 +473,6 @@ export function UsageBreakdownTable({
                       !(column.numeric ?? (column.key !== 'model' && column.key !== 'group')) &&
                         columnIndex === lastColumnIndex &&
                         styles.cellLast,
-                      (column.numeric ?? (column.key !== 'model' && column.key !== 'group')) &&
-                        styles.numericCell,
                       rowIndex === breakdown.rows.length - 1 && styles.cellNoBorder,
                     )}
                   >

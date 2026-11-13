@@ -261,7 +261,7 @@ export default {
         weight: '权重',
         priority: '优先级',
         share: '同级配置占比',
-        status: '已保存调度资格',
+        status: '状态',
         schedulable: '可调度',
         entryHealth: '条目健康',
         enableEntry: '启用条目',
@@ -293,6 +293,8 @@ export default {
         toggleFailed: '更新条目启用状态失败。',
         calls24h: '分组 24h 请求',
         successRate24h: '分组 24h 成功率',
+        group24h: '分组 24h',
+        callsSuccessRate: '请求 / 成功率',
         reasoning: '推理策略',
         inherit: '未配置',
         advanced: '高级',
@@ -336,7 +338,7 @@ export default {
         entry_blacklisted: '路由条目已拉黑',
         entry_cooldown: '路由条目正在冷却',
         entry_weight_zero: '路由条目权重为零',
-        tier_demoted: '处于后备优先级层待命',
+        tier_demoted: '可调度',
       },
     },
     logs: {
@@ -362,8 +364,7 @@ export default {
       filters: {
         label: '请求日志筛选',
         timeRange: '时间范围',
-        appliedTimeRange: '已应用时间范围：{from} – {to}',
-        shortcutsHelp: '快捷时间仅修改草稿，点击「应用」后更新结果。',
+
         from: '开始时间',
         to: '结束时间',
         quickRanges: '快捷时间范围',
@@ -446,7 +447,7 @@ export default {
         lastRefreshed: '最近一次成功刷新',
         remove: '移除筛选条件 {value}',
         advancedTitle: '更多筛选',
-        advancedDescription: '按请求、重试过程、最终结果和数值范围精确筛选。',
+
         closeAdvanced: '关闭更多筛选',
         sections: {
           request: '请求',
