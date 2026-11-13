@@ -8,6 +8,52 @@ import { mockGroupModels } from './fixtures/group-models-mock'
 
 test.setTimeout(120_000)
 
+for (const width of [390, 1440]) {
+  test(`group detail separates configuration, credential and models at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockGroupModels(page, { models: [{ id: 'gpt-5.2' }] })
+    await page.goto('/groups/1?tab=models', { waitUntil: 'load' })
+    const settings = page.locator('#settings-general')
+    const models = page.locator('#group-models-heading')
+    const credentials = page.getByText('No keys yet', { exact: true })
+    const advanced = page.locator('#group-settings-advanced-target')
+    await expect(models).toBeVisible({ timeout: 60_000 })
+    await expect(settings).toBeVisible()
+    const panels = page.locator('[data-content-panel]')
+    await expect(panels.filter({ has: settings })).toHaveCount(1)
+    await expect(panels.filter({ has: models })).toHaveCount(1)
+    await expect(panels.filter({ has: credentials })).toHaveCount(1)
+    await expect(panels.filter({ has: advanced })).toHaveCount(1)
+    expect(
+      await page
+        .locator('#settings-general, #group-models-heading, #group-settings-advanced-target')
+        .or(credentials)
+        .evaluateAll(
+          (elements) =>
+            new Set(elements.map((element) => element.closest('[data-content-panel]'))).size,
+        ),
+    ).toBe(4)
+    await expect(page.locator('[data-content-panel] [data-content-panel]')).toHaveCount(0)
+    const modelPanel = panels.filter({ has: models })
+    const panelBox = await modelPanel.boundingBox()
+    const addButtonBox = await modelPanel
+      .getByRole('button', { name: 'Add model', exact: true })
+      .boundingBox()
+    const recordBox = await modelPanel.locator('[role="row"]').last().boundingBox()
+    expect(addButtonBox!.x + addButtonBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width)
+    expect(recordBox!.x + recordBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.screenshot({
+      path: testInfo.outputPath(`group-detail-${width}.png`),
+      fullPage: true,
+    })
+  })
+}
+
 test('maintenance shows editable effective route fields and no share presentation', async ({
   page,
 }, testInfo) => {

@@ -18,6 +18,7 @@ import { useStableLoading } from '../../app/collection-loading'
 import { useT } from '../../app/i18n'
 import { RouteLink } from '../../app/route-link'
 import { useAppServices } from '../../app/services'
+import { ContentPanel } from '../../components/ContentPanel'
 import { GroupCredentialsTab } from './credentials/GroupCredentialsTab'
 import { GroupSettingsTab } from './settings/GroupSettingsTab'
 import { GroupModelsTab } from './models/GroupModelsTab'
@@ -47,7 +48,7 @@ const styles = stylex.create({
     minWidth: 0,
     marginInline: 'auto',
     alignContent: 'start',
-    gap: 'var(--space-2)',
+    gap: 'var(--space-4)',
     paddingTop: 'var(--stage-padding-top)',
     paddingBottom: {
       default: 'var(--stage-padding-bottom)',
@@ -144,6 +145,9 @@ const styles = stylex.create({
     gap: 'var(--space-2)',
     color: 'var(--color-warning)',
     fontSize: 'var(--text-sm)',
+  },
+  advancedPanel: {
+    display: { default: 'block', ':has(#group-settings-advanced-target:empty)': 'none' },
   },
   refreshing: {
     color: 'var(--color-text-faint)',
@@ -244,29 +248,39 @@ export function GroupDetailView() {
               )}
               <GroupHeader group={summaryQuery.data} />
               <>
-                <GroupSettingsTab
-                  ref={settingsEditorRef}
-                  key={`settings-${groupId}`}
-                  groupId={groupId}
-                  unified
-                  blocked={deletePending || combinedPending}
-                  onStateChange={setSettingsState}
-                />
-                <GroupCredentialsTab key={`credentials-${groupId}`} groupId={groupId} />
-                <GroupModelsTab
-                  ref={modelsEditorRef}
-                  key={`models-${groupId}`}
-                  groupId={groupId}
-                  channelId={summaryQuery.data.channel_id}
-                  scheduleChannelId={settingsState.channelId ?? summaryQuery.data.channel_id}
-                  enabled={settingsQuery.data?.enabled ?? true}
-                  unified
-                  blocked={deletePending || combinedPending}
-                  onStateChange={setModelsState}
-                />
+                <ContentPanel>
+                  <GroupSettingsTab
+                    ref={settingsEditorRef}
+                    key={`settings-${groupId}`}
+                    groupId={groupId}
+                    unified
+                    blocked={deletePending || combinedPending}
+                    onStateChange={setSettingsState}
+                  />
+                </ContentPanel>
+                <ContentPanel>
+                  <GroupCredentialsTab key={`credentials-${groupId}`} groupId={groupId} />
+                </ContentPanel>
+                <ContentPanel>
+                  <GroupModelsTab
+                    ref={modelsEditorRef}
+                    key={`models-${groupId}`}
+                    groupId={groupId}
+                    channelId={summaryQuery.data.channel_id}
+                    scheduleChannelId={settingsState.channelId ?? summaryQuery.data.channel_id}
+                    enabled={settingsQuery.data?.enabled ?? true}
+                    unified
+                    blocked={deletePending || combinedPending}
+                    onStateChange={setModelsState}
+                  />
+                </ContentPanel>
                 {/* Unified-mode portal target: GroupSettingsTab portals its
                       advanced section here via createPortal. Contractual id. */}
-                <div id="group-settings-advanced-target" />
+                <div {...stylex.props(styles.advancedPanel)}>
+                  <ContentPanel>
+                    <div id="group-settings-advanced-target" />
+                  </ContentPanel>
+                </div>
                 <GroupUnifiedSaveBar
                   groupId={groupId}
                   groupName={summaryQuery.data.name}

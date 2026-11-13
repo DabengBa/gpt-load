@@ -59,7 +59,7 @@ import { stringifySharedRouteSearch } from '../../../app/search-codec'
 import { useAppServices } from '../../../app/services'
 import { useTransientFlag } from '../../../app/use-transient-flag'
 import { useUnsavedChanges } from '../../../app/use-unsaved-changes'
-import { SectionHeader } from '../../../components/SectionHeader'
+
 import { StickySaveBar } from '../../../components/StickySaveBar'
 import { ModelDiscoveryDrawer } from '../../models/ModelDiscoveryDrawer'
 import { ModelFingerprintDialog } from '../../models/ModelFingerprintDialog'
@@ -817,32 +817,31 @@ export function GroupModelsTab({
 
   return (
     <section {...stylex.props(styles.root)} aria-labelledby="group-models-heading">
-      <SectionHeader
-        headingId="group-models-heading"
-        title={t('group.modelEditor.title')}
-        actions={
-          <>
-            {supportsModelDiscovery && (
-              <Button
-                variant="secondary"
-                size="sm"
-                isLoading={pending === 'discover'}
-                isDisabled={!query.data || operationBlocked}
-                onClick={requestDiscovery}
-                icon={<RefreshCw size={16} aria-hidden />}
-                label={t('group.modelEditor.discover')}
-              />
-            )}
+      <header {...stylex.props(styles.header)}>
+        <h2 id="group-models-heading" {...stylex.props(styles.heading)}>
+          {t('group.modelEditor.title')}
+        </h2>
+        <div {...stylex.props(styles.headerActions)}>
+          {supportsModelDiscovery && (
             <Button
+              variant="secondary"
               size="sm"
+              isLoading={pending === 'discover'}
               isDisabled={!query.data || operationBlocked}
-              onClick={addManual}
-              icon={<Plus size={16} aria-hidden />}
-              label={t('group.modelEditor.add')}
+              onClick={requestDiscovery}
+              icon={<RefreshCw size={16} aria-hidden />}
+              label={t('group.modelEditor.discover')}
             />
-          </>
-        }
-      />
+          )}
+          <Button
+            size="sm"
+            isDisabled={!query.data || operationBlocked}
+            onClick={addManual}
+            icon={<Plus size={16} aria-hidden />}
+            label={t('group.modelEditor.add')}
+          />
+        </div>
+      </header>
 
       {recovery !== null && (
         <div role="alert">
@@ -1248,9 +1247,33 @@ export function GroupModelsTab({
 const styles = stylex.create({
   root: {
     display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     gap: 0,
     minWidth: 0,
-    paddingTop: 'var(--space-2)',
+    paddingTop: 0,
+  },
+  header: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 'var(--space-3)',
+    marginBottom: 'var(--detail-panel-header-spacing)',
+    borderBottomWidth: '1px',
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'var(--color-border-subtle)',
+    paddingBottom: 'var(--space-4)',
+  },
+  heading: {
+    margin: 0,
+    fontSize: 'var(--title-section)',
+    fontWeight: 650,
+  },
+  headerActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 'var(--space-2)',
+    minWidth: 0,
   },
   refreshing: {
     display: 'flex',

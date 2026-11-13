@@ -491,6 +491,39 @@ async function waitForScheduleTable(page: Page): Promise<void> {
 
 const rows = (page: Page) => page.locator('[data-row-key]')
 
+test('schedule detail is a distinct task surface at desktop and mobile sizes', async ({ page }) => {
+  await installScheduleRoutes(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/schedule-desktop.png`,
+      fullPage: true,
+    })
+  const table = page.getByRole('table', { name: 'Schedule detail' })
+  const panel = page.locator('[data-content-panel]').filter({ has: table })
+  await expect(panel).toHaveCount(1)
+  await expect(panel).toHaveCSS('border-top-width', '1px')
+  await expect(panel.locator('[data-testid="schedule-model-list"]')).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(table).toBeVisible()
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/schedule-mobile.png`,
+      fullPage: true,
+    })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.evaluate(() => localStorage.setItem('gpt-load.theme', 'dark'))
+  await page.reload()
+  await waitForScheduleDetailReady(page)
+  await expect(panel).toHaveCSS('background-color', 'rgb(23, 27, 32)')
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/schedule-mobile-dark.png`,
+      fullPage: true,
+    })
+})
+
 async function installVersionedSchedule(
   page: Page,
   options: { externalAfterFirst?: boolean; failRefresh?: boolean } = {},

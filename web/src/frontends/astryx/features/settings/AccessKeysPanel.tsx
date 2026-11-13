@@ -55,9 +55,12 @@ import {
 } from '../access-keys/AccessKeyCollection'
 import { AccessKeyDrawer } from '../access-keys/AccessKeyDrawer'
 
+const narrow = '@media (max-width: 600px)'
+
 const styles = stylex.create({
   panel: {
     display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     minWidth: 0,
     gap: 'var(--space-3)',
   },
@@ -99,7 +102,7 @@ const styles = stylex.create({
   },
   filterBar: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(220px, 320px) auto',
+    gridTemplateColumns: { default: 'minmax(0, 320px) minmax(0, 1fr)', [narrow]: 'minmax(0, 1fr)' },
     alignItems: 'end',
     gap: 'var(--space-3)',
   },
@@ -115,11 +118,11 @@ const styles = stylex.create({
   filterResult: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: { default: 'flex-end', [narrow]: 'flex-start' },
+    flexWrap: 'wrap',
     gap: 'var(--space-2)',
     color: 'var(--color-text-muted)',
     fontSize: 'var(--text-label-xs)',
-    whiteSpace: 'nowrap',
   },
   skeletonGrid: {
     display: 'grid',

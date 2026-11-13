@@ -310,6 +310,34 @@ async function expectAstryxDocument(page: Page): Promise<void> {
   await expect(page.locator('[data-testid="desktop-nav"]')).toBeVisible()
 }
 
+for (const theme of ['light', 'dark'] as const) {
+  for (const width of [390, 1440]) {
+    test(`home workspace panels remain responsive in ${theme} at ${width}px`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.addInitScript((value) => localStorage.setItem('gpt-load.theme', value), theme)
+      await mockHome(page)
+      await page.goto('/')
+      const panels = page.locator('[data-content-panel]')
+      await expect(panels).toHaveCount(2)
+      await expect(page.getByRole('heading', { name: 'Connect to the gateway' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Estimated over 30 days' })).toBeVisible()
+      for (const panel of await panels.all()) {
+        await expect(panel).toHaveCSS('border-radius', '14px')
+        await expect(panel).toHaveCSS(
+          'background-color',
+          theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(23, 27, 32)',
+        )
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      )
+      await page.screenshot({ path: testInfo.outputPath('home-workspace.png'), fullPage: true })
+    })
+  }
+}
+
 test('renders the admin ledger and canonicalizes the home query', async ({ page }) => {
   await mockHome(page, { attention: true })
   await page.goto('/?access_key_id=abc&client=bogus&junk=1', {

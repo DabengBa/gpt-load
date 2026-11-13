@@ -308,6 +308,64 @@ async function openEditDrawer(page: Page, name: string) {
   return dialog
 }
 
+test('credential tasks have distinct surfaces and mobile filters remain usable', async ({
+  page,
+}) => {
+  await mockAccessKeys(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(credentialsPath, { waitUntil: 'commit' })
+  const section = page.locator('#settings-credentials')
+  const admin = page.getByRole('heading', { name: 'Administrator sign-in key' })
+  const keys = page.getByRole('heading', { name: 'Client access keys', exact: true })
+  const agent = page.getByRole('heading', { name: 'Agent credentials', exact: true })
+  await expect(keys).toBeVisible()
+  await expect(section.locator('xpath=ancestor::*[@data-content-panel]')).toHaveCount(0)
+  for (const heading of [admin, keys, agent]) {
+    await expect(heading.locator('xpath=ancestor::*[@data-content-panel]')).toHaveCount(1)
+  }
+  await expect(section.locator('[data-content-panel] [data-content-panel]')).toHaveCount(0)
+  const enable = page.getByRole('table', { name: 'Access key list' }).getByRole('button', {
+    name: 'Enable',
+  })
+  const labelFits = await enable.evaluate((button) => {
+    const label = [...button.querySelectorAll('span')].find(
+      (span) => span.textContent === 'Enable' && span.childElementCount === 0,
+    )
+    return label !== undefined && label.scrollWidth <= label.clientWidth
+  })
+  expect(labelFits).toBe(true)
+  if (process.env.SETTINGS_SCREENSHOTS) {
+    await keys.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: '/tmp/credentials-desktop.png' })
+  }
+
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.getByRole('textbox', { name: 'Search' }).fill('prod')
+  await expect(page).toHaveURL(/[?&]q=prod/)
+  const filters = page.getByRole('group', { name: 'Filter access keys' })
+  const bounds = await filters.evaluate((el) => ({ width: el.clientWidth, scroll: el.scrollWidth }))
+  expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  if (process.env.SETTINGS_SCREENSHOTS)
+    await section.screenshot({ path: '/tmp/credentials-mobile.png' })
+  const tableViewport = page.getByRole('group', { name: 'Table', exact: true })
+  await expect(tableViewport).toHaveAttribute('tabindex', '0')
+  await tableViewport.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(() => tableViewport.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
+
+  await page.evaluate(() => localStorage.setItem('gpt-load.theme', 'dark'))
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(keys.locator('xpath=ancestor::*[@data-content-panel]')).toHaveCSS(
+    'background-color',
+    'rgb(23, 27, 32)',
+  )
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  if (process.env.SETTINGS_SCREENSHOTS)
+    await section.screenshot({ path: '/tmp/credentials-dark-mobile.png' })
+})
+
 test('redirects the legacy /access-keys page into Settings → credentials', async ({ page }) => {
   await mockAccessKeys(page)
   await page.goto('/access-keys', { waitUntil: 'commit' })

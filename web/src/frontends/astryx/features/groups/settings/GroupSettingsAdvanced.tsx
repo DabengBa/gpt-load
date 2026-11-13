@@ -32,6 +32,7 @@ const policyRows = [
 ] as const
 
 export interface GroupSettingsAdvancedProps {
+  standalone?: boolean
   saved: GroupSettingsDto
   draft: GroupSettingsDraft
   pending: boolean
@@ -95,6 +96,7 @@ export interface GroupSettingsAdvancedProps {
 }
 
 export function GroupSettingsAdvanced({
+  standalone = false,
   saved,
   draft,
   pending,
@@ -123,7 +125,7 @@ export function GroupSettingsAdvanced({
   const t = useT()
 
   return (
-    <details {...stylex.props(styles.advanced)}>
+    <details {...stylex.props(styles.advanced, standalone && styles.standalone)}>
       <summary {...stylex.props(styles.advancedSummary)}>{t('group.settings.advanced')}</summary>
       <div {...stylex.props(styles.advancedContent)}>
         <div {...stylex.props(styles.advancedSections)}>
@@ -447,6 +449,10 @@ const styles = stylex.create({
     borderTopStyle: 'solid',
     borderTopColor: 'var(--color-border-subtle)',
     paddingTop: 'var(--space-3)',
+  },
+  standalone: {
+    borderTopWidth: 0,
+    paddingTop: 0,
   },
   advancedSummary: {
     color: 'var(--color-text-muted)',

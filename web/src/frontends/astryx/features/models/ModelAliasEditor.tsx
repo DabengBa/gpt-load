@@ -632,9 +632,11 @@ export function ModelAliasEditor<T extends ModelDraftValue>({
             <span role="columnheader" {...stylex.props(ledgerRecordStyles.cell)}>
               {labels.thirdColumn}
             </span>
-            <span role="columnheader" {...stylex.props(ledgerRecordStyles.cell)}>
-              <span {...stylex.props(styles.srOnly)}>{labels.actions}</span>
-            </span>
+            <span
+              role="columnheader"
+              aria-label={labels.actions}
+              {...stylex.props(ledgerRecordStyles.cell)}
+            />
           </>
         }
       >

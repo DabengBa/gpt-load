@@ -485,6 +485,7 @@ export function GroupSettingsTab({
 
   const advanced = saved && draft && (
     <GroupSettingsAdvanced
+      standalone={unified}
       saved={saved}
       draft={draft}
       pending={mutationPending}
@@ -711,10 +712,7 @@ const styles = stylex.create({
     display: 'grid',
     gap: 0,
     minWidth: 0,
-    paddingTop: {
-      default: 'var(--detail-panel-padding-top)',
-      '@media (max-width: 860px)': 'var(--detail-panel-padding-top-compact)',
-    },
+    paddingTop: 0,
   },
   refreshing: {
     display: 'flex',
@@ -730,7 +728,7 @@ const styles = stylex.create({
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr)',
     alignItems: 'start',
-    marginTop: 'var(--space-3)',
+    marginTop: 0,
   },
   content: {
     display: 'grid',

@@ -289,6 +289,15 @@ test('usage renders the breakdown without a redundant heading', async ({ page })
   await expect(page.getByRole('heading', { name: 'Model and route breakdown' })).toHaveCount(0)
   await expect(page.getByText('gpt-4o-mini')).toBeVisible()
   const table = page.getByRole('table')
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/monitor-desktop.png`,
+      fullPage: true,
+    })
+  const panel = page.locator('[data-content-panel]').filter({ has: table })
+  await expect(panel).toHaveCount(1)
+  await expect(panel).toHaveCSS('border-top-width', '1px')
+  await expect(panel.getByRole('combobox', { name: 'Range' })).toHaveCount(0)
   await expect(table.getByRole('columnheader', { name: 'Request model' })).toBeVisible()
   await expect(table.getByText('request-alias')).toBeVisible()
   await expect(table.getByText('Unknown')).toBeVisible()
@@ -321,6 +330,33 @@ test('usage renders the breakdown without a redundant heading', async ({ page })
   )
   // The request carried the canonical filter params.
   expect(requests.usageQueries.at(-1)?.get('range')).toBe('24h')
+})
+
+test('usage results stay contained on a narrow screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockMonitor(page)
+  await page.goto('/monitor')
+  const table = page.getByRole('table')
+  await expect(table).toBeVisible()
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/monitor-mobile.png`,
+      fullPage: true,
+    })
+  await expect(page.locator('[data-content-panel]').filter({ has: table })).toHaveCount(1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.evaluate(() => localStorage.setItem('gpt-load.theme', 'dark'))
+  await page.reload()
+  await expect(table).toBeVisible()
+  await expect(page.locator('[data-content-panel]').filter({ has: table })).toHaveCSS(
+    'background-color',
+    'rgb(23, 27, 32)',
+  )
+  if (process.env.UI_SCREENSHOTS)
+    await page.screenshot({
+      path: `${process.env.UI_SCREENSHOTS}/monitor-mobile-dark.png`,
+      fullPage: true,
+    })
 })
 
 test('breakdown headers sort descending first and toggle ascending', async ({ page }) => {

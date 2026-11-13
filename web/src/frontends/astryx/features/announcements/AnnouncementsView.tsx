@@ -11,6 +11,7 @@ import { retryGroupSiteInfo } from '@shared/control/resources/groups'
 import { controlQueryKeys } from '@shared/control/query-keys'
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
+import { ContentPanel } from '../../components/ContentPanel'
 import { groupDetailHref } from '../groups/group-detail-href'
 
 export function AnnouncementsView() {
@@ -63,200 +64,206 @@ export function AnnouncementsView() {
           <Badge variant="neutral" label={intl.formatNumber(items.length)} />
         )}
       </header>
-      <div {...stylex.props(styles.toolbar)}>
-        <Selector
-          size="sm"
-          variant="input"
-          label={t('announcements.site')}
-          options={[
-            { value: '', label: t('announcements.allSites') },
-            ...(site &&
-            !sites.some((s) => s.site_root_url === site) &&
-            !sourceSites.some((s) => s.site_root_url === site)
-              ? [{ value: site, label: site }]
-              : []),
-            ...sites.map((s) => ({
-              value: s.site_root_url,
-              label: s.site_name || s.site_root_url,
-            })),
-            ...sourceSites.map((s) => ({
-              value: s.site_root_url,
-              label: s.site_name || s.site_root_url,
-            })),
-          ]}
-          value={site}
-          onChange={(value) => {
-            setSite(value)
-            const url = new URL(window.location.href)
-            if (value) url.searchParams.set('site', value)
-            else url.searchParams.delete('site')
-            window.history.replaceState(window.history.state, '', url)
-          }}
-        />
-        <TextInput
-          size="sm"
-          label={t('announcements.search')}
-          placeholder={t('announcements.searchPlaceholder')}
-          startIcon={<Search size={14} aria-hidden />}
-          value={q}
-          onChange={setQ}
-        />
-      </div>
-      {query.isPending || query.isPlaceholderData ? (
-        <div {...stylex.props(styles.loading)} role="status" aria-label={t('common.asyncLoading')}>
-          <Skeleton height={80} radius={2} />
-          <Skeleton height={80} radius={2} />
+      <ContentPanel>
+        <div {...stylex.props(styles.toolbar)}>
+          <Selector
+            size="sm"
+            variant="input"
+            label={t('announcements.site')}
+            options={[
+              { value: '', label: t('announcements.allSites') },
+              ...(site &&
+              !sites.some((s) => s.site_root_url === site) &&
+              !sourceSites.some((s) => s.site_root_url === site)
+                ? [{ value: site, label: site }]
+                : []),
+              ...sites.map((s) => ({
+                value: s.site_root_url,
+                label: s.site_name || s.site_root_url,
+              })),
+              ...sourceSites.map((s) => ({
+                value: s.site_root_url,
+                label: s.site_name || s.site_root_url,
+              })),
+            ]}
+            value={site}
+            onChange={(value) => {
+              setSite(value)
+              const url = new URL(window.location.href)
+              if (value) url.searchParams.set('site', value)
+              else url.searchParams.delete('site')
+              window.history.replaceState(window.history.state, '', url)
+            }}
+          />
+          <TextInput
+            size="sm"
+            label={t('announcements.search')}
+            placeholder={t('announcements.searchPlaceholder')}
+            startIcon={<Search size={14} aria-hidden />}
+            value={q}
+            onChange={setQ}
+          />
         </div>
-      ) : query.isError && !query.data ? (
-        <EmptyState
-          title={t('announcements.error')}
-          description={t('groups.collection.errorDescription')}
-          headingLevel={2}
-          actions={
-            <Button
-              size="sm"
-              variant="secondary"
-              label={t('announcements.retry')}
-              onClick={() => void query.refetch()}
-            />
-          }
-        />
-      ) : (
-        <>
-          {query.isError && (
-            <div {...stylex.props(styles.stale)} role="status">
-              <TriangleAlert size={14} aria-hidden />
-              {t('groups.collection.stale')}{' '}
+        {query.isPending || query.isPlaceholderData ? (
+          <div
+            {...stylex.props(styles.loading)}
+            role="status"
+            aria-label={t('common.asyncLoading')}
+          >
+            <Skeleton height={80} radius={2} />
+            <Skeleton height={80} radius={2} />
+          </div>
+        ) : query.isError && !query.data ? (
+          <EmptyState
+            title={t('announcements.error')}
+            description={t('groups.collection.errorDescription')}
+            headingLevel={2}
+            actions={
               <Button
                 size="sm"
                 variant="secondary"
                 label={t('announcements.retry')}
                 onClick={() => void query.refetch()}
               />
-            </div>
-          )}
-          {sources
-            .filter((source) => !site || source.site_root_url === site)
-            .map((source) => (
-              <div
-                key={source.group.id}
-                {...stylex.props(
-                  styles.source,
-                  (source.announcement.status !== 'ok' || source.notice.status !== 'ok') &&
-                    styles.sourceWarning,
-                )}
-              >
-                <strong>
-                  {source.site_name || source.site_root_url} · {source.group.name}
-                </strong>
-                <span>
-                  {t('announcements.sourceAnnouncement')}:{' '}
-                  {t(`announcements.sourceStatus.${source.announcement.status}`)}
-                </span>
-                <span>
-                  {t('announcements.sourceNotice')}:{' '}
-                  {t(`announcements.sourceStatus.${source.notice.status}`)}
-                </span>
-                {(source.announcement.status === 'error' || source.notice.status === 'error') && (
-                  <>
-                    {source.announcement.status === 'error' && (
-                      <span {...stylex.props(styles.sourceHelp)}>
-                        {t('announcements.sourceAnnouncement')}:{' '}
-                        {source.announcement.last_error || t('announcements.sourceFailureHelp')}
-                      </span>
-                    )}
-                    {source.notice.status === 'error' && (
-                      <span {...stylex.props(styles.sourceHelp)}>
-                        {t('announcements.sourceNotice')}:{' '}
-                        {source.notice.last_error || t('announcements.sourceFailureHelp')}
-                      </span>
-                    )}
+            }
+          />
+        ) : (
+          <>
+            {query.isError && (
+              <div {...stylex.props(styles.stale)} role="status">
+                <TriangleAlert size={14} aria-hidden />
+                {t('groups.collection.stale')}{' '}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  label={t('announcements.retry')}
+                  onClick={() => void query.refetch()}
+                />
+              </div>
+            )}
+            {sources
+              .filter((source) => !site || source.site_root_url === site)
+              .map((source) => (
+                <div
+                  key={source.group.id}
+                  {...stylex.props(
+                    styles.source,
+                    (source.announcement.status !== 'ok' || source.notice.status !== 'ok') &&
+                      styles.sourceWarning,
+                  )}
+                >
+                  <strong>
+                    {source.site_name || source.site_root_url} · {source.group.name}
+                  </strong>
+                  <span>
+                    {t('announcements.sourceAnnouncement')}:{' '}
+                    {t(`announcements.sourceStatus.${source.announcement.status}`)}
+                  </span>
+                  <span>
+                    {t('announcements.sourceNotice')}:{' '}
+                    {t(`announcements.sourceStatus.${source.notice.status}`)}
+                  </span>
+                  {(source.announcement.status === 'error' || source.notice.status === 'error') && (
+                    <>
+                      {source.announcement.status === 'error' && (
+                        <span {...stylex.props(styles.sourceHelp)}>
+                          {t('announcements.sourceAnnouncement')}:{' '}
+                          {source.announcement.last_error || t('announcements.sourceFailureHelp')}
+                        </span>
+                      )}
+                      {source.notice.status === 'error' && (
+                        <span {...stylex.props(styles.sourceHelp)}>
+                          {t('announcements.sourceNotice')}:{' '}
+                          {source.notice.last_error || t('announcements.sourceFailureHelp')}
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        label={t('announcements.retry')}
+                        isLoading={retry.isPending}
+                        onClick={() => retry.mutate(source.group.id)}
+                      />
+                    </>
+                  )}
+                </div>
+              ))}
+            {items.length === 0 ? (
+              <EmptyState
+                headingLevel={2}
+                title={q.trim() || site ? t('announcements.noMatches') : t('announcements.empty')}
+                actions={
+                  (q.trim() || site) && (
                     <Button
                       size="sm"
                       variant="secondary"
-                      label={t('announcements.retry')}
-                      isLoading={retry.isPending}
-                      onClick={() => retry.mutate(source.group.id)}
+                      label={t('announcements.clearFilters')}
+                      onClick={() => {
+                        setQ('')
+                        setSite('')
+                        const url = new URL(window.location.href)
+                        url.searchParams.delete('site')
+                        window.history.replaceState(window.history.state, '', url)
+                      }}
                     />
-                  </>
-                )}
-              </div>
-            ))}
-          {items.length === 0 ? (
-            <EmptyState
-              headingLevel={2}
-              title={q.trim() || site ? t('announcements.noMatches') : t('announcements.empty')}
-              actions={
-                (q.trim() || site) && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    label={t('announcements.clearFilters')}
-                    onClick={() => {
-                      setQ('')
-                      setSite('')
-                      const url = new URL(window.location.href)
-                      url.searchParams.delete('site')
-                      window.history.replaceState(window.history.state, '', url)
-                    }}
-                  />
-                )
-              }
-            />
-          ) : (
-            <div {...stylex.props(styles.list)}>
-              {items.map((item) => (
-                <article key={item.id} {...stylex.props(styles.item)}>
-                  <div {...stylex.props(styles.meta)}>
-                    <a
-                      {...stylex.props(styles.siteLink)}
-                      href={item.site_root_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {item.site_name || item.site_root_url}
-                    </a>
-                    {item.groups.map((group) => (
-                      <Button
-                        key={group.id}
-                        size="sm"
-                        variant="ghost"
-                        label={group.name}
-                        onClick={() => void navigate({ to: groupDetailHref(group.id) })}
-                      />
-                    ))}
-                    {item.level && (
-                      <Badge
-                        variant={
-                          item.level === 'error'
-                            ? 'error'
-                            : item.level === 'success'
-                              ? 'success'
-                              : 'neutral'
-                        }
-                        label={item.level}
-                      />
+                  )
+                }
+              />
+            ) : (
+              <div {...stylex.props(styles.list)}>
+                {items.map((item) => (
+                  <article key={item.id} {...stylex.props(styles.item)}>
+                    <div {...stylex.props(styles.meta)}>
+                      <a
+                        {...stylex.props(styles.siteLink)}
+                        href={item.site_root_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {item.site_name || item.site_root_url}
+                      </a>
+                      {item.groups.map((group) => (
+                        <Button
+                          key={group.id}
+                          size="sm"
+                          variant="ghost"
+                          label={group.name}
+                          onClick={() => void navigate({ to: groupDetailHref(group.id) })}
+                        />
+                      ))}
+                      {item.level && (
+                        <Badge
+                          variant={
+                            item.level === 'error'
+                              ? 'error'
+                              : item.level === 'success'
+                                ? 'success'
+                                : 'neutral'
+                          }
+                          label={item.level}
+                        />
+                      )}
+                      <time
+                        {...stylex.props(styles.time)}
+                        dateTime={new Date(item.event_at_ms).toISOString()}
+                      >
+                        {intl.formatDate(item.event_at_ms, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </time>
+                    </div>
+                    <p {...stylex.props(styles.content)}>{item.content}</p>
+                    {item.extra && (
+                      <p {...stylex.props(styles.content, styles.extra)}>{item.extra}</p>
                     )}
-                    <time
-                      {...stylex.props(styles.time)}
-                      dateTime={new Date(item.event_at_ms).toISOString()}
-                    >
-                      {intl.formatDate(item.event_at_ms, {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })}
-                    </time>
-                  </div>
-                  <p {...stylex.props(styles.content)}>{item.content}</p>
-                  {item.extra && (
-                    <p {...stylex.props(styles.content, styles.extra)}>{item.extra}</p>
-                  )}
-                </article>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </ContentPanel>
     </section>
   )
 }
@@ -282,15 +289,11 @@ const styles = stylex.create({
     marginBottom: 'var(--space-3)',
   },
   list: {
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: 'var(--radius-control)',
-    backgroundColor: 'var(--color-surface)',
+    minWidth: 0,
   },
   item: {
     minWidth: 0,
-    padding: 'var(--space-3)',
+    paddingBlock: 'var(--space-3)',
     borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: 'var(--color-border-subtle)',

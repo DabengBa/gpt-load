@@ -21,6 +21,7 @@ import {
 import { useStableLoading } from '../../app/collection-loading'
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
+import { ContentPanel } from '../../components/ContentPanel'
 import { useHomeStatistics } from './use-home-statistics'
 import { CurrentAccessKeyCard } from './CurrentAccessKeyCard'
 import { GatewayConnection } from './GatewayConnection'
@@ -54,7 +55,8 @@ const styles = stylex.create({
       [stacked]: 'minmax(0, 1fr)',
     },
     alignItems: 'start',
-    gap: { default: 20, [stacked]: 0 },
+    gap: 20,
+    marginTop: 20,
     minWidth: 0,
   },
   workspaceColumn: {
@@ -277,25 +279,29 @@ export function HomeView() {
 
               <div {...stylex.props(styles.workspace)}>
                 <div {...stylex.props(styles.workspaceColumn)}>
-                  <GatewayConnection
-                    accessKeys={base.access_keys}
-                    selectedAccessKeyID={selectedAccessKeyID}
-                    clientID={routeState.client}
-                    credential={isAccessKey ? authSession.getAuthKey() : undefined}
-                    selfScoped={isAccessKey}
-                    onAccessKeyChange={(id) => {
-                      if (isAccessKey) return
-                      navigateHome({ accessKeyID: id })
-                    }}
-                    onClientChange={(id: GatewayClientID) => navigateHome({ client: id })}
-                  />
+                  <ContentPanel>
+                    <GatewayConnection
+                      accessKeys={base.access_keys}
+                      selectedAccessKeyID={selectedAccessKeyID}
+                      clientID={routeState.client}
+                      credential={isAccessKey ? authSession.getAuthKey() : undefined}
+                      selfScoped={isAccessKey}
+                      onAccessKeyChange={(id) => {
+                        if (isAccessKey) return
+                        navigateHome({ accessKeyID: id })
+                      }}
+                      onClientChange={(id: GatewayClientID) => navigateHome({ client: id })}
+                    />
+                  </ContentPanel>
                 </div>
 
                 <div {...stylex.props(styles.workspaceColumn)}>
-                  <HomeSpend
-                    snapshot={statisticsSnapshot}
-                    loading={statisticsLoading || statisticsInitialLoading}
-                  />
+                  <ContentPanel>
+                    <HomeSpend
+                      snapshot={statisticsSnapshot}
+                      loading={statisticsLoading || statisticsInitialLoading}
+                    />
+                  </ContentPanel>
                 </div>
               </div>
             </>

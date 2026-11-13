@@ -36,13 +36,6 @@ const NARROW = '@media (max-width: 860px)'
 const TIGHT = '@media (max-width: 560px)'
 
 const styles = stylex.create({
-  section: {
-    marginTop: 36,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: 20,
-  },
   empty: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -719,7 +712,7 @@ export function GatewayConnection({
   }
 
   return (
-    <section {...stylex.props(styles.section)} aria-labelledby="gateway-connection-title">
+    <section aria-labelledby="gateway-connection-title">
       <HomeSectionHeading id="gateway-connection-title" title={t('home.ledger.connection.title')} />
 
       {selectedKey === null ? (

@@ -257,6 +257,46 @@ async function mockImportApi(
   return requests
 }
 
+for (const width of [390, 1440]) {
+  test(`import tasks have distinct responsive surfaces at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockImportApi(page)
+    await page.goto('/import?mode=new', { waitUntil: 'load' })
+    const steps = page.locator(
+      '#import-channel-step-heading, #import-credentials-step-heading, #import-models-heading',
+    )
+    await expect(steps).toHaveCount(3)
+    const panelCount = await steps.evaluateAll(
+      (headings) =>
+        new Set(headings.map((heading) => heading.closest('[data-content-panel]')).filter(Boolean))
+          .size,
+    )
+    expect(panelCount).toBe(3)
+    await expect(page.locator('[data-content-panel] [data-content-panel]')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.screenshot({ path: testInfo.outputPath(`import-new-${width}.png`), fullPage: true })
+    await page.goto('/import?mode=existing&group_id=7', { waitUntil: 'load' })
+    await expect(page.locator('#existing-target-heading')).toBeVisible()
+    await expect(
+      page
+        .locator('[data-content-panel]')
+        .filter({ has: page.locator('#existing-target-heading') }),
+    ).toHaveCount(1)
+    await expect(page.locator('[data-content-panel] [data-content-panel]')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.screenshot({
+      path: testInfo.outputPath(`import-existing-${width}.png`),
+      fullPage: true,
+    })
+  })
+}
+
 test('API-only picker retains external CPA without subscription authorization controls', async ({
   page,
 }) => {

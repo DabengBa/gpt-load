@@ -7,6 +7,7 @@ import { systemInfoQueryOptions } from '@shared/control/resources/system-info'
 
 import { useT } from '../../app/i18n'
 import { useAppServices } from '../../app/services'
+import { ContentPanel } from '../../components/ContentPanel'
 import { AgentCredentialsPanel } from './AgentCredentialsPanel'
 import { AccessKeysPanel } from './AccessKeysPanel'
 import { SettingsSectionFrame } from './section-tools'
@@ -14,13 +15,8 @@ import { SettingsSectionFrame } from './section-tools'
 const styles = stylex.create({
   subsections: {
     display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     gap: 'var(--space-5)',
-  },
-  divider: {
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: 'var(--space-5)',
   },
   heading: {
     margin: 0,
@@ -138,13 +134,15 @@ export function CredentialsSection() {
       description={t('settings.credentials.description')}
     >
       <div {...stylex.props(styles.subsections)}>
-        <AdminKeyBlock />
-        <div {...stylex.props(styles.divider)}>
+        <ContentPanel>
+          <AdminKeyBlock />
+        </ContentPanel>
+        <ContentPanel>
           <AccessKeysPanel />
-        </div>
-        <div {...stylex.props(styles.divider)}>
+        </ContentPanel>
+        <ContentPanel>
           <AgentCredentialsPanel />
-        </div>
+        </ContentPanel>
       </div>
     </SettingsSectionFrame>
   )

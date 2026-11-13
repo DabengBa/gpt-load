@@ -1,4 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
+import { ContentPanel } from '../../components/ContentPanel'
 import {
   Button,
   Dialog,
@@ -1129,168 +1130,186 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       </div>
 
       <div {...stylex.props(styles.steps)}>
-        <section
-          {...stylex.props(styles.step)}
-          data-state={channelStepState}
-          aria-labelledby="import-channel-step-heading"
-        >
-          <div {...stylex.props(styles.stepHeader)}>
-            <SectionHeader
-              headingId="import-channel-step-heading"
-              step={1}
-              title={
-                <>
-                  {t('import.steps.channel.title')}
-                  <span {...stylex.props(styles.requirement, styles.requirementRequired)}>
-                    {t('import.required')}
-                  </span>
-                </>
-              }
-              actions={
-                channelStepSummary ? (
+        <ContentPanel>
+          <section
+            {...stylex.props(styles.step)}
+            data-state={channelStepState}
+            aria-labelledby="import-channel-step-heading"
+          >
+            <div {...stylex.props(styles.stepHeader)}>
+              <SectionHeader
+                headingId="import-channel-step-heading"
+                step={1}
+                title={
+                  <>
+                    {t('import.steps.channel.title')}
+                    <span {...stylex.props(styles.requirement, styles.requirementRequired)}>
+                      {t('import.required')}
+                    </span>
+                  </>
+                }
+                actions={
+                  channelStepSummary ? (
+                    <span
+                      {...stylex.props(
+                        styles.stepSummary,
+                        visibleParamError ? styles.stepSummaryError : null,
+                      )}
+                    >
+                      {selectedChannel && !visibleParamError && (
+                        <ChannelIcon icon={selectedChannel.icon} mark={selectedChannel.mark} />
+                      )}
+                      <span>{channelStepSummary}</span>
+                    </span>
+                  ) : undefined
+                }
+              />
+            </div>
+
+            <div {...stylex.props(styles.stepBody)}>
+              <ChannelPresetPicker
+                value={draft.channel_id}
+                channels={allChannelsStable}
+                selectedChannel={selectedChannel}
+                loading={allChannelsQuery.isFetching}
+                error={allChannelsQuery.isError}
+                disabled={payloadLocked}
+                hideHeader
+                compact
+                onSelect={selectChannel}
+                onRetry={() => void allChannelsQuery.refetch()}
+              />
+
+              <ImportConnectionSection
+                channel={connectionChannel}
+                name={draft.name}
+                providerUrl={draft.provider_url}
+                siteUserId={draft.site_user_id}
+                siteAccessToken={siteAccessToken}
+                onSiteUserIdChange={(value) =>
+                  setDraft((current) => ({ ...current, site_user_id: value }))
+                }
+                onSiteAccessTokenChange={setSiteAccessToken}
+
+                params={draft.params}
+                proxy={draft.proxy}
+
+                paramErrors={paramErrors}
+
+                disabled={payloadLocked}
+                onNameChange={(value) => setDraft((current) => ({ ...current, name: value }))}
+                onProviderUrlChange={(value) =>
+                  setDraft((current) => ({ ...current, provider_url: value }))
+                }
+
+                onParamChange={setChannelParam}
+                onProxyChange={(proxy) => setDraft((current) => ({ ...current, proxy }))}
+
+                onParamBlur={touchChannelParam}
+              />
+            </div>
+          </section>
+        </ContentPanel>
+
+        <ContentPanel>
+          <section
+            {...stylex.props(styles.step, styles.credentialsStep)}
+            aria-labelledby="import-credentials-step-heading"
+          >
+            <div {...stylex.props(styles.stepHeader)}>
+              <SectionHeader
+                headingId="import-credentials-step-heading"
+                step={2}
+                title={
+                  <>
+                    {credentialStepTitle}
+                    <span {...stylex.props(styles.requirement, styles.requirementRequired)}>
+                      {t('import.required')}
+                    </span>
+                  </>
+                }
+                actions={
+                  credentialStepSummary ? (
+                    <span
+                      {...stylex.props(
+                        styles.stepSummary,
+                        credentialStepState === 'error' ? styles.stepSummaryError : null,
+                      )}
+                    >
+                      {credentialStepSummary}
+                    </span>
+                  ) : undefined
+                }
+              />
+            </div>
+
+            <div {...stylex.props(styles.stepBody)}>
+              <CredentialTextarea
+                value={draft.credentials}
+                channel={selectedChannel}
+                disabled={payloadLocked}
+                hideHeader
+                compact
+                rows={3}
+                onChange={(credentials) => setDraft((current) => ({ ...current, credentials }))}
+              />
+              {connectionParsedSuccess && (
+                <InlineNotice tone="neutral" appearance="hint">
+                  {t('import.connection.connectionParsed')}
+                </InlineNotice>
+              )}
+            </div>
+          </section>
+        </ContentPanel>
+
+        <ContentPanel>
+          <section
+            {...stylex.props(styles.step)}
+            data-state={modelStepState}
+            aria-labelledby="import-models-heading"
+          >
+            <div {...stylex.props(styles.stepHeader)}>
+              <SectionHeader
+                headingId="import-models-heading"
+                step={3}
+                title={
+                  <>
+                    {t('import.steps.models.title')}
+                    <span {...stylex.props(styles.requirement, styles.requirementOptional)}>
+                      {t('import.optional')}
+                    </span>
+                  </>
+                }
+                actions={
                   <span
                     {...stylex.props(
                       styles.stepSummary,
-                      visibleParamError ? styles.stepSummaryError : null,
+                      hasVisibleModelErrors ? styles.stepSummaryError : null,
                     )}
                   >
-                    {selectedChannel && !visibleParamError && (
-                      <ChannelIcon icon={selectedChannel.icon} mark={selectedChannel.mark} />
-                    )}
-                    <span>{channelStepSummary}</span>
+                    {modelStepSummary}
                   </span>
-                ) : undefined
-              }
-            />
-          </div>
+                }
+              />
+            </div>
 
-          <div {...stylex.props(styles.stepBody)}>
-            <ChannelPresetPicker
-              value={draft.channel_id}
-              channels={allChannelsStable}
-              selectedChannel={selectedChannel}
-              loading={allChannelsQuery.isFetching}
-              error={allChannelsQuery.isError}
-              disabled={payloadLocked}
-              hideHeader
-              compact
-              onSelect={selectChannel}
-              onRetry={() => void allChannelsQuery.refetch()}
-            />
+            <div id="import-models-content" {...stylex.props(styles.stepBody, styles.modelsBody)}>
+              {draft.models.length === 0 && (
+                <div {...stylex.props(styles.modelsEmpty)}>
+                  <span>{t('import.models.empty')}</span>
+                  <ModelDraftActions
+                    showDiscovery={selectedChannel?.capabilities.model_discovery}
+                    discoveryLoading={discoveryLoading}
+                    canDiscover={canDiscover}
+                    addDisabled={payloadLocked}
+                    onDiscover={requestDiscovery}
+                    onAdd={() => void addManualModel()}
+                    xstyle={styles.modelsActions}
+                  />
+                </div>
+              )}
 
-            <ImportConnectionSection
-              channel={connectionChannel}
-              name={draft.name}
-              providerUrl={draft.provider_url}
-              siteUserId={draft.site_user_id}
-              siteAccessToken={siteAccessToken}
-              onSiteUserIdChange={(value) =>
-                setDraft((current) => ({ ...current, site_user_id: value }))
-              }
-              onSiteAccessTokenChange={setSiteAccessToken}
-
-              params={draft.params}
-              proxy={draft.proxy}
-
-              paramErrors={paramErrors}
-
-              disabled={payloadLocked}
-              onNameChange={(value) => setDraft((current) => ({ ...current, name: value }))}
-              onProviderUrlChange={(value) =>
-                setDraft((current) => ({ ...current, provider_url: value }))
-              }
-
-              onParamChange={setChannelParam}
-              onProxyChange={(proxy) => setDraft((current) => ({ ...current, proxy }))}
-
-              onParamBlur={touchChannelParam}
-            />
-          </div>
-        </section>
-
-        <section
-          {...stylex.props(styles.step, styles.credentialsStep)}
-          aria-labelledby="import-credentials-step-heading"
-        >
-          <div {...stylex.props(styles.stepHeader)}>
-            <SectionHeader
-              headingId="import-credentials-step-heading"
-              step={2}
-              title={
-                <>
-                  {credentialStepTitle}
-                  <span {...stylex.props(styles.requirement, styles.requirementRequired)}>
-                    {t('import.required')}
-                  </span>
-                </>
-              }
-              actions={
-                credentialStepSummary ? (
-                  <span
-                    {...stylex.props(
-                      styles.stepSummary,
-                      credentialStepState === 'error' ? styles.stepSummaryError : null,
-                    )}
-                  >
-                    {credentialStepSummary}
-                  </span>
-                ) : undefined
-              }
-            />
-          </div>
-
-          <div {...stylex.props(styles.stepBody)}>
-            <CredentialTextarea
-              value={draft.credentials}
-              channel={selectedChannel}
-              disabled={payloadLocked}
-              hideHeader
-              compact
-              rows={3}
-              onChange={(credentials) => setDraft((current) => ({ ...current, credentials }))}
-            />
-            {connectionParsedSuccess && (
-              <InlineNotice tone="neutral" appearance="hint">
-                {t('import.connection.connectionParsed')}
-              </InlineNotice>
-            )}
-          </div>
-        </section>
-
-        <section
-          {...stylex.props(styles.step)}
-          data-state={modelStepState}
-          aria-labelledby="import-models-heading"
-        >
-          <div {...stylex.props(styles.stepHeader)}>
-            <SectionHeader
-              headingId="import-models-heading"
-              step={3}
-              title={
-                <>
-                  {t('import.steps.models.title')}
-                  <span {...stylex.props(styles.requirement, styles.requirementOptional)}>
-                    {t('import.optional')}
-                  </span>
-                </>
-              }
-              actions={
-                <span
-                  {...stylex.props(
-                    styles.stepSummary,
-                    hasVisibleModelErrors ? styles.stepSummaryError : null,
-                  )}
-                >
-                  {modelStepSummary}
-                </span>
-              }
-            />
-          </div>
-
-          <div id="import-models-content" {...stylex.props(styles.stepBody, styles.modelsBody)}>
-            {draft.models.length === 0 && (
-              <div {...stylex.props(styles.modelsEmpty)}>
-                <span>{t('import.models.empty')}</span>
+              {draft.models.length > 0 && (
                 <ModelDraftActions
                   showDiscovery={selectedChannel?.capabilities.model_discovery}
                   discoveryLoading={discoveryLoading}
@@ -1298,55 +1317,43 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
                   addDisabled={payloadLocked}
                   onDiscover={requestDiscovery}
                   onAdd={() => void addManualModel()}
-                  xstyle={styles.modelsActions}
+                  xstyle={styles.modelsToolbar}
                 />
-              </div>
-            )}
+              )}
 
-            {draft.models.length > 0 && (
-              <ModelDraftActions
-                showDiscovery={selectedChannel?.capabilities.model_discovery}
-                discoveryLoading={discoveryLoading}
-                canDiscover={canDiscover}
-                addDisabled={payloadLocked}
-                onDiscover={requestDiscovery}
-                onAdd={() => void addManualModel()}
-                xstyle={styles.modelsToolbar}
-              />
-            )}
-
-            {draft.models.length > 0 && (
-              <div {...stylex.props(styles.modelEditor)}>
-                <ModelAliasEditor
-                  ref={modelEditorRef}
-                  value={draft.models}
-                  conflicts={modelConflicts}
-                  labels={aliasEditorLabels}
-                  createRow={createManualRow}
-                  disabled={payloadLocked}
-                  search={routeState.modelSearch ?? ''}
-                  addable={false}
-                  validationMode="blur"
-                  showAllErrors={revealAllModelErrors}
-                  renderThirdColumn={(item) => (
-                    <ModelPricingStatus
-                      status={item.pricing_status}
-                      labels={{
-                        pending: t('import.models.pricing.pending'),
-                        configured: t('import.models.pricing.configured'),
-                      }}
-                    />
-                  )}
-                  onChange={updateModels}
-                  onSearchChange={setModelSearch}
-                  onVisibleValidationChange={(indexes) =>
-                    setVisibleModelInvalidIndexes(new Set(indexes))
-                  }
-                />
-              </div>
-            )}
-          </div>
-        </section>
+              {draft.models.length > 0 && (
+                <div {...stylex.props(styles.modelEditor)}>
+                  <ModelAliasEditor
+                    ref={modelEditorRef}
+                    value={draft.models}
+                    conflicts={modelConflicts}
+                    labels={aliasEditorLabels}
+                    createRow={createManualRow}
+                    disabled={payloadLocked}
+                    search={routeState.modelSearch ?? ''}
+                    addable={false}
+                    validationMode="blur"
+                    showAllErrors={revealAllModelErrors}
+                    renderThirdColumn={(item) => (
+                      <ModelPricingStatus
+                        status={item.pricing_status}
+                        labels={{
+                          pending: t('import.models.pricing.pending'),
+                          configured: t('import.models.pricing.configured'),
+                        }}
+                      />
+                    )}
+                    onChange={updateModels}
+                    onSearchChange={setModelSearch}
+                    onVisibleValidationChange={(indexes) =>
+                      setVisibleModelInvalidIndexes(new Set(indexes))
+                    }
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        </ContentPanel>
       </div>
 
       {submissionErrorMessage && (
@@ -1491,12 +1498,12 @@ const styles = stylex.create({
   steps: {
     display: 'grid',
     minWidth: 0,
-    gap: 'var(--space-1)',
+    gap: 'var(--space-4)',
   },
   step: {
     minWidth: 0,
-    paddingTop: 'var(--space-3)',
-    paddingBottom: 'var(--space-2)',
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   stepHeader: {
     minWidth: 0,

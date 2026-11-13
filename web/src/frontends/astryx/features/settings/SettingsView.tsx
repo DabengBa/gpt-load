@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 
 import { SectionNav } from '../../components/SectionNav'
+import { ContentPanel } from '../../components/ContentPanel'
 import { StickySaveBar } from '../../components/StickySaveBar'
 import { useT } from '../../app/i18n'
 import { useStableLoading } from '../../app/collection-loading'
@@ -116,11 +117,7 @@ const styles = stylex.create({
     gridColumn: '1 / -1',
   },
   contentSection: {
-    borderTopWidth: '1px',
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
     minWidth: 0,
-    paddingTop: '10px',
   },
   validation: {
     display: 'grid',
@@ -618,46 +615,56 @@ export function SettingsView() {
                   )}
 
                   <div {...stylex.props(styles.fullWidth)}>
-                    <RoutingSection
-                      {...sectionProps(base, draft)}
-                      publish={(key, next) => controller.updateDraft({ key, draft: next })}
-                    />
+                    <ContentPanel>
+                      <RoutingSection
+                        {...sectionProps(base, draft)}
+                        publish={(key, next) => controller.updateDraft({ key, draft: next })}
+                      />
+                    </ContentPanel>
                   </div>
                   <div {...stylex.props(styles.contentSection)}>
-                    <ConnectionSection
-                      {...sectionProps(base, draft)}
-                      publish={(key, next) => controller.updateDraft({ key, draft: next })}
-                      proxy={base.settings.values.proxy_config}
-                      proxyMode={proxyMode}
-                      proxyEndpoint={proxyEndpoint}
-                      onProxyModeChange={setProxyMode}
-                      onProxyEndpointChange={setProxyEndpoint}
-                    />
+                    <ContentPanel>
+                      <ConnectionSection
+                        {...sectionProps(base, draft)}
+                        publish={(key, next) => controller.updateDraft({ key, draft: next })}
+                        proxy={base.settings.values.proxy_config}
+                        proxyMode={proxyMode}
+                        proxyEndpoint={proxyEndpoint}
+                        onProxyModeChange={setProxyMode}
+                        onProxyEndpointChange={setProxyEndpoint}
+                      />
+                    </ContentPanel>
                   </div>
                   <div {...stylex.props(styles.contentSection)}>
-                    <ReliabilitySection
-                      {...sectionProps(base, draft)}
-                      publish={(key, next) => controller.updateDraft({ key, draft: next })}
-                    />
+                    <ContentPanel>
+                      <ReliabilitySection
+                        {...sectionProps(base, draft)}
+                        publish={(key, next) => controller.updateDraft({ key, draft: next })}
+                      />
+                    </ContentPanel>
                   </div>
                   <div {...stylex.props(styles.contentSection, styles.fullWidth)}>
-                    <BrowserAccessSection
-                      {...sectionProps(base, draft)}
-                      publish={(key, next) => controller.updateDraft({ key, draft: next })}
-                      resetKey={browserAccessEditorRevision}
-                      onValidChange={setBrowserAccessValid}
-                      onHeaderRulesValidChange={setHeaderRulesValid}
-                      onCorsValidChange={setCorsValid}
-                      onResponseRulesValidChange={setResponseHeaderRulesValid}
-                      onHeaderRulesInvalidEditsChange={setHeaderRulesInvalidEdits}
-                      onResponseRulesInvalidEditsChange={setResponseRulesInvalidEdits}
-                    />
+                    <ContentPanel>
+                      <BrowserAccessSection
+                        {...sectionProps(base, draft)}
+                        publish={(key, next) => controller.updateDraft({ key, draft: next })}
+                        resetKey={browserAccessEditorRevision}
+                        onValidChange={setBrowserAccessValid}
+                        onHeaderRulesValidChange={setHeaderRulesValid}
+                        onCorsValidChange={setCorsValid}
+                        onResponseRulesValidChange={setResponseHeaderRulesValid}
+                        onHeaderRulesInvalidEditsChange={setHeaderRulesInvalidEdits}
+                        onResponseRulesInvalidEditsChange={setResponseRulesInvalidEdits}
+                      />
+                    </ContentPanel>
                   </div>
                   <div {...stylex.props(styles.contentSection, styles.fullWidth)}>
-                    <DataMaintenanceSection
-                      {...sectionProps(base, draft)}
-                      publish={(key, next) => controller.updateDraft({ key, draft: next })}
-                    />
+                    <ContentPanel>
+                      <DataMaintenanceSection
+                        {...sectionProps(base, draft)}
+                        publish={(key, next) => controller.updateDraft({ key, draft: next })}
+                      />
+                    </ContentPanel>
                   </div>
                 </>
               ) : null}
@@ -666,7 +673,9 @@ export function SettingsView() {
                 <CredentialsSection />
               </div>
               <div {...stylex.props(styles.contentSection, styles.fullWidth)}>
-                <SystemInfoSection />
+                <ContentPanel>
+                  <SystemInfoSection />
+                </ContentPanel>
               </div>
             </div>
           </div>
