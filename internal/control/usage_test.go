@@ -275,6 +275,7 @@ func TestUsageAPIReturnsDistributionWithoutCredentialIdentity(t *testing.T) {
 		RequestCount:         3,
 		EstimatedCostNanoUSD: 300_000_000,
 	}
+
 	reader := &recordingUsageStatReader{report: requestlog.UsageReport{
 		Summary: requestlog.UsageAggregate{
 			RequestCount: 13, SuccessCount: 11, FailureCount: 2,
@@ -350,6 +351,76 @@ func TestUsageAPIReturnsDistributionWithoutCredentialIdentity(t *testing.T) {
 		if strings.Contains(recorder.Body.String(), forbidden) {
 			t.Fatalf("usage response exposes removed field %s: %s", forbidden, recorder.Body.String())
 		}
+	}
+}
+
+func TestUsageHistoryResponseIsOptIn(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
+	groupID := uint(1)
+	channelID := "fixture-channel"
+	reader := &recordingUsageStatReader{report: requestlog.UsageReport{
+		Summary: requestlog.UsageAggregate{RequestCount: 1, SuccessCount: 1},
+		Breakdown: requestlog.UsageBreakdown{
+			Scope: "admin",
+			Rows: []requestlog.UsageBreakdownRow{{
+				Model:          "model",
+				GroupID:        &groupID,
+				ChannelID:      &channelID,
+				UsageAggregate: requestlog.UsageAggregate{RequestCount: 1, SuccessCount: 1},
+				History: []requestlog.UsageHistoryPoint{{
+					BucketStartMS: now.Add(-time.Hour).UnixMilli(),
+					BucketEndMS:   now.UnixMilli(),
+					RequestCount:  1,
+					SuccessCount:  1,
+				}},
+			}},
+			Total:      requestlog.UsageAggregate{RequestCount: 1, SuccessCount: 1},
+			Pagination: requestlog.UsagePagination{Page: 1, PageSize: 20, TotalItems: 1, TotalPages: 1},
+		},
+	}}
+	engine, _ := newUsageTestEngine(t, now, reader)
+
+	legacy := performUsageRequest(engine, "test-auth-key", "range=1h")
+	if legacy.Code != http.StatusOK || strings.Contains(legacy.Body.String(), `"history"`) {
+		t.Fatalf("legacy usage response = %d %s, want no history", legacy.Code, legacy.Body.String())
+	}
+	if len(reader.queries) != 1 || reader.queries[0].IncludeBreakdownHistory {
+		t.Fatalf("legacy UsageQuery = %#v, want history disabled", reader.queries)
+	}
+
+	optedIn := performUsageHistoryRequest(engine, "test-auth-key", "range=1h")
+	if optedIn.Code != http.StatusOK || !strings.Contains(optedIn.Body.String(), `"history"`) {
+		t.Fatalf("opt-in usage response = %d %s, want history", optedIn.Code, optedIn.Body.String())
+	}
+	if len(reader.queries) != 2 || !reader.queries[1].IncludeBreakdownHistory {
+		t.Fatalf("opt-in UsageQuery = %#v, want history enabled", reader.queries)
+	}
+}
+
+func TestUsageHistoryResponseKeepsEmptyOptInHistory(t *testing.T) {
+	t.Parallel()
+	groupID := uint(1)
+	channelID := "fixture-channel"
+	reader := &recordingUsageStatReader{report: requestlog.UsageReport{
+		Summary: requestlog.UsageAggregate{},
+		Breakdown: requestlog.UsageBreakdown{
+			Scope: "admin",
+			Rows: []requestlog.UsageBreakdownRow{{
+				Model:                 "model",
+				GroupID:               &groupID,
+				ChannelID:             &channelID,
+				UsageAttemptAggregate: requestlog.UsageAttemptAggregate{AttemptCount: 1},
+			}},
+			Total:        requestlog.UsageAggregate{},
+			AttemptTotal: requestlog.UsageAttemptAggregate{AttemptCount: 1},
+			Pagination:   requestlog.UsagePagination{Page: 1, PageSize: 20, TotalItems: 1, TotalPages: 1},
+		},
+	}}
+	engine, _ := newUsageTestEngine(t, time.Now().UTC(), reader)
+	response := performUsageHistoryRequest(engine, "test-auth-key", "range=1h")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"history":[]`) {
+		t.Fatalf("opt-in empty history response = %d %s, want history=[]", response.Code, response.Body.String())
 	}
 }
 
@@ -997,10 +1068,11 @@ func TestUsageAPIClientModelAccessKeyIsolation(t *testing.T) {
 		{second.Key, "client_model=alias-one&upstream_model=upstream", "alias-one", 7},
 		{first.Key, "client_model=alias-two&upstream_model=upstream", "alias-two", 3},
 	} {
-		recorder := performUsageRequest(engine, check.key, check.query)
+		recorder := performUsageHistoryRequest(engine, check.key, check.query)
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("HTTP %d: %s", recorder.Code, recorder.Body.String())
 		}
+		t.Logf("USAGE_JSON=%s", recorder.Body.String())
 		var response struct {
 			Data struct {
 				Summary struct {
@@ -1013,6 +1085,10 @@ func TestUsageAPIClientModelAccessKeyIsolation(t *testing.T) {
 						AttemptCount int64   `json:"attempt_count"`
 						GroupID      *uint   `json:"group_id"`
 						ChannelID    *string `json:"channel_id"`
+						History      []struct {
+							RequestCount int64 `json:"request_count"`
+							SuccessCount int64 `json:"success_count"`
+						} `json:"history"`
 					} `json:"rows"`
 				} `json:"breakdown"`
 			} `json:"data"`
@@ -1021,7 +1097,7 @@ func TestUsageAPIClientModelAccessKeyIsolation(t *testing.T) {
 			t.Fatal(err)
 		}
 		rows := response.Data.Breakdown.Rows
-		if response.Data.Summary.RequestCount != check.count || len(rows) != 1 || rows[0].ClientModel == nil || *rows[0].ClientModel != check.alias || rows[0].RequestCount != check.count || rows[0].AttemptCount != check.count || rows[0].GroupID != nil || rows[0].ChannelID != nil {
+		if response.Data.Summary.RequestCount != check.count || len(rows) != 1 || rows[0].ClientModel == nil || *rows[0].ClientModel != check.alias || rows[0].RequestCount != check.count || rows[0].AttemptCount != check.count || rows[0].GroupID != nil || rows[0].ChannelID != nil || len(rows[0].History) != 1 || rows[0].History[0].RequestCount != check.count || rows[0].History[0].SuccessCount != check.count {
 			t.Fatalf("query %q: %s", check.query, recorder.Body.String())
 		}
 	}
@@ -1262,6 +1338,21 @@ func newUsageTestEngine(
 }
 
 func performUsageRequest(engine *gin.Engine, authKey, query string) *httptest.ResponseRecorder {
+	return performUsageRequestWithHeaders(engine, authKey, query, nil)
+}
+
+func performUsageHistoryRequest(engine *gin.Engine, authKey, query string) *httptest.ResponseRecorder {
+	headers := make(http.Header)
+	headers.Set(usageHistoryHeader, usageHistoryHeaderValue)
+	return performUsageRequestWithHeaders(engine, authKey, query, headers)
+}
+
+func performUsageRequestWithHeaders(
+	engine *gin.Engine,
+	authKey string,
+	query string,
+	headers http.Header,
+) *httptest.ResponseRecorder {
 	target := "/api/usage"
 	if query != "" {
 		target += "?" + query
@@ -1269,6 +1360,11 @@ func performUsageRequest(engine *gin.Engine, authKey, query string) *httptest.Re
 	request := httptest.NewRequest(http.MethodGet, target, nil)
 	if authKey != "" {
 		request.Header.Set("Authorization", "Bearer "+authKey)
+	}
+	for key, values := range headers {
+		for _, value := range values {
+			request.Header.Add(key, value)
+		}
 	}
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
@@ -1290,7 +1386,7 @@ func assertUsageErrorCode(t *testing.T, recorder *httptest.ResponseRecorder, wan
 
 func TestMapUsageBreakdownRejectsMissingSection(t *testing.T) {
 	summary := requestlog.UsageAggregate{RequestCount: 1, SuccessCount: 1, EstimatedCostNanoUSD: 3}
-	_, err := mapUsageBreakdown(requestlog.UsageBreakdown{}, false, mustMapUsageAggregateForTest(t, summary))
+	_, err := mapUsageBreakdown(requestlog.UsageBreakdown{}, false, false, mustMapUsageAggregateForTest(t, summary))
 	if err == nil {
 		t.Fatal("mapUsageBreakdown() error = nil, want missing breakdown rejection")
 	}
@@ -1310,7 +1406,7 @@ func TestMapUsageBreakdownAccessKeyOmitsAdminAndSecretFields(t *testing.T) {
 		}},
 		Total:      summary,
 		Pagination: requestlog.UsagePagination{Page: 1, PageSize: 20, TotalItems: 1, TotalPages: 1},
-	}, true, mustMapUsageAggregateForTest(t, summary))
+	}, true, false, mustMapUsageAggregateForTest(t, summary))
 	if err != nil {
 		t.Fatalf("mapUsageBreakdown() error = %v", err)
 	}

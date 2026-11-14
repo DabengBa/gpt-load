@@ -215,9 +215,13 @@ export default {
         rowCount: '{count} 行',
         total: '总计',
         unknownModel: '未知',
+        history: '请求成功率历史',
+        historyEmpty: '无请求',
+        historyCounts: '{total} 次请求，成功 {success} 次 · {rate}',
         deletedOrUnknownChannel: '#{id} · 已删除或未知',
         columns: {
           model: '上游模型',
+          history: '请求历史',
           clientModel: '请求模型',
           group: '分组',
           channel: '渠道',

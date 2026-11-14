@@ -60,6 +60,11 @@ func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (Usage
 		if err != nil {
 			return err
 		}
+		if input.IncludeBreakdownHistory {
+			if err := queryUsageBreakdownHistory(usageStatScope(connection, input), breakdown.Rows, input, bucketWidthMS); err != nil {
+				return err
+			}
+		}
 		report = UsageReport{
 			Summary: summary, Series: series, Distributions: distributions, Breakdown: breakdown,
 		}

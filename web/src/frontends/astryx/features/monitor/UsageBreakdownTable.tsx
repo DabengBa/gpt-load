@@ -133,6 +133,27 @@ const styles = stylex.create({
     textDecorationLine: 'underline',
     textUnderlineOffset: 3,
   },
+  historySummary: { cursor: 'pointer', listStyle: 'none' },
+  historyBars: { display: 'flex', gap: 2, alignItems: 'center', minHeight: 24 },
+  historyBar: {
+    width: 5,
+    height: 16,
+    borderRadius: 2,
+    backgroundColor: 'var(--color-border-control)',
+  },
+  historySuccess: { backgroundColor: 'var(--color-success)' },
+  historyPartial: { backgroundColor: 'var(--color-warning)' },
+  historyFailure: { backgroundColor: 'var(--color-danger)' },
+  historyList: {
+    paddingInlineStart: 16,
+    lineHeight: 1.6,
+    fontWeight: 400,
+    maxHeight: 160,
+    width: 'min(320px, calc(100vw - 80px))',
+    boxSizing: 'border-box',
+    overflowY: 'auto',
+    whiteSpace: 'normal',
+  },
 })
 
 interface BreakdownColumn {
@@ -154,6 +175,9 @@ interface BreakdownColumn {
  */
 export function UsageBreakdownTable({
   breakdown,
+  fromMS,
+  toMS,
+  bucketWidthMS,
   groups,
   sort,
   sortDirection,
@@ -162,6 +186,9 @@ export function UsageBreakdownTable({
   onSort,
 }: {
   breakdown: UsageBreakdownDto
+  fromMS: number
+  toMS: number
+  bucketWidthMS: number
   groups: GroupOptionDto[]
   sort: UsageBreakdownSort
   sortDirection: UsageBreakdownSortDirection
@@ -232,6 +259,78 @@ export function UsageBreakdownTable({
       identity: true,
       cell: (row) => row.model,
       total: () => t('monitor.usage.breakdown.total'),
+    },
+    {
+      key: 'history',
+      labelId: 'monitor.usage.breakdown.columns.history',
+      numeric: false,
+      cell: (row) => {
+        if (row.history === undefined) return '—'
+        const points = new Map(row.history.map((point) => [point.bucket_start_ms, point]))
+        const buckets = Array.from({ length: (toMS - fromMS) / bucketWidthMS }, (_, i) => {
+          const start = fromMS + i * bucketWidthMS
+          const point = points.get(start)
+          const requests = point?.request_count ?? 0
+          const successes = point?.success_count ?? 0
+          const time = `${intl.formatDate(start, { dateStyle: 'short', timeStyle: 'short' })} – ${intl.formatDate(start + bucketWidthMS, { dateStyle: 'short', timeStyle: 'short' })}`
+          const value =
+            requests === 0
+              ? t('monitor.usage.breakdown.historyEmpty')
+              : t('monitor.usage.breakdown.historyCounts', {
+                  success: formatInteger(successes, locale),
+                  total: formatInteger(requests, locale),
+                  rate: formatPercent(successes, requests, locale),
+                })
+          return { start, requests, successes, label: `${time}: ${value}` }
+        })
+        return (
+          <details>
+            <summary
+              {...stylex.props(styles.historySummary)}
+              aria-label={[
+                `${t('monitor.usage.breakdown.history')}: ${row.model}`,
+                `${t('monitor.usage.breakdown.columns.clientModel')}: ${row.client_model ?? t('monitor.usage.breakdown.unknownModel')}`,
+                ...(isAdmin
+                  ? [
+                      `${t('monitor.usage.breakdown.columns.group')}: ${groupName(row)} (#${row.group_id})`,
+                      `${t('monitor.usage.breakdown.columns.channel')}: ${row.channel_id}`,
+                    ]
+                  : []),
+              ].join('; ')}
+            >
+              <span {...stylex.props(styles.historyBars)} aria-hidden="true">
+                {buckets.map((bucket) => (
+                  <span
+                    key={bucket.start}
+                    title={bucket.label}
+                    {...stylex.props(
+                      styles.historyBar,
+                      bucket.requests > 0 &&
+                        bucket.successes === bucket.requests &&
+                        styles.historySuccess,
+                      bucket.requests > 0 &&
+                        bucket.successes > 0 &&
+                        bucket.successes < bucket.requests &&
+                        styles.historyPartial,
+                      bucket.requests > 0 && bucket.successes === 0 && styles.historyFailure,
+                    )}
+                  />
+                ))}
+              </span>
+            </summary>
+            <ul
+              {...stylex.props(styles.historyList)}
+              tabIndex={0}
+              aria-label={t('monitor.usage.breakdown.history')}
+            >
+              {[...buckets].reverse().map((bucket) => (
+                <li key={bucket.start}>{bucket.label}</li>
+              ))}
+            </ul>
+          </details>
+        )
+      },
+      total: () => '—',
     },
     {
       key: 'group',

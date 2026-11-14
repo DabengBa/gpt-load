@@ -21,15 +21,17 @@ import (
 )
 
 const (
-	usageRange1Hour        = "1h"
-	usageRange24Hours      = "24h"
-	usageRange3Days        = "3d"
-	usageRange7Days        = "7d"
-	usageRange15Days       = "15d"
-	usageRange30Days       = "30d"
-	usageRangeCustom       = "custom"
-	usageDistributionLimit = 5
-	usageCustomMaxMS       = 30 * epochms.MillisecondsPerDay
+	usageHistoryHeader      = "X-GPTLoad-Usage-History"
+	usageHistoryHeaderValue = "1"
+	usageRange1Hour         = "1h"
+	usageRange24Hours       = "24h"
+	usageRange3Days         = "3d"
+	usageRange7Days         = "7d"
+	usageRange15Days        = "15d"
+	usageRange30Days        = "30d"
+	usageRangeCustom        = "custom"
+	usageDistributionLimit  = 5
+	usageCustomMaxMS        = 30 * epochms.MillisecondsPerDay
 )
 
 type UsageStatReader interface {
@@ -111,12 +113,20 @@ type usageAttemptAggregateResponse struct {
 }
 
 type usageBreakdownRowResponse struct {
-	Model       string  `json:"model"`
-	ClientModel *string `json:"client_model"`
-	GroupID     *uint   `json:"group_id,omitempty"`
-	ChannelID   *string `json:"channel_id,omitempty"`
+	Model       string                       `json:"model"`
+	ClientModel *string                      `json:"client_model"`
+	GroupID     *uint                        `json:"group_id,omitempty"`
+	ChannelID   *string                      `json:"channel_id,omitempty"`
+	History     *[]usageHistoryPointResponse `json:"history,omitempty"`
 	usageAggregateResponse
 	usageAttemptAggregateResponse
+}
+
+type usageHistoryPointResponse struct {
+	BucketStartMS int64 `json:"bucket_start_ms"`
+	BucketEndMS   int64 `json:"bucket_end_ms"`
+	RequestCount  int64 `json:"request_count"`
+	SuccessCount  int64 `json:"success_count"`
 }
 
 type usageBreakdownResponse struct {
@@ -182,6 +192,7 @@ func (server *Server) handleUsage(c *gin.Context) {
 		}
 		query.AccessKeyID = &accessKeyID
 	}
+	query.IncludeBreakdownHistory = c.GetHeader(usageHistoryHeader) == usageHistoryHeaderValue
 	report, err := server.service.QueryUsage(c.Request.Context(), query)
 	if err != nil {
 		writeServiceError(c, "usage", err)
@@ -463,7 +474,7 @@ func (service *Service) mapUsageResponse(
 	if err != nil {
 		return usageResponse{}, err
 	}
-	breakdown, err := mapUsageBreakdown(report.Breakdown, accessKeyScoped, summary)
+	breakdown, err := mapUsageBreakdown(report.Breakdown, accessKeyScoped, query.IncludeBreakdownHistory, summary)
 	if err != nil {
 		return usageResponse{}, err
 	}
@@ -597,6 +608,7 @@ func mapUsageDistributionViews(result *usageResponse, report requestlog.UsageRep
 func mapUsageBreakdown(
 	source requestlog.UsageBreakdown,
 	accessKeyScoped bool,
+	includeHistory bool,
 	summary usageAggregateResponse,
 ) (usageBreakdownResponse, error) {
 	wantScope := "admin"
@@ -670,8 +682,22 @@ func mapUsageBreakdown(
 		if err != nil {
 			return usageBreakdownResponse{}, err
 		}
+		var history *[]usageHistoryPointResponse
+		if includeHistory {
+			points := make([]usageHistoryPointResponse, 0, len(row.History))
+			for _, point := range row.History {
+				if validateSafeMilliseconds(point.BucketStartMS) != nil || validateSafeMilliseconds(point.BucketEndMS) != nil ||
+					point.BucketEndMS <= point.BucketStartMS || point.RequestCount < 0 || point.RequestCount > maxSafeInteger ||
+					point.SuccessCount < 0 || point.SuccessCount > point.RequestCount {
+					return usageBreakdownResponse{}, fmt.Errorf("map usage breakdown: invalid history")
+				}
+				points = append(points, usageHistoryPointResponse{point.BucketStartMS, point.BucketEndMS, point.RequestCount, point.SuccessCount})
+			}
+			history = &points
+		}
 		result.Rows = append(result.Rows, usageBreakdownRowResponse{
 			Model: row.Model, ClientModel: nullableRequestLogModel(row.ClientModel), GroupID: row.GroupID, ChannelID: row.ChannelID,
+			History:                history,
 			usageAggregateResponse: aggregate, usageAttemptAggregateResponse: attemptAggregate,
 		})
 	}

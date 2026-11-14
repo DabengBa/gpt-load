@@ -272,21 +272,22 @@ type GroupUsageReader interface {
 }
 
 type UsageQuery struct {
-	FromMS                 int64
-	ToMS                   int64
-	Granularity            UsageGranularity
-	BucketWidthMS          int64
-	AccessKeyID            *uint
-	GroupID                *uint
-	ChannelID              channel.ID
-	CredentialID           *uint
-	UpstreamModel          string
-	ClientModel            string
-	BreakdownByClientModel bool
-	BreakdownPage          int
-	BreakdownPageSize      int
-	BreakdownSort          UsageBreakdownSort
-	BreakdownSortDirection UsageBreakdownSortDirection
+	FromMS                  int64
+	ToMS                    int64
+	Granularity             UsageGranularity
+	BucketWidthMS           int64
+	AccessKeyID             *uint
+	GroupID                 *uint
+	ChannelID               channel.ID
+	CredentialID            *uint
+	UpstreamModel           string
+	ClientModel             string
+	BreakdownByClientModel  bool
+	IncludeBreakdownHistory bool
+	BreakdownPage           int
+	BreakdownPageSize       int
+	BreakdownSort           UsageBreakdownSort
+	BreakdownSortDirection  UsageBreakdownSortDirection
 }
 
 type UsageAggregate struct {
@@ -374,8 +375,16 @@ type UsageBreakdownRow struct {
 	ClientModel string
 	GroupID     *uint
 	ChannelID   *string
+	History     []UsageHistoryPoint
 	UsageAggregate
 	UsageAttemptAggregate
+}
+
+type UsageHistoryPoint struct {
+	BucketStartMS int64
+	BucketEndMS   int64
+	RequestCount  int64
+	SuccessCount  int64
 }
 
 type UsageDistributions struct {
