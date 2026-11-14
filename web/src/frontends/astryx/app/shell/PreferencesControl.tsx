@@ -47,6 +47,9 @@ const styles = stylex.create({
   segmentsThree: {
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
   },
+  segmentsTwo: {
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  },
   segment: {
     position: 'relative',
     display: 'flex',
@@ -127,7 +130,14 @@ function Segments<T extends string>({
   return (
     <div {...stylex.props(styles.group)}>
       <span {...stylex.props(styles.label)}>{label}</span>
-      <div {...stylex.props(styles.segments, styles.segmentsThree)} role="group" aria-label={label}>
+      <div
+        {...stylex.props(
+          styles.segments,
+          options.length === 2 ? styles.segmentsTwo : styles.segmentsThree,
+        )}
+        role="group"
+        aria-label={label}
+      >
         {options.map((option, index) => {
           const checked = option.value === value
           return (
@@ -166,7 +176,6 @@ const themeOptions: readonly SegmentOption<AppTheme>[] = [
 const localeOptions: readonly SegmentOption<AppLocale>[] = [
   { value: 'zh-CN', labelKey: 'shell.localeZhShort' },
   { value: 'en-US', labelKey: 'shell.localeEnShort' },
-  { value: 'ja-JP', labelKey: 'shell.localeJaShort' },
 ]
 
 export function PreferencesPanel({

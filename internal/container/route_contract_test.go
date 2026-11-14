@@ -406,9 +406,9 @@ func TestHTTPControlFallbacksUseRequestLanguage(t *testing.T) {
 			wantCode: "ROUTE_NOT_FOUND", wantMessage: "路由不存在",
 		},
 		{
-			name: "Japanese method not allowed", method: http.MethodPost,
+			name: "Japanese falls back for method not allowed", method: http.MethodPost,
 			target: "/api/auth/session", language: "ja-JP",
-			wantCode: "METHOD_NOT_ALLOWED", wantMessage: "許可されていないHTTPメソッドです",
+			wantCode: "METHOD_NOT_ALLOWED", wantMessage: "请求方法不被允许",
 		},
 		{
 			name: "English method not allowed", method: http.MethodPost,

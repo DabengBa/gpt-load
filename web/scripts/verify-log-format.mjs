@@ -691,7 +691,7 @@ async function main() {
       return 1
     }
 
-    const localeNames = ['zh-CN', 'en-US', 'ja-JP']
+    const localeNames = ['zh-CN', 'en-US']
     const messagesByLocale = {}
     for (const locale of localeNames) {
       const module = await server.ssrLoadModule(`/src/shared/i18n/locales/${locale}/monitor.ts`)
@@ -723,7 +723,7 @@ async function main() {
 
     const missingLabels = checkLabelParity(messagesByLocale)
     if (missingLabels.length === 0) {
-      console.log('PASS  first-screen labels exist in zh-CN, en-US and ja-JP')
+      console.log('PASS  first-screen labels exist in zh-CN and en-US')
     } else {
       failed++
       console.log(`FAIL  missing first-screen labels: ${missingLabels.join(', ')}`)

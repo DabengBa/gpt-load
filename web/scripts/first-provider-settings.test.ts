@@ -19,8 +19,8 @@ test('first_provider_attempts validation requires at least one attempt', () => {
   assert.equal(isValidPositiveCount(Number.NaN), false)
 })
 
-test('all three locales document first_provider_attempts and its error message', () => {
-  for (const locale of ['en-US', 'zh-CN', 'ja-JP']) {
+test('both locales document first_provider_attempts and its error message', () => {
+  for (const locale of ['en-US', 'zh-CN']) {
     const path = fileURLToPath(
       new URL(`../src/shared/i18n/locales/${locale}/settings.ts`, import.meta.url),
     )

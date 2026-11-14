@@ -149,7 +149,7 @@ Provider 通过 `ProviderBinding.ProbeContract` 声明单一生成式探测协�
 - 弹窗展示协议、路由模式、结果、原因、凭据、耗时、`recovered` 和请求 ID；请求 ID可复制并深链到日志详情。
 - 凭据测试弹窗直接展示 `recovered`，不再显示 `can_restore`、`restore_proof` 或第二个恢复按钮。
 - 页面挂载、刷新、标签切换、可见性变化和健康轮询只读取控制面 API，不发送上游探测。
-- 所有支持的 locale（`en-US`、`zh-CN`、`ja-JP`）同步移除已删除的验证设置、验证模型和验证恢复文案。
+- 所有支持的 locale（`en-US`、`zh-CN`）同步移除已删除的验证设置、验证模型和验证恢复文案。
 
 ## 7. 配置删除
 

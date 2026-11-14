@@ -420,7 +420,7 @@ test('breakdown aligns headers with values and gives long sortable labels room',
   }
 })
 
-for (const locale of ['zh-CN', 'ja-JP']) {
+for (const locale of ['zh-CN', 'en-US']) {
   test(`translated breakdown headings and active sort fit at desktop and mobile widths (${locale})`, async ({
     page,
   }) => {

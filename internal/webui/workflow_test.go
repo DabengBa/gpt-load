@@ -2534,7 +2534,7 @@ func TestReleaseWorkflowRemovesObsoletePublishers(t *testing.T) {
 }
 
 func TestReadmesDoNotExposeInternalReleaseTaskNames(t *testing.T) {
-	for _, name := range []string{"README.md", "README_CN.md", "README_JP.md"} {
+	for _, name := range []string{"README.md", "README_CN.md"} {
 		content := readRepositoryFile(t, name)
 		if strings.Contains(content, "T18") {
 			t.Fatalf("%s exposes the completed internal T18 task name", name)

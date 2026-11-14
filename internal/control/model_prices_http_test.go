@@ -509,7 +509,7 @@ func TestModelPriceHTTPRejectsLegacyAndAmbiguousContracts(t *testing.T) {
 	}
 }
 
-func TestModelPriceHTTPErrorsUseThreeLocaleMessageIDs(t *testing.T) {
+func TestModelPriceHTTPErrorsUseSupportedLocaleMessageIDs(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		language string
@@ -517,7 +517,7 @@ func TestModelPriceHTTPErrorsUseThreeLocaleMessageIDs(t *testing.T) {
 	}{
 		{language: "zh-CN", message: "将模型价格标记为未定价需要明确确认"},
 		{language: "en-US", message: "Marking a model price as unpriced requires explicit confirmation"},
-		{language: "ja-JP", message: "モデル価格を未設定としてマークするには明示的な確認が必要です"},
+		{language: "ja-JP", message: "将模型价格标记为未定价需要明确确认"},
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			_, engine, row := newModelPriceHTTPFixture(t, true)

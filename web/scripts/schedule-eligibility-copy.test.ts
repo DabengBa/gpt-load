@@ -3,13 +3,12 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import en from '../src/shared/i18n/locales/en-US/monitor.ts'
-import ja from '../src/shared/i18n/locales/ja-JP/monitor.ts'
+
 import zh from '../src/shared/i18n/locales/zh-CN/monitor.ts'
 
 test('tier-demoted rows only describe schedulability in every locale', () => {
   assert.equal(zh.monitor.schedule.reasons.tier_demoted, '可调度')
   assert.equal(en.monitor.schedule.reasons.tier_demoted, 'Schedulable')
-  assert.equal(ja.monitor.schedule.reasons.tier_demoted, 'スケジュール可能')
 })
 
 test('schedule target demo does not replace share with a priority label', () => {

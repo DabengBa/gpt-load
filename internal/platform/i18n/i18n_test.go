@@ -8,20 +8,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestMiddlewareSelectsJapanese(t *testing.T) {
+func TestMiddlewareSkipsJapanese(t *testing.T) {
 	if err := Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 
 	gin.SetMode(gin.TestMode)
-	context, _ := gin.CreateTestContext(nil)
-	context.Request = httptest.NewRequest("GET", "/", nil)
-	context.Request.Header.Set("Accept-Language", "ja-JP,ja;q=0.9")
+	for _, test := range []struct {
+		header, language, message string
+	}{
+		{header: "ja-JP,ja;q=0.9", language: "zh-CN", message: "请求错误"},
+		{header: "ja-JP, en-US;q=0.9", language: "en-US", message: "Bad request"},
+	} {
+		t.Run(test.header, func(t *testing.T) {
+			context, _ := gin.CreateTestContext(nil)
+			context.Request = httptest.NewRequest("GET", "/", nil)
+			context.Request.Header.Set("Accept-Language", test.header)
+			Middleware()(context)
 
-	Middleware()(context)
-
-	if got := Message(context, "bad_request"); got != "不正なリクエスト" {
-		t.Fatalf("Message() = %q, want %q", got, "不正なリクエスト")
+			if got := GetLanguageFromContext(context); got != test.language {
+				t.Errorf("GetLanguageFromContext() = %q, want %q", got, test.language)
+			}
+			if got := Message(context, "bad_request"); got != test.message {
+				t.Errorf("Message() = %q, want %q", got, test.message)
+			}
+		})
 	}
 }
 
@@ -36,7 +47,7 @@ func TestRequestTooLargeTranslations(t *testing.T) {
 	}{
 		{language: "zh-CN", message: "请求体过大"},
 		{language: "en-US", message: "Request body is too large"},
-		{language: "ja-JP", message: "リクエストボディが大きすぎます"},
+		{language: "ja-JP", message: "请求体过大"},
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
@@ -63,7 +74,7 @@ func TestChannelTargetConflictTranslations(t *testing.T) {
 	}{
 		{language: "zh-CN", message: "已有分组使用相同渠道目标"},
 		{language: "en-US", message: "An existing group already uses this channel target"},
-		{language: "ja-JP", message: "同じチャネル接続先を使用するグループが既に存在します"},
+		{language: "ja-JP", message: "已有分组使用相同渠道目标"},
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
@@ -90,7 +101,7 @@ func TestGroupInUseTranslations(t *testing.T) {
 	}{
 		{language: "zh-CN", message: "分组仍被访问密钥引用"},
 		{language: "en-US", message: "The group is still referenced by access keys"},
-		{language: "ja-JP", message: "グループはアクセスキーから参照されています"},
+		{language: "ja-JP", message: "分组仍被访问密钥引用"},
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
@@ -151,8 +162,8 @@ func TestAcceptLanguageWildcardUsesServerDefault(t *testing.T) {
 }
 
 func TestAcceptLanguagePreservesQualityOrder(t *testing.T) {
-	if got := ResolveLanguage("en-US;q=0.8, ja-JP;q=0.9"); got != "ja-JP" {
-		t.Fatalf("ResolveLanguage() = %q, want %q", got, "ja-JP")
+	if got := ResolveLanguage("en-US;q=0.8, zh-CN;q=0.9"); got != "zh-CN" {
+		t.Fatalf("ResolveLanguage() = %q, want %q", got, "zh-CN")
 	}
 }
 
