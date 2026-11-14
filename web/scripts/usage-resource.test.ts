@@ -50,6 +50,7 @@ function breakdown(row: ReturnType<typeof aggregate>) {
         normal_attempt_count: 1,
         slow_attempt_count: 0,
         faulty_attempt_count: 0,
+        history: [],
       },
     ],
     total: aggregate(),
@@ -63,6 +64,27 @@ function breakdown(row: ReturnType<typeof aggregate>) {
     pagination: { page: 1, page_size: 20, total_items: 1, total_pages: 1 },
   }
 }
+
+test('projects row history and rejects invalid counts and fields', () => {
+  const fixture = breakdown(aggregate())
+  const point = { bucket_start_ms: 0, bucket_end_ms: 3600000, request_count: 1, success_count: 1 }
+  fixture.rows[0].history = [point] as never[]
+  assert.deepEqual(projectUsageBreakdown(fixture).rows[0]?.history, [point])
+  for (const invalid of [
+    { ...point, success_count: 2 },
+    { ...point, api_key: 'secret' },
+  ]) {
+    fixture.rows[0].history = [invalid] as never[]
+    assert.throws(() => projectUsageBreakdown(fixture))
+  }
+})
+
+test('projects legacy rows without history as history-unavailable', () => {
+  const fixture = breakdown(aggregate())
+  delete fixture.rows[0].history
+  const result = projectUsageBreakdown(fixture)
+  assert.equal('history' in result.rows[0]!, false)
+})
 
 test('projects success-only usage fields from breakdown rows and totals', () => {
   const result = projectUsageBreakdown(breakdown(aggregate()))
@@ -150,6 +172,24 @@ test('report distributions retain strict identity, totals and field validation',
     breakdown: breakdown(aggregate()),
   }
   assert.equal(projectUsageReport(report).distributions.model.requests.items[0]?.model, 'model')
+  const row = report.breakdown.rows[0]
+  for (const history of [
+    [{ bucket_start_ms: 0, bucket_end_ms: 7200000, request_count: 1, success_count: 1 }],
+    [{ bucket_start_ms: 3600000, bucket_end_ms: 7200000, request_count: 1, success_count: 1 }],
+    Array(2).fill({
+      bucket_start_ms: 0,
+      bucket_end_ms: 3600000,
+      request_count: 1,
+      success_count: 1,
+    }),
+  ]) {
+    assert.throws(() =>
+      projectUsageReport({
+        ...report,
+        breakdown: { ...report.breakdown, rows: [{ ...row, history }] },
+      }),
+    )
+  }
   const requests = report.distributions.model.requests
   for (const invalid of [
     { ...requests, dimension: 'group' },

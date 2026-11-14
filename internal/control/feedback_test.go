@@ -102,7 +102,7 @@ func TestFeedbackUsageBreakdownAPIValidatesAndProjectsThreeCounts(t *testing.T) 
 		},
 		Pagination: requestlog.UsagePagination{Page: 1, PageSize: 20, TotalItems: 1, TotalPages: 1},
 	}
-	response, err := mapUsageBreakdown(breakdown, true, mustMapUsageAggregateForTest(t, summary))
+	response, err := mapUsageBreakdown(breakdown, true, false, mustMapUsageAggregateForTest(t, summary))
 	if err != nil {
 		t.Fatalf("mapUsageBreakdown() error = %v", err)
 	}

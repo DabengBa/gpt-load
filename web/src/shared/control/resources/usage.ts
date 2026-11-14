@@ -175,6 +175,14 @@ export interface UsageBreakdownRowDto extends UsageAggregateDto, UsageAttemptAgg
   client_model: string | null
   group_id?: number
   channel_id?: string
+  history?: UsageHistoryPointDto[]
+}
+
+export interface UsageHistoryPointDto {
+  bucket_start_ms: number
+  bucket_end_ms: number
+  request_count: number
+  success_count: number
 }
 
 export interface UsageBreakdownDto {
@@ -396,6 +404,7 @@ export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
         : ['model', 'client_model']
     assertNoSecretLikeFields(row, [
       ...identityFields,
+      'history',
       ...breakdownAggregateFields,
       ...attemptAggregateFields,
     ])
@@ -407,17 +416,42 @@ export function projectUsageBreakdown(value: unknown): UsageBreakdownDto {
     const attempts = projectUsageAttemptAggregate(
       Object.fromEntries(attemptAggregateFields.map((field) => [field, row[field]])),
     )
+    const history =
+      row.history === undefined
+        ? undefined
+        : projectArray(row.history, (value): UsageHistoryPointDto => {
+            const point = projectRecord(value)
+            assertNoSecretLikeFields(point, [
+              'bucket_start_ms',
+              'bucket_end_ms',
+              'request_count',
+              'success_count',
+            ])
+            const bucket_start_ms = projectEpochMilliseconds(point.bucket_start_ms)
+            const bucket_end_ms = projectEpochMilliseconds(point.bucket_end_ms)
+            const request_count = projectSafeInteger(point.request_count, { minimum: 0 })
+            const success_count = projectSafeInteger(point.success_count, { minimum: 0 })
+            if (bucket_end_ms <= bucket_start_ms || success_count > request_count) invalidResponse()
+            return { bucket_start_ms, bucket_end_ms, request_count, success_count }
+          })
     if (scope === 'admin') {
       return {
         ...aggregate,
         ...attempts,
+        ...(history === undefined ? {} : { history }),
         model,
         client_model,
         group_id: projectSafeInteger(row.group_id, { minimum: 1 }),
         channel_id: projectChannelID(row.channel_id),
       }
     }
-    return { ...aggregate, ...attempts, model, client_model }
+    return {
+      ...aggregate,
+      ...attempts,
+      model,
+      client_model,
+      ...(history === undefined ? {} : { history }),
+    }
   })
   const identities = new Set<string>()
   for (const row of rows) {
@@ -667,6 +701,19 @@ export function projectUsageReport(value: unknown): UsageReportDto {
   const summary = projectUsageAggregate(record.summary)
   const breakdown = projectUsageBreakdown(record.breakdown)
   if (!sameUsageAggregate(breakdown.total, summary)) invalidResponse()
+  for (const row of breakdown.rows) {
+    let previousEnd = rangeFromMS
+    for (const point of row.history ?? []) {
+      if (
+        point.bucket_start_ms < previousEnd ||
+        point.bucket_end_ms > rangeToMS ||
+        point.bucket_end_ms - point.bucket_start_ms !== bucketWidthMs ||
+        !isUTCAligned(point.bucket_start_ms, bucketWidthMs)
+      )
+        invalidResponse()
+      previousEnd = point.bucket_end_ms
+    }
+  }
 
   return {
     range,
@@ -747,7 +794,11 @@ export async function getUsageReport(
   params.append('breakdown_sort_direction', breakdownSortDirection)
 
   const report = projectUsageReport(
-    await client.request(`/api/usage?${params.toString()}`, { method: 'GET', signal }),
+    await client.request(`/api/usage?${params.toString()}`, {
+      method: 'GET',
+      signal,
+      headers: { 'X-GPTLoad-Usage-History': '1' },
+    }),
   )
   return report
 }

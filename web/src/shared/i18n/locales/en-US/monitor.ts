@@ -223,9 +223,13 @@ export default {
         rowCount: '{count} rows',
         total: 'Total',
         unknownModel: 'Unknown',
+        history: 'Request success history',
+        historyEmpty: 'No requests',
+        historyCounts: '{success} of {total} successful · {rate}',
         deletedOrUnknownChannel: '#{id} · Deleted or unknown',
         columns: {
           model: 'Upstream model',
+          history: 'Request history',
           clientModel: 'Request model',
           group: 'Group',
           channel: 'Channel',

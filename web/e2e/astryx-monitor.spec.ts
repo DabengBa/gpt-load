@@ -87,15 +87,15 @@ function usagePayload(options: { scope?: 'admin' | 'access_key' } = {}) {
     ...(scope === 'admin' ? { group_id: 1, channel_id: 'openai' } : {}),
     ...usageAggregate({
       request_count: 2,
-      success_count: 2,
-      failure_count: 0,
+      success_count: model === 'gpt-4o' ? 1 : 2,
+      failure_count: model === 'gpt-4o' ? 1 : 0,
       uncached_input_tokens: 500,
       cache_read_tokens: 500,
       cache_write_5m_tokens: 1000,
       output_tokens: 500,
       success_output_tokens: 500,
       success_duration_ms_total: 10000,
-      success_efficiency_sample_count: model === 'gpt-4o' ? 2 : 0,
+      success_efficiency_sample_count: model === 'gpt-4o' ? 1 : 0,
       total_tokens: 2500,
       estimated_cost_nano_usd: '750000000',
     }),
@@ -104,6 +104,14 @@ function usagePayload(options: { scope?: 'admin' | 'access_key' } = {}) {
     normal_attempt_count: 2,
     slow_attempt_count: 0,
     faulty_attempt_count: 0,
+    history: [
+      {
+        bucket_start_ms: from + 20 * hourMs,
+        bucket_end_ms: from + 21 * hourMs,
+        request_count: 2,
+        success_count: model === 'gpt-4o' ? 1 : 2,
+      },
+    ],
   })
   return {
     range: '24h',
@@ -269,6 +277,181 @@ async function expectAstryxDocument(page: Page): Promise<void> {
 }
 
 for (const width of [390, 1440]) {
+  test(`request history is responsive and keyboard accessible at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockMonitor(page)
+    await page.goto('/monitor')
+    const table = page.getByRole('table')
+    const history = table.locator('summary').first()
+    await expect(history).toHaveAccessibleName(/Request success history: gpt-4o/)
+    await expect(history.locator('span[title]')).toHaveCount(24)
+    await history.focus()
+    await page.keyboard.press('Enter')
+    await expect(table.locator('details').first()).toHaveAttribute('open', '')
+    await expect(table.locator('details').first().locator('li')).toHaveCount(24)
+    await expect(table.locator('details').first()).toContainText('1 of 2 successful')
+    await expect(table.locator('details').first()).toContainText('No requests')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`request-history-${width}.png`) })
+  })
+}
+
+test('request history opens with newest bucket first while bars remain oldest to newest', async ({
+  page,
+}) => {
+  await mockMonitor(page)
+  await page.route('**/api/usage?**', async (route) => {
+    const payload = usagePayload()
+    const point = payload.breakdown.rows[0].history[0]
+    point.bucket_start_ms = payload.to_ms - hourMs
+    point.bucket_end_ms = payload.to_ms
+    await route.fulfill({ json: { code: 0, message: 'ok', data: payload } })
+  })
+  await page.goto('/monitor')
+  const history = page.getByRole('table').locator('details').first()
+  const bars = history.locator('summary span[title]')
+  const newestLabel = await bars.last().getAttribute('title')
+  const oldestLabel = await bars.first().getAttribute('title')
+  await history.locator('summary').click()
+  const items = history.locator('li')
+  await expect(items.first()).toHaveText(newestLabel!)
+  await expect(items.last()).toHaveText(oldestLabel!)
+  await expect(items.first()).toContainText('1 of 2 successful · 50%')
+  const visible = await items.first().evaluate((item) => {
+    const list = item.parentElement!.getBoundingClientRect()
+    const box = item.getBoundingClientRect()
+    return box.top >= list.top && box.bottom <= list.bottom
+  })
+  expect(visible).toBe(true)
+})
+
+test('request history names distinguish matching upstream models and dimensions', async ({
+  page,
+}) => {
+  await mockMonitor(page)
+  await page.route('**/api/usage?**', async (route) => {
+    const payload = usagePayload()
+    const row = payload.breakdown.rows[0]
+    payload.breakdown.rows = [
+      row,
+      { ...row, client_model: 'other-alias' },
+      { ...row, group_id: 2 },
+      { ...row, channel_id: 'other_channel' },
+    ]
+    payload.breakdown.pagination.total_items = 4
+    await route.fulfill({ json: { code: 0, message: 'ok', data: payload } })
+  })
+  await page.goto('/monitor')
+  const summaries = page.getByRole('table').locator('summary')
+  await expect(summaries).toHaveCount(4)
+  const names = await summaries.evaluateAll((elements) =>
+    elements.map((el) => el.getAttribute('aria-label')),
+  )
+  expect(new Set(names).size).toBe(4)
+  for (let index = 0; index < names.length; index++) {
+    await expect(summaries.nth(index)).toHaveAccessibleName(names[index]!)
+  }
+  expect(names[0]).toContain('request-alias')
+  expect(names[1]).toContain('other-alias')
+  expect(names[2]).toContain('2')
+  expect(names[3]).toContain('other_channel')
+})
+
+for (const width of [320, 390]) {
+  test(`request history details are readable within the ${width}px viewport`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockMonitor(page)
+    await page.goto('/monitor')
+    const history = page.getByRole('table').locator('details').first()
+    await history.locator('summary').click()
+    const list = history.locator('ul')
+    await list.scrollIntoViewIfNeeded()
+    const geometry = await list.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return {
+        width: box.width,
+        left: box.left,
+        right: box.right,
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+      }
+    })
+    expect(geometry.width).toBeGreaterThanOrEqual(width - 90)
+    expect(geometry.left).toBeGreaterThanOrEqual(0)
+    expect(geometry.right).toBeLessThanOrEqual(width)
+    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth)
+  })
+}
+
+test('attempt-only rows show empty history rather than an empty report', async ({ page }) => {
+  await mockMonitor(page)
+  await page.route('**/api/usage?**', async (route) => {
+    const payload = usagePayload()
+    payload.summary = usageAggregate()
+    payload.series = []
+    for (const group of Object.values(payload.distributions)) {
+      if (group) for (const distribution of Object.values(group)) distribution.items = []
+    }
+    payload.breakdown.rows = [
+      {
+        ...payload.breakdown.rows[0],
+        ...usageAggregate(),
+        history: [],
+        attempt_count: 1,
+        normal_attempt_count: 1,
+      },
+    ]
+    payload.breakdown.total = usageAggregate()
+    payload.breakdown.attempt_total = {
+      attempt_count: 1,
+      attempt_failure_count: 0,
+      normal_attempt_count: 1,
+      slow_attempt_count: 0,
+      faulty_attempt_count: 0,
+    }
+    payload.breakdown.pagination = { page: 1, page_size: 20, total_items: 1, total_pages: 1 }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: payload }),
+    })
+  })
+  await page.goto('/monitor')
+  const history = page.getByRole('table').locator('details').first()
+  await history.locator('summary').focus()
+  await page.keyboard.press('Enter')
+  await expect(history.locator('li')).toHaveCount(24)
+  await expect(history.locator('li').first()).toContainText('No requests')
+  await expect(history).not.toContainText('successful')
+})
+
+test('failed requests remain visible as failures in history', async ({ page }) => {
+  await mockMonitor(page)
+  await page.route('**/api/usage?**', async (route) => {
+    const payload = usagePayload()
+    payload.summary.success_count = 2
+    payload.summary.failure_count = 2
+    const row = payload.breakdown.rows[0]
+    row.success_count = 0
+    row.failure_count = 2
+    row.success_efficiency_sample_count = 0
+    row.history[0].success_count = 0
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: payload }),
+    })
+  })
+  await page.goto('/monitor')
+  const history = page.getByRole('table').locator('details').first()
+  await history.locator('summary').focus()
+  await page.keyboard.press('Enter')
+  await expect(history).toContainText('0 of 2 successful · 0%')
+})
+
+for (const width of [390, 1440]) {
   test(`usage breakdown header has balanced vertical spacing at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await mockMonitor(page)
@@ -351,11 +534,11 @@ test('usage renders the breakdown without a redundant heading', async ({ page })
   await expect(table.locator('tbody tr').first()).toContainText('50%')
   await expect(table.locator('tbody tr').first()).toContainText('—')
   const firstRow = table.locator('tbody tr').first()
-  const cacheRate = firstRow.locator('td').nth(11)
-  const tokenEfficiency = firstRow.locator('td').nth(12)
+  const cacheRate = firstRow.locator('td').nth(12)
+  const tokenEfficiency = firstRow.locator('td').nth(13)
   await expect(cacheRate).toHaveText('50%')
   await expect(tokenEfficiency).toHaveText('50 /s')
-  await expect(table.locator('tbody tr').nth(1).locator('td').nth(12)).toHaveText('—')
+  await expect(table.locator('tbody tr').nth(1).locator('td').nth(13)).toHaveText('—')
   const numericPadding = await cacheRate.evaluate((cell) => {
     const style = getComputedStyle(cell)
     return [style.paddingLeft, style.paddingRight]
@@ -398,9 +581,9 @@ test('breakdown aligns headers with values and gives long sortable labels room',
         }
       })
     })
-    expect(columns).toHaveLength(15)
+    expect(columns).toHaveLength(16)
     for (const [index, column] of columns.entries()) {
-      const alignment = index < 3 ? 'left' : 'right'
+      const alignment = index < 4 ? 'left' : 'right'
       expect(column.headerAlign).toBe(alignment)
       expect(column.cellAlign === 'start' ? 'left' : column.cellAlign).toBe(alignment)
       expect(column.fontSize).toBe('11.5px')
@@ -429,7 +612,7 @@ for (const locale of ['zh-CN', 'en-US']) {
     await page.goto('/monitor')
     const table = page.getByRole('table')
     await expect(table.locator('tbody tr').first()).toBeVisible()
-    const header = table.locator('thead th').nth(9)
+    const header = table.locator('thead th').nth(10)
     await header.getByRole('button').click()
     await expect(header).toHaveAttribute('aria-sort', 'descending')
 
@@ -448,7 +631,7 @@ for (const locale of ['zh-CN', 'en-US']) {
           }
         }),
       )
-      expect(geometry).toHaveLength(15)
+      expect(geometry).toHaveLength(16)
       for (const cell of geometry) {
         expect(cell.size).toBe('11.5px')
         expect(cell.text).toBeLessThanOrEqual(cell.available + 1)

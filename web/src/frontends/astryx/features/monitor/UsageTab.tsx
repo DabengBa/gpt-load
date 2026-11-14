@@ -141,7 +141,7 @@ export function UsageTab({
     (!isAccessKey && groupsQuery.data !== undefined && groupsQuery.isFetching) ||
     (!isAccessKey && channelsQuery.data !== undefined && channelsQuery.isFetching)
 
-  const hasData = (report?.summary.request_count ?? 0) > 0
+  const hasData = (report?.breakdown.pagination.total_items ?? 0) > 0
 
   function navigateUsage(filters: UsageFilters): Promise<void> {
     const scopedFilters = isAccessKey ? scopeAccessKeyUsageFilters(filters) : filters
@@ -292,6 +292,9 @@ export function UsageTab({
               >
                 <UsageBreakdownTable
                   breakdown={report.breakdown}
+                  fromMS={report.from_ms}
+                  toMS={report.to_ms}
+                  bucketWidthMS={report.bucket_width_ms}
                   groups={groupsQuery.data ?? []}
                   sort={breakdownSort}
                   sortDirection={breakdownSortDirection}

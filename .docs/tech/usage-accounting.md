@@ -1,16 +1,18 @@
 ---
-description: "The durable request-log aggregation rules that preserve total duration and observed first-response metrics across hourly usage reports and API projections."
+description: "Durable request-log aggregation, timing metrics, and request-success history across usage reports and API projections."
 kind: technical
 topic: usage-accounting
 relations:
   related:
     - db/features/usage-timing-metrics.md
     - db/features/usage-request-model.md
+    - db/features/usage-request-success-history.md
     - tech/agent-api.md
 code:
   paths:
     - internal/requestlog/worker.go
     - internal/requestlog/usage_query.go
+    - internal/requestlog/usage_history.go
     - internal/storage/models/request.go
     - internal/storage/migrations/0022_usage_first_response.go
     - internal/storage/migrations/0027_success_usage_efficiency.go
@@ -54,6 +56,16 @@ historical model is inferred. The monitoring breakdown exposes unknown as
 `null` and supports exact, non-empty `client_model` filtering for both request
 and attempt aggregates. The Agent API keeps its existing upstream-only model
 grouping and pagination semantics.
+
+The control usage breakdown can include sparse request-success history for each
+row on the final page when the client opts in with
+`X-GPTLoad-Usage-History: 1`; omitting the header preserves the legacy response
+shape for older clients. History is read in the same snapshot and with the same filters.
+Administrator rows retain the complete model, client model, group and channel
+identity; access-key rows aggregate hidden route dimensions only within that
+key. Buckets follow the report width. Missing buckets and attempt-only rows
+have no requests, not failed requests. This is request outcome history, not
+an uptime or active-probe measurement; the Agent API does not request it.
 
 Request token and estimated-cost amounts include reported billed usage from
 earlier failed attempts as well as the terminal attempt, each priced with its
@@ -110,11 +122,13 @@ Success-only historical values are not inferred from all-request aggregates.
 
 - Product behavior is owned by [Usage Duration And First-Response
   Metrics](../db/features/usage-timing-metrics.md) and [Usage Reporting By
-  Request Model](../db/features/usage-request-model.md).
+  Request Model](../db/features/usage-request-model.md), and [Usage Request
+  Success History](../db/features/usage-request-success-history.md).
 - Agent API projection details are owned by [Agent Control-Plane
   API](agent-api.md).
 - Code binding: `internal/requestlog/worker.go:buildUsageStatDeltas`
 - Code binding: `internal/requestlog/usage_query.go:queryUsage`
+- Code binding: `internal/requestlog/usage_history.go:queryUsageBreakdownHistory`
 - Code binding: `internal/storage/migrations/0022_usage_first_response.go:Up0022`
 
 ## Operations, Calculation, And Failure Boundaries
